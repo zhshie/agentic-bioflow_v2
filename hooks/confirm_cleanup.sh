@@ -71,9 +71,12 @@ while IFS= read -r SEG; do
     DESTRUCTIVE=0   # a real delete
     TRUNCATE=0      # a redirect: creates or overwrites, never removes a tree
     MOVE_ONLY=0
-    case "$SEG" in
-        *rm\ *|*rm|*rmdir\ *|*rmdir) DESTRUCTIVE=1 ;;
-    esac
+    # Must be the command word, not those two letters anywhere in the line. The
+    # glob this replaces matched the tail of "confirm " and of "Platform run",
+    # so `echo confirm the results directory` was denied outright - and this
+    # project's own prose mentions Seqera Platform constantly.
+    echo "$SEG" | grep -qE '(^|[[:space:]]|[;&|(])(sudo[[:space:]]+)?(rm|rmdir)([[:space:]]|$)' \
+        && DESTRUCTIVE=1
     echo "$SEG" | grep -qE '\bfind\b.*-delete|\brsync\b.*--delete|\bshred\b' && DESTRUCTIVE=1
     # "2>/dev/null" appears in nearly every snippet this plugin's own commands
     # tell the assistant to run, and the old pattern ('>[[:space:]]*/') matched
