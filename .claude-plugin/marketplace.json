@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "agentic-bioflow-v2",
+  "description": "Seqera Platform as the execution backend for Nextflow/nf-core, plus the two things Seqera cannot do for a firewalled HPC: round resource requests up to the cluster's QOS floor, and reach the internet from compute nodes. This repo is itself the marketplace.",
+  "owner": { "name": "zhshie" },
+  "plugins": [
+    {
+      "name": "agentic-bioflow",
+      "source": ".",
+      "description": "Three commands mirroring Seqera's own object model - setup (compute environment), launch (pipeline/dataset/launch), runs (monitor, debug, deliver)."
+    }
+  ]
+}

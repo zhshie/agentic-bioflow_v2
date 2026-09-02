@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_launch.sh", "timeout": 10 },
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_cleanup.sh", "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}

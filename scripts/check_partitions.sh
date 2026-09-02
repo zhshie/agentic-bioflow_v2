@@ -1,0 +1,46 @@
+#!/bin/bash
+# Compare the partition boxes hardcoded in configs/nchc.config against what
+# SLURM currently reports, and complain about drift.
+#
+# The config has to hardcode the boxes - Nextflow reads it on the head node at
+# launch time and shelling out to sacctmgr from a config closure would run once
+# per task. So this check exists to catch the day NCHC changes a partition,
+# rather than discovering it as a run that never schedules.
+set -uo pipefail
+CONFIG="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/configs/nchc.config}"
+
+command -v sacctmgr >/dev/null || { echo "sacctmgr not found - run this on the cluster" >&2; exit 2; }
+
+# live: queue<TAB>cpus<TAB>memGB, for the QOS names the config names
+live=$(sacctmgr -nP show qos format=Name,MinTRES 2>/dev/null | awk -F'|' '
+  $2 ~ /cpu=/ {
+    cpu=""; mem=""
+    n=split($2, a, ",")
+    for (i=1;i<=n;i++) {
+      if (a[i] ~ /^cpu=/)  { sub(/^cpu=/,"",a[i]); cpu=a[i] }
+      if (a[i] ~ /^mem=/)  { sub(/^mem=/,"",a[i]); sub(/G$/,"",a[i]); mem=a[i] }
+    }
+    if (cpu != "" && mem != "") print tolower($1) "\t" cpu "\t" mem
+  }' | sort)
+
+# config: same shape, from the NCHC_BOXES literal
+cfg=$(grep -oP "queue:\s*'\K[^']+(?=',\s*cpus:\s*\d+)" "$CONFIG" | tr 'A-Z' 'a-z' > /tmp/.q$$
+      grep -oP "cpus:\s*\K\d+(?=,\s*mem:)" "$CONFIG" > /tmp/.c$$
+      grep -oP "mem:\s*\K\d+" "$CONFIG" > /tmp/.m$$
+      paste /tmp/.q$$ /tmp/.c$$ /tmp/.m$$ | sort; rm -f /tmp/.q$$ /tmp/.c$$ /tmp/.m$$)
+
+drift=0
+while IFS=$'\t' read -r q c m; do
+  [ -z "$q" ] && continue
+  hit=$(grep -P "^${q}\t" <<<"$live")
+  if [ -z "$hit" ]; then
+    echo "MISSING: config lists '$q' but SLURM has no such QOS"; drift=1; continue
+  fi
+  lc=$(cut -f2 <<<"$hit"); lm=$(cut -f3 <<<"$hit")
+  if [ "$c" != "$lc" ] || [ "$m" != "$lm" ]; then
+    echo "DRIFT:   $q config=${c}cpu/${m}G  live=${lc}cpu/${lm}G"; drift=1
+  fi
+done <<<"$cfg"
+
+if [ "$drift" = 0 ]; then echo "OK - every box in $(basename "$CONFIG") matches the live QOS table"; fi
+exit $drift
