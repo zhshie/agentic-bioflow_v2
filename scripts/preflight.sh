@@ -9,15 +9,17 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-WS="${TOWER_WORKSPACE_ID:-}"
-CE="${SEQERA_COMPUTE_ENV:-nchc-taiwania3}"   # TODO: read from the deployment settings
-TW="${TW_BIN:-$HOME/bin/tw}"
+. "$HERE/settings.sh"
+WS="${TOWER_WORKSPACE_ID:-$(setting workspace_id)}"
+CE="${SEQERA_COMPUTE_ENV:-$(setting compute_env)}"
+TW="${TW_BIN:-$(setting tw_bin)}"
+[ -n "$TW" ] || TW="$(command -v tw 2>/dev/null)"
 fail=0
 say() { printf "%-10s %-14s %s\n" "$1" "$2" "$3"; [ "$1" = FAIL ] && fail=1; return 0; }
 
 [ -n "${LAB_RUNS_DIR:-}" ] \
   && say OK   "LAB_RUNS_DIR" "$LAB_RUNS_DIR" \
-  || say FAIL "LAB_RUNS_DIR" "not set - nothing below can be checked"
+  || say FAIL "LAB_RUNS_DIR" "not set - this deployment's own state cannot be found without it; run setup"
 
 if [ -n "${LAB_RUNS_DIR:-}" ]; then
   out=$(bash "$HERE/egress_ctl.sh" status 2>&1) \
@@ -43,7 +45,11 @@ if [ -x "$TW" ] && [ -n "${TOWER_ACCESS_TOKEN:-}" ]; then
     && say OK "compute-env" "$CE AVAILABLE" \
     || say FAIL "compute-env" "$CE is '${st:-unreachable}'"
 else
-  say SKIP "compute-env" "tw or TOWER_ACCESS_TOKEN unavailable in this shell"
+  if [ -z "$CE" ]; then
+    say FAIL "compute-env" "no compute_env in the deployment settings - run setup"
+  else
+    say SKIP "compute-env" "tw or a token is unavailable in this shell"
+  fi
 fi
 
 exit $fail

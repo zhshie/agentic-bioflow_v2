@@ -40,6 +40,9 @@ errors that reach Platform point elsewhere.
 
 **`docs/PITFALLS.md`** — everything that cost a failed run.
 
+**`docs/SETTINGS.md`** — the one file holding anything personal, and what
+breaks without each key. Never in git.
+
 **`docs/PRINCIPLES.md`** — what decides. Eight invariants, each with a check,
 because the reasoning behind a design kept evaporating between sessions and
 being re-derived differently. Read it before changing anything structural.
