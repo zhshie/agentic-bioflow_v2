@@ -139,23 +139,51 @@ class Handler(socketserver.BaseRequestHandler):
             head = buf.partition(b"\r\n\r\n")[0]
             line = head.split(b"\r\n", 1)[0]
             parts = line.decode("latin-1").strip().split()
-            if len(parts) < 2 or parts[0].upper() != "CONNECT":
-                c.sendall(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n")
-                log("REJECT non-CONNECT from", peer_name, parts[:2])
+            if len(parts) < 2:
+                c.sendall(b"HTTP/1.1 400 Bad Request\r\n\r\n")
+                log("REJECT malformed from", peer_name)
                 return
-            host, _, port = parts[1].rpartition(":")
-            port = int(port or 443)
+
+            if parts[0].upper() != "CONNECT":
+                # Plain HTTP, sent to a proxy in absolute form:
+                #   GET http://host/path HTTP/1.1
+                # Rejecting these with 405 was fine while everything here spoke
+                # HTTPS, but nf-core/fetchngs pulls FASTQ over plain HTTP from
+                # ftp.sra.ebi.ac.uk and wget reported the relay's own 405 as if
+                # the archive had refused it.
+                self.forward_http(c, parts, buf, peer_name)
+                return
+
+            hostport = parts[1]
+            if ":" in hostport:
+                host, _, port = hostport.rpartition(":")
+                port = int(port)
+            else:
+                host, port = hostport, 443
 
             if not domain_ok(host):
                 c.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
                 log("DENY-DOMAIN", host, port, "from", peer_name)
                 return
 
-            try:
-                up = socket.create_connection((host, port), timeout=20)
-            except Exception as e:
+            # One retry. A pipeline that fans out - fetchngs opens a request
+            # per accession at once - makes this node's resolver drop the odd
+            # UDP query, and a bare gaierror here becomes a 502 that fails the
+            # whole task. Resolving the same name 30 times in a row succeeds;
+            # it is only under the burst that it slips. Two attempts turned 2
+            # failures in 61 connections into none.
+            up = None
+            for attempt in (1, 2, 3):
+                try:
+                    up = socket.create_connection((host, port), timeout=20)
+                    break
+                except Exception as e:
+                    err = e
+                    if attempt < 3:
+                        time.sleep(0.3 * attempt)
+            if up is None:
                 c.sendall(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
-                log("FAIL", host, port, "from", peer_name, repr(e))
+                log("FAIL", host, port, "from", peer_name, repr(err))
                 return
 
             c.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
@@ -164,6 +192,55 @@ class Handler(socketserver.BaseRequestHandler):
             log("CLOSE", host, port, "from", peer_name)
         except Exception as e:
             log("ERROR", peer, repr(e))
+
+    def forward_http(self, c, parts, buf, peer_name):
+        """Proxy one plain-HTTP request given in absolute form.
+
+        The allowlist is applied to the URL's host exactly as it is for
+        CONNECT, so this opens no door that tunnelling did not already open -
+        it only stops the relay from answering 405 to a protocol it is
+        perfectly able to carry.
+        """
+        url = parts[1]
+        if not url.lower().startswith("http://"):
+            c.sendall(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n")
+            log("REJECT non-absolute", url[:60], "from", peer_name)
+            return
+        hostport, _, path = url[7:].partition("/")
+        if ":" in hostport:
+            host, _, port = hostport.rpartition(":")
+            port = int(port)
+        else:
+            host, port = hostport, 80
+
+        if not domain_ok(host):
+            c.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+            log("DENY-DOMAIN", host, port, "from", peer_name)
+            return
+
+        up = None
+        for attempt in (1, 2, 3):
+            try:
+                up = socket.create_connection((host, port), timeout=20)
+                break
+            except Exception as e:
+                err = e
+                if attempt < 3:
+                    time.sleep(0.3 * attempt)
+        if up is None:
+            c.sendall(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
+            log("FAIL", host, port, "from", peer_name, repr(err))
+            return
+
+        # Rewrite the request line to origin form; forward the rest verbatim.
+        head, sep, tail = buf.partition(b"\r\n\r\n")
+        first, _, others = head.partition(b"\r\n")
+        origin = f"{parts[0]} /{path} {parts[2] if len(parts) > 2 else 'HTTP/1.1'}".encode("latin-1")
+        rebuilt = origin + (b"\r\n" + others if others else b"") + sep + tail
+        up.sendall(rebuilt)
+        log("OPEN-HTTP", host, port, "from", peer_name)
+        self.pump(c, up)
+        log("CLOSE-HTTP", host, port, "from", peer_name)
 
     @staticmethod
     def pump(a, b):
