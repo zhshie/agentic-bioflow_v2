@@ -3,6 +3,10 @@ description: Check on, debug, or deliver a pipeline run
 argument-hint: [run id or name]
 ---
 
+Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
+never the user's working directory. Installed as a plugin they are under
+`${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
+
 Seqera Platform is the only source of truth for run state. Start there, then add
 the two things Platform cannot see: what the site's scheduler is doing, and what
 the site refused to send out. Both are reached through the site adapter

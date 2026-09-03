@@ -3,6 +3,10 @@ description: Set up and submit one analysis - pipeline, samplesheet, parameters,
 argument-hint: [pipeline] [path to input data]
 ---
 
+Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
+never the user's working directory. Installed as a plugin they are under
+`${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
+
 Walk the user from "I want to analyse this" to a submitted run, following
 Seqera's own sequence: pipeline → dataset → launch.
 

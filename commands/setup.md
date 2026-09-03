@@ -2,6 +2,10 @@
 description: Prepare this cluster to run pipelines through Seqera Platform, or repair it when something broke
 ---
 
+Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
+never the user's working directory. Installed as a plugin they are under
+`${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
+
 Two situations, and telling them apart is the first thing to do.
 
 Read `$LAB_RUNS_DIR/_personal/env.yaml` (every key is described in
