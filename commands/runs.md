@@ -4,7 +4,9 @@ argument-hint: [run id or name]
 ---
 
 Seqera Platform is the only source of truth for run state. Start there, then add
-the two things Platform cannot see: this cluster's scheduler, and the relay log.
+the two things Platform cannot see: what the site's scheduler is doing, and what
+the site refused to send out. Both are reached through the site adapter
+(`docs/SITE_ADAPTER.md`), never by naming a scheduler here.
 
 `tw runs list` if no run was named. Then branch on status.
 
@@ -12,33 +14,37 @@ the two things Platform cannot see: this cluster's scheduler, and the relay log.
 
 `tw runs view -i <id> tasks` for per-task progress.
 
-**A task sitting in `SUBMITTED` is the failure mode to watch for.** Platform
-keeps reporting the run as RUNNING and shows no error. Confirm and explain it:
+**A task sitting unstarted is the failure mode to watch for.** Platform keeps
+reporting the run as RUNNING and shows no error, so waiting longer looks like
+the reasonable response and never is. Ask the site:
 
 ```bash
-squeue -u "$USER" -h -o "%i %R" | grep -E "QOSMin|QOSMax"
-scontrol show job <jobid> | grep -E "Reason|ReqTRES"
+scripts/why_pending.sh
 ```
 
-`QOSMinCpuNotSatisfied` / `QOSMinMemory` means the request fell below the
-partition's floor and the job will never start, however long you wait. With
-`configs/nchc.config` in place this should not happen; if it does, the config's
-box table has drifted from the cluster — run `scripts/check_partitions.sh`.
+It answers the one question that matters — will this *ever* start. A `NEVER`
+means the site refuses the request as submitted, which should not happen while
+the resource contract is doing its job; `scripts/check_resource_contract.sh`
+says whether the contract has drifted from the site.
 
 ## FAILED
 
-**Read the relay log first**, before the Nextflow log:
+**Ask what the site refused**, before reading the Nextflow log:
 
 ```bash
-grep DENY-DOMAIN "$LAB_RUNS_DIR/_relay/relay.log" | tail -20
+scripts/egress_ctl.sh denied
 ```
 
-Two of the four failures during this system's bring-up were a missing domain in
-the allowlist, and in both cases the error Platform reported pointed somewhere
-else entirely — a blocked `nextflow.io` surfaces as
-`UnknownFormatConversionException: Conversion = '4'`. If a DENY lines up with
-the failure time, that is the cause: add the domain, restart the relay, and
-relaunch.
+Two of the four failures during this system's bring-up were an outbound request
+the site would not carry, and in both cases the error Platform reported pointed
+somewhere else entirely — a blocked plugin registry surfaces as
+`UnknownFormatConversionException: Conversion = '4'`, which is a formatting bug
+in the code that reads the rejection, not a clue about the cause. If a refusal
+lines up with the failure time, that is it: allow the host, restart the channel
+(`scripts/egress_ctl.sh stop && scripts/egress_ctl.sh start`), relaunch. Some
+refusals are expected and must not be allowed — see PITFALLS 4e and 4e2.
+
+On a site with unrestricted egress this step prints nothing and costs a second.
 
 Otherwise: task status via `tw runs view -i <id> tasks`, then the failing task's
 `.command.err` and `.command.log` in its work directory, then
@@ -49,10 +55,12 @@ directory is probably not visible from the compute nodes.
 
 ## SUCCEEDED
 
-1. **Check the agent is online first** — `scripts/agent_ctl.sh online <id>`.
-   Platform serves this cluster's outputs through the agent; with it down the
-   Reports tab is empty and the outputs look like they were never produced.
-   Never tell the user an output is missing without checking this.
+1. **Check the site can still serve outputs** — `scripts/agent_ctl.sh online <id>`.
+   Where Platform reads results through something running on the cluster, that
+   something being down makes every output look like it was never produced.
+   Never tell the user an output is missing without checking this first.
+   Read binary outputs — images, PDFs — from the filesystem regardless: what
+   Platform serves for them is corrupt (PITFALLS 3b).
 
 2. **Read the QC, do not just link it.** Open the MultiQC data files and report
    per-sample numbers: mapping rate, duplication, and — where the pipeline

@@ -58,6 +58,17 @@ PY
     else echo "not running"; exit 1; fi
     ;;
   url) echo "$URL" ;;
+  denied)
+    # What did this site refuse? The command layer asks this without knowing
+    # that the answer comes from a CONNECT proxy's log - see
+    # docs/SITE_ADAPTER.md. A site with unrestricted egress prints nothing.
+    if [ -f "$LOG" ]; then
+      out=$(grep DENY-DOMAIN "$LOG" | tail -"${2:-20}")
+      [ -n "$out" ] && printf '%s\n' "$out" || echo "nothing refused"
+    else
+      echo "no egress log at $LOG"
+    fi
+    ;;
   env)
     # Paste-ready values for the compute environment. JVM does not read
     # https_proxy, so NXF_OPTS is required alongside it.
@@ -69,5 +80,5 @@ HTTP_PROXY=$URL
 NXF_OPTS=-Dhttps.proxyHost=${HOSTNAME_NOW} -Dhttps.proxyPort=${PORT} -Dhttp.proxyHost=${HOSTNAME_NOW} -Dhttp.proxyPort=${PORT}
 EOF
     ;;
-  *) echo "usage: relay_ctl.sh {start|stop|status|url|env}" >&2; exit 2 ;;
+  *) echo "usage: egress_ctl.sh {start|stop|status|url|env|denied [n]}" >&2; exit 2 ;;
 esac

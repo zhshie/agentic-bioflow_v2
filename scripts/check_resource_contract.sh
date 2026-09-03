@@ -1,5 +1,5 @@
 #!/bin/bash
-# Compare the partition boxes hardcoded in configs/nchc.config against what
+# Compare the partition boxes hardcoded in configs/sites/nchc.config against what
 # SLURM currently reports, and complain about drift.
 #
 # The config has to hardcode the boxes - Nextflow reads it on the head node at
@@ -7,7 +7,7 @@
 # per task. So this check exists to catch the day NCHC changes a partition,
 # rather than discovering it as a run that never schedules.
 set -uo pipefail
-CONFIG="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/configs/nchc.config}"
+CONFIG="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/configs/sites/nchc.config}"
 
 command -v sacctmgr >/dev/null || { echo "sacctmgr not found - run this on the cluster" >&2; exit 2; }
 

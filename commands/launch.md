@@ -44,10 +44,11 @@ the report list.
    biotypes and small-genome STAR index sizing (see `docs/PITFALLS.md`).
 
 5. **Check for directives that need a human decision.** Read the pipeline's
-   `conf/base.config`. Resource requests need no attention — `configs/nchc.config`
-   maps whatever comes out to a valid partition. Speak up only for:
-   - `accelerator` / GPU — the GPU path here is **not yet verified**
-   - a request above the largest box (>56 CPU or >350 GB)
+   `conf/base.config`. Resource requests need no attention — the site adapter
+   turns whatever comes out into something the site accepts. Speak up only for:
+   - `accelerator` / GPU — the GPU path is **not yet verified** anywhere here
+   - a request larger than the site offers at all (the adapter's config lists
+     what it has)
 
 6. **Show the complete command** — every parameter on its own line — and wait
    for an explicit 確認執行. Include `--disable-optimization`.

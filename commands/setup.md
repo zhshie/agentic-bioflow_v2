@@ -14,34 +14,37 @@ Platform cannot provide for a firewalled cluster.
 
 ## Steps
 
-1. **Read the deployment settings** from `$LAB_RUNS_DIR/_personal/env.yaml`
-   (`slurm_account`, `storage_root`, `workspace_id`). Ask the user for anything
-   missing — never guess these, and never copy them from another member's file
-   or from anywhere in this conversation. Write them back with `chmod 600`.
-   The Seqera token lives in `_personal/.seqera_token`; **never print it**.
+1. **Read the deployment settings** from `$LAB_RUNS_DIR/_personal/env.yaml`:
+   `storage_root` and `workspace_id`, plus whatever the site itself needs — on a
+   scheduled cluster that includes the account the compute time is billed to
+   (`docs/SITE_ADAPTER.md` lists what this site requires). Ask the user for
+   anything missing — never guess these, and never copy them from another
+   member's file or from anywhere in this conversation. Write them back with
+   `chmod 600`. The Seqera token lives in `_personal/.seqera_token`;
+   **never print it**.
 
-2. **Relay** — `scripts/relay_ctl.sh status`, start if down. The URL is built
-   from the *current* hostname; this site has several login nodes and a stale
-   name points at a node with no relay.
+2. **Egress** — `scripts/egress_ctl.sh status`, start if down. Where a site
+   routes outbound traffic through a particular host, that address is baked
+   into the compute environment, so a channel that came up somewhere else
+   leaves the compute environment pointing at nothing (step 5).
 
 3. **Tower Agent** — `scripts/agent_ctl.sh status`, start if down. Then
    `scripts/agent_ctl.sh online <any recent runId>`: a live local process is not
    the same as an established connection, and only the connection determines
    whether Platform can show run outputs.
 
-4. **Partition table** — `scripts/check_partitions.sh`. If it reports drift,
-   update `configs/nchc.config` before launching anything; a stale box means
-   jobs that never schedule.
+4. **Resource contract** — `scripts/check_resource_contract.sh`. If it reports
+   drift, fix the site adapter's config before launching anything: a contract
+   that no longer matches the site produces jobs the site silently refuses.
 
-5. **Compute environment** — check it exists and its proxy variables point at
-   the *current* relay host. If the relay moved, update the CE:
-   `scripts/relay_ctl.sh env` prints paste-ready values. Both the `both:`-scoped
-   proxy variables and the head-only `NXF_OPTS` are required — the JVM does not
-   read `https_proxy`.
+5. **Compute environment** — check it exists, and that whatever the site needs
+   baked into it still matches reality. `scripts/egress_ctl.sh env` prints the
+   current values; **every one of them is required**, for reasons that belong to
+   the site, not here (`docs/SITE_ADAPTER.md`).
 
 6. **Launchpad entries** — `tw pipelines list`. For each pipeline the lab uses,
-   ensure an entry exists with a pinned revision and `configs/nchc.config`
-   attached, so members can launch by name.
+   ensure an entry exists with a pinned revision, so members can launch by name.
+   The resource contract rides on the compute environment, not on the entry.
 
 ## Report
 

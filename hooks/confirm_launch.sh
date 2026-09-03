@@ -43,23 +43,24 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 # "cannot check" - reporting that as "not running" would train the user to
 # ignore this section.
 if [ -z "${LAB_RUNS_DIR:-}" ]; then
-    add "LAB_RUNS_DIR is not set in this shell, so relay and agent state could not be checked"
+    add "LAB_RUNS_DIR is not set in this shell, so the site's readiness could not be checked"
 else
-    bash "$HERE/scripts/relay_ctl.sh" status >/dev/null 2>&1 \
-      || add "relay is NOT running - compute nodes have no route out and image pulls will fail (scripts/relay_ctl.sh start)"
+    bash "$HERE/scripts/egress_ctl.sh" status >/dev/null 2>&1 \
+      || add "the site's egress channel is DOWN - container pulls and reference downloads will fail (scripts/egress_ctl.sh start)"
 
     bash "$HERE/scripts/agent_ctl.sh" status >/dev/null 2>&1 \
       || add "Tower Agent is NOT running - the run may still execute, but Platform will show no outputs (scripts/agent_ctl.sh start)"
 fi
 
-# A relay started on another login node is useless: the head job reaches back by
-# hostname, and this site has lgn301..lgn304.
-if [ -n "${LAB_RUNS_DIR:-}" ] && bash "$HERE/scripts/relay_ctl.sh" status 2>/dev/null | grep -q WARNING; then
-    add "relay was started on a different login node than the one you are on - update the compute environment's proxy variables"
+# Where a site's egress channel is tied to a specific host, a channel that came
+# up elsewhere is useless: the head job reaches back by the address baked into
+# the compute environment. The adapter reports this as a WARNING.
+if [ -n "${LAB_RUNS_DIR:-}" ] && bash "$HERE/scripts/egress_ctl.sh" status 2>/dev/null | grep -q WARNING; then
+    add "the egress channel is up somewhere other than where the compute environment expects it - see scripts/egress_ctl.sh env"
 fi
 
 if grep -qE '(^|/)tw[[:space:]]+launch' <<<"$CMD" && ! grep -q -- '--disable-optimization' <<<"$CMD"; then
-    add "no --disable-optimization: Platform's resource optimization right-sizes from history, which fights this cluster's fixed-size QOS boxes and can push a request below the floor"
+    add "no --disable-optimization: Platform right-sizes from run history, which fights a site whose accepted sizes are fixed - a helpfully reduced request can land below what the site will take"
 fi
 
 MSG="GATE: this command can start a pipeline run. Show the user the complete command (every parameter, one per line) and wait for an explicit \"確認執行\" before proceeding."

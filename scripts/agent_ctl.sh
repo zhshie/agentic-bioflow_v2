@@ -1,7 +1,7 @@
 #!/bin/bash
 # Start/stop/inspect the Seqera Tower Agent on the login node.
 #
-# Deliberately mirrors relay_ctl.sh: nohup + a pid file, NOT tmux. The agent used
+# Deliberately mirrors egress_ctl.sh: nohup + a pid file, NOT tmux. The agent used
 # to live in a tmux session; when that server went away the agent died with it
 # while the relay - started this way - survived. Two daemons, two survival
 # mechanisms, and the one that died is the one Platform needs to read run outputs.
@@ -12,7 +12,7 @@
 # and the run's outputs look absent even though they are on disk.
 set -uo pipefail
 
-# State must NOT live beside the script - see the note in relay_ctl.sh.
+# State must NOT live beside the script - see the note in egress_ctl.sh.
 STATE_DIR="${TW_AGENT_STATE_DIR:-${LAB_RUNS_DIR:?set LAB_RUNS_DIR to the execution area}/_agent}"
 mkdir -p "$STATE_DIR"
 STATE="$STATE_DIR/agent.json"

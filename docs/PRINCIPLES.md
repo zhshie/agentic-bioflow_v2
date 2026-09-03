@@ -55,8 +55,8 @@ supplies them; the core must not assume them. On a cloud compute environment
 there is no relay to check and no partition to choose, and nothing outside the
 adapter should have to know that.
 
-*Check:* the command layer does not mention SLURM, relay, or partitions. Those
-words appear only inside a site adapter and its contract document.
+*Check:* `tests/command_layer_is_site_neutral.sh`. The contract itself, and what
+this site supplies for each part of it, is `docs/SITE_ADAPTER.md`.
 
 **5. Portable substance, but never a lowest common denominator.**
 

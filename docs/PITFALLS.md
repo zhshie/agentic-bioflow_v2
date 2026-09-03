@@ -121,6 +121,18 @@ applies to any tool reaching for a native FTP or UDP transport.
 whether they are running on AWS. On this cluster that address means nothing and
 the relay refuses it, which is the correct outcome - do not add it.
 
+**4e2. A denied `multiqc.info` is expected and harmless.** MultiQC checks for a
+newer version of itself on startup and carries on when it cannot. The refusals
+appear in the egress log during otherwise healthy runs:
+
+```
+13:22:52 DENY-DOMAIN multiqc.info 80 from cpn3859
+14:03:45 DENY-DOMAIN api.multiqc.info 443 from cpn3857
+```
+
+Do not add it. Allowing it buys nothing and sends outbound telemetry from every
+run on the cluster.
+
 **4f. Check the allowlist before launching, not after.**
 `scripts/check_egress.py <owner/pipeline> <revision>` reads the pipeline's own
 code - `nextflow.config`, `conf/`, `bin/`, `workflows/`, `subworkflows/` and
@@ -147,7 +159,7 @@ the box and the job never schedules: it sits at `QOSMinCpuNotSatisfied` or
 keeps reporting the run as RUNNING. Only `scontrol show job <id>` reveals it.
 
 Nextflow provides `resourceLimits` for the ceiling and has no equivalent for the
-floor, which is what `configs/nchc.config` supplies.
+floor, which is what `configs/sites/nchc.config` supplies.
 
 **7. Map the composed request, never label names.** nf-core labels are partial
 and stackable — `process_long` sets only `time`, `process_low_memory` only
@@ -188,7 +200,7 @@ ERROR ~ Error executing process >
 ```
 
 Nothing reaches the task script, so there is no `.command.err` to read — the
-message is in the head job log only. `configs/nchc.config` now sets
+message is in the head job log only. `configs/sites/nchc.config` now sets
 `executor.jobName` to a sanitised name, which fixes it for any pipeline rather
 than for this tag.
 

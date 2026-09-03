@@ -15,7 +15,11 @@ own object model.
 
 ## What is actually custom here
 
-**`configs/nchc.config`** — NCHC's QOS enforces a resource *floor*, and for most
+Site-specific pieces live behind a small contract (`docs/SITE_ADAPTER.md`) so
+that the commands are not written for one building. This site supplies two
+things that are worth reading about:
+
+**`configs/sites/nchc.config`** — NCHC's QOS enforces a resource *floor*, and for most
 partitions the floor equals the ceiling: a partition is a fixed-size box. Ask for
 less and the job never schedules, with no error anywhere and Platform still
 reporting RUNNING. Nextflow offers `resourceLimits` for the ceiling and nothing
@@ -29,7 +33,7 @@ label→partition table goes stale the moment a pipeline adds one. Because of
 this, a pipeline the config has never seen still lands in a valid box, with no
 configuration from the user.
 
-**`scripts/nf_relay.py`** — compute nodes have no route out. This is a small
+**`scripts/nf_relay.py`** — compute nodes here have no route out. This is a small
 CONNECT proxy on the login node, restricted by reverse-DNS peer check and a
 domain allowlist. Its log is the only place a blocked request is visible; the
 errors that reach Platform point elsewhere.
