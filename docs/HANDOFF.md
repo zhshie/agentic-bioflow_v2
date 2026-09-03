@@ -3,6 +3,9 @@
 Written 2026-09-03. `PRINCIPLES.md` says what decides; `PITFALLS.md` says what
 has already gone wrong. This file is only what is unfinished.
 
+The plan this follows is `~/.claude/plans/majestic-sparking-prism.md` — read it
+for the stage numbering used below.
+
 ## What is proven
 
 Six nf-core pipelines have run on NCHC through Seqera Platform with **no
@@ -11,60 +14,62 @@ differentialabundance, bacass, funcscan — every one SUCCEEDED. That was the
 point of v2: a new pipeline is launched, not configured.
 
 Since then the engine has been made into something a stranger could install:
+eight invariants in `PRINCIPLES.md` each with a check, five of them scripts in
+`tests/`; site machinery behind `docs/SITE_ADAPTER.md`; nothing pointing at one
+person's directories. It is installed as a plugin from marketplace
+`agentic-bioflow-v2`, now **2.0.1**.
 
-- the reasoning is in `PRINCIPLES.md` as eight invariants, each with a check,
-  and four of those checks are scripts in `tests/`
-- site-specific machinery is behind `docs/SITE_ADAPTER.md`; the command layer
-  names no scheduler, no egress mechanism, no container runtime
-- nothing in `scripts/`, `commands/` or `configs/` points at one person's
-  directories any more — they read `_personal/env.yaml` (`docs/SETTINGS.md`)
-- `install_deps.sh` fetches Java 21, the agent jar and `tw` from nothing;
-  `ce_apply.sh` builds a first compute environment from a site template
-- v2 is installed as a plugin, version 2.0.0, from marketplace
-  `agentic-bioflow-v2`
+## Stage 4 is done
 
-## The next thing to do: restart, then walk it
+Installed, restarted, and walked as the first user. What that established:
 
-**Claude Code has to restart before v2's hooks and commands take effect.** The
-session that installed it is still running v1's hooks. There is a clean way to
-tell which is live — run a command containing a quoted regex with `sbatch` in
-it, such as `grep -n "slurm|sbatch|squeue" docs/PITFALLS.md`:
+- both hooks fire in plugin form, which had never been tested — the launch gate
+  on a real `tw launch`, the deletion guard on a real `rm`. File existence is
+  not evidence: `${CLAUDE_PLUGIN_ROOT}` only resolves once installed
+- the six tests are green
+- the cold-start walk found two bugs, both fixed, both of the same shape: a
+  check that reported success without having checked, and a script that refused
+  before reading the file holding its answer
 
-- **the launch gate fires** → still v1, whose gate false-positives on quoted
-  regexes and whose message mentions `submit_run.sh`
-- **nothing happens** → v2
+The cold-start method is the thing worth keeping. Point `LAB_RUNS_DIR` and
+`LAB_SETTINGS_FILE` at an empty area and run the read-only paths — never
+`start`, which would raise a second agent against the same connection (3c).
+Evidence in `/work/u9613010/lab_runs/_coldstart_s4`, 14K.
 
-After the restart:
+**What Stage 4 has not closed:** the verification row that ends it — walking
+`/setup` through to a `-profile test` SUCCEEDED. That is a real run and needs
+a person to confirm it.
 
-1. `/agentic-bioflow:setup`, `:launch` and `:runs` should exist.
-2. The gate must fire on a real `tw launch` — file existence is not evidence,
-   because `${CLAUDE_PLUGIN_ROOT}` only resolves once installed.
-3. Say something with no slash command at all — "I want to run RNA-seq" —
-   and the operational skill should pick it up. This is the thing v2 had no
-   answer to until recently.
-4. Walk `/agentic-bioflow:setup` as if new. The bar is not that it works; it is
-   that every question is answerable **without this conversation's memory**.
-   Where it is not, that is the bug.
+## The next thing to do
+
+1. **Restart Claude Code.** 2.0.1 is installed and not yet live.
+2. **Say "I want to run RNA-seq" with no slash command, in a fresh session.**
+   This cannot be tested by whoever just read this file — knowing the skill
+   exists is exactly what the test is trying to exclude.
+3. **Finish Stage 4**: `/setup` to a `-profile test` SUCCEEDED.
+4. **Stage 5 — real data end to end.** `rnaseq_sclerotia_d5_20260902` has
+   salmon counts and `sample_info.csv`: CK vs SynCom, n=3 per group, one
+   timepoint. Run `nf-core/differentialabundance` through `/launch` and
+   `/runs`, and ask first whether the three replicates were processed as one
+   batch — if group and batch coincide, neither run nor analysis can separate
+   them. The test is that no `tw` command is typed by hand. Read plots from
+   disk, not Platform (3b).
+5. **Stage 6 remainder**: review the three command documents with
+   `mattpocock-skills:writing-for-agents`. The other two Stage 6 items —
+   `check_egress.py` and `preflight.sh` called from `launch.md` — are done.
+6. **`configs/sites/nchc.config` as a PR to nf-core/configs.** No Taiwanese
+   institutional config exists upstream and this one is structurally
+   `nci_gadi`.
 
 Rollback is one command: `claude plugin install agentic-bioflow@agentic-bioflow`.
 v1's repository and marketplace were left untouched for exactly this.
 
-## Then
-
-- **Real data end to end.** `rnaseq_sclerotia_d5_20260902` has salmon counts and
-  `sample_info.csv`: CK vs SynCom, n=3 per group, one timepoint. Run
-  `nf-core/differentialabundance` through `/launch` and `/runs`, and ask first
-  whether the three replicates were processed as one batch — if group and batch
-  coincide, neither run nor analysis can separate them. The test is that no
-  `tw` command is typed by hand. Read plots from disk, not Platform (3b).
-- **`check_egress.py` and `preflight.sh` into `launch.md`.** Both exist and
-  nothing calls them. Skipping preflight is what let a dead agent take out a
-  launch this session (3c).
-- **`configs/sites/nchc.config` as a PR to nf-core/configs.** No Taiwanese
-  institutional config exists upstream and this one is structurally `nci_gadi`.
-
 ## Known and deliberately not fixed
 
+- `preflight.sh` hardcodes `configs/sites/nchc.config`, and no settings key
+  names a site config. Harmless while one site config exists, but "OK
+  resources" is then a claim about somebody else's cluster. Fixing it means a
+  new settings key, and `docs/SETTINGS.md` and `setup` with it.
 - Every binary file Platform serves is corrupt (3b). Not reported to Seqera yet;
   the measurement table in that entry is a complete reproduction report.
 - Java, the agent jar and the image cache sit under a `drwx------` home and
@@ -74,3 +79,5 @@ v1's repository and marketplace were left untouched for exactly this.
 - The GPU path has never been run.
 - `/work/u9613010/lab_runs/_coldstart` is 362 MB of cold-start test evidence.
   Delete it when it stops being useful.
+- A second member has still never installed this. Everything above is one
+  person's machine.
