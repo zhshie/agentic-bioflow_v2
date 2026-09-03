@@ -57,6 +57,9 @@ ALLOW_DOMAINS = (
     "biocontainers.pro",      # base image for ampliseq's local modules
     "qiime2.org",             # QIIME2 classifiers (--qiime_ref_taxonomy)
     "ecogenomic.org",         # GTDB SSU references (--dada_ref_taxonomy gtdb=...)
+    # nf-core/fetchngs resolves GEO/GSM accessions through NCBI eutils and
+    # pulls reads from the SRA mirrors. Covers eutils/trace/ftp/sra-download.
+    "ncbi.nlm.nih.gov",
 )
 
 # Hostname prefixes permitted to use the relay. From `sinfo -N`: compute nodes
@@ -79,7 +82,18 @@ def domain_ok(host):
     return any(h == d or h.endswith("." + d) for d in ALLOW_DOMAINS)
 
 
+# Every connection starts with a reverse lookup, so a burst runs them all at
+# once and the slow ones eat the socket timeout. The set of compute nodes is
+# small and stable, so remember what we resolve. Failures are deliberately not
+# cached: a transient resolver hiccup must not lock a legitimate node out for
+# the life of the relay.
+_PEER_CACHE = {}
+
+
 def peer_ok(ip):
+    hit = _PEER_CACHE.get(ip)
+    if hit is not None:
+        return hit
     try:
         name = socket.gethostbyaddr(ip)[0].lower()
     except Exception:
@@ -87,7 +101,9 @@ def peer_ok(ip):
         # than fall back to a subnet check - login and compute nodes share
         # 172.16/12 here, so a subnet check would not narrow anything.
         return False, "<no-rdns>"
-    return name.startswith(ALLOW_HOST_PREFIXES), name
+    result = (name.startswith(ALLOW_HOST_PREFIXES), name)
+    _PEER_CACHE[ip] = result
+    return result
 
 
 class Handler(socketserver.BaseRequestHandler):
@@ -102,12 +118,26 @@ class Handler(socketserver.BaseRequestHandler):
                 log("DENY-PEER", peer, peer_name)
                 return
 
-            line = b""
-            while b"\r\n" not in line and len(line) < 8192:
-                b = c.recv(1)
-                if not b:
+            # Read the whole header block at once, then split off the request
+            # line. Doing it the other way round - request line first, then
+            # "recv until this chunk contains \r\n\r\n" - hangs on a CONNECT
+            # that carries no headers, because the only thing left in the
+            # socket is the terminating \r\n and no single chunk can ever
+            # contain \r\n\r\n. That is exactly what Python's
+            # http.client._tunnel() sends:
+            #     CONNECT host:443 HTTP/1.0\r\n\r\n
+            # so every urllib request through this relay stalled for the full
+            # socket timeout and the client reported "Remote end closed
+            # connection without response". curl and Singularity always send a
+            # Host: header, which is why image pulls never revealed it.
+            buf = b""
+            while b"\r\n\r\n" not in buf and len(buf) < 8192:
+                chunk = c.recv(1024)
+                if not chunk:
                     return
-                line += b
+                buf += chunk
+            head = buf.partition(b"\r\n\r\n")[0]
+            line = head.split(b"\r\n", 1)[0]
             parts = line.decode("latin-1").strip().split()
             if len(parts) < 2 or parts[0].upper() != "CONNECT":
                 c.sendall(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n")
@@ -115,11 +145,6 @@ class Handler(socketserver.BaseRequestHandler):
                 return
             host, _, port = parts[1].rpartition(":")
             port = int(port or 443)
-
-            while True:
-                chunk = c.recv(4096)
-                if not chunk or b"\r\n\r\n" in chunk:
-                    break
 
             if not domain_ok(host):
                 c.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
@@ -167,6 +192,14 @@ class Handler(socketserver.BaseRequestHandler):
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
+    # socketserver defaults this to 5 - the listen() backlog. Pulling container
+    # images opens a handful of connections and never noticed, but a pipeline
+    # that fans out metadata queries (nf-core/fetchngs asks about every
+    # accession at once) overflows the accept queue in a single burst. The
+    # excess connections are reset and the client reports "Remote end closed
+    # connection without response", which reads like a fault at the far end
+    # rather than here.
+    request_queue_size = 128
 
 
 if __name__ == "__main__":

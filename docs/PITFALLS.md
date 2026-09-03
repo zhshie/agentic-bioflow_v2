@@ -51,6 +51,34 @@ When a run fails for any network-shaped reason, read the relay log *first*:
 grep DENY-DOMAIN "$LAB_RUNS_DIR/_relay/relay.log" | tail -20
 ```
 
+**4b. A CONNECT with no headers used to hang the relay, and only Python
+noticed.** `http.client._tunnel()` - which is what `urllib.request.urlopen`
+uses, and therefore every nf-core helper script written in Python - sends:
+
+```
+CONNECT host:443\r\n\r\n
+```
+
+with no headers at all. The relay read the request line, then drained the rest
+with "recv until this chunk contains \r\n\r\n". With no headers the only thing
+left in the socket is the terminating `\r\n`, which no single chunk can ever
+satisfy, so the relay blocked for the full socket timeout and then closed. The
+client reported `RemoteDisconnected: Remote end closed connection without
+response`, which reads like a fault at the far end.
+
+curl and Singularity always send a `Host:` header, so image pulls never
+revealed it. nf-core/fetchngs is the first pipeline here that reaches the
+internet from Python, and it failed 100% of the time from the day the relay was
+written. `tests/relay_connect_test.py` covers all four shapes, including the
+headerless one and a denial.
+
+**4c. The relay's DENY log only means something once parsing succeeds.**
+While 4b was live, blocked domains produced `ERROR ... TimeoutError` with no
+domain name rather than a `DENY-DOMAIN` line - the request never got as far as
+the allowlist check. After fixing 4b, the very first run immediately named
+`eutils.ncbi.nlm.nih.gov` as missing. Reading "no DENY lines" as "not a network
+problem" is only safe when the relay is known to be parsing correctly.
+
 **5. `tw launch --config` is additive, not a replacement.** Platform uploads the
 file and appends `includeConfig 'https://api.cloud.seqera.io/ephemeral/…'`
 *after* the compute environment's own config, so it wins on conflicts and you
