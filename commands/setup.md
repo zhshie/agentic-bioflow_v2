@@ -73,10 +73,12 @@ and reference downloads; where they can, the adapter says so and this is
 quick. It picks its own port, so several members on one machine do not collide.
 
 **6. The outputs reader, then its credential — in that order.**
-`scripts/agent_ctl.sh start`, then register it with Seqera. **Registering
-first fails**: Seqera will not accept a credential for something it cannot
-see. The connection identifier must be unique to this person; two of them
-sharing one is refused permanently, not intermittently.
+`scripts/agent_ctl.sh start`, then `scripts/agent_ctl.sh register`.
+**Registering first fails**: Seqera will not issue a credential for something
+it cannot see. `start` assigns a connection identifier if there is none and
+records it; it has to stay the same afterwards, because the credential is tied
+to it, and two people sharing one are refused permanently rather than
+intermittently. `register` prints the credential name to use in the next step.
 
 **7. The compute environment.** `scripts/ce_apply.sh`. With none present it
 builds the first one from the site's template; it always shows what it will do

@@ -37,7 +37,17 @@ alive()  { [ -f "$STATE" ] && kill -0 "$(pid_of)" 2>/dev/null; }
 case "${1:-status}" in
   start)
     if alive; then echo "already running: pid=$(pid_of)"; exit 0; fi
-    for v in agent_java:JAVA agent_jar:JAR agent_connection:CONN; do
+    # A connection identifier only has to be unique, so generating one is safe
+    # in a way that guessing an allocation code is not. Recorded immediately:
+    # the compute environment's credential is tied to it, so it must be the
+    # same string on the next start.
+    if [ -z "$CONN" ]; then
+      CONN="${USER}-$(hostname -s)-$(date +%Y%m%d)"
+      set_setting agent_connection "$CONN"
+      echo "assigned connection id: $CONN"
+    fi
+
+    for v in agent_java:JAVA agent_jar:JAR; do
       k="${v%%:*}"; n="${v##*:}"
       [ -n "${!n}" ] || { echo "ERROR: '$k' is not set in the deployment settings." >&2
                           echo "Ask the user for it; do not guess it." >&2; exit 1; }
@@ -78,6 +88,21 @@ print(f\"running pid={d['pid']}  connection={d['connection']}  on {d['host']}  s
       echo "not running"; exit 1
     fi
     ;;
+  register)
+    # Tell Seqera this agent exists. ORDER MATTERS: the agent has to be running
+    # already, or this fails with "The agent is not online" (PITFALLS 2) - the
+    # server checks for a live connection before it will issue a credential.
+    alive || { echo "start the agent first: agent_ctl.sh start" >&2; exit 1; }
+    [ -n "$CONN" ] || { echo "no agent_connection recorded; run 'agent_ctl.sh start' first" >&2; exit 1; }
+    TW="${TW_BIN:-$(setting tw_bin)}"; [ -n "$TW" ] || TW="$(command -v tw)"
+    WS="${TOWER_WORKSPACE_ID:-$(setting workspace_id)}"
+    NAME="${2:-$CONN}"
+    TOWER_ACCESS_TOKEN="$(cat "$TOKEN_FILE")" \
+      "$TW" credentials add agent -n "$NAME" ${WS:+-w "$WS"} \
+            --connection-id "$CONN" --work-dir "$WORKDIR" --overwrite || exit 1
+    echo "registered '$NAME' for connection '$CONN'"
+    echo "Use it when building the compute environment: SEQERA_CREDENTIALS=$NAME"
+    ;;
   online)
     # The only check that matters: does Platform consider the agent reachable?
     # A live local process is not the same thing as an established connection.
@@ -96,5 +121,5 @@ r=d.get('reports',d if isinstance(d,list) else [])
 print(f'ONLINE - Platform lists {len(r)} report(s)')
 for x in r: print('   ', x.get('display') or x.get('key'))" 2>/dev/null || echo "ONLINE (unparsed response)"
     ;;
-  *) echo "usage: agent_ctl.sh {start|stop|status|online <runId>}" >&2; exit 2 ;;
+  *) echo "usage: agent_ctl.sh {start|stop|status|register [name]|online <runId>}" >&2; exit 2 ;;
 esac
