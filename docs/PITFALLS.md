@@ -98,13 +98,19 @@ the relay refuses it, which is the correct outcome - do not add it.
 
 **4f. Check the allowlist before launching, not after.**
 `scripts/check_egress.py <owner/pipeline> <revision>` reads the pipeline's own
-config and `bin/` scripts and reports hosts the relay would refuse. It is a
-heuristic - URLs built at runtime or supplied through params are invisible to
-it, and a pipeline only fetches the reference databases its parameters select -
-but it turns the one recurring cost of adding a new pipeline into something you
-find out in seconds rather than after a failed run. Across the four pipelines
-accepted here it reports nothing missing; for ampliseq it correctly lists the
-taxonomy databases that other parameter choices would reach for.
+code - `nextflow.config`, `conf/`, `bin/`, `workflows/`, `subworkflows/` and
+each module's `main.nf` - and reports hosts the relay would refuse. Config and
+`bin/` alone are not enough: funcscan hardcodes the CARD download in
+`subworkflows/local/arg.nf`. Documentation is excluded on purpose, because
+`meta.yml` and `ro-crate-metadata.json` are nothing but tool homepages and
+including them buries three real hosts under forty citations.
+
+**4g. The static check cannot see a URL that lives inside the tool, and that
+is what the DENY log is for.** nf-core/bacass passes 4f clean, then fails at
+BUSCO: `Cannot reach https://busco-data2.ezlab.org`. That host appears nowhere
+in bacass — the download URL is compiled into BUSCO itself. Expect one round of
+this for a pipeline whose tools fetch their own reference data; the relay log
+names the host on the first failure, which costs one run, not a diagnosis.
 
 ## Resources
 
@@ -145,9 +151,32 @@ see.** A work dir under the login node's `/tmp` produces jobs that fail before
 the task script runs, leaving no `.command.log` and no `.exitcode` — only a
 bare exit 1 in `sacct`.
 
+**12. NCHC's sbatch rejects a job name containing `|`, and a task tag can put
+one there.** nf-core/funcscan tags fARGene tasks `<sample>|<hmm model>`;
+Nextflow's default job name is `nf-` + `task.name` with only spaces replaced,
+so every submission died at once:
+
+```
+sbatch: error: ERROR: Job name contains an invalid character '|'.
+ERROR ~ Error executing process >
+        'NFCORE_FUNCSCAN:FUNCSCAN:ARG:FARGENE (sample_1|class_a)'
+```
+
+Nothing reaches the task script, so there is no `.command.err` to read — the
+message is in the head job log only. `configs/nchc.config` now sets
+`executor.jobName` to a sanitised name, which fixes it for any pipeline rather
+than for this tag.
+
+**13. A compute environment's config cannot be edited in place.**
+`tw compute-envs update` changes only the name and description. Changing
+`nextflowConfig` means `tw compute-envs import --overwrite`, which deletes and
+recreates the environment under a new ID — export a backup first. To test a
+config change without touching the environment, pass it to `tw launch --config`,
+which is appended after the environment's own config.
+
 ## Do not rebuild what nf-core already does
 
-**12.** Before writing a check, read the pipeline's module source. Three checks
+**14.** Before writing a check, read the pipeline's module source. Three checks
 were written and then deleted after the fact:
 
 | Check | Already handled by |

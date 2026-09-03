@@ -68,6 +68,11 @@ ALLOW_DOMAINS = (
     "card.mcmaster.ca",           # RGI / CARD, fetched unconditionally by arg.nf
     "aps.unmc.edu",               # APD3, what -profile test selects
     "dramp.cpu-bioinfor.org",     # DRAMP, the default outside the test profile
+    # BUSCO downloads its lineage datasets from a host that appears nowhere in
+    # nf-core/bacass - the URL lives inside the BUSCO tool. No static scan can
+    # find this one; the relay's own DENY log named it on the first run, which
+    # is what that log is for.
+    "ezlab.org",                  # busco-data.ezlab.org, busco-data2.ezlab.org
 )
 
 # Hostname prefixes permitted to use the relay. From `sinfo -N`: compute nodes
