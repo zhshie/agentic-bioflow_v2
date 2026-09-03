@@ -7,9 +7,9 @@ unfinished.
 
 Six nf-core pipelines have run on NCHC through Seqera Platform with **no
 per-pipeline configuration**: rnaseq 3.26.0, ampliseq, fetchngs,
-differentialabundance, bacass, funcscan — every one SUCCEEDED. That was the point of v2 — a new
-pipeline is launched, not configured — and it now has evidence rather than an
-argument.
+differentialabundance, bacass, funcscan — every one SUCCEEDED. That was the
+point of v2 — a new pipeline is launched, not configured — and it now has
+evidence rather than an argument.
 
 The box mapping in `configs/nchc.config` placed tasks in five different
 partitions across those runs (ngs7G through ngs92G) without ever being told
