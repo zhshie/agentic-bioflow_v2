@@ -1,6 +1,6 @@
 # Where this stands
 
-Written 2026-09-03. `PRINCIPLES.md` says what decides; `PITFALLS.md` says what
+Written 2026-09-04. `PRINCIPLES.md` says what decides; `PITFALLS.md` says what
 has already gone wrong. This file is only what is unfinished.
 
 The plan this follows is `~/.claude/plans/majestic-sparking-prism.md` — read it
@@ -17,7 +17,7 @@ Since then the engine has been made into something a stranger could install:
 eight invariants in `PRINCIPLES.md` each with a check, five of them scripts in
 `tests/`; site machinery behind `docs/SITE_ADAPTER.md`; nothing pointing at one
 person's directories. It is installed as a plugin from marketplace
-`agentic-bioflow-v2`, now **2.0.1**.
+`agentic-bioflow-v2`, now **2.0.2**.
 
 ## Stage 4 is done
 
@@ -27,9 +27,19 @@ Installed, restarted, and walked as the first user. What that established:
   on a real `tw launch`, the deletion guard on a real `rm`. File existence is
   not evidence: `${CLAUDE_PLUGIN_ROOT}` only resolves once installed
 - the six tests are green
-- the cold-start walk found two bugs, both fixed, both of the same shape: a
+- the cold-start walk found three bugs, all fixed, all of the same shape: a
   check that reported success without having checked, and a script that refused
   before reading the file holding its answer
+
+Then a fresh session ran it for real, with no slash command, and that closed
+two more rows. `/launch` was reached by "I want to run RNA-seq" alone. The
+launch gate fired **four times**, once on a `tw launch` buried behind
+`export ...; source ...;` and a pipe — the segment-splitting case it used to
+miss — with no precondition warnings, which means the hook's own shell had
+`LAB_RUNS_DIR` and passed the egress and agent checks. The run
+(`sclerotia-d0-ck-vs-syncom`) SUCCEEDED; its `work/` is 59 GB, which is the
+number to plan disk around. **No per-user `/work` quota could be established**
+— it is NFS, and `quota` reports only `/home`.
 
 The cold-start method is the thing worth keeping. Point `LAB_RUNS_DIR` and
 `LAB_SETTINGS_FILE` at an empty area and run the read-only paths — never
@@ -40,24 +50,37 @@ Evidence in `/work/u9613010/lab_runs/_coldstart_s4`, 14K.
 `/setup` through to a `-profile test` SUCCEEDED. That is a real run and needs
 a person to confirm it.
 
+## Stage 6 is done
+
+`check_egress.py` and `preflight.sh` are called from `launch.md`, and the three
+command documents have been reviewed with `mattpocock-skills:writing-for-agents`.
+The review changed one thing, and it was not a wording problem: **the command
+layer typed `tw` without a workspace.** Every script resolves it
+(`TOWER_WORKSPACE_ID`, else `workspace_id` from the settings file); the commands
+never said to. `tw` then answers from the caller's personal workspace and
+returns an *empty list rather than an error*, which is the same reply a
+populated workspace gives when you are outside it. `tests/` locks it, and
+PITFALLS 3c was corrected against the agent log — see that entry.
+
+The rest of the review found nothing worth changing. Noted so the next reader
+does not redo it: the three-line path preamble is duplicated in all three files
+because commands load independently, so there is nowhere shared to put it; the
+prohibitions that remain (`never a branch`, `never rawdata/`) are hard
+guardrails already paired with the positive instruction, which is the form the
+skill asks for.
+
 ## The next thing to do
 
-1. **Restart Claude Code.** 2.0.1 is installed and not yet live.
-2. **Say "I want to run RNA-seq" with no slash command, in a fresh session.**
-   This cannot be tested by whoever just read this file — knowing the skill
-   exists is exactly what the test is trying to exclude.
-3. **Finish Stage 4**: `/setup` to a `-profile test` SUCCEEDED.
-4. **Stage 5 — real data end to end.** `rnaseq_sclerotia_d5_20260902` has
+1. **Restart Claude Code.** 2.0.2 is installed and not yet live.
+2. **Finish Stage 4**: `/setup` to a `-profile test` SUCCEEDED.
+3. **Stage 5 — real data end to end.** `rnaseq_sclerotia_d5_20260902` has
    salmon counts and `sample_info.csv`: CK vs SynCom, n=3 per group, one
    timepoint. Run `nf-core/differentialabundance` through `/launch` and
    `/runs`, and ask first whether the three replicates were processed as one
    batch — if group and batch coincide, neither run nor analysis can separate
    them. The test is that no `tw` command is typed by hand. Read plots from
    disk, not Platform (3b).
-5. **Stage 6 remainder**: review the three command documents with
-   `mattpocock-skills:writing-for-agents`. The other two Stage 6 items —
-   `check_egress.py` and `preflight.sh` called from `launch.md` — are done.
-6. **`configs/sites/nchc.config` as a PR to nf-core/configs.** No Taiwanese
+4. **`configs/sites/nchc.config` as a PR to nf-core/configs.** No Taiwanese
    institutional config exists upstream and this one is structurally
    `nci_gadi`.
 
