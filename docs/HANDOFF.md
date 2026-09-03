@@ -1,63 +1,76 @@
 # Where this stands
 
-Written 2026-09-03. Read `PITFALLS.md` first — this file only covers what is
-unfinished.
+Written 2026-09-03. `PRINCIPLES.md` says what decides; `PITFALLS.md` says what
+has already gone wrong. This file is only what is unfinished.
 
 ## What is proven
 
 Six nf-core pipelines have run on NCHC through Seqera Platform with **no
-per-pipeline configuration**: rnaseq 3.26.0, ampliseq, fetchngs,
+per-pipeline configuration** — rnaseq 3.26.0, ampliseq, fetchngs,
 differentialabundance, bacass, funcscan — every one SUCCEEDED. That was the
-point of v2 — a new pipeline is launched, not configured — and it now has
-evidence rather than an argument.
+point of v2: a new pipeline is launched, not configured.
 
-The box mapping in `configs/nchc.config` placed tasks in five different
-partitions across those runs (ngs7G through ngs92G) without ever being told
-what a label means. Two site-wide problems surfaced from the last two
-pipelines and were both fixed in that same file, blind to which pipeline hit
-them:
+Since then the engine has been made into something a stranger could install:
 
-- `executor.jobName` sanitises the SLURM job name (funcscan tags a task
-  `sample|model`; NCHC's sbatch rejects `|`).
-- `ezlab.org` on the relay allowlist (BUSCO's download host is compiled into
-  the tool, so no static scan could have found it — see PITFALLS 4g).
+- the reasoning is in `PRINCIPLES.md` as eight invariants, each with a check,
+  and four of those checks are scripts in `tests/`
+- site-specific machinery is behind `docs/SITE_ADAPTER.md`; the command layer
+  names no scheduler, no egress mechanism, no container runtime
+- nothing in `scripts/`, `commands/` or `configs/` points at one person's
+  directories any more — they read `_personal/env.yaml` (`docs/SETTINGS.md`)
+- `install_deps.sh` fetches Java 21, the agent jar and `tw` from nothing;
+  `ce_apply.sh` builds a first compute environment from a site template
+- v2 is installed as a plugin, version 2.0.0, from marketplace
+  `agentic-bioflow-v2`
 
-## The one open decision
+## The next thing to do: restart, then walk it
 
-**`executor.jobName` is not yet in the compute environment.** The last two runs
-carried it with `tw launch --config /work/u9613010/lab_runs/_exttest/jobname.config`,
-which is additive and left the environment untouched. Every launch needs that
-flag until this is resolved.
+**Claude Code has to restart before v2's hooks and commands take effect.** The
+session that installed it is still running v1's hooks. There is a clean way to
+tell which is live — run a command containing a quoted regex with `sbatch` in
+it, such as `grep -n "slurm|sbatch|squeue" docs/PITFALLS.md`:
 
-Folding it in permanently means `tw compute-envs import --overwrite`, which
-**deletes and recreates the environment under a new ID** (PITFALLS 13) — the
-Launchpad entries pointing at the old ID have to be repointed afterwards. It
-needs the user's explicit approval; an earlier attempt was refused by the tool
-classifier and was not worked around.
+- **the launch gate fires** → still v1, whose gate false-positives on quoted
+  regexes and whose message mentions `submit_run.sh`
+- **nothing happens** → v2
 
-Everything is staged for it:
+After the restart:
 
-| | |
-|---|---|
-| backup of the current CE | `/work/u9613010/lab_runs/_agent/ce-v2-backup-1013.json` |
-| the replacement, with `jobName` folded in | `$CLAUDE_JOB_DIR/tmp/ce-v2-new.json` — **regenerate this**, the job dir is deleted with the job |
-| the additive stopgap | `/work/u9613010/lab_runs/_exttest/jobname.config` |
+1. `/agentic-bioflow:setup`, `:launch` and `:runs` should exist.
+2. The gate must fire on a real `tw launch` — file existence is not evidence,
+   because `${CLAUDE_PLUGIN_ROOT}` only resolves once installed.
+3. Say something with no slash command at all — "I want to run RNA-seq" —
+   and the operational skill should pick it up. This is the thing v2 had no
+   answer to until recently.
+4. Walk `/agentic-bioflow:setup` as if new. The bar is not that it works; it is
+   that every question is answerable **without this conversation's memory**.
+   Where it is not, that is the bug.
 
-## Still to do
+Rollback is one command: `claude plugin install agentic-bioflow@agentic-bioflow`.
+v1's repository and marketplace were left untouched for exactly this.
 
-- Wire `scripts/check_egress.py` into `commands/launch.md` as a pre-flight
-  step. The script exists and works; nothing calls it yet.
-- Review `commands/{setup,launch,runs}.md` (173 lines) against
-  `mattpocock-skills:writing-for-agents`.
-- M4, unstarted: downstream DESeq2/R; submit `configs/nchc.config` as a PR to
-  nf-core/configs (no Taiwanese institutional config exists upstream, and this
-  one is structurally the same as `nci_gadi`); repoint `HX816Lab/Xiao-He`
-  marketplace.json at v2; a watchdog for the relay and the agent, which are two
-  long-lived processes on a login node that reboots.
+## Then
 
-## Report the agent corruption upstream
+- **Real data end to end.** `rnaseq_sclerotia_d5_20260902` has salmon counts and
+  `sample_info.csv`: CK vs SynCom, n=3 per group, one timepoint. Run
+  `nf-core/differentialabundance` through `/launch` and `/runs`, and ask first
+  whether the three replicates were processed as one batch — if group and batch
+  coincide, neither run nor analysis can separate them. The test is that no
+  `tw` command is typed by hand. Read plots from disk, not Platform (3b).
+- **`check_egress.py` and `preflight.sh` into `launch.md`.** Both exist and
+  nothing calls them. Skipping preflight is what let a dead agent take out a
+  launch this session (3c).
+- **`configs/sites/nchc.config` as a PR to nf-core/configs.** No Taiwanese
+  institutional config exists upstream and this one is structurally `nci_gadi`.
 
-PITFALLS 3b is a data-integrity bug in Seqera's own product: every binary file
-the Tower Agent serves has its `0xFF` bytes deleted, and a doubled `0xFF` ends
-the transfer. It is silent — text reports arrive perfect. The measurement table
-in that entry is a complete reproduction report and has not been sent to Seqera.
+## Known and deliberately not fixed
+
+- Every binary file Platform serves is corrupt (3b). Not reported to Seqera yet;
+  the measurement table in that entry is a complete reproduction report.
+- Java, the agent jar and the image cache sit under a `drwx------` home and
+  `/work` subtree, so a second member cannot read them. Not a blocker — each
+  member installs their own, which is the decided model — but it is why
+  `install_deps.sh` puts them in the execution area instead.
+- The GPU path has never been run.
+- `/work/u9613010/lab_runs/_coldstart` is 362 MB of cold-start test evidence.
+  Delete it when it stops being useful.
