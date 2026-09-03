@@ -72,13 +72,37 @@ ERROR- There is an active agent for this user and connection ID. Please close it
 
 The session dropped, the agent reconnected, and the server still considered the
 old connection live - so the reconnect was rejected and the process exited. No
-alert, no state change anywhere Platform shows you. The next launch fails with
-`No Tower Agent is online for the selected compute environment`, which reads
-like a compute environment problem and is not.
+alert, no state change anywhere Platform shows you.
 
-Restarting it is enough; the stale connection has timed out by then. The real
-lesson is to run `scripts/preflight.sh` **before** launching rather than after
-a launch is refused - it names this in one line, and `/launch` is supposed to.
+**The drop itself is routine; being refused on the way back is what kills it.**
+One day's log has three drops and two deaths:
+
+| drop | reconnect | outcome |
+|---|---|---|
+| 18:07:01 | +3.3 s | refused, process exited; a manual restart at **+10 min** was accepted |
+| 21:18:50 | +0.7 s | accepted, agent carried on - nothing to do |
+| 22:54:04 | +2.7 s | refused, process exited; a manual restart at **+58 min** was accepted |
+
+So the agent's own retry, seconds later, is the one attempt that reliably
+fails. **Wait a few minutes before restarting**, and restart with the *same*
+connection ID - the compute environment's credential is tied to that string, so
+a fresh ID trades this outage for a broken CE. How long the server holds a dead
+session is not established: 10 minutes was enough once, and nothing here
+measured the floor.
+
+It surfaces two ways, and neither names the agent:
+
+- **A launch is refused** with `No Tower Agent is online for the selected
+  compute environment`, which reads like a compute environment problem.
+- **A run that already SUCCEEDED goes blank.** Outputs are streamed through the
+  agent on request, never stored on Platform, so a delivered run loses its
+  Reports tab the moment the agent dies - hours later, with the run still shown
+  as SUCCEEDED. The files are untouched on disk (see 3).
+
+The real lesson is to run `scripts/preflight.sh` **before** launching rather
+than after a launch is refused - it names this in one line, and `/launch` is
+supposed to. When a user says outputs vanished from a finished run, check the
+agent again rather than trusting the check from delivery time.
 
 Note that the connection ID has to be unique per agent. Two members sharing one
 produces exactly the error above, permanently rather than transiently.
