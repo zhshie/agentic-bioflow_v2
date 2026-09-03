@@ -14,12 +14,34 @@ Seqera's own sequence: pipeline → dataset → launch.
 rnaseq; the pipeline itself supplies the schema, the samplesheet columns, and
 the report list.
 
+## Before anything
+
+`scripts/preflight.sh`. It exits 0 when the site is ready, and prints a FAIL
+line naming the script that fixes whatever is not.
+
+**Do not build a samplesheet on top of a FAIL.** The run gets assembled
+correctly and then submitted into an environment that cannot carry it - which
+is how a dead outputs reader took out a launch once (`docs/PITFALLS.md`).
+
+The launch gate re-checks the two things that can die while you work. This is
+the earlier and wider check: it also covers `LAB_RUNS_DIR`, the resource
+contract, and whether the compute environment is AVAILABLE - none of which the
+gate can see.
+
 ## Steps
 
 1. **Choose the pipeline and revision.** Discuss the experiment first. Pin an
    exact revision — never a branch. If the Seqera Co-Scientist is available it
    may suggest better than you can, but it is optional: proceed on your own
    knowledge if it is not.
+
+   With both pinned, `scripts/check_egress.py <repo> <rev>` reads the
+   pipeline's own code and reports hosts the site's egress channel would
+   refuse. The allowlist is the one thing a new pipeline reliably needs added
+   to, and discovering that by watching a run fail costs a queue slot and a
+   round of diagnosis. It is heuristic in both directions: it cannot see URLs
+   assembled at runtime, and a pipeline only fetches what its parameters
+   select, so a host it lists may not be needed. Add the ones that are.
 
 2. **Register it** if `tw pipelines list` does not already have it:
    `tw pipelines add --compute-env <ce> --revision <rev> <github-url>`.
