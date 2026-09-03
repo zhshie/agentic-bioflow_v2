@@ -20,15 +20,30 @@ STRIPPED=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>
 
 # Decided per segment, never for the whole line: `cat notes.txt && tw launch ...`
 # must still hit the gate.
-TRIGGER='(^|/)tw[[:space:]]+launch([[:space:]]|$)|nextflow[[:space:]]+run|^[[:space:]]*sbatch([[:space:]]|$)'
+# The boundary is any non-word character, not `^` or `/`. Anchoring to the
+# start of a segment looked right and was not: splitting on `&&` leaves the
+# leading space in place, so `cat notes.txt && tw launch ...` - the exact case
+# this gate was written for, and named in the comment above - sailed through.
+# A quoted `bash -c "tw launch ..."` missed for the same reason.
+TRIGGER='(^|[^[:alnum:]_.-])(tw[[:space:]]+launch|sbatch)([[:space:]]|$)|nextflow[[:space:]]+run'
 READONLY='^[[:space:]]*(cat|less|more|head|tail|grep|rg|wc|chmod|shellcheck|ls|stat|file|diff|cp|vim|nano|echo)([[:space:]]|$)|^[[:space:]]*(bash|sh)[[:space:]]+-n([[:space:]]|$)'
+
+# A quoted string is data, not a command. `grep -E 'a|sbatch|b' file` used to
+# trip this gate: splitting on `|` turned the middle of a regex into a segment
+# that read exactly like a submission. Strip quoted content before segmenting -
+# but NOT where a shell is asked to re-interpret it, because `bash -c "tw
+# launch ..."` really does launch and the quotes would become a hiding place.
+SEGSRC="$CMD"
+if ! grep -qE '(^|[[:space:]])(bash|sh|zsh|ksh)[[:space:]]+-c([[:space:]]|$)|(^|[[:space:]])eval([[:space:]]|$)' <<<"$CMD"; then
+    SEGSRC=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$CMD")
+fi
 
 EXECUTES=0
 while IFS= read -r S; do
     echo "$S" | grep -qE "$TRIGGER" || continue
     echo "$S" | grep -qE "$READONLY" && continue
     EXECUTES=1; break
-done <<< "$(echo "$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g')"
+done <<< "$(echo "$SEGSRC" | sed -E 's/(\|\||&&|[;&|])/\n/g')"
 [ "$EXECUTES" = 1 ] || exit 0
 
 WARN=""
