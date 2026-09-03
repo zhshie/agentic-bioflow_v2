@@ -111,6 +111,21 @@ PY
   env)
     # Paste-ready values for the compute environment. JVM does not read
     # https_proxy, so NXF_OPTS is required alongside it.
+    #
+    # `env --scoped` prefixes each line with where the variable has to apply.
+    # That is the adapter's knowledge, not the caller's: NXF_OPTS configures
+    # the head job's JVM and means nothing on a compute node, while the proxy
+    # variables are needed in both places. ce_apply.sh reads this form.
+    if [ "${2:-}" = "--scoped" ]; then
+      cat <<EOF
+both https_proxy=$URL
+both HTTPS_PROXY=$URL
+both http_proxy=$URL
+both HTTP_PROXY=$URL
+head NXF_OPTS=-Dhttps.proxyHost=${HOSTNAME_NOW} -Dhttps.proxyPort=${PORT} -Dhttp.proxyHost=${HOSTNAME_NOW} -Dhttp.proxyPort=${PORT}
+EOF
+      exit 0
+    fi
     cat <<EOF
 https_proxy=$URL
 HTTPS_PROXY=$URL
@@ -119,5 +134,5 @@ HTTP_PROXY=$URL
 NXF_OPTS=-Dhttps.proxyHost=${HOSTNAME_NOW} -Dhttps.proxyPort=${PORT} -Dhttp.proxyHost=${HOSTNAME_NOW} -Dhttp.proxyPort=${PORT}
 EOF
     ;;
-  *) echo "usage: egress_ctl.sh {start|stop|status|url|env|denied [n]}" >&2; exit 2 ;;
+  *) echo "usage: egress_ctl.sh {start|stop|status|url|env [--scoped]|denied [n]}" >&2; exit 2 ;;
 esac

@@ -17,9 +17,9 @@
 #   ce_apply.sh                 what would change
 #   ce_apply.sh --apply         change it
 #
-# Creating an environment from nothing (a new member has none to export) is not
-# handled here yet; that belongs with onboarding, which knows the member's
-# storage and account.
+# A member who has none yet gets one built from the site's template. After
+# that this always works from the live environment, so that nothing outside
+# nextflowConfig and the environment variables can drift by accident.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,9 +40,23 @@ BACKUP="$STATE_DIR/ce-$(date +%Y%m%d-%H%M%S).json"
 
 # Export first, always. This doubles as the backup and as the base for the new
 # definition, so nothing outside the two fields below can drift by accident.
-"$TW" compute-envs export -n "$CE" ${WS:+-w "$WS"} "$BACKUP" >/dev/null 2>&1 \
-  || { echo "could not export '$CE' - does it exist in this workspace?" >&2; exit 1; }
-echo "backed up: $BACKUP"
+CREATING=0
+if "$TW" compute-envs export -n "$CE" ${WS:+-w "$WS"} "$BACKUP" >/dev/null 2>&1; then
+    echo "backed up: $BACKUP"
+else
+    # Nothing to export means nothing exists. Build the first one from the
+    # site's template rather than making the member assemble JSON by hand.
+    CREATING=1
+    TEMPLATE="${SITE_CE_TEMPLATE:-$ROOT/configs/sites/nchc-ce.json.in}"
+    [ -r "$TEMPLATE" ] || { echo "no compute environment '$CE', and no template at $TEMPLATE" >&2; exit 1; }
+    ACCT_T="$(. "$HERE/settings.sh"; setting slurm_account)"
+    [ -n "$ACCT_T" ] || { echo "no compute environment '$CE' yet, and no slurm_account in the settings to build one with." >&2
+                          echo "Ask the user for the allocation their compute time is billed to." >&2; exit 1; }
+    sed -e "s|@WORKDIR@|${LAB_RUNS_DIR}/_work|g" \
+        -e "s|@LAUNCHDIR@|${LAB_RUNS_DIR}/_work|g" \
+        -e "s|@ACCOUNT@|${ACCT_T}|g" "$TEMPLATE" > "$BACKUP"
+    echo "no '$CE' in this workspace - building the first one from $(basename "$TEMPLATE")"
+fi
 
 # Values the site config reads from the environment rather than hardcoding.
 # The allocation code identifies a person's project, and the image cache is
@@ -60,31 +74,36 @@ backup, config, out, here, acct, cache = sys.argv[1:7]
 ce = json.load(open(backup))
 ce["nextflowConfig"] = open(config).read()
 
-# Refresh whatever the egress channel says its address is now. Only the names
-# the adapter itself prints are touched; anything else in the environment is
-# left exactly as exported.
+def upsert(name, value, head=True, compute=True):
+    for entry in ce.setdefault("environment", []):
+        if entry.get("name") == name:
+            entry["value"] = value
+            return
+    ce["environment"].append(
+        {"name": name, "value": value, "head": head, "compute": compute})
+
+# Whatever the egress channel says its address is now. These are UPSERTED, not
+# only refreshed: a compute environment being created has an empty environment
+# list, so "update what is already there" silently produced one with no route
+# out at all - which fails much later, as a container that will not pull.
+# The adapter says where each variable has to apply; NXF_OPTS is head-only
+# because it configures the head job's JVM and means nothing on a task node.
 try:
-    env = subprocess.run(["bash", f"{here}/egress_ctl.sh", "env"],
+    env = subprocess.run(["bash", f"{here}/egress_ctl.sh", "env", "--scoped"],
                          capture_output=True, text=True, timeout=15)
-    fresh = dict(l.split("=", 1) for l in env.stdout.splitlines() if "=" in l)
+    for line in env.stdout.splitlines():
+        scope, _, rest = line.partition(" ")
+        name, _, value = rest.partition("=")
+        if scope in ("both", "head") and name:
+            upsert(name, value, head=True, compute=(scope == "both"))
 except Exception:
-    fresh = {}
-for entry in ce.get("environment", []):
-    if entry.get("name") in fresh:
-        entry["value"] = fresh[entry["name"]]
+    pass
 
 # Settings-derived values, added when absent rather than only refreshed: a
 # compute environment exported before these existed has no entry to update.
 for name, value in (("SLURM_ACCOUNT", acct), ("NXF_SINGULARITY_CACHEDIR", cache)):
-    if not value:
-        continue
-    for entry in ce.setdefault("environment", []):
-        if entry.get("name") == name:
-            entry["value"] = value
-            break
-    else:
-        ce["environment"].append(
-            {"name": name, "value": value, "head": True, "compute": True})
+    if value:
+        upsert(name, value)
 
 json.dump(ce, open(out, "w"), indent=2)
 PY
@@ -113,13 +132,17 @@ PY
 
 if [ "$APPLY" != 1 ]; then
     echo
-    echo "nothing applied. Re-run with --apply to overwrite '$CE'."
-    echo "That deletes and recreates it under a NEW ID; repoint Launchpad entries after."
+    if [ "$CREATING" = 1 ]; then
+        echo "nothing applied. Re-run with --apply to create '$CE'."
+    else
+        echo "nothing applied. Re-run with --apply to overwrite '$CE'."
+        echo "That deletes and recreates it under a NEW ID; repoint Launchpad entries after."
+    fi
     exit 0
 fi
 
 echo
-echo "overwriting '$CE' ..."
+[ "$CREATING" = 1 ] && echo "creating '$CE' ..." || echo "overwriting '$CE' ..."
 "$TW" compute-envs import -n "$CE" ${WS:+-w "$WS"} ${CREDS:+-c "$CREDS"} \
       --overwrite --wait AVAILABLE "$NEW" || exit 1
 "$TW" compute-envs view -n "$CE" ${WS:+-w "$WS"} 2>/dev/null \

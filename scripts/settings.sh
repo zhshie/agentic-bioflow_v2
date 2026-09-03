@@ -33,6 +33,39 @@ setting() {
     printf '%s\n' "$fallback"
 }
 
+# Write one value back. Onboarding discovers things - a free port, where the
+# agent's Java ended up - and the member should not have to transcribe them.
+# Rewrites the key in place if present so comments and order survive; appends
+# otherwise. Creates the file mode 600, because everything in it is either
+# personal or an access path.
+set_setting() {
+    local key="$1" val="$2"
+    [ -n "${SETTINGS_FILE:-}" ] || { echo "no settings file location known" >&2; return 1; }
+    mkdir -p "$(dirname "$SETTINGS_FILE")"
+    [ -e "$SETTINGS_FILE" ] || { : > "$SETTINGS_FILE"; chmod 600 "$SETTINGS_FILE"; }
+    python3 - "$SETTINGS_FILE" "$key" "$val" <<'PY'
+import re, sys
+path, key, val = sys.argv[1:4]
+lines = open(path).read().splitlines(keepends=True)
+pat = re.compile(rf"^(\s*){re.escape(key)}\s*:")
+for i, line in enumerate(lines):
+    if pat.match(line):
+        # Keep any trailing comment: it usually says why the value matters.
+        comment = ""
+        body = line.split("#", 1)
+        if len(body) == 2:
+            comment = "  #" + body[1].rstrip("\n")
+        lines[i] = f"{key}: {val}{comment}\n"
+        break
+else:
+    if lines and not lines[-1].endswith("\n"):
+        lines.append("\n")
+    lines.append(f"{key}: {val}\n")
+open(path, "w").writelines(lines)
+PY
+    chmod 600 "$SETTINGS_FILE"
+}
+
 # Allow `settings.sh <key> [default]` as well as sourcing it.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     setting "${1:?usage: settings.sh <key> [default|--required]}" "${2:-}"

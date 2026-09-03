@@ -1,0 +1,30 @@
+{
+  "_comment": [
+    "Compute environment template for NCHC Taiwania-3. Used only when a member",
+    "has none to export yet; after that ce_apply.sh works from the live one so",
+    "that nothing outside nextflowConfig and the environment can drift.",
+    "",
+    "@TOKENS@ are filled from the deployment settings. Everything else is a",
+    "fact about this site and belongs here rather than in a script:",
+    "",
+    "  headQueue      ngs26G is the smallest partition whose time limit (4 days)",
+    "                 outlasts a long pipeline. ngs92G is the only one with no",
+    "                 limit at all, but its QOS floor is 14 CPU / 92 GB - a head",
+    "                 job that mostly waits would hold all of it.",
+    "  headJobOptions -c and --mem must match that partition's QOS floor exactly,",
+    "                 or the head job never schedules and nothing reports why.",
+    "  computeQueue   Platform appends process.queue from this, AFTER the config",
+    "                 this file carries. That is why the resource mapping lives",
+    "                 in a withName selector, which outranks it (PITFALLS 6)."
+  ],
+  "discriminator": "slurm-platform",
+  "workDir": "@WORKDIR@",
+  "launchDir": "@LAUNCHDIR@",
+  "headQueue": "ngs26G",
+  "computeQueue": "ngs13G",
+  "headJobOptions": "-A @ACCOUNT@ -c 4 --mem=26G -t 4-00:00:00",
+  "maxQueueSize": 50,
+  "labels": [],
+  "environment": [],
+  "nextflowConfig": ""
+}
