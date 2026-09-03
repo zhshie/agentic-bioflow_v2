@@ -11,6 +11,12 @@ the jar needs **Java 21** (`UnsupportedClassVersionError: class file version
 65.0 vs 61.0`) and the cluster only offers 17 and 8. Install a private Temurin
 21 and point *only the agent* at it; leave Nextflow's Java alone.
 
+Do not leave either the JDK or the jar in a home directory. `/home/<user>` is
+`drwx------` on this cluster, so a second member cannot traverse it no matter
+how the files themselves are permissioned - and the same is true of a private
+`/work/<user>`. Put them somewhere every member can read and record the paths
+in the settings file (`agent_java`, `agent_jar`).
+
 **2. Create the agent credential only while the agent is already running.**
 `tw credentials add agent` fails with "The agent is not online" otherwise.
 
@@ -54,6 +60,28 @@ partial or mangled picture rather than a clearly failed download.
 
 Until Seqera fixes it, read binary outputs from the filesystem - they are
 intact on disk. Platform is reliable for HTML, TSV and logs only.
+
+**3c. The agent dies quietly, and the first thing that tells you is a refused
+launch.** Its own log explains it afterwards:
+
+```
+INFO - Closed for unknown reason after
+INFO - Connecting to Tower
+ERROR- There is an active agent for this user and connection ID. Please close it before starting a new one.
+```
+
+The session dropped, the agent reconnected, and the server still considered the
+old connection live - so the reconnect was rejected and the process exited. No
+alert, no state change anywhere Platform shows you. The next launch fails with
+`No Tower Agent is online for the selected compute environment`, which reads
+like a compute environment problem and is not.
+
+Restarting it is enough; the stale connection has timed out by then. The real
+lesson is to run `scripts/preflight.sh` **before** launching rather than after
+a launch is refused - it names this in one line, and `/launch` is supposed to.
+
+Note that the connection ID has to be unique per agent. Two members sharing one
+produces exactly the error above, permanently rather than transiently.
 
 ## Reaching the internet
 
