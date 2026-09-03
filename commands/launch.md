@@ -7,6 +7,13 @@ Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
 
+Pass the workspace on every `tw` call that is scoped to one:
+`--workspace $(scripts/settings.sh workspace_id)`. Left off, `tw` answers from
+the caller's personal workspace - where the lab's pipelines, runs and compute
+environments do not exist - so `pipelines list` and `runs list` come back empty
+and the emptiness reads as an answer. Sourcing a shell env file is not enough:
+it carries the token, not the workspace.
+
 Walk the user from "I want to analyse this" to a submitted run, following
 Seqera's own sequence: pipeline → dataset → launch.
 
