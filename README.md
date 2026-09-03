@@ -36,6 +36,14 @@ errors that reach Platform point elsewhere.
 
 **`docs/PITFALLS.md`** — everything that cost a failed run.
 
+**`docs/PRINCIPLES.md`** — what decides. Eight invariants, each with a check,
+because the reasoning behind a design kept evaporating between sessions and
+being re-derived differently. Read it before changing anything structural.
+
+The skill in `skills/` carries the operational canon, and is the part that
+works when nobody types a slash command: "I want to run RNA-seq" should reach
+this tool the same way `/agentic-bioflow:launch` does.
+
 Everything else is deliberately not built: no submission script, no run-state
 machine, no monitoring daemon, no per-pipeline parameter specs. Platform,
 `nextflow_schema.json` and `assets/schema_input.json` already provide them.
