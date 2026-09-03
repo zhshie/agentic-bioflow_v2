@@ -7,7 +7,16 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PORT="${NF_RELAY_PORT:-18080}"
+. "$HERE/settings.sh"
+
+# The port cannot have a fixed default. It is one process per member on a
+# shared login node, so a constant means the second member's channel fails to
+# bind and the first member's is what they end up talking to. It also cannot be
+# picked fresh on every start: the address is baked into the compute
+# environment, so it has to survive a restart. Hence the order below - an
+# explicit choice, then the settings file, then whatever was used last, then a
+# free port chosen once and written down.
+PORT="${NF_RELAY_PORT:-$(setting relay_port)}"
 
 # State must NOT live beside the script. Once this ships as a plugin the script
 # sits in a read-only cache directory, and a status check run from there would
@@ -17,9 +26,39 @@ mkdir -p "$STATE_DIR"
 STATE="$STATE_DIR/relay.json"
 LOG="$STATE_DIR/relay.log"
 HOSTNAME_NOW="$(hostname)"
-URL="http://${HOSTNAME_NOW}:${PORT}"
 
 alive() { [ -f "$STATE" ] && kill -0 "$(python3 -c "import json;print(json.load(open('$STATE'))['pid'])" 2>/dev/null)" 2>/dev/null; }
+
+# A channel that is already up owns its port, whatever a freeness test would
+# say about it - the test would find the port taken by the very process we are
+# asking about and move on, renaming an address the compute environment is
+# still using.
+if [ -z "$PORT" ] && alive; then
+    PORT=$(python3 -c "import json;print(json.load(open('$STATE'))['port'])" 2>/dev/null)
+fi
+if [ -z "$PORT" ]; then
+    PORT=$(python3 - "$STATE" <<'PY'
+import json, socket, sys
+def free(p):
+    with socket.socket() as s:
+        try:
+            s.bind(("0.0.0.0", p)); return True
+        except OSError:
+            return False
+try:
+    prev = json.load(open(sys.argv[1]))["port"]
+except Exception:
+    prev = None
+if prev and free(prev):
+    print(prev); raise SystemExit
+for p in range(18080, 18180):
+    if free(p):
+        print(p); raise SystemExit
+raise SystemExit("no free port in 18080-18179")
+PY
+    ) || { echo "could not find a free port" >&2; exit 1; }
+fi
+URL="http://${HOSTNAME_NOW}:${PORT}"
 
 case "${1:-status}" in
   start)
