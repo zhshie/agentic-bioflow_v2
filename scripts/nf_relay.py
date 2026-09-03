@@ -106,6 +106,56 @@ def peer_ok(ip):
     return result
 
 
+# Resolution is cached because a fan-out pipeline asks about the same few hosts
+# from every task at once, and this node's resolver drops the odd UDP query
+# under that load: resolving eutils.ncbi.nlm.nih.gov thirty times in a row
+# succeeds, but during nf-core/fetchngs two of sixty-one connections failed
+# with gaierror and became 502s. Retrying helped and did not eliminate it;
+# asking once per host does.
+_DNS_CACHE = {}
+_DNS_TTL = 300
+
+
+def resolve(host, port):
+    key = (host, port)
+    hit = _DNS_CACHE.get(key)
+    if hit and time.time() - hit[0] < _DNS_TTL:
+        return hit[1]
+    infos = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
+    _DNS_CACHE[key] = (time.time(), infos)
+    return infos
+
+
+def connect_upstream(host, port):
+    """Connect, trying every address the name resolves to.
+
+    Keeps create_connection's fallback behaviour, which matters here: several
+    NCBI names return an IPv6 address first and this cluster has no IPv6 route,
+    so pinning the first address would break them.
+    """
+    err = None
+    for attempt in (1, 2, 3):
+        try:
+            for family, socktype, proto, _, sockaddr in resolve(host, port):
+                try:
+                    s = socket.socket(family, socktype, proto)
+                    s.settimeout(20)
+                    s.connect(sockaddr)
+                    return s, None
+                except Exception as e:
+                    err = e
+                    try:
+                        s.close()
+                    except Exception:
+                        pass
+        except Exception as e:      # resolution itself failed
+            err = e
+            _DNS_CACHE.pop((host, port), None)
+        if attempt < 3:
+            time.sleep(0.3 * attempt)
+    return None, err
+
+
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         c = self.request
@@ -172,15 +222,7 @@ class Handler(socketserver.BaseRequestHandler):
             # whole task. Resolving the same name 30 times in a row succeeds;
             # it is only under the burst that it slips. Two attempts turned 2
             # failures in 61 connections into none.
-            up = None
-            for attempt in (1, 2, 3):
-                try:
-                    up = socket.create_connection((host, port), timeout=20)
-                    break
-                except Exception as e:
-                    err = e
-                    if attempt < 3:
-                        time.sleep(0.3 * attempt)
+            up, err = connect_upstream(host, port)
             if up is None:
                 c.sendall(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
                 log("FAIL", host, port, "from", peer_name, repr(err))
@@ -218,15 +260,7 @@ class Handler(socketserver.BaseRequestHandler):
             log("DENY-DOMAIN", host, port, "from", peer_name)
             return
 
-        up = None
-        for attempt in (1, 2, 3):
-            try:
-                up = socket.create_connection((host, port), timeout=20)
-                break
-            except Exception as e:
-                err = e
-                if attempt < 3:
-                    time.sleep(0.3 * attempt)
+        up, err = connect_upstream(host, port)
         if up is None:
             c.sendall(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
             log("FAIL", host, port, "from", peer_name, repr(err))

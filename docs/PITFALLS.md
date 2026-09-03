@@ -86,6 +86,26 @@ only need to send the difference. The side effect: the head job fetches that URL
 at startup, so `seqera.io` must stay on the allowlist or your config silently
 does not apply. `--params-file` works the same way.
 
+**4d. The relay only carries HTTP and HTTPS.** `nf-core/fetchngs` offers
+`--download_method aspera`, which moves data over UDP; nothing routed through
+an HTTP proxy can carry it. Use the FTP/HTTP download methods here. The same
+applies to any tool reaching for a native FTP or UDP transport.
+
+**4e. A denied `169.254.169.254` is expected and harmless.** Several tools
+(sra-tools among them) probe the cloud instance-metadata endpoint to work out
+whether they are running on AWS. On this cluster that address means nothing and
+the relay refuses it, which is the correct outcome - do not add it.
+
+**4f. Check the allowlist before launching, not after.**
+`scripts/check_egress.py <owner/pipeline> <revision>` reads the pipeline's own
+config and `bin/` scripts and reports hosts the relay would refuse. It is a
+heuristic - URLs built at runtime or supplied through params are invisible to
+it, and a pipeline only fetches the reference databases its parameters select -
+but it turns the one recurring cost of adding a new pipeline into something you
+find out in seconds rather than after a failed run. Across the four pipelines
+accepted here it reports nothing missing; for ampliseq it correctly lists the
+taxonomy databases that other parameter choices would reach for.
+
 ## Resources
 
 **6. NCHC's QOS is a floor, and for most partitions the floor equals the
