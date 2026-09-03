@@ -7,7 +7,7 @@ unfinished.
 
 Six nf-core pipelines have run on NCHC through Seqera Platform with **no
 per-pipeline configuration**: rnaseq 3.26.0, ampliseq, fetchngs,
-differentialabundance, bacass, funcscan. That was the point of v2 — a new
+differentialabundance, bacass, funcscan — every one SUCCEEDED. That was the point of v2 — a new
 pipeline is launched, not configured — and it now has evidence rather than an
 argument.
 
@@ -21,12 +21,6 @@ them:
   `sample|model`; NCHC's sbatch rejects `|`).
 - `ezlab.org` on the relay allowlist (BUSCO's download host is compiled into
   the tool, so no static scan could have found it — see PITFALLS 4g).
-
-One run was still going when this was written: `acc-funcscan-2`
-(`3AnycAUXhmFnAD`), 53 of 54 tasks done, waiting on the dbCAN database
-download. A detached watcher appends its final status to
-`/work/u9613010/lab_runs/_exttest/funcscan/run.txt` — read that rather than
-polling again.
 
 ## The one open decision
 
