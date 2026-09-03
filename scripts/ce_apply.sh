@@ -44,10 +44,19 @@ BACKUP="$STATE_DIR/ce-$(date +%Y%m%d-%H%M%S).json"
   || { echo "could not export '$CE' - does it exist in this workspace?" >&2; exit 1; }
 echo "backed up: $BACKUP"
 
+# Values the site config reads from the environment rather than hardcoding.
+# The allocation code identifies a person's project, and the image cache is
+# large enough that pointing two things at two directories quietly stores
+# every container twice - both belong in the settings file, and both have to
+# reach the run through the compute environment.
+. "$HERE/settings.sh"
+ACCT="$(setting slurm_account)"
+CACHE="$(setting singularity_cache)"
+
 NEW="$STATE_DIR/ce-pending.json"
-python3 - "$BACKUP" "$CONFIG" "$NEW" "$HERE" <<'PY'
+python3 - "$BACKUP" "$CONFIG" "$NEW" "$HERE" "$ACCT" "$CACHE" <<'PY'
 import json, subprocess, sys
-backup, config, out, here = sys.argv[1:5]
+backup, config, out, here, acct, cache = sys.argv[1:7]
 ce = json.load(open(backup))
 ce["nextflowConfig"] = open(config).read()
 
@@ -63,6 +72,19 @@ except Exception:
 for entry in ce.get("environment", []):
     if entry.get("name") in fresh:
         entry["value"] = fresh[entry["name"]]
+
+# Settings-derived values, added when absent rather than only refreshed: a
+# compute environment exported before these existed has no entry to update.
+for name, value in (("SLURM_ACCOUNT", acct), ("NXF_SINGULARITY_CACHEDIR", cache)):
+    if not value:
+        continue
+    for entry in ce.setdefault("environment", []):
+        if entry.get("name") == name:
+            entry["value"] = value
+            break
+    else:
+        ce["environment"].append(
+            {"name": name, "value": value, "head": True, "compute": True})
 
 json.dump(ce, open(out, "w"), indent=2)
 PY

@@ -18,11 +18,18 @@ mkdir -p "$STATE_DIR"
 STATE="$STATE_DIR/agent.json"
 LOG="$STATE_DIR/agent.log"
 
-JAVA="${TW_AGENT_JAVA:-/home/u9613010/bin/java/jdk-21.0.12.1+1/bin/java}"
-JAR="${TW_AGENT_JAR:-/home/u9613010/bin/tw-agent.jar}"
-CONN="${TW_AGENT_CONNECTION:-nchc-lgn-20260902}"
-WORKDIR="${TW_AGENT_WORKDIR:-/work/u9613010/lab_runs/_work}"
-TOKEN_FILE="${SEQERA_TOKEN_FILE:-/work/u9613010/lab_runs/_personal/.seqera_token}"
+# Nothing here may default to one person's machine. The agent's Java and jar
+# have to be somewhere every member can read - a home directory is mode 700 on
+# this kind of cluster, so a jar placed there exists for exactly one person -
+# and the connection ID must be unique per agent, so it cannot have a default
+# at all. See PRINCIPLES.md, invariant 3.
+. "$(dirname "${BASH_SOURCE[0]}")/settings.sh"
+JAVA="${TW_AGENT_JAVA:-$(setting agent_java)}"
+JAR="${TW_AGENT_JAR:-$(setting agent_jar)}"
+CONN="${TW_AGENT_CONNECTION:-$(setting agent_connection)}"
+WORKDIR="${TW_AGENT_WORKDIR:-${LAB_RUNS_DIR}/_work}"
+TOKEN_FILE="${SEQERA_TOKEN_FILE:-${LAB_RUNS_DIR}/_personal/.seqera_token}"
+API="${SEQERA_API_URL:-https://api.cloud.seqera.io}"
 
 pid_of() { python3 -c "import json;print(json.load(open('$STATE'))['pid'])" 2>/dev/null; }
 alive()  { [ -f "$STATE" ] && kill -0 "$(pid_of)" 2>/dev/null; }
@@ -30,8 +37,15 @@ alive()  { [ -f "$STATE" ] && kill -0 "$(pid_of)" 2>/dev/null; }
 case "${1:-status}" in
   start)
     if alive; then echo "already running: pid=$(pid_of)"; exit 0; fi
+    for v in agent_java:JAVA agent_jar:JAR agent_connection:CONN; do
+      k="${v%%:*}"; n="${v##*:}"
+      [ -n "${!n}" ] || { echo "ERROR: '$k' is not set in the deployment settings." >&2
+                          echo "Ask the user for it; do not guess it." >&2; exit 1; }
+    done
     for f in "$JAVA" "$JAR" "$TOKEN_FILE"; do
-      [ -r "$f" ] || { echo "ERROR: missing or unreadable: $f" >&2; exit 1; }
+      [ -r "$f" ] || { echo "ERROR: missing or unreadable: $f" >&2
+                       echo "If this is somebody else's home directory, that is the bug." >&2
+                       exit 1; }
     done
     # The token is passed through the environment only - never on the command
     # line, where `ps` would expose it to every user on the login node.
@@ -68,8 +82,10 @@ print(f\"running pid={d['pid']}  connection={d['connection']}  on {d['host']}  s
     # The only check that matters: does Platform consider the agent reachable?
     # A live local process is not the same thing as an established connection.
     TOKEN="$(cat "$TOKEN_FILE")"
+    WS="${TOWER_WORKSPACE_ID:-$(setting workspace_id)}"
+    [ -n "$WS" ] || { echo "ERROR: no workspace_id in the deployment settings." >&2; exit 1; }
     OUT=$(curl -s -H "Authorization: Bearer $TOKEN" \
-      "https://api.cloud.seqera.io/workflow/${2:?usage: agent_ctl.sh online <runId>}/reports?workspaceId=${TOWER_WORKSPACE_ID:-85879869587002}")
+      "$API/workflow/${2:?usage: agent_ctl.sh online <runId>}/reports?workspaceId=$WS")
     if grep -q "No online agent" <<<"$OUT"; then
       echo "OFFLINE - Platform cannot reach this cluster; run outputs will look missing"; exit 1
     fi
