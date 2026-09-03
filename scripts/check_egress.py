@@ -3,8 +3,8 @@
 
 The relay's allowlist is the one thing a new pipeline reliably needs added to,
 and discovering that by watching a run fail costs a queue slot and a round of
-diagnosis. This reads the pipeline's own config and bin/ scripts and reports
-any host the relay would refuse.
+diagnosis. This reads the pipeline's own code - config, bin/, workflows and modules -
+and reports any host the relay would refuse.
 
 Heuristic, not a guarantee: URLs assembled at runtime or supplied by the user
 in params cannot be seen from here, and a pipeline only fetches the reference
@@ -13,6 +13,7 @@ obviously missing", never "this will not need the allowlist".
 
     check_egress.py nf-core/fetchngs 1.12.0 [path/to/nf_relay.py]
 """
+import concurrent.futures as cf
 import importlib.util, json, os, re, sys, urllib.request
 
 URL = re.compile(r"https?://([A-Za-z0-9._-]+)")
@@ -25,7 +26,22 @@ COMMENT = re.compile(r"^\s*(//|#|\*|/\*)|\s//\s")
 CITATIONS = {
     "doi.org", "dx.doi.org", "stackoverflow.com", "nf-co.re",
     "www.nextflow.io", "creativecommons.org", "spdx.org",
+    "orcid.org", "arxiv.org", "academic.oup.com",
+    "www.bioinformatics.babraham.ac.uk",
 }
+
+# What to read. A reference-database URL can sit anywhere the pipeline has
+# code: funcscan hardcodes CARD in subworkflows/local/arg.nf, which a scan of
+# config and bin/ alone walks straight past. Documentation is excluded on
+# purpose - meta.yml and ro-crate-metadata.json are nothing but tool homepages,
+# and including them buries the three hosts that matter under forty that do not.
+CODE = (
+    re.compile(r"^nextflow\.config$"),
+    re.compile(r"^(conf|bin)/[^/]+$"),
+    re.compile(r"^workflows/.+\.nf$"),
+    re.compile(r"^subworkflows/.+\.nf$"),
+    re.compile(r"^modules/.+/main\.nf$"),
+)
 
 
 def is_citation(host):
@@ -54,24 +70,27 @@ def main():
     spec.loader.exec_module(relay)
     sys.argv = saved
 
-    paths = ["nextflow.config"]
-    for d in ("conf", "bin"):
-        listing = get(f"https://api.github.com/repos/{repo}/contents/{d}?ref={rev}")
-        try:
-            paths += [f"{d}/{e['name']}" for e in json.loads(listing) if e["type"] == "file"]
-        except Exception:
-            pass
+    # One tree call, then fetch only the code files. Walking the contents API
+    # directory by directory costs one request per module.
+    tree = get(f"https://api.github.com/repos/{repo}/git/trees/{rev}?recursive=1")
+    try:
+        entries = json.loads(tree)["tree"]
+    except Exception:
+        sys.exit(f"ERROR: could not list {repo}@{rev} - wrong name or revision?")
+    paths = [e["path"] for e in entries
+             if e["type"] == "blob" and any(p.match(e["path"]) for p in CODE)]
 
     hosts, scanned = set(), 0
-    for path in paths:
-        text = get(f"https://raw.githubusercontent.com/{repo}/{rev}/{path}")
-        if not text:
-            continue
-        scanned += 1
-        for line in text.splitlines():
-            if COMMENT.search(line):
+    base = f"https://raw.githubusercontent.com/{repo}/{rev}/"
+    with cf.ThreadPoolExecutor(max_workers=16) as pool:
+        for path, text in zip(paths, pool.map(lambda p: get(base + p), paths)):
+            if not text:
                 continue
-            hosts.update(h for h in URL.findall(line) if "." in h)
+            scanned += 1
+            for line in text.splitlines():
+                if COMMENT.search(line):
+                    continue
+                hosts.update(h for h in URL.findall(line) if "." in h)
 
     if scanned == 0:
         sys.exit(f"ERROR: fetched nothing for {repo}@{rev} - wrong name or revision?")

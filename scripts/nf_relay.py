@@ -60,6 +60,14 @@ ALLOW_DOMAINS = (
     # nf-core/fetchngs resolves GEO/GSM accessions through NCBI eutils and
     # pulls reads from the SRA mirrors. Covers eutils/trace/ftp/sra-download.
     "ncbi.nlm.nih.gov",
+    # nf-core/funcscan reference databases, found by scripts/check_egress.py
+    # before the first launch rather than by watching a task fail. CARD is
+    # hardcoded in the pipeline's own subworkflow, the two AMP databases are
+    # selected by --amp_ampcombi_db_id. dbCAN and the DeepARG Zenodo archive
+    # need nothing new: they sit on amazonaws.com and zenodo.org.
+    "card.mcmaster.ca",           # RGI / CARD, fetched unconditionally by arg.nf
+    "aps.unmc.edu",               # APD3, what -profile test selects
+    "dramp.cpu-bioinfor.org",     # DRAMP, the default outside the test profile
 )
 
 # Hostname prefixes permitted to use the relay. From `sinfo -N`: compute nodes
