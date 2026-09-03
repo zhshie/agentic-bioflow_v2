@@ -24,12 +24,40 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-TW="${TW_BIN:-tw}"
-CE="${SEQERA_COMPUTE_ENV:?set SEQERA_COMPUTE_ENV to the compute environment name}"
-WS="${TOWER_WORKSPACE_ID:-}"
+# Read the settings file FIRST. This used to be sourced further down, long
+# after a `${SEQERA_COMPUTE_ENV:?}` had already killed the script - so step 7
+# of setup, the step this script exists for, met every newcomer with a bash
+# error naming an environment variable that neither setup nor docs/SETTINGS.md
+# mentions. These values live in the settings file; the environment only
+# overrides them.
+. "$HERE/settings.sh"
+
+TW="${TW_BIN:-$(setting tw_bin tw)}"
+CE="${SEQERA_COMPUTE_ENV:-$(setting compute_env)}"
+WS="${TOWER_WORKSPACE_ID:-$(setting workspace_id)}"
 CREDS="${SEQERA_CREDENTIALS:-}"
 CONFIG="${SITE_CONFIG:-$ROOT/configs/sites/nchc.config}"
-STATE_DIR="${CE_STATE_DIR:-${LAB_RUNS_DIR:?set LAB_RUNS_DIR to the execution area}/_agent}"
+
+# The same mode-600 file agent_ctl.sh and preflight.sh read. Every tw call
+# below needs it, and no shell exports it.
+TOKEN_FILE="${SEQERA_TOKEN_FILE:-${LAB_RUNS_DIR:-}/_personal/.seqera_token}"
+if [ -z "${TOWER_ACCESS_TOKEN:-}" ] && [ -r "$TOKEN_FILE" ]; then
+    TOWER_ACCESS_TOKEN="$(cat "$TOKEN_FILE")"
+    export TOWER_ACCESS_TOKEN
+fi
+
+if [ -z "${LAB_RUNS_DIR:-}" ]; then
+    echo "LAB_RUNS_DIR is not set. Run setup first - every path here derives from it." >&2
+    exit 1
+fi
+STATE_DIR="${CE_STATE_DIR:-${LAB_RUNS_DIR}/_agent}"
+
+if [ -z "$CE" ]; then
+    echo "No compute environment name. Save one as 'compute_env' in ${SETTINGS_FILE}." >&2
+    echo "It is the name this member's compute environment will carry on Platform." >&2
+    echo "It does not have to exist yet: with none, this builds the first one." >&2
+    exit 1
+fi
 
 APPLY=0
 [ "${1:-}" = "--apply" ] && APPLY=1
@@ -49,7 +77,7 @@ else
     CREATING=1
     TEMPLATE="${SITE_CE_TEMPLATE:-$ROOT/configs/sites/nchc-ce.json.in}"
     [ -r "$TEMPLATE" ] || { echo "no compute environment '$CE', and no template at $TEMPLATE" >&2; exit 1; }
-    ACCT_T="$(. "$HERE/settings.sh"; setting slurm_account)"
+    ACCT_T="$(setting slurm_account)"
     [ -n "$ACCT_T" ] || { echo "no compute environment '$CE' yet, and no slurm_account in the settings to build one with." >&2
                           echo "Ask the user for the allocation their compute time is billed to." >&2; exit 1; }
     sed -e "s|@WORKDIR@|${LAB_RUNS_DIR}/_work|g" \
@@ -63,7 +91,6 @@ fi
 # large enough that pointing two things at two directories quietly stores
 # every container twice - both belong in the settings file, and both have to
 # reach the run through the compute environment.
-. "$HERE/settings.sh"
 ACCT="$(setting slurm_account)"
 CACHE="$(setting singularity_cache)"
 
