@@ -50,6 +50,13 @@ ALLOW_DOMAINS = (
     "broadinstitute.org",
     "cloudflare.com",
     "cloudflarestorage.com",
+    # Added 2026-09-02 after nf-core/ampliseq failed with no useful message from
+    # Platform ("Execution aborted due to an unexpected error"); the relay log
+    # named all three. Reference databases and a container host that rnaseq
+    # never touches, so nothing before ampliseq could have revealed them.
+    "biocontainers.pro",      # base image for ampliseq's local modules
+    "qiime2.org",             # QIIME2 classifiers (--qiime_ref_taxonomy)
+    "ecogenomic.org",         # GTDB SSU references (--dada_ref_taxonomy gtdb=...)
 )
 
 # Hostname prefixes permitted to use the relay. From `sinfo -N`: compute nodes
