@@ -30,6 +30,31 @@ tmux: an earlier tmux-based setup died with its tmux server while the relay,
 started the other way, survived — two daemons with two survival mechanisms, and
 the one that died was the one Platform needs.
 
+**3b. Every binary file Platform serves through the Tower Agent is corrupt.**
+Reports open, images do not. The agent's file transfer deletes every `0xFF`
+byte from the stream, and the first `0xFF 0xFF` pair ends the transfer early.
+Measured on `nf-core/differentialabundance` output:
+
+| file | on disk | served by Platform | `0xFF` count | first `0xFF 0xFF` |
+|---|---|---|---|---|
+| `volcano.png` | 31,950 | 31,833 | 117 | none |
+| `density.png` | 87,319 | 86,966 | 353 | none |
+| `pca3d.png` | 39,857 | **5,172** | 153 | offset 5,190 |
+| `deseq2.plots.pdf` | 9,477 | 9,459 | 18 | none |
+
+For the first, second and fourth the served bytes are *exactly* the file with
+every `0xFF` removed; for the third they are that same stream cut at the
+doubled `0xFF`. Deterministic - refetching returns byte-identical corruption.
+
+Text is unaffected, which is why this hides: a 3.8 MB `multiqc_report.html`
+arrives byte-perfect, because valid UTF-8 never contains `0xFF`. So the run
+looks fine, MultiQC looks fine, and only the images are broken - subtly, since
+a PNG missing 117 scattered bytes still has a valid header and renders as a
+partial or mangled picture rather than a clearly failed download.
+
+Until Seqera fixes it, read binary outputs from the filesystem - they are
+intact on disk. Platform is reliable for HTML, TSV and logs only.
+
 ## Reaching the internet
 
 **4. Compute nodes have no route out; everything goes through the login-node
