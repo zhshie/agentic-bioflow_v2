@@ -98,6 +98,28 @@ old one fails in a way that looks like the network, not like configuration.
 
 ---
 
+## Verifying a change to the environment
+
+Two different questions, and using the slow answer for the fast question wastes
+three quarters of an hour.
+
+**Did my config reach the run?** Launch `nextflow-io/hello`. Four trivial tasks,
+about a minute, no containers. It proves the compute environment carries the
+config, that the scheduler accepts what the resource contract produces, that the
+account is set, and - because its tasks are tagged `(1)`, `(2)` - that job names
+come out sanitised. Use this after every `ce_apply.sh --apply`.
+
+**Is the site actually able to run work?** Launch a real pipeline with
+`-profile test`. Slower, and worth it: only this exercises container pulls,
+reference downloads through the egress channel, and Platform's ability to read
+the outputs back. This is the proof run at the end of onboarding, and it must
+touch none of the user's own data.
+
+The first question is the one asked most often, and it was being answered with
+the second - a 45-minute funcscan run to look at a job name.
+
+---
+
 ## Adding a site
 
 Do not write a second adapter speculatively. The contract above was derived

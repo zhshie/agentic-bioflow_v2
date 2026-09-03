@@ -232,12 +232,21 @@ message is in the head job log only. `configs/sites/nchc.config` now sets
 `executor.jobName` to a sanitised name, which fixes it for any pipeline rather
 than for this tag.
 
-**13. A compute environment's config cannot be edited in place.**
+**13. A compute environment's config cannot be edited in place, and it holds a
+copy, not a reference.**
 `tw compute-envs update` changes only the name and description. Changing
 `nextflowConfig` means `tw compute-envs import --overwrite`, which deletes and
-recreates the environment under a new ID — export a backup first. To test a
-config change without touching the environment, pass it to `tw launch --config`,
-which is appended after the environment's own config.
+recreates the environment under a new ID — export a backup first, and repoint
+anything holding the old ID.
+
+Because the stored config is a **copy**, editing `configs/sites/*.config`
+changes nothing until it is pushed, and nothing reports the divergence: the next
+run quietly uses the old contract. `scripts/ce_apply.sh` exports, shows the
+difference and stops; `--apply` commits. Verify with `nextflow-io/hello` rather
+than a real pipeline — see `docs/SITE_ADAPTER.md`.
+
+To test a config change *without* touching the environment, pass it to
+`tw launch --config`, which is appended after the environment's own config.
 
 ## Do not rebuild what nf-core already does
 
