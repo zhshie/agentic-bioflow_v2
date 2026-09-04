@@ -50,11 +50,29 @@ gate can see.
    assembled at runtime, and a pipeline only fetches what its parameters
    select, so a host it lists may not be needed. Add the ones that are.
 
-2. **Register it** if `tw pipelines list` does not already have it:
+2. **Show what the pipeline does before asking anyone to configure it.**
+   Someone who has not seen the workflow cannot say which parts of it they
+   want, and will accept every default by default.
+
+   - **The diagram.** List `docs/images/` in the pipeline at that revision,
+     pick the workflow figure, and hand the user its raw URL. **Read the
+     directory rather than guessing the filename** - the four pipelines run
+     here name it four different ways: `nf-core-rnaseq_metro_map_grey.png`,
+     `nf-core-differentialabundance_metro_map.png`, `ampliseq_workflow.png`,
+     `funcscan_metro_workflow.png`.
+   - **The same thing in words.** A terminal renders no image, and that is
+     where some of these conversations happen. The README carries a numbered
+     list of stages, but the heading above it varies - `## Pipeline summary`
+     usually, `## Introduction` in rnaseq 3.14.0 - so read the section rather
+     than matching a heading.
+
+   Keep it to what this run will do. The user is choosing, not studying.
+
+3. **Register it** if `tw pipelines list` does not already have it:
    `tw pipelines add --compute-env <ce> --revision <rev> <github-url>`.
    `tw launch <short-name>` only resolves registered pipelines.
 
-3. **Build the samplesheet.**
+4. **Build the samplesheet.**
    - Read `assets/schema_input.json` from the pipeline at that revision to get
      the exact columns and which are required. Do not hardcode them.
    - rnaseq ships `bin/fastq_dir_to_samplesheet.py`; prefer it. No other
@@ -66,24 +84,37 @@ gate can see.
      `sample_info.csv` for downstream work.
    - Register it: `tw datasets add`.
 
-4. **Decide parameters.** Fetch `nextflow_schema.json` at that revision and work
-   through it with the user. Write `params.yaml` with a comment explaining any
-   non-default choice.
+5. **Decide parameters, and offer the choices instead of waiting to be asked.**
+   Fetch `nextflow_schema.json` at that revision. It is the authority: this
+   repo holds no curated list of options for any pipeline, and adding one would
+   be the thing v2 exists to avoid.
 
-   If the pipeline takes a `--gtf`, check that whatever `gtf_extra_attributes`
-   names actually appears on `exon` lines — the default `gene_name` is absent
-   from many RefSeq GTFs and the result is a silently empty column, not an
-   error. Leave everything else to the pipeline: it already handles missing
-   biotypes and small-genome STAR index sizing (see `docs/PITFALLS.md`).
+   Put two things in front of the user unprompted:
+   - **What can be skipped or swapped.** The schema already groups them - a
+     `*skipping*` group, 19 parameters of it in rnaseq 3.14.0, plus the
+     tool-choice parameters carrying an enum, which there are `aligner`,
+     `trimmer`, `pseudo_aligner` and `remove_ribo_rna`. Show each with its
+     default, and say that "all defaults" is a complete answer.
+   - **Anything the schema marks required with no default**, which fails at
+     launch rather than before it.
 
-5. **Check for directives that need a human decision.** Read the pipeline's
+   Write `params.yaml` with a comment explaining any non-default choice.
+
+   If the pipeline reads a GTF, confirm that the attribute a parameter names is
+   present on the line type that pipeline actually parses - both halves differ
+   per pipeline, and the result of getting it wrong is a silently empty column
+   rather than an error. `docs/PITFALLS.md` 14 carries the measured table.
+   Leave everything else to the pipeline: it already handles missing biotypes
+   and small-genome STAR index sizing.
+
+6. **Check for directives that need a human decision.** Read the pipeline's
    `conf/base.config`. Resource requests need no attention — the site adapter
    turns whatever comes out into something the site accepts. Speak up only for:
    - `accelerator` / GPU — the GPU path is **not yet verified** anywhere here
    - a request larger than the site offers at all (the adapter's config lists
      what it has)
 
-6. **Show the complete command** — every parameter on its own line — and wait
+7. **Show the complete command** — every parameter on its own line — and wait
    for an explicit 確認執行. Include `--disable-optimization`.
 
-7. **Launch**, then report the run ID and the Platform URL.
+8. **Launch**, then report the run ID and the Platform URL.

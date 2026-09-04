@@ -6,15 +6,40 @@ Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
 
-Two situations, and telling them apart is the first thing to do.
+## Open by saying what this is
+
+Before the first question, say what the user is about to use and what it will
+do to their machine. Someone who has just installed a plugin knows neither, and
+a setup that starts by demanding a storage path reads as an interrogation.
+
+Cover four things, briefly:
+
+- **What it is.** It runs nf-core pipelines through Seqera Platform. It does not
+  schedule work or keep run state itself - Platform does both. What it adds is
+  the part Platform cannot reach from outside.
+- **What is about to happen.** Find what this machine is missing, connect their
+  Seqera account, build a compute environment, and then prove the whole path
+  works end to end.
+- **What it needs from them.** An account, a workspace, and somewhere large to
+  put the work. Nothing else.
+- **That none of their own data is touched.** The proof at the end runs on
+  public test data.
+
+Then ask the first question. **Do not list the commands yet** - that belongs
+after step 9, for the reason given there.
+
+Speak the user's language throughout, and say what a step will do before doing
+it. The deployment's CLAUDE.md supplies tone and lab norms; nothing here
+assumes them.
+
+## Which situation this is
+
+Telling the two apart is the first thing to do.
 
 Read `$LAB_RUNS_DIR/_personal/env.yaml` (every key is described in
 `docs/SETTINGS.md`) and check for a saved credential.
 **Missing, or `LAB_RUNS_DIR` is not set → first run**, and the person in front
 of you may have nothing at all. **Present → repair**, which is short.
-
-Speak the user's language, and say what a step will do before doing it. The
-deployment's CLAUDE.md supplies tone and lab norms; nothing here assumes them.
 
 ---
 
@@ -35,6 +60,17 @@ Two things worth stating when they come up, because neither is obvious:
 ---
 
 ## First run
+
+**Ask what kind of compute this will run on before anything else.** The answer
+decides which of the steps below exist at all:
+
+- **A cluster Platform cannot reach into** - the case this site adapter was
+  written for. All nine steps apply.
+- **A compute environment Platform manages itself** (AWS Batch and the like).
+  **Steps 5 and 6 do not apply**: there is no channel to open and no outputs
+  reader to keep alive, because Platform reaches both the storage and the
+  compute directly. Walking a user through them anyway asks them to install and
+  babysit two processes that solve a problem they do not have.
 
 Nine steps, and **the order is forced** — each one blocks the next. Doing them
 out of order strands the user somewhere that reports nothing useful.
