@@ -58,6 +58,31 @@ POSIX or object storage.
 RUNNING and nothing anywhere records an error. Somebody has to be able to ask
 the site directly.
 
+### 6. A way to be reached
+
+Where this deployment runs, *relative to the site*. Settings key `reach`:
+
+| value | what it means | the site it describes |
+|---|---|---|
+| `none` | there is no login node; nothing can be run on the site at all | a Platform-managed cloud compute environment |
+| `local` | this deployment already runs on the site | a login node with a terminal open on it |
+| `ssh` | this deployment runs elsewhere and reaches the site over a **multiplexed** ssh connection | the user's own machine |
+
+*Why this is a contract and not a transport layer:* two of the five contracts
+above — egress and the outputs reader — exist **only** because this site's
+compute nodes have no route out. A cloud site supplies neither, and has nothing
+to be reached on either. As a contract, that site costs nothing and its `reach`
+is `none`. As an "ssh layer" threaded through the scripts, it would have to be
+unpicked. The command layer must treat *"this site has nothing to reach"* as a
+normal answer, exactly as it treats a site with no egress restrictions.
+
+`scripts/on_site.sh` is the only sanctioned implementation. **The command layer
+may not call `ssh` itself.** `ON_SITE_DRY_RUN=1` makes it print where a command
+would run and what it would be, without running it — which is how all three
+values are tested with no host, no network and no site.
+
+*A deployment that runs on the site supplies `local`, which is the default.*
+
 ---
 
 ## What NCHC Taiwania-3 supplies
@@ -69,6 +94,7 @@ the site directly.
 | Reports | `scripts/agent_ctl.sh` | Seqera's Tower Agent. **Binary files it serves are corrupt** — see PITFALLS 3b; read images from disk |
 | Storage | POSIX, under the deployment's run area | The work directory must be visible from the compute nodes |
 | Diagnosis | `scripts/why_pending.sh` | Reports the scheduler's own reason in plain language |
+| Reach | `local`, or `ssh` from the user's own machine | **Every connection costs a one-time code.** See below — this shapes the whole laptop-driven topology |
 | Drift check | `scripts/check_resource_contract.sh` | The box table is a copy of the cluster's QOS table and can go stale |
 
 Per-member, not shared: the egress proxy, the agent and its credential, and
@@ -80,6 +106,27 @@ the proxy address and the work directory.
 Beyond `storage_root` and `workspace_id`, which every site needs:
 `slurm_account` — the allocation compute time is billed to. Without it nothing
 can be submitted.
+
+### What `reach: ssh` costs at this site
+
+Public-key authentication is refused: every ssh connection asks for a password
+and then a code from the user's phone, and one bare round trip was measured at
+**31 s**. So a multiplexed master connection is not a speed-up here, it is the
+only thing that makes the topology possible at all — Claude cannot supply the
+code. With a master up, five nested calls cost **0.65 s** together.
+
+Two consequences the command layer has to respect:
+
+- **Claude never opens the master.** `on_site.sh` prints the exact line for the
+  user to paste and stops. `preflight.sh` asks first, before any check that
+  would otherwise hang on an invisible prompt.
+- **One master lasts a work session, and dies with the terminal.** It is a
+  process on the user's machine, so closing the window (or WSL shutting the VM
+  down) ends it. `ControlPersist` governs idle time, not survival.
+
+The site account's `~/.bashrc` also has to be fixed before any of this works —
+see PITFALLS 16c, which is where `ssh host 'tw ...'` reports a missing command
+on an account where `tw` is installed.
 
 ### What this site needs baked into the compute environment
 

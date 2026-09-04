@@ -20,7 +20,12 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
-TERMS='slurm|sbatch|squeue|scontrol|sacctmgr|qos|partition|relay|proxy|singularity|module load'
+# `ssh` is here for the same reason as the rest: how a site is reached is
+# contract 6, and a cloud site is reached by nothing at all. A command that
+# spells out an ssh line has also forked the one place that line is written -
+# `preflight.sh` prints it, so a command that needs the user to open a master
+# connection tells them to run preflight and paste what it says.
+TERMS='slurm|sbatch|squeue|scontrol|sacctmgr|qos|partition|relay|proxy|singularity|module load|\bssh\b|\bscp\b|\brsync\b'
 
 hits=$(grep -rInE "$TERMS" "$ROOT/commands" 2>/dev/null | sed "s|^$ROOT/||") || true
 
