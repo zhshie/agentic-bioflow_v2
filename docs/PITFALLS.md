@@ -130,6 +130,19 @@ empty version, and 216 MB sat in a `.nfs` file.
 **The session already running survives, because it holds the deleted binary
 open — but it cannot be restarted.** Quitting is what makes the damage visible.
 
+**It recurs, and the second time is quieter.** Later the same day the package
+directory held an empty `bin/` and nothing else — no `.nfs` file left to
+explain it — while `~/.nvm/.../bin/claude` still pointed at the missing
+`claude.exe`. Nothing announced this: `command -v claude` simply stopped
+answering.
+
+**Check where the session actually came from before treating this as urgent.**
+The VS Code extension ships its own binary at
+`~/.vscode-server/extensions/anthropic.claude-code-<version>-linux-x64/resources/native-binary/claude`,
+and a session started that way neither uses nor needs the npm install. That
+binary also runs `claude plugin update` perfectly well, which is the way to
+finish a deployment without reinstalling anything mid-session.
+
 Re-running `npm install -g @anthropic-ai/claude-code` fixes it in seconds and
 is safe while a session is running; the cleanup warning about the busy `.nfs`
 file is expected and harmless. That file is only removable once every process
@@ -415,6 +428,17 @@ error rather than a setup error: `~/bin` reaches PATH only through
 `/etc/profile`, which a remote command never reads, so `ssh host 'tw runs list'`
 reports a missing command on an account where `tw` is plainly installed and
 works when logged in.
+
+One thing that looks interactive-only and is not: **anything installed with
+`npm -g` lives under the node version nvm selected**, so leaving nvm entirely
+below the guard takes Claude Code's own CLI off PATH in every non-interactive
+shell. Put that one directory above the guard and leave nvm's 0.45 s
+initialisation below it — the cheap half of what nvm does is an `ls`:
+
+```bash
+_node_bin=$(ls -1d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1)
+[ -n "$_node_bin" ] && export PATH="$_node_bin:$PATH"
+```
 
 The fix is one guard, with the ordering doing all the work — anything the far
 end of an ssh call needs goes **above** it:

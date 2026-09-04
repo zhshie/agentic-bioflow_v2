@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "agentic-bioflow",
   "description": "Run Nextflow/nf-core pipelines through Seqera Platform, with the HPC-specific pieces Seqera does not cover. Identity-neutral - the deployer's CLAUDE.md supplies persona and lab norms.",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "author": {
     "name": "zhshie"
   }
