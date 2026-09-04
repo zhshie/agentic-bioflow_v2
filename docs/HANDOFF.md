@@ -13,6 +13,12 @@ per-pipeline configuration** — rnaseq 3.26.0, ampliseq, fetchngs,
 differentialabundance, bacass, funcscan — every one SUCCEEDED. That was the
 point of v2: a new pipeline is launched, not configured.
 
+SUCCEEDED there is the workflow status, and two of the six carry an ignored
+task failure inside it: ampliseq's `QIIME2_DIVERSITY_ADONIS` and funcscan's
+`AMPCOMBI2_PARSETABLES`, both on nf-core's own test data, both swallowed by the
+pipeline's own `errorStrategy`. Nothing to fix here — but a reader counting
+green ticks in a trace file should know why two of them do not add up.
+
 Since then the engine has been made into something a stranger could install:
 eight invariants in `PRINCIPLES.md` each with a check, five of them scripts in
 `tests/`; site machinery behind `docs/SITE_ADAPTER.md`; nothing pointing at one
