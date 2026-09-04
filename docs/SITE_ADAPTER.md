@@ -98,6 +98,45 @@ old one fails in a way that looks like the network, not like configuration.
 
 ---
 
+## What Platform offers that this site cannot use
+
+Two of Seqera's features are unavailable here, and neither is a configuration
+gap that effort would close. Both need Platform to reach the site's storage or
+its compute directly, which is the thing this whole adapter exists to work
+around. Recorded so nobody spends an afternoon finding out again.
+
+**Studios.** Measured, not inferred:
+
+```console
+$ tw studios add --compute-env <this site's CE> --template <any> --name probe
+ERROR: Studios are not supported by compute environment with id
+'...' of type slurm-platform
+```
+
+Seqera's own documentation gives the supported list as AWS Cloud, Azure Cloud,
+Google Cloud, and AWS Batch without Fargate. Nothing was created by the probe.
+
+**Data Explorer.** `tw data-links add` requires `--provider`, and it accepts
+only `aws`, `azure` or `google`. There is no POSIX option, so a filesystem site
+has nothing to register. This costs less than it sounds: on a site like this the
+pipeline's inputs are already filesystem paths, which is what Data Explorer
+would exist to produce.
+
+Note what is *not* lost with them. **How to see a run's outputs is a separate
+question and it works**: Platform's own categorised output listing (through the
+outputs reader), the pipeline's HTML report, and the file list `:runs` names.
+What a filesystem site does without is a persistent index *across* runs — and
+building one here would mean keeping a record of runs, which is what invariant 2
+forbids.
+
+**Working, and independent of the compute environment:** datasets, pipelines,
+runs, labels, secrets, actions, teams and participants. Verified against this
+workspace. One oddity worth knowing: `tw actions list --workspace <id>` answers
+"Actions for <user>", so actions appear not to be workspace-scoped the way the
+rest are.
+
+---
+
 ## Verifying a change to the environment
 
 Two different questions, and using the slow answer for the fast question wastes

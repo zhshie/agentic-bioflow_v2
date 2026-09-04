@@ -23,7 +23,7 @@ Since then the engine has been made into something a stranger could install:
 eight invariants in `PRINCIPLES.md` each with a check, five of them scripts in
 `tests/`; site machinery behind `docs/SITE_ADAPTER.md`; nothing pointing at one
 person's directories. It is installed as a plugin from marketplace
-`agentic-bioflow-v2`, now **2.0.6**.
+`agentic-bioflow-v2`, now **2.0.7**.
 
 ## Stage 4 is done
 
@@ -142,6 +142,22 @@ guards the trade and was verified red before green.
 `setup.md` now forks first on what kind of compute this is: a Platform-managed
 environment skips steps 5 and 6, because there is no channel to open and no
 outputs reader to keep alive.
+
+**Steps 4 and 5 shipped as 2.0.7.** `:launch` now arms a watch on the run and
+on the outputs reader without asking, and a `SessionStart` hook says what is
+still in flight at the top of a conversation. Neither is a daemon: the watch
+dies with the conversation, the hook runs once and keeps no state, and Platform
+stays the only record (invariant 2). The hook's own hazards are handled and
+worth knowing before editing it - the SessionStart default timeout is **600
+seconds**, so it carries an explicit 15, and **exit 2 blocks the session from
+starting**, so it exits 0 on every path. It is silent on a compaction and
+wherever no deployment settings file exists.
+
+Step 5 settled two Seqera questions by measurement, in `SITE_ADAPTER.md`:
+Studios refuses this compute environment outright (`Studios are not supported
+by compute environment ... of type slurm-platform` — nothing was created by the
+probe), and Data Explorer requires a cloud `--provider`, so a filesystem site
+has nothing to register. Datasets, actions, secrets and labels all work.
 
 ## The next thing to do
 
