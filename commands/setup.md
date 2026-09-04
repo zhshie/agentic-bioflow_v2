@@ -36,10 +36,10 @@ assumes them.
 
 Telling the two apart is the first thing to do.
 
-Read `$LAB_RUNS_DIR/_personal/env.yaml` (every key is described in
-`docs/SETTINGS.md`) and check for a saved credential.
-**Missing, or `LAB_RUNS_DIR` is not set → first run**, and the person in front
-of you may have nothing at all. **Present → repair**, which is short.
+Read the deployment settings — `docs/SETTINGS.md` says where they live, which
+depends on whether this deployment runs on the site or reaches it — and check
+for a saved credential. **Missing → first run**, and the person in front of you
+may have nothing at all. **Present → repair**, which is short.
 
 ---
 
@@ -48,6 +48,11 @@ of you may have nothing at all. **Present → repair**, which is short.
 `scripts/preflight.sh`. It reports each part as OK or FAIL. Fix what failed —
 each FAIL line names the script that fixes it — then say plainly what was
 already fine and what you restarted. Nothing else.
+
+One FAIL is not yours to fix: if the site cannot be reached, preflight prints a
+line for the **user** to paste, because opening that connection needs a one-time
+code only they have. Show them that line as printed and wait. Do not compose
+your own version of it.
 
 Two things worth stating when they come up, because neither is obvious:
 
@@ -61,16 +66,43 @@ Two things worth stating when they come up, because neither is obvious:
 
 ## First run
 
-**Ask what kind of compute this will run on before anything else.** The answer
-decides which of the steps below exist at all:
+**Two questions before anything else**, because between them they decide which
+of the steps below exist at all. Ask both, in this order, and save the answers
+as `reach` in the settings (`docs/SITE_ADAPTER.md`, contract 6).
+
+**What kind of compute will this run on?**
 
 - **A cluster Platform cannot reach into** - the case this site adapter was
   written for. All nine steps apply.
 - **A compute environment Platform manages itself** (AWS Batch and the like).
-  **Steps 5 and 6 do not apply**: there is no channel to open and no outputs
-  reader to keep alive, because Platform reaches both the storage and the
-  compute directly. Walking a user through them anyway asks them to install and
-  babysit two processes that solve a problem they do not have.
+  `reach: none`. **Steps 5 and 6 do not apply**: there is no channel to open and
+  no outputs reader to keep alive, because Platform reaches both the storage and
+  the compute directly. Walking a user through them anyway asks them to install
+  and babysit two processes that solve a problem they do not have.
+
+**On a cluster: are you running here, or on your own machine?** Skip this
+question entirely for a Platform-managed environment — there is nowhere else to
+be.
+
+- **On the cluster itself** → `reach: local`. Nothing below changes.
+- **On their own laptop or desktop** → `reach: ssh`, plus `site_host`. Three
+  things then differ, and all three are silent failures if missed:
+  - **The settings file and the token live on the user's machine**, not the
+    site. `docs/SETTINGS.md` covers the move for a deployment that already has
+    them on the site.
+  - **`storage_root` stays the site's path.** It is where runs live, and that
+    has not moved. In step 1, `LAB_RUNS_DIR` goes into the profile of the
+    **site** account, not the user's machine.
+  - **The site account's shell profile has to be fixed first** — PITFALLS 16c.
+    A command sent to the site lands in a non-interactive shell that reads
+    `~/.bashrc` but not `/etc/profile`, so `~/bin` is absent and Seqera's CLI
+    reports as missing on an account where it is plainly installed. Check it the
+    way the failure appears, not the way the file reads; PITFALLS 16c gives the
+    one-line check and the guard that fixes it.
+
+  Nothing here is Windows-specific except the choice of terminal, and that one
+  is decided: **WSL**. Two other Windows shells were measured and neither can
+  hold the multiplexed connection this depends on (PITFALLS 16b).
 
 Nine steps, and **the order is forced** — each one blocks the next. Doing them
 out of order strands the user somewhere that reports nothing useful.
