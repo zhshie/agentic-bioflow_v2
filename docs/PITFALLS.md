@@ -392,3 +392,46 @@ must not contain `:` (illegal in an NTFS filename — the usual `%r@%h:%p` canno
 work), and `ssh -M -f` fails to survive backgrounding under MSYS2's fork
 emulation, which looks like the same mux error and sends you chasing the wrong
 cause.
+
+**16c. A `reach=ssh` deployment has to fix the site account's `~/.bashrc`, and
+for two separate reasons — one costs seconds, the other loses the binaries
+entirely.** `ssh host <cmd>` lands in a *non-interactive* shell. Bash detects
+its stdin is a network connection and reads `~/.bashrc`; sshd does **not** read
+`/etc/profile`. Both halves of that sentence bite:
+
+| | before | after |
+|---|---|---|
+| `source ~/.bashrc` in a non-interactive shell | 3.65 s | 0.001 s |
+| `tw` on PATH there | **MISSING** | `~/bin/tw` |
+| `nextflow` on PATH there | **MISSING** | `~/bin/nextflow` |
+
+The cost was one line: `conda shell.bash hook` spawns Python from NFS and takes
+**3.3 s** on its own (nvm 0.45 s, sdkman and mamba 0.08 s each). `preflight.sh`
+makes five nested calls, so a laptop-driven preflight was paying ~16 s for
+tooling no remote command uses.
+
+The missing binaries are the sharper trap, because they fail with the *site's*
+error rather than a setup error: `~/bin` reaches PATH only through
+`/etc/profile`, which a remote command never reads, so `ssh host 'tw runs list'`
+reports a missing command on an account where `tw` is plainly installed and
+works when logged in.
+
+The fix is one guard, with the ordering doing all the work — anything the far
+end of an ssh call needs goes **above** it:
+
+```bash
+export PATH="$HOME/bin:$HOME/.local/bin:$PATH"   # and JAVA_HOME, LAB_RUNS_DIR,
+                                                  # the singularity cache vars
+case $- in
+    *i*) ;;
+      *) return ;;
+esac
+# conda / nvm / sdkman / mamba initialisation below here
+```
+
+Check it the way the failure appears, not the way the file reads:
+
+```bash
+env -i HOME="$HOME" PATH=/usr/bin:/bin bash -c \
+  'time (source ~/.bashrc); command -v tw nextflow'
+```
