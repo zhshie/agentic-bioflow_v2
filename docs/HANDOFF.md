@@ -23,7 +23,7 @@ Since then the engine has been made into something a stranger could install:
 eight invariants in `PRINCIPLES.md` each with a check, five of them scripts in
 `tests/`; site machinery behind `docs/SITE_ADAPTER.md`; nothing pointing at one
 person's directories. It is installed as a plugin from marketplace
-`agentic-bioflow-v2`, now **2.0.3**.
+`agentic-bioflow-v2`, now **2.0.4**.
 
 ## Stage 4 is done
 
@@ -100,6 +100,14 @@ with nf-core's own test data; the HTML report is unaffected).
 
 `preflight.sh` earned its place here: it caught a dead agent **before** the
 samplesheet was built, which is the order `launch.md` prescribes.
+
+Walking `/runs` afterwards - rather than reading the results by hand, which is
+what closed the launch half - found the defect that made the row worth walking.
+Step 2 said to open the MultiQC data files, and differentialabundance produces
+no MultiQC; the instruction named one pipeline's artefact as if it were every
+pipeline's. The step now asks what QC this pipeline made, and says that a
+missing MultiQC is not a QC report of none. That is the fourth member of the
+same family as the workspace defect: an absence read as an answer.
 
 ## The next thing to do
 
