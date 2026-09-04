@@ -8,6 +8,13 @@
           { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_cleanup.sh", "timeout": 5 }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh", "timeout": 15 }
+        ]
+      }
     ]
   }
 }

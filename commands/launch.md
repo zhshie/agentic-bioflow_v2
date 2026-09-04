@@ -118,3 +118,17 @@ gate can see.
    for an explicit 確認執行. Include `--disable-optimization`.
 
 8. **Launch**, then report the run ID and the Platform URL.
+
+9. **Watch it without asking first.** Arm a background watch on the run's
+   status — the harness's `Monitor` where it has one — and report the outcome
+   when it lands. Asking permission to watch spends a turn on a question with
+   one sensible answer.
+
+   **Watch the outputs reader too, not only the run.** Where the site has one it
+   dies on its own — four times in two days here (`docs/PITFALLS.md` 3c) — and
+   a run that SUCCEEDS with a dead reader still delivers nothing.
+
+   The watch lives only as long as this conversation, which is the point: no
+   daemon and no second copy of run state (`docs/PRINCIPLES.md`, invariant 2).
+   What outlives the conversation is the start-of-session check, which asks
+   Platform again next time rather than remembering anything.
