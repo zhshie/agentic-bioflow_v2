@@ -312,3 +312,19 @@ Two pipelines, two different ways to walk into it:
 
 Neither raises an error. Both produce a report that renders, with the column
 empty. Count the attribute on the line type before trusting the default.
+
+**15. differentialabundance 2.0.0's standalone volcano PNG labels both
+directions `higher in null`.** `conf/modules.config` builds PLOT_DIFFERENTIAL's
+arguments from `meta.params.reference` and `meta.params.target` - paramset-level
+params that do not exist - rather than the contrast's own reference and target,
+so the module is invoked with `--reference_level "null" --treatment_level
+"null"`. Reproduced with nf-core's own test dataset, so it is not caused by the
+contrasts file's format: a CSV (`id,variable,reference,target`) and the YAML
+`comparison:` form both hit it.
+
+Nothing about the analysis is wrong - the contrast parses correctly, and DESeq2
+gets the right direction (checked against normalised counts: a `log2FC` of
++5.89 was 9-25 in the reference group and 888-1183 in the target). **The HTML
+report is also correct**, saying `higher in CK` / `higher in SynCom`. Only the
+exported PNGs under `plots/differential/` carry the null labels, so deliver the
+report and treat those PNGs as unlabelled for direction.
