@@ -23,7 +23,7 @@ Since then the engine has been made into something a stranger could install:
 eight invariants in `PRINCIPLES.md` each with a check, five of them scripts in
 `tests/`; site machinery behind `docs/SITE_ADAPTER.md`; nothing pointing at one
 person's directories. It is installed as a plugin from marketplace
-`agentic-bioflow-v2`, now **2.0.4**.
+`agentic-bioflow-v2`, now **2.0.5**.
 
 ## Stage 4 is done
 
@@ -108,6 +108,28 @@ no MultiQC; the instruction named one pipeline's artefact as if it were every
 pipeline's. The step now asks what QC this pipeline made, and says that a
 missing MultiQC is not a QC report of none. That is the fourth member of the
 same family as the workspace defect: an absence read as an answer.
+
+## v2.1 has started: step 0 is done
+
+The plan is `~/.claude/plans/curious-doodling-lightning.md`. It moves Claude
+Code off the login node and onto the user's own machine, reaching the site over
+SSH, because the agent window has to be single: it will also carry lab notes,
+Zotero and other tools, and those need browser OAuth that a login node cannot
+give (this deployment already hit that with Seqera's own MCP).
+
+**Step 0 shipped as 2.0.5, and it was a real hole.** Both PreToolUse hooks read
+the local command string, so `ssh host '<payload>'` hid the payload from them -
+a launch sailed through the gate and a delete sailed through the guard, with no
+error. Moving to SSH without fixing this would have switched the safety net off
+at the exact moment the plugin reached more people.
+
+Also fixed: a read-only grep whose regex contained the delete verb was denied,
+because segmenting split on the `|` inside the regex. That fired twice on me -
+once while planning, once while committing the fix.
+
+`tests/confirm_cleanup_test.sh` asserted nothing before this: it printed each
+result, every label said `(expect deny)`, and no expected value was ever
+compared. It asserts now.
 
 ## The next thing to do
 
