@@ -111,6 +111,30 @@ agent again rather than trusting the check from delivery time.
 Note that the connection ID has to be unique per agent. Two members sharing one
 produces exactly the error above, permanently rather than transiently.
 
+**3d. `npm install -g` on this NFS home breaks the Claude Code CLI you are
+running from.** npm moves the existing package aside and deletes it. NFS cannot
+unlink a file another process still holds open, so it silly-renames the running
+binary to `.nfsXXXXXXXX` and npm's cleanup fails:
+
+```
+npm warn cleanup [Error: EBUSY: resource busy or locked, unlink
+  '.../@anthropic-ai/.claude-code-CimSOsSF/bin/.nfsa0407ee829f786120008d133']
+```
+
+If the install is interrupted anywhere after that move, the package is left
+with no `package.json` and no `bin/claude.exe`, while `bin/claude` still points
+at the missing file. Observed on 2026-09-04: `claude` became "command not
+found" mid-session, `npm ls -g` showed `@anthropic-ai/claude-code@` with an
+empty version, and 216 MB sat in a `.nfs` file.
+
+**The session already running survives, because it holds the deleted binary
+open — but it cannot be restarted.** Quitting is what makes the damage visible.
+
+Re-running `npm install -g @anthropic-ai/claude-code` fixes it in seconds and
+is safe while a session is running; the cleanup warning about the busy `.nfs`
+file is expected and harmless. That file is only removable once every process
+holding it has exited.
+
 ## Reaching the internet
 
 **4. Compute nodes have no route out; everything goes through the login-node

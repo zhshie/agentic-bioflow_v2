@@ -23,7 +23,7 @@ Since then the engine has been made into something a stranger could install:
 eight invariants in `PRINCIPLES.md` each with a check, five of them scripts in
 `tests/`; site machinery behind `docs/SITE_ADAPTER.md`; nothing pointing at one
 person's directories. It is installed as a plugin from marketplace
-`agentic-bioflow-v2`, now **2.0.5**.
+`agentic-bioflow-v2`, now **2.0.6**.
 
 ## Stage 4 is done
 
@@ -130,6 +130,18 @@ once while planning, once while committing the fix.
 `tests/confirm_cleanup_test.sh` asserted nothing before this: it printed each
 result, every label said `(expect deny)`, and no expected value was ever
 compared. It asserts now.
+
+**Step 3 shipped as 2.0.6.** The three things a user found missing next to v1 -
+an opening that says what the tool is, a picture of the pipeline, and being
+asked what to skip - are all back, and none of them is a file here. The diagram
+is found by listing the pipeline's `docs/images/` (the four pipelines run here
+name it four different ways); the skippable steps come from the schema's own
+`*skipping*` group, 19 of them in rnaseq 3.14.0. `tests/no_per_pipeline_config.sh`
+guards the trade and was verified red before green.
+
+`setup.md` now forks first on what kind of compute this is: a Platform-managed
+environment skips steps 5 and 6, because there is no channel to open and no
+outputs reader to keep alive.
 
 ## The next thing to do
 
