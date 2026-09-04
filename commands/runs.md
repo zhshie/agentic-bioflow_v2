@@ -86,8 +86,32 @@ directory is probably not visible from the compute nodes.
    none** — it is the same shape of mistake as an empty `tw` listing read as an
    answer.
 
-3. **Deliver.** Name the exact files that matter for the next step (counts
-   matrix, QC report) and where the grouping metadata lives.
+3. **Deliver, as a table.** Naming a few files in prose was how this was done
+   before, and it kept coming out different each time: a path with no purpose
+   beside it, or a purpose with no way to open the thing. Four columns, one row
+   per output that matters:
+
+   | Column | What goes in it |
+   |---|---|
+   | Purpose | what the next step actually does with it — not what it contains |
+   | Path | relative to `results/` |
+   | How to open it | a browser, a spreadsheet, or code on the user's own machine |
+   | Warning | known-bad outputs, when there are any |
+
+   Say where the grouping metadata lives, in the same table.
+
+   The last column is not padding. A run can succeed and still produce an
+   output that lies: differentialabundance 2.0.0 exports volcano plots labelled
+   `higher in null` in both directions while its HTML report has the directions
+   right (PITFALLS 15). Delivering that PNG without the warning hands over a
+   figure that says the opposite of the result.
+
+   **Read the file, do not just list it.** Whether that needs a copy is the
+   site's business, not this command's: `scripts/fetch.sh <path>` prints the
+   path to read. Where the deployment runs on the site it prints back what it
+   was given and copies nothing; elsewhere it brings the results over first. It
+   refuses an oversized path rather than starting a transfer that will not
+   finish, so pass it `results/`, never the work directory beside it.
 
 4. **Offer cleanup of `work/` only**, and only with explicit confirmation.
    Never `rawdata/`, `results/`, `analysis/`, `_references/`, the shared image

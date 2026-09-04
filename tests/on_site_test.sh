@@ -23,7 +23,7 @@ t() { # t <label> <expect-rc> <expect-substring> -- <args...>
   if [ "$rc" != "$want_rc" ]; then
     echo "FAIL: rc $rc, wanted $want_rc  <<$out>>"; fails=$((fails+1)); return
   fi
-  if [ -n "$want" ] && ! grep -qF "$want" <<<"$out"; then
+  if [ -n "$want" ] && ! grep -qF -- "$want" <<<"$out"; then
     echo "FAIL: output lacks '$want'  <<$out>>"; fails=$((fails+1)); return
   fi
   echo "ok"
