@@ -17,7 +17,7 @@ Since then the engine has been made into something a stranger could install:
 eight invariants in `PRINCIPLES.md` each with a check, five of them scripts in
 `tests/`; site machinery behind `docs/SITE_ADAPTER.md`; nothing pointing at one
 person's directories. It is installed as a plugin from marketplace
-`agentic-bioflow-v2`, now **2.0.2**.
+`agentic-bioflow-v2`, now **2.0.3**.
 
 ## Stage 4 is done
 
@@ -69,20 +69,42 @@ prohibitions that remain (`never a branch`, `never rawdata/`) are hard
 guardrails already paired with the positive instruction, which is the form the
 skill asks for.
 
+## Stage 5 is done
+
+`nf-core/differentialabundance` 2.0.0 on the D5 salmon counts, CK vs SynCom,
+n=3, through `/launch`: run `vzbJ2rDMg3cud`, SUCCEEDED in about four minutes.
+Deliverables in `/work/u9613010/lab_runs/diffabundance_sclerotia_d5_20260904`,
+25 MB. 8,873 genes tested after filtering, **951 differential** at
+`padj < 0.05` and `|log2FC| >= 1` (412 up in SynCom, 539 down). PC1 carries
+55.6% and separates the two groups cleanly.
+
+**The batch question is closed, and the answer needed no guessing.** The user
+says the three replicates were one batch; the FASTQ headers say all six
+libraries are `LH00242:165:22YMKFLT3` **lane 6** with distinct dual indexes —
+CK and SynCom were pooled and sequenced side by side. So batch does not
+coincide with group, there is no batch variable with variation to model, and
+the design is `~ condition` with no `blocking` column. Within-group CV is 0.23
+(CK) and 0.24 (SynCom), which is ordinary biological replication, not
+technical.
+
+What the run cost in judgement, both recorded in `PITFALLS.md`: the GTF trap
+reappeared through different parameters (14, now measured per line type), and
+2.0.0 exports volcano PNGs labelled `higher in null` (15, upstream, reproduced
+with nf-core's own test data; the HTML report is unaffected).
+
+`preflight.sh` earned its place here: it caught a dead agent **before** the
+samplesheet was built, which is the order `launch.md` prescribes.
+
 ## The next thing to do
 
-1. **Restart Claude Code.** 2.0.2 is installed and not yet live.
-2. **Finish Stage 4**: `/setup` to a `-profile test` SUCCEEDED.
-3. **Stage 5 — real data end to end.** `rnaseq_sclerotia_d5_20260902` has
-   salmon counts and `sample_info.csv`: CK vs SynCom, n=3 per group, one
-   timepoint. Run `nf-core/differentialabundance` through `/launch` and
-   `/runs`, and ask first whether the three replicates were processed as one
-   batch — if group and batch coincide, neither run nor analysis can separate
-   them. The test is that no `tw` command is typed by hand. Read plots from
-   disk, not Platform (3b).
-4. **`configs/sites/nchc.config` as a PR to nf-core/configs.** No Taiwanese
+1. **Finish Stage 4**: `/setup` to a `-profile test` SUCCEEDED. The last
+   verification row anywhere, and it needs a person.
+2. **`configs/sites/nchc.config` as a PR to nf-core/configs.** No Taiwanese
    institutional config exists upstream and this one is structurally
    `nci_gadi`.
+3. **Report PITFALLS 15 upstream.** That entry is already a complete
+   reproduction report: the wrong expression, the file and line, and the fact
+   that nf-core's own test data reproduces it.
 
 Rollback is one command: `claude plugin install agentic-bioflow@agentic-bioflow`.
 v1's repository and marketplace were left untouched for exactly this.

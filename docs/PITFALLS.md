@@ -75,20 +75,24 @@ old connection live - so the reconnect was rejected and the process exited. No
 alert, no state change anywhere Platform shows you.
 
 **The drop itself is routine; being refused on the way back is what kills it.**
-One day's log has three drops and two deaths:
+Four drops across two days, three of them fatal:
 
 | drop | reconnect | outcome |
 |---|---|---|
-| 18:07:01 | +3.3 s | refused, process exited; a manual restart at **+10 min** was accepted |
-| 21:18:50 | +0.7 s | accepted, agent carried on - nothing to do |
-| 22:54:04 | +2.7 s | refused, process exited; a manual restart at **+58 min** was accepted |
+| 09-03 18:07:01 | +3.3 s | refused, process exited; a manual restart at **+10 min** was accepted |
+| 09-03 21:18:50 | +0.7 s | accepted, agent carried on - nothing to do |
+| 09-03 22:54:04 | +2.7 s | refused, process exited; a manual restart at **+58 min** was accepted |
+| 09-04 08:35:57 | +2.5 s | refused, process exited; a manual restart at **+93 min** was accepted |
+
+This is not a slow decay you can outrun by restarting nightly: the agent that
+died on 09-04 had been up **13 minutes**.
 
 So the agent's own retry, seconds later, is the one attempt that reliably
 fails. **Wait a few minutes before restarting**, and restart with the *same*
 connection ID - the compute environment's credential is tied to that string, so
 a fresh ID trades this outage for a broken CE. How long the server holds a dead
-session is not established: 10 minutes was enough once, and nothing here
-measured the floor.
+session is not established: accepted restarts span 10 to 93 minutes, and every
+one of those was a wait somebody happened to take, never a measured floor.
 
 It surfaces two ways, and neither names the agent:
 
@@ -283,7 +287,44 @@ were written and then deleted after the fact:
 | Compute STAR `--genomeSAindexNbases` for a small genome | `modules/nf-core/star/genomegenerate` computes `min(14, log2(len)/2-1)` in its else branch — passing the value in `ext.args` actually *disables* that |
 | Build a samplesheet from a FASTQ directory | `bin/fastq_dir_to_samplesheet.py`, for rnaseq. Note it ships **only** with rnaseq; six other pipelines checked have no equivalent |
 
-The one reference check worth keeping is narrower: confirm that whatever
-`--gtf_extra_attributes` names actually appears on `exon` lines. The default is
-`gene_name`, which many RefSeq GTFs do not carry, and the result is a silently
-empty column in the counts matrix rather than an error.
+The one reference check worth keeping is narrower, and it is not rnaseq's:
+**an attribute a parameter names has to exist on the line type that pipeline
+actually parses**, and both halves move per pipeline. One RefSeq GTF
+(*S. sclerotiorum* 1980, 14,714 genes) counted across its line types:
+
+| attribute | `gene` | `transcript` | `exon` |
+|---|---|---|---|
+| `gene_id` | 14,714 | 14,714 | 40,668 |
+| `locus_tag` | 14,714 | 14,714 | 40,668 |
+| `gene_biotype` | 14,714 | **0** | **0** |
+| `gene_name` | **0** | **0** | **0** |
+
+Two pipelines, two different ways to walk into it:
+
+- **rnaseq** `--gtf_extra_attributes` reads `exon` lines and defaults to
+  `gene_name`. Absent, so the counts matrix gets a silently empty column.
+- **differentialabundance** `--features_metadata_cols` defaults to
+  `gene_id,gene_name,gene_biotype` while `--features_gtf_feature_type` reads
+  `transcript` lines - where two of those three are absent. Pointing it at
+  `gene` recovers `gene_biotype`; nothing recovers `gene_name`, so
+  `--features_name_col` also has to name something the file carries
+  (`locus_tag`), or every feature label in the report comes out blank.
+
+Neither raises an error. Both produce a report that renders, with the column
+empty. Count the attribute on the line type before trusting the default.
+
+**15. differentialabundance 2.0.0's standalone volcano PNG labels both
+directions `higher in null`.** `conf/modules.config` builds PLOT_DIFFERENTIAL's
+arguments from `meta.params.reference` and `meta.params.target` - paramset-level
+params that do not exist - rather than the contrast's own reference and target,
+so the module is invoked with `--reference_level "null" --treatment_level
+"null"`. Reproduced with nf-core's own test dataset, so it is not caused by the
+contrasts file's format: a CSV (`id,variable,reference,target`) and the YAML
+`comparison:` form both hit it.
+
+Nothing about the analysis is wrong - the contrast parses correctly, and DESeq2
+gets the right direction (checked against normalised counts: a `log2FC` of
++5.89 was 9-25 in the reference group and 888-1183 in the target). **The HTML
+report is also correct**, saying `higher in CK` / `higher in SynCom`. Only the
+exported PNGs under `plots/differential/` carry the null labels, so deliver the
+report and treat those PNGs as unlabelled for direction.
