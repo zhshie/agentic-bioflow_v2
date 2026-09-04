@@ -73,14 +73,21 @@ directory is probably not visible from the compute nodes.
    Read binary outputs — images, PDFs — from the filesystem regardless: what
    Platform serves for them is corrupt (PITFALLS 3b).
 
-2. **Read the QC, do not just link it.** Open the MultiQC data files and report
-   per-sample numbers: mapping rate, duplication, and — where the pipeline
-   inferred something automatically, such as `strandedness: auto` — the evidence
-   behind the inference and whether samples agree. Say plainly whether any
-   sample should be dropped.
+2. **Read the QC, do not just link it.** Report per-sample numbers, and say
+   plainly whether any sample should be dropped. Where the pipeline inferred
+   something automatically — `strandedness: auto`, an outlier call — report the
+   evidence behind it and whether the samples agree.
+
+   MultiQC is the usual place, carrying mapping rate and duplication. A
+   pipeline that produces no MultiQC still produces per-sample QC somewhere:
+   differentialabundance puts it in DESeq2 size factors, a MAD-correlation
+   outlier call and a sample dendrogram, under `other/` and `plots/`. Find what
+   this pipeline actually made. **A missing MultiQC is not a QC report of
+   none** — it is the same shape of mistake as an empty `tw` listing read as an
+   answer.
 
 3. **Deliver.** Name the exact files that matter for the next step (counts
-   matrix, MultiQC report) and where the grouping metadata lives.
+   matrix, QC report) and where the grouping metadata lives.
 
 4. **Offer cleanup of `work/` only**, and only with explicit confirmation.
    Never `rawdata/`, `results/`, `analysis/`, `_references/`, the shared image
