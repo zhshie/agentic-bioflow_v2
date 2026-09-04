@@ -20,9 +20,18 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
-TERMS='slurm|sbatch|squeue|scontrol|sacctmgr|qos|partition|relay|proxy|singularity|module load'
+# `ssh` is here for the same reason as the rest: how a site is reached is
+# contract 6, and a cloud site is reached by nothing at all. A command that
+# spells out an ssh line has also forked the one place that line is written -
+# `preflight.sh` prints it, so a command that needs the user to open a master
+# connection tells them to run preflight and paste what it says.
+#
+# `reach: ssh` is exempt, and has to be: it is the contract's own value, and a
+# command that helps a user choose between the three values must be able to name
+# them. This is the whole reason the pattern needs -P rather than -E.
+TERMS='slurm|sbatch|squeue|scontrol|sacctmgr|qos|partition|relay|proxy|singularity|module load|(?<!reach: )(?<!reach=)\bssh\b|\bscp\b|\brsync\b'
 
-hits=$(grep -rInE "$TERMS" "$ROOT/commands" 2>/dev/null | sed "s|^$ROOT/||") || true
+hits=$(grep -rInP "$TERMS" "$ROOT/commands" 2>/dev/null | sed "s|^$ROOT/||") || true
 
 if [ -n "$hits" ]; then
     printf '%s\n' "$hits"

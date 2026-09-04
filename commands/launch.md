@@ -84,6 +84,13 @@ gate can see.
      `sample_info.csv` for downstream work.
    - Register it: `tw datasets add`.
 
+   **The reads are on the site; you may not be.** List them with
+   `scripts/on_site.sh ls <dir>` rather than reading the directory directly -
+   a deployment driven from the user's own machine sees nothing at that path,
+   and an empty listing there reads exactly like a directory with no reads in
+   it. The paths written *into* the samplesheet are the **site's**, unchanged:
+   it is the compute nodes that open those files, not this machine.
+
 5. **Decide parameters, and offer the choices instead of waiting to be asked.**
    Fetch `nextflow_schema.json` at that revision. It is the authority: this
    repo holds no curated list of options for any pipeline, and adding one would

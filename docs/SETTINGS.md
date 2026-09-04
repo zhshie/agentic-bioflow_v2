@@ -1,8 +1,16 @@
 # The settings file
 
 One file, outside the repository, holding everything that identifies a person
-or their site: `$LAB_RUNS_DIR/_personal/env.yaml`, mode 600. Nothing in it may
-be copied from another member, printed into a conversation, or committed.
+or their site. Mode 600. Nothing in it may be copied from another member,
+printed into a conversation, or committed.
+
+**Where it lives is where the deployment runs, not where the site is.** On a
+login node that is `$LAB_RUNS_DIR/_personal/env.yaml`. Reaching the site over
+ssh, it is on the user's own machine, together with the token file beside it —
+`scripts/preflight.sh` derives the token's path from this file's, so the pair
+travel together. `LAB_SETTINGS_FILE` overrides the location. The site never
+needs a copy: the values its scripts want cross as environment variables on the
+one round trip that carries them (`scripts/on_site.sh`).
 
 `scripts/settings.sh` reads and writes it. It is not a YAML parser — it reads
 `key: value` and stops at the first `#`, which is all this file is allowed to
@@ -10,6 +18,9 @@ be. A settings file that needs a real parser has grown into something else.
 
 | Key | What it is | Without it |
 |---|---|---|
+| `reach` | How the site is reached: `none`, `local` or `ssh`. See SITE_ADAPTER contract 6 | Defaults to `local`, which is right only when this deployment runs on the site |
+| `site_host` | `user@host` to log in to. **`reach: ssh` only** | Nothing can reach the site; preflight fails naming this key |
+| `ssh_control_path` | Where the multiplexed master's socket lives. **`reach: ssh` only** | Defaults to `~/.ssh/cm-%r-%h-%p`. It must not contain `:` — illegal in a Windows filename |
 | `storage_root` | Where runs live. Exported as `LAB_RUNS_DIR`; every other path derives from it | Nothing works; scripts refuse to guess |
 | `workspace_id` | The Seqera workspace. **The one value a lab shares** — everything else below is per person | Cannot reach Platform |
 | `compute_env` | This member's compute environment name | Cannot launch |
@@ -32,3 +43,23 @@ workspace copied from someone else fails in ways that look like a bug.
 `nextflow_path`, `hpc_profile`, `driver_queue`. They belong to v1, which is
 still installable as a fallback and does read them. Leave them where they are:
 deleting them costs the rollback path and saves three lines.
+
+## Moving a deployment to the user's own machine
+
+`reach: local` -> `reach: ssh` is a move of two files and one added key. The
+run area, the token's *contents*, the workspace and the compute environment do
+not change; what changes is which machine holds the settings.
+
+1. Copy `_personal/env.yaml` and `_personal/.seqera_token` from the site to the
+   user's machine, keeping them together and mode 600.
+2. Point `LAB_SETTINGS_FILE` at the copy.
+3. Add `reach: ssh` and `site_host`. Leave `storage_root` as the **site's**
+   path: it is where runs live, and that has not moved.
+4. Fix the site account's `~/.bashrc` — PITFALLS 16c. Skipping this is the one
+   step whose failure wears the site's error message rather than a setup error.
+5. `scripts/preflight.sh`. It asks whether the site can be reached before
+   anything else, and prints the line to paste if it cannot.
+
+The copies on the site can then go. Leaving them is not dangerous, but two
+settings files for one deployment will disagree eventually, and the one that
+loses is whichever the user did not edit.

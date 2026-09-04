@@ -1,0 +1,130 @@
+#!/bin/bash
+# The only sanctioned way to run something on the site.
+#
+# A site is reached in one of three ways, and which one is a property of the
+# site, not of this deployment - see docs/SITE_ADAPTER.md, contract 6:
+#
+#   none    a Platform-managed compute environment. There is no login node and
+#           nothing to reach; asking to run something on it is a caller's bug
+#   local   this deployment already runs on the site
+#   ssh     this deployment runs on the user's own machine
+#
+# Writing it as a contract is what keeps the cloud case free. An "ssh layer"
+# spread through the scripts would have to be torn out the day a site needs no
+# transport at all.
+#
+#   on_site.sh <command...>              run a command
+#   on_site.sh --script <path> [args]    run one of this plugin's own scripts
+#   on_site.sh --check-reach             can the site be reached right now?
+#
+#   ON_SITE_DRY_RUN=1   print where a command would run and what it would be,
+#                       and run nothing. This is the seam the tests use, so
+#                       they need no ssh host, no network and no site.
+#   ON_SITE_SSH_BIN     override the ssh binary (tests)
+set -uo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/.." && pwd)"
+. "$HERE/settings.sh"
+
+SSH="${ON_SITE_SSH_BIN:-ssh}"
+REACH="$(setting reach local)"
+HOST="$(setting site_host)"
+CP="$(setting ssh_control_path "$HOME/.ssh/cm-%r-%h-%p")"
+
+die() { local rc="$1"; shift; printf '%s\n' "$@" >&2; exit "$rc"; }
+
+MODE=command SCRIPT=""
+case "${1:-}" in
+  --check-reach) MODE=check;  shift ;;
+  --script)      MODE=script; SCRIPT="${2:?--script needs a path}"; shift 2 ;;
+esac
+
+case "$REACH" in
+  local|ssh) ;;
+  none)
+    [ "$MODE" = check ] && exit 0   # nothing to reach is a normal answer
+    die 2 "reach is 'none': this site has nothing to reach." \
+          "A Platform-managed compute environment has no login node, so a" \
+          "caller asking to run '$*' on it is asking the wrong question." ;;
+  *)
+    die 2 "unknown reach value '$REACH' in the deployment settings." \
+          "It must be one of: none, local, ssh. See docs/SITE_ADAPTER.md." ;;
+esac
+
+if [ "$REACH" = ssh ] && [ -z "$HOST" ]; then
+  die 2 "reach is 'ssh' but 'site_host' is not set in the deployment settings." \
+        "Set it to the user@host you log in to. See docs/SETTINGS.md."
+fi
+
+# The master connection carries the one-time code the user typed at login.
+# Claude cannot open one - the code is on their phone - so when it is gone the
+# only useful thing to do is print the exact line for them to paste. Silently
+# falling through would make every later command hang on an invisible prompt.
+master_is_up() { "$SSH" -O check -o ControlPath="$CP" "$HOST" >/dev/null 2>&1; }
+
+no_master() {
+  die 2 "no ssh master connection to $HOST." \
+        "" \
+        "Without one, every command asks for a one-time code - which only you" \
+        "can supply. Open the master yourself, and leave that terminal open:" \
+        "" \
+        "    ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h $HOST true" \
+        "" \
+        "One master lasts the whole work session."
+}
+
+if [ "$MODE" = check ]; then
+  [ "$REACH" = local ] && exit 0
+  master_is_up || no_master
+  exit 0
+fi
+
+# What would happen, for the dry-run seam and for the error messages.
+where() { [ "$REACH" = local ] && echo local || echo "ssh $HOST"; }
+what()  {
+  [ "$MODE" = script ] && printf 'script %s %s' "$(basename "$SCRIPT")" "$*" \
+                       || printf '%s' "$*"
+}
+
+if [ -n "${ON_SITE_DRY_RUN:-}" ]; then
+  printf '%s\t%s\n' "$(where)" "$(what "$@")"
+  exit 0
+fi
+
+[ "$REACH" = ssh ] && { master_is_up || no_master; }
+
+if [ "$MODE" = command ]; then
+  [ "$REACH" = local ] && exec bash -c "$*"
+  exec "$SSH" -o ControlPath="$CP" "$HOST" "$*"
+fi
+
+# --- script mode -------------------------------------------------------------
+# The script travels; it is never installed on the site. A copy left behind
+# drifts from the plugin the moment either is updated, and the drift is silent.
+NAME="$(basename "$SCRIPT")"
+[ -r "$HERE/$NAME" ] || die 2 "--script takes one of this plugin's own scripts;" \
+                              "'$NAME' is not in $HERE."
+[ "$REACH" = local ] && exec bash "$HERE/$NAME" "$@"
+
+# Settings stay on this machine. What crosses is the handful of values the site
+# scripts already accept as environment overrides - which is why none of them
+# needs the settings file on the far end.
+envs=""
+carry() { [ -n "$2" ] && envs+="$1=$(printf '%q' "$2") "; return 0; }
+carry LAB_RUNS_DIR        "$(setting storage_root)"
+carry NF_RELAY_PORT       "$(setting relay_port)"
+carry TW_AGENT_JAVA       "$(setting agent_java)"
+carry TW_AGENT_JAR        "$(setting agent_jar)"
+carry TW_AGENT_CONNECTION "$(setting agent_connection)"
+carry TW_BIN              "$(setting tw_bin)"
+carry TOWER_WORKSPACE_ID  "$(setting workspace_id)"
+
+args=""; for a in "$@"; do args+="$(printf '%q' "$a") "; done
+
+# What travels: settings.sh, because the site scripts source it, and configs/,
+# because check_resource_contract.sh reads the site config it is checking. About
+# 30 KB, so one round trip carries the lot at the measured 131 ms rather than
+# three times that.
+tar -c -C "$ROOT" scripts/settings.sh "scripts/$NAME" configs \
+  | "$SSH" -o ControlPath="$CP" "$HOST" \
+      "d=\$(mktemp -d) && tar -x -C \"\$d\" && cd \"\$d\" && $envs bash scripts/$NAME $args; rc=\$?; cd /; \\rm -rf -- \"\$d\"; exit \$rc"
