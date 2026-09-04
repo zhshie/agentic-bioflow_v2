@@ -66,7 +66,16 @@ PY
     chmod 600 "$SETTINGS_FILE"
 }
 
-# Allow `settings.sh <key> [default]` as well as sourcing it.
+# Allow `settings.sh <key> [default]` and `settings.sh --set <key> <value>` as
+# well as sourcing it. The writing form is for the case where the discovery
+# happened somewhere else: a script run on the site knows where it put things,
+# but its own set_setting can only reach the settings file it can see, which on
+# a deployment driven from the user's machine is not the one that counts.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-    setting "${1:?usage: settings.sh <key> [default|--required]}" "${2:-}"
+    if [ "${1:-}" = "--set" ]; then
+        set_setting "${2:?usage: settings.sh --set <key> <value>}" \
+                    "${3?usage: settings.sh --set <key> <value>}"
+    else
+        setting "${1:?usage: settings.sh <key> [default|--required]}" "${2:-}"
+    fi
 fi

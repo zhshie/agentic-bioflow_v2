@@ -139,6 +139,18 @@ It downloads a Java runtime, Seqera's agent, and Seqera's CLI into the
 execution area and records the paths. Tell the user it fetches a few hundred
 megabytes once. It is safe to re-run.
 
+**The three do not all belong on one machine.** The agent and its Java run
+where the results are; Seqera's CLI talks to Platform over HTTPS and belongs
+wherever Claude is running. With `reach: ssh` those are two computers, and the
+user's machine has no use for a runtime it will never start:
+
+- On the user's machine: `scripts/install_deps.sh --cli-only`.
+- On the site: `scripts/on_site.sh --script scripts/install_deps.sh`. It ends
+  with a `--- settings ---` block naming what it found. Those paths are on the
+  **site**, and the settings file that matters is not — so put each one in with
+  `scripts/settings.sh --set <key> <value>`. Skipping this leaves the outputs
+  reader unable to start, reporting a missing runtime that is in fact installed.
+
 **5. The outbound channel.** `scripts/egress_ctl.sh start`. On a site whose
 compute nodes cannot reach the internet this is what carries container pulls
 and reference downloads; where they can, the adapter says so and this is

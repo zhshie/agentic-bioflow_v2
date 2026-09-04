@@ -57,7 +57,11 @@ not change; what changes is which machine holds the settings.
    path: it is where runs live, and that has not moved.
 4. Fix the site account's `~/.bashrc` — PITFALLS 16c. Skipping this is the one
    step whose failure wears the site's error message rather than a setup error.
-5. `scripts/preflight.sh`. It asks whether the site can be reached before
+5. `scripts/install_deps.sh --cli-only` on the user's machine. Seqera's CLI
+   reaches Platform over HTTPS from wherever Claude runs, so the user's machine
+   needs its own copy; `agent_java` and `agent_jar` stay pointing at the site,
+   where the outputs reader actually runs.
+6. `scripts/preflight.sh`. It asks whether the site can be reached before
    anything else, and prints the line to paste if it cannot.
 
 The copies on the site can then go. Leaving them is not dangerous, but two

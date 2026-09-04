@@ -17,13 +17,31 @@
 # anything that names the real problem.
 #
 # Idempotent. Re-run it after a failed download; it checks what is already good.
+#
+#   install_deps.sh              all three, into the execution area
+#   install_deps.sh --cli-only   just tw, into INSTALL_ROOT (default: beside the
+#                                settings file)
+#
+# The split exists because the three pieces do not all belong on one machine.
+# The agent and its Java run where the results are; `tw` talks to Platform over
+# HTTPS and so belongs wherever Claude is running. On a deployment driven from
+# the user's own machine that is two different computers, and the laptop has no
+# use for a JDK it will never start.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
 
-: "${LAB_RUNS_DIR:?set LAB_RUNS_DIR to the execution area first}"
-DEST="${LAB_RUNS_DIR}/_agent"
-BIN="${LAB_RUNS_DIR}/_bin"
+CLI_ONLY=""
+[ "${1:-}" = "--cli-only" ] && CLI_ONLY=1
+
+if [ -n "$CLI_ONLY" ]; then
+    ROOT="${INSTALL_ROOT:-$(dirname "$SETTINGS_FILE")}"
+else
+    : "${LAB_RUNS_DIR:?set LAB_RUNS_DIR to the execution area first}"
+    ROOT="$LAB_RUNS_DIR"
+fi
+DEST="${ROOT}/_agent"
+BIN="${ROOT}/_bin"
 JDK_URL='https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse'
 JAR_URL='https://github.com/seqeralabs/tower-agent/releases/latest/download/tw-agent.jar'
 TW_URL='https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-linux-x86_64'
@@ -36,6 +54,7 @@ bad() { printf '  FAIL  %s\n' "$*" >&2; }
 # --- Java 21 ----------------------------------------------------------------
 java_ok() { [ -x "${1:-}" ] && "$1" -version 2>&1 | grep -qE '"21\.'; }
 
+if [ -z "$CLI_ONLY" ]; then
 JAVA="$(setting agent_java)"
 if java_ok "$JAVA"; then
     ok "Java 21 already at $JAVA"
@@ -77,6 +96,7 @@ else
     fi
 fi
 set_setting agent_jar "$JAR"
+fi
 
 # --- tw CLI -----------------------------------------------------------------
 TW="$(setting tw_bin)"
@@ -97,3 +117,13 @@ set_setting tw_bin "$TW"
 echo
 echo "Recorded in the settings file. Nothing here is on PATH by design - the"
 echo "scripts read these paths rather than relying on the shell's environment."
+
+# Run on the site from another machine, this script's set_setting calls land in
+# a settings file the caller cannot see. Print what was discovered so the
+# caller can put it in the one that counts - `settings.sh --set <key> <value>`.
+echo
+echo "--- settings ---"
+[ -n "${JAVA:-}" ] && echo "agent_java: $JAVA"
+[ -n "${JAR:-}"  ] && echo "agent_jar: $JAR"
+[ -n "${TW:-}"   ] && echo "tw_bin: $TW"
+exit 0
