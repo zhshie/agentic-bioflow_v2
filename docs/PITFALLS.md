@@ -352,3 +352,43 @@ gets the right direction (checked against normalised counts: a `log2FC` of
 report is also correct**, saying `higher in CK` / `higher in SynCom`. Only the
 exported PNGs under `plots/differential/` carry the null labels, so deliver the
 report and treat those PNGs as unlabelled for direction.
+
+## Driving the site from a laptop
+
+**16. Every SSH connection to this site costs an interactive 2FA, so an agent
+cannot open one — connection multiplexing is not an optimisation, it is the
+only thing that makes the laptop-driven topology possible.** Measured
+2026-09-04 against `t3-c4.nchc.org.tw`:
+
+```
+one bare round trip = 31.3 s
+each trip prompts: 2FA method -> password -> OTP from the user's phone
+```
+
+Public-key auth is not accepted: `~/.ssh/authorized_keys` has four entries and
+the server still forces keyboard-interactive 2FA. Almost all of those 31 s is a
+human typing, not network latency, so the useful threshold is not "how many
+seconds" but "does a session multiplex" — without it, `preflight.sh`'s five
+nested script calls are five OTP prompts, and the OTP lives on a phone the
+agent cannot read. That is not slow, it is unusable.
+
+**16b. On Windows, only WSL can multiplex.** All three shells were measured;
+the two native ones fail for different reasons, and the second failure is the
+subtle one:
+
+| shell | result | evidence |
+|---|---|---|
+| PowerShell (Win32-OpenSSH) | multiplexing unsupported outright | `getsockname failed: Not a socket` |
+| Git Bash (MSYS2 OpenSSH) | control plane works, sessions do not | `Master running (pid=…)` from `ssh -O check`, then `mux_client_request_session: read from master failed: Connection reset by peer` |
+| WSL2 | expected to work — real AF_UNIX with `SCM_RIGHTS`. **Not yet verified** | — |
+
+Read the Git Bash pair together: the master process is alive and the socket
+carries control commands, so the setup looks correct. What fails is the next
+step, where the master passes the new session's file descriptors to the client
+process over the Unix socket. `-O check` needs no fd-passing; opening a session
+does, and MSYS2's Unix sockets are emulated and do not implement it. No ssh
+option changes this. Two further Git Bash traps on the way in: `ControlPath`
+must not contain `:` (illegal in an NTFS filename — the usual `%r@%h:%p` cannot
+work), and `ssh -M -f` fails to survive backgrounding under MSYS2's fork
+emulation, which looks like the same mux error and sends you chasing the wrong
+cause.
