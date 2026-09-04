@@ -33,8 +33,15 @@ READONLY='^[[:space:]]*(cat|less|more|head|tail|grep|rg|wc|chmod|shellcheck|ls|s
 # that read exactly like a submission. Strip quoted content before segmenting -
 # but NOT where a shell is asked to re-interpret it, because `bash -c "tw
 # launch ..."` really does launch and the quotes would become a hiding place.
+#
+# `ssh <host> '<payload>'` is the same thing across a network: a shell on the
+# far side re-interprets the quoted payload, so it belongs in this list rather
+# than in a separate unwrapping step. Without it the gate reads
+# `ssh host 'tw launch ...'` as `ssh host ` and lets a real launch through -
+# silently, and precisely when the deployment moves off the login node.
+# `on_site.sh` is this project's own sanctioned wrapper for the same thing.
 SEGSRC="$CMD"
-if ! grep -qE '(^|[[:space:]])(bash|sh|zsh|ksh)[[:space:]]+-c([[:space:]]|$)|(^|[[:space:]])eval([[:space:]]|$)' <<<"$CMD"; then
+if ! grep -qE '(^|[[:space:]])(bash|sh|zsh|ksh)[[:space:]]+-c([[:space:]]|$)|(^|[[:space:]])eval([[:space:]]|$)|(^|[[:space:]])([^[:space:]]*/)?(ssh|on_site\.sh)[[:space:]]' <<<"$CMD"; then
     SEGSRC=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$CMD")
 fi
 
