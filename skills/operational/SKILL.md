@@ -35,8 +35,11 @@ Read the command file and follow it rather than improvising the sequence.
 **Any nf-core pipeline works without configuration.** There is no list of
 supported pipelines to check and no per-pipeline file to add — the resource
 mapping keys off the composed request rather than label names, samplesheet
-columns come from the pipeline's `assets/schema_input.json`, and parameters
-from its `nextflow_schema.json`. Pin an exact revision, never a branch.
+columns come from the pipeline's `assets/schema_input.json`, parameters and the
+skippable steps from its `nextflow_schema.json`, and the workflow diagram from
+its `docs/images/`. Everything a user is shown or asked comes from the pipeline
+at the pinned revision, which is why none of it goes stale. Pin an exact
+revision, never a branch.
 
 Note that `fetchngs` fetches data rather than analysing it. Do not offer it
 alongside analyses; it belongs in the conversation about where the raw data is
