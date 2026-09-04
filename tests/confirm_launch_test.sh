@@ -42,6 +42,10 @@ t "bash -c \"$LAUNCH x --disable-optimization\""       gate "launch hidden in a 
 t "eval \"$LAUNCH x --disable-optimization\""          gate "launch hidden in eval"
 t "$NFRUN main.nf"                                    gate "a direct nextflow run"
 t "$SB driver.sh"                                     gate "a bare scheduler submission"
+t "ssh twnia3 '$LAUNCH x --disable-optimization'"      gate "launch wrapped in ssh"
+t "scripts/on_site.sh '$LAUNCH x --disable-optimization'" gate "launch wrapped in on_site.sh"
+t "grep -rn \"ssh\" docs/"                              pass "read-only search for the word ssh"
+t "grep -E 'a|$SB|b' ssh_config.md"                   pass "regex with the verb, filename contains ssh"
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

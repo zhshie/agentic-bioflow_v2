@@ -45,8 +45,25 @@ warn() {
     exit 0
 }
 
+# `ssh <host> '<payload>'` hides a delete from every check below: the payload is
+# quoted, so the delete verb sits behind a quote rather than at a segment
+# boundary, and the command word is `ssh`. The far-side shell runs it anyway.
+# Scan the payload as its own segment - appended rather than substituted,
+# because the wrapper's own arguments still deserve checking.
+PAYLOAD=""
+if echo "$CMD" | grep -qE '(^|[[:space:]])([^[:space:]]*/)?(ssh|on_site\.sh)[[:space:]]'; then
+    PAYLOAD=$(echo "$CMD" | grep -oE "'[^']*'|\"[^\"]*\"" | sed -E "s/^['\"]//; s/['\"]$//")
+fi
+
+# Quoted content is data, not commands. `grep -n 'A\|rm ' file` used to split on
+# the `|` inside the regex, leaving a segment that began with the delete verb -
+# so a read-only search was denied. This really happened while planning v2.1.
+# Strip quoted strings before segmenting; the wrapper payload above was taken
+# from the unstripped command precisely because there the quotes are a shell.
+SEGSRC=$(echo "$CMD" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g")
+
 # Split into segments so one command's arguments are not attributed to another.
-SEGMENTS=$(echo "$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g')
+SEGMENTS=$(printf '%s\n%s' "$SEGSRC" "$PAYLOAD" | sed -E 's/(\|\||&&|[;&|])/\n/g')
 
 UNRESOLVED=""
 HIT_OVERWRITE=""
