@@ -38,9 +38,23 @@ WS="${TOWER_WORKSPACE_ID:-$(setting workspace_id)}"
 CREDS="${SEQERA_CREDENTIALS:-}"
 CONFIG="${SITE_CONFIG:-$ROOT/configs/sites/nchc.config}"
 
-# The same mode-600 file agent_ctl.sh and preflight.sh read. Every tw call
-# below needs it, and no shell exports it.
-TOKEN_FILE="${SEQERA_TOKEN_FILE:-${LAB_RUNS_DIR:-}/_personal/.seqera_token}"
+# This script talks to Platform, which belongs wherever it runs - the site
+# under reach=local, the laptop under reach=ssh (docs/SITE_ADAPTER.md,
+# contract 6). LAB_RUNS_DIR itself stays the site's path either way (the
+# nextflowConfig it gets templated into below has to name where the site will
+# actually run work/launch dirs) - but the backup/state file and the token this
+# script reads are local bookkeeping, and under reach=ssh "local" is the
+# laptop, not a path under LAB_RUNS_DIR that only exists on the far side.
+REACH="$(setting reach local)"
+LOCAL_DIR="$(dirname "$SETTINGS_FILE")"
+
+# The same mode-600 file agent_ctl.sh and preflight.sh read - beside the
+# settings file under reach=ssh, beside LAB_RUNS_DIR otherwise.
+if [ "$REACH" = ssh ]; then
+    TOKEN_FILE="${SEQERA_TOKEN_FILE:-${LOCAL_DIR}/.seqera_token}"
+else
+    TOKEN_FILE="${SEQERA_TOKEN_FILE:-${LAB_RUNS_DIR:-}/_personal/.seqera_token}"
+fi
 if [ -z "${TOWER_ACCESS_TOKEN:-}" ] && [ -r "$TOKEN_FILE" ]; then
     TOWER_ACCESS_TOKEN="$(cat "$TOKEN_FILE")"
     export TOWER_ACCESS_TOKEN
@@ -50,7 +64,11 @@ if [ -z "${LAB_RUNS_DIR:-}" ]; then
     echo "LAB_RUNS_DIR is not set. Run setup first - every path here derives from it." >&2
     exit 1
 fi
-STATE_DIR="${CE_STATE_DIR:-${LAB_RUNS_DIR}/_agent}"
+if [ "$REACH" = ssh ]; then
+    STATE_DIR="${CE_STATE_DIR:-${LOCAL_DIR}/_ce_state}"
+else
+    STATE_DIR="${CE_STATE_DIR:-${LAB_RUNS_DIR}/_agent}"
+fi
 
 if [ -z "$CE" ]; then
     echo "No compute environment name. Save one as 'compute_env' in ${SETTINGS_FILE}." >&2
@@ -94,10 +112,23 @@ fi
 ACCT="$(setting slurm_account)"
 CACHE="$(setting singularity_cache)"
 
+# The egress channel runs where the site is, not where this script does. Under
+# reach=ssh, calling the local copy of egress_ctl.sh directly (as this used to)
+# asks THIS machine for its hostname and its own (nonexistent) relay state, and
+# happily reports back this laptop's own name with some locally-free port - a
+# proxy address the compute nodes cannot reach, wrong in a way that produces no
+# error until the first container pull times out. Route through on_site.sh so
+# the question is asked of the site that actually runs the relay.
+if [ "$REACH" = ssh ]; then
+    EGRESS_ENV="$(bash "$HERE/on_site.sh" --script "$HERE/egress_ctl.sh" env --scoped 2>/dev/null || true)"
+else
+    EGRESS_ENV="$(bash "$HERE/egress_ctl.sh" env --scoped 2>/dev/null || true)"
+fi
+
 NEW="$STATE_DIR/ce-pending.json"
-python3 - "$BACKUP" "$CONFIG" "$NEW" "$HERE" "$ACCT" "$CACHE" <<'PY'
-import json, subprocess, sys
-backup, config, out, here, acct, cache = sys.argv[1:7]
+python3 - "$BACKUP" "$CONFIG" "$NEW" "$ACCT" "$CACHE" "$EGRESS_ENV" <<'PY'
+import json, sys
+backup, config, out, acct, cache, egress_env = sys.argv[1:7]
 ce = json.load(open(backup))
 ce["nextflowConfig"] = open(config).read()
 
@@ -115,16 +146,11 @@ def upsert(name, value, head=True, compute=True):
 # out at all - which fails much later, as a container that will not pull.
 # The adapter says where each variable has to apply; NXF_OPTS is head-only
 # because it configures the head job's JVM and means nothing on a task node.
-try:
-    env = subprocess.run(["bash", f"{here}/egress_ctl.sh", "env", "--scoped"],
-                         capture_output=True, text=True, timeout=15)
-    for line in env.stdout.splitlines():
-        scope, _, rest = line.partition(" ")
-        name, _, value = rest.partition("=")
-        if scope in ("both", "head") and name:
-            upsert(name, value, head=True, compute=(scope == "both"))
-except Exception:
-    pass
+for line in egress_env.splitlines():
+    scope, _, rest = line.partition(" ")
+    name, _, value = rest.partition("=")
+    if scope in ("both", "head") and name:
+        upsert(name, value, head=True, compute=(scope == "both"))
 
 # Settings-derived values, added when absent rather than only refreshed: a
 # compute environment exported before these existed has no entry to update.

@@ -57,6 +57,10 @@ case "${1:-status}" in
                        echo "If this is somebody else's home directory, that is the bug." >&2
                        exit 1; }
     done
+    # An established run area already has this from a prior nextflow run; a
+    # fresh one (new member, new storage_root) does not, and the agent refuses
+    # to start rather than create it itself.
+    mkdir -p "$WORKDIR"
     # The token is passed through the environment only - never on the command
     # line, where `ps` would expose it to every user on the login node.
     TOWER_ACCESS_TOKEN="$(cat "$TOKEN_FILE")" \

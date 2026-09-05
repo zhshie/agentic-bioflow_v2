@@ -116,15 +116,25 @@ carry NF_RELAY_PORT       "$(setting relay_port)"
 carry TW_AGENT_JAVA       "$(setting agent_java)"
 carry TW_AGENT_JAR        "$(setting agent_jar)"
 carry TW_AGENT_CONNECTION "$(setting agent_connection)"
-carry TW_BIN              "$(setting tw_bin)"
 carry TOWER_WORKSPACE_ID  "$(setting workspace_id)"
+# TW_BIN is deliberately not carried: 'tw_bin' in the local settings file names
+# where tw lives on THIS machine, and a site script (agent_ctl.sh register, in
+# particular) needs the site's own tw. Carrying it made a laptop path win over
+# the remote script's own `command -v tw` fallback, so registration failed
+# naming a path that only exists on the laptop.
 
 args=""; for a in "$@"; do args+="$(printf '%q' "$a") "; done
 
-# What travels: settings.sh, because the site scripts source it, and configs/,
-# because check_resource_contract.sh reads the site config it is checking. About
-# 30 KB, so one round trip carries the lot at the measured 131 ms rather than
-# three times that.
-tar -c -C "$ROOT" scripts/settings.sh "scripts/$NAME" configs \
+# What travels: settings.sh, because the site scripts source it, configs/,
+# because check_resource_contract.sh reads the site config it is checking, and
+# any sibling file the named script execs by path rather than sourcing (only
+# egress_ctl.sh has one today: it execs nf_relay.py, which a "ship just the
+# named script" rule silently drops - the relay then fails to bind, and the
+# error names a /tmp path instead of the real cause). About 30 KB, so one
+# round trip carries the lot at the measured 131 ms rather than three times
+# that.
+extra=""
+[ "$NAME" = egress_ctl.sh ] && extra="scripts/nf_relay.py"
+tar -c -C "$ROOT" scripts/settings.sh "scripts/$NAME" $extra configs \
   | "$SSH" -o ControlPath="$CP" "$HOST" \
       "d=\$(mktemp -d) && tar -x -C \"\$d\" && cd \"\$d\" && $envs bash scripts/$NAME $args; rc=\$?; cd /; \\rm -rf -- \"\$d\"; exit \$rc"
