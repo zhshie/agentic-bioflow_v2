@@ -148,7 +148,27 @@ is safe while a session is running; the cleanup warning about the busy `.nfs`
 file is expected and harmless. That file is only removable once every process
 holding it has exited.
 
-## Reaching the internet
+**3e. A live agent and a real SUCCEEDED run can still show zero reports, for a
+reason that has nothing to do with this deployment.** `scripts/agent_ctl.sh
+online <runId>` answering `ONLINE - Platform lists 0 report(s)` is not proof
+that anything here is broken — check the pipeline's own `tower.yml` before
+suspecting the agent or the site adapter. Platform's Reports tab is populated
+by matching that manifest's paths against files under `outdir`; nf-core/ampliseq
+2.18.0 ships
+
+```yaml
+reports:
+  multiqc_report.html: ...
+  samplesheet.csv: ...
+```
+
+naming paths **relative to `outdir` root**, but the pipeline actually publishes
+to `outdir/multiqc/multiqc_report.html` — the manifest was not updated when the
+output moved into a subdirectory. Every file is on disk, complete and correct
+(verified byte-for-byte against the site copy); Platform simply never finds a
+match, on any deployment, HPC or cloud. `nf-core/rnaseq` showed the same zero
+during this same session, which is what makes "check tower.yml first" worth
+doing before spending time on the agent, the relay, or the compute environment.
 
 **4. Compute nodes have no route out; everything goes through the login-node
 relay, and one missing domain kills the whole run.** There is no published list
@@ -393,7 +413,7 @@ subtle one:
 |---|---|---|
 | PowerShell (Win32-OpenSSH) | multiplexing unsupported outright | `getsockname failed: Not a socket` |
 | Git Bash (MSYS2 OpenSSH) | control plane works, sessions do not | `Master running (pid=…)` from `ssh -O check`, then `mux_client_request_session: read from master failed: Connection reset by peer` |
-| WSL2 | expected to work — real AF_UNIX with `SCM_RIGHTS`. **Not yet verified** | — |
+| WSL2 | **Verified 2026-09-05.** Real AF_UNIX with `SCM_RIGHTS`; a master opened once with `ControlPersist=8h` carries every `on_site.sh` session for the rest of the work session | many successful sessions across a multi-hour deployment |
 
 Read the Git Bash pair together: the master process is alive and the socket
 carries control commands, so the setup looks correct. What fails is the next
@@ -459,3 +479,61 @@ Check it the way the failure appears, not the way the file reads:
 env -i HOME="$HOME" PATH=/usr/bin:/bin bash -c \
   'time (source ~/.bashrc); command -v tw nextflow'
 ```
+
+**16d. On this cluster, `python3` on PATH is a lockdown, not a stub.**
+`/usr/bin/python3` symlinks to `/usr/libexec/platform-python3.6`, mode `750`
+`root:root` — RHEL's own reserved interpreter, not meant for general use.
+Every script here that shells out to `python3` (`egress_ctl.sh`'s port search,
+`agent_ctl.sh`'s JSON state) fails with a plain `Permission denied`, which
+reads like a broken install rather than a deliberate fence. The site provides
+a real one through the module system — `module load python/3.12.2` here — and
+it has to go in `~/.bashrc` **above** the interactive-only guard (16c), the
+same place and for the same reason as `tw`/`nextflow`: a `ssh host <cmd>`
+session never reads the guard's far side.
+
+**16e. Too many `on_site.sh` calls on one master silently hang, not error.**
+This site's sshd caps concurrent sessions per TCP connection (`MaxSessions`,
+default 10). Once a master is carrying that many — easy to reach with a
+background `Monitor` polling every 60–90s, or simply a long work session with
+many diagnostic calls — the next session-open request just sits, forever, with
+no error and no timeout of its own. `ssh -O check` still succeeds (it is a
+control-plane ping, not a session), which is what makes this confusing:
+`preflight.sh`'s reach line says OK while the very next real command hangs.
+
+The fix is not to open a session and wait longer; it is to close the exhausted
+master and have the user open a fresh one:
+
+```bash
+ssh -O exit -o ControlPath=<path> <host>
+```
+
+If one specific session is visibly hung, kill only that ssh process — killing
+the whole invoking shell (or the wrong process) can take the master down with
+it, undoing the one thing ControlPersist was for. Wrap `on_site.sh` calls in a
+local `timeout` so a hang is caught in seconds, not minutes; a bare `on_site.sh
+--check-reach` passing is not evidence that the next real command will not
+hang.
+
+**16f. On Windows, `tw`'s native binary segfaults under WSL2 unless the kernel
+allows `vsyscall`.** GraalVM native-image binaries built against older glibc
+sometimes call the legacy vsyscall page (`gettimeofday` and friends) instead of
+the vDSO; WSL2's kernel ships `vsyscall=none` by default, and the call takes
+SIGSEGV instead of emulation. `dmesg` names it exactly:
+
+```
+tw[1046] vsyscall attempted with vsyscall=none ip:ffffffffff600800 ...
+tw[1046]: segfault at ffffffffff600800 ip ffffffffff600800 ...
+```
+
+The install itself looks fine — `install_deps.sh --cli-only` downloads a
+legitimate, correctly-sized, executable ELF binary; it just dies on `tw
+--version`. Fix once, machine-wide, in `%UserProfile%\.wslconfig`:
+
+```
+[wsl2]
+kernelCommandLine = vsyscall=emulate
+```
+
+then `wsl --shutdown` and reopen — which also drops the master connection
+(16b's "leave that terminal open" does not survive a `--shutdown`), so budget
+a reconnect right after.

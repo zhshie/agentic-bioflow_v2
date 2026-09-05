@@ -188,5 +188,35 @@ v1's repository and marketplace were left untouched for exactly this.
 - The GPU path has never been run.
 - `/work/u9613010/lab_runs/_coldstart` is 362 MB of cold-start test evidence.
   Delete it when it stops being useful.
-- A second member has still never installed this. Everything above is one
-  person's machine.
+
+## A second member has now installed this, from a Windows laptop over SSH
+
+2026-09-05, `reach: ssh`, driven from WSL against `t3-c4.nchc.org.tw`, storage
+kept deliberately separate from `/work/u9613010/lab_runs` at
+`/work/u9613010/agentic-bioflow-test` so it could not collide with the first
+member's environment. Every step of `setup.md` walked end to end, including
+both proof runs, and one real analysis after: `nf-core/ampliseq` 2.18.0 against
+40 public PacBio full-length 16S samples (NCBI BioProject `PRJNA1099878`), which
+SUCCEEDED with results delivered back to the laptop via `fetch.sh`.
+
+**Five real bugs came out of it, all fixed and committed** (`9c7aef7`):
+`on_site.sh` dropped `egress_ctl.sh`'s sibling `nf_relay.py` when shipping only
+the named script; it also carried the laptop's own `tw_bin` to the site, which
+outranked `agent_ctl.sh`'s `command -v tw` fallback and broke registration;
+`agent_ctl.sh` never created its own work directory, invisible until now
+because the first member's run area already had one; `ce_apply.sh` used
+`LAB_RUNS_DIR`-relative paths for its backup file, the token, and the egress
+proxy URL, all of which are laptop-local under `reach: ssh` — the proxy URL bug
+is the sharp one, since it silently builds a compute environment that points
+containers at the laptop's own hostname; and the repo's shell scripts were
+committed with CRLF line endings, which breaks them both under WSL and on the
+site itself (`.gitattributes` added).
+
+**Four more things were learned but are the site's or Windows's to work around,
+not this repo's to fix** — all in `PITFALLS.md`: this cluster's `python3` on
+PATH is a locked-down `platform-python` (16d); too many `on_site.sh` calls on
+one master hang instead of erroring once sshd's `MaxSessions` is spent (16e);
+`tw`'s native binary segfaults under WSL2 without `vsyscall=emulate` in
+`.wslconfig` (16f); and a live agent reporting zero Platform reports for a
+SUCCEEDED run can be the *pipeline's* `tower.yml` naming a stale path, not this
+deployment (3e) — true of both `nf-core/ampliseq` and `nf-core/rnaseq` here.
