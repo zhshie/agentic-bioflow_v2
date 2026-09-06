@@ -36,17 +36,79 @@ API="${SEQERA_API_URL:-https://api.cloud.seqera.io}"
 pid_of() { python3 -c "import json;print(json.load(open('$STATE'))['pid'])" 2>/dev/null; }
 alive()  { [ -f "$STATE" ] && kill -0 "$(pid_of)" 2>/dev/null; }
 
+rand_tag() {
+  od -An -N4 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n' \
+    || printf '%04x%04x' "$RANDOM" "$RANDOM"
+}
+
+# Is this connection identifier already spoken for? The workspace's own
+# credential list is the registry: every tw-agent credential carries the
+# connectionId it was issued against.
+#
+#   0  taken      1  free      2  could not ask
+#
+# "Could not ask" is survivable - a site with no tw, no token or no route out
+# still gets a unique identifier from the random tag. The query is what turns
+# "almost certainly unique" into "checked".
+conn_taken() {
+  local id="$1" tw ws
+  tw="${TW_BIN:-$(setting tw_bin)}"; [ -n "$tw" ] || tw="$(command -v tw)"
+  [ -n "$tw" ] && [ -x "$tw" ] || return 2
+  ws="${TOWER_WORKSPACE_ID:-$(setting workspace_id)}"; [ -n "$ws" ] || return 2
+  [ -r "$TOKEN_FILE" ] || return 2
+  TOWER_ACCESS_TOKEN="$(cat "$TOKEN_FILE")" \
+    timeout 30 "$tw" -o json credentials list -w "$ws" 2>/dev/null \
+  | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(2)
+ids = {c.get("keys", {}).get("connectionId") for c in d.get("credentials", [])}
+sys.exit(0 if sys.argv[1] in ids else 1)' "$id"
+}
+
 case "${1:-status}" in
   start)
     if alive; then echo "already running: pid=$(pid_of)"; exit 0; fi
     # A connection identifier only has to be unique, so generating one is safe
-    # in a way that guessing an allocation code is not. Recorded immediately:
-    # the compute environment's credential is tied to it, so it must be the
-    # same string on the next start.
+    # in a way that guessing an allocation code is not. Unique is the hard part
+    # here, though: this site is reached through one shared account, so $USER
+    # is the same string for everybody, and under reach=ssh `hostname -s` is
+    # the same login node for everybody too. That left the date doing all the
+    # work, and two people - or one person on two machines - setting up on one
+    # day would have been handed the same identifier with nothing to notice.
+    # The two credentials in this workspace today differ only by their run
+    # area, which is not part of the name. So: random bits, and ask the
+    # workspace before committing, because a second agent on an identifier
+    # already in use is refused permanently rather than intermittently
+    # (PITFALLS 2b).
     if [ -z "$CONN" ]; then
-      CONN="${USER}-$(hostname -s)-$(date +%Y%m%d)"
+      for _try in 1 2 3 4 5; do
+        CONN="${USER}-$(hostname -s)-$(date +%Y%m%d)-$(rand_tag)"
+        conn_taken "$CONN"; conn_rc=$?
+        [ "$conn_rc" = 0 ] || break
+      done
+      case "$conn_rc" in
+        0) echo "ERROR: five generated connection identifiers were all in use." >&2
+           echo "That is not bad luck - something is producing the same bits every" >&2
+           echo "time. Set 'agent_connection' by hand rather than starting on one" >&2
+           echo "that belongs to somebody else." >&2
+           exit 1 ;;
+        2) echo "note: could not ask the workspace whether '$CONN' is free (no tw," >&2
+           echo "      no token, or no route out). Proceeding on the random tag." >&2 ;;
+      esac
+      # Recorded immediately: the compute environment's credential is tied to
+      # it, so it must be the same string on the next start.
       set_setting agent_connection "$CONN"
       echo "assigned connection id: $CONN"
+      # And recorded again, by hand, where it will actually be read. This ran
+      # on the site; with reach=ssh the settings file that drives the next
+      # start is on the user's machine, and the copy written here is not it.
+      # Skipping this hands the next start an empty setting and a fresh
+      # identifier, and the credential built against this one stops matching.
+      echo "Record it where this deployment reads its settings:"
+      echo "    scripts/settings.sh --set agent_connection $CONN"
     fi
 
     for v in agent_java:JAVA agent_jar:JAR; do

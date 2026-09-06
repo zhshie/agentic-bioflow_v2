@@ -33,8 +33,15 @@ the reasonable response and never is. Ask the site:
 scripts/why_pending.sh
 ```
 
-It answers the one question that matters — will this *ever* start. A `NEVER`
-means the site refuses the request as submitted, which should not happen while
+It asks whether the site's scheduler is answering at all before anything else,
+and stops there if it is not. A scheduler that has gone quiet does not refuse
+the ordinary queue query — it makes it wait, for tens of seconds — so a site
+that has stopped answering and a job that is genuinely queued look identical
+until something asks. Queued work survives it; there is nothing to fix at the
+run's end.
+
+Otherwise it answers the one question that matters — will this *ever* start. A
+`NEVER` means the site refuses the request as submitted, which should not happen while
 the resource contract is doing its job; `scripts/check_resource_contract.sh`
 says whether the contract has drifted from the site.
 

@@ -169,19 +169,24 @@ carry TOWER_WORKSPACE_ID  "$(setting workspace_id)"
 
 args=""; for a in "$@"; do args+="$(printf '%q' "$a") "; done
 
-# What travels: settings.sh, because the site scripts source it, configs/,
-# because check_resource_contract.sh reads the site config it is checking, and
-# any sibling file the named script execs by path rather than sourcing (only
-# egress_ctl.sh has one today: it execs nf_relay.py, which a "ship just the
-# named script" rule silently drops - the relay then fails to bind, and the
-# error names a /tmp path instead of the real cause). About 30 KB, so one
-# round trip carries the lot at the measured 131 ms rather than three times
-# that.
-extra=""
-[ "$NAME" = egress_ctl.sh ] && extra="scripts/nf_relay.py"
-tar -c -C "$ROOT" scripts/settings.sh scripts/require_python.sh "scripts/$NAME" $extra configs \
+# What travels: the whole of scripts/, plus configs/, because
+# check_resource_contract.sh reads the site config it is checking.
+#
+# This used to be a hand-written list of the named script's dependencies, and
+# the list was wrong twice - once for the settings.sh every site script
+# sources, once for nf_relay.py, which egress_ctl.sh execs by path. The relay
+# then failed to bind and the error named a /tmp path instead of the real
+# cause. A dependency list maintained in a different file from the dependency
+# goes stale in silence, and nothing would have reminded whoever adds the next
+# script to update it. So there is no list.
+#
+# Measured before deciding: everything is 120 KB raw against the old list's
+# 30-40 KB, and 37 KB compressed - fewer bytes on the wire than the
+# cherry-picked tar it replaces. __pycache__ is build output, not source, and
+# .gitignore already says so.
+tar -cz --exclude='__pycache__' --exclude='*.pyc' -C "$ROOT" scripts configs \
   | clocked "$TMO" "$SSH" -o ControlPath="$CP" "$HOST" \
-      "d=\$(mktemp -d) && tar -x -C \"\$d\" && cd \"\$d\" && $envs bash scripts/$NAME $args; rc=\$?; cd /; \\rm -rf -- \"\$d\"; exit \$rc"
+      "d=\$(mktemp -d) && tar -xz -C \"\$d\" && cd \"\$d\" && $envs bash scripts/$NAME $args; rc=\$?; cd /; \\rm -rf -- \"\$d\"; exit \$rc"
 rc=$?
 [ "$rc" = 124 ] && sessions_exhausted "$TMO"
 exit "$rc"

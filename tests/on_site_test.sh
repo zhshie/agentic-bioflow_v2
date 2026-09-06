@@ -117,5 +117,40 @@ if grep -qiF "leave that terminal open" <<<"$out"; then
   echo "FAIL: still says to leave the terminal open"; fails=$((fails+1))
 else echo ok; fi
 
+# --- what actually travels in script mode ------------------------------------
+# The named script alone is never enough: site scripts source settings.sh and
+# require_python.sh, and egress_ctl.sh execs nf_relay.py by path. That last one
+# used to be shipped by a hand-written special case in on_site.sh - a list of
+# one script's dependencies, kept in a different file from the dependency, with
+# nothing to remind the next author to add theirs. This test is what would have
+# caught it, because it reads the payload rather than the intention. The
+# presence of why_pending.sh, which egress_ctl.sh has no relationship to at
+# all, is the assertion that nothing is being cherry-picked.
+settings 'reach: ssh' 'site_host: me@example.org'
+PAYLOAD="$TMP/payload.tgz"; export PAYLOAD
+cat > "$TMP/fake-ssh" <<'EOF'
+#!/bin/bash
+for a in "$@"; do [ "$a" = check ] && exit 0; done
+cat > "$PAYLOAD"
+EOF
+chmod +x "$TMP/fake-ssh"
+LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" \
+  bash "$S" --script scripts/egress_ctl.sh status >/dev/null 2>&1
+listing=$(tar -tzf "$PAYLOAD" 2>/dev/null)
+
+for want in scripts/settings.sh scripts/require_python.sh scripts/egress_ctl.sh \
+            scripts/nf_relay.py scripts/why_pending.sh configs/; do
+  printf '%-56s ' "payload carries $want"
+  if grep -q "^$want" <<<"$listing"; then echo ok
+  else echo "FAIL: not in the payload"; fails=$((fails+1)); fi
+done
+
+# Compiled Python is build output; .gitignore says so, and a site that unpacks
+# a stale .pyc next to a newer .py gets to run the old one.
+printf '%-56s ' "payload leaves build output behind"
+if grep -q '__pycache__\|\.pyc$' <<<"$listing"; then
+  echo "FAIL: build output is travelling"; fails=$((fails+1))
+else echo ok; fi
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
