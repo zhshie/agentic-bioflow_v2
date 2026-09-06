@@ -34,12 +34,55 @@ assumes them.
 
 ## Which situation this is
 
-Telling the two apart is the first thing to do.
+There are three, not two, and the third is the one that bites.
 
 Read the deployment settings — `docs/SETTINGS.md` says where they live, which
 depends on whether this deployment runs on the site or reaches it — and check
-for a saved credential. **Missing → first run**, and the person in front of you
-may have nothing at all. **Present → repair**, which is short.
+for a saved credential. **Present → repair**, which is short.
+
+**Missing does not mean nothing exists.** The settings file is per machine, and
+the site is not: the same person on a new laptop, or a second member on a site
+their colleague already set up, arrives here with an empty local file and a
+site that is fully established. Generating fresh values on top of that is how
+two agents end up sharing one `agent_connection`, which Seqera refuses
+permanently rather than intermittently.
+
+So before treating an empty file as a blank site, **ask whether this site has
+been set up before** — by this user elsewhere, or by anyone in the lab — and
+look:
+
+```
+scripts/on_site.sh ls <candidate storage_root>/_personal/env.yaml
+```
+
+Candidates worth trying: whatever the user names, and any `lab_runs`-style
+directory they can point at. Under `reach: ssh` this needs `site_host` first,
+which is one question, not a setup.
+
+**Then ask which of the two they want**, and say what each costs:
+
+| | Adopt the existing one | A second, isolated environment |
+|---|---|---|
+| When | The user *is* the person who set it up, from another machine | A different member, or a deliberately separate run area |
+| What to do | Copy the existing `env.yaml` and token across; skip to **Repair** | Continue with **First run**, choosing fresh values below |
+| Watch for | `agent_java` / `agent_jar` under someone else's home — `drwx------` on this cluster, so unreadable to anyone else. Adopting those paths fails as "missing file" | Nothing is shared but the workspace and the allocation |
+
+For an isolated second environment, three values **must** differ from the
+existing one, and the reasons are not symmetrical:
+
+- **`agent_connection`** — the hard one. Two agents on one identifier are
+  refused *permanently*, and the error names an active agent rather than a
+  collision. Derive it from something already unique to this member, the way
+  the first one was.
+- **`compute_env`** — it embeds the outbound channel's address and the work
+  directory, both of which are per member. Sharing one points this member's
+  runs at someone else's login node.
+- **`storage_root`** — a separate run area. Sharing one is not fatal, but two
+  people's `work/` in one place makes the cleanup question unanswerable.
+
+Shared on purpose: `workspace_id`, and the allocation the site bills to.
+**Ask for both rather than copying them from a file you found** — see
+`docs/SETTINGS.md`.
 
 ---
 
@@ -145,7 +188,11 @@ wherever Claude is running. With `reach: ssh` those are two computers, and the
 user's machine has no use for a runtime it will never start:
 
 - On the user's machine: `scripts/install_deps.sh --cli-only`.
-- On the site: `scripts/on_site.sh --script scripts/install_deps.sh`. It ends
+- On the site: `ON_SITE_TIMEOUT=0 scripts/on_site.sh --script
+  scripts/install_deps.sh`. Every other call to `on_site.sh` carries a clock,
+  because a site that has run out of sessions hangs rather than failing; this
+  one fetches a few hundred megabytes and is the one call allowed to take as
+  long as it takes. It ends
   with a `--- settings ---` block naming what it found. Those paths are on the
   **site**, and the settings file that matters is not — so put each one in with
   `scripts/settings.sh --set <key> <value>`. Skipping this leaves the outputs

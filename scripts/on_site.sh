@@ -21,6 +21,9 @@
 #                       and run nothing. This is the seam the tests use, so
 #                       they need no ssh host, no network and no site.
 #   ON_SITE_SSH_BIN     override the ssh binary (tests)
+#   ON_SITE_TIMEOUT     seconds before a call is treated as hung (default 120,
+#                       15 for --check-reach). 0 disables the clock, which is
+#                       what a long install on the site needs.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -30,6 +33,8 @@ SSH="${ON_SITE_SSH_BIN:-ssh}"
 REACH="$(setting reach local)"
 HOST="$(setting site_host)"
 CP="$(setting ssh_control_path "$HOME/.ssh/cm-%r-%h-%p")"
+TMO="${ON_SITE_TIMEOUT:-120}"
+CHECK_TMO="${ON_SITE_TIMEOUT:-15}"
 
 die() { local rc="$1"; shift; printf '%s\n' "$@" >&2; exit "$rc"; }
 
@@ -66,17 +71,53 @@ no_master() {
   die 2 "no ssh master connection to $HOST." \
         "" \
         "Without one, every command asks for a one-time code - which only you" \
-        "can supply. Open the master yourself, and leave that terminal open:" \
+        "can supply. Open it yourself:" \
         "" \
         "    ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h $HOST true" \
         "" \
-        "One master lasts the whole work session."
+        "ControlPersist detaches the master into the background as soon as it" \
+        "has authenticated, so that command returns immediately and the" \
+        "terminal is yours again - closing it does not take the connection" \
+        "down. One master lasts the whole work session."
+}
+
+# A hang is the failure mode here, not an error. This site caps concurrent
+# sessions per TCP connection, and the cap is reached by ordinary use - a
+# background watch polling every 90s gets there on its own. Past it, a new
+# session request waits forever. `ssh -O check` keeps answering throughout,
+# because it is a control-plane ping rather than a session, which is what let
+# preflight report OK while the next real command sat there. So every call
+# carries a clock, and running out of it means this and not "the site is slow".
+sessions_exhausted() {
+  die 2 "the site did not answer within ${1}s, and did not fail either." \
+        "" \
+        "A master that still answers a control-plane ping can refuse to" \
+        "open another session: this site caps them per connection, and past" \
+        "the cap a session request hangs rather than erroring (PITFALLS 16e)." \
+        "" \
+        "Close the exhausted master, then have the user open a fresh one:" \
+        "" \
+        "    ssh -O exit -o ControlPath=$CP $HOST" \
+        "" \
+        "Raise ON_SITE_TIMEOUT, or set it to 0, only for a call that is" \
+        "genuinely long - a download onto the site, say."
+}
+
+# `timeout` returns 124 when it fires; everything else is the command's own.
+clocked() {
+  local secs="$1"; shift
+  [ "$secs" = 0 ] && { "$@"; return $?; }
+  timeout "$secs" "$@"
 }
 
 if [ "$MODE" = check ]; then
   [ "$REACH" = local ] && exit 0
   master_is_up || no_master
-  exit 0
+  # Not enough on its own - see sessions_exhausted. Prove a session opens.
+  clocked "$CHECK_TMO" "$SSH" -o ControlPath="$CP" "$HOST" true >/dev/null 2>&1
+  rc=$?
+  [ "$rc" = 124 ] && sessions_exhausted "$CHECK_TMO"
+  exit "$rc"
 fi
 
 # What would happen, for the dry-run seam and for the error messages.
@@ -95,7 +136,10 @@ fi
 
 if [ "$MODE" = command ]; then
   [ "$REACH" = local ] && exec bash -c "$*"
-  exec "$SSH" -o ControlPath="$CP" "$HOST" "$*"
+  clocked "$TMO" "$SSH" -o ControlPath="$CP" "$HOST" "$*"
+  rc=$?
+  [ "$rc" = 124 ] && sessions_exhausted "$TMO"
+  exit "$rc"
 fi
 
 # --- script mode -------------------------------------------------------------
@@ -135,6 +179,9 @@ args=""; for a in "$@"; do args+="$(printf '%q' "$a") "; done
 # that.
 extra=""
 [ "$NAME" = egress_ctl.sh ] && extra="scripts/nf_relay.py"
-tar -c -C "$ROOT" scripts/settings.sh "scripts/$NAME" $extra configs \
-  | "$SSH" -o ControlPath="$CP" "$HOST" \
+tar -c -C "$ROOT" scripts/settings.sh scripts/require_python.sh "scripts/$NAME" $extra configs \
+  | clocked "$TMO" "$SSH" -o ControlPath="$CP" "$HOST" \
       "d=\$(mktemp -d) && tar -x -C \"\$d\" && cd \"\$d\" && $envs bash scripts/$NAME $args; rc=\$?; cd /; \\rm -rf -- \"\$d\"; exit \$rc"
+rc=$?
+[ "$rc" = 124 ] && sessions_exhausted "$TMO"
+exit "$rc"

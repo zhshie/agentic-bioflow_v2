@@ -44,7 +44,7 @@ DEST="${ROOT}/_agent"
 BIN="${ROOT}/_bin"
 JDK_URL='https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse'
 JAR_URL='https://github.com/seqeralabs/tower-agent/releases/latest/download/tw-agent.jar'
-TW_URL='https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-linux-x86_64'
+TW_URL="${TW_URL:-https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-linux-x86_64}"
 
 mkdir -p "$DEST" "$BIN" || exit 1
 ok() { printf '  ok    %s\n' "$*"; }
@@ -106,10 +106,38 @@ elif TW=$(command -v tw 2>/dev/null) && [ -n "$TW" ]; then
     ok "tw already on PATH at $TW"
 else
     TW="$BIN/tw"
-    if curl -fsSL -o "$TW" "$TW_URL" && chmod +x "$TW" && "$TW" --version >/dev/null 2>&1; then
+    if ! curl -fsSL -o "$TW" "$TW_URL"; then
+        bad "could not download tw from $TW_URL"; exit 1
+    fi
+    chmod +x "$TW"
+    "$TW" --version >/dev/null 2>&1
+    rc=$?
+    if [ "$rc" = 0 ]; then
         did "tw -> $TW"
+    elif [ "$rc" -ge 128 ]; then
+        # A shell reports a signal death as 128+n. The download is fine here -
+        # correct size, executable ELF - and it dies the moment it runs, which
+        # made "could not install tw" point at the network for an afternoon.
+        # Under WSL2 the cause is always the same one: tw is a GraalVM native
+        # image that calls the legacy vsyscall page, and WSL2 boots
+        # vsyscall=none, so the call takes SIGSEGV instead of emulation.
+        bad "tw downloaded but died on signal $((rc - 128)) when run."
+        printf '%s\n' \
+          "" \
+          "        The binary is intact ($(wc -c < "$TW") bytes, executable). It is the kernel" \
+          "        refusing what it does at startup. On WSL2 this is vsyscall - see" \
+          "        PITFALLS 16f. Fix it once, machine-wide, in %UserProfile%\\.wslconfig:" \
+          "" \
+          "            [wsl2]" \
+          "            kernelCommandLine = vsyscall=emulate" \
+          "" \
+          "        then 'wsl --shutdown' and reopen. That also drops the ssh master," \
+          "        so budget a reconnect straight after." \
+          "" \
+          "        Elsewhere, 'dmesg | tail' names the real reason." >&2
+        exit 1
     else
-        bad "could not install tw from $TW_URL"; exit 1
+        bad "tw downloaded but 'tw --version' failed (exit $rc) - run it by hand for the reason"; exit 1
     fi
 fi
 set_setting tw_bin "$TW"

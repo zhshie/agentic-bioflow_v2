@@ -220,3 +220,30 @@ one master hang instead of erroring once sshd's `MaxSessions` is spent (16e);
 `.wslconfig` (16f); and a live agent reporting zero Platform reports for a
 SUCCEEDED run can be the *pipeline's* `tower.yml` naming a stale path, not this
 deployment (3e) — true of both `nf-core/ampliseq` and `nf-core/rnaseq` here.
+
+**Those four are still not this repo's to fix, but they were this repo's to
+explain, and now are.** The distinction is worth keeping: nothing here can
+unlock the site's interpreter or reboot WSL's kernel, but every one of them
+first appeared as an error blaming the wrong thing, which is a defect in this
+repo's output whoever owns the underlying cause.
+
+| Was reported as | Now |
+|---|---|
+| `Permission denied` from a failed exec (16d) | `scripts/require_python.sh`, sourced by both site scripts, names the fence and points at `module avail python` |
+| Nothing at all — a call that hangs forever (16e) | Every `on_site.sh` call carries a clock, and `--check-reach` opens a real session instead of trusting `ssh -O check`, which was passing while the next command sat there |
+| `could not install tw from <url>` (16f) | A signal death is told apart from a download failure and answered with the `.wslconfig` fix |
+| `0 report(s)`, read as a broken deployment (3e) | `runs.md` sends the reader to the pipeline's own `tower.yml` first |
+
+**Six gaps in the command guidance came out of the same walk**, and they are a
+different class again — places where the text said nothing about a situation
+the member hit, or asked for a step with nothing to notice when it was skipped.
+Three of `launch.md`'s steps (the workflow diagram, the skippable-tools menu,
+and the `conf/base.config` read) were skipped in the real walk with no
+consequence, so step 7's confirmation now carries one line of evidence from
+each: the gate the user must answer is the only place an omission is visible.
+`setup.md` grew the third situation it never had — an empty *local* settings
+file on a site somebody has already set up — because the second member had to
+improvise it, and improvising it wrong means two agents on one
+`agent_connection`, which Seqera refuses permanently. And `push.sh` now exists,
+because `fetch.sh` only ever brought results back: a user whose own reads have
+never left their laptop had no path at all.

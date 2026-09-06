@@ -68,6 +68,13 @@ gate can see.
 
    Keep it to what this run will do. The user is choosing, not studying.
 
+   **Every line of this comes out of the repository at that revision** - the
+   figure's filename from the `docs/images/` listing, the stages from the
+   README's own numbered list. A summary written from memory reads exactly like
+   one that was looked up, which is why this step was skipped once with nothing
+   to notice: the output looked right. Step 7 asks for the URL and the stage
+   list back, so an unread directory shows up there.
+
 3. **Register it** if `tw pipelines list` does not already have it:
    `tw pipelines add --compute-env <ce> --revision <rev> <github-url>`.
    `tw launch <short-name>` only resolves registered pipelines.
@@ -82,7 +89,10 @@ gate can see.
      **ask the user**. Do not infer them.
    - Keep grouping metadata the pipeline does not accept in a separate
      `sample_info.csv` for downstream work.
-   - Register it: `tw datasets add`.
+   - Register it: `tw datasets add`, then `tw datasets url -n <name>
+     --workspace <ws>` for the URL. **`--input` takes that URL, not the local
+     samplesheet path** - adding a dataset does not tell you where it went, and
+     the launch fails later and elsewhere if you pass the path.
 
    **The reads are on the site; you may not be.** List them with
    `scripts/on_site.sh ls <dir>` rather than reading the directory directly -
@@ -90,6 +100,21 @@ gate can see.
    and an empty listing there reads exactly like a directory with no reads in
    it. The paths written *into* the samplesheet are the **site's**, unchanged:
    it is the compute nodes that open those files, not this machine.
+
+   **If the data is not on the site yet, put it there first.** Someone
+   analysing their own sequencing has it on the laptop, and no amount of
+   samplesheet care fixes a path the compute nodes cannot open. Establish which
+   case this is before writing a single row - ask, or list the site directory
+   and find nothing:
+
+   - `scripts/push.sh <local-path> <site-path>` moves it and prints the site
+     path to write into the samplesheet. Where the deployment already runs on
+     the site it prints the path back and copies nothing.
+   - Say the size out loud first: it reports one, and uploads are far slower
+     than downloads on a home connection. An interrupted transfer resumes, so
+     a re-run is cheap; a surprise is not.
+   - Put it under the run area (`storage_root`), not a home directory - that is
+     where quotas are small and where the compute nodes may not look.
 
 5. **Decide parameters, and offer the choices instead of waiting to be asked.**
    Fetch `nextflow_schema.json` at that revision. It is the authority: this
@@ -104,6 +129,14 @@ gate can see.
      default, and say that "all defaults" is a complete answer.
    - **Anything the schema marks required with no default**, which fails at
      launch rather than before it.
+
+   **This is a menu the user answers, not a decision to make on their behalf.**
+   The whole reason the step exists is that a pipeline's defaults are chosen
+   for a generic dataset and the user's is not. Choosing quietly and writing
+   the file produces a `params.yaml` indistinguishable from one they approved -
+   which is how this step was satisfied without ever reaching a user. It is
+   done when the user has said which, and "all defaults" is a complete answer
+   from them; it is not an answer you can give for them.
 
    Write `params.yaml` with a comment explaining any non-default choice.
 
@@ -121,8 +154,26 @@ gate can see.
    - a request larger than the site offers at all (the adapter's config lists
      what it has)
 
+   **Report which of the two you looked for and what you found**, "neither"
+   included. A step whose only visible output is silence when it passes is
+   indistinguishable from one that never ran, and this one never ran.
+
 7. **Show the complete command** — every parameter on its own line — and wait
    for an explicit 確認執行. Include `--disable-optimization`.
+
+   **Carry the evidence from steps 2, 5 and 6 into this message**, one line
+   each, above the command:
+
+   - the workflow figure's URL and the stage list (step 2)
+   - what was offered as skippable or swappable, and which the **user** chose
+     (step 5)
+   - what `conf/base.config` needed a human for, or "nothing" (step 6)
+
+   All three were skipped in a real walk and nothing caught it, because each
+   one's output is invisible when it goes missing. Here it is not: this is the
+   one message the user must answer, so a line that is absent is absent in
+   front of them. Do not reconstruct a line from memory to fill the gap — go
+   back and do the step.
 
 8. **Launch**, then report the run ID and the Platform URL.
 
