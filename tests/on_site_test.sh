@@ -74,5 +74,48 @@ settings 'reach: local'
 mkfake 255
 t "local ignores the ssh master entirely"  0 "local	true"            -- true
 
+# --- a master that is up but cannot open another session ---------------------
+# PITFALLS 16e: this site's sshd caps sessions per TCP connection, and the cap
+# is reached by ordinary use - a background watch polling every 90s plus a long
+# diagnostic session. The next session-open does not fail, it *hangs*, forever.
+# `ssh -O check` keeps answering because it is a control-plane ping, which is
+# exactly what made preflight say OK while the next command sat there. So the
+# check has to open a real session, and every call needs a clock on it.
+mkhang() {   # -O check succeeds; anything that opens a session hangs
+  printf '#!/bin/bash\nfor a in "$@"; do [ "$a" = check ] && exit 0; done\nsleep 30\n' \
+    > "$TMP/fake-ssh"; chmod +x "$TMP/fake-ssh"
+}
+
+settings 'reach: ssh' 'site_host: me@example.org'
+mkhang
+tt() { # like t(), but without the dry run - these cases must really execute
+  local label="$1" want_rc="$2" want="$3"; shift 4
+  printf '%-56s ' "$label"
+  local out rc
+  out=$(LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" \
+        ON_SITE_TIMEOUT=1 bash "$S" "$@" 2>&1); rc=$?
+  if [ "$rc" != "$want_rc" ]; then echo "FAIL: rc $rc wanted $want_rc <<$out>>"; fails=$((fails+1)); return; fi
+  if [ -n "$want" ] && ! grep -qF -- "$want" <<<"$out"; then echo "FAIL: lacks '$want' <<$out>>"; fails=$((fails+1)); return; fi
+  echo ok
+}
+tt "check-reach opens a real session, not just -O check" 2 "session"      -- --check-reach
+tt "and says how to recover the master"                  2 "ssh -O exit"  -- --check-reach
+tt "a hung command surfaces as an error, not a wait"     2 "session"      -- true
+
+# The recovery line has to be complete enough to paste: a ControlPath the user
+# has to reconstruct is a line they will get wrong.
+tt "and the recovery line carries the ControlPath"       2 "ControlPath"  -- true
+
+# ControlPersist detaches the master into the background once it has
+# authenticated. Telling the user to keep a terminal open is false, and it
+# taught one to believe closing it had broken something.
+settings 'reach: ssh' 'site_host: me@example.org'
+mkfake 255
+printf '%-56s ' "no-master text does not demand an open terminal"
+out=$(LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" bash "$S" true 2>&1)
+if grep -qiF "leave that terminal open" <<<"$out"; then
+  echo "FAIL: still says to leave the terminal open"; fails=$((fails+1))
+else echo ok; fi
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

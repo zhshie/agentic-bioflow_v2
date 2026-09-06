@@ -24,6 +24,8 @@ LOG="$STATE_DIR/agent.log"
 # and the connection ID must be unique per agent, so it cannot have a default
 # at all. See PRINCIPLES.md, invariant 3.
 . "$(dirname "${BASH_SOURCE[0]}")/settings.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/require_python.sh"
+require_python || exit 1
 JAVA="${TW_AGENT_JAVA:-$(setting agent_java)}"
 JAR="${TW_AGENT_JAR:-$(setting agent_jar)}"
 CONN="${TW_AGENT_CONNECTION:-$(setting agent_connection)}"

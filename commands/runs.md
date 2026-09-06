@@ -73,6 +73,18 @@ directory is probably not visible from the compute nodes.
    Read binary outputs — images, PDFs — from the filesystem regardless: what
    Platform serves for them is corrupt (PITFALLS 3b).
 
+   **`ONLINE - Platform lists 0 report(s)` is not a verdict on this
+   deployment.** Platform fills its Reports tab by matching the pipeline's own
+   `tower.yml` against files under `outdir`, and that manifest goes stale
+   upstream: nf-core/ampliseq 2.18.0 and rnaseq 3.26.0 both name paths at the
+   `outdir` root for files the pipeline publishes into a subdirectory. Every
+   file is there and correct; nothing matches, on any deployment, cloud
+   included. **Read the pipeline's `tower.yml` at that revision before
+   suspecting the agent, the outbound channel or the compute environment** —
+   PITFALLS 3e has the measured case. Then deliver from the filesystem, which
+   step 3 does anyway, and tell the user the gap is upstream packaging rather
+   than a lost result.
+
 2. **Read the QC, do not just link it.** Report per-sample numbers, and say
    plainly whether any sample should be dropped. Where the pipeline inferred
    something automatically — `strandedness: auto`, an outlier call — report the

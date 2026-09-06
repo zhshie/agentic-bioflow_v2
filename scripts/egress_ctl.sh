@@ -8,6 +8,8 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
+. "$HERE/require_python.sh"
+require_python || exit 1
 
 # The port cannot have a fixed default. It is one process per member on a
 # shared login node, so a constant means the second member's channel fails to
