@@ -20,6 +20,38 @@ in the settings file (`agent_java`, `agent_jar`).
 **2. Create the agent credential only while the agent is already running.**
 `tw credentials add agent` fails with "The agent is not online" otherwise.
 
+**2b. The generated connection identifier had nothing in it that varied per
+person.** `agent_ctl.sh start` assigned `${USER}-$(hostname -s)-$(date
++%Y%m%d)` when the setting was empty, and at this site neither of the first two
+discriminates: everyone reaches the cluster through one shared account, and
+under `reach: ssh` the hostname is the login node's for whoever is driving. The
+date was doing all the work, so two setups on one day - two members, or one
+person on a laptop and on the login node - would have been handed the same
+string. The workspace shows how close this came: its two `tw-agent`
+credentials differ only by work directory, which is not part of the name.
+
+Nothing would have reported it. `start` succeeds on the duplicate - a real
+process, real local state - and the collision surfaces later as 3c's permanent
+refusal, which reads as an agent that keeps dying. Identifiers now carry four
+random bytes, and `start` asks the workspace before committing to one. There is
+no `tw agent` command; the credential list is the registry:
+
+```
+tw -o json credentials list -w <ws>   →   credentials[].keys.connectionId
+```
+
+The query is best-effort - a site with no `tw`, no token or no route out says
+so and proceeds on the random tag - because uniqueness comes from the bytes and
+the query only confirms it.
+
+**A generated identifier has to be written down on the machine that reads the
+settings.** `start` runs on the site; under `reach: ssh` the settings file
+driving the next `start` is on the user's machine, and `set_setting` on the
+site cannot reach it. This was survivable while the identifier was
+date-derived, because regenerating it produced the same string until midnight.
+It is not survivable now, and `start` prints the `settings.sh --set
+agent_connection <id>` line for exactly that reason.
+
 **3. An offline agent makes every run's output look like it does not exist.**
 The run itself is unaffected — Nextflow is on the compute nodes and finishes
 normally — but Platform serves HPC reports *through* the agent, so the Reports

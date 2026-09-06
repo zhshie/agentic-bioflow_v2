@@ -206,10 +206,18 @@ quick. It picks its own port, so several members on one machine do not collide.
 **6. The outputs reader, then its credential — in that order.**
 `scripts/agent_ctl.sh start`, then `scripts/agent_ctl.sh register`.
 **Registering first fails**: Seqera will not issue a credential for something
-it cannot see. `start` assigns a connection identifier if there is none and
-records it; it has to stay the same afterwards, because the credential is tied
-to it, and two people sharing one are refused permanently rather than
-intermittently. `register` prints the credential name to use in the next step.
+it cannot see. `start` assigns a connection identifier if there is none; it has
+to stay the same afterwards, because the credential is tied to it, and two
+agents sharing one are refused permanently rather than intermittently.
+
+It records the identifier where it ran, which with `reach: ssh` is the site and
+not the machine whose settings drive the next `start` — the same split as step
+4. So it also prints a `scripts/settings.sh --set agent_connection <id>` line.
+Run it. Left undone, the next `start` sees an empty setting, invents a fresh
+identifier, and the credential built against the old one stops matching
+something that still looks correct everywhere it is displayed.
+
+`register` prints the credential name to use in the next step.
 
 **7. The compute environment.** `scripts/ce_apply.sh`. With none present it
 builds the first one from the site's template; it always shows what it will do
@@ -223,6 +231,14 @@ different questions — `docs/SITE_ADAPTER.md` explains why both:
 - any nf-core pipeline with `-profile test` — slower, and the only thing that
   proves containers can be fetched, reference data can be downloaded, and
   Platform can read the results back.
+
+**Pass `--outdir` on the nf-core run.** Every nf-core pipeline requires it and
+no `test` profile supplies one, so without it the proof run takes a queue slot,
+reaches a compute node, and dies at parameter validation with
+`Missing required parameter(s): outdir` before a single task exists. A walk
+through this spent a full submit-through-Slurm cycle on exactly that. Point it
+at a scratch path under the run area — `<storage_root>/_coldstart/<pipeline>`
+— which keeps the proof out of anywhere a real run's results would go.
 
 Say explicitly that this uses public test data and touches nothing of theirs.
 

@@ -247,3 +247,59 @@ improvise it, and improvising it wrong means two agents on one
 `agent_connection`, which Seqera refuses permanently. And `push.sh` now exists,
 because `fetch.sh` only ever brought results back: a user whose own reads have
 never left their laptop had no path at all.
+
+## Four more, found by re-reading rather than by failing
+
+A second pass over the same walk turned up four things that did not go wrong
+and clearly could. That is a different kind of finding from everything above,
+and worth naming as such: none of these cost the walk anything, so none of them
+would ever have been written down by waiting.
+
+**The list of files that travel to the site was a list.** `on_site.sh` shipped
+the named script plus a hand-written set of its dependencies, and the set had
+already been wrong twice — once for the `settings.sh` every site script
+sources, once for `nf_relay.py`, which `egress_ctl.sh` execs by path. Both were
+fixed by adding a line to the list, which fixes the instance and leaves the
+class: a dependency list kept in a different file from the dependency goes
+stale in silence, and nothing reminds whoever adds the next script. Measured
+before deciding, because "ship everything" is only obviously right if it is
+cheap: the whole of `scripts/` plus `configs/` is 120 KB raw against the old
+list's 30–40 KB, and **37 KB compressed — fewer bytes on the wire than the
+cherry-picked tar it replaces**. So it ships everything, gzipped, and there is
+no list. `tests/on_site_test.sh` now reads the payload rather than the
+intention; the assertion that `why_pending.sh` is in it, having nothing to do
+with `egress_ctl.sh`, is what makes reintroducing a list fail.
+
+**The connection identifier could not be unique, and the reported reason was
+not the real one.** It was reported as two members on one login node colliding.
+That is not this site's failure: `${USER}` would differ. What does not differ
+here is anything else — the cluster is reached through **one shared account**,
+and under `reach: ssh` the hostname is the login node's for whoever is driving
+— so `${USER}-$(hostname -s)-$(date +%Y%m%d)` reduced to the date, and one
+person setting up on two machines on one day got one string. The workspace
+shows how close it came: its two `tw-agent` credentials differ only by work
+directory, which is not part of the name. The identifier now carries four
+random bytes, and `start` asks the workspace before committing — there is no
+`tw agent` command, but `tw -o json credentials list` exposes
+`keys.connectionId`, which is the registry. PITFALLS 2b.
+
+Fixing it surfaced a second thing that had been hiding behind the date:
+**`start` records the identifier on the machine it ran on**, which under
+`reach: ssh` is the site and not where the next `start` reads its settings.
+Regenerating a date-derived string produced the same answer until midnight, so
+this never showed. A random one makes it fatal, so `start` now prints the
+`settings.sh --set agent_connection <id>` line, and `setup.md` step 6 says to
+run it — the same split step 4 already had for `install_deps.sh`'s paths.
+
+**Every nf-core pipeline requires `--outdir` and no `test` profile sets one.**
+The walk spent a full submit-through-Slurm cycle discovering this: the job
+queued, reached a node, and died at parameter validation before a task existed.
+`setup.md` step 8 now says to pass a scratch `--outdir` under the run area.
+
+**`why_pending.sh` asked the slow question first.** A scheduler controller that
+has stopped answering does not make `squeue` fail; it makes it wait tens of
+seconds, which is indistinguishable from a busy site. `scontrol ping` answers
+either way in about 20 ms and names the controller's state outright, so it now
+runs first and exits 3 without going further. `runs.md` sends people to that
+script to ask whether a task will *ever* start, and "the site is not answering"
+is a real answer to that question and a different one.
