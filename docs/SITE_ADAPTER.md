@@ -182,6 +182,27 @@ workspace. One oddity worth knowing: `tw actions list --workspace <id>` answers
 "Actions for <user>", so actions appear not to be workspace-scoped the way the
 rest are.
 
+**Wave is reachable but unexercised**, which is a third state and worth keeping
+distinct from the two above. It is not a `tw` subcommand at all — `tw --help`
+lists none — so it is turned on in Nextflow's own config (`wave.enabled`) or
+reached through Seqera's MCP, which is why a survey conducted with `tw` misses
+it. The network precondition holds for free: `seqera.io` is already on the
+relay's allowlist for Platform and the Co-Scientist, so `wave.seqera.io`
+answers through the channel with nothing added.
+
+```console
+$ curl -x http://<relay> https://wave.seqera.io/service-info
+{"serviceInfo":{"version":"1.37.0","commitId":"e9e0dcb"}}
+```
+
+**What that measures is the channel, not the feature.** Whether an image Wave
+produces actually runs under this site's container runtime is *not* established
+— no pipeline here has needed one, so nothing has tried. Recorded as untested
+rather than assumed working (`PRINCIPLES.md`, invariant 8). The case where it
+would earn the experiment is a tool with no biocontainer, since Wave builds a
+container from a conda specification; the thing to expect trouble from is the
+Singularity path, not the allowlist.
+
 ---
 
 ## Verifying a change to the environment
