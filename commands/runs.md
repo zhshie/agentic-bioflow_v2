@@ -43,6 +43,12 @@ Ask the site why:
 scripts/why_pending.sh
 ```
 
+`scripts/task_health.sh <run-id>` is the tasks-table check plus this same
+question, as one command — the background watch armed under launch.md step 9
+should already be polling it rather than only `--status`; run it by hand here
+for the same reason the watch does: silence from `--status` is not evidence
+of progress.
+
 - **The site's scheduler is not answering** (exit 3). 🤖 Report that and wait —
   queued work survives it, and there is nothing to fix at the run's end. A
   scheduler that has gone quiet does not refuse the ordinary status query, it

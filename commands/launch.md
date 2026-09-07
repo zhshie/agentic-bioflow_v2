@@ -234,6 +234,18 @@ gate can see.
    when it lands. Asking permission to watch spends a turn on a question with
    one sensible answer.
 
+   **Poll `scripts/task_health.sh <run-id>`, not just `--status`.** Platform
+   reports RUNNING for the entire time one task sits unstarted (runs.md's
+   RUNNING section), and a watch that only checks aggregate status is blind
+   to exactly that failure mode — it stays quiet through a stuck task and
+   only the terminal states ever get reported. `task_health.sh` is the
+   `tw runs view tasks` + `why_pending.sh` combination as one command: it
+   reports `OK: <n> running, <n> queued` on ordinary progress, or
+   `STUCK: <reason>` the moment nothing is running while something queues,
+   with the site's own answer already attached. Escalate `STUCK` the same
+   way a terminal state would be — the user should not have to ask for a
+   debug pass a second run in a row.
+
    **Watch the outputs reader too, not only the run.** Where the site has one it
    dies on its own — four times in two days here (`docs/PITFALLS.md` 3c) — and
    a run that SUCCEEDS with a dead reader still delivers nothing.
