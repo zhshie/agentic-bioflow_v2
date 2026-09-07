@@ -686,6 +686,10 @@ master and have the user open a fresh one:
 ssh -O exit -o ControlPath=<path> <host>
 ```
 
+`scripts/reset_master.sh` does this from the settings file instead of
+hand-reconstructing the ControlPath and host each time, and prints the exact
+reconnect line straight after.
+
 If one specific session is visibly hung, kill only that ssh process — killing
 the whole invoking shell (or the wrong process) can take the master down with
 it, undoing the one thing ControlPersist was for. Wrap `on_site.sh` calls in a
