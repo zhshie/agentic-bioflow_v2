@@ -109,9 +109,9 @@ out=$(run "$A" RUNNING 312SbdATPc2grr FLYE 2 13); rc=$?
 t "config selects the process by name"   "withName: 'FLYE'"  "$out"
 t "config sets the cpus asked for"       "cpus"              "$out"
 t "config sets the memory asked for"     "13.GB"             "$out"
-printf '%-58s ' "config sets cpus = 2"
-grep -qE 'cpus[[:space:]]*=[[:space:]]*2\b' <<<"$out" && echo ok \
-    || { echo "FAIL: no 'cpus = 2'"; fails=$((fails+1)); }
+printf '%-58s ' "config sets cpus = 2, escalating"
+grep -qE 'cpus[[:space:]]*=[[:space:]]*\{[[:space:]]*2[[:space:]]*\*[[:space:]]*task\.attempt' <<<"$out" \
+    && echo ok || { echo "FAIL: no escalating 'cpus = { 2 * task.attempt }'"; fails=$((fails+1)); }
 
 # --- it says which box the numbers land in -----------------------------------
 box="$(expect_box 2 13)"
@@ -124,14 +124,17 @@ fi
 t "the config records which box, in its own comment" "// lands in $box" "$out"
 tn "the box note is not garbled together"            "GB)$box"          "$out"
 
-# --- and the warning this repo's config earns --------------------------------
-# configs/sites/nchc.config carries no task.attempt multiplier on purpose, so a
-# retry gets the same memory and dies the same way. Numbers that are too low
-# are not a slow run, they are two OOMs.
-t "warns that a retry gets no more memory"  "task.attempt"  "$out"
-# Quoted from the config, not paraphrased from memory: the day that intent
-# changes, the script must stop saying it.
-t "quotes the intent from the config itself" "lands it between two boxes" "$out"
+# --- the override must not switch off the site's one recovery ----------------
+# These four assertions exist because the first version of this script got the
+# direction backwards. It wrote `memory = 13.GB`, a fixed number, which REPLACES
+# the `{ 12.GB * task.attempt }` closure nf-core's own base.config supplies - so
+# an override quietly disabled the automatic retry-at-double, and then warned
+# the user that retries do not escalate. The warning was true only because the
+# script had just made it true. PITFALLS 6d has the measurement.
+t  "the override escalates rather than pinning"  "* task.attempt }"  "$out"
+tn "no fixed memory that would kill escalation"  "memory = 13.GB"    "$out"
+t  "says a low guess recovers by itself once"    "retried at double" "$out"
+t  "and that it only happens once"               "maxRetries is 1"   "$out"
 
 # --- both fallbacks fire when the site config cannot be read -----------------
 # Silence here would be the bad outcome twice over: an unchecked box name, and
@@ -142,7 +145,7 @@ out=$( export LAB_RUNS_DIR="$G" LAB_SETTINGS_FILE="$G/_personal/env.yaml" \
               NCHC_SITE_CONFIG="$TMP/there-is-no-such-config"
        bash "$R" --dry-run 312SbdATPc2grr FLYE 2 13 2>&1 )
 t "no site config: says the box is unknown"     "UNKNOWN"          "$out"
-t "no site config: does not promise a retry"    "could not quote"  "$out"
+t "no site config: does not promise a retry"    "was not checked"  "$out"
 
 # --- the plan is written where it can be found later -------------------------
 # Not /tmp: someone has to be able to see next week what was changed and why.

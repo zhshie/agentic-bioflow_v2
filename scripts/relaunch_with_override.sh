@@ -132,10 +132,16 @@ read -r -d '' CFG_TEXT <<EOF
 // numbers below.
 //
 // $BOX_NOTE
+// Written as closures on task.attempt, not as fixed numbers, and that is
+// load-bearing. nf-core's own conf/base.config escalates every label by
+// task.attempt, and a fixed number here REPLACES that closure - so a
+// too-small override would silently switch off the one recovery this site has
+// (PITFALLS 6d). Escalating here keeps it: attempt 2 asks for double and lands
+// in the next box up, measured.
 process {
     withName: '$PROC' {
-        cpus   = $CPUS
-        memory = ${MEM}.GB
+        cpus   = { $CPUS * task.attempt }
+        memory = { ${MEM}.GB * task.attempt }
     }
 }
 EOF
@@ -159,26 +165,32 @@ echo
 printf '%s\n' "$CFG_TEXT"
 echo
 
-# --- the warning this repo's config earns ------------------------------------
-# Quoted from the config itself rather than restated, so the day that intent
-# changes this stops saying it. If the file cannot be read, say plainly that the
-# warning could not be quoted - never paraphrase it from memory.
-echo "Before you confirm - a retry will NOT get more memory than this:"
+# --- what a wrong guess costs ------------------------------------------------
+# This block used to assert the opposite, quoting a sentence in the site config
+# that claimed a retry gets no more memory. Both the sentence and the assertion
+# were false, and the script was making them true by writing fixed numbers that
+# overrode the pipeline's own escalation. Measured correction in PITFALLS 6d.
+#
+# The escalation is checked rather than assumed, because if it ever goes away
+# the sentence below stops being true and this has to stop saying it.
+echo "Before you confirm - what happens if these numbers are too small:"
 echo
-QUOTE=$(sed -n '/Deliberately no task.attempt multiplier/,/^[[:space:]]*[^\/[:space:]]/p' "$SITE_CONFIG" 2>/dev/null \
-        | sed -n 's|^[[:space:]]*//|  |p')
-if [ -n "$QUOTE" ]; then
-    printf '%s\n' "$QUOTE"
+if grep -qE 'memory[[:space:]]*=[[:space:]]*\{.*task\.attempt' "$SITE_CONFIG" 2>/dev/null; then
+    echo "  WARNING: $SITE_CONFIG now sets memory itself with a task.attempt"
+    echo "  multiplier. Combined with the one written above that doubles twice."
+    echo "  Check the site config before confirming."
+elif [ -r "$SITE_CONFIG" ]; then
+    echo "  The override above escalates on retry, the way nf-core's own"
+    echo "  conf/base.config does. So a first attempt at $CPUS cpu / $MEM GB that"
+    echo "  runs out of memory is retried at double, in the next box up, without"
+    echo "  anyone watching (PITFALLS 6d)."
+    echo
+    echo "  That happens ONCE - maxRetries is 1. A guess low enough to fail twice"
+    echo "  costs two queue waits; too high only costs one longer one."
 else
-    # An empty quote means the comment moved, was reworded, or - worst - the
-    # multiplier came back. Any of those makes the sentence below wrong, so say
-    # so rather than assert it from memory.
-    echo "  (could not quote $SITE_CONFIG - check by hand that it still carries"
-    echo "   no task.attempt multiplier on cpus/memory before relying on a retry.)"
+    echo "  (could not read $SITE_CONFIG, so the retry behaviour was not checked."
+    echo "   Verify by hand before relying on a retry to recover a low guess.)"
 fi
-echo
-echo "   So if $CPUS cpu / $MEM GB is too small, the task OOMs and the retry dies"
-echo "   the same way. Too small costs two failures; too big only costs queue time."
 echo
 
 # --- do it -------------------------------------------------------------------
