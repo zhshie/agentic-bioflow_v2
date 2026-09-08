@@ -116,7 +116,7 @@ as `reach` in the settings (`docs/SITE_ADAPTER.md`, contract 6).
 **What kind of compute will this run on?**
 
 - **A cluster Platform cannot reach into** - the case this site adapter was
-  written for. All nine steps apply.
+  written for. All ten steps apply.
 - **A compute environment Platform manages itself** (AWS Batch and the like).
   `reach: none`. **Steps 5 and 6 do not apply**: there is no channel to open and
   no outputs reader to keep alive, because Platform reaches both the storage and
@@ -128,8 +128,10 @@ question entirely for a Platform-managed environment — there is nowhere else t
 be.
 
 - **On the cluster itself** → `reach: local`. Nothing below changes.
-- **On their own laptop or desktop** → `reach: ssh`, plus `site_host`. Three
-  things then differ, and all three are silent failures if missed:
+- **On their own laptop or desktop** → `reach: ssh`, plus `site_host` and
+  `site_user` — the same account named twice, which `scripts/preflight.sh`
+  cross-checks so the two cannot drift apart. Three things then differ, and all
+  three are silent failures if missed:
   - **The settings file and the token live on the user's machine**, not the
     site. `docs/SETTINGS.md` covers the move for a deployment that already has
     them on the site.
@@ -147,7 +149,7 @@ be.
   is decided: **WSL**. Two other Windows shells were measured and neither can
   hold the multiplexed connection this depends on (PITFALLS 16b).
 
-Nine steps, and **the order is forced** — each one blocks the next. Doing them
+Ten steps, and **the order is forced** — each one blocks the next. Doing them
 out of order strands the user somewhere that reports nothing useful.
 
 **1. Where the work will live.** Everything derives from this, so it is first.
@@ -174,8 +176,13 @@ plainly rather than wrapping it:
   **never printed, never in git, never in a params file**
 - `tw info` to confirm the token works
 
-Save `workspace_id`. Mention that a free plan limits concurrent runs and how
-much history is kept, so a busy lab notices before it surprises them.
+Save `workspace_id`, and `seqera_user` — the username Platform shows in the
+Username column of `tw runs list`. Where a lab reaches the site through one
+shared account, that username is the only thing that tells two members' runs
+apart, so ask for it even though nothing fails without it.
+
+Mention that a free plan limits concurrent runs and how much history is kept,
+so a busy lab notices before it surprises them.
 
 **4. The pieces this cluster does not ship.** `scripts/install_deps.sh`.
 It downloads a Java runtime, Seqera's agent, and Seqera's CLI into the
@@ -245,6 +252,21 @@ Say explicitly that this uses public test data and touches nothing of theirs.
 **9. Only now, say what they can do.** Introduce `launch` and `runs`.
 **Not before step 8 passes** — someone handed a command list will use it, and
 an unverified environment is how real data meets a broken setup.
+
+**10. Say where all of this now lives.** `scripts/settings.sh --summary`. Read
+it back to the user — the site account, their Seqera account, the workspace, the
+run area, the compute environment, the outputs reader's connection — and then
+say the part it exists for: **these are saved at the path it names, and every
+command from now on finds them there.** Nothing above has to be answered again,
+on this machine or in any later conversation.
+
+Every step before this one wrote values into a file the user has never seen, and
+nobody thinks to ask where that file is until the day they need it. A member who
+needed theirs ended up searching the filesystem for it. One line at the end of
+setup is what prevents that, which is why it is a step and not a footnote.
+
+The summary reports the token as present or missing and **never prints it**, so
+this is safe to re-run with somebody looking over their shoulder. Say that too.
 
 ---
 

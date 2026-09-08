@@ -4,13 +4,33 @@ One file, outside the repository, holding everything that identifies a person
 or their site. Mode 600. Nothing in it may be copied from another member,
 printed into a conversation, or committed.
 
-**Where it lives is where the deployment runs, not where the site is.** On a
-login node that is `$LAB_RUNS_DIR/_personal/env.yaml`. Reaching the site over
-ssh, it is on the user's own machine, together with the token file beside it —
-`scripts/preflight.sh` derives the token's path from this file's, so the pair
-travel together. `LAB_SETTINGS_FILE` overrides the location. The site never
-needs a copy: the values its scripts want cross as environment variables on the
-one round trip that carries them (`scripts/on_site.sh`).
+**Where it lives is where the deployment runs, not where the site is.**
+`scripts/settings.sh` looks in three places, most explicit first:
+
+1. `$LAB_SETTINGS_FILE`, if set. It wins outright and nothing else is searched:
+   a location that could quietly resolve elsewhere would let a read and a write
+   land in two different files.
+2. `$LAB_RUNS_DIR/_personal/env.yaml` — where it is on a login node.
+3. `${XDG_CONFIG_HOME:-~/.config}/agentic-bioflow/env.yaml` — the conventional
+   place, and the one a user can find without being told.
+
+The third is there because the chain used to stop at the second: with neither
+variable set it produced the string `/_personal/env.yaml`, which is unreadable
+but not empty, so every read returned its default and a configured machine was
+indistinguishable from one that had never run setup. When none of the three
+holds a file, the error names all of them rather than one.
+
+Reaching the site over ssh, the file is on the user's own machine, together with
+the token beside it — `token_file` in `scripts/settings.sh` derives the token's
+path from this file's, so the pair travel together, and `preflight.sh`,
+`agent_ctl.sh`, `ce_apply.sh` and the session hook all ask it rather than each
+working it out again. The site never needs a copy: the values its scripts want
+cross as environment variables on the one round trip that carries them
+(`scripts/on_site.sh`).
+
+**`scripts/settings.sh --summary` says which of the three is in use**, and what
+this deployment is configured as. It reports the token only as
+`present (mode 600)` — its value is never printed, by this or anything else.
 
 `scripts/settings.sh` reads and writes it. It is not a YAML parser — it reads
 `key: value` and stops at the first `#`, which is all this file is allowed to
@@ -20,6 +40,8 @@ be. A settings file that needs a real parser has grown into something else.
 |---|---|---|
 | `reach` | How the site is reached: `none`, `local` or `ssh`. See SITE_ADAPTER contract 6 | Defaults to `local`, which is right only when this deployment runs on the site |
 | `site_host` | `user@host` to log in to. **`reach: ssh` only** | Nothing can reach the site; preflight fails naming this key |
+| `site_user` | The site account the work runs under — the user half of `site_host`, said plainly, so a summary can name it. `scripts/preflight.sh` FAILs when the two disagree, because one value written twice drifts silently | Nothing breaks; the summary cannot say whose account this is |
+| `seqera_user` | This member's Seqera username — the Username column of `tw runs list`. Where a lab reaches the site through **one shared account**, this is the only thing that tells two members apart; `$USER` is the same for everybody | A run cannot be attributed to the person who launched it |
 | `ssh_control_path` | Where the multiplexed master's socket lives. **`reach: ssh` only** | Defaults to `~/.ssh/cm-%r-%h-%p`. It must not contain `:` — illegal in a Windows filename |
 | `storage_root` | Where runs live. Exported as `LAB_RUNS_DIR`; every other path derives from it | Nothing works; scripts refuse to guess |
 | `workspace_id` | The Seqera workspace. **The one value a lab shares** — everything else below is per person | Cannot reach Platform |
