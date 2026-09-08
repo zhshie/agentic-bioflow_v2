@@ -27,7 +27,10 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 fails=0
 
 # Build a transcript from a compact spec, one record per argument:
-#   a:<text>   assistant       h:<text>   a human turn
+#   a:<text>   assistant text (what the user actually read)
+#   w:<cmd>    a Bash command the assistant RAN - never read by the user
+#   q:<x>      an AskUserQuestion tool_use
+#   h:<text>   a human turn
 #   n:<text>   an injected turn (arrives shaped like a human one)
 #   u:<text>   tool result
 mktx() {
@@ -40,6 +43,12 @@ with open(out, "w") as f:
         kind, _, text = spec.partition(":")
         if kind == "a":
             rec = {"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}
+        elif kind == "w":
+            rec = {"type": "assistant", "message": {"content": [
+                   {"type": "tool_use", "name": "Bash", "input": {"command": text}}]}}
+        elif kind == "q":
+            rec = {"type": "assistant", "message": {"content": [
+                   {"type": "tool_use", "name": "AskUserQuestion", "input": {"questions": []}}]}}
         elif kind == "h":
             rec = {"type": "user", "message": {"content": [{"type": "text", "text": text}]}}
         elif kind == "n":
@@ -51,9 +60,11 @@ with open(out, "w") as f:
 PY
 }
 
-DIAG='here is the workflow: https://raw.githubusercontent.com/nf-core/bacass/2.4.0/docs/images/nf-core-bacass_metro_map.png'
-SCHEMA='fetching https://raw.githubusercontent.com/nf-core/bacass/2.4.0/nextflow_schema.json'
-ASK='{"type":"tool_use","name":"AskUserQuestion","input":{"questions":[]}}'
+DIAG_URL='https://raw.githubusercontent.com/nf-core/bacass/2.4.0/docs/images/nf-core-bacass_metro_map.png'
+SCHEMA_URL='https://raw.githubusercontent.com/nf-core/bacass/2.4.0/nextflow_schema.json'
+DIAG="here is the workflow: $DIAG_URL"
+SCHEMA="fetching $SCHEMA_URL"
+
 
 t() { # t <label> <expect allow|deny|warn> <tool-json> <transcript>
   printf '%-58s ' "$1"
@@ -83,9 +94,20 @@ mktx "$TMP/diag.jsonl"   "a:$DIAG"
 mktx "$TMP/mention.jsonl" 'a:step 2 says to read docs/images/ and pick the figure'
 mktx "$TMP/schema.jsonl" "a:$DIAG" "a:$SCHEMA"
 mktx "$TMP/answered.jsonl" "a:$DIAG" "a:$SCHEMA" 'h:全部預設'
-mktx "$TMP/asked.jsonl"  "a:$DIAG" "a:$SCHEMA" "a:$ASK" 'u:the user chose defaults'
+mktx "$TMP/asked.jsonl"  "a:$DIAG" "a:$SCHEMA" 'q:' 'u:the user chose defaults'
 mktx "$TMP/injected.jsonl" "a:$DIAG" "a:$SCHEMA" 'n:<task-notification>agent finished</task-notification>'
 mktx "$TMP/escape.jsonl" 'a:nothing done at all' 'h:略過導覽'
+
+# Found by running the gate against this session's own transcript: the figure
+# URL appeared in a heredoc that WROTE THIS FILE, and that satisfied the gate.
+# A URL inside a command the model ran was never in front of the user.
+FIXTURE_WRITE="cat > tests/confirm_walkthrough_test.sh <<'T'
+DIAG='here is the workflow: $DIAG_URL'
+SCHEMA='fetching $SCHEMA_URL'
+T"
+mktx "$TMP/typed_diag.jsonl"   "w:$FIXTURE_WRITE"
+mktx "$TMP/typed_schema.jsonl" "a:$DIAG" "w:$FIXTURE_WRITE" 'h:全部預設'
+mktx "$TMP/curled.jsonl"       "a:$DIAG" "w:curl -sSL $SCHEMA_URL" 'h:全部預設'
 
 t "an unrelated command is not this gate's business" allow "$LS"  "$TMP/empty.jsonl"
 t "samplesheet before the diagram is refused"        deny  "$SS"  "$TMP/empty.jsonl"
@@ -104,6 +126,13 @@ t "an unreadable transcript warns, never denies"     warn  "$SS"  "$TMP/does-not
 
 # The one that matters most: a subagent report is not a person answering.
 t "an injected turn is not the user replying"        deny  "$PY_" "$TMP/injected.jsonl"
+
+# The one this round's real transcript caught: evidence the model typed into a
+# command is evidence of nothing. Both halves matter - the write must not
+# count, and a genuine fetch still must.
+t "a figure URL I typed into a command is not shown" deny  "$SS"  "$TMP/typed_diag.jsonl"
+t "a fixture naming the schema is not reading it"    deny  "$PY_" "$TMP/typed_schema.jsonl"
+t "actually fetching the schema still counts"        allow "$PY_" "$TMP/curled.jsonl"
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

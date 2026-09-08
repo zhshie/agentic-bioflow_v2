@@ -716,3 +716,45 @@ kernelCommandLine = vsyscall=emulate
 then `wsl --shutdown` and reopen — which also drops the master connection
 (16b's "leave that terminal open" does not survive a `--shutdown`), so budget
 a reconnect right after.
+
+**18. A gate that reads the conversation must separate what the model typed
+from what the user saw — twice this was got wrong, and both times the fix's own
+design conversation was what exposed it.** `hooks/confirm_walkthrough.sh` denies
+a step when the transcript shows the step it depends on never happened. Its
+evidence for "the workflow diagram was shown" went through three forms:
+
+| form | satisfied by |
+|---|---|
+| the string `docs/images/` appears | the design conversation, which discussed it |
+| a `docs/images/` **URL** appears in an assistant record | the heredoc that wrote the gate's own test fixtures |
+| a `docs/images/` URL appears in an assistant **text** block | showing it |
+
+The second form looks tight and is not. A transcript record is not one thing:
+an assistant turn carries `text` blocks, `thinking` blocks and `tool_use`
+blocks, and the flattening treated them alike. So this satisfied the gate —
+
+```
+cat > tests/confirm_walkthrough_test.sh <<'T'
+DIAG='here is the workflow: https://raw.../docs/images/nf-core-bacass_metro_map.png'
+T
+```
+
+— a URL typed into a command, inside a file, that nobody ever read. Splitting
+the flatten to one line per content block, and requiring the URL in a `text`
+block, is the whole fix: `text` is what reaches the terminal, and step 2 asks
+for the raw URL to be put in front of the user precisely because a terminal
+renders no image.
+
+The schema half is deliberately not the same rule, because the schema has to be
+*read*, not displayed — so a `tool_use` counts there, but only when the command
+actually fetches (`curl|wget|WebFetch`). Naming a URL inside a file being
+written is the same nothing in both halves.
+
+Two general points. **A permission gate whose evidence is a conversation can be
+satisfied by the conversation that builds the gate**, and that conversation is
+the one place its author will not look. Both holes were found by running the
+gate against a real transcript rather than fixtures — fixtures contain what
+their author thought of. And **"assistant said X" is not one predicate**: the
+question is almost always whether the user *saw* X, whether the model *did* X,
+or merely whether it *thought* X, and those live in different blocks of the
+same record.

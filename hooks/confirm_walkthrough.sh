@@ -84,18 +84,27 @@ fi
 [ -n "$TP" ] && [ -r "$TP" ] || warn \
 "The walkthrough gate could not read this conversation's transcript, so it could not check whether the pipeline was shown to the user before this step. Proceeding unchecked. Confirm by hand that the diagram and stage list were shown, and that the parameter choices were put to the user rather than decided for them."
 
-# Each record flattened to one line: 'a' assistant, 'h' a human turn, 'u' the
-# machinery. tojson rather than tostring - tostring leaves a plain-string
-# content unquoted, its newlines split one record across several lines, and the
+# One line per content block: 'x' assistant text - the only thing the user
+# actually read - 'a' the assistant's other blocks (tool_use, thinking), 'h' a
+# human turn, 'u' the machinery. Splitting text from tool_use is what stops a
+# URL the model typed into a command from counting as a URL it showed anyone.
+# tojson rather than tostring - tostring leaves a plain-string content
+# unquoted, its newlines split one record across several lines, and the
 # ordering below silently stops meaning anything.
 EV=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
       select(.type=="assistant" or .type=="user")
-      | (if .type=="assistant" then "a"
-         elif ((.message.content|type)=="string")
+      | if .type=="assistant" then
+          (if (.message.content|type)=="array"
+           then .message.content[]
+                | (if .type=="text" then "x" else "a" end) + "\t" + tojson
+           else "x\t" + (.message.content|tojson) end)
+        else
+          (if ((.message.content|type)=="string")
               or ((.message.content|type)=="array"
                   and ([.message.content[].type]|index("text")))
-         then "h" else "u" end)
-        + "\t" + ((.message.content // "") | tojson)' 2>/dev/null \
+           then "h" else "u" end)
+          + "\t" + ((.message.content // "") | tojson)
+        end' 2>/dev/null \
   | awk -F'\t' 'BEGIN{OFS="\t"}
       # Injected turns arrive shaped exactly like a person typing. Left as "h"
       # they would answer the question "did the user reply", so waiting for a
@@ -106,11 +115,20 @@ EV=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
       { print }' \
   | awk -F'\t' '
       $1=="h" && index($2,"'"$ESCAPE"'")            { esc=1 }
-      # A URL, not a mention. Typing the words "docs/images/" while discussing
-      # this gate is not showing anyone a diagram, and an evidence test that
-      # its own design conversation satisfies is not a test.
-      $1=="a" && $2 ~ /https?:\/\/[^ "]*docs\/images\//        { diag=1 }
-      $1=="a" && $2 ~ /https?:\/\/[^ "]*nextflow_schema\.json/  { schema=NR }
+      # A URL the user was handed, in text. Not a mention - typing the words
+      # "docs/images/" while discussing this gate is not showing anyone a
+      # diagram - and not a URL inside a command either. Both looser forms were
+      # tried and both were satisfied by the conversation that wrote this file:
+      # the second by the heredoc that created its test fixtures. Step 2 asks
+      # for the raw URL to be put in front of the user, and a terminal renders
+      # no image, so text is exactly the right and only evidence.
+      $1=="x" && $2 ~ /https?:\/\/[^ "]*docs\/images\//        { diag=1 }
+      # The schema is different: it has to be READ, not displayed, so a fetch
+      # counts. The command must actually fetch it - naming the URL inside a
+      # file being written is the same nothing as above.
+      $1=="x" && $2 ~ /https?:\/\/[^ "]*nextflow_schema\.json/  { schema=NR }
+      $1=="a" && $2 ~ /https?:\/\/[^ "]*nextflow_schema\.json/ \
+              && $2 ~ /curl|wget|WebFetch|http\.get|urlopen/     { schema=NR }
       # Two ways the user can have answered, and the first needs no blocklist
       # to be trusted: an AskUserQuestion carries the choice the user made.
       $1=="a" && schema && NR>schema && index($2,"AskUserQuestion") { ans=1 }
