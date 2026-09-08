@@ -37,10 +37,31 @@ gate can see.
 
 ## Steps
 
-1. **Choose the pipeline and revision.** Discuss the experiment first. Pin an
-   exact revision — never a branch. If the Seqera Co-Scientist is available it
-   may suggest better than you can, but it is optional: proceed on your own
-   knowledge if it is not.
+1. **Choose the pipeline and revision.** Discuss the experiment first.
+
+   **Start from what this person has already run**, because the commonest
+   analysis is the last one again with new samples, and re-deriving it from
+   scratch invites a different revision by accident:
+
+   ```
+   tw runs list      --workspace $(scripts/settings.sh workspace_id)
+   tw pipelines list --workspace $(scripts/settings.sh workspace_id)
+   ```
+
+   The first gives project name and username per run — filter to this member's
+   `seqera_user`, since the site is one shared account and everyone's runs are
+   in the same list. The second says which are registered, and at which
+   revision. **Show both and let them choose**: an earlier pipeline, or a new
+   one they have not run here.
+
+   None of this is stored. Platform already holds it, and a second copy would
+   disagree with the first eventually (`docs/PRINCIPLES.md`, invariant 2). The
+   run directories under the work area are where the *files* are, not the
+   record of what ran.
+
+   Pin an exact revision — never a branch. If the Seqera Co-Scientist is
+   available it may suggest better than you can, but it is optional: proceed on
+   your own knowledge if it is not.
 
    With both pinned, `scripts/check_egress.py <repo> <rev>` reads the
    pipeline's own code and reports hosts the site's egress channel would
@@ -75,9 +96,19 @@ gate can see.
    to notice: the output looked right. Step 7 asks for the URL and the stage
    list back, so an unread directory shows up there.
 
-3. **Register it** if `tw pipelines list` does not already have it:
-   `tw pipelines add --compute-env <ce> --revision <rev> <github-url>`.
-   `tw launch <short-name>` only resolves registered pipelines.
+3. **Register it, but only if it is not already there at this revision.**
+   `tw launch <short-name>` resolves registered pipelines only, so a pipeline
+   nobody here has run needs:
+
+   ```
+   tw pipelines add --compute-env <ce> --revision <rev> <github-url> \
+      --workspace $(scripts/settings.sh workspace_id)
+   ```
+
+   **A registration pins a revision.** Step 1's listing already showed which
+   entries exist and at which one, so re-running the same pipeline at the same
+   revision needs nothing here — skip the step and say you skipped it. Wanting
+   a *different* revision is a different entry, not an edit to this one.
 
 4. **Build the samplesheet.**
    - Read `assets/schema_input.json` from the pipeline at that revision to get
@@ -116,12 +147,28 @@ gate can see.
    - Put it under the run area (`storage_root`), not a home directory - that is
      where quotas are small and where the compute nodes may not look.
 
-5. **Decide parameters, and offer the choices instead of waiting to be asked.**
+5. **Put the parameters to the user as a choice they answer.**
    Fetch `nextflow_schema.json` at that revision. It is the authority: this
    repo holds no curated list of options for any pipeline, and adding one would
    be the thing v2 exists to avoid.
 
-   Put two things in front of the user unprompted:
+   **Offer three routes, and let them pick one.** Do not choose on their behalf,
+   and do not present only the one you would have chosen:
+
+   | | route | where it comes from |
+   |---|---|---|
+   | ① | the settings from a previous run | `tw runs view -i <that run> --params --workspace $(scripts/settings.sh workspace_id)` |
+   | ② | the pipeline's own defaults | the schema, unchanged |
+   | ③ | go through what is adjustable | the groups below |
+
+   For ① also look for a saved resource file under the work area's `tuned/`
+   directory, named for this pipeline and revision. **Show the line recording
+   what data it was tuned against** — sample count and input size — and let the
+   user judge whether this run looks similar. The same numbers on ten times the
+   data run out of memory.
+
+   Route ③ is where the rest of this step applies. Put two things in front of
+   the user unprompted:
    - **What can be skipped or swapped.** The schema already groups them - a
      `*skipping*` group, 19 parameters of it in rnaseq 3.14.0, plus the
      tool-choice parameters carrying an enum, which there are `aligner`,
@@ -131,6 +178,11 @@ gate can see.
      launch rather than before it.
 
    **This is a menu the user answers, not a decision to make on their behalf.**
+   A gate enforces it: writing `params.yaml` is refused until the schema has
+   been read and an answer has come back from them. That gate is not a
+   formality — it exists because this step was completed without ever reaching
+   a person, and the resulting file was indistinguishable from one they had
+   approved.
    The whole reason the step exists is that a pipeline's defaults are chosen
    for a generic dataset and the user's is not. Choosing quietly and writing
    the file produces a `params.yaml` indistinguishable from one they approved -
