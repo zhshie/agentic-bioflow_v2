@@ -141,7 +141,17 @@ while IFS= read -r SEG; do
             # person deleting these costs everyone else the re-download - tens
             # of GB and hours - and nothing in the deleter's own run tells them
             # that happened. Scale is what makes this a deny rather than a warn.
-            echo "$A" | grep -qE '(^|/)_references(/|$)|(^|/)lab_singularity_library(/|$)' \
+            #
+            # The image library is matched under every spelling it has had here,
+            # because this rule protected exactly one of them and it was the one
+            # nobody used. configs/sites/nchc.config defaults the cache to
+            # `_singularity_cache`; this deployment's NXF_SINGULARITY_CACHEDIR
+            # points at `.singularity_cache`; the rule named
+            # `lab_singularity_library`. So the directory actually holding the
+            # images was deletable, while a principle in PRINCIPLES.md said it
+            # was not. A safety net that guards a path nothing writes to is not
+            # a safety net. PITFALLS 17.
+            echo "$A" | grep -qE '(^|/)_references(/|$)|(^|/)[._]?(lab_)?singularity(_cache|_library)?(/|$)' \
                 && HIT_SHARED="${HIT_SHARED}${A} "
             # A name-based rule cannot see the real danger here: a task dir's
             # references/ is a SYMLINK into the shared library, so its own path
@@ -150,7 +160,7 @@ while IFS= read -r SEG; do
             # copy. Resolve the path and judge by the destination.
             RP=$(readlink -f "$A" 2>/dev/null || true)
             if [ -n "$RP" ] && [ "$RP" != "$A" ]; then
-                echo "$RP" | grep -qE '(^|/)_references(/|$)|(^|/)lab_singularity_library(/|$)' \
+                echo "$RP" | grep -qE '(^|/)_references(/|$)|(^|/)[._]?(lab_)?singularity(_cache|_library)?(/|$)' \
                     && HIT_SHARED="${HIT_SHARED}${A} -> ${RP} "
             fi
             echo "$A" | grep -qE '(^|/)(rawdata|results|analysis)(/|$)' && HIT_PROTECTED="${HIT_PROTECTED}${A} "

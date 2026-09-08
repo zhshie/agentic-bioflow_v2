@@ -438,6 +438,37 @@ at 92 GB turns a 200 GB request into a 92 GB one, which then needs 14 CPUs on
 history, which fights fixed-size boxes — a "helpfully" reduced request lands
 below the floor and stalls. Use `tw launch --disable-optimization`.
 
+**17. The shared image library had three names, and the safety net guarded the
+one nothing used.** `PRINCIPLES.md` lists the shared image cache among the
+things that are never deleted, and `hooks/confirm_cleanup.sh` implemented that
+by matching `lab_singularity_library`. Meanwhile:
+
+```
+$ grep cacheDir configs/sites/nchc.config
+    cacheDir = System.getenv('NXF_SINGULARITY_CACHEDIR') ?: "${...}/_singularity_cache"
+$ echo $NXF_SINGULARITY_CACHEDIR
+/work/u9613010/lab_runs/.singularity_cache
+$ ls -d /work/u9613010/lab_runs/lab_singularity_library
+ls: cannot access ...: No such file or directory
+```
+
+Three spellings, and the protected one does not exist on disk. Every image this
+site has pulled lives under the third, which the rule did not match — so the
+directory whose loss costs the whole lab hours of re-pulling was deletable, and
+the principle saying otherwise was true only on paper.
+
+Nothing had gone wrong yet, which is the point: a guard on a path nothing writes
+to fails silently and stays quiet until the day it matters. It was found by
+building the run-area skeleton and asking which name to create, not by losing
+anything.
+
+The rule now matches the shape rather than one literal — `lab_singularity_library`,
+`_singularity_cache`, `.singularity_cache` and a bare `singularity` directory —
+while still allowing near misses like `results_singular`. The general lesson is
+narrower than "keep names in sync": **a protective rule and the thing it protects
+must be checked against each other, because divergence between them produces no
+error at all.**
+
 ## Launching
 
 **10. `tw launch <short-name>` only resolves pipelines registered in the

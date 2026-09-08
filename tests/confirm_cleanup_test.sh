@@ -36,5 +36,18 @@ t "grep -n 'A=\\|B\\|$D ' hooks/confirm_cleanup.sh"                       pass "
 t "ssh twnia3 'ls $P/results'"                                             pass "ssh is not by itself suspicious"
 t "scripts/on_site.sh '$D -rf $P/rawdata'"                                 deny "delete rawdata/ wrapped in on_site.sh"
 
+# The shared image library had three spellings and the rule knew one of them -
+# the one nothing wrote to. nchc.config defaults the cache to
+# `_singularity_cache`, this deployment's NXF_SINGULARITY_CACHEDIR points at
+# `.singularity_cache`, and the rule named `lab_singularity_library`. So the
+# directory actually holding the images was deletable while PRINCIPLES.md said
+# it was protected. All spellings now, and two near misses that must not be.
+SG=$(printf '\x73\x69\x6e\x67\x75\x6c\x61\x72\x69\x74\x79')
+t "$D -rf /work/u9613010/lab_runs/lab_${SG}_library" deny "the library, as the rule spelled it"
+t "$D -rf /work/u9613010/lab_runs/_${SG}_cache"      deny "as nchc.config defaults it"
+t "$D -rf /work/u9613010/lab_runs/.${SG}_cache"      deny "as this deployment actually sets it"
+t "$D -rf /work/u9613010/lab_runs/x/results_singular" pass "a name that merely starts alike"
+t "$D -f  /work/u9613010/lab_runs/x/my_${SG}_notes.md" pass "someone's notes about it"
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
