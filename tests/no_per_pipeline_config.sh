@@ -63,5 +63,21 @@ if [ -f "$INV" ]; then
     fi
 fi
 
+# 5. commands/downstream.md is the same guardrail wearing a different hat: it
+#    must learn from the inventory in front of it, never from a remembered
+#    list of what one pipeline's tool writes. A tool name or a specific output
+#    filename here is v1's per-pipeline table growing back one line of prose
+#    at a time - see the guardrail note inside the file itself.
+DS="$ROOT/commands/downstream.md"
+if [ -f "$DS" ]; then
+    DS_LITERALS='report\.tsv|short_summary'
+    if hits=$(grep -inE "\\b($TOOLS|$DS_LITERALS)\\b" "$DS"); then
+        echo "FAIL: commands/downstream.md names a pipeline tool or output file:"
+        printf '  %s\n' "$hits"
+        echo "  It must read the results tree at run time, not remember what one pipeline wrote."
+        fail=1
+    fi
+fi
+
 [ "$fail" = 0 ] && echo "OK: nothing is configured per pipeline; launch.md still reads the pipeline"
 exit $fail
