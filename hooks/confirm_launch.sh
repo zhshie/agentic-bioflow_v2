@@ -13,45 +13,31 @@
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# Drop here-doc bodies first: a document that MENTIONS `tw launch` is not a
-# launch, and the segment scan below would otherwise treat prose as commands.
-STRIPPED=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
-[ -n "$STRIPPED" ] && CMD="$STRIPPED"
-
-# Decided per segment, never for the whole line: `cat notes.txt && tw launch ...`
-# must still hit the gate.
-# The boundary is any non-word character, not `^` or `/`. Anchoring to the
-# start of a segment looked right and was not: splitting on `&&` leaves the
-# leading space in place, so `cat notes.txt && tw launch ...` - the exact case
-# this gate was written for, and named in the comment above - sailed through.
-# A quoted `bash -c "tw launch ..."` missed for the same reason.
-TRIGGER='(^|[^[:alnum:]_.-])(tw[[:space:]]+launch|sbatch)([[:space:]]|$)|nextflow[[:space:]]+run'
-READONLY='^[[:space:]]*(cat|less|more|head|tail|grep|rg|wc|chmod|shellcheck|ls|stat|file|diff|cp|vim|nano|echo)([[:space:]]|$)|^[[:space:]]*(bash|sh)[[:space:]]+-n([[:space:]]|$)'
-
-# A quoted string is data, not a command. `grep -E 'a|sbatch|b' file` used to
-# trip this gate: splitting on `|` turned the middle of a regex into a segment
-# that read exactly like a submission. Strip quoted content before segmenting -
-# but NOT where a shell is asked to re-interpret it, because `bash -c "tw
-# launch ..."` really does launch and the quotes would become a hiding place.
+# "Does this string start a run" is a judgement several hooks need to reach
+# identically, so it lives in one sourced file instead of being restated here.
+# Sourced relative to $0 the same way strip_heredocs.awk is, so a direct
+# `bash hooks/confirm_launch.sh` from a test still finds it.
 #
-# `ssh <host> '<payload>'` is the same thing across a network: a shell on the
-# far side re-interprets the quoted payload, so it belongs in this list rather
-# than in a separate unwrapping step. Without it the gate reads
-# `ssh host 'tw launch ...'` as `ssh host ` and lets a real launch through -
-# silently, and precisely when the deployment moves off the login node.
-# `on_site.sh` is this project's own sanctioned wrapper for the same thing.
-SEGSRC="$CMD"
-if ! grep -qE '(^|[[:space:]])(bash|sh|zsh|ksh)[[:space:]]+-c([[:space:]]|$)|(^|[[:space:]])eval([[:space:]]|$)|(^|[[:space:]])([^[:space:]]*/)?(ssh|on_site\.sh)[[:space:]]' <<<"$CMD"; then
-    SEGSRC=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$CMD")
+# It is loaded fail-CLOSED, unlike strip_heredocs.awk beside it. That awk fails
+# safe by construction: if it dies, STRIPPED is empty, CMD keeps its original
+# value, and the judgement below still happens. A missing launch_trigger.sh
+# fails the other way - `is_launch_command` becomes command-not-found, 127 is
+# non-zero, and `|| exit 0` waves through every command including a real launch.
+# The gate would be gone with nothing on screen to say so, which is precisely
+# the failure this file exists to prevent. So when the helper cannot be loaded,
+# every command is treated as one that might start a run. That is noisy, and
+# noisy is the correct behaviour for a safety net that has stopped being able
+# to judge.
+if ! . "$(dirname "$0")/launch_trigger.sh" 2>/dev/null \
+   || ! declare -F is_launch_command >/dev/null 2>&1; then
+    jq -n --arg m "GATE NOT WORKING: hooks/launch_trigger.sh could not be loaded, so this command was NOT checked and no other command will be either.
+
+Reinstall or repair the plugin. Until then the launch gate is absent: treat anything that can start a run - tw launch, tw runs relaunch, sbatch, nextflow run - as ungated, and confirm it with the user by hand." \
+      '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $m}}'
+    exit 0
 fi
 
-EXECUTES=0
-while IFS= read -r S; do
-    echo "$S" | grep -qE "$TRIGGER" || continue
-    echo "$S" | grep -qE "$READONLY" && continue
-    EXECUTES=1; break
-done <<< "$(echo "$SEGSRC" | sed -E 's/(\|\||&&|[;&|])/\n/g')"
-[ "$EXECUTES" = 1 ] || exit 0
+is_launch_command "$CMD" || exit 0
 
 WARN=""
 add() { WARN="${WARN}
@@ -85,7 +71,21 @@ if grep -qE '(^|/)tw[[:space:]]+launch' <<<"$CMD" && ! grep -q -- '--disable-opt
     add "no --disable-optimization: Platform right-sizes from run history, which fights a site whose accepted sizes are fixed - a helpfully reduced request can land below what the site will take"
 fi
 
+# The same check cannot be made of a relaunch: `tw runs relaunch` has no
+# --disable-optimization flag at all (`tw runs relaunch --help`), because it
+# reuses whatever the original launch stored. Saying nothing would read as
+# "checked, and fine", and warning that the flag is absent would send the user
+# to a flag that does not exist - so state which of the two it is. It is not a
+# precondition the user can meet, so it does not go in the WARN list.
+NOTE=""
+if grep -qE '(^|/)tw[[:space:]]+runs[[:space:]]+relaunch' <<<"$CMD"; then
+    NOTE="This is a relaunch, so the --disable-optimization question cannot be answered from the command line: the flag does not exist on \`tw runs relaunch\`, and the setting is inherited from the original launch. Check it in the Platform launch form before confirming."
+fi
+
 MSG="GATE: this command can start a pipeline run. Show the user the complete command (every parameter, one per line) and wait for an explicit \"確認執行\" before proceeding."
+[ -n "$NOTE" ] && MSG="${MSG}
+
+${NOTE}"
 [ -n "$WARN" ] && MSG="${MSG}
 
 Preconditions that are not met:${WARN}
