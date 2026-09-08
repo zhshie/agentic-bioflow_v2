@@ -45,5 +45,23 @@ for want in 'nextflow_schema.json' 'assets/schema_input.json' 'docs/images/'; do
     }
 done
 
+# 4. scripts/inventory_outputs.py reports what a results tree contains. The
+#    tempting shortcut is a lookup table - "this tool writes report.tsv, its
+#    columns are these" - which is v1's spec file reborn one entry at a time,
+#    and which goes wrong silently: the tree still gets inventoried, just with
+#    the columns the table remembers rather than the ones on disk. There is no
+#    honest reason for a tool name to appear in a script that opens files and
+#    reads their headers, so the absence of one is the guardrail.
+INV="$ROOT/scripts/inventory_outputs.py"
+if [ -f "$INV" ]; then
+    TOOLS='quast|busco|prokka|multiqc|fastqc|salmon|star|kraken|bracken|dada2|qiime|spades|flye|medaka|porechop|nanoplot|samtools|bwa|bowtie|hisat|kallisto|deseq2|featurecounts|trimgalore|cutadapt|picard|gatk|bcftools|vcftools|megahit|checkm|gtdbtk|abricate|amrfinder'
+    if hits=$(grep -inE "\\b($TOOLS)\\b" "$INV"); then
+        echo "FAIL: scripts/inventory_outputs.py names a pipeline tool:"
+        printf '  %s\n' "$hits"
+        echo "  It must report what it finds on disk, not what it remembers a tool writes."
+        fail=1
+    fi
+fi
+
 [ "$fail" = 0 ] && echo "OK: nothing is configured per pipeline; launch.md still reads the pipeline"
 exit $fail
