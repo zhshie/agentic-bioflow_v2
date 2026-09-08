@@ -306,6 +306,82 @@ keeps reporting the run as RUNNING. Only `scontrol show job <id>` reveals it.
 Nextflow provides `resourceLimits` for the ceiling and has no equivalent for the
 floor, which is what `configs/sites/nchc.config` supplies.
 
+**6b. The seven `ngs` partitions are one node pool wearing seven labels.** The
+box names look like tiers of hardware and are not — the node lists are
+byte-identical:
+
+```
+$ for p in ngs7G ngs13G ngs26G ngs53G ngs92G ngs186G ngs372G; do
+    echo "$p $(sinfo -h -p $p -o '%D') $(sinfo -h -p $p -o '%N')"; done
+ngs7G   46 cpn[3851-3852,3857-3900]
+ngs13G  46 cpn[3851-3852,3857-3900]
+ngs26G  46 cpn[3851-3852,3857-3900]
+ngs53G  46 cpn[3851-3852,3857-3900]
+ngs92G  46 cpn[3851-3852,3857-3900]
+ngs186G 46 cpn[3851-3852,3857-3900]
+ngs372G 50 bgm[3001-3004],cpn[3851-3852,3857-3900]
+
+$ sinfo -h -p ngs53G -o '%n %c %m' | head -1
+cpn3851 56 384564
+```
+
+`ngs7G` through `ngs186G` are the same 46 nodes. `ngs372G` is those 46 plus four
+`bgm` nodes — 50. Every node is 56 cores and 384564 MB.
+
+So moving to a smaller partition does **not** move you to different hardware,
+and the inference it invites — "the small queue is less busy, I will wait there"
+— has the mechanism backwards. A smaller box gets scheduled sooner because more
+of them **fit per node**: a 56-core/375 GB node holds 7 jobs at 8c/53G but 28 at
+2c/13G. The pool is the same size either way; the request is what changes how
+much of it you need free at once.
+
+Two things follow. Shrinking a request is the only lever that makes a queued job
+start sooner here, so `scripts/why_pending.sh <jobid>` prints the ladder of
+smaller boxes for a job whose `Reason=` is `Resources` or `Priority` — and
+prints nothing of the kind for `QOSMin*`, which is entry 6's stranding and gets
+worse, not better, if you shrink it. And the ladder itself is read out of
+`NCHC_BOXES` in `configs/sites/nchc.config` by `scripts/utils/boxes.sh`, so the
+box numbers exist in exactly one place.
+
+**6c. A queued job cannot be resized here; `scontrol update` is refused
+outright.** Shrinking a request is the lever entry 6b names, which raises the
+obvious follow-up: a job already sitting in the queue does not need its whole
+run cancelled and relaunched, it just needs its own request changed. On most
+SLURM sites that works and costs nothing — the head job keeps running, the
+cache is untouched, nothing re-queues.
+
+Not here. Measured against a held job of the author's own, so ownership and
+account were never in question (`UserId=u9613010`, `Account=mst109178`,
+slurm 25.11.0):
+
+```
+$ sbatch --hold -A MST109178 -p ngs7G -c 1 --mem=7G -t 00:02:00 probe.sh
+Submitted batch job 2053079                    # JobState=PENDING
+
+$ scontrol update JobId=2053079 MinMemoryNode=13312
+Unspecified error for job 2053079
+$ scontrol update JobId=2053079 NumCPUs=2
+Unspecified error for job 2053079
+$ scontrol update JobId=2053079 Partition=ngs13G
+Unspecified error for job 2053079
+$ scontrol update JobId=2053079 JobName=renamed_probe
+Unspecified error for job 2053079
+```
+
+The fourth one is the one that settles it. Renaming a job touches no resource,
+no partition and no QOS, and it is refused with the same message — so this is
+not a policy about resizing, it is that an ordinary user cannot `scontrol
+update` their own job at all. The message says "Unspecified error" rather than
+naming a permission, which is why guessing from the first three attempts alone
+would have been wrong: they look exactly like a QOS rule about resources.
+
+So a request that needs changing needs the run relaunched. `tw runs relaunch`
+defaults to resuming, and the finished tasks come back from cache — three runs
+of one bacass analysis shared a single Session ID and the last of them reported
+8 of 9 tasks `CACHED` — so the cost is one more spell in the queue, not the
+pipeline over again. That is the only route, and there is no point writing a
+wrapper for the other one.
+
 **7. Map the composed request, never label names.** nf-core labels are partial
 and stackable — `process_long` sets only `time`, `process_low_memory` only
 `memory`, `process_gpu` neither — and one process may carry two of them. A
