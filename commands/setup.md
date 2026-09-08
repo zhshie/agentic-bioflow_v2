@@ -149,6 +149,39 @@ be.
   is decided: **WSL**. Two other Windows shells were measured and neither can
   hold the multiplexed connection this depends on (PITFALLS 16b).
 
+**Two more questions, before step 1** — they decide what step 1 builds, so
+asking them after would mean redoing it.
+
+① **Where is your source data right now?**
+
+This is not really a choice: FASTQ has to end up somewhere the compute side
+can read, because compute nodes are what read it. So the real question is
+where it is *now*.
+
+- **Already on the cluster.** Good — just confirm it sits somewhere the
+  compute side can actually see. A home directory cannot be (small quotas,
+  and under `reach: ssh` the compute side is a different machine entirely
+  from the one a home directory belongs to); the run area can.
+- **On the user's own computer.** The ordinary case, not the exotic one — do
+  not tell them to "put it on the cluster" and move on. `scripts/push.sh`
+  does that: no size cap, deliberately, because raw reads are legitimately
+  tens of gigabytes and moving them is the entire point.
+
+② **Where should downstream analysis happen?**
+
+A genuine choice, unlike ①, and it decides whether a local skeleton gets built
+alongside the site one (step 3, once `seqera_user` is known).
+
+- **On the user's own machine (default, recommended).** Results come back
+  through `scripts/fetch.sh` as a read-only copy; the analysis code and
+  figures — what an IDE actually opens — live only on their machine and never
+  on the site.
+- **On the site itself (only when outputs are huge).** No local skeleton.
+  Measure before assuming this is the case: a normalised count matrix is
+  about 973 KB, and a whole delivery directory is around 25 MB — ordinary
+  laptop territory, not a reason to keep everything on the cluster by
+  default.
+
 Ten steps, and **the order is forced** — each one blocks the next. Doing them
 out of order strands the user somewhere that reports nothing useful.
 
@@ -161,6 +194,19 @@ and container images will fill it.
 Write it to `~/.bashrc` as `LAB_RUNS_DIR` — not to any tool's own settings,
 which reach neither the user's own terminal nor the compute nodes. Save it as
 `storage_root` in the settings file too.
+
+Then build the shared skeleton: `scripts/init_workspace.sh site`. It is safe
+to re-run and touches nothing already inside a directory it creates.
+`seqera_user` — who this member is — is not known yet (that is step 3), so
+this first call lays down only the parts that do not need it: `_personal/`
+for the settings file and token, the shared reference and image areas, and
+where this deployment's own background machinery keeps its state. Step 3
+completes it — see below — with the member's own subtree, and with the local
+side too when ② asked for one; both need `seqera_user` to know whose they are.
+
+If ① was "on the user's own computer", their data is not on the cluster yet.
+Note that now; `scripts/push.sh` is what moves it, once there is a path to
+push and somewhere on the site to put it.
 
 **2. What must already exist.** Check for `nextflow`, `git`, `jq`, `curl` and
 the container runtime. **Report what is missing; do not install it** — these
@@ -183,6 +229,14 @@ apart, so ask for it even though nothing fails without it.
 
 Mention that a free plan limits concurrent runs and how much history is kept,
 so a busy lab notices before it surprises them.
+
+Now that `seqera_user` is known, finish what step 1 started:
+`scripts/init_workspace.sh site --user <seqera_user>` adds this member's own
+subtree to the shared skeleton — where their source data and their runs live.
+If ② asked for local analysis, also run
+`scripts/init_workspace.sh local --user <seqera_user>` on the user's own
+machine. Both calls print the tree they made; show it, since it is where
+everything from here on will be found.
 
 **4. The pieces this cluster does not ship.** `scripts/install_deps.sh`.
 It downloads a Java runtime, Seqera's agent, and Seqera's CLI into the
@@ -244,8 +298,10 @@ no `test` profile supplies one, so without it the proof run takes a queue slot,
 reaches a compute node, and dies at parameter validation with
 `Missing required parameter(s): outdir` before a single task exists. A walk
 through this spent a full submit-through-Slurm cycle on exactly that. Point it
-at a scratch path under the run area — `<storage_root>/_coldstart/<pipeline>`
-— which keeps the proof out of anywhere a real run's results would go.
+at a scratch path under the run area —
+`<storage_root>/_system/coldstart/<pipeline>`, the home
+`scripts/init_workspace.sh` built in step 1 for exactly this kind of probe —
+which keeps the proof out of anywhere a real run's results would go.
 
 Say explicitly that this uses public test data and touches nothing of theirs.
 

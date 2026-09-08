@@ -60,6 +60,78 @@ be. A settings file that needs a real parser has grown into something else.
 user, and **must be asked for rather than guessed** — an allocation code or a
 workspace copied from someone else fails in ways that look like a bug.
 
+## The shape under `storage_root`
+
+`storage_root` used to mean "put things somewhere in here" and nothing more
+specific than that. In practice that meant probe directories from setup
+rehearsals sitting beside real analyses with no boundary between them, and a
+second run area elsewhere shaped differently again - `rawdata/`, `results/`
+and a work directory all at the top level, instead of per member. Nobody had
+designed the shape; it had accreted.
+
+`scripts/init_workspace.sh` is the shape, made concrete. It builds two
+distinct sides - never both from one call, because they are two different
+machines - and never touches anything already inside a directory it creates,
+so running it again is always safe:
+
+```
+$LAB_RUNS_DIR/                     (site side, "site")
+├── _personal/            env.yaml and the token, mode 600, per person
+├── _references/          shared reference data
+├── lab_singularity_library/   shared container images
+├── _system/               where this deployment's own machinery keeps its
+│   ├── agent/              state - agent/relay/coldstart, so a probe from a
+│   ├── relay/               setup rehearsal has somewhere to go that is not
+│   └── coldstart/           the top level
+└── <seqera_user>/         one member's workspace - the site is one shared
+    ├── rawdata/            Unix account, so the Seqera username is what
+    │                       tells members apart, not $USER
+    └── runs/
+        └── <pipeline>_<label>_<YYYYMMDD>/
+            ├── logs/
+            ├── results/    --outdir points here
+            ├── analysis/   downstream code and figures
+            └── work/       the only deletable one, and only on confirmation
+
+<local root>/                      (local side, "local"; default $HOME/agentic-bioflow)
+└── <seqera_user>/
+    ├── inbox/              source data waiting to be pushed up
+    └── runs/<same name as the site>/
+        ├── results/        brought back by scripts/fetch.sh - read-only
+        └── analysis/       R/Python and figures; what an IDE opens
+```
+
+The two `runs/<name>/` directories share a name on purpose, so the halves line
+up by eye. `results/` is the only thing that exists twice, and it is a
+re-fetchable read-only copy rather than a second source of truth -
+`analysis/` exists **only locally**, `rawdata/` **only on the site**. This
+project has been bitten twice by two copies of one truth being allowed to
+disagree; do not reintroduce a third.
+
+**The directory names are not this design's to choose freely.**
+`rawdata`, `results`, `analysis`, `_references` and `lab_singularity_library`
+are copied verbatim from `hooks/confirm_cleanup.sh`'s HIT_PROTECTED and
+HIT_SHARED blocks - the safety net that refuses to delete them. An earlier
+draft of this design called the shared image cache `_singularity_cache`,
+which reads naturally but does not match the hook's pattern; spelling it
+`lab_singularity_library` instead is what lets the skeleton and the safety net
+agree, and is why that name looks like an odd fit next to the underscore-led
+names around it.
+
+**Migration: none.** Existing runs stay exactly where they are;
+`scripts/init_workspace.sh` never moves, renames or deletes anything. The
+skeleton applies going forward, to what gets created from here on - not
+retroactively to what already exists.
+
+Setup asks two questions that decide what gets built (`commands/setup.md`,
+"Two more questions, before step 1"): where the source data already is
+(input is not really a choice - it has to end up on the site, because compute
+nodes are what read it, so `scripts/push.sh` moves it there when it starts on
+someone's own computer) and where downstream analysis should happen (a real
+choice; local is the default, and is small - a normalised count matrix is
+about 973 KB, a whole delivery directory about 25 MB - so "the site, because
+it might be large" is rarely the right call).
+
 ## Keys this version does not read
 
 `nextflow_path`, `hpc_profile`, `driver_queue`. They belong to v1, which is
