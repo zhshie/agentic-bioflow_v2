@@ -382,6 +382,46 @@ of one bacass analysis shared a single Session ID and the last of them reported
 pipeline over again. That is the only route, and there is no point writing a
 wrapper for the other one.
 
+**6d. A retry DOES escalate here, and the config used to say it did not.**
+Entry 6c leaves relaunching as the only way to change a request. That is true
+for a *queued* job, and it made the neighbouring question urgent: when a task
+dies of memory, does anything recover on its own, or does a person have to
+intervene every time?
+
+It recovers on its own, and it always did. nf-core's `conf/base.config`
+multiplies every label by `task.attempt` — bacass 2.6.1 and rnaseq 3.14.0 both
+do — and `configs/sites/nchc.config` sets only `queue` and `clusterOptions`,
+never `memory` or `cpus`, so that escalation reaches the scheduler untouched.
+Measured with a probe that failed four tasks on purpose with 137, the status an
+OOM kill reports:
+
+```
+$ sacct --format=JobID,JobName,Partition,ReqCPUS,ReqMem,State,ExitCode -X
+   2053143  nf-sayHello__3_  ngs13G  2  13G  FAILED     137:0     <- attempt 1
+   2053144  nf-sayHello__1_  ngs13G  2  13G  FAILED     137:0
+   2053152  nf-sayHello__1_  ngs26G  4  26G  COMPLETED    0:0     <- attempt 2
+   2053155  nf-sayHello__3_  ngs26G  4  26G  COMPLETED    0:0
+```
+
+Attempt 2 asked for double and landed in the next box up, with `-c 4 --mem=26G`
+derived for it. Nothing stranded.
+
+**What makes this worth an entry is what the config asserted instead.** Its
+comment said a doubled request "lands it between two boxes, and the retry would
+strand exactly the way the original request did", and that "a genuine OOM needs
+its label moved up a tier by hand". Both false. `nchcBox` rounds **up** to the
+smallest box that fits, so doubling cannot land between boxes; `resourceLimits`
+caps the top. The claim reads like it predates `resourceLimits`.
+
+A wrong comment about a safety property is worse than no comment, because it is
+believed and it points the wrong way: it tells whoever reads it to go and do by
+hand the thing that is already happening, and to distrust a recovery that
+works. It has been corrected in place, with the measurement beside it.
+
+The site config still adds no multiplier of its own — not because escalation is
+bad, but because the pipeline already supplies one and a second would compound
+with it.
+
 **7. Map the composed request, never label names.** nf-core labels are partial
 and stackable — `process_long` sets only `time`, `process_low_memory` only
 `memory`, `process_gpu` neither — and one process may carry two of them. A
