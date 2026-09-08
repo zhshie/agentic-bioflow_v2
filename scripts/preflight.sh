@@ -15,14 +15,15 @@ CE="${SEQERA_COMPUTE_ENV:-$(setting compute_env)}"
 TW="${TW_BIN:-$(setting tw_bin)}"
 [ -n "$TW" ] || TW="$(command -v tw 2>/dev/null)"
 
-# The token lives in a mode-600 file beside the settings file. Deriving it from
-# the settings file rather than from LAB_RUNS_DIR is what lets the pair travel
-# to a laptop together when the site is reached over ssh - LAB_RUNS_DIR is then
-# a path on the far side. Without this the compute-env check below SKIPs in any
+# The token lives in a mode-600 file beside the settings file - `token_file`
+# works that out, in one place, for everything that needs it. Anchoring it on
+# the settings file rather than on LAB_RUNS_DIR is what lets the pair travel to
+# a laptop together when the site is reached over ssh; LAB_RUNS_DIR is then a
+# path on the far side. Without this the compute-env check below SKIPs in any
 # shell that did not already export the token, and SKIP is not FAIL: preflight
 # then exits 0 having never asked the one question that decides whether a
 # launch can land.
-TOKEN_FILE="${SEQERA_TOKEN_FILE:-$(dirname "$SETTINGS_FILE")/.seqera_token}"
+TOKEN_FILE="$(token_file)"
 if [ -z "${TOWER_ACCESS_TOKEN:-}" ] && [ -r "$TOKEN_FILE" ]; then
   TOWER_ACCESS_TOKEN="$(cat "$TOKEN_FILE")"
   export TOWER_ACCESS_TOKEN
@@ -50,6 +51,24 @@ case "$REACH" in
     fi ;;
   *) say FAIL "reach" "unknown value '$REACH' - must be none, local or ssh (docs/SITE_ADAPTER.md)" ;;
 esac
+
+# --- Who this deployment is --------------------------------------------------
+# `site_user` and the user half of `site_host` name one account. Two places
+# holding one value drift, and this pair drifts silently: both readings still
+# look correct on the page, and each command lands wherever the value it happened
+# to read points. So the duplication is answered with a check rather than a
+# comment (PRINCIPLES.md - a principle with no check is a slogan).
+#
+# Only when both are present. `site_user` is what makes the summary able to say
+# whose account the work runs under on a site reached without `site_host` at all.
+SU="$(setting site_user)"
+SH="$(setting site_host)"
+if [ -n "$SU" ] && [ -n "$SH" ] && [ "${SH#*@}" != "$SH" ]; then
+  HU="${SH%%@*}"
+  [ "$SU" = "$HU" ] \
+    && say OK   "site-user" "$SU" \
+    || say FAIL "site-user" "site_user is '$SU' but site_host logs in as '$HU' - they name the same account; correct whichever is wrong"
+fi
 
 # --- Where runs live ---------------------------------------------------------
 if [ "$REACH" = local ]; then

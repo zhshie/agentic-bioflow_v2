@@ -4,15 +4,37 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_launch.sh", "timeout": 10 },
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_cleanup.sh", "timeout": 5 }
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_launch.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_cleanup.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_walkthrough.sh",
+            "timeout": 10
+          }
         ]
       }
     ],
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh", "timeout": 15 }
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh",
+            "timeout": 15
+          }
         ]
       }
     ]

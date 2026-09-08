@@ -306,6 +306,122 @@ keeps reporting the run as RUNNING. Only `scontrol show job <id>` reveals it.
 Nextflow provides `resourceLimits` for the ceiling and has no equivalent for the
 floor, which is what `configs/sites/nchc.config` supplies.
 
+**6b. The seven `ngs` partitions are one node pool wearing seven labels.** The
+box names look like tiers of hardware and are not — the node lists are
+byte-identical:
+
+```
+$ for p in ngs7G ngs13G ngs26G ngs53G ngs92G ngs186G ngs372G; do
+    echo "$p $(sinfo -h -p $p -o '%D') $(sinfo -h -p $p -o '%N')"; done
+ngs7G   46 cpn[3851-3852,3857-3900]
+ngs13G  46 cpn[3851-3852,3857-3900]
+ngs26G  46 cpn[3851-3852,3857-3900]
+ngs53G  46 cpn[3851-3852,3857-3900]
+ngs92G  46 cpn[3851-3852,3857-3900]
+ngs186G 46 cpn[3851-3852,3857-3900]
+ngs372G 50 bgm[3001-3004],cpn[3851-3852,3857-3900]
+
+$ sinfo -h -p ngs53G -o '%n %c %m' | head -1
+cpn3851 56 384564
+```
+
+`ngs7G` through `ngs186G` are the same 46 nodes. `ngs372G` is those 46 plus four
+`bgm` nodes — 50. Every node is 56 cores and 384564 MB.
+
+So moving to a smaller partition does **not** move you to different hardware,
+and the inference it invites — "the small queue is less busy, I will wait there"
+— has the mechanism backwards. A smaller box gets scheduled sooner because more
+of them **fit per node**: a 56-core/375 GB node holds 7 jobs at 8c/53G but 28 at
+2c/13G. The pool is the same size either way; the request is what changes how
+much of it you need free at once.
+
+Two things follow. Shrinking a request is the only lever that makes a queued job
+start sooner here, so `scripts/why_pending.sh <jobid>` prints the ladder of
+smaller boxes for a job whose `Reason=` is `Resources` or `Priority` — and
+prints nothing of the kind for `QOSMin*`, which is entry 6's stranding and gets
+worse, not better, if you shrink it. And the ladder itself is read out of
+`NCHC_BOXES` in `configs/sites/nchc.config` by `scripts/utils/boxes.sh`, so the
+box numbers exist in exactly one place.
+
+**6c. A queued job cannot be resized here; `scontrol update` is refused
+outright.** Shrinking a request is the lever entry 6b names, which raises the
+obvious follow-up: a job already sitting in the queue does not need its whole
+run cancelled and relaunched, it just needs its own request changed. On most
+SLURM sites that works and costs nothing — the head job keeps running, the
+cache is untouched, nothing re-queues.
+
+Not here. Measured against a held job of the author's own, so ownership and
+account were never in question (`UserId=u9613010`, `Account=mst109178`,
+slurm 25.11.0):
+
+```
+$ sbatch --hold -A MST109178 -p ngs7G -c 1 --mem=7G -t 00:02:00 probe.sh
+Submitted batch job 2053079                    # JobState=PENDING
+
+$ scontrol update JobId=2053079 MinMemoryNode=13312
+Unspecified error for job 2053079
+$ scontrol update JobId=2053079 NumCPUs=2
+Unspecified error for job 2053079
+$ scontrol update JobId=2053079 Partition=ngs13G
+Unspecified error for job 2053079
+$ scontrol update JobId=2053079 JobName=renamed_probe
+Unspecified error for job 2053079
+```
+
+The fourth one is the one that settles it. Renaming a job touches no resource,
+no partition and no QOS, and it is refused with the same message — so this is
+not a policy about resizing, it is that an ordinary user cannot `scontrol
+update` their own job at all. The message says "Unspecified error" rather than
+naming a permission, which is why guessing from the first three attempts alone
+would have been wrong: they look exactly like a QOS rule about resources.
+
+So a request that needs changing needs the run relaunched. `tw runs relaunch`
+defaults to resuming, and the finished tasks come back from cache — three runs
+of one bacass analysis shared a single Session ID and the last of them reported
+8 of 9 tasks `CACHED` — so the cost is one more spell in the queue, not the
+pipeline over again. That is the only route, and there is no point writing a
+wrapper for the other one.
+
+**6d. A retry DOES escalate here, and the config used to say it did not.**
+Entry 6c leaves relaunching as the only way to change a request. That is true
+for a *queued* job, and it made the neighbouring question urgent: when a task
+dies of memory, does anything recover on its own, or does a person have to
+intervene every time?
+
+It recovers on its own, and it always did. nf-core's `conf/base.config`
+multiplies every label by `task.attempt` — bacass 2.6.1 and rnaseq 3.14.0 both
+do — and `configs/sites/nchc.config` sets only `queue` and `clusterOptions`,
+never `memory` or `cpus`, so that escalation reaches the scheduler untouched.
+Measured with a probe that failed four tasks on purpose with 137, the status an
+OOM kill reports:
+
+```
+$ sacct --format=JobID,JobName,Partition,ReqCPUS,ReqMem,State,ExitCode -X
+   2053143  nf-sayHello__3_  ngs13G  2  13G  FAILED     137:0     <- attempt 1
+   2053144  nf-sayHello__1_  ngs13G  2  13G  FAILED     137:0
+   2053152  nf-sayHello__1_  ngs26G  4  26G  COMPLETED    0:0     <- attempt 2
+   2053155  nf-sayHello__3_  ngs26G  4  26G  COMPLETED    0:0
+```
+
+Attempt 2 asked for double and landed in the next box up, with `-c 4 --mem=26G`
+derived for it. Nothing stranded.
+
+**What makes this worth an entry is what the config asserted instead.** Its
+comment said a doubled request "lands it between two boxes, and the retry would
+strand exactly the way the original request did", and that "a genuine OOM needs
+its label moved up a tier by hand". Both false. `nchcBox` rounds **up** to the
+smallest box that fits, so doubling cannot land between boxes; `resourceLimits`
+caps the top. The claim reads like it predates `resourceLimits`.
+
+A wrong comment about a safety property is worse than no comment, because it is
+believed and it points the wrong way: it tells whoever reads it to go and do by
+hand the thing that is already happening, and to distrust a recovery that
+works. It has been corrected in place, with the measurement beside it.
+
+The site config still adds no multiplier of its own — not because escalation is
+bad, but because the pipeline already supplies one and a second would compound
+with it.
+
 **7. Map the composed request, never label names.** nf-core labels are partial
 and stackable — `process_long` sets only `time`, `process_low_memory` only
 `memory`, `process_gpu` neither — and one process may carry two of them. A
@@ -321,6 +437,37 @@ at 92 GB turns a 200 GB request into a 92 GB one, which then needs 14 CPUs on
 **9. Turn Platform's resource optimization off.** It right-sizes from run
 history, which fights fixed-size boxes — a "helpfully" reduced request lands
 below the floor and stalls. Use `tw launch --disable-optimization`.
+
+**17. The shared image library had three names, and the safety net guarded the
+one nothing used.** `PRINCIPLES.md` lists the shared image cache among the
+things that are never deleted, and `hooks/confirm_cleanup.sh` implemented that
+by matching `lab_singularity_library`. Meanwhile:
+
+```
+$ grep cacheDir configs/sites/nchc.config
+    cacheDir = System.getenv('NXF_SINGULARITY_CACHEDIR') ?: "${...}/_singularity_cache"
+$ echo $NXF_SINGULARITY_CACHEDIR
+/work/u9613010/lab_runs/.singularity_cache
+$ ls -d /work/u9613010/lab_runs/lab_singularity_library
+ls: cannot access ...: No such file or directory
+```
+
+Three spellings, and the protected one does not exist on disk. Every image this
+site has pulled lives under the third, which the rule did not match — so the
+directory whose loss costs the whole lab hours of re-pulling was deletable, and
+the principle saying otherwise was true only on paper.
+
+Nothing had gone wrong yet, which is the point: a guard on a path nothing writes
+to fails silently and stays quiet until the day it matters. It was found by
+building the run-area skeleton and asking which name to create, not by losing
+anything.
+
+The rule now matches the shape rather than one literal — `lab_singularity_library`,
+`_singularity_cache`, `.singularity_cache` and a bare `singularity` directory —
+while still allowing near misses like `results_singular`. The general lesson is
+narrower than "keep names in sync": **a protective rule and the thing it protects
+must be checked against each other, because divergence between them produces no
+error at all.**
 
 ## Launching
 

@@ -34,17 +34,35 @@ ROOT="$(cd "$HERE/.." && pwd)"
 # file, and the right behaviour is silence rather than an explanation.
 [ -n "${SETTINGS_FILE:-}" ] && [ -r "$SETTINGS_FILE" ] || exit 0
 
+# There IS a deployment here, so say where it is - once, and only on a real
+# startup. Nothing else that reads this file ever names it, which is how a member
+# came to be grepping the filesystem for their own config. A resume is the same
+# conversation continuing and has already been told.
+WHERE=""
+[ "$REASON" = startup ] && WHERE="Deployment settings: $SETTINGS_FILE"
+
+# Every exit below this point goes through here, so the one line survives the
+# many perfectly ordinary reasons there is nothing else to report: no token in
+# this shell, no tw, an idle workspace.
+emit() {
+    [ -n "$1" ] || exit 0
+    jq -n --arg m "$1" \
+      '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $m}}' 2>/dev/null
+    exit 0
+}
+
 WS="${TOWER_WORKSPACE_ID:-$(setting workspace_id)}"
 TW="${TW_BIN:-$(setting tw_bin)}"
 [ -n "$TW" ] || TW="$(command -v tw)"
-[ -n "$WS" ] && [ -x "$TW" ] || exit 0
+[ -n "$WS" ] && [ -x "$TW" ] || emit "$WHERE"
 
-TOKEN_FILE="${SEQERA_TOKEN_FILE:-$(dirname "$SETTINGS_FILE")/.seqera_token}"
+# One derivation, shared with preflight and the site scripts (scripts/settings.sh).
+TOKEN_FILE="$(token_file)"
 if [ -z "${TOWER_ACCESS_TOKEN:-}" ] && [ -r "$TOKEN_FILE" ]; then
     TOWER_ACCESS_TOKEN="$(cat "$TOKEN_FILE")"
     export TOWER_ACCESS_TOKEN
 fi
-[ -n "${TOWER_ACCESS_TOKEN:-}" ] || exit 0
+[ -n "${TOWER_ACCESS_TOKEN:-}" ] || emit "$WHERE"
 
 # SUBMITTED is as important as RUNNING: a run that never left the queue looks
 # identical to one working hard, and only the site can say which (:runs).
@@ -57,7 +75,7 @@ INFLIGHT=$(timeout 8 "$TW" runs list --workspace "$WS" 2>/dev/null \
           if ($2 == "RUNNING" || $2 == "SUBMITTED")
               printf "  %s  %s  (%s)  %s\n", $2, $1, $3, $4
         }')
-[ -n "$INFLIGHT" ] || exit 0
+[ -n "$INFLIGHT" ] || emit "$WHERE"
 
 # Only worth saying when there is a run to lose: a dead outputs reader makes a
 # finished run look like it produced nothing (PITFALLS 3c).
@@ -75,6 +93,6 @@ $INFLIGHT
 Use :runs to read one. A run sitting at SUBMITTED may never have been
 scheduled - the site knows why, Platform does not.$AGENT"
 
-jq -n --arg m "$MSG" \
-  '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $m}}' 2>/dev/null
-exit 0
+emit "${WHERE:+$WHERE
+
+}$MSG"

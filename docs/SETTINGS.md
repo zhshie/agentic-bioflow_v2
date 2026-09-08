@@ -4,13 +4,33 @@ One file, outside the repository, holding everything that identifies a person
 or their site. Mode 600. Nothing in it may be copied from another member,
 printed into a conversation, or committed.
 
-**Where it lives is where the deployment runs, not where the site is.** On a
-login node that is `$LAB_RUNS_DIR/_personal/env.yaml`. Reaching the site over
-ssh, it is on the user's own machine, together with the token file beside it —
-`scripts/preflight.sh` derives the token's path from this file's, so the pair
-travel together. `LAB_SETTINGS_FILE` overrides the location. The site never
-needs a copy: the values its scripts want cross as environment variables on the
-one round trip that carries them (`scripts/on_site.sh`).
+**Where it lives is where the deployment runs, not where the site is.**
+`scripts/settings.sh` looks in three places, most explicit first:
+
+1. `$LAB_SETTINGS_FILE`, if set. It wins outright and nothing else is searched:
+   a location that could quietly resolve elsewhere would let a read and a write
+   land in two different files.
+2. `$LAB_RUNS_DIR/_personal/env.yaml` — where it is on a login node.
+3. `${XDG_CONFIG_HOME:-~/.config}/agentic-bioflow/env.yaml` — the conventional
+   place, and the one a user can find without being told.
+
+The third is there because the chain used to stop at the second: with neither
+variable set it produced the string `/_personal/env.yaml`, which is unreadable
+but not empty, so every read returned its default and a configured machine was
+indistinguishable from one that had never run setup. When none of the three
+holds a file, the error names all of them rather than one.
+
+Reaching the site over ssh, the file is on the user's own machine, together with
+the token beside it — `token_file` in `scripts/settings.sh` derives the token's
+path from this file's, so the pair travel together, and `preflight.sh`,
+`agent_ctl.sh`, `ce_apply.sh` and the session hook all ask it rather than each
+working it out again. The site never needs a copy: the values its scripts want
+cross as environment variables on the one round trip that carries them
+(`scripts/on_site.sh`).
+
+**`scripts/settings.sh --summary` says which of the three is in use**, and what
+this deployment is configured as. It reports the token only as
+`present (mode 600)` — its value is never printed, by this or anything else.
 
 `scripts/settings.sh` reads and writes it. It is not a YAML parser — it reads
 `key: value` and stops at the first `#`, which is all this file is allowed to
@@ -20,6 +40,8 @@ be. A settings file that needs a real parser has grown into something else.
 |---|---|---|
 | `reach` | How the site is reached: `none`, `local` or `ssh`. See SITE_ADAPTER contract 6 | Defaults to `local`, which is right only when this deployment runs on the site |
 | `site_host` | `user@host` to log in to. **`reach: ssh` only** | Nothing can reach the site; preflight fails naming this key |
+| `site_user` | The site account the work runs under — the user half of `site_host`, said plainly, so a summary can name it. `scripts/preflight.sh` FAILs when the two disagree, because one value written twice drifts silently | Nothing breaks; the summary cannot say whose account this is |
+| `seqera_user` | This member's Seqera username — the Username column of `tw runs list`. Where a lab reaches the site through **one shared account**, this is the only thing that tells two members apart; `$USER` is the same for everybody | A run cannot be attributed to the person who launched it |
 | `ssh_control_path` | Where the multiplexed master's socket lives. **`reach: ssh` only** | Defaults to `~/.ssh/cm-%r-%h-%p`. It must not contain `:` — illegal in a Windows filename |
 | `storage_root` | Where runs live. Exported as `LAB_RUNS_DIR`; every other path derives from it | Nothing works; scripts refuse to guess |
 | `workspace_id` | The Seqera workspace. **The one value a lab shares** — everything else below is per person | Cannot reach Platform |
@@ -37,6 +59,78 @@ be. A settings file that needs a real parser has grown into something else.
 `scripts/egress_ctl.sh` remembers the port it chose. The rest come from the
 user, and **must be asked for rather than guessed** — an allocation code or a
 workspace copied from someone else fails in ways that look like a bug.
+
+## The shape under `storage_root`
+
+`storage_root` used to mean "put things somewhere in here" and nothing more
+specific than that. In practice that meant probe directories from setup
+rehearsals sitting beside real analyses with no boundary between them, and a
+second run area elsewhere shaped differently again - `rawdata/`, `results/`
+and a work directory all at the top level, instead of per member. Nobody had
+designed the shape; it had accreted.
+
+`scripts/init_workspace.sh` is the shape, made concrete. It builds two
+distinct sides - never both from one call, because they are two different
+machines - and never touches anything already inside a directory it creates,
+so running it again is always safe:
+
+```
+$LAB_RUNS_DIR/                     (site side, "site")
+├── _personal/            env.yaml and the token, mode 600, per person
+├── _references/          shared reference data
+├── lab_singularity_library/   shared container images
+├── _system/               where this deployment's own machinery keeps its
+│   ├── agent/              state - agent/relay/coldstart, so a probe from a
+│   ├── relay/               setup rehearsal has somewhere to go that is not
+│   └── coldstart/           the top level
+└── <seqera_user>/         one member's workspace - the site is one shared
+    ├── rawdata/            Unix account, so the Seqera username is what
+    │                       tells members apart, not $USER
+    └── runs/
+        └── <pipeline>_<label>_<YYYYMMDD>/
+            ├── logs/
+            ├── results/    --outdir points here
+            ├── analysis/   downstream code and figures
+            └── work/       the only deletable one, and only on confirmation
+
+<local root>/                      (local side, "local"; default $HOME/agentic-bioflow)
+└── <seqera_user>/
+    ├── inbox/              source data waiting to be pushed up
+    └── runs/<same name as the site>/
+        ├── results/        brought back by scripts/fetch.sh - read-only
+        └── analysis/       R/Python and figures; what an IDE opens
+```
+
+The two `runs/<name>/` directories share a name on purpose, so the halves line
+up by eye. `results/` is the only thing that exists twice, and it is a
+re-fetchable read-only copy rather than a second source of truth -
+`analysis/` exists **only locally**, `rawdata/` **only on the site**. This
+project has been bitten twice by two copies of one truth being allowed to
+disagree; do not reintroduce a third.
+
+**The directory names are not this design's to choose freely.**
+`rawdata`, `results`, `analysis`, `_references` and `lab_singularity_library`
+are copied verbatim from `hooks/confirm_cleanup.sh`'s HIT_PROTECTED and
+HIT_SHARED blocks - the safety net that refuses to delete them. An earlier
+draft of this design called the shared image cache `_singularity_cache`,
+which reads naturally but does not match the hook's pattern; spelling it
+`lab_singularity_library` instead is what lets the skeleton and the safety net
+agree, and is why that name looks like an odd fit next to the underscore-led
+names around it.
+
+**Migration: none.** Existing runs stay exactly where they are;
+`scripts/init_workspace.sh` never moves, renames or deletes anything. The
+skeleton applies going forward, to what gets created from here on - not
+retroactively to what already exists.
+
+Setup asks two questions that decide what gets built (`commands/setup.md`,
+"Two more questions, before step 1"): where the source data already is
+(input is not really a choice - it has to end up on the site, because compute
+nodes are what read it, so `scripts/push.sh` moves it there when it starts on
+someone's own computer) and where downstream analysis should happen (a real
+choice; local is the default, and is small - a normalised count matrix is
+about 973 KB, a whole delivery directory about 25 MB - so "the site, because
+it might be large" is rarely the right call).
 
 ## Keys this version does not read
 

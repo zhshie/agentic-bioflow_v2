@@ -16,19 +16,22 @@ consult it when something breaks, not preemptively.
 When installed as a plugin these are under `${CLAUDE_PLUGIN_ROOT}`; read them
 straight from the repository otherwise.
 
-## The three commands
+## The four commands
 
-Seqera's own object model, in the order a piece of work moves through it.
+Seqera's own object model, in the order a piece of work moves through it —
+plus one command that sits outside that model on purpose.
 
 | Command | When | Seqera equivalent |
 |---|---|---|
 | `setup` | First time on this cluster, or when something in the environment broke | compute environments, credentials, Launchpad |
 | `launch` | A new analysis, from "I have data" to a submitted run | pipelines → datasets → launch |
 | `runs` | Checking on, debugging, or delivering a run | runs |
+| `downstream` | Turning a SUCCEEDED run's outputs into figures or further analysis | outside Seqera's model — inventories the results tree and hands off to the environment's own `dataviz` skill |
 
 **The user does not have to name a command.** "I want to run RNA-seq" is a
-`launch`; "is it done yet" is a `runs`; "nothing works" is usually `setup`.
-Read the command file and follow it rather than improvising the sequence.
+`launch`; "is it done yet" is a `runs`; "nothing works" is usually `setup`;
+"make me a plot of this" is a `downstream`. Read the command file and follow
+it rather than improvising the sequence.
 
 ## Which pipeline
 

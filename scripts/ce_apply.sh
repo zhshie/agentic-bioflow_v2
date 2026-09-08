@@ -48,13 +48,13 @@ CONFIG="${SITE_CONFIG:-$ROOT/configs/sites/nchc.config}"
 REACH="$(setting reach local)"
 LOCAL_DIR="$(dirname "$SETTINGS_FILE")"
 
-# The same mode-600 file agent_ctl.sh and preflight.sh read - beside the
-# settings file under reach=ssh, beside LAB_RUNS_DIR otherwise.
-if [ "$REACH" = ssh ]; then
-    TOKEN_FILE="${SEQERA_TOKEN_FILE:-${LOCAL_DIR}/.seqera_token}"
-else
-    TOKEN_FILE="${SEQERA_TOKEN_FILE:-${LAB_RUNS_DIR:-}/_personal/.seqera_token}"
-fi
+# The same mode-600 file agent_ctl.sh, preflight.sh and the session hook read.
+# Which one that is was worked out here, and differently in each of those, and
+# the answers agreed only while the settings file had nowhere else it could
+# live. `token_file` is now the single derivation (scripts/settings.sh): the
+# settings file's own directory first, the remaining candidates after it, which
+# is exactly the reach=ssh / otherwise split this used to spell out by hand.
+TOKEN_FILE="$(token_file)"
 if [ -z "${TOWER_ACCESS_TOKEN:-}" ] && [ -r "$TOKEN_FILE" ]; then
     TOWER_ACCESS_TOKEN="$(cat "$TOKEN_FILE")"
     export TOWER_ACCESS_TOKEN

@@ -7,7 +7,14 @@
 # per task. So this check exists to catch the day NCHC changes a partition,
 # rather than discovering it as a run that never schedules.
 set -uo pipefail
-CONFIG="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/configs/sites/nchc.config}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG="${1:-$HERE/../configs/sites/nchc.config}"
+
+# The box table is parsed in exactly one place. This check compares the config
+# against SLURM; if it also owned a second way of reading the config, a bug in
+# that reader would show up here as site drift and send someone to argue with
+# NCHC about a partition that never changed.
+. "$HERE/utils/boxes.sh"
 
 command -v sacctmgr >/dev/null || { echo "sacctmgr not found - run this on the cluster" >&2; exit 2; }
 
@@ -23,11 +30,10 @@ live=$(sacctmgr -nP show qos format=Name,MinTRES 2>/dev/null | awk -F'|' '
     if (cpu != "" && mem != "") print tolower($1) "\t" cpu "\t" mem
   }' | sort)
 
-# config: same shape, from the NCHC_BOXES literal
-cfg=$(grep -oP "queue:\s*'\K[^']+(?=',\s*cpus:\s*\d+)" "$CONFIG" | tr 'A-Z' 'a-z' > /tmp/.q$$
-      grep -oP "cpus:\s*\K\d+(?=,\s*mem:)" "$CONFIG" > /tmp/.c$$
-      grep -oP "mem:\s*\K\d+" "$CONFIG" > /tmp/.m$$
-      paste /tmp/.q$$ /tmp/.c$$ /tmp/.m$$ | sort; rm -f /tmp/.q$$ /tmp/.c$$ /tmp/.m$$)
+# config: same shape, from the NCHC_BOXES literal. QOS names are lower case in
+# sacctmgr and mixed case in the config, so fold before comparing.
+cfg=$(nchc_boxes "$CONFIG" | cut -f1-3 | tr 'A-Z' 'a-z' | sort) || {
+    echo "could not read the box table out of $CONFIG" >&2; exit 2; }
 
 drift=0
 while IFS=$'\t' read -r q c m; do

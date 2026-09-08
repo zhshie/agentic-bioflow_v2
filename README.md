@@ -4,14 +4,15 @@ Run Nextflow/nf-core pipelines through **Seqera Platform**, from Claude Code.
 
 Platform does the work it is good at — submitting the head job, tracking state,
 collecting task metrics, serving reports. This plugin adds only what Platform
-cannot do for a firewalled HPC cluster, and three commands that follow Platform's
-own object model.
+cannot do for a firewalled HPC cluster: three commands that follow Platform's
+own object model, and a fourth that hands off to what happens after a run.
 
 | Command | Seqera equivalent |
 |---|---|
 | `/agentic-bioflow:setup` | compute environments, credentials, Launchpad |
 | `/agentic-bioflow:launch` | pipelines → datasets → launch |
 | `/agentic-bioflow:runs` | runs |
+| `/agentic-bioflow:downstream` | outside Seqera's model — inventories the results tree and hands off to the environment's own `dataviz` skill |
 
 ## What is actually custom here
 

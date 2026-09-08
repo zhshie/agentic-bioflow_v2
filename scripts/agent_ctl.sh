@@ -30,7 +30,11 @@ JAVA="${TW_AGENT_JAVA:-$(setting agent_java)}"
 JAR="${TW_AGENT_JAR:-$(setting agent_jar)}"
 CONN="${TW_AGENT_CONNECTION:-$(setting agent_connection)}"
 WORKDIR="${TW_AGENT_WORKDIR:-${LAB_RUNS_DIR}/_work}"
-TOKEN_FILE="${SEQERA_TOKEN_FILE:-${LAB_RUNS_DIR}/_personal/.seqera_token}"
+# One derivation, shared with preflight.sh, ce_apply.sh and the session hook
+# (scripts/settings.sh). It used to be spelled out here from $LAB_RUNS_DIR and
+# there from the settings file's own directory; those two answers were the same
+# only for as long as the settings file had nowhere else it could live.
+TOKEN_FILE="$(token_file)"
 API="${SEQERA_API_URL:-https://api.cloud.seqera.io}"
 
 pid_of() { python3 -c "import json;print(json.load(open('$STATE'))['pid'])" 2>/dev/null; }

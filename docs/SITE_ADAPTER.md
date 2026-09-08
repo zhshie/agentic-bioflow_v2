@@ -203,6 +203,81 @@ would earn the experiment is a tool with no biocontainer, since Wave builds a
 container from a conda specification; the thing to expect trouble from is the
 Singularity path, not the allowlist.
 
+**Seqerakit.** A CLI that applies Seqera Platform resources — pipelines,
+compute environments, credentials — from a declarative YAML file. It overlaps
+`scripts/ce_apply.sh`, which already does the declarative half for this site,
+and already handles the part Seqerakit does not know about here: a compute
+environment cannot be edited in place (PITFALLS 13) — applying a config change
+means delete-and-recreate under a new ID, and everything that named the old ID
+(Launchpad entries above all) has to be repointed by hand afterwards. Not
+adopted: it would add a second declarative surface next to `ce_apply.sh`
+rather than replace it, for one compute environment that changes rarely.
+Revisit if the lab grows to several compute environments, or if a cloud
+compute environment joins the mix and the delete-and-recreate cost stops
+applying the same way to all of them. Checked, not assumed: neither
+`seqerakit` nor `nf-core` is installed here (`pip show seqerakit`, `which
+nf-core` — both come back empty).
+
+---
+
+## `tw` and Seqera's MCP
+
+Both are Seqera's own, so invariant 1 (build only what neither Seqera nor
+nf-core already does) does not choose between them — invariant 5 does: a
+script stays runnable by a person or another model, an MCP tool only works for
+whoever has that server attached. `tw` is therefore the one dependency
+everything in this plugin is built against; the MCP is opportunistic, reached
+when it happens to be available, never required for a command here to
+complete (`PRINCIPLES.md`).
+
+What the MCP has that `tw` does not expose at all:
+
+- **Wave container building** — from a conda spec, a pip spec, or a
+  Dockerfile. `tw` has no subcommand for it (`tw --help` lists none); Wave is
+  reached only through `wave.enabled` in a Nextflow config, or through the
+  MCP.
+- **nf-core module search** — natural-language lookup across nf-core's module
+  library, returning a module's schema and command template. Nothing here has
+  needed it yet: every pipeline run so far is a whole nf-core pipeline, not a
+  module being assembled into a new one.
+- **The Co-Scientist** — the optional second opinion `launch.md` step 1 calls
+  out for pipeline and revision choice.
+
+None of the three is load-bearing. This plugin runs a complete `setup` →
+`launch` → `runs` → `downstream` cycle with only `tw` and the site adapter.
+Treat the MCP the way `launch.md` already treats the Co-Scientist inside it —
+useful when present, never a blocker when it is not.
+
+## Writing your own pipeline
+
+Out of scope for this plugin — it exists to run pipelines nf-core, or anyone
+else, already wrote, not to help author a new one. Worth recording what a
+person would need to do that here, and what this login node already has and
+lacks, measured rather than assumed (`PRINCIPLES.md`, invariant 8):
+
+Present: `nextflow` (25.10.4, `~/bin`), `singularity` (module
+`singularity/4.3.0`, the default; the bare `/usr/bin/singularity` on `PATH`
+without the module is an older `singularity-ce` 3.11.1), `git` (2.27.0), `gh`
+(2.62.0), `R` (`/usr/bin/R`, plus module `R/4.5.2`, the default).
+
+Absent: `nf-core`, `nf-test`, `pre-commit` — all `pip install`-able, none
+installed here. And **`docker`**, which cannot be installed at all without
+root on this cluster — Singularity/Apptainer is the only container runtime a
+normal account gets.
+
+That last gap is the concrete reason to keep the MCP reachable even though
+nothing here depends on it day to day: Wave is what fills a missing Docker,
+building a container from a conda or pip spec on Seqera's own infrastructure
+rather than this login node's. A pipeline that needs a container built from
+scratch, rather than one already on a registry, has nowhere else to build it
+from here.
+
+One more thing a pipeline written from scratch gets for free: this site's
+resource contract keys off the *composed* request
+(`task.cpus`/`task.memory`/`task.time`), never label names (contract 1,
+above). A pipeline nobody here has seen — including one nobody here wrote —
+still lands in a valid resource box with no mapping added for it.
+
 ---
 
 ## Verifying a change to the environment
