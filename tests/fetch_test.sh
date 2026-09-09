@@ -54,6 +54,14 @@ t "a real fetch prints the local path"        0 "stage/work/runs/myrun/results" 
 mkssh 90000000000                                # 90 GB - a work directory
 t "an oversized path is refused"              2 "90"              -- "$R"
 t "and the refusal names its override"        2 "--max-mb"        -- "$R"
+# The override is the expensive answer, and it used to be the only one offered.
+# This file's own header says why the size check exists: a laptop asked to pull
+# a work directory over a home connection shows nothing for the first hour. So
+# a refusal that names only --max-mb hands over the way to do exactly that.
+# Measured against a real 10.9 GB results tree on 2026-09-09. docs/DOWNSTREAM.md
+# already specifies the cheap answer - send the analysis to the site instead -
+# and the refusal is where someone is standing when they need to hear it.
+t "and the refusal names the cheaper route"   2 "on_site.sh"      -- "$R"
 t "which then works"                          0 "stage/"          -- --max-mb 100000 "$R"
 
 echo

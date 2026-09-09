@@ -70,8 +70,17 @@ if [ "$mb" -gt "$MAX_MB" ]; then
   die 2 "'$SRC' is ${mb} MB, over the ${MAX_MB} MB limit." \
         "" \
         "A results directory is usually tens of megabytes; a work directory is" \
-        "hundreds of gigabytes and is meant to stay on the site. If this really" \
-        "is what you want:" \
+        "hundreds of gigabytes and is meant to stay on the site." \
+        "" \
+        "For something this size the cheap answer is to move the analysis, not" \
+        "the data: run it where the data already is and bring back only what you" \
+        "are going to look at. docs/DOWNSTREAM.md calls this the large-output" \
+        "path, and scripts/on_site.sh is how a script gets there:" \
+        "" \
+        "    scripts/on_site.sh --script inventory_outputs.py $SRC" \
+        "" \
+        "If you do want the whole thing on this machine - and over a home" \
+        "connection ${mb} MB will show nothing at all for a long while:" \
         "" \
         "    scripts/fetch.sh --max-mb ${mb} $SRC"
 fi

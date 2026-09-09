@@ -76,6 +76,22 @@ what shape — and that is all this adds.
 - **Exception: outputs over `scripts/fetch.sh`'s 500 MB limit.** Then nothing
   moves the other way — the analysis scripts travel to the site via
   `scripts/on_site.sh` instead, and only the finished figures come back.
-  **UNTESTED**: nothing produced here has yet been large enough to reach this
-  path. Marked untested rather than implying it has been exercised
-  (`docs/PRINCIPLES.md`, invariant 8).
+  **Measured 2026-09-09.** The claim this replaces — that nothing produced
+  here had yet been large enough to reach this path — was already false when it
+  was written: `rnaseq_sclerotia_d0_20260903/results` is 10.2 GB and
+  `rnaseq_sclerotia_d5_20260902/results` is 8.9 GB, both twenty times the
+  limit. Nobody had run `du` on them. Marking a path untested is only honest
+  while the reason given for not testing it is true, and "no input exists" is a
+  claim about the filesystem that takes one command to check.
+
+  Walked end to end against the 10.2 GB tree: `fetch.sh` sized it at 10918 MB
+  from the site and refused, `on_site.sh --script inventory_outputs.py` shipped
+  this plugin to the site, ran the inventory there, and returned 872 files
+  described in text. Nothing moved but the report.
+
+  Two things that walk turned up. `fetch.sh`'s refusal named only `--max-mb`,
+  the override that pulls the whole 10.9 GB over a home connection — the exact
+  outcome its own header explains the size check exists to prevent. It now
+  names this path first. And the command it names had to be written as
+  `--script`: `on_site.sh` ships this plugin's own scripts by that flag, and a
+  bare path would look for one on the site that is not there.
