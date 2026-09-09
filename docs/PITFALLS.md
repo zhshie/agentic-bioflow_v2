@@ -835,3 +835,186 @@ The lesson is not "re-read your comments". It is narrower and testable:
 And the reason all five surfaced at once: fixtures contain only what their
 author thought of. Every one of these tools passed its whole suite before and
 after. What they had never been given was the site.
+
+## Driving the IDE from a terminal
+
+**20. Positron's R kernel writes a registration stub, not a connection file,
+and the missing ports are one HTTP GET away — "R cannot be driven the way
+Python can" was a conclusion drawn from a file listing.** Measured 2026-09-09
+against Positron 2026.04.0, ark 0.1.249, kcserver 0.1.64.
+
+`positron-python` runs a classic ipykernel, so `%TEMP%/connection_python-*.json`
+is a complete Jupyter connection file and any client can read it and attach.
+`positron-r` writes only `registration_r-*.json`:
+
+```json
+{ "transport": "tcp", "signature_scheme": "hmac-sha256",
+  "ip": "127.0.0.1", "key": "<hmac key>", "registration_port": 59087 }
+```
+
+No shell, iopub, stdin, control or hb port. The obvious reading — the R kernel
+negotiates its ports privately, so only Positron can talk to it — is wrong, and
+it cost a long detour into GUI automation before anyone read the supervisor's
+own API docs. The ports are not private, just not written to that file: ark
+binds them and the supervisor hands them out.
+
+`positron-supervisor/dist/kcclient/docs/DefaultApi.md` lists `connectionInfo`,
+and `ConnectionInfo.md` gives its shape — all five ports, the key, the
+transport. Confirmed live, read-only:
+
+```
+GET /sessions/r-5d08f5e6/connection_info
+{"control_port":59092,"shell_port":59088,"stdin_port":59091,"hb_port":59090,
+ "iopub_port":59089,"signature_scheme":"hmac-sha256","key":"<same key>", ...}
+```
+
+The key matches the stub's. Only the ports were ever missing. `netstat` had
+already shown ark holding 59088-59092 — the evidence was on the machine before
+the workaround was attempted. `scripts/positron_run.py` does this, and works
+for R and Python by the same path.
+
+The transferable part: **a file that lacks a field is evidence about the file,
+not about the system.** Ask what else publishes it before concluding it is
+unavailable.
+
+**20b. `sys.frame(1)$ofile` is not where `source()` keeps the path — it depends
+on who called `source()`, and Positron's console adds a frame.** Measured
+2026-09-09 with a probe run through both paths.
+
+An R script that wants to find its own directory typically tries
+`commandArgs()`'s `--file=`, then `sys.frame(1)$ofile`, then `getwd()`. Under
+`Rscript` the first branch answers. Sourced in Positron's console:
+
+```
+commandArgs --file= : (none)
+sys.frame(1)$ofile  : (NULL)
+getwd()             : c:/Users/ACER/Desktop/agentic-bioflow
+  frame 2 has ofile: .../analysis/probe_paths.R
+```
+
+`ofile` is on frame 2. So the middle branch silently returns NULL and the
+script falls through to `getwd()` — which is the *workspace root*, not the
+script's directory. Anything built from it is then one level off, and the
+failure surfaces far away as a missing input file, naming a path that looks
+almost right. Scan the frames for `ofile` instead of betting on a depth.
+
+This is the same shape as 18b: evidence with an unchecked subject. `ofile`
+existed, the frame index was assumed.
+
+**20c. Two Windows-specific traps that both present as "the thing is not
+there" while it plainly is.** Measured 2026-09-09.
+
+Git Bash cannot open a Windows named pipe. `open(r"\\.\pipe\kallichore-22256")`
+raises `FileNotFoundError` under MSYS, which rewrites the path on the way to
+`open()`, and succeeds under native `python.exe`. Anything talking to the
+supervisor must run outside the MSYS shell.
+
+And `python3` is on PATH in Git Bash as an App Execution Alias pointing at a
+Microsoft Store stub. `command -v python3` finds it; running it exits 49 having
+printed nothing. A test harness that picks its interpreter with `command -v`
+reports every case as an identical unexplained failure. Pick one by running it:
+
+```bash
+for candidate in python3 python py; do
+    if "$candidate" -c 'pass' >/dev/null 2>&1; then PY="$candidate"; break; fi
+done
+```
+
+**20d. Do not drive the IDE with synthetic keystrokes.** Attempted 2026-09-09,
+twice, before the API above was found. Both times the keys landed in the wrong
+application — once navigating a chat client — because the desktop belongs to a
+person who moves windows while the automation runs. The second attempt added
+`AttachThreadInput` + `SetForegroundWindow` with the foreground window verified
+before *and* after sending, and still missed: verification and delivery cannot
+be made atomic, and the race is against a human being, not a scheduler. There
+is no hardening that fixes this class. Use the kernel protocol, which does not
+care what has focus.
+
+**20e. kcserver sends its HTTP headers lowercase, so matching the RFC's
+capitalisation silently disables a branch.** Found 2026-09-09 by an
+adversarial re-read of `scripts/positron_run.py`, then confirmed by dumping
+the header block of a live `GET /sessions` (headers only — the body carries
+`initial_env`):
+
+```
+HTTP/1.1 200 OK
+x-span-id: 0e045b31-...
+content-type: application/json
+connection: close
+content-length: 18630
+```
+
+The response reader tested `b"Transfer-Encoding: chunked" in head`, which this
+server can never send. The bug was invisible because `/sessions` answers with
+`content-length`, so the chunked branch was never needed; a response that did
+arrive chunked would have reached `json.loads` with its chunk-size lines still
+in it, and the failure mode is not an error — `find_sessions` swallows a bad
+response as a stale supervisor, so the console just stops existing and the tool
+says "no R console is open" about a console that is open. Header names are
+case-insensitive by RFC 9110; match them that way. `content-length` is now
+honoured too, rather than trusting "everything that arrived before EOF".
+
+The reason this survived 22 passing tests is worth more than the bug: every one
+of those tests entered through the fixture seam, which returns a parsed object
+and never runs the wire code at all. Parsing is now its own function
+(`_parse_response`) so a test can reach it without a socket, and that test also
+asserts a non-200 error message withholds the response body.
+
+**20f. `ark` sends an iopub error whose `traceback` is an empty list.**
+Measured 2026-09-09: `stop("deliberate failure")` in the live console produced
+an `error` message with nothing in `traceback`, so `"\n".join(traceback)`
+printed one blank line — exit code correct, terminal silent, reason visible
+only to someone looking at the IDE. That is precisely the blindness this tool
+exists to remove. `ename`/`evalue` carry it, and `error_text()` now falls back
+to them.
+
+Two related things checked at the same time, both fine as they stood: the
+authoritative failure signal is the shell channel's `execute_reply`, not iopub,
+so it is now read as well and can only escalate a run to failed, never
+downgrade one; and workspace matching now asks the filesystem
+(`os.path.samefile`, walking up from the child) instead of comparing strings.
+Positron reports its working directory with a lowercase drive letter —
+`c:\Users\ACER\...` — and macOS and Windows are both case-insensitive, so
+`--workspace C:\Users\...` against `c:\Users\...` is the same directory spelt
+two ways. `os.path.commonpath` would call that a mismatch and report no console.
+
+Still untested against a real supervisor: the `socket` (macOS/Linux) and `tcp`
+branches. Only `named-pipe` has ever run for real. The specific risk worth
+knowing on macOS is `AF_UNIX`'s 104-byte `sun_path` limit against a
+`/var/folders/...` `$TMPDIR`; if it is hit, `POSITRON_SUPERVISOR_CONNECTION_FILE`
+does not help, because the length is in the socket path, not the config path.
+
+**20g. A live console's `commandArgs(trailingOnly = TRUE)` is empty, so a
+script's own flags are reachable from `Rscript` and not from the IDE.**
+Measured 2026-09-09 against the live R console: it returns `character(0)`,
+while `interactive()` is `TRUE` and the device is `.ark.graphics.device`. The
+consequence is not cosmetic. `analysis/` here holds two scripts that both
+default to `analysis/figures`, so running one live overwrote the other's
+output and there was no flag available to prevent it — the batch path had
+`--outdir` and the live path had nothing.
+
+`--args` closes it, differently per language because the languages differ.
+IPython's `%run file a b` already forwards to `sys.argv`, so Python needs no
+help. R has no argument mechanism in `source()` at all, so the generated code
+defines `commandArgs` in the global environment for the duration of the call —
+which works because R resolves the name up the environment chain and reaches
+globalenv before base — and restores it with `on.exit`, so a script that stops
+with an error does not leave the console rigged for everything typed
+afterwards. Verified both ways live: `--min-depth 5000` changed which samples
+were dropped, `--outdir` moved the output, and `identical(commandArgs,
+base::commandArgs)` was `TRUE` afterwards.
+
+Argparse detail worth keeping: `--args` is `nargs=REMAINDER`, so it has to be
+last on the command line. Anything after it belongs to the script, including
+flags this tool has of its own.
+
+**20h. The one manual step is a gate, and a refusal has to be instructions.**
+This tool will not open a console — starting a runtime unasked in someone's
+IDE, in a workspace they did not choose, is a worse surprise than being asked
+to open one. That is only defensible if stopping is actionable, so the refusal
+names the window, the session picker, and the two commands worth knowing
+(`--check`, `--wait`), and a test asserts those phrases stay in it. `--wait N`
+is the alternative to sending someone away to start over: it holds, polls, and
+continues by itself when the console appears. It deliberately does not cover a
+console that exists but is busy — that is a different problem with a different
+answer, and exit 3 says so rather than waiting out someone else's long job.

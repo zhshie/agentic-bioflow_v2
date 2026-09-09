@@ -62,7 +62,46 @@ what shape — and that is all this adds.
    line against a live session. That is the actual reason the code lands in a
    file under `analysis/` rather than being printed into the conversation.
 
-5. **Run it, and show the figures.**
+5. **Run it, and show the figures.** `Rscript`/`python` is the whole answer
+   when all that is wanted is the files. It is not the answer when the person
+   is sitting in front of the IDE the script was just written into: a batch run
+   cannot put anything in the Plots pane, and step 4's reason for writing to a
+   file rather than into the conversation was that their editor can run it
+   against a live session.
+
+   `scripts/positron_run.py --lang r --file analysis/<script>.R` runs it in the
+   console Positron already has open — plots land in the Plots pane, objects
+   stay in the Variables pane, and stdout and any error come back here, so a
+   failure is legible rather than something to go and look for. Still no
+   plotting code is written here — this step only executes what step 4
+   produced, which is what invariant 1 rules on.
+
+   **A console has to exist first, and this is a gate, not a warning.** The
+   tool attaches to a session and will not start one: a runtime appearing
+   unasked in someone's IDE, holding a workspace they did not pick, is a worse
+   surprise than being told to open it. So run `--check` before anything else,
+   and when it reports nothing, stop and put the instructions in front of the
+   person rather than falling back to a batch run and calling the step done —
+   the whole reason for being on this path is the Plots pane, and a batch run
+   does not reach it. `--wait 120` holds the step open instead of sending them
+   away to start over, and continues by itself the moment the console appears.
+
+   Pass the script its own flags after `--args`, last on the line:
+
+       scripts/positron_run.py --lang r --file analysis/<script>.R \
+           --args --outdir analysis/figures/run2 --min-depth 5000
+
+   Not optional housekeeping. A live console's `commandArgs(trailingOnly =
+   TRUE)` is empty, so without `--args` a script runs on its defaults and
+   nothing can change them — and two scripts written into one `analysis/` will
+   commonly default to the same `figures/`, where running the second live
+   silently destroys the first one's output.
+
+   Do not drive the IDE by sending it keystrokes. It was tried on a real
+   machine and it is not merely unreliable: the desktop belongs to the person,
+   who moves windows while it runs, so the keystrokes land in whatever is in
+   front — twice, in a chat window. No amount of focus checking closes that
+   race, because the race is with a human being.
 
 ## Where does the work happen?
 
