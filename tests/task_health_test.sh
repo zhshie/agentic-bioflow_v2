@@ -32,8 +32,16 @@ cat > "$TMP/tasks_stuck.txt" <<'EOF'
      2       | B       | t   | SUBMITTED
 EOF
 
-printf '#!/bin/bash\necho "2044345  Resources   nf-TEST_JOB_"\necho "   -> waiting - the partition is full."\nexit 0\n' \
-  > "$TMP/ssh"; chmod +x "$TMP/ssh"
+# why_pending's no-argument form lists every pending job on the account, and
+# this account is shared by every lab member (measured: a second Seqera user is
+# active in the same workspace). So the stub has to answer the question
+# task_health actually asks - "is one of THESE jobs stuck" - and a job matching
+# nothing in the run is the case that used to pass. Nextflow names a task's job
+# nf-<process, ':' replaced by '_'>_<tag>; measured on this site, process
+# NFCORE_AMPLISEQ:AMPLISEQ:BARRNAP became nf-NFCORE_AMPLISEQ_AMPLISEQ_BARRNAP__.
+mkssh() { { echo '#!/bin/bash'; printf '%s\n' "$@"; echo 'exit 0'; } > "$TMP/ssh"; chmod +x "$TMP/ssh"; }
+mkssh 'echo "2044345  Resources   nf-B_sample1"' \
+      'echo "   -> waiting - the partition is full."'
 
 run() {
   LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/ssh" TW_FAKE_OUTPUT_FILE="$1" \
@@ -51,6 +59,30 @@ t() { # t <label> <expect-rc> <expect-substring> <tasks-file>
 t "a task actually running reads as OK"          0 "OK: 1 running" "$TMP/tasks_running.txt"
 t "nothing running while one queues escalates"   0 "STUCK:"        "$TMP/tasks_stuck.txt"
 t "the escalation carries why_pending's reason"  0 "partition is full" "$TMP/tasks_stuck.txt"
+t "and names the job it is a reason about"       0 "2044345"           "$TMP/tasks_stuck.txt"
+
+# The PITFALLS 18b case. A pending job on a shared account is not evidence
+# about this run unless its name says so; reporting one anyway attributes
+# another member's queue position to a run it has nothing to do with, and does
+# it in the single line a background watch is built to trust.
+mkssh 'echo "9999999  Resources   nf-SOMEONE_ELSES_PIPELINE_STEP"' \
+      'echo "   -> waiting - the partition is full."'
+printf '%-58s ' "another member's queued job is not this run's reason"
+out=$(run "$TMP/tasks_stuck.txt")
+if grep -qF "partition is full" <<<"$out"; then
+  echo "FAIL: reported a foreign job's reason  <<$out>>"; fails=$((fails+1))
+elif grep -qF "9999999" <<<"$out"; then
+  echo "FAIL: named a foreign job  <<$out>>"; fails=$((fails+1))
+elif ! grep -qF "STUCK" <<<"$out"; then
+  echo "FAIL: stopped saying it is stuck  <<$out>>"; fails=$((fails+1))
+else echo ok; fi
+
+printf '%-58s ' "and says why it cannot attribute one"
+if grep -qiE "shared|none of|no pending job" <<<"$out"; then echo ok
+else echo "FAIL: <<$out>>"; fails=$((fails+1)); fi
+
+mkssh 'echo "2044345  Resources   nf-B_sample1"' \
+      'echo "   -> waiting - the partition is full."'
 
 printf '#!/bin/bash\nexit 3\n' > "$TMP/tw"; chmod +x "$TMP/tw"
 printf '%-58s ' "a tw failure is reported, not swallowed"

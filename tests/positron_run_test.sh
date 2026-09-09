@@ -378,6 +378,72 @@ PY
 )
 if [ "$err_out" != "ALLOK" ]; then echo "FAIL: $err_out"; fails=$((fails+1)); else echo "ok"; fi
 
+# --------------------------------------------------------------------------
+# The whitelist, tested where it acts rather than where it shows.
+#
+# Every case above also greps the rendered output for $SECRET, which reads like
+# a leak check and is not one: report() prints six named fields, so the
+# credential cannot reach stdout whether the whitelist is there or not. Deleting
+# SESSION_FIELDS outright and returning dict(raw) passed all of them. The point
+# of narrowing at parse time is that a print site added later cannot leak what
+# was never carried - so the assertion belongs on the object, not the render.
+# --------------------------------------------------------------------------
+printf '%-58s ' "the parsed session carries no credential-bearing field"
+wl_out=$(POSITRON_RUN_SUPERVISOR_DIR="$TMP/sup" POSITRON_RUN_FIXTURE="$TMP/fx" \
+  "$PY" - "$(dirname "$S")" "$SECRET" <<'PY'
+import sys, os
+sys.path.insert(0, sys.argv[1])
+import positron_run as pr
+secret, bad = sys.argv[2], []
+pairs = pr.find_sessions()
+if not pairs:
+    bad.append("no sessions parsed - the fixture stopped reaching this code")
+for _sup, session in pairs:
+    for dropped in ("initial_env", "argv"):
+        if dropped in session:
+            bad.append(f"{dropped} survived parsing")
+    if secret in repr(session):
+        bad.append("the credential is inside the parsed session")
+print("BAD:" + ",".join(sorted(set(bad))) if bad else "ALLOK")
+PY
+)
+if [ "$wl_out" != "ALLOK" ]; then echo "FAIL: $wl_out"; fails=$((fails+1)); else echo "ok"; fi
+
+# --------------------------------------------------------------------------
+# The invocation commands/downstream.md actually tells a person to type.
+# Every case above runs "$PY" "$S", which is not that line and cannot fail the
+# way that line fails: a file without its executable bit, or a shebang naming
+# an interpreter that is a Microsoft Store stub on the machine this tool is for
+# (PITFALLS 20c, documented in the same change that shipped the bare-path
+# instruction).
+# --------------------------------------------------------------------------
+printf '%-58s ' "the documented bare-path invocation runs"
+bp_out=$(POSITRON_RUN_SUPERVISOR_DIR="$TMP/sup" POSITRON_RUN_FIXTURE="$TMP/fx" \
+         "$S" --check 2>&1); bp_rc=$?
+if [ "$bp_rc" = 0 ]; then echo ok
+else echo "FAIL: rc=$bp_rc <<$bp_out>>"; fails=$((fails+1)); fi
+
+# The case above passes off the filesystem, and git is what ships this file: a
+# `git stash` round-trip silently reverted the index mode to 100644 while the
+# working copy stayed +x, so the bare-path case still passed and the broken
+# file would have been the one committed. Assert on what gets distributed.
+printf '%-58s ' "and git ships it executable, not just this checkout"
+if git -C "$(dirname "$S")" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  mode=$(git -C "$(dirname "$S")" ls-files -s -- "$(basename "$S")" | awk '{print $1}')
+  if [ "$mode" = 100755 ]; then echo ok
+  else echo "FAIL: index mode $mode, wanted 100755"; fails=$((fails+1)); fi
+else
+  echo "ok (not a git checkout)"
+fi
+
+printf '%-58s ' "and it picks an interpreter by running one"
+# A bare `#!/usr/bin/env python3` is exactly what 20c says cannot be trusted
+# here, and 16d says the same for this cluster's fenced /usr/bin/python3. One
+# probe loop answers both; asserting on its shape is the honest limit, because
+# neither machine is this one.
+if grep -qE 'for [a-z]+ in python3 python py' "$S"; then echo ok
+else echo "FAIL: no interpreter probe in $S"; fails=$((fails+1)); fi
+
 echo
 if [ "$fails" -gt 0 ]; then echo "FAIL: $fails case(s)"; exit 1; fi
 echo "OK: positron_run.py"

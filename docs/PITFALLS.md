@@ -1018,3 +1018,43 @@ is the alternative to sending someone away to start over: it holds, polls, and
 continues by itself when the console appears. It deliberately does not cover a
 console that exists but is busy — that is a different problem with a different
 answer, and exit 3 says so rather than waiting out someone else's long job.
+
+**21. A negative assertion can be true for a reason unrelated to what it
+guards.** `positron_run.py` narrows every `/sessions` record to a field
+whitelist at parse time, because that response carries each kernel's whole
+`initial_env` — on the machine it was written on, a live GitHub PAT and several
+API keys. All 35 of its cases also grepped the rendered output for a fixture
+credential, and the change that shipped it said so: "every test asserts a
+fixture credential never reaches the output."
+
+True, and worth nothing. Deleting the whitelist outright — `session =
+dict(raw)`, every dropped field restored — left all 35 passing. `report()`
+prints six named fields, so the credential could not reach stdout with or
+without it. The assertion was measuring the print sites, and the whitelist
+exists for the print sites *that do not exist yet*: the whole argument for
+narrowing once at parse rather than at each render is that a render added later
+cannot leak what was never carried. Nothing tested that property, so removing
+it was free.
+
+The test now asserts on the parsed object — `initial_env` and `argv` absent,
+the credential absent from its `repr` — and fails under exactly that mutation.
+
+Two other things in the same review had the identical shape, which is why this
+gets its own entry rather than a footnote:
+
+- The invocation `commands/downstream.md` tells a person to type
+  (`scripts/positron_run.py --lang r --file …`) was tested by nothing: every
+  case ran `"$PY" "$S"` instead. The file shipped mode 644 with
+  `#!/usr/bin/env python3` — a bare-path run dies on the mode, and past it, on
+  the Store alias that 20c documents in the same change. The tool knew the
+  trap and the instruction walked into it.
+- Fixing that, the first `git stash` round-trip reverted the index mode to
+  100644 while the working copy stayed `+x`. The new bare-path case still
+  passed, because it runs the file off the filesystem, and git is what
+  distributes it. There is now an assertion on `git ls-files -s`.
+
+**The general form: when a test cannot fail, find out what would have to be
+true for it to fail, and check that thing is reachable.** A mutation is the
+cheapest way to ask — break the property on purpose and see whether anything
+notices. All three of these took one edit each to expose, and all three had
+been green from the day they were written.

@@ -1,4 +1,31 @@
-#!/usr/bin/env python3
+#!/bin/bash
+# Entered as a shell script so it can choose its own interpreter, because on
+# both machines this tool has to run on, the name in a shebang lies.
+#
+#   Windows (where Positron is): `python3` is on PATH as an App Execution
+#   Alias pointing at a Microsoft Store stub. `command -v` finds it; running it
+#   exits 49 having printed nothing (PITFALLS 20c). A `#!/usr/bin/env python3`
+#   line resolves to that stub, so the documented invocation dies silently.
+#
+#   This cluster: /usr/bin/python3 is RHEL's own reserved interpreter, mode 750
+#   root:root - present, on PATH, and unrunnable (PITFALLS 16d).
+#
+# One rule covers both: pick an interpreter by RUNNING one, never by finding
+# one. A stub that exits 49 and a binary that cannot be executed both fail the
+# probe, and the next candidate gets its turn. Running it as
+# `python positron_run.py` still works; the shell block is then just a string.
+''''true
+for candidate in python3 python py; do
+    if "$candidate" -c 'import sys' >/dev/null 2>&1; then
+        exec "$candidate" "$0" "$@"
+    fi
+done
+echo "positron_run: no working Python interpreter found (tried python3, python, py)." >&2
+echo "  On Windows, 'python3' may be the Microsoft Store alias - install Python or" >&2
+echo "  use the interpreter Positron itself runs on." >&2
+exit 2
+'''
+
 """Run a file, or a snippet, in the console Positron already has open.
 
     positron_run.py --check
