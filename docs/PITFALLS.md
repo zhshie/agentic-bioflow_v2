@@ -758,3 +758,35 @@ their author thought of. And **"assistant said X" is not one predicate**: the
 question is almost always whether the user *saw* X, whether the model *did* X,
 or merely whether it *thought* X, and those live in different blocks of the
 same record.
+
+**18b. The third instance, and the part that cannot be closed.** The fix in 18
+was verified against a real transcript and passed. Then the report explaining
+the fix — prose, to the user, containing the example URL — put a
+`docs/images/` URL into an assistant `text` block, and the gate opened again.
+That is not a fourth bug to fix. It is the shape of the whole class:
+
+> **A gate whose evidence is a conversation is satisfied by a conversation
+> about the gate**, and no pattern separates the two, because explaining a
+> thing and doing it leave the same marks.
+
+The right response is to state the threat model rather than tighten the regex
+again. This gate defends against **an analysis session that skips step 2** —
+an agent going straight to parameters, which is what actually happened and what
+`launch.md` had failed to prevent twice. It does **not** defend against a
+session *developing this plugin*, and it is not asked to. A real analysis
+transcript contains no `nf-core/*/docs/images/` URLs unless someone put them
+there on purpose, which is the step.
+
+What the third instance did expose was a real hole, and it is not about blocks
+at all: **the evidence never checked which pipeline it was evidence of.**
+A conversation that showed rnaseq's figure and then switched to bacass — the
+normal way this cluster is used, several pipelines per session — kept the gate
+open with a diagram of something else. So when the command names a repo
+(`nf-core/<name>`, or a github.com URL; a Launchpad entry names nothing and
+leaves the check off), the figure URL must contain that repo. An abbreviated
+URL fails it too, correctly: `https://raw.../docs/images/x.png` is not a URL
+anyone can open.
+
+The general form is worth more than either fix: **evidence has a subject, and a
+rule that checks the predicate without checking the subject answers a question
+nobody asked.** "A diagram was shown" is not "this pipeline was shown."

@@ -109,6 +109,13 @@ mktx "$TMP/typed_diag.jsonl"   "w:$FIXTURE_WRITE"
 mktx "$TMP/typed_schema.jsonl" "a:$DIAG" "w:$FIXTURE_WRITE" 'h:全部預設'
 mktx "$TMP/curled.jsonl"       "a:$DIAG" "w:curl -sSL $SCHEMA_URL" 'h:全部預設'
 
+# A diagram is evidence about ONE pipeline. Switching pipelines mid-conversation
+# leaves the previous one's figure sitting in the transcript, and it used to go
+# on answering for the new one.
+RNASEQ_DIAG='here is the workflow: https://raw.githubusercontent.com/nf-core/rnaseq/3.14.0/docs/images/nf-core-rnaseq_metro_map_grey.png'
+mktx "$TMP/wrong_pipeline.jsonl" "a:$RNASEQ_DIAG" "a:$SCHEMA" 'h:全部預設'
+mktx "$TMP/right_pipeline.jsonl" "a:$DIAG" "a:$SCHEMA" 'h:全部預設'
+
 t "an unrelated command is not this gate's business" allow "$LS"  "$TMP/empty.jsonl"
 t "samplesheet before the diagram is refused"        deny  "$SS"  "$TMP/empty.jsonl"
 t "writing the csv directly is the same step"        deny  "$SSW" "$TMP/empty.jsonl"
@@ -133,6 +140,13 @@ t "an injected turn is not the user replying"        deny  "$PY_" "$TMP/injected
 t "a figure URL I typed into a command is not shown" deny  "$SS"  "$TMP/typed_diag.jsonl"
 t "a fixture naming the schema is not reading it"    deny  "$PY_" "$TMP/typed_schema.jsonl"
 t "actually fetching the schema still counts"        allow "$PY_" "$TMP/curled.jsonl"
+
+# The diagram must be the diagram OF THIS PIPELINE.
+LA_B="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"tw $(printf '\x6c\x61\x75\x6e\x63\x68') nf-core/bacass -w me/ws\"}}"
+LA_NAMED="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"tw $(printf '\x6c\x61\x75\x6e\x63\x68') bacass_v261\"}}"
+t "another pipeline's diagram does not answer"       deny  "$LA_B" "$TMP/wrong_pipeline.jsonl"
+t "this pipeline's diagram does"                     allow "$LA_B" "$TMP/right_pipeline.jsonl"
+t "a Launchpad name names no repo, so no constraint" allow "$LA_NAMED" "$TMP/wrong_pipeline.jsonl"
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

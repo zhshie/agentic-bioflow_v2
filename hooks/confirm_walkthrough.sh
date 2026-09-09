@@ -77,6 +77,17 @@ fi
 
 [ "$G1$G2$G3" = "000" ] && allow
 
+# ---- which pipeline is this call about ------------------------------------
+# A diagram is evidence about one pipeline, and conversations switch pipelines.
+# The previous one's figure stays in the transcript and used to go on answering
+# for the next one. Only a command that actually names a repo can be checked -
+# a Launchpad entry is a name of the user's choosing and says nothing about the
+# repo behind it, so it leaves the constraint off rather than guessing.
+# -w/--workspace takes an org/name pair too; drop it before looking.
+WANT=$(sed -E 's/(^| )(-w|--workspace)[= ][^ ]*/ /g' <<<"$CMD" \
+       | grep -oE '(nf-core|github\.com/[A-Za-z0-9_.-]+)/[A-Za-z0-9_.-]+' \
+       | head -1 | sed -E 's#.*/##')
+
 # ---- what the conversation shows already happened -------------------------
 # Reading the transcript is what makes this checkable rather than advisory. It
 # is also why nothing is written down: the conversation already records what
@@ -113,7 +124,7 @@ EV=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
                  || $2 ~ /<command-name/ || $2 ~ /<local-command/ \
                  || $2 ~ /This session is being continued/) { $1="u" }
       { print }' \
-  | awk -F'\t' '
+  | awk -F'\t' -v want="$WANT" '
       $1=="h" && index($2,"'"$ESCAPE"'")            { esc=1 }
       # A URL the user was handed, in text. Not a mention - typing the words
       # "docs/images/" while discussing this gate is not showing anyone a
@@ -122,7 +133,10 @@ EV=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
       # the second by the heredoc that created its test fixtures. Step 2 asks
       # for the raw URL to be put in front of the user, and a terminal renders
       # no image, so text is exactly the right and only evidence.
-      $1=="x" && $2 ~ /https?:\/\/[^ "]*docs\/images\//        { diag=1 }
+      $1=="x" && $2 ~ /https?:\/\/[^ "]*docs\/images\// {
+          any=1
+          if (want=="" || index($2, "/" want "/")) diag=1
+      }
       # The schema is different: it has to be READ, not displayed, so a fetch
       # counts. The command must actually fetch it - naming the URL inside a
       # file being written is the same nothing as above.
@@ -133,8 +147,8 @@ EV=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
       # to be trusted: an AskUserQuestion carries the choice the user made.
       $1=="a" && schema && NR>schema && index($2,"AskUserQuestion") { ans=1 }
       $1=="h" && schema && NR>schema                { ans=1 }
-      END { printf "%d %d %d %d\n", esc+0, diag+0, (schema>0)?1:0, ans+0 }')
-read -r ESC DIAG SCHEMA ANS <<<"${EV:-0 0 0 0}"
+      END { printf "%d %d %d %d %d\n", esc+0, diag+0, (schema>0)?1:0, ans+0, any+0 }')
+read -r ESC DIAG SCHEMA ANS DIAGANY <<<"${EV:-0 0 0 0 0}"
 
 [ "$ESC" = 1 ] && allow
 
@@ -164,12 +178,20 @@ $ESC_NOTE"
 fi
 
 if [ "$G3" = 1 ]; then
-    [ "$DIAG" != 1 ] && deny \
+    if [ "$DIAG" != 1 ]; then
+        [ "$DIAGANY" = 1 ] && deny \
+"This starts a run of ${WANT:-this pipeline}, and the only workflow diagram in this conversation belongs to a different pipeline. Whatever was shown earlier described something else; nobody has seen what this run will do.
+
+$DIAGRAM_FIX
+
+$ESC_NOTE"
+        deny \
 "This starts a run, and step 2 never happened: the pipeline's workflow diagram was not shown to the user.
 
 $DIAGRAM_FIX
 
 $ESC_NOTE"
+    fi
     { [ "$SCHEMA" != 1 ] || [ "$ANS" != 1 ]; } && deny \
 "This starts a run, and step 5 never finished: the parameters were not put to the user as a choice.
 
