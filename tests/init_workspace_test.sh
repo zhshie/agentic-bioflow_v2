@@ -80,6 +80,27 @@ cfg=$(grep NXF_SINGULARITY_CACHEDIR "$CFGF" | grep -oE '/[A-Za-z0-9_.-]+"' | tr 
 if [ -n "$cfg" ] && [ -d "$RUNS/$cfg" ]; then echo ok
 else echo "FAIL: config says '$cfg', skeleton has: $(ls -a "$RUNS" | tr '\n' ' ')"; fails=$((fails+1)); fi
 
+# ...and the config default is only a default. ce_apply.sh pushes the settings
+# key `singularity_cache` into the compute environment as
+# NXF_SINGULARITY_CACHEDIR, which is the value nchc.config reads BEFORE its own
+# fallback. On this deployment that points outside the run area at 27 GB of
+# images, so creating the fallback name under $BASE would have built the third
+# empty directory in this story rather than the first. Three readers, not two.
+CACHE_ELSEWHERE="$TMP/elsewhere/images"
+cat > "$TMP/env.yaml" <<YAML
+storage_root: $TMP/site_runs2
+singularity_cache: $CACHE_ELSEWHERE
+YAML
+out2=$(LAB_SETTINGS_FILE="$TMP/env.yaml" LAB_RUNS_DIR="$TMP/site_runs2" bash "$S" site --user alice 2>&1)
+printf '%-64s ' "site: an overridden cache is not duplicated under the run area"
+[ -d "$TMP/site_runs2/_singularity_cache" ] \
+  && { echo "FAIL: built the fallback name anyway"; fails=$((fails+1)); } || echo ok
+printf '%-64s ' "site: and the tree says where the images really are"
+grep -qF "$CACHE_ELSEWHERE" <<<"$out2" && echo ok \
+  || { echo "FAIL: <<$out2>>"; fails=$((fails+1)); }
+printf '%-64s ' "site: the overridden path exists after the call"
+[ -d "$CACHE_ELSEWHERE" ] && echo ok || { echo "FAIL: $CACHE_ELSEWHERE missing"; fails=$((fails+1)); }
+
 # --run additionally scaffolds one run's own subdirectories.
 site --user alice --run rnaseq_gutmicrobiome_20260908 >/dev/null
 RUN_DIR="$RUNS/alice/runs/rnaseq_gutmicrobiome_20260908"

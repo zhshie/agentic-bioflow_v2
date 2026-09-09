@@ -118,10 +118,20 @@ if [ "$SIDE" = site ]; then
         "step 1 of setup and everything else derives from it. See docs/SETTINGS.md."
     BASE="${BASE%/}"
 
+    # The image cache has three readers, not two, and the third one wins.
+    # nchc.config falls back to "$LAB_RUNS_DIR/_singularity_cache" only when
+    # NXF_SINGULARITY_CACHEDIR is unset - and ce_apply.sh sets it, from the
+    # `singularity_cache` setting, on every deployment that has one. Creating
+    # the fallback name regardless is how this directory came to be empty in
+    # the first place (PITFALLS 17, then 19): a name that satisfies the guard
+    # and the comment, and that nothing ever writes an image into. So resolve
+    # it the way the run itself will, and build that. It is often outside the
+    # run area, which is why the tree below prints it as an absolute path.
+    CACHE="$(setting singularity_cache "$BASE/_singularity_cache")"
     DIRS+=(
         "$BASE/_personal"
         "$BASE/_references"
-        "$BASE/_singularity_cache"
+        "$CACHE"
         "$BASE/_system/agent"
         "$BASE/_system/relay"
         "$BASE/_system/coldstart"
@@ -165,7 +175,12 @@ echo "$BASE"
 if [ "$SIDE" = site ]; then
     echo "├── _personal/"
     echo "├── _references/"
-    echo "├── _singularity_cache/"
+    case "$CACHE" in
+        "$BASE"/*) echo "├── ${CACHE#$BASE/}/" ;;
+        # Outside the run area: printing a bare basename here would draw it as
+        # though it lived under $BASE, which is the misreading that matters.
+        *)         echo "├── (images: $CACHE/)" ;;
+    esac
     if [ -n "$USER_NAME" ]; then
         echo "├── _system/"
         echo "│   ├── agent/"
