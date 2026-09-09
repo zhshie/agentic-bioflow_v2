@@ -78,7 +78,7 @@ so running it again is always safe:
 $LAB_RUNS_DIR/                     (site side, "site")
 ├── _personal/            env.yaml and the token, mode 600, per person
 ├── _references/          shared reference data
-├── lab_singularity_library/   shared container images
+├── _singularity_cache/   shared container images
 ├── _system/               where this deployment's own machinery keeps its
 │   ├── agent/              state - agent/relay/coldstart, so a probe from a
 │   ├── relay/               setup rehearsal has somewhere to go that is not
@@ -108,15 +108,24 @@ re-fetchable read-only copy rather than a second source of truth -
 project has been bitten twice by two copies of one truth being allowed to
 disagree; do not reintroduce a third.
 
-**The directory names are not this design's to choose freely.**
-`rawdata`, `results`, `analysis`, `_references` and `lab_singularity_library`
-are copied verbatim from `hooks/confirm_cleanup.sh`'s HIT_PROTECTED and
-HIT_SHARED blocks - the safety net that refuses to delete them. An earlier
-draft of this design called the shared image cache `_singularity_cache`,
-which reads naturally but does not match the hook's pattern; spelling it
-`lab_singularity_library` instead is what lets the skeleton and the safety net
-agree, and is why that name looks like an odd fit next to the underscore-led
-names around it.
+**The directory names are not this design's to choose freely.** Each one has
+to satisfy two readers, and satisfying only one is the failure in PITFALLS 17:
+
+| reader | file | what it wants |
+|---|---|---|
+| the net that refuses to delete it | `hooks/confirm_cleanup.sh` | the name matches its pattern |
+| the thing that writes into it | `configs/sites/nchc.config` | the name is where it puts files |
+
+The image cache was called `lab_singularity_library` here for a while, because
+that was the hook's only literal pattern and a name it did not know would have
+been an unguarded directory. PITFALLS 17 fixed the hook to match the shape
+instead — `lab_singularity_library`, `_singularity_cache`, `.singularity_cache`
+and a bare `singularity` all qualify — which retired that constraint without
+retiring the name it had forced. The skeleton kept building a directory that
+was guarded, agreed with every comment about it, and that nothing would ever
+put an image into: `nchc.config` writes to `_singularity_cache`. It is now
+spelled the way the config spells it, and `tests/init_workspace_test.sh` reads
+that spelling out of the config rather than trusting this page.
 
 **Migration: none.** Existing runs stay exactly where they are;
 `scripts/init_workspace.sh` never moves, renames or deletes anything. The

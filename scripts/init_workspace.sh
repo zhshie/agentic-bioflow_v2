@@ -27,7 +27,7 @@
 #            back to. Optional on the site side, because setup asks for it in
 #            a later step than "where the work will live": call this once
 #            without --user to lay down _personal/, _references/,
-#            lab_singularity_library/ and _system/ (nothing about them needs
+#            _singularity_cache/ and _system/ (nothing about them needs
 #            to know who the member is), and again with --user once Seqera
 #            has answered, to add that member's rawdata/ and runs/. Both
 #            calls are idempotent, so doing it in two passes costs nothing.
@@ -42,15 +42,25 @@
 # and the second run changes nothing.
 #
 # The names below - rawdata, results, analysis, _references and
-# lab_singularity_library - are not this script's invention: they are copied
-# verbatim from hooks/confirm_cleanup.sh's HIT_PROTECTED and HIT_SHARED
-# blocks, which is the safety net that refuses to delete them. Get one
-# spelling wrong here and the skeleton names a directory the net does not
-# recognise. (The shared image cache is spelled `lab_singularity_library`
-# because that is the hook's literal pattern - an earlier draft of this design
-# called it `_singularity_cache`, which the hook does not match. Naming it
-# that here would build a "protected" directory the safety net has never heard
-# of, so the hook's spelling wins.)
+# _singularity_cache - are not this script's invention. Each has to satisfy two
+# readers at once, and PITFALLS 17 is what happens when only one is consulted:
+#
+#   the hook that refuses to delete it   hooks/confirm_cleanup.sh
+#   the thing that writes into it        configs/sites/nchc.config
+#
+# The image cache was `lab_singularity_library` here because that was once the
+# hook's only literal pattern, and a name the hook did not know would have been
+# an unguarded directory. PITFALLS 17 fixed the hook to match the shape - all
+# of `lab_singularity_library`, `_singularity_cache`, `.singularity_cache` and
+# a bare `singularity` - which retired that constraint without retiring the
+# name it had forced. So the skeleton went on creating a directory that was
+# guarded, agreed with the comment above it, and that nothing would ever write
+# an image into: nchc.config puts them in `_singularity_cache`. That is the
+# same silent divergence PITFALLS 17 is about, one file over, and it survived
+# the fix because the justification for the wrong name outlived its reason.
+# The name below is now the one the config resolves to, and
+# tests/init_workspace_test.sh checks it against that file rather than against
+# this comment.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
@@ -111,7 +121,7 @@ if [ "$SIDE" = site ]; then
     DIRS+=(
         "$BASE/_personal"
         "$BASE/_references"
-        "$BASE/lab_singularity_library"
+        "$BASE/_singularity_cache"
         "$BASE/_system/agent"
         "$BASE/_system/relay"
         "$BASE/_system/coldstart"
@@ -155,7 +165,7 @@ echo "$BASE"
 if [ "$SIDE" = site ]; then
     echo "├── _personal/"
     echo "├── _references/"
-    echo "├── lab_singularity_library/"
+    echo "├── _singularity_cache/"
     if [ -n "$USER_NAME" ]; then
         echo "├── _system/"
         echo "│   ├── agent/"

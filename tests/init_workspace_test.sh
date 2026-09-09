@@ -48,7 +48,7 @@ out=$(site --user alice 2>&1); rc=$?
 t "site: exits clean"                              0 "" -- true
 [ "$rc" = 0 ] || { echo "FAIL: site --user alice exited $rc: $out"; fails=$((fails+1)); }
 
-for d in _personal _references lab_singularity_library \
+for d in _personal _references _singularity_cache \
          _system/agent _system/relay _system/coldstart \
          alice/rawdata alice/runs; do
   printf '%-64s ' "site created $d"
@@ -59,14 +59,26 @@ printf '%-64s ' "site: _personal/ is mode 700, per person on a shared account"
 m=$(stat -c %a "$RUNS/_personal"); [ "$m" = 700 ] && echo ok || { echo "FAIL: mode $m"; fails=$((fails+1)); }
 
 printf '%-64s ' "site: prints the tree it made"
-grep -qF "lab_singularity_library/" <<<"$out" && grep -qF "alice/" <<<"$out" && echo ok \
+grep -qF "_singularity_cache/" <<<"$out" && grep -qF "alice/" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 
 # The actual point of the ticket: the names the skeleton just built are the
 # same names hooks/confirm_cleanup.sh refuses to delete.
 deny_check "hook denies deleting site _references/"          "$RUNS/_references"
-deny_check "hook denies deleting site lab_singularity_library/" "$RUNS/lab_singularity_library"
+deny_check "hook denies deleting site _singularity_cache/"    "$RUNS/_singularity_cache"
 deny_check "hook denies deleting alice/rawdata"               "$RUNS/alice/rawdata"
+
+# PITFALLS 17 was a protected name nothing wrote to. It was fixed in the hook,
+# and the skeleton went on creating the decoy: the comment justifying that name
+# still cited a hook that no longer needs it. So the skeleton is now pinned to
+# the config that actually writes images, not only to the hook that guards them.
+# A directory named by neither is an empty one, and an empty one is the whole
+# failure mode - a guard on a path nothing uses stays quiet until it matters.
+printf '%-64s ' "site: the image cache is the one nchc.config resolves to"
+CFGF="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/configs/sites/nchc.config"
+cfg=$(grep NXF_SINGULARITY_CACHEDIR "$CFGF" | grep -oE '/[A-Za-z0-9_.-]+"' | tr -d '/"' | head -1)
+if [ -n "$cfg" ] && [ -d "$RUNS/$cfg" ]; then echo ok
+else echo "FAIL: config says '$cfg', skeleton has: $(ls -a "$RUNS" | tr '\n' ' ')"; fails=$((fails+1)); fi
 
 # --run additionally scaffolds one run's own subdirectories.
 site --user alice --run rnaseq_gutmicrobiome_20260908 >/dev/null
@@ -158,7 +170,7 @@ SHARED_ONLY="$TMP/shared_only_runs"
 out=$(LAB_RUNS_DIR="$SHARED_ONLY" bash "$S" site 2>&1); rc=$?
 printf '%-64s ' "site with no --user still exits clean"
 [ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
-for d in _personal _references lab_singularity_library \
+for d in _personal _references _singularity_cache \
          _system/agent _system/relay _system/coldstart; do
   printf '%-64s ' "shared-only call still creates $d"
   if [ -d "$SHARED_ONLY/$d" ]; then echo ok; else echo "FAIL: $SHARED_ONLY/$d missing"; fails=$((fails+1)); fi
