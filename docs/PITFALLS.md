@@ -790,3 +790,44 @@ anyone can open.
 The general form is worth more than either fix: **evidence has a subject, and a
 rule that checks the predicate without checking the subject answers a question
 nobody asked.** "A diagram was shown" is not "this pipeline was shown."
+
+**19. A reason for not checking something is itself a claim, and it expires
+without a sound.** One afternoon spent running the tools against the live
+cluster and the real filesystem, instead of against their fixtures, turned up
+five defects. Every one of them had a comment or a document sitting next to it
+asserting the opposite, and four of the five were written by someone who was
+right at the time.
+
+| what was written down | what was true on 2026-09-09 |
+|---|---|
+| `downstream.md`: the >500 MB path is untested because nothing produced here is that large | two results trees at 10.2 GB and 8.9 GB, twenty times the limit, days old. `du` answers this in one command |
+| `init_workspace.sh`: the image cache must be spelled `lab_singularity_library`, because the hook matches nothing else | true when written; PITFALLS 17 fixed the hook to match four spellings and retired the constraint without retiring the name. The skeleton kept building an empty directory `nchc.config` never writes to |
+| `why_pending.sh`: the reason table covers what a job pends on | the live queue held ten shapes to its five. 102 of 353 pending jobs hit the fallback, which returned an empty string — the job's fields with no verdict under them, which reads as "examined, found fine" |
+| `why_pending.sh`: the ladder tells you which box to shrink into | it never looked at the job's partition. Against a real `ct224` job it named an `ngs` box and offered six below — a different node pool, different floors, none of it measured. Same defect as 18b, one file over |
+| `fetch.sh`: the size check exists so a laptop is not asked to pull a work directory over a home connection (its own header) | its refusal named only `--max-mb`, the override that does exactly that, and never named the on-site path `docs/DOWNSTREAM.md` had already specified |
+
+Two of these are the *same* shape as failures this file already records, which
+is the part worth keeping. The ladder answering for the wrong partition family
+is 18b — evidence with an unchecked subject. The image cache is 17 — a guard
+and the thing it guards, drifting apart in silence — except that this time the
+drift was *created by the fix*: correcting the hook made the skeleton's name
+wrong, and the comment explaining why that name was odd is precisely what
+stopped the next reader from questioning it.
+
+The lesson is not "re-read your comments". It is narrower and testable:
+
+- **An untested marker has an excuse attached, and the excuse is usually a
+  measurement.** "No input is large enough" is a statement about a filesystem.
+  Re-run it before trusting it; it costs one command and it was false here.
+- **A justification that names another file's behaviour is a dependency, and
+  nothing links them.** When the hook changed, nothing pointed at the script
+  that had been written around its old shape. The fix is not vigilance — it is
+  to pin the value to the file it comes from, the way
+  `tests/init_workspace_test.sh` now reads the cache name out of
+  `nchc.config` rather than restating it.
+- **A fallback branch that returns nothing is not a default; it is a hole with
+  a verdict-shaped gap where the answer goes.** Name what you do not know.
+
+And the reason all five surfaced at once: fixtures contain only what their
+author thought of. Every one of these tools passed its whole suite before and
+after. What they had never been given was the site.

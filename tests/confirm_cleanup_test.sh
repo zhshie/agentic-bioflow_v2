@@ -49,5 +49,16 @@ t "$D -rf /work/u9613010/lab_runs/.${SG}_cache"      deny "as this deployment ac
 t "$D -rf /work/u9613010/lab_runs/x/results_singular" pass "a name that merely starts alike"
 t "$D -f  /work/u9613010/lab_runs/x/my_${SG}_notes.md" pass "someone's notes about it"
 
+# A redirection is not an argument. The TRUNCATE test already drops
+# `2>/dev/null` before looking for a `>` target, with a comment saying why - a
+# guard that fires on the most common idiom in this repo's own snippets teaches
+# the reader to skip it. But the argument list was built from the unstripped
+# segment, so the token `2>/dev/null` reached the leftover rule and matched its
+# `null` pattern. The bare-path exception below it (`/dev/null`) never saw this
+# form. Found by running `rmdir <path> 2>/dev/null` during a probe cleanup.
+t "$D -rf /tmp/x 2>/dev/null"                        pass "a redirection is not a deletion target"
+t "$D -rf /tmp/x >/dev/null 2>&1"                    pass "nor is a discarded stdout"
+t "$D -rf $P/null"                                   warn "the real null/ leftover still warns"
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

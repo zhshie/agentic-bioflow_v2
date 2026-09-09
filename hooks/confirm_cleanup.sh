@@ -100,13 +100,19 @@ while IFS= read -r SEG; do
     # it - so read-only `du`/`ls`/`jq` lines were classified destructive. A guard
     # that cries wolf on `du -sh "$RESULTS" 2>/dev/null` teaches the reader to
     # ignore it. Drop /dev/null redirects before testing.
-    echo "$SEG" | sed -E 's/[0-9]*>&?[[:space:]]*\/dev\/null//g' \
-        | grep -qE '>[[:space:]]*/' && TRUNCATE=1
+    # One stripped copy, used by both the truncation test and the argument list
+    # below. It used to be produced inline here and thrown away, so the token
+    # `2>/dev/null` survived into ARGS and matched the leftover rule's `null`
+    # pattern - `rm -rf /tmp/x 2>/dev/null` was reported as an nf-core null/
+    # directory. The exception for a bare `/dev/null` argument further down
+    # never saw this form, because the redirection operator is glued to it.
+    SEG_NR=$(echo "$SEG" | sed -E 's/[0-9]*>&?[[:space:]]*\/dev\/null//g')
+    echo "$SEG_NR" | grep -qE '>[[:space:]]*/' && TRUNCATE=1
     if echo "$SEG" | grep -qE '(^|[[:space:]])mv([[:space:]]|$)'; then MOVE_ONLY=1; fi
     [ "$DESTRUCTIVE" = 1 ] || [ "$TRUNCATE" = 1 ] || [ "$MOVE_ONLY" = 1 ] || continue
 
     # Arguments only: drop the leading command word and anything that looks like a flag.
-    ARGS=$(echo "$SEG" \
+    ARGS=$(echo "$SEG_NR" \
         | sed -E 's/^[[:space:]]*(sudo[[:space:]]+)?[A-Za-z0-9_\/.-]+[[:space:]]*//' \
         | tr ' \t' '\n\n' \
         | grep -v '^-' | grep -v '^$')
