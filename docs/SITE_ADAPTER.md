@@ -195,13 +195,36 @@ $ curl -x http://<relay> https://wave.seqera.io/service-info
 {"serviceInfo":{"version":"1.37.0","commitId":"e9e0dcb"}}
 ```
 
-**What that measures is the channel, not the feature.** Whether an image Wave
-produces actually runs under this site's container runtime is *not* established
-— no pipeline here has needed one, so nothing has tried. Recorded as untested
-rather than assumed working (`PRINCIPLES.md`, invariant 8). The case where it
-would earn the experiment is a tool with no biocontainer, since Wave builds a
-container from a conda specification; the thing to expect trouble from is the
-Singularity path, not the allowlist.
+**That measured the channel. The feature was measured on 2026-09-09, and it
+works — including on a compute node, which was the part in doubt.** A container
+was built from a conda spec (`seqkit=2.8.2`, bioconda) through the MCP, and:
+
+| step | where | result |
+|---|---|---|
+| `singularity pull docker://wave.seqera.io/...` | login node | SIF in 77 s, 50 MB |
+| `singularity exec … seqkit stats <fastq>` | login node | correct output |
+| same SIF, staged on `/work` | compute node `cpn3857` | COMPLETED 0:0 in 15 s |
+| the node's own reachability, no proxy set | compute node | none, as expected |
+| `singularity pull` **through the relay** | compute node | rc=0, then ran, 24 s total |
+
+The last row is the one that matters: a Wave URI does **not** have to be
+pre-staged here. The relay carries the pull, and `scripts/ce_apply.sh` already
+puts `http(s)_proxy` into the compute environment at `both` scope — verified
+against the live CE, not just against the script that writes it — so a task
+node has the route in its environment before it asks for an image.
+
+The old note guessed that "the thing to expect trouble from is the Singularity
+path". Half right, and instructively so: `docker://` → SIF conversion, which is
+the path an nf-core pipeline actually takes, worked untouched. What refused was
+asking Wave for a SIF *directly* — `format: "sif"` returns `Singularity build
+is only allowed enabling freeze mode`, which needs a container registry of your
+own to push to. So the working recipe is the ordinary one, and the exotic one
+is the one that needs more setup.
+
+One expiry to know about: an unfrozen Wave URI carries an expiration (the probe
+above expired 24 h out). Pinning one in a pipeline config makes a run that
+stops being reproducible on a timer — `freeze` and a build repository are what
+a durable reference costs.
 
 **Seqerakit.** A CLI that applies Seqera Platform resources — pipelines,
 compute environments, credentials — from a declarative YAML file. It overlaps
