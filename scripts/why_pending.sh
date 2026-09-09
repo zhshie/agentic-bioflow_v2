@@ -50,12 +50,21 @@ fi
 explain() {
     case "$1" in
         QOSMin*)            echo "NEVER - the request is below this partition's floor. Fix the config, not the wait." ;;
+        DependencyNeverSatisfied*)
+                            echo "NEVER - another job it was submitted to follow will not finish successfully." ;;
+        Dependency*)        echo "waiting - held until another job it was submitted to follow finishes." ;;
+        QOSGrp*|AssocGrp*)  echo "waiting - the whole account is at its cap, so what is ahead of this job is other work billed to the same account, not the partition." ;;
         QOSMax*|AssocMax*)  echo "waiting - you are at a submission limit; it will start as earlier jobs finish." ;;
         Resources)          echo "waiting - the partition is full." ;;
         Priority)           echo "waiting - other jobs are ahead." ;;
         PartitionTimeLimit) echo "NEVER - the time requested exceeds this partition's limit." ;;
         ReqNodeNotAvail*)   echo "NEVER (usually) - the nodes asked for are down or reserved." ;;
-        *)                  echo "" ;;
+        # A reason with no rule is the one a reader most needs to see. The
+        # empty string this used to return printed the job's fields with no
+        # verdict under them, which reads exactly like a job that was looked
+        # at and found fine. Measured 2026-09-09: 102 of 353 jobs pending
+        # across the cluster sat on reasons that landed here.
+        *)                  echo "no rule here for '$1' - this adapter has not seen that reason. It is the scheduler's own word: ask the site what it means, and see docs/SITE_ADAPTER.md for why this file is the only place that could know." ;;
     esac
 }
 
@@ -79,8 +88,8 @@ to_gb() {
 # the tool and the data, and this script knows neither. Naming a number here
 # would be guessing, and a guess that is low is an OOM rather than a slow job -
 # so this prints the ladder and stops.
-ladder() {   # ladder <ReqTRES>
-    local req="$1" cpu=1 memgb=1 i pick=-1
+ladder() {   # ladder <ReqTRES> <partition>
+    local req="$1" part="${2:-}" cpu=1 memgb=1 i pick=-1
     local -a qs cs ms hs
     [[ $req =~ (^|,)cpu=([0-9]+) ]]            && cpu="${BASH_REMATCH[2]}"
     [[ $req =~ (^|,)mem=([0-9]+)([KMGTkmgt]?) ]] && memgb=$(to_gb "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
@@ -91,13 +100,39 @@ ladder() {   # ladder <ReqTRES>
     done < <(nchc_boxes) || return 0
     [ "${#qs[@]}" -gt 0 ] || return 0
 
+    # The ladder is a list of THIS site's boxes, so it answers only for a job
+    # that is in one of them. Run against a job in another partition family it
+    # named a box anyway - the same failure as PITFALLS 18b, where evidence was
+    # counted without ever checking what it was evidence of. Another family has
+    # its own floors and its own hardware, and none of that is written here.
+    local known=0
+    for i in "${!qs[@]}"; do [ "${qs[$i]}" = "$part" ] && { known=1; break; }; done
+    if [ "$known" = 0 ]; then
+        echo
+        printf "   this job will start, but '%s' is not in this site's box table,\n" "$part"
+        echo "   so there is no ladder here to offer it. The table covers one node pool"
+        echo "   (docs/PITFALLS.md entry 6b); another partition family has its own floors"
+        echo "   and its own hardware, and this adapter has measured neither."
+        return 0
+    fi
+
     # Same rule the config's nchcBox closure applies: smallest box that covers
     # both. Time is left out on purpose - a job already at Resources/Priority
     # has cleared the partition's time limit, so it cannot be what is binding.
     for i in "${!qs[@]}"; do
         if [ "${cs[$i]}" -ge "$cpu" ] && [ "${ms[$i]}" -ge "$memgb" ]; then pick=$i; break; fi
     done
-    [ "$pick" -ge 0 ] || pick=$(( ${#qs[@]} - 1 ))
+    # No fallback to the largest box. This used to answer with it as the box
+    # the job "lands in", which is not true of a request that overflows it -
+    # and a wrong box number costs a whole queue wait to disprove.
+    if [ "$pick" -lt 0 ]; then
+        echo
+        printf '   no box here holds cpu=%s / %s GB - the request is above the largest.\n' "$cpu" "$memgb"
+        echo "   Nothing below can be offered, because nothing above it exists to shrink"
+        echo "   from. What this task actually needs is a question about the tool and the"
+        echo "   data; apply an answer with scripts/relaunch_with_override.sh."
+        return 0
+    fi
 
     echo
     echo "   this job will start; the only lever that makes it start sooner is a smaller box."
@@ -139,7 +174,9 @@ if [ $# -ge 1 ]; then
     # BELOW a floor, so offering it smaller boxes would point the wrong way
     # down the ladder and strand it harder.
     case "$r" in
-        Resources|Priority) ladder "$(sed -n 's/^ReqTRES=//p' <<<"$fields" | head -1)" ;;
+        Resources|Priority|QOSGrp*|AssocGrp*)
+            ladder "$(sed -n 's/^ReqTRES=//p' <<<"$fields" | head -1)" \
+                   "$(sed -n 's/^Partition=//p' <<<"$fields" | head -1)" ;;
     esac
     exit 0
 fi

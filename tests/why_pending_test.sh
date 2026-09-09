@@ -79,6 +79,53 @@ t "QOSMin: still says NEVER"                   "NEVER"                   "$out"
 tn "QOSMin: no ladder"                         "smaller"                 "$out"
 tn "QOSMin: no override pointer"               "relaunch_with_override.sh" "$out"
 
+# --- a reason this adapter has no rule for must still say something ----------
+# Measured against the live queue (2026-09-09): of 353 jobs pending across the
+# cluster, 102 sat on Dependency or QOSGrpCpuLimit - reasons the case list did
+# not cover, where the fallback branch printed an empty string. The job's
+# fields scrolled past with no verdict under them, which reads exactly like a
+# job that was examined and found fine.
+mkjob Dependency 'cpu=8,mem=53G,node=1,billing=8' ngs53G
+out=$(ask 1234567)
+t  "an unruled reason still gets a verdict line" "->"                      "$out"
+t  "waiting on another job says so"              "another job"             "$out"
+
+mkjob DependencyNeverSatisfied 'cpu=8,mem=53G,node=1,billing=8' ngs53G
+out=$(ask 1234567)
+t  "a dependency that cannot be met is NEVER"    "NEVER"                   "$out"
+
+# The account's own aggregate cap - what a pipeline fanning out 50 tasks hits,
+# and the one waiting reason where the binding limit is other people's jobs.
+mkjob QOSGrpCpuLimit 'cpu=8,mem=53G,node=1,billing=8' ngs53G
+out=$(ask 1234567)
+t  "a group cap is named as an account-wide one" "account"                 "$out"
+t  "a group cap gets the ladder"                 "ngs26G"                  "$out"
+
+# Whatever the reason turns out to be, the raw string has to reach the reader:
+# a reason nobody has written a rule for is the one they most need to see.
+mkjob SomeReasonNobodyHasSeenYet 'cpu=8,mem=53G,node=1,billing=8' ngs53G
+out=$(ask 1234567)
+t  "an unheard-of reason is quoted back"     "SomeReasonNobodyHasSeenYet"  "$out"
+t  "and says plainly that there is no rule"      "no rule"                 "$out"
+
+# --- the ladder is about ngs boxes, so it may only answer for ngs jobs -------
+# Same shape as PITFALLS 18b: the answer has a subject, and nobody checked it.
+# Run against a real ct224 job on the live queue, the ladder announced which
+# ngs box it "lands in" and offered six more below - confident advice about a
+# partition family this job is not in and whose hardware it does not share.
+mkjob Resources 'cpu=112,mem=324800M,node=2,billing=112' ct224
+out=$(ask 1234567)
+tn "a non-ngs job is offered no box at all"      "lands in"                "$out"
+t  "and is told the table does not cover it"     "box table"               "$out"
+
+# A request no box can hold used to fall back to the largest box and present it
+# as the one the job "lands in" - which is false, and is the one case where a
+# wrong box number costs a whole queue wait to find out.
+mkjob Resources 'cpu=112,mem=350G,node=1,billing=112' ngs372G
+out=$(ask 1234567)
+tn "a request no box fits is not said to land"   "lands in"                "$out"
+t  "it is told that nothing here holds it"       "no box"                  "$out"
+
 # --- the pre-existing exit codes are load-bearing and must not shift ---------
 out=$(WHY_PENDING_SCONTROL_BIN="$TMP/nowhere/scontrol" bash "$W" 2>&1); rc=$?
 printf '%-58s ' "no scontrol still exits 2"
