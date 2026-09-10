@@ -1113,3 +1113,44 @@ true for it to fail, and check that thing is reachable.** A mutation is the
 cheapest way to ask — break the property on purpose and see whether anything
 notices. All three of these took one edit each to expose, and all three had
 been green from the day they were written.
+
+**22. A subagent's transcript is a separate file, every record marked — so the
+gate's dangerous branch does not exist.** Measured 2026-09-10 against this
+session's own history.
+
+`/downstream` hands work to another agent, and that agent's write would meet
+the walkthrough gate. Which conversation does the gate then read? Two answers
+needed opposite code, and one of them was a trap: if a subagent's records were
+interleaved into the parent's transcript, the gate would need
+`select(.isSidechain | not)` or a subagent's own chatter would satisfy both
+halves — the parent's prompt to it arrives shaped exactly like a human turn,
+which is entry 18's injected-turn hole in new clothes. **Blind-adding that
+filter under the other answer is worse**: it would match nothing and deny every
+write a subagent makes.
+
+The answer is neither. Subagent transcripts live in their own directory beside
+the session file:
+
+```
+projects/<project>/<session-id>.jsonl          7261 records, isSidechain absent
+projects/<project>/<session-id>/subagents/
+    agent-<id>.jsonl   x17                     every record isSidechain: true
+```
+
+Seventeen of them, 34 to 256 records, **100% `true`**; the parent has the field
+on nothing. So there is no interleaving, the contamination case is impossible,
+and `.isSidechain // false` is a clean discriminator.
+
+**What the gate does with that:** nothing on the parent path, and on a
+sidechain transcript it **warns instead of denying**. Not because the check is
+weak there but because the remedy is unavailable — a denial is defensible only
+while it is a detour, and a subagent cannot put the missing step in front of a
+user and try again. Denying it would be a wall.
+
+**The measurement also made the remaining unknown stop mattering.** Whether the
+hook inside a subagent receives its own transcript or the parent's was never
+settled, and now need not be: if it gets the parent's, the gate works normally
+and correctly; if it gets its own, the discriminator fires and it warns. Both
+are safe, so the probe closed the question rather than answering it. **That is
+the cheaper shape of answer, and it is worth looking for before building the
+apparatus to decide.**

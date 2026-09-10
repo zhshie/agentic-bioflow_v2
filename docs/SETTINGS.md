@@ -84,29 +84,45 @@ $LAB_RUNS_DIR/                     (site side, "site")
 │   ├── relay/               setup rehearsal has somewhere to go that is not
 │   └── coldstart/           the top level
 └── <seqera_user>/         one member's workspace - the site is one shared
-    ├── rawdata/            Unix account, so the Seqera username is what
-    │                       tells members apart, not $USER
-    └── runs/
-        └── <pipeline>_<label>_<YYYYMMDD>/
-            ├── logs/
-            ├── results/    --outdir points here
-            ├── analysis/   downstream code and figures
-            └── work/       the only deletable one, and only on confirmation
+    └── projects/           Unix account, so the Seqera username is what
+        └── <project>/       tells members apart, not $USER
+            ├── rawdata/    what the compute nodes read
+            └── runs/
+                └── <pipeline>_<label>_<YYYYMMDD>/
+                    ├── logs/
+                    ├── results/  --outdir points here
+                    └── work/     the only deletable one, on confirmation
 
 <local root>/                      (local side, "local"; default $HOME/agentic-bioflow)
 └── <seqera_user>/
-    ├── inbox/              source data waiting to be pushed up
-    └── runs/<same name as the site>/
-        ├── results/        brought back by scripts/fetch.sh - read-only
-        └── analysis/       R/Python and figures; what an IDE opens
+    └── projects/<same name as the site>/
+        ├── rawdata/        staging; scripts/push.sh sends this up
+        ├── runs/<same name as the site>/
+        │   └── results/    brought back by scripts/fetch.sh - read-only
+        ├── analysis/       analysis.md, R/Python, figures; what an IDE opens
+        └── submission/     the built package
 ```
 
-The two `runs/<name>/` directories share a name on purpose, so the halves line
-up by eye. `results/` is the only thing that exists twice, and it is a
-re-fetchable read-only copy rather than a second source of truth -
-`analysis/` exists **only locally**, `rawdata/` **only on the site**. This
-project has been bitten twice by two copies of one truth being allowed to
-disagree; do not reintroduce a third.
+**The project is the unit everything is collected under**: the raw data that
+feeds it, every run made from that data, the analysis written on those runs,
+and the package built from the analysis. Runs used to sit directly under a
+member and analysis directly under a run, which made two ordinary things
+awkward - one batch of reads feeding several runs, and one write-up drawing on
+several runs.
+
+Project and run directories share their names across the two sides, so the
+halves line up by eye. `results/` is a re-fetchable read-only copy rather than
+a second source of truth. `rawdata/` appears on both sides and is not a second
+home either: the site's is what the compute nodes read, the local one is the
+staging area `push.sh` sends from. `analysis/` exists **only locally** -
+interactive editing happens where the IDE is. This project has been bitten
+twice by two copies of one truth being allowed to disagree; do not reintroduce
+a third.
+
+**`submission/` is a sibling of `analysis/`, not a child.** Deleting or moving
+anything under `analysis/` is a hard deny in `hooks/confirm_cleanup.sh`, and a
+built package has to be throwable-away and rebuildable. `analysis/` is source;
+`submission/` is what was built from it.
 
 **The directory names are not this design's to choose freely.** Each one has
 to satisfy two readers, and satisfying only one is the failure in PITFALLS 17:

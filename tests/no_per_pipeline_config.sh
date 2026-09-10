@@ -63,21 +63,35 @@ if [ -f "$INV" ]; then
     fi
 fi
 
-# 5. commands/downstream.md is the same guardrail wearing a different hat: it
-#    must learn from the inventory in front of it, never from a remembered
-#    list of what one pipeline's tool writes. A tool name or a specific output
-#    filename here is v1's per-pipeline table growing back one line of prose
-#    at a time - see the guardrail note inside the file itself.
-DS="$ROOT/commands/downstream.md"
-if [ -f "$DS" ]; then
-    DS_LITERALS='report\.tsv|short_summary'
-    if hits=$(grep -inE "\\b($TOOLS|$DS_LITERALS)\\b" "$DS"); then
-        echo "FAIL: commands/downstream.md names a pipeline tool or output file:"
+# 5. The same guardrail wearing a different hat, for the commands whose whole
+#    job is to learn from the artifact in front of them. A tool name or a
+#    specific output filename in one of these is v1's per-pipeline table
+#    growing back one line of prose at a time - see the guardrail note inside
+#    downstream.md itself.
+#
+#    The list is not "every command", and the boundary is principled rather
+#    than an exception list. launch.md and runs.md legitimately name tools:
+#    launch.md cites STAR index sizing as a worked example of a resource
+#    decision, and runs.md names MultiQC precisely to say a pipeline without
+#    one still produces QC somewhere. Both teach the reader not to depend on
+#    the name. downstream.md and finish.md are different in kind - they are
+#    handed a results tree and must derive everything from it, so a remembered
+#    filename there is not an example, it is the dependency.
+#
+#    This was hardcoded to downstream.md until finish.md was written. Adding a
+#    third is one word.
+BLIND="downstream.md finish.md"
+DS_LITERALS='report\.tsv|short_summary'
+for name in $BLIND; do
+    f="$ROOT/commands/$name"
+    [ -f "$f" ] || continue
+    if hits=$(grep -inE "\\b($TOOLS|$DS_LITERALS)\\b" "$f"); then
+        echo "FAIL: commands/$name names a pipeline tool or output file:"
         printf '  %s\n' "$hits"
         echo "  It must read the results tree at run time, not remember what one pipeline wrote."
         fail=1
     fi
-fi
+done
 
 [ "$fail" = 0 ] && echo "OK: nothing is configured per pipeline; launch.md still reads the pipeline"
 exit $fail

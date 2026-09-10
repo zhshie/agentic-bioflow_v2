@@ -15,8 +15,17 @@
 # where you want the directories to appear: directly for reach:local or the
 # local side, through scripts/on_site.sh --script for reach:ssh's site side.
 #
-#   init_workspace.sh site  [--user <seqera_user>] [--run <name>]
-#   init_workspace.sh local --user <seqera_user> [--run <name>] [--root <path>]
+#   init_workspace.sh site  [--user <u>] [--project <p>] [--run <name>]
+#   init_workspace.sh local --user <u> [--project <p>] [--run <name>] [--root <path>]
+#
+# A **project** is the unit everything is collected under: the raw data that
+# feeds it, every run made from that data, the analysis written on those runs,
+# and the package built from the analysis. Runs used to sit directly under a
+# member and analysis directly under a run, which made two things awkward that
+# turn out to be the normal case - one batch of reads feeding several runs, and
+# one write-up drawing on several runs. Naming the project once puts all four
+# in one place and gives the walkthrough gate a subject it can resolve on the
+# filesystem rather than parse out of a path.
 #
 #   --user   the Seqera username (Username column of `tw runs list`). The site
 #            is one shared Unix account, so this is what tells members' runs
@@ -31,15 +40,34 @@
 #            to know who the member is), and again with --user once Seqera
 #            has answered, to add that member's rawdata/ and runs/. Both
 #            calls are idempotent, so doing it in two passes costs nothing.
+#   --project  the project this work belongs to. Optional here for the same
+#            reason --user is: setup lays the skeleton down before anyone has
+#            named a project, and `launch` asks for one before it starts a run.
 #   --run    also scaffold one run's own subdirectories
-#            (runs/<pipeline>_<label>_<YYYYMMDD>/...). Optional: most calls
-#            are setup building the standing skeleton, before any run exists.
+#            (projects/<project>/runs/<pipeline>_<label>_<YYYYMMDD>/...).
+#            Needs --project: a run belongs to one.
 #   --root   local side only. Default $HOME/agentic-bioflow.
 #
 # Idempotent: every directory is made with `mkdir -p`, which by construction
 # never touches anything already inside an existing one - the same guarantee
 # `hooks/confirm_cleanup.sh` polices from the other direction. Run this twice
 # and the second run changes nothing.
+#
+# Where each directory's one home is, and why they are not all on both sides:
+#
+#   rawdata/     both. The site's is where the compute nodes read from and is
+#                the real one; the local copy is the staging area push.sh
+#                sends from, which is what inbox/ used to be. Same name on
+#                both sides now, so the two ends of a transfer read alike.
+#   runs/        both, same names. results/ locally is a read-only replica
+#                fetch.sh can re-pull at any time.
+#   analysis/    local only. Interactive editing happens where the IDE is, and
+#                one home beats two that drift.
+#   submission/  local only, and deliberately NOT under analysis/. Deleting or
+#                moving anything under analysis/ is a hard deny in
+#                hooks/confirm_cleanup.sh, and a built package has to be
+#                throwable-away and rebuildable. analysis/ is source;
+#                submission/ is what was built from it.
 #
 # The names below - rawdata, results, analysis, _references and
 # _singularity_cache - are not this script's invention. Each has to satisfy two
@@ -73,12 +101,13 @@ case "$SIDE" in
     *) die 2 "usage: init_workspace.sh site|local --user <seqera_user> [--run <name>] [--root <path>]" ;;
 esac
 
-USER_NAME="" RUN_NAME="" ROOT_ARG=""
+USER_NAME="" PROJECT="" RUN_NAME="" ROOT_ARG=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --user) USER_NAME="${2:?--user needs a value}"; shift 2 ;;
-        --run)  RUN_NAME="${2:?--run needs a value}"; shift 2 ;;
-        --root) ROOT_ARG="${2:?--root needs a value}"; shift 2 ;;
+        --user)    USER_NAME="${2:?--user needs a value}"; shift 2 ;;
+        --project) PROJECT="${2:?--project needs a value}"; shift 2 ;;
+        --run)     RUN_NAME="${2:?--run needs a value}"; shift 2 ;;
+        --root)    ROOT_ARG="${2:?--root needs a value}"; shift 2 ;;
         *) die 2 "unknown option '$1'" ;;
     esac
 done
@@ -88,8 +117,12 @@ if [ "$SIDE" = local ]; then
         "There is no shared area here to fall back to - everything local is" \
         "under one member's own name. See docs/SETTINGS.md (seqera_user)."
 fi
-[ -n "$RUN_NAME" ] && [ -z "$USER_NAME" ] \
-    && die 2 "--run needs --user - a run belongs to one member's runs/."
+[ -n "$PROJECT" ] && [ -z "$USER_NAME" ] \
+    && die 2 "--project needs --user - a project belongs to one member."
+[ -n "$RUN_NAME" ] && [ -z "$PROJECT" ] \
+    && die 2 "--run needs --project - a run belongs to one project." \
+             "Ask which project this run is part of, or start a new one, before" \
+             "launching it. See commands/launch.md."
 if [ -n "$USER_NAME" ]; then
     case "$USER_NAME" in
         */*|.|..) die 2 "--user '$USER_NAME' must be a bare name, not a path." ;;
@@ -98,11 +131,13 @@ if [ -n "$USER_NAME" ]; then
                  "creates (_personal, _references, _system) and would collide with one." ;;
     esac
 fi
-if [ -n "$RUN_NAME" ]; then
-    case "$RUN_NAME" in
-        */*|.|..) die 2 "--run '$RUN_NAME' must be a bare directory name, not a path." ;;
+for pair in "project:$PROJECT" "run:$RUN_NAME"; do
+    what="${pair%%:*}" val="${pair#*:}"
+    [ -n "$val" ] || continue
+    case "$val" in
+        */*|.|..) die 2 "--$what '$val' must be a bare directory name, not a path." ;;
     esac
-fi
+done
 
 # mkdir -p is the whole idempotency and non-destructive guarantee: it creates
 # what is missing and leaves what already exists - files inside included -
@@ -137,23 +172,28 @@ if [ "$SIDE" = site ]; then
         "$BASE/_system/coldstart"
     )
     if [ -n "$USER_NAME" ]; then
-        DIRS+=("$BASE/$USER_NAME/rawdata" "$BASE/$USER_NAME/runs")
+        DIRS+=("$BASE/$USER_NAME/projects")
+    fi
+    if [ -n "$PROJECT" ]; then
+        PROJ_DIR="$BASE/$USER_NAME/projects/$PROJECT"
+        DIRS+=("$PROJ_DIR/rawdata" "$PROJ_DIR/runs")
     fi
     if [ -n "$RUN_NAME" ]; then
-        RUN_DIR="$BASE/$USER_NAME/runs/$RUN_NAME"
-        DIRS+=("$RUN_DIR/logs" "$RUN_DIR/results" "$RUN_DIR/analysis" "$RUN_DIR/work")
+        RUN_DIR="$PROJ_DIR/runs/$RUN_NAME"
+        DIRS+=("$RUN_DIR/logs" "$RUN_DIR/results" "$RUN_DIR/work")
     fi
 else
     BASE="${ROOT_ARG:-$HOME/agentic-bioflow}"
     BASE="${BASE%/}"
 
-    DIRS+=(
-        "$BASE/$USER_NAME/inbox"
-        "$BASE/$USER_NAME/runs"
-    )
+    DIRS+=("$BASE/$USER_NAME/projects")
+    if [ -n "$PROJECT" ]; then
+        PROJ_DIR="$BASE/$USER_NAME/projects/$PROJECT"
+        DIRS+=("$PROJ_DIR/rawdata" "$PROJ_DIR/runs"
+               "$PROJ_DIR/analysis" "$PROJ_DIR/submission")
+    fi
     if [ -n "$RUN_NAME" ]; then
-        RUN_DIR="$BASE/$USER_NAME/runs/$RUN_NAME"
-        DIRS+=("$RUN_DIR/results" "$RUN_DIR/analysis")
+        DIRS+=("$PROJ_DIR/runs/$RUN_NAME/results")
     fi
 fi
 
@@ -186,31 +226,37 @@ if [ "$SIDE" = site ]; then
         echo "│   ├── agent/"
         echo "│   ├── relay/"
         echo "│   └── coldstart/"
+        echo "└── $USER_NAME/"
+        echo "    └── projects/"
+        if [ -n "$PROJECT" ]; then
+            echo "        └── $PROJECT/"
+            echo "            ├── rawdata/"
+            echo "            └── runs/"
+            if [ -n "$RUN_NAME" ]; then
+                echo "                └── $RUN_NAME/"
+                echo "                    ├── logs/"
+                echo "                    ├── results/"
+                echo "                    └── work/"
+            fi
+        fi
     else
         echo "└── _system/"
         echo "    ├── agent/"
         echo "    ├── relay/"
         echo "    └── coldstart/"
     fi
-    if [ -n "$USER_NAME" ]; then
-        echo "└── $USER_NAME/"
-        echo "    ├── rawdata/"
-        echo "    └── runs/"
-        if [ -n "$RUN_NAME" ]; then
-            echo "        └── $RUN_NAME/"
-            echo "            ├── logs/"
-            echo "            ├── results/"
-            echo "            ├── analysis/"
-            echo "            └── work/"
-        fi
-    fi
 else
     echo "└── $USER_NAME/"
-    echo "    ├── inbox/"
-    echo "    └── runs/"
-    if [ -n "$RUN_NAME" ]; then
-        echo "        └── $RUN_NAME/"
-        echo "            ├── results/"
-        echo "            └── analysis/"
+    echo "    └── projects/"
+    if [ -n "$PROJECT" ]; then
+        echo "        └── $PROJECT/"
+        echo "            ├── rawdata/      (staging; push.sh sends this up)"
+        echo "            ├── runs/"
+        if [ -n "$RUN_NAME" ]; then
+            echo "            │   └── $RUN_NAME/"
+            echo "            │       └── results/"
+        fi
+        echo "            ├── analysis/     (source: analysis.md, scripts, figures)"
+        echo "            └── submission/   (built package; safe to throw away)"
     fi
 fi

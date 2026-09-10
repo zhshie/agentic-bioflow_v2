@@ -27,16 +27,23 @@ t() { # t <label> <expect-rc> <expect-substring|""> -- <args...>
 # tests/confirm_cleanup_test.sh does. This is the check the ticket asks for
 # directly: "the skeleton and the safety net agree."
 D=$(printf '\x72\x6d')   # the delete verb, kept out of this file's own text
-deny_check() { # deny_check <label> <path>
-  local label="$1" path="$2"
-  printf '%-64s ' "$label"
-  local out got
+# One place asks the hook, so the "does it deny?" question cannot drift between
+# the case that wants a yes and the case that wants a no.
+hook_says_deny() { # hook_says_deny <path> -> exit 0 if the hook denies deleting it
+  local path="$1" out got
   out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" \
         "$D -rf $path" | bash "$H")
   if [ -z "$out" ]; then got=pass; else
     got=$(python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out")
   fi
-  if [ "$got" = deny ]; then echo ok; else echo "FAIL: expected deny, got $got"; fails=$((fails+1)); fi
+  [ "$got" = deny ]
+}
+
+deny_check() { # deny_check <label> <path>
+  local label="$1" path="$2"
+  printf '%-64s ' "$label"
+  if hook_says_deny "$path"; then echo ok
+  else echo "FAIL: expected deny"; fails=$((fails+1)); fi
 }
 
 # ---------------------------------------------------------------------------
@@ -44,13 +51,14 @@ deny_check() { # deny_check <label> <path>
 RUNS="$TMP/site_runs"
 site() { LAB_RUNS_DIR="$RUNS" bash "$S" site "$@"; }
 
-out=$(site --user alice 2>&1); rc=$?
+PROJ=gut_study
+out=$(site --user alice --project "$PROJ" 2>&1); rc=$?
 t "site: exits clean"                              0 "" -- true
 [ "$rc" = 0 ] || { echo "FAIL: site --user alice exited $rc: $out"; fails=$((fails+1)); }
 
 for d in _personal _references _singularity_cache \
          _system/agent _system/relay _system/coldstart \
-         alice/rawdata alice/runs; do
+         alice/projects "alice/projects/$PROJ/rawdata" "alice/projects/$PROJ/runs"; do
   printf '%-64s ' "site created $d"
   if [ -d "$RUNS/$d" ]; then echo ok; else echo "FAIL: $RUNS/$d missing"; fails=$((fails+1)); fi
 done
@@ -66,7 +74,7 @@ grep -qF "_singularity_cache/" <<<"$out" && grep -qF "alice/" <<<"$out" && echo 
 # same names hooks/confirm_cleanup.sh refuses to delete.
 deny_check "hook denies deleting site _references/"          "$RUNS/_references"
 deny_check "hook denies deleting site _singularity_cache/"    "$RUNS/_singularity_cache"
-deny_check "hook denies deleting alice/rawdata"               "$RUNS/alice/rawdata"
+deny_check "hook denies deleting a project's rawdata"         "$RUNS/alice/projects/$PROJ/rawdata"
 
 # PITFALLS 17 was a protected name nothing wrote to. It was fixed in the hook,
 # and the skeleton went on creating the decoy: the comment justifying that name
@@ -102,14 +110,18 @@ printf '%-64s ' "site: the overridden path exists after the call"
 [ -d "$CACHE_ELSEWHERE" ] && echo ok || { echo "FAIL: $CACHE_ELSEWHERE missing"; fails=$((fails+1)); }
 
 # --run additionally scaffolds one run's own subdirectories.
-site --user alice --run rnaseq_gutmicrobiome_20260908 >/dev/null
-RUN_DIR="$RUNS/alice/runs/rnaseq_gutmicrobiome_20260908"
-for d in logs results analysis work; do
+site --user alice --project "$PROJ" --run rnaseq_gutmicrobiome_20260908 >/dev/null
+RUN_DIR="$RUNS/alice/projects/$PROJ/runs/rnaseq_gutmicrobiome_20260908"
+for d in logs results work; do
   printf '%-64s ' "site --run created $d"
   if [ -d "$RUN_DIR/$d" ]; then echo ok; else echo "FAIL: $RUN_DIR/$d missing"; fails=$((fails+1)); fi
 done
 deny_check "hook denies deleting that run's results/"   "$RUN_DIR/results"
-deny_check "hook denies deleting that run's analysis/"  "$RUN_DIR/analysis"
+
+# analysis/ is not built on the site any more: interactive editing happens
+# where the IDE is, and one home beats two that drift.
+printf '%-64s ' "site run dir has no analysis/ - its home is where the IDE is"
+[ -d "$RUN_DIR/analysis" ] && { echo "FAIL: analysis/ must not exist on the site"; fails=$((fails+1)); } || echo ok
 
 # work/ is the one deletable directory - the hook only WARNs on it, never
 # denies, and confirm_cleanup_test.sh already covers that path. Checking here
@@ -119,15 +131,15 @@ deny_check "hook denies deleting that run's analysis/"  "$RUN_DIR/analysis"
 # Idempotency and non-destruction: the two guarantees the ticket names by name
 # ("is idempotent" / "never touches an existing directory's contents").
 echo "a lab member's own file, not this script's to move or open" \
-  > "$RUNS/alice/rawdata/sample_R1.fastq.gz.placeholder"
-before=$(stat -c %Y "$RUNS/alice/rawdata/sample_R1.fastq.gz.placeholder")
-before_sum=$(md5sum "$RUNS/alice/rawdata/sample_R1.fastq.gz.placeholder")
-site --user alice >/dev/null 2>&1
+  > "$RUNS/alice/projects/$PROJ/rawdata/sample_R1.fastq.gz.placeholder"
+before=$(stat -c %Y "$RUNS/alice/projects/$PROJ/rawdata/sample_R1.fastq.gz.placeholder")
+before_sum=$(md5sum "$RUNS/alice/projects/$PROJ/rawdata/sample_R1.fastq.gz.placeholder")
+site --user alice --project "$PROJ" >/dev/null 2>&1
 rc2=$?
 printf '%-64s ' "re-running site is a no-op exit"
 [ "$rc2" = 0 ] && echo ok || { echo "FAIL: rc $rc2"; fails=$((fails+1)); }
-after=$(stat -c %Y "$RUNS/alice/rawdata/sample_R1.fastq.gz.placeholder")
-after_sum=$(md5sum "$RUNS/alice/rawdata/sample_R1.fastq.gz.placeholder")
+after=$(stat -c %Y "$RUNS/alice/projects/$PROJ/rawdata/sample_R1.fastq.gz.placeholder")
+after_sum=$(md5sum "$RUNS/alice/projects/$PROJ/rawdata/sample_R1.fastq.gz.placeholder")
 printf '%-64s ' "and never touches a file already inside rawdata/"
 [ "$before" = "$after" ] && [ "$before_sum" = "$after_sum" ] && echo ok \
   || { echo "FAIL: mtime or content changed"; fails=$((fails+1)); }
@@ -137,17 +149,34 @@ printf '%-64s ' "and never touches a file already inside rawdata/"
 LOCAL="$TMP/local_root"
 local_() { bash "$S" local --root "$LOCAL" "$@"; }
 
-out=$(local_ --user alice 2>&1)
-for d in alice/inbox alice/runs; do
-  printf '%-64s ' "local created $d"
-  if [ -d "$LOCAL/$d" ]; then echo ok; else echo "FAIL: $LOCAL/$d missing"; fails=$((fails+1)); fi
+out=$(local_ --user alice --project "$PROJ" 2>&1)
+LPROJ="$LOCAL/alice/projects/$PROJ"
+for d in rawdata runs analysis submission; do
+  printf '%-64s ' "local project has $d/"
+  if [ -d "$LPROJ/$d" ]; then echo ok; else echo "FAIL: $LPROJ/$d missing"; fails=$((fails+1)); fi
 done
-printf '%-64s ' "local side has no rawdata/ - source data lives on the site only"
-[ -d "$LOCAL/alice/rawdata" ] && { echo "FAIL: rawdata/ must not exist locally"; fails=$((fails+1)); } || echo ok
 
-local_ --user alice --run rnaseq_gutmicrobiome_20260908 >/dev/null
-LRUN="$LOCAL/alice/runs/rnaseq_gutmicrobiome_20260908"
-for d in results analysis; do
+# rawdata/ now exists on BOTH sides, which reverses what this file used to
+# assert. It is not a second home for the data: the site's copy is the one the
+# compute nodes read, and the local one is the staging area push.sh sends from
+# - what inbox/ used to be, renamed so the two ends of a transfer read alike.
+printf '%-64s ' "local rawdata/ is the staging area, named like the site's"
+[ -d "$LPROJ/rawdata" ] && echo ok || { echo "FAIL: missing"; fails=$((fails+1)); }
+
+# submission/ is a sibling of analysis/, not a child, and the reason is the
+# deletion guard: everything under analysis/ is undeletable by design, and a
+# built package has to be throwable-away. Source and build output.
+printf '%-64s ' "submission/ is a sibling of analysis/, not inside it"
+[ -d "$LPROJ/analysis/submission" ] && { echo "FAIL: nested under analysis/"; fails=$((fails+1)); } || echo ok
+deny_check "hook denies deleting the project's analysis/" "$LPROJ/analysis"
+printf '%-64s ' "and the hook does NOT deny deleting submission/"
+if hook_says_deny "$LPROJ/submission"; then
+  echo "FAIL: submission/ cannot be rebuilt if it cannot be removed"; fails=$((fails+1))
+else echo ok; fi
+
+local_ --user alice --project "$PROJ" --run rnaseq_gutmicrobiome_20260908 >/dev/null
+LRUN="$LPROJ/runs/rnaseq_gutmicrobiome_20260908"
+for d in results; do
   printf '%-64s ' "local --run created $d"
   if [ -d "$LRUN/$d" ]; then echo ok; else echo "FAIL: $LRUN/$d missing"; fails=$((fails+1)); fi
 done
@@ -174,8 +203,8 @@ t "a --user starting with '_' is refused - it would collide with the shared area
   "reserved" -- env LAB_RUNS_DIR="$TMP/x5" bash "$S" site --user _references
 t "site side with no run area known fails clearly, not silently"  2 \
   "no run area known" -- env -u LAB_RUNS_DIR bash "$S" site --user alice
-t "--run without --user is refused - a run belongs to one member" 2 \
-  "needs --user" -- env LAB_RUNS_DIR="$TMP/x6" bash "$S" site --run some_run_20260908
+t "--run without --project is refused - a run belongs to one project" 2 \
+  "needs --project" -- env LAB_RUNS_DIR="$TMP/x6" bash "$S" site --run some_run_20260908
 
 printf '%-64s ' "none of the refused calls created anything"
 [ ! -e "$TMP/x1" ] && [ ! -e "$TMP/x2" ] && [ ! -e "$TMP/x3" ] \
@@ -201,7 +230,7 @@ printf '%-64s ' "shared-only call creates no member subtree"
 
 LAB_RUNS_DIR="$SHARED_ONLY" bash "$S" site --user alice >/dev/null 2>&1
 printf '%-64s ' "a later call with --user layers the member subtree on top"
-[ -d "$SHARED_ONLY/alice/rawdata" ] && [ -d "$SHARED_ONLY/_references" ] && echo ok \
+[ -d "$SHARED_ONLY/alice/projects" ] && [ -d "$SHARED_ONLY/_references" ] && echo ok \
   || { echo "FAIL: layering did not produce both"; fails=$((fails+1)); }
 
 echo
