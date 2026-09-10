@@ -18,6 +18,22 @@
 # needs a real parser has grown into something it should not be.
 set -uo pipefail
 
+# How this machine differs from the one these scripts were written on, decided
+# in one place (scripts/utils/portable.sh). Sourced here rather than in each
+# caller because nearly everything already sources this file.
+#
+# Fail-closed, and loudly: without it `stat_mode` is simply undefined, so the
+# token's permission check would evaluate to nothing and report a
+# world-readable token as fine. A missing guard has to be an error, not a
+# quieter version of the same output.
+_PORTABLE="$(dirname "${BASH_SOURCE[0]}")/utils/portable.sh"
+if [ -r "$_PORTABLE" ]; then
+    . "$_PORTABLE"
+else
+    echo "missing $_PORTABLE - this deployment is incomplete." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
 # --- Where the file is -------------------------------------------------------
 # Three places, most explicit first.
 #
@@ -64,8 +80,71 @@ settings_missing() {
     elif [ -z "${LAB_RUNS_DIR:-}" ]; then
         echo "  (LAB_RUNS_DIR is not set, so no run area was searched)"
     fi
-    echo "Run setup to create one, or point LAB_SETTINGS_FILE at an existing one."
+    steered_past_a_real_file
+    shell_blind_spot
+    # This used to end "...or point LAB_SETTINGS_FILE at an existing one",
+    # which recommends the hazard: all three ways this message gets printed
+    # wrongly are caused by a variable being set, and the default with no
+    # variables at all is already correct on every platform.
+    echo "Run setup to create one. With no variables set it writes to"
+    printf '  %s\n' "$(xdg_default)"
+    echo "which every shell on every platform can find, because it needs none."
     return 0
+}
+
+# The conventional place, worked out the same way the candidate list does it.
+xdg_default() {
+    printf '%s\n' "${XDG_CONFIG_HOME:-${HOME:-}/.config}/agentic-bioflow/env.yaml"
+}
+
+# A variable can steer the search away from a file that is sitting right there.
+# LAB_SETTINGS_FILE wins outright and searches nowhere else, so a member who
+# set it once - to a path that has since moved, or that only exists in another
+# shell's home - gets a report listing one absent path while their real
+# settings file is untouched at the default. That reads exactly like "never set
+# up", and it is the one form of this failure a person can fix in one command.
+steered_past_a_real_file() {
+    local d; d="$(xdg_default)"
+    [ -r "$d" ] || return 0
+    # No second condition, deliberately. The default is always in the candidate
+    # list unless LAB_SETTINGS_FILE short-circuited it, and a readable
+    # candidate means the file was FOUND and this function never runs. So
+    # arriving here with a readable file at the default already proves the
+    # search was steered - a guard checking that again could never fail, and an
+    # assertion that cannot fail is worse than none (PITFALLS 21).
+    echo "  BUT a settings file exists at $d"
+    echo "  and the search never reached it. Unset LAB_SETTINGS_FILE to use it."
+}
+
+# Windows puts two homes on one machine and only one of them is the one setup
+# used. Git Bash's $HOME is the Windows profile; a deployment set up in WSL -
+# which commands/setup.md requires, because PITFALLS 16b measured that only WSL
+# can hold the site connection - sits in a filesystem this shell cannot reach,
+# and WSL's ~/.bashrc, where LAB_SETTINGS_FILE is exported, is never read here.
+# So the candidate list above is a true answer to the wrong question: every path
+# in it is genuinely absent, and the file is genuinely there. Without this note
+# "no settings file" is indistinguishable from "never set up", which is exactly
+# the confusion the third candidate was added to end - one machine over.
+#
+# The right move is named here too, because the obvious one is wrong: copying
+# the settings file somewhere Git Bash can see it makes --summary green in a
+# shell where on_site.sh still cannot open a session (16b) and where chmod 600
+# on the Windows filesystem does not hold, which trades a loud failure for a
+# quiet one and drops the token's only protection on the way.
+#
+# uname, not $OSTYPE: bash sets OSTYPE itself at startup, so it cannot be
+# substituted from the environment and the branch would be untestable.
+shell_blind_spot() {
+    case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*|CYGWIN*) ;;
+        *) return 0 ;;
+    esac
+    echo "  This shell is Git Bash/MSYS, where HOME is ${HOME:-unset}."
+    echo "  A deployment set up in WSL is not visible from here: different home,"
+    echo "  different filesystem, and WSL's ~/.bashrc is never read in this shell."
+    echo "  'Not found' here does not mean 'not set up'."
+    echo "  PITFALLS 16b: on Windows only WSL can hold the site connection, so"
+    echo "  start Claude Code from a WSL shell rather than moving the file."
 }
 
 # The token file, worked out in one place. preflight.sh, the session hook,
@@ -145,6 +224,46 @@ PY
     chmod 600 "$SETTINGS_FILE"
 }
 
+# Which startup file an export has to go into, and the line to put there.
+#
+# Writing `~/.bashrc` unconditionally is wrong the moment the shell is not
+# bash: zsh - the default on macOS since Catalina - never reads it, so the
+# export vanishes with no error and the next terminal looks unconfigured. That
+# is PITFALLS 25's symptom reached by a different road, on a machine with only
+# one home directory and therefore no clue to follow.
+#
+# $SHELL, not $0 and not the parent process: the question is what a NEW
+# terminal will start and therefore what will read a startup file, and this
+# script may well be running under a bash the user never chose.
+#
+# The line is generated rather than left to the caller because the file and the
+# syntax have to agree - fish takes `set -gx`, and an `export` written into
+# config.fish is a syntax error at every future shell start.
+profile_file() {
+    case "$(basename "${SHELL:-sh}")" in
+        zsh)  printf '%s\n' "${ZDOTDIR:-$HOME}/.zshrc" ;;
+        bash) printf '%s\n' "$HOME/.bashrc" ;;
+        fish) printf '%s\n' "$HOME/.config/fish/config.fish" ;;
+        ksh)  printf '%s\n' "$HOME/.kshrc" ;;
+        csh|tcsh) printf '%s\n' "$HOME/.cshrc" ;;
+        # sh, dash, ash, mksh and anything unrecognised: ~/.profile with POSIX
+        # `export` is the answer that is right for all of them. The two shells
+        # it would be wrong for - fish and csh - are the two named above,
+        # because a wrong answer here is silent in both directions: the file is
+        # never read, or the line is a syntax error at every future shell start.
+        *)    printf '%s\n' "$HOME/.profile" ;;
+    esac
+}
+
+profile_export() {
+    local name="${1:?usage: --profile-export <NAME> <VALUE>}" val="${2?}"
+    case "$(basename "${SHELL:-sh}")" in
+        fish)     printf 'set -gx %s %s\n' "$name" "$val" ;;
+        csh|tcsh) printf 'setenv %s "%s"\n' "$name" "$val" ;;
+        *)        printf 'export %s="%s"\n' "$name" "$val" ;;
+    esac
+}
+
 # `settings.sh --summary` - one screen answering "what am I configured as", and
 # above all *where that answer lives*. Nothing else in this repo ever names the
 # file it just read, which is how a member came to be grepping the filesystem
@@ -158,7 +277,7 @@ PY
 token_state() {
     local f m; f="$(token_file)"
     if [ -r "$f" ]; then
-        m="$(stat -c %a "$f" 2>/dev/null)"
+        m="$(stat_mode "$f")"
         case "$m" in
             600) printf 'present (mode 600)  %s\n' "$f" ;;
             "")  printf 'present  %s\n' "$f" ;;
@@ -204,6 +323,11 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
                         "${3?usage: settings.sh --set <key> <value>}" ;;
         --summary)
             settings_summary ;;
+        --profile-file)
+            profile_file ;;
+        --profile-export)
+            profile_export "${2:?usage: settings.sh --profile-export <NAME> <VALUE>}" \
+                           "${3?usage: settings.sh --profile-export <NAME> <VALUE>}" ;;
         *)
             setting "${1:?usage: settings.sh <key> [default|--required] | --summary | --set <key> <value>}" \
                     "${2:-}" ;;

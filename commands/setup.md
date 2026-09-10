@@ -133,8 +133,13 @@ be.
   cross-checks so the two cannot drift apart. Three things then differ, and all
   three are silent failures if missed:
   - **The settings file and the token live on the user's machine**, not the
-    site. `docs/SETTINGS.md` covers the move for a deployment that already has
-    them on the site.
+    site — in `${XDG_CONFIG_HOME:-~/.config}/agentic-bioflow/`, which is where
+    `settings.sh` looks with **no environment variable set at all**. That is
+    the point of the location: `$HOME` is the one thing every shell on every
+    platform agrees about, and every way this file has gone missing between
+    sessions was caused by a variable being set rather than absent.
+    `docs/SETTINGS.md` covers the move for a deployment that already has them
+    on the site.
   - **`storage_root` stays the site's path.** It is where runs live, and that
     has not moved. In step 1, `LAB_RUNS_DIR` goes into the profile of the
     **site** account, not the user's machine.
@@ -191,9 +196,20 @@ Ask for a location that is large (a single run's intermediates can exceed
 the work. A home directory is usually the wrong answer: quotas there are small
 and container images will fill it.
 
-Write it to `~/.bashrc` as `LAB_RUNS_DIR` — not to any tool's own settings,
-which reach neither the user's own terminal nor the compute nodes. Save it as
+Write it as `LAB_RUNS_DIR` into **the startup file of the shell that will
+actually read it** — `scripts/settings.sh --profile-file` says which, and
+`--profile-export LAB_RUNS_DIR <path>` gives the line, because the file and the
+syntax have to agree. Not `~/.bashrc` unconditionally: zsh is the default shell
+on macOS and never reads it, so the export vanishes with no error and the next
+terminal looks unconfigured. Not a tool's own settings either — those reach
+neither the user's own terminal nor the compute nodes. Save it as
 `storage_root` in the settings file too.
+
+**Under `reach: ssh` this variable belongs on the site account only.** Exported
+on the user's own machine it names a path that exists on the site, and
+`settings.sh` would then write the settings file into a local directory shaped
+like the site's — findable only from a shell that still has the variable. See
+`docs/SETTINGS.md`: on a user's machine, set nothing.
 
 Then build the shared skeleton: `scripts/init_workspace.sh site`. It is safe
 to re-run and touches nothing already inside a directory it creates.

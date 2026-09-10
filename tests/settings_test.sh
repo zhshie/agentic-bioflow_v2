@@ -130,4 +130,93 @@ out=$(pf 'reach: ssh' 'site_host: someone@site.example' 'site_user: someone' \
 hasre "and passes when the two agree"                        '^OK +site-user'   "$out"
 
 echo
+
+# ---------------------------------------------------------------------------
+# Two homes on one machine.
+#
+# The failure this prevents, measured on a real laptop: setup was done in WSL
+# (commands/setup.md requires it - PITFALLS 16b), and Claude Code's Bash tool
+# runs Git Bash. Different $HOME, a filesystem the other shell cannot read, and
+# an export in WSL's ~/.bashrc that this shell never sees. Every candidate path
+# is truthfully absent and the settings file is truthfully there, so the search
+# report above is correct and useless. The note has to name the second home, or
+# "not set up" is the only reading available.
+UB="$TMP/ubin"; mkdir -p "$UB"
+printf '#!/bin/sh\necho MINGW64_NT-10.0-22631\n' > "$UB/uname"; chmod +x "$UB/uname"
+
+msys() { env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE \
+             HOME="$HOMEDIR" XDG_CONFIG_HOME="$TMP/nowhere" PATH="$UB:$PATH" \
+             bash "$S" "$@" 2>&1; }
+
+out=$(msys workspace_id --required)
+has   "under MSYS the miss names the second home"      "Git Bash/MSYS"      "$out"
+has   "and says a WSL setup is invisible from here"    "not visible from here" "$out"
+has   "and sends them to WSL, not to moving the file"  "PITFALLS 16b"       "$out"
+has   "while still listing where it looked"            "No settings file"   "$out"
+
+# The note is only true on Windows. Printed anywhere else it is noise, and a
+# hint that fires everywhere teaches the reader to skip the whole block.
+out=$(clean "$TMP/nowhere" workspace_id --required)
+hasnot "on Linux there is no second home, so no note"  "Git Bash/MSYS"      "$out"
+has    "and the ordinary search report is unchanged"   "No settings file"   "$out"
+
+# ---------------------------------------------------------------------------
+# Steered past a real file.
+#
+# All three ways "no settings file" gets printed wrongly are caused by a
+# variable being set - two homes on one machine, an rc file this shell does not
+# read, or a path written under a $LAB_RUNS_DIR that has since left the
+# environment. The default with no variables at all is already correct
+# everywhere. So the message must not recommend setting one, and when the real
+# file is sitting at that default it has to say so: that is the only form of
+# this failure a person can fix in one command.
+STEER="$TMP/steer"; mkdir -p "$STEER/.config/agentic-bioflow"
+cat > "$STEER/.config/agentic-bioflow/env.yaml" <<'YAML'
+seqera_user: steered
+YAML
+out=$(env -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE HOME="$STEER" \
+          XDG_CONFIG_HOME="$STEER/.config" \
+          LAB_SETTINGS_FILE="$TMP/gone/env.yaml" bash "$S" seqera_user --required 2>&1)
+has "a variable pointing nowhere is told the real file exists" \
+    "BUT a settings file exists at" "$out"
+has "and names it on that line, not just in the advice" \
+    "exists at $STEER/.config/agentic-bioflow/env.yaml" "$out"
+has "and says which variable to unset"  "Unset LAB_SETTINGS_FILE"  "$out"
+
+# Absence has to stay absence. A line that fires when there is genuinely
+# nothing there would send the reader looking for a file that does not exist.
+out=$(clean "$TMP/nowhere" seqera_user --required)
+hasnot "with nothing anywhere, no phantom file is announced" \
+       "BUT a settings file exists"  "$out"
+
+# The closing advice used to name LAB_SETTINGS_FILE, i.e. the hazard itself.
+out=$(clean "$TMP/nowhere" seqera_user --required)
+has    "the advice names the no-variable default"  "/agentic-bioflow/env.yaml"  "$out"
+hasnot "and no longer recommends setting a variable" \
+       "point LAB_SETTINGS_FILE at an existing one"  "$out"
+
+
+# ---------------------------------------------------------------------------
+# Which startup file an export goes into.
+#
+# `~/.bashrc` was hardcoded. On macOS the default shell is zsh, which never
+# reads it: the export vanishes with no error and the next terminal looks
+# unconfigured - PITFALLS 25's symptom on a machine with one home directory and
+# therefore no clue to follow. The file and the syntax have to be decided
+# together, because getting either one wrong fails silently.
+pf() { SHELL="$1" HOME=/home/me ZDOTDIR="" bash "$S" --profile-file; }
+px() { SHELL="$1" HOME=/home/me bash "$S" --profile-export LAB_RUNS_DIR /work/runs; }
+
+t "bash gets .bashrc"        "$(pf /bin/bash)"      "/home/me/.bashrc"
+t "zsh gets .zshrc, not .bashrc" "$(pf /usr/bin/zsh)" "/home/me/.zshrc"
+t "fish gets its own config" "$(pf /usr/bin/fish)"  "/home/me/.config/fish/config.fish"
+t "tcsh gets .cshrc"         "$(pf /bin/tcsh)"      "/home/me/.cshrc"
+t "an unknown shell gets the POSIX answer" "$(pf /opt/x/oil)" "/home/me/.profile"
+t "ZDOTDIR moves zsh's file"  "$(SHELL=/usr/bin/zsh HOME=/home/me ZDOTDIR=/etc/z bash "$S" --profile-file)" "/etc/z/.zshrc"
+
+# The syntax has to match the file it is written into.
+t "bash gets export"   "$(px /bin/bash)"     'export LAB_RUNS_DIR="/work/runs"'
+t "fish gets set -gx"  "$(px /usr/bin/fish)" 'set -gx LAB_RUNS_DIR /work/runs'
+t "tcsh gets setenv"   "$(px /bin/tcsh)"     'setenv LAB_RUNS_DIR "/work/runs"'
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

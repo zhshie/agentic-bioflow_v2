@@ -20,6 +20,37 @@ but not empty, so every read returned its default and a configured machine was
 indistinguishable from one that had never run setup. When none of the three
 holds a file, the error names all of them rather than one.
 
+**Which of the three is yours is decided by where the deployment runs, and for
+a user's own machine the answer is the third — with no variable set at all.**
+
+| deployment | the file goes | variables needed |
+|---|---|---|
+| `reach: local` (Claude on the site) | `$LAB_RUNS_DIR/_personal/env.yaml` | `LAB_RUNS_DIR`, which that account needs anyway |
+| `reach: ssh` or `none` (Claude on the user's machine) | `${XDG_CONFIG_HOME:-~/.config}/agentic-bioflow/env.yaml` | **none** |
+
+That second row is not a style preference. Every way this file has gone missing
+between one session and the next is caused by a variable being **set**, never by
+the absence of one:
+
+- **A variable exported in one shell's startup file and not another's.** Git
+  Bash and WSL on one Windows machine have separate homes and separate startup
+  files (PITFALLS 25). `zsh`, the default shell on macOS, does not read
+  `~/.bashrc` at all.
+- **`LAB_SETTINGS_FILE` pinned to a path that has since moved.** It wins
+  outright and searches nowhere else, so the real file can be sitting at the
+  default untouched while the report names one absent path. `settings.sh` now
+  says so when that happens, because it is the one form of this a person can
+  fix in one command.
+- **The file written under `$LAB_RUNS_DIR/_personal/` on the user's own
+  machine.** Measured: `settings.sh --set` follows that variable, `mkdir -p`
+  makes the site-shaped directory locally without complaint, and the next shell
+  without the variable cannot find what was just written.
+
+The third place needs none of them, because `$HOME` is the one thing every
+shell on every platform agrees about. **So on a user's machine, set nothing.**
+`settings.sh --set` already writes there when no variable steers it, and
+`settings.sh` finds it again in any shell, on any of the three platforms.
+
 Reaching the site over ssh, the file is on the user's own machine, together with
 the token beside it — `token_file` in `scripts/settings.sh` derives the token's
 path from this file's, so the pair travel together, and `preflight.sh`,
@@ -169,9 +200,17 @@ deleting them costs the rollback path and saves three lines.
 run area, the token's *contents*, the workspace and the compute environment do
 not change; what changes is which machine holds the settings.
 
-1. Copy `_personal/env.yaml` and `_personal/.seqera_token` from the site to the
-   user's machine, keeping them together and mode 600.
-2. Point `LAB_SETTINGS_FILE` at the copy.
+1. Copy `_personal/env.yaml` and `_personal/.seqera_token` from the site into
+   `${XDG_CONFIG_HOME:-~/.config}/agentic-bioflow/` on the user's machine,
+   keeping them together and mode 600. That is where `settings.sh` looks with
+   no variable set, so this step is the whole of "make it findable".
+2. **Set nothing.** This step used to read "point `LAB_SETTINGS_FILE` at the
+   copy", and that instruction is what manufactured the failure it was meant to
+   prevent: a variable that lives in one shell's startup file, on a machine
+   that may have two shells with two homes. Make sure `LAB_RUNS_DIR` is *not*
+   exported here either — on the user's machine it names a path on the site,
+   and it would redirect both the read and the write to a local directory
+   nothing else knows about.
 3. Add `reach: ssh` and `site_host`. Leave `storage_root` as the **site's**
    path: it is where runs live, and that has not moved.
 4. Fix the site account's `~/.bashrc` — PITFALLS 16c. Skipping this is the one
