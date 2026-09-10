@@ -19,9 +19,11 @@
 # diagram afterwards is a formality. A gate belongs before the next step, not
 # before the last one.
 #
-#   G1  samplesheet work   requires  the diagram was shown
-#   G2  writing params     requires  the schema was read and the user answered
-#   G3  launch / relaunch  requires  both  (backstop)
+#   G1  samplesheet work      requires  the diagram was shown
+#   G2  writing params        requires  the schema was read and the user answered
+#   G3  launch / relaunch     requires  both  (backstop)
+#   G4  writing analysis or   requires  an analysis plan the user answered
+#       plotting code
 #
 # Unlike confirm_launch.sh beside it, this one DENIES. That is a departure and
 # it is bounded: doing the missing step puts the evidence in the transcript and
@@ -32,13 +34,22 @@
 # the record, read fresh each time from transcript_path.
 set -uo pipefail
 
-ESCAPE='略過導覽'      # said by the user, this gate stands down
+# Two escape phrases, not one, because this hook re-reads the whole
+# conversation every time. A single phrase said in the morning to skip a
+# pipeline walkthrough would silently stand the afternoon's analysis gate down
+# as well, hours later, with nothing to notice. Different steps, far apart,
+# different words.
+ESCAPE='略過導覽'      # said by the user, G1/G2/G3 stand down
+ESCAPE4='略過計畫'     # said by the user, G4 stands down
 MAXLINES=4000          # transcript tail scanned; bounds the cost on a long one
 
 INPUT=$(cat)
 TOOL=$(jq -r '.tool_name // ""'            <<<"$INPUT" 2>/dev/null)
 CMD=$(jq  -r '.tool_input.command // ""'   <<<"$INPUT" 2>/dev/null)
-FILE=$(jq -r '.tool_input.file_path // ""' <<<"$INPUT" 2>/dev/null)
+# notebook_path as well as file_path: MultiEdit and NotebookEdit reach the
+# same files by a different key, and a gate that cannot see the tool name
+# a write arrives under is a gate with a spelling for a hole.
+FILE=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$INPUT" 2>/dev/null)
 TP=$(jq   -r '.transcript_path // ""'      <<<"$INPUT" 2>/dev/null)
 
 allow() { exit 0; }
@@ -63,6 +74,45 @@ case "$FILE" in
     *params*.yml|*params*.yaml) G2=1 ;;
 esac
 
+# G4: writing analysis or plotting code into a project's analysis/ directory.
+#
+# The extension list is a whitelist on purpose. analysis/ also holds the plan
+# itself, the figures and any notes, and none of those are the step this gate
+# is about. confirm_cleanup.sh's reason for not firing on writes into
+# analysis/ applies here too: crying wolf on the normal path teaches people to
+# click through.
+#
+# It does not fire on RUNNING code. This file's own rule is that a gate goes
+# before the first action that depends on the missing step, and that action is
+# writing the script - anything reachable by --file got there through a write
+# this gate already saw. Firing on the run as well would fire on every
+# iteration of downstream's run/describe/revise loop.
+G4=0
+ANALYSIS_TARGET=""
+is_analysis_code() {
+    case "$1" in
+        */analysis/*.R|*/analysis/*.r|*/analysis/*.py|*/analysis/*.Rmd|*/analysis/*.qmd) return 0 ;;
+        analysis/*.R|analysis/*.r|analysis/*.py|analysis/*.Rmd|analysis/*.qmd) return 0 ;;
+    esac
+    return 1
+}
+if [ "$TOOL" != Bash ] && [ -n "$FILE" ] && is_analysis_code "$FILE"; then
+    G4=1; ANALYSIS_TARGET="$FILE"
+fi
+if [ "$TOOL" = Bash ]; then
+    # Heredoc bodies first: strip_heredocs.awk keeps the introducing line, so
+    # `cat > analysis/x.R <<'EOF'` is still seen while a body line that merely
+    # mentions such a path is not.
+    CMD_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
+    [ -n "$CMD_NB" ] || CMD_NB="$CMD"
+    cand=$(grep -oE '(>>?|[[:space:]]tee([[:space:]]+-a)?)[[:space:]]*[^[:space:];|&<>]*analysis/[^[:space:];|&<>]+' \
+           <<<"$CMD_NB" | sed -E 's/^[^[:alnum:]_./~$-]*//; s/^(tee|-a)[[:space:]]+//g' | head -1)
+    cand=$(printf '%s' "$cand" | sed -E 's/^[[:space:]>]*//')
+    if [ -n "$cand" ] && is_analysis_code "$cand"; then
+        G4=1; ANALYSIS_TARGET="$cand"
+    fi
+fi
+
 # The launch verbs are one judgement shared with confirm_launch.sh, loaded
 # fail-closed for the reason spelled out there: a helper that goes missing must
 # not take the gate with it silently.
@@ -75,7 +125,7 @@ if [ "$TOOL" = Bash ]; then
     fi
 fi
 
-[ "$G1$G2$G3" = "000" ] && allow
+[ "$G1$G2$G3$G4" = "0000" ] && allow
 
 # ---- which pipeline is this call about ------------------------------------
 # A diagram is evidence about one pipeline, and conversations switch pipelines.
@@ -94,6 +144,34 @@ WANT=$(sed -E 's/(^| )(-w|--workspace)[= ][^ ]*/ /g' <<<"$CMD" \
 # was said, and a second copy would be the thing invariant 2 forbids.
 [ -n "$TP" ] && [ -r "$TP" ] || warn \
 "The walkthrough gate could not read this conversation's transcript, so it could not check whether the pipeline was shown to the user before this step. Proceeding unchecked. Confirm by hand that the diagram and stage list were shown, and that the parameter choices were put to the user rather than decided for them."
+
+# Where the analysis plan for THIS piece of work lives. Walk up from the file
+# being written rather than parsing its path, because the answer is a fact
+# about the filesystem: the plan sits in the project's analysis/ directory and
+# the script is written beside or below it. That makes the subject checkable
+# however the path is spelled - PITFALLS 18b's "evidence has a subject" is
+# closed here in a way it could not be for a pipeline diagram, where the only
+# subject available was a string in a command.
+plan_file_for() {
+    local d; d=$(dirname "$1")
+    case "$d" in /*) ;; *) d="$PWD/$d" ;; esac
+    local i=0
+    while [ "$i" -lt 6 ] && [ "$d" != / ] && [ -n "$d" ]; do
+        [ -f "$d/analysis.md" ] && { printf '%s\n' "$d/analysis.md"; return 0; }
+        d=$(dirname "$d"); i=$((i+1))
+    done
+    return 1
+}
+
+# A subagent's transcript is its own file, every record marked (PITFALLS 22).
+# It cannot contain the parent's plan, and a subagent cannot put the missing
+# step in front of a user and try again - so denying it would be a wall rather
+# than a detour, which is the one thing this file's departure was bounded by.
+# G4 warns there instead. G1/G2/G3 keep denying: their remedy is not starting a
+# run, and an unattended agent starting one is exactly what they are for.
+SIDECHAIN=0
+tail -n 200 "$TP" 2>/dev/null | jq -r '.isSidechain // false' 2>/dev/null \
+    | grep -qx true && SIDECHAIN=1
 
 # One line per content block: 'x' assistant text - the only thing the user
 # actually read - 'a' the assistant's other blocks (tool_use, thinking), 'h' a
@@ -147,10 +225,58 @@ EV=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
       # to be trusted: an AskUserQuestion carries the choice the user made.
       $1=="a" && schema && NR>schema && index($2,"AskUserQuestion") { ans=1 }
       $1=="h" && schema && NR>schema                { ans=1 }
-      END { printf "%d %d %d %d %d\n", esc+0, diag+0, (schema>0)?1:0, ans+0, any+0 }')
-read -r ESC DIAG SCHEMA ANS DIAGANY <<<"${EV:-0 0 0 0 0}"
+      $1=="h" && index($2,"'"$ESCAPE4"'")           { esc4=1 }
+      # An analysis plan, as something a person was actually shown. A whole
+      # text block is one record here, so its newlines are the two characters
+      # backslash-n; split on those and count the lines that pair a thing to
+      # make with the file it would be made from. Two, not one: a plan is
+      # plural, and the one-line form is what ordinary prose about plotting
+      # produces by accident.
+      #
+      # 'x' only, never 'a'. The schema rule above accepts a tool_use because
+      # the schema has to be READ; a plan has no value unless a person saw it,
+      # so it follows the diagram rule instead. Accepting 'a' here would let
+      # `cat > analysis/analysis.md <<EOF ... EOF` satisfy the gate that
+      # exists to stop exactly that - PITFALLS 18, reopened.
+      # A plan, as something a person was shown. Two conditions on one text
+      # block, and neither alone would do:
+      #
+      #   it names analysis.md      - the block is about the plan, not about
+      #                               the data. Step 2 prints an inventory
+      #                               listing dozens of files; without this,
+      #                               that printout would satisfy this gate.
+      #   two lines read real files - a plan is plural and says what each item
+      #                               is made from. One line is what ordinary
+      #                               prose about plotting produces by accident.
+      #
+      # An earlier version instead required each line to carry a word like
+      # "plot" or "figure". That is guessing at vocabulary: a real plan line
+      # reads "ASV richness by group, from dada2/ASV_table.tsv" and contains
+      # no such word. The file reference is the half that carries weight.
+      #
+      # 'x' only, never 'a'. The schema rule above accepts a tool_use because
+      # the schema has to be READ; a plan has no value unless a person saw it.
+      # Accepting 'a' would let `cat > analysis.md <<EOF ... EOF` satisfy the
+      # gate that exists to stop exactly that - PITFALLS 18, reopened.
+      $1=="x" && $2 ~ /analysis\.md/ {
+          nl = split($2, L, /\\n/); c = 0
+          for (i = 1; i <= nl; i++)
+              if (L[i] ~ /[A-Za-z0-9_.\/-]+\.(tsv|csv|txt|tab|json|ya?ml|rds|RDS|RData|biom|qza|mtx|h5)([^A-Za-z0-9]|$)/)
+                  c++
+          if (c >= 2) plan = NR
+      }
+      $1=="a" && plan && NR>plan && index($2,"AskUserQuestion") { pans=1 }
+      $1=="h" && plan && NR>plan                    { pans=1 }
+      END { printf "%d %d %d %d %d %d %d %d\n", esc+0, diag+0, (schema>0)?1:0, ans+0, any+0, \
+                   esc4+0, (plan>0)?1:0, pans+0 }')
+read -r ESC DIAG SCHEMA ANS DIAGANY ESC4 PLAN PANS <<<"${EV:-0 0 0 0 0 0 0 0}"
 
-[ "$ESC" = 1 ] && allow
+# Stand the walkthrough gates down, not every gate. `allow` here would exit
+# before G4 is considered, so one phrase said hours earlier for a different
+# step would silently disable the analysis gate too - which is exactly what
+# having two phrases is for. G4 has its own, checked in its own block.
+[ "$ESC" = 1 ] && { G1=0; G2=0; G3=0; }
+[ "$G1$G2$G3$G4" = "0000" ] && allow
 
 DIAGRAM_FIX="Show it first: list docs/images/ in the pipeline at the pinned revision, hand the user the raw URL of the workflow figure, and give the stage list from the README in words - a terminal renders no image. Read the directory rather than guessing the filename; the pipelines used here name that figure four different ways. Then run this again."
 MENU_FIX="Do step 5 first: fetch nextflow_schema.json at the pinned revision, then put three choices to the user - reuse the parameters from a previous run, take the pipeline's defaults, or go through the adjustable ones. \"All defaults\" is a complete answer from them; it is not an answer you can give on their behalf. Then run this again."
@@ -198,6 +324,37 @@ $ESC_NOTE"
 $MENU_FIX
 
 $ESC_NOTE"
+fi
+
+if [ "$G4" = 1 ] && [ "$ESC4" != 1 ]; then
+    PLANFILE=$(plan_file_for "$ANALYSIS_TARGET" 2>/dev/null) || PLANFILE=""
+    G4_FIX="Do the planning step first: put an analysis plan in front of the user - what to compute and what to draw, each one saying which question it answers and which file and columns it reads - let them answer, and write it to analysis.md beside the code. \"All of them, go ahead\" is a complete answer from them; it is not one you can give on their behalf. Then run this again."
+
+    G4_WHY=""
+    if [ -z "$PLANFILE" ]; then
+        G4_WHY="there is no analysis.md beside or above $ANALYSIS_TARGET, so nothing says what this code is meant to produce or why."
+    elif [ "$PLAN" != 1 ]; then
+        # The file exists and no one has been shown a plan. This is the case
+        # the whole gate is for: writing the plan into a file is the natural
+        # move here, far more natural than the heredoc that caught G1, and a
+        # plan nobody read is not a plan that was agreed.
+        G4_WHY="$PLANFILE exists, but nothing in this conversation put a plan in front of the user - only a file was written. A plan nobody was shown is not a plan anybody agreed to."
+    elif [ "$PANS" != 1 ]; then
+        G4_WHY="a plan was put to the user and no answer came back afterwards. Analysis chosen quietly produces code indistinguishable from code they asked for, which is how this step gets satisfied without ever reaching a person."
+    fi
+
+    if [ -n "$G4_WHY" ]; then
+        if [ "$SIDECHAIN" = 1 ]; then
+            # See the note beside SIDECHAIN above: the remedy is unavailable
+            # here, so this reports instead of refusing.
+            warn "The analysis plan could not be checked: this is a subagent, and its conversation is a separate transcript that cannot contain the parent's plan (PITFALLS 22). Proceeding unchecked. Confirm by hand that $ANALYSIS_TARGET implements a plan the user agreed to."
+        fi
+        deny "Step 3 has not happened: $G4_WHY
+
+$G4_FIX
+
+If this really should go ahead without it, the user - not you - can say $ESCAPE4."
+    fi
 fi
 
 allow

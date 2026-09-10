@@ -1154,3 +1154,27 @@ and correctly; if it gets its own, the discriminator fires and it warns. Both
 are safe, so the probe closed the question rather than answering it. **That is
 the cheaper shape of answer, and it is worth looking for before building the
 apparatus to decide.**
+
+**23. The escape phrase stood down every gate, including one written months
+later.** Found while adding G4, 2026-09-10, by a test that expected a denial.
+
+`hooks/confirm_walkthrough.sh` re-reads the whole conversation on every call,
+and `[ "$ESC" = 1 ] && allow` meant that a user who said the escape phrase once
+had disabled the gate for the rest of the session — every gate, including ones
+about steps that had not happened yet. Say it in the morning to skip a pipeline
+walkthrough you have seen a hundred times, and the analysis-plan gate is
+silently off that afternoon, hours and several subjects later.
+
+Nothing about the first phrase expressed consent to the second thing. **A
+blanket escape is a claim about steps the person has not been asked about**,
+and it grows every time a gate is added — the newest gate inherits permission
+granted before it existed.
+
+Two phrases now, one per concern, and `allow` was replaced by clearing only the
+gates the phrase is about. The test that pins it is the pairing, not either
+half: `略過計畫` stands G4 down, and `略過導覽` **must not**. Mutating the
+second back to the old blanket `allow` fails exactly that one case.
+
+The same shape is worth watching for wherever a session-wide "yes" is read
+fresh on every call: the question it answered was asked once, and the answer
+does not know what it is being applied to.

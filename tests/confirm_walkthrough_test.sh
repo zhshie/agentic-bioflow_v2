@@ -148,5 +148,94 @@ t "another pipeline's diagram does not answer"       deny  "$LA_B" "$TMP/wrong_p
 t "this pipeline's diagram does"                     allow "$LA_B" "$TMP/right_pipeline.jsonl"
 t "a Launchpad name names no repo, so no constraint" allow "$LA_NAMED" "$TMP/wrong_pipeline.jsonl"
 
+# ---------------------------------------------------------------------------
+# G4 - an analysis plan, agreed, before any analysis or plotting code is written.
+#
+# The evidence has three parts and each closes a different hole:
+#   the plan file, beside or above the code   -> which work this plan is for
+#   a plan in assistant TEXT, two lines+      -> a person was actually shown it
+#   a human turn after it                     -> a person had the floor
+#
+# The first alone is the one that matters most here. Writing the plan into a
+# file is the natural move in this step - far more natural than the heredoc
+# that caught G1 - so a gate that accepted "a plan file exists" would be
+# satisfied by the model talking to itself.
+mkdir -p "$TMP/projA/analysis" "$TMP/projB/analysis"
+echo "# analysis plan" > "$TMP/projA/analysis/analysis.md"
+
+W_A='{"tool_name":"Write","tool_input":{"file_path":"'"$TMP"'/projA/analysis/plot_asv.R"}}'
+W_B='{"tool_name":"Write","tool_input":{"file_path":"'"$TMP"'/projB/analysis/plot_asv.R"}}'
+W_MD='{"tool_name":"Write","tool_input":{"file_path":"'"$TMP"'/projA/analysis/notes.md"}}'
+RUN_R='{"tool_name":"Bash","tool_input":{"command":"scripts/positron_run.py --lang r --file analysis/plot_asv.R"}}'
+HEREDOC='{"tool_name":"Bash","tool_input":{"command":"cat > '"$TMP"'/projA/analysis/plot_asv.R <<EOF\nplot(1)\nEOF"}}'
+
+PLAN='Here is the plan, which I will write to analysis/analysis.md:
+1. ASV richness by group - answers whether SynCom shifts diversity - from dada2/ASV_table.tsv columns 2-11
+2. Shannon index by group - answers the same for evenness - from qiime2/alpha_diversity.tsv'
+ONELINE='Plan, in analysis/analysis.md: one figure, ASV richness from dada2/ASV_table.tsv'
+TALK='Before I write any plotting script I will propose an analysis plan and get your agreement.'
+PLANWRITE="cat > $TMP/projA/analysis/analysis.md <<'P'
+1. ASV richness from dada2/ASV_table.tsv
+2. Shannon boxplot from qiime2/alpha.tsv
+P"
+
+mktx "$TMP/g4_none.jsonl"     'a:starting the downstream work'
+mktx "$TMP/g4_ok.jsonl"       "a:$PLAN" 'h:好，就這樣'
+mktx "$TMP/g4_noreply.jsonl"  "a:$PLAN"
+mktx "$TMP/g4_typed.jsonl"    "w:$PLANWRITE" 'h:好'
+mktx "$TMP/g4_talk.jsonl"     "a:$TALK" 'h:ok'
+mktx "$TMP/g4_oneline.jsonl"  "a:$ONELINE" 'h:好'
+mktx "$TMP/g4_injected.jsonl" "a:$PLAN" 'n:<task-notification>agent finished</task-notification>'
+mktx "$TMP/g4_asked.jsonl"    "a:$PLAN" 'q:x'
+mktx "$TMP/g4_esc4.jsonl"     'h:略過計畫'
+mktx "$TMP/g4_esc1.jsonl"     'h:略過導覽'
+INVENTORY='The results tree holds:
+  dada2/ASV_table.tsv     11 columns, 555 rows
+  qiime2/alpha_diversity.tsv   4 columns, 10 rows
+  multiqc/multiqc_data.json    top-level keys: report_general_stats_data'
+mktx "$TMP/g4_inventory.jsonl" "a:$INVENTORY" 'h:好'
+
+t "no plan at all: refused"                          deny  "$W_A" "$TMP/g4_none.jsonl"
+t "a plan shown and answered: allowed"               allow "$W_A" "$TMP/g4_ok.jsonl"
+t "a plan nobody answered: refused"                  deny  "$W_A" "$TMP/g4_noreply.jsonl"
+t "AskUserQuestion counts as the answer"             allow "$W_A" "$TMP/g4_asked.jsonl"
+
+# The three that must not pass, each pinning a different mistake.
+t "a plan I only wrote into a file is not agreed"    deny  "$W_A" "$TMP/g4_typed.jsonl"
+t "talking about a plan is not proposing one"        deny  "$W_A" "$TMP/g4_talk.jsonl"
+t "a subagent report is not the user answering"      deny  "$W_A" "$TMP/g4_injected.jsonl"
+
+# The subject: this project's plan does not license another project's code.
+t "another project has no plan of its own"           deny  "$W_B" "$TMP/g4_ok.jsonl"
+
+# A plan is plural; one line is what ordinary prose produces by accident.
+t "a single shaped line is not a plan"               deny  "$W_A" "$TMP/g4_oneline.jsonl"
+
+# Step 2 prints an inventory naming many files. It is not a plan, and a gate
+# that only counted file references would be satisfied by it.
+t "an inventory printout is not a plan"              deny  "$W_A" "$TMP/g4_inventory.jsonl"
+
+# What must NOT fire: notes, and running code that already exists.
+t "writing notes into analysis/ is not gated"        allow "$W_MD" "$TMP/g4_none.jsonl"
+t "running an existing script is not gated"          allow "$RUN_R" "$TMP/g4_none.jsonl"
+t "a heredoc into analysis/ is the same write"       deny  "$HEREDOC" "$TMP/g4_none.jsonl"
+
+# Two escape phrases, and this is why: one of them said hours earlier for a
+# different step must not stand this one down as well.
+t "略過計畫 stands G4 down"                          allow "$W_A" "$TMP/g4_esc4.jsonl"
+t "略過導覽 does NOT stand G4 down"                  deny  "$W_A" "$TMP/g4_esc1.jsonl"
+
+# A subagent cannot be shown a plan and cannot ask, so a denial there would be
+# a wall rather than a detour. Its transcript is its own file, every record
+# marked - measured, PITFALLS 22.
+python3 - "$TMP/g4_sidechain.jsonl" <<'PYX'
+import json, sys
+with open(sys.argv[1], "w") as f:
+    for rec in ({"type": "assistant", "isSidechain": True,
+                 "message": {"content": [{"type": "text", "text": "working"}]}},):
+        f.write(json.dumps(rec) + "\n")
+PYX
+t "a subagent is warned, not walled"                 warn  "$W_A" "$TMP/g4_sidechain.jsonl"
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
