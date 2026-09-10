@@ -49,8 +49,8 @@ import sys
 # unusable. This lists language runtimes, which are the same everywhere and
 # belong to no pipeline. tests/collect_provenance_test.sh asserts that nothing
 # here is a pipeline tool.
-NOT_CITED = {"python", "r", "sed", "awk", "perl", "bash", "pandas", "numpy",
-             "yaml", "nextflow", "gawk", "grep", "coreutils"}
+NOT_CITED = {"python", "python3", "r", "r-base", "sed", "awk", "perl", "bash",
+             "pandas", "numpy", "yaml", "nextflow", "gawk", "grep", "coreutils"}
 
 TIMESTAMPED = re.compile(r"^(execution_report|execution_trace|execution_timeline"
                          r"|params|pipeline_dag)_(.+?)\.(html|txt|json)$")
