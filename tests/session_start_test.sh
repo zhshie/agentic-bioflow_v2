@@ -97,4 +97,43 @@ OUT=$(run startup "$TMP/no_such_settings.yaml" "$TMP/tw_idle")
 check "and no path where there is no settings file" "${OUT:-<empty>}" "SessionStart" absent
 
 echo
+
+# ---------------------------------------------------------------------------
+# The wrong shell, said once per conversation.
+#
+# The hook's rule is silence where no deployment exists - correct everywhere
+# except here, because under Git Bash there may well BE a deployment, in a home
+# directory this shell cannot open. That is the one case where silence is the
+# wrong answer, and it was the case a member actually hit: the same "no
+# settings file" every session, with nothing to distinguish it from a machine
+# that had never run setup.
+UB="$TMP/msysbin"; mkdir -p "$UB"
+printf '#!/bin/sh\necho MINGW64_NT-10.0-22631\n' > "$UB/uname"; chmod +x "$UB/uname"
+
+msys_run() { # msys_run <reason> <settings-file>
+  printf '{"session_start_reason":"%s"}' "$1" \
+    | env PATH="$UB:$PATH" LAB_SETTINGS_FILE="$2" TW_BIN="$TMP/tw_idle" \
+          TOWER_WORKSPACE_ID=12345 SEQERA_TOKEN_FILE="$TMP/.seqera_token" bash "$H"
+}
+
+out=$(msys_run startup "$TMP/does-not-exist.yaml"); rc=$?
+check "with no settings file, MSYS is still told"     "$out" "Git Bash (MSYS)" present
+check "and told what it costs, measured"             "$out" "PITFALLS 16b"    present
+check "and told the move"                            "$out" "WSL"             present
+printf '%-52s ' "and the hook still exits 0"
+[ "$rc" = 0 ] && echo "ok" || { echo "FAIL: rc $rc"; fails=$((fails+1)); }
+
+out=$(msys_run resume "$TMP/does-not-exist.yaml")
+check "a resume is told too - a compaction loses it"  "$out" "Git Bash (MSYS)" present
+
+out=$(msys_run startup "$TMP/env.yaml")
+check "a working deployment is told as well"          "$out" "Git Bash (MSYS)" present
+check "and still gets its settings path"              "$out" "Deployment settings" present
+
+# The negative that keeps it from becoming noise everywhere else.
+out=$(run startup "$TMP/does-not-exist.yaml")
+check "on Linux with no settings, still silent"       "$out" "Git Bash"        absent
+out=$(run startup "$TMP/env.yaml" "$TMP/tw_idle")
+check "and a Linux deployment hears nothing of it"    "$out" "Git Bash"        absent
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

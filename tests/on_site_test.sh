@@ -153,4 +153,68 @@ if grep -q '__pycache__\|\.pyc$' <<<"$listing"; then
 else echo ok; fi
 
 echo
+
+# ---------------------------------------------------------------------------
+# The wrong shell.
+#
+# Git Bash cannot hold a master connection at all (PITFALLS 16b), so under it
+# every call here is a guaranteed failure that costs a one-time code from the
+# user's phone. The refusal lives in this script rather than in a PreToolUse
+# hook on purpose: a hook would have to decide from a command string whether it
+# reaches the site, and it would wall off a reach:none deployment that needs no
+# ssh at all. Here the subject is not guessed.
+UB="$TMP/msysbin"; mkdir -p "$UB"
+printf '#!/bin/sh\necho MINGW64_NT-10.0-22631\n' > "$UB/uname"; chmod +x "$UB/uname"
+
+msys() { # msys <expect-rc> -- <args...>
+  local want="$1"; shift 2
+  LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" \
+    PATH="$UB:$PATH" bash "$S" "$@" 2>&1
+}
+mt() { # mt <label> <expect-rc> <expect-substring> -- <args...>
+  local label="$1" want_rc="$2" want="$3"; shift 4
+  printf '%-56s ' "$label"
+  local out rc; out=$(msys "$want_rc" -- "$@"); rc=$?
+  if [ "$rc" != "$want_rc" ]; then
+    echo "FAIL: rc $rc, wanted $want_rc  <<$out>>"; fails=$((fails+1)); return; fi
+  if [ -n "$want" ] && ! grep -qF -- "$want" <<<"$out"; then
+    echo "FAIL: output lacks '$want'  <<$out>>"; fails=$((fails+1)); return; fi
+  echo ok
+}
+
+settings 'reach: ssh' 'site_host: u@h'
+mkfake 0                       # the master answers -O check, as it really does
+mt "MSYS + reach:ssh is refused outright"     2 "cannot hold an ssh master" -- true
+mt "and the refusal says why, measured"      2 "PITFALLS 16b"              -- true
+mt "and gives the move, not just the fault"  2 "WSL"                       -- true
+mt "and warns about the Windows exe shortcut" 2 "claude.exe"               -- true
+mt "and names the .wslconfig fix first"      2 "vsyscall=emulate"          -- true
+
+# A master that answers -O check is exactly the state 16b describes, so a
+# refusal that only fires when the master looks down would never fire at all.
+printf '%-56s ' "it fires even though the master answers -O check"
+out=$(msys 2 -- true); grep -qF "no ssh master connection" <<<"$out" \
+  && { echo "FAIL: reported a missing master instead"; fails=$((fails+1)); } || echo ok
+
+# Three things it must NOT touch.
+settings 'reach: local'
+mt "reach:local under MSYS is none of its business" 0 "" -- true
+settings 'reach: none'
+mt "reach:none under MSYS needs no ssh at all"      2 "nothing to reach" -- true
+printf '%-56s ' "and is not told about shells it does not use"
+out=$(msys 2 -- true); grep -qF "Git Bash" <<<"$out" \
+  && { echo "FAIL: walled off a cloud deployment"; fails=$((fails+1)); } || echo ok
+settings 'reach: ssh' 'site_host: u@h'
+printf '%-56s ' "a dry run still answers under MSYS"
+out=$(LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_DRY_RUN=1 \
+      ON_SITE_SSH_BIN="$TMP/fake-ssh" PATH="$UB:$PATH" bash "$S" true 2>&1)
+grep -qF "ssh u@h" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+
+# And on this machine, which is Linux, it must stay silent.
+printf '%-56s ' "on Linux nothing about shells is printed"
+out=$(LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" bash "$S" true 2>&1)
+grep -qF "Git Bash" <<<"$out" \
+  && { echo "FAIL: fired on Linux <<$out>>"; fails=$((fails+1)); } || echo ok
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

@@ -81,6 +81,43 @@ no_master() {
         "down. One master lasts the whole work session."
 }
 
+# Git Bash cannot hold a master at all, so under it this is not "the master is
+# missing" but "no master can exist here". Measured across all three Windows
+# shells (PITFALLS 16b): MSYS's Unix sockets are emulated and do not implement
+# the file-descriptor passing a session request needs, so `ssh -O check`
+# answers - the control plane works - and opening a session then fails. No ssh
+# option changes it.
+#
+# This is the one place the check belongs. A PreToolUse hook would have to
+# decide from a command string whether it reaches the site, which is evidence
+# with an unchecked subject (PITFALLS 18b) and would wall off a `reach: none`
+# deployment that needs no ssh at all. Here the subject is certain: this
+# script, now, about to do the thing that cannot work.
+wrong_shell() {
+  die 2 "this is Git Bash (MSYS), which cannot hold an ssh master connection." \
+        "" \
+        "Measured, not guessed: the control plane works, so a master looks" \
+        "alive, and opening a session then fails - MSYS emulates Unix sockets" \
+        "and does not implement the descriptor passing a session needs" \
+        "(PITFALLS 16b). No ssh option changes this." \
+        "" \
+        "Without a master, every command here asks for a one-time code from" \
+        "your phone, and one bare login was measured at 31 s." \
+        "" \
+        "Run Claude Code from a WSL shell instead. WSL is a separate Linux" \
+        "with its own home directory, so install it there:" \
+        "" \
+        "    npm install -g @anthropic-ai/claude-code" \
+        "" \
+        "then start 'claude' from that shell. Do not run the Windows" \
+        "claude.exe from WSL - that starts a Windows process and lands you" \
+        "back in this shell." \
+        "" \
+        "One thing to do first: Seqera's CLI segfaults under WSL2 until" \
+        "%UserProfile%\\.wslconfig carries [wsl2] kernelCommandLine =" \
+        "vsyscall=emulate, then 'wsl --shutdown' (PITFALLS 16f)."
+}
+
 # A hang is the failure mode here, not an error. This site caps concurrent
 # sessions per TCP connection, and the cap is reached by ordinary use - a
 # background watch polling every 90s gets there on its own. Past it, a new
@@ -104,11 +141,9 @@ sessions_exhausted() {
 }
 
 # `timeout` returns 124 when it fires; everything else is the command's own.
-clocked() {
-  local secs="$1"; shift
-  [ "$secs" = 0 ] && { "$@"; return $?; }
-  timeout "$secs" "$@"
-}
+# clocked() comes from scripts/utils/portable.sh via settings.sh: `timeout` is
+# GNU coreutils and is not on a stock macOS at all, where this used to fail
+# with "timeout: command not found" on every single call to the site.
 
 if [ "$MODE" = check ]; then
   [ "$REACH" = local ] && exit 0
@@ -132,7 +167,10 @@ if [ -n "${ON_SITE_DRY_RUN:-}" ]; then
   exit 0
 fi
 
-[ "$REACH" = ssh ] && { master_is_up || no_master; }
+if [ "$REACH" = ssh ]; then
+  case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) wrong_shell ;; esac
+  master_is_up || no_master
+fi
 
 if [ "$MODE" = command ]; then
   [ "$REACH" = local ] && exec bash -c "$*"
