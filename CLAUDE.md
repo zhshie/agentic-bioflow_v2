@@ -21,11 +21,13 @@ real failures, each with the fix.
 
 - `commands/` — the slash commands. Three follow Seqera's own nouns
   (`setup.md`, `launch.md`, `runs.md`): compute environment →
-  pipelines/datasets/launch → runs. `downstream.md` picks up after a run
-  SUCCEEDED and carries no pipeline-specific knowledge, which is the condition
-  under which a fourth command was allowed to exist at all — read its own
-  header before changing it. These are prose procedure files read and followed
-  by Claude, not code.
+  pipelines/datasets/launch → runs. Two more cover what happens after a run
+  finishes: `downstream.md` from a SUCCEEDED run to accepted figures, and
+  `finish.md` from those to a package that can be sent somewhere. **Both carry
+  no pipeline-specific knowledge, which is the condition under which either
+  was allowed to exist** — `tests/no_per_pipeline_config.sh` scans them by
+  name, so read their own headers before changing them. These are prose
+  procedure files read and followed by Claude, not code.
 - `skills/operational/SKILL.md` — the same operational knowledge, reachable
   without a slash command ("I want to run RNA-seq" should work identically).
 - `scripts/` — the portable substance: site operations as shell/Python, each
