@@ -7,7 +7,7 @@
     {
       "name": "agentic-bioflow",
       "source": ".",
-      "description": "Three commands mirroring Seqera's own object model - setup (compute environment), launch (pipeline/dataset/launch), runs (monitor, debug, deliver)."
+      "description": "Five commands: three mirroring Seqera's own object model - setup (compute environment), launch (pipeline/dataset/launch), runs (monitor, debug, deliver) - plus downstream (figures from a finished run) and finish (a package that can be submitted)."
     }
   ]
 }

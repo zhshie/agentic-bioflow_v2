@@ -16,10 +16,11 @@ consult it when something breaks, not preemptively.
 When installed as a plugin these are under `${CLAUDE_PLUGIN_ROOT}`; read them
 straight from the repository otherwise.
 
-## The four commands
+## The five commands
 
 Seqera's own object model, in the order a piece of work moves through it —
-plus one command that sits outside that model on purpose.
+plus two that sit outside that model on purpose, covering what happens after a
+run finishes.
 
 | Command | When | Seqera equivalent |
 |---|---|---|
@@ -27,11 +28,18 @@ plus one command that sits outside that model on purpose.
 | `launch` | A new analysis, from "I have data" to a submitted run | pipelines → datasets → launch |
 | `runs` | Checking on, debugging, or delivering a run | runs |
 | `downstream` | Turning a SUCCEEDED run's outputs into figures or further analysis | outside Seqera's model — inventories the results tree, agrees an analysis plan, and runs it in a live console |
+| `finish` | Turning accepted figures into a package that can be submitted or sent | outside Seqera's model — assembles methods, citations and provenance from what the runs already recorded |
 
 **The user does not have to name a command.** "I want to run RNA-seq" is a
 `launch`; "is it done yet" is a `runs`; "nothing works" is usually `setup`;
-"make me a plot of this" is a `downstream`. Read the command file and follow
-it rather than improvising the sequence.
+"make me a plot of this" is a `downstream`; "write this up" or "package this
+for submission" is a `finish`. Read the command file and follow it rather than
+improvising the sequence.
+
+**A project is what holds them together.** Raw data, every run made from it,
+the analysis written on those runs, and the package built from the analysis all
+live under one project directory. `launch` asks which project a run belongs to
+before starting it, and a run whose output lands outside one is refused.
 
 ## Which pipeline
 

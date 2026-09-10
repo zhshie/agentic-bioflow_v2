@@ -112,6 +112,34 @@ config could be edited in place. Verify first; the result goes in `PITFALLS.md`.
 *Check:* every entry in `PITFALLS.md` corresponds to a real failure or a real
 piece of source that was read.
 
+**9. Every verifiable claim points at the file that produced it.**
+
+Invariant 8 governs what this project asserts about itself. This one governs
+what it writes on someone's behalf, and the stakes are different: a wrong line
+in a methods section goes out under a researcher's name, and no test run later
+can catch it.
+
+Three consequences, and each closes a way to produce something false:
+
+- **A citation comes from the run's own files, from a DOI the user supplied,
+  or from a page actually fetched — never from memory.** A recalled reference
+  may not exist. A fabricated one is worse than a missing one, because missing
+  is visible.
+- **A number comes from a file; a new statistic comes from a script that was
+  run.** Not estimated, not read off a figure, not recalled.
+- **A gap is written into the output.** Where no source can be found, the
+  document says so where a reader will see it. A document that quietly omits
+  something looks finished.
+
+The same rule covers describing a figure: say what the data shows, never what
+the picture looks like. The plot is on the user's screen and not ours.
+
+*Check:* `scripts/cite.sh` resolves every DOI over the network and marks what
+it cannot resolve; `scripts/methods_text.py` reports a near-miss as a candidate
+rather than citing it; `scripts/build_package.sh` writes a comment for every
+planned figure that is missing and every figure nobody planned.
+`tests/principle_9_test.sh` asserts those three stay true.
+
 ---
 
 ## Where each piece belongs
