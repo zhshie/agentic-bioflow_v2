@@ -24,6 +24,7 @@
 #   G3  launch / relaunch     requires  both  (backstop)
 #   G4  writing analysis or   requires  an analysis plan the user answered
 #       plotting code
+#   G5  an outdir              requires  it to be inside a project
 #
 # Unlike confirm_launch.sh beside it, this one DENIES. That is a departure and
 # it is bounded: doing the missing step puts the evidence in the transcript and
@@ -50,6 +51,7 @@ CMD=$(jq  -r '.tool_input.command // ""'   <<<"$INPUT" 2>/dev/null)
 # same files by a different key, and a gate that cannot see the tool name
 # a write arrives under is a gate with a spelling for a hole.
 FILE=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$INPUT" 2>/dev/null)
+CONTENT=$(jq -r '.tool_input.content // ""' <<<"$INPUT" 2>/dev/null)
 TP=$(jq   -r '.transcript_path // ""'      <<<"$INPUT" 2>/dev/null)
 
 allow() { exit 0; }
@@ -125,7 +127,41 @@ if [ "$TOOL" = Bash ]; then
     fi
 fi
 
-[ "$G1$G2$G3$G4" = "0000" ] && allow
+# G5: a run's output has to land inside a project.
+#
+# Everything a piece of work produces is collected under one project -
+# rawdata, runs, analysis, the package - and a run whose outdir points
+# somewhere else is not in any of them. The choice of project is a question
+# `launch.md` asks before anything starts; this is the check that it was asked.
+#
+# Where to look is decided by where the value actually lives. outdir is a
+# pipeline parameter, so it is in params.yaml and not on the command line -
+# checking `tw launch`'s argv for it would be a rule that never fires. Three
+# places carry it, and all three are read here: a heredoc writing the file, a
+# Write tool's content, and the file a launch names with --params-file.
+#
+# When no outdir can be found the constraint is left off rather than guessed
+# at, the same way G1 leaves the pipeline constraint off for a Launchpad name
+# that reveals no repo. A rule that fires on what it cannot see is worse than
+# one that admits the gap.
+G5=0
+OUTDIR=""
+outdir_from() { sed -nE 's/^[[:space:]]*(-{1,2})?outdir[:=][[:space:]]*["'"'"']?([^"'"'"'[:space:]]+).*/\2/p' "$1" 2>/dev/null | head -1; }
+if [ "$G2" = 1 ]; then
+    OUTDIR=$( { printf '%s\n' "$CMD"; printf '%s\n' "$CONTENT"; } | outdir_from /dev/stdin )
+fi
+if [ "$G3" = 1 ]; then
+    pf=$(sed -nE 's/.*(-{1,2})params-file[= ]+([^[:space:]]+).*/\2/p' <<<"$CMD" | head -1)
+    [ -n "$pf" ] && [ -r "$pf" ] && OUTDIR=$(outdir_from "$pf")
+fi
+if [ -n "$OUTDIR" ]; then
+    case "$OUTDIR" in
+        */projects/*/runs/*) ;;
+        *) G5=1 ;;
+    esac
+fi
+
+[ "$G1$G2$G3$G4$G5" = "00000" ] && allow
 
 # ---- which pipeline is this call about ------------------------------------
 # A diagram is evidence about one pipeline, and conversations switch pipelines.
@@ -275,8 +311,8 @@ read -r ESC DIAG SCHEMA ANS DIAGANY ESC4 PLAN PANS <<<"${EV:-0 0 0 0 0 0 0 0}"
 # before G4 is considered, so one phrase said hours earlier for a different
 # step would silently disable the analysis gate too - which is exactly what
 # having two phrases is for. G4 has its own, checked in its own block.
-[ "$ESC" = 1 ] && { G1=0; G2=0; G3=0; }
-[ "$G1$G2$G3$G4" = "0000" ] && allow
+[ "$ESC" = 1 ] && { G1=0; G2=0; G3=0; G5=0; }
+[ "$G1$G2$G3$G4$G5" = "00000" ] && allow
 
 DIAGRAM_FIX="Show it first: list docs/images/ in the pipeline at the pinned revision, hand the user the raw URL of the workflow figure, and give the stage list from the README in words - a terminal renders no image. Read the directory rather than guessing the filename; the pipelines used here name that figure four different ways. Then run this again."
 MENU_FIX="Do step 5 first: fetch nextflow_schema.json at the pinned revision, then put three choices to the user - reuse the parameters from a previous run, take the pipeline's defaults, or go through the adjustable ones. \"All defaults\" is a complete answer from them; it is not an answer you can give on their behalf. Then run this again."
@@ -355,6 +391,18 @@ $G4_FIX
 
 If this really should go ahead without it, the user - not you - can say $ESCAPE4."
     fi
+fi
+
+if [ "$G5" = 1 ]; then
+    deny "This run's outdir is '$OUTDIR', which is not inside a project.
+
+Everything one piece of work produces belongs together - the raw data, every run made from it, the analysis, and the package built from the analysis. Ask the user which project this run is part of, or whether to start a new one, and put the outdir under it:
+
+    <storage_root>/<seqera_user>/projects/<project>/runs/<pipeline>_<label>_<YYYYMMDD>/results
+
+scripts/init_workspace.sh site --user <u> --project <p> --run <name> creates it. Then run this again.
+
+If this really should go ahead without it, the user - not you - can say $ESCAPE."
 fi
 
 allow

@@ -237,5 +237,29 @@ with open(sys.argv[1], "w") as f:
 PYX
 t "a subagent is warned, not walled"                 warn  "$W_A" "$TMP/g4_sidechain.jsonl"
 
+# ---------------------------------------------------------------------------
+# G5 - a run's output lands inside a project.
+#
+# outdir is a pipeline parameter, so it is in params.yaml and never on the
+# launch command line. Checking argv for it would be a rule that could not
+# fire; these cases pin the three places the value really appears.
+GOOD='/work/lab/zhshie404/projects/sclerotia/runs/ampliseq_d5_20260904/results'
+BAD='/work/lab/zhshie404/runs/ampliseq_d5_20260904/results'
+
+pw() { printf '{"tool_name":"Write","tool_input":{"file_path":"/r/params.yaml","content":"%s"}}' "$1"; }
+t "an outdir outside any project is refused"         deny  "$(pw "outdir: $BAD")"  "$TMP/curled.jsonl"
+t "an outdir inside a project passes"                allow "$(pw "outdir: $GOOD")" "$TMP/curled.jsonl"
+t "params with no outdir leaves the constraint off"  allow "$(pw "input: samplesheet.csv")" "$TMP/curled.jsonl"
+
+HD_BAD='{"tool_name":"Bash","tool_input":{"command":"cat > params.yaml <<EOF\noutdir: '"$BAD"'\nEOF"}}'
+t "a heredoc writing params is read the same way"    deny  "$HD_BAD" "$TMP/curled.jsonl"
+
+# --params-file: the launch names a file, and the file is what carries outdir.
+echo "outdir: $BAD" > "$TMP/bad_params.yaml"
+LA_PF="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"tw $(printf '\x6c\x61\x75\x6e\x63\x68') nf-core/bacass --params-file $TMP/bad_params.yaml\"}}"
+t "a launch's --params-file is read too"             deny  "$LA_PF" "$TMP/right_pipeline.jsonl"
+
+t "略過導覽 stands the project gate down"            allow "$(pw "outdir: $BAD")" "$TMP/escape.jsonl"
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
