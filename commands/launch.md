@@ -37,6 +37,28 @@ gate can see.
 
 ## Steps
 
+0. **Ask which project this run belongs to.** A project collects everything one
+   piece of work produces — the raw data that feeds it, every run made from
+   that data, the analysis written on those runs, and the package built from
+   the analysis. One batch of reads commonly feeds several runs, and one
+   write-up commonly draws on several; naming the project once is what keeps
+   them together.
+
+   List what exists and let the user pick, or start a new one — do not choose
+   for them, and do not invent a name:
+
+   ```
+   ls $(scripts/settings.sh storage_root)/$(scripts/settings.sh seqera_user)/projects/
+   scripts/init_workspace.sh site --user <seqera_user> --project <project> --run <name>
+   ```
+
+   **The run's `--outdir` goes inside it**, at
+   `<project>/runs/<pipeline>_<label>_<YYYYMMDD>/results`. A run pointed
+   anywhere else is in no project, and `hooks/confirm_walkthrough.sh` refuses
+   it at the point the parameters are written rather than after the run has
+   started. Older run areas are flat and are **left exactly where they are** —
+   the new shape applies to new work, and nothing is moved.
+
 1. **Choose the pipeline and revision.** Discuss the experiment first.
 
    **Start from what this person has already run**, because the commonest

@@ -21,12 +21,29 @@ front of it rather than a copy of it. `launch.md` reads a pipeline's own
 tree through `scripts/inventory_outputs.py`, which reports each structured
 file's shape with no idea which pipeline made it.
 
-**Invariant 1 check:** this command writes no plotting code of its own. The
-environment already provides a general `dataviz` skill, and nf-core pipelines
-already ship their own reports and, on some, a shinyngs app. What was missing
-between "a run finished" and "someone is looking at a figure that answers
-their question" was only the hand-off — knowing what the tree holds and in
-what shape — and that is all this adds.
+**Invariant 1 check:** the pipelines already ship their own reports, and on
+some, publication-grade figures and an interactive app. **Step 3 lists those
+first and nothing already drawn gets drawn again.** What was missing between
+"a run finished" and "someone is looking at a figure that answers their
+question" was the part no pipeline can supply: which question *this* person
+wants answered, from a tree only they can interpret. That is what this adds,
+and the code it writes exists only to answer it.
+
+An earlier version of this file delegated the plotting itself to a general
+`dataviz` capability the environment was said to provide. Two things were
+wrong with that. It is not a file this repository can see, version or test —
+so the justification rested on a name that resolves only in some builds. And
+its subject is interactive web charts: hover layers, tooltips, dark mode,
+filter rows. A static figure at publication resolution is a different craft,
+and the parts that do transfer are rules, not machinery:
+
+- one hue, light to dark, for magnitude; two hues with a neutral grey midpoint
+  for polarity; **never a rainbow ramp**
+- **never two y-axes** — two measures of different scale are two figures
+- colours must survive colour-blind vision and greyscale print; identity is
+  never carried by colour alone, so a legend and direct labels do the work
+- thin marks, recessive axes, labels on the points that matter rather than all
+  of them
 
 ## Steps
 
@@ -45,24 +62,58 @@ what shape — and that is all this adds.
    sense of what to expect, never as a substitute for running the inventory
    itself.
 
-3. **Ask what question the figures should answer.** The inventory says what
-   exists; it says nothing about what the person actually wants shown. Put the
-   shapes in front of them and ask — the way `launch.md` step 5 puts a
-   pipeline's own parameters in front of the user rather than choosing quietly
-   on their behalf.
+3. **Agree an analysis plan, and write it down.** This is the step the rest
+   depends on, and it has two halves.
 
-4. **Hand the inventory to the environment's own `dataviz` skill.** Give it
-   the inventory from step 2 and the question from step 3; it writes R or
-   Python into `analysis/`. This command does not choose a plotting library or
-   write the code itself — that is exactly what the invariant 1 check above
-   rules out here, and the skill already does it well.
+   **3a. Say what already exists.** The inventory from step 2 lists rendered
+   output — reports, figures — by path and size, and some pipelines ship
+   publication-grade vector figures ready to use. Put that list in front of
+   the user *before* proposing anything. Nothing already drawn should be drawn
+   again; that is invariant 1 in its concrete form here.
 
-   Note where an IDE fits: with an agent extension installed, the person's
-   editor shows the file changing as it is written and can run it line by
-   line against a live session. That is the actual reason the code lands in a
-   file under `analysis/` rather than being printed into the conversation.
+   **3b. Agree what to compute and what to draw.** Three ways in, and the
+   user picks or mixes:
 
-5. **Run it, and show the figures.** `Rscript`/`python` is the whole answer
+   | | |
+   |---|---|
+   | **a** | You propose, from the shapes in the inventory and what the experiment is |
+   | **b** | The user describes what they want, or hands you a paper whose figures are the model — read it |
+   | **c** | Both: your proposal, their corrections |
+
+   Write the agreed result to **`analysis.md`** in the project's `analysis/`
+   directory, one entry per item:
+
+   ```
+   id            a short name; the script and its output are named after it
+   question      what this answers - one sentence, in the experiment's terms
+   source        which run, which file, which columns
+   method        what to compute or draw
+   why           why this and not something else
+   status        proposed | accepted | revised | done
+   ```
+
+   **`source` names a run and a file; it does not copy them.** Results are
+   read-only and re-fetchable, and a second copy inside the project is a
+   second thing to drift.
+
+   **This step is gated.** `hooks/confirm_walkthrough.sh` refuses to write any
+   analysis or plotting code until `analysis.md` exists beside it *and* a plan
+   was put to the user in this conversation *and* they answered. Writing the
+   file is not enough on its own — a plan nobody was shown is not a plan
+   anybody agreed to, and writing it into a file is the natural move here, so
+   that is precisely the hole the gate closes. The user, not you, can stand it
+   down by saying 略過計畫.
+
+4. **Write one script per entry, named after its id.** One entry, one script,
+   one output — so a revision re-runs one thing rather than everything, and a
+   figure can be traced back to the line that asked for it.
+
+   **A statistic that appears in the write-up later must be computed by a
+   script here.** Not estimated, not read off a plot, not recalled. If a new
+   test is needed it becomes an entry in `analysis.md` and a script like any
+   other; that is what makes it checkable afterwards.
+
+5. **Run them one at a time, and say what each one shows.** `Rscript`/`python` is the whole answer
    when all that is wanted is the files. It is not the answer when the person
    is sitting in front of the IDE the script was just written into: a batch run
    cannot put anything in the Plots pane, and step 4's reason for writing to a
@@ -72,9 +123,14 @@ what shape — and that is all this adds.
    `scripts/positron_run.py --lang r --file analysis/<script>.R` runs it in the
    console Positron already has open — plots land in the Plots pane, objects
    stay in the Variables pane, and stdout and any error come back here, so a
-   failure is legible rather than something to go and look for. Still no
-   plotting code is written here — this step only executes what step 4
-   produced, which is what invariant 1 rules on.
+   failure is legible rather than something to go and look for.
+
+   **One entry at a time, then stop and describe it.** Say what the figure
+   shows **from the data** — which samples, what values, which direction —
+   never from the picture: the Plots pane is on the user's screen and not
+   yours, and describing an image you cannot see is invention. The user then
+   says revise or accept. **Revising means editing the script and running it
+   again**, never touching the output by hand.
 
    **This only works where the IDE is.** Everything the tool uses to reach a
    console is local to the machine it runs on. If this agent is running
@@ -116,6 +172,13 @@ what shape — and that is all this adds.
    who moves windows while it runs, so the keystrokes land in whatever is in
    front — twice, in a chat window. No amount of focus checking closes that
    race, because the race is with a human being.
+
+6. **Record what was accepted, in `analysis.md`.** Set each entry's `status`
+   as the user settles it. That file is the only record of what this analysis
+   was for — the scripts say how, and only it says why — and `finish` reads
+   the `question` field to caption the figures. Nothing else is written down:
+   run status is Platform's to answer, and a second copy would disagree with
+   it (`docs/PRINCIPLES.md`, invariant 2).
 
 ## Where does the work happen?
 

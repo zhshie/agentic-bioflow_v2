@@ -12,7 +12,7 @@ own object model, and a fourth that hands off to what happens after a run.
 | `/agentic-bioflow:setup` | compute environments, credentials, Launchpad |
 | `/agentic-bioflow:launch` | pipelines → datasets → launch |
 | `/agentic-bioflow:runs` | runs |
-| `/agentic-bioflow:downstream` | outside Seqera's model — inventories the results tree and hands off to the environment's own `dataviz` skill |
+| `/agentic-bioflow:downstream` | outside Seqera's model — inventories the results tree, agrees an analysis plan, and runs it in a live console |
 
 ## What is actually custom here
 
