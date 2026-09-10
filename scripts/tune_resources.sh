@@ -143,21 +143,25 @@ parse_trace_tasks() {
 # Fold every task down to one row per process: the PEAK across its tasks, not
 # whichever task happened to be read last.
 trace_rows() {
-    local file="$1" proc vmem rss a p
-    local -A ta=() tp=()
+    local file="$1" proc vmem rss
+    # The fold used to run in bash with `local -A`, which needs bash 4; macOS
+    # ships bash 3.2, so the whole tool died there at parse time. awk has had
+    # associative arrays forever, and this keeps the conversion in bash where
+    # to_gb lives.
     while IFS=$'\t' read -r proc vmem rss; do
         [ -n "$proc" ] || continue
-        a="$(to_gb "$vmem")"; p="$(to_gb "$rss")"
-        if [ -z "${ta[$proc]:-}" ] || awk -v x="$a" -v y="${ta[$proc]}" 'BEGIN{exit !(x>y)}'; then
-            ta[$proc]="$a"
-        fi
-        if [ -z "${tp[$proc]:-}" ] || awk -v x="$p" -v y="${tp[$proc]}" 'BEGIN{exit !(x>y)}'; then
-            tp[$proc]="$p"
-        fi
-    done < <(parse_trace_tasks "$file")
-    for proc in "${!ta[@]}"; do
-        printf '%s\t%s\t%s\t%s\n' "$proc" "${tp[$proc]}" "${ta[$proc]}" "-"
-    done | sort
+        printf '%s\t%s\t%s\n' "$proc" "$(to_gb "$rss")" "$(to_gb "$vmem")"
+    done < <(parse_trace_tasks "$file") \
+    | awk -F'\t' '
+        # Keep the string that was read, ordered by its numeric value: the
+        # caller prints these, and "6.0" must not silently become "6".
+        {
+            r = $2 + 0; v = $3 + 0
+            if (!($1 in nr) || r > nr[$1]) { nr[$1] = r; sr[$1] = $2 }
+            if (!($1 in nv) || v > nv[$1]) { nv[$1] = v; sv[$1] = $3 }
+        }
+        END { for (k in sr) printf "%s\t%s\t%s\t-\n", k, sr[k], sv[k] }
+      ' | sort
 }
 
 fetch_metrics() {

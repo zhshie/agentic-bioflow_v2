@@ -38,7 +38,9 @@ cfg=$(nchc_boxes "$CONFIG" | cut -f1-3 | tr 'A-Z' 'a-z' | sort) || {
 drift=0
 while IFS=$'\t' read -r q c m; do
   [ -z "$q" ] && continue
-  hit=$(grep -P "^${q}\t" <<<"$live")
+  # awk, not `grep -P "^${q}\t"`: -P needs PCRE, which BSD grep does not have,
+  # and a QOS name went into that pattern as a regex rather than as a literal.
+  hit=$(awk -F'\t' -v q="$q" '$1 == q' <<<"$live")
   if [ -z "$hit" ]; then
     echo "MISSING: config lists '$q' but SLURM has no such QOS"; drift=1; continue
   fi

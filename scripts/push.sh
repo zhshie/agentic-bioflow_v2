@@ -58,7 +58,7 @@ case "$REACH" in
   *) die 2 "unknown reach value '$REACH' - must be none, local or ssh." ;;
 esac
 
-bytes=$(du -sb "$SRC" 2>/dev/null | cut -f1); bytes="${bytes:-0}"
+bytes=$(dir_bytes "$SRC")   # GNU byte mode is not portable; see scripts/utils/portable.sh
 
 if [ -n "$DRY" ]; then
   printf '%s\t->\tssh %s:%s\t(%s)\n' "$SRC" "$HOST" "$DST" "$(human "$bytes")"

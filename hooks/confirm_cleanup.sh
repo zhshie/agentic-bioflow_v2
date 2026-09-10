@@ -25,6 +25,27 @@
 #
 # This is defence in depth, not a sandbox. The real floor is: originals stay
 # read-only, linked not moved, and the execution zone is separate.
+# Every symlink in a path resolved, deliberately inlined rather than sourced
+# from scripts/utils/portable.sh. A gate that quietly vanishes when a helper is
+# missing is worse than a gate that was never written, and this one decides
+# whether `rm -rf <link>/*` is about to empty the lab's shared image library.
+#
+# The GNU spelling first, then a shell walk. `readlink -f` was absent from
+# macOS until 12.3; there this returned nothing, and a rule that judges by the
+# destination fell back to judging the link's own name, which says nothing.
+# Returning the input unchanged would be worse than returning nothing.
+resolve_link() {
+    readlink -f "$1" 2>/dev/null && return 0   # GNU-ok: the walk below is the fallback
+    local p="$1" n=0 b d
+    while [ -L "$p" ] && [ "$n" -lt 40 ]; do
+        b=$(readlink "$p") || return 1
+        case "$b" in /*) p="$b" ;; *) p="$(dirname "$p")/$b" ;; esac
+        n=$((n + 1))
+    done
+    d=$(cd "$(dirname "$p")" 2>/dev/null && pwd -P) || return 1
+    printf '%s/%s\n' "${d%/}" "$(basename "$p")"
+}
+
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)
 [ -n "$CMD" ] || exit 0
@@ -164,7 +185,7 @@ while IFS= read -r SEG; do
             # says nothing about where it points. `rm -rf <link>` only removes
             # the link and is harmless, but `rm -rf <link>/*` deletes the lab's
             # copy. Resolve the path and judge by the destination.
-            RP=$(readlink -f "$A" 2>/dev/null || true)
+            RP=$(resolve_link "$A" 2>/dev/null || true)
             if [ -n "$RP" ] && [ "$RP" != "$A" ]; then
                 echo "$RP" | grep -qE '(^|/)_references(/|$)|(^|/)[._]?(lab_)?singularity(_cache|_library)?(/|$)' \
                     && HIT_SHARED="${HIT_SHARED}${A} -> ${RP} "

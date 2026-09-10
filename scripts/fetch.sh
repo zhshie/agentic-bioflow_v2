@@ -58,13 +58,16 @@ esac
 # and a second fetch of the same results updates in place rather than re-pulling.
 DEST="${2:-$STAGE/${SRC#/}}"
 
-bytes=$(bash "$HERE/on_site.sh" du -sb -- "$SRC" 2>/dev/null | tail -1 | cut -f1)
-case "$bytes" in
+# -sk, not -sb: the byte mode is GNU-only and this same command runs locally
+# under reach:local, where the machine may be a Mac. Kilobytes are far finer
+# than the megabyte limit below needs.
+kb=$(bash "$HERE/on_site.sh" du -sk -- "$SRC" 2>/dev/null | tail -1 | cut -f1)
+case "$kb" in
   ''|*[!0-9]*) die 2 "the site could not size '$SRC'." \
                      "Either it does not exist there, or the site cannot be reached -" \
                      "'scripts/preflight.sh' says which." ;;
 esac
-mb=$(( bytes / 1000000 ))
+mb=$(( kb / 1000 ))
 
 if [ "$mb" -gt "$MAX_MB" ]; then
   die 2 "'$SRC' is ${mb} MB, over the ${MAX_MB} MB limit." \

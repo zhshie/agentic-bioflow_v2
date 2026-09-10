@@ -85,11 +85,11 @@ set_setting agent_java "$JAVA"
 
 # --- tw-agent.jar -----------------------------------------------------------
 JAR="$(setting agent_jar)"
-if [ -r "$JAR" ] && [ "$(stat -c%s "$JAR" 2>/dev/null || echo 0)" -gt 1000000 ]; then
+if [ -r "$JAR" ] && [ "$(stat_size "$JAR" || echo 0)" -gt 1000000 ]; then
     ok "agent jar already at $JAR"
 else
     JAR="$DEST/tw-agent.jar"
-    if curl -fsSL -o "$JAR" "$JAR_URL" && [ "$(stat -c%s "$JAR")" -gt 1000000 ]; then
+    if curl -fsSL -o "$JAR" "$JAR_URL" && [ "$(stat_size "$JAR" || echo 0)" -gt 1000000 ]; then
         did "tw-agent.jar -> $JAR"
     else
         bad "could not download tw-agent.jar from $JAR_URL"; exit 1

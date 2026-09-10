@@ -14,6 +14,8 @@ fails=0
 
 settings() { printf '%s\n' "$@" > "$TMP/env.yaml"; }
 # A stub ssh that reports whatever size the test wants the site to have.
+# The argument is KILOBYTES: fetch.sh asks the site with `du -sk`, because the
+# byte mode is GNU-only and that same command runs locally under reach:local.
 mkssh() { printf '#!/bin/bash\necho "%s\t/x"\nexit 0\n' "$1" > "$TMP/ssh"; chmod +x "$TMP/ssh"; }
 
 run() {
@@ -46,12 +48,12 @@ settings 'reach: none' 'storage_root: s3://b/runs'
 t "none refuses rather than guessing"         2 "object storage"  -- "$R"
 
 settings 'reach: ssh' 'site_host: me@example.org'
-mkssh 26000000                                   # 26 MB - a real delivery
+mkssh 26000                                      # 26 MB - a real delivery
 t "ssh reports where it would land"           0 "$TMP/stage"      -- --dry-run "$R"
 t "and mirrors the site path under it"        0 "stage/work/runs/myrun/results" -- --dry-run "$R"
 t "a real fetch prints the local path"        0 "stage/work/runs/myrun/results" -- "$R"
 
-mkssh 90000000000                                # 90 GB - a work directory
+mkssh 90000000                                   # 90 GB - a work directory
 t "an oversized path is refused"              2 "90"              -- "$R"
 t "and the refusal names its override"        2 "--max-mb"        -- "$R"
 # The override is the expensive answer, and it used to be the only one offered.

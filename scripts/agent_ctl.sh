@@ -61,7 +61,7 @@ conn_taken() {
   ws="${TOWER_WORKSPACE_ID:-$(setting workspace_id)}"; [ -n "$ws" ] || return 2
   [ -r "$TOKEN_FILE" ] || return 2
   TOWER_ACCESS_TOKEN="$(cat "$TOKEN_FILE")" \
-    timeout 30 "$tw" -o json credentials list -w "$ws" 2>/dev/null \
+    clocked 30 "$tw" -o json credentials list -w "$ws" 2>/dev/null \
   | python3 -c '
 import json, sys
 try:

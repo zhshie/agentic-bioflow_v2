@@ -72,7 +72,7 @@ prefixes=$(awk -F'|' 'NF > 3 {
 # The pattern, not the wait: nothing running while something waits is what
 # `tw runs view --status` alone cannot distinguish from ordinary progress.
 if [ "$pending" -gt 0 ] && [ "$running" -eq 0 ]; then
-    why=$(timeout 40 bash "$HERE/on_site.sh" --script "$HERE/why_pending.sh" 2>&1)
+    why=$(clocked 40 bash "$HERE/on_site.sh" --script "$HERE/why_pending.sh" 2>&1)
     # why_pending prints "<id>  <reason>  <name>" and may follow it with an
     # indented "-> verdict" line, which belongs to the job above it.
     mine=$(awk -v pre="$prefixes" '

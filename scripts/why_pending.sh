@@ -15,6 +15,9 @@
 #
 # Exit 3 means the scheduler's controller is down: no answer is available yet,
 # which is not the same as "waiting" and not the same as "NEVER".
+# GNU-ok-file: every path in here calls scontrol/squeue, so it only ever runs
+# where SLURM is - a Linux site, reached through on_site.sh --script. It is
+# never one of the scripts that runs on the user's own machine.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
