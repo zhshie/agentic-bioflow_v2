@@ -1178,3 +1178,31 @@ second back to the old blanket `allow` fails exactly that one case.
 The same shape is worth watching for wherever a session-wide "yes" is read
 fresh on every call: the question it answered was asked once, and the answer
 does not know what it is being applied to.
+
+**24. The guard against citing an error page rejected every real answer
+instead.** Found 2026-09-10 by running `scripts/cite.sh` against the live
+resolver rather than a fixture.
+
+DOI content negotiation returns BibTeX, and a resolver that has never heard of
+the DOI returns prose with the same 200. So the new entry was checked for the
+`@` sigil before being cached — sound, and inverted in practice: the service
+answers with **a leading space** before the `@`, so an anchored `case "$body"
+in @*)` matched nothing that was real. Every DOI came back
+`CITATION NEEDED`, including two that resolve by hand.
+
+What makes this worth an entry is where it would have gone. The failure was
+not a crash: it produced a bibliography of markers, in a tool whose whole
+purpose is that a missing citation stays visible. **The output looked exactly
+like the honest failure mode it was built to produce.** A `.bib` full of gaps
+reads as "the resolver was down", and nothing in it says the guard is
+backwards.
+
+A fixture would not have caught it — a hand-written one starts with `@`,
+because that is what the format looks like when you type it out. The live
+service is the only thing that knows about the space. Same lesson as entry 19,
+one layer down: it is not enough to test the failure path, the *shape of real
+input* has to come from the real source at least once.
+
+The test now carries both — a stub that answers with prose (must not be
+cached) and a stub that answers with a leading space (must be). Removing the
+trim fails only the second.
