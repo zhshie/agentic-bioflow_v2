@@ -1206,3 +1206,132 @@ input* has to come from the real source at least once.
 The test now carries both — a stub that answers with prose (must not be
 cached) and a stub that answers with a leading space (must be). Removing the
 trim fails only the second.
+
+**25. Setup ran in one shell and Claude runs in another, on the same machine.**
+Measured 2026-09-10, on the Windows laptop.
+
+`commands/setup.md` already decides the Windows terminal — **WSL**, because
+16b measured that neither native shell can hold the multiplexed connection.
+The member did exactly that. But Claude Code's Bash tool on Windows is Git
+Bash (MSYS), and that instruction speaks to the person doing setup, not to the
+tool. Nothing joins the two ends:
+
+| | WSL, where setup ran | Git Bash, where Claude runs |
+|---|---|---|
+| `$HOME` | `/home/<user>` | `/c/Users/<user>` |
+| `LAB_SETTINGS_FILE` | exported from `~/.bashrc` | that file is never read here |
+| the settings file itself | present | in a filesystem this shell cannot reach |
+
+So every candidate path `settings.sh` reports is truthfully absent while the
+settings file is truthfully there. The search report added in T10 — the fix
+for "a machine that was set up looks like one that never was" — is correct and
+useless here: it answers *where did I look* on a machine where the question is
+*which home am I in*. **The same defect, one machine over, and the fix for the
+first form does not touch the second.**
+
+Two things make this worth an entry rather than a shrug.
+
+**The visible symptom is the cheap half.** Git Bash is a shell this repo has
+already measured and rejected twice, for two unrelated subsystems: 16b (no
+fd-passing over MSYS's emulated Unix sockets, so `on_site.sh` cannot open a
+session) and 20c (no Windows named pipes, so nothing can reach Positron's
+supervisor). A missing settings file is the one failure loud enough to notice.
+The other two are a 2FA prompt per call, and a step that reports nothing found.
+
+**The obvious fix is the wrong one.** Copying `env.yaml` to somewhere Git Bash
+can see makes `--summary` green in a shell where `on_site.sh` still cannot
+open a session — a loud failure traded for a quiet one — and `chmod 600` on the
+Windows filesystem does not hold, so the token loses the only protection it has.
+The fix is to move the shell, not the file: start Claude Code from WSL.
+
+`settings.sh` now says so when it finds nothing under MSYS. It detects with
+`uname -s` rather than `$OSTYPE`: bash sets `OSTYPE` itself at startup, so it
+cannot be substituted from the environment and the branch would have no test.
+Three assertions in `tests/settings_test.sh`, one negative — a hint that fires
+on Linux too teaches the reader to skip the block it is printed in.
+
+**26. Nine GNU-only spellings, four of them silent, and the fix that mattered
+was the check rather than the nine edits.** Measured 2026-09-11, prompted by
+"this has to work on Mac and Windows too".
+
+macOS ships a BSD userland and bash 3.2. A sweep of `scripts/` and `hooks/`
+turned up fourteen call sites that would behave differently or not run at all,
+and the split that matters is not GNU-vs-BSD but loud-vs-silent:
+
+| | on a Mac |
+|---|---|
+| `stat -c %a` in `settings.sh` | **silent** - the token's mode is never checked, so a world-readable token reports as fine |
+| `timeout` in `session_start.sh` | **silent** - no runs are ever reported in flight |
+| `readlink -f` in `confirm_cleanup.sh` | **silent** - the delete guard stops resolving symlinks, and the shared image library loses its only protection |
+| `du -sb` in `push.sh` | **silent** - a 40 GB upload displays as 0 B at the confirmation |
+| `stat -c%s` in `install_deps.sh` | loud, and wrong: a successful download reports "could not download" and aborts |
+| `timeout` in `on_site.sh` | loud: every call to the site dies |
+| `local -A` in `tune_resources.sh` | loud: bash 3.2 cannot parse the file at all |
+
+The nine edits are not the fix; `tests/portable_userland.sh` is. Nine edits
+leave the tenth to be found by whoever installs on a Mac next, and four of
+these would never announce themselves at all. The check greps the whole tree
+for the known-divergent spellings, with two explicit escape hatches
+(`# GNU-ok:` on a line, `# GNU-ok-file:` for a file that only ever runs on the
+Linux site).
+
+**It earned its keep on the first run.** A careful hand-grep had found nine;
+the check found fourteen. One of the five extras was `clocked()` in
+`on_site.sh` — `timeout "$secs" "$@"`, missed because the eye was looking for
+`timeout` followed by a digit. That one is the wrapper the other four timeout
+sites were about to be routed through.
+
+**A fallback chain is not automatically safe, and this one was not.** The
+obvious shape is `stat -c %a "$f" || stat -f %Lp "$f"`. Measured here: under
+GNU coreutils `-f` means `--file-system`, ignores the format, and prints a
+five-line block-count report while exiting non-zero. So an unguarded `||` hands
+the caller that block of text as the permission bits the moment the first form
+fails for any reason. The guard is two locks: take the second form's output
+only if the command succeeded, and only if it is digits — because "it exited
+zero" and "it answered the question I asked" are different claims.
+
+Not simulated: bash 3.2, which this machine does not have. The one bash-4
+construct was removed rather than guarded, and the static check is what keeps
+it gone. `tests/bsd_userland_test.sh` runs the rest against a stub `stat` that
+refuses `-c` and a stub `readlink` that refuses `-f`, which catches a wrong
+flag and cannot catch a difference nobody thought to stub. **It has never run
+on a real Mac, and the release note says so.**
+
+**27. The reason was true, and it was true about something else.** Measured
+2026-09-11.
+
+`commands/setup.md` decided where a value should be written:
+
+> Write it to `~/.bashrc` as `LAB_RUNS_DIR` — not to any tool's own settings,
+> which reach neither the user's own terminal nor the compute nodes.
+
+Correct, for `LAB_RUNS_DIR`: the site account's non-interactive shells need it,
+and so does a person typing commands by hand. But the same reasoning then
+governed **where the settings file lives**, and that value has exactly one
+reader — this plugin's own scripts. The site does not need it (under
+`reach: ssh` the file never crosses), and neither do the compute nodes. So a
+constraint that applied to one value silently set policy for another, and the
+policy it set was "this must be found through a shell variable".
+
+Three failures follow from that, and they print the same sentence:
+
+- Git Bash and WSL on one Windows machine have separate homes and separate
+  startup files, so the export exists and this shell cannot see it (25).
+- `zsh`, the default shell on macOS, never reads `~/.bashrc` at all.
+- `settings.sh --set` follows `LAB_RUNS_DIR` when it is set, so on a user's own
+  machine it writes into a local directory shaped like the site's — findable
+  only from a shell that still has the variable. Measured directly.
+
+**The code was already right.** With no variable set at all, `--set` writes to
+`${XDG_CONFIG_HOME:-$HOME/.config}/agentic-bioflow/env.yaml` and a fresh shell
+with an empty environment reads it straight back — measured. The failure was
+manufactured entirely by an instruction telling people to set a variable, and
+by an error message whose closing line recommended setting one.
+
+Two general points. **A reason can be correct and still be misapplied one value
+over, and nothing about it looks wrong at the new site** — it reads as
+considered, which is exactly what stops the next reader from questioning it.
+And **when the default is already portable, every configuration mechanism added
+on top of it can only subtract**: `$HOME` is the one thing every shell on every
+platform agrees about, and each variable layered over it is another way for two
+shells to disagree.

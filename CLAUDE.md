@@ -42,6 +42,12 @@ real failures, each with the fix.
   `SITE_ADAPTER.md` (the site contract), `SETTINGS.md` (the per-deployment
   settings file schema), `DOWNSTREAM.md` (worked examples of what an outputs
   inventory turns up, measured from a real run), `HANDOFF.md`.
+- `scripts/utils/portable.sh` — one place that knows how this machine differs
+  from the one the scripts were written on (BSD vs GNU `stat`, a missing
+  `timeout`, `readlink -f`). Sourced through `scripts/settings.sh`, so almost
+  everything gets it for free. The two safety-net hooks deliberately do **not**
+  source it — a gate that vanishes with a missing helper is worse than one
+  never written — and inline their own few lines instead.
 - `tests/` — standalone bash/python scripts, one file per invariant or script.
   No test runner or CI config exists; run a test file directly with `bash
   tests/<name>.sh` (or `python3` for the one `.py` test). Each prints
@@ -54,8 +60,12 @@ No aggregate runner exists — invoke individual test files directly, e.g.:
 ```bash
 bash tests/confirm_launch_test.sh
 bash tests/no_hardcoded_paths.sh
-python3 tests/relay_connect_test.py
+bash tests/portable_userland.sh    # GNU-only spellings anywhere they can run on a Mac
+bash tests/bsd_userland_test.sh    # the same code against a stubbed BSD userland
 ```
+
+`tests/relay_connect_test.py` is a manual probe, not one of these: it takes a
+host and a port and needs a live relay.
 
 Tests that exercise `on_site.sh`/ssh behavior support dry-run env vars
 (`ON_SITE_DRY_RUN=1`) so they run with no host, no network, and no real site —
