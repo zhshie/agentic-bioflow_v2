@@ -76,6 +76,20 @@ what shape — and that is all this adds.
    plotting code is written here — this step only executes what step 4
    produced, which is what invariant 1 rules on.
 
+   **This only works where the IDE is.** Everything the tool uses to reach a
+   console is local to the machine it runs on. If this agent is running
+   somewhere other than the desktop Positron is open on, there is no route to
+   it at all, and no console anyone opens there will change that. `--check`
+   says which of those two situations it is in — "no Positron is running on
+   this machine" is a different sentence from "no console is open in it", and
+   the second one used to be printed for both. Which deployment this is meant
+   to be is a setup decision, and `docs/DOWNSTREAM.md` names the two.
+
+   **`--check` is the gate, and it now has an exit code.** Non-zero means the
+   step cannot proceed: no console, or no `jupyter_client` for the interpreter
+   this runs under. Read what it says instead of retrying — the two causes take
+   different actions, and neither is fixed by running the command again.
+
    **A console has to exist first, and this is a gate, not a warning.** The
    tool attaches to a session and will not start one: a runtime appearing
    unasked in someone's IDE, holding a workspace they did not pick, is a worse

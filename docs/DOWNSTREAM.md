@@ -92,3 +92,43 @@ way to know that from outside the file, so it reports what the first line
 says and moves on. This is visible in the output (a column name that looks
 like a real value is the tell), but it is not something the tool can fix for
 you — check the first row of any table before trusting its column names.
+
+## Where the agent runs, which is not the same question as where the data is
+
+The section above is about moving results. This one is about the agent, and it
+decides something the data question does not: whether step 5 of `/downstream`
+exists at all.
+
+`scripts/positron_run.py` reaches a console over a named pipe, a Unix domain
+socket, or a loopback port, and finds the supervisor by globbing the local
+temp directory. There is no network hop anywhere in it. So the tool works on
+one machine — the one Positron is running on — and nowhere else.
+
+That splits this deployment in two, and until 2026-09-10 nothing said so:
+
+| | where Claude runs | step 5 | everything else |
+|---|---|---|---|
+| **A** | on the desktop, in Positron's own terminal or as its agent extension | native | reaches the site with `reach: ssh` and a multiplexed master |
+| **B** | on the site itself | **structurally impossible** | `reach: local`; nothing to multiplex, nothing to fetch |
+
+Both are coherent. B is what this deployment has actually been running in, and
+it is cheaper for every other command — `analysis/` and `results/` are already
+on the site's own filesystem, so `fetch.sh` has nothing to do. It is only step
+5 that cannot work there, because the Plots pane is on the other machine.
+
+Neither is wrong to pick. What was wrong was picking one by accident and
+finding out through a message that named the wrong cause (PITFALLS 20i).
+
+**A third arrangement may collapse the two, and has not been measured.** If
+Positron is pointed at the site through its own remote-editing support, its
+kernel — and therefore the supervisor that hands out the kernel's ports —
+should run on the site, where an agent in deployment B could see it in the
+local temp directory with no change to any code. `--check` on the site is the
+whole probe: open the project that way, open an R console, and run it. It
+answers in one line.
+
+Two things to weigh before treating that as the answer. It puts an R session
+on a machine whose job is moving files and asking about schedules, which is
+what the section above argues against; and the sizes there are the argument's
+whole basis, so a large enough analysis flips it. Worth an experiment, not
+worth assuming.

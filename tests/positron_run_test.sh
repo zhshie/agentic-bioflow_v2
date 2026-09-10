@@ -65,9 +65,24 @@ json.dump(d, open(f, "w", encoding="utf-8"), indent=1)
 PY
 }
 
+# jupyter_client carries the protocol, and whether it is installed is now part
+# of what --check answers. Neither state can be left to the machine running the
+# suite: this cluster has no jupyter_client and a laptop generally does, so the
+# same case would pass on one and fail on the other for reasons that have
+# nothing to do with the code. Both are supplied here, and $JC picks which.
+mkdir -p "$TMP/jc_ok/jupyter_client" "$TMP/jc_bad/jupyter_client"
+cat > "$TMP/jc_ok/jupyter_client/__init__.py" <<'PY'
+class BlockingKernelClient:  # never reached: no case here runs a kernel
+    pass
+PY
+cat > "$TMP/jc_bad/jupyter_client/__init__.py" <<'PY'
+raise ImportError("no module named zmq")   # findable, not importable
+PY
+JC="$TMP/jc_ok"
+
 run() { # run <args...> -> sets $out and $rc
   out=$(POSITRON_RUN_SUPERVISOR_DIR="$TMP/sup" POSITRON_RUN_FIXTURE="$TMP/fx" \
-        "$PY" "$S" "$@" 2>&1); rc=$?
+        PYTHONPATH="$JC" "$PY" "$S" "$@" 2>&1); rc=$?
 }
 
 t() { # t <label> <expect-rc> <expect-substring> -- <args...>
@@ -139,15 +154,27 @@ t "unrelated workspace: refuses, names what it saw" 2 "but not one holding" \
 # --------------------------------------------------------------------------
 # Nothing to attach to. This must never start a session.
 # --------------------------------------------------------------------------
+# Three ways to find nothing, and they do not take the same advice. Every
+# transport here is local-only, so an agent on a login node while Positron runs
+# on the person's desktop lands in the first of these - and it used to be
+# reported as the third, which sends someone to open a console they already
+# have open, on a machine this could never see.
 rm -rf "$TMP/sup" "$TMP/fx"; mkdir -p "$TMP/sup"
-t "no console: exits 2 and says to open one" 2 "no R console is open" \
+t "no supervisor at all: names the machine, not the console" \
+    2 "no Positron is running on this machine" \
     -- --lang r --code '1+1' --workspace "$TMP/work" --dry-run
-t "no console: --check says so plainly"      0 "no Positron sessions found" -- --check
+t "and says a console elsewhere is not reachable" \
+    2 "will not change what this can see" \
+    -- --lang r --code '1+1' --workspace "$TMP/work" --dry-run
+t "--check reports it, and exits non-zero"   2 "no Positron is running on this machine" -- --check
 
 # A supervisor file left behind by a Positron that has quit. Unreadable
-# responses must be skipped, not crash the search.
+# responses must be skipped, not crash the search - and "it quit" is its own
+# diagnosis, distinct from both "not here" and "here with no console".
 supervisor 666 '"transport": "tcp", "port": 3'   # no fixture -> every GET 404s
-t "stale supervisor file: skipped, not fatal" 2 "no R console is open" \
+t "stale supervisor file: skipped, not fatal" 2 "none answered" \
+    -- --lang r --code '1+1' --workspace "$TMP/work" --dry-run
+t "stale is not reported as absent"          2 "has since quit" \
     -- --lang r --code '1+1' --workspace "$TMP/work" --dry-run
 
 # --------------------------------------------------------------------------
@@ -234,7 +261,8 @@ rm -rf "$TMP/sup" "$TMP/fx"; mkdir -p "$TMP/sup"
 printf '%-58s ' "no console: the refusal is a set of instructions"
 run --lang r --code '1+1' --workspace "$TMP/work" --dry-run
 ok=1
-for phrase in "Nothing can run until one exists" "session picker" "--wait" "--check"; do
+for phrase in "Nothing can run until one exists" "session picker" "--wait" "--check" \
+             "different machine" "Remote-SSH"; do
   grep -qF -- "$phrase" <<<"$out" || { echo "FAIL: guidance lacks '$phrase'  <<$out>>"; ok=0; break; }
 done
 [ "$rc" = 2 ] || { echo "FAIL: rc $rc, wanted 2"; ok=0; }
@@ -410,6 +438,43 @@ PY
 if [ "$wl_out" != "ALLOK" ]; then echo "FAIL: $wl_out"; fails=$((fails+1)); else echo "ok"; fi
 
 # --------------------------------------------------------------------------
+# The protocol library. It is imported at the last possible moment - inside
+# execute(), after a session has been found and after the file holding that
+# session's HMAC key has been written - so without a check the failure arrives
+# as a raw traceback out of a tool that weighs every other line it prints, and
+# --check says everything is fine right up until it is not.
+#
+# The pair below is what keeps this honest. The absent case would pass on this
+# cluster whether or not the check exists, because there is genuinely no
+# jupyter_client here; the present case is what proves the check can also pass,
+# by getting far enough to fail on the next thing instead.
+# --------------------------------------------------------------------------
+JC="$TMP/jc_bad"
+t "missing jupyter_client: --check refuses"  2 "jupyter_client is not importable" -- --check
+t "and says which interpreter to install it for" 2 "-m pip install jupyter_client" -- --check
+
+printf '%-58s ' "and a run stops before writing the HMAC key"
+run --lang r --code '1+1' --workspace "$TMP/work"
+if [ "$rc" != 2 ]; then echo "FAIL: rc $rc, wanted 2  <<$out>>"; fails=$((fails+1))
+elif grep -qF "Traceback" <<<"$out"; then
+  echo "FAIL: raw traceback reached the caller  <<$out>>"; fails=$((fails+1))
+elif grep -qF "could not get connection info" <<<"$out"; then
+  # connection_file() ran, which means the gate is downstream of the write it
+  # exists to prevent.
+  echo "FAIL: got as far as asking for connection info  <<$out>>"; fails=$((fails+1))
+else echo "ok"; fi
+
+JC="$TMP/jc_ok"
+printf '%-58s ' "present jupyter_client: the check passes, run proceeds"
+run --lang r --code '1+1' --workspace "$TMP/work"
+if grep -qF "jupyter_client is not importable" <<<"$out"; then
+  echo "FAIL: refused a library that imports  <<$out>>"; fails=$((fails+1))
+elif ! grep -qF "could not get connection info" <<<"$out"; then
+  # There is no connection_info fixture, so this is how far it can get.
+  echo "FAIL: did not reach the next step  <<$out>>"; fails=$((fails+1))
+else echo "ok"; fi
+
+# --------------------------------------------------------------------------
 # The invocation commands/downstream.md actually tells a person to type.
 # Every case above runs "$PY" "$S", which is not that line and cannot fail the
 # way that line fails: a file without its executable bit, or a shebang naming
@@ -419,7 +484,7 @@ if [ "$wl_out" != "ALLOK" ]; then echo "FAIL: $wl_out"; fails=$((fails+1)); else
 # --------------------------------------------------------------------------
 printf '%-58s ' "the documented bare-path invocation runs"
 bp_out=$(POSITRON_RUN_SUPERVISOR_DIR="$TMP/sup" POSITRON_RUN_FIXTURE="$TMP/fx" \
-         "$S" --check 2>&1); bp_rc=$?
+         PYTHONPATH="$JC" "$S" --check 2>&1); bp_rc=$?
 if [ "$bp_rc" = 0 ]; then echo ok
 else echo "FAIL: rc=$bp_rc <<$bp_out>>"; fails=$((fails+1)); fi
 

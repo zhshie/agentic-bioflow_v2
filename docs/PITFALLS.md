@@ -1019,6 +1019,61 @@ continues by itself when the console appears. It deliberately does not cover a
 console that exists but is busy — that is a different problem with a different
 answer, and exit 3 says so rather than waiting out someone else's long job.
 
+**20i. Every one of those transports is local-only, and "no console is open"
+was said about the wrong machine.** Measured 2026-09-10 on `lgn304`.
+
+Kallichore is reached over a named pipe, a Unix socket, or a loopback port, and
+the supervisor files are found by globbing this machine's temp directory. All
+three are local by construction. So when the agent runs on a cluster login node
+and Positron runs on the person's own desktop — which is the topology this
+session was actually in — `--check` printed `no Positron sessions found` and a
+run printed the 20h refusal: *bring up the Positron window, open the session
+picker*. Both sentences are true about `lgn304` and useless about the machine
+the person is sitting at, where the console may well already be open. Following
+the instructions cannot help, and `--wait 120` would have waited out the clock
+for something that could never appear on that host.
+
+**This is 18b again — evidence has a subject.** The empty list means "no
+session *here*", and it was reported as "no session". Four states were being
+collapsed into one message; they now get their own, because they take opposite
+advice:
+
+| what `survey()` sees | what it means |
+|---|---|
+| no supervisor file at all | no Positron on this machine — say so, and name the boundary |
+| files, none answering | a Positron that has since quit; start it again |
+| answering, no console of that language | 20h's refusal, which is correct *here* |
+| a console, wrong workspace | already handled: name what was found |
+
+The general lesson is the cheap one: **a tool that can only work under a
+precondition should be able to say the precondition is unmet.** This one's
+precondition — the agent and the IDE share a machine — was never written down
+anywhere, in the script or in `commands/downstream.md`, and so was never
+checked. `docs/DOWNSTREAM.md` now names the two deployments it splits.
+
+**20j. The library the whole protocol rides on was imported at the last
+possible moment, and `--check` passed without it.** Same review, same file.
+`jupyter_client` is imported inside `execute()` — after a session is found and
+after `connection_file()` has written that session's HMAC key to disk. On this
+cluster it is not installed at all, so the documented sequence was: `--check`
+says everything is fine, exit 0; the run then dies on a raw `ModuleNotFoundError`
+traceback, out of a tool that weighs every other line it prints.
+
+`commands/downstream.md` uses `--check` as a gate. **A gate that passes when the
+run cannot possibly work is 21's shape** — a green assertion nothing can make
+fail. It now imports the library rather than locating it (a wheel built for
+another interpreter is findable and not importable), reports it, and the run
+refuses before writing the key file. `--check` returns non-zero for either
+missing precondition, because a gate whose only signal is prose is not a gate —
+the same lesson the launch hooks are built on.
+
+The test for it could not be left to the machine: this cluster has no
+`jupyter_client` and a laptop generally has one, so the same case would pass on
+one and fail on the other for reasons unrelated to the code. The suite supplies
+both — a stub that imports and a stub that raises — and `$JC` picks. The present
+case is what keeps the absent one honest: it proves the check can also pass, by
+getting far enough to fail on the next thing instead.
+
 **21. A negative assertion can be true for a reason unrelated to what it
 guards.** `positron_run.py` narrows every `/sessions` record to a field
 whitelist at parse time, because that response carries each kernel's whole

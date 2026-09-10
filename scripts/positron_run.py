@@ -306,15 +306,27 @@ def _under(child, parent):
             return False
 
 
-def find_sessions(language=None, workspace=None):
-    """Sessions across every running supervisor, narrowed to SESSION_FIELDS.
+def survey(language=None, workspace=None):
+    """What is on this machine, in enough detail to tell four states apart.
 
-    Returns a list of (supervisor, session) pairs. `workspace` keeps only
-    sessions whose working directory contains it, which is what tells two
-    Positron windows apart.
+    `find_sessions` answers "which sessions" and throws the rest away, and
+    that is one answer short. No supervisor file at all, a file left by a
+    Positron that has quit, and a running Positron with no console open come
+    back from it as the same empty list - and they need different advice.
+    Positron writes one supervisor file per window, so the counts are what
+    separate them: `supervisors` is how many files exist, `answered` how many
+    of them replied.
+
+    That distinction is the whole of the machine boundary. Every transport
+    here is local-only, so an agent on a login node while Positron runs on
+    someone's desktop sees zero files no matter how many consoles are open
+    there, and "no console is open" is then a true sentence about the wrong
+    machine.
     """
+    files = supervisor_files()
+    answered = 0
     found = []
-    for path in supervisor_files():
+    for path in files:
         try:
             with open(path, encoding="utf-8") as fh:
                 sup = json.load(fh)
@@ -326,6 +338,7 @@ def find_sessions(language=None, workspace=None):
             # A stale file from a Positron that has since quit. Not an error:
             # the next one may well be the live server.
             continue
+        answered += 1
         for raw in payload.get("sessions", []):
             session = {k: raw.get(k) for k in SESSION_FIELDS}
             if language and (session.get("language") or "").lower() != language.lower():
@@ -336,7 +349,71 @@ def find_sessions(language=None, workspace=None):
     # Longest working directory first: with nested workspaces open, the
     # innermost is the one the caller meant.
     found.sort(key=lambda pair: len(pair[1].get("working_directory") or ""), reverse=True)
-    return found
+    return {"supervisors": len(files), "answered": answered, "pairs": found}
+
+
+def find_sessions(language=None, workspace=None):
+    """Sessions across every running supervisor, narrowed to SESSION_FIELDS.
+
+    Returns a list of (supervisor, session) pairs. `workspace` keeps only
+    sessions whose working directory contains it, which is what tells two
+    Positron windows apart.
+    """
+    return survey(language=language, workspace=workspace)["pairs"]
+
+
+def jupyter_client_problem():
+    """None if the ZMQ half of this can run, else what to tell the caller.
+
+    Imported rather than looked up: a wheel built for another interpreter is
+    findable and not importable, and importlib.util.find_spec would call that
+    installed.
+
+    Checked by --check, and again before the connection file is written,
+    because of what used to happen without it. --check passed, a session was
+    found, the file holding that session's HMAC key was written to disk, and
+    only then did `from jupyter_client import ...` fail - with a raw traceback,
+    out of a tool that weighs every other line it prints. commands/downstream.md
+    tells a person to run --check first and stop if it reports trouble; a check
+    that passes when the run cannot possibly work is not a check.
+    """
+    try:
+        import jupyter_client  # noqa: F401
+    except ImportError as exc:
+        return (
+            "positron_run: jupyter_client is not importable (%s).\n"
+            "  It carries the Jupyter protocol this speaks to the console.\n"
+            "  Install it for the interpreter that runs this file:\n"
+            "      %s -m pip install jupyter_client" % (exc, sys.executable)
+        )
+    return None
+
+
+def no_positron_here():
+    """The state that used to be reported as 'no console is open'.
+
+    Zero supervisor files means no Positron is running on this machine, which
+    is a different fact from "it is running and has no console open" and takes
+    the opposite advice. Everything this tool talks over - a named pipe, a Unix
+    socket, a loopback port - is local only. So when the agent runs on a
+    cluster login node and Positron runs on the person's own desktop, this
+    finds nothing however many consoles are open there, and telling them to
+    open one more is answering a question nobody asked.
+    """
+    where = os.environ.get("POSITRON_RUN_SUPERVISOR_DIR") or tempfile.gettempdir()
+    return (
+        "positron_run: no Positron is running on this machine (%s).\n"
+        "  Looked in %s for kallichore-*.json and found none. Positron writes\n"
+        "  one per open window, so none means no window here.\n"
+        "\n"
+        "  This reaches Positron over a local pipe or socket, and nothing else.\n"
+        "  If Positron is open on a different machine - your own desktop, while\n"
+        "  this runs on a login node - there is no route to it from here, and\n"
+        "  opening a console there will not change what this can see. Either run\n"
+        "  the agent on the machine Positron is on, or reach this machine from\n"
+        "  Positron's own Remote-SSH so that its console lives here too."
+        % (socket.gethostname(), where)
+    )
 
 
 def busy_reason(session):
@@ -522,10 +599,23 @@ def execute(conn_path, code, timeout):
 
 
 # --------------------------------------------------------------------------
-def report(pairs):
+def report(state):
+    """--check: say what is here, and why nothing is when nothing is.
+
+    Takes the whole survey rather than its pairs, because the empty case is
+    the one worth being precise about - see survey().
+    """
+    pairs = state["pairs"]
     if not pairs:
-        print("no Positron sessions found")
-        return
+        if state["supervisors"] == 0:
+            print(no_positron_here())
+        elif state["answered"] == 0:
+            print("positron_run: %d supervisor file(s) here, none answered - "
+                  "left behind by a\n  Positron that has since quit. Nothing "
+                  "is running to attach to." % state["supervisors"])
+        else:
+            print("positron_run: Positron is running here (%d window(s)), with no "
+                  "matching\n  console open in it." % state["answered"])
     for sup, session in pairs:
         blocked = busy_reason(session)
         print(f"{session['session_id']}  {session.get('display_name')}")
@@ -536,23 +626,56 @@ def report(pairs):
         print(f"    supervisor {endpoint_label(sup)}")
 
 
-def open_console_guidance(language, workspace):
+def report_dependency():
+    """Printed by --check whether or not a session was found.
+
+    A console that is open and a protocol library that is installed are two
+    independent preconditions, and --check is where both are supposed to be
+    visible before anyone acts.
+    """
+    problem = jupyter_client_problem()
+    if problem:
+        print()
+        print(problem)
+    return problem
+
+
+def open_console_guidance(language, workspace, state=None):
     """The one thing a person has to do that this tool will not do for them.
 
     Starting a console unasked puts a runtime in someone's IDE that they did
     not ask for, in a workspace they may not have meant; so this stops instead.
     Stopping is only acceptable if what to do next is unambiguous, which is
     why this is spelt out rather than left as "no session found".
+
+    Unambiguous also means naming the right cause. This used to open with "no
+    R console is open" in every case, including the one where no Positron is
+    running here at all - so an agent on a login node told the person to open
+    a console that was already open on their desktop, and would keep telling
+    them however many they opened. `state` is the survey that separates them.
     """
     name = LANGUAGES.get(language, language)
+    supervisors = (state or {}).get("supervisors")
+    answered = (state or {}).get("answered")
+    if supervisors == 0:
+        head = no_positron_here() + "\n\nIf Positron is on this machine, it is not started yet.\n"
+        step1 = f"  1. Start Positron and open {workspace or 'this project'} in it.\n"
+    elif supervisors and not answered:
+        head = ("positron_run: %d supervisor file(s) here, none answered - left by a "
+                "Positron\n  that has since quit.\n" % supervisors)
+        step1 = f"  1. Start Positron again and open {workspace or 'this project'}.\n"
+    else:
+        head = (f"positron_run: no {name} console is open"
+                + (f" for {workspace}" if workspace else "") + ".\n"
+                f"  Positron is running here; what is missing is the console.\n")
+        step1 = (f"  1. Bring up the Positron window for {workspace or 'this project'}.\n"
+                 f"     Its working directory has to contain that path - a console in\n"
+                 f"     another project will not be used, on purpose.\n")
     return (
-        f"positron_run: no {name} console is open"
-        + (f" for {workspace}" if workspace else "") + ".\n"
+        head +
         "\n"
         f"Nothing can run until one exists. To open it:\n"
-        f"  1. Bring up the Positron window for {workspace or 'this project'}.\n"
-        f"     Its working directory has to contain that path - a console in\n"
-        f"     another project will not be used, on purpose.\n"
+        + step1 +
         f"  2. In the Console pane, open the session picker (the dropdown in\n"
         f"     its top-right) and choose {name}.\n"
         f"  3. Wait for the prompt, then run this command again.\n"
@@ -617,8 +740,13 @@ def main(argv=None):
     args = p.parse_args(argv)
 
     if args.check:
-        report(find_sessions(language=LANGUAGES.get(args.lang) if args.lang else None))
-        return 0
+        state = survey(language=LANGUAGES.get(args.lang) if args.lang else None)
+        report(state)
+        problem = report_dependency()
+        # An exit code, because downstream.md step 5 uses --check as a gate and
+        # a gate that always returns 0 is prose. 2 is what the rest of this file
+        # already means by "nothing here can run".
+        return 0 if (state["pairs"] and not problem) else 2
 
     if not args.lang:
         p.error("--lang is required unless --check")
@@ -640,7 +768,8 @@ def main(argv=None):
     else:
         workspace = args.workspace or (os.path.dirname(os.path.abspath(args.file))
                                        if args.file else os.getcwd())
-        pairs = find_sessions(language=LANGUAGES[args.lang], workspace=workspace)
+        state = survey(language=LANGUAGES[args.lang], workspace=workspace)
+        pairs = state["pairs"]
         if not pairs:
             # Falling back to any window would run the code somewhere the
             # caller did not mean; say what was found instead.
@@ -653,7 +782,7 @@ def main(argv=None):
                           f"{session.get('working_directory')}", file=sys.stderr)
                 print("\nUse --workspace or --session-id to pick one.", file=sys.stderr)
                 return 2
-            print(open_console_guidance(args.lang, workspace), file=sys.stderr)
+            print(open_console_guidance(args.lang, workspace, state), file=sys.stderr)
             if not args.wait:
                 return 2
             print(f"\npositron_run: waiting up to {int(args.wait)}s for you to open "
@@ -684,6 +813,14 @@ def main(argv=None):
         print(f"  cwd  {session.get('working_directory')}")
         print(f"  code {code}")
         return 0
+
+    problem = jupyter_client_problem()
+    if problem:
+        # Before connection_file, not after: that call writes the session's
+        # HMAC key to a temporary file, and there is no reason to create it for
+        # a run that cannot proceed.
+        print(problem, file=sys.stderr)
+        return 2
 
     try:
         conn_path = connection_file(sup, session["session_id"])
