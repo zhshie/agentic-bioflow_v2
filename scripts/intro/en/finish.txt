@@ -1,0 +1,41 @@
+finish
+
+What it does
+Starts from what you have already accepted and assembles a
+submission package: reads each run's provenance (versions,
+parameters, whether it was retried), writes the methods
+paragraph (filling in only the tool citations the pipeline's own
+template leaves empty), the Results text (from only what
+analysis.md marks accepted), the bibliography, the figures, and
+the code that made them, all into submission/. Every rebuild
+points out what needs a decision: which citations do not line
+up, which planned figures were never produced, which produced
+figures nobody's plan claims.
+
+What you decide
+Which near-miss citations are actually correct (when a tool's
+name and the paper's own citation list do not match, you
+confirm); whether the package is ready to render as it stands -
+the plan is always shown to you before rendering.
+
+What it will not do
+It will not write an Introduction or a Discussion - that is the
+researcher's own judgement; it only assembles Methods and
+Results, and leaves the Discussion heading in place with a note
+saying why. It will not compose a claim no file supports - every
+sentence has to trace to a source, and where none can be found
+that gap is written into the document rather than smoothed over.
+It will not cite from memory - every citation comes from the
+run's own files, a DOI you supplied, or a page actually fetched.
+It will not copy results into the project - it always points at
+them by path.
+
+What you end up with
+submission/: provenance, the methods paragraph, the
+bibliography, the manuscript, the figures, and the code that
+made them; plus a clear list of what is still missing.
+
+Next step
+If the IDE is right here, render the document directly;
+otherwise rendering is the one step left for the machine the
+IDE is on - everything else is already written.

@@ -1,0 +1,26 @@
+agentic-bioflow
+
+在你的叢集上，透過 Seqera Platform 執行
+Nextflow / nf-core pipeline 的 Claude Code plugin。
+Platform 負責送出工作、追蹤狀態、收集報表；這裡只補
+Platform 在這個防火牆叢集上碰不到的部分。
+
+五個指令：
+
+  setup       準備或修復這台叢集，讓它能連上 Platform
+  launch      設定並送出一個分析：pipeline、參數、送出
+  runs        查看、除錯，或交付一個 pipeline run
+  downstream  把 SUCCEEDED run 的產出變成圖或分析
+  finish      把一個 project 組成可以送出去的 package
+
+分析流程（同一個「project」把五者串起來）：
+
+  setup -> launch -> runs -> downstream -> finish
+   準備      送出      監看      出圖         打包
+
+一個 project 底下放：原始資料、每一次 run、寫在這些
+run 上的 analysis，以及由 analysis 組成的 package。
+
+下一步：告訴我你想做什麼，或直接說出下一個指令的
+名稱——我會先講那個指令會做什麼、你能決定什麼、
+不會做什麼。

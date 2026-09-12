@@ -1,0 +1,42 @@
+runs
+
+What it does
+Starts by asking Seqera Platform what state this run is in, then
+adds the two things Platform cannot see: what the cluster's
+scheduler is doing, and what the cluster refused to send out.
+While RUNNING, it actively checks for a task sitting unstarted -
+Platform keeps showing RUNNING the whole time and never says a
+task is stuck on its own. On FAILED, it checks for a blocked
+outbound connection first and only then reads the task's own
+error log; a task that died of memory is already retried
+automatically at double resources on this cluster. On
+SUCCEEDED, it confirms the outputs reader is alive first, reads
+the QC and says plainly whether any sample should be dropped,
+lays out what to deliver as a table, and can tune the next
+run's box sizes from what this one actually used.
+
+What you decide
+Whether to allow an outbound connection the cluster has not seen
+before; whether to save a resource tuning for next time; whether
+to clean up this run's work/ (always asked first, never done on
+its own).
+
+What it will not do
+It will not allow a previously-unseen outbound connection on its
+own - that moves a security boundary, and always waits for you.
+It will not delete rawdata/, results/, analysis/, _references/,
+or any source data, and never .nextflow/plugins/; deleting
+work/ is always asked first. It will not treat Platform
+reporting "0 reports" as proof the output is actually gone -
+that is usually the pipeline's own report manifest going stale,
+so it reads that manifest first and delivers from the
+filesystem.
+
+What you end up with
+A clear read on which state this run is in, where it is stuck if
+it is stuck, and whose move is next; on SUCCEEDED, also a
+ready-to-use table of what was produced.
+
+Next step
+SUCCEEDED means downstream; still running means wait, or act on
+whatever this found stuck.

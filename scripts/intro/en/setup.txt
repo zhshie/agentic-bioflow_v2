@@ -1,0 +1,36 @@
+setup
+
+What it does
+First works out whether this is a fresh install, taking over a
+cluster someone else already set up, or repairing something
+broken - by reading the settings file and what the site itself
+records, not by asking blind. Fresh install: finds what this
+machine and the cluster are missing, connects your Seqera
+account, builds a compute environment, then runs two proof
+passes on public test data before handing over the command
+list. Repair: preflight.sh lists each part OK/FAIL, fixes
+follow whatever script the FAIL line names, and it says plainly
+what was already fine and what just got restarted.
+
+What you decide
+Who you are, and whether to reuse an environment already on
+this cluster; which Seqera workspace; where the work lives
+(storage_root); where your data is right now; whether
+downstream analysis happens on your own machine or on the
+cluster.
+
+What it will not do
+It will not touch your own FASTQ/FASTA or any real data - both
+proof passes at the end use only public test data. It keeps no
+copy of run state - that is Seqera Platform's job. It will not
+push on past a step that failed; it stops and says what broke
+rather than leaving a half-built environment behind.
+
+What you end up with
+A setting saved in the settings file (mode 600) - account,
+workspace, run area, compute environment, the outputs reader's
+connection; an environment that has passed both proof runs; and
+this command list, handed to you only now, for the first time.
+
+Next step
+Usually launch - start your first analysis.

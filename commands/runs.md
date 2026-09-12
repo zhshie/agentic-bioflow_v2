@@ -7,6 +7,12 @@ Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
 
+## Before anything else
+
+Run `scripts/intro.sh runs` and put its five sections in front of the user
+before doing anything below. When this invocation's diagnosis or delivery has
+been given, run `scripts/intro.sh --end runs`.
+
 Pass the workspace on every `tw` call that is scoped to one:
 `--workspace $(scripts/settings.sh workspace_id)`. Left off, `tw` answers from
 the caller's personal workspace - where the lab's pipelines, runs and compute
@@ -20,6 +26,54 @@ the site refused to send out. Both are reached through the site adapter
 (`docs/SITE_ADAPTER.md`), never by naming a scheduler here.
 
 `tw runs list` if no run was named. Then branch on status.
+
+## Reporting format
+
+Every diagnosis or state report below goes to the user in the same four
+lines, labelled exactly this way:
+
+    Status:          <one line - what is actually happening>
+    Layer:           env | egress | scheduler | pipeline | data
+    I will handle:   <what, and why>      (or)   You decide: <the options>
+    Next step:       <what happens once this is answered>
+
+The labels above are the shape, not the wording the user sees: write them in
+the language `scripts/settings.sh language` reports (`zh-TW` is the default,
+where they read 狀態／層別／我會處理／需要你決定／下一步). The rest of this
+deployment already speaks that language — `scripts/intro.sh` opens every
+session in it — and a report that switches to English mid-conversation reads
+as a different tool answering.
+
+**This formalises the 🤖/⏸ distinction used throughout this file, it does not
+replace it:** a 🤖 step reports through `I will handle`, a ⏸ step through
+`You decide`. Layer is never a guess — `task_health.sh` and `why_pending.sh`
+(below) print their own `layer=<value>` alongside their verdict; read it from
+there rather than inferring it from the symptom.
+
+## SUBMITTED
+
+A run that has not left the queue looks identical, from Platform's side, to
+one working hard — `tw runs list` shows SUBMITTED either way, and only the
+site's own scheduler can say which. Ask it the same way RUNNING does, below:
+
+```bash
+scripts/on_site.sh --script scripts/why_pending.sh
+```
+
+- **Nothing pending for this account.** 🤖 The submission likely never
+  reached the site's scheduler at all — this is a launch-time failure, not a
+  queue wait. Look at what `tw launch` itself returned rather than waiting
+  longer for something that is not there.
+
+      Status:          submitted to Platform, but nothing is waiting on the site
+      Layer:           scheduler
+      I will handle:   report this as a launch failure, not a queue wait
+      Next step:       read what `tw launch` returned; the answer is there, not in the queue
+
+- **Something is pending.** Its reason resolves exactly the way RUNNING's own
+  table does, below — a SUBMITTED run waiting on a floor it will never clear
+  is the same NEVER case, only caught before its first task ran. Follow that
+  table and report through the same four lines.
 
 ## RUNNING
 
@@ -37,11 +91,20 @@ the choice would be a guess, or would move a security boundary.** A relaunch
 counts as reversible in the sense that matters here — it resumes, and finished
 tasks come back from cache rather than running again.
 
-Ask the site why:
+Ask the site why, through the adapter — the scheduler it asks only exists
+there:
 
 ```bash
-scripts/why_pending.sh
+scripts/on_site.sh --script scripts/why_pending.sh
 ```
+
+Report whichever leaf below matches in the shape above. For instance, when
+the scheduler itself is the problem:
+
+    Status:          the scheduler is not answering right now
+    Layer:           scheduler
+    I will handle:   wait — queued work survives this, there is nothing to fix at the run's end
+    Next step:       ask again once it responds; no action needed from you
 
 `scripts/task_health.sh <run-id>` is the tasks-table check plus this same
 question, as one command — the background watch armed under launch.md step 9
@@ -84,11 +147,20 @@ spell in the queue, not the run over again.
 
 ## FAILED
 
-**Ask what the site refused, before reading the Nextflow log:**
+**Ask what the site refused, before reading the Nextflow log** — through the
+adapter, since the refusal log lives wherever the outbound channel runs:
 
 ```bash
-scripts/egress_ctl.sh denied
+scripts/on_site.sh --script scripts/egress_ctl.sh denied
 ```
+
+Report whichever leaf below matches in the shape defined above. For instance,
+when a refusal is the cause:
+
+    Status:          the run failed; an outbound request was refused at the failure time
+    Layer:           egress
+    You decide:      allow <host> through the outbound channel, or leave it blocked
+    Next step:       once approved — allow it, restart the outbound channel, relaunch
 
 - **A refusal lines up with the failure time.**
     - **It is on the known-harmless list** (`docs/PITFALLS.md` 4e, 4e2). 🤖
@@ -180,12 +252,21 @@ prefer whichever is actually available.
 
 ## SUCCEEDED
 
-1. **Check the site can still serve outputs** — `scripts/agent_ctl.sh online <id>`.
+1. **Check the site can still serve outputs** — through the adapter:
+   `scripts/on_site.sh --script scripts/agent_ctl.sh online <id>`.
    Where Platform reads results through something running on the cluster, that
    something being down makes every output look like it was never produced.
    Never tell the user an output is missing without checking this first.
    Read binary outputs — images, PDFs — from the filesystem regardless: what
    Platform serves for them is corrupt (PITFALLS 3b).
+
+   If the reader is down, report it in the same shape as every other
+   diagnosis in this file:
+
+       Status:          the outputs reader is not running
+       Layer:           env
+       I will handle:   restart it and re-check before saying anything is missing
+       Next step:       once it is back, this run's outputs will be visible again
 
    **`ONLINE - Platform lists 0 report(s)` is not a verdict on this
    deployment.** Platform fills its Reports tab by matching the pipeline's own
@@ -277,3 +358,29 @@ prefer whichever is actually available.
 5. **Offer cleanup of `work/` only**, and only with explicit confirmation.
    Never `rawdata/`, `results/`, `analysis/`, `_references/`, the shared image
    library, or `.nextflow/plugins/`.
+
+## CANCELLED
+
+Platform did not do this on its own — someone asked to, from `tw` or the web
+UI, and this command did not do it either unless it just relaunched something
+by hand. Establish which before touching anything: a cancellation can land
+before, during, or after a task started, and treating it as a mistake without
+asking is a decision that was never this command's to make.
+
+    Status:          cancelled — not a failure, and not something this invocation started
+    Layer:           pipeline
+    You decide:      relaunch it, or leave it cancelled
+    Next step:       say the word and it relaunches the same way any other run does
+
+## UNKNOWN
+
+`tw runs list` can report a status this file has no branch for — Platform
+adding a status this adapter has not been updated to cover. Say exactly what
+Platform reported and stop there rather than guessing what it implies; NEVER
+and "waiting" are both claims this file makes only where a rule above already
+covers the reason.
+
+    Status:          Platform reports a status not covered above — say it verbatim
+    Layer:           env
+    You decide:      what to do next — this file has no rule for this status
+    Next step:       tell the maintainer which status this was, so a branch can be added here

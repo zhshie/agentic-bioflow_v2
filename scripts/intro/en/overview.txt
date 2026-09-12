@@ -1,0 +1,27 @@
+agentic-bioflow
+
+A Claude Code plugin that runs Nextflow / nf-core pipelines
+through Seqera Platform on your cluster. Platform submits
+work, tracks its state, and collects reports; this only adds
+what Platform cannot reach on a firewalled cluster.
+
+Five commands:
+
+  setup       prepare/repair this cluster's link to Platform
+  launch      set up and submit an analysis: pipeline, go
+  runs        check on, debug, or deliver a pipeline run
+  downstream  turn a SUCCEEDED run's outputs into figures
+  finish      assemble a project into something to send out
+
+Analysis flow (one "project" ties all five together):
+
+  setup -> launch -> runs -> downstream -> finish
+  prepare    submit    watch    figures      package
+
+A project holds: the raw data, every run made from it, the
+analysis written on those runs, and the package built from
+that analysis.
+
+Next step: tell me what you want to do, or name the next
+command directly - I will open with what it does, what you
+decide, and what it will not do.

@@ -7,6 +7,12 @@ Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
 
+## Before anything else
+
+Run `scripts/intro.sh launch` and put its five sections in front of the user
+before doing anything below. When the run has been launched and its watch
+armed (step 9), run `scripts/intro.sh --end launch`.
+
 Pass the workspace on every `tw` call that is scoped to one:
 `--workspace $(scripts/settings.sh workspace_id)`. Left off, `tw` answers from
 the caller's personal workspace - where the lab's pipelines, runs and compute
@@ -133,6 +139,20 @@ gate can see.
    a *different* revision is a different entry, not an edit to this one.
 
 4. **Build the samplesheet.**
+
+   **If the source is a public accession — SRA, ENA, GEO/GSM — rather than
+   reads already in hand, this step does not start from `schema_input.json`
+   at all.** Run nf-core/fetchngs first, at its own pinned revision, the same
+   way any pipeline here is registered and launched (steps 1–3, once, for it):
+   it downloads the reads and writes its own samplesheet, already shaped for
+   whatever analysis pipeline consumes it next. **That samplesheet is the
+   input to this pipeline** — fetchngs already did this step's job on data it
+   fetched itself, and building a second samplesheet from the files it wrote
+   would be redoing work nf-core already did (`docs/PRINCIPLES.md`, invariant
+   1). Once fetchngs SUCCEEDS, come back here with its output samplesheet as
+   the `--input` for the pipeline this command was started for, and continue
+   below only for data that is not coming from an accession.
+
    - Read `assets/schema_input.json` from the pipeline at that revision to get
      the exact columns and which are required. Do not hardcode them.
    - rnaseq ships `bin/fastq_dir_to_samplesheet.py`; prefer it. No other
@@ -189,15 +209,29 @@ gate can see.
    user judge whether this run looks similar. The same numbers on ten times the
    data run out of memory.
 
-   Route ③ is where the rest of this step applies. Put two things in front of
-   the user unprompted:
-   - **What can be skipped or swapped.** The schema already groups them - a
-     `*skipping*` group, 19 parameters of it in rnaseq 3.14.0, plus the
-     tool-choice parameters carrying an enum, which there are `aligner`,
-     `trimmer`, `pseudo_aligner` and `remove_ribo_rna`. Show each with its
-     default, and say that "all defaults" is a complete answer.
+   Route ③ is where the rest of this step applies. Put the **whole** schema in
+   front of the user, not a subset picked for them:
+
+   - **Every group the schema defines**, one line each — the group's title,
+     how many parameters it holds, and two or three representative ones by
+     name. `nextflow_schema.json`'s own grouping (`definitions` or `$defs`,
+     depending on schema draft) is the source; read it rather than deciding
+     which groups are worth mentioning. A `*skipping*` group (19 parameters
+     of it in rnaseq 3.14.0) and the tool-choice parameters carrying an enum
+     — `aligner`, `trimmer`, `pseudo_aligner`, `remove_ribo_rna` there — are
+     groups this list includes, not a special case shown instead of it.
+   - **Let the user drill into any group** for its full parameter list — name,
+     type, default, description — rather than judging in advance which ones
+     they would want to see. Someone shown only a summary cannot adjust what
+     the summary left out, and knowing what is adjustable is the whole point
+     of this route.
    - **Anything the schema marks required with no default**, which fails at
-     launch rather than before it.
+     launch rather than before it — surfaced regardless of which groups they
+     chose to open.
+
+   **Once they have answered, show it back**: which stages will actually run
+   given what was skipped or swapped, so the consequence of their choices is
+   in front of them, not just the raw values, before `params.yaml` is written.
 
    **This is a menu the user answers, not a decision to make on their behalf.**
    A gate enforces it: writing `params.yaml` is refused until the schema has

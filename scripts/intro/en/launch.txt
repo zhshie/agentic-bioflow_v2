@@ -1,0 +1,37 @@
+launch
+
+What it does
+Follows Seqera's own sequence to take you from "I have data" to
+"a run is submitted": pick a project, pick the pipeline and its
+revision, show the workflow diagram, register the pipeline if
+it is not registered yet, build a samplesheet, choose
+parameters, check for resource settings that need your call,
+then show the complete command and wait for you to confirm it.
+After launch it watches in the background and speaks up if a
+task gets stuck or the outputs reader dies.
+
+What you decide
+Which project this run belongs to; which pipeline and revision
+to run (or reuse the one you ran last time); parameters - reuse
+last time's settings, take every default, or go through what
+can be skipped or swapped group by group; which resource
+requests need your say-so (GPU, or anything past what the
+cluster offers at all).
+
+What it will not do
+It will not choose parameters for you - it lays out three
+routes and lets you pick; "all defaults" counts as an answer,
+but it has to come from you. It will not invent samplesheet
+columns or guess filenames - columns always come from the
+pipeline's own schema, and only what the filenames cannot tell
+it (patient, lane, condition) gets asked of you. It will not
+submit a run before you confirm it.
+
+What you end up with
+A run that is submitted and being watched; a run ID and the
+Platform URL; if a tuned resource file was applied, also a
+record of what data size it was tuned against.
+
+Next step
+Usually runs - see how it is going; once it SUCCEEDED, that is
+downstream.

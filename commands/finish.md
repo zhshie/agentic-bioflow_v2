@@ -7,6 +7,13 @@ Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
 
+## Before anything else
+
+Run `scripts/intro.sh finish` and put its five sections in front of the user
+before doing anything below. When the package has been rendered, or stops one
+step short because the renderer is not reachable here, run `scripts/intro.sh
+--end finish`.
+
 This picks up where `downstream` leaves off — after figures exist and the user
 has accepted them, not before. It assembles; it does not compose. Every
 sentence it produces traces to a file, and where no file can be found the gap

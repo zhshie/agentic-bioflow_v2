@@ -1,0 +1,37 @@
+downstream
+
+What it does
+Starts from a SUCCEEDED run: confirms the outputs reader is
+alive, actually scans the whole results tree (never guesses what
+a file should look like), lists what the pipeline already drew
+on its own, then works out an analysis plan with you and writes
+it to analysis.md. Once agreed, each plan entry becomes one
+script and one output; where Positron is open, a script can run
+in the console you already have, with figures landing in the
+Plots pane so you can accept or revise on the spot.
+
+What you decide
+The analysis plan itself - describe what you want, hand over a
+paper to use as the model, or let it propose first and correct
+it; what each item computes and why that and not something
+else; whether each figure gets accepted, revised, or dropped.
+
+What it will not do
+It will not redraw a figure the pipeline already drew - anything
+already produced gets listed first and is never remade. It will
+not write any analysis or plotting code before a plan is agreed
+with you and you have actually answered. It will not describe a
+result by "looking at" the picture - it reads the data that made
+the figure; what the figure actually looks like is on your
+screen, not here. It will not hand-edit a figure that already
+exists - a revision means changing the script and running it
+again.
+
+What you end up with
+An analysis.md recording every agreed item, why it was done, and
+whether it is proposed or accepted; the script behind each item;
+and the figures or numbers you have accepted.
+
+Next step
+Usually finish - turn the accepted figures into something to
+send out; or back to revising the plan and running it again.

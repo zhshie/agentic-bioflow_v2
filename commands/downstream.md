@@ -7,6 +7,12 @@ Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
 
+## Before anything else
+
+Run `scripts/intro.sh downstream` and put its five sections in front of the
+user before doing anything below. When the accepted analysis has been
+recorded (step 6), run `scripts/intro.sh --end downstream`.
+
 This picks up where `runs` leaves off — after a run SUCCEEDED and its outputs
 have been delivered, not before. It carries **no pipeline-specific
 knowledge**: no tool names, no output filenames, no per-pipeline table
@@ -47,7 +53,8 @@ and the parts that do transfer are rules, not machinery:
 
 ## Steps
 
-1. **Check the outputs reader is alive.** `scripts/agent_ctl.sh online <id>`.
+1. **Check the outputs reader is alive** — through the adapter:
+   `scripts/on_site.sh --script scripts/agent_ctl.sh online <id>`.
    When it is down, every output looks like it was never produced. This is
    the same check `runs.md` makes before delivering anything, repeated here
    because time may have passed since then.
@@ -61,6 +68,30 @@ and the parts that do transfer are rules, not machinery:
    examples of what this turns up, measured from a real run — read them for a
    sense of what to expect, never as a substitute for running the inventory
    itself.
+
+2.5. **Ask about the background, before proposing anything.** No field here
+   is mandatory — invite the user to describe the study in their own words,
+   or hand over papers, prior results, or where this is headed (a
+   manuscript, a thesis chapter, an internal report). Whatever they give
+   counts, including "nothing" — that is an answer, not a step skipped.
+
+   **Organise and supplement what they hand you; do not just transcribe it.**
+   Sort it into research question, experimental design, organism, hypotheses,
+   and intended use. Where something is missing, ask about it or mark it
+   unknown — never invent it. Where they hand over a paper, **read it**
+   before citing anything from it; a title is not a source (`docs/PRINCIPLES.md`,
+   invariant 9 applies here just as it does to `finish`).
+
+   Show the organised version back and get their confirmation before writing
+   anything down. Then write it into `analysis.md` as a `background` section
+   — "the user did not provide one" is a complete entry if that is what
+   happened, but the section has to exist and the question has to have been
+   put to them in this conversation.
+
+   **Every proposal from step 3 onward cites this section or the inventory
+   from step 2** — which one, why, and what the alternative would have been.
+   A proposal that cites neither is a guess wearing a recommendation's
+   clothes, and the user cannot tell the difference from the outside.
 
 3. **Agree an analysis plan, and write it down.** This is the step the rest
    depends on, and it has two halves.
@@ -88,7 +119,9 @@ and the parts that do transfer are rules, not machinery:
    question      what this answers - one sentence, in the experiment's terms
    source        which run, which file, which columns
    method        what to compute or draw
-   why           why this and not something else
+   why           why this and not something else - citing the background
+                 section or the inventory, and what the alternative would
+                 have been
    status        proposed | accepted | revised | done
    ```
 

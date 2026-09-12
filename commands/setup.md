@@ -6,6 +6,13 @@ Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
 
+## Before anything else
+
+Run `scripts/intro.sh setup` and put its five sections in front of the user
+before asking, or doing, anything below. When this command's flow ends - the
+summary in step 10 is delivered, or a repair finishes - run `scripts/intro.sh
+--end setup`.
+
 ## Open by saying what this is
 
 Before the first question, say what the user is about to use and what it will
@@ -275,13 +282,15 @@ user's machine has no use for a runtime it will never start:
   `scripts/settings.sh --set <key> <value>`. Skipping this leaves the outputs
   reader unable to start, reporting a missing runtime that is in fact installed.
 
-**5. The outbound channel.** `scripts/egress_ctl.sh start`. On a site whose
+**5. The outbound channel.** Through the adapter:
+`scripts/on_site.sh --script scripts/egress_ctl.sh start`. On a site whose
 compute nodes cannot reach the internet this is what carries container pulls
 and reference downloads; where they can, the adapter says so and this is
 quick. It picks its own port, so several members on one machine do not collide.
 
-**6. The outputs reader, then its credential — in that order.**
-`scripts/agent_ctl.sh start`, then `scripts/agent_ctl.sh register`.
+**6. The outputs reader, then its credential — in that order.** Through the
+adapter: `scripts/on_site.sh --script scripts/agent_ctl.sh start`, then
+`scripts/on_site.sh --script scripts/agent_ctl.sh register`.
 **Registering first fails**: Seqera will not issue a credential for something
 it cannot see. `start` assigns a connection identifier if there is none; it has
 to stay the same afterwards, because the credential is tied to it, and two
@@ -344,6 +353,9 @@ this is safe to re-run with somebody looking over their shoulder. Say that too.
 
 ## When a step fails
 
-Say which step, what the failure means, and what to do — then stop. Do not
-continue past a failed step: everything after it depends on it, and the errors
-it produces will describe the wrong problem.
+Say which step, what the failure means, and what to do. **You may attempt to
+fix this step** — that is not the same as continuing past it. What is not
+allowed is moving on to the next step before this one passes: everything after
+it depends on it, and the errors it produces will describe the wrong problem,
+not the real one. If the fix attempt itself fails, report that the same way —
+which step, what happened, what was tried — and stay there.
