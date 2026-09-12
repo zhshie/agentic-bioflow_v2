@@ -219,4 +219,76 @@ t "bash gets export"   "$(px /bin/bash)"     'export LAB_RUNS_DIR="/work/runs"'
 t "fish gets set -gx"  "$(px /usr/bin/fish)" 'set -gx LAB_RUNS_DIR /work/runs'
 t "tcsh gets setenv"   "$(px /bin/tcsh)"     'setenv LAB_RUNS_DIR "/work/runs"'
 
+# ---------------------------------------------------------------------------
+# D5: `--set` refuses a write shaped like the site's path under `reach: ssh`.
+#
+# The measured failure (docs/SETTINGS.md): a laptop with a leftover
+# LAB_RUNS_DIR exported writes its settings file into
+# "$LAB_RUNS_DIR/_personal/env.yaml" - a directory that looks exactly like the
+# site's, but is local, and the next shell (with the variable gone again)
+# cannot find it.
+D5HOME="$TMP/d5home"; mkdir -p "$D5HOME"
+# Every case below is exercised through the SAME candidate resolution a real
+# broken laptop hits: no LAB_SETTINGS_FILE at all, so LAB_RUNS_DIR is free to
+# steer where set_setting would write, exactly as docs/SETTINGS.md describes.
+RD="$TMP/d5_site_runs"
+
+printf '%-64s ' "bootstrapping reach:ssh itself is refused when LAB_RUNS_DIR leaks in"
+out=$(env -u LAB_SETTINGS_FILE HOME="$D5HOME" XDG_CONFIG_HOME="$D5HOME/xdg1" \
+          LAB_RUNS_DIR="$RD" bash "$S" --set reach ssh 2>&1); rc=$?
+[ "$rc" = 2 ] && grep -qiF "LAB_RUNS_DIR" <<<"$out" && echo ok \
+  || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...and names the XDG location settings belong at"
+grep -qF "agentic-bioflow/env.yaml" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...and creates nothing at all"
+[ ! -e "$RD/_personal/env.yaml" ] && [ ! -e "$D5HOME/xdg1/agentic-bioflow/env.yaml" ] && echo ok \
+  || { echo "FAIL: a file appeared somewhere"; fails=$((fails+1)); }
+
+# A settings file already exists at the XDG default recording reach: ssh -
+# now a later --set call, with LAB_RUNS_DIR leaking into THIS shell too, must
+# also be refused, even though the write itself is not to the `reach` key.
+XDG2="$D5HOME/xdg2"; mkdir -p "$XDG2/agentic-bioflow"
+cat > "$XDG2/agentic-bioflow/env.yaml" <<'YAML'
+reach: ssh
+site_host: me@example.org
+YAML
+chmod 600 "$XDG2/agentic-bioflow/env.yaml"
+before_sum=$(md5sum "$XDG2/agentic-bioflow/env.yaml")
+
+printf '%-64s ' "a later --set is refused too, once reach:ssh is already recorded"
+out=$(env -u LAB_SETTINGS_FILE HOME="$D5HOME" XDG_CONFIG_HOME="$XDG2" \
+          LAB_RUNS_DIR="$RD" bash "$S" --set workspace_id 12345 2>&1); rc=$?
+[ "$rc" = 2 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...and the real settings file is untouched"
+after_sum=$(md5sum "$XDG2/agentic-bioflow/env.yaml")
+[ "$before_sum" = "$after_sum" ] && echo ok || { echo "FAIL: file changed"; fails=$((fails+1)); }
+printf '%-64s ' "...and nothing was written under LAB_RUNS_DIR either"
+[ ! -e "$RD/_personal/env.yaml" ] && echo ok || { echo "FAIL: site-shaped file appeared"; fails=$((fails+1)); }
+
+# --- every other case keeps working exactly as before ----------------------
+printf '%-64s ' "reach:local with LAB_RUNS_DIR set is NOT refused - that is the normal site case"
+XDG3="$D5HOME/xdg3"; mkdir -p "$XDG3"
+out=$(env -u LAB_SETTINGS_FILE HOME="$D5HOME" XDG_CONFIG_HOME="$XDG3" \
+          LAB_RUNS_DIR="$RD/local-ok" bash "$S" --set reach local 2>&1); rc=$?
+[ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "no reach recorded and LAB_RUNS_DIR set defaults to local - NOT refused"
+XDG4="$D5HOME/xdg4"; mkdir -p "$XDG4"
+out=$(env -u LAB_SETTINGS_FILE HOME="$D5HOME" XDG_CONFIG_HOME="$XDG4" \
+          LAB_RUNS_DIR="$RD/plain" bash "$S" --set workspace_id 1 2>&1); rc=$?
+[ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "reach:ssh but LAB_RUNS_DIR unset is NOT refused - nothing to be steered by"
+XDG5="$D5HOME/xdg5"; mkdir -p "$XDG5/agentic-bioflow"
+printf 'reach: ssh\n' > "$XDG5/agentic-bioflow/env.yaml"; chmod 600 "$XDG5/agentic-bioflow/env.yaml"
+out=$(env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR HOME="$D5HOME" XDG_CONFIG_HOME="$XDG5" \
+          bash "$S" --set workspace_id 1 2>&1); rc=$?
+[ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "an explicit LAB_SETTINGS_FILE always wins, even with LAB_RUNS_DIR set"
+EXPLICIT="$TMP/d5_explicit.yaml"
+out=$(LAB_SETTINGS_FILE="$EXPLICIT" LAB_RUNS_DIR="$RD" bash "$S" --set reach ssh 2>&1); rc=$?
+[ "$rc" = 0 ] && [ -r "$EXPLICIT" ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

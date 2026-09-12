@@ -224,6 +224,48 @@ PY
     chmod 600 "$SETTINGS_FILE"
 }
 
+# D5: `reach: ssh` means this deployment runs on the user's own machine, not
+# the site - so `$LAB_RUNS_DIR`, a site path, has no business being exported
+# here at all. Measured, not guessed (docs/SETTINGS.md): when it leaks in
+# anyway - a stray export left from following the site's own onboarding, say -
+# it is the FIRST candidate `set_setting` would write to, nothing at that path
+# exists yet, so the search finds nothing anywhere and falls back to writing
+# there regardless. The result is a settings file sitting in a directory
+# shaped like the site, on this machine, that the next shell - with the
+# variable gone again - can never find.
+#
+# The value being written can settle the question on its own, without relying
+# on whatever SETTINGS_FILE happens to already resolve to - which, in exactly
+# this failure, is the one thing that cannot be trusted: `--set reach ssh`
+# itself is the write this has to catch, before any file saying so exists.
+#
+#   0  refuse   1  fine, carry on
+site_shaped_write_refusal() {
+    local key="$1" val="$2" effective_reach
+    [ -z "${LAB_SETTINGS_FILE:-}" ] || return 1   # an explicit location wins outright
+    [ -n "${LAB_RUNS_DIR:-}" ] || return 1        # nothing here to be steered by
+    effective_reach="$(setting reach local)"
+    [ "$key" = reach ] && effective_reach="$val"
+    [ "$effective_reach" = ssh ] || return 1
+    return 0
+}
+
+refuse_site_shaped_write() {
+    local key="$1"
+    echo "refusing to write '$key' here: reach is ssh, so this is the user's own" >&2
+    echo "machine, but LAB_RUNS_DIR is set (to '${LAB_RUNS_DIR:-}')." >&2
+    echo "" >&2
+    echo "On the user's own machine nothing should be set. The settings file" >&2
+    echo "belongs at" >&2
+    printf '  %s\n' "$(xdg_default)" >&2
+    echo "which every shell finds with no variable at all. LAB_RUNS_DIR names a" >&2
+    echo "path on the site; left exported here it would make this write land in" >&2
+    echo "a directory shaped like the site, but local, which the next shell -" >&2
+    echo "with the variable gone again - cannot find (docs/SETTINGS.md)." >&2
+    echo "" >&2
+    echo "Unset LAB_RUNS_DIR and run this again." >&2
+}
+
 # Which startup file an export has to go into, and the line to put there.
 #
 # Writing `~/.bashrc` unconditionally is wrong the moment the shell is not
@@ -319,8 +361,12 @@ settings_summary() {
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     case "${1:-}" in
         --set)
-            set_setting "${2:?usage: settings.sh --set <key> <value>}" \
-                        "${3?usage: settings.sh --set <key> <value>}" ;;
+            _k="${2:?usage: settings.sh --set <key> <value>}"
+            _v="${3?usage: settings.sh --set <key> <value>}"
+            if site_shaped_write_refusal "$_k" "$_v"; then
+                refuse_site_shaped_write "$_k"; exit 2
+            fi
+            set_setting "$_k" "$_v" ;;
         --summary)
             settings_summary ;;
         --profile-file)

@@ -233,5 +233,68 @@ printf '%-64s ' "a later call with --user layers the member subtree on top"
 [ -d "$SHARED_ONLY/alice/projects" ] && [ -d "$SHARED_ONLY/_references" ] && echo ok \
   || { echo "FAIL: layering did not produce both"; fails=$((fails+1)); }
 
+# ---------------------------------------------------------------------------
+# D3: --plan. The assertion that matters is not "it prints lines" - it is
+# that nothing it names actually gets built. A --plan that quietly created
+# directories would still look right by output alone.
+PLAN_RUNS="$TMP/plan_site_runs"
+PROJ2=fish_study
+out=$(LAB_RUNS_DIR="$PLAN_RUNS" bash "$S" site --plan --user carol --project "$PROJ2" \
+        --run rnaseq_fish_20260910 2>&1)
+rc=$?
+printf '%-64s ' "--plan on a brand-new site exits clean"
+[ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "--plan lists every directory the real call would make"
+ok=1
+for d in _personal _references _singularity_cache \
+         _system/agent _system/relay _system/coldstart \
+         carol/projects "carol/projects/$PROJ2/rawdata" "carol/projects/$PROJ2/runs" \
+         "carol/projects/$PROJ2/runs/rnaseq_fish_20260910/logs" \
+         "carol/projects/$PROJ2/runs/rnaseq_fish_20260910/results" \
+         "carol/projects/$PROJ2/runs/rnaseq_fish_20260910/work"; do
+  grep -qF "would-create: $PLAN_RUNS/$d" <<<"$out" || { ok=0; echo "  missing: $d"; }
+done
+[ "$ok" = 1 ] && echo ok || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "THE assertion: --plan created none of the directories it named"
+still_missing=1
+for d in _personal _references _singularity_cache \
+         _system/agent _system/relay _system/coldstart \
+         carol carol/projects "carol/projects/$PROJ2"; do
+  [ -e "$PLAN_RUNS/$d" ] && { still_missing=0; echo "  exists (should not): $d"; }
+done
+[ ! -e "$PLAN_RUNS" ] && echo ok \
+  || { [ "$still_missing" = 1 ] && echo "FAIL: base dir exists though nothing under it does" \
+       || echo "FAIL: --plan built something"; fails=$((fails+1)); }
+
+# --plan against a site that already has some of the skeleton: only the
+# still-missing directories are listed, and what already exists is untouched.
+PLAN_PARTIAL="$TMP/plan_partial_runs"
+mkdir -p "$PLAN_PARTIAL/_personal" "$PLAN_PARTIAL/_references"
+echo "pre-existing member file" > "$PLAN_PARTIAL/_references/notes.txt"
+before_sum=$(md5sum "$PLAN_PARTIAL/_references/notes.txt")
+out=$(LAB_RUNS_DIR="$PLAN_PARTIAL" bash "$S" site --plan --user dave 2>&1)
+printf '%-64s ' "--plan on a partly-built site omits what already exists"
+grep -qF "would-create: $PLAN_PARTIAL/_personal" <<<"$out" \
+  && { echo "FAIL: listed a directory that is already there"; fails=$((fails+1)); } || echo ok
+printf '%-64s ' "--plan on a partly-built site still lists what is missing"
+grep -qF "would-create: $PLAN_PARTIAL/dave/projects" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "--plan never touches a file already sitting in an existing directory"
+after_sum=$(md5sum "$PLAN_PARTIAL/_references/notes.txt")
+[ "$before_sum" = "$after_sum" ] && echo ok || { echo "FAIL: file changed"; fails=$((fails+1)); }
+printf '%-64s ' "--plan built no new directory on the partly-built site either"
+[ ! -d "$PLAN_PARTIAL/dave" ] && echo ok || { echo "FAIL: dave/ was created"; fails=$((fails+1)); }
+
+# --plan on the local side, same single-source guarantee.
+PLAN_LOCAL="$TMP/plan_local_root"
+out=$(bash "$S" local --plan --root "$PLAN_LOCAL" --user erin --project "$PROJ2" 2>&1)
+printf '%-64s ' "--plan on the local side lists its directories too"
+grep -qF "would-create: $PLAN_LOCAL/erin/projects/$PROJ2/analysis" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "--plan on the local side created nothing"
+[ ! -e "$PLAN_LOCAL" ] && echo ok || { echo "FAIL: $PLAN_LOCAL exists"; fails=$((fails+1)); }
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

@@ -18,6 +18,12 @@
 #   init_workspace.sh site  [--user <u>] [--project <p>] [--run <name>]
 #   init_workspace.sh local --user <u> [--project <p>] [--run <name>] [--root <path>]
 #
+#   --plan   print `would-create: <path>`, one line per directory this call
+#            would make that does not already exist, then exit 0 having
+#            created NOTHING. Drives the same DIRS list the real run builds -
+#            see the loop that appends to it below - so the plan can never
+#            drift from what actually gets made. D3, docs/SETTINGS.md.
+#
 # A **project** is the unit everything is collected under: the raw data that
 # feeds it, every run made from that data, the analysis written on those runs,
 # and the package built from the analysis. Runs used to sit directly under a
@@ -101,13 +107,14 @@ case "$SIDE" in
     *) die 2 "usage: init_workspace.sh site|local --user <seqera_user> [--run <name>] [--root <path>]" ;;
 esac
 
-USER_NAME="" PROJECT="" RUN_NAME="" ROOT_ARG=""
+USER_NAME="" PROJECT="" RUN_NAME="" ROOT_ARG="" PLAN=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --user)    USER_NAME="${2:?--user needs a value}"; shift 2 ;;
         --project) PROJECT="${2:?--project needs a value}"; shift 2 ;;
         --run)     RUN_NAME="${2:?--run needs a value}"; shift 2 ;;
         --root)    ROOT_ARG="${2:?--root needs a value}"; shift 2 ;;
+        --plan)    PLAN=1; shift ;;
         *) die 2 "unknown option '$1'" ;;
     esac
 done
@@ -195,6 +202,16 @@ else
     if [ -n "$RUN_NAME" ]; then
         DIRS+=("$PROJ_DIR/runs/$RUN_NAME/results")
     fi
+fi
+
+# D3: the plan is read off this exact list, before anything runs make() on
+# it. One source for "what would be built" and "what gets built" - a second,
+# hand-maintained list here is exactly how the two would drift.
+if [ "$PLAN" = 1 ]; then
+    for d in "${DIRS[@]}"; do
+        [ -e "$d" ] || echo "would-create: $d"
+    done
+    exit 0
 fi
 
 for d in "${DIRS[@]}"; do make "$d"; done
