@@ -145,6 +145,49 @@ out=$(WHY_PENDING_SCONTROL_BIN="$TMP/downctl" bash "$W" 2>&1); rc=$?
 printf '%-58s ' "a down controller still exits 3"
 [ "$rc" = 3 ] && echo ok || { echo "FAIL: rc=$rc out=<<$out>>"; fails=$((fails+1)); }
 
+# --- U5: layer= so the command layer measures instead of guesses ------------
+# The five-layer taxonomy (docs in the 2.7 plan appendix) puts "will not
+# schedule, resource shape" in the scheduler layer - every Reason this adapter
+# explains is exactly that, so every verdict line gets layer=scheduler,
+# regardless of which case in explain() produced it. Added to the line, not
+# reshaping it: the existing human text above must still match unchanged.
+mkjob Resources 'cpu=8,mem=53G,node=1,billing=8' ngs53G
+out=$(ask 1234567)
+t "Resources: verdict line still reads as before" "-> waiting - the partition is full." "$out"
+t "Resources: and now carries layer=scheduler"    "layer=scheduler"                     "$out"
+
+mkjob QOSMinCpuNotSatisfied 'cpu=1,mem=4G,node=1,billing=1' ngs13G
+out=$(ask 1234567)
+t "QOSMin: also carries layer=scheduler"           "layer=scheduler"                    "$out"
+
+mkjob SomeReasonNobodyHasSeenYet 'cpu=8,mem=53G,node=1,billing=8' ngs53G
+out=$(ask 1234567)
+t "an unheard-of reason still carries layer=scheduler" "layer=scheduler"                "$out"
+
+# The no-argument, whole-queue form prints its own verdict line per job - a
+# separate print site in the script, so it needs its own check.
+cat > "$TMP/squeue" <<'STUB'
+#!/bin/bash
+echo "1234567 Resources nf-STAR_ALIGN_sample1"
+STUB
+chmod +x "$TMP/squeue"
+mkjob Resources 'cpu=8,mem=53G,node=1,billing=8' ngs53G
+out=$(TMP_JOB="$TMP/job" WHY_PENDING_SCONTROL_BIN="$TMP/scontrol" \
+      WHY_PENDING_SQUEUE_BIN="$TMP/squeue" bash "$W" 2>&1)
+t "the whole-queue form also tags layer=scheduler"  "layer=scheduler"                    "$out"
+
+# A site this adapter does not know is an environment/tooling mismatch, not a
+# fact about any run's scheduling - layer=env, not layer=scheduler.
+out=$(WHY_PENDING_SCONTROL_BIN="$TMP/nowhere/scontrol" bash "$W" 2>&1)
+t "no scontrol at all is layer=env, not a scheduler verdict" "layer=env"                 "$out"
+
+# The controller itself being unreachable is still a fact about the
+# scheduler - a site whose slurmctld is down cannot schedule anything, which
+# is exactly what the scheduler layer means here.
+out=$(WHY_PENDING_SCONTROL_BIN="$TMP/downctl" bash "$W" 2>&1)
+t "a down controller is layer=scheduler"            "layer=scheduler"                    "$out"
+
+echo
 # --- the box table has exactly one source of truth ---------------------------
 # The numbers above are only correct because they came out of the config. A
 # second copy of them anywhere is the drift this repo already checks for.

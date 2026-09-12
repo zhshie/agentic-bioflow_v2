@@ -35,8 +35,13 @@ SQUEUE="${WHY_PENDING_SQUEUE_BIN:-squeue}"
 # state outright, so the fast diagnosis comes before the slow one rather than
 # after it. runs.md sends people here to ask whether a task will ever start; a
 # controller that is down is a real answer to that, and a different one.
+# layer=<value>: which of the five layers the command layer's report format
+# blames (docs/PRINCIPLES.md appendix, "回報格式") - env | egress | scheduler |
+# pipeline | data, determined here rather than guessed by an LLM reading the
+# text. Missing/wrong tooling to even ask the question is env; everything this
+# file explains once it CAN ask is a fact about the scheduler.
 if ! command -v "$SCONTROL" >/dev/null 2>&1; then
-    echo "scontrol not found: this is not the site this adapter describes." >&2
+    echo "scontrol not found: this is not the site this adapter describes. layer=env" >&2
     echo "See docs/SITE_ADAPTER.md - 'why has this not started' is a per-site question." >&2
     exit 2
 fi
@@ -46,7 +51,7 @@ if [ "$ping_rc" != 0 ] || ! grep -q 'is UP' <<<"$ping_out"; then
     echo "-> the scheduler's controller is not answering, so nothing below can be" >&2
     echo "   established: squeue would hang rather than say so. A run that looks" >&2
     echo "   stuck right now is stuck on the site, not on its own request." >&2
-    echo "   Queued jobs survive this. Wait for the controller and ask again." >&2
+    echo "   Queued jobs survive this. Wait for the controller and ask again. layer=scheduler" >&2
     exit 3
 fi
 
@@ -171,7 +176,7 @@ if [ $# -ge 1 ]; then
         || { echo "no such job: $1" >&2; exit 1; }
 
     r=$(sed -n 's/^Reason=//p' <<<"$fields" | head -1)
-    [ -n "$r" ] && { e=$(explain "$r"); [ -n "$e" ] && echo "-> $e"; }
+    [ -n "$r" ] && { e=$(explain "$r"); [ -n "$e" ] && echo "-> $e layer=scheduler"; }
 
     # Only for the reasons that mean "eventually". A QOSMin* job is stranded
     # BELOW a floor, so offering it smaller boxes would point the wrong way
@@ -188,7 +193,7 @@ found=0
 while read -r id reason name; do
     found=1
     printf '%s  %-28s %s\n' "$id" "$reason" "$name"
-    e=$(explain "$reason"); [ -n "$e" ] && printf '   -> %s\n' "$e"
+    e=$(explain "$reason"); [ -n "$e" ] && printf '   -> %s layer=scheduler\n' "$e"
 done < <("$SQUEUE" -u "$USER" -h -t PENDING -o "%i %r %j" 2>/dev/null)
 
 [ "$found" = 0 ] && echo "nothing pending for $USER"

@@ -1335,3 +1335,41 @@ And **when the default is already portable, every configuration mechanism added
 on top of it can only subtract**: `$HOME` is the one thing every shell on every
 platform agrees about, and each variable layered over it is another way for two
 shells to disagree.
+
+---
+
+**28. Three gates could vanish silently, and none of the three ways was a bug
+in the gate's own logic.** Found by reading the hooks while planning 2.7, then
+measured one by one.
+
+Every safety-net hook reads its input with `jq`. When `jq` is absent the parse
+yields an empty string, `CMD` is empty, and each hook takes its own "nothing to
+judge here" path and exits 0. The deletion guard, the launch confirmation and
+the walkthrough gates all disappear **with nothing printed**. A freshly
+installed WSL Ubuntu has no `jq`; neither did macOS before 15. Under
+`reach: ssh` these hooks run on the user's own machine, and `setup` step 2
+checked for `jq` **on the cluster**, which is the other computer.
+
+They now refuse: `exit 2`, with the one command the user must run themselves.
+`exit 2` and not a `deny` decision, because building that JSON is itself a
+`jq -n` call — leaning on jq to report jq's absence fails the same way.
+
+Two more, from the same reading:
+
+- **`command -v jq` proves a file exists, not that it runs.** A broken binary —
+  wrong architecture, a missing library, a Windows `jq.exe` that Git Bash finds
+  and cannot execute — passes that check and then fails every parse, which is
+  exactly the silent-gate failure the guard was added to stop. Found by
+  accident: a deliberately broken stub written to *test* the guard walked
+  straight through it. The guard now asks jq to parse `{}` and checks the
+  result.
+- **A PreToolUse hook that times out does not block.** The documentation is
+  explicit: the call continues through the normal permission flow, so a stalled
+  hook is not a gate. Ours carry 5–10 second timeouts, so a slow machine, a
+  cold filesystem or a large transcript can switch the safety net off with no
+  message. Not fixed here; the mitigation is to keep every hook's work local
+  and cheap, and never to add a network call to one.
+
+And one that would have bitten the next author: **exit code 1 is a
+non-blocking error** — the action proceeds. Only `exit 2` blocks. A gate
+written with `exit 1` looks correct in review and enforces nothing.

@@ -46,6 +46,17 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 DOI_RE = re.compile(r"10\.\d{4,9}/[^\s)\]\"'<>,;]+")
 
+# The MultiQC-rendered Methods paragraph, and the one slot inside it that is
+# reliably still empty. Measured against two real runs' multiqc_report.html
+# (rnaseq_sclerotia_d5_20260902, ampliseq_sclerotia_d5_20260904): both render
+# ${workflow.manifest.version}, ${doi_text} and ${workflow.commandLine}
+# correctly - Nextflow fills those before MultiQC ever sees the template - and
+# both leave ${tool_citations} as a bare "<p></p>" right before "References".
+METHODS_SECTION_RE = re.compile(
+    r"<h4>\s*Methods\s*</h4>.*?(?=<h4>\s*References\s*</h4>)", re.S | re.I)
+EMPTY_P_RE = re.compile(r"<p>\s*</p>")
+COMMAND_BLOCK_RE = re.compile(r"<pre><code>.*?</code></pre>", re.S)
+
 
 def provenance(results_dirs):
     out = subprocess.run(
@@ -159,6 +170,31 @@ def html_to_md(text):
     return text.strip()
 
 
+def rendered_methods(quality_report):
+    """The Methods paragraph as MultiQC already rendered it, DOI and all.
+
+    Invariant 1: MultiQC (through nf-core's own pipeline code) already renders
+    methods_description_template.yml, substituting ${workflow.manifest.version},
+    ${doi_text} and ${workflow.commandLine} with values only Nextflow has at
+    run time. Re-deriving that by string-replacing the template a second time
+    is where the DOI bug lived - ${doi_text} was blanked instead of read. So
+    this reads the report's own rendered text instead of the template file.
+
+    Returns the raw HTML of that section, or None if the report has no such
+    section (MultiQC not run yet, or a customised template without one) - the
+    caller falls back to the template-based render in that case.
+    """
+    if not quality_report:
+        return None
+    try:
+        with open(quality_report, encoding="utf-8", errors="replace") as fh:
+            html = fh.read()
+    except OSError:
+        return None
+    m = METHODS_SECTION_RE.search(html)
+    return m.group(0) if m else None
+
+
 def template_body(path):
     """The `data: |` block, dedented. Not a YAML parser - see collect_provenance."""
     try:
@@ -226,27 +262,59 @@ def render(run, assets_base):
     if matched:
         tool_citations = ("Tools used within the workflow: "
                           + ", ".join(sorted({m[1] for m in matched})) + ".")
+    tool_bibliography = ""
+    if matched:
+        tool_bibliography = "".join(
+            "<li>%s%s</li>" % (entry["text"] or cited_as,
+                               (" doi: " + entry["doi"]) if entry.get("doi") else "")
+            for _tool, cited_as, entry in sorted(matched, key=lambda m: m[0].lower()))
 
-    if body:
-        # The command the report records is not reproducible: launching through
-        # the Platform puts an ephemeral URL where the parameters were. Point
-        # at the file kept beside the run instead, and say that is what happened.
-        cmd = "nextflow run %s -r %s -params-file %s" % (
-            name, wf.get(name, "<revision>"),
-            os.path.relpath(run["launch_params"], run["run_dir"])
-            if run.get("launch_params") else "params.yaml")
+    # The command the report records is not reproducible: launching through
+    # the Platform puts an ephemeral URL where the parameters were. Point at
+    # the file kept beside the run instead, and say that is what happened.
+    cmd = "nextflow run %s -r %s -params-file %s" % (
+        name, wf.get(name, "<revision>"),
+        os.path.relpath(run["launch_params"], run["run_dir"])
+        if run.get("launch_params") else "params.yaml")
+
+    rendered = rendered_methods(run.get("quality_report"))
+    if rendered:
+        # Fill only the gap MultiQC's own tool-citation matcher leaves empty -
+        # never overwrite a slot the report already filled, because our own
+        # match is not more authoritative than the report's own render.
+        filled, n = EMPTY_P_RE.subn("<p>%s</p>" % tool_citations, rendered, count=1)
+        if n == 0:
+            filled = rendered
+        filled, n = COMMAND_BLOCK_RE.subn("<pre><code>%s</code></pre>" % cmd, filled, count=1)
+        filled = re.sub(r"\$\{[^}]*\}", "", filled)
+        lines.append(html_to_md(filled))
+        if n:
+            notes.append("the command line shown is reconstructed against the run's "
+                         "own params file; the one the report records points at an "
+                         "ephemeral URL and cannot be re-run")
+    elif body:
         filled = (body
                   .replace("${workflow.manifest.version}", str(wf.get(name, "")).lstrip("v"))
                   .replace("${workflow.nextflow.version}", str(wf.get("Nextflow", "")))
                   .replace("${workflow.commandLine}", cmd)
                   .replace("${tool_citations}", tool_citations)
-                  .replace("${tool_bibliography}", "")
-                  .replace("${doi_text}", "").replace("${nodoi_text}", ""))
+                  .replace("${tool_bibliography}", tool_bibliography)
+                  # No rendered report to read the real ${doi_text}/${nodoi_text}
+                  # from (Nextflow fills those, not this script - see
+                  # rendered_methods()). Invariant 9: a gap that cannot be
+                  # resolved is written into the output, never silently
+                  # dropped, so this is a visible marker, not a blank.
+                  .replace("${doi_text}",
+                           "[DOI not shown: no rendered MultiQC report was "
+                           "found to read it from]")
+                  .replace("${nodoi_text}", ""))
         filled = re.sub(r"\$\{[^}]*\}", "", filled)
         lines.append(html_to_md(filled))
         notes.append("the command line shown is reconstructed against the run's "
                      "own params file; the one the report records points at an "
                      "ephemeral URL and cannot be re-run")
+        notes.append("no rendered quality report was found, so the pipeline's DOI "
+                     "could not be read from it - see the [DOI not shown] marker above")
     else:
         notes.append("no methods template for %s - the paragraph below is only "
                      "the tool list, not the pipeline's own wording" % name)

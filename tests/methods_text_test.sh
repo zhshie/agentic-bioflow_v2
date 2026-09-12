@@ -104,5 +104,68 @@ if grep -qF "CITATION NEEDED: dada2" <<<"$out2" && grep -qF "no CITATIONS.md" <<
   ok "with no citation file every tool is a gap, and it says why"
 else no "with no citation file every tool is a gap, and it says why" "<<$out2>>"; fi
 
+# ---------------------------------------------------------------------------
+# R1 (confirmed bug, methods_text.py:244): `.replace("${doi_text}", "")` threw
+# away the pipeline's own DOI, which MultiQC's report already renders
+# correctly. Measured against a real run (rnaseq_sclerotia_d5_20260902):
+# multiqc_report.html has "Data was processed using nf-core/rnaseq v3.14.0
+# (doi: <a href='...zenodo.1400710'>...</a>) ..." while the local re-render
+# blanked it. Fixed by reading MultiQC's own rendered paragraph (which already
+# has the DOI right) and filling only the ${tool_citations} slot it leaves
+# empty - not re-deriving the paragraph from the template with string
+# replaces.
+RUN2="$TMP/run2"
+mkdir -p "$RUN2/results/multiqc/star_salmon" "$RUN2/results/pipeline_info"
+cat > "$RUN2/results/pipeline_info/software_versions.yml" <<'YML'
+FASTQC:
+  fastqc: 0.12.1
+DADA2_DENOISING:
+  dada2: 1.38.0
+Workflow:
+  nf-core/demo: v2.0.0
+  Nextflow: 25.10.4
+YML
+: > "$RUN2/results/pipeline_info/execution_report_2026-01-01_00-00-00.html"
+echo '{}' > "$RUN2/results/pipeline_info/params_2026-01-01_00-00-00.json"
+cat > "$RUN2/params.yaml" <<'Y'
+pacbio: true
+Y
+
+# Shaped exactly like the real report: a Methods heading, the paragraph
+# MultiQC already filled in full (DOI included), the raw non-reproducible
+# command line, then the still-empty ${tool_citations} slot as a bare <p></p>,
+# then References. Trimmed of everything this test does not check.
+cat > "$RUN2/results/multiqc/star_salmon/multiqc_report.html" <<'HTML'
+<div class="mqc-section mqc-section-nf-core-demo-methods-description">
+<h4>Methods</h4>
+<p>Data was processed using nf-core/demo v2.0.0 (doi: <a href='https://doi.org/10.5281/zenodo.9999999'>https://doi.org/10.5281/zenodo.9999999</a>) of the nf-core collection of workflows.</p>
+<p>The pipeline was executed with Nextflow v25.10.4 with the following command:</p>
+<pre><code>nextflow run 'https://github.com/nf-core/demo' -params-file 'https://api.cloud.seqera.io/ephemeral/A2H4yoZPhIZJIgmV-Pow_w.yaml' -r 2.0.0</code></pre>
+<p></p>
+<h4>References</h4>
+<ul></ul>
+</div>
+HTML
+
+out3=$("$S" --assets "$TMP/assets" "$RUN2/results" 2>&1)
+
+grep -qF "zenodo.9999999" <<<"$out3" \
+  && ok "R1: the pipeline's own DOI survives into the methods paragraph" \
+  || no "R1: the pipeline's own DOI survives into the methods paragraph" "<<$out3>>"
+
+if grep -qF "Tools used within the workflow:" <<<"$out3" && grep -qF "DADA2" <<<"$out3"; then
+  ok "R1: the tool-citations gap in the RENDERED report is still filled"
+else no "R1: the tool-citations gap in the RENDERED report is still filled" "<<$out3>>"; fi
+
+# The prose note is allowed to say "ephemeral URL" (same as the existing
+# template-render path above) - what must not survive is the URL itself.
+grep -qF "api.cloud.seqera.io" <<<"$out3" \
+  && no "R1: the ephemeral launch URL is not left in as the command" "<<$out3>>" \
+  || ok "R1: the ephemeral launch URL is not left in as the command"
+
+grep -qF "params-file params.yaml" <<<"$out3" \
+  && ok "R1: the command is still reconstructed against the run's own params" \
+  || no "R1: the command is still reconstructed against the run's own params" "<<$out3>>"
+
 echo
 [ "$fails" = 0 ] && echo "OK: methods_text.py" || { echo "$fails failed"; exit 1; }

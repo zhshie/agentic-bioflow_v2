@@ -85,15 +85,22 @@ if [ "$pending" -gt 0 ] && [ "$running" -eq 0 ]; then
             if (keep) print
         }' <<<"$why")
 
+    # layer=<value>: env | egress | scheduler | pipeline | data (see the 2.7
+    # plan appendix, "回報格式") - determined here, not guessed by an LLM
+    # reading the prose. A job of THIS run actually found pending on the
+    # scheduler is a fact about the scheduler. The other two cases below never
+    # establish that this run has a job on the scheduler at all, which is a
+    # gap in what this side can observe - env (agent, settings, connectivity),
+    # not a scheduler verdict this script never made.
     if [ -n "$mine" ]; then
-        echo "STUCK: $mine"
+        echo "STUCK: $mine layer=scheduler"
     elif [ -n "$why" ]; then
         echo "STUCK: $pending queued, none running, and no pending job on the site" \
              "carries one of this run's process names. The account is shared, so the" \
              "other jobs waiting there are not evidence about this run - check whether" \
-             "its tasks have been submitted at all."
+             "its tasks have been submitted at all. layer=env"
     else
-        echo "STUCK (why_pending unreachable: timed out or gave no reason)"
+        echo "STUCK (why_pending unreachable: timed out or gave no reason) layer=env"
     fi
 else
     echo "OK: $running running, $pending queued"

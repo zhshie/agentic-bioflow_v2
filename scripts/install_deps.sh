@@ -44,7 +44,33 @@ DEST="${ROOT}/_agent"
 BIN="${ROOT}/_bin"
 JDK_URL='https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse'
 JAR_URL='https://github.com/seqeralabs/tower-agent/releases/latest/download/tw-agent.jar'
-TW_URL="${TW_URL:-https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-linux-x86_64}"
+
+# `tw` is a CLI binary, not a module, and under `reach: ssh` it runs on the
+# USER'S OWN machine - setup.md talks to Platform from wherever Claude is
+# running, which for an ssh deployment is the member's laptop, not this
+# cluster. Hardcoding tw-linux-x86_64 here meant every Mac member's setup
+# downloaded a Linux binary and failed. Measured against tower-cli v0.40.0's
+# release: it ships tw-linux-x86_64, tw-osx-arm64, tw-osx-x86_64 and
+# tw-windows-x86_64.exe (Windows only reaches this repo through WSL, which
+# reports Linux - PITFALLS 16b/16f - so it is not a fourth case here).
+# TW_URL always wins when set: the tests rely on that seam, and so does anyone
+# on a platform this has not been taught yet.
+tw_asset_url() {
+    local os arch
+    os="$(uname -s 2>/dev/null)"
+    arch="$(uname -m 2>/dev/null)"
+    case "$os:$arch" in
+        Linux:x86_64)  printf '%s\n' "https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-linux-x86_64" ;;
+        Darwin:arm64)  printf '%s\n' "https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-osx-arm64" ;;
+        Darwin:x86_64) printf '%s\n' "https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-osx-x86_64" ;;
+        *)
+            printf '  FAIL  no tw release asset known for this platform: uname -s='"'"'%s'"'"', uname -m='"'"'%s'"'"'\n' "$os" "$arch" >&2
+            printf '        known combinations: Linux/x86_64, Darwin/arm64, Darwin/x86_64.\n' >&2
+            printf '        set TW_URL to the right download for this machine and re-run.\n' >&2
+            return 1
+            ;;
+    esac
+}
 
 mkdir -p "$DEST" "$BIN" || exit 1
 ok() { printf '  ok    %s\n' "$*"; }
@@ -106,6 +132,9 @@ elif TW=$(command -v tw 2>/dev/null) && [ -n "$TW" ]; then
     ok "tw already on PATH at $TW"
 else
     TW="$BIN/tw"
+    if [ -z "${TW_URL:-}" ]; then
+        TW_URL="$(tw_asset_url)" || exit 1
+    fi
     if ! curl -fsSL -o "$TW" "$TW_URL"; then
         bad "could not download tw from $TW_URL"; exit 1
     fi

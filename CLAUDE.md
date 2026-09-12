@@ -36,8 +36,12 @@ real failures, each with the fix.
   `nchc-ce.json.in`, the compute-environment template).
 - `hooks/` — `confirm_launch.sh` (gates anything that can start a run behind
   an explicit confirmation and surfaces broken preconditions), `confirm_cleanup.sh`
-  (guards destructive deletes), `session_start.sh` (reports in-flight runs once
-  per conversation).
+  (guards destructive deletes), `confirm_walkthrough.sh` (refuses a step whose
+  prerequisite step left no evidence in the transcript), `session_start.sh`
+  (shows the introduction and reports in-flight runs), `next_step.sh` (a Stop
+  hook: while a command flow is open, a reply that ends without a next step is
+  sent back to add one). The three safety nets **refuse when `jq` is missing or
+  broken** rather than falling silent — PITFALLS 28.
 - `docs/` — `PRINCIPLES.md` (what decides), `PITFALLS.md` (what went wrong),
   `SITE_ADAPTER.md` (the site contract), `SETTINGS.md` (the per-deployment
   settings file schema), `DOWNSTREAM.md` (worked examples of what an outputs
@@ -48,6 +52,18 @@ real failures, each with the fix.
   everything gets it for free. The two safety-net hooks deliberately do **not**
   source it — a gate that vanishes with a missing helper is worse than one
   never written — and inline their own few lines instead.
+- `scripts/intro.sh` + `scripts/intro/<lang>/` — what the user is shown: the
+  session-opening introduction and each command's own opening (what it does,
+  what they decide, what it will not do, what they end up with, what is next).
+  The script holds no sentences; the text lives in the language directories,
+  picked by the settings key `language` (default `zh-TW`).
+- `scripts/status.sh` — the "where you are" card: this machine, both sides of
+  the deployment, setup progress, and one concrete next step. It calls
+  `preflight.sh`, `settings.sh --summary` and `inspect_sides.sh` rather than
+  re-checking anything itself.
+- `scripts/inspect_sides.sh` — what exists on the site and what exists on this
+  machine, gathered in **one** `on_site.sh` round trip. `setup` decides "new
+  install / adopt / repair" from this instead of from a question.
 - `tests/` — standalone bash/python scripts, one file per invariant or script.
   No test runner or CI config exists; run a test file directly with `bash
   tests/<name>.sh` (or `python3` for the one `.py` test). Each prints
