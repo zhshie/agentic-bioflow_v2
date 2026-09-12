@@ -28,14 +28,62 @@ case "$REASON" in startup|resume) ;; *) exit 0 ;; esac
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
+# U1: the introduction, every session, forced rather than left to the model to
+# remember. `scripts/intro.sh` with no arguments is the full overview - what
+# this is, the five commands, the flow diagram, the next step - and it has to
+# work with no settings file at all, because a first-time user with nothing
+# set up yet is exactly who needs it. It is fetched here, before ANY of the
+# early-exit checks below, so it survives every one of them - including "no
+# settings file", which used to mean total silence and now means the intro is
+# the ONE thing still worth saying.
+#
+# If scripts/intro.sh is itself missing or fails, this comes back empty and
+# every path below degrades to exactly its pre-U1 behaviour (silence where
+# there was nothing else to say) rather than crashing the hook.
+INTRO="$(bash "$ROOT/scripts/intro.sh" 2>/dev/null)" || INTRO=""
+
+# 10,000-character cap on combined hook output (verified against docs): past
+# it Claude Code writes the output to a file and shows a preview instead,
+# which is a worse reader experience than trimming here, in a form this hook
+# controls. Applied separately to systemMessage and additionalContext, each
+# comfortably under the cap on its own with real intro text.
+cap10k() {
+    local s="$1"
+    if [ "${#s}" -gt 9000 ]; then
+        printf '%s\n\n[truncated - run scripts/intro.sh for the full text]' "${s:0:9000}"
+    else
+        printf '%s' "$s"
+    fi
+}
+
 # Everything below this line is written as one function early, because the two
 # things it reports have opposite conditions: the run list needs a working
 # deployment, and the shell warning is precisely for the case where finding one
 # is impossible.
+#
+# `emit <extra>` always folds in INTRO on top of whatever the caller has to
+# say: INTRO becomes systemMessage - shown to the user directly, not filtered
+# through the model - and INTRO followed by <extra> becomes additionalContext,
+# so the model sees both. The one case that still exits silently is INTRO
+# itself coming back empty with nothing else to say either, which only
+# happens if scripts/intro.sh is broken - the pre-U1 behaviour, preserved as
+# the floor rather than the common case.
 emit() {
-    [ -n "$1" ] || exit 0
-    jq -n --arg m "$1" \
-      '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $m}}' 2>/dev/null
+    local extra="${1:-}" ctx sysmsg
+    ctx="$INTRO"
+    [ -n "$extra" ] && ctx="${ctx:+$ctx
+
+}$extra"
+    [ -n "$ctx" ] || exit 0
+    ctx=$(cap10k "$ctx")
+    if [ -n "$INTRO" ]; then
+        sysmsg=$(cap10k "$INTRO")
+        jq -n --arg s "$sysmsg" --arg c "$ctx" \
+          '{systemMessage: $s, hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}' 2>/dev/null
+    else
+        jq -n --arg c "$ctx" \
+          '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}' 2>/dev/null
+    fi
     exit 0
 }
 
@@ -110,10 +158,24 @@ INFLIGHT=$(clocked 8 "$TW" runs list --workspace "$WS" 2>/dev/null \
         }')
 [ -n "$INFLIGHT" ] || emit "$WHERE"
 
+# Z3: this check runs on THIS machine, so it only means something when this
+# machine IS the site (reach: local). Under ssh/none, Claude runs on the
+# user's own laptop; agent_ctl.sh would be probing a process that was never
+# meant to run there, and it always reports "not running" - reporting that as
+# a fault taught the reader to ignore it, exactly like Z2. `setting` is
+# already in scope: settings.sh was sourced above (or this hook has already
+# exited through `emit`), so this is not a second lookup mechanism, just the
+# existing one asked one more question.
+#
+# No network call is added to make this work under ssh: the 15s budget is
+# already ~13s spent by the `clocked` calls above, and `runs` already covers
+# this once a run is actually being watched.
+#
 # Only worth saying when there is a run to lose: a dead outputs reader makes a
 # finished run look like it produced nothing (PITFALLS 3c).
 AGENT=""
-if ! clocked 5 bash "$ROOT/scripts/agent_ctl.sh" status >/dev/null 2>&1; then
+REACH="$(setting reach local)"
+if [ "$REACH" = local ] && ! clocked 5 bash "$ROOT/scripts/agent_ctl.sh" status >/dev/null 2>&1; then
     AGENT="
 
 The outputs reader is not running, so anything these produce will look missing

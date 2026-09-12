@@ -33,7 +33,36 @@
 #
 # It keeps no state (PRINCIPLES.md, invariant 2). The conversation itself is
 # the record, read fresh each time from transcript_path.
+#
+# Fail closed when `jq` itself is missing (PITFALLS 28), deliberately. Every
+# judgement below - TOOL, CMD, FILE, everything - comes from a `jq -r` over
+# INPUT; with no jq they all silently become "", G1-G5 all read as 0 because
+# nothing looks like a gated action any more, and the whole walkthrough gate
+# vanishes with nothing printed. Exit 2 rather than the `deny` JSON deny()
+# builds below: deny() is itself a `jq -n` call, so leaning on jq to report
+# jq's own absence would fail the same way it is trying to fix.
 set -uo pipefail
+
+# `command -v jq` would only prove a FILE exists. A jq that cannot run -
+# wrong architecture, a missing shared library, or a Windows jq.exe that
+# Git Bash finds but cannot execute - passes that check and then fails
+# every parse below, which is the exact silent-gate failure this guard
+# exists to stop. So ask jq to do its job on the smallest possible input.
+if ! printf '{}' | jq -e . >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+BLOCKED: jq is missing or cannot run here, so hooks/confirm_walkthrough.sh cannot read
+what this action is - and cannot tell a samplesheet write from a launch from
+an ordinary edit. Rather than silently stop checking (the old, dangerous
+behaviour), it refuses every gated action (Bash, Write, Edit, MultiEdit,
+NotebookEdit) until jq exists. The same is true of confirm_launch.sh and
+confirm_cleanup.sh, which share this requirement.
+
+Install it yourself (this hook will not attempt to), then retry:
+  macOS:       brew install jq
+  Debian/WSL:  sudo apt install jq
+EOF
+    exit 2
+fi
 
 # Two escape phrases, not one, because this hook re-reads the whole
 # conversation every time. A single phrase said in the morning to skip a
@@ -161,7 +190,82 @@ if [ -n "$OUTDIR" ]; then
     esac
 fi
 
-[ "$G1$G2$G3$G4$G5" = "00000" ] && allow
+# G6: each command must say what it does before it does anything (U2).
+#
+# "Which command are we inside" cannot be read from intro.sh having run - that
+# is the very thing being required, and checking for it here would make the
+# gate unable to ever fire. The signal instead is the slash-command mechanism
+# itself: invoking /agentic-bioflow:<command> writes a
+# <command-name>...</command-name> marker into the transcript, which the
+# model cannot fake by simply saying "let's do launch" - the same "evidence
+# in the transcript, never the model's own claim" standard G1-G5 already use,
+# just anchored on a different kind of marker than a fetched URL. A
+# conversation that never used a slash command (natural language only) leaves
+# no marker and this gate does not fire - a known gap; U1's forced overview
+# covers that case in words instead, at session start.
+#
+# The LAST such marker is which command is "current" - a conversation can
+# move from one command to another, and the previous command's opening must
+# not go on satisfying the new one's requirement, same reasoning as WANT
+# below for a diagram.
+#
+# A cheap grep first: most tool calls in most conversations never touch a
+# slash command at all, and the jq parse below is not worth paying on every
+# single Bash/Write/Edit/MultiEdit/NotebookEdit call in every conversation -
+# this hook's matcher fires on ALL of them. Only once a command-name tag is
+# actually present does the more expensive extraction run.
+G6=0; G6_CMD=""
+if [ -n "$TP" ] && [ -r "$TP" ] \
+   && tail -n "$MAXLINES" "$TP" 2>/dev/null | grep -q '<command-name>'; then
+    G6_EV=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
+        select(.type=="assistant" or .type=="user")
+        | if .type=="assistant" then
+            (if (.message.content|type)=="array"
+             then .message.content[]
+                  | select(.type=="tool_use" and .name=="Bash")
+                  | "b\t" + ((.input.command // "")|tojson)
+             else empty end)
+          else
+            ((if (.message.content|type)=="string" then .message.content
+              elif (.message.content|type)=="array"
+              then ([.message.content[] | select(.type=="text") | .text] | join("\n"))
+              else "" end)) as $t
+            | if ($t|test("<command-name>")) then "c\t" + ($t|tojson) else empty end
+          end' 2>/dev/null)
+    read -r G6_CMD G6_SEEN <<<"$(printf '%s\n' "$G6_EV" | awk -F'\t' '
+        $1=="c" {
+            line=$2
+            if (match(line, /<command-name>[^<]*<\/command-name>/)) {
+                tag = substr(line, RSTART, RLENGTH)
+                cmd = ""
+                if (tag ~ /setup/) cmd = "setup"
+                else if (tag ~ /launch/) cmd = "launch"
+                else if (tag ~ /downstream/) cmd = "downstream"
+                else if (tag ~ /runs/) cmd = "runs"
+                else if (tag ~ /finish/) cmd = "finish"
+                if (cmd != "") { cur = cmd; seen = 0 }
+            }
+        }
+        $1=="b" && cur != "" {
+            line=$2
+            if (line ~ /intro\.sh/ && line ~ ("(^|[^A-Za-z_-])" cur "([^A-Za-z_-]|$)")) seen = 1
+        }
+        END { printf "%s %d\n", (cur=="" ? "none" : cur), seen+0 }')"
+    [ "$G6_CMD" = none ] && G6_CMD=""
+    if [ -n "$G6_CMD" ] && [ "${G6_SEEN:-0}" != 1 ]; then
+        # Exempt the one call that WOULD satisfy this gate: running
+        # `intro.sh <command>` is the fix, not another violation of it.
+        IS_INTRO_CALL=0
+        if [ "$TOOL" = Bash ] \
+           && echo "$CMD" | grep -qE 'intro\.sh' \
+           && echo "$CMD" | grep -qE "(^|[^A-Za-z_-])${G6_CMD}([^A-Za-z_-]|\$)"; then
+            IS_INTRO_CALL=1
+        fi
+        [ "$IS_INTRO_CALL" = 1 ] || G6=1
+    fi
+fi
+
+[ "$G1$G2$G3$G4$G5$G6" = "000000" ] && allow
 
 # ---- which pipeline is this call about ------------------------------------
 # A diagram is evidence about one pipeline, and conversations switch pipelines.
@@ -303,16 +407,26 @@ EV=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
       }
       $1=="a" && plan && NR>plan && index($2,"AskUserQuestion") { pans=1 }
       $1=="h" && plan && NR>plan                    { pans=1 }
-      END { printf "%d %d %d %d %d %d %d %d\n", esc+0, diag+0, (schema>0)?1:0, ans+0, any+0, \
-                   esc4+0, (plan>0)?1:0, pans+0 }')
-read -r ESC DIAG SCHEMA ANS DIAGANY ESC4 PLAN PANS <<<"${EV:-0 0 0 0 0 0 0 0}"
+      # U6: the background question - only that it was ASKED, never whether
+      # the answer was any good. "background" (or 背景) in assistant TEXT is
+      # the ask; a human reply afterward, or an AskUserQuestion, is the
+      # answer. Same shape as the schema/ans pair above, and for the same
+      # reason: type x only, never a - a question nobody was shown was not asked.
+      $1=="x" && ($2 ~ /[Bb]ackground/ || $2 ~ /背景/) { bg = NR }
+      $1=="a" && bg && NR>bg && index($2,"AskUserQuestion") { bgans=1 }
+      $1=="h" && bg && NR>bg                        { bgans=1 }
+      END { printf "%d %d %d %d %d %d %d %d %d %d\n", esc+0, diag+0, (schema>0)?1:0, ans+0, any+0, \
+                   esc4+0, (plan>0)?1:0, pans+0, (bg>0)?1:0, bgans+0 }')
+read -r ESC DIAG SCHEMA ANS DIAGANY ESC4 PLAN PANS BG BGANS <<<"${EV:-0 0 0 0 0 0 0 0 0 0}"
 
 # Stand the walkthrough gates down, not every gate. `allow` here would exit
 # before G4 is considered, so one phrase said hours earlier for a different
 # step would silently disable the analysis gate too - which is exactly what
-# having two phrases is for. G4 has its own, checked in its own block.
-[ "$ESC" = 1 ] && { G1=0; G2=0; G3=0; G5=0; }
-[ "$G1$G2$G3$G4$G5" = "00000" ] && allow
+# having two phrases is for. G4 has its own, checked in its own block. G6 is
+# the same kind of walkthrough step as G1/G2/G3/G5 - it is about showing the
+# user something, not about the analysis plan - so it stands down with them.
+[ "$ESC" = 1 ] && { G1=0; G2=0; G3=0; G5=0; G6=0; }
+[ "$G1$G2$G3$G4$G5$G6" = "000000" ] && allow
 
 DIAGRAM_FIX="Show it first: list docs/images/ in the pipeline at the pinned revision, hand the user the raw URL of the workflow figure, and give the stage list from the README in words - a terminal renders no image. Read the directory rather than guessing the filename; the pipelines used here name that figure four different ways. Then run this again."
 MENU_FIX="Do step 5 first: fetch nextflow_schema.json at the pinned revision, then put three choices to the user - reuse the parameters from a previous run, take the pipeline's defaults, or go through the adjustable ones. \"All defaults\" is a complete answer from them; it is not an answer you can give on their behalf. Then run this again."
@@ -369,6 +483,19 @@ if [ "$G4" = 1 ] && [ "$ESC4" != 1 ]; then
     G4_WHY=""
     if [ -z "$PLANFILE" ]; then
         G4_WHY="there is no analysis.md beside or above $ANALYSIS_TARGET, so nothing says what this code is meant to produce or why."
+    # U6: downstream's step 2.5 ("what is this analysis actually for") comes
+    # before the plan is agreed, so it is checked before PLAN/PANS below. Two
+    # separate things, on purpose: a background SECTION existing in the file
+    # (checked once, cheaply, with grep - no jq/awk pass needed for this
+    # half) is not the same claim as the user having actually been ASKED
+    # (BG/BGANS, from the same transcript pass as PLAN/PANS). Never judge
+    # CONTENT either way - "使用者未提供" is a complete background section,
+    # and "沒有" is a complete answer to being asked. What is checked is
+    # only that the section exists and that the question was put to someone.
+    elif ! grep -qiE '(^|[^A-Za-z])background([^A-Za-z]|$)|背景' "$PLANFILE" 2>/dev/null; then
+        G4_WHY="$PLANFILE exists but has no background section (U6) - downstream's step 2.5 is not optional even when the honest answer is \"the user did not say\". Write one; it can say exactly that."
+    elif [ "$BG" != 1 ] || [ "$BGANS" != 1 ]; then
+        G4_WHY="$PLANFILE has a background section, but nothing in this conversation shows the user was actually asked about it and replied - only checking that they were asked (U6), never judging what they said. \"Nothing to add\" is a complete answer."
     elif [ "$PLAN" != 1 ]; then
         # The file exists and no one has been shown a plan. This is the case
         # the whole gate is for: writing the plan into a file is the natural
@@ -403,6 +530,17 @@ Everything one piece of work produces belongs together - the raw data, every run
 scripts/init_workspace.sh site --user <u> --project <p> --run <name> creates it. Then run this again.
 
 If this really should go ahead without it, the user - not you - can say $ESCAPE."
+fi
+
+if [ "$G6" = 1 ]; then
+    deny "This is the first step inside /agentic-bioflow:${G6_CMD}, and nothing in this conversation shows scripts/intro.sh ${G6_CMD} has actually run (U2) - so the user has not been told what this command does, what they can decide, and what they will end up with.
+
+Run it first, and show the output to the user:
+    scripts/intro.sh ${G6_CMD}
+
+Do not summarise it from memory - the wording is fixed and lives only in scripts/intro/. Then run this again.
+
+$ESC_NOTE"
 fi
 
 allow

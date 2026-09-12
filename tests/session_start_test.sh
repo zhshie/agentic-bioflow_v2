@@ -91,10 +91,16 @@ OUT=$(run resume "$TMP/env.yaml")
 check "a resume still reports the runs"         "$OUT" "aliveRUN123" present
 check "but does not repeat the path"            "$OUT" "$TMP/env.yaml" absent
 
-# The silence on a machine with no deployment is deliberate and stays: an
-# unrelated project or someone else's laptop owes the user no explanation.
+# U1 changed this one: a machine with no deployment used to hear NOTHING at
+# all, because there was nothing to say. Now there is always the intro - a
+# first-time user, with nothing set up yet, is exactly who needs it - so
+# SessionStart output now appears here too. What must still be absent is
+# anything implying a deployment exists: no invented settings path, no run
+# report.
 OUT=$(run startup "$TMP/no_such_settings.yaml" "$TMP/tw_idle")
-check "and no path where there is no settings file" "${OUT:-<empty>}" "SessionStart" absent
+check "U1: the intro appears even with no deployment at all" "${OUT:-<empty>}" "SessionStart" present
+check "but no deployment path is invented"          "${OUT:-<empty>}" "Deployment settings" absent
+check "and no run report is invented"               "${OUT:-<empty>}" "Still in flight" absent
 
 echo
 
@@ -136,4 +142,96 @@ check "on Linux with no settings, still silent"       "$out" "Git Bash"        a
 out=$(run startup "$TMP/env.yaml" "$TMP/tw_idle")
 check "and a Linux deployment hears nothing of it"    "$out" "Git Bash"        absent
 
+echo
+
+# ---------------------------------------------------------------------------
+# U1: scripts/intro.sh's output must land in BOTH systemMessage (shown to the
+# user directly) and additionalContext (given to the model), on every
+# startup/resume, with or without a settings file - and NOT on compaction.
+#
+# scripts/intro.sh belongs to a sibling track and may still be edited after
+# this file is written, so this does not depend on its actual wording - only
+# on the WIRING. The seam: a small copy of the plugin root with the real
+# hooks/session_start.sh and scripts/settings.sh(+utils/portable.sh), and a
+# STUB scripts/intro.sh that prints one unmistakable marker.
+UROOT="$TMP/u1plugin"
+mkdir -p "$UROOT/hooks" "$UROOT/scripts/utils"
+cp "$ROOT/hooks/session_start.sh" "$UROOT/hooks/"
+cp "$ROOT/scripts/settings.sh" "$UROOT/scripts/"
+cp "$ROOT/scripts/utils/portable.sh" "$UROOT/scripts/utils/"
+cat > "$UROOT/scripts/intro.sh" <<'EOF'
+#!/bin/bash
+[ $# -eq 0 ] || exit 2
+echo "STUB-OVERVIEW-MARKER: what this plugin is, five commands, next step"
+EOF
+chmod +x "$UROOT/scripts/intro.sh" "$UROOT/hooks/session_start.sh"
+
+u1_run() { # u1_run <reason> <settings-file> [tw-stub]
+  printf '{"session_start_reason":"%s"}' "$1" \
+    | LAB_SETTINGS_FILE="$2" TW_BIN="${3:-$TMP/tw}" TOWER_WORKSPACE_ID=12345 \
+      SEQERA_TOKEN_FILE="$TMP/.seqera_token" bash "$UROOT/hooks/session_start.sh"
+}
+
+json_field() { python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get(sys.argv[1],'') if len(sys.argv)==2 else d.get(sys.argv[1],{}).get(sys.argv[2],''))" "$@"; }
+
+OUT=$(u1_run startup "$TMP/env.yaml")
+printf '%-52s ' "U1: intro marker lands in additionalContext"
+ctx=$(echo "$OUT" | json_field hookSpecificOutput additionalContext)
+echo "$ctx" | grep -qF "STUB-OVERVIEW-MARKER" && echo ok || { echo "FAIL: <<$ctx>>"; fails=$((fails+1)); }
+
+printf '%-52s ' "U1: intro marker ALSO lands in systemMessage"
+sysmsg=$(echo "$OUT" | json_field systemMessage)
+echo "$sysmsg" | grep -qF "STUB-OVERVIEW-MARKER" && echo ok || { echo "FAIL: <<$sysmsg>>"; fails=$((fails+1)); }
+
+printf '%-52s ' "U1: run info is still in additionalContext alongside it"
+echo "$ctx" | grep -qF "aliveRUN123" && echo ok || { echo "FAIL: <<$ctx>>"; fails=$((fails+1)); }
+
+OUT=$(u1_run startup "$TMP/no_such_settings.yaml")
+printf '%-52s ' "U1: intro appears even with NO settings file (first-time user)"
+sysmsg=$(echo "$OUT" | json_field systemMessage)
+echo "$sysmsg" | grep -qF "STUB-OVERVIEW-MARKER" && echo ok || { echo "FAIL: <<$sysmsg>>"; fails=$((fails+1)); }
+
+OUT=$(u1_run startup "$TMP/no_such_settings.yaml" "$TMP/tw_idle")
+printf '%-52s ' "U1: (recheck) intro appears with no settings, idle tw"
+sysmsg=$(echo "$OUT" | json_field systemMessage)
+echo "$sysmsg" | grep -qF "STUB-OVERVIEW-MARKER" && echo ok || { echo "FAIL: <<$sysmsg>>"; fails=$((fails+1)); }
+
+OUT=$(u1_run compact "$TMP/env.yaml")
+check "U1: still silent on compaction, even with the intro wired in" "${OUT:-<empty>}" "STUB-OVERVIEW-MARKER" absent
+
+echo
+
+# ---------------------------------------------------------------------------
+# Z3: the outputs-reader check only means something under reach: local. Reuse
+# the u1plugin seam (real session_start.sh + settings.sh, stub intro.sh) so
+# the assertions below are about THIS hook's gating logic, not about whatever
+# scripts/agent_ctl.sh happens to do when LAB_RUNS_DIR is unset (it always
+# fails in that case, which is exactly what makes this a useful seam: under
+# reach: local the failure must still be reported, and under ssh/none it must
+# not, even though agent_ctl.sh fails identically both times).
+z3settings() { # z3settings <file> <reach-value-or-empty>
+    { printf 'workspace_id: 12345\ntw_bin: %s/tw\n' "$TMP"
+      [ -n "$2" ] && printf 'reach: %s\n' "$2"; } > "$1"
+}
+z3settings "$TMP/z3_ssh.yaml"   ssh
+z3settings "$TMP/z3_none.yaml"  none
+z3settings "$TMP/z3_local.yaml" local
+
+z3_run() { # z3_run <settings-file>
+  printf '{"session_start_reason":"startup"}' \
+    | env -u LAB_RUNS_DIR LAB_SETTINGS_FILE="$1" TW_BIN="$TMP/tw" TOWER_WORKSPACE_ID=12345 \
+          SEQERA_TOKEN_FILE="$TMP/.seqera_token" bash "$UROOT/hooks/session_start.sh"
+}
+
+OUT=$(z3_run "$TMP/z3_ssh.yaml")
+check "Z3: reach ssh - outputs-reader check not even attempted"  "${OUT:-<empty>}" "outputs reader is not running" absent
+
+OUT=$(z3_run "$TMP/z3_none.yaml")
+check "Z3: reach none - same"                                    "${OUT:-<empty>}" "outputs reader is not running" absent
+
+OUT=$(z3_run "$TMP/z3_local.yaml")
+check "Z3: reach local - warning UNCHANGED (agent_ctl.sh really is unreachable here)" \
+      "${OUT:-<empty>}" "outputs reader is not running" present
+
+echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

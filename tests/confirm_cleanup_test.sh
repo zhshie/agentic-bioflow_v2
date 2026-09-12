@@ -61,4 +61,72 @@ t "$D -rf /tmp/x >/dev/null 2>&1"                    pass "nor is a discarded st
 t "$D -rf $P/null"                                   warn "the real null/ leftover still warns"
 
 echo
+
+# ---------------------------------------------------------------------------
+# No jq: fail CLOSED (PITFALLS 28), not the old silent pass-through.
+#
+# Dropping jq's whole directory from PATH is not safe here - on this box jq
+# and bash both live in /usr/bin, and removing that directory removes the
+# shell the hook needs to start at all. A shim directory instead gets a
+# symlink to every OTHER binary that lived beside jq, and PATH swaps that one
+# directory for the shim; everything else on PATH is untouched.
+TMP2=$(mktemp -d); trap 'rm -rf "$TMP2"' EXIT
+REAL_JQ=$(command -v jq)
+JQDIR=$(dirname "$REAL_JQ")
+SHIMDIR="$TMP2/no_jq_bin"
+mkdir -p "$SHIMDIR"
+for _f in "$JQDIR"/*; do
+    _b=$(basename "$_f")
+    [ "$_b" = jq ] && continue
+    ln -sf "$_f" "$SHIMDIR/$_b" 2>/dev/null
+done
+NOJQ_PATH=$(printf '%s' "$PATH" | sed "s#${JQDIR}#${SHIMDIR}#")
+
+nojq() { # nojq <command-string>
+    python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" \
+        | PATH="$NOJQ_PATH" bash "$H"
+}
+
+printf '%-58s ' "no jq: a real delete is BLOCKED, not silently allowed"
+out=$(nojq "$D -rf $P/results" 2>"$TMP2/err1"); rc=$?
+if [ "$rc" = 2 ] && [ -z "$out" ]; then echo "ok (rc=2, no stdout)"; else
+    echo "FAIL: rc=$rc out='$out'"; fails=$((fails+1)); fi
+
+printf '%-58s ' "no jq: a harmless command is ALSO blocked, not waved through"
+out=$(nojq "ls -la" 2>"$TMP2/err2"); rc=$?
+if [ "$rc" = 2 ]; then echo "ok (rc=2)"; else
+    echo "FAIL: rc=$rc (should refuse even harmless commands - it cannot tell them apart without jq)"
+    fails=$((fails+1))
+fi
+
+printf '%-58s ' "no jq: stderr names the fix, per platform"
+err=$(cat "$TMP2/err1" 2>/dev/null)
+if echo "$err" | grep -qF "brew install jq" && echo "$err" | grep -qF "apt install jq"; then
+    echo ok
+else
+    echo "FAIL: stderr did not name both install commands: <<$err>>"; fails=$((fails+1))
+fi
+
+printf '%-58s ' "with jq restored, the same command passes again"
+out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "ls -la" | bash "$H")
+[ -z "$out" ] && echo ok || { echo "FAIL: expected pass, got <<$out>>"; fails=$((fails+1)); }
+
+echo
+
+# A jq that EXISTS but cannot run - wrong architecture, a missing library, a
+# Windows jq.exe on a Git Bash PATH - passed the earlier `command -v` form of
+# this guard and then failed every parse, which is the silent-gate failure the
+# guard exists to stop. Measured: the guard had to probe, not just look.
+echo "== a broken jq is as bad as no jq =="
+BADDIR=$(mktemp -d)
+printf '#!/bin/sh\nexit 127\n' > "$BADDIR/jq"; chmod +x "$BADDIR/jq"
+out=$(echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf /x"}}' \
+      | env PATH="$BADDIR:$PATH" bash "$H" 2>&1)
+rc=$?
+rm -rf "$BADDIR"
+printf '%-64s ' "refuses when jq exists but cannot run"
+[ "$rc" = 2 ] && echo ok || { echo "FAIL: exit $rc, wanted 2"; fails=$((fails+1)); }
+printf '%-64s ' "and says so instead of failing silently"
+case "$out" in *BLOCKED*) echo ok ;; *) echo "FAIL: said '$out'"; fails=$((fails+1)) ;; esac
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

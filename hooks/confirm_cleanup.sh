@@ -23,6 +23,14 @@
 #    nodes cannot re-download it - had no rule at all. It appeared only inside the
 #    text of a warning. Text is not a rule.
 #
+# Fail closed when `jq` itself is missing (PITFALLS 28), deliberately. Before
+# this check existed, no `jq` meant `echo "$INPUT" | jq -r '.tool_input.command
+# // ""'` below silently returned "", the very next line's `[ -n "$CMD" ] ||
+# exit 0` fired, and the deletion guard vanished with nothing printed - on a
+# freshly installed WSL Ubuntu, or macOS before 15. Exit 2 rather than the
+# `deny` JSON this file's own deny() builds: deny() is itself a `jq -n` call,
+# so leaning on jq to report jq's own absence would fail the same way.
+#
 # This is defence in depth, not a sandbox. The real floor is: originals stay
 # read-only, linked not moved, and the execution zone is separate.
 # Every symlink in a path resolved, deliberately inlined rather than sourced
@@ -45,6 +53,26 @@ resolve_link() {
     d=$(cd "$(dirname "$p")" 2>/dev/null && pwd -P) || return 1
     printf '%s/%s\n' "${d%/}" "$(basename "$p")"
 }
+
+# `command -v jq` would only prove a FILE exists. A jq that cannot run -
+# wrong architecture, a missing shared library, or a Windows jq.exe that
+# Git Bash finds but cannot execute - passes that check and then fails
+# every parse below, which is the exact silent-gate failure this guard
+# exists to stop. So ask jq to do its job on the smallest possible input.
+if ! printf '{}' | jq -e . >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+BLOCKED: jq is missing or cannot run here, so hooks/confirm_cleanup.sh cannot read
+what this command would delete - and cannot tell `rm -rf results/` from `ls`.
+Rather than silently stop checking (the old, dangerous behaviour), it refuses
+every Bash command until jq exists. The same is true of confirm_launch.sh and
+confirm_walkthrough.sh, which share this requirement.
+
+Install it yourself (this hook will not attempt to), then retry:
+  macOS:       brew install jq
+  Debian/WSL:  sudo apt install jq
+EOF
+    exit 2
+fi
 
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)

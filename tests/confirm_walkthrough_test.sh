@@ -161,7 +161,10 @@ t "a Launchpad name names no repo, so no constraint" allow "$LA_NAMED" "$TMP/wro
 # that caught G1 - so a gate that accepted "a plan file exists" would be
 # satisfied by the model talking to itself.
 mkdir -p "$TMP/projA/analysis" "$TMP/projB/analysis"
-echo "# analysis plan" > "$TMP/projA/analysis/analysis.md"
+# U6: a background section is required content (not judged), so every fixture
+# meant to reach "fully agreed" needs one - "使用者未提供" is deliberately used
+# here to double as proof that CONTENT is never the thing being checked.
+printf '# analysis plan\n\n## background\n使用者未提供\n' > "$TMP/projA/analysis/analysis.md"
 
 W_A='{"tool_name":"Write","tool_input":{"file_path":"'"$TMP"'/projA/analysis/plot_asv.R"}}'
 W_B='{"tool_name":"Write","tool_input":{"file_path":"'"$TMP"'/projB/analysis/plot_asv.R"}}'
@@ -179,14 +182,16 @@ PLANWRITE="cat > $TMP/projA/analysis/analysis.md <<'P'
 2. Shannon boxplot from qiime2/alpha.tsv
 P"
 
+BGASK='Before I plan anything: what is the background here - research question, design, prior results? 沒有的話也可以直接說沒有。'
+
 mktx "$TMP/g4_none.jsonl"     'a:starting the downstream work'
-mktx "$TMP/g4_ok.jsonl"       "a:$PLAN" 'h:好，就這樣'
+mktx "$TMP/g4_ok.jsonl"       "a:$BGASK" 'h:沒有' "a:$PLAN" 'h:好，就這樣'
 mktx "$TMP/g4_noreply.jsonl"  "a:$PLAN"
 mktx "$TMP/g4_typed.jsonl"    "w:$PLANWRITE" 'h:好'
 mktx "$TMP/g4_talk.jsonl"     "a:$TALK" 'h:ok'
 mktx "$TMP/g4_oneline.jsonl"  "a:$ONELINE" 'h:好'
 mktx "$TMP/g4_injected.jsonl" "a:$PLAN" 'n:<task-notification>agent finished</task-notification>'
-mktx "$TMP/g4_asked.jsonl"    "a:$PLAN" 'q:x'
+mktx "$TMP/g4_asked.jsonl"    "a:$BGASK" 'h:沒有' "a:$PLAN" 'q:x'
 mktx "$TMP/g4_esc4.jsonl"     'h:略過計畫'
 mktx "$TMP/g4_esc1.jsonl"     'h:略過導覽'
 INVENTORY='The results tree holds:
@@ -262,4 +267,153 @@ t "a launch's --params-file is read too"             deny  "$LA_PF" "$TMP/right_
 t "略過導覽 stands the project gate down"            allow "$(pw "outdir: $BAD")" "$TMP/escape.jsonl"
 
 echo
+
+# ---------------------------------------------------------------------------
+# G6 (U2) - each command must say what it does before it does anything.
+#
+# The signal is the <command-name>...</command-name> marker the slash-command
+# mechanism itself writes into the transcript - not something the model can
+# fake by talking about a command. mktx has no shorthand for this yet, so it
+# is built directly here as an injected ('n') turn, matching how Claude Code
+# actually shapes it (and how this file's own injected-turn filter already
+# expects to find it).
+mkcmdname() { # mkcmdname <command-name-text>
+    python3 -c '
+import json,sys
+print(json.dumps({"type":"user","message":{"content":sys.argv[1]}}))' \
+        "<command-message>running</command-message><command-name>agentic-bioflow:$1</command-name><command-args></command-args>"
+}
+
+INTRO_LAUNCH='bash ${CLAUDE_PLUGIN_ROOT}/scripts/intro.sh launch'
+INTRO_SETUP='bash ${CLAUDE_PLUGIN_ROOT}/scripts/intro.sh setup'
+INTRO_END_LAUNCH='bash ${CLAUDE_PLUGIN_ROOT}/scripts/intro.sh --end launch'
+
+{ mkcmdname launch; } > "$TMP/g6_bare.jsonl"
+{ mkcmdname launch; python3 -c 'import json;print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"starting"}]}}))'; } > "$TMP/g6_no_intro.jsonl"
+{ mkcmdname launch
+  python3 -c '
+import json,sys
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[1]}}]}}))' "$INTRO_LAUNCH"
+} > "$TMP/g6_introduced.jsonl"
+{ mkcmdname setup
+  python3 -c '
+import json,sys
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[1]}}]}}))' "$INTRO_SETUP"
+  mkcmdname launch
+} > "$TMP/g6_switched.jsonl"
+{ mkcmdname launch
+  python3 -c '
+import json,sys
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[1]}}]}}))' "$INTRO_LAUNCH"
+  python3 -c '
+import json,sys
+print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":sys.argv[1]}}]}}))' "$INTRO_END_LAUNCH"
+  mkcmdname launch
+} > "$TMP/g6_ended_then_reentered.jsonl"
+
+ANY_BASH='{"tool_name":"Bash","tool_input":{"command":"ls -la"}}'
+ANY_WRITE='{"tool_name":"Write","tool_input":{"file_path":"/r/notes.md"}}'
+INTRO_CALL_JSON="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$INTRO_LAUNCH\"}}"
+
+t "G6: inside launch, nothing done yet - first action refused" deny "$ANY_BASH" "$TMP/g6_bare.jsonl"
+t "G6: inside launch, talk but no intro.sh call - still refused" deny "$ANY_BASH" "$TMP/g6_no_intro.jsonl"
+t "G6: a Write is gated the same way as a Bash call"          deny "$ANY_WRITE" "$TMP/g6_bare.jsonl"
+t "G6: intro.sh launch actually ran - the action goes through" allow "$ANY_BASH" "$TMP/g6_introduced.jsonl"
+t "G6: running intro.sh itself is never denied by its own gate" allow "$INTRO_CALL_JSON" "$TMP/g6_bare.jsonl"
+t "G6: entering a NEW command resets the requirement"          deny "$ANY_BASH" "$TMP/g6_switched.jsonl"
+t "G6: re-entering after --end asks again"                     deny "$ANY_BASH" "$TMP/g6_ended_then_reentered.jsonl"
+t "G6: no slash command ever used - not this gate's business"  allow "$ANY_BASH" "$TMP/empty.jsonl"
+
+{ mkcmdname launch; python3 -c 'import json;print(json.dumps({"type":"user","message":{"content":[{"type":"text","text":"略過導覽"}]}}))'; } > "$TMP/g6_bare_with_escape.jsonl"
+t "略過導覽 stands G6 down too"                                 allow "$ANY_BASH" "$TMP/g6_bare_with_escape.jsonl"
+
+echo
+
+# ---------------------------------------------------------------------------
+# U6 - the background gate: a `background` section in analysis.md, AND the
+# question actually asked in this conversation. Content is never judged -
+# "使用者未提供" and "沒有" both pass, on purpose.
+mkdir -p "$TMP/projC/analysis" "$TMP/projD/analysis" "$TMP/projE/analysis"
+printf '# plan\n' > "$TMP/projC/analysis/analysis.md"                       # no background section at all
+printf '# plan\n\n## background\n使用者未提供\n' > "$TMP/projD/analysis/analysis.md"  # section present
+printf '# plan\n\n## background\n使用者未提供\n' > "$TMP/projE/analysis/analysis.md"
+
+W_C='{"tool_name":"Write","tool_input":{"file_path":"'"$TMP"'/projC/analysis/plot.R"}}'
+W_D='{"tool_name":"Write","tool_input":{"file_path":"'"$TMP"'/projD/analysis/plot.R"}}'
+W_E='{"tool_name":"Write","tool_input":{"file_path":"'"$TMP"'/projE/analysis/plot.R"}}'
+
+mktx "$TMP/u6_no_ask.jsonl"      "a:$PLAN" 'h:好'
+mktx "$TMP/u6_asked_noreply.jsonl" "a:$BGASK"
+mktx "$TMP/u6_ok.jsonl"          "a:$BGASK" 'h:沒有' "a:$PLAN" 'h:好'
+
+t "U6: background section missing from analysis.md - refused" deny "$W_C" "$TMP/u6_ok.jsonl"
+t "U6: section present, but question never asked - refused"   deny "$W_D" "$TMP/u6_no_ask.jsonl"
+t "U6: asked, but no reply came back - refused"                deny "$W_D" "$TMP/u6_asked_noreply.jsonl"
+t "U6: asked and answered '沒有' - allowed (content not judged)" allow "$W_E" "$TMP/u6_ok.jsonl"
+
+# ---------------------------------------------------------------------------
+# No jq: fail CLOSED (PITFALLS 28), not the old silent pass-through.
+#
+# Dropping jq's whole directory from PATH is not safe here - jq and bash both
+# live in /usr/bin on this box, and removing that directory removes the shell
+# the hook needs to start at all. A shim directory gets a symlink to every
+# OTHER binary that lived beside jq, and PATH swaps that one directory for the
+# shim; everything else on PATH is untouched.
+REAL_JQ=$(command -v jq)
+JQDIR=$(dirname "$REAL_JQ")
+SHIMDIR="$TMP/no_jq_bin"
+mkdir -p "$SHIMDIR"
+for _f in "$JQDIR"/*; do
+    _b=$(basename "$_f")
+    [ "$_b" = jq ] && continue
+    ln -sf "$_f" "$SHIMDIR/$_b" 2>/dev/null
+done
+NOJQ_PATH=$(printf '%s' "$PATH" | sed "s#${JQDIR}#${SHIMDIR}#")
+
+printf '%-58s ' "no jq: a gated write is BLOCKED, not silently allowed"
+out=$(python3 -c '
+import json,sys
+d=json.loads(sys.argv[1]); d["transcript_path"]=sys.argv[2]; print(json.dumps(d))' "$SS" "$TMP/empty.jsonl" \
+        | PATH="$NOJQ_PATH" bash "$H" 2>"$TMP/nojq_err"); rc=$?
+if [ "$rc" = 2 ] && [ -z "$out" ]; then echo "ok (rc=2, no stdout)"; else
+    echo "FAIL: rc=$rc out='$out'"; fails=$((fails+1)); fi
+
+printf '%-58s ' "no jq: an unrelated command is ALSO blocked, not waved through"
+out=$(python3 -c '
+import json,sys
+d=json.loads(sys.argv[1]); d["transcript_path"]=sys.argv[2]; print(json.dumps(d))' "$LS" "$TMP/empty.jsonl" 2>/dev/null \
+        | PATH="$NOJQ_PATH" bash "$H" 2>/dev/null); rc=$?
+if [ "$rc" = 2 ]; then echo "ok (rc=2)"; else
+    echo "FAIL: rc=$rc (should refuse even harmless commands - it cannot tell them apart without jq)"
+    fails=$((fails+1))
+fi
+
+printf '%-58s ' "no jq: stderr names the fix, per platform"
+err=$(cat "$TMP/nojq_err" 2>/dev/null)
+if echo "$err" | grep -qF "brew install jq" && echo "$err" | grep -qF "apt install jq"; then
+    echo ok
+else
+    echo "FAIL: stderr did not name both install commands: <<$err>>"; fails=$((fails+1))
+fi
+
+t "with jq restored, the same command passes again"  allow "$LS" "$TMP/empty.jsonl"
+
+echo
+
+# A jq that EXISTS but cannot run - wrong architecture, a missing library, a
+# Windows jq.exe on a Git Bash PATH - passed the earlier `command -v` form of
+# this guard and then failed every parse, which is the silent-gate failure the
+# guard exists to stop. Measured: the guard had to probe, not just look.
+echo "== a broken jq is as bad as no jq =="
+BADDIR=$(mktemp -d)
+printf '#!/bin/sh\nexit 127\n' > "$BADDIR/jq"; chmod +x "$BADDIR/jq"
+out=$(echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf /x"}}' \
+      | env PATH="$BADDIR:$PATH" bash "$H" 2>&1)
+rc=$?
+rm -rf "$BADDIR"
+printf '%-64s ' "refuses when jq exists but cannot run"
+[ "$rc" = 2 ] && echo ok || { echo "FAIL: exit $rc, wanted 2"; fails=$((fails+1)); }
+printf '%-64s ' "and says so instead of failing silently"
+case "$out" in *BLOCKED*) echo ok ;; *) echo "FAIL: said '$out'"; fails=$((fails+1)) ;; esac
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
