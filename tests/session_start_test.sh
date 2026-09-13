@@ -91,16 +91,12 @@ OUT=$(run resume "$TMP/env.yaml")
 check "a resume still reports the runs"         "$OUT" "aliveRUN123" present
 check "but does not repeat the path"            "$OUT" "$TMP/env.yaml" absent
 
-# U1 changed this one: a machine with no deployment used to hear NOTHING at
-# all, because there was nothing to say. Now there is always the intro - a
-# first-time user, with nothing set up yet, is exactly who needs it - so
-# SessionStart output now appears here too. What must still be absent is
-# anything implying a deployment exists: no invented settings path, no run
-# report.
+# A machine with no deployment hears nothing at all. (For a while this printed
+# the plugin overview; that moved to hooks/plugin_intro.sh, which shows it when
+# the plugin is actually used, not in every conversation.)
 OUT=$(run startup "$TMP/no_such_settings.yaml" "$TMP/tw_idle")
-check "U1: the intro appears even with no deployment at all" "${OUT:-<empty>}" "SessionStart" present
-check "but no deployment path is invented"          "${OUT:-<empty>}" "Deployment settings" absent
-check "and no run report is invented"               "${OUT:-<empty>}" "Still in flight" absent
+check "no deployment: completely silent" "${OUT:-<empty>}" "SessionStart" absent
+check "no deployment path is invented"   "${OUT:-<empty>}" "Deployment settings" absent
 
 echo
 
@@ -145,15 +141,10 @@ check "and a Linux deployment hears nothing of it"    "$out" "Git Bash"        a
 echo
 
 # ---------------------------------------------------------------------------
-# U1: scripts/intro.sh's output must land in BOTH systemMessage (shown to the
-# user directly) and additionalContext (given to the model), on every
-# startup/resume, with or without a settings file - and NOT on compaction.
-#
-# scripts/intro.sh belongs to a sibling track and may still be edited after
-# this file is written, so this does not depend on its actual wording - only
-# on the WIRING. The seam: a small copy of the plugin root with the real
-# hooks/session_start.sh and scripts/settings.sh(+utils/portable.sh), and a
-# STUB scripts/intro.sh that prints one unmistakable marker.
+# The overview is not shown at session start (it moved to plugin_intro.sh).
+# Proven against a STUB scripts/intro.sh printing one marker, in a small copy
+# of the plugin root with the real session_start.sh and settings.sh - so this
+# fails if anything here starts calling intro.sh again, whatever its wording.
 UROOT="$TMP/u1plugin"
 mkdir -p "$UROOT/hooks" "$UROOT/scripts/utils"
 cp "$ROOT/hooks/session_start.sh" "$UROOT/hooks/"
@@ -172,32 +163,14 @@ u1_run() { # u1_run <reason> <settings-file> [tw-stub]
       SEQERA_TOKEN_FILE="$TMP/.seqera_token" bash "$UROOT/hooks/session_start.sh"
 }
 
-json_field() { python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get(sys.argv[1],'') if len(sys.argv)==2 else d.get(sys.argv[1],{}).get(sys.argv[2],''))" "$@"; }
-
+for case in "startup $TMP/env.yaml" "startup $TMP/no_such_settings.yaml" "resume $TMP/env.yaml"; do
+  set -- $case
+  OUT=$(u1_run "$1" "$2")
+  check "no overview at session start ($1, $(basename "$2"))" "${OUT:-<empty>}" "STUB-OVERVIEW-MARKER" absent
+  check "and no systemMessage at all ($1, $(basename "$2"))"   "${OUT:-<empty>}" "systemMessage" absent
+done
 OUT=$(u1_run startup "$TMP/env.yaml")
-printf '%-52s ' "U1: intro marker lands in additionalContext"
-ctx=$(echo "$OUT" | json_field hookSpecificOutput additionalContext)
-echo "$ctx" | grep -qF "STUB-OVERVIEW-MARKER" && echo ok || { echo "FAIL: <<$ctx>>"; fails=$((fails+1)); }
-
-printf '%-52s ' "U1: intro marker ALSO lands in systemMessage"
-sysmsg=$(echo "$OUT" | json_field systemMessage)
-echo "$sysmsg" | grep -qF "STUB-OVERVIEW-MARKER" && echo ok || { echo "FAIL: <<$sysmsg>>"; fails=$((fails+1)); }
-
-printf '%-52s ' "U1: run info is still in additionalContext alongside it"
-echo "$ctx" | grep -qF "aliveRUN123" && echo ok || { echo "FAIL: <<$ctx>>"; fails=$((fails+1)); }
-
-OUT=$(u1_run startup "$TMP/no_such_settings.yaml")
-printf '%-52s ' "U1: intro appears even with NO settings file (first-time user)"
-sysmsg=$(echo "$OUT" | json_field systemMessage)
-echo "$sysmsg" | grep -qF "STUB-OVERVIEW-MARKER" && echo ok || { echo "FAIL: <<$sysmsg>>"; fails=$((fails+1)); }
-
-OUT=$(u1_run startup "$TMP/no_such_settings.yaml" "$TMP/tw_idle")
-printf '%-52s ' "U1: (recheck) intro appears with no settings, idle tw"
-sysmsg=$(echo "$OUT" | json_field systemMessage)
-echo "$sysmsg" | grep -qF "STUB-OVERVIEW-MARKER" && echo ok || { echo "FAIL: <<$sysmsg>>"; fails=$((fails+1)); }
-
-OUT=$(u1_run compact "$TMP/env.yaml")
-check "U1: still silent on compaction, even with the intro wired in" "${OUT:-<empty>}" "STUB-OVERVIEW-MARKER" absent
+check "runs are still reported" "$OUT" "aliveRUN123" present
 
 echo
 

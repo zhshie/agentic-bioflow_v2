@@ -28,29 +28,16 @@ case "$REASON" in startup|resume) ;; *) exit 0 ;; esac
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
-# U1: the introduction, every session, forced rather than left to the model to
-# remember. `scripts/intro.sh` with no arguments is the full overview - what
-# this is, the five commands, the flow diagram, the next step - and it has to
-# work with no settings file at all, because a first-time user with nothing
-# set up yet is exactly who needs it. It is fetched here, before ANY of the
-# early-exit checks below, so it survives every one of them - including "no
-# settings file", which used to mean total silence and now means the intro is
-# the ONE thing still worth saying.
-#
-# If scripts/intro.sh is itself missing or fails, this comes back empty and
-# every path below degrades to exactly its pre-U1 behaviour (silence where
-# there was nothing else to say) rather than crashing the hook.
-INTRO="$(bash "$ROOT/scripts/intro.sh" 2>/dev/null)" || INTRO=""
+# The overview of the plugin is NOT shown here any more. It used to open every
+# conversation in every project; it now appears the first time the plugin is
+# actually used in a session (hooks/plugin_intro.sh).
 
-# 10,000-character cap on combined hook output (verified against docs): past
-# it Claude Code writes the output to a file and shows a preview instead,
-# which is a worse reader experience than trimming here, in a form this hook
-# controls. Applied separately to systemMessage and additionalContext, each
-# comfortably under the cap on its own with real intro text.
+# 10,000-character cap on hook output: past it Claude Code writes the output to
+# a file and shows a preview instead.
 cap10k() {
     local s="$1"
     if [ "${#s}" -gt 9000 ]; then
-        printf '%s\n\n[truncated - run scripts/intro.sh for the full text]' "${s:0:9000}"
+        printf '%s\n\n[truncated]' "${s:0:9000}"
     else
         printf '%s' "$s"
     fi
@@ -59,31 +46,13 @@ cap10k() {
 # Everything below this line is written as one function early, because the two
 # things it reports have opposite conditions: the run list needs a working
 # deployment, and the shell warning is precisely for the case where finding one
-# is impossible.
-#
-# `emit <extra>` always folds in INTRO on top of whatever the caller has to
-# say: INTRO becomes systemMessage - shown to the user directly, not filtered
-# through the model - and INTRO followed by <extra> becomes additionalContext,
-# so the model sees both. The one case that still exits silently is INTRO
-# itself coming back empty with nothing else to say either, which only
-# happens if scripts/intro.sh is broken - the pre-U1 behaviour, preserved as
-# the floor rather than the common case.
+# is impossible. With nothing to say, it says nothing.
 emit() {
-    local extra="${1:-}" ctx sysmsg
-    ctx="$INTRO"
-    [ -n "$extra" ] && ctx="${ctx:+$ctx
-
-}$extra"
+    local ctx="${1:-}"
     [ -n "$ctx" ] || exit 0
     ctx=$(cap10k "$ctx")
-    if [ -n "$INTRO" ]; then
-        sysmsg=$(cap10k "$INTRO")
-        jq -n --arg s "$sysmsg" --arg c "$ctx" \
-          '{systemMessage: $s, hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}' 2>/dev/null
-    else
-        jq -n --arg c "$ctx" \
-          '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}' 2>/dev/null
-    fi
+    jq -n --arg c "$ctx" \
+      '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}' 2>/dev/null
     exit 0
 }
 

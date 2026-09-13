@@ -38,7 +38,9 @@ real failures, each with the fix.
   an explicit confirmation and surfaces broken preconditions), `confirm_cleanup.sh`
   (guards destructive deletes), `confirm_walkthrough.sh` (refuses a step whose
   prerequisite step left no evidence in the transcript), `session_start.sh`
-  (shows the introduction and reports in-flight runs), `next_step.sh` (a Stop
+  (reports in-flight runs), `plugin_intro.sh` (shows the plugin overview the
+  first time the plugin is used in a session - a typed `/agentic-bioflow:`
+  command or a loaded plugin skill - not at every session start), `next_step.sh` (a Stop
   hook: while a command flow is open, a reply that ends without a next step is
   sent back to add one). The three safety nets **refuse when `jq` is missing or
   broken** rather than falling silent — PITFALLS 28.
@@ -53,7 +55,7 @@ real failures, each with the fix.
   source it — a gate that vanishes with a missing helper is worse than one
   never written — and inline their own few lines instead.
 - `scripts/intro.sh` + `scripts/intro/<lang>/` — what the user is shown: the
-  session-opening introduction and each command's own opening (what it does,
+  plugin overview (on first use per session) and each command's own opening (what it does,
   what they decide, what it will not do, what they end up with, what is next).
   The script holds no sentences; the text lives in the language directories,
   picked by the settings key `language` (default `zh-TW`).
@@ -72,7 +74,7 @@ real failures, each with the fix.
 ## Running tests
 
 ```bash
-bash tests/run_all.sh                    # all 39, ~80s, one verdict + exit code
+bash tests/run_all.sh                    # all 40, ~80s, one verdict + exit code
 bash tests/run_all.sh --only confirm_    # just the safety-net gates
 bash tests/confirm_launch_test.sh        # one file, full output
 ```
