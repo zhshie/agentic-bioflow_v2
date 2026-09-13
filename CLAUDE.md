@@ -65,17 +65,26 @@ real failures, each with the fix.
   machine, gathered in **one** `on_site.sh` round trip. `setup` decides "new
   install / adopt / repair" from this instead of from a question.
 - `tests/` — standalone bash/python scripts, one file per invariant or script.
-  No test runner or CI config exists; run a test file directly with `bash
-  tests/<name>.sh` (or `python3` for the one `.py` test). Each prints
-  ok/FAIL per case and is self-contained.
+  Each prints ok/FAIL per case, is self-contained, and signals the verdict with
+  its exit code. `tests/run_all.sh` runs all of them and is the release check;
+  a single file still runs directly with `bash tests/<name>.sh`. No CI exists.
 
 ## Running tests
 
-No aggregate runner exists — invoke individual test files directly, e.g.:
+```bash
+bash tests/run_all.sh                    # all 39, ~80s, one verdict + exit code
+bash tests/run_all.sh --only confirm_    # just the safety-net gates
+bash tests/confirm_launch_test.sh        # one file, full output
+```
+
+`run_all.sh` resolves its own root, so `bash <deployed-root>/tests/run_all.sh`
+tests the **deployed** copy — that is the post-deploy half of the release check
+in `docs/TESTING.md`. It prints the root and version it is testing, because a
+green run against the wrong tree is exactly what that step exists to catch.
+
+Two that answer questions the others cannot:
 
 ```bash
-bash tests/confirm_launch_test.sh
-bash tests/no_hardcoded_paths.sh
 bash tests/portable_userland.sh    # GNU-only spellings anywhere they can run on a Mac
 bash tests/bsd_userland_test.sh    # the same code against a stubbed BSD userland
 ```
