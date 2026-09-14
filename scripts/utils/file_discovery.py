@@ -4,6 +4,8 @@ File discovery utilities for FASTQ, BAM, and CRAM files.
 This module provides functions to recursively discover sequencing data files
 in a directory structure.
 """
+# Nothing existing: nf-core pipelines expect a samplesheet already built; no
+# shared tool discovers raw FASTQ/BAM/CRAM files from a directory to feed one.
 
 import os
 from dataclasses import dataclass

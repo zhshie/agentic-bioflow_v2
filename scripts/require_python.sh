@@ -2,6 +2,9 @@
 # Sourced by the site scripts that shell out to python3 - egress_ctl.sh for its
 # port search, agent_ctl.sh for its JSON state.
 #
+# Nothing existing: no library distinguishes "this python3 is fenced by the
+# site" from "python3 is broken" - it is this cluster's own quirk (below).
+#
 # Why this exists rather than letting the failure speak for itself: on this
 # cluster `/usr/bin/python3` is a symlink to RHEL's own reserved interpreter,
 # mode 750 root:root. It is present, it is on PATH, and every use of it returns

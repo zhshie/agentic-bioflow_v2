@@ -1,6 +1,9 @@
 #!/bin/bash
 # GNU-ok-file: this is where the GNU spellings live, guarded by a platform test.
 #
+# Nothing existing: bash itself ships no cross-platform stat/timeout/readlink
+# -f shim; this is that shim, kept in the one place described below.
+#
 # One place that knows how this machine differs from the one the scripts were
 # written on. macOS ships a BSD userland and bash 3.2; Git Bash ships MSYS.
 # Nine call sites had each answered that question for themselves - by not

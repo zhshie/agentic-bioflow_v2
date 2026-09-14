@@ -1,5 +1,8 @@
 # The partition box table, read from the one place it is written down.
 #
+# Nothing existing: this parses NCHC_BOXES, a literal specific to this site's
+# own Nextflow config; no external tool reads that syntax.
+#
 # `configs/sites/nchc.config` holds NCHC_BOXES because Nextflow has to read the
 # boxes at launch time from a file it already parses. Every other consumer -
 # the drift check, why_pending.sh - therefore has to read them back OUT of that

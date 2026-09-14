@@ -2,6 +2,9 @@
 # Compare the partition boxes hardcoded in configs/sites/nchc.config against what
 # SLURM currently reports, and complain about drift.
 #
+# Not nf-core/configs: it hosts the institutional config file itself, not a
+# live check of whether that file still matches what the scheduler reports.
+#
 # The config has to hardcode the boxes - Nextflow reads it on the head node at
 # launch time and shelling out to sacctmgr from a config closure would run once
 # per task. So this check exists to catch the day NCHC changes a partition,

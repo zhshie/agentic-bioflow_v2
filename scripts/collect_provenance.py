@@ -3,6 +3,10 @@
 #
 #   collect_provenance.py [--json] <results-dir> [<results-dir> ...]
 #
+# Not nf-prov: wrroc coverage on this cluster is unmeasured (plan M1), so this
+# still reconstructs from run output files - preferring `tw runs view` below
+# for anything Platform can answer directly instead of a file-based guess.
+#
 # One project's write-up commonly draws on several runs, so this takes several
 # and reports them as a list. Every field is read from the run's own output;
 # nothing here remembers what any pipeline is supposed to write.

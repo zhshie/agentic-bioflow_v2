@@ -13,6 +13,9 @@ obviously missing", never "this will not need the allowlist".
 
     check_egress.py nf-core/fetchngs 1.12.0 [path/to/nf_relay.py]
 """
+# Not `nextflow inspect -concretize`: it would also surface container sources
+# only Nextflow resolves at run time, but nothing here has failed from missing
+# that yet, so it stays out until it does.
 import concurrent.futures as cf
 import importlib.util, json, os, re, sys, urllib.request
 

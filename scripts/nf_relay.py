@@ -14,6 +14,9 @@ would be a real problem:
 
 Stdlib only - this login node has no tinyproxy/squid/socat.
 """
+# Not tinyproxy/squid/socat: none is installed here, and swapping one in would
+# still mean rebuilding the two checks above by hand - reverse-DNS-is-a-
+# compute-node and the domain allowlist - since neither is a stock feature.
 import select
 import socket
 import socketserver

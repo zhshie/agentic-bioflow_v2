@@ -1,6 +1,9 @@
 #!/bin/bash
 # Give one process a smaller box and relaunch onto the cache.
 #
+# Not `scontrol update`: refused outright for an ordinary user here, even for
+# a rename (PITFALLS 6c), so cancel + relaunch is the only route left.
+#
 #   relaunch_with_override.sh [--dry-run] [--confirm] <run-id> <process> <cpus> <mem-gb>
 #
 # An nf-core process asks for the box its LABEL names, not the box its data

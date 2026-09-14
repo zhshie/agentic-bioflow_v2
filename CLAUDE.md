@@ -58,6 +58,10 @@ real failures, each with the fix.
   cell of `docs/CONDITIONS.md` this machine is in, and the one off-design
   procedure's record-and-report step (whitelisted fields only; the maintainer
   designs it in instead of filing it).
+- `scripts/input_checksums.sh` — SHA-256 of a samplesheet's inputs, reusing a
+  lab's existing list first; `scripts/record_adapter.sh` — the record-system
+  contract's `none` implementation. Every script names the existing tool it is
+  not (`tests/scripts_name_their_alternative.sh`).
 - `scripts/utils/portable.sh` — one place that knows how this machine differs
   from the one the scripts were written on (BSD vs GNU `stat`, a missing
   `timeout`, `readlink -f`). Sourced through `scripts/settings.sh`, so almost
@@ -84,7 +88,7 @@ real failures, each with the fix.
 ## Running tests
 
 ```bash
-bash tests/run_all.sh                    # all 50, ~100s, one verdict + exit code
+bash tests/run_all.sh                    # all 51, ~100s, one verdict + exit code
 bash tests/run_all.sh --only confirm_    # just the safety-net gates
 bash tests/confirm_launch_test.sh        # one file, full output
 ```

@@ -1,6 +1,9 @@
 #!/bin/bash
 # Suggest a smaller box for a process that never needed the one it got.
 #
+# Not Seqera Platform's own resource optimiser: this deployment must keep it
+# OFF (`--disable-optimization`, PITFALLS 9) - see why just below.
+#
 #   tune_resources.sh [--json] [--trace <file>] <run-id>
 #   tune_resources.sh --config --samples <n> --input-size <size> <run-id>
 #

@@ -1,6 +1,9 @@
 #!/bin/bash
 # Read one value from the deployment's settings file.
 #
+# Not a YAML parser (PyYAML, yq): deliberately reads `key: value` and stops at
+# the first `#` - see the note further down about what that rules out.
+#
 # Everything that identifies a person or a site - the account compute time is
 # billed to, the workspace, where the agent's Java lives - belongs in one file
 # outside the repository, mode 600. Baking any of it into a script makes the

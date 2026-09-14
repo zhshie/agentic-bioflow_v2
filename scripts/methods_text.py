@@ -1,6 +1,10 @@
 #!/bin/bash
 # The methods paragraph a pipeline already wrote, with the gap it left filled.
 #
+# Not writing a new methods paragraph: the pipeline's own
+# assets/methods_description_template.yml already renders one into the
+# quality report; this only fills the citation slot it leaves empty (below).
+#
 #   methods_text.py [--assets <dir>] [--out <file>] <results-dir> [...]
 #
 # nf-core pipelines ship assets/methods_description_template.yml: a citable

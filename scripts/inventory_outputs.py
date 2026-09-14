@@ -3,6 +3,10 @@
 #
 #     inventory_outputs.py [--max-depth N] [--max-mb N] [--json] <results-dir>
 #
+# Not a report summariser with known formats: this opens whatever files a
+# run actually produced and reports what the bytes say, with no format
+# known ahead of time - see the rule right below.
+#
 # Written for the step after a run finishes: before anyone writes a line of
 # plotting or stats code, they need the real column names, not remembered ones.
 #

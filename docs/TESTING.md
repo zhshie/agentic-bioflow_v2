@@ -10,7 +10,7 @@ place several classes of defect can show up at all.
 bash tests/run_all.sh
 ```
 
-50 files, about 100 seconds, one verdict and a non-zero exit if anything fails.
+51 files, about 100 seconds, one verdict and a non-zero exit if anything fails.
 Failing output is printed at the end; full logs land in a temp directory the
 banner names. `--only <substring>` narrows it, `--verbose` streams each file's
 own output, `--timeout <secs>` changes the per-test limit (default 300, only
@@ -61,7 +61,9 @@ minutes and is the whole point of having a human in the loop.
 | 3 | Ask for something destructive that should be confirmed | It proceeds without a confirmation → a gate is missing or its hook did not load |
 | 4 | Finish a reply inside a command flow | No "下一步" line → the Stop hook is not loaded. Too many nags → it is scoped wrongly |
 | 5 | `bash scripts/status.sh` against the real cluster | Every dry-run test passes with a stubbed site; this is the only check against the real one |
-| 6 | Whatever this release specifically changed | — |
+| 6 | Ask to launch a run, or to clear `work/` | No Claude Code permission prompt naming the command → `permissionDecision: "ask"` is not honoured on this surface; the conversational gate must still stop it |
+| 7 | On an unattended host (`claude -p` with the plugin): ask for run status, then ask it to launch | Status fails → Platform read path broken. The launch goes through → an unattended host is not stopped; record what the permission mode was (docs/LAB_AGENTS.md, M4) |
+| 8 | Whatever this release specifically changed | — |
 
 Record the answers in the release's own notes. A check nobody wrote down is a
 check that gets re-argued three sessions later.

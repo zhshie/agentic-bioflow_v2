@@ -2,6 +2,9 @@
 # D1: inventory both machines, so :setup can tell "brand new site" from
 # "someone already set this up" with evidence instead of a guess.
 #
+# Nothing existing: no tool inventories both a site reached over ssh and this
+# machine in one round trip - splitting it costs 31s per extra call (below).
+#
 # Must be called AFTER reach is known (docs/SITE_ADAPTER.md, contract 6):
 # under `local` the site is this machine; under `ssh` the site side goes
 # through scripts/on_site.sh, the only sanctioned way to run something there;

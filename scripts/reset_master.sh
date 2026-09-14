@@ -5,6 +5,9 @@
 # succeeds throughout (it is a control-plane ping, not a session), which is
 # what makes the hang confusing rather than obviously broken.
 #
+# Nothing existing: this is one `ssh -O exit` command made consistent instead
+# of hand-reconstructing the ControlPath and host each time (below).
+#
 # The fix is not to open a session and wait longer; it is to close the
 # exhausted master so the user can open a fresh one. This script is that one
 # command, in place of hand-reconstructing the ControlPath and host each time.

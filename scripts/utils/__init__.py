@@ -5,3 +5,5 @@ deliberately did NOT come along: columns come from the pipeline's own
 assets/schema_input.json, read by the caller (generate_samplesheet.py's --columns),
 never from a per-pipeline file like v1's spec.yaml.
 """
+# Nothing existing: this package is the mechanical remainder after the
+# per-pipeline spec.yaml it replaced was deleted, not a wrapper around a tool.

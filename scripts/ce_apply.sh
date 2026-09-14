@@ -1,6 +1,9 @@
 #!/bin/bash
 # Push the site's resource contract into the Seqera compute environment.
 #
+# Not `tw compute-envs update`: that command changes only the name and the
+# description, never the config itself - see the import --overwrite note below.
+#
 # The compute environment stores a COPY of the Nextflow config, not a reference
 # to it. Edit configs/sites/*.config and nothing happens until this runs, and
 # nothing anywhere reports the divergence - the next run just quietly uses the

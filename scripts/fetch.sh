@@ -1,6 +1,10 @@
 #!/bin/bash
 # Bring a path on the site to somewhere it can be read.
 #
+# Not a bare rsync/scp typed by hand: neither asks the site how big a path is
+# first, and that is the exact round trip that keeps a laptop from silently
+# pulling a multi-hundred-GB work/ instead of a 25 MB results/.
+#
 #   fetch.sh [--max-mb N] [--dry-run] <site-path> [local-path]
 #
 # Prints the path to read. On a deployment that runs on the site that is the

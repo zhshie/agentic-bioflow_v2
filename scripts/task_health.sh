@@ -1,4 +1,7 @@
 #!/bin/bash
+# Not `tw runs list`/`tw runs view` alone: Platform reports RUNNING for the
+# whole time a single task sits unstarted, which is the exact gap below.
+#
 # The check a background watch (launch.md step 9) is missing if it only polls
 # the run's aggregate status. Platform reports RUNNING for the whole time a
 # single task sits unstarted - runs.md already says to catch this by hand

@@ -1,6 +1,9 @@
 #!/bin/bash
 # Start/stop/inspect the Seqera Tower Agent on the login node.
 #
+# Not tmux: the agent used to live in a tmux session and died whenever that
+# server went away; nohup + a pid file survives a closed terminal instead.
+#
 # Deliberately mirrors egress_ctl.sh: nohup + a pid file, NOT tmux. The agent used
 # to live in a tmux session; when that server went away the agent died with it
 # while the relay - started this way - survived. Two daemons, two survival

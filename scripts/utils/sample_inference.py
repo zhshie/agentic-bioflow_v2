@@ -22,6 +22,8 @@ What used to live here and why it is gone:
 Dead inference is worse than no inference: the next person to read this assumes
 it was verified.
 """
+# Nothing existing: a samplesheet validator checks a sheet already built; none
+# infers R1/R2 pairing from raw filenames to build one in the first place.
 
 import os
 import re

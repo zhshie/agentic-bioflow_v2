@@ -1,4 +1,7 @@
 #!/bin/bash
+# Not the Positron CLI: it has --goto and extension management, no way to run
+# code in an already-open console (see "Why this file exists" below).
+#
 # Entered as a shell script so it can choose its own interpreter, because on
 # both machines this tool has to run on, the name in a shebang lies.
 #

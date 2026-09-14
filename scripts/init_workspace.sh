@@ -1,6 +1,10 @@
 #!/bin/bash
 # T11: give the run area a designed shape.
 #
+# Nothing existing: no tool builds this lab's specific project/run/analysis/
+# package directory shape - before this script it accreted by hand, which is
+# the exact mess measured just below.
+#
 # Measured, not guessed: a real run area was two things at once - probe
 # directories from setup rehearsals (_boxtest, _coldstart, _coldstart2,
 # _coldstart_s4, _net_probe, _relay_probe, _coscientist_eval, _exttest) sitting

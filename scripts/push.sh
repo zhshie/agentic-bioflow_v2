@@ -4,6 +4,9 @@
 # the site", which is no help at all to someone whose own raw data has only
 # ever existed on their laptop - the ordinary case, not the exotic one.
 #
+# Not a bare rsync/scp: reports both ends and the size before moving anything,
+# since a home connection is far slower up than down - see below.
+#
 #   push.sh [--dry-run] <local-path> <site-path>
 #
 # <site-path> is the exact destination. A directory's *contents* land in it; a

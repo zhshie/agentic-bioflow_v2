@@ -1,6 +1,10 @@
 #!/bin/bash
 # Why has this task not started? (NCHC site adapter - see docs/SITE_ADAPTER.md)
 #
+# Nothing existing: SLURM's own reason code is cryptic and per-job; this
+# composes the request against the box table to say whether it will EVER
+# start, which is the distinction the rest of this header explains.
+#
 # A task can sit unstarted indefinitely while Seqera Platform reports the run
 # as RUNNING and nothing anywhere records an error. The distinction that
 # matters is not "how long has it waited" but "will it EVER start": a request

@@ -3,6 +3,9 @@
 #
 #   build_package.sh [--render] <project-dir>
 #
+# Not Quarto manuscript/MECA: nobody here has needed a journal submission
+# package yet - only a readable .qmd plus figures a collaborator can open.
+#
 # A project holds the raw data, every run made from it, the analysis written on
 # those runs, and this - the package built from the analysis. It is a build
 # output: throwable away, rebuildable, and deliberately a sibling of analysis/

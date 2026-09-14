@@ -512,6 +512,53 @@ than a real pipeline — see `docs/SITE_ADAPTER.md`.
 To test a config change *without* touching the environment, pass it to
 `tw launch --config`, which is appended after the environment's own config.
 
+**29. `nf-core pipelines create-params-file` was measured, not assumed, and it
+cleared every bar.** Measured 2026-09-14, this login node, SITE_ADAPTER.md had
+previously only recorded that `nf-core` was not installed here.
+
+Installed into a venv under `mktemp -d`, nowhere near `anaconda3`,
+`miniforge3` or `~/.bashrc`: `module load python/3.12.2` (already present),
+`python3 -m venv venv` (3.9 s), `pip install nf-core` (48.7 s). Result:
+nf-core/tools 4.1.0, `Requires-Python <4,>=3.10` (`importlib.metadata`).
+`rm -rf` the venv directory when done — nothing left behind.
+
+```
+nf-core pipelines create-params-file nf-core/demo -r 1.2.0 -o params.yaml --no-prompts
+```
+
+ran non-interactively in 15.6 s (mostly the pipeline download; `git ls-remote
+--tags` had already named `1.2.0` as the latest tag) over the login node's
+ordinary outbound route — no relay involved, since the relay exists for
+compute nodes, which this step never touches. The 145-line output covered all
+5 groups `nextflow_schema.json` defines, each hidden-parameter count noted
+even where the entries themselves were collapsed — counted against reading
+`definitions` directly (`input_output_options`, `reference_genome_options`,
+`process_skipping_options`, `institutional_config_options`,
+`generic_options`), same 5, same names.
+
+Filled the two required parameters — `input` (a 2-column samplesheet pointing
+at empty `.fastq.gz` files, since `assets/schema_input.json` marks `fastq_1`
+`exists: true` and a validator that only checks syntax would miss a pipeline
+that also checks the filesystem) and `outdir` — then, against a
+`git clone --branch 1.2.0` of nf-core/demo:
+
+```
+nf-core pipelines schema validate . params.yaml
+```
+
+passed in 0.54 s: "Default parameters match schema validation", "Pipeline
+schema looks valid (found 30 params)", "Input parameters look valid".
+
+All three adoption conditions held: installs without root and without
+touching the user's own environments or shell startup files; runs on this
+login node with no proxy involved; the filled-in file validates against the
+pipeline's own schema. Adopted — `commands/launch.md` step 5 now uses it as
+route ③'s source when the CLI is on `PATH`, falling back to reading
+`nextflow_schema.json` directly (unchanged) when it is not. macOS and WSL were
+not tested; nf-core/tools' own `Requires-Python` and its dependency list
+(`click`, `pydantic`, `rich`, …, no compiled extension needing a C toolchain)
+make portability there **inferred**, not measured.
+
 ## Do not rebuild what nf-core already does
 
 **14.** Before writing a check, read the pipeline's module source. Three checks
@@ -1373,3 +1420,38 @@ Two more, from the same reading:
 And one that would have bitten the next author: **exit code 1 is a
 non-blocking error** — the action proceeds. Only `exit 2` blocks. A gate
 written with `exit 1` looks correct in review and enforces nothing.
+
+## Lab agents
+
+**30. A run label is a workspace object, so "one label per record" piles up.**
+Measured 2026-09-14, tw 0.40.0, against this deployment's workspace.
+
+`tw runs labels -i <run> -o append <name>` creates the workspace label if it
+does not exist and attaches it. `tw runs list -f label:<name>` then finds the
+run; a bare `-f <name>` matches run names only and finds nothing.
+`tw -o json runs list -l` carries `workflows[].labels[].name`. Every distinct
+name is a separate entry in `tw labels list`, so encoding an ELN record id as
+a label name adds one workspace object per record, for good. A 45-character
+name given to `tw labels add` printed nothing and created nothing; the limit
+itself was not established. The probe label was detached and deleted; the
+workspace was back to zero labels.
+
+So a record link is not yet a label. `docs/LAB_AGENTS.md` keeps the proposal
+(R2) open until someone decides whether a growing label list is acceptable or
+the link belongs on the record system's side.
+
+**31. Plugin hooks load under `claude -p` - measured without a model call.**
+Measured 2026-09-14 on the login node, plugin 2.8.0.
+
+`claude -p "/agentic-bioflow:runs probe" --settings <file>`, where the file
+adds a UserPromptSubmit hook that exits 2. That hook blocks the prompt, so no
+request reaches the model (cost 0, zero turns). The installed plugin's own
+UserPromptSubmit hook, `plugin_intro.sh`, still ran: it wrote its marker named
+after the new session id under `AGENTIC_BIOFLOW_STATE_DIR`. An earlier
+`claude -p` that did call the model hung on this node, which is why the probe
+is built to stop before one.
+
+What this does not show: whether a PreToolUse `deny` or `ask` actually refuses
+under `-p` (that needs a real tool call), or anything about the Agent SDK. An
+unattended host is therefore not yet claimed to be stopped by `ask`.
+

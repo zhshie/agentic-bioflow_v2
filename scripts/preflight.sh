@@ -3,6 +3,9 @@
 # to refuse to submit into a broken environment. What "ready" means for a given
 # site comes from its adapter - see docs/SITE_ADAPTER.md.
 #
+# Not `tw info` alone: it reports Platform-side connectivity only, never this
+# site's relay, agent, or whether the resource-floor config was ever applied.
+#
 # Exit 0 = ready. Exit 1 = something listed as FAIL.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

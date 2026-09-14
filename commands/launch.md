@@ -207,6 +207,22 @@ gate can see.
    repo holds no curated list of options for any pipeline, and adding one would
    be the thing v2 exists to avoid.
 
+   **Where the `nf-core` CLI is on `PATH`, use it to build route ③'s group
+   list** rather than improvising one over the raw schema:
+
+   ```
+   nf-core pipelines create-params-file <repo> -r <rev> -o <tmp>/params.yaml --no-prompts
+   ```
+
+   It writes a commented YAML covering every group the schema defines, each
+   parameter's type/default/description as a comment above it — the tool
+   decides the format, the model only fills in values and uncomments what the
+   user chose. It is optional, never a dependency: where the CLI is absent
+   (nothing here installs it), read `nextflow_schema.json` directly as
+   described below instead — both read the same schema, so the group list and
+   the required-with-no-default parameters are the same either way. Measured
+   working on this deployment's login node: `docs/PITFALLS.md` 29.
+
    **Offer three routes, and let them pick one.** Do not choose on their behalf,
    and do not present only the one you would have chosen:
 
@@ -228,11 +244,13 @@ gate can see.
    - **Every group the schema defines**, one line each — the group's title,
      how many parameters it holds, and two or three representative ones by
      name. `nextflow_schema.json`'s own grouping (`definitions` or `$defs`,
-     depending on schema draft) is the source; read it rather than deciding
-     which groups are worth mentioning. A `*skipping*` group (19 parameters
-     of it in rnaseq 3.14.0) and the tool-choice parameters carrying an enum
-     — `aligner`, `trimmer`, `pseudo_aligner`, `remove_ribo_rna` there — are
-     groups this list includes, not a special case shown instead of it.
+     depending on schema draft) is the source — the CLI's generated file's
+     `## ===` group headers are the same list, read off the same schema, when
+     one was generated — so read it rather than deciding which groups are
+     worth mentioning. A `*skipping*` group (19 parameters of it in rnaseq
+     3.14.0) and the tool-choice parameters carrying an enum — `aligner`,
+     `trimmer`, `pseudo_aligner`, `remove_ribo_rna` there — are groups this
+     list includes, not a special case shown instead of it.
    - **Let the user drill into any group** for its full parameter list — name,
      type, default, description — rather than judging in advance which ones
      they would want to see. Someone shown only a summary cannot adjust what
@@ -259,7 +277,9 @@ gate can see.
    done when the user has said which, and "all defaults" is a complete answer
    from them; it is not an answer you can give for them.
 
-   Write `params.yaml` with a comment explaining any non-default choice.
+   Write `params.yaml` with a comment explaining any non-default choice — the
+   CLI's generated file already carries one comment block per parameter, so
+   where it exists, edit values into it rather than starting over.
 
    If the pipeline reads a GTF, confirm that the attribute a parameter names is
    present on the line type that pipeline actually parses - both halves differ

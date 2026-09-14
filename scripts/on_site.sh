@@ -1,6 +1,10 @@
 #!/bin/bash
 # The only sanctioned way to run something on the site.
 #
+# Not GNU parallel/pssh/Ansible: those fan a command out to many hosts. This
+# manages one shared ControlMaster connection to a single site under a strict
+# session cap (ON_SITE_MAX_PARALLEL below) - a different problem entirely.
+#
 # A site is reached in one of three ways, and which one is a property of the
 # site, not of this deployment - see docs/SITE_ADAPTER.md, contract 6:
 #

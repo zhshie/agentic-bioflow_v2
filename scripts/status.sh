@@ -2,6 +2,10 @@
 # D4: the "where you are" card. One screen, four sections, ending in exactly
 # one concrete next step - U3 in the plan this implements.
 #
+# Not `tw info`: it reports Platform-side connectivity only, never this site's
+# own setup progress - this formats preflight.sh/settings.sh/inspect_sides.sh
+# instead of reimplementing any of their checks (below).
+#
 # It calls scripts/preflight.sh, scripts/settings.sh --summary and
 # scripts/inspect_sides.sh (D1) for the facts and formats them; it does not
 # re-implement any check any of those three already does. Keep this file

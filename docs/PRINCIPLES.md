@@ -16,15 +16,20 @@ slogan, and slogans lose to whatever seems reasonable in the moment.
 
 ## A. What this bridge is for
 
-**1. Build only what neither Seqera nor nf-core already does.**
+**1. Build only what Seqera, nf-core, or any tool someone already maintains
+does not already do.**
 
 The three things this project rebuilt before checking are in PITFALLS 14: a
 biotype warning nf-core already emits, a STAR index calculation the module
 already performs, and a samplesheet generator that shipped with the pipeline.
 Each was written, then deleted.
 
-*Check:* before adding anything, say out loud what Seqera and nf-core use to do
-the same job. Only when you cannot name it does it become ours to write.
+*Check:* before adding anything, say out loud what Seqera, nf-core, or any
+other maintained tool uses to do the same job. Only when you cannot name it
+does it become ours to write. Every script under `scripts/` states its answer
+in its own header - `# Not <tool>: <reason>`, or `# Nothing existing: <why>`
+for thin glue with nothing to name - which is what turns the spoken check into
+a mechanical one: `tests/scripts_name_their_alternative.sh`.
 
 **2. Follow Seqera's shape; do not invent a parallel one.**
 

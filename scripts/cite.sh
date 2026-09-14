@@ -1,6 +1,10 @@
 #!/bin/bash
 # DOIs in, BibTeX out. Nothing here is written from memory.
 #
+# Not a citation manager (Zotero/CSL/doi2bib): installing and syncing one
+# needs a machine that may have neither; the registrars' own
+# content-negotiation endpoint below needs only curl.
+#
 #   cite.sh [--cache <dir>] [--out <file>] <doi|@file> ...
 #
 # A citation a language model recalls is a citation that may not exist, and a

@@ -2,6 +2,9 @@
 # Install the three things this cluster does not provide, into the execution
 # area rather than a home directory.
 #
+# Not the site's module system: it offers Java 17 and 8, not the 21 the agent
+# needs, and it has no `tw` module at all - see each reason below.
+#
 # Why each one, so nobody removes them as unnecessary:
 #
 #   Java 21    tw-agent.jar needs it and the cluster offers 17 and 8. The

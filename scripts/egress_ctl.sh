@@ -1,6 +1,9 @@
 #!/bin/bash
 # Start/stop/inspect the login-node relay.
 #
+# Not tmux: mirrors agent_ctl.sh's nohup + pid file - a tmux session dies with
+# its server, and this needs to survive a closed terminal.
+#
 # The URL is built from the CURRENT hostname, never a hardcoded one: this site
 # has several login nodes (lgn301..lgn304), the head job reaches back by name,
 # and a stale name points at a node with no relay running.

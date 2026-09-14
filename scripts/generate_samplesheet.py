@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Not each pipeline's own bin/fastq_dir_to_samplesheet.py: inconsistent and
+# per-pipeline; this needed one discovery-and-pairing tool that works before
+# a pipeline is even chosen.
 """Build an nf-core samplesheet from a directory of sequencing files.
 
 Columns come from the caller (which reads them out of the pipeline's own

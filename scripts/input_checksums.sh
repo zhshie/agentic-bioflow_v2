@@ -1,6 +1,9 @@
 #!/bin/bash
 # Reuse or compute a SHA-256 for every input file a samplesheet names.
 #
+# Not nf-prov's own checksums: whether nf-prov already records these on this
+# cluster is unmeasured (plan M1), so this still computes or reuses them.
+#
 #   input_checksums.sh --samplesheet <csv> --out <file>
 #                       [--known <sha256sum-format list>] [--force]
 #
