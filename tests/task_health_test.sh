@@ -14,22 +14,39 @@ settings 'reach: ssh' 'site_host: me@example.org' 'workspace_id: 1' "tw_bin: $TM
 
 printf '#!/bin/bash\ncat "$TW_FAKE_OUTPUT_FILE"\n' > "$TMP/tw"; chmod +x "$TMP/tw"
 
+# R5 (2.9): the stub now answers `-o json runs view ... tasks` the way tw
+# 0.40.0 actually does, measured on the login node against a real run - a bare
+# JSON array of {"taskId":..., "process":..., "tag":..., "status":...}, no
+# wrapper object. task_health.sh no longer parses the human table by column
+# position, so a table-shaped stub would no longer exercise the code this file
+# tests - it is JSON, not an alternate format kept "just in case".
 cat > "$TMP/tasks_running.txt" <<'EOF'
-  Pipeline's run X tasks:
-
-     task_id | process | tag | status
-    ---------+---------+-----+-----------
-     1       | A       | t   | COMPLETED
-     2       | B       | t   | RUNNING
+[
+  {"taskId": 1, "process": "A", "tag": "t", "status": "COMPLETED"},
+  {"taskId": 2, "process": "B", "tag": "t", "status": "RUNNING"}
+]
 EOF
 
 cat > "$TMP/tasks_stuck.txt" <<'EOF'
-  Pipeline's run X tasks:
+[
+  {"taskId": 1, "process": "A", "tag": "t", "status": "COMPLETED"},
+  {"taskId": 2, "process": "B", "tag": "t", "status": "SUBMITTED"}
+]
+EOF
 
-     task_id | process | tag | status
-    ---------+---------+-----+-----------
-     1       | A       | t   | COMPLETED
-     2       | B       | t   | SUBMITTED
+# Mutation-proof for R5: same two tasks as tasks_stuck.txt, but every object's
+# KEYS are in a different order and the ARRAY order is reversed. The table
+# this replaced was read by column position (task_id | process | tag |
+# status), so a reordered table would have silently swapped which field this
+# script calls "status". JSON keys carry no order at all - jq selects "status"
+# and "process" by NAME - so this is the specific case that would have broken
+# the old parser and now cannot: same "STUCK" verdict, same job attribution,
+# expected below.
+cat > "$TMP/tasks_stuck_reordered.txt" <<'EOF'
+[
+  {"status": "SUBMITTED", "tag": "t", "process": "B", "taskId": 2},
+  {"tag": "t", "taskId": 1, "status": "COMPLETED", "process": "A"}
+]
 EOF
 
 # why_pending's no-argument form lists every pending job on the account, and
@@ -60,6 +77,12 @@ t "a task actually running reads as OK"          0 "OK: 1 running" "$TMP/tasks_r
 t "nothing running while one queues escalates"   0 "STUCK:"        "$TMP/tasks_stuck.txt"
 t "the escalation carries why_pending's reason"  0 "partition is full" "$TMP/tasks_stuck.txt"
 t "and names the job it is a reason about"       0 "2044345"           "$TMP/tasks_stuck.txt"
+
+# R5 mutation-proof: identical verdict from a JSON object whose keys are
+# reordered and whose array order is reversed - see the fixture's own comment.
+t "R5: a key/array reorder cannot change the OK/STUCK verdict"  0 "STUCK:"           "$TMP/tasks_stuck_reordered.txt"
+t "R5: nor the reason it carries"                                0 "partition is full" "$TMP/tasks_stuck_reordered.txt"
+t "R5: nor which job it names"                                   0 "2044345"           "$TMP/tasks_stuck_reordered.txt"
 
 # U5: layer=<value> so runs.md's report format measures the layer instead of
 # an LLM guessing it from the prose. A run's own job actually found stuck on

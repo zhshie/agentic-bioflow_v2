@@ -19,16 +19,23 @@ printf 'workspace_id: 12345\ntw_bin: %s/tw\n' "$TMP" > "$TMP/env.yaml"
 printf 'not-a-real-token\n' > "$TMP/.seqera_token"
 chmod 600 "$TMP/env.yaml" "$TMP/.seqera_token"
 
+# R5 (2.9): the stub now answers `-o json runs list` the way tw 0.40.0
+# actually does, measured on the login node against a real workspace -
+# `{"workflows":[{"workflow":{"id":..., "status":..., "projectName":...,
+# "runName":..., ...}}]}`. session_start.sh no longer parses the human table
+# at all, so a table-shaped stub would no longer exercise the code path this
+# file tests - it is JSON, not a fallback for one.
 cat > "$TMP/tw" <<'STUB'
 #!/bin/bash
 cat <<'OUT'
-  Pipeline runs at [Lab / site] workspace:
-
-     ID            | Status    | Project Name        | Run Name        | Username | Submit Date
-    ---------------+-----------+---------------------+-----------------+----------+------------
-     aliveRUN123   | RUNNING   | nf-core/rnaseq      | nightly-run     | someone  | today
-     queuedSUB456  | SUBMITTED | nf-core/ampliseq    | waiting-run     | someone  | today
-     doneOK789     | SUCCEEDED | nf-core/funcscan    | finished-run    | someone  | today
+{
+  "workspaceRef": "[Lab / site]",
+  "workflows": [
+    {"workflow": {"id": "aliveRUN123",  "status": "RUNNING",   "projectName": "nf-core/rnaseq",   "runName": "nightly-run"}},
+    {"workflow": {"id": "queuedSUB456", "status": "SUBMITTED", "projectName": "nf-core/ampliseq", "runName": "waiting-run"}},
+    {"workflow": {"id": "doneOK789",    "status": "SUCCEEDED", "projectName": "nf-core/funcscan",  "runName": "finished-run"}}
+  ]
+}
 OUT
 STUB
 chmod +x "$TMP/tw"
@@ -39,13 +46,33 @@ chmod +x "$TMP/tw"
 cat > "$TMP/tw_idle" <<'STUB'
 #!/bin/bash
 cat <<'OUT'
-  Pipeline runs at [Lab / site] workspace:
-
-     ID            | Status    | Project Name        | Run Name        | Username | Submit Date
-    ---------------+-----------+---------------------+-----------------+----------+------------
+{"workspaceRef": "[Lab / site]", "workflows": []}
 OUT
 STUB
 chmod +x "$TMP/tw_idle"
+
+# R5 mutation-proof: the same three runs, but with every object's keys in a
+# DIFFERENT order and the array itself in a different order too. The old
+# `awk -F'|'` read status/id/project/name by COLUMN POSITION, so a reordered
+# table would have silently attributed the wrong field to the wrong run - a
+# column reorder was exactly the failure mode a human-table parser could not
+# see coming. JSON has no column order at all (jq selects by key name), so
+# this stub is not "the same test as tw twice" - it is the case that would
+# have broken the old parser and cannot break this one.
+cat > "$TMP/tw_reordered" <<'STUB'
+#!/bin/bash
+cat <<'OUT'
+{
+  "workflows": [
+    {"workflow": {"runName": "finished-run", "status": "SUCCEEDED", "id": "doneOK789", "projectName": "nf-core/funcscan"}},
+    {"workflow": {"projectName": "nf-core/ampliseq", "id": "queuedSUB456", "runName": "waiting-run", "status": "SUBMITTED"}},
+    {"workflow": {"status": "RUNNING", "runName": "nightly-run", "projectName": "nf-core/rnaseq", "id": "aliveRUN123"}}
+  ],
+  "workspaceRef": "[Lab / site]"
+}
+OUT
+STUB
+chmod +x "$TMP/tw_reordered"
 
 run() { # run <reason> <settings-file> [tw-stub]
   printf '{"session_start_reason":"%s"}' "$1" \
@@ -66,6 +93,12 @@ check "reports a RUNNING run"          "$OUT" "aliveRUN123"  present
 check "reports a SUBMITTED run"        "$OUT" "queuedSUB456" present
 check "stays quiet about finished runs" "$OUT" "doneOK789"   absent
 check "declares itself a SessionStart"  "$OUT" "SessionStart" present
+
+OUT=$(run startup "$TMP/env.yaml" "$TMP/tw_reordered")
+check "R5: a key/array reorder still reports the RUNNING run"   "$OUT" "aliveRUN123"  present
+check "R5: and the SUBMITTED run"                                "$OUT" "queuedSUB456" present
+check "R5: still says nothing about the SUCCEEDED one"           "$OUT" "doneOK789"    absent
+check "R5: and gets that run's own project name right"           "$OUT" "nf-core/rnaseq" present
 
 OUT=$(run compact "$TMP/env.yaml")
 check "silent on a compaction"          "${OUT:-<empty>}" "aliveRUN123" absent

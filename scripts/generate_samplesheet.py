@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Build an nf-core samplesheet from a directory of sequencing files.
 
-Columns come from the caller (which reads them out of the pipeline's spec.yaml),
+Columns come from the caller (which reads them out of the pipeline's own
+`assets/schema_input.json` at the pinned revision - see commands/launch.md),
 never from a pipeline definition stored next to this script. The retired
-nextflow-development skill kept a full per-pipeline YAML here - genome options,
-run command templates, outputs, troubleshooting - which duplicated almost all of
-spec.yaml. Reintroducing that would give the engine a second source of truth for
-every pipeline, so only the mechanical part was migrated: file discovery and
-scored R1/R2 pairing.
+nextflow-development skill kept a full per-pipeline YAML here (v1's spec.yaml) -
+genome options, run command templates, outputs, troubleshooting - which
+duplicated almost all of what the pipeline's own schema already says.
+Reintroducing that would give the engine a second source of truth for every
+pipeline, so only the mechanical part was migrated: file discovery and scored
+R1/R2 pairing.
 
 Depends on the standard library only. The original required PyYAML, which is not
 installed in any interpreter on this cluster (verified: system python3.13,
@@ -88,7 +90,8 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input_dir", help="directory holding the FASTQ files (searched recursively)")
     ap.add_argument("--columns", required=True,
-                    help="comma-separated column names, in order, from the pipeline's spec.yaml")
+                    help="comma-separated column names, in order, from the "
+                         "pipeline's own assets/schema_input.json")
     ap.add_argument("-o", "--output", help="write here instead of stdout")
     ap.add_argument("--defaults", default="",
                     help="comma-separated key=value fills for columns that cannot be "

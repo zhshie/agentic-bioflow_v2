@@ -42,10 +42,12 @@ cat <<EOF
 
 Open a fresh one:
 
-    ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h $HOST true
+    ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h -o ServerAliveInterval=60 $HOST true
 
 ControlPersist detaches the master into the background as soon as it has
 authenticated, so that command returns immediately and the terminal is yours
-again - closing it does not take the connection down. One master lasts the
-whole work session, until PITFALLS 16e's session cap is hit again.
+again. What ControlPersist governs is idle time, not whether closing the
+terminal ends the connection - that is unmeasured (M3 pending, see
+docs/LAB_AGENTS.md). What is known to end it: 'wsl --shutdown' and the
+machine going to sleep - or PITFALLS 16e's session cap being hit again.
 EOF

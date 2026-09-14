@@ -37,16 +37,23 @@ if [ -z "${TOWER_ACCESS_TOKEN:-}" ] && [ -r "$TOKEN_FILE" ]; then
     export TOWER_ACCESS_TOKEN
 fi
 
-out=$("$TW" runs view -i "$RUN_ID" --workspace "$WS" tasks 2>&1) \
+# R5 (2.9): `tw -o json runs view ... tasks` replaces the human table this
+# used to `read -r ... IFS='|'` by column POSITION (task_id | process | tag |
+# status - status only ever read as the 4th field). Measured on this login
+# node (tw 0.40.0, a real run's tasks), not inferred: the JSON is a bare array
+# of `{"taskId":..., "process":..., "tag":..., "status":...}` - no wrapper
+# object, and "tag" is simply absent from an entry when the task has none
+# (nextflow-io/hello's tasks carry no tag at all). Reading by field NAME means
+# a future column reorder in the table this replaces - or `tw` itself
+# reordering the JSON object's keys, which is not even meaningful in JSON -
+# cannot silently swap which field this script reads as "status".
+out=$("$TW" -o json runs view -i "$RUN_ID" --workspace "$WS" tasks 2>&1) \
     || { echo "ERROR: could not read tasks - $out" >&2; exit 2; }
 
-running=0 pending=0
-while IFS='|' read -r _ _ _ status; do
-    case "$(xargs <<<"${status:-}")" in
-        RUNNING)             running=$((running + 1)) ;;
-        PENDING|SUBMITTED)   pending=$((pending + 1)) ;;
-    esac
-done <<<"$out"
+running=$(jq -r '[.[] | select(.status == "RUNNING")] | length' <<<"$out" 2>/dev/null)
+pending=$(jq -r '[.[] | select(.status == "PENDING" or .status == "SUBMITTED")] | length' <<<"$out" 2>/dev/null)
+case "$running" in ''|*[!0-9]*) running=0 ;; esac
+case "$pending" in ''|*[!0-9]*) pending=0 ;; esac
 
 # Which SLURM jobs could be this run's? Nextflow names a task's job
 # nf-<process, with ':' replaced by '_'>_<tag>. Measured on this site:
@@ -64,10 +71,12 @@ done <<<"$out"
 # The narrowing is by pipeline process, not by run, and that is as far as the
 # evidence goes: two concurrent runs of the same pipeline share these names.
 # Said here rather than implied, so nobody reads more precision into it.
-prefixes=$(awk -F'|' 'NF > 3 {
-        p = $2; gsub(/^[ \t]+|[ \t]+$/, "", p)
-        if (p != "" && p != "process" && p !~ /^-+$/) { gsub(/:/, "_", p); print "nf-" p }
-    }' <<<"$out" | sort -u)
+# Same JSON, same field-by-name reasoning as above: "process" instead of the
+# table's 2nd column. No header/separator rows to skip in JSON, so the old
+# `NF > 3` / `p != "process"` / `p !~ /^-+$/` guards against matching the
+# table's own header and rule line have nothing left to guard against.
+prefixes=$(jq -r '.[].process | select(. != null and . != "") | "nf-" + gsub(":";"_")' \
+    <<<"$out" 2>/dev/null | sort -u)
 
 # The pattern, not the wait: nothing running while something waits is what
 # `tw runs view --status` alone cannot distinguish from ordinary progress.

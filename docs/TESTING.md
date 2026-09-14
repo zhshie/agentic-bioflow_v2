@@ -10,7 +10,7 @@ place several classes of defect can show up at all.
 bash tests/run_all.sh
 ```
 
-47 files, about 90 seconds, one verdict and a non-zero exit if anything fails.
+50 files, about 100 seconds, one verdict and a non-zero exit if anything fails.
 Failing output is printed at the end; full logs land in a temp directory the
 banner names. `--only <substring>` narrows it, `--verbose` streams each file's
 own output, `--timeout <secs>` changes the per-test limit (default 300, only

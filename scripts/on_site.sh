@@ -24,6 +24,9 @@
 #   ON_SITE_TIMEOUT     seconds before a call is treated as hung (default 120,
 #                       15 for --check-reach). 0 disables the clock, which is
 #                       what a long install on the site needs.
+#   ON_SITE_MAX_PARALLEL  override the `ssh_max_parallel` setting (default 4):
+#                       how many sessions this master may carry at once. ssh
+#                       mode only - see PITFALLS 16e.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -36,7 +39,73 @@ CP="$(setting ssh_control_path "$HOME/.ssh/cm-%r-%h-%p")"
 TMO="${ON_SITE_TIMEOUT:-120}"
 CHECK_TMO="${ON_SITE_TIMEOUT:-15}"
 
+# How many sessions this master is allowed to carry at once. PITFALLS 16e:
+# this site's sshd caps concurrent sessions per TCP connection (MaxSessions,
+# default 10), and the session past the cap hangs rather than erroring - a
+# risk that grows with more callers sharing one master, which several H2 lab
+# agents doing exactly that would be (docs/LAB_AGENTS.md). Settings key first,
+# then the env override a test (or an operator) needs.
+MAX_PARALLEL="$(setting ssh_max_parallel 4)"
+case "$MAX_PARALLEL" in ''|*[!0-9]*) MAX_PARALLEL=4 ;; esac
+case "${ON_SITE_MAX_PARALLEL:-}" in
+  '') ;;
+  *[!0-9]*) ;;
+  *) MAX_PARALLEL="$ON_SITE_MAX_PARALLEL" ;;
+esac
+SLOTS_DIR="${CP}.slots"
+SLOT_DIR=""
+
 die() { local rc="$1"; shift; printf '%s\n' "$@" >&2; exit "$rc"; }
+
+# Machine-readable trailer for the two "a person has to do something" exits.
+# The plugin names no chat tool and decides nothing about how that person is
+# reached - a lab agent (docs/LAB_AGENTS.md, tier H2) greps this line and
+# picks its own way to ask. Nothing beyond site_host, which the human message
+# right below already prints.
+needs_human() { printf 'on_site: needs-human reason=%s host=%s\n' "$1" "$HOST" >&2; }
+
+# One lock directory per slot, next to the control path so every caller
+# sharing this master agrees on where to look. `mkdir` is atomic and needs no
+# flock, which macOS lacks. Released on every exit path - normal, a failing
+# command, or a signal - so a slot never outlives the caller that holds it.
+release_slot() { [ -n "$SLOT_DIR" ] && rm -rf -- "$SLOT_DIR" 2>/dev/null; }
+trap release_slot EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+acquire_slot() {   # acquire_slot <timeout-seconds> -> 0 (SLOT_DIR set) or 1
+    local budget="$1" waited=0 n slot pid
+    mkdir -p "$SLOTS_DIR" 2>/dev/null
+    while :; do
+        n=1
+        while [ "$n" -le "$MAX_PARALLEL" ]; do
+            slot="$SLOTS_DIR/$n"
+            if mkdir "$slot" 2>/dev/null; then
+                echo $$ > "$slot/pid" 2>/dev/null
+                SLOT_DIR="$slot"
+                return 0
+            fi
+            # Stale: the pid holding it is not alive - reclaim rather than
+            # wait out a caller that crashed mid-session.
+            if [ -f "$slot/pid" ]; then
+                pid=$(cat "$slot/pid" 2>/dev/null)
+                if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+                    rm -rf -- "$slot" 2>/dev/null
+                    if mkdir "$slot" 2>/dev/null; then
+                        echo $$ > "$slot/pid" 2>/dev/null
+                        SLOT_DIR="$slot"
+                        return 0
+                    fi
+                fi
+            fi
+            n=$((n + 1))
+        done
+        [ "$budget" = 0 ] && { sleep 1; continue; }
+        [ "$waited" -ge "$budget" ] && return 1
+        sleep 1
+        waited=$((waited + 1))
+    done
+}
 
 MODE=command SCRIPT=""
 case "${1:-}" in
@@ -68,17 +137,20 @@ fi
 master_is_up() { "$SSH" -O check -o ControlPath="$CP" "$HOST" >/dev/null 2>&1; }
 
 no_master() {
+  needs_human no-master
   die 2 "no ssh master connection to $HOST." \
         "" \
         "Without one, every command asks for a one-time code - which only you" \
         "can supply. Open it yourself:" \
         "" \
-        "    ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h $HOST true" \
+        "    ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h -o ServerAliveInterval=60 $HOST true" \
         "" \
         "ControlPersist detaches the master into the background as soon as it" \
         "has authenticated, so that command returns immediately and the" \
-        "terminal is yours again - closing it does not take the connection" \
-        "down. One master lasts the whole work session."
+        "terminal is yours again. What ControlPersist governs is idle time," \
+        "not whether closing the terminal ends the connection - that is" \
+        "unmeasured (M3 pending, see docs/LAB_AGENTS.md). What is known to" \
+        "end it: 'wsl --shutdown' and the machine going to sleep."
 }
 
 # Git Bash cannot hold a master at all, so under it this is not "the master is
@@ -126,6 +198,7 @@ wrong_shell() {
 # preflight report OK while the next real command sat there. So every call
 # carries a clock, and running out of it means this and not "the site is slow".
 sessions_exhausted() {
+  needs_human sessions-exhausted
   die 2 "the site did not answer within ${1}s, and did not fail either." \
         "" \
         "A master that still answers a control-plane ping can refuse to" \
@@ -148,6 +221,9 @@ sessions_exhausted() {
 if [ "$MODE" = check ]; then
   [ "$REACH" = local ] && exit 0
   master_is_up || no_master
+  # A slot too: proving a session opens is exactly the sshd session this cap
+  # protects, so --check-reach can exhaust the same budget as any other call.
+  acquire_slot "$CHECK_TMO" || sessions_exhausted "$CHECK_TMO"
   # Not enough on its own - see sessions_exhausted. Prove a session opens.
   clocked "$CHECK_TMO" "$SSH" -o ControlPath="$CP" "$HOST" true >/dev/null 2>&1
   rc=$?
@@ -163,6 +239,18 @@ what()  {
 }
 
 if [ -n "${ON_SITE_DRY_RUN:-}" ]; then
+  if [ "$REACH" = ssh ]; then
+    # A dry run still spends a slot: it is the seam these tests run through
+    # (CLAUDE.md), so the slot machinery - contention, staleness, the wait
+    # against ON_SITE_TIMEOUT - has to be reachable without a host or a
+    # network. ON_SITE_SSH_BIN is a test-only override (never set by a real
+    # deployment - grep the repo), so the session it simulates below never
+    # touches a real ssh: with the real binary this block calls nothing.
+    acquire_slot "$TMO" || sessions_exhausted "$TMO"
+    if [ -n "${ON_SITE_SSH_BIN:-}" ]; then
+      clocked "$TMO" "$SSH" -o ControlPath="$CP" "$HOST" true >/dev/null 2>&1
+    fi
+  fi
   printf '%s\t%s\n' "$(where)" "$(what "$@")"
   exit 0
 fi
@@ -170,6 +258,7 @@ fi
 if [ "$REACH" = ssh ]; then
   case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) wrong_shell ;; esac
   master_is_up || no_master
+  acquire_slot "$TMO" || sessions_exhausted "$TMO"
 fi
 
 if [ "$MODE" = command ]; then

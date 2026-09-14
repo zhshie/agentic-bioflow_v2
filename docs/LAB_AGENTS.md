@@ -98,7 +98,7 @@ connection at all?**
 | Tier | Condition | May do | May not do | How that is enforced |
 |---|---|---|---|---|
 | **H1** — a person, interactively | Claude Code with hooks loaded, a human present | Everything | — | The existing hooks, unchanged |
-| **H2** — unattended, with hooks | Claude Code headless or the Agent SDK, this plugin's hooks loaded (**whether hooks actually load this way is unverified — §10, M4**), running on a lab Linux box or the login node | Non-destructive, non-submitting cluster operations: `push`, `fetch`, `agent_ctl.sh`/`egress_ctl.sh` start/status, `why_pending.sh`, `task_health.sh`, `preflight.sh`; read-only Platform queries; **preparing** a run (samplesheet, params, the full launch command) for a person to approve | Submitting a run, deleting anything | The existing hooks (§5) plus, planned, a Seqera token with no launch permission (§10, M5) |
+| **H2** — unattended, with hooks | Claude Code headless or the Agent SDK, this plugin's hooks loaded (**hooks load under `claude -p` — measured 2026-09-14; whether PreToolUse gates then refuse is unverified — §10, M4**), running on a lab Linux box or the login node | Non-destructive, non-submitting cluster operations: `push`, `fetch`, `agent_ctl.sh`/`egress_ctl.sh` start/status, `why_pending.sh`, `task_health.sh`, `preflight.sh`; read-only Platform queries; **preparing** a run (samplesheet, params, the full launch command) for a person to approve | Submitting a run, deleting anything | The existing hooks (§5) plus, planned, a Seqera token with no launch permission (§10, M5) |
 | **H3** — shared identity, no hooks | Claude Tag, Managed Agents, OpenClaw, Hermes, Codex, or anything else that reaches this plugin's files without a hook mechanism to run them | Read-only Platform queries: look up a run, read a report | Touch the cluster, submit a run, delete anything | **Structural, not textual**: this tier is given a Seqera Platform token with only a view role, and no ssh access at all. There is no credential in its hands that could reach the cluster, so there is nothing for a hook to have to intercept |
 
 H3's enforcement is worth stating plainly because it is the one row that does
@@ -143,44 +143,29 @@ evidence, so G2 and its backstop G3 deny by default — not because the hook
 asks "is anyone watching", but because the thing it demands as proof does not
 exist without a person.
 
-Note what this does *not* yet cover: `hooks/confirm_launch.sh` itself "never
-denies a launch it can actually see" (`hooks/confirm_launch.sh:12`) — it
-surfaces broken preconditions and expects the confirmation to happen in the
-conversation, which is prose, not a structural gate. The structural stop on
-an unattended `tw launch` today is G3 in `confirm_walkthrough.sh`, not
-`confirm_launch.sh`. Converting `confirm_launch.sh` to a structural
-`permissionDecision: "ask"` is planned, not done — the plan's wave 2 covers
-it (`~/.claude/plans/curious-doodling-lightning.md`, section B2, row "F
-launch 確認與輸出", citing that plan's own reuse-audit R2 — a different R2
-from the proposal review table in §7 below).
+Since 2.9, `hooks/confirm_launch.sh` also returns `permissionDecision: "ask"`
+with the full command as the reason, so Claude Code itself asks before a
+launch-shaped command runs, on top of the conversational gate it already
+added. **What `ask` does when nobody is there to answer — `claude -p`, the
+Agent SDK, `bypassPermissions` — is not documented and not measured** (§10,
+M4). Do not rely on it for an unattended host; G3 in `confirm_walkthrough.sh`
+remains the stop that needs a human turn.
 
 **Deleting.** `hooks/confirm_cleanup.sh` hard-denies `rawdata/`, `results/`,
 `analysis/` and `.nextflow/plugins/` unconditionally, with the same
 `permissionDecision: "deny"` mechanism (`hooks/confirm_cleanup.sh:87-90`,
 the deny calls at `:284`, `:290`) — this holds for any runtime, attended or
 not, and needs no human-turn check because it never permits the action at
-all. `work/`, the Nextflow cache, and post-run leftovers are different today:
-those branches call `warn()`, which only adds `additionalContext`
-(`hooks/confirm_cleanup.sh:92-95`) — advisory text requiring the user to have
-literally replied "確認刪除" (`:301`, `:323`, `:336`), not a structural block.
-**This is the honest gap for an unattended H2 agent**: nothing currently stops
-it from issuing `rm -rf work/` other than the same prose a person could
-ignore. Converting these branches (and `confirm_launch.sh` above) to a
-structural `ask` is the same planned change as launching, from the same
-wave (above).
+all. Since 2.9, deleting `work/` or the Nextflow cache returns
+`permissionDecision: "ask"` as well (`hooks/confirm_cleanup.sh`), where 2.8
+only added advisory text. The same unmeasured question applies: on an
+unattended host, whether `ask` becomes a refusal or a pass depends on the
+permission mode, which is why an H2 agent is told never to delete (§3) and
+why that rule is not yet claimed as structurally enforced.
 
-So the accurate statement for this release is: **submitting a run and
-deleting the four permanently-protected paths are already structurally
-refused without a human turn; deleting `work/`/cache is refused only by
-prose today, and that is a known, tracked gap, not an oversight this
-document is papering over.**
+## 6. Machine-readable signals from `scripts/on_site.sh` (2.9)
 
-## 6. Planned: machine-readable signals from `scripts/on_site.sh`
-
-**Planned for 2.9 — none of this exists in `scripts/on_site.sh` yet**,
-verified by reading the current file: `no_master()` and `sessions_exhausted()`
-print human-readable prose only, and there is no `ssh_max_parallel` setting
-anywhere in `scripts/settings.sh` or `docs/SETTINGS.md`.
+Built and tested in 2.9 (`tests/on_site_test.sh`, `tests/on_site_parallel_test.sh`):
 
 - **`on_site: needs-human reason=no-master`** — added to `no_master()`'s
   stderr, alongside the existing message, so a lab agent (H2) can detect the
@@ -279,7 +264,7 @@ from source alone (`PRINCIPLES.md`, invariant 8).
 | M1 | Does `nf-prov`'s WRROC output survive a relay-mediated plugin download, take effect when a run starts through the Tower Agent bridge, and does it carry an input checksum? | Submit one real run of `nf-core/demo -profile test`, shown to and confirmed by the user first (the existing launch gate applies) | **Yes** |
 | M2 | Do Seqera labels have a practical upper bound, and can `tw runs list` filter by them? | Create one test label on the workspace via `tw labels`, then delete it | No |
 | M3 | Does the shared ssh master survive a closed terminal, and for how long does it survive idling? `docs/SITE_ADAPTER.md:135` ("dies with the terminal") and `scripts/on_site.sh:77-81` ("closing it does not take the connection down... One master lasts the whole work session") currently contradict each other | Open one master connection (needs a real OTP), then observe from outside | **Yes** |
-| M4 | Do this plugin's hooks actually load under `claude -p` or the Agent SDK, and do G1–G3 deny as expected there? | Test in a non-login-node environment; if that is not possible, read Claude Code's own documentation and label the answer "inferred" rather than "measured" | No |
+| M4 | Do this plugin's hooks load under `claude -p` or the Agent SDK, and do G1–G3 and `ask` refuse there? | **Partly measured 2026-09-14:** `claude -p` with a blocking UserPromptSubmit hook (no model call) - the installed plugin's `plugin_intro.sh` ran and wrote its per-session marker, so plugin hooks load under `-p`. Still unmeasured: whether PreToolUse `deny`/`ask` refuse there (needs a real tool call), and the Agent SDK | No |
 | M5 | Do Seqera workspace roles (View, Launch, and so on) behave as this design assumes — specifically, is a View-role token unable to launch? | `tw participants` and Seqera's own documentation; no actual launch attempted | No |
 | M6 | Does NCHC permit automated access under a shared account, and a persistent process on a login node at all? | Only the user can ask NCHC this directly | **Yes** |
 

@@ -1,9 +1,10 @@
 # Remove here-document BODIES from a shell command, keeping every real line.
 #
-# Why this exists: confirm_nextflow.sh and confirm_cleanup.sh both decide what a
-# command does by splitting it into segments and testing each one. A here-doc
-# body is made of lines, so its lines became segments - and a document that
-# merely *mentions* a command was judged as if it ran it.
+# Why this exists: launch_trigger.sh (sourced by confirm_launch.sh),
+# confirm_cleanup.sh and confirm_walkthrough.sh each decide what a command
+# does by splitting it into segments and testing each one. A here-doc body is
+# made of lines, so its lines became segments - and a document that merely
+# *mentions* a command was judged as if it ran it.
 #
 #     cat > guide.md <<'EOF'
 #     Submit with:

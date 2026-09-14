@@ -17,6 +17,24 @@
 # nothing printed. A freshly installed WSL Ubuntu has no `jq`, and neither did
 # macOS before 15, so this was not a corner case.
 #
+# R2 (2.9): a launch-shaped command now ALSO returns
+# hookSpecificOutput.permissionDecision: "ask", with permissionDecisionReason
+# carrying the full command plus any unmet preconditions - so Claude Code
+# itself pauses for the user's explicit confirmation, rather than the model
+# merely being asked (in prose, in additionalContext) to wait for one. This is
+# still never a denial: "ask" only pauses, which is exactly what the safety
+# net has always required here, so no existing "allow" path becomes "deny".
+#
+# Both the structural `ask` and the prose `additionalContext` are sent
+# together - belt and braces - because `ask`'s behaviour under
+# `bypassPermissions` and `acceptEdits` is UNDOCUMENTED. Confirmed against
+# Claude Code's own docs while planning 2.9
+# (~/.claude/plans/curious-doodling-lightning.md, appendix 2, "兩項文件沒回答，
+# 要實測": `ask` in bypassPermissions/acceptEdits has no documented behaviour).
+# If Claude Code ever treats "ask" as "allow" in one of those modes, the prose
+# gate is what is left standing - it is not a fallback added out of caution,
+# it is the only thing this file can still prove works there.
+#
 # Exit 2 rather than a JSON `deny` decision: building that JSON is itself a
 # `jq -n` call, so leaning on jq to report jq's own absence would fail the
 # same way it is trying to fix. Exit 2 needs nothing but the shell.
@@ -162,5 +180,17 @@ Preconditions that are not met:${WARN}
 
 Report these to the user with the command; do not silently launch past them."
 
-jq -n --arg m "$MSG" '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $m}}'
+# R2: what Claude Code shows the user directly when it asks - the exact
+# command plus whatever preconditions are unmet, so the ask prompt alone is
+# enough to decide on without needing to scroll up to additionalContext.
+REASON="$CMD"
+[ -n "$NOTE" ] && REASON="${REASON}
+
+${NOTE}"
+[ -n "$WARN" ] && REASON="${REASON}
+
+Preconditions that are not met:${WARN}"
+
+jq -n --arg m "$MSG" --arg r "$REASON" \
+  '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: $r, additionalContext: $m}}'
 exit 0

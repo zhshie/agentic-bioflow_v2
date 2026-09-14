@@ -140,15 +140,27 @@ fi
 
 # SUBMITTED is as important as RUNNING: a run that never left the queue looks
 # identical to one working hard, and only the site can say which (:runs).
-INFLIGHT=$(clocked 8 "$TW" runs list --workspace "$WS" 2>/dev/null \
-    | awk -F'|' '
-        NR<=2 { next }
-        {
-          gsub(/^[ \t]+|[ \t]+$/, "", $1); gsub(/^[ \t]+|[ \t]+$/, "", $2)
-          gsub(/^[ \t]+|[ \t]+$/, "", $3); gsub(/^[ \t]+|[ \t]+$/, "", $4)
-          if ($2 == "RUNNING" || $2 == "SUBMITTED")
-              printf "  %s  %s  (%s)  %s\n", $2, $1, $3, $4
-        }')
+#
+# R5 (2.9): this used to `awk -F'|'` the human-readable table (`tw runs list`),
+# reading fields by COLUMN POSITION ($1 id, $2 status, $3 project, $4 run
+# name). That table has no contract - it is meant for a person's eyes, and
+# nothing stops a future `tw` release reordering or renaming a column, which
+# would silently misattribute status to the wrong run rather than fail loudly.
+# `tw -o json runs list` is the machine-readable form this hook already
+# requires `jq` for elsewhere, so field NAMES are read instead of column
+# INDEXES. Measured on this login node (tw 0.40.0, real workspace, `tw -o json
+# runs list --workspace <ws>`), not inferred from docs: the response is
+# `{"workflows":[{"workflow":{"id":..., "status":..., "projectName":...,
+# "runName":..., ...}}, ...]}` - each entry nests its fields one level under
+# "workflow". The `?`/`// []`/`// ""` guards below are for an empty or
+# briefly-malformed response (mid-deploy, a workspace with zero runs), not for
+# a shape that has ever actually been seen different from this.
+INFLIGHT=$(clocked 8 "$TW" -o json runs list --workspace "$WS" 2>/dev/null \
+    | jq -r '
+        (.workflows // [])[]? | .workflow |
+        select(.status == "RUNNING" or .status == "SUBMITTED") |
+        "  " + .status + "  " + .id + "  (" + (.projectName // "") + ")  " + (.runName // "")
+      ' 2>/dev/null)
 [ -n "$INFLIGHT" ] || emit "$WHERE"
 
 # Z3: this check runs on THIS machine, so it only means something when this

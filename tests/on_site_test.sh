@@ -67,6 +67,24 @@ mkfake 255
 t "check-reach fails when it is gone"      2 "ControlMaster=auto"    -- --check-reach
 t "and names the host to paste it against" 2 "me@example.org"        -- --check-reach
 
+# N9-1/N9-3: on_site.sh with no dry-run flag, so the no_master() path in
+# command mode actually runs (dry run never calls master_is_up at all - see
+# the parallel-slot tests for that seam). A lab agent (docs/LAB_AGENTS.md,
+# tier H2) has nobody to answer an OTP prompt, so this exit must be
+# greppable without parsing prose.
+no_master_run() { LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" bash "$S" true 2>&1; }
+nmr() { # nmr <label> <want-substring>
+  printf '%-56s ' "$1"
+  local out; out=$(no_master_run)
+  grep -qF -- "$2" <<<"$out" && echo ok || { echo "FAIL: lacks '$2'  <<$out>>"; fails=$((fails+1)); }
+}
+nmr "N9-1: no-master carries the machine-readable line" \
+    "on_site: needs-human reason=no-master host=me@example.org"
+nmr "N9-1: no-master keeps the existing human message too" \
+    "no ssh master connection to me@example.org"
+nmr "N9-3: no-master's command carries ServerAliveInterval=60" \
+    "ServerAliveInterval=60"
+
 # reach=local must never consult ssh at all: a site the deployment already runs
 # on has no master connection, and demanding one would break the site that works
 # today.
@@ -105,6 +123,10 @@ tt "a hung command surfaces as an error, not a wait"     2 "session"      -- tru
 # The recovery line has to be complete enough to paste: a ControlPath the user
 # has to reconstruct is a line they will get wrong.
 tt "and the recovery line carries the ControlPath"       2 "ControlPath"  -- true
+
+# N9-1: the same machine-readable trailer for the other "needs a human" exit.
+tt "N9-1: sessions-exhausted carries the machine-readable line" 2 \
+   "on_site: needs-human reason=sessions-exhausted host=me@example.org" -- true
 
 # ControlPersist detaches the master into the background once it has
 # authenticated. Telling the user to keep a terminal open is false, and it
@@ -216,5 +238,28 @@ printf '%-56s ' "on Linux nothing about shells is printed"
 out=$(LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" bash "$S" true 2>&1)
 grep -qF "Git Bash" <<<"$out" \
   && { echo "FAIL: fired on Linux <<$out>>"; fails=$((fails+1)); } || echo ok
+
+# --- N9-2: local/none never touch the slot machinery at all ------------------
+# A control path under $TMP, so this never looks anywhere near a real ~/.ssh.
+CPTEST="$TMP/cm-test"
+settings 'reach: local' "ssh_control_path: $CPTEST"
+mkfake 0
+LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" \
+  bash "$S" true >/dev/null 2>&1
+printf '%-56s ' "N9-2: local mode creates no slots directory"
+[ -d "${CPTEST}.slots" ] \
+  && { echo "FAIL: ${CPTEST}.slots exists"; fails=$((fails+1)); } || echo ok
+
+rm -rf "${CPTEST}.slots"
+settings 'reach: none' "ssh_control_path: $CPTEST"
+LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" \
+  bash "$S" --check-reach >/dev/null 2>&1
+printf '%-56s ' "N9-2: reach:none creates no slots directory either"
+[ -d "${CPTEST}.slots" ] \
+  && { echo "FAIL: ${CPTEST}.slots exists"; fails=$((fails+1)); } || echo ok
+
+echo
+echo "See tests/on_site_parallel_test.sh for N9-2's concurrency, staleness," \
+     "timeout and release-on-signal coverage."
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

@@ -127,5 +127,88 @@ PY
   else echo "FAIL: these are pipeline tools and must not be excluded: $overlap"; fails=$((fails+1)); fi
 fi
 
+# --- R4: provenance from Platform, not reconstructed -------------------------
+# A stub `tw` in place of the real binary - this test never touches the
+# network or a real workspace. Args always end "... --workspace <ws> <flag>".
+FAKE_TW_OK="$TMP/tw-ok"
+cat > "$FAKE_TW_OK" <<'SH'
+#!/bin/bash
+case "$*" in
+  *--command*) echo "nextflow run nf-core/ampliseq -r 2.18.0 -params-file remote.yaml" ;;
+  *--params*)  echo '{"input":"platform-samplesheet.csv"}' ;;
+  *--config*)  echo "process.executor = 'awsbatch'" ;;
+  *) echo "unrecognised: $*" >&2; exit 2 ;;
+esac
+SH
+chmod +x "$FAKE_TW_OK"
+
+FAKE_TW_FAIL="$TMP/tw-fail"
+cat > "$FAKE_TW_FAIL" <<'SH'
+#!/bin/bash
+echo "ERROR: run not found" >&2
+exit 1
+SH
+chmod +x "$FAKE_TW_FAIL"
+
+PYVAL() { python3 -c "$1" <<<"$2" 2>/dev/null; }
+
+# 1. A working tw: all three fields come back and are tagged 'platform'.
+out=$(TW_BIN="$FAKE_TW_OK" "$S" --json --run-id run123 --workspace ws1 "$TMP/a/results" 2>&1)
+cmd_src=$(PYVAL 'import json,sys; print(json.load(sys.stdin)["runs"][0]["sources"]["command"])' "$out")
+par_src=$(PYVAL 'import json,sys; print(json.load(sys.stdin)["runs"][0]["sources"]["params_effective"])' "$out")
+cfg_src=$(PYVAL 'import json,sys; print(json.load(sys.stdin)["runs"][0]["sources"]["config"])' "$out")
+cfg_val=$(PYVAL 'import json,sys; print(json.load(sys.stdin)["runs"][0]["config"])' "$out")
+if [ "$cmd_src" = platform ] && [ "$par_src" = platform ] && [ "$cfg_src" = platform ] \
+   && has "$cfg_val" "awsbatch"; then
+  ok "a working tw sources command/params/config from Platform"
+else
+  no "a working tw sources command/params/config from Platform" "<<$out>>"
+fi
+
+# 2. tw fails outright: command and params fall back to file-based values and
+#    say 'files'; config has no file-based equivalent, so it is left out and a
+#    note records the gap instead of inventing one (invariant 9).
+out=$(TW_BIN="$FAKE_TW_FAIL" "$S" --json --run-id run123 --workspace ws1 "$TMP/a/results" 2>&1)
+cmd_src=$(PYVAL 'import json,sys; print(json.load(sys.stdin)["runs"][0]["sources"]["command"])' "$out")
+par_src=$(PYVAL 'import json,sys; print(json.load(sys.stdin)["runs"][0]["sources"]["params_effective"])' "$out")
+has_cfg=$(PYVAL 'import json,sys; print("config" in json.load(sys.stdin)["runs"][0])' "$out")
+has_cfg_src=$(PYVAL 'import json,sys; print("config" in json.load(sys.stdin)["runs"][0].get("sources",{}))' "$out")
+if [ "$cmd_src" = files ] && [ "$par_src" = files ] \
+   && [ "$has_cfg" = False ] && [ "$has_cfg_src" = False ] \
+   && has "$out" "config not available from Platform"; then
+  ok "a failing tw falls back to file-based command/params and leaves config out with a note"
+else
+  no "a failing tw falls back to file-based command/params and leaves config out with a note" "<<$out>>"
+fi
+
+# 3. No --run-id at all: today's behaviour is unchanged, and nothing is
+#    fabricated about Platform - no 'sources' key appears at all.
+out=$("$S" --json "$TMP/a/results" 2>&1)
+has_sources=$(PYVAL 'import json,sys; print("sources" in json.load(sys.stdin)["runs"][0])' "$out")
+has_run_id=$(PYVAL 'import json,sys; print("platform_run_id" in json.load(sys.stdin)["runs"][0])' "$out")
+if [ "$has_sources" = False ] && [ "$has_run_id" = False ]; then
+  ok "no --run-id means no Platform fields and no fabricated 'sources' key"
+else
+  no "no --run-id means no Platform fields and no fabricated 'sources' key" "<<$out>>"
+fi
+
+# 4. A run id given but no workspace anywhere (LAB_SETTINGS_FILE pointed at
+#    nothing, so settings.sh's own workspace_id resolves to nothing too): the
+#    gap is named, and Platform is never even asked - checked by NOT setting
+#    TW_BIN, so a real tw on this machine's PATH would prove the point moot.
+out=$(LAB_SETTINGS_FILE="$TMP/no-such-settings.yaml" "$S" --json --run-id run999 \
+      "$TMP/a/results" 2>&1)
+has "$out" "no workspace id" \
+  && ok "a run id with no workspace anywhere records why Platform was not asked" \
+  || no "a run id with no workspace anywhere records why Platform was not asked" "<<$out>>"
+
+# 5. The command tw returns is the literal text tw printed, not reformatted -
+#    mutation coverage for the platform-branch assignment itself, distinct
+#    from the source tag checked in case 1.
+out=$(TW_BIN="$FAKE_TW_OK" "$S" --json --run-id run123 --workspace ws1 "$TMP/a/results" 2>&1)
+has "$out" "nextflow run nf-core/ampliseq -r 2.18.0 -params-file remote.yaml" \
+  && ok "the command field carries tw's own text verbatim" \
+  || no "the command field carries tw's own text verbatim" "<<$out>>"
+
 echo
 [ "$fails" = 0 ] && echo "OK: collect_provenance.py" || { echo "$fails failed"; exit 1; }

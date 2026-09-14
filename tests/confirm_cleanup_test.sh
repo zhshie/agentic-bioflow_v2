@@ -29,7 +29,7 @@ t "echo confirm the results directory"                                     pass 
 t "$D -rf $P/results"                                                      deny "delete results/"
 t "$D -rf $P/rawdata"                                                      deny "delete rawdata/"
 t "$D -rf $P/.nextflow/plugins"                                            deny "delete plugins/"
-t "$D -rf $P/work"                                                         warn "delete work/"
+t "$D -rf $P/work"                                                         ask  "delete work/ (R2: structural ask, not just a warning)"
 t "ls $P && $D -rf $P/results"                                             deny "delete inside compound"
 t "ssh twnia3 '$D -rf $P/results'"                                         deny "delete results/ wrapped in ssh"
 t "grep -n 'A=\\|B\\|$D ' hooks/confirm_cleanup.sh"                       pass "read-only grep whose regex contains the verb"
@@ -128,5 +128,50 @@ printf '%-64s ' "refuses when jq exists but cannot run"
 [ "$rc" = 2 ] && echo ok || { echo "FAIL: exit $rc, wanted 2"; fails=$((fails+1)); }
 printf '%-64s ' "and says so instead of failing silently"
 case "$out" in *BLOCKED*) echo ok ;; *) echo "FAIL: said '$out'"; fails=$((fails+1)) ;; esac
+
+echo
+echo "== R2: Claude Code itself asks, for the work/ + cache branch only =="
+# PRINCIPLES.md's exact phrase is "deleting work/ or .nextflow/cache/ requires
+# the user's explicit confirmation" - so only that branch gets a structural
+# `ask`. The four hard refusals stay `deny` (checked above by the t() calls);
+# this section proves ask specifically, and that stdout starts with `{` in
+# every decision-carrying case (PITFALLS 28 appendix-2 fact 3).
+askcheck() { # askcheck <command> <label>
+  printf '%-58s ' "$2"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  first="${out:0:1}"
+  if [ "$first" != "{" ]; then
+    echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
+  fi
+  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
+  [ "$decision" = ask ] && echo ok || { echo "FAIL: expected permissionDecision=ask, got '$decision'"; fails=$((fails+1)); }
+}
+denycheck() { # denycheck <command> <label>
+  printf '%-58s ' "$2"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  first="${out:0:1}"
+  if [ "$first" != "{" ]; then
+    echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
+  fi
+  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
+  [ "$decision" = deny ] && echo ok || { echo "FAIL: expected permissionDecision=deny, got '$decision'"; fails=$((fails+1)); }
+}
+
+askcheck  "$D -rf $P/work"                    "work/: permissionDecision=ask"
+askcheck  "$D -rf $P/.nextflow/cache"         ".nextflow/cache/: permissionDecision=ask"
+denycheck "$D -rf $P/.nextflow/plugins"       "plugins/: still permissionDecision=deny (unchanged)"
+denycheck "$D -rf $P/rawdata"                 "rawdata/: still permissionDecision=deny (unchanged)"
+denycheck "$D -rf $P/results"                 "results/: still permissionDecision=deny (unchanged)"
+
+# The stale comment fix: this branch used to ask about a v1 state-machine
+# "phase", which v2 has no concept of (PRINCIPLES.md, invariant 2 - Platform
+# is the only source of truth for run state, this repo keeps none).
+printf '%-58s ' "leftover warning no longer mentions a v1 'phase'"
+out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$D -rf $P/null" | bash "$H")
+if echo "$out" | grep -qF "phase"; then
+  echo "FAIL: still mentions 'phase' <<$out>>"; fails=$((fails+1))
+else
+  echo ok
+fi
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

@@ -36,12 +36,12 @@ wants answered, from a tree only they can interpret. That is what this adds,
 and the code it writes exists only to answer it.
 
 An earlier version of this file delegated the plotting itself to a general
-`dataviz` capability the environment was said to provide. Two things were
-wrong with that. It is not a file this repository can see, version or test —
-so the justification rested on a name that resolves only in some builds. And
-its subject is interactive web charts: hover layers, tooltips, dark mode,
-filter rows. A static figure at publication resolution is a different craft,
-and the parts that do transfer are rules, not machinery:
+`dataviz` capability the environment was said to provide. That was wrong for
+one reason: it is not a file this repository can see, version or test — so
+the justification rested on a name that resolves only in some builds, and a
+deployment where it is absent would have nothing to fall back to. The
+conclusion does not depend on what that capability can or cannot render; what
+transfers from it here are rules, not machinery:
 
 - one hue, light to dark, for magnitude; two hues with a neutral grey midpoint
   for polarity; **never a rainbow ramp**
@@ -68,6 +68,21 @@ and the parts that do transfer are rules, not machinery:
    examples of what this turns up, measured from a real run — read them for a
    sense of what to expect, never as a substitute for running the inventory
    itself.
+
+   **Also read the pipeline's own `docs/output.md`**, at the same pinned
+   revision the run was launched at — nf-core's own account of what each of
+   its outputs *is*. Get the pipeline and revision from the run itself rather
+   than asking or guessing: `scripts/collect_provenance.py`'s `workflow`
+   block names both. Fetch the file live from the pipeline's repository at
+   that revision, the same way `launch.md` reads `nextflow_schema.json` —
+   **never cached anywhere in this repository**, because a copy here would be
+   exactly the per-pipeline file invariant 6 exists to prevent, and it would
+   go stale the same way. It complements the inventory rather than replacing
+   it: `docs/output.md` says what an output means; the inventory says what
+   shape it actually has on disk, which is the one thing nf-core's own docs
+   cannot promise stayed in sync with what the pipeline last wrote. When no
+   `docs/output.md` exists at that revision, say so and continue from the
+   inventory alone — a missing description is not a missing inventory.
 
 2.5. **Ask about the background, before proposing anything.** No field here
    is mandatory — invite the user to describe the study in their own words,

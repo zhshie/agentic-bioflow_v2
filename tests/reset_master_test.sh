@@ -29,7 +29,20 @@ t "ssh with no site_host is refused"         2 "site_host"
 
 printf '#!/bin/bash\nexit 0\n' > "$TMP/ssh"; chmod +x "$TMP/ssh"
 settings 'reach: ssh' 'site_host: me@example.org'
-t "ssh closes the master and prints the reconnect line" 0 "ControlPersist=8h me@example.org"
+t "ssh closes the master and prints the reconnect line" 0 "ControlPersist=8h"
+t "and names the host"                                  0 "me@example.org"
+t "and carries ServerAliveInterval=60 (N9-3)"            0 "ServerAliveInterval=60"
+
+printf '%-58s ' "no longer claims closing the terminal ends it"
+out=$(run)
+if grep -qiF "closing it does not take the connection" <<<"$out" \
+   || grep -qiF "dies with the terminal" <<<"$out"; then
+  echo "FAIL: still asserts a side of the unmeasured M3 question"; fails=$((fails+1))
+else echo ok; fi
+
+printf '%-58s ' "names M3 as the unmeasured question, not an answer"
+out=$(run)
+grep -qF "M3" <<<"$out" && echo ok || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 
 printf '#!/bin/bash\nexit 1\n' > "$TMP/ssh"; chmod +x "$TMP/ssh"
 t "a failed -O exit is reported, not swallowed"          0 "nothing to close"

@@ -192,4 +192,53 @@ printf '%-64s ' "refuses when jq exists but cannot run"
 printf '%-64s ' "and says so instead of failing silently"
 case "$out" in *BLOCKED*) echo ok ;; *) echo "FAIL: said '$out'"; fails=$((fails+1)) ;; esac
 
+echo
+echo "== R2: Claude Code itself asks (permissionDecision: ask) =="
+# A launch-shaped command must not just add prose to additionalContext - it
+# must make Claude Code pause with a structural `ask`, carrying the full
+# command (and any unmet preconditions) in permissionDecisionReason. A
+# non-launch command must carry no decision field at all: this file never
+# turns an existing "allow" into anything else, only adds "ask" where a real
+# launch is seen. Every case here also checks the JSON starts with `{` -
+# PITFALLS 28's appendix-2 fact 3, stdout noise before the JSON is a silent
+# gate no differently than a missing jq.
+askcheck() { # askcheck <command> <label>
+  printf '%-58s ' "$2"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  first="${out:0:1}"
+  if [ "$first" != "{" ]; then
+    echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
+  fi
+  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
+  reason=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecisionReason',''))" <<<"$out")
+  if [ "$decision" != ask ]; then
+    echo "FAIL: expected permissionDecision=ask, got '$decision'"; fails=$((fails+1)); return
+  fi
+  case "$reason" in
+    *"$1"*) echo ok ;;
+    *) echo "FAIL: reason did not contain the full command <<$reason>>"; fails=$((fails+1)) ;;
+  esac
+}
+nodecisioncheck() { # nodecisioncheck <command> <label>
+  printf '%-58s ' "$2"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  if [ -z "$out" ]; then echo "ok (no output at all)"; return; fi
+  first="${out:0:1}"
+  if [ "$first" != "{" ]; then
+    echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
+  fi
+  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision','') or '')" <<<"$out")
+  if [ -z "$decision" ]; then echo "ok (no decision field)"; else
+    echo "FAIL: unexpected permissionDecision '$decision' on a non-launch command"; fails=$((fails+1))
+  fi
+}
+
+askcheck "$LAUNCH https://github.com/nf-core/rnaseq --disable-optimization" "tw launch: ask, reason has the full command"
+askcheck "$RELAUNCH -i 344PjpDnrQiz4U"                                      "tw runs relaunch: ask, reason has the full command"
+askcheck "$NFRUN main.nf"                                                   "nextflow run: ask, reason has the full command"
+askcheck "$SB driver.sh"                                                    "sbatch: ask, reason has the full command"
+
+nodecisioncheck "tw runs list --workspace 12345"                            "tw runs list: no decision field"
+nodecisioncheck "cat launch.md"                                             "cat launch.md: no decision field"
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

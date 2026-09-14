@@ -24,6 +24,20 @@
 # timestamped in the filename. Taking the first match sorts them alphabetically
 # and picks the corpse. Take the newest, always, and say how many were passed
 # over so a reader can tell a retry happened at all.
+#
+# Everything above is a reconstruction, and a reconstruction is a copy of
+# something Platform already holds (docs/PRINCIPLES.md, invariant 2). When a
+# Seqera run id is known - `--run-id`, plus `--workspace` (or the settings
+# file's `workspace_id`) - the command line, launch-time params and resolved
+# Nextflow config are asked of Platform itself via `tw runs view --command
+# --params --config` instead, and every field answered that way is marked
+# `"platform"` in `sources`. A run id with no usable `tw` or workspace, or a
+# call that fails outright, falls back to what these files can still prove:
+# the launch-time params this run already recorded on disk, and the same
+# command reconstruction methods_text.py performs and already labels as not
+# reproducible. Neither is invented - a field neither side can supply is left
+# out and a note says so (invariant 9). Tool versions are never asked of
+# Platform: they live only in the versions YAML pipeline_info/ carries.
 ''''true
 HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 if [ -f "$HERE/require_python.sh" ]; then
@@ -37,7 +51,11 @@ import argparse
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Language runtimes and shell utilities. These are excluded from "tools that
 # need citing" - not because they do not matter but because no pipeline's
@@ -169,7 +187,142 @@ def dois_from_citations(path):
     return out
 
 
-def collect(results):
+def find_tw_bin():
+    """Where every other script here finds `tw`: TW_BIN, then the settings
+    file's `tw_bin`, then PATH - the same order preflight.sh and task_health.sh
+    use. This only ever reads a run that already finished; nothing here can
+    launch one."""
+    tw = os.environ.get("TW_BIN")
+    if tw:
+        return tw
+    settings_sh = os.path.join(HERE, "settings.sh")
+    if os.path.isfile(settings_sh):
+        try:
+            out = subprocess.run([settings_sh, "tw_bin"],
+                                  capture_output=True, text=True, timeout=10)
+            val = out.stdout.strip()
+            if val:
+                return val
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return shutil.which("tw")
+
+
+def find_workspace():
+    """The deployment's `workspace_id`, for a caller that gave a run id but no
+    `--workspace`. Best effort - a settings file that cannot be found or read
+    just means the Platform lookup gets skipped below, not an error here."""
+    settings_sh = os.path.join(HERE, "settings.sh")
+    if not os.path.isfile(settings_sh):
+        return None
+    try:
+        out = subprocess.run([settings_sh, "workspace_id"],
+                              capture_output=True, text=True, timeout=10)
+        val = out.stdout.strip()
+        return val or None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def ambient_token_env():
+    """The environment `tw` should see: TOWER_ACCESS_TOKEN if already
+    exported, else the token file every other script here falls back to
+    (settings.sh's own `token_file()`, which task_health.sh already uses this
+    same way). Best effort throughout - a failure here just means the `tw`
+    call below fails too, and that is reported as a gap, never papered over.
+    """
+    env = dict(os.environ)
+    if env.get("TOWER_ACCESS_TOKEN"):
+        return env
+    settings_sh = os.path.join(HERE, "settings.sh")
+    if not os.path.isfile(settings_sh):
+        return env
+    try:
+        out = subprocess.run(
+            ["bash", "-c", '. "$1" >/dev/null 2>&1; token_file',
+             "--", settings_sh],
+            capture_output=True, text=True, timeout=10)
+        token_path = out.stdout.strip()
+        if token_path and os.path.isfile(token_path):
+            with open(token_path, encoding="utf-8") as fh:
+                tok = fh.read().strip()
+            if tok:
+                env["TOWER_ACCESS_TOKEN"] = tok
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return env
+
+
+def platform_fields(run_id, workspace, tw_bin, timeout=20):
+    """command/params/config as Platform itself recorded for run_id - never a
+    reconstruction. Read-only: only `runs view` is ever called, nothing here
+    can start or change a run.
+
+    Returns (fields, notes). `fields` holds only the keys actually answered,
+    so a caller can tell "Platform said nothing" from "Platform was never
+    asked" rather than trusting an empty string either way.
+    """
+    fields, notes = {}, []
+    if not workspace:
+        notes.append("run %s: no workspace id (pass --workspace, or set "
+                     "workspace_id in the settings file) - Platform lookup "
+                     "skipped" % run_id)
+        return fields, notes
+    if not tw_bin:
+        notes.append("run %s: no usable tw (set tw_bin, TW_BIN, or install "
+                     "it) - Platform lookup skipped" % run_id)
+        return fields, notes
+
+    env = ambient_token_env()
+    for flag, key in (("--command", "command"),
+                       ("--params", "params_effective"),
+                       ("--config", "config")):
+        try:
+            out = subprocess.run(
+                [tw_bin, "runs", "view", "-i", run_id,
+                 "--workspace", workspace, flag],
+                capture_output=True, text=True, timeout=timeout, env=env)
+        except subprocess.TimeoutExpired:
+            notes.append("run %s: tw runs view %s timed out after %ds"
+                         % (run_id, flag, timeout))
+            continue
+        except OSError as exc:
+            notes.append("run %s: tw runs view %s failed to start (%s)"
+                         % (run_id, flag, exc))
+            continue
+        if out.returncode != 0:
+            detail = (out.stderr or out.stdout or "").strip().splitlines()
+            detail = detail[-1] if detail else "exit %d" % out.returncode
+            notes.append("run %s: tw runs view %s failed (%s)"
+                         % (run_id, flag, detail))
+            continue
+        text = out.stdout.strip()
+        if not text:
+            notes.append("run %s: tw runs view %s returned nothing"
+                         % (run_id, flag))
+            continue
+        fields[key] = text
+    return fields, notes
+
+
+def file_based_command(run):
+    """The same reconstruction methods_text.py already performs and already
+    labels as such: not the command Platform actually launched - that would
+    point at an ephemeral URL and is not reproducible - so this is the file
+    fallback when Platform cannot be asked, not a substitute for asking it.
+    """
+    wf = run.get("workflow") or {}
+    pipeline = next((k for k in wf if "/" in k), None)
+    if not pipeline:
+        return None
+    rev = wf.get(pipeline) or "<revision>"
+    params_path = run.get("launch_params")
+    pf = (os.path.relpath(params_path, run["run_dir"]) if params_path
+          else "params.yaml")
+    return "nextflow run %s -r %s -params-file %s" % (pipeline, rev, pf)
+
+
+def collect(results, run_id=None, workspace=None, tw_bin=None):
     """Everything one run can prove about itself."""
     results = os.path.abspath(results)
     run = {"results": results, "run_dir": os.path.dirname(results),
@@ -246,6 +399,67 @@ def collect(results):
     if "launch_params" not in run:
         run["notes"].append("no hand-written params.yaml beside results/ - the "
                             "reasoning behind the parameter choices is not on disk")
+
+    # A run id given on the command line means command, params and config can
+    # come from Platform itself rather than being reconstructed (R4). No file
+    # beside the run is consulted for the id: nothing writes one, and a file
+    # recording a run's identity is the start of the parallel state invariant
+    # 2 rules out.
+
+    if run_id:
+        run["platform_run_id"] = run_id
+        tw = tw_bin or find_tw_bin()
+        ws = workspace or find_workspace()
+        fields, plat_notes = platform_fields(run_id, ws, tw)
+        sources = {}
+
+        if "command" in fields:
+            run["command"] = fields["command"]
+            sources["command"] = "platform"
+        else:
+            fb = file_based_command(run)
+            if fb is not None:
+                run["command"] = fb
+                sources["command"] = "files"
+                run["notes"].append(
+                    "run %s: command not available from Platform - falling "
+                    "back to a reconstruction from this run's own files, "
+                    "which is not necessarily reproducible" % run_id)
+            else:
+                run["notes"].append(
+                    "run %s: command not available from Platform, and this "
+                    "run's own files do not have enough to reconstruct one "
+                    "either" % run_id)
+
+        if "params_effective" in fields:
+            run["params_effective"] = fields["params_effective"]
+            sources["params_effective"] = "platform"
+        elif run.get("params_values") is not None:
+            run["params_effective"] = json.dumps(run["params_values"],
+                                                  sort_keys=True)
+            sources["params_effective"] = "files"
+            run["notes"].append(
+                "run %s: params not available from Platform - falling back "
+                "to this run's own recorded params file" % run_id)
+        else:
+            run["notes"].append(
+                "run %s: params not available from Platform, and this run "
+                "has no recorded params file to fall back to" % run_id)
+
+        if "config" in fields:
+            run["config"] = fields["config"]
+            sources["config"] = "platform"
+        else:
+            run["notes"].append(
+                "run %s: config not available from Platform, and this "
+                "script has no file-based way to reconstruct the resolved "
+                "Nextflow config - the gap is left in, not filled"
+                % run_id)
+
+        if sources:
+            run["sources"] = sources
+        run["notes"].extend(plat_notes)
+
     return run
 
 
@@ -267,6 +481,11 @@ def render(runs):
         dois = run.get("citation_dois") or []
         if dois:
             print("    %-24s %d" % ("dois recorded", len(dois)))
+        sources = run.get("sources") or {}
+        for key in ("command", "params_effective", "config"):
+            if run.get(key):
+                tag = " (%s)" % sources[key] if key in sources else ""
+                print("    %-24s present%s" % (key, tag))
         for note in run["notes"]:
             print("    ! " + note)
         print()
@@ -279,6 +498,16 @@ def main(argv=None):
     p.add_argument("results", nargs="+", help="one or more results directories")
     p.add_argument("--json", action="store_true", dest="as_json",
                    help="emit the same report machine-readably")
+    p.add_argument("--run-id", dest="run_id", default=None,
+                   help="the Seqera Platform run id for these results; "
+                        "command/params/config are then read from `tw runs "
+                        "view` instead of being reconstructed from files. "
+                        "Applies to every results directory given, so pass "
+                        "one at a time when it names only one run. With no "
+                        "run id, nothing changes from today's behaviour")
+    p.add_argument("--workspace", dest="workspace", default=None,
+                   help="workspace id for --run-id (default: the settings "
+                        "file's workspace_id)")
     args = p.parse_args(argv)
 
     for d in args.results:
@@ -286,7 +515,8 @@ def main(argv=None):
             print("not a directory: %s" % d, file=sys.stderr)
             return 2
 
-    runs = [collect(d) for d in args.results]
+    runs = [collect(d, run_id=args.run_id, workspace=args.workspace)
+            for d in args.results]
     if args.as_json:
         json.dump({"runs": runs}, sys.stdout, indent=1, sort_keys=True)
         print()

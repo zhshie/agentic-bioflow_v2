@@ -170,3 +170,31 @@ explicit confirmation. Show a launch command in full and wait for confirmation
 before running it. Credentials and personal details live only in the
 deployment's settings area, mode 600 — never printed, never in git, never in a
 params file, and never taken from another member's copy.
+
+## On a host without these hooks
+
+This file reads the same for every runtime that reaches it — a person in
+Claude Code, an unattended agent, or a host with no plugin mechanism at all.
+What changes is not this text but whether `hooks/` fires alongside it
+(`docs/LAB_AGENTS.md`, section 3, tiers H1/H2/H3):
+
+- **H1** — Claude Code with hooks loaded, a person present. Everything above
+  applies as written, and the safety net enforces it structurally.
+- **H2** — Claude Code headless or the Agent SDK, this plugin's hooks loaded,
+  no human turn in the transcript to point to. The same procedures apply, but
+  the launch and destructive-delete gates (`hooks/confirm_walkthrough.sh`,
+  `hooks/confirm_cleanup.sh`) deny by default rather than trust that someone
+  is watching — an unattended run has nothing to offer them as evidence.
+- **H3** — a runtime that reaches these files with no hook mechanism to run
+  them at all (Claude Tag, Managed Agents, OpenClaw, Hermes, or similar). It
+  may read this skill and `docs/` as documentation, and run read-only
+  Platform queries — look up a run, read a report. It must not touch the
+  site, submit a run, or delete anything. Nothing in this file is what stops
+  it: `docs/LAB_AGENTS.md` section 3 enforces H3 structurally, by never
+  handing that runtime a credential that reaches the site in the first
+  place, precisely because prose is not a gate on a host with no hooks to
+  turn it into one.
+
+`${CLAUDE_PLUGIN_ROOT}` throughout this file means the installed plugin root;
+on a host with no plugin mechanism it means the repository root, read
+directly — otherwise every path above resolves nowhere.

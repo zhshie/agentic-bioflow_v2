@@ -76,10 +76,12 @@ be. A settings file that needs a real parser has grown into something else.
 | Key | What it is | Without it |
 |---|---|---|
 | `reach` | How the site is reached: `none`, `local` or `ssh`. See SITE_ADAPTER contract 6. `none` is recognised, not supported in this version — `setup` reports it and stops rather than onboarding a cloud site | Defaults to `local`, which is right only when this deployment runs on the site |
+| `language` | Which language `scripts/intro.sh` writes in: `zh-TW` or `en`. Read as `scripts/settings.sh language`, not by any script parsing the settings file itself — `scripts/intro.sh` asks for exactly this one key and falls back silently the same way an unset key always does | Defaults to `zh-TW`. An unrecognised value falls back to `zh-TW` the same way — never a hard failure over a typo in this key |
 | `site_host` | `user@host` to log in to. **`reach: ssh` only** | Nothing can reach the site; preflight fails naming this key |
 | `site_user` | The site account the work runs under — the user half of `site_host`, said plainly, so a summary can name it. `scripts/preflight.sh` FAILs when the two disagree, because one value written twice drifts silently | Nothing breaks; the summary cannot say whose account this is |
 | `seqera_user` | This member's Seqera username — the Username column of `tw runs list`. Where a lab reaches the site through **one shared account**, this is the only thing that tells two members apart; `$USER` is the same for everybody | A run cannot be attributed to the person who launched it |
 | `ssh_control_path` | Where the multiplexed master's socket lives. **`reach: ssh` only** | Defaults to `~/.ssh/cm-%r-%h-%p`. It must not contain `:` — illegal in a Windows filename |
+| `ssh_max_parallel` | How many concurrent sessions `scripts/on_site.sh` opens on one shared master at once, via a lock directory (`mkdir`, not `flock` — not portable to a Mac). **`reach: ssh` only**; this site caps concurrent sessions per connection too (PITFALLS 16e), and several callers sharing one master reach that cap faster than one ever did — see `docs/LAB_AGENTS.md` §6 | Defaults to 4. A caller that cannot get a slot waits until `ON_SITE_TIMEOUT` |
 | `storage_root` | Where runs live. Exported as `LAB_RUNS_DIR`; every other path derives from it | Nothing works; scripts refuse to guess |
 | `workspace_id` | The Seqera workspace. **The one value a lab shares** — everything else below is per person | Cannot reach Platform |
 | `compute_env` | This member's compute environment name | Cannot launch |
@@ -91,6 +93,25 @@ be. A settings file that needs a real parser has grown into something else.
 | `singularity_cache` | Where container images are kept | Falls back to one under the run area, and images are pulled again |
 | `relay_port` | Pins the outbound channel's port | One is chosen and remembered; pin it only if you must |
 | `email` | Where run notifications go | No notification once the conversation ends |
+| `record_adapter` | Which record adapter is in use — `none`, or a future adapter's name. `docs/RECORD_ADAPTER.md` is the contract; only `none` is implemented in this version | Defaults to `none` — every deployment is valid with nothing set |
+| `record_ref` | The convention this deployment uses for a reference passed to the record adapter's `resolve`/`attach` — a sample ID, an experiment ID, opaque to the command layer and meaningful only to whichever adapter is configured | Nothing breaks; there is simply nothing to resolve against, which is `none`'s normal case |
+
+## What a lab agent's persona layer may set
+
+`language`, `ssh_max_parallel` and `record_adapter`/`record_ref` are settings
+like every other row above — read the same way, by the same script, subject
+to the same "ask the user, never guess, never copy from another member" rule.
+They are listed separately here only because they are the ones a lab's own
+persona layer is most likely to reach for.
+
+**Persona, tone and lab-specific norms come only from the deployer's own
+CLAUDE.md — never from this repo.** `skills/operational/SKILL.md` says this
+outright in its own opening line: it defines *how the work is done*, not who
+is doing it or in what voice. This repo has no mechanism for a lab identity
+beyond the settings keys in the table above; anything else a lab wants to
+customise — the language notifications are written in, greeting text, which
+languages are supported at all beyond `zh-TW`/`en` — is a CLAUDE.md concern,
+layered on top of this plugin, never a fork of it.
 
 `scripts/install_deps.sh` fills in `agent_java`, `agent_jar` and `tw_bin`;
 `scripts/egress_ctl.sh` remembers the port it chose. The rest come from the

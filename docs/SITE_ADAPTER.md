@@ -132,9 +132,15 @@ Two consequences the command layer has to respect:
 - **Claude never opens the master.** `on_site.sh` prints the exact line for the
   user to paste and stops. `preflight.sh` asks first, before any check that
   would otherwise hang on an invisible prompt.
-- **One master lasts a work session, and dies with the terminal.** It is a
-  process on the user's machine, so closing the window (or WSL shutting the VM
-  down) ends it. `ControlPersist` governs idle time, not survival.
+- **Whether closing the terminal ends the master is unmeasured** — measurement
+  M3 is pending (`docs/LAB_AGENTS.md`, §10). What is known rather than
+  guessed: `ControlPersist` governs idle time, not survival; `wsl --shutdown`
+  and the machine going to sleep are both known to end it. The paste-this
+  command also carries `-o ServerAliveInterval=60`, a client-side keepalive
+  sent every 60 s so a silently-dropped network path does not look identical
+  to an idle one — this is ordinary ssh behaviour, not something measured at
+  this site, and it is not a claim about whether the master survives a closed
+  terminal.
 
 The site account's `~/.bashrc` also has to be fixed before any of this works —
 see PITFALLS 16c, which is where `ssh host 'tw ...'` reports a missing command
