@@ -18,6 +18,16 @@
 # and a host argument, so it is not a file this can run. Nothing here touches
 # the network, the cluster, or a real settings file - the tests that exercise
 # ssh use ON_SITE_DRY_RUN.
+#
+# Not on native Windows Git Bash (issue #1). Run there, 23 of 40 files failed,
+# every one a known MSYS gap - no multiplexed ssh (PITFALLS 16b), no USER,
+# hostname.exe without -s - and the result read like a broken release. The
+# plugin itself already refuses that shell and sends the user to WSL
+# (session_start.sh, settings.sh, on_site.sh), so the runner says the same
+# thing once and stops with exit 3, distinct from a real failure's 1. The
+# suite itself needs only a Linux/macOS bash, not Claude Code, so the message
+# offers the login node (Remote-SSH) as well as WSL.
+# --allow-msys runs anyway, and the verdict then names the gap.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$ROOT/scripts/utils/portable.sh" || { echo "cannot read scripts/utils/portable.sh"; exit 1; }
@@ -34,21 +44,49 @@ usage: run_all.sh [--only <substring>] [--timeout <secs>] [--verbose] [--list]
   --timeout <secs>     per-test limit (default 300; 0 disables)
   --verbose            print each test's own output as it runs
   --list               list the test files that would run, then stop
+  --allow-msys         run on native Windows Git Bash/MSYS anyway (failures
+                       there are the known gap in PITFALLS 16b, not a regression)
 U
     exit 2
 }
 
 LIST=0
+ALLOW_MSYS=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --only)    ONLY="${2-}"; [ -n "$ONLY" ] || usage; shift 2 ;;
         --timeout) PER_TEST_TIMEOUT="${2-}"; case "$PER_TEST_TIMEOUT" in ''|*[!0-9]*) usage ;; esac; shift 2 ;;
         --verbose) VERBOSE=1; shift ;;
         --list)    LIST=1; shift ;;
+        --allow-msys) ALLOW_MSYS=1; shift ;;
         -h|--help) usage ;;
         *)         echo "unknown option: $1" >&2; usage ;;
     esac
 done
+
+ON_MSYS=0
+[ "$(plat_kind)" = msys ] && ON_MSYS=1
+if [ "$ON_MSYS" = 1 ] && [ "$ALLOW_MSYS" = 0 ] && [ "$LIST" = 0 ]; then
+    cat >&2 <<'W'
+This shell is native Windows Git Bash (MSYS). The test suite is not run here.
+
+Most of it would fail, and none of those failures would mean the release is
+broken: MSYS cannot hold the multiplexed ssh connection (docs/PITFALLS.md 16b),
+has no USER variable, and its hostname has no -s.
+
+The suite only needs a Linux or macOS bash (plus jq and python3) - not Claude
+Code. On Windows, either of these works:
+
+  - the cluster's login node, e.g. over VS Code Remote-SSH:
+      bash <plugin root>/tests/run_all.sh
+  - a WSL shell:
+      wsl
+      bash <plugin root>/tests/run_all.sh
+
+To run here anyway and see the failures: run_all.sh --allow-msys
+W
+    exit 3
+fi
 
 FILES=""
 for f in "$ROOT"/tests/*.sh; do
@@ -114,5 +152,10 @@ summary="$passed/$total passed"
 [ "$failed"   -gt 0 ] && summary="$summary, $failed failed"
 [ "$timedout" -gt 0 ] && summary="$summary, $timedout timed out"
 echo "$summary"
+# Pass or fail, a count from this shell is not the release verdict.
+if [ "$ON_MSYS" = 1 ]; then
+    echo "note: run on Git Bash/MSYS with --allow-msys - failures here are the known"
+    echo "      MSYS gap (docs/PITFALLS.md 16b), not a regression. Rerun on Linux/WSL for a verdict."
+fi
 [ "$failed" = 0 ] && [ "$timedout" = 0 ] || exit 1
 echo "all green"

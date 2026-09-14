@@ -10,7 +10,7 @@ place several classes of defect can show up at all.
 bash tests/run_all.sh
 ```
 
-40 files, about 80 seconds, one verdict and a non-zero exit if anything fails.
+47 files, about 90 seconds, one verdict and a non-zero exit if anything fails.
 Failing output is printed at the end; full logs land in a temp directory the
 banner names. `--only <substring>` narrows it, `--verbose` streams each file's
 own output, `--timeout <secs>` changes the per-test limit (default 300, only
@@ -19,6 +19,14 @@ there to catch a hang).
 Nothing in it touches the network, the cluster, or a real settings file — the
 tests that exercise ssh run under `ON_SITE_DRY_RUN`. So it is safe to run any
 time, on any machine, including a laptop with no cluster access.
+
+The exception is native Windows Git Bash. There the runner stops with exit 3
+and sends you to WSL, because most files would fail for the known MSYS reasons
+(PITFALLS 16b) rather than because of anything in the release. The suite needs
+only a Linux or macOS bash with `jq` and `python3`, not Claude Code: on Windows,
+run it on the cluster's login node (for example over VS Code Remote-SSH) or in
+a WSL shell. `--allow-msys` runs
+it anyway, and the verdict line then says those failures are that gap.
 
 Run it **twice** per release:
 
