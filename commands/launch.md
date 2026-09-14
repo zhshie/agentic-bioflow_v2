@@ -124,6 +124,14 @@ gate can see.
    to notice: the output looked right. Step 7 asks for the URL and the stage
    list back, so an unread directory shows up there.
 
+   **This step's output must be the final text of this turn.** Show the
+   diagram URL and the stage list, then end the turn there and wait for the
+   user's reply before doing anything else — no tool call in the same turn.
+   `hooks/confirm_walkthrough.sh`'s gate (G1) reads only the text an assistant
+   turn actually sent; text that is followed by a tool call in that same turn
+   may never reach the transcript it reads, and a diagram shown that way has
+   been denied as if nobody had shown it (`docs/PITFALLS.md` 33).
+
 3. **Register it, but only if it is not already there at this revision.**
    `tw launch <short-name>` resolves registered pipelines only, so a pipeline
    nobody here has run needs:
@@ -306,6 +314,57 @@ gate can see.
 7. **Show the complete command** — every parameter on its own line — and wait
    for an explicit 確認執行. Include `--disable-optimization`.
 
+   **Provenance is on by default.** Before assembling the command, write
+   `<run>/provenance.config` into the run directory step 0 already created:
+
+   ```
+   plugins { id 'nf-prov@1.7.0' }
+   prov {
+     enabled = true
+     formats {
+       wrroc {
+         file = '<absolute outdir>/pipeline_info/ro-crate-metadata.json'
+         overwrite = true
+       }
+     }
+   }
+   ```
+
+   `<absolute outdir>` is this run's own `--outdir`, written out in full, not
+   relative — the plugin needs a real path to write to. Pass the file with
+   `--config <run>/provenance.config` in the command you show below.
+
+   State these plainly before asking the user to decide anything, all
+   measured rather than assumed (`docs/PITFALLS.md` 32):
+
+   - **Needs Nextflow 25.10 or later.** Check this run's Nextflow version
+     matches Platform's default before relying on this; if this run pins an
+     older `NXF_VER`, say so and drop provenance for this run rather than
+     launching a config the plugin cannot satisfy.
+   - **It records no checksums, and no file sizes.** Nothing here duplicates
+     `scripts/input_checksums.sh` — the crate is evidence of what ran, not
+     proof of file integrity.
+   - **`agent` and `license` come out null unless configured, and that is the
+     default this command uses.** Do not put the user's name or email into
+     the config, here or anywhere else — the crate can leave the lab, and
+     whatever is in it travels with every copy. Naming an `agent`, an
+     `organization`, or a `license` in `prov.formats.wrroc` is the user's own
+     choice to make, never a default set on their behalf.
+   - **The user may decline provenance for this run.** Ask. A "no" means no
+     `provenance.config` and no `--config` for it — nothing else about the
+     launch changes.
+
+   If the plugin fails to resolve when the run starts, that has no branch
+   here — follow `skills/operational/SKILL.md`'s off-design procedure,
+   category `egress`, command `launch`, step naming this one.
+
+   **If another `--config` is already going into this launch, do not pass
+   two.** Checked on this login node (`tw launch --help`, tw 0.40.0):
+   `--config` takes one file — unlike `--profile` and `--labels`, its help
+   text carries no `[,<config>...]` repeat form. What a second `--config` does
+   was not tested, so do not find out on a real run. Merge the provenance block into
+   whichever file is already going in, rather than passing both.
+
    **Carry the evidence from steps 2, 5 and 6 into this message**, one line
    each, above the command:
 
@@ -319,6 +378,10 @@ gate can see.
    one message the user must answer, so a line that is absent is absent in
    front of them. Do not reconstruct a line from memory to fill the gap — go
    back and do the step.
+
+   Add a fourth line for the same reason: whether provenance is on for this
+   run, and if not, that the user declined it — a silent default is exactly
+   what the facts above exist to prevent.
 
 8. **Launch**, then report the run ID and the Platform URL.
 

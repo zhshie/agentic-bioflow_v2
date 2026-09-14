@@ -326,6 +326,60 @@ def file_based_command(run):
     return "nextflow run %s -r %s -params-file %s" % (pipeline, rev, pf)
 
 
+def wrroc_fields(results):
+    """The Workflow Run RO-Crate nf-prov writes, if this run had it enabled.
+
+    Read only two things from it - the crate's own path, for a reader to open,
+    and what profiles it says it conforms to - never re-derived facts nf-prov
+    already reports better. It carries no checksums or tool versions of its
+    own (PITFALLS 32), so this adds nothing that would duplicate the fields
+    already gathered above from the versions file.
+
+    Returns (path, conforms_to, error). `path` is None when no crate exists at
+    all - the ordinary case for a run launched without provenance. `error` is
+    set, and conforms_to left None, when the file exists but is not valid
+    JSON - invariant 9's "a gap is written into the output", never a crash.
+    """
+    path = os.path.join(results, "pipeline_info", "ro-crate-metadata.json")
+    if not os.path.isfile(path):
+        return None, None, None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError) as exc:
+        return path, None, "ro-crate-metadata.json exists but is not valid JSON: %s" % exc
+
+    graph = data.get("@graph") if isinstance(data, dict) else None
+    if not isinstance(graph, list):
+        graph = []
+    by_id = {e["@id"]: e for e in graph if isinstance(e, dict) and "@id" in e}
+
+    # The metadata descriptor names the root dataset via `about`; fall back to
+    # the RO-Crate convention ("./") when the descriptor itself is missing or
+    # malformed rather than giving up on the whole file for one odd entity.
+    root_id = "./"
+    descriptor = by_id.get("ro-crate-metadata.json")
+    if isinstance(descriptor, dict):
+        about = descriptor.get("about")
+        if isinstance(about, dict) and about.get("@id"):
+            root_id = about["@id"]
+
+    root = by_id.get(root_id)
+    raw = root.get("conformsTo") if isinstance(root, dict) else None
+    if isinstance(raw, dict):
+        raw = [raw]
+    elif isinstance(raw, str):
+        raw = [raw]
+    conforms = []
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict) and item.get("@id"):
+                conforms.append(item["@id"])
+            elif isinstance(item, str):
+                conforms.append(item)
+    return path, conforms, None
+
+
 def collect(results, run_id=None, workspace=None, tw_bin=None):
     """Everything one run can prove about itself."""
     results = os.path.abspath(results)
@@ -390,6 +444,14 @@ def collect(results, run_id=None, workspace=None, tw_bin=None):
         run["quality_report"] = report
     if citations:
         run["citation_dois"] = dois_from_citations(citations)
+
+    crate_path, conforms, crate_err = wrroc_fields(results)
+    if crate_path:
+        run["wrroc_crate"] = crate_path
+        if crate_err:
+            run["notes"].append(crate_err)
+        else:
+            run["wrroc_conforms_to"] = conforms
 
     # The rationale the person wrote when they launched it. This is the only
     # place on the whole tree that says WHY a parameter has the value it has,
@@ -479,12 +541,16 @@ def render(runs):
             print("    %-24s %d (%d citable)" % ("tools", len(tools), len(citable)))
             print("        " + ", ".join("%s %s" % (t, tools[t]) for t in citable))
         for key in ("execution_report", "execution_trace", "params",
-                    "quality_report", "launch_params"):
+                    "quality_report", "launch_params", "wrroc_crate"):
             if run.get(key):
                 print("    %-24s %s" % (key, os.path.relpath(run[key], run["run_dir"])))
         dois = run.get("citation_dois") or []
         if dois:
             print("    %-24s %d" % ("dois recorded", len(dois)))
+        conforms = run.get("wrroc_conforms_to")
+        if conforms is not None:
+            print("    %-24s %s" % ("wrroc_conforms_to",
+                                     ", ".join(conforms) if conforms else "(none listed)"))
         sources = run.get("sources") or {}
         for key in ("command", "params_effective", "config"):
             if run.get(key):

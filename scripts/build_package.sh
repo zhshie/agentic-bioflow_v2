@@ -214,6 +214,17 @@ PY
 } > "$OUT/README.md"
 echo "wrote     submission/README.md"
 
+# --- the package as an RO-Crate itself ---------------------------------------
+# scripts/package_crate.py describes submission/ as an RO-Crate 1.1 in its own
+# right (proposal R5), so an ELN or archive that already imports RO-Crate/.eln
+# can bring the whole package in. It must run last: it walks submission/ for
+# every file the steps above actually wrote, and appends to README.md rather
+# than owning the file. Never a second implementation of the run crate itself -
+# it only copies nf-prov's own runs/*/pipeline_info/ro-crate-metadata.json
+# where one exists (PITFALLS 32) and references it; it does not invent one for
+# a run that has none.
+"$HERE/package_crate.py" "$PROJECT" "$OUT" "${RUNS[@]}" || exit 1
+
 # --- render, or say why not --------------------------------------------------
 if [ "$RENDER" = 0 ]; then
     echo

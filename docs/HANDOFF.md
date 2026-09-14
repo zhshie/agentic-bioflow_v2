@@ -1,6 +1,6 @@
 # Where this stands
 
-**Update 2026-09-14, plugin 2.10.0.** The sections below describe 2.0.7 and
+**Update 2026-09-14, plugin 2.10.1.** The sections below describe 2.0.7 and
 are kept for their history; this block is what is current.
 
 - Releases since: 2.6 (Mac/Windows+WSL), 2.7 (guidance: overview, per-command
@@ -11,9 +11,10 @@ are kept for their history; this block is what is current.
   provenance from Platform, input checksums), 2.10 (every script names its
   alternative; launch lists parameters through `nf-core pipelines
   create-params-file`, PITFALLS 29).
-- Open, and needing a person: **M1** a test run to see nf-prov's Workflow Run
-  RO-Crate (gates enabling nf-prov, `finish` writing `ro-crate-metadata.json`,
-  and whether input checksums duplicate it); **M3** how long an ssh master
+- Done 2026-09-14: **M1** - nf-prov's Workflow Run RO-Crate works on this
+  site and records no checksums (PITFALLS 32); launch now adds it by default
+  and `finish` packages are RO-Crates that nest each run's crate (2.10.1).
+- Open, and needing a person: **M3** how long an ssh master
   survives (someone types the OTP); **M5** whether a VIEW-role token really
   cannot launch; **M6** whether NCHC allows unattended access on a shared
   account and long-running processes on the login node. Details:

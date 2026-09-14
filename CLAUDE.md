@@ -88,7 +88,7 @@ real failures, each with the fix.
 ## Running tests
 
 ```bash
-bash tests/run_all.sh                    # all 51, ~100s, one verdict + exit code
+bash tests/run_all.sh                    # all 53, ~100s, one verdict + exit code
 bash tests/run_all.sh --only confirm_    # just the safety-net gates
 bash tests/confirm_launch_test.sh        # one file, full output
 ```

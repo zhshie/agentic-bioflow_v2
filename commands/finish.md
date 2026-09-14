@@ -67,6 +67,14 @@ These are not style. Each one is a way this can produce something false.
    manuscript, the figures, and the code that made them. It is idempotent —
    run it again after any change.
 
+   The package it writes is itself an RO-Crate — `submission/ro-crate-metadata.json`
+   describes everything else in the folder, so any tool that already imports
+   RO-Crate or `.eln` packages can bring the whole thing in without a custom
+   reader. Two things it does not decide for the user: no license is declared
+   unless they add one, and where a run recorded its own provenance crate,
+   that nested crate is carried in unchanged and may contain this cluster's
+   own file paths — worth a look before the package leaves the lab.
+
 3. **Read what it produced, and report every gap it recorded.** Search the
    output for the citation markers and for the comments about figures that do
    not line up with the plan. Put that list in front of the user as a list of

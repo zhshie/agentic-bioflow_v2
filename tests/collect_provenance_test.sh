@@ -210,5 +210,77 @@ has "$out" "nextflow run nf-core/ampliseq -r 2.18.0 -params-file remote.yaml" \
   && ok "the command field carries tw's own text verbatim" \
   || no "the command field carries tw's own text verbatim" "<<$out>>"
 
+# --- the wrroc crate nf-prov writes, when provenance was on for this run ----
+# (commands/launch.md, R1/PITFALLS 32) - present, absent and invalid JSON.
+# A minimal but real shape: a metadata descriptor pointing at the root
+# dataset via `about`, and the root dataset's own `conformsTo` naming the
+# profiles PITFALLS 32 actually measured.
+mkrun "$TMP/crate" "software_versions.yml" "multiqc/multiqc_report.html"
+cat > "$TMP/crate/results/pipeline_info/ro-crate-metadata.json" <<'JSON'
+{
+  "@context": "https://w3id.org/ro/crate/1.1/context",
+  "@graph": [
+    {
+      "@id": "ro-crate-metadata.json",
+      "@type": "CreativeWork",
+      "conformsTo": {"@id": "https://w3id.org/ro/crate/1.1"},
+      "about": {"@id": "./"}
+    },
+    {
+      "@id": "./",
+      "@type": "Dataset",
+      "conformsTo": [
+        {"@id": "https://w3id.org/ro/wfrun/process/0.1"},
+        {"@id": "https://w3id.org/ro/wfrun/workflow/0.1"},
+        {"@id": "https://w3id.org/ro/wfrun/provenance/0.1"},
+        {"@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"}
+      ]
+    }
+  ]
+}
+JSON
+out=$("$S" "$TMP/crate/results" 2>&1)
+if has "$out" "pipeline_info/ro-crate-metadata.json" \
+   && has "$out" "https://w3id.org/ro/wfrun/workflow/0.1" \
+   && has "$out" "https://w3id.org/workflowhub/workflow-ro-crate/1.0"; then
+  ok "a wrroc crate is reported with its conformsTo profiles"
+else
+  no "a wrroc crate is reported with its conformsTo profiles" "<<$out>>"
+fi
+
+outj=$("$S" --json "$TMP/crate/results" 2>&1)
+n=$(PYVAL 'import json,sys; print(len(json.load(sys.stdin)["runs"][0]["wrroc_conforms_to"]))' "$outj")
+[ "$n" = 4 ] \
+  && ok "wrroc_conforms_to in --json carries all four profile ids" \
+  || no "wrroc_conforms_to in --json carries all four profile ids" "got '$n'"
+
+# No crate at all - the ordinary case for a run launched without provenance.
+# Neither field should appear; nothing here invents a crate that was never
+# written.
+outj=$("$S" --json "$TMP/a/results" 2>&1)
+has_crate=$(PYVAL 'import json,sys; print("wrroc_crate" in json.load(sys.stdin)["runs"][0])' "$outj")
+has_conf=$(PYVAL 'import json,sys; print("wrroc_conforms_to" in json.load(sys.stdin)["runs"][0])' "$outj")
+if [ "$has_crate" = False ] && [ "$has_conf" = False ]; then
+  ok "a run with no crate reports neither wrroc field"
+else
+  no "a run with no crate reports neither wrroc field" "<<$outj>>"
+fi
+
+# A crate that exists but is not valid JSON - report the gap, never crash
+# (invariant 9: "a gap is written into the output").
+mkrun "$TMP/badcrate" "software_versions.yml" "multiqc/multiqc_report.html"
+printf '{ this is not json' > "$TMP/badcrate/results/pipeline_info/ro-crate-metadata.json"
+out=$("$S" "$TMP/badcrate/results" 2>&1); rc=$?
+if [ "$rc" = 0 ] && has "$out" "not valid JSON"; then
+  ok "an unreadable crate is reported as a gap, not a crash"
+else
+  no "an unreadable crate is reported as a gap, not a crash" "rc=$rc <<$out>>"
+fi
+outj=$("$S" --json "$TMP/badcrate/results" 2>&1)
+has_conf=$(PYVAL 'import json,sys; print("wrroc_conforms_to" in json.load(sys.stdin)["runs"][0])' "$outj")
+[ "$has_conf" = False ] \
+  && ok "an unreadable crate carries no fabricated wrroc_conforms_to" \
+  || no "an unreadable crate carries no fabricated wrroc_conforms_to" "<<$outj>>"
+
 echo
 [ "$fails" = 0 ] && echo "OK: collect_provenance.py" || { echo "$fails failed"; exit 1; }

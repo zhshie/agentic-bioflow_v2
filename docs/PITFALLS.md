@@ -1455,3 +1455,51 @@ What this does not show: whether a PreToolUse `deny` or `ask` actually refuses
 under `-p` (that needs a real tool call), or anything about the Agent SDK. An
 unattended host is therefore not yet claimed to be stopped by `ask`.
 
+**32. nf-prov's Workflow Run RO-Crate works here, and records no checksums.**
+Measured 2026-09-14: nf-core/demo 1.2.0 `-profile test`, run `2uk3A2Ic7wwf8q`,
+launched through Platform on this site's compute environment, SUCCEEDED in
+about 2 minutes.
+
+The only change was a file passed with `tw launch --config`:
+`plugins { id 'nf-prov@1.7.0' }` and `prov.formats.wrroc.file` pointing into
+`<outdir>/pipeline_info/`. Nothing was staged by hand: the plugin came from
+the registry through the egress relay like any other plugin, and the config
+reached the head job through the Tower Agent. nf-prov 1.7.0 needs Nextflow
+25.10 or later (its README); Platform ran 25.10.4.
+
+What came out, read from the file rather than the README:
+- `ro-crate-metadata.json`, valid JSON, 98 KB, conforming to the Process,
+  Workflow and Provenance run profiles plus Workflow RO-Crate 1.0; one
+  top-level CreateAction with start and end time, 25 CreateActions in all,
+  23 parameters with values.
+- nf-prov copies `main.nf`, `nextflow.config`, `nextflow_schema.json` and
+  `README.md` into the same directory as parts of the crate.
+- Inputs appear under their original identifiers - here the test data's
+  https URLs; a local input would be a `file://` absolute path. Absolute site
+  paths (`file:///work/...`) appear in the crate, which matters before it is
+  attached anywhere outside the lab.
+- **No checksum and no size on any file**: no `sha256`, `sha1`, `md5` or
+  `contentSize` anywhere in the output, which matches the 1.7.0 source
+  (`WrrocRenderer.groovy` has no digest code). `scripts/input_checksums.sh`
+  is therefore not a duplicate.
+- `license` and every `agent` are null. They cannot be inferred and have to
+  come from `prov.formats.wrroc.agent` / `organization` / `license` in config.
+
+**33. A diagram shown mid-turn never reached the transcript, so the walkthrough
+gate refused a run the user had already seen.** Measured 2026-09-14 in a
+background Claude Code session.
+
+The diagram URL and stage list were written as text, followed in the same
+turn by the `tw launch` call. G1 in `hooks/confirm_walkthrough.sh` denied it,
+and denied it again after the user replied "看過了，送出". The transcript
+explained why: the text blocks that preceded a tool call in the same turn were
+not in the `.jsonl` at all; only each turn's final text was. G1 reads text
+blocks from the transcript, so it saw no diagram. Replaying the hook against
+that transcript reproduced the denial exactly.
+
+The fix that worked was the flow `commands/launch.md` already describes: end
+the turn with the diagram as its last text, let the user answer, launch in
+the next turn. Whether ordinary interactive sessions persist mid-turn text
+is not established; until it is, show evidence the gates read as the final
+text of a turn.
+

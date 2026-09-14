@@ -30,6 +30,20 @@ YML
 echo '{}' > "$P/runs/demo_20260101/results/pipeline_info/params_2026-01-01_00-00-00.json"
 echo "# because the reads are long" > "$P/runs/demo_20260101/params.yaml"
 
+# nf-prov's own crate (PITFALLS 32 shape, trimmed) - present for this run so
+# the RO-Crate packaging step (scripts/package_crate.py) has something to
+# nest and copy verbatim.
+cat > "$P/runs/demo_20260101/results/pipeline_info/ro-crate-metadata.json" <<'JSON'
+{"@context":"https://w3id.org/ro/crate/1.1/context","@graph":[
+{"@id":"ro-crate-metadata.json","@type":"CreativeWork","about":{"@id":"./"},
+ "conformsTo":[{"@id":"https://w3id.org/ro/crate/1.1"}]},
+{"@id":"./","@type":"Dataset","datePublished":"2026-01-01",
+ "conformsTo":[{"@id":"https://w3id.org/ro/wfrun/process/0.1"}],
+ "hasPart":[{"@id":"main.nf"}]},
+{"@id":"main.nf","@type":"File"}
+]}
+JSON
+
 # A plan with two entries; only one of them has a figure. And one stray figure
 # that no entry claims.
 cat > "$P/analysis/analysis.md" <<'MD'
@@ -61,6 +75,32 @@ done
   || no "the code that made them travels too" "missing"
 [ -s "$P/submission/scripts/analysis.md" ] && ok "the plan travels with the package" \
   || no "the plan travels with the package" "missing"
+
+# The package describes itself as an RO-Crate too (proposal R5,
+# scripts/package_crate.py) - a thin integration check; package_crate.py's
+# own suite (tests/package_crate_test.sh) covers its behaviour in depth.
+CRATE="$P/submission/ro-crate-metadata.json"
+python3 -c "
+import json
+d = json.load(open('$CRATE'))
+assert d['@context'] == 'https://w3id.org/ro/crate/1.1/context'
+graph = {e['@id']: e for e in d['@graph']}
+assert graph['./']['name']
+assert {'@id': 'runs/demo_20260101/'} in graph['./']['hasPart']
+assert 'license' not in graph['./']
+" >/tmp/build_pkg_crate_err.$$ 2>&1 \
+  && ok "the package itself is a valid RO-Crate that nests the run's crate" \
+  || no "the package itself is a valid RO-Crate that nests the run's crate" "$(cat /tmp/build_pkg_crate_err.$$)"
+rm -f /tmp/build_pkg_crate_err.$$
+
+cmp -s "$P/runs/demo_20260101/results/pipeline_info/ro-crate-metadata.json" \
+       "$P/submission/runs/demo_20260101/ro-crate-metadata.json" \
+  && ok "nf-prov's run crate is carried into the package byte-identical" \
+  || no "nf-prov's run crate is carried into the package byte-identical" "missing or differs"
+
+grep -qi "no license is declared" "$P/submission/README.md" \
+  && ok "README states the license gap" \
+  || no "README states the license gap" "not found"
 
 grep -qF "Does treatment change richness?" "$Q" \
   && ok "a plan entry's question becomes the caption" \
