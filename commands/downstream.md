@@ -179,6 +179,19 @@ and the parts that do transfer are rules, not machinery:
    this runs under. Read what it says instead of retrying — the two causes take
    different actions, and neither is fixed by running the command again.
 
+   **This path is Positron-only.** RStudio, VS Code and Jupyter are not
+   wired up (`docs/CONDITIONS.md` marks this cell 🚧) — `--check` on any of
+   them still reports "no Positron is running on this machine", which is
+   true but not the person's actual problem. Ask which IDE the user is in
+   before running `--check` at all; if it is not Positron, do not chase the
+   Positron message. Say plainly that live-console delivery is not built for
+   their editor yet, follow `skills/operational/SKILL.md`'s off-design
+   procedure (T1), category `host`, command `downstream`, and fall back to
+   the batch run this step's opening line already allows — `Rscript`/`python`
+   against the file, with the figure written to `analysis/figures/` for them
+   to open by hand. The script and its output still exist either way; only
+   the live Plots-pane hookup is missing.
+
    **A console has to exist first, and this is a gate, not a warning.** The
    tool attaches to a session and will not start one: a runtime appearing
    unasked in someone's IDE, holding a workspace they did not pick, is a worse

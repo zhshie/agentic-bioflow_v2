@@ -15,9 +15,15 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
 
-REACH="$(setting reach local)"
+# Whether TERM_PROGRAM/VSCODE_GIT_ASKPASS_MAIN corroborate VS Code - the one
+# check both claude_surface() (below, human-readable) and claude_interface_kind()
+# (the raw cli|vscode|desktop|web|unknown category scripts/detect_conditions.sh
+# reads via `status.sh --interface`) rest on. Factored out once so the two
+# read this machine the same way and cannot drift apart.
+_in_vscode() {
+    [ "${TERM_PROGRAM:-}" = vscode ] || [ -n "${VSCODE_GIT_ASKPASS_MAIN:-}" ]
+}
 
-echo "== Your environment =="
 # CLAUDE_CODE_ENTRYPOINT alone answers the wrong question. Measured on this
 # machine: the same VS Code session reported `claude-vscode` once and `cli`
 # later, because the value describes how this Bash subprocess was started, not
@@ -27,13 +33,44 @@ claude_surface() {
     case "${CLAUDE_CODE_ENTRYPOINT:-}" in
         claude-vscode) printf 'vscode\n'; return 0 ;;
     esac
-    if [ "${TERM_PROGRAM:-}" = vscode ] || [ -n "${VSCODE_GIT_ASKPASS_MAIN:-}" ]; then
+    if _in_vscode; then
         printf '%s (inside VS Code)\n' "${CLAUDE_CODE_ENTRYPOINT:-cli}"
         return 0
     fi
     printf '%s\n' "${CLAUDE_CODE_ENTRYPOINT:-unknown}"
 }
 
+# The same detection, collapsed to the fixed vocabulary
+# scripts/detect_conditions.sh prints: cli|vscode|desktop|web|unknown. Only
+# `claude-vscode` (corroborated or not) and `cli` are MEASURED; `claude-desktop`
+# and `claude-web` follow the one naming convention actually observed
+# (`claude-<surface>`) and are INFERRED, never measured - docs/CONDITIONS.md
+# marks this whole dimension as inferred, not measured, for that reason.
+claude_interface_kind() {
+    if [ "${CLAUDE_CODE_ENTRYPOINT:-}" = claude-vscode ] || _in_vscode; then
+        printf 'vscode\n'; return 0
+    fi
+    case "${CLAUDE_CODE_ENTRYPOINT:-}" in
+        cli)                    printf 'cli\n' ;;
+        claude-desktop|desktop) printf 'desktop\n' ;;
+        claude-web|web)         printf 'web\n' ;;
+        *)                      printf 'unknown\n' ;;
+    esac
+}
+
+# `status.sh --interface`: the raw category alone - no settings lookups beyond
+# what is already sourced, no inspect_sides.sh, no preflight.sh, no network.
+# This is the fast path scripts/detect_conditions.sh calls, so nothing above
+# this line may do anything slower than reading an env var, and nothing below
+# it runs when this flag is given.
+if [ "${1:-}" = "--interface" ]; then
+    claude_interface_kind
+    exit 0
+fi
+
+REACH="$(setting reach local)"
+
+echo "== Your environment =="
 echo "OS: $(plat_kind)   Shell: $(basename "${SHELL:-unknown}")   Reach: $REACH   Claude: $(claude_surface)"
 echo
 

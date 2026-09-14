@@ -76,6 +76,18 @@ is `none`. As an "ssh layer" threaded through the scripts, it would have to be
 unpicked. The command layer must treat *"this site has nothing to reach"* as a
 normal answer, exactly as it treats a site with no egress restrictions.
 
+**Support status of `none` in this version:** the value is a valid point in
+the contract above, and the refusal paths that already read it —
+`scripts/on_site.sh`, `scripts/preflight.sh`, `scripts/inspect_sides.sh` —
+answer for it correctly, and those paths and their tests are unchanged. What
+does not exist is a *site* actually built against it: no cloud compute
+environment has been onboarded, exercised or proven through this plugin.
+`reach: none` is therefore **recognised, not supported in this version** —
+`commands/setup.md` says so rather than walking a user through the nine steps
+that assume a login node, and points them at the off-design procedure
+(`skills/operational/SKILL.md`, "Off-design: when nothing here covers it")
+instead of an onboarding path that was never built.
+
 `scripts/on_site.sh` is the only sanctioned implementation. **The command layer
 may not call `ssh` itself.** `ON_SITE_DRY_RUN=1` makes it print where a command
 would run and what it would be, without running it — which is how all three

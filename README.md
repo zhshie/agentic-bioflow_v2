@@ -62,3 +62,10 @@ machine, no monitoring daemon, no per-pipeline parameter specs. Platform,
 - Seqera Platform workspace with a `slurm-platform` compute environment
 - `tw` CLI, Java 21 for `tw-agent.jar`, Nextflow
 - `LAB_RUNS_DIR` pointing at the execution area on shared storage
+
+These are what `setup` actually onboards this version: a cluster Platform
+cannot reach into, run from the cluster itself or from a user's own machine
+over ssh (`reach: local` / `reach: ssh`, `docs/SITE_ADAPTER.md` contract 6). A
+Platform-managed cloud compute environment (`reach: none`) is a value the
+settings schema recognises, not a deployment this version supports — `setup`
+says so and points at the off-design procedure instead of onboarding one.

@@ -177,9 +177,13 @@ when a refusal is the cause:
     - **No `.command.log` and no `.exitcode` at all.** 🤖 The work directory is
       probably not visible from the compute side — report that; there is
       nothing further to diagnose from here.
-    - **Anything else.** 🤖 Diagnose it fully. ⏸ Stop and ask only if the fix
-      turns out to need a pipeline parameter changed — that is a call about
-      the run that was requested, not about the site.
+    - **Anything else.** This has no branch above — follow
+      `skills/operational/SKILL.md`'s "Off-design: when nothing here covers
+      it" (T2: a failure with no branch), category `pipeline`, command
+      `runs`. 🤖 Attempt the fix inside the safety net once it is recorded.
+      ⏸ Stop and ask only if the fix turns out to need a pipeline parameter
+      changed — that is a call about the run that was requested, not about
+      the site.
 
 On a site with unrestricted egress the first step prints nothing and costs a
 second. Two of the four failures during this system's bring-up were an

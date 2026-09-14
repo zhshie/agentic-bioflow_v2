@@ -206,5 +206,31 @@ OUT=$(z3_run "$TMP/z3_local.yaml")
 check "Z3: reach local - warning UNCHANGED (agent_ctl.sh really is unreachable here)" \
       "${OUT:-<empty>}" "outputs reader is not running" present
 
+# --- 2.8: the condition cell and unsent reports ------------------------------
+# Only a cell that is not `supported` is worth a line; the ordinary case stays
+# as quiet as before. Unsent off-design reports are counted on every start,
+# resume included, because a compaction may have carried the first reminder
+# away. The hook only reads the queue - it never writes it.
+printf 'workspace_id: 12345\ntw_bin: %s/tw_idle\nreach: none\n' "$TMP" > "$TMP/c_none.yaml"
+chmod 600 "$TMP/c_none.yaml"
+OUT=$(run startup "$TMP/c_none.yaml" "$TMP/tw_idle")
+check "2.8: an unsupported cell is named"             "${OUT:-<empty>}" "unsupported-cloud-ce" present
+OUT=$(run startup "$TMP/env.yaml" "$TMP/tw_idle")
+check "2.8: a supported cell says nothing about it"   "${OUT:-<empty>}" "Condition:" absent
+
+mkdir -p "$TMP/reports"
+: > "$TMP/reports/1-1-aaaaaaaaaaaa.report"; : > "$TMP/reports/2-2-bbbbbbbbbbbb.report"
+OUT=$(run startup "$TMP/env.yaml" "$TMP/tw_idle")
+check "2.8: unsent reports are counted"               "${OUT:-<empty>}" "2 off-design report(s) not sent" present
+OUT=$(run resume "$TMP/env.yaml" "$TMP/tw_idle")
+check "2.8: and again on resume"                      "${OUT:-<empty>}" "2 off-design report(s) not sent" present
+before=$(ls "$TMP/reports" | wc -l)
+run startup "$TMP/env.yaml" "$TMP/tw_idle" >/dev/null
+after=$(ls "$TMP/reports" | wc -l)
+check "2.8: the queue is only read"                   "$before=$after" "2=2" present
+command rm -rf "$TMP/reports"
+OUT=$(run resume "$TMP/env.yaml" "$TMP/tw_idle")
+check "2.8: no queue, no line"                        "${OUT:-<empty>}" "not sent" absent
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

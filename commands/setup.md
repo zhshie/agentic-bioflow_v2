@@ -125,10 +125,15 @@ as `reach` in the settings (`docs/SITE_ADAPTER.md`, contract 6).
 - **A cluster Platform cannot reach into** - the case this site adapter was
   written for. All ten steps apply.
 - **A compute environment Platform manages itself** (AWS Batch and the like).
-  `reach: none`. **Steps 5 and 6 do not apply**: there is no channel to open and
-  no outputs reader to keep alive, because Platform reaches both the storage and
-  the compute directly. Walking a user through them anyway asks them to install
-  and babysit two processes that solve a problem they do not have.
+  `reach: none` is a real value this settings key accepts (`docs/SITE_ADAPTER.md`,
+  contract 6) — recognised, but **not supported in this version**: nothing past
+  this question in `setup` was built or proven against a Platform-managed
+  environment. Say that plainly, save `reach: none` if that is genuinely what
+  the user has, and follow the off-design procedure in
+  `skills/operational/SKILL.md` (section "Off-design: when nothing here covers
+  it") rather than improvising the remaining nine steps. Do not call steps 5
+  and 6 "skipped" — that implies the rest was walked and verified for this
+  case, and it was not.
 
 **On a cluster: are you running here, or on your own machine?** Skip this
 question entirely for a Platform-managed environment — there is nowhere else to
@@ -234,7 +239,12 @@ push and somewhere on the site to put it.
 **2. What must already exist.** Check for `nextflow`, `git`, `jq`, `curl` and
 the container runtime. **Report what is missing; do not install it** — these
 are the cluster's to provide, usually through its module system, and guessing
-at that is how a setup script becomes site-specific.
+at that is how a setup script becomes site-specific. Reporting is not the end
+of the step: this one has not passed until everything on the list is present.
+If nothing obvious gets it there — no module to load, no one to ask — follow
+the off-design procedure in `skills/operational/SKILL.md` (section "Off-design:
+when nothing here covers it") instead of guessing at an install command, and
+do not move on to step 3 until it does.
 
 **3. Seqera.** This is the part that has no local shortcut, so point at it
 plainly rather than wrapping it:
@@ -243,7 +253,12 @@ plainly rather than wrapping it:
   workspace ID, this is where it goes**; otherwise they create their own
 - a personal access token, saved to `_personal/.seqera_token`, `chmod 600`,
   **never printed, never in git, never in a params file**
-- `tw info` to confirm the token works
+- `tw info` to confirm the token works. If it fails, this step has not
+  passed — do not read that as a hint about the storage path or the workspace
+  and start troubleshooting sideways. There is no branch for it here: follow
+  the off-design procedure in `skills/operational/SKILL.md` (section
+  "Off-design: when nothing here covers it") rather than guessing, and stay on
+  this step until `tw info` succeeds.
 
 Save `workspace_id`, and `seqera_user` — the username Platform shows in the
 Username column of `tw runs list`. Where a lab reaches the site through one

@@ -138,6 +138,13 @@ gate can see.
    revision needs nothing here — skip the step and say you skipped it. Wanting
    a *different* revision is a different entry, not an edit to this one.
 
+   **If `tw pipelines add` fails**, this has no branch below it — follow
+   `skills/operational/SKILL.md`'s off-design procedure (T2), category
+   `pipeline`, command `launch`, step naming this one. Report the error
+   plainly, then attempt what a measured cause suggests (a revision that does
+   not exist, a compute environment name typed wrong) before falling back to
+   asking the user.
+
 4. **Build the samplesheet.**
 
    **If the source is a public accession — SRA, ENA, GEO/GSM — rather than
@@ -166,6 +173,12 @@ gate can see.
      --workspace <ws>` for the URL. **`--input` takes that URL, not the local
      samplesheet path** - adding a dataset does not tell you where it went, and
      the launch fails later and elsewhere if you pass the path.
+
+     **If `tw datasets add` fails**, this has no branch below it either —
+     follow the same off-design procedure, category `data`, command `launch`,
+     step naming this one. The commonest measured cause is a samplesheet that
+     does not parse as the format `tw` expects; read the error before
+     assuming anything about the pipeline's own schema.
 
    **The reads are on the site; you may not be.** List them with
    `scripts/on_site.sh ls <dir>` rather than reading the directory directly -
@@ -258,7 +271,11 @@ gate can see.
 6. **Check for directives that need a human decision.** Read the pipeline's
    `conf/base.config`. Resource requests need no attention — the site adapter
    turns whatever comes out into something the site accepts. Speak up only for:
-   - `accelerator` / GPU — the GPU path is **not yet verified** anywhere here
+   - `accelerator` / GPU — the GPU path is **not yet verified** anywhere here.
+     Say so to the user (T3 request — no command here covers a GPU run), and
+     record it: `skills/operational/SKILL.md`'s off-design procedure,
+     category `request`, command `launch`, step naming the pipeline's GPU
+     directive. Continuing is the user's call, not a silent default.
    - a request larger than the site offers at all (the adapter's config lists
      what it has)
 
@@ -284,6 +301,14 @@ gate can see.
    back and do the step.
 
 8. **Launch**, then report the run ID and the Platform URL.
+
+   **If `tw launch` itself fails** — rejected before a run ID ever exists —
+   this has no branch here. Say so plainly, then follow
+   `skills/operational/SKILL.md`'s off-design procedure (T2), category
+   `pipeline`, command `launch`, step naming this one, before attempting a
+   fix. Do not relaunch blind: read what `tw` printed first, the same way
+   `commands/runs.md`'s SUBMITTED section reads it for a run that reached
+   Platform but never reached the queue.
 
 9. **Watch it without asking first.** Arm a background watch on the run's
    status — the harness's `Monitor` where it has one — and report the outcome

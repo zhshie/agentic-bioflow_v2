@@ -97,6 +97,30 @@ WHERE=""
 
 }$SHELLWARN"
 
+# 2.8: which cell of docs/CONDITIONS.md this machine is in - said only when it
+# is not `supported`, so the ordinary start stays as quiet as before. Local
+# measurement only (detect_conditions.sh never touches the network), inside a
+# 3s clock because the budget below is already mostly spent.
+COND=$(clocked 3 bash "$ROOT/scripts/detect_conditions.sh" 2>/dev/null)
+CSTATUS=$(printf '%s\n' "$COND" | sed -n 's/^status=//p')
+if [ -n "$CSTATUS" ] && [ "$CSTATUS" != supported ]; then
+    CCELL=$(printf '%s\n' "$COND" | sed -n 's/^cell=//p')
+    CMSG=$(printf '%s\n' "$COND" | sed -n 's/^message=//p')
+    WHERE="${WHERE:+$WHERE
+
+}Condition: $CCELL ($CSTATUS) - $CMSG"
+fi
+
+# 2.8: off-design reports still queued (scripts/report.sh). Every start and
+# every resume, for the same reason as SHELLWARN: a compaction may have taken
+# the first reminder. Read only - this hook keeps no state and writes nothing.
+RQ="${AGENTIC_BIOFLOW_REPORTS_DIR:-$(dirname "$SETTINGS_FILE")/reports}"
+NREP=0
+for r in "$RQ"/*.report; do [ -e "$r" ] && NREP=$((NREP + 1)); done
+[ "$NREP" -gt 0 ] && WHERE="${WHERE:+$WHERE
+
+}$NREP off-design report(s) not sent - 'scripts/report.sh send' shows exactly what would go out before anything is sent."
+
 # Every exit below this point goes through emit(), defined above, so the one
 # line survives the many perfectly ordinary reasons there is nothing else to
 # report: no token in this shell, no tw, an idle workspace.

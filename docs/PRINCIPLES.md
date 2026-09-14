@@ -140,6 +140,23 @@ rather than citing it; `scripts/build_package.sh` writes a comment for every
 planned figure that is missing and every figure nobody planned.
 `tests/principle_9_test.sh` asserts those three stay true.
 
+**10. What the design does not cover takes one path, not an improvised one.**
+
+A command file that says "anything else: diagnose it fully" hands the model a
+blank cheque, and each member who reaches that line gets a different answer
+that nobody will ever see. When a condition, a failure or a request is outside
+what is designed here, the model says so, records it with `scripts/report.sh`,
+tries within the safety net, and at the end offers the report - one procedure,
+written once in `skills/operational/SKILL.md` ("Off-design: when nothing here
+covers it"). The maintainer designs it in instead of filing it. Which
+conditions count as designed is `docs/CONDITIONS.md`, measured by
+`scripts/detect_conditions.sh` rather than guessed.
+
+*Check:* `tests/off_design_single_path.sh` (no catch-all in `commands/` that
+does not point at that section), `tests/conditions_matrix_test.sh` (every cell
+the script can print is in the matrix, and the reverse), `tests/report_test.sh`
+(nothing leaves the machine that is not a whitelisted field).
+
 ---
 
 ## Where each piece belongs
@@ -168,6 +185,12 @@ an MCP tool cannot carry procedure or judgment, which is most of the value here;
 and a script stays runnable by a person or another model (invariant 5). Between
 `tw` and Seqera's MCP, both are Seqera's, so invariant 1 does not decide —
 invariant 5 does. Use `tw`; treat the MCP as opportunistic, never a dependency.
+
+When to look at this again: only when an agent that is not Claude Code needs
+a read-only question answered that neither Seqera's MCP (run state) nor the
+lab's record system (experiments, samples) can answer - "every run and output
+for this sample", say. "Everyone ships an MCP server" is not that condition.
+Which agents may touch what is `docs/LAB_AGENTS.md`.
 
 ---
 

@@ -82,6 +82,85 @@ Work outward from the layer most likely to be lying to you.
    request below a partition's floor never schedules and never errors.
 4. **Only then** read the failing task's own `.command.err` and `.command.log`.
 
+## Off-design: when nothing here covers it
+
+This project is built to a fixed design, not improvised per session
+(`docs/PRINCIPLES.md`, invariant 10) — but a firewalled cluster, a shared
+Seqera workspace and every OS a member might carry a laptop in produce
+situations this design did not anticipate. There are three:
+
+| | Trigger | Decided by |
+|---|---|---|
+| **T1 environment** | A cell in `docs/CONDITIONS.md` / `scripts/detect_conditions.sh` is not "supported" | The script measures it — never guessed |
+| **T2 failure** | A script's failure or output has no branch in the command file you are following | You. Every command file's catch-all now points here instead of saying "diagnose it fully" |
+| **T3 request** | What the user wants has no command for it at all — a non-nf-core pipeline, Snakemake, a GPU run | You, from the request itself |
+
+**One procedure, run every time, in this order:**
+
+1. **Tell the user.** One sentence: "this is outside what the plugin has
+   designed for so far: `<category>`. I will try to handle it, and record it
+   for the maintainer." Do not present this as a dead end — the next step is
+   to keep going, not to stop.
+
+2. **Record it.**
+
+   ```
+   scripts/report.sh add --category <env|egress|scheduler|pipeline|data|request|host> \
+                          --command <setup|launch|runs|downstream|finish|none> \
+                          --step <short-slug> [--script <name>] [--exit <n>] \
+                          [--outcome resolved|workaround|unresolved]
+   ```
+
+   `report.sh` fills in the plugin version, OS, reach, matrix cell/tier and
+   Claude interface itself — nothing here is typed by hand, and nothing here
+   is a path, a hostname, or anything else that could identify the user or
+   their data. Every field is checked against an enum or a short-slug
+   pattern; an invalid value is refused rather than queued
+   (`tests/report_test.sh`). Run it once you know the category, even before
+   you know the outcome — `add` prints the rest of this procedure back to
+   you, so it still reaches you if this file was never loaded this turn.
+
+3. **Attempt it, inside the safety net.** Diagnose and fix like any other
+   step in this deployment: read logs, try the site adapter, propose a
+   change. What does not change: submitting a run and any destructive delete
+   still need the user's explicit confirmation, and **this plugin's own
+   files are off limits** — `hooks/guard_plugin_files.sh` refuses a write
+   under the plugin root regardless of who is asking. When the attempt
+   settles, add `--outcome resolved`, `workaround`, or `unresolved` to the
+   report above (a second `report.sh add` with the same `--step` is fine —
+   send later dedupes by content, not by call count).
+
+4. **Send, at the end of the task.**
+
+   ```
+   scripts/report.sh send [--yes]
+   ```
+
+   Without `--yes` it only shows every field of everything queued — nothing
+   goes anywhere until the user says so. With `--yes` it checks who is
+   asking (`gh api user`, three-second budget):
+
+   - **This is the maintainer's own login.** Nothing is sent. Say so, and
+     that the right move is designing this into the plugin directly rather
+     than filing it as an issue — same as any other change here, through
+     `docs/PRINCIPLES.md` and the usual tests.
+   - **Someone else, with `gh` available.** It searches open issues labelled
+     `off-design` for this report's signature (category + command + step +
+     script + exit, hashed). A match gets a comment, not a new issue; no
+     match gets a new one, labelled `off-design`, in `zhshie/agentic-bioflow_v2`.
+     Sent reports are removed from the local queue.
+   - **No `gh`, not logged in, or the identity check timed out.** It prints
+     a prefilled `github.com/.../issues/new?...&labels=off-design` link
+     instead of sending anything, and the report stays queued locally.
+     `scripts/session_start.sh` reminds the user at the next session start
+     that reports are still waiting, so this is never a dead end either —
+     just one more step for whoever has a GitHub login.
+
+**Upstream pipeline problems are not this repo's to report.** A stale
+`tower.yml` or a pipeline bug belongs to the pipeline's own repository —
+tell the user that plainly (`commands/runs.md`'s SUCCEEDED section has the
+worked example) and stop; do not route it through `report.sh`.
+
 ## The safety net
 
 Never delete a user's source data — not `rawdata/`, `results/`, `analysis/`, a

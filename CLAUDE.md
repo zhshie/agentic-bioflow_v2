@@ -40,14 +40,24 @@ real failures, each with the fix.
   prerequisite step left no evidence in the transcript), `session_start.sh`
   (reports in-flight runs), `plugin_intro.sh` (shows the plugin overview the
   first time the plugin is used in a session - a typed `/agentic-bioflow:`
-  command or a loaded plugin skill - not at every session start), `next_step.sh` (a Stop
+  command or a loaded plugin skill - not at every session start),
+  `guard_plugin_files.sh` (refuses edits to the installed plugin itself; the
+  Bash half is best effort), `next_step.sh` (a Stop
   hook: while a command flow is open, a reply that ends without a next step is
   sent back to add one). The three safety nets **refuse when `jq` is missing or
   broken** rather than falling silent — PITFALLS 28.
 - `docs/` — `PRINCIPLES.md` (what decides), `PITFALLS.md` (what went wrong),
   `SITE_ADAPTER.md` (the site contract), `SETTINGS.md` (the per-deployment
   settings file schema), `DOWNSTREAM.md` (worked examples of what an outputs
-  inventory turns up, measured from a real run), `HANDOFF.md`.
+  inventory turns up, measured from a real run), `CONDITIONS.md` (every user
+  condition and whether it is supported, blocked or recognised-but-unsupported),
+  `LAB_AGENTS.md` (which agent hosts may touch what, and why the limit is the
+  site's 2FA rather than WSL), `RECORD_ADAPTER.md` (the record-system contract;
+  only `none` exists), `HANDOFF.md`.
+- `scripts/detect_conditions.sh` + `scripts/report.sh` — invariant 10: which
+  cell of `docs/CONDITIONS.md` this machine is in, and the one off-design
+  procedure's record-and-report step (whitelisted fields only; the maintainer
+  designs it in instead of filing it).
 - `scripts/utils/portable.sh` — one place that knows how this machine differs
   from the one the scripts were written on (BSD vs GNU `stat`, a missing
   `timeout`, `readlink -f`). Sourced through `scripts/settings.sh`, so almost
@@ -74,7 +84,7 @@ real failures, each with the fix.
 ## Running tests
 
 ```bash
-bash tests/run_all.sh                    # all 40, ~80s, one verdict + exit code
+bash tests/run_all.sh                    # all 47, ~90s, one verdict + exit code
 bash tests/run_all.sh --only confirm_    # just the safety-net gates
 bash tests/confirm_launch_test.sh        # one file, full output
 ```

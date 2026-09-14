@@ -28,6 +28,12 @@ a user's own machine the answer is the third — with no variable set at all.**
 | `reach: local` (Claude on the site) | `$LAB_RUNS_DIR/_personal/env.yaml` | `LAB_RUNS_DIR`, which that account needs anyway |
 | `reach: ssh` or `none` (Claude on the user's machine) | `${XDG_CONFIG_HOME:-~/.config}/agentic-bioflow/env.yaml` | **none** |
 
+`none` is listed here because `settings.sh` resolves the file the same way for
+it as for `ssh` — that logic is correct and tested. It is not a claim that a
+`reach: none` deployment is supported end to end: this version recognises the
+value but has no onboarding path built for it (`docs/SITE_ADAPTER.md`,
+contract 6; `commands/setup.md`).
+
 That second row is not a style preference. Every way this file has gone missing
 between one session and the next is caused by a variable being **set**, never by
 the absence of one:
@@ -69,7 +75,7 @@ be. A settings file that needs a real parser has grown into something else.
 
 | Key | What it is | Without it |
 |---|---|---|
-| `reach` | How the site is reached: `none`, `local` or `ssh`. See SITE_ADAPTER contract 6 | Defaults to `local`, which is right only when this deployment runs on the site |
+| `reach` | How the site is reached: `none`, `local` or `ssh`. See SITE_ADAPTER contract 6. `none` is recognised, not supported in this version — `setup` reports it and stops rather than onboarding a cloud site | Defaults to `local`, which is right only when this deployment runs on the site |
 | `site_host` | `user@host` to log in to. **`reach: ssh` only** | Nothing can reach the site; preflight fails naming this key |
 | `site_user` | The site account the work runs under — the user half of `site_host`, said plainly, so a summary can name it. `scripts/preflight.sh` FAILs when the two disagree, because one value written twice drifts silently | Nothing breaks; the summary cannot say whose account this is |
 | `seqera_user` | This member's Seqera username — the Username column of `tw runs list`. Where a lab reaches the site through **one shared account**, this is the only thing that tells two members apart; `$USER` is the same for everybody | A run cannot be attributed to the person who launched it |
