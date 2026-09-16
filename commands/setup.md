@@ -163,8 +163,10 @@ be.
     one-line check and the guard that fixes it.
 
   Nothing here is Windows-specific except the choice of terminal, and that one
-  is decided: **WSL**. Two other Windows shells were measured and neither can
-  hold the multiplexed connection this depends on (PITFALLS 16b).
+  is decided: **WSL** - for Claude Code itself, not only for this setup. The
+  two native Windows shells cannot hold the multiplexed connection this
+  depends on (PITFALLS 16b), and the rest of the Linux userland is missing
+  there as well: python3 on PATH is a Microsoft Store stub (PITFALLS 20c).
 
 **Two more questions, before step 1** — they decide what step 1 builds, so
 asking them after would mean redoing it.

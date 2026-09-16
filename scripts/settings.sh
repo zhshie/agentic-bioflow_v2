@@ -131,9 +131,9 @@ steered_past_a_real_file() {
 #
 # The right move is named here too, because the obvious one is wrong: copying
 # the settings file somewhere Git Bash can see it makes --summary green in a
-# shell where on_site.sh still cannot open a session (16b) and where chmod 600
-# on the Windows filesystem does not hold, which trades a loud failure for a
-# quiet one and drops the token's only protection on the way.
+# shell this version still refuses to drive the site from (on_site.sh), and
+# where chmod 600 on the Windows filesystem does not hold - trading a loud
+# failure for a quiet one and dropping the token's only protection on the way.
 #
 # uname, not $OSTYPE: bash sets OSTYPE itself at startup, so it cannot be
 # substituted from the environment and the branch would be untestable.
@@ -146,8 +146,9 @@ shell_blind_spot() {
     echo "  A deployment set up in WSL is not visible from here: different home,"
     echo "  different filesystem, and WSL's ~/.bashrc is never read in this shell."
     echo "  'Not found' here does not mean 'not set up'."
-    echo "  PITFALLS 16b: on Windows only WSL can hold the site connection, so"
-    echo "  start Claude Code from a WSL shell rather than moving the file."
+    echo "  PITFALLS 16b, 20c: this shell's own ssh cannot hold the site"
+    echo "  connection, and its python3 is a Store stub, so start Claude Code"
+    echo "  from a WSL shell rather than moving the file."
 }
 
 # The token file, worked out in one place. preflight.sh, the session hook,

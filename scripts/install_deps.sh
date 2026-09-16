@@ -54,8 +54,11 @@ JAR_URL='https://github.com/seqeralabs/tower-agent/releases/latest/download/tw-a
 # cluster. Hardcoding tw-linux-x86_64 here meant every Mac member's setup
 # downloaded a Linux binary and failed. Measured against tower-cli v0.40.0's
 # release: it ships tw-linux-x86_64, tw-osx-arm64, tw-osx-x86_64 and
-# tw-windows-x86_64.exe (Windows only reaches this repo through WSL, which
-# reports Linux - PITFALLS 16b/16f - so it is not a fourth case here).
+# tw-windows-x86_64.exe (this version's Windows deployments run inside WSL,
+# which reports uname -s=Linux; native Git Bash is a separate, recognised-but-
+# unsupported case handled by scripts/detect_conditions.sh (`unsupported-msys-
+# native`, PITFALLS 20c), not by this URL table - so Windows is not a fourth
+# case here).
 # TW_URL always wins when set: the tests rely on that seam, and so does anyone
 # on a platform this has not been taught yet.
 tw_asset_url() {

@@ -44,11 +44,20 @@ cannot open a session (`ssh -O check` succeeds, then
 `mux_client_request_session: read from master failed: Connection reset by
 peer` — MSYS's Unix sockets are emulated and do not implement the
 file-descriptor passing a session needs), and only WSL2 actually works,
-verified 2026-09-05 across a multi-hour deployment. `scripts/on_site.sh`
-enforces this itself: under `reach: ssh` it detects Git Bash by `uname -s`
-and refuses with `wrong_shell()`, naming PITFALLS 16b and telling the user to
-run Claude Code from WSL instead — this is not a suggestion in prose, it is a
-branch in the script every `on_site.sh` call goes through.
+verified 2026-09-05 across a multi-hour deployment.
+
+**What that does *not* establish, measured 2026-09-15 (`PITFALLS.md` 16g):**
+a shell whose own ssh cannot hold a master can still *call* one that can.
+`wsl.exe -e ssh` from Git Bash, over a master opened in a WSL window, answered
+in 0.55 s with no one-time code and carried binary input and exit codes
+intact. So the rule is not "Windows can only reach the site from WSL"; it is
+"the master lives in WSL, and this version drives it from there". Native Git
+Bash stays refused for a smaller reason — `scripts/on_site.sh` detects it by
+`uname -s` and stops in `wrong_shell()` — and that reason is now the rest of
+the Linux userland (python3 on PATH is a Microsoft Store stub, 20c; no `jq`;
+the test suite does not run there), which makes it 🚧
+recognised-but-unsupported in `docs/CONDITIONS.md` rather than ⛔ blocked.
+It is still a branch every `on_site.sh` call goes through, not prose.
 
 And even WSL does not remove the 2FA cost, it only makes the *one* master
 connection per work session possible: PITFALLS 16e measured that too many
@@ -73,7 +82,7 @@ below.
 | Host | Needs WSL? | Can reach the cluster? |
 |---|---|---|
 | A lab's own, always-on Linux box | No | Yes — but a person still has to type the OTP that opens the connection, and it has to be reopened if it drops |
-| A member's Windows laptop | Yes, for the half that touches the cluster (Git Bash cannot hold the shared connection — PITFALLS 16b, 25) | Same as above, once in WSL |
+| A member's Windows laptop | Yes — the master must live in WSL and this version drives it from there (Git Bash's own ssh cannot hold it, PITFALLS 16b; it *can* call WSL's, 16g, but that bridge is not built) | Same as above, once in WSL |
 | The login node itself (`reach: local`) | No | Yes, and with no 2FA cost at all — but whether NCHC permits a persistent process on the login node is **unverified** (§10, M6) |
 | A cloud-hosted agent (Claude Tag, Managed Agents, and similar) | Not relevant | **No** — it cannot reach the lab machine holding the shared connection, and cannot supply an OTP itself |
 | Anywhere, using only Seqera Platform (`tw` / Seqera's own MCP) | Not relevant | Does not touch the cluster at all — status, logs, and (per §5) even launching go over HTTPS to Platform |
@@ -99,14 +108,21 @@ connection at all?**
 |---|---|---|---|---|
 | **H1** — a person, interactively | Claude Code with hooks loaded, a human present | Everything | — | The existing hooks, unchanged |
 | **H2** — unattended, with hooks | Claude Code headless or the Agent SDK, this plugin's hooks loaded (**hooks load under `claude -p` — measured 2026-09-14; whether PreToolUse gates then refuse is unverified — §10, M4**), running on a lab Linux box or the login node | Non-destructive, non-submitting cluster operations: `push`, `fetch`, `agent_ctl.sh`/`egress_ctl.sh` start/status, `why_pending.sh`, `task_health.sh`, `preflight.sh`; read-only Platform queries; **preparing** a run (samplesheet, params, the full launch command) for a person to approve | Submitting a run, deleting anything | The existing hooks (§5) plus, planned, a Seqera token with no launch permission (§10, M5) |
-| **H3** — shared identity, no hooks | Claude Tag, Managed Agents, OpenClaw, Hermes, Codex, or anything else that reaches this plugin's files without a hook mechanism to run them | Read-only Platform queries: look up a run, read a report | Touch the cluster, submit a run, delete anything | **Structural, not textual**: this tier is given a Seqera Platform token with only a view role, and no ssh access at all. There is no credential in its hands that could reach the cluster, so there is nothing for a hook to have to intercept |
+| **H3** — shared identity, no hooks | Claude Tag, Managed Agents, OpenClaw, Hermes, Codex, or anything else that reaches this plugin's files without a hook mechanism to run them | Read-only Platform queries: look up a run, read a report | Touch the cluster, submit a run, delete anything | **Structural, not textual — and planned, not built**: the design is to hand this tier a Seqera token with only a view role and no ssh access, so there is no credential to intercept. Nothing provisions such a token today (a deployment has one token, `docs/SETTINGS.md`), and whether a view-role token really cannot launch is unverified (§10, M5) |
 
-H3's enforcement is worth stating plainly because it is the one row that does
+H3's enforcement is worth stating plainly because it is the one row that would
 not lean on this plugin's own machinery at all: a runtime with no ssh
-credential and a view-only Platform token cannot touch the cluster no matter
-what it is told to do, in the same way `scripts/on_site.sh` cannot open a
-master connection no matter what it is told — the thing that would have to
-exist for the action to succeed simply is not there. This is the correction
+credential and a view-only Platform token could not touch the cluster no matter
+what it is told to do — the thing that would have to exist for the action to
+succeed simply would not be there.
+
+**Said in the future tense on purpose.** Today it is a design, not a fence:
+no code here creates or scopes a Seqera token by role, `scripts/on_site.sh`
+never consults a tier, and a deployment has exactly one token that everyone
+shares. Its premise is M5, still unverified. Until both are settled, an H3
+runtime that can read a deployment's settings file holds the same token
+everyone else does — so do not give one that access and call it safe. This is
+the correction
 this track makes to the earlier proposal's R6, which had treated the
 shared-identity case as an open, text-enforced question (§7, row R6).
 
@@ -265,7 +281,7 @@ from source alone (`PRINCIPLES.md`, invariant 8).
 | M2 | Do Seqera labels have a practical upper bound, and can `tw runs list` filter by them? | Create one test label on the workspace via `tw labels`, then delete it | No |
 | M3 | Does the shared ssh master survive a closed terminal, and for how long does it survive idling? `docs/SITE_ADAPTER.md:135` ("dies with the terminal") and `scripts/on_site.sh:77-81` ("closing it does not take the connection down... One master lasts the whole work session") currently contradict each other | Open one master connection (needs a real OTP), then observe from outside | **Yes** |
 | M4 | Do this plugin's hooks load under `claude -p` or the Agent SDK, and do G1–G3 and `ask` refuse there? | **Partly measured 2026-09-14:** `claude -p` with a blocking UserPromptSubmit hook (no model call) - the installed plugin's `plugin_intro.sh` ran and wrote its per-session marker, so plugin hooks load under `-p`. Still unmeasured: whether PreToolUse `deny`/`ask` refuse there (needs a real tool call), and the Agent SDK | No |
-| M5 | Do Seqera workspace roles (View, Launch, and so on) behave as this design assumes — specifically, is a View-role token unable to launch? | `tw participants` and Seqera's own documentation; no actual launch attempted | No |
+| M5 | Do Seqera workspace roles (View, Launch, and so on) behave as this design assumes — specifically, is a View-role token unable to launch? | `tw participants` and Seqera's own documentation; no actual launch attempted. Settling it means issuing one view-role token in Seqera's own UI and trying a launch with it — **no cluster OTP is involved**, which makes this the cheapest open measurement here, and §3 leans on it | Yes, to issue the token |
 | M6 | Does NCHC permit automated access under a shared account, and a persistent process on a login node at all? | Only the user can ask NCHC this directly | **Yes** |
 
 A measurement that does not hold does not get implemented around — the

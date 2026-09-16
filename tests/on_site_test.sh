@@ -179,12 +179,17 @@ echo
 # ---------------------------------------------------------------------------
 # The wrong shell.
 #
-# Git Bash cannot hold a master connection at all (PITFALLS 16b), so under it
-# every call here is a guaranteed failure that costs a one-time code from the
-# user's phone. The refusal lives in this script rather than in a PreToolUse
-# hook on purpose: a hook would have to decide from a command string whether it
-# reaches the site, and it would wall off a reach:none deployment that needs no
-# ssh at all. Here the subject is not guessed.
+# Git Bash is refused here, and 16g changed why. Its own ssh cannot hold a
+# master (16b), but calling WSL's ssh from it does work - measured, 0.55 s, no
+# 2FA prompt. What is missing is the rest of a Linux userland: python3 is a
+# Store stub (20c), jq is absent by default, and the suite does not run here.
+# So the refusal stands and its reason changed, which is what these assertions
+# pin: unsupported, not unreachable.
+#
+# The refusal lives in this script rather than in a PreToolUse hook on purpose:
+# a hook would have to decide from a command string whether it reaches the
+# site, and it would wall off a reach:none deployment that needs no ssh at all.
+# Here the subject is not guessed.
 UB="$TMP/msysbin"; mkdir -p "$UB"
 printf '#!/bin/sh\necho MINGW64_NT-10.0-22631\n' > "$UB/uname"; chmod +x "$UB/uname"
 
@@ -206,11 +211,20 @@ mt() { # mt <label> <expect-rc> <expect-substring> -- <args...>
 
 settings 'reach: ssh' 'site_host: u@h'
 mkfake 0                       # the master answers -O check, as it really does
-mt "MSYS + reach:ssh is refused outright"     2 "cannot hold an ssh master" -- true
-mt "and the refusal says why, measured"      2 "PITFALLS 16b"              -- true
-mt "and gives the move, not just the fault"  2 "WSL"                       -- true
+mt "MSYS + reach:ssh is refused as unsupported" 2 "does not support"      -- true
+mt "and names the shell's own ssh limit"      2 "PITFALLS 16b"             -- true
+mt "and that the bridge itself was measured"  2 "PITFALLS 16g"             -- true
+mt "and gives the reason that still holds"    2 "python3"                  -- true
+mt "and gives the move, not just the fault"   2 "WSL"                      -- true
 mt "and warns about the Windows exe shortcut" 2 "claude.exe"               -- true
-mt "and names the .wslconfig fix first"      2 "vsyscall=emulate"          -- true
+mt "and names the .wslconfig fix first"       2 "vsyscall=emulate"         -- true
+mt "and offers the off-design report"         2 "report.sh"                -- true
+
+# 16g measured the opposite of what this refusal used to assert. It may say
+# this shell is unsupported; it may not say the site is out of reach from here.
+printf '%-56s ' "it no longer claims the site is unreachable"
+out=$(msys 2 -- true); grep -qF "cannot hold an ssh master connection" <<<"$out" \
+  && { echo "FAIL: repeats the retracted claim"; fails=$((fails+1)); } || echo ok
 
 # A master that answers -O check is exactly the state 16b describes, so a
 # refusal that only fires when the master looks down would never fire at all.

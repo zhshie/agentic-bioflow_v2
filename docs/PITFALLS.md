@@ -768,6 +768,49 @@ then `wsl --shutdown` and reopen — which also drops the master connection
 (16b's "leave that terminal open" does not survive a `--shutdown`), so budget
 a reconnect right after.
 
+**16g. 16b measured Git Bash's *own* ssh. Calling WSL's ssh from Git Bash
+works, and "start Claude Code from WSL" (25) was an inference, not a
+measurement.** Measured 2026-09-15 on the Windows laptop, master opened in a
+WSL terminal, `ControlPath=~/.ssh/cm-%r-%h-%p`, host `t3-c4.nchc.org.tw`:
+
+| from | command | result |
+|---|---|---|
+| PowerShell | `wsl.exe -e bash -lc 'ssh -o ControlPath=… <host> hostname'` | `lgn304`, 0.49 s, no 2FA prompt |
+| Git Bash | the same line | `lgn304`, 0.55 s, no 2FA prompt |
+| Git Bash | `tar -cz … \| wsl.exe -e bash -lc 'ssh … "tar -tz"'` | the file listed on the site: binary stdin crosses `wsl.exe` intact |
+
+The ssh client and the master are both inside WSL, so the fd-passing 16b found
+missing happens on a real Linux kernel; Git Bash only spawns `wsl.exe` and
+pipes bytes. `MSYS_NO_PATHCONV` was not needed for these lines.
+
+What 25 got right and wrong: right that Git Bash's own ssh cannot use a master,
+and that a settings file copied to the Windows side loses mode 600. Wrong to
+conclude that the only fix is to move Claude Code into WSL — the bridge was
+never proposed, measured or ruled out, and `on_site.sh` then refused MSYS
+outright, which wrote the inference into code and into `CONDITIONS.md`.
+
+Exit code and stderr cross `wsl.exe` intact, measured minutes later from Git
+Bash: a remote `echo to-stderr >&2; exit 7` printed `to-stderr` and the local
+`$?` was `7`. That call also asked for 2FA, as did the next one — the master
+opened for the table above was no longer there a few minutes on, cause not yet
+known (the M3 question in `docs/LAB_AGENTS.md`). A plain `ssh -o ControlPath=`
+with no master falls back to a full login rather than failing, which is why
+the prompt appeared instead of an error.
+
+When it had gone, the socket file had gone with it (`-O check`: `Control
+socket connect(/home/acer/.ssh/cm-…): No such file or directory`, 13:27) — the
+master process exited cleanly rather than leaving a stale socket.
+
+**No shell wrapper is needed.** With a fresh master (`ssh -MNf … -o
+ControlPersist=8h -o ServerAliveInterval=60`, opened 13:28:20), Git Bash ran
+`wsl.exe -e ssh -o ControlPath='~/.ssh/cm-%r-%h-%p' <host> hostname` →
+`lgn304`, rc 0, no prompt: ssh inside WSL expands `~` in `ControlPath` itself,
+against WSL's home. So the bridge is `wsl.exe -e ssh` with the option passed
+single-quoted so Git Bash does not expand `~` to the Windows home first.
+`-O check` still reported `Master running (pid=611)` at 13:29:55.
+
+Not yet measured: a cold WSL VM's start-up cost on the first call.
+
 **18. A gate that reads the conversation must separate what the model typed
 from what the user saw — twice this was got wrong, and both times the fix's own
 design conversation was what exposed it.** `hooks/confirm_walkthrough.sh` denies
@@ -1289,7 +1332,10 @@ The other two are a 2FA prompt per call, and a step that reports nothing found.
 can see makes `--summary` green in a shell where `on_site.sh` still cannot
 open a session — a loud failure traded for a quiet one — and `chmod 600` on the
 Windows filesystem does not hold, so the token loses the only protection it has.
-The fix is to move the shell, not the file: start Claude Code from WSL.
+The fix is to move the shell, not the file: start Claude Code from WSL. (That
+conclusion is narrower than it reads — 16g measured this shell calling WSL's
+ssh successfully. What it cannot borrow the same way is the rest of the
+userland, which is why moving the shell is still the answer.)
 
 `settings.sh` now says so when it finds nothing under MSYS. It detects with
 `uname -s` rather than `$OSTYPE`: bash sets `OSTYPE` itself at startup, so it

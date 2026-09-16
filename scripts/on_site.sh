@@ -157,12 +157,22 @@ no_master() {
         "end it: 'wsl --shutdown' and the machine going to sleep."
 }
 
-# Git Bash cannot hold a master at all, so under it this is not "the master is
-# missing" but "no master can exist here". Measured across all three Windows
-# shells (PITFALLS 16b): MSYS's Unix sockets are emulated and do not implement
-# the file-descriptor passing a session request needs, so `ssh -O check`
-# answers - the control plane works - and opening a session then fails. No ssh
-# option changes it.
+# Git Bash is refused here, and PITFALLS 16g narrowed the reason to something
+# smaller than the one this branch was written for. 16b measured that Git
+# Bash's OWN ssh cannot open a session over a master - MSYS emulates Unix
+# sockets and does not implement the descriptor passing a session needs - and
+# from that it was inferred that the site is out of reach from this shell.
+# 16g measured the inference false: `wsl.exe -e ssh` over a master opened in
+# WSL answers in 0.55 s with no 2FA prompt, and carries binary stdin and exit
+# codes intact.
+#
+# The refusal stays, because what is still missing is the rest of a Linux
+# userland this plugin runs on: python3 on PATH here is a Microsoft Store stub
+# that exits without printing (20c, measured); jq is absent from a default
+# install and the suite does not run there (neither measured here - both are
+# what a default Git Bash ships, and either is enough on its own). That is a version's scope, not an
+# impossibility - so this is now "recognised, not supported this version,
+# report it if you need it" rather than "blocked".
 #
 # This is the one place the check belongs. A PreToolUse hook would have to
 # decide from a command string whether it reaches the site, which is evidence
@@ -170,15 +180,24 @@ no_master() {
 # deployment that needs no ssh at all. Here the subject is certain: this
 # script, now, about to do the thing that cannot work.
 wrong_shell() {
-  die 2 "this is Git Bash (MSYS), which cannot hold an ssh master connection." \
+  die 2 "this is Git Bash (MSYS), which this version does not support." \
         "" \
-        "Measured, not guessed: the control plane works, so a master looks" \
-        "alive, and opening a session then fails - MSYS emulates Unix sockets" \
-        "and does not implement the descriptor passing a session needs" \
-        "(PITFALLS 16b). No ssh option changes this." \
+        "Two measured facts, and they say different things:" \
         "" \
-        "Without a master, every command here asks for a one-time code from" \
-        "your phone, and one bare login was measured at 31 s." \
+        "  - This shell's own ssh cannot open a session over a master: the" \
+        "    control plane answers, so a master looks alive, and the session" \
+        "    request then fails, because MSYS emulates Unix sockets and does" \
+        "    not implement descriptor passing (PITFALLS 16b)." \
+        "  - WSL's ssh called from here does work: 'wsl.exe -e ssh' over a" \
+        "    master opened in WSL answered in 0.55 s with no one-time code," \
+        "    and carried binary input and exit codes intact (PITFALLS 16g)." \
+        "" \
+        "So the site is reachable from this shell in principle. What is not" \
+        "here is the rest of the Linux userland this plugin runs on: python3" \
+        "on PATH is a Microsoft Store stub that exits without printing" \
+        "(PITFALLS 20c). A default install also carries no jq, which every" \
+        "safety-net hook needs, and the test suite does not run here at all." \
+        "Supporting that is work nobody has needed yet." \
         "" \
         "Run Claude Code from a WSL shell instead. WSL is a separate Linux" \
         "with its own home directory, so install it there:" \
@@ -191,7 +210,11 @@ wrong_shell() {
         "" \
         "One thing to do first: Seqera's CLI segfaults under WSL2 until" \
         "%UserProfile%\\.wslconfig carries [wsl2] kernelCommandLine =" \
-        "vsyscall=emulate, then 'wsl --shutdown' (PITFALLS 16f)."
+        "vsyscall=emulate, then 'wsl --shutdown' (PITFALLS 16f)." \
+        "" \
+        "If you need this shell supported, say so rather than working around" \
+        "it: scripts/report.sh records it for the maintainer (the off-design" \
+        "procedure in skills/operational/SKILL.md)."
 }
 
 # A hang is the failure mode here, not an error. This site caps concurrent

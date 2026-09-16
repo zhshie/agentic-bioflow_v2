@@ -71,8 +71,9 @@ if [ "$ON_MSYS" = 1 ] && [ "$ALLOW_MSYS" = 0 ] && [ "$LIST" = 0 ]; then
 This shell is native Windows Git Bash (MSYS). The test suite is not run here.
 
 Most of it would fail, and none of those failures would mean the release is
-broken: MSYS cannot hold the multiplexed ssh connection (docs/PITFALLS.md 16b),
-has no USER variable, and its hostname has no -s.
+broken: python3 on PATH here is a Microsoft Store stub that exits without
+printing (docs/PITFALLS.md 20c), there is no USER variable, and the hostname
+has no -s.
 
 The suite only needs a Linux or macOS bash (plus jq and python3) - not Claude
 Code. On Windows, either of these works:
@@ -155,7 +156,7 @@ echo "$summary"
 # Pass or fail, a count from this shell is not the release verdict.
 if [ "$ON_MSYS" = 1 ]; then
     echo "note: run on Git Bash/MSYS with --allow-msys - failures here are the known"
-    echo "      MSYS gap (docs/PITFALLS.md 16b), not a regression. Rerun on Linux/WSL for a verdict."
+    echo "      MSYS gap (docs/PITFALLS.md 20c), not a regression. Rerun on Linux/WSL for a verdict."
 fi
 [ "$failed" = 0 ] && [ "$timedout" = 0 ] || exit 1
 echo "all green"

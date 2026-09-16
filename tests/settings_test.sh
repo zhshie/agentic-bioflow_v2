@@ -152,6 +152,7 @@ out=$(msys workspace_id --required)
 has   "under MSYS the miss names the second home"      "Git Bash/MSYS"      "$out"
 has   "and says a WSL setup is invisible from here"    "not visible from here" "$out"
 has   "and sends them to WSL, not to moving the file"  "PITFALLS 16b"       "$out"
+hasnot "without repeating the retracted conclusion"    "only WSL can hold"  "$out"
 has   "while still listing where it looked"            "No settings file"   "$out"
 
 # The note is only true on Windows. Printed anywhere else it is noise, and a

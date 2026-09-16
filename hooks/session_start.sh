@@ -68,10 +68,13 @@ emit() {
 SHELLWARN=""
 case "$(uname -s 2>/dev/null)" in
     MINGW*|MSYS*|CYGWIN*)
-        SHELLWARN="Claude's shell here is Git Bash (MSYS). This plugin cannot reach the
-cluster from it: MSYS cannot hold the multiplexed ssh connection, so every site
-command would ask for a one-time code from your phone (PITFALLS 16b). A setup
-done in WSL is also invisible here, because WSL has its own home directory.
+        SHELLWARN="Claude's shell here is Git Bash (MSYS), which this version does
+not support. python3 on PATH here is a Microsoft Store stub (PITFALLS 20c), a
+default install carries no jq, and the test suite does not run here. This shell's own
+ssh also cannot hold the multiplexed connection the site needs (PITFALLS 16b),
+though calling WSL's ssh from here was measured to work (PITFALLS 16g) - this
+version does not use it. A setup done in WSL is invisible here as well, because
+WSL has its own home directory.
 
 Run Claude Code from a WSL shell instead - install it there with
 'npm install -g @anthropic-ai/claude-code' and start 'claude' from that shell.

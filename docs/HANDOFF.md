@@ -1,6 +1,6 @@
 # Where this stands
 
-**Update 2026-09-14, plugin 2.10.1.** The sections below describe 2.0.7 and
+**Update 2026-09-16, plugin 2.11.0.** The sections below describe 2.0.7 and
 are kept for their history; this block is what is current.
 
 - Releases since: 2.6 (Mac/Windows+WSL), 2.7 (guidance: overview, per-command
@@ -14,6 +14,19 @@ are kept for their history; this block is what is current.
 - Done 2026-09-14: **M1** - nf-prov's Workflow Run RO-Crate works on this
   site and records no checksums (PITFALLS 32); launch now adds it by default
   and `finish` packages are RO-Crates that nest each run's crate (2.10.1).
+- Done 2026-09-16 (2.11.0): native Windows Git Bash is **recognised but not
+  supported** instead of blocked. PITFALLS 16g measured `wsl.exe -e ssh`
+  reaching the site from Git Bash in 0.55 s with no 2FA prompt, which retired
+  the inference that the site is unreachable from there; what still holds is
+  the missing userland (20c). The bridge is deliberately **not** built - see
+  `docs/SITE_ADAPTER.md` on why the transport stays this machine's own `ssh`.
+- Also 2.11.0, found by auditing for the same shape: **H3's "structural"
+  enforcement was written in the present tense in five places** - two tables,
+  `skills/operational/SKILL.md`, and a comment in `scripts/detect_conditions.sh`
+  - while no code provisions a scoped token, `on_site.sh` never consults a
+  tier, a deployment has exactly one token, and its premise (M5) is
+  unverified. All five now say designed-but-not-built, and M5's row names the
+  check: one view-role token in Seqera's UI, no cluster OTP.
 - Open, and needing a person: **M3** how long an ssh master
   survives (someone types the OTP); **M5** whether a VIEW-role token really
   cannot launch; **M6** whether NCHC allows unattended access on a shared

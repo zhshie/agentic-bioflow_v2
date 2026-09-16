@@ -35,7 +35,7 @@ for u in MINGW64_NT-10.0-22631 MSYS_NT-10.0 CYGWIN_NT-10.0; do
   out=$(run "$u" $NOMATCH); rc=$?
   check "$u: stops with its own exit code (3)"       "$([ "$rc" = 3 ]; echo $?)"
   check "$u: names WSL"                                "$(grep -q WSL <<<"$out"; echo $?)"
-  check "$u: points at PITFALLS 16b"                   "$(grep -q '16b' <<<"$out"; echo $?)"
+  check "$u: points at PITFALLS 20c"                   "$(grep -q '20c' <<<"$out"; echo $?)"
   check "$u: does not claim a pass/fail count"         "$(! grep -qE '[0-9]+/[0-9]+ passed' <<<"$out"; echo $?)"
 done
 
@@ -50,7 +50,7 @@ check "--allow-msys on Git Bash: runs anyway"                       "$([ "$rc" =
 
 # The verdict under --allow-msys: exercised on one real, fast, pure file.
 out=$(run MINGW64_NT-10.0 --allow-msys --only intro_languages_test); rc=$?
-check "--allow-msys verdict flags the known MSYS gap"               "$(grep -q 'Git Bash/MSYS' <<<"$out" && grep -q '16b' <<<"$out"; echo $?)"
+check "--allow-msys verdict flags the known MSYS gap"               "$(grep -q 'Git Bash/MSYS' <<<"$out" && grep -q '20c' <<<"$out"; echo $?)"
 out=$(run Linux --only intro_languages_test); rc=$?
 check "Linux verdict carries no MSYS note"                          "$(! grep -q 'MSYS' <<<"$out"; echo $?)"
 

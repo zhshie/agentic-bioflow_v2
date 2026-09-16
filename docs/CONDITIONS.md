@@ -61,12 +61,13 @@ supported):
 | Order | Condition | `cell` | `status` | Message (fixed) |
 |---|---|---|---|---|
 | 1 | `jq` missing or cannot run | `blocked-no-jq` | blocked | `jq is required here and was not found. Install it: macOS \`brew install jq\`; Debian/Ubuntu or WSL \`sudo apt install jq\`.` |
-| 2 | `os=msys` and `reach=ssh` | `blocked-msys-ssh` | blocked | `Git Bash/MSYS cannot hold the shared ssh connection this site needs (PITFALLS 16b). Start Claude Code from a WSL shell instead.` |
-| 3 | `tier=H3` and `reach` is `ssh` or `local` | `blocked-h3-site` | blocked | `no plugin hooks: Platform read-only only, see docs/LAB_AGENTS.md` |
+| 2 | `tier=H3` and `reach` is `ssh` or `local` | `blocked-h3-site` | blocked | `no plugin hooks: Platform read-only only, see docs/LAB_AGENTS.md` |
+| 3 | `os=msys` and `reach=ssh` | `unsupported-msys-native` | unsupported | `Native Windows Git Bash is recognised but not supported by this version: python3 here is a Microsoft Store stub (PITFALLS 20c), a default install carries no jq, and the test suite does not run here. Reaching the site through WSL's own ssh was measured to work (PITFALLS 16g); this version does not use it. Start Claude Code from a WSL shell, or run scripts/report.sh to let the maintainer know.` |
 | 4 | `reach=none` | `unsupported-cloud-ce` | unsupported | `Seqera-managed cloud compute environment is recognised but not supported by this version. Run scripts/report.sh to let the maintainer know.` |
 | 5 | otherwise | `supported` | supported | `This host and configuration are supported.` |
 
-Every cell whose `status` is unsupported (today, only `unsupported-cloud-ce`) has a message that names how to report it
+Every cell whose `status` is unsupported (`unsupported-msys-native` and
+`unsupported-cloud-ce`) has a message that names how to report it
 (`scripts/report.sh`), per the plugin-wide rule that nothing outside its
 design silently proceeds without a trace.
 
@@ -83,9 +84,11 @@ section A2's structural rule: **no hooks means no cluster, full stop**):
 - `no` when `tier=H3` (no plugin hooks - Claude Tag, Managed Agents,
   OpenClaw, Hermes, Codex and similar share-identity runtimes with no way to
   gate a launch or a delete).
-- `no` when `os=msys` and `reach=ssh` (Git Bash cannot hold the shared ssh
-  connection this site needs, PITFALLS 16b - a Windows desktop app or Git
-  Bash terminal reaching for the cluster the same way).
+- `no` when `os=msys` and `reach=ssh` - not because the site is out of reach
+  from there (PITFALLS 16g measured `wsl.exe -e ssh` working over a master
+  opened in WSL) but because this version does not carry that bridge and the
+  rest of the userland it would need is missing (PITFALLS 20c). A Windows
+  desktop app reaching for the cluster lands here the same way.
 - `yes` otherwise. Notably **not** triggered by `jq` being missing: that
   blocks the whole session (PITFALLS 28's safety nets fail closed without
   it), which is a different and broader question than whether this *host* is
@@ -111,7 +114,7 @@ actually classify it - which decision cell it maps to. Several dimensions
 | NCHC login node | ✅ supported | measured | `supported` |
 | macOS | ✅ supported | measured only in a simulated BSD userland | `supported` |
 | Windows + WSL | ✅ supported | measured by a second lab member | `supported` |
-| Windows, Git Bash/PowerShell reaching the cluster | ⛔ blocked | measured, blocked since v2.6 | `blocked-msys-ssh` |
+| Windows, Git Bash/PowerShell reaching the cluster | 🚧 unsupported (was ⛔ until 2.11) | measured both ways: the shell's own ssh cannot (16b), WSL's ssh called from it can (16g, 2026-09-15); the userland it would still need is not there (20c) | `unsupported-msys-native` |
 | Linux desktop | ✅ supported | inferred | `supported` |
 
 ### Claude interface
@@ -121,7 +124,7 @@ actually classify it - which decision cell it maps to. Several dimensions
 | CLI | ✅ supported | measured | — |
 | VS Code (extension) | ✅ supported | measured | — |
 | VS Code Remote-SSH to the login node | ✅ supported | measured (this is that session) | — |
-| Windows desktop app, reaching the cluster | ⛔ blocked | inferred - its Bash tool is believed to run through Git Bash, not yet measured | `blocked-msys-ssh` (once measured) |
+| Windows desktop app, reaching the cluster | 🚧 unsupported | inferred - its Bash tool is believed to run through Git Bash, not yet measured | `unsupported-msys-native` (once measured) |
 | claude.ai/code web, cloud sandboxes | 🚧 unsupported | inferred - cannot take a 2FA code, and is not the lab's own machine | `unsupported-cloud-ce` when `reach=none`, otherwise not reachable by this script |
 
 `interface` itself is read as **inferred** evidence as a whole (see
@@ -165,7 +168,7 @@ documentation and `setup`'s own claims changed, from "supported" to
 | Tool | Status | Evidence | Cell |
 |---|---|---|---|
 | `jq` | required; missing → ⛔ blocked | measured | `blocked-no-jq` |
-| `ssh` with ControlMaster support (`reach: ssh`) | required for that reach | measured | (folds into `blocked-msys-ssh` when the shell cannot hold it) |
+| `ssh` with ControlMaster support (`reach: ssh`) | required for that reach | measured | (folds into `unsupported-msys-native` on native Windows) |
 | `quarto` (used by `finish`) | required for that command | read in code | — |
 | Positron (used by `downstream`) | optional, has its own "not here" branch | measured | — |
 
@@ -205,13 +208,16 @@ Who or what is driving this plugin, mapped onto A2's H1-H3 tiers:
 |---|---|---|---|---|
 | A person, interactively, in Claude Code | H1 | ✅ full access | measured | `supported` |
 | Headless Claude Code / Agent SDK with this plugin loaded, unattended, on the lab's always-on Linux box or the login node | H2 | ✅ read-only cluster ops + preparing (not submitting or deleting) runs | plan-level design, hooks reused as-is; whether hooks actually load under `claude -p`/the Agent SDK is unmeasured (plan's M4) | `supported`, `may_touch_site=yes`, but structurally still gated by G1-G3 (unattended never answers a confirmation) |
-| Claude Tag, Managed Agents, OpenClaw, Hermes, Codex or similar - shared identity, no plugin hooks | H3 | ⛔ Platform read-only only; never touches the cluster | structural - no ssh, no launch-capable token, regardless of what it asks for | `blocked-h3-site` when it has `reach` at all; `may_touch_site=no` always |
+| Claude Tag, Managed Agents, OpenClaw, Hermes, Codex or similar - shared identity, no plugin hooks | H3 | ⛔ Platform read-only only; never touches the cluster | the design is structural (no ssh, no launch-capable token) but **is not built**: nothing here provisions a scoped token, and M5 - whether a view-role token can launch - is unverified (`docs/LAB_AGENTS.md` §3, §10) | `blocked-h3-site` when it has `reach` at all; `may_touch_site=no` always |
 
 H2/H3 are not distinguished by *product name* - only by two measurable
 facts: does this runtime load the plugin's hooks, and can it reach the
 shared ssh connection at all. A runtime that cannot say whether it has hooks
 must say so explicitly (`AGENTIC_BIOFLOW_HOST_HOOKS=no`); left unset outside
 Claude Code, `hooks` reads `unknown` and `tier` defaults to `H1` rather than
-guessing H3, because this script only ever reports what it measured - the
-actual enforcement for H2/H3 is a Seqera token scoped without launch rights
-(plan A2), never this script's own say-so.
+guessing H3, because this script only ever reports what it measured. What is
+meant to enforce H2/H3 is a Seqera token scoped without launch rights (plan
+A2), never this script's own say-so - and that token does not exist yet
+(`docs/LAB_AGENTS.md` §3). Until it does, nothing but this cell and the
+deployment's own file permissions stands between a shared-identity runtime
+and the one token a deployment has.

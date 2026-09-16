@@ -216,7 +216,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# The five decision cells: every one of blocked-no-jq, blocked-msys-ssh,
+# The five decision cells: every one of blocked-no-jq, unsupported-msys-native,
 # blocked-h3-site, unsupported-cloud-ce and supported, positive and negative,
 # plus the priority order when more than one condition applies at once.
 # ---------------------------------------------------------------------------
@@ -235,20 +235,25 @@ has "message names the mac fix"    "brew install jq"      "$OUT"
 has "message names the WSL/Linux fix" "sudo apt install jq" "$OUT"
 
 echo
-echo "== cell: blocked-msys-ssh =="
+echo "== cell: unsupported-msys-native =="
 mkuname MINGW64_NT
 OUT=$(run "$BASEPATH" LAB_SETTINGS_FILE="$SSHF" --)
-has "cell is blocked-msys-ssh"     "cell=blocked-msys-ssh" "$OUT"
-has "status is blocked"            "status=blocked"        "$OUT"
-has "message points at WSL"        "WSL"                   "$OUT"
+has "cell is unsupported-msys-native" "cell=unsupported-msys-native" "$OUT"
+has "status is unsupported"           "status=unsupported"           "$OUT"
+has "message points at WSL"           "WSL"                          "$OUT"
+has "and names the report path"       "report.sh"                    "$OUT"
+has "and it still may not touch the site" "may_touch_site=no"        "$OUT"
+printf '%-64s ' "and does not repeat the retracted 16b conclusion"
+grep -q 'cannot hold the shared ssh connection' <<<"$OUT" \
+  && { echo "FAIL: repeats it"; fails=$((fails+1)); } || echo ok
 
 OUT=$(run "$BASEPATH" LAB_SETTINGS_FILE="$LOCALF" --)
 printf '%-64s ' "negative: msys + reach=local is NOT this cell"
-grep -q 'cell=blocked-msys-ssh' <<<"$OUT" && { echo "FAIL: wrongly blocked"; fails=$((fails+1)); } || echo ok
+grep -q 'cell=unsupported-msys-native' <<<"$OUT" && { echo "FAIL: wrongly flagged"; fails=$((fails+1)); } || echo ok
 mkuname Linux
 OUT=$(run "$BASEPATH" LAB_SETTINGS_FILE="$SSHF" --)
 printf '%-64s ' "negative: linux + reach=ssh is NOT this cell"
-grep -q 'cell=blocked-msys-ssh' <<<"$OUT" && { echo "FAIL: wrongly blocked"; fails=$((fails+1)); } || echo ok
+grep -q 'cell=unsupported-msys-native' <<<"$OUT" && { echo "FAIL: wrongly flagged"; fails=$((fails+1)); } || echo ok
 
 echo
 echo "== cell: blocked-h3-site =="
@@ -296,10 +301,10 @@ has "may_touch_site is yes" "may_touch_site=yes" "$OUT"
 
 echo
 echo "== priority: blocked beats unsupported beats supported =="
-# no-jq wins over msys+ssh
+# no-jq wins over msys native
 mkuname MINGW64_NT
 OUT=$(run "$NOJQ" LAB_SETTINGS_FILE="$SSHF" --)
-has "no-jq beats msys-ssh when both apply" "cell=blocked-no-jq" "$OUT"
+has "no-jq beats msys-native when both apply" "cell=blocked-no-jq" "$OUT"
 
 # no-jq wins over H3+ssh
 OUT=$(env -i -u CLAUDE_PLUGIN_ROOT -u CLAUDECODE -u AGENTIC_BIOFLOW_ATTENDED \
@@ -308,10 +313,10 @@ OUT=$(env -i -u CLAUDE_PLUGIN_ROOT -u CLAUDECODE -u AGENTIC_BIOFLOW_ATTENDED \
       AGENTIC_BIOFLOW_HOST_HOOKS=no LAB_SETTINGS_FILE="$SSHF" bash "$D")
 has "no-jq beats H3-site when both apply" "cell=blocked-no-jq" "$OUT"
 
-# msys+ssh wins over H3+ssh (checked before the H3 branch)
+# H3+ssh wins over msys native: blocked beats unsupported
 mkuname MINGW64_NT
 OUT=$(h3 "$SSHF")
-has "msys-ssh beats H3-site when both apply" "cell=blocked-msys-ssh" "$OUT"
+has "H3-site beats msys-native when both apply" "cell=blocked-h3-site" "$OUT"
 mkuname Linux
 
 echo

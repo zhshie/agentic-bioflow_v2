@@ -127,6 +127,12 @@ and then a code from the user's phone, and one bare round trip was measured at
 only thing that makes the topology possible at all — Claude cannot supply the
 code. With a master up, five nested calls cost **0.65 s** together.
 
+The transport is the local `ssh` binary, and that is part of the contract:
+`reach: ssh` means *this machine's* ssh can hold a master. Calling another
+runtime's ssh (`wsl.exe -e ssh` from Git Bash) was measured to work over a
+master opened in WSL (PITFALLS 16g) but is deliberately not part of the
+contract - a second transport is real work, and nobody has needed it.
+
 Two consequences the command layer has to respect:
 
 - **Claude never opens the master.** `on_site.sh` prints the exact line for the

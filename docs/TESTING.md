@@ -22,7 +22,8 @@ time, on any machine, including a laptop with no cluster access.
 
 The exception is native Windows Git Bash. There the runner stops with exit 3
 and sends you to WSL, because most files would fail for the known MSYS reasons
-(PITFALLS 16b) rather than because of anything in the release. The suite needs
+(PITFALLS 20c: python3 on PATH is a Store stub) rather than because of anything
+in the release. The suite needs
 only a Linux or macOS bash with `jq` and `python3`, not Claude Code: on Windows,
 run it on the cluster's login node (for example over VS Code Remote-SSH) or in
 a WSL shell. `--allow-msys` runs

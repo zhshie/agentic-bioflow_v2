@@ -189,11 +189,12 @@ What changes is not this text but whether `hooks/` fires alongside it
   them at all (Claude Tag, Managed Agents, OpenClaw, Hermes, or similar). It
   may read this skill and `docs/` as documentation, and run read-only
   Platform queries — look up a run, read a report. It must not touch the
-  site, submit a run, or delete anything. Nothing in this file is what stops
-  it: `docs/LAB_AGENTS.md` section 3 enforces H3 structurally, by never
-  handing that runtime a credential that reaches the site in the first
-  place, precisely because prose is not a gate on a host with no hooks to
-  turn it into one.
+  site, submit a run, or delete anything. Prose is not a gate on a host with
+  no hooks to turn it into one, and the gate meant to replace it -
+  `docs/LAB_AGENTS.md` section 3's view-only credential - **is designed but
+  not built**. So on such a host this is a rule someone has to keep, and the
+  operator's job is not to hand it a deployment's settings file: that file's
+  token is the same full-permission one everyone else uses.
 
 `${CLAUDE_PLUGIN_ROOT}` throughout this file means the installed plugin root;
 on a host with no plugin mechanism it means the repository root, read

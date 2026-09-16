@@ -84,8 +84,10 @@ measure() {
 
     # A2's tiers. Ambiguous cases (hooks=unknown) fall to H1 rather than H3:
     # this script only ever reports what it could measure, it does not enforce
-    # anything - the structural enforcement for H2/H3 is a Seqera token scoped
-    # without launch rights (plan A2), not this script's tier field.
+    # anything. What is meant to enforce H2/H3 is a Seqera token scoped without
+    # launch rights (plan A2), not this script's tier field - but no code here
+    # provisions one and M5 has not confirmed a view-role token cannot launch,
+    # so today this field is a report and nothing more (docs/LAB_AGENTS.md §3).
     if [ "$hooks" = no ]; then
         tier=H3
     elif [ "$hooks" = yes ] && [ "$attended" = no ]; then
@@ -102,14 +104,14 @@ measure() {
         cell=blocked-no-jq
         status=blocked
         message="jq is required here and was not found. Install it: macOS \`brew install jq\`; Debian/Ubuntu or WSL \`sudo apt install jq\`."
-    elif [ "$os" = msys ] && [ "$reach" = ssh ]; then
-        cell=blocked-msys-ssh
-        status=blocked
-        message="Git Bash/MSYS cannot hold the shared ssh connection this site needs (PITFALLS 16b). Start Claude Code from a WSL shell instead."
     elif [ "$tier" = H3 ] && { [ "$reach" = ssh ] || [ "$reach" = local ]; }; then
         cell=blocked-h3-site
         status=blocked
         message="no plugin hooks: Platform read-only only, see docs/LAB_AGENTS.md"
+    elif [ "$os" = msys ] && [ "$reach" = ssh ]; then
+        cell=unsupported-msys-native
+        status=unsupported
+        message="Native Windows Git Bash is recognised but not supported by this version: python3 here is a Microsoft Store stub (PITFALLS 20c), a default install carries no jq, and the test suite does not run here. Reaching the site through WSL's own ssh was measured to work (PITFALLS 16g); this version does not use it. Start Claude Code from a WSL shell, or run scripts/report.sh to let the maintainer know."
     elif [ "$reach" = none ]; then
         cell=unsupported-cloud-ce
         status=unsupported
@@ -123,9 +125,11 @@ measure() {
     # H3 never touches the site, full stop - independent of which cell won
     # above (an H3 host with no settings file at all lands on the `supported`
     # cell, since nothing else is wrong, but must still not be told it may
-    # reach the cluster). Git Bash + ssh is the other structural case: even
-    # where its own branch above did not win (a different reach, say), it
-    # still may not touch the site.
+    # reach the cluster). Native Git Bash is the other case, and after 16g it
+    # is here for a different reason than it used to be: not that it cannot
+    # reach the site, but that this version does not carry the bridge that
+    # would let it. Either way, it may not - so the answer stays no even where
+    # its own cell above did not win (a different reach, say).
     if [ "$tier" = H3 ]; then
         may_touch_site=no
     elif [ "$os" = msys ] && [ "$reach" = ssh ]; then
