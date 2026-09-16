@@ -213,7 +213,14 @@ the two it is declining.
 
 The one place location genuinely matters is the settings file and the token
 beside it, and even there the answer is **measured, not listed**: write the
-file, `chmod 600` it, read the mode back. A list of folder names known to be a
+file, then ask the machine who can read it back. On Unix that is the mode. On
+Windows it is not: Git Bash renders a mode for an NTFS file that nobody wrote
+and nothing enforces, so the check asks Windows for the file's ACL instead and
+refuses only when Windows names someone beyond the owner, SYSTEM and the
+Administrators group (PITFALLS 16j/16k). Measuring the wrong thing is not a
+milder failure than measuring nothing: for one release this refused to write a
+settings file that was in fact owner-only, and told the member to move it to
+the directory it was already in. A list of folder names known to be a
 cloud-sync root — Dropbox, OneDrive, iCloud Drive — can never be complete, so
 it is a reminder, never a guarantee, and the refusal it produces has to admit
 that plainly rather than imply coverage it does not have. The gap between "the
@@ -229,8 +236,9 @@ it.
 
 *Check:* `tests/path_shapes_test.sh` — runs these scripts from a directory
 whose name carries spaces and non-ASCII, the shape a member reaches first, not
-a convenient fixture. The mode-600 read-back and the synced-folder refusal
-(reminder, not guarantee) in `tests/settings_test.sh`. The "the folder stays
+a convenient fixture. The privacy read-back and the synced-folder refusal
+(reminder, not guarantee) in `tests/settings_test.sh`, and what that read-back
+asks on Windows in `tests/windows_privacy_test.sh`. The "the folder stays
 put" assertions in `tests/on_site_test.sh`. The borrow-exactly-the-gap rule:
 `tests/wsl_bridge_test.sh` (only the transport bridges; no path crosses it),
 `tests/conditions_matrix_test.sh` (a bridged shell lands in `supported`, not

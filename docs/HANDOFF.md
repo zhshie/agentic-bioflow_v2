@@ -1,6 +1,6 @@
 # Where this stands
 
-**Update 2026-09-16, plugin 2.13.0.** The sections below describe 2.0.7 and
+**Update 2026-09-16, plugin 2.14.0.** The sections below describe 2.0.7 and
 are kept for their history; this block is what is current.
 
 - Releases since: 2.6 (Mac/Windows+WSL), 2.7 (guidance: overview, per-command
@@ -47,6 +47,24 @@ are kept for their history; this block is what is current.
   because that risk is invisible to a permission bit. **M7/M11/M12** are the
   new unverified rows (`docs/LAB_AGENTS.md` section 10); none of them blocks
   the mode check, which measures rather than infers.
+- Done 2026-09-16 (2.14.0): **the permission check was reading a field that
+  has no writer.** Git Bash mounts NTFS without `acl`, so the mode it prints
+  for a Windows file is a fiction rendered for POSIX's benefit - and 2.13.1
+  had just started refusing to save a settings file over it. On the member's
+  own laptop that file was owner-only the whole time, and the refusal's
+  advice ("use a location under `$HOME`") named the directory it was already
+  in. `file_privacy()` (`scripts/utils/portable.sh`) now answers
+  private/exposed/unknown for `set_setting()`, `token_state()` and
+  `--summary`: the mode on Unix, the file's ACL on Windows, and `unknown`
+  let through the way an unreadable `stat` already is. It reads SIDs rather
+  than account names, because `icacls` localises those and a name-matching
+  check fails open in every language it was not written in; and it treats no
+  answer as no answer rather than as an empty ACL, which would read as
+  "nobody else has access". Being stricter is the other half: exFAT and a
+  cloud-drive folder have no ACLs, so the same change that stops refusing a
+  private file starts refusing a token on a USB stick. **M17** is the new
+  unverified row - the parser has never seen a real Windows ACL
+  (`PITFALLS.md` 16j/16k).
 - Done 2026-09-16 (2.13.0): **only the transport bridges; nothing else
   moves.** A member on Windows in Git Bash, inside a Google Drive folder,
   no longer has to open a WSL window to reach the site at all — this

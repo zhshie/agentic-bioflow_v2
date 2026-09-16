@@ -242,8 +242,10 @@ wrong_shell() {
         "If 'jq' is also missing here, that is an install rather than a wall:" \
         "winget install jqlang.jq. Where the settings file and the token end" \
         "up is decided when they are written, not guessed here -" \
-        "scripts/settings.sh reads the mode back and refuses a filesystem" \
-        "that cannot hold 600." \
+        "scripts/settings.sh reads the result back and refuses to write a" \
+        "file that would not be private to you. The permission bits this" \
+        "shell prints for a Windows file are manufactured and are not what" \
+        "it asks (PITFALLS 16j, 16k)." \
         "" \
         "If you need this shell to work with no WSL at all, say so rather" \
         "than working around it: scripts/report.sh records it for the" \

@@ -883,8 +883,9 @@ the finding.** `~` there is `C:\Users\<user>`, plain NTFS, the location
 a way that accepted the call and changed nothing. This is B1's shape on a third
 filesystem, and the one that matters most, because it is the default one.
 
-So `set_setting()`'s read-back refuses, and **setup cannot complete in a Git
-Bash window at all.** That is the read-back working exactly as designed: 2.12
+So `set_setting()`'s read-back refused, and **setup could not complete in a Git
+Bash window at all** — which turned out to be this entry's own mistake, not the
+platform's. Read 16k before acting on anything below. That is the read-back working exactly as designed: 2.12
 chose a loud refusal over a token saved world-readable, and this is the refusal
 arriving. What was wrong was the sentence it ended with — *use a location under
 `$HOME` instead* — which on this machine names the directory that just failed.
@@ -907,6 +908,62 @@ and `settings.sh` reads and writes them across the bridge (`wsl.exe -e cat` /
 `-e tee`). **Only that one file crosses** — not the execution environment — so
 none of the three failures that sank the whole-environment design
 (`PRINCIPLES.md`, invariant 11) come back. Not built in 2.13.
+
+**16k. The mode Git Bash prints for a Windows file is manufactured, so a check
+that reads it is measuring nothing — and for one release it refused a file that
+was never exposed.** 16j read `chmod 600` coming back as 644 in `C:\Users\<user>`
+and drew the obvious conclusion: this filesystem cannot hold the mode, so
+refuse. Both halves of that were wrong.
+
+MSYS mounts NTFS without `acl`. The permission bits it reports are a fiction it
+renders for POSIX's benefit; no part of Windows wrote them and no part of
+Windows consults them. Who can actually open a file there is decided by its
+ACL, and a file created in the user's own profile inherits an owner-only one.
+So the measurement was real (the number really is 644) and the inference from
+it was empty — **the check was reading a field that has no writer.** Worse than
+useless: it refused to save a settings file that was already private, and its
+advice was to use a location under `$HOME`, which was where the file already
+was. A member following that instruction exactly would loop.
+
+`file_privacy()` (`scripts/utils/portable.sh`) replaces the mode comparison in
+`set_setting()`, `token_state()` and `--summary`. On Unix it still reads the
+mode. On Windows it asks for the file's ACL and refuses only when someone
+beyond the owner, SYSTEM, the Administrators group and CREATOR OWNER is granted
+access — the three that say nothing, because SYSTEM and Administrators can read
+anything on the machine whatever an ACL says, and CREATOR OWNER is an
+inheritance placeholder rather than a person.
+
+Three things about how it asks, each of which is the difference between a check
+and the appearance of one:
+
+- **SIDs, not account names.** `icacls` prints localised names —
+  `BUILTIN\Administrators` is `VORDEFINIERT\Administratoren` on a German
+  install — so a name-matching check fails *open* in any language it was not
+  written in. PowerShell's `GetAccessRules($true,$true,[SecurityIdentifier])`
+  returns SIDs directly and, unlike `Translate()`, cannot throw on an account
+  that no longer resolves.
+- **No answer is not an empty ACL.** An empty ACL reads as "nobody else has
+  access", which is the one wrong answer here that would also be silent. A
+  missing `powershell.exe`, a non-zero exit and empty output are all `unknown`,
+  which is allowed through — the same treatment an unreadable `stat` already
+  gets everywhere else, because a check that refuses whenever it fails to run
+  is a check people route around.
+- **The carriage returns come off.** A real `powershell.exe` emits CRLF, and a
+  SID carrying a trailing `\r` matches none of the well-known ones. That would
+  not fail open — it would refuse everything — but the test fixtures use CRLF
+  for the ACL that must come out *clean*, so that dropping the strip turns a
+  test red instead of only making the strict path stricter.
+
+Being stricter than the mode is not a side effect. exFAT and a cloud-drive
+folder have no meaningful ACLs, and Windows answers about those with an entry
+for everyone — so the same check that stops refusing a private file in the
+user's profile starts refusing a token on a USB stick, which the mode never
+did.
+
+**Still unverified: no real Windows ACL has been through this.** The parser was
+built against fixtures written from the documented output shape, on Linux. One
+real `powershell.exe` answer from the member's own laptop would settle it
+(M17).
 
 **18. A gate that reads the conversation must separate what the model typed
 from what the user saw — twice this was got wrong, and both times the fix's own

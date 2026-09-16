@@ -260,7 +260,7 @@ fi
 # refuses that filesystem. Stating a location here would be guessing at
 # something settings.sh measures - so the refusal points at the measurement
 # instead, and this pins that it does.
-mt "and points at the check, not a guessed location"   2 "reads the mode back" -- true
+mt "and points at the check, not a guessed location"   2 "reads the result back" -- true
 
 # 16g measured the opposite of what this refusal used to assert. It may say
 # this shell is unsupported; it may not say the site is out of reach from here.

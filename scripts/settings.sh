@@ -150,13 +150,11 @@ shell_blind_spot() {
     echo "  in does not have to move, and neither does this window. The one call"
     echo "  that needs WSL borrows it by itself (PITFALLS 16b, 16g)."
     echo "  Run setup here. It writes a settings file this shell can find, and"
-    echo "  refuses the filesystem outright if the mode 600 the token needs does"
-    echo "  not hold there - settings.sh reads the mode back rather than trusting"
-    echo "  that chmod did anything."
-    echo "  On at least one machine it does not hold: MSYS maps chmod onto NTFS"
-    echo "  ACLs, and 2026-09-16 measured 644 in \$HOME itself (PITFALLS 16j)."
-    echo "  If setup refuses here, that is what happened, and the settings file"
-    echo "  has to live where 600 holds - which this shell cannot yet read."
+    echo "  refuses outright if the file would not be private to you - settings.sh"
+    echo "  reads that back rather than trusting that chmod did anything."
+    echo "  The mode this shell prints for a Windows file is manufactured and is"
+    echo "  not consulted (PITFALLS 16j): Windows itself is asked who can open the"
+    echo "  file, and a refusal here means it named more people than you."
     echo "  A deployment already set up inside WSL stays exactly where it is;"
     echo "  this shell simply cannot read it."
 }
@@ -363,15 +361,16 @@ set_setting() {
     # own empty-string branch - and a refusal on a machine whose `stat` simply
     # answers differently would be a worse failure than the silent-token bug
     # this exists to catch. So "" carries on here too.
-    local _mode_after; _mode_after="$(stat_mode "$SETTINGS_FILE")"
-    case "$_mode_after" in
-        600|"") return 0 ;;
+    local _priv _state; _priv="$(file_privacy "$SETTINGS_FILE")"
+    _state="${_priv%% *}"
+    case "$_state" in
+        private|unknown) return 0 ;;
     esac
     # Only a file THIS call created is ours to remove. One that already held a
     # member's real settings must stay - deleting it over a permission problem
     # would be a second, worse failure stacked on the first.
     if [ "$created" = 1 ]; then rm -f "$SETTINGS_FILE"; fi
-    refuse_unwritable_mode "$SETTINGS_FILE" "$_mode_after"
+    refuse_unwritable_mode "$SETTINGS_FILE" "${_priv#* }"
     return 1
 }
 
@@ -379,35 +378,33 @@ set_setting() {
 # refuse_site_shaped_write() below: name the file, say why, name where it
 # works instead.
 refuse_unwritable_mode() {
-    local file="$1" mode="$2"
-    echo "refusing to write settings to $file: this filesystem would not hold mode 600." >&2
+    local file="$1" why="$2"
+    echo "refusing to write settings to $file: it would not be private to you." >&2
     echo "" >&2
-    echo "chmod 600 was accepted but the file is still mode $mode. /mnt/c under WSL" >&2
+    # 16k: this used to be one paragraph about chmod, because the mode was the
+    # only thing it ever looked at. On Windows the mode is not what decides,
+    # and saying "chmod 600 was accepted but..." there would be describing a
+    # call whose result was never consulted.
+    if [ "$(plat_kind)" = msys ]; then
+        echo "$why." >&2
+        echo "" >&2
+        echo "The permission bits Git Bash prints here are manufactured, and this" >&2
+        echo "check did not use them: it asked Windows itself who can open the file," >&2
+        echo "and Windows named someone beyond you, SYSTEM and the Administrators" >&2
+        echo "group. No chmod in this shell can change that answer." >&2
+        echo "" >&2
+        echo "A file in your own user profile is owner-only by default, which is" >&2
+        echo "where this belongs:" >&2
+        printf '  %s\n' "$(xdg_default)" >&2
+        echo "A drive with no ACLs at all - a USB stick, or a cloud-drive folder -" >&2
+        echo "answers this way about every file on it, and is no place for a token." >&2
+        return 0
+    fi
+    echo "chmod 600 was accepted but the file is still $why. /mnt/c under WSL" >&2
     echo "(without the 'metadata' mount option) and exFAT both do this: the chmod" >&2
     echo "call succeeds and silently changes nothing. A token saved there is" >&2
     echo "effectively public to anyone with access to that filesystem." >&2
     echo "" >&2
-    # 16j: on Git Bash the sentence below is a circle. MSYS maps chmod onto
-    # NTFS ACLs, and on a member's own laptop, 2026-09-16, the mode came back
-    # 644 in $HOME itself - not only on the cloud drive they work in. Naming
-    # another directory under the same $HOME there would send them back to the
-    # filesystem that just refused them. Say where 600 does hold instead, and
-    # say plainly that this shell cannot yet read a settings file that lives
-    # there (PITFALLS 25) - a gap this version has not closed is still better
-    # information than an instruction that cannot work.
-    if [ "$(plat_kind)" = msys ]; then
-        echo "This shell is Git Bash/MSYS, where chmod is mapped onto NTFS ACLs and" >&2
-        echo "can be accepted without changing anything. Measured on a member's own" >&2
-        echo "laptop on 2026-09-16: mode 644 in \$HOME itself, not only on a mapped or" >&2
-        echo "cloud drive (PITFALLS 16j). If that is this machine, no other directory" >&2
-        echo "under \$HOME here will get past this refusal." >&2
-        echo "" >&2
-        echo "WSL's own home is on ext4, which holds mode 600 normally, and setup run" >&2
-        echo "from a WSL shell writes there. Be warned that this shell cannot read a" >&2
-        echo "settings file that lives there (PITFALLS 25): that is a known gap in this" >&2
-        echo "version, not something a path in this window can work around." >&2
-        return 0
-    fi
     echo "Use a location under \$HOME instead, for example" >&2
     printf '  %s\n' "$(xdg_default)" >&2
     echo "which every filesystem this deployment is designed for can hold at mode 600." >&2
@@ -546,13 +543,13 @@ profile_export() {
 # it are anybody's business here: whether it is there, and whether its mode
 # still keeps it to one person.
 token_state() {
-    local f m; f="$(token_file)"
+    local f p; f="$(token_file)"
     if [ -r "$f" ]; then
-        m="$(stat_mode "$f")"
-        case "$m" in
-            600) printf 'present (mode 600)  %s\n' "$f" ;;
-            "")  printf 'present  %s\n' "$f" ;;
-            *)   printf 'present but mode %s, should be 600  %s\n' "$m" "$f" ;;
+        p="$(file_privacy "$f")"
+        case "${p%% *}" in
+            private) printf 'present (%s)  %s\n' "${p#* }" "$f" ;;
+            unknown) printf 'present  %s\n' "$f" ;;
+            *)       printf 'present but %s  %s\n' "${p#* }" "$f" ;;
         esac
     elif [ -e "$f" ]; then
         printf 'present but unreadable  %s\n' "$f"
@@ -583,11 +580,11 @@ settings_summary() {
     # should be - the two halves of one file were inconsistent. Same call,
     # same three-way read here, so a filesystem that cannot hold 600 (B1) is
     # not contradicted two lines later by a sentence that was never checked.
-    local _settings_mode; _settings_mode="$(stat_mode "$SETTINGS_FILE")"
-    case "$_settings_mode" in
-        600) echo "All of it is saved at $SETTINGS_FILE, mode 600." ;;
-        "")  echo "All of it is saved at $SETTINGS_FILE; its mode could not be read." ;;
-        *)   echo "All of it is saved at $SETTINGS_FILE, mode $_settings_mode - should be 600." ;;
+    local _sp; _sp="$(file_privacy "$SETTINGS_FILE")"
+    case "${_sp%% *}" in
+        private) echo "All of it is saved at $SETTINGS_FILE, ${_sp#* }." ;;
+        unknown) echo "All of it is saved at $SETTINGS_FILE; ${_sp#* }." ;;
+        *)       echo "All of it is saved at $SETTINGS_FILE, ${_sp#* }." ;;
     esac
     echo "Every command here finds it there; none of this has to be entered again."
 }

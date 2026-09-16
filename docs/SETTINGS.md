@@ -235,14 +235,15 @@ not change; what changes is which machine holds the settings.
    keeping them together and mode 600. That is where `settings.sh` looks with
    no variable set, so this step is the whole of "make it findable".
 
-   **On Windows this step is where it stops today.** Measured 2026-09-16
-   (PITFALLS 16j): in a Git Bash window, `chmod 600` under `C:\Users\<user>`
-   is accepted and changes nothing — the mode reads back 644 — so `set_setting`
-   refuses to write there rather than leave a token that anyone on the machine
-   can read. WSL's home is on ext4 and holds 600 normally, which is where setup
-   run from a WSL shell puts it; a Git Bash window cannot yet read a settings
-   file that lives there (PITFALLS 25). Nothing in this document works around
-   that, and no path in that window does either.
+   **On Windows, ignore the mode this shell prints.** Git Bash mounts NTFS
+   without `acl`, so `chmod 600` there reads back as 644 whatever the file's
+   real permissions are (PITFALLS 16j) - a number nothing in Windows wrote and
+   nothing consults. What decides is the file's ACL, and a file in your own
+   user profile is owner-only by default. `set_setting` asks Windows directly
+   and refuses only if the answer names someone else (PITFALLS 16k), so the
+   location above is the right one here too; it is a USB stick or a
+   cloud-drive folder, which have no ACLs at all, that it will turn down.
+
 2. **Set nothing.** This step used to read "point `LAB_SETTINGS_FILE` at the
    copy", and that instruction is what manufactured the failure it was meant to
    prevent: a variable that lives in one shell's startup file, on a machine

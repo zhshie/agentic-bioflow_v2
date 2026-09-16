@@ -56,6 +56,92 @@ _stat_pick() {   # _stat_pick <gnu-fmt> <bsd-fmt> <file>
 stat_mode() { _stat_pick %a %Lp "$1"; }
 stat_size() { _stat_pick %s %z  "$1"; }
 
+# Whether a file is readable only by the person it belongs to - and, when that
+# cannot be established, saying so instead of guessing.
+#
+# Prints "<state> <evidence>": state is private, exposed or unknown, and the
+# rest of the line is the phrase callers drop into their own sentences, so the
+# finding and the wording for it are derived in one place.
+#
+# On Unix the mode is the answer. On Windows it is not even evidence. Git Bash
+# mounts NTFS without `acl`, so the permission bits it prints are manufactured,
+# and PITFALLS 16j measured a file created in the user's own profile - the
+# location docs/SETTINGS.md sends everyone to - reading back as 644 while
+# nothing but the owner could actually open it. A check that refused on that
+# number was protecting against a filesystem it had not looked at. Asking the
+# operating system that actually decides is both more accurate and, on exFAT or
+# a cloud-drive folder with no ACLs at all, stricter than the mode ever was.
+file_privacy() {
+    local m
+    if [ "$(plat_kind)" = msys ]; then _win_privacy "$1"; return 0; fi
+    m="$(stat_mode "$1")"
+    case "$m" in
+        600) printf 'private mode 600\n' ;;
+        "")  printf 'unknown its mode could not be read\n' ;;
+        *)   printf 'exposed mode %s, should be 600\n' "$m" ;;
+    esac
+}
+
+# Being on a file's ACL says nothing about these three. SYSTEM and the local
+# Administrators group can read anything on the machine whatever an ACL says,
+# so refusing over them would refuse every file on Windows; CREATOR OWNER is an
+# inheritance placeholder rather than a person.
+_WIN_SIDS_OK='S-1-5-18 S-1-5-32-544 S-1-3-0'
+
+# SIDs, never account names. `icacls` prints localised names - BUILTIN\Administrators
+# is VORDEFINIERT\Administratoren on a German install - and a permission check
+# that depends on the display language fails open in a country nobody tested it
+# in. GetAccessRules with a SecurityIdentifier argument also cannot throw on an
+# account that no longer resolves, which Translate() can.
+_win_acl_script() {   # <windows-path> -> the PowerShell to run
+    local p
+    # A single-quoted PowerShell string ends at the first quote, and doubling
+    # is how PowerShell escapes one. A Windows path may legally contain it.
+    p=$(printf '%s' "$1" | sed "s/'/''/g")
+    printf '%s' "\$ErrorActionPreference='Stop';\$p='$p';\$a=Get-Acl -LiteralPath \$p;\
+'me='+[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;\
+'owner='+\$a.GetOwner([Security.Principal.SecurityIdentifier]).Value;\
+\$a.GetAccessRules(\$true,\$true,[Security.Principal.SecurityIdentifier])|\
+ForEach-Object{if(\$_.AccessControlType -eq 'Allow'){'ace='+\$_.IdentityReference.Value}}"
+}
+
+_win_privacy() {
+    local f="$1" wpath out line me="" owner="" aces="" sid
+    command -v powershell.exe >/dev/null 2>&1 || {
+        printf 'unknown %s\n' "this shell's mode is not how Windows decides, and powershell.exe is not here to ask"
+        return 0
+    }
+    wpath="$(cygpath -w "$f" 2>/dev/null)"
+    [ -n "$wpath" ] || wpath="$f"
+    # tr -d '\r': a real powershell.exe ends every line with CRLF, and a SID
+    # carrying a trailing carriage return matches nothing - which would make
+    # every comparison below fail open.
+    out="$(powershell.exe -NoProfile -NonInteractive -Command "$(_win_acl_script "$wpath")" 2>/dev/null | tr -d '\r')"
+    while IFS= read -r line; do
+        case "$line" in
+            me=*)    me="${line#me=}" ;;
+            owner=*) owner="${line#owner=}" ;;
+            ace=*)   aces="$aces ${line#ace=}" ;;
+        esac
+    done <<EOF
+$out
+EOF
+    # An answer that never arrived is not an empty ACL. Reading it as one would
+    # mean "nobody else has access", which is the single wrong answer here that
+    # would also be silent.
+    if [ -z "$me" ] || [ -z "$aces" ]; then
+        printf 'unknown %s\n' "this shell's mode is not how Windows decides, and Windows did not answer"
+        return 0
+    fi
+    for sid in $aces; do
+        case " $_WIN_SIDS_OK $me $owner " in
+            *" $sid "*) ;;
+            *) printf 'exposed Windows also grants access to %s\n' "$sid"; return 0 ;;
+        esac
+    done
+    printf 'private Windows grants it to you alone\n'
+}
+
 # A whole tree's size in bytes. `du -sb` is GNU-only; `du -sk` is POSIX and
 # every platform has it, and kilobytes are finer than any caller here needs -
 # the two readers compare against a megabyte limit and print a human size.
