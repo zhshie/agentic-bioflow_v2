@@ -225,6 +225,32 @@ t "and gives the Windows asset to fetch by hand"           "$out" "tw-windows-x8
 tnot "it does not fall back to the generic unknown-platform text" \
   "$out" "known combinations"
 
+# --- (k) the shim does not hand wsl.exe a directory it cannot map -----------
+# Measured on the member's machine, 2026-09-16: started from a cloud-drive path
+# (`G:\...`, non-ASCII too), wsl.exe printed a path-translation warning and
+# started somewhere else. It only warned - but every call to the site would
+# have carried that line, and the bridge probe in settings.sh reads an exit
+# code. The shim moves to a mappable directory first; this is what pins it.
+odd="$TMP/雲端 drive (1)"
+mkdir -p "$odd"
+log="$TMP/cwd.log"
+cat > "$UB/wsl.exe" <<EOF
+#!/bin/bash
+pwd > "$log"
+exit 0
+EOF
+chmod +x "$UB/wsl.exe"
+( cd "$odd" && env PATH="$UB:/usr/bin:/bin" HOME="$TMP" bash "$SHIM" host true ) >/dev/null 2>&1
+printf '%-58s ' "shim does not run wsl.exe from the caller's own cwd"
+if [ "$(cat "$log" 2>/dev/null)" = "$odd" ]; then
+  echo "FAIL: inherited <<$odd>>"; fails=$((fails+1))
+else
+  echo ok
+fi
+printf '%-58s ' "and lands in a directory that exists"
+[ -d "$(cat "$log" 2>/dev/null)" ] && echo ok \
+  || { echo "FAIL: <<$(cat "$log" 2>/dev/null)>>"; fails=$((fails+1)); }
+
 # --- (j) one derivation, not five ------------------------------------------
 # on_site.sh, fetch.sh, push.sh, reset_master.sh and detect_conditions.sh all
 # need the same answer, and when the bridge first landed each of them worked

@@ -31,4 +31,22 @@
 # ControlPath=..."` string) survives a SECOND hop through wsl.exe is
 # unmeasured - risk R1 in the plan. tests/wsl_bridge_test.sh pins the literal
 # argv a fake wsl.exe receives so a regression here cannot pass silently.
+# Measured on the member's own machine, 2026-09-16: with the working directory
+# set to a cloud-drive path WSL cannot map (`G:\...`, and non-ASCII besides),
+# `wsl.exe` prints a path-translation warning on stderr and starts in a default
+# directory instead. It carried on rather than failing - the exit code that came
+# back was the inner command's own - so this was a warning, not a fault. That is
+# luck, not design: it would put a line of Windows-shaped noise on stderr in
+# front of every single call to the site, and nothing here should depend on a
+# warning staying a warning.
+#
+# The working directory means nothing to this call - ControlPath is absolute or
+# WSL-side, and rsync hands file paths to itself, never to the ssh it spawns -
+# so the cheapest fix is to not offer wsl.exe an untranslatable one. $HOME under
+# Git Bash is the Windows profile, always a real path on a fixed drive; `/` is
+# the Git installation directory and is the fallback for the case where it is
+# not. Deliberately not `wsl.exe --cd`, which would do the same thing: that flag
+# is not in every wsl.exe old enough to be in use, and an unrecognised flag
+# fails the whole call rather than one warning line.
+cd "${HOME:-/}" 2>/dev/null || cd / 2>/dev/null || :
 exec wsl.exe -e ssh "$@"

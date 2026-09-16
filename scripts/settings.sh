@@ -153,6 +153,10 @@ shell_blind_spot() {
     echo "  refuses the filesystem outright if the mode 600 the token needs does"
     echo "  not hold there - settings.sh reads the mode back rather than trusting"
     echo "  that chmod did anything."
+    echo "  On at least one machine it does not hold: MSYS maps chmod onto NTFS"
+    echo "  ACLs, and 2026-09-16 measured 644 in \$HOME itself (PITFALLS 16j)."
+    echo "  If setup refuses here, that is what happened, and the settings file"
+    echo "  has to live where 600 holds - which this shell cannot yet read."
     echo "  A deployment already set up inside WSL stays exactly where it is;"
     echo "  this shell simply cannot read it."
 }
@@ -201,8 +205,16 @@ bridge_kind() {   # -> wsl | none
         # change what these scripts do there.
         *) printf 'none\n'; return 0 ;;
     esac
+    # Probed from a directory WSL can map, for the reason
+    # scripts/utils/wsl_ssh.sh gives at length: a cloud-drive working directory
+    # makes wsl.exe complain before it runs anything. Measured to be only a
+    # warning there - but this probe reads an exit code, and a probe whose
+    # answer depends on a warning staying a warning would turn "the bridge is
+    # missing" into a refusal on a machine where WSL is working fine.
     local _default=none
-    command -v wsl.exe >/dev/null 2>&1 && wsl.exe -e true >/dev/null 2>&1 \
+    command -v wsl.exe >/dev/null 2>&1 \
+        && ( cd "${HOME:-/}" 2>/dev/null || cd / 2>/dev/null || :
+             wsl.exe -e true >/dev/null 2>&1 ) \
         && _default=wsl
     # The setting wins over the probe, in both directions: `site_bridge: none`
     # turns a working bridge off, which is what makes the refusal path
@@ -375,6 +387,27 @@ refuse_unwritable_mode() {
     echo "call succeeds and silently changes nothing. A token saved there is" >&2
     echo "effectively public to anyone with access to that filesystem." >&2
     echo "" >&2
+    # 16j: on Git Bash the sentence below is a circle. MSYS maps chmod onto
+    # NTFS ACLs, and on a member's own laptop, 2026-09-16, the mode came back
+    # 644 in $HOME itself - not only on the cloud drive they work in. Naming
+    # another directory under the same $HOME there would send them back to the
+    # filesystem that just refused them. Say where 600 does hold instead, and
+    # say plainly that this shell cannot yet read a settings file that lives
+    # there (PITFALLS 25) - a gap this version has not closed is still better
+    # information than an instruction that cannot work.
+    if [ "$(plat_kind)" = msys ]; then
+        echo "This shell is Git Bash/MSYS, where chmod is mapped onto NTFS ACLs and" >&2
+        echo "can be accepted without changing anything. Measured on a member's own" >&2
+        echo "laptop on 2026-09-16: mode 644 in \$HOME itself, not only on a mapped or" >&2
+        echo "cloud drive (PITFALLS 16j). If that is this machine, no other directory" >&2
+        echo "under \$HOME here will get past this refusal." >&2
+        echo "" >&2
+        echo "WSL's own home is on ext4, which holds mode 600 normally, and setup run" >&2
+        echo "from a WSL shell writes there. Be warned that this shell cannot read a" >&2
+        echo "settings file that lives there (PITFALLS 25): that is a known gap in this" >&2
+        echo "version, not something a path in this window can work around." >&2
+        return 0
+    fi
     echo "Use a location under \$HOME instead, for example" >&2
     printf '  %s\n' "$(xdg_default)" >&2
     echo "which every filesystem this deployment is designed for can hold at mode 600." >&2

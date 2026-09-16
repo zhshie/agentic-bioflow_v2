@@ -152,6 +152,7 @@ out=$(msys workspace_id --required)
 has   "under MSYS the miss names the second home"      "Git Bash/MSYS"      "$out"
 has   "and says a WSL setup is invisible from here"    "not visible from here" "$out"
 has   "and sends them to WSL, not to moving the file"  "PITFALLS 16b"       "$out"
+has   "and warns that 600 may not hold in this HOME either"  "PITFALLS 16j"  "$out"
 hasnot "without repeating the retracted conclusion"    "only WSL can hold"  "$out"
 has   "while still listing where it looked"            "No settings file"   "$out"
 
@@ -334,6 +335,22 @@ has "...and says the token would be effectively public"     "effectively public"
 printf '%-64s ' "...and the empty file it just made is gone again"
 [ ! -e "$CANTHOLD" ] && echo ok \
   || { echo "FAIL: $CANTHOLD still exists"; fails=$((fails+1)); }
+
+# 16j: measured 2026-09-16 on a member's own laptop, in $HOME itself and not
+# only on a mapped drive - MSYS maps chmod onto NTFS ACLs and the mode came
+# back 644. On that machine the advice this refusal used to end with ("use a
+# location under $HOME") is a circle: it names the directory that just failed.
+# The refusal has to say where 600 does hold, and admit that this shell cannot
+# read a settings file there yet (PITFALLS 25) rather than implying it can.
+out=$(umask 022; PATH="$NOMODE:$UB:$PATH" LAB_SETTINGS_FILE="$TMP/canthold2/env.yaml" \
+      bash "$S" --set workspace_id 1 2>&1); rc=$?
+printf '%-64s ' "under MSYS the same refusal is still a refusal"
+[ "$rc" = 1 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+has    "...names what MSYS does to chmod"                "NTFS"      "$out"
+has    "...and that it was measured in HOME itself"      "16j"       "$out"
+has    "...and names a filesystem that does hold 600"    "ext4"      "$out"
+has    "...and does not pretend this shell can read it"  "PITFALLS 25" "$out"
+hasnot "...and does not send them round the same circle" "under \$HOME instead" "$out"
 
 # A file that already held real content before this call must never be
 # deleted just because a later write's chmod did not hold - that would be a

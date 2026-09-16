@@ -833,6 +833,81 @@ measured the login node's own sshd from inside the site; an external `Match
 Address` exception is not ruled out — though it would have to make the policy
 *looser* for outside clients than for inside ones, which no site does.
 
+**16i. `wsl.exe` inherits the caller's working directory, and a cloud-drive
+one is not a directory it can map.** Measured 2026-09-16 on the member's own
+Windows laptop, in the window they actually work in - a Google Drive folder
+whose path is both on a virtual drive letter and non-ASCII:
+
+```
+wsl.exe -e bash -lc 'tw --version'
+  -> path translation warning, then started in a default directory
+  -> tw: command not found          (exit 127, the inner command's own)
+```
+
+Two things follow, and only the first is obvious. The obvious one: with the
+bridge active, every single call to the site would have carried that warning
+line on stderr ahead of it. The other: it only *warned*. The call went through
+and the exit code that came back belonged to the command inside, not to the
+translation - which means a probe like `bridge_kind()`'s `wsl.exe -e true`
+would still have answered correctly. That is luck rather than design, and a
+probe whose answer rests on a warning staying a warning would report "no
+bridge" on a machine where WSL is working perfectly.
+
+`scripts/utils/wsl_ssh.sh` and `bridge_kind()` both move to a mappable
+directory before spawning wsl.exe (`$HOME` under Git Bash is the Windows
+profile; `/` is the fallback). Not `wsl.exe --cd`, which expresses the same
+intent: that flag is missing from wsl.exe builds still in use, and an
+unrecognised flag fails the whole call rather than one line of it. The working
+directory means nothing to this call anyway - ControlPath is absolute or
+WSL-side, and rsync hands file paths to itself, never to the ssh it spawns.
+
+The same session also settled three things by simply looking: `jq` 1.8.2 is
+present; `python` and `py` both run while `python3` is the Store stub (20c),
+which is the case `pick_python()` exists for; and **`rsync` is not installed at
+all** - Git Bash ships none, so `scripts/fetch.sh` and `scripts/push.sh` have
+nothing to drive until it is installed or replaced.
+
+**16j. Git Bash cannot hold mode 600 anywhere — and the member's settings file
+was already sitting in the other home, at a real 600.** Measured 2026-09-16, on
+the same laptop as 16i, in two places on purpose:
+
+```
+cd <the Google Drive folder> && touch t && chmod 600 t && stat -c %a t   -> 644
+cd ~                        && touch t && chmod 600 t && stat -c %a t   -> 644
+```
+
+The first result was expected and means little: that folder is a cloud drive,
+and `refuse_site_shaped_write()` already refuses it by name. **The second is
+the finding.** `~` there is `C:\Users\<user>`, plain NTFS, the location
+`docs/SETTINGS.md` sends everyone to — and MSYS maps `chmod` onto NTFS ACLs in
+a way that accepted the call and changed nothing. This is B1's shape on a third
+filesystem, and the one that matters most, because it is the default one.
+
+So `set_setting()`'s read-back refuses, and **setup cannot complete in a Git
+Bash window at all.** That is the read-back working exactly as designed: 2.12
+chose a loud refusal over a token saved world-readable, and this is the refusal
+arriving. What was wrong was the sentence it ended with — *use a location under
+`$HOME` instead* — which on this machine names the directory that just failed.
+Fixed in the same release; the refusal now says where 600 does hold and what is
+still missing.
+
+The second half was found by looking rather than by testing. The member's
+settings file and token **already existed**, at
+`\\wsl$\Ubuntu\home\<user>\.config\agentic-bioflow\`, and `stat` inside WSL
+reports the token at a real 600 — ext4 holds it normally. That is entry 25's
+two-`$HOME` split, observed live: the deployment is set up, correctly, on a
+filesystem that works, and the window they run Claude Code in cannot see any of
+it. Note what this does *not* mean: nothing in 2.13 reads that file. The
+settings file is derived from `$HOME` (`scripts/settings.sh`), and in that
+window `$HOME` is the NTFS one.
+
+What would close it is the same move the transport already makes, applied to
+exactly one more thing: the settings file and the token live where 600 holds,
+and `settings.sh` reads and writes them across the bridge (`wsl.exe -e cat` /
+`-e tee`). **Only that one file crosses** — not the execution environment — so
+none of the three failures that sank the whole-environment design
+(`PRINCIPLES.md`, invariant 11) come back. Not built in 2.13.
+
 **18. A gate that reads the conversation must separate what the model typed
 from what the user saw — twice this was got wrong, and both times the fix's own
 design conversation was what exposed it.** `hooks/confirm_walkthrough.sh` denies
