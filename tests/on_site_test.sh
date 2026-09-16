@@ -220,6 +220,15 @@ mt "and warns about the Windows exe shortcut" 2 "claude.exe"               -- tr
 mt "and names the .wslconfig fix first"       2 "vsyscall=emulate"         -- true
 mt "and offers the off-design report"         2 "report.sh"                -- true
 
+# The mistake this release corrects: the refusal used to read as though the
+# project folder had to move into WSL. It never did - only the shell is
+# refused - and these pin the three things that say so: what is actually
+# being refused, a pasteable command that returns to the same folder, and
+# where the settings/token end up instead.
+mt "and says what is refused is the shell, not the folder" 2 "not the folder" -- true
+mt "and shows a pasteable cd back into the same folder"    2 "cd /mnt/c"      -- true
+mt "and says settings/token stay off the Windows filesystem" 2 "Windows filesystem" -- true
+
 # 16g measured the opposite of what this refusal used to assert. It may say
 # this shell is unsupported; it may not say the site is out of reach from here.
 printf '%-56s ' "it no longer claims the site is unreachable"

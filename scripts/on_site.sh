@@ -199,18 +199,30 @@ wrong_shell() {
         "safety-net hook needs, and the test suite does not run here at all." \
         "Supporting that is work nobody has needed yet." \
         "" \
-        "Run Claude Code from a WSL shell instead. WSL is a separate Linux" \
-        "with its own home directory, so install it there:" \
+        "What is refused is this shell - not the folder. Your project stays" \
+        "exactly where it is; this plugin's own files resolve from its" \
+        "install location, never from where Claude Code was started, and the" \
+        "real work runs on the cluster." \
         "" \
+        "Get a WSL shell, install Claude Code inside it - WSL is a separate" \
+        "Linux with its own home directory - then go back to the very folder" \
+        "you were just in:" \
+        "" \
+        "    wsl.exe" \
         "    npm install -g @anthropic-ai/claude-code" \
+        "    cd /mnt/c/Users/<you>/Desktop/<your project>" \
+        "    claude" \
         "" \
-        "then start 'claude' from that shell. Do not run the Windows" \
-        "claude.exe from WSL - that starts a Windows process and lands you" \
-        "back in this shell." \
+        "Do not run the Windows claude.exe from WSL - that starts a Windows" \
+        "process and lands you back in this shell." \
         "" \
         "One thing to do first: Seqera's CLI segfaults under WSL2 until" \
         "%UserProfile%\\.wslconfig carries [wsl2] kernelCommandLine =" \
         "vsyscall=emulate, then 'wsl --shutdown' (PITFALLS 16f)." \
+        "" \
+        "The settings file and token stay in that WSL home too, never on the" \
+        "Windows filesystem - it cannot hold the mode 600 they need" \
+        "(scripts/settings.sh checks this at write time)." \
         "" \
         "If you need this shell supported, say so rather than working around" \
         "it: scripts/report.sh records it for the maintainer (the off-design" \

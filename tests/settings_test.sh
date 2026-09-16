@@ -155,6 +155,14 @@ has   "and sends them to WSL, not to moving the file"  "PITFALLS 16b"       "$ou
 hasnot "without repeating the retracted conclusion"    "only WSL can hold"  "$out"
 has   "while still listing where it looked"            "No settings file"   "$out"
 
+# A3: the advice above used to stop at "start Claude Code from a WSL shell",
+# which is true but leaves the part a member actually needs unsaid - the
+# PROJECT folder they already work in does not have to move anywhere. Only the
+# settings file and the token beside it have to live in the WSL home, and B1's
+# own check is why.
+has   "and says the project folder itself does not have to move" "does not have to move" "$out"
+has   "and names /mnt/c as reachable from a WSL shell"            "/mnt/c"                "$out"
+
 # The note is only true on Windows. Printed anywhere else it is noise, and a
 # hint that fires everywhere teaches the reader to skip the whole block.
 out=$(clean "$TMP/nowhere" workspace_id --required)
@@ -291,5 +299,110 @@ printf '%-64s ' "an explicit LAB_SETTINGS_FILE always wins, even with LAB_RUNS_D
 EXPLICIT="$TMP/d5_explicit.yaml"
 out=$(LAB_SETTINGS_FILE="$EXPLICIT" LAB_RUNS_DIR="$RD" bash "$S" --set reach ssh 2>&1); rc=$?
 [ "$rc" = 0 ] && [ -r "$EXPLICIT" ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+
+echo
+
+# ---------------------------------------------------------------------------
+# B1: chmod 600 can be *accepted* and change nothing. /mnt/c under WSL without
+# the 'metadata' mount option, and exFAT, both do this - no error, nothing a
+# caller that only checks chmod's own exit code would ever see. A fake `chmod`
+# that always succeeds but never actually changes a file's mode stands in for
+# that filesystem: it is the one difference set_setting's read-back has to
+# notice.
+NOMODE="$TMP/nomode_bin"; mkdir -p "$NOMODE"
+cat > "$NOMODE/chmod" <<'C'
+#!/bin/bash
+# Simulates a filesystem where chmod is accepted but silently does nothing.
+exit 0
+C
+chmod +x "$NOMODE/chmod"
+
+CANTHOLD="$TMP/canthold/env.yaml"
+out=$(umask 022; PATH="$NOMODE:$PATH" LAB_SETTINGS_FILE="$CANTHOLD" \
+      bash "$S" --set workspace_id 1 2>&1); rc=$?
+printf '%-64s ' "a filesystem that cannot hold mode 600 is refused"
+[ "$rc" = 1 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+has "...names the filesystems this actually happens on"    "/mnt/c" "$out"
+has "...and exFAT"                                          "exFAT"  "$out"
+has "...and says the token would be effectively public"     "effectively public" "$out"
+printf '%-64s ' "...and the empty file it just made is gone again"
+[ ! -e "$CANTHOLD" ] && echo ok \
+  || { echo "FAIL: $CANTHOLD still exists"; fails=$((fails+1)); }
+
+# A file that already held real content before this call must never be
+# deleted just because a later write's chmod did not hold - that would be a
+# second, worse failure stacked on the first.
+PREEXIST="$TMP/preexist/env.yaml"; mkdir -p "$(dirname "$PREEXIST")"
+printf 'seqera_user: someone\n' > "$PREEXIST"; chmod 644 "$PREEXIST"
+out=$(PATH="$NOMODE:$PATH" LAB_SETTINGS_FILE="$PREEXIST" \
+      bash "$S" --set workspace_id 1 2>&1); rc=$?
+printf '%-64s ' "a pre-existing settings file is still refused the same way"
+[ "$rc" = 1 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...but a file that already had content is never deleted"
+grep -qF "someone" "$PREEXIST" 2>/dev/null && echo ok \
+  || { echo "FAIL: pre-existing settings file was removed or emptied"; fails=$((fails+1)); }
+
+# The ordinary case: a filesystem that DOES hold 600 is written exactly as
+# before, and set_setting's own read-back does not get in the way of it.
+CANHOLD="$TMP/canhold/env.yaml"
+out=$(LAB_SETTINGS_FILE="$CANHOLD" bash "$S" --set workspace_id 1 2>&1); rc=$?
+t "a filesystem that CAN hold 600 is written normally" "$rc" "0"
+t "...at mode 600"                                      "$(stat -c %a "$CANHOLD")" "600"
+
+# stat_mode itself can come back empty (its own documented case - see
+# token_state()'s "" branch). That is "cannot tell", not "unsafe": a refusal
+# triggered by a `stat` that simply answers differently would be worse than
+# the silent-token bug this whole check exists to catch.
+NOSTAT="$TMP/nostat_bin"; mkdir -p "$NOSTAT"
+cat > "$NOSTAT/stat" <<'C'
+#!/bin/bash
+exit 1
+C
+chmod +x "$NOSTAT/stat"
+CANTTELL="$TMP/canttell/env.yaml"
+out=$(PATH="$NOSTAT:$PATH" LAB_SETTINGS_FILE="$CANTTELL" \
+      bash "$S" --set workspace_id 1 2>&1); rc=$?
+t "an unreadable mode ('cannot tell') is let through, not refused" "$rc" "0"
+
+# ---------------------------------------------------------------------------
+# B2: `--summary` used to print a hardcoded "mode 600" sentence, independent
+# of whatever token_state() found two lines above it - the token's half of
+# this file was already honest and the settings half was not. A fake `stat`
+# that always reports a different mode proves --summary now reads it back the
+# same way token_state() does, rather than asserting a constant.
+FAKESTAT="$TMP/fakestat_bin"; mkdir -p "$FAKESTAT"
+cat > "$FAKESTAT/stat" <<'C'
+#!/bin/bash
+echo 640
+C
+chmod +x "$FAKESTAT/stat"
+
+SUMFILE="$TMP/summode/env.yaml"; mkdir -p "$(dirname "$SUMFILE")"
+printf 'workspace_id: 1\n' > "$SUMFILE"; chmod 600 "$SUMFILE"
+out=$(PATH="$FAKESTAT:$PATH" LAB_SETTINGS_FILE="$SUMFILE" bash "$S" --summary 2>&1)
+has    "--summary prints the mode stat_mode actually reports" "$SUMFILE, mode 640" "$out"
+hasnot "...never a hardcoded mode 600 for a file that isn't"  "$SUMFILE, mode 600" "$out"
+
+# ---------------------------------------------------------------------------
+# B3: a synced folder is a second, invisible risk chmod 600 cannot catch at
+# all - mode 600 there is completely normal, and the sync client uploads the
+# file to a third party anyway. Only the path's own name can hint at this.
+out=$(clean "$TMP/OneDrive" --set workspace_id 1 2>&1); rc=$?
+printf '%-64s ' "a synced-looking path is refused"
+[ "$rc" = 2 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+has "...names the sync product it matched"      "OneDrive" "$out"
+has "...says a token there would leave with the sync client" "third party" "$out"
+has "...and says its own list is not complete"  "not a complete list" "$out"
+printf '%-64s ' "...and creates nothing there at all"
+[ ! -e "$TMP/OneDrive/agentic-bioflow/env.yaml" ] && echo ok \
+  || { echo "FAIL: a file appeared under the synced folder"; fails=$((fails+1)); }
+
+# Precedence matches site_shaped_write_refusal(): an explicit LAB_SETTINGS_FILE
+# wins outright, because a member who named the location chose it deliberately.
+EXPLICIT_SYNC="$TMP/OneDrive/chosen/env.yaml"
+out=$(LAB_SETTINGS_FILE="$EXPLICIT_SYNC" bash "$S" --set workspace_id 1 2>&1); rc=$?
+printf '%-64s ' "the same path is allowed when LAB_SETTINGS_FILE names it explicitly"
+[ "$rc" = 0 ] && [ -r "$EXPLICIT_SYNC" ] && echo ok \
+  || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

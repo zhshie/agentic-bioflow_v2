@@ -56,7 +56,9 @@
 #   --run    also scaffold one run's own subdirectories
 #            (projects/<project>/runs/<pipeline>_<label>_<YYYYMMDD>/...).
 #            Needs --project: a run belongs to one.
-#   --root   local side only. Default $HOME/agentic-bioflow.
+#   --root   local side only. Overrides the `local_root` setting for this one
+#            call; falls back to it otherwise, and to $HOME/agentic-bioflow
+#            when neither is set. docs/SETTINGS.md.
 #
 # Idempotent: every directory is made with `mkdir -p`, which by construction
 # never touches anything already inside an existing one - the same guarantee
@@ -194,7 +196,11 @@ if [ "$SIDE" = site ]; then
         DIRS+=("$RUN_DIR/logs" "$RUN_DIR/results" "$RUN_DIR/work")
     fi
 else
-    BASE="${ROOT_ARG:-$HOME/agentic-bioflow}"
+    # local_root (docs/SETTINGS.md): the same key scripts/inspect_sides.sh
+    # reads, so "where this builds" and "where inspect_sides.sh looks" cannot
+    # drift apart. --root still wins outright, for a one-off call that should
+    # not need a settings edit.
+    BASE="${ROOT_ARG:-$(setting local_root "$HOME/agentic-bioflow")}"
     BASE="${BASE%/}"
 
     DIRS+=("$BASE/$USER_NAME/projects")

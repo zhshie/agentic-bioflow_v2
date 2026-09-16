@@ -38,8 +38,10 @@ improvising the sequence.
 
 **A project is what holds them together.** Raw data, every run made from it,
 the analysis written on those runs, and the package built from the analysis all
-live under one project directory. `launch` asks which project a run belongs to
-before starting it, and a run whose output lands outside one is refused.
+live under one project directory. The project folder may live wherever the
+member already keeps their work - nothing this plugin needs is bound to that
+location. `launch` asks which project a run belongs to before starting it, and
+a run whose output lands outside one is refused.
 
 ## Which pipeline
 

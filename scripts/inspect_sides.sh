@@ -141,11 +141,16 @@ if [ "$SETTINGS_FOUND" = 1 ]; then echo "local.settings=yes"; else echo "local.s
 LOCAL_TOKEN="$(token_file)"
 if [ -r "$LOCAL_TOKEN" ]; then echo "local.token=yes"; else echo "local.token=no"; fi
 
-# No settings key names this - docs/SETTINGS.md documents the default plainly
-# (init_workspace.sh's own `--root`, same default) and nothing here invents a
-# second one. $HOME is overridable in tests the same way every other
-# settings-file test already overrides it.
-LOCAL_ROOT="${HOME:-}/agentic-bioflow"
+# local_root (docs/SETTINGS.md): the local side does not have to sit under
+# $HOME at all - a member's habitual folder may be a desktop folder, a
+# cloud-drive sync folder, or a Windows path reached from WSL, and the whole
+# point of this release is that the plugin works there without the member
+# changing that habit. Read the same key init_workspace.sh's own `--root`
+# falls back to, so :setup's "new install / adopt / repair" decision looks
+# where the member actually chose rather than reporting local.skeleton=no
+# about a deployment that exists. $HOME is overridable in tests the same way
+# every other settings-file test already overrides it.
+LOCAL_ROOT="$(setting local_root "${HOME:-}/agentic-bioflow")"
 if [ -d "$LOCAL_ROOT" ]; then echo "local.skeleton=yes"; else echo "local.skeleton=no"; fi
 
 if has_tw; then echo "local.tw=yes"; else echo "local.tw=no"; fi

@@ -1,6 +1,6 @@
 # Where this stands
 
-**Update 2026-09-16, plugin 2.11.0.** The sections below describe 2.0.7 and
+**Update 2026-09-16, plugin 2.12.0.** The sections below describe 2.0.7 and
 are kept for their history; this block is what is current.
 
 - Releases since: 2.6 (Mac/Windows+WSL), 2.7 (guidance: overview, per-command
@@ -27,6 +27,26 @@ are kept for their history; this block is what is current.
   tier, a deployment has exactly one token, and its premise (M5) is
   unverified. All five now say designed-but-not-built, and M5's row names the
   check: one view-role token in Seqera's UI, no cluster OTP.
+- Done 2026-09-16 (2.12.0): **where a member opens Claude Code decides the
+  shell, not where their work may live** - now invariant 11 (`PRINCIPLES.md`
+  section E). Nothing this plugin needs sits in the project folder, so a
+  desktop folder, a cloud-drive folder or a Windows path reached from WSL are
+  all fine; the refusals that used to read as "move your project" now say what
+  they actually refuse and show the `cd /mnt/c/...` route back to the same
+  folder. The local side gained a `local_root` settings key, so it can be
+  pointed at a folder the member already uses instead of always
+  `$HOME/agentic-bioflow` (`scripts/inspect_sides.sh` read that path hardcoded
+  before, with a comment saying no key named it).
+- Also 2.12.0: the one place location really does matter is the settings file
+  and the token beside it, and it had no check at all. `set_setting()` now
+  **reads the mode back** after `chmod 600` - a filesystem that silently keeps
+  the old mode (`/mnt/c` without `metadata`, exFAT) is refused rather than
+  leaving a public token - and `--summary` reports the real mode instead of
+  asserting 600. A folder whose name looks like a sync root is refused too,
+  with the message saying plainly that the list of names is not complete,
+  because that risk is invisible to a permission bit. **M7/M11/M12** are the
+  new unverified rows (`docs/LAB_AGENTS.md` section 10); none of them blocks
+  the mode check, which measures rather than infers.
 - Open, and needing a person: **M3** how long an ssh master
   survives (someone types the OTP); **M5** whether a VIEW-role token really
   cannot launch; **M6** whether NCHC allows unattended access on a shared

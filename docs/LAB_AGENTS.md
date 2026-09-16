@@ -283,6 +283,16 @@ from source alone (`PRINCIPLES.md`, invariant 8).
 | M4 | Do this plugin's hooks load under `claude -p` or the Agent SDK, and do G1–G3 and `ask` refuse there? | **Partly measured 2026-09-14:** `claude -p` with a blocking UserPromptSubmit hook (no model call) - the installed plugin's `plugin_intro.sh` ran and wrote its per-session marker, so plugin hooks load under `-p`. Still unmeasured: whether PreToolUse `deny`/`ask` refuse there (needs a real tool call), and the Agent SDK | No |
 | M5 | Do Seqera workspace roles (View, Launch, and so on) behave as this design assumes — specifically, is a View-role token unable to launch? | `tw participants` and Seqera's own documentation; no actual launch attempted. Settling it means issuing one view-role token in Seqera's own UI and trying a launch with it — **no cluster OTP is involved**, which makes this the cheapest open measurement here, and §3 leans on it | Yes, to issue the token |
 | M6 | Does NCHC permit automated access under a shared account, and a persistent process on a login node at all? | Only the user can ask NCHC this directly | **Yes** |
+| M7 | On a Windows folder reached from WSL (`/mnt/c/...`, DrvFs), does `chmod 600` actually hold, and does Claude Code run normally with that as its working directory? | `chmod 600` a file under `/mnt/c/...` from a WSL shell, `stat` the mode back, and open a session with that path as the working directory | No |
+| M11 | In VS Code's "Reopen Folder in WSL" window, does the Claude Code extension's Bash tool actually run inside WSL? | `uname -a` from the extension's Bash tool answers it in one command | No |
+| M12 | Under a cloud drive's streaming / on-demand mode, how do these scripts behave against files that are not materialised locally? | Point a folder at a cloud-drive client set to on-demand/streaming mode, run the scripts against a file that has not been downloaded, and observe: hang, error, or a silent short read | No |
+
+M7 is worth knowing but not blocking: `PRINCIPLES.md` invariant 11's mode-600
+read-back check does not depend on its answer either way — it measures the
+bit on whatever filesystem it is handed rather than inferring the answer from
+a list of known-bad locations, so a `/mnt/c/...` working directory that fails
+M7 is caught the same way any other filesystem that cannot hold the bit is
+caught, not as a special case.
 
 A measurement that does not hold does not get implemented around — the
 correct response is to record why it failed and not build the feature it was

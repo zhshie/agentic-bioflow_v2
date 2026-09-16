@@ -83,6 +83,7 @@ be. A settings file that needs a real parser has grown into something else.
 | `ssh_control_path` | Where the multiplexed master's socket lives. **`reach: ssh` only** | Defaults to `~/.ssh/cm-%r-%h-%p`. It must not contain `:` — illegal in a Windows filename |
 | `ssh_max_parallel` | How many concurrent sessions `scripts/on_site.sh` opens on one shared master at once, via a lock directory (`mkdir`, not `flock` — not portable to a Mac). **`reach: ssh` only**; this site caps concurrent sessions per connection too (PITFALLS 16e), and several callers sharing one master reach that cap faster than one ever did — see `docs/LAB_AGENTS.md` §6 | Defaults to 4. A caller that cannot get a slot waits until `ON_SITE_TIMEOUT` |
 | `storage_root` | Where runs live. Exported as `LAB_RUNS_DIR`; every other path derives from it | Nothing works; scripts refuse to guess |
+| `local_root` | The local side's root — the machine-local mirror of `storage_root`, read by `scripts/inspect_sides.sh` and `scripts/init_workspace.sh local`. May point anywhere the member already keeps work: a desktop folder, a cloud-drive sync folder, a Windows path reached from WSL. `init_workspace.sh --root` overrides it outright for one call | Defaults to `$HOME/agentic-bioflow`, same as before this key existed |
 | `workspace_id` | The Seqera workspace. **The one value a lab shares** — everything else below is per person | Cannot reach Platform |
 | `compute_env` | This member's compute environment name | Cannot launch |
 | `slurm_account` | The allocation compute time is billed to | Jobs are refused. There is deliberately **no default**: one would bill somebody else's project |
@@ -151,7 +152,8 @@ $LAB_RUNS_DIR/                     (site side, "site")
                     ├── results/  --outdir points here
                     └── work/     the only deletable one, on confirmation
 
-<local root>/                      (local side, "local"; default $HOME/agentic-bioflow)
+<local root>/                      (local side, "local"; settings key `local_root`,
+                                    default $HOME/agentic-bioflow)
 └── <seqera_user>/
     └── projects/<same name as the site>/
         ├── rawdata/        staging; scripts/push.sh sends this up

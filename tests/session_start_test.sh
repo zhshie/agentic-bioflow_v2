@@ -158,6 +158,8 @@ check "and told the bridge was measured too"         "$out" "PITFALLS 16g"    pr
 check "and told the reason that still holds"         "$out" "python3"         present
 check "and told the move"                            "$out" "WSL"             present
 check "and no longer told the site is unreachable"   "$out" "cannot reach the cluster" absent
+check "and told the project does not have to move"   "$out" "does not have to move" present
+check "and given a /mnt/c path back to the project"   "$out" "/mnt/c"          present
 printf '%-52s ' "and the hook still exits 0"
 [ "$rc" = 0 ] && echo "ok" || { echo "FAIL: rc $rc"; fails=$((fails+1)); }
 

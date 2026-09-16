@@ -210,5 +210,43 @@ printf '%-64s ' "emits exactly the 13 contract keys, in order"
 [ "$GOT_KEYS" = "$WANT_KEYS" ] && echo ok \
   || { echo "FAIL: got:"; echo "$GOT_KEYS"; fails=$((fails+1)); }
 
+# =============================================================================
+# local_root: the local side's root now comes from a settings key instead of
+# a bare $HOME/agentic-bioflow default - this is what the comment this ticket
+# rewrote used to say could not be done ("No settings key names this"). A
+# member whose work lives in a cloud-drive folder or a Windows path reached
+# from WSL gets a phantom "not set up" otherwise: local.skeleton=no about a
+# deployment that is actually right there, just not under $HOME.
+CUSTOMHOME="$TMP/customhome"; mkdir -p "$CUSTOMHOME"
+CUSTOMROOT="$TMP/cloud_drive/agentic-bioflow-work"
+printf 'reach: local\nlocal_root: %s\n' "$CUSTOMROOT" > "$CUSTOMHOME/env.yaml"
+run_custom() { clean HOME="$CUSTOMHOME" LAB_SETTINGS_FILE="$CUSTOMHOME/env.yaml" -- bash "$S" "$@" 2>&1; }
+
+out=$(run_custom)
+kv "local_root set, neither path exists: local.skeleton=no" "$out" local.skeleton no
+
+# The OLD default exists but the CONFIGURED root does not - this is the case
+# that proves inspect_sides.sh actually read the local_root key rather than
+# getting lucky: a script that still checked $HOME/agentic-bioflow would
+# report yes here.
+mkdir -p "$CUSTOMHOME/agentic-bioflow"
+out=$(run_custom)
+kv "local_root set, only the OLD default exists: local.skeleton=no" "$out" local.skeleton no
+
+mkdir -p "$CUSTOMROOT"
+out=$(run_custom)
+kv "local_root set, configured path exists: local.skeleton=yes" "$out" local.skeleton yes
+
+# No local_root key at all: the old default, unchanged. This is a test case,
+# not an assumption (the ticket says so explicitly).
+DEFAULTHOME="$TMP/defaulthome"; mkdir -p "$DEFAULTHOME"
+printf 'reach: local\n' > "$DEFAULTHOME/env.yaml"
+run_default() { clean HOME="$DEFAULTHOME" LAB_SETTINGS_FILE="$DEFAULTHOME/env.yaml" -- bash "$S" "$@" 2>&1; }
+out=$(run_default)
+kv "no local_root key: local.skeleton=no with no default dir" "$out" local.skeleton no
+mkdir -p "$DEFAULTHOME/agentic-bioflow"
+out=$(run_default)
+kv "no local_root key: local.skeleton=yes once \$HOME/agentic-bioflow exists" "$out" local.skeleton yes
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

@@ -168,6 +168,22 @@ be.
   depends on (PITFALLS 16b), and the rest of the Linux userland is missing
   there as well: python3 on PATH is a Microsoft Store stub (PITFALLS 20c).
 
+  **The folder is not decided the same way, and say so plainly** - a member
+  who is not told this will assume WSL also means moving their work, and it
+  does not. Nothing this plugin needs lives in the user's project folder: its
+  own files resolve under the installed plugin's own root, never the working
+  directory, and every script it runs finds itself the same way, not from
+  wherever it happens to be launched. So their project folder can stay exactly
+  where they already keep it - a desktop folder, a folder a cloud drive syncs,
+  a Windows path reached from inside WSL - and this plugin does not use it and
+  does not need it moved. Where step 1 below asks where the local side of
+  their work should live, that answer may be any folder they already use for
+  it. The one exception is the settings file itself, because it holds their
+  credential: that file belongs in their home directory (the `reach: ssh`
+  note above says exactly where `settings.sh` looks), never inside a folder
+  they point elsewhere, and never
+  something copied or synced alongside the rest of their work.
+
 **Two more questions, before step 1** — they decide what step 1 builds, so
 asking them after would mean redoing it.
 

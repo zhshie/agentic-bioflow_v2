@@ -149,6 +149,12 @@ shell_blind_spot() {
     echo "  PITFALLS 16b, 20c: this shell's own ssh cannot hold the site"
     echo "  connection, and its python3 is a Store stub, so start Claude Code"
     echo "  from a WSL shell rather than moving the file."
+    echo "  Your project folder does not have to move to get there: /mnt/c/... is"
+    echo "  readable and writable from WSL, so start Claude Code in a WSL shell and"
+    echo "  'cd' straight back to the folder you already work in. What has to stay"
+    echo "  in the WSL home is only the settings file and the token beside it -"
+    echo "  chmod 600 does not hold on /mnt/c without the 'metadata' mount option,"
+    echo "  which is what settings.sh's own write-back check now refuses."
 }
 
 # The token file, worked out in one place. preflight.sh, the session hook,
@@ -201,10 +207,14 @@ setting() {
 # otherwise. Creates the file mode 600, because everything in it is either
 # personal or an access path.
 set_setting() {
-    local key="$1" val="$2"
+    local key="$1" val="$2" created=0
     [ -n "${SETTINGS_FILE:-}" ] || { echo "no settings file location known" >&2; return 1; }
     mkdir -p "$(dirname "$SETTINGS_FILE")"
-    [ -e "$SETTINGS_FILE" ] || { : > "$SETTINGS_FILE"; chmod 600 "$SETTINGS_FILE"; }
+    if [ ! -e "$SETTINGS_FILE" ]; then
+        created=1
+        : > "$SETTINGS_FILE"
+        chmod 600 "$SETTINGS_FILE"
+    fi
     python3 - "$SETTINGS_FILE" "$key" "$val" <<'PY'
 import re, sys
 path, key, val = sys.argv[1:4]
@@ -226,6 +236,47 @@ else:
 open(path, "w").writelines(lines)
 PY
     chmod 600 "$SETTINGS_FILE"
+
+    # B1: the chmod above can be *accepted* and change nothing. Measured shape:
+    # /mnt/c under WSL without the `metadata` mount option, and exFAT, both take
+    # the syscall and silently keep whatever mode the file already had - no
+    # error, nothing to catch, and the token that lives beside this file
+    # (docs/SETTINGS.md) ends up readable by anyone with access to that
+    # filesystem. Reading the mode back is the only way to see that; the chmod
+    # returning success proves nothing on its own.
+    #
+    # An empty stat_mode is a DIFFERENT case, not this one. token_state() (this
+    # file, below) already treats "" as "cannot tell" rather than "unsafe" - its
+    # own empty-string branch - and a refusal on a machine whose `stat` simply
+    # answers differently would be a worse failure than the silent-token bug
+    # this exists to catch. So "" carries on here too.
+    local _mode_after; _mode_after="$(stat_mode "$SETTINGS_FILE")"
+    case "$_mode_after" in
+        600|"") return 0 ;;
+    esac
+    # Only a file THIS call created is ours to remove. One that already held a
+    # member's real settings must stay - deleting it over a permission problem
+    # would be a second, worse failure stacked on the first.
+    if [ "$created" = 1 ]; then rm -f "$SETTINGS_FILE"; fi
+    refuse_unwritable_mode "$SETTINGS_FILE" "$_mode_after"
+    return 1
+}
+
+# What set_setting() calls when chmod 600 did not hold. Same shape as
+# refuse_site_shaped_write() below: name the file, say why, name where it
+# works instead.
+refuse_unwritable_mode() {
+    local file="$1" mode="$2"
+    echo "refusing to write settings to $file: this filesystem would not hold mode 600." >&2
+    echo "" >&2
+    echo "chmod 600 was accepted but the file is still mode $mode. /mnt/c under WSL" >&2
+    echo "(without the 'metadata' mount option) and exFAT both do this: the chmod" >&2
+    echo "call succeeds and silently changes nothing. A token saved there is" >&2
+    echo "effectively public to anyone with access to that filesystem." >&2
+    echo "" >&2
+    echo "Use a location under \$HOME instead, for example" >&2
+    printf '  %s\n' "$(xdg_default)" >&2
+    echo "which every filesystem this deployment is designed for can hold at mode 600." >&2
 }
 
 # D5: `reach: ssh` means this deployment runs on the user's own machine, not
@@ -268,6 +319,46 @@ refuse_site_shaped_write() {
     echo "with the variable gone again - cannot find (docs/SETTINGS.md)." >&2
     echo "" >&2
     echo "Unset LAB_RUNS_DIR and run this again." >&2
+}
+
+# B3: a synced folder is a risk mode 600 cannot catch. The filesystem holds
+# 600 there perfectly normally - the check above and set_setting's read-back
+# both see nothing wrong - and the sync client uploads the file to a third
+# party regardless of its permission bits. Only the path's *name* can hint at
+# this; nothing about the file itself does.
+#
+# Same shape and precedence as site_shaped_write_refusal() above: an explicit
+# LAB_SETTINGS_FILE wins outright, because a member who named the location
+# chose it.
+#
+#   0  refuse   1  fine, carry on
+looks_synced_write_refusal() {
+    local path="$1"
+    [ -z "${LAB_SETTINGS_FILE:-}" ] || return 1   # an explicit location wins outright
+    case "$path" in
+        *OneDrive*|*Dropbox*|*"Google Drive"*|*GoogleDrive*|*"Library/Mobile Documents"*|*Box*|*Nextcloud*)
+            return 0 ;;
+    esac
+    return 1
+}
+
+refuse_synced_write() {
+    local path="$1"
+    echo "refusing to write settings to $path: the path looks like it is inside a" >&2
+    echo "synced folder (OneDrive, Dropbox, Google Drive, iCloud's Library/Mobile" >&2
+    echo "Documents, Box, Nextcloud, ...)." >&2
+    echo "" >&2
+    echo "Those are the names this check recognises, not a complete list - any folder" >&2
+    echo "that syncs anywhere is the same risk, and a list of sync products can never" >&2
+    echo "be complete. Mode 600 there is perfectly normal and does not help: the sync" >&2
+    echo "client uploads the file to a third party regardless of its permission bits," >&2
+    echo "and the token in it would go with it." >&2
+    echo "" >&2
+    echo "Use a location outside any synced folder instead, for example" >&2
+    printf '  %s\n' "$(xdg_default)" >&2
+    echo "" >&2
+    echo "To use this path anyway, set LAB_SETTINGS_FILE to it explicitly - naming the" >&2
+    echo "location outright is treated as a deliberate choice." >&2
 }
 
 # Which startup file an export has to go into, and the line to put there.
@@ -353,7 +444,17 @@ settings_summary() {
     printf "$r" "agent connection"    "$(setting agent_connection 'not set')"
     printf "$r" "token"               "$(token_state)"
     echo
-    echo "All of it is saved at $SETTINGS_FILE, mode 600."
+    # B2: this used to assert "mode 600" outright. token_state() above already
+    # reads the mode back and reports what it actually is rather than what it
+    # should be - the two halves of one file were inconsistent. Same call,
+    # same three-way read here, so a filesystem that cannot hold 600 (B1) is
+    # not contradicted two lines later by a sentence that was never checked.
+    local _settings_mode; _settings_mode="$(stat_mode "$SETTINGS_FILE")"
+    case "$_settings_mode" in
+        600) echo "All of it is saved at $SETTINGS_FILE, mode 600." ;;
+        "")  echo "All of it is saved at $SETTINGS_FILE; its mode could not be read." ;;
+        *)   echo "All of it is saved at $SETTINGS_FILE, mode $_settings_mode - should be 600." ;;
+    esac
     echo "Every command here finds it there; none of this has to be entered again."
 }
 
@@ -369,6 +470,9 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
             _v="${3?usage: settings.sh --set <key> <value>}"
             if site_shaped_write_refusal "$_k" "$_v"; then
                 refuse_site_shaped_write "$_k"; exit 2
+            fi
+            if looks_synced_write_refusal "$SETTINGS_FILE"; then
+                refuse_synced_write "$SETTINGS_FILE"; exit 2
             fi
             set_setting "$_k" "$_v" ;;
         --summary)

@@ -114,8 +114,14 @@ actually classify it - which decision cell it maps to. Several dimensions
 | NCHC login node | ✅ supported | measured | `supported` |
 | macOS | ✅ supported | measured only in a simulated BSD userland | `supported` |
 | Windows + WSL | ✅ supported | measured by a second lab member | `supported` |
-| Windows, Git Bash/PowerShell reaching the cluster | 🚧 unsupported (was ⛔ until 2.11) | measured both ways: the shell's own ssh cannot (16b), WSL's ssh called from it can (16g, 2026-09-15); the userland it would still need is not there (20c) | `unsupported-msys-native` |
+| Windows, native Git Bash/PowerShell as the shell reaching the cluster | 🚧 unsupported (was ⛔ until 2.11) | measured both ways: the shell's own ssh cannot (16b), WSL's ssh called from it can (16g, 2026-09-15); the userland it would still need is not there (20c) | `unsupported-msys-native` |
 | Linux desktop | ✅ supported | inferred | `supported` |
+
+This row and `unsupported-msys-native` are about the **shell** Claude Code
+runs in, not about where the member's project folder sits: nothing measured
+here has ever depended on that folder's location (`PRINCIPLES.md`, invariant
+11), and the two must not be conflated in how this row - or its message - gets
+read back to a user.
 
 ### Claude interface
 

@@ -162,6 +162,58 @@ does not point at that section), `tests/conditions_matrix_test.sh` (every cell
 the script can print is in the matrix, and the reverse), `tests/report_test.sh`
 (nothing leaves the machine that is not a whitelisted field).
 
+## E. Where a person's own things live
+
+**11. The folder is the user's; the shell is the only thing this plugin
+requires.**
+
+Opening Claude Code somewhere decides exactly one thing: which shell it
+inherits. It does not decide where a member's work may live, and nothing here
+needs it to. The plugin's own files resolve under `${CLAUDE_PLUGIN_ROOT}`,
+never the working directory — every command file says so in its own header
+(`commands/launch.md:6-8`), and `tests/commands_resolve_their_own_paths.sh`
+holds it. Every script locates itself from `${BASH_SOURCE[0]}`
+(`scripts/on_site.sh:35`, `scripts/preflight.sh:11`), never from `pwd`.
+Personal and site paths come from the settings file and `$LAB_RUNS_DIR`, never
+baked in (invariant 3). The site side lives under
+`$LAB_RUNS_DIR/<seqera_user>/projects/…` and the local side under a
+`local_root` the member points anywhere they already keep work
+(`docs/SETTINGS.md:130-162`); `scripts/fetch.sh:33` stages fetched results
+under `$XDG_CACHE_HOME`, never the project folder. A member not told this
+assumes the opposite, and moves their work to wherever they think the plugin
+wants it — which is exactly backwards.
+
+Requiring a shell is not requiring a folder, and the two are not
+interchangeable in a refusal. `unsupported-msys-native` refuses a *shell* —
+Git Bash is missing the Linux userland this plugin runs on (PITFALLS 20c),
+having been measured able to reach the site through WSL's ssh (16g) — and says
+so;
+it must never be read, or written, as a claim about where the project folder
+is allowed to sit. Every place this plugin declines something says which of
+the two it is declining.
+
+The one place location genuinely matters is the settings file and the token
+beside it, and even there the answer is **measured, not listed**: write the
+file, `chmod 600` it, read the mode back. A list of folder names known to be a
+cloud-sync root — Dropbox, OneDrive, iCloud Drive — can never be complete, so
+it is a reminder, never a guarantee, and the refusal it produces has to admit
+that plainly rather than imply coverage it does not have. The gap between "the
+check passed" and "this is safe" is exactly where a member would otherwise
+lose a token: a synced folder holds mode 600 perfectly well on the machine
+that set it, and the loss happens somewhere else entirely — on every other
+device that folder syncs to, silently, with no permission bit to read back
+and fail.
+
+Invariant 3 is about paths baked into *this repo*; 11 is about where the
+*user's* folder may sit, and the answer there is: wherever they already keep
+it.
+
+*Check:* `tests/path_shapes_test.sh` — runs these scripts from a directory
+whose name carries spaces and non-ASCII, the shape a member reaches first, not
+a convenient fixture. The mode-600 read-back and the synced-folder refusal
+(reminder, not guarantee) in `tests/settings_test.sh`. The "the folder stays
+put" assertions in `tests/on_site_test.sh`.
+
 ---
 
 ## Where each piece belongs

@@ -296,5 +296,59 @@ grep -qF "would-create: $PLAN_LOCAL/erin/projects/$PROJ2/analysis" <<<"$out" && 
 printf '%-64s ' "--plan on the local side created nothing"
 [ ! -e "$PLAN_LOCAL" ] && echo ok || { echo "FAIL: $PLAN_LOCAL exists"; fails=$((fails+1)); }
 
+# ---------------------------------------------------------------------------
+# local_root (docs/SETTINGS.md): the local side's default root now comes from
+# a settings key, the same one scripts/inspect_sides.sh reads, instead of a
+# bare $HOME/agentic-bioflow. --root still wins outright for a one-off call.
+#
+# clean() mirrors tests/inspect_sides_test.sh's helper of the same name: this
+# script also sources settings.sh, so an ambient LAB_RUNS_DIR/LAB_SETTINGS_FILE
+# on the machine running the tests would otherwise leak a real deployment's
+# local_root into what is meant to be an isolated call.
+clean() { # clean <env assignments...> -- <args...>
+  local envs=()
+  while [ "$1" != -- ]; do envs+=("$1"); shift; done; shift
+  env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE -u SEQERA_TOKEN_FILE \
+      -u TW_AGENT_JAVA -u TW_AGENT_JAR -u TW_BIN \
+      "${envs[@]}" "$@"
+}
+
+LR_HOME="$TMP/local_root_home"; mkdir -p "$LR_HOME"
+LR_CONFIGURED="$TMP/cloud_drive/agentic-bioflow-work"
+printf 'reach: local\nlocal_root: %s\n' "$LR_CONFIGURED" > "$LR_HOME/env.yaml"
+
+out=$(clean HOME="$LR_HOME" LAB_SETTINGS_FILE="$LR_HOME/env.yaml" -- \
+      bash "$S" local --plan --user alice --project "$PROJ" 2>&1)
+printf '%-64s ' "local_root set, no --root: --plan lists paths under the configured root"
+grep -qF "would-create: $LR_CONFIGURED/alice/projects/$PROJ/analysis" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "local_root set, no --root: --plan still created nothing"
+[ ! -e "$LR_CONFIGURED" ] && [ ! -e "$LR_HOME/agentic-bioflow" ] && echo ok \
+  || { echo "FAIL: something got created"; fails=$((fails+1)); }
+
+# --root wins outright over local_root - a one-off call should not need a
+# settings edit, same as every other explicit flag in this script.
+LR_EXPLICIT="$TMP/explicit_root"
+out=$(clean HOME="$LR_HOME" LAB_SETTINGS_FILE="$LR_HOME/env.yaml" -- \
+      bash "$S" local --plan --root "$LR_EXPLICIT" --user alice --project "$PROJ" 2>&1)
+printf '%-64s ' "--root beats local_root outright"
+grep -qF "would-create: $LR_EXPLICIT/alice/projects/$PROJ/analysis" <<<"$out" \
+  && ! grep -qF "$LR_CONFIGURED" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "--root beating local_root still created nothing (--plan)"
+[ ! -e "$LR_EXPLICIT" ] && echo ok || { echo "FAIL: $LR_EXPLICIT exists"; fails=$((fails+1)); }
+
+# Neither --root nor local_root set: the old default, unchanged - the ticket
+# calls this out as a test case, not an assumption.
+LR_NOKEY_HOME="$TMP/local_root_nokey_home"; mkdir -p "$LR_NOKEY_HOME"
+out=$(clean HOME="$LR_NOKEY_HOME" LAB_SETTINGS_FILE="$LR_NOKEY_HOME/nonexistent.yaml" -- \
+      bash "$S" local --plan --user alice --project "$PROJ" 2>&1)
+printf '%-64s ' "no local_root key, no --root: --plan falls back to \$HOME/agentic-bioflow"
+grep -qF "would-create: $LR_NOKEY_HOME/agentic-bioflow/alice/projects/$PROJ/analysis" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "old default, no key: --plan still created nothing"
+[ ! -e "$LR_NOKEY_HOME/agentic-bioflow" ] && echo ok \
+  || { echo "FAIL: $LR_NOKEY_HOME/agentic-bioflow exists"; fails=$((fails+1)); }
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
