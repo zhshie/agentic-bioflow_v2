@@ -22,7 +22,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SSH="${ON_SITE_SSH_BIN:-ssh}"
 REACH="$(setting reach local)"
 HOST="$(setting site_host)"
-CP="$(setting ssh_control_path "$HOME/.ssh/cm-%r-%h-%p")"
+
+# The same bridge answer on_site.sh opened the master with, from the one place
+# it is derived (scripts/settings.sh, bridge_kind()). This file MUST agree with
+# it: under the bridge the master lives inside WSL and its socket is at a path
+# WSL expands, so closing it with Git Bash's own ssh against a Windows-shaped
+# $HOME would find nothing, report nothing wrong, and leave the exhausted
+# master exactly where it was - while on_site.sh's sessions_exhausted() is
+# printing this very command as the fix.
+BRIDGE="$(bridge_kind)"
+[ -n "${ON_SITE_SSH_BIN:-}" ] || [ "$BRIDGE" != wsl ] || SSH="$(site_ssh_bin wsl)"
+CP="$(setting ssh_control_path "$(site_control_path_default "$BRIDGE")")"
 
 die() { local rc="$1"; shift; printf '%s\n' "$@" >&2; exit "$rc"; }
 

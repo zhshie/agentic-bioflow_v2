@@ -68,21 +68,21 @@ emit() {
 SHELLWARN=""
 case "$(uname -s 2>/dev/null)" in
     MINGW*|MSYS*|CYGWIN*)
-        SHELLWARN="Claude's shell here is Git Bash (MSYS), which this version does
-not support - the shell, not the project: that folder does not have to move.
-python3 on PATH here is a Microsoft Store stub (PITFALLS 20c), a default
-install carries no jq, and the test suite does not run here. This shell's own
-ssh also cannot hold the multiplexed connection the site needs (PITFALLS 16b),
-though calling WSL's ssh from here was measured to work (PITFALLS 16g) - this
-version does not use it. A setup done in WSL is invisible from here as well,
-because WSL has its own home directory (PITFALLS 25) - 'not found' here does
-not mean 'not set up'.
+        SHELLWARN="Claude's shell here is Git Bash (MSYS) - the shell, not the
+project: that folder does not have to move. python3 on PATH here is a
+Microsoft Store stub (PITFALLS 20c). This shell's own ssh cannot hold the
+multiplexed connection the site needs (PITFALLS 16b) - the control socket
+comes up but fd-passing to a real session fails - though calling WSL's own
+ssh from here was measured to work instead (PITFALLS 16g).
 
-Open a WSL shell, install Claude Code inside it (a separate Linux with its
-own home directory), then cd back to the same folder - e.g.
-'cd /mnt/c/Users/<you>/...' - and start 'claude' there. Settings and the
-token stay in the WSL home, never on the Windows filesystem.
-scripts/on_site.sh refuses with the full instructions when it is reached." ;;
+What this window is missing is WSL itself (2.13), not a different window:
+see the Condition line below, if one follows, for whether this machine has
+it. Missing it, install WSL ('wsl --install') and this same window picks
+back up - nothing here has to move to see it. scripts/on_site.sh is the only
+sanctioned route to the site either way, and refuses with the full
+instructions when it is reached. A setup done in WSL is invisible from here
+as well, because WSL has its own home directory (PITFALLS 25) - 'not found'
+here does not mean 'not set up'." ;;
 esac
 
 . "$ROOT/scripts/settings.sh" 2>/dev/null || emit "$SHELLWARN"

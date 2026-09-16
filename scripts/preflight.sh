@@ -55,6 +55,24 @@ case "$REACH" in
   *) say FAIL "reach" "unknown value '$REACH' - must be none, local or ssh (docs/SITE_ADAPTER.md)" ;;
 esac
 
+# --- rsync, which fetch.sh/push.sh need and Git Bash ships none of ----------
+# Not folded into the reach check above: the master can be up while rsync is
+# still absent, and letting rsync's own "command not found" be the first
+# thing heard about it makes a working master read like the wrong diagnosis.
+# Asked only under reach:ssh, where fetch.sh/push.sh run on THIS machine -
+# reach:local runs them on the site, whose GNU userland ships rsync as
+# standard, and nothing here has ever measured a Mac without it either.
+if [ "$REACH" = ssh ]; then
+  case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*)
+      if command -v rsync >/dev/null 2>&1; then
+        say OK "rsync" "$(command -v rsync)"
+      else
+        say FAIL "rsync" "not on PATH - Git Bash ships none by default. Install a Windows build (e.g. 'winget install -e --id cwrsync.cwrsync') and reopen this shell"
+      fi ;;
+  esac
+fi
+
 # --- Who this deployment is --------------------------------------------------
 # `site_user` and the user half of `site_host` name one account. Two places
 # holding one value drift, and this pair drifts silently: both readings still

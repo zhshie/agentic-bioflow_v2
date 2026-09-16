@@ -1,6 +1,6 @@
 # Where this stands
 
-**Update 2026-09-16, plugin 2.12.0.** The sections below describe 2.0.7 and
+**Update 2026-09-16, plugin 2.13.0.** The sections below describe 2.0.7 and
 are kept for their history; this block is what is current.
 
 - Releases since: 2.6 (Mac/Windows+WSL), 2.7 (guidance: overview, per-command
@@ -47,10 +47,45 @@ are kept for their history; this block is what is current.
   because that risk is invisible to a permission bit. **M7/M11/M12** are the
   new unverified rows (`docs/LAB_AGENTS.md` section 10); none of them blocks
   the mode check, which measures rather than infers.
+- Done 2026-09-16 (2.13.0): **only the transport bridges; nothing else
+  moves.** A member on Windows in Git Bash, inside a Google Drive folder,
+  no longer has to open a WSL window to reach the site at all — this
+  window's own `on_site.sh` borrows one piece it is missing, and the
+  scripts, the hooks, the agent's own Bash, and the project folder all stay
+  exactly where they were, one filesystem view (`PRINCIPLES.md` invariant
+  11's new second half). The rejected alternative — re-executing whole
+  scripts inside WSL instead — is on the record as rejected, not merely
+  unconsidered: it would have split the deployment into two filesystem
+  worlds, where `fetch.sh` stages results somewhere the agent's own Read
+  tool cannot see, and `hooks/guard_plugin_files.sh` compares a path against
+  a plugin root that no longer matches it — a safety net that stops working
+  and says nothing about it. Re-measured the same day and stronger than
+  before (`PITFALLS.md` 16h): the site's sshd does not merely refuse
+  public-key auth, it never offers `publickey` as a method at all, on
+  `localhost` or on `lgn304` — so no key, certificate or `ssh-agent`
+  forwarding removes the human OTP under any client configuration, which is
+  the fact the whole bridge design is built around rather than against.
+- Genuinely unsolvable, unchanged by this release, because none of the three
+  is a code problem: **a human types one 2FA code** every work session, since
+  the site offers no other authentication (`PITFALLS.md` 16h); **WSL must
+  exist and be running**, since only WSL2's real `AF_UNIX` sockets can carry
+  the multiplexed connection (16b); **a dropped connection must be reopened
+  by hand** (M3, still open — how long a master survives a closed terminal or
+  idling is unmeasured).
+- New measurements this release (`docs/LAB_AGENTS.md` section 10): **M13**
+  whether a real Python exists on the laptop at all, which decides the error
+  wording for the scripts that genuinely need one; **M14** what `wsl.exe`
+  costs per call, against the 5–10 s budget a PreToolUse hook has to work
+  inside; **M15** whether WSL can see the `G:` drive — explicitly *not* load-
+  bearing for the shipped design, since only bytes, exit codes and stderr
+  cross the bridge, never a path.
 - Open, and needing a person: **M3** how long an ssh master
   survives (someone types the OTP); **M5** whether a VIEW-role token really
   cannot launch; **M6** whether NCHC allows unattended access on a shared
-  account and long-running processes on the login node. Details:
+  account and long-running processes on the login node; **M16** whether the
+  one-time code can be typed into the Git Bash window itself via `winpty
+  wsl.exe -e ssh …`, which decides whether a WSL window ever has to be
+  opened at all, or only once per work session. Details:
   `docs/LAB_AGENTS.md` section 10.
 - Decided, not built: a real record-system adapter waits for the lab pilot to
   choose an ELN (`docs/RECORD_ADAPTER.md`); run labels as record links wait on

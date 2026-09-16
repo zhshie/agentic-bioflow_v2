@@ -177,14 +177,17 @@ else echo ok; fi
 echo
 
 # ---------------------------------------------------------------------------
-# The wrong shell.
+# The wrong shell - now a narrower case than it used to be.
 #
-# Git Bash is refused here, and 16g changed why. Its own ssh cannot hold a
-# master (16b), but calling WSL's ssh from it does work - measured, 0.55 s, no
-# 2FA prompt. What is missing is the rest of a Linux userland: python3 is a
+# Git Bash used to be refused unconditionally, and 16g changed why that stood:
+# its own ssh cannot hold a master (16b), but calling WSL's ssh from it does
+# work - measured, 0.55 s, no 2FA prompt (scripts/utils/wsl_ssh.sh is that
+# call). So this version routes through the bridge when one is there
+# (tests/wsl_bridge_test.sh covers that path) and refuses only when it is
+# not: no `wsl.exe` on PATH, which is exactly this section's fixture - a fake
+# `uname` alone, deliberately with no fake `wsl.exe` beside it. What remains
+# on top, once WSL exists, is the rest of a Linux userland: python3 is a
 # Store stub (20c), jq is absent by default, and the suite does not run here.
-# So the refusal stands and its reason changed, which is what these assertions
-# pin: unsupported, not unreachable.
 #
 # The refusal lives in this script rather than in a PreToolUse hook on purpose:
 # a hook would have to decide from a command string whether it reaches the
@@ -211,23 +214,53 @@ mt() { # mt <label> <expect-rc> <expect-substring> -- <args...>
 
 settings 'reach: ssh' 'site_host: u@h'
 mkfake 0                       # the master answers -O check, as it really does
-mt "MSYS + reach:ssh is refused as unsupported" 2 "does not support"      -- true
+mt "MSYS + reach:ssh, no bridge, is refused"   2 "WSL is not available here" -- true
 mt "and names the shell's own ssh limit"      2 "PITFALLS 16b"             -- true
 mt "and that the bridge itself was measured"  2 "PITFALLS 16g"             -- true
-mt "and gives the reason that still holds"    2 "python3"                  -- true
-mt "and gives the move, not just the fault"   2 "WSL"                      -- true
-mt "and warns about the Windows exe shortcut" 2 "claude.exe"               -- true
+mt "and says the bridge exists, just unreached" 2 "wsl_ssh.sh"             -- true
+mt "and gives the move, not just the fault"   2 "wsl --install"            -- true
+mt "and keeps the member in the window they have" 2 "THIS window"          -- true
 mt "and names the .wslconfig fix first"       2 "vsyscall=emulate"         -- true
 mt "and offers the off-design report"         2 "report.sh"                -- true
 
-# The mistake this release corrects: the refusal used to read as though the
-# project folder had to move into WSL. It never did - only the shell is
-# refused - and these pin the three things that say so: what is actually
-# being refused, a pasteable command that returns to the same folder, and
-# where the settings/token end up instead.
+# 2.13 removed a reason rather than working around it: set_setting() is awk
+# now, so python3's Store stub (20c) no longer blocks anything here, and a
+# refusal that still named it would send the member off installing Python to
+# fix something that is not broken. This is the assertion that stops it coming
+# back - the same shape as the "not the folder" one below, and for the same
+# reason: a stale reason in a refusal is worse than no reason, because it is
+# actionable and wrong.
+printf '%-56s ' "and no longer blames python3, which was fixed"
+out=$(msys 2 -- true)
+grep -qF "python3" <<<"$out" \
+  && { echo "FAIL: still names python3 <<$out>>"; fails=$((fails+1)); } || echo ok
+
+# The mistake 2.12 named and 2.13 finished correcting: the refusal used to
+# read as though the project folder had to move into WSL. The first assertion
+# is 2.12's, unchanged - it is the one invariant 11 cites.
 mt "and says what is refused is the shell, not the folder" 2 "not the folder" -- true
-mt "and shows a pasteable cd back into the same folder"    2 "cd /mnt/c"      -- true
-mt "and says settings/token stay off the Windows filesystem" 2 "Windows filesystem" -- true
+
+# The other two changed subject, because what they described stopped being
+# true. 2.12 pinned a pasteable `cd /mnt/c/...` - the way back to your own
+# folder AFTER moving into WSL. There is no move now, so offering that line
+# would put the idea of working inside WSL back into the one message whose
+# job is to remove it. What replaces it is the stronger statement: nothing
+# here sends the member anywhere.
+printf '%-56s ' "and never tells the member to work somewhere else"
+out=$(msys 2 -- true)
+if grep -qE 'cd /mnt/c|from a WSL shell|Start Claude Code' <<<"$out"; then
+  echo "FAIL: still relocates the member <<$out>>"; fails=$((fails+1))
+else
+  echo ok
+fi
+
+# And 2.12's "settings and token stay off the Windows filesystem" was a
+# prediction this release cannot make any more: the scripts run in MSYS now,
+# so the settings file lands in the Windows home unless the mode-600 read-back
+# refuses that filesystem. Stating a location here would be guessing at
+# something settings.sh measures - so the refusal points at the measurement
+# instead, and this pins that it does.
+mt "and points at the check, not a guessed location"   2 "reads the mode back" -- true
 
 # 16g measured the opposite of what this refusal used to assert. It may say
 # this shell is unsupported; it may not say the site is out of reach from here.

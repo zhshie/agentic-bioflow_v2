@@ -162,27 +162,48 @@ be.
     way the failure appears, not the way the file reads; PITFALLS 16c gives the
     one-line check and the guard that fixes it.
 
-  Nothing here is Windows-specific except the choice of terminal, and that one
-  is decided: **WSL** - for Claude Code itself, not only for this setup. The
-  two native Windows shells cannot hold the multiplexed connection this
-  depends on (PITFALLS 16b), and the rest of the Linux userland is missing
-  there as well: python3 on PATH is a Microsoft Store stub (PITFALLS 20c).
+  Nothing here asks a Windows member to change how they work. **The window
+  stays wherever they opened it** - a desktop folder, a folder a cloud drive
+  syncs, anywhere they already work - and every step below runs there, start
+  to finish; there is no point at which they are told to switch. Windows is
+  missing exactly one thing this step needs: no native Windows shell can hold
+  the one connection this step opens (PITFALLS 16b). Rather than asking the
+  member to move somewhere that has it, only the connection itself borrows
+  what is missing, and nothing else about where they are working changes.
 
-  **The folder is not decided the same way, and say so plainly** - a member
-  who is not told this will assume WSL also means moving their work, and it
-  does not. Nothing this plugin needs lives in the user's project folder: its
-  own files resolve under the installed plugin's own root, never the working
-  directory, and every script it runs finds itself the same way, not from
-  wherever it happens to be launched. So their project folder can stay exactly
-  where they already keep it - a desktop folder, a folder a cloud drive syncs,
-  a Windows path reached from inside WSL - and this plugin does not use it and
-  does not need it moved. Where step 1 below asks where the local side of
-  their work should live, that answer may be any folder they already use for
-  it. The one exception is the settings file itself, because it holds their
-  credential: that file belongs in their home directory (the `reach: ssh`
-  note above says exactly where `settings.sh` looks), never inside a folder
-  they point elsewhere, and never
-  something copied or synced alongside the rest of their work.
+  What it borrows is WSL, so WSL has to be present on that machine:
+  `wsl.exe -l -v` lists what is installed and `wsl --install` adds it. That is
+  the whole prerequisite, and it is worth saying what it is not - the member
+  never opens a WSL window to work in, and never installs Claude Code twice.
+  Their window is the one they already had; the plugin only starts a process
+  on the other side and reads its output back.
+
+  There is a one-time preparation, on a machine that has never opened this
+  connection before, and it is a machine setting rather than a step to repeat:
+  add `kernelCommandLine = vsyscall=emulate` under a `[wsl2]` section in
+  `%UserProfile%\.wslconfig`, then run `wsl --shutdown` once so it takes
+  effect (PITFALLS 16f - skip it and the first real call segfaults instead of
+  connecting).
+
+  What this does not remove: **someone still types a one-time code once per
+  work session**, because the site accepts no other proof of identity
+  (PITFALLS 16h) - no saved key or credential can stand in for it. What
+  borrowing the connection changes is only how often: once per session
+  opened, not once per call.
+
+  Nothing this plugin needs lives in the user's project folder either, for a
+  separate reason that holds regardless of the above: its own files resolve
+  under the installed plugin's own root, never the working directory, and
+  every script it runs finds itself the same way, not from wherever it
+  happens to be launched. So their project folder can stay exactly where they
+  already keep it - a desktop folder, a folder a cloud drive syncs - and this
+  plugin does not use it and does not need it moved. Where step 1 below asks
+  where the local side of their work should live, that answer may be any
+  folder they already use for it. The one exception is the settings file
+  itself, because it holds their credential: that file belongs in their home
+  directory (the `reach: ssh` note above says exactly where `settings.sh`
+  looks), never inside a folder they point elsewhere, and never something
+  copied or synced alongside the rest of their work.
 
 **Two more questions, before step 1** — they decide what step 1 builds, so
 asking them after would mean redoing it.

@@ -241,4 +241,112 @@ askcheck "$SB driver.sh"                                                    "sba
 nodecisioncheck "tw runs list --workspace 12345"                            "tw runs list: no decision field"
 nodecisioncheck "cat launch.md"                                             "cat launch.md: no decision field"
 
+echo
+echo "== D3: the transport branch, MSYS only =="
+# A fake uname ahead of the real PATH, the same technique
+# tests/conditions_matrix_test.sh uses. Only -s is answered; anything else
+# falls through to the real uname so this doesn't have to stub every call
+# this hook or its subprocesses might make.
+MSYSBIN="$TMP/msysbin"; mkdir -p "$MSYSBIN"
+cat > "$MSYSBIN/uname" <<'EOF'
+#!/bin/bash
+[ "$1" = -s ] && { echo MINGW64_NT-10.0-22631; exit 0; }
+exec /usr/bin/uname "$@"
+EOF
+chmod +x "$MSYSBIN/uname"
+
+# askcheck/nodecisioncheck above don't let the PATH be swapped, so D3 gets its
+# own pair rather than reusing theirs a second way.
+msys_ask() { # msys_ask <command> <label>
+  printf '%-58s ' "$2"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" \
+        | PATH="$MSYSBIN:$PATH" bash "$H")
+  first="${out:0:1}"
+  if [ "$first" != "{" ]; then
+    echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
+  fi
+  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
+  reason=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecisionReason',''))" <<<"$out")
+  if [ "$decision" != ask ]; then
+    echo "FAIL: expected permissionDecision=ask, got '$decision'"; fails=$((fails+1)); return
+  fi
+  case "$reason" in
+    *on_site.sh*) echo ok ;;
+    *) echo "FAIL: reason did not name on_site.sh <<$reason>>"; fails=$((fails+1)) ;;
+  esac
+}
+msys_pass() { # msys_pass <command> <label>
+  printf '%-58s ' "$2"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" \
+        | PATH="$MSYSBIN:$PATH" bash "$H")
+  if [ -z "$out" ]; then echo "ok (no output at all)"; return; fi
+  first="${out:0:1}"
+  if [ "$first" != "{" ]; then
+    echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
+  fi
+  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision','') or '')" <<<"$out")
+  if [ -z "$decision" ]; then echo "ok (no decision field)"; else
+    echo "FAIL: unexpected permissionDecision '$decision' on a command that should not be flagged"; fails=$((fails+1))
+  fi
+}
+
+msys_ask  "ssh twnia3 ls"                              "bare ssh on MSYS: ask, names on_site.sh"
+msys_ask  "scp file.txt twnia3:/tmp/"                  "bare scp on MSYS: ask"
+msys_ask  "rsync -av ./data/ twnia3:/work/"            "bare rsync on MSYS: ask"
+msys_ask  "sftp twnia3"                                "bare sftp on MSYS: ask"
+msys_ask  "cat notes.txt && ssh twnia3 ls"             "ssh inside a compound command on MSYS: ask"
+
+msys_pass "scripts/on_site.sh 'ls -la'"                "already routed through on_site.sh: not flagged"
+msys_pass "scripts/on_site.sh ls"                      "on_site.sh without a quoted payload: not flagged"
+# The one case that actually exercises the ONSITE_RE exclusion rather than
+# just relying on "on_site.sh" never matching TRANSPORT_RE in the first
+# place: here the bare word "ssh" is itself an unquoted argument to
+# on_site.sh, in the same segment. Without the exclusion this would ask.
+msys_pass "scripts/on_site.sh ssh"                     "bare 'ssh' as on_site.sh's own argument: not flagged"
+msys_pass "grep -rn \"ssh\" docs/"                     "read-only mention of ssh, quoted, on MSYS: not flagged"
+msys_pass "cat ssh_notes.md"                           "a filename containing ssh, not the command word: not flagged"
+
+printf '%-58s ' "the same bare ssh call, but NOT on MSYS: not flagged (D3 is MSYS-only)"
+out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "ssh twnia3 ls" | bash "$H")
+if [ -z "$out" ]; then echo "ok (no output at all)"; else
+  echo "FAIL: D3 fired off MSYS <<$out>>"; fails=$((fails+1))
+fi
+
+# A launch-shaped ssh call on MSYS must still behave exactly as before: the
+# existing launch gate (is_launch_command sees "tw launch" in the payload)
+# wins, not the new transport branch - same decision, same reason shape as
+# the non-MSYS "launch wrapped in ssh" case near the top of this file.
+printf '%-58s ' "launch wrapped in ssh, on MSYS: still the launch gate, not the transport one"
+out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" \
+        "ssh twnia3 '$LAUNCH x --disable-optimization'" | PATH="$MSYSBIN:$PATH" bash "$H")
+reason=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecisionReason',''))" <<<"$out" 2>/dev/null)
+case "$reason" in
+  *"$LAUNCH"*) echo "ok" ;;
+  *) echo "FAIL: reason lost the launch command <<$reason>>"; fails=$((fails+1)) ;;
+esac
+printf '%-58s ' "...and that reason does not carry the D3 wording"
+case "$reason" in
+  *"PITFALLS 16b"*) echo "FAIL: transport wording leaked into the launch ask"; fails=$((fails+1)) ;;
+  *) echo ok ;;
+esac
+
+echo
+echo "== D1: all four hooks' jq fail-closed message names the Windows install line =="
+# Same no-jq PATH already built above (NOJQ_PATH), reused rather than a
+# second shim directory - the point is these four files share one
+# requirement, so a change to one line in one file that missed the others
+# should turn exactly this loop red, in every file it missed.
+HOOKS_DIR="$(dirname "$H")"
+# A subdirectory of the already-trapped $TMP, not a second mktemp with its own
+# EXIT trap - a second `trap ... EXIT` here would silently REPLACE the one set
+# earlier in this file (for $Z2TMP and $TMP itself), leaking both on exit.
+GPR_TMP="$TMP/fake_plugin_root"; mkdir -p "$GPR_TMP"
+for hf in confirm_launch.sh confirm_cleanup.sh confirm_walkthrough.sh guard_plugin_files.sh; do
+  printf '%-58s ' "$hf: fail-closed message names winget"
+  out=$(echo '{}' | PATH="$NOJQ_PATH" CLAUDE_PLUGIN_ROOT="$GPR_TMP" bash "$HOOKS_DIR/$hf" 2>&1 1>/dev/null)
+  if echo "$out" | grep -qF "winget install jqlang.jq"; then echo ok; else
+    echo "FAIL: no Windows install line in $hf: <<$out>>"; fails=$((fails+1))
+  fi
+done
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

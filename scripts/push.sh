@@ -25,9 +25,27 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REACH="$(setting reach local)"
 HOST="$(setting site_host)"
-CP="$(setting ssh_control_path "$HOME/.ssh/cm-%r-%h-%p")"
 RSYNC="${PUSH_RSYNC_BIN:-rsync}"
 SSH="${ON_SITE_SSH_BIN:-ssh}"
+
+# The MSYS+WSL bridge, derived once in scripts/settings.sh and used here the
+# same way scripts/on_site.sh uses it (PITFALLS 16b/16g). Unlike fetch.sh, nothing above this line asks the site anything first, so
+# there is no earlier on_site.sh call to refuse on a missing bridge -
+# without this a laptop push under MSYS would go straight to rsync building
+# `-e` from Git Bash's own ssh (16b), and rsync's own connection failure
+# would be the first thing heard about it.
+#
+# With $SSH possibly the shim, the `-e "$SSH -o ControlPath=$CP"` string below
+# is split by rsync itself, and the shim's own arguments then cross wsl.exe a
+# second time - whether that second hop's quoting survives is unmeasured on a
+# real machine (risk R1); tests/wsl_bridge_test.sh pins the literal argv a
+# fake wsl.exe receives from exactly this shape of `-e` string.
+BRIDGE="$(bridge_kind)"
+if [ -z "${ON_SITE_SSH_BIN:-}" ] && [ "$REACH" = ssh ] && [ "$BRIDGE" = wsl ]; then
+  SSH="$(site_ssh_bin wsl)"
+fi
+CP="$(setting ssh_control_path "$(site_control_path_default "$BRIDGE")")"
+
 DRY="${PUSH_DRY_RUN:-}"
 
 die() { local rc="$1"; shift; printf '%s\n' "$@" >&2; exit "$rc"; }

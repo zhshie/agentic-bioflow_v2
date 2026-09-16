@@ -98,6 +98,43 @@ t "reach=unset when there is no settings file" "$(getval reach LAB_SETTINGS_FILE
 t "reach=none is read straight from settings"  "$(getval reach LAB_SETTINGS_FILE="$NONEF")" "none"
 
 echo
+echo "== bridge: measured with wsl.exe -e true, never merely found =="
+WSLBIN="$TMP/wslbin"; mkdir -p "$WSLBIN"
+# A real `wsl.exe -e true` argv: "-e" "true". The stub below just re-execs
+# whatever follows -e and reports that exit code, so it is a genuine measure
+# of "did the thing I ran succeed", not a canned answer.
+cat > "$WSLBIN/wsl.exe" <<'EOF'
+#!/bin/bash
+if [ "$1" = -e ]; then shift; "$@"; exit $?; fi
+exit 1
+EOF
+chmod +x "$WSLBIN/wsl.exe"
+
+mkuname MINGW64_NT
+t "bridge=wsl on MSYS when wsl.exe -e true succeeds" \
+  "$(run "$WSLBIN:$BASEPATH" LAB_SETTINGS_FILE="$SSHF" -- --get bridge)" "wsl"
+
+# A `wsl.exe` that EXISTS but does not actually run anything - found by a
+# PATH search, same failure shape as the jq probe above and PITFALLS 20c's
+# own lesson (a Windows Store stub answers `command -v` and then does
+# nothing real) - must not be believed. This one always fails.
+BADWSL="$TMP/badwslbin"; mkdir -p "$BADWSL"
+printf '#!/bin/sh\nexit 1\n' > "$BADWSL/wsl.exe"; chmod +x "$BADWSL/wsl.exe"
+t "bridge=none on MSYS when wsl.exe is found but fails to run" \
+  "$(run "$BADWSL:$BASEPATH" LAB_SETTINGS_FILE="$SSHF" -- --get bridge)" "none"
+
+t "bridge=none on MSYS with no wsl.exe on PATH at all" \
+  "$(getval bridge LAB_SETTINGS_FILE="$SSHF")" "none"
+
+mkuname Linux
+t "bridge=none on Linux even with a working wsl.exe on PATH (never probed off-MSYS)" \
+  "$(run "$WSLBIN:$BASEPATH" LAB_SETTINGS_FILE="$SSHF" -- --get bridge)" "none"
+mkuname Darwin
+t "bridge=none on macOS, same reason" \
+  "$(run "$WSLBIN:$BASEPATH" LAB_SETTINGS_FILE="$SSHF" -- --get bridge)" "none"
+mkuname Linux
+
+echo
 echo "== jq =="
 NOJQ="$TMP/nojq"; mkdir -p "$NOJQ"
 for tool in bash cat mkdir tr sed grep find date rm mktemp basename dirname printf head; do
@@ -165,7 +202,7 @@ FULL=$(run "$BASEPATH" LAB_SETTINGS_FILE="$LOCALF" --)
 rc=$?
 printf '%-64s ' "exit code is 0"
 [ "$rc" = 0 ] && echo ok || { echo "FAIL: $rc"; fails=$((fails+1)); }
-WANT_KEYS=$'os\nshell\ninterface\nreach\njq\nhooks\nattended\ntier\ncell\nstatus\nmay_touch_site\nmessage'
+WANT_KEYS=$'os\nshell\ninterface\nreach\nbridge\njq\nhooks\nattended\ntier\ncell\nstatus\nmay_touch_site\nmessage'
 GOT_KEYS=$(cut -d= -f1 <<<"$FULL")
 t "exactly these keys, in this order" "$GOT_KEYS" "$WANT_KEYS"
 
@@ -216,7 +253,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# The five decision cells: every one of blocked-no-jq, unsupported-msys-native,
+# The five decision cells: every one of blocked-no-jq, unsupported-msys-no-wsl,
 # blocked-h3-site, unsupported-cloud-ce and supported, positive and negative,
 # plus the priority order when more than one condition applies at once.
 # ---------------------------------------------------------------------------
@@ -235,25 +272,38 @@ has "message names the mac fix"    "brew install jq"      "$OUT"
 has "message names the WSL/Linux fix" "sudo apt install jq" "$OUT"
 
 echo
-echo "== cell: unsupported-msys-native =="
+echo "== cell: unsupported-msys-no-wsl =="
 mkuname MINGW64_NT
 OUT=$(run "$BASEPATH" LAB_SETTINGS_FILE="$SSHF" --)
-has "cell is unsupported-msys-native" "cell=unsupported-msys-native" "$OUT"
+has "cell is unsupported-msys-no-wsl" "cell=unsupported-msys-no-wsl" "$OUT"
 has "status is unsupported"           "status=unsupported"           "$OUT"
 has "message points at WSL"           "WSL"                          "$OUT"
 has "and names the report path"       "report.sh"                    "$OUT"
+has "and names /setup as the in-plugin next step" "/setup"           "$OUT"
 has "and it still may not touch the site" "may_touch_site=no"        "$OUT"
 printf '%-64s ' "and does not repeat the retracted 16b conclusion"
 grep -q 'cannot hold the shared ssh connection' <<<"$OUT" \
   && { echo "FAIL: repeats it"; fails=$((fails+1)); } || echo ok
+printf '%-64s ' "and never tells the member to start Claude Code elsewhere"
+grep -qF 'Start Claude Code from a WSL shell' <<<"$OUT" \
+  && { echo "FAIL: still says it"; fails=$((fails+1)); } || echo ok
+
+# The bridge is what narrows this cell now (plan C1): the same MSYS+ssh host
+# that was unconditionally this cell before falls through to `supported` the
+# moment `wsl.exe -e true` actually succeeds.
+OUT=$(run "$WSLBIN:$BASEPATH" LAB_SETTINGS_FILE="$SSHF" --)
+printf '%-64s ' "positive->negative: msys + reach=ssh + bridge=wsl is NOT this cell"
+grep -q 'cell=unsupported-msys-no-wsl' <<<"$OUT" && { echo "FAIL: wrongly flagged"; fails=$((fails+1)); } || echo ok
+has "and it falls through to supported instead" "cell=supported" "$OUT"
+has "and may_touch_site becomes yes"            "may_touch_site=yes" "$OUT"
 
 OUT=$(run "$BASEPATH" LAB_SETTINGS_FILE="$LOCALF" --)
 printf '%-64s ' "negative: msys + reach=local is NOT this cell"
-grep -q 'cell=unsupported-msys-native' <<<"$OUT" && { echo "FAIL: wrongly flagged"; fails=$((fails+1)); } || echo ok
+grep -q 'cell=unsupported-msys-no-wsl' <<<"$OUT" && { echo "FAIL: wrongly flagged"; fails=$((fails+1)); } || echo ok
 mkuname Linux
 OUT=$(run "$BASEPATH" LAB_SETTINGS_FILE="$SSHF" --)
 printf '%-64s ' "negative: linux + reach=ssh is NOT this cell"
-grep -q 'cell=unsupported-msys-native' <<<"$OUT" && { echo "FAIL: wrongly flagged"; fails=$((fails+1)); } || echo ok
+grep -q 'cell=unsupported-msys-no-wsl' <<<"$OUT" && { echo "FAIL: wrongly flagged"; fails=$((fails+1)); } || echo ok
 
 echo
 echo "== cell: blocked-h3-site =="
@@ -301,10 +351,10 @@ has "may_touch_site is yes" "may_touch_site=yes" "$OUT"
 
 echo
 echo "== priority: blocked beats unsupported beats supported =="
-# no-jq wins over msys native
+# no-jq wins over msys-no-wsl
 mkuname MINGW64_NT
 OUT=$(run "$NOJQ" LAB_SETTINGS_FILE="$SSHF" --)
-has "no-jq beats msys-native when both apply" "cell=blocked-no-jq" "$OUT"
+has "no-jq beats msys-no-wsl when both apply" "cell=blocked-no-jq" "$OUT"
 
 # no-jq wins over H3+ssh
 OUT=$(env -i -u CLAUDE_PLUGIN_ROOT -u CLAUDECODE -u AGENTIC_BIOFLOW_ATTENDED \
@@ -313,10 +363,18 @@ OUT=$(env -i -u CLAUDE_PLUGIN_ROOT -u CLAUDECODE -u AGENTIC_BIOFLOW_ATTENDED \
       AGENTIC_BIOFLOW_HOST_HOOKS=no LAB_SETTINGS_FILE="$SSHF" bash "$D")
 has "no-jq beats H3-site when both apply" "cell=blocked-no-jq" "$OUT"
 
-# H3+ssh wins over msys native: blocked beats unsupported
+# H3+ssh wins over msys-no-wsl: blocked beats unsupported
 mkuname MINGW64_NT
 OUT=$(h3 "$SSHF")
-has "H3-site beats msys-native when both apply" "cell=blocked-h3-site" "$OUT"
+has "H3-site beats msys-no-wsl when both apply" "cell=blocked-h3-site" "$OUT"
+
+# H3+ssh wins even when a bridge IS present: H3 is about the runtime having
+# no hooks at all, which a working WSL bridge does nothing to fix.
+OUT=$(env -i -u CLAUDE_PLUGIN_ROOT -u CLAUDECODE -u AGENTIC_BIOFLOW_ATTENDED \
+      -u CLAUDE_CODE_ENTRYPOINT -u TERM_PROGRAM -u VSCODE_GIT_ASKPASS_MAIN \
+      PATH="$WSLBIN:$BASEPATH" HOME="$TMP" SHELL=/bin/bash \
+      AGENTIC_BIOFLOW_HOST_HOOKS=no LAB_SETTINGS_FILE="$SSHF" bash "$D")
+has "H3-site beats msys-no-wsl even with a working bridge" "cell=blocked-h3-site" "$OUT"
 mkuname Linux
 
 echo
@@ -336,6 +394,21 @@ missing=$(comm -23 <(echo "$SCRIPT_CELLS") <(echo "$DOC_CELLS"))
 printf '%-64s ' "docs/CONDITIONS.md names no cell the script cannot print"
 extra=$(comm -13 <(echo "$SCRIPT_CELLS") <(echo "$DOC_CELLS"))
 [ -z "$extra" ] && echo ok || { echo "FAIL: extra cells in docs:"; echo "$extra"; fails=$((fails+1)); }
+
+# The 2.13 rename (plan C1): no trace of the retired cell name anywhere in the
+# repository. Repo-wide rather than just the two files this test
+# cross-references, because the name had leaked into docs/PRINCIPLES.md's
+# account of what the cell refuses, and a check scoped to the pair would have
+# called that clean. This file is excluded for the obvious reason: it has to
+# contain the string it searches for.
+printf '%-64s ' "no stale unsupported-msys-native anywhere in the repo"
+stale=$(grep -rlF 'unsupported-msys-native' "$ROOT" \
+          --exclude-dir=.git --exclude="$(basename "${BASH_SOURCE[0]}")" 2>/dev/null)
+if [ -n "$stale" ]; then
+  echo "FAIL: stale name still present in:"; printf '  %s\n' $stale; fails=$((fails+1))
+else
+  echo ok
+fi
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

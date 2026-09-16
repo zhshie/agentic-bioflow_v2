@@ -27,8 +27,16 @@ one bare round trip = 31.3 s
 each trip prompts: 2FA method -> password -> OTP from the user's phone
 ```
 
-Measured 2026-09-04 against `t3-c4.nchc.org.tw` (`PITFALLS.md` 16). This is
-why `scripts/on_site.sh` exists at all: "a multiplexed master connection is
+Measured 2026-09-04 against `t3-c4.nchc.org.tw` (`PITFALLS.md` 16).
+Re-measured 2026-09-16, and stronger: asking the server directly which
+methods it accepts (`ssh -o PreferredAuthentications=none -o BatchMode=yes`
+against `localhost` and `lgn304`) gets `Permission denied
+(keyboard-interactive)` on both, with `publickey` absent from the list
+entirely — not a key that fails, a method never offered (`PITFALLS.md` 16h).
+So the claim this section opened with is not "public-key auth is refused", it
+is that no key, certificate or `ssh-agent` forwarding can remove the human OTP
+on this site, under any client configuration, on any shell. This is why
+`scripts/on_site.sh` exists at all: "a multiplexed master connection is
 not a speed-up here, it is the only thing that makes the topology possible at
 all — Claude cannot supply the code" (`docs/SITE_ADAPTER.md:126-127`), and the
 script's own `no_master()` function refuses outright and prints the exact
@@ -286,6 +294,10 @@ from source alone (`PRINCIPLES.md`, invariant 8).
 | M7 | On a Windows folder reached from WSL (`/mnt/c/...`, DrvFs), does `chmod 600` actually hold, and does Claude Code run normally with that as its working directory? | `chmod 600` a file under `/mnt/c/...` from a WSL shell, `stat` the mode back, and open a session with that path as the working directory | No |
 | M11 | In VS Code's "Reopen Folder in WSL" window, does the Claude Code extension's Bash tool actually run inside WSL? | `uname -a` from the extension's Bash tool answers it in one command | No |
 | M12 | Under a cloud drive's streaming / on-demand mode, how do these scripts behave against files that are not materialised locally? | Point a folder at a cloud-drive client set to on-demand/streaming mode, run the scripts against a file that has not been downloaded, and observe: hang, error, or a silent short read | No |
+| M13 | Does a real Python exist on the laptop at all (`python -c`, `py -c`)? Decides the error wording for the scripts that genuinely need one, rather than the ones 20c already showed do not | Run `python -c "print(1)"` and `py -c "print(1)"` and see which, if either, actually runs | No |
+| M14 | What does `wsl.exe` cost per call (`time wsl.exe -e true`, run twice)? PreToolUse hooks carry a 5–10 s budget, and every bridged call pays this on top of whatever it is calling | `time wsl.exe -e true` twice in a row, to separate a cold VM start from the steady-state cost | No |
+| M15 | Can WSL see the `G:` drive (`wsl.exe -e wslpath -a 'G:\My Drive'`)? | Run the `wslpath` call and read what it returns | No — and **the shipped design does not depend on the answer either way**: only bytes, exit codes and stderr cross the bridge (16g), never a path (`PRINCIPLES.md` invariant 11), so this would only matter if the rejected whole-environment bridge were ever revisited |
+| M16 | Can the one-time code be typed into the Git Bash window itself (`winpty wsl.exe -e ssh -o ControlMaster=auto -o ControlPath=… -o ControlPersist=8h <host> true`)? | Run that line from Git Bash and see whether the interactive prompt reaches the window that ran it | **Yes** — this is the difference between never opening a WSL window and opening one once per work session |
 
 M7 is worth knowing but not blocking: `PRINCIPLES.md` invariant 11's mode-600
 read-back check does not depend on its answer either way — it measures the

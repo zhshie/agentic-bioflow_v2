@@ -811,6 +811,28 @@ single-quoted so Git Bash does not expand `~` to the Windows home first.
 
 Not yet measured: a cold WSL VM's start-up cost on the first call.
 
+**16h. Re-measured 2026-09-16: public-key is not merely refused, it is never
+offered.** Entry 16 (2026-09-04) asked whether a key already in
+`~/.ssh/authorized_keys` gets in, and it did not. This measurement asks a
+different, sharper question — what does the server itself say it will
+accept — by running `ssh -o PreferredAuthentications=none -o BatchMode=yes`
+against `localhost` and against `lgn304` from the login node. Both answered
+identically:
+
+```
+Permission denied (keyboard-interactive).
+```
+
+with `publickey` absent from the method list entirely — not offered and then
+failed, simply not on the list. So the honest statement is narrower than
+2026-09-04's: this is not a key that does not work, it is a method the server
+never advertises, which means no key, certificate or `ssh-agent` forwarding
+can remove the human OTP under any client configuration, on any shell,
+WSL included. One limitation carried forward rather than resolved: this
+measured the login node's own sshd from inside the site; an external `Match
+Address` exception is not ruled out — though it would have to make the policy
+*looser* for outside clients than for inside ones, which no site does.
+
 **18. A gate that reads the conversation must separate what the model typed
 from what the user saw — twice this was got wrong, and both times the fix's own
 design conversation was what exposed it.** `hooks/confirm_walkthrough.sh` denies
@@ -1334,8 +1356,19 @@ open a session — a loud failure traded for a quiet one — and `chmod 600` on 
 Windows filesystem does not hold, so the token loses the only protection it has.
 The fix is to move the shell, not the file: start Claude Code from WSL. (That
 conclusion is narrower than it reads — 16g measured this shell calling WSL's
-ssh successfully. What it cannot borrow the same way is the rest of the
-userland, which is why moving the shell is still the answer.)
+ssh successfully, and 2.13 built exactly that bridge: `scripts/on_site.sh`
+swaps `$SSH` for `scripts/utils/wsl_ssh.sh`, a thin shim that execs `wsl.exe
+-e ssh`, whenever this shell is MSYS and `site_bridge: wsl` is set
+(`docs/PRINCIPLES.md`, invariant 11's second half). Only that one call crosses
+into WSL; the settings file, the scripts and this shell itself never do. So a
+deployment set up *in this shell* has nowhere left to split: setup writes to
+this shell's own home and every later session reads it back from there.
+What this does NOT retire is the case the entry was written about — a
+deployment set up **inside WSL**, whose settings file sits in WSL's home and
+is still genuinely invisible from here. `settings.sh`'s `shell_blind_spot()`
+stays for exactly that member, and "not found" here still does not mean "never
+set up". Moving the shell was the answer in 2026-09-10; borrowing the one call
+that needed WSL is the answer now.)
 
 `settings.sh` now says so when it finds nothing under MSYS. It detects with
 `uname -s` rather than `$OSTYPE`: bash sets `OSTYPE` itself at startup, so it

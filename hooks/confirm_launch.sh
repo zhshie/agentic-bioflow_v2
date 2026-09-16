@@ -35,6 +35,14 @@
 # gate is what is left standing - it is not a fallback added out of caution,
 # it is the only thing this file can still prove works there.
 #
+# D3 (2.13): this file also asks - the same way, through the same `ask()`
+# below - when the command is NOT a launch but reaches the site directly over
+# ssh/scp/rsync/sftp on MSYS, bypassing scripts/on_site.sh. That branch lives
+# here rather than as a fifth PreToolUse hook so it costs nothing beyond a
+# `uname -s` on every OTHER platform and every non-transport command on this
+# one - a second hook process would add its own startup latency to every
+# single Bash call this plugin's users make, launch-shaped or not.
+#
 # Exit 2 rather than a JSON `deny` decision: building that JSON is itself a
 # `jq -n` call, so leaning on jq to report jq's own absence would fail the
 # same way it is trying to fix. Exit 2 needs nothing but the shell.
@@ -54,6 +62,7 @@ confirm_walkthrough.sh, which share this requirement.
 Install it yourself (this hook will not attempt to), then retry:
   macOS:       brew install jq
   Debian/WSL:  sudo apt install jq
+  Windows:     winget install jqlang.jq
 EOF
     exit 2
 fi
@@ -85,7 +94,62 @@ Reinstall or repair the plugin. Until then the launch gate is absent: treat anyt
     exit 0
 fi
 
-is_launch_command "$CMD" || exit 0
+# The one JSON builder this file has for a structural pause: R2's launch ask
+# below and D3's transport ask further down both end here, rather than each
+# carrying its own `jq -n` call that could drift out of sync with the other.
+ask() { # ask <additionalContext message> <permissionDecisionReason>
+    jq -n --arg m "$1" --arg r "$2" \
+      '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: $r, additionalContext: $m}}'
+    exit 0
+}
+
+if ! is_launch_command "$CMD"; then
+    # D3 (2.13): a command that reaches the site directly - ssh/scp/rsync/sftp,
+    # not routed through scripts/on_site.sh - asks instead of running silently,
+    # but ONLY on MSYS (Git Bash). Everywhere else this plugin already runs,
+    # the local ssh binary holds a multiplexed master fine (this deployment's
+    # own login-node and macOS sessions do it every day); asking there would
+    # be noise with nothing wrong to report. MSYS is different and measured,
+    # not assumed: this shell's own ssh cannot carry a session over its master
+    # (PITFALLS 16b - the control socket comes up, fd-passing does not), so
+    # every direct call like this one falls back to a fresh login, and a fresh
+    # login here means a one-time code on the user's phone that this agent
+    # cannot read. scripts/on_site.sh is the only sanctioned route to the site
+    # from any shell (docs/SITE_ADAPTER.md contract 6) - on MSYS specifically
+    # it is also the only one that can borrow WSL's ssh for the multiplexed
+    # part (PITFALLS 16g), which a bare `ssh` typed here does not do.
+    #
+    # Reuses is_launch_command's own here-doc stripper and its
+    # LAUNCH_NESTED_SHELL_RE (already sourced above, not restated): a payload
+    # ssh/on_site.sh hands to a far shell is not quoted DATA the way a string
+    # inside `grep "ssh"` is, so the same exception that protects launch
+    # detection from `bash -c "tw launch ..."` also keeps this branch from
+    # missing `ssh host '...'` while still ignoring `grep -rn "ssh" docs/`.
+    case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*)
+        TCMD_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
+        [ -n "$TCMD_NB" ] || TCMD_NB="$CMD"
+        if grep -qE "$LAUNCH_NESTED_SHELL_RE" <<<"$TCMD_NB"; then
+            TCMD_NQ="$TCMD_NB"
+        else
+            TCMD_NQ=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$TCMD_NB")
+        fi
+        TRANSPORT_RE='(^|[[:space:]]|[;&|(])(sudo[[:space:]]+)?([^[:space:]]*/)?(ssh|scp|rsync|sftp)([[:space:]]|$)'
+        ONSITE_RE='(^|[[:space:]]|[;&|(])([^[:space:]]*/)?on_site\.sh([[:space:]]|$)'
+        TSEG=""
+        while IFS= read -r TSEG; do
+            echo "$TSEG" | grep -qE "$ONSITE_RE" && continue
+            if echo "$TSEG" | grep -qE "$TRANSPORT_RE"; then
+                ask "GATE: this command reaches the site directly over ssh/scp/rsync/sftp, bypassing scripts/on_site.sh. In this shell (Git Bash/MSYS) a direct ssh connection cannot hold a multiplexed master - the control socket comes up but fd-passing to a real session fails (PITFALLS 16b) - so a call like this one falls back to a full login: a one-time code on the user's phone that this agent cannot read. scripts/on_site.sh is the only sanctioned route to the site from here (docs/SITE_ADAPTER.md contract 6); it also knows how to borrow WSL's own ssh for the multiplexed part (PITFALLS 16g), which this bare call does not. Show the user the command and route it through scripts/on_site.sh instead, or let them run it themselves." \
+                    "$CMD
+
+This shell's own ssh cannot multiplex (PITFALLS 16b): every direct call like this one costs a fresh one-time code on the user's phone, which this agent cannot read. scripts/on_site.sh is the only sanctioned route to the site from here (docs/SITE_ADAPTER.md contract 6)."
+            fi
+        done <<< "$(echo "$TCMD_NQ" | sed -E 's/(\|\||&&|[;&|])/\n/g')"
+        ;;
+    esac
+    exit 0
+fi
 
 WARN=""
 add() { WARN="${WARN}
@@ -191,6 +255,4 @@ ${NOTE}"
 
 Preconditions that are not met:${WARN}"
 
-jq -n --arg m "$MSG" --arg r "$REASON" \
-  '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: $r, additionalContext: $m}}'
-exit 0
+ask "$MSG" "$REASON"

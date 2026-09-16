@@ -39,7 +39,32 @@ ROOT="$(cd "$HERE/.." && pwd)"
 SSH="${ON_SITE_SSH_BIN:-ssh}"
 REACH="$(setting reach local)"
 HOST="$(setting site_host)"
-CP="$(setting ssh_control_path "$HOME/.ssh/cm-%r-%h-%p")"
+
+# --- the WSL bridge (MSYS only) ----------------------------------------------
+# PITFALLS 16b measured that Git Bash's OWN ssh cannot open a session over a
+# master - MSYS emulates Unix sockets and does not implement the descriptor
+# passing a session needs, so the control plane answers while every session
+# request fails. PITFALLS 16g measured the way around it: calling WSL's ssh
+# FROM Git Bash works - 'wsl.exe -e ssh' over a master opened in WSL answered
+# in 0.55 s with no one-time code, and carried binary stdin and exit codes
+# intact.
+#
+# All three answers below come from scripts/settings.sh, which is where this
+# is derived once for every caller - see bridge_kind()'s own header for what
+# happened when four scripts each worked it out for themselves.
+BRIDGE="$(bridge_kind)"
+
+# ON_SITE_SSH_BIN still wins outright - it is the test seam named in the
+# header above, and a caller standing in its own fake ssh must never be
+# quietly overridden by a bridge this file adds underneath it.
+WSL_OK=0
+if [ "$REACH" = ssh ] && [ "$BRIDGE" = wsl ]; then
+    WSL_OK=1
+    [ -n "${ON_SITE_SSH_BIN:-}" ] || SSH="$(site_ssh_bin wsl)"
+fi
+
+CP="$(setting ssh_control_path "$(site_control_path_default "$BRIDGE")")"
+
 TMO="${ON_SITE_TIMEOUT:-120}"
 CHECK_TMO="${ON_SITE_TIMEOUT:-15}"
 
@@ -157,30 +182,31 @@ no_master() {
         "end it: 'wsl --shutdown' and the machine going to sleep."
 }
 
-# Git Bash is refused here, and PITFALLS 16g narrowed the reason to something
-# smaller than the one this branch was written for. 16b measured that Git
-# Bash's OWN ssh cannot open a session over a master - MSYS emulates Unix
-# sockets and does not implement the descriptor passing a session needs - and
-# from that it was inferred that the site is out of reach from this shell.
-# 16g measured the inference false: `wsl.exe -e ssh` over a master opened in
-# WSL answers in 0.55 s with no 2FA prompt, and carries binary stdin and exit
-# codes intact.
+# Git Bash used to be refused outright here, and PITFALLS 16g narrowed why:
+# 16b measured that Git Bash's OWN ssh cannot open a session over a master -
+# MSYS emulates Unix sockets and does not implement the descriptor passing a
+# session needs - and from that it was inferred that the site is out of reach
+# from this shell. 16g measured the inference false: `wsl.exe -e ssh` over a
+# master opened in WSL answers in 0.55 s with no 2FA prompt, and carries
+# binary stdin and exit codes intact. scripts/utils/wsl_ssh.sh above is that
+# call, and $SSH already points at it by the time this function could run -
+# so this function now fires only when the bridge itself is not there to use:
+# no `wsl.exe` on PATH, or `site_bridge: none` turned it off on purpose.
 #
-# The refusal stays, because what is still missing is the rest of a Linux
-# userland this plugin runs on: python3 on PATH here is a Microsoft Store stub
-# that exits without printing (20c, measured); jq is absent from a default
-# install and the suite does not run there (neither measured here - both are
-# what a default Git Bash ships, and either is enough on its own). That is a version's scope, not an
-# impossibility - so this is now "recognised, not supported this version,
-# report it if you need it" rather than "blocked".
+# What is missing at that point is WSL, not this shell and not the userland
+# question 16g retired: MSYS's ssh was never the reason once a working bridge
+# exists to route around it. python3 (PITFALLS 20c) and jq stay named below
+# because they are still true and still block the rest of this plugin once
+# WSL exists - a version's scope, not an impossibility.
 #
 # This is the one place the check belongs. A PreToolUse hook would have to
 # decide from a command string whether it reaches the site, which is evidence
 # with an unchecked subject (PITFALLS 18b) and would wall off a `reach: none`
 # deployment that needs no ssh at all. Here the subject is certain: this
-# script, now, about to do the thing that cannot work.
+# script, now, about to do the thing that cannot work without WSL.
 wrong_shell() {
-  die 2 "this is Git Bash (MSYS), which this version does not support." \
+  die 2 "WSL is not available here, and the one call that reaches the site" \
+        "needs it. This shell is Git Bash (MSYS)." \
         "" \
         "Two measured facts, and they say different things:" \
         "" \
@@ -192,41 +218,36 @@ wrong_shell() {
         "    master opened in WSL answered in 0.55 s with no one-time code," \
         "    and carried binary input and exit codes intact (PITFALLS 16g)." \
         "" \
-        "So the site is reachable from this shell in principle. What is not" \
-        "here is the rest of the Linux userland this plugin runs on: python3" \
-        "on PATH is a Microsoft Store stub that exits without printing" \
-        "(PITFALLS 20c). A default install also carries no jq, which every" \
-        "safety-net hook needs, and the test suite does not run here at all." \
-        "Supporting that is work nobody has needed yet." \
+        "So this is not Git Bash being unsupported. A bridge for exactly this" \
+        "exists (scripts/utils/wsl_ssh.sh) and it could not be reached just" \
+        "now: either 'wsl.exe' is not on PATH, or 'site_bridge: none' in the" \
+        "deployment settings turned it off." \
         "" \
-        "What is refused is this shell - not the folder. Your project stays" \
-        "exactly where it is; this plugin's own files resolve from its" \
-        "install location, never from where Claude Code was started, and the" \
-        "real work runs on the cluster." \
+        "What is refused is one missing capability: not this shell, and" \
+        "not the folder. Your project stays exactly where it is, and so" \
+        "does this window - nothing below asks you to work somewhere else." \
         "" \
-        "Get a WSL shell, install Claude Code inside it - WSL is a separate" \
-        "Linux with its own home directory - then go back to the very folder" \
-        "you were just in:" \
+        "    wsl --install        (then reboot if it asks)" \
+        "    wsl.exe -l -v        (confirms a distribution is there)" \
         "" \
-        "    wsl.exe" \
-        "    npm install -g @anthropic-ai/claude-code" \
-        "    cd /mnt/c/Users/<you>/Desktop/<your project>" \
-        "    claude" \
+        "Then carry on in THIS window. You never open a WSL window to work" \
+        "in, and you never install Claude Code twice - only the connection" \
+        "crosses over, and it starts itself." \
         "" \
-        "Do not run the Windows claude.exe from WSL - that starts a Windows" \
-        "process and lands you back in this shell." \
+        "One preparation before the first real call: Seqera's CLI segfaults" \
+        "under WSL2 until %UserProfile%\\.wslconfig carries [wsl2]" \
+        "kernelCommandLine = vsyscall=emulate, then 'wsl --shutdown'" \
+        "(PITFALLS 16f)." \
         "" \
-        "One thing to do first: Seqera's CLI segfaults under WSL2 until" \
-        "%UserProfile%\\.wslconfig carries [wsl2] kernelCommandLine =" \
-        "vsyscall=emulate, then 'wsl --shutdown' (PITFALLS 16f)." \
+        "If 'jq' is also missing here, that is an install rather than a wall:" \
+        "winget install jqlang.jq. Where the settings file and the token end" \
+        "up is decided when they are written, not guessed here -" \
+        "scripts/settings.sh reads the mode back and refuses a filesystem" \
+        "that cannot hold 600." \
         "" \
-        "The settings file and token stay in that WSL home too, never on the" \
-        "Windows filesystem - it cannot hold the mode 600 they need" \
-        "(scripts/settings.sh checks this at write time)." \
-        "" \
-        "If you need this shell supported, say so rather than working around" \
-        "it: scripts/report.sh records it for the maintainer (the off-design" \
-        "procedure in skills/operational/SKILL.md)."
+        "If you need this shell to work with no WSL at all, say so rather" \
+        "than working around it: scripts/report.sh records it for the" \
+        "maintainer (the off-design procedure in skills/operational/SKILL.md)."
 }
 
 # A hang is the failure mode here, not an error. This site caps concurrent
@@ -295,7 +316,9 @@ if [ -n "${ON_SITE_DRY_RUN:-}" ]; then
 fi
 
 if [ "$REACH" = ssh ]; then
-  case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) wrong_shell ;; esac
+  case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*) [ "$WSL_OK" = 1 ] || wrong_shell ;;
+  esac
   master_is_up || no_master
   acquire_slot "$TMO" || sessions_exhausted "$TMO"
 fi

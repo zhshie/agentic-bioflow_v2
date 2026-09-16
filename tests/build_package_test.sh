@@ -148,5 +148,34 @@ out=$(bash "$S" "$TMP/empty" 2>&1); rc=$?
   && ok "no runs: refuses and says why" \
   || no "no runs: refuses and says why" "rc=$rc <<$out>>"
 
+# No working Python on this machine - the Windows case (PITFALLS 20c). All
+# three candidate names shadowed with stubs that fail, the shape of a Git
+# Bash PATH whose only "python" is the unusable Microsoft Store stub.
+# analysis.md was just deleted above to exercise the "no plan" refusal, so it
+# has to come back first or this would hit that refusal instead.
+cat > "$P/analysis/analysis.md" <<'MD'
+- **richness**
+  id: richness
+  question: Does treatment change richness?
+  status: accepted
+MD
+NOPY="$TMP/nopy_bin"; mkdir -p "$NOPY"
+for name in python3 python py; do
+    printf '#!/bin/bash\nexit 49\n' > "$NOPY/$name"
+    chmod +x "$NOPY/$name"
+done
+out=$(PATH="$NOPY:$PATH" CITE_CURL=false bash "$S" "$P" 2>&1); rc=$?
+[ "$rc" != 0 ] && ok "no working python: refuses rather than crashing partway" \
+  || no "no working python: refuses rather than crashing partway" "rc=0 <<$out>>"
+grep -qF "no working Python on this machine" <<<"$out" \
+  && ok "...and says so in those words" \
+  || no "...and says so in those words" "<<$out>>"
+grep -qF "python3" <<<"$out" \
+  && ok "...and names what it tried" \
+  || no "...and names what it tried" "<<$out>>"
+grep -qF "this shell is unsupported" <<<"$out" \
+  && no "...never blames the shell" "found the wrong phrase" \
+  || ok "...never blames the shell"
+
 echo
 [ "$fails" = 0 ] && echo "OK: build_package.sh" || { echo "$fails failed"; exit 1; }

@@ -27,9 +27,26 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REACH="$(setting reach local)"
 HOST="$(setting site_host)"
-CP="$(setting ssh_control_path "$HOME/.ssh/cm-%r-%h-%p")"
 RSYNC="${FETCH_RSYNC_BIN:-rsync}"
 SSH="${ON_SITE_SSH_BIN:-ssh}"
+
+# The MSYS+WSL bridge, derived once in scripts/settings.sh and used here the
+# same way scripts/on_site.sh uses it (PITFALLS 16b/16g). Without it, a laptop fetch under the bridge would build `-e` from Git
+# Bash's own ssh, which cannot multiplex (16b); the `du -sk` call below
+# already refuses first when there is no bridge at all, so what this adds
+# is only the success path once a bridge IS there.
+#
+# With $SSH possibly the shim, the `-e "$SSH -o ControlPath=$CP"` string below
+# is split by rsync itself, and the shim's own arguments then cross wsl.exe a
+# second time - whether that second hop's quoting survives is unmeasured on a
+# real machine (risk R1); tests/wsl_bridge_test.sh pins the literal argv a
+# fake wsl.exe receives from exactly this shape of `-e` string.
+BRIDGE="$(bridge_kind)"
+if [ -z "${ON_SITE_SSH_BIN:-}" ] && [ "$REACH" = ssh ] && [ "$BRIDGE" = wsl ]; then
+  SSH="$(site_ssh_bin wsl)"
+fi
+CP="$(setting ssh_control_path "$(site_control_path_default "$BRIDGE")")"
+
 STAGE="${FETCH_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/agentic-bioflow}"
 MAX_MB=500
 DRY="${FETCH_DRY_RUN:-}"

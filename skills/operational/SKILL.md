@@ -173,6 +173,21 @@ before running it. Credentials and personal details live only in the
 deployment's settings area, mode 600 — never printed, never in git, never in a
 params file, and never taken from another member's copy.
 
+## On Windows
+
+The site is reached only through `scripts/on_site.sh`, never by improvising a
+connection of your own — on this platform that script borrows the one piece
+its own shell is missing (`docs/PRINCIPLES.md`, invariant 11), and nothing
+else about where the session is running changes because of it.
+
+Opening that connection is a human turn, not yours: the one-time code lands
+on a phone you cannot read, so wait for the user to supply it rather than
+retrying it yourself.
+
+Neither this plugin's own files nor the settings file live in the member's
+project folder, so the folder may be anywhere — a desktop folder, a folder a
+cloud drive syncs — and none of the above depends on which one it is.
+
 ## On a host without these hooks
 
 This file reads the same for every runtime that reaches it — a person in

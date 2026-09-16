@@ -165,7 +165,23 @@ the script can print is in the matrix, and the reverse), `tests/report_test.sh`
 ## E. Where a person's own things live
 
 **11. The folder is the user's; the shell is the only thing this plugin
-requires.**
+requires — and when the shell is short of exactly one thing, the plugin
+borrows that one thing rather than asking the member to move.**
+
+Two reasons for the second half, both concrete. First, 16g measured a working
+route through the shell already at hand — `wsl.exe -e ssh` reaching the site
+with no shell switch at all — and the code went on refusing the whole shell
+anyway; that writes an implementation limit into the product as if it were
+the member's problem, which PITFALLS 25 already did once. Second, what is
+borrowed has to be exactly the size of the measured gap. Borrowing the one
+call that needs WSL moves bytes, exit codes and stderr across (16g measured
+all three crossing intact) and no paths at all. Borrowing a whole execution
+environment moves the paths too, and then the two sides stop agreeing about
+what a path means: `hooks/guard_plugin_files.sh` would be comparing a tool
+payload's Windows path against a plugin root that had become a WSL one, and a
+safety net that stops matching says nothing while it does it. That failure is
+reasoned, not measured — which is the point: it costs nothing to avoid by
+borrowing narrowly, and the narrow version needs no such argument.
 
 Opening Claude Code somewhere decides exactly one thing: which shell it
 inherits. It does not decide where a member's work may live, and nothing here
@@ -184,12 +200,15 @@ assumes the opposite, and moves their work to wherever they think the plugin
 wants it — which is exactly backwards.
 
 Requiring a shell is not requiring a folder, and the two are not
-interchangeable in a refusal. `unsupported-msys-native` refuses a *shell* —
-Git Bash is missing the Linux userland this plugin runs on (PITFALLS 20c),
-having been measured able to reach the site through WSL's ssh (16g) — and says
-so;
-it must never be read, or written, as a claim about where the project folder
-is allowed to sit. Every place this plugin declines something says which of
+interchangeable in a refusal, and neither is a *capability*.
+`unsupported-msys-no-wsl` refuses over the third: WSL is absent, so the one
+call that needs it has nothing to borrow (16g measured that call working
+wherever it is present). The other two reasons this cell used to carry were
+not worked around but removed — the single place that still needed a real
+python3 is awk now (20c), and the jq refusal names an installer that runs on
+that machine. What is left is one missing capability, named as such; it must
+never be read, or written, as a claim about where the project folder is
+allowed to sit. Every place this plugin declines something says which of
 the two it is declining.
 
 The one place location genuinely matters is the settings file and the token
@@ -212,7 +231,11 @@ it.
 whose name carries spaces and non-ASCII, the shape a member reaches first, not
 a convenient fixture. The mode-600 read-back and the synced-folder refusal
 (reminder, not guarantee) in `tests/settings_test.sh`. The "the folder stays
-put" assertions in `tests/on_site_test.sh`.
+put" assertions in `tests/on_site_test.sh`. The borrow-exactly-the-gap rule:
+`tests/wsl_bridge_test.sh` (only the transport bridges; no path crosses it),
+`tests/conditions_matrix_test.sh` (a bridged shell lands in `supported`, not
+in a refusal that reads like a folder problem), and `tests/settings_test.sh`
+again (the settings file is not part of what moves).
 
 ---
 

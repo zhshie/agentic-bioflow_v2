@@ -62,6 +62,7 @@ this requirement.
 Install it yourself (this hook will not attempt to), then retry:
   macOS:       brew install jq
   Debian/WSL:  sudo apt install jq
+  Windows:     winget install jqlang.jq
 EOF
         exit 2
     fi

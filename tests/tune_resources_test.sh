@@ -172,6 +172,27 @@ if command -v python3 >/dev/null 2>&1; then
         && echo ok || { echo "FAIL: python3 could not parse it"; fails=$((fails+1)); }
 else echo "skipped (no python3)"; fi
 
+# --- no working Python on this machine - the Windows case (PITFALLS 20c) -----
+# Only --json needs an interpreter at all; the plain table and --config never
+# call one. python3, python and py all shadowed by stubs that fail, the shape
+# of a Git Bash PATH whose only "python" is the unusable Microsoft Store stub.
+NOPY="$TMP/nopy_bin"; mkdir -p "$NOPY"
+for name in python3 python py; do
+    printf '#!/bin/bash\nexit 49\n' > "$NOPY/$name"
+    chmod +x "$NOPY/$name"
+done
+outnp=$(PATH="$NOPY:$PATH" run --json 312SbdATPc2grr); rcnp=$?
+[ "$rcnp" != 0 ] && ok "--json with no working python refuses" \
+    || bad "--json with no working python refuses" "rc=0 <<$outnp>>"
+t  "...and says no working Python on this machine" "no working Python on this machine" "$outnp"
+t  "...and names what it tried"                    "python3" "$outnp"
+tn "...never blames the shell"                      "this shell is unsupported" "$outnp"
+
+printf '%-62s ' "the plain table still works with no python at all"
+outtable=$(PATH="$NOPY:$PATH" run 312SbdATPc2grr)
+grep -qF "QUALIMAP_RNASEQ" <<<"$outtable" && echo ok \
+    || { echo "FAIL: <<$outtable>>"; fails=$((fails+1)); }
+
 # --- the on-disk trace, which is the same measurement from the other side ----
 # nf-core writes pipeline_info/execution_trace_*.txt - a TSV despite the
 # extension. Field ORDER is Nextflow's business: this fixture puts peak_vmem

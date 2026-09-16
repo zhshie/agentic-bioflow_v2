@@ -54,13 +54,21 @@ JAR_URL='https://github.com/seqeralabs/tower-agent/releases/latest/download/tw-a
 # cluster. Hardcoding tw-linux-x86_64 here meant every Mac member's setup
 # downloaded a Linux binary and failed. Measured against tower-cli v0.40.0's
 # release: it ships tw-linux-x86_64, tw-osx-arm64, tw-osx-x86_64 and
-# tw-windows-x86_64.exe (this version's Windows deployments run inside WSL,
-# which reports uname -s=Linux; native Git Bash is a separate, recognised-but-
-# unsupported case handled by scripts/detect_conditions.sh (`unsupported-msys-
-# native`, PITFALLS 20c), not by this URL table - so Windows is not a fourth
-# case here).
+# tw-windows-x86_64.exe.
+#
+# `tw` talks to Platform over HTTPS, not ssh, so it has no use for the WSL
+# bridge scripts/on_site.sh reaches for (PITFALLS 16b/16g) - it runs directly
+# on whatever this shell already is. On MSYS that is Windows, so the right
+# asset would be tw-windows-x86_64.exe, but downloading and running one from
+# here is unmeasured (R4 in the plan): unlike the three cases below, nobody
+# has proven this script's `chmod +x` / `.exe` assumptions hold on that
+# binary. Rather than guess, the MSYS branch below says so plainly and gives
+# the manual route - which beats the generic "no asset known for this
+# platform" message a truly unrecognised platform still gets past it.
+#
 # TW_URL always wins when set: the tests rely on that seam, and so does anyone
-# on a platform this has not been taught yet.
+# on a platform this has not been taught yet - MSYS included, once R4 above
+# is measured and this script is taught to act on it automatically.
 tw_asset_url() {
     local os arch
     os="$(uname -s 2>/dev/null)"
@@ -69,6 +77,14 @@ tw_asset_url() {
         Linux:x86_64)  printf '%s\n' "https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-linux-x86_64" ;;
         Darwin:arm64)  printf '%s\n' "https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-osx-arm64" ;;
         Darwin:x86_64) printf '%s\n' "https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-osx-x86_64" ;;
+        MINGW*:*|MSYS*:*|CYGWIN*:*)
+            printf '  FAIL  no automatic tw install for Git Bash yet (unmeasured - R4).\n' >&2
+            printf '        Seqera ships tw-windows-x86_64.exe; get it yourself:\n' >&2
+            printf '          https://github.com/seqeralabs/tower-cli/releases/latest/download/tw-windows-x86_64.exe\n' >&2
+            printf '        then either put it on PATH as tw (or tw.exe), or set TW_URL to\n' >&2
+            printf '        that address and re-run this script.\n' >&2
+            return 1
+            ;;
         *)
             printf '  FAIL  no tw release asset known for this platform: uname -s='"'"'%s'"'"', uname -m='"'"'%s'"'"'\n' "$os" "$arch" >&2
             printf '        known combinations: Linux/x86_64, Darwin/arm64, Darwin/x86_64.\n' >&2

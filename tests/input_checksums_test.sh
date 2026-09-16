@@ -189,4 +189,24 @@ eq "macOS-fallback run exits 0"            "$rcG" "0"
 t  "macOS-fallback: the hash is correct"   "$EXPECT_G  data/m_R1.fastq.gz" "$(cat "$OUT_G" 2>/dev/null)"
 
 echo
+echo "--- H: no working Python on this machine - the Windows case (PITFALLS 20c)"
+# python3, python and py all shadowed by stubs that fail - the shape of a Git
+# Bash PATH whose only "python" is the unusable Microsoft Store stub.
+NOPY="$TMP/nopy_bin"; mkdir -p "$NOPY"
+for name in python3 python py; do
+    printf '#!/bin/bash\nexit 49\n' > "$NOPY/$name"
+    chmod +x "$NOPY/$name"
+done
+SDIR_H="$TMP/caseH"; mkdir -p "$SDIR_H/data"
+printf 'content\n' > "$SDIR_H/data/h_R1.fastq.gz"
+printf 'sample,fastq_1\nh,data/h_R1.fastq.gz\n' > "$SDIR_H/samplesheet.csv"
+outH=$(PATH="$NOPY:$PATH" "$BASH_BIN" "$SCRIPT" \
+         --samplesheet "$SDIR_H/samplesheet.csv" --out "$SDIR_H/out.sha256" 2>&1)
+rcH=$?
+eq "no working python exits 2"                     "$rcH" "2"
+t  "...and says no working Python on this machine" "no working Python on this machine" "$outH"
+t  "...and names what was tried"                   "python3" "$outH"
+tn "...and never blames the shell"                  "this shell is unsupported" "$outH"
+
+echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

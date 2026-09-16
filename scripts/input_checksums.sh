@@ -84,8 +84,13 @@ done
 [ -n "$SAMPLESHEET" ] && [ -n "$OUT" ] || usage
 [ -r "$SAMPLESHEET" ] || die 2 "samplesheet not readable: $SAMPLESHEET"
 [ -z "$KNOWN" ] || [ -r "$KNOWN" ] || die 2 "--known list not readable: $KNOWN"
-command -v python3 >/dev/null 2>&1 \
-    || die 2 "python3 not found - needed to read the samplesheet as CSV."
+# pick_python(), not `command -v python3`: PITFALLS 20c measured that Git
+# Bash's python3 is a Microsoft Store stub, on PATH and therefore found by
+# `command -v`, that prints nothing and exits 49 the moment it actually runs.
+# pick_python() (scripts/utils/portable.sh) tries each candidate for real.
+PY="$(pick_python)" || die 2 \
+    "no working Python on this machine - tried: $PICK_PYTHON_CANDIDATES" \
+    "(needed to read the samplesheet as CSV)."
 
 if [ "$FORCE" != 1 ]; then
     [ -e "$OUT" ] && die 2 "refusing to overwrite existing '$OUT' without --force."
@@ -102,7 +107,7 @@ SHEET_DIR="$(cd "$(dirname "$SAMPLESHEET")" && pwd)"
 # A real CSV parser, not an IFS=, split: nf-core samplesheets are ordinary
 # CSV, and a hand-rolled split breaks the moment a value is quoted.
 CANDS="$WORK/candidates.txt"
-python3 - "$SAMPLESHEET" > "$CANDS" <<'PY'
+"$PY" - "$SAMPLESHEET" > "$CANDS" <<'PY'
 import csv, sys
 seen = []
 seenset = set()

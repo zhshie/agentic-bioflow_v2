@@ -155,13 +155,19 @@ has   "and sends them to WSL, not to moving the file"  "PITFALLS 16b"       "$ou
 hasnot "without repeating the retracted conclusion"    "only WSL can hold"  "$out"
 has   "while still listing where it looked"            "No settings file"   "$out"
 
-# A3: the advice above used to stop at "start Claude Code from a WSL shell",
-# which is true but leaves the part a member actually needs unsaid - the
-# PROJECT folder they already work in does not have to move anywhere. Only the
-# settings file and the token beside it have to live in the WSL home, and B1's
-# own check is why.
+# A3: the advice here used to stop at "start Claude Code from a WSL shell",
+# leaving unsaid the part a member actually needs - that the PROJECT folder
+# they already work in does not have to move anywhere. That half stands.
 has   "and says the project folder itself does not have to move" "does not have to move" "$out"
-has   "and names /mnt/c as reachable from a WSL shell"            "/mnt/c"                "$out"
+
+# The other half of A3 did not. It told the member to move the SHELL, and
+# named /mnt/c as the way back to their folder afterwards; 2.13 removed the
+# move, so naming the way back would only put it there again. And its claim
+# that the settings file has to live in the WSL home stopped being true the
+# moment the scripts kept running in this shell - where the file ends up is
+# not predicted here, it is measured at write time.
+hasnot "and no longer sends the member to another shell" "from a WSL shell"    "$out"
+has   "and points at the write-time check instead"      "reads the mode back" "$out"
 
 # The note is only true on Windows. Printed anywhere else it is noise, and a
 # hint that fires everywhere teaches the reader to skip the whole block.
@@ -405,4 +411,77 @@ printf '%-64s ' "the same path is allowed when LAB_SETTINGS_FILE names it explic
 [ "$rc" = 0 ] && [ -r "$EXPLICIT_SYNC" ] && echo ok \
   || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
 
+
+# ---------------------------------------------------------------------------
+# 2.13 Track B: set_setting() no longer shells out to python3 at all - it
+# rewrites the `key: value` line with awk (PITFALLS 20c: Git Bash's python3 is
+# a Microsoft Store stub that is on PATH, prints nothing, and exits 49; awk is
+# POSIX and Git Bash ships it). Byte-identical behaviour is the bar, so these
+# cases mirror what the old python block was relied on for.
+BDIR="$TMP/b_awk"; mkdir -p "$BDIR"
+
+# The assertion that proves the Windows case: with python3, python and py all
+# shadowed by stubs that fail, set_setting must still write correctly. Real
+# coreutils (awk, mkdir, chmod, stat, mv, mktemp...) stay on PATH after the
+# shadow - only the three python names are intercepted, exactly like a Git
+# Bash PATH where the only "python" on it is the unusable Store stub.
+NOPY="$TMP/nopy_bin"; mkdir -p "$NOPY"
+for name in python3 python py; do
+    printf '#!/bin/bash\necho "%s: this stub must never run" >&2\nexit 49\n' "$name" > "$NOPY/$name"
+    chmod +x "$NOPY/$name"
+done
+NOPYF="$BDIR/nopython.yaml"
+out=$(PATH="$NOPY:$PATH" LAB_SETTINGS_FILE="$NOPYF" bash "$S" --set workspace_id 999 2>&1); rc=$?
+printf '%-64s ' "set_setting writes correctly with no python3/python/py on PATH"
+[ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+t "...and the value reads back" \
+  "$(PATH="$NOPY:$PATH" LAB_SETTINGS_FILE="$NOPYF" bash "$S" workspace_id)" "999"
+hasnot "...and none of the shadow stubs ever ran" "this stub must never run" "$out"
+
+# A rewrite must keep a key's trailing comment - it usually says why the
+# value matters, and that's the one thing python's block was written to keep.
+COMMENTF="$BDIR/comment.yaml"
+printf 'site_user: old   # billed to this account\n' > "$COMMENTF"
+LAB_SETTINGS_FILE="$COMMENTF" bash "$S" --set site_user new >/dev/null
+t "a rewrite keeps the key's trailing comment" \
+  "$(cat "$COMMENTF")" "site_user: new  # billed to this account"
+
+# A file with no trailing newline gets one before the appended key - not a
+# special case in the awk, just what `print` always terminates a record with.
+NONLF="$BDIR/no_final_nl.yaml"
+printf 'existing_key: 1' > "$NONLF"   # deliberately no trailing \n
+LAB_SETTINGS_FILE="$NONLF" bash "$S" --set new_key added >/dev/null
+t "a missing final newline is added before the appended key" \
+  "$(cat "$NONLF")" "$(printf 'existing_key: 1\nnew_key: added')"
+# `$(...)` strips trailing newlines on both sides of the comparison above, so
+# it cannot tell "ends with \n" from "doesn't" - check that byte directly.
+printf '%-64s ' "...and the appended line itself ends with a newline"
+[ "$(tail -c1 "$NONLF" | wc -l)" -eq 1 ] && echo ok \
+  || { echo "FAIL: $NONLF does not end with a newline"; fails=$((fails+1)); }
+
+# Unrelated lines, comments and order survive a rewrite untouched - only the
+# matched key's own line may change.
+ORDERF="$BDIR/order.yaml"
+printf 'a: 1\nb: 2  # keep me\nc: 3\n' > "$ORDERF"
+LAB_SETTINGS_FILE="$ORDERF" bash "$S" --set b newval >/dev/null
+t "unrelated lines, comments and order are untouched" \
+  "$(cat "$ORDERF")" "$(printf 'a: 1\nb: newval  # keep me\nc: 3')"
+
+# The 2.12 mode-600 readback refusal must still fire after the awk rewrite: a
+# `stat` that reports 644 no matter what chmod just did must be refused, and a
+# file THIS call created must not survive the refusal.
+FAKESTAT644="$TMP/fakestat644_bin"; mkdir -p "$FAKESTAT644"
+cat > "$FAKESTAT644/stat" <<'C'
+#!/bin/bash
+echo 644
+C
+chmod +x "$FAKESTAT644/stat"
+REFUSEF="$BDIR/refuse.yaml"
+out=$(PATH="$FAKESTAT644:$PATH" LAB_SETTINGS_FILE="$REFUSEF" bash "$S" --set workspace_id 1 2>&1); rc=$?
+printf '%-64s ' "the 2.12 mode-600 refusal still fires (fake stat_mode 644)"
+[ "$rc" = 1 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...and the file this call created is not left behind"
+[ ! -e "$REFUSEF" ] && echo ok || { echo "FAIL: $REFUSEF still exists"; fails=$((fails+1)); }
+
+echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

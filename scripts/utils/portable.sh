@@ -83,6 +83,37 @@ resolve_link() {
     printf '%s\n' "${d%/}/$(basename "$p")"
 }
 
+# Which interpreter actually runs, not which name resolves. PITFALLS 20c:
+# Git Bash puts a Microsoft Store stub on PATH as `python3` - `command -v
+# python3` finds it and lies; running it prints nothing and exits 49. The fix
+# is the one 20c already gives - try each candidate for real and keep the
+# first one that runs, rather than asking PATH which names exist.
+#
+# `python3` first because that is the POSIX-side convention and is right
+# everywhere but Windows; `python` and `py` are the names an ordinary
+# python.org or working Microsoft Store install actually publishes there.
+# This cannot and does not try to tell a working install from a broken one by
+# any means other than actually running it - which is the whole fix.
+#
+# Lives here rather than in scripts/require_python.sh: that file solves a
+# different problem, this cluster's own `/usr/bin/python3` being a reserved
+# RHEL interpreter this account may not run (PITFALLS 16d) - one fixed name,
+# a site-specific diagnosis, used only on the site through on_site.sh
+# --script. This is the cross-platform "which of several names actually
+# works on THIS machine" question, the same class of problem stat_mode() and
+# resolve_link() above answer, so it belongs beside them.
+PICK_PYTHON_CANDIDATES="python3 python py"
+pick_python() {
+    local candidate
+    for candidate in $PICK_PYTHON_CANDIDATES; do
+        if "$candidate" -c 'pass' >/dev/null 2>&1; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Run a command under a time limit. `timeout` is GNU coreutils and is simply
 # not on a stock macOS; Homebrew installs it as `gtimeout`. With neither, a
 # shell watchdog - because the alternative is no limit at all, and the two

@@ -146,15 +146,15 @@ shell_blind_spot() {
     echo "  A deployment set up in WSL is not visible from here: different home,"
     echo "  different filesystem, and WSL's ~/.bashrc is never read in this shell."
     echo "  'Not found' here does not mean 'not set up'."
-    echo "  PITFALLS 16b, 20c: this shell's own ssh cannot hold the site"
-    echo "  connection, and its python3 is a Store stub, so start Claude Code"
-    echo "  from a WSL shell rather than moving the file."
-    echo "  Your project folder does not have to move to get there: /mnt/c/... is"
-    echo "  readable and writable from WSL, so start Claude Code in a WSL shell and"
-    echo "  'cd' straight back to the folder you already work in. What has to stay"
-    echo "  in the WSL home is only the settings file and the token beside it -"
-    echo "  chmod 600 does not hold on /mnt/c without the 'metadata' mount option,"
-    echo "  which is what settings.sh's own write-back check now refuses."
+    echo "  None of that asks you to move: the project folder you already work"
+    echo "  in does not have to move, and neither does this window. The one call"
+    echo "  that needs WSL borrows it by itself (PITFALLS 16b, 16g)."
+    echo "  Run setup here. It writes a settings file this shell can find, and"
+    echo "  refuses the filesystem outright if the mode 600 the token needs does"
+    echo "  not hold there - settings.sh reads the mode back rather than trusting"
+    echo "  that chmod did anything."
+    echo "  A deployment already set up inside WSL stays exactly where it is;"
+    echo "  this shell simply cannot read it."
 }
 
 # The token file, worked out in one place. preflight.sh, the session hook,
@@ -179,6 +179,61 @@ token_file() {
         if [ -r "$d" ]; then printf '%s\n' "$d"; return 0; fi
     done
     printf '%s\n' "$first"
+}
+
+# One derivation of "is the WSL bridge in play", for on_site.sh, fetch.sh,
+# push.sh, reset_master.sh and detect_conditions.sh. Those five worked it out
+# four separate times when the bridge first landed, and two of the copies
+# already disagreed: detect_conditions.sh probed `wsl.exe` alone and never
+# read `site_bridge`, so a member who had turned the bridge off was told this
+# machine was `supported` while on_site.sh refused every call it made. That is
+# exactly the failure token_file() above exists to prevent, one subsystem over
+# - and reset_master.sh, which never learned about the bridge at all, was
+# telling people to close a master at a path nothing had opened.
+#
+# A function, never run at source time: the probe costs a process spawn and
+# nearly everything in this repo sources this file.
+bridge_kind() {   # -> wsl | none
+    case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*|CYGWIN*) ;;
+        # WSL is a Windows-only concept, so there is nothing to detect
+        # elsewhere - and a stray `wsl.exe` on some other PATH must never
+        # change what these scripts do there.
+        *) printf 'none\n'; return 0 ;;
+    esac
+    local _default=none
+    command -v wsl.exe >/dev/null 2>&1 && wsl.exe -e true >/dev/null 2>&1 \
+        && _default=wsl
+    # The setting wins over the probe, in both directions: `site_bridge: none`
+    # turns a working bridge off, which is what makes the refusal path
+    # reachable on a machine that has WSL.
+    setting site_bridge "$_default"
+}
+
+# The ssh binary that goes with that answer. PITFALLS 16b/16g: Git Bash's own
+# ssh cannot open a session over a master, WSL's can, and scripts/utils/
+# wsl_ssh.sh is that one call - a script rather than a function because both
+# `$SSH` and rsync's `-e` need something passable as a command string.
+site_ssh_bin() {   # site_ssh_bin <bridge-kind> -> path or 'ssh'
+    if [ "${1:-none}" = wsl ]; then
+        printf '%s\n' "$(dirname "${BASH_SOURCE[0]}")/utils/wsl_ssh.sh"
+    else
+        printf 'ssh\n'
+    fi
+}
+
+# The ControlPath default that goes with it. Under the bridge the master lives
+# inside WSL, so the path has to be one WSL's OWN shell expands: left as the
+# literal '~/...' it crosses wsl.exe unexpanded and resolves against WSL's
+# home, rather than a Windows-shaped $HOME this shell would have expanded
+# first. Either way it must not contain ':' - illegal in an NTFS filename,
+# which is why the usual '%r@%h:%p' form cannot be used here (PITFALLS 16b).
+site_control_path_default() {   # site_control_path_default <bridge-kind>
+    if [ "${1:-none}" = wsl ]; then
+        printf '%s\n' '~/.ssh/cm-%r-%h-%p'
+    else
+        printf '%s\n' "${HOME:-}/.ssh/cm-%r-%h-%p"
+    fi
 }
 
 setting() {
@@ -215,26 +270,72 @@ set_setting() {
         : > "$SETTINGS_FILE"
         chmod 600 "$SETTINGS_FILE"
     fi
-    python3 - "$SETTINGS_FILE" "$key" "$val" <<'PY'
-import re, sys
-path, key, val = sys.argv[1:4]
-lines = open(path).read().splitlines(keepends=True)
-pat = re.compile(rf"^(\s*){re.escape(key)}\s*:")
-for i, line in enumerate(lines):
-    if pat.match(line):
-        # Keep any trailing comment: it usually says why the value matters.
-        comment = ""
-        body = line.split("#", 1)
-        if len(body) == 2:
-            comment = "  #" + body[1].rstrip("\n")
-        lines[i] = f"{key}: {val}{comment}\n"
-        break
-else:
-    if lines and not lines[-1].endswith("\n"):
-        lines.append("\n")
-    lines.append(f"{key}: {val}\n")
-open(path, "w").writelines(lines)
-PY
+    # awk, not python3, and ENVIRON rather than `awk -v`. PITFALLS 20c: Git
+    # Bash's python3 is a Microsoft Store stub that sits on PATH, prints
+    # nothing, and exits 49 - this was the one place in the whole repo that
+    # still needed a real python3 to exist, to rewrite a single `key: value`
+    # line. awk is POSIX and Git Bash ships it - tests/portable_userland.sh
+    # holds this file to POSIX awk, so no gensub, no GNU-only extension.
+    # Still not a real YAML parser, for the same reason `setting()` above
+    # is not one (see this file's own header): the settings file is only
+    # ever `key: value` plus an optional trailing comment, by design.
+    #
+    # ENVIRON, not `awk -v key=... val=...`: POSIX has awk interpret
+    # backslash escapes inside a `-v` assignment the same way it would
+    # inside a string literal, so a value with a bare backslash in it - a
+    # Windows path typed without forward slashes - would come out mangled.
+    # ENVIRON hands awk the same bytes bash already has, untouched.
+    local _tmp
+    _tmp="$(mktemp "${SETTINGS_FILE}.XXXXXX" 2>/dev/null)" || {
+        echo "could not create a temp file beside $SETTINGS_FILE" >&2
+        [ "$created" = 1 ] && rm -f "$SETTINGS_FILE"
+        return 1
+    }
+    if ! AWK_KEY="$key" AWK_VAL="$val" awk '
+        BEGIN {
+            key = ENVIRON["AWK_KEY"]; val = ENVIRON["AWK_VAL"]
+            klen = length(key); found = 0
+        }
+        {
+            rest = $0
+            sub(/^[ \t]*/, "", rest)
+            if (!found && substr(rest, 1, klen) == key) {
+                after = substr(rest, klen + 1)
+                sub(/^[ \t]*/, "", after)
+                if (substr(after, 1, 1) == ":") {
+                    found = 1
+                    # Keep any trailing comment: it usually says why the
+                    # value matters.
+                    comment = ""
+                    hashpos = index($0, "#")
+                    if (hashpos > 0) comment = "  #" substr($0, hashpos + 1)
+                    print key ": " val comment
+                    next
+                }
+            }
+            print
+        }
+        END { if (!found) print key ": " val }
+    ' "$SETTINGS_FILE" > "$_tmp"
+    then
+        rm -f "$_tmp"
+        [ "$created" = 1 ] && rm -f "$SETTINGS_FILE"
+        echo "awk failed to rewrite $SETTINGS_FILE" >&2
+        return 1
+    fi
+    # Content only, not the file itself: `mv` would swap in the temp file's
+    # own inode, and mktemp always creates that at mode 600 regardless of
+    # umask - which would make the mode-600 check just below pass by
+    # accident, on a file that never actually went through the chmod that
+    # check exists to verify. Writing into the existing file instead - the
+    # same thing the python block's own `open(path, "w")` did - keeps
+    # whatever mode the file already had until the explicit chmod decides it.
+    cat "$_tmp" > "$SETTINGS_FILE" || {
+        rm -f "$_tmp"
+        echo "failed to write $SETTINGS_FILE" >&2
+        return 1
+    }
+    rm -f "$_tmp"
     chmod 600 "$SETTINGS_FILE"
 
     # B1: the chmod above can be *accepted* and change nothing. Measured shape:

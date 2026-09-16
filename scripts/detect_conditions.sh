@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     echo "usage: detect_conditions.sh [--get <key>]" >&2
-    echo "keys: os shell interface reach jq hooks attended tier cell status may_touch_site message" >&2
+    echo "keys: os shell interface reach bridge jq hooks attended tier cell status may_touch_site message" >&2
 }
 
 measure() {
@@ -58,6 +58,15 @@ measure() {
     # Windows jq.exe found by a Linux-shaped PATH - would still pass that
     # check. Ask it to do its job on the smallest possible input instead.
     if printf '{}' | jq -e . >/dev/null 2>&1; then jq_present=yes; else jq_present=no; fi
+
+    # Not a second implementation: bridge_kind() in scripts/settings.sh is the
+    # one derivation, shared with on_site.sh, fetch.sh, push.sh and
+    # reset_master.sh - the same reason `interface` above delegates to
+    # status.sh rather than re-deciding it here. It matters more than it looks:
+    # this used to probe `wsl.exe` on its own and never read `site_bridge`, so
+    # a member who had turned the bridge off was told `supported` here while
+    # every call on_site.sh made was refused.
+    bridge="$(bridge_kind)"
 
     # hooks: yes when this is Claude Code running this plugin (CLAUDE_PLUGIN_ROOT
     # is set by the plugin loader; CLAUDECODE=1 is set by Claude Code itself).
@@ -103,15 +112,15 @@ measure() {
     if [ "$jq_present" = no ]; then
         cell=blocked-no-jq
         status=blocked
-        message="jq is required here and was not found. Install it: macOS \`brew install jq\`; Debian/Ubuntu or WSL \`sudo apt install jq\`."
+        message="jq is required here and was not found. Install it: macOS \`brew install jq\`; Debian/Ubuntu or WSL \`sudo apt install jq\`; Windows \`winget install jqlang.jq\`."
     elif [ "$tier" = H3 ] && { [ "$reach" = ssh ] || [ "$reach" = local ]; }; then
         cell=blocked-h3-site
         status=blocked
         message="no plugin hooks: Platform read-only only, see docs/LAB_AGENTS.md"
-    elif [ "$os" = msys ] && [ "$reach" = ssh ]; then
-        cell=unsupported-msys-native
+    elif [ "$os" = msys ] && [ "$reach" = ssh ] && [ "$bridge" = none ]; then
+        cell=unsupported-msys-no-wsl
         status=unsupported
-        message="Native Windows Git Bash is recognised but not supported by this version: python3 here is a Microsoft Store stub (PITFALLS 20c), a default install carries no jq, and the test suite does not run here. Reaching the site through WSL's own ssh was measured to work (PITFALLS 16g); this version does not use it. Start Claude Code from a WSL shell, or run scripts/report.sh to let the maintainer know."
+        message="Native Windows Git Bash is recognised but this version found no WSL bridge here (\`wsl.exe -e true\` did not succeed). This shell's own ssh cannot hold the multiplexed connection the site needs (PITFALLS 16b); calling WSL's own ssh from here was measured to work instead (PITFALLS 16g). Install WSL (\`wsl --install\`) and retry - once it is there this same window falls through to supported. If WSL is not an option here, run /setup to see what this plugin can still do, or scripts/report.sh to let the maintainer know."
     elif [ "$reach" = none ]; then
         cell=unsupported-cloud-ce
         status=unsupported
@@ -125,14 +134,15 @@ measure() {
     # H3 never touches the site, full stop - independent of which cell won
     # above (an H3 host with no settings file at all lands on the `supported`
     # cell, since nothing else is wrong, but must still not be told it may
-    # reach the cluster). Native Git Bash is the other case, and after 16g it
-    # is here for a different reason than it used to be: not that it cannot
-    # reach the site, but that this version does not carry the bridge that
-    # would let it. Either way, it may not - so the answer stays no even where
-    # its own cell above did not win (a different reach, say).
+    # reach the cluster). Native Git Bash without a bridge is the other case:
+    # not that it cannot reach the site (16g measured `wsl.exe -e ssh` working
+    # over a master opened in WSL), but that THIS session has no bridge to use
+    # it through - `bridge` is what actually answers that, measured above, not
+    # `os`/`reach` alone. Once `bridge=wsl` this branch no longer applies and
+    # the field falls through to `yes` the same way the cell above does.
     if [ "$tier" = H3 ]; then
         may_touch_site=no
-    elif [ "$os" = msys ] && [ "$reach" = ssh ]; then
+    elif [ "$os" = msys ] && [ "$reach" = ssh ] && [ "$bridge" = none ]; then
         may_touch_site=no
     else
         may_touch_site=yes
@@ -145,6 +155,7 @@ os=$os
 shell=$shell
 interface=$interface
 reach=$reach
+bridge=$bridge
 jq=$jq_present
 hooks=$hooks
 attended=$attended
@@ -171,6 +182,7 @@ case "${1:-}" in
             shell)           printf '%s\n' "$shell" ;;
             interface)       printf '%s\n' "$interface" ;;
             reach)           printf '%s\n' "$reach" ;;
+            bridge)          printf '%s\n' "$bridge" ;;
             jq)              printf '%s\n' "$jq_present" ;;
             hooks)           printf '%s\n' "$hooks" ;;
             attended)        printf '%s\n' "$attended" ;;

@@ -320,7 +320,20 @@ render_table() {
 }
 
 render_json() {
-    python3 - "$ROWS_TSV" <<'PY'
+    # pick_python(), not a bare `python3`: only this rendering mode needs an
+    # interpreter at all (the plain table and --config do not), and PITFALLS
+    # 20c measured that Git Bash's python3 is a Microsoft Store stub - on
+    # PATH, but silent and exit 49 the moment it actually runs. settings.sh,
+    # sourced above, already pulls in scripts/utils/portable.sh.
+    local py; py="$(pick_python)" || {
+        printf '%s\n' \
+          "no working Python on this machine - tried: $PICK_PYTHON_CANDIDATES" \
+          "" \
+          "--json needs one to emit the table as JSON. The plain table and" \
+          "--config do not need Python at all - drop --json to use those." >&2
+        exit 2
+    }
+    "$py" - "$ROWS_TSV" <<'PY'
 import sys, json
 rows = []
 with open(sys.argv[1]) as f:

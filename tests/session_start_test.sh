@@ -159,7 +159,17 @@ check "and told the reason that still holds"         "$out" "python3"         pr
 check "and told the move"                            "$out" "WSL"             present
 check "and no longer told the site is unreachable"   "$out" "cannot reach the cluster" absent
 check "and told the project does not have to move"   "$out" "does not have to move" present
-check "and given a /mnt/c path back to the project"   "$out" "/mnt/c"          present
+# 2.13 (D2): the fix used to be "open a WSL shell and move the window there" -
+# exactly the instruction plan section D2 retires. It's WSL that's missing,
+# not a different window to run Claude Code in.
+check "no longer prescribes opening a WSL shell to move into" "$out" "Open a WSL shell" absent
+check "names the install command instead"                     "$out" "wsl --install"    present
+# PITFALLS 25: deleted once already by an earlier release and had to be
+# restored (D2's own instruction) - pinned explicitly so a future edit that
+# drops it again turns this line red rather than merely losing the sentence.
+check "the PITFALLS 25 fact is still present"                  "$out" "PITFALLS 25"      present
+check "and its 'not found does not mean not set up' line survives" \
+      "$out" "does not mean 'not set up'" present
 printf '%-52s ' "and the hook still exits 0"
 [ "$rc" = 0 ] && echo "ok" || { echo "FAIL: rc $rc"; fails=$((fails+1)); }
 
@@ -175,6 +185,45 @@ out=$(run startup "$TMP/does-not-exist.yaml")
 check "on Linux with no settings, still silent"       "$out" "Git Bash"        absent
 out=$(run startup "$TMP/env.yaml" "$TMP/tw_idle")
 check "and a Linux deployment hears nothing of it"    "$out" "Git Bash"        absent
+
+echo
+
+# ---------------------------------------------------------------------------
+# 2.13 (D2 + C1 together): once detect_conditions.sh actually measures a WSL
+# bridge, the Condition line it feeds into this hook's output changes from
+# `unsupported-msys-no-wsl` to `supported` and stops appearing at all (the
+# hook only speaks about the condition when status != supported) - and
+# regardless of which of those two a given machine lands on, this hook's own
+# static SHELLWARN text must never say "Start Claude Code from a WSL shell"
+# again, because that phrase is exactly what 2.13 retires (see D2 above).
+SSHF_MSYS="$TMP/env_ssh_msys.yaml"
+printf 'workspace_id: 12345\ntw_bin: %s/tw_idle\nreach: ssh\n' "$TMP" > "$SSHF_MSYS"
+chmod 600 "$SSHF_MSYS"
+
+WSLBIN="$TMP/wslbin"; mkdir -p "$WSLBIN"
+cat > "$WSLBIN/wsl.exe" <<'EOF'
+#!/bin/bash
+if [ "$1" = -e ]; then shift; "$@"; exit $?; fi
+exit 1
+EOF
+chmod +x "$WSLBIN/wsl.exe"
+
+msys_bridge_run() { # msys_bridge_run <reason> <settings-file>
+  printf '{"session_start_reason":"%s"}' "$1" \
+    | env PATH="$UB:$WSLBIN:$PATH" LAB_SETTINGS_FILE="$2" TW_BIN="$TMP/tw_idle" \
+          TOWER_WORKSPACE_ID=12345 SEQERA_TOKEN_FILE="$TMP/.seqera_token" bash "$H"
+}
+
+out=$(msys_bridge_run startup "$SSHF_MSYS")
+check "bridge available: no Condition line at all (falls through to supported)" "$out" "Condition:" absent
+check "bridge available: never says to start Claude Code from a WSL shell"      "$out" "Start Claude Code from a WSL shell" absent
+check "bridge available: still told this is Git Bash (MSYS), via SHELLWARN"     "$out" "Git Bash (MSYS)" present
+check "bridge available: PITFALLS 25 fact is still there too"                   "$out" "PITFALLS 25" present
+
+out=$(msys_run startup "$SSHF_MSYS")
+check "no bridge + reach=ssh: Condition line names unsupported-msys-no-wsl"    "$out" "unsupported-msys-no-wsl" present
+check "no bridge + reach=ssh: still never says to start Claude Code elsewhere" "$out" "Start Claude Code from a WSL shell" absent
+check "no bridge + reach=ssh: PITFALLS 25 fact is still there"                 "$out" "PITFALLS 25" present
 
 echo
 

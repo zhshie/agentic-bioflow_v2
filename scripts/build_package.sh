@@ -44,6 +44,7 @@
 # said so instead of blaming the user.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$HERE/utils/portable.sh"
 
 RENDER=0
 PROJECT=""
@@ -77,6 +78,32 @@ while IFS= read -r d; do RUNS+=("$d"); done < <(find -L "$PROJECT/runs" -maxdept
 
 mkdir -p "$OUT/figures" "$OUT/scripts" || exit 1
 
+# pick_python(), checked here rather than left to fail wherever the first
+# inline `python3 -` block happens to run: this used to have no guard at all
+# (a real fault, not merely a missing message - a Windows PATH whose only
+# "python3" is the Store stub would fail silently partway through, PITFALLS
+# 20c), and checking early also means this fires before collect_provenance.py
+# below - a python-shebang script of its own with a DIFFERENT interpreter
+# check (require_python.sh, PITFALLS 16d's site-fencing story) - so a member
+# with no interpreter at all gets one clear message instead of that one's,
+# which is written for a different failure.
+PY="$(pick_python)" || {
+    printf '%s\n' \
+      "no working Python on this machine - tried: $PICK_PYTHON_CANDIDATES" \
+      "" \
+      "This step needs one for real: the DOI list, the manuscript's per-figure" \
+      "sections and the README's reproduction list are all built by reading" \
+      "provenance.json and the analysis plan through it. Nothing here" \
+      "substitutes for a Python interpreter." \
+      "" \
+      "One case this message is NOT written for: a python3 that exists and" \
+      "refuses to run. On this cluster /usr/bin/python3 is a symlink to an" \
+      "interpreter this account may not execute (PITFALLS 16d), which reads" \
+      "as absent here but has its own answer - scripts/require_python.sh" \
+      "names it and says which module to load." >&2
+    exit 2
+}
+
 echo "project   $PROJECT"
 echo "runs      ${#RUNS[@]}"
 
@@ -92,7 +119,7 @@ echo "wrote     submission/methods.md"
 # Deduplicated by cite.sh, which also leaves anything unresolved visible.
 DOIS="$OUT/.dois.txt"
 {
-    python3 - "$OUT/provenance.json" <<'PY'
+    "$PY" - "$OUT/provenance.json" <<'PY'
 import json, sys
 for run in json.load(open(sys.argv[1]))["runs"]:
     for c in run.get("citation_dois") or []:
@@ -146,7 +173,7 @@ QMD="$OUT/manuscript.qmd"
     # One section per figure the plan accepted, captioned with the question
     # that entry says it answers. The plan is the only record of why a figure
     # exists, so this is where that survives into the write-up.
-    python3 - "$PLAN" "$OUT/figures" <<'PY'
+    "$PY" - "$PLAN" "$OUT/figures" <<'PY'
 import os, re, sys
 plan, figdir = sys.argv[1], sys.argv[2]
 text = open(plan, encoding="utf-8", errors="replace").read()
@@ -192,7 +219,7 @@ echo "wrote     submission/manuscript.qmd"
     echo "parameterised, which is what makes them re-runnable without carrying"
     echo "a second copy that can drift from upstream:"
     echo
-    python3 - "$OUT/provenance.json" <<'PY'
+    "$PY" - "$OUT/provenance.json" <<'PY'
 import json, os, sys
 for run in json.load(open(sys.argv[1]))["runs"]:
     wf = run.get("workflow") or {}

@@ -15,6 +15,7 @@ os=linux|macos|msys|other
 shell=<basename of $SHELL, or unknown>
 interface=cli|vscode|desktop|web|unknown
 reach=local|ssh|none|unset
+bridge=none|wsl
 jq=yes|no
 hooks=yes|no|unknown
 attended=yes|no|unknown
@@ -38,6 +39,15 @@ started, not which surface the person is looking at; the editor's own
 `TERM_PROGRAM`/`VSCODE_GIT_ASKPASS_MAIN` corroborate it). Both scripts share
 one function in `scripts/status.sh` so the two answers can never drift apart.
 
+`bridge` is measured, not guessed, the same way `jq` above is: on `os=msys`
+it is `wsl` only when `wsl.exe -e true` actually runs and exits zero (a local
+process this machine spawns and waits on, never the network - PITFALLS 20c's
+own lesson, that a thing merely *found* on PATH is not the same claim as a
+thing that *runs*). On every other platform it is `none` without even trying
+`wsl.exe`, since it cannot exist there. This is what
+`unsupported-msys-no-wsl` below is narrowed against, and what lets a Windows
+machine that does have WSL fall through to `supported` instead.
+
 ## Evidence levels
 
 Every dimension below is tagged with how sure the plugin actually is:
@@ -60,16 +70,23 @@ supported):
 
 | Order | Condition | `cell` | `status` | Message (fixed) |
 |---|---|---|---|---|
-| 1 | `jq` missing or cannot run | `blocked-no-jq` | blocked | `jq is required here and was not found. Install it: macOS \`brew install jq\`; Debian/Ubuntu or WSL \`sudo apt install jq\`.` |
+| 1 | `jq` missing or cannot run | `blocked-no-jq` | blocked | `jq is required here and was not found. Install it: macOS \`brew install jq\`; Debian/Ubuntu or WSL \`sudo apt install jq\`; Windows \`winget install jqlang.jq\`.` |
 | 2 | `tier=H3` and `reach` is `ssh` or `local` | `blocked-h3-site` | blocked | `no plugin hooks: Platform read-only only, see docs/LAB_AGENTS.md` |
-| 3 | `os=msys` and `reach=ssh` | `unsupported-msys-native` | unsupported | `Native Windows Git Bash is recognised but not supported by this version: python3 here is a Microsoft Store stub (PITFALLS 20c), a default install carries no jq, and the test suite does not run here. Reaching the site through WSL's own ssh was measured to work (PITFALLS 16g); this version does not use it. Start Claude Code from a WSL shell, or run scripts/report.sh to let the maintainer know.` |
+| 3 | `os=msys` and `reach=ssh` and `bridge=none` | `unsupported-msys-no-wsl` | unsupported | `Native Windows Git Bash is recognised but this version found no WSL bridge here (\`wsl.exe -e true\` did not succeed). This shell's own ssh cannot hold the multiplexed connection the site needs (PITFALLS 16b); calling WSL's own ssh from here was measured to work instead (PITFALLS 16g). Install WSL (\`wsl --install\`) and retry - once it is there this same window falls through to supported. If WSL is not an option here, run /setup to see what this plugin can still do, or scripts/report.sh to let the maintainer know.` |
 | 4 | `reach=none` | `unsupported-cloud-ce` | unsupported | `Seqera-managed cloud compute environment is recognised but not supported by this version. Run scripts/report.sh to let the maintainer know.` |
 | 5 | otherwise | `supported` | supported | `This host and configuration are supported.` |
 
-Every cell whose `status` is unsupported (`unsupported-msys-native` and
+A `os=msys`/`reach=ssh` host with `bridge=wsl` matches none of rows 1-4 and
+lands on row 5, `supported` - the bridge is what makes that host no longer a
+special case, not a change to any of the other rows.
+
+Every cell whose `status` is unsupported (`unsupported-msys-no-wsl` and
 `unsupported-cloud-ce`) has a message that names how to report it
 (`scripts/report.sh`), per the plugin-wide rule that nothing outside its
-design silently proceeds without a trace.
+design silently proceeds without a trace. `unsupported-msys-no-wsl` also names
+an in-plugin next step (`/setup`) rather than sending the member to a
+different window - see "Where Claude itself runs" below for why that
+distinction matters.
 
 `tests/conditions_matrix_test.sh` asserts, in both directions, that this set
 of `cell` codes is exactly the set `detect_conditions.sh` can print - it
@@ -84,11 +101,13 @@ section A2's structural rule: **no hooks means no cluster, full stop**):
 - `no` when `tier=H3` (no plugin hooks - Claude Tag, Managed Agents,
   OpenClaw, Hermes, Codex and similar share-identity runtimes with no way to
   gate a launch or a delete).
-- `no` when `os=msys` and `reach=ssh` - not because the site is out of reach
-  from there (PITFALLS 16g measured `wsl.exe -e ssh` working over a master
-  opened in WSL) but because this version does not carry that bridge and the
-  rest of the userland it would need is missing (PITFALLS 20c). A Windows
-  desktop app reaching for the cluster lands here the same way.
+- `no` when `os=msys` and `reach=ssh` and `bridge=none` - not because the site
+  is out of reach from there (PITFALLS 16g measured `wsl.exe -e ssh` working
+  over a master opened in WSL) but because *this session* has no bridge to
+  use it through, measured directly rather than assumed from the OS alone.
+  Once `bridge=wsl` this trigger no longer applies and the field reads `yes`
+  the same way the cell above falls through to `supported`. A Windows desktop
+  app reaching for the cluster without a bridge lands here the same way.
 - `yes` otherwise. Notably **not** triggered by `jq` being missing: that
   blocks the whole session (PITFALLS 28's safety nets fail closed without
   it), which is a different and broader question than whether this *host* is
@@ -114,14 +133,17 @@ actually classify it - which decision cell it maps to. Several dimensions
 | NCHC login node | ✅ supported | measured | `supported` |
 | macOS | ✅ supported | measured only in a simulated BSD userland | `supported` |
 | Windows + WSL | ✅ supported | measured by a second lab member | `supported` |
-| Windows, native Git Bash/PowerShell as the shell reaching the cluster | 🚧 unsupported (was ⛔ until 2.11) | measured both ways: the shell's own ssh cannot (16b), WSL's ssh called from it can (16g, 2026-09-15); the userland it would still need is not there (20c) | `unsupported-msys-native` |
+| Windows, native Git Bash/PowerShell as the shell reaching the cluster, no WSL bridge measured (`bridge=none`) | 🚧 unsupported (was ⛔ until 2.11) | measured both ways: the shell's own ssh cannot (16b), WSL's ssh called from it can (16g, 2026-09-15); the userland it would still need is not there (20c) | `unsupported-msys-no-wsl` |
+| Windows, native Git Bash/PowerShell, with a WSL bridge measured (`bridge=wsl`) | ✅ supported | measured (`wsl.exe -e true` run, not just found - PITFALLS 20c) | `supported` |
 | Linux desktop | ✅ supported | inferred | `supported` |
 
-This row and `unsupported-msys-native` are about the **shell** Claude Code
-runs in, not about where the member's project folder sits: nothing measured
-here has ever depended on that folder's location (`PRINCIPLES.md`, invariant
-11), and the two must not be conflated in how this row - or its message - gets
-read back to a user.
+The Git Bash rows and `unsupported-msys-no-wsl` are about the **shell**
+Claude Code runs in, not about where the member's project folder sits:
+nothing measured here has ever depended on that folder's location
+(`PRINCIPLES.md`, invariant 11), and the two must not be conflated in how
+these rows - or their messages - get read back to a user. The window itself
+never has to move; only a bridge to the site's ssh, borrowed from WSL, was
+ever missing.
 
 ### Claude interface
 
@@ -130,7 +152,7 @@ read back to a user.
 | CLI | ✅ supported | measured | — |
 | VS Code (extension) | ✅ supported | measured | — |
 | VS Code Remote-SSH to the login node | ✅ supported | measured (this is that session) | — |
-| Windows desktop app, reaching the cluster | 🚧 unsupported | inferred - its Bash tool is believed to run through Git Bash, not yet measured | `unsupported-msys-native` (once measured) |
+| Windows desktop app, reaching the cluster | 🚧 unsupported | inferred - its Bash tool is believed to run through Git Bash, not yet measured | `unsupported-msys-no-wsl` (once measured, unless it also measures a WSL bridge) |
 | claude.ai/code web, cloud sandboxes | 🚧 unsupported | inferred - cannot take a 2FA code, and is not the lab's own machine | `unsupported-cloud-ce` when `reach=none`, otherwise not reachable by this script |
 
 `interface` itself is read as **inferred** evidence as a whole (see
@@ -174,7 +196,8 @@ documentation and `setup`'s own claims changed, from "supported" to
 | Tool | Status | Evidence | Cell |
 |---|---|---|---|
 | `jq` | required; missing → ⛔ blocked | measured | `blocked-no-jq` |
-| `ssh` with ControlMaster support (`reach: ssh`) | required for that reach | measured | (folds into `unsupported-msys-native` on native Windows) |
+| `ssh` with ControlMaster support (`reach: ssh`) | required for that reach | measured | (folds into `unsupported-msys-no-wsl` on native Windows with no bridge) |
+| `wsl.exe`, actually runnable (`bridge`) | required for `reach: ssh` on native Windows only | measured | (its absence is what `unsupported-msys-no-wsl` names; its presence is what lets that host fall through to `supported`) |
 | `quarto` (used by `finish`) | required for that command | read in code | — |
 | Positron (used by `downstream`) | optional, has its own "not here" branch | measured | — |
 
