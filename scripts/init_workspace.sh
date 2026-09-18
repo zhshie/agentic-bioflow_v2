@@ -203,6 +203,12 @@ else
     BASE="${ROOT_ARG:-$(setting local_root "$HOME/agentic-bioflow")}"
     BASE="${BASE%/}"
 
+    # T21: local_root is allowed to be a synced folder - warn, do not refuse.
+    # Skipped under --plan: a plan is read-only reconnaissance, and printing a
+    # stderr caution about a directory nothing is about to touch yet would fire
+    # on every dry run of a path someone is still deciding on.
+    [ "$PLAN" = 1 ] || cloud_sync_caution "$BASE" local_root
+
     DIRS+=("$BASE/$USER_NAME/projects")
     if [ -n "$PROJECT" ]; then
         PROJ_DIR="$BASE/$USER_NAME/projects/$PROJECT"

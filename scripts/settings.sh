@@ -462,15 +462,16 @@ refuse_site_shaped_write() {
 # LAB_SETTINGS_FILE wins outright, because a member who named the location
 # chose it.
 #
+# The name-matching itself is looks_cloud_synced() (scripts/utils/portable.sh)
+# - shared with the softer, non-refusing warning T21 added for `local_root`
+# and `portable_root`, which are allowed to be synced folders. This function
+# is the settings-file-specific decision built on top of that shared match.
+#
 #   0  refuse   1  fine, carry on
 looks_synced_write_refusal() {
     local path="$1"
     [ -z "${LAB_SETTINGS_FILE:-}" ] || return 1   # an explicit location wins outright
-    case "$path" in
-        *OneDrive*|*Dropbox*|*"Google Drive"*|*GoogleDrive*|*"Library/Mobile Documents"*|*Box*|*Nextcloud*)
-            return 0 ;;
-    esac
-    return 1
+    looks_cloud_synced "$path"
 }
 
 refuse_synced_write() {
@@ -490,6 +491,33 @@ refuse_synced_write() {
     echo "" >&2
     echo "To use this path anyway, set LAB_SETTINGS_FILE to it explicitly - naming the" >&2
     echo "location outright is treated as a deliberate choice." >&2
+}
+
+# T21: local_root and (from T23) portable_root are ALLOWED to be a synced
+# folder - unlike the settings file above, this only warns. A portable_root
+# is explicitly designed to often be one (docs/SETTINGS.md: "can be a cloud
+# sync folder, an external drive, any path"), so refusing it the way
+# refuse_synced_write() refuses the settings file would refuse the design
+# itself. What still has to be said: large files sync slowly and burn quota,
+# and the *decrypted* token and the Positron bridge connection file must never
+# live here even though the encrypted token (T23: config/.seqera_token.enc)
+# is fine to.
+#
+# Printed to stderr so a caller whose stdout is parsed or shown verbatim
+# (init_workspace.sh prints the tree it built on stdout) is never polluted by
+# it - the same split every other diagnostic in this file already keeps.
+cloud_sync_caution() {   # cloud_sync_caution <path> <setting-key>
+    local path="$1" key="$2"
+    looks_cloud_synced "$path" || return 0
+    echo "note: '$key' ($path) looks like it is inside a synced folder (OneDrive," >&2
+    echo "Dropbox, Google Drive, iCloud's Library/Mobile Documents, Box, Nextcloud," >&2
+    echo "...) - not a complete list, any folder that syncs anywhere is the same risk." >&2
+    echo "That's fine for $key itself, but:" >&2
+    echo "  - large files (rawdata, results, container images) sync slowly and will" >&2
+    echo "    eat the sync quota - keep those out of it." >&2
+    echo "  - the decrypted Seqera token and the Positron bridge connection file must" >&2
+    echo "    NEVER be written here (docs/SETTINGS.md)." >&2
+    return 0
 }
 
 # Which startup file an export has to go into, and the line to put there.

@@ -238,6 +238,22 @@ alongside the site one (step 3, once `seqera_user` is known).
   through `scripts/fetch.sh` as a read-only copy; the analysis code and
   figures — what an IDE actually opens — live only on their machine and never
   on the site.
+
+  **T21: ask explicitly where on this machine** — do not silently accept the
+  default. Save the answer as `local_root` (default `$HOME/agentic-bioflow`,
+  same as before this question existed). Anywhere they already keep work is a
+  fine answer: a desktop folder, a folder a cloud drive syncs, anywhere —
+  `scripts/init_workspace.sh` builds under whatever this key names
+  (`docs/SETTINGS.md`).
+
+  If the path looks like a cloud-sync folder (Google Drive, OneDrive, Dropbox
+  and the like), `scripts/init_workspace.sh` itself prints a warning the next
+  time it runs against it — pass that warning along rather than re-deriving
+  it: large files (rawdata, results, container images) sync slowly and eat
+  quota, and the Seqera token and the Positron bridge connection file must
+  never be written there, encrypted or not. This is a warning, not a refusal
+  — a synced folder is a legitimate answer here (and is exactly what a
+  `portable_root`, below, is often chosen to be).
 - **On the site itself (only when outputs are huge).** No local skeleton.
   Measure before assuming this is the case: a normalised count matrix is
   about 973 KB, and a whole delivery directory is around 25 MB — ordinary

@@ -351,4 +351,61 @@ printf '%-64s ' "old default, no key: --plan still created nothing"
   || { echo "FAIL: $LR_NOKEY_HOME/agentic-bioflow exists"; fails=$((fails+1)); }
 
 echo
+# ---------------------------------------------------------------------------
+# T21: local_root is allowed to be a synced folder, unlike the settings file
+# - init_workspace.sh warns instead of refusing, via the shared
+# looks_cloud_synced() match (scripts/utils/portable.sh) that
+# scripts/settings.sh's own (refusing) synced-folder check also uses.
+CLOUD_ROOT="$TMP/OneDrive/agentic-bioflow-work"
+out=$(bash "$S" local --root "$CLOUD_ROOT" --user alice 2>&1)
+printf '%-64s ' "a cloud-sync-looking --root is warned about, not refused"
+grep -qF "looks like it is inside a synced folder" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...names the setting key it is warning about"
+grep -qF "'local_root'" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...says the token and Positron bridge file must never live there"
+grep -qF "Positron bridge" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...and still builds the skeleton - a warning, not a refusal"
+[ -d "$CLOUD_ROOT/alice/projects" ] && echo ok \
+  || { echo "FAIL: $CLOUD_ROOT/alice/projects missing"; fails=$((fails+1)); }
+
+printf '%-64s ' "an ordinary --root gets no cloud-sync warning at all"
+out=$(bash "$S" local --root "$TMP/ordinary_root" --user alice 2>&1)
+grep -qF "synced folder" <<<"$out" && { echo "FAIL: warned on an ordinary path"; fails=$((fails+1)); } \
+  || echo ok
+
+printf '%-64s ' "--plan never prints the cloud-sync warning (nothing is about to be touched)"
+out=$(bash "$S" local --root "$TMP/OneDrive/plan_probe" --plan --user alice 2>&1)
+grep -qF "synced folder" <<<"$out" && { echo "FAIL: warned during a dry run"; fails=$((fails+1)); } \
+  || echo ok
+
+# ---------------------------------------------------------------------------
+# T21 override case: scripts/where.sh --run-paths --local-root is the same
+# override prepare_launch.sh (perf/latency) is documented to pass through to
+# init_workspace.sh --root (where.sh's own header comment). This asserts the
+# two can never point a launch summary and the actual fetch destination at
+# two different directories for the same run - the whole reason the
+# --local-root override exists instead of a second, independent formula.
+WHERE="$(cd "$(dirname "$S")" && pwd)/where.sh"
+OVERRIDE_ROOT="$TMP/override_side_by_side"
+SITE_RUNS="$TMP/override_site_runs"
+LAB_RUNS_DIR="$SITE_RUNS" bash "$S" local --root "$OVERRIDE_ROOT" \
+    --user frank --project "$PROJ" --run rnaseq_frank_20260912 >/dev/null 2>&1
+WANT_RESULTS="$OVERRIDE_ROOT/frank/projects/$PROJ/runs/rnaseq_frank_20260912/results"
+printf '%-64s ' "init_workspace.sh --root actually created the results/ dir"
+[ -d "$WANT_RESULTS" ] && echo ok || { echo "FAIL: $WANT_RESULTS missing"; fails=$((fails+1)); }
+
+# where.sh needs seqera_user from settings - give it one via a settings file
+# whose only job is naming the same member --user just built the tree for.
+mkdir -p "$TMP/where_home"
+printf 'seqera_user: frank\n' > "$TMP/where_settings.yaml"
+WPOUT=$(env HOME="$TMP/where_home" LAB_RUNS_DIR="$SITE_RUNS" LAB_SETTINGS_FILE="$TMP/where_settings.yaml" \
+        bash "$WHERE" --run-paths "$PROJ" rnaseq_frank_20260912 --local-root "$OVERRIDE_ROOT" 2>&1)
+printf '%-64s ' "where.sh --run-paths --local-root names the exact directory init_workspace.sh --root built"
+grep -qF "local_fetch_dir=$WANT_RESULTS" <<<"$WPOUT" && echo ok \
+  || { echo "FAIL: <<$WPOUT>> wanted local_fetch_dir=$WANT_RESULTS"; fails=$((fails+1)); }
+
+echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
