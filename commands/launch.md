@@ -9,9 +9,14 @@ never the user's working directory. Installed as a plugin they are under
 
 ## Before anything else
 
-Run `scripts/intro.sh launch` and put its five sections in front of the user
-before doing anything below. When the run has been launched and its watch
-armed (step 9), run `scripts/intro.sh --end launch`.
+Run `. scripts/env.sh && scripts/intro.sh launch` — sourcing `env.sh` first
+sets `PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own settings.
+Each Bash tool call is a fresh shell,
+so nothing exported here survives into the next one: every later call that
+runs `tw` starts with `. scripts/env.sh &&` too - a prefix inside that same
+call, never a round trip of its own (`scripts/env.sh`'s own header). Put `intro.sh`'s five sections in front of
+the user before doing anything below. When the run has been launched and its
+watch armed (step 9), run `scripts/intro.sh --end launch`.
 
 Pass the workspace on every `tw` call that is scoped to one:
 `--workspace $(scripts/settings.sh workspace_id)`. Left off, `tw` answers from
@@ -29,67 +34,121 @@ the report list.
 
 ## Before anything
 
-`scripts/preflight.sh`. It exits 0 when the site is ready, and prints a FAIL
-line naming the script that fixes whatever is not.
+`scripts/preflight.sh` used to run here on its own. It is now folded into
+`scripts/prepare_launch.sh` (step 0 below), which runs it as one of the four
+things it merges into a single call - GitHub issue #13's own accounting is
+why: each of those used to be a separate tool call, and a separate tool call
+is a separate model round trip. Its `== preflight ==` section is exactly
+what `preflight.sh` alone used to print.
 
-**Do not build a samplesheet on top of a FAIL.** The run gets assembled
-correctly and then submitted into an environment that cannot carry it - which
-is how a dead outputs reader took out a launch once (`docs/PITFALLS.md`).
+**Do not build a samplesheet on top of a `BLOCKING:` line from step 0.** The
+run gets assembled correctly and then submitted into an environment that
+cannot carry it - which is how a dead outputs reader took out a launch once
+(`docs/PITFALLS.md`).
 
-The launch gate re-checks the two things that can die while you work. This is
-the earlier and wider check: it also covers `LAB_RUNS_DIR`, the resource
-contract, and whether the compute environment is AVAILABLE - none of which the
-gate can see.
+The launch gate (`hooks/confirm_launch.sh`) re-checks the two things that can
+die while you work. Step 0 is the earlier and wider check: it also covers
+`LAB_RUNS_DIR`, the resource contract, and whether the compute environment is
+AVAILABLE - none of which the gate can see.
 
 ## Steps
 
-0. **Ask which project this run belongs to.** A project collects everything one
-   piece of work produces — the raw data that feeds it, every run made from
-   that data, the analysis written on those runs, and the package built from
-   the analysis. One batch of reads commonly feeds several runs, and one
-   write-up commonly draws on several; naming the project once is what keeps
-   them together.
+0. **Gather the no-judgement parts in one call, then ask everyone what needs a
+   person, in one question.** Steps 1, 4, 5 and 6 in an earlier version of
+   this file were a long, sequential chain of `tw`/schema/samplesheet/
+   preflight calls - each one its own tool call and therefore its own full
+   model round trip, 20-40 of them across a whole launch walk (GitHub issue
+   #13). `scripts/prepare_launch.sh` runs the parts of that chain which need
+   no judgement - revision lookup, a schema fetch, the registration check, a
+   samplesheet draft, the directive check, and `preflight.sh` - together, and
+   never stops at the first problem: it runs everything and reports every
+   blocking and warning-level issue at once.
 
-   List what exists and let the user pick, or start a new one — do not choose
-   for them, and do not invent a name:
-
-   ```
-   ls $(scripts/settings.sh storage_root)/$(scripts/settings.sh seqera_user)/projects/
-   scripts/init_workspace.sh site --user <seqera_user> --project <project> --run <name>
-   ```
-
-   **The run's `--outdir` goes inside it**, at
-   `<project>/runs/<pipeline>_<label>_<YYYYMMDD>/results`. A run pointed
-   anywhere else is in no project, and `hooks/confirm_walkthrough.sh` refuses
-   it at the point the parameters are written rather than after the run has
-   started. Older run areas are flat and are **left exactly where they are** —
-   the new shape applies to new work, and nothing is moved.
-
-1. **Choose the pipeline and revision.** Discuss the experiment first.
-
-   **Start from what this person has already run**, because the commonest
-   analysis is the last one again with new samples, and re-deriving it from
-   scratch invites a different revision by accident:
+   **First, a short conversation to name a candidate pipeline** - this part
+   cannot be skipped ahead of, because nothing can look up a schema for a
+   pipeline nobody has named yet. Start from what this person has already
+   run, because the commonest analysis is the last one again with new
+   samples:
 
    ```
    tw runs list      --workspace $(scripts/settings.sh workspace_id)
    tw pipelines list --workspace $(scripts/settings.sh workspace_id)
    ```
 
-   The first gives project name and username per run — filter to this member's
-   `seqera_user`, since the site is one shared account and everyone's runs are
-   in the same list. The second says which are registered, and at which
-   revision. **Show both and let them choose**: an earlier pipeline, or a new
-   one they have not run here.
+   The first gives project name and username per run — filter to this
+   member's `seqera_user`, since the site is one shared account and
+   everyone's runs are in the same list. The second says which pipelines are
+   registered, and at which revision. **Show both and let them choose**: an
+   earlier pipeline, or a new one they have not run here. None of this is
+   stored — Platform already holds it (`docs/PRINCIPLES.md`, invariant 2).
+   Also list existing projects, the same way step 0 of an earlier version of
+   this file did, for the question below:
 
-   None of this is stored. Platform already holds it, and a second copy would
-   disagree with the first eventually (`docs/PRINCIPLES.md`, invariant 2). The
-   run directories under the work area are where the *files* are, not the
-   record of what ran.
+   ```
+   ls $(scripts/settings.sh storage_root)/$(scripts/settings.sh seqera_user)/projects/
+   ```
 
-   Pin an exact revision — never a branch. If the Seqera Co-Scientist is
-   available it may suggest better than you can, but it is optional: proceed on
-   your own knowledge if it is not.
+   **Then run it once:**
+
+   ```
+   scripts/prepare_launch.sh --repo <owner/name> --revision <rev, if pinned> \
+       --input <local directory of reads, if reachable from here> \
+       --workspace $(scripts/settings.sh workspace_id)
+   ```
+
+   **Show its summary to the user exactly as printed** — do not summarise it
+   from memory or reformat it; its `== decisions ==` section is what the
+   question below is built from. When `--revision` was left out, the
+   `== pipeline ==` section names the one it resolved to (the newest tag) and
+   flags it as needing confirmation, never launched on silently.
+
+   **Extension point for other branches (read `scripts/prepare_launch.sh`'s
+   own header for the full contract):** the summary is an ordered list of
+   `== <name> ==` sections and is designed to grow. A site-side run directory
+   and local fetch destination land as a new `paths` section; a "this looks
+   like it duplicates an in-flight run" hint feeds the same `== decisions ==`
+   rollup every other check already writes into.
+
+   **Then put every decision to the user in one `AskUserQuestion` call**,
+   covering what three separate steps used to ask one at a time:
+
+   - **Project** — from the listing above: reuse one, or start a new one.
+     Do not choose for them, and do not invent a name.
+   - **Pipeline and revision** — confirm what was just resolved/looked up, or
+     name a different one. A `DECIDE:` line in the summary asking to confirm
+     an auto-resolved revision belongs here.
+   - **Parameters — which of the three routes (step 5), not the values yet.**
+     Someone who has not seen the workflow cannot say which parts of it they
+     want to adjust (step 2's own reasoning), and step 2 has not run yet at
+     this point - so this asks only which route (① reuse a previous run's
+     settings, ② the pipeline's defaults, ③ go through what is adjustable),
+     and names anything the summary's `== parameters ==` section already
+     flagged (required with no default, a GPU directive) as something route
+     ③ - or a direct answer now, if the user would rather settle it here -
+     will need to cover. **The detailed values for route ③ are filled in at
+     step 5, after step 2's diagram**, never before it.
+
+   "All defaults" and "reuse the previous project" are complete answers; they
+   are not answers this step can give on their behalf (the same rule step 5
+   states at length below, for the same reason).
+
+   **The run's `--outdir` goes inside the chosen project**, at
+   `<project>/runs/<pipeline>_<label>_<YYYYMMDD>/results`:
+
+   ```
+   scripts/init_workspace.sh site --user <seqera_user> --project <project> --run <name>
+   ```
+
+   A run pointed anywhere else is in no project, and
+   `hooks/confirm_walkthrough.sh` refuses it at the point the parameters are
+   written rather than after the run has started. Older run areas are flat
+   and are **left exactly where they are** — the new shape applies to new
+   work, and nothing is moved.
+
+1. **Pipeline and revision — confirmed in step 0.** Pin an exact revision —
+   never a branch. If the Seqera Co-Scientist is available it may suggest
+   better than you can, but it is optional: proceed on your own knowledge if
+   it is not.
 
    With both pinned, `scripts/check_egress.py <repo> <rev>` reads the
    pipeline's own code and reports hosts the site's egress channel would
@@ -141,10 +200,11 @@ gate can see.
       --workspace $(scripts/settings.sh workspace_id)
    ```
 
-   **A registration pins a revision.** Step 1's listing already showed which
-   entries exist and at which one, so re-running the same pipeline at the same
-   revision needs nothing here — skip the step and say you skipped it. Wanting
-   a *different* revision is a different entry, not an edit to this one.
+   **A registration pins a revision.** Step 0's `== pipeline ==` section
+   already said whether this one is registered at this revision, so
+   re-running the same pipeline at the same revision needs nothing here —
+   skip the step and say you skipped it. Wanting a *different* revision is a
+   different entry, not an edit to this one.
 
    **If `tw pipelines add` fails**, this has no branch below it — follow
    `skills/operational/SKILL.md`'s off-design procedure (T2), category
@@ -153,7 +213,7 @@ gate can see.
    not exist, a compute environment name typed wrong) before falling back to
    asking the user.
 
-4. **Build the samplesheet.**
+4. **Build the samplesheet, starting from step 0's draft.**
 
    **If the source is a public accession — SRA, ENA, GEO/GSM — rather than
    reads already in hand, this step does not start from `schema_input.json`
@@ -168,11 +228,14 @@ gate can see.
    the `--input` for the pipeline this command was started for, and continue
    below only for data that is not coming from an accession.
 
-   - Read `assets/schema_input.json` from the pipeline at that revision to get
-     the exact columns and which are required. Do not hardcode them.
-   - rnaseq ships `bin/fastq_dir_to_samplesheet.py`; prefer it. No other
-     pipeline checked ships an equivalent, so otherwise use
-     `scripts/generate_samplesheet.py --columns <from the schema>`.
+   - Step 0's `== samplesheet ==` section already carries a draft — the
+     columns read from `assets/schema_input.json` at that revision (never
+     hardcoded here) and a row count with sample rows, built the same way
+     rnaseq's own `bin/fastq_dir_to_samplesheet.py` or
+     `scripts/generate_samplesheet.py --columns <from the schema>` would.
+     When it says the draft was skipped (no `--input` given, or the
+     directory was not readable from here), build it now with whichever of
+     those two the pipeline ships.
    - Columns the filenames cannot tell you — `patient`, `lane`, `condition` —
      **ask the user**. Do not infer them.
    - Keep grouping metadata the pipeline does not accept in a separate
@@ -210,10 +273,14 @@ gate can see.
    - Put it under the run area (`storage_root`), not a home directory - that is
      where quotas are small and where the compute nodes may not look.
 
-5. **Put the parameters to the user as a choice they answer.**
-   Fetch `nextflow_schema.json` at that revision. It is the authority: this
-   repo holds no curated list of options for any pipeline, and adding one would
-   be the thing v2 exists to avoid.
+5. **Put the parameters to the user as a choice they answer.** Step 0 already
+   fetched `nextflow_schema.json` at that revision (its `== parameters ==`
+   section) and asked which of the three routes below the user wants; this
+   step is where route ③'s actual values get chosen, now that step 2 has
+   shown the workflow - and where routes ① and ② get written down. The
+   schema is the authority either way: this repo holds no curated list of
+   options for any pipeline, and adding one would be the thing v2 exists to
+   avoid.
 
    **Where the `nf-core` CLI is on `PATH`, use it to build route ③'s group
    list** rather than improvising one over the raw schema:
@@ -296,18 +363,22 @@ gate can see.
    Leave everything else to the pipeline: it already handles missing biotypes
    and small-genome STAR index sizing.
 
-6. **Check for directives that need a human decision.** Read the pipeline's
-   `conf/base.config`. Resource requests need no attention — the site adapter
-   turns whatever comes out into something the site accepts. Speak up only for:
-   - `accelerator` / GPU — the GPU path is **not yet verified** anywhere here.
-     Say so to the user (T3 request — no command here covers a GPU run), and
-     record it: `skills/operational/SKILL.md`'s off-design procedure,
-     category `request`, command `launch`, step naming the pipeline's GPU
-     directive. Continuing is the user's call, not a silent default.
+6. **Check for directives that need a human decision — already read in step
+   0's `== parameters ==` section.** It already read the pipeline's
+   `conf/base.config` and says plainly whether it found an `accelerator` (GPU)
+   directive. Resource requests otherwise need no attention — the site
+   adapter turns whatever comes out into something the site accepts.
+   - `accelerator` / GPU — the GPU path is **not yet verified** anywhere
+     here. Say so to the user (T3 request — no command here covers a GPU
+     run), and record it: `skills/operational/SKILL.md`'s off-design
+     procedure, category `request`, command `launch`, step naming the
+     pipeline's GPU directive. Continuing is the user's call, not a silent
+     default - it is one of the items step 0's `AskUserQuestion` already put
+     to them if the summary flagged it.
    - a request larger than the site offers at all (the adapter's config lists
      what it has)
 
-   **Report which of the two you looked for and what you found**, "neither"
+   **Report which of the two step 0 looked for and what it found**, "neither"
    included. A step whose only visible output is silence when it passes is
    indistinguishable from one that never ran, and this one never ran.
 

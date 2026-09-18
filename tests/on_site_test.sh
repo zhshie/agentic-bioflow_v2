@@ -42,6 +42,14 @@ settings 'reach: ssh' 'site_host: me@example.org'
 t "ssh: names the host"                   0 "ssh me@example.org	true" -- true
 t "ssh: script mode ships settings.sh"    0 "script egress_ctl.sh"   -- --script scripts/egress_ctl.sh status
 
+# T9: scripts/site_report.sh bundles agent/resources/provenance/inventory into
+# one call, so a caller that used to make two or three `on_site.sh --script`
+# round trips (commands/downstream.md's step 1 + step 2's >500MB branch) now
+# makes one. It travels through --script exactly like any other script here -
+# nothing special about how on_site.sh routes it.
+t "ssh: site_report.sh is a valid --script target" 0 "script site_report.sh" \
+  -- --script scripts/site_report.sh /some/results --run-id abc123
+
 # A cloud compute environment has no login node. "Nothing to reach" is a normal
 # answer for the site, but a caller that asked anyway has a bug, so say so
 # rather than silently running the command on the wrong machine.

@@ -1,18 +1,32 @@
 ---
 description: Assemble a project into a package that can be submitted or sent to a collaborator
 argument-hint: [project name or path]
+model: sonnet
 ---
 
 Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
 
+**Pinned to a faster model above (GitHub issue #13).** This command mostly
+assembles and reports on files that already exist — `collect_provenance.py`,
+`build_package.sh` and `cite.sh` do the reading and the writing; this reads
+what they printed and puts it in front of the user. `launch` and `runs` stay
+on the default model: both routinely have to read a log and judge *why* a
+run failed or stalled, which is exactly the kind of call a faster model is
+worse at.
+
 ## Before anything else
 
-Run `scripts/intro.sh finish` and put its five sections in front of the user
-before doing anything below. When the package has been rendered, or stops one
-step short because the renderer is not reachable here, run `scripts/intro.sh
---end finish`.
+Run `. scripts/env.sh && scripts/intro.sh finish` — sourcing `env.sh` first
+sets `PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own settings.
+Each Bash tool call is a fresh shell,
+so nothing exported here survives into the next one: every later call that
+runs `tw` starts with `. scripts/env.sh &&` too - a prefix inside that same
+call, never a round trip of its own (`scripts/env.sh`'s own header). Put `intro.sh`'s five sections in front of
+the user before doing anything below. When the package has been rendered, or
+stops one step short because the renderer is not reachable here, run
+`scripts/intro.sh --end finish`.
 
 This picks up where `downstream` leaves off — after figures exist and the user
 has accepted them, not before. It assembles; it does not compose. Every
@@ -57,10 +71,16 @@ These are not style. Each one is a way this can produce something false.
 
 1. **Take stock before assembling anything.** Read the project's `analysis.md`
    and list which entries the user accepted. Run
-   `scripts/collect_provenance.py <each run's results directory>` and read what
-   it found — versions, parameters, and its notes. **Say the notes out loud**:
-   they carry things a reader of the finished package would want to know, such
-   as a run having been retried.
+   `scripts/collect_provenance.py --brief <each run's results directory>` and
+   read what it found — pipeline and revision, the citable tools and their
+   versions, and its notes. **Say the notes out loud**: they carry things a
+   reader of the finished package would want to know, such as a run having
+   been retried. `--brief` is the default call here on purpose: it is the
+   pipeline/revision/tools/notes/DOI-count slice this step actually reads,
+   not the full record (command, resolved config, every report path) that
+   `--json` alone would carry — measured at ~153 KB for one run. Pass
+   `--json` without `--brief` only when a later step genuinely needs that
+   full detail.
 
 2. **Assemble.** `scripts/build_package.sh <project-dir>` writes
    `submission/`: provenance, the methods section, the bibliography, the

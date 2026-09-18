@@ -9,9 +9,14 @@ never the user's working directory. Installed as a plugin they are under
 
 ## Before anything else
 
-Run `scripts/intro.sh downstream` and put its five sections in front of the
-user before doing anything below. When the accepted analysis has been
-recorded (step 6), run `scripts/intro.sh --end downstream`.
+Run `. scripts/env.sh && scripts/intro.sh downstream` — sourcing `env.sh`
+first sets `PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own
+settings. Each Bash tool call is a fresh shell,
+so nothing exported here survives into the next one: every later call that
+runs `tw` starts with `. scripts/env.sh &&` too - a prefix inside that same
+call, never a round trip of its own (`scripts/env.sh`'s own header). Put `intro.sh`'s five
+sections in front of the user before doing anything below. When the accepted
+analysis has been recorded (step 6), run `scripts/intro.sh --end downstream`.
 
 This picks up where `runs` leaves off — after a run SUCCEEDED and its outputs
 have been delivered, not before. It carries **no pipeline-specific
@@ -54,10 +59,23 @@ transfers from it here are rules, not machinery:
 ## Steps
 
 1. **Check the outputs reader is alive** — through the adapter:
-   `scripts/on_site.sh --script scripts/agent_ctl.sh online <id>`.
-   When it is down, every output looks like it was never produced. This is
-   the same check `runs.md` makes before delivering anything, repeated here
-   because time may have passed since then.
+   `scripts/on_site.sh --script scripts/site_report.sh <results-dir> --run-id
+   <id> --workspace $(scripts/settings.sh workspace_id)`, and read its
+   `== agent ==` section. When it is down, every output looks like it was
+   never produced. This is the same check `runs.md` makes before delivering
+   anything, repeated here because time may have passed since then.
+
+   `site_report.sh` (T9) is one call bundling the checks this step and step 2
+   both need from the site — agent, resource-floor drift, provenance and an
+   outputs inventory — so a single `on_site.sh` round trip covers all four
+   instead of two or three back-to-back ones. Its `== resources ==` section
+   is worth a glance for free: drift there means this site's resource-floor
+   config (`configs/sites/nchc.config`) no longer matches what SLURM reports.
+   In the ordinary case — results small enough for step 2 to fetch them
+   locally below — its `== provenance ==`/`== inventory ==` sections answer
+   about a path that has not been fetched yet and can be ignored; they start
+   mattering only in the >500 MB exception at the end of this file, which
+   reuses this exact call instead of making its own.
 
 2. **Inventory the results tree.** `scripts/inventory_outputs.py
    <results-dir>`. It reports each structured file's real shape — delimiter,
@@ -72,9 +90,13 @@ transfers from it here are rules, not machinery:
    **Also read the pipeline's own `docs/output.md`**, at the same pinned
    revision the run was launched at — nf-core's own account of what each of
    its outputs *is*. Get the pipeline and revision from the run itself rather
-   than asking or guessing: `scripts/collect_provenance.py`'s `workflow`
-   block names both. Fetch the file live from the pipeline's repository at
-   that revision, the same way `launch.md` reads `nextflow_schema.json` —
+   than asking or guessing: `scripts/collect_provenance.py --brief`'s
+   `workflow` block names both. `--brief` is this step's default call —
+   pipeline, revision, citable tools, notes and a DOI count are all it reads;
+   the full `--json` record (command, resolved config, every report path)
+   runs to ~153 KB per run and nothing here opens it. Fetch the file live
+   from the pipeline's repository at that revision, the same way `launch.md`
+   reads `nextflow_schema.json` —
    **never cached anywhere in this repository**, because a copy here would be
    exactly the per-pipeline file invariant 6 exists to prevent, and it would
    go stale the same way. It complements the inventory rather than replacing
@@ -253,7 +275,17 @@ transfers from it here are rules, not machinery:
 - **Exception: outputs over `scripts/fetch.sh`'s 500 MB limit.** Then nothing
   moves the other way — the analysis scripts travel to the site via
   `scripts/on_site.sh` instead, and only the finished figures come back.
-  **Measured 2026-09-09.** The claim this replaces — that nothing produced
+  **Use `scripts/on_site.sh --script scripts/site_report.sh <results-dir>
+  --run-id <id> --workspace $(scripts/settings.sh workspace_id)`** — the same
+  call step 1 above already makes — rather than the separate inventory-only
+  call the walk below used: its `== provenance ==` section is what this
+  step's `docs/output.md` lookup needs (the pipeline and revision, since
+  nothing was fetched to run `collect_provenance.py` on locally) and its
+  `== inventory ==` section is the tree report itself, both from the one
+  round trip step 1 already paid for rather than a second one.
+  **Measured 2026-09-09**, against the separate inventory-only call this note
+  now replaces with `site_report.sh` above — the walk itself, and what it
+  found, are unchanged by that swap. The claim this replaces — that nothing produced
   here had yet been large enough to reach this path — was already false when it
   was written: `rnaseq_sclerotia_d0_20260903/results` is 10.2 GB and
   `rnaseq_sclerotia_d5_20260902/results` is 8.9 GB, both twenty times the

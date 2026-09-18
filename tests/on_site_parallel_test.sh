@@ -161,5 +161,36 @@ printf '%-58s ' "...having actually waited, not returned immediately"
 [ "$elapsed" -ge 1 ] && echo "ok (${elapsed}s)" || { echo "FAIL: returned after ${elapsed}s"; fails=$((fails+1)); }
 rm -rf "$SLOTS"
 
+# ---------------------------------------------------------------------------
+# T9: scripts/site_report.sh bundles four checks (agent, resources,
+# provenance, inventory) that commands/downstream.md used to reach through
+# two or three separate `on_site.sh --script` calls - each its own ssh
+# session under this site's per-connection session cap (PITFALLS 16e). The
+# whole point is that it is now ONE call, so it must cost exactly ONE ssh
+# invocation, never one per check bundled inside it - counted here rather
+# than asserted from reading the script, because a script that quietly grew
+# its own `on_site.sh`/ssh call inside one of its four checks is exactly the
+# regression this exists to catch.
+# ---------------------------------------------------------------------------
+rm -rf "$SLOTS"
+COUNTER="$TMP/ssh-invocations"; : > "$COUNTER"
+cat > "$TMP/fake-ssh-count" <<EOF
+#!/bin/bash
+echo 1 >> "$COUNTER"
+for a in "\$@"; do [ "\$a" = check ] && exit 0; done
+exit 0
+EOF
+chmod +x "$TMP/fake-ssh-count"
+LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_DRY_RUN=1 ON_SITE_SSH_BIN="$TMP/fake-ssh-count" \
+  ON_SITE_MAX_PARALLEL=4 ON_SITE_TIMEOUT=10 \
+  bash "$S" --script scripts/site_report.sh /some/results --run-id abc123 \
+  > "$TMP/site_report_dry.out" 2>&1
+printf '%-58s ' "a bundled site_report.sh call costs exactly one ssh invocation"
+n=$(wc -l < "$COUNTER" 2>/dev/null || echo 0)
+[ "$n" = 1 ] && echo "ok" || { echo "FAIL: $n ssh invocation(s), wanted 1"; fails=$((fails+1)); }
+printf '%-58s ' "...and released its slot afterwards, same as any other call"
+slots_held && { echo "FAIL: a slot dir is still held"; fails=$((fails+1)); } || echo ok
+rm -rf "$SLOTS"
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

@@ -9,9 +9,14 @@ never the user's working directory. Installed as a plugin they are under
 
 ## Before anything else
 
-Run `scripts/intro.sh runs` and put its five sections in front of the user
-before doing anything below. When this invocation's diagnosis or delivery has
-been given, run `scripts/intro.sh --end runs`.
+Run `. scripts/env.sh && scripts/intro.sh runs` — sourcing `env.sh` first sets
+`PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own settings.
+Each Bash tool call is a fresh shell,
+so nothing exported here survives into the next one: every later call that
+runs `tw` starts with `. scripts/env.sh &&` too - a prefix inside that same
+call, never a round trip of its own (`scripts/env.sh`'s own header). Put `intro.sh`'s five sections in front of
+the user before doing anything below. When this invocation's diagnosis or
+delivery has been given, run `scripts/intro.sh --end runs`.
 
 Pass the workspace on every `tw` call that is scoped to one:
 `--workspace $(scripts/settings.sh workspace_id)`. Left off, `tw` answers from
