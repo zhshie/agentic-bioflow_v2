@@ -100,35 +100,72 @@ decides something the data question does not: whether step 5 of `/downstream`
 exists at all.
 
 `scripts/positron_run.py` reaches a console over a named pipe, a Unix domain
-socket, or a loopback port, and finds the supervisor by globbing the local
-temp directory. There is no network hop anywhere in it. So the tool works on
-one machine — the one Positron is running on — and nowhere else.
+socket, or a loopback port, and finds what to connect to by reading local
+state — the bridge extension's state file first (ladder rung 1,
+`extensions/positron-bridge`), then a kallichore connection file (rung 2, an
+older Positron with no bridge installed). There is no network hop anywhere
+in either rung, and no host field in the bridge file either — writing one
+would invite exactly the "reach a console on a different machine" feature
+this section explains does not exist. So the tool works on **one machine —
+whichever one the thing it reads local state from is running on** — and
+nowhere else. What changed with the bridge is *which* mechanism answers
+that question correctly against kallichore 0.1.68+ (PITFALLS 34); it does
+not change which machine gets to answer it at all.
 
-That splits this deployment in two, and until 2026-09-10 nothing said so:
+That splits this deployment in three, and until 2026-09-10 nothing said so
+for the first two, or considered the third:
 
-| | where Claude runs | step 5 | everything else |
-|---|---|---|---|
-| **A** | on the desktop, in Positron's own terminal or as its agent extension | native | reaches the site with `reach: ssh` and a multiplexed master |
-| **B** | on the site itself | **structurally impossible** | `reach: local`; nothing to multiplex, nothing to fetch |
+| | where Claude runs | where the bridge/kallichore file lives | step 5 | everything else |
+|---|---|---|---|---|
+| **A** | on the desktop, in Positron's own terminal or as its agent extension | the desktop — same machine as Claude | native, either ladder rung | reaches the site with `reach: ssh` and a multiplexed master |
+| **B** | on the site itself | **the desktop, if Positron runs there with no remote-editing support** — a different machine from Claude | **structurally impossible**, at either rung: reads directly what's local to it, and the desktop's own state file is not that | `reach: local`; nothing to multiplex, nothing to fetch |
+| **C** | on the site itself, same as B | **the site** — Positron on the desktop, but reaching the site through its own Remote-SSH support | **native**, if the bridge is installed | `reach: local`, same as B |
 
-Both are coherent. B is what this deployment has actually been running in, and
-it is cheaper for every other command — `analysis/` and `results/` are already
-on the site's own filesystem, so `fetch.sh` has nothing to do. It is only step
-5 that cannot work there, because the Plots pane is on the other machine.
+A and B are the two deployments this repo actually runs; C is new with the
+bridge and needs its own explanation, because it is the one row where "where
+Claude runs" alone no longer decides the answer.
 
-Neither is wrong to pick. What was wrong was picking one by accident and
-finding out through a message that named the wrong cause (PITFALLS 20i).
+Both A and B are coherent on their own. B is what this deployment has
+actually been running in, and it is cheaper for every other command —
+`analysis/` and `results/` are already on the site's own filesystem, so
+`fetch.sh` has nothing to do. It was only step 5 that could not work there,
+because the Plots pane was on the other machine — and installing the bridge
+on the desktop in deployment B does not change that: the bridge still runs
+wherever Positron's extension host runs, and in B that is still the desktop,
+a machine `positron_run.py` on the site has no route to (same limit PITFALLS
+20i already named, now also true of the bridge file and not just the
+kallichore one).
 
-**A third arrangement may collapse the two, and has not been measured.** If
-Positron is pointed at the site through its own remote-editing support, its
-kernel — and therefore the supervisor that hands out the kernel's ports —
-should run on the site, where an agent in deployment B could see it in the
-local temp directory with no change to any code. `--check` on the site is the
-whole probe: open the project that way, open an R console, and run it. It
-answers in one line.
+Neither A nor B is wrong to pick. What was wrong was picking one by accident
+and finding out through a message that named the wrong cause (PITFALLS 20i).
 
-Two things to weigh before treating that as the answer. It puts an R session
-on a machine whose job is moving files and asking about schedules, which is
-what the section above argues against; and the sizes there are the argument's
-whole basis, so a large enough analysis flips it. Worth an experiment, not
-worth assuming.
+**C is what collapses B's limitation, and it is read from the bridge
+extension's own manifest, not measured against a live session here.**
+`extensions/positron-bridge/package.json` declares `"extensionKind":
+["workspace"]` — VS Code's (and so Positron's) own documented mechanism for
+telling a Remote-SSH window to run an extension's host on the *remote* side
+rather than the client. When Positron is pointed at the site through its own
+Remote-SSH support, the bridge's extension host runs on the site, and so does
+`activate()` — which means its state file lands in the *site's* own
+`$XDG_STATE_HOME/agentic-bioflow/positron-bridge.json`, not the desktop's.
+An agent running as deployment B then finds it exactly the way it already
+finds anything else local to the site: no glob across machines, no new code,
+because ladder rung 1 was never machine-aware to begin with — it only ever
+reads whatever is local to wherever it runs, and C is the arrangement where
+that happens to be the site.
+
+This is **read in code**, in `docs/CONDITIONS.md`'s own sense of the word:
+the mechanism is VS Code's documented remote-extension placement, not
+something this repo has run against a live Positron Remote-SSH session to
+confirm. `positron_run.py --check` on the site is the whole probe once
+someone is in a position to try it — open the project that way, open a
+console, install the bridge if it is not there already, and run `--check`.
+It answers in one line, and whichever way it answers becomes measured
+evidence for this row instead of read-in-code evidence.
+
+One thing still worth weighing before treating C as the default: it puts a
+live Positron console on a machine whose job is moving files and asking
+about schedules, which is what the A/B tradeoff above argues against for
+size reasons: normalised results are usually small (this file's own worked
+numbers), but a large enough analysis flips that argument, on the site
+exactly as much as anywhere else.

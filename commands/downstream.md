@@ -180,32 +180,45 @@ transfers from it here are rules, not machinery:
    says revise or accept. **Revising means editing the script and running it
    again**, never touching the output by hand.
 
-   **This only works where the IDE is.** Everything the tool uses to reach a
-   console is local to the machine it runs on. If this agent is running
-   somewhere other than the desktop Positron is open on, there is no route to
-   it at all, and no console anyone opens there will change that. `--check`
-   says which of those two situations it is in — "no Positron is running on
-   this machine" is a different sentence from "no console is open in it", and
-   the second one used to be printed for both. Which deployment this is meant
-   to be is a setup decision, and `docs/DOWNSTREAM.md` names the two.
+   **This only works where the bridge or the console is, and `positron_run.py`
+   now tries two ways to reach either before giving up.** Rung 1 reads
+   `extensions/positron-bridge`'s own state file and calls
+   `positron.runtime.executeCode` through it — works against any Positron
+   version that has the extension installed, including kallichore 0.1.68+
+   (PITFALLS 34), which writes no connection file at all any more. Rung 2 is
+   the older kallichore connection-file contract, for a Positron with no
+   bridge installed. Both are local-only: if this agent is running somewhere
+   other than the machine either one lives on, there is no route to it at
+   all, and no console or bridge anyone starts there will change that.
+   `--check` says which of three situations this is in when neither rung
+   answers — Positron running here with no bridge installed (names the
+   one-line install command), Positron installed but not running, or no
+   Positron install found on this machine at all — instead of collapsing all
+   three into one sentence the way it used to. Which deployment this is
+   meant to be is a setup decision, and `docs/DOWNSTREAM.md` names three now,
+   not two: where Claude runs, where Positron runs, and — new with the
+   bridge — whether Positron reaches the site through its own Remote-SSH
+   support, which can put the bridge's own state file on the site.
 
    **`--check` is the gate, and it now has an exit code.** Non-zero means the
-   step cannot proceed: no console, or no `jupyter_client` for the interpreter
-   this runs under. Read what it says instead of retrying — the two causes take
-   different actions, and neither is fixed by running the command again.
+   step cannot proceed: no bridge and no console, or no `jupyter_client` for
+   the interpreter this runs under (only rung 2 needs `jupyter_client` at
+   all — rung 1 never imports it). Read what it says instead of retrying —
+   the causes take different actions, and none is fixed by running the
+   command again.
 
-   **This path is Positron-only.** RStudio, VS Code and Jupyter are not
-   wired up (`docs/CONDITIONS.md` marks this cell 🚧) — `--check` on any of
-   them still reports "no Positron is running on this machine", which is
-   true but not the person's actual problem. Ask which IDE the user is in
-   before running `--check` at all; if it is not Positron, do not chase the
-   Positron message. Say plainly that live-console delivery is not built for
-   their editor yet, follow `skills/operational/SKILL.md`'s off-design
-   procedure (T1), category `host`, command `downstream`, and fall back to
-   the batch run this step's opening line already allows — `Rscript`/`python`
-   against the file, with the figure written to `analysis/figures/` for them
-   to open by hand. The script and its output still exist either way; only
-   the live Plots-pane hookup is missing.
+   **RStudio, VS Code and Jupyter are supported too, through the batch path —
+   not a dead end any more, and not off-design.** `docs/CONDITIONS.md` marks
+   this cell ✅ batch. There is no bridge for these editors and none is
+   planned (`positron.runtime.executeCode` has no equivalent in any of the
+   three), so `--check` on any of them still reports "no Positron install was
+   found on this machine", which is true but not the person's actual
+   problem. Ask which IDE the user is in before running `--check` at all; if
+   it is not Positron, do not chase the Positron message — go straight to
+   the batch run this step's opening line already describes: `Rscript`/
+   `python` against the file, with the figure written to
+   `analysis/figures/` for them to open by hand. The script and its output
+   are identical either way; only the live Plots-pane hookup is Positron-only.
 
    **A console has to exist first, and this is a gate, not a warning.** The
    tool attaches to a session and will not start one: a runtime appearing

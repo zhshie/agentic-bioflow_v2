@@ -178,10 +178,19 @@ documentation and `setup`'s own claims changed, from "supported" to
 
 ### Downstream analysis IDE
 
+Positron is one row, not two, until the `extensions/positron-bridge` change
+(GitHub issue #14): kallichore 0.1.68 stopped writing `kallichore-*.json`
+connection files, so whether live-console delivery actually works now depends
+on whether the bridge extension is installed, not on which Positron version
+someone has. `positron_run.py --check` (ladder rung 1) is what tells the two
+apart, not this table - the row below only says that both are reachable
+*paths*, one live and one batch.
+
 | IDE | Status | Evidence | Cell |
 |---|---|---|---|
-| Positron | ✅ supported | measured | — |
-| RStudio, VS Code, Jupyter | 🚧 unsupported | read in code (`downstream.md` step 5 is a dead end for these today) | — (not something `detect_conditions.sh` measures; caught by the off-design procedure at the point of use) |
+| Positron, bridge installed | ✅ supported (live console) | measured (ladder rung 1, `tests/positron_bridge_test.sh` + `tests/positron_run_test.sh`) | — |
+| Positron, no bridge | 🚧 batch only | measured for the kallichore-file contract (ladder rung 2, older Positron); read in code for kallichore 0.1.68+ with no bridge (PITFALLS.md's handshake-pipe entry - live delivery is structurally impossible there, `positron_run.py`'s ladder rung 3 says so and names the install command) | — |
+| RStudio, VS Code, Jupyter | ✅ supported (batch only - first-class, not a fallback) | read in code (`downstream.md` step 5 now names this explicitly instead of leaving it a dead end; no bridge exists for these editors and none is planned - `positron.runtime.executeCode` has no equivalent in any of the three) | — (not something `detect_conditions.sh` measures; caught by the off-design procedure at the point of use) |
 
 ### Accounts
 

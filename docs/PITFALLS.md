@@ -1632,6 +1632,37 @@ And one that would have bitten the next author: **exit code 1 is a
 non-blocking error** — the action proceeds. Only `exit 2` blocks. A gate
 written with `exit 1` looks correct in review and enforces nothing.
 
+**34. kallichore stopped writing connection files, and everything item 20
+above measured about them stopped applying at once.** Reported against
+kallichore 0.1.68, the version bundled with current Positron on Windows
+(GitHub issue #14, 2026-09).
+
+Every earlier entry in this section - the R-kernel registration stub, the
+two-GET workaround, the transport table in `_connect()` - assumes Positron's
+supervisor writes a `kallichore-<id>.json` connection file somewhere this
+process can glob for it. 0.1.68 does not: connection info goes to Positron's
+own main process over a one-shot handshake named pipe
+(`\\.\pipe\kallichore-handshake-<id>`), consumed the instant Positron reads
+it. The issue's own evidence is in kallichore's `.out.log`: the line
+`Reported connection details over handshake socket` appears where the old
+`Wrote connection info to <path>` line used to, and no `kallichore-*.json`
+file is written at any point in the session - not once, not late, not on a
+retry. `supervisor_files()`'s glob then always returns empty against this
+version, console open or not, which is indistinguishable from "Positron is
+not running here at all" without another source of evidence entirely - the
+exact ambiguity `positron_presence()` and `tier3_message()` exist to resolve
+by inference, because no local file can resolve it directly any more.
+
+`positron.runtime.executeCode` still exists and still works against 0.1.68 -
+it was never part of the kallichore file contract in the first place, being
+Positron's own API rather than the kernel supervisor's. It is only callable
+from inside an extension, which is what `extensions/positron-bridge` now is:
+a fix that stops depending on kallichore's connection-file contract entirely,
+rather than one that chases whatever kallichore writes next. `positron_run.py`
+tries this route first (ladder rung 1) and only falls back to the file-based
+contract - now understood as "the *old* Positron contract", not "*the*
+Positron contract" - when no bridge answers.
+
 ## Lab agents
 
 **30. A run label is a workspace object, so "one label per record" piles up.**
