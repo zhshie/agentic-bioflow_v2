@@ -181,6 +181,34 @@ tgrep "dry-run prints the gh issue create command" "gh issue create --repo" "$ou
 tnotgrep "dry-run never actually calls issue list/create/comment" "issue " "$(cat "$GH_LOG5")"
 t "dry-run: report stays queued" 1 "$(queue_count "$DIR5")"
 
+# --- --dir: one queryable function, not a second copy of the fallback chain -
+# T28: hooks/session_start.sh used to re-derive the reports directory itself
+# rather than asking this script, and its copy agreed with reports_dir()
+# only once a settings file existed - the fallback this script takes before
+# that (the XDG state default) had no counterpart in the hook's formula.
+# `--dir` is what lets a caller ask instead of re-deriving: the override
+# wins when set, same as every other user of AGENTIC_BIOFLOW_REPORTS_DIR.
+DIRQ="$TMP/dir_override"
+dirq_out=$(AGENTIC_BIOFLOW_REPORTS_DIR="$DIRQ" env -i PATH="$PATH" HOME="$TMP" \
+      AGENTIC_BIOFLOW_REPORTS_DIR="$DIRQ" bash "$R" --dir)
+t "--dir honors AGENTIC_BIOFLOW_REPORTS_DIR" "$DIRQ" "$dirq_out"
+
+# No override and no settings file on this $HOME: falls back to the XDG
+# state default, the same directory `add` itself would have used.
+NOSETTINGS="$TMP/no_settings_home"; mkdir -p "$NOSETTINGS"
+dir_fallback=$(env -i PATH="$PATH" HOME="$NOSETTINGS" XDG_STATE_HOME="$NOSETTINGS/state" \
+      bash "$R" --dir)
+t "--dir with no settings file falls back to the XDG state default" \
+  "$NOSETTINGS/state/agentic-bioflow/reports" "$dir_fallback"
+
+# A report added with no override and no settings file lands exactly where
+# --dir says to look - proving the two are the same computation, not two
+# formulas that happen to agree here.
+env -i PATH="$PATH" HOME="$NOSETTINGS" XDG_STATE_HOME="$NOSETTINGS/state" \
+      bash "$R" add --category env --command none --step dir-case >/dev/null 2>&1
+t "add (no settings) queues under the same directory --dir reports" \
+  1 "$(queue_count "$dir_fallback")"
+
 # REPORT_DRY_RUN=1 must behave the same as --dry-run.
 DIR6="$TMP/q6"; mkdir -p "$DIR6"
 AGENTIC_BIOFLOW_REPORTS_DIR="$DIR6" env -i PATH="$PATH" HOME="$TMP" \

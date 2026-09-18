@@ -17,8 +17,15 @@
 # the transfer resumes rather than being refused. Home connections are far
 # slower up than down: say what is about to happen before starting it.
 #
+# With no rsync on PATH - the ordinary state of Git Bash/MSYS, which this
+# plugin otherwise supports as a first-class shell - this falls back to tar
+# piped over the same ssh connection instead of hard-failing with no path
+# forward (issue #6). No incremental resume like rsync's --partial; a dropped
+# transfer starts over.
+#
 #   PUSH_DRY_RUN=1     report both ends and the size; move nothing
-#   PUSH_RSYNC_BIN     override rsync (tests)
+#   PUSH_RSYNC_BIN     override rsync (tests; also how a caller can force
+#                      the tar|ssh fallback by pointing it at nothing)
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
@@ -95,9 +102,35 @@ if [ -d "$SRC" ]; then
 else
   mkdir_at="$(dirname "$DST")"; from="$SRC"; to="$HOST:$DST"
 fi
-"$RSYNC" -a --partial -e "$SSH -o ControlPath=$CP" \
-  --rsync-path="mkdir -p $(printf '%q' "$mkdir_at") && rsync" \
-  "$from" "$to" \
-  || die 2 "the transfer of '$SRC' failed. Nothing was left half-written that" \
-           "a re-run will not resume (--partial)."
+
+if command -v "$RSYNC" >/dev/null 2>&1; then
+  "$RSYNC" -a --partial -e "$SSH -o ControlPath=$CP" \
+    --rsync-path="mkdir -p $(printf '%q' "$mkdir_at") && rsync" \
+    "$from" "$to" \
+    || die 2 "the transfer of '$SRC' failed. Nothing was left half-written that" \
+             "a re-run will not resume (--partial)."
+else
+  # Git Bash ships no rsync by default (issue #6) - fall back to tar over the
+  # same ssh connection already established for site-reach. Unlike the
+  # rsync path above, a plain destination-file push (the "else" branch of the
+  # $SRC directory check) can ask for a rename - $SRC's basename landing as
+  # $DST's own name - which rsync gets for free from an explicit target path
+  # and tar has to be told about after extracting.
+  if [ -d "$SRC" ]; then
+    tar czf - -C "$SRC" . \
+      | "$SSH" -o ControlPath="$CP" "$HOST" \
+          "mkdir -p $(printf '%q' "$mkdir_at") && tar xzf - -C $(printf '%q' "$mkdir_at")" \
+      || die 2 "the transfer of '$SRC' failed. tar|ssh has no incremental" \
+               "resume like rsync's --partial; a re-run starts over."
+  else
+    srcbase="$(basename "$SRC")"
+    remote_cmd="mkdir -p $(printf '%q' "$mkdir_at") && tar xzf - -C $(printf '%q' "$mkdir_at")"
+    [ "$srcbase" = "$(basename "$DST")" ] \
+      || remote_cmd="$remote_cmd && mv -f -- $(printf '%q' "$mkdir_at/$srcbase") $(printf '%q' "$DST")"
+    tar czf - -C "$(dirname "$SRC")" "$srcbase" \
+      | "$SSH" -o ControlPath="$CP" "$HOST" "$remote_cmd" \
+      || die 2 "the transfer of '$SRC' failed. tar|ssh has no incremental" \
+               "resume like rsync's --partial; a re-run starts over."
+  fi
+fi
 printf '%s\n' "$DST"

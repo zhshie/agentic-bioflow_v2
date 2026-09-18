@@ -61,10 +61,36 @@ METHODS_SECTION_RE = re.compile(
 EMPTY_P_RE = re.compile(r"<p>\s*</p>")
 COMMAND_BLOCK_RE = re.compile(r"<pre><code>.*?</code></pre>", re.S)
 
+# nf-core's own methods template builds the DOI link as
+# `https://doi.org/${doi_text}`, assuming doi_text is a bare id
+# ("10.5281/..."). Some pipelines' nextflow.config sets manifest.doi to the
+# already-complete URL instead, so the template's own render comes out
+# doubled - "https://doi.org/https://doi.org/10.5281/..." - and a 404 link
+# that reads fine is exactly the kind of error nobody notices at a glance.
+# That happens in MultiQC's own rendering, upstream of anything this script
+# reads (rendered_methods() relays the report's HTML verbatim by design, so
+# it would otherwise carry the doubling straight through) - fixed here rather
+# than upstream because this is the one place that puts the paragraph in
+# front of a person.
+DOI_DOUBLE_PREFIX_RE = re.compile(r"(https?://doi\.org/)(?:https?://doi\.org/)+", re.I)
+
+
+def fix_doubled_doi(text):
+    """Collapse a `https://doi.org/https://doi.org/<id>` link down to one prefix."""
+    return DOI_DOUBLE_PREFIX_RE.sub(r"\1", text)
+
 
 def provenance(results_dirs):
+    # sys.executable, not the .py file's own path: Python's subprocess.run()
+    # launches a file through raw CreateProcess on native Windows, which
+    # bypasses shebang/file-association handling entirely (the OS itself
+    # never gets a chance to see `#!/bin/bash` and re-exec through python3).
+    # That crashed with `OSError: [WinError 193] %1 is not a valid Win32
+    # application` - the interpreter that has to run this script is *this*
+    # script's own interpreter, so ask for it by name instead of hoping the
+    # OS can work it out from the file. Works identically on Linux/macOS/WSL.
     out = subprocess.run(
-        [os.path.join(HERE, "collect_provenance.py"), "--json"] + list(results_dirs),
+        [sys.executable, os.path.join(HERE, "collect_provenance.py"), "--json"] + list(results_dirs),
         capture_output=True, text=True)
     if out.returncode != 0:
         sys.stderr.write(out.stderr)
@@ -291,6 +317,7 @@ def render(run, assets_base):
             filled = rendered
         filled, n = COMMAND_BLOCK_RE.subn("<pre><code>%s</code></pre>" % cmd, filled, count=1)
         filled = re.sub(r"\$\{[^}]*\}", "", filled)
+        filled = fix_doubled_doi(filled)
         lines.append(html_to_md(filled))
         if n:
             notes.append("the command line shown is reconstructed against the run's "

@@ -167,5 +167,69 @@ grep -qF "params-file params.yaml" <<<"$out3" \
   && ok "R1: the command is still reconstructed against the run's own params" \
   || no "R1: the command is still reconstructed against the run's own params" "<<$out3>>"
 
+# ---------------------------------------------------------------------------
+# Issue #3: nf-core's own template builds `https://doi.org/${doi_text}`
+# assuming doi_text is a bare id, but some pipelines' manifest.doi is already
+# the full URL, so MultiQC's own render comes out doubled -
+# "https://doi.org/https://doi.org/10.xxxx/..." - a link that reads fine and
+# 404s. Shaped exactly like RUN2 above, except the href MultiQC rendered
+# already carries the doubled prefix; the anchor TEXT does not, which is the
+# real shape measured in the bug report (only the href is doubled).
+RUN3="$TMP/run3"
+mkdir -p "$RUN3/results/multiqc/star_salmon" "$RUN3/results/pipeline_info"
+cat > "$RUN3/results/pipeline_info/software_versions.yml" <<'YML'
+FASTQC:
+  fastqc: 0.12.1
+Workflow:
+  nf-core/rnaseq: v3.14.0
+  Nextflow: 25.10.4
+YML
+: > "$RUN3/results/pipeline_info/execution_report_2026-01-01_00-00-00.html"
+echo '{}' > "$RUN3/results/pipeline_info/params_2026-01-01_00-00-00.json"
+cat > "$RUN3/params.yaml" <<'Y'
+pacbio: true
+Y
+cat > "$RUN3/results/multiqc/star_salmon/multiqc_report.html" <<'HTML'
+<div class="mqc-section mqc-section-nf-core-rnaseq-methods-description">
+<h4>Methods</h4>
+<p>Data was processed using nf-core/rnaseq v3.14.0 (doi: <a href='https://doi.org/https://doi.org/10.5281/zenodo.1400710'>https://doi.org/10.5281/zenodo.1400710</a>) of the nf-core collection of workflows.</p>
+<p>The pipeline was executed with Nextflow v25.10.4 with the following command:</p>
+<pre><code>nextflow run 'https://github.com/nf-core/rnaseq' -params-file 'https://api.cloud.seqera.io/ephemeral/A2H4yoZPhIZJIgmV-Pow_w.yaml' -r 3.14.0</code></pre>
+<p></p>
+<h4>References</h4>
+<ul></ul>
+</div>
+HTML
+
+out4=$("$S" --assets "$TMP/assets" "$RUN3/results" 2>&1)
+
+if grep -qF "doi.org/10.5281/zenodo.1400710" <<<"$out4" \
+   && ! grep -qF "doi.org/https://doi.org" <<<"$out4"; then
+  ok "the pipeline's own DOI link is not double-prefixed with https://doi.org/"
+else no "the pipeline's own DOI link is not double-prefixed with https://doi.org/" "<<$out4>>"; fi
+
+# ---------------------------------------------------------------------------
+# Issue #2 (confirmed on native Windows Python, WinError 193 - "%1 is not a
+# valid Win32 application"): provenance() used to exec collect_provenance.py
+# by its own path. subprocess.run()'s CreateProcess call bypasses shebang/
+# file-association handling entirely on native Windows, so the OS never gets
+# a chance to see `#!/bin/bash` and hand the file to python3 - it only works
+# at all today because every test above runs on a POSIX shebang-aware OS.
+# sys.executable sidesteps the whole question by naming the interpreter
+# directly. Portable proxy for the same shape of failure - "a script the OS
+# will not run directly by its own path, but the right interpreter reads
+# fine" - stripping the executable bit from a copy of collect_provenance.py
+# and asking methods_text.py to use it: with the fix this needs only read
+# access, because sys.executable never asks the OS to exec the file itself.
+COPY="$TMP/copy"; mkdir -p "$COPY"
+cp "$(dirname "$S")/collect_provenance.py" "$COPY/collect_provenance.py"
+cp "$S" "$COPY/methods_text.py"
+chmod -x "$COPY/collect_provenance.py"
+chmod +x "$COPY/methods_text.py"
+out5=$("$COPY/methods_text.py" --assets "$TMP/assets" "$RUN/results" 2>&1); rc5=$?
+if [ "$rc5" = 0 ] && grep -qF "Tools used within the workflow:" <<<"$out5"; then
+  ok "collect_provenance.py needs no execute bit - invoked via sys.executable"
+else no "collect_provenance.py needs no execute bit - invoked via sys.executable" "rc=$rc5 <<$out5>>"; fi
+
 echo
 [ "$fails" = 0 ] && echo "OK: methods_text.py" || { echo "$fails failed"; exit 1; }
