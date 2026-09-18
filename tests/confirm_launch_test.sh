@@ -126,7 +126,20 @@ printf '%-56s ' "no reach key at all (existing deployments) - defaults local, wa
 echo "$out" | grep -qF "LAB_RUNS_DIR is not set" && echo ok || { echo "FAIL: default-local behaviour changed"; fails=$((fails+1)); }
 
 # ---------------------------------------------------------------------------
-# No jq: fail CLOSED (PITFALLS 28), not the old silent pass-through.
+# T1: no jq is SCOPED fail-closed (Fixes #15), not a blanket refusal.
+#
+# PITFALLS 28's blanket "refuse everything until jq exists" was correct
+# against the failure it was written for (a launch slipping through
+# unnoticed) and wrong about its own cost: a member on this exact path
+# stopped using the plugin's safety net altogether and started typing
+# commands into a bare PowerShell window instead, which has none of it.
+# Unbounded fail-closed had become the thing driving people around the net,
+# not through it. So this hook now asks a narrower question with nothing but
+# a shell `case` on the raw bytes it received (no jq, no grep -E either - one
+# more binary that could be the very thing missing): does the text look like
+# it could start a run or reach the site directly. A command that clearly
+# cannot is let through exactly as it would be with jq present and nothing
+# matching - silent, no extra prompt - and only a real match still blocks.
 #
 # Simply dropping jq's directory from PATH is not safe here: on this box jq
 # and bash both live in /usr/bin, so removing the directory removes the shell
@@ -149,21 +162,31 @@ nojq() { # nojq <command-string>
         | PATH="$NOJQ_PATH" bash "$H"
 }
 
-printf '%-56s ' "no jq: a real launch is BLOCKED, not silently allowed"
+printf '%-56s ' "(b) no jq + a real launch - still BLOCKED"
 out=$(nojq "$LAUNCH x --disable-optimization" 2>"$TMP/nojq_launch_err"); rc=$?
 err=$(cat "$TMP/nojq_launch_err" 2>/dev/null)
 if [ "$rc" = 2 ] && [ -z "$out" ]; then echo "ok (rc=2, no stdout)"; else
     echo "FAIL: rc=$rc out='$out'"; fails=$((fails+1)); fi
 
-printf '%-56s ' "no jq: an unrelated command is ALSO blocked, not waved through"
+printf '%-56s ' "(a) no jq + an unrelated command - exit 0, no noise"
 out=$(nojq "ls -la" 2>"$TMP/nojq_ls_err"); rc=$?
 err=$(cat "$TMP/nojq_ls_err" 2>/dev/null)
-if [ "$rc" = 2 ]; then echo "ok (rc=2)"; else
-    echo "FAIL: rc=$rc (should refuse even harmless commands - it cannot tell them apart without jq)"
+if [ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$err" ]; then echo "ok (rc=0, silent)"; else
+    echo "FAIL: rc=$rc out='$out' err='$err' (should pass through silently - it cannot look launch-shaped)"
     fails=$((fails+1))
 fi
 
-printf '%-56s ' "no jq: stderr names the fix, per platform"
+printf '%-56s ' "no jq + sbatch, no launch verb - still BLOCKED"
+out=$(nojq "$SB driver.sh" 2>"$TMP/nojq_sb_err"); rc=$?
+[ "$rc" = 2 ] && [ -z "$out" ] && echo "ok (rc=2)" || { echo "FAIL: rc=$rc out='$out'"; fails=$((fails+1)); }
+
+printf '%-56s ' "no jq + a direct ssh call - still BLOCKED (site-transport shaped)"
+out=$(nojq "ssh twnia3 ls" 2>"$TMP/nojq_ssh_err"); rc=$?
+[ "$rc" = 2 ] && [ -z "$out" ] && echo "ok (rc=2)" || { echo "FAIL: rc=$rc out='$out'"; fails=$((fails+1)); }
+
+printf '%-56s ' "no jq: BLOCKED case's stderr names the fix, per platform"
+out=$(nojq "$LAUNCH x --disable-optimization" 2>"$TMP/nojq_launch_err2"); rc=$?
+err=$(cat "$TMP/nojq_launch_err2" 2>/dev/null)
 if echo "$err" | grep -qF "brew install jq" && echo "$err" | grep -qF "apt install jq"; then
     echo ok
 else
@@ -179,18 +202,67 @@ echo
 # A jq that EXISTS but cannot run - wrong architecture, a missing library, a
 # Windows jq.exe on a Git Bash PATH - passed the earlier `command -v` form of
 # this guard and then failed every parse, which is the silent-gate failure the
-# guard exists to stop. Measured: the guard had to probe, not just look.
-echo "== a broken jq is as bad as no jq =="
+# guard exists to stop. Measured: the guard had to probe, not just look. The
+# scoping applies here too: a broken jq is judged the same narrow way a
+# missing one is.
+echo "== a broken jq is judged the same scoped way as a missing one =="
 BADDIR=$(mktemp -d)
 printf '#!/bin/sh\nexit 127\n' > "$BADDIR/jq"; chmod +x "$BADDIR/jq"
-out=$(echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf /x"}}' \
-      | env PATH="$BADDIR:$PATH" bash "$H" 2>&1)
+
+out=$(echo '{"tool_name":"Bash","tool_input":{"command":"'"$LAUNCH"' x --disable-optimization"}}' \
+      | env PATH="$BADDIR:$PATH" bash "$H" 2>"$TMP/broken_jq_err")
 rc=$?
-rm -rf "$BADDIR"
-printf '%-64s ' "refuses when jq exists but cannot run"
+err=$(cat "$TMP/broken_jq_err" 2>/dev/null)
+printf '%-64s ' "refuses a launch-shaped command when jq exists but cannot run"
 [ "$rc" = 2 ] && echo ok || { echo "FAIL: exit $rc, wanted 2"; fails=$((fails+1)); }
 printf '%-64s ' "and says so instead of failing silently"
-case "$out" in *BLOCKED*) echo ok ;; *) echo "FAIL: said '$out'"; fails=$((fails+1)) ;; esac
+case "$err" in *BLOCKED*) echo ok ;; *) echo "FAIL: said '$err'"; fails=$((fails+1)) ;; esac
+
+out=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' \
+      | env PATH="$BADDIR:$PATH" bash "$H" 2>"$TMP/broken_jq_ls_err")
+rc=$?
+printf '%-64s ' "does NOT refuse an unrelated command in the same broken-jq state"
+[ "$rc" = 0 ] && [ -z "$out" ] && echo ok || { echo "FAIL: rc=$rc out='$out'"; fails=$((fails+1)); }
+rm -rf "$BADDIR"
+
+echo
+echo "== T1 (c): a non-Bash, execution-shaped tool this file has never named =="
+# hooks.json's matcher now reaches tools other than Bash (a PowerShell-shaped
+# MCP tool among them). jq works in every case below - the point here is
+# whether THIS FILE can read what such a tool was asked to run, not whether
+# jq is present.
+ps_input() { # ps_input <tool_name> <field> <value>
+    python3 -c "import json,sys;print(json.dumps({'tool_name':sys.argv[1],'tool_input':{sys.argv[2]:sys.argv[3]}}))" \
+        "$1" "$2" "$3"
+}
+
+printf '%-64s ' "a non-Bash tool using tool_input.command - judged exactly as Bash would be"
+out=$(ps_input PowerShell command "$LAUNCH x --disable-optimization" | bash "$H")
+decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out" 2>/dev/null)
+[ "$decision" = ask ] && echo "ok (ask)" || { echo "FAIL: expected ask, got '$decision' <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "same tool, under tool_input.script - also read"
+out=$(ps_input PowerShell script "$LAUNCH x --disable-optimization" | bash "$H")
+decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out" 2>/dev/null)
+[ "$decision" = ask ] && echo "ok (ask)" || { echo "FAIL: expected ask, got '$decision' <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "same tool, under tool_input.powershell - also read"
+out=$(ps_input PowerShell powershell "$LAUNCH x --disable-optimization" | bash "$H")
+decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out" 2>/dev/null)
+[ "$decision" = ask ] && echo "ok (ask)" || { echo "FAIL: expected ask, got '$decision' <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "an unparseable tool (unknown field name) that looks launch-shaped - ask"
+UNKNOWN=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'mcp__win__powershell','tool_input':{'script_block':sys.argv[1]}}))" \
+            "$LAUNCH x --disable-optimization")
+out=$(echo "$UNKNOWN" | bash "$H")
+decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out" 2>/dev/null)
+[ "$decision" = ask ] && echo "ok (ask)" || { echo "FAIL: expected ask, got '$decision' <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "an unparseable tool with harmless content - allowed, no output"
+UNKNOWN=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'mcp__win__powershell','tool_input':{'script_block':sys.argv[1]}}))" \
+            "Get-ChildItem")
+out=$(echo "$UNKNOWN" | bash "$H")
+[ -z "$out" ] && echo "ok (no output at all)" || { echo "FAIL: expected nothing, got <<$out>>"; fails=$((fails+1)); }
 
 echo
 echo "== R2: Claude Code itself asks (permissionDecision: ask) =="
@@ -336,17 +408,52 @@ echo "== D1: all four hooks' jq fail-closed message names the Windows install li
 # second shim directory - the point is these four files share one
 # requirement, so a change to one line in one file that missed the others
 # should turn exactly this loop red, in every file it missed.
+#
+# T1 changed what triggers the message for three of the four: guard_plugin_files.sh
+# still refuses every call once CLAUDE_PLUGIN_ROOT is set and jq is broken (out
+# of this card's scope - see hooks/guard_plugin_files.sh), so '{}' alone still
+# reaches its message. The other three now only speak up for a payload that
+# LOOKS like something they guard - '{}' matches none of their scoped
+# patterns and would now exit silently, which is the correct new behaviour,
+# not a case this loop should call a failure. So each gets a payload shaped
+# for what it actually watches.
 HOOKS_DIR="$(dirname "$H")"
 # A subdirectory of the already-trapped $TMP, not a second mktemp with its own
 # EXIT trap - a second `trap ... EXIT` here would silently REPLACE the one set
 # earlier in this file (for $Z2TMP and $TMP itself), leaking both on exit.
 GPR_TMP="$TMP/fake_plugin_root"; mkdir -p "$GPR_TMP"
+D1_LAUNCH=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$LAUNCH x --disable-optimization")
+D1_DELETE='{"tool_input":{"command":"rm -rf results/"}}'
+D1_WRITE='{"tool_input":{"file_path":"/r/samplesheet.csv"}}'
+declare -A D1_PAYLOAD=(
+  [confirm_launch.sh]="$D1_LAUNCH"
+  [confirm_cleanup.sh]="$D1_DELETE"
+  [confirm_walkthrough.sh]="$D1_WRITE"
+  [guard_plugin_files.sh]='{}'
+)
 for hf in confirm_launch.sh confirm_cleanup.sh confirm_walkthrough.sh guard_plugin_files.sh; do
   printf '%-58s ' "$hf: fail-closed message names winget"
-  out=$(echo '{}' | PATH="$NOJQ_PATH" CLAUDE_PLUGIN_ROOT="$GPR_TMP" bash "$HOOKS_DIR/$hf" 2>&1 1>/dev/null)
+  out=$(echo "${D1_PAYLOAD[$hf]}" | PATH="$NOJQ_PATH" CLAUDE_PLUGIN_ROOT="$GPR_TMP" bash "$HOOKS_DIR/$hf" 2>&1 1>/dev/null)
   if echo "$out" | grep -qF "winget install jqlang.jq"; then echo ok; else
     echo "FAIL: no Windows install line in $hf: <<$out>>"; fails=$((fails+1))
   fi
 done
+
+echo
+echo "== T1: hooks.json's matcher reaches non-Bash execution tools too =="
+HJ="$HOOKS_DIR/hooks.json"
+CL_MATCHER=$(jq -r '
+  .hooks.PreToolUse[]
+  | select(.hooks[].command | test("confirm_launch\\.sh"))
+  | .matcher
+' "$HJ" 2>/dev/null)
+for name in Bash PowerShell pwsh Terminal Exec; do
+  printf '%-58s ' "confirm_launch.sh's matcher covers tool_name '$name'"
+  jq -en --arg m "$CL_MATCHER" --arg n "$name" '$n | test($m)' 2>/dev/null | grep -qx true \
+    && echo ok || { echo FAIL; fails=$((fails+1)); }
+done
+printf '%-58s ' "...but not an unrelated read-only tool name like 'Read'"
+jq -en --arg m "$CL_MATCHER" '"Read" | test($m)' 2>/dev/null | grep -qx true \
+  && { echo "FAIL: matched Read"; fails=$((fails+1)); } || echo ok
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

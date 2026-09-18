@@ -13,6 +13,15 @@
 #                                  the signal a Stop hook uses to know a
 #                                  command's flow finished
 #   intro.sh --list               the command names that have opening text
+#   intro.sh --nudge              one line: T3's natural-language routing
+#                                  hint ("this belongs to agentic-bioflow,
+#                                  load the operational skill first") -
+#                                  hooks/plugin_intro.sh prints this into
+#                                  additionalContext when a prompt matches a
+#                                  pipeline topic AND an action verb without
+#                                  ever typing the plugin's own name, which is
+#                                  the one path U1's forced overview (on first
+#                                  use) never covered
 #   [--lang zh-TW|en]             overrides the language; default comes from
 #                                  the settings key `language`, falling back
 #                                  to zh-TW when that key or the settings
@@ -41,6 +50,7 @@ usage() {
     cat >&2 <<'EOF'
 usage: intro.sh [--lang zh-TW|en] [<command>]
        intro.sh [--lang zh-TW|en] --end <command>
+       intro.sh [--lang zh-TW|en] --nudge
        intro.sh --list
 
 <command> is one of: setup launch runs downstream finish
@@ -109,6 +119,10 @@ case "${positional[0]:-}" in
         for c in $COMMANDS; do
             printf '%s\n' "$c"
         done
+        ;;
+    --nudge)
+        if [ ! -r "$LANG_DIR/nudge.txt" ]; then usage; exit 2; fi
+        cat "$LANG_DIR/nudge.txt"
         ;;
     --end)
         cmd="${positional[1]:-}"

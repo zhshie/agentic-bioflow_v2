@@ -69,29 +69,85 @@ resolve_link() {
     printf '%s/%s\n' "${d%/}" "$(basename "$p")"
 }
 
+# T1 (2.15, Fixes #15): the same two blind spots confirm_launch.sh documents
+# at length - see that file's header for the full reasoning, the GitHub
+# report and why unbounded fail-closed became the thing pushing a member
+# around this plugin's safety net rather than through it. Short version for
+# this file:
+#
+#   1. jq missing/broken used to refuse every Bash command outright. It now
+#      scans the RAW bytes with nothing but a shell `case` for anything that
+#      could plausibly be a delete - a bare `case`, not jq or even grep -E,
+#      because either could be the very thing also missing. A command that
+#      cannot plausibly delete anything is let through unchanged; only a
+#      match still blocks, naming the install fix.
+#   2. hooks.json's matcher now reaches non-Bash execution tools too. This
+#      file already only ever looked at `tool_input.command`; it now also
+#      tries the other spellings a non-Bash tool might use for the same
+#      idea, and falls back to the same raw-text scan (jq works here; the
+#      TOOL's shape is what defeated it) when none of them holds anything.
+#
+# Shell separators AND the JSON punctuation around them folded to spaces -
+# this runs against either a shell command line or a raw, still-quoted JSON
+# payload, and a bare `tr -s ';&|()<>'` leaves `"rm` as one token (the
+# opening quote glued to the word) that no `*' rm '*` pattern could ever
+# match. Folding quotes, braces, brackets, commas, colons and `=` too turns
+# either shape into the same flat token soup.
+LOOKS_SHAPED_SEP=$'\t\n\r;&|()<>"\'{}[],:='
+looks_delete_shaped() {
+    local text=" $(printf '%s' "$1" | tr -s "$LOOKS_SHAPED_SEP" ' ') "
+    case "$text" in
+        *' rm '*|*' rmdir '*|*' shred '*|*' mv '*|*'-delete'*|*'--delete'*|*' find '*|*' rsync '*)
+            return 0 ;;
+    esac
+    return 1
+}
+
 # `command -v jq` would only prove a FILE exists. A jq that cannot run -
 # wrong architecture, a missing shared library, or a Windows jq.exe that
 # Git Bash finds but cannot execute - passes that check and then fails
 # every parse below, which is the exact silent-gate failure this guard
 # exists to stop. So ask jq to do its job on the smallest possible input.
 if ! printf '{}' | jq -e . >/dev/null 2>&1; then
-    cat >&2 <<'EOF'
+    RAW=$(cat)
+    if looks_delete_shaped "$RAW"; then
+        cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/confirm_cleanup.sh cannot read
-what this command would delete - and cannot tell `rm -rf results/` from `ls`.
-Rather than silently stop checking (the old, dangerous behaviour), it refuses
-every Bash command until jq exists. The same is true of confirm_launch.sh and
-confirm_walkthrough.sh, which share this requirement.
+what this command would delete precisely - and the raw text of this one matches
+a deletion-shaped pattern (rm / rmdir / shred / mv / find ... -delete /
+rsync ... --delete), so it is refused rather than guessed at. A command that
+matches none of those patterns is let through unchanged - this is narrower
+than before, not a blanket refusal, though it still cannot see a delete hidden
+behind a variable or an alias the way the real check can. confirm_launch.sh
+and confirm_walkthrough.sh apply the same scoped rule.
 
-Install it yourself (this hook will not attempt to), then retry:
+Install jq to get the full check back (this hook will not attempt to), then retry:
   macOS:       brew install jq
   Debian/WSL:  sudo apt install jq
   Windows:     winget install jqlang.jq
 EOF
-    exit 2
+        exit 2
+    fi
+    exit 0
 fi
 
 INPUT=$(cat)
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)
+TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
+CMD=$(echo "$INPUT" | jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' 2>/dev/null)
+
+# T1, part 2: jq is fine, but no field this file knows to check carried a
+# command. For Bash that never happens in practice; for anything else the
+# tool's own shape is what this file cannot parse - not that there is
+# nothing here worth judging. Scoped exactly like the no-jq path above,
+# except the message names the tool rather than the missing binary.
+if [ "$TOOL" != "Bash" ] && [ -z "$CMD" ]; then
+    if looks_delete_shaped "$INPUT"; then
+        jq -n --arg m "GATE: this call came from a tool ('${TOOL:-<unnamed>}') whose input this hook does not parse - checked tool_input.command/script/cmd/commandLine/powershell/input, all empty - and the raw payload matches a deletion-shaped pattern. Confirm with the user, by hand, that this does not touch rawdata/, results/, analysis/ or .nextflow/plugins/ before it runs." \
+              --arg r "Unreadable tool input from '${TOOL:-<unnamed>}' that looks deletion-shaped." \
+          '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: $r, additionalContext: $m}}'
+    fi
+    exit 0
+fi
 [ -n "$CMD" ] || exit 0
 
 # Drop here-doc bodies: a document containing a path example is not a command

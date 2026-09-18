@@ -83,7 +83,10 @@ real failures, each with the fix.
 - `tests/` — standalone bash/python scripts, one file per invariant or script.
   Each prints ok/FAIL per case, is self-contained, and signals the verdict with
   its exit code. `tests/run_all.sh` runs all of them and is the release check;
-  a single file still runs directly with `bash tests/<name>.sh`. No CI exists.
+  a single file still runs directly with `bash tests/<name>.sh`. T20 (2.18)
+  added `.github/workflows/tests.yml`: ubuntu-latest, `jq` installed first,
+  then `bash tests/run_all.sh`, on every PR and every push to `main` — CI
+  running the same command a contributor runs locally, nothing more.
 
 ## Running tests
 

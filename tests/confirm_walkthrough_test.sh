@@ -352,7 +352,10 @@ t "U6: asked, but no reply came back - refused"                deny "$W_D" "$TMP
 t "U6: asked and answered '沒有' - allowed (content not judged)" allow "$W_E" "$TMP/u6_ok.jsonl"
 
 # ---------------------------------------------------------------------------
-# No jq: fail CLOSED (PITFALLS 28), not the old silent pass-through.
+# T1: no jq is SCOPED fail-closed (Fixes #15), not a blanket refusal - see
+# hooks/confirm_launch.sh's header for the full reasoning (a member on
+# exactly this path gave up on the safety net and moved to a bare PowerShell
+# window instead, which has none of it).
 #
 # Dropping jq's whole directory from PATH is not safe here - jq and bash both
 # live in /usr/bin on this box, and removing that directory removes the shell
@@ -370,7 +373,7 @@ for _f in "$JQDIR"/*; do
 done
 NOJQ_PATH=$(printf '%s' "$PATH" | sed "s#${JQDIR}#${SHIMDIR}#")
 
-printf '%-58s ' "no jq: a gated write is BLOCKED, not silently allowed"
+printf '%-58s ' "(b) no jq + a gated write - still BLOCKED"
 out=$(python3 -c '
 import json,sys
 d=json.loads(sys.argv[1]); d["transcript_path"]=sys.argv[2]; print(json.dumps(d))' "$SS" "$TMP/empty.jsonl" \
@@ -378,17 +381,18 @@ d=json.loads(sys.argv[1]); d["transcript_path"]=sys.argv[2]; print(json.dumps(d)
 if [ "$rc" = 2 ] && [ -z "$out" ]; then echo "ok (rc=2, no stdout)"; else
     echo "FAIL: rc=$rc out='$out'"; fails=$((fails+1)); fi
 
-printf '%-58s ' "no jq: an unrelated command is ALSO blocked, not waved through"
+printf '%-58s ' "(a) no jq + an unrelated command - exit 0, no noise"
 out=$(python3 -c '
 import json,sys
 d=json.loads(sys.argv[1]); d["transcript_path"]=sys.argv[2]; print(json.dumps(d))' "$LS" "$TMP/empty.jsonl" 2>/dev/null \
-        | PATH="$NOJQ_PATH" bash "$H" 2>/dev/null); rc=$?
-if [ "$rc" = 2 ]; then echo "ok (rc=2)"; else
-    echo "FAIL: rc=$rc (should refuse even harmless commands - it cannot tell them apart without jq)"
+        | PATH="$NOJQ_PATH" bash "$H" 2>"$TMP/nojq_ls_err"); rc=$?
+err_ls=$(cat "$TMP/nojq_ls_err" 2>/dev/null)
+if [ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$err_ls" ]; then echo "ok (rc=0, silent)"; else
+    echo "FAIL: rc=$rc out='$out' err='$err_ls' (should pass through silently - it cannot look managed-write-shaped)"
     fails=$((fails+1))
 fi
 
-printf '%-58s ' "no jq: stderr names the fix, per platform"
+printf '%-58s ' "no jq: BLOCKED case's stderr names the fix, per platform"
 err=$(cat "$TMP/nojq_err" 2>/dev/null)
 if echo "$err" | grep -qF "brew install jq" && echo "$err" | grep -qF "apt install jq"; then
     echo ok
@@ -403,17 +407,46 @@ echo
 # A jq that EXISTS but cannot run - wrong architecture, a missing library, a
 # Windows jq.exe on a Git Bash PATH - passed the earlier `command -v` form of
 # this guard and then failed every parse, which is the silent-gate failure the
-# guard exists to stop. Measured: the guard had to probe, not just look.
-echo "== a broken jq is as bad as no jq =="
+# guard exists to stop. Measured: the guard had to probe, not just look. The
+# scoping applies here too.
+echo "== a broken jq is judged the same scoped way as a missing one =="
 BADDIR=$(mktemp -d)
 printf '#!/bin/sh\nexit 127\n' > "$BADDIR/jq"; chmod +x "$BADDIR/jq"
-out=$(echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf /x"}}' \
+out=$(python3 -c '
+import json,sys
+d=json.loads(sys.argv[1]); d["transcript_path"]=sys.argv[2]; print(json.dumps(d))' "$SS" "$TMP/empty.jsonl" \
       | env PATH="$BADDIR:$PATH" bash "$H" 2>&1)
 rc=$?
-rm -rf "$BADDIR"
-printf '%-64s ' "refuses when jq exists but cannot run"
+printf '%-64s ' "refuses a managed-write-shaped call when jq exists but cannot run"
 [ "$rc" = 2 ] && echo ok || { echo "FAIL: exit $rc, wanted 2"; fails=$((fails+1)); }
 printf '%-64s ' "and says so instead of failing silently"
 case "$out" in *BLOCKED*) echo ok ;; *) echo "FAIL: said '$out'"; fails=$((fails+1)) ;; esac
+
+out=$(python3 -c '
+import json,sys
+d=json.loads(sys.argv[1]); d["transcript_path"]=sys.argv[2]; print(json.dumps(d))' "$LS" "$TMP/empty.jsonl" \
+      | env PATH="$BADDIR:$PATH" bash "$H" 2>&1)
+rc=$?
+printf '%-64s ' "does NOT refuse an unrelated command in the same broken-jq state"
+[ "$rc" = 0 ] && [ -z "$out" ] && echo ok || { echo "FAIL: rc=$rc out='$out'"; fails=$((fails+1)); }
+rm -rf "$BADDIR"
+
+echo
+echo "== T1 (c): a non-Bash, execution-shaped tool this file has never named =="
+printf '%-64s ' "unrecognised tool, managed-write-shaped payload - warn, not silent"
+UNKNOWN=$(python3 -c '
+import json,sys
+print(json.dumps({"tool_name":"mcp__win__powershell","tool_input":{"script_block":sys.argv[1]},"transcript_path":sys.argv[2]}))' \
+    "cat > samplesheet.csv <<EOF" "$TMP/empty.jsonl")
+out=$(echo "$UNKNOWN" | bash "$H")
+[ -n "$out" ] && echo "$out" | grep -qF additionalContext && echo "ok (warn)" || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "unrecognised tool, harmless payload - allowed, no output"
+UNKNOWN=$(python3 -c '
+import json,sys
+print(json.dumps({"tool_name":"mcp__win__powershell","tool_input":{"script_block":"Get-ChildItem"},"transcript_path":sys.argv[1]}))' \
+    "$TMP/empty.jsonl")
+out=$(echo "$UNKNOWN" | bash "$H")
+[ -z "$out" ] && echo "ok (no output at all)" || { echo "FAIL: expected nothing, got <<$out>>"; fails=$((fails+1)); }
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

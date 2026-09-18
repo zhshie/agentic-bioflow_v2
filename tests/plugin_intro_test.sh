@@ -9,7 +9,11 @@
 #
 # The wording of scripts/intro.sh is not under test here, only the wiring: a
 # copy of the plugin root with the real hook and a stub intro.sh printing one
-# marker. The once-per-session marker lives under AGENTIC_BIOFLOW_STATE_DIR.
+# marker (T3: also a distinct marker for the one flag plugin_intro.sh's own
+# natural-language door uses, `--nudge`, so that path is exercised through
+# the same stub rather than the real bilingual text - which is its own file's
+# job, tests/intro_test.sh and tests/intro_languages_test.sh). The
+# once-per-session marker lives under AGENTIC_BIOFLOW_STATE_DIR.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -22,8 +26,11 @@ mkdir -p "$P/hooks" "$P/scripts"
 cp "$ROOT/hooks/plugin_intro.sh" "$P/hooks/" 2>/dev/null
 cat > "$P/scripts/intro.sh" <<'EOF'
 #!/bin/bash
-[ $# -eq 0 ] || exit 2
-echo "STUB-OVERVIEW-MARKER"
+case "${1:-}" in
+    "") echo "STUB-OVERVIEW-MARKER" ;;
+    --nudge) echo "STUB-NUDGE-MARKER: load agentic-bioflow:operational" ;;
+    *) exit 2 ;;
+esac
 EOF
 chmod +x "$P/scripts/intro.sh"
 STATE="$TMP/state"
@@ -100,12 +107,76 @@ mv "$P/scripts/intro.sh.off" "$P/scripts/intro.sh"
 [ "$rc" = 0 ] && [ -z "$out" ] && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
 expect "and that failure did not use up the showing" "$(prompt s8 '/agentic-bioflow:setup' | field .systemMessage)" STUB-OVERVIEW-MARKER
 
-printf '%-60s ' "no jq on PATH: silent, exit 0 (not a gate)"
+# T3: no jq used to mean total silence, in the one hook that could have said
+# so - the safety-net gates (confirm_launch.sh etc.) already run degraded
+# without jq, and nothing told anyone that was happening. It now exits 0
+# (still never a gate) but SPEAKS UP once per session with a systemMessage,
+# via plain printf rather than jq -n - the same reason the gates' own no-jq
+# messages avoid jq to report jq's own absence.
 NOJQ="$TMP/nojq"; mkdir -p "$NOJQ"
 for t in bash cat mkdir tr sed grep find date rm; do p=$(command -v $t) && ln -s "$p" "$NOJQ/$t"; done
+
+printf '%-60s ' "no jq, plugin-relevant prompt: warns (not silent), exit 0"
 out=$(printf '{"session_id":"s9","prompt":"/agentic-bioflow:setup"}' \
       | env PATH="$NOJQ" AGENTIC_BIOFLOW_STATE_DIR="$STATE" bash "$P/hooks/plugin_intro.sh"); rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -qF "jq is missing" && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
+
+printf '%-60s ' "no jq, same session again: only warns once"
+out=$(printf '{"session_id":"s9","prompt":"/agentic-bioflow:runs"}' \
+      | env PATH="$NOJQ" AGENTIC_BIOFLOW_STATE_DIR="$STATE" bash "$P/hooks/plugin_intro.sh"); rc=$?
 [ "$rc" = 0 ] && [ -z "$out" ] && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
+
+printf '%-60s ' "no jq, a DIFFERENT session: warns again"
+out=$(printf '{"session_id":"s10","prompt":"/agentic-bioflow:setup"}' \
+      | env PATH="$NOJQ" AGENTIC_BIOFLOW_STATE_DIR="$STATE" bash "$P/hooks/plugin_intro.sh"); rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -qF "jq is missing" && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
+
+printf '%-60s ' "no jq, a prompt with nothing to do with this plugin: still silent"
+out=$(printf '{"session_id":"s11","prompt":"fix my python script"}' \
+      | env PATH="$NOJQ" AGENTIC_BIOFLOW_STATE_DIR="$STATE" bash "$P/hooks/plugin_intro.sh"); rc=$?
+[ "$rc" = 0 ] && [ -z "$out" ] && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
+
+echo
+echo "== T3: natural-language routing (no literal 'agentic-bioflow:' anywhere) =="
+# Two conditions, both required: a pipeline TOPIC and an ACTION verb. Either
+# alone must not fire - a pure knowledge question ("what is RNA-seq") is left
+# for the model to answer directly, not routed through the operational skill.
+expect "topic + action (zh): nudges with additionalContext" \
+       "$(prompt nl1 '幫我跑 RNA-seq 的分析' | field .hookSpecificOutput.additionalContext)" "agentic-bioflow:operational"
+expect "and NOT as systemMessage - this is a quiet hint, not a banner" \
+       "$(prompt nl1 '幫我跑 RNA-seq 的分析' | field .systemMessage)" EMPTY
+expect "declared as UserPromptSubmit" \
+       "$(prompt nl2 '幫我跑 RNA-seq 的分析' | field .hookSpecificOutput.hookEventName)" UserPromptSubmit
+expect "topic + action (en): nudges too" \
+       "$(prompt nl3 'please launch the nf-core rnaseq run')" "agentic-bioflow:operational"
+expect "pure knowledge question, topic with no action: says nothing" \
+       "$(prompt nl4 'RNAseq 是什麼？')" EMPTY
+expect "action with no topic at all: says nothing" \
+       "$(prompt nl5 '幫我跑一下這個腳本')" EMPTY
+expect "why-did-it-fail phrasing (topic + action) nudges" \
+       "$(prompt nl6 '這個 Seqera run 為什麼失敗了')" "agentic-bioflow:operational"
+expect "the same nudge, once per session" \
+       "$(prompt nl1 '再跑一次 RNA-seq')" EMPTY
+expect "a different session is nudged again" \
+       "$(prompt nl7 'launch the FASTQ samplesheet run')" "agentic-bioflow:operational"
+expect "the LITERAL door still wins over the NL one for the same prompt shape" \
+       "$(prompt nl8 '/agentic-bioflow:launch RNA-seq' | field .systemMessage)" STUB-OVERVIEW-MARKER
+
+echo
+echo "== T3: the topic vocabulary stays pinned to SKILL.md's own trigger words =="
+# PITFALLS 19: a justification that names another file's behaviour is a
+# dependency, and nothing links them unless something checks it. This does
+# not enforce the whole list stays identical - that would make the two files
+# one file with extra steps - only that a handful of SKILL.md's own named
+# triggers still appear somewhere in this hook's regex, so a future SKILL.md
+# rewrite that drops "nf-core" or "FASTQ" turns this test red rather than
+# leaving the hook quietly answering for words the skill no longer claims.
+SKILL_MD="$ROOT/skills/operational/SKILL.md"
+HOOK_SRC="$P/hooks/plugin_intro.sh"
+for w in RNA-seq nf-core FASTQ samplesheet Seqera; do
+  printf '%-60s ' "SKILL.md's '$w' is still in plugin_intro.sh's topic list"
+  grep -qF -- "$w" "$SKILL_MD" && grep -qF -- "$w" "$HOOK_SRC" && echo ok || { echo FAIL; fails=$((fails+1)); }
+done
 
 # --- wiring -----------------------------------------------------------------
 HJ="$ROOT/hooks/hooks.json"

@@ -1,0 +1,43 @@
+# T20: the release check (docs/TESTING.md, tests/run_all.sh) has always been
+# something a person had to remember to run by hand - "No CI exists" was
+# CLAUDE.md's own honest line about this repo until now. A test suite that
+# only runs when someone remembers it is a test suite one missed step away
+# from silently going stale, the same shape PITFALLS 19 already recorded for
+# other untested markers in this repo: "an untested marker has an excuse
+# attached, and the excuse is usually a measurement" - here the excuse would
+# have been "somebody ran it before merging", unverifiable after the fact.
+#
+# ubuntu-latest only, deliberately: this suite already documents that it
+# needs a Linux/macOS bash and refuses outright on native Windows Git Bash
+# (tests/run_all.sh's own header, issue #1) - a Windows runner would need the
+# same WSL bridge a member's own laptop needs (PITFALLS 16g), which is not
+# something to stand up inside a CI runner for a suite that touches no
+# network, no cluster and no real settings file in the first place
+# (tests/run_all.sh's own "Not in scope" paragraph).
+#
+# jq is installed explicitly before the suite runs, not left to whatever the
+# runner image happens to ship: PITFALLS 28 and this branch's own T1 card
+# exist because jq's absence is exactly the kind of gap that goes unnoticed
+# until a real machine hits it, and a CI image that already has jq
+# preinstalled would never exercise the ordinary path most contributors use.
+# relay_connect_test.py is excluded the same way run_all.sh already excludes
+# it from itself - a manual probe needing a live relay and a host argument,
+# not a file this can run unattended.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  run_all:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: bash tests/run_all.sh
+        run: bash tests/run_all.sh
