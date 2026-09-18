@@ -125,4 +125,46 @@ case "$reason" in
 esac
 
 echo
+echo "== T25: independent flows, opened and closed as a set =="
+INTRO_RUNS='bash ${CLAUDE_PLUGIN_ROOT}/scripts/intro.sh runs'
+INTRO_END_RUNS='bash ${CLAUDE_PLUGIN_ROOT}/scripts/intro.sh --end runs'
+
+mktx "$TMP/two_open_no_disambig.jsonl" \
+     "w:$INTRO_LAUNCH" "w:$INTRO_RUNS" 'a:下一步: confirm it.'
+mktx "$TMP/two_open_named_and_next.jsonl" \
+     "w:$INTRO_LAUNCH" "w:$INTRO_RUNS" 'a:For the launch run, 下一步: confirm the command.'
+mktx "$TMP/two_open_named_no_next.jsonl" \
+     "w:$INTRO_LAUNCH" "w:$INTRO_RUNS" 'a:Still looking at the runs status, nothing more to say.'
+mktx "$TMP/one_closed_one_remains.jsonl" \
+     "w:$INTRO_LAUNCH" "w:$INTRO_RUNS" "w:$INTRO_END_LAUNCH" 'a:下一步: check the run again.'
+mktx "$TMP/close_unrelated_leaves_other_open.jsonl" \
+     "w:$INTRO_LAUNCH" "w:$INTRO_END_RUNS" 'a:No next step here.'
+mktx "$TMP/skill_and_intro_both_open.jsonl" \
+     's:agentic-bioflow:downstream' "w:$INTRO_LAUNCH" 'a:下一步: pick one.'
+
+t "two flows open, next step present but NEITHER flow named - blocked" \
+  block false "$TMP/two_open_no_disambig.jsonl"
+t "two flows open, one named AND a next step - allowed" \
+  allow false "$TMP/two_open_named_and_next.jsonl"
+t "two flows open, one named but NO next step - still blocked" \
+  block false "$TMP/two_open_named_no_next.jsonl"
+t "closing one of two leaves the other requiring only a next step (single-flow rule)" \
+  allow false "$TMP/one_closed_one_remains.jsonl"
+t "--end for a flow that was never opened is a no-op, the real one stays open" \
+  block false "$TMP/close_unrelated_leaves_other_open.jsonl"
+t "a Skill open plus an intro.sh open count as two independent flows" \
+  block false "$TMP/skill_and_intro_both_open.jsonl"
+
+printf '%-64s ' "the multi-flow block reason lists every open flow by name"
+out=$(python3 -c '
+import json,sys
+print(json.dumps({"stop_hook_active": False, "transcript_path": sys.argv[1]}))' \
+        "$TMP/two_open_no_disambig.jsonl" | bash "$H" 2>/dev/null)
+reason=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("reason",""))' <<<"$out" 2>/dev/null)
+case "$reason" in
+  *launch*runs*|*runs*launch*) echo ok ;;
+  *) echo "FAIL: reason does not name both open flows <<$reason>>"; fails=$((fails+1)) ;;
+esac
+
+echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
