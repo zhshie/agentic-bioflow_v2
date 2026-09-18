@@ -32,13 +32,12 @@
 # is 'none' (nothing to probe, docs/SITE_ADAPTER.md contract 6) or when the
 # caller only wants Platform's own view.
 #
-# Unverified (see docs/LAB_AGENTS.md's M-numbered convention for the shape
-# this project gives an unmeasured claim): the exact JSON `tw -o json runs
-# list` returns beyond `workflows[].labels[].name`, the one key PITFALLS.md
-# 30 actually measured. This reads `.workflows[].workflow.*` on the strength
-# of that one confirmed wrapper key and Seqera's own published schema -
-# confirm against a live call before leaning on this for something
-# irreversible, the same rule invariant 8 already applies everywhere else.
+# Measured 2026-09-18 against a live `tw -o json runs list` (54 runs, one
+# workspace): each entry is `{orgId, orgName, starred, workflow, workspaceId,
+# workspaceName}`, and everything this script reads - id, runName,
+# projectName, status, submit (ISO 8601, `...Z`), userName - lives under
+# `.workflow`. `.labels` is not on the entry without --labels (PITFALLS 30's
+# measurement was made with it), so nothing here depends on labels.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
