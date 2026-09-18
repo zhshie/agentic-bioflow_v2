@@ -1,0 +1,37 @@
+{
+  "name": "agentic-bioflow-positron-bridge",
+  "displayName": "agentic-bioflow Positron Bridge",
+  "description": "Loopback-only HTTP bridge to positron.runtime.executeCode, for an external agent (positron_run.py) to run code in a console Positron already has open. Fixes agentic-bioflow issue #14: kallichore 0.1.68 no longer writes connection files, only a one-shot handshake pipe positron_run.py can never reach.",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "agentic-bioflow",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "package": "vsce package --no-dependencies -o positron-bridge.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "@types/vscode": "1.85.0",
+    "@vscode/vsce": "^4.0.0",
+    "typescript": "^7.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:zhshie/agentic-bioflow_v2.git"
+  },
+  "license": "UNLICENSED"
+}

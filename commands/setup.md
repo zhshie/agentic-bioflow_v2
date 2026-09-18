@@ -452,6 +452,57 @@ this is safe to re-run with somebody looking over their shoulder. Say that too.
 
 ---
 
+## Optional: the Positron bridge extension
+
+Not part of the ten steps above, and not gated on them — this is for someone
+who already has this plugin set up and wants `/agentic-bioflow:downstream`
+step 5 (running analysis scripts in a live Positron console instead of only
+as a batch job) to work against a current Positron. Skip this section
+entirely for a member who does not use Positron, or who is content with the
+batch path (`Rscript`/`python`, figures written to disk) — that path needs
+nothing from this section and was never gated on it either.
+
+**Why this exists at all.** Positron's kallichore 0.1.68+ (bundled with
+current Positron on Windows) stopped writing the connection file
+`scripts/positron_run.py` used to read; it now hands connection info to
+Positron's own process over a one-shot handshake pipe nothing outside
+Positron can ever see (`docs/PITFALLS.md`'s kallichore handshake-pipe entry).
+`extensions/positron-bridge` is the fix — a small extension that calls
+`positron.runtime.executeCode` from inside Positron itself and answers a
+loopback-only HTTP request for it. `positron_run.py --check` says plainly
+whether a member's Positron needs this: if it does, the message it prints
+already contains the one-line command below.
+
+**Install it — one command, no npm, no network required on this machine:**
+
+```
+positron --install-extension <repo>/extensions/positron-bridge/*.vsix
+```
+
+The `.vsix` is committed in the repo already built; nothing here compiles
+anything. Run it on whichever machine Positron itself runs on — for a member
+on `reach: ssh`, that is their own desktop, not the site (`docs/DOWNSTREAM.md`
+explains why the bridge's state file has to live on the same machine as the
+Positron process that writes it, deployments A/B/C).
+
+**Confirm it took:** open (or reopen) the project in Positron, then from a
+terminal that can reach this plugin's `scripts/`:
+
+```
+scripts/positron_run.py --check
+```
+
+A line starting `bridge` with a port and a Positron version means it is
+live. Nothing else to configure — no token to copy, no port to note down;
+the extension generates and stores both itself.
+
+**If `positron --install-extension` is not on PATH,** Positron's own command
+palette has "Extensions: Install from VSIX..." — point it at the same file.
+Either way this is a one-time step per machine, the same as installing any
+other Positron extension.
+
+---
+
 ## When a step fails
 
 Say which step, what the failure means, and what to do. **You may attempt to
