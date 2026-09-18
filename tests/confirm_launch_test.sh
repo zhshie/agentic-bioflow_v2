@@ -429,7 +429,9 @@ declare -A D1_PAYLOAD=(
   [confirm_launch.sh]="$D1_LAUNCH"
   [confirm_cleanup.sh]="$D1_DELETE"
   [confirm_walkthrough.sh]="$D1_WRITE"
-  [guard_plugin_files.sh]='{}'
+  # Must name the plugin root: without jq the guard now lets through any
+  # call that does not (issue #15), so '{}' would never reach the message.
+  [guard_plugin_files.sh]="{\"tool_input\":{\"file_path\":\"$GPR_TMP/hooks/x.sh\"}}"
 )
 for hf in confirm_launch.sh confirm_cleanup.sh confirm_walkthrough.sh guard_plugin_files.sh; do
   printf '%-58s ' "$hf: fail-closed message names winget"
