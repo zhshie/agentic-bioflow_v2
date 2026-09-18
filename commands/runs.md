@@ -25,7 +25,55 @@ the two things Platform cannot see: what the site's scheduler is doing, and what
 the site refused to send out. Both are reached through the site adapter
 (`docs/SITE_ADAPTER.md`), never by naming a scheduler here.
 
-`tw runs list` if no run was named. Then branch on status.
+With a run named — an id, a run name, or a code from the board below —
+resolve it and branch on status. With nothing named, show the work board
+first (below), then branch once the user picks one.
+
+## The work board (`/runs` with nothing named)
+
+Before asking about one run, find out what is actually in flight — a member
+running several analyses at once should never have to open several windows
+to see them all in one place:
+
+```bash
+scripts/runs_board.sh --workspace $(scripts/settings.sh workspace_id) \
+    --user $(scripts/settings.sh seqera_user)
+```
+
+This lists every SUBMITTED/RUNNING run this member has right now — run
+name, pipeline, status, elapsed time, project, and where its outputs land —
+each with a short code (`r1`, `r2`, ...). The codes are computed fresh on
+every call from Platform's own listing, never stored
+(`docs/PRINCIPLES.md`, invariant 2), so a later `/runs <code>` resolves the
+same way:
+
+```bash
+scripts/runs_board.sh --resolve <code> --workspace $(scripts/settings.sh workspace_id) \
+    --user $(scripts/settings.sh seqera_user)
+```
+
+and continues with that run's id in every branch below, exactly as if the
+user had named the run outright. `/runs <run id or name>` skips the board
+entirely and goes straight to the branch below.
+
+**The board's own site-side check costs one round trip for every run shown,
+never one per run.** Reading whether a task is stuck (the same question the
+RUNNING section below answers for one run) the same way `task_health.sh`
+does it, once per run on the board, would open one site session per run in
+the same work session — exactly the shape PITFALLS 16e's session cap gets
+hit by. `scripts/runs_board.sh` calls `scripts/runs_board_site_probe.sh`
+instead, which takes every active run id in one call and reports one line
+per run from a single round trip. It is written as its own small,
+independently-runnable script rather than folded into `scripts/on_site.sh`,
+so it keeps working unchanged once `on_site.sh --script` grows its own way
+to run a whole group of checks in one round trip — at that point this
+script's one call is a natural candidate to fold into that group; nothing
+about how the board calls it has to change first.
+
+If the board's own count is closing in on `ssh_max_parallel`, it says so —
+each run being watched in the background is another caller sharing the same
+site session budget, and the failure on the far side of that limit is a
+silent hang, not an error (PITFALLS 16e).
 
 ## Reporting format
 
