@@ -26,6 +26,19 @@
 #                  [--outcome resolved|workaround|unresolved]
 #   report.sh list
 #   report.sh send [--yes] [--dry-run]
+#   report.sh --dir
+#
+# `--dir` prints where the queue lives and nothing else - the one place that
+# computes this (reports_dir(), below) rather than a second copy of the same
+# fallback chain elsewhere. hooks/session_start.sh used to reimplement it as
+# `$(dirname "$SETTINGS_FILE")/reports`, which agreed with this script only
+# when a settings file was actually found; before setup has ever run,
+# reports_dir() falls back to the XDG state default, session_start.sh's copy
+# did not know about that fallback, and a report queued before setup existed
+# was never in the directory the hook went looking in - queued forever,
+# reminded never. Calling this instead of re-deriving the path is what keeps
+# the two in agreement by construction rather than by two edits staying in
+# sync.
 #
 # `add` never queues a partially-valid report: every field is checked before
 # anything is written, and any failure exits 2 with nothing on disk.
@@ -56,6 +69,7 @@ usage:
                  [--outcome resolved|workaround|unresolved]
   report.sh list
   report.sh send [--yes] [--dry-run]
+  report.sh --dir
 U
 }
 
@@ -407,8 +421,9 @@ send_reports() {
 
 # --- dispatch ---------------------------------------------------------------
 case "${1:-}" in
-    add)  shift; add_report "$@"; exit $? ;;
-    list) shift; list_reports "$@"; exit $? ;;
-    send) shift; send_reports "$@"; exit $? ;;
+    add)   shift; add_report "$@"; exit $? ;;
+    list)  shift; list_reports "$@"; exit $? ;;
+    send)  shift; send_reports "$@"; exit $? ;;
+    --dir) reports_dir; exit 0 ;;
     *) usage; exit 2 ;;
 esac
