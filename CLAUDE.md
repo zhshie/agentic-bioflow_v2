@@ -86,7 +86,13 @@ real failures, each with the fix.
   the same paths. `where.sh --run-paths <project> <run>` is the stable
   interface another script (e.g. `prepare_launch.sh`) can query for the
   site-side run directory and the local fetch destination without
-  re-deriving the run-area shape a second time.
+  re-deriving the run-area shape a second time. `where.sh --project-paths
+  <project>` (T29) is the same idea for `rawdata/`/`runs/`/`analysis/`/
+  `submission/` on the local side, whose shape now branches three ways (old
+  layout, new layout with no `<seqera_user>` directory, and a portable
+  folder redirecting `analysis/`/`submission/` elsewhere) -
+  `commands/downstream.md` and `commands/finish.md` ask it rather than
+  constructing a path themselves.
 - `scripts/portable_root.sh` + `scripts/settings.sh --adopt`/`--reconstruct`
   — the portable folder (`docs/SETTINGS.md`, "The portable folder"): once a
   person builds one, a second machine adopts it in one command instead of

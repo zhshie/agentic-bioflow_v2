@@ -22,6 +22,11 @@
 #                                                 two `key=path` lines, for
 #                                                 another script to parse -
 #                                                 see the block below
+#   where.sh --project-paths <project> [--local-root <path>]
+#                                                 rawdata/runs/analysis/
+#                                                 submission on the local
+#                                                 side, T29 - see that
+#                                                 block further down
 #
 # --- the --run-paths interface, for scripts/prepare_launch.sh -------------
 # perf/latency's scripts/prepare_launch.sh (not on this branch - it does not
@@ -50,13 +55,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
 
 # --- shared: the run-area layout, one place -------------------------------
-# Mirrors scripts/init_workspace.sh exactly (docs/SETTINGS.md, "The shape
-# under storage_root"): site is $LAB_RUNS_DIR/<seqera_user>/projects/<project>
-# /runs/<run>; local is <local_root>/<seqera_user>/projects/<project>/runs/
-# <run>/results. T29 will teach both this function and init_workspace.sh a
-# second shape once `portable_root` exists (no <seqera_user> layer locally) -
-# not built yet on this branch at this point, so this is the layout every
-# deployment has today.
+# Site: $LAB_RUNS_DIR/<seqera_user>/projects/<project>/runs/<run> - unchanged,
+# the site side keeps the <seqera_user> layer (docs/SETTINGS.md: the site is
+# one shared Unix account, so this is what tells members apart).
+#
+# Local: local_project_base()/local_analysis_base() (scripts/settings.sh,
+# T29) - the SAME functions scripts/init_workspace.sh calls to actually build
+# these directories, so this can never compute a different answer than what
+# is really on disk: old layout (<local_root>/<user>/projects/<project>) for
+# a project that already lives there, new layout (no <user> layer) for one
+# that does not yet, and analysis/submission redirected into the portable
+# folder once one is adopted (T23).
 site_run_dir() {   # site_run_dir <project> <run>
     local base user
     base="${LAB_RUNS_DIR:-$(setting storage_root)}"
@@ -67,11 +76,12 @@ site_run_dir() {   # site_run_dir <project> <run>
 }
 
 local_fetch_dir() {   # local_fetch_dir <project> <run> [<root-override>]
-    local root user
+    local root user base
     root="${3:-$(setting local_root "${HOME:-}/agentic-bioflow")}"
     user="$(setting seqera_user)"
     [ -n "$user" ] || { echo "no seqera_user in the deployment settings - ask the user for it." >&2; return 1; }
-    printf '%s\n' "${root%/}/$user/projects/$1/runs/$2/results"
+    base="$(local_project_base "$root" "$user" "$1")"
+    printf '%s\n' "$base/runs/$2/results"
 }
 
 if [ "${1:-}" = --run-paths ]; then
@@ -90,6 +100,42 @@ if [ "${1:-}" = --run-paths ]; then
     LFD="$(local_fetch_dir "$PROJECT" "$RUN" "$ROOT_OVERRIDE")" || exit 2
     printf 'site_run_dir=%s\n' "$SRD"
     printf 'local_fetch_dir=%s\n' "$LFD"
+    exit 0
+fi
+
+# T29: commands/downstream.md and commands/finish.md ask HERE for a project's
+# local pieces rather than constructing the path themselves - the whole
+# reason this exists is that the shape now branches three ways (old layout,
+# new layout, portable-redirected analysis/submission) and a command file
+# guessing which one applies is exactly how the two would drift.
+#
+#   where.sh --project-paths <project> [--local-root <path>]
+#
+# prints, and only:
+#   rawdata_dir=<absolute path>
+#   runs_dir=<absolute path>
+#   analysis_dir=<absolute path>
+#   submission_dir=<absolute path>
+if [ "${1:-}" = --project-paths ]; then
+    shift
+    PROJECT="${1:?usage: where.sh --project-paths <project> [--local-root <path>]}"
+    shift
+    ROOT_OVERRIDE=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --local-root) ROOT_OVERRIDE="${2:?--local-root needs a value}"; shift 2 ;;
+            *) echo "unknown option '$1'" >&2; exit 2 ;;
+        esac
+    done
+    ROOT="${ROOT_OVERRIDE:-$(setting local_root "${HOME:-}/agentic-bioflow")}"
+    PUSER="$(setting seqera_user)"
+    [ -n "$PUSER" ] || { echo "no seqera_user in the deployment settings - ask the user for it." >&2; exit 2; }
+    PBASE="$(local_project_base "$ROOT" "$PUSER" "$PROJECT")"
+    ABASE="$(local_analysis_base "$ROOT" "$PUSER" "$PROJECT")"
+    printf 'rawdata_dir=%s\n' "$PBASE/rawdata"
+    printf 'runs_dir=%s\n' "$PBASE/runs"
+    printf 'analysis_dir=%s\n' "$ABASE/analysis"
+    printf 'submission_dir=%s\n' "$ABASE/submission"
     exit 0
 fi
 

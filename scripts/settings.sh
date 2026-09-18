@@ -297,6 +297,56 @@ site_control_path_default() {   # site_control_path_default <bridge-kind>
     fi
 }
 
+# --- T29: the local side's project layout -----------------------------------
+# One place, so scripts/init_workspace.sh (which builds these directories)
+# and scripts/where.sh (which answers "where are they" for commands/
+# downstream.md and commands/finish.md) compute the SAME path by
+# construction, never by a test asserting two independent formulas happen to
+# agree.
+#
+# Two decisions:
+#
+# 1. Old layout (<local_root>/<seqera_user>/projects/<project>/...) or new
+#    (<local_root>/projects/<project>/..., no <seqera_user> layer - matching
+#    the portable folder's own shape, T23/docs/SETTINGS.md) - decided PER
+#    PROJECT, by whether the old path already exists on this machine.
+#    docs/SETTINGS.md: "Migration: none" - a project already living at the
+#    old path keeps living there; only a brand new project gets the new one.
+# 2. `analysis/` and `submission/` specifically move into the portable
+#    folder instead, once one is adopted (T23) - never `rawdata/`/`runs/`/
+#    `results/`, which stay local because raw and re-fetchable data must
+#    never ride a cloud sync (docs/SETTINGS.md, T21's cloud_sync_caution).
+
+# local_layout_is_old <root> <user> <project> -> 0 (true) if the OLD,
+# <user>-layered path already exists for this project.
+local_layout_is_old() {
+    [ -n "${2:-}" ] && [ -n "${3:-}" ] && [ -d "${1%/}/$2/projects/$3" ]
+}
+
+# The base directory for rawdata/runs (and, with no portable folder,
+# analysis/submission too): <root>/<user>/projects/<project> for a project
+# that already lives there, <root>/projects/<project> for a new one.
+local_project_base() {   # local_project_base <root> <user> <project>
+    local root="${1%/}" user="${2:-}" project="${3:-}"
+    if local_layout_is_old "$root" "$user" "$project"; then
+        printf '%s\n' "$root/$user/projects/$project"
+    else
+        printf '%s\n' "$root/projects/$project"
+    fi
+}
+
+# Where analysis/ and submission/ actually live: the portable folder once one
+# is adopted (never a <seqera_user> layer there either - T23's own shape), or
+# alongside rawdata/runs otherwise, at whichever base local_project_base just
+# decided.
+local_analysis_base() {   # local_analysis_base <root> <user> <project>
+    if [ -n "$PORTABLE_ROOT" ]; then
+        printf '%s\n' "${PORTABLE_ROOT%/}/projects/${3:-}"
+    else
+        local_project_base "$1" "$2" "$3"
+    fi
+}
+
 # The one place a `key: value` line is actually pulled out of a file -
 # unchanged from before T23, just factored out so `setting()` can try it
 # against two files in order instead of duplicating the sed pipeline.

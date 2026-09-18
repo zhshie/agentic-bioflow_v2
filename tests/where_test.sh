@@ -123,13 +123,24 @@ out=$(clean HOME="$HOME2" XDG_CONFIG_HOME="$HOME2/.config" LAB_RUNS_DIR="$RUNS" 
       bash "$S" --run-paths myproj myrun 2>&1); rc=$?
 t "--run-paths exits clean"  "$rc"  "0"
 has "--run-paths prints the site run dir"   "site_run_dir=$RUNS/alice/projects/myproj/runs/myrun" "$out"
+# T29: no pre-existing old-layout directory for this project on disk, so
+# local_fetch_dir resolves to the NEW layout - no <seqera_user> layer.
 has "--run-paths prints the local fetch dir" \
-    "local_fetch_dir=$TMP/local/alice/projects/myproj/runs/myrun/results" "$out"
+    "local_fetch_dir=$TMP/local/projects/myproj/runs/myrun/results" "$out"
 
 out=$(clean HOME="$HOME2" XDG_CONFIG_HOME="$HOME2/.config" LAB_RUNS_DIR="$RUNS" -- \
       bash "$S" --run-paths myproj myrun --local-root "$TMP/override_root" 2>&1)
 has "--local-root overrides the configured local_root outright" \
-    "local_fetch_dir=$TMP/override_root/alice/projects/myproj/runs/myrun/results" "$out"
+    "local_fetch_dir=$TMP/override_root/projects/myproj/runs/myrun/results" "$out"
+
+# A project that already lives at the OLD, <user>-layered path keeps
+# resolving there - the same per-project detection init_workspace.sh uses
+# (scripts/settings.sh: local_layout_is_old()), never a machine-wide switch.
+mkdir -p "$TMP/local/alice/projects/legacy/rawdata"
+out=$(clean HOME="$HOME2" XDG_CONFIG_HOME="$HOME2/.config" LAB_RUNS_DIR="$RUNS" -- \
+      bash "$S" --run-paths legacy myrun 2>&1)
+has "a pre-existing old-layout project keeps resolving under the user layer" \
+    "local_fetch_dir=$TMP/local/alice/projects/legacy/runs/myrun/results" "$out"
 
 # Missing seqera_user: refused before printing either line, not a half-answer.
 XDG6="$TMP/home6/.config"; mkdir -p "$XDG6/agentic-bioflow"
@@ -137,6 +148,77 @@ printf 'reach: local\n' > "$XDG6/agentic-bioflow/env.yaml"; chmod 600 "$XDG6/age
 out=$(clean HOME="$TMP/home6" XDG_CONFIG_HOME="$XDG6" -- bash "$S" --run-paths p r 2>&1); rc=$?
 t "--run-paths with no seqera_user is refused, not guessed"  "$rc"  "2"
 hasnot "and prints no site_run_dir line at all"  "site_run_dir=" "$out"
+
+# ---------------------------------------------------------------------------
+# T29: --project-paths - the interface commands/downstream.md and
+# commands/finish.md are told to call instead of constructing a path
+# themselves, now that the shape branches three ways (old layout, new
+# layout, portable-redirected analysis/submission).
+out=$(clean HOME="$HOME2" XDG_CONFIG_HOME="$HOME2/.config" LAB_RUNS_DIR="$RUNS" -- \
+      bash "$S" --project-paths ppstudy 2>&1); rc=$?
+t "--project-paths exits clean"  "$rc"  "0"
+has "...prints rawdata_dir under the new (unlayered) local layout" \
+    "rawdata_dir=$TMP/local/projects/ppstudy/rawdata" "$out"
+has "...prints runs_dir the same way"  "runs_dir=$TMP/local/projects/ppstudy/runs" "$out"
+has "...prints analysis_dir alongside rawdata/runs (no portable folder adopted)" \
+    "analysis_dir=$TMP/local/projects/ppstudy/analysis" "$out"
+has "...prints submission_dir the same way" \
+    "submission_dir=$TMP/local/projects/ppstudy/submission" "$out"
+
+# A pre-existing old-layout project resolves ALL FOUR paths under the user
+# layer, consistently - never a mix of old rawdata/runs with a new-layout
+# analysis/submission for the same project.
+mkdir -p "$TMP/local/alice/projects/ppstudy_old/rawdata"
+out=$(clean HOME="$HOME2" XDG_CONFIG_HOME="$HOME2/.config" LAB_RUNS_DIR="$RUNS" -- \
+      bash "$S" --project-paths ppstudy_old 2>&1)
+has "old-layout project: rawdata_dir under the user layer" \
+    "rawdata_dir=$TMP/local/alice/projects/ppstudy_old/rawdata" "$out"
+has "old-layout project: analysis_dir ALSO under the user layer, consistently" \
+    "analysis_dir=$TMP/local/alice/projects/ppstudy_old/analysis" "$out"
+
+# With a portable folder adopted, analysis_dir/submission_dir redirect there;
+# rawdata_dir/runs_dir do not - the one thing this whole card exists to keep
+# separate (large/re-fetchable data never rides a cloud sync).
+PP_PORTABLE="$TMP/pp_portable"; mkdir -p "$PP_PORTABLE/config"
+printf 'seqera_user: alice\n' > "$PP_PORTABLE/config/env.yaml"
+chmod 600 "$PP_PORTABLE/config/env.yaml"
+HOME_PP="$TMP/pp_adopt_home"; mkdir -p "$HOME_PP"
+clean HOME="$HOME_PP" XDG_CONFIG_HOME="$HOME_PP/.config" -- \
+    bash "$(dirname "$S")/settings.sh" --adopt "$PP_PORTABLE" >/dev/null
+out=$(clean HOME="$HOME_PP" XDG_CONFIG_HOME="$HOME_PP/.config" LAB_RUNS_DIR="$RUNS" -- \
+      bash "$S" --project-paths ppstudy_portable --local-root "$TMP/local" 2>&1)
+has "with a portable folder adopted: rawdata_dir stays local" \
+    "rawdata_dir=$TMP/local/projects/ppstudy_portable/rawdata" "$out"
+has "with a portable folder adopted: analysis_dir moves to the portable folder" \
+    "analysis_dir=$PP_PORTABLE/projects/ppstudy_portable/analysis" "$out"
+has "with a portable folder adopted: submission_dir moves there too" \
+    "submission_dir=$PP_PORTABLE/projects/ppstudy_portable/submission" "$out"
+
+# Missing seqera_user: refused before printing anything, not a half-answer.
+out=$(clean HOME="$TMP/home6" XDG_CONFIG_HOME="$XDG6" -- bash "$S" --project-paths p 2>&1); rc=$?
+t "--project-paths with no seqera_user is refused, not guessed"  "$rc"  "2"
+hasnot "and prints no rawdata_dir line at all"  "rawdata_dir=" "$out"
+
+# ---------------------------------------------------------------------------
+# T29: THE assertion this card asks for by name - the analysis path has ONE
+# source. scripts/init_workspace.sh actually builds a project (new layout,
+# no portable folder) and scripts/where.sh --project-paths is asked where
+# that same project's analysis/ is - they must agree exactly, because both
+# call the very same scripts/settings.sh function (local_analysis_base())
+# rather than each computing their own formula.
+SRC_LOCAL="$TMP/single_source_root"
+SRC_RUNS="$TMP/single_source_site_runs"
+built_out=$(LAB_RUNS_DIR="$SRC_RUNS" bash "$(dirname "$S")/init_workspace.sh" \
+      local --root "$SRC_LOCAL" --user alice --project single_source_study 2>&1)
+printf '%-64s ' "init_workspace.sh actually built analysis/ where it says it did"
+[ -d "$SRC_LOCAL/projects/single_source_study/analysis" ] && echo ok \
+  || { echo "FAIL: not built - <<$built_out>>"; fails=$((fails+1)); }
+
+queried=$(clean HOME="$HOME2" XDG_CONFIG_HOME="$HOME2/.config" LAB_RUNS_DIR="$RUNS" -- \
+      bash "$S" --project-paths single_source_study --local-root "$SRC_LOCAL" 2>&1 \
+      | sed -n 's/^analysis_dir=//p')
+t "where.sh --project-paths names the EXACT directory init_workspace.sh built" \
+  "$queried"  "$SRC_LOCAL/projects/single_source_study/analysis"
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

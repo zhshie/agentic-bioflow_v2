@@ -149,8 +149,12 @@ printf '%-64s ' "and never touches a file already inside rawdata/"
 LOCAL="$TMP/local_root"
 local_() { bash "$S" local --root "$LOCAL" "$@"; }
 
+# T29: a brand-new project (nothing already on disk for it) gets the NEW
+# layout - no <seqera_user> layer, matching the portable folder's own shape
+# (docs/SETTINGS.md). The old, <user>-layered shape is covered separately
+# below, for a project that already lives there.
 out=$(local_ --user alice --project "$PROJ" 2>&1)
-LPROJ="$LOCAL/alice/projects/$PROJ"
+LPROJ="$LOCAL/projects/$PROJ"
 for d in rawdata runs analysis submission; do
   printf '%-64s ' "local project has $d/"
   if [ -d "$LPROJ/$d" ]; then echo ok; else echo "FAIL: $LPROJ/$d missing"; fails=$((fails+1)); fi
@@ -188,6 +192,72 @@ printf '%-64s ' "local run dir has no work/ - only the site executes anything"
 printf '%-64s ' "the two sides name the same run directory identically"
 [ "$(basename "$RUN_DIR")" = "$(basename "$LRUN")" ] && echo ok \
   || { echo "FAIL: $RUN_DIR vs $LRUN"; fails=$((fails+1)); }
+
+# ---------------------------------------------------------------------------
+# T29: a project that already lives at the OLD, <user>-layered path stays
+# there - docs/SETTINGS.md's "Migration: none", applied to the local side's
+# own layout change. Detected per project, by whether that old path already
+# exists on disk - not a machine-wide setting.
+OLD_LOCAL="$TMP/old_layout_root"
+mkdir -p "$OLD_LOCAL/heidi/projects/legacy_study/rawdata"
+out=$(bash "$S" local --root "$OLD_LOCAL" --user heidi --project legacy_study 2>&1)
+OLDPROJ="$OLD_LOCAL/heidi/projects/legacy_study"
+for d in rawdata runs analysis submission; do
+  printf '%-64s ' "a pre-existing old-layout project keeps $d/ under the user layer"
+  [ -d "$OLDPROJ/$d" ] && echo ok || { echo "FAIL: $OLDPROJ/$d missing"; fails=$((fails+1)); }
+done
+printf '%-64s ' "and does NOT also get the new, unlayered path"
+[ -d "$OLD_LOCAL/projects/legacy_study" ] \
+  && { echo "FAIL: built both layouts for one project"; fails=$((fails+1)); } || echo ok
+
+# A second, brand-new project on the SAME local_root as an old-layout one
+# still gets the new layout - the old path is detected per project, not
+# assumed for the whole machine once any old project is found.
+out=$(bash "$S" local --root "$OLD_LOCAL" --user heidi --project brand_new_study 2>&1)
+printf '%-64s ' "a different, brand-new project on the same root gets the NEW layout"
+[ -d "$OLD_LOCAL/projects/brand_new_study/rawdata" ] && echo ok \
+  || { echo "FAIL: $OLD_LOCAL/projects/brand_new_study/rawdata missing"; fails=$((fails+1)); }
+printf '%-64s ' "...and is not built under the user layer either"
+[ -d "$OLD_LOCAL/heidi/projects/brand_new_study" ] \
+  && { echo "FAIL: new project got the old layout"; fails=$((fails+1)); } || echo ok
+
+# ---------------------------------------------------------------------------
+# T29: with a portable folder adopted, analysis/ and submission/ move there
+# instead - rawdata/runs/results never do (large, re-fetchable, must not
+# ride a cloud sync).
+PORTABLE_HOME="$TMP/portable_adopt_home"; mkdir -p "$PORTABLE_HOME"
+PORTABLE_DIR="$TMP/portable_dir"; mkdir -p "$PORTABLE_DIR/config"
+printf 'seqera_user: ivy\n' > "$PORTABLE_DIR/config/env.yaml"
+chmod 600 "$PORTABLE_DIR/config/env.yaml"
+padopt() { env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE HOME="$PORTABLE_HOME" \
+             XDG_CONFIG_HOME="$PORTABLE_HOME/.config" "$@"; }
+padopt bash "$(dirname "$S")/settings.sh" --adopt "$PORTABLE_DIR" >/dev/null
+
+PORTABLE_LOCAL="$TMP/portable_local_root"
+out=$(padopt bash "$S" local --root "$PORTABLE_LOCAL" --user ivy --project shared_study 2>&1)
+for d in rawdata runs; do
+  printf '%-64s ' "with a portable folder adopted, local $d/ still builds locally"
+  [ -d "$PORTABLE_LOCAL/projects/shared_study/$d" ] && echo ok \
+    || { echo "FAIL: $PORTABLE_LOCAL/projects/shared_study/$d missing"; fails=$((fails+1)); }
+done
+for d in analysis submission; do
+  printf '%-64s ' "...but local $d/ is NOT built - it lives in the portable folder"
+  [ -d "$PORTABLE_LOCAL/projects/shared_study/$d" ] \
+    && { echo "FAIL: $d/ was built locally despite an adopted portable folder"; fails=$((fails+1)); } \
+    || echo ok
+done
+for d in analysis submission; do
+  printf '%-64s ' "...and $d/ was built in the portable folder instead"
+  [ -d "$PORTABLE_DIR/projects/shared_study/$d" ] && echo ok \
+    || { echo "FAIL: $PORTABLE_DIR/projects/shared_study/$d missing"; fails=$((fails+1)); }
+done
+printf '%-64s ' "the portable folder's project dir has no <seqera_user> layer either"
+[ -d "$PORTABLE_DIR/ivy" ] \
+  && { echo "FAIL: a user layer appeared under the portable folder"; fails=$((fails+1)); } || echo ok
+
+printf '%-64s ' "the printed tree names where analysis/submission actually went"
+grep -qF "$PORTABLE_DIR/projects/shared_study" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 
 # ---------------------------------------------------------------------------
 # Bad input, refused before anything is created.
@@ -291,7 +361,7 @@ printf '%-64s ' "--plan built no new directory on the partly-built site either"
 PLAN_LOCAL="$TMP/plan_local_root"
 out=$(bash "$S" local --plan --root "$PLAN_LOCAL" --user erin --project "$PROJ2" 2>&1)
 printf '%-64s ' "--plan on the local side lists its directories too"
-grep -qF "would-create: $PLAN_LOCAL/erin/projects/$PROJ2/analysis" <<<"$out" && echo ok \
+grep -qF "would-create: $PLAN_LOCAL/projects/$PROJ2/analysis" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 printf '%-64s ' "--plan on the local side created nothing"
 [ ! -e "$PLAN_LOCAL" ] && echo ok || { echo "FAIL: $PLAN_LOCAL exists"; fails=$((fails+1)); }
@@ -320,7 +390,7 @@ printf 'reach: local\nlocal_root: %s\n' "$LR_CONFIGURED" > "$LR_HOME/env.yaml"
 out=$(clean HOME="$LR_HOME" LAB_SETTINGS_FILE="$LR_HOME/env.yaml" -- \
       bash "$S" local --plan --user alice --project "$PROJ" 2>&1)
 printf '%-64s ' "local_root set, no --root: --plan lists paths under the configured root"
-grep -qF "would-create: $LR_CONFIGURED/alice/projects/$PROJ/analysis" <<<"$out" && echo ok \
+grep -qF "would-create: $LR_CONFIGURED/projects/$PROJ/analysis" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 printf '%-64s ' "local_root set, no --root: --plan still created nothing"
 [ ! -e "$LR_CONFIGURED" ] && [ ! -e "$LR_HOME/agentic-bioflow" ] && echo ok \
@@ -332,7 +402,7 @@ LR_EXPLICIT="$TMP/explicit_root"
 out=$(clean HOME="$LR_HOME" LAB_SETTINGS_FILE="$LR_HOME/env.yaml" -- \
       bash "$S" local --plan --root "$LR_EXPLICIT" --user alice --project "$PROJ" 2>&1)
 printf '%-64s ' "--root beats local_root outright"
-grep -qF "would-create: $LR_EXPLICIT/alice/projects/$PROJ/analysis" <<<"$out" \
+grep -qF "would-create: $LR_EXPLICIT/projects/$PROJ/analysis" <<<"$out" \
   && ! grep -qF "$LR_CONFIGURED" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 printf '%-64s ' "--root beating local_root still created nothing (--plan)"
@@ -344,7 +414,7 @@ LR_NOKEY_HOME="$TMP/local_root_nokey_home"; mkdir -p "$LR_NOKEY_HOME"
 out=$(clean HOME="$LR_NOKEY_HOME" LAB_SETTINGS_FILE="$LR_NOKEY_HOME/nonexistent.yaml" -- \
       bash "$S" local --plan --user alice --project "$PROJ" 2>&1)
 printf '%-64s ' "no local_root key, no --root: --plan falls back to \$HOME/agentic-bioflow"
-grep -qF "would-create: $LR_NOKEY_HOME/agentic-bioflow/alice/projects/$PROJ/analysis" <<<"$out" && echo ok \
+grep -qF "would-create: $LR_NOKEY_HOME/agentic-bioflow/projects/$PROJ/analysis" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 printf '%-64s ' "old default, no key: --plan still created nothing"
 [ ! -e "$LR_NOKEY_HOME/agentic-bioflow" ] && echo ok \
@@ -357,7 +427,7 @@ echo
 # looks_cloud_synced() match (scripts/utils/portable.sh) that
 # scripts/settings.sh's own (refusing) synced-folder check also uses.
 CLOUD_ROOT="$TMP/OneDrive/agentic-bioflow-work"
-out=$(bash "$S" local --root "$CLOUD_ROOT" --user alice 2>&1)
+out=$(bash "$S" local --root "$CLOUD_ROOT" --user alice --project cloud_study 2>&1)
 printf '%-64s ' "a cloud-sync-looking --root is warned about, not refused"
 grep -qF "looks like it is inside a synced folder" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
@@ -368,16 +438,16 @@ printf '%-64s ' "...says the token and Positron bridge file must never live ther
 grep -qF "Positron bridge" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 printf '%-64s ' "...and still builds the skeleton - a warning, not a refusal"
-[ -d "$CLOUD_ROOT/alice/projects" ] && echo ok \
-  || { echo "FAIL: $CLOUD_ROOT/alice/projects missing"; fails=$((fails+1)); }
+[ -d "$CLOUD_ROOT/projects/cloud_study" ] && echo ok \
+  || { echo "FAIL: $CLOUD_ROOT/projects/cloud_study missing"; fails=$((fails+1)); }
 
 printf '%-64s ' "an ordinary --root gets no cloud-sync warning at all"
-out=$(bash "$S" local --root "$TMP/ordinary_root" --user alice 2>&1)
+out=$(bash "$S" local --root "$TMP/ordinary_root" --user alice --project cloud_study 2>&1)
 grep -qF "synced folder" <<<"$out" && { echo "FAIL: warned on an ordinary path"; fails=$((fails+1)); } \
   || echo ok
 
 printf '%-64s ' "--plan never prints the cloud-sync warning (nothing is about to be touched)"
-out=$(bash "$S" local --root "$TMP/OneDrive/plan_probe" --plan --user alice 2>&1)
+out=$(bash "$S" local --root "$TMP/OneDrive/plan_probe" --plan --user alice --project cloud_study 2>&1)
 grep -qF "synced folder" <<<"$out" && { echo "FAIL: warned during a dry run"; fails=$((fails+1)); } \
   || echo ok
 
@@ -393,7 +463,7 @@ OVERRIDE_ROOT="$TMP/override_side_by_side"
 SITE_RUNS="$TMP/override_site_runs"
 LAB_RUNS_DIR="$SITE_RUNS" bash "$S" local --root "$OVERRIDE_ROOT" \
     --user frank --project "$PROJ" --run rnaseq_frank_20260912 >/dev/null 2>&1
-WANT_RESULTS="$OVERRIDE_ROOT/frank/projects/$PROJ/runs/rnaseq_frank_20260912/results"
+WANT_RESULTS="$OVERRIDE_ROOT/projects/$PROJ/runs/rnaseq_frank_20260912/results"
 printf '%-64s ' "init_workspace.sh --root actually created the results/ dir"
 [ -d "$WANT_RESULTS" ] && echo ok || { echo "FAIL: $WANT_RESULTS missing"; fails=$((fails+1)); }
 

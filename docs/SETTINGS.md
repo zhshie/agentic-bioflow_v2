@@ -155,13 +155,27 @@ $LAB_RUNS_DIR/                     (site side, "site")
 
 <local root>/                      (local side, "local"; settings key `local_root`,
                                     default $HOME/agentic-bioflow)
-└── <seqera_user>/
-    └── projects/<same name as the site>/
-        ├── rawdata/        staging; scripts/push.sh sends this up
-        ├── runs/<same name as the site>/
-        │   └── results/    brought back by scripts/fetch.sh - read-only
-        ├── analysis/       analysis.md, R/Python, figures; what an IDE opens
-        └── submission/     the built package
+└── projects/<same name as the site>/    (T29: no <seqera_user> layer here -
+    ├── rawdata/        staging; scripts/push.sh sends this up      matches the
+    └── runs/<same name as the site>/                       portable folder's
+        └── results/    brought back by scripts/fetch.sh - read-only  own shape)
+
+<portable_root>/projects/<same name as the site>/    (T23; only once one is
+├── analysis/       analysis.md, R/Python, figures; what an IDE opens  adopted)
+└── submission/     the built package
+
+    Local side, WITH NO portable folder adopted: analysis/ and submission/
+    stay beside rawdata/runs instead, at the same <local root>/projects/
+    <project>/ base - never both places at once.
+
+    A project already living at the OLD shape (<local root>/<seqera_user>/
+    projects/<project>/...) keeps living there - detected per project, by
+    whether that path already exists (docs/SETTINGS.md's own "Migration:
+    none", applied to this change too). Only a brand new project, on a
+    machine with no old directory for it yet, gets the shape above.
+    scripts/where.sh --project-paths <project> resolves all of this in one
+    place; scripts/init_workspace.sh and every command file ask it rather
+    than constructing a path by hand (T29).
 ```
 
 **The project is the unit everything is collected under**: the raw data that

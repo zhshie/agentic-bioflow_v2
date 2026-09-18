@@ -51,6 +51,14 @@ transfers from it here are rules, not machinery:
 - thin marks, recessive axes, labels on the points that matter rather than all
   of them
 
+**T29: ask where `analysis/` actually is; never assume the shape.** Its
+location depends on the local layout (old vs new, docs/SETTINGS.md) and on
+whether a portable folder has been adopted (T23) — three different answers
+for what used to be one fixed path. Resolve it with
+`scripts/where.sh --project-paths <project>` and use the `analysis_dir` line
+it prints; do not construct `<local_root>/.../analysis` by hand anywhere in
+this flow.
+
 ## Steps
 
 1. **Check the outputs reader is alive** — through the adapter:
