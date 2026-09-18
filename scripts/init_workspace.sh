@@ -203,11 +203,29 @@ else
     BASE="${ROOT_ARG:-$(setting local_root "$HOME/agentic-bioflow")}"
     BASE="${BASE%/}"
 
-    DIRS+=("$BASE/$USER_NAME/projects")
+    # T21/T29: local_root and portable_root are allowed to be synced folders -
+    # warn, do not refuse. Skipped under --plan: a plan is read-only
+    # reconnaissance, and printing a stderr caution about a directory nothing
+    # is about to touch yet would fire on every dry run of a path someone is
+    # still deciding on.
+    if [ "$PLAN" != 1 ]; then
+        cloud_sync_caution "$BASE" local_root
+        [ -z "$PORTABLE_ROOT" ] || cloud_sync_caution "$PORTABLE_ROOT" portable_root
+    fi
+
+    # T29: no unconditional "$BASE/$USER_NAME/projects" placeholder any more.
+    # Under the new layout (below) there is no fixed per-user directory to
+    # lay down ahead of time - making one without a project name would BE the
+    # old, <seqera_user>-layered shape by accident, for a member who may never
+    # end up using it. With a project name, local_project_base()/
+    # local_analysis_base() (scripts/settings.sh) decide old vs new layout,
+    # and where analysis/submission actually live, in the one place
+    # scripts/where.sh also reads them from - so the two can never disagree.
     if [ -n "$PROJECT" ]; then
-        PROJ_DIR="$BASE/$USER_NAME/projects/$PROJECT"
+        PROJ_DIR="$(local_project_base "$BASE" "$USER_NAME" "$PROJECT")"
+        ANALYSIS_DIR="$(local_analysis_base "$BASE" "$USER_NAME" "$PROJECT")"
         DIRS+=("$PROJ_DIR/rawdata" "$PROJ_DIR/runs"
-               "$PROJ_DIR/analysis" "$PROJ_DIR/submission")
+               "$ANALYSIS_DIR/analysis" "$ANALYSIS_DIR/submission")
     fi
     if [ -n "$RUN_NAME" ]; then
         DIRS+=("$PROJ_DIR/runs/$RUN_NAME/results")
@@ -273,17 +291,36 @@ if [ "$SIDE" = site ]; then
         echo "    └── coldstart/"
     fi
 else
-    echo "└── $USER_NAME/"
-    echo "    └── projects/"
+    # T29: printed as real absolute paths rather than a fixed nested diagram -
+    # old layout, new layout and a portable folder redirecting analysis/
+    # submission elsewhere are three different shapes, and drawing all of
+    # them as one indented tree would misrepresent whichever one this call
+    # did not build.
     if [ -n "$PROJECT" ]; then
-        echo "        └── $PROJECT/"
-        echo "            ├── rawdata/      (staging; push.sh sends this up)"
-        echo "            ├── runs/"
-        if [ -n "$RUN_NAME" ]; then
-            echo "            │   └── $RUN_NAME/"
-            echo "            │       └── results/"
+        echo "$PROJ_DIR"
+        echo "├── rawdata/      (staging; push.sh sends this up)"
+        if [ "$ANALYSIS_DIR" = "$PROJ_DIR" ]; then
+            echo "├── runs/"
+            if [ -n "$RUN_NAME" ]; then
+                echo "│   └── $RUN_NAME/"
+                echo "│       └── results/"
+            fi
+            echo "├── analysis/     (source: analysis.md, scripts, figures)"
+            echo "└── submission/   (built package; safe to throw away)"
+        else
+            echo "└── runs/"
+            if [ -n "$RUN_NAME" ]; then
+                echo "    └── $RUN_NAME/"
+                echo "        └── results/"
+            fi
+            echo
+            echo "analysis/ and submission/ live in the portable folder instead (T23):"
+            echo "$ANALYSIS_DIR"
+            echo "├── analysis/     (source: analysis.md, scripts, figures)"
+            echo "└── submission/   (built package; safe to throw away)"
         fi
-        echo "            ├── analysis/     (source: analysis.md, scripts, figures)"
-        echo "            └── submission/   (built package; safe to throw away)"
+    else
+        echo "$BASE"
+        echo "(no --project given yet - nothing built on the local side until there is one)"
     fi
 fi

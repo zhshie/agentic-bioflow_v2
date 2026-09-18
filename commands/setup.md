@@ -49,7 +49,16 @@ assumes them.
 
 ## Which situation this is
 
-There are three, not two, and the third is the one that bites.
+There are four, not two, and the third is the one that bites.
+
+**T27: run `scripts/setup_verify.sh` first, before anything else below.**
+Exit 0 means this machine is already fully configured and `preflight.sh`
+passes — tell the user that in the words it printed, run `scripts/intro.sh
+--end setup`, and stop. Nothing past this point applies; walking a
+fully-working machine through repair's own checks would waste the several
+seconds each one takes for no reason. Any other exit code means there is
+something to do, and which of the remaining three situations applies is
+exactly what the rest of this section decides.
 
 Read the deployment settings — `docs/SETTINGS.md` says where they live, which
 depends on whether this deployment runs on the site or reaches it — and check
@@ -79,8 +88,58 @@ which is one question, not a setup.
 | | Adopt the existing one | A second, isolated environment |
 |---|---|---|
 | When | The user *is* the person who set it up, from another machine | A different member, or a deliberately separate run area |
-| What to do | Copy the existing `env.yaml` and token across; skip to **Repair** | Continue with **First run**, choosing fresh values below |
+| What to do | See "Adopting an existing deployment" below; then skip to **Repair** | Continue with **First run**, choosing fresh values below |
 | Watch for | `agent_java` / `agent_jar` under someone else's home — `drwx------` on this cluster, so unreadable to anyone else. Adopting those paths fails as "missing file" | Nothing is shared but the workspace and the allocation |
+
+### Adopting an existing deployment (T23, Fixes #17)
+
+**Ask first whether a portable folder exists for this person** — the shape
+`docs/SETTINGS.md`'s "The portable folder" section describes
+(`config/env.yaml` + `config/.seqera_token.enc`). If they built one on
+another machine, this is the whole of the "new machine" path; if not, this is
+also where a half-set-up site (only `agent_java`/`agent_jar`/`tw_bin`/
+`agent_connection` ever got written, never the values a person had to be
+asked for) gets fixed via `--reconstruct` instead.
+
+Which applies depends on `reach` (docs/SITE_ADAPTER.md, contract 6), because
+that decides which machine this conversation is even running on:
+
+- **`reach: local`** — this conversation runs on the site itself (a second
+  login node, or reusing the same account). There is no laptop to prepare and
+  no connection to open beyond what is already open, so it collapses to one
+  step: a portable folder exists → `scripts/settings.sh --adopt <path>`;
+  none exists → `scripts/settings.sh --reconstruct`, confirm each candidate
+  with the user, save each with `--set`.
+- **`reach: ssh`** — this conversation runs on the user's own machine, which
+  has never had any of this on it before. Three steps, in order, and the
+  third is the only one that cannot be automated:
+
+  1. **Local tools.** Whatever `scripts/preflight.sh` and `scripts/install_deps.sh
+     --cli-only` need on THIS machine — `jq`, `curl`, Seqera's CLI, WSL on
+     Windows (PITFALLS 16b/16f). Nothing site-side yet.
+  2. **`scripts/settings.sh --adopt <path>`** if a portable folder exists.
+     Points this machine at it (docs/SETTINGS.md) — no values are typed in by
+     hand, and nothing site-side is touched yet either. No portable folder →
+     `scripts/settings.sh --reconstruct` against the site's existing token
+     (docs/SETTINGS.md), confirming and `--set`-ing each candidate, plus
+     `site_host`/`site_user` from the user directly (Platform cannot answer
+     those) and the allocation the site bills to from whatever the site's own
+     accounting tool reports (docs/SETTINGS.md's reconstruct section names it).
+  3. **Opening the one connection this step needs.** This is the step that
+     stays manual no matter what: the site accepts no saved credential, only
+     a one-time code typed by the user (PITFALLS 16h). `scripts/preflight.sh`
+     will fail here the first time and print the line to paste — show it
+     exactly as printed and wait, the same as **Repair**'s own rule below.
+
+  After step 3 passes, decrypt the token if it has not been already:
+  `scripts/portable_root.sh decrypt-token` (asks for the passphrase the user
+  set when the folder was built) — skip this if `--reconstruct` was used
+  instead, since that path re-derives values against the site's own token
+  rather than carrying one across.
+
+This is also the moment to offer building a portable folder if this
+deployment does not have one yet, even outside a fresh adopt — see step 3½
+below, after Seqera is connected.
 
 For an isolated second environment, three values **must** differ from the
 existing one, and the reasons are not symmetrical:
@@ -102,6 +161,12 @@ Shared on purpose: `workspace_id`, and the allocation the site bills to.
 ---
 
 ## Repair
+
+**If a path in any report below looks surprising** — a settings file that
+should exist and does not, a token nobody can find, a `local_root` that turns
+out to be somewhere unexpected — `scripts/where.sh` prints every relevant
+absolute path on this machine, with an exists/missing mark on each one, purely
+read-only. Run it before guessing; it never changes anything.
 
 `scripts/preflight.sh`. It reports each part as OK or FAIL. Fix what failed —
 each FAIL line names the script that fixes it — then say plainly what was
@@ -273,6 +338,22 @@ alongside the site one (step 3, once `seqera_user` is known).
   through `scripts/fetch.sh` as a read-only copy; the analysis code and
   figures — what an IDE actually opens — live only on their machine and never
   on the site.
+
+  **T21: ask explicitly where on this machine** — do not silently accept the
+  default. Save the answer as `local_root` (default `$HOME/agentic-bioflow`,
+  same as before this question existed). Anywhere they already keep work is a
+  fine answer: a desktop folder, a folder a cloud drive syncs, anywhere —
+  `scripts/init_workspace.sh` builds under whatever this key names
+  (`docs/SETTINGS.md`).
+
+  If the path looks like a cloud-sync folder (Google Drive, OneDrive, Dropbox
+  and the like), `scripts/init_workspace.sh` itself prints a warning the next
+  time it runs against it — pass that warning along rather than re-deriving
+  it: large files (rawdata, results, container images) sync slowly and eat
+  quota, and the Seqera token and the Positron bridge connection file must
+  never be written there, encrypted or not. This is a warning, not a refusal
+  — a synced folder is a legitimate answer here (and is exactly what a
+  `portable_root`, below, is often chosen to be).
 - **On the site itself (only when outputs are huge).** No local skeleton.
   Measure before assuming this is the case: a normalised count matrix is
   about 973 KB, and a whole delivery directory is around 25 MB — ordinary
@@ -355,6 +436,23 @@ If ② asked for local analysis, also run
 `scripts/init_workspace.sh local --user <seqera_user>` on the user's own
 machine. Both calls print the tree they made; show it, since it is where
 everything from here on will be found.
+
+**T23: offer a portable folder here, once and briefly** — not a new numbered
+step, so it never blocks the ones after it. This is what lets *this* setup be
+the only one this person ever has to run: ask where they would keep one
+(`docs/SETTINGS.md`, "The portable folder" — a cloud-sync folder, an external
+drive, anywhere that follows them between machines), then
+`scripts/portable_root.sh init <path>`, asking them to set a passphrase for
+the token when it prompts. Already-configured machines running this later
+(not just during a fresh setup) is exactly how an in-place upgrade happens —
+`init` never overwrites what is already there, so there is no wrong time to
+offer it. If they decline, or have no second machine in mind, move on; nothing
+past this point depends on it.
+
+If the path they name looks like a cloud-sync folder, `scripts/portable_root.sh`
+warns rather than refuses (it is explicitly designed to often be one) — pass
+that warning along: large files never belong there, and the token stays
+encrypted the whole time it is.
 
 **4. The pieces this cluster does not ship.** `scripts/install_deps.sh`.
 It downloads a Java runtime, Seqera's agent, and Seqera's CLI into the

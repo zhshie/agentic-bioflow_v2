@@ -67,6 +67,12 @@ These are not style. Each one is a way this can produce something false.
    them appear in the output. A document that quietly omits something looks
    finished.
 
+**T29: resolve `<project-dir>` with `scripts/where.sh --project-paths
+<project>`, never by constructing it.** `analysis_dir` and `submission_dir`
+now depend on the local layout (old vs new) and on whether a portable folder
+has been adopted (T23) — the project name or path the user gave this command
+is not itself the answer to "where does `submission/` belong". Ask first.
+
 ## Steps
 
 1. **Take stock before assembling anything.** Read the project's `analysis.md`

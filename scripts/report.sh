@@ -28,6 +28,8 @@
 #   report.sh send [--yes] [--dry-run]
 #   report.sh --dir
 #
+# (scripts/where.sh calls this too - one formula, two callers.)
+#
 # `--dir` prints where the queue lives and nothing else - the one place that
 # computes this (reports_dir(), below) rather than a second copy of the same
 # fallback chain elsewhere. hooks/session_start.sh used to reimplement it as

@@ -71,6 +71,57 @@ done
 [ -n "$SETTINGS_FILE" ] || SETTINGS_FILE="${SETTINGS_CANDIDATES[0]}"
 unset _c
 
+# --- the portable folder (T23) ----------------------------------------------
+# `settings.sh --adopt <path>` writes a small pointer file naming a portable
+# folder (docs/SETTINGS.md) - deliberately a FILE, never an environment
+# variable: this repo's worst settings-file bugs (16j/16k, PITFALLS 25) were
+# all caused by a variable set in one shell's startup file and not another's,
+# and a file at the one location every shell agrees on ($HOME) has none of
+# that problem. Always the XDG location, never LAB_RUNS_DIR-relative: the
+# pointer is this MACHINE's own choice of which portable folder it uses, not
+# a site-side thing that would belong under LAB_RUNS_DIR/_personal.
+#
+# Resolution order this gives `setting()` below: pointer file -> portable
+# settings (the keys docs/SETTINGS.md marks portable) -> this machine's own
+# local settings file (SETTINGS_FILE, above - machine-derived keys, or every
+# key at all on a machine that has never adopted anything).
+PORTABLE_POINTER="${XDG_CONFIG_HOME:-${HOME:-}/.config}/agentic-bioflow/portable_root"
+PORTABLE_ROOT=""
+PORTABLE_SETTINGS_FILE=""
+# Same precedence as every other override in this file (site_shaped_write_
+# refusal, looks_synced_write_refusal): an explicit LAB_SETTINGS_FILE names
+# exactly one file and wins outright, so a caller pointing at a specific
+# fixture is never quietly joined by whatever pointer file happens to sit at
+# this machine's real $HOME - which matters for this repo's own test suite
+# as much as for a real deployment.
+if [ -z "${LAB_SETTINGS_FILE:-}" ] && [ -r "$PORTABLE_POINTER" ]; then
+    PORTABLE_ROOT="$(head -1 "$PORTABLE_POINTER" 2>/dev/null | tr -d '\r\n')"
+    if [ -n "$PORTABLE_ROOT" ] && [ -r "${PORTABLE_ROOT%/}/config/env.yaml" ]; then
+        PORTABLE_SETTINGS_FILE="${PORTABLE_ROOT%/}/config/env.yaml"
+        SETTINGS_FOUND=1
+    fi
+fi
+
+# The health check: called wherever a caller wants to explain a gap rather
+# than silently fall through to the local file's own default. A portable
+# folder that cannot be read right now is not the same failure as one never
+# adopted, and the two must not read alike - a member watching a cloud folder
+# finish syncing needs to hear that, not "run setup".
+portable_missing_reason() {
+    [ -n "$PORTABLE_ROOT" ] || return 1
+    [ -z "$PORTABLE_SETTINGS_FILE" ] || return 1
+    echo "This machine points at a portable folder (via $PORTABLE_POINTER):" >&2
+    printf '  %s\n' "$PORTABLE_ROOT" >&2
+    if [ ! -e "$PORTABLE_ROOT" ]; then
+        echo "  which does not exist here yet. A common cause: a cloud-sync folder" >&2
+        echo "  that has not finished syncing to this machine - wait for it, or check" >&2
+        echo "  the sync client." >&2
+    elif [ ! -r "${PORTABLE_ROOT%/}/config/env.yaml" ]; then
+        echo "  ${PORTABLE_ROOT%/}/config/env.yaml is missing or unreadable." >&2
+    fi
+    return 0
+}
+
 # What the search covered. An error that names one unreadable path tells the
 # reader nothing about where to put a file instead - which is the whole
 # difference between "not set up" and "set up somewhere I did not look".
@@ -246,20 +297,84 @@ site_control_path_default() {   # site_control_path_default <bridge-kind>
     fi
 }
 
+# --- T29: the local side's project layout -----------------------------------
+# One place, so scripts/init_workspace.sh (which builds these directories)
+# and scripts/where.sh (which answers "where are they" for commands/
+# downstream.md and commands/finish.md) compute the SAME path by
+# construction, never by a test asserting two independent formulas happen to
+# agree.
+#
+# Two decisions:
+#
+# 1. Old layout (<local_root>/<seqera_user>/projects/<project>/...) or new
+#    (<local_root>/projects/<project>/..., no <seqera_user> layer - matching
+#    the portable folder's own shape, T23/docs/SETTINGS.md) - decided PER
+#    PROJECT, by whether the old path already exists on this machine.
+#    docs/SETTINGS.md: "Migration: none" - a project already living at the
+#    old path keeps living there; only a brand new project gets the new one.
+# 2. `analysis/` and `submission/` specifically move into the portable
+#    folder instead, once one is adopted (T23) - never `rawdata/`/`runs/`/
+#    `results/`, which stay local because raw and re-fetchable data must
+#    never ride a cloud sync (docs/SETTINGS.md, T21's cloud_sync_caution).
+
+# local_layout_is_old <root> <user> <project> -> 0 (true) if the OLD,
+# <user>-layered path already exists for this project.
+local_layout_is_old() {
+    [ -n "${2:-}" ] && [ -n "${3:-}" ] && [ -d "${1%/}/$2/projects/$3" ]
+}
+
+# The base directory for rawdata/runs (and, with no portable folder,
+# analysis/submission too): <root>/<user>/projects/<project> for a project
+# that already lives there, <root>/projects/<project> for a new one.
+local_project_base() {   # local_project_base <root> <user> <project>
+    local root="${1%/}" user="${2:-}" project="${3:-}"
+    if local_layout_is_old "$root" "$user" "$project"; then
+        printf '%s\n' "$root/$user/projects/$project"
+    else
+        printf '%s\n' "$root/projects/$project"
+    fi
+}
+
+# Where analysis/ and submission/ actually live: the portable folder once one
+# is adopted (never a <seqera_user> layer there either - T23's own shape), or
+# alongside rawdata/runs otherwise, at whichever base local_project_base just
+# decided.
+local_analysis_base() {   # local_analysis_base <root> <user> <project>
+    if [ -n "$PORTABLE_ROOT" ]; then
+        printf '%s\n' "${PORTABLE_ROOT%/}/projects/${3:-}"
+    else
+        local_project_base "$1" "$2" "$3"
+    fi
+}
+
+# The one place a `key: value` line is actually pulled out of a file -
+# unchanged from before T23, just factored out so `setting()` can try it
+# against two files in order instead of duplicating the sed pipeline.
+_read_key() {   # _read_key <file> <key>
+    [ -r "$1" ] || return 0
+    sed -n "s/^[[:space:]]*${2}[[:space:]]*:[[:space:]]*//p" "$1" \
+        | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//' | head -1
+}
+
 setting() {
     local key="$1" fallback="${2:-}" val=""
-    if [ -r "$SETTINGS_FILE" ]; then
-        val=$(sed -n "s/^[[:space:]]*${key}[[:space:]]*:[[:space:]]*//p" "$SETTINGS_FILE" \
-              | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//' | head -1)
-    fi
+    # Portable first (T23): the values a person carries between machines
+    # take precedence over whatever a machine-local file happens to also
+    # have for the same key - the whole point of adopting is that the
+    # portable copy is now the one that is current.
+    [ -n "$PORTABLE_SETTINGS_FILE" ] && val="$(_read_key "$PORTABLE_SETTINGS_FILE" "$key")"
+    [ -n "$val" ] || val="$(_read_key "$SETTINGS_FILE" "$key")"
     if [ -n "$val" ]; then printf '%s\n' "$val"; return 0; fi
     if [ "$fallback" = "--required" ]; then
-        if [ "$SETTINGS_FOUND" = 1 ]; then
+        if [ -n "$PORTABLE_SETTINGS_FILE" ]; then
+            echo "missing '$key' in $PORTABLE_SETTINGS_FILE or $SETTINGS_FILE." >&2
+        elif [ "$SETTINGS_FOUND" = 1 ]; then
             echo "missing '$key' in $SETTINGS_FILE." >&2
         else
             echo "missing '$key', and there is no settings file to read it from." >&2
             settings_missing >&2
         fi
+        portable_missing_reason >&2
         echo "Ask the user for it - never guess it, and never copy it from another member." >&2
         return 1
     fi
@@ -462,15 +577,16 @@ refuse_site_shaped_write() {
 # LAB_SETTINGS_FILE wins outright, because a member who named the location
 # chose it.
 #
+# The name-matching itself is looks_cloud_synced() (scripts/utils/portable.sh)
+# - shared with the softer, non-refusing warning T21 added for `local_root`
+# and `portable_root`, which are allowed to be synced folders. This function
+# is the settings-file-specific decision built on top of that shared match.
+#
 #   0  refuse   1  fine, carry on
 looks_synced_write_refusal() {
     local path="$1"
     [ -z "${LAB_SETTINGS_FILE:-}" ] || return 1   # an explicit location wins outright
-    case "$path" in
-        *OneDrive*|*Dropbox*|*"Google Drive"*|*GoogleDrive*|*"Library/Mobile Documents"*|*Box*|*Nextcloud*)
-            return 0 ;;
-    esac
-    return 1
+    looks_cloud_synced "$path"
 }
 
 refuse_synced_write() {
@@ -490,6 +606,219 @@ refuse_synced_write() {
     echo "" >&2
     echo "To use this path anyway, set LAB_SETTINGS_FILE to it explicitly - naming the" >&2
     echo "location outright is treated as a deliberate choice." >&2
+}
+
+# T21: local_root and (from T23) portable_root are ALLOWED to be a synced
+# folder - unlike the settings file above, this only warns. A portable_root
+# is explicitly designed to often be one (docs/SETTINGS.md: "can be a cloud
+# sync folder, an external drive, any path"), so refusing it the way
+# refuse_synced_write() refuses the settings file would refuse the design
+# itself. What still has to be said: large files sync slowly and burn quota,
+# and the *decrypted* token and the Positron bridge connection file must never
+# live here even though the encrypted token (T23: config/.seqera_token.enc)
+# is fine to.
+#
+# Printed to stderr so a caller whose stdout is parsed or shown verbatim
+# (init_workspace.sh prints the tree it built on stdout) is never polluted by
+# it - the same split every other diagnostic in this file already keeps.
+cloud_sync_caution() {   # cloud_sync_caution <path> <setting-key>
+    local path="$1" key="$2"
+    looks_cloud_synced "$path" || return 0
+    echo "note: '$key' ($path) looks like it is inside a synced folder (OneDrive," >&2
+    echo "Dropbox, Google Drive, iCloud's Library/Mobile Documents, Box, Nextcloud," >&2
+    echo "...) - not a complete list, any folder that syncs anywhere is the same risk." >&2
+    echo "That's fine for $key itself, but:" >&2
+    echo "  - large files (rawdata, results, container images) sync slowly and will" >&2
+    echo "    eat the sync quota - keep those out of it." >&2
+    echo "  - the decrypted Seqera token and the Positron bridge connection file must" >&2
+    echo "    NEVER be written here (docs/SETTINGS.md)." >&2
+    return 0
+}
+
+# --- T23: settings.sh --adopt <path> ----------------------------------------
+# Points THIS machine at an existing portable folder by writing the pointer
+# file PORTABLE_POINTER (above) resolves. Never builds the folder itself -
+# scripts/portable_root.sh init does that, on the machine that first sets one
+# up; a machine adopting one someone else already built has nothing to build,
+# only to point at.
+adopt_portable_root() {   # adopt_portable_root <path>
+    local path="$1"
+    case "$path" in
+        /*) ;;
+        *) echo "the portable folder location must be an absolute path, not '$path'." >&2
+           return 2 ;;
+    esac
+    path="${path%/}"
+
+    # The health check, up front: catch a mistyped or not-yet-synced path
+    # before pointing anything at it, rather than after the next ordinary
+    # `setting` call fails somewhere else with no context at all.
+    if [ ! -e "$path" ]; then
+        echo "refusing to adopt $path: it does not exist on this machine." >&2
+        echo "A common cause: a cloud-sync folder that has not finished syncing here" >&2
+        echo "yet. Wait for it to appear (check the sync client), then try again." >&2
+        return 1
+    fi
+    if [ ! -r "$path/config/env.yaml" ]; then
+        echo "refusing to adopt $path: $path/config/env.yaml is missing or unreadable." >&2
+        echo "The folder exists but does not look like one 'scripts/portable_root.sh" >&2
+        echo "init' built - or it has not finished syncing yet. Build it there first," >&2
+        echo "on the machine that already has this deployment's settings, or wait." >&2
+        return 1
+    fi
+
+    local pointer_dir="${XDG_CONFIG_HOME:-${HOME:-}/.config}/agentic-bioflow"
+    mkdir -p "$pointer_dir" || { echo "could not create $pointer_dir" >&2; return 1; }
+    local pointer="$pointer_dir/portable_root" stamp
+    stamp="$(date +%Y%m%d%H%M%S 2>/dev/null || echo now)"
+
+    # Back up whatever this machine already had before pointing it anywhere
+    # else. Adopting must never be the thing that loses a machine's own
+    # settings, even a partial or stale one - the same care set_setting()
+    # already takes with a settings file it did not itself just create.
+    if [ -e "$SETTINGS_FILE" ]; then
+        cp -p "$SETTINGS_FILE" "${SETTINGS_FILE}.pre-adopt.$stamp" 2>/dev/null \
+            && echo "backed up this machine's settings to ${SETTINGS_FILE}.pre-adopt.$stamp"
+    fi
+    [ -e "$pointer" ] && cp -p "$pointer" "${pointer}.pre-adopt.$stamp" 2>/dev/null
+
+    printf '%s\n' "$path" > "$pointer" || { echo "could not write $pointer" >&2; return 1; }
+    chmod 600 "$pointer"
+    echo "adopted $path"
+    echo "settings now resolve: $pointer -> $path/config/env.yaml -> $SETTINGS_FILE"
+    echo "(portable keys from the first of those two that has them; everything else -"
+    echo "site_bridge, ssh_control_path, tw_bin, local_root, agent_java/agent_jar -"
+    echo "still comes from this machine's own file, docs/SETTINGS.md.)"
+}
+
+# --- T23: settings.sh --reconstruct -----------------------------------------
+# The fallback for issue #17's actual reported shape: no portable folder, and
+# the site's own _personal/env.yaml only ever held agent_java/agent_jar/
+# tw_bin/agent_connection - the values scripts/install_deps.sh and
+# scripts/agent_ctl.sh discover on their own, never the ones a person has to
+# be asked for. Everything Platform can answer is read back here as a
+# CANDIDATE only; nothing is written automatically (docs/SETTINGS.md: "must
+# be asked for rather than guessed") - confirm each with
+# `scripts/settings.sh --set <key> <value>`.
+#
+# tw's exact table output was not measured against a real `tw` binary on this
+# machine (none installed here, no network to fetch one - PRINCIPLES.md
+# invariant 8: measure or read the source before claiming). Parsing here
+# indexes columns by their header text rather than a fixed position, and
+# falls back to printing the raw table when it cannot find what it is looking
+# for - a degraded answer, never a silently wrong one.
+_reconstruct_tw_bin() {
+    local t; t="${TW_BIN:-$(setting tw_bin)}"
+    [ -n "$t" ] || t="tw"
+    command -v "$t" >/dev/null 2>&1 && printf '%s\n' "$t"
+}
+
+# Index-by-header-name table reader for tw's `|`-delimited list output (the
+# one shape actually confirmed in this repo: scripts/preflight.sh parses
+# `tw compute-envs view` the same way). <label> is what each candidate line
+# is printed as.
+_table_candidates() {   # _table_candidates <table-text> <label>
+    local text="$1" label="$2" header
+    header=$(grep -F '|' <<<"$text" | grep -iE '(^| )id( |\|)' | head -1)
+    if [ -z "$header" ]; then
+        echo "  (could not find an 'Id' column in this table - read it yourself:)"
+        sed 's/^/  | /' <<<"$text"
+        return 0
+    fi
+    local idx nidx
+    idx=$(awk -F'|' -v h="$header" 'BEGIN{
+        n=split(h,a,"|")
+        for(i=1;i<=n;i++){g=a[i]; gsub(/^[ \t]+|[ \t]+$/,"",g); if (tolower(g)=="id"){print i; exit}}
+    }')
+    nidx=$(awk -F'|' -v h="$header" 'BEGIN{
+        n=split(h,a,"|")
+        for(i=1;i<=n;i++){g=a[i]; gsub(/^[ \t]+|[ \t]+$/,"",g); if (tolower(g)=="name"){print i; exit}}
+    }')
+    [ -n "$idx" ] || { echo "  (no 'Id' column - read the raw table yourself:)"; sed 's/^/  | /' <<<"$text"; return 0; }
+    awk -F'|' -v idx="$idx" -v nidx="${nidx:-0}" -v label="$label" -v hdr="$header" '
+        $0 == hdr { next }
+        /^[[:space:]|:+=-]+$/ { next }
+        NF >= idx {
+            id=$idx; gsub(/^[ \t]+|[ \t]+$/,"",id)
+            if (id == "" || tolower(id) == "id") next
+            name=""
+            if (nidx > 0 && NF >= nidx) { name=$nidx; gsub(/^[ \t]+|[ \t]+$/,"",name) }
+            print "  candidate " label ": " id (name != "" ? " (" name ")" : "")
+        }' <<<"$text"
+}
+
+reconstruct_settings() {
+    local tw; tw="$(_reconstruct_tw_bin)"
+    if [ -z "$tw" ]; then
+        echo "no working 'tw' found (the tw_bin setting, or on PATH) - cannot" >&2
+        echo "reconstruct anything. Install it first: scripts/install_deps.sh --cli-only." >&2
+        return 1
+    fi
+
+    local tokf; tokf="$(token_file)"
+    if [ -z "${TOWER_ACCESS_TOKEN:-}" ] && [ -r "$tokf" ]; then
+        TOWER_ACCESS_TOKEN="$(cat "$tokf")"; export TOWER_ACCESS_TOKEN
+    fi
+    if [ -z "${TOWER_ACCESS_TOKEN:-}" ]; then
+        echo "no Seqera token available (checked $tokf and \$TOWER_ACCESS_TOKEN) -" >&2
+        echo "reconstruction needs one to ask Platform anything at all. See" >&2
+        echo "docs/SETTINGS.md / commands/setup.md step 3 for how to get one." >&2
+        return 1
+    fi
+
+    echo "Reconstructing from Seqera Platform - every line below is a CANDIDATE."
+    echo "Confirm each one with the user, then save it yourself:"
+    echo "  scripts/settings.sh --set <key> <value>"
+    echo "Nothing here is written automatically."
+    echo
+
+    local info user_line
+    info="$("$tw" info 2>&1)"
+    user_line=$(grep -iE 'user' <<<"$info" | head -1)
+    echo "-- seqera_user, from '$tw info' --"
+    if [ -n "$user_line" ]; then
+        # The label/value separator was not measured (no real `tw` here to
+        # check against - see this function's own header comment): a ':' or
+        # '|' on the line is trusted as that separator when present, and
+        # otherwise this falls back to the LAST whitespace-separated field,
+        # which is right for a two-column "label   value" layout too.
+        local cand
+        case "$user_line" in
+            *:*|*'|'*)
+                cand="${user_line}"
+                cand="${cand##*:}"
+                cand="${cand##*|}" ;;
+            *)
+                cand="${user_line##* }" ;;
+        esac
+        cand="$(sed 's/^[[:space:]]*//;s/[[:space:]]*$//' <<<"$cand")"
+        echo "  candidate seqera_user: $cand"
+        echo "  (from the line: $user_line)"
+    else
+        echo "  (no line mentioning a user - read the raw output yourself:)"
+        sed 's/^/  | /' <<<"$info"
+    fi
+    echo
+
+    echo "-- workspace_id, from '$tw workspaces list' --"
+    _table_candidates "$("$tw" workspaces list 2>&1)" workspace_id
+    echo
+
+    echo "-- compute_env --"
+    echo "  needs a confirmed workspace_id first, so this is not run automatically:"
+    echo "    $tw compute-envs list -w <the workspace_id you just confirmed>"
+    echo "  confirm against the Name column, which is what the 'compute_env' setting"
+    echo "  actually stores (docs/SETTINGS.md)."
+    echo
+
+    echo "-- slurm_account --"
+    echo "  cannot be read from Platform at all - it is the site's own allocation,"
+    echo "  never Seqera's. On the site, ask the user to check:"
+    echo "    sacctmgr show associations user=\$USER format=account"
+    echo "    sshare -U -u \$USER"
+    echo "  and confirm which one this deployment should bill to. There is"
+    echo "  deliberately no default here (docs/SETTINGS.md) - never guess it, and"
+    echo "  never copy it from another member."
 }
 
 # Which startup file an export has to go into, and the line to put there.
@@ -553,19 +882,30 @@ token_state() {
         esac
     elif [ -e "$f" ]; then
         printf 'present but unreadable  %s\n' "$f"
+    elif [ -n "$PORTABLE_ROOT" ] && [ -r "${PORTABLE_ROOT%/}/config/.seqera_token.enc" ]; then
+        # T23: distinguish "never had one" from "have one, just not decrypted
+        # here yet" - the second is a one-command fix, not a trip back to
+        # setup step 3.
+        printf 'not decrypted yet - run scripts/portable_root.sh decrypt-token\n'
     else
         printf 'not found - looked beside the settings file\n'
     fi
 }
 
 settings_summary() {
-    [ "$SETTINGS_FOUND" = 1 ] || { settings_missing >&2; return 1; }
+    [ "$SETTINGS_FOUND" = 1 ] || { settings_missing >&2; portable_missing_reason >&2; return 1; }
     local r='  %-20s %s\n' host
     host="$(setting site_host)"
     echo "This deployment:"
     echo
     # shellcheck disable=SC2059
-    printf "$r" "settings file"       "$SETTINGS_FILE"
+    if [ -n "$PORTABLE_SETTINGS_FILE" ]; then
+        printf "$r" "portable folder"     "$PORTABLE_ROOT"
+        printf "$r" "portable settings"   "$PORTABLE_SETTINGS_FILE"
+        printf "$r" "machine settings"    "$SETTINGS_FILE"
+    else
+        printf "$r" "settings file"       "$SETTINGS_FILE"
+    fi
     printf "$r" "site account"        "$(setting site_user 'not set')"
     printf "$r" "site"                "$(setting reach local)${host:+ - $host}"
     printf "$r" "seqera account"      "$(setting seqera_user 'not set')"
@@ -581,11 +921,23 @@ settings_summary() {
     # same three-way read here, so a filesystem that cannot hold 600 (B1) is
     # not contradicted two lines later by a sentence that was never checked.
     local _sp; _sp="$(file_privacy "$SETTINGS_FILE")"
-    case "${_sp%% *}" in
-        private) echo "All of it is saved at $SETTINGS_FILE, ${_sp#* }." ;;
-        unknown) echo "All of it is saved at $SETTINGS_FILE; ${_sp#* }." ;;
-        *)       echo "All of it is saved at $SETTINGS_FILE, ${_sp#* }." ;;
-    esac
+    if [ -n "$PORTABLE_SETTINGS_FILE" ]; then
+        # T23: not "all of it" any more - the portable keys above came from
+        # $PORTABLE_SETTINGS_FILE, which this repeats what --adopt already
+        # printed rather than re-checking its privacy a second time here.
+        echo "The portable keys above come from $PORTABLE_SETTINGS_FILE."
+        case "${_sp%% *}" in
+            private) echo "Everything else is saved at $SETTINGS_FILE, ${_sp#* }." ;;
+            unknown) echo "Everything else is saved at $SETTINGS_FILE; ${_sp#* }." ;;
+            *)       echo "Everything else is saved at $SETTINGS_FILE, ${_sp#* }." ;;
+        esac
+    else
+        case "${_sp%% *}" in
+            private) echo "All of it is saved at $SETTINGS_FILE, ${_sp#* }." ;;
+            unknown) echo "All of it is saved at $SETTINGS_FILE; ${_sp#* }." ;;
+            *)       echo "All of it is saved at $SETTINGS_FILE, ${_sp#* }." ;;
+        esac
+    fi
     echo "Every command here finds it there; none of this has to be entered again."
 }
 
@@ -613,6 +965,10 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
         --profile-export)
             profile_export "${2:?usage: settings.sh --profile-export <NAME> <VALUE>}" \
                            "${3?usage: settings.sh --profile-export <NAME> <VALUE>}" ;;
+        --adopt)
+            adopt_portable_root "${2:?usage: settings.sh --adopt <path>}" ;;
+        --reconstruct)
+            reconstruct_settings ;;
         *)
             setting "${1:?usage: settings.sh <key> [default|--required] | --summary | --set <key> <value>}" \
                     "${2:-}" ;;

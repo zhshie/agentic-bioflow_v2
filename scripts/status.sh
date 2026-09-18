@@ -15,6 +15,10 @@
 #
 # Token state is never printed, only present/absent - inspect_sides.sh and
 # settings.sh --summary already keep that rule; this just carries it through.
+#
+# T22: which settings file is actually in use, and the token's state, are
+# scripts/where.sh's own report - this asks it instead of re-deriving that
+# pair of lines from settings.sh --summary a second time.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
@@ -91,12 +95,15 @@ echo
 echo "== Setup progress =="
 PF=$(bash "$HERE/preflight.sh" 2>&1); PF_RC=$?
 printf '%s\n' "$PF"
-# The two lines from --summary that say where things live and whether the
-# token exists - the rest of that report is settings values already visible
-# above via inspect_sides.sh, and repeating them here is exactly the
-# re-implementation this script is told not to do.
-SUMMARY=$(bash "$HERE/settings.sh" --summary 2>&1)
-grep -E '^[[:space:]]*(settings file|token)[[:space:]]' <<<"$SUMMARY" | sed 's/^/  /'
+# Two lines that say where things live and whether the token exists - the
+# rest of that report is settings values already visible above via
+# inspect_sides.sh, and repeating them here is exactly the re-implementation
+# this script is told not to do. Sourced from where.sh (T22), the one place
+# both "which settings file is actually in use" and the token's own state now
+# live - not settings.sh --summary a second time.
+WHERE=$(bash "$HERE/where.sh" 2>&1)
+printf '  %-20s %s\n' "settings file" "$(sed -n 's/^  in use: //p' <<<"$WHERE" | head -1)"
+printf '  %-20s %s\n' "token" "$(awk '/^== token ==/{getline; print; exit}' <<<"$WHERE" | sed 's/^ *//')"
 echo
 
 echo "== Next step =="
