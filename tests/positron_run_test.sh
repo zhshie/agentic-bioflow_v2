@@ -80,8 +80,24 @@ raise ImportError("no module named zmq")   # findable, not importable
 PY
 JC="$TMP/jc_ok"
 
+# Ladder rung 1 (the bridge) and rung 3's presence guess both default to
+# "not there" / "absent" here, on purpose: every test below that does not
+# touch them explicitly is exercising rungs 2/3 exactly as this file did
+# before the bridge existed, and must not start passing or failing by
+# whatever Positron install state happens to be true of the machine running
+# this suite (tests/run_all.sh's own "no network, no host-state dependence"
+# rule - the same reason POSITRON_RUN_SUPERVISOR_DIR/POSITRON_RUN_FIXTURE
+# exist instead of a real kallichore). A test for rung 1 or for the other two
+# rung-3 guesses sets BRIDGE_FILE/BRIDGE_FIXTURE/PRESENCE for its own block
+# and restores these defaults afterward.
+BRIDGE_FILE="$TMP/no-such-bridge.json"
+BRIDGE_FIXTURE=""
+PRESENCE="absent"
+
 run() { # run <args...> -> sets $out and $rc
   out=$(POSITRON_RUN_SUPERVISOR_DIR="$TMP/sup" POSITRON_RUN_FIXTURE="$TMP/fx" \
+        POSITRON_RUN_BRIDGE_FILE="$BRIDGE_FILE" POSITRON_RUN_BRIDGE_FIXTURE="$BRIDGE_FIXTURE" \
+        POSITRON_RUN_PRESENCE="$PRESENCE" \
         PYTHONPATH="$JC" "$PY" "$S" "$@" 2>&1); rc=$?
 }
 
@@ -256,17 +272,41 @@ else echo "FAIL: quote not escaped for R  <<$out>>"; fails=$((fails+1)); fi
 # No console, and the refusal has to be usable. This is the one step the tool
 # will not do for the person, so "no session found" is not an acceptable
 # message - it has to say what to do, and offer to hold the step open.
+#
+# Nothing found via either rung is ladder rung 3, and which of its three
+# messages is right depends on positron_presence() - PRESENCE overrides that
+# guess for each case in turn, the same seam BRIDGE_FILE/BRIDGE_FIXTURE are
+# for rung 1.
 # --------------------------------------------------------------------------
 rm -rf "$TMP/sup" "$TMP/fx"; mkdir -p "$TMP/sup"
-printf '%-58s ' "no console: the refusal is a set of instructions"
+
+PRESENCE="absent"
+t "rung 3, absent: no IDE found here at all" 2 "was found either" \
+    -- --lang r --code '1+1' --workspace "$TMP/work" --dry-run
 run --lang r --code '1+1' --workspace "$TMP/work" --dry-run
-ok=1
-for phrase in "Nothing can run until one exists" "session picker" "--wait" "--check" \
-             "different machine" "Remote-SSH"; do
-  grep -qF -- "$phrase" <<<"$out" || { echo "FAIL: guidance lacks '$phrase'  <<$out>>"; ok=0; break; }
-done
-[ "$rc" = 2 ] || { echo "FAIL: rc $rc, wanted 2"; ok=0; }
-[ "$ok" = 1 ] && echo "ok" || fails=$((fails+1))
+printf '%-58s ' "rung 3, absent: still offers the batch path"
+if grep -qF -- "Rscript <script>.R" <<<"$out" && grep -qF -- "a supported path, not a fallback" <<<"$out"; then
+  echo ok
+else echo "FAIL: no batch offer  <<$out>>"; fails=$((fails+1)); fi
+
+PRESENCE="installed"
+t "rung 3, installed: distinct from 'not found at all'" 2 \
+    "looks to be installed on this machine but not running" \
+    -- --lang r --code '1+1' --workspace "$TMP/work" --dry-run
+run --lang r --code '1+1' --workspace "$TMP/work" --dry-run
+printf '%-58s ' "rung 3, installed: still offers the batch path"
+grep -qF -- "Rscript <script>.R" <<<"$out" && echo ok || { echo "FAIL: no batch offer  <<$out>>"; fails=$((fails+1)); }
+
+PRESENCE="running"
+t "rung 3, running: names the bridge as the fix, not 'open Positron'" 2 \
+    "Positron is running on this machine, but neither the bridge" \
+    -- --lang r --code '1+1' --workspace "$TMP/work" --dry-run
+run --lang r --code '1+1' --workspace "$TMP/work" --dry-run
+printf '%-58s ' "rung 3, running: gives the one-line install command"
+grep -qF -- "positron --install-extension" <<<"$out" \
+  && grep -qF -- "extensions/positron-bridge" <<<"$out" \
+  && echo ok || { echo "FAIL: no install command  <<$out>>"; fails=$((fails+1)); }
+PRESENCE="absent"   # restore the hermetic default for everything below
 
 printf '%-58s ' "--wait holds, then gives up without running"
 start=$(date +%s)
@@ -438,6 +478,84 @@ PY
 if [ "$wl_out" != "ALLOK" ]; then echo "FAIL: $wl_out"; fails=$((fails+1)); else echo "ok"; fi
 
 # --------------------------------------------------------------------------
+# Ladder rung 1: the bridge extension (GitHub issue #14).
+#
+# read_bridge()/bridge_probe()/bridge_run() never touch a real socket in a
+# test any more than _http_get does - POSITRON_RUN_BRIDGE_FIXTURE is the same
+# kind of seam POSITRON_RUN_FIXTURE already is for kallichore's GETs, keyed
+# by one canned {"status", "body"} (or {"refuse": true} for "the connection
+# itself failed", i.e. a stale file). $TMP/sup and $TMP/fx are deliberately
+# left holding the r-both/py-both pair from the block above for the whole of
+# this section: rung 1 must never even look at them when it can answer, and
+# the one case that should fall through to rung 2 needs them there to fall
+# through to.
+# --------------------------------------------------------------------------
+mkdir -p "$TMP/bridge"
+cat > "$TMP/bridge/ok.json" <<'JSON'
+{"port": 1234, "token": "bridge-test-token-not-real", "positron_version": "2026.04.0", "pid": 999}
+JSON
+cat > "$TMP/bridge/resp_ok.json" <<'JSON'
+{"status": 200, "body": {"ok": true, "status": "ok", "error": null,
+ "new_images": ["analysis/figures/plot.png"]}}
+JSON
+cat > "$TMP/bridge/resp_err.json" <<'JSON'
+{"status": 200, "body": {"ok": false, "status": "error", "error": "Error: boom",
+ "new_images": []}}
+JSON
+cat > "$TMP/bridge/resp_refuse.json" <<'JSON'
+{"refuse": true}
+JSON
+
+BRIDGE_FILE="$TMP/bridge/ok.json"
+BRIDGE_FIXTURE="$TMP/bridge/resp_ok.json"
+
+t "bridge: --check reports it and exits 0, no kallichore probing" 0 \
+    "positron 2026.04.0" -- --check
+run --check
+printf '%-58s ' "bridge --check: names the primary-path port and pid"
+grep -qF -- "127.0.0.1:1234" <<<"$out" && grep -qF -- "pid 999" <<<"$out" \
+  && echo ok || { echo "FAIL: missing port/pid  <<$out>>"; fails=$((fails+1)); }
+
+t "bridge: dry-run names the endpoint, runs nothing" 0 \
+    "would run via bridge 127.0.0.1:1234" \
+    -- --lang r --code '1+1' --dry-run
+
+t "bridge: a real run needs no jupyter_client at all" 0 "" \
+    -- --lang r --code '1+1'
+JC_SAVE="$JC"; JC="$TMP/jc_bad"
+t "bridge: still true with jupyter_client actually broken" 0 "" \
+    -- --lang r --code '1+1'
+JC="$JC_SAVE"
+
+run --lang r --code '1+1'
+printf '%-58s ' "bridge: a successful run reports the new image by path"
+grep -qF -- "new image  analysis/figures/plot.png" <<<"$out" \
+  && echo ok || { echo "FAIL: no new-image line  <<$out>>"; fails=$((fails+1)); }
+
+BRIDGE_FIXTURE="$TMP/bridge/resp_err.json"
+t "bridge: a failed run prints the console's error and exits 1" 1 "Error: boom" \
+    -- --lang r --code '1+1'
+
+printf '%-58s ' "bridge: takes priority over kallichore even when both answer"
+BRIDGE_FIXTURE="$TMP/bridge/resp_ok.json"
+run --lang r --code '1+1' --workspace "$TMP/work"   # r-both/py-both still live in $TMP/sup
+if grep -qF -- "new image  analysis/figures/plot.png" <<<"$out" && [ "$rc" = 0 ]; then echo ok
+else echo "FAIL: bridge did not win  <<$out>>"; fails=$((fails+1)); fi
+
+printf '%-58s ' "bridge: a stale file falls through to kallichore, not a dead end"
+BRIDGE_FIXTURE="$TMP/bridge/resp_refuse.json"
+run --lang r --code '1+1' --workspace "$TMP/work" --dry-run
+if grep -qF -- "Falling back to the" <<<"$out" \
+   && grep -qF -- "older kallichore contract" <<<"$out" \
+   && grep -qF -- "would run in r-both" <<<"$out"; then
+  echo ok
+else echo "FAIL: no fallback to rung 2  <<$out>>"; fails=$((fails+1)); fi
+
+# Restore the hermetic defaults every test below this point relies on.
+BRIDGE_FILE="$TMP/no-such-bridge.json"
+BRIDGE_FIXTURE=""
+
+# --------------------------------------------------------------------------
 # The protocol library. It is imported at the last possible moment - inside
 # execute(), after a session has been found and after the file holding that
 # session's HMAC key has been written - so without a check the failure arrives
@@ -484,6 +602,7 @@ else echo "ok"; fi
 # --------------------------------------------------------------------------
 printf '%-58s ' "the documented bare-path invocation runs"
 bp_out=$(POSITRON_RUN_SUPERVISOR_DIR="$TMP/sup" POSITRON_RUN_FIXTURE="$TMP/fx" \
+         POSITRON_RUN_BRIDGE_FILE="$BRIDGE_FILE" POSITRON_RUN_PRESENCE="$PRESENCE" \
          PYTHONPATH="$JC" "$S" --check 2>&1); bp_rc=$?
 if [ "$bp_rc" = 0 ]; then echo ok
 else echo "FAIL: rc=$bp_rc <<$bp_out>>"; fails=$((fails+1)); fi
