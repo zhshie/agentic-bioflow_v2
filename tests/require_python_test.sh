@@ -45,7 +45,9 @@ grep -qF "fencing its own" <<<"$out" && { echo "FAIL"; fails=$((fails+1)); } || 
 mkpy 'echo "bash: /usr/bin/python3: Permission denied" >&2; exit 126'
 out=$(PATH="$TMP:$PATH" bash "$ROOT/scripts/egress_ctl.sh" status 2>&1)
 t "egress_ctl surfaces it instead of a bare denial" "module avail python" "$out"
-out=$(PATH="$TMP:$PATH" bash "$ROOT/scripts/agent_ctl.sh" status 2>&1)
+# agent_ctl.sh needs an execution area before it reaches the python check;
+# CI has no LAB_RUNS_DIR, so hand it a scratch one.
+out=$(LAB_RUNS_DIR="$TMP/runs" PATH="$TMP:$PATH" bash "$ROOT/scripts/agent_ctl.sh" status 2>&1)
 t "agent_ctl surfaces it too"                       "module avail python" "$out"
 
 echo

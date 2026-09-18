@@ -141,21 +141,9 @@ echo "$out" | grep -qF "LAB_RUNS_DIR is not set" && echo ok || { echo "FAIL: def
 # cannot is let through exactly as it would be with jq present and nothing
 # matching - silent, no extra prompt - and only a real match still blocks.
 #
-# Simply dropping jq's directory from PATH is not safe here: on this box jq
-# and bash both live in /usr/bin, so removing the directory removes the shell
-# the hook needs to even start. Instead, a shim directory gets a symlink to
-# every OTHER binary that was in jq's directory, and PATH swaps that one
-# directory for the shim - everything else on PATH is untouched.
-REAL_JQ=$(command -v jq)
-JQDIR=$(dirname "$REAL_JQ")
-SHIMDIR="$TMP/no_jq_bin"
-mkdir -p "$SHIMDIR"
-for _f in "$JQDIR"/*; do
-    _b=$(basename "$_f")
-    [ "$_b" = jq ] && continue
-    ln -sf "$_f" "$SHIMDIR/$_b" 2>/dev/null
-done
-NOJQ_PATH=$(printf '%s' "$PATH" | sed "s#${JQDIR}#${SHIMDIR}#")
+# How jq is hidden without also losing bash: tests/lib/nojq_path.sh.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/nojq_path.sh"
+NOJQ_PATH=$(nojq_path "$TMP") || { echo "cannot build a PATH without jq"; exit 1; }
 
 nojq() { # nojq <command-string>
     python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" \

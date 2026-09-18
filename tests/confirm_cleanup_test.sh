@@ -68,22 +68,10 @@ echo
 # exactly this path gave up on the safety net and moved to a bare PowerShell
 # window instead, which has none of it).
 #
-# Dropping jq's whole directory from PATH is not safe here - on this box jq
-# and bash both live in /usr/bin, and removing that directory removes the
-# shell the hook needs to start at all. A shim directory instead gets a
-# symlink to every OTHER binary that lived beside jq, and PATH swaps that one
-# directory for the shim; everything else on PATH is untouched.
+# How jq is hidden without also losing bash: tests/lib/nojq_path.sh.
 TMP2=$(mktemp -d); trap 'rm -rf "$TMP2"' EXIT
-REAL_JQ=$(command -v jq)
-JQDIR=$(dirname "$REAL_JQ")
-SHIMDIR="$TMP2/no_jq_bin"
-mkdir -p "$SHIMDIR"
-for _f in "$JQDIR"/*; do
-    _b=$(basename "$_f")
-    [ "$_b" = jq ] && continue
-    ln -sf "$_f" "$SHIMDIR/$_b" 2>/dev/null
-done
-NOJQ_PATH=$(printf '%s' "$PATH" | sed "s#${JQDIR}#${SHIMDIR}#")
+. "$(dirname "${BASH_SOURCE[0]}")/lib/nojq_path.sh"
+NOJQ_PATH=$(nojq_path "$TMP2") || { echo "cannot build a PATH without jq"; exit 1; }
 
 nojq() { # nojq <command-string>
     python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" \

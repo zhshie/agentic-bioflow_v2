@@ -357,21 +357,9 @@ t "U6: asked and answered '沒有' - allowed (content not judged)" allow "$W_E" 
 # exactly this path gave up on the safety net and moved to a bare PowerShell
 # window instead, which has none of it).
 #
-# Dropping jq's whole directory from PATH is not safe here - jq and bash both
-# live in /usr/bin on this box, and removing that directory removes the shell
-# the hook needs to start at all. A shim directory gets a symlink to every
-# OTHER binary that lived beside jq, and PATH swaps that one directory for the
-# shim; everything else on PATH is untouched.
-REAL_JQ=$(command -v jq)
-JQDIR=$(dirname "$REAL_JQ")
-SHIMDIR="$TMP/no_jq_bin"
-mkdir -p "$SHIMDIR"
-for _f in "$JQDIR"/*; do
-    _b=$(basename "$_f")
-    [ "$_b" = jq ] && continue
-    ln -sf "$_f" "$SHIMDIR/$_b" 2>/dev/null
-done
-NOJQ_PATH=$(printf '%s' "$PATH" | sed "s#${JQDIR}#${SHIMDIR}#")
+# How jq is hidden without also losing bash: tests/lib/nojq_path.sh.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/nojq_path.sh"
+NOJQ_PATH=$(nojq_path "$TMP") || { echo "cannot build a PATH without jq"; exit 1; }
 
 printf '%-58s ' "(b) no jq + a gated write - still BLOCKED"
 out=$(python3 -c '

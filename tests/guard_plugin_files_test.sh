@@ -200,16 +200,8 @@ t "root mentioned in one segment, an unrelated rm in another - allow" allow \
 echo
 echo "== no jq on PATH: fail closed, exit 2, not silent =="
 TMP2=$(mktemp -d)
-REAL_JQ=$(command -v jq)
-JQDIR=$(dirname "$REAL_JQ")
-SHIMDIR="$TMP2/no_jq_bin"
-mkdir -p "$SHIMDIR"
-for _f in "$JQDIR"/*; do
-    _b=$(basename "$_f")
-    [ "$_b" = jq ] && continue
-    ln -sf "$_f" "$SHIMDIR/$_b" 2>/dev/null
-done
-NOJQ_PATH=$(printf '%s' "$PATH" | sed "s#${JQDIR}#${SHIMDIR}#")
+. "$(dirname "${BASH_SOURCE[0]}")/lib/nojq_path.sh"
+NOJQ_PATH=$(nojq_path "$TMP2") || { echo "cannot build a PATH without jq"; exit 1; }
 
 # The JSON is fully materialised by command substitution BEFORE it is fed to
 # the hook (a heredoc, not a live pipe from python): guard_plugin_files.sh
