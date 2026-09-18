@@ -63,7 +63,10 @@ t "$D -rf $P/null"                                   warn "the real null/ leftov
 echo
 
 # ---------------------------------------------------------------------------
-# No jq: fail CLOSED (PITFALLS 28), not the old silent pass-through.
+# T1: no jq is SCOPED fail-closed (Fixes #15), not a blanket refusal - see
+# hooks/confirm_launch.sh's header for the full reasoning (a member on
+# exactly this path gave up on the safety net and moved to a bare PowerShell
+# window instead, which has none of it).
 #
 # Dropping jq's whole directory from PATH is not safe here - on this box jq
 # and bash both live in /usr/bin, and removing that directory removes the
@@ -87,19 +90,20 @@ nojq() { # nojq <command-string>
         | PATH="$NOJQ_PATH" bash "$H"
 }
 
-printf '%-58s ' "no jq: a real delete is BLOCKED, not silently allowed"
+printf '%-58s ' "(b) no jq + a real delete - still BLOCKED"
 out=$(nojq "$D -rf $P/results" 2>"$TMP2/err1"); rc=$?
 if [ "$rc" = 2 ] && [ -z "$out" ]; then echo "ok (rc=2, no stdout)"; else
     echo "FAIL: rc=$rc out='$out'"; fails=$((fails+1)); fi
 
-printf '%-58s ' "no jq: a harmless command is ALSO blocked, not waved through"
+printf '%-58s ' "(a) no jq + a harmless command - exit 0, no noise"
 out=$(nojq "ls -la" 2>"$TMP2/err2"); rc=$?
-if [ "$rc" = 2 ]; then echo "ok (rc=2)"; else
-    echo "FAIL: rc=$rc (should refuse even harmless commands - it cannot tell them apart without jq)"
+err2=$(cat "$TMP2/err2" 2>/dev/null)
+if [ "$rc" = 0 ] && [ -z "$out" ] && [ -z "$err2" ]; then echo "ok (rc=0, silent)"; else
+    echo "FAIL: rc=$rc out='$out' err='$err2' (should pass through silently - it cannot look deletion-shaped)"
     fails=$((fails+1))
 fi
 
-printf '%-58s ' "no jq: stderr names the fix, per platform"
+printf '%-58s ' "no jq: BLOCKED case's stderr names the fix, per platform"
 err=$(cat "$TMP2/err1" 2>/dev/null)
 if echo "$err" | grep -qF "brew install jq" && echo "$err" | grep -qF "apt install jq"; then
     echo ok
@@ -116,18 +120,43 @@ echo
 # A jq that EXISTS but cannot run - wrong architecture, a missing library, a
 # Windows jq.exe on a Git Bash PATH - passed the earlier `command -v` form of
 # this guard and then failed every parse, which is the silent-gate failure the
-# guard exists to stop. Measured: the guard had to probe, not just look.
-echo "== a broken jq is as bad as no jq =="
+# guard exists to stop. Measured: the guard had to probe, not just look. The
+# scoping applies here too.
+echo "== a broken jq is judged the same scoped way as a missing one =="
 BADDIR=$(mktemp -d)
 printf '#!/bin/sh\nexit 127\n' > "$BADDIR/jq"; chmod +x "$BADDIR/jq"
-out=$(echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf /x"}}' \
+out=$(echo '{"tool_name":"Bash","tool_input":{"command":"'"$D"' -rf /x"}}' \
       | env PATH="$BADDIR:$PATH" bash "$H" 2>&1)
 rc=$?
-rm -rf "$BADDIR"
-printf '%-64s ' "refuses when jq exists but cannot run"
+printf '%-64s ' "refuses a deletion-shaped command when jq exists but cannot run"
 [ "$rc" = 2 ] && echo ok || { echo "FAIL: exit $rc, wanted 2"; fails=$((fails+1)); }
 printf '%-64s ' "and says so instead of failing silently"
 case "$out" in *BLOCKED*) echo ok ;; *) echo "FAIL: said '$out'"; fails=$((fails+1)) ;; esac
+
+out=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' \
+      | env PATH="$BADDIR:$PATH" bash "$H" 2>&1)
+rc=$?
+printf '%-64s ' "does NOT refuse an unrelated command in the same broken-jq state"
+[ "$rc" = 0 ] && [ -z "$out" ] && echo ok || { echo "FAIL: rc=$rc out='$out'"; fails=$((fails+1)); }
+rm -rf "$BADDIR"
+
+echo
+echo "== T1 (c): a non-Bash, execution-shaped tool this file has never named =="
+printf '%-64s ' "a non-Bash tool using tool_input.command - judged exactly as Bash would be"
+out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$D -rf $P/results" | bash "$H")
+decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out" 2>/dev/null)
+[ "$decision" = deny ] && echo "ok (deny)" || { echo "FAIL: expected deny, got '$decision' <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "an unparseable tool (unknown field) that looks deletion-shaped - ask"
+UNKNOWN=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'mcp__win__powershell','tool_input':{'script_block':sys.argv[1]}}))" "$D -rf $P/results")
+out=$(echo "$UNKNOWN" | bash "$H")
+decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out" 2>/dev/null)
+[ "$decision" = ask ] && echo "ok (ask)" || { echo "FAIL: expected ask, got '$decision' <<$out>>"; fails=$((fails+1)); }
+
+printf '%-64s ' "an unparseable tool with harmless content - allowed, no output"
+UNKNOWN=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'mcp__win__powershell','tool_input':{'script_block':'Get-ChildItem'}}))")
+out=$(echo "$UNKNOWN" | bash "$H")
+[ -z "$out" ] && echo "ok (no output at all)" || { echo "FAIL: expected nothing, got <<$out>>"; fails=$((fails+1)); }
 
 echo
 echo "== R2: Claude Code itself asks, for the work/ + cache branch only =="

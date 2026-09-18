@@ -43,26 +43,68 @@
 # jq's own absence would fail the same way it is trying to fix.
 set -uo pipefail
 
+# T1 (2.15, Fixes #15): the same two blind spots confirm_launch.sh documents
+# at length - see that file's header for the full reasoning, the GitHub
+# report, and why unbounded fail-closed became the thing pushing a member
+# around this plugin's safety net rather than through it. Short version here:
+#
+#   1. jq missing/broken used to refuse every single gated call (Bash, Write,
+#      Edit, MultiEdit, NotebookEdit) outright. It now scans the RAW bytes
+#      with nothing but a shell `case` for anything that could plausibly be a
+#      managed write this file cares about - a bare `case`, not jq or even
+#      grep -E, because either could be the very thing also missing. A call
+#      that cannot plausibly be one of those is let through unchanged; only a
+#      match still blocks, naming the install fix.
+#   2. hooks.json's matcher now reaches tool names other than the five this
+#      file was written for. Those five are still read exactly as before;
+#      anything else gets the same raw-text scan (jq works here; the TOOL's
+#      own shape is what this file cannot parse) further down, past TOOL/CMD/
+#      FILE/CONTENT extraction.
+#
+# Shell separators AND the JSON punctuation around them folded to spaces -
+# this runs against either a shell command line or a raw, still-quoted JSON
+# payload, and a bare `tr -s ';&|()<>'` leaves `"samplesheet` as one token
+# (the opening quote glued to the word) that no `*samplesheet*` pattern could
+# reliably bound. Folding quotes, braces, brackets, commas, colons and `=`
+# too turns either shape into the same flat token soup.
+LOOKS_SHAPED_SEP=$'\t\n\r;&|()<>"\'{}[],:='
+looks_managed_write_shaped() {
+    local text=" $(printf '%s' "$1" | tr -s "$LOOKS_SHAPED_SEP" ' ') "
+    case "$text" in
+        *samplesheet*|*'params.yml'*|*'params.yaml'*|*' tw launch '*|*' tw runs relaunch '*|*' sbatch '*|*' nextflow run '*|*outdir*|*'analysis/'*| \
+        *' tw datasets add '*|*generate_samplesheet*|*fastq_dir_to_samplesheet*)
+            return 0 ;;
+    esac
+    return 1
+}
+
 # `command -v jq` would only prove a FILE exists. A jq that cannot run -
 # wrong architecture, a missing shared library, or a Windows jq.exe that
 # Git Bash finds but cannot execute - passes that check and then fails
 # every parse below, which is the exact silent-gate failure this guard
 # exists to stop. So ask jq to do its job on the smallest possible input.
 if ! printf '{}' | jq -e . >/dev/null 2>&1; then
-    cat >&2 <<'EOF'
+    RAW=$(cat)
+    if looks_managed_write_shaped "$RAW"; then
+        cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/confirm_walkthrough.sh cannot read
-what this action is - and cannot tell a samplesheet write from a launch from
-an ordinary edit. Rather than silently stop checking (the old, dangerous
-behaviour), it refuses every gated action (Bash, Write, Edit, MultiEdit,
-NotebookEdit) until jq exists. The same is true of confirm_launch.sh and
-confirm_cleanup.sh, which share this requirement.
+what this action is precisely - and the raw text of this one matches a
+managed-write-shaped pattern (samplesheet / params.yml|yaml / a launch verb /
+outdir / analysis/), so it is refused rather than guessed at. A call that
+matches none of those patterns is let through unchanged - this is narrower
+than before, not a blanket refusal, though it still cannot verify the
+walkthrough evidence (diagram shown, schema read, plan agreed) the way the
+real check can. confirm_launch.sh and confirm_cleanup.sh apply the same
+scoped rule.
 
-Install it yourself (this hook will not attempt to), then retry:
+Install jq to get the full check back (this hook will not attempt to), then retry:
   macOS:       brew install jq
   Debian/WSL:  sudo apt install jq
   Windows:     winget install jqlang.jq
 EOF
-    exit 2
+        exit 2
+    fi
+    exit 0
 fi
 
 # Two escape phrases, not one, because this hook re-reads the whole
@@ -89,6 +131,30 @@ deny()  { jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
             permissionDecision: "deny", permissionDecisionReason: $m}}'; exit 0; }
 warn()  { jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
             additionalContext: $m}}'; exit 0; }
+
+# T1, part 2: everything below reads TOOL/CMD/FILE/CONTENT under the
+# assumption that TOOL is one of the five this file was written for. hooks.json's
+# matcher now reaches other execution-shaped tool names too (a PowerShell-flavoured
+# MCP tool among them), and for those, CMD/FILE/CONTENT above are simply empty -
+# not because there is nothing to check, but because this file never looked at
+# whatever field that tool actually used. Falling through silently would make
+# G1-G6 read as "nothing gated happened", which is exactly the safety-net-vanishes
+# shape PITFALLS 28 fixed once already, just moved to a new trigger. So an
+# unrecognised tool gets the same scoped, raw-text scan the no-jq path above
+# uses (jq works fine here; it is this call's own SHAPE that defeated it) -
+# risky-looking, warn (the remedy is "confirm by hand", the same one the
+# SIDECHAIN branch further down already uses when a structural deny is not
+# available); otherwise, allow, same as any of the five would with nothing to
+# flag.
+case " Bash Write Edit MultiEdit NotebookEdit " in
+    *" $TOOL "*) ;;
+    *)
+        if looks_managed_write_shaped "$INPUT"; then
+            warn "GATE: this call came from a tool ('${TOOL:-<unnamed>}') whose input this hook does not parse - only Bash/Write/Edit/MultiEdit/NotebookEdit are - and the raw payload matches a managed-write-shaped pattern (samplesheet / params.yml|yaml / a launch verb / outdir / analysis/). Confirm by hand that step 2 (diagram shown), step 5 (schema read, parameters put to the user) and step 3 (analysis plan agreed) actually happened before trusting this the way G1-G6 would have checked a Bash or Write call."
+        fi
+        allow
+        ;;
+esac
 
 # ---- which gate, if any, does this call belong to -------------------------
 # Named by what the action IS, not by which script performs it: the samplesheet
