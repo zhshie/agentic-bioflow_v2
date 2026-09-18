@@ -75,9 +75,13 @@ transfers from it here are rules, not machinery:
    **Also read the pipeline's own `docs/output.md`**, at the same pinned
    revision the run was launched at — nf-core's own account of what each of
    its outputs *is*. Get the pipeline and revision from the run itself rather
-   than asking or guessing: `scripts/collect_provenance.py`'s `workflow`
-   block names both. Fetch the file live from the pipeline's repository at
-   that revision, the same way `launch.md` reads `nextflow_schema.json` —
+   than asking or guessing: `scripts/collect_provenance.py --brief`'s
+   `workflow` block names both. `--brief` is this step's default call —
+   pipeline, revision, citable tools, notes and a DOI count are all it reads;
+   the full `--json` record (command, resolved config, every report path)
+   runs to ~153 KB per run and nothing here opens it. Fetch the file live
+   from the pipeline's repository at that revision, the same way `launch.md`
+   reads `nextflow_schema.json` —
    **never cached anywhere in this repository**, because a copy here would be
    exactly the per-pipeline file invariant 6 exists to prevent, and it would
    go stale the same way. It complements the inventory rather than replacing

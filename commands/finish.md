@@ -60,10 +60,16 @@ These are not style. Each one is a way this can produce something false.
 
 1. **Take stock before assembling anything.** Read the project's `analysis.md`
    and list which entries the user accepted. Run
-   `scripts/collect_provenance.py <each run's results directory>` and read what
-   it found — versions, parameters, and its notes. **Say the notes out loud**:
-   they carry things a reader of the finished package would want to know, such
-   as a run having been retried.
+   `scripts/collect_provenance.py --brief <each run's results directory>` and
+   read what it found — pipeline and revision, the citable tools and their
+   versions, and its notes. **Say the notes out loud**: they carry things a
+   reader of the finished package would want to know, such as a run having
+   been retried. `--brief` is the default call here on purpose: it is the
+   pipeline/revision/tools/notes/DOI-count slice this step actually reads,
+   not the full record (command, resolved config, every report path) that
+   `--json` alone would carry — measured at ~153 KB for one run. Pass
+   `--json` without `--brief` only when a later step genuinely needs that
+   full detail.
 
 2. **Assemble.** `scripts/build_package.sh <project-dir>` writes
    `submission/`: provenance, the methods section, the bibliography, the

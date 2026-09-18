@@ -1,7 +1,12 @@
 #!/bin/bash
 # What a run can prove about itself, gathered by shape rather than by name.
 #
-#   collect_provenance.py [--json] <results-dir> [<results-dir> ...]
+#   collect_provenance.py [--json] [--brief] <results-dir> [<results-dir> ...]
+#
+# --brief prints only what finish.md/downstream.md actually read - pipeline
+# and revision, citable tools with their versions, notes, and a DOI count -
+# and is now their default call. Full detail (command/params/config, report
+# paths, ...) is --json without --brief, measured at ~153 KB for one run.
 #
 # Not nf-prov: wrroc coverage on this cluster is unmeasured (plan M1), so this
 # still reconstructs from run output files - preferring `tw runs view` below
@@ -529,6 +534,52 @@ def collect(results, run_id=None, workspace=None, tw_bin=None):
     return run
 
 
+def brief(run):
+    """Reduce a full run record to the four things `finish.md` and
+    `downstream.md` actually read: pipeline+revision, the tools that need
+    citing (with their versions), the notes, and how many DOIs a quality
+    report already recorded for them - not the DOIs themselves, which neither
+    document reads before `finish` resolves them itself via `scripts/cite.sh`.
+
+    Everything else in the full record is proof material nobody asked for by
+    default - `command`/`params_effective`/`config` chief among it, each one
+    a full Platform response or a whole resolved Nextflow config. Measured on
+    a real run: `--json` without this is ~153 KB for one run; a project
+    commonly spans several. `finish.md` step 1 and `downstream.md` step 2 are
+    this flag's two callers - GitHub issue #13's latency accounting counts
+    every one of those bytes as tokens neither document was reading.
+
+    Full detail is one flag away (`--json` with no `--brief`) for a caller
+    that genuinely needs it - `scripts/methods_text.py`, say, reconstructing
+    a command line.
+    """
+    tools = run.get("tools") or {}
+    citable = run.get("citable_tools") or []
+    return {
+        "results": run["results"],
+        "workflow": run.get("workflow") or {},
+        "tools": {t: tools[t] for t in citable if t in tools},
+        "notes": run.get("notes") or [],
+        "doi_count": len(run.get("citation_dois") or []),
+    }
+
+
+def render_brief(runs):
+    for run in runs:
+        print(run["results"])
+        for k, v in sorted(run["workflow"].items()):
+            print("    %-24s %s" % (k, v))
+        if run["tools"]:
+            print("    %-24s %d" % ("tools", len(run["tools"])))
+            print("        " + ", ".join(
+                "%s %s" % (t, run["tools"][t]) for t in sorted(run["tools"])))
+        if run["doi_count"]:
+            print("    %-24s %d" % ("dois recorded", run["doi_count"]))
+        for note in run["notes"]:
+            print("    ! " + note)
+        print()
+
+
 def render(runs):
     for run in runs:
         print(run["results"])
@@ -568,6 +619,13 @@ def main(argv=None):
     p.add_argument("results", nargs="+", help="one or more results directories")
     p.add_argument("--json", action="store_true", dest="as_json",
                    help="emit the same report machine-readably")
+    p.add_argument("--brief", action="store_true",
+                   help="print only pipeline+revision, the citable tools and "
+                        "their versions, the notes, and a DOI count - what "
+                        "finish.md and downstream.md actually read. This is "
+                        "their default call now; pass --json without this "
+                        "for the full record (~153 KB measured for one real "
+                        "run), which neither of them needs")
     p.add_argument("--run-id", dest="run_id", default=None,
                    help="the Seqera Platform run id for these results; "
                         "command/params/config are then read from `tw runs "
@@ -587,9 +645,13 @@ def main(argv=None):
 
     runs = [collect(d, run_id=args.run_id, workspace=args.workspace)
             for d in args.results]
+    if args.brief:
+        runs = [brief(r) for r in runs]
     if args.as_json:
         json.dump({"runs": runs}, sys.stdout, indent=1, sort_keys=True)
         print()
+    elif args.brief:
+        render_brief(runs)
     else:
         render(runs)
     return 0
