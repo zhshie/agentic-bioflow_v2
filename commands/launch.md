@@ -9,9 +9,12 @@ never the user's working directory. Installed as a plugin they are under
 
 ## Before anything else
 
-Run `scripts/intro.sh launch` and put its five sections in front of the user
-before doing anything below. When the run has been launched and its watch
-armed (step 9), run `scripts/intro.sh --end launch`.
+Run `. scripts/env.sh && scripts/intro.sh launch` — sourcing `env.sh` first
+sets `PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own settings, in
+the same call rather than a separate round trip before every later `tw` call
+(`scripts/env.sh`'s own header). Put `intro.sh`'s five sections in front of
+the user before doing anything below. When the run has been launched and its
+watch armed (step 9), run `scripts/intro.sh --end launch`.
 
 Pass the workspace on every `tw` call that is scoped to one:
 `--workspace $(scripts/settings.sh workspace_id)`. Left off, `tw` answers from

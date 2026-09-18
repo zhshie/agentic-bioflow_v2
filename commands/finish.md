@@ -9,10 +9,13 @@ never the user's working directory. Installed as a plugin they are under
 
 ## Before anything else
 
-Run `scripts/intro.sh finish` and put its five sections in front of the user
-before doing anything below. When the package has been rendered, or stops one
-step short because the renderer is not reachable here, run `scripts/intro.sh
---end finish`.
+Run `. scripts/env.sh && scripts/intro.sh finish` — sourcing `env.sh` first
+sets `PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own settings, in
+the same call rather than a separate round trip before every later `tw` call
+(`scripts/env.sh`'s own header). Put `intro.sh`'s five sections in front of
+the user before doing anything below. When the package has been rendered, or
+stops one step short because the renderer is not reachable here, run
+`scripts/intro.sh --end finish`.
 
 This picks up where `downstream` leaves off — after figures exist and the user
 has accepted them, not before. It assembles; it does not compose. Every

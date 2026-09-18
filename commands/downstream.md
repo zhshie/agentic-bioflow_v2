@@ -9,9 +9,12 @@ never the user's working directory. Installed as a plugin they are under
 
 ## Before anything else
 
-Run `scripts/intro.sh downstream` and put its five sections in front of the
-user before doing anything below. When the accepted analysis has been
-recorded (step 6), run `scripts/intro.sh --end downstream`.
+Run `. scripts/env.sh && scripts/intro.sh downstream` — sourcing `env.sh`
+first sets `PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own
+settings, in the same call rather than a separate round trip before every
+later `tw` call (`scripts/env.sh`'s own header). Put `intro.sh`'s five
+sections in front of the user before doing anything below. When the accepted
+analysis has been recorded (step 6), run `scripts/intro.sh --end downstream`.
 
 This picks up where `runs` leaves off — after a run SUCCEEDED and its outputs
 have been delivered, not before. It carries **no pipeline-specific
