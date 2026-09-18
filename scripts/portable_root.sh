@@ -133,32 +133,30 @@ try_openssl_decrypt() {   # try_openssl_decrypt <ciphertext> <plaintext-out> <pa
 # and nothing else - callers echo that into their own message. A temp file
 # means a failed attempt never leaves a half-written ciphertext or plaintext
 # where the real path is expected.
-encrypt_token() {   # encrypt_token <plaintext-path> <ciphertext-path> <passphrase>
-    local pt="$1" ct="$2" pass="$3" tmp
-    tmp="$(mktemp)" || return 1
-    if try_age_encrypt "$pt" "$tmp" "$pass" && [ -s "$tmp" ]; then
-        mv "$tmp" "$ct"; chmod 600 "$ct"; echo age; return 0
+#
+# The temp file is made beside its destination, never in /tmp, and the whole
+# function runs under umask 077. Both matter on a shared login node: /tmp is
+# everyone's, and a backend that writes with `-out <path>` creates the file
+# itself - with the caller's umask, not mktemp's 0600 - if the path does not
+# exist. So between the two backends the temp file is emptied, not removed:
+# removing it would let the second backend re-create a plaintext token under
+# a looser mode, however briefly.
+_token_crypt() (   # _token_crypt <encrypt|decrypt> <in> <out> <passphrase>
+    umask 077
+    local op="$1" in="$2" out="$3" pass="$4" tmp
+    tmp="$(mktemp "$(dirname "$out")/.token.XXXXXX")" || return 1
+    if "try_age_$op" "$in" "$tmp" "$pass" && [ -s "$tmp" ]; then
+        chmod 600 "$tmp"; mv "$tmp" "$out"; echo age; return 0
     fi
-    rm -f "$tmp"
-    if try_openssl_encrypt "$pt" "$tmp" "$pass" && [ -s "$tmp" ]; then
-        mv "$tmp" "$ct"; chmod 600 "$ct"; echo openssl; return 0
-    fi
-    rm -f "$tmp"
-    return 1
-}
-decrypt_token() {   # decrypt_token <ciphertext-path> <plaintext-out-path> <passphrase>
-    local ct="$1" pt="$2" pass="$3" tmp
-    tmp="$(mktemp)" || return 1
-    if try_age_decrypt "$ct" "$tmp" "$pass" && [ -s "$tmp" ]; then
-        mv "$tmp" "$pt"; chmod 600 "$pt"; echo age; return 0
-    fi
-    rm -f "$tmp"
-    if try_openssl_decrypt "$ct" "$tmp" "$pass" && [ -s "$tmp" ]; then
-        mv "$tmp" "$pt"; chmod 600 "$pt"; echo openssl; return 0
+    : > "$tmp"
+    if "try_openssl_$op" "$in" "$tmp" "$pass" && [ -s "$tmp" ]; then
+        chmod 600 "$tmp"; mv "$tmp" "$out"; echo openssl; return 0
     fi
     rm -f "$tmp"
     return 1
-}
+)
+encrypt_token() { _token_crypt encrypt "$@"; }   # <plaintext> <ciphertext> <passphrase>
+decrypt_token() { _token_crypt decrypt "$@"; }   # <ciphertext> <plaintext-out> <passphrase>
 
 require_absolute() {
     case "$1" in

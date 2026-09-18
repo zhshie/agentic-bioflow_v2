@@ -240,5 +240,41 @@ hasnot "...never claims to have set anything" "wrote " "$out"
 recon_after_files=$(find "$RECON_HOME" -type f | sort)
 t "--reconstruct wrote no new file at all"  "$recon_after_files"  "$recon_before_files"
 
+# --- crypto temp files under a loose umask ------------------------------------
+# A backend that writes `-out <path>` creates the file itself, with the
+# caller's umask, when the path is missing. The helpers must never leave a
+# plaintext token briefly world-readable, nor park it in the shared /tmp.
+if command -v openssl >/dev/null 2>&1; then
+    CRYPT=$(mktemp -d)
+    printf 'secret-token-value' > "$CRYPT/plain"
+    # Only the crypto helpers, not the whole script: sourcing it would run its
+    # own dispatch and exit on usage. settings.sh supplies `clocked`.
+    sed -n '/^try_age_encrypt()/,/^decrypt_token()/p' "$P" > "$CRYPT/funcs.sh"
+    # A stand-in openssl that runs the real one, then records the mode and
+    # directory of whatever it just wrote - the moment the old code leaked.
+    REAL_OPENSSL="$(command -v openssl)"
+    mkdir "$CRYPT/bin"
+    cat > "$CRYPT/bin/openssl" <<WRAP
+#!/bin/bash
+"$REAL_OPENSSL" "\$@"; rc=\$?
+prev=""; for a in "\$@"; do [ "\$prev" = "-out" ] && echo "\$(stat -c %a "\$a") \$(dirname "\$a")" >> "$CRYPT/written"; prev="\$a"; done
+exit \$rc
+WRAP
+    chmod +x "$CRYPT/bin/openssl"
+    ( umask 022
+      PATH="$CRYPT/bin:$PATH"
+      . "$(dirname "$P")/settings.sh"
+      . "$CRYPT/funcs.sh"
+      encrypt_token "$CRYPT/plain" "$CRYPT/ct" "pw" >/dev/null
+      mkdir "$CRYPT/out"
+      decrypt_token "$CRYPT/ct" "$CRYPT/out/plain" "pw" >/dev/null )
+    t "decrypted token round-trips under umask 022"  "$(cat "$CRYPT/out/plain" 2>/dev/null)"  "secret-token-value"
+    t "decrypted token is mode 600 under umask 022"  "$(stat -c %a "$CRYPT/out/plain" 2>/dev/null)"  "600"
+    t "no temp file is left beside the decrypted token"  "$(ls -A "$CRYPT/out")"  "plain"
+    t "openssl only ever wrote mode-600 files"  "$(cut -d' ' -f1 "$CRYPT/written" | sort -u)"  "600"
+    t "openssl never wrote into the shared temp dir"  "$(grep -c " ${TMPDIR:-/tmp}\$" "$CRYPT/written")"  "0"
+    rm -rf "$CRYPT"
+fi
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
