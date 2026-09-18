@@ -40,6 +40,18 @@
 # an unrelated argument or a comment). Treat it as a speed bump, not a
 # sandbox: the Write/Edit/MultiEdit/NotebookEdit half above is the real gate,
 # because those tools always carry a structured path.
+#
+# T2: "flag a command that never touches the root" was not hypothetical -
+# `grep -n foo $CLAUDE_PLUGIN_ROOT/hooks/x.sh > /tmp/scratch/out` is a
+# read-only search whose output happens to go to scratch space, and it was
+# denied outright, because the old check asked only "does the root appear
+# anywhere on this line" and "does a bare '>' appear anywhere on this line" -
+# two questions with no requirement that the '>' be writing to the root
+# rather than merely coexisting with a mention of it. The Bash branch below
+# now asks a narrower question for a redirect - does ITS OWN target resolve
+# under the root - and a segment-scoped one for a write verb, so a
+# read reported through a redirect elsewhere, or a write verb in an unrelated
+# ';'-joined command, no longer trips this guard.
 set -uo pipefail
 
 # `command -v jq` only proves a FILE exists. A jq that cannot run - wrong
@@ -155,20 +167,55 @@ Bash)
     if [ "$ROOT" != "$ROOT_RAW" ] && grep -qF -- "$ROOT" <<<"$CMD" 2>/dev/null; then HITROOT=1; fi
     [ "$HITROOT" = 1 ] || exit 0
 
-    # A write verb as its own command word (segment-boundary anchored, not a
-    # bare substring - so "install" in a sentence like "the container runtime
-    # is missing" would not qualify, though this hook never sees prose, only
-    # commands). `sed -i` is checked as a pair; the others stand alone.
-    WRITE_RE='(^|[[:space:]]|[;&|(])(sudo[[:space:]]+)?(sed[[:space:]]+-i|tee|cp|mv|rm|rmdir|chmod|chown|patch|ln|truncate|install)([[:space:]]|$)'
-    HITVERB=0
-    grep -qE "$WRITE_RE" <<<"$CMD" 2>/dev/null && HITVERB=1
-
-    # A redirect is a write verb too, but `2>/dev/null` - the single most
-    # common idiom in this repo's own snippets, including the read-only
-    # `on_site.sh`/`run_all.sh` calls this guard must let through - is not
-    # one. Drop that shape before looking for a bare '>' or '>>'.
+    # T2: "the plugin root is mentioned somewhere" and "this command writes
+    # into it" are different claims, and the old check conflated them -
+    # `grep -n foo $ROOT/hooks/x.sh > /tmp/scratch/out` names the root only
+    # as what it READS, and was denied anyway because a bare '>' also
+    # appeared on the same line. A redirect writes exactly one place: the
+    # token right after '>'/'>>', never wherever else the root happened to
+    # be named. So the root check below is bound to that token alone, not to
+    # the command as a whole - measured against the report, this is the
+    # fix.
+    #
+    # A write VERB (cp, mv, rm, ...) does not offer one fixed argument
+    # position the way a redirect does - `cp SRC DEST` and `rm A B C` both
+    # take the root in different slots depending on intent - so those stay
+    # bound to their own SEGMENT rather than one argument: still narrower
+    # than the old whole-line check (a command word doubled up with the root
+    # by a completely unrelated ';'-joined command is worth splitting apart),
+    # without inventing a per-verb argument model this guard does not have.
     CMD_NR=$(sed -E 's/[0-9]*>&?[[:space:]]*\/dev\/null//g' <<<"$CMD")
-    grep -qE '>[[:space:]]*' <<<"$CMD_NR" 2>/dev/null && HITVERB=1
+    SEGMENTS=$(printf '%s\n' "$CMD_NR" | sed -E 's/(\|\||&&|[;&|])/\n/g')
+
+    WRITE_RE='(^|[[:space:]]|[;&|(])(sudo[[:space:]]+)?(sed[[:space:]]+-i|tee|cp|mv|rm|rmdir|chmod|chown|patch|ln|truncate|install)([[:space:]]|$)'
+
+    root_in() { # root_in <text> - either spelling of the root, fixed-string
+        grep -qF -- "$ROOT_RAW" <<<"$1" 2>/dev/null && return 0
+        [ "$ROOT" != "$ROOT_RAW" ] && grep -qF -- "$ROOT" <<<"$1" 2>/dev/null && return 0
+        return 1
+    }
+
+    HITVERB=0
+    while IFS= read -r SEG; do
+        [ -n "$SEG" ] || continue
+
+        # A write verb owns its whole segment; the root has to appear
+        # SOMEWHERE in that same segment, not merely on the same line.
+        if grep -qE "$WRITE_RE" <<<"$SEG" 2>/dev/null && root_in "$SEG"; then
+            HITVERB=1
+        fi
+
+        # A redirect owns only its own target. Take the LAST '>'/'>>' on the
+        # segment (a `cmd 2>&1 >file`-shaped line still has one real stdout
+        # destination, the rightmost one) and the single token that follows
+        # it, and judge the root against that token alone.
+        if grep -qE '>[[:space:]]*' <<<"$SEG" 2>/dev/null; then
+            RTARGET=$(printf '%s\n' "$SEG" \
+                | grep -oE '>>?[[:space:]]*[^[:space:];&|]+' | tail -1 \
+                | sed -E 's/^>>?[[:space:]]*//')
+            [ -n "$RTARGET" ] && root_in "$RTARGET" && HITVERB=1
+        fi
+    done <<< "$SEGMENTS"
 
     if [ "$HITVERB" = 1 ]; then
         deny "BLOCKED: this command names the installed plugin's location and also looks like

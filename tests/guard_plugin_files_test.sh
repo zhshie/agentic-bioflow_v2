@@ -160,6 +160,37 @@ t "rm on an unrelated file - allow"      allow CLAUDE_PLUGIN_ROOT="$ROOT" -- "$(
 t "cp into a repo checkout - allow"      allow CLAUDE_PLUGIN_ROOT="$ROOT" -- "$(bash_input "cp /tmp/x $OTHER/hooks/new.sh")"
 
 echo
+echo "== T2: a redirect's target decides, not merely mentioning the root =="
+# The reported false positive: a read-only grep against a root file, piped to
+# a scratch file that has nothing to do with the plugin. The old check saw
+# "root mentioned" + "a bare '>' somewhere" and denied it; the fix asks
+# whether the REDIRECT'S OWN target resolves under the root.
+t "grep against a root file, redirected to scratch - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(bash_input "grep -n foo $ROOT/hooks/x.sh > /tmp/scratch/out")"
+
+t "grep against a root file, appended to scratch - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(bash_input "grep -n foo $ROOT/hooks/x.sh >> $PROJECT/scratch/out")"
+
+# The other direction must still hold: a redirect that genuinely targets the
+# root is still denied, root mentioned elsewhere in the same command or not.
+t "grep against scratch, redirected INTO the root - still DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(bash_input "grep -n foo /tmp/scratch/notes.txt > $ROOT/hooks/new.sh")"
+
+t "read the root, then a write verb on the root in a later segment - still DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(bash_input "cat $ROOT/hooks/x.sh; rm $ROOT/hooks/x.sh")"
+
+# A write verb in one segment must not be denied just because an EARLIER,
+# unrelated segment happens to mention the root - the verb's own segment is
+# what is checked now, not the whole ';'-joined line.
+t "root mentioned in one segment, an unrelated rm in another - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(bash_input "cat $ROOT/hooks/x.sh; rm $PROJECT/scratch.txt")"
+
+echo
 echo "== no jq on PATH: fail closed, exit 2, not silent =="
 TMP2=$(mktemp -d)
 REAL_JQ=$(command -v jq)
