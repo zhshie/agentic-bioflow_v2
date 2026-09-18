@@ -1,11 +1,20 @@
 ---
 description: Assemble a project into a package that can be submitted or sent to a collaborator
 argument-hint: [project name or path]
+model: sonnet
 ---
 
 Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
+
+**Pinned to a faster model above (GitHub issue #13).** This command mostly
+assembles and reports on files that already exist — `collect_provenance.py`,
+`build_package.sh` and `cite.sh` do the reading and the writing; this reads
+what they printed and puts it in front of the user. `launch` and `runs` stay
+on the default model: both routinely have to read a log and judge *why* a
+run failed or stalled, which is exactly the kind of call a faster model is
+worse at.
 
 ## Before anything else
 
