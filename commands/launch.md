@@ -210,6 +210,21 @@ gate can see.
    - Put it under the run area (`storage_root`), not a home directory - that is
      where quotas are small and where the compute nodes may not look.
 
+   **Guardrail: check whether this project already has this samplesheet in
+   flight**, now that both are known:
+
+   ```bash
+   scripts/duplicate_run_check.sh --project <project> --samplesheet <path> \
+       --workspace $(scripts/settings.sh workspace_id) --user $(scripts/settings.sh seqera_user)
+   ```
+
+   A member starting a second analysis rarely means to relaunch the first
+   one by accident. This does not block anything — exit 1 means at least one
+   active run looks like a match, and its own lines say which — it only
+   makes sure the user sees it before step 7's confirmation rather than
+   after a queue slot was spent discovering it themselves. Show whatever it
+   prints; say plainly when it finds nothing.
+
 5. **Put the parameters to the user as a choice they answer.**
    Fetch `nextflow_schema.json` at that revision. It is the authority: this
    repo holds no curated list of options for any pipeline, and adding one would
@@ -385,6 +400,14 @@ gate can see.
 
 8. **Launch**, then report the run ID and the Platform URL.
 
+   **Do not assume this is the only run the user wants going.** Tell them
+   plainly that this one is submitted and being watched, and that they can
+   say the word for another one — a new `launch` right away — or use
+   `/runs` with nothing named to see everything currently in flight at
+   once, this one included. A member analysing several datasets or running
+   several kinds of analysis should never feel like starting the next one
+   means losing track of this one.
+
    **If `tw launch` itself fails** — rejected before a run ID ever exists —
    this has no branch here. Say so plainly, then follow
    `skills/operational/SKILL.md`'s off-design procedure (T2), category
@@ -397,6 +420,21 @@ gate can see.
    status — the harness's `Monitor` where it has one — and report the outcome
    when it lands. Asking permission to watch spends a turn on a question with
    one sensible answer.
+
+   **Guardrail: before arming one more of these, check the headroom left on
+   the shared connection** — each background watch is one more caller
+   polling through it, and PITFALLS 16e's session cap fails as a silent
+   hang, not an error, so the only real defence is saying something before
+   it happens:
+
+   ```bash
+   scripts/parallel_watch_check.sh --workspace $(scripts/settings.sh workspace_id) \
+       --user $(scripts/settings.sh seqera_user)
+   ```
+
+   Prints nothing when there is headroom. When it prints a line, say it to
+   the user before arming this watch — it is a heads-up, not a reason to
+   refuse the launch that already happened.
 
    **Poll `scripts/task_health.sh <run-id>`, not just `--status`.** Platform
    reports RUNNING for the entire time one task sits unstarted (runs.md's

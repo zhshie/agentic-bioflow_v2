@@ -58,6 +58,34 @@ Note that `fetchngs` fetches data rather than analysing it. Do not offer it
 alongside analyses; it belongs in the conversation about where the raw data is
 coming from.
 
+## More than one at once
+
+Seqera Platform already runs several pipelines in parallel; nothing about the
+site or the workspace limits that. What used to bottleneck was the
+conversation — one thread felt like it could hold one run, so a member with
+several datasets or several kinds of analysis in mind had to pick which to
+mention first and lost track of the others.
+
+**When someone mentions more than one dataset, or more than one kind of
+analysis, in the same breath** — "run rnaseq on these two batches" or "do QC
+then run sarek on the tumour set" — **do not silently queue them up as one
+long `launch` conversation.** Route through `/runs` first: with nothing named
+it prints the work board (`scripts/runs_board.sh`) of everything already in
+flight for this member, each with a short code, before adding to it. Then
+walk into `launch` for the next one — one at a time, since `launch` still
+ends in a single explicit confirmation per run
+(`hooks/confirm_walkthrough.sh`'s G3) - and mention `/runs` again once it is
+submitted, so the user always knows how to see everything at once rather than
+having to remember each run separately.
+
+Two guardrails ride along on `launch` itself, both their own callable
+scripts rather than improvised inline: `scripts/duplicate_run_check.sh`
+flags when the project and samplesheet about to be launched already has an
+active run behind it; `scripts/parallel_watch_check.sh` (also folded into
+the board) warns before one more background watch gets close to
+`ssh_max_parallel` — PITFALLS 16e's session cap is a hang, not an error, so
+the only real defence is saying something before it happens.
+
 ## Where the truth is
 
 Getting this wrong produces confident wrong answers, so it is worth stating.
