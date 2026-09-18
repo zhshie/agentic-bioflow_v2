@@ -177,5 +177,56 @@ grep -qF "this shell is unsupported" <<<"$out" \
   && no "...never blames the shell" "found the wrong phrase" \
   || ok "...never blames the shell"
 
+# ---------------------------------------------------------------------------
+# Issue #5: commands/downstream.md step 3b presents analysis.md's fields as a
+# column list, which reads naturally as a markdown table - and a
+# table-formatted analysis.md matched zero entries against the old
+# heading/bullet-block parser, with no error. The Results section came out
+# looking complete and was silently empty. The parser now reads a table too,
+# still reads the original block form, and hard-fails (rather than writing a
+# blank Results section) when it reads neither.
+P2="$TMP/proj_table"
+mkdir -p "$P2/runs/demo_20260101/results/pipeline_info" "$P2/analysis/figures"
+cp "$P/runs/demo_20260101/results/pipeline_info/software_versions.yml" \
+   "$P2/runs/demo_20260101/results/pipeline_info/"
+echo '{}' > "$P2/runs/demo_20260101/results/pipeline_info/params_2026-01-01_00-00-00.json"
+echo "# because the reads are long" > "$P2/runs/demo_20260101/params.yaml"
+echo x > "$P2/analysis/figures/richness.png"
+
+# --- the table format downstream.md's own worked example reads like ----------
+cat > "$P2/analysis/analysis.md" <<'MD'
+| id | question | source | method | why | status |
+|---|---|---|---|---|---|
+| richness | Does treatment change richness? | demo_20260101/results/richness.tsv | Shannon index | the background section asks about diversity | accepted |
+MD
+out=$(CITE_CURL=false bash "$S" "$P2" 2>&1); rc=$?
+Q2="$P2/submission/manuscript.qmd"
+[ "$rc" = 0 ] && ok "table-formatted analysis.md: build succeeds" \
+  || no "table-formatted analysis.md: build succeeds" "rc=$rc <<$out>>"
+grep -qF "Does treatment change richness?" "$Q2" \
+  && ok "table-formatted analysis.md: the question becomes the caption" \
+  || no "table-formatted analysis.md: the question becomes the caption" "not in the qmd"
+grep -qF "figures/richness.png" "$Q2" \
+  && ok "table-formatted analysis.md: the figure is matched by id" \
+  || no "table-formatted analysis.md: the figure is matched by id" "not in the qmd"
+
+# --- neither format: a plan file that is neither a table nor id:/question: --
+cat > "$P2/analysis/analysis.md" <<'MD'
+We looked at richness and it seemed fine, no strong pattern either way.
+MD
+out=$(CITE_CURL=false bash "$S" "$P2" 2>&1); rc=$?
+[ "$rc" != 0 ] && ok "unparseable analysis.md: hard fails rather than building" \
+  || no "unparseable analysis.md: hard fails rather than building" "rc=0 <<$out>>"
+grep -qF "matched 0 plan entries" <<<"$out" \
+  && ok "...and says it matched 0 entries" \
+  || no "...and says it matched 0 entries" "<<$out>>"
+grep -qF "id/question/source/method/why/status" <<<"$out" \
+  && ok "...and says what it expected" \
+  || no "...and says what it expected" "<<$out>>"
+printf '%-62s ' "...and does not leave a stale manuscript.qmd claiming success"
+if grep -qF "wrote     submission/manuscript.qmd" <<<"$out"; then
+  echo "FAIL: printed 'wrote' after failing to parse the plan"; fails=$((fails+1))
+else echo ok; fi
+
 echo
 [ "$fails" = 0 ] && echo "OK: build_package.sh" || { echo "$fails failed"; exit 1; }
