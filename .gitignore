@@ -4,3 +4,12 @@ relay.json
 relay.log
 agent.json
 agent.log
+
+# extensions/positron-bridge: node_modules is npm's to rebuild from
+# package-lock.json (committed), and out/ is tsc's compiled output - both
+# derived, neither is the source. The built positron-bridge.vsix itself IS
+# committed (T13's own point: members install it without touching npm), so
+# it is deliberately not listed here.
+extensions/*/node_modules/
+extensions/*/out/
+
