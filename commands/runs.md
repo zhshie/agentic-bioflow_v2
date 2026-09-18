@@ -10,9 +10,11 @@ never the user's working directory. Installed as a plugin they are under
 ## Before anything else
 
 Run `. scripts/env.sh && scripts/intro.sh runs` — sourcing `env.sh` first sets
-`PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own settings, in the
-same call rather than a separate round trip before every later `tw` call
-(`scripts/env.sh`'s own header). Put `intro.sh`'s five sections in front of
+`PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own settings.
+Each Bash tool call is a fresh shell,
+so nothing exported here survives into the next one: every later call that
+runs `tw` starts with `. scripts/env.sh &&` too - a prefix inside that same
+call, never a round trip of its own (`scripts/env.sh`'s own header). Put `intro.sh`'s five sections in front of
 the user before doing anything below. When this invocation's diagnosis or
 delivery has been given, run `scripts/intro.sh --end runs`.
 

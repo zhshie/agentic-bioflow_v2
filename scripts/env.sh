@@ -12,9 +12,11 @@
 # them first.
 #
 # Not a hook: PreToolUse/SessionStart run in their OWN process and exit -
-# nothing they export survives into the Bash tool call that follows. This has
-# to run IN that call, at its start, so PATH and the export are still there
-# for every later line the same "Before anything" section runs.
+# nothing they export survives into the Bash tool call that follows. And the
+# Bash tool starts a fresh shell for every call, so one source at the top of
+# a command does not carry over either: each call that runs `tw` opens with
+# `. scripts/env.sh &&` itself. That is still no extra round trip - the
+# prefix rides inside the call that needed it.
 #
 # Nothing existing: `tw`/`nextflow` land on PATH through the site account's
 # own ~/.bashrc once `scripts/on_site.sh` runs something there (PITFALLS

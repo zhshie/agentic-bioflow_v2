@@ -19,9 +19,11 @@ worse at.
 ## Before anything else
 
 Run `. scripts/env.sh && scripts/intro.sh finish` — sourcing `env.sh` first
-sets `PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own settings, in
-the same call rather than a separate round trip before every later `tw` call
-(`scripts/env.sh`'s own header). Put `intro.sh`'s five sections in front of
+sets `PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own settings.
+Each Bash tool call is a fresh shell,
+so nothing exported here survives into the next one: every later call that
+runs `tw` starts with `. scripts/env.sh &&` too - a prefix inside that same
+call, never a round trip of its own (`scripts/env.sh`'s own header). Put `intro.sh`'s five sections in front of
 the user before doing anything below. When the package has been rendered, or
 stops one step short because the renderer is not reachable here, run
 `scripts/intro.sh --end finish`.

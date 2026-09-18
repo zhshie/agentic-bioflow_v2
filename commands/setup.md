@@ -11,7 +11,10 @@ never the user's working directory. Installed as a plugin they are under
 Run `. scripts/env.sh && scripts/intro.sh setup` — sourcing `env.sh` first
 sets `PATH` (so `tw` resolves without spelling out `scripts/settings.sh
 tw_bin` every time it is called below) and `TOWER_ACCESS_TOKEN`, both from
-this deployment's own settings, in the same call rather than a separate one.
+this deployment's own settings. Each Bash tool call is a fresh shell,
+so nothing exported here survives into the next one: every later call that
+runs `tw` starts with `. scripts/env.sh &&` too - a prefix inside that same
+call, never a round trip of its own (`scripts/env.sh`'s own header).
 It degrades quietly before setup has written any settings at all - there is
 nothing yet for it to read. Put `intro.sh`'s five sections in front of the user
 before asking, or doing, anything below. When this command's flow ends - the
