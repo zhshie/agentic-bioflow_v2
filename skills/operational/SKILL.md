@@ -36,6 +36,23 @@ run finishes.
 for submission" is a `finish`. Read the command file and follow it rather than
 improvising the sequence.
 
+**T5: once which command applies is decided, the first action is
+`scripts/intro.sh <command>`** — put its five sections in front of the user
+before doing anything else, exactly what every `commands/*.md` file's own
+"Before anything else" section already requires of a typed slash command.
+This skill is the *other* door into the same five commands (PRINCIPLES.md,
+"the skill is the heart, because it is the only part that works when the
+user never types a slash command"), and a door that skips the opening card
+is not the same door: `hooks/next_step.sh` treats loading this skill's
+sibling for one of the five commands (`agentic-bioflow:launch`,
+`agentic-bioflow:runs`, and so on) as opening that command's flow, and this
+skill (`agentic-bioflow:operational`) as the router that becomes one of them
+the moment `scripts/intro.sh <command>` actually runs - so the call is not
+optional framing, it is what tells the rest of this plugin's safety net a
+flow is under way at all. When this command's flow ends, run
+`scripts/intro.sh --end <command>` the same way a typed command's own file
+says to.
+
 **A project is what holds them together.** Raw data, every run made from it,
 the analysis written on those runs, and the package built from the analysis all
 live under one project directory. The project folder may live wherever the

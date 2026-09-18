@@ -112,6 +112,39 @@ Two things worth stating when they come up, because neither is obvious:
   environment is now pointing at the old one. `scripts/ce_apply.sh` shows the
   difference; `--apply` fixes it.
 
+**T5: whether this machine can run the flow at all, not just whether the
+site is reachable.** `scripts/preflight.sh` answers for the site and this
+deployment's settings; it says nothing about the harness sitting between the
+user and either of them, which is exactly where the safety net (T1) and the
+natural-language routing (T3) both live. Report-only - name what is found and
+what command would fix it, and change nothing here without being asked to.
+This is a checklist to read out, not a script to write:
+
+- **`printf '{}' | jq -e .`** — jq itself, not `command -v jq`: the same
+  probe `hooks/confirm_launch.sh` and its siblings run before trusting
+  anything else, because a `jq` that exists but cannot run fails exactly as
+  silently as a missing one (PITFALLS 28). If it fails, name the install line
+  for this platform - `brew install jq` / `sudo apt install jq` /
+  `winget install jqlang.jq`.
+- **Does `/hooks` list this plugin?** If `agentic-bioflow` is not there, none
+  of its hooks are running - not degraded, absent - and the cause is one of
+  three: the plugin is not enabled for this project, this folder is not a
+  trusted one, or `disableAllHooks` is set somewhere in the settings chain.
+  Say which of the three looks true; do not flip anything yourself.
+- **Does a project `.claude/settings.json` hand control to a plugin that
+  seizes the first word of every turn before this one gets one?**
+  superpowers's own SessionStart hook injects an instruction to use its
+  skill before any response, which competes directly with this plugin's own
+  guidance. For a pipeline-only project, suggest - never apply -
+  `"enabledPlugins": {"superpowers@claude-plugins-official": false}` in that
+  project's `.claude/settings.json`, and say plainly that this is a
+  suggestion scoped to this project, not a claim that superpowers is wrong
+  to have installed anywhere else.
+- **Is the Positron bridge extension installed?** Record the checkpoint only
+  - the check itself ships on a different branch. Found or not, say what was
+  found; if it cannot be found here, say "this version does not provide it
+  yet" rather than reading its absence as a failure of this step.
+
 ---
 
 ## First run
