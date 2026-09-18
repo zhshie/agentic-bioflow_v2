@@ -359,3 +359,77 @@ refuse) when `local_root` or `portable_root` looks like one: large files sync
 slowly and burn quota, and the decrypted token and the Positron bridge
 connection file must never live there, even though the encrypted token is
 fine to.
+
+## The "setup once is enough" contract (T27)
+
+Every key in the table near the top of this file belongs to exactly one of
+two layers, and which layer decides what has to happen on a new machine:
+
+| Layer | Keys | Where it lives | On a new machine |
+|---|---|---|---|
+| **Portable** | `reach`, `seqera_user`, `workspace_id`, `compute_env`, `slurm_account`, `site_host`, `site_user`, `storage_root`, `email`, `language`, `record_adapter`, `record_ref`, `agent_connection` | `<portable_root>/config/env.yaml`, once adopted (T23) | Carried across by `settings.sh --adopt` - typed in exactly once, ever, on the machine that first built the portable folder |
+| **Machine-derived** | `site_bridge`, `ssh_control_path`, `tw_bin`, `local_root`, `agent_java`, `agent_jar` | This machine's own local settings file, always | Re-derived automatically after `--adopt` - never copied, never asked for a second time either |
+
+**"Re-derived automatically" is not a manual step someone has to remember.**
+Each one already has a script whose job is finding it out fresh on whatever
+machine it runs on, and every one of them already runs as an ordinary part of
+`setup`/`preflight` regardless of whether a portable folder is involved:
+
+- `site_bridge` — `bridge_kind()` (`scripts/settings.sh`) probes `wsl.exe` on
+  this machine at read time; nothing to set.
+- `ssh_control_path` — `site_control_path_default()` computes it from
+  `site_bridge`, same call.
+- `tw_bin` — `scripts/install_deps.sh --cli-only` on this machine (setup
+  step 4's `reach: ssh` branch) installs Seqera's CLI here and records where.
+- `local_root` — asked once, on this machine, the same question T21 added to
+  `setup`'s step ②. Not portable by design: where a person keeps their work
+  is a per-machine choice, not a per-person one - a desktop with a big disk
+  and a laptop with a small one legitimately answer differently.
+- `agent_java` / `agent_jar` — these name a path **on the site**, not on this
+  machine at all, so "re-derive" here means "stay pointed at the site's own
+  values", which the site's own `_personal/env.yaml` already has from
+  whenever it was first set up. A newly-adopting laptop never needs these -
+  the outputs reader they name runs on the site, reached through
+  `scripts/on_site.sh`, never here.
+
+**Verify-only, before anything else.** `setup` runs `scripts/setup_verify.sh`
+as its very first act (before deciding repair vs first-run vs adopt):
+settings complete and `preflight.sh` green → report that in seconds and stop,
+never walking a working machine through checks it does not need. Anything
+else → continue into whichever of repair/first-run/adopt actually applies.
+
+### New machine: the three steps that cannot be skipped
+
+Everything above is what a portable folder removes. What is left is real,
+and this says so plainly rather than implying a portable folder makes setup
+disappear entirely - three things are per-machine no matter what, because
+none of them is a *value* that could travel in a settings file at all:
+
+1. **Local tools.** `jq`, `curl`, Seqera's CLI, WSL on Windows (PITFALLS
+   16b/16f) - whatever is missing from *this* machine's own PATH. A settings
+   key cannot install a binary.
+2. **The first connection to the site.** The site accepts no saved
+   credential, only a one-time code typed by a human once per session
+   (PITFALLS 16h). No portable folder, key, or token can stand in for this -
+   it is the one step that is genuinely, deliberately unautomatable.
+3. **Positron's bridge**, if this member uses it for downstream analysis - a
+   separate install on this machine, unrelated to anything in a settings file
+   (a different branch's own card; not built here).
+
+Three steps, not ten: this is the entire gap between "adopted a portable
+folder" and "fully working", and nothing above pretends otherwise.
+
+### Open question: `agent_connection` across two machines at once
+
+**Not measured, and this file says so rather than guessing.** The outputs
+reader (`scripts/agent_ctl.sh`) runs on the site and is identified by
+`agent_connection`, which is portable (table above) - so adopting the same
+portable folder on a second machine gives both machines the same value by
+design. What happens if that member has **both machines open at once**, each
+independently calling `scripts/on_site.sh --script scripts/agent_ctl.sh` -
+whether the second `start`/`register` bumps the first's session, whether
+Platform simply serves both, or whether something fails in a way that reads
+like a different bug entirely - has never been tried. Until it is measured
+(PRINCIPLES.md invariant 8), treat two machines sharing one `agent_connection`
+as **untested**, not as "known to work" or "known to fail" - and if it comes
+up, that is the moment to measure it and turn this paragraph into a fact.

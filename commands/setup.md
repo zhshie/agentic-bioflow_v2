@@ -41,7 +41,16 @@ assumes them.
 
 ## Which situation this is
 
-There are three, not two, and the third is the one that bites.
+There are four, not two, and the third is the one that bites.
+
+**T27: run `scripts/setup_verify.sh` first, before anything else below.**
+Exit 0 means this machine is already fully configured and `preflight.sh`
+passes — tell the user that in the words it printed, run `scripts/intro.sh
+--end setup`, and stop. Nothing past this point applies; walking a
+fully-working machine through repair's own checks would waste the several
+seconds each one takes for no reason. Any other exit code means there is
+something to do, and which of the remaining three situations applies is
+exactly what the rest of this section decides.
 
 Read the deployment settings — `docs/SETTINGS.md` says where they live, which
 depends on whether this deployment runs on the site or reaches it — and check
