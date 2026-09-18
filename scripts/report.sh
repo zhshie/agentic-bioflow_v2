@@ -26,6 +26,10 @@
 #                  [--outcome resolved|workaround|unresolved]
 #   report.sh list
 #   report.sh send [--yes] [--dry-run]
+#   report.sh --queue-dir     prints reports_dir() and nothing else. T22: the
+#                              one place this formula lives - scripts/where.sh
+#                              calls this rather than re-deriving the same
+#                              settings-file-relative-or-XDG path a second time.
 #
 # `add` never queues a partially-valid report: every field is checked before
 # anything is written, and any failure exits 2 with nothing on disk.
@@ -410,5 +414,6 @@ case "${1:-}" in
     add)  shift; add_report "$@"; exit $? ;;
     list) shift; list_reports "$@"; exit $? ;;
     send) shift; send_reports "$@"; exit $? ;;
+    --queue-dir) reports_dir; exit 0 ;;
     *) usage; exit 2 ;;
 esac

@@ -95,6 +95,12 @@ Shared on purpose: `workspace_id`, and the allocation the site bills to.
 
 ## Repair
 
+**If a path in any report below looks surprising** — a settings file that
+should exist and does not, a token nobody can find, a `local_root` that turns
+out to be somewhere unexpected — `scripts/where.sh` prints every relevant
+absolute path on this machine, with an exists/missing mark on each one, purely
+read-only. Run it before guessing; it never changes anything.
+
 `scripts/preflight.sh`. It reports each part as OK or FAIL. Fix what failed —
 each FAIL line names the script that fixes it — then say plainly what was
 already fine and what you restarted. Nothing else.
