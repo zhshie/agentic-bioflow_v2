@@ -265,3 +265,97 @@ not change; what changes is which machine holds the settings.
 The copies on the site can then go. Leaving them is not dangerous, but two
 settings files for one deployment will disagree eventually, and the one that
 loses is whichever the user did not edit.
+
+## The portable folder (T23, Fixes #17)
+
+The procedure above moves a deployment from the site to **one** machine. It
+says nothing about a **second** one - a new laptop, say - which used to mean
+rerunning the whole of `setup` there too, even though nothing about the
+deployment itself had changed. The portable folder is what closes that gap:
+build it once, and adopting it on another machine is one command, not a
+second onboarding.
+
+```
+<portable_root>/
+├── config/
+│   ├── env.yaml              the portable keys below, and only those
+│   └── .seqera_token.enc     the token, encrypted - never the plaintext
+└── projects/<project>/
+    ├── analysis/
+    └── submission/
+```
+
+`<portable_root>` is chosen by the member, once, and can be anywhere they
+already keep things that follow them between machines - a cloud-sync folder,
+an external drive, any path. **There is deliberately no `<seqera_user>`
+layer under it**, unlike the site side: a portable folder belongs to one
+person by construction, so nothing needs to tell members apart inside it.
+
+**Building it:** `scripts/portable_root.sh init <path>` on a machine that
+already has this deployment's settings. It creates the structure, migrates
+this machine's **portable keys** into `config/env.yaml` (`reach`,
+`seqera_user`, `workspace_id`, `compute_env`, `slurm_account`, `site_host`,
+`site_user`, `storage_root`, `email`, `language`, `record_adapter`,
+`record_ref`, `agent_connection`), and encrypts the current token into
+`config/.seqera_token.enc` given a passphrase. **Machine-derived keys are
+left out on purpose** - `site_bridge`, `ssh_control_path`, `tw_bin`,
+`local_root`, `agent_java`, `agent_jar` - because they describe *this
+machine*, not the person; T27 formalises the full two-column split. Safe to
+re-run: it never overwrites a file that is already there, so running it again
+on an already-set-up machine is an in-place upgrade, not a rebuild.
+
+**Adopting it on another machine:** `scripts/settings.sh --adopt <path>`.
+This writes a small pointer file at
+`${XDG_CONFIG_HOME:-~/.config}/agentic-bioflow/portable_root` naming the
+absolute path - **never an environment variable**, for the same reason
+`LAB_SETTINGS_FILE` is never meant to be exported as a habit (PITFALLS
+16j/16k, 25): a variable set in one shell's startup file and not another's is
+how this repo's worst settings-file bugs happened, and a file at the one
+location every shell already agrees on ($HOME) has none of that problem.
+
+Once adopted, `scripts/settings.sh` resolves a key in this order:
+
+1. the pointer file, to find `<portable_root>`
+2. `<portable_root>/config/env.yaml` (the portable keys)
+3. this machine's own local settings file (everything else - the
+   machine-derived keys, or every key at all on a machine that has never
+   adopted anything)
+
+`settings.sh --set` still only ever writes to the local file (step 3) - the
+portable file is edited only by rebuilding or by hand, never by an ordinary
+command that runs on someone's behalf.
+
+**A pointer to a path that is not there right now** - the common case is a
+cloud-sync folder that has not finished syncing to this machine yet - is
+never read as "never set up": `settings.sh` says explicitly which path it
+is pointing at and why it cannot be read, rather than falling through to "no
+settings file" the way an absent XDG default would.
+
+**The token never crosses in plaintext.** The first time something on a
+newly-adopted machine needs it, `scripts/portable_root.sh decrypt-token`
+asks for the passphrase and decrypts `config/.seqera_token.enc` into this
+machine's own ACL-protected cache - the same path `token_file()` already
+resolves to (`dirname(local settings file)/.seqera_token`), so nothing else
+has to change to start using it. Encryption prefers `age`, falls back to
+`openssl enc`, and - if neither is on PATH - falls back to building the
+portable folder **without** a token at all, explaining that the next machine
+will need to get one some other way (setup step 3).
+
+**No portable folder at all - `settings.sh --reconstruct`.** The fallback
+for issue #17's actual reported shape: a site whose `_personal/env.yaml` only
+ever held what `install_deps.sh`/`agent_ctl.sh` discovered on their own
+(`agent_java`, `agent_jar`, `tw_bin`, `agent_connection`) and nothing a person
+was ever asked for. This reads `tw info` / `tw workspaces list` / (once a
+workspace is confirmed) `tw compute-envs list` and prints each finding as a
+**candidate**, never writes anything itself - every value here still has to
+be asked for rather than guessed, the same rule as every other key in the
+table above. `slurm_account` cannot be read from Platform at all; the site's
+own `sacctmgr`/`sshare` are what it takes to confirm.
+
+**Cloud-sync folders are allowed here, unlike the settings file itself.** A
+`portable_root` is explicitly expected to often be one - that is the point of
+it. `scripts/init_workspace.sh` and `scripts/portable_root.sh` warn (not
+refuse) when `local_root` or `portable_root` looks like one: large files sync
+slowly and burn quota, and the decrypted token and the Positron bridge
+connection file must never live there, even though the encrypted token is
+fine to.

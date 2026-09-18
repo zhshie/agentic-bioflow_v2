@@ -205,9 +205,20 @@ fi
 echo
 
 echo "== portable folder (config/env.yaml, config/.seqera_token.enc, projects/) =="
-PORTABLE="$(setting portable_root)"
-if [ -n "$PORTABLE" ]; then
-    printf '  %-60s [%s]\n' "$PORTABLE" "$(mark "$PORTABLE")"
+# T23: PORTABLE_ROOT/PORTABLE_POINTER come from settings.sh (sourced above) -
+# a pointer FILE this machine wrote via `settings.sh --adopt`, never a
+# setting key inside env.yaml itself (docs/SETTINGS.md: never an env var
+# either, for the same two-homes-on-one-machine reason PITFALLS 16j/25 name).
+if [ -n "$PORTABLE_ROOT" ]; then
+    printf '  pointer: %-52s [%s]\n' "$PORTABLE_POINTER" "$(mark "$PORTABLE_POINTER")"
+    printf '  root:    %-52s [%s]\n' "$PORTABLE_ROOT" "$(mark "$PORTABLE_ROOT")"
+    if [ -n "$PORTABLE_SETTINGS_FILE" ]; then
+        printf '  config/env.yaml:          %-35s [exists]\n' "$PORTABLE_SETTINGS_FILE"
+    else
+        printf '  config/env.yaml:          %-35s [missing]\n' "$PORTABLE_ROOT/config/env.yaml"
+    fi
+    TOK_ENC="$PORTABLE_ROOT/config/.seqera_token.enc"
+    printf '  config/.seqera_token.enc: %-35s [%s]\n' "$TOK_ENC" "$(mark "$TOK_ENC")"
 else
-    echo "  not configured"
+    echo "  not adopted (scripts/settings.sh --adopt <path>)"
 fi

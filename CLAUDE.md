@@ -80,6 +80,21 @@ real failures, each with the fix.
 - `scripts/inspect_sides.sh` — what exists on the site and what exists on this
   machine, gathered in **one** `on_site.sh` round trip. `setup` decides "new
   install / adopt / repair" from this instead of from a question.
+- `scripts/where.sh` — every absolute path this deployment might read or
+  write **on this machine**, each marked exists/missing; purely read-only.
+  `status.sh` and `setup`'s repair branch reference it instead of re-deriving
+  the same paths. `where.sh --run-paths <project> <run>` is the stable
+  interface another script (e.g. `prepare_launch.sh`) can query for the
+  site-side run directory and the local fetch destination without
+  re-deriving the run-area shape a second time.
+- `scripts/portable_root.sh` + `scripts/settings.sh --adopt`/`--reconstruct`
+  — the portable folder (`docs/SETTINGS.md`, "The portable folder"): once a
+  person builds one, a second machine adopts it in one command instead of
+  rerunning all of `setup`. `portable_root.sh` builds the folder, migrates
+  the portable settings keys into it, and encrypts/decrypts the token
+  (`age`, falling back to `openssl enc`); `settings.sh --adopt <path>` points
+  a machine at an existing one; `--reconstruct` rebuilds candidate values
+  from Seqera Platform when there is no portable folder at all.
 - `tests/` — standalone bash/python scripts, one file per invariant or script.
   Each prints ok/FAIL per case, is self-contained, and signals the verdict with
   its exit code. `tests/run_all.sh` runs all of them and is the release check;
