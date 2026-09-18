@@ -294,6 +294,28 @@ in bacass — the download URL is compiled into BUSCO itself. Expect one round o
 this for a pipeline whose tools fetch their own reference data; the relay log
 names the host on the first failure, which costs one run, not a diagnosis.
 
+**4h. A plugin version missing from the registry fails in about ten seconds,
+before any task exists, and looks nothing like #4's egress block.** Measured:
+`nf-core/demo` at revision `master` and at its latest tag `1.2.0` both pin
+`nf-schema@2.7.2` (the pipeline's own `nextflow.config`), and both runs died
+almost immediately with
+
+```
+org.pf4j.PluginRuntimeException: Plugin nf-schema with version @2.7.2 does not exist in the repository
+```
+
+on Nextflow 25.04.4 (failed run ids `1oE3qJ74AxYwx3` and `pJwpu99QN26h9`).
+None of #4's signatures are present: `registry.nextflow.io` answers HTTP 200
+from the login node, the relay log has no `DENY-DOMAIN` line for either run,
+and `scripts/check_egress.py nf-core/demo master` reports nothing missing.
+This is `nf-schema@2.7.2` itself being unresolvable from the plugin registry
+(withdrawn, or an indexing lag - nothing on this side can tell which), not a
+site config or egress problem, so nothing here can fix it, only avoid it.
+`nf-core/demo@1.0.2` pins `nf-schema@2.3.0` and resolves; `commands/setup.md`
+step 8's proof run is pinned to it for exactly this reason. If a different
+pipeline hits the same error, read it as "try an older revision of this
+pipeline," not as a relay or compute-environment problem to chase.
+
 ## Resources
 
 **6. NCHC's QOS is a floor, and for most partitions the floor equals the

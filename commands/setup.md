@@ -368,9 +368,15 @@ different questions — `docs/SITE_ADAPTER.md` explains why both:
 
 - `nextflow-io/hello` — about a minute. Proves the configuration reached the
   run and the site accepted the job.
-- any nf-core pipeline with `-profile test` — slower, and the only thing that
+- `nf-core/demo -r 1.0.2 -profile test` — slower, and the only thing that
   proves containers can be fetched, reference data can be downloaded, and
-  Platform can read the results back.
+  Platform can read the results back. Pinned to `1.0.2` deliberately, not
+  `master` or the latest tag: both of those pin `nf-schema@2.7.2`, and that
+  plugin version fails to resolve from the plugin registry within about ten
+  seconds on Nextflow 25.04.4 - a real, reproduced failure with nothing to
+  do with this site (`docs/PITFALLS.md` #4h has the full signature and how
+  it differs from the egress block in #4). `1.0.2` pins `nf-schema@2.3.0`,
+  which resolves.
 
 **Pass `--outdir` on the nf-core run.** Every nf-core pipeline requires it and
 no `test` profile supplies one, so without it the proof run takes a queue slot,
