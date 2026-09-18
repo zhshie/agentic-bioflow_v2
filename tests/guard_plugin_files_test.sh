@@ -36,6 +36,13 @@ print(json.dumps({"tool_name": "Bash", "tool_input": {"command": sys.argv[1]}}))
 ' "$1"
 }
 
+tool_input() { # tool_input <tool> <field> <value>
+  python3 -c '
+import json, sys
+print(json.dumps({"tool_name": sys.argv[1], "tool_input": {sys.argv[2]: sys.argv[3]}}))
+' "$1" "$2" "$3"
+}
+
 decision() { # decision <json-or-empty>
   if [ -z "$1" ]; then echo "allow"; return; fi
   python3 -c '
@@ -233,7 +240,44 @@ rc=$?
 if [ "$rc" = 0 ] && [ -z "$out" ]; then echo "ok"; else
     echo "FAIL: rc=$rc out='$out'"; fails=$((fails + 1))
 fi
+
+# Issue #15: without jq the guard used to refuse every call, which pushed a
+# Windows session onto PowerShell where no guard ran at all. A call that
+# never names the plugin root cannot write into it.
+printf '%-72s ' "no jq, root set - a call that never names the root is allowed"
+out=$(env CLAUDE_PLUGIN_ROOT="$ROOT" PATH="$NOJQ_PATH" bash "$H" <<<"$(bash_input "ls $PROJECT")" 2>/dev/null)
+rc=$?
+if [ "$rc" = 0 ] && [ -z "$out" ]; then echo "ok (rc=0)"; else
+    echo "FAIL: rc=$rc out='$out'"; fails=$((fails + 1))
+fi
+printf '%-72s ' "no jq, root set - a Bash call naming the root is still BLOCKED"
+out=$(env CLAUDE_PLUGIN_ROOT="$ROOT" PATH="$NOJQ_PATH" bash "$H" <<<"$(bash_input "rm $ROOT/hooks/x.sh")" 2>/dev/null)
+rc=$?
+if [ "$rc" = 2 ]; then echo "ok (rc=2)"; else
+    echo "FAIL: rc=$rc"; fails=$((fails + 1))
+fi
 rm -rf "$TMP2"
+
+echo
+echo "== shell tools other than Bash (issue #15) =="
+t "PowerShell Set-Content into the root - DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input PowerShell command "Set-Content -Path $ROOT/hooks/x.sh -Value hi")"
+t "PowerShell remove-item (any case) on the root - DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input PowerShell command "remove-item $ROOT/hooks/x.sh")"
+t "PowerShell reading the root - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input PowerShell command "Get-Content $ROOT/hooks/x.sh")"
+t "PowerShell writing the project, not the root - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input PowerShell command "Set-Content -Path $PROJECT/x.R -Value hi")"
+t "unknown shell tool, unknown field, write-shaped on the root - DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input SomeShellTool payload "Copy-Item new.sh $ROOT/hooks/x.sh")"
+t "unknown shell tool, unknown field, only reads the root - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input SomeShellTool payload "Get-Content $ROOT/hooks/x.sh")"
 
 echo
 echo "== hooks.json wiring =="
@@ -255,10 +299,10 @@ if [ -n "$MATCH" ]; then echo "ok ($MATCH)"; else
     echo "FAIL: no matching PreToolUse entry found"; fails=$((fails + 1))
 fi
 
-printf '%-72s ' "a separate PreToolUse entry runs guard_plugin_files.sh on Bash"
+printf '%-72s ' "a separate PreToolUse entry runs guard_plugin_files.sh on Bash and PowerShell"
 BASH_MATCH=$(jq -r '
   .hooks.PreToolUse[]
-  | select(.matcher == "Bash")
+  | select(.matcher as $m | ($m | test("(^|\\|)Bash(\\||$)")) and ("PowerShell" | test("^(" + $m + ")$")))
   | select(.hooks[].command | test("guard_plugin_files\\.sh"))
   | .matcher
 ' "$HOOKS_JSON" 2>/dev/null)

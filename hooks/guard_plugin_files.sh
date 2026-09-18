@@ -1,5 +1,6 @@
 #!/bin/bash
-# PreToolUse/Write|Edit|MultiEdit|NotebookEdit and PreToolUse/Bash: an
+# PreToolUse/Write|Edit|MultiEdit|NotebookEdit and PreToolUse on every shell
+# tool (Bash, PowerShell, and anything shell-named - hooks.json): an
 # installed plugin copy is not edited in place.
 #
 # 2.8's off-design procedure (skills/operational/SKILL.md, "Off-design: when
@@ -60,24 +61,28 @@ set -uo pipefail
 # below, which is the exact silent-gate failure this guard exists to stop.
 # So ask jq to do its job on the smallest possible input, same as its three
 # siblings - but only once there is a plugin root to guard at all (below).
-check_jq() {
-    if ! printf '{}' | jq -e . >/dev/null 2>&1; then
-        cat >&2 <<'EOF'
+#
+# Without jq this used to refuse EVERY call (issue #15): on a Windows machine
+# with no jq, a bare `ls` was blocked, the session moved to PowerShell, and
+# no guard fired at all from then on. What this hook protects is the
+# installed plugin's own directory, and a call that never names that
+# directory cannot write into it - so the no-jq path looks for the root in
+# the raw bytes and refuses only when it is there. Scoped, not silent.
+jq_works() { printf '{}' | jq -e . >/dev/null 2>&1; }
+refuse_without_jq() {
+    cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/guard_plugin_files.sh cannot read
-what this action targets - and cannot tell an edit to the installed plugin
-from an ordinary project edit. Rather than silently stop checking (the old,
-dangerous behaviour this repo has already been bitten by once - PITFALLS 28),
-it refuses every gated action until jq exists. The same is true of
-confirm_cleanup.sh, confirm_launch.sh and confirm_walkthrough.sh, which share
-this requirement.
+exactly what this call targets - and this call names the installed plugin's own
+directory, which is the one thing this hook exists to protect. Calls that do not
+name it are let through; this one is not. (confirm_cleanup.sh, confirm_launch.sh
+and confirm_walkthrough.sh scope themselves the same way.)
 
 Install it yourself (this hook will not attempt to), then retry:
   macOS:       brew install jq
   Debian/WSL:  sudo apt install jq
   Windows:     winget install jqlang.jq
 EOF
-        exit 2
-    fi
+    exit 2
 }
 
 # Nothing to guard when this session has no plugin root at all - a repo
@@ -95,9 +100,13 @@ ROOT_RAW="${CLAUDE_PLUGIN_ROOT:-}"
 ROOT="$(cd -P -- "$ROOT_RAW" 2>/dev/null && pwd -P)" || exit 0
 [ -n "$ROOT" ] || exit 0
 
-check_jq
-
 INPUT=$(cat)
+if ! jq_works; then
+    case "$INPUT" in
+        *"$ROOT_RAW"*|*"$ROOT"*) refuse_without_jq ;;
+        *) exit 0 ;;
+    esac
+fi
 TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
 
 deny() {
@@ -153,9 +162,24 @@ ${REASON_TAIL}"
     esac
     exit 0
     ;;
-Bash)
-    CMD=$(jq -r '.tool_input.command // ""' <<<"$INPUT" 2>/dev/null)
-    [ -n "$CMD" ] || exit 0
+Bash | *[Ss]hell* | *[Pp]wsh* | *[Tt]erminal* | *[Cc]md* | *[Ee]xec*)
+    # Any shell tool, not only Bash (issue #15): once Bash was blocked,
+    # PowerShell was the natural fallback and this guard never saw it. The
+    # same input fields the three confirm_* hooks try, in the same order.
+    CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
+    if [ -z "$CMD" ]; then
+        [ "$TOOL" = Bash ] && exit 0
+        # A shell tool whose input shape this hook does not know. Judge the
+        # raw payload instead - but only refuse when it names the root AND
+        # carries a write verb; naming the plugin to read it stays allowed.
+        case "$INPUT" in *"$ROOT_RAW"*|*"$ROOT"*) ;; *) exit 0 ;; esac
+        if grep -qiE '(sed[[:space:]]+-i|tee|cp|mv|rm|rmdir|chmod|chown|patch|ln|truncate|install|set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|del|erase|copy|move|ren)([^a-z-]|$)|>' <<<"$INPUT"; then
+            deny "BLOCKED: this call came from a shell tool ('${TOOL:-<unnamed>}') whose input this hook cannot read, and its raw text names the installed plugin's location next to something write-shaped. The installed plugin is not edited in place.
+
+${REASON_TAIL}"
+        fi
+        exit 0
+    fi
 
     # The root's path, either spelling: the literal (possibly still an
     # unexpanded env-var reference the shell would resolve at run time) and
@@ -188,6 +212,9 @@ Bash)
     SEGMENTS=$(printf '%s\n' "$CMD_NR" | sed -E 's/(\|\||&&|[;&|])/\n/g')
 
     WRITE_RE='(^|[[:space:]]|[;&|(])(sudo[[:space:]]+)?(sed[[:space:]]+-i|tee|cp|mv|rm|rmdir|chmod|chown|patch|ln|truncate|install)([[:space:]]|$)'
+    # PowerShell and cmd.exe spell the same writes differently, and
+    # PowerShell does not care about case. Matched on their own, -i.
+    PS_WRITE_RE='(^|[[:space:]]|[;&|(])(set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|del|erase|copy|move|ren)([[:space:]]|$)'
 
     root_in() { # root_in <text> - either spelling of the root, fixed-string
         grep -qF -- "$ROOT_RAW" <<<"$1" 2>/dev/null && return 0
@@ -201,7 +228,8 @@ Bash)
 
         # A write verb owns its whole segment; the root has to appear
         # SOMEWHERE in that same segment, not merely on the same line.
-        if grep -qE "$WRITE_RE" <<<"$SEG" 2>/dev/null && root_in "$SEG"; then
+        if { grep -qE "$WRITE_RE" <<<"$SEG" || grep -qiE "$PS_WRITE_RE" <<<"$SEG"; } 2>/dev/null \
+            && root_in "$SEG"; then
             HITVERB=1
         fi
 
