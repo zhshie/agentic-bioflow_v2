@@ -148,5 +148,59 @@ has "$out" "== parameters ==" \
 bash "$SDIR/prepare_launch.sh" >/dev/null 2>&1
 [ "$?" = 2 ] && ok "no --repo given exits 2" || no "no --repo given exits 2" "wrong rc"
 
+# =========================================================================
+# Scenario D: the two cross-branch sections - `paths` (where.sh --run-paths)
+# and `in flight` (parallel_watch_check.sh, duplicate_run_check.sh). The
+# helpers are stubbed beside the copied script the same way preflight.sh is,
+# so each case controls exactly what they report.
+# =========================================================================
+fake_preflight "OK: all good"
+stub() {   # stub <name> <exit> <stdout-line>...
+    local name="$1" rc="$2"; shift 2
+    { printf '#!/bin/bash\n'
+      for l in "$@"; do printf 'echo %q\n' "$l"; done
+      printf 'exit %s\n' "$rc"
+    } > "$SDIR/$name"; chmod +x "$SDIR/$name"
+}
+stub where.sh 0 "site_run_dir=/site/u/projects/p1/runs/r1" "local_fetch_dir=/home/me/agentic-bioflow/projects/p1/runs/r1/results"
+stub parallel_watch_check.sh 0
+stub duplicate_run_check.sh 0
+
+run
+has "$out" "== paths ==" \
+    && no "without --project there is no paths section to guess at" "<<$out>>" \
+    || ok "without --project there is no paths section to guess at"
+has "$out" "== in flight ==" && has "$out" "nothing else of yours is running" \
+    && ok "in flight section says plainly when nothing overlaps" \
+    || no "in flight section says plainly when nothing overlaps" "<<$out>>"
+
+run --project p1 --run r1
+has "$out" "site run dir:     /site/u/projects/p1/runs/r1" \
+    && has "$out" "local fetch dir:  /home/me/agentic-bioflow/projects/p1/runs/r1/results" \
+    && ok "with --project/--run both absolute paths are shown" \
+    || no "with --project/--run both absolute paths are shown" "<<$out>>"
+has "$out" "confirm where results land" \
+    && ok "...and confirming them is listed as a decision" \
+    || no "...and confirming them is listed as a decision" "<<$out>>"
+
+stub parallel_watch_check.sh 1 "3 of your runs are active; the site allows 4 sessions"
+stub duplicate_run_check.sh 1 "r0 (RUNNING) uses the same samplesheet in project p1"
+run --project p1 --run r1 --samplesheet /x/samplesheet.csv
+has "$out" "3 of your runs are active" && has "$out" "r0 (RUNNING) uses the same samplesheet" \
+    && ok "in flight shows the session-cap line and the duplicate line" \
+    || no "in flight shows the session-cap line and the duplicate line" "<<$out>>"
+has "$out" "looks like a run already in flight" \
+    && ok "...and a duplicate is raised as a decision, not buried" \
+    || no "...and a duplicate is raised as a decision, not buried" "<<$out>>"
+[ "$rc" = 0 ] && ok "advisory findings alone never make the call fail" \
+    || no "advisory findings alone never make the call fail" "rc=$rc"
+
+stub duplicate_run_check.sh 1 "should not be consulted"
+run --project p1 --run r1
+has "$out" "should not be consulted" \
+    && no "no --samplesheet means no duplicate check is attempted" "<<$out>>" \
+    || ok "no --samplesheet means no duplicate check is attempted"
+rm -f "$SDIR/where.sh" "$SDIR/parallel_watch_check.sh" "$SDIR/duplicate_run_check.sh"
+
 echo
 [ "$fails" = 0 ] && echo "OK: prepare_launch.sh" || { echo "$fails failed"; exit 1; }

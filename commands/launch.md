@@ -93,21 +93,22 @@ AVAILABLE - none of which the gate can see.
    ```
    scripts/prepare_launch.sh --repo <owner/name> --revision <rev, if pinned> \
        --input <local directory of reads, if reachable from here> \
-       --workspace $(scripts/settings.sh workspace_id)
+       --workspace $(scripts/settings.sh workspace_id) \
+       --project <name, if the user already said> --run <run dir name, if known>
    ```
+
+   Pass `--project`/`--run` only when the user's own request already named
+   them - never guess one to fill the flag. With both, the summary gains a
+   `== paths ==` section (where the run lands on the site, where its results
+   come back to on this machine) and an `== in flight ==` section (whether
+   this member is near the site's session cap). Without them those two wait
+   for step 7, which always shows the paths.
 
    **Show its summary to the user exactly as printed** — do not summarise it
    from memory or reformat it; its `== decisions ==` section is what the
    question below is built from. When `--revision` was left out, the
    `== pipeline ==` section names the one it resolved to (the newest tag) and
    flags it as needing confirmation, never launched on silently.
-
-   **Extension point for other branches (read `scripts/prepare_launch.sh`'s
-   own header for the full contract):** the summary is an ordered list of
-   `== <name> ==` sections and is designed to grow. A site-side run directory
-   and local fetch destination land as a new `paths` section; a "this looks
-   like it duplicates an in-flight run" hint feeds the same `== decisions ==`
-   rollup every other check already writes into.
 
    **Then put every decision to the user in one `AskUserQuestion` call**,
    covering what three separate steps used to ask one at a time:
@@ -399,6 +400,19 @@ AVAILABLE - none of which the gate can see.
 
 7. **Show the complete command** — every parameter on its own line — and wait
    for an explicit 確認執行. Include `--disable-optimization`.
+
+   **Say where the results will be, in the same message as the command.**
+   Both paths, absolute, from the one place that builds them:
+
+   ```bash
+   scripts/where.sh --run-paths <project> <run dir name>
+   ```
+
+   `site_run_dir` is this run's home on the site; `local_fetch_dir` is where
+   `:runs` will bring `results/` back to on this machine. If the user wants
+   the results somewhere else for this run only, pass
+   `--local-root <path>` to the same call, show the new pair, and use that
+   root when the results are fetched - the saved `local_root` stays as it is.
 
    **Provenance is on by default.** Before assembling the command, write
    `<run>/provenance.config` into the run directory step 0 already created:

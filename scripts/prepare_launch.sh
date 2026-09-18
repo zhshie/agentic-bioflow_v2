@@ -18,6 +18,16 @@
 #
 #   prepare_launch.sh --repo <owner/name> [--revision <rev>] [--input <dir>]
 #                      [--workspace <ws>] [--fixture-dir <dir>]
+#                      [--project <name>] [--run <run-dir-name>]
+#                      [--samplesheet <path>]
+#
+# --project/--run/--samplesheet are optional because step 0 may run this
+# before the user has named them. Given, they add two sections: `paths`
+# (where the run lands on the site and where its results come back to on
+# this machine, from scripts/where.sh --run-paths) and `in flight` (whether
+# this project+samplesheet is already running, and whether this member is
+# near the site's session cap). Both are advisory - they feed == decisions ==
+# and never block on their own.
 #
 # --revision, if not given, is resolved to the newest tag on the pipeline's
 # own repo (the same `git ls-remote --tags` nf-core's own CLI already uses,
@@ -40,28 +50,18 @@
 # time across several turns. A launch walk that stops at the first FAIL and
 # waits to be re-run is exactly the round-trip cost this file exists to cut.
 #
-# --- Extension point (cross-branch integration) ------------------------------
-# The summary is a flat, ordered list of `== <name> ==` sections
-# (SECTION_ORDER below), each rendered by its own `section_<name>` function
-# that appends to $SECTIONS. Two other branches are expected to add to this
-# same summary:
-#   (a) site-side run directory + local fetch destination (two absolute
-#       paths) - add a `section_paths` function and append "paths" to
-#       SECTION_ORDER wherever it reads best (after "pipeline" is the
-#       natural spot, since both are decided from the same project choice).
-#   (b) "this looks like it duplicates an in-flight run" - add a
-#       `section_duplicate` function; append anything it flags to
-#       $DECISIONS so it surfaces in the final == decisions == section
-#       alongside everything else, the same way every check here does.
-# A new section function may append to $BLOCKING/$WARNINGS/$DECISIONS (each
-# a newline-separated accumulator, one entry per line) the same way the
-# functions below do - nothing about the render step needs to change for a
-# new section to participate in the final rollup.
+# --- Adding a section ---------------------------------------------------------
+# The summary is a flat, ordered list of `== <name> ==` sections, each built
+# by a block below that calls add_section. A new section may append to
+# $BLOCKING/$WARNINGS/$DECISIONS (newline-separated, one entry per line) and
+# the final == decisions == rollup picks it up with no other change. `paths`
+# and `in flight` are the two added this way (scripts/where.sh,
+# scripts/duplicate_run_check.sh, scripts/parallel_watch_check.sh).
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
 
-REPO="" REVISION="" INPUT="" WORKSPACE="" FIXTURE=""
+REPO="" REVISION="" INPUT="" WORKSPACE="" FIXTURE="" PROJECT="" RUN="" SAMPLESHEET=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo)        REPO="${2:?usage: --repo <owner/name>}"; shift 2 ;;
@@ -69,10 +69,13 @@ while [ $# -gt 0 ]; do
         --input)       INPUT="${2:?usage: --input <dir>}"; shift 2 ;;
         --workspace)   WORKSPACE="${2:?usage: --workspace <id>}"; shift 2 ;;
         --fixture-dir) FIXTURE="${2:?usage: --fixture-dir <dir>}"; shift 2 ;;
+        --project)     PROJECT="${2:?usage: --project <name>}"; shift 2 ;;
+        --run)         RUN="${2:?usage: --run <run-dir-name>}"; shift 2 ;;
+        --samplesheet) SAMPLESHEET="${2:?usage: --samplesheet <path>}"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
-[ -n "$REPO" ] || { echo "usage: prepare_launch.sh --repo <owner/name> [--revision <rev>] [--input <dir>] [--workspace <ws>] [--fixture-dir <dir>]" >&2; exit 2; }
+[ -n "$REPO" ] || { echo "usage: prepare_launch.sh --repo <owner/name> [--revision <rev>] [--input <dir>] [--workspace <ws>] [--fixture-dir <dir>] [--project <name>] [--run <name>] [--samplesheet <path>]" >&2; exit 2; }
 
 WORKSPACE="${WORKSPACE:-$(setting workspace_id)}"
 TW="${TW_BIN:-$(setting tw_bin)}"; [ -n "$TW" ] || TW="$(command -v tw 2>/dev/null || true)"
@@ -138,6 +141,23 @@ PIPELINE_BODY="repo: $REPO
 revision: $REVISION$([ "$AUTO_REVISION" = 1 ] && echo ' (no revision given - resolved automatically, newest tag)')
 registered: $REGISTERED"
 add_section pipeline "$PIPELINE_BODY"
+
+# --- paths -------------------------------------------------------------------
+# Both absolute paths, said before anything is launched, so the user can
+# change where results land now rather than find out afterwards. Asked of
+# where.sh, which builds them with the same functions init_workspace.sh uses,
+# so this can never name a directory the run will not actually use.
+if [ -n "$PROJECT" ] && [ -n "$RUN" ]; then
+    RP_OUT="$(bash "$HERE/where.sh" --run-paths "$PROJECT" "$RUN" 2>&1)"
+    if [ $? -eq 0 ]; then
+        add_section paths "site run dir:     $(sed -n 's/^site_run_dir=//p' <<<"$RP_OUT")
+local fetch dir:  $(sed -n 's/^local_fetch_dir=//p' <<<"$RP_OUT")"
+        add_decision "confirm where results land (== paths ==), or name another local folder for this run"
+    else
+        add_section paths "could not work out the paths: $RP_OUT"
+        add_warning "paths unknown - where.sh --run-paths failed"
+    fi
+fi
 [ "$AUTO_REVISION" = 1 ] && [ "$REVISION" != "(could not be resolved)" ] && \
     add_decision "confirm the resolved revision ($REVISION) - it was not given, only picked as the newest tag"
 [ "$REVISION" = "(could not be resolved)" ] && \
@@ -205,6 +225,26 @@ $SAMPLE_LINES$([ "$N" -gt 3 ] && echo "
     fi
 fi
 add_section samplesheet "$SS_BODY"
+
+# --- in flight ---------------------------------------------------------------
+# One member often runs several analyses at once from one conversation. Two
+# ways that goes wrong are cheap to catch here: relaunching something that
+# is already running, and opening more watches than the site's session cap
+# allows (PITFALLS 16e - past it, calls hang instead of failing). Both
+# helpers are advisory: exit 1 means "say this", never "stop".
+IF_BODY=""
+ME="$(setting seqera_user)"
+PW_OUT="$(bash "$HERE/parallel_watch_check.sh" ${WORKSPACE:+--workspace "$WORKSPACE"} ${ME:+--user "$ME"} 2>/dev/null)"
+[ $? -eq 1 ] && { IF_BODY="$PW_OUT"; add_decision "$PW_OUT"; }
+if [ -n "$PROJECT" ] && [ -n "$SAMPLESHEET" ]; then
+    DUP_OUT="$(bash "$HERE/duplicate_run_check.sh" --project "$PROJECT" --samplesheet "$SAMPLESHEET" \
+               ${WORKSPACE:+--workspace "$WORKSPACE"} ${ME:+--user "$ME"} 2>/dev/null)"
+    if [ $? -eq 1 ]; then
+        IF_BODY="${IF_BODY}${IF_BODY:+$'\n'}$DUP_OUT"
+        add_decision "this looks like a run already in flight - see == in flight == before launching again"
+    fi
+fi
+add_section "in flight" "${IF_BODY:-nothing else of yours is running with this project and samplesheet}"
 
 # --- preflight ---------------------------------------------------------------
 PF_OUT=""

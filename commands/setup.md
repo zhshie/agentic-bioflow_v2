@@ -213,10 +213,11 @@ This is a checklist to read out, not a script to write:
   project's `.claude/settings.json`, and say plainly that this is a
   suggestion scoped to this project, not a claim that superpowers is wrong
   to have installed anywhere else.
-- **Is the Positron bridge extension installed?** Record the checkpoint only
-  - the check itself ships on a different branch. Found or not, say what was
-  found; if it cannot be found here, say "this version does not provide it
-  yet" rather than reading its absence as a failure of this step.
+- **Is the Positron bridge extension installed?** Only where this machine has
+  Positron. `scripts/positron_run.py --check` answers it: a line starting
+  `bridge` means yes. Anything else, point at "Optional: the Positron bridge
+  extension" below - it is optional, so its absence is a suggestion, never a
+  failure of this step.
 
 ---
 
