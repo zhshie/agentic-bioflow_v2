@@ -18,6 +18,8 @@ fails=0
 # Build a transcript from a compact spec, one record per argument:
 #   w:<cmd>    a Bash tool_use the assistant RAN
 #   a:<text>   assistant text (the model's own message)
+#   s:<skill>  a Skill tool_use the assistant RAN (T4) - <skill> is the raw
+#              value of tool_input.skill, e.g. "agentic-bioflow:launch"
 mktx() {
   local out="$1"; shift
   python3 - "$out" "$@" <<'PY'
@@ -29,6 +31,9 @@ with open(out, "w") as f:
         if kind == "w":
             rec = {"type": "assistant", "message": {"content": [
                    {"type": "tool_use", "name": "Bash", "input": {"command": text}}]}}
+        elif kind == "s":
+            rec = {"type": "assistant", "message": {"content": [
+                   {"type": "tool_use", "name": "Skill", "input": {"skill": text}}]}}
         else:
             rec = {"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}
         f.write(json.dumps(rec) + "\n")
@@ -91,6 +96,33 @@ printf '%-64s ' "an unreadable transcript never blocks"
 out=$(printf '{"stop_hook_active":false}' | bash "$H" 2>/dev/null)
 printf '%-64s ' "no transcript_path at all never blocks"
 [ -z "$out" ] && echo ok || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+
+echo
+echo "== T4: loading a skill opens a flow too, not just intro.sh <cmd> =="
+mktx "$TMP/skill_opens_no_next.jsonl"   's:agentic-bioflow:launch' 'a:Working on it, no next step here.'
+mktx "$TMP/skill_opens_with_next.jsonl" 's:agentic-bioflow:launch' 'a:Working on it. 下一步: confirm the command.'
+mktx "$TMP/skill_ends_via_end.jsonl"    's:agentic-bioflow:launch' "w:$INTRO_END_LAUNCH" 'a:All done, no next step.'
+mktx "$TMP/operational_alone.jsonl"     's:agentic-bioflow:operational' 'a:Let me look into this, no next step yet.'
+mktx "$TMP/operational_then_intro.jsonl" 's:agentic-bioflow:operational' "w:$INTRO_LAUNCH" 'a:Here is the plan, no next step.'
+mktx "$TMP/other_plugin_skill.jsonl"    's:some-other-plugin:thing' 'a:Doing something unrelated, no next step.'
+
+t "Skill load of agentic-bioflow:launch opens the flow - no next step blocks" block false "$TMP/skill_opens_no_next.jsonl"
+t "same, with a next step present - allowed"                                 allow false "$TMP/skill_opens_with_next.jsonl"
+t "a later intro.sh --end launch still closes the skill-opened flow"         allow false "$TMP/skill_ends_via_end.jsonl"
+t "agentic-bioflow:operational ALONE opens no flow of its own"               allow false "$TMP/operational_alone.jsonl"
+t "operational followed by intro.sh launch opens launch normally"            block false "$TMP/operational_then_intro.jsonl"
+t "a different plugin's skill is none of this hook's business"               allow false "$TMP/other_plugin_skill.jsonl"
+
+printf '%-64s ' "the block reason asks for exactly one line, not a list of options"
+out=$(python3 -c '
+import json,sys
+print(json.dumps({"stop_hook_active": False, "transcript_path": sys.argv[1]}))' \
+        "$TMP/in_flow_no_next.jsonl" | bash "$H" 2>/dev/null)
+reason=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("reason",""))' <<<"$out" 2>/dev/null)
+case "$reason" in
+  *"ONE line"*"ONE"*"not a list"*) echo ok ;;
+  *) echo "FAIL: reason does not ask for one line/one action <<$reason>>"; fails=$((fails+1)) ;;
+esac
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

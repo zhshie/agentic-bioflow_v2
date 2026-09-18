@@ -15,6 +15,26 @@
 # nothing, fast: a cheap grep for "intro.sh" on the transcript tail comes back
 # empty and the hook exits before ever calling jq.
 #
+# T4 (2.16): `intro.sh <cmd>` was the ONLY door, and skills/operational/
+# SKILL.md is reachable by natural language precisely so a typed slash
+# command is never required (PRINCIPLES.md, "the skill is the heart"). A
+# conversation that loaded the skill and started working without ever
+# running intro.sh - plausible, since nothing forced the call before T5 made
+# it the skill's own first step - left this hook believing no flow was open
+# at all. A `Skill` tool_use naming `agentic-bioflow:<one of the five
+# commands>` now opens that command's flow exactly the way running its
+# intro.sh does. `agentic-bioflow:operational` itself is excluded on
+# purpose: it is the router, not one of the five, and which flow it becomes
+# is only known once it goes on to call intro.sh <cmd> - which T5 now
+# requires as literally its first action, so that call still opens things
+# the original way moments later. The cheap pre-filter below has to widen
+# with it: a transcript that opened a flow purely by loading the skill,
+# with intro.sh never once typed, contains no "intro.sh" substring at all -
+# exactly the gap this half of the card exists to close - so grepping for
+# only that string would skip the fast path around the very case T4 adds.
+# It now also passes on a bare mention of "agentic-bioflow:", which every
+# Skill tool_use naming this plugin's skills carries in its own JSON.
+#
 # Deliberately fail OPEN, unlike the three safety-net hooks beside it
 # (PITFALLS 28's fix for THOSE is fail-closed). A Stop hook is not a
 # permission gate: refusing to let the model stop because jq is missing, or
@@ -45,41 +65,63 @@ MAXLINES=4000   # bounds the cost on a long conversation, same figure
                 # confirm_walkthrough.sh uses for the same reason
 
 # Fast path for the overwhelming majority of Stop events: no mention of
-# intro.sh anywhere recent means no flow was ever started, and the jq/awk
-# work below is not worth paying on every single assistant turn in every
-# conversation.
-tail -n "$MAXLINES" "$TP" 2>/dev/null | grep -q 'intro\.sh' || exit 0
+# intro.sh AND no mention of this plugin's own skills anywhere recent means
+# no flow was ever started, and the jq/awk work below is not worth paying on
+# every single assistant turn in every conversation. T4 widened the second
+# half of that test - see this file's own T4 paragraph above for why a
+# skill-opened flow can carry no "intro.sh" substring at all.
+tail -n "$MAXLINES" "$TP" 2>/dev/null | grep -qE 'intro\.sh|agentic-bioflow:' || exit 0
 
 KNOWN='setup|launch|runs|downstream|finish'
 
-# Every Bash tool_use command string this hook's window can see, oldest
-# first, one per line (tojson so an embedded real newline in the command
-# cannot masquerade as a record boundary).
+# Every Bash tool_use command string AND every Skill tool_use's skill name
+# this hook's window can see, oldest first, one per line, tagged so the
+# replay below can tell the two apart without a second jq pass. tojson keeps
+# an embedded real newline from masquerading as a record boundary, the same
+# reason it was already used for the Bash half.
 CALLS=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
     select(.type=="assistant")
     | (.message.content // [])[]?
-    | select(.type=="tool_use" and .name=="Bash")
-    | (.input.command // "") | tojson' 2>/dev/null)
+    | select(.type=="tool_use")
+    | if .name=="Bash" then "B\t" + ((.input.command // "") | tojson)
+      elif .name=="Skill" then "S\t" + ((.input.skill // "") | tojson)
+      else empty end' 2>/dev/null)
 
 # Replay the calls in order: each `intro.sh <cmd>` opens that command's flow,
-# each matching `intro.sh --end <cmd>` closes it. Whatever is open at the end
+# each matching `intro.sh --end <cmd>` closes it, and (T4) each Skill load of
+# `agentic-bioflow:<one of the five>` opens that flow too - `operational`
+# itself never does, see this file's own header. Whatever is open at the end
 # of the transcript is "current" - a conversation moving from one command to
 # the next without ever sending --end for the first one just means the new
 # command's flow is what is open now, which costs nothing worse than asking
 # for a next step a little more often (the plan's own accepted trade-off).
 ACTIVE=""
-while IFS= read -r RAWCMD; do
-    case "$RAWCMD" in
-        *intro.sh*) ;;
-        *) continue ;;
+while IFS= read -r LINE; do
+    [ -n "$LINE" ] || continue
+    KIND=${LINE%%$'\t'*}
+    REST=${LINE#*$'\t'}
+    case "$KIND" in
+    B)
+        case "$REST" in
+            *intro.sh*) ;;
+            *) continue ;;
+        esac
+        TAIL=$(printf '%s' "$REST" | sed -E 's/.*intro\.sh//')
+        if printf '%s' "$TAIL" | grep -qE "^[[:space:]]+--end[[:space:]]+($KNOWN)\\b"; then
+            ENDCMD=$(printf '%s' "$TAIL" | sed -nE "s/^[[:space:]]+--end[[:space:]]+($KNOWN)\\b.*/\\1/p")
+            [ "$ENDCMD" = "$ACTIVE" ] && ACTIVE=""
+        elif printf '%s' "$TAIL" | grep -qE "^[[:space:]]+($KNOWN)\\b"; then
+            ACTIVE=$(printf '%s' "$TAIL" | sed -nE "s/^[[:space:]]+($KNOWN)\\b.*/\\1/p")
+        fi
+        ;;
+    S)
+        # REST is the tojson'd skill name, quotes and all - anchored on both
+        # ends so "agentic-bioflow:launch-extra" cannot slip through as
+        # "launch", and "operational" (not in $KNOWN) never matches at all.
+        SKILLNAME=$(printf '%s' "$REST" | sed -nE "s/^\"agentic-bioflow:($KNOWN)\"\$/\\1/p")
+        [ -n "$SKILLNAME" ] && ACTIVE="$SKILLNAME"
+        ;;
     esac
-    TAIL=$(printf '%s' "$RAWCMD" | sed -E 's/.*intro\.sh//')
-    if printf '%s' "$TAIL" | grep -qE "^[[:space:]]+--end[[:space:]]+($KNOWN)\\b"; then
-        ENDCMD=$(printf '%s' "$TAIL" | sed -nE "s/^[[:space:]]+--end[[:space:]]+($KNOWN)\\b.*/\\1/p")
-        [ "$ENDCMD" = "$ACTIVE" ] && ACTIVE=""
-    elif printf '%s' "$TAIL" | grep -qE "^[[:space:]]+($KNOWN)\\b"; then
-        ACTIVE=$(printf '%s' "$TAIL" | sed -nE "s/^[[:space:]]+($KNOWN)\\b.*/\\1/p")
-    fi
 done <<< "$CALLS"
 
 [ -n "$ACTIVE" ] || exit 0   # outside any flow: this hook has nothing to say
@@ -106,7 +148,13 @@ LASTMSG=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
 
 printf '%s' "$LASTMSG" | grep -qF "$NEEDLE" && exit 0
 
+# T4: the block message used to ask for "one concrete next step" and stop
+# there, which a reply could satisfy with an entire bulleted menu of options
+# as long as one of the lines used the needle word - technically a next step
+# was named, but the user is handed a decision to make instead of being told
+# what happens next. The reason now asks for exactly ONE LINE naming exactly
+# ONE action, not a menu.
 jq -n --arg needle "$NEEDLE" --arg cmd "$ACTIVE" '
   {decision: "block",
-   reason: ("This reply is inside the /agentic-bioflow:" + $cmd + " flow, and it does not end with a next step (\"" + $needle + "\"). Add one concrete next step - which command, or which decision is next - before finishing.")}'
+   reason: ("This reply is inside the /agentic-bioflow:" + $cmd + " flow, and it does not end with a next step (\"" + $needle + "\"). End it with exactly ONE line naming ONE concrete next action - the single command to run, or the single decision to make - not a list of options.")}'
 exit 0
