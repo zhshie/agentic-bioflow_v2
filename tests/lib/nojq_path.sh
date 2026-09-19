@@ -12,16 +12,20 @@
 # /usr/bin/jq alone still leaves /bin/jq. That once made every "no jq" case in
 # CI test the with-jq path while passing on the cluster.
 #
+# jq.exe too: on Windows the binary is jq.exe, and matching the bare name
+# alone linked it straight into the shim (2.15.0 verification). The check
+# below caught it, which is what it is for.
+#
 # Returns 1 if jq is still reachable afterwards, so a caller never runs a
 # "no jq" case that silently has jq.
 nojq_path() {
     local scratch="$1" out="" d shim i=0 f IFS=:
     for d in $PATH; do
-        if [ -n "$d" ] && [ -x "$d/jq" ]; then
+        if [ -n "$d" ] && { [ -x "$d/jq" ] || [ -x "$d/jq.exe" ]; }; then
             i=$((i+1)); shim="$scratch/no_jq_bin.$i"
             mkdir -p "$shim"
             for f in "$d"/*; do
-                [ "$(basename "$f")" = jq ] && continue
+                case "$(basename "$f")" in jq|jq.exe) continue ;; esac
                 ln -sf "$f" "$shim/" 2>/dev/null
             done
             d="$shim"

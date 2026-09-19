@@ -113,16 +113,22 @@ echo "logs:    $LOGDIR"
 echo
 
 passed=0; failed=0; timedout=0; FAILED_LIST=""
+# </dev/null on every test below: this loop reads its file list from stdin,
+# and a test that reads stdin - or a child that does, as Windows' py.exe
+# launcher did under Git Bash in the 2.15.0 verification - swallowed the rest
+# of the list. The run then stopped after 5 of 70 files and printed a summary
+# that looked complete. The count check after the loop catches any other way
+# that can happen.
 while IFS= read -r b; do
     [ -n "$b" ] || continue
     printf '%-46s ' "$b"
     start=$SECONDS
     if [ "$VERBOSE" = 1 ]; then
-        clocked "$PER_TEST_TIMEOUT" bash "$ROOT/tests/$b" 2>&1 | tee "$LOGDIR/$b.log"
+        clocked "$PER_TEST_TIMEOUT" bash "$ROOT/tests/$b" </dev/null 2>&1 | tee "$LOGDIR/$b.log"
         rc=${PIPESTATUS[0]}
         printf '%-46s ' "-> $b"
     else
-        clocked "$PER_TEST_TIMEOUT" bash "$ROOT/tests/$b" >"$LOGDIR/$b.log" 2>&1
+        clocked "$PER_TEST_TIMEOUT" bash "$ROOT/tests/$b" </dev/null >"$LOGDIR/$b.log" 2>&1
         rc=$?
     fi
     dur=$((SECONDS - start))
@@ -137,6 +143,7 @@ done <<< "$FILES"
 
 echo
 total=$((passed + failed + timedout))
+expected=$(grep -c . <<<"$FILES")
 if [ -n "$FAILED_LIST" ]; then
     echo "== output of what did not pass =="
     while IFS= read -r b; do
@@ -150,6 +157,7 @@ if [ -n "$FAILED_LIST" ]; then
 fi
 
 summary="$passed/$total passed"
+[ "$total" != "$expected" ] && summary="$summary - INCOMPLETE: only $total of $expected test files ran"
 [ "$failed"   -gt 0 ] && summary="$summary, $failed failed"
 [ "$timedout" -gt 0 ] && summary="$summary, $timedout timed out"
 echo "$summary"
@@ -158,5 +166,5 @@ if [ "$ON_MSYS" = 1 ]; then
     echo "note: run on Git Bash/MSYS with --allow-msys - failures here are the known"
     echo "      MSYS gap (docs/PITFALLS.md 20c), not a regression. Rerun on Linux/WSL for a verdict."
 fi
-[ "$failed" = 0 ] && [ "$timedout" = 0 ] || exit 1
+[ "$failed" = 0 ] && [ "$timedout" = 0 ] && [ "$total" = "$expected" ] || exit 1
 echo "all green"
