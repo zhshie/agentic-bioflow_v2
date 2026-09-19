@@ -442,9 +442,17 @@ def bridge_run(bridge, language, code, timeout):
         print(f"positron_run: bridge answered unexpectedly (HTTP {status}). "
               "Try --check.", file=sys.stderr)
         return 1
-    for image in parsed.get("new_images") or []:
+    images = parsed.get("new_images") or []
+    for image in images:
         print(f"positron_run: new image  {image}")
     if parsed.get("ok"):
+        # Always one line on success. With no new image file this used to
+        # print nothing at all, and an exit 0 with empty output read as
+        # "did anything happen?" (2.15.0 Windows verification: the plot was
+        # in Positron's Plots pane the whole time).
+        print(f"positron_run: ok - ran in the Positron {LANGUAGES.get(language, language)} "
+              f"console via the bridge; {len(images)} new image file(s)"
+              + ("" if images else " (a plot shown only in the Plots pane is not a file)"))
         return 0
     print(parsed.get("error") or "the console reported the run as failed", file=sys.stderr)
     return 1
@@ -1002,7 +1010,12 @@ def open_console_guidance(language, workspace, state=None):
         "\n"
         "This attaches to a console you already have and will not start one\n"
         "for you: a runtime appearing unasked in your IDE, holding a workspace\n"
-        "you did not pick, is a worse surprise than this message."
+        "you did not pick, is a worse surprise than this message.\n"
+        # Every rung-3 message ends with the batch path, not only the one
+        # tier3_message() builds: after Positron quit (stale supervisor files)
+        # this used to stop at "start Positron again", a dead end for anyone
+        # who did not want to (2.15.0 Windows verification).
+        + BATCH_HINT
     )
 
 

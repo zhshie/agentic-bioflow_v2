@@ -192,6 +192,8 @@ t "stale supervisor file: skipped, not fatal" 2 "none answered" \
     -- --lang r --code '1+1' --workspace "$TMP/work" --dry-run
 t "stale is not reported as absent"          2 "has since quit" \
     -- --lang r --code '1+1' --workspace "$TMP/work" --dry-run
+t "stale still offers the batch path, not a dead end" 2 "Rscript <script>.R" \
+    -- --lang r --code '1+1' --workspace "$TMP/work" --dry-run
 
 # --------------------------------------------------------------------------
 # A busy console. Queuing behind whatever is running would execute this at a
@@ -531,6 +533,10 @@ run --lang r --code '1+1'
 printf '%-58s ' "bridge: a successful run reports the new image by path"
 grep -qF -- "new image  analysis/figures/plot.png" <<<"$out" \
   && echo ok || { echo "FAIL: no new-image line  <<$out>>"; fails=$((fails+1)); }
+
+printf '%-58s ' "bridge: a successful run always says so, in one line"
+grep -qF -- "positron_run: ok - ran in the Positron R console" <<<"$out" \
+  && echo ok || { echo "FAIL: no success line  <<$out>>"; fails=$((fails+1)); }
 
 BRIDGE_FIXTURE="$TMP/bridge/resp_err.json"
 t "bridge: a failed run prints the console's error and exits 1" 1 "Error: boom" \
