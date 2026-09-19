@@ -121,9 +121,20 @@ fi
 # 2.8: off-design reports still queued (scripts/report.sh). Every start and
 # every resume, for the same reason as SHELLWARN: a compaction may have taken
 # the first reminder. Read only - this hook keeps no state and writes nothing.
-RQ="${AGENTIC_BIOFLOW_REPORTS_DIR:-$(dirname "$SETTINGS_FILE")/reports}"
+#
+# Asked through `report.sh --dir` rather than re-deriving
+# `$(dirname "$SETTINGS_FILE")/reports` here: that copy used to agree with
+# report.sh only when a settings file was actually found. Before setup has
+# ever run, report.sh's own reports_dir() falls back to the XDG state
+# default - and this hook exits earlier, through emit(), in exactly that
+# case, so a report queued before setup existed was never in the directory
+# this used to look in on any later run. Calling the one function that
+# computes the path keeps both sides in agreement by construction.
+RQ="$(bash "$ROOT/scripts/report.sh" --dir 2>/dev/null)"
 NREP=0
-for r in "$RQ"/*.report; do [ -e "$r" ] && NREP=$((NREP + 1)); done
+if [ -n "$RQ" ]; then
+    for r in "$RQ"/*.report; do [ -e "$r" ] && NREP=$((NREP + 1)); done
+fi
 [ "$NREP" -gt 0 ] && WHERE="${WHERE:+$WHERE
 
 }$NREP off-design report(s) not sent - 'scripts/report.sh send' shows exactly what would go out before anything is sent."

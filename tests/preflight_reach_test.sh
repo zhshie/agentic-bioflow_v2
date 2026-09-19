@@ -69,5 +69,26 @@ mkssh 0
 out=$(run)
 has "no storage_root names the settings key"      'FAIL +run-area.*storage_root' "$out"
 
+# --- a colorized compute-env status must not read as a false FAIL ------------
+# Issue #10: `tw` colorized the Status cell in some contexts, and the raw
+# ESC[32m.../ESC[39m/ESC[0m bytes compared byte-for-byte against the plain
+# string "AVAILABLE" - so a genuinely available environment reported FAIL.
+cat > "$TMP/tw_colored" <<'STUB'
+#!/bin/bash
+case "$*" in
+  *"compute-envs view"*)
+    printf ' Status                 | \033[32mAVAILABLE\033[39m\033[0m\n' ;;
+  *) exit 0 ;;
+esac
+STUB
+chmod +x "$TMP/tw_colored"
+
+settings 'reach: local' 'storage_root: /work/runs' 'workspace_id: 1' 'compute_env: ce'
+mkssh 0
+out=$(LAB_SETTINGS_FILE="$TMP/env.yaml" SEQERA_TOKEN_FILE="$TMP/token" \
+      ON_SITE_SSH_BIN="$TMP/ssh" TW_BIN="$TMP/tw_colored" bash "$P" 2>&1)
+has    "a colorized AVAILABLE still reads OK, not a false FAIL" '^OK +compute-env' "$out"
+hasnot "and no raw color-code bytes leak into the report"       '\[32m'            "$out"
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

@@ -8,7 +8,15 @@ never the user's working directory. Installed as a plugin they are under
 
 ## Before anything else
 
-Run `scripts/intro.sh setup` and put its five sections in front of the user
+Run `. scripts/env.sh && scripts/intro.sh setup` — sourcing `env.sh` first
+sets `PATH` (so `tw` resolves without spelling out `scripts/settings.sh
+tw_bin` every time it is called below) and `TOWER_ACCESS_TOKEN`, both from
+this deployment's own settings. Each Bash tool call is a fresh shell,
+so nothing exported here survives into the next one: every later call that
+runs `tw` starts with `. scripts/env.sh &&` too - a prefix inside that same
+call, never a round trip of its own (`scripts/env.sh`'s own header).
+It degrades quietly before setup has written any settings at all - there is
+nothing yet for it to read. Put `intro.sh`'s five sections in front of the user
 before asking, or doing, anything below. When this command's flow ends - the
 summary in step 10 is delivered, or a repair finishes - run `scripts/intro.sh
 --end setup`.
@@ -41,7 +49,16 @@ assumes them.
 
 ## Which situation this is
 
-There are three, not two, and the third is the one that bites.
+There are four, not two, and the third is the one that bites.
+
+**T27: run `scripts/setup_verify.sh` first, before anything else below.**
+Exit 0 means this machine is already fully configured and `preflight.sh`
+passes — tell the user that in the words it printed, run `scripts/intro.sh
+--end setup`, and stop. Nothing past this point applies; walking a
+fully-working machine through repair's own checks would waste the several
+seconds each one takes for no reason. Any other exit code means there is
+something to do, and which of the remaining three situations applies is
+exactly what the rest of this section decides.
 
 Read the deployment settings — `docs/SETTINGS.md` says where they live, which
 depends on whether this deployment runs on the site or reaches it — and check
@@ -71,8 +88,58 @@ which is one question, not a setup.
 | | Adopt the existing one | A second, isolated environment |
 |---|---|---|
 | When | The user *is* the person who set it up, from another machine | A different member, or a deliberately separate run area |
-| What to do | Copy the existing `env.yaml` and token across; skip to **Repair** | Continue with **First run**, choosing fresh values below |
+| What to do | See "Adopting an existing deployment" below; then skip to **Repair** | Continue with **First run**, choosing fresh values below |
 | Watch for | `agent_java` / `agent_jar` under someone else's home — `drwx------` on this cluster, so unreadable to anyone else. Adopting those paths fails as "missing file" | Nothing is shared but the workspace and the allocation |
+
+### Adopting an existing deployment (T23, Fixes #17)
+
+**Ask first whether a portable folder exists for this person** — the shape
+`docs/SETTINGS.md`'s "The portable folder" section describes
+(`config/env.yaml` + `config/.seqera_token.enc`). If they built one on
+another machine, this is the whole of the "new machine" path; if not, this is
+also where a half-set-up site (only `agent_java`/`agent_jar`/`tw_bin`/
+`agent_connection` ever got written, never the values a person had to be
+asked for) gets fixed via `--reconstruct` instead.
+
+Which applies depends on `reach` (docs/SITE_ADAPTER.md, contract 6), because
+that decides which machine this conversation is even running on:
+
+- **`reach: local`** — this conversation runs on the site itself (a second
+  login node, or reusing the same account). There is no laptop to prepare and
+  no connection to open beyond what is already open, so it collapses to one
+  step: a portable folder exists → `scripts/settings.sh --adopt <path>`;
+  none exists → `scripts/settings.sh --reconstruct`, confirm each candidate
+  with the user, save each with `--set`.
+- **`reach: ssh`** — this conversation runs on the user's own machine, which
+  has never had any of this on it before. Three steps, in order, and the
+  third is the only one that cannot be automated:
+
+  1. **Local tools.** Whatever `scripts/preflight.sh` and `scripts/install_deps.sh
+     --cli-only` need on THIS machine — `jq`, `curl`, Seqera's CLI, WSL on
+     Windows (PITFALLS 16b/16f). Nothing site-side yet.
+  2. **`scripts/settings.sh --adopt <path>`** if a portable folder exists.
+     Points this machine at it (docs/SETTINGS.md) — no values are typed in by
+     hand, and nothing site-side is touched yet either. No portable folder →
+     `scripts/settings.sh --reconstruct` against the site's existing token
+     (docs/SETTINGS.md), confirming and `--set`-ing each candidate, plus
+     `site_host`/`site_user` from the user directly (Platform cannot answer
+     those) and the allocation the site bills to from whatever the site's own
+     accounting tool reports (docs/SETTINGS.md's reconstruct section names it).
+  3. **Opening the one connection this step needs.** This is the step that
+     stays manual no matter what: the site accepts no saved credential, only
+     a one-time code typed by the user (PITFALLS 16h). `scripts/preflight.sh`
+     will fail here the first time and print the line to paste — show it
+     exactly as printed and wait, the same as **Repair**'s own rule below.
+
+  After step 3 passes, decrypt the token if it has not been already:
+  `scripts/portable_root.sh decrypt-token` (asks for the passphrase the user
+  set when the folder was built) — skip this if `--reconstruct` was used
+  instead, since that path re-derives values against the site's own token
+  rather than carrying one across.
+
+This is also the moment to offer building a portable folder if this
+deployment does not have one yet, even outside a fresh adopt — see step 3½
+below, after Seqera is connected.
 
 For an isolated second environment, three values **must** differ from the
 existing one, and the reasons are not symmetrical:
@@ -95,6 +162,12 @@ Shared on purpose: `workspace_id`, and the allocation the site bills to.
 
 ## Repair
 
+**If a path in any report below looks surprising** — a settings file that
+should exist and does not, a token nobody can find, a `local_root` that turns
+out to be somewhere unexpected — `scripts/where.sh` prints every relevant
+absolute path on this machine, with an exists/missing mark on each one, purely
+read-only. Run it before guessing; it never changes anything.
+
 `scripts/preflight.sh`. It reports each part as OK or FAIL. Fix what failed —
 each FAIL line names the script that fixes it — then say plainly what was
 already fine and what you restarted. Nothing else.
@@ -111,6 +184,40 @@ Two things worth stating when they come up, because neither is obvious:
 - If the site's outbound channel came back on a different host, the compute
   environment is now pointing at the old one. `scripts/ce_apply.sh` shows the
   difference; `--apply` fixes it.
+
+**T5: whether this machine can run the flow at all, not just whether the
+site is reachable.** `scripts/preflight.sh` answers for the site and this
+deployment's settings; it says nothing about the harness sitting between the
+user and either of them, which is exactly where the safety net (T1) and the
+natural-language routing (T3) both live. Report-only - name what is found and
+what command would fix it, and change nothing here without being asked to.
+This is a checklist to read out, not a script to write:
+
+- **`printf '{}' | jq -e .`** — jq itself, not `command -v jq`: the same
+  probe `hooks/confirm_launch.sh` and its siblings run before trusting
+  anything else, because a `jq` that exists but cannot run fails exactly as
+  silently as a missing one (PITFALLS 28). If it fails, name the install line
+  for this platform - `brew install jq` / `sudo apt install jq` /
+  `winget install jqlang.jq`.
+- **Does `/hooks` list this plugin?** If `agentic-bioflow` is not there, none
+  of its hooks are running - not degraded, absent - and the cause is one of
+  three: the plugin is not enabled for this project, this folder is not a
+  trusted one, or `disableAllHooks` is set somewhere in the settings chain.
+  Say which of the three looks true; do not flip anything yourself.
+- **Does a project `.claude/settings.json` hand control to a plugin that
+  seizes the first word of every turn before this one gets one?**
+  superpowers's own SessionStart hook injects an instruction to use its
+  skill before any response, which competes directly with this plugin's own
+  guidance. For a pipeline-only project, suggest - never apply -
+  `"enabledPlugins": {"superpowers@claude-plugins-official": false}` in that
+  project's `.claude/settings.json`, and say plainly that this is a
+  suggestion scoped to this project, not a claim that superpowers is wrong
+  to have installed anywhere else.
+- **Is the Positron bridge extension installed?** Only where this machine has
+  Positron. `scripts/positron_run.py --check` answers it: a line starting
+  `bridge` means yes. Anything else, point at "Optional: the Positron bridge
+  extension" below - it is optional, so its absence is a suggestion, never a
+  failure of this step.
 
 ---
 
@@ -232,6 +339,22 @@ alongside the site one (step 3, once `seqera_user` is known).
   through `scripts/fetch.sh` as a read-only copy; the analysis code and
   figures — what an IDE actually opens — live only on their machine and never
   on the site.
+
+  **T21: ask explicitly where on this machine** — do not silently accept the
+  default. Save the answer as `local_root` (default `$HOME/agentic-bioflow`,
+  same as before this question existed). Anywhere they already keep work is a
+  fine answer: a desktop folder, a folder a cloud drive syncs, anywhere —
+  `scripts/init_workspace.sh` builds under whatever this key names
+  (`docs/SETTINGS.md`).
+
+  If the path looks like a cloud-sync folder (Google Drive, OneDrive, Dropbox
+  and the like), `scripts/init_workspace.sh` itself prints a warning the next
+  time it runs against it — pass that warning along rather than re-deriving
+  it: large files (rawdata, results, container images) sync slowly and eat
+  quota, and the Seqera token and the Positron bridge connection file must
+  never be written there, encrypted or not. This is a warning, not a refusal
+  — a synced folder is a legitimate answer here (and is exactly what a
+  `portable_root`, below, is often chosen to be).
 - **On the site itself (only when outputs are huge).** No local skeleton.
   Measure before assuming this is the case: a normalised count matrix is
   about 973 KB, and a whole delivery directory is around 25 MB — ordinary
@@ -315,6 +438,23 @@ If ② asked for local analysis, also run
 machine. Both calls print the tree they made; show it, since it is where
 everything from here on will be found.
 
+**T23: offer a portable folder here, once and briefly** — not a new numbered
+step, so it never blocks the ones after it. This is what lets *this* setup be
+the only one this person ever has to run: ask where they would keep one
+(`docs/SETTINGS.md`, "The portable folder" — a cloud-sync folder, an external
+drive, anywhere that follows them between machines), then
+`scripts/portable_root.sh init <path>`, asking them to set a passphrase for
+the token when it prompts. Already-configured machines running this later
+(not just during a fresh setup) is exactly how an in-place upgrade happens —
+`init` never overwrites what is already there, so there is no wrong time to
+offer it. If they decline, or have no second machine in mind, move on; nothing
+past this point depends on it.
+
+If the path they name looks like a cloud-sync folder, `scripts/portable_root.sh`
+warns rather than refuses (it is explicitly designed to often be one) — pass
+that warning along: large files never belong there, and the token stays
+encrypted the whole time it is.
+
 **4. The pieces this cluster does not ship.** `scripts/install_deps.sh`.
 It downloads a Java runtime, Seqera's agent, and Seqera's CLI into the
 execution area and records the paths. Tell the user it fetches a few hundred
@@ -341,6 +481,8 @@ user's machine has no use for a runtime it will never start:
 compute nodes cannot reach the internet this is what carries container pulls
 and reference downloads; where they can, the adapter says so and this is
 quick. It picks its own port, so several members on one machine do not collide.
+Starting, stopping or restarting it (and the outputs reader below) makes the
+harness ask the user first: it is a process on a login node other people share.
 
 **6. The outputs reader, then its credential — in that order.** Through the
 adapter: `scripts/on_site.sh --script scripts/agent_ctl.sh start`, then
@@ -368,9 +510,15 @@ different questions — `docs/SITE_ADAPTER.md` explains why both:
 
 - `nextflow-io/hello` — about a minute. Proves the configuration reached the
   run and the site accepted the job.
-- any nf-core pipeline with `-profile test` — slower, and the only thing that
+- `nf-core/demo -r 1.0.2 -profile test` — slower, and the only thing that
   proves containers can be fetched, reference data can be downloaded, and
-  Platform can read the results back.
+  Platform can read the results back. Pinned to `1.0.2` deliberately, not
+  `master` or the latest tag: both of those pin `nf-schema@2.7.2`, and that
+  plugin version fails to resolve from the plugin registry within about ten
+  seconds on Nextflow 25.04.4 - a real, reproduced failure with nothing to
+  do with this site (`docs/PITFALLS.md` #4h has the full signature and how
+  it differs from the egress block in #4). `1.0.2` pins `nf-schema@2.3.0`,
+  which resolves.
 
 **Pass `--outdir` on the nf-core run.** Every nf-core pipeline requires it and
 no `test` profile supplies one, so without it the proof run takes a queue slot,
@@ -402,6 +550,57 @@ setup is what prevents that, which is why it is a step and not a footnote.
 
 The summary reports the token as present or missing and **never prints it**, so
 this is safe to re-run with somebody looking over their shoulder. Say that too.
+
+---
+
+## Optional: the Positron bridge extension
+
+Not part of the ten steps above, and not gated on them — this is for someone
+who already has this plugin set up and wants `/agentic-bioflow:downstream`
+step 5 (running analysis scripts in a live Positron console instead of only
+as a batch job) to work against a current Positron. Skip this section
+entirely for a member who does not use Positron, or who is content with the
+batch path (`Rscript`/`python`, figures written to disk) — that path needs
+nothing from this section and was never gated on it either.
+
+**Why this exists at all.** Positron's kallichore 0.1.68+ (bundled with
+current Positron on Windows) stopped writing the connection file
+`scripts/positron_run.py` used to read; it now hands connection info to
+Positron's own process over a one-shot handshake pipe nothing outside
+Positron can ever see (`docs/PITFALLS.md`'s kallichore handshake-pipe entry).
+`extensions/positron-bridge` is the fix — a small extension that calls
+`positron.runtime.executeCode` from inside Positron itself and answers a
+loopback-only HTTP request for it. `positron_run.py --check` says plainly
+whether a member's Positron needs this: if it does, the message it prints
+already contains the one-line command below.
+
+**Install it — one command, no npm, no network required on this machine:**
+
+```
+positron --install-extension <repo>/extensions/positron-bridge/*.vsix
+```
+
+The `.vsix` is committed in the repo already built; nothing here compiles
+anything. Run it on whichever machine Positron itself runs on — for a member
+on `reach: ssh`, that is their own desktop, not the site (`docs/DOWNSTREAM.md`
+explains why the bridge's state file has to live on the same machine as the
+Positron process that writes it, deployments A/B/C).
+
+**Confirm it took:** open (or reopen) the project in Positron, then from a
+terminal that can reach this plugin's `scripts/`:
+
+```
+scripts/positron_run.py --check
+```
+
+A line starting `bridge` with a port and a Positron version means it is
+live. Nothing else to configure — no token to copy, no port to note down;
+the extension generates and stores both itself.
+
+**If `positron --install-extension` is not on PATH,** Positron's own command
+palette has "Extensions: Install from VSIX..." — point it at the same file.
+Either way this is a one-time step per machine, the same as installing any
+other Positron extension.
 
 ---
 

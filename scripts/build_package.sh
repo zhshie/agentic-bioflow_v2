@@ -155,6 +155,113 @@ cp -p "$PLAN" "$OUT/scripts/analysis.md" 2>/dev/null
 echo "copied    $n_fig figure(s), $n_src script(s)"
 
 # --- the manuscript ----------------------------------------------------------
+# One section per figure the plan accepted, captioned with the question that
+# entry says it answers. The plan is the only record of why a figure exists,
+# so this is where that survives into the write-up.
+#
+# Run separately from the `{ ... } > "$QMD"` group below, not inside it: issue
+# #5 was exactly a silent zero here - commands/downstream.md's own step 3b
+# worked example presents analysis.md's fields as a column list, which reads
+# naturally as a markdown table, and a table-formatted analysis.md matched
+# zero entries against the old parser with no error at all. The Results
+# section came out looking complete and was empty. Parsing entries as its own
+# step, before anything is written to $QMD, is what lets a zero-entry read
+# stop the build instead of producing a document that looks finished.
+RESULTS_SECTION=$("$PY" - "$PLAN" "$OUT/figures" <<'PY'
+import os, re, sys
+
+plan, figdir = sys.argv[1], sys.argv[2]
+text = open(plan, encoding="utf-8", errors="replace").read()
+figs = sorted(os.listdir(figdir)) if os.path.isdir(figdir) else []
+
+FIELDS = ("id", "question", "source", "method", "why", "status")
+COLUMN_ALIASES = {"問題": "question"}
+
+
+def parse_table(text):
+    """The shape commands/downstream.md step 3b's own worked example uses: a
+    markdown table whose header names analysis.md's fields. One row is one
+    entry; a header cell is matched case-insensitively against FIELDS so
+    column order (and extra columns nobody asked for) does not matter.
+    """
+    lines = text.splitlines()
+    entries = []
+    i = 0
+    while i < len(lines) - 1:
+        line = lines[i].strip()
+        if not line.startswith("|"):
+            i += 1
+            continue
+        header = [COLUMN_ALIASES.get(c.strip().lower(), c.strip().lower())
+                   for c in line.strip("|").split("|")]
+        sep = lines[i + 1].strip().strip("|").split("|")
+        if (len(header) >= 2 and len(sep) == len(header)
+                and all(re.match(r"^:?-{2,}:?$", c.strip()) for c in sep)):
+            idx = {name: pos for pos, name in enumerate(header) if name in FIELDS}
+            j = i + 2
+            if "id" in idx:
+                while j < len(lines) and lines[j].strip().startswith("|"):
+                    cells = [c.strip() for c in lines[j].strip().strip("|").split("|")]
+                    row = {name: (cells[pos] if pos < len(cells) else "")
+                           for name, pos in idx.items()}
+                    if row.get("id"):
+                        entries.append(row)
+                    j += 1
+            i = j
+            continue
+        i += 1
+    return entries
+
+
+def parse_kv_blocks(text):
+    """The original shape, kept so a project's analysis.md written before the
+    table format existed still parses: one heading/bullet block per entry,
+    each holding `id: value` / `question: value` lines.
+    """
+    entries = []
+    blocks = re.split(r"\n(?=#{1,3}\s|\s*[-*]\s+\*\*)", text)
+    for block in blocks:
+        ident = re.search(r"(?:^|\n)\s*(?:id|ID)\s*[:=]\s*`?([A-Za-z0-9_.-]+)", block)
+        if not ident:
+            continue
+        q = re.search(r"(?:^|\n)\s*(?:question|問題)\s*[:=]\s*(.+)", block)
+        entries.append({"id": ident.group(1), "question": q.group(1).strip() if q else ""})
+    return entries
+
+
+entries = parse_table(text) or parse_kv_blocks(text)
+if not entries:
+    nonblank = sum(1 for l in text.splitlines() if l.strip())
+    sys.stderr.write(
+        "build_package.sh: matched 0 plan entries in %s (%d line(s), %d non-blank)\n"
+        "  expected either a markdown table whose header names id/question/source/"
+        "method/why/status (commands/downstream.md step 3b), or the older block "
+        "form - a heading or bullet followed by 'id: <value>' / 'question: <value>' "
+        "lines.\n"
+        "  Not writing a Results section that would look complete and say "
+        "nothing (issue #5) - fix analysis.md and re-run.\n"
+        % (plan, len(text.splitlines()), nonblank))
+    sys.exit(1)
+
+emitted = set()
+for row in entries:
+    fid = row["id"]
+    qtext = row.get("question") or fid
+    match = [f for f in figs if f.startswith(fid)]
+    print("### %s\n" % qtext)
+    if match:
+        print("![%s](figures/%s){#fig-%s}\n" % (qtext, match[0], fid))
+        emitted.add(match[0])
+    else:
+        print("<!-- no figure file starting with '%s' in figures/ -->\n" % fid)
+    print("<!-- Describe what this shows, from the data. Every number here must "
+          "trace to a file or to a script in scripts/. -->\n")
+for f in figs:
+    if f not in emitted:
+        print("<!-- figures/%s is in the package but no plan entry claims it -->" % f)
+PY
+) || exit 1
+
 QMD="$OUT/manuscript.qmd"
 {
     echo '---'
@@ -170,35 +277,7 @@ QMD="$OUT/manuscript.qmd"
     echo
     echo '## Results'
     echo
-    # One section per figure the plan accepted, captioned with the question
-    # that entry says it answers. The plan is the only record of why a figure
-    # exists, so this is where that survives into the write-up.
-    "$PY" - "$PLAN" "$OUT/figures" <<'PY'
-import os, re, sys
-plan, figdir = sys.argv[1], sys.argv[2]
-text = open(plan, encoding="utf-8", errors="replace").read()
-figs = sorted(os.listdir(figdir)) if os.path.isdir(figdir) else []
-blocks = re.split(r"\n(?=#{1,3}\s|\s*[-*]\s+\*\*)", text)
-emitted = set()
-for block in blocks:
-    ident = re.search(r"(?:^|\n)\s*(?:id|ID)\s*[:=]\s*`?([A-Za-z0-9_.-]+)", block)
-    if not ident:
-        continue
-    fid = ident.group(1)
-    q = re.search(r"(?:^|\n)\s*(?:question|問題)\s*[:=]\s*(.+)", block)
-    match = [f for f in figs if f.startswith(fid)]
-    print("### %s\n" % (q.group(1).strip() if q else fid))
-    if match:
-        print("![%s](figures/%s){#fig-%s}\n" % (q.group(1).strip() if q else fid, match[0], fid))
-        emitted.add(match[0])
-    else:
-        print("<!-- no figure file starting with '%s' in figures/ -->\n" % fid)
-    print("<!-- Describe what this shows, from the data. Every number here must "
-          "trace to a file or to a script in scripts/. -->\n")
-for f in figs:
-    if f not in emitted:
-        print("<!-- figures/%s is in the package but no plan entry claims it -->" % f)
-PY
+    printf '%s\n' "$RESULTS_SECTION"
     echo
     echo '## Discussion'
     echo

@@ -245,6 +245,65 @@ put" assertions in `tests/on_site_test.sh`. The borrow-exactly-the-gap rule:
 in a refusal that reads like a folder problem), and `tests/settings_test.sh`
 again (the settings file is not part of what moves).
 
+## F. What must not go quiet
+
+Added 2.16–2.18 (T1/T3/T4/T5), both traced to real failures rather than
+reasoned from scratch — invariant 8's own rule applied to this file.
+
+**12. A request that carries action intent must reach the formal flow, and
+the user must see its walkthrough — not just get an answer.**
+
+"I want to run the RNA-seq samples and submit them" and "what is RNA-seq"
+pass through the same model, and only a procedure exists for one of them.
+Before 2.16, the only door into that procedure was typing the plugin's own
+name or the model loading its skill directly — a request that plainly wants
+something DONE, in plain language, had no path that ever reached
+`scripts/intro.sh`, `skills/operational/SKILL.md`, or any gate that assumes
+that call already happened. Skipping the walkthrough is not a shortcut to
+the same outcome; it is every other invariant in this file going unconsulted
+at once, because they are all downstream of a flow that was never opened.
+
+This is narrower than "always load the skill": a pure knowledge question
+carries a topic with no action, and answering it directly is correct, not a
+gap. What must not happen is action intent (跑/分析/送出/launch/為什麼失敗,
+English or Chinese) going straight to an answer with no routing at all.
+
+*Check:* `hooks/plugin_intro.sh`'s topic-AND-action match on a
+UserPromptSubmit prompt routes a natural-language request with intent
+toward `agentic-bioflow:operational`, and leaves a pure knowledge question
+alone (`tests/plugin_intro_test.sh`, "T3: natural-language routing").
+`skills/operational/SKILL.md` states `scripts/intro.sh <command>` as the
+first action once a command is decided, the same requirement every
+`commands/*.md` file already carries for a typed slash command
+(`tests/skill_requires_intro_test.sh`). `hooks/confirm_walkthrough.sh`'s G6
+denies the first gated action inside a command whose opening card was never
+shown, whether reached by a typed command or by the skill
+(`tests/confirm_walkthrough_test.sh`, the G6 cases).
+
+**13. When the safety net cannot do its job, it must say so — never quietly
+do nothing, and never refuse everything either.**
+
+Two failures at different scales, both real. PITFALLS 28: a missing `jq`
+used to make every judgement in the three safety-net hooks silently resolve
+to "harmless", and the gate vanished with nothing printed — fixed by
+refusing outright. Refusing outright turned out to be its own way of going
+quiet: GitHub issue #15, a member who could not get the safety net working
+simply stopped using it and started typing commands into a plain PowerShell
+window instead, which has none of this plugin's guarantees — and nothing
+here knew that had happened either, because the only visible symptom was
+"nothing runs", not "the safety net is gone". A degraded safety net that
+says nothing, in either direction — silently permissive or silently total —
+is indistinguishable from a working one until the moment it matters.
+
+*Check:* `hooks/confirm_launch.sh`, `hooks/confirm_cleanup.sh` and
+`hooks/confirm_walkthrough.sh` still refuse when `jq` is missing or
+broken — scoped to what they cannot rule out from the raw text, not every
+command — and name the fix (`tests/confirm_launch_test.sh`,
+`tests/confirm_cleanup_test.sh`, `tests/confirm_walkthrough_test.sh`, each
+file's "no jq" section). `hooks/plugin_intro.sh` prints one `systemMessage`
+warning per session when it finds `jq` missing, rather than exiting silently
+the way it used to (`tests/plugin_intro_test.sh`, "no jq ... warns").
+
 ---
 
 ## Where each piece belongs

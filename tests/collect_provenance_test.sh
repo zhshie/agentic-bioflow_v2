@@ -282,5 +282,87 @@ has_conf=$(PYVAL 'import json,sys; print("wrroc_conforms_to" in json.load(sys.st
   && ok "an unreadable crate carries no fabricated wrroc_conforms_to" \
   || no "an unreadable crate carries no fabricated wrroc_conforms_to" "<<$outj>>"
 
+# --- T8: --brief, what finish.md/downstream.md actually read ----------------
+# A run with a citations file too, so doi_count has something real to count.
+mkrun "$TMP/brief" "software_versions.yml" "multiqc/multiqc_report.html"
+cat > "$TMP/brief/results/multiqc/multiqc_citations.txt" <<'TXT'
+10.1093/bioinformatics/bty560 # fastqc
+10.1038/nmeth.3869 # dada2
+TXT
+
+out=$("$S" --brief "$TMP/brief/results" 2>&1)
+if has "$out" "nf-core/ampliseq" && has "$out" "v2.18.0"; then
+  ok "--brief prints pipeline and revision"
+else no "--brief prints pipeline and revision" "<<$out>>"; fi
+
+if has "$out" "dada2 1.38.0" && has "$out" "fastqc 0.12.1"; then
+  ok "--brief prints the citable tools with their versions"
+else no "--brief prints the citable tools with their versions" "<<$out>>"; fi
+
+has "$out" "dois recorded" && has "$out" "2" \
+  && ok "--brief prints a DOI count" \
+  || no "--brief prints a DOI count" "<<$out>>"
+
+# A run whose versions file is unreadable still gets a note - --brief has to
+# carry it, since the note is one of the four things it keeps.
+mkrun "$TMP/briefnote" "software_versions.yml" "multiqc/multiqc_report.html"
+R2="$TMP/briefnote/results/pipeline_info"
+: > "$R2/execution_trace_2020-01-01_00-00-00.txt"
+touch -d "2020-01-01" "$R2/execution_trace_2020-01-01_00-00-00.txt"
+: > "$R2/execution_trace_2026-09-04_11-35-35.txt"
+out=$("$S" --brief "$TMP/briefnote/results" 2>&1)
+has "$out" "was retried" \
+  && ok "--brief still carries the notes" \
+  || no "--brief still carries the notes" "<<$out>>"
+
+# --brief with --run-id: the point of the flag is what it LEAVES OUT, so a
+# run whose full record would carry command/params_effective/config must not
+# show any of those labels once --brief is also passed.
+out=$(TW_BIN="$FAKE_TW_OK" "$S" --brief --run-id run123 --workspace ws1 \
+      "$TMP/brief/results" 2>&1)
+leaked=0
+for label in command params_effective config awsbatch platform-samplesheet; do
+  grep -qF "$label" <<<"$out" && leaked=1
+done
+[ "$leaked" = 0 ] \
+  && ok "--brief with --run-id still carries none of the full-record fields" \
+  || no "--brief with --run-id still carries none of the full-record fields" "<<$out>>"
+
+# --brief --json: the same four fields, machine-readably, and nothing else -
+# in particular the DOIs themselves are a count, not the list finish.md would
+# otherwise have to filter down itself.
+outj=$("$S" --brief --json "$TMP/brief/results" 2>&1)
+wf=$(PYVAL 'import json,sys; d=json.load(sys.stdin)["runs"][0]; print(d["workflow"]["nf-core/ampliseq"])' "$outj")
+[ "$wf" = "v2.18.0" ] \
+  && ok "--brief --json carries the revision under workflow" \
+  || no "--brief --json carries the revision under workflow" "got '$wf' <<$outj>>"
+dc=$(PYVAL 'import json,sys; print(json.load(sys.stdin)["runs"][0]["doi_count"])' "$outj")
+[ "$dc" = 2 ] \
+  && ok "--brief --json carries doi_count as a number, not the DOI list" \
+  || no "--brief --json carries doi_count as a number, not the DOI list" "got '$dc'"
+has_dois=$(PYVAL 'import json,sys; print("citation_dois" in json.load(sys.stdin)["runs"][0])' "$outj")
+[ "$has_dois" = False ] \
+  && ok "--brief --json leaves the full citation_dois list out" \
+  || no "--brief --json leaves the full citation_dois list out" "<<$outj>>"
+
+# The reason --brief exists at all: it has to actually be smaller. Measured
+# at ~153 KB for one real run's full --json (this repo's own header for the
+# flag); this fixture is tiny, so the bound checked here is proportional
+# rather than that absolute figure - --brief must stay well under half of
+# --json for the same run, and under a hard cap no legitimate brief record
+# should approach.
+full_len=$("$S" --json "$TMP/brief/results" | wc -c)
+brief_len=$("$S" --brief --json "$TMP/brief/results" | wc -c)
+if [ "$brief_len" -lt "$full_len" ]; then
+  ok "--brief --json is smaller than the full --json record"
+else
+  no "--brief --json is smaller than the full --json record" "brief=$brief_len full=$full_len"
+fi
+if [ "$brief_len" -lt 2000 ]; then
+  ok "--brief --json stays under a hard 2000-byte cap for this fixture"
+else
+  no "--brief --json stays under a hard 2000-byte cap for this fixture" "$brief_len bytes"
+fi
+
 echo
 [ "$fails" = 0 ] && echo "OK: collect_provenance.py" || { echo "$fails failed"; exit 1; }

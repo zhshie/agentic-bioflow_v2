@@ -66,5 +66,45 @@ t "and the refusal names its override"        2 "--max-mb"        -- "$R"
 t "and the refusal names the cheaper route"   2 "on_site.sh"      -- "$R"
 t "which then works"                          0 "stage/"          -- --max-mb 100000 "$R"
 
+# --- no rsync on PATH: falls back to tar|ssh instead of hard-failing --------
+# Issue #6: Git Bash ships no rsync by default. FETCH_RSYNC_BIN pointed at a
+# path that does not exist is this file's own existing override mechanism,
+# repurposed to simulate that - `command -v` on it fails exactly like a bare
+# `rsync` would on a PATH with none installed.
+#
+# The stub ssh below distinguishes fetch.sh's two different uses of $SSH: the
+# `du -sk` size probe (mkssh's ordinary reply) and the tar|ssh fallback's own
+# remote command (recognised by the "tar czf" substring in argv). The latter
+# answers with a real, valid empty gzip stream so the local `tar xzf -` on
+# the other end of the pipe has something to extract without needing a real
+# site - and records that it was reached at all, which is the thing under
+# test: that the fallback path runs rather than the rsync stub ever being
+# asked to.
+mktar_fallback_ssh() {
+  cat > "$TMP/ssh" <<EOF
+#!/bin/bash
+last="\${@: -1}"
+case "\$last" in
+  *"tar czf"*)
+    : > "$TMP/tar_fallback_invoked"
+    tar czf - -T /dev/null
+    ;;
+  *)
+    printf '%s\t/x\n' "$1"
+    ;;
+esac
+EOF
+  chmod +x "$TMP/ssh"
+}
+mktar_fallback_ssh 26000
+rm -f "$TMP/tar_fallback_invoked"
+out=$(LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/ssh" \
+      FETCH_ROOT="$TMP/stage" FETCH_RSYNC_BIN="$TMP/no-such-rsync" \
+      bash "$F" "$R" 2>&1); rc=$?
+printf '%-58s ' "no rsync on PATH: falls back instead of hard-failing"
+[ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+printf '%-58s ' "and the tar|ssh fallback actually ran"
+[ -e "$TMP/tar_fallback_invoked" ] && echo ok || { echo "FAIL: fallback never invoked"; fails=$((fails+1)); }
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

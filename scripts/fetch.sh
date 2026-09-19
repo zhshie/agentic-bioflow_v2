@@ -18,9 +18,16 @@
 # doing for the first hour. So the site is asked how big the path is before
 # anything moves, at the cost of one round trip.
 #
+# With no rsync on PATH - the ordinary state of Git Bash/MSYS, which this
+# plugin otherwise supports as a first-class shell - this falls back to tar
+# piped over the same ssh connection instead of hard-failing with no path
+# forward (issue #6). No incremental resume like rsync's; a dropped transfer
+# starts over.
+#
 #   FETCH_DRY_RUN=1     print what would be transferred; move nothing
 #   FETCH_ROOT          where fetched copies are staged
-#   FETCH_RSYNC_BIN     override rsync (tests)
+#   FETCH_RSYNC_BIN     override rsync (tests; also how a caller can force
+#                       the tar|ssh fallback by pointing it at nothing)
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
@@ -115,6 +122,20 @@ if [ -n "$DRY" ]; then
 fi
 
 mkdir -p "$(dirname "$DEST")" || die 2 "cannot create $(dirname "$DEST")"
-"$RSYNC" -a -e "$SSH -o ControlPath=$CP" "$HOST:$SRC" "$(dirname "$DEST")/" \
-  || die 2 "the transfer of '$SRC' failed."
+
+# Git Bash ships no rsync by default (issue #6), and that used to be a hard
+# stop: `downstream`/`finish` both call this, so no fallback meant the whole
+# local-analysis workflow was unusable on the shell this plugin otherwise
+# treats as first-class. tar over the same ssh connection this already
+# established needs nothing rsync itself would have needed beyond that.
+if command -v "$RSYNC" >/dev/null 2>&1; then
+  "$RSYNC" -a -e "$SSH -o ControlPath=$CP" "$HOST:$SRC" "$(dirname "$DEST")/" \
+    || die 2 "the transfer of '$SRC' failed."
+else
+  "$SSH" -o ControlPath="$CP" "$HOST" \
+      "tar czf - -C $(printf '%q' "$(dirname "$SRC")") $(printf '%q' "$(basename "$SRC")")" \
+    | tar xzf - -C "$(dirname "$DEST")" \
+    || die 2 "the transfer of '$SRC' failed. tar|ssh has no incremental resume" \
+             "like rsync's; a re-run starts over, not from where it stopped."
+fi
 printf '%s\n' "$DEST"

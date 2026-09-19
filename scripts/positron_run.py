@@ -67,6 +67,41 @@ GET /sessions/{id}/connection_info, for R exactly as for Python.
     GET /sessions/{id}/connection_info  ->  the five ZMQ ports + HMAC key
     jupyter_client                      ->  execute_request
 
+THREE-TIER LADDER (GitHub issue #14) - everything above this paragraph
+describes the *second* rung, not the first any more. kallichore 0.1.68, the
+version bundled with current Positron on Windows, stopped writing
+`kallichore-*.json` connection files at all: it hands connection info to
+Positron's own main process over a one-shot handshake named pipe
+(`\\\\.\\pipe\\kallichore-handshake-<id>`) that is consumed the moment Positron
+reads it, and this process - or any process outside Positron itself - can
+never see it (docs/PITFALLS.md's kallichore entry has the measured evidence:
+the log line, and the connection file that never appears). Against that
+version, everything below the ladder's first rung finds nothing, forever,
+console alive or not - which is exactly the bug this rewrite fixes.
+
+    1. bridge file    extensions/positron-bridge's own state file, read by
+                       read_bridge() - if it is there and answers, run
+                       through it (bridge_run()). Works against *any*
+                       kallichore version, because it never touches
+                       kallichore at all: positron.runtime.executeCode is
+                       Positron's own API, called from inside an extension
+                       this repo now ships (extensions/positron-bridge/).
+    2. kallichore file  no bridge (or a stale one) -> fall back to the
+                       supervisor_files()/survey() path this file always
+                       had, for a Positron old enough to still write one.
+    3. neither         distinguish *why*, because the advice differs: no
+                       Positron running here at all: no Positron installed
+                       here at all; or Positron is running a kallichore new
+                       enough to need the bridge and the bridge is not
+                       installed. See positron_presence() and
+                       tier3_message(). Every one of the three still offers
+                       the batch path (`Rscript`/`python`, figures written to
+                       disk) as a real next step, not a dead end - RStudio,
+                       VS Code and Jupyter have no rung above tier 3 at all
+                       and always land here, which is why this is where that
+                       offer lives once, rather than being copied into three
+                       separate refusals.
+
 SECURITY - read before editing the reporting code. GET /sessions returns each
 kernel's full `initial_env`, which on a developer's machine holds real
 credentials; the first run of this against a live Positron surfaced a GitHub
@@ -84,8 +119,10 @@ import argparse
 import glob
 import json
 import os
+import shutil
 import socket
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -180,12 +217,14 @@ def _dechunk(body):
     return out
 
 
-def _parse_response(buf, path):
-    """Split an HTTP/1.1 response into (status line, decoded body).
+def _split_response(buf):
+    """Split an HTTP/1.1 response into (status line, decoded body bytes).
 
-    Its own function so a test can reach it. The socket path around it cannot
-    be exercised without standing up a supervisor, and this is the half where
-    the mistakes live - see the header-case bug that measurement turned up.
+    Its own function so both _parse_response (kallichore's GETs, which raise
+    on anything but 200) and _bridge_post (the bridge's POST /run, which
+    reports its own status/error in a 200 *and* a 400/401/403 body and must
+    not have either one turned into an exception here) can share the framing
+    logic without agreeing on what a non-200 status means.
 
     Headers are matched case-insensitively because kcserver sends them
     lowercase. Measured, not assumed: GET /sessions against a live supervisor
@@ -197,7 +236,7 @@ def _parse_response(buf, path):
     """
     head, sep, body = buf.partition(b"\r\n\r\n")
     if not sep:
-        raise RuntimeError("supervisor closed the connection without replying")
+        raise RuntimeError("connection closed without replying")
     lines = head.split(b"\r\n")
     status = lines[0].decode("latin-1")
     headers = {}
@@ -214,6 +253,15 @@ def _parse_response(buf, path):
             body = body[:int(headers[b"content-length"])]
         except (KeyError, ValueError):
             pass
+    return status, body
+
+
+def _parse_response(buf, path):
+    """Split an HTTP/1.1 response and return its JSON body, kallichore's way:
+    anything but 200 raises. Its own function so a test can reach it - see
+    _split_response for why the framing itself moved out of here.
+    """
+    status, body = _split_response(buf)
     if " 200" not in status:
         # Deliberately not echoing the body: an error response from /sessions
         # can still carry environment data.
@@ -256,6 +304,296 @@ def _http_get(sup, path):
         conn.close()
 
     return _parse_response(buf, path)
+
+
+# --------------------------------------------------------------------------
+# The bridge extension - ladder rung 1
+#
+# extensions/positron-bridge writes one state file per Positron window, the
+# same "one per window" shape supervisor_files() already has for kallichore,
+# but with one important difference: there is nothing to glob. The bridge
+# only ever runs inside the one window that installed it and only ever
+# writes the one file for that window's own state directory, so there is at
+# most one to read - no multi-window disambiguation, no workspace matching,
+# because the extension only ever speaks for the window it is already in.
+# --------------------------------------------------------------------------
+def bridge_file_path():
+    """Where extensions/positron-bridge writes its state file.
+
+    Kept in lockstep by hand with stateFilePath() in
+    extensions/positron-bridge/src/bridge-core.js - docs/PITFALLS.md names
+    this pair as the one thing to change together if it ever has to move.
+
+    POSITRON_RUN_BRIDGE_FILE overrides it for tests, the same seam
+    POSITRON_SUPERVISOR_CONNECTION_FILE already is for the kallichore side.
+    """
+    named = os.environ.get("POSITRON_RUN_BRIDGE_FILE")
+    if named:
+        return named
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.path.join(
+            os.environ.get("USERPROFILE", ""), "AppData", "Local")
+    else:
+        base = os.environ.get("XDG_STATE_HOME") or os.path.join(
+            os.environ.get("HOME", ""), ".local", "state")
+    return os.path.join(base, "agentic-bioflow", "positron-bridge.json")
+
+
+def read_bridge():
+    """The bridge file's contents, or None when absent/unreadable/incomplete.
+
+    Presence is not liveness, the same way a kallichore connection file left
+    behind by a Positron that has since quit is not either - bridge_probe()
+    is what tells the two apart, by actually trying to connect.
+    """
+    path = bridge_file_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or "port" not in data or "token" not in data:
+        return None
+    return data
+
+
+def _bridge_post(bridge, payload_obj, timeout):
+    """POST /run to the bridge extension. Returns (status_code, parsed_json).
+
+    Never raises on the *server* saying 400/401/403 - unlike _parse_response,
+    a non-200 here is still a real, meaningful reply (extension.ts's own
+    handleRequest() puts an {ok:false, error:...} body on every one of its
+    rejections) and the caller decides what it means. What this does raise
+    on is the connection itself failing - ConnectionRefusedError, a timeout -
+    which is what a stale bridge file (extension deactivated, Positron quit,
+    file never got cleaned up) looks like from here.
+    """
+    fixture = os.environ.get("POSITRON_RUN_BRIDGE_FIXTURE")
+    if fixture:
+        # Mirrors _http_get's own fixture seam: a real loopback HTTP round
+        # trip through positron-bridge's own server is not something a test
+        # of this file should have to stand up either. "refuse" is the one
+        # canned shape that means "the connection itself failed", matching
+        # what a stale file produces against a real socket.
+        with open(fixture, encoding="utf-8") as fh:
+            canned = json.load(fh)
+        if canned.get("refuse"):
+            raise ConnectionRefusedError("fixture: bridge did not answer")
+        return canned.get("status", 200), canned.get("body")
+
+    body = json.dumps(payload_obj).encode("utf-8")
+    conn = socket.create_connection(("127.0.0.1", int(bridge["port"])), timeout=timeout)
+    conn.settimeout(timeout)
+    try:
+        conn.sendall(
+            f"POST /run HTTP/1.1\r\n"
+            f"Host: 127.0.0.1\r\n"
+            f"Authorization: Bearer {bridge['token']}\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\n"
+            f"Connection: close\r\n\r\n".encode() + body
+        )
+        buf = b""
+        while True:
+            chunk = conn.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+    finally:
+        conn.close()
+    status_line, body = _split_response(buf)
+    try:
+        code = int(status_line.split()[1])
+    except (IndexError, ValueError):
+        code = 0
+    try:
+        parsed = json.loads(body.decode("utf-8")) if body else None
+    except ValueError:
+        parsed = None
+    return code, parsed
+
+
+def bridge_probe(bridge, timeout=5):
+    """Does the bridge answer at all? True/False, never raises.
+
+    Sent as a request the extension's own input validation rejects - an
+    empty `lang` - so this proves the loopback connection, the token, and
+    the request handler all work, without running a single line of anyone's
+    code to find out: extension.ts's runOne() checks lang against its
+    {"r", "python"} whitelist as the very last step, well after loopback and
+    token, so an empty lang clears every earlier gate and is refused before
+    positron.runtime.executeCode is ever called.
+    """
+    try:
+        _bridge_post(bridge, {"lang": "", "code": "positron_run --check probe"}, timeout)
+        return True
+    except Exception:
+        return False
+
+
+def bridge_run(bridge, language, code, timeout):
+    """Run `code` through the bridge. Returns the process exit code this
+    tool should use - 0 ok, 1 the console reported failure or the bridge
+    answered strangely. Never raises; a connection failure is the caller's
+    to catch (see bridge_probe's docstring) and treat as a stale file.
+    """
+    status, parsed = _bridge_post(bridge, {"lang": language, "code": code}, timeout)
+    if status != 200 or not isinstance(parsed, dict):
+        print(f"positron_run: bridge answered unexpectedly (HTTP {status}). "
+              "Try --check.", file=sys.stderr)
+        return 1
+    images = parsed.get("new_images") or []
+    for image in images:
+        print(f"positron_run: new image  {image}")
+    if parsed.get("ok"):
+        # Always one line on success. With no new image file this used to
+        # print nothing at all, and an exit 0 with empty output read as
+        # "did anything happen?" (2.15.0 Windows verification: the plot was
+        # in Positron's Plots pane the whole time).
+        print(f"positron_run: ok - ran in the Positron {LANGUAGES.get(language, language)} "
+              f"console via the bridge; {len(images)} new image file(s)"
+              + ("" if images else " (a plot shown only in the Plots pane is not a file)"))
+        return 0
+    print(parsed.get("error") or "the console reported the run as failed", file=sys.stderr)
+    return 1
+
+
+# --------------------------------------------------------------------------
+# Telling "not open" from "not installed" - ladder rung 3's own distinction
+#
+# Both of these are inferred, not measured, in docs/CONDITIONS.md's own
+# sense of the word (see that file's "Evidence levels"): a positive is
+# fairly reliable, a negative only means none of the common spots had it.
+# Getting this wrong costs nothing but which of two very similar sentences
+# is printed - tier3_message() offers the same batch path regardless.
+# --------------------------------------------------------------------------
+def _process_running(name):
+    """Best-effort: is a process named exactly `name` running right now?
+
+    Exact name, not a substring of the full command line: this script's own
+    argv is `.../positron_run.py ...`, which *contains* "positron" - a
+    substring match (`pgrep -f`) against that pattern matches this process
+    itself the instant it runs, which is a self-inflicted false positive,
+    not evidence of anything. `pgrep -x` compares against the process name
+    (argv[0]'s basename) instead, and this script's own name is
+    python3/python/py, never positron.
+
+    Never raises: no tasklist, no pgrep, a permissions error - every one of
+    those is read as "cannot tell", which the caller treats the same as "not
+    found" rather than blocking on an inconclusive probe.
+    """
+    try:
+        if sys.platform == "win32":
+            out = subprocess.run(
+                ["tasklist", "/FI", f"IMAGENAME eq {name}.exe", "/NH"],
+                capture_output=True, text=True, timeout=5, check=False,
+            )
+            return f"{name}.exe".lower() in out.stdout.lower()
+        out = subprocess.run(
+            ["pgrep", "-x", name], capture_output=True, text=True, timeout=5, check=False)
+        return out.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _positron_installed():
+    """Best-effort: does this machine have Positron anywhere obvious?"""
+    if shutil.which("positron"):
+        return True
+    candidates = []
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA", "")
+        candidates.append(os.path.join(local, "Programs", "Positron", "Positron.exe"))
+    elif sys.platform == "darwin":
+        candidates.append("/Applications/Positron.app")
+    else:
+        candidates += ["/usr/share/positron", "/opt/positron", "/opt/Positron"]
+    return any(os.path.exists(c) for c in candidates)
+
+
+def positron_presence():
+    """One of "running" / "installed" / "absent" - see this section's own
+    header for how sure each is. Used only to choose which of tier3_message's
+    three refusals to print when neither the bridge nor a kallichore file
+    found anything at all.
+
+    POSITRON_RUN_PRESENCE overrides it for tests: real process/install
+    detection is exactly the kind of host-state probe tests/run_all.sh's own
+    header says this suite must not depend on (it would otherwise pass or
+    fail by whether the machine running the suite happens to have Positron
+    installed, which has nothing to do with whether this file's logic is
+    correct).
+    """
+    override = os.environ.get("POSITRON_RUN_PRESENCE")
+    if override in ("running", "installed", "absent"):
+        return override
+    if _process_running("positron") or _process_running("Positron"):
+        return "running"
+    if _positron_installed():
+        return "installed"
+    return "absent"
+
+
+BATCH_HINT = (
+    "\nBatch still works here, and is a supported path, not a fallback of\n"
+    "last resort: `Rscript <script>.R` / `python <script>.py`, with the\n"
+    "figure written to analysis/figures/ for you to open by hand. RStudio,\n"
+    "VS Code and Jupyter all take this same path - this tool cannot reach\n"
+    "any of them at all, and docs/CONDITIONS.md says so plainly rather than\n"
+    "leaving downstream.md step 5 a dead end for them."
+)
+
+
+def tier3_message(language, workspace, presence):
+    """Ladder rung 3: neither the bridge nor a kallichore file found
+    anything. Which of three sentences to lead with depends on `presence`
+    (positron_presence()) - the advice is different for each, and only one
+    of the three is actually about opening a console.
+    """
+    name = LANGUAGES.get(language) or "R or Python"
+    where = os.environ.get("POSITRON_RUN_SUPERVISOR_DIR") or tempfile.gettempdir()
+    bridge_at = bridge_file_path()
+    if presence == "running":
+        head = (
+            "positron_run: Positron is running on this machine, but neither the bridge\n"
+            f"  extension ({bridge_at}) nor the old kallichore connection-file contract\n"
+            f"  (looked in {where} for kallichore-*.json) found anything to attach to.\n"
+            "  This is very likely a kallichore version that only hands connection info\n"
+            "  to Positron's own process over a one-shot handshake pipe - see\n"
+            "  docs/PITFALLS.md's kallichore handshake-pipe entry - and the bridge\n"
+            "  extension that works around it is not installed here.\n"
+            "\n"
+            "  Install it once, inside Positron:\n"
+            "      positron --install-extension "
+            "<repo>/extensions/positron-bridge/*.vsix\n"
+            "  Then run this again; no need to reopen the console.\n"
+        )
+    elif presence == "installed":
+        head = (
+            "positron_run: Positron looks to be installed on this machine but not running\n"
+            "  right now (no bridge file, no kallichore connection files, and no matching\n"
+            "  process found - inferred, not certain).\n"
+            "\n"
+            f"  Start Positron, open {workspace or 'this project'}, bring up a {name} console,\n"
+            "  and run this again.\n"
+        )
+    else:
+        host = socket.gethostname()
+        head = (
+            f"positron_run: no Positron is running on this machine ({host}), and no install\n"
+            "  was found either (checked PATH and the usual install locations - inferred,\n"
+            f"  not certain). Looked in {where} for kallichore-*.json and at {bridge_at}\n"
+            "  for a bridge file; found neither.\n"
+            "\n"
+            "  This reaches Positron over a local pipe, socket or loopback port, and\n"
+            "  nothing else. If Positron is open on a different machine - your own\n"
+            "  desktop, while this runs on a login node - there is no route to it from\n"
+            "  here, and opening or installing one there will not change what this can see\n"
+            "  (docs/DOWNSTREAM.md names that split). Either run this on the machine\n"
+            "  Positron is on, or reach this machine from Positron's own Remote-SSH so\n"
+            "  its console - and the bridge extension's state file - live here too.\n"
+        )
+    return head + BATCH_HINT
 
 
 # --------------------------------------------------------------------------
@@ -390,33 +728,6 @@ def jupyter_client_problem():
             "      %s -m pip install jupyter_client" % (exc, sys.executable)
         )
     return None
-
-
-def no_positron_here():
-    """The state that used to be reported as 'no console is open'.
-
-    Zero supervisor files means no Positron is running on this machine, which
-    is a different fact from "it is running and has no console open" and takes
-    the opposite advice. Everything this tool talks over - a named pipe, a Unix
-    socket, a loopback port - is local only. So when the agent runs on a
-    cluster login node and Positron runs on the person's own desktop, this
-    finds nothing however many consoles are open there, and telling them to
-    open one more is answering a question nobody asked.
-    """
-    where = os.environ.get("POSITRON_RUN_SUPERVISOR_DIR") or tempfile.gettempdir()
-    return (
-        "positron_run: no Positron is running on this machine (%s).\n"
-        "  Looked in %s for kallichore-*.json and found none. Positron writes\n"
-        "  one per open window, so none means no window here.\n"
-        "\n"
-        "  This reaches Positron over a local pipe or socket, and nothing else.\n"
-        "  If Positron is open on a different machine - your own desktop, while\n"
-        "  this runs on a login node - there is no route to it from here, and\n"
-        "  opening a console there will not change what this can see. Either run\n"
-        "  the agent on the machine Positron is on, or reach this machine from\n"
-        "  Positron's own Remote-SSH so that its console lives here too."
-        % (socket.gethostname(), where)
-    )
 
 
 def busy_reason(session):
@@ -602,16 +913,22 @@ def execute(conn_path, code, timeout):
 
 
 # --------------------------------------------------------------------------
-def report(state):
+def report(state, language=None, workspace=None):
     """--check: say what is here, and why nothing is when nothing is.
 
     Takes the whole survey rather than its pairs, because the empty case is
     the one worth being precise about - see survey().
+
+    Only called once main() has already ruled out ladder rung 1 (no usable
+    bridge) - so `state["supervisors"] == 0` here means rung 2 also found
+    nothing, which is exactly what tier3_message() (rung 3) exists to
+    explain. `language`/`workspace` are None for a plain `--check` with no
+    `--lang`; tier3_message handles that.
     """
     pairs = state["pairs"]
     if not pairs:
         if state["supervisors"] == 0:
-            print(no_positron_here())
+            print(tier3_message(language, workspace, positron_presence()))
         elif state["answered"] == 0:
             print("positron_run: %d supervisor file(s) here, none answered - "
                   "left behind by a\n  Positron that has since quit. Nothing "
@@ -656,14 +973,19 @@ def open_console_guidance(language, workspace, state=None):
     running here at all - so an agent on a login node told the person to open
     a console that was already open on their desktop, and would keep telling
     them however many they opened. `state` is the survey that separates them.
+
+    Only called once main() has already ruled out ladder rung 1 (see
+    report()'s own docstring for the same point) - so `supervisors == 0`
+    here hands off to tier3_message() (rung 3) rather than assuming, as this
+    function used to, that "no kallichore file" only ever meant "Positron is
+    not open".
     """
     name = LANGUAGES.get(language, language)
     supervisors = (state or {}).get("supervisors")
     answered = (state or {}).get("answered")
     if supervisors == 0:
-        head = no_positron_here() + "\n\nIf Positron is on this machine, it is not started yet.\n"
-        step1 = f"  1. Start Positron and open {workspace or 'this project'} in it.\n"
-    elif supervisors and not answered:
+        return tier3_message(language, workspace, positron_presence())
+    if supervisors and not answered:
         head = ("positron_run: %d supervisor file(s) here, none answered - left by a "
                 "Positron\n  that has since quit.\n" % supervisors)
         step1 = f"  1. Start Positron again and open {workspace or 'this project'}.\n"
@@ -688,7 +1010,12 @@ def open_console_guidance(language, workspace, state=None):
         "\n"
         "This attaches to a console you already have and will not start one\n"
         "for you: a runtime appearing unasked in your IDE, holding a workspace\n"
-        "you did not pick, is a worse surprise than this message."
+        "you did not pick, is a worse surprise than this message.\n"
+        # Every rung-3 message ends with the batch path, not only the one
+        # tier3_message() builds: after Positron quit (stale supervisor files)
+        # this used to stop at "start Positron again", a dead end for anyone
+        # who did not want to (2.15.0 Windows verification).
+        + BATCH_HINT
     )
 
 
@@ -742,9 +1069,27 @@ def main(argv=None):
                                        "(R: commandArgs; Python: sys.argv)")
     args = p.parse_args(argv)
 
+    # Ladder rung 1: the bridge extension. Tried before anything else,
+    # because it works against any kallichore version - there is nothing to
+    # "fall back from" if it answers. bridge_probe's own docstring explains
+    # why probing it is safe to do even for a plain --check: it never
+    # reaches positron.runtime.executeCode.
+    bridge = read_bridge()
+    if bridge is not None and not bridge_probe(bridge):
+        print(f"positron_run: a bridge file is here ({bridge_file_path()}) but did not "
+              "answer -\n  Positron may have quit since without cleaning it up. Falling "
+              "back to the\n  older kallichore contract.\n", file=sys.stderr)
+        bridge = None
+
     if args.check:
+        if bridge is not None:
+            print(f"bridge      127.0.0.1:{bridge.get('port')}  "
+                  f"positron {bridge.get('positron_version', '?')}  pid {bridge.get('pid', '?')}")
+            print("  Primary path: --lang/--file will run through this, whatever")
+            print("  kallichore version Positron is carrying underneath.")
+            return 0
         state = survey(language=LANGUAGES.get(args.lang) if args.lang else None)
-        report(state)
+        report(state, language=args.lang, workspace=args.workspace)
         problem = report_dependency()
         # An exit code, because downstream.md step 5 uses --check as a gate and
         # a gate that always returns 0 is prose. 2 is what the rest of this file
@@ -761,6 +1106,18 @@ def main(argv=None):
         print(f"positron_run: no such file: {args.file}", file=sys.stderr)
         return 2
 
+    if bridge is not None:
+        code = code_for(args.lang, file=args.file, code=args.code, args=args.args)
+        if args.dry_run or os.environ.get("POSITRON_RUN_DRY_RUN"):
+            print(f"would run via bridge 127.0.0.1:{bridge.get('port')} "
+                  f"(positron {bridge.get('positron_version', '?')})")
+            print(f"  code {code}")
+            return 0
+        return bridge_run(bridge, args.lang, code, args.timeout)
+
+    # Ladder rung 2 (and, if this finds nothing either, rung 3 via
+    # open_console_guidance/report above): the pre-existing kallichore
+    # connection-file contract, unchanged from before the bridge existed.
     if args.session_id:
         pairs = [pair for pair in find_sessions(language=LANGUAGES[args.lang])
                  if pair[1]["session_id"] == args.session_id]

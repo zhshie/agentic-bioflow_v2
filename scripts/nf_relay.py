@@ -76,6 +76,13 @@ ALLOW_DOMAINS = (
     # find this one; the relay's own DENY log named it on the first run, which
     # is what that log is for.
     "ezlab.org",                  # busco-data.ezlab.org, busco-data2.ezlab.org
+    # 2026-09-19, nf-core/ampliseq with its default --dada_ref_taxonomy
+    # (sbdi-gtdb): the URL is on ndownloader.figshare.com, already allowed,
+    # but figshare answers with a redirect to a presigned URL on KTH's S3.
+    # The target exists only at run time, so check_egress.py cannot see it;
+    # the relay log showed 8 DENY-DOMAIN for it as every RENAME_RAW_DATA_FILES
+    # task aborted. The one host only, not kth.se.
+    "presigned.s3.cloud.kth.se",
 )
 
 # Hostname prefixes permitted to use the relay. From `sinfo -N`: compute nodes

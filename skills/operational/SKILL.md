@@ -36,6 +36,26 @@ run finishes.
 for submission" is a `finish`. Read the command file and follow it rather than
 improvising the sequence.
 
+**T5: once which command applies is decided, the first action is
+`scripts/intro.sh <command>`** (the plugin root's `scripts/`, i.e.
+`"${CLAUDE_PLUGIN_ROOT}/scripts/intro.sh"`, the repository root's
+otherwise - there is no `scripts/` beside this SKILL.md, and resolving it
+from here was the first failed call of the 2.15.0 Windows launch) — put its five sections in front of the user
+before doing anything else, exactly what every `commands/*.md` file's own
+"Before anything else" section already requires of a typed slash command.
+This skill is the *other* door into the same five commands (PRINCIPLES.md,
+"the skill is the heart, because it is the only part that works when the
+user never types a slash command"), and a door that skips the opening card
+is not the same door: `hooks/next_step.sh` treats loading this skill's
+sibling for one of the five commands (`agentic-bioflow:launch`,
+`agentic-bioflow:runs`, and so on) as opening that command's flow, and this
+skill (`agentic-bioflow:operational`) as the router that becomes one of them
+the moment `scripts/intro.sh <command>` actually runs - so the call is not
+optional framing, it is what tells the rest of this plugin's safety net a
+flow is under way at all. When this command's flow ends, run
+`scripts/intro.sh --end <command>` the same way a typed command's own file
+says to.
+
 **A project is what holds them together.** Raw data, every run made from it,
 the analysis written on those runs, and the package built from the analysis all
 live under one project directory. The project folder may live wherever the
@@ -57,6 +77,34 @@ revision, never a branch.
 Note that `fetchngs` fetches data rather than analysing it. Do not offer it
 alongside analyses; it belongs in the conversation about where the raw data is
 coming from.
+
+## More than one at once
+
+Seqera Platform already runs several pipelines in parallel; nothing about the
+site or the workspace limits that. What used to bottleneck was the
+conversation — one thread felt like it could hold one run, so a member with
+several datasets or several kinds of analysis in mind had to pick which to
+mention first and lost track of the others.
+
+**When someone mentions more than one dataset, or more than one kind of
+analysis, in the same breath** — "run rnaseq on these two batches" or "do QC
+then run sarek on the tumour set" — **do not silently queue them up as one
+long `launch` conversation.** Route through `/runs` first: with nothing named
+it prints the work board (`scripts/runs_board.sh`) of everything already in
+flight for this member, each with a short code, before adding to it. Then
+walk into `launch` for the next one — one at a time, since `launch` still
+ends in a single explicit confirmation per run
+(`hooks/confirm_walkthrough.sh`'s G3) - and mention `/runs` again once it is
+submitted, so the user always knows how to see everything at once rather than
+having to remember each run separately.
+
+Two guardrails ride along on `launch` itself, both their own callable
+scripts rather than improvised inline: `scripts/duplicate_run_check.sh`
+flags when the project and samplesheet about to be launched already has an
+active run behind it; `scripts/parallel_watch_check.sh` (also folded into
+the board) warns before one more background watch gets close to
+`ssh_max_parallel` — PITFALLS 16e's session cap is a hang, not an error, so
+the only real defence is saying something before it happens.
 
 ## Where the truth is
 

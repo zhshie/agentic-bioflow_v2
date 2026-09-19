@@ -126,7 +126,14 @@ fi
 if [ -x "$TW" ] && [ -n "${TOWER_ACCESS_TOKEN:-}" ]; then
   # `compute-envs list` prints the workspace name in its header, which also
   # contains the CE name here - parse the detail view instead.
+  #
+  # `tw` colorizes the status cell in some terminals/contexts (measured: a
+  # raw `AVAILABLE` came back as literal ESC[32mAVAILABLE ESC[39m ESC[0m
+  # bytes), and those bytes compared byte-for-byte against the plain string
+  # below - so a genuinely AVAILABLE environment reported FAIL every time.
+  # Strip ANSI SGR codes before the comparison ever sees the value, not after.
   st=$("$TW" compute-envs view -n "$CE" ${WS:+-w "$WS"} 2>/dev/null \
+        | sed -E $'s/\x1b\\[[0-9;]*m//g' \
         | awk -F'|' '$1 ~ /^ *Status/ {gsub(/[ \t]/,"",$2); print $2; exit}')
   [ "$st" = "AVAILABLE" ] \
     && say OK "compute-env" "$CE AVAILABLE" \

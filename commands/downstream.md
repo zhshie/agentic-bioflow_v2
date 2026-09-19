@@ -9,9 +9,14 @@ never the user's working directory. Installed as a plugin they are under
 
 ## Before anything else
 
-Run `scripts/intro.sh downstream` and put its five sections in front of the
-user before doing anything below. When the accepted analysis has been
-recorded (step 6), run `scripts/intro.sh --end downstream`.
+Run `. scripts/env.sh && scripts/intro.sh downstream` — sourcing `env.sh`
+first sets `PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own
+settings. Each Bash tool call is a fresh shell,
+so nothing exported here survives into the next one: every later call that
+runs `tw` starts with `. scripts/env.sh &&` too - a prefix inside that same
+call, never a round trip of its own (`scripts/env.sh`'s own header). Put `intro.sh`'s five
+sections in front of the user before doing anything below. When the accepted
+analysis has been recorded (step 6), run `scripts/intro.sh --end downstream`.
 
 This picks up where `runs` leaves off — after a run SUCCEEDED and its outputs
 have been delivered, not before. It carries **no pipeline-specific
@@ -51,13 +56,34 @@ transfers from it here are rules, not machinery:
 - thin marks, recessive axes, labels on the points that matter rather than all
   of them
 
+**T29: ask where `analysis/` actually is; never assume the shape.** Its
+location depends on the local layout (old vs new, docs/SETTINGS.md) and on
+whether a portable folder has been adopted (T23) — three different answers
+for what used to be one fixed path. Resolve it with
+`scripts/where.sh --project-paths <project>` and use the `analysis_dir` line
+it prints; do not construct `<local_root>/.../analysis` by hand anywhere in
+this flow.
+
 ## Steps
 
 1. **Check the outputs reader is alive** — through the adapter:
-   `scripts/on_site.sh --script scripts/agent_ctl.sh online <id>`.
-   When it is down, every output looks like it was never produced. This is
-   the same check `runs.md` makes before delivering anything, repeated here
-   because time may have passed since then.
+   `scripts/on_site.sh --script scripts/site_report.sh <results-dir> --run-id
+   <id> --workspace $(scripts/settings.sh workspace_id)`, and read its
+   `== agent ==` section. When it is down, every output looks like it was
+   never produced. This is the same check `runs.md` makes before delivering
+   anything, repeated here because time may have passed since then.
+
+   `site_report.sh` (T9) is one call bundling the checks this step and step 2
+   both need from the site — agent, resource-floor drift, provenance and an
+   outputs inventory — so a single `on_site.sh` round trip covers all four
+   instead of two or three back-to-back ones. Its `== resources ==` section
+   is worth a glance for free: drift there means this site's resource-floor
+   config (`configs/sites/nchc.config`) no longer matches what SLURM reports.
+   In the ordinary case — results small enough for step 2 to fetch them
+   locally below — its `== provenance ==`/`== inventory ==` sections answer
+   about a path that has not been fetched yet and can be ignored; they start
+   mattering only in the >500 MB exception at the end of this file, which
+   reuses this exact call instead of making its own.
 
 2. **Inventory the results tree.** `scripts/inventory_outputs.py
    <results-dir>`. It reports each structured file's real shape — delimiter,
@@ -72,9 +98,13 @@ transfers from it here are rules, not machinery:
    **Also read the pipeline's own `docs/output.md`**, at the same pinned
    revision the run was launched at — nf-core's own account of what each of
    its outputs *is*. Get the pipeline and revision from the run itself rather
-   than asking or guessing: `scripts/collect_provenance.py`'s `workflow`
-   block names both. Fetch the file live from the pipeline's repository at
-   that revision, the same way `launch.md` reads `nextflow_schema.json` —
+   than asking or guessing: `scripts/collect_provenance.py --brief`'s
+   `workflow` block names both. `--brief` is this step's default call —
+   pipeline, revision, citable tools, notes and a DOI count are all it reads;
+   the full `--json` record (command, resolved config, every report path)
+   runs to ~153 KB per run and nothing here opens it. Fetch the file live
+   from the pipeline's repository at that revision, the same way `launch.md`
+   reads `nextflow_schema.json` —
    **never cached anywhere in this repository**, because a copy here would be
    exactly the per-pipeline file invariant 6 exists to prevent, and it would
    go stale the same way. It complements the inventory rather than replacing
@@ -180,32 +210,45 @@ transfers from it here are rules, not machinery:
    says revise or accept. **Revising means editing the script and running it
    again**, never touching the output by hand.
 
-   **This only works where the IDE is.** Everything the tool uses to reach a
-   console is local to the machine it runs on. If this agent is running
-   somewhere other than the desktop Positron is open on, there is no route to
-   it at all, and no console anyone opens there will change that. `--check`
-   says which of those two situations it is in — "no Positron is running on
-   this machine" is a different sentence from "no console is open in it", and
-   the second one used to be printed for both. Which deployment this is meant
-   to be is a setup decision, and `docs/DOWNSTREAM.md` names the two.
+   **This only works where the bridge or the console is, and `positron_run.py`
+   now tries two ways to reach either before giving up.** Rung 1 reads
+   `extensions/positron-bridge`'s own state file and calls
+   `positron.runtime.executeCode` through it — works against any Positron
+   version that has the extension installed, including kallichore 0.1.68+
+   (PITFALLS 34), which writes no connection file at all any more. Rung 2 is
+   the older kallichore connection-file contract, for a Positron with no
+   bridge installed. Both are local-only: if this agent is running somewhere
+   other than the machine either one lives on, there is no route to it at
+   all, and no console or bridge anyone starts there will change that.
+   `--check` says which of three situations this is in when neither rung
+   answers — Positron running here with no bridge installed (names the
+   one-line install command), Positron installed but not running, or no
+   Positron install found on this machine at all — instead of collapsing all
+   three into one sentence the way it used to. Which deployment this is
+   meant to be is a setup decision, and `docs/DOWNSTREAM.md` names three now,
+   not two: where Claude runs, where Positron runs, and — new with the
+   bridge — whether Positron reaches the site through its own Remote-SSH
+   support, which can put the bridge's own state file on the site.
 
    **`--check` is the gate, and it now has an exit code.** Non-zero means the
-   step cannot proceed: no console, or no `jupyter_client` for the interpreter
-   this runs under. Read what it says instead of retrying — the two causes take
-   different actions, and neither is fixed by running the command again.
+   step cannot proceed: no bridge and no console, or no `jupyter_client` for
+   the interpreter this runs under (only rung 2 needs `jupyter_client` at
+   all — rung 1 never imports it). Read what it says instead of retrying —
+   the causes take different actions, and none is fixed by running the
+   command again.
 
-   **This path is Positron-only.** RStudio, VS Code and Jupyter are not
-   wired up (`docs/CONDITIONS.md` marks this cell 🚧) — `--check` on any of
-   them still reports "no Positron is running on this machine", which is
-   true but not the person's actual problem. Ask which IDE the user is in
-   before running `--check` at all; if it is not Positron, do not chase the
-   Positron message. Say plainly that live-console delivery is not built for
-   their editor yet, follow `skills/operational/SKILL.md`'s off-design
-   procedure (T1), category `host`, command `downstream`, and fall back to
-   the batch run this step's opening line already allows — `Rscript`/`python`
-   against the file, with the figure written to `analysis/figures/` for them
-   to open by hand. The script and its output still exist either way; only
-   the live Plots-pane hookup is missing.
+   **RStudio, VS Code and Jupyter are supported too, through the batch path —
+   not a dead end any more, and not off-design.** `docs/CONDITIONS.md` marks
+   this cell ✅ batch. There is no bridge for these editors and none is
+   planned (`positron.runtime.executeCode` has no equivalent in any of the
+   three), so `--check` on any of them still reports "no Positron install was
+   found on this machine", which is true but not the person's actual
+   problem. Ask which IDE the user is in before running `--check` at all; if
+   it is not Positron, do not chase the Positron message — go straight to
+   the batch run this step's opening line already describes: `Rscript`/
+   `python` against the file, with the figure written to
+   `analysis/figures/` for them to open by hand. The script and its output
+   are identical either way; only the live Plots-pane hookup is Positron-only.
 
    **A console has to exist first, and this is a gate, not a warning.** The
    tool attaches to a session and will not start one: a runtime appearing
@@ -253,7 +296,17 @@ transfers from it here are rules, not machinery:
 - **Exception: outputs over `scripts/fetch.sh`'s 500 MB limit.** Then nothing
   moves the other way — the analysis scripts travel to the site via
   `scripts/on_site.sh` instead, and only the finished figures come back.
-  **Measured 2026-09-09.** The claim this replaces — that nothing produced
+  **Use `scripts/on_site.sh --script scripts/site_report.sh <results-dir>
+  --run-id <id> --workspace $(scripts/settings.sh workspace_id)`** — the same
+  call step 1 above already makes — rather than the separate inventory-only
+  call the walk below used: its `== provenance ==` section is what this
+  step's `docs/output.md` lookup needs (the pipeline and revision, since
+  nothing was fetched to run `collect_provenance.py` on locally) and its
+  `== inventory ==` section is the tree report itself, both from the one
+  round trip step 1 already paid for rather than a second one.
+  **Measured 2026-09-09**, against the separate inventory-only call this note
+  now replaces with `site_report.sh` above — the walk itself, and what it
+  found, are unchanged by that swap. The claim this replaces — that nothing produced
   here had yet been large enough to reach this path — was already false when it
   was written: `rnaseq_sclerotia_d0_20260903/results` is 10.2 GB and
   `rnaseq_sclerotia_d5_20260902/results` is 8.9 GB, both twenty times the

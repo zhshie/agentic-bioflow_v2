@@ -167,12 +167,23 @@ master_is_up() { "$SSH" -O check -o ControlPath="$CP" "$HOST" >/dev/null 2>&1; }
 
 no_master() {
   needs_human no-master
+  # Under the WSL bridge the master has to be opened by WSL's ssh: that is
+  # where $SSH looks for it, and '~' in $CP is WSL's home. The bare `ssh` this
+  # used to print runs Git Bash's own ssh, which puts the socket in the
+  # Windows home instead - a working, authenticated master that nothing here
+  # ever finds (2.15.0 Windows verification).
+  local open_ssh=ssh bridge_note=""
+  if [ "$WSL_OK" = 1 ]; then
+    open_ssh="wsl.exe -e ssh"
+    bridge_note="(wsl.exe -e: the connection has to live inside WSL, where this plugin looks for it.)"
+  fi
   die 2 "no ssh master connection to $HOST." \
         "" \
         "Without one, every command asks for a one-time code - which only you" \
         "can supply. Open it yourself:" \
         "" \
-        "    ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h -o ServerAliveInterval=60 $HOST true" \
+        "    $open_ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h -o ServerAliveInterval=60 $HOST true" \
+        ${bridge_note:+"$bridge_note"} \
         "" \
         "ControlPersist detaches the master into the background as soon as it" \
         "has authenticated, so that command returns immediately and the" \

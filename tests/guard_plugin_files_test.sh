@@ -36,6 +36,13 @@ print(json.dumps({"tool_name": "Bash", "tool_input": {"command": sys.argv[1]}}))
 ' "$1"
 }
 
+tool_input() { # tool_input <tool> <field> <value>
+  python3 -c '
+import json, sys
+print(json.dumps({"tool_name": sys.argv[1], "tool_input": {sys.argv[2]: sys.argv[3]}}))
+' "$1" "$2" "$3"
+}
+
 decision() { # decision <json-or-empty>
   if [ -z "$1" ]; then echo "allow"; return; fi
   python3 -c '
@@ -160,18 +167,77 @@ t "rm on an unrelated file - allow"      allow CLAUDE_PLUGIN_ROOT="$ROOT" -- "$(
 t "cp into a repo checkout - allow"      allow CLAUDE_PLUGIN_ROOT="$ROOT" -- "$(bash_input "cp /tmp/x $OTHER/hooks/new.sh")"
 
 echo
+echo "== T2: a redirect's target decides, not merely mentioning the root =="
+# The reported false positive: a read-only grep against a root file, piped to
+# a scratch file that has nothing to do with the plugin. The old check saw
+# "root mentioned" + "a bare '>' somewhere" and denied it; the fix asks
+# whether the REDIRECT'S OWN target resolves under the root.
+t "grep against a root file, redirected to scratch - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(bash_input "grep -n foo $ROOT/hooks/x.sh > /tmp/scratch/out")"
+
+t "grep against a root file, appended to scratch - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(bash_input "grep -n foo $ROOT/hooks/x.sh >> $PROJECT/scratch/out")"
+
+# The other direction must still hold: a redirect that genuinely targets the
+# root is still denied, root mentioned elsewhere in the same command or not.
+t "grep against scratch, redirected INTO the root - still DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(bash_input "grep -n foo /tmp/scratch/notes.txt > $ROOT/hooks/new.sh")"
+
+t "read the root, then a write verb on the root in a later segment - still DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(bash_input "cat $ROOT/hooks/x.sh; rm $ROOT/hooks/x.sh")"
+
+# A write verb in one segment must not be denied just because an EARLIER,
+# unrelated segment happens to mention the root - the verb's own segment is
+# what is checked now, not the whole ';'-joined line.
+t "root mentioned in one segment, an unrelated rm in another - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(bash_input "cat $ROOT/hooks/x.sh; rm $PROJECT/scratch.txt")"
+
+echo
+echo "== other spellings of the root (2.15.0 Windows verification: ~ let a delete through) =="
+# HOME is pointed at the temp dir, so the root is "~/plugin_root" to the hook.
+HR=(CLAUDE_PLUGIN_ROOT="$ROOT" HOME="$TMP")
+t "rm ~/plugin_root/hooks/x.sh - deny"                       deny "${HR[@]}" -- "$(bash_input 'rm ~/plugin_root/hooks/x.sh')"
+t "rm \$HOME/plugin_root/hooks/x.sh - deny"                   deny "${HR[@]}" -- "$(bash_input 'rm $HOME/plugin_root/hooks/x.sh')"
+t "rm \${HOME}/plugin_root/hooks/x.sh - deny"                 deny "${HR[@]}" -- "$(bash_input 'rm ${HOME}/plugin_root/hooks/x.sh')"
+t "rm \$CLAUDE_PLUGIN_ROOT/hooks/x.sh - deny"                 deny "${HR[@]}" -- "$(bash_input 'rm $CLAUDE_PLUGIN_ROOT/hooks/x.sh')"
+t "PowerShell Remove-Item ~/plugin_root/hooks/x.sh - deny"   deny "${HR[@]}" -- "$(tool_input PowerShell command 'Remove-Item ~/plugin_root/hooks/x.sh')"
+t "PowerShell Remove-Item ~\\plugin_root\\hooks\\x.sh - deny" deny "${HR[@]}" -- "$(tool_input PowerShell command 'Remove-Item ~\plugin_root\hooks\x.sh')"
+t "cd ~/plugin_root && rm hooks/x.sh - deny"                 deny "${HR[@]}" -- "$(bash_input 'cd ~/plugin_root && rm hooks/x.sh')"
+t "Set-Location ~/plugin_root; Remove-Item hooks/x.sh - deny" deny "${HR[@]}" -- "$(tool_input PowerShell command 'Set-Location ~/plugin_root; Remove-Item hooks/x.sh')"
+t "cd ~/plugin_root && echo x > hooks/x.sh - deny"           deny "${HR[@]}" -- "$(bash_input 'cd ~/plugin_root && echo x > hooks/x.sh')"
+t "cat ~/plugin_root/hooks/x.sh - allow (a read)"            allow "${HR[@]}" -- "$(bash_input 'cat ~/plugin_root/hooks/x.sh')"
+t "cd ~/plugin_root && grep a hooks/x.sh > /tmp/out - allow" allow "${HR[@]}" -- "$(bash_input 'cd ~/plugin_root && grep a hooks/x.sh > /tmp/out')"
+t "rm ~/plugin_root_backup/x - the prefix is still refused"  deny "${HR[@]}" -- "$(bash_input 'rm ~/plugin_root_backup/x')"
+t "rm ~/elsewhere/x.sh - allow"                              allow "${HR[@]}" -- "$(bash_input 'rm ~/elsewhere/x.sh')"
+
+# Windows drive forms: no /c/ directory exists here to cd into, so
+# root_spellings is lifted out of the hook and asked directly.
+if true; then
+  spell=$(CLAUDE_PLUGIN_ROOT=/c/Users/me/plug bash -c '
+    ROOT_RAW=$CLAUDE_PLUGIN_ROOT; ROOT=$ROOT_RAW; HOME=/nonexistent
+    eval "$(sed -n "/^root_spellings() {/,/^}/p" "$1")"
+    root_spellings' _ "$H")
+  printf '%-72s ' "/c/Users/me/plug also spelled C:/Users/me/plug and /mnt/c/..."
+  grep -qxF 'c:/Users/me/plug' <<<"$spell" && grep -qxF '/mnt/c/Users/me/plug' <<<"$spell" \
+    && echo ok || { echo "FAIL: <<$spell>>"; fails=$((fails+1)); }
+  spell=$(bash -c '
+    ROOT_RAW="C:\\Users\\me\\plug"; ROOT=/c/Users/me/plug; HOME=/nonexistent
+    eval "$(sed -n "/^root_spellings() {/,/^}/p" "$1")"
+    root_spellings' _ "$H")
+  printf '%-72s ' "C:\\Users\\me\\plug also spelled /c/Users/me/plug"
+  grep -qxF '/c/Users/me/plug' <<<"$spell" && echo ok || { echo "FAIL: <<$spell>>"; fails=$((fails+1)); }
+fi
+
+echo
 echo "== no jq on PATH: fail closed, exit 2, not silent =="
 TMP2=$(mktemp -d)
-REAL_JQ=$(command -v jq)
-JQDIR=$(dirname "$REAL_JQ")
-SHIMDIR="$TMP2/no_jq_bin"
-mkdir -p "$SHIMDIR"
-for _f in "$JQDIR"/*; do
-    _b=$(basename "$_f")
-    [ "$_b" = jq ] && continue
-    ln -sf "$_f" "$SHIMDIR/$_b" 2>/dev/null
-done
-NOJQ_PATH=$(printf '%s' "$PATH" | sed "s#${JQDIR}#${SHIMDIR}#")
+. "$(dirname "${BASH_SOURCE[0]}")/lib/nojq_path.sh"
+NOJQ_PATH=$(nojq_path "$TMP2") || { echo "cannot build a PATH without jq"; exit 1; }
 
 # The JSON is fully materialised by command substitution BEFORE it is fed to
 # the hook (a heredoc, not a live pipe from python): guard_plugin_files.sh
@@ -202,7 +268,44 @@ rc=$?
 if [ "$rc" = 0 ] && [ -z "$out" ]; then echo "ok"; else
     echo "FAIL: rc=$rc out='$out'"; fails=$((fails + 1))
 fi
+
+# Issue #15: without jq the guard used to refuse every call, which pushed a
+# Windows session onto PowerShell where no guard ran at all. A call that
+# never names the plugin root cannot write into it.
+printf '%-72s ' "no jq, root set - a call that never names the root is allowed"
+out=$(env CLAUDE_PLUGIN_ROOT="$ROOT" PATH="$NOJQ_PATH" bash "$H" <<<"$(bash_input "ls $PROJECT")" 2>/dev/null)
+rc=$?
+if [ "$rc" = 0 ] && [ -z "$out" ]; then echo "ok (rc=0)"; else
+    echo "FAIL: rc=$rc out='$out'"; fails=$((fails + 1))
+fi
+printf '%-72s ' "no jq, root set - a Bash call naming the root is still BLOCKED"
+out=$(env CLAUDE_PLUGIN_ROOT="$ROOT" PATH="$NOJQ_PATH" bash "$H" <<<"$(bash_input "rm $ROOT/hooks/x.sh")" 2>/dev/null)
+rc=$?
+if [ "$rc" = 2 ]; then echo "ok (rc=2)"; else
+    echo "FAIL: rc=$rc"; fails=$((fails + 1))
+fi
 rm -rf "$TMP2"
+
+echo
+echo "== shell tools other than Bash (issue #15) =="
+t "PowerShell Set-Content into the root - DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input PowerShell command "Set-Content -Path $ROOT/hooks/x.sh -Value hi")"
+t "PowerShell remove-item (any case) on the root - DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input PowerShell command "remove-item $ROOT/hooks/x.sh")"
+t "PowerShell reading the root - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input PowerShell command "Get-Content $ROOT/hooks/x.sh")"
+t "PowerShell writing the project, not the root - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input PowerShell command "Set-Content -Path $PROJECT/x.R -Value hi")"
+t "unknown shell tool, unknown field, write-shaped on the root - DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input SomeShellTool payload "Copy-Item new.sh $ROOT/hooks/x.sh")"
+t "unknown shell tool, unknown field, only reads the root - allow" allow \
+  CLAUDE_PLUGIN_ROOT="$ROOT" -- \
+  "$(tool_input SomeShellTool payload "Get-Content $ROOT/hooks/x.sh")"
 
 echo
 echo "== hooks.json wiring =="
@@ -224,10 +327,10 @@ if [ -n "$MATCH" ]; then echo "ok ($MATCH)"; else
     echo "FAIL: no matching PreToolUse entry found"; fails=$((fails + 1))
 fi
 
-printf '%-72s ' "a separate PreToolUse entry runs guard_plugin_files.sh on Bash"
+printf '%-72s ' "a separate PreToolUse entry runs guard_plugin_files.sh on Bash and PowerShell"
 BASH_MATCH=$(jq -r '
   .hooks.PreToolUse[]
-  | select(.matcher == "Bash")
+  | select(.matcher as $m | ($m | test("(^|\\|)Bash(\\||$)")) and ("PowerShell" | test("^(" + $m + ")$")))
   | select(.hooks[].command | test("guard_plugin_files\\.sh"))
   | .matcher
 ' "$HOOKS_JSON" 2>/dev/null)

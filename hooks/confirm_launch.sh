@@ -43,32 +43,91 @@
 # one - a second hook process would add its own startup latency to every
 # single Bash call this plugin's users make, launch-shaped or not.
 #
-# Exit 2 rather than a JSON `deny` decision: building that JSON is itself a
-# `jq -n` call, so leaning on jq to report jq's own absence would fail the
-# same way it is trying to fix. Exit 2 needs nothing but the shell.
-# `command -v jq` would only prove a FILE exists. A jq that cannot run -
-# wrong architecture, a missing shared library, or a Windows jq.exe that
-# Git Bash finds but cannot execute - passes that check and then fails
-# every parse below, which is the exact silent-gate failure this guard
-# exists to stop. So ask jq to do its job on the smallest possible input.
-if ! printf '{}' | jq -e . >/dev/null 2>&1; then
-    cat >&2 <<'EOF'
-BLOCKED: jq is missing or cannot run here, so hooks/confirm_launch.sh cannot read what
-this command is - and cannot tell a pipeline launch from `ls`. Rather than
-silently stop checking (the old, dangerous behaviour), it refuses every Bash
-command until jq exists. The same is true of confirm_cleanup.sh and
-confirm_walkthrough.sh, which share this requirement.
+# T1 (2.15, Fixes #15): two more ways this gate used to go blind, found from
+# the same GitHub issue - a Windows member gave up on this plugin's safety
+# net entirely and started typing commands in a plain PowerShell window
+# instead, which has none of it. Both were the SAME shape as PITFALLS 28: a
+# precondition this file could not verify was treated as "block everything",
+# rather than "block what this cannot rule out" - and unbounded fail-closed
+# is what sent that member around the net rather than through it.
+#
+#   1. jq missing/broken used to refuse every single Bash command, forever,
+#      with no way to keep working while waiting for an install. It now asks
+#      a much smaller question with nothing but a shell `case` (no jq, no
+#      grep -E - one more binary that could be the very thing missing on a
+#      machine that has none) against the RAW bytes this hook received: does
+#      the text contain anything that reads like `tw launch` / `tw runs
+#      relaunch` / `sbatch` / `nextflow run`, or a direct ssh/scp/rsync/sftp
+#      call. A command that could not plausibly be one of those is let
+#      through exactly as it would be with jq present and nothing matching -
+#      silently, not a single line of noise - and only a genuine match still
+#      blocks, with the fix (install jq) named in the message.
+#   2. hooks.json's matcher used to be "Bash" only. It now covers other
+#      execution-shaped tool names too (a PowerShell-flavoured MCP tool among
+#      them) - which does nothing by itself unless this file can also read
+#      what such a tool was asked to run. `tool_input.command` is a Bash-ism;
+#      other tools spell the same idea `script`, `cmd`, `commandLine`,
+#      `input` or `powershell`, so those are tried too before giving up. When
+#      none of them holds anything, that is not "nothing to check" - it is
+#      "this file does not know how to read this tool's shape" - and the
+#      same scoped text scan from (1) runs against the raw payload rather
+#      than silently waving the call through.
+#
+# Neither of these is a new kind of leniency: a command this file COULD read
+# is judged exactly as precisely as before, by is_launch_command() and D3's
+# transport check further down. Only the two "I cannot tell" cases changed,
+# from total refusal to a scoped one.
+# Shell separators AND the JSON punctuation around them folded to spaces -
+# this runs against either a shell command line or a raw, still-quoted JSON
+# payload (the whole hook input, when even .tool_name cannot be trusted), and
+# a bare `tr -s ';&|()<>'` leaves `"tw launch` as one token (the opening
+# quote glued to the word) which no `*' tw launch '*` pattern below can ever
+# match. Folding quotes, braces, brackets, commas, colons and `=` too turns
+# either shape into the same flat token soup.
+LOOKS_SHAPED_SEP=$'\t\n\r;&|()<>"\'{}[],:='
+looks_launch_shaped() {
+    local text=" $(printf '%s' "$1" | tr -s "$LOOKS_SHAPED_SEP" ' ') "
+    case "$text" in
+        *' tw launch '*|*' tw runs relaunch '*|*' sbatch '*|*' nextflow run '*|*' ssh '*|*' scp '*|*' rsync '*|*' sftp '*)
+            return 0 ;;
+        # Identity and shared-process changes (the gate after the jq parse
+        # below). Without jq the value being replaced cannot be compared, so
+        # any change to these keys counts.
+        *'agent_ctl.sh start '*|*'agent_ctl.sh stop '*|*'agent_ctl.sh restart '*|*'egress_ctl.sh start '*|*'egress_ctl.sh stop '*|*'egress_ctl.sh restart '*|*'--set agent_connection '*)
+            return 0 ;;
+    esac
+    return 1
+}
 
-Install it yourself (this hook will not attempt to), then retry:
+if ! printf '{}' | jq -e . >/dev/null 2>&1; then
+    RAW=$(cat)
+    if looks_launch_shaped "$RAW"; then
+        cat >&2 <<'EOF'
+BLOCKED: jq is missing or cannot run here, so hooks/confirm_launch.sh cannot read what
+this command is precisely - and the raw text of this one matches a launch- or
+site-transport-shaped pattern (tw launch / tw runs relaunch / sbatch / nextflow
+run / ssh / scp / rsync / sftp), so it is refused rather than guessed at. A
+command that matches none of those patterns is let through unchanged - this is
+a narrower refusal than before, not a blanket one, but it still cannot see a
+launch hidden behind a variable or an alias the way the real check can.
+confirm_cleanup.sh and confirm_walkthrough.sh apply the same scoped rule.
+
+Install jq to get the full check back (this hook will not attempt to), then retry:
   macOS:       brew install jq
   Debian/WSL:  sudo apt install jq
   Windows:     winget install jqlang.jq
 EOF
-    exit 2
+        exit 2
+    fi
+    exit 0
 fi
 
 INPUT=$(cat)
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)
+TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
+# Bash-first, then the other spellings a non-Bash execution tool might use
+# for the same idea. A tool this list does not cover yet is exactly the case
+# handled below, not a case this line needs to anticipate by name.
+CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
 
 # "Does this string start a run" is a judgement several hooks need to reach
 # identically, so it lives in one sourced file instead of being restated here.
@@ -102,6 +161,63 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
       '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: $r, additionalContext: $m}}'
     exit 0
 }
+
+# T1, part 2: jq is fine, but this call's own tool ('$TOOL') did not carry
+# its command under any field name this file knows to check. For Bash that
+# never happens in practice; for anything else it means the tool's shape is
+# one this file cannot parse - not that there is nothing here worth judging.
+# jq DOES work in this branch, so this gets the real `ask()` (a structural
+# pause), not the bare exit-2 the no-jq path above is limited to.
+if [ "$TOOL" != "Bash" ] && [ -z "$CMD" ]; then
+    if looks_launch_shaped "$INPUT"; then
+        ask "GATE: this call came from a tool ('${TOOL:-<unnamed>}') whose input this hook does not parse - checked tool_input.command/script/cmd/commandLine/powershell/input, all empty - and the raw payload matches a launch- or site-transport-shaped pattern. Show the user the full call and wait for explicit confirmation before it runs; this hook cannot verify it the way it verifies a Bash launch." \
+            "Unreadable tool input from '${TOOL:-<unnamed>}' that looks launch-shaped:
+
+$INPUT"
+    fi
+    exit 0
+fi
+
+# Who the site thinks you are, and what runs on its shared login node.
+#
+# 2.15.0 Windows verification: `tw launch` failed with "No Tower Agent is
+# online". The model then set agent_connection to a different credential's
+# connection id - one belonging to a shared lab credential, not this member's -
+# and started an agent under it on the login node, and asked nobody.
+# docs/SETTINGS.md already said agent_connection "must be unique" and that two
+# members sharing one are refused permanently; prose in a doc did not stop it.
+# A structural ask does: the harness stops and the user answers, not the model.
+#
+# Settings: asked only when an identity key already has a value and the
+# command would change it. First-time setup fills them from empty many times
+# and should not ask each time; a change to an existing identity is the thing
+# to catch. A value this cannot read back from the command also asks.
+IDENTITY_KEYS='agent_connection|seqera_user|workspace_id|compute_env|site_host|slurm_account|storage_root'
+RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh[[:space:]]+(start|stop|restart)([^[:alnum:]_-]|$)'
+if grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; then
+    ask "GATE: this starts, stops or restarts a resident process (the Tower Agent or the egress relay) on the site's SHARED login node. Before running it, tell the user which process, under which identity (agent_connection / credential) and why, and wait for their explicit yes. Never start one under an agent_connection that is not this member's own - docs/SETTINGS.md: two members sharing one are refused permanently." \
+        "$CMD
+
+Starts/stops a resident process on the shared login node."
+fi
+ID_HITS=$(grep -oE "(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+($IDENTITY_KEYS)[[:space:]]+[^;&|]*" <<<"$CMD" 2>/dev/null)
+if [ -n "$ID_HITS" ]; then
+    HERE_S="$(cd "$(dirname "$0")/.." && pwd)/scripts/settings.sh"
+    while IFS= read -r hit; do
+        [ -n "$hit" ] || continue
+        key=$(sed -E "s/^(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+([a-z_]+).*/\2/" <<<"$hit")
+        new=$(sed -E "s/^(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+[a-z_]+[[:space:]]+//; s/[[:space:]]+$//; s/^[\"']//; s/[\"']$//" <<<"$hit")
+        old=$(bash "$HERE_S" "$key" "" 2>/dev/null </dev/null)
+        [ -z "$old" ] && continue
+        [ "$new" = "$old" ] && continue
+        ask "GATE: this changes '$key', which decides whose identity or resources the site uses, from an existing value to a different one. Show the user the old value, the new value and where the new one came from (whose credential / compute environment it is), and wait for their explicit yes. Never adopt a value that belongs to another member or to a shared lab credential - for agent_connection, docs/SETTINGS.md: two members sharing one are refused permanently." \
+            "$CMD
+
+Changes $key:
+  from: $old
+  to:   $new"
+    done <<<"$ID_HITS"
+fi
 
 if ! is_launch_command "$CMD"; then
     # D3 (2.13): a command that reaches the site directly - ssh/scp/rsync/sftp,

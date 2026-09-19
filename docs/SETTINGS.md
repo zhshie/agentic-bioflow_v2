@@ -88,7 +88,7 @@ be. A settings file that needs a real parser has grown into something else.
 | `workspace_id` | The Seqera workspace. **The one value a lab shares** — everything else below is per person | Cannot reach Platform |
 | `compute_env` | This member's compute environment name | Cannot launch |
 | `slurm_account` | The allocation compute time is billed to | Jobs are refused. There is deliberately **no default**: one would bill somebody else's project |
-| `agent_connection` | Identifier for this member's outputs reader. **Must be unique** | Two members sharing one are refused permanently |
+| `agent_connection` | Identifier for this member's outputs reader. **Must be unique** — never another member's or a shared lab credential's. Changing an existing value makes `hooks/confirm_launch.sh` ask the user first | Two members sharing one are refused permanently |
 | `agent_java` | A Java 21 runtime | The reader will not start |
 | `agent_jar` | Seqera's agent | The reader will not start |
 | `tw_bin` | Seqera's CLI, if not on `PATH` | Falls back to `PATH` |
@@ -155,13 +155,27 @@ $LAB_RUNS_DIR/                     (site side, "site")
 
 <local root>/                      (local side, "local"; settings key `local_root`,
                                     default $HOME/agentic-bioflow)
-└── <seqera_user>/
-    └── projects/<same name as the site>/
-        ├── rawdata/        staging; scripts/push.sh sends this up
-        ├── runs/<same name as the site>/
-        │   └── results/    brought back by scripts/fetch.sh - read-only
-        ├── analysis/       analysis.md, R/Python, figures; what an IDE opens
-        └── submission/     the built package
+└── projects/<same name as the site>/    (T29: no <seqera_user> layer here -
+    ├── rawdata/        staging; scripts/push.sh sends this up      matches the
+    └── runs/<same name as the site>/                       portable folder's
+        └── results/    brought back by scripts/fetch.sh - read-only  own shape)
+
+<portable_root>/projects/<same name as the site>/    (T23; only once one is
+├── analysis/       analysis.md, R/Python, figures; what an IDE opens  adopted)
+└── submission/     the built package
+
+    Local side, WITH NO portable folder adopted: analysis/ and submission/
+    stay beside rawdata/runs instead, at the same <local root>/projects/
+    <project>/ base - never both places at once.
+
+    A project already living at the OLD shape (<local root>/<seqera_user>/
+    projects/<project>/...) keeps living there - detected per project, by
+    whether that path already exists (docs/SETTINGS.md's own "Migration:
+    none", applied to this change too). Only a brand new project, on a
+    machine with no old directory for it yet, gets the shape above.
+    scripts/where.sh --project-paths <project> resolves all of this in one
+    place; scripts/init_workspace.sh and every command file ask it rather
+    than constructing a path by hand (T29).
 ```
 
 **The project is the unit everything is collected under**: the raw data that
@@ -265,3 +279,171 @@ not change; what changes is which machine holds the settings.
 The copies on the site can then go. Leaving them is not dangerous, but two
 settings files for one deployment will disagree eventually, and the one that
 loses is whichever the user did not edit.
+
+## The portable folder (T23, Fixes #17)
+
+The procedure above moves a deployment from the site to **one** machine. It
+says nothing about a **second** one - a new laptop, say - which used to mean
+rerunning the whole of `setup` there too, even though nothing about the
+deployment itself had changed. The portable folder is what closes that gap:
+build it once, and adopting it on another machine is one command, not a
+second onboarding.
+
+```
+<portable_root>/
+├── config/
+│   ├── env.yaml              the portable keys below, and only those
+│   └── .seqera_token.enc     the token, encrypted - never the plaintext
+└── projects/<project>/
+    ├── analysis/
+    └── submission/
+```
+
+`<portable_root>` is chosen by the member, once, and can be anywhere they
+already keep things that follow them between machines - a cloud-sync folder,
+an external drive, any path. **There is deliberately no `<seqera_user>`
+layer under it**, unlike the site side: a portable folder belongs to one
+person by construction, so nothing needs to tell members apart inside it.
+
+**Building it:** `scripts/portable_root.sh init <path>` on a machine that
+already has this deployment's settings. It creates the structure, migrates
+this machine's **portable keys** into `config/env.yaml` (`reach`,
+`seqera_user`, `workspace_id`, `compute_env`, `slurm_account`, `site_host`,
+`site_user`, `storage_root`, `email`, `language`, `record_adapter`,
+`record_ref`, `agent_connection`), and encrypts the current token into
+`config/.seqera_token.enc` given a passphrase. **Machine-derived keys are
+left out on purpose** - `site_bridge`, `ssh_control_path`, `tw_bin`,
+`local_root`, `agent_java`, `agent_jar` - because they describe *this
+machine*, not the person; T27 formalises the full two-column split. Safe to
+re-run: it never overwrites a file that is already there, so running it again
+on an already-set-up machine is an in-place upgrade, not a rebuild.
+
+**Adopting it on another machine:** `scripts/settings.sh --adopt <path>`.
+This writes a small pointer file at
+`${XDG_CONFIG_HOME:-~/.config}/agentic-bioflow/portable_root` naming the
+absolute path - **never an environment variable**, for the same reason
+`LAB_SETTINGS_FILE` is never meant to be exported as a habit (PITFALLS
+16j/16k, 25): a variable set in one shell's startup file and not another's is
+how this repo's worst settings-file bugs happened, and a file at the one
+location every shell already agrees on ($HOME) has none of that problem.
+
+Once adopted, `scripts/settings.sh` resolves a key in this order:
+
+1. the pointer file, to find `<portable_root>`
+2. `<portable_root>/config/env.yaml` (the portable keys)
+3. this machine's own local settings file (everything else - the
+   machine-derived keys, or every key at all on a machine that has never
+   adopted anything)
+
+`settings.sh --set` still only ever writes to the local file (step 3) - the
+portable file is edited only by rebuilding or by hand, never by an ordinary
+command that runs on someone's behalf.
+
+**A pointer to a path that is not there right now** - the common case is a
+cloud-sync folder that has not finished syncing to this machine yet - is
+never read as "never set up": `settings.sh` says explicitly which path it
+is pointing at and why it cannot be read, rather than falling through to "no
+settings file" the way an absent XDG default would.
+
+**The token never crosses in plaintext.** The first time something on a
+newly-adopted machine needs it, `scripts/portable_root.sh decrypt-token`
+asks for the passphrase and decrypts `config/.seqera_token.enc` into this
+machine's own ACL-protected cache - the same path `token_file()` already
+resolves to (`dirname(local settings file)/.seqera_token`), so nothing else
+has to change to start using it. Encryption prefers `age`, falls back to
+`openssl enc`, and - if neither is on PATH - falls back to building the
+portable folder **without** a token at all, explaining that the next machine
+will need to get one some other way (setup step 3).
+
+**No portable folder at all - `settings.sh --reconstruct`.** The fallback
+for issue #17's actual reported shape: a site whose `_personal/env.yaml` only
+ever held what `install_deps.sh`/`agent_ctl.sh` discovered on their own
+(`agent_java`, `agent_jar`, `tw_bin`, `agent_connection`) and nothing a person
+was ever asked for. This reads `tw info` / `tw workspaces list` / (once a
+workspace is confirmed) `tw compute-envs list` and prints each finding as a
+**candidate**, never writes anything itself - every value here still has to
+be asked for rather than guessed, the same rule as every other key in the
+table above. `slurm_account` cannot be read from Platform at all; the site's
+own `sacctmgr`/`sshare` are what it takes to confirm.
+
+**Cloud-sync folders are allowed here, unlike the settings file itself.** A
+`portable_root` is explicitly expected to often be one - that is the point of
+it. `scripts/init_workspace.sh` and `scripts/portable_root.sh` warn (not
+refuse) when `local_root` or `portable_root` looks like one: large files sync
+slowly and burn quota, and the decrypted token and the Positron bridge
+connection file must never live there, even though the encrypted token is
+fine to.
+
+## The "setup once is enough" contract (T27)
+
+Every key in the table near the top of this file belongs to exactly one of
+two layers, and which layer decides what has to happen on a new machine:
+
+| Layer | Keys | Where it lives | On a new machine |
+|---|---|---|---|
+| **Portable** | `reach`, `seqera_user`, `workspace_id`, `compute_env`, `slurm_account`, `site_host`, `site_user`, `storage_root`, `email`, `language`, `record_adapter`, `record_ref`, `agent_connection` | `<portable_root>/config/env.yaml`, once adopted (T23) | Carried across by `settings.sh --adopt` - typed in exactly once, ever, on the machine that first built the portable folder |
+| **Machine-derived** | `site_bridge`, `ssh_control_path`, `tw_bin`, `local_root`, `agent_java`, `agent_jar` | This machine's own local settings file, always | Re-derived automatically after `--adopt` - never copied, never asked for a second time either |
+
+**"Re-derived automatically" is not a manual step someone has to remember.**
+Each one already has a script whose job is finding it out fresh on whatever
+machine it runs on, and every one of them already runs as an ordinary part of
+`setup`/`preflight` regardless of whether a portable folder is involved:
+
+- `site_bridge` — `bridge_kind()` (`scripts/settings.sh`) probes `wsl.exe` on
+  this machine at read time; nothing to set.
+- `ssh_control_path` — `site_control_path_default()` computes it from
+  `site_bridge`, same call.
+- `tw_bin` — `scripts/install_deps.sh --cli-only` on this machine (setup
+  step 4's `reach: ssh` branch) installs Seqera's CLI here and records where.
+- `local_root` — asked once, on this machine, the same question T21 added to
+  `setup`'s step ②. Not portable by design: where a person keeps their work
+  is a per-machine choice, not a per-person one - a desktop with a big disk
+  and a laptop with a small one legitimately answer differently.
+- `agent_java` / `agent_jar` — these name a path **on the site**, not on this
+  machine at all, so "re-derive" here means "stay pointed at the site's own
+  values", which the site's own `_personal/env.yaml` already has from
+  whenever it was first set up. A newly-adopting laptop never needs these -
+  the outputs reader they name runs on the site, reached through
+  `scripts/on_site.sh`, never here.
+
+**Verify-only, before anything else.** `setup` runs `scripts/setup_verify.sh`
+as its very first act (before deciding repair vs first-run vs adopt):
+settings complete and `preflight.sh` green → report that in seconds and stop,
+never walking a working machine through checks it does not need. Anything
+else → continue into whichever of repair/first-run/adopt actually applies.
+
+### New machine: the three steps that cannot be skipped
+
+Everything above is what a portable folder removes. What is left is real,
+and this says so plainly rather than implying a portable folder makes setup
+disappear entirely - three things are per-machine no matter what, because
+none of them is a *value* that could travel in a settings file at all:
+
+1. **Local tools.** `jq`, `curl`, Seqera's CLI, WSL on Windows (PITFALLS
+   16b/16f) - whatever is missing from *this* machine's own PATH. A settings
+   key cannot install a binary.
+2. **The first connection to the site.** The site accepts no saved
+   credential, only a one-time code typed by a human once per session
+   (PITFALLS 16h). No portable folder, key, or token can stand in for this -
+   it is the one step that is genuinely, deliberately unautomatable.
+3. **Positron's bridge**, if this member uses it for downstream analysis - a
+   separate install on this machine, unrelated to anything in a settings file
+   (a different branch's own card; not built here).
+
+Three steps, not ten: this is the entire gap between "adopted a portable
+folder" and "fully working", and nothing above pretends otherwise.
+
+### Open question: `agent_connection` across two machines at once
+
+**Not measured, and this file says so rather than guessing.** The outputs
+reader (`scripts/agent_ctl.sh`) runs on the site and is identified by
+`agent_connection`, which is portable (table above) - so adopting the same
+portable folder on a second machine gives both machines the same value by
+design. What happens if that member has **both machines open at once**, each
+independently calling `scripts/on_site.sh --script scripts/agent_ctl.sh` -
+whether the second `start`/`register` bumps the first's session, whether
+Platform simply serves both, or whether something fails in a way that reads
+like a different bug entirely - has never been tried. Until it is measured
+(PRINCIPLES.md invariant 8), treat two machines sharing one `agent_connection`
+as **untested**, not as "known to work" or "known to fail" - and if it comes
+up, that is the moment to measure it and turn this paragraph into a fact.

@@ -142,6 +142,27 @@ EOF
     printf 'private Windows grants it to you alone\n'
 }
 
+# Cloud-sync folder name matching, shared by two very different responses to
+# the same finding: scripts/settings.sh refuses outright to put the settings
+# file or the token in one (a synced folder holds mode 600 perfectly normally
+# - the sync client uploads the file to a third party regardless of its
+# permission bits), while `local_root`/`portable_root` (docs/SETTINGS.md) are
+# allowed to be one - a portable_root is explicitly designed to often be one
+# - so those two only warn. One pattern, two responses, so the pattern lives
+# in exactly one place rather than drifting the way the settings-file-only
+# copy of it already had to be guarded against once (T21).
+#
+# Not a complete list, and every caller that reports this says so: any folder
+# that syncs anywhere is the same risk, and a list of sync products can never
+# be complete.
+looks_cloud_synced() {   # looks_cloud_synced <path> -> 0 if it looks synced
+    case "$1" in
+        *OneDrive*|*Dropbox*|*"Google Drive"*|*GoogleDrive*|*"Library/Mobile Documents"*|*Box*|*Nextcloud*)
+            return 0 ;;
+    esac
+    return 1
+}
+
 # A whole tree's size in bytes. `du -sb` is GNU-only; `du -sk` is POSIX and
 # every platform has it, and kilobytes are finer than any caller here needs -
 # the two readers compare against a megabyte limit and print a human size.

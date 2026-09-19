@@ -35,7 +35,10 @@ real failures, each with the fix.
 - `configs/sites/` — per-site Nextflow config (currently `nchc.config` +
   `nchc-ce.json.in`, the compute-environment template).
 - `hooks/` — `confirm_launch.sh` (gates anything that can start a run behind
-  an explicit confirmation and surfaces broken preconditions), `confirm_cleanup.sh`
+  an explicit confirmation and surfaces broken preconditions; also asks before
+  an identity setting such as `agent_connection` is changed from an existing
+  value, or before the agent/relay is started or stopped on the shared login
+  node), `confirm_cleanup.sh`
   (guards destructive deletes), `confirm_walkthrough.sh` (refuses a step whose
   prerequisite step left no evidence in the transcript), `session_start.sh`
   (reports in-flight runs), `plugin_intro.sh` (shows the plugin overview the
@@ -80,10 +83,34 @@ real failures, each with the fix.
 - `scripts/inspect_sides.sh` — what exists on the site and what exists on this
   machine, gathered in **one** `on_site.sh` round trip. `setup` decides "new
   install / adopt / repair" from this instead of from a question.
+- `scripts/where.sh` — every absolute path this deployment might read or
+  write **on this machine**, each marked exists/missing; purely read-only.
+  `status.sh` and `setup`'s repair branch reference it instead of re-deriving
+  the same paths. `where.sh --run-paths <project> <run>` is the stable
+  interface another script (e.g. `prepare_launch.sh`) can query for the
+  site-side run directory and the local fetch destination without
+  re-deriving the run-area shape a second time. `where.sh --project-paths
+  <project>` (T29) is the same idea for `rawdata/`/`runs/`/`analysis/`/
+  `submission/` on the local side, whose shape now branches three ways (old
+  layout, new layout with no `<seqera_user>` directory, and a portable
+  folder redirecting `analysis/`/`submission/` elsewhere) -
+  `commands/downstream.md` and `commands/finish.md` ask it rather than
+  constructing a path themselves.
+- `scripts/portable_root.sh` + `scripts/settings.sh --adopt`/`--reconstruct`
+  — the portable folder (`docs/SETTINGS.md`, "The portable folder"): once a
+  person builds one, a second machine adopts it in one command instead of
+  rerunning all of `setup`. `portable_root.sh` builds the folder, migrates
+  the portable settings keys into it, and encrypts/decrypts the token
+  (`age`, falling back to `openssl enc`); `settings.sh --adopt <path>` points
+  a machine at an existing one; `--reconstruct` rebuilds candidate values
+  from Seqera Platform when there is no portable folder at all.
 - `tests/` — standalone bash/python scripts, one file per invariant or script.
   Each prints ok/FAIL per case, is self-contained, and signals the verdict with
   its exit code. `tests/run_all.sh` runs all of them and is the release check;
-  a single file still runs directly with `bash tests/<name>.sh`. No CI exists.
+  a single file still runs directly with `bash tests/<name>.sh`. T20 (2.18)
+  added `.github/workflows/tests.yml`: ubuntu-latest, `jq` installed first,
+  then `bash tests/run_all.sh`, on every PR and every push to `main` — CI
+  running the same command a contributor runs locally, nothing more.
 
 ## Running tests
 

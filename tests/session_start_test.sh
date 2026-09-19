@@ -320,4 +320,34 @@ OUT=$(run resume "$TMP/env.yaml" "$TMP/tw_idle")
 check "2.8: no queue, no line"                        "${OUT:-<empty>}" "not sent" absent
 
 echo
+
+# ---------------------------------------------------------------------------
+# T28: the reports directory now comes from `scripts/report.sh --dir`
+# instead of a second, hand-copied formula in this hook. Before this fix,
+# session_start.sh always computed `$(dirname "$SETTINGS_FILE")/reports`
+# itself - the same value report.sh's own reports_dir() computes only once a
+# settings file has actually been found, but not the value it falls back to
+# beforehand, and not something either side would notice drifting apart if
+# report.sh's fallback chain ever changed. This proves the hook actually
+# delegates rather than agreeing by coincidence: with
+# AGENTIC_BIOFLOW_REPORTS_DIR pointed somewhere else, a report placed there
+# is found, and a decoy left in the old hardcoded location is not.
+RDIR_OVERRIDE="$TMP/elsewhere_reports"; mkdir -p "$RDIR_OVERRIDE"
+: > "$RDIR_OVERRIDE/1-1-cccccccccccc.report"
+mkdir -p "$TMP/reports"
+: > "$TMP/reports/decoy-should-not-be-seen.report"
+OUT=$(printf '{"session_start_reason":"startup"}' \
+  | LAB_SETTINGS_FILE="$TMP/env.yaml" TW_BIN="$TMP/tw_idle" TOWER_WORKSPACE_ID=12345 \
+    SEQERA_TOKEN_FILE="$TMP/.seqera_token" AGENTIC_BIOFLOW_REPORTS_DIR="$RDIR_OVERRIDE" \
+    bash "$H")
+check "T28: finds a report queued under AGENTIC_BIOFLOW_REPORTS_DIR" \
+      "${OUT:-<empty>}" "1 off-design report(s) not sent" present
+printf '%-52s ' "T28: report.sh --dir agrees with what the hook used"
+DIR_FROM_REPORT_SH=$(LAB_SETTINGS_FILE="$TMP/env.yaml" \
+  AGENTIC_BIOFLOW_REPORTS_DIR="$RDIR_OVERRIDE" bash "$ROOT/scripts/report.sh" --dir)
+[ "$DIR_FROM_REPORT_SH" = "$RDIR_OVERRIDE" ] && echo ok \
+  || { echo "FAIL: report.sh --dir said '$DIR_FROM_REPORT_SH'"; fails=$((fails+1)); }
+command rm -rf "$TMP/reports" "$RDIR_OVERRIDE"
+
+echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
