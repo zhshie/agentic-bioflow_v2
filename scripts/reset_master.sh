@@ -32,6 +32,10 @@ HOST="$(setting site_host)"
 # printing this very command as the fix.
 BRIDGE="$(bridge_kind)"
 [ -n "${ON_SITE_SSH_BIN:-}" ] || [ "$BRIDGE" != wsl ] || SSH="$(site_ssh_bin wsl)"
+# The command printed for reopening it has to agree too: a person pastes it
+# into Git Bash, where a bare `ssh` would open the master outside WSL.
+OPEN_SSH=ssh
+[ "$BRIDGE" = wsl ] && OPEN_SSH="wsl.exe -e ssh"
 CP="$(setting ssh_control_path "$(site_control_path_default "$BRIDGE")")"
 
 die() { local rc="$1"; shift; printf '%s\n' "$@" >&2; exit "$rc"; }
@@ -55,7 +59,7 @@ cat <<EOF
 
 Open a fresh one:
 
-    ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h -o ServerAliveInterval=60 $HOST true
+    $OPEN_SSH -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h -o ServerAliveInterval=60 $HOST true
 
 ControlPersist detaches the master into the background as soon as it has
 authenticated, so that command returns immediately and the terminal is yours

@@ -260,15 +260,27 @@ bridge_kind() {   # -> wsl | none
     # warning there - but this probe reads an exit code, and a probe whose
     # answer depends on a warning staying a warning would turn "the bridge is
     # missing" into a refusal on a machine where WSL is working fine.
-    local _default=none
-    command -v wsl.exe >/dev/null 2>&1 \
-        && ( cd "${HOME:-/}" 2>/dev/null || cd / 2>/dev/null || :
-             wsl.exe -e true >/dev/null 2>&1 ) \
-        && _default=wsl
+    #
     # The setting wins over the probe, in both directions: `site_bridge: none`
     # turns a working bridge off, which is what makes the refusal path
-    # reachable on a machine that has WSL.
-    setting site_bridge "$_default"
+    # reachable on a machine that has WSL. So it is read FIRST, and the probe
+    # only runs when there is no setting to answer with. It used to run on
+    # every call regardless and then be overruled - and in the 2.15.0 Windows
+    # verification one call spent 312 s inside it.
+    #
+    # </dev/null and a time limit on the probe for the same reason: wsl.exe
+    # reads the stdin it inherits, and from a harness whose stdin is a pipe
+    # that can hold it indefinitely. A WSL that has not answered in 20 s -
+    # a cold start takes a few - is reported as no bridge, which is what the
+    # caller would have to act on anyway.
+    local _set _default=none
+    _set="$(setting site_bridge "")"
+    if [ -n "$_set" ]; then printf '%s\n' "$_set"; return 0; fi
+    command -v wsl.exe >/dev/null 2>&1 \
+        && ( cd "${HOME:-/}" 2>/dev/null || cd / 2>/dev/null || :
+             clocked 20 wsl.exe -e true </dev/null >/dev/null 2>&1 ) \
+        && _default=wsl
+    printf '%s\n' "$_default"
 }
 
 # The ssh binary that goes with that answer. PITFALLS 16b/16g: Git Bash's own

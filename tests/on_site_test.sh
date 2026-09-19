@@ -282,6 +282,19 @@ printf '%-56s ' "it fires even though the master answers -O check"
 out=$(msys 2 -- true); grep -qF "no ssh master connection" <<<"$out" \
   && { echo "FAIL: reported a missing master instead"; fails=$((fails+1)); } || echo ok
 
+# 2.15.0 Windows verification: under the WSL bridge the reconnect line said
+# bare `ssh`. Pasted into Git Bash it opened a real, authenticated master in
+# the Windows home, and on_site.sh - looking inside WSL - still reported none.
+settings 'reach: ssh' 'site_host: me@example.org' 'site_bridge: wsl'
+mkfake 255
+mt "under the WSL bridge, the reconnect line goes through WSL" 2 \
+   "wsl.exe -e ssh -o ControlMaster=auto" -- true
+settings 'reach: ssh' 'site_host: me@example.org' 'site_bridge: none'
+printf '%-56s ' "with the bridge off, it stays a plain ssh line"
+out=$(msys 2 -- true)
+grep -qF "wsl.exe -e ssh -o ControlMaster" <<<"$out" \
+  && { echo "FAIL: <<$out>>"; fails=$((fails+1)); } || echo ok
+
 # Three things it must NOT touch.
 settings 'reach: local'
 mt "reach:local under MSYS is none of its business" 0 "" -- true
