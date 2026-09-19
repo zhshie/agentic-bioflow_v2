@@ -37,7 +37,10 @@ for submission" is a `finish`. Read the command file and follow it rather than
 improvising the sequence.
 
 **T5: once which command applies is decided, the first action is
-`scripts/intro.sh <command>`** — put its five sections in front of the user
+`scripts/intro.sh <command>`** (the plugin root's `scripts/`, i.e.
+`"${CLAUDE_PLUGIN_ROOT}/scripts/intro.sh"`, the repository root's
+otherwise - there is no `scripts/` beside this SKILL.md, and resolving it
+from here was the first failed call of the 2.15.0 Windows launch) — put its five sections in front of the user
 before doing anything else, exactly what every `commands/*.md` file's own
 "Before anything else" section already requires of a typed slash command.
 This skill is the *other* door into the same five commands (PRINCIPLES.md,

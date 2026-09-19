@@ -202,5 +202,33 @@ has "$out" "should not be consulted" \
     || ok "no --samplesheet means no duplicate check is attempted"
 rm -f "$SDIR/where.sh" "$SDIR/parallel_watch_check.sh" "$SDIR/duplicate_run_check.sh"
 
+# =========================================================================
+# A `python3` that PATH finds but that runs nothing - the Windows Microsoft
+# Store alias (PITFALLS 20c). The 2.15.0 Windows launch got an empty
+# parameters section from exactly this and went off to read this script's
+# source; the parse has to fall through to a name that actually runs.
+# =========================================================================
+REALPY="$(command -v python3)"
+STUB="$TMP/storealias"; mkdir -p "$STUB"
+printf '#!/bin/sh\nexit 49\n' > "$STUB/python3"; chmod +x "$STUB/python3"
+ln -sf "$REALPY" "$STUB/python"
+out=$(PATH="$STUB:$PATH" LAB_SETTINGS_FILE="$SETTINGS" TW_BIN=/does/not/exist \
+      bash "$SDIR/prepare_launch.sh" --repo nf-core/testpipeline \
+      --revision 1.2.3 --input "$READS" --fixture-dir "$FIX" 2>&1)
+has "$out" "Generic options (1 parameters)" \
+    && ok "a dead python3 (Store alias) still gets the parameters parsed" \
+    || no "a dead python3 (Store alias) still gets the parameters parsed" "<<$out>>"
+
+# rm first: $STUB/python is a symlink to the real interpreter, and writing
+# through it would try to overwrite that interpreter itself.
+rm -f "$STUB/python"
+for n in python py; do printf '#!/bin/sh\nexit 49\n' > "$STUB/$n"; chmod +x "$STUB/$n"; done
+out=$(PATH="$STUB:$PATH" LAB_SETTINGS_FILE="$SETTINGS" TW_BIN=/does/not/exist \
+      bash "$SDIR/prepare_launch.sh" --repo nf-core/testpipeline \
+      --revision 1.2.3 --input "$READS" --fixture-dir "$FIX" 2>&1)
+has "$out" "no working Python interpreter" \
+    && ok "no Python at all is said out loud, not left as an empty section" \
+    || no "no Python at all is said out loud, not left as an empty section" "<<$out>>"
+
 echo
 [ "$fails" = 0 ] && echo "OK: prepare_launch.sh" || { echo "$fails failed"; exit 1; }

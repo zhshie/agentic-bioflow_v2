@@ -170,8 +170,15 @@ esac
 # --- samplesheet draft -------------------------------------------------------
 SCHEMA_INPUT="$(fetch_pipeline_file assets/schema_input.json || true)"
 COLUMNS=""
-if [ -n "$SCHEMA_INPUT" ] && command -v python3 >/dev/null 2>&1; then
-    COLUMNS="$(python3 -c '
+# pick_python(), not `command -v python3`: on Windows `python3` is the
+# Microsoft Store alias, which PATH finds and which then runs nothing
+# (PITFALLS 20c). With the old test both this section and == parameters ==
+# came out silently empty there, and the model went on to read this script's
+# source to work out what it should have said (2.15.0 Windows verification).
+PY="$(pick_python)" || PY=""
+[ -n "$PY" ] || add_warning "no working Python interpreter (tried: $PICK_PYTHON_CANDIDATES) - samplesheet columns and parameter groups could not be read"
+if [ -n "$SCHEMA_INPUT" ] && [ -n "$PY" ]; then
+    COLUMNS="$("$PY" -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
@@ -275,9 +282,9 @@ done <<<"$PF_OUT"
 SCHEMA_URL="https://raw.githubusercontent.com/$REPO/$REVISION/nextflow_schema.json"
 SCHEMA="$(fetch_pipeline_file nextflow_schema.json || true)"
 PARAM_BODY="source: ${FIXTURE:+(from --fixture-dir; the real URL would be) }$SCHEMA_URL"
-if [ -n "$SCHEMA" ] && command -v python3 >/dev/null 2>&1; then
+if [ -n "$SCHEMA" ] && [ -n "$PY" ]; then
     PARAM_BODY="$PARAM_BODY
-$(python3 -c '
+$("$PY" -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
