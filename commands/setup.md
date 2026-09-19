@@ -481,6 +481,8 @@ user's machine has no use for a runtime it will never start:
 compute nodes cannot reach the internet this is what carries container pulls
 and reference downloads; where they can, the adapter says so and this is
 quick. It picks its own port, so several members on one machine do not collide.
+Starting, stopping or restarting it (and the outputs reader below) makes the
+harness ask the user first: it is a process on a login node other people share.
 
 **6. The outputs reader, then its credential — in that order.** Through the
 adapter: `scripts/on_site.sh --script scripts/agent_ctl.sh start`, then

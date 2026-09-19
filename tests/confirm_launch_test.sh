@@ -446,4 +446,32 @@ printf '%-58s ' "...but not an unrelated read-only tool name like 'Read'"
 jq -en --arg m "$CL_MATCHER" '"Read" | test($m)' 2>/dev/null | grep -qx true \
   && { echo "FAIL: matched Read"; fails=$((fails+1)); } || echo ok
 
+
+# Identity and shared-process gate (2.15.0 Windows verification: the model
+# swapped agent_connection to a shared lab credential's id and started an
+# agent under it on the login node, asking nobody).
+printf 'agent_connection: me-lgn-1\nworkspace_id: 42\n' > "$TMP/id_env.yaml"; chmod 600 "$TMP/id_env.yaml"
+idg() { # idg <label> <expect ask|allow> <command>
+  local j o got
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$3")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  got=allow; grep -q '"permissionDecision": *"ask"' <<<"$o" && got=ask
+  printf '%-58s ' "$1"
+  [ "$got" = "$2" ] && echo ok || { echo "FAIL: expected $2, got $got"; fails=$((fails+1)); }
+}
+idg "changing an existing agent_connection asks"           ask   'bash scripts/settings.sh --set agent_connection nchc-lgn-20260902'
+idg "...and the ask shows the old and new value"           ask   'bash scripts/settings.sh --set agent_connection other'
+j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' 'bash scripts/settings.sh --set agent_connection other')
+o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+printf '%-58s ' "   (from: me-lgn-1 / to: other in the reason)"
+grep -q 'from: me-lgn-1' <<<"$o" && grep -q 'to:   other' <<<"$o" && echo ok || { echo "FAIL <<$o>>"; fails=$((fails+1)); }
+idg "setting it to the value it already has does not ask"  allow 'bash scripts/settings.sh --set agent_connection me-lgn-1'
+idg "filling an empty identity key (first setup) does not" allow 'bash scripts/settings.sh --set compute_env ce-new'
+idg "set_setting in a sourced shell is caught too"         ask   '. scripts/settings.sh && set_setting workspace_id 99'
+idg "starting the agent asks"                              ask   'bash scripts/agent_ctl.sh start'
+idg "...also when wrapped in on_site.sh"                   ask   'scripts/on_site.sh "bash scripts/agent_ctl.sh restart"'
+idg "stopping the egress relay asks"                       ask   'bash scripts/egress_ctl.sh stop'
+idg "agent status does not ask"                            allow 'scripts/on_site.sh "bash scripts/agent_ctl.sh status"'
+idg "reading a setting does not ask"                       allow 'bash scripts/settings.sh agent_connection'
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

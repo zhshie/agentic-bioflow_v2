@@ -35,7 +35,10 @@ real failures, each with the fix.
 - `configs/sites/` — per-site Nextflow config (currently `nchc.config` +
   `nchc-ce.json.in`, the compute-environment template).
 - `hooks/` — `confirm_launch.sh` (gates anything that can start a run behind
-  an explicit confirmation and surfaces broken preconditions), `confirm_cleanup.sh`
+  an explicit confirmation and surfaces broken preconditions; also asks before
+  an identity setting such as `agent_connection` is changed from an existing
+  value, or before the agent/relay is started or stopped on the shared login
+  node), `confirm_cleanup.sh`
   (guards destructive deletes), `confirm_walkthrough.sh` (refuses a step whose
   prerequisite step left no evidence in the transcript), `session_start.sh`
   (reports in-flight runs), `plugin_intro.sh` (shows the plugin overview the

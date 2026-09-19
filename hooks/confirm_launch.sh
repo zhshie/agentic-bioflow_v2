@@ -90,6 +90,11 @@ looks_launch_shaped() {
     case "$text" in
         *' tw launch '*|*' tw runs relaunch '*|*' sbatch '*|*' nextflow run '*|*' ssh '*|*' scp '*|*' rsync '*|*' sftp '*)
             return 0 ;;
+        # Identity and shared-process changes (the gate after the jq parse
+        # below). Without jq the value being replaced cannot be compared, so
+        # any change to these keys counts.
+        *'agent_ctl.sh start '*|*'agent_ctl.sh stop '*|*'agent_ctl.sh restart '*|*'egress_ctl.sh start '*|*'egress_ctl.sh stop '*|*'egress_ctl.sh restart '*|*'--set agent_connection '*)
+            return 0 ;;
     esac
     return 1
 }
@@ -171,6 +176,47 @@ if [ "$TOOL" != "Bash" ] && [ -z "$CMD" ]; then
 $INPUT"
     fi
     exit 0
+fi
+
+# Who the site thinks you are, and what runs on its shared login node.
+#
+# 2.15.0 Windows verification: `tw launch` failed with "No Tower Agent is
+# online". The model then set agent_connection to a different credential's
+# connection id - one belonging to a shared lab credential, not this member's -
+# and started an agent under it on the login node, and asked nobody.
+# docs/SETTINGS.md already said agent_connection "must be unique" and that two
+# members sharing one are refused permanently; prose in a doc did not stop it.
+# A structural ask does: the harness stops and the user answers, not the model.
+#
+# Settings: asked only when an identity key already has a value and the
+# command would change it. First-time setup fills them from empty many times
+# and should not ask each time; a change to an existing identity is the thing
+# to catch. A value this cannot read back from the command also asks.
+IDENTITY_KEYS='agent_connection|seqera_user|workspace_id|compute_env|site_host|slurm_account|storage_root'
+RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh[[:space:]]+(start|stop|restart)([^[:alnum:]_-]|$)'
+if grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; then
+    ask "GATE: this starts, stops or restarts a resident process (the Tower Agent or the egress relay) on the site's SHARED login node. Before running it, tell the user which process, under which identity (agent_connection / credential) and why, and wait for their explicit yes. Never start one under an agent_connection that is not this member's own - docs/SETTINGS.md: two members sharing one are refused permanently." \
+        "$CMD
+
+Starts/stops a resident process on the shared login node."
+fi
+ID_HITS=$(grep -oE "(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+($IDENTITY_KEYS)[[:space:]]+[^;&|]*" <<<"$CMD" 2>/dev/null)
+if [ -n "$ID_HITS" ]; then
+    HERE_S="$(cd "$(dirname "$0")/.." && pwd)/scripts/settings.sh"
+    while IFS= read -r hit; do
+        [ -n "$hit" ] || continue
+        key=$(sed -E "s/^(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+([a-z_]+).*/\2/" <<<"$hit")
+        new=$(sed -E "s/^(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+[a-z_]+[[:space:]]+//; s/[[:space:]]+$//; s/^[\"']//; s/[\"']$//" <<<"$hit")
+        old=$(bash "$HERE_S" "$key" "" 2>/dev/null </dev/null)
+        [ -z "$old" ] && continue
+        [ "$new" = "$old" ] && continue
+        ask "GATE: this changes '$key', which decides whose identity or resources the site uses, from an existing value to a different one. Show the user the old value, the new value and where the new one came from (whose credential / compute environment it is), and wait for their explicit yes. Never adopt a value that belongs to another member or to a shared lab credential - for agent_connection, docs/SETTINGS.md: two members sharing one are refused permanently." \
+            "$CMD
+
+Changes $key:
+  from: $old
+  to:   $new"
+    done <<<"$ID_HITS"
 fi
 
 if ! is_launch_command "$CMD"; then

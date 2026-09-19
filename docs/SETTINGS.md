@@ -88,7 +88,7 @@ be. A settings file that needs a real parser has grown into something else.
 | `workspace_id` | The Seqera workspace. **The one value a lab shares** — everything else below is per person | Cannot reach Platform |
 | `compute_env` | This member's compute environment name | Cannot launch |
 | `slurm_account` | The allocation compute time is billed to | Jobs are refused. There is deliberately **no default**: one would bill somebody else's project |
-| `agent_connection` | Identifier for this member's outputs reader. **Must be unique** | Two members sharing one are refused permanently |
+| `agent_connection` | Identifier for this member's outputs reader. **Must be unique** — never another member's or a shared lab credential's. Changing an existing value makes `hooks/confirm_launch.sh` ask the user first | Two members sharing one are refused permanently |
 | `agent_java` | A Java 21 runtime | The reader will not start |
 | `agent_jar` | Seqera's agent | The reader will not start |
 | `tw_bin` | Seqera's CLI, if not on `PATH` | Falls back to `PATH` |
