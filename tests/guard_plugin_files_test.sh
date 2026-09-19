@@ -198,6 +198,42 @@ t "root mentioned in one segment, an unrelated rm in another - allow" allow \
   "$(bash_input "cat $ROOT/hooks/x.sh; rm $PROJECT/scratch.txt")"
 
 echo
+echo "== other spellings of the root (2.15.0 Windows verification: ~ let a delete through) =="
+# HOME is pointed at the temp dir, so the root is "~/plugin_root" to the hook.
+HR=(CLAUDE_PLUGIN_ROOT="$ROOT" HOME="$TMP")
+t "rm ~/plugin_root/hooks/x.sh - deny"                       deny "${HR[@]}" -- "$(bash_input 'rm ~/plugin_root/hooks/x.sh')"
+t "rm \$HOME/plugin_root/hooks/x.sh - deny"                   deny "${HR[@]}" -- "$(bash_input 'rm $HOME/plugin_root/hooks/x.sh')"
+t "rm \${HOME}/plugin_root/hooks/x.sh - deny"                 deny "${HR[@]}" -- "$(bash_input 'rm ${HOME}/plugin_root/hooks/x.sh')"
+t "rm \$CLAUDE_PLUGIN_ROOT/hooks/x.sh - deny"                 deny "${HR[@]}" -- "$(bash_input 'rm $CLAUDE_PLUGIN_ROOT/hooks/x.sh')"
+t "PowerShell Remove-Item ~/plugin_root/hooks/x.sh - deny"   deny "${HR[@]}" -- "$(tool_input PowerShell command 'Remove-Item ~/plugin_root/hooks/x.sh')"
+t "PowerShell Remove-Item ~\\plugin_root\\hooks\\x.sh - deny" deny "${HR[@]}" -- "$(tool_input PowerShell command 'Remove-Item ~\plugin_root\hooks\x.sh')"
+t "cd ~/plugin_root && rm hooks/x.sh - deny"                 deny "${HR[@]}" -- "$(bash_input 'cd ~/plugin_root && rm hooks/x.sh')"
+t "Set-Location ~/plugin_root; Remove-Item hooks/x.sh - deny" deny "${HR[@]}" -- "$(tool_input PowerShell command 'Set-Location ~/plugin_root; Remove-Item hooks/x.sh')"
+t "cd ~/plugin_root && echo x > hooks/x.sh - deny"           deny "${HR[@]}" -- "$(bash_input 'cd ~/plugin_root && echo x > hooks/x.sh')"
+t "cat ~/plugin_root/hooks/x.sh - allow (a read)"            allow "${HR[@]}" -- "$(bash_input 'cat ~/plugin_root/hooks/x.sh')"
+t "cd ~/plugin_root && grep a hooks/x.sh > /tmp/out - allow" allow "${HR[@]}" -- "$(bash_input 'cd ~/plugin_root && grep a hooks/x.sh > /tmp/out')"
+t "rm ~/plugin_root_backup/x - the prefix is still refused"  deny "${HR[@]}" -- "$(bash_input 'rm ~/plugin_root_backup/x')"
+t "rm ~/elsewhere/x.sh - allow"                              allow "${HR[@]}" -- "$(bash_input 'rm ~/elsewhere/x.sh')"
+
+# Windows drive forms: no /c/ directory exists here to cd into, so
+# root_spellings is lifted out of the hook and asked directly.
+if true; then
+  spell=$(CLAUDE_PLUGIN_ROOT=/c/Users/me/plug bash -c '
+    ROOT_RAW=$CLAUDE_PLUGIN_ROOT; ROOT=$ROOT_RAW; HOME=/nonexistent
+    eval "$(sed -n "/^root_spellings() {/,/^}/p" "$1")"
+    root_spellings' _ "$H")
+  printf '%-72s ' "/c/Users/me/plug also spelled C:/Users/me/plug and /mnt/c/..."
+  grep -qxF 'c:/Users/me/plug' <<<"$spell" && grep -qxF '/mnt/c/Users/me/plug' <<<"$spell" \
+    && echo ok || { echo "FAIL: <<$spell>>"; fails=$((fails+1)); }
+  spell=$(bash -c '
+    ROOT_RAW="C:\\Users\\me\\plug"; ROOT=/c/Users/me/plug; HOME=/nonexistent
+    eval "$(sed -n "/^root_spellings() {/,/^}/p" "$1")"
+    root_spellings' _ "$H")
+  printf '%-72s ' "C:\\Users\\me\\plug also spelled /c/Users/me/plug"
+  grep -qxF '/c/Users/me/plug' <<<"$spell" && echo ok || { echo "FAIL: <<$spell>>"; fails=$((fails+1)); }
+fi
+
+echo
 echo "== no jq on PATH: fail closed, exit 2, not silent =="
 TMP2=$(mktemp -d)
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nojq_path.sh"

@@ -100,12 +100,63 @@ ROOT_RAW="${CLAUDE_PLUGIN_ROOT:-}"
 ROOT="$(cd -P -- "$ROOT_RAW" 2>/dev/null && pwd -P)" || exit 0
 [ -n "$ROOT" ] || exit 0
 
+# Every spelling a command can use for the root, not only the two above. The
+# Windows verification run (2.15.0) deleted a file under the root with
+# `Remove-Item ~/agentic-bioflow_v2/hooks/...`: the hook ran, found neither
+# literal spelling, and allowed it - and `$HOME/...`, `cd <root> && rm x` and
+# `$CLAUDE_PLUGIN_ROOT/...` slipped through the same way on Linux. An
+# installed root lives under ~/.claude/plugins/cache, so `~` is the spelling
+# a model reaches for first. Windows adds drive forms (C:\ C:/ /c/ /mnt/c/)
+# and compares case-insensitively, as its filesystem does.
+root_spellings() {
+    local p base rest d h hp
+    printf '%s\n' "$ROOT_RAW" "$ROOT" '$CLAUDE_PLUGIN_ROOT' '${CLAUDE_PLUGIN_ROOT}' \
+        '$env:CLAUDE_PLUGIN_ROOT' '%CLAUDE_PLUGIN_ROOT%'
+    h="${HOME:-}"; hp=""
+    [ -n "$h" ] && hp=$(cd -P -- "$h" 2>/dev/null && pwd -P)
+    for p in "$ROOT_RAW" "$ROOT"; do
+        for base in "$h" "$hp"; do
+            [ -n "$base" ] || continue
+            case "$p" in "$base"/*)
+                rest="${p#"$base"/}"
+                printf '%s\n' "~/$rest" "\$HOME/$rest" "\${HOME}/$rest" \
+                    "\$env:USERPROFILE/$rest" "%USERPROFILE%/$rest" ;;
+            esac
+        done
+        case "$p" in
+            /[a-zA-Z]/*)
+                d="${p:1:1}"; rest="${p:3}"
+                printf '%s\n' "$d:/$rest" "/mnt/$d/$rest" "/cygdrive/$d/$rest" ;;
+            [a-zA-Z]:[\\/]*)
+                d="${p:0:1}"; rest="${p:3}"; rest="${rest//\\//}"
+                printf '%s\n' "$d:/$rest" "/$d/$rest" "/mnt/$d/$rest" ;;
+        esac
+    done
+}
+SPELLINGS=$(root_spellings | while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    printf '%s\n' "$s"
+    case "$s" in */*)
+        b="${s//\//\\}"
+        # both as a shell sees it and as it sits JSON-escaped in raw input
+        printf '%s\n' "$b" "${b//\\/\\\\}" ;;
+    esac
+done | sort -u)
+case "$ROOT_RAW$ROOT" in [a-zA-Z]:*|/[a-zA-Z]/*) shopt -s nocasematch ;; esac
+case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) shopt -s nocasematch ;; esac
+
+root_in() { # root_in <text> - any spelling of the root, as a literal substring
+    local s
+    while IFS= read -r s; do
+        [[ -n "$s" && "$1" == *"$s"* ]] && return 0
+    done <<<"$SPELLINGS"
+    return 1
+}
+
 INPUT=$(cat)
 if ! jq_works; then
-    case "$INPUT" in
-        *"$ROOT_RAW"*|*"$ROOT"*) refuse_without_jq ;;
-        *) exit 0 ;;
-    esac
+    root_in "$INPUT" && refuse_without_jq
+    exit 0
 fi
 TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
 
@@ -172,7 +223,7 @@ Bash | *[Ss]hell* | *[Pp]wsh* | *[Tt]erminal* | *[Cc]md* | *[Ee]xec*)
         # A shell tool whose input shape this hook does not know. Judge the
         # raw payload instead - but only refuse when it names the root AND
         # carries a write verb; naming the plugin to read it stays allowed.
-        case "$INPUT" in *"$ROOT_RAW"*|*"$ROOT"*) ;; *) exit 0 ;; esac
+        root_in "$INPUT" || exit 0
         if grep -qiE '(sed[[:space:]]+-i|tee|cp|mv|rm|rmdir|chmod|chown|patch|ln|truncate|install|set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|del|erase|copy|move|ren)([^a-z-]|$)|>' <<<"$INPUT"; then
             deny "BLOCKED: this call came from a shell tool ('${TOOL:-<unnamed>}') whose input this hook cannot read, and its raw text names the installed plugin's location next to something write-shaped. The installed plugin is not edited in place.
 
@@ -181,15 +232,10 @@ ${REASON_TAIL}"
         exit 0
     fi
 
-    # The root's path, either spelling: the literal (possibly still an
-    # unexpanded env-var reference the shell would resolve at run time) and
-    # the physical one resolved above. Fixed-string match - a path is not a
-    # regex, and one that happens to contain '.', '+', '[' must not be read
-    # as one.
-    HITROOT=0
-    if grep -qF -- "$ROOT_RAW" <<<"$CMD" 2>/dev/null; then HITROOT=1; fi
-    if [ "$ROOT" != "$ROOT_RAW" ] && grep -qF -- "$ROOT" <<<"$CMD" 2>/dev/null; then HITROOT=1; fi
-    [ "$HITROOT" = 1 ] || exit 0
+    # Any spelling of the root (SPELLINGS, above), as a literal substring - a
+    # path is not a regex, and one that happens to contain '.', '+', '['
+    # must not be read as one.
+    root_in "$CMD" || exit 0
 
     # T2: "the plugin root is mentioned somewhere" and "this command writes
     # into it" are different claims, and the old check conflated them -
@@ -216,20 +262,26 @@ ${REASON_TAIL}"
     # PowerShell does not care about case. Matched on their own, -i.
     PS_WRITE_RE='(^|[[:space:]]|[;&|(])(set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|del|erase|copy|move|ren)([[:space:]]|$)'
 
-    root_in() { # root_in <text> - either spelling of the root, fixed-string
-        grep -qF -- "$ROOT_RAW" <<<"$1" 2>/dev/null && return 0
-        [ "$ROOT" != "$ROOT_RAW" ] && grep -qF -- "$ROOT" <<<"$1" 2>/dev/null && return 0
-        return 1
-    }
+    # `cd <root> && rm hooks/x.sh` names the root only in the cd, and the
+    # write that follows uses a relative path. Once a segment moves INTO the
+    # root, every later segment is treated as running there.
+    CD_RE='^[[:space:]]*(cd|pushd|set-location|push-location|sl)([[:space:]]|$)'
 
     HITVERB=0
+    INROOT=0
     while IFS= read -r SEG; do
         [ -n "$SEG" ] || continue
 
+        if grep -qiE "$CD_RE" <<<"$SEG" 2>/dev/null; then
+            root_in "$SEG" && INROOT=1
+            continue
+        fi
+
         # A write verb owns its whole segment; the root has to appear
-        # SOMEWHERE in that same segment, not merely on the same line.
+        # SOMEWHERE in that same segment, not merely on the same line -
+        # unless an earlier segment already cd'd into it.
         if { grep -qE "$WRITE_RE" <<<"$SEG" || grep -qiE "$PS_WRITE_RE" <<<"$SEG"; } 2>/dev/null \
-            && root_in "$SEG"; then
+            && { [ "$INROOT" = 1 ] || root_in "$SEG"; }; then
             HITVERB=1
         fi
 
@@ -242,6 +294,14 @@ ${REASON_TAIL}"
                 | grep -oE '>>?[[:space:]]*[^[:space:];&|]+' | tail -1 \
                 | sed -E 's/^>>?[[:space:]]*//')
             [ -n "$RTARGET" ] && root_in "$RTARGET" && HITVERB=1
+            # After a cd into the root, a relative target lands inside it; an
+            # absolute one (a scratchpad, /tmp) still does not.
+            if [ "$INROOT" = 1 ] && [ -n "$RTARGET" ]; then
+                case "$RTARGET" in
+                    /*|~*|\$*|[a-zA-Z]:*|%*) ;;
+                    *) HITVERB=1 ;;
+                esac
+            fi
         fi
     done <<< "$SEGMENTS"
 
