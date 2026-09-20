@@ -1807,3 +1807,75 @@ the next turn. Whether ordinary interactive sessions persist mid-turn text
 is not established; until it is, show evidence the gates read as the final
 text of a turn.
 
+
+**36. The outputs reader inherited a temp directory that was then deleted, and
+quietly prefixed shell noise to every answer it gave Platform.** Measured
+2026-09-21 on lgn304, against tw-agent v0.5.6.
+
+The symptom was "every run's outputs are invisible on Platform", and every
+layer above it looked healthy. `tw credentials list` said `status: AVAILABLE`.
+The agent heartbeated every 45 s, reconnected on schedule, and logged
+`Sending response` each time Platform asked it something. The reports manifest
+Nextflow writes (`<workDir>/nf-<runId>-reports.tsv`) was on disk, 232 bytes,
+with the right path and the right size for a MultiQC report that also existed
+and was readable. Platform's own answer was
+`File cannot be streamed - file empty: '<that file>'`.
+
+The agent runs whatever Platform sends it as `sh -c <command>` with
+`redirectErrorStream(true)` and **no working directory set on the
+ProcessBuilder** - read out of the jar's own bytecode, since the flag that
+would log the command is at `trace` level. So the child inherits the cwd of
+whatever started the agent. `scripts/on_site.sh --script` copies the scripts
+into a `mktemp -d` on the site and runs them there, and that directory is
+removed when the round trip ends. `/proc/<pid>/cwd` read
+`/tmp/tmp.8iUN0QeRBz (deleted)`.
+
+A shell started from a deleted directory **still works**. It just writes
+
+    shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+
+to stderr first - which `redirectErrorStream` folds into stdout. So every
+response Platform received had that line where the first line of content
+should be. For the reports manifest, Platform parsed the shell diagnostic as
+the TSV header, found none of the columns it wanted, and reported the file as
+empty. Nothing errored, nothing reconnected, and no log on either side named
+the real problem.
+
+Three things made this expensive to find, all worth remembering:
+
+- **Every check above the failure passed.** `AVAILABLE`, heartbeats,
+  `Sending response`. The skill's own first rule - never call an output
+  missing before checking the reader is up - was satisfied, and the reader
+  *was* up.
+- **Two plausible causes had to be eliminated by measurement, not argument.**
+  That the agent only serves paths under `--work-dir` (every report path here
+  is outside it) was wrong: the bytecode sets no directory and constrains no
+  path. That a deleted cwd makes the spawn *fail* was also wrong: it succeeds
+  and merely prepends a line. Both were tested rather than reasoned about.
+- **`docs/PITFALLS.md` 3b already recorded that binaries come back corrupt.**
+  That is a separate defect - `InputStreamReader` decoding bytes as text - and
+  believing this was another face of it would have stopped the search early.
+
+The fix is one line in each daemon: `cd` somewhere permanent before
+backgrounding it (`scripts/agent_ctl.sh`, `scripts/egress_ctl.sh`).
+`tests/daemon_cwd_test.sh` pins both the mechanism and the anchor.
+
+**Runs that completed while the agent was in this state do not recover.**
+Platform caches the manifest at completion; asking for those runs' reports
+afterwards never reaches the agent at all (verified: the agent's log does not
+grow). Their files are on disk and intact - fetch them from the filesystem.
+
+Two landmines were sitting next to this one, both live on the deployment where
+it was found, and both would have turned a restart into a worse outage:
+
+- `agent_java` pointed at a JDK 21 that **cannot run the jar** - tw-agent
+  v0.5.6 is class file 69.0, so Java 21 refuses it with
+  `UnsupportedClassVersionError`. The agent had been started by hand with a
+  JDK 25 that `install_deps.sh` had also installed; the settings file still
+  named the one that fails.
+- `agent_connection` was **not in the settings file at all**, so
+  `agent_ctl.sh start` would have invented a fresh identifier
+  (`scripts/agent_ctl.sh`, the `rand_tag` branch) and silently orphaned the
+  Platform credential built against the old one - exactly what
+  `commands/setup.md` step 6 warns about. Check both before restarting an
+  agent that is already registered.
