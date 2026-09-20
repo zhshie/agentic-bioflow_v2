@@ -342,6 +342,25 @@ prefer whichever is actually available.
    step 3 does anyway, and tell the user the gap is upstream packaging rather
    than a lost result.
 
+   **But check the manifest actually reached Platform before blaming the
+   pipeline.** The two look identical from the Reports tab and have opposite
+   causes. `<workDir>/nf-<runId>-reports.tsv` is what Nextflow wrote and what
+   Platform reads back through the agent:
+
+   - **The file has rows** and Platform still shows nothing → the manifest is
+     not getting across intact. PITFALLS 36: an agent whose own working
+     directory has been deleted prefixes a `shell-init: ... getcwd` line to
+     every answer, so Platform parses shell noise as the TSV header and
+     reports the file as empty. `readlink /proc/<agent pid>/cwd` settles it in
+     one command — a `(deleted)` suffix is the whole diagnosis. Everything
+     else looks healthy, including `AVAILABLE` and live heartbeats.
+   - **The file has only its header row** → nothing matched, and the
+     `tower.yml` paragraph above applies.
+
+   Runs that finished while the agent was in that state stay blank even after
+   it is fixed: Platform caches the manifest at completion and never asks
+   again. Say so rather than restarting anything twice.
+
 2. **Read the QC, do not just link it.** Report per-sample numbers, and say
    plainly whether any sample should be dropped. Where the pipeline inferred
    something automatically — `strandedness: auto`, an outlier call — report the
