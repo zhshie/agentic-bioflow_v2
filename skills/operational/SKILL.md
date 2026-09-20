@@ -33,8 +33,20 @@ run finishes.
 **The user does not have to name a command.** "I want to run RNA-seq" is a
 `launch`; "is it done yet" is a `runs`; "nothing works" is usually `setup`;
 "make me a plot of this" is a `downstream`; "write this up" or "package this
-for submission" is a `finish`. Read the command file and follow it rather than
-improvising the sequence.
+for submission" is a `finish`.
+
+**Then read that command's file in full before doing anything else** —
+`${CLAUDE_PLUGIN_ROOT}/commands/<command>.md` when installed as a plugin,
+`commands/<command>.md` in the repository otherwise. This is not optional
+background reading. A user who types `/launch` has that whole file put in
+front of the model by the runtime; a user who says "I want to run RNA-seq"
+does not, and this skill is a summary of which command applies, never a
+substitute for the command's own steps. Measured on the 2.15.0 Windows
+verification: the walk reached for `tw launch --help` and asked its questions
+one at a time, both of which that file already answers. Loading the sibling
+skill for the command (`agentic-bioflow:launch` and so on) puts the same
+text in front of you where a runtime offers it; reading the file is the form
+that works everywhere.
 
 **T5: once which command applies is decided, the first action is
 `scripts/intro.sh <command>`** (the plugin root's `scripts/`, i.e.
