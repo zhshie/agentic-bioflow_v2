@@ -12,6 +12,12 @@
 #   intro.sh --end <command>      exactly one line: "flow-end: <command>" -
 #                                  the signal a Stop hook uses to know a
 #                                  command's flow finished
+#   intro.sh --banner             one line, shown to the user by
+#                                  hooks/plugin_intro.sh as `systemMessage`:
+#                                  a GUI surface renders that field one line
+#                                  per row (PITFALLS 35), so the overview
+#                                  itself travels to the model instead and
+#                                  only this single line goes out as chrome
 #   intro.sh --list               the command names that have opening text
 #   intro.sh --nudge              one line: T3's natural-language routing
 #                                  hint ("this belongs to agentic-bioflow,
@@ -51,6 +57,7 @@ usage() {
 usage: intro.sh [--lang zh-TW|en] [<command>]
        intro.sh [--lang zh-TW|en] --end <command>
        intro.sh [--lang zh-TW|en] --nudge
+       intro.sh [--lang zh-TW|en] --banner
        intro.sh --list
 
 <command> is one of: setup launch runs downstream finish
@@ -123,6 +130,10 @@ case "${positional[0]:-}" in
     --nudge)
         if [ ! -r "$LANG_DIR/nudge.txt" ]; then usage; exit 2; fi
         cat "$LANG_DIR/nudge.txt"
+        ;;
+    --banner)
+        if [ ! -r "$LANG_DIR/banner.txt" ]; then usage; exit 2; fi
+        cat "$LANG_DIR/banner.txt"
         ;;
     --end)
         cmd="${positional[1]:-}"

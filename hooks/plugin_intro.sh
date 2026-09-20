@@ -153,10 +153,37 @@ if [ "$IS_LITERAL" = 1 ]; then
 
 [truncated - run scripts/intro.sh for the full text]"
 
-    # systemMessage is shown to the user as-is; additionalContext gives the
-    # model the same text, so its next step matches what the user just read.
-    jq -n --arg m "$INTRO" --arg e "$EVENT" \
-      '{systemMessage: $m, hookSpecificOutput: {hookEventName: $e, additionalContext: $m}}' || exit 0
+    # PITFALLS 35: `systemMessage` is chrome, not a canvas. A GUI surface
+    # (the Claude app; measured 2026-09-20 with this same overview) renders
+    # it ONE PROMPT-PREFIXED ROW PER LINE - "PostToolUse:Skill says: " in
+    # front of all 26 of them, blank lines included - and collapses the runs
+    # of spaces the old card used to align its command list and its flow
+    # diagram. The same string is a tidy block in a terminal, which is why
+    # this was written that way and why nobody saw it until the plugin was
+    # opened somewhere else.
+    #
+    # So the card travels as additionalContext and the MODEL prints it, as
+    # ordinary Markdown, the way it prints everything else it says: one
+    # renderer, already correct on every surface, instead of this hook
+    # guessing which one it is talking to. The user still gets an immediate
+    # signal that something loaded - the one-line banner below, short enough
+    # that the per-row rendering has nothing to do to it.
+    #
+    # What this gives up, stated plainly: the overview is no longer
+    # GUARANTEED by the hook - a model that ignores the instruction below
+    # shows the user nothing but the banner. That is the same bet
+    # every commands/*.md file's "Before anything else" section already
+    # makes, and tests/plugin_intro_test.sh now pins the instruction's
+    # presence rather than the old guarantee.
+    BANNER="$(bash "$ROOT/scripts/intro.sh" --banner 2>/dev/null)"
+    [ -n "$BANNER" ] || BANNER="agentic-bioflow"
+    BANNER="${BANNER%%$'\n'*}"
+
+    SHOW='Print the overview below to the user as the FIRST thing in your reply, verbatim, before anything else and before any tool call. It is already Markdown - keep it as Markdown, do not wrap it in a code block, do not summarise it, and do not re-order it.'
+
+    jq -n --arg b "$BANNER" --arg s "$SHOW" --arg m "$INTRO" --arg e "$EVENT" \
+      '{systemMessage: $b,
+        hookSpecificOutput: {hookEventName: $e, additionalContext: ($s + "\n\n" + $m)}}' || exit 0
 elif [ "$IS_NL" = 1 ]; then
     # T3's short door: additionalContext only, for the model - not
     # systemMessage. The full overview is a banner worth the user's attention

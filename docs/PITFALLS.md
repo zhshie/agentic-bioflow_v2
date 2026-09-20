@@ -1685,6 +1685,46 @@ tries this route first (ladder rung 1) and only falls back to the file-based
 contract - now understood as "the *old* Positron contract", not "*the*
 Positron contract" - when no bridge answers.
 
+**35. `systemMessage` is one prompt-prefixed row per line on a GUI surface,
+and Markdown there collapses the spaces a terminal card aligns with.**
+Measured 2026-09-20 in the Claude app, with 2.15.0's own plugin overview.
+
+`hooks/plugin_intro.sh` put all 26 lines of `scripts/intro.sh` into
+`systemMessage`, which a terminal shows as one tidy block. The app rendered
+it as 26 separate rows, each prefixed `PostToolUse:Skill says: ` - blank
+lines included, so the card's paragraph breaks became empty prefixed rows
+too. In the same screenshot the five-command list and the
+`setup -> launch -> runs -> downstream -> finish` diagram had lost their
+alignment, because the runs of spaces holding those columns apart are
+collapsed wherever the text is rendered as Markdown in a proportional font.
+
+Two lessons, and they are separate:
+
+- **`systemMessage` is chrome, not a canvas.** Keep it to one line. Anything
+  longer belongs in `additionalContext`, where the model reprints it as
+  ordinary Markdown through the one renderer that is already correct on every
+  surface. The cost is that the text is no longer guaranteed by the hook -
+  a model that ignores the instruction shows nothing - which is the same bet
+  every `commands/*.md` "Before anything else" section already makes.
+  `tests/plugin_intro_test.sh` pins the one-line rule and the instruction;
+  `tests/intro_test.sh` pins `intro.sh --banner` to a single line.
+- **Space alignment does not survive a GUI surface.** Six scripts
+  (`preflight.sh`, `runs_board.sh`, `status.sh`, `tune_resources.sh`,
+  `where.sh`, `why_pending.sh`) print space-padded columns. They are fine as
+  they are - a fenced code block preserves them - so every `commands/*.md`
+  file and `skills/operational/SKILL.md` now say to relay that output inside
+  one, and `tests/column_output_relay_rule.sh` keeps the list of six honest
+  by re-measuring it from `printf '%-<n>s'` rather than trusting the
+  sentence.
+
+What this does not answer: whether `permissionDecision: "ask"` raises a
+prompt on that surface, and how a Stop hook's `reason` looks there. Both are
+in `docs/TESTING.md`'s human checklist and neither has been measured in the
+app yet. `scripts/status.sh`'s own note also still holds - `claude-desktop`
+and `claude-web` are naming conventions this repo has never observed, so an
+app session is the place to measure `CLAUDE_CODE_ENTRYPOINT` and settle
+`interface=` for that surface.
+
 ## Lab agents
 
 **30. A run label is a workspace object, so "one label per record" piles up.**

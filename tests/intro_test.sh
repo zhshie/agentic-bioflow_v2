@@ -80,6 +80,33 @@ out="$(clean --end downstream)"
 t "--end downstream names downstream, not setup" "$out" "flow-end: downstream"
 
 # ---------------------------------------------------------------------------
+# PITFALLS 35: hooks/plugin_intro.sh puts this - and only this - in
+# `systemMessage`, a field a GUI surface renders one prompt-prefixed row per
+# line. One line here is the whole point of the flag existing.
+echo "== --banner: the one line the hook shows as chrome =="
+out="$(clean --banner)"
+rc="$(clean_rc --banner)"
+t "--banner exits 0"                       "$rc" "0"
+t "--banner prints exactly one line"       "$(wc -l <<<"$out" | tr -d ' ')" "1"
+has "--banner names the plugin"            "agentic-bioflow" "$out"
+
+out="$(clean --lang en --banner)"
+t "--banner en also prints exactly one line" "$(wc -l <<<"$out" | tr -d ' ')" "1"
+hasnot "and the zh-TW banner does not leak into it" "已載入" "$out"
+
+# The other half of the same pitfall: the card the model reprints must not lean
+# on runs of spaces to line anything up, because Markdown collapses them. Any
+# line with three or more spaces after a non-space character is the old
+# column-aligned shape coming back.
+for L in zh-TW en; do
+    out="$(clean --lang "$L")"
+    printf '%-62s ' "$L overview aligns nothing with runs of spaces"
+    if grep -qP '\S {3,}' <<<"$out"; then
+        echo "FAIL: $(grep -nP '\S {3,}' <<<"$out" | head -1)"; fails=$((fails+1))
+    else echo ok; fi
+done
+
+# ---------------------------------------------------------------------------
 echo "== --list: the command names that have opening text =="
 out="$(clean --list)"
 rc="$(clean_rc --list)"

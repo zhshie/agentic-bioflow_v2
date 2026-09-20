@@ -8,6 +8,11 @@ Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
 
+`preflight.sh`, `runs_board.sh`, `status.sh`, `tune_resources.sh`, `where.sh`
+and `why_pending.sh` line their output up with runs of spaces. Relay what they
+printed inside a fenced code block: outside one, a GUI surface collapses those
+runs and the columns stop meaning anything (PITFALLS 35).
+
 **Pinned to a faster model above (GitHub issue #13).** This command mostly
 assembles and reports on files that already exist — `collect_provenance.py`,
 `build_package.sh` and `cite.sh` do the reading and the writing; this reads
