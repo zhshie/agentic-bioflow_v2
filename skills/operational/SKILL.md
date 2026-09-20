@@ -56,6 +56,14 @@ flow is under way at all. When this command's flow ends, run
 `scripts/intro.sh --end <command>` the same way a typed command's own file
 says to.
 
+**T6: relay column output inside a fenced code block.** `preflight.sh`,
+`runs_board.sh`, `status.sh`, `tune_resources.sh`, `where.sh` and
+`why_pending.sh` line their output up with runs of spaces, and every
+`commands/*.md` file carries this same rule. Outside a code block a GUI
+surface collapses those runs and the columns stop meaning anything
+(PITFALLS 35) - the same rendering difference that stopped the overview from
+being shipped in a hook's `systemMessage`.
+
 **A project is what holds them together.** Raw data, every run made from it,
 the analysis written on those runs, and the package built from the analysis all
 live under one project directory. The project folder may live wherever the

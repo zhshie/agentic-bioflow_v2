@@ -10,7 +10,7 @@ place several classes of defect can show up at all.
 bash tests/run_all.sh
 ```
 
-53 files, about 100 seconds, one verdict and a non-zero exit if anything fails.
+71 files, about 100 seconds, one verdict and a non-zero exit if anything fails.
 Failing output is printed at the end; full logs land in a temp directory the
 banner names. `--only <substring>` narrows it, `--verbose` streams each file's
 own output, `--timeout <secs>` changes the per-test limit (default 300, only
@@ -46,6 +46,11 @@ takes a host and a port and needs a live relay.
 
 ## Half 2 — what only a person can check
 
+Walk it on **both** a terminal and a GUI surface when a release touches
+anything a hook prints or a command relays: the same string is a tidy block
+in one and 26 prefixed rows in the other, and only one of the two was ever
+being looked at (PITFALLS 35).
+
 `run_all.sh` cannot see a user interface, cannot judge whether guidance reads
 well, and — the important one — **cannot tell whether the hooks are loaded**.
 Hooks are read at Claude Code startup. Every test here can be green while the
@@ -64,7 +69,8 @@ minutes and is the whole point of having a human in the loop.
 | 5 | `bash scripts/status.sh` against the real cluster | Every dry-run test passes with a stubbed site; this is the only check against the real one |
 | 6 | Ask to launch a run, or to clear `work/` | No Claude Code permission prompt naming the command → `permissionDecision: "ask"` is not honoured on this surface; the conversational gate must still stop it |
 | 7 | On an unattended host (`claude -p` with the plugin): ask for run status, then ask it to launch | Status fails → Platform read path broken. The launch goes through → an unattended host is not stopped; record what the permission mode was (docs/LAB_AGENTS.md, M4) |
-| 8 | Whatever this release specifically changed | — |
+| 8 | **On a GUI surface (the Claude app), not just a terminal:** the first use shows a ONE-LINE banner, and the overview itself arrives as ordinary Markdown in the model's reply | A wall of `... says:` rows, one per line, or a command list whose columns do not line up → something is back in `systemMessage`, or a card is being relayed outside a code block (PITFALLS 35) |
+| 9 | Whatever this release specifically changed | — |
 
 Record the answers in the release's own notes. A check nobody wrote down is a
 check that gets re-argued three sessions later.

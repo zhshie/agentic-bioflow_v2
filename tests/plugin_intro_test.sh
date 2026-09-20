@@ -28,6 +28,7 @@ cat > "$P/scripts/intro.sh" <<'EOF'
 #!/bin/bash
 case "${1:-}" in
     "") echo "STUB-OVERVIEW-MARKER" ;;
+    --banner) echo "STUB-BANNER-MARKER" ;;
     --nudge) echo "STUB-NUDGE-MARKER: load agentic-bioflow:operational" ;;
     *) exit 2 ;;
 esac
@@ -65,31 +66,56 @@ expect "another plugin's command says nothing"    "$(prompt s1 '/other-plugin:se
 expect "another plugin's skill says nothing"      "$(skill s1 'superpowers:brainstorming')" EMPTY
 expect "even when its arguments name this plugin" "$(skill s1 'superpowers:brainstorming' 'plan agentic-bioflow:launch')" EMPTY
 expect "and none of that used up the session's one showing" \
-       "$(prompt s1 '/agentic-bioflow:setup' | field .systemMessage)" STUB-OVERVIEW-MARKER
+       "$(prompt s1 '/agentic-bioflow:setup' | field .systemMessage)" STUB-BANNER-MARKER
 
 # --- a typed command --------------------------------------------------------
 OUT=$(prompt s2 '/agentic-bioflow:launch rnaseq')
-expect "a typed command shows the overview to the user" "$(field .systemMessage <<<"$OUT")" STUB-OVERVIEW-MARKER
-expect "and gives it to the model"                      "$(field .hookSpecificOutput.additionalContext <<<"$OUT")" STUB-OVERVIEW-MARKER
+expect "a typed command banners the load to the user"  "$(field .systemMessage <<<"$OUT")" STUB-BANNER-MARKER
+expect "and gives the overview itself to the model"     "$(field .hookSpecificOutput.additionalContext <<<"$OUT")" STUB-OVERVIEW-MARKER
+expect "told to print it first, verbatim, as Markdown"  "$(field .hookSpecificOutput.additionalContext <<<"$OUT")" "verbatim"
 expect "declared as UserPromptSubmit"                   "$(field .hookSpecificOutput.hookEventName <<<"$OUT")" UserPromptSubmit
-expect "leading whitespace still counts"                "$(prompt s3 '  /agentic-bioflow:runs' | field .systemMessage)" STUB-OVERVIEW-MARKER
+expect "leading whitespace still counts"                "$(prompt s3 '  /agentic-bioflow:runs' | field .systemMessage)" STUB-BANNER-MARKER
 
 # --- once per session -------------------------------------------------------
 expect "a second command in the same session says nothing" "$(prompt s2 '/agentic-bioflow:runs')" EMPTY
 expect "nor does the skill loading afterwards"             "$(skill s2 'agentic-bioflow:runs')" EMPTY
-expect "a different session is shown it again"             "$(prompt s4 '/agentic-bioflow:runs' | field .systemMessage)" STUB-OVERVIEW-MARKER
+expect "a different session is shown it again"             "$(prompt s4 '/agentic-bioflow:runs' | field .systemMessage)" STUB-BANNER-MARKER
 
 # --- the model loading a skill (natural-language requests) ------------------
 OUT=$(skill s5 'agentic-bioflow:operational')
-expect "a loaded plugin skill shows the overview"  "$(field .systemMessage <<<"$OUT")" STUB-OVERVIEW-MARKER
+expect "a loaded plugin skill banners the load"    "$(field .systemMessage <<<"$OUT")" STUB-BANNER-MARKER
+expect "and hands the skill path the overview too" "$(field .hookSpecificOutput.additionalContext <<<"$OUT")" STUB-OVERVIEW-MARKER
 expect "declared as PostToolUse"                   "$(field .hookSpecificOutput.hookEventName <<<"$OUT")" PostToolUse
 expect "and only once"                             "$(skill s5 'agentic-bioflow:launch')" EMPTY
 expect "a Bash call is not a skill"                "$(jq -nc '{session_id:"s6",hook_event_name:"PostToolUse",tool_name:"Bash",tool_input:{command:"agentic-bioflow:x"}}' | hook)" EMPTY
 
+# --- PITFALLS 35: systemMessage must stay one line --------------------------
+# A GUI surface renders this field one prompt-prefixed row per line, so any
+# newline here is 26 rows of "PostToolUse:Skill says:" on the Claude app.
+printf '%-60s ' "systemMessage is exactly one line"
+lines=$(prompt s20 '/agentic-bioflow:setup' | field .systemMessage | wc -l | tr -d ' ')
+[ "$lines" = 1 ] && echo ok || { echo "FAIL: systemMessage has $lines lines"; fails=$((fails+1)); }
+
+printf '%-60s ' "a multi-line banner is still cut to one line"
+cat > "$P/scripts/intro_multiline.sh" <<'EOS'
+#!/bin/bash
+case "${1:-}" in
+    "") echo "STUB-OVERVIEW-MARKER" ;;
+    --banner) printf 'STUB-BANNER-MARKER\nSECOND-LINE-MARKER\n' ;;
+    *) exit 2 ;;
+esac
+EOS
+cp "$P/scripts/intro.sh" "$P/scripts/intro_single.sh"
+cp "$P/scripts/intro_multiline.sh" "$P/scripts/intro.sh"; chmod +x "$P/scripts/intro.sh"
+out=$(prompt s21 '/agentic-bioflow:setup' | field .systemMessage)
+{ [ "$(wc -l <<<"$out" | tr -d ' ')" = 1 ] && ! grep -qF SECOND-LINE-MARKER <<<"$out"; } \
+  && echo ok || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+cp "$P/scripts/intro_single.sh" "$P/scripts/intro.sh"; chmod +x "$P/scripts/intro.sh"
+
 # --- never costs the user anything ------------------------------------------
 printf '%-60s ' "no session_id: still shown, exit 0"
 out=$(jq -nc '{hook_event_name:"UserPromptSubmit", prompt:"/agentic-bioflow:setup"}' | hook); rc=$?
-[ "$rc" = 0 ] && grep -qF STUB-OVERVIEW-MARKER <<<"$out" && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
+[ "$rc" = 0 ] && grep -qF STUB-BANNER-MARKER <<<"$out" && grep -qF STUB-OVERVIEW-MARKER <<<"$out" && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
 
 printf '%-60s ' "a session_id cannot write outside the state dir"
 jq -nc '{session_id:"../../escape", hook_event_name:"UserPromptSubmit", prompt:"/agentic-bioflow:setup"}' | hook >/dev/null
@@ -98,14 +124,14 @@ jq -nc '{session_id:"../../escape", hook_event_name:"UserPromptSubmit", prompt:"
 printf '%-60s ' "unwritable state dir: shown, exit 0"
 out=$(jq -nc '{session_id:"s7", hook_event_name:"UserPromptSubmit", prompt:"/agentic-bioflow:setup"}' \
       | AGENTIC_BIOFLOW_STATE_DIR=/proc/nope bash "$P/hooks/plugin_intro.sh"); rc=$?
-[ "$rc" = 0 ] && grep -qF STUB-OVERVIEW-MARKER <<<"$out" && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
+[ "$rc" = 0 ] && grep -qF STUB-BANNER-MARKER <<<"$out" && grep -qF STUB-OVERVIEW-MARKER <<<"$out" && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
 
 printf '%-60s ' "broken intro.sh: silent, exit 0"
 mv "$P/scripts/intro.sh" "$P/scripts/intro.sh.off"
 out=$(prompt s8 '/agentic-bioflow:setup'); rc=$?
 mv "$P/scripts/intro.sh.off" "$P/scripts/intro.sh"
 [ "$rc" = 0 ] && [ -z "$out" ] && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
-expect "and that failure did not use up the showing" "$(prompt s8 '/agentic-bioflow:setup' | field .systemMessage)" STUB-OVERVIEW-MARKER
+expect "and that failure did not use up the showing" "$(prompt s8 '/agentic-bioflow:setup' | field .systemMessage)" STUB-BANNER-MARKER
 
 # T3: no jq used to mean total silence, in the one hook that could have said
 # so - the safety-net gates (confirm_launch.sh etc.) already run degraded
@@ -160,7 +186,7 @@ expect "the same nudge, once per session" \
 expect "a different session is nudged again" \
        "$(prompt nl7 'launch the FASTQ samplesheet run')" "agentic-bioflow:operational"
 expect "the LITERAL door still wins over the NL one for the same prompt shape" \
-       "$(prompt nl8 '/agentic-bioflow:launch RNA-seq' | field .systemMessage)" STUB-OVERVIEW-MARKER
+       "$(prompt nl8 '/agentic-bioflow:launch RNA-seq' | field .systemMessage)" STUB-BANNER-MARKER
 
 echo
 echo "== T3: the topic vocabulary stays pinned to SKILL.md's own trigger words =="
