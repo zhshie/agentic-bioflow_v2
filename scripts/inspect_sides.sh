@@ -141,16 +141,24 @@ if [ "$SETTINGS_FOUND" = 1 ]; then echo "local.settings=yes"; else echo "local.s
 LOCAL_TOKEN="$(token_file)"
 if [ -r "$LOCAL_TOKEN" ]; then echo "local.token=yes"; else echo "local.token=no"; fi
 
-# local_root (docs/SETTINGS.md): the local side does not have to sit under
-# $HOME at all - a member's habitual folder may be a desktop folder, a
-# cloud-drive sync folder, or a Windows path reached from WSL, and the whole
-# point of this release is that the plugin works there without the member
-# changing that habit. Read the same key init_workspace.sh's own `--root`
-# falls back to, so :setup's "new install / adopt / repair" decision looks
-# where the member actually chose rather than reporting local.skeleton=no
-# about a deployment that exists. $HOME is overridable in tests the same way
-# every other settings-file test already overrides it.
-LOCAL_ROOT="$(setting local_root "${HOME:-}/agentic-bioflow")"
-if [ -d "$LOCAL_ROOT" ]; then echo "local.skeleton=yes"; else echo "local.skeleton=no"; fi
+# T30: the local side IS the root, so there is no key to read and no default
+# to fall back to. `$ABF_ROOT` is set by scripts/settings.sh from the pointer
+# file; empty means this machine has never been pointed at a root, which is a
+# different answer from "pointed at one that has no skeleton in it yet" and
+# :setup's "new install / migrate / repair" decision needs to tell them apart.
+if [ -z "${ABF_ROOT:-}" ]; then
+    echo "local.root=none"
+    echo "local.skeleton=no"
+else
+    echo "local.root=$ABF_ROOT"
+    # Not just "projects/ exists": `settings.sh --use` creates it, so its
+    # mere presence says only that a root was chosen. What :setup needs to
+    # know is whether anything has been built in it yet.
+    if [ -n "$(ls -A "$ABF_ROOT/projects" 2>/dev/null)" ]; then
+        echo "local.skeleton=yes"
+    else
+        echo "local.skeleton=no"
+    fi
+fi
 
 if has_tw; then echo "local.tw=yes"; else echo "local.tw=no"; fi

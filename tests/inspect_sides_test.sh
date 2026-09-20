@@ -39,7 +39,11 @@ kv() { # kv <label> <blob> <key> <want>
 # =============================================================================
 # --site-probe in isolation: no on_site.sh, no ssh, just a constructed BASE.
 HOMEDIR="$TMP/home"; mkdir -p "$HOMEDIR"
-probe() { clean HOME="$HOMEDIR" LAB_RUNS_DIR="$1" -- bash "$S" --site-probe 2>&1; }
+# T30: the site finds its settings the same way every other machine does -
+# through the root pointer in the account's own $HOME, never through
+# LAB_RUNS_DIR. LAB_RUNS_DIR is still exported because it is the SITE's run
+# area and the skeleton/runs probes below are about that, not about settings.
+probe() { clean HOME="${2:-$HOMEDIR}" LAB_RUNS_DIR="$1" -- bash "$S" --site-probe 2>&1; }
 
 BASE1="$TMP/site_empty"
 out=$(probe "$BASE1")
@@ -56,19 +60,24 @@ mkdir -p "$BASE2/_personal" "$BASE2/_system/agent"
 mkdir -p "$BASE2/alice/projects/gut/runs/rnaseq_gut_20260901"
 mkdir -p "$BASE2/alice/projects/gut/runs/rnaseq_gut_20260905"
 mkdir -p "$BASE2/bob/projects/other/runs/bacass_o_20260902"
-cat > "$BASE2/_personal/env.yaml" <<YAML
+# The site account's own root, pointed at from the site account's own $HOME.
+SITEHOME="$TMP/site_home"; mkdir -p "$SITEHOME"
+SITEROOT="$TMP/site_root"
+clean HOME="$SITEHOME" -- bash "$(dirname "$S")/settings.sh" --use "$SITEROOT" >/dev/null 2>&1
+cat > "$SITEROOT/config/env.yaml" <<YAML
 reach: local
 storage_root: $BASE2
 agent_java: $TMP/fake-java
 agent_jar: $TMP/fake.jar
 YAML
-chmod 600 "$BASE2/_personal/env.yaml"
+chmod 600 "$SITEROOT/config/env.yaml"
 SECRET_TOKEN='not-a-real-token-9Q7X'
-printf '%s\n' "$SECRET_TOKEN" > "$BASE2/_personal/.seqera_token"; chmod 600 "$BASE2/_personal/.seqera_token"
+printf '%s\n' "$SECRET_TOKEN" > "$SITEROOT/config/.seqera_token"
+chmod 600 "$SITEROOT/config/.seqera_token"
 printf '#!/bin/bash\nexit 0\n' > "$TMP/fake-java"; chmod +x "$TMP/fake-java"
 : > "$TMP/fake.jar"; chmod 644 "$TMP/fake.jar"
 
-out=$(probe "$BASE2")
+out=$(probe "$BASE2" "$SITEHOME")
 kv "full site: settings=yes"  "$out" site.settings yes
 kv "full site: token=yes"     "$out" site.token    yes
 kv "full site: skeleton=yes"  "$out" site.skeleton yes
@@ -165,25 +174,29 @@ printf '%-64s ' "faked site (unreachable): still exactly one call"
 
 # =============================================================================
 # Local side: checked directly, no site involved at all.
-LOCALCHECK="$TMP/localcheck"; mkdir -p "$LOCALCHECK/.config"
-printf 'reach: local\n' > "$LOCALCHECK/.config/env.yaml"
-run_local() { clean HOME="$LOCALCHECK" LAB_SETTINGS_FILE="$LOCALCHECK/.config/env.yaml" -- bash "$S" "$@" 2>&1; }
+LOCALCHECK="$TMP/localcheck"; mkdir -p "$LOCALCHECK/config"
+printf 'reach: local\n' > "$LOCALCHECK/config/env.yaml"
+run_local() { clean HOME="$LOCALCHECK" LAB_SETTINGS_FILE="$LOCALCHECK/config/env.yaml" -- bash "$S" "$@" 2>&1; }
 
 out=$(run_local)
 kv "local.settings=yes when the file is right there" "$out" local.settings yes
 kv "local.token=no when there is no token file"       "$out" local.token   no
 kv "local.skeleton=no with no local workspace"         "$out" local.skeleton no
 
-mkdir -p "$LOCALCHECK/agentic-bioflow"
+# T30: the local skeleton is projects/ inside the root, not a $HOME-shaped
+# directory this script used to guess at. LAB_SETTINGS_FILE here names a file
+# in a real root's shape (<root>/config/env.yaml), which is what makes the
+# root itself derivable from it.
+mkdir -p "$LOCALCHECK/projects/some_study"
 out=$(run_local)
-kv "local.skeleton=yes once the local root exists" "$out" local.skeleton yes
+kv "local.skeleton=yes once a project has been built in it" "$out" local.skeleton yes
 
-: > "$LOCALCHECK/.config/.seqera_token"; chmod 600 "$LOCALCHECK/.config/.seqera_token"
+: > "$LOCALCHECK/config/.seqera_token"; chmod 600 "$LOCALCHECK/config/.seqera_token"
 out=$(run_local)
 kv "local.token=yes once the token file exists" "$out" local.token yes
 
 printf '%-64s ' "local side: never prints the token's value"
-echo 'super-secret-value' > "$LOCALCHECK/.config/.seqera_token"
+echo 'super-secret-value' > "$LOCALCHECK/config/.seqera_token"
 out=$(run_local)
 grep -qF "super-secret-value" <<<"$out" && { echo "FAIL: leaked"; fails=$((fails+1)); } || echo ok
 
@@ -203,50 +216,46 @@ site.jar
 site.runs
 local.settings
 local.token
+local.root
 local.skeleton
 local.tw'
 GOT_KEYS=$(sed -n 's/=.*//p' <<<"$out")
-printf '%-64s ' "emits exactly the 13 contract keys, in order"
+printf '%-64s ' "emits exactly the 14 contract keys, in order"
 [ "$GOT_KEYS" = "$WANT_KEYS" ] && echo ok \
   || { echo "FAIL: got:"; echo "$GOT_KEYS"; fails=$((fails+1)); }
 
 # =============================================================================
-# local_root: the local side's root now comes from a settings key instead of
-# a bare $HOME/agentic-bioflow default - this is what the comment this ticket
-# rewrote used to say could not be done ("No settings key names this"). A
-# member whose work lives in a cloud-drive folder or a Windows path reached
-# from WSL gets a phantom "not set up" otherwise: local.skeleton=no about a
-# deployment that is actually right there, just not under $HOME.
+# T30: the local side is the root, wherever the member put it - a cloud-drive
+# folder, an external drive, a Windows path reached from WSL. The failure this
+# keeps fixed is a phantom "not set up": local.skeleton=no reported about a
+# deployment that is right there, just not under $HOME.
 CUSTOMHOME="$TMP/customhome"; mkdir -p "$CUSTOMHOME"
 CUSTOMROOT="$TMP/cloud_drive/agentic-bioflow-work"
-printf 'reach: local\nlocal_root: %s\n' "$CUSTOMROOT" > "$CUSTOMHOME/env.yaml"
-run_custom() { clean HOME="$CUSTOMHOME" LAB_SETTINGS_FILE="$CUSTOMHOME/env.yaml" -- bash "$S" "$@" 2>&1; }
+clean HOME="$CUSTOMHOME" -- bash "$(dirname "$S")/settings.sh" --use "$CUSTOMROOT" >/dev/null 2>&1
+printf 'reach: local\n' >> "$CUSTOMROOT/config/env.yaml"
+run_custom() { clean HOME="$CUSTOMHOME" -- bash "$S" "$@" 2>&1; }
 
 out=$(run_custom)
-kv "local_root set, neither path exists: local.skeleton=no" "$out" local.skeleton no
+kv "a root with no projects/ yet: local.skeleton=no" "$out" local.skeleton no
+kv "...but the root itself is reported, not guessed at" "$out" local.root "$CUSTOMROOT"
 
-# The OLD default exists but the CONFIGURED root does not - this is the case
-# that proves inspect_sides.sh actually read the local_root key rather than
-# getting lucky: a script that still checked $HOME/agentic-bioflow would
-# report yes here.
-mkdir -p "$CUSTOMHOME/agentic-bioflow"
+# A $HOME-shaped directory exists but the ROOT has no projects/ - the case
+# that proves nothing fell back to the removed default. A script still
+# checking $HOME/agentic-bioflow would report yes here.
+mkdir -p "$CUSTOMHOME/agentic-bioflow/projects/decoy"
 out=$(run_custom)
-kv "local_root set, only the OLD default exists: local.skeleton=no" "$out" local.skeleton no
+kv "a \$HOME-shaped dir does not count: local.skeleton=no" "$out" local.skeleton no
 
-mkdir -p "$CUSTOMROOT"
+mkdir -p "$CUSTOMROOT/projects/real_study"
 out=$(run_custom)
-kv "local_root set, configured path exists: local.skeleton=yes" "$out" local.skeleton yes
+kv "a project built inside the root: local.skeleton=yes" "$out" local.skeleton yes
 
-# No local_root key at all: the old default, unchanged. This is a test case,
-# not an assumption (the ticket says so explicitly).
-DEFAULTHOME="$TMP/defaulthome"; mkdir -p "$DEFAULTHOME"
-printf 'reach: local\n' > "$DEFAULTHOME/env.yaml"
-run_default() { clean HOME="$DEFAULTHOME" LAB_SETTINGS_FILE="$DEFAULTHOME/env.yaml" -- bash "$S" "$@" 2>&1; }
-out=$(run_default)
-kv "no local_root key: local.skeleton=no with no default dir" "$out" local.skeleton no
-mkdir -p "$DEFAULTHOME/agentic-bioflow"
-out=$(run_default)
-kv "no local_root key: local.skeleton=yes once \$HOME/agentic-bioflow exists" "$out" local.skeleton yes
+# No root at all is its own answer, distinct from "root with nothing in it":
+# :setup has to tell "never set up" from "set up, nothing built yet".
+NOROOTHOME="$TMP/noroothome"; mkdir -p "$NOROOTHOME"
+out=$(clean HOME="$NOROOTHOME" -- bash "$S" 2>&1)
+kv "no root at all: local.root=none" "$out" local.root none
+kv "no root at all: local.skeleton=no" "$out" local.skeleton no
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

@@ -56,9 +56,10 @@
 #   --run    also scaffold one run's own subdirectories
 #            (projects/<project>/runs/<pipeline>_<label>_<YYYYMMDD>/...).
 #            Needs --project: a run belongs to one.
-#   --root   local side only. Overrides the `local_root` setting for this one
-#            call; falls back to it otherwise, and to $HOME/agentic-bioflow
-#            when neither is set. docs/SETTINGS.md.
+#   --root   local side only. Overrides the root for this one call; falls back
+#            to the root this machine is pointed at (scripts/settings.sh
+#            --use). There is no default beyond that, deliberately - see
+#            docs/SETTINGS.md.
 #
 # Idempotent: every directory is made with `mkdir -p`, which by construction
 # never touches anything already inside an existing one - the same guarantee
@@ -196,21 +197,28 @@ if [ "$SIDE" = site ]; then
         DIRS+=("$RUN_DIR/logs" "$RUN_DIR/results" "$RUN_DIR/work")
     fi
 else
-    # local_root (docs/SETTINGS.md): the same key scripts/inspect_sides.sh
-    # reads, so "where this builds" and "where inspect_sides.sh looks" cannot
-    # drift apart. --root still wins outright, for a one-off call that should
-    # not need a settings edit.
-    BASE="${ROOT_ARG:-$(setting local_root "$HOME/agentic-bioflow")}"
+    # T30: one root, and no default for it. `$HOME/agentic-bioflow` used to be
+    # the fallback, and it was exactly the wrong kind of answer - a path that
+    # cannot travel, chosen silently on behalf of somebody who was never
+    # asked. A machine with no root is not a machine with a default root; it
+    # is a machine that has not been set up, and saying so is the only honest
+    # report. --root still wins outright, for a one-off call.
+    BASE="${ROOT_ARG:-${ABF_ROOT:-}}"
+    if [ -z "$BASE" ]; then
+        echo "no root on this machine: nothing has been pointed at one yet." >&2
+        echo "Choose somewhere that follows you between machines, then:" >&2
+        echo "  scripts/settings.sh --use <root>" >&2
+        echo "Already set up before T30? scripts/settings.sh --migrate <root>" >&2
+        exit 1
+    fi
     BASE="${BASE%/}"
 
-    # T21/T29: local_root and portable_root are allowed to be synced folders -
-    # warn, do not refuse. Skipped under --plan: a plan is read-only
-    # reconnaissance, and printing a stderr caution about a directory nothing
-    # is about to touch yet would fire on every dry run of a path someone is
-    # still deciding on.
+    # T30: the root is expected to be a synced folder - warn, never refuse.
+    # Skipped under --plan: a plan is read-only reconnaissance, and a stderr
+    # caution about a directory nothing is about to touch would fire on every
+    # dry run of a path somebody is still deciding on.
     if [ "$PLAN" != 1 ]; then
-        cloud_sync_caution "$BASE" local_root
-        [ -z "$PORTABLE_ROOT" ] || cloud_sync_caution "$PORTABLE_ROOT" portable_root
+        cloud_sync_caution "$BASE" root
     fi
 
     # T29: no unconditional "$BASE/$USER_NAME/projects" placeholder any more.

@@ -42,15 +42,20 @@ mkdir -p "$ODD"
 HOMEDIR="$TMP/home"; mkdir -p "$HOMEDIR"
 
 run() {
-    env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE \
-        HOME="$HOMEDIR" XDG_CONFIG_HOME="$ODD" "$@" 2>&1
+    env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE -u XDG_CONFIG_HOME \
+        HOME="$HOMEDIR" "$@" 2>&1
 }
+
+# T30: the odd path is now the ROOT itself, which is the harder case - a
+# space, a bracket and a non-ASCII directory name in the one path every script
+# derives every other path from.
+run bash "$ROOT/scripts/settings.sh" --use "$ODD/abf" >/dev/null
 
 # --- scripts/settings.sh: --set, a read-back, --summary ---------------------
 out=$(run bash "$ROOT/scripts/settings.sh" --set workspace_id 424242); rc=$?
 ok "settings.sh --set under the odd path exits 0" "$rc" "$out"
 
-ENV_FILE="$ODD/agentic-bioflow/env.yaml"
+ENV_FILE="$ODD/abf/config/env.yaml"
 printf '%-64s ' "...and the file actually landed under the odd path"
 [ -r "$ENV_FILE" ] && echo ok || { echo "FAIL: no file at $ENV_FILE"; fails=$((fails+1)); }
 printf '%-64s ' "...at mode 600, same as anywhere else"

@@ -13,9 +13,20 @@ t() { printf '%-56s ' "$1"; [ "$2" = "$3" ] && echo ok || { echo "FAIL: got '$2'
 
 run() { LAB_SETTINGS_FILE="$F" bash "$S" "$@"; }
 
-run --set tw_bin /work/_bin/tw >/dev/null
-t "--set writes a key that was not there"  "$(run tw_bin)"  "/work/_bin/tw"
+run --set compute_env ce-one >/dev/null
+t "--set writes a key that was not there"  "$(run compute_env)"  "ce-one"
 t "and creates the file mode 600"          "$(stat -c %a "$F")" "600"
+
+# T30: a machine key does NOT go in the travelling file. It goes to
+# <root>/config/machines/<this machine>.yaml, so a second machine adopting the
+# same root never inherits a `tw` path that does not exist there.
+run --set tw_bin /work/_bin/tw >/dev/null
+MF="$(LAB_SETTINGS_FILE="$F" bash "$S" --machine-file)"
+t "a machine key reads back the same way"  "$(run tw_bin)"  "/work/_bin/tw"
+t "but is not written into the travelling file" "$(grep -c tw_bin "$F" || true)" "0"
+t "it is in this machine's own file instead" "$(grep -c 'tw_bin' "$MF")" "1"
+t "and that file sits under the root's config/machines/" \
+  "$(basename "$(dirname "$MF")")" "machines"
 
 printf 'workspace_id: 111  # the one value a lab shares\n' >> "$F"
 run --set workspace_id 222 >/dev/null
@@ -45,14 +56,16 @@ hasnot(){ printf '%-56s ' "$1"; grep -qF -- "$2" <<<"$3" \
 hasre() { printf '%-56s ' "$1"; grep -qE -- "$2" <<<"$3" && echo ok \
           || { echo "FAIL: no line matching /$2/"; fails=$((fails+1)); }; }
 
-# Neither of the two variables the old chain needed.
-clean() { # clean <XDG_CONFIG_HOME> [args...]
-  local x="$1"; shift
-  env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE \
-      HOME="$HOMEDIR" XDG_CONFIG_HOME="$x" bash "$S" "$@" 2>&1
+# T30: no variable at all. The root is named by a pointer file under $HOME,
+# written by `--use`, and that is the whole search.
+clean() { # clean <HOME> [args...]
+  local h="$1"; shift
+  env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE -u XDG_CONFIG_HOME \
+      HOME="$h" bash "$S" "$@" 2>&1
 }
 
-XDG="$TMP/xdg"; CONF="$XDG/agentic-bioflow"; mkdir -p "$CONF"
+ROOT="$TMP/root"; CONF="$ROOT/config"
+clean "$HOMEDIR" --use "$ROOT" >/dev/null
 cat > "$CONF/env.yaml" <<'YAML'
 reach: local
 site_user: sharedaccount
@@ -64,30 +77,37 @@ agent_connection: conn-a-person
 YAML
 chmod 600 "$CONF/env.yaml"
 
-out=$(clean "$XDG" --summary)
-has "--summary finds the file under XDG_CONFIG_HOME"   "$CONF/env.yaml"  "$out"
-has "and says which file that was, before anything else" "settings file" "$out"
+out=$(clean "$HOMEDIR" --summary)
+has "--use creates the root and --summary reads it"    "$ROOT"           "$out"
+has "and says so as 'root', the one location there is" "root"            "$out"
 has "and names the site account"                       "sharedaccount"   "$out"
 has "and the Seqera account, which is who a person is here" "a-person"   "$out"
 has "and the workspace"                                "424242"          "$out"
 has "and the run area"                                 "/nowhere/runs"   "$out"
 has "and the compute environment"                      "ce-a-person"     "$out"
 has "and the outputs reader's connection"              "conn-a-person"   "$out"
+has "and tells you the one command another machine needs" "--use $ROOT"  "$out"
 
-out=$(clean "$XDG" seqera_user)
-t "a plain read finds the XDG file too" "$out" "a-person"
+out=$(clean "$HOMEDIR" seqera_user)
+t "a plain read goes through the pointer too" "$out" "a-person"
 
-# With nothing anywhere, the error has to name the places it looked. Naming one
-# unreadable path is what sent a member grepping.
-out=$(clean "$TMP/nothing-here" --summary)
-has "with nothing anywhere, names the XDG place searched" \
-    "$TMP/nothing-here/agentic-bioflow/env.yaml" "$out"
+# A machine that has never been pointed anywhere says exactly that, and does
+# not invent a default root to blame.
+BARE="$TMP/bare-home"; mkdir -p "$BARE"
+out=$(clean "$BARE" --summary)
+has "with no pointer, says this machine has no root yet" "has not been pointed at a root" "$out"
+has "and names the pointer file it looked for"  "$BARE/.config/agentic-bioflow/root" "$out"
 hasnot "and never the bare /_personal path the old chain built" "/_personal" "$out"
+hasnot "and never invents \$HOME/agentic-bioflow as a root"  "$BARE/agentic-bioflow " "$out"
 
-out=$(env -u LAB_SETTINGS_FILE -u SEQERA_TOKEN_FILE LAB_RUNS_DIR="$TMP/norun" \
-        HOME="$HOMEDIR" XDG_CONFIG_HOME="$TMP/nothing-here" bash "$S" --summary 2>&1)
-has "and names the run area it searched when there is one" \
-    "$TMP/norun/_personal/env.yaml" "$out"
+# A pre-T30 deployment is recognised, and answered with one command rather
+# than "run setup" to somebody who already did.
+OLDH="$TMP/oldhome"; mkdir -p "$OLDH/.config/agentic-bioflow"
+printf 'seqera_user: veteran\n' > "$OLDH/.config/agentic-bioflow/env.yaml"
+chmod 600 "$OLDH/.config/agentic-bioflow/env.yaml"
+out=$(clean "$OLDH" --summary)
+has "a pre-T30 settings file is spotted, not ignored" "pre-T30 settings file" "$out"
+has "and the answer is --migrate, not 'run setup again'" "--migrate <root>" "$out"
 
 # ---------------------------------------------------------------------------
 # The token is the one thing a summary may never say. "Never printed, never in
@@ -95,12 +115,12 @@ has "and names the run area it searched when there is one" \
 # a convenience command that leaks it is worse than no convenience command.
 SECRET='not-a-real-token-but-treat-it-as-one-9Q7X'
 printf '%s\n' "$SECRET" > "$CONF/.seqera_token"; chmod 600 "$CONF/.seqera_token"
-out=$(clean "$XDG" --summary)
+out=$(clean "$HOMEDIR" --summary)
 hasnot "--summary never prints the token itself"       "$SECRET"            "$out"
 has    "but does say it is there, and still protected" "present (mode 600)" "$out"
 
 chmod 644 "$CONF/.seqera_token"
-out=$(clean "$XDG" --summary)
+out=$(clean "$HOMEDIR" --summary)
 has    "and calls out a token the whole machine can read" "present but mode 644" "$out"
 hasnot "still without printing it"                        "$SECRET"              "$out"
 chmod 600 "$CONF/.seqera_token"
@@ -186,17 +206,17 @@ has    "and the ordinary search report is unchanged"   "No settings file"   "$ou
 # everywhere. So the message must not recommend setting one, and when the real
 # file is sitting at that default it has to say so: that is the only form of
 # this failure a person can fix in one command.
-STEER="$TMP/steer"; mkdir -p "$STEER/.config/agentic-bioflow"
-cat > "$STEER/.config/agentic-bioflow/env.yaml" <<'YAML'
-seqera_user: steered
-YAML
-out=$(env -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE HOME="$STEER" \
-          XDG_CONFIG_HOME="$STEER/.config" \
+STEER="$TMP/steer"; mkdir -p "$STEER"
+SROOT="$TMP/steer-root"
+env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u XDG_CONFIG_HOME HOME="$STEER" \
+    bash "$S" --use "$SROOT" >/dev/null 2>&1
+printf 'seqera_user: steered\n' > "$SROOT/config/env.yaml"
+out=$(env -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE -u XDG_CONFIG_HOME HOME="$STEER" \
           LAB_SETTINGS_FILE="$TMP/gone/env.yaml" bash "$S" seqera_user --required 2>&1)
 has "a variable pointing nowhere is told the real file exists" \
     "BUT a settings file exists at" "$out"
 has "and names it on that line, not just in the advice" \
-    "exists at $STEER/.config/agentic-bioflow/env.yaml" "$out"
+    "exists at $SROOT/config/env.yaml" "$out"
 has "and says which variable to unset"  "Unset LAB_SETTINGS_FILE"  "$out"
 
 # Absence has to stay absence. A line that fires when there is genuinely
@@ -206,10 +226,15 @@ hasnot "with nothing anywhere, no phantom file is announced" \
        "BUT a settings file exists"  "$out"
 
 # The closing advice used to name LAB_SETTINGS_FILE, i.e. the hazard itself.
+# T30: there is no default to name any more, and that is the point - the
+# advice has to say a root is chosen, not inherited.
 out=$(clean "$TMP/nowhere" seqera_user --required)
-has    "the advice names the no-variable default"  "/agentic-bioflow/env.yaml"  "$out"
+has    "the advice says setup asks where the root goes"  "asks where the root should be"  "$out"
+has    "and says outright that there is no default"      "no"  "$out"
 hasnot "and no longer recommends setting a variable" \
        "point LAB_SETTINGS_FILE at an existing one"  "$out"
+hasnot "and never names a home-shaped path as the answer" \
+       "$TMP/nowhere/agentic-bioflow "  "$out"
 
 
 # ---------------------------------------------------------------------------
@@ -236,78 +261,57 @@ t "fish gets set -gx"  "$(px /usr/bin/fish)" 'set -gx LAB_RUNS_DIR /work/runs'
 t "tcsh gets setenv"   "$(px /bin/tcsh)"     'setenv LAB_RUNS_DIR "/work/runs"'
 
 # ---------------------------------------------------------------------------
-# D5: `--set` refuses a write shaped like the site's path under `reach: ssh`.
+# T30 deleted D5 outright, and this is the test that it cannot come back.
 #
-# The measured failure (docs/SETTINGS.md): a laptop with a leftover
-# LAB_RUNS_DIR exported writes its settings file into
-# "$LAB_RUNS_DIR/_personal/env.yaml" - a directory that looks exactly like the
-# site's, but is local, and the next shell (with the variable gone again)
-# cannot find it.
-D5HOME="$TMP/d5home"; mkdir -p "$D5HOME"
-# Every case below is exercised through the SAME candidate resolution a real
-# broken laptop hits: no LAB_SETTINGS_FILE at all, so LAB_RUNS_DIR is free to
-# steer where set_setting would write, exactly as docs/SETTINGS.md describes.
-RD="$TMP/d5_site_runs"
+# D5 was: on a laptop with a leftover `LAB_RUNS_DIR` exported, `--set` wrote
+# the settings file into a site-shaped directory that the next shell - with
+# the variable gone - could never find again. The refusal existed because the
+# variable could steer the write.
+#
+# It cannot any more. SETTINGS_FILE is derived from the root pointer and
+# nothing else, so LAB_RUNS_DIR has no path into the decision at all. The
+# check is therefore not "is it still refused" but "does the variable change
+# anything", and the answer has to be no for every value of `reach`.
+D5H="$TMP/d5home"; mkdir -p "$D5H"
+D5R="$TMP/d5root"
+env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u XDG_CONFIG_HOME HOME="$D5H" \
+    bash "$S" --use "$D5R" >/dev/null 2>&1
 
-printf '%-64s ' "bootstrapping reach:ssh itself is refused when LAB_RUNS_DIR leaks in"
-out=$(env -u LAB_SETTINGS_FILE HOME="$D5HOME" XDG_CONFIG_HOME="$D5HOME/xdg1" \
-          LAB_RUNS_DIR="$RD" bash "$S" --set reach ssh 2>&1); rc=$?
-[ "$rc" = 2 ] && grep -qiF "LAB_RUNS_DIR" <<<"$out" && echo ok \
-  || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
-printf '%-64s ' "...and names the XDG location settings belong at"
-grep -qF "agentic-bioflow/env.yaml" <<<"$out" && echo ok \
-  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
-printf '%-64s ' "...and creates nothing at all"
-[ ! -e "$RD/_personal/env.yaml" ] && [ ! -e "$D5HOME/xdg1/agentic-bioflow/env.yaml" ] && echo ok \
-  || { echo "FAIL: a file appeared somewhere"; fails=$((fails+1)); }
+d5set() { # d5set <reach> <LAB_RUNS_DIR value|-> <key> <value>
+  local runs="$2"
+  if [ "$runs" = "-" ]; then
+    env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u XDG_CONFIG_HOME HOME="$D5H" \
+        bash "$S" --set "$3" "$4" 2>&1
+  else
+    env -u LAB_SETTINGS_FILE -u XDG_CONFIG_HOME HOME="$D5H" LAB_RUNS_DIR="$runs" \
+        bash "$S" --set "$3" "$4" 2>&1
+  fi
+}
 
-# A settings file already exists at the XDG default recording reach: ssh -
-# now a later --set call, with LAB_RUNS_DIR leaking into THIS shell too, must
-# also be refused, even though the write itself is not to the `reach` key.
-XDG2="$D5HOME/xdg2"; mkdir -p "$XDG2/agentic-bioflow"
-cat > "$XDG2/agentic-bioflow/env.yaml" <<'YAML'
-reach: ssh
-site_host: me@example.org
-YAML
-chmod 600 "$XDG2/agentic-bioflow/env.yaml"
-before_sum=$(md5sum "$XDG2/agentic-bioflow/env.yaml")
-
-printf '%-64s ' "a later --set is refused too, once reach:ssh is already recorded"
-out=$(env -u LAB_SETTINGS_FILE HOME="$D5HOME" XDG_CONFIG_HOME="$XDG2" \
-          LAB_RUNS_DIR="$RD" bash "$S" --set workspace_id 12345 2>&1); rc=$?
-[ "$rc" = 2 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
-printf '%-64s ' "...and the real settings file is untouched"
-after_sum=$(md5sum "$XDG2/agentic-bioflow/env.yaml")
-[ "$before_sum" = "$after_sum" ] && echo ok || { echo "FAIL: file changed"; fails=$((fails+1)); }
-printf '%-64s ' "...and nothing was written under LAB_RUNS_DIR either"
-[ ! -e "$RD/_personal/env.yaml" ] && echo ok || { echo "FAIL: site-shaped file appeared"; fails=$((fails+1)); }
-
-# --- every other case keeps working exactly as before ----------------------
-printf '%-64s ' "reach:local with LAB_RUNS_DIR set is NOT refused - that is the normal site case"
-XDG3="$D5HOME/xdg3"; mkdir -p "$XDG3"
-out=$(env -u LAB_SETTINGS_FILE HOME="$D5HOME" XDG_CONFIG_HOME="$XDG3" \
-          LAB_RUNS_DIR="$RD/local-ok" bash "$S" --set reach local 2>&1); rc=$?
+d5set ssh - reach ssh >/dev/null
+out=$(d5set ssh "$TMP/leaked_runs" workspace_id 777); rc=$?
+printf '%-64s ' "reach:ssh with LAB_RUNS_DIR leaking in is not refused - it is ignored"
 [ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+t "and the value landed in the root, not a site-shaped directory" \
+  "$(grep -c 'workspace_id: 777' "$D5R/config/env.yaml")" "1"
+printf '%-64s ' "and nothing at all was created under the leaked LAB_RUNS_DIR"
+[ ! -e "$TMP/leaked_runs" ] && echo ok \
+  || { echo "FAIL: something appeared under the leaked run area"; fails=$((fails+1)); }
 
-printf '%-64s ' "no reach recorded and LAB_RUNS_DIR set defaults to local - NOT refused"
-XDG4="$D5HOME/xdg4"; mkdir -p "$XDG4"
-out=$(env -u LAB_SETTINGS_FILE HOME="$D5HOME" XDG_CONFIG_HOME="$XDG4" \
-          LAB_RUNS_DIR="$RD/plain" bash "$S" --set workspace_id 1 2>&1); rc=$?
-[ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+# The same, with the variable gone again: the next shell reads back exactly
+# what the previous one wrote. This is the failure D5 was protecting against,
+# stated as the property that now holds instead of as a refusal.
+out=$(env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u XDG_CONFIG_HOME HOME="$D5H" \
+          bash "$S" workspace_id 2>&1)
+t "a shell without the variable finds the same value" "$out" "777"
 
-printf '%-64s ' "reach:ssh but LAB_RUNS_DIR unset is NOT refused - nothing to be steered by"
-XDG5="$D5HOME/xdg5"; mkdir -p "$XDG5/agentic-bioflow"
-printf 'reach: ssh\n' > "$XDG5/agentic-bioflow/env.yaml"; chmod 600 "$XDG5/agentic-bioflow/env.yaml"
-out=$(env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR HOME="$D5HOME" XDG_CONFIG_HOME="$XDG5" \
-          bash "$S" --set workspace_id 1 2>&1); rc=$?
-[ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+for r in local ssh none; do
+  d5set "$r" - reach "$r" >/dev/null
+  out=$(d5set "$r" "$TMP/leaked_runs" compute_env "ce-$r"); rc=$?
+  printf '%-64s ' "reach:$r is unaffected by LAB_RUNS_DIR too"
+  [ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+done
 
-printf '%-64s ' "an explicit LAB_SETTINGS_FILE always wins, even with LAB_RUNS_DIR set"
-EXPLICIT="$TMP/d5_explicit.yaml"
-out=$(LAB_SETTINGS_FILE="$EXPLICIT" LAB_RUNS_DIR="$RD" bash "$S" --set reach ssh 2>&1); rc=$?
-[ "$rc" = 0 ] && [ -r "$EXPLICIT" ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
-
-echo
 
 # ---------------------------------------------------------------------------
 # B1: chmod 600 can be *accepted* and change nothing. /mnt/c under WSL without
@@ -407,23 +411,23 @@ hasnot "...never a hardcoded mode 600 for a file that isn't"  "$SUMFILE, mode 60
 # B3: a synced folder is a second, invisible risk chmod 600 cannot catch at
 # all - mode 600 there is completely normal, and the sync client uploads the
 # file to a third party anyway. Only the path's own name can hint at this.
-out=$(clean "$TMP/OneDrive" --set workspace_id 1 2>&1); rc=$?
-printf '%-64s ' "a synced-looking path is refused"
-[ "$rc" = 2 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
-has "...names the sync product it matched"      "OneDrive" "$out"
-has "...says a token there would leave with the sync client" "third party" "$out"
-has "...and says its own list is not complete"  "not a complete list" "$out"
-printf '%-64s ' "...and creates nothing there at all"
-[ ! -e "$TMP/OneDrive/agentic-bioflow/env.yaml" ] && echo ok \
-  || { echo "FAIL: a file appeared under the synced folder"; fails=$((fails+1)); }
-
-# Precedence matches site_shaped_write_refusal(): an explicit LAB_SETTINGS_FILE
-# wins outright, because a member who named the location chose it deliberately.
-EXPLICIT_SYNC="$TMP/OneDrive/chosen/env.yaml"
-out=$(LAB_SETTINGS_FILE="$EXPLICIT_SYNC" bash "$S" --set workspace_id 1 2>&1); rc=$?
-printf '%-64s ' "the same path is allowed when LAB_SETTINGS_FILE names it explicitly"
-[ "$rc" = 0 ] && [ -r "$EXPLICIT_SYNC" ] && echo ok \
-  || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+# T30 turned this from a refusal into a caution, because a synced folder is
+# now the INTENDED home for the root - refusing one would refuse the design.
+# What has to survive is the saying-so: the risk did not go away just because
+# the answer to it changed.
+SYNCH="$TMP/synchome"; mkdir -p "$SYNCH"
+out=$(env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u XDG_CONFIG_HOME HOME="$SYNCH" \
+          bash "$S" --use "$TMP/OneDrive/abf" 2>&1); rc=$?
+printf '%-64s ' "a synced root is accepted, not refused"
+[ "$rc" = 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...and is actually created"
+[ -d "$TMP/OneDrive/abf/config" ] && echo ok \
+  || { echo "FAIL: nothing was created"; fails=$((fails+1)); }
+has "...but names the sync product it matched"   "OneDrive" "$out"
+has "...and says its own list is not complete"   "not a complete list" "$out"
+has "...and says plainly that the token is in it" "config/.seqera_token" "$out"
+has "...and that a token can be revoked if it leaks" "revocable" "$out"
+has "...and warns large files do not belong there" "eat the sync quota" "$out"
 
 
 # ---------------------------------------------------------------------------

@@ -25,7 +25,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ "$SETTINGS_FOUND" != 1 ]; then
     echo "No settings file yet on this machine - this is a first run, not a repair."
-    portable_missing_reason
+    root_missing_reason
     exit 1
 fi
 
