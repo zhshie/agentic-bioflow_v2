@@ -36,7 +36,12 @@ chmod +x "$FAKE/preflight.sh"
 clean() { # clean <env assignments...> -- <args...>
     local envs=()
     while [ "$1" != -- ]; do envs+=("$1"); shift; done; shift
-    env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE \
+    # XDG_CONFIG_HOME too: T30's root pointer lives under it, and a CI runner
+    # sets it globally. Left in place, every fixture in this file shares ONE
+    # pointer file whatever HOME it was given, so a root one case `--use`s
+    # leaks into the next. It did, on GitHub Actions - and was invisible
+    # locally, where the variable happened to be unset.
+    env -u XDG_CONFIG_HOME -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE \
         -u AGENTIC_BIOFLOW_STATE_DIR -u AGENTIC_BIOFLOW_REPORTS_DIR \
         "${envs[@]}" "$@"
 }
@@ -56,8 +61,10 @@ hasnot "...never claims to be already set up"  "already set up" "$out"
 # Settings exist, complete, and preflight is fully green: the fast path this
 # card exists for. Under a second, and it must NOT walk into repair's own
 # checks (this fake preflight.sh, called once, is the only check that ran).
-FULLHOME="$TMP/full_home"; mkdir -p "$FULLHOME/.config/agentic-bioflow"
-cat > "$FULLHOME/.config/agentic-bioflow/env.yaml" <<'YAML'
+FULLHOME="$TMP/full_home"; mkdir -p "$FULLHOME"
+FULLROOT="$TMP/full_root"
+clean HOME="$FULLHOME" -- bash "$(dirname "$V")/settings.sh" --use "$FULLROOT" >/dev/null 2>&1
+cat > "$FULLROOT/config/env.yaml" <<'YAML'
 reach: ssh
 site_host: me@example.org
 seqera_user: alice
@@ -66,7 +73,7 @@ compute_env: ce-a-person
 storage_root: /nowhere/runs
 agent_connection: conn-alice
 YAML
-chmod 600 "$FULLHOME/.config/agentic-bioflow/env.yaml"
+chmod 600 "$FULLROOT/config/env.yaml"
 
 echo 0 > "$PF_RC_FILE"
 out=$(clean HOME="$FULLHOME" XDG_CONFIG_HOME="$FULLHOME/.config" -- bash "$V" 2>&1); rc=$?

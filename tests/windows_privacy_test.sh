@@ -84,7 +84,10 @@ F2="$TMP/open/env.yaml"
 out=$(FIX="$OPEN" win env LAB_SETTINGS_FILE="$F2" bash "$S" --set workspace_id 7 2>&1); rc=$?
 t "an ACL granting a third party is refused" "$rc" "1"
 has "...and names who Windows is letting in"   "S-1-1-0" "$out"
-has "...and says where a private location is"  ".config/agentic-bioflow" "$out"
+# T30: a private location is now named as a ROOT to point at, not a file
+# path to copy to - the fix is one command, and the advice has to be that
+# command or a reader will hand-place a file the pointer does not know about.
+has "...and says where a private location is"  "--use " "$out"
 hasnot "...and does not blame the manufactured mode" "mode 644" "$out"
 printf '%-64s ' "...and the file this call created is not left behind"
 [ ! -e "$F2" ] && echo ok || { echo "FAIL: $F2 still exists"; fails=$((fails+1)); }

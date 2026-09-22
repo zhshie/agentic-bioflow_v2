@@ -82,12 +82,26 @@ exit 0
 EOF
 chmod +x "$UB/curl"
 
+# Each call gets its own deployment directory. Rewriting one env.yaml in
+# place used to be enough to mean "fresh", because every discovered value
+# lived in that one file. T30 splits the values this machine discovers for
+# itself (tw_bin among them) into config/machines/<machine>.yaml beside it -
+# deliberately, so they survive a settings file that travels - so "fresh" now
+# has to mean a fresh directory, not a truncated file.
+# mktemp, not a counter: `z1` is called inside a command substitution, which
+# runs in a subshell, so anything it increments is lost when that subshell
+# exits and every call would quietly reuse one directory. mktemp asks the
+# filesystem for uniqueness instead, which a subshell cannot undo.
+ZDIR=""
+z1dir() { ZDIR="$(mktemp -d "$TMP/z1_XXXXXX")"; }
+
 z1() { # z1 <uname -s> <uname -m>
   mkuname "$1" "$2"
   : > "$CURL_LOG"
-  printf 'workspace_id: 1\n' > "$TMP/z1env.yaml"
-  env -i HOME="$TMP" PATH="$UB:/usr/bin:/bin" LAB_SETTINGS_FILE="$TMP/z1env.yaml" \
-      INSTALL_ROOT="$TMP/z1install" CURL_LOG="$CURL_LOG" \
+  z1dir
+  printf 'workspace_id: 1\n' > "$ZDIR/env.yaml"
+  env -i HOME="$TMP" PATH="$UB:/usr/bin:/bin" LAB_SETTINGS_FILE="$ZDIR/env.yaml" \
+      INSTALL_ROOT="$ZDIR/install" CURL_LOG="$CURL_LOG" \
       bash "$I" --cli-only >/dev/null 2>&1
   tail -1 "$CURL_LOG"
 }
@@ -108,9 +122,9 @@ t "Linux/x86_64 keeps the linux-x86_64 asset" \
 # to silently downloading the Linux binary the whole bug report is about.
 mkuname Linux aarch64
 : > "$CURL_LOG"
-printf 'workspace_id: 1\n' > "$TMP/z1env.yaml"
-out=$(env -i HOME="$TMP" PATH="$UB:/usr/bin:/bin" LAB_SETTINGS_FILE="$TMP/z1env.yaml" \
-      INSTALL_ROOT="$TMP/z1install" CURL_LOG="$CURL_LOG" \
+z1dir; ZUNK="$ZDIR"; printf 'workspace_id: 1\n' > "$ZUNK/env.yaml"
+out=$(env -i HOME="$TMP" PATH="$UB:/usr/bin:/bin" LAB_SETTINGS_FILE="$ZUNK/env.yaml" \
+      INSTALL_ROOT="$ZUNK/install" CURL_LOG="$CURL_LOG" \
       bash "$I" --cli-only 2>&1); rc=$?
 printf '%-58s ' "an unknown platform is not silently given the Linux binary"
 [ ! -s "$CURL_LOG" ] && echo ok || { echo "FAIL: curl was still called: $(cat "$CURL_LOG")"; fails=$((fails+1)); }
@@ -122,8 +136,9 @@ t "and names exactly what uname reported"      "uname -s='Linux', uname -m='aarc
 # of this test file (and CI on an unlisted platform) relies on.
 mkuname Linux aarch64
 : > "$CURL_LOG"
-out=$(env -i HOME="$TMP" PATH="$UB:/usr/bin:/bin" LAB_SETTINGS_FILE="$TMP/z1env.yaml" \
-      INSTALL_ROOT="$TMP/z1install" CURL_LOG="$CURL_LOG" TW_URL="file://$TMP/somewhere" \
+z1dir; ZTW="$ZDIR"; printf 'workspace_id: 1\n' > "$ZTW/env.yaml"
+out=$(env -i HOME="$TMP" PATH="$UB:/usr/bin:/bin" LAB_SETTINGS_FILE="$ZTW/env.yaml" \
+      INSTALL_ROOT="$ZTW/install" CURL_LOG="$CURL_LOG" TW_URL="file://$TMP/somewhere" \
       bash "$I" --cli-only 2>&1); rc=$?
 printf '%-58s ' "TW_URL still overrides platform detection"
 [ "$rc" = 0 ] && grep -qF "file://$TMP/somewhere" "$CURL_LOG" \
