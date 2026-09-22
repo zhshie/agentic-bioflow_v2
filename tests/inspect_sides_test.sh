@@ -18,7 +18,12 @@ fails=0
 clean() { # clean <env assignments...> -- <args...>
   local envs=()
   while [ "$1" != -- ]; do envs+=("$1"); shift; done; shift
-  env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE -u SEQERA_TOKEN_FILE \
+  # XDG_CONFIG_HOME too: T30's root pointer lives under it, and a CI runner
+  # sets it globally. Left in place, every fixture in this file shares ONE
+  # pointer file whatever HOME it was given, so a root one case `--use`s
+  # leaks into the next. It did, on GitHub Actions - and was invisible
+  # locally, where the variable happened to be unset.
+  env -u XDG_CONFIG_HOME -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE -u SEQERA_TOKEN_FILE \
       -u TW_AGENT_JAVA -u TW_AGENT_JAR -u TW_BIN \
       "${envs[@]}" "$@"
 }
