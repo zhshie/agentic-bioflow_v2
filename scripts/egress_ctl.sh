@@ -68,6 +68,14 @@ URL="http://${HOSTNAME_NOW}:${PORT}"
 case "${1:-status}" in
   start)
     if alive; then echo "already running: $(python3 -c "import json;print(json.load(open('$STATE'))['url'])")"; exit 0; fi
+    # Same anchoring as scripts/agent_ctl.sh (PITFALLS 36): started through
+    # `scripts/on_site.sh --script`, this inherits a `mktemp -d` that is gone
+    # as soon as the round trip ends. The relay does not spawn shells, so it
+    # has no equivalent of the agent's corrupted-output failure - but a
+    # long-lived daemon whose cwd is a deleted directory is a trap either way
+    # (a core dump has nowhere to go, `lsof`/`/proc` read as "(deleted)", and
+    # any future relative path silently resolves nowhere).
+    cd "$LAB_RUNS_DIR" 2>/dev/null || cd / || exit 1
     nohup python3 "$HERE/nf_relay.py" "$PORT" >> "$LOG" 2>&1 &
     PID=$!
     python3 - "$PID" "$PORT" "$HOSTNAME_NOW" "$URL" "$STATE" <<'PY'

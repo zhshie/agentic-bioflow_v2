@@ -132,6 +132,29 @@ case "${1:-status}" in
     # fresh one (new member, new storage_root) does not, and the agent refuses
     # to start rather than create it itself.
     mkdir -p "$WORKDIR"
+    # Start it from a directory that will still be there tomorrow.
+    #
+    # Measured (PITFALLS 36): the agent runs every command Platform sends as
+    # `sh -c <command>` with `redirectErrorStream(true)`, and sets no working
+    # directory on the ProcessBuilder - so the child inherits whatever cwd
+    # this script had. Reached through `scripts/on_site.sh --script`, that is
+    # a `mktemp -d` on the site, deleted the moment the round trip ends. The
+    # agent survives; its cwd does not. From then on every `sh` it starts
+    # writes
+    #
+    #   shell-init: error retrieving current directory: getcwd: ...
+    #
+    # to stderr, which redirectErrorStream folds into stdout, so every
+    # response Platform reads has that line where the first line of real
+    # content should be. Nothing errors and nothing reconnects - the agent
+    # reports ONLINE and heartbeats normally - but Platform parses the run's
+    # report manifest from line 1, finds shell noise, and every run's outputs
+    # read as absent. They were never absent.
+    #
+    # $WORKDIR is the right anchor: `mkdir -p` above just guaranteed it, it
+    # is the run area rather than anything this script owns, and it is what
+    # the agent is already pointed at.
+    cd "$WORKDIR" || { echo "cannot enter $WORKDIR" >&2; exit 1; }
     # The token is passed through the environment only - never on the command
     # line, where `ps` would expose it to every user on the login node.
     TOWER_ACCESS_TOKEN="$(cat "$TOKEN_FILE")" \
