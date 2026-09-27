@@ -65,110 +65,78 @@ seconds each one takes for no reason. Any other exit code means there is
 something to do, and which of the remaining three situations applies is
 exactly what the rest of this section decides.
 
-Read the deployment settings — `docs/SETTINGS.md` says where they live, which
-depends on whether this deployment runs on the site or reaches it — and check
-for a saved credential. **Present → repair**, which is short.
+Read the deployment settings — `docs/SETTINGS.md` says where they live: one
+root this machine is pointed at, the same under every `reach`. Check for a
+saved credential beside them. **Present → repair**, which is short.
 
-**Missing does not mean nothing exists.** The settings file is per machine, and
-the site is not: the same person on a new laptop, or a second member on a site
-their colleague already set up, arrives here with an empty local file and a
-site that is fully established. Generating fresh values on top of that is how
-two agents end up sharing one `agent_connection`, which Seqera refuses
-permanently rather than intermittently.
+**Missing has three quite different causes**, and `scripts/settings.sh` tells
+them apart rather than making you guess. Say which one this is before doing
+anything:
 
-So before treating an empty file as a blank site, **ask whether this site has
-been set up before** — by this user elsewhere, or by anyone in the lab — and
-look:
-
-```
-scripts/on_site.sh ls <candidate storage_root>/_personal/env.yaml
-```
-
-Candidates worth trying: whatever the user names, and any `lab_runs`-style
-directory they can point at. Under `reach: ssh` this needs `site_host` first,
-which is one question, not a setup.
-
-**Then ask which of the two they want**, and say what each costs:
-
-| | Adopt the existing one | A second, isolated environment |
+| What it says | What it means | What to do |
 |---|---|---|
-| When | The user *is* the person who set it up, from another machine | A different member, or a deliberately separate run area |
-| What to do | See "Adopting an existing deployment" below; then skip to **Repair** | Continue with **First run**, choosing fresh values below |
-| Watch for | `agent_java` / `agent_jar` under someone else's home — `drwx------` on this cluster, so unreadable to anyone else. Adopting those paths fails as "missing file" | Nothing is shared but the workspace and the allocation |
+| *"a pre-T30 settings file on this machine"* | They already ran setup; only the layout moved | `scripts/settings.sh --migrate <root>` — ask where the root should go, then **skip to Repair** |
+| *"points at \<root\>, which is not here yet"* | A synced root that has not finished syncing | Wait, or check the sync client. Nothing is wrong |
+| *"has not been pointed at a root yet"* | Genuinely nothing here | Either the person has a root elsewhere (below), or **First run** |
 
-### Adopting an existing deployment (T23, Fixes #17)
+**A root elsewhere is the common case, not the exotic one.** The same person
+on a new laptop, or a second member on a site their colleague already set up,
+arrives with nothing local and a site that is fully established. Generating
+fresh values on top of that is how two agents end up sharing one
+`agent_connection`, which Seqera refuses permanently rather than
+intermittently.
 
-**Ask first whether a portable folder exists for this person** — the shape
-`docs/SETTINGS.md`'s "The portable folder" section describes
-(`config/env.yaml` + `config/.seqera_token.enc`). If they built one on
-another machine, this is the whole of the "new machine" path; if not, this is
-also where a half-set-up site (only `agent_java`/`agent_jar`/`tw_bin`/
-`agent_connection` ever got written, never the values a person had to be
-asked for) gets fixed via `--reconstruct` instead.
+So before treating this as a blank site, **ask whether this person already has
+a root** — on a synced folder, an external drive, another machine they can
+copy from. If they do:
 
-Which applies depends on `reach` (docs/SITE_ADAPTER.md, contract 6), because
-that decides which machine this conversation is even running on:
+```
+scripts/settings.sh --use <root>
+```
 
-- **`reach: local`** — this conversation runs on the site itself (a second
-  login node, or reusing the same account). There is no laptop to prepare and
-  no connection to open beyond what is already open, so it collapses to one
-  step: a portable folder exists → `scripts/settings.sh --adopt <path>`;
-  none exists → `scripts/settings.sh --reconstruct`, confirm each candidate
-  with the user, save each with `--set`.
-- **`reach: ssh`** — this conversation runs on the user's own machine, which
-  has never had any of this on it before. Three steps, in order, and the
-  third is the only one that cannot be automated:
+and skip to **Repair**. That is the whole of it: no questions, no second
+onboarding, nothing typed in twice.
 
-  1. **Local tools.** Whatever `scripts/preflight.sh` and `scripts/install_deps.sh
-     --cli-only` need on THIS machine — `jq`, `curl`, Seqera's CLI, WSL on
-     Windows (PITFALLS 16b/16f). Nothing site-side yet.
-  2. **`scripts/settings.sh --adopt <path>`** if a portable folder exists.
-     Points this machine at it (docs/SETTINGS.md) — no values are typed in by
-     hand, and nothing site-side is touched yet either. No portable folder →
-     `scripts/settings.sh --reconstruct` against the site's existing token
-     (docs/SETTINGS.md), confirming and `--set`-ing each candidate, plus
-     `site_host`/`site_user` from the user directly (Platform cannot answer
-     those) and the allocation the site bills to from whatever the site's own
-     accounting tool reports (docs/SETTINGS.md's reconstruct section names it).
-  3. **Opening the one connection this step needs.** This is the step that
-     stays manual no matter what: the site accepts no saved credential, only
-     a one-time code typed by the user (PITFALLS 16h). `scripts/preflight.sh`
-     will fail here the first time and print the line to paste — show it
-     exactly as printed and wait, the same as **Repair**'s own rule below.
-
-  After step 3 passes, decrypt the token if it has not been already:
-  `scripts/portable_root.sh decrypt-token` (asks for the passphrase the user
-  set when the folder was built) — skip this if `--reconstruct` was used
-  instead, since that path re-derives values against the site's own token
-  rather than carrying one across.
-
-This is also the moment to offer building a portable folder if this
-deployment does not have one yet, even outside a fresh adopt — see step 3½
-below, after Seqera is connected.
-
-For an isolated second environment, three values **must** differ from the
-existing one, and the reasons are not symmetrical:
+**If the root belongs to somebody else, do not point at it.** A root holds one
+person's token and one person's `agent_connection`. A second member gets their
+own root, and three values must differ:
 
 - **`agent_connection`** — the hard one. Two agents on one identifier are
   refused *permanently*, and the error names an active agent rather than a
-  collision. Derive it from something already unique to this member, the way
-  the first one was.
+  collision. Derive it from something already unique to this member.
 - **`compute_env`** — it embeds the outbound channel's address and the work
-  directory, both of which are per member. Sharing one points this member's
-  runs at someone else's login node.
+  directory, both of which are per member.
 - **`storage_root`** — a separate run area. Sharing one is not fatal, but two
   people's `work/` in one place makes the cleanup question unanswerable.
 
 Shared on purpose: `workspace_id`, and the allocation the site bills to.
-**Ask for both rather than copying them from a file you found** — see
-`docs/SETTINGS.md`.
+**Ask for both rather than copying them from a file you found.**
 
----
+**If the site was set up before but this person has no root at all** — the
+half-set-up case, where only the discovered values were ever written and never
+the ones a person had to be asked for — `scripts/settings.sh --reconstruct`
+rebuilds candidates from Platform. Confirm each with the user and save each
+with `--set`. `site_host`/`site_user` and the allocation come from the user
+directly; Platform cannot answer those.
+
+**Three things stay manual on a new machine no matter what**, and saying so up
+front stops the root from looking like it promises more than it does
+(`docs/SETTINGS.md`, "New machine"):
+
+1. **Local tools** — `jq`, `curl`, Seqera's CLI, WSL on Windows (PITFALLS
+   16b/16f). A settings key cannot install a binary. `scripts/install_deps.sh
+   --cli-only` covers the CLI half.
+2. **The first connection to the site** — the site accepts no saved
+   credential, only a one-time code the user types (PITFALLS 16h).
+   `scripts/preflight.sh` fails the first time and prints the line to paste;
+   show it exactly as printed and wait.
+3. **Positron's bridge**, if they use it — see the optional section below.
+
 
 ## Repair
 
 **If a path in any report below looks surprising** — a settings file that
-should exist and does not, a token nobody can find, a `local_root` that turns
+should exist and does not, a token nobody can find, a root that turns
 out to be somewhere unexpected — `scripts/where.sh` prints every relevant
 absolute path on this machine, with an exists/missing mark on each one, purely
 read-only. Run it before guessing; it never changes anything.
@@ -256,14 +224,14 @@ be.
   `site_user` — the same account named twice, which `scripts/preflight.sh`
   cross-checks so the two cannot drift apart. Three things then differ, and all
   three are silent failures if missed:
-  - **The settings file and the token live on the user's machine**, not the
-    site — in `${XDG_CONFIG_HOME:-~/.config}/agentic-bioflow/`, which is where
-    `settings.sh` looks with **no environment variable set at all**. That is
-    the point of the location: `$HOME` is the one thing every shell on every
-    platform agrees about, and every way this file has gone missing between
-    sessions was caused by a variable being set rather than absent.
-    `docs/SETTINGS.md` covers the move for a deployment that already has them
-    on the site.
+  - **The settings and the token live in the user's own root**, not on the
+    site. That is true under every `reach` since T30, so it is no longer a
+    branch to remember — the only thing `reach: ssh` changes is that the root
+    and `storage_root` are now on two different machines. `settings.sh` finds
+    the root through a one-line pointer under `$HOME` with **no environment
+    variable set at all**: `$HOME` is the one thing every shell on every
+    platform agrees about, and every way the settings file has gone missing
+    between sessions was caused by a variable being set rather than absent.
   - **`storage_root` stays the site's path.** It is where runs live, and that
     has not moved. In step 1, `LAB_RUNS_DIR` goes into the profile of the
     **site** account, not the user's machine.
@@ -345,21 +313,35 @@ alongside the site one (step 3, once `seqera_user` is known).
   figures — what an IDE actually opens — live only on their machine and never
   on the site.
 
-  **T21: ask explicitly where on this machine** — do not silently accept the
-  default. Save the answer as `local_root` (default `$HOME/agentic-bioflow`,
-  same as before this question existed). Anywhere they already keep work is a
-  fine answer: a desktop folder, a folder a cloud drive syncs, anywhere —
-  `scripts/init_workspace.sh` builds under whatever this key names
-  (`docs/SETTINGS.md`).
+  **T30: this is the root, and it has no default.** Ask outright, and say why
+  the answer matters: everything this deployment keeps on this side of the
+  connection goes in it — the settings, the token, and every project's
+  analysis — so **somewhere that follows them between machines** is the answer
+  worth steering towards. A cloud-sync folder, an external drive, a folder
+  they already work in. Then:
+
+  ```
+  scripts/settings.sh --use <root>
+  ```
+
+  which creates it and remembers it. There is deliberately no default: every
+  default worth typing (`$HOME/agentic-bioflow`, say) is a path that cannot
+  travel, and picking one silently is how the old layout ended up with a
+  settings file in one place and a person's work in another.
+
+  Say the payoff plainly, because it is the reason for the question: **any
+  other machine they ever use needs one command**, `settings.sh --use <root>`,
+  and nothing here gets asked again.
 
   If the path looks like a cloud-sync folder (Google Drive, OneDrive, Dropbox
-  and the like), `scripts/init_workspace.sh` itself prints a warning the next
-  time it runs against it — pass that warning along rather than re-deriving
-  it: large files (rawdata, results, container images) sync slowly and eat
-  quota, and the Seqera token and the Positron bridge connection file must
-  never be written there, encrypted or not. This is a warning, not a refusal
-  — a synced folder is a legitimate answer here (and is exactly what a
-  `portable_root`, below, is often chosen to be).
+  and the like), `--use` and `scripts/init_workspace.sh` both print a warning
+  — pass it along rather than re-deriving it. It says two things: large files
+  (rawdata, results, container images) sync slowly and eat quota, and they do
+  not live here anyway; and the token **is** in there, in plaintext at mode
+  600, so the sync client holds a copy. That is a deliberate trade
+  (`docs/SETTINGS.md`, "The token") — a token is revocable from the Seqera UI
+  in one click. A warning, not a refusal: a synced folder is exactly what this
+  is designed for.
 - **On the site itself (only when outputs are huge).** No local skeleton.
   Measure before assuming this is the case: a normalised count matrix is
   about 973 KB, and a whole delivery directory is around 25 MB — ordinary
@@ -375,27 +357,31 @@ Ask for a location that is large (a single run's intermediates can exceed
 the work. A home directory is usually the wrong answer: quotas there are small
 and container images will fill it.
 
-Write it as `LAB_RUNS_DIR` into **the startup file of the shell that will
-actually read it** — `scripts/settings.sh --profile-file` says which, and
+Save it as `storage_root` — that is what every script reads.
+
+Also export it as `LAB_RUNS_DIR` in **the site account's** shell profile, for
+the site's own scripts and for a human working there directly:
+`scripts/settings.sh --profile-file` says which startup file, and
 `--profile-export LAB_RUNS_DIR <path>` gives the line, because the file and the
 syntax have to agree. Not `~/.bashrc` unconditionally: zsh is the default shell
-on macOS and never reads it, so the export vanishes with no error and the next
-terminal looks unconfigured. Not a tool's own settings either — those reach
-neither the user's own terminal nor the compute nodes. Save it as
-`storage_root` in the settings file too.
+on macOS and never reads it, so the export vanishes with no error.
 
-**Under `reach: ssh` this variable belongs on the site account only.** Exported
-on the user's own machine it names a path that exists on the site, and
-`settings.sh` would then write the settings file into a local directory shaped
-like the site's — findable only from a shell that still has the variable. See
-`docs/SETTINGS.md`: on a user's machine, set nothing.
+**T30: this variable no longer has anything to do with finding the settings
+file.** It used to be the first place `settings.sh` looked, which is how a
+laptop with a stray `LAB_RUNS_DIR` ended up writing its settings into a
+site-shaped local directory that the next shell could not find (PITFALLS
+16j/16k). That code path is gone: the settings are in the root, always, and
+`LAB_RUNS_DIR` is only ever the site's run area. Exporting it on the user's
+own machine is now merely pointless rather than dangerous — still don't.
 
 Then build the shared skeleton: `scripts/init_workspace.sh site`. It is safe
 to re-run and touches nothing already inside a directory it creates.
 `seqera_user` — who this member is — is not known yet (that is step 3), so
-this first call lays down only the parts that do not need it: `_personal/`
-for the settings file and token, the shared reference and image areas, and
-where this deployment's own background machinery keeps its state. Step 3
+this first call lays down only the parts that do not need it: the shared
+reference and image areas, and where this deployment's own background
+machinery keeps its state. (`_personal/` is still built for a `reach: local`
+deployment whose root the user put there, but nothing requires that any more —
+the root is wherever they said.) Step 3
 completes it — see below — with the member's own subtree, and with the local
 side too when ② asked for one; both need `seqera_user` to know whose they are.
 
@@ -443,22 +429,13 @@ If ② asked for local analysis, also run
 machine. Both calls print the tree they made; show it, since it is where
 everything from here on will be found.
 
-**T23: offer a portable folder here, once and briefly** — not a new numbered
-step, so it never blocks the ones after it. This is what lets *this* setup be
-the only one this person ever has to run: ask where they would keep one
-(`docs/SETTINGS.md`, "The portable folder" — a cloud-sync folder, an external
-drive, anywhere that follows them between machines), then
-`scripts/portable_root.sh init <path>`, asking them to set a passphrase for
-the token when it prompts. Already-configured machines running this later
-(not just during a fresh setup) is exactly how an in-place upgrade happens —
-`init` never overwrites what is already there, so there is no wrong time to
-offer it. If they decline, or have no second machine in mind, move on; nothing
-past this point depends on it.
-
-If the path they name looks like a cloud-sync folder, `scripts/portable_root.sh`
-warns rather than refuses (it is explicitly designed to often be one) — pass
-that warning along: large files never belong there, and the token stays
-encrypted the whole time it is.
+**T30 removed what used to be a separate step here.** A portable folder was
+offered at this point as an extra thing to build, on top of a settings file
+that already existed somewhere else. There is nothing to offer now: the root
+chosen in ② *is* the portable one, it was created before step 1, and every
+value written since has gone into it. Say so in one line when the tree is
+shown — "all of this is in \<root\>; another machine needs one command" — and
+move on.
 
 **4. The pieces this cluster does not ship.** `scripts/install_deps.sh`.
 It downloads a Java runtime, Seqera's agent, and Seqera's CLI into the

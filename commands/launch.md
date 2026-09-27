@@ -417,7 +417,7 @@ AVAILABLE - none of which the gate can see.
    `:runs` will bring `results/` back to on this machine. If the user wants
    the results somewhere else for this run only, pass
    `--local-root <path>` to the same call, show the new pair, and use that
-   root when the results are fetched - the saved `local_root` stays as it is.
+   root when the results are fetched - the machine's own root stays as it is.
 
    **Provenance is on by default.** Before assembling the command, write
    `<run>/provenance.config` into the run directory step 0 already created:

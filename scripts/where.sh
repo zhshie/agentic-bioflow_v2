@@ -46,10 +46,10 @@
 # inspect_sides.sh and egress_ctl.sh status already use.
 #
 # --local-root is the one-off override scripts/init_workspace.sh's own --root
-# already accepts for the local side. Without it this reads the `local_root`
-# setting the same way init_workspace.sh does (docs/SETTINGS.md), so the two
-# can never point a launch summary and the actual fetch destination at two
-# different directories for the same run.
+# already accepts for the local side. Without it this uses the root this
+# machine is pointed at, the same way init_workspace.sh does
+# (docs/SETTINGS.md), so the two can never point a launch summary and the
+# actual fetch destination at two different directories for the same run.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
@@ -62,10 +62,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Local: local_project_base()/local_analysis_base() (scripts/settings.sh,
 # T29) - the SAME functions scripts/init_workspace.sh calls to actually build
 # these directories, so this can never compute a different answer than what
-# is really on disk: old layout (<local_root>/<user>/projects/<project>) for
-# a project that already lives there, new layout (no <user> layer) for one
-# that does not yet, and analysis/submission redirected into the portable
-# folder once one is adopted (T23).
+# is really on disk: old layout (<root>/<user>/projects/<project>) for a
+# project that already lives there, new layout (no <user> layer) for one that
+# does not yet. T30 removed a third case - analysis/submission used to be
+# redirected into a separate portable folder, and there is only one root now.
 site_run_dir() {   # site_run_dir <project> <run>
     local base user
     base="${LAB_RUNS_DIR:-$(setting storage_root)}"
@@ -77,7 +77,8 @@ site_run_dir() {   # site_run_dir <project> <run>
 
 local_fetch_dir() {   # local_fetch_dir <project> <run> [<root-override>]
     local root user base
-    root="${3:-$(setting local_root "${HOME:-}/agentic-bioflow")}"
+    root="${3:-${ABF_ROOT:-}}"
+    [ -n "$root" ] || { echo "no root on this machine - scripts/settings.sh --use <root>" >&2; return 1; }
     user="$(setting seqera_user)"
     [ -n "$user" ] || { echo "no seqera_user in the deployment settings - ask the user for it." >&2; return 1; }
     base="$(local_project_base "$root" "$user" "$1")"
@@ -127,7 +128,8 @@ if [ "${1:-}" = --project-paths ]; then
             *) echo "unknown option '$1'" >&2; exit 2 ;;
         esac
     done
-    ROOT="${ROOT_OVERRIDE:-$(setting local_root "${HOME:-}/agentic-bioflow")}"
+    ROOT="${ROOT_OVERRIDE:-${ABF_ROOT:-}}"
+    [ -n "$ROOT" ] || { echo "no root on this machine - scripts/settings.sh --use <root>" >&2; exit 1; }
     PUSER="$(setting seqera_user)"
     [ -n "$PUSER" ] || { echo "no seqera_user in the deployment settings - ask the user for it." >&2; exit 2; }
     PBASE="$(local_project_base "$ROOT" "$PUSER" "$PROJECT")"
@@ -142,28 +144,37 @@ fi
 # --- the human-readable report ---------------------------------------------
 mark() { [ -e "$1" ] && printf 'exists\n' || printf 'missing\n'; }   # -e: file or dir, whichever is asked for
 
-echo "== settings file (env.yaml) - what each 'reach' resolves to here =="
-# The same three candidates docs/SETTINGS.md's table names, computed the same
-# way settings.sh's own SETTINGS_CANDIDATES is (this file's own header),
-# shown for all three `reach` values regardless of which one is actually
-# configured - so a person moving between reach:local and reach:ssh can see
-# both answers without changing anything first.
-LOCAL_CANDIDATE="${LAB_RUNS_DIR:+${LAB_RUNS_DIR%/}/_personal/env.yaml}"
-XDG_CANDIDATE="$(xdg_default)"
-if [ -n "$LOCAL_CANDIDATE" ]; then
-    printf '  reach: local   %-60s [%s]\n' "$LOCAL_CANDIDATE" "$(mark "$LOCAL_CANDIDATE")"
+echo "== root =="
+# T30: this section used to print three candidate settings files, one per
+# `reach`, because that is how many there were. There is one now, and it does
+# not depend on `reach` at all - which is most of why this card got shorter.
+printf '  pointer: %-58s [%s]\n' "$ROOT_POINTER" "$(mark "$ROOT_POINTER")"
+if [ -n "${ABF_ROOT:-}" ]; then
+    printf '  root:    %-58s [%s]\n' "$ABF_ROOT" "$(mark "$ABF_ROOT")"
+    printf '  config/env.yaml:           %-41s [%s]\n' "$SETTINGS_FILE" "$(mark "$SETTINGS_FILE")"
+    printf '  config/machines/<this>:    %-41s [%s]\n' \
+        "${MACHINE_SETTINGS_FILE:-}" "$(mark "${MACHINE_SETTINGS_FILE:-/nonexistent}")"
+    printf '  projects/:                 %-41s [%s]\n' "$ABF_ROOT/projects" "$(mark "$ABF_ROOT/projects")"
 else
-    printf '  reach: local   (LAB_RUNS_DIR is not set - this reach has no candidate here)\n'
+    echo "  no root on this machine yet (scripts/settings.sh --use <root>)"
 fi
-printf '  reach: ssh     %-60s [%s]\n' "$XDG_CANDIDATE" "$(mark "$XDG_CANDIDATE")"
-printf '  reach: none    %-60s [%s] (same file as ssh)\n' "$XDG_CANDIDATE" "$(mark "$XDG_CANDIDATE")"
 if [ -n "${LAB_SETTINGS_FILE:-}" ]; then
-    printf '  LAB_SETTINGS_FILE overrides all three: %-40s [%s]\n' "$LAB_SETTINGS_FILE" "$(mark "$LAB_SETTINGS_FILE")"
+    printf '  LAB_SETTINGS_FILE overrides the pointer: %-38s [%s]\n' \
+        "$LAB_SETTINGS_FILE" "$(mark "$LAB_SETTINGS_FILE")"
 fi
+# scripts/status.sh parses this exact line (`sed -n 's/^  in use: //p'`) rather
+# than calling settings.sh --summary a second time - T22. Keep the spelling.
 if [ "$SETTINGS_FOUND" = 1 ]; then
     printf '  in use: %s\n' "$SETTINGS_FILE"
 else
-    printf '  in use: none found - looked in the candidates above\n'
+    printf '  in use: none - this machine has no root yet\n'
+fi
+# The pre-T30 locations, reported only when one is actually there - so that a
+# machine that never migrated sees why nothing resolves, and a machine that
+# did is not shown two paths it no longer uses.
+if _old="$(legacy_settings_found 2>/dev/null)"; then
+    printf '  pre-T30 settings still on disk: %-35s [exists]\n' "$_old"
+    echo "  -> scripts/settings.sh --migrate <root> moves it, once"
 fi
 echo
 
@@ -188,11 +199,6 @@ fi
 PBRIDGE="$STATE/positron-bridge"
 printf '  positron bridge (convention, not yet written by anything on this branch): %-20s [%s]\n' \
     "$PBRIDGE" "$(mark "$PBRIDGE")"
-echo
-
-echo "== local_root =="
-LR="$(setting local_root "${HOME:-}/agentic-bioflow")"
-printf '  %-60s [%s]\n' "$LR" "$(mark "$LR")"
 echo
 
 echo "== storage_root (site side) =="
@@ -250,21 +256,4 @@ else
 fi
 echo
 
-echo "== portable folder (config/env.yaml, config/.seqera_token.enc, projects/) =="
-# T23: PORTABLE_ROOT/PORTABLE_POINTER come from settings.sh (sourced above) -
-# a pointer FILE this machine wrote via `settings.sh --adopt`, never a
-# setting key inside env.yaml itself (docs/SETTINGS.md: never an env var
-# either, for the same two-homes-on-one-machine reason PITFALLS 16j/25 name).
-if [ -n "$PORTABLE_ROOT" ]; then
-    printf '  pointer: %-52s [%s]\n' "$PORTABLE_POINTER" "$(mark "$PORTABLE_POINTER")"
-    printf '  root:    %-52s [%s]\n' "$PORTABLE_ROOT" "$(mark "$PORTABLE_ROOT")"
-    if [ -n "$PORTABLE_SETTINGS_FILE" ]; then
-        printf '  config/env.yaml:          %-35s [exists]\n' "$PORTABLE_SETTINGS_FILE"
-    else
-        printf '  config/env.yaml:          %-35s [missing]\n' "$PORTABLE_ROOT/config/env.yaml"
-    fi
-    TOK_ENC="$PORTABLE_ROOT/config/.seqera_token.enc"
-    printf '  config/.seqera_token.enc: %-35s [%s]\n' "$TOK_ENC" "$(mark "$TOK_ENC")"
-else
-    echo "  not adopted (scripts/settings.sh --adopt <path>)"
-fi
+

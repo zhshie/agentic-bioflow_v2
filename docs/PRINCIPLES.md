@@ -192,9 +192,8 @@ holds it. Every script locates itself from `${BASH_SOURCE[0]}`
 (`scripts/on_site.sh:35`, `scripts/preflight.sh:11`), never from `pwd`.
 Personal and site paths come from the settings file and `$LAB_RUNS_DIR`, never
 baked in (invariant 3). The site side lives under
-`$LAB_RUNS_DIR/<seqera_user>/projects/…` and the local side under a
-`local_root` the member points anywhere they already keep work
-(`docs/SETTINGS.md:130-162`); `scripts/fetch.sh:33` stages fetched results
+`$LAB_RUNS_DIR/<seqera_user>/projects/…` and the local side under the root
+the member named, anywhere they already keep work (`docs/SETTINGS.md`); `scripts/fetch.sh:33` stages fetched results
 under `$XDG_CACHE_HOME`, never the project folder. A member not told this
 assumes the opposite, and moves their work to wherever they think the plugin
 wants it — which is exactly backwards.

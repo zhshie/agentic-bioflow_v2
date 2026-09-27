@@ -142,15 +142,14 @@ EOF
     printf 'private Windows grants it to you alone\n'
 }
 
-# Cloud-sync folder name matching, shared by two very different responses to
-# the same finding: scripts/settings.sh refuses outright to put the settings
-# file or the token in one (a synced folder holds mode 600 perfectly normally
-# - the sync client uploads the file to a third party regardless of its
-# permission bits), while `local_root`/`portable_root` (docs/SETTINGS.md) are
-# allowed to be one - a portable_root is explicitly designed to often be one
-# - so those two only warn. One pattern, two responses, so the pattern lives
-# in exactly one place rather than drifting the way the settings-file-only
-# copy of it already had to be guarded against once (T21).
+# Cloud-sync folder name matching. T30 left exactly one response to it: a
+# warning. The root (docs/SETTINGS.md) is expected to be a synced folder -
+# that is what "follows you between machines" means in practice - so refusing
+# one would refuse the design. What the old refusal protected, the token, is
+# addressed where the token is defined instead (scripts/settings.sh,
+# token_file), by naming the trade rather than pretending it away: a synced
+# folder holds mode 600 perfectly normally, and the sync client uploads the
+# file to a third party regardless of its permission bits.
 #
 # Not a complete list, and every caller that reports this says so: any folder
 # that syncs anywhere is the same risk, and a list of sync products can never

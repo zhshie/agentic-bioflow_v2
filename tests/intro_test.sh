@@ -150,13 +150,25 @@ fi
 
 # ---------------------------------------------------------------------------
 echo "== language from the settings file =="
-CONF="$TMP/xdg/agentic-bioflow"; mkdir -p "$CONF"
-printf 'language: en\n' > "$CONF/env.yaml"
-chmod 600 "$CONF/env.yaml"
+# T30: the settings file lives in the root this machine is pointed at, not
+# under XDG_CONFIG_HOME. The pointer goes in $HOMEDIR, so this fixture is a
+# real deployment rather than a file placed where the old search happened to
+# look.
+# Its own $HOME, not $HOMEDIR: `--use` leaves a pointer file behind, and the
+# "no settings file at all" cases above share $HOMEDIR. Writing the pointer
+# there would make those pass or fail depending on the order this file runs
+# its sections in, which is the kind of test that goes green for the wrong
+# reason later.
+ENHOME="$TMP/en_home"; mkdir -p "$ENHOME"
+ENROOT="$TMP/en_root"
+env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u XDG_CONFIG_HOME HOME="$ENHOME" \
+    bash "$(dirname "$S")/settings.sh" --use "$ENROOT" >/dev/null 2>&1
+printf 'language: en\n' > "$ENROOT/config/env.yaml"
+chmod 600 "$ENROOT/config/env.yaml"
 
 with_en_settings() {
-    env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE \
-        HOME="$HOMEDIR" XDG_CONFIG_HOME="$TMP/xdg" \
+    env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE -u XDG_CONFIG_HOME \
+        HOME="$ENHOME" \
         bash "$S" "$@"
 }
 

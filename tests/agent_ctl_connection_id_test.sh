@@ -33,10 +33,14 @@ chmod +x "$BIN/tw"
 
 # A run area with a token and a workspace, and nothing else: no agent_java, so
 # `start` stops right after the assignment.
+# T30: the token lives beside the settings file, always - there is no search
+# across candidate directories any more, so a fixture that puts them apart is
+# testing a layout that can no longer exist.
 area() {
-  local d="$TMP/$1"; mkdir -p "$d/_personal"
-  echo "not-a-real-token" > "$d/_personal/.seqera_token"
+  local d="$TMP/$1"; mkdir -p "$d"
   echo "workspace_id: 12345" > "$d/env.yaml"
+  echo "not-a-real-token" > "$d/.seqera_token"
+  chmod 600 "$d/.seqera_token"
   printf '%s' "$d"
 }
 

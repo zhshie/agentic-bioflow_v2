@@ -91,19 +91,20 @@ real failures, each with the fix.
   site-side run directory and the local fetch destination without
   re-deriving the run-area shape a second time. `where.sh --project-paths
   <project>` (T29) is the same idea for `rawdata/`/`runs/`/`analysis/`/
-  `submission/` on the local side, whose shape now branches three ways (old
-  layout, new layout with no `<seqera_user>` directory, and a portable
-  folder redirecting `analysis/`/`submission/` elsewhere) -
-  `commands/downstream.md` and `commands/finish.md` ask it rather than
-  constructing a path themselves.
-- `scripts/portable_root.sh` + `scripts/settings.sh --adopt`/`--reconstruct`
-  — the portable folder (`docs/SETTINGS.md`, "The portable folder"): once a
-  person builds one, a second machine adopts it in one command instead of
-  rerunning all of `setup`. `portable_root.sh` builds the folder, migrates
-  the portable settings keys into it, and encrypts/decrypts the token
-  (`age`, falling back to `openssl enc`); `settings.sh --adopt <path>` points
-  a machine at an existing one; `--reconstruct` rebuilds candidate values
-  from Seqera Platform when there is no portable folder at all.
+  `submission/` on the local side, whose shape branches two ways (the old
+  `<seqera_user>`-layered layout for a project already living there, the
+  current one for a new project) - `commands/downstream.md` and
+  `commands/finish.md` ask it rather than constructing a path themselves.
+- `scripts/settings.sh --use`/`--migrate`/`--reconstruct` — **T30: one root
+  the user names** (`docs/SETTINGS.md`), holding `config/env.yaml`, the
+  token, `config/machines/<machine>.yaml` for the three keys that cannot
+  travel, and `projects/`. `--use <root>` points this machine at it,
+  creating it if it is not there yet, so a second machine is one command
+  rather than a second onboarding; `--migrate <root>` is the one-time move
+  off the pre-T30 locations, which are no longer read; `--reconstruct`
+  rebuilds candidate values from Seqera Platform when there is nothing to
+  migrate. `scripts/portable_root.sh` and `--adopt` are gone - the root is
+  the portable folder, so there is no second concept to keep in step.
 - `tests/` — standalone bash/python scripts, one file per invariant or script.
   Each prints ok/FAIL per case, is self-contained, and signals the verdict with
   its exit code. `tests/run_all.sh` runs all of them and is the release check;
@@ -115,7 +116,7 @@ real failures, each with the fix.
 ## Running tests
 
 ```bash
-bash tests/run_all.sh                    # all 53, ~100s, one verdict + exit code
+bash tests/run_all.sh                    # all 71, ~100s, one verdict + exit code
 bash tests/run_all.sh --only confirm_    # just the safety-net gates
 bash tests/confirm_launch_test.sh        # one file, full output
 ```

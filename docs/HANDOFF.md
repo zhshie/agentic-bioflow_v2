@@ -33,10 +33,10 @@ are kept for their history; this block is what is current.
   desktop folder, a cloud-drive folder or a Windows path reached from WSL are
   all fine; the refusals that used to read as "move your project" now say what
   they actually refuse and show the `cd /mnt/c/...` route back to the same
-  folder. The local side gained a `local_root` settings key, so it can be
-  pointed at a folder the member already uses instead of always
-  `$HOME/agentic-bioflow` (`scripts/inspect_sides.sh` read that path hardcoded
-  before, with a comment saying no key named it).
+  folder. The local side is the root the member named, anywhere they already
+  keep work (T21 added a `local_root` key for this; T30 replaced the key with
+  the root itself, and removed the `$HOME/agentic-bioflow` default along with
+  it - a default is a path that cannot travel).
 - Also 2.12.0: the one place location really does matter is the settings file
   and the token beside it, and it had no check at all. `set_setting()` now
   **reads the mode back** after `chmod 600` - a filesystem that silently keeps

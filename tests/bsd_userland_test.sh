@@ -89,17 +89,20 @@ printf '%-58s ' "a captured fast command does not wait out the timer"
 # A token the whole machine can read has to be called out. Under a BSD stat the
 # check used to evaluate to nothing at all and report the token as fine.
 H="$TMP/home"; mkdir -p "$H/.config/agentic-bioflow"
-cat > "$H/.config/agentic-bioflow/env.yaml" <<'Y'
+BSDROOT="$H/abf"
+env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE -u XDG_CONFIG_HOME \
+    HOME="$H" bash "$ROOT/scripts/settings.sh" --use "$BSDROOT" >/dev/null 2>&1
+cat > "$BSDROOT/config/env.yaml" <<'Y'
 reach: local
 seqera_user: someone
 workspace_id: 1
 Y
-chmod 600 "$H/.config/agentic-bioflow/env.yaml"
-echo secret > "$H/.config/agentic-bioflow/.seqera_token"
-chmod 644 "$H/.config/agentic-bioflow/.seqera_token"
-out=$(env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE \
+chmod 600 "$BSDROOT/config/env.yaml"
+echo secret > "$BSDROOT/config/.seqera_token"
+chmod 644 "$BSDROOT/config/.seqera_token"
+out=$(env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR -u SEQERA_TOKEN_FILE -u XDG_CONFIG_HOME \
       PATH="$BIN:$PATH" CLOCKED_BIN="" HOME="$H" \
-      XDG_CONFIG_HOME="$H/.config" bash "$ROOT/scripts/settings.sh" --summary 2>&1)
+      bash "$ROOT/scripts/settings.sh" --summary 2>&1)
 printf '%-58s ' "a world-readable token is still called out"
 grep -q "mode 644" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }

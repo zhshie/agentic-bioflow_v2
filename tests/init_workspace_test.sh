@@ -222,41 +222,34 @@ printf '%-64s ' "...and is not built under the user layer either"
   && { echo "FAIL: new project got the old layout"; fails=$((fails+1)); } || echo ok
 
 # ---------------------------------------------------------------------------
-# T29: with a portable folder adopted, analysis/ and submission/ move there
-# instead - rawdata/runs/results never do (large, re-fetchable, must not
-# ride a cloud sync).
-PORTABLE_HOME="$TMP/portable_adopt_home"; mkdir -p "$PORTABLE_HOME"
-PORTABLE_DIR="$TMP/portable_dir"; mkdir -p "$PORTABLE_DIR/config"
-printf 'seqera_user: ivy\n' > "$PORTABLE_DIR/config/env.yaml"
-chmod 600 "$PORTABLE_DIR/config/env.yaml"
-padopt() { env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE HOME="$PORTABLE_HOME" \
-             XDG_CONFIG_HOME="$PORTABLE_HOME/.config" "$@"; }
-padopt bash "$(dirname "$S")/settings.sh" --adopt "$PORTABLE_DIR" >/dev/null
+# T30: there is one root, so all four project directories are siblings in it.
+# This replaces T29's split, where analysis/ and submission/ were built in a
+# separate portable folder and rawdata/runs stayed behind - two roots that had
+# to be kept in step, and the source of the "which half am I looking at"
+# question this release exists to end.
+ONE_HOME="$TMP/one_root_home"; mkdir -p "$ONE_HOME"
+ONE_ROOT="$TMP/one_root"
+pone() { env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE -u XDG_CONFIG_HOME \
+             HOME="$ONE_HOME" "$@"; }
+pone bash "$(dirname "$S")/settings.sh" --use "$ONE_ROOT" >/dev/null
+printf 'seqera_user: ivy\n' >> "$ONE_ROOT/config/env.yaml"
 
-PORTABLE_LOCAL="$TMP/portable_local_root"
-out=$(padopt bash "$S" local --root "$PORTABLE_LOCAL" --user ivy --project shared_study 2>&1)
-for d in rawdata runs; do
-  printf '%-64s ' "with a portable folder adopted, local $d/ still builds locally"
-  [ -d "$PORTABLE_LOCAL/projects/shared_study/$d" ] && echo ok \
-    || { echo "FAIL: $PORTABLE_LOCAL/projects/shared_study/$d missing"; fails=$((fails+1)); }
+out=$(pone bash "$S" local --user ivy --project shared_study 2>&1)
+for d in rawdata runs analysis submission; do
+  printf '%-64s ' "all four project dirs build in the one root: $d/"
+  [ -d "$ONE_ROOT/projects/shared_study/$d" ] && echo ok \
+    || { echo "FAIL: $ONE_ROOT/projects/shared_study/$d missing"; fails=$((fails+1)); }
 done
-for d in analysis submission; do
-  printf '%-64s ' "...but local $d/ is NOT built - it lives in the portable folder"
-  [ -d "$PORTABLE_LOCAL/projects/shared_study/$d" ] \
-    && { echo "FAIL: $d/ was built locally despite an adopted portable folder"; fails=$((fails+1)); } \
-    || echo ok
-done
-for d in analysis submission; do
-  printf '%-64s ' "...and $d/ was built in the portable folder instead"
-  [ -d "$PORTABLE_DIR/projects/shared_study/$d" ] && echo ok \
-    || { echo "FAIL: $PORTABLE_DIR/projects/shared_study/$d missing"; fails=$((fails+1)); }
-done
-printf '%-64s ' "the portable folder's project dir has no <seqera_user> layer either"
-[ -d "$PORTABLE_DIR/ivy" ] \
-  && { echo "FAIL: a user layer appeared under the portable folder"; fails=$((fails+1)); } || echo ok
+printf '%-64s ' "the root's project dir has no <seqera_user> layer"
+[ -d "$ONE_ROOT/ivy" ] \
+  && { echo "FAIL: a user layer appeared under the root"; fails=$((fails+1)); } || echo ok
 
-printf '%-64s ' "the printed tree names where analysis/submission actually went"
-grep -qF "$PORTABLE_DIR/projects/shared_study" <<<"$out" && echo ok \
+printf '%-64s ' "and no second root was invented anywhere"
+[ ! -e "$ONE_HOME/agentic-bioflow" ] && echo ok \
+  || { echo "FAIL: a \$HOME-shaped root appeared"; fails=$((fails+1)); }
+
+printf '%-64s ' "the printed tree names the root it actually built in"
+grep -qF "$ONE_ROOT/projects/shared_study" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 
 # ---------------------------------------------------------------------------
@@ -383,18 +376,34 @@ clean() { # clean <env assignments...> -- <args...>
       "${envs[@]}" "$@"
 }
 
-LR_HOME="$TMP/local_root_home"; mkdir -p "$LR_HOME"
+LR_HOME="$TMP/root_pointer_home"; mkdir -p "$LR_HOME"
 LR_CONFIGURED="$TMP/cloud_drive/agentic-bioflow-work"
-printf 'reach: local\nlocal_root: %s\n' "$LR_CONFIGURED" > "$LR_HOME/env.yaml"
+env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE -u XDG_CONFIG_HOME HOME="$LR_HOME" \
+    bash "$(dirname "$S")/settings.sh" --use "$LR_CONFIGURED" >/dev/null 2>&1
+printf 'reach: local\n' >> "$LR_CONFIGURED/config/env.yaml"
 
-out=$(clean HOME="$LR_HOME" LAB_SETTINGS_FILE="$LR_HOME/env.yaml" -- \
+out=$(env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE -u XDG_CONFIG_HOME HOME="$LR_HOME" \
       bash "$S" local --plan --user alice --project "$PROJ" 2>&1)
-printf '%-64s ' "local_root set, no --root: --plan lists paths under the configured root"
+printf '%-64s ' "root pointed at, no --root: --plan lists paths under that root"
 grep -qF "would-create: $LR_CONFIGURED/projects/$PROJ/analysis" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
-printf '%-64s ' "local_root set, no --root: --plan still created nothing"
-[ ! -e "$LR_CONFIGURED" ] && [ ! -e "$LR_HOME/agentic-bioflow" ] && echo ok \
+printf '%-64s ' "--plan still created no project directories"
+[ ! -e "$LR_CONFIGURED/projects/$PROJ" ] && [ ! -e "$LR_HOME/agentic-bioflow" ] && echo ok \
   || { echo "FAIL: something got created"; fails=$((fails+1)); }
+
+# T30: with no root at all, this refuses and says which command sets one -
+# it must never fall back to a $HOME-shaped default nobody chose.
+NOROOT_HOME="$TMP/noroot_home"; mkdir -p "$NOROOT_HOME"
+out=$(env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE -u XDG_CONFIG_HOME HOME="$NOROOT_HOME" \
+      bash "$S" local --user alice --project "$PROJ" 2>&1); rc=$?
+printf '%-64s ' "no root at all: refused rather than defaulted"
+[ "$rc" != 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...and it names the command that sets one"
+grep -qF -- "--use <root>" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...and created no \$HOME-shaped root"
+[ ! -e "$NOROOT_HOME/agentic-bioflow" ] && echo ok \
+  || { echo "FAIL: a default root appeared"; fails=$((fails+1)); }
 
 # --root wins outright over local_root - a one-off call should not need a
 # settings edit, same as every other explicit flag in this script.
@@ -410,13 +419,19 @@ printf '%-64s ' "--root beating local_root still created nothing (--plan)"
 
 # Neither --root nor local_root set: the old default, unchanged - the ticket
 # calls this out as a test case, not an assumption.
+# T30: a settings file that names no root is the same as no root at all.
+# This used to fall back to $HOME/agentic-bioflow, which is precisely the
+# shape of answer this release removed: a path that cannot travel, picked
+# silently for somebody who was never asked.
 LR_NOKEY_HOME="$TMP/local_root_nokey_home"; mkdir -p "$LR_NOKEY_HOME"
 out=$(clean HOME="$LR_NOKEY_HOME" LAB_SETTINGS_FILE="$LR_NOKEY_HOME/nonexistent.yaml" -- \
-      bash "$S" local --plan --user alice --project "$PROJ" 2>&1)
-printf '%-64s ' "no local_root key, no --root: --plan falls back to \$HOME/agentic-bioflow"
-grep -qF "would-create: $LR_NOKEY_HOME/agentic-bioflow/projects/$PROJ/analysis" <<<"$out" && echo ok \
-  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
-printf '%-64s ' "old default, no key: --plan still created nothing"
+      bash "$S" local --plan --user alice --project "$PROJ" 2>&1); rc=$?
+printf '%-64s ' "no root anywhere: --plan refuses instead of defaulting"
+[ "$rc" != 0 ] && echo ok || { echo "FAIL: rc $rc <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...and never names \$HOME/agentic-bioflow as the answer"
+grep -qF "$LR_NOKEY_HOME/agentic-bioflow" <<<"$out" \
+  && { echo "FAIL: the removed default came back <<$out>>"; fails=$((fails+1)); } || echo ok
+printf '%-64s ' "...and created nothing"
 [ ! -e "$LR_NOKEY_HOME/agentic-bioflow" ] && echo ok \
   || { echo "FAIL: $LR_NOKEY_HOME/agentic-bioflow exists"; fails=$((fails+1)); }
 
@@ -432,10 +447,16 @@ printf '%-64s ' "a cloud-sync-looking --root is warned about, not refused"
 grep -qF "looks like it is inside a synced folder" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 printf '%-64s ' "...names the setting key it is warning about"
-grep -qF "'local_root'" <<<"$out" && echo ok \
+grep -qF "'root'" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
-printf '%-64s ' "...says the token and Positron bridge file must never live there"
-grep -qF "Positron bridge" <<<"$out" && echo ok \
+# T30: the token now DOES live there, deliberately. The warning has to say so
+# rather than repeat advice the design no longer follows - a caution that
+# describes an older version of the system is worse than none.
+printf '%-64s ' "...says plainly that the token is in the synced folder"
+grep -qF "config/.seqera_token" <<<"$out" && echo ok \
+  || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
+printf '%-64s ' "...and that it can be revoked if the folder is ever shared"
+grep -qF "revocable" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 printf '%-64s ' "...and still builds the skeleton - a warning, not a refusal"
 [ -d "$CLOUD_ROOT/projects/cloud_study" ] && echo ok \
