@@ -13,6 +13,11 @@ ROOT="$(cd "$HERE/.." && pwd)"
 H="$ROOT/hooks/session_start.sh"
 TMP=$(mktemp -d)
 trap 'chmod -R u+w "$TMP" 2>/dev/null; command rm -rf "$TMP"' EXIT
+
+# The host's own wsl.exe must not answer for the fake MSYS fixtures below:
+# see tests/lib/nowsl_path.sh.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/nowsl_path.sh"
+PATH=$(nowsl_path "$TMP") || { echo "cannot build a PATH without wsl.exe"; exit 1; }
 fails=0
 
 printf 'workspace_id: 12345\ntw_bin: %s/tw\n' "$TMP" > "$TMP/env.yaml"

@@ -10,6 +10,11 @@
 # the seam: these tests need no ssh host, no network, and no site.
 S="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/on_site.sh"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+
+# The host's own wsl.exe must not answer for the fake MSYS fixtures below:
+# see tests/lib/nowsl_path.sh.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/nowsl_path.sh"
+PATH=$(nowsl_path "$TMP") || { echo "cannot build a PATH without wsl.exe"; exit 1; }
 fails=0
 
 settings() { printf '%s\n' "$@" > "$TMP/env.yaml"; }

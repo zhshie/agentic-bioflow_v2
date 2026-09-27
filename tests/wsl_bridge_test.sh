@@ -18,6 +18,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 S="$ROOT/scripts/on_site.sh"
 SHIM="$ROOT/scripts/utils/wsl_ssh.sh"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+
+# The host's own wsl.exe must not answer for the fake MSYS fixtures below:
+# see tests/lib/nowsl_path.sh.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/nowsl_path.sh"
+PATH=$(nowsl_path "$TMP") || { echo "cannot build a PATH without wsl.exe"; exit 1; }
 fails=0
 
 settings() { printf '%s\n' "$@" > "$TMP/env.yaml"; }
