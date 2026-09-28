@@ -11,9 +11,12 @@ source of truth for run state; this plugin supplies only what Platform cannot
 do for a cluster whose compute nodes have no route out: rounding resource
 requests up to the site's QOS floor, and proxying egress.
 
-Read `docs/PRINCIPLES.md` before changing anything structural — it is short,
-each invariant carries a check, and re-deriving the reasoning from scratch has
-already produced wrong answers more than once (see its own history). Read
+Read `.specify/memory/constitution.md` before changing anything structural —
+it is the single statement of what this project will and will not do, each
+invariant with the check that holds it, and it outranks every other file here.
+`docs/PRINCIPLES.md` keeps the reasoning and history behind each invariant
+(same numbers); re-deriving that reasoning from scratch has already produced
+wrong answers more than once. Read
 `docs/PITFALLS.md` when something breaks, not preemptively — it is a log of
 real failures, each with the fix.
 
@@ -49,7 +52,11 @@ real failures, each with the fix.
   hook: while a command flow is open, a reply that ends without a next step is
   sent back to add one). The three safety nets **refuse when `jq` is missing or
   broken** rather than falling silent — PITFALLS 28.
-- `docs/` — `PRINCIPLES.md` (what decides), `PITFALLS.md` (what went wrong),
+- `.specify/` — Spec Kit: `memory/constitution.md` (what decides), plus the
+  templates and scripts behind the `/speckit-*` commands.
+- `docs/` — `PRINCIPLES.md` (why the constitution says what it does),
+  `ROADMAP.md` (stages, and principles waiting for a check),
+  `POSITIONING.md`, `adr/` (architecture decisions), `PITFALLS.md` (what went wrong),
   `SITE_ADAPTER.md` (the site contract), `SETTINGS.md` (the per-deployment
   settings file schema), `DOWNSTREAM.md` (worked examples of what an outputs
   inventory turns up, measured from a real run), `CONDITIONS.md` (every user
@@ -116,7 +123,7 @@ real failures, each with the fix.
 ## Running tests
 
 ```bash
-bash tests/run_all.sh                    # all 71, ~100s, one verdict + exit code
+bash tests/run_all.sh                    # all 72, ~100s, one verdict + exit code
 bash tests/run_all.sh --only confirm_    # just the safety-net gates
 bash tests/confirm_launch_test.sh        # one file, full output
 ```
@@ -163,36 +170,15 @@ Do not write a second site adapter speculatively — one implementation is what
 exists to validate the contract; a second one is real work when there's a real
 second site.
 
-## Key invariants (see `docs/PRINCIPLES.md` for the full list + checks)
+## Invariants, safety net, and how changes are made
 
-- **Build only what neither Seqera nor nf-core already does.** Before adding
-  anything, name what Seqera/nf-core already use to do the same job.
-- **No file in this repo records run state.** No submission script, state
-  machine, or monitoring daemon — Platform is the single source of truth.
-- **Anyone can install it.** No hardcoded personal/cluster paths; everything
-  derives from `$LAB_RUNS_DIR` and the deployment's settings file
-  (`tests/no_hardcoded_paths.sh`).
-- **Any pipeline, no configuration.** Resource mapping keys off the composed
-  request, never nf-core label names; samplesheet columns come from the
-  pipeline's own `assets/schema_input.json`, parameters from its
-  `nextflow_schema.json` — never a curated per-pipeline file in this repo
-  (`tests/no_per_pipeline_config.sh`).
-- **Nobody should need the maintainer.** Onboarding (`setup`) must prove the
-  environment on public test data before handing over the command list.
-- **Measure or read the source before claiming.** Every `PITFALLS.md` entry
-  is a real failure or a real piece of source that was read — not inference.
-
-## Safety net (not negotiable)
-
-Never delete a user's source data — `rawdata/`, `results/`, `analysis/`, a run
-area's `_references/`, or a shared image cache. Never delete
-`.nextflow/plugins/`. Deleting `work/` or `.nextflow/cache/` requires the
-user's explicit confirmation (`hooks/confirm_cleanup.sh` gates this). Always
-show a launch command in full and wait for explicit confirmation before
-running it (`hooks/confirm_launch.sh` gates this on any `tw launch`/`sbatch`/
-`nextflow run`-shaped command). Credentials and personal details belong only
-in the deployment's own settings file, mode 600 — never printed, never in git,
-never in a params file, never copied from another member's settings.
+All three are in `.specify/memory/constitution.md` and are deliberately not
+restated here, so that they cannot be restated differently (constitution,
+Governance). In short: invariants 1–13 each name their check; the Safety Net
+section is non-negotiable; every non-typo change goes through the Spec Kit
+feature or bug workflow, with test cases approved by the maintainer before
+any plan, and only the maintainer merges to `main`. Shared vocabulary is
+`CONTEXT.md`.
 
 ## Working conventions specific to this repo
 
