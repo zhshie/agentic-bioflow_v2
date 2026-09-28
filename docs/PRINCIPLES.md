@@ -1,6 +1,13 @@
-# Principles
+# Principles: reasoning and history
 
-`PITFALLS.md` records what went wrong. This file records what decides.
+**The rules themselves live in `.specify/memory/constitution.md`** - one statement of each,
+with the check that holds it. This file keeps what the constitution leaves out: why each rule
+exists and the failures that produced it. Where the two disagree, the constitution wins and this
+file is corrected (constitution, Governance). The invariant numbers are the same in both, so a
+citation such as "`PRINCIPLES.md`, invariant 2" still finds its reasoning here and its rule
+there.
+
+`PITFALLS.md` records what went wrong. This file records why that decided what it did.
 
 It exists because the reasoning kept evaporating. Design decisions that took a
 failed run to reach were re-litigated a week later from memory, and each
@@ -8,9 +15,6 @@ re-derivation drifted: a plan whose acceptance criteria were about whether a
 variable resolved rather than whether a person succeeded; a proposal to build a
 daemon this project had already decided not to build. Reasoning that lives only
 in a conversation does not survive the conversation.
-
-**Every invariant below carries a check.** A principle with no check is a
-slogan, and slogans lose to whatever seems reasonable in the moment.
 
 ---
 
@@ -24,22 +28,12 @@ biotype warning nf-core already emits, a STAR index calculation the module
 already performs, and a samplesheet generator that shipped with the pipeline.
 Each was written, then deleted.
 
-*Check:* before adding anything, say out loud what Seqera, nf-core, or any
-other maintained tool uses to do the same job. Only when you cannot name it
-does it become ours to write. Every script under `scripts/` states its answer
-in its own header - `# Not <tool>: <reason>`, or `# Nothing existing: <why>`
-for thin glue with nothing to name - which is what turns the spoken check into
-a mechanical one: `tests/scripts_name_their_alternative.sh`.
-
 **2. Follow Seqera's shape; do not invent a parallel one.**
 
 The commands are Seqera's nouns — compute environment, then
 pipelines → datasets → launch, then runs. A user who knows Seqera already knows
 this tool, and anything Seqera ships later lands in a slot that already exists.
 Platform is the single source of truth for run state; we keep no copy of it.
-
-*Check:* no file in this repo records the state of a run. No submission script,
-no state machine, no monitoring daemon.
 
 ## B. Who can use it, and where
 
@@ -51,8 +45,6 @@ settings file. A home directory is not a shared location: on a typical cluster
 `/home/<someone>` is mode 700, so a file placed there is invisible to every
 other member no matter how the file itself is permissioned.
 
-*Check:* `tests/no_hardcoded_paths.sh`.
-
 **4. One cluster is not the world.**
 
 SLURM, a firewall, POSIX storage — these are *site* properties. A site adapter
@@ -60,16 +52,16 @@ supplies them; the core must not assume them. On a cloud compute environment
 there is no relay to check and no partition to choose, and nothing outside the
 adapter should have to know that.
 
-*Check:* `tests/command_layer_is_site_neutral.sh`. The contract itself, and what
-this site supplies for each part of it, is `docs/SITE_ADAPTER.md`.
-
 **5. Portable substance, but never a lowest common denominator.**
 
 Judgment, procedure and site operations live in `docs/` and `scripts/`, which a
 person or another model can read and run directly. The host's own capabilities —
-hooks, skills, commands — are used fully and **are not given up because another
-harness lacks them**. Dropping hooks would drop the safety net; dropping the
-skill would leave a tool that exists only when someone types a slash.
+hooks, skills, commands — are used fully, because dropping hooks would drop the
+safety net and dropping the skill would leave a tool that exists only when
+someone types a slash. The stronger form - a host that lacks the safety net may
+query but never launch or delete - is agreed but has no check yet, so it waits
+in `docs/ROADMAP.md` ("Principles waiting for a check") rather than in the
+constitution.
 
 This costs nothing here, which is why it holds: the things worth building were
 already portable. Pitfalls are markdown, the resource mapping is a Nextflow
@@ -77,9 +69,6 @@ config, the relay is Python, site operations are shell. Writing them that way is
 better for the primary host too — testable, reusable, and not occupying context.
 The host-specific layer is thin glue over portable substance, so a port rewrites
 the glue rather than the system.
-
-*Check:* with `hooks/` and `.claude-plugin/` removed, the system still works
-from `docs/` and `scripts/` — **degraded, not equivalent**. Usable is the bar.
 
 ## C. Whether a person can finish
 
@@ -91,9 +80,6 @@ and a label table goes stale the moment a pipeline adds one. Samplesheet columns
 come from the pipeline's `assets/schema_input.json`, parameters from its
 `nextflow_schema.json`.
 
-*Check:* a pipeline nobody here has seen runs to completion under `-profile
-test` **with no mapping added along the way**.
-
 **7. Nobody should need the maintainer.**
 
 A user must not have to read `PITFALLS.md` or ask whoever built this in order to
@@ -101,9 +87,6 @@ keep going. Say what a step will do before doing it. Prove the environment works
 on public test data — touching none of their real data — before their first real
 run, and do not hand them the command list until that proof passes, or they will
 take an unverified environment to real data.
-
-*Check:* someone completes onboarding with no point where outside knowledge was
-required to continue.
 
 ## D. How to work
 
@@ -113,9 +96,6 @@ required to continue.
 asserted here and each was wrong. The GTF check that nf-core already did. The
 missing outputs that were a dead agent. The claim that a compute environment's
 config could be edited in place. Verify first; the result goes in `PITFALLS.md`.
-
-*Check:* every entry in `PITFALLS.md` corresponds to a real failure or a real
-piece of source that was read.
 
 **9. Every verifiable claim points at the file that produced it.**
 
@@ -139,7 +119,7 @@ Three consequences, and each closes a way to produce something false:
 The same rule covers describing a figure: say what the data shows, never what
 the picture looks like. The plot is on the user's screen and not ours.
 
-*Check:* `scripts/cite.sh` resolves every DOI over the network and marks what
+*How it is held:* `scripts/cite.sh` resolves every DOI over the network and marks what
 it cannot resolve; `scripts/methods_text.py` reports a near-miss as a candidate
 rather than citing it; `scripts/build_package.sh` writes a comment for every
 planned figure that is missing and every figure nobody planned.
@@ -157,7 +137,7 @@ covers it"). The maintainer designs it in instead of filing it. Which
 conditions count as designed is `docs/CONDITIONS.md`, measured by
 `scripts/detect_conditions.sh` rather than guessed.
 
-*Check:* `tests/off_design_single_path.sh` (no catch-all in `commands/` that
+*How it is held:* `tests/off_design_single_path.sh` (no catch-all in `commands/` that
 does not point at that section), `tests/conditions_matrix_test.sh` (every cell
 the script can print is in the matrix, and the reverse), `tests/report_test.sh`
 (nothing leaves the machine that is not a whitelisted field).
@@ -233,7 +213,7 @@ Invariant 3 is about paths baked into *this repo*; 11 is about where the
 *user's* folder may sit, and the answer there is: wherever they already keep
 it.
 
-*Check:* `tests/path_shapes_test.sh` — runs these scripts from a directory
+*How it is held:* `tests/path_shapes_test.sh` — runs these scripts from a directory
 whose name carries spaces and non-ASCII, the shape a member reaches first, not
 a convenient fixture. The privacy read-back and the synced-folder refusal
 (reminder, not guarantee) in `tests/settings_test.sh`, and what that read-back
@@ -267,7 +247,7 @@ carries a topic with no action, and answering it directly is correct, not a
 gap. What must not happen is action intent (跑/分析/送出/launch/為什麼失敗,
 English or Chinese) going straight to an answer with no routing at all.
 
-*Check:* `hooks/plugin_intro.sh`'s topic-AND-action match on a
+*How it is held:* `hooks/plugin_intro.sh`'s topic-AND-action match on a
 UserPromptSubmit prompt routes a natural-language request with intent
 toward `agentic-bioflow:operational`, and leaves a pure knowledge question
 alone (`tests/plugin_intro_test.sh`, "T3: natural-language routing").
@@ -294,7 +274,7 @@ here knew that had happened either, because the only visible symptom was
 says nothing, in either direction — silently permissive or silently total —
 is indistinguishable from a working one until the moment it matters.
 
-*Check:* `hooks/confirm_launch.sh`, `hooks/confirm_cleanup.sh` and
+*How it is held:* `hooks/confirm_launch.sh`, `hooks/confirm_cleanup.sh` and
 `hooks/confirm_walkthrough.sh` still refuse when `jq` is missing or
 broken — scoped to what they cannot rule out from the raw text, not every
 command — and name the fix (`tests/confirm_launch_test.sh`,
@@ -342,12 +322,6 @@ Which agents may touch what is `docs/LAB_AGENTS.md`.
 
 ## The safety net
 
-Not negotiable, and not subject to the reasoning above.
-
-Never delete a user's source data. Never delete `rawdata/`, `results/`,
-`analysis/`, a run area's `_references/`, or a shared image cache. Never delete
-`.nextflow/plugins/`. Deleting `work/` or `.nextflow/cache/` requires the user's
-explicit confirmation. Show a launch command in full and wait for the user to
-confirm before running it. Credentials and personal details belong only in the
-deployment's own settings area, mode 600 — never printed, never in git, never in
-a params file, and never carried over from another member's copy.
+Stated once, in the constitution's "Safety Net (Non-Negotiable)" section, and
+not subject to the reasoning above. It is not repeated here so that it cannot
+be repeated differently.

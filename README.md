@@ -69,3 +69,8 @@ over ssh (`reach: local` / `reach: ssh`, `docs/SITE_ADAPTER.md` contract 6). A
 Platform-managed cloud compute environment (`reach: none`) is a value the
 settings schema recognises, not a deployment this version supports — `setup`
 says so and points at the off-design procedure instead of onboarding one.
+
+## License
+
+Apache License 2.0 (`LICENSE`, `NOTICE`). Why this license, and what stays
+open, is `docs/adr/0002`.

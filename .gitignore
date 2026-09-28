@@ -13,3 +13,6 @@ agent.log
 extensions/*/node_modules/
 extensions/*/out/
 
+
+# Spec Kit's downloaded extension catalog: a network cache, rebuilt on demand.
+.specify/extensions/.cache/
