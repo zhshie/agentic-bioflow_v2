@@ -123,7 +123,7 @@ real failures, each with the fix.
 ## Running tests
 
 ```bash
-bash tests/run_all.sh                    # all 72, ~100s, one verdict + exit code
+bash tests/run_all.sh                    # all 73, ~100s, one verdict + exit code
 bash tests/run_all.sh --only confirm_    # just the safety-net gates
 bash tests/confirm_launch_test.sh        # one file, full output
 ```
@@ -179,6 +179,14 @@ section is non-negotiable; every non-typo change goes through the Spec Kit
 feature or bug workflow, with test cases approved by the maintainer before
 any plan, and only the maintainer merges to `main`. Shared vocabulary is
 `CONTEXT.md`.
+
+The two gates that are files: `/test-cases` (`.claude/skills/test-cases/`)
+writes `test-case.md` + `test-case-overview.md` into the feature directory
+after `/speckit-clarify` and stops for approval; `/speckit-plan` does not run
+while the overview says `狀態：草稿`. After implementing, acceptance is the
+read-only `verifier` agent (`.claude/agents/verifier.md`), started in a fresh
+context and given the feature directory - never the author's own review.
+`tests/dev_workflow_test.sh` keeps both gates shaped like gates.
 
 ## Working conventions specific to this repo
 
