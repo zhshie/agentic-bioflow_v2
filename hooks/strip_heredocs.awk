@@ -32,21 +32,22 @@
 # `grep ... <<< "$VAR"` is not mistaken for a here-doc named "VAR".
 
 # Does the text before `<<` hand the body to something that runs it?
-function executes(pre,   seg, w) {
+# Any word of that segment counts, not only the first: `sudo -u bob bash`,
+# `timeout 60 bash`, `srun bash` all hand the body to bash (#29, round 2).
+# A writer's file name that merely contains one (`cat > bash_notes.md`) does
+# not match, because the whole word must be the executor.
+function executes(pre,   seg, k, i, w, W) {
     seg = pre
     # the segment that opens the here-doc: text after the last separator
     while (match(seg, /(\|\||&&|[|;&(])/)) seg = substr(seg, RSTART + RLENGTH)
-    sub(/^[ \t]+/, "", seg)
-    while (1) {
-        if (match(seg, /^(sudo|env|command|exec|nohup)[ \t]+/)) { seg = substr(seg, RLENGTH + 1); continue }
-        if (match(seg, /^[A-Za-z_][A-Za-z0-9_]*=[^ \t]*[ \t]+/)) { seg = substr(seg, RLENGTH + 1); continue }
-        if (match(seg, /^-[^ \t]*[ \t]+/)) { seg = substr(seg, RLENGTH + 1); continue }
-        break
+    k = split(seg, W, /[ \t]+/)
+    for (i = 1; i <= k; i++) {
+        w = W[i]
+        sub(/^\\/, "", w)
+        sub(/^.*\//, "", w)
+        if (w ~ /^(bash|sh|zsh|dash|ksh|ssh|on_site\.sh|python[0-9.]*|Rscript|R|perl|node|ruby|pwsh|powershell)$/) return 1
     }
-    w = seg
-    sub(/[ \t].*$/, "", w)
-    sub(/^.*\//, "", w)
-    return (w ~ /^(bash|sh|zsh|dash|ksh|ssh|on_site\.sh|python|python3|Rscript|R|perl|node|ruby)$/)
+    return 0
 }
 
 function scan(s,   m, d, isdash, pre, piped) {

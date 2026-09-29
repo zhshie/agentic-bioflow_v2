@@ -1908,3 +1908,13 @@ whose target is a variable, comes through `xargs`, or is written as code now
 pauses for the user (`ask`) instead of warning the model - the maintainer's
 decision. This is still a heuristic, not a sandbox: it closes the shapes found,
 and makes no claim to have found them all.
+
+A second, independent review of that fix found more of the same, and one that
+had nothing to do with parsing: **a PreToolUse hook that runs past its
+`timeout` is cancelled and the tool call proceeds.** The deletion guard took
+4.4-4.8 s per call on a Windows laptop (Git Bash starts every small process
+slowly) against a 5 s limit, so on a busy machine the safety net could simply
+not be there, again with nothing printed. Every gate's timeout is now 30 s and a
+test holds it there. Splitting a command line is now one shared file,
+`hooks/split_segments.awk`, so the two gates cannot disagree about what a line
+runs.

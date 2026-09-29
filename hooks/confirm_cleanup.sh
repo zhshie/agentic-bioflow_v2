@@ -176,51 +176,49 @@ ask() {
     exit 0
 }
 
-# `ssh <host> '<payload>'` hides a delete from every check below: the payload is
-# quoted, so the delete verb sits behind a quote rather than at a segment
-# boundary, and the command word is `ssh`. The far-side shell runs it anyway.
-# Scan the payload as its own segment - appended rather than substituted,
-# because the wrapper's own arguments still deserve checking.
-# #29: `bash -c '...'`, `eval '...'` and `... | bash` re-read quoted text as a
-# command line too - the same rule hooks/launch_trigger.sh applies.
-PAYLOAD=""
-if echo "$CMD" | grep -qE '(^|[[:space:]])([^[:space:]]*/)?(ssh|on_site\.sh)[[:space:]]|(^|[[:space:]])(bash|sh|zsh|ksh)[[:space:]]+-c([[:space:]]|$)|(^|[[:space:]])eval([[:space:]]|$)|\|[[:space:]]*(sudo[[:space:]]+)?([^[:space:]|]*/)?(bash|sh|zsh|dash|ksh)([[:space:]]|$)'; then
-    PAYLOAD=$(echo "$CMD" | grep -oE "'[^']*'|\"[^\"]*\"" | sed -E "s/^['\"]//; s/['\"]$//")
+# #29: what the command runs is decided by hooks/split_segments.awk, shared
+# with hooks/launch_trigger.sh so the two gates cannot disagree. It yields one
+# simple command per line - including the contents of $(...), backticks,
+# `bash -c '...'`, `ssh host '...'`, `perl -e 'system("...")'`,
+# `python3 -c "os.system('...')"` and anything piped into a shell - as
+#     <segment as written>\037<segment with quoted text removed>
+# The first copy keeps quotes because a target is often quoted
+# (`rm -rf "…/results"` passed silently when quoted text was deleted); the
+# second drops them because a verb inside a quoted regex is not a verb
+# (`grep -n 'A\|rm ' file` was once denied). History: PITFALLS 37.
+#
+# If awk cannot run, fall back to a plain split and keep going: noisier, but
+# still a gate, never an absent one.
+US=$(printf '\037')
+SEGMENTS=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+if [ -z "$SEGMENTS" ]; then
+    SEGMENTS=$(printf '%s\n' "$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g' | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
 fi
 
-# Quoted content is data, not commands. `grep -n 'A\|rm ' file` used to split on
-# the `|` inside the regex, leaving a segment that began with the delete verb -
-# so a read-only search was denied. This really happened while planning v2.1.
-#
-# #29: the first fix for that deleted every quoted string before segmenting,
-# and the arguments were then read from what was left - so `rm -rf "…/results"`
-# became `rm -rf` with no target, and passed with nothing printed. Quoted text
-# is now KEPT, and only the separators inside it are masked (\001 \002 \003),
-# so it cannot split a segment. Each segment is then read twice: the delete
-# verb is looked for with quoted text removed (a regex that mentions rm is
-# still not a delete), and the targets are read with it kept.
-MASKED=$(printf '%s\n' "$CMD" | awk '{
-    out = ""; q = ""; n = length($0)
-    for (i = 1; i <= n; i++) {
-        c = substr($0, i, 1)
-        if (q == "") {
-            if (c == "\047" || c == "\"") q = c
-            else if (c == "\\") { out = out c substr($0, i + 1, 1); i++; continue }
-        } else if (c == q) {
-            q = ""
-        } else if (q == "\"" && c == "\\") {
-            out = out c substr($0, i + 1, 1); i++; continue
-        } else if (c == "|") c = "\001"
-        else if (c == ";") c = "\002"
-        else if (c == "&") c = "\003"
-        out = out c
-    }
-    print out
-}' 2>/dev/null)
-[ -n "$MASKED" ] || MASKED="$CMD"
-
-# Split into segments so one command's arguments are not attributed to another.
-SEGMENTS=$(printf '%s\n%s' "$MASKED" "$PAYLOAD" | sed -E 's/(\|\||&&|[;&|])/\n/g' | tr '\001\002\003' '|;&')
+# The command word of a segment, lowercased: past sudo/env/command/exec/nohup/
+# nice/timeout and their options, VAR=value assignments, a leading backslash
+# (`\rm` skips an alias) and a directory (`/bin/rm`). Only the command word
+# counts - `grep -rn del results/` names `del`, and must not read as a delete.
+cmdword() {
+    local W i=0 n w
+    read -r -a W <<<"$1"
+    n=${#W[@]}
+    while [ "$i" -lt "$n" ]; do
+        w=${W[$i]}
+        case "$w" in
+            sudo|env|command|builtin|exec|nohup|time|nice|stdbuf) i=$((i+1)) ;;
+            timeout) i=$((i+2)) ;;
+            -u|-g|-n|-C|-p) i=$((i+2)) ;;
+            -*) i=$((i+1)) ;;
+            [A-Za-z_]*=*) i=$((i+1)) ;;
+            *) break ;;
+        esac
+    done
+    w=${W[$i]:-}
+    w=${w#\\}
+    w=${w##*/}
+    printf '%s' "$w" | tr 'A-Z' 'a-z'
+}
 
 UNRESOLVED=""
 HIT_OVERWRITE=""
@@ -232,8 +230,9 @@ HIT_SEQFILE=""
 HIT_LEFTOVER=""
 HIT_ROOT=""
 HIT_CODE=""
+HIT_GLOB=""
 
-while IFS= read -r SEG; do
+while IFS="$US" read -r SEG VSEG CW; do
     [ -n "$SEG" ] || continue
 
     # Deleting and overwriting are different acts and must not share a verdict.
@@ -246,25 +245,36 @@ while IFS= read -r SEG; do
     DESTRUCTIVE=0   # a real delete
     TRUNCATE=0      # a redirect: creates or overwrites, never removes a tree
     MOVE_ONLY=0
-    # The verb is looked for with quoted text removed (see MASKED above).
-    VSEG=$(echo "$SEG" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g")
-    # Must be the command word, not those two letters anywhere in the line. The
-    # glob this replaces matched the tail of "confirm " and of "Platform run",
-    # so `echo confirm the results directory` was denied outright - and this
-    # project's own prose mentions Seqera Platform constantly.
-    # #29: PowerShell and cmd spell it Remove-Item / del / erase / rd, and
-    # hooks.json sends those tools here; case does not matter to them.
-    echo "$VSEG" | grep -qiE '(^|[[:space:]]|[;&|(])(sudo[[:space:]]+)?(rm|rmdir|rd|del|erase|remove-item)([[:space:]]|$)' \
-        && DESTRUCTIVE=1
-    echo "$VSEG" | grep -qE '\bfind\b.*-delete|\brsync\b.*--delete|\bshred\b' && DESTRUCTIVE=1
-    # #29: a delete written as code - a python/R/node here-doc or `-c` string.
-    # The call's parenthesis is required, so searching for the name is not one.
-    echo "$SEG" | grep -qE '(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|unlink|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync))[[:space:]]*\(' \
+    VARCMD=0        # the command word is a variable or substitution
+    # Must be the command word, not those letters anywhere in the line. The glob
+    # this replaced matched the tail of "confirm " and of "Platform run", so
+    # `echo confirm the results directory` was denied outright.
+    # #29: read past sudo/env/timeout, a path and a backslash (`/bin/rm`,
+    # `\rm`); PowerShell and cmd spell it Remove-Item/ri/del/erase/rd; unlink
+    # and truncate destroy a file too.
+    # The third column from split_segments.awk; computed here only on the
+    # awk-less fallback. Quote CHARACTERS are dropped, not quoted text:
+    # `"/bin/rm" -rf …` quotes the command word itself.
+    [ -n "$CW" ] || CW=$(cmdword "$(printf '%s' "$SEG" | tr -d "\"'")")
+    case "$CW" in
+        rm|rmdir|unlink|shred|truncate|rd|del|erase|remove-item|ri) DESTRUCTIVE=1 ;;
+        find)
+            echo "$VSEG" | grep -qE '(^|[[:space:]])-delete([[:space:]]|$)|-exec(dir)?[[:space:]]+([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$)' \
+                && DESTRUCTIVE=1 ;;
+        rsync)
+            echo "$VSEG" | grep -qE -- '--delete' && DESTRUCTIVE=1 ;;
+        xargs)
+            # `xargs rm` takes its targets from stdin, which this hook never sees.
+            if echo "$VSEG" | grep -qE '(^|[[:space:]])([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$)'; then
+                DESTRUCTIVE=1; UNRESOLVED="${UNRESOLVED}(targets read by xargs from stdin) "
+            fi ;;
+        '$'*|'`'*) VARCMD=1 ;;
+    esac
+    # #29: a delete written as code - a python/R/node/.NET call. Judged on the
+    # quote-free copy with its parenthesis, so searching for the name (grep
+    # 'os.remove(') or quoting it in a message is not one.
+    echo "$VSEG" | grep -qE '(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|(^|[^[:alnum:]_.])unlink|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync)|::Delete)[[:space:]]*\(' \
         && HIT_CODE="${HIT_CODE}$(echo "$SEG" | sed -E 's/^[[:space:]]+//') "
-    # #29: `xargs rm` takes its targets from stdin, which this hook never sees.
-    if echo "$VSEG" | grep -qE '(^|[[:space:]])xargs([[:space:]]|$)' && [ "$DESTRUCTIVE" = 1 ]; then
-        UNRESOLVED="${UNRESOLVED}(targets read by xargs from stdin) "
-    fi
     # "2>/dev/null" appears in nearly every snippet this plugin's own commands
     # tell the assistant to run, and the old pattern ('>[[:space:]]*/') matched
     # it - so read-only `du`/`ls`/`jq` lines were classified destructive. A guard
@@ -279,20 +289,33 @@ while IFS= read -r SEG; do
     SEG_NR=$(echo "$SEG" | sed -E 's/[0-9]*>&?[[:space:]]*\/dev\/null//g')
     # A `>` inside quotes is text, not a redirect: judged on the quote-free copy.
     echo "$VSEG" | sed -E 's/[0-9]*>&?[[:space:]]*\/dev\/null//g' | grep -qE '>[[:space:]]*/' && TRUNCATE=1
-    if echo "$VSEG" | grep -qE '(^|[[:space:]])mv([[:space:]]|$)'; then MOVE_ONLY=1; fi
-    [ "$DESTRUCTIVE" = 1 ] || [ "$TRUNCATE" = 1 ] || [ "$MOVE_ONLY" = 1 ] || continue
+    [ "$CW" = mv ] && MOVE_ONLY=1
+    [ "$DESTRUCTIVE" = 1 ] || [ "$TRUNCATE" = 1 ] || [ "$MOVE_ONLY" = 1 ] || [ "$VARCMD" = 1 ] || continue
 
     # Arguments only: drop the leading command word and anything that looks like a flag.
     ARGS=$(echo "$SEG_NR" \
         | sed -E 's/^[[:space:]]*(sudo[[:space:]]+)?[A-Za-z0-9_\/.-]+[[:space:]]*//' \
         | tr ' \t' '\n\n' \
         | grep -v '^-' | grep -v '^$')
+    # #29: Remove-Item fed by a pipeline (`gci X | Remove-Item`) names no target.
+    if [ "$DESTRUCTIVE" = 1 ] && [ -z "$ARGS" ]; then
+        UNRESOLVED="${UNRESOLVED}(${CW}: no target on the command line - it comes from a pipe) "
+    fi
 
     while IFS= read -r A; do
         [ -n "$A" ] || continue
-        A=$(echo "$A" | sed -E 's/^["'"'"']//; s/["'"'"']$//')
-        # #29: a Windows path names the same directories with backslashes.
-        A=$(printf '%s' "$A" | tr '\\' '/')
+        # #29: every quote character goes, not just an outer pair -
+        # `'…/rawdata'/`, `'…/'results` and `res"ults"` all name the directory.
+        # A Windows path uses backslashes; a brace list names each member.
+        A=$(printf '%s' "$A" | tr -d "\"'" | tr '\\{},' '////')
+
+        # #29: an unknown command word (`$(which rm)`, `$R`) is judged only when
+        # its target is something this hook protects, and then it pauses.
+        if [ "$VARCMD" = 1 ]; then
+            echo "$A" | grep -qE '(^|/)(rawdata|results|analysis|_references|work)(/|$)|(^|/)\.nextflow/(plugins|cache)(/|$)' \
+                && UNRESOLVED="${UNRESOLVED}(unknown command '${CW}') ${A} "
+            continue
+        fi
 
         # Cannot resolve a target that still holds a variable or substitution.
         # Only worth saying for a delete: "$RUN_DIR/analysis/x.R" as the target
@@ -346,6 +369,14 @@ while IFS= read -r SEG; do
                     && HIT_SHARED="${HIT_SHARED}${A} -> ${RP} "
             fi
             echo "$A" | grep -qE '(^|/)(rawdata|results|analysis)(/|$)' && HIT_PROTECTED="${HIT_PROTECTED}${A} "
+            # #29: a glob whose last part could match a protected name
+            # (`…/res*`, `…/*`) may take it with it; the shell decides, not us.
+            case "$A" in *'*'*|*'?'*|*'['*)
+                GL=${A%/}; GL=${GL##*/}
+                for NM in rawdata results analysis _references; do
+                    case "$NM" in $GL) HIT_GLOB="${HIT_GLOB}${A} "; break ;; esac
+                done ;;
+            esac
             # "work" must be a component *inside* a path, not the leading one:
             # many clusters put the execution zone under /work/$USER (or /scratch,
             # /data...), so the old '(^|/)work(/|$)' matched every single path in
@@ -428,6 +459,14 @@ Code: ${HIT_CODE}
 Show the user exactly which paths this removes. It must not touch rawdata/,
 results/, analysis/, _references/, the image library or .nextflow/plugins/, and
 deleting work/ or the Nextflow cache still needs them to say \"確認刪除\"."
+
+[ -n "$HIT_GLOB" ] && ask "CANNOT VERIFY: this delete uses a wildcard that could also match rawdata/,
+results/, analysis/ or _references/.
+
+Pattern: ${HIT_GLOB}
+
+List what it matches first (ls with the same pattern), show the user, and name
+the paths literally if any protected directory is among them."
 
 [ -n "$UNRESOLVED" ] && ask "CANNOT VERIFY: this destructive command's target is a shell variable, so the
 guard cannot tell what it points at.

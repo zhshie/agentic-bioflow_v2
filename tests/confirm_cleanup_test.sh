@@ -11,6 +11,10 @@
 # Note the delete verb is assembled from hex below rather than written out, so
 # that running this file does not itself trip a cleanup hook watching the shell.
 H="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/hooks/confirm_cleanup.sh"
+# Git Bash rewrites /bin/... arguments into Windows paths when it starts a
+# native python; the hook never sees that rewrite (it reads JSON on stdin), so
+# the test must not either.
+export MSYS2_ARG_CONV_EXCL='*'
 fails=0
 t() { # t <command> <expect pass|warn|deny> <label>
   printf '%-58s ' "$3"
@@ -230,5 +234,45 @@ tps 'Remove-Item -Recurse C:\lab\proj\rawdata'    deny "#29 PowerShell, backslas
 tps 'rd /s /q C:\lab\proj\analysis'               deny "#29 cmd-style rd /s"
 tps "Remove-Item -Recurse $P/work"                ask  "#29 PowerShell on work/ asks"
 tps 'Get-ChildItem C:\lab\proj\results'           pass "#29 listing results/ is harmless"
+
+echo
+echo "== #29 acceptance round 2: bypasses and false alarms the reviewer found =="
+# All reproduced by the independent reviewer on the first fix (939576b):
+# the upper block passed silently, the lower block was a new false alarm.
+t "/bin/$D -rf $P/results"                        deny "#29b the verb with a path"
+t "\\$D -rf $P/results"                           deny "#29b the verb escaped to skip an alias"
+t "\"/bin/$D\" -rf $P/results"                    deny "#29b the verb itself in quotes"
+t "command $D -rf $P/results"                     deny "#29b command <verb>"
+t "sudo -u bob $D -rf $P/results"                 deny "#29b sudo with an option"
+t "$D -r -f '$P/rawdata'/"                        deny "#29b quote glued to a trailing slash"
+t "$D -rf '$P/'results"                           deny "#29b quote closed before the last component"
+t "$D -rf $P/res\"ults\""                         deny "#29b quotes inside the name"
+t "$D -rf $P/{results,work}"                      deny "#29b brace expansion naming results"
+t "env X=\"'\" $D -rf $P/results Y\"'\""           deny "#29b stray quotes around the verb"
+t "find $P/results -exec $D -rf {} +"             deny "#29b find -exec <verb>"
+t "unlink $P/results/multiqc.html"                deny "#29b unlink"
+t "truncate -s 0 $P/results/counts.tsv"           deny "#29b truncate"
+t "echo \$($D -rf $P/results)"                    deny "#29b the verb inside \$(...)"
+t "perl -e 'system(\"$D -rf $P/results\")'"       deny "#29b perl -e system(...)"
+t "python3 -c \"import os; os.system('$D -rf $P/results')\"" deny "#29b python -c os.system(...)"
+t "$(printf 'timeout 60 bash <<%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")"  deny "#29b here-doc into timeout bash"
+t "$(printf 'sudo -u bob bash <<%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")" deny "#29b here-doc into sudo -u bash"
+t "\$(which $D) -rf $P/results"                   ask  "#29b command word is a substitution"
+t "R=$D; \$R -rf $P/results"                      ask  "#29b command word is a variable"
+t "$D -rf $P/res*"                                ask  "#29b a glob that can match results/"
+t "$D -f /tmp/foo*"                               pass "#29b a glob that cannot"
+tps "ri -r C:\\lab\\proj\\results"                deny "#29b PowerShell alias ri"
+tps "powershell -Command \"Remove-Item -Recurse $P/results\"" deny "#29b powershell -Command payload"
+tps "gci C:\\lab\\proj\\results | Remove-Item -Recurse -Force" ask "#29b Remove-Item fed by the pipeline"
+tps "[System.IO.Directory]::Delete('C:\\lab\\proj\\results', \$true)" ask "#29b .NET Delete call"
+t "grep -rn del $P/results/"                      pass "#29b grep for 'del' is not a delete"
+t "grep -i RD $P/analysis/de.tsv"                 pass "#29b grep for 'RD' is not a delete"
+t "grep -n 'os.remove(' scripts/x.py"             pass "#29b searching for a delete call"
+t "grep -rn \"unlink(\" scripts/"                 pass "#29b searching for unlink("
+t "git commit -m \"use shutil.rmtree( on work\""  pass "#29b a commit message naming a call"
+t "$(printf 'python3 - <<%s\n# %s the old results/ by hand\nprint(1)\nEOF\n' "'EOF'" "$D")" pass "#29b a comment in a python here-doc"
+t "ls -la $P/results && cat $P/results/x.html"    pass "#29b reading results/"
+t "jq '.a | .b' $P/results/x.json"                pass "#29b jq filter with a pipe"
+t "awk '{a=1; b=2}' $P/results/x.tsv"             pass "#29b awk program with a semicolon"
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

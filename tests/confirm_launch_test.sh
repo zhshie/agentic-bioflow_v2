@@ -84,6 +84,23 @@ t "tw pipelines list"                                pass "#29 other tw verbs st
 t "tw -o json runs list"                             pass "#29 listing runs with a global option"
 t "nextflow log"                                     pass "#29 nextflow log is not a run"
 
+# #29 acceptance round 2 (reviewer's findings on 939576b).
+t "echo \$($LAUNCH x)"                                gate "#29b launch inside \$(...)"
+t "ls \`$LAUNCH x\`"                                  gate "#29b launch inside backticks"
+t "cat <($LAUNCH x)"                                  gate "#29b launch inside <(...)"
+t "python3 -c 'import os; os.system(\"$LAUNCH y\")'"  gate "#29b python -c os.system(...)"
+t "perl -e 'system(\"$LAUNCH y\")'"                   gate "#29b perl -e system(...)"
+t "$(printf 'sudo -u u bash <<%s\n%s x\nEOF\n' "'EOF'" "$LAUNCH")"  gate "#29b here-doc into sudo -u bash"
+t "$(printf 'srun bash <<%s\n%s x\nEOF\n' "'EOF'" "$LAUNCH")"       gate "#29b here-doc into srun bash"
+t "$(printf 'python3 - <<%s\nimport subprocess\nsubprocess.run([\"tw\", \"%s\", \"x\"])\nEOF\n' "'EOF'" "$LVERB")" gate "#29b python here-doc, argv list"
+t "env A=1 nextflow $(printf '\x72\x75\x6e') main.nf" gate "#29b env prefix before nextflow run"
+t "sudo -u x $LAUNCH y"                               gate "#29b sudo -u before tw"
+t "echo \"\$(tw runs list)\""                        pass "#29b a read-only substitution"
+t "\"tw\" $LVERB x"                                   gate "#29b the program itself in quotes"
+t "'/usr/local/bin/nextflow' $(printf '\x72\x75\x6e') main.nf" gate "#29b quoted path to nextflow"
+t "git commit -m \"docs: how $LAUNCH works\""         pass "#29b a commit message quoting a launch"
+t "grep -rn 'os.system(' scripts/"                    pass "#29b searching for os.system("
+
 tmcp() { # tmcp <tool_name> <expect gate|pass> <label> - an MCP tool, no command field
   printf '%-56s ' "$3"
   out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':sys.argv[1],'tool_input':{'pipeline':'nf-core/rnaseq','revision':'3.14.0'}}))" "$1" | bash "$H")
@@ -467,7 +484,7 @@ CL_MATCHER=$(jq -r '
   .hooks.PreToolUse[]
   | select(.hooks[].command | test("confirm_launch\\.sh"))
   | .matcher
-' "$HJ" 2>/dev/null | paste -s -d '|' -)
+' "$HJ" 2>/dev/null | tr -d '\r' | paste -s -d '|' -)
 for name in Bash PowerShell pwsh Terminal Exec "mcp__seqera__$(printf '\x6c\x61\x75\x6e\x63\x68')_pipeline" mcp__claude_ai_Seqera__run_workflow; do
   printf '%-58s ' "confirm_launch.sh's matcher covers tool_name '$name'"
   jq -en --arg m "$CL_MATCHER" --arg n "$name" '$n | test($m)' 2>/dev/null | grep -qx true \
@@ -483,7 +500,16 @@ jq -en --arg m "$CL_MATCHER" '"Read" | test($m)' 2>/dev/null | grep -qx true \
 printf '%-58s ' "#29 ...nor an unrelated MCP tool (mcp__github__search_code)"
 jq -en --arg m "$CL_MATCHER" '"mcp__github__search_code" | test($m)' 2>/dev/null | grep -qx true \
   && { echo "FAIL: matched"; fails=$((fails+1)); } || echo ok
-CC_MATCHER=$(jq -r '.hooks.PreToolUse[] | select(.hooks[].command | test("confirm_cleanup\\.sh")) | .matcher' "$HJ" 2>/dev/null | paste -s -d '|' -)
+# #29: a PreToolUse hook that runs past its timeout is cancelled and the tool
+# call PROCEEDS (code.claude.com/docs/en/hooks-guide, "timeout"). The deletion
+# guard measured 4.4-4.8 s on a Windows laptop against a 5 s limit, so under
+# load the gate vanished with nothing printed. Every safety gate gets >= 30 s.
+for g in confirm_launch.sh confirm_cleanup.sh confirm_walkthrough.sh guard_plugin_files.sh; do
+  printf '%-58s ' "#29 every $g entry has timeout >= 30s"
+  low=$(jq -r --arg g "$g" '[.hooks.PreToolUse[].hooks[] | select(.command | endswith($g)) | .timeout // 600] | map(select(. < 30)) | length' "$HJ" 2>/dev/null | tr -d '\r')
+  [ "$low" = 0 ] && echo ok || { echo "FAIL: $low entries under 30s"; fails=$((fails+1)); }
+done
+CC_MATCHER=$(jq -r '.hooks.PreToolUse[] | select(.hooks[].command | test("confirm_cleanup\\.sh")) | .matcher' "$HJ" 2>/dev/null | tr -d '\r' | paste -s -d '|' -)
 printf '%-58s ' "#29 confirm_cleanup.sh does not see Seqera MCP calls"
 jq -en --arg m "$CC_MATCHER" '"mcp__seqera__list_runs" | test($m)' 2>/dev/null | grep -qx true \
   && { echo "FAIL: matched"; fails=$((fails+1)); } || echo ok
