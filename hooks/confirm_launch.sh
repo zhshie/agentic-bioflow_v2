@@ -169,6 +169,23 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
 # jq DOES work in this branch, so this gets the real `ask()` (a structural
 # pause), not the bare exit-2 the no-jq path above is limited to.
 if [ "$TOOL" != "Bash" ] && [ -z "$CMD" ]; then
+    # #29: an MCP server's tool starts a run through its own API, with no
+    # command line to read - Seqera's MCP can launch (docs/LAB_AGENTS.md).
+    # hooks.json routes only Seqera/Tower MCP tools here, and they are judged
+    # by NAME: their payloads are JSON parameters, and scanning those for the
+    # word "ssh" would pause every harmless query.
+    case "$TOOL" in
+        mcp__*)
+            if grep -qiE '(^|_)(re)?launch|submit|run_(workflow|pipeline)|start_run' <<<"${TOOL#mcp__}"; then
+                ask "GATE: '$TOOL' is an MCP tool that starts a pipeline run. Show the user the full call - pipeline, revision, parameters, compute environment - and wait for their explicit confirmation before it runs, exactly as for a tw launch." \
+                    "MCP launch-type tool '$TOOL':
+
+$INPUT"
+            fi ;;
+    esac
+    # A Seqera/Tower tool that is not launch-named is a query. Any other MCP
+    # tool reaching here is a shell-like one (hooks.json), judged below.
+    case "$TOOL" in mcp__*[Ss]eqera*|mcp__*[Tt]ower*) exit 0 ;; esac
     if looks_launch_shaped "$INPUT"; then
         ask "GATE: this call came from a tool ('${TOOL:-<unnamed>}') whose input this hook does not parse - checked tool_input.command/script/cmd/commandLine/powershell/input, all empty - and the raw payload matches a launch- or site-transport-shaped pattern. Show the user the full call and wait for explicit confirmation before it runs; this hook cannot verify it the way it verifies a Bash launch." \
             "Unreadable tool input from '${TOOL:-<unnamed>}' that looks launch-shaped:

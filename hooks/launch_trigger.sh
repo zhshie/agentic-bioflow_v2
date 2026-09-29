@@ -30,7 +30,15 @@ LAUNCH_TRIGGER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # leading space in place, so `cat notes.txt && tw launch ...` - the exact case
 # this gate was written for - sailed through. A quoted `bash -c "tw launch ..."`
 # missed for the same reason.
-LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw[[:space:]]+launch|tw[[:space:]]+runs[[:space:]]+relaunch|sbatch)([[:space:]]|$)|nextflow[[:space:]]+run'
+#
+# #29: options may sit between the program and its verb - `tw -o json launch`,
+# `tw --url=... runs relaunch`, `nextflow -bg run`, `nextflow -c x run` - and
+# the first version required the verb to follow immediately, so each of those
+# passed silently. Any tokens may now come between. And
+# scripts/relaunch_with_override.sh --confirm runs `tw runs cancel` + `tw runs
+# relaunch` itself, where this gate cannot see them, so the wrapper's own
+# --confirm is the launch; without --confirm it only prints its plan.
+LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw([[:space:]]+[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch)|sbatch|nextflow([[:space:]]+[^[:space:]]+)*[[:space:]]+run|relaunch_with_override\.sh([[:space:]]+[^[:space:]]+)*[[:space:]]+--confirm)([[:space:]]|$)'
 
 # Commands that can only read. A segment naming a launch verb under one of
 # these is a search or a page of documentation, not a submission.
@@ -38,7 +46,7 @@ LAUNCH_READONLY_RE='^[[:space:]]*(cat|less|more|head|tail|grep|rg|wc|chmod|shell
 
 # A nested shell re-interprets what it was handed, so quotes there are not a
 # wrapper around data - they are a wrapper around a command line.
-LAUNCH_NESTED_SHELL_RE='(^|[[:space:]])(bash|sh|zsh|ksh)[[:space:]]+-c([[:space:]]|$)|(^|[[:space:]])eval([[:space:]]|$)|(^|[[:space:]])([^[:space:]]*/)?(ssh|on_site\.sh)[[:space:]]'
+LAUNCH_NESTED_SHELL_RE='(^|[[:space:]])(bash|sh|zsh|ksh)[[:space:]]+-c([[:space:]]|$)|(^|[[:space:]])eval([[:space:]]|$)|(^|[[:space:]])([^[:space:]]*/)?(ssh|on_site\.sh)[[:space:]]|\|[[:space:]]*(sudo[[:space:]]+)?([^[:space:]|]*/)?(bash|sh|zsh|dash|ksh)([[:space:]]|$)'
 
 is_launch_command() {
     local CMD="$1" STRIPPED SEGSRC S
@@ -67,6 +75,12 @@ is_launch_command() {
     SEGSRC="$CMD"
     if ! grep -qE "$LAUNCH_NESTED_SHELL_RE" <<<"$CMD"; then
         SEGSRC=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$CMD")
+    else
+        # #29: the quoted text a shell will re-read is judged as a command of
+        # its own too. `echo 'tw launch x' | bash` otherwise left one segment,
+        # `echo '...'`, which the read-only list exempts because it starts
+        # with echo.
+        SEGSRC=$(printf '%s\n%s' "$CMD" "$(grep -oE "'[^']*'|\"[^\"]*\"" <<<"$CMD" | sed -E "s/^['\"]//; s/['\"]$//")")
     fi
 
     # Decided per segment, never for the whole line: `cat notes.txt && tw launch ...`

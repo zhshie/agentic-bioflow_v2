@@ -191,4 +191,44 @@ else
   echo ok
 fi
 
+echo
+echo "== #29: shapes that used to pass with no output at all =="
+# Every case below printed nothing and exited 0 on main 12dda0c: the gate
+# threw away quoted text and here-doc bodies to avoid false alarms, and a
+# real delete can sit in either. Written before the fix, red on main.
+t "$D -rf \"$P/results\""                         deny "#29 double-quoted protected target"
+t "$D -rf '$P/results'"                           deny "#29 single-quoted protected target"
+t "$D -rf \"$P/my dir/analysis\""                 deny "#29 quoted target containing a space"
+t "$D -rf \"$P/work\""                            ask  "#29 quoted work/ still asks"
+t "$D -rf \"\$RUN_DIR/results\""                  deny "#29 variable target still judged by its literal part"
+t "$D -rf \"\$RUN_DIR/tmp_x\""                    ask  "#29 variable target pauses (ask), not a warning"
+t "$(printf 'cat <<%s | bash
+%s -rf %s/results
+EOF
+' "'EOF'" "$D" "$P")" deny "#29 here-doc piped into bash"
+t "bash -c \"$D -rf $P/results\""                  deny "#29 delete inside a quoted bash -c"
+t "echo '$D -rf $P/results' | sh"                   deny "#29 delete piped into sh"
+t "echo \"to clean up, $D -rf the work dir\""      pass "#29 quoted prose mentioning the verb"
+t "$D -rf \$RESULTS"                              ask  "#29 bare variable target pauses too"
+t "echo $P/results | xargs $D -rf"                ask  "#29 xargs delete: target unknown here, pause"
+t "$(printf 'ssh h bash -s <<%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")" deny "#29 here-doc fed to ssh bash"
+t "$(printf 'bash <<%s\n%s -rf %s/rawdata\nEOF\n' "'EOF'" "$D" "$P")"          deny "#29 here-doc fed to bash"
+t "$(printf 'cat > notes.md <<%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")" pass "#29 here-doc written to a file is prose"
+t "$(printf 'python3 - <<%s\nimport shutil\nshutil.rmtree(\"%s/results\")\nEOF\n' "'EOF'" "$P")" ask "#29 python here-doc that deletes a tree"
+t "grep -rn 'shutil.rmtree' scripts/"             pass "#29 searching for rmtree is not deleting"
+
+tps() { # tps <powershell command> <expect> <label> - through the PowerShell tool
+  printf '%-58s ' "$3"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  if [ -z "$out" ]; then got=pass; else
+    got=$(python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out" 2>/dev/null)
+  fi
+  [ "$got" = "$2" ] && echo "ok ($got)" || { echo "FAIL: expected $2, got $got"; fails=$((fails+1)); }
+}
+tps "Remove-Item -Recurse -Force $P/results"      deny "#29 PowerShell Remove-Item on results/"
+tps 'Remove-Item -Recurse C:\lab\proj\rawdata'    deny "#29 PowerShell, backslash path"
+tps 'rd /s /q C:\lab\proj\analysis'               deny "#29 cmd-style rd /s"
+tps "Remove-Item -Recurse $P/work"                ask  "#29 PowerShell on work/ asks"
+tps 'Get-ChildItem C:\lab\proj\results'           pass "#29 listing results/ is harmless"
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

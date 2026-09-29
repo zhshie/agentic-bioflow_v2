@@ -63,6 +63,37 @@ t "grep -n '$RELAUNCH' notes.md"                      pass "read-only mention of
 t "grep -rn \"ssh\" docs/"                              pass "read-only search for the word ssh"
 t "grep -E 'a|$SB|b' ssh_config.md"                   pass "regex with the verb, filename contains ssh"
 
+# #29: launch shapes that used to pass with no output (red on main 12dda0c).
+LW="w$(printf '\x69\x74\x68')_override.sh"            # relaunch_with_override.sh, assembled
+RLW="scripts/$(printf '\x72\x65\x6c\x61\x75\x6e\x63\x68')_$LW"
+LVERB=$(printf '\x6c\x61\x75\x6e\x63\x68')
+t "tw -o json $LVERB x --disable-optimization"       gate "#29 tw global option before the verb"
+t "tw --url=https://x.example $LVERB x"              gate "#29 tw --url= before the verb"
+t "tw -o json runs $(printf '\x72\x65\x6c\x61\x75\x6e\x63\x68') -i abc" gate "#29 relaunch with a global option"
+t "nextflow -bg $(printf '\x72\x75\x6e') main.nf"    gate "#29 nextflow -bg before run"
+t "nextflow -c site.config $(printf '\x72\x75\x6e') main.nf" gate "#29 nextflow -c before run"
+t "echo '$LAUNCH x' | bash"                          gate "#29 launch piped into a shell"
+t "$(printf 'bash -s <<%s\n%s x\nEOF\n' "'EOF'" "$LAUNCH")"            gate "#29 here-doc fed to bash"
+t "$(printf 'ssh h bash -s <<%s\n%s x\nEOF\n' "'EOF'" "$LAUNCH")"      gate "#29 here-doc fed to ssh bash"
+t "$(printf 'cat <<%s | bash\n%s x\nEOF\n' "'EOF'" "$LAUNCH")"       gate "#29 here-doc piped into bash"
+t "bash $RLW --confirm 3xY proc 4 16"                gate "#29 relaunch_with_override --confirm starts a run"
+t "bash $RLW --dry-run 3xY proc 4 16"                pass "#29 its --dry-run starts nothing"
+t "bash $RLW 3xY proc 4 16"                          pass "#29 without --confirm it only prints the plan"
+t "grep -n '$RLW --confirm' docs/x.md"               pass "#29 reading about it is not running it"
+t "tw pipelines list"                                pass "#29 other tw verbs stay quiet"
+t "tw -o json runs list"                             pass "#29 listing runs with a global option"
+t "nextflow log"                                     pass "#29 nextflow log is not a run"
+
+tmcp() { # tmcp <tool_name> <expect gate|pass> <label> - an MCP tool, no command field
+  printf '%-56s ' "$3"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':sys.argv[1],'tool_input':{'pipeline':'nf-core/rnaseq','revision':'3.14.0'}}))" "$1" | bash "$H")
+  got=pass; [ -n "$out" ] && got=gate
+  [ "$got" = "$2" ] && echo "ok ($got)" || { echo "FAIL: expected $2, got $got"; fails=$((fails+1)); }
+}
+tmcp "mcp__seqera__$(printf '\x6c\x61\x75\x6e\x63\x68')_pipeline" gate "#29 an MCP tool named for launching"
+tmcp "mcp__seqera__$(printf '\x72\x65\x6c\x61\x75\x6e\x63\x68')_run" gate "#29 an MCP tool named for relaunching"
+tmcp "mcp__seqera__list_runs"                          pass "#29 an MCP tool that only lists"
+
 # A third failure, found by trying it rather than by it happening: the trigger
 # logic now lives in a sourced file, and a sourced file can go missing. When it
 # did, `is_launch_command` was command-not-found, 127 satisfied the `|| exit 0`,
@@ -436,8 +467,8 @@ CL_MATCHER=$(jq -r '
   .hooks.PreToolUse[]
   | select(.hooks[].command | test("confirm_launch\\.sh"))
   | .matcher
-' "$HJ" 2>/dev/null)
-for name in Bash PowerShell pwsh Terminal Exec; do
+' "$HJ" 2>/dev/null | paste -s -d '|' -)
+for name in Bash PowerShell pwsh Terminal Exec "mcp__seqera__$(printf '\x6c\x61\x75\x6e\x63\x68')_pipeline" mcp__claude_ai_Seqera__run_workflow; do
   printf '%-58s ' "confirm_launch.sh's matcher covers tool_name '$name'"
   jq -en --arg m "$CL_MATCHER" --arg n "$name" '$n | test($m)' 2>/dev/null | grep -qx true \
     && echo ok || { echo FAIL; fails=$((fails+1)); }
@@ -445,6 +476,17 @@ done
 printf '%-58s ' "...but not an unrelated read-only tool name like 'Read'"
 jq -en --arg m "$CL_MATCHER" '"Read" | test($m)' 2>/dev/null | grep -qx true \
   && { echo "FAIL: matched Read"; fails=$((fails+1)); } || echo ok
+# #29: MCP tools reach the launch gate only when they are Seqera's/Tower's;
+# every other MCP call (search, GitHub, Gmail) must not pay for it, and the
+# deletion guard - which scans raw payloads for words like "find" - must not
+# see MCP calls at all, or it would pause ordinary searches.
+printf '%-58s ' "#29 ...nor an unrelated MCP tool (mcp__github__search_code)"
+jq -en --arg m "$CL_MATCHER" '"mcp__github__search_code" | test($m)' 2>/dev/null | grep -qx true \
+  && { echo "FAIL: matched"; fails=$((fails+1)); } || echo ok
+CC_MATCHER=$(jq -r '.hooks.PreToolUse[] | select(.hooks[].command | test("confirm_cleanup\\.sh")) | .matcher' "$HJ" 2>/dev/null | paste -s -d '|' -)
+printf '%-58s ' "#29 confirm_cleanup.sh does not see Seqera MCP calls"
+jq -en --arg m "$CC_MATCHER" '"mcp__seqera__list_runs" | test($m)' 2>/dev/null | grep -qx true \
+  && { echo "FAIL: matched"; fails=$((fails+1)); } || echo ok
 
 
 # Identity and shared-process gate (2.15.0 Windows verification: the model

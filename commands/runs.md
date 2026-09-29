@@ -189,7 +189,9 @@ of progress.
   below, says where that comes from.)
     - **Yes.** Does peak memory × 1.5 still fit inside a smaller box?
         - **Yes.** 🤖 `scripts/relaunch_with_override.sh` — the number came from
-          a measurement, not a guess, so this proceeds without asking first.
+          a measurement, not a guess, so there is no question to ask about the
+          size. The relaunch itself is still a launch: show the command and
+          wait for the user's confirmation (the launch gate asks for it).
         - **No.** 🤖 Say plainly that it is already as small as it can go —
           there is no smaller box to relaunch into.
     - **No.** ⏸ Propose a number with the evidence behind it, and wait for a

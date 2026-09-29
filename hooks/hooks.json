@@ -17,6 +17,16 @@
         ]
       },
       {
+        "matcher": "mcp__.*([Ss]eqera|[Tt]ower).*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_launch.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "Bash|.*[Ss]hell.*|.*[Pp]ower[Ss]hell.*|.*[Pp]wsh.*|.*[Tt]erminal.*|.*[Cc]md.*|.*[Ee]xec.*",
         "hooks": [
           {

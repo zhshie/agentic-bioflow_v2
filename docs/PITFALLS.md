@@ -1879,3 +1879,32 @@ it was found, and both would have turned a restart into a worse outage:
   Platform credential built against the old one - exactly what
   `commands/setup.md` step 6 warns about. Check both before restarting an
   agent that is already registered.
+
+**37. The two gates threw text away to stop false alarms, and a real command
+could sit in what was thrown away.** (#29, found by the 2026-09-29 constitution
+audit, every shape reproduced before the fix.)
+
+To stop `grep 'A\|rm ' f` and a here-doc that merely *mentions* `tw launch`
+from tripping them, `hooks/confirm_cleanup.sh` deleted every quoted string
+before reading a command's targets, and `hooks/strip_heredocs.awk` dropped
+every here-doc body. Both removed exactly the places a command can live:
+`rm -rf "…/results"` lost its only argument; `ssh host bash -s <<EOF` hid
+both a delete and a launch; `echo '…' | bash` left only an `echo` segment,
+which the read-only list waves through. Each passed with **no output at all**
+- nothing denied, nothing asked, nothing warned, which from the inside looks
+identical to a command correctly judged harmless (invariant 13).
+
+Also silent: options between a program and its verb (`tw -o json launch`,
+`nextflow -bg run`); `relaunch_with_override.sh --confirm`, which runs `tw
+runs relaunch` where no gate sees it; PowerShell's `Remove-Item` and cmd's
+`rd /s`, sent to this hook by `hooks.json` but never recognised; a Seqera MCP
+tool that launches with no command line at all.
+
+The fix keeps the text and knows where it sits: separators inside quotes are
+masked rather than the quoted text deleted, the delete verb is looked for with
+quotes removed but targets are read with them kept, and a here-doc body is kept
+when an executor (a shell, ssh, `on_site.sh`, python/R/…) reads it. A delete
+whose target is a variable, comes through `xargs`, or is written as code now
+pauses for the user (`ask`) instead of warning the model - the maintainer's
+decision. This is still a heuristic, not a sandbox: it closes the shapes found,
+and makes no claim to have found them all.

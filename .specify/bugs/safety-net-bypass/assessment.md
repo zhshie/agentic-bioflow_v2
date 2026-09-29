@@ -71,7 +71,12 @@ Both gates solved false positives ("a quoted regex or a document that mentions r
 - A heuristic gate is still not a sandbox (`confirm_cleanup.sh:49-50`). The fix closes the known shapes; it does not claim completeness, and PITFALLS says so.
 - No behaviour of the plugin's normal flow should change, so no version bump beyond a PATCH.
 
-## Open Questions（待你決定）
+## Decisions (maintainer, 2026-09-29: 「照建議」)
+
+- Q1 → yes: a delete whose target is a variable becomes `ask`.
+- Q2 → not in this fix; moving protected directories goes to batch E (#33).
+
+## Open Questions（已決定，見上）
 
 - **Q1 用變數當刪除路徑時（例如 `rm -rf "$RUN_DIR/work"`），要從「提醒」升級成「停下來問你」嗎？** 建議：要。只提醒的話，模型可以讀完提醒後照樣刪；停下來問，最後是你按確認。代價是清理 work/ 時會多問一次，但那本來就要你說「確認刪除」。
 - **Q2 搬走 `results/`、`rawdata/`、`analysis/`（mv）要不要也停下來問？** 建議：這次不做。搬移不是刪除，憲法也沒規定；它排進 E 批，跟其他小修一起處理。
