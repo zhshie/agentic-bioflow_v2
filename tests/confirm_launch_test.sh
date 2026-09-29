@@ -98,6 +98,14 @@ t "sudo -u x $LAUNCH y"                               gate "#29b sudo -u before 
 t "echo \"\$(tw runs list)\""                        pass "#29b a read-only substitution"
 t "\"tw\" $LVERB x"                                   gate "#29b the program itself in quotes"
 t "bash -e -c '$LAUNCH x'"                            gate "#29c bash with options before -c"
+# #29 round 4: main kept every quoted string when a nested shell was on the
+# line; the splitter only re-reads strings given to a known executor, so a
+# launch handed on to tmux/su/flock inside ssh stopped gating.
+t "ssh h \"cd /work/run && tmux new -d -s nf 'nextflow $(printf '\x72\x75\x6e') nf-core/ampliseq -resume'\"" gate "#29d ssh -> tmux -> nextflow run (main: ask)"
+t "ssh h \"su - lab -c '$SB job.sh'\""                gate "#29d ssh -> su -c -> sbatch"
+t "ssh h \"flock /tmp/l -c '$SB job.sh'\""            gate "#29d ssh -> flock -c -> sbatch"
+t "eval \"tmux new -d '$LAUNCH x'\""                  gate "#29d eval -> tmux -> launch"
+t "ssh h 'grep \"$LAUNCH\" notes.md'"                 pass "#29d ssh running a read-only grep of the words"
 t "bash <<< '$LAUNCH x'"                              gate "#29c here-string into bash"
 t "echo '$LAUNCH x' |& bash"                          gate "#29c |& into bash"
 t "echo '$LAUNCH x' | env bash"                       gate "#29c | env bash"

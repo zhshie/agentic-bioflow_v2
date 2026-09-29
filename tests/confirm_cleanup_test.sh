@@ -286,6 +286,15 @@ t "echo \$(echo \$(echo \$(echo \$(echo \$(echo \$($D -rf $P/results))))))" deny
 t "$(printf "grep -c '<<EOF' notes.sh\n%s -rf %s/results" "$D" "$P")" deny "#29c a quoted <<EOF is not a here-doc"
 t "$(printf 'python3 - <<%s\nresults = 1\ndel results\nEOF\n' "'EOF'")" pass "#29c python 'del results' under Bash"
 
+# #29 round 4: regressions against main found by the third review.
+t "srun find $P/results -mindepth 1 -delete"       deny "#29d find -delete behind srun (main: deny)"
+t "ionice -c3 find $P/results -delete"             deny "#29d find -delete behind ionice"
+t "singularity exec x.sif find $P/analysis -type f -delete" deny "#29d find -delete behind singularity exec"
+t "srun rsync -a --delete /tmp/empty/ $P/results/" deny "#29d rsync --delete behind srun (main: deny)"
+t "ionice -c3 rsync -a --delete /tmp/empty/ $P/rawdata/" deny "#29d rsync --delete behind ionice"
+t "srun mv $P/rawdata/a.fastq.gz /tmp/"            warn "#29d mv behind srun still warns (main: warn)"
+t "$(printf 'srun %s -rf %s/results "x\ny"' "$D" "$P")" deny "#29d a multi-line quoted argument after the target"
+
 # #29 round 3: a gate past its timeout (30 s) is cancelled and the command
 # runs. Round 2 took ~50 s on a 120-line script under Git Bash. A 200-line
 # script must be judged well inside the limit, on every platform we test.

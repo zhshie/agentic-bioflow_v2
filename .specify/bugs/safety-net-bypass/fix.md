@@ -61,3 +61,17 @@ Findings reproduced, 26 new cases written first (all red), then fixed:
 WSL `tests/run_all.sh` 73/73.
 
 Proposed stopping rule, put to the maintainer: merge when an independent round finds no regression against main and no remaining high-severity bypass; medium/low findings go to a follow-up issue. The gate is a heuristic (constitution: defence in depth, not a sandbox) and cannot be proven complete.
+
+## Round 4 (third independent review said FAIL on regressions, 2026-09-29)
+
+Regressions against main, each written as a test first (11 cases, red on ee7e247, green now):
+
+- `find … -delete` / `find … -exec rm` and `rsync … --delete` behind a wrapper (`srun`, `ionice`, `singularity exec`) — round 3 matched them only as the command word; now anywhere in the segment, as main did. `mv` likewise (main: warn).
+- A launch handed on inside a nested shell to something the splitter does not treat as an executor (`ssh h "… tmux new -d 'nextflow run …'"`, `su -c`, `flock -c`, `eval "tmux …"`) — main's floor restored: when the line has a nested shell, a payload segment is also matched with quote characters dropped (the wrapper segment itself is judged through its payload segments, so `ssh h 'grep "tw launch" f'` stays read-only).
+- A newline inside a quoted argument split one segment into two lines; the splitter now emits each segment on one line.
+
+Regression sweep (the reviewer's ~70 cases through main's and this branch's hooks): the branch is weaker than main in exactly one case, `echo done # rm -rf results` (a comment; main's deny was a false alarm, as the reviewer noted); stricter only on real deletes/launches; never stricter on a read-only command.
+
+Medium/low findings where main and the branch behave the same go to a follow-up issue: tmux/screen/su -c/flock -c as executors outside a nested shell; `cat <<EOF | sudo -u x bash` / `| srun bash` / `| python3`; `R -e`; relative targets after `cd …/results`; arrays as the command; `re\sults`.
+
+WSL `tests/run_all.sh` 73/73.

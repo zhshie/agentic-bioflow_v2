@@ -43,6 +43,13 @@ LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw(\.exe)?([[:space:]]+[^[:space:]]+)*[[:
 # when the command word itself is a variable.
 LAUNCH_VARPROG_RE='^[^[:space:]]+([[:space:]]+-[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch|run)([[:space:]]|$)'
 
+# A nested shell anywhere on the line. main's rule, kept as a floor (#29,
+# round 4): when a shell re-reads part of this line, quoted text inside it is
+# a command, even when it is handed on again to something the splitter does
+# not know runs commands - `ssh h "tmux new -d 'nextflow run …'"`,
+# `su -c '…'`, `flock l -c '…'`.
+LAUNCH_NESTED_SHELL_RE='(^|[[:space:]])(bash|sh|zsh|ksh|dash)([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[[:alpha:]]*c([[:space:]]|$)|(^|[[:space:]])eval([[:space:]]|$)|(^|[[:space:]])([^[:space:]]*/)?(ssh|on_site\.sh)[[:space:]]|\|&?[[:space:]]*([^[:space:]|]*/)?(bash|sh|zsh|dash|ksh)([[:space:]]|$)'
+
 # Commands that can only read. A segment naming a launch verb under one of
 # these is a search or a page of documentation, not a submission.
 LAUNCH_READONLY_RE='^[[:space:]]*(cat|less|more|head|tail|grep|rg|wc|chmod|shellcheck|ls|stat|file|diff|cp|vim|nano|echo)([[:space:]]|$)|^[[:space:]]*(bash|sh)[[:space:]]+-n([[:space:]]|$)'
@@ -84,7 +91,8 @@ is_launch_command() {
     # In-shell matching only ([[ =~ ]]): a process per segment made this gate
     # take a minute on a long script under Git Bash, past its timeout, and a
     # timed-out hook lets the command run (#29, round 3).
-    local SQ
+    local SQ HIT NESTED=0
+    [[ $CMD =~ $LAUNCH_NESTED_SHELL_RE ]] && NESTED=1
     while IFS="$US" read -r S V W; do
         # A command nested too deeply to read is treated as one that might
         # launch - noisy, and correct for a gate that could not judge.
@@ -95,15 +103,21 @@ is_launch_command() {
             # segment with only the quote characters dropped. Only then: a
             # commit message quoting "tw launch" is still not a launch.
             SQ=${S//\"/}; SQ=${SQ//\'/}
+            HIT=0
             case "$W" in
                 tw|nextflow|sbatch|relaunch_with_override.sh)
-                    [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] || continue ;;
+                    [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] && HIT=1 ;;
                 # `T=tw; $T launch x`: the program is a variable, and its first
                 # argument is a launch verb.
                 '$'*)
-                    [[ $SQ =~ $LAUNCH_VARPROG_RE ]] || continue ;;
-                *) continue ;;
+                    [[ $SQ =~ $LAUNCH_VARPROG_RE ]] && HIT=1 ;;
+                # The wrapper itself (`ssh h '…'`) is judged through its
+                # payload segments, which the splitter emits separately.
+                ssh|eval|bash|sh|zsh|ksh|dash|on_site.sh) ;;
+                *)
+                    [ "$NESTED" = 1 ] && [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] && HIT=1 ;;
             esac
+            [ "$HIT" = 1 ] || continue
         fi
         [[ $V =~ $LAUNCH_READONLY_RE ]] && continue
         return 0

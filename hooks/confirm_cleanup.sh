@@ -240,7 +240,13 @@ HIT_GLOB=""
 # only process left per target is resolve_link, and only for a path that
 # exists on this machine.
 RE_DELVERB='(^|[[:space:]])([^[:space:]]*/)?\\?(rm|rmdir|unlink|shred)([[:space:]]|$)'
-RE_FIND_DEL='(^|[[:space:]])-delete([[:space:]]|$)|-exec(dir)?[[:space:]]+([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$)'
+# find/rsync/mv are recognised anywhere in the segment, like rm, because a
+# wrapper can come first (`srun find … -delete`, `ionice rsync --delete`).
+# Round 3 matched them only as the command word and let those through,
+# which main had denied (#29, round 4).
+RE_FIND_DEL='(^|[[:space:]])([^[:space:]]*/)?find[[:space:]](.*[[:space:]])?(-delete([[:space:]]|$)|-exec(dir)?[[:space:]]+([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$))'
+RE_RSYNC_DEL='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--delete'
+RE_MV='(^|[[:space:]])([^[:space:]]*/)?\\?mv([[:space:]]|$)'
 RE_CODE_DEL='(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|(^|[^[:alnum:]_.])(unlink|rmtree)|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync)|::Delete)[[:space:]]*\('
 RE_DEVNULL='[0-9]*>&?[[:space:]]*/dev/null'
 RE_TRUNC='>[[:space:]]*/'
@@ -292,8 +298,6 @@ while IFS="$US" read -r SEG VSEG CW; do
     case "$CW" in
         rm|rmdir|unlink|shred|truncate|remove-item) DESTRUCTIVE=1 ;;
         ri|del|erase|rd) case "$TOOL" in ""|Bash) ;; *) DESTRUCTIVE=1 ;; esac ;;
-        find) [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1 ;;
-        rsync) [[ $VSEG == *--delete* ]] && DESTRUCTIVE=1 ;;
         xargs)
             # `xargs rm` takes its targets from stdin, which this hook never sees.
             [ "$DESTRUCTIVE" = 1 ] && UNRESOLVED="${UNRESOLVED}(targets read by xargs from stdin) " ;;
@@ -313,7 +317,9 @@ while IFS="$US" read -r SEG VSEG CW; do
     SEG_NR=$SEG; while [[ $SEG_NR =~ $RE_DEVNULL ]]; do SEG_NR=${SEG_NR/"${BASH_REMATCH[0]}"/}; done
     V_NR=$VSEG;  while [[ $V_NR =~ $RE_DEVNULL ]]; do V_NR=${V_NR/"${BASH_REMATCH[0]}"/}; done
     [[ $V_NR =~ $RE_TRUNC ]] && TRUNCATE=1
-    [ "$CW" = mv ] && MOVE_ONLY=1
+    [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1
+    [[ $VSEG =~ $RE_RSYNC_DEL ]] && DESTRUCTIVE=1
+    [[ $VSEG =~ $RE_MV ]] && MOVE_ONLY=1
     [ "$DESTRUCTIVE" = 1 ] || [ "$TRUNCATE" = 1 ] || [ "$MOVE_ONLY" = 1 ] || [ "$VARCMD" = 1 ] || continue
 
     # Targets: every word after the first that is not a flag.

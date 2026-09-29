@@ -86,10 +86,14 @@ function cmdword(s,   k, W, i, w) {
     return w
 }
 
-function emit(seg, vs, depth,   s, v, k, i, joined, qs) {
+function emit(seg, vs, depth,   s, v, k, i, joined, qs, ps, pv) {
     s = trim(seg); v = trim(vs)
     if (s == "") return
-    print s "\037" v "\037" cmdword(s)
+    # One segment is one output line: a newline inside a quoted argument
+    # would otherwise split it, and the reader would see half a command.
+    ps = s; pv = v
+    gsub(/\n/, " ", ps); gsub(/\n/, " ", pv)
+    print ps "\037" pv "\037" cmdword(ps)
     if (depth >= MAXDEPTH) return
     # Options may come before -c/-e (`bash -e -c`, `bash --norc -c`,
     # `python3 -u -c`, `perl -MFile::Path -e`), and `<<<` hands a string to
