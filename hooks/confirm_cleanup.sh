@@ -232,6 +232,28 @@ HIT_ROOT=""
 HIT_CODE=""
 HIT_GLOB=""
 
+# #29, round 3: everything below runs inside this shell - `[[ =~ ]]`, `case`
+# and parameter expansion - with no `echo | grep` per segment or per target.
+# Each of those started two processes, and Git Bash on Windows starts a
+# process slowly: a 120-line script took this hook ~50 s, past its timeout,
+# at which point Claude Code cancels the hook and RUNS THE COMMAND. The
+# only process left per target is resolve_link, and only for a path that
+# exists on this machine.
+RE_DELVERB='(^|[[:space:]])([^[:space:]]*/)?\\?(rm|rmdir|unlink|shred)([[:space:]]|$)'
+RE_FIND_DEL='(^|[[:space:]])-delete([[:space:]]|$)|-exec(dir)?[[:space:]]+([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$)'
+RE_CODE_DEL='(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|(^|[^[:alnum:]_.])(unlink|rmtree)|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync)|::Delete)[[:space:]]*\('
+RE_DEVNULL='[0-9]*>&?[[:space:]]*/dev/null'
+RE_TRUNC='>[[:space:]]*/'
+RE_OVERWRITE='(^|/)(rawdata|results)(/|$)'
+RE_PLUGINS='(^|/)\.nextflow/plugins(/|$)'
+RE_SHARED='(^|/)_references(/|$)|(^|/)[._]?(lab_)?singularity(_cache|_library)?(/|$)'
+RE_PROTECTED='(^|/)(rawdata|results|analysis)(/|$)'
+RE_ANY_GUARDED='(^|/)(rawdata|results|analysis|_references|work)(/|$)|(^|/)\.nextflow/(plugins|cache)(/|$)'
+RE_WORK='^work(/|$)|.+/work(/|$)|(^|/)\.nextflow/(cache|tmp)(/|$)'
+RE_LEFTOVER='(^|/)(null|offline_data)(/|$)|(^|/)\.sendmail_tmp\.html$'
+RE_SEQEXT='\.(fastq|fq|fasta|fa|fna|bam|cram)(\.gz)?$'
+RE_RAW='(^|/)(rawdata|raw_data)(/|$)'
+
 while IFS="$US" read -r SEG VSEG CW; do
     [ -n "$SEG" ] || continue
 
@@ -246,86 +268,83 @@ while IFS="$US" read -r SEG VSEG CW; do
     TRUNCATE=0      # a redirect: creates or overwrites, never removes a tree
     MOVE_ONLY=0
     VARCMD=0        # the command word is a variable or substitution
-    # Must be the command word, not those letters anywhere in the line. The glob
-    # this replaced matched the tail of "confirm " and of "Platform run", so
-    # `echo confirm the results directory` was denied outright.
-    # #29: read past sudo/env/timeout, a path and a backslash (`/bin/rm`,
-    # `\rm`); PowerShell and cmd spell it Remove-Item/ri/del/erase/rd; unlink
-    # and truncate destroy a file too.
     # The third column from split_segments.awk; computed here only on the
     # awk-less fallback. Quote CHARACTERS are dropped, not quoted text:
     # `"/bin/rm" -rf …` quotes the command word itself.
     [ -n "$CW" ] || CW=$(cmdword "$(printf '%s' "$SEG" | tr -d "\"'")")
+
+    if [ "$CW" = "__too_deep__" ]; then
+        UNRESOLVED="${UNRESOLVED}(a command nested too deeply to read) "
+        continue
+    fi
+
+    # The delete verbs rm/rmdir/unlink/shred count as a whole word anywhere
+    # outside quotes, because a wrapper can come first: `srun rm`, `singularity
+    # exec x.sif rm`, `parallel rm ::: …`, `flock l rm`, `doas rm`. Round 2
+    # accepted only the command word and let every one of those through,
+    # which main had denied. (`\rm` and `/bin/rm` are covered by the optional
+    # path and backslash.) Words that are ordinary elsewhere count only as the
+    # command word: truncate, find/rsync/xargs with their delete forms, and
+    # PowerShell/cmd's Remove-Item - plus ri/del/erase/rd, which exist only in
+    # PowerShell and cmd, so under Bash `del results` in a python body is
+    # python, not a delete.
+    [[ $VSEG =~ $RE_DELVERB ]] && DESTRUCTIVE=1
     case "$CW" in
-        rm|rmdir|unlink|shred|truncate|rd|del|erase|remove-item|ri) DESTRUCTIVE=1 ;;
-        find)
-            echo "$VSEG" | grep -qE '(^|[[:space:]])-delete([[:space:]]|$)|-exec(dir)?[[:space:]]+([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$)' \
-                && DESTRUCTIVE=1 ;;
-        rsync)
-            echo "$VSEG" | grep -qE -- '--delete' && DESTRUCTIVE=1 ;;
+        rm|rmdir|unlink|shred|truncate|remove-item) DESTRUCTIVE=1 ;;
+        ri|del|erase|rd) case "$TOOL" in ""|Bash) ;; *) DESTRUCTIVE=1 ;; esac ;;
+        find) [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1 ;;
+        rsync) [[ $VSEG == *--delete* ]] && DESTRUCTIVE=1 ;;
         xargs)
             # `xargs rm` takes its targets from stdin, which this hook never sees.
-            if echo "$VSEG" | grep -qE '(^|[[:space:]])([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$)'; then
-                DESTRUCTIVE=1; UNRESOLVED="${UNRESOLVED}(targets read by xargs from stdin) "
-            fi ;;
+            [ "$DESTRUCTIVE" = 1 ] && UNRESOLVED="${UNRESOLVED}(targets read by xargs from stdin) " ;;
         '$'*|'`'*) VARCMD=1 ;;
     esac
-    # #29: a delete written as code - a python/R/node/.NET call. Judged on the
+    # A delete written as code - a python/R/perl/node/.NET call. Judged on the
     # quote-free copy with its parenthesis, so searching for the name (grep
     # 'os.remove(') or quoting it in a message is not one.
-    echo "$VSEG" | grep -qE '(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|(^|[^[:alnum:]_.])unlink|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync)|::Delete)[[:space:]]*\(' \
-        && HIT_CODE="${HIT_CODE}$(echo "$SEG" | sed -E 's/^[[:space:]]+//') "
+    [[ $VSEG =~ $RE_CODE_DEL ]] && HIT_CODE="${HIT_CODE}${SEG} "
     # "2>/dev/null" appears in nearly every snippet this plugin's own commands
-    # tell the assistant to run, and the old pattern ('>[[:space:]]*/') matched
-    # it - so read-only `du`/`ls`/`jq` lines were classified destructive. A guard
-    # that cries wolf on `du -sh "$RESULTS" 2>/dev/null` teaches the reader to
-    # ignore it. Drop /dev/null redirects before testing.
-    # One stripped copy, used by both the truncation test and the argument list
-    # below. It used to be produced inline here and thrown away, so the token
-    # `2>/dev/null` survived into ARGS and matched the leftover rule's `null`
-    # pattern - `rm -rf /tmp/x 2>/dev/null` was reported as an nf-core null/
-    # directory. The exception for a bare `/dev/null` argument further down
-    # never saw this form, because the redirection operator is glued to it.
-    SEG_NR=$(echo "$SEG" | sed -E 's/[0-9]*>&?[[:space:]]*\/dev\/null//g')
-    # A `>` inside quotes is text, not a redirect: judged on the quote-free copy.
-    echo "$VSEG" | sed -E 's/[0-9]*>&?[[:space:]]*\/dev\/null//g' | grep -qE '>[[:space:]]*/' && TRUNCATE=1
+    # tell the assistant to run, and an early pattern ('>[[:space:]]*/')
+    # matched it - so read-only `du`/`ls`/`jq` lines were classified
+    # destructive. Drop /dev/null redirects before testing; one stripped copy
+    # feeds both the truncation test and the target list, so `2>/dev/null` can
+    # never reach the leftover rule's `null` pattern either. A `>` inside
+    # quotes is text, not a redirect: judged on the quote-free copy.
+    SEG_NR=$SEG; while [[ $SEG_NR =~ $RE_DEVNULL ]]; do SEG_NR=${SEG_NR/"${BASH_REMATCH[0]}"/}; done
+    V_NR=$VSEG;  while [[ $V_NR =~ $RE_DEVNULL ]]; do V_NR=${V_NR/"${BASH_REMATCH[0]}"/}; done
+    [[ $V_NR =~ $RE_TRUNC ]] && TRUNCATE=1
     [ "$CW" = mv ] && MOVE_ONLY=1
     [ "$DESTRUCTIVE" = 1 ] || [ "$TRUNCATE" = 1 ] || [ "$MOVE_ONLY" = 1 ] || [ "$VARCMD" = 1 ] || continue
 
-    # Arguments only: drop the leading command word and anything that looks like a flag.
-    ARGS=$(echo "$SEG_NR" \
-        | sed -E 's/^[[:space:]]*(sudo[[:space:]]+)?[A-Za-z0-9_\/.-]+[[:space:]]*//' \
-        | tr ' \t' '\n\n' \
-        | grep -v '^-' | grep -v '^$')
-    # #29: Remove-Item fed by a pipeline (`gci X | Remove-Item`) names no target.
-    if [ "$DESTRUCTIVE" = 1 ] && [ -z "$ARGS" ]; then
-        UNRESOLVED="${UNRESOLVED}(${CW}: no target on the command line - it comes from a pipe) "
-    fi
-
-    while IFS= read -r A; do
+    # Targets: every word after the first that is not a flag.
+    read -r -a WORDS <<<"$SEG_NR"
+    NARGS=0
+    for ((wi = 1; wi < ${#WORDS[@]}; wi++)); do
+        A=${WORDS[$wi]}
+        case "$A" in -*|'') continue ;; esac
+        # Every quote character goes, not just an outer pair - `'…/rawdata'/`,
+        # `'…/'results` and `res"ults"` all name the directory. A Windows path
+        # uses backslashes; a brace list names each member.
+        A=${A//\"/}; A=${A//\'/}; A=${A//\\//}; A=${A//\{//}; A=${A//\}//}; A=${A//,//}
         [ -n "$A" ] || continue
-        # #29: every quote character goes, not just an outer pair -
-        # `'…/rawdata'/`, `'…/'results` and `res"ults"` all name the directory.
-        # A Windows path uses backslashes; a brace list names each member.
-        A=$(printf '%s' "$A" | tr -d "\"'" | tr '\\{},' '////')
+        case "$A" in rm|rmdir|unlink|shred|truncate) continue ;; esac   # a wrapped verb
+        NARGS=$((NARGS + 1))
 
-        # #29: an unknown command word (`$(which rm)`, `$R`) is judged only when
+        # An unknown command word (`$(which rm)`, `$R`) is judged only when
         # its target is something this hook protects, and then it pauses.
         if [ "$VARCMD" = 1 ]; then
-            echo "$A" | grep -qE '(^|/)(rawdata|results|analysis|_references|work)(/|$)|(^|/)\.nextflow/(plugins|cache)(/|$)' \
-                && UNRESOLVED="${UNRESOLVED}(unknown command '${CW}') ${A} "
+            [[ $A =~ $RE_ANY_GUARDED ]] && UNRESOLVED="${UNRESOLVED}(unknown command '${CW}') ${A} "
             continue
         fi
 
         # Cannot resolve a target that still holds a variable or substitution.
         # Only worth saying for a delete: "$RUN_DIR/analysis/x.R" as the target
-        # of a redirect is the ordinary way every task file gets written, and
-        # warning on each one buries the warning that matters.
+        # of a redirect is the ordinary way every task file gets written. For a
+        # delete it is still judged by its literal part - "$RUN_DIR/results"
+        # names results/ whatever RUN_DIR holds - and, being unknown, it
+        # pauses (ask) rather than only warning the model.
         case "$A" in
             *'$'*|*'`'*)
-                # #29: still judged by its literal part - "$RUN_DIR/results"
-                # names results/ whatever RUN_DIR holds - and, being unknown,
-                # it now pauses (ask) rather than only warning the model.
                 [ "$DESTRUCTIVE" = 1 ] || continue
                 UNRESOLVED="${UNRESOLVED}${A} " ;;
         esac
@@ -335,42 +354,36 @@ while IFS="$US" read -r SEG VSEG CW; do
             # replace: the user's originals and the pipeline's own output.
             # analysis/ is deliberately absent - that is where downstream code
             # and figures are supposed to be written.
-            echo "$A" | grep -qE '(^|/)(rawdata|results)(/|$)' \
-                && HIT_OVERWRITE="${HIT_OVERWRITE}${A} "
+            [[ $A =~ $RE_OVERWRITE ]] && HIT_OVERWRITE="${HIT_OVERWRITE}${A} "
         fi
 
         if [ "$DESTRUCTIVE" = 1 ]; then
-            echo "$A" | grep -qE '(^|/)\.nextflow/plugins(/|$)' && HIT_PLUGINS="${HIT_PLUGINS}${A} "
+            [[ $A =~ $RE_PLUGINS ]] && HIT_PLUGINS="${HIT_PLUGINS}${A} "
             # Shared across the whole lab: reference genomes and taxonomy
             # databases (_references/) and the read-only image library. One
             # person deleting these costs everyone else the re-download - tens
             # of GB and hours - and nothing in the deleter's own run tells them
             # that happened. Scale is what makes this a deny rather than a warn.
-            #
-            # The image library is matched under every spelling it has had here,
-            # because this rule protected exactly one of them and it was the one
-            # nobody used. configs/sites/nchc.config defaults the cache to
-            # `_singularity_cache`; this deployment's NXF_SINGULARITY_CACHEDIR
-            # points at `.singularity_cache`; the rule named
-            # `lab_singularity_library`. So the directory actually holding the
-            # images was deletable, while a principle in PRINCIPLES.md said it
-            # was not. A safety net that guards a path nothing writes to is not
-            # a safety net. PITFALLS 17.
-            echo "$A" | grep -qE '(^|/)_references(/|$)|(^|/)[._]?(lab_)?singularity(_cache|_library)?(/|$)' \
-                && HIT_SHARED="${HIT_SHARED}${A} "
+            # The image library is matched under every spelling it has had
+            # here (PITFALLS 17): `_singularity_cache` (nchc.config default),
+            # `.singularity_cache` (NXF_SINGULARITY_CACHEDIR here), and
+            # `lab_singularity_library`.
+            [[ $A =~ $RE_SHARED ]] && HIT_SHARED="${HIT_SHARED}${A} "
             # A name-based rule cannot see the real danger here: a task dir's
             # references/ is a SYMLINK into the shared library, so its own path
             # says nothing about where it points. `rm -rf <link>` only removes
             # the link and is harmless, but `rm -rf <link>/*` deletes the lab's
-            # copy. Resolve the path and judge by the destination.
-            RP=$(resolve_link "$A" 2>/dev/null || true)
-            if [ -n "$RP" ] && [ "$RP" != "$A" ]; then
-                echo "$RP" | grep -qE '(^|/)_references(/|$)|(^|/)[._]?(lab_)?singularity(_cache|_library)?(/|$)' \
-                    && HIT_SHARED="${HIT_SHARED}${A} -> ${RP} "
+            # copy. Resolve the path and judge by the destination - only when
+            # something is there to resolve, since resolving costs a process.
+            if [ -e "$A" ] || [ -L "$A" ] || [ -e "${A%/*}" ]; then
+                RP=$(resolve_link "$A" 2>/dev/null || true)
+                if [ -n "$RP" ] && [ "$RP" != "$A" ] && [[ $RP =~ $RE_SHARED ]]; then
+                    HIT_SHARED="${HIT_SHARED}${A} -> ${RP} "
+                fi
             fi
-            echo "$A" | grep -qE '(^|/)(rawdata|results|analysis)(/|$)' && HIT_PROTECTED="${HIT_PROTECTED}${A} "
-            # #29: a glob whose last part could match a protected name
-            # (`…/res*`, `…/*`) may take it with it; the shell decides, not us.
+            [[ $A =~ $RE_PROTECTED ]] && HIT_PROTECTED="${HIT_PROTECTED}${A} "
+            # A glob whose last part could match a protected name (`…/res*`,
+            # `…/*`) may take it with it; the shell decides, not us.
             case "$A" in *'*'*|*'?'*|*'['*)
                 GL=${A%/}; GL=${GL##*/}
                 for NM in rawdata results analysis _references; do
@@ -378,16 +391,14 @@ while IFS="$US" read -r SEG VSEG CW; do
                 done ;;
             esac
             # "work" must be a component *inside* a path, not the leading one:
-            # many clusters put the execution zone under /work/$USER (or /scratch,
-            # /data...), so the old '(^|/)work(/|$)' matched every single path in
-            # the run dir and the scratch warning fired on everything - including
-            # deletes it had no business commenting on, which buried the others.
-            echo "$A" | grep -qE '^work(/|$)|.+/work(/|$)|(^|/)\.nextflow/(cache|tmp)(/|$)' \
-                && HIT_WORK="${HIT_WORK}${A} "
+            # many clusters put the execution zone under /work/$USER (or
+            # /scratch, /data...), so '(^|/)work(/|$)' matched every path in
+            # the run dir and the scratch warning fired on everything.
+            [[ $A =~ $RE_WORK ]] && HIT_WORK="${HIT_WORK}${A} "
             # A bare filesystem root is never a cleanup target. Cover the common
             # big-storage roots across clusters (not just NCHC's /work), and the
-            # execution-zone root itself ($LAB_RUNS_DIR) - deleting that wholesale
-            # would wipe every task, not one. Trailing slash normalized first.
+            # execution-zone root itself ($LAB_RUNS_DIR) - deleting that
+            # wholesale would wipe every task, not one.
             An="${A%/}"; [ -n "$An" ] || An="/"
             case "$An" in
                 ""|"/"|/work|/home|/staging|/scratch|/data|/project|/projects|/work/"$USER"|/scratch/"$USER"|/data/"$USER")
@@ -397,14 +408,20 @@ while IFS="$US" read -r SEG VSEG CW; do
             # Post-/end leftovers: regenerable on the login node, no bearing on
             # results/. "null/" only exists when a launch lost its --outdir, so
             # nf-core wrote pipeline_info under the literal string "null".
-            case "$A" in /dev/null) ;; *)
-                echo "$A" | grep -qE '(^|/)(null|offline_data)(/|$)|(^|/)\.sendmail_tmp\.html$' \
-                    && HIT_LEFTOVER="${HIT_LEFTOVER}${A} " ;;
-            esac
+            if [ "$A" != /dev/null ] && [[ $A =~ $RE_LEFTOVER ]]; then
+                HIT_LEFTOVER="${HIT_LEFTOVER}${A} "
+            fi
         fi
-        echo "$A" | grep -qiE '\.(fastq|fq|fasta|fa|fna|bam|cram)(\.gz)?$' && HIT_SEQFILE="${HIT_SEQFILE}${A} "
-        echo "$A" | grep -qE '(^|/)(rawdata|raw_data)(/|$)' && HIT_SEQFILE="${HIT_SEQFILE}${A} "
-    done <<< "$ARGS"
+        shopt -s nocasematch
+        [[ $A =~ $RE_SEQEXT ]] && HIT_SEQFILE="${HIT_SEQFILE}${A} "
+        shopt -u nocasematch
+        [[ $A =~ $RE_RAW ]] && HIT_SEQFILE="${HIT_SEQFILE}${A} "
+    done
+    # A delete that names no target (`gci X | Remove-Item`) takes it from a pipe.
+    # Only for the PowerShell verbs: `which rm` or `man rm` name no target either.
+    if [ "$DESTRUCTIVE" = 1 ] && [ "$NARGS" = 0 ] && [[ $CW =~ ^(remove-item|ri|del|erase|rd)$ ]]; then
+        UNRESOLVED="${UNRESOLVED}(${CW}: no target on the command line - it comes from a pipe) "
+    fi
 done <<< "$SEGMENTS"
 
 # ── deny ─────────────────────────────────────────────────────────────────────

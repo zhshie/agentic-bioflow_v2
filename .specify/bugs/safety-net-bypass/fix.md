@@ -45,3 +45,19 @@ The first acceptance review (read-only verifier, fresh context) failed the fix o
 - Tests: `MSYS2_ARG_CONV_EXCL='*'` in the cleanup test (Git Bash rewrote `/bin/…` arguments to Windows paths before python saw them); `tr -d '\r'` for jq.exe output in the matcher checks.
 
 Verification: WSL `tests/run_all.sh` 73/73; native Git Bash `confirm_launch_test` all new cases pass (only the pre-existing D3 MSYS case fails, #30); timing new vs main, native Git Bash: cleanup 4.4 s vs 4.8 s, launch 3.4 s vs 3.8 s (not slower). The gates being ~4 s per shell call on Windows is itself a problem → separate issue.
+
+## Round 3 (after the second independent review said FAIL, 2026-09-29)
+
+Findings reproduced, 26 new cases written first (all red), then fixed:
+
+- **Regression from round 2 fixed**: wrapped deletes (`srun rm`, `singularity exec x.sif rm`, `parallel rm ::: …`, `flock l rm`, `doas rm`, `ionice rm`) had gone from deny on main to pass, because round 2 accepted only the command word. rm/rmdir/unlink/shred now count as a whole word anywhere outside quotes (as main did), and also as the command word (`"/bin/rm"`); truncate, Remove-Item, find/rsync/xargs forms stay command-word only; ri/del/erase/rd count only under a non-Bash tool, so `del results` in a python body under Bash is python.
+- **Performance, the second bypass**: under Git Bash, a 120-line script made the deletion gate take ~50 s and the launch gate ~27 s (the MSYS-only D3 transport block), past the 30 s timeout — the hook is cancelled and the command runs. Every per-segment and per-target test in `confirm_cleanup.sh`, `launch_trigger.sh` and D3 is now in-shell (`[[ =~ ]]`, `case`, parameter expansion); the only remaining process per target is `resolve_link`, and only for a path that exists. Measured natively (Git Bash, this laptop), new vs main: cleanup short 1.0 s vs 4.7 s, long 1.1 s vs 1.7 s; launch short 2.9 s vs 3.8 s, long 1.5 s vs 2.1 s; walkthrough 1.6-1.9 s; guard 0.2 s. `tests/confirm_cleanup_test.sh` fails if a 200-line here-doc takes 15 s or more.
+- `split_segments.awk`: options before `-c`/`-e` (`bash -e -c`, `bash --norc -c`, `python3 -u -c`, `perl -MFile::Path -e`); `<<<` into an interpreter; `|&` and `| env bash`; `bash <(echo '…')` (substitution read by a shell); depth limit 8, and past it a marker segment that both gates treat as unjudgeable (ask / gate) instead of stopping silently; `.exe` dropped from the command word.
+- `strip_heredocs.awk`: a `<<EOF` inside quotes is not a here-doc (it swallowed every later line; pre-existing on main).
+- `launch_trigger.sh`: `tw.exe` / `nextflow.exe`; a program held in a variable (`$T launch x`, `"$TW" launch x`).
+- In-code deletes: bare `rmtree(` (from-import, perl File::Path).
+- `confirm_launch.sh` D3: uses the shared splitter; it still referenced `LAUNCH_NESTED_SHELL_RE`, removed from launch_trigger.sh in round 2 (an empty regex there matched everything).
+
+WSL `tests/run_all.sh` 73/73.
+
+Proposed stopping rule, put to the maintainer: merge when an independent round finds no regression against main and no remaining high-severity bypass; medium/low findings go to a follow-up issue. The gate is a heuristic (constitution: defence in depth, not a sandbox) and cannot be proven complete.

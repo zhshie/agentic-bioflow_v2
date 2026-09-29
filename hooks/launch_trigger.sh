@@ -38,7 +38,10 @@ LAUNCH_TRIGGER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # scripts/relaunch_with_override.sh --confirm runs `tw runs cancel` + `tw runs
 # relaunch` itself, where this gate cannot see them, so the wrapper's own
 # --confirm is the launch; without --confirm it only prints its plan.
-LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw([[:space:]]+[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch)|sbatch|nextflow([[:space:]]+[^[:space:]]+)*[[:space:]]+run|relaunch_with_override\.sh([[:space:]]+[^[:space:]]+)*[[:space:]]+--confirm)([[:space:]]|$)'
+LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch)|sbatch|nextflow(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+run|relaunch_with_override\.sh([[:space:]]+[^[:space:]]+)*[[:space:]]+--confirm)([[:space:]]|$)'
+# The program in a variable (`$T launch x`, `"$TW" runs relaunch`), used only
+# when the command word itself is a variable.
+LAUNCH_VARPROG_RE='^[^[:space:]]+([[:space:]]+-[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch|run)([[:space:]]|$)'
 
 # Commands that can only read. A segment naming a launch verb under one of
 # these is a search or a page of documentation, not a submission.
@@ -78,19 +81,31 @@ is_launch_command() {
 
     # Decided per segment, never for the whole line: `cat notes.txt && tw launch ...`
     # must still hit the gate.
+    # In-shell matching only ([[ =~ ]]): a process per segment made this gate
+    # take a minute on a long script under Git Bash, past its timeout, and a
+    # timed-out hook lets the command run (#29, round 3).
+    local SQ
     while IFS="$US" read -r S V W; do
-        if ! grep -qE "$LAUNCH_TRIGGER_RE" <<<"$V"; then
+        # A command nested too deeply to read is treated as one that might
+        # launch - noisy, and correct for a gate that could not judge.
+        [ "$W" = "__too_deep__" ] && return 0
+        if ! [[ $V =~ $LAUNCH_TRIGGER_RE ]]; then
             # `"tw" launch x` quotes the program itself, so the quote-free copy
             # has lost it. When the command word IS a launcher, read the
             # segment with only the quote characters dropped. Only then: a
             # commit message quoting "tw launch" is still not a launch.
+            SQ=${S//\"/}; SQ=${SQ//\'/}
             case "$W" in
                 tw|nextflow|sbatch|relaunch_with_override.sh)
-                    grep -qE "$LAUNCH_TRIGGER_RE" <<<"$(tr -d "\"'" <<<"$S")" || continue ;;
+                    [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] || continue ;;
+                # `T=tw; $T launch x`: the program is a variable, and its first
+                # argument is a launch verb.
+                '$'*)
+                    [[ $SQ =~ $LAUNCH_VARPROG_RE ]] || continue ;;
                 *) continue ;;
             esac
         fi
-        grep -qE "$LAUNCH_READONLY_RE" <<<"$V" && continue
+        [[ $V =~ $LAUNCH_READONLY_RE ]] && continue
         return 0
     done <<< "$SEGS"
 

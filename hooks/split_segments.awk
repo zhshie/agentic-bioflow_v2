@@ -81,20 +81,26 @@ function cmdword(s,   k, W, i, w) {
     w = (i <= k) ? W[i] : ""
     sub(/^\\/, "", w)
     sub(/^.*\//, "", w)
-    return tolower(w)
+    w = tolower(w)
+    sub(/\.exe$/, "", w)
+    return w
 }
 
 function emit(seg, vs, depth,   s, v, k, i, joined, qs) {
     s = trim(seg); v = trim(vs)
     if (s == "") return
     print s "\037" v "\037" cmdword(s)
-    if (depth >= 4) return
+    if (depth >= MAXDEPTH) return
+    # Options may come before -c/-e (`bash -e -c`, `bash --norc -c`,
+    # `python3 -u -c`, `perl -MFile::Path -e`), and `<<<` hands a string to
+    # an interpreter just as -c does (#29, round 3).
     if (PIPED[depth] ||
-        s ~ /(^|[ \t\/])(bash|sh|zsh|ksh|dash)[ \t]+-[A-Za-z]*c([ \t]|$)/ ||
+        s ~ /(^|[ \t\/])(bash|sh|zsh|ksh|dash)([ \t]+-[^ \t]+)*[ \t]+-[A-Za-z]*c([ \t]|$)/ ||
+        s ~ /(^|[ \t\/])(bash|sh|zsh|ksh|dash|python[0-9.]*|perl|ruby|node|Rscript|pwsh|powershell)(\.exe)?([ \t]+[^ \t<]+)*[ \t]*<<</ ||
         s ~ /(^|[ \t])eval([ \t]|$)/ ||
         s ~ /(^|[ \t\/])(ssh|on_site\.sh)([ \t]|$)/ ||
         s ~ /(^|[ \t\/])(powershell|pwsh)(\.exe)?([ \t]|$)/ ||
-        s ~ /(^|[ \t\/])(python[0-9.]*|perl|ruby|node|Rscript)[ \t]+-[A-Za-z]*[ce]([ \t]|$)/) {
+        s ~ /(^|[ \t\/])(python[0-9.]*|perl|ruby|node|Rscript)(\.exe)?([ \t]+-[^ \t]+)*[ \t]+-[A-Za-z]*[ce]([ \t]|$)/) {
         k = quoted(s)
         for (i = 1; i <= k; i++) qs[i] = QS[i]
         for (i = 1; i <= k; i++) split_cmd(qs[i], depth + 1)
@@ -107,9 +113,16 @@ function emit(seg, vs, depth,   s, v, k, i, joined, qs) {
     }
 }
 
-function split_cmd(str, depth,   n, i, c, nx, pv, q, seg, vs, k, sub_d) {
-    if (depth > 4) return
-    PIPED[depth] = (str ~ /\|[ \t]*(sudo[ \t]+)?([^ \t|]*\/)?(bash|sh|zsh|dash|ksh|pwsh|powershell)(\.exe)?([ \t]|$)/)
+# force: the caller knows a shell reads this text (`bash <(echo '...')`), so
+# every quoted string in it is a command too.
+function split_cmd(str, depth, force,   n, i, c, nx, pv, q, seg, vs, k, sub_d, rd) {
+    if (depth > MAXDEPTH) {
+        # Too deep to read. Say so rather than stop silently (invariant 13):
+        # the gates treat this marker as a command they could not judge.
+        print "(nested too deeply to read)\037(nested too deeply to read)\037__too_deep__"
+        return
+    }
+    PIPED[depth] = force || (str ~ /\|&?[ \t]*((sudo|env|command|exec|nohup)[ \t]+)*([^ \t|]*\/)?(bash|sh|zsh|dash|ksh|pwsh|powershell)(\.exe)?([ \t]|$)/)
     n = length(str); q = ""; seg = ""; vs = ""
     for (i = 1; i <= n; i++) {
         c = substr(str, i, 1); nx = substr(str, i + 1, 1); pv = (i > 1) ? substr(str, i - 1, 1) : ""
@@ -137,7 +150,10 @@ function split_cmd(str, depth,   n, i, c, nx, pv, q, seg, vs, k, sub_d) {
         if ((c == "$" || c == "<" || c == ">") && nx == "(") {
             k = close_paren(str, i + 1)
             if (k) {
-                split_cmd(substr(str, i + 2, k - i - 2), depth + 1)
+                # `bash <(echo '...')` / `source <(...)`: a shell reads what
+                # the substitution prints, so its quoted strings are commands.
+                rd = (c == "<" && seg ~ /(^|[ \t\/])(bash|sh|zsh|dash|ksh|source|\.)[ \t]+$/)
+                split_cmd(substr(str, i + 2, k - i - 2), depth + 1, rd)
                 seg = seg substr(str, i, k - i + 1); vs = vs substr(str, i, k - i + 1); i = k; continue
             }
         }
@@ -158,5 +174,6 @@ function split_cmd(str, depth,   n, i, c, nx, pv, q, seg, vs, k, sub_d) {
     emit(seg, vs, depth)
 }
 
+BEGIN { MAXDEPTH = 8 }
 { ALL = ALL (NR > 1 ? "\n" : "") $0 }
-END { split_cmd(ALL, 0) }
+END { split_cmd(ALL, 0, 0) }

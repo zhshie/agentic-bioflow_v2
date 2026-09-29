@@ -265,6 +265,39 @@ tps "ri -r C:\\lab\\proj\\results"                deny "#29b PowerShell alias ri
 tps "powershell -Command \"Remove-Item -Recurse $P/results\"" deny "#29b powershell -Command payload"
 tps "gci C:\\lab\\proj\\results | Remove-Item -Recurse -Force" ask "#29b Remove-Item fed by the pipeline"
 tps "[System.IO.Directory]::Delete('C:\\lab\\proj\\results', \$true)" ask "#29b .NET Delete call"
+echo
+echo "== #29 acceptance round 3 =="
+t "srun $D -rf $P/results"                        deny "#29c srun wrapper (a regression in round 2)"
+t "singularity exec x.sif $D -rf $P/results"      deny "#29c singularity exec wrapper"
+t "parallel $D -rf ::: $P/results"                deny "#29c GNU parallel"
+t "flock /tmp/l $D -rf $P/results"                deny "#29c flock wrapper"
+t "doas $D -rf $P/results"                        deny "#29c doas"
+t "ionice -c3 $D -rf $P/results"                  deny "#29c ionice"
+t "bash -e -c '$D -rf $P/results'"                deny "#29c bash with options before -c"
+t "bash --norc -c '$D -rf $P/results'"            deny "#29c bash --norc -c"
+t "bash <<< '$D -rf $P/results'"                  deny "#29c here-string into bash"
+t "echo '$D -rf $P/results' |& bash"              deny "#29c |& into bash"
+t "echo '$D -rf $P/results' | env bash"           deny "#29c | env bash"
+t "bash <(echo '$D -rf $P/results')"              deny "#29c process substitution read by bash"
+t "python3 -u -c \"import shutil; shutil.rmtree('$P/results')\"" ask "#29c python with options before -c"
+t "python3 -c \"from shutil import rmtree; rmtree('$P/results')\"" ask "#29c bare rmtree(...)"
+t "perl -MFile::Path -e 'rmtree(\"$P/results\")'" ask  "#29c perl rmtree"
+t "echo \$(echo \$(echo \$(echo \$(echo \$(echo \$($D -rf $P/results))))))" deny "#29c deeply nested \$(...)"
+t "$(printf "grep -c '<<EOF' notes.sh\n%s -rf %s/results" "$D" "$P")" deny "#29c a quoted <<EOF is not a here-doc"
+t "$(printf 'python3 - <<%s\nresults = 1\ndel results\nEOF\n' "'EOF'")" pass "#29c python 'del results' under Bash"
+
+# #29 round 3: a gate past its timeout (30 s) is cancelled and the command
+# runs. Round 2 took ~50 s on a 120-line script under Git Bash. A 200-line
+# script must be judged well inside the limit, on every platform we test.
+LONGBODY=$(for i in $(seq 1 200); do echo "x$i = [a for a in range($i)]  # line $i"; done)
+LONGCMD=$(printf 'python3 - <<%s\n%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$LONGBODY" "$D" "$P")
+printf '%-58s ' "#29c a 200-line here-doc is judged in under 15 s"
+t0=$(date +%s)
+out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$LONGCMD" | bash "$H")
+t1=$(date +%s)
+if [ $((t1 - t0)) -lt 15 ] && grep -q '"deny"' <<<"$out"; then echo "ok ($((t1 - t0)) s, deny)"; else
+  echo "FAIL: $((t1 - t0)) s, output <<${out:0:60}>>"; fails=$((fails+1)); fi
+
 t "grep -rn del $P/results/"                      pass "#29b grep for 'del' is not a delete"
 t "grep -i RD $P/analysis/de.tsv"                 pass "#29b grep for 'RD' is not a delete"
 t "grep -n 'os.remove(' scripts/x.py"             pass "#29b searching for a delete call"

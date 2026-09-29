@@ -50,8 +50,22 @@ function executes(pre,   seg, k, i, w, W) {
     return 0
 }
 
-function scan(s,   m, d, isdash, pre, piped) {
+function scan(s,   m, d, isdash, pre, piped, out) {
     gsub(/<<</, "\001", s)
+    # A `<<EOF` inside quotes (`grep -c '<<EOF' f`) is text, not a here-doc;
+    # taken as one, it swallowed every line after it (#29, round 3). Quoted
+    # DELIMITERS (`<<'EOF'`) are unquoted first so they survive, then every
+    # other quoted string is dropped before looking for `<<`.
+    out = ""
+    while (match(s, /<<-?[ \t]*("[^"]*"|'[^']*')/)) {
+        m = substr(s, RSTART, RLENGTH)
+        gsub(/["']/, "", m)
+        out = out substr(s, 1, RSTART - 1) m
+        s = substr(s, RSTART + RLENGTH)
+    }
+    s = out s
+    gsub(/'[^']*'/, "", s)
+    gsub(/"[^"]*"/, "", s)
     pre = ""
     # `cat <<EOF | bash` hands the body to a shell through a pipe instead.
     piped = (s ~ /\|[ \t]*(sudo[ \t]+)?([^ \t|]*\/)?(bash|sh|zsh|dash|ksh|ssh)([ \t]|$)/)

@@ -252,33 +252,34 @@ if ! is_launch_command "$CMD"; then
     # it is also the only one that can borrow WSL's ssh for the multiplexed
     # part (PITFALLS 16g), which a bare `ssh` typed here does not do.
     #
-    # Reuses is_launch_command's own here-doc stripper and its
-    # LAUNCH_NESTED_SHELL_RE (already sourced above, not restated): a payload
-    # ssh/on_site.sh hands to a far shell is not quoted DATA the way a string
-    # inside `grep "ssh"` is, so the same exception that protects launch
-    # detection from `bash -c "tw launch ..."` also keeps this branch from
-    # missing `ssh host '...'` while still ignoring `grep -rn "ssh" docs/`.
+    # Reads the same segments the launch check does - here-doc bodies handled
+    # by strip_heredocs.awk, then split_segments.awk (#29) - so a payload that
+    # ssh/on_site.sh hands to a far shell is judged as a command, while
+    # `grep -rn "ssh" docs/` is not (matched on the quote-free column).
+    # In-shell matching only: a process per segment made this gate take ~27 s
+    # on a 120-line script under Git Bash (#29, round 3).
     case "$(uname -s 2>/dev/null)" in
     MINGW*|MSYS*|CYGWIN*)
         TCMD_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
         [ -n "$TCMD_NB" ] || TCMD_NB="$CMD"
-        if grep -qE "$LAUNCH_NESTED_SHELL_RE" <<<"$TCMD_NB"; then
-            TCMD_NQ="$TCMD_NB"
-        else
-            TCMD_NQ=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$TCMD_NB")
+        US=$(printf '\037')
+        TSEGS=$(printf '%s\n' "$TCMD_NB" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+        if [ -z "$TSEGS" ]; then
+            TSEGS=$(printf '%s\n' "$TCMD_NB" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
+                    | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
         fi
         TRANSPORT_RE='(^|[[:space:]]|[;&|(])(sudo[[:space:]]+)?([^[:space:]]*/)?(ssh|scp|rsync|sftp)([[:space:]]|$)'
         ONSITE_RE='(^|[[:space:]]|[;&|(])([^[:space:]]*/)?on_site\.sh([[:space:]]|$)'
-        TSEG=""
-        while IFS= read -r TSEG; do
-            echo "$TSEG" | grep -qE "$ONSITE_RE" && continue
-            if echo "$TSEG" | grep -qE "$TRANSPORT_RE"; then
+        TSEG=""; TV=""
+        while IFS="$US" read -r TSEG TV _; do
+            [[ $TV =~ $ONSITE_RE ]] && continue
+            if [[ $TV =~ $TRANSPORT_RE ]]; then
                 ask "GATE: this command reaches the site directly over ssh/scp/rsync/sftp, bypassing scripts/on_site.sh. In this shell (Git Bash/MSYS) a direct ssh connection cannot hold a multiplexed master - the control socket comes up but fd-passing to a real session fails (PITFALLS 16b) - so a call like this one falls back to a full login: a one-time code on the user's phone that this agent cannot read. scripts/on_site.sh is the only sanctioned route to the site from here (docs/SITE_ADAPTER.md contract 6); it also knows how to borrow WSL's own ssh for the multiplexed part (PITFALLS 16g), which this bare call does not. Show the user the command and route it through scripts/on_site.sh instead, or let them run it themselves." \
                     "$CMD
 
 This shell's own ssh cannot multiplex (PITFALLS 16b): every direct call like this one costs a fresh one-time code on the user's phone, which this agent cannot read. scripts/on_site.sh is the only sanctioned route to the site from here (docs/SITE_ADAPTER.md contract 6)."
             fi
-        done <<< "$(echo "$TCMD_NQ" | sed -E 's/(\|\||&&|[;&|])/\n/g')"
+        done <<< "$TSEGS"
         ;;
     esac
     exit 0
