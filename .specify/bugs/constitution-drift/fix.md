@@ -114,3 +114,7 @@ The reviewer found no regression against main and failed two items; both fixed t
 Left as found (reviewer: not in scope): the settings summary still prints the token as `present` when its privacy could not be measured; Chinese questions containing 失敗/分析 already routed before this change.
 
 WSL `tests/run_all.sh` 74/74.
+
+## Final (2026-09-30)
+
+Re-review of cad04df passed (zero regressions against main; all E9 shapes ask; E1/E4/E7 fixed). Its timing note - PowerShell Move-Item started one process per argument to lowercase it - fixed in-shell (838 ms natively with six arguments). Three extra asks it noted (mv -t INTO results, a brace destination, any pipeline-fed Move-Item) go to #35.

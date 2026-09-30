@@ -346,7 +346,13 @@ while IFS="$US" read -r SEG VSEG CW; do
         read -r -a PSW <<<"$SEG_NR"
         PS_SRC=""; PS_POS=0; PS_PREV=""
         for ((pi = 1; pi < ${#PSW[@]}; pi++)); do
-            Pw=${PSW[$pi]}; Pl=$(printf '%s' "$Pw" | tr 'A-Z' 'a-z')
+            # Lowercased in-shell, one character class per letter PowerShell
+            # parameters use - no process per argument (Git Bash is slow to
+            # start one, and bash 3.2 on the Mac has no ${var,,}).
+            Pw=${PSW[$pi]}; Pl=$Pw
+            for UC in A:a B:b C:c D:d E:e F:f G:g H:h I:i J:j K:k L:l M:m N:n O:o P:p Q:q R:r S:s T:t U:u V:v W:w X:x Y:y Z:z; do
+                Pl=${Pl//${UC%:*}/${UC#*:}}
+            done
             case "$PS_PREV" in
                 -path|-literalpath|-lp|-pspath) PS_SRC="$PS_SRC $Pw"; PS_PREV=""; continue ;;
                 -destination|-newname) PS_PREV=""; continue ;;
