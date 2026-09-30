@@ -32,20 +32,23 @@ machine. The framework is open source (ADR 0002).
 ## Stages
 
 Each stage changes exactly one thing, so a failure points at one cause. Engineering that is known
-to be doable comes first. Research with an unknown outcome (the local model) comes last.
+to be doable comes first. Research with an unknown outcome (the local model) comes after it, and
+also waits for the evaluation Mac, which arrives in mid-October 2026.
 
 | # | Stage | What changes | Done when |
 |---|---|---|---|
-| 1 | **Prototype** (now) | — Claude Code + Seqera Platform + NCHC HPC | Spec Kit adoption finished; first feature through the full flow |
-| 1.5 | **Local-model experiment** | Nothing ships. Run the evaluation below through Claude Code + Ollama (and llama.cpp) on a 48 GB Mac — no code change needed, so the answer comes early | The evaluation says whether a ~30B model is enough, which sets the Brain's hardware and price |
-| 2 | **Second host** | Keep Claude Code; add a Codex CLI adapter over the same host-independent core (ADR 0003). Codex cannot use Claude directly, so the safety-net tests are model-independent and must pass on both hosts; task tests keep Claude Code as the control | Safety-net tests green on both hosts |
-| 3 | **Seqera optional** | Drive open-source Nextflow directly on HPC; read run state from Nextflow's own records; ship a local page to see progress and results (ADR 0001) | A 16S and an RNA-seq run complete on NCHC with no Seqera account |
-| 4 | **Cloud** | The Muscle can be one SSH-reachable Linux VM with Docker. The Operator creates it at first; automation comes later. TWCC is tried first, with GCP's Taiwan region as fallback | The same runs complete on a rented VM |
-| 5 | **Local model** | Ship a local open-weight model (Apache/MIT first, e.g. Qwen3.6) on the Brain, running on Codex — not on Claude Code, which cannot be redistributed | Evaluation below passes on the shipping host |
+| 1 | **Prototype** (now) | — Claude Code + Seqera Platform + NCHC HPC. Before moving on, the plugin is audited against the constitution and every violation found is fixed | Spec Kit adoption finished; constitution audit findings fixed; first feature through the full flow |
+| 2 | **Seqera optional** | Drive open-source Nextflow directly on HPC; read run state from Nextflow's own records; ship a local page to see progress and results (ADR 0001) | A 16S and an RNA-seq run complete on NCHC with no Seqera account |
+| 3 | **Local-model experiment** | Nothing ships. Run the evaluation below through Claude Code + Ollama (and llama.cpp) on a 48 GB Mac — no code change needed. Specified and planned as feature `001-local-model-eval`; implementation starts when the Mac arrives | The evaluation says whether a ~30B model is enough, which sets the Brain's hardware and price |
+| 4 | **Second host** | Keep Claude Code; add a Codex CLI adapter over the same host-independent core (ADR 0003). Codex cannot use Claude directly, so the safety-net tests are model-independent and must pass on both hosts; task tests keep Claude Code as the control | Safety-net tests green on both hosts |
+| 5 | **Cloud** | The Muscle can be one SSH-reachable Linux VM with Docker. The Operator creates it at first; automation comes later. TWCC is tried first, with GCP's Taiwan region as fallback | The same runs complete on a rented VM |
+| 6 | **Local model** | Ship a local open-weight model (Apache/MIT first, e.g. Qwen3.6) on the Brain, running on Codex — not on Claude Code, which cannot be redistributed | Evaluation below passes on the shipping host |
 
-Development toward stage 3 and beyond never goes through Seqera's Services (ADR 0001).
+Order changed 2026-09-29 by the maintainer: "Seqera optional" moved ahead of the local-model
+experiment, because the evaluation Mac arrives only in mid-October and the Seqera work needs no new
+hardware. Development toward stage 2 and beyond never goes through Seqera's Services (ADR 0001).
 
-## Local-model evaluation (stages 1.5 and 5)
+## Local-model evaluation (stages 3 and 6)
 
 - A fixed, published task set covers 16S and RNA-seq on public test data.
 - Score the model's own work, not Nextflow's: is the Experiment spec → samplesheet and parameters
@@ -70,12 +73,12 @@ test or tool already enforces. Each is added by a MINOR amendment once its check
 
 | Principle | The check that has to exist first | Earliest stage |
 |---|---|---|
-| No pipeline is set up before the Operator approves the Experiment spec | A gate (hook or equivalent) refusing setup without an approved spec, plus its test | 1–2 |
-| Every Operator uses their own credentials; accounts are never shared (Anthropic's consumer terms forbid sharing, and HPC 2FA is per person) | A check that refuses a settings root already bound to another identity | 2 |
-| Model-neutral command layer: no command depends on one model's behaviour | The evaluation task set passing on a second model | 2–5 |
-| Any AI host without the safety net may query but never launch or delete | Safety-net tests that run against every supported host | 2 |
+| No pipeline is set up before the Operator approves the Experiment spec | A gate (hook or equivalent) refusing setup without an approved spec, plus its test | 1–4 |
+| Every Operator uses their own credentials; accounts are never shared (Anthropic's consumer terms forbid sharing, and HPC 2FA is per person) | A check that refuses a settings root already bound to another identity | 4 |
+| Model-neutral command layer: no command depends on one model's behaviour | The evaluation task set passing on a second model | 3–6 |
+| Any AI host without the safety net may query but never launch or delete | Safety-net tests that run against every supported host | 4 |
 | Data stays local: nothing leaves except what the Operator was told leaves. While Claude is the model, logs, samplesheets and error messages go to Anthropic, and the Prototype says so | A disclosure shown at first use, plus its test | 1 |
-| Any action that costs money needs the Operator's confirmation, and billable state is always visible and stoppable | A gate on billable cloud actions, plus its test | 4 |
+| Any action that costs money needs the Operator's confirmation, and billable state is always visible and stoppable | A gate on billable cloud actions, plus its test | 5 |
 
 ## Open questions (not decisions)
 
