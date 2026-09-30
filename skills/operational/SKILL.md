@@ -157,7 +157,7 @@ Work outward from the layer most likely to be lying to you.
 ## Off-design: when nothing here covers it
 
 This project is built to a fixed design, not improvised per session
-(`docs/PRINCIPLES.md`, invariant 10) — but a firewalled cluster, a shared
+(constitution, invariant 10) — but a firewalled cluster, a shared
 Seqera workspace and every OS a member might carry a laptop in produce
 situations this design did not anticipate. There are three:
 
@@ -214,15 +214,15 @@ situations this design did not anticipate. There are three:
 
    - **This is the maintainer's own login.** Nothing is sent. Say so, and
      that the right move is designing this into the plugin directly rather
-     than filing it as an issue — same as any other change here, through
-     `docs/PRINCIPLES.md` and the usual tests.
+     than filing it as an issue — same as any other change here, through the
+     constitution's development workflow (spec, approved test cases, tests).
    - **Someone else, with `gh` available.** It searches open issues labelled
      `off-design` for this report's signature (category + command + step +
      script + exit, hashed). A match gets a comment, not a new issue; no
      match gets a new one, labelled `off-design`, in the repository named by
-     `.claude-plugin/plugin.json`'s own `repository` field (currently
-     `zhshie/agentic-bioflow_v2` - a fork that edits that field routes its
-     own reports there instead, `REPORT_REPO` overrides it explicitly).
+     `.claude-plugin/plugin.json`'s own `repository` field - a fork that
+     edits that field routes its own reports there instead, `REPORT_REPO`
+     overrides it explicitly, and with neither the reports stay queued.
      Sent reports are removed from the local queue.
    - **No `gh`, not logged in, or the identity check timed out.** It prints
      a prefilled `github.com/.../issues/new?...&labels=off-design` link
@@ -251,7 +251,7 @@ in git, never in a params file, and never taken from another member's copy.
 
 The site is reached only through `scripts/on_site.sh`, never by improvising a
 connection of your own — on this platform that script borrows the one piece
-its own shell is missing (`docs/PRINCIPLES.md`, invariant 11), and nothing
+its own shell is missing (constitution, invariant 11), and nothing
 else about where the session is running changes because of it.
 
 Opening that connection is a human turn, not yours: the one-time code lands

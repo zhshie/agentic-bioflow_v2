@@ -85,7 +85,7 @@ case "$NORM" in *' hook_event_name UserPromptSubmit '*) IS_UPS=1 ;; esac
 has_topic() {
     case "$1" in
         *RNA-seq*|*RNAseq*|*'RNA seq'*|*FASTQ*|*fastq*|*nf-core*|*[Nn]extflow*|*samplesheet*|*Seqera*|*16S*|*ampliseq*|*amplicon*|*metagenom*|*[Ww][Gg][Ss]*|*'variant calling'*|*'differential expression'*|*GEO*|*SRA* | \
-        *定序*|*測序*|*测序*|*擴增子*|*扩增子*|*轉錄體*|*转录体*|*轉錄組*|*转录组*|*樣本表*|*样本表*|*總體基因體*|*总体基因体*|*宏基因組*|*宏基因组*)
+        *定序*|*測序*|*测序*|*擴增子*|*扩增子*|*轉錄體*|*转录体*|*轉錄組*|*转录组*|*樣本表*|*样本表*|*總體基因體*|*总体基因体*|*宏基因組*|*宏基因组*|*宏基因体*|*宏基因體*)
             return 0 ;;
     esac
     return 1

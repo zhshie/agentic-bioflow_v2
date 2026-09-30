@@ -155,6 +155,26 @@ tgrep "maintainer identity: says design it in instead" "design this into the plu
 tnotgrep "maintainer identity: never touches issue list/create/comment" "issue " "$(cat "$GH_LOG4")"
 t "maintainer identity: report stays queued" 1 "$(queue_count "$DIR4")"
 
+# E4 (#33 acceptance): the maintainer is the OWNER of the repository reports
+# go to, not a login written into the script. On a fork, the fork's owner is
+# the maintainer and zhshie is an ordinary reporter.
+STUBFORK="$TMP/stub_fork"; mkdir -p "$STUBFORK"
+cat > "$STUBFORK/gh" <<'EOF'
+#!/bin/bash
+case "$*" in
+  "api user --jq .login") echo "$FAKE_LOGIN" ;;
+  *) echo "gh $*" ; exit 1 ;;
+esac
+EOF
+chmod +x "$STUBFORK/gh"
+out=$(FAKE_LOGIN=labfork REPORT_REPO=labfork/agentic-bioflow AGENTIC_BIOFLOW_REPORTS_DIR="$DIR4" \
+      env -i PATH="$STUBFORK:/usr/bin:/bin" HOME="$TMP" FAKE_LOGIN=labfork \
+      REPORT_REPO=labfork/agentic-bioflow AGENTIC_BIOFLOW_REPORTS_DIR="$DIR4" bash "$R" send --yes 2>&1)
+tgrep "fork: the fork's owner is the maintainer" "design this into the plugin instead" "$out"
+out=$(env -i PATH="$STUBFORK:/usr/bin:/bin" HOME="$TMP" FAKE_LOGIN=zhshie \
+      REPORT_REPO=labfork/agentic-bioflow AGENTIC_BIOFLOW_REPORTS_DIR="$DIR4" bash "$R" send --yes 2>&1)
+tnotgrep "fork: zhshie is not the maintainer there" "design this into the plugin instead" "$out"
+
 # --- dry-run prints the gh commands, sends nothing --------------------------
 DIR5="$TMP/q5"; mkdir -p "$DIR5"
 AGENTIC_BIOFLOW_REPORTS_DIR="$DIR5" env -i PATH="$PATH" HOME="$TMP" \

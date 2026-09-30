@@ -248,6 +248,7 @@ RE_DELVERB='(^|[[:space:]])([^[:space:]]*/)?\\?(rm|rmdir|unlink|shred)([[:space:
 RE_FIND_DEL='(^|[[:space:]])([^[:space:]]*/)?find[[:space:]](.*[[:space:]])?(-delete([[:space:]]|$)|-exec(dir)?[[:space:]]+([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$))'
 RE_RSYNC_DEL='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--delete'
 RE_MV='(^|[[:space:]])([^[:space:]]*/)?\\?mv([[:space:]]|$)'
+RE_RSYNC_RSF='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--remove-source-files'
 RE_CODE_DEL='(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|(^|[^[:alnum:]_.])(unlink|rmtree)|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync)|::Delete)[[:space:]]*\('
 RE_DEVNULL='[0-9]*>&?[[:space:]]*/dev/null'
 RE_TRUNC='>[[:space:]]*/'
@@ -320,8 +321,49 @@ while IFS="$US" read -r SEG VSEG CW; do
     [[ $V_NR =~ $RE_TRUNC ]] && TRUNCATE=1
     [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1
     [[ $VSEG =~ $RE_RSYNC_DEL ]] && DESTRUCTIVE=1
-    [[ $VSEG =~ $RE_MV ]] && MOVE_ONLY=1
-    case "$CW" in move-item) MOVE_ONLY=1 ;; esac   # E9: PowerShell's verb has no bare "mv" word RE_MV can match
+    # E9: what kind of move this is decides which arguments are SOURCES.
+    #   mv   - every non-flag argument but the last (the last is written into)
+    #   all  - every argument is a source: `mv -t DIR SRC…`, rename(1)
+    #   ps   - PowerShell's Move-Item/Rename-Item: -Path/-LiteralPath values,
+    #          else the first positional; -Destination is written into
+    # A reader of text is not a mover: `grep -rn mv results` stays quiet.
+    MOVE_KIND=""
+    case "$CW" in
+        grep|egrep|fgrep|rg|echo|printf|cat|less|more|head|tail|ls|wc) ;;
+        move-item|rename-item) MOVE_KIND=ps ;;
+        mi|move|rni|ren) case "$TOOL" in ""|Bash) ;; *) MOVE_KIND=ps ;; esac ;;
+        rename) MOVE_KIND=all ;;
+        *)
+            if [[ $VSEG =~ $RE_MV ]]; then
+                MOVE_KIND=mv
+                [[ $VSEG =~ (^|[[:space:]])(-t|--target-directory)([[:space:]=]|$) ]] && MOVE_KIND=all
+            fi
+            # rsync --remove-source-files deletes each source once copied.
+            [[ $VSEG =~ $RE_RSYNC_RSF ]] && MOVE_KIND=mv ;;
+    esac
+    [ -n "$MOVE_KIND" ] && MOVE_ONLY=1
+    if [ "$MOVE_KIND" = ps ] && [ "$DESTRUCTIVE" = 0 ]; then
+        read -r -a PSW <<<"$SEG_NR"
+        PS_SRC=""; PS_POS=0; PS_PREV=""
+        for ((pi = 1; pi < ${#PSW[@]}; pi++)); do
+            Pw=${PSW[$pi]}; Pl=$(printf '%s' "$Pw" | tr 'A-Z' 'a-z')
+            case "$PS_PREV" in
+                -path|-literalpath|-lp|-pspath) PS_SRC="$PS_SRC $Pw"; PS_PREV=""; continue ;;
+                -destination|-newname) PS_PREV=""; continue ;;
+            esac
+            case "$Pl" in -*) PS_PREV=$Pl; continue ;; esac
+            PS_POS=$((PS_POS + 1))
+            [ "$PS_POS" = 1 ] && PS_SRC="$PS_SRC $Pw"
+        done
+        if [ -z "${PS_SRC// /}" ]; then
+            UNRESOLVED="${UNRESOLVED}(${CW}: no source on the command line - it comes from a pipe) "
+        fi
+        for Pw in $PS_SRC; do
+            Pw=${Pw//\"/}; Pw=${Pw//\'/}; Pw=${Pw//\\//}
+            [[ $Pw =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${Pw} "
+        done
+        continue
+    fi
     [ "$DESTRUCTIVE" = 1 ] || [ "$TRUNCATE" = 1 ] || [ "$MOVE_ONLY" = 1 ] || [ "$VARCMD" = 1 ] || continue
 
     # Targets: every word after the first that is not a flag.
@@ -360,7 +402,12 @@ while IFS="$US" read -r SEG VSEG CW; do
         # three protected directories rm/find/rsync already deny on. The
         # destination (NARGS == TOTAL_TARGETS, the last one counted above) is
         # excluded - see the comment above TOTAL_TARGETS.
-        if [ "$MOVE_ONLY" = 1 ] && [ "$DESTRUCTIVE" = 0 ] && [ "$NARGS" -lt "$TOTAL_TARGETS" ]; then
+        # A brace list expands to several arguments (`mv results{,.bak}`,
+        # `mv {rawdata,old}`), the first of them a source, so a brace word
+        # naming a protected directory is a source wherever it sits.
+        if [ "$MOVE_ONLY" = 1 ] && [ "$DESTRUCTIVE" = 0 ] \
+           && { [ "$NARGS" -lt "$TOTAL_TARGETS" ] || [ "$MOVE_KIND" = all ] \
+                || [[ ${WORDS[$wi]} == *'{'*','*'}'* ]]; }; then
             [[ $A =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${A} "
         fi
 

@@ -82,7 +82,8 @@ repo_from_plugin_json() {
     printf '%s\n' "$url"
 }
 REPO="${REPORT_REPO:-$(repo_from_plugin_json "$ROOT/.claude-plugin/plugin.json")}"
-[ -n "$REPO" ] || REPO="zhshie/agentic-bioflow_v2"   # last resort: plugin.json lacks the field
+# No fallback repository (#33, E4): a deployment whose plugin.json names none
+# keeps its reports queued rather than sending them somewhere it never chose.
 
 usage() {
     cat >&2 <<'U'
@@ -393,6 +394,11 @@ send_reports() {
         esac
     done
     [ "${REPORT_DRY_RUN:-0}" = 1 ] && dry=1
+    if [ -z "$REPO" ]; then
+        echo "No repository to send to: .claude-plugin/plugin.json has no \"repository\" field and REPORT_REPO is unset."
+        echo "Reports stay queued in $(reports_dir). Set one of the two, then run send again."
+        return 0
+    fi
 
     local dir files
     dir="$(reports_dir)"
@@ -432,8 +438,10 @@ send_reports() {
         gh_fallback_urls "${FILE_ARR[@]}"
         return 0
     fi
-    if [ "$login" = zhshie ]; then
-        echo "Maintainer identity detected (gh api user -> zhshie)."
+    # The maintainer is whoever owns the repository reports go to (#33, E4):
+    # on a fork that is the fork's owner, never a login written in here.
+    if [ "$login" = "${REPO%%/*}" ]; then
+        echo "Maintainer identity detected (gh api user -> $login, owner of $REPO)."
         echo "design this into the plugin instead - not sent, queue kept."
         return 0
     fi

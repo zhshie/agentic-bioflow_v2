@@ -99,3 +99,18 @@ that touch the same files to confirm no collateral breakage:
 
 - `commands/setup.md` synced-folder paragraph: removed the example "e.g. Google Drive for Desktop's default location" as the in-profile case. It had no source, and Drive for Desktop's streaming mode mounts its own drive letter (this maintainer's workspace is on `G:`), so it may be the opposite case. The paragraph now says step 3 does not guess: it reads back who can open the token file and refuses when anyone beyond the owner can.
 - Reviewed E1's added "When something here does not go as designed" sections in downstream.md/finish.md (deviation accepted: neither file had any failure text), and the E5 rewrite in SKILL.md (the practical instruction and the settings-file warning are kept).
+
+## After independent acceptance (2026-09-30)
+
+The reviewer found no regression against main and failed two items; both fixed test-first, with the E9 gaps it listed:
+
+- **E4**: the maintainer check still compared the login with a literal `zhshie`. It now compares with the owner of `$REPO`; the fallback repository is gone (no `repository` in plugin.json and no `REPORT_REPO` → reports stay queued, said so); SKILL.md no longer names the repository literally. `tests/report_test.sh`: a fork's owner is the maintainer, zhshie is not on a fork (both red before).
+- **E1**: `tests/off_design_single_path.sh` matched one literal phrase. It now catches the ordinary variants (try/attempt(s) (to/a) fix, fix it yourself, work around it, figure it out yourself, improvise) and self-tests on planted paragraphs: 5 red with the old pattern, all caught now; a paragraph that points at the off-design section still passes.
+- **E9 gaps**: `mv -t` / `--target-directory` (every argument a source), brace lists (`mv results{,.bak}`, `mv {rawdata,old}`), `rsync --remove-source-files`, `rename`, PowerShell `Move-Item` with named parameters in any order, `mi`/`move`/`Rename-Item`/`rni`/`ren` under a PowerShell tool, and a pipeline-fed `Move-Item` → ask. `grep -rn mv results` no longer asks (readers of text are not movers). 11 new cases, red before.
+- **E7**: setup.md said the token file is read back and refused; it is the settings file written beside it. Corrected.
+- **E8**: three more places in SKILL.md cited PRINCIPLES.md as the authority for a rule; now the constitution.
+- **E10**: `宏基因体`/`宏基因體` (mixed forms) added.
+
+Left as found (reviewer: not in scope): the settings summary still prints the token as `present` when its privacy could not be measured; Chinese questions containing 失敗/分析 already routed before this change.
+
+WSL `tests/run_all.sh` 74/74.

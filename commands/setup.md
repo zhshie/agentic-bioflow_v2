@@ -347,9 +347,10 @@ alongside the site one (step 3, once `seqera_user` is known).
   profile* carries the profile's normal owner-only permissions and is exactly
   what this is designed for; nothing below refuses it. A cloud drive mounted
   as **its own drive letter** may not: step 3 does not guess which one this
-  is, it reads back who can open the token file, and refuses when anyone
-  beyond the owner can (a drive with no ACLs, like a USB stick, always
-  answers that way) — whatever this step already said. Which one a given
+  is, it reads back who can open the settings file it writes beside the
+  token, and refuses to write there when anyone beyond the owner can (a
+  drive with no ACLs, like a USB stick, always answers that way) — whatever
+  this step already said. Which one a given
   sync client produces depends on its mode and version; the read-back is the
   answer, not the product name.
 - **On the site itself (only when outputs are huge).** No local skeleton.

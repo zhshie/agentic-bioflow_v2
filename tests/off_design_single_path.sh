@@ -42,7 +42,7 @@ check_file() {
     local f="$1" name bad
     name=$(basename "$f")
     bad=$(awk -v RS='' '
-        /\*\*Anything else\.|Diagnose it fully|[Aa]ttempt[[:space:]]+to[[:space:]]+fix/ {
+        /\*\*Anything else\.|[Dd]iagnose it fully|([Aa]ttempts?|[Tt]ry|[Tt]ries)[[:space:]]+(to[[:space:]]+|a[[:space:]]+)?fix|[Ff]ix it yourself|[Ww]ork around it|[Ff]igure (it )?out yourself|[Ii]mprovise/ {
             if ($0 !~ /skills\/operational\/SKILL\.md/ && $0 !~ /Off-design: when nothing here covers it/) {
                 print "----- offending block -----"
                 print $0
@@ -80,6 +80,21 @@ for f in downstream.md finish.md; do
       && grep -qF "Off-design: when nothing here covers it" "$ROOT/commands/$f" \
       && echo ok || { echo "FAIL"; fails=$((fails+1)); }
 done
+
+# #33 acceptance: the phrase list must catch open-ended "fix it however"
+# wording in its ordinary variants, not just one literal - checked on
+# planted paragraphs, each of which must be reported; a paragraph that says
+# the same thing but points at the off-design section must not be.
+PT=$(mktemp -d); trap 'rm -rf "$PT"' EXIT
+for phrase in "Try to fix this step yourself." "You may attempt a fix here." \
+              "Attempts to fix are fine." "Work around it." "Improvise if needed."; do
+    printf 'Step 4 fails sometimes.\n%s\n' "$phrase" > "$PT/planted.md"
+    printf '%-70s ' "planted catch-all is caught: $phrase"
+    if check_file "$PT/planted.md" >/dev/null; then echo "FAIL: not caught"; fails=$((fails+1)); else echo ok; fi
+done
+printf 'Step 4 fails sometimes.\nTry to fix it inside the safety net: follow skills/operational/SKILL.md.\n' > "$PT/pointed.md"
+printf '%-70s ' "a catch-all that points at the off-design section passes"
+check_file "$PT/pointed.md" >/dev/null && echo ok || { echo "FAIL"; fails=$((fails+1)); }
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
