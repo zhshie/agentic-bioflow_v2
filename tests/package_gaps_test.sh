@@ -107,6 +107,18 @@ if grep -qF '<!-- assembled by scripts/methods_text.py' "$M"; then
   echo "FAIL: still a comment"; fails=$((fails+1))
 else echo ok; fi
 
+# --- developer review: nothing in the manuscript is an HTML comment ---------
+# The per-figure "describe what this shows" placeholder is step 4's to fill.
+# Left as a comment, a figure step 4 skipped rendered with no description and
+# no sign one was missing - the same invisible gap as the rest of #32.
+printf '%-62s ' "manuscript.qmd holds no HTML comment at all"
+if grep -qF '<!--' "$Q"; then
+  echo "FAIL: $(grep -nF '<!--' "$Q" | head -1)"; fails=$((fails+1))
+else echo ok; fi
+printf '%-62s ' "each planned figure carries a visible 'not written yet' gap"
+if grep -qF "[GAP: Results for 'fig10' not written yet" "$Q"; then echo ok; else
+  echo "FAIL: no visible placeholder for fig10"; fails=$((fails+1)); fi
+
 # --- ambiguous matches are not ALSO double-reported as unclaimed orphans ----
 printf '%-62s ' "ambiguous figA files are not ALSO reported as unclaimed orphans"
 if grep -qF "figA_v1.png is in the package but no plan entry claims it" "$Q" \

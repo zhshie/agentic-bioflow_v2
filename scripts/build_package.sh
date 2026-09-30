@@ -271,8 +271,11 @@ for row in entries:
         emitted.update(match)
     else:
         print("[GAP: no figure file starting with '%s' in figures/]\n" % fid)
-    print("<!-- Describe what this shows, from the data. Every number here must "
-          "trace to a file or to a script in scripts/. -->\n")
+    # Visible, not an HTML comment (#32): step 4 of commands/finish.md replaces
+    # it with prose; one it skips must still show in the rendered document.
+    print("[GAP: Results for '%s' not written yet - say what it shows, from the "
+          "data; every number must trace to a file or to a script in scripts/]\n"
+          % fid)
 for f in figs:
     if f not in emitted:
         print("[GAP: figures/%s is in the package but no plan entry claims it]" % f)

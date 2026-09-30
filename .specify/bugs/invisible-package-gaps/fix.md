@@ -108,3 +108,7 @@ left untouched, as decided.
   unchanged: it is not a "something could not be found" gap but a
   to-be-replaced authoring instruction for the `/finish` step-4 write-up, and
   it was not named in the assessment's suspected code paths.
+
+## Developer review (2026-09-30)
+
+The implementer left the per-figure `<!-- Describe what this shows… -->` placeholder as an HTML comment, reading it as an authoring instruction rather than a gap. Changed: step 4 of `commands/finish.md` fills it, and a figure step 4 skips would render with no description and no sign one is missing — the same invisible gap. It is now `[GAP: Results for '<id>' not written yet - …]`; `commands/finish.md` step 4 says to replace it and that one left in place stays visible on purpose; step 3 says these are step 4's to fill, not decisions. `tests/package_gaps_test.sh` now asserts the manuscript holds no HTML comment at all and that each planned figure carries the visible placeholder (both red on 40f6525, green now). WSL `tests/run_all.sh` 74/74.
