@@ -102,6 +102,20 @@ call "$SF1" add "emptyreason.example.org" --reason ""
 fail_rc "TC-018 add with an empty --reason refuses" "$RC" "$OUT"
 t "TC-018 nothing was written for it either" "$(count 'emptyreason.example.org' "$TSV1")" "0"
 
+# Developer review: a reason is one field of one line. A tab or newline in it
+# would split the line and could plant a second entry that never went through
+# `add`'s checks. It is stored with those characters turned into spaces.
+before=$(awk 'END {print NR}' "$TSV1")
+call "$SF1" add "inject.example.org" --reason $'first\nplanted.example.org\t2026-01-01\tx'
+after=$(awk 'END {print NR}' "$TSV1")
+t "reason with a newline: exactly one line written" "$((after - before))" "1"
+t "reason with a newline: no line starts with the planted domain" \
+  "$(awk -F'\t' '$1 == "planted.example.org"' "$TSV1" | awk 'END {print NR}')" "0"
+t "reason with a tab: the line still has exactly three fields" \
+  "$(awk -F'\t' '$1 == "inject.example.org" {print NF}' "$TSV1")" "3"
+t "reason with a tab: domains does not list the planted one" \
+  "$(call "$SF1" domains; count_in 'planted.example.org' "$OUT")" "0"
+
 # T001: more than 100 entries refuses.
 SF2="$(newroot)"
 CONF2="$(dirname "$SF2")"

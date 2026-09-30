@@ -125,6 +125,10 @@ cmd_add() {
         "e.g. download.example.org) - never a wildcard, an IP address, a single-label" \
         "top-level domain, or an empty string."
 
+    # One reason is one field of one line: tabs, newlines and carriage
+    # returns become spaces, or a reason could split the line and plant an
+    # entry that never passed the checks above (developer review of 002).
+    reason="${reason//$'\t'/ }"; reason="${reason//$'\n'/ }"; reason="${reason//$'\r'/ }"
     reason="$(printf '%s' "$reason" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     [ -n "$reason" ] || die 1 \
         "a reason is required - name the run or need that made '$domain' necessary."
