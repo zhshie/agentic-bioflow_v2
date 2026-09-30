@@ -45,6 +45,21 @@ site_terms_grep() {
 #     ssh invocation here; nothing forks scripts/on_site.sh.
 # Reviewed individually, per the assessment's own caution against bulk-
 # whitelisting once -i widens what matches.
+#
+# Phrase-level, not line-level: the phrase is removed from the line's text
+# and the rest of the line is matched again, so "Relay what they say, then
+# sbatch it" still reports sbatch. A first version dropped any line holding a
+# phrase, whole, and the independent review showed three such lines passing.
+# Input lines are grep -n output, `<path>:<line>:<text>`; only <text> is
+# judged (a Windows path carries its own colon, so the split is on the first
+# `:<digits>:`). awk with tolower, not sed's GNU-only `I` flag.
 site_terms_allow() {
-    grep -viE 'reach: ?ssh|reach=ssh|relay what they|relay column output|remote-ssh'
+    awk -v terms="$SITE_TERMS" '
+        {
+            line = $0; text = line
+            if (match(line, /:[0-9]+:/)) text = substr(line, RSTART + RLENGTH)
+            t = tolower(text)
+            gsub(/reach: ?ssh|reach=ssh|relay what they|relay column output|remote-ssh/, " ", t)
+            if (t ~ terms) print line
+        }'
 }

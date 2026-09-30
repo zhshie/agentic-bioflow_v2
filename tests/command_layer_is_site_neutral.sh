@@ -39,6 +39,24 @@ if [ "$rc" -ge 2 ]; then
     exit 1
 fi
 
+# The exemptions are phrases, not lines (#30 review): a line that holds an
+# exempt phrase AND a real term must still be reported. Checked here on
+# synthetic lines so the rule cannot quietly go back to line-level.
+selftest=$(printf '%s\n' \
+    'C:/x/commands/a.md:3:Relay what they say, then sbatch it.' \
+    'commands/b.md:7:Use Remote-SSH and run squeue' \
+    'commands/c.md:9:reach: ssh, then use rsync' \
+    'commands/d.md:1:Relay what they print, verbatim.' \
+    'commands/e.md:2:set reach: ssh in the settings' | site_terms_allow)
+want='C:/x/commands/a.md:3:Relay what they say, then sbatch it.
+commands/b.md:7:Use Remote-SSH and run squeue
+commands/c.md:9:reach: ssh, then use rsync'
+if [ "$selftest" != "$want" ]; then
+    echo "FAIL: site_terms_allow exempts whole lines, not phrases. Got:"
+    printf '%s\n' "$selftest"
+    exit 1
+fi
+
 hits=$(printf '%s\n' "$raw" | site_terms_allow | sed "s|^$ROOT/||" | grep -v '^$')
 
 if [ -n "$hits" ]; then

@@ -171,3 +171,9 @@ native Git Bash refuses this suite.
 - `tests/lib/site_terms.sh`: `\b` replaced by explicit word boundaries; BSD grep -E (the Mac) does not promise `\b`.
 - Native Git Bash: `tests/confirm_cleanup_test.sh` all passed with no environment overrides — the UTF-8 fix works where WSL could not reproduce the bug (it failed 4-10 cases natively before).
 - WSL `tests/run_all.sh`: 73/73.
+
+## After independent acceptance (2026-09-30)
+
+The reviewer (read-only, fresh context) passed 9 of 11 items and failed one: `site_terms_allow` dropped a whole line when it held an exempt phrase, so "Relay what they say, then sbatch it", "Use Remote-SSH and run squeue" and "reach: ssh, then use rsync" all passed (13 lines in commands/skills carry an exempt phrase). Fixed: the phrase is removed from the line's text and the rest matched again (awk + tolower, BSD-safe). The reviewer's three cases are now a permanent self-test in `tests/command_layer_is_site_neutral.sh`; with the previous rule it fails, with the new one it passes. WSL `tests/run_all.sh` 73/73; native Git Bash: both site-term tests OK.
+
+The reviewer's other notes, not blocking: fixtures proving each test can go red are mostly one-off (the allow-rule self-test is the exception); `portable_userland.sh` does not catch `grep -rn -P` / `--perl-regexp`; D3 stays red on Windows (split out). → noted on #35's sibling issue list for later.
