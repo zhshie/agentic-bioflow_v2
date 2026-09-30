@@ -231,6 +231,7 @@ HIT_LEFTOVER=""
 HIT_ROOT=""
 HIT_CODE=""
 HIT_GLOB=""
+HIT_MV_SOURCE=""
 
 # #29, round 3: everything below runs inside this shell - `[[ =~ ]]`, `case`
 # and parameter expansion - with no `echo | grep` per segment or per target.
@@ -247,6 +248,7 @@ RE_DELVERB='(^|[[:space:]])([^[:space:]]*/)?\\?(rm|rmdir|unlink|shred)([[:space:
 RE_FIND_DEL='(^|[[:space:]])([^[:space:]]*/)?find[[:space:]](.*[[:space:]])?(-delete([[:space:]]|$)|-exec(dir)?[[:space:]]+([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$))'
 RE_RSYNC_DEL='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--delete'
 RE_MV='(^|[[:space:]])([^[:space:]]*/)?\\?mv([[:space:]]|$)'
+RE_RSYNC_RSF='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--remove-source-files'
 RE_CODE_DEL='(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|(^|[^[:alnum:]_.])(unlink|rmtree)|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync)|::Delete)[[:space:]]*\('
 RE_DEVNULL='[0-9]*>&?[[:space:]]*/dev/null'
 RE_TRUNC='>[[:space:]]*/'
@@ -319,12 +321,78 @@ while IFS="$US" read -r SEG VSEG CW; do
     [[ $V_NR =~ $RE_TRUNC ]] && TRUNCATE=1
     [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1
     [[ $VSEG =~ $RE_RSYNC_DEL ]] && DESTRUCTIVE=1
-    [[ $VSEG =~ $RE_MV ]] && MOVE_ONLY=1
+    # E9: what kind of move this is decides which arguments are SOURCES.
+    #   mv   - every non-flag argument but the last (the last is written into)
+    #   all  - every argument is a source: `mv -t DIR SRC…`, rename(1)
+    #   ps   - PowerShell's Move-Item/Rename-Item: -Path/-LiteralPath values,
+    #          else the first positional; -Destination is written into
+    # A reader of text is not a mover: `grep -rn mv results` stays quiet.
+    MOVE_KIND=""
+    case "$CW" in
+        grep|egrep|fgrep|rg|echo|printf|cat|less|more|head|tail|ls|wc) ;;
+        move-item|rename-item) MOVE_KIND=ps ;;
+        mi|move|rni|ren) case "$TOOL" in ""|Bash) ;; *) MOVE_KIND=ps ;; esac ;;
+        rename) MOVE_KIND=all ;;
+        *)
+            if [[ $VSEG =~ $RE_MV ]]; then
+                MOVE_KIND=mv
+                [[ $VSEG =~ (^|[[:space:]])(-t|--target-directory)([[:space:]=]|$) ]] && MOVE_KIND=all
+            fi
+            # rsync --remove-source-files deletes each source once copied.
+            [[ $VSEG =~ $RE_RSYNC_RSF ]] && MOVE_KIND=mv ;;
+    esac
+    [ -n "$MOVE_KIND" ] && MOVE_ONLY=1
+    if [ "$MOVE_KIND" = ps ] && [ "$DESTRUCTIVE" = 0 ]; then
+        read -r -a PSW <<<"$SEG_NR"
+        PS_SRC=""; PS_POS=0; PS_PREV=""
+        for ((pi = 1; pi < ${#PSW[@]}; pi++)); do
+            # Lowercased in-shell, one character class per letter PowerShell
+            # parameters use - no process per argument (Git Bash is slow to
+            # start one, and bash 3.2 on the Mac has no ${var,,}).
+            Pw=${PSW[$pi]}; Pl=$Pw
+            for UC in A:a B:b C:c D:d E:e F:f G:g H:h I:i J:j K:k L:l M:m N:n O:o P:p Q:q R:r S:s T:t U:u V:v W:w X:x Y:y Z:z; do
+                Pl=${Pl//${UC%:*}/${UC#*:}}
+            done
+            case "$PS_PREV" in
+                -path|-literalpath|-lp|-pspath) PS_SRC="$PS_SRC $Pw"; PS_PREV=""; continue ;;
+                -destination|-newname) PS_PREV=""; continue ;;
+            esac
+            case "$Pl" in -*) PS_PREV=$Pl; continue ;; esac
+            PS_POS=$((PS_POS + 1))
+            [ "$PS_POS" = 1 ] && PS_SRC="$PS_SRC $Pw"
+        done
+        if [ -z "${PS_SRC// /}" ]; then
+            UNRESOLVED="${UNRESOLVED}(${CW}: no source on the command line - it comes from a pipe) "
+        fi
+        for Pw in $PS_SRC; do
+            Pw=${Pw//\"/}; Pw=${Pw//\'/}; Pw=${Pw//\\//}
+            [[ $Pw =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${Pw} "
+        done
+        continue
+    fi
     [ "$DESTRUCTIVE" = 1 ] || [ "$TRUNCATE" = 1 ] || [ "$MOVE_ONLY" = 1 ] || [ "$VARCMD" = 1 ] || continue
 
     # Targets: every word after the first that is not a flag.
     read -r -a WORDS <<<"$SEG_NR"
     NARGS=0
+    # E9 (2026-09-30, maintainer decision): mv's LAST non-flag argument is the
+    # destination being written INTO - that is normal, not a removal, and
+    # stays quiet. Only the sources (every argument before it) are judged
+    # against rawdata/, results/ and analysis/, same as rm/find/rsync. Knowing
+    # which one is last needs the total up front, filtered exactly like the
+    # main loop below (flags dropped, quotes stripped, a wrapping verb like
+    # `srun mv a b` not counted as a source itself) so the two counts agree.
+    TOTAL_TARGETS=0
+    if [ "$MOVE_ONLY" = 1 ] && [ "$DESTRUCTIVE" = 0 ]; then
+        for ((ti = 1; ti < ${#WORDS[@]}; ti++)); do
+            Tw=${WORDS[$ti]}
+            case "$Tw" in -*|'') continue ;; esac
+            Tw=${Tw//\"/}; Tw=${Tw//\'/}; Tw=${Tw//\\//}; Tw=${Tw//\{//}; Tw=${Tw//\}//}; Tw=${Tw//,//}
+            [ -n "$Tw" ] || continue
+            case "$Tw" in rm|rmdir|unlink|shred|truncate|mv|move-item) continue ;; esac
+            TOTAL_TARGETS=$((TOTAL_TARGETS + 1))
+        done
+    fi
     for ((wi = 1; wi < ${#WORDS[@]}; wi++)); do
         A=${WORDS[$wi]}
         case "$A" in -*|'') continue ;; esac
@@ -333,8 +401,21 @@ while IFS="$US" read -r SEG VSEG CW; do
         # uses backslashes; a brace list names each member.
         A=${A//\"/}; A=${A//\'/}; A=${A//\\//}; A=${A//\{//}; A=${A//\}//}; A=${A//,//}
         [ -n "$A" ] || continue
-        case "$A" in rm|rmdir|unlink|shred|truncate) continue ;; esac   # a wrapped verb
+        case "$A" in rm|rmdir|unlink|shred|truncate|mv|move-item) continue ;; esac   # a wrapped verb
         NARGS=$((NARGS + 1))
+
+        # E9: judge every mv SOURCE (every arg but the last) against the same
+        # three protected directories rm/find/rsync already deny on. The
+        # destination (NARGS == TOTAL_TARGETS, the last one counted above) is
+        # excluded - see the comment above TOTAL_TARGETS.
+        # A brace list expands to several arguments (`mv results{,.bak}`,
+        # `mv {rawdata,old}`), the first of them a source, so a brace word
+        # naming a protected directory is a source wherever it sits.
+        if [ "$MOVE_ONLY" = 1 ] && [ "$DESTRUCTIVE" = 0 ] \
+           && { [ "$NARGS" -lt "$TOTAL_TARGETS" ] || [ "$MOVE_KIND" = all ] \
+                || [[ ${WORDS[$wi]} == *'{'*','*'}'* ]]; }; then
+            [[ $A =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${A} "
+        fi
 
         # An unknown command word (`$(which rm)`, `$R`) is judged only when
         # its target is something this hook protects, and then it pauses.
@@ -500,6 +581,18 @@ Expand it and check before running, e.g.:
   echo \"<the variable>\"
 Confirm it is not rawdata/, results/, analysis/ or .nextflow/plugins/, and that
 the user has said \"確認刪除\", then issue the command with the literal path."
+
+[ -n "$HIT_MV_SOURCE" ] && ask "About to move rawdata/, results/ or analysis/ - or something inside one -
+somewhere else.
+
+Source: ${HIT_MV_SOURCE}
+
+Moving it out is a different act from writing into it, and the safety net now
+treats the two differently on purpose (#29e, maintainer decision 2026-09-30):
+once it lands in a scratch area, a later cleanup of that area deletes it for
+good, with nothing here left to say it used to be here. Moving something INTO
+one of these directories is unaffected - that is writing, not removing.
+Confirm with the user that this move is intended before running it."
 
 [ -n "$HIT_OVERWRITE" ] && warn "About to write over a file under rawdata/ or results/ (${HIT_OVERWRITE}).
 

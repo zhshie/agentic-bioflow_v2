@@ -33,7 +33,9 @@ Each was written, then deleted.
 The commands are Seqera's nouns — compute environment, then
 pipelines → datasets → launch, then runs. A user who knows Seqera already knows
 this tool, and anything Seqera ships later lands in a slot that already exists.
-Platform is the single source of truth for run state; we keep no copy of it.
+The execution backend is the single source of truth for run state — Seqera
+Platform where it is used, Nextflow's own records where it is not
+(constitution, invariant 2) — and no file here keeps a second copy.
 
 ## B. Who can use it, and where
 
@@ -78,15 +80,16 @@ Resource mapping keys off the *composed* request (`task.cpus`, `task.memory`,
 `task.time`), never off label names: nf-core labels are partial and stackable,
 and a label table goes stale the moment a pipeline adds one. Samplesheet columns
 come from the pipeline's `assets/schema_input.json`, parameters from its
-`nextflow_schema.json`.
+`nextflow_schema.json` — never from a per-pipeline file in this repository
+(constitution, invariant 6), for the same reason: it would go stale the same way.
 
 **7. Nobody should need the maintainer.**
 
 A user must not have to read `PITFALLS.md` or ask whoever built this in order to
 keep going. Say what a step will do before doing it. Prove the environment works
-on public test data — touching none of their real data — before their first real
-run, and do not hand them the command list until that proof passes, or they will
-take an unverified environment to real data.
+on public test data — touching none of their real data — and do not hand them
+the command list until that proof passes (constitution, invariant 7): skip
+that order and they take an unverified environment to real data instead.
 
 ## D. How to work
 
@@ -97,7 +100,7 @@ asserted here and each was wrong. The GTF check that nf-core already did. The
 missing outputs that were a dead agent. The claim that a compute environment's
 config could be edited in place. Verify first; the result goes in `PITFALLS.md`.
 
-**9. Every verifiable claim points at the file that produced it.**
+**9. Anything written on a user's behalf points at the file that produced it.**
 
 Invariant 8 governs what this project asserts about itself. This one governs
 what it writes on someone's behalf, and the stakes are different: a wrong line

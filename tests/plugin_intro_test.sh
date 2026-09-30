@@ -189,6 +189,22 @@ expect "the LITERAL door still wins over the NL one for the same prompt shape" \
        "$(prompt nl8 '/agentic-bioflow:launch RNA-seq' | field .systemMessage)" STUB-BANNER-MARKER
 
 echo
+echo "== E10 (2026-09-30, maintainer decision): specialist Chinese topic words =="
+# Only specialist terms (定序/測序/擴增子/轉錄體/轉錄組/樣本表/總體基因體/宏基因組, plus
+# their simplified forms where different) were added to the topic list - not
+# generic words like 分析/流程/資料, which the maintainer also uses for unrelated
+# work in the same shell. So a Chinese request still needs BOTH a specialist
+# topic word and an action verb, same rule as every other language.
+expect "定序 + 分析 (the assessment's own example) routes" \
+       "$(prompt cn1 '幫我分析這批定序資料' | field .hookSpecificOutput.additionalContext)" "agentic-bioflow:operational"
+expect "分析 alone, no specialist topic (career, not sequencing): says nothing" \
+       "$(prompt cn2 '幫我分析職涯選項')" EMPTY
+expect "定序 alone, a pure question, no action verb: says nothing" \
+       "$(prompt cn3 '定序是什麼')" EMPTY
+expect "a simplified-Chinese specialist term (测序) + action routes too" \
+       "$(prompt cn4 '帮我分析这批测序数据' | field .hookSpecificOutput.additionalContext)" "agentic-bioflow:operational"
+
+echo
 echo "== T3: the topic vocabulary stays pinned to SKILL.md's own trigger words =="
 # PITFALLS 19: a justification that names another file's behaviour is a
 # dependency, and nothing links them unless something checks it. This does

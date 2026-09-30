@@ -337,11 +337,22 @@ alongside the site one (step 3, once `seqera_user` is known).
   and the like), `--use` and `scripts/init_workspace.sh` both print a warning
   — pass it along rather than re-deriving it. It says two things: large files
   (rawdata, results, container images) sync slowly and eat quota, and they do
-  not live here anyway; and the token **is** in there, in plaintext at mode
-  600, so the sync client holds a copy. That is a deliberate trade
-  (`docs/SETTINGS.md`, "The token") — a token is revocable from the Seqera UI
-  in one click. A warning, not a refusal: a synced folder is exactly what this
-  is designed for.
+  not live here anyway; and the token **is** in there, in plaintext, readable
+  by the owner only — that is a deliberate trade (`docs/SETTINGS.md`, "The
+  token"), and a token is revocable from the Seqera UI in one click.
+
+  **A warning, not a refusal, and it is worth saying which of two things this
+  is** — the two can look identical from the folder picker and are not the
+  same case. A folder that a sync client keeps mirrored *inside the user's own
+  profile* carries the profile's normal owner-only permissions and is exactly
+  what this is designed for; nothing below refuses it. A cloud drive mounted
+  as **its own drive letter** may not: step 3 does not guess which one this
+  is, it reads back who can open the settings file it writes beside the
+  token, and refuses to write there when anyone beyond the owner can (a
+  drive with no ACLs, like a USB stick, always answers that way) — whatever
+  this step already said. Which one a given
+  sync client produces depends on its mode and version; the read-back is the
+  answer, not the product name.
 - **On the site itself (only when outputs are huge).** No local skeleton.
   Measure before assuming this is the case: a normalised count matrix is
   about 973 KB, and a whole delivery directory is around 25 MB — ordinary
@@ -404,8 +415,12 @@ plainly rather than wrapping it:
 
 - an account at seqera.io, and a workspace — **if someone gave the user a
   workspace ID, this is where it goes**; otherwise they create their own
-- a personal access token, saved to `_personal/.seqera_token`, `chmod 600`,
-  **never printed, never in git, never in a params file**
+- a personal access token, saved to `<root>/config/.seqera_token` — the root
+  chosen in ② above, or found by `--use` (`scripts/settings.sh`, `token_file`;
+  `docs/SETTINGS.md`, "The token"). It must end up readable by the owner
+  only, checked by reading it back rather than assumed from a `chmod` call
+  (mode on Unix, ACL on Windows — step 10's summary reports which).
+  **Never printed, never in git, never in a params file.**
 - `tw info` to confirm the token works. If it fails, this step has not
   passed — do not read that as a hint about the storage path or the workspace
   and start troubleshooting sideways. There is no branch for it here: follow
@@ -588,9 +603,16 @@ other Positron extension.
 
 ## When a step fails
 
-Say which step, what the failure means, and what to do. **You may attempt to
-fix this step** — that is not the same as continuing past it. What is not
-allowed is moving on to the next step before this one passes: everything after
-it depends on it, and the errors it produces will describe the wrong problem,
-not the real one. If the fix attempt itself fails, report that the same way —
-which step, what happened, what was tried — and stay there.
+Say which step, what the failure means, and what to do. What is not allowed is
+moving on to the next step before this one passes: everything after it depends
+on it, and the errors it produces will describe the wrong problem, not the
+real one.
+
+Most of the ten steps already name their own branch for the ways they are
+known to fail — follow that branch, not this section, when one applies. When a
+failure has no branch of its own here, follow the off-design procedure in
+`skills/operational/SKILL.md` (section "Off-design: when nothing here covers
+it") instead of improvising a fix: tell the user, record it with
+`scripts/report.sh`, attempt it inside the safety net, and offer the report at
+the end. If that attempt itself fails, report that the same way — which step,
+what happened, what was tried — and stay there.

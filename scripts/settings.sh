@@ -576,7 +576,8 @@ set_setting() {
     local _priv _state; _priv="$(file_privacy "$SETTINGS_FILE")"
     _state="${_priv%% *}"
     case "$_state" in
-        private|unknown) return 0 ;;
+        private) return 0 ;;
+        unknown) warn_unmeasured_privacy "$SETTINGS_FILE" "${_priv#* }"; return 0 ;;
     esac
     # Only a file THIS call created is ours to remove. One that already held a
     # member's real settings must stay - deleting it over a permission problem
@@ -584,6 +585,25 @@ set_setting() {
     if [ "$created" = 1 ]; then rm -f "$SETTINGS_FILE"; fi
     refuse_unwritable_mode "$SETTINGS_FILE" "${_priv#* }"
     return 1
+}
+
+# E3 (2026-09-30, constitution invariant 11 "measured, never assumed" and
+# invariant 13 "the safety net says so when it cannot do its job"): the
+# `unknown` branch above used to `return 0` with nothing printed at all - a
+# Windows machine with no powershell.exe to ask, or any platform whose `stat`
+# answered oddly, wrote the token in total silence about whether anyone else
+# could read it. This is not a refusal - refusing here would block every
+# machine that merely cannot be asked, which is worse than the exposure it
+# cannot rule out - only a visible warning plus how to check it by hand.
+warn_unmeasured_privacy() {
+    local file="$1" why="$2"
+    echo "warning: could not confirm $file is private to you - $why." >&2
+    echo "It was written anyway. Check it by hand:" >&2
+    if [ "$(plat_kind)" = msys ]; then
+        echo "  right-click the file -> Properties -> Security -> Advanced, or run:  icacls \"$file\"" >&2
+    else
+        echo "  ls -l \"$file\"   # should read -rw------- (mode 600), owner only" >&2
+    fi
 }
 
 # What set_setting() calls when chmod 600 did not hold. Same shape as

@@ -8,10 +8,12 @@ description: How to run a Nextflow/nf-core pipeline through Seqera Platform on a
 Identity-neutral: this defines *how the work is done*. Persona, language and
 lab-specific norms come from the deployment's own CLAUDE.md, not from here.
 
-**Read `docs/PRINCIPLES.md` before changing anything structural.** It records
-what decides — most importantly that we build only what neither Seqera nor
-nf-core already does. `docs/PITFALLS.md` records what has already gone wrong;
-consult it when something breaks, not preemptively.
+**Read `.specify/memory/constitution.md` before changing anything
+structural.** It is what decides — most importantly that we build only what
+neither Seqera nor nf-core already does. `docs/PRINCIPLES.md` keeps the
+reasoning and history behind each rule, same numbers, and is corrected where
+it disagrees with the constitution. `docs/PITFALLS.md` records what has
+already gone wrong; consult it when something breaks, not preemptively.
 
 When installed as a plugin these are under `${CLAUDE_PLUGIN_ROOT}`; read them
 straight from the repository otherwise.
@@ -155,7 +157,7 @@ Work outward from the layer most likely to be lying to you.
 ## Off-design: when nothing here covers it
 
 This project is built to a fixed design, not improvised per session
-(`docs/PRINCIPLES.md`, invariant 10) — but a firewalled cluster, a shared
+(constitution, invariant 10) — but a firewalled cluster, a shared
 Seqera workspace and every OS a member might carry a laptop in produce
 situations this design did not anticipate. There are three:
 
@@ -212,17 +214,20 @@ situations this design did not anticipate. There are three:
 
    - **This is the maintainer's own login.** Nothing is sent. Say so, and
      that the right move is designing this into the plugin directly rather
-     than filing it as an issue — same as any other change here, through
-     `docs/PRINCIPLES.md` and the usual tests.
+     than filing it as an issue — same as any other change here, through the
+     constitution's development workflow (spec, approved test cases, tests).
    - **Someone else, with `gh` available.** It searches open issues labelled
      `off-design` for this report's signature (category + command + step +
      script + exit, hashed). A match gets a comment, not a new issue; no
-     match gets a new one, labelled `off-design`, in `zhshie/agentic-bioflow_v2`.
+     match gets a new one, labelled `off-design`, in the repository named by
+     `.claude-plugin/plugin.json`'s own `repository` field - a fork that
+     edits that field routes its own reports there instead, `REPORT_REPO`
+     overrides it explicitly, and with neither the reports stay queued.
      Sent reports are removed from the local queue.
    - **No `gh`, not logged in, or the identity check timed out.** It prints
      a prefilled `github.com/.../issues/new?...&labels=off-design` link
      instead of sending anything, and the report stays queued locally.
-     `scripts/session_start.sh` reminds the user at the next session start
+     `hooks/session_start.sh` reminds the user at the next session start
      that reports are still waiting, so this is never a dead end either —
      just one more step for whoever has a GitHub login.
 
@@ -238,14 +243,15 @@ run area's `_references/`, or a shared image cache. Never delete
 `.nextflow/plugins/`. Deleting `work/` or `.nextflow/cache/` needs the user's
 explicit confirmation. Show a launch command in full and wait for confirmation
 before running it. Credentials and personal details live only in the
-deployment's settings area, mode 600 — never printed, never in git, never in a
-params file, and never taken from another member's copy.
+deployment's settings area, readable by the owner only — measured by reading
+it back, never assumed (mode on Unix, ACL on Windows) — never printed, never
+in git, never in a params file, and never taken from another member's copy.
 
 ## On Windows
 
 The site is reached only through `scripts/on_site.sh`, never by improvising a
 connection of your own — on this platform that script borrows the one piece
-its own shell is missing (`docs/PRINCIPLES.md`, invariant 11), and nothing
+its own shell is missing (constitution, invariant 11), and nothing
 else about where the session is running changes because of it.
 
 Opening that connection is a human turn, not yours: the one-time code lands
@@ -273,13 +279,15 @@ What changes is not this text but whether `hooks/` fires alongside it
 - **H3** — a runtime that reaches these files with no hook mechanism to run
   them at all (Claude Tag, Managed Agents, OpenClaw, Hermes, or similar). It
   may read this skill and `docs/` as documentation, and run read-only
-  Platform queries — look up a run, read a report. It must not touch the
-  site, submit a run, or delete anything. Prose is not a gate on a host with
+  Platform queries — look up a run, read a report. **The direction this is
+  heading, not yet enforced by anything here: it should touch nothing beyond
+  that** — no submitted run, no delete. Prose is not a gate on a host with
   no hooks to turn it into one, and the gate meant to replace it -
   `docs/LAB_AGENTS.md` section 3's view-only credential - **is designed but
-  not built**. So on such a host this is a rule someone has to keep, and the
-  operator's job is not to hand it a deployment's settings file: that file's
-  token is the same full-permission one everyone else uses.
+  not built**. So on such a host, confirm with the user by hand before doing
+  anything beyond a read-only query, and the operator's job is not to hand it
+  a deployment's settings file: that file's token is the same full-permission
+  one everyone else uses.
 
 `${CLAUDE_PLUGIN_ROOT}` throughout this file means the installed plugin root;
 on a host with no plugin mechanism it means the repository root, read

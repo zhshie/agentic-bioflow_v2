@@ -352,6 +352,14 @@ out=$(umask 022; PATH="$NOMODE:$UB:$PATH" LAB_SETTINGS_FILE="$TMP/canthold2/env.
 t "under MSYS a manufactured mode alone never refuses" "$rc" "0"
 hasnot "...and nothing is claimed about holding mode 600 there" "would not hold mode 600" "$out"
 hasnot "...and it does not send them round the same circle" "under \$HOME instead" "$out"
+# E3 (2026-09-30): "unknown" used to write the token with nothing said at
+# all - invariant 11 says privacy is measured, never assumed, and invariant
+# 13 says the safety net speaks up when it cannot do its job. Both apply
+# here too, not only to the launch/cleanup/walkthrough gates: the token is
+# still written (refusing on every machine that merely cannot be asked would
+# be worse than the exposure this cannot rule out), but it is no longer silent.
+has "...but DOES say privacy could not be measured" "could not confirm" "$out"
+has "...and says how to check it by hand on this platform" "icacls" "$out"
 
 # A file that already held real content before this call must never be
 # deleted just because a later write's chmod did not hold - that would be a
@@ -387,6 +395,8 @@ CANTTELL="$TMP/canttell/env.yaml"
 out=$(PATH="$NOSTAT:$PATH" LAB_SETTINGS_FILE="$CANTTELL" \
       bash "$S" --set workspace_id 1 2>&1); rc=$?
 t "an unreadable mode ('cannot tell') is let through, not refused" "$rc" "0"
+has "...and it too says privacy could not be measured (E3)" "could not confirm" "$out"
+has "...naming how to check it by hand on this platform" "ls -l" "$out"
 
 # ---------------------------------------------------------------------------
 # B2: `--summary` used to print a hardcoded "mode 600" sentence, independent
