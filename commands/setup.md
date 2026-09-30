@@ -506,7 +506,7 @@ different questions — `docs/SITE_ADAPTER.md` explains why both:
 no `test` profile supplies one, so without it the proof run takes a queue slot,
 reaches a compute node, and dies at parameter validation with
 `Missing required parameter(s): outdir` before a single task exists. A walk
-through this spent a full submit-through-Slurm cycle on exactly that. Point it
+through this spent a full submit-through-scheduler cycle on exactly that. Point it
 at a scratch path under the run area —
 `<storage_root>/_system/coldstart/<pipeline>`, the home
 `scripts/init_workspace.sh` built in step 1 for exactly this kind of probe —

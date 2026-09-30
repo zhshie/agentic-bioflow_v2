@@ -32,8 +32,19 @@ for f in "${DOCS[@]}"; do
 done
 
 # The measured set: scripts that print at least one space-padded field.
-MEASURED=$(grep -rlP "printf.*%-[0-9]+s" "$ROOT/scripts/" 2>/dev/null \
-           | xargs -r -n1 basename | sort -u)
+# grep -E, not -P (bug: false-green-tests) - this pattern needs nothing PCRE
+# has that ERE does not, and a grep error must not read as "nothing aligns
+# output" (which the check right below would then also treat as broken - see
+# there - but the swallow this replaces hid the difference between the two).
+MEASURED_RAW=$(grep -rlE "printf.*%-[0-9]+s" "$ROOT/scripts/" 2>&1)
+MEASURED_RC=$?
+if [ "$MEASURED_RC" -ge 2 ]; then
+    printf '%-62s ' "the scripts/ scan for aligned output ran cleanly"
+    echo "FAIL: grep errored (rc=$MEASURED_RC): $MEASURED_RAW"; fails=$((fails+1))
+    MEASURED=""
+else
+    MEASURED=$(printf '%s\n' "$MEASURED_RAW" | xargs -r -n1 basename | sort -u)
+fi
 
 printf '%-62s ' "something in scripts/ actually aligns output"
 [ -n "$MEASURED" ] && echo ok || { echo "FAIL: nothing matched - has the scan broken?"; fails=$((fails+1)); }

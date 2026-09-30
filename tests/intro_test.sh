@@ -101,9 +101,17 @@ hasnot "and the zh-TW banner does not leak into it" "已載入" "$out"
 for L in zh-TW en; do
     out="$(clean --lang "$L")"
     printf '%-62s ' "$L overview aligns nothing with runs of spaces"
-    if grep -qP '\S {3,}' <<<"$out"; then
-        echo "FAIL: $(grep -nP '\S {3,}' <<<"$out" | head -1)"; fails=$((fails+1))
-    else echo ok; fi
+    # grep -E, not -P (bug: false-green-tests) - [^[:space:]] is the portable
+    # spelling of \S, so this needs nothing PCRE-only. A grep error (rc >= 2)
+    # fails loudly rather than being read as "no match".
+    hit=$(grep -nE '[^[:space:]] {3,}' <<<"$out" 2>&1); rc=$?
+    if [ "$rc" -ge 2 ]; then
+        echo "FAIL: grep errored (rc=$rc): $hit"; fails=$((fails+1))
+    elif [ "$rc" -eq 0 ]; then
+        echo "FAIL: $(printf '%s\n' "$hit" | head -1)"; fails=$((fails+1))
+    else
+        echo ok
+    fi
 done
 
 # ---------------------------------------------------------------------------
