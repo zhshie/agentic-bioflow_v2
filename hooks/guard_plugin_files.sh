@@ -224,7 +224,10 @@ Bash | *[Ss]hell* | *[Pp]wsh* | *[Tt]erminal* | *[Cc]md* | *[Ee]xec*)
         # raw payload instead - but only refuse when it names the root AND
         # carries a write verb; naming the plugin to read it stays allowed.
         root_in "$INPUT" || exit 0
-        if grep -qiE '(sed[[:space:]]+-i|tee|cp|mv|rm|rmdir|chmod|chown|patch|ln|truncate|install|set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|del|erase|copy|move|ren)([^a-z-]|$)|>' <<<"$INPUT"; then
+        # A leading boundary too (#40): without it `rm` inside `arm1`, `ln`
+        # inside `8ln3`, `ren` inside `aren5` - any path fragment - read as a
+        # write verb, and a plain read of such a root was denied.
+        if grep -qiE '(^|[^a-z0-9_.-])(sed[[:space:]]+-i|tee|cp|mv|rm|rmdir|chmod|chown|patch|ln|truncate|install|set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|del|erase|copy|move|ren)([^a-z-]|$)|>' <<<"$INPUT"; then
             deny "BLOCKED: this call came from a shell tool ('${TOOL:-<unnamed>}') whose input this hook cannot read, and its raw text names the installed plugin's location next to something write-shaped. The installed plugin is not edited in place.
 
 ${REASON_TAIL}"
