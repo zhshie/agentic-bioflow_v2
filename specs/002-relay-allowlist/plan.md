@@ -23,7 +23,7 @@
 ## Technical Context
 
 - Bash (scripts, hooks) + Python 3 stdlib (`scripts/nf_relay.py`); no new dependency.
-- Storage: `<root>/config/egress_allow.tsv` — one line per domain: `domain<TAB>YYYY-MM-DD<TAB>reason`. In the settings root, so it travels with the root and survives plugin updates (FR-001, SC-002); per deployment (FR-010). Location from `settings.sh` (`config_dir`), never hard-coded (invariant 3).
+- Storage: `<root>/config/egress_allow.tsv` — one line per domain: `domain<TAB>YYYY-MM-DD<TAB>reason`. In the settings root, so it travels with the root and survives plugin updates (FR-001, SC-002); per deployment (FR-010). Location: the same `config/` directory `settings.sh`'s `token_file()` resolves (no hard-coded path, invariant 3).
 - Transport: `scripts/on_site.sh` already carries the few values site scripts need as environment variables (`carry NF_RELAY_PORT …`). Add `carry NF_RELAY_EXTRA_DOMAINS "<comma list>"` and `carry NF_RELAY_EXTRA_NOTE "<why the list is empty or partial>"`. Under `reach: local` the same variables are exported directly.
 - Tests: bash, repo style; the relay's matching is tested by importing `nf_relay.py` functions with the environment set (no network).
 
@@ -84,5 +84,5 @@ scripts/on_site.sh               (carries it)
 hooks/confirm_launch.sh          (asks on add/remove)
 commands/runs.md, commands/launch.md
 docs/SETTINGS.md                 (the new file), docs/SITE_ADAPTER.md (egress contract mentions the per-deployment list)
-tests/egress_allow_test.sh       (new), tests/confirm_launch_test.sh, tests/nf_relay_* (existing relay tests extended)
+tests/egress_allow_test.sh       (new), tests/nf_relay_domains_test.sh (new; no unit test of the relay exists today), tests/confirm_launch_test.sh
 ```
