@@ -153,3 +153,12 @@ with the first.
 provenance looked like, which citations matched and which did not. Read it for
 a sense of what to expect, never as a substitute for running the tools on the
 project in front of you.
+
+## When something here does not go as designed
+
+Say which step, what happened, and what you are about to try — never move on
+as though it passed when it did not. When the failure has no branch of its own
+above, follow the off-design procedure in `skills/operational/SKILL.md`
+(section "Off-design: when nothing here covers it") instead of improvising:
+tell the user, record it with `scripts/report.sh`, attempt it inside the
+safety net, and offer the report at the end.

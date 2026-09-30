@@ -298,8 +298,36 @@ t "ionice -c3 find $P/results -delete"             deny "#29d find -delete behin
 t "singularity exec x.sif find $P/analysis -type f -delete" deny "#29d find -delete behind singularity exec"
 t "srun rsync -a --delete /tmp/empty/ $P/results/" deny "#29d rsync --delete behind srun (main: deny)"
 t "ionice -c3 rsync -a --delete /tmp/empty/ $P/rawdata/" deny "#29d rsync --delete behind ionice"
-t "srun mv $P/rawdata/a.fastq.gz /tmp/"            warn "#29d mv behind srun still warns (main: warn)"
+t "srun mv $P/rawdata/a.fastq.gz /tmp/"            ask  "#29d mv behind srun now asks (E9 supersedes the old warn)"
 t "$(printf 'srun %s -rf %s/results "x\ny"' "$D" "$P")" deny "#29d a multi-line quoted argument after the target"
+
+# E9 (2026-09-30, maintainer decision): mv was the one delete-adjacent verb
+# with no directory-protection rule at all - only the sequencing-file-
+# extension heuristic could ever fire on it, which said nothing about
+# rawdata/, results/ or analysis/ as such. Every SOURCE (every argument but
+# the last) is now judged against those three, the same set rm/find/rsync
+# already deny on; the LAST argument is the destination being written into,
+# which stays excluded - writing into one of these directories is normal.
+t "mv results /tmp/x"                              ask  "#29e mv results/ (bare relative path) elsewhere asks"
+t 'mv $P/rawdata/ /scratch/old'                     ask  "#29e mv an unexpanded \$VAR/rawdata/ still asks (literal match)"
+t "mv notes.txt results/"                           pass "#29e mv INTO results/ is writing, stays quiet"
+t "mv a.txt b.txt"                                  pass "#29e an ordinary mv with nothing protected, stays quiet"
+t "ls results && mv x y"                            pass "#29e mv in a compound, nothing protected, stays quiet"
+tps "Move-Item results C:\\tmp"                     ask  "#29e PowerShell Move-Item on results/ asks"
+# E9, acceptance review: shapes that still moved a protected directory quietly,
+# and one read-only command that asked.
+t "mv -t /tmp results"                              ask  "#29e mv -t: every argument is a source"
+t "mv --target-directory=/tmp analysis"             ask  "#29e mv --target-directory="
+t "mv results{,.bak}"                               ask  "#29e brace rename of results/"
+t "mv {rawdata,old_rawdata}"                        ask  "#29e brace list with rawdata as the source"
+t "rsync -a --remove-source-files results/ /x/"     ask  "#29e rsync --remove-source-files empties the source"
+t "rename s/results/old/ results"                   ask  "#29e rename(1) on results/"
+t "grep -rn mv results analysis"                    pass "#29e grep for the word mv is not a move"
+tps "Move-Item -Destination C:\\tmp -Path results"  ask  "#29e Move-Item with named parameters reversed"
+tps "mi results C:\\tmp"                            ask  "#29e PowerShell alias mi"
+tps "Rename-Item results old_results"               ask  "#29e Rename-Item on results/"
+tps "Get-ChildItem results | Move-Item -Destination C:\\tmp" ask "#29e Move-Item fed by the pipeline"
+tps "Move-Item notes.txt -Destination results"      pass "#29e Move-Item INTO results/ stays quiet"
 
 # #29 round 3: a gate past its timeout (30 s) is cancelled and the command
 # runs. Round 2 took ~50 s on a 120-line script under Git Bash. A 200-line

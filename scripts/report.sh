@@ -60,7 +60,30 @@ ROOT="$(cd "$HERE/.." && pwd)"
 # shellcheck source=scripts/settings.sh
 . "$HERE/settings.sh"
 
-REPO="zhshie/agentic-bioflow_v2"
+# E4 (2026-09-30, invariant 3 "no marketplace coordinates" / "anyone can
+# install it"): this used to be a hardcoded constant, so a fork or another
+# lab's deployment filed its off-design reports on the maintainer's own repo
+# rather than its own. Derived from .claude-plugin/plugin.json's own
+# "repository" field instead - the same file version_extract() below already
+# reads - so a fork that edits that one field gets its reports routed
+# correctly with nothing else to change. REPORT_REPO is the explicit escape
+# hatch (tests use it; a deployment that keeps its plugin.json unedited but
+# still wants reports elsewhere can too).
+repo_from_plugin_json() {
+    local f="$1" url
+    [ -r "$f" ] || return 1
+    url=$(sed -n 's/.*"repository"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -1)
+    [ -n "$url" ] || return 1
+    case "$url" in
+        https://github.com/*) url="${url#https://github.com/}" ;;
+        git@github.com:*)     url="${url#git@github.com:}" ;;
+    esac
+    url="${url%.git}"
+    printf '%s\n' "$url"
+}
+REPO="${REPORT_REPO:-$(repo_from_plugin_json "$ROOT/.claude-plugin/plugin.json")}"
+# No fallback repository (#33, E4): a deployment whose plugin.json names none
+# keeps its reports queued rather than sending them somewhere it never chose.
 
 usage() {
     cat >&2 <<'U'
@@ -371,6 +394,11 @@ send_reports() {
         esac
     done
     [ "${REPORT_DRY_RUN:-0}" = 1 ] && dry=1
+    if [ -z "$REPO" ]; then
+        echo "No repository to send to: .claude-plugin/plugin.json has no \"repository\" field and REPORT_REPO is unset."
+        echo "Reports stay queued in $(reports_dir). Set one of the two, then run send again."
+        return 0
+    fi
 
     local dir files
     dir="$(reports_dir)"
@@ -410,8 +438,10 @@ send_reports() {
         gh_fallback_urls "${FILE_ARR[@]}"
         return 0
     fi
-    if [ "$login" = zhshie ]; then
-        echo "Maintainer identity detected (gh api user -> zhshie)."
+    # The maintainer is whoever owns the repository reports go to (#33, E4):
+    # on a fork that is the fork's owner, never a login written in here.
+    if [ "$login" = "${REPO%%/*}" ]; then
+        echo "Maintainer identity detected (gh api user -> $login, owner of $REPO)."
         echo "design this into the plugin instead - not sent, queue kept."
         return 0
     fi

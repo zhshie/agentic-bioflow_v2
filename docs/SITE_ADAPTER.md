@@ -24,7 +24,8 @@ site will actually accept — without the pipeline knowing.
 *Why it is not optional:* nf-core pipelines request whatever their labels say,
 and a site is free to reject that. The mapping must key off the **composed**
 request (`task.cpus`, `task.memory`, `task.time`), never off label names, or a
-pipeline the adapter has never seen will not run (`PRINCIPLES.md`, invariant 6).
+pipeline the adapter has never seen will not run (constitution, invariant 6;
+reasoning in `PRINCIPLES.md`, same number).
 
 *A site with no constraints supplies an empty config.* That is a valid adapter.
 

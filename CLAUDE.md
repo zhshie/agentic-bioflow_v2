@@ -202,5 +202,6 @@ context and given the feature directory - never the author's own review.
   pipeline's schema/README/diagrams — those are all read live from the
   pipeline's repo at that revision, never cached here.
 - The settings file (`docs/SETTINGS.md`) lives outside this repo (on the
-  login node or the user's own machine, depending on `reach`), is mode 600,
-  and is never committed.
+  login node or the user's own machine, depending on `reach`), is readable by
+  the owner only — measured by reading it back, never assumed (mode on Unix,
+  ACL on Windows) — and is never committed.
