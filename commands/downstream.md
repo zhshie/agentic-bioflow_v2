@@ -129,8 +129,9 @@ anywhere in this flow.
    Sort it into research question, experimental design, organism, hypotheses,
    and intended use. Where something is missing, ask about it or mark it
    unknown — never invent it. Where they hand over a paper, **read it**
-   before citing anything from it; a title is not a source (`docs/PRINCIPLES.md`,
-   invariant 9 applies here just as it does to `finish`).
+   before citing anything from it; a title is not a source (constitution,
+   invariant 9 — reasoning in `docs/PRINCIPLES.md`, same number — applies
+   here just as it does to `finish`).
 
    Show the organised version back and get their confirmation before writing
    anything down. Then write it into `analysis.md` as a `background` section
@@ -330,3 +331,12 @@ anywhere in this flow.
   names this path first. And the command it names had to be written as
   `--script`: `on_site.sh` ships this plugin's own scripts by that flag, and a
   bare path would look for one on the site that is not there.
+
+## When something here does not go as designed
+
+Say which step, what happened, and what you are about to try — never move on
+as though it passed when it did not. When the failure has no branch of its own
+above, follow the off-design procedure in `skills/operational/SKILL.md`
+(section "Off-design: when nothing here covers it") instead of improvising:
+tell the user, record it with `scripts/report.sh`, attempt it inside the
+safety net, and offer the report at the end.

@@ -60,7 +60,29 @@ ROOT="$(cd "$HERE/.." && pwd)"
 # shellcheck source=scripts/settings.sh
 . "$HERE/settings.sh"
 
-REPO="zhshie/agentic-bioflow_v2"
+# E4 (2026-09-30, invariant 3 "no marketplace coordinates" / "anyone can
+# install it"): this used to be a hardcoded constant, so a fork or another
+# lab's deployment filed its off-design reports on the maintainer's own repo
+# rather than its own. Derived from .claude-plugin/plugin.json's own
+# "repository" field instead - the same file version_extract() below already
+# reads - so a fork that edits that one field gets its reports routed
+# correctly with nothing else to change. REPORT_REPO is the explicit escape
+# hatch (tests use it; a deployment that keeps its plugin.json unedited but
+# still wants reports elsewhere can too).
+repo_from_plugin_json() {
+    local f="$1" url
+    [ -r "$f" ] || return 1
+    url=$(sed -n 's/.*"repository"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -1)
+    [ -n "$url" ] || return 1
+    case "$url" in
+        https://github.com/*) url="${url#https://github.com/}" ;;
+        git@github.com:*)     url="${url#git@github.com:}" ;;
+    esac
+    url="${url%.git}"
+    printf '%s\n' "$url"
+}
+REPO="${REPORT_REPO:-$(repo_from_plugin_json "$ROOT/.claude-plugin/plugin.json")}"
+[ -n "$REPO" ] || REPO="zhshie/agentic-bioflow_v2"   # last resort: plugin.json lacks the field
 
 usage() {
     cat >&2 <<'U'

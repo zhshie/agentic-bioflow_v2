@@ -73,9 +73,19 @@ case "$NORM" in *' hook_event_name UserPromptSubmit '*) IS_UPS=1 ;; esac
 # lesson, that a justification naming another file's behaviour needs
 # SOMETHING pinning them together: tests/plugin_intro_test.sh asserts a
 # handful of these words also appear in that file's own description.
+#
+# E10 (2026-09-30, maintainer decision): a Chinese request with action intent
+# ("幫我分析這批定序資料") named no English topic word, so it never reached
+# either door. Specialist Chinese terms only - 定序/測序/擴增子/轉錄體/轉錄組/
+# 樣本表/總體基因體/宏基因組, plus their simplified forms where different -
+# were added below, deliberately NOT generic words like 分析/流程/資料: the
+# maintainer uses Chinese for unrelated work in the same shell, and a generic
+# word would nudge on every one of those. has_action() already covers 分析
+# and the rest of the verb side; only the topic side was missing.
 has_topic() {
     case "$1" in
-        *RNA-seq*|*RNAseq*|*'RNA seq'*|*FASTQ*|*fastq*|*nf-core*|*[Nn]extflow*|*samplesheet*|*Seqera*|*16S*|*ampliseq*|*amplicon*|*metagenom*|*[Ww][Gg][Ss]*|*'variant calling'*|*'differential expression'*|*GEO*|*SRA*)
+        *RNA-seq*|*RNAseq*|*'RNA seq'*|*FASTQ*|*fastq*|*nf-core*|*[Nn]extflow*|*samplesheet*|*Seqera*|*16S*|*ampliseq*|*amplicon*|*metagenom*|*[Ww][Gg][Ss]*|*'variant calling'*|*'differential expression'*|*GEO*|*SRA* | \
+        *定序*|*測序*|*测序*|*擴增子*|*扩增子*|*轉錄體*|*转录体*|*轉錄組*|*转录组*|*樣本表*|*样本表*|*總體基因體*|*总体基因体*|*宏基因組*|*宏基因组*)
             return 0 ;;
     esac
     return 1

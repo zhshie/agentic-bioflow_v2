@@ -220,5 +220,36 @@ out=$(GH_LOG5="$GH_LOG6" AGENTIC_BIOFLOW_REPORTS_DIR="$DIR6" env -i PATH="$STUBD
 tgrep "REPORT_DRY_RUN=1 behaves like --dry-run" "gh issue create --repo" "$out"
 t "REPORT_DRY_RUN=1: report stays queued" 1 "$(queue_count "$DIR6")"
 
+# --- E4 (2026-09-30): repo/owner derived from plugin.json, REPORT_REPO overrides ---
+# A fork or another lab's deployment must not file its off-design reports
+# here (invariant 3) - the repo now comes from .claude-plugin/plugin.json's
+# own "repository" field, with REPORT_REPO as the explicit escape hatch.
+printf '%-64s ' ".claude-plugin/plugin.json names the repository"
+grep -qF '"repository"' "$ROOT/.claude-plugin/plugin.json" \
+  && grep -qF "zhshie/agentic-bioflow_v2" "$ROOT/.claude-plugin/plugin.json" \
+  && echo ok || { echo FAIL; fails=$((fails+1)); }
+
+DIR7="$TMP/q7"; mkdir -p "$DIR7"
+AGENTIC_BIOFLOW_REPORTS_DIR="$DIR7" env -i PATH="$PATH" HOME="$TMP" \
+    AGENTIC_BIOFLOW_REPORTS_DIR="$DIR7" bash "$R" add --category env --command none \
+    --step repo-override-case >/dev/null
+
+out=$(AGENTIC_BIOFLOW_REPORTS_DIR="$DIR7" env -i PATH="/usr/bin:/bin" HOME="$TMP" REPORT_REPO="someorg/somefork" \
+      AGENTIC_BIOFLOW_REPORTS_DIR="$DIR7" REPORT_REPO="someorg/somefork" bash "$R" send --yes)
+tgrep "REPORT_REPO overrides the derived repo (no-gh fallback URL)" \
+      "https://github.com/someorg/somefork/issues/new" "$out"
+tnotgrep "...and no longer points at the maintainer's own repo" "zhshie/agentic-bioflow_v2" "$out"
+
+# No override: derived straight from plugin.json, same value the hardcoded
+# constant used to carry - proving the two agree, not just that one exists.
+DIR8="$TMP/q8"; mkdir -p "$DIR8"
+AGENTIC_BIOFLOW_REPORTS_DIR="$DIR8" env -i PATH="$PATH" HOME="$TMP" \
+    AGENTIC_BIOFLOW_REPORTS_DIR="$DIR8" bash "$R" add --category env --command none \
+    --step repo-derived-case >/dev/null
+out=$(AGENTIC_BIOFLOW_REPORTS_DIR="$DIR8" env -i PATH="/usr/bin:/bin" HOME="$TMP" \
+      AGENTIC_BIOFLOW_REPORTS_DIR="$DIR8" bash "$R" send --yes)
+tgrep "with no override, the URL still derives from plugin.json (not a stale hardcode)" \
+      "https://github.com/zhshie/agentic-bioflow_v2/issues/new" "$out"
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
