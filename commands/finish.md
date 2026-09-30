@@ -50,7 +50,8 @@ have, and what question each figure was drawn to answer.
 
 **Scope:** Methods and Results. There is no Introduction and no Discussion —
 those are the authors' scientific judgement and this has no basis for either.
-The Discussion heading is left in place with a comment saying so.
+The Discussion heading is left in place with a visible `[GAP: ...]` marker
+saying so.
 
 ## The three rules that decide what may be written
 
@@ -107,17 +108,23 @@ is not itself the answer to "where does `submission/` belong". Ask first.
    own file paths — worth a look before the package leaves the lab.
 
 3. **Read what it produced, and report every gap it recorded.** Search the
-   output for the citation markers and for the comments about figures that do
-   not line up with the plan. Put that list in front of the user as a list of
+   output for the citation markers and for every `[GAP: ...]` line - in
+   `manuscript.qmd` (figures not lining up with the plan, the undrafted
+   Discussion) and in `methods.md` (its Notes section and any unresolved
+   placeholder). The `Results for '…' not written yet` lines are step 4's to
+   fill, not decisions. Put that list in front of the user as a list of
    decisions they have to make, not as a warning at the end of a wall of text.
    A near-miss citation is theirs to confirm: the tool that ran and the entry
    the pipeline lists may or may not be the same thing, and guessing wrong
    cites the wrong paper.
 
 4. **Write the Results prose.** One section per accepted entry, using the
-   question that entry says it answers. State what the data shows — which
-   samples, which direction, how large — with each number's source at hand.
-   Statistical statements are allowed and rule 2 governs them.
+   question that entry says it answers, in place of that entry's
+   `[GAP: Results for '…' not written yet …]` line. State what the data
+   shows — which samples, which direction, how large — with each number's
+   source at hand. Statistical statements are allowed and rule 2 governs them.
+   A placeholder left in place stays visible in the rendered document, which
+   is intended: it is a gap the reader must see.
 
 5. **Put the plan for the package in front of the user before rendering.**
    What it contains, what is still marked as a gap, and what rendering will

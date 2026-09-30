@@ -243,22 +243,60 @@ if not entries:
         % (plan, len(text.splitlines()), nonblank))
     sys.exit(1)
 
+def fig_matches(fid, figs):
+    """Files in figs whose name starts with fid at a real boundary - '.',
+    '_' or the end of the name. A bare startswith() matched 'fig10.png'
+    against the id 'fig1' (invisible-package-gaps item 3): no boundary check
+    means a shorter id is a prefix of a longer one's number, not just its
+    name.
+    """
+    boundary = re.compile(r"^" + re.escape(fid) + r"([._]|$)")
+    # A file a longer planned id claims is that id's, not this one's:
+    # with fig1 and fig1_b both planned, fig1_b.png is fig1_b's (acceptance
+    # review of #32 - the first fix called fig1 ambiguous and dropped it).
+    longer = [re.compile(r"^" + re.escape(o) + r"([._]|$)")
+              for o in all_ids if o != fid and o.startswith(fid)]
+    cands = [f for f in figs if boundary.match(f)
+             and not any(l.match(f) for l in longer)]
+    # One figure saved in several formats (fig1.png + fig1.pdf) is one
+    # figure: prefer the file whose name is exactly the id, in the format a
+    # rendered manuscript embeds best.
+    exact = [f for f in cands if os.path.splitext(f)[0] == fid]
+    if exact:
+        pref = [".png", ".jpg", ".jpeg", ".svg", ".pdf", ".tif", ".tiff"]
+        exact.sort(key=lambda f: pref.index(os.path.splitext(f)[1].lower())
+                   if os.path.splitext(f)[1].lower() in pref else len(pref))
+        return exact[:1], exact
+    return cands, cands
+
+
+all_ids = [row["id"] for row in entries]
 emitted = set()
 for row in entries:
     fid = row["id"]
     qtext = row.get("question") or fid
-    match = [f for f in figs if f.startswith(fid)]
+    match, claimed = fig_matches(fid, figs)
     print("### %s\n" % qtext)
-    if match:
+    if len(match) == 1:
+        emitted.update(claimed)
         print("![%s](figures/%s){#fig-%s}\n" % (qtext, match[0], fid))
         emitted.add(match[0])
+    elif len(match) > 1:
+        # A wrong match is worse than a visible gap - see fig_matches above -
+        # so an ambiguous id is reported, never resolved by picking one.
+        print("[GAP: id '%s' matches %d files in figures/: %s]\n"
+              % (fid, len(match), ", ".join(match)))
+        emitted.update(match)
     else:
-        print("<!-- no figure file starting with '%s' in figures/ -->\n" % fid)
-    print("<!-- Describe what this shows, from the data. Every number here must "
-          "trace to a file or to a script in scripts/. -->\n")
+        print("[GAP: no figure file starting with '%s' in figures/]\n" % fid)
+    # Visible, not an HTML comment (#32): step 4 of commands/finish.md replaces
+    # it with prose; one it skips must still show in the rendered document.
+    print("[GAP: Results for '%s' not written yet - say what it shows, from the "
+          "data; every number must trace to a file or to a script in scripts/]\n"
+          % fid)
 for f in figs:
     if f not in emitted:
-        print("<!-- figures/%s is in the package but no plan entry claims it -->" % f)
+        print("[GAP: figures/%s is in the package but no plan entry claims it]" % f)
 PY
 ) || exit 1
 
@@ -281,8 +319,8 @@ QMD="$OUT/manuscript.qmd"
     echo
     echo '## Discussion'
     echo
-    echo "<!-- Not drafted. The discussion is the authors' scientific judgement,"
-    echo "     and this program has no basis for any of it. -->"
+    echo "*[GAP: not drafted - the discussion is the authors' scientific"
+    echo "judgement, and this program has no basis for any of it.]*"
 } > "$QMD"
 echo "wrote     submission/manuscript.qmd"
 
