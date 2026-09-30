@@ -80,6 +80,19 @@ def fix_doubled_doi(text):
     return DOI_DOUBLE_PREFIX_RE.sub(r"\1", text)
 
 
+# invisible-package-gaps item 2: `re.sub(r"\$\{[^}]*\}", "", filled)` used to
+# delete anything left unresolved with no trace - a sentence like "run for
+# ${custom_reason}" came out reading "run for ." with nothing to say why.
+# Invariant 9: a gap that cannot be resolved is written into the output,
+# never silently dropped, so every survivor becomes a visible marker instead.
+UNRESOLVED_PLACEHOLDER_RE = re.compile(r"\$\{([^}]*)\}")
+
+
+def mark_unresolved_placeholders(text):
+    return UNRESOLVED_PLACEHOLDER_RE.sub(
+        lambda m: "[GAP: unresolved placeholder ${%s}]" % m.group(1), text)
+
+
 def provenance(results_dirs):
     # sys.executable, not the .py file's own path: Python's subprocess.run()
     # launches a file through raw CreateProcess on native Windows, which
@@ -316,7 +329,7 @@ def render(run, assets_base):
         if n == 0:
             filled = rendered
         filled, n = COMMAND_BLOCK_RE.subn("<pre><code>%s</code></pre>" % cmd, filled, count=1)
-        filled = re.sub(r"\$\{[^}]*\}", "", filled)
+        filled = mark_unresolved_placeholders(filled)
         filled = fix_doubled_doi(filled)
         lines.append(html_to_md(filled))
         if n:
@@ -339,7 +352,7 @@ def render(run, assets_base):
                            "[DOI not shown: no rendered MultiQC report was "
                            "found to read it from]")
                   .replace("${nodoi_text}", ""))
-        filled = re.sub(r"\$\{[^}]*\}", "", filled)
+        filled = mark_unresolved_placeholders(filled)
         lines.append(html_to_md(filled))
         notes.append("the command line shown is reconstructed against the run's "
                      "own params file; the one the report records points at an "
@@ -367,15 +380,24 @@ def render(run, assets_base):
     if run.get("launch_params"):
         why = rationale(run["launch_params"])
         if why:
+            # invariant 9: the source a piece of reasoning came from must be
+            # named, not just the reasoning itself - the pointer used to live
+            # only inside the comment block below, which vanishes on render.
+            src = os.path.relpath(run["launch_params"], run["run_dir"])
             lines.append("\n### Why these parameters\n")
+            lines.append("Source: `%s`\n" % src)
             for key, text in why:
                 lines.append("- `%s` — %s" % (key, text))
 
     if notes:
-        lines.append("\n<!-- assembled by scripts/methods_text.py")
+        # invisible-package-gaps item 1: these used to be wrapped in an HTML
+        # comment, which a docx render drops and an html render only keeps in
+        # page source - a reader never saw them. Written as ordinary visible
+        # text instead, each one a [GAP: ...] so it reads as a gap rather
+        # than as settled prose.
+        lines.append("\n### Notes\n")
         for n in notes + run.get("notes", []):
-            lines.append("     - " + n)
-        lines.append("-->")
+            lines.append("- [GAP: %s]" % n)
     return "\n".join(lines)
 
 

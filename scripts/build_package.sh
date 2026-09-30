@@ -243,22 +243,39 @@ if not entries:
         % (plan, len(text.splitlines()), nonblank))
     sys.exit(1)
 
+def fig_matches(fid, figs):
+    """Files in figs whose name starts with fid at a real boundary - '.',
+    '_' or the end of the name. A bare startswith() matched 'fig10.png'
+    against the id 'fig1' (invisible-package-gaps item 3): no boundary check
+    means a shorter id is a prefix of a longer one's number, not just its
+    name.
+    """
+    boundary = re.compile(r"^" + re.escape(fid) + r"([._]|$)")
+    return [f for f in figs if boundary.match(f)]
+
+
 emitted = set()
 for row in entries:
     fid = row["id"]
     qtext = row.get("question") or fid
-    match = [f for f in figs if f.startswith(fid)]
+    match = fig_matches(fid, figs)
     print("### %s\n" % qtext)
-    if match:
+    if len(match) == 1:
         print("![%s](figures/%s){#fig-%s}\n" % (qtext, match[0], fid))
         emitted.add(match[0])
+    elif len(match) > 1:
+        # A wrong match is worse than a visible gap - see fig_matches above -
+        # so an ambiguous id is reported, never resolved by picking one.
+        print("[GAP: id '%s' matches %d files in figures/: %s]\n"
+              % (fid, len(match), ", ".join(match)))
+        emitted.update(match)
     else:
-        print("<!-- no figure file starting with '%s' in figures/ -->\n" % fid)
+        print("[GAP: no figure file starting with '%s' in figures/]\n" % fid)
     print("<!-- Describe what this shows, from the data. Every number here must "
           "trace to a file or to a script in scripts/. -->\n")
 for f in figs:
     if f not in emitted:
-        print("<!-- figures/%s is in the package but no plan entry claims it -->" % f)
+        print("[GAP: figures/%s is in the package but no plan entry claims it]" % f)
 PY
 ) || exit 1
 
@@ -281,8 +298,8 @@ QMD="$OUT/manuscript.qmd"
     echo
     echo '## Discussion'
     echo
-    echo "<!-- Not drafted. The discussion is the authors' scientific judgement,"
-    echo "     and this program has no basis for any of it. -->"
+    echo "*[GAP: not drafted - the discussion is the authors' scientific"
+    echo "judgement, and this program has no basis for any of it.]*"
 } > "$QMD"
 echo "wrote     submission/manuscript.qmd"
 

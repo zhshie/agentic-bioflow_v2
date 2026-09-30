@@ -50,7 +50,8 @@ have, and what question each figure was drawn to answer.
 
 **Scope:** Methods and Results. There is no Introduction and no Discussion —
 those are the authors' scientific judgement and this has no basis for either.
-The Discussion heading is left in place with a comment saying so.
+The Discussion heading is left in place with a visible `[GAP: ...]` marker
+saying so.
 
 ## The three rules that decide what may be written
 
@@ -107,8 +108,8 @@ is not itself the answer to "where does `submission/` belong". Ask first.
    own file paths — worth a look before the package leaves the lab.
 
 3. **Read what it produced, and report every gap it recorded.** Search the
-   output for the citation markers and for the comments about figures that do
-   not line up with the plan. Put that list in front of the user as a list of
+   output for the citation markers and for the `[GAP: ...]` lines that flag
+   figures not lining up with the plan. Put that list in front of the user as a list of
    decisions they have to make, not as a warning at the end of a wall of text.
    A near-miss citation is theirs to confirm: the tool that ran and the entry
    the pipeline lists may or may not be the same thing, and guessing wrong
