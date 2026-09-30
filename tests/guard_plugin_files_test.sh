@@ -311,7 +311,7 @@ t "unknown shell tool, unknown field, only reads the root - allow" allow \
 # so a root whose path held "rm1", "8ln3", "Rm2" or "aren5" denied a plain
 # read - and mktemp's random suffix made the case above fail now and then.
 # Fixed roots that contain those fragments, so the outcome is deterministic.
-for frag in arm1 tmp.8ln3x tmp.q7Rm2 tmp.aren5; do
+for frag in arm1 tmp.8ln3x tmp.q7Rm2 tmp.aren5 acp2 AMV9 idel0 atee4; do
     FR="$TMP/$frag/plugin_root"; mkdir -p "$FR/hooks"
     t "unknown shell tool reads a root under '$frag' - allow" allow \
       CLAUDE_PLUGIN_ROOT="$FR" -- \
