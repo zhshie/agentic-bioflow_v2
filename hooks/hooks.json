@@ -7,12 +7,22 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_launch.sh",
-            "timeout": 10
+            "timeout": 30
           },
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_cleanup.sh",
-            "timeout": 5
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*([Ss]eqera|[Tt]ower).*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_launch.sh",
+            "timeout": 30
           }
         ]
       },
@@ -22,7 +32,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/guard_plugin_files.sh",
-            "timeout": 5
+            "timeout": 30
           }
         ]
       },
@@ -32,7 +42,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/confirm_walkthrough.sh",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       },
@@ -42,7 +52,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/guard_plugin_files.sh",
-            "timeout": 5
+            "timeout": 30
           }
         ]
       }

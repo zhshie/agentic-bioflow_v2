@@ -338,12 +338,15 @@ if [ -n "$BASH_MATCH" ]; then echo "ok"; else
     echo "FAIL: no Bash-matcher entry runs guard_plugin_files.sh"; fails=$((fails + 1))
 fi
 
-printf '%-72s ' "guard_plugin_files.sh entries carry timeout 5"
+# #29: 30, not 5 - a PreToolUse hook past its timeout is cancelled and the
+# tool call proceeds, and 5 s was within a second of what the gates measured
+# on a Windows laptop (tests/confirm_launch_test.sh, the timeout check).
+printf '%-72s ' "guard_plugin_files.sh entries carry timeout 30"
 TIMEOUTS=$(jq -r '
   [.hooks.PreToolUse[].hooks[] | select(.command | test("guard_plugin_files\\.sh")) | .timeout]
   | unique | .[]
 ' "$HOOKS_JSON" 2>/dev/null)
-if [ "$TIMEOUTS" = "5" ]; then echo "ok"; else
+if [ "$(printf '%s' "$TIMEOUTS" | tr -d '\r')" = "30" ]; then echo "ok"; else
     echo "FAIL: timeouts found: <<$TIMEOUTS>>"; fails=$((fails + 1))
 fi
 

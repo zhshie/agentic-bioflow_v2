@@ -63,6 +63,72 @@ t "grep -n '$RELAUNCH' notes.md"                      pass "read-only mention of
 t "grep -rn \"ssh\" docs/"                              pass "read-only search for the word ssh"
 t "grep -E 'a|$SB|b' ssh_config.md"                   pass "regex with the verb, filename contains ssh"
 
+# #29: launch shapes that used to pass with no output (red on main 12dda0c).
+LW="w$(printf '\x69\x74\x68')_override.sh"            # relaunch_with_override.sh, assembled
+RLW="scripts/$(printf '\x72\x65\x6c\x61\x75\x6e\x63\x68')_$LW"
+LVERB=$(printf '\x6c\x61\x75\x6e\x63\x68')
+t "tw -o json $LVERB x --disable-optimization"       gate "#29 tw global option before the verb"
+t "tw --url=https://x.example $LVERB x"              gate "#29 tw --url= before the verb"
+t "tw -o json runs $(printf '\x72\x65\x6c\x61\x75\x6e\x63\x68') -i abc" gate "#29 relaunch with a global option"
+t "nextflow -bg $(printf '\x72\x75\x6e') main.nf"    gate "#29 nextflow -bg before run"
+t "nextflow -c site.config $(printf '\x72\x75\x6e') main.nf" gate "#29 nextflow -c before run"
+t "echo '$LAUNCH x' | bash"                          gate "#29 launch piped into a shell"
+t "$(printf 'bash -s <<%s\n%s x\nEOF\n' "'EOF'" "$LAUNCH")"            gate "#29 here-doc fed to bash"
+t "$(printf 'ssh h bash -s <<%s\n%s x\nEOF\n' "'EOF'" "$LAUNCH")"      gate "#29 here-doc fed to ssh bash"
+t "$(printf 'cat <<%s | bash\n%s x\nEOF\n' "'EOF'" "$LAUNCH")"       gate "#29 here-doc piped into bash"
+t "bash $RLW --confirm 3xY proc 4 16"                gate "#29 relaunch_with_override --confirm starts a run"
+t "bash $RLW --dry-run 3xY proc 4 16"                pass "#29 its --dry-run starts nothing"
+t "bash $RLW 3xY proc 4 16"                          pass "#29 without --confirm it only prints the plan"
+t "grep -n '$RLW --confirm' docs/x.md"               pass "#29 reading about it is not running it"
+t "tw pipelines list"                                pass "#29 other tw verbs stay quiet"
+t "tw -o json runs list"                             pass "#29 listing runs with a global option"
+t "nextflow log"                                     pass "#29 nextflow log is not a run"
+
+# #29 acceptance round 2 (reviewer's findings on 939576b).
+t "echo \$($LAUNCH x)"                                gate "#29b launch inside \$(...)"
+t "ls \`$LAUNCH x\`"                                  gate "#29b launch inside backticks"
+t "cat <($LAUNCH x)"                                  gate "#29b launch inside <(...)"
+t "python3 -c 'import os; os.system(\"$LAUNCH y\")'"  gate "#29b python -c os.system(...)"
+t "perl -e 'system(\"$LAUNCH y\")'"                   gate "#29b perl -e system(...)"
+t "$(printf 'sudo -u u bash <<%s\n%s x\nEOF\n' "'EOF'" "$LAUNCH")"  gate "#29b here-doc into sudo -u bash"
+t "$(printf 'srun bash <<%s\n%s x\nEOF\n' "'EOF'" "$LAUNCH")"       gate "#29b here-doc into srun bash"
+t "$(printf 'python3 - <<%s\nimport subprocess\nsubprocess.run([\"tw\", \"%s\", \"x\"])\nEOF\n' "'EOF'" "$LVERB")" gate "#29b python here-doc, argv list"
+t "env A=1 nextflow $(printf '\x72\x75\x6e') main.nf" gate "#29b env prefix before nextflow run"
+t "sudo -u x $LAUNCH y"                               gate "#29b sudo -u before tw"
+t "echo \"\$(tw runs list)\""                        pass "#29b a read-only substitution"
+t "\"tw\" $LVERB x"                                   gate "#29b the program itself in quotes"
+t "bash -e -c '$LAUNCH x'"                            gate "#29c bash with options before -c"
+# #29 round 4: main kept every quoted string when a nested shell was on the
+# line; the splitter only re-reads strings given to a known executor, so a
+# launch handed on to tmux/su/flock inside ssh stopped gating.
+t "ssh h \"cd /work/run && tmux new -d -s nf 'nextflow $(printf '\x72\x75\x6e') nf-core/ampliseq -resume'\"" gate "#29d ssh -> tmux -> nextflow run (main: ask)"
+t "ssh h \"su - lab -c '$SB job.sh'\""                gate "#29d ssh -> su -c -> sbatch"
+t "ssh h \"flock /tmp/l -c '$SB job.sh'\""            gate "#29d ssh -> flock -c -> sbatch"
+t "eval \"tmux new -d '$LAUNCH x'\""                  gate "#29d eval -> tmux -> launch"
+t "ssh h 'grep \"$LAUNCH\" notes.md'"                 pass "#29d ssh running a read-only grep of the words"
+t "bash <<< '$LAUNCH x'"                              gate "#29c here-string into bash"
+t "echo '$LAUNCH x' |& bash"                          gate "#29c |& into bash"
+t "echo '$LAUNCH x' | env bash"                       gate "#29c | env bash"
+t "T=tw; \$T $LVERB x"                               gate "#29c program in a variable"
+t "\"\$TW\" $LVERB x"                                 gate "#29c program in a quoted variable"
+t "tw.exe $LVERB x"                                   gate "#29c tw.exe"
+t "echo \$(echo \$(echo \$(echo \$(echo \$($LAUNCH x)))))" gate "#29c deeply nested \$(...)"
+t "$(printf "grep -c '<<EOF' notes.sh\n%s x" "$LAUNCH")" gate "#29c a quoted <<EOF is not a here-doc"
+t "echo \$T $LVERB"                                   pass "#29c echoing a variable next to the word"
+t "'/usr/local/bin/nextflow' $(printf '\x72\x75\x6e') main.nf" gate "#29b quoted path to nextflow"
+t "git commit -m \"docs: how $LAUNCH works\""         pass "#29b a commit message quoting a launch"
+t "grep -rn 'os.system(' scripts/"                    pass "#29b searching for os.system("
+
+tmcp() { # tmcp <tool_name> <expect gate|pass> <label> - an MCP tool, no command field
+  printf '%-56s ' "$3"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':sys.argv[1],'tool_input':{'pipeline':'nf-core/rnaseq','revision':'3.14.0'}}))" "$1" | bash "$H")
+  got=pass; [ -n "$out" ] && got=gate
+  [ "$got" = "$2" ] && echo "ok ($got)" || { echo "FAIL: expected $2, got $got"; fails=$((fails+1)); }
+}
+tmcp "mcp__seqera__$(printf '\x6c\x61\x75\x6e\x63\x68')_pipeline" gate "#29 an MCP tool named for launching"
+tmcp "mcp__seqera__$(printf '\x72\x65\x6c\x61\x75\x6e\x63\x68')_run" gate "#29 an MCP tool named for relaunching"
+tmcp "mcp__seqera__list_runs"                          pass "#29 an MCP tool that only lists"
+
 # A third failure, found by trying it rather than by it happening: the trigger
 # logic now lives in a sourced file, and a sourced file can go missing. When it
 # did, `is_launch_command` was command-not-found, 127 satisfied the `|| exit 0`,
@@ -436,8 +502,8 @@ CL_MATCHER=$(jq -r '
   .hooks.PreToolUse[]
   | select(.hooks[].command | test("confirm_launch\\.sh"))
   | .matcher
-' "$HJ" 2>/dev/null)
-for name in Bash PowerShell pwsh Terminal Exec; do
+' "$HJ" 2>/dev/null | tr -d '\r' | paste -s -d '|' -)
+for name in Bash PowerShell pwsh Terminal Exec "mcp__seqera__$(printf '\x6c\x61\x75\x6e\x63\x68')_pipeline" mcp__claude_ai_Seqera__run_workflow; do
   printf '%-58s ' "confirm_launch.sh's matcher covers tool_name '$name'"
   jq -en --arg m "$CL_MATCHER" --arg n "$name" '$n | test($m)' 2>/dev/null | grep -qx true \
     && echo ok || { echo FAIL; fails=$((fails+1)); }
@@ -445,6 +511,26 @@ done
 printf '%-58s ' "...but not an unrelated read-only tool name like 'Read'"
 jq -en --arg m "$CL_MATCHER" '"Read" | test($m)' 2>/dev/null | grep -qx true \
   && { echo "FAIL: matched Read"; fails=$((fails+1)); } || echo ok
+# #29: MCP tools reach the launch gate only when they are Seqera's/Tower's;
+# every other MCP call (search, GitHub, Gmail) must not pay for it, and the
+# deletion guard - which scans raw payloads for words like "find" - must not
+# see MCP calls at all, or it would pause ordinary searches.
+printf '%-58s ' "#29 ...nor an unrelated MCP tool (mcp__github__search_code)"
+jq -en --arg m "$CL_MATCHER" '"mcp__github__search_code" | test($m)' 2>/dev/null | grep -qx true \
+  && { echo "FAIL: matched"; fails=$((fails+1)); } || echo ok
+# #29: a PreToolUse hook that runs past its timeout is cancelled and the tool
+# call PROCEEDS (code.claude.com/docs/en/hooks-guide, "timeout"). The deletion
+# guard measured 4.4-4.8 s on a Windows laptop against a 5 s limit, so under
+# load the gate vanished with nothing printed. Every safety gate gets >= 30 s.
+for g in confirm_launch.sh confirm_cleanup.sh confirm_walkthrough.sh guard_plugin_files.sh; do
+  printf '%-58s ' "#29 every $g entry has timeout >= 30s"
+  low=$(jq -r --arg g "$g" '[.hooks.PreToolUse[].hooks[] | select(.command | endswith($g)) | .timeout // 600] | map(select(. < 30)) | length' "$HJ" 2>/dev/null | tr -d '\r')
+  [ "$low" = 0 ] && echo ok || { echo "FAIL: $low entries under 30s"; fails=$((fails+1)); }
+done
+CC_MATCHER=$(jq -r '.hooks.PreToolUse[] | select(.hooks[].command | test("confirm_cleanup\\.sh")) | .matcher' "$HJ" 2>/dev/null | tr -d '\r' | paste -s -d '|' -)
+printf '%-58s ' "#29 confirm_cleanup.sh does not see Seqera MCP calls"
+jq -en --arg m "$CC_MATCHER" '"mcp__seqera__list_runs" | test($m)' 2>/dev/null | grep -qx true \
+  && { echo "FAIL: matched"; fails=$((fails+1)); } || echo ok
 
 
 # Identity and shared-process gate (2.15.0 Windows verification: the model

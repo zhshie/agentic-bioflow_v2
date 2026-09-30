@@ -18,17 +18,60 @@
 # The introducing line is KEPT, deliberately: `cat > f <<EOF` really is a
 # truncating redirect and the deletion guard must still see it.
 #
-# Only bodies are dropped, so a genuine `bash <<'EOF' ... EOF` that really does
-# run commands is also hidden. That is accepted: this plugin never launches runs
-# that way - it launches them through submit_run.sh on a normal command line.
-#
+# A body fed to something that EXECUTES it is kept, because there the body is
+# the command: `bash <<'EOF'`, `ssh host bash -s <<EOF`, `on_site.sh <<EOF`,
+# `python3 - <<EOF`. Until #29 every body was dropped, on the reasoning that
+# "this plugin never launches runs that way" - but the model is not bound by
+# how this plugin launches, and `ssh host bash -s <<EOF ... rm -rf .../results`
+# passed both gates with nothing printed. What counts as an executor is the
+# command word of the segment that opens the here-doc (after `sudo`, `env`,
+# VAR=value and a leading path); a writer like `cat > f` or `tee f` still has
+# its body dropped, which is the case the stripping was written for.
+
 # `<<<` is a here-STRING, not a here-doc. It is masked before scanning so
 # `grep ... <<< "$VAR"` is not mistaken for a here-doc named "VAR".
 
-function scan(s,   m, d, isdash) {
+# Does the text before `<<` hand the body to something that runs it?
+# Any word of that segment counts, not only the first: `sudo -u bob bash`,
+# `timeout 60 bash`, `srun bash` all hand the body to bash (#29, round 2).
+# A writer's file name that merely contains one (`cat > bash_notes.md`) does
+# not match, because the whole word must be the executor.
+function executes(pre,   seg, k, i, w, W) {
+    seg = pre
+    # the segment that opens the here-doc: text after the last separator
+    while (match(seg, /(\|\||&&|[|;&(])/)) seg = substr(seg, RSTART + RLENGTH)
+    k = split(seg, W, /[ \t]+/)
+    for (i = 1; i <= k; i++) {
+        w = W[i]
+        sub(/^\\/, "", w)
+        sub(/^.*\//, "", w)
+        if (w ~ /^(bash|sh|zsh|dash|ksh|ssh|on_site\.sh|python[0-9.]*|Rscript|R|perl|node|ruby|pwsh|powershell)$/) return 1
+    }
+    return 0
+}
+
+function scan(s,   m, d, isdash, pre, piped, out) {
     gsub(/<<</, "\001", s)
+    # A `<<EOF` inside quotes (`grep -c '<<EOF' f`) is text, not a here-doc;
+    # taken as one, it swallowed every line after it (#29, round 3). Quoted
+    # DELIMITERS (`<<'EOF'`) are unquoted first so they survive, then every
+    # other quoted string is dropped before looking for `<<`.
+    out = ""
+    while (match(s, /<<-?[ \t]*("[^"]*"|'[^']*')/)) {
+        m = substr(s, RSTART, RLENGTH)
+        gsub(/["']/, "", m)
+        out = out substr(s, 1, RSTART - 1) m
+        s = substr(s, RSTART + RLENGTH)
+    }
+    s = out s
+    gsub(/'[^']*'/, "", s)
+    gsub(/"[^"]*"/, "", s)
+    pre = ""
+    # `cat <<EOF | bash` hands the body to a shell through a pipe instead.
+    piped = (s ~ /\|[ \t]*(sudo[ \t]+)?([^ \t|]*\/)?(bash|sh|zsh|dash|ksh|ssh)([ \t]|$)/)
     while (match(s, /<<-?[ \t]*("[^"]*"|'[^']*'|\\?[A-Za-z_][A-Za-z0-9_]*)/)) {
         m = substr(s, RSTART, RLENGTH)
+        pre = pre substr(s, 1, RSTART - 1)
         s = substr(s, RSTART + RLENGTH)
         isdash = (m ~ /^<<-/)
         d = m
@@ -38,6 +81,7 @@ function scan(s,   m, d, isdash) {
         n++
         ddelim[n] = d
         ddash[n]  = isdash
+        dkeep[n]  = piped || executes(pre)
     }
 }
 
@@ -45,14 +89,16 @@ BEGIN { n = 0 }
 
 {
     if (n > 0) {
-        # Inside a body: drop this line. The terminator must be the whole line;
+        # Inside a body: drop this line unless an executor reads it. The terminator must be the whole line;
         # <<- lets it be indented with TABS (spaces do not count, per POSIX).
         t = $0
         if (ddash[1]) sub(/^\t+/, "", t)
         if (t == ddelim[1]) {
-            for (i = 1; i < n; i++) { ddelim[i] = ddelim[i+1]; ddash[i] = ddash[i+1] }
+            for (i = 1; i < n; i++) { ddelim[i] = ddelim[i+1]; ddash[i] = ddash[i+1]; dkeep[i] = dkeep[i+1] }
             n--
+            next
         }
+        if (dkeep[1]) print
         next
     }
     scan($0)

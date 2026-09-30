@@ -11,6 +11,10 @@
 # Note the delete verb is assembled from hex below rather than written out, so
 # that running this file does not itself trip a cleanup hook watching the shell.
 H="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/hooks/confirm_cleanup.sh"
+# Git Bash rewrites /bin/... arguments into Windows paths when it starts a
+# native python; the hook never sees that rewrite (it reads JSON on stdin), so
+# the test must not either.
+export MSYS2_ARG_CONV_EXCL='*'
 fails=0
 t() { # t <command> <expect pass|warn|deny> <label>
   printf '%-58s ' "$3"
@@ -190,5 +194,127 @@ if echo "$out" | grep -qF "phase"; then
 else
   echo ok
 fi
+
+echo
+echo "== #29: shapes that used to pass with no output at all =="
+# Every case below printed nothing and exited 0 on main 12dda0c: the gate
+# threw away quoted text and here-doc bodies to avoid false alarms, and a
+# real delete can sit in either. Written before the fix, red on main.
+t "$D -rf \"$P/results\""                         deny "#29 double-quoted protected target"
+t "$D -rf '$P/results'"                           deny "#29 single-quoted protected target"
+t "$D -rf \"$P/my dir/analysis\""                 deny "#29 quoted target containing a space"
+t "$D -rf \"$P/work\""                            ask  "#29 quoted work/ still asks"
+t "$D -rf \"\$RUN_DIR/results\""                  deny "#29 variable target still judged by its literal part"
+t "$D -rf \"\$RUN_DIR/tmp_x\""                    ask  "#29 variable target pauses (ask), not a warning"
+t "$(printf 'cat <<%s | bash
+%s -rf %s/results
+EOF
+' "'EOF'" "$D" "$P")" deny "#29 here-doc piped into bash"
+t "bash -c \"$D -rf $P/results\""                  deny "#29 delete inside a quoted bash -c"
+t "echo '$D -rf $P/results' | sh"                   deny "#29 delete piped into sh"
+t "echo \"to clean up, $D -rf the work dir\""      pass "#29 quoted prose mentioning the verb"
+t "$D -rf \$RESULTS"                              ask  "#29 bare variable target pauses too"
+t "echo $P/results | xargs $D -rf"                ask  "#29 xargs delete: target unknown here, pause"
+t "$(printf 'ssh h bash -s <<%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")" deny "#29 here-doc fed to ssh bash"
+t "$(printf 'bash <<%s\n%s -rf %s/rawdata\nEOF\n' "'EOF'" "$D" "$P")"          deny "#29 here-doc fed to bash"
+t "$(printf 'cat > notes.md <<%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")" pass "#29 here-doc written to a file is prose"
+t "$(printf 'python3 - <<%s\nimport shutil\nshutil.rmtree(\"%s/results\")\nEOF\n' "'EOF'" "$P")" ask "#29 python here-doc that deletes a tree"
+t "grep -rn 'shutil.rmtree' scripts/"             pass "#29 searching for rmtree is not deleting"
+
+tps() { # tps <powershell command> <expect> <label> - through the PowerShell tool
+  printf '%-58s ' "$3"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  if [ -z "$out" ]; then got=pass; else
+    got=$(python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out" 2>/dev/null)
+  fi
+  [ "$got" = "$2" ] && echo "ok ($got)" || { echo "FAIL: expected $2, got $got"; fails=$((fails+1)); }
+}
+tps "Remove-Item -Recurse -Force $P/results"      deny "#29 PowerShell Remove-Item on results/"
+tps 'Remove-Item -Recurse C:\lab\proj\rawdata'    deny "#29 PowerShell, backslash path"
+tps 'rd /s /q C:\lab\proj\analysis'               deny "#29 cmd-style rd /s"
+tps "Remove-Item -Recurse $P/work"                ask  "#29 PowerShell on work/ asks"
+tps 'Get-ChildItem C:\lab\proj\results'           pass "#29 listing results/ is harmless"
+
+echo
+echo "== #29 acceptance round 2: bypasses and false alarms the reviewer found =="
+# All reproduced by the independent reviewer on the first fix (939576b):
+# the upper block passed silently, the lower block was a new false alarm.
+t "/bin/$D -rf $P/results"                        deny "#29b the verb with a path"
+t "\\$D -rf $P/results"                           deny "#29b the verb escaped to skip an alias"
+t "\"/bin/$D\" -rf $P/results"                    deny "#29b the verb itself in quotes"
+t "command $D -rf $P/results"                     deny "#29b command <verb>"
+t "sudo -u bob $D -rf $P/results"                 deny "#29b sudo with an option"
+t "$D -r -f '$P/rawdata'/"                        deny "#29b quote glued to a trailing slash"
+t "$D -rf '$P/'results"                           deny "#29b quote closed before the last component"
+t "$D -rf $P/res\"ults\""                         deny "#29b quotes inside the name"
+t "$D -rf $P/{results,work}"                      deny "#29b brace expansion naming results"
+t "env X=\"'\" $D -rf $P/results Y\"'\""           deny "#29b stray quotes around the verb"
+t "find $P/results -exec $D -rf {} +"             deny "#29b find -exec <verb>"
+t "unlink $P/results/multiqc.html"                deny "#29b unlink"
+t "truncate -s 0 $P/results/counts.tsv"           deny "#29b truncate"
+t "echo \$($D -rf $P/results)"                    deny "#29b the verb inside \$(...)"
+t "perl -e 'system(\"$D -rf $P/results\")'"       deny "#29b perl -e system(...)"
+t "python3 -c \"import os; os.system('$D -rf $P/results')\"" deny "#29b python -c os.system(...)"
+t "$(printf 'timeout 60 bash <<%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")"  deny "#29b here-doc into timeout bash"
+t "$(printf 'sudo -u bob bash <<%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")" deny "#29b here-doc into sudo -u bash"
+t "\$(which $D) -rf $P/results"                   ask  "#29b command word is a substitution"
+t "R=$D; \$R -rf $P/results"                      ask  "#29b command word is a variable"
+t "$D -rf $P/res*"                                ask  "#29b a glob that can match results/"
+t "$D -f /tmp/foo*"                               pass "#29b a glob that cannot"
+tps "ri -r C:\\lab\\proj\\results"                deny "#29b PowerShell alias ri"
+tps "powershell -Command \"Remove-Item -Recurse $P/results\"" deny "#29b powershell -Command payload"
+tps "gci C:\\lab\\proj\\results | Remove-Item -Recurse -Force" ask "#29b Remove-Item fed by the pipeline"
+tps "[System.IO.Directory]::Delete('C:\\lab\\proj\\results', \$true)" ask "#29b .NET Delete call"
+echo
+echo "== #29 acceptance round 3 =="
+t "srun $D -rf $P/results"                        deny "#29c srun wrapper (a regression in round 2)"
+t "singularity exec x.sif $D -rf $P/results"      deny "#29c singularity exec wrapper"
+t "parallel $D -rf ::: $P/results"                deny "#29c GNU parallel"
+t "flock /tmp/l $D -rf $P/results"                deny "#29c flock wrapper"
+t "doas $D -rf $P/results"                        deny "#29c doas"
+t "ionice -c3 $D -rf $P/results"                  deny "#29c ionice"
+t "bash -e -c '$D -rf $P/results'"                deny "#29c bash with options before -c"
+t "bash --norc -c '$D -rf $P/results'"            deny "#29c bash --norc -c"
+t "bash <<< '$D -rf $P/results'"                  deny "#29c here-string into bash"
+t "echo '$D -rf $P/results' |& bash"              deny "#29c |& into bash"
+t "echo '$D -rf $P/results' | env bash"           deny "#29c | env bash"
+t "bash <(echo '$D -rf $P/results')"              deny "#29c process substitution read by bash"
+t "python3 -u -c \"import shutil; shutil.rmtree('$P/results')\"" ask "#29c python with options before -c"
+t "python3 -c \"from shutil import rmtree; rmtree('$P/results')\"" ask "#29c bare rmtree(...)"
+t "perl -MFile::Path -e 'rmtree(\"$P/results\")'" ask  "#29c perl rmtree"
+t "echo \$(echo \$(echo \$(echo \$(echo \$(echo \$($D -rf $P/results))))))" deny "#29c deeply nested \$(...)"
+t "$(printf "grep -c '<<EOF' notes.sh\n%s -rf %s/results" "$D" "$P")" deny "#29c a quoted <<EOF is not a here-doc"
+t "$(printf 'python3 - <<%s\nresults = 1\ndel results\nEOF\n' "'EOF'")" pass "#29c python 'del results' under Bash"
+
+# #29 round 4: regressions against main found by the third review.
+t "srun find $P/results -mindepth 1 -delete"       deny "#29d find -delete behind srun (main: deny)"
+t "ionice -c3 find $P/results -delete"             deny "#29d find -delete behind ionice"
+t "singularity exec x.sif find $P/analysis -type f -delete" deny "#29d find -delete behind singularity exec"
+t "srun rsync -a --delete /tmp/empty/ $P/results/" deny "#29d rsync --delete behind srun (main: deny)"
+t "ionice -c3 rsync -a --delete /tmp/empty/ $P/rawdata/" deny "#29d rsync --delete behind ionice"
+t "srun mv $P/rawdata/a.fastq.gz /tmp/"            warn "#29d mv behind srun still warns (main: warn)"
+t "$(printf 'srun %s -rf %s/results "x\ny"' "$D" "$P")" deny "#29d a multi-line quoted argument after the target"
+
+# #29 round 3: a gate past its timeout (30 s) is cancelled and the command
+# runs. Round 2 took ~50 s on a 120-line script under Git Bash. A 200-line
+# script must be judged well inside the limit, on every platform we test.
+LONGBODY=$(for i in $(seq 1 200); do echo "x$i = [a for a in range($i)]  # line $i"; done)
+LONGCMD=$(printf 'python3 - <<%s\n%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$LONGBODY" "$D" "$P")
+printf '%-58s ' "#29c a 200-line here-doc is judged in under 15 s"
+t0=$(date +%s)
+out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$LONGCMD" | bash "$H")
+t1=$(date +%s)
+if [ $((t1 - t0)) -lt 15 ] && grep -q '"deny"' <<<"$out"; then echo "ok ($((t1 - t0)) s, deny)"; else
+  echo "FAIL: $((t1 - t0)) s, output <<${out:0:60}>>"; fails=$((fails+1)); fi
+
+t "grep -rn del $P/results/"                      pass "#29b grep for 'del' is not a delete"
+t "grep -i RD $P/analysis/de.tsv"                 pass "#29b grep for 'RD' is not a delete"
+t "grep -n 'os.remove(' scripts/x.py"             pass "#29b searching for a delete call"
+t "grep -rn \"unlink(\" scripts/"                 pass "#29b searching for unlink("
+t "git commit -m \"use shutil.rmtree( on work\""  pass "#29b a commit message naming a call"
+t "$(printf 'python3 - <<%s\n# %s the old results/ by hand\nprint(1)\nEOF\n' "'EOF'" "$D")" pass "#29b a comment in a python here-doc"
+t "ls -la $P/results && cat $P/results/x.html"    pass "#29b reading results/"
+t "jq '.a | .b' $P/results/x.json"                pass "#29b jq filter with a pipe"
+t "awk '{a=1; b=2}' $P/results/x.tsv"             pass "#29b awk program with a semicolon"
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

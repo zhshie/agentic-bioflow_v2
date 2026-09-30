@@ -30,52 +30,98 @@ LAUNCH_TRIGGER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # leading space in place, so `cat notes.txt && tw launch ...` - the exact case
 # this gate was written for - sailed through. A quoted `bash -c "tw launch ..."`
 # missed for the same reason.
-LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw[[:space:]]+launch|tw[[:space:]]+runs[[:space:]]+relaunch|sbatch)([[:space:]]|$)|nextflow[[:space:]]+run'
+#
+# #29: options may sit between the program and its verb - `tw -o json launch`,
+# `tw --url=... runs relaunch`, `nextflow -bg run`, `nextflow -c x run` - and
+# the first version required the verb to follow immediately, so each of those
+# passed silently. Any tokens may now come between. And
+# scripts/relaunch_with_override.sh --confirm runs `tw runs cancel` + `tw runs
+# relaunch` itself, where this gate cannot see them, so the wrapper's own
+# --confirm is the launch; without --confirm it only prints its plan.
+LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch)|sbatch|nextflow(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+run|relaunch_with_override\.sh([[:space:]]+[^[:space:]]+)*[[:space:]]+--confirm)([[:space:]]|$)'
+# The program in a variable (`$T launch x`, `"$TW" runs relaunch`), used only
+# when the command word itself is a variable.
+LAUNCH_VARPROG_RE='^[^[:space:]]+([[:space:]]+-[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch|run)([[:space:]]|$)'
+
+# A nested shell anywhere on the line. main's rule, kept as a floor (#29,
+# round 4): when a shell re-reads part of this line, quoted text inside it is
+# a command, even when it is handed on again to something the splitter does
+# not know runs commands - `ssh h "tmux new -d 'nextflow run …'"`,
+# `su -c '…'`, `flock l -c '…'`.
+LAUNCH_NESTED_SHELL_RE='(^|[[:space:]])(bash|sh|zsh|ksh|dash)([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[[:alpha:]]*c([[:space:]]|$)|(^|[[:space:]])eval([[:space:]]|$)|(^|[[:space:]])([^[:space:]]*/)?(ssh|on_site\.sh)[[:space:]]|\|&?[[:space:]]*([^[:space:]|]*/)?(bash|sh|zsh|dash|ksh)([[:space:]]|$)'
 
 # Commands that can only read. A segment naming a launch verb under one of
 # these is a search or a page of documentation, not a submission.
 LAUNCH_READONLY_RE='^[[:space:]]*(cat|less|more|head|tail|grep|rg|wc|chmod|shellcheck|ls|stat|file|diff|cp|vim|nano|echo)([[:space:]]|$)|^[[:space:]]*(bash|sh)[[:space:]]+-n([[:space:]]|$)'
 
-# A nested shell re-interprets what it was handed, so quotes there are not a
-# wrapper around data - they are a wrapper around a command line.
-LAUNCH_NESTED_SHELL_RE='(^|[[:space:]])(bash|sh|zsh|ksh)[[:space:]]+-c([[:space:]]|$)|(^|[[:space:]])eval([[:space:]]|$)|(^|[[:space:]])([^[:space:]]*/)?(ssh|on_site\.sh)[[:space:]]'
-
 is_launch_command() {
-    local CMD="$1" STRIPPED SEGSRC S
+    local CMD="$1" STRIPPED SEGS S V US
+    US=$(printf '\037')
 
     [ -n "$CMD" ] || return 1
 
     # Drop here-doc bodies first: a document that MENTIONS `tw launch` is not a
     # launch, and the segment scan below would otherwise treat prose as
-    # commands. If awk is missing this yields nothing and CMD is left as-is.
+    # commands. A body read by a shell or interpreter is kept - there it IS
+    # the command (#29). If awk is missing this yields nothing and CMD is left
+    # as-is.
     STRIPPED=$(printf '%s\n' "$CMD" | awk -f "$LAUNCH_TRIGGER_DIR/strip_heredocs.awk" 2>/dev/null)
     [ -n "$STRIPPED" ] && CMD="$STRIPPED"
 
-    # A quoted string is data, not a command. `grep -E 'a|sbatch|b' file` used
-    # to trip this gate: splitting on `|` turned the middle of a regex into a
-    # segment that read exactly like a submission. Strip quoted content before
-    # segmenting - but NOT where a shell is asked to re-interpret it, because
-    # `bash -c "tw launch ..."` really does launch and the quotes would become
-    # a hiding place.
+    # What the command runs is decided by split_segments.awk, shared with
+    # confirm_cleanup.sh (#29). Each line is `<segment>\037<segment without
+    # quoted text>`. A quoted string is data - `grep -E 'a|sbatch|b' file` once
+    # tripped this gate - so the verb is looked for in the quote-free copy. But
+    # a string a shell re-reads (`bash -c "..."`, `ssh host '...'`,
+    # `on_site.sh '...'`, `echo '...' | bash`, `python3 -c "os.system('...')"`)
+    # and the inside of $(...), backticks and <(...) come back as segments of
+    # their own, so a launch cannot hide in any of them - each of those shapes
+    # once passed this gate with nothing printed (PITFALLS 37).
     #
-    # `ssh <host> '<payload>'` is the same thing across a network: a shell on
-    # the far side re-interprets the quoted payload, so it belongs in that list
-    # rather than in a separate unwrapping step. Without it the gate reads
-    # `ssh host 'tw launch ...'` as `ssh host ` and lets a real launch through -
-    # silently, and precisely when the deployment moves off the login node.
-    # `on_site.sh` is this project's own sanctioned wrapper for the same thing.
-    SEGSRC="$CMD"
-    if ! grep -qE "$LAUNCH_NESTED_SHELL_RE" <<<"$CMD"; then
-        SEGSRC=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$CMD")
+    # If awk cannot run, the old rule applies: split on separators, strip
+    # quotes. Weaker, but a gate rather than none.
+    SEGS=$(printf '%s\n' "$CMD" | awk -f "$LAUNCH_TRIGGER_DIR/split_segments.awk" 2>/dev/null)
+    if [ -z "$SEGS" ]; then
+        SEGS=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
+               | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
     fi
 
     # Decided per segment, never for the whole line: `cat notes.txt && tw launch ...`
     # must still hit the gate.
-    while IFS= read -r S; do
-        echo "$S" | grep -qE "$LAUNCH_TRIGGER_RE" || continue
-        echo "$S" | grep -qE "$LAUNCH_READONLY_RE" && continue
+    # In-shell matching only ([[ =~ ]]): a process per segment made this gate
+    # take a minute on a long script under Git Bash, past its timeout, and a
+    # timed-out hook lets the command run (#29, round 3).
+    local SQ HIT NESTED=0
+    [[ $CMD =~ $LAUNCH_NESTED_SHELL_RE ]] && NESTED=1
+    while IFS="$US" read -r S V W; do
+        # A command nested too deeply to read is treated as one that might
+        # launch - noisy, and correct for a gate that could not judge.
+        [ "$W" = "__too_deep__" ] && return 0
+        if ! [[ $V =~ $LAUNCH_TRIGGER_RE ]]; then
+            # `"tw" launch x` quotes the program itself, so the quote-free copy
+            # has lost it. When the command word IS a launcher, read the
+            # segment with only the quote characters dropped. Only then: a
+            # commit message quoting "tw launch" is still not a launch.
+            SQ=${S//\"/}; SQ=${SQ//\'/}
+            HIT=0
+            case "$W" in
+                tw|nextflow|sbatch|relaunch_with_override.sh)
+                    [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] && HIT=1 ;;
+                # `T=tw; $T launch x`: the program is a variable, and its first
+                # argument is a launch verb.
+                '$'*)
+                    [[ $SQ =~ $LAUNCH_VARPROG_RE ]] && HIT=1 ;;
+                # The wrapper itself (`ssh h '…'`) is judged through its
+                # payload segments, which the splitter emits separately.
+                ssh|eval|bash|sh|zsh|ksh|dash|on_site.sh) ;;
+                *)
+                    [ "$NESTED" = 1 ] && [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] && HIT=1 ;;
+            esac
+            [ "$HIT" = 1 ] || continue
+        fi
+        [[ $V =~ $LAUNCH_READONLY_RE ]] && continue
         return 0
-    done <<< "$(echo "$SEGSRC" | sed -E 's/(\|\||&&|[;&|])/\n/g')"
+    done <<< "$SEGS"
 
     return 1
 }
