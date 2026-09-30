@@ -82,7 +82,8 @@ anywhere in this flow.
    outputs inventory — so a single `on_site.sh` round trip covers all four
    instead of two or three back-to-back ones. Its `== resources ==` section
    is worth a glance for free: drift there means this site's resource-floor
-   config (`configs/sites/nchc.config`) no longer matches what SLURM reports.
+   config (`configs/sites/nchc.config`) no longer matches what the site's
+   scheduler reports.
    In the ordinary case — results small enough for step 2 to fetch them
    locally below — its `== provenance ==`/`== inventory ==` sections answer
    about a path that has not been fetched yet and can be ignored; they start

@@ -10,6 +10,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
+. "$HERE/lib/site_terms.sh"
 L="$ROOT/commands/launch.md"
 fails=0
 
@@ -72,15 +73,24 @@ grep -qiE 'final text' "$L" \
         "no 'final text' language found"
 
 # 6. commands/*.md stays site-neutral and pipeline-agnostic even with this
-#    addition - the same forbidden-term list tests/command_layer_is_site_neutral.sh
-#    enforces, checked here directly so a regression in this file shows up
-#    under this test's own name too.
-TERMS='slurm|sbatch|squeue|scontrol|sacctmgr|qos|partition|relay|proxy|singularity|module load|\bssh\b|\bscp\b|\brsync\b'
-if grep -qP "$TERMS" "$L"; then
+#    addition - the same shared term list tests/command_layer_is_site_neutral.sh
+#    enforces (tests/lib/site_terms.sh), checked here directly so a regression
+#    in this file shows up under this test's own name too. A grep error
+#    (rc >= 2) counts as a hit, not as "nothing found" - that silent swallow
+#    is the bug this file is part of fixing.
+raw=$(site_terms_grep "$L" 2>&1)
+rc=$?
+if [ "$rc" -ge 2 ]; then
   no "stays site-neutral (no scheduler/egress/container vocabulary)" \
-     "found a forbidden term - see tests/command_layer_is_site_neutral.sh"
+     "the site-term scan itself errored (grep exit $rc): $raw"
 else
-  ok "stays site-neutral (no scheduler/egress/container vocabulary)"
+  hit=$(printf '%s\n' "$raw" | site_terms_allow | grep -v '^$')
+  if [ -n "$hit" ]; then
+    no "stays site-neutral (no scheduler/egress/container vocabulary)" \
+       "found a forbidden term - see tests/command_layer_is_site_neutral.sh: $hit"
+  else
+    ok "stays site-neutral (no scheduler/egress/container vocabulary)"
+  fi
 fi
 
 echo

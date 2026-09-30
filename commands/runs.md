@@ -175,10 +175,12 @@ of progress.
   scheduler that has gone quiet does not refuse the ordinary status query, it
   makes it wait for tens of seconds, so this and a genuinely busy site look
   identical until something asks.
-- **`QOSMin*`, or any answer shaped like a floor being missed → NEVER.** 🤖 The
-  resource contract has drifted from what the site actually enforces; fix it
-  with `scripts/ce_apply.sh` — never by waiting longer, since this request was
-  never going to start.
+- **A resource-floor rejection (the pending-reason check above names it;
+  the scheduler's own wording is site-specific), or any answer shaped like a
+  floor being missed →
+  NEVER.** 🤖 The resource contract has drifted from what the site actually
+  enforces; fix it with `scripts/ce_apply.sh` — never by waiting longer, since
+  this request was never going to start.
 - **The time requested exceeds what is allowed → NEVER.** 🤖 Raise the time and
   relaunch.
 - **The nodes requested are unavailable → NEVER.** ⏸ Whether to keep waiting

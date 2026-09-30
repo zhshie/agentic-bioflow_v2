@@ -59,5 +59,31 @@ for f in scripts/*.sh scripts/utils/*.sh hooks/*.sh; do
     done <<< "$RULES"
 done
 
+# bug: false-green-tests, item 4: `grep -P` inside tests/*.sh itself is the
+# same unportable spelling this file exists to flag, and it went unnoticed
+# there precisely because this scan never looked - four test files carried it
+# (command_layer_is_site_neutral.sh, launch_provenance_test.sh, intro_test.sh,
+# column_output_relay_rule.sh), each swallowing the resulting grep error as
+# "no match" rather than failing loud. Scanned separately from the loop above,
+# not folded into RULES/scripts hooks: the other GNU-only spellings there
+# (mapfile, associative arrays, timeout, xargs -r, ...) are not part of this
+# bug and are out of scope for this pass.
+GREP_P_PATTERN='(^|[^a-zA-Z-])grep[[:space:]]+-[a-zA-Z]*P'
+for f in tests/*.sh tests/lib/*.sh; do
+    [ -r "$f" ] || continue
+    # This file's own RULES heredoc above states the pattern; it is not a
+    # call to grep -P and must not flag itself.
+    [ "$f" = "tests/portable_userland.sh" ] && continue
+    grep -q 'GNU-ok-file:' "$f" && continue
+    while IFS=: read -r ln text; do
+        [ -n "$ln" ] || continue
+        case "$text" in \#*|'') continue ;; esac
+        case "$text" in *"GNU-ok:"*) continue ;; esac
+        echo "FAIL  $f:$ln  grep -P needs PCRE; BSD grep has none"
+        echo "      ${text:0:96}"
+        fails=$((fails+1))
+    done < <(grep -nE -- "$GREP_P_PATTERN" "$f" | sed 's/^\([0-9]*\):[[:space:]]*/\1:/')
+done
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails unportable spellings"; exit 1; }

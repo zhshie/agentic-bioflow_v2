@@ -149,7 +149,7 @@ Work outward from the layer most likely to be lying to you.
    entirely — a blocked plugin registry surfaces as a Java formatting
    exception. Check the site's egress log before reading the Nextflow log.
 3. **Is a task sitting unstarted?** Ask the site adapter's scheduler why. A
-   request below a partition's floor never schedules and never errors.
+   request below the site's resource floor never schedules and never errors.
 4. **Only then** read the failing task's own `.command.err` and `.command.log`.
 
 ## Off-design: when nothing here covers it

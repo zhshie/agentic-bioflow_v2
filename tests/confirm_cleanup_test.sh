@@ -15,12 +15,18 @@ H="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/hooks/confirm_cleanup.sh"
 # native python; the hook never sees that rewrite (it reads JSON on stdin), so
 # the test must not either.
 export MSYS2_ARG_CONV_EXCL='*'
+# The hook's own hookSpecificOutput carries Chinese text ("確認刪除" etc, see
+# hooks/confirm_cleanup.sh). Every python3 -c that decodes that JSON back off
+# stdin gets PYTHONIOENCODING=utf-8 (bug: false-green-tests, item 4) - under
+# Windows Git Bash's default code page, python3 otherwise raises
+# JSONDecodeError on that stdin, which read as this hook having failed, not as
+# a test-harness encoding gap.
 fails=0
 t() { # t <command> <expect pass|warn|deny> <label>
   printf '%-58s ' "$3"
   out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
   if [ -z "$out" ]; then got=pass; else
-    got=$(python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out")
+    got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out")
   fi
   if [ "$got" = "$2" ]; then echo "ok ($got)"; else
     echo "FAIL: expected $2, got $got"; fails=$((fails+1))
@@ -136,13 +142,13 @@ echo
 echo "== T1 (c): a non-Bash, execution-shaped tool this file has never named =="
 printf '%-64s ' "a non-Bash tool using tool_input.command - judged exactly as Bash would be"
 out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$D -rf $P/results" | bash "$H")
-decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out" 2>/dev/null)
+decision=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out" 2>/dev/null)
 [ "$decision" = deny ] && echo "ok (deny)" || { echo "FAIL: expected deny, got '$decision' <<$out>>"; fails=$((fails+1)); }
 
 printf '%-64s ' "an unparseable tool (unknown field) that looks deletion-shaped - ask"
 UNKNOWN=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'mcp__win__powershell','tool_input':{'script_block':sys.argv[1]}}))" "$D -rf $P/results")
 out=$(echo "$UNKNOWN" | bash "$H")
-decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out" 2>/dev/null)
+decision=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out" 2>/dev/null)
 [ "$decision" = ask ] && echo "ok (ask)" || { echo "FAIL: expected ask, got '$decision' <<$out>>"; fails=$((fails+1)); }
 
 printf '%-64s ' "an unparseable tool with harmless content - allowed, no output"
@@ -164,7 +170,7 @@ askcheck() { # askcheck <command> <label>
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
   fi
-  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
+  decision=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
   [ "$decision" = ask ] && echo ok || { echo "FAIL: expected permissionDecision=ask, got '$decision'"; fails=$((fails+1)); }
 }
 denycheck() { # denycheck <command> <label>
@@ -174,7 +180,7 @@ denycheck() { # denycheck <command> <label>
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
   fi
-  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
+  decision=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
   [ "$decision" = deny ] && echo ok || { echo "FAIL: expected permissionDecision=deny, got '$decision'"; fails=$((fails+1)); }
 }
 
@@ -225,7 +231,7 @@ tps() { # tps <powershell command> <expect> <label> - through the PowerShell too
   printf '%-58s ' "$3"
   out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
   if [ -z "$out" ]; then got=pass; else
-    got=$(python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out" 2>/dev/null)
+    got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out" 2>/dev/null)
   fi
   [ "$got" = "$2" ] && echo "ok ($got)" || { echo "FAIL: expected $2, got $got"; fails=$((fails+1)); }
 }
