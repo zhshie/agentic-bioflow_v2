@@ -164,3 +164,10 @@ native Git Bash refuses this suite.
 - The seven self-referential `# Not X:` headers
   (`tests/scripts_name_their_alternative.sh:26`) are an open question for the
   maintainer, explicitly deferred.
+
+## Developer review (2026-09-30)
+
+- `commands/runs.md`: the reworded floor line pointed at `docs/SITE_ADAPTER.md`, which does not name the pending reason; it now points at the pending-reason check the same file runs just above (`scripts/on_site.sh --script scripts/why_pending.sh`, line 156). A first attempt named `scripts/why_pending.sh` directly and `tests/site_scripts_via_on_site.sh` correctly failed it.
+- `tests/lib/site_terms.sh`: `\b` replaced by explicit word boundaries; BSD grep -E (the Mac) does not promise `\b`.
+- Native Git Bash: `tests/confirm_cleanup_test.sh` all passed with no environment overrides — the UTF-8 fix works where WSL could not reproduce the bug (it failed 4-10 cases natively before).
+- WSL `tests/run_all.sh`: 73/73.

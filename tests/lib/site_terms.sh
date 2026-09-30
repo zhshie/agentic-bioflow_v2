@@ -13,7 +13,9 @@
 # (site_terms_allow): collect every line that matches a term, then drop the
 # lines whose only reason for matching is a phrase that is not the command
 # layer naming site machinery.
-SITE_TERMS='slurm|sbatch|squeue|scontrol|sacctmgr|qos|partition|relay|proxy|singularity|module load|\bssh\b|\bscp\b|\brsync\b'
+# Word boundaries spelled out rather than \b, which BSD grep -E (the Mac)
+# does not promise.
+SITE_TERMS='slurm|sbatch|squeue|scontrol|sacctmgr|qos|partition|relay|proxy|singularity|module load|(^|[^[:alnum:]_])(ssh|scp|rsync)([^[:alnum:]_]|$)'
 
 # site_terms_grep <path>...
 # Case-insensitive (-i): a scheduler name capitalised in prose - "SLURM",
