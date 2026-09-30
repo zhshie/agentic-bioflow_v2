@@ -94,3 +94,8 @@ that touch the same files to confirm no collateral breakage:
 ## Follow-ups
 
 - None identified beyond what E11 already excludes.
+
+## Developer review (2026-09-30)
+
+- `commands/setup.md` synced-folder paragraph: removed the example "e.g. Google Drive for Desktop's default location" as the in-profile case. It had no source, and Drive for Desktop's streaming mode mounts its own drive letter (this maintainer's workspace is on `G:`), so it may be the opposite case. The paragraph now says step 3 does not guess: it reads back who can open the token file and refuses when anyone beyond the owner can.
+- Reviewed E1's added "When something here does not go as designed" sections in downstream.md/finish.md (deviation accepted: neither file had any failure text), and the E5 rewrite in SKILL.md (the practical instruction and the settings-file warning are kept).

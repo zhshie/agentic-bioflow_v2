@@ -344,13 +344,14 @@ alongside the site one (step 3, once `seqera_user` is known).
   **A warning, not a refusal, and it is worth saying which of two things this
   is** — the two can look identical from the folder picker and are not the
   same case. A folder that a sync client keeps mirrored *inside the user's own
-  profile* — the ordinary case, e.g. Google Drive for Desktop's default
-  location — carries the profile's normal owner-only permissions, sync client
-  included, and is exactly what this is designed for; nothing below refuses
-  it. A cloud drive mounted as **its own drive letter** with no ACLs at all —
-  a USB stick answers the same way — is a different shape: nothing on a drive
-  like that can be private to anyone, so step 3's token write refuses it
-  outright rather than warning, whatever this step already said.
+  profile* carries the profile's normal owner-only permissions and is exactly
+  what this is designed for; nothing below refuses it. A cloud drive mounted
+  as **its own drive letter** may not: step 3 does not guess which one this
+  is, it reads back who can open the token file, and refuses when anyone
+  beyond the owner can (a drive with no ACLs, like a USB stick, always
+  answers that way) — whatever this step already said. Which one a given
+  sync client produces depends on its mode and version; the read-back is the
+  answer, not the product name.
 - **On the site itself (only when outputs are huge).** No local skeleton.
   Measure before assuming this is the case: a normalised count matrix is
   about 973 KB, and a whole delivery directory is around 25 MB — ordinary
