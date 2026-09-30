@@ -5,10 +5,10 @@ Every task is test-first: write the test for its TCs, run it, record RED, implem
 
 ## Stage S1 — `scripts/egress_allow.sh` (US1 add, US2 list/remove)
 
-- [ ] T001 [TC-005, TC-006, TC-018] `tests/egress_allow_test.sh`: validation — reject `*`, `com`, `0.0.0.0`, `10.1.2.3`, `::1`, empty, `a..b`, a label over 63 chars, `-x.org`; accept `download.example.org`, `Example.ORG.` (stored as `example.org`); `add` without `--reason` or with an empty one refuses; more than 100 entries refuses
-- [ ] T002 [TC-001, TC-014, TC-015, TC-017] same test: `add` writes `domain<TAB>date<TAB>reason` to `<root>/config/egress_allow.tsv` (root from a temp `LAB_SETTINGS_*` fixture, the way `tests/settings_test.sh` builds one); duplicate add says already present; `remove` deletes the line; `list` prints domain/date/reason and `來源不明` for a hand-added line with no date or reason; `domains` prints the comma list
-- [ ] T003 [TC-020, TC-021] header `# Nothing existing: …`; path derived like `token_file()`; passes `tests/no_hardcoded_paths.sh`, `tests/scripts_name_their_alternative.sh`, `tests/portable_userland.sh`
-- [ ] T004 implement `scripts/egress_allow.sh`; `docs/SETTINGS.md` documents the file (travels with the root; per deployment)
+- [x] T001 [TC-005, TC-006, TC-018] `tests/egress_allow_test.sh`: validation — reject `*`, `com`, `0.0.0.0`, `10.1.2.3`, `::1`, empty, `a..b`, a label over 63 chars, `-x.org`; accept `download.example.org`, `Example.ORG.` (stored as `example.org`); `add` without `--reason` or with an empty one refuses; more than 100 entries refuses
+- [x] T002 [TC-001, TC-014, TC-015, TC-017] same test: `add` writes `domain<TAB>date<TAB>reason` to `<root>/config/egress_allow.tsv` (root from a temp `LAB_SETTINGS_*` fixture, the way `tests/settings_test.sh` builds one); duplicate add says already present; `remove` deletes the line; `list` prints domain/date/reason and `來源不明` for a hand-added line with no date or reason; `domains` prints the comma list
+- [x] T003 [TC-020, TC-021] header `# Nothing existing: …`; path derived like `token_file()`; passes `tests/no_hardcoded_paths.sh`, `tests/scripts_name_their_alternative.sh`, `tests/portable_userland.sh`
+- [x] T004 implement `scripts/egress_allow.sh`; `docs/SETTINGS.md` documents the file (travels with the root; per deployment)
 
 ## Stage S2 — the relay reads the list (US1)
 
