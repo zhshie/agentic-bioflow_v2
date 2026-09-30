@@ -108,9 +108,11 @@ is not itself the answer to "where does `submission/` belong". Ask first.
    own file paths — worth a look before the package leaves the lab.
 
 3. **Read what it produced, and report every gap it recorded.** Search the
-   output for the citation markers and for the `[GAP: ...]` lines that flag
-   figures not lining up with the plan (the `Results for '…' not written yet`
-   lines are step 4's to fill, not decisions). Put that list in front of the user as a list of
+   output for the citation markers and for every `[GAP: ...]` line - in
+   `manuscript.qmd` (figures not lining up with the plan, the undrafted
+   Discussion) and in `methods.md` (its Notes section and any unresolved
+   placeholder). The `Results for '…' not written yet` lines are step 4's to
+   fill, not decisions. Put that list in front of the user as a list of
    decisions they have to make, not as a warning at the end of a wall of text.
    A near-miss citation is theirs to confirm: the tool that ran and the entry
    the pipeline lists may or may not be the same thing, and guessing wrong

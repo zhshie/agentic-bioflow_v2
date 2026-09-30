@@ -389,6 +389,10 @@ def render(run, assets_base):
             for key, text in why:
                 lines.append("- `%s` — %s" % (key, text))
 
+    # The run's own notes (collect_provenance) count even when this script
+    # added none - the guard used to be `if notes:` and dropped them silently
+    # (acceptance review of #32).
+    notes = notes + run.get("notes", [])
     if notes:
         # invisible-package-gaps item 1: these used to be wrapped in an HTML
         # comment, which a docx render drops and an html render only keeps in
@@ -396,7 +400,7 @@ def render(run, assets_base):
         # text instead, each one a [GAP: ...] so it reads as a gap rather
         # than as settled prose.
         lines.append("\n### Notes\n")
-        for n in notes + run.get("notes", []):
+        for n in notes:
             lines.append("- [GAP: %s]" % n)
     return "\n".join(lines)
 

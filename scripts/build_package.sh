@@ -251,16 +251,34 @@ def fig_matches(fid, figs):
     name.
     """
     boundary = re.compile(r"^" + re.escape(fid) + r"([._]|$)")
-    return [f for f in figs if boundary.match(f)]
+    # A file a longer planned id claims is that id's, not this one's:
+    # with fig1 and fig1_b both planned, fig1_b.png is fig1_b's (acceptance
+    # review of #32 - the first fix called fig1 ambiguous and dropped it).
+    longer = [re.compile(r"^" + re.escape(o) + r"([._]|$)")
+              for o in all_ids if o != fid and o.startswith(fid)]
+    cands = [f for f in figs if boundary.match(f)
+             and not any(l.match(f) for l in longer)]
+    # One figure saved in several formats (fig1.png + fig1.pdf) is one
+    # figure: prefer the file whose name is exactly the id, in the format a
+    # rendered manuscript embeds best.
+    exact = [f for f in cands if os.path.splitext(f)[0] == fid]
+    if exact:
+        pref = [".png", ".jpg", ".jpeg", ".svg", ".pdf", ".tif", ".tiff"]
+        exact.sort(key=lambda f: pref.index(os.path.splitext(f)[1].lower())
+                   if os.path.splitext(f)[1].lower() in pref else len(pref))
+        return exact[:1], exact
+    return cands, cands
 
 
+all_ids = [row["id"] for row in entries]
 emitted = set()
 for row in entries:
     fid = row["id"]
     qtext = row.get("question") or fid
-    match = fig_matches(fid, figs)
+    match, claimed = fig_matches(fid, figs)
     print("### %s\n" % qtext)
     if len(match) == 1:
+        emitted.update(claimed)
         print("![%s](figures/%s){#fig-%s}\n" % (qtext, match[0], fid))
         emitted.add(match[0])
     elif len(match) > 1:

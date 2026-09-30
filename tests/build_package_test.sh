@@ -4,8 +4,9 @@
 # Two properties matter more than the file list.
 #
 # The first is that a gap stays visible. A plan entry whose figure was never
-# produced, and a figure no plan entry claims, both leave a comment in the
-# manuscript. Silence there would produce a document that looks complete and
+# produced, and a figure no plan entry claims, both leave a visible
+# `[GAP: ...]` line in the manuscript (an HTML comment until #32, which a
+# rendered document drops). Silence there would produce a document that looks complete and
 # is missing a result nobody asked about again.
 #
 # The second is that the .qmd carries no executable code. The figures are

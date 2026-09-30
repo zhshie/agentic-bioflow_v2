@@ -112,3 +112,15 @@ left untouched, as decided.
 ## Developer review (2026-09-30)
 
 The implementer left the per-figure `<!-- Describe what this shows… -->` placeholder as an HTML comment, reading it as an authoring instruction rather than a gap. Changed: step 4 of `commands/finish.md` fills it, and a figure step 4 skips would render with no description and no sign one is missing — the same invisible gap. It is now `[GAP: Results for '<id>' not written yet - …]`; `commands/finish.md` step 4 says to replace it and that one left in place stays visible on purpose; step 3 says these are step 4's to fill, not decisions. `tests/package_gaps_test.sh` now asserts the manuscript holds no HTML comment at all and that each planned figure carries the visible placeholder (both red on 40f6525, green now). WSL `tests/run_all.sh` 74/74.
+
+## After independent acceptance (2026-09-30)
+
+The reviewer failed one item and found one silent drop in the rewritten block; both fixed test-first (3 new cases, red on 602c002):
+
+- Regression from the first fix: with `fig1` and `fig1_b` both planned (and `fig1.pdf` beside `fig1.png`), `fig1` was reported ambiguous and its figure dropped, where main had picked it. Now a file claimed by a longer planned id belongs to that id, and one figure in several formats is one figure (exact-name file, preferred format png > jpg > svg > pdf > tif).
+- `methods_text.py`: the run's own notes (`collect_provenance`) were dropped whenever the script added none of its own (`if notes:` guard). They are now always written.
+- `commands/finish.md` step 3 now names every kind of `[GAP:]` (manuscript and methods.md, incl. Notes and unresolved placeholders); `tests/build_package_test.sh` header no longer says "comment".
+
+Not changed (reviewer: rare, low): a `${…}` inside an HTML attribute of a MultiQC template can still vanish with the tag or land only in a link target; a plan row with no id is skipped (pre-existing, outside this assessment); only `params.yaml` names its source file — the methods paragraph and software list still do not name theirs. → follow-up.
+
+WSL `tests/run_all.sh` 74/74.

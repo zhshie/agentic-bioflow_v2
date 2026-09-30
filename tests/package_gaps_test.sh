@@ -107,6 +107,51 @@ if grep -qF '<!-- assembled by scripts/methods_text.py' "$M"; then
   echo "FAIL: still a comment"; fails=$((fails+1))
 else echo ok; fi
 
+# --- acceptance review: prefix ids that coexist, and one figure in several
+# formats. fig1 and fig1_b both planned and both present: fig1 must get
+# fig1.png, not an "ambiguous" gap (main picked it correctly; the first fix
+# did not). A figure saved as .png and .pdf is one figure, not two.
+P2="$TMP/proj2"
+mkdir -p "$P2/runs/demo_20260101/results/pipeline_info" "$P2/analysis/figures"
+cp "$P/runs/demo_20260101/results/pipeline_info/"* "$P2/runs/demo_20260101/results/pipeline_info/"
+cp "$P/runs/demo_20260101/params.yaml" "$P2/runs/demo_20260101/"
+for f in fig1.png fig1.pdf fig1_b.png; do echo x > "$P2/analysis/figures/$f"; done
+cat > "$P2/analysis/analysis.md" <<'MD'
+| id | question | status |
+|---|---|---|
+| fig1 | First figure | accepted |
+| fig1_b | Second figure | accepted |
+MD
+CITE_CURL=false bash "$BP" "$P2" >/dev/null 2>&1
+Q2="$P2/submission/manuscript.qmd"
+grep -qF 'figures/fig1.png){#fig-fig1}' "$Q2" \
+  && ok "fig1 gets fig1.png while fig1_b is also planned" \
+  || no "fig1 gets fig1.png while fig1_b is also planned" "$(grep -n 'fig1' "$Q2" | head -3)"
+grep -qF 'figures/fig1_b.png){#fig-fig1_b}' "$Q2" \
+  && ok "fig1_b gets fig1_b.png" || no "fig1_b gets fig1_b.png" "not found"
+printf '%-62s ' "fig1.png + fig1.pdf is one figure, not an ambiguous gap"
+if grep -qF "[GAP: id 'fig1' matches" "$Q2"; then
+  echo "FAIL: $(grep -F "[GAP: id 'fig1'" "$Q2")"; fails=$((fails+1)); else echo ok; fi
+
+# --- acceptance review: the run's own notes are written even when this
+# script added none of its own (the `if notes:` guard dropped them all).
+printf '%-62s ' "run notes are kept when there are no local notes"
+got=$(cd "$(dirname "$BP")" && python3 - <<'PY' 2>&1
+import os, sys, tempfile
+sys.path.insert(0, ".")
+import methods_text as m
+d = tempfile.mkdtemp()
+open(os.path.join(d, "CITATIONS.md"), "w").write("# Citations\n")
+m.assets_dir = lambda base, name: d
+m.rendered_methods = lambda q: "<p>Data was processed.</p>"
+run = {"run_dir": d, "workflow": {}, "tools": {}, "citable_tools": [],
+       "notes": ["no hand-written params.yaml beside results/"]}
+print(m.render(run, d))
+PY
+)
+if grep -qF "[GAP: no hand-written params.yaml beside results/]" <<<"$got"; then echo ok; else
+  echo "FAIL: <<${got:0:200}>>"; fails=$((fails+1)); fi
+
 # --- developer review: nothing in the manuscript is an HTML comment ---------
 # The per-figure "describe what this shows" placeholder is step 4's to fill.
 # Left as a comment, a figure step 4 skipped rendered with no description and
