@@ -41,3 +41,7 @@ With `CLAUDE_PLUGIN_ROOT` set to an existing directory and a tool the guard does
 ## Risks
 
 A leading boundary must not let a real write through: `"payload":"rm <root>/x"` (verb after `"`) and `...;rm <root>/x` must still deny — both covered by the new cases.
+
+## Decision (maintainer, 2026-09-30: 「#40 照修」)
+
+Fix as proposed.

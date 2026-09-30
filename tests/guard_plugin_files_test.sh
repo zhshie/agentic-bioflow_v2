@@ -307,6 +307,24 @@ t "unknown shell tool, unknown field, only reads the root - allow" allow \
   CLAUDE_PLUGIN_ROOT="$ROOT" -- \
   "$(tool_input SomeShellTool payload "Get-Content $ROOT/hooks/x.sh")"
 
+# #40: the unknown-tool branch matched a write verb with no leading boundary,
+# so a root whose path held "rm1", "8ln3", "Rm2" or "aren5" denied a plain
+# read - and mktemp's random suffix made the case above fail now and then.
+# Fixed roots that contain those fragments, so the outcome is deterministic.
+for frag in arm1 tmp.8ln3x tmp.q7Rm2 tmp.aren5; do
+    FR="$TMP/$frag/plugin_root"; mkdir -p "$FR/hooks"
+    t "unknown shell tool reads a root under '$frag' - allow" allow \
+      CLAUDE_PLUGIN_ROOT="$FR" -- \
+      "$(tool_input SomeShellTool payload "Get-Content $FR/hooks/x.sh")"
+    t "unknown shell tool writes a root under '$frag' - DENY" deny \
+      CLAUDE_PLUGIN_ROOT="$FR" -- \
+      "$(tool_input SomeShellTool payload "rm $FR/hooks/x.sh")"
+done
+FR="$TMP/arm1/plugin_root"
+t "unknown shell tool, verb right after a separator - DENY" deny \
+  CLAUDE_PLUGIN_ROOT="$FR" -- \
+  "$(tool_input SomeShellTool payload "ls;rm $FR/hooks/x.sh")"
+
 echo
 echo "== hooks.json wiring =="
 HOOKS_JSON="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/hooks/hooks.json"
