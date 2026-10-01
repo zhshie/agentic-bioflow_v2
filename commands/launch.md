@@ -162,7 +162,13 @@ AVAILABLE - none of which the gate can see.
    to, and discovering that by watching a run fail costs a queue slot and a
    round of diagnosis. It is heuristic in both directions: it cannot see URLs
    assembled at runtime, and a pipeline only fetches what its parameters
-   select, so a host it lists may not be needed. Add the ones that are.
+   select, so a host it lists may not be needed. Add the ones that are:
+   once the user approves a host, run
+   `scripts/egress_allow.sh add <host> --reason "<the run that needed it>"`
+   (the safety net asks them to confirm it), restart the outbound channel,
+   then launch. This changes only this deployment's own list; putting a host
+   on the built-in list is the maintainer's change (a plugin edit and a
+   release), not something to do here.
 
 2. **Show what the pipeline does before asking anyone to configure it.**
    Someone who has not seen the workflow cannot say which parts of it they

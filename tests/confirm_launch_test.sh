@@ -560,4 +560,22 @@ idg "stopping the egress relay asks"                       ask   'bash scripts/e
 idg "agent status does not ask"                            allow 'scripts/on_site.sh "bash scripts/agent_ctl.sh status"'
 idg "reading a setting does not ask"                       allow 'bash scripts/settings.sh agent_connection'
 
+# Feature 002 (TC-007, TC-016): adding or removing a domain on this
+# deployment's own relay allowlist moves a security boundary on the shared
+# login node, so the harness asks - the model does not decide.
+idg "egress_allow add asks"                                ask   'bash scripts/egress_allow.sh add x.org --reason r'
+idg "egress_allow remove asks"                             ask   'bash scripts/egress_allow.sh remove x.org'
+idg "egress_allow list does not ask"                       allow 'bash scripts/egress_allow.sh list'
+idg "egress_allow domains does not ask"                    allow 'bash scripts/egress_allow.sh domains'
+idg "...wrapped in on_site.sh it asks"                     ask   "scripts/on_site.sh 'bash scripts/egress_allow.sh add x.org --reason r'"
+idg "...an absolute plugin path asks"                      ask   'bash /some/plugin/scripts/egress_allow.sh add x.org --reason r'
+idg "...a ./ path asks"                                    ask   './scripts/egress_allow.sh add x.org --reason r'
+idg "...inside a compound command asks"                    ask   'cd /tmp && bash scripts/egress_allow.sh remove x.org'
+idg "naming it inside echo's quotes does not ask"          allow 'echo "egress_allow.sh add x.org"'
+idg "naming it in a commit message does not ask"           allow 'git commit -F msg.txt -m "docs: egress_allow.sh add x.org"'
+j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' 'bash scripts/egress_allow.sh add x.org --reason "needs a conda mirror"')
+o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+printf '%-58s ' "   (ask names the domain, the reason, the boundary)"
+grep -q 'x\.org' <<<"$o" && grep -q 'needs a conda mirror' <<<"$o" && grep -qi 'security boundary' <<<"$o" && grep -qi 'shared login node' <<<"$o" && echo ok || { echo "FAIL <<$o>>"; fails=$((fails+1)); }
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

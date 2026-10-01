@@ -19,11 +19,11 @@ Every task is test-first: write the test for its TCs, run it, record RED, implem
 
 ## Stage S3 — the gate and the commands (US1, US2)
 
-- [ ] T009 [TC-007, TC-016] `tests/confirm_launch_test.sh`: `bash scripts/egress_allow.sh add x.org --reason r` → ask (naming domain and reason); `remove` → ask; `list` / `domains` → quiet; wrapped in `on_site.sh '…'` → ask
-- [ ] T010 implement the rule in `hooks/confirm_launch.sh` beside the resident-process gate, using the shared splitter's quote-free column
-- [ ] T011 [TC-012, TC-022] `commands/runs.md`, `commands/launch.md`: the approved-host step names `scripts/egress_allow.sh add <host> --reason …`, then the existing restart; no text tells anyone to edit plugin files; `tests/command_layer_is_site_neutral.sh` stays green
-- [ ] T012 [TC-013] the same command text says adding to the built-in list is the maintainer's change (manual check)
-- [ ] T013 `docs/SITE_ADAPTER.md` egress contract row mentions the per-deployment list; `docs/PITFALLS.md` only if something surprising turns up
+- [x] T009 [TC-007, TC-016] `tests/confirm_launch_test.sh`: `bash scripts/egress_allow.sh add x.org --reason r` → ask (naming domain and reason); `remove` → ask; `list` / `domains` → quiet; wrapped in `on_site.sh '…'` → ask
+- [x] T010 implement the rule in `hooks/confirm_launch.sh` beside the resident-process gate, using the shared splitter's quote-free column
+- [x] T011 [TC-012, TC-022] `commands/runs.md`, `commands/launch.md`: the approved-host step names `scripts/egress_allow.sh add <host> --reason …`, then the existing restart; no text tells anyone to edit plugin files; `tests/command_layer_is_site_neutral.sh` stays green
+- [x] T012 [TC-013] the same command text says adding to the built-in list is the maintainer's change (manual check)
+- [x] T013 `docs/SITE_ADAPTER.md` egress contract row mentions the per-deployment list; `docs/PITFALLS.md` only if something surprising turns up
 
 ## Close
 

@@ -93,7 +93,7 @@ looks_launch_shaped() {
         # Identity and shared-process changes (the gate after the jq parse
         # below). Without jq the value being replaced cannot be compared, so
         # any change to these keys counts.
-        *'agent_ctl.sh start '*|*'agent_ctl.sh stop '*|*'agent_ctl.sh restart '*|*'egress_ctl.sh start '*|*'egress_ctl.sh stop '*|*'egress_ctl.sh restart '*|*'--set agent_connection '*)
+        *'agent_ctl.sh start '*|*'agent_ctl.sh stop '*|*'agent_ctl.sh restart '*|*'egress_ctl.sh start '*|*'egress_ctl.sh stop '*|*'egress_ctl.sh restart '*|*'egress_allow.sh add '*|*'egress_allow.sh remove '*|*'--set agent_connection '*)
             return 0 ;;
     esac
     return 1
@@ -216,6 +216,41 @@ if grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; then
         "$CMD
 
 Starts/stops a resident process on the shared login node."
+fi
+# Feature 002: the per-deployment egress allowlist (scripts/egress_allow.sh).
+# Adding or removing a domain changes what the shared login node's relay will
+# carry for every compute job - a security boundary, so the user answers, not
+# the model. `list` and `domains` only read and are not matched.
+# Judged on the quote-free column of the shared splitter, so `echo "egress_allow.sh
+# add x.org"` or a commit message that mentions it does not ask, while
+# on_site.sh '...' (whose quoted payload the splitter re-emits as a command of
+# its own) and path forms do. The cheap substring test first keeps every other
+# command off this path entirely; matching is in-shell, no fork per segment.
+if [[ $CMD == *egress_allow.sh* ]]; then
+    EA_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
+    [ -n "$EA_NB" ] || EA_NB="$CMD"
+    EA_US=$(printf '\037')
+    EA_SEGS=$(printf '%s\n' "$EA_NB" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+    if [ -z "$EA_SEGS" ]; then
+        EA_SEGS=$(printf '%s\n' "$EA_NB" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
+                  | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$EA_US" "$l"; done)
+    fi
+    EA_RE='(^|[^[:alnum:]_])egress_allow\.sh[[:space:]]+(add|remove)[[:space:]]+([^[:space:]]+)'
+    EA_REASON_RE='--reason[[:space:]=]+(.*)$'
+    while IFS="$EA_US" read -r EA_SEG EA_V _; do
+        if [[ $EA_V =~ $EA_RE ]]; then
+            EA_OP="${BASH_REMATCH[2]}"
+            EA_DOM="${BASH_REMATCH[3]}"
+            EA_WHY="(none given)"
+            if [[ $EA_SEG =~ $EA_REASON_RE ]]; then EA_WHY="${BASH_REMATCH[1]}"; EA_WHY="${EA_WHY%%[;&|]*}"; fi
+            ask "GATE: this ${EA_OP}s a domain on this deployment's outbound allowlist (domain: ${EA_DOM}; reason: ${EA_WHY}). That moves a security boundary on the site's SHARED login node: the relay will (or will no longer) carry connections to that host for every compute job. Show the user the domain and the reason, confirm the host is really what the failed run needed, and wait for their explicit yes. Adding to the plugin's built-in list is the maintainer's change, not this one." \
+                "$CMD
+
+Egress allowlist ${EA_OP}: ${EA_DOM}
+Reason: ${EA_WHY}
+This moves a security boundary on a shared login node."
+        fi
+    done <<< "$EA_SEGS"
 fi
 ID_HITS=$(grep -oE "(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+($IDENTITY_KEYS)[[:space:]]+[^;&|]*" <<<"$CMD" 2>/dev/null)
 if [ -n "$ID_HITS" ]; then
