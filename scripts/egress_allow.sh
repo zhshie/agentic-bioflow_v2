@@ -192,7 +192,11 @@ cmd_list() {
 # blindly - a hand edit that broke the format is dropped and named on stderr,
 # never silently passed through to the relay (constitution invariant 13).
 cmd_domains() {
-    [ -r "$ALLOW_FILE" ] || return 0
+    [ -e "$ALLOW_FILE" ] || return 0
+    # Present but unreadable is not "no list": say so and fail, so on_site.sh
+    # carries the reason to the relay instead of an empty list that looks
+    # exactly like a deployment that never added anything (TC-009).
+    [ -r "$ALLOW_FILE" ] || die 1 "$ALLOW_FILE exists but cannot be read - check its permissions."
     local domain date_ reason out=""
     while IFS=$'\t' read -r domain date_ reason || [ -n "$domain" ]; do
         [ -n "$domain" ] || continue

@@ -350,7 +350,31 @@ fi
 NAME="$(basename "$SCRIPT")"
 [ -r "$HERE/$NAME" ] || die 2 "--script takes one of this plugin's own scripts;" \
                               "'$NAME' is not in $HERE."
-[ "$REACH" = local ] && exec bash "$HERE/$NAME" "$@"
+
+# This deployment's own extra relay domains (specs/002-relay-allowlist). They
+# live beside the settings file, like the token, so they survive a plugin
+# update and belong to one member only; scripts/egress_allow.sh is the one
+# place that knows where and how to read them. Only the relay's own start
+# needs them, so only that call pays for reading them.
+#
+# A list that could not be read in full still lets the relay start - on the
+# built-in list - but never silently: whatever egress_allow.sh said on stderr
+# travels as NF_RELAY_EXTRA_NOTE and the relay prints it at startup (TC-008,
+# TC-009, TC-023).
+EXTRA_DOMAINS="" EXTRA_NOTE=""
+if [ "$NAME" = egress_ctl.sh ]; then
+  errf="$(mktemp)"
+  EXTRA_DOMAINS="$(bash "$HERE/egress_allow.sh" domains 2>"$errf")" || EXTRA_DOMAINS=""
+  EXTRA_NOTE="$(tr '\n' ' ' < "$errf" | cut -c1-500)"
+  EXTRA_NOTE="${EXTRA_NOTE% }"
+  rm -f -- "$errf"
+fi
+
+if [ "$REACH" = local ]; then
+  [ -n "$EXTRA_DOMAINS" ] && export NF_RELAY_EXTRA_DOMAINS="$EXTRA_DOMAINS"
+  [ -n "$EXTRA_NOTE" ] && export NF_RELAY_EXTRA_NOTE="$EXTRA_NOTE"
+  exec bash "$HERE/$NAME" "$@"
+fi
 
 # Settings stay on this machine. What crosses is the handful of values the site
 # scripts already accept as environment overrides - which is why none of them
@@ -363,6 +387,8 @@ carry TW_AGENT_JAVA       "$(setting agent_java)"
 carry TW_AGENT_JAR        "$(setting agent_jar)"
 carry TW_AGENT_CONNECTION "$(setting agent_connection)"
 carry TOWER_WORKSPACE_ID  "$(setting workspace_id)"
+carry NF_RELAY_EXTRA_DOMAINS "$EXTRA_DOMAINS"
+carry NF_RELAY_EXTRA_NOTE    "$EXTRA_NOTE"
 # TW_BIN is deliberately not carried: 'tw_bin' in the local settings file names
 # where tw lives on THIS machine, and a site script (agent_ctl.sh register, in
 # particular) needs the site's own tw. Carrying it made a laptop path win over

@@ -12,10 +12,10 @@ Every task is test-first: write the test for its TCs, run it, record RED, implem
 
 ## Stage S2 — the relay reads the list (US1)
 
-- [ ] T005 [TC-002, TC-003, TC-004, TC-008, TC-009, TC-023] `tests/nf_relay_domains_test.sh`: import `scripts/nf_relay.py` with `NF_RELAY_EXTRA_DOMAINS` / `NF_RELAY_EXTRA_NOTE` set (no network, no server started): an extra domain and its subdomain pass `domain_ok`; an unlisted one does not; `evilexample.org` does not pass for `example.org`; an invalid entry is dropped and named; the startup lines list built-in and this-deployment groups separately; with a note and no list, the startup says the list was not loaded and why
-- [ ] T006 [TC-019] same test: the peer restriction (`ALLOW_HOST_PREFIXES` and its check) behaves exactly as on main
-- [ ] T007 [TC-008, TC-009, TC-010, TC-011] `tests/on_site_test.sh` (dry-run): `on_site.sh --script egress_ctl.sh start` carries `NF_RELAY_EXTRA_DOMAINS` from this deployment's file; a broken or unreadable file carries no domains and a `NF_RELAY_EXTRA_NOTE` saying why; a second deployment root carries its own list only
-- [ ] T008 implement: `nf_relay.py` (`EXTRA_DOMAINS`, startup log), `on_site.sh` carry (and the `reach: local` path)
+- [x] T005 [TC-002, TC-003, TC-004, TC-008, TC-009, TC-023] `tests/nf_relay_domains_test.sh`: import `scripts/nf_relay.py` with `NF_RELAY_EXTRA_DOMAINS` / `NF_RELAY_EXTRA_NOTE` set (no network, no server started): an extra domain and its subdomain pass `domain_ok`; an unlisted one does not; `evilexample.org` does not pass for `example.org`; an invalid entry is dropped and named; the startup lines list built-in and this-deployment groups separately; with a note and no list, the startup says the list was not loaded and why
+- [x] T006 [TC-019] same test: the peer restriction (`ALLOW_HOST_PREFIXES` and its check) behaves exactly as on main
+- [x] T007 [TC-008, TC-009, TC-010, TC-011] `tests/on_site_test.sh` (dry-run): `on_site.sh --script egress_ctl.sh start` carries `NF_RELAY_EXTRA_DOMAINS` from this deployment's file; a broken or unreadable file carries no domains and a `NF_RELAY_EXTRA_NOTE` saying why; a second deployment root carries its own list only
+- [x] T008 implement: `nf_relay.py` (`EXTRA_DOMAINS`, startup log), `on_site.sh` carry (and the `reach: local` path)
 
 ## Stage S3 — the gate and the commands (US1, US2)
 
