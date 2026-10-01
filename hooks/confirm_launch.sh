@@ -235,21 +235,32 @@ if [[ $CMD == *egress_allow.sh* ]]; then
         EA_SEGS=$(printf '%s\n' "$EA_NB" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                   | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$EA_US" "$l"; done)
     fi
-    EA_RE='(^|[^[:alnum:]_])egress_allow\.sh[[:space:]]+(add|remove)[[:space:]]+([^[:space:]]+)'
+    # The quote-free column only decides that the script is really being run
+    # (not named inside someone else's quotes). WHAT it is asked to do is read
+    # from the as-written segment with quotes dropped, and anything but a plain
+    # `list` or `domains` asks: matching `add|remove` on the quote-free column
+    # let `"add"`, `remove "x.org"` and `$op` through, because that column
+    # blanks every quoted word (developer review of S3).
+    EA_RUN_RE='(^|[^[:alnum:]_])egress_allow\.sh([[:space:]]|$)'
+    EA_ARGS_RE='egress_allow\.sh[\"'\'']?([[:space:]].*)?$'
     EA_REASON_RE='--reason[[:space:]=]+(.*)$'
     while IFS="$EA_US" read -r EA_SEG EA_V _; do
-        if [[ $EA_V =~ $EA_RE ]]; then
-            EA_OP="${BASH_REMATCH[2]}"
-            EA_DOM="${BASH_REMATCH[3]}"
-            EA_WHY="(none given)"
-            if [[ $EA_SEG =~ $EA_REASON_RE ]]; then EA_WHY="${BASH_REMATCH[1]}"; EA_WHY="${EA_WHY%%[;&|]*}"; fi
-            ask "GATE: this ${EA_OP}s a domain on this deployment's outbound allowlist (domain: ${EA_DOM}; reason: ${EA_WHY}). That moves a security boundary on the site's SHARED login node: the relay will (or will no longer) carry connections to that host for every compute job. Show the user the domain and the reason, confirm the host is really what the failed run needed, and wait for their explicit yes. Adding to the plugin's built-in list is the maintainer's change, not this one." \
+        [[ $EA_V =~ $EA_RUN_RE ]] || continue
+        EA_REST=""
+        [[ $EA_SEG =~ $EA_ARGS_RE ]] && EA_REST="${BASH_REMATCH[1]}"
+        EA_REST="${EA_REST//[\"\']/}"
+        read -r EA_OP EA_DOM _ <<< "$EA_REST"
+        case "$EA_OP" in list|domains) continue ;; esac
+        [ -n "$EA_OP" ] || EA_OP="(no operation)"
+        [ -n "$EA_DOM" ] || EA_DOM="(not stated)"
+        EA_WHY="(none given)"
+        if [[ $EA_SEG =~ $EA_REASON_RE ]]; then EA_WHY="${BASH_REMATCH[1]}"; EA_WHY="${EA_WHY%%[;&|]*}"; fi
+        ask "GATE: this runs egress_allow.sh ${EA_OP}, which can change this deployment's outbound allowlist (domain: ${EA_DOM}; reason: ${EA_WHY}). That moves a security boundary on the site's SHARED login node: the relay will (or will no longer) carry connections to that host for every compute job. Show the user the domain and the reason, confirm the host is really what the failed run needed, and wait for their explicit yes. Adding to the plugin's built-in list is the maintainer's change, not this one." \
                 "$CMD
 
 Egress allowlist ${EA_OP}: ${EA_DOM}
 Reason: ${EA_WHY}
 This moves a security boundary on a shared login node."
-        fi
     done <<< "$EA_SEGS"
 fi
 ID_HITS=$(grep -oE "(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+($IDENTITY_KEYS)[[:space:]]+[^;&|]*" <<<"$CMD" 2>/dev/null)

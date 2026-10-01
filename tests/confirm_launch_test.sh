@@ -571,6 +571,16 @@ idg "...wrapped in on_site.sh it asks"                     ask   "scripts/on_sit
 idg "...an absolute plugin path asks"                      ask   'bash /some/plugin/scripts/egress_allow.sh add x.org --reason r'
 idg "...a ./ path asks"                                    ask   './scripts/egress_allow.sh add x.org --reason r'
 idg "...inside a compound command asks"                    ask   'cd /tmp && bash scripts/egress_allow.sh remove x.org'
+# Developer review of S3: quoting or indirection must not slip past. Quoting a
+# domain is ordinary, and the quote-free column blanks a quoted word, so the
+# gate asks on ANY run of the script unless the operation is plainly list or
+# domains.
+idg "...a quoted operation still asks"                     ask   'bash scripts/egress_allow.sh "add" x.org --reason r'
+idg "...a single-quoted remove still asks"                 ask   "bash scripts/egress_allow.sh 'remove' x.org"
+idg "...a quoted domain on remove still asks"              ask   'bash scripts/egress_allow.sh remove "x.org"'
+idg "...an operation in a variable still asks"             ask   'op=add; bash scripts/egress_allow.sh $op x.org --reason r'
+idg "...a bare run with no operation asks"                 ask   'bash scripts/egress_allow.sh'
+idg "a quoted list does not ask"                           allow 'bash scripts/egress_allow.sh "list"'
 idg "naming it inside echo's quotes does not ask"          allow 'echo "egress_allow.sh add x.org"'
 idg "naming it in a commit message does not ask"           allow 'git commit -F msg.txt -m "docs: egress_allow.sh add x.org"'
 j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' 'bash scripts/egress_allow.sh add x.org --reason "needs a conda mirror"')
