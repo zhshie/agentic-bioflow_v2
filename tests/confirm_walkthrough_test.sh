@@ -437,4 +437,41 @@ print(json.dumps({"tool_name":"mcp__win__powershell","tool_input":{"script_block
 out=$(echo "$UNKNOWN" | bash "$H")
 [ -z "$out" ] && echo "ok (no output at all)" || { echo "FAIL: expected nothing, got <<$out>>"; fails=$((fails+1)); }
 
+# --- #42: quoted text that only MENTIONS a step is not the step ---------------
+# .specify/bugs/walkthrough-quoted-text. G1/G2 grepped the raw command, quoted
+# arguments included, so an issue comment or a commit message naming the
+# generator was denied. The other half matters as much: 002's acceptance found
+# that judging only outside quotes loses a quoted script PATH, so those, a
+# quoted params target and a here-doc fed to a shell must still be stopped.
+: > "$TMP/empty42.jsonl"
+bj() { python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$1"; }
+t "#42 issue comment naming the generator: allowed" allow \
+  "$(bj 'gh issue comment 31 --body "generate_samplesheet.py decides column roles"')" "$TMP/empty42.jsonl"
+t "#42 commit message naming the other generator: allowed" allow \
+  "$(bj 'git commit -m "fix: fastq_dir_to_samplesheet handles column roles"')" "$TMP/empty42.jsonl"
+t "#42 commit message showing a params redirect: allowed" allow \
+  "$(bj 'git commit -m "docs: cat > params.yml example"')" "$TMP/empty42.jsonl"
+t "#42 echo of a datasets command: allowed" allow \
+  "$(bj 'echo "tw datasets add x"')" "$TMP/empty42.jsonl"
+t "#42 running the generator: still denied" deny \
+  "$(bj 'python3 scripts/generate_samplesheet.py --input x')" "$TMP/empty42.jsonl"
+t "#42 running it through a quoted path: still denied" deny \
+  "$(bj 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/generate_samplesheet.py" --input x')" "$TMP/empty42.jsonl"
+t "#42 tw datasets add: still denied" deny \
+  "$(bj 'tw datasets add -w 1 ss.csv')" "$TMP/empty42.jsonl"
+t "#42 writing a quoted params.yml target: still denied" deny \
+  "$(bj 'cat > "params.yml" <<EOF
+outdir: x
+EOF')" "$TMP/empty42.jsonl"
+t "#42 a here-doc fed to bash that runs the generator: still denied" deny \
+  "$(bj 'bash <<EOF
+python3 scripts/generate_samplesheet.py --input x
+EOF')" "$TMP/empty42.jsonl"
+t "#42 the quoted path IS the command: still denied" deny \
+  "$(bj '"scripts/generate_samplesheet.py" --input x')" "$TMP/empty42.jsonl"
+t "#42 ...single-quoted, with an assignment first: still denied" deny \
+  "$(bj "A=1 './bin/fastq_dir_to_samplesheet.py' in out")" "$TMP/empty42.jsonl"
+t "#42 bash -c with the generator quoted: still denied" deny \
+  "$(bj 'bash -c "python3 scripts/generate_samplesheet.py --input x"')" "$TMP/empty42.jsonl"
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
