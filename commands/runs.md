@@ -222,7 +222,7 @@ when a refusal is the cause:
     Status:          the run failed; an outbound request was refused at the failure time
     Layer:           egress
     You decide:      allow <host> through the outbound channel, or leave it blocked
-    Next step:       once approved — allow it, restart the outbound channel, relaunch
+    Next step:       once approved — `scripts/egress_allow.sh add <host> --reason "<this run>"`, restart the outbound channel, relaunch
 
 - **A refusal lines up with the failure time.**
     - **It is on the known-harmless list** (`docs/PITFALLS.md` 4e, 4e2). 🤖
@@ -230,8 +230,12 @@ when a refusal is the cause:
       run and is not the cause here.
     - **It is not on that list.** ⏸ Allowing a host through the outbound
       channel moves a security boundary, and that is not this command's call
-      to make alone. Once approved: allow it, restart the outbound channel,
-      relaunch.
+      to make alone. Once approved: run
+      `scripts/egress_allow.sh add <host> --reason "<the run that needed it>"`
+      (the safety net asks the user to confirm it), restart the outbound
+      channel, relaunch. This adds the host to this deployment's own list
+      only; adding it to the built-in list is the maintainer's change (a
+      plugin edit and a release).
 - **No refusal lines up with the failure time.** Read `.command.err` and
   `.exitcode` for the failing task (`tw runs view -i <id> tasks` finds it;
   `tw runs view -i <id> download --type log` if the log itself is needed).

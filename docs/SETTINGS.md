@@ -9,6 +9,7 @@ opinion beyond "somewhere that follows you between machines".
 ├── config/
 │   ├── env.yaml                  the settings - travels with the root
 │   ├── .seqera_token             the token, mode 600
+│   ├── egress_allow.tsv          this deployment's own extra relay domains, mode 600
 │   └── machines/<machine>.yaml   the few keys that cannot travel
 └── projects/<project>/
     ├── rawdata/      staging; scripts/push.sh sends this up
@@ -331,6 +332,40 @@ like a synced folder - they never refuse, because refusing would refuse the
 design. The warning says the two things above and adds that large files
 (rawdata, results, container images) do not belong there: they live on the
 site, and the root holds only what an IDE opens.
+
+## The extra relay allowlist
+
+`<root>/config/egress_allow.tsv`, mode 600 - one line per domain,
+`domain<TAB>YYYY-MM-DD<TAB>reason`. Feature 002 (`specs/002-relay-allowlist`):
+the relay's built-in allowlist lives in plugin code, which only the
+maintainer can change and only by a release, so a new pipeline needing a new
+domain used to need the maintainer - violating invariants 6 and 7 ("any
+pipeline, no configuration"; "nobody should need the maintainer"). This file
+is a deployment's own addition to that list, on top of the built-in one,
+managed with `scripts/egress_allow.sh add|remove|list|domains`. A line edited
+in by hand still counts if it is a valid domain (`list` marks it 來源不明,
+source unknown) and is dropped, and named, if it is not; either way it takes
+effect only at the next relay (re)start, and that start asks the user while
+showing the exact list it will carry (`hooks/confirm_launch.sh`).
+
+Same properties as the token, and for the same reason: it lives beside
+`env.yaml` in this root - not a path of its own choosing, but wherever
+`scripts/settings.sh`'s own `token_file()` already resolves the config
+directory to - so it travels with the root, survives a plugin upgrade or
+reinstall, and is per deployment (one member's addition never reaches
+another member's relay, FR-010). `egress_allow.sh` reuses
+`scripts/utils/portable.sh`'s `file_privacy()`/`warn_unmeasured_privacy()` to
+keep it owner-only, the same measured-not-assumed check the token gets,
+rather than a second privacy check invented just for this file.
+
+Adding or removing a domain is confirmed the same way starting a run is
+(`hooks/confirm_launch.sh`) - never automatic - and the script itself never
+restarts the relay; it only says that restarting the outbound channel is the
+next step. A domain missing from this file, or a line missing its date or
+reason (someone edited the file by hand), is still allowed - FR-002 is "no
+domain in this file is silently skipped" - but `list` marks a line with no
+date or reason "來源不明" ("source unknown") rather than presenting it as if
+it had gone through the normal path.
 
 ## Migration
 

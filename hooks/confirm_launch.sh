@@ -93,7 +93,7 @@ looks_launch_shaped() {
         # Identity and shared-process changes (the gate after the jq parse
         # below). Without jq the value being replaced cannot be compared, so
         # any change to these keys counts.
-        *'agent_ctl.sh start '*|*'agent_ctl.sh stop '*|*'agent_ctl.sh restart '*|*'egress_ctl.sh start '*|*'egress_ctl.sh stop '*|*'egress_ctl.sh restart '*|*'--set agent_connection '*)
+        *'agent_ctl.sh start '*|*'agent_ctl.sh stop '*|*'agent_ctl.sh restart '*|*'egress_ctl.sh start '*|*'egress_ctl.sh stop '*|*'egress_ctl.sh restart '*|*'egress_allow.sh add '*|*'egress_allow.sh remove '*|*'--set agent_connection '*)
             return 0 ;;
     esac
     return 1
@@ -210,12 +210,107 @@ fi
 # and should not ask each time; a change to an existing identity is the thing
 # to catch. A value this cannot read back from the command also asks.
 IDENTITY_KEYS='agent_connection|seqera_user|workspace_id|compute_env|site_host|slurm_account|storage_root'
-RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh[[:space:]]+(start|stop|restart)([^[:alnum:]_-]|$)'
+# ["']? after .sh: an installed plugin's scripts are naturally called through a
+# quoted "${CLAUDE_PLUGIN_ROOT}/scripts/..." path, and the closing quote used to
+# stand between the name and its verb, so nothing asked (independent
+# acceptance of 002, H1 - the same gap as the allowlist gate below).
+RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh["'\'']?[[:space:]]+["'\'']?(start|stop|restart)([^[:alnum:]_-]|$)'
 if grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; then
-    ask "GATE: this starts, stops or restarts a resident process (the Tower Agent or the egress relay) on the site's SHARED login node. Before running it, tell the user which process, under which identity (agent_connection / credential) and why, and wait for their explicit yes. Never start one under an agent_connection that is not this member's own - docs/SETTINGS.md: two members sharing one are refused permanently." \
+    # A relay (re)start is the moment this deployment's extra domains take
+    # effect - however they got into the file, egress_allow.sh or an editor.
+    # So the ask shows exactly what will be carried; approving a restart must
+    # never mean approving a list nobody was shown (002 acceptance, H2).
+    RELAY_LIST=""
+    if grep -qE 'egress_ctl\.sh["'\'']?[[:space:]]+["'\'']?(start|restart)([^[:alnum:]_-]|$)' <<<"$CMD" 2>/dev/null; then
+        RELAY_ERRF=$(mktemp 2>/dev/null) || RELAY_ERRF=/dev/null
+        RELAY_DOMS=$(bash "$(dirname "$0")/../scripts/egress_allow.sh" domains 2>"$RELAY_ERRF")
+        RELAY_ERR=""
+        if [ "$RELAY_ERRF" != /dev/null ]; then RELAY_ERR=$(tr '\n' ' ' < "$RELAY_ERRF"); rm -f -- "$RELAY_ERRF"; fi
+        if [ -n "$RELAY_DOMS" ]; then
+            RELAY_LIST="
+This deployment's extra domains the relay will carry: ${RELAY_DOMS}"
+        else
+            RELAY_LIST="
+This deployment adds no extra domains (built-in list only)."
+        fi
+        [ -n "$RELAY_ERR" ] && RELAY_LIST="${RELAY_LIST}
+Not loaded: ${RELAY_ERR}"
+    fi
+    ask "GATE: this starts, stops or restarts a resident process (the Tower Agent or the egress relay) on the site's SHARED login node. Before running it, tell the user which process, under which identity (agent_connection / credential) and why, and wait for their explicit yes. For the relay, also show the user this deployment's extra domains listed below - starting it is when they take effect. Never start one under an agent_connection that is not this member's own - docs/SETTINGS.md: two members sharing one are refused permanently.${RELAY_LIST}" \
         "$CMD
 
-Starts/stops a resident process on the shared login node."
+Starts/stops a resident process on the shared login node.${RELAY_LIST}"
+fi
+# Feature 002: the per-deployment egress allowlist (scripts/egress_allow.sh).
+# Adding or removing a domain changes what the shared login node's relay will
+# carry for every compute job - a security boundary, so the user answers, not
+# the model. `list` and `domains` only read and are not matched.
+# Judged on the quote-free column of the shared splitter, so `echo "egress_allow.sh
+# add x.org"` or a commit message that mentions it does not ask, while
+# on_site.sh '...' (whose quoted payload the splitter re-emits as a command of
+# its own) and path forms do. The cheap substring test first keeps every other
+# command off this path entirely; matching is in-shell, no fork per segment.
+if [[ $CMD == *egress_allow.sh* ]]; then
+    EA_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
+    [ -n "$EA_NB" ] || EA_NB="$CMD"
+    EA_US=$(printf '\037')
+    EA_SEGS=$(printf '%s\n' "$EA_NB" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+    if [ -z "$EA_SEGS" ]; then
+        EA_SEGS=$(printf '%s\n' "$EA_NB" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
+                  | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$EA_US" "$l"; done)
+    fi
+    # The quote-free column only decides that the script is really being run
+    # (not named inside someone else's quotes). WHAT it is asked to do is read
+    # from the as-written segment with quotes dropped, and anything but a plain
+    # `list` or `domains` asks: matching `add|remove` on the quote-free column
+    # let `"add"`, `remove "x.org"` and `$op` through, because that column
+    # blanks every quoted word (developer review of S3).
+    #
+    # Independent acceptance of 002 (H1, M1) widened "really being run": a
+    # QUOTED path - "${CLAUDE_PLUGIN_ROOT}/scripts/egress_allow.sh", the
+    # natural form for an installed plugin - is blanked from the quote-free
+    # column too. So a segment also counts as running it when its command word
+    # is something that runs a script (a shell, source, a wrapper) and the
+    # name appears in it once quotes are dropped. `echo "..."` / `git commit
+    # -m "..."` still do not: their command word runs nothing. And every
+    # mention of the name is read, not the first: `X="egress_allow.sh list"
+    # bash .../egress_allow.sh add ...` must not borrow the harmless `list`.
+    EA_RUN_RE='(^|[^[:alnum:]_])egress_allow\.sh([^[:alnum:]_.-]|$)'
+    EA_REDIR_RE='^[[:space:]]*[0-9]*[<>]+[&]?[[:space:]]*[^[:space:]]+(.*)$'
+    EA_REASON_RE='--reason[[:space:]=]+(.*)$'
+    while IFS="$EA_US" read -r EA_SEG EA_V EA_CW; do
+        EA_PLAIN="${EA_SEG//[\"\']/}"
+        EA_RUN=0
+        [[ $EA_V =~ $EA_RUN_RE ]] && EA_RUN=1
+        if [ "$EA_RUN" = 0 ] && [[ $EA_PLAIN == *egress_allow.sh* ]]; then
+            case "${EA_CW##*/}" in
+                bash|sh|zsh|dash|ksh|source|.|exec|env|command|nohup|timeout|time|sudo|xargs|nice|egress_allow.sh) EA_RUN=1 ;;
+            esac
+        fi
+        [ "$EA_RUN" = 1 ] || continue
+        EA_REST="$EA_PLAIN" EA_OP="" EA_DOM="" EA_NEED=0
+        while [[ $EA_REST == *egress_allow.sh* ]]; do
+            EA_REST="${EA_REST#*egress_allow.sh}"
+            EA_T="$EA_REST"
+            while [[ $EA_T =~ $EA_REDIR_RE ]]; do EA_T="${BASH_REMATCH[1]}"; done
+            read -r EA_O EA_D _ <<< "$EA_T"
+            case "$EA_O" in
+                list|domains) ;;
+                *) EA_NEED=1; [ -n "$EA_OP" ] || { EA_OP="$EA_O"; EA_DOM="$EA_D"; } ;;
+            esac
+        done
+        [ "$EA_NEED" = 1 ] || continue
+        [ -n "$EA_OP" ] || EA_OP="(no operation)"
+        [ -n "$EA_DOM" ] || EA_DOM="(not stated)"
+        EA_WHY="(none given)"
+        if [[ $EA_SEG =~ $EA_REASON_RE ]]; then EA_WHY="${BASH_REMATCH[1]}"; EA_WHY="${EA_WHY%%[;&|]*}"; fi
+        ask "GATE: this runs egress_allow.sh ${EA_OP}, which can change this deployment's outbound allowlist (domain: ${EA_DOM}; reason: ${EA_WHY}). That moves a security boundary on the site's SHARED login node: the relay will (or will no longer) carry connections to that host for every compute job. Show the user the domain and the reason, confirm the host is really what the failed run needed, and wait for their explicit yes. Adding to the plugin's built-in list is the maintainer's change, not this one." \
+                "$CMD
+
+Egress allowlist ${EA_OP}: ${EA_DOM}
+Reason: ${EA_WHY}
+This moves a security boundary on a shared login node."
+    done <<< "$EA_SEGS"
 fi
 ID_HITS=$(grep -oE "(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+($IDENTITY_KEYS)[[:space:]]+[^;&|]*" <<<"$CMD" 2>/dev/null)
 if [ -n "$ID_HITS" ]; then

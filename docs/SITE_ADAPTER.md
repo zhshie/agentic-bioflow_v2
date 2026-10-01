@@ -103,7 +103,7 @@ values are tested with no host, no network and no site.
 | Contract | Implementation | Note |
 |---|---|---|
 | Resource | `configs/sites/nchc.config` | The unusual part: the QOS enforces a resource **floor**, and for most partitions floor == ceiling, so a partition is a fixed-size box. Nextflow has `resourceLimits` for the ceiling and nothing for the floor |
-| Egress | `scripts/nf_relay.py`, `scripts/egress_ctl.sh` | Compute nodes have no route out. A CONNECT proxy runs on the login node with a domain allowlist; refusals go to its log. `scripts/check_egress.py` predicts what a pipeline will need |
+| Egress | `scripts/nf_relay.py`, `scripts/egress_ctl.sh` | Compute nodes have no route out. A CONNECT proxy runs on the login node with a domain allowlist; refusals go to its log. `scripts/check_egress.py` predicts what a pipeline will need. A deployment's own extra domains live in `scripts/egress_allow.sh`'s list (stored beside the settings file, so it survives plugin upgrades) and `on_site.sh` carries them to the site |
 | Reports | `scripts/agent_ctl.sh` | Seqera's Tower Agent. **Binary files it serves are corrupt** — see PITFALLS 3b; read images from disk |
 | Storage | POSIX, under the deployment's run area | The work directory must be visible from the compute nodes |
 | Diagnosis | `scripts/why_pending.sh` | Reports the scheduler's own reason in plain language |

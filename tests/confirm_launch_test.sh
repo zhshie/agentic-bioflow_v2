@@ -560,4 +560,64 @@ idg "stopping the egress relay asks"                       ask   'bash scripts/e
 idg "agent status does not ask"                            allow 'scripts/on_site.sh "bash scripts/agent_ctl.sh status"'
 idg "reading a setting does not ask"                       allow 'bash scripts/settings.sh agent_connection'
 
+# Feature 002 (TC-007, TC-016): adding or removing a domain on this
+# deployment's own relay allowlist moves a security boundary on the shared
+# login node, so the harness asks - the model does not decide.
+idg "egress_allow add asks"                                ask   'bash scripts/egress_allow.sh add x.org --reason r'
+idg "egress_allow remove asks"                             ask   'bash scripts/egress_allow.sh remove x.org'
+idg "egress_allow list does not ask"                       allow 'bash scripts/egress_allow.sh list'
+idg "egress_allow domains does not ask"                    allow 'bash scripts/egress_allow.sh domains'
+idg "...wrapped in on_site.sh it asks"                     ask   "scripts/on_site.sh 'bash scripts/egress_allow.sh add x.org --reason r'"
+idg "...an absolute plugin path asks"                      ask   'bash /some/plugin/scripts/egress_allow.sh add x.org --reason r'
+idg "...a ./ path asks"                                    ask   './scripts/egress_allow.sh add x.org --reason r'
+idg "...inside a compound command asks"                    ask   'cd /tmp && bash scripts/egress_allow.sh remove x.org'
+# Developer review of S3: quoting or indirection must not slip past. Quoting a
+# domain is ordinary, and the quote-free column blanks a quoted word, so the
+# gate asks on ANY run of the script unless the operation is plainly list or
+# domains.
+idg "...a quoted operation still asks"                     ask   'bash scripts/egress_allow.sh "add" x.org --reason r'
+idg "...a single-quoted remove still asks"                 ask   "bash scripts/egress_allow.sh 'remove' x.org"
+idg "...a quoted domain on remove still asks"              ask   'bash scripts/egress_allow.sh remove "x.org"'
+idg "...an operation in a variable still asks"             ask   'op=add; bash scripts/egress_allow.sh $op x.org --reason r'
+idg "...a bare run with no operation asks"                 ask   'bash scripts/egress_allow.sh'
+idg "a quoted list does not ask"                           allow 'bash scripts/egress_allow.sh "list"'
+idg "naming it inside echo's quotes does not ask"          allow 'echo "egress_allow.sh add x.org"'
+idg "naming it in a commit message does not ask"           allow 'git commit -F msg.txt -m "docs: egress_allow.sh add x.org"'
+j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' 'bash scripts/egress_allow.sh add x.org --reason "needs a conda mirror"')
+o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+printf '%-58s ' "   (ask names the domain, the reason, the boundary)"
+grep -q 'x\.org' <<<"$o" && grep -q 'needs a conda mirror' <<<"$o" && grep -qi 'security boundary' <<<"$o" && grep -qi 'shared login node' <<<"$o" && echo ok || { echo "FAIL <<$o>>"; fails=$((fails+1)); }
+
+# Independent acceptance of 002, H1: a quoted script path - the natural form
+# for an installed plugin, "${CLAUDE_PLUGIN_ROOT}/scripts/..." - vanished from
+# the quote-free column and nothing asked. Same for the relay start on main.
+idg "...a quoted plugin-root path asks"                    ask   'bash "$CLAUDE_PLUGIN_ROOT/scripts/egress_allow.sh" add x.org --reason r'
+idg "...a single-quoted path asks"                         ask   "bash 'scripts/egress_allow.sh' add x.org --reason r"
+idg "...a redirect glued to the name asks"                 ask   'bash scripts/egress_allow.sh>/dev/null add x.org --reason r'
+idg "...a 'list' planted in a prefix variable still asks"  ask   'X="egress_allow.sh list" bash scripts/egress_allow.sh add x.org --reason r'
+idg "...a 'list' planted in the reason still asks"         ask   'bash scripts/egress_allow.sh add x.org --reason "egress_allow.sh list"'
+idg "a quoted plugin-root path to list does not ask"       allow 'bash "$CLAUDE_PLUGIN_ROOT/scripts/egress_allow.sh" list'
+idg "a relay start through a quoted path asks"             ask   'bash "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start'
+idg "...and through on_site --script with a quoted path"   ask   'scripts/on_site.sh --script "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start'
+idg "a quoted relay verb still asks (re-verify M-B)"       ask   'scripts/on_site.sh --script scripts/egress_ctl.sh "start"'
+idg "a single-quoted stop still asks"                      ask   "bash scripts/egress_ctl.sh 'stop'"
+idg "relay status stays quiet"                             allow 'bash scripts/egress_ctl.sh status'
+
+# Independent acceptance of 002, H2: the allowlist file can be written without
+# egress_allow.sh (an editor, a redirect). A domain only takes effect when the
+# relay (re)starts, and that asks - so that ask must SHOW what this deployment
+# will carry, or the user approves a restart blind.
+mkdir -p "$TMP/ea"; printf 'agent_connection: me-lgn-1\n' > "$TMP/ea/env.yaml"; chmod 600 "$TMP/ea/env.yaml"
+printf 'planted.example.org\n' > "$TMP/ea/egress_allow.tsv"
+for verb in start restart; do
+    j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "scripts/on_site.sh --script scripts/egress_ctl.sh $verb")
+    o=$(SEQERA_TOKEN_FILE= LAB_SETTINGS_FILE="$TMP/ea/env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+    printf '%-58s ' "relay $verb ask shows the extra domains it will carry"
+    grep -q 'planted\.example\.org' <<<"$o" && echo ok || { echo "FAIL <<$o>>"; fails=$((fails+1)); }
+done
+rm -f "$TMP/ea/egress_allow.tsv"
+o=$(SEQERA_TOKEN_FILE= LAB_SETTINGS_FILE="$TMP/ea/env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+printf '%-58s ' "relay restart ask says when it carries none"
+grep -qi 'no extra domains' <<<"$o" && echo ok || { echo "FAIL <<$o>>"; fails=$((fails+1)); }
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

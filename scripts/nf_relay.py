@@ -17,6 +17,8 @@ Stdlib only - this login node has no tinyproxy/squid/socat.
 # Not tinyproxy/squid/socat: none is installed here, and swapping one in would
 # still mean rebuilding the two checks above by hand - reverse-DNS-is-a-
 # compute-node and the domain allowlist - since neither is a stock feature.
+import os
+import re
 import select
 import socket
 import socketserver
@@ -85,6 +87,46 @@ ALLOW_DOMAINS = (
     "presigned.s3.cloud.kth.se",
 )
 
+# This deployment's own additions (specs/002-relay-allowlist). The list above
+# is plugin code, so before this a new pipeline's new host needed the
+# maintainer. A member adds one with scripts/egress_allow.sh, which keeps it in
+# their own settings root; scripts/on_site.sh carries the comma list here as
+# NF_RELAY_EXTRA_DOMAINS, and NF_RELAY_EXTRA_NOTE when the list could not be
+# read in full.
+#
+# Validated again here rather than trusted: this is an environment variable,
+# and anything that can set one can set it to anything. A bare "com" or "*"
+# would open the relay to everything below it. Same rule as egress_allow.sh -
+# at least two labels, each 1-63 characters, no leading/trailing hyphen, and a
+# final label of letters only, which is what rules out every IPv4 literal.
+_DOMAIN_RE = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+EXTRA_LIMIT = 100
+
+
+def _parse_extra(raw):
+    """-> (accepted domains, [why each other entry was dropped])"""
+    good, dropped = [], []
+    for item in raw.split(","):
+        d = item.strip().lower()
+        if d.endswith("."):
+            d = d[:-1]
+        if not d:
+            continue
+        if not _DOMAIN_RE.match(d) or len(d) > 253:
+            dropped.append(f"dropped '{item.strip()}' - not a specific domain name")
+        elif d in good:
+            continue
+        elif len(good) >= EXTRA_LIMIT:
+            dropped.append(f"dropped '{d}' - over the limit of {EXTRA_LIMIT} entries")
+        else:
+            good.append(d)
+    return tuple(good), dropped
+
+
+EXTRA_DOMAINS, EXTRA_DROPPED = _parse_extra(os.environ.get("NF_RELAY_EXTRA_DOMAINS", ""))
+EXTRA_NOTE = " ".join(os.environ.get("NF_RELAY_EXTRA_NOTE", "").split())
+_ALL_DOMAINS = ALLOW_DOMAINS + EXTRA_DOMAINS
+
 # Hostname prefixes permitted to use the relay. From `sinfo -N`: compute nodes
 # are cpn*/cpna*/gpn*/gpna*/bgm*; lgn* is this node talking to itself.
 ALLOW_HOST_PREFIXES = ("cpn", "gpn", "bgm", "lgn", "localhost")
@@ -102,7 +144,29 @@ def domain_ok(host):
     h = host.lower().rstrip(".")
     # Match on a label boundary: a bare endswith would also accept
     # "evilquay.io" for the "quay.io" entry.
-    return any(h == d or h.endswith("." + d) for d in ALLOW_DOMAINS)
+    return any(h == d or h.endswith("." + d) for d in _ALL_DOMAINS)
+
+
+def startup_lines():
+    """What the relay says about itself when it starts - and, for this
+    deployment's list, what it did NOT load and why. A list that failed to load
+    must be said out loud (constitution invariant 13): the alternative is a
+    run that fails later on a DENY the member believes they already fixed."""
+    lines = [
+        f"nf-relay on 0.0.0.0:{PORT}",
+        f"  peers  : {','.join(ALLOW_HOST_PREFIXES)}*",
+        f"  domains (built in): {','.join(ALLOW_DOMAINS)}",
+    ]
+    if EXTRA_DOMAINS:
+        lines.append(f"  domains (this deployment): {','.join(EXTRA_DOMAINS)}")
+        if EXTRA_NOTE:
+            lines.append(f"  this deployment's list only partly loaded: {EXTRA_NOTE}")
+    elif EXTRA_NOTE:
+        lines.append(f"  this deployment's list not loaded: {EXTRA_NOTE}")
+    else:
+        lines.append("  domains (this deployment): (none)")
+    lines.extend(f"  this deployment's list: {why}" for why in EXTRA_DROPPED)
+    return lines
 
 
 # Every connection starts with a reverse lookup, so a burst runs them all at
@@ -337,7 +401,6 @@ class Server(socketserver.ThreadingTCPServer):
 
 
 if __name__ == "__main__":
-    log(f"nf-relay on 0.0.0.0:{PORT}")
-    log(f"  peers  : {','.join(ALLOW_HOST_PREFIXES)}*")
-    log(f"  domains: {','.join(ALLOW_DOMAINS)}")
+    for line in startup_lines():
+        log(line)
     Server(("0.0.0.0", PORT), Handler).serve_forever()

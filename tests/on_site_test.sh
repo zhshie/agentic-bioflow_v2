@@ -340,6 +340,106 @@ printf '%-56s ' "N9-2: reach:none creates no slots directory either"
 [ -d "${CPTEST}.slots" ] \
   && { echo "FAIL: ${CPTEST}.slots exists"; fails=$((fails+1)); } || echo ok
 
+# --- 002: this deployment's extra relay domains travel with the relay start ----
+# specs/002-relay-allowlist T007 [TC-008, TC-009, TC-010, TC-011]. The list
+# lives beside the settings file (scripts/egress_allow.sh), never in the
+# plugin, and crosses as NF_RELAY_EXTRA_DOMAINS - plus NF_RELAY_EXTRA_NOTE when
+# it could not be read in full, so the relay can say so (TC-023).
+#
+# The fake ssh records the remote command line it was handed: that line is
+# where carried variables appear, so this reads what would actually be sent.
+unset SEQERA_TOKEN_FILE
+CMDLOG="$TMP/remote-cmd"; export CMDLOG
+cat > "$TMP/fake-ssh-rec" <<'EOF'
+#!/bin/bash
+for a in "$@"; do [ "$a" = check ] && exit 0; done
+cat >/dev/null
+printf '%s\n' "${@: -1}" > "$CMDLOG"
+EOF
+chmod +x "$TMP/fake-ssh-rec"
+
+relay_cmd() {  # relay_cmd <settings-file> [script] -> the remote command line
+    rm -f "$CMDLOG"
+    LAB_SETTINGS_FILE="$1" ON_SITE_SSH_BIN="$TMP/fake-ssh-rec" \
+      bash "$S" --script "scripts/${2:-egress_ctl.sh}" start >/dev/null 2>&1
+    cat "$CMDLOG" 2>/dev/null
+}
+has2() { printf '%-56s ' "$1"; grep -qF -- "$2" <<<"$3" && echo ok || { echo "FAIL: lacks '$2' <<$3>>"; fails=$((fails+1)); }; }
+lacks2() { printf '%-56s ' "$1"; grep -qF -- "$2" <<<"$3" && { echo "FAIL: has '$2' <<$3>>"; fails=$((fails+1)); } || echo ok; }
+
+for who in a b; do
+    mkdir -p "$TMP/dep-$who"
+    printf '%s\n' 'reach: ssh' 'site_host: me@example.org' > "$TMP/dep-$who/env.yaml"
+done
+printf 'data.example.org\t2026-09-30\trun 42\nmirror.lab.test\t2026-09-30\trun 43\n' \
+    > "$TMP/dep-a/egress_allow.tsv"
+
+out=$(relay_cmd "$TMP/dep-a/env.yaml")
+has2 "TC-002: the relay start carries the extra list" \
+    "NF_RELAY_EXTRA_DOMAINS=data.example.org\\,mirror.lab.test" "$out"
+lacks2 "TC-002: a complete list carries no note" "NF_RELAY_EXTRA_NOTE" "$out"
+
+# TC-011: two deployments on one cluster - each carries its own, only.
+out=$(relay_cmd "$TMP/dep-b/env.yaml")
+lacks2 "TC-011: member b does not carry member a's domain" "data.example.org" "$out"
+lacks2 "TC-011: and with no list, carries nothing for it" "NF_RELAY_EXTRA" "$out"
+
+# Only the relay start needs it: other site scripts get no new variables.
+out=$(relay_cmd "$TMP/dep-a/env.yaml" agent_ctl.sh)
+lacks2 "other scripts are not handed the relay's list" "NF_RELAY_EXTRA" "$out"
+
+# TC-008: a broken file - the bad line is dropped and named, the rest goes.
+mkdir -p "$TMP/dep-c"
+printf '%s\n' 'reach: ssh' 'site_host: me@example.org' > "$TMP/dep-c/env.yaml"
+printf 'good.example.org\t2026-09-30\tr\n*\t2026-09-30\tr\n' > "$TMP/dep-c/egress_allow.tsv"
+out=$(relay_cmd "$TMP/dep-c/env.yaml")
+has2 "TC-008: the valid entry still travels" "NF_RELAY_EXTRA_DOMAINS=good.example.org" "$out"
+has2 "TC-008: a note travels with it" "NF_RELAY_EXTRA_NOTE=" "$out"
+has2 "TC-008: the note names what was dropped" "not\\ a\\ valid\\ domain" "$out"
+
+# TC-009: present but unreadable - no domains, and a note saying why.
+mkdir -p "$TMP/dep-d"
+printf '%s\n' 'reach: ssh' 'site_host: me@example.org' > "$TMP/dep-d/env.yaml"
+printf 'secret.example.org\t2026-09-30\tr\n' > "$TMP/dep-d/egress_allow.tsv"
+chmod 000 "$TMP/dep-d/egress_allow.tsv"
+if [ -r "$TMP/dep-d/egress_allow.tsv" ]; then
+    printf '%-56s skipped (running as a user who reads anything)\n' "TC-009"
+else
+    out=$(relay_cmd "$TMP/dep-d/env.yaml")
+    lacks2 "TC-009: an unreadable list carries no domains" "NF_RELAY_EXTRA_DOMAINS" "$out"
+    has2 "TC-009: and a note that it could not be read" "cannot\\ be\\ read" "$out"
+    printf '%-56s ' "TC-009: the relay start itself still goes ahead"
+    [ -s "$CMDLOG" ] && echo ok || { echo "FAIL: nothing was sent"; fails=$((fails+1)); }
+fi
+chmod 600 "$TMP/dep-d/egress_allow.tsv"
+
+# TC-010 and reach: local. A copy of the plugin somewhere else (what an update
+# or reinstall amounts to) still finds the same list, because the list is in
+# the settings root, not in the plugin. reach: local exec's the script in
+# place, so the copy's egress_ctl.sh is replaced by one that prints what it was
+# given - nothing is started.
+COPY="$TMP/plugin-copy"; mkdir -p "$COPY"
+cp -R "$(dirname "$S")" "$COPY/scripts"; cp -R "$(dirname "$S")/../configs" "$COPY/configs"
+printf '#!/bin/bash\nprintf "domains=%%s\\nnote=%%s\\n" "${NF_RELAY_EXTRA_DOMAINS:-}" "${NF_RELAY_EXTRA_NOTE:-}"\n' \
+    > "$COPY/scripts/egress_ctl.sh"
+printf '%s\n' 'reach: local' > "$TMP/dep-a/local.yaml"
+cp "$TMP/dep-a/env.yaml" "$TMP/dep-a/env.yaml.ssh"
+cp "$TMP/dep-a/local.yaml" "$TMP/dep-a/env.yaml"
+out=$(LAB_SETTINGS_FILE="$TMP/dep-a/env.yaml" bash "$COPY/scripts/on_site.sh" \
+        --script scripts/egress_ctl.sh start 2>&1)
+cp "$TMP/dep-a/env.yaml.ssh" "$TMP/dep-a/env.yaml"
+has2 "TC-010: a reinstalled plugin still finds the list" \
+    "domains=data.example.org,mirror.lab.test" "$out"
+# Re-verification of 002, M-A: a caller's own NF_RELAY_EXTRA_DOMAINS must not
+# ride through to the relay when this deployment's file has none - the relay
+# start's ask shows the FILE's list, so anything else would be unseen.
+mkdir -p "$TMP/dep-e"; printf 'reach: local\n' > "$TMP/dep-e/env.yaml"
+out=$(NF_RELAY_EXTRA_DOMAINS=evil.example.org NF_RELAY_EXTRA_NOTE=forged \
+      LAB_SETTINGS_FILE="$TMP/dep-e/env.yaml" bash "$COPY/scripts/on_site.sh" \
+        --script scripts/egress_ctl.sh start 2>&1)
+lacks2 "a caller's own extra list does not reach the relay" "evil.example.org" "$out"
+lacks2 "nor does a caller's own note" "forged" "$out"
+
 echo
 echo "See tests/on_site_parallel_test.sh for N9-2's concurrency, staleness," \
      "timeout and release-on-signal coverage."
