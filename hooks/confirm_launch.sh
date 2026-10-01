@@ -214,14 +214,14 @@ IDENTITY_KEYS='agent_connection|seqera_user|workspace_id|compute_env|site_host|s
 # quoted "${CLAUDE_PLUGIN_ROOT}/scripts/..." path, and the closing quote used to
 # stand between the name and its verb, so nothing asked (independent
 # acceptance of 002, H1 - the same gap as the allowlist gate below).
-RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh["'\'']?[[:space:]]+(start|stop|restart)([^[:alnum:]_-]|$)'
+RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh["'\'']?[[:space:]]+["'\'']?(start|stop|restart)([^[:alnum:]_-]|$)'
 if grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; then
     # A relay (re)start is the moment this deployment's extra domains take
     # effect - however they got into the file, egress_allow.sh or an editor.
     # So the ask shows exactly what will be carried; approving a restart must
     # never mean approving a list nobody was shown (002 acceptance, H2).
     RELAY_LIST=""
-    if grep -qE 'egress_ctl\.sh["'\'']?[[:space:]]+(start|restart)([^[:alnum:]_-]|$)' <<<"$CMD" 2>/dev/null; then
+    if grep -qE 'egress_ctl\.sh["'\'']?[[:space:]]+["'\'']?(start|restart)([^[:alnum:]_-]|$)' <<<"$CMD" 2>/dev/null; then
         RELAY_ERRF=$(mktemp 2>/dev/null) || RELAY_ERRF=/dev/null
         RELAY_DOMS=$(bash "$(dirname "$0")/../scripts/egress_allow.sh" domains 2>"$RELAY_ERRF")
         RELAY_ERR=""

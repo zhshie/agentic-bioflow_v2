@@ -430,7 +430,15 @@ out=$(LAB_SETTINGS_FILE="$TMP/dep-a/env.yaml" bash "$COPY/scripts/on_site.sh" \
 cp "$TMP/dep-a/env.yaml.ssh" "$TMP/dep-a/env.yaml"
 has2 "TC-010: a reinstalled plugin still finds the list" \
     "domains=data.example.org,mirror.lab.test" "$out"
-has2 "reach: local hands the relay the list too" "note=" "$out"
+# Re-verification of 002, M-A: a caller's own NF_RELAY_EXTRA_DOMAINS must not
+# ride through to the relay when this deployment's file has none - the relay
+# start's ask shows the FILE's list, so anything else would be unseen.
+mkdir -p "$TMP/dep-e"; printf 'reach: local\n' > "$TMP/dep-e/env.yaml"
+out=$(NF_RELAY_EXTRA_DOMAINS=evil.example.org NF_RELAY_EXTRA_NOTE=forged \
+      LAB_SETTINGS_FILE="$TMP/dep-e/env.yaml" bash "$COPY/scripts/on_site.sh" \
+        --script scripts/egress_ctl.sh start 2>&1)
+lacks2 "a caller's own extra list does not reach the relay" "evil.example.org" "$out"
+lacks2 "nor does a caller's own note" "forged" "$out"
 
 echo
 echo "See tests/on_site_parallel_test.sh for N9-2's concurrency, staleness," \

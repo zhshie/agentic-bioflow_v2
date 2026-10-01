@@ -37,5 +37,25 @@ has "and it is running" "running pid=" "$st"
 out=$(NF_RELAY_EXTRA_DOMAINS=third.example.org bash "$CTL" start 2>&1)
 has "start on a running relay says a list change needs restart" "restart" "$out"
 
+# Re-verification of 002, M-C: with no pinned port, `stop` forgot the port and
+# the following `start` took the lowest free one - a different address from the
+# one baked into the compute environment. Hold the lowest port while the first
+# start picks, then free it: restart must keep the relay where it was.
+bash "$CTL" stop >/dev/null 2>&1
+unset NF_RELAY_PORT
+python3 -c 'import socket,time
+s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try: s.bind(("0.0.0.0",18080)); s.listen(1)
+except OSError: pass
+time.sleep(6)' &
+HOLD=$!
+sleep 1
+bash "$CTL" start >/dev/null 2>&1
+before=$(python3 -c "import json;print(json.load(open('$TMP/state/relay.json'))['port'])" 2>/dev/null)
+kill "$HOLD" 2>/dev/null; wait "$HOLD" 2>/dev/null
+bash "$CTL" restart >/dev/null 2>&1
+after=$(python3 -c "import json;print(json.load(open('$TMP/state/relay.json'))['port'])" 2>/dev/null)
+t "restart keeps the relay's port (unpinned)" "$after" "$before"
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

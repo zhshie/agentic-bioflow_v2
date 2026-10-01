@@ -101,9 +101,12 @@ PY
   restart)
     # stop, then start: what the commands mean by "restart the outbound
     # channel" after a domain is added (independent acceptance of 002, M3).
-    # Same port - the address is baked into the compute environment.
-    bash "$HERE/egress_ctl.sh" stop || exit $?
-    exec bash "$HERE/egress_ctl.sh" start
+    # Same port - the address is baked into the compute environment. $PORT is
+    # the running relay's own port by now (resolved above); `stop` deletes the
+    # state file that remembers it, so it is passed on explicitly, or `start`
+    # would take the lowest free port instead (002 re-verification, M-C).
+    NF_RELAY_PORT="$PORT" bash "$HERE/egress_ctl.sh" stop || exit $?
+    NF_RELAY_PORT="$PORT" exec bash "$HERE/egress_ctl.sh" start
     ;;
   stop)
     if alive; then

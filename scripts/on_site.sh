@@ -371,8 +371,13 @@ if [ "$NAME" = egress_ctl.sh ]; then
 fi
 
 if [ "$REACH" = local ]; then
-  [ -n "$EXTRA_DOMAINS" ] && export NF_RELAY_EXTRA_DOMAINS="$EXTRA_DOMAINS"
-  [ -n "$EXTRA_NOTE" ] && export NF_RELAY_EXTRA_NOTE="$EXTRA_NOTE"
+  # Always set, even empty: a caller's own NF_RELAY_EXTRA_DOMAINS must never
+  # ride through to the relay, because the relay start's ask shows this
+  # deployment's FILE - anything else would be carried unseen (002
+  # re-verification, M-A).
+  if [ "$NAME" = egress_ctl.sh ]; then
+    export NF_RELAY_EXTRA_DOMAINS="$EXTRA_DOMAINS" NF_RELAY_EXTRA_NOTE="$EXTRA_NOTE"
+  fi
   exec bash "$HERE/$NAME" "$@"
 fi
 

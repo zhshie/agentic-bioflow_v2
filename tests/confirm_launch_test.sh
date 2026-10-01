@@ -599,6 +599,9 @@ idg "...a 'list' planted in the reason still asks"         ask   'bash scripts/e
 idg "a quoted plugin-root path to list does not ask"       allow 'bash "$CLAUDE_PLUGIN_ROOT/scripts/egress_allow.sh" list'
 idg "a relay start through a quoted path asks"             ask   'bash "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start'
 idg "...and through on_site --script with a quoted path"   ask   'scripts/on_site.sh --script "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start'
+idg "a quoted relay verb still asks (re-verify M-B)"       ask   'scripts/on_site.sh --script scripts/egress_ctl.sh "start"'
+idg "a single-quoted stop still asks"                      ask   "bash scripts/egress_ctl.sh 'stop'"
+idg "relay status stays quiet"                             allow 'bash scripts/egress_ctl.sh status'
 
 # Independent acceptance of 002, H2: the allowlist file can be written without
 # egress_allow.sh (an editor, a redirect). A domain only takes effect when the
