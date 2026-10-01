@@ -342,8 +342,11 @@ maintainer can change and only by a release, so a new pipeline needing a new
 domain used to need the maintainer - violating invariants 6 and 7 ("any
 pipeline, no configuration"; "nobody should need the maintainer"). This file
 is a deployment's own addition to that list, on top of the built-in one,
-managed with `scripts/egress_allow.sh add|remove|list|domains` and never
-edited by hand.
+managed with `scripts/egress_allow.sh add|remove|list|domains`. A line edited
+in by hand still counts if it is a valid domain (`list` marks it 來源不明,
+source unknown) and is dropped, and named, if it is not; either way it takes
+effect only at the next relay (re)start, and that start asks the user while
+showing the exact list it will carry (`hooks/confirm_launch.sh`).
 
 Same properties as the token, and for the same reason: it lives beside
 `env.yaml` in this root - not a path of its own choosing, but wherever

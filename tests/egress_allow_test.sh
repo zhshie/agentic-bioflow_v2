@@ -175,5 +175,27 @@ has "T002 domains lists the first domain" "rawdata.example.org" "$OUT"
 has "T002 domains lists the hand-added (valid-shaped) domain" "manualdomain.org" "$OUT"
 t "T002 domains no longer lists the removed one" "$(count_in 'second.example.org' "$OUT")" "0"
 
+# Independent acceptance of 002, M4: `list` showed hand-added entries the relay
+# will never load (`domains` drops them) as if they were in force.
+SF4="$(newroot)"; TSV4="$(dirname "$SF4")/egress_allow.tsv"
+printf '*.wild.org\t2026-01-01\tr\ncom\nok.example.org\t2026-01-01\tr\nhand.example.org\r\n' > "$TSV4"
+call "$SF4" list
+has "list marks a wildcard line as not in force" "$(printf '*.wild.org\t格式不符，不會生效')" "$OUT"
+has "list marks a bare TLD line as not in force" "$(printf 'com\t格式不符，不會生效')" "$OUT"
+has "list still shows a valid line normally"     "$(printf 'ok.example.org\t2026-01-01\tr')" "$OUT"
+DOMS4="$(LAB_SETTINGS_FILE="$SF4" bash "$SCRIPT" domains 2>/dev/null)"
+t "a CRLF-ended hand line still loads (the CR is not part of the name)" \
+  "$DOMS4" "ok.example.org,hand.example.org"
+
+# TC-012 [FR-009]: the commands' "allow it" step names this mechanism, and no
+# sentence tells anyone to edit plugin files to let a host through.
+for f in commands/runs.md commands/launch.md; do
+    has "TC-012 $f names egress_allow.sh add" 'scripts/egress_allow.sh add <host> --reason' "$(cat "$ROOT/$f")"
+    t "TC-012 $f never says to edit the relay or its built-in list" \
+      "$(grep -ciE '(edit|change|modify|add to)[^.]{0,40}(nf_relay|ALLOW_DOMAINS|plugin file)' "$ROOT/$f")" "0"
+done
+# TC-013 is checked by hand; the text it checks must at least exist.
+has "TC-013 runs.md says the built-in list is the maintainer's change" "maintainer's change" "$(cat "$ROOT/commands/runs.md")"
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

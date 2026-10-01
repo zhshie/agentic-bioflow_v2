@@ -178,8 +178,13 @@ cmd_list() {
     fi
     local domain date_ reason
     while IFS=$'\t' read -r domain date_ reason || [ -n "$domain" ]; do
+        domain="${domain%$'\r'}"; date_="${date_%$'\r'}"; reason="${reason%$'\r'}"
         [ -n "$domain" ] || continue
-        if [ -z "$date_" ] || [ -z "$reason" ]; then
+        # Shown, never hidden - but a line `domains` will drop must not look
+        # as if it were in force (independent acceptance of 002, M4).
+        if ! domain_format_ok "$(normalize_domain "$domain")"; then
+            printf '%s\t格式不符，不會生效\n' "$domain"
+        elif [ -z "$date_" ] || [ -z "$reason" ]; then
             printf '%s\t來源不明\n' "$domain"
         else
             printf '%s\t%s\t%s\n' "$domain" "$date_" "$reason"
@@ -199,6 +204,7 @@ cmd_domains() {
     [ -r "$ALLOW_FILE" ] || die 1 "$ALLOW_FILE exists but cannot be read - check its permissions."
     local domain date_ reason out=""
     while IFS=$'\t' read -r domain date_ reason || [ -n "$domain" ]; do
+        domain="${domain%$'\r'}"
         [ -n "$domain" ] || continue
         if ! domain_format_ok "$domain"; then
             echo "egress_allow: skipping '$domain' in $ALLOW_FILE - not a valid domain." >&2

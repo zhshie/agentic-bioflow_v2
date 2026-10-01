@@ -67,7 +67,10 @@ URL="http://${HOSTNAME_NOW}:${PORT}"
 
 case "${1:-status}" in
   start)
-    if alive; then echo "already running: $(python3 -c "import json;print(json.load(open('$STATE'))['url'])")"; exit 0; fi
+    # A running relay keeps the domain list it started with: this deployment's
+    # extra list (specs/002-relay-allowlist) is read once, at startup. Say so,
+    # or a member who just added a domain believes it is in force.
+    if alive; then echo "already running: $(python3 -c "import json;print(json.load(open('$STATE'))['url'])") - a changed domain list takes effect only after 'egress_ctl.sh restart'"; exit 0; fi
     # Same anchoring as scripts/agent_ctl.sh (PITFALLS 36): started through
     # `scripts/on_site.sh --script`, this inherits a `mktemp -d` that is gone
     # as soon as the round trip ends. The relay does not spawn shells, so it
@@ -95,9 +98,19 @@ print(f"started pid={pid}  {url}")
 PY
     chmod 600 "$STATE"
     ;;
+  restart)
+    # stop, then start: what the commands mean by "restart the outbound
+    # channel" after a domain is added (independent acceptance of 002, M3).
+    # Same port - the address is baked into the compute environment.
+    bash "$HERE/egress_ctl.sh" stop || exit $?
+    exec bash "$HERE/egress_ctl.sh" start
+    ;;
   stop)
     if alive; then
-      kill "$(python3 -c "import json;print(json.load(open('$STATE'))['pid'])")" && echo "stopped"
+      OLD_PID="$(python3 -c "import json;print(json.load(open('$STATE'))['pid'])")"
+      kill "$OLD_PID" && echo "stopped"
+      # Wait for it to let go of the port, or a restart's start races it.
+      for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$OLD_PID" 2>/dev/null || break; sleep 0.5; done
     else echo "not running"; fi
     rm -f "$STATE"
     ;;
@@ -147,5 +160,5 @@ HTTP_PROXY=$URL
 NXF_OPTS=-Dhttps.proxyHost=${HOSTNAME_NOW} -Dhttps.proxyPort=${PORT} -Dhttp.proxyHost=${HOSTNAME_NOW} -Dhttp.proxyPort=${PORT}
 EOF
     ;;
-  *) echo "usage: egress_ctl.sh {start|stop|status|url|env [--scoped]|denied [n]}" >&2; exit 2 ;;
+  *) echo "usage: egress_ctl.sh {start|stop|restart|status|url|env [--scoped]|denied [n]}" >&2; exit 2 ;;
 esac

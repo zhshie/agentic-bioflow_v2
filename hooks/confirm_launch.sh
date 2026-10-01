@@ -210,12 +210,36 @@ fi
 # and should not ask each time; a change to an existing identity is the thing
 # to catch. A value this cannot read back from the command also asks.
 IDENTITY_KEYS='agent_connection|seqera_user|workspace_id|compute_env|site_host|slurm_account|storage_root'
-RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh[[:space:]]+(start|stop|restart)([^[:alnum:]_-]|$)'
+# ["']? after .sh: an installed plugin's scripts are naturally called through a
+# quoted "${CLAUDE_PLUGIN_ROOT}/scripts/..." path, and the closing quote used to
+# stand between the name and its verb, so nothing asked (independent
+# acceptance of 002, H1 - the same gap as the allowlist gate below).
+RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh["'\'']?[[:space:]]+(start|stop|restart)([^[:alnum:]_-]|$)'
 if grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; then
-    ask "GATE: this starts, stops or restarts a resident process (the Tower Agent or the egress relay) on the site's SHARED login node. Before running it, tell the user which process, under which identity (agent_connection / credential) and why, and wait for their explicit yes. Never start one under an agent_connection that is not this member's own - docs/SETTINGS.md: two members sharing one are refused permanently." \
+    # A relay (re)start is the moment this deployment's extra domains take
+    # effect - however they got into the file, egress_allow.sh or an editor.
+    # So the ask shows exactly what will be carried; approving a restart must
+    # never mean approving a list nobody was shown (002 acceptance, H2).
+    RELAY_LIST=""
+    if grep -qE 'egress_ctl\.sh["'\'']?[[:space:]]+(start|restart)([^[:alnum:]_-]|$)' <<<"$CMD" 2>/dev/null; then
+        RELAY_ERRF=$(mktemp 2>/dev/null) || RELAY_ERRF=/dev/null
+        RELAY_DOMS=$(bash "$(dirname "$0")/../scripts/egress_allow.sh" domains 2>"$RELAY_ERRF")
+        RELAY_ERR=""
+        if [ "$RELAY_ERRF" != /dev/null ]; then RELAY_ERR=$(tr '\n' ' ' < "$RELAY_ERRF"); rm -f -- "$RELAY_ERRF"; fi
+        if [ -n "$RELAY_DOMS" ]; then
+            RELAY_LIST="
+This deployment's extra domains the relay will carry: ${RELAY_DOMS}"
+        else
+            RELAY_LIST="
+This deployment adds no extra domains (built-in list only)."
+        fi
+        [ -n "$RELAY_ERR" ] && RELAY_LIST="${RELAY_LIST}
+Not loaded: ${RELAY_ERR}"
+    fi
+    ask "GATE: this starts, stops or restarts a resident process (the Tower Agent or the egress relay) on the site's SHARED login node. Before running it, tell the user which process, under which identity (agent_connection / credential) and why, and wait for their explicit yes. For the relay, also show the user this deployment's extra domains listed below - starting it is when they take effect. Never start one under an agent_connection that is not this member's own - docs/SETTINGS.md: two members sharing one are refused permanently.${RELAY_LIST}" \
         "$CMD
 
-Starts/stops a resident process on the shared login node."
+Starts/stops a resident process on the shared login node.${RELAY_LIST}"
 fi
 # Feature 002: the per-deployment egress allowlist (scripts/egress_allow.sh).
 # Adding or removing a domain changes what the shared login node's relay will
@@ -241,16 +265,41 @@ if [[ $CMD == *egress_allow.sh* ]]; then
     # `list` or `domains` asks: matching `add|remove` on the quote-free column
     # let `"add"`, `remove "x.org"` and `$op` through, because that column
     # blanks every quoted word (developer review of S3).
-    EA_RUN_RE='(^|[^[:alnum:]_])egress_allow\.sh([[:space:]]|$)'
-    EA_ARGS_RE='egress_allow\.sh[\"'\'']?([[:space:]].*)?$'
+    #
+    # Independent acceptance of 002 (H1, M1) widened "really being run": a
+    # QUOTED path - "${CLAUDE_PLUGIN_ROOT}/scripts/egress_allow.sh", the
+    # natural form for an installed plugin - is blanked from the quote-free
+    # column too. So a segment also counts as running it when its command word
+    # is something that runs a script (a shell, source, a wrapper) and the
+    # name appears in it once quotes are dropped. `echo "..."` / `git commit
+    # -m "..."` still do not: their command word runs nothing. And every
+    # mention of the name is read, not the first: `X="egress_allow.sh list"
+    # bash .../egress_allow.sh add ...` must not borrow the harmless `list`.
+    EA_RUN_RE='(^|[^[:alnum:]_])egress_allow\.sh([^[:alnum:]_.-]|$)'
+    EA_REDIR_RE='^[[:space:]]*[0-9]*[<>]+[&]?[[:space:]]*[^[:space:]]+(.*)$'
     EA_REASON_RE='--reason[[:space:]=]+(.*)$'
-    while IFS="$EA_US" read -r EA_SEG EA_V _; do
-        [[ $EA_V =~ $EA_RUN_RE ]] || continue
-        EA_REST=""
-        [[ $EA_SEG =~ $EA_ARGS_RE ]] && EA_REST="${BASH_REMATCH[1]}"
-        EA_REST="${EA_REST//[\"\']/}"
-        read -r EA_OP EA_DOM _ <<< "$EA_REST"
-        case "$EA_OP" in list|domains) continue ;; esac
+    while IFS="$EA_US" read -r EA_SEG EA_V EA_CW; do
+        EA_PLAIN="${EA_SEG//[\"\']/}"
+        EA_RUN=0
+        [[ $EA_V =~ $EA_RUN_RE ]] && EA_RUN=1
+        if [ "$EA_RUN" = 0 ] && [[ $EA_PLAIN == *egress_allow.sh* ]]; then
+            case "${EA_CW##*/}" in
+                bash|sh|zsh|dash|ksh|source|.|exec|env|command|nohup|timeout|time|sudo|xargs|nice|egress_allow.sh) EA_RUN=1 ;;
+            esac
+        fi
+        [ "$EA_RUN" = 1 ] || continue
+        EA_REST="$EA_PLAIN" EA_OP="" EA_DOM="" EA_NEED=0
+        while [[ $EA_REST == *egress_allow.sh* ]]; do
+            EA_REST="${EA_REST#*egress_allow.sh}"
+            EA_T="$EA_REST"
+            while [[ $EA_T =~ $EA_REDIR_RE ]]; do EA_T="${BASH_REMATCH[1]}"; done
+            read -r EA_O EA_D _ <<< "$EA_T"
+            case "$EA_O" in
+                list|domains) ;;
+                *) EA_NEED=1; [ -n "$EA_OP" ] || { EA_OP="$EA_O"; EA_DOM="$EA_D"; } ;;
+            esac
+        done
+        [ "$EA_NEED" = 1 ] || continue
         [ -n "$EA_OP" ] || EA_OP="(no operation)"
         [ -n "$EA_DOM" ] || EA_DOM="(not stated)"
         EA_WHY="(none given)"

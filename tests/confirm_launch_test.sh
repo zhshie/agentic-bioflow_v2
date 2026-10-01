@@ -588,4 +588,33 @@ o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
 printf '%-58s ' "   (ask names the domain, the reason, the boundary)"
 grep -q 'x\.org' <<<"$o" && grep -q 'needs a conda mirror' <<<"$o" && grep -qi 'security boundary' <<<"$o" && grep -qi 'shared login node' <<<"$o" && echo ok || { echo "FAIL <<$o>>"; fails=$((fails+1)); }
 
+# Independent acceptance of 002, H1: a quoted script path - the natural form
+# for an installed plugin, "${CLAUDE_PLUGIN_ROOT}/scripts/..." - vanished from
+# the quote-free column and nothing asked. Same for the relay start on main.
+idg "...a quoted plugin-root path asks"                    ask   'bash "$CLAUDE_PLUGIN_ROOT/scripts/egress_allow.sh" add x.org --reason r'
+idg "...a single-quoted path asks"                         ask   "bash 'scripts/egress_allow.sh' add x.org --reason r"
+idg "...a redirect glued to the name asks"                 ask   'bash scripts/egress_allow.sh>/dev/null add x.org --reason r'
+idg "...a 'list' planted in a prefix variable still asks"  ask   'X="egress_allow.sh list" bash scripts/egress_allow.sh add x.org --reason r'
+idg "...a 'list' planted in the reason still asks"         ask   'bash scripts/egress_allow.sh add x.org --reason "egress_allow.sh list"'
+idg "a quoted plugin-root path to list does not ask"       allow 'bash "$CLAUDE_PLUGIN_ROOT/scripts/egress_allow.sh" list'
+idg "a relay start through a quoted path asks"             ask   'bash "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start'
+idg "...and through on_site --script with a quoted path"   ask   'scripts/on_site.sh --script "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start'
+
+# Independent acceptance of 002, H2: the allowlist file can be written without
+# egress_allow.sh (an editor, a redirect). A domain only takes effect when the
+# relay (re)starts, and that asks - so that ask must SHOW what this deployment
+# will carry, or the user approves a restart blind.
+mkdir -p "$TMP/ea"; printf 'agent_connection: me-lgn-1\n' > "$TMP/ea/env.yaml"; chmod 600 "$TMP/ea/env.yaml"
+printf 'planted.example.org\n' > "$TMP/ea/egress_allow.tsv"
+for verb in start restart; do
+    j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "scripts/on_site.sh --script scripts/egress_ctl.sh $verb")
+    o=$(SEQERA_TOKEN_FILE= LAB_SETTINGS_FILE="$TMP/ea/env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+    printf '%-58s ' "relay $verb ask shows the extra domains it will carry"
+    grep -q 'planted\.example\.org' <<<"$o" && echo ok || { echo "FAIL <<$o>>"; fails=$((fails+1)); }
+done
+rm -f "$TMP/ea/egress_allow.tsv"
+o=$(SEQERA_TOKEN_FILE= LAB_SETTINGS_FILE="$TMP/ea/env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+printf '%-58s ' "relay restart ask says when it carries none"
+grep -qi 'no extra domains' <<<"$o" && echo ok || { echo "FAIL <<$o>>"; fails=$((fails+1)); }
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
