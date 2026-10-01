@@ -27,6 +27,6 @@ Every task is test-first: write the test for its TCs, run it, record RED, implem
 
 ## Close
 
-- [ ] T014 full suite in WSL; `tests/confirm_launch_test.sh` natively in Git Bash; time `hooks/confirm_launch.sh` natively (must stay ~1–2 s)
-- [ ] T015 independent acceptance (read-only verifier) against spec + approved test cases + diff
+- [x] T014 full suite in WSL; `tests/confirm_launch_test.sh` natively in Git Bash; time `hooks/confirm_launch.sh` natively (must stay ~1–2 s)
+- [x] T015 independent acceptance (read-only verifier) against spec + approved test cases + diff
 - [ ] T016 maintainer: TC-013 by hand; add one domain on the real cluster, restart the outbound channel, relaunch
