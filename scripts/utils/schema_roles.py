@@ -93,6 +93,17 @@ def is_fastq_column(prop) -> bool:
     return bool(pats) and all(_accepts_only_fastq(p) for p in pats)
 
 
+def is_mixed_reads_column(prop) -> bool:
+    """One branch accepts FASTQ only, another accepts something else (a .bam).
+    It may hold reads, so it must not be silently used OR silently ignored:
+    ignoring it once made the next FASTQ-only column R1. Generic catch-all
+    patterns (`^\\S+$`, on sample-name columns) have no FASTQ-only branch and
+    are not this."""
+    pats = _patterns(prop)
+    return (any(_accepts_only_fastq(p) for p in pats)
+            and not all(_accepts_only_fastq(p) for p in pats))
+
+
 def _is_file_column(prop) -> bool:
     if not isinstance(prop, dict):
         return False
@@ -125,6 +136,12 @@ def infer_roles(schema: dict, columns: List[str]) -> Union[Roles, NeedsDecision]
     # into long_reads with exit 0).
     all_fastq = [c for c in props if is_fastq_column(props[c])]
     fastq = [c for c in all_fastq if c in wanted]
+    mixed = [c for c in props if is_mixed_reads_column(props[c])]
+    if mixed:
+        cands = [c for c in props if c in wanted and (c in all_fastq or c in mixed)]
+        return NeedsDecision("reads", cands or all_fastq + mixed,
+                             f"column(s) {', '.join(mixed)} accept FASTQ files and other files too, "
+                             f"so which columns are R1/R2 cannot be told from the schema")
     if len(all_fastq) > 2:
         return NeedsDecision("reads", fastq or all_fastq,
                              f"the schema has {len(all_fastq)} columns that accept FASTQ files, "

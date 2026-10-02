@@ -256,7 +256,9 @@ t "LOW-2 header keeps the requested order" "$(sed -n 1p "$o")" "sample,fastq_2,f
 t "LOW-2 fastq_1 still gets R1" "$(sed -n 2p "$o" | cut -d, -f3 | xargs basename)" "S1_R1_001.fastq.gz"
 t "LOW-2 fastq_2 still gets R2" "$(sed -n 2p "$o" | cut -d, -f2 | xargs basename)" "S1_R2_001.fastq.gz"
 
-# MED-1: a column whose anyOf also accepts .bam is not a FASTQ column.
+# MED-1: a column whose anyOf accepts FASTQ *and* .bam is not a FASTQ-only
+# column, but it may well hold reads - so it is neither silently used nor
+# silently ignored: the schema cannot say, and the user is asked.
 cat > "$TMP/mixed.json" <<'EOF'
 {"type":"array","items":{"type":"object","properties":{
  "id":{"type":"string","meta":["id"]},
@@ -266,9 +268,22 @@ cat > "$TMP/mixed.json" <<'EOF'
 EOF
 o=$(newout)
 run "$PAIRS" --schema "$TMP/mixed.json" -o "$o"
-ok_rc "MED-1 fastq|bam anyOf column does not make a third FASTQ column" "$RC" "$ERR"
-t "MED-1 R2 lands in r2" "$(sed -n 2p "$o" | cut -d, -f3 | xargs basename)" "S1_R2_001.fastq.gz"
-t "MED-1 the mixed column stays empty" "$(sed -n 2p "$o" | cut -d, -f4)" ""
+t "MED-1 fastq|bam anyOf column beside r1/r2: exit 3" "$RC" "3"
+t "MED-1 the mixed column is offered as a candidate" "$(grep "^needs-decision:" <<<"$ERR")" "needs-decision: role=reads candidates=r1,r2,either"
+stopped "MED-1 (mixed beside a pair)" "$o"
+# The developer's probe: the mixed column is the FIRST reads column. Ignoring
+# it made the remaining FASTQ-only column R1 - the wrong file in the wrong role.
+cat > "$TMP/mixed_first.json" <<'EOF'
+{"type":"array","items":{"type":"object","properties":{
+ "id":{"type":"string","meta":["id"]},
+ "reads1":{"type":"string","anyOf":[{"pattern":"^\\S+\\.fastq\\.gz$"},{"pattern":"^\\S+\\.bam$"}]},
+ "reads2":{"type":"string","pattern":"^\\S+\\.fastq\\.gz$"}}}}
+EOF
+o=$(newout)
+run "$PAIRS" --schema "$TMP/mixed_first.json" -o "$o"
+t "MED-1 mixed column first: exit 3" "$RC" "3"
+t "MED-1 mixed column first: both columns are candidates" "$(grep "^needs-decision:" <<<"$ERR")" "needs-decision: role=reads candidates=reads1,reads2"
+stopped "MED-1 (mixed first)" "$o"
 
 o=$(newout)
 run "$PAIRS" --columns sample,fastq_1,fastq_2 -o "$o"
