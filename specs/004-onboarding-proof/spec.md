@@ -67,6 +67,8 @@ setup 第 8 步跑兩個公開測試 run：`nextflow-io/hello` 和 `nf-core/demo
     2. 管線是 `nf-core/demo`。
     3. 送出者是設定裡的 `seqera_user`（設定裡有這個值時）。
     4. 存在於設定裡的 workspace。
+  5. 7 天內送出的（驗收後加）。
+  6. 沒有被同一設定根目錄下的另一台電腦拿去當證明（驗收後加）。
   - 任一項不符或查不到，都 MUST 拒絕並說明是哪一項。
 - **FR-003**: `setup_verify.sh` 只在 preflight 通過**而且**這台有證明紀錄時才 exit 0。preflight 通過但沒有紀錄時 MUST exit 3，並說明「還沒證明、去第 8 步」。其他情況維持現狀（exit 1）。
 - **FR-004**: 記錄證明只接受 Platform 上查得到的事實；連不上或格式讀不懂時 MUST 拒絕，不得當成通過。
