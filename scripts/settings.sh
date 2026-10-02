@@ -179,7 +179,10 @@ ensure_machine_id() {
     old="$(legacy_machine_file "$MACHINES_DIR")"
     if [ -n "$old" ] && [ ! -e "$MACHINES_DIR/$id.yaml" ]; then
         mv "$old" "$MACHINES_DIR/$id.yaml" || {
-            echo "could not rename $old to $MACHINES_DIR/$id.yaml" >&2
+            # Roll the id back: left in place, it would point every later read
+            # at a <id>.yaml that does not exist and hide the old file's values.
+            rm -f "$MACHINE_ID_FILE"
+            echo "could not rename $old to $MACHINES_DIR/$id.yaml; this machine keeps its old file name for now" >&2
             return 1
         }
     fi
