@@ -30,7 +30,7 @@
 | TC-012 | FR-006 | 例外 | 只有一個定序檔欄的說明檔；資料夾裡只有 R1 檔、沒有說是單端 | 產生樣本表 | 照現有規則拒絕並請操作者確認是否單端；加上「這批是單端」後才寫出 | 自動 |
 | TC-013 | US1 情境 7；FR-007；不在範圍 1 | 不在範圍 | 要求的欄位含 `long_reads`、`fasta` 等 | 產生樣本表（有指定或判斷得出 R1／R2） | 這些欄留空；訊息逐一點名要操作者補，不嘗試填 | 自動 |
 
-> TC-002 changed after acceptance (HIGH-1), pending maintainer approval：說明檔共有超過兩個定序檔欄時，不論只要求哪幾欄都一律停下來問（只要求其中一部分欄位曾讓 R2 被寫進 `long_reads` 且結束碼 0）。
+> TC-002 changed after acceptance (HIGH-1), approved by the maintainer 2026-10-02：說明檔共有超過兩個定序檔欄時，不論只要求哪幾欄都一律停下來問（只要求其中一部分欄位曾讓 R2 被寫進 `long_reads` 且結束碼 0）。
 
 ## User Story 2 — 開始設定前就看得到「哪一欄放什麼」（P2）
 
