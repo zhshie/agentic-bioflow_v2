@@ -455,6 +455,20 @@ msys_ask  "echo BatchMode=yes; ssh u@host ls"          "FR-006 control: BatchMod
 msys_ask  "ssh -o BatchMode=yes u@host ls; scp a u@host:b" "FR-006 control: the exception is per segment (the scp asks)"
 msys_ask  "ssh u@host 'echo -o BatchMode=yes'"         "FR-006 control: the words inside a quoted payload do not count"
 msys_ask  "wsl.exe -e true; ssh u@host ls"             "FR-006 control: wsl.exe in its own segment does not excuse the next"
+# Acceptance findings (M3): the option must be ssh's own, before the destination,
+# and nothing that can still prompt (a jump host) may ride along. Unsure asks.
+msys_ask  "ssh u@login \"ssh -o 'BatchMode=yes' node01 squeue\"" "M3a BatchMode inside the remote command does not excuse the outer ssh"
+msys_ask  "ssh u@login 'ssh -o \"BatchMode=yes\" node01 squeue'" "M3a ...same with the quotes the other way round"
+msys_ask  "ssh -o BatchMode=yes -J u@login u@node01 squeue"  "M3b a jump host (-J) can still prompt: asks"
+msys_ask  "ssh -o BatchMode=yes -oProxyJump=u@login u@node01 squeue" "M3b ProxyJump option: asks"
+msys_ask  "ssh -o BatchMode=yes -o ProxyCommand='ssh u@login -W %h:%p' u@node01 squeue" "M3b ProxyCommand: asks"
+msys_ask  "ssh u@login squeue -o BatchMode=yes"        "M3c BatchMode after the destination belongs to the remote command: asks"
+msys_ask  "rsync -av a u@host:b -o BatchMode=yes"      "M3c rsync -o is not ssh's option: asks"
+msys_ask  "rsync -e 'ssh -o BatchMode=yes' a u@host:b" "M3c rsync -e carries its own ssh: asks"
+msys_ask  "ssh -o 'BatchMode yes' u@host ls"           "M3 the space spelling is not understood: asks"
+msys_pass "ssh -p 22 -o BatchMode=yes u@host ls"       "M3 an option with its argument before BatchMode: not flagged"
+msys_pass "ssh -v -o BatchMode=yes -i /k u@host ls"    "M3 flags around it: not flagged"
+msys_ask  "ssh -p 22 u@host -o BatchMode=yes ls"       "M3c destination first: asks"
 
 printf '%-58s ' "the same bare ssh call, but NOT on MSYS: not flagged (D3 is MSYS-only)"
 out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "ssh twnia3 ls" | bash "$H")

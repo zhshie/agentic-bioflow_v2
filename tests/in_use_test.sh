@@ -50,7 +50,7 @@ chmod +x "$MSYSBIN/uname"
 # run <hook> <json> [VAR=val ...]  ->  OUT (stdout), RC, ERR
 run() {
   local hook="$1" json="$2"; shift 2
-  OUT=$(printf '%s' "$json" | env -u LAB_SETTINGS_FILE -u CLAUDE_PLUGIN_ROOT -u LAB_RUNS_DIR \
+  OUT=$(cd "${RUNCWD:-.}" && printf '%s' "$json" | env -u LAB_SETTINGS_FILE -u CLAUDE_PLUGIN_ROOT -u LAB_RUNS_DIR \
         -u XDG_STATE_HOME -u TOWER_WORKSPACE_ID -u TW_BIN \
         HOME="$TMP/home" XDG_CONFIG_HOME="$CFG_DEP" AGENTIC_BIOFLOW_STATE_DIR="$STATE" \
         SEQERA_TOKEN_FILE=/nonexistent "$@" bash "$HOOKS/$hook" 2>"$TMP/err")
@@ -186,9 +186,16 @@ intro "$(jq -nc '{session_id:"s-nl", hook_event_name:"UserPromptSubmit", prompt:
 printf '%-72s ' "TC-008 a natural-language request for a pipeline leaves the marker"
 [ -e "$STATE/in-use/s-nl" ] && echo ok || { echo FAIL; fails=$((fails+1)); }
 intro "$(jq -nc '{session_id:"s-chat", hook_event_name:"UserPromptSubmit", prompt:"fix my python script"}')"
+printf '%-72s ' "TC-008 control: an ordinary prompt leaves none"
+[ ! -e "$STATE/in-use/s-chat" ] && echo ok || { echo FAIL; fails=$((fails+1)); }
+# M2 (acceptance): a prompt that names the command anywhere reaches for the
+# plugin; the overview needs it first, the marker does not (unsure = in use).
 intro "$(jq -nc '{session_id:"s-ment", hook_event_name:"UserPromptSubmit", prompt:"what does /agentic-bioflow:setup do?"}')"
-printf '%-72s ' "TC-008 control: an ordinary prompt and a mere mention leave none"
-{ [ ! -e "$STATE/in-use/s-chat" ] && [ ! -e "$STATE/in-use/s-ment" ]; } && echo ok || { echo FAIL; fails=$((fails+1)); }
+intro "$(jq -nc '{session_id:"s-mid", hook_event_name:"UserPromptSubmit", prompt:"please run the RNA-seq FASTQ with /agentic-bioflow:launch"}')"
+printf '%-72s ' "M2 a mid-sentence /agentic-bioflow: mention leaves the marker"
+[ -e "$STATE/in-use/s-ment" ] && echo ok || { echo FAIL; fails=$((fails+1)); }
+printf '%-72s ' "M2 ...also with a pipeline topic and action in the same prompt"
+[ -e "$STATE/in-use/s-mid" ] && echo ok || { echo FAIL; fails=$((fails+1)); }
 # a session that was shown the overview before this version existed is in use
 mkdir -p "$STATE/intro-shown"; : > "$STATE/intro-shown/s-old"
 run confirm_cleanup.sh "$(bash_in s-old "$OUTSIDE" "$RM")"
@@ -279,6 +286,86 @@ check "TC-020 another session is not"                                   silent
 # a session id cannot name a file outside the state directory
 run confirm_cleanup.sh "$(bash_in '../../../etc/passwd' "$OUTSIDE" "$RM")"
 check "TC-020 a path-shaped session id is reduced, not followed"        silent
+
+echo
+echo "== acceptance findings (each case has a control that differs in one fact) =="
+# H1: tw spelled tw.exe
+for c in 'tw.exe launch nf-core/rnaseq' '/home/u/.local/bin/tw.exe launch x' 'C:\tools\tw.exe launch x' 'cd /x && tw.exe runs relaunch -i a'; do
+  run confirm_launch.sh "$(bash_in s-new "$OUTSIDE" "$c")"
+  check "H1 tw.exe is tw: ${c:0:40}" ask
+done
+run confirm_launch.sh "$(bash_in s-new "$OUTSIDE" "twine.exe upload x; sbatch.exe y")"
+check "H1 control: twine.exe is not tw" silent
+
+# H2: symlinks, both directions, for the root and for storage_root
+REAL="$TMP/real"; mkdir -p "$REAL/dep2/config" "$REAL/dep2/projects/p" "$REAL/runsx/p" "$REAL/other"
+ln -s "$REAL/dep2" "$TMP/linkdep"; ln -s "$REAL/runsx" "$TMP/linkruns"; ln -s "$DEP" "$TMP/deplink"
+printf 'storage_root: %s\n' "$TMP/linkruns" > "$REAL/dep2/config/env.yaml"
+CFG2="$TMP/cfg2"; mkdir -p "$CFG2/agentic-bioflow"; printf '%s\n' "$TMP/linkdep" > "$CFG2/agentic-bioflow/root"
+run confirm_cleanup.sh "$(bash_in s-new "$REAL/dep2/projects/p" "$RM")" XDG_CONFIG_HOME="$CFG2"
+check "H2 root named by a link, cwd physical: refused"                  deny
+run confirm_cleanup.sh "$(bash_in s-new "$REAL/runsx/p" "$RM")" XDG_CONFIG_HOME="$CFG2"
+check "H2 storage_root named by a link, cwd physical: refused"          deny
+run confirm_cleanup.sh "$(bash_in s-new "$REAL/other" "$RM")" XDG_CONFIG_HOME="$CFG2"
+check "H2 control: another physical folder is silent"                   silent
+run confirm_cleanup.sh "$(bash_in s-new "$TMP/deplink/projects/p1" "$RM")"
+check "H2 root physical, cwd through a link: refused"                   deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "rm -rf $REAL/runsx/p/results")" XDG_CONFIG_HOME="$CFG2"
+check "H2 a command naming the physical form of a linked storage_root"  deny
+
+# M1: a state directory that cannot take the marker
+if [ "$(id -u)" != 0 ]; then
+  RO="$TMP/state_ro"; mkdir -p "$RO"; chmod 555 "$RO"
+  run confirm_cleanup.sh "$(bash_in s-ro "$OUTSIDE" "$RM")" AGENTIC_BIOFLOW_STATE_DIR="$RO"
+  check "M1 deployment exists, state dir not writable: in use (refused)" deny
+  run confirm_cleanup.sh "$(bash_in s-ro "$OUTSIDE" "$RM")" AGENTIC_BIOFLOW_STATE_DIR="$RO" XDG_CONFIG_HOME="$CFG_NONE"
+  check "M1 control: ...but with no deployment at all, silent"          silent
+  chmod 755 "$RO"
+fi
+S5="$TMP/state5"; mkdir -p "$S5"; : > "$S5/in-use"
+run confirm_cleanup.sh "$(bash_in s-f "$OUTSIDE" "$RM")" AGENTIC_BIOFLOW_STATE_DIR="$S5"
+check "M1 state/in-use is a file (marker cannot be written): in use"    deny
+
+# M4: a symlinked CLAUDE_PLUGIN_ROOT, a write to its physical path
+PREAL="$TMP/plugin_real"; mkdir -p "$PREAL/hooks" "$PREAL/scripts"; ln -s "$PREAL" "$TMP/plugin_link"
+run guard_plugin_files.sh "$(file_in s-out "$OUTSIDE" Write "$PREAL/hooks/x.sh")" CLAUDE_PLUGIN_ROOT="$TMP/plugin_link"
+check "M4 write to the physical path of a symlinked plugin root: refused" deny
+run guard_plugin_files.sh "$(file_in s-out "$OUTSIDE" Write "$TMP/plugin_link/hooks/x.sh")" CLAUDE_PLUGIN_ROOT="$PREAL"
+check "M4 ...and the reverse (root physical, write through the link)"   deny
+run guard_plugin_files.sh "$(file_in s-out "$OUTSIDE" Write "$OUTSIDE/notes.txt")" CLAUDE_PLUGIN_ROOT="$TMP/plugin_link"
+check "M4 control: an unrelated file is silent"                         silent
+
+# LOW: ~ and $HOME spellings, relative LAB_SETTINGS_FILE, utils scripts
+mkdir -p "$TMP/home/runs3/p"; DEP3="$TMP/dep3"; mkdir -p "$DEP3/config"
+printf 'storage_root: ~/runs3\n' > "$DEP3/config/env.yaml"
+CFG3="$TMP/cfg3"; mkdir -p "$CFG3/agentic-bioflow"; printf '%s\n' "$DEP3" > "$CFG3/agentic-bioflow/root"
+run confirm_cleanup.sh "$(bash_in s-new "$TMP/home/runs3/p" "$RM")" XDG_CONFIG_HOME="$CFG3"
+check "LOW storage_root written ~/runs3 in env.yaml, cwd under it"      deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "rm -rf ~/runs3/p/results")" XDG_CONFIG_HOME="$CFG3"
+check "LOW a command spelling it ~/runs3/..."                           deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'rm -rf $HOME/runs3/p/results')" XDG_CONFIG_HOME="$CFG3"
+check "LOW a command spelling it \$HOME/runs3/..."                      deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'rm -rf ${HOME}/runs3/p/results')" XDG_CONFIG_HOME="$CFG3"
+check "LOW a command spelling it \${HOME}/runs3/..."                    deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'rm -rf ~/elsewhere/results')" XDG_CONFIG_HOME="$CFG3"
+check "LOW control: ~/elsewhere is silent"                              silent
+RUNCWD="$DEP" run confirm_cleanup.sh "$(bash_in s-new "$DEP/projects/p1" "$RM")" XDG_CONFIG_HOME="$CFG_NONE" LAB_SETTINGS_FILE=config/env.yaml
+check "LOW a relative LAB_SETTINGS_FILE is read against the hook's cwd" deny
+RUNCWD="$OUTSIDE" run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "$RM")" XDG_CONFIG_HOME="$CFG_NONE" LAB_SETTINGS_FILE=config/env.yaml
+check "LOW control: the same relative path with no file there: silent"  silent
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "bash scripts/utils/schema_roles.py; $RM")"
+check "LOW a scripts/utils/*.py call counts as the plugin's script"     deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "bash scripts/utils/not_ours.py; $RM")"
+check "LOW control: scripts/utils/ name the plugin does not have"       silent
+
+# session id: the top-level one, by both readers
+intro "$(jq -nc '{session_id:"realsid", hook_event_name:"PostToolUse", tool_name:"Skill", tool_input:{skill:"agentic-bioflow:launch"}, tool_response:{session_id:"othersid"}}')"
+printf '%-72s ' "LOW plugin_intro marks the top-level session id, not a nested one"
+{ [ -e "$STATE/in-use/realsid" ] && [ ! -e "$STATE/in-use/othersid" ]; } && echo ok || { echo "FAIL: $(ls "$STATE/in-use" | tr '\n' ' ')"; fails=$((fails+1)); }
+
+# condition 2 on its own: the call names nothing, only the cwd does
+run confirm_cleanup.sh "$(bash_in s-new "$RUNS/proj1" "$RM")"
+check "cond 2 alone: cwd under storage_root, call names nothing"        deny
 
 echo
 echo "== the other hooks read the same answer (in use = as before) =="
