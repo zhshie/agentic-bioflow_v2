@@ -149,8 +149,16 @@ resolve_machine_file() {
     local id f
     if [ -z "${MACHINES_DIR:-}" ]; then MACHINE_SETTINGS_FILE=""; return 0; fi
     id="$(stored_machine_id)"
-    if [ -n "$id" ]; then MACHINE_SETTINGS_FILE="$MACHINES_DIR/$id.yaml"; return 0; fi
+    # An id made in ANOTHER root (a second root, a test fixture) must not hide
+    # this root's pre-006 file: until this root has its own <id>.yaml, the old
+    # file is still the one read (006 acceptance, HIGH-1).
+    if [ -n "$id" ] && [ -e "$MACHINES_DIR/$id.yaml" ]; then
+        MACHINE_SETTINGS_FILE="$MACHINES_DIR/$id.yaml"; return 0
+    fi
     f="$(legacy_machine_file "$MACHINES_DIR")"
+    if [ -n "$id" ] && [ -z "$f" ]; then
+        MACHINE_SETTINGS_FILE="$MACHINES_DIR/$id.yaml"; return 0
+    fi
     if [ -n "$f" ]; then MACHINE_SETTINGS_FILE="$f"
     else MACHINE_SETTINGS_FILE="$MACHINES_DIR/$(legacy_machine_id).yaml"; fi
 }
@@ -160,9 +168,11 @@ resolve_machine_file() {
 # MACHINE_SETTINGS_FILE at the result. Fails loudly if the id cannot be saved:
 # falling back to the old name would quietly recreate the collision.
 ensure_machine_id() {
-    local id host old suffix
+    local id host old suffix made=0
     [ -n "${MACHINES_DIR:-}" ] || return 0
-    [ -z "$(stored_machine_id)" ] || return 0
+    id="$(stored_machine_id)"
+    if [ -z "$id" ]; then
+    made=1
     if [ -e "$MACHINE_ID_FILE" ]; then
         echo "machine-id file $MACHINE_ID_FILE is empty or not a valid id (A-Za-z0-9._-, 1-64 characters); not using it, making a new one." >&2
     fi
@@ -176,12 +186,15 @@ ensure_machine_id() {
         echo "Make $(dirname "$MACHINE_ID_FILE") writable (or point XDG_CONFIG_HOME somewhere that is) and try again." >&2
         return 1
     fi
+    fi
+    # Adopt this root's pre-006 file even when the id itself already existed
+    # (made in another root): otherwise it is orphaned beside a new <id>.yaml.
     old="$(legacy_machine_file "$MACHINES_DIR")"
     if [ -n "$old" ] && [ ! -e "$MACHINES_DIR/$id.yaml" ]; then
         mv "$old" "$MACHINES_DIR/$id.yaml" || {
             # Roll the id back: left in place, it would point every later read
             # at a <id>.yaml that does not exist and hide the old file's values.
-            rm -f "$MACHINE_ID_FILE"
+            [ "$made" = 1 ] && rm -f "$MACHINE_ID_FILE"
             echo "could not rename $old to $MACHINES_DIR/$id.yaml; this machine keeps its old file name for now" >&2
             return 1
         }

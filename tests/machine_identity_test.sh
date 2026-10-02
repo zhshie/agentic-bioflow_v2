@@ -96,6 +96,48 @@ t "TC-005 old value kept" "$(run "$HM" boxa Linux -- bash "$SETTINGS" tw_bin)" "
 t "TC-005 new value written" "$(run "$HM" boxa Linux -- bash "$SETTINGS" site_bridge)" "wsl"
 t "TC-005 exactly one machine file" "$(ls "$MD" | wc -l | tr -d ' ')" "1"
 
+# --- acceptance HIGH-1: the id already exists (made in ANOTHER root, e.g. by a
+# test fixture or a second root), and THIS root still has only its old-name
+# file. It must still be read, and adopted on the next write - not orphaned.
+fresh
+HOLD="$HM"
+legacy boxa Linux "tw_bin: /real/tw
+proof_run: run-real 2026-10-01 nf-core/demo"
+REALCFG="$CFG"; REALMD="$MD"
+fresh   # another root, same HOME: its write makes the id
+HM="$HOLD"
+run "$HM" boxa Linux -- bash "$SETTINGS" --set tw_bin /fixture/tw >/dev/null 2>&1
+t "HIGH-1 precondition: an id now exists" "$(exists "$(IDF "$HM")")" "yes"
+CFG="$REALCFG"; MD="$REALMD"
+t "HIGH-1 real root's old file is still read" "$(run "$HM" boxa Linux -- bash "$SETTINGS" tw_bin)" "/real/tw"
+out=$(run "$HM" boxa Linux -- bash "$PROOF" --check 2>&1); rc=$?
+t "HIGH-1 real root's proof still counts" "$rc" "0"
+run "$HM" boxa Linux -- bash "$SETTINGS" --set site_bridge wsl >/dev/null 2>&1
+id="$(head -1 "$(IDF "$HM")" 2>/dev/null)"
+t "HIGH-1 write adopts the old file: legacy name gone" "$(exists "$MD/boxa-Linux.yaml")" "no"
+t "HIGH-1 old value kept in <id>.yaml" "$(grep -c '^tw_bin: /real/tw$' "$MD/$id.yaml" 2>/dev/null)" "1"
+t "HIGH-1 exactly one machine file in the real root" "$(ls "$MD" | wc -l | tr -d ' ')" "1"
+
+# --- acceptance M-2: rollback when the old file cannot be moved -------------
+fresh
+legacy boxa Linux "tw_bin: /old/tw"
+chmod a-w "$MD"
+if [ -w "$MD" ]; then
+    printf '%-66s skipped (running as root: chmod cannot block mv)\n' "M-2 rollback"
+else
+    out=$(run "$HM" boxa Linux -- bash "$SETTINGS" --set site_bridge wsl 2>&1); rc=$?
+    t "M-2 write fails when the old file cannot be renamed" "$([ "$rc" != 0 ] && echo yes)" "yes"
+    t "M-2 the new id is rolled back" "$(exists "$(IDF "$HM")")" "no"
+    t "M-2 the old value is still read" "$(run "$HM" boxa Linux -- bash "$SETTINGS" tw_bin)" "/old/tw"
+fi
+chmod u+w "$MD"
+
+# --- acceptance M-2: an id file written with Windows line endings -----------
+fresh
+mkdir -p "$(dirname "$(IDF "$HM")")"; printf 'crid-1234\r\n' > "$(IDF "$HM")"
+run "$HM" boxa Linux -- bash "$SETTINGS" --set tw_bin /cr/tw >/dev/null 2>&1
+t "M-2 CRLF id file: machine file is crid-1234.yaml" "$(exists "$MD/crid-1234.yaml")" "yes"
+
 # --- TC-006: Git Bash build number moved on ---------------------------------
 fresh; legacy boxa MINGW64_NT-10.0-26100 "tw_bin: /win/tw"
 t "TC-006 older build number still found" \

@@ -7,6 +7,10 @@
 # file are usually the only record of why a value is what it is.
 S="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/settings.sh"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+# 006: writing a machine key creates this machine's id under
+# $XDG_CONFIG_HOME (or $HOME/.config). Never in the real one - a leaked id
+# once hid a real root's machine file (006 acceptance, HIGH-1).
+export HOME="$TMP/home" XDG_CONFIG_HOME="$TMP/home/.config"; mkdir -p "$HOME"
 F="$TMP/env.yaml"
 fails=0
 t() { printf '%-56s ' "$1"; [ "$2" = "$3" ] && echo ok || { echo "FAIL: got '$2', wanted '$3'"; fails=$((fails+1)); }; }
