@@ -104,8 +104,9 @@ real failures, each with the fix.
   `commands/finish.md` ask it rather than constructing a path themselves.
 - `scripts/settings.sh --use`/`--migrate`/`--reconstruct` — **T30: one root
   the user names** (`docs/SETTINGS.md`), holding `config/env.yaml`, the
-  token, `config/machines/<machine>.yaml` for the three keys that cannot
-  travel, and `projects/`. `--use <root>` points this machine at it,
+  token, `config/machines/<machine id>.yaml` for the keys that cannot
+  travel (the id is this environment's own, kept beside the root pointer -
+  006), and `projects/`. `--use <root>` points this machine at it,
   creating it if it is not there yet, so a second machine is one command
   rather than a second onboarding; `--migrate <root>` is the one-time move
   off the pre-T30 locations, which are no longer read; `--reconstruct`
