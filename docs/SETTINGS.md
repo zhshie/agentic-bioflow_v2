@@ -101,10 +101,25 @@ they live in `<root>/config/machines/<machine>.yaml` instead of
 `config/env.yaml`. Two machines sharing one root each get their own file;
 neither can clobber the other's `tw`.
 
-The machine id is `<hostname>-<uname -s>`, sanitised for use as a filename.
-Hostname alone is not enough: Git Bash and WSL on one Windows box are two
-environments with separate homes, separate PATHs and a different `tw`
-(PITFALLS 25), and they report the same hostname.
+The machine id is a random value this environment keeps in its own home, in
+`${XDG_CONFIG_HOME:-$HOME/.config}/agentic-bioflow/machine-id` (beside the root
+pointer): the hostname, sanitised, plus a random suffix, for example
+`laptop-7f3a91c2`. It is made the first time a machine-only key is written, and
+never by reading. Each home has its own, so two WSL distributions on one PC are
+two machines, and a Windows update or a renamed host changes nothing. (It used
+to be `<hostname>-<uname -s>`: two WSL distributions collided on that, and Git
+Bash's `uname -s` carries the Windows build number, so an update lost the file.)
+A file that is empty or has characters outside `A-Za-z0-9._-` (or is longer than
+64) is not used; a new id is made and the reason printed.
+
+**A machine set up before this keeps its file.** With no id yet, reading falls
+back to the old name `<hostname>-<uname -s>.yaml`; under Git Bash/MSYS/Cygwin
+the same host and family with a different build number also counts, the newest
+file winning. The first write then renames that file to `<id>.yaml` (contents
+kept). If the id cannot be saved, the write fails and says why; it does not fall
+back to the old name. Not covered: copying a whole home directory to another
+computer copies the id with it, so the two share an identity (004's 7-day,
+not-used-by-another-machine rule on the proof limits the damage).
 
 **Every key in that file is discovered or recorded, never asked for** - `tw_bin` by
 `scripts/install_deps.sh`, `site_bridge` by probing for `wsl.exe`,

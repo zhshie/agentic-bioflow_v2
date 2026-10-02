@@ -159,6 +159,9 @@ out=$(rec run-ok); rc=$?
 t "TC-004 qualifying run: exits 0"  "$rc"  "0"
 has "TC-004 ...prints the run id"  "run-ok" "$out"
 has "TC-004 ...prints the run's own date"  "$(date -u +%Y-%m-%d)" "$out"
+# Feature 006: the first write gives this machine its id, so its file is now
+# machines/<id>.yaml rather than the name computed before anything was written.
+MACH="$(machfile)"
 t "TC-004 record is in the machines file"  "$(recorded "$MACH")"  "1"
 t "TC-004 record is NOT in env.yaml"  "$(recorded "$ENVYAML")"  "0"
 out=$(check); rc=$?

@@ -79,23 +79,139 @@ ROOT_POINTER="${XDG_CONFIG_HOME:-${HOME:-}/.config}/agentic-bioflow/root"
 # report the same hostname. `uname -s` is what tells them apart (MSYS_NT...
 # vs Linux). Sanitised because this becomes a filename inside a folder that
 # may sync to Windows.
-machine_id() {
+#
+# Feature 006: that name was only a guess at "which environment is this", and
+# it was wrong both ways. Two WSL distributions on one PC are both
+# `<host>-Linux` (they shared one file, so one's proof vouched for the other),
+# and Git Bash's `uname -s` carries the Windows build number, so a Windows
+# update renamed the machine and its tw_bin and proof vanished. The identity is
+# now a random id the environment keeps in ITS OWN home, beside ROOT_POINTER:
+# each home has its own, an update or a renamed host changes nothing.
+#
+# Generated lazily, on the first write of a machine-only key (ensure_machine_id).
+# Reading never creates anything; with no id yet, reading falls back to the old
+# name so a machine set up before 006 keeps its tw_bin and proof_run.
+MACHINE_ID_FILE="${XDG_CONFIG_HOME:-${HOME:-}/.config}/agentic-bioflow/machine-id"
+
+_sanitise() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'; }
+
+# Today's (pre-006) name: hostname plus `uname -s`. Only the fallback now.
+legacy_machine_id() {
     # No trailing newline into `tr`: -c would translate it too, leaving every
     # machine id with a stray underscore on the end.
-    printf '%s-%s' "$(uname -n 2>/dev/null || echo unknown)" \
-                   "$(uname -s 2>/dev/null || echo unknown)" \
-        | tr -c 'A-Za-z0-9._-' '_'
+    _sanitise "$(uname -n 2>/dev/null || echo unknown)-$(uname -s 2>/dev/null || echo unknown)"
     printf '\n'
+}
+
+# The id kept in MACHINE_ID_FILE, or nothing. Anything outside A-Za-z0-9._-
+# or longer than 64 counts as no id at all: this becomes a filename, and a
+# damaged or hand-edited file must not be able to name a path outside machines/.
+stored_machine_id() {
+    local v=""
+    [ -r "$MACHINE_ID_FILE" ] || return 0
+    IFS= read -r v < "$MACHINE_ID_FILE" 2>/dev/null || true
+    v="${v%$'\r'}"
+    case "$v" in ''|*[!A-Za-z0-9._-]*) return 0 ;; esac
+    [ "${#v}" -le 64 ] || return 0
+    printf '%s\n' "$v"
+}
+
+# The id this environment answers to: its own, else the pre-006 name.
+machine_id() {
+    local id; id="$(stored_machine_id)"
+    if [ -n "$id" ]; then printf '%s\n' "$id"; else legacy_machine_id; fi
+}
+
+# A pre-006 machine file in <machines-dir>, if one belongs to this environment.
+# An exact name always counts. Under Git Bash/MSYS/Cygwin `uname -s` also carries
+# the Windows build number, which changes on every Windows update, so the same
+# host and the same family (MINGW64_NT-... vs MSYS_NT-...) with another build
+# number counts too - the newest one wins. Nowhere else: a `<host>-Darwin` file
+# next to a Linux machine is somebody else's.
+legacy_machine_file() {   # legacy_machine_file <machines-dir>
+    local dir="$1" exact s host fam f
+    exact="$dir/$(legacy_machine_id).yaml"
+    if [ -e "$exact" ]; then printf '%s\n' "$exact"; return 0; fi
+    s="$(uname -s 2>/dev/null || true)"
+    case "$s" in
+        MINGW*_NT-*|MSYS*_NT-*|CYGWIN*_NT-*) ;;
+        *) return 0 ;;
+    esac
+    host="$(_sanitise "$(uname -n 2>/dev/null || echo unknown)")"
+    fam="${s%%_NT*}"
+    f="$(ls -t "$dir/$host-${fam}_NT-"*.yaml 2>/dev/null | head -1)"
+    [ -n "$f" ] && printf '%s\n' "$f"
+    return 0
+}
+
+# Where this environment's machine file is (MACHINES_DIR must be set).
+resolve_machine_file() {
+    local id f
+    if [ -z "${MACHINES_DIR:-}" ]; then MACHINE_SETTINGS_FILE=""; return 0; fi
+    id="$(stored_machine_id)"
+    # An id made in ANOTHER root (a second root, a test fixture) must not hide
+    # this root's pre-006 file: until this root has its own <id>.yaml, the old
+    # file is still the one read (006 acceptance, HIGH-1).
+    if [ -n "$id" ] && [ -e "$MACHINES_DIR/$id.yaml" ]; then
+        MACHINE_SETTINGS_FILE="$MACHINES_DIR/$id.yaml"; return 0
+    fi
+    f="$(legacy_machine_file "$MACHINES_DIR")"
+    if [ -n "$id" ] && [ -z "$f" ]; then
+        MACHINE_SETTINGS_FILE="$MACHINES_DIR/$id.yaml"; return 0
+    fi
+    if [ -n "$f" ]; then MACHINE_SETTINGS_FILE="$f"
+    else MACHINE_SETTINGS_FILE="$MACHINES_DIR/$(legacy_machine_id).yaml"; fi
+}
+
+# Called before the first write of a machine-only key. Makes the id if there is
+# none (or it is damaged), moves a pre-006 machine file onto it, and points
+# MACHINE_SETTINGS_FILE at the result. Fails loudly if the id cannot be saved:
+# falling back to the old name would quietly recreate the collision.
+ensure_machine_id() {
+    local id host old suffix made=0
+    [ -n "${MACHINES_DIR:-}" ] || return 0
+    id="$(stored_machine_id)"
+    if [ -z "$id" ]; then
+    made=1
+    if [ -e "$MACHINE_ID_FILE" ]; then
+        echo "machine-id file $MACHINE_ID_FILE is empty or not a valid id (A-Za-z0-9._-, 1-64 characters); not using it, making a new one." >&2
+    fi
+    host="$(_sanitise "$(uname -n 2>/dev/null || echo unknown)")"
+    host="${host:0:40}"; [ -n "$host" ] || host=unknown
+    suffix="$(od -An -tx1 -N4 /dev/urandom 2>/dev/null | tr -d ' \n')"
+    [ "${#suffix}" = 8 ] || suffix="$(printf '%04x%04x' "$RANDOM" "$RANDOM")"
+    id="$host-$suffix"
+    if ! { mkdir -p "$(dirname "$MACHINE_ID_FILE")" && printf '%s\n' "$id" > "$MACHINE_ID_FILE"; } 2>/dev/null; then
+        echo "could not save this machine's id to $MACHINE_ID_FILE, so there is nowhere to keep '$id'." >&2
+        echo "Make $(dirname "$MACHINE_ID_FILE") writable (or point XDG_CONFIG_HOME somewhere that is) and try again." >&2
+        return 1
+    fi
+    fi
+    # Adopt this root's pre-006 file even when the id itself already existed
+    # (made in another root): otherwise it is orphaned beside a new <id>.yaml.
+    old="$(legacy_machine_file "$MACHINES_DIR")"
+    if [ -n "$old" ] && [ ! -e "$MACHINES_DIR/$id.yaml" ]; then
+        mv "$old" "$MACHINES_DIR/$id.yaml" || {
+            # Roll the id back: left in place, it would point every later read
+            # at a <id>.yaml that does not exist and hide the old file's values.
+            [ "$made" = 1 ] && rm -f "$MACHINE_ID_FILE"
+            echo "could not rename $old to $MACHINES_DIR/$id.yaml; this machine keeps its old file name for now" >&2
+            return 1
+        }
+    fi
+    MACHINE_SETTINGS_FILE="$MACHINES_DIR/$id.yaml"
 }
 
 ABF_ROOT=""
 SETTINGS_FILE=""
 MACHINE_SETTINGS_FILE=""
+MACHINES_DIR=""
 SETTINGS_FOUND=0
 
 if [ -n "${LAB_SETTINGS_FILE:-}" ]; then
     SETTINGS_FILE="$LAB_SETTINGS_FILE"
-    MACHINE_SETTINGS_FILE="$(dirname "$LAB_SETTINGS_FILE")/machines/$(machine_id).yaml"
+    MACHINES_DIR="$(dirname "$LAB_SETTINGS_FILE")/machines"
+    resolve_machine_file
     # Only call it a root when the path actually has a root's shape. An
     # explicit settings file may be anywhere - a test fixture, a one-off - and
     # inferring a root two directories up from an arbitrary path would invent
@@ -109,7 +225,8 @@ elif [ -r "$ROOT_POINTER" ]; then
     ABF_ROOT="${ABF_ROOT%/}"
     if [ -n "$ABF_ROOT" ]; then
         SETTINGS_FILE="$ABF_ROOT/config/env.yaml"
-        MACHINE_SETTINGS_FILE="$ABF_ROOT/config/machines/$(machine_id).yaml"
+        MACHINES_DIR="$ABF_ROOT/config/machines"
+        resolve_machine_file
         [ -r "$SETTINGS_FILE" ] && SETTINGS_FOUND=1
     fi
 fi
@@ -489,6 +606,10 @@ set_setting() {
     # so that a second machine adopting the root does not inherit a `tw_bin`
     # that does not exist there. Everything else goes to config/env.yaml and
     # travels. One function, one routing decision, so no caller has to know.
+    if is_machine_key "$key" && [ -n "${MACHINES_DIR:-}" ]; then
+        # 006: the first machine-only write is what gives this environment its id.
+        ensure_machine_id || return 1
+    fi
     local SETTINGS_FILE="$SETTINGS_FILE"
     if is_machine_key "$key" && [ -n "${MACHINE_SETTINGS_FILE:-}" ]; then
         SETTINGS_FILE="$MACHINE_SETTINGS_FILE"
@@ -764,7 +885,8 @@ migrate_legacy() {   # migrate_legacy <path>
     # root rather than wherever this shell resolved at source time.
     ABF_ROOT="${path%/}"
     SETTINGS_FILE="$ABF_ROOT/config/env.yaml"
-    MACHINE_SETTINGS_FILE="$ABF_ROOT/config/machines/$(machine_id).yaml"
+    MACHINES_DIR="$ABF_ROOT/config/machines"
+    resolve_machine_file
 
     echo
     echo "migrating from $old"
@@ -785,7 +907,7 @@ migrate_legacy() {   # migrate_legacy <path>
         set_setting "$key" "$val" >/dev/null || continue
         if is_machine_key "$key"; then m=$((m+1)); else n=$((n+1)); fi
     done < "$old"
-    echo "  $n setting(s) into config/env.yaml, $m into config/machines/$(machine_id).yaml"
+    echo "  $n setting(s) into config/env.yaml, $m into config/machines/$(basename "${MACHINE_SETTINGS_FILE:-machines}")"
 
     local oldtok="$(dirname "$old")/.seqera_token" newtok="$ABF_ROOT/config/.seqera_token"
     if [ -r "$oldtok" ] && [ ! -e "$newtok" ]; then
