@@ -1,6 +1,6 @@
 # 測試案例總覽：新電腦、第二位成員也要先用公開資料驗證
 
-狀態：先行實作，待核可（2026-10-02 維護者指示「直接把C全做完再跟我回報」，故未停在本關卡；merge 前須補核可）
+狀態：已核可（2026-10-02，maintainer；先行實作後補核可）
 
 <!--
 Normally the line above is the approval gate and reads
@@ -47,4 +47,4 @@ merge until he approves these test cases.
 
 ## 核可紀錄
 
-（待補）
+- 2026-10-02 維護者：「merge #50 #51 處理#48, #49」——以 merge 指示核可本測試案例與驗收後新增的 TC-017、TC-018；機器身分問題另案 #49 處理。
