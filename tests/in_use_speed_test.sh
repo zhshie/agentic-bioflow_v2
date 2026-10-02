@@ -57,8 +57,20 @@ skip() { echo "SKIP: $1 - the speed comparison was not made"; [ "$fails" = 0 ] &
 
 command -v git >/dev/null 2>&1 || skip "git is not available"
 git -C "$ROOT" rev-parse --verify -q main >/dev/null 2>&1 || skip "no 'main' ref here (shallow checkout?)"
+# The baseline is the hooks as they were BEFORE the scope check existed. Once
+# 005 is merged, `main` itself has it and is silent on this input - comparing
+# against it would compare the feature with itself (this failed on main's own
+# CI right after the merge). So: main if it has no hooks/in_use.sh yet,
+# otherwise the parent of the commit that first added that file.
+BASE=main
+if git -C "$ROOT" cat-file -e main:hooks/in_use.sh 2>/dev/null; then
+    added=$(git -C "$ROOT" log --format=%H --diff-filter=A main -- hooks/in_use.sh 2>/dev/null | tail -1)
+    [ -n "$added" ] && git -C "$ROOT" rev-parse --verify -q "$added^" >/dev/null 2>&1 \
+        || skip "cannot find the hooks from before the scope check (shallow history?)"
+    BASE="$added^"
+fi
 mkdir -p "$TMP/main"
-git -C "$ROOT" archive main hooks 2>/dev/null | tar -x -C "$TMP/main" 2>/dev/null || skip "could not read main's hooks out of git"
+git -C "$ROOT" archive "$BASE" hooks 2>/dev/null | tar -x -C "$TMP/main" 2>/dev/null || skip "could not read the baseline hooks out of git"
 [ -r "$TMP/main/hooks/confirm_launch.sh" ] || skip "main has no hooks/confirm_launch.sh"
 t0=$(date +%s%N 2>/dev/null)
 case "$t0" in ''|*[!0-9]*) skip "date has no nanosecond clock on this machine" ;; esac
