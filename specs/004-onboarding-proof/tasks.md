@@ -8,8 +8,8 @@
 
 ## S2 — setup.md routing (TC-012–TC-014)
 
-- [ ] T004 RED: `tests/setup_doc_test.sh`
-- [ ] T005 `commands/setup.md` T27 / Repair / step 8 / step 9 wording; GREEN; `command_layer_is_site_neutral.sh` stays green
+- [x] T004 RED: `tests/setup_doc_test.sh`
+- [x] T005 `commands/setup.md` T27 / Repair / step 8 / step 9 wording; GREEN; `command_layer_is_site_neutral.sh` stays green
 
 ## Close
 

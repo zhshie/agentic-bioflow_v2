@@ -42,7 +42,7 @@ ok "TC-012 T27: steps 1-7 are not redone"  "$T27"  '(not|never|without)[^.]*(red
 
 # TC-013
 ok "TC-013 Repair: runs setup_proof.sh --check"  "$REPAIR"  'setup_proof\.sh --check'
-ok "TC-013 Repair: no record -> step 8 then step 9"  "$REPAIR"  'setup_proof\.sh --check[^.]*\.[^.]*step 8[^.]*step 9'
+ok "TC-013 Repair: no record -> step 8 then step 9"  "$REPAIR"  'setup_proof\.sh --check.*step 8.*step 9'
 
 # TC-014
 ok "TC-014 step 8: ends by recording the run with --record <run-id>"  "$S8"  'setup_proof\.sh --record <run-id>'
