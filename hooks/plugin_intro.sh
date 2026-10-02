@@ -2,6 +2,12 @@
 # UserPromptSubmit + PostToolUse(Skill): show the overview the first time this
 # plugin is actually used in a session, not at every session start.
 #
+# Feature 005 (#48): that same moment also writes the in-use marker
+# ($STATE/in-use/<session id>) which every other hook reads through
+# hooks/in_use.sh - the plugin is silent in a session until the session has
+# reached for it, is inside the deployment, or runs one of its scripts. This
+# hook is the one thing that is NOT gated by that: it is what turns it on.
+#
 # It used to be a SessionStart hook, which meant every conversation in every
 # project opened with it - including the many that have nothing to do with
 # pipelines. The overview is worth reading exactly once, at the moment the user

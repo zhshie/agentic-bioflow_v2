@@ -90,7 +90,11 @@ that assume a login node, and points them at the off-design procedure
 instead of an onboarding path that was never built.
 
 `scripts/on_site.sh` is the only sanctioned implementation. **The command layer
-may not call `ssh` itself.** `ON_SITE_DRY_RUN=1` makes it print where a command
+may not call `ssh` itself.** On Git Bash a direct `ssh`/`scp`/`rsync`/`sftp`
+also draws a reminder from `hooks/confirm_launch.sh` (D3), but only in a
+session in which the plugin is in use (Constitution 2.0.0) and not for ssh run
+through WSL or with `-o BatchMode=yes`, neither of which can cost a one-time
+code. `ON_SITE_DRY_RUN=1` makes it print where a command
 would run and what it would be, without running it — which is how all three
 values are tested with no host, no network and no site.
 

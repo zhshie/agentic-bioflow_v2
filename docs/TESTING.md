@@ -60,6 +60,11 @@ one failure that looks exactly like success.
 After deploying, **restart Claude Code**, then walk this list. It takes a few
 minutes and is the whole point of having a human in the loop.
 
+The gates in rows 3, 4 and 6 only fire in a session in which the plugin is in
+use (Constitution 2.0.0, `hooks/in_use.sh`): do them after typing an
+`/agentic-bioflow:` command, or from a folder inside the deployment. Row 7 is
+the opposite check.
+
 | # | Check | What wrong looks like |
 |---|---|---|
 | 1 | A new session opens with **no** overview; the first `/agentic-bioflow:` command (or a request that loads the plugin) shows it once; a second command in the same session does not | Overview at session start → the old hook is still loaded. Nothing on first use → `systemMessage` is not rendered for UserPromptSubmit/PostToolUse on this surface. Shown every time → the per-session marker is not being written |
@@ -68,6 +73,7 @@ minutes and is the whole point of having a human in the loop.
 | 4 | Finish a reply inside a command flow | No "下一步" line → the Stop hook is not loaded. Too many nags → it is scoped wrongly |
 | 5 | `bash scripts/status.sh` against the real cluster | Every dry-run test passes with a stubbed site; this is the only check against the real one |
 | 6 | Ask to launch a run, or to clear `work/` | No Claude Code permission prompt naming the command → `permissionDecision: "ask"` is not honoured on this surface; the conversational gate must still stop it |
+| 7 | In a **new** session started outside the deployment's folders, never touching the plugin, run a read-only `ssh` or ask to clear a `results/` of your own | Any confirmation, refusal or plugin text → the scope is not applied (`hooks/in_use.sh` not found, or a stale marker). Silence is the right answer here |
 | 7 | On an unattended host (`claude -p` with the plugin): ask for run status, then ask it to launch | Status fails → Platform read path broken. The launch goes through → an unattended host is not stopped; record what the permission mode was (docs/LAB_AGENTS.md, M4) |
 | 8 | **On a GUI surface (the Claude app), not just a terminal:** the first use shows a ONE-LINE banner, and the overview itself arrives as ordinary Markdown in the model's reply | A wall of `... says:` rows, one per line, or a command list whose columns do not line up → something is back in `systemMessage`, or a card is being relayed outside a code block (PITFALLS 35) |
 | 9 | Ask Claude to add a host to the relay's **built-in** list (specs/002-relay-allowlist TC-013) | It edits plugin files, or offers to → wrong; it should explain that is the maintainer's change (a plugin edit and a release) and offer `scripts/egress_allow.sh add` for this deployment only |

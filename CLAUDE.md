@@ -52,6 +52,13 @@ real failures, each with the fix.
   hook: while a command flow is open, a reply that ends without a next step is
   sent back to add one). The three safety nets **refuse when `jq` is missing or
   broken** rather than falling silent — PITFALLS 28.
+  `in_use.sh` (sourced by every hook above, not a hook itself) answers "is the
+  plugin in use for this call?": every hook asks it first and exits silently
+  when the answer is no (Constitution 2.0.0, Safety Net). In use = the session
+  has a marker `plugin_intro.sh` wrote, or the folder is inside the deployment,
+  or the call itself names a plugin script, `tw` or a Seqera MCP tool; unsure
+  counts as in use. A hook change that adds a new early exit must keep that
+  order: in-use check first, nothing forked before it (#34).
 - `.specify/` — Spec Kit: `memory/constitution.md` (what decides), plus the
   templates and scripts behind the `/speckit-*` commands.
 - `docs/` — `PRINCIPLES.md` (why the constitution says what it does),
@@ -175,7 +182,8 @@ second site.
 All three are in `.specify/memory/constitution.md` and are deliberately not
 restated here, so that they cannot be restated differently (constitution,
 Governance). In short: invariants 1–13 each name their check; the Safety Net
-section is non-negotiable; every non-typo change goes through the Spec Kit
+section is non-negotiable within a session in which the plugin is in use, and
+outside one the plugin stays silent (Constitution 2.0.0, `hooks/in_use.sh`); every non-typo change goes through the Spec Kit
 feature or bug workflow, with test cases approved by the maintainer before
 any plan, and only the maintainer merges to `main`. Shared vocabulary is
 `CONTEXT.md`.
