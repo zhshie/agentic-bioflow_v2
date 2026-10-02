@@ -92,6 +92,18 @@ has "and the compute environment"                      "ce-a-person"     "$out"
 has "and the outputs reader's connection"              "conn-a-person"   "$out"
 has "and tells you the one command another machine needs" "--use $ROOT"  "$out"
 
+# #45: the settings summary shows this deployment's extra relay domains (spec
+# 002 US2-1), and says so when there are none.
+out=$(clean "$HOMEDIR" --summary)
+has "#45 the summary says there are no extra relay domains" "extra relay domains" "$out"
+printf 'data.example.org\t2026-09-30\trun 42 needed it\nmirror.lab.test\t2026-10-01\trun 43\n' > "$CONF/egress_allow.tsv"
+out=$(clean "$HOMEDIR" --summary)
+has "#45 the summary lists an extra domain"            "data.example.org" "$out"
+has "#45 ...with its date"                             "2026-09-30" "$out"
+has "#45 ...and its reason"                            "run 42 needed it" "$out"
+has "#45 ...and the second one"                        "mirror.lab.test" "$out"
+rm -f "$CONF/egress_allow.tsv"
+
 out=$(clean "$HOMEDIR" seqera_user)
 t "a plain read goes through the pointer too" "$out" "a-person"
 

@@ -717,4 +717,82 @@ t "Start-Process nextflow -ArgumentList '-version'"    pass "#35 control: Start-
 t "a=($LAUNCH x); \"\${a[@]}\""                        gate "#35 control: command held in an array (already gated)"
 t "files=(a.txt b.txt); ls \"\${files[@]}\""           pass "#35 control: an array of file names"
 
+
+echo
+echo "== #45: egress_allow gate obfuscations, writes to its file, relay env prefix, false alarms =="
+# M1: spellings of the script's name that did not contain the name as written
+idg "#45 a glob for the extension"                         ask   'bash scripts/egress_allow.* add x.org --reason r'
+idg "#45 a ? in the name"                                  ask   'bash scripts/egress_allo?.sh add x.org --reason r'
+idg "#45 a backslash in the name"                          ask   'bash scripts/egress_allow\.sh add x.org --reason r'
+idg "#45 a bracket in the name"                            ask   'bash scripts/egress_allow.s[h] add x.org --reason r'
+idg "#45 a * in the stem"                                  ask   'bash scripts/e*_allow.sh remove x.org'
+idg "#45 an empty-string splice in the name"               ask   'bash scripts/egress_""allow.sh add x.org --reason r'
+idg "#45 a quote splice in the name"                       ask   "bash scripts/egress_al'low'.sh add x.org --reason r"
+idg "#45 the name held in a variable set earlier"          ask   'a=egress_allow; bash scripts/$a.sh add x.org --reason r'
+idg "#45 ...with the operation in a variable too"          ask   'a=egress_allow; b=add; bash scripts/$a.sh $b x.org --reason r'
+idg "#45 a variable that is not set in the command"        ask   'bash "scripts/$a.sh" add x.org --reason r'
+idg "#45 run directly, with a ? in the name"               ask   'scripts/egress_allo?.sh add x.org --reason r'
+idg "#45 control: a globbed name with list does not ask"   allow 'bash scripts/egress_allo?.sh list'
+idg "#45 control: ls of the scripts does not ask"          allow 'ls scripts/egress_*'
+idg "#45 control: git add with a glob does not ask"        allow 'git add -A scripts/*.sh'
+idg "#45 control: another script with add does not ask"    allow 'bash scripts/other.sh add x.org'
+idg "#45 control: a variable script with list does not"    allow 'bash scripts/$a.sh list'
+idg "#45 control: echoing the glob does not ask"           allow 'echo bash scripts/egress_allo?.sh add x.org'
+# M2: direct writes to the file the script manages
+idg "#45 a >> redirect into egress_allow.tsv"              ask   'echo x.org >> /home/u/cfg/egress_allow.tsv'
+idg "#45 a > redirect into it"                             ask   'echo x.org > /home/u/cfg/egress_allow.tsv'
+idg "#45 a quoted redirect target"                         ask   'echo x.org >> "/home/u/cfg/egress_allow.tsv"'
+idg "#45 tee -a into it"                                   ask   "printf 'x.org\n' | tee -a cfg/egress_allow.tsv"
+idg "#45 cp over it"                                       ask   'cp new.tsv cfg/egress_allow.tsv'
+idg "#45 sed -i on it"                                     ask   "sed -i 's/a/b/' cfg/egress_allow.tsv"
+idg "#45 a glob that names it"                             ask   'echo x.org >> cfg/egress_allo?.tsv'
+idg "#45 an editor opened on it"                           ask   'vim cfg/egress_allow.tsv'
+idg "#45 control: cat of it does not ask"                  allow 'cat cfg/egress_allow.tsv'
+idg "#45 control: grep of it does not ask"                 allow 'grep -n x.org cfg/egress_allow.tsv'
+idg "#45 control: ls -l of it does not ask"                allow 'ls -l cfg/egress_allow.tsv'
+idg "#45 control: wc -l of it does not ask"                allow 'wc -l cfg/egress_allow.tsv'
+idg "#45 control: diff against it does not ask"            allow 'diff a.tsv cfg/egress_allow.tsv'
+idg "#45 control: its name in an echo's quotes, written elsewhere" allow 'echo "see egress_allow.tsv" >> notes.md'
+idw() { # idw <label> <expect ask|allow> <tool> <file_path>  - a Write/Edit tool call
+  local j o got
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":sys.argv[1],"tool_input":{"file_path":sys.argv[2],"content":"x"}}))' "$3" "$4")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  got=allow; grep -q '"permissionDecision": *"ask"' <<<"$o" && got=ask
+  printf '%-58s ' "$1"
+  [ "$got" = "$2" ] && echo ok || { echo "FAIL: expected $2, got $got"; fails=$((fails+1)); }
+}
+idw "#45 Write to egress_allow.tsv asks"                   ask   Write '/home/u/cfg/egress_allow.tsv'
+idw "#45 Edit of egress_allow.tsv asks"                    ask   Edit  '/home/u/cfg/egress_allow.tsv'
+idw "#45 a Windows path asks"                              ask   Write 'C:\Users\u\cfg\egress_allow.tsv'
+idw "#45 control: Write to another file does not ask"      allow Write '/home/u/cfg/notes.md'
+idw "#45 control: a file that only starts alike"           allow Write '/home/u/cfg/egress_allow.tsv.bak'
+printf '%-58s ' "#45 hooks.json sends Write/Edit calls to confirm_launch.sh"
+CL_MATCHER=$(jq -r '.hooks.PreToolUse[] | select(.hooks[].command | test("confirm_launch\\.sh")) | .matcher' "$HOOKS_DIR/hooks.json" 2>/dev/null | tr -d '\r' | paste -s -d '|' -)
+jq -en --arg m "$CL_MATCHER" '"Write" | test("^(" + $m + ")$")' 2>/dev/null | grep -qx true && echo ok || { echo "FAIL: matcher <<$CL_MATCHER>>"; fails=$((fails+1)); }
+printf '%-58s ' "#45 control: ...and a plain Read still does not"
+jq -en --arg m "$CL_MATCHER" '"Read" | test("^(" + $m + ")$")' 2>/dev/null | grep -qx true && { echo "FAIL"; fails=$((fails+1)); } || echo ok
+# M3: an environment prefix on a direct relay start
+envp() { # envp <label> <expect has|lacks> <command>: does the ask say the command overrides the list?
+  local j o got
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$3")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  got=lacks; grep -qF "overrides this deployment's list" <<<"$o" && got=has
+  printf '%-58s ' "$1"
+  [ "$got" = "$2" ] && echo ok || { echo "FAIL: expected $2, got $got <<${o:0:80}>>"; fails=$((fails+1)); }
+}
+envp "#45 an env prefix on a relay start is named in the ask"  has   'NF_RELAY_EXTRA_DOMAINS=evil.org bash scripts/egress_ctl.sh start'
+envp "#45 ...through env"                                      has   'env NF_RELAY_EXTRA_DOMAINS=evil.org bash scripts/egress_ctl.sh restart'
+envp "#45 ...through export"                                   has   'export NF_RELAY_EXTRA_DOMAINS=evil.org; bash scripts/egress_ctl.sh start'
+envp "#45 control: a plain relay start does not say it"        lacks 'bash scripts/egress_ctl.sh start'
+# LOW: false alarms on reading the script, and sourcing it with no operation
+idg "#45 cat of the script does not ask"          allow 'cat scripts/egress_allow.sh'
+idg "#45 less of the script does not ask"                  allow 'less scripts/egress_allow.sh'
+idg "#45 grep -n add on the script does not ask"           allow 'grep -n add scripts/egress_allow.sh'
+idg "#45 bash -n on the script does not ask"               allow 'bash -n scripts/egress_allow.sh'
+idg "#45 git diff -- the script does not ask"              allow 'git diff -- scripts/egress_allow.sh'
+idg "#45 sourcing it with no operation does not ask"       allow 'source "scripts/egress_allow.sh"'
+idg "#45 control: sourcing it with add still asks"         ask   'source scripts/egress_allow.sh add x.org --reason r'
+idg "#45 control: a bare run with no operation still asks" ask   'bash scripts/egress_allow.sh'
+idg "#45 control: add after a reader segment still asks"   ask   'cat scripts/egress_allow.sh; bash scripts/egress_allow.sh add x.org --reason r'
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

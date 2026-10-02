@@ -397,6 +397,19 @@ has2 "TC-008: the valid entry still travels" "NF_RELAY_EXTRA_DOMAINS=good.exampl
 has2 "TC-008: a note travels with it" "NF_RELAY_EXTRA_NOTE=" "$out"
 has2 "TC-008: the note names what was dropped" "not\\ a\\ valid\\ domain" "$out"
 
+# #45: the note that travels to the site is plain printable text (a control
+# character made printf %q write $'...', which a POSIX sh on the site rejects)
+# and does not carry this machine's own settings path.
+mkdir -p "$TMP/dep-e"
+printf '%s\n' 'reach: ssh' 'site_host: me@example.org' > "$TMP/dep-e/env.yaml"
+printf 'good.example.org\t2026-09-30\tr\nbad\033[31m.org\t2026-09-30\tr\n' > "$TMP/dep-e/egress_allow.tsv"
+out=$(relay_cmd "$TMP/dep-e/env.yaml")
+has2 "#45: the valid entry still travels" "NF_RELAY_EXTRA_DOMAINS=good.example.org" "$out"
+has2 "#45: a note travels, naming the dropped entry" "skipping" "$out"
+lacks2 "#45: the note has no \$'...' quoting" "\$'" "$out"
+lacks2 "#45 control: the note carries no escape character" "$(printf '\033')" "$out"
+lacks2 "#45: the note carries no path of this machine" "$TMP/dep-e" "$out"
+
 # TC-009: present but unreadable - no domains, and a note saying why.
 mkdir -p "$TMP/dep-d"
 printf '%s\n' 'reach: ssh' 'site_host: me@example.org' > "$TMP/dep-d/env.yaml"

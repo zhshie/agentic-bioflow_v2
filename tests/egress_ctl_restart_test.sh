@@ -57,5 +57,21 @@ bash "$CTL" restart >/dev/null 2>&1
 after=$(python3 -c "import json;print(json.load(open('$TMP/state/relay.json'))['port'])" 2>/dev/null)
 t "restart keeps the relay's port (unpinned)" "$after" "$before"
 
+
+# #45 (spec 002 TC-023, the status half): `status` of a running relay says what
+# list it loaded, and says out loud when this deployment's list did not load.
+bash "$CTL" stop >/dev/null 2>&1
+export NF_RELAY_PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])')"
+NF_RELAY_EXTRA_NOTE="egress_allow.tsv exists but cannot be read" bash "$CTL" start >/dev/null 2>&1
+st=$(bash "$CTL" status 2>&1)
+has "#45 status says this deployment's list was not loaded" "list not loaded" "$st"
+has "#45 ...and why" "cannot be read" "$st"
+bash "$CTL" stop >/dev/null 2>&1
+NF_RELAY_EXTRA_DOMAINS=fine.example.org bash "$CTL" start >/dev/null 2>&1
+st=$(bash "$CTL" status 2>&1)
+has "#45 status shows the list the running relay loaded" "domains (this deployment): fine.example.org" "$st"
+printf '%-64s ' "#45 control: no 'not loaded' alarm when it loaded"
+grep -qF "not loaded" <<<"$st" && { echo "FAIL: <<$st>>"; fails=$((fails+1)); } || echo ok
+bash "$CTL" stop >/dev/null 2>&1
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

@@ -197,5 +197,40 @@ done
 # TC-013 is checked by hand; the text it checks must at least exist.
 has "TC-013 runs.md says the built-in list is the maintainer's change" "maintainer's change" "$(cat "$ROOT/commands/runs.md")"
 
+
+# =============================================================================
+# #45 what "a specific domain" means: public suffixes, wildcard-DNS services,
+# names that resolve to loopback/internal addresses by their spelling, length,
+# and control characters in a reason.
+# =============================================================================
+SF5="$(newroot)"; TSV5="$(dirname "$SF5")/egress_allow.tsv"
+for bad in co.uk com.au org.tw github.io gitlab.io herokuapp.com nip.io sslip.io xip.io \
+           127.0.0.1.nip.io foo.nip.io 10.0.0.5.example.com localhost.localdomain printer.local \
+           db.internal nas.lan a.localhost; do
+    call "$SF5" add "$bad" --reason "should never be written"
+    fail_rc "#45 add '$bad' is refused" "$RC" "$OUT"
+done
+t "#45 none of them was written" "$( [ -r "$TSV5" ] && awk 'END {print NR+0}' "$TSV5" || echo 0)" "0"
+has "#45 the refusal says why (a shared or wildcard name)" "shared" "$(call "$SF5" add co.uk --reason r; echo "$OUT")"
+for good in bbc.co.uk user.github.io download.example.org mirror.lab.test.example.org; do
+    call "$SF5" add "$good" --reason "an ordinary specific host"
+    ok_rc "#45 control: add '$good' is accepted" "$RC" "$OUT"
+done
+# a name over 253 characters (the relay refuses it; bash used to accept it)
+LONGNAME="$(for i in 1 2 3 4 5; do printf '%s.' "$(printf 'a%.0s' $(seq 1 55))"; done)org"
+call "$SF5" add "$LONGNAME" --reason "too long"
+fail_rc "#45 a name over 253 characters is refused" "$RC" "$OUT"
+# --reason: every control character becomes a space (VT, FF, US, and the C1 NEL)
+before=$(awk 'END {print NR+0}' "$TSV5")
+call "$SF5" add "ctl.example.org" --reason "$(printf 'a\vb\fc\037d\302\205e')"
+after=$(awk 'END {print NR+0}' "$TSV5")
+t "#45 a reason with VT, FF, US and NEL: still one line" "$((after - before))" "1"
+t "#45 ...and the stored reason holds none of them" \
+  "$(awk -F'\t' '$1=="ctl.example.org"{print $3}' "$TSV5")" "a b c d e"
+# the stderr note of `domains` does not carry the machine's own path
+printf 'good.example.org\t2026-01-01\tr\n*bad\t2026-01-01\tr\n' > "$TSV5"
+DOMERR="$(LAB_SETTINGS_FILE="$SF5" bash "$SCRIPT" domains 2>&1 >/dev/null)"
+t "#45 the dropped-entry note does not carry the settings path" "$(count_in "$(dirname "$SF5")" "$DOMERR")" "0"
+has "#45 ...but still names the dropped entry and the file" "egress_allow.tsv" "$DOMERR"
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

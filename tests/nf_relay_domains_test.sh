@@ -144,5 +144,73 @@ t "TC-019 another host may not"                  "$(peer laptop.example "$E")" "
 t "TC-019 an extra domain does not become a peer" \
   "$(peer download.example.org "$E")" "False download.example.org"
 
+
+# =============================================================================
+# #45 what the relay will accept as "a specific domain" and what it will connect to
+# =============================================================================
+PS="NF_RELAY_EXTRA_DOMAINS=co.uk,github.io,nip.io,127.0.0.1.nip.io,localhost.localdomain,printer.local,10.0.0.5.example.com,bbc.co.uk,user.github.io,ok.example.org"
+t "#45 a public suffix grants nothing (co.uk)"           "$(ok_for foo.co.uk "$PS")" "False"
+t "#45 ...nor github.io itself"                          "$(ok_for github.io "$PS")" "False"
+t "#45 a wildcard-DNS service grants nothing (nip.io)"   "$(ok_for 127.0.0.1.nip.io "$PS")" "False"
+t "#45 ...nor anything under it"                         "$(ok_for evil.nip.io "$PS")" "False"
+t "#45 localhost.localdomain grants nothing"             "$(ok_for localhost.localdomain "$PS")" "False"
+t "#45 a .local name grants nothing"                     "$(ok_for printer.local "$PS")" "False"
+t "#45 a name with an IP in its labels grants nothing"   "$(ok_for 10.0.0.5.example.com "$PS")" "False"
+t "#45 control: a registrable domain under co.uk loads"  "$(ok_for bbc.co.uk "$PS")" "True"
+t "#45 control: a user site under github.io loads"       "$(ok_for user.github.io "$PS")" "True"
+t "#45 control: an ordinary one still loads"             "$(ok_for ok.example.org "$PS")" "True"
+has "#45 a dropped suffix is named at startup"           "dropped 'co.uk'" "$(startup "$PS")"
+has "#45 a dropped wildcard-DNS name is named"           "dropped '127.0.0.1.nip.io'" "$(startup "$PS")"
+# U+212A (Kelvin sign) lowercases to an ASCII k in Python but not in bash: the two
+# validators disagreed. Anything that is not ASCII is dropped now.
+KEL="NF_RELAY_EXTRA_DOMAINS=$(printf '\xe2\x84\xaa')ev.example.org"
+t "#45 a name with a Kelvin sign grants nothing"         "$(ok_for kev.example.org "$KEL")" "False"
+has "#45 ...and is named as dropped"                     "dropped" "$(startup "$KEL")"
+# a name over 253 characters
+LN="$(for i in 1 2 3 4 5; do printf '%s.' "$(printf 'a%.0s' $(seq 1 55))"; done)org"
+t "#45 control: a name over 253 characters is dropped"   "$(ok_for "$LN" "NF_RELAY_EXTRA_DOMAINS=$LN")" "False"
+# the startup lines cannot be forged or coloured through the environment
+FORGE=$'x.org,bad\nFAKE-LOG-LINE planted'
+out="$(startup "NF_RELAY_EXTRA_DOMAINS=$FORGE")"
+t "#45 a newline in the list cannot start a log line"    "$(grep -c '^FAKE-LOG-LINE' <<<"$out")" "0"
+has "#45 ...the dropped entry is still named"            "dropped" "$out"
+out="$(startup "NF_RELAY_EXTRA_NOTE=oops $(printf '\033')[31mred")"
+t "#45 an escape character in the note does not reach the log" "$(printf '%s' "$out" | LC_ALL=C grep -c "$(printf '\033')")" "0"
+has "#45 ...the rest of the note does"                   "oops" "$out"
+
+# connect_upstream refuses an extra domain that resolves to a non-public address
+# (the relay checked neither the resolved address nor the port), and still
+# connects for a built-in name and for a public address.
+conn() { # conn <host> <resolved-ip> [env...] -> "<connected|refused>"
+    local host="$1" ip="$2"; shift 2
+    env "NF_RELAY_EXTRA_DOMAINS=lab.example.org,ok.example.org" "$@" bash -c '"$0" - "$1" "$2" "$3" <<'"'"'PY'"'"'
+import importlib.util, sys, socket
+path, host, ip = sys.argv[1], sys.argv[2], sys.argv[3]; sys.argv = sys.argv[:1]
+spec = importlib.util.spec_from_file_location("relay", path)
+relay = importlib.util.module_from_spec(spec); spec.loader.exec_module(relay)
+tried = []
+class S:
+    def __init__(self, *a): pass
+    def settimeout(self, t): pass
+    def connect(self, addr): tried.append(addr)
+    def close(self): pass
+fam = socket.AF_INET6 if ":" in ip else socket.AF_INET
+relay.resolve = lambda h, p: [(fam, socket.SOCK_STREAM, 6, "", (ip, p))]
+relay.socket.socket = S
+relay.time.sleep = lambda s: None
+up, err = relay.connect_upstream(host, 443)
+print("connected" if up is not None else "refused")
+PY' "$PY" "$RELAY" "$host" "$ip"
+}
+t "#45 an extra domain resolving to 127.0.0.1 is refused"        "$(conn lab.example.org 127.0.0.1)" "refused"
+t "#45 ...to 10.1.2.3"                                           "$(conn lab.example.org 10.1.2.3)" "refused"
+t "#45 ...to 172.16.4.5"                                         "$(conn lab.example.org 172.16.4.5)" "refused"
+t "#45 ...to 192.168.0.9"                                        "$(conn lab.example.org 192.168.0.9)" "refused"
+t "#45 ...to the metadata address 169.254.169.254"               "$(conn lab.example.org 169.254.169.254)" "refused"
+t "#45 ...to ::1"                                                "$(conn lab.example.org ::1)" "refused"
+t "#45 ...to fe80::1"                                            "$(conn lab.example.org fe80::1)" "refused"
+t "#45 ...to 0.0.0.0"                                            "$(conn lab.example.org 0.0.0.0)" "refused"
+t "#45 control: an extra domain resolving to a public address"   "$(conn lab.example.org 93.184.216.34)" "connected"
+t "#45 control: a built-in domain is not subject to the check"   "$(conn quay.io 10.1.2.3)" "connected"
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
