@@ -1,6 +1,6 @@
 # 測試案例總覽：「這台電腦」用自己的隨機 ID 認
 
-狀態：草稿（待維護者核可）
+狀態：已核可（2026-10-02，maintainer）
 
 <!--
 The line above is the approval gate. It becomes
@@ -37,4 +37,4 @@ quoted under "核可紀錄" below. /speckit-plan does not run while it says 草�
 
 ## 核可紀錄
 
-（待補）
+- 2026-10-02 維護者：「005、006 核可，#31 關掉」
