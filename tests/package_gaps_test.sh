@@ -324,5 +324,34 @@ printf '%-62s ' "...and fig1.csv is not also reported as an unclaimed orphan"
 if grep -qF "fig1.csv is in the package but no plan entry claims it" "$Q6"; then
   echo "FAIL: double-reported"; fails=$((fails+1)); else echo ok; fi
 
+
+# --- #38 acceptance: every file in figures/ is named somewhere --------------
+P7="$TMP/proj7"
+mkdir -p "$P7/runs/demo_20260101/results/pipeline_info" "$P7/analysis/figures"
+cp "$P/runs/demo_20260101/results/pipeline_info/"* "$P7/runs/demo_20260101/results/pipeline_info/"
+cp "$P/runs/demo_20260101/params.yaml" "$P7/runs/demo_20260101/"
+for f in fig1_a.png fig1_b.png fig1_c.csv; do echo x > "$P7/analysis/figures/$f"; done
+cat > "$P7/analysis/analysis.md" <<'MD'
+| id | question | status |
+|---|---|---|
+| fig1 | Ambiguous with a table | accepted |
+MD
+CITE_CURL=false bash "$BP" "$P7" >/dev/null 2>&1
+Q7="$P7/submission/manuscript.qmd"
+printf '%-62s ' "ambiguous id: the non-image file is still named"
+if grep -F "[GAP:" "$Q7" | grep -F "fig1_a.png" | grep -F "fig1_b.png" | grep -qF "fig1_c.csv"; then echo ok; else
+  echo "FAIL: $(grep -n 'fig1' "$Q7" | head -4)"; fails=$((fails+1)); fi
+
+printf '%-62s ' "a gap marker is not glued to a following link"
+if grep -qF '][' <<<"$(grep -F 'project site' <<<"$out3")"; then
+  echo "FAIL: $(grep -F 'project site' <<<"$out3")"; fails=$((fails+1)); else echo ok; fi
+
+FIN="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/commands/finish.md"
+for phrase in "has no id" "no image file" "Also in figures/, not embedded"; do
+  printf '%-62s ' "finish.md step 3 knows: $phrase"
+  if sed -n '/^3\. \*\*Read what it produced/,/^4\. /p' "$FIN" | grep -qF "$phrase"; then echo ok; else
+    echo "FAIL: not in step 3"; fails=$((fails+1)); fi
+done
+
 echo
 [ "$fails" = 0 ] && echo "OK: invisible-package-gaps stays fixed" || { echo "$fails failed"; exit 1; }
