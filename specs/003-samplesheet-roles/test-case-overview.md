@@ -1,6 +1,6 @@
 # 測試案例總覽：樣本表的欄位角色不寫死
 
-狀態：草稿
+狀態：已核可（2026-10-02，maintainer）
 
 <!--
 The line above is the approval gate. It becomes
@@ -32,7 +32,7 @@ quoted under "核可紀錄" below. /speckit-plan does not run while it says 草�
 
 - 規格裡的需求（FR）共 9 條，全部都有測試案例：是
 - 規格裡的驗收情境共 9 條（US1 7＋US2 2），全部都有測試案例：是
-- 規格裡「不在範圍」共 3 條，全部都有「不在範圍」測試案例：否（缺第 3 條「公開資料庫來源走 fetchngs」——那條路不經過這支工具，本次也不改；要不要補一條「launch.md 的 fetchngs 分支文字不變」的檢查，請你決定）
+- 規格裡「不在範圍」共 3 條，全部都有「不在範圍」測試案例：否（第 3 條「公開資料庫來源走 fetchngs」不補測試——那條路不經過這支工具，本次也不改；維護者 2026-10-02 同意不補）
 
 ## 我（撰寫者）不確定的地方
 
@@ -41,4 +41,4 @@ quoted under "核可紀錄" below. /speckit-plan does not run while it says 草�
 
 ## 核可紀錄
 
-（待維護者核可）
+- 2026-10-02 維護者：「003 照建議，核可」——mag／bacass 每次停下來請他指定，可接受；不在範圍第 3 條不補測試。
