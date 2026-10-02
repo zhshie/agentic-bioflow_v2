@@ -96,7 +96,7 @@ anybody keeps settings.
 
 ## The keys that cannot travel
 
-`tw_bin`, `site_bridge` and `ssh_control_path` describe *this machine*, so
+`tw_bin`, `site_bridge`, `ssh_control_path` and `proof_run` describe *this machine*, so
 they live in `<root>/config/machines/<machine>.yaml` instead of
 `config/env.yaml`. Two machines sharing one root each get their own file;
 neither can clobber the other's `tw`.
@@ -106,10 +106,10 @@ Hostname alone is not enough: Git Bash and WSL on one Windows box are two
 environments with separate homes, separate PATHs and a different `tw`
 (PITFALLS 25), and they report the same hostname.
 
-**Every key in that file is discovered, never asked for** - `tw_bin` by
+**Every key in that file is discovered or recorded, never asked for** - `tw_bin` by
 `scripts/install_deps.sh`, `site_bridge` by probing for `wsl.exe`,
-`ssh_control_path` from its own default. So the machines/ directory is not
-something a user has to know exists, and nothing is lost if it is deleted.
+`ssh_control_path` from its own default, `proof_run` from Platform's own answer (below). So the machines/ directory is not
+something a user has to know exists, and nothing but `proof_run` is lost if it is deleted - that one is earned again by step 8 of `commands/setup.md`.
 
 `agent_java` and `agent_jar` are deliberately **not** on that list: under both
 `reach: local` and `reach: ssh` they are paths on the **site**, identical no
@@ -141,6 +141,7 @@ something else.
 | `agent_java` | A Java 21 runtime | The reader will not start |
 | `agent_jar` | Seqera's agent | The reader will not start |
 | `tw_bin` | Seqera's CLI, if not on `PATH`. **Machine file** | Falls back to `PATH` |
+| `proof_run` | **Machine file.** `<run-id> <YYYY-MM-DD> nf-core/demo`: this machine ran the public test pipeline to success on Platform. Written only by `scripts/setup_proof.sh --record` (setup step 8), never typed | Absent until step 8 passes. While absent, `scripts/setup_verify.sh` exits 3 instead of calling the machine already set up. Does not gate `launch` |
 | `singularity_cache` | Where container images are kept | Falls back to one under the run area, and images are pulled again |
 | `relay_port` | Pins the outbound channel's port | One is chosen and remembered; pin it only if you must |
 | `email` | Where run notifications go | No notification once the conversation ends |
@@ -403,7 +404,7 @@ two layers, and which layer decides what has to happen on a new machine:
 | Layer | Keys | Where it lives | On a new machine |
 |---|---|---|---|
 | **Travels** | everything not in the row below - `reach`, `seqera_user`, `workspace_id`, `compute_env`, `slurm_account`, `site_host`, `site_user`, `storage_root`, `email`, `language`, `record_adapter`, `record_ref`, `agent_connection`, `agent_java`, `agent_jar`, `singularity_cache`, `relay_port` | `<root>/config/env.yaml` | Comes with the root. Typed in exactly once, ever |
-| **This machine** | `tw_bin`, `site_bridge`, `ssh_control_path` | `<root>/config/machines/<machine>.yaml`, inside the same root | Discovered automatically - never copied, never asked for |
+| **This machine** | `tw_bin`, `site_bridge`, `ssh_control_path`, `proof_run` | `<root>/config/machines/<machine>.yaml`, inside the same root | Discovered or recorded on this machine - never copied, never asked for (`proof_run` is recorded from a run Platform confirmed, below) |
 
 **"Re-derived automatically" is not a manual step someone has to remember.**
 Each one already has a script whose job is finding it out fresh on whatever
@@ -416,6 +417,13 @@ machine it runs on, and every one of them already runs as an ordinary part of
   `site_bridge`, same call.
 - `tw_bin` — `scripts/install_deps.sh --cli-only` on this machine (setup
   step 4's `reach: ssh` branch) installs Seqera's CLI here and records where.
+- `proof_run` — `scripts/setup_proof.sh --record <run-id>` at the end of
+  setup step 8. Not discovered but **earned**: it is written only when
+  Platform itself says that run is `SUCCEEDED`, is `nf-core/demo`, and was
+  submitted by `seqera_user`. `scripts/setup_verify.sh` answers "already set
+  up" only when this machine has one (exit 3 otherwise: settings are fine, go
+  to step 8), and a record in another machine's file, or in `env.yaml`, does
+  not count.
 
 `agent_java` and `agent_jar` moved **out** of this row in T30. They name paths
 on the **site**, identical from every machine, so treating them as

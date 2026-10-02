@@ -16,9 +16,13 @@
 # defers everything else to preflight.sh rather than re-implementing any of
 # its checks (docs mirrors scripts/status.sh's own rule for the same reason).
 #
-#   setup_verify.sh          prints a verdict; exit 0 = already fully set up,
-#                             nothing for :setup to do. Any other exit code =
-#                             :setup should continue into repair or first-run.
+#   setup_verify.sh          prints a verdict; exit 0 = already fully set up
+#                             AND proven on public test data on this machine
+#                             (feature 004), nothing for :setup to do.
+#                             Exit 3 = settings and preflight are fine but this
+#                             machine has no proof record: go straight to
+#                             setup step 8. Any other exit code = :setup should
+#                             continue into repair or first-run.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/settings.sh"
@@ -31,10 +35,23 @@ fi
 
 PF_OUT=$(bash "$HERE/preflight.sh" 2>&1); PF_RC=$?
 if [ "$PF_RC" = 0 ]; then
-    echo "This machine is already set up. No need to run setup again."
+    # Feature 004: a green preflight proves the plumbing, not that a pipeline
+    # ever ran end to end on THIS machine. "Already set up" also needs this
+    # machine's own proof record (scripts/setup_proof.sh), or the answer is
+    # exit 3 - settings are fine, only step 8 is left.
+    if PROOF_OUT=$(bash "$HERE/setup_proof.sh" --check 2>&1); then
+        echo "This machine is already set up. No need to run setup again."
+        echo "$PROOF_OUT"
+        echo
+        printf '%s\n' "$PF_OUT"
+        exit 0
+    fi
+    echo "Settings are complete, but this machine has not yet proven the environment"
+    echo "on public test data - commands/setup.md step 8, then step 9 and 10."
+    echo "Nothing before step 8 needs redoing."
     echo
     printf '%s\n' "$PF_OUT"
-    exit 0
+    exit 3
 fi
 
 echo "Settings exist, but preflight found something still missing - continuing"
