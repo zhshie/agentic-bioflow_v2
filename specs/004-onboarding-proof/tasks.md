@@ -13,5 +13,5 @@
 
 ## Close
 
-- [ ] T006 full suite in WSL (TC-016)
+- [x] T006 full suite in WSL (TC-016)
 - [ ] T007 independent acceptance

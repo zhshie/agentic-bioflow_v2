@@ -19,7 +19,7 @@
 # (scripts/settings.sh MACHINE_KEYS), so it lands in
 # config/machines/<machine>.yaml and never travels with the root.
 #
-# `tw runs view` is not used: its output carries no project name. `runs list`
+# Not `tw runs view`: its output carries no project name. `runs list`
 # does (.workflows[].workflow.{id,projectName,status,userName}, measured live,
 # see runs_board.sh).
 #
