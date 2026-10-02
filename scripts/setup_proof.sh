@@ -68,30 +68,55 @@ fi
 
 refuse() { echo "not recorded: $*" >&2; exit 1; }
 
-out=$("$TW" -o json runs list --workspace "$WS" 2>&1) \
-    || refuse "could not confirm - Platform could not be asked ($out)"
+# stdout only: a CLI notice on stderr (an update banner) must not spoil an
+# otherwise good answer, and tw's own exit code must be zero too.
+ERRF="$(mktemp)"; trap 'rm -f "$ERRF"' EXIT
+out=$("$TW" -o json runs list --workspace "$WS" 2>"$ERRF") \
+    || refuse "could not confirm - Platform could not be asked ($(head -3 "$ERRF"))"
+command -v jq >/dev/null 2>&1 || refuse "could not confirm - jq is not installed here"
 
-row=$(jq -r --arg id "$RUN_ID" '
-    [.workflows[] | select(.workflow.id == $id)] | first
-    | if . == null then "NONE"
-      else [.workflow.status, .workflow.projectName, (.workflow.userName // "")] | @tsv end' \
-    <<<"$out" 2>/dev/null) \
-    || refuse "could not confirm - Platform's answer was not readable"
-[ -n "$row" ] || refuse "could not confirm - Platform's answer was not readable"
-[ "$row" != NONE ] || refuse "run '$RUN_ID' not found in workspace $WS on Platform"
-
-IFS=$'\t' read -r status project owner <<<"$row"
+# One field per jq call: `IFS=<tab> read` collapses an empty field and shifts
+# the rest (a null status was reported as "has status nf-core/demo").
+field() {
+    jq -r --arg id "$RUN_ID" --arg f "$1" '
+        [.workflows[] | select(.workflow.id == $id)] | first
+        | if . == null then "__NO_SUCH_RUN__" else (.workflow[$f] // "" | tostring) end' \
+        <<<"$out" 2>/dev/null
+}
+status="$(field status)"   || refuse "could not confirm - Platform's answer was not readable"
+[ "$status" != __NO_SUCH_RUN__ ] || refuse "run '$RUN_ID' not found in workspace $WS on Platform"
+project="$(field projectName)"
+owner="$(field userName)"
+submit="$(field submit)"
 
 [ "$status" = SUCCEEDED ] \
-    || refuse "run '$RUN_ID' has status $status, not SUCCEEDED"
+    || refuse "run '$RUN_ID' has status '${status:-unknown}', not SUCCEEDED"
+# nf-core/demo itself, by name or by its GitHub address - not a fork or a
+# look-alike path that merely ends in it.
 case "$project" in
-    nf-core/demo|*/nf-core/demo) ;;
+    nf-core/demo|https://github.com/nf-core/demo|https://github.com/nf-core/demo.git) ;;
     *) refuse "run '$RUN_ID' is '$project'; the proof has to be an nf-core/demo run" ;;
 esac
 if [ -n "$SEQERA_USER" ] && [ "$owner" != "$SEQERA_USER" ]; then
     refuse "run '$RUN_ID' was submitted by '$owner', not by '$SEQERA_USER'"
 fi
 
-rec="$RUN_ID $(date +%Y-%m-%d) nf-core/demo"
+# Proof of THIS machine, now: a recent run, not one already proving another
+# machine of this root (acceptance of 004, MED-1).
+age_days=$(jq -rn --arg s "$submit" '
+    ($s | sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch null) as $t
+    | if $t == null then "" else ((now - $t) / 86400 | floor) end' 2>/dev/null)
+[ -n "$age_days" ] || refuse "could not confirm when run '$RUN_ID' was submitted ('$submit')"
+[ "$age_days" -le 7 ] \
+    || refuse "run '$RUN_ID' was submitted $age_days days ago - older than 7 days; run step 8 again on this machine"
+MDIR="$(dirname "${MACHINE_SETTINGS_FILE:-/nonexistent/x}")"
+for f in "$MDIR"/*.yaml; do
+    [ -r "$f" ] && [ "$f" != "$MACHINE_SETTINGS_FILE" ] || continue
+    if [ "$(_read_key "$f" proof_run | cut -d' ' -f1)" = "$RUN_ID" ]; then
+        refuse "run '$RUN_ID' already proves another machine ($(basename "$f" .yaml)); run step 8 on this one"
+    fi
+done
+
+rec="$RUN_ID $(printf '%s' "$submit" | cut -c1-10) nf-core/demo"
 set_setting proof_run "$rec" || exit 1
 echo "recorded: proven on this machine: $rec"

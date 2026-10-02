@@ -23,8 +23,9 @@ hasnot() { printf '%-64s ' "$1"; grep -qF -- "$2" <<<"$3" && { echo "FAIL: found
 cat > "$TMP/tw" <<'EOF'
 #!/bin/bash
 [ -n "${TW_FAIL:-}" ] && { echo "tw: simulated outage" >&2; exit 1; }
+[ -n "${TW_WARN:-}" ] && echo "WARNING: a newer version of tw is available" >&2
 case "$*" in
-    *"runs list"*) cat "$RUNS_LIST_FILE" ;;
+    *"runs list"*) cat "$RUNS_LIST_FILE"; if [ -n "${TW_FAIL_AFTER:-}" ]; then exit 1; fi ;;
     *) exit 1 ;;
 esac
 EOF
@@ -57,8 +58,9 @@ machfile() { clean bash -c ". '$SETTINGS' >/dev/null 2>&1; printf '%s\n' \"\$MAC
 MACH="$(machfile)"
 t "fixture: this machine has a machines/ file path"  "$([ -n "$MACH" ] && echo yes || echo no)"  "yes"
 
-runs() { # runs <id> <status> <project> <user>
-    printf '{"workflows":[{"workflow":{"id":"%s","runName":"x","projectName":"%s","status":"%s","userName":"%s","submit":0}},{"workflow":{"id":"other-run","runName":"y","projectName":"nf-core/rnaseq","status":"SUCCEEDED","userName":"alice","submit":0}}]}\n' "$1" "$3" "$2" "$4" > "$TMP/runs.json"
+NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+runs() { # runs <id> <status> <project> <user> [submit, default now]
+    printf '{"workflows":[{"workflow":{"id":"%s","runName":"x","projectName":"%s","status":"%s","userName":"%s","submit":"%s"}},{"workflow":{"id":"other-run","runName":"y","projectName":"nf-core/rnaseq","status":"SUCCEEDED","userName":"alice","submit":"%s"}}]}\n' "$1" "$3" "$2" "$4" "${5:-$NOW_ISO}" "$NOW_ISO" > "$TMP/runs.json"
 }
 rec()   { clean RUNS_LIST_FILE="$TMP/runs.json" bash "$PROOF" --record "$@" 2>&1; }
 check() { clean bash "$PROOF" --check 2>&1; }
@@ -115,12 +117,48 @@ has "TC-009 ...says it could not confirm"  "could not confirm" "$out"
 t "TC-009 ...nothing written"  "$(recorded "$MACH")"  "0"
 t "TC-009 after all refusals --check still exits 1"  "$(check >/dev/null; echo $?)"  "1"
 
+# --- acceptance MED-1: an old run, or one already proving another machine ----
+runs run-old SUCCEEDED nf-core/demo alice 2020-01-01T00:00:00Z
+out=$(rec run-old); rc=$?
+t "old run (2020): exits non-zero"  "$([ "$rc" != 0 ] && echo yes)"  "yes"
+has "...says the run is older than 7 days"  "older than 7 days" "$out"
+t "...nothing written"  "$(recorded "$MACH")"  "0"
+OTHER="$(dirname "$MACH")/some-other-box-Linux.yaml"
+mkdir -p "$(dirname "$MACH")"; echo "proof_run: run-taken 2026-01-01 nf-core/demo" > "$OTHER"
+runs run-taken SUCCEEDED nf-core/demo alice
+out=$(rec run-taken); rc=$?
+t "run already proving another machine: exits non-zero"  "$([ "$rc" != 0 ] && echo yes)"  "yes"
+has "...names the other machine"  "some-other-box-Linux" "$out"
+t "...nothing written"  "$(recorded "$MACH")"  "0"
+rm -f "$OTHER"
+
+# --- acceptance LOW: look-alike pipelines are not nf-core/demo ---------------
+for proj in nf-core/demo-fork evil/nf-core/demo https://gitlab.com/evil/nf-core/demo; do
+    runs run-ok SUCCEEDED "$proj" alice
+    out=$(rec run-ok); rc=$?
+    t "look-alike '$proj': exits non-zero"  "$([ "$rc" != 0 ] && echo yes)"  "yes"
+    t "look-alike '$proj': nothing written"  "$(recorded "$MACH")"  "0"
+done
+
+# --- acceptance LOW: tw exits 1 even though it printed valid JSON ------------
+runs run-ok SUCCEEDED nf-core/demo alice
+out=$(clean TW_FAIL_AFTER=1 RUNS_LIST_FILE="$TMP/runs.json" bash "$PROOF" --record run-ok 2>&1); rc=$?
+t "tw exit 1 with valid JSON: exits non-zero"  "$([ "$rc" != 0 ] && echo yes)"  "yes"
+t "...nothing written"  "$(recorded "$MACH")"  "0"
+
+# --- acceptance LOW: a null field must not shift the others ------------------
+printf '{"workflows":[{"workflow":{"id":"run-null","runName":"x","projectName":"nf-core/demo","status":null,"userName":"alice","submit":"%s"}}]}
+' "$NOW_ISO" > "$TMP/runs.json"
+out=$(rec run-null); rc=$?
+t "null status: exits non-zero"  "$([ "$rc" != 0 ] && echo yes)"  "yes"
+hasnot "...does not report the project as the status"  "has status nf-core/demo" "$out"
+
 # --- TC-004: the qualifying run ---------------------------------------------
 runs run-ok SUCCEEDED nf-core/demo alice
 out=$(rec run-ok); rc=$?
 t "TC-004 qualifying run: exits 0"  "$rc"  "0"
 has "TC-004 ...prints the run id"  "run-ok" "$out"
-has "TC-004 ...prints today's date"  "$(date +%Y-%m-%d)" "$out"
+has "TC-004 ...prints the run's own date"  "$(date -u +%Y-%m-%d)" "$out"
 t "TC-004 record is in the machines file"  "$(recorded "$MACH")"  "1"
 t "TC-004 record is NOT in env.yaml"  "$(recorded "$ENVYAML")"  "0"
 out=$(check); rc=$?
@@ -134,6 +172,14 @@ out=$(rec run-url); rc=$?
 t "URL-form projectName ending /nf-core/demo: exits 0"  "$rc"  "0"
 t "...still exactly one proof_run line (rewritten in place)"  "$(recorded "$MACH")"  "1"
 has "...the newer run id replaced the old one"  "run-url" "$(check)"
+
+# A CLI warning on stderr does not spoil an otherwise good answer.
+runs run-warn SUCCEEDED nf-core/demo alice
+out=$(clean TW_WARN=1 RUNS_LIST_FILE="$TMP/runs.json" bash "$PROOF" --record run-warn 2>&1); rc=$?
+t "tw warning on stderr + good JSON: exits 0"  "$rc"  "0"
+runs run-git SUCCEEDED https://github.com/nf-core/demo.git alice
+out=$(rec run-git); rc=$?
+t "projectName https://github.com/nf-core/demo.git: exits 0"  "$rc"  "0"
 
 # --- TC-011: usage errors ----------------------------------------------------
 for args in "" "--bogus" "--record"; do

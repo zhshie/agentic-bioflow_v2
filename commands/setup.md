@@ -167,8 +167,9 @@ Two things worth stating when they come up, because neither is obvious:
 that ends with every preflight line green has still not shown that a pipeline
 runs on this machine, and a root adopted with `--use` arrives with settings but
 no proof. If `--check` exits non-zero there is no record on this machine yet:
-do step 8 below, then step 9. If it exits 0, say the record it printed and
-stop.
+after the T5 checklist below, do step 8, then step 9 and step 10, and end with
+`scripts/intro.sh --end setup`. If it exits 0, say the record it printed and
+carry on with the T5 checklist below - it is still part of the repair.
 
 **T5: whether this machine can run the flow at all, not just whether the
 site is reachable.** `scripts/preflight.sh` answers for the site and this
