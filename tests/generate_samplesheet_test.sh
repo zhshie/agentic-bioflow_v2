@@ -196,6 +196,18 @@ has "TC-010 message names the bad column" "nosuchcol" "$ERR"
 has "TC-010 message says it is not among the requested columns" "not in" "$ERR"
 stopped "TC-010" "$o"
 
+# Developer review of S1: two roles naming ONE column wrote a wrong sheet with
+# exit 0 - R2 overwrote R1 in fastq_1 and the summary still said "paired".
+o=$(newout)
+run "$PAIRS" --columns sample,fastq_1,fastq_2 --roles sample=sample,read1=fastq_1,read2=fastq_1 -o "$o"
+t "TC-010 R1 and R2 named as the same column: exit 2" "$RC" "2"
+has "TC-010 message names the doubled column" "fastq_1" "$ERR"
+stopped "TC-010 (R1 = R2)" "$o"
+o=$(newout)
+run "$PAIRS" --columns sample,fastq_1,fastq_2 --roles sample=fastq_1,read1=fastq_1,read2=fastq_2 -o "$o"
+t "TC-010 sample and R1 named as the same column: exit 2" "$RC" "2"
+stopped "TC-010 (sample = R1)" "$o"
+
 o=$(newout)
 run "$PAIRS" --columns sample,fastq_1,fastq_2 -o "$o"
 t "TC-011 no schema, no roles, rnaseq-looking names: exit 2" "$RC" "2"

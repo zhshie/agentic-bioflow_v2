@@ -154,6 +154,16 @@ def parse_roles(spec: str, columns: List[str]) -> Roles:
         if v not in columns:
             raise ValueError(f"--roles {k}={v}: '{v}' is not in the requested columns "
                              f"({', '.join(columns)}); the role names a column that is not in --columns")
+    # One column, one role: two roles on the same column wrote a wrong sheet
+    # with exit 0 - R2 overwrote R1 and the summary still said "paired"
+    # (developer review of 003 S1).
+    seen = {}
+    for k, v in given.items():
+        if v in seen:
+            raise ValueError(f"--roles names column '{v}' for both {seen[v]} and {k}; "
+                             f"each role needs its own column - re-run with --roles "
+                             f"sample=<col>,read1=<col>,read2=<col>")
+        seen[v] = k
     return Roles(given["sample"], given["read1"], given.get("read2"))
 
 
