@@ -239,6 +239,12 @@ run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "$RM && bash scripts/on_site.
 check "TC-011 a delete beside a call to scripts/on_site.sh: refused"    deny
 run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "$RM && bash scripts/not_a_plugin_script.sh ls")"
 check "TC-011 control: ...beside a script the plugin does not have"     silent
+# round 2: a bare script name with the session's cwd inside the plugin itself
+# (main refused this; stripping cwd from the text had lost it)
+run confirm_cleanup.sh "$(bash_in s-new "$ROOT/scripts" "bash on_site.sh 'rm -rf results'")"
+check "TC-011 cwd inside the plugin's scripts/, bare on_site.sh: refused" deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "bash on_site.sh 'rm -rf results'")"
+check "TC-011 control: the same bare call from outside the plugin"      silent
 run confirm_launch.sh "$(bash_in s-new "$OUTSIDE" "$LAUNCH")"
 check "TC-012 tw launch asks without any marker or deployment"          ask
 run confirm_launch.sh "$(bash_in s-new "$OUTSIDE" "$RELAUNCH")"

@@ -75,6 +75,9 @@ _abf_phys() {
     case "$1" in /*) ;; *) return 1 ;; esac
     [ -d "$1" ] || return 1
     local old="$PWD" p
+    # No way back to a caller's directory that no longer exists: do not move
+    # (the hook would carry on elsewhere). Unresolved is the safe answer.
+    [ -d "$old" ] || return 1
     cd -P -- "$1" 2>/dev/null || return 1
     p="$PWD"
     cd -- "$old" 2>/dev/null
@@ -266,7 +269,10 @@ _abf_in_use_inner() {
     here="${here%/*}"; [ "$here" = "${BASH_SOURCE[0]}" ] && here=.
     base="$here/.."
     case "$here" in /*/hooks|[A-Za-z]:*/hooks) roots="$roots"$'\n'"${here%/hooks}" ;; esac
-    local r rc rp fpc="" fpp=""
+    local r rc rp fpc="" fpp="" icwd=""
+    # The session working inside the plugin itself: a bare `bash on_site.sh`
+    # there names no root, but is the plugin's own script (acceptance round 2).
+    if [[ $input =~ $re_cwd ]]; then _abf_canon "${BASH_REMATCH[1]}"; icwd="$REPLY"; fi
     if [ -n "$fp" ]; then
         _abf_canon "$fp"; fpc="$REPLY"
         _abf_phys_path "$fpc" && fpp="$REPLY"
@@ -275,11 +281,13 @@ _abf_in_use_inner() {
         [ -n "$r" ] || continue
         _abf_canon "$r"; rc="$REPLY"
         _abf_text_has "$text" "$rc" && return 0
+        _abf_under "$icwd" "$rc" && return 0
         # a link in the root's path: the same place under its physical name, and
         # a write whose target resolves into it
         if _abf_phys "$rc"; then
             rp="$REPLY"
             _abf_text_has "$text" "$rp" && return 0
+            _abf_under "$icwd" "$rp" && return 0
             _abf_under "$fpc" "$rp" && return 0
             _abf_under "$fpp" "$rp" && return 0
         fi
