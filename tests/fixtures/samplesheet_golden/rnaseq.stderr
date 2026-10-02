@@ -1,0 +1,4 @@
+WARNING: S4: found an R2 with no matching R1 - skipped
+WARNING: column 'seq_platform' is empty for every sample - fill it via --defaults or ask the user
+WARNING: column 'seq_center' is empty for every sample - fill it via --defaults or ask the user
+wrote 3 samples (3 paired, 0 single) -> <TMP>/out.csv

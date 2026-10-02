@@ -31,6 +31,7 @@ SDIR="$TMP/scripts"; mkdir -p "$SDIR/utils"
 cp "$REAL" "$SDIR/prepare_launch.sh"
 cp "$ROOT/scripts/settings.sh" "$SDIR/settings.sh"
 cp "$ROOT/scripts/utils/portable.sh" "$SDIR/utils/portable.sh"
+cp "$ROOT/scripts/utils/schema_roles.py" "$SDIR/utils/schema_roles.py"
 
 SETTINGS="$TMP/env.yaml"; printf 'workspace_id: ws1\n' > "$SETTINGS"
 
@@ -229,6 +230,47 @@ out=$(PATH="$STUB:$PATH" LAB_SETTINGS_FILE="$SETTINGS" TW_BIN=/does/not/exist \
 has "$out" "no working Python interpreter" \
     && ok "no Python at all is said out loud, not left as an empty section" \
     || no "no Python at all is said out loud, not left as an empty section" "<<$out>>"
+
+# =========================================================================
+# Feature 003 (TC-014, TC-015): the samplesheet section says which column is
+# the sample name and which hold R1 / R2, as worked out from the pipeline's
+# own schema by scripts/utils/schema_roles.py - or says the user has to choose.
+# =========================================================================
+fake_preflight "OK         reach          local - this deployment runs on the site"
+SCHEMAS="$ROOT/tests/fixtures/schema_input"
+run_with_schema() {   # run_with_schema <fixture-schema-file> -> sets $out
+    local fx="$TMP/fx_$1"; mkdir -p "$fx/assets"
+    cp "$SCHEMAS/$1.json" "$fx/assets/schema_input.json"
+    out=$(LAB_SETTINGS_FILE="$SETTINGS" TW_BIN=/does/not/exist           bash "$SDIR/prepare_launch.sh" --repo nf-core/testpipeline           --revision 1.2.3 --input "$READS" --fixture-dir "$fx" 2>&1)
+}
+run_with_schema rnaseq-3.27.0
+has "$out" "roles: 樣本名 → sample, R1 → fastq_1, R2 → fastq_2"     && ok "TC-014: an inferable schema (rnaseq) gets a roles line naming sample, R1, R2"     || no "TC-014: an inferable schema (rnaseq) gets a roles line naming sample, R1, R2" "<<$out>>"
+has "$out" "需要你指定"     && no "TC-014: an inferable schema does not ask the user to choose" "<<$out>>"     || ok "TC-014: an inferable schema does not ask the user to choose"
+
+run_with_schema mag-5.5.0
+has "$out" "roles: 需要你指定"     && ok "TC-015: mag (two or more FASTQ candidates) says the user has to choose"     || no "TC-015: mag (two or more FASTQ candidates) says the user has to choose" "<<$out>>"
+has "$out" "short_reads_1, short_reads_2, long_reads"     && ok "TC-015: the candidate columns are listed"     || no "TC-015: the candidate columns are listed" "<<$out>>"
+order=$(grep -oE '^== [a-z]+ ==' <<<"$out" | tr -d '
+')
+[ "$order" = "== pipeline ==== samplesheet ==== preflight ==== parameters ==== decisions ==" ]     && ok "TC-015: the overview still completes with all five sections"     || no "TC-015: the overview still completes with all five sections" "<<$order>>"
+has "$out" "DECIDE: pick which column is which"     && ok "TC-015: the roles choice is carried into == decisions =="     || no "TC-015: the roles choice is carried into == decisions ==" "<<$out>>"
+
+# MED-2: a schema that cannot be read, or cannot be fetched, still gets a roles line.
+fxbad="$TMP/fx_bad"; mkdir -p "$fxbad/assets"; printf '{not json' > "$fxbad/assets/schema_input.json"
+out=$(LAB_SETTINGS_FILE="$SETTINGS" TW_BIN=/does/not/exist bash "$SDIR/prepare_launch.sh" \
+      --repo nf-core/testpipeline --revision 1.2.3 --input "$READS" --fixture-dir "$fxbad" 2>&1)
+has "$out" "roles: 需要你指定（說明檔讀不懂，無法判斷）" \
+    && ok "MED-2: an unparseable schema says the user has to choose" \
+    || no "MED-2: an unparseable schema says the user has to choose" "<<$out>>"
+has "$out" "DECIDE: pick which column is which" \
+    && ok "MED-2: ...and it is carried into == decisions ==" \
+    || no "MED-2: ...and it is carried into == decisions ==" "<<$out>>"
+fxnone="$TMP/fx_none"; mkdir -p "$fxnone"
+out=$(LAB_SETTINGS_FILE="$SETTINGS" TW_BIN=/does/not/exist bash "$SDIR/prepare_launch.sh" \
+      --repo nf-core/testpipeline --revision 1.2.3 --input "$READS" --fixture-dir "$fxnone" 2>&1)
+has "$out" "roles: 需要你指定（拿不到說明檔）" \
+    && ok "MED-2: a schema that could not be fetched says the user has to choose" \
+    || no "MED-2: a schema that could not be fetched says the user has to choose" "<<$out>>"
 
 echo
 [ "$fails" = 0 ] && echo "OK: prepare_launch.sh" || { echo "$fails failed"; exit 1; }

@@ -1,0 +1,4 @@
+sample,fastq_1,fastq_2,strandedness,seq_platform,seq_center
+S1,<TMP>/reads/S1_R1_001.fastq.gz,<TMP>/reads/S1_R2_001.fastq.gz,auto,,
+S2,<TMP>/reads/S2_R1_001.fastq.gz,<TMP>/reads/S2_R2_001.fastq.gz,auto,,
+S3,<TMP>/reads/S3_R1_001.fastq.gz,<TMP>/reads/S3_R2_001.fastq.gz,auto,,
