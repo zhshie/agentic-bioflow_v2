@@ -93,5 +93,44 @@ for name in $BLIND; do
     fi
 done
 
+# 6. (feature 003, TC-016; tasks.md calls it "check 5" - numbered 6 here because
+#    5 was already taken) scripts/generate_samplesheet.py fills the columns the
+#    pipeline's own schema (or the operator) names. A string constant `sample`,
+#    `fastq_1` or `fastq_2` in its code is rnaseq's column names creeping back as
+#    a default, which silently misfills every other pipeline. Docstrings and
+#    comments may mention them (they are not code); an `ast` scan tells the two
+#    apart where grep cannot.
+GS="$ROOT/scripts/generate_samplesheet.py"
+if [ -f "$GS" ]; then
+    if ! hits=$(python3 - "$GS" <<'PY'
+import ast, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+tree = ast.parse(src)
+doc_nodes = set()
+for node in ast.walk(tree):
+    if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        body = node.body
+        if body and isinstance(body[0], ast.Expr) and isinstance(getattr(body[0], "value", None), ast.Constant) \
+                and isinstance(body[0].value.value, str):
+            doc_nodes.add(id(body[0].value))
+bad = []
+for node in ast.walk(tree):
+    if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in doc_nodes:
+        v = node.value.strip()
+        # `sample` only as a whole constant (prose such as "every sample" is
+        # fine); the fastq_N names are specific enough to flag anywhere.
+        if v == "sample" or "fastq_1" in v or "fastq_2" in v:
+            bad.append(f"line {node.lineno}: {node.value[:70]!r}")
+if bad:
+    print("\n".join(bad)); sys.exit(1)
+PY
+    ); then
+        echo "FAIL: scripts/generate_samplesheet.py has a pipeline-specific column name in code:"
+        printf '  %s\n' "$hits"
+        echo "  Roles come from the pipeline's schema_input.json or --roles, never from a remembered name."
+        fail=1
+    fi
+fi
+
 [ "$fail" = 0 ] && echo "OK: nothing is configured per pipeline; launch.md still reads the pipeline"
 exit $fail
