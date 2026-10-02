@@ -147,7 +147,7 @@ fresh
 H2="$TMP/h$n-b"; mkdir -p "$H2"
 printf '{"workflows":[{"workflow":{"id":"run-ok","runName":"x","projectName":"nf-core/demo","status":"SUCCEEDED","userName":"alice","submit":"%s"}}]}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$TMP/runs.json"
-runs_one() { run "$1" boxa Linux -- env RUNS_LIST_FILE="$TMP/runs.json" bash "$PROOF" --record run-ok 2>&1; }
+runs_one() { run "$1" boxa Linux -- env RUNS_LIST_FILE="$TMP/runs.json" bash "$PROOF" --record "${2:-run-ok}" 2>&1; }
 runs_one "$HM" >/dev/null; rc1=$?
 t "TC-010 first home records" "$rc1" "0"
 chk() { run "$1" boxa Linux -- bash "$PROOF" --check 2>&1; }
@@ -155,7 +155,7 @@ t "TC-010 first home sees its own proof" "$(chk "$HM" >/dev/null; echo $?)" "0"
 t "TC-010 second home sees none (not the first's)" "$(chk "$H2" >/dev/null; echo $?)" "1"
 printf '{"workflows":[{"workflow":{"id":"run-two","runName":"x","projectName":"nf-core/demo","status":"SUCCEEDED","userName":"alice","submit":"%s"}}]}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$TMP/runs.json"
-runs_one "$H2" >/dev/null
+runs_one "$H2" run-two >/dev/null
 t "TC-010 second home records" "$(chk "$H2" >/dev/null; echo $?)" "0"
 t "TC-010 two different machine files" "$(ls "$MD" | wc -l | tr -d ' ')" "2"
 t "TC-010 two different ids" \
