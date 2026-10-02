@@ -364,6 +364,36 @@ check "LOW a scripts/utils/*.py call counts as the plugin's script"     deny
 run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "bash scripts/utils/not_ours.py; $RM")"
 check "LOW control: scripts/utils/ name the plugin does not have"       silent
 
+# #53: shapes of the same path the text check did not read. Each has a control
+# that differs in one fact (the folder it names is not a root).
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'cd "$HOME"/runs3 && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "#53 a quoted \"\$HOME\"/runs3 names the root"                     deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'cd "${HOME}"/runs3/p && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "#53 a quoted \"\${HOME}\"/runs3/p names the root"                  deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "cd '$TMP/home/runs3' && rm -rf results")" XDG_CONFIG_HOME="$CFG3"
+check "#53 control: a single-quoted absolute path already names the root" deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'cd "$HOME"/elsewhere && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "#53 control: a quoted \"\$HOME\"/elsewhere is silent"              silent
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'cd && cd runs3 && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "#53 a bare cd, then a relative path, with a root under home"     deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'cd ~ && cd runs3 && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "#53 cd ~ then a relative path, with a root under home"           deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'cd $HOME && cd runs3 && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "#53 cd \$HOME then a relative path, with a root under home"       deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'cd && cd runs3 && rm -rf results')"
+check "#53 control: the same call, no root under home (deployment elsewhere)" silent
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'cd /tmp && cd runs3 && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "#53 control: cd to another folder, not home: silent"             silent
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'echo cdrom && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "#53 control: a word that merely starts with cd: silent"          silent
+# the same, from a prompt: naming the command without the leading slash
+intro "$(jq -nc '{session_id:"s-noslash", hook_event_name:"UserPromptSubmit", prompt:"run it with agentic-bioflow:launch please"}')"
+printf '%-72s ' "#53 a prompt naming agentic-bioflow:launch without a slash marks"
+[ -e "$STATE/in-use/s-noslash" ] && echo ok || { echo FAIL; fails=$((fails+1)); }
+intro "$(jq -nc '{session_id:"s-plain", hook_event_name:"UserPromptSubmit", prompt:"my agentic-bioflow notes are in a folder"}')"
+printf '%-72s ' "#53 control: the plugin's name without a colon marks nothing"
+[ ! -e "$STATE/in-use/s-plain" ] && echo ok || { echo FAIL; fails=$((fails+1)); }
+
 # session id: the top-level one, by both readers
 intro "$(jq -nc '{session_id:"realsid", hook_event_name:"PostToolUse", tool_name:"Skill", tool_input:{skill:"agentic-bioflow:launch"}, tool_response:{session_id:"othersid"}}')"
 printf '%-72s ' "LOW plugin_intro marks the top-level session id, not a nested one"
