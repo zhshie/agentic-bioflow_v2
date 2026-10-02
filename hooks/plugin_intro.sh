@@ -2,6 +2,12 @@
 # UserPromptSubmit + PostToolUse(Skill): show the overview the first time this
 # plugin is actually used in a session, not at every session start.
 #
+# Feature 005 (#48): that same moment also writes the in-use marker
+# ($STATE/in-use/<session id>) which every other hook reads through
+# hooks/in_use.sh - the plugin is silent in a session until the session has
+# reached for it, is inside the deployment, or runs one of its scripts. This
+# hook is the one thing that is NOT gated by that: it is what turns it on.
+#
 # It used to be a SessionStart hook, which meant every conversation in every
 # project opened with it - including the many that have nothing to do with
 # pipelines. The overview is worth reading exactly once, at the moment the user
@@ -112,17 +118,50 @@ fi
 [ "$IS_LITERAL" = 1 ] || [ "$IS_NL" = 1 ] || exit 0
 
 # The session id names a file, so it is reduced to characters that cannot
-# climb out of the state directory. Extracted with sed rather than jq - this
-# has to work in the no-jq branch just below, and a single extraction here
-# serves both branches instead of two copies drifting apart. The first-line
-# trim is a bash parameter expansion, not `head -1`: this runs before jq's
-# availability is even known, and a degraded machine's PATH is exactly the
-# place to avoid reaching for one more external binary than the job needs.
-SID_RAW=$(printf '%s' "$INPUT" | sed -nE 's/.*"session_id"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p')
-SID_RAW="${SID_RAW%%$'\n'*}"
-SID=$(printf '%s' "$SID_RAW" | tr -cd 'A-Za-z0-9_-')
+# climb out of the state directory. Extracted without jq - this has to work in
+# the no-jq branch just below, and a single extraction here serves both
+# branches instead of two copies drifting apart; a degraded machine's PATH is
+# exactly the place to avoid reaching for one more external binary than the
+# job needs. Feature 005: the FIRST "session_id" in the input, by a bash regex - the same
+# reading hooks/in_use.sh does, so the file written here is the file read there.
+# (The sed that stood here took the LAST one, which is a nested copy when a
+# tool's response carries its own session_id.)
+SID_RAW=""
+re_sid='"session_id"[[:space:]]*:[[:space:]]*"([^"]*)"'
+if [[ $INPUT =~ $re_sid ]]; then SID_RAW="${BASH_REMATCH[1]}"; fi
+SID="${SID_RAW//[^A-Za-z0-9_-]/}"
 STATE="${AGENTIC_BIOFLOW_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-}/.local/state}/agentic-bioflow}"
 MARKS="$STATE/intro-shown"
+
+# Feature 005 (#48), Constitution 2.0.0: this is the moment a session starts
+# being "in use" - every other hook is silent until it has happened, or until
+# the call itself or the session's folder says so (hooks/in_use.sh). The marker
+# is a separate file from $MARKS above on purpose: that one means "the overview
+# was shown" and is written only after something went out; this one means "the
+# plugin was reached for" and is written as soon as that is known, so a failed
+# intro.sh does not leave the safety net off. A subagent's calls carry its
+# parent's session id, so one marker covers both. Fails open like everything
+# here: an unwritable state directory costs the marker, never the prompt - and
+# a state path that cannot be read or written is itself read as "in use" by
+# in_use.sh once a deployment exists, so a failed write here does not turn the
+# net off.
+mark_in_use() {
+    [ -n "$SID" ] || return 0
+    mkdir -p "$STATE/in-use" 2>/dev/null || return 0
+    : > "$STATE/in-use/$SID" 2>/dev/null
+    find "$STATE/in-use" -type f -mtime +30 -exec rm -f {} + 2>/dev/null
+    return 0
+}
+# The natural-language door is decided without jq, so it can mark now - before
+# the once-per-session exit below, which must not skip it. The literal door
+# marks once it is certain (below).
+[ "$IS_NL" = 1 ] && mark_in_use
+# A prompt that names /agentic-bioflow: anywhere - mid-sentence, quoted, asked
+# about - is reaching for the plugin as far as this can tell. The overview waits
+# for the prompt to START with it (below); the marker does not: unsure is in use.
+if [ "$IS_UPS" = 1 ]; then
+    case "$INPUT" in *'/agentic-bioflow:'*) mark_in_use ;; esac
+fi
 [ -n "$SID" ] && [ -e "$MARKS/$SID" ] && exit 0
 
 # T3: jq missing/broken is now visible instead of silent - see the file
@@ -133,6 +172,10 @@ MARKS="$STATE/intro-shown"
 # was still broken.
 JQMARKS="$STATE/jq-warn-shown"
 if ! command -v jq >/dev/null 2>&1 || ! printf '{}' | jq -e . >/dev/null 2>&1; then
+    # Without jq the literal door cannot be checked precisely (a mere mention
+    # of /agentic-bioflow: mid-sentence matches the loose test). Marking is the
+    # safe direction: one gate too many beats one missed.
+    mark_in_use
     if [ -z "$SID" ] || [ ! -e "$JQMARKS/$SID" ]; then
         JQWARN='agentic-bioflow: jq is missing or cannot run here. The launch/cleanup/walkthrough safety-net hooks (confirm_launch.sh, confirm_cleanup.sh, confirm_walkthrough.sh) are running in a reduced, text-only mode until it is installed - they still catch a launch- or delete-shaped command, but cannot verify the fine detail the way they normally do. macOS: brew install jq / Debian+WSL: sudo apt install jq / Windows: winget install jqlang.jq'
         printf '{"systemMessage":"%s"}\n' "$JQWARN"
@@ -153,6 +196,7 @@ if [ "$IS_LITERAL" = 1 ]; then
         elif ((.prompt // "") | test("^\\s*/agentic-bioflow:")) then "UserPromptSubmit"
         else "" end' <<<"$INPUT") || exit 0
     [ -n "$EVENT" ] || exit 0
+    mark_in_use
 
     INTRO="$(bash "$ROOT/scripts/intro.sh")" || exit 0
     [ -n "$INTRO" ] || exit 0

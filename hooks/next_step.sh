@@ -70,6 +70,14 @@ exec 2>/dev/null
 
 INPUT=$(cat)
 
+# Feature 005 (#48), Constitution 2.0.0: no reminder in a session that is not
+# using this plugin. There is no command here, so only a session marker, the
+# session's folder, or "cannot tell" (no session id) can make this one in use.
+# See hooks/in_use.sh. A hook directory without it answers "in use".
+HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
+{ . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
+abf_in_use "$INPUT" "" || exit 0
+
 STOP_ACTIVE=$(jq -r '.stop_hook_active // false' <<<"$INPUT" 2>/dev/null)
 [ "$STOP_ACTIVE" = true ] && exit 0
 

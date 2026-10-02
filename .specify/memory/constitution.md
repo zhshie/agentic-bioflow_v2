@@ -110,7 +110,8 @@ call makes the safety net compare paths from two different worlds.
   `tests/confirm_walkthrough_test.sh` (G6).
 - **13.** When the safety net cannot do its job, it MUST say so: never silently permissive, and
   never silently refusing everything. With `jq` missing or broken, the gates refuse what they
-  cannot rule out from the raw text and name the fix.
+  cannot rule out from the raw text and name the fix. (In a session where the plugin is not in
+  use there is no job to do, and it stays silent: see the Safety Net's scope.)
   *Check:* the "no jq" sections of `tests/confirm_launch_test.sh`,
   `tests/confirm_cleanup_test.sh`, `tests/confirm_walkthrough_test.sh`,
   `tests/plugin_intro_test.sh`.
@@ -119,6 +120,28 @@ call makes the safety net compare paths from two different worlds.
 from a working one until the moment it matters (PITFALLS 28, issue #15).
 
 ## Safety Net (Non-Negotiable)
+
+**Scope.** The rules below govern a session in which agentic-bioflow is *in use*. A session is in
+use when any one of these holds:
+
+1. **The session has used the plugin.** A prompt named an `/agentic-bioflow:` command (anywhere
+   in it), a plugin skill was loaded, or the request was worded so as to route to the plugin, and
+   `hooks/plugin_intro.sh` left its per-session marker. A subagent carries its parent's session
+   id, so it shares the parent's marker.
+2. **The session's working folder is inside the deployment**: under the settings root, or under
+   `storage_root`.
+3. **The call itself is about the plugin**: it runs one of the plugin's scripts or hooks, runs
+   `tw` (or `tw.exe`), names a path under the deployment (in any spelling: `~`, `$HOME`, a
+   symlink's other name), or is a Seqera or Tower MCP tool. A write into the installed plugin's own
+   directory counts too.
+
+When the plugin is unsure the session counts as in use: the hook input carries no session id, or
+the state directory cannot be read, or (once a deployment exists) cannot be written, so that the
+marker may have failed to save. Outside a session in use the plugin stays silent: no hook
+gates, reminds or prints anything. The definition lives in `hooks/in_use.sh`.
+*Check:* `tests/in_use_test.sh`, `tests/in_use_speed_test.sh`, `tests/constitution_scope_test.sh`.
+
+The rules that follow apply in a session in use, and are unchanged from 1.0.0.
 
 These rules are not subject to the principles above, MUST NOT be relaxed by any feature spec or
 plan, and change only by a MAJOR amendment of this constitution.
@@ -157,6 +180,52 @@ plan, and change only by a MAJOR amendment of this constitution.
 - **One change at a time, on a branch.** `main` receives merges only; CI
   (`.github/workflows/tests.yml`) MUST be green first, and only the maintainer merges.
 
+## Amendments
+
+### 2.0.0 (2026-10-02): the Safety Net applies to sessions in which the plugin is in use
+
+**Rationale (#48).** On 2026-10-02 a general-purpose subagent was doing a small analysis that used
+neither nf-core nor this plugin. It ran one read-only query of the cluster's configuration through
+`wsl.exe -e ssh -o BatchMode=yes ...`. `hooks/confirm_launch.sh` stopped it for confirmation,
+because a direct ssh costs a one-time code (PITFALLS 16b). Auto mode cannot override a hook's
+"ask", so every such call waited for a person. The hook was wrong twice. About scope: the session
+was not using agentic-bioflow at all. About detection: ssh through WSL shares an open connection
+and `BatchMode=yes` never prompts, so neither costs a code. The detection half is fixed in the
+hook (the D3 exceptions). The scope half cannot be fixed under 1.0.0, which wrote the Safety Net
+as holding wherever the plugin is installed. A plugin is installed per user, so its hooks fired in
+every session in every project. The maintainer's goal, in his words: stop anything agentic-bioflow
+configured from being invoked by a session that is not using agentic-bioflow. In the clarification
+of feature 005 he chose to switch the whole net off outside use, not only the ssh reminder:
+deleting `rawdata/` or `results/`, clearing `work/`, and confirming a launch included.
+
+**What changes.** The Safety Net gains a scope: it governs a session in which the plugin is in
+use, defined by three conditions plus a rule that unsure counts as in use. The four rules
+themselves are unchanged. The hooks carry the scope: each asks `hooks/in_use.sh` first and exits
+silently when the answer is no.
+
+**Impact on existing deployments.**
+- A session that is not in use is no longer protected by any hook. That is a session with no
+  plugin marker, working outside the deployment folders, running no plugin script and no `tw`.
+  In it, `rm -rf results/`, a direct `sbatch` or `nextflow run`, and a direct ssh are no longer
+  stopped. This is the cost the maintainer accepted. Whatever a workspace says in its own
+  instructions is then the only protection, and that is the model's discipline, not a hook.
+- In a session in use, nothing changes: every gate, refusal, confirmation and reminder fires as
+  before, and the whole existing test suite passes unchanged.
+- The one reminder whose rule changed in use is the direct-ssh one: ssh run through WSL, or with
+  `-o BatchMode=yes`, no longer asks, because neither can cost a code.
+- Writing into the installed plugin's own directory is still refused from any session, because
+  naming the plugin's own path is itself a reason to count as in use.
+- The session-start context (the deployment line and the Git Bash note) no longer appears in a
+  folder outside the deployment. The overview still appears the first time the plugin is used.
+- Credentials and personal details (the fourth rule) are a rule about files, not a hook, and are
+  unchanged.
+- When in doubt the hooks treat the session as in use, so a deployment that loses its state
+  directory, cannot write to it, or whose host sends no session id keeps the full net.
+
+**Version.** MAJOR, under Governance: the amendment redefines the Safety Net's scope.
+**Approval.** Maintainer's choice recorded in `specs/005-plugin-scope/spec.md` (Clarifications,
+2026-10-02); merge approval is the maintainer's, on the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -171,4 +240,4 @@ plan, and change only by a MAJOR amendment of this constitution.
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-09-28
+**Version**: 2.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-02

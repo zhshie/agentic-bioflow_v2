@@ -20,6 +20,16 @@ exec 2>/dev/null
 
 INPUT=$(cat)
 
+# Feature 005 (#48), Constitution 2.0.0: say nothing in a session that is not
+# using this plugin - not the deployment line, not the Git Bash note, not the
+# runs still in flight. At session start no marker can exist yet, so this
+# speaks only where the folder is inside the deployment (or when it cannot
+# tell: no session id); everywhere else the overview still arrives through
+# hooks/plugin_intro.sh the moment the plugin is first used. See hooks/in_use.sh.
+HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
+{ . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
+abf_in_use "$INPUT" "" || exit 0
+
 # A compaction, a /clear or a fork is the same conversation continuing.
 # Repeating the same runs there is noise, not news.
 REASON=$(jq -r '.session_start_reason // "startup"' <<<"$INPUT" 2>/dev/null) || REASON=startup

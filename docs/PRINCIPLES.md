@@ -328,3 +328,17 @@ Which agents may touch what is `docs/LAB_AGENTS.md`.
 Stated once, in the constitution's "Safety Net (Non-Negotiable)" section, and
 not subject to the reasoning above. It is not repeated here so that it cannot
 be repeated differently.
+
+What this file does keep is why the net has a scope, since that is history and
+not a rule. Until 2.0.0 the net held wherever the plugin was installed, and a
+plugin is installed per user, so it fired in every session in every project.
+On 2026-10-02 (#48) a subagent doing a small analysis with neither nf-core nor
+this plugin was stopped for confirmation on a read-only query of the cluster's
+configuration, by a gate written for pipeline runs; and auto mode cannot
+override a hook's "ask". The maintainer's answer was to scope the whole net to
+sessions in which the plugin is *in use* (Constitution 2.0.0): a marker the
+session's own first use of the plugin leaves, a folder inside the deployment,
+or a call that itself names the plugin, `tw` or a Seqera tool, with "cannot
+tell" counting as in use. The cost, accepted on purpose, is that a session
+that is not in use is no longer protected by any hook. The definition is in
+the constitution and runs in `hooks/in_use.sh`; this file does not restate it.

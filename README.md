@@ -70,6 +70,17 @@ Platform-managed cloud compute environment (`reach: none`) is a value the
 settings schema recognises, not a deployment this version supports — `setup`
 says so and points at the off-design procedure instead of onboarding one.
 
+## When the plugin speaks
+
+The plugin's hooks - the launch, delete and write gates, the session-start
+note, the next-step reminder - only act in a session in which it is *in use*
+(Constitution 2.0.0): you have typed an `/agentic-bioflow:` command or loaded
+one of its skills in that session, or the session's folder is inside your
+deployment, or the command itself runs one of the plugin's scripts or `tw`.
+Anywhere else the plugin installed on your machine stays silent, so an
+unrelated project is not interrupted. When it cannot tell, it counts as in use.
+`hooks/in_use.sh` is the definition.
+
 ## License
 
 Apache License 2.0 (`LICENSE`, `NOTICE`). Why this license, and what stays

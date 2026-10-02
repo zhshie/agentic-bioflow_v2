@@ -43,6 +43,20 @@
 # one - a second hook process would add its own startup latency to every
 # single Bash call this plugin's users make, launch-shaped or not.
 #
+# Feature 005 (#48, Constitution 2.0.0): two changes, from one incident. A
+# subagent doing a small analysis with neither nf-core nor this plugin ran a
+# read-only `wsl.exe -e ssh -o BatchMode=yes ...` query and was stopped here
+# for a code it could not have cost.
+#   1. Scope. Everything in this file now happens only when the plugin is in
+#      use: the first lines below read stdin and ask hooks/in_use.sh, before
+#      the jq probe and before anything is split, and exit silently when the
+#      answer is no (the constitution's Safety Net applies to a session in use).
+#      That covers the launch ask, the identity and resident-process asks and
+#      D3 alike. Unsure counts as in use.
+#   2. Detection. D3 no longer asks for ssh run through WSL (command word wsl
+#      or wsl.exe) or with -o BatchMode=yes: neither can cost a one-time code.
+#      Everything else D3 asked about, it still asks about.
+#
 # T1 (2.15, Fixes #15): two more ways this gate used to go blind, found from
 # the same GitHub issue - a Windows member gave up on this plugin's safety
 # net entirely and started typing commands in a plain PowerShell window
@@ -99,8 +113,20 @@ looks_launch_shaped() {
     return 1
 }
 
+# Feature 005 (#48), Constitution 2.0.0: this plugin is silent in a session that
+# is not using it. Asked FIRST, before the jq probe and before anything is
+# split or parsed, so that session pays for one read of stdin and some string
+# matching - no process beyond `cat` (#34). hooks/in_use.sh has the definition
+# of "in use" and the rule that unsure counts as in use. A hook directory
+# without in_use.sh, or one that cannot be sourced, answers "in use": the gate
+# below then runs exactly as it did before this existed.
+INPUT=$(cat)
+HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
+{ . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
+abf_in_use "$INPUT" "$INPUT" || exit 0
+
 if ! printf '{}' | jq -e . >/dev/null 2>&1; then
-    RAW=$(cat)
+    RAW=$INPUT
     if looks_launch_shaped "$RAW"; then
         cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/confirm_launch.sh cannot read what
@@ -122,7 +148,6 @@ EOF
     exit 0
 fi
 
-INPUT=$(cat)
 TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
 # Bash-first, then the other spellings a non-Bash execution tool might use
 # for the same idea. A tool this list does not cover yet is exactly the case
@@ -365,10 +390,84 @@ if ! is_launch_command "$CMD"; then
         fi
         TRANSPORT_RE='(^|[[:space:]]|[;&|(])(sudo[[:space:]]+)?([^[:space:]]*/)?(ssh|scp|rsync|sftp)([[:space:]]|$)'
         ONSITE_RE='(^|[[:space:]]|[;&|(])([^[:space:]]*/)?on_site\.sh([[:space:]]|$)'
-        TSEG=""; TV=""
-        while IFS="$US" read -r TSEG TV _; do
+        # Feature 005 (#48), FR-006: two shapes of ssh that cannot cost a code.
+        #   - run through WSL (command word wsl / wsl.exe): WSL's own ssh can
+        #     share a connection that is already open (PITFALLS 16g), so no
+        #     fresh login happens;
+        #   - ssh/scp/sftp with -o BatchMode=yes among ITS OWN options: it never
+        #     prompts, it fails instead.
+        # Both are judged per segment, on that segment's own words, so
+        # `echo wsl; ssh h ls` is still two segments and the ssh still asks.
+        #
+        # The BatchMode test reads the segment's words the way a shell would
+        # (quotes honoured) and walks the options up to the destination, so:
+        # an option after the destination belongs to the remote command, a
+        # quoted one inside the remote command is not ssh's, `rsync -o` is
+        # "owner" and not ssh's at all, and a jump host (-J, ProxyJump,
+        # ProxyCommand) can still prompt on the far side. Any other BatchMode
+        # value in the options, or anything this does not understand, is not
+        # an exemption: when in doubt, ask.
+        batchmode_exempt() { # batchmode_exempt <segment as written>; 0 = exempt
+            local s="$1" i c cur="" q="" have=0 w kind="" arglet="" pend="" yes=0 bad=0 val
+            local -a W=()
+            for ((i = 0; i < ${#s}; i++)); do
+                c="${s:i:1}"
+                if [ -n "$q" ]; then
+                    if [ "$c" = "$q" ]; then q=""; else cur="$cur$c"; fi
+                else
+                    case "$c" in
+                        "'"|'"') q="$c"; have=1 ;;
+                        [[:space:]]) if [ "$have" = 1 ]; then W+=("$cur"); cur=""; have=0; fi ;;
+                        *) cur="$cur$c"; have=1 ;;
+                    esac
+                fi
+            done
+            [ "$have" = 1 ] && W+=("$cur")
+            for w in "${W[@]}"; do
+                if [ -z "$kind" ]; then
+                    w="${w##*/}"
+                    case "$w" in
+                        ssh|ssh.exe) kind=ssh; arglet=BbcDEeFIiJLlmOopQRSWw ;;
+                        scp|scp.exe) kind=scp; arglet=cFiJloPS ;;
+                        sftp|sftp.exe) kind=sftp; arglet=BbcDFiJloPRSs ;;
+                        rsync|rsync.exe) return 1 ;;
+                    esac
+                    continue
+                fi
+                if [ "$pend" = -o ]; then
+                    pend=""; val="$w"
+                elif [ -n "$pend" ]; then
+                    [ "$pend" = -J ] && bad=1
+                    pend=""; continue
+                else
+                    case "$w" in
+                        --) break ;;
+                        -o) pend=-o; continue ;;
+                        -o?*) val="${w#-o}" ;;
+                        -J|-J?*) bad=1; continue ;;
+                        -?) if [[ $arglet == *"${w#-}"* ]]; then pend="$w"; fi; continue ;;
+                        -*) c="${w:1:1}"
+                            # a cluster or a flag with its argument glued on; an o or J
+                            # anywhere in it is one this does not parse
+                            case "${w:1}" in *[oJ]*) bad=1 ;; esac
+                            continue ;;
+                        *) break ;;   # the destination: ssh's own options end here
+                    esac
+                fi
+                # val is one -o value
+                case "$val" in
+                    [Bb]atch[Mm]ode=[Yy][Ee][Ss]) yes=1 ;;
+                    *[Bb]atch[Mm]ode*|*[Pp]roxy[Jj]ump*|*[Pp]roxy[Cc]ommand*) bad=1 ;;
+                esac
+            done
+            [ "$yes" = 1 ] && [ "$bad" = 0 ]
+        }
+        TSEG=""; TV=""; TCW=""
+        while IFS="$US" read -r TSEG TV TCW; do
             [[ $TV =~ $ONSITE_RE ]] && continue
+            case "${TCW##*[/\\]}" in wsl|wsl.exe) continue ;; esac
             if [[ $TV =~ $TRANSPORT_RE ]]; then
+                batchmode_exempt "$TSEG" && continue
                 ask "GATE: this command reaches the site directly over ssh/scp/rsync/sftp, bypassing scripts/on_site.sh. In this shell (Git Bash/MSYS) a direct ssh connection cannot hold a multiplexed master - the control socket comes up but fd-passing to a real session fails (PITFALLS 16b) - so a call like this one falls back to a full login: a one-time code on the user's phone that this agent cannot read. scripts/on_site.sh is the only sanctioned route to the site from here (docs/SITE_ADAPTER.md contract 6); it also knows how to borrow WSL's own ssh for the multiplexed part (PITFALLS 16g), which this bare call does not. Show the user the command and route it through scripts/on_site.sh instead, or let them run it themselves." \
                     "$CMD
 
