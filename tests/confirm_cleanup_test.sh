@@ -351,4 +351,121 @@ t "ls -la $P/results && cat $P/results/x.html"    pass "#29b reading results/"
 t "jq '.a | .b' $P/results/x.json"                pass "#29b jq filter with a pipe"
 t "awk '{a=1; b=2}' $P/results/x.tsv"             pass "#29b awk program with a semicolon"
 
+
+echo
+echo "== #35: medium/low shapes left after #29 (each with a control) =="
+tc() { # tc <cwd> <command> <expect pass|warn|deny|ask> <label> - the hook input also carries the session's cwd
+  printf '%-58s ' "$4"
+  out=$(python3 -c "import json,sys;print(json.dumps({'cwd':sys.argv[1],'tool_input':{'command':sys.argv[2]}}))" "$1" "$2" | bash "$H")
+  if [ -z "$out" ]; then got=pass; else
+    got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out")
+  fi
+  if [ "$got" = "$3" ]; then echo "ok ($got)"; else
+    echo "FAIL: expected $3, got $got"; fails=$((fails+1))
+  fi
+}
+RD=$(printf '\x72\x64')           # cmd's remove-directory verb, assembled like $D
+DL=$(printf '\x64\x65\x6c')       # cmd's delete verb
+# A shell run by flock -c / su -c / tmux / screen outside a nested shell
+t "flock /tmp/l -c '$D -rf $P/analysis'"           deny "#35 flock -c delete of analysis/"
+t "flock /tmp/l -c '$D -rf $P/work'"               ask  "#35 flock -c delete of work/ asks"
+t "su - lab -c '$D -rf $P/results'"                deny "#35 su - lab -c delete of results/"
+t "su lab -c \"$D -rf $P/results\""                deny "#35 su -c, double-quoted"
+t "tmux new -d '$D -rf $P/results'"                deny "#35 tmux new -d delete"
+t "tmux new-session -d -s a \"$D -rf $P/rawdata\"" deny "#35 tmux new-session delete"
+t "tmux send-keys -t a '$D -rf $P/results' Enter"  deny "#35 tmux send-keys delete"
+t "screen -X stuff '$D -rf $P/results'"            deny "#35 screen -X stuff delete"
+t "screen -dmS a $D -rf $P/results"                deny "#35 control: screen with the verb as an argument (already denied)"
+t "flock /tmp/l -c 'ls $P/results'"                pass "#35 control: flock -c ls"
+t "su lab -c 'echo hi'"                            pass "#35 control: su -c echo"
+t "tmux new -d 'htop'"                             pass "#35 control: tmux new htop"
+t "tmux ls"                                        pass "#35 control: tmux ls"
+# cmd /c <verb> under the Bash tool
+t "cmd /c $RD /s /q $P/results"                    deny "#35 cmd /c rd /s /q results"
+t "cmd.exe /c $DL /q $P/results/x.txt"             deny "#35 cmd.exe /c del under results/"
+t "cmd /c \"$RD /s /q $P/analysis\""               deny "#35 cmd /c with the whole command quoted"
+t "cmd /c $RD /s /q $P/work"                       ask  "#35 cmd /c rd of work/ asks"
+t "cmd.exe /c rmdir /s /q $P/rawdata"              deny "#35 control: cmd.exe /c rmdir (already denied)"
+t "cmd /c dir $P/results"                          pass "#35 control: cmd /c dir"
+t "cmd /c echo $RD $P/results"                     pass "#35 control: cmd /c echo rd"
+# rsync --remove-source-files empties its sources (already asks since #29e/#33)
+t "rsync -a --remove-source-files $P/rawdata/ /backup/" ask "#35 control: rsync --remove-source-files from rawdata/ (already asks)"
+t "rsync -a --remove-source-files /tmp/x/ /backup/"     pass "#35 control: ...from an unprotected folder"
+# a pipe into an executor that has a wrapper with arguments, or python
+t "echo '$D -rf $P/results' | sudo -u lab bash"    deny "#35 piped into sudo -u x bash"
+t "echo '$D -rf $P/results' | srun bash"           deny "#35 piped into srun bash"
+t "echo '$D -rf $P/results' | srun --pty bash"     deny "#35 piped into srun --pty bash"
+t "echo '$D -rf $P/results' | ssh h bash"          deny "#35 piped into ssh h bash"
+t "echo '$D -rf $P/results' | sudo -E bash -s"     deny "#35 piped into sudo -E bash -s"
+t "echo '$D -rf $P/results' | grep bash"           pass "#35 control: piped into grep bash"
+t "echo '$D -rf $P/results' | sudo -u lab tee out.txt" pass "#35 control: piped into sudo tee"
+t "$(printf 'cat <<%s | sudo -u lab bash\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")" deny "#35 here-doc piped into sudo -u x bash"
+t "$(printf 'cat <<%s | srun bash\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")"      deny "#35 here-doc piped into srun bash"
+t "$(printf 'cat <<%s | python3\nimport shutil\nshutil.rmtree("%s/results")\nEOF\n' "'EOF'" "$P")" ask "#35 here-doc piped into python3"
+t "echo 'import shutil; shutil.rmtree(\"$P/results\")' | python3" ask "#35 python code piped into python3"
+t "$(printf 'cat > notes.md <<%s\n%s -rf %s/results\nEOF\n' "'EOF'" "$D" "$P")" pass "#35 control: here-doc written to a file"
+# R
+t "R -e 'unlink(\"$P/results\", recursive=TRUE)'"  ask  "#35 R -e unlink"
+t "R --no-save -e 'unlink(\"$P/results\", recursive=TRUE)'" ask "#35 R --no-save -e unlink"
+t "R -e 'print(1)'"                                pass "#35 control: R -e print"
+t "R --version"                                    pass "#35 control: R --version"
+# relative targets, resolved with the hook input's cwd and any cd before them
+tc "$P/results" "$D -rf fastqc"                    deny "#35 cwd results/: rm -rf fastqc"
+tc "$P/results" "$D -rf ./fastqc"                  deny "#35 cwd results/: rm -rf ./fastqc"
+tc "$P/results/sub" "$D -rf ../fastqc"             deny "#35 cwd results/sub: rm -rf ../fastqc"
+tc "$P/analysis" "$D -f fig1.png"                  deny "#35 cwd analysis/: rm a file"
+tc "$P/rawdata" "$D -f a.fastq.gz"                 deny "#35 cwd rawdata/: rm a file"
+tc "$P" "cd results && $D -rf fastqc"              deny "#35 cd results && rm -rf fastqc"
+tc "$P" "cd results; $D -rf fastqc"                deny "#35 cd results; rm -rf fastqc"
+tc "$P" "(cd results && $D -rf fastqc)"            deny "#35 (cd results && rm ...) in a subshell"
+tc "$P" "cd $P/results && $D -rf fastqc"           deny "#35 cd <absolute>/results && rm ..."
+tc "$P" "cd \"results\" && $D -rf fastqc"          deny "#35 cd \"results\" quoted"
+tc "$P" "cd results && cd sub && $D -rf x"         deny "#35 two cds down into results/sub"
+tc "$P/work" "$D -rf fastqc"                       ask  "#35 cwd work/: rm -rf fastqc asks"
+tc "$P" "cd work && $D -rf fastqc"                 ask  "#35 cd work && rm -rf fastqc asks"
+tc "$P" "$D -rf tmp_x"                             pass "#35 control: rm in an ordinary cwd"
+tc "$P/results" "ls"                               pass "#35 control: cwd results/, ls"
+tc "$P" "cd results && ls"                         pass "#35 control: cd results && ls"
+tc "$P/results" "cd .. && $D -rf tmp_x"            pass "#35 control: cd .. leaves results/"
+tc "$P" "cd tmp && $D -rf x"                       pass "#35 control: cd into an unprotected folder"
+tc "$P/results" "$D -rf $P/tmp"                    pass "#35 control: an absolute target outside results/"
+tc "$P" "cd \$HOME && $D -rf x"                    pass "#35 control: cd to a variable is unknown, as on main"
+# low shapes
+t "perl -MFile::Path=remove_tree -e 'remove_tree(\"$P/results\")'" ask "#35 perl remove_tree"
+t "perl -MFile::Path=make_path -e 'make_path(\"$P/x\")'" pass "#35 control: perl make_path"
+t "git clean -fdx"                                 ask  "#35 git clean -fdx"
+t "git clean -fd $P/results"                       deny "#35 git clean -fd of results/"
+tc "$P/results" "git clean -fdx"                   deny "#35 git clean -fdx inside results/"
+t "git clean -n"                                   pass "#35 control: git clean -n (dry run)"
+t "git clean --dry-run -fd"                        pass "#35 control: git clean --dry-run"
+t "git status"                                     pass "#35 control: git status"
+t "a=($D -rf $P/results); \"\${a[@]}\""            deny "#35 command held in an array"
+t "files=(a.txt b.txt); ls \"\${files[@]}\""       pass "#35 control: an array of file names"
+t "$D -rf $P/re\\sults"                            deny "#35 backslash inside the name (re\\sults)"
+t "$D -rf $P/r\\esults/x"                          deny "#35 backslash, nested (r\\esults/x)"
+t "$D -rf $P/re\\ports"                            pass "#35 control: a backslash in an unprotected name"
+# false alarms the review listed
+t "rsync -av --dry-run --delete $P/results/ bk/"   pass "#35 rsync --dry-run --delete is not a delete"
+t "rsync -avn --delete $P/results/ bk/"            pass "#35 rsync -avn --delete is not a delete"
+t "rsync -av --dry-run --remove-source-files $P/results/ bk/" pass "#35 rsync --dry-run --remove-source-files"
+t "rsync -av --delete /tmp/empty/ $P/results/"     deny "#35 control: the real rsync --delete into results/"
+t "xargs -I{} $D -rf {} < dirs.txt"                ask  "#35 xargs -I{} rm: ask, not deny"
+t "cat dirs.txt | xargs -I{} $D -rf {}"            ask  "#35 piped xargs -I{} rm: ask, not deny"
+t "find $P/results -name '*.tmp' -exec $D -f {} \\;" deny "#35 control: find -exec rm {} under results/"
+t "find /tmp/x -name '*.tmp' -exec $D -f {} \\;"   ask  "#35 find -exec rm {} elsewhere: ask, not a bogus root deny"
+t "mv -t $P/results a b"                           pass "#35 mv -t results/ a b writes INTO results/"
+t "mv --target-directory=$P/results a b"           pass "#35 control: mv --target-directory=results/ a b (already quiet)"
+t "mv -t results a b"                              pass "#35 mv -t results a b (relative)"
+t "mv -t /tmp $P/results"                          ask  "#35 control: mv -t /tmp results asks (results is a source)"
+t "mv -t /tmp results a"                           ask  "#35 control: ...relative"
+t "mv x.txt $P/results/{a,b}.txt"                  ask  "#35 control: a brace in the last argument expands to two sources, asks"
+tps "Get-ChildItem C:\\lab\\proj\\x | Move-Item -Destination C:\\lab\\proj\\y" pass "#35 pipeline-fed Move-Item, nothing protected"
+tps "Get-ChildItem C:\\lab\\proj\\x | Where-Object { \$_.Length -gt 0 } | Move-Item -Destination C:\\lab\\proj\\y" pass "#35 ...with a filter in the pipeline"
+tps "gci x | Move-Item -Destination y"            pass "#35 ...relative lister path"
+tps "ls | Move-Item -Destination elsewhere"        ask  "#35 control: a lister with no path (may be the cwd): asks"
+tps "Get-ChildItem C:\\lab\\proj\\results | Move-Item -Destination C:\\tmp" ask "#35 control: lister names results/: asks"
+tps "Get-ChildItem \$dir | Move-Item -Destination C:\\tmp" ask "#35 control: lister path is a variable: asks"
+tps "Get-ChildItem C:\\lab\\x | ForEach-Object { \$_.FullName } | Move-Item -Destination C:\\tmp" ask "#35 control: ForEach-Object can rewrite the path: asks"
+tps "Move-Item"                                    ask  "#35 control: Move-Item with no source at all asks"
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
