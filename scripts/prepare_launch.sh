@@ -231,6 +231,32 @@ $SAMPLE_LINES$([ "$N" -gt 3 ] && echo "
   ... and $((N - 3)) more")"
     fi
 fi
+
+# Which column is the sample name and which hold R1 / R2, worked out from this
+# same schema by scripts/utils/schema_roles.py - the one place that rule lives
+# (specs/003-samplesheet-roles). Exit 3 means the schema does not say; the user
+# is asked, never guessed for.
+if [ -n "$SCHEMA_INPUT" ] && [ -n "$PY" ]; then
+    ROLES_OUT="$("$PY" "$HERE/utils/schema_roles.py" --schema - <<<"$SCHEMA_INPUT" 2>/dev/null)"
+    ROLES_RC=$?
+    ROLES_LINE=""
+    if [ "$ROLES_RC" = 0 ]; then
+        ROLES_LINE="$(sed -n 's/.*sample=\([^ ]*\).*/樣本名 → \1/p' <<<"$ROLES_OUT")"
+        r1="$(sed -n 's/.*read1=\([^ ]*\).*/\1/p' <<<"$ROLES_OUT")"
+        r2="$(sed -n 's/.*read2=\([^ ]*\).*/\1/p' <<<"$ROLES_OUT")"
+        [ -n "$r1" ] && ROLES_LINE="$ROLES_LINE, R1 → $r1"
+        [ -n "$r2" ] && ROLES_LINE="$ROLES_LINE, R2 → $r2"
+    elif [ "$ROLES_RC" = 3 ]; then
+        nd="$(grep '^needs-decision:' <<<"$ROLES_OUT")"
+        nd_role="$(sed -n 's/.*role=\([^ ]*\).*/\1/p' <<<"$nd")"
+        nd_cands="$(sed -n 's/.*candidates=\([^ ]*\).*/\1/p' <<<"$nd" | sed 's/,/, /g')"
+        case "$nd_role" in sample) nd_label="樣本名" ;; *) nd_label="R1／R2" ;; esac
+        ROLES_LINE="需要你指定（$nd_label 候選：$nd_cands）"
+        add_decision "pick which column is which (== samplesheet == roles) - ask the user, then run the samplesheet tool with --roles"
+    fi
+    [ -n "$ROLES_LINE" ] && SS_BODY="${SS_BODY}
+roles: $ROLES_LINE"
+fi
 add_section samplesheet "$SS_BODY"
 
 # --- in flight ---------------------------------------------------------------

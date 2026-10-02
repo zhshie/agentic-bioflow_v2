@@ -248,6 +248,14 @@ AVAILABLE - none of which the gate can see.
      When it says the draft was skipped (no `--input` given, or the
      directory was not readable from here), build it now with whichever of
      those two the pipeline ships.
+   - The same section's `roles:` line says which column is the sample name
+     and which hold R1 / R2, as the pipeline's own schema defines them. Run
+     `scripts/generate_samplesheet.py` with `--schema <the pipeline's
+     schema_input.json at the pinned revision>` and it works that out itself.
+     **When it exits 3 (or the `roles:` line says `需要你指定`), the schema
+     does not say which column is which: show the user the candidates it
+     printed, ask which is which, and re-run with
+     `--roles sample=<col>,read1=<col>,read2=<col>`.** Never pick for them.
    - Columns the filenames cannot tell you — `patient`, `lane`, `condition` —
      **ask the user**. Do not infer them.
    - Keep grouping metadata the pipeline does not accept in a separate

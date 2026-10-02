@@ -12,8 +12,8 @@ Every task is test-first: write the test for its TCs, run it, record RED, implem
 
 ## Stage S2 — the overview and the command text (US2)
 
-- [ ] T005 [TC-014, TC-015] `tests/prepare_launch_test.sh`: roles line for an inferable fixture and `需要你指定` + candidates for mag; RED first
-- [ ] T006 implement the `roles:` line in `scripts/prepare_launch.sh` via `schema_roles.py`; `commands/launch.md` step 4 wording (`--schema`, exit 3 → ask → `--roles`); `tests/command_layer_is_site_neutral.sh` and `tests/no_per_pipeline_config.sh` stay green
+- [x] T005 [TC-014, TC-015] `tests/prepare_launch_test.sh`: roles line for an inferable fixture and `需要你指定` + candidates for mag; RED first
+- [x] T006 implement the `roles:` line in `scripts/prepare_launch.sh` via `schema_roles.py`; `commands/launch.md` step 4 wording (`--schema`, exit 3 → ask → `--roles`); `tests/command_layer_is_site_neutral.sh` and `tests/no_per_pipeline_config.sh` stay green
 
 ## Close
 
