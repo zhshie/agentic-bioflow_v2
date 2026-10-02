@@ -161,10 +161,52 @@ esac
 # can be built by the shipped generator, by the pipeline's own, or by writing
 # the csv directly, and all three are the same step.
 G1=0; G2=0; G3=0
-[ "$TOOL" = Bash ] && {
-    grep -qE 'tw[[:space:]]+datasets[[:space:]]+add|generate_samplesheet\.py|fastq_dir_to_samplesheet' <<<"$CMD" && G1=1
-    grep -qE '>[[:space:]]*[^[:space:]]*params[^[:space:]]*\.ya?ml|params[^[:space:]]*\.ya?ml[[:space:]]*<<' <<<"$CMD" && G2=1
-}
+# #42 (.specify/bugs/walkthrough-quoted-text): these used to grep the raw
+# command, quoted arguments included, so `gh issue comment --body "...
+# generate_samplesheet.py ..."` or a commit message was denied as if it built a
+# samplesheet. Judged per segment of the shared splitter instead (#29):
+#   - a match OUTSIDE quotes counts, as before;
+#   - a match that only appears once quotes are dropped counts when the
+#     segment's command word runs something - a quoted script path is still a
+#     run (002's acceptance: judging only outside quotes loses quoted paths) -
+#     and, for the params file, when there is a real redirect outside quotes;
+#   - a here-doc body counts only when it is fed to something that runs it.
+# echo/printf/git/gh/grep and friends, whose quoted text runs nothing, pass.
+G1_RE='tw[[:space:]]+datasets[[:space:]]+add|generate_samplesheet\.py|fastq_dir_to_samplesheet'
+G2_RE='>[[:space:]]*[^[:space:]]*params[^[:space:]]*\.ya?ml|params[^[:space:]]*\.ya?ml[[:space:]]*<<'
+QUOTED_CMD_RE='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*["'\'']'
+RUNS_RE='^(bash|sh|zsh|dash|ksh|python|python3|py|Rscript|env|exec|command|nohup|timeout|time|nice|stdbuf|xargs|sudo|eval|source|\.|tw)$'
+# The raw text mentioning neither step settles it without splitting: this hook
+# runs on every Bash call, and the splitter costs two forks (#34).
+if [ "$TOOL" = Bash ] && { [[ $CMD =~ $G1_RE ]] || [[ $CMD =~ $G2_RE ]]; }; then
+    CMD_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
+    [ -n "$CMD_NB" ] || CMD_NB="$CMD"
+    WT_US=$(printf '\037')
+    WT_SEGS=$(printf '%s\n' "$CMD_NB" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+    if [ -z "$WT_SEGS" ]; then
+        # Splitter missing: fall back to the old raw judgement rather than
+        # letting the gate go quiet - a false deny, never a false allow.
+        grep -qE "$G1_RE" <<<"$CMD" && G1=1
+        grep -qE "$G2_RE" <<<"$CMD" && G2=1
+    else
+        while IFS="$WT_US" read -r WT_SEG WT_V WT_CW; do
+            WT_PLAIN="${WT_SEG//[\"\']/}"
+            WT_RUNS=0; [[ ${WT_CW##*/} =~ $RUNS_RE ]] && WT_RUNS=1
+            # A segment whose command word is itself quoted
+            # (`"scripts/generate_samplesheet.py" ...`, after any VAR=value)
+            # runs that quoted thing.
+            [[ $WT_SEG =~ $QUOTED_CMD_RE ]] && WT_RUNS=1
+            if [[ $WT_V =~ $G1_RE ]] || { [ "$WT_RUNS" = 1 ] && [[ $WT_PLAIN =~ $G1_RE ]]; }; then G1=1; fi
+            if [[ $WT_V =~ $G2_RE ]] || { [[ $WT_PLAIN =~ $G2_RE ]] && { [ "$WT_RUNS" = 1 ] || [[ $WT_V == *'>'* ]]; }; }; then G2=1; fi
+            # A here-doc body fed to a runner (`bash <<EOF`, `python3 - <<EOF`)
+            # is commands, not text: judge the whole command as before.
+            if [ "$WT_RUNS" = 1 ] && [[ $WT_SEG == *'<<'* ]] && [ "$CMD" != "$CMD_NB" ]; then
+                grep -qE "$G1_RE" <<<"$CMD" && G1=1
+                grep -qE "$G2_RE" <<<"$CMD" && G2=1
+            fi
+        done <<< "$WT_SEGS"
+    fi
+fi
 case "$FILE" in
     *samplesheet*.csv|*samplesheet*.tsv) G1=1 ;;
 esac
