@@ -43,6 +43,20 @@
 # one - a second hook process would add its own startup latency to every
 # single Bash call this plugin's users make, launch-shaped or not.
 #
+# Feature 005 (#48, Constitution 2.0.0): two changes, from one incident. A
+# subagent doing a small analysis with neither nf-core nor this plugin ran a
+# read-only `wsl.exe -e ssh -o BatchMode=yes ...` query and was stopped here
+# for a code it could not have cost.
+#   1. Scope. Everything in this file now happens only when the plugin is in
+#      use: the first lines below read stdin and ask hooks/in_use.sh, before
+#      the jq probe and before anything is split, and exit silently when the
+#      answer is no (the constitution's Safety Net applies to a session in use).
+#      That covers the launch ask, the identity and resident-process asks and
+#      D3 alike. Unsure counts as in use.
+#   2. Detection. D3 no longer asks for ssh run through WSL (command word wsl
+#      or wsl.exe) or with -o BatchMode=yes: neither can cost a one-time code.
+#      Everything else D3 asked about, it still asks about.
+#
 # T1 (2.15, Fixes #15): two more ways this gate used to go blind, found from
 # the same GitHub issue - a Windows member gave up on this plugin's safety
 # net entirely and started typing commands in a plain PowerShell window
@@ -376,10 +390,31 @@ if ! is_launch_command "$CMD"; then
         fi
         TRANSPORT_RE='(^|[[:space:]]|[;&|(])(sudo[[:space:]]+)?([^[:space:]]*/)?(ssh|scp|rsync|sftp)([[:space:]]|$)'
         ONSITE_RE='(^|[[:space:]]|[;&|(])([^[:space:]]*/)?on_site\.sh([[:space:]]|$)'
-        TSEG=""; TV=""
-        while IFS="$US" read -r TSEG TV _; do
+        # Feature 005 (#48), FR-006: two shapes of ssh that cannot cost a code.
+        #   - run through WSL (command word wsl / wsl.exe): WSL's own ssh can
+        #     share a connection that is already open (PITFALLS 16g), so no
+        #     fresh login happens;
+        #   - with -o BatchMode=yes: ssh never prompts, it fails instead.
+        # Both are judged per segment, on that segment's own words, so
+        # `echo wsl; ssh h ls` is still two segments and the ssh still asks.
+        # The option has to be really there - on the quote-free column, or as
+        # the one quoted spelling of the option itself - so a payload that
+        # merely mentions it does not count; and it stops counting when any
+        # OTHER BatchMode value shows up in the segment (ssh takes the first,
+        # and unsure asks).
+        BM_YES_RE='-o[[:space:]]*[Bb]atch[Mm]ode=[Yy][Ee][Ss]([[:space:]]|$)'
+        BM_SQ="'"; BM_DQ='"'; BM_Q="$BM_DQ$BM_SQ"
+        BM_QUOTED_RE="-o[[:space:]]*(${BM_DQ}[Bb]atch[Mm]ode=[Yy][Ee][Ss]${BM_DQ}|${BM_SQ}[Bb]atch[Mm]ode=[Yy][Ee][Ss]${BM_SQ})"
+        TSEG=""; TV=""; TCW=""
+        while IFS="$US" read -r TSEG TV TCW; do
             [[ $TV =~ $ONSITE_RE ]] && continue
+            case "${TCW##*/}" in wsl|wsl.exe) continue ;; esac
             if [[ $TV =~ $TRANSPORT_RE ]]; then
+                if [[ $TV =~ $BM_YES_RE || $TSEG =~ $BM_QUOTED_RE ]]; then
+                    BM_REST="${TSEG//[$BM_Q]/}"
+                    BM_REST="${BM_REST//[Bb]atch[Mm]ode=[Yy][Ee][Ss]/}"
+                    [[ $BM_REST == *[Bb]atch[Mm]ode* ]] || continue
+                fi
                 ask "GATE: this command reaches the site directly over ssh/scp/rsync/sftp, bypassing scripts/on_site.sh. In this shell (Git Bash/MSYS) a direct ssh connection cannot hold a multiplexed master - the control socket comes up but fd-passing to a real session fails (PITFALLS 16b) - so a call like this one falls back to a full login: a one-time code on the user's phone that this agent cannot read. scripts/on_site.sh is the only sanctioned route to the site from here (docs/SITE_ADAPTER.md contract 6); it also knows how to borrow WSL's own ssh for the multiplexed part (PITFALLS 16g), which this bare call does not. Show the user the command and route it through scripts/on_site.sh instead, or let them run it themselves." \
                     "$CMD
 
