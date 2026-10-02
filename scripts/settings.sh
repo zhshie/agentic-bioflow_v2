@@ -1033,8 +1033,8 @@ settings_summary() {
     # to be true. It used to have to explain which of three files each value
     # came from.
     if [ -r "${MACHINE_SETTINGS_FILE:-/nonexistent}" ]; then
-        printf 'Three keys that cannot travel are in %s.\n' "$MACHINE_SETTINGS_FILE"
-        echo "They are found automatically on each machine; you are never asked for them."
+        printf 'The keys that belong to this machine only are in %s.\n' "$MACHINE_SETTINGS_FILE"
+        echo "They are found automatically, or recorded when setup's proof run passes; you are never asked for them."
     fi
     echo "Take the root with you and any other machine needs one command:"
     echo "  scripts/settings.sh --use $ABF_ROOT"
