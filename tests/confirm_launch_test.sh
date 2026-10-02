@@ -432,6 +432,30 @@ msys_pass "scripts/on_site.sh ssh"                     "bare 'ssh' as on_site.sh
 msys_pass "grep -rn \"ssh\" docs/"                     "read-only mention of ssh, quoted, on MSYS: not flagged"
 msys_pass "cat ssh_notes.md"                           "a filename containing ssh, not the command word: not flagged"
 
+# Feature 005 (#48), FR-006: two shapes of ssh that cannot cost a one-time code,
+# so the reminder does not apply to them. Through WSL (command word wsl or
+# wsl.exe) the connection can share one that is already open (PITFALLS 16g);
+# with -o BatchMode=yes ssh never prompts, it fails instead. These run with no
+# session id, i.e. "in use" (hooks/in_use.sh), so they exercise D3 itself.
+msys_pass "wsl.exe -e ssh -o ControlPath=/tmp/cm-%C -o BatchMode=yes u@login 'scontrol show partition; sacctmgr show qos'" "FR-006 the incident command (wsl.exe, BatchMode): not flagged"
+msys_pass "wsl ssh u@host ls"                          "FR-006 ssh through wsl: not flagged"
+msys_pass "/c/Windows/System32/wsl.exe -e ssh u@host ls" "FR-006 ssh through wsl.exe by path: not flagged"
+msys_pass "ssh -o BatchMode=yes u@host ls"             "FR-006 ssh -o BatchMode=yes: not flagged"
+msys_pass "ssh -oBatchMode=yes u@host ls"              "FR-006 ssh -oBatchMode=yes (glued): not flagged"
+msys_pass "ssh -o \"BatchMode=yes\" u@host ls"         "FR-006 ssh -o \"BatchMode=yes\" (quoted): not flagged"
+msys_pass "scp -o BatchMode=yes a u@host:b"            "FR-006 scp -o BatchMode=yes: not flagged"
+# ...and what must keep asking (TC-015)
+msys_ask  "ssh u@host ls"                              "FR-006 control: plain ssh still asks"
+msys_ask  "ssh -o BatchMode=no u@host ls"              "FR-006 control: BatchMode=no still asks"
+msys_ask  "ssh -o BatchMode=yesplease u@host ls"       "FR-006 control: a value that merely starts with yes still asks"
+msys_ask  "ssh -o BatchMode=no -o BatchMode=yes u@host ls" "FR-006 control: a second, conflicting BatchMode still asks"
+msys_ask  "echo wsl; ssh u@host ls"                    "FR-006 control: wsl as an earlier segment does not excuse the ssh"
+msys_ask  "echo wsl && ssh u@host ls"                  "FR-006 control: ...also with &&"
+msys_ask  "echo BatchMode=yes; ssh u@host ls"          "FR-006 control: BatchMode=yes in another segment does not excuse it"
+msys_ask  "ssh -o BatchMode=yes u@host ls; scp a u@host:b" "FR-006 control: the exception is per segment (the scp asks)"
+msys_ask  "ssh u@host 'echo -o BatchMode=yes'"         "FR-006 control: the words inside a quoted payload do not count"
+msys_ask  "wsl.exe -e true; ssh u@host ls"             "FR-006 control: wsl.exe in its own segment does not excuse the next"
+
 printf '%-58s ' "the same bare ssh call, but NOT on MSYS: not flagged (D3 is MSYS-only)"
 out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "ssh twnia3 ls" | bash "$H")
 if [ -z "$out" ]; then echo "ok (no output at all)"; else
