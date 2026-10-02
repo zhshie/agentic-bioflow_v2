@@ -29,6 +29,43 @@
 # can only produce extra segments, never hide one. If awk itself is missing,
 # the callers fall back to their old splitting and say so in their comments.
 
+# #35: does a pipe in str hand its input to something that runs it? After the
+# pipe come any wrappers (sudo -u x, srun --pty, env, timeout 60 ...) with their
+# options, then a shell or an interpreter. The plain `| bash` is one case of it.
+# hooks/strip_heredocs.awk carries the same two functions; keep them in step
+# (tests/confirm_cleanup_test.sh and confirm_launch_test.sh pin both).
+function is_runner(w) {
+    sub(/^\\/, "", w); sub(/^.*\//, "", w); sub(/\.exe$/, "", w)
+    return (w ~ /^(bash|sh|zsh|dash|ksh|pwsh|powershell|ssh|python[0-9.]*|perl|ruby|node|Rscript|R)$/)
+}
+function pipes_into_runner(str,   t, seg, k, W, i, w, wrapped) {
+    t = str
+    while (match(t, /\|&?[ \t]*/)) {
+        seg = substr(t, RSTART + RLENGTH)
+        t = seg
+        sub(/[|;&\n].*$/, "", seg)
+        k = split(seg, W, /[ \t]+/)
+        wrapped = 0
+        for (i = 1; i <= k; i++) {
+            w = W[i]
+            if (w == "") continue
+            if (w ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue
+            if (is_runner(w)) return 1
+            if (w ~ /^(sudo|doas|env|command|exec|nohup|srun|ionice|nice|stdbuf|setsid|time|runuser|flock|timeout)$/) {
+                wrapped = 1
+                if (w == "timeout") i++
+                continue
+            }
+            if (wrapped && w ~ /^-/) {
+                if (w !~ /^--/ && w !~ /=/ && length(w) == 2 && i < k && W[i+1] !~ /^-/ && !is_runner(W[i+1])) i++
+                continue
+            }
+            break
+        }
+    }
+    return 0
+}
+
 function trim(s) { sub(/^[ \t\r]+/, "", s); sub(/[ \t\r]+$/, "", s); return s }
 
 # Index of the ")" closing the "(" at position p, or 0.
@@ -104,10 +141,24 @@ function emit(seg, vs, depth,   s, v, k, i, joined, qs, ps, pv) {
         s ~ /(^|[ \t])eval([ \t]|$)/ ||
         s ~ /(^|[ \t\/])(ssh|on_site\.sh)([ \t]|$)/ ||
         s ~ /(^|[ \t\/])(powershell|pwsh)(\.exe)?([ \t]|$)/ ||
-        s ~ /(^|[ \t\/])(python[0-9.]*|perl|ruby|node|Rscript)(\.exe)?([ \t]+-[^ \t]+)*[ \t]+-[A-Za-z]*[ce]([ \t]|$)/) {
+        s ~ /(^|[ \t\/])(python[0-9.]*|perl|ruby|node|Rscript|R)(\.exe)?([ \t]+-[^ \t]+)*[ \t]+-[A-Za-z]*[ce]([ \t]|$)/ ||
+        # #35: other things that hand a string to a shell - `flock l -c '...'`,
+        # `su lab -c '...'`, `tmux new 'cmd'`, `tmux send-keys 'cmd' Enter`,
+        # `screen -X stuff 'cmd'`. Reading their quoted text as commands can
+        # only add segments, never hide one.
+        s ~ /(^|[ \t\/])(flock|su|runuser|sg)([ \t]+[^ \t]+)*[ \t]+-[A-Za-z]*c([ \t]|$)/ ||
+        s ~ /(^|[ \t\/])(tmux|screen)([ \t]|$)/) {
         k = quoted(s)
         for (i = 1; i <= k; i++) qs[i] = QS[i]
         for (i = 1; i <= k; i++) split_cmd(qs[i], depth + 1)
+    }
+    # #35: `a=(rm -rf results); "${a[@]}"` - the words of an array assignment
+    # may be a command. Read the inside as one.
+    if (match(s, /^[A-Za-z_][A-Za-z0-9_]*=\(/)) {
+        k = RLENGTH
+        joined = substr(s, k + 1)
+        sub(/\)[ \t]*$/, "", joined)
+        split_cmd(joined, depth + 1)
     }
     if (s ~ /(system|popen|Popen|subprocess\.[a-z_]+|exec[lvpe]*|spawn[a-z]*|check_(output|call)|run)[ \t]*\(/) {
         k = quoted(s); joined = ""
@@ -126,7 +177,7 @@ function split_cmd(str, depth, force,   n, i, c, nx, pv, q, seg, vs, k, sub_d, r
         print "(nested too deeply to read)\037(nested too deeply to read)\037__too_deep__"
         return
     }
-    PIPED[depth] = force || (str ~ /\|&?[ \t]*((sudo|env|command|exec|nohup)[ \t]+)*([^ \t|]*\/)?(bash|sh|zsh|dash|ksh|pwsh|powershell)(\.exe)?([ \t]|$)/)
+    PIPED[depth] = force || (str ~ /\|&?[ \t]*((sudo|env|command|exec|nohup)[ \t]+)*([^ \t|]*\/)?(bash|sh|zsh|dash|ksh|pwsh|powershell)(\.exe)?([ \t]|$)/) || pipes_into_runner(str)
     n = length(str); q = ""; seg = ""; vs = ""
     for (i = 1; i <= n; i++) {
         c = substr(str, i, 1); nx = substr(str, i + 1, 1); pv = (i > 1) ? substr(str, i - 1, 1) : ""

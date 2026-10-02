@@ -31,6 +31,43 @@
 # `<<<` is a here-STRING, not a here-doc. It is masked before scanning so
 # `grep ... <<< "$VAR"` is not mistaken for a here-doc named "VAR".
 
+# #35: does a pipe in str hand its input to something that runs it? After the
+# pipe come any wrappers (sudo -u x, srun --pty, env, timeout 60 ...) with their
+# options, then a shell or an interpreter. The plain `| bash` is one case of it.
+# hooks/strip_heredocs.awk carries the same two functions; keep them in step
+# (tests/confirm_cleanup_test.sh and confirm_launch_test.sh pin both).
+function is_runner(w) {
+    sub(/^\\/, "", w); sub(/^.*\//, "", w); sub(/\.exe$/, "", w)
+    return (w ~ /^(bash|sh|zsh|dash|ksh|pwsh|powershell|ssh|python[0-9.]*|perl|ruby|node|Rscript|R)$/)
+}
+function pipes_into_runner(str,   t, seg, k, W, i, w, wrapped) {
+    t = str
+    while (match(t, /\|&?[ \t]*/)) {
+        seg = substr(t, RSTART + RLENGTH)
+        t = seg
+        sub(/[|;&\n].*$/, "", seg)
+        k = split(seg, W, /[ \t]+/)
+        wrapped = 0
+        for (i = 1; i <= k; i++) {
+            w = W[i]
+            if (w == "") continue
+            if (w ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue
+            if (is_runner(w)) return 1
+            if (w ~ /^(sudo|doas|env|command|exec|nohup|srun|ionice|nice|stdbuf|setsid|time|runuser|flock|timeout)$/) {
+                wrapped = 1
+                if (w == "timeout") i++
+                continue
+            }
+            if (wrapped && w ~ /^-/) {
+                if (w !~ /^--/ && w !~ /=/ && length(w) == 2 && i < k && W[i+1] !~ /^-/ && !is_runner(W[i+1])) i++
+                continue
+            }
+            break
+        }
+    }
+    return 0
+}
+
 # Does the text before `<<` hand the body to something that runs it?
 # Any word of that segment counts, not only the first: `sudo -u bob bash`,
 # `timeout 60 bash`, `srun bash` all hand the body to bash (#29, round 2).
@@ -68,7 +105,7 @@ function scan(s,   m, d, isdash, pre, piped, out) {
     gsub(/"[^"]*"/, "", s)
     pre = ""
     # `cat <<EOF | bash` hands the body to a shell through a pipe instead.
-    piped = (s ~ /\|[ \t]*(sudo[ \t]+)?([^ \t|]*\/)?(bash|sh|zsh|dash|ksh|ssh)([ \t]|$)/)
+    piped = (s ~ /\|[ \t]*(sudo[ \t]+)?([^ \t|]*\/)?(bash|sh|zsh|dash|ksh|ssh)([ \t]|$)/) || pipes_into_runner(s)
     while (match(s, /<<-?[ \t]*("[^"]*"|'[^']*'|\\?[A-Za-z_][A-Za-z0-9_]*)/)) {
         m = substr(s, RSTART, RLENGTH)
         pre = pre substr(s, 1, RSTART - 1)

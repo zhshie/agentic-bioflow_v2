@@ -91,7 +91,7 @@ is_launch_command() {
     # In-shell matching only ([[ =~ ]]): a process per segment made this gate
     # take a minute on a long script under Git Bash, past its timeout, and a
     # timed-out hook lets the command run (#29, round 3).
-    local SQ HIT NESTED=0
+    local SQ SQP SQW HIT NESTED=0
     [[ $CMD =~ $LAUNCH_NESTED_SHELL_RE ]] && NESTED=1
     while IFS="$US" read -r S V W; do
         # A command nested too deeply to read is treated as one that might
@@ -111,6 +111,18 @@ is_launch_command() {
                 # argument is a launch verb.
                 '$'*)
                     [[ $SQ =~ $LAUNCH_VARPROG_RE ]] && HIT=1 ;;
+                # PowerShell `Start-Process nextflow -ArgumentList 'run x'`
+                # (#35): the program and its arguments are separate words with
+                # parameter names between them. Read the segment with the
+                # `-Name` words and the commas dropped, as one command line.
+                start-process|saps)
+                    SQP=""
+                    set -f
+                    for SQW in ${SQ//,/ }; do
+                        case "$SQW" in -*) ;; *) SQP="$SQP $SQW" ;; esac
+                    done
+                    set +f
+                    [[ " $SQP " =~ $LAUNCH_TRIGGER_RE ]] && HIT=1 ;;
                 # The wrapper itself (`ssh h '…'`) is judged through its
                 # payload segments, which the splitter emits separately.
                 ssh|eval|bash|sh|zsh|ksh|dash|on_site.sh) ;;
