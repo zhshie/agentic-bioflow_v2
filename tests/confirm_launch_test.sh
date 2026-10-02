@@ -48,7 +48,7 @@ cat > "$LINUXDIR/uname" <<'EOF'
 exec /usr/bin/uname "$@"
 EOF
 chmod +x "$LINUXDIR/uname"
-#RED# export PATH="$LINUXDIR:$PATH"
+export PATH="$LINUXDIR:$PATH"
 
 # Guard for the shim above: a case that is not about D3 must not run on a
 # platform the hook reads as MSYS. Red natively in Git Bash before the shim.
