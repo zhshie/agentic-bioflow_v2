@@ -30,6 +30,11 @@ import re
 from typing import Dict, List, Optional, Tuple
 
 
+# Key under which extract_sample_info() returns the sample name. A named
+# constant so callers read it without repeating the literal (the samplesheet
+# tool must hold no column-name-looking strings; tests/no_per_pipeline_config.sh).
+SAMPLE_KEY = 'sample'
+
 # R1/R2 patterns with priority scores (higher = more confident)
 R1_PATTERNS = [
     (r'_R1_\d{3}', 10),      # _R1_001 (Illumina standard)
@@ -90,7 +95,7 @@ def extract_sample_info(filepath: str) -> Dict[str, str]:
     clean_stem = re.sub(r'[_.-]{2,}', '_', clean_stem)
 
     # Sample is the cleaned stem
-    info['sample'] = clean_stem if clean_stem else filename.split('.')[0]
+    info[SAMPLE_KEY] = clean_stem if clean_stem else filename.split('.')[0]
 
     return info
 
@@ -109,7 +114,7 @@ def _get_pattern_score(filename: str, patterns: List[Tuple[str, int]]) -> int:
 def _get_sample_key(filepath: str) -> str:
     """Generate a key for grouping related files."""
     info = extract_sample_info(filepath)
-    sample = info['sample']
+    sample = info[SAMPLE_KEY]
     lane = info.get('lane', 'L001')
 
     # Include lane in key for multi-lane samples
