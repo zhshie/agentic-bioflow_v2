@@ -204,7 +204,10 @@ def parse_table(text):
                     cells = [c.strip() for c in lines[j].strip().strip("|").split("|")]
                     row = {name: (cells[pos] if pos < len(cells) else "")
                            for name, pos in idx.items()}
-                    if row.get("id"):
+                    # A row with content but no id is kept (id ""), so the
+                    # Results loop can say it exists; only an all-blank row is
+                    # skipped (#38 item 2 - it used to vanish without a trace).
+                    if row.get("id") or any(cells):
                         entries.append(row)
                     j += 1
             i = j
@@ -243,12 +246,17 @@ if not entries:
         % (plan, len(text.splitlines()), nonblank))
     sys.exit(1)
 
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".svg", ".pdf", ".tif", ".tiff",
+              ".gif", ".webp")
+
+
 def fig_matches(fid, figs):
-    """Files in figs whose name starts with fid at a real boundary - '.',
-    '_' or the end of the name. A bare startswith() matched 'fig10.png'
-    against the id 'fig1' (invisible-package-gaps item 3): no boundary check
-    means a shorter id is a prefix of a longer one's number, not just its
-    name.
+    """(embeddable, claimed): the image files an id may embed, and every file
+    the id accounts for. Files match when their name starts with fid at a real
+    boundary - '.', '_' or the end of the name. A bare startswith() matched
+    'fig10.png' against the id 'fig1' (invisible-package-gaps item 3): no
+    boundary check means a shorter id is a prefix of a longer one's number,
+    not just its name.
     """
     boundary = re.compile(r"^" + re.escape(fid) + r"([._]|$)")
     # A file a longer planned id claims is that id's, not this one's:
@@ -258,35 +266,60 @@ def fig_matches(fid, figs):
               for o in all_ids if o != fid and o.startswith(fid)]
     cands = [f for f in figs if boundary.match(f)
              and not any(l.match(f) for l in longer)]
+    # Only an image can be embedded as one: fig1.csv is not a figure (#38
+    # item 5 - it used to come out as ![..](figures/fig1.csv)).
+    imgs = [f for f in cands if os.path.splitext(f)[1].lower() in IMAGE_EXTS]
     # One figure saved in several formats (fig1.png + fig1.pdf) is one
     # figure: prefer the file whose name is exactly the id, in the format a
     # rendered manuscript embeds best.
-    exact = [f for f in cands if os.path.splitext(f)[0] == fid]
+    exact_all = [f for f in cands if os.path.splitext(f)[0] == fid]
+    exact = [f for f in exact_all if f in imgs]
     if exact:
-        pref = [".png", ".jpg", ".jpeg", ".svg", ".pdf", ".tif", ".tiff"]
-        exact.sort(key=lambda f: pref.index(os.path.splitext(f)[1].lower())
-                   if os.path.splitext(f)[1].lower() in pref else len(pref))
-        return exact[:1], exact
-    return cands, cands
+        exact.sort(key=lambda f: IMAGE_EXTS.index(os.path.splitext(f)[1].lower()))
+        return exact[:1], exact_all
+    return imgs, cands
 
 
-all_ids = [row["id"] for row in entries]
+all_ids = [row["id"] for row in entries if row["id"]]
 emitted = set()
 for row in entries:
     fid = row["id"]
     qtext = row.get("question") or fid
+    if not fid:
+        # #38 item 2: a row with content but no id used to be skipped with no
+        # trace. It cannot be matched to a figure, so say that it exists.
+        print("### %s\n" % (row.get("question") or "(plan row without an id)"))
+        print("[GAP: a plan row has no id (question: '%s') - no figure can be "
+              "matched to it; add an id to analysis.md]\n" % (row.get("question") or ""))
+        continue
     match, claimed = fig_matches(fid, figs)
     print("### %s\n" % qtext)
     if len(match) == 1:
         emitted.update(claimed)
         print("![%s](figures/%s){#fig-%s}\n" % (qtext, match[0], fid))
         emitted.add(match[0])
+        # #38 item 4: the formats not embedded are still in figures/; say so.
+        extra = [f for f in claimed if f != match[0]]
+        if extra:
+            print("Also in figures/, not embedded: %s\n" % ", ".join(extra))
     elif len(match) > 1:
         # A wrong match is worse than a visible gap - see fig_matches above -
         # so an ambiguous id is reported, never resolved by picking one.
-        print("[GAP: id '%s' matches %d files in figures/: %s]\n"
-              % (fid, len(match), ", ".join(match)))
+        # Every file in figures/ is named somewhere: non-images the id also
+        # matches are listed too, not dropped (#38 acceptance).
+        rest = [f for f in claimed if f not in match]
+        if rest:
+            print("[GAP: id '%s' matches %d image files in figures/: %s; also: %s]\n"
+                  % (fid, len(match), ", ".join(match), ", ".join(rest)))
+        else:
+            print("[GAP: id '%s' matches %d files in figures/: %s]\n"
+                  % (fid, len(match), ", ".join(match)))
         emitted.update(match)
+        emitted.update(claimed)
+    elif claimed:
+        print("[GAP: id '%s' has no image file in figures/ - only: %s]\n"
+              % (fid, ", ".join(claimed)))
+        emitted.update(claimed)
     else:
         print("[GAP: no figure file starting with '%s' in figures/]\n" % fid)
     # Visible, not an HTML comment (#32): step 4 of commands/finish.md replaces

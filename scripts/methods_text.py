@@ -86,11 +86,32 @@ def fix_doubled_doi(text):
 # Invariant 9: a gap that cannot be resolved is written into the output,
 # never silently dropped, so every survivor becomes a visible marker instead.
 UNRESOLVED_PLACEHOLDER_RE = re.compile(r"\$\{([^}]*)\}")
+# One pass over tags and placeholders together, so a marker written for a
+# placeholder is never itself rescanned. #38 item 1: a placeholder inside a
+# tag's attribute (`<div class="${x}">`, `<a href="${x}">`) used to be marked
+# in place, and html_to_md then dropped the tag - or kept the marker only as a
+# link target - so the gap never reached the reader. Inside a tag the
+# placeholder becomes `#` and its marker is written as text just before the tag.
+_TAG_OR_PLACEHOLDER_RE = re.compile(r"<[A-Za-z/!][^<>]*>|\$\{([^}]*)\}")
+
+
+def _gap(name):
+    return "[GAP: unresolved placeholder ${%s}]" % name
 
 
 def mark_unresolved_placeholders(text):
-    return UNRESOLVED_PLACEHOLDER_RE.sub(
-        lambda m: "[GAP: unresolved placeholder ${%s}]" % m.group(1), text)
+    def one(m):
+        if m.group(1) is not None:
+            return _gap(m.group(1))
+        tag = m.group(0)
+        names = UNRESOLVED_PLACEHOLDER_RE.findall(tag)
+        if not names:
+            return tag
+        # A trailing space keeps the marker from fusing with a following
+        # `[text](url)` into a pandoc reference link.
+        return ("".join(_gap(n) for n in names) + " "
+                + UNRESOLVED_PLACEHOLDER_RE.sub("#", tag))
+    return _TAG_OR_PLACEHOLDER_RE.sub(one, text)
 
 
 def provenance(results_dirs):
@@ -332,6 +353,10 @@ def render(run, assets_base):
         filled = mark_unresolved_placeholders(filled)
         filled = fix_doubled_doi(filled)
         lines.append(html_to_md(filled))
+        if run.get("quality_report"):
+            lines.append("\nSource: `%s` (the report's own rendering of the pipeline's "
+                         "methods template)"
+                         % os.path.relpath(run["quality_report"], run["run_dir"]))
         if n:
             notes.append("the command line shown is reconstructed against the run's "
                          "own params file; the one the report records points at an "
@@ -354,6 +379,8 @@ def render(run, assets_base):
                   .replace("${nodoi_text}", ""))
         filled = mark_unresolved_placeholders(filled)
         lines.append(html_to_md(filled))
+        lines.append("\nSource: `%s` (the pipeline's methods template, filled here)"
+                     % os.path.relpath(tmpl, assets_base))
         notes.append("the command line shown is reconstructed against the run's "
                      "own params file; the one the report records points at an "
                      "ephemeral URL and cannot be re-run")
@@ -366,6 +393,12 @@ def render(run, assets_base):
                      % (name, wf.get(name, ""), wf.get("Nextflow", "")))
 
     lines.append("\n### Software\n")
+    # #38 item 3: name where the list came from, as "Why these parameters" does.
+    vsrc = (os.path.relpath(run["versions_file"], run["run_dir"])
+            if run.get("versions_file") else "no versions file")
+    csrc = (os.path.relpath(cits, assets_base)
+            if cits and os.path.isfile(cits) else "no CITATIONS.md")
+    lines.append("Source: versions `%s`; citations `%s`\n" % (vsrc, csrc))
     for tool, cited_as, entry in sorted(matched, key=lambda m: m[0].lower()):
         doi = (" doi:" + entry["doi"]) if entry.get("doi") else ""
         lines.append("- **%s** %s (cited as %s%s)" % (tool, tools.get(tool, ""), cited_as, doi))

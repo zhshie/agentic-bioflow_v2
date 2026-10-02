@@ -227,5 +227,131 @@ if grep -A3 -F "Why these parameters" <<<"$out2" | grep -qF 'params.yaml'; then
   ok "the parameter-rationale section names its source file"
 else no "the parameter-rationale section names its source file" "<<$out2>>"; fi
 
+
+# =============================================================================
+# #38 (package-gaps-low): the five low-severity gaps left after #32.
+# .specify/bugs/package-gaps-low/. Each case below fails on the code as it
+# stood at 1a049f1.
+# =============================================================================
+
+# --- item 1: a ${...} inside an HTML attribute is a visible gap, not lost ----
+A3="$TMP/assets/nf-core/demo3"
+mkdir -p "$A3/assets"
+cp "$A/CITATIONS.md" "$A3/CITATIONS.md"
+cat > "$A3/assets/methods_description_template.yml" <<'YML'
+id: "demo3-methods"
+data: |
+  <h4>Methods</h4>
+  <div class="${cls}"><p>Body text.</p></div>
+  <p>See <a href="${site}">the project site</a> for details.</p>
+YML
+RUN3="$TMP/run3"
+mkdir -p "$RUN3/results/pipeline_info"
+sed 's#nf-core/demo2#nf-core/demo3#' "$RUN2/results/pipeline_info/software_versions.yml" \
+  > "$RUN3/results/pipeline_info/software_versions.yml"
+echo '{}' > "$RUN3/results/pipeline_info/params_2026-01-01_00-00-00.json"
+out3=$("$MT" --assets "$TMP/assets" "$RUN3/results" 2>&1)
+
+grep -qF '[GAP: unresolved placeholder ${cls}]' <<<"$out3" \
+  && ok 'a ${cls} in a <div class="..."> attribute is not lost with the tag' \
+  || no 'a ${cls} in a <div class="..."> attribute is not lost with the tag' "<<$out3>>"
+grep -qF '[GAP: unresolved placeholder ${site}]' <<<"$out3" \
+  && ok 'a ${site} in an <a href> shows as a gap' \
+  || no 'a ${site} in an <a href> shows as a gap' "<<$out3>>"
+printf '%-62s ' 'the ${site} gap is visible text, not only a link target'
+if grep -qE '\]\([^)]*GAP' <<<"$out3"; then
+  echo "FAIL: $(grep -E '\]\([^)]*GAP' <<<"$out3" | head -1)"; fails=$((fails+1)); else echo ok; fi
+
+# --- item 3: the methods paragraph and the software list name their sources -
+printf '%-62s ' "the methods paragraph names its template"
+if grep -F "methods_description_template.yml" <<<"$out2" | grep -qF 'Source'; then echo ok; else
+  echo "FAIL: <<${out2:0:300}>>"; fails=$((fails+1)); fi
+printf '%-62s ' "the software list names versions file and CITATIONS.md"
+sw=$(sed -n '/### Software/,/### Why/p' <<<"$out2")
+if grep -qF 'software_versions.yml' <<<"$sw" && grep -qF 'CITATIONS.md' <<<"$sw"; then echo ok; else
+  echo "FAIL: <<$sw>>"; fails=$((fails+1)); fi
+RUN4="$TMP/run4"
+cp -r "$RUN2" "$RUN4"
+printf '<html><h4>Methods</h4><p>Rendered by MultiQC.</p><h4>References</h4></html>\n' \
+  > "$RUN4/results/multiqc_report.html"
+out4=$("$MT" --assets "$TMP/assets" "$RUN4/results" 2>&1)
+printf '%-62s ' "a MultiQC-rendered paragraph names the report it came from"
+if grep -F "multiqc_report.html" <<<"$out4" | grep -qF 'Source'; then echo ok; else
+  echo "FAIL: <<${out4:0:300}>>"; fails=$((fails+1)); fi
+
+# --- item 2: a plan row with no id is a visible gap, not skipped -------------
+P5="$TMP/proj5"
+mkdir -p "$P5/runs/demo_20260101/results/pipeline_info" "$P5/analysis/figures"
+cp "$P/runs/demo_20260101/results/pipeline_info/"* "$P5/runs/demo_20260101/results/pipeline_info/"
+cp "$P/runs/demo_20260101/params.yaml" "$P5/runs/demo_20260101/"
+echo x > "$P5/analysis/figures/fig1.png"
+cat > "$P5/analysis/analysis.md" <<'MD'
+| id | question | status |
+|---|---|---|
+| fig1 | Has an id | accepted |
+|  | Orphan question without an id | accepted |
+MD
+CITE_CURL=false bash "$BP" "$P5" >/dev/null 2>&1
+Q5="$P5/submission/manuscript.qmd"
+printf '%-62s ' "a plan row with no id is reported as a visible gap"
+if grep -F "Orphan question without an id" "$Q5" | grep -F '[GAP:' | grep -qF 'no id'; then echo ok; else
+  echo "FAIL: not found in: $(cat "$Q5" 2>/dev/null)"; fails=$((fails+1)); fi
+
+# --- item 4: a figure saved in two formats mentions the one not embedded -----
+printf '%-62s ' "fig1.pdf (not embedded) is named beside fig1.png"
+if grep -qF "Also in figures/, not embedded: fig1.pdf" "$Q2"; then echo ok; else
+  echo "FAIL: $(grep -n 'fig1' "$Q2" | head -4)"; fails=$((fails+1)); fi
+
+# --- item 5: an id whose only match is not an image is not embedded ----------
+P6="$TMP/proj6"
+mkdir -p "$P6/runs/demo_20260101/results/pipeline_info" "$P6/analysis/figures"
+cp "$P/runs/demo_20260101/results/pipeline_info/"* "$P6/runs/demo_20260101/results/pipeline_info/"
+cp "$P/runs/demo_20260101/params.yaml" "$P6/runs/demo_20260101/"
+echo x > "$P6/analysis/figures/fig1.csv"
+cat > "$P6/analysis/analysis.md" <<'MD'
+| id | question | status |
+|---|---|---|
+| fig1 | Only a table exists | accepted |
+MD
+CITE_CURL=false bash "$BP" "$P6" >/dev/null 2>&1
+Q6="$P6/submission/manuscript.qmd"
+printf '%-62s ' "fig1.csv is not embedded as an image"
+if grep -qF 'figures/fig1.csv)' "$Q6"; then echo "FAIL: $(grep -F 'fig1.csv' "$Q6" | head -1)"; fails=$((fails+1)); else echo ok; fi
+printf '%-62s ' "...and the missing image is a visible gap naming fig1.csv"
+if grep -F "[GAP:" "$Q6" | grep -F "fig1.csv" | grep -qF "no image"; then echo ok; else
+  echo "FAIL: $(cat "$Q6" 2>/dev/null | head -20)"; fails=$((fails+1)); fi
+printf '%-62s ' "...and fig1.csv is not also reported as an unclaimed orphan"
+if grep -qF "fig1.csv is in the package but no plan entry claims it" "$Q6"; then
+  echo "FAIL: double-reported"; fails=$((fails+1)); else echo ok; fi
+
+
+# --- #38 acceptance: every file in figures/ is named somewhere --------------
+P7="$TMP/proj7"
+mkdir -p "$P7/runs/demo_20260101/results/pipeline_info" "$P7/analysis/figures"
+cp "$P/runs/demo_20260101/results/pipeline_info/"* "$P7/runs/demo_20260101/results/pipeline_info/"
+cp "$P/runs/demo_20260101/params.yaml" "$P7/runs/demo_20260101/"
+for f in fig1_a.png fig1_b.png fig1_c.csv; do echo x > "$P7/analysis/figures/$f"; done
+cat > "$P7/analysis/analysis.md" <<'MD'
+| id | question | status |
+|---|---|---|
+| fig1 | Ambiguous with a table | accepted |
+MD
+CITE_CURL=false bash "$BP" "$P7" >/dev/null 2>&1
+Q7="$P7/submission/manuscript.qmd"
+printf '%-62s ' "ambiguous id: the non-image file is still named"
+if grep -F "[GAP:" "$Q7" | grep -F "fig1_a.png" | grep -F "fig1_b.png" | grep -qF "fig1_c.csv"; then echo ok; else
+  echo "FAIL: $(grep -n 'fig1' "$Q7" | head -4)"; fails=$((fails+1)); fi
+
+printf '%-62s ' "a gap marker is not glued to a following link"
+if grep -qF '][' <<<"$(grep -F 'project site' <<<"$out3")"; then
+  echo "FAIL: $(grep -F 'project site' <<<"$out3")"; fails=$((fails+1)); else echo ok; fi
+
+FIN="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/commands/finish.md"
+for phrase in "has no id" "no image file" "Also in figures/, not embedded"; do
+  printf '%-62s ' "finish.md step 3 knows: $phrase"
+  if sed -n '/^3\. \*\*Read what it produced/,/^4\. /p' "$FIN" | grep -qF "$phrase"; then echo ok; else
+    echo "FAIL: not in step 3"; fails=$((fails+1)); fi
+done
+
 echo
 [ "$fails" = 0 ] && echo "OK: invisible-package-gaps stays fixed" || { echo "$fails failed"; exit 1; }
