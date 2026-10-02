@@ -407,6 +407,10 @@ if ! is_launch_command "$CMD"; then
         # ProxyCommand) can still prompt on the far side. Any other BatchMode
         # value in the options, or anything this does not understand, is not
         # an exemption: when in doubt, ask.
+        # Known blind spot (#53): a ProxyJump or ProxyCommand set in ~/.ssh/config
+        # (or a file named with -F, which IS refused above) cannot be seen from
+        # here, and a jump host can still ask for a one-time code even with
+        # BatchMode=yes - so the exemption can be wrong for such a host.
         batchmode_exempt() { # batchmode_exempt <segment as written>; 0 = exempt
             local s="$1" i c cur="" q="" have=0 w kind="" arglet="" pend="" yes=0 bad=0 val
             local -a W=()
@@ -438,6 +442,7 @@ if ! is_launch_command "$CMD"; then
                     pend=""; val="$w"
                 elif [ -n "$pend" ]; then
                     [ "$pend" = -J ] && bad=1
+                    [ "$pend" = -F ] && bad=1   # #53: a named config can hold a ProxyJump
                     pend=""; continue
                 else
                     case "$w" in
@@ -449,7 +454,7 @@ if ! is_launch_command "$CMD"; then
                         -*) c="${w:1:1}"
                             # a cluster or a flag with its argument glued on; an o or J
                             # anywhere in it is one this does not parse
-                            case "${w:1}" in *[oJ]*) bad=1 ;; esac
+                            case "${w:1}" in *[oJF]*) bad=1 ;; esac
                             continue ;;
                         *) break ;;   # the destination: ssh's own options end here
                     esac

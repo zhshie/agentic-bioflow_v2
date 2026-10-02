@@ -220,7 +220,7 @@ _abf_in_use_inner() {
     local re_tp='"transcript_path"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
     local re_fp='"(file_path|notebook_path)"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
     local fp=""
-    local tool="" sid="" cwd="" state f n
+    local tool="" sid="" cwd="" state f n h=""
 
     # 1. a Seqera / Tower MCP tool
     if [[ $input =~ $re_tool ]]; then tool="${BASH_REMATCH[1]}"; fi
@@ -251,11 +251,15 @@ _abf_in_use_inner() {
     # (two of them) goes first, or C:\\new would lose its n to the newline rule.
     text="${text//\\\\//}"
     text="${text//\\n/ }"; text="${text//\\t/ }"; text="${text//\\r/ }"
+    # Quotes around a path part are not part of the path (#53): a JSON-escaped
+    # double quote and a single quote are dropped, so "$HOME"/runs3 reads as
+    # $HOME/runs3. This only widens what matches, the safe direction.
+    text="${text//\\\"/}"; text="${text//\'/}"
     text="${text//\\//}"
     while [[ $text == *//* ]]; do text="${text//\/\///}"; done
     # ~ and $HOME spell the home directory; a path in the text may use either.
     if [ -n "${HOME:-}" ]; then
-        _abf_canon "$HOME"; local h="$REPLY"
+        _abf_canon "$HOME"; h="$REPLY"
         text="${text//\$\{HOME\}/$h}"; text="${text//\$HOME/$h}"
         text="${text// \~\// $h/}"
     fi
@@ -337,5 +341,21 @@ _abf_in_use_inner() {
     for b in "${bases[@]}"; do
         _abf_text_has "$text" "$b" && return 0
     done
+    # A `cd` with no destination (or to ~ / $HOME) starts a relative walk from
+    # home, so `cd && cd runs3 && ...` names no root as written (#53). When a
+    # root lives at or under home, such a walk may end in it: in use. Only a
+    # question that matters for a command a gate would judge anyway.
+    if [ -n "$h" ] && [ "$h" != / ]; then
+        local t2=" $text "
+        t2="${t2//[;&|\"()]/ ; }"
+        t2="${t2//\~/ \~ }"
+        while [[ $t2 == *"  "* ]]; do t2="${t2//  / }"; done
+        t2="${t2// cd \~ / cd }"; t2="${t2// cd $h / cd }"
+        if [[ $t2 == *" cd ; "* || $t2 == *" cd " ]]; then
+            for b in "${bases[@]}"; do
+                _abf_under "$b" "$h" && return 0
+            done
+        fi
+    fi
     return 1
 }
