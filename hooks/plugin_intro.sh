@@ -118,15 +118,18 @@ fi
 [ "$IS_LITERAL" = 1 ] || [ "$IS_NL" = 1 ] || exit 0
 
 # The session id names a file, so it is reduced to characters that cannot
-# climb out of the state directory. Extracted with sed rather than jq - this
-# has to work in the no-jq branch just below, and a single extraction here
-# serves both branches instead of two copies drifting apart. The first-line
-# trim is a bash parameter expansion, not `head -1`: this runs before jq's
-# availability is even known, and a degraded machine's PATH is exactly the
-# place to avoid reaching for one more external binary than the job needs.
-SID_RAW=$(printf '%s' "$INPUT" | sed -nE 's/.*"session_id"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p')
-SID_RAW="${SID_RAW%%$'\n'*}"
-SID=$(printf '%s' "$SID_RAW" | tr -cd 'A-Za-z0-9_-')
+# climb out of the state directory. Extracted without jq - this has to work in
+# the no-jq branch just below, and a single extraction here serves both
+# branches instead of two copies drifting apart; a degraded machine's PATH is
+# exactly the place to avoid reaching for one more external binary than the
+# job needs. Feature 005: the FIRST "session_id" in the input, by a bash regex - the same
+# reading hooks/in_use.sh does, so the file written here is the file read there.
+# (The sed that stood here took the LAST one, which is a nested copy when a
+# tool's response carries its own session_id.)
+SID_RAW=""
+re_sid='"session_id"[[:space:]]*:[[:space:]]*"([^"]*)"'
+if [[ $INPUT =~ $re_sid ]]; then SID_RAW="${BASH_REMATCH[1]}"; fi
+SID="${SID_RAW//[^A-Za-z0-9_-]/}"
 STATE="${AGENTIC_BIOFLOW_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-}/.local/state}/agentic-bioflow}"
 MARKS="$STATE/intro-shown"
 
@@ -139,7 +142,9 @@ MARKS="$STATE/intro-shown"
 # intro.sh does not leave the safety net off. A subagent's calls carry its
 # parent's session id, so one marker covers both. Fails open like everything
 # here: an unwritable state directory costs the marker, never the prompt - and
-# a state path that cannot be read is itself read as "in use" by in_use.sh.
+# a state path that cannot be read or written is itself read as "in use" by
+# in_use.sh once a deployment exists, so a failed write here does not turn the
+# net off.
 mark_in_use() {
     [ -n "$SID" ] || return 0
     mkdir -p "$STATE/in-use" 2>/dev/null || return 0
@@ -151,6 +156,12 @@ mark_in_use() {
 # the once-per-session exit below, which must not skip it. The literal door
 # marks once it is certain (below).
 [ "$IS_NL" = 1 ] && mark_in_use
+# A prompt that names /agentic-bioflow: anywhere - mid-sentence, quoted, asked
+# about - is reaching for the plugin as far as this can tell. The overview waits
+# for the prompt to START with it (below); the marker does not: unsure is in use.
+if [ "$IS_UPS" = 1 ]; then
+    case "$INPUT" in *'/agentic-bioflow:'*) mark_in_use ;; esac
+fi
 [ -n "$SID" ] && [ -e "$MARKS/$SID" ] && exit 0
 
 # T3: jq missing/broken is now visible instead of silent - see the file

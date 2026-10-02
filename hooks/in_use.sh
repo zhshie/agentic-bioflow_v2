@@ -52,6 +52,69 @@ _abf_under() {
     [[ "$1/" == "$2"/* ]]
 }
 
+# ~ and $HOME / ${HOME} at the start of a path value, as a shell would read
+# them. Result in REPLY.
+_abf_home() {
+    local v="$1" h="${HOME:-}"
+    case "$v" in
+        '~') v="$h" ;;
+        '~/'*) v="$h/${v#\~/}" ;;
+        '$HOME') v="$h" ;;
+        '$HOME/'*) v="$h/${v#\$HOME/}" ;;
+        '${HOME}') v="$h" ;;
+        '${HOME}/'*) v="$h/${v#\$\{HOME\}/}" ;;
+    esac
+    REPLY="$v"
+}
+
+# The physical form of an existing directory (symlinks resolved), canonical.
+# cd -P and $PWD are builtins, so this forks nothing; the caller's directory is
+# put back. Fails (REPLY empty) for a path that is relative or not a directory.
+_abf_phys() {
+    REPLY=""
+    case "$1" in /*) ;; *) return 1 ;; esac
+    [ -d "$1" ] || return 1
+    local old="$PWD" p
+    cd -P -- "$1" 2>/dev/null || return 1
+    p="$PWD"
+    cd -- "$old" 2>/dev/null
+    _abf_canon "$p"
+    return 0
+}
+
+# The physical form of a path that may not exist yet (a file about to be
+# written): the nearest existing ancestor, resolved, plus the rest.
+_abf_phys_path() {
+    local p="$1" rest="" n=0
+    REPLY=""
+    case "$p" in /*) ;; *) return 1 ;; esac
+    while [ ! -d "$p" ] && [ "$n" -lt 40 ]; do
+        rest="/${p##*/}$rest"; p="${p%/*}"; n=$((n+1))
+        [ -n "$p" ] || p=/
+    done
+    _abf_phys "$p" || return 1
+    REPLY="${REPLY%/}$rest"
+    return 0
+}
+
+# Whether the in-use marker could be written under state dir $1: it exists and
+# is a writable directory (and so is in-use/ when there), or the nearest
+# existing ancestor is writable so it can be created.
+_abf_state_ok() {
+    local s="$1" d n=0
+    if [ -e "$s" ]; then
+        { [ -d "$s" ] && [ -w "$s" ] && [ -x "$s" ]; } || return 1
+        if [ -e "$s/in-use" ]; then
+            { [ -d "$s/in-use" ] && [ -w "$s/in-use" ] && [ -x "$s/in-use" ]; } || return 1
+        fi
+        return 0
+    fi
+    d="${s%/*}"
+    while [ -n "$d" ] && [ ! -e "$d" ] && [ "$n" -lt 40 ]; do d="${d%/*}"; n=$((n+1)); done
+    [ -n "$d" ] || d=/
+    { [ -d "$d" ] && [ -w "$d" ] && [ -x "$d" ]; }
+}
+
 # True when text $1 contains path $2 as a whole path: what follows it is the end
 # of the text, a slash, or a character that cannot continue a name (so /x/dep is
 # found in "rm /x/dep/a" but not in "/x/dep-neighbour").
@@ -112,12 +175,13 @@ _abf_read_key() {
 # a failure to answer.
 _abf_find_deployment() {
     _ABF_SETTINGS=""; _ABF_ROOT=""
-    local d line pointer
+    local d line pointer f
     if [ -n "${LAB_SETTINGS_FILE:-}" ]; then
-        [ -r "$LAB_SETTINGS_FILE" ] || return 1
-        _ABF_SETTINGS="$LAB_SETTINGS_FILE"
-        d="${LAB_SETTINGS_FILE%/*}"
-        [ "$d" = "$LAB_SETTINGS_FILE" ] && d=.
+        _abf_home "$LAB_SETTINGS_FILE"; f="$REPLY"
+        case "$f" in /*|[A-Za-z]:*) ;; *) f="${PWD:-.}/$f" ;; esac
+        [ -r "$f" ] || return 1
+        _ABF_SETTINGS="$f"
+        d="${f%/*}"
         case "$d" in */config) d="${d%/*}" ;; esac
         _abf_canon "$d"; _ABF_ROOT="$REPLY"
         return 0
@@ -149,7 +213,10 @@ _abf_in_use_inner() {
     local re_sid='"session_id"[[:space:]]*:[[:space:]]*"([^"]*)"'
     local re_cwd='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
     local re_mcp='^mcp__.*([Ss]eqera|[Tt]ower)'
-    local re_tw='(^|[^[:alnum:]_.-])tw([^[:alnum:]_.-]|$)'
+    local re_tw='(^|[^[:alnum:]_.-])tw(\.exe)?([^[:alnum:]_.-]|$)'
+    local re_tp='"transcript_path"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+    local re_fp='"(file_path|notebook_path)"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+    local fp=""
     local tool="" sid="" cwd="" state f n
 
     # 1. a Seqera / Tower MCP tool
@@ -168,7 +235,14 @@ _abf_in_use_inner() {
         [ -e "$state/intro-shown/$sid" ] && return 0
     fi
 
-    # 3. the call's own text. JSON newlines and tabs are the two characters
+    # 3. the call's own text. The hook input also carries the session's cwd and
+    # transcript path; those are not what the call names, and cwd has its own
+    # test below (condition 2), so they are taken out of the text first. The
+    # target of a file tool is kept aside to be compared by its physical path.
+    if [[ $text =~ $re_fp ]]; then fp="${BASH_REMATCH[2]}"; fi
+    if [[ $text =~ $re_cwd ]]; then text="${text/"${BASH_REMATCH[0]}"/}"; fi
+    if [[ $text =~ $re_tp ]]; then text="${text/"${BASH_REMATCH[0]}"/}"; fi
+    # The call's own text. JSON newlines and tabs are the two characters
     # (\n, \t) that glue a word to the one before it; backslashes become
     # slashes so a Windows path reads like any other. A JSON-escaped backslash
     # (two of them) goes first, or C:\\new would lose its n to the newline rule.
@@ -176,6 +250,12 @@ _abf_in_use_inner() {
     text="${text//\\n/ }"; text="${text//\\t/ }"; text="${text//\\r/ }"
     text="${text//\\//}"
     while [[ $text == *//* ]]; do text="${text//\/\///}"; done
+    # ~ and $HOME spell the home directory; a path in the text may use either.
+    if [ -n "${HOME:-}" ]; then
+        _abf_canon "$HOME"; local h="$REPLY"
+        text="${text//\$\{HOME\}/$h}"; text="${text//\$HOME/$h}"
+        text="${text// \~\// $h/}"
+    fi
     [[ $text =~ $re_tw ]] && return 0
     # Naming the plugin's install location without its resolved path: the
     # variable itself, or anything under ~/.claude/plugins. This is what
@@ -186,16 +266,30 @@ _abf_in_use_inner() {
     here="${here%/*}"; [ "$here" = "${BASH_SOURCE[0]}" ] && here=.
     base="$here/.."
     case "$here" in /*/hooks|[A-Za-z]:*/hooks) roots="$roots"$'\n'"${here%/hooks}" ;; esac
-    local r
+    local r rc rp fpc="" fpp=""
+    if [ -n "$fp" ]; then
+        _abf_canon "$fp"; fpc="$REPLY"
+        _abf_phys_path "$fpc" && fpp="$REPLY"
+    fi
     while IFS= read -r r; do
         [ -n "$r" ] || continue
-        _abf_canon "$r"
-        _abf_text_has "$text" "$REPLY" && return 0
+        _abf_canon "$r"; rc="$REPLY"
+        _abf_text_has "$text" "$rc" && return 0
+        # a link in the root's path: the same place under its physical name, and
+        # a write whose target resolves into it
+        if _abf_phys "$rc"; then
+            rp="$REPLY"
+            _abf_text_has "$text" "$rp" && return 0
+            _abf_under "$fpc" "$rp" && return 0
+            _abf_under "$fpp" "$rp" && return 0
+        fi
+        _abf_under "$fpc" "$rc" && return 0
+        _abf_under "$fpp" "$rc" && return 0
     done <<<"$roots"
 
     # The plugin's own scripts, by the name a relative call uses.
     if [[ $text == *scripts/* ]]; then
-        for f in "$base"/scripts/*.sh "$base"/scripts/*.py "$base"/scripts/utils/*.sh; do
+        for f in "$base"/scripts/*.sh "$base"/scripts/*.py "$base"/scripts/utils/*.sh "$base"/scripts/utils/*.py; do
             [ -e "$f" ] || continue
             n="${f#"$base"/}"
             [[ $text == *"$n"* ]] && return 0
@@ -204,24 +298,36 @@ _abf_in_use_inner() {
 
     # 4. the deployment: where the session is, and what the call names
     _abf_find_deployment || return 1
-    local sroot=""
+    # A deployment exists, so the plugin has been set up here. If this session's
+    # marker could not be written (a state directory that is read-only, missing
+    # and not creatable, or whose in-use/ is a file) then "no marker" proves
+    # nothing: plugin_intro.sh may well have tried and failed. Unsure: in use.
+    _abf_state_ok "$state" || return 0
+    local sroot="" runs="" c b
     _abf_read_key "$_ABF_SETTINGS" storage_root
-    if [ -n "$REPLY" ]; then _abf_canon "$REPLY"; sroot="$REPLY"; fi
-    local runs=""
+    if [ -n "$REPLY" ]; then _abf_home "$REPLY"; _abf_canon "$REPLY"; sroot="$REPLY"; fi
     if [ -n "${LAB_RUNS_DIR:-}" ]; then _abf_canon "$LAB_RUNS_DIR"; runs="$REPLY"; fi
 
     if [[ $input =~ $re_cwd ]]; then cwd="${BASH_REMATCH[1]}"; else cwd="${PWD:-}"; fi
-    if [ -n "$cwd" ]; then
-        _abf_canon "$cwd"; cwd="$REPLY"
-        _abf_under "$cwd" "$_ABF_ROOT" && return 0
-        _abf_under "$cwd" "$sroot" && return 0
-        _abf_under "$cwd" "$runs" && return 0
-    else
-        # a cwd that cannot be read is not evidence of anything else
-        return 0
-    fi
-    _abf_text_has "$text" "$_ABF_ROOT" && return 0
-    _abf_text_has "$text" "$sroot" && return 0
-    _abf_text_has "$text" "$runs" && return 0
+    # a cwd that cannot be read is not evidence of anything: unsure, in use
+    [ -n "$cwd" ] || return 0
+    _abf_canon "$cwd"; cwd="$REPLY"
+
+    # The bases as named, then as they are physically (a link on either side).
+    local bases=() cwds=("$cwd")
+    for b in "$_ABF_ROOT" "$sroot" "$runs"; do
+        [ -n "$b" ] || continue
+        bases+=("$b")
+        if _abf_phys "$b"; then bases+=("$REPLY"); fi
+    done
+    if _abf_phys "$cwd"; then cwds+=("$REPLY"); fi
+    for c in "${cwds[@]}"; do
+        for b in "${bases[@]}"; do
+            _abf_under "$c" "$b" && return 0
+        done
+    done
+    for b in "${bases[@]}"; do
+        _abf_text_has "$text" "$b" && return 0
+    done
     return 1
 }

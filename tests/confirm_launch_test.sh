@@ -440,6 +440,7 @@ msys_pass "cat ssh_notes.md"                           "a filename containing ss
 msys_pass "wsl.exe -e ssh -o ControlPath=/tmp/cm-%C -o BatchMode=yes u@login 'scontrol show partition; sacctmgr show qos'" "FR-006 the incident command (wsl.exe, BatchMode): not flagged"
 msys_pass "wsl ssh u@host ls"                          "FR-006 ssh through wsl: not flagged"
 msys_pass "/c/Windows/System32/wsl.exe -e ssh u@host ls" "FR-006 ssh through wsl.exe by path: not flagged"
+msys_pass "C:\Windows\System32\wsl.exe -e ssh u@host ls" "FR-006 ssh through wsl.exe by a Windows path: not flagged"
 msys_pass "ssh -o BatchMode=yes u@host ls"             "FR-006 ssh -o BatchMode=yes: not flagged"
 msys_pass "ssh -oBatchMode=yes u@host ls"              "FR-006 ssh -oBatchMode=yes (glued): not flagged"
 msys_pass "ssh -o \"BatchMode=yes\" u@host ls"         "FR-006 ssh -o \"BatchMode=yes\" (quoted): not flagged"

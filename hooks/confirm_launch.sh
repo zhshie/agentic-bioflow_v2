@@ -394,27 +394,80 @@ if ! is_launch_command "$CMD"; then
         #   - run through WSL (command word wsl / wsl.exe): WSL's own ssh can
         #     share a connection that is already open (PITFALLS 16g), so no
         #     fresh login happens;
-        #   - with -o BatchMode=yes: ssh never prompts, it fails instead.
+        #   - ssh/scp/sftp with -o BatchMode=yes among ITS OWN options: it never
+        #     prompts, it fails instead.
         # Both are judged per segment, on that segment's own words, so
         # `echo wsl; ssh h ls` is still two segments and the ssh still asks.
-        # The option has to be really there - on the quote-free column, or as
-        # the one quoted spelling of the option itself - so a payload that
-        # merely mentions it does not count; and it stops counting when any
-        # OTHER BatchMode value shows up in the segment (ssh takes the first,
-        # and unsure asks).
-        BM_YES_RE='-o[[:space:]]*[Bb]atch[Mm]ode=[Yy][Ee][Ss]([[:space:]]|$)'
-        BM_SQ="'"; BM_DQ='"'; BM_Q="$BM_DQ$BM_SQ"
-        BM_QUOTED_RE="-o[[:space:]]*(${BM_DQ}[Bb]atch[Mm]ode=[Yy][Ee][Ss]${BM_DQ}|${BM_SQ}[Bb]atch[Mm]ode=[Yy][Ee][Ss]${BM_SQ})"
+        #
+        # The BatchMode test reads the segment's words the way a shell would
+        # (quotes honoured) and walks the options up to the destination, so:
+        # an option after the destination belongs to the remote command, a
+        # quoted one inside the remote command is not ssh's, `rsync -o` is
+        # "owner" and not ssh's at all, and a jump host (-J, ProxyJump,
+        # ProxyCommand) can still prompt on the far side. Any other BatchMode
+        # value in the options, or anything this does not understand, is not
+        # an exemption: when in doubt, ask.
+        batchmode_exempt() { # batchmode_exempt <segment as written>; 0 = exempt
+            local s="$1" i c cur="" q="" have=0 w kind="" arglet="" pend="" yes=0 bad=0 val
+            local -a W=()
+            for ((i = 0; i < ${#s}; i++)); do
+                c="${s:i:1}"
+                if [ -n "$q" ]; then
+                    if [ "$c" = "$q" ]; then q=""; else cur="$cur$c"; fi
+                else
+                    case "$c" in
+                        "'"|'"') q="$c"; have=1 ;;
+                        [[:space:]]) if [ "$have" = 1 ]; then W+=("$cur"); cur=""; have=0; fi ;;
+                        *) cur="$cur$c"; have=1 ;;
+                    esac
+                fi
+            done
+            [ "$have" = 1 ] && W+=("$cur")
+            for w in "${W[@]}"; do
+                if [ -z "$kind" ]; then
+                    w="${w##*/}"
+                    case "$w" in
+                        ssh|ssh.exe) kind=ssh; arglet=BbcDEeFIiJLlmOopQRSWw ;;
+                        scp|scp.exe) kind=scp; arglet=cFiJloPS ;;
+                        sftp|sftp.exe) kind=sftp; arglet=BbcDFiJloPRSs ;;
+                        rsync|rsync.exe) return 1 ;;
+                    esac
+                    continue
+                fi
+                if [ "$pend" = -o ]; then
+                    pend=""; val="$w"
+                elif [ -n "$pend" ]; then
+                    [ "$pend" = -J ] && bad=1
+                    pend=""; continue
+                else
+                    case "$w" in
+                        --) break ;;
+                        -o) pend=-o; continue ;;
+                        -o?*) val="${w#-o}" ;;
+                        -J|-J?*) bad=1; continue ;;
+                        -?) if [[ $arglet == *"${w#-}"* ]]; then pend="$w"; fi; continue ;;
+                        -*) c="${w:1:1}"
+                            # a cluster or a flag with its argument glued on; an o or J
+                            # anywhere in it is one this does not parse
+                            case "${w:1}" in *[oJ]*) bad=1 ;; esac
+                            continue ;;
+                        *) break ;;   # the destination: ssh's own options end here
+                    esac
+                fi
+                # val is one -o value
+                case "$val" in
+                    [Bb]atch[Mm]ode=[Yy][Ee][Ss]) yes=1 ;;
+                    *[Bb]atch[Mm]ode*|*[Pp]roxy[Jj]ump*|*[Pp]roxy[Cc]ommand*) bad=1 ;;
+                esac
+            done
+            [ "$yes" = 1 ] && [ "$bad" = 0 ]
+        }
         TSEG=""; TV=""; TCW=""
         while IFS="$US" read -r TSEG TV TCW; do
             [[ $TV =~ $ONSITE_RE ]] && continue
-            case "${TCW##*/}" in wsl|wsl.exe) continue ;; esac
+            case "${TCW##*[/\\]}" in wsl|wsl.exe) continue ;; esac
             if [[ $TV =~ $TRANSPORT_RE ]]; then
-                if [[ $TV =~ $BM_YES_RE || $TSEG =~ $BM_QUOTED_RE ]]; then
-                    BM_REST="${TSEG//[$BM_Q]/}"
-                    BM_REST="${BM_REST//[Bb]atch[Mm]ode=[Yy][Ee][Ss]/}"
-                    [[ $BM_REST == *[Bb]atch[Mm]ode* ]] || continue
-                fi
+                batchmode_exempt "$TSEG" && continue
                 ask "GATE: this command reaches the site directly over ssh/scp/rsync/sftp, bypassing scripts/on_site.sh. In this shell (Git Bash/MSYS) a direct ssh connection cannot hold a multiplexed master - the control socket comes up but fd-passing to a real session fails (PITFALLS 16b) - so a call like this one falls back to a full login: a one-time code on the user's phone that this agent cannot read. scripts/on_site.sh is the only sanctioned route to the site from here (docs/SITE_ADAPTER.md contract 6); it also knows how to borrow WSL's own ssh for the multiplexed part (PITFALLS 16g), which this bare call does not. Show the user the command and route it through scripts/on_site.sh instead, or let them run it themselves." \
                     "$CMD
 

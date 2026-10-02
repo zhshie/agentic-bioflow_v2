@@ -124,17 +124,20 @@ from a working one until the moment it matters (PITFALLS 28, issue #15).
 **Scope.** The rules below govern a session in which agentic-bioflow is *in use*. A session is in
 use when any one of these holds:
 
-1. **The session has used the plugin.** The user typed an `/agentic-bioflow:` command, a plugin
-   skill was loaded, or the request was worded so as to route to the plugin, and
+1. **The session has used the plugin.** A prompt named an `/agentic-bioflow:` command (anywhere
+   in it), a plugin skill was loaded, or the request was worded so as to route to the plugin, and
    `hooks/plugin_intro.sh` left its per-session marker. A subagent carries its parent's session
    id, so it shares the parent's marker.
 2. **The session's working folder is inside the deployment**: under the settings root, or under
    `storage_root`.
 3. **The call itself is about the plugin**: it runs one of the plugin's scripts or hooks, runs
-   `tw`, names a path under the deployment, or is a Seqera or Tower MCP tool.
+   `tw` (or `tw.exe`), names a path under the deployment (in any spelling: `~`, `$HOME`, a
+   symlink's other name), or is a Seqera or Tower MCP tool. A write into the installed plugin's own
+   directory counts too.
 
-When the plugin is unsure (the hook input carries no session id, or the state directory cannot
-be read) the session counts as in use. Outside a session in use the plugin stays silent: no hook
+When the plugin is unsure the session counts as in use: the hook input carries no session id, or
+the state directory cannot be read, or (once a deployment exists) cannot be written, so that the
+marker may have failed to save. Outside a session in use the plugin stays silent: no hook
 gates, reminds or prints anything. The definition lives in `hooks/in_use.sh`.
 *Check:* `tests/in_use_test.sh`, `tests/in_use_speed_test.sh`, `tests/constitution_scope_test.sh`.
 
@@ -217,7 +220,7 @@ silently when the answer is no.
 - Credentials and personal details (the fourth rule) are a rule about files, not a hook, and are
   unchanged.
 - When in doubt the hooks treat the session as in use, so a deployment that loses its state
-  directory or whose host sends no session id keeps the full net.
+  directory, cannot write to it, or whose host sends no session id keeps the full net.
 
 **Version.** MAJOR, under Governance: the amendment redefines the Safety Net's scope.
 **Approval.** Maintainer's choice recorded in `specs/005-plugin-scope/spec.md` (Clarifications,
