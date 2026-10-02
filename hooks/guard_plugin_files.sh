@@ -93,6 +93,18 @@ EOF
 ROOT_RAW="${CLAUDE_PLUGIN_ROOT:-}"
 [ -n "$ROOT_RAW" ] || exit 0
 
+# Feature 005 (#48), Constitution 2.0.0: silent in a session that is not using
+# this plugin - including a plain edit of the installed plugin's files. Asked
+# before the root is resolved and the spellings built (those fork), so that
+# session pays for one read of stdin and some string matching (#34). See
+# hooks/in_use.sh for what "in use" means and why unsure counts as in use. A
+# hook directory that cannot supply in_use.sh answers "in use": the guard below
+# then runs exactly as it did before this existed.
+INPUT=$(cat)
+HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
+{ . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
+abf_in_use "$INPUT" "$INPUT" || exit 0
+
 # Resolve the root PHYSICALLY: a symlinked install (or a symlinked ancestor
 # of one) must not let a write through just because the string on disk
 # differs from ${CLAUDE_PLUGIN_ROOT}. If the root itself cannot be resolved -
@@ -153,7 +165,6 @@ root_in() { # root_in <text> - any spelling of the root, as a literal substring
     return 1
 }
 
-INPUT=$(cat)
 if ! jq_works; then
     root_in "$INPUT" && refuse_without_jq
     exit 0

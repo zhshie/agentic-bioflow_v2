@@ -83,8 +83,19 @@ looks_managed_write_shaped() {
 # Git Bash finds but cannot execute - passes that check and then fails
 # every parse below, which is the exact silent-gate failure this guard
 # exists to stop. So ask jq to do its job on the smallest possible input.
+# Feature 005 (#48), Constitution 2.0.0: silent in a session that is not using
+# this plugin. Asked first, before the jq probe, so that session pays for one
+# read of stdin and some string matching and nothing else (#34). See
+# hooks/in_use.sh for what "in use" means and why unsure counts as in use. A
+# hook directory that cannot supply in_use.sh answers "in use": the gate below
+# then runs exactly as it did before this existed.
+INPUT=$(cat)
+HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
+{ . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
+abf_in_use "$INPUT" "$INPUT" || exit 0
+
 if ! printf '{}' | jq -e . >/dev/null 2>&1; then
-    RAW=$(cat)
+    RAW=$INPUT
     if looks_managed_write_shaped "$RAW"; then
         cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/confirm_walkthrough.sh cannot read
@@ -116,7 +127,6 @@ ESCAPE='略過導覽'      # said by the user, G1/G2/G3 stand down
 ESCAPE4='略過計畫'     # said by the user, G4 stands down
 MAXLINES=4000          # transcript tail scanned; bounds the cost on a long one
 
-INPUT=$(cat)
 TOOL=$(jq -r '.tool_name // ""'            <<<"$INPUT" 2>/dev/null)
 CMD=$(jq  -r '.tool_input.command // ""'   <<<"$INPUT" 2>/dev/null)
 # notebook_path as well as file_path: MultiEdit and NotebookEdit reach the

@@ -120,8 +120,17 @@ J=$(jq -nc --arg s s-out --arg d "$OUTSIDE" --arg t "$TMP/empty.jsonl" \
 run confirm_walkthrough.sh "$J"
 check "TC-004 writing a samplesheet is not gated (walkthrough)"         silent
 PLUG="$TMP/plugin_root"; mkdir -p "$PLUG/hooks" "$PLUG/scripts"
+run guard_plugin_files.sh "$(file_in s-out "$OUTSIDE" Write "$OUTSIDE/notes.txt")" CLAUDE_PLUGIN_ROOT="$PLUG"
+check "TC-004 writing an ordinary file is not refused (guard)"          silent
+# Naming the plugin's own install directory is condition 3 (the call is about
+# the plugin), so the guard that protects that directory still fires - from any
+# session, in use or not. This is the one place "not in use" does not mean the
+# guard is off, and it is deliberate (fail-safe: the install is overwritten on
+# update and edits there are lost).
 run guard_plugin_files.sh "$(file_in s-out "$OUTSIDE" Write "$PLUG/hooks/x.sh")" CLAUDE_PLUGIN_ROOT="$PLUG"
-check "TC-004 editing the plugin's installed files is not refused"      silent
+check "TC-004 ...but a write into the plugin's own install dir is refused" deny
+run guard_plugin_files.sh "$(bash_in s-out "$OUTSIDE" 'echo x > "$CLAUDE_PLUGIN_ROOT/hooks/x.sh"')" CLAUDE_PLUGIN_ROOT="$PLUG"
+check "TC-004 ...also when the command spells the root as the variable"  deny
 # TC-005
 J=$(jq -nc --arg s s-out --arg d "$OUTSIDE" '{session_id:$s, cwd:$d, hook_event_name:"SessionStart"}')
 run session_start.sh "$J"

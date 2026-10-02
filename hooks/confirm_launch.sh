@@ -99,8 +99,20 @@ looks_launch_shaped() {
     return 1
 }
 
+# Feature 005 (#48), Constitution 2.0.0: this plugin is silent in a session that
+# is not using it. Asked FIRST, before the jq probe and before anything is
+# split or parsed, so that session pays for one read of stdin and some string
+# matching - no process beyond `cat` (#34). hooks/in_use.sh has the definition
+# of "in use" and the rule that unsure counts as in use. A hook directory
+# without in_use.sh, or one that cannot be sourced, answers "in use": the gate
+# below then runs exactly as it did before this existed.
+INPUT=$(cat)
+HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
+{ . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
+abf_in_use "$INPUT" "$INPUT" || exit 0
+
 if ! printf '{}' | jq -e . >/dev/null 2>&1; then
-    RAW=$(cat)
+    RAW=$INPUT
     if looks_launch_shaped "$RAW"; then
         cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/confirm_launch.sh cannot read what
@@ -122,7 +134,6 @@ EOF
     exit 0
 fi
 
-INPUT=$(cat)
 TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
 # Bash-first, then the other spellings a non-Bash execution tool might use
 # for the same idea. A tool this list does not cover yet is exactly the case

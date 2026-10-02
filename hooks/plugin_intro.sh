@@ -123,6 +123,28 @@ SID_RAW="${SID_RAW%%$'\n'*}"
 SID=$(printf '%s' "$SID_RAW" | tr -cd 'A-Za-z0-9_-')
 STATE="${AGENTIC_BIOFLOW_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-}/.local/state}/agentic-bioflow}"
 MARKS="$STATE/intro-shown"
+
+# Feature 005 (#48), Constitution 2.0.0: this is the moment a session starts
+# being "in use" - every other hook is silent until it has happened, or until
+# the call itself or the session's folder says so (hooks/in_use.sh). The marker
+# is a separate file from $MARKS above on purpose: that one means "the overview
+# was shown" and is written only after something went out; this one means "the
+# plugin was reached for" and is written as soon as that is known, so a failed
+# intro.sh does not leave the safety net off. A subagent's calls carry its
+# parent's session id, so one marker covers both. Fails open like everything
+# here: an unwritable state directory costs the marker, never the prompt - and
+# a state path that cannot be read is itself read as "in use" by in_use.sh.
+mark_in_use() {
+    [ -n "$SID" ] || return 0
+    mkdir -p "$STATE/in-use" 2>/dev/null || return 0
+    : > "$STATE/in-use/$SID" 2>/dev/null
+    find "$STATE/in-use" -type f -mtime +30 -exec rm -f {} + 2>/dev/null
+    return 0
+}
+# The natural-language door is decided without jq, so it can mark now - before
+# the once-per-session exit below, which must not skip it. The literal door
+# marks once it is certain (below).
+[ "$IS_NL" = 1 ] && mark_in_use
 [ -n "$SID" ] && [ -e "$MARKS/$SID" ] && exit 0
 
 # T3: jq missing/broken is now visible instead of silent - see the file
@@ -133,6 +155,10 @@ MARKS="$STATE/intro-shown"
 # was still broken.
 JQMARKS="$STATE/jq-warn-shown"
 if ! command -v jq >/dev/null 2>&1 || ! printf '{}' | jq -e . >/dev/null 2>&1; then
+    # Without jq the literal door cannot be checked precisely (a mere mention
+    # of /agentic-bioflow: mid-sentence matches the loose test). Marking is the
+    # safe direction: one gate too many beats one missed.
+    mark_in_use
     if [ -z "$SID" ] || [ ! -e "$JQMARKS/$SID" ]; then
         JQWARN='agentic-bioflow: jq is missing or cannot run here. The launch/cleanup/walkthrough safety-net hooks (confirm_launch.sh, confirm_cleanup.sh, confirm_walkthrough.sh) are running in a reduced, text-only mode until it is installed - they still catch a launch- or delete-shaped command, but cannot verify the fine detail the way they normally do. macOS: brew install jq / Debian+WSL: sudo apt install jq / Windows: winget install jqlang.jq'
         printf '{"systemMessage":"%s"}\n' "$JQWARN"
@@ -153,6 +179,7 @@ if [ "$IS_LITERAL" = 1 ]; then
         elif ((.prompt // "") | test("^\\s*/agentic-bioflow:")) then "UserPromptSubmit"
         else "" end' <<<"$INPUT") || exit 0
     [ -n "$EVENT" ] || exit 0
+    mark_in_use
 
     INTRO="$(bash "$ROOT/scripts/intro.sh")" || exit 0
     [ -n "$INTRO" ] || exit 0
