@@ -35,6 +35,29 @@ RELAUNCH="tw runs $(printf '\x72\x65\x6c\x61\x75\x6e\x63\x68')"
 SB=$(printf '\x73\x62\x61\x74\x63\x68')
 fails=0
 
+# #44: D3 (the bare-ssh reminder) reads the REAL `uname -s`, and it is MSYS-only.
+# Run natively in Git Bash this file's real uname IS MSYS, so every case below
+# that is not about D3 (a read-only `ssh h 'grep ...'` that must pass, the
+# "NOT on MSYS" case) saw D3 fire. The fix is the fixture, not the hook: from
+# here on every hook call in this file sees a platform that is not MSYS unless
+# a case puts MSYSBIN (below) in front. On Linux/macOS this changes nothing.
+LINUXDIR=$(mktemp -d)
+cat > "$LINUXDIR/uname" <<'EOF'
+#!/bin/bash
+[ "$1" = -s ] && { echo Linux; exit 0; }
+exec /usr/bin/uname "$@"
+EOF
+chmod +x "$LINUXDIR/uname"
+#RED# export PATH="$LINUXDIR:$PATH"
+
+# Guard for the shim above: a case that is not about D3 must not run on a
+# platform the hook reads as MSYS. Red natively in Git Bash before the shim.
+printf '%-58s ' "#44 fixture: the default uname -s is not MSYS (D3 is MSYS-only)"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) echo "FAIL: uname -s says $(uname -s); D3 would fire on every bare ssh below"; fails=$((fails+1)) ;;
+  *) echo ok ;;
+esac
+
 t() { # t <command> <expect gate|pass> <label>
   printf '%-56s ' "$3"
   out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
@@ -135,7 +158,7 @@ tmcp "mcp__seqera__list_runs"                          pass "#29 an MCP tool tha
 # and the gate vanished for EVERY command with nothing printed - the same shape
 # as the relaunch miss above, but total. So the load is fail-closed, and this
 # case is what keeps it that way.
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d); trap 'rm -rf "$TMP" "$LINUXDIR"' EXIT
 mkdir -p "$TMP/hooks"
 cp "$(dirname "$H")/confirm_launch.sh" "$TMP/hooks/"
 cp "$(dirname "$H")/strip_heredocs.awk" "$TMP/hooks/" 2>/dev/null
@@ -158,7 +181,7 @@ echo
 # ---------------------------------------------------------------------------
 # Z2: the LAB_RUNS_DIR warning must not cry wolf under reach: ssh/none, and
 # must not change under reach: local.
-Z2TMP=$(mktemp -d); trap 'rm -rf "$Z2TMP" "$TMP" 2>/dev/null' EXIT
+Z2TMP=$(mktemp -d); trap 'rm -rf "$Z2TMP" "$TMP" "$LINUXDIR" 2>/dev/null' EXIT
 
 mksettings() { # mksettings <file> <reach-value-or-empty>
     [ -n "$2" ] && printf 'reach: %s\n' "$2" > "$1" || : > "$1"
