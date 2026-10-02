@@ -1,0 +1,138 @@
+# Names this deployment's own relay allowlist (scripts/egress_allow.sh) refuses
+# as "a specific domain" (#45). Read by scripts/egress_allow.sh and by
+# scripts/nf_relay.py, so the two cannot disagree; it travels with scripts/.
+#
+#   exact <name>   refuse exactly this name. Names under it are fine: a public
+#                  suffix or a shared hosting domain is not one host, but
+#                  bbc.co.uk or user.github.io is.
+#   tree  <name>   refuse this name and everything under it: wildcard-DNS
+#                  services (any name under them resolves to whatever address
+#                  the name spells), tunnel services, and names that only mean
+#                  something inside one network.
+#
+# This is a short list of the common cases, not the Public Suffix List, and it
+# cannot be complete. The relay's own check - an extra domain that resolves to
+# a loopback, private or link-local address is refused at connect - is what
+# holds when a name is not on it.
+
+# public suffixes with more than one label
+exact co.uk
+exact org.uk
+exact ac.uk
+exact gov.uk
+exact net.uk
+exact me.uk
+exact ltd.uk
+exact plc.uk
+exact sch.uk
+exact com.au
+exact net.au
+exact org.au
+exact edu.au
+exact gov.au
+exact co.nz
+exact org.nz
+exact net.nz
+exact ac.nz
+exact govt.nz
+exact co.jp
+exact ne.jp
+exact or.jp
+exact ac.jp
+exact go.jp
+exact ed.jp
+exact com.tw
+exact org.tw
+exact net.tw
+exact edu.tw
+exact gov.tw
+exact idv.tw
+exact com.cn
+exact net.cn
+exact org.cn
+exact gov.cn
+exact edu.cn
+exact com.hk
+exact org.hk
+exact edu.hk
+exact com.sg
+exact edu.sg
+exact co.kr
+exact or.kr
+exact ac.kr
+exact go.kr
+exact co.in
+exact net.in
+exact org.in
+exact ac.in
+exact gov.in
+exact co.za
+exact org.za
+exact ac.za
+exact gov.za
+exact com.br
+exact net.br
+exact org.br
+exact gov.br
+exact com.mx
+exact org.mx
+exact com.ar
+exact com.tr
+exact co.il
+exact org.il
+exact ac.il
+
+# shared hosting and platform domains: one name, many unrelated owners
+exact github.io
+exact gitlab.io
+exact githubusercontent.com
+exact herokuapp.com
+exact appspot.com
+exact blogspot.com
+exact pages.dev
+exact workers.dev
+exact netlify.app
+exact vercel.app
+exact web.app
+exact firebaseapp.com
+exact azurewebsites.net
+exact cloudfront.net
+exact amazonaws.com
+exact s3.amazonaws.com
+exact r2.dev
+exact onrender.com
+exact fly.dev
+exact glitch.me
+exact repl.co
+
+# wildcard-DNS services: a name under them spells the address it resolves to
+tree nip.io
+tree sslip.io
+tree xip.io
+tree traefik.me
+tree localtest.me
+tree lvh.me
+tree vcap.me
+tree lacolhost.com
+tree localho.st
+
+# tunnel services: a name under them is somebody's machine
+tree ngrok.io
+tree ngrok-free.app
+tree ngrok.app
+tree trycloudflare.com
+tree loca.lt
+tree localtunnel.me
+tree serveo.net
+
+# names that only mean something inside one network
+tree localhost
+tree localdomain
+tree local
+tree internal
+tree lan
+tree intranet
+tree corp
+tree home
+tree home.arpa
+tree invalid

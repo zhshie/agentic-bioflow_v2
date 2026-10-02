@@ -68,7 +68,46 @@ normalize_domain() {   # normalize_domain <raw> -> lowercase, no trailing dot
 domain_format_ok() {   # domain_format_ok <normalized> -> 0 if it may be added
     local d="$1"
     [ -n "$d" ] || return 1
+    # ASCII letters, digits, hyphen and dots only, spelled out: a range like
+    # a-z follows the locale's collation order, and the Python validator in
+    # nf_relay.py must agree with this one (#45: U+212A, and > 253 characters).
+    [[ "$d" == *[!abcdefghijklmnopqrstuvwxyz0123456789.-]* ]] && return 1
+    [ "${#d}" -le 253 ] || return 1
     [[ "$d" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]]
+}
+
+# Names that are well formed but are not one host you can name (#45): a public
+# suffix, a shared hosting domain, a wildcard-DNS or tunnel service, a name that
+# only means something inside one network, or a name that spells an IPv4
+# address. The names are in scripts/relay_denied_names.txt, which
+# scripts/nf_relay.py reads too. Prints the reason and returns 1 when refused,
+# 0 when fine. An unreadable list is not "nothing is refused": it refuses
+# (invariant 13).
+DENIED_NAMES_FILE="$HERE/relay_denied_names.txt"
+RE_EMBEDDED_IP='(^|\.)[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(\.|$)'
+domain_policy_refusal() {   # domain_policy_refusal <normalized> -> reason on stdout, rc 1 when refused
+    local d="$1" kind name
+    if [[ "$d" =~ $RE_EMBEDDED_IP ]]; then
+        printf '%s\n' "it spells an IP address in its labels, which wildcard-DNS names use to reach any address"
+        return 1
+    fi
+    if [ ! -r "$DENIED_NAMES_FILE" ]; then
+        printf '%s\n' "the list of shared names ($DENIED_NAMES_FILE) cannot be read, so it cannot be checked"
+        return 1
+    fi
+    while read -r kind name _; do
+        case "$kind" in exact|tree) ;; *) continue ;; esac
+        [ -n "$name" ] || continue
+        if [ "$d" = "$name" ]; then
+            printf '%s\n' "it is a shared or local-only name ($name), not one host"
+            return 1
+        fi
+        if [ "$kind" = tree ] && [[ "$d" == *".$name" ]]; then
+            printf '%s\n' "it is under $name, a wildcard-DNS, tunnel or local-only name: a shared name, not one host"
+            return 1
+        fi
+    done < "$DENIED_NAMES_FILE"
+    return 0
 }
 
 # --- the file ------------------------------------------------------------
@@ -124,11 +163,18 @@ cmd_add() {
         "refusing '$raw': only accepts a specific domain name (subdomains are fine," \
         "e.g. download.example.org) - never a wildcard, an IP address, a single-label" \
         "top-level domain, or an empty string."
+    local why; why="$(domain_policy_refusal "$domain")" || die 1 \
+        "refusing '$raw': $why." \
+        "Add the specific host a run needs (for example download.example.org), not a shared name."
 
     # One reason is one field of one line: tabs, newlines and carriage
     # returns become spaces, or a reason could split the line and plant an
     # entry that never passed the checks above (developer review of 002).
     reason="${reason//$'\t'/ }"; reason="${reason//$'\n'/ }"; reason="${reason//$'\r'/ }"
+    # Every other control character too (VT, FF, 0x1f, ...), and the Unicode line
+    # breaks a reader might split on: NEL (U+0085) and U+2028/2029 (#45).
+    reason="${reason//$'\xc2\x85'/ }"; reason="${reason//$'\xe2\x80\xa8'/ }"; reason="${reason//$'\xe2\x80\xa9'/ }"
+    reason="$(printf '%s' "$reason" | tr '[:cntrl:]' ' ')"
     reason="$(printf '%s' "$reason" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     [ -n "$reason" ] || die 1 \
         "a reason is required - name the run or need that made '$domain' necessary."
@@ -184,6 +230,8 @@ cmd_list() {
         # as if it were in force (independent acceptance of 002, M4).
         if ! domain_format_ok "$(normalize_domain "$domain")"; then
             printf '%s\t格式不符，不會生效\n' "$domain"
+        elif ! domain_policy_refusal "$(normalize_domain "$domain")" >/dev/null; then
+            printf '%s\t共用或內網名稱，不會生效\n' "$domain"
         elif [ -z "$date_" ] || [ -z "$reason" ]; then
             printf '%s\t來源不明\n' "$domain"
         else
@@ -201,13 +249,20 @@ cmd_domains() {
     # Present but unreadable is not "no list": say so and fail, so on_site.sh
     # carries the reason to the relay instead of an empty list that looks
     # exactly like a deployment that never added anything (TC-009).
-    [ -r "$ALLOW_FILE" ] || die 1 "$ALLOW_FILE exists but cannot be read - check its permissions."
+    # The messages below travel to the site as a note (scripts/on_site.sh), so
+    # they name the file, not this machine's path to it (#45).
+    local shown; shown="$(basename "$ALLOW_FILE")"
+    [ -r "$ALLOW_FILE" ] || die 1 "$shown (in this deployment's config folder) exists but cannot be read - check its permissions."
     local domain date_ reason out=""
     while IFS=$'\t' read -r domain date_ reason || [ -n "$domain" ]; do
         domain="${domain%$'\r'}"
         [ -n "$domain" ] || continue
         if ! domain_format_ok "$domain"; then
-            echo "egress_allow: skipping '$domain' in $ALLOW_FILE - not a valid domain." >&2
+            echo "egress_allow: skipping '$domain' in $shown - not a valid domain." >&2
+            continue
+        fi
+        if why="$(domain_policy_refusal "$domain")"; then :; else
+            echo "egress_allow: skipping '$domain' in $shown - $why." >&2
             continue
         fi
         out="${out:+$out,}$domain"

@@ -187,6 +187,24 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
     exit 0
 }
 
+# #45: a Write/Edit-type tool changing this deployment's own relay allowlist file
+# (egress_allow.tsv) directly, around scripts/egress_allow.sh and its checks.
+# Only the file name is read; no other Write is this hook's business (a launch
+# word in a document being written is not a launch).
+case "$TOOL" in
+    Write|Edit|MultiEdit|NotebookEdit)
+        EA_FP=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$INPUT" 2>/dev/null)
+        EA_FP="${EA_FP//\\//}"
+        if [ "${EA_FP##*/}" = egress_allow.tsv ]; then
+            ask "GATE: this writes this deployment's own relay allowlist file (egress_allow.tsv) directly, around scripts/egress_allow.sh and its checks (a specific domain only, no shared or wildcard names, a recorded reason, the 100-entry limit). That moves a security boundary on the site's SHARED login node: a domain added here is carried by the relay the next time it is started or restarted. Show the user exactly which domain is being added or removed and why, and wait for their explicit yes. Prefer scripts/egress_allow.sh add/remove, which checks the name." \
+                "$TOOL of $EA_FP
+
+Direct change to egress_allow.tsv.
+This moves a security boundary on a shared login node."
+        fi
+        exit 0 ;;
+esac
+
 # T1, part 2: jq is fine, but this call's own tool ('$TOOL') did not carry
 # its command under any field name this file knows to check. For Bash that
 # never happens in practice; for anything else it means the tool's shape is
@@ -260,6 +278,17 @@ This deployment adds no extra domains (built-in list only)."
         fi
         [ -n "$RELAY_ERR" ] && RELAY_LIST="${RELAY_LIST}
 Not loaded: ${RELAY_ERR}"
+        # #45: an environment prefix on a direct start (`NF_RELAY_EXTRA_DOMAINS=x
+        # bash scripts/egress_ctl.sh start`, `env ...`, `export ...;`) hands the
+        # relay a list the file does not hold, so the summary above would be
+        # untrue. Through scripts/on_site.sh the variable is always replaced by the
+        # file's list, so only a direct start is named.
+        if [[ $CMD == *NF_RELAY_EXTRA_DOMAINS=* ]] && [[ $CMD != *on_site.sh* ]]; then
+            RELAY_OVR="${CMD#*NF_RELAY_EXTRA_DOMAINS=}"
+            RELAY_OVR="${RELAY_OVR%%[[:space:];&|]*}"
+            RELAY_LIST="${RELAY_LIST}
+THIS COMMAND ALSO SETS NF_RELAY_EXTRA_DOMAINS=${RELAY_OVR}, which overrides this deployment's list: the relay would carry THAT list, not the one shown above. Show the user the domains it names."
+        fi
     fi
     ask "GATE: this starts, stops or restarts a resident process (the Tower Agent or the egress relay) on the site's SHARED login node. Before running it, tell the user which process, under which identity (agent_connection / credential) and why, and wait for their explicit yes. For the relay, also show the user this deployment's extra domains listed below - starting it is when they take effect. Never start one under an agent_connection that is not this member's own - docs/SETTINGS.md: two members sharing one are refused permanently.${RELAY_LIST}" \
         "$CMD
@@ -275,7 +304,19 @@ fi
 # on_site.sh '...' (whose quoted payload the splitter re-emits as a command of
 # its own) and path forms do. The cheap substring test first keeps every other
 # command off this path entirely; matching is in-shell, no fork per segment.
-if [[ $CMD == *egress_allow.sh* ]]; then
+#
+# #45: the name can be written so that it never appears as written - a glob
+# (`egress_allo?.sh`, `egress_allow.*`), a backslash, a quote splice, or a
+# variable set earlier in the same command. The pre-test therefore reads the
+# command the way a shell would (no quotes, no backslashes) and also fires on a
+# glob or a `$` beside an `add`/`remove` word; the per-segment test then decides
+# what is really being run. The file the script keeps (egress_allow.tsv) is
+# guarded the same way: a redirect, an editor, tee, cp, sed -i and the like ask.
+EA_N="${CMD//\\/}"; EA_N="${EA_N//\"/}"; EA_N="${EA_N//\'/}"
+EA_PRE=0
+case "$EA_N" in *egress_*|*.tsv*) EA_PRE=1 ;; esac
+if [ "$EA_PRE" = 0 ] && [[ $EA_N == *[\*\?\[\$]* ]] && [[ $EA_N =~ (^|[[:space:]])(add|remove)([[:space:]]|$) ]]; then EA_PRE=1; fi
+if [ "$EA_PRE" = 1 ]; then
     EA_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
     [ -n "$EA_NB" ] || EA_NB="$CMD"
     EA_US=$(printf '\037')
@@ -303,12 +344,106 @@ if [[ $CMD == *egress_allow.sh* ]]; then
     EA_RUN_RE='(^|[^[:alnum:]_])egress_allow\.sh([^[:alnum:]_.-]|$)'
     EA_REDIR_RE='^[[:space:]]*[0-9]*[<>]+[&]?[[:space:]]*[^[:space:]]+(.*)$'
     EA_REASON_RE='--reason[[:space:]=]+(.*)$'
+    EA_WR_RE='>>?[[:space:]]*([^[:space:]<>;&|]+)'
+    EA_INPLACE_RE='(^|[[:space:]])(-[A-Za-z]*i[A-Za-z]*|--in-place[^[:space:]]*)([[:space:]]|$)'
+    EA_VARS=""
+    # ea_names <word> <file name>: does the word name that file, literally or as
+    # a glob (`egress_allo?.sh`)? The path in front of the name does not matter.
+    ea_names() {
+        local b="${1##*/}"
+        [[ $b == "$2" ]] && return 0
+        if [[ $b == *[\*\?\[]* ]]; then [[ $2 == $b ]] && return 0; fi
+        return 1
+    }
+    EA_SEG=""; EA_V=""; EA_CW=""
     while IFS="$EA_US" read -r EA_SEG EA_V EA_CW; do
-        EA_PLAIN="${EA_SEG//[\"\']/}"
+        EA_PLAIN="${EA_SEG//[\"\']/}"; EA_PLAIN="${EA_PLAIN//\\/}"
+        # `a=egress_allow` on its own is remembered and read into later segments.
+        if [[ $EA_PLAIN =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=([^[:space:]]*)[[:space:]]*$ ]]; then
+            EA_VARS="${EA_VARS}${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"$'\n'
+            continue
+        fi
+        while IFS='=' read -r EA_VN EA_VV; do
+            [ -n "$EA_VN" ] || continue
+            EA_PLAIN="${EA_PLAIN//\$\{$EA_VN\}/$EA_VV}"; EA_PLAIN="${EA_PLAIN//\$$EA_VN/$EA_VV}"
+        done <<<"$EA_VARS"
+        EA_CWB="${EA_CW##*/}"
+        EA_SUB=""
+        if [ "$EA_CWB" = git ]; then
+            read -r _ EA_SUB _ <<<"$EA_PLAIN"
+        fi
+
+        # --- direct writes to the file the script keeps (#45) -----------------
+        EA_TSV=0
+        set -f
+        for EA_W in $EA_PLAIN; do
+            EA_W2="$EA_W"
+            # a redirect glued to its target (`>>cfg/x`, `2>cfg/x`) or a dd-style of=cfg/x
+            [[ $EA_W2 =~ ^[0-9]*[\<\>]+(.*)$ ]] && EA_W2="${BASH_REMATCH[1]}"
+            EA_W2="${EA_W2##*=}"
+            ea_names "$EA_W2" egress_allow.tsv && EA_TSV=1
+        done
+        set +f
+        if [ "$EA_TSV" = 1 ]; then
+            EA_WRITES=0
+            if [[ $EA_V == *'>'* ]]; then
+                EA_T="$EA_PLAIN"
+                while [[ $EA_T =~ $EA_WR_RE ]]; do
+                    ea_names "${BASH_REMATCH[1]}" egress_allow.tsv && EA_WRITES=1
+                    EA_T="${EA_T#*"${BASH_REMATCH[0]}"}"
+                done
+            fi
+            if [ "$EA_WRITES" = 0 ]; then
+                case "$EA_CWB" in
+                    cat|less|more|head|tail|grep|egrep|fgrep|rg|ag|wc|ls|ll|dir|stat|file|diff|cmp|sort|uniq|cut|column|tr|nl|od|xxd|hexdump|md5sum|sha1sum|sha256sum|cksum|du|realpath|readlink|basename|dirname|test|'['|echo|printf|bat|jq|tac|rev|paste|join|comm|fold|strings|shellcheck) ;;
+                    sed|awk|gawk|perl|ruby) [[ $EA_PLAIN =~ $EA_INPLACE_RE ]] && EA_WRITES=1 ;;
+                    git) case "$EA_SUB" in diff|log|show|blame|status|ls-files|grep|cat-file|annotate|whatchanged) ;; *) EA_WRITES=1 ;; esac ;;
+                    *) EA_WRITES=1 ;;
+                esac
+            fi
+            if [ "$EA_WRITES" = 1 ]; then
+                ask "GATE: this writes this deployment's own relay allowlist file (egress_allow.tsv) directly, around scripts/egress_allow.sh and its checks (a specific domain only, no shared or wildcard names, a recorded reason, the 100-entry limit). That moves a security boundary on the site's SHARED login node: a domain added here is carried by the relay the next time it is started or restarted. Show the user exactly which domain is being added or removed and why, and wait for their explicit yes. Prefer scripts/egress_allow.sh add/remove, which checks the name." \
+                    "$CMD
+
+Direct change to egress_allow.tsv.
+This moves a security boundary on a shared login node."
+            fi
+        fi
+
+        # --- the script itself ------------------------------------------------
+        case "$EA_CWB" in
+            cat|less|more|head|tail|grep|egrep|fgrep|rg|ag|wc|ls|ll|dir|stat|file|diff|cmp|shellcheck|bat|git) continue ;;
+        esac
+        # `bash -n` parses and runs nothing.
+        [[ $EA_PLAIN =~ (^|[[:space:]])(bash|sh|zsh|dash|ksh)[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*n[A-Za-z]*[[:space:]] ]] && continue
+        # Spellings that name the script without containing its name: a glob
+        # (`egress_allo?.sh`) or a variable that is not set here (`$a.sh`)
+        # followed by add/remove. Read as the name, when what runs it is a
+        # runner (or is itself that word).
+        EA_NORM=""; EA_MOD=0
+        set -f
+        for EA_W in $EA_PLAIN; do
+            EA_B="${EA_W##*/}"
+            if [[ $EA_B == *[\*\?\[]* ]] && [[ egress_allow.sh == $EA_B ]]; then
+                EA_W="${EA_W%"$EA_B"}egress_allow.sh"; EA_MOD=1
+            fi
+            EA_NORM="$EA_NORM $EA_W"
+        done
+        set +f
+        if [[ $EA_NORM =~ (^|[[:space:]])([^[:space:]]*\$[^[:space:]]*)[[:space:]]+(add|remove)([[:space:]]|$) ]]; then
+            EA_NORM="${EA_NORM/"${BASH_REMATCH[2]}"/egress_allow.sh}"; EA_MOD=1
+        fi
         EA_RUN=0
         [[ $EA_V =~ $EA_RUN_RE ]] && EA_RUN=1
+        if [ "$EA_RUN" = 0 ] && [ "$EA_MOD" = 1 ]; then
+            case "$EA_CWB" in
+                bash|sh|zsh|dash|ksh|source|.|exec|env|command|nohup|timeout|time|sudo|xargs|nice) EA_RUN=1 ;;
+                *) ea_names "$EA_CW" egress_allow.sh && EA_RUN=1 ;;
+            esac
+            [ "$EA_RUN" = 1 ] && EA_PLAIN="$EA_NORM"
+        fi
         if [ "$EA_RUN" = 0 ] && [[ $EA_PLAIN == *egress_allow.sh* ]]; then
-            case "${EA_CW##*/}" in
+            case "$EA_CWB" in
                 bash|sh|zsh|dash|ksh|source|.|exec|env|command|nohup|timeout|time|sudo|xargs|nice|egress_allow.sh) EA_RUN=1 ;;
             esac
         fi
@@ -321,6 +456,8 @@ if [[ $CMD == *egress_allow.sh* ]]; then
             read -r EA_O EA_D _ <<< "$EA_T"
             case "$EA_O" in
                 list|domains) ;;
+                # Sourcing it with no operation runs nothing worth asking about.
+                '') case "$EA_CWB" in source|.) ;; *) EA_NEED=1 ;; esac ;;
                 *) EA_NEED=1; [ -n "$EA_OP" ] || { EA_OP="$EA_O"; EA_DOM="$EA_D"; } ;;
             esac
         done

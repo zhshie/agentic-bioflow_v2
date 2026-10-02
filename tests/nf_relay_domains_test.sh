@@ -200,7 +200,7 @@ relay.socket.socket = S
 relay.time.sleep = lambda s: None
 up, err = relay.connect_upstream(host, 443)
 print("connected" if up is not None else "refused")
-PY' "$PY" "$RELAY" "$host" "$ip"
+PY' "$PY" "$RELAY" "$host" "$ip" | tail -n 1   # the relay's own DENY-PRIVATE log line comes first
 }
 t "#45 an extra domain resolving to 127.0.0.1 is refused"        "$(conn lab.example.org 127.0.0.1)" "refused"
 t "#45 ...to 10.1.2.3"                                           "$(conn lab.example.org 10.1.2.3)" "refused"

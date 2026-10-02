@@ -17,6 +17,7 @@ Stdlib only - this login node has no tinyproxy/squid/socat.
 # Not tinyproxy/squid/socat: none is installed here, and swapping one in would
 # still mean rebuilding the two checks above by hand - reverse-DNS-is-a-
 # compute-node and the domain allowlist - since neither is a stock feature.
+import ipaddress
 import os
 import re
 import select
@@ -100,20 +101,77 @@ ALLOW_DOMAINS = (
 # at least two labels, each 1-63 characters, no leading/trailing hyphen, and a
 # final label of letters only, which is what rules out every IPv4 literal.
 _DOMAIN_RE = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+_EMBEDDED_IP_RE = re.compile(r"(^|\.)[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(\.|$)")
 EXTRA_LIMIT = 100
+
+
+def _clean(text, limit=120):
+    """Printable ASCII on one line, for anything an environment variable can put
+    in the log: a newline would start a log line of its own and an escape
+    character would colour or rewrite the terminal reading it (#45)."""
+    out = "".join(c if (c.isascii() and c.isprintable()) else "?" for c in str(text))
+    return out if len(out) <= limit else out[: limit - 3] + "..."
+
+
+# scripts/relay_denied_names.txt, the same file scripts/egress_allow.sh reads, so
+# the two cannot disagree about what is not "a specific domain" (#45). None
+# means it could not be read: then no extra domain is loaded at all (a list that
+# cannot be checked is not a list that refuses nothing).
+def _load_denied_names():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "relay_denied_names.txt")
+    exact, tree = set(), []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2 and parts[0] == "exact":
+                    exact.add(parts[1].lower())
+                elif len(parts) >= 2 and parts[0] == "tree":
+                    tree.append(parts[1].lower())
+    except OSError:
+        return None
+    return exact, tuple(tree)
+
+
+_DENIED = _load_denied_names()
+
+
+def _policy_refusal(d):
+    """-> a reason when d is well formed but not one host you can name, else ''."""
+    if _EMBEDDED_IP_RE.search(d):
+        return "it spells an IP address in its labels"
+    exact, tree = _DENIED
+    if d in exact:
+        return f"it is a shared or local-only name ({d}), not one host"
+    for name in tree:
+        if d == name or d.endswith("." + name):
+            return f"it is under {name}, a wildcard-DNS, tunnel or local-only name"
+    return ""
 
 
 def _parse_extra(raw):
     """-> (accepted domains, [why each other entry was dropped])"""
     good, dropped = [], []
+    if _DENIED is None and raw.strip():
+        return (), ["dropped every entry - relay_denied_names.txt cannot be read, so none can be checked"]
     for item in raw.split(","):
+        shown = _clean(item.strip(), 80)
+        if not item.strip().isascii():
+            # str.lower() folds U+212A (Kelvin sign) to an ASCII k, which the
+            # bash validator does not: anything not ASCII is not a domain here.
+            dropped.append(f"dropped '{shown}' - not a specific domain name")
+            continue
         d = item.strip().lower()
         if d.endswith("."):
             d = d[:-1]
         if not d:
             continue
         if not _DOMAIN_RE.match(d) or len(d) > 253:
-            dropped.append(f"dropped '{item.strip()}' - not a specific domain name")
+            dropped.append(f"dropped '{shown}' - not a specific domain name")
+            continue
+        why = _policy_refusal(d)
+        if why:
+            dropped.append(f"dropped '{shown}' - {why}")
         elif d in good:
             continue
         elif len(good) >= EXTRA_LIMIT:
@@ -124,8 +182,30 @@ def _parse_extra(raw):
 
 
 EXTRA_DOMAINS, EXTRA_DROPPED = _parse_extra(os.environ.get("NF_RELAY_EXTRA_DOMAINS", ""))
-EXTRA_NOTE = " ".join(os.environ.get("NF_RELAY_EXTRA_NOTE", "").split())
+EXTRA_NOTE = _clean(" ".join(os.environ.get("NF_RELAY_EXTRA_NOTE", "").split()), 500)
 _ALL_DOMAINS = ALLOW_DOMAINS + EXTRA_DOMAINS
+
+
+def _in(h, names):
+    return any(h == d or h.endswith("." + d) for d in names)
+
+
+def _extra_only(host):
+    """True when this host is allowed only by this deployment's own list."""
+    h = host.lower().rstrip(".")
+    return _in(h, EXTRA_DOMAINS) and not _in(h, ALLOW_DOMAINS)
+
+
+def _addr_global(ip):
+    """Is this resolved address a public one? Loopback, private, link-local,
+    unspecified, multicast and the shared 100.64/10 range are not."""
+    try:
+        a = ipaddress.ip_address(str(ip).split("%")[0])
+        if getattr(a, "ipv4_mapped", None) is not None:
+            a = a.ipv4_mapped
+        return a.is_global
+    except ValueError:
+        return False
 
 # Hostname prefixes permitted to use the relay. From `sinfo -N`: compute nodes
 # are cpn*/cpna*/gpn*/gpna*/bgm*; lgn* is this node talking to itself.
@@ -221,9 +301,22 @@ def connect_upstream(host, port):
     so pinning the first address would break them.
     """
     err = None
+    # A name this deployment added itself (not one of the built-in list) is
+    # connected to only when it resolves to a public address: the relay checked
+    # neither the resolved address nor the port, so an approved name that
+    # resolves to loopback or an internal address reached any port there (#45).
+    extra_only = _extra_only(host)
     for attempt in (1, 2, 3):
         try:
-            for family, socktype, proto, _, sockaddr in resolve(host, port):
+            infos = resolve(host, port)
+            blocked = 0
+            for family, socktype, proto, _, sockaddr in infos:
+                if extra_only and not _addr_global(sockaddr[0]):
+                    blocked += 1
+                    err = PermissionError(
+                        f"{host} resolves to {sockaddr[0]}, not a public address; "
+                        "this deployment's extra domains may only reach public ones")
+                    continue
                 try:
                     s = socket.socket(family, socktype, proto)
                     s.settimeout(20)
@@ -235,6 +328,10 @@ def connect_upstream(host, port):
                         s.close()
                     except Exception:
                         pass
+            if infos and blocked == len(infos):
+                # Every address it resolves to was refused: no point retrying.
+                log("DENY-PRIVATE", host, port, repr(str(err)))
+                return None, err
         except Exception as e:      # resolution itself failed
             err = e
             _DNS_CACHE.pop((host, port), None)
