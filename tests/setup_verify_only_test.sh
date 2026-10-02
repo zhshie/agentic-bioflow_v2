@@ -75,12 +75,42 @@ agent_connection: conn-alice
 YAML
 chmod 600 "$FULLROOT/config/env.yaml"
 
+# Feature 004: green preflight is no longer enough. "Already set up" also needs
+# this machine's own proof record (proof_run in config/machines/<machine>.yaml,
+# written by scripts/setup_proof.sh --record from a run Platform confirmed).
+# TC-002: no record -> exit 3, and never the "already set up" claim.
 echo 0 > "$PF_RC_FILE"
 out=$(clean HOME="$FULLHOME" XDG_CONFIG_HOME="$FULLHOME/.config" -- bash "$V" 2>&1); rc=$?
-t "settings complete + preflight green: exits 0"  "$rc"  "0"
+t "TC-002 preflight green but no proof record: exits 3"  "$rc"  "3"
+hasnot "...never claims to be already set up"  "already set up" "$out"
+has "...says the proof on public test data is missing"  "public test data" "$out"
+has "...points at setup step 8"  "step 8" "$out"
+
+# TC-003: another machine's proof does not count for this one.
+mkdir -p "$FULLROOT/config/machines"
+echo "proof_run: run-elsewhere 2026-10-01 nf-core/demo" > "$FULLROOT/config/machines/some-other-box-Linux.yaml"
+out=$(clean HOME="$FULLHOME" XDG_CONFIG_HOME="$FULLHOME/.config" -- bash "$V" 2>&1); rc=$?
+t "TC-003 only ANOTHER machine has a record: exits 3"  "$rc"  "3"
+hasnot "...never claims to be already set up"  "already set up" "$out"
+
+# A record in the shared env.yaml is not a per-machine proof either: it would
+# travel with the root to a machine that never proved anything.
+echo "proof_run: run-shared 2026-10-01 nf-core/demo" >> "$FULLROOT/config/env.yaml"
+out=$(clean HOME="$FULLHOME" XDG_CONFIG_HOME="$FULLHOME/.config" -- bash "$V" 2>&1); rc=$?
+t "proof_run in shared env.yaml only: still exits 3"  "$rc"  "3"
+grep -v '^proof_run' "$FULLROOT/config/env.yaml" > "$FULLROOT/config/env.yaml.new" \
+    && mv "$FULLROOT/config/env.yaml.new" "$FULLROOT/config/env.yaml" && chmod 600 "$FULLROOT/config/env.yaml"
+
+# TC-001: this machine's own record.
+MACHID=$(clean HOME="$FULLHOME" -- bash -c ". '$FAKE/settings.sh' >/dev/null 2>&1; machine_id")
+echo "proof_run: run-mine 2026-10-02 nf-core/demo" > "$FULLROOT/config/machines/$MACHID.yaml"
+out=$(clean HOME="$FULLHOME" XDG_CONFIG_HOME="$FULLHOME/.config" -- bash "$V" 2>&1); rc=$?
+t "TC-001 settings complete + preflight green + proof: exits 0"  "$rc"  "0"
 has "...says this machine is already set up"  "already set up" "$out"
 has "...says setup does not need to run again"  "No need to run setup again" "$out"
 has "...still shows preflight's own OK lines (not hidden)"  "compute-env" "$out"
+has "...shows the proving run id"  "run-mine" "$out"
+has "...shows the proving date"  "2026-10-02" "$out"
 
 # ---------------------------------------------------------------------------
 # Settings exist but preflight FAILs on something: falls through to repair,

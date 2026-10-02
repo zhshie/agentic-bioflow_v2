@@ -429,7 +429,14 @@ _read_key() {   # _read_key <file> <key>
 # which machine is doing the asking. Putting them in the machine file was the
 # old layout's mistake - it made a second machine re-run install_deps.sh to
 # rediscover values that had not changed.
-MACHINE_KEYS=" tw_bin site_bridge ssh_control_path "
+#
+# proof_run is the one key on it that is RECORDED rather than discovered
+# (feature 004): "this machine proved the environment on public test data".
+# It is per machine because the proof is about this machine's own tools and
+# connection; a second machine adopting the same root has proven nothing yet.
+# Only scripts/setup_proof.sh --record writes it, and only from a run Platform
+# confirmed.
+MACHINE_KEYS=" tw_bin site_bridge ssh_control_path proof_run "
 
 is_machine_key() { case "$MACHINE_KEYS" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
@@ -1026,8 +1033,8 @@ settings_summary() {
     # to be true. It used to have to explain which of three files each value
     # came from.
     if [ -r "${MACHINE_SETTINGS_FILE:-/nonexistent}" ]; then
-        printf 'Three keys that cannot travel are in %s.\n' "$MACHINE_SETTINGS_FILE"
-        echo "They are found automatically on each machine; you are never asked for them."
+        printf 'The keys that belong to this machine only are in %s.\n' "$MACHINE_SETTINGS_FILE"
+        echo "They are found automatically, or recorded when setup's proof run passes; you are never asked for them."
     fi
     echo "Take the root with you and any other machine needs one command:"
     echo "  scripts/settings.sh --use $ABF_ROOT"

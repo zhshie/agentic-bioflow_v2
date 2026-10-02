@@ -57,13 +57,18 @@ assumes them.
 There are four, not two, and the third is the one that bites.
 
 **T27: run `scripts/setup_verify.sh` first, before anything else below.**
-Exit 0 means this machine is already fully configured and `preflight.sh`
-passes — tell the user that in the words it printed, run `scripts/intro.sh
---end setup`, and stop. Nothing past this point applies; walking a
-fully-working machine through repair's own checks would waste the several
-seconds each one takes for no reason. Any other exit code means there is
-something to do, and which of the remaining three situations applies is
-exactly what the rest of this section decides.
+Exit 0 means this machine is already fully configured, `preflight.sh`
+passes, and this machine has its own proof record (it ran `nf-core/demo`
+successfully on public test data) — tell the user that in the words it
+printed, run `scripts/intro.sh --end setup`, and stop. Nothing past this point
+applies; walking a fully-working machine through repair's own checks would
+waste the several seconds each one takes for no reason. **Exit 3 means
+settings and preflight are fine but this machine has never proven the
+environment on public test data** — a new machine, or a second member adopting
+a root that was proven elsewhere: go straight to step 8 below, then steps 9
+and 10, and do not redo steps 1–7, which are already done. Any other exit code
+means there is something to do, and which of the remaining three situations
+applies is exactly what the rest of this section decides.
 
 Read the deployment settings — `docs/SETTINGS.md` says where they live: one
 root this machine is pointed at, the same under every `reach`. Check for a
@@ -157,6 +162,14 @@ Two things worth stating when they come up, because neither is obvious:
 - If the site's outbound channel came back on a different host, the compute
   environment is now pointing at the old one. `scripts/ce_apply.sh` shows the
   difference; `--apply` fixes it.
+
+**Before finishing a repair, run `scripts/setup_proof.sh --check`.** A repair
+that ends with every preflight line green has still not shown that a pipeline
+runs on this machine, and a root adopted with `--use` arrives with settings but
+no proof. If `--check` exits non-zero there is no record on this machine yet:
+after the T5 checklist below, do step 8, then step 9 and step 10, and end with
+`scripts/intro.sh --end setup`. If it exits 0, say the record it printed and
+carry on with the T5 checklist below - it is still part of the repair.
 
 **T5: whether this machine can run the flow at all, not just whether the
 site is reachable.** `scripts/preflight.sh` answers for the site and this
@@ -527,9 +540,19 @@ at a scratch path under the run area —
 `scripts/init_workspace.sh` built in step 1 for exactly this kind of probe —
 which keeps the proof out of anywhere a real run's results would go.
 
+**When the `nf-core/demo` run reports SUCCEEDED, record the proof:
+`scripts/setup_proof.sh --record <run-id>`**, with the run id Platform gave
+that run. The script asks Platform itself and writes the record only if the
+run really is a successful `nf-core/demo` run submitted by this user — a run
+you remember succeeding is not enough, and if it refuses, say its reason and
+fix that rather than working around it. The `hello` run does not count. The
+record is what `scripts/setup_verify.sh` looks for on every later `setup`.
+
 Say explicitly that this uses public test data and touches nothing of theirs.
 
 **9. Only now, say what they can do.** Introduce `launch` and `runs`.
+**Only after `scripts/setup_proof.sh --record` has succeeded** — a record
+Platform confirmed, not a run that merely looked fine.
 **Not before step 8 passes** — someone handed a command list will use it, and
 an unverified environment is how real data meets a broken setup.
 
