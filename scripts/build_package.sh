@@ -305,8 +305,15 @@ for row in entries:
     elif len(match) > 1:
         # A wrong match is worse than a visible gap - see fig_matches above -
         # so an ambiguous id is reported, never resolved by picking one.
-        print("[GAP: id '%s' matches %d files in figures/: %s]\n"
-              % (fid, len(match), ", ".join(match)))
+        # Every file in figures/ is named somewhere: non-images the id also
+        # matches are listed too, not dropped (#38 acceptance).
+        rest = [f for f in claimed if f not in match]
+        if rest:
+            print("[GAP: id '%s' matches %d image files in figures/: %s; also: %s]\n"
+                  % (fid, len(match), ", ".join(match), ", ".join(rest)))
+        else:
+            print("[GAP: id '%s' matches %d files in figures/: %s]\n"
+                  % (fid, len(match), ", ".join(match)))
         emitted.update(match)
         emitted.update(claimed)
     elif claimed:

@@ -111,7 +111,12 @@ is not itself the answer to "where does `submission/` belong". Ask first.
    output for the citation markers and for every `[GAP: ...]` line - in
    `manuscript.qmd` (figures not lining up with the plan, the undrafted
    Discussion) and in `methods.md` (its Notes section and any unresolved
-   placeholder). The `Results for '…' not written yet` lines are step 4's to
+   placeholder). The gaps in `manuscript.qmd` include a plan row that
+   `has no id`, an id with `no image file` in the figures folder (only a table
+   or other non-image matched), and an id matching several files. The plain
+   line `Also in figures/, not embedded: …` is not a gap: it only names another
+   format of an embedded figure, for the user to keep or delete. The
+   `Results for '…' not written yet` lines are step 4's to
    fill, not decisions. Put that list in front of the user as a list of
    decisions they have to make, not as a warning at the end of a wall of text.
    A near-miss citation is theirs to confirm: the tool that ran and the entry

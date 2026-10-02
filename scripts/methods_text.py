@@ -107,7 +107,9 @@ def mark_unresolved_placeholders(text):
         names = UNRESOLVED_PLACEHOLDER_RE.findall(tag)
         if not names:
             return tag
-        return ("".join(_gap(n) for n in names)
+        # A trailing space keeps the marker from fusing with a following
+        # `[text](url)` into a pandoc reference link.
+        return ("".join(_gap(n) for n in names) + " "
                 + UNRESOLVED_PLACEHOLDER_RE.sub("#", tag))
     return _TAG_OR_PLACEHOLDER_RE.sub(one, text)
 

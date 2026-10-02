@@ -49,3 +49,13 @@ Other runs (WSL): `package_gaps_test.sh`, `build_package_test.sh`, `methods_text
 
 - The kv-block (`id: ...`) form of `analysis.md` has the same "no id" hole for item 2, but a block without `id:` cannot be told apart from an ordinary heading, so flagging it would add false gaps. Only the table form is covered.
 - `commands/finish.md` step 3 does not yet list the two new gap kinds (id-less row, no image file) or the "Also in figures/" line; editing `commands/` brings in the manual half of `docs/TESTING.md`, so left for the maintainer.
+
+## After independent acceptance (2026-10-02)
+
+Fixed test-first (5 assertions red on 0e31903, green after):
+
+- **Regression vs main**: `fig1_a.png`, `fig1_b.png`, `fig1_c.csv` with id `fig1` printed "matches 2 files" and dropped the csv from the manuscript and the orphan list. Now `[GAP: id 'fig1' matches 2 image files in figures/: ...; also: fig1_c.csv]`; every file in figures/ is named somewhere.
+- A gap marker before `<a href>` fused with the link text into a pandoc reference link (`[GAP: ...][site](#)`); a space now separates them.
+- `commands/finish.md` step 3 names the new gap kinds (plan row with no id, id with no image file) and says the "Also in figures/, not embedded" line is not a gap. `command_layer_is_site_neutral.sh` green.
+
+Needs maintainer decision (added): an id whose only matches are other non-image files such as `.eps` or `.html` stays a visible `[GAP: ... no image file ...]`, as now; say if `.eps` should count as embeddable.
