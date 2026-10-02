@@ -35,7 +35,7 @@
 **Acceptance Scenarios**:
 
 1. **Given** rnaseq 的說明檔（`sample`／`fastq_1`／`fastq_2`），**When** 產生樣本表，**Then** 結果跟現在完全一樣。（正常；不能改壞現有行為）
-2. **Given** 一條欄名不同的管線（例如 ampliseq 只要 `sampleID,forwardReads,reverseReads`），**When** 產生樣本表，**Then** 樣本名填進 `sampleID`、R1 填進 `forwardReads`、R2 填進 `reverseReads`。（正常）
+2. **Given** 一條欄名不同的管線（例如 ampliseq 只要 `sampleID,forwardReads,reverseReads`；說明檔共有 4 個定序檔欄），**When** 產生樣本表，**Then** 因為說明檔有超過兩個定序檔欄，不論只要求哪幾欄都停下來不寫檔，列出要求的定序檔欄請操作者指定；操作者用 `--roles` 指定後，樣本名填進 `sampleID`、R1 填進 `forwardReads`、R2 填進 `reverseReads`。（例外）
 3. **Given** 說明檔裡可能放定序檔的欄位超過兩個（ampliseq 兩套欄名都要、mag 有 `long_reads`、bacass 有 `LongFastQ`），**When** 產生樣本表，**Then** 停下來不寫檔，列出候選欄位，請操作者指定哪欄是 R1、哪欄是 R2。（例外）
 4. **Given** 說明檔裡沒有任何一欄標成樣本名，或標成樣本名的欄位不只一個，**When** 產生樣本表，**Then** 停下來不寫檔，列出候選，請操作者指定。（例外）
 5. **Given** 操作者已經指定了角色（哪欄是樣本名、R1、R2），**When** 產生樣本表，**Then** 照指定的填，不再自己判斷；指定的欄位不在這張表裡時，拒絕並說明。（正常／例外）
@@ -73,7 +73,7 @@
 
 ## Success Criteria
 
-- **SC-001**: rnaseq、ampliseq（只要一套欄位時）、以及任何「一欄樣本名＋最多兩欄 FASTQ」的管線，不需要指定也不需要維護者，就能產生欄位正確的樣本表。
+- **SC-001**: rnaseq 以及任何「說明檔裡一欄樣本名＋最多兩欄 FASTQ」的管線，不需要指定也不需要維護者，就能產生欄位正確的樣本表。
 - **SC-002**: 判斷不出來的管線，沒有任何一種情況會寫出欄位填錯的樣本表——一定停下來問。
 - **SC-003**: plugin 程式碼裡不再出現任何管線專屬的欄名（以測試掃描確認）。
 

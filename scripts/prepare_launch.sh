@@ -253,9 +253,16 @@ if [ -n "$SCHEMA_INPUT" ] && [ -n "$PY" ]; then
         case "$nd_role" in sample) nd_label="樣本名" ;; *) nd_label="R1／R2" ;; esac
         ROLES_LINE="需要你指定（$nd_label 候選：$nd_cands）"
         add_decision "pick which column is which (== samplesheet == roles) - ask the user, then run the samplesheet tool with --roles"
+    else
+        # exit 2: the schema is malformed or unreadable. Say so rather than show nothing.
+        ROLES_LINE="需要你指定（說明檔讀不懂，無法判斷）"
+        add_decision "pick which column is which (== samplesheet == roles) - the schema could not be read; ask the user, then run the samplesheet tool with --roles"
     fi
     [ -n "$ROLES_LINE" ] && SS_BODY="${SS_BODY}
 roles: $ROLES_LINE"
+elif [ -z "$SCHEMA_INPUT" ] && [ -n "$PY" ]; then
+    SS_BODY="${SS_BODY}
+roles: 需要你指定（拿不到說明檔）"
 fi
 add_section samplesheet "$SS_BODY"
 

@@ -86,7 +86,11 @@ def _accepts_only_fastq(pattern: str) -> bool:
 
 
 def is_fastq_column(prop) -> bool:
-    return any(_accepts_only_fastq(p) for p in _patterns(prop))
+    """FASTQ only when there is at least one pattern and EVERY pattern found
+    accepts FASTQ and nothing else. A branch with no pattern (maxLength: 0, an
+    empty string) is ignored; a branch that also accepts .bam disqualifies."""
+    pats = _patterns(prop)
+    return bool(pats) and all(_accepts_only_fastq(p) for p in pats)
 
 
 def _is_file_column(prop) -> bool:
@@ -116,7 +120,15 @@ def infer_roles(schema: dict, columns: List[str]) -> Union[Roles, NeedsDecision]
                              "no requested column is marked as the sample name in the schema")
 
     # Schema order, not --columns order: the schema is what says "first is R1".
-    fastq = [c for c in props if c in wanted and is_fastq_column(props[c])]
+    # Ambiguity is judged on the WHOLE schema: asking for a subset does not tell
+    # us which two of several FASTQ columns are R1/R2 (a subset used to put R2
+    # into long_reads with exit 0).
+    all_fastq = [c for c in props if is_fastq_column(props[c])]
+    fastq = [c for c in all_fastq if c in wanted]
+    if len(all_fastq) > 2:
+        return NeedsDecision("reads", fastq or all_fastq,
+                             f"the schema has {len(all_fastq)} columns that accept FASTQ files, "
+                             f"so which two are R1/R2 cannot be told from it")
     if len(fastq) == 1:
         return Roles(sample_cols[0], fastq[0], None)
     if len(fastq) == 2:
@@ -146,6 +158,10 @@ def parse_roles(spec: str, columns: List[str]) -> Roles:
         k, v = (x.strip() for x in item.split("=", 1))
         if k not in _ROLE_KEYS:
             raise ValueError(f"--roles has an unknown role '{k}' (use sample, read1, read2)")
+        if k in given:
+            raise ValueError(f"--roles: {k} given more than once; each role is named once")
+        if not v:
+            raise ValueError(f"--roles: role {k} has no column (write {k}=<column>)")
         given[k] = v
     for need in ("sample", "read1"):
         if need not in given:

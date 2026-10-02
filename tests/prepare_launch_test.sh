@@ -255,6 +255,22 @@ order=$(grep -oE '^== [a-z]+ ==' <<<"$out" | tr -d '
 [ "$order" = "== pipeline ==== samplesheet ==== preflight ==== parameters ==== decisions ==" ]     && ok "TC-015: the overview still completes with all five sections"     || no "TC-015: the overview still completes with all five sections" "<<$order>>"
 has "$out" "DECIDE: pick which column is which"     && ok "TC-015: the roles choice is carried into == decisions =="     || no "TC-015: the roles choice is carried into == decisions ==" "<<$out>>"
 
+# MED-2: a schema that cannot be read, or cannot be fetched, still gets a roles line.
+fxbad="$TMP/fx_bad"; mkdir -p "$fxbad/assets"; printf '{not json' > "$fxbad/assets/schema_input.json"
+out=$(LAB_SETTINGS_FILE="$SETTINGS" TW_BIN=/does/not/exist bash "$SDIR/prepare_launch.sh" \
+      --repo nf-core/testpipeline --revision 1.2.3 --input "$READS" --fixture-dir "$fxbad" 2>&1)
+has "$out" "roles: 需要你指定（說明檔讀不懂，無法判斷）" \
+    && ok "MED-2: an unparseable schema says the user has to choose" \
+    || no "MED-2: an unparseable schema says the user has to choose" "<<$out>>"
+has "$out" "DECIDE: pick which column is which" \
+    && ok "MED-2: ...and it is carried into == decisions ==" \
+    || no "MED-2: ...and it is carried into == decisions ==" "<<$out>>"
+fxnone="$TMP/fx_none"; mkdir -p "$fxnone"
+out=$(LAB_SETTINGS_FILE="$SETTINGS" TW_BIN=/does/not/exist bash "$SDIR/prepare_launch.sh" \
+      --repo nf-core/testpipeline --revision 1.2.3 --input "$READS" --fixture-dir "$fxnone" 2>&1)
+has "$out" "roles: 需要你指定（拿不到說明檔）" \
+    && ok "MED-2: a schema that could not be fetched says the user has to choose" \
+    || no "MED-2: a schema that could not be fetched says the user has to choose" "<<$out>>"
 
 echo
 [ "$fails" = 0 ] && echo "OK: prepare_launch.sh" || { echo "$fails failed"; exit 1; }

@@ -85,12 +85,36 @@ t "TC-001 same warnings when the operator names the same roles" \
 # ---------------------------------------------------------------- TC-002
 o=$(newout)
 run "$PAIRS" --schema "$FX/ampliseq-2.18.0.json" --columns sampleID,forwardReads,reverseReads -o "$o"
-ok_rc "TC-002 ampliseq (one column set) exits 0" "$RC" "$ERR"
+# Changed after acceptance (HIGH-1): the schema has 4 FASTQ columns, so a subset
+# of them no longer proves which two are R1/R2 - stop and ask.
+t "TC-002 ampliseq (one column set requested): exit 3, the schema has 4 FASTQ columns" "$RC" "3"
+t "TC-002 machine line lists the two requested FASTQ columns" \
+  "$(grep '^needs-decision:' <<<"$ERR")" "needs-decision: role=reads candidates=forwardReads,reverseReads"
+stopped "TC-002" "$o"
+o=$(newout)
+run "$PAIRS" --schema "$FX/ampliseq-2.18.0.json" --columns sampleID,forwardReads,reverseReads \
+  --roles sample=sampleID,read1=forwardReads,read2=reverseReads -o "$o"
+ok_rc "TC-002 ampliseq with --roles exits 0" "$RC" "$ERR"
 t "TC-002 header is the requested columns" "$(sed -n 1p "$o")" "sampleID,forwardReads,reverseReads"
 t "TC-002 sample name lands in sampleID" "$(sed -n 2p "$o" | cut -d, -f1)" "S1"
 t "TC-002 R1 lands in forwardReads" "$(sed -n 2p "$o" | cut -d, -f2 | xargs basename)" "S1_R1_001.fastq.gz"
 t "TC-002 R2 lands in reverseReads" "$(sed -n 2p "$o" | cut -d, -f3 | xargs basename)" "S1_R2_001.fastq.gz"
 lacks "TC-002 no empty-column warning" "is empty for every sample" "$ERR"
+
+# HIGH-1 regressions: a --columns subset must not hide that the schema has more
+# than two FASTQ columns (R2 used to land in long_reads with exit 0).
+o=$(newout)
+run "$PAIRS" --schema "$FX/mag-5.5.0.json" --columns sample,group,short_reads_1,long_reads --defaults group=0 -o "$o"
+t "HIGH-1 mag subset sample,group,short_reads_1,long_reads: exit 3" "$RC" "3"
+t "HIGH-1 mag subset lists the requested FASTQ columns" \
+  "$(grep '^needs-decision:' <<<"$ERR")" "needs-decision: role=reads candidates=short_reads_1,long_reads"
+stopped "HIGH-1 mag subset" "$o"
+o=$(newout)
+run "$PAIRS" --schema "$FX/bacass-2.6.1.json" --columns ID,R1,LongFastQ -o "$o"
+t "HIGH-1 bacass subset ID,R1,LongFastQ: exit 3" "$RC" "3"
+t "HIGH-1 bacass subset lists the requested FASTQ columns" \
+  "$(grep '^needs-decision:' <<<"$ERR")" "needs-decision: role=reads candidates=R1,LongFastQ"
+stopped "HIGH-1 bacass subset" "$o"
 
 # ---------------------------------------------------------------- TC-003
 o=$(newout)
@@ -101,7 +125,7 @@ ok_rc "TC-003 taxprofiler (has a fasta column) exits 0" "$RC" "$ERR"
 t "TC-003 R1 filled" "$(sed -n 2p "$o" | cut -d, -f4 | xargs basename)" "S1_R1_001.fastq.gz"
 t "TC-003 R2 filled" "$(sed -n 2p "$o" | cut -d, -f5 | xargs basename)" "S1_R2_001.fastq.gz"
 t "TC-003 fasta is not treated as a FASTQ column (left empty)" "$(sed -n 2p "$o" | cut -d, -f6)" ""
-has "TC-003 fasta is named as needing the operator" "fasta" "$ERR"
+has "TC-003 fasta is named in the left-empty warning" "fasta" "$(grep 'left empty for the user to supply' <<<"$ERR")"
 
 # ---------------------------------------------------------------- TC-004..006
 o=$(newout)
@@ -129,7 +153,10 @@ stopped "TC-006" "$o"
 
 o=$(newout)
 run "$PAIRS" --schema "$FX/bacass-2.6.1.json" --columns ID,R1,R2 -o "$o"
-ok_rc "TC-006b bacass with only ID,R1,R2 is inferable (anyOf pattern read)" "$RC" "$ERR"
+t "TC-006b bacass with only ID,R1,R2: exit 3 (the schema has 3 FASTQ columns)" "$RC" "3"
+o=$(newout)
+run "$PAIRS" --schema "$FX/bacass-2.6.1.json" --columns ID,R1,R2 --roles sample=ID,read1=R1,read2=R2 -o "$o"
+ok_rc "TC-006b bacass with --roles exits 0 (anyOf pattern read)" "$RC" "$ERR"
 t "TC-006b ID gets the sample name" "$(sed -n 2p "$o" | cut -d, -f1)" "S1"
 t "TC-006b R2 column gets the R2 file" "$(sed -n 2p "$o" | cut -d, -f3 | xargs basename)" "S1_R2_001.fastq.gz"
 
@@ -175,7 +202,7 @@ run "$PAIRS" --schema "$TMP/shapes.json" --columns who,reads_a,reads_b,table -o 
 ok_rc "TC-002b meta as a string, pattern in anyOf, bare file-path column" "$RC" "$ERR"
 t "TC-002b sample in the string-meta column" "$(sed -n 2p "$o" | cut -d, -f1)" "S1"
 t "TC-002b a file-path column with no FASTQ pattern is not a read column" "$(sed -n 2p "$o" | cut -d, -f4)" ""
-has "TC-002b ...and is named as needing the operator" "table" "$ERR"
+has "TC-002b ...and is named in the left-empty warning" "table" "$(grep 'left empty for the user to supply' <<<"$ERR")"
 
 # ---------------------------------------------------------------- TC-009 / TC-010 / TC-011
 o=$(newout)
@@ -187,7 +214,7 @@ t "TC-009 sample" "$(sed -n 2p "$o" | cut -d, -f1)" "S1"
 t "TC-009 short_reads_1 gets R1" "$(sed -n 2p "$o" | cut -d, -f4 | xargs basename)" "S1_R1_001.fastq.gz"
 t "TC-009 short_reads_2 gets R2" "$(sed -n 2p "$o" | cut -d, -f5 | xargs basename)" "S1_R2_001.fastq.gz"
 t "TC-009 long_reads stays empty" "$(sed -n 2p "$o" | cut -d, -f7)" ""
-has "TC-009 long_reads is named as needing the operator" "long_reads" "$ERR"
+has "TC-009 long_reads is named in the left-empty warning" "long_reads" "$(grep 'left empty for the user to supply' <<<"$ERR")"
 
 o=$(newout)
 run "$PAIRS" --roles sample=sample,read1=nosuchcol,read2=fastq_2 --columns sample,fastq_1,fastq_2 -o "$o"
@@ -207,6 +234,41 @@ o=$(newout)
 run "$PAIRS" --columns sample,fastq_1,fastq_2 --roles sample=fastq_1,read1=fastq_1,read2=fastq_2 -o "$o"
 t "TC-010 sample and R1 named as the same column: exit 2" "$RC" "2"
 stopped "TC-010 (sample = R1)" "$o"
+
+# LOW-4: a role given twice is rejected, not silently last-one-wins.
+o=$(newout)
+run "$PAIRS" --columns sample,fastq_1,fastq_2 --roles sample=sample,read1=fastq_1,read1=fastq_2 -o "$o"
+t "LOW-4 read1 given twice: exit 2" "$RC" "2"
+has "LOW-4 message names the doubled role" "read1 given more than once" "$ERR"
+stopped "LOW-4" "$o"
+# LOW-5: an empty value says the role has no column.
+o=$(newout)
+run "$PAIRS" --columns sample,fastq_1,fastq_2 --roles sample=sample,read1=fastq_1,read2= -o "$o"
+t "LOW-5 read2= with no column: exit 2" "$RC" "2"
+has "LOW-5 message says the role has no column" "role read2 has no column" "$ERR"
+stopped "LOW-5" "$o"
+
+# LOW-2: --columns order is the output order; R1/R2 still follow the SCHEMA order.
+o=$(newout)
+run "$PAIRS" --schema "$FX/rnaseq-3.27.0.json" --columns sample,fastq_2,fastq_1,strandedness --defaults strandedness=auto -o "$o"
+ok_rc "LOW-2 rnaseq with columns in non-schema order exits 0" "$RC" "$ERR"
+t "LOW-2 header keeps the requested order" "$(sed -n 1p "$o")" "sample,fastq_2,fastq_1,strandedness"
+t "LOW-2 fastq_1 still gets R1" "$(sed -n 2p "$o" | cut -d, -f3 | xargs basename)" "S1_R1_001.fastq.gz"
+t "LOW-2 fastq_2 still gets R2" "$(sed -n 2p "$o" | cut -d, -f2 | xargs basename)" "S1_R2_001.fastq.gz"
+
+# MED-1: a column whose anyOf also accepts .bam is not a FASTQ column.
+cat > "$TMP/mixed.json" <<'EOF'
+{"type":"array","items":{"type":"object","properties":{
+ "id":{"type":"string","meta":["id"]},
+ "r1":{"type":"string","pattern":"^\\S+\\.fastq\\.gz$"},
+ "r2":{"type":"string","pattern":"^\\S+\\.fastq\\.gz$"},
+ "either":{"type":"string","anyOf":[{"pattern":"^\\S+\\.fastq\\.gz$"},{"pattern":"^\\S+\\.bam$"}]}}}}
+EOF
+o=$(newout)
+run "$PAIRS" --schema "$TMP/mixed.json" -o "$o"
+ok_rc "MED-1 fastq|bam anyOf column does not make a third FASTQ column" "$RC" "$ERR"
+t "MED-1 R2 lands in r2" "$(sed -n 2p "$o" | cut -d, -f3 | xargs basename)" "S1_R2_001.fastq.gz"
+t "MED-1 the mixed column stays empty" "$(sed -n 2p "$o" | cut -d, -f4)" ""
 
 o=$(newout)
 run "$PAIRS" --columns sample,fastq_1,fastq_2 -o "$o"
@@ -266,14 +328,14 @@ t "TC-019 condition column is empty for treat_B" "$(sed -n 3p "$o" | cut -d, -f2
 has "TC-019 the empty condition column is flagged" "column 'condition' is empty" "$ERR"
 
 # ---------------------------------------------------------------- schema_roles.py CLI
-out=$(python3 "$ROLES" --schema "$FX/ampliseq-2.18.0.json" --columns sampleID,forwardReads,reverseReads 2>&1); rc=$?
+out=$(python3 "$ROLES" --schema "$FX/rnaseq-3.27.0.json" --columns sample,fastq_1,fastq_2 2>&1); rc=$?
 t "roles CLI: inferable schema exits 0" "$rc" "0"
-t "roles CLI: prints the three roles" "$out" "sample=sampleID read1=forwardReads read2=reverseReads"
+t "roles CLI: prints the three roles" "$out" "sample=sample read1=fastq_1 read2=fastq_2"
 out=$(python3 "$ROLES" --schema "$FX/mag-5.5.0.json" --columns sample,short_reads_1,short_reads_2,long_reads 2>&1); rc=$?
 t "roles CLI: ambiguous schema exits 3" "$rc" "3"
 has "roles CLI: prints the needs-decision line" "needs-decision: role=reads candidates=short_reads_1,short_reads_2,long_reads" "$out"
-out=$(python3 "$ROLES" --schema - --columns sampleID,forwardReads,reverseReads < "$FX/ampliseq-2.18.0.json" 2>&1)
-t "roles CLI: schema on stdin" "$out" "sample=sampleID read1=forwardReads read2=reverseReads"
+out=$(python3 "$ROLES" --schema - --columns sample,fastq_1,fastq_2 < "$FX/rnaseq-3.27.0.json" 2>&1)
+t "roles CLI: schema on stdin" "$out" "sample=sample read1=fastq_1 read2=fastq_2"
 
 # ---------------------------------------------------------------- TC-018
 out=$(bash "$HERE/scripts_name_their_alternative.sh" 2>&1); rc=$?

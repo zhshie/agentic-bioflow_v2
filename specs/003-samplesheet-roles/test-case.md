@@ -17,7 +17,7 @@
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
 | TC-001 | US1 情境 1；FR-009 | 功能 | rnaseq 說明檔；一個有 3 對 `_R1`／`_R2` 檔的資料夾 | 產生樣本表 | 輸出跟改動前**逐字相同**（欄名、順序、路徑、警告） | 自動 |
-| TC-002 | US1 情境 2；FR-001、FR-002 | 功能 | ampliseq 說明檔，只要求 `sampleID,forwardReads,reverseReads` | 產生樣本表 | 樣本名在 `sampleID`、R1 在 `forwardReads`、R2 在 `reverseReads`，沒有空欄警告 | 自動 |
+| TC-002 | US1 情境 2；FR-001、FR-002、FR-003 | 例外 | ampliseq 說明檔（共 4 個定序檔欄），只要求 `sampleID,forwardReads,reverseReads` | 產生樣本表 | 不寫檔、結束碼 3，列出 `forwardReads,reverseReads` 請操作者指定；加上 `--roles sample=sampleID,read1=forwardReads,read2=reverseReads` 後樣本名在 `sampleID`、R1 在 `forwardReads`、R2 在 `reverseReads`，沒有空欄警告 | 自動 |
 | TC-003 | FR-002 | 功能 | taxprofiler 說明檔（`fastq_1`／`fastq_2` 之外還有 `fasta` 欄） | 產生樣本表 | R1／R2 照常填入；`fasta` 不被當成定序檔欄 | 自動 |
 | TC-004 | US1 情境 3；FR-003 | 例外 | ampliseq 說明檔，要求全部欄位（兩套 R1／R2 欄名都在） | 產生樣本表 | 不寫檔、非零結束；訊息列出 4 個候選定序檔欄，請操作者指定 R1／R2 | 自動 |
 | TC-005 | US1 情境 3；FR-003 | 例外 | mag 說明檔（`short_reads_1`、`short_reads_2`、`long_reads`） | 產生樣本表 | 同 TC-004：不寫檔，列出 3 個候選 | 自動 |
@@ -30,11 +30,13 @@
 | TC-012 | FR-006 | 例外 | 只有一個定序檔欄的說明檔；資料夾裡只有 R1 檔、沒有說是單端 | 產生樣本表 | 照現有規則拒絕並請操作者確認是否單端；加上「這批是單端」後才寫出 | 自動 |
 | TC-013 | US1 情境 7；FR-007；不在範圍 1 | 不在範圍 | 要求的欄位含 `long_reads`、`fasta` 等 | 產生樣本表（有指定或判斷得出 R1／R2） | 這些欄留空；訊息逐一點名要操作者補，不嘗試填 | 自動 |
 
+> TC-002 changed after acceptance (HIGH-1), pending maintainer approval：說明檔共有超過兩個定序檔欄時，不論只要求哪幾欄都一律停下來問（只要求其中一部分欄位曾讓 R2 被寫進 `long_reads` 且結束碼 0）。
+
 ## User Story 2 — 開始設定前就看得到「哪一欄放什麼」（P2）
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-014 | US2 情境 1；FR-008 | 功能 | ampliseq（只要一套）或 rnaseq 說明檔作為 fixture | 跑送出前的總覽（`prepare_launch.sh`） | 樣本表段落列出 `樣本名 → <欄>`、`R1 → <欄>`、`R2 → <欄>` | 自動 |
+| TC-014 | US2 情境 1；FR-008 | 功能 | rnaseq 說明檔作為 fixture | 跑送出前的總覽（`prepare_launch.sh`） | 樣本表段落列出 `樣本名 → <欄>`、`R1 → <欄>`、`R2 → <欄>` | 自動 |
 | TC-015 | US2 情境 2；FR-008 | 例外 | mag 說明檔作為 fixture | 跑送出前的總覽 | 樣本表段落寫明「需要你指定」並列出候選；總覽本身照常完成 | 自動 |
 
 ## 憲法與安全網
