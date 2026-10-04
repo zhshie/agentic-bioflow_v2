@@ -71,7 +71,7 @@ flow is under way at all. When this command's flow ends, run
 says to.
 
 **T6: relay column output inside a fenced code block.** `preflight.sh`,
-`runs_board.sh`, `status.sh`, `tune_resources.sh`, `where.sh` and
+`runs_board.sh`, `settings.sh`, `status.sh`, `tune_resources.sh`, `where.sh` and
 `why_pending.sh` line their output up with runs of spaces, and every
 `commands/*.md` file carries this same rule. Outside a code block a GUI
 surface collapses those runs and the columns stop meaning anything
