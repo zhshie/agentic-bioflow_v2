@@ -36,9 +36,14 @@ mk() {
 import json, sys
 f, kind, kb, tmp = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
 pad = "".join("x%d = %d  # filler line\n" % (i, i) for i in range(200000))[: kb * 1024]
+# End on a whole line: cut mid-line, "EOF" would be glued to the last filler line, the
+# here-doc would never end, and the delete / launch would sit INSIDE its body.
+pad = pad[: pad.rfind("\n") + 1]
 if kind == "launch":  ti = {"command": "python3 - <<'EOF'\n" + pad + "EOF\ntw launch nf-core/rnaseq -profile test"}
 elif kind == "rm":    ti = {"command": "python3 - <<'EOF'\n" + pad + "EOF\nrm -rf /work/u/lab_runs/x/results"}
 elif kind == "write": ti = {"file_path": tmp + "/work/analysis/de.R", "content": pad}
+if kind != "write":
+    assert ti["command"].count("\nEOF\n") == 1, "the here-doc must end on its own line"
 tool = "Write" if kind == "write" else "Bash"
 d = {"session_id": "big-s1", "cwd": tmp + "/work", "transcript_path": tmp + "/transcript.jsonl",
      "hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": ti}
@@ -61,9 +66,6 @@ run() {
 }
 
 # check <label> <hook> <kind of input> <expected verdict, or - for any> <small KB> <big KB>
-# (A launch ask for a command this large cannot be built on Windows at all - the
-# command line of `jq --arg` is limited to 32 KB there - so the launch gate's own
-# verdict on the large launch is not asserted; its time still is.)
 check() {
   local label="$1" hook="$2" kind="$3" want="$4" sk="$5" bk="$6" ms_small ms_big
   mk "$TMP/small.json" "$kind" "$sk";  run "$hook" "$TMP/small.json"; ms_small=$MS; local k_small=$KIND
@@ -86,7 +88,7 @@ check "Write of a 300 KB analysis script (launch gate)"       confirm_launch    
 check "Write of a 300 KB analysis script (plugin-file guard)" guard_plugin_files   write  none 75 300
 check "128 KB here-doc then rm -rf results (deletion guard)"  confirm_cleanup      rm     deny 32 128
 check "128 KB here-doc then rm -rf results (launch gate)"     confirm_launch       rm     none 32 128
-check "128 KB here-doc then tw launch (launch gate)"          confirm_launch       launch -    32 128
+check "128 KB here-doc then tw launch (launch gate)"          confirm_launch       launch ask  32 128
 check "128 KB here-doc then tw launch (walkthrough gate)"     confirm_walkthrough  launch deny 32 128
 check "128 KB here-doc then tw launch (deletion guard)"       confirm_cleanup      launch none 32 128
 
