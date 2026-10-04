@@ -113,14 +113,15 @@ judge_file() {
             echo "IN-REPO  $rel:$ln 'Not $x' names a path in this repo; name what is maintained OUTSIDE it, or write '# Nothing existing: <why>'"
             return ;;
     esac
-    while IFS= read -r base; do
-        [ -n "$base" ] || continue
-        # skip a file's own name: "Not <itself>" would be a different problem
-        if printf '%s' "$x" | grep -qFw -- "$base"; then
-            echo "IN-REPO  $rel:$ln 'Not $x' names $base, a file of this repo; name what is maintained OUTSIDE it, or write '# Nothing existing: <why>'"
-            return
-        fi
-    done <<< "$REPO_NAMES"
+    # one awk pass: split X into words, look each up in the set of repo names
+    base=$(printf '%s\n' "$x" | awk -v names="$REPO_NAMES" '
+        BEGIN { n = split(names, a, "\n"); for (i = 1; i <= n; i++) set[a[i]] = 1 }
+        { m = split($0, w, /[^A-Za-z0-9_.-]+/)
+          for (i = 1; i <= m; i++) { t = w[i]; sub(/[.]+$/, "", t); if (t in set) { print t; exit } } }')
+    if [ -n "$base" ]; then
+        echo "IN-REPO  $rel:$ln 'Not $x' names $base, a file of this repo; name what is maintained OUTSIDE it, or write '# Nothing existing: <why>'"
+        return
+    fi
     # (b) opens with an in-repo concept
     if printf '%s' "$x" | grep -qiE "$IN_REPO_PHRASES"; then
         echo "IN-REPO  $rel:$ln 'Not $x' names a concept of this repo, not a maintained tool; name the external tool, or write '# Nothing existing: <why>'"

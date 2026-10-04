@@ -1,8 +1,10 @@
 #!/bin/bash
 # The record adapter: where a run's record goes, if anywhere.
 #
-# Not a real ELN implementation written speculatively: only `none` is real
-# until a lab actually picks a record system - see the contract note below.
+# Nothing existing: no maintained tool sits between this command layer and
+# whichever record system (ELN) a lab picks, and none is picked yet. Only `none`
+# is real until a lab actually picks a record system - see the contract note
+# below; an ELN implementation is not written speculatively.
 #
 # Mirrors on_site.sh's shape for a different question. The command layer never
 # names a record system - it asks this adapter to resolve, attach or look up a

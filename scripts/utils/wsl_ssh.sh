@@ -2,13 +2,13 @@
 # The WSL bridge's ssh, made to look exactly like ssh to everything that
 # calls it.
 #
-# Not a shell function: scripts/on_site.sh's $SSH and rsync's `-e` both need
+# Why a script and not a shell function: scripts/on_site.sh's $SSH and rsync's `-e` both need
 # something passable as a command STRING, not an entry in this shell's own
 # function table - a function answers the first and vanishes the moment rsync
 # forks its own process for the second. A tiny standalone script is callable
 # from both, unmodified.
 #
-# Not "teach Git Bash's own ssh to multiplex": PITFALLS 16b measured that it
+# Not Git Bash's own (MSYS) ssh, taught to multiplex: PITFALLS 16b measured that it
 # cannot - the control plane answers, so a master looks alive, and the session
 # request then fails, because MSYS emulates Unix sockets and does not
 # implement the descriptor passing a session needs. No ssh option changes that.

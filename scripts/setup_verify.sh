@@ -5,7 +5,10 @@
 # instead of being walked into the repair flow's ten checks for a machine
 # that needs none of them.
 #
-# Not scripts/preflight.sh alone, and not a copy of it: preflight already
+# Nothing existing: no tool decides whether a machine already has nothing left
+# to set up, before any check is asked.
+#
+# Why it is not preflight.sh alone, nor a copy of it: preflight already
 # answers "is everything ready for :launch to gate on" - a different
 # question from "does :setup itself have anything left to do here" - and a
 # settings file that is entirely absent has to be its own fast, cheap
