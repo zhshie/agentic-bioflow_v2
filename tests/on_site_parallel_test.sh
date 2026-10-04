@@ -192,5 +192,33 @@ printf '%-58s ' "...and released its slot afterwards, same as any other call"
 slots_held && { echo "FAIL: a slot dir is still held"; fails=$((fails+1)); } || echo ok
 rm -rf "$SLOTS"
 
+# ---------------------------------------------------------------------------
+# #25 (invariant 11): under the WSL bridge the ControlPath is the LITERAL
+# '~/.ssh/cm-...' (WSL's shell expands it on the far side of wsl.exe), but the
+# session-slot lock directory is made by THIS shell, which does not expand a
+# quoted '~'. It must be built from this shell's expanded $HOME, so the caller's
+# directory is never touched and callers from different directories share one
+# count.
+# ---------------------------------------------------------------------------
+H25="$TMP/h25"; mkdir -p "$H25" "$TMP/cwdA" "$TMP/cwdB"
+settings 'reach: ssh' 'site_host: me@example.org' 'site_bridge: wsl'
+cat > "$TMP/fake-ssh-hold" <<EOF
+#!/bin/bash
+for a in "\$@"; do [ "\$a" = check ] && exit 0; done
+ls "$H25/.ssh/cm-%r-%h-%p.slots" > "$TMP/held25" 2>&1
+exit 0
+EOF
+chmod +x "$TMP/fake-ssh-hold"
+for d in cwdA cwdB; do
+  ( cd "$TMP/$d" && HOME="$H25" LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh-hold" \
+      ON_SITE_TIMEOUT=10 bash "$S" true >/dev/null 2>&1 )
+done
+printf '%-58s ' "#25 bridge: caller's directory is left untouched"
+if [ -z "$(find "$TMP/cwdA" "$TMP/cwdB" -mindepth 1 2>/dev/null)" ]; then echo ok
+else echo "FAIL: created $(find "$TMP/cwdA" "$TMP/cwdB" -mindepth 1 | head -3 | tr '\n' ' ')"; fails=$((fails+1)); fi
+printf '%-58s ' "#25 bridge: slots live under the expanded \$HOME, shared"
+if grep -qx 1 "$TMP/held25" 2>/dev/null; then echo ok
+else echo "FAIL: no slot under \$HOME/.ssh while a call ran (saw: $(cat "$TMP/held25" 2>&1))"; fails=$((fails+1)); fi
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
