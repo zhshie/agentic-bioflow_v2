@@ -388,6 +388,31 @@ judge_delete_target() {
             fi
 }
 
+# A dry run deletes nothing (#35) - but only the options of the command ITSELF
+# say so. `nice -n 10 rsync --delete`, `srun -n 1 rsync ...`, `ssh -n h rsync`,
+# `sudo -n`, `ionice -n 7`, `timeout -n 5` carry an n that belongs to the
+# wrapper; read as rsync's -n it silenced a real delete. So: find the rsync
+# word (or `git ... clean`) and look only at the option words after it.
+# is_dry_run <quote-free segment>: 0 if it is a dry run of rsync / git clean.
+is_dry_run() {
+    local W w b i=0 n seen=0
+    read -r -a W <<<"$1"
+    n=${#W[@]}
+    for ((i = 0; i < n; i++)); do
+        w=${W[$i]}; w=${w#\\}; b=${w##*/}
+        if [ "$seen" = 0 ]; then
+            case "$b" in rsync|rsync.exe) seen=1 ;; clean) seen=1 ;; esac
+            continue
+        fi
+        case "$w" in
+            --dry-run) return 0 ;;
+            --*) ;;
+            -[A-Za-z]*) [[ $w == -*n* ]] && return 0 ;;
+        esac
+    done
+    return 1
+}
+
 while IFS="$US" read -r SEG VSEG CW; do
     [ -n "$SEG" ] || continue
 
@@ -485,7 +510,7 @@ while IFS="$US" read -r SEG VSEG CW; do
     [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1
     # A dry run deletes nothing (#35): `--dry-run`, or an n among the short options.
     DRYRUN=0
-    [[ $VSEG =~ (^|[[:space:]])--dry-run([[:space:]]|$) || $VSEG =~ (^|[[:space:]])-[A-Za-z]*n[A-Za-z]*([[:space:]]|$) ]] && DRYRUN=1
+    is_dry_run "$VSEG" && DRYRUN=1
     [[ $VSEG =~ $RE_RSYNC_DEL ]] && [ "$DRYRUN" = 0 ] && DESTRUCTIVE=1
     # cmd /c rd|del|erase|rmdir ... under the Bash tool (#35): those verbs are
     # ordinary words in Bash, but after cmd's /c they are the command.

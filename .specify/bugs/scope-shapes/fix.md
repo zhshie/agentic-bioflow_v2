@@ -11,3 +11,8 @@
 - **Compared with main**: every change only widens "in use" or narrows an exemption, so no gate goes quieter than main. Also green in WSL: confirm_cleanup, confirm_walkthrough, guard_plugin_files, session_start, next_step, plugin_intro, in_use_speed, constitution_scope.
 - **Not fixed**: a ProxyJump in the default `~/.ssh/config` cannot be seen from a hook (comment only, as the issue asked). The `cd` rule is deliberately coarse (any root under home), not a real relative-path resolver.
 - **Needs maintainer decision**: none (all choices are the widening direction).
+
+## After independent acceptance
+
+- **Finding (LOW)**: constitution Safety Net Scope rule 1 still said a prompt named an `/agentic-bioflow:` command; since this fix the no-slash form (`agentic-bioflow:runs`) counts too.
+- **Fix**: wording only, now "named an `agentic-bioflow:` command, with or without the leading slash (anywhere in it)". The meaning of the rule did not change (the code already did this), so no version bump. `tests/constitution_scope_test.sh` stays green (it pins the version and Last Amended, not this sentence).

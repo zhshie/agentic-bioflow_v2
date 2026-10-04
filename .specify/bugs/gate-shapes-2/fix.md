@@ -18,3 +18,13 @@
   2. `echo 'rm -rf x' | python3` (shell text into python) is denied like a shell pipe: the splitter cannot tell code from commands.
   3. `find /tmp/x -exec rm {} \;` and `xargs -I{} rm {}` ask (they used to deny by accident); say if you want a plain pass for unprotected find paths.
   4. A dry run (`rsync -n`, `--dry-run`) is believed even with `--delete`/`--remove-source-files`.
+
+## After independent acceptance
+
+Findings fixed here (branch `fix/35-gate-shapes`, tests in `tests/confirm_cleanup_test.sh` and `tests/confirm_launch_test.sh`, labelled `#35b`).
+
+1. **HIGH regression: a wrapper's `-n` was read as rsync's dry run.** `hooks/confirm_cleanup.sh` treated ANY `-n` in the segment as a dry run, so `nice -n 10 rsync -a --delete src/ .../results/`, `srun -n 1 rsync ...`, `ssh -n t3 rsync ...` (unquoted), `sudo -n rsync ...`, `timeout -n 5 rsync ...` (all deny on main) and `ionice -n 7 rsync --remove-source-files .../rawdata/ /backup/`, `nice -n 19 rsync --remove-source-files ...` (ask on main), and `nice -n 10 git clean -fdx .../results` went silent. Fix: a new `is_dry_run` reads only the option words AFTER the `rsync` word (or after `clean` for `git clean`); `--dry-run` and an n among the short options count only there.
+   - Red: 8 cases (5 deny, 2 ask, 1 git clean) failed before. Green after. Controls that stay quiet: `nice -n 10 rsync -avn --delete`, `rsync -a --delete -n`, `--dry-run` behind a wrapper, `nice -n 10 git clean -n -fd`.
+   - Not covered: `rsync -e 'ssh -n' ...` (the quote characters are dropped before the check, so the nested `-n` is read as rsync's).
+2. **LOW false alarms: data piped into a runner that has its own script or remote command.** `echo 'rm -rf .../results' | python3 count_words.py` (deny) and `echo 'tw launch x' | ssh t3 'cat >> notes.md'` (gate) were judged as commands. Fix in `hooks/split_segments.awk` and the twin in `hooks/strip_heredocs.awk` (new `reads_code`): a shell always reads its stdin as code; an interpreter does unless a script file argument is present (a lone `-`, or `-c`/`-e`, keeps it code); `ssh` does unless a remote command is present, and a remote command that is itself a shell or interpreter is judged the same way (`ssh h bash`, `ssh h 'bash -s'`, `ssh h python3 -` stay code).
+   - Red: 4 cleanup cases + 2 launch cases failed before. Green after. Controls stay judged: `| python3 -`, `| python3`, `| python3 -u -`, `| bash`, `| sh`, `| ssh host`, `| ssh h bash`.

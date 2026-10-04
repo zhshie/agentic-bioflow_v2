@@ -374,6 +374,37 @@ another member's relay, FR-010). `egress_allow.sh` reuses
 keep it owner-only, the same measured-not-assumed check the token gets,
 rather than a second privacy check invented just for this file.
 
+**Names that are refused.** `add` takes one specific host. It refuses a name
+that is not one: a public suffix (`co.uk`), a shared hosting domain
+(`github.io` itself - `user.github.io` is fine), a wildcard-DNS or tunnel
+service and everything under it, a name that only means something inside one
+network, and a name that spells an IP address in its labels (`1.2.3.4.nip.io`).
+The list is `scripts/relay_denied_names.txt` (`exact` = this name only, `tree`
+= this name and everything under it); `scripts/egress_allow.sh` and
+`scripts/nf_relay.py` read the same file, so the two cannot disagree. If the
+file cannot be read, `add` refuses rather than adding unchecked (invariant 13).
+The list is short and cannot be complete, which is why the relay has a second
+line of defence:
+
+**`DENY-PRIVATE`: refused at connect.** A domain from this file (and not also
+on the built-in list) is connected to only when every address it resolves to
+is a public one. If it resolves to loopback, a private range, link-local,
+the shared `100.64.0.0/10` range or an unspecified address, the relay refuses
+the connection and writes `DENY-PRIVATE <host> <port> ...` to
+`$LAB_RUNS_DIR/_relay/relay.log`. Built-in names are not subject to this.
+When an approved name still fails, grep the log for both words:
+`grep -E 'DENY-(DOMAIN|PRIVATE)' "$LAB_RUNS_DIR/_relay/relay.log"`.
+
+**Editing the file directly asks.** A redirect, an editor, `tee`, `cp`/`mv`
+over it, `sed -i`, a Write/Edit tool call, or a PowerShell `Add-Content` /
+`Set-Content` / `Out-File` aimed at `egress_allow.tsv` goes around
+`egress_allow.sh` and all of the checks above, so `hooks/confirm_launch.sh`
+asks the user first, the same as for `egress_allow.sh add|remove`. Reading it
+(`cat`, `grep`, `cp` *from* it, `Get-Content`) does not ask. A glob counts as
+naming the file only if its text carries the name (`egress_allo?.tsv`,
+`egr*ow.tsv`) or it points into this deployment's config directory; a broad
+`results/*.tsv` does not.
+
 Adding or removing a domain is confirmed the same way starting a run is
 (`hooks/confirm_launch.sh`) - never automatic - and the script itself never
 restarts the relay; it only says that restarting the outbound channel is the

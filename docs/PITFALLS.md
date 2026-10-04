@@ -218,8 +218,13 @@ worth calling out:
 When a run fails for any network-shaped reason, read the relay log *first*:
 
 ```bash
-grep DENY-DOMAIN "$LAB_RUNS_DIR/_relay/relay.log" | tail -20
+grep -E 'DENY-(DOMAIN|PRIVATE)' "$LAB_RUNS_DIR/_relay/relay.log" | tail -20
 ```
+
+`DENY-DOMAIN` is a name that is not on the allowlist. `DENY-PRIVATE` is a name
+this deployment added itself (`scripts/egress_allow.sh`) that resolves to
+loopback, a private or link-local address: the name is allowed, the connection
+is not (docs/SETTINGS.md, "The extra relay allowlist").
 
 **4b. A CONNECT with no headers used to hang the relay, and only Python
 noticed.** `http.client._tunnel()` - which is what `urllib.request.urlopen`
