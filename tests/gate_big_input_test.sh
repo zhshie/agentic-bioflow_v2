@@ -1,0 +1,94 @@
+#!/bin/bash
+# #34, acceptance round: the gates must not get slower than LINEAR in the size of
+# what they are handed. A hook that runs past its timeout (hooks.json: 30 s) is
+# cancelled and the tool call PROCEEDS, so a large Write (an analysis script, a
+# samplesheet) or a large here-doc followed by a delete or a launch must still be
+# judged, quickly, with the same verdict as always.
+#
+# The first version of the speed fix counted separators with ${X//[^x]/} and
+# trimmed newlines one character at a time; both are quadratic in bash. On native
+# Git Bash a 130 KB input took over 30 s and every hook was cancelled.
+#
+# Two checks per case, neither a comparison with a fixed machine speed:
+#   - absolute: the largest input finishes in well under the timeout;
+#   - scaling: 4x the input must not cost more than ~8x the time (linear is 4x,
+#     quadratic 16x). Only judged once the run is long enough to mean anything.
+set -uo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/.." && pwd)"
+HOOKS="$ROOT/hooks"
+TMP=$(mktemp -d)
+trap 'command rm -rf "$TMP"' EXIT
+fails=0
+
+command -v jq >/dev/null 2>&1 || { echo "jq is required for this test"; exit 1; }
+PY=$(command -v python3 || command -v python) || { echo "python is required for this test"; exit 1; }
+
+mkdir -p "$TMP/home" "$TMP/state/in-use" "$TMP/work"
+: > "$TMP/state/in-use/big-s1"
+for i in $(seq 1 200); do printf '{"type":"user","message":{"content":"hello %s"}}\n' "$i"; done > "$TMP/transcript.jsonl"
+
+now_ms() { if [ -n "${EPOCHREALTIME:-}" ]; then local e=${EPOCHREALTIME/[.,]/}; echo $((e / 1000)); else echo $((SECONDS * 1000)); fi; }
+
+# mk <file> <kind> <kb>
+mk() {
+  "$PY" - "$1" "$2" "$3" "$TMP" <<'PY'
+import json, sys
+f, kind, kb, tmp = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+pad = "".join("x%d = %d  # filler line\n" % (i, i) for i in range(200000))[: kb * 1024]
+if kind == "launch":  ti = {"command": "python3 - <<'EOF'\n" + pad + "EOF\ntw launch nf-core/rnaseq -profile test"}
+elif kind == "rm":    ti = {"command": "python3 - <<'EOF'\n" + pad + "EOF\nrm -rf /work/u/lab_runs/x/results"}
+elif kind == "write": ti = {"file_path": tmp + "/work/analysis/de.R", "content": pad}
+tool = "Write" if kind == "write" else "Bash"
+d = {"session_id": "big-s1", "cwd": tmp + "/work", "transcript_path": tmp + "/transcript.jsonl",
+     "hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": ti}
+open(f, "w").write(json.dumps(d))
+PY
+}
+
+# run <hook> <file>  -> sets MS and KIND
+run() {
+  local s e out rc
+  s=$(now_ms)
+  out=$( ( cd "$TMP/work" && env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR HOME="$TMP/home" XDG_CONFIG_HOME="$TMP/home/.config" \
+        AGENTIC_BIOFLOW_STATE_DIR="$TMP/state" CLAUDE_PLUGIN_ROOT="$ROOT" \
+        timeout 30 bash "$HOOKS/$1.sh" < "$2" 2>/dev/null ) )
+  rc=$?
+  e=$(now_ms); MS=$((e - s))
+  KIND=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // (if .hookSpecificOutput.additionalContext then "ctx" else "none" end)' 2>/dev/null)
+  [ "$rc" = 124 ] && KIND="TIMEOUT"
+  [ -n "$KIND" ] || KIND=none
+}
+
+# check <label> <hook> <kind of input> <expected verdict, or - for any> <small KB> <big KB>
+# (A launch ask for a command this large cannot be built on Windows at all - the
+# command line of `jq --arg` is limited to 32 KB there - so the launch gate's own
+# verdict on the large launch is not asserted; its time still is.)
+check() {
+  local label="$1" hook="$2" kind="$3" want="$4" sk="$5" bk="$6" ms_small ms_big
+  mk "$TMP/small.json" "$kind" "$sk";  run "$hook" "$TMP/small.json"; ms_small=$MS; local k_small=$KIND
+  mk "$TMP/big.json" "$kind" "$bk";    run "$hook" "$TMP/big.json";   ms_big=$MS;   local k_big=$KIND
+  local why=""
+  if [ "$want" != - ]; then
+    [ "$k_small" = "$want" ] || why="${sk} KB verdict $k_small, want $want. "
+    [ "$k_big" = "$want" ]   || why="${why}${bk} KB verdict $k_big, want $want. "
+  fi
+  [ "$k_big" != TIMEOUT ] || why="${why}${bk} KB hook was cancelled at 30 s. "
+  [ "$ms_big" -le 15000 ]  || why="${why}${bk} KB took ${ms_big} ms (limit 15000). "
+  if [ "$ms_big" -gt 4000 ] && [ "$ms_big" -gt $((ms_small * 8)) ]; then why="${why}scaling: ${sk} KB ${ms_small} ms, ${bk} KB ${ms_big} ms (over 8x). "; fi
+  printf '%-62s %6s ms -> %6s ms  ' "$label" "$ms_small" "$ms_big"
+  if [ -z "$why" ]; then echo "ok ($want)"; else echo "FAIL: $why"; fails=$((fails+1)); fi
+}
+
+echo "== large inputs: still judged, same verdict, linear time =="
+check "Write of a 300 KB analysis script (walkthrough gate)"  confirm_walkthrough write  deny 75 300
+check "Write of a 300 KB analysis script (launch gate)"       confirm_launch       write  none 75 300
+check "Write of a 300 KB analysis script (plugin-file guard)" guard_plugin_files   write  none 75 300
+check "128 KB here-doc then rm -rf results (deletion guard)"  confirm_cleanup      rm     deny 32 128
+check "128 KB here-doc then rm -rf results (launch gate)"     confirm_launch       rm     none 32 128
+check "128 KB here-doc then tw launch (launch gate)"          confirm_launch       launch -    32 128
+check "128 KB here-doc then tw launch (walkthrough gate)"     confirm_walkthrough  launch deny 32 128
+check "128 KB here-doc then tw launch (deletion guard)"       confirm_cleanup      launch none 32 128
+
+echo
+[ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

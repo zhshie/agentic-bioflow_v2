@@ -35,6 +35,29 @@ RELAUNCH="tw runs $(printf '\x72\x65\x6c\x61\x75\x6e\x63\x68')"
 SB=$(printf '\x73\x62\x61\x74\x63\x68')
 fails=0
 
+# #44: D3 (the bare-ssh reminder) reads the REAL `uname -s`, and it is MSYS-only.
+# Run natively in Git Bash this file's real uname IS MSYS, so every case below
+# that is not about D3 (a read-only `ssh h 'grep ...'` that must pass, the
+# "NOT on MSYS" case) saw D3 fire. The fix is the fixture, not the hook: from
+# here on every hook call in this file sees a platform that is not MSYS unless
+# a case puts MSYSBIN (below) in front. On Linux/macOS this changes nothing.
+LINUXDIR=$(mktemp -d)
+cat > "$LINUXDIR/uname" <<'EOF'
+#!/bin/bash
+[ "$1" = -s ] && { echo Linux; exit 0; }
+exec /usr/bin/uname "$@"
+EOF
+chmod +x "$LINUXDIR/uname"
+export PATH="$LINUXDIR:$PATH"
+
+# Guard for the shim above: a case that is not about D3 must not run on a
+# platform the hook reads as MSYS. Red natively in Git Bash before the shim.
+printf '%-58s ' "#44 fixture: the default uname -s is not MSYS (D3 is MSYS-only)"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) echo "FAIL: uname -s says $(uname -s); D3 would fire on every bare ssh below"; fails=$((fails+1)) ;;
+  *) echo ok ;;
+esac
+
 t() { # t <command> <expect gate|pass> <label>
   printf '%-56s ' "$3"
   out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
@@ -135,7 +158,7 @@ tmcp "mcp__seqera__list_runs"                          pass "#29 an MCP tool tha
 # and the gate vanished for EVERY command with nothing printed - the same shape
 # as the relaunch miss above, but total. So the load is fail-closed, and this
 # case is what keeps it that way.
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d); trap 'rm -rf "$TMP" "$LINUXDIR"' EXIT
 mkdir -p "$TMP/hooks"
 cp "$(dirname "$H")/confirm_launch.sh" "$TMP/hooks/"
 cp "$(dirname "$H")/strip_heredocs.awk" "$TMP/hooks/" 2>/dev/null
@@ -158,7 +181,7 @@ echo
 # ---------------------------------------------------------------------------
 # Z2: the LAB_RUNS_DIR warning must not cry wolf under reach: ssh/none, and
 # must not change under reach: local.
-Z2TMP=$(mktemp -d); trap 'rm -rf "$Z2TMP" "$TMP" 2>/dev/null' EXIT
+Z2TMP=$(mktemp -d); trap 'rm -rf "$Z2TMP" "$TMP" "$LINUXDIR" 2>/dev/null' EXIT
 
 mksettings() { # mksettings <file> <reach-value-or-empty>
     [ -n "$2" ] && printf 'reach: %s\n' "$2" > "$1" || : > "$1"
@@ -663,5 +686,182 @@ rm -f "$TMP/ea/egress_allow.tsv"
 o=$(SEQERA_TOKEN_FILE= LAB_SETTINGS_FILE="$TMP/ea/env.yaml" bash "$H" <<<"$j" 2>/dev/null)
 printf '%-58s ' "relay restart ask says when it carries none"
 grep -qi 'no extra domains' <<<"$o" && echo ok || { echo "FAIL <<$o>>"; fails=$((fails+1)); }
+
+echo
+echo "== #35: launch shapes the splitter did not read outside a nested shell =="
+t "flock /tmp/l -c '$SB job.sh'"                       gate "#35 flock -c sbatch (no nested shell)"
+t "su - lab -c '$SB job.sh'"                           gate "#35 su - lab -c sbatch"
+t "su lab -c \"$NFRUN nf-core/ampliseq\""              gate "#35 su -c nextflow run"
+t "tmux new -d '$NFRUN nf-core/ampliseq -resume'"      gate "#35 tmux new -d nextflow run"
+t "tmux new-session -d -s a '$SB j.sh'"                gate "#35 tmux new-session sbatch"
+t "tmux send-keys -t a '$LAUNCH x' Enter"              gate "#35 tmux send-keys tw launch"
+t "screen -X stuff '$SB j.sh'"                         gate "#35 screen -X stuff sbatch"
+t "flock /tmp/l -c 'ls'"                               pass "#35 control: flock -c ls"
+t "su lab -c 'echo hi'"                                pass "#35 control: su -c echo"
+t "tmux new -d 'htop'"                                 pass "#35 control: tmux new htop"
+t "tmux ls"                                            pass "#35 control: tmux ls"
+t "echo '$LAUNCH x' | sudo -u lab bash"                gate "#35 piped into sudo -u x bash"
+t "echo '$SB x.sh' | srun bash"                        gate "#35 piped into srun bash"
+t "echo '$SB x.sh' | srun --pty bash"                  gate "#35 piped into srun --pty bash"
+t "echo '$SB x.sh' | sudo -E bash -s"                  gate "#35 piped into sudo -E bash -s"
+t "echo '$SB x.sh' | grep bash"                        pass "#35 control: piped into grep bash"
+t "echo '$SB x.sh' | sudo -u lab tee out.txt"          pass "#35 control: piped into sudo tee"
+t "$(printf 'cat <<%s | srun bash\n%s x.sh\nEOF\n' "'EOF'" "$SB")" gate "#35 here-doc piped into srun bash"
+t "$(printf 'cat <<%s | sudo -u lab bash\n%s x\nEOF\n' "'EOF'" "$LAUNCH")" gate "#35 here-doc piped into sudo -u bash"
+t "Start-Process nextflow -ArgumentList 'run x'"        gate "#35 PowerShell Start-Process nextflow run"
+t "Start-Process -FilePath nextflow -ArgumentList 'run','x'" gate "#35 Start-Process -FilePath, comma list"
+t "Start-Process $SB -ArgumentList 'x.sh'"             gate "#35 control: Start-Process sbatch (already gated)"
+t "Start-Process tw -ArgumentList 'launch','x'"        gate "#35 Start-Process tw launch"
+t "Start-Process notepad -ArgumentList 'x.txt'"        pass "#35 control: Start-Process notepad"
+t "Start-Process nextflow -ArgumentList '-version'"    pass "#35 control: Start-Process nextflow -version"
+t "a=($LAUNCH x); \"\${a[@]}\""                        gate "#35 control: command held in an array (already gated)"
+t "files=(a.txt b.txt); ls \"\${files[@]}\""           pass "#35 control: an array of file names"
+
+
+echo
+echo "== #45: egress_allow gate obfuscations, writes to its file, relay env prefix, false alarms =="
+# M1: spellings of the script's name that did not contain the name as written
+idg "#45 a glob for the extension"                         ask   'bash scripts/egress_allow.* add x.org --reason r'
+idg "#45 a ? in the name"                                  ask   'bash scripts/egress_allo?.sh add x.org --reason r'
+idg "#45 a backslash in the name"                          ask   'bash scripts/egress_allow\.sh add x.org --reason r'
+idg "#45 a bracket in the name"                            ask   'bash scripts/egress_allow.s[h] add x.org --reason r'
+idg "#45 a * in the stem"                                  ask   'bash scripts/e*_allow.sh remove x.org'
+idg "#45 an empty-string splice in the name"               ask   'bash scripts/egress_""allow.sh add x.org --reason r'
+idg "#45 a quote splice in the name"                       ask   "bash scripts/egress_al'low'.sh add x.org --reason r"
+idg "#45 the name held in a variable set earlier"          ask   'a=egress_allow; bash scripts/$a.sh add x.org --reason r'
+idg "#45 ...with the operation in a variable too"          ask   'a=egress_allow; b=add; bash scripts/$a.sh $b x.org --reason r'
+idg "#45 a variable that is not set in the command"        ask   'bash "scripts/$a.sh" add x.org --reason r'
+idg "#45 run directly, with a ? in the name"               ask   'scripts/egress_allo?.sh add x.org --reason r'
+idg "#45 control: a globbed name with list does not ask"   allow 'bash scripts/egress_allo?.sh list'
+idg "#45 control: ls of the scripts does not ask"          allow 'ls scripts/egress_*'
+idg "#45 control: git add with a glob does not ask"        allow 'git add -A scripts/*.sh'
+idg "#45 control: another script with add does not ask"    allow 'bash scripts/other.sh add x.org'
+idg "#45 control: a variable script with list does not"    allow 'bash scripts/$a.sh list'
+idg "#45 control: echoing the glob does not ask"           allow 'echo bash scripts/egress_allo?.sh add x.org'
+# M2: direct writes to the file the script manages
+idg "#45 a >> redirect into egress_allow.tsv"              ask   'echo x.org >> /home/u/cfg/egress_allow.tsv'
+idg "#45 a > redirect into it"                             ask   'echo x.org > /home/u/cfg/egress_allow.tsv'
+idg "#45 a quoted redirect target"                         ask   'echo x.org >> "/home/u/cfg/egress_allow.tsv"'
+idg "#45 tee -a into it"                                   ask   "printf 'x.org\n' | tee -a cfg/egress_allow.tsv"
+idg "#45 cp over it"                                       ask   'cp new.tsv cfg/egress_allow.tsv'
+idg "#45 sed -i on it"                                     ask   "sed -i 's/a/b/' cfg/egress_allow.tsv"
+idg "#45 a glob that names it"                             ask   'echo x.org >> cfg/egress_allo?.tsv'
+idg "#45 an editor opened on it"                           ask   'vim cfg/egress_allow.tsv'
+idg "#45 control: cat of it does not ask"                  allow 'cat cfg/egress_allow.tsv'
+idg "#45 control: grep of it does not ask"                 allow 'grep -n x.org cfg/egress_allow.tsv'
+idg "#45 control: ls -l of it does not ask"                allow 'ls -l cfg/egress_allow.tsv'
+idg "#45 control: wc -l of it does not ask"                allow 'wc -l cfg/egress_allow.tsv'
+idg "#45 control: diff against it does not ask"            allow 'diff a.tsv cfg/egress_allow.tsv'
+idg "#45 control: its name in an echo's quotes, written elsewhere" allow 'echo "see egress_allow.tsv" >> notes.md'
+idw() { # idw <label> <expect ask|allow> <tool> <file_path>  - a Write/Edit tool call
+  local j o got
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":sys.argv[1],"tool_input":{"file_path":sys.argv[2],"content":"x"}}))' "$3" "$4")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  got=allow; grep -q '"permissionDecision": *"ask"' <<<"$o" && got=ask
+  printf '%-58s ' "$1"
+  [ "$got" = "$2" ] && echo ok || { echo "FAIL: expected $2, got $got"; fails=$((fails+1)); }
+}
+idw "#45 Write to egress_allow.tsv asks"                   ask   Write '/home/u/cfg/egress_allow.tsv'
+idw "#45 Edit of egress_allow.tsv asks"                    ask   Edit  '/home/u/cfg/egress_allow.tsv'
+idw "#45 a Windows path asks"                              ask   Write 'C:\Users\u\cfg\egress_allow.tsv'
+idw "#45 control: Write to another file does not ask"      allow Write '/home/u/cfg/notes.md'
+idw "#45 control: a file that only starts alike"           allow Write '/home/u/cfg/egress_allow.tsv.bak'
+printf '%-58s ' "#45 hooks.json sends Write/Edit calls to confirm_launch.sh"
+CL_MATCHER=$(jq -r '.hooks.PreToolUse[] | select(.hooks[].command | test("confirm_launch\\.sh")) | .matcher' "$HOOKS_DIR/hooks.json" 2>/dev/null | tr -d '\r' | paste -s -d '|' -)
+jq -en --arg m "$CL_MATCHER" '"Write" | test("^(" + $m + ")$")' 2>/dev/null | grep -qx true && echo ok || { echo "FAIL: matcher <<$CL_MATCHER>>"; fails=$((fails+1)); }
+printf '%-58s ' "#45 control: ...and a plain Read still does not"
+jq -en --arg m "$CL_MATCHER" '"Read" | test("^(" + $m + ")$")' 2>/dev/null | grep -qx true && { echo "FAIL"; fails=$((fails+1)); } || echo ok
+# M3: an environment prefix on a direct relay start
+envp() { # envp <label> <expect has|lacks> <command>: does the ask say the command overrides the list?
+  local j o got
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$3")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  got=lacks; grep -qF "overrides this deployment's list" <<<"$o" && got=has
+  printf '%-58s ' "$1"
+  [ "$got" = "$2" ] && echo ok || { echo "FAIL: expected $2, got $got <<${o:0:80}>>"; fails=$((fails+1)); }
+}
+envp "#45 an env prefix on a relay start is named in the ask"  has   'NF_RELAY_EXTRA_DOMAINS=evil.org bash scripts/egress_ctl.sh start'
+envp "#45 ...through env"                                      has   'env NF_RELAY_EXTRA_DOMAINS=evil.org bash scripts/egress_ctl.sh restart'
+envp "#45 ...through export"                                   has   'export NF_RELAY_EXTRA_DOMAINS=evil.org; bash scripts/egress_ctl.sh start'
+envp "#45 control: a plain relay start does not say it"        lacks 'bash scripts/egress_ctl.sh start'
+# LOW: false alarms on reading the script, and sourcing it with no operation
+idg "#45 cat of the script does not ask"          allow 'cat scripts/egress_allow.sh'
+idg "#45 less of the script does not ask"                  allow 'less scripts/egress_allow.sh'
+idg "#45 grep -n add on the script does not ask"           allow 'grep -n add scripts/egress_allow.sh'
+idg "#45 bash -n on the script does not ask"               allow 'bash -n scripts/egress_allow.sh'
+idg "#45 git diff -- the script does not ask"              allow 'git diff -- scripts/egress_allow.sh'
+idg "#45 sourcing it with no operation does not ask"       allow 'source "scripts/egress_allow.sh"'
+idg "#45 control: sourcing it with add still asks"         ask   'source scripts/egress_allow.sh add x.org --reason r'
+idg "#45 control: a bare run with no operation still asks" ask   'bash scripts/egress_allow.sh'
+idg "#45 control: add after a reader segment still asks"   ask   'cat scripts/egress_allow.sh; bash scripts/egress_allow.sh add x.org --reason r'
+# After independent acceptance (#35): data piped into a runner that has its own script
+# file / remote command is data; a runner reading stdin is still code.
+t "echo '$LAUNCH x' | python3 count_words.py"         pass "#35b data piped into python3 script.py"
+t "echo '$LAUNCH x' | ssh t3 'cat >> notes.md'"        pass "#35b data piped into ssh host 'cmd'"
+t "echo '$LAUNCH x' | python3 -"                       gate "#35b control: | python3 -"
+t "echo '$LAUNCH x' | python3"                         gate "#35b control: | python3 (no script)"
+t "echo '$LAUNCH x' | sh"                              gate "#35b control: | sh"
+t "echo '$LAUNCH x' | ssh t3"                          gate "#35b control: | ssh host (no remote command)"
+t "echo '$LAUNCH x' | ssh t3 bash"                     gate "#35b control: | ssh host bash"
+
+echo
+echo "== #45 after independent acceptance: glob and source false alarms, Write without jq, Windows paths =="
+# 3. a glob names egress_allow.tsv only if its text carries the name (egress...,
+# egr*ow, ...allow...) or its folder is this deployment's config folder
+idg "#45b cp results/*.tsv elsewhere does not ask"         allow 'cp /home/u/proj/results/*.tsv /tmp/out/'
+idg "#45b gzip analysis/*.tsv does not ask"                allow 'gzip /home/u/proj/analysis/*.tsv'
+idg "#45b a script over results/*/*.tsv does not ask"      allow 'python3 scripts/merge_tables.py /home/u/proj/results/*/*.tsv -o merged.tsv'
+idg "#45b csvtk concat results/*.tsv > all.tsv"            allow 'csvtk concat /home/u/proj/results/*.tsv > all.tsv'
+idg "#45b find . -name '*.tsv' -newer x does not ask"      allow "find . -name '*.tsv' -newer x"
+idg "#45b cp egress_allow.tsv elsewhere (a source) is a read" allow 'cp egress_allow.tsv /tmp/bk.tsv'
+idg "#45b cp cfg/egress_allow.tsv /tmp/bk.tsv is a read"   allow 'cp cfg/egress_allow.tsv /tmp/bk.tsv'
+idg "#45b scp-style read: rsync cfg/egress_allow.tsv /tmp/"  allow 'rsync -a cfg/egress_allow.tsv /tmp/'
+idg "#45b control: cp over it still asks"                  ask   'cp new.tsv cfg/egress_allow.tsv'
+idg "#45b control: cp -t its folder, source named, no ask" allow 'cp -t /tmp/bk cfg/egress_allow.tsv'
+idg "#45b control: mv of it asks (the source is removed)"  ask   'mv cfg/egress_allow.tsv /tmp/bk.tsv'
+idg "#45b control: a glob with egress in it asks"          ask   'echo x.org >> cfg/egress_allo?.tsv'
+idg "#45b control: egr*ow.tsv asks"                        ask   'echo x.org >> cfg/egr*ow.tsv'
+idg "#45b control: e*ss_allow.tsv asks"                    ask   'echo x.org >> cfg/e*ss_allow.tsv'
+idg "#45b control: a glob in the config folder asks"       ask   "echo x.org >> $TMP/*.tsv"
+idg "#45b control: a ?-glob in the config folder asks"     ask   "echo x.org >> $TMP/????????????.tsv"
+idg "#45b control: tee -a on a config-folder glob asks"    ask   "echo x.org | tee -a $TMP/*.tsv"
+idg "#45b control: cp to a config-folder glob asks"        ask   "cp new.tsv $TMP/*.tsv"
+# a variable-named script asks only when the text says egress or the script is in the plugin's scripts folder
+idg "#45b bash \$HOME/bin/todo.sh add milk does not ask"   allow 'bash $HOME/bin/todo.sh add milk'
+idg "#45b bash ./\$SCRIPT remove x does not ask"           allow 'bash ./$SCRIPT remove x'
+idg "#45b control: a variable script in scripts/ asks"     ask   'bash "scripts/$a.sh" add x.org --reason r'
+idg "#45b control: a variable script under the plugin root asks" ask 'bash "$CLAUDE_PLUGIN_ROOT/scripts/$a.sh" add x.org --reason r'
+# 5. Windows paths: a backslash is a separator, not an escape
+idg "#45b Add-Content C:\\...\\egress_allow.tsv asks"       ask   'Add-Content C:\Users\u\cfg\egress_allow.tsv '"'x'"
+idg "#45b Set-Content -Path C:\\...\\egress_allow.tsv asks" ask   'Set-Content -Path C:\Users\u\cfg\egress_allow.tsv '"'x'"
+idg "#45b | Out-File -Append C:\\...\\egress_allow.tsv asks" ask   "'x' | Out-File -Append "'C:\Users\u\cfg\egress_allow.tsv'
+idg "#45b Add-Content .\\egress_allow.tsv asks"             ask   'Add-Content .\egress_allow.tsv '"'x'"
+idg "#45b notepad C:\\...\\egress_allow.tsv asks"           ask   'notepad C:\Users\u\cfg\egress_allow.tsv'
+idg "#45b bash redirect to a quoted Windows path asks"     ask   'echo x >> "C:\Users\u\cfg\egress_allow.tsv"'
+idg "#45b control: a backslash-escaped name still asks"    ask   'echo x.org >> cfg/egr\ess_allow.tsv'
+idg "#45b control: Get-Content of it does not ask"         allow 'Get-Content C:\Users\u\cfg\egress_allow.tsv'
+idg "#45b control: a Windows path to another file"         allow 'Add-Content C:\Users\u\cfg\notes.txt '"'x'"
+# 4. Write/Edit without jq: the raw payload is file CONTENT, not a command
+NOJQ_S="$TMP/nojq_s"; mkdir -p "$NOJQ_S"; NOJQ_P=$(nojq_path "$NOJQ_S") || { echo "cannot build a PATH without jq"; exit 1; }
+nojqw() { # nojqw <label> <expect pass|ask|block> <tool> <file_path> <content>
+  local j o rc got
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":sys.argv[1],"hook_event_name":"PreToolUse","cwd":"/home/u/proj","tool_input":{"file_path":sys.argv[2],"content":sys.argv[3],"new_string":sys.argv[3]}}))' "$3" "$4" "$5")
+  o=$(printf '%s' "$j" | PATH="$NOJQ_P" bash "$H" 2>/dev/null); rc=$?
+  got=pass
+  [ "$rc" = 2 ] && got=block
+  [ "$rc" = 0 ] && grep -q '"permissionDecision": *"ask"' <<<"$o" && got=ask
+  printf '%-58s ' "$1"
+  [ "$got" = "$2" ] && echo ok || { echo "FAIL: expected $2, got $got (rc=$rc)"; fails=$((fails+1)); }
+}
+nojqw "#45b no jq: Write of a README mentioning ' rsync ' passes"  pass  Write /home/u/proj/README.md 'copy with rsync -a src dst'
+nojqw "#45b no jq: Write of a README mentioning ' ssh ' passes"    pass  Write /home/u/proj/README.md 'connect with ssh host'
+nojqw "#45b no jq: Edit mentioning ' sbatch ' passes"              pass  Edit  /home/u/proj/README.md 'submit with sbatch job.sh'
+nojqw "#45b no jq: MultiEdit mentioning tw launch passes"          pass  MultiEdit /home/u/proj/README.md 'run tw launch x'
+nojqw "#45b no jq: Write to egress_allow.tsv asks"                 ask   Write /home/u/cfg/egress_allow.tsv 'x.org'
+nojqw "#45b no jq: Write to a Windows egress_allow.tsv asks"       ask   Write 'C:\Users\u\cfg\egress_allow.tsv' 'x.org'
+nojqw "#45b no jq: control: egress_allow.tsv.bak passes"           pass  Write /home/u/cfg/egress_allow.tsv.bak 'x.org'
+printf '%-58s ' "#45b no jq: control: a Bash ssh is still BLOCKED"
+python3 -c "import json,sys;print(json.dumps({'tool_name':'Bash','tool_input':{'command':sys.argv[1]}}))" "ssh twnia3 ls" | PATH="$NOJQ_P" bash "$H" >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && echo ok || { echo "FAIL: rc=$rc"; fails=$((fails+1)); }
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

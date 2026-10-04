@@ -114,12 +114,22 @@ looks_delete_shaped() {
 # hooks/in_use.sh for what "in use" means and why unsure counts as in use. A
 # hook directory that cannot supply in_use.sh answers "in use": the gate below
 # then runs exactly as it did before this existed.
-INPUT=$(cat)
+# Stdin without starting `cat` (#34: every process is expensive under Git Bash). Not `read -d ''`:
+# that reads a pipe one byte at a time (a second per 300 KB) and stops at a NUL.
+INPUT=$(</dev/stdin)   # no `cat` process; drops NULs and trailing newlines exactly as $(cat) does
 HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 { . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
 abf_in_use "$INPUT" "$INPUT" || exit 0
 
-if ! printf '{}' | jq -e . >/dev/null 2>&1; then
+# One jq call reads what this hook needs, and when it works it stands in for the
+# "can jq run at all" probe (#34). It is trusted only when it produced exactly one
+# record, both fields plain strings, no separator inside them; anything else
+# (not JSON, no jq, an object-valued field, two JSON values) goes the way this
+# file always went: the probe, then one jq per field.
+JQ_FAST=0
+JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+  && [ -n "$JQ_OUT" ] && JQ_FAST=1
+if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
     RAW=$INPUT
     if looks_delete_shaped "$RAW"; then
         cat >&2 <<'EOF'
@@ -142,8 +152,19 @@ EOF
     exit 0
 fi
 
-TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' 2>/dev/null)
+if [ "$JQ_FAST" = 1 ]; then
+    # The fields come as one string, each followed by the separator. They are read out in order:
+    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
+    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+    # newlines were trimmed by jq, as $(jq) did per field.
+    {
+        IFS= read -r -d $'\037' TOOL
+        IFS= read -r -d $'\037' CMD
+    } <<<"$JQ_OUT"
+else
+    TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
+    CMD=$(echo "$INPUT" | jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' 2>/dev/null)
+fi
 
 # T1, part 2: jq is fine, but no field this file knows to check carried a
 # command. For Bash that never happens in practice; for anything else the
@@ -163,8 +184,12 @@ fi
 # Drop here-doc bodies: a document containing a path example is not a command
 # operating on that path, but the per-line segment scan below could not tell the
 # difference. If awk is missing this yields nothing and CMD is left as-is.
-STRIPPED=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
-[ -n "$STRIPPED" ] && CMD="$STRIPPED"
+# No `<<` means no here-doc, and the stripper then prints every line unchanged,
+# so the process is not started for it (#34).
+if [[ $CMD == *'<<'* ]]; then
+    STRIPPED=$(awk -f "$HD/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
+    [ -n "$STRIPPED" ] && CMD="$STRIPPED"
+fi
 
 deny() {
     jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
@@ -199,8 +224,8 @@ ask() {
 #
 # If awk cannot run, fall back to a plain split and keep going: noisier, but
 # still a gate, never an absent one.
-US=$(printf '\037')
-SEGMENTS=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+US=$'\037'
+SEGMENTS=$(awk -f "$HD/split_segments.awk" <<<"$CMD" 2>/dev/null)
 if [ -z "$SEGMENTS" ]; then
     SEGMENTS=$(printf '%s\n' "$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g' | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
 fi
@@ -229,6 +254,41 @@ cmdword() {
     w=${w##*/}
     printf '%s' "$w" | tr 'A-Z' 'a-z'
 }
+
+# #35: where a relative target really is. The hook input carries the session's
+# working folder ("cwd"); a `cd` earlier in the same command moves it. Both are
+# followed in-shell, no process. A cd that cannot be resolved (a variable, ~, -,
+# no argument) makes later relative targets unknown, as they were before. A cd
+# inside a subshell is treated as lasting for the rest of the command, which can
+# only judge more targets, never fewer.
+# norm_path <path> -> REPLY: `.` and `..` folded, no trailing slash.
+norm_path() {
+    local p="$1" pre="" seg res="" parts=() out=()
+    case "$p" in
+        /*) pre=/; p="${p#/}" ;;
+        [A-Za-z]:/*) pre="${p:0:3}"; p="${p:3}" ;;
+    esac
+    IFS=/ read -r -a parts <<<"$p"
+    for seg in ${parts[@]+"${parts[@]}"}; do
+        case "$seg" in
+            ''|.) ;;
+            ..) [ "${#out[@]}" -gt 0 ] && unset 'out[${#out[@]}-1]' ;;
+            *) out+=("$seg") ;;
+        esac
+    done
+    for seg in ${out[@]+"${out[@]}"}; do res="${res:+$res/}$seg"; done
+    REPLY="$pre$res"
+    [ -n "$REPLY" ] || REPLY=.
+}
+VCWD=""
+RE_CWD='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+if [[ $INPUT =~ $RE_CWD ]]; then
+    VCWD="${BASH_REMATCH[1]}"; VCWD="${VCWD//\\\\//}"; VCWD="${VCWD//\\//}"
+    case "$VCWD" in /*|[A-Za-z]:/*) norm_path "$VCWD"; VCWD="$REPLY" ;; *) VCWD="" ;; esac
+fi
+# #35: is the segment before this one a lister of an explicit path, so a
+# `Move-Item` fed from it has a known source? (Pipeline-fed Move-Item.)
+LISTER_OK=0
 
 UNRESOLVED=""
 HIT_OVERWRITE=""
@@ -259,7 +319,7 @@ RE_FIND_DEL='(^|[[:space:]])([^[:space:]]*/)?find[[:space:]](.*[[:space:]])?(-de
 RE_RSYNC_DEL='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--delete'
 RE_MV='(^|[[:space:]])([^[:space:]]*/)?\\?mv([[:space:]]|$)'
 RE_RSYNC_RSF='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--remove-source-files'
-RE_CODE_DEL='(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|(^|[^[:alnum:]_.])(unlink|rmtree)|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync)|::Delete)[[:space:]]*\('
+RE_CODE_DEL='(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|(^|[^[:alnum:]_.])(unlink|rmtree|remove_tree)|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync)|::Delete)[[:space:]]*\('
 RE_DEVNULL='[0-9]*>&?[[:space:]]*/dev/null'
 RE_TRUNC='>[[:space:]]*/'
 RE_OVERWRITE='(^|/)(rawdata|results)(/|$)'
@@ -272,189 +332,11 @@ RE_LEFTOVER='(^|/)(null|offline_data)(/|$)|(^|/)\.sendmail_tmp\.html$'
 RE_SEQEXT='\.(fastq|fq|fasta|fa|fna|bam|cram)(\.gz)?$'
 RE_RAW='(^|/)(rawdata|raw_data)(/|$)'
 
-while IFS="$US" read -r SEG VSEG CW; do
-    [ -n "$SEG" ] || continue
-
-    # Deleting and overwriting are different acts and must not share a verdict.
-    # They used to: a redirect set the same DESTRUCTIVE flag as rm, so its target
-    # was tested against the never-delete list. That made
-    #   cat > /.../analysis/de_analysis.R <<'EOF'
-    # a DENY - blocking the step where /agentic-bioflow:downstream writes the R
-    # code it just generated, which is that command's entire purpose. Writing a
-    # file into analysis/ is the normal case there, not an attack on it.
-    DESTRUCTIVE=0   # a real delete
-    TRUNCATE=0      # a redirect: creates or overwrites, never removes a tree
-    MOVE_ONLY=0
-    VARCMD=0        # the command word is a variable or substitution
-    # The third column from split_segments.awk; computed here only on the
-    # awk-less fallback. Quote CHARACTERS are dropped, not quoted text:
-    # `"/bin/rm" -rf …` quotes the command word itself.
-    [ -n "$CW" ] || CW=$(cmdword "$(printf '%s' "$SEG" | tr -d "\"'")")
-
-    if [ "$CW" = "__too_deep__" ]; then
-        UNRESOLVED="${UNRESOLVED}(a command nested too deeply to read) "
-        continue
-    fi
-
-    # The delete verbs rm/rmdir/unlink/shred count as a whole word anywhere
-    # outside quotes, because a wrapper can come first: `srun rm`, `singularity
-    # exec x.sif rm`, `parallel rm ::: …`, `flock l rm`, `doas rm`. Round 2
-    # accepted only the command word and let every one of those through,
-    # which main had denied. (`\rm` and `/bin/rm` are covered by the optional
-    # path and backslash.) Words that are ordinary elsewhere count only as the
-    # command word: truncate, find/rsync/xargs with their delete forms, and
-    # PowerShell/cmd's Remove-Item - plus ri/del/erase/rd, which exist only in
-    # PowerShell and cmd, so under Bash `del results` in a python body is
-    # python, not a delete.
-    [[ $VSEG =~ $RE_DELVERB ]] && DESTRUCTIVE=1
-    case "$CW" in
-        rm|rmdir|unlink|shred|truncate|remove-item) DESTRUCTIVE=1 ;;
-        ri|del|erase|rd) case "$TOOL" in ""|Bash) ;; *) DESTRUCTIVE=1 ;; esac ;;
-        xargs)
-            # `xargs rm` takes its targets from stdin, which this hook never sees.
-            [ "$DESTRUCTIVE" = 1 ] && UNRESOLVED="${UNRESOLVED}(targets read by xargs from stdin) " ;;
-        '$'*|'`'*) VARCMD=1 ;;
-    esac
-    # A delete written as code - a python/R/perl/node/.NET call. Judged on the
-    # quote-free copy with its parenthesis, so searching for the name (grep
-    # 'os.remove(') or quoting it in a message is not one.
-    [[ $VSEG =~ $RE_CODE_DEL ]] && HIT_CODE="${HIT_CODE}${SEG} "
-    # "2>/dev/null" appears in nearly every snippet this plugin's own commands
-    # tell the assistant to run, and an early pattern ('>[[:space:]]*/')
-    # matched it - so read-only `du`/`ls`/`jq` lines were classified
-    # destructive. Drop /dev/null redirects before testing; one stripped copy
-    # feeds both the truncation test and the target list, so `2>/dev/null` can
-    # never reach the leftover rule's `null` pattern either. A `>` inside
-    # quotes is text, not a redirect: judged on the quote-free copy.
-    SEG_NR=$SEG; while [[ $SEG_NR =~ $RE_DEVNULL ]]; do SEG_NR=${SEG_NR/"${BASH_REMATCH[0]}"/}; done
-    V_NR=$VSEG;  while [[ $V_NR =~ $RE_DEVNULL ]]; do V_NR=${V_NR/"${BASH_REMATCH[0]}"/}; done
-    [[ $V_NR =~ $RE_TRUNC ]] && TRUNCATE=1
-    [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1
-    [[ $VSEG =~ $RE_RSYNC_DEL ]] && DESTRUCTIVE=1
-    # E9: what kind of move this is decides which arguments are SOURCES.
-    #   mv   - every non-flag argument but the last (the last is written into)
-    #   all  - every argument is a source: `mv -t DIR SRC…`, rename(1)
-    #   ps   - PowerShell's Move-Item/Rename-Item: -Path/-LiteralPath values,
-    #          else the first positional; -Destination is written into
-    # A reader of text is not a mover: `grep -rn mv results` stays quiet.
-    MOVE_KIND=""
-    case "$CW" in
-        grep|egrep|fgrep|rg|echo|printf|cat|less|more|head|tail|ls|wc) ;;
-        move-item|rename-item) MOVE_KIND=ps ;;
-        mi|move|rni|ren) case "$TOOL" in ""|Bash) ;; *) MOVE_KIND=ps ;; esac ;;
-        rename) MOVE_KIND=all ;;
-        *)
-            if [[ $VSEG =~ $RE_MV ]]; then
-                MOVE_KIND=mv
-                [[ $VSEG =~ (^|[[:space:]])(-t|--target-directory)([[:space:]=]|$) ]] && MOVE_KIND=all
-            fi
-            # rsync --remove-source-files deletes each source once copied.
-            [[ $VSEG =~ $RE_RSYNC_RSF ]] && MOVE_KIND=mv ;;
-    esac
-    [ -n "$MOVE_KIND" ] && MOVE_ONLY=1
-    if [ "$MOVE_KIND" = ps ] && [ "$DESTRUCTIVE" = 0 ]; then
-        read -r -a PSW <<<"$SEG_NR"
-        PS_SRC=""; PS_POS=0; PS_PREV=""
-        for ((pi = 1; pi < ${#PSW[@]}; pi++)); do
-            # Lowercased in-shell, one character class per letter PowerShell
-            # parameters use - no process per argument (Git Bash is slow to
-            # start one, and bash 3.2 on the Mac has no ${var,,}).
-            Pw=${PSW[$pi]}; Pl=$Pw
-            for UC in A:a B:b C:c D:d E:e F:f G:g H:h I:i J:j K:k L:l M:m N:n O:o P:p Q:q R:r S:s T:t U:u V:v W:w X:x Y:y Z:z; do
-                Pl=${Pl//${UC%:*}/${UC#*:}}
-            done
-            case "$PS_PREV" in
-                -path|-literalpath|-lp|-pspath) PS_SRC="$PS_SRC $Pw"; PS_PREV=""; continue ;;
-                -destination|-newname) PS_PREV=""; continue ;;
-            esac
-            case "$Pl" in -*) PS_PREV=$Pl; continue ;; esac
-            PS_POS=$((PS_POS + 1))
-            [ "$PS_POS" = 1 ] && PS_SRC="$PS_SRC $Pw"
-        done
-        if [ -z "${PS_SRC// /}" ]; then
-            UNRESOLVED="${UNRESOLVED}(${CW}: no source on the command line - it comes from a pipe) "
-        fi
-        for Pw in $PS_SRC; do
-            Pw=${Pw//\"/}; Pw=${Pw//\'/}; Pw=${Pw//\\//}
-            [[ $Pw =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${Pw} "
-        done
-        continue
-    fi
-    [ "$DESTRUCTIVE" = 1 ] || [ "$TRUNCATE" = 1 ] || [ "$MOVE_ONLY" = 1 ] || [ "$VARCMD" = 1 ] || continue
-
-    # Targets: every word after the first that is not a flag.
-    read -r -a WORDS <<<"$SEG_NR"
-    NARGS=0
-    # E9 (2026-09-30, maintainer decision): mv's LAST non-flag argument is the
-    # destination being written INTO - that is normal, not a removal, and
-    # stays quiet. Only the sources (every argument before it) are judged
-    # against rawdata/, results/ and analysis/, same as rm/find/rsync. Knowing
-    # which one is last needs the total up front, filtered exactly like the
-    # main loop below (flags dropped, quotes stripped, a wrapping verb like
-    # `srun mv a b` not counted as a source itself) so the two counts agree.
-    TOTAL_TARGETS=0
-    if [ "$MOVE_ONLY" = 1 ] && [ "$DESTRUCTIVE" = 0 ]; then
-        for ((ti = 1; ti < ${#WORDS[@]}; ti++)); do
-            Tw=${WORDS[$ti]}
-            case "$Tw" in -*|'') continue ;; esac
-            Tw=${Tw//\"/}; Tw=${Tw//\'/}; Tw=${Tw//\\//}; Tw=${Tw//\{//}; Tw=${Tw//\}//}; Tw=${Tw//,//}
-            [ -n "$Tw" ] || continue
-            case "$Tw" in rm|rmdir|unlink|shred|truncate|mv|move-item) continue ;; esac
-            TOTAL_TARGETS=$((TOTAL_TARGETS + 1))
-        done
-    fi
-    for ((wi = 1; wi < ${#WORDS[@]}; wi++)); do
-        A=${WORDS[$wi]}
-        case "$A" in -*|'') continue ;; esac
-        # Every quote character goes, not just an outer pair - `'…/rawdata'/`,
-        # `'…/'results` and `res"ults"` all name the directory. A Windows path
-        # uses backslashes; a brace list names each member.
-        A=${A//\"/}; A=${A//\'/}; A=${A//\\//}; A=${A//\{//}; A=${A//\}//}; A=${A//,//}
-        [ -n "$A" ] || continue
-        case "$A" in rm|rmdir|unlink|shred|truncate|mv|move-item) continue ;; esac   # a wrapped verb
-        NARGS=$((NARGS + 1))
-
-        # E9: judge every mv SOURCE (every arg but the last) against the same
-        # three protected directories rm/find/rsync already deny on. The
-        # destination (NARGS == TOTAL_TARGETS, the last one counted above) is
-        # excluded - see the comment above TOTAL_TARGETS.
-        # A brace list expands to several arguments (`mv results{,.bak}`,
-        # `mv {rawdata,old}`), the first of them a source, so a brace word
-        # naming a protected directory is a source wherever it sits.
-        if [ "$MOVE_ONLY" = 1 ] && [ "$DESTRUCTIVE" = 0 ] \
-           && { [ "$NARGS" -lt "$TOTAL_TARGETS" ] || [ "$MOVE_KIND" = all ] \
-                || [[ ${WORDS[$wi]} == *'{'*','*'}'* ]]; }; then
-            [[ $A =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${A} "
-        fi
-
-        # An unknown command word (`$(which rm)`, `$R`) is judged only when
-        # its target is something this hook protects, and then it pauses.
-        if [ "$VARCMD" = 1 ]; then
-            [[ $A =~ $RE_ANY_GUARDED ]] && UNRESOLVED="${UNRESOLVED}(unknown command '${CW}') ${A} "
-            continue
-        fi
-
-        # Cannot resolve a target that still holds a variable or substitution.
-        # Only worth saying for a delete: "$RUN_DIR/analysis/x.R" as the target
-        # of a redirect is the ordinary way every task file gets written. For a
-        # delete it is still judged by its literal part - "$RUN_DIR/results"
-        # names results/ whatever RUN_DIR holds - and, being unknown, it
-        # pauses (ask) rather than only warning the model.
-        case "$A" in
-            *'$'*|*'`'*)
-                [ "$DESTRUCTIVE" = 1 ] || continue
-                UNRESOLVED="${UNRESOLVED}${A} " ;;
-        esac
-
-        if [ "$TRUNCATE" = 1 ] && [ "$DESTRUCTIVE" = 0 ]; then
-            # Overwriting is worth a word only where the content is not ours to
-            # replace: the user's originals and the pipeline's own output.
-            # analysis/ is deliberately absent - that is where downstream code
-            # and figures are supposed to be written.
-            [[ $A =~ $RE_OVERWRITE ]] && HIT_OVERWRITE="${HIT_OVERWRITE}${A} "
-        fi
-
-        if [ "$DESTRUCTIVE" = 1 ]; then
+# One delete target judged against every rule that depends on where it is. Called
+# for the word as written, for the word with backslashes read as escapes, and for
+# the word resolved against the working folder (#35).
+judge_delete_target() {
+        local A="$1" An GL NM RP
             [[ $A =~ $RE_PLUGINS ]] && HIT_PLUGINS="${HIT_PLUGINS}${A} "
             # Shared across the whole lab: reference genomes and taxonomy
             # databases (_references/) and the read-only image library. One
@@ -508,6 +390,299 @@ while IFS="$US" read -r SEG VSEG CW; do
             if [ "$A" != /dev/null ] && [[ $A =~ $RE_LEFTOVER ]]; then
                 HIT_LEFTOVER="${HIT_LEFTOVER}${A} "
             fi
+}
+
+# A dry run deletes nothing (#35) - but only the options of the command ITSELF
+# say so. `nice -n 10 rsync --delete`, `srun -n 1 rsync ...`, `ssh -n h rsync`,
+# `sudo -n`, `ionice -n 7`, `timeout -n 5` carry an n that belongs to the
+# wrapper; read as rsync's -n it silenced a real delete. So: find the rsync
+# word (or `git ... clean`) and look only at the option words after it.
+# is_dry_run <quote-free segment>: 0 if it is a dry run of rsync / git clean.
+is_dry_run() {
+    local W w b i=0 n seen=0
+    read -r -a W <<<"$1"
+    n=${#W[@]}
+    for ((i = 0; i < n; i++)); do
+        w=${W[$i]}; w=${w#\\}; b=${w##*/}
+        if [ "$seen" = 0 ]; then
+            case "$b" in rsync|rsync.exe) seen=1 ;; clean) seen=1 ;; esac
+            continue
+        fi
+        case "$w" in
+            --dry-run) return 0 ;;
+            --*) ;;
+            -[A-Za-z]*) [[ $w == -*n* ]] && return 0 ;;
+        esac
+    done
+    return 1
+}
+
+while IFS="$US" read -r SEG VSEG CW; do
+    [ -n "$SEG" ] || continue
+
+    # Deleting and overwriting are different acts and must not share a verdict.
+    # They used to: a redirect set the same DESTRUCTIVE flag as rm, so its target
+    # was tested against the never-delete list. That made
+    #   cat > /.../analysis/de_analysis.R <<'EOF'
+    # a DENY - blocking the step where /agentic-bioflow:downstream writes the R
+    # code it just generated, which is that command's entire purpose. Writing a
+    # file into analysis/ is the normal case there, not an attack on it.
+    DESTRUCTIVE=0   # a real delete
+    TRUNCATE=0      # a redirect: creates or overwrites, never removes a tree
+    MOVE_ONLY=0
+    VARCMD=0        # the command word is a variable or substitution
+    # The third column from split_segments.awk; computed here only on the
+    # awk-less fallback. Quote CHARACTERS are dropped, not quoted text:
+    # `"/bin/rm" -rf …` quotes the command word itself.
+    [ -n "$CW" ] || CW=$(cmdword "$(printf '%s' "$SEG" | tr -d "\"'")")
+
+    if [ "$CW" = "__too_deep__" ]; then
+        UNRESOLVED="${UNRESOLVED}(a command nested too deeply to read) "
+        continue
+    fi
+
+    # #35: follow `cd`, and remember whether this segment is a lister of an
+    # explicit, unprotected path (for a pipeline-fed Move-Item two segments on).
+    PREV_LISTER_OK=$LISTER_OK
+    case "$CW" in
+        cd|pushd)
+            CDT=""; CDF=0
+            read -r -a CDW <<<"${SEG//[\"\']/}"
+            for CDX in ${CDW[@]+"${CDW[@]}"}; do
+                if [ "$CDF" = 0 ]; then [ "$CDX" = "$CW" ] && CDF=1; continue; fi
+                case "$CDX" in -*) continue ;; esac
+                CDT="$CDX"; break
+            done
+            case "$CDT" in
+                ''|-|'~'*|*'$'*|*'`'*) VCWD="" ;;
+                /*|[A-Za-z]:*) norm_path "${CDT//\\//}"; VCWD="$REPLY" ;;
+                *) if [ -n "$VCWD" ]; then norm_path "$VCWD/${CDT//\\//}"; VCWD="$REPLY"; fi ;;
+            esac
+            LISTER_OK=0
+            continue ;;
+        get-childitem|gci|ls|dir|get-item|gi)
+            LISTER_OK=0; LARGS=0
+            read -r -a LW <<<"${SEG//[\"\']/}"
+            for ((li = 1; li < ${#LW[@]}; li++)); do
+                LX=${LW[$li]}
+                case "$LX" in -*|'') continue ;; esac
+                LX=${LX//\\//}
+                case "$LX" in
+                    *'$'*|*'`'*|*'*'*|*'?'*|*'['*|..|*/..|*/../*|../*) LARGS=-99 ;;
+                    *) [[ $LX =~ $RE_ANY_GUARDED ]] && LARGS=-99 || LARGS=$((LARGS + 1)) ;;
+                esac
+            done
+            [ "$LARGS" -ge 1 ] && LISTER_OK=1 ;;
+        where-object|where|'?'|select-object|select|sort-object|sort|measure-object|measure)
+            LISTER_OK=$PREV_LISTER_OK ;;
+        *) LISTER_OK=0 ;;
+    esac
+
+    # The delete verbs rm/rmdir/unlink/shred count as a whole word anywhere
+    # outside quotes, because a wrapper can come first: `srun rm`, `singularity
+    # exec x.sif rm`, `parallel rm ::: …`, `flock l rm`, `doas rm`. Round 2
+    # accepted only the command word and let every one of those through,
+    # which main had denied. (`\rm` and `/bin/rm` are covered by the optional
+    # path and backslash.) Words that are ordinary elsewhere count only as the
+    # command word: truncate, find/rsync/xargs with their delete forms, and
+    # PowerShell/cmd's Remove-Item - plus ri/del/erase/rd, which exist only in
+    # PowerShell and cmd, so under Bash `del results` in a python body is
+    # python, not a delete.
+    [[ $VSEG =~ $RE_DELVERB ]] && DESTRUCTIVE=1
+    case "$CW" in
+        rm|rmdir|unlink|shred|truncate|remove-item) DESTRUCTIVE=1 ;;
+        ri|del|erase|rd) case "$TOOL" in ""|Bash) ;; *) DESTRUCTIVE=1 ;; esac ;;
+        xargs)
+            # `xargs rm` takes its targets from stdin, which this hook never sees.
+            [ "$DESTRUCTIVE" = 1 ] && UNRESOLVED="${UNRESOLVED}(targets read by xargs from stdin) " ;;
+        '$'*|'`'*) VARCMD=1 ;;
+    esac
+    # A delete written as code - a python/R/perl/node/.NET call. Judged on the
+    # quote-free copy with its parenthesis, so searching for the name (grep
+    # 'os.remove(') or quoting it in a message is not one.
+    [[ $VSEG =~ $RE_CODE_DEL ]] && HIT_CODE="${HIT_CODE}${SEG} "
+    # "2>/dev/null" appears in nearly every snippet this plugin's own commands
+    # tell the assistant to run, and an early pattern ('>[[:space:]]*/')
+    # matched it - so read-only `du`/`ls`/`jq` lines were classified
+    # destructive. Drop /dev/null redirects before testing; one stripped copy
+    # feeds both the truncation test and the target list, so `2>/dev/null` can
+    # never reach the leftover rule's `null` pattern either. A `>` inside
+    # quotes is text, not a redirect: judged on the quote-free copy.
+    SEG_NR=$SEG; while [[ $SEG_NR =~ $RE_DEVNULL ]]; do SEG_NR=${SEG_NR/"${BASH_REMATCH[0]}"/}; done
+    V_NR=$VSEG;  while [[ $V_NR =~ $RE_DEVNULL ]]; do V_NR=${V_NR/"${BASH_REMATCH[0]}"/}; done
+    [[ $V_NR =~ $RE_TRUNC ]] && TRUNCATE=1
+    [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1
+    # A dry run deletes nothing (#35): `--dry-run`, or an n among the short options.
+    DRYRUN=0
+    is_dry_run "$VSEG" && DRYRUN=1
+    [[ $VSEG =~ $RE_RSYNC_DEL ]] && [ "$DRYRUN" = 0 ] && DESTRUCTIVE=1
+    # cmd /c rd|del|erase|rmdir ... under the Bash tool (#35): those verbs are
+    # ordinary words in Bash, but after cmd's /c they are the command.
+    if [ "$CW" = cmd ]; then
+        CMDPLAIN=${SEG//\"/}; CMDPLAIN=${CMDPLAIN//\'/}
+        [[ $CMDPLAIN =~ (^|[[:space:]])/[cCkK][[:space:]]+(rd|rmdir|del|erase|ri)([[:space:]]|$) ]] && DESTRUCTIVE=1
+    fi
+    # git clean -f removes untracked files; which ones depends on the repository,
+    # which this hook cannot see (#35). A dry run (-n / --dry-run) removes none.
+    if [ "$CW" = git ] && [ "$DRYRUN" = 0 ] \
+       && [[ $VSEG =~ (^|[[:space:]])clean([[:space:]]|$) ]] \
+       && [[ $VSEG =~ (^|[[:space:]])(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$) ]]; then
+        DESTRUCTIVE=1
+        UNRESOLVED="${UNRESOLVED}(git clean: removes untracked files, which ones depends on the repository) "
+    fi
+    # E9: what kind of move this is decides which arguments are SOURCES.
+    #   mv   - every non-flag argument but the last (the last is written into)
+    #   all  - every argument is a source: `mv -t DIR SRC…`, rename(1)
+    #   ps   - PowerShell's Move-Item/Rename-Item: -Path/-LiteralPath values,
+    #          else the first positional; -Destination is written into
+    # A reader of text is not a mover: `grep -rn mv results` stays quiet.
+    MOVE_KIND=""
+    case "$CW" in
+        grep|egrep|fgrep|rg|echo|printf|cat|less|more|head|tail|ls|wc) ;;
+        move-item|rename-item) MOVE_KIND=ps ;;
+        mi|move|rni|ren) case "$TOOL" in ""|Bash) ;; *) MOVE_KIND=ps ;; esac ;;
+        rename) MOVE_KIND=all ;;
+        *)
+            if [[ $VSEG =~ $RE_MV ]]; then
+                MOVE_KIND=mv
+                [[ $VSEG =~ (^|[[:space:]])(-t|--target-directory)([[:space:]=]|$) ]] && MOVE_KIND=all
+            fi
+            # rsync --remove-source-files deletes each source once copied.
+            [[ $VSEG =~ $RE_RSYNC_RSF ]] && [ "$DRYRUN" = 0 ] && MOVE_KIND=mv ;;
+    esac
+    [ -n "$MOVE_KIND" ] && MOVE_ONLY=1
+    if [ "$MOVE_KIND" = ps ] && [ "$DESTRUCTIVE" = 0 ]; then
+        read -r -a PSW <<<"$SEG_NR"
+        PS_SRC=""; PS_POS=0; PS_PREV=""
+        for ((pi = 1; pi < ${#PSW[@]}; pi++)); do
+            # Lowercased in-shell, one character class per letter PowerShell
+            # parameters use - no process per argument (Git Bash is slow to
+            # start one, and bash 3.2 on the Mac has no ${var,,}).
+            Pw=${PSW[$pi]}; Pl=$Pw
+            for UC in A:a B:b C:c D:d E:e F:f G:g H:h I:i J:j K:k L:l M:m N:n O:o P:p Q:q R:r S:s T:t U:u V:v W:w X:x Y:y Z:z; do
+                Pl=${Pl//${UC%:*}/${UC#*:}}
+            done
+            case "$PS_PREV" in
+                -path|-literalpath|-lp|-pspath) PS_SRC="$PS_SRC $Pw"; PS_PREV=""; continue ;;
+                -destination|-newname) PS_PREV=""; continue ;;
+            esac
+            case "$Pl" in -*) PS_PREV=$Pl; continue ;; esac
+            PS_POS=$((PS_POS + 1))
+            [ "$PS_POS" = 1 ] && PS_SRC="$PS_SRC $Pw"
+        done
+        if [ -z "${PS_SRC// /}" ] && [ "$PREV_LISTER_OK" != 1 ]; then
+            UNRESOLVED="${UNRESOLVED}(${CW}: no source on the command line - it comes from a pipe) "
+        fi
+        for Pw in $PS_SRC; do
+            Pw=${Pw//\"/}; Pw=${Pw//\'/}; Pw=${Pw//\\//}
+            [[ $Pw =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${Pw} "
+        done
+        continue
+    fi
+    [ "$DESTRUCTIVE" = 1 ] || [ "$TRUNCATE" = 1 ] || [ "$MOVE_ONLY" = 1 ] || [ "$VARCMD" = 1 ] || continue
+
+    # Targets: every word after the first that is not a flag.
+    read -r -a WORDS <<<"$SEG_NR"
+    NARGS=0
+    # E9 (2026-09-30, maintainer decision): mv's LAST non-flag argument is the
+    # destination being written INTO - that is normal, not a removal, and
+    # stays quiet. Only the sources (every argument before it) are judged
+    # against rawdata/, results/ and analysis/, same as rm/find/rsync. Knowing
+    # which one is last needs the total up front, filtered exactly like the
+    # main loop below (flags dropped, quotes stripped, a wrapping verb like
+    # `srun mv a b` not counted as a source itself) so the two counts agree.
+    TOTAL_TARGETS=0
+    if [ "$MOVE_ONLY" = 1 ] && [ "$DESTRUCTIVE" = 0 ]; then
+        for ((ti = 1; ti < ${#WORDS[@]}; ti++)); do
+            Tw=${WORDS[$ti]}
+            case "$Tw" in -*|'') continue ;; esac
+            Tw=${Tw//\"/}; Tw=${Tw//\'/}; Tw=${Tw//\\//}; Tw=${Tw//\{//}; Tw=${Tw//\}//}; Tw=${Tw//,//}
+            [ -n "$Tw" ] || continue
+            case "$Tw" in rm|rmdir|unlink|shred|truncate|mv|move-item) continue ;; esac
+            TOTAL_TARGETS=$((TOTAL_TARGETS + 1))
+        done
+    fi
+    LASTW=""
+    for ((wi = 1; wi < ${#WORDS[@]}; wi++)); do
+        A=${WORDS[$wi]}
+        PW=$LASTW; LASTW=$A
+        # #35: the folder named by `mv -t DIR` / `--target-directory DIR` is where
+        # the sources are written INTO, not one of them.
+        if [ "$MOVE_KIND" = all ] && { [ "$PW" = -t ] || [ "$PW" = --target-directory ]; }; then continue; fi
+        # #35: `{}` is xargs's / find's placeholder for a target this hook cannot
+        # see (it used to be munged into `//` and read as the filesystem root).
+        if [ "$A" = '{}' ]; then
+            NARGS=$((NARGS + 1))
+            [ "$DESTRUCTIVE" = 1 ] && UNRESOLVED="${UNRESOLVED}({} placeholder: the targets come from the command that feeds it) "
+            continue
+        fi
+        case "$A" in -*|'') continue ;; esac
+        # Every quote character goes, not just an outer pair - `'…/rawdata'/`,
+        # `'…/'results` and `res"ults"` all name the directory. A Windows path
+        # uses backslashes; a brace list names each member. A_ESC is the same
+        # word with its backslashes read as escapes instead (`re\sults` is
+        # `results`, #35): both readings are judged.
+        A_ESC=${A//\"/}; A_ESC=${A_ESC//\'/}; A_ESC=${A_ESC//\\/}; A_ESC=${A_ESC//\{//}; A_ESC=${A_ESC//\}//}; A_ESC=${A_ESC//,//}
+        A=${A//\"/}; A=${A//\'/}; A=${A//\\//}; A=${A//\{//}; A=${A//\}//}; A=${A//,//}
+        [ -n "$A" ] || continue
+        # #35: a relative target is judged where it really is.
+        RES=""
+        if [ -n "$VCWD" ]; then
+            case "$A" in
+                /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;;
+                *) norm_path "$VCWD/$A"; RES="$REPLY" ;;
+            esac
+        fi
+        case "$A" in rm|rmdir|unlink|shred|truncate|mv|move-item) continue ;; esac   # a wrapped verb
+        NARGS=$((NARGS + 1))
+
+        # E9: judge every mv SOURCE (every arg but the last) against the same
+        # three protected directories rm/find/rsync already deny on. The
+        # destination (NARGS == TOTAL_TARGETS, the last one counted above) is
+        # excluded - see the comment above TOTAL_TARGETS.
+        # A brace list expands to several arguments (`mv results{,.bak}`,
+        # `mv {rawdata,old}`), the first of them a source, so a brace word
+        # naming a protected directory is a source wherever it sits.
+        if [ "$MOVE_ONLY" = 1 ] && [ "$DESTRUCTIVE" = 0 ] \
+           && { [ "$NARGS" -lt "$TOTAL_TARGETS" ] || [ "$MOVE_KIND" = all ] \
+                || [[ ${WORDS[$wi]} == *'{'*','*'}'* ]]; }; then
+            [[ $A =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${A} "
+            [ -n "$RES" ] && [[ $RES =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${RES} "
+        fi
+
+        # An unknown command word (`$(which rm)`, `$R`) is judged only when
+        # its target is something this hook protects, and then it pauses.
+        if [ "$VARCMD" = 1 ]; then
+            [[ $A =~ $RE_ANY_GUARDED ]] && UNRESOLVED="${UNRESOLVED}(unknown command '${CW}') ${A} "
+            continue
+        fi
+
+        # Cannot resolve a target that still holds a variable or substitution.
+        # Only worth saying for a delete: "$RUN_DIR/analysis/x.R" as the target
+        # of a redirect is the ordinary way every task file gets written. For a
+        # delete it is still judged by its literal part - "$RUN_DIR/results"
+        # names results/ whatever RUN_DIR holds - and, being unknown, it
+        # pauses (ask) rather than only warning the model.
+        case "$A" in
+            *'$'*|*'`'*)
+                [ "$DESTRUCTIVE" = 1 ] || continue
+                UNRESOLVED="${UNRESOLVED}${A} " ;;
+        esac
+
+        if [ "$TRUNCATE" = 1 ] && [ "$DESTRUCTIVE" = 0 ]; then
+            # Overwriting is worth a word only where the content is not ours to
+            # replace: the user's originals and the pipeline's own output.
+            # analysis/ is deliberately absent - that is where downstream code
+            # and figures are supposed to be written.
+            [[ $A =~ $RE_OVERWRITE ]] && HIT_OVERWRITE="${HIT_OVERWRITE}${A} "
+        fi
+
+        if [ "$DESTRUCTIVE" = 1 ]; then
+            judge_delete_target "$A"
+            # #35: the same word with its backslashes read as escapes (re\sults is
+            # results), and the same word resolved against the working folder.
+            [ "$A_ESC" != "$A" ] && judge_delete_target "$A_ESC"
+            [ -n "$RES" ] && judge_delete_target "$RES"
         fi
         shopt -s nocasematch
         [[ $A =~ $RE_SEQEXT ]] && HIT_SEQFILE="${HIT_SEQFILE}${A} "

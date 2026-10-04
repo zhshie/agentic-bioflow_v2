@@ -89,12 +89,22 @@ looks_managed_write_shaped() {
 # hooks/in_use.sh for what "in use" means and why unsure counts as in use. A
 # hook directory that cannot supply in_use.sh answers "in use": the gate below
 # then runs exactly as it did before this existed.
-INPUT=$(cat)
+# Stdin without starting `cat` (#34: every process is expensive under Git Bash). Not `read -d ''`:
+# that reads a pipe one byte at a time (a second per 300 KB) and stops at a NUL.
+INPUT=$(</dev/stdin)   # no `cat` process; drops NULs and trailing newlines exactly as $(cat) does
 HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 { . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
 abf_in_use "$INPUT" "$INPUT" || exit 0
 
-if ! printf '{}' | jq -e . >/dev/null 2>&1; then
+# One jq call reads the five fields this hook needs, and when it works it stands
+# in for the "can jq run at all" probe (#34). It is trusted only when it produced
+# exactly one record, all five plain strings, no separator inside them; anything
+# else (not JSON, no jq, an object-valued field, two JSON values) goes the way this
+# file always went: the probe, then one jq per field.
+JQ_FAST=0
+JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.content // ""), (.transcript_path // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+  && [ -n "$JQ_OUT" ] && JQ_FAST=1
+if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
     RAW=$INPUT
     if looks_managed_write_shaped "$RAW"; then
         cat >&2 <<'EOF'
@@ -127,14 +137,28 @@ ESCAPE='略過導覽'      # said by the user, G1/G2/G3 stand down
 ESCAPE4='略過計畫'     # said by the user, G4 stands down
 MAXLINES=4000          # transcript tail scanned; bounds the cost on a long one
 
-TOOL=$(jq -r '.tool_name // ""'            <<<"$INPUT" 2>/dev/null)
-CMD=$(jq  -r '.tool_input.command // ""'   <<<"$INPUT" 2>/dev/null)
-# notebook_path as well as file_path: MultiEdit and NotebookEdit reach the
-# same files by a different key, and a gate that cannot see the tool name
-# a write arrives under is a gate with a spelling for a hole.
-FILE=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$INPUT" 2>/dev/null)
-CONTENT=$(jq -r '.tool_input.content // ""' <<<"$INPUT" 2>/dev/null)
-TP=$(jq   -r '.transcript_path // ""'      <<<"$INPUT" 2>/dev/null)
+if [ "$JQ_FAST" = 1 ]; then
+    # The fields come as one string, each followed by the separator. They are read out in order:
+    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
+    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+    # newlines were trimmed by jq, as $(jq) did per field.
+    {
+        IFS= read -r -d $'\037' TOOL
+        IFS= read -r -d $'\037' CMD
+        IFS= read -r -d $'\037' FILE
+        IFS= read -r -d $'\037' CONTENT
+        IFS= read -r -d $'\037' TP
+    } <<<"$JQ_OUT"
+else
+    TOOL=$(jq -r '.tool_name // ""'            <<<"$INPUT" 2>/dev/null)
+    CMD=$(jq  -r '.tool_input.command // ""'   <<<"$INPUT" 2>/dev/null)
+    # notebook_path as well as file_path: MultiEdit and NotebookEdit reach the
+    # same files by a different key, and a gate that cannot see the tool name
+    # a write arrives under is a gate with a spelling for a hole.
+    FILE=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$INPUT" 2>/dev/null)
+    CONTENT=$(jq -r '.tool_input.content // ""' <<<"$INPUT" 2>/dev/null)
+    TP=$(jq   -r '.transcript_path // ""'      <<<"$INPUT" 2>/dev/null)
+fi
 
 allow() { exit 0; }
 deny()  { jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
@@ -189,10 +213,12 @@ RUNS_RE='^(bash|sh|zsh|dash|ksh|python|python3|py|Rscript|env|exec|command|nohup
 # The raw text mentioning neither step settles it without splitting: this hook
 # runs on every Bash call, and the splitter costs two forks (#34).
 if [ "$TOOL" = Bash ] && { [[ $CMD =~ $G1_RE ]] || [[ $CMD =~ $G2_RE ]]; }; then
-    CMD_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
+    CMD_NB=$CMD
+    # No `<<` means no here-doc and the stripper would print every line unchanged.
+    [[ $CMD == *'<<'* ]] && CMD_NB=$(awk -f "$HD/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
     [ -n "$CMD_NB" ] || CMD_NB="$CMD"
-    WT_US=$(printf '\037')
-    WT_SEGS=$(printf '%s\n' "$CMD_NB" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+    WT_US=$'\037'
+    WT_SEGS=$(awk -f "$HD/split_segments.awk" <<<"$CMD_NB" 2>/dev/null)
     if [ -z "$WT_SEGS" ]; then
         # Splitter missing: fall back to the old raw judgement rather than
         # letting the gate go quiet - a false deny, never a false allow.
@@ -249,11 +275,14 @@ is_analysis_code() {
 if [ "$TOOL" != Bash ] && [ -n "$FILE" ] && is_analysis_code "$FILE"; then
     G4=1; ANALYSIS_TARGET="$FILE"
 fi
-if [ "$TOOL" = Bash ]; then
+# A candidate needs the text `analysis/` in the command (stripping only ever
+# removes lines), so a command without it skips the whole search (#34).
+if [ "$TOOL" = Bash ] && [[ $CMD == *analysis/* ]]; then
     # Heredoc bodies first: strip_heredocs.awk keeps the introducing line, so
     # `cat > analysis/x.R <<'EOF'` is still seen while a body line that merely
     # mentions such a path is not.
-    CMD_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
+    CMD_NB=$CMD
+    [[ $CMD == *'<<'* ]] && CMD_NB=$(awk -f "$HD/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
     [ -n "$CMD_NB" ] || CMD_NB="$CMD"
     cand=$(grep -oE '(>>?|[[:space:]]tee([[:space:]]+-a)?)[[:space:]]*[^[:space:];|&<>]*analysis/[^[:space:];|&<>]+' \
            <<<"$CMD_NB" | sed -E 's/^[^[:alnum:]_./~$-]*//; s/^(tee|-a)[[:space:]]+//g' | head -1)
@@ -267,7 +296,7 @@ fi
 # fail-closed for the reason spelled out there: a helper that goes missing must
 # not take the gate with it silently.
 if [ "$TOOL" = Bash ]; then
-    if . "$(dirname "$0")/launch_trigger.sh" 2>/dev/null \
+    if . "$HD/launch_trigger.sh" 2>/dev/null \
        && declare -F is_launch_command >/dev/null 2>&1; then
         is_launch_command "$CMD" && G3=1
     else
@@ -334,8 +363,12 @@ fi
 # this hook's matcher fires on ALL of them. Only once a command-name tag is
 # actually present does the more expensive extraction run.
 G6=0; G6_CMD=""
-if [ -n "$TP" ] && [ -r "$TP" ] \
-   && tail -n "$MAXLINES" "$TP" 2>/dev/null | grep -q '<command-name>'; then
+#
+# #34: the tail is read once into a variable and looked at in the shell - one
+# process where `tail | grep -q` was two.
+G6_TAIL=""
+if [ -n "$TP" ] && [ -r "$TP" ]; then { G6_TAIL=$(tail -n "$MAXLINES" "$TP" 2>/dev/null); } 2>/dev/null; fi
+if [[ $G6_TAIL == *'<command-name>'* ]]; then
     G6_EV=$(tail -n "$MAXLINES" "$TP" 2>/dev/null | jq -r '
         select(.type=="assistant" or .type=="user")
         | if .type=="assistant" then

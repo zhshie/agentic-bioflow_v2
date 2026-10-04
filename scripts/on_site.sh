@@ -365,7 +365,9 @@ EXTRA_DOMAINS="" EXTRA_NOTE=""
 if [ "$NAME" = egress_ctl.sh ]; then
   errf="$(mktemp)"
   EXTRA_DOMAINS="$(bash "$HERE/egress_allow.sh" domains 2>"$errf")" || EXTRA_DOMAINS=""
-  EXTRA_NOTE="$(tr '\n' ' ' < "$errf" | cut -c1-500)"
+  # Printable ASCII only (#45): a control character made printf %q write $'...',
+  # which a POSIX sh on the site rejects, and anything else is not worth a log.
+  EXTRA_NOTE="$(LC_ALL=C tr -c '[:print:]' ' ' < "$errf" | cut -c1-500)"
   EXTRA_NOTE="${EXTRA_NOTE% }"
   rm -f -- "$errf"
 fi

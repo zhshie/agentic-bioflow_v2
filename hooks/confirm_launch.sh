@@ -120,13 +120,50 @@ looks_launch_shaped() {
 # of "in use" and the rule that unsure counts as in use. A hook directory
 # without in_use.sh, or one that cannot be sourced, answers "in use": the gate
 # below then runs exactly as it did before this existed.
-INPUT=$(cat)
+# Stdin without starting `cat` (#34: every process is expensive under Git Bash). Not `read -d ''`:
+# that reads a pipe one byte at a time (a second per 300 KB) and stops at a NUL.
+INPUT=$(</dev/stdin)   # no `cat` process; drops NULs and trailing newlines exactly as $(cat) does
 HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 { . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
 abf_in_use "$INPUT" "$INPUT" || exit 0
 
-if ! printf '{}' | jq -e . >/dev/null 2>&1; then
+# One jq call reads what this hook needs, and it stands in for the "can jq run at
+# all" probe (#34). Only when it fails does the probe run, which tells "jq cannot
+# run" (the refusal below) from "this input is not JSON" (TOOL and CMD stay empty,
+# as they always did). The command is read Bash-first, then the other spellings a
+# non-Bash execution tool might use for the same idea; a tool this list does not
+# cover yet is exactly the case handled below.
+#
+# The fast path is taken only when that one call saw exactly ONE JSON document whose
+# fields are plain strings with no separator inside them (-s, so a second document
+# can never be silently dropped). Anything else (not JSON,
+# no jq, a field that is an object, two JSON values on stdin) goes the way this
+# file always went: the probe, then one jq per field.
+JQ_FAST=0
+JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+  && [ -n "$JQ_OUT" ] && JQ_FAST=1
+if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
     RAW=$INPUT
+    # Independent acceptance of 002: hooks.json now also routes Write/Edit/
+    # MultiEdit/NotebookEdit calls here, and their raw payload is the FILE
+    # CONTENT, not a command - a README that says ` rsync ` is not a transfer.
+    # Without jq all that can still be read is the file's name: egress_allow.tsv
+    # asks (a hand-built JSON, there being no jq to build it), anything else
+    # passes untouched.
+    NJ_RE_TOOL='"tool_name"[[:space:]]*:[[:space:]]*"([A-Za-z]*)"'
+    NJ_TOOL=""
+    [[ $RAW =~ $NJ_RE_TOOL ]] && NJ_TOOL="${BASH_REMATCH[1]}"
+    case "$NJ_TOOL" in
+        Write|Edit|MultiEdit|NotebookEdit)
+            NJ_RE_FP='"(file_path|notebook_path)"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+            NJ_FP=""
+            if [[ $RAW =~ $NJ_RE_FP ]]; then NJ_FP="${BASH_REMATCH[2]}"; fi
+            NJ_FP="${NJ_FP//\\\\//}"; NJ_FP="${NJ_FP//\\//}"
+            if [ "${NJ_FP##*/}" = egress_allow.tsv ]; then
+                printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Direct change to egress_allow.tsv (jq is missing, so this hook can only read the file name). This moves a security boundary on a shared login node.","additionalContext":"GATE: this writes this deployment'"'"'s own relay allowlist file (egress_allow.tsv) directly, around scripts/egress_allow.sh and its checks. That moves a security boundary on the site'"'"'s SHARED login node. Show the user exactly which domain is being added or removed and why, and wait for their explicit yes. Prefer scripts/egress_allow.sh add/remove."}}'
+            fi
+            exit 0 ;;
+    esac
     if looks_launch_shaped "$RAW"; then
         cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/confirm_launch.sh cannot read what
@@ -148,11 +185,19 @@ EOF
     exit 0
 fi
 
-TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
-# Bash-first, then the other spellings a non-Bash execution tool might use
-# for the same idea. A tool this list does not cover yet is exactly the case
-# handled below, not a case this line needs to anticipate by name.
-CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
+if [ "$JQ_FAST" = 1 ]; then
+    # The fields come as one string, each followed by the separator. They are read out in order:
+    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
+    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+    # newlines were trimmed by jq, as $(jq) did per field.
+    {
+        IFS= read -r -d $'\037' TOOL
+        IFS= read -r -d $'\037' CMD
+    } <<<"$JQ_OUT"
+else
+    TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
+    CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
+fi
 
 # "Does this string start a run" is a judgement several hooks need to reach
 # identically, so it lives in one sourced file instead of being restated here.
@@ -169,7 +214,7 @@ CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .to
 # every command is treated as one that might start a run. That is noisy, and
 # noisy is the correct behaviour for a safety net that has stopped being able
 # to judge.
-if ! . "$(dirname "$0")/launch_trigger.sh" 2>/dev/null \
+if ! . "$HD/launch_trigger.sh" 2>/dev/null \
    || ! declare -F is_launch_command >/dev/null 2>&1; then
     jq -n --arg m "GATE NOT WORKING: hooks/launch_trigger.sh could not be loaded, so this command was NOT checked and no other command will be either.
 
@@ -186,6 +231,24 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
       '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: $r, additionalContext: $m}}'
     exit 0
 }
+
+# #45: a Write/Edit-type tool changing this deployment's own relay allowlist file
+# (egress_allow.tsv) directly, around scripts/egress_allow.sh and its checks.
+# Only the file name is read; no other Write is this hook's business (a launch
+# word in a document being written is not a launch).
+case "$TOOL" in
+    Write|Edit|MultiEdit|NotebookEdit)
+        EA_FP=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$INPUT" 2>/dev/null)
+        EA_FP="${EA_FP//\\//}"
+        if [ "${EA_FP##*/}" = egress_allow.tsv ]; then
+            ask "GATE: this writes this deployment's own relay allowlist file (egress_allow.tsv) directly, around scripts/egress_allow.sh and its checks (a specific domain only, no shared or wildcard names, a recorded reason, the 100-entry limit). That moves a security boundary on the site's SHARED login node: a domain added here is carried by the relay the next time it is started or restarted. Show the user exactly which domain is being added or removed and why, and wait for their explicit yes. Prefer scripts/egress_allow.sh add/remove, which checks the name." \
+                "$TOOL of $EA_FP
+
+Direct change to egress_allow.tsv.
+This moves a security boundary on a shared login node."
+        fi
+        exit 0 ;;
+esac
 
 # T1, part 2: jq is fine, but this call's own tool ('$TOOL') did not carry
 # its command under any field name this file knows to check. For Bash that
@@ -240,15 +303,18 @@ IDENTITY_KEYS='agent_connection|seqera_user|workspace_id|compute_env|site_host|s
 # stand between the name and its verb, so nothing asked (independent
 # acceptance of 002, H1 - the same gap as the allowlist gate below).
 RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh["'\'']?[[:space:]]+["'\'']?(start|stop|restart)([^[:alnum:]_-]|$)'
-if grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; then
+# In-shell, not grep (#34). grep reads one line at a time and [[:space:]] in
+# [[ =~ ]] also matches a newline, so a command with newlines is asked of grep.
+if [[ $CMD =~ $RESIDENT_RE ]] && { [[ $CMD != *$'\n'* ]] || grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; }; then
     # A relay (re)start is the moment this deployment's extra domains take
     # effect - however they got into the file, egress_allow.sh or an editor.
     # So the ask shows exactly what will be carried; approving a restart must
     # never mean approving a list nobody was shown (002 acceptance, H2).
     RELAY_LIST=""
-    if grep -qE 'egress_ctl\.sh["'\'']?[[:space:]]+["'\'']?(start|restart)([^[:alnum:]_-]|$)' <<<"$CMD" 2>/dev/null; then
+    RELAY_START_RE='egress_ctl\.sh["'\'']?[[:space:]]+["'\'']?(start|restart)([^[:alnum:]_-]|$)'
+    if [[ $CMD =~ $RELAY_START_RE ]] && { [[ $CMD != *$'\n'* ]] || grep -qE "$RELAY_START_RE" <<<"$CMD" 2>/dev/null; }; then
         RELAY_ERRF=$(mktemp 2>/dev/null) || RELAY_ERRF=/dev/null
-        RELAY_DOMS=$(bash "$(dirname "$0")/../scripts/egress_allow.sh" domains 2>"$RELAY_ERRF")
+        RELAY_DOMS=$(bash "$HD/../scripts/egress_allow.sh" domains 2>"$RELAY_ERRF")
         RELAY_ERR=""
         if [ "$RELAY_ERRF" != /dev/null ]; then RELAY_ERR=$(tr '\n' ' ' < "$RELAY_ERRF"); rm -f -- "$RELAY_ERRF"; fi
         if [ -n "$RELAY_DOMS" ]; then
@@ -260,6 +326,17 @@ This deployment adds no extra domains (built-in list only)."
         fi
         [ -n "$RELAY_ERR" ] && RELAY_LIST="${RELAY_LIST}
 Not loaded: ${RELAY_ERR}"
+        # #45: an environment prefix on a direct start (`NF_RELAY_EXTRA_DOMAINS=x
+        # bash scripts/egress_ctl.sh start`, `env ...`, `export ...;`) hands the
+        # relay a list the file does not hold, so the summary above would be
+        # untrue. Through scripts/on_site.sh the variable is always replaced by the
+        # file's list, so only a direct start is named.
+        if [[ $CMD == *NF_RELAY_EXTRA_DOMAINS=* ]] && [[ $CMD != *on_site.sh* ]]; then
+            RELAY_OVR="${CMD#*NF_RELAY_EXTRA_DOMAINS=}"
+            RELAY_OVR="${RELAY_OVR%%[[:space:];&|]*}"
+            RELAY_LIST="${RELAY_LIST}
+THIS COMMAND ALSO SETS NF_RELAY_EXTRA_DOMAINS=${RELAY_OVR}, which overrides this deployment's list: the relay would carry THAT list, not the one shown above. Show the user the domains it names."
+        fi
     fi
     ask "GATE: this starts, stops or restarts a resident process (the Tower Agent or the egress relay) on the site's SHARED login node. Before running it, tell the user which process, under which identity (agent_connection / credential) and why, and wait for their explicit yes. For the relay, also show the user this deployment's extra domains listed below - starting it is when they take effect. Never start one under an agent_connection that is not this member's own - docs/SETTINGS.md: two members sharing one are refused permanently.${RELAY_LIST}" \
         "$CMD
@@ -275,11 +352,23 @@ fi
 # on_site.sh '...' (whose quoted payload the splitter re-emits as a command of
 # its own) and path forms do. The cheap substring test first keeps every other
 # command off this path entirely; matching is in-shell, no fork per segment.
-if [[ $CMD == *egress_allow.sh* ]]; then
-    EA_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
+#
+# #45: the name can be written so that it never appears as written - a glob
+# (`egress_allo?.sh`, `egress_allow.*`), a backslash, a quote splice, or a
+# variable set earlier in the same command. The pre-test therefore reads the
+# command the way a shell would (no quotes, no backslashes) and also fires on a
+# glob or a `$` beside an `add`/`remove` word; the per-segment test then decides
+# what is really being run. The file the script keeps (egress_allow.tsv) is
+# guarded the same way: a redirect, an editor, tee, cp, sed -i and the like ask.
+EA_N="${CMD//\\/}"; EA_N="${EA_N//\"/}"; EA_N="${EA_N//\'/}"
+EA_PRE=0
+case "$EA_N" in *egress_*|*.tsv*) EA_PRE=1 ;; esac
+if [ "$EA_PRE" = 0 ] && [[ $EA_N == *[\*\?\[\$]* ]] && [[ $EA_N =~ (^|[[:space:]])(add|remove)([[:space:]]|$) ]]; then EA_PRE=1; fi
+if [ "$EA_PRE" = 1 ]; then
+    EA_NB=$(awk -f "$HD/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
     [ -n "$EA_NB" ] || EA_NB="$CMD"
-    EA_US=$(printf '\037')
-    EA_SEGS=$(printf '%s\n' "$EA_NB" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+    EA_US=$'\037'
+    EA_SEGS=$(awk -f "$HD/split_segments.awk" <<<"$EA_NB" 2>/dev/null)
     if [ -z "$EA_SEGS" ]; then
         EA_SEGS=$(printf '%s\n' "$EA_NB" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                   | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$EA_US" "$l"; done)
@@ -303,12 +392,209 @@ if [[ $CMD == *egress_allow.sh* ]]; then
     EA_RUN_RE='(^|[^[:alnum:]_])egress_allow\.sh([^[:alnum:]_.-]|$)'
     EA_REDIR_RE='^[[:space:]]*[0-9]*[<>]+[&]?[[:space:]]*[^[:space:]]+(.*)$'
     EA_REASON_RE='--reason[[:space:]=]+(.*)$'
+    EA_WR_RE='>>?[[:space:]]*([^[:space:]<>;&|]+)'
+    EA_INPLACE_RE='(^|[[:space:]])(-[A-Za-z]*i[A-Za-z]*|--in-place[^[:space:]]*)([[:space:]]|$)'
+    EA_VARS=""
+    # ea_names <word> <file name>: does the word name that file, literally or as
+    # a glob (`egress_allo?.sh`)? The path in front of the name does not matter.
+    #
+    # Independent acceptance of 002: a glob that merely COULD match the name
+    # (`*.tsv`, `results/*/*.tsv`) is not naming it - `cp results/*.tsv /tmp/`
+    # asked every time. A glob names the file only when its own text carries
+    # the name (an obfuscation such as `egress_allo?.tsv` or `egr*ow.tsv` keeps
+    # a piece of it: egr / ess / allow) or when its folder is the one the file
+    # lives in (this deployment's config folder; for the script, the plugin's
+    # scripts folder). The literal name always counts, in any folder.
+    EA_CWD=""
+    EA_CFG_DIRS=""
+    EA_SCR_DIRS=""
+    if declare -F _abf_find_deployment >/dev/null 2>&1 && _abf_find_deployment 2>/dev/null; then
+        EA_CFG_DIRS="${_ABF_SETTINGS%/*}"$'\n'"${_ABF_ROOT}/config"
+        if declare -F _abf_canon >/dev/null 2>&1; then
+            _abf_canon "${_ABF_SETTINGS%/*}" 2>/dev/null && EA_CFG_DIRS="${EA_CFG_DIRS}"$'\n'"$REPLY"
+        fi
+    fi
+    EA_PLUGIN_DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)"
+    EA_SCR_DIRS="${EA_PLUGIN_DIR}/scripts"
+    [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && EA_SCR_DIRS="${EA_SCR_DIRS}"$'\n'"${CLAUDE_PLUGIN_ROOT%/}/scripts"
+    EA_RE_CWD='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+    if [[ $INPUT =~ $EA_RE_CWD ]]; then EA_CWD="${BASH_REMATCH[1]//\\\\//}"; EA_CWD="${EA_CWD//\\//}"; EA_CWD="${EA_CWD%/}"; fi
+    # ea_in_dir <folder part of a word> <newline list of folders>
+    ea_in_dir() {
+        local d="$1" t
+        d="${d//\\//}"
+        case "$d" in
+            '~'|'~/'*) d="${HOME:-}${d#\~}" ;;
+        esac
+        d="${d//\$\{HOME\}/${HOME:-}}"; d="${d//\$HOME/${HOME:-}}"
+        case "$d" in
+            /*|[A-Za-z]:*) ;;
+            *) [ -n "$EA_CWD" ] || return 1
+               d="$EA_CWD${d:+/$d}" ;;
+        esac
+        while [[ $d == *//* ]]; do d="${d//\/\//\/}"; done
+        while [[ $d == */./* ]]; do d="${d//\/.\//\/}"; done
+        d="${d%/.}"; d="${d%/}"
+        while IFS= read -r t; do
+            [ -n "$t" ] || continue
+            t="${t%/}"
+            # shellcheck disable=SC2053  # the word's folder may itself be a glob
+            [[ $t == $d ]] && return 0
+        done <<<"$2"
+        return 1
+    }
+    ea_names() { # ea_names <word> <file name>
+        local b="${1##*/}" lit d=""
+        [[ $b == "$2" ]] && return 0
+        [[ $b == *[\*\?\[]* ]] || return 1
+        # shellcheck disable=SC2053
+        [[ $2 == $b ]] || return 1
+        lit="${b//[\*\?\[\]]/}"
+        case "$lit" in *egr*|*ess*|*allow*|*gress*) return 0 ;; esac
+        case "$1" in */*) d="${1%/*}"; [ -n "$d" ] || d=/ ;; esac
+        case "$2" in
+            *.tsv) ea_in_dir "$d" "$EA_CFG_DIRS" ;;
+            *)     ea_in_dir "$d" "$EA_SCR_DIRS" ;;
+        esac
+    }
+    # ea_tsv_scan <text>: sets EA_TSV=1 when a word names the allowlist file,
+    # and EA_DEST=1 when one of those words could be WRITTEN (a redirect, an
+    # operand that is not a copy's source). `cp egress_allow.tsv /tmp/bk` only
+    # reads it; `mv` removes it, so it is not a plain source.
+    ea_tsv_scan() {
+        local -a W; local i n w w2 last=-1 tflag=0 cpmode=0
+        read -r -a W <<<"$1"
+        n=${#W[@]}
+        case "$EA_CWB" in cp|scp|rsync|install) cpmode=1 ;; esac
+        for ((i = 1; i < n; i++)); do
+            w="${W[$i]}"
+            case "$w" in
+                -t|-t*|--target-directory|--target-directory=*) tflag=1 ;;
+                -*|[0-9]*[\<\>]*|[\<\>]*) ;;
+                *) last=$i ;;
+            esac
+        done
+        for ((i = 0; i < n; i++)); do
+            w2="${W[$i]}"
+            if [[ $w2 =~ ^[0-9]*[\<\>]+(.*)$ ]]; then
+                w2="${BASH_REMATCH[1]}"
+                ea_names "${w2##*=}" egress_allow.tsv && { EA_TSV=1; EA_DEST=1; }
+                continue
+            fi
+            w2="${w2##*=}"
+            if ea_names "$w2" egress_allow.tsv; then
+                EA_TSV=1
+                if [ "$cpmode" = 0 ]; then EA_DEST=1
+                elif [ "$tflag" = 0 ] && [ "$i" = "$last" ]; then EA_DEST=1; fi
+            fi
+        done
+    }
+    EA_SEG=""; EA_V=""; EA_CW=""
     while IFS="$EA_US" read -r EA_SEG EA_V EA_CW; do
         EA_PLAIN="${EA_SEG//[\"\']/}"
+        # Two readings of a backslash: an ESCAPE (`egr\ess_allow.tsv` - dropped,
+        # which is what a shell does) and a Windows path SEPARATOR
+        # (`C:\cfg\egress_allow.tsv`, `.\egress_allow.tsv` - read as `/`).
+        # The file's name is looked for in both; the script's is judged on the
+        # first only, as before.
+        EA_PLAIN_S="${EA_PLAIN//\\//}"; EA_PLAIN="${EA_PLAIN//\\/}"
+        # `a=egress_allow` on its own is remembered and read into later segments.
+        if [[ $EA_PLAIN =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=([^[:space:]]*)[[:space:]]*$ ]]; then
+            EA_VARS="${EA_VARS}${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"$'\n'
+            continue
+        fi
+        while IFS='=' read -r EA_VN EA_VV; do
+            [ -n "$EA_VN" ] || continue
+            EA_PLAIN="${EA_PLAIN//\$\{$EA_VN\}/$EA_VV}"; EA_PLAIN="${EA_PLAIN//\$$EA_VN/$EA_VV}"
+            EA_PLAIN_S="${EA_PLAIN_S//\$\{$EA_VN\}/$EA_VV}"; EA_PLAIN_S="${EA_PLAIN_S//\$$EA_VN/$EA_VV}"
+        done <<<"$EA_VARS"
+        EA_CWB="${EA_CW##*/}"
+        EA_SUB=""
+        if [ "$EA_CWB" = git ]; then
+            read -r _ EA_SUB _ <<<"$EA_PLAIN"
+        fi
+
+        # --- direct writes to the file the script keeps (#45) -----------------
+        # (a redirect glued to its target - `>>cfg/x`, `2>cfg/x` - and a dd-style
+        # of=cfg/x are read inside ea_tsv_scan; both readings of a backslash.)
+        EA_TSV=0; EA_DEST=0
+        ea_tsv_scan "$EA_PLAIN"
+        ea_tsv_scan "$EA_PLAIN_S"
+        if [ "$EA_TSV" = 1 ]; then
+            EA_WRITES=0
+            if [[ $EA_V == *'>'* ]]; then
+                for EA_T in "$EA_PLAIN" "$EA_PLAIN_S"; do
+                    while [[ $EA_T =~ $EA_WR_RE ]]; do
+                        ea_names "${BASH_REMATCH[1]}" egress_allow.tsv && EA_WRITES=1
+                        EA_T="${EA_T#*"${BASH_REMATCH[0]}"}"
+                    done
+                done
+            fi
+            if [ "$EA_WRITES" = 0 ]; then
+                case "$EA_CWB" in
+                    cat|less|more|head|tail|grep|egrep|fgrep|rg|ag|wc|ls|ll|dir|stat|file|diff|cmp|sort|uniq|cut|column|tr|nl|od|xxd|hexdump|md5sum|sha1sum|sha256sum|cksum|du|realpath|readlink|basename|dirname|test|'['|echo|printf|bat|jq|tac|rev|paste|join|comm|fold|strings|shellcheck) ;;
+                    get-content|gc|type|select-string|sls|test-path|get-item|gi|get-childitem|gci|get-filehash|measure-object|resolve-path|get-itemproperty) ;;
+                    cp|scp|rsync|install) [ "$EA_DEST" = 1 ] && EA_WRITES=1 ;;
+                    sed|awk|gawk|perl|ruby) [[ $EA_PLAIN =~ $EA_INPLACE_RE ]] && EA_WRITES=1 ;;
+                    git) case "$EA_SUB" in diff|log|show|blame|status|ls-files|grep|cat-file|annotate|whatchanged) ;; *) EA_WRITES=1 ;; esac ;;
+                    *) EA_WRITES=1 ;;
+                esac
+            fi
+            if [ "$EA_WRITES" = 1 ]; then
+                ask "GATE: this writes this deployment's own relay allowlist file (egress_allow.tsv) directly, around scripts/egress_allow.sh and its checks (a specific domain only, no shared or wildcard names, a recorded reason, the 100-entry limit). That moves a security boundary on the site's SHARED login node: a domain added here is carried by the relay the next time it is started or restarted. Show the user exactly which domain is being added or removed and why, and wait for their explicit yes. Prefer scripts/egress_allow.sh add/remove, which checks the name." \
+                    "$CMD
+
+Direct change to egress_allow.tsv.
+This moves a security boundary on a shared login node."
+            fi
+        fi
+
+        # --- the script itself ------------------------------------------------
+        case "$EA_CWB" in
+            cat|less|more|head|tail|grep|egrep|fgrep|rg|ag|wc|ls|ll|dir|stat|file|diff|cmp|shellcheck|bat|git) continue ;;
+        esac
+        # `bash -n` parses and runs nothing.
+        [[ $EA_PLAIN =~ (^|[[:space:]])(bash|sh|zsh|dash|ksh)[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*n[A-Za-z]*[[:space:]] ]] && continue
+        # Spellings that name the script without containing its name: a glob
+        # (`egress_allo?.sh`) or a variable that is not set here (`$a.sh`)
+        # followed by add/remove. Read as the name, when what runs it is a
+        # runner (or is itself that word).
+        EA_NORM=""; EA_MOD=0
+        set -f
+        for EA_W in $EA_PLAIN; do
+            EA_B="${EA_W##*/}"
+            if [[ $EA_B == *[\*\?\[]* ]] && ea_names "$EA_W" egress_allow.sh; then
+                EA_W="${EA_W%"$EA_B"}egress_allow.sh"; EA_MOD=1
+            fi
+            EA_NORM="$EA_NORM $EA_W"
+        done
+        set +f
+        # A variable-named script is read as ours only when something says it
+        # may be: the command text says egress, or the word's folder is the
+        # plugin's own (`scripts/$a.sh`, `$CLAUDE_PLUGIN_ROOT/...`). Without
+        # that, `bash $HOME/bin/todo.sh add milk` is somebody else's script.
+        if [[ $EA_NORM =~ (^|[[:space:]])([^[:space:]]*\$[^[:space:]]*)[[:space:]]+(add|remove)([[:space:]]|$) ]]; then
+            EA_VW="${BASH_REMATCH[2]}"
+            EA_VHINT=0
+            [[ $EA_N == *egress* ]] && EA_VHINT=1
+            case "$EA_VW" in
+                *CLAUDE_PLUGIN_ROOT*|*/plugins/*|*agentic-bioflow*|scripts/*|*/scripts/*) EA_VHINT=1 ;;
+            esac
+            if [ "$EA_VHINT" = 1 ]; then
+                EA_NORM="${EA_NORM/"$EA_VW"/egress_allow.sh}"; EA_MOD=1
+            fi
+        fi
         EA_RUN=0
         [[ $EA_V =~ $EA_RUN_RE ]] && EA_RUN=1
+        if [ "$EA_RUN" = 0 ] && [ "$EA_MOD" = 1 ]; then
+            case "$EA_CWB" in
+                bash|sh|zsh|dash|ksh|source|.|exec|env|command|nohup|timeout|time|sudo|xargs|nice) EA_RUN=1 ;;
+                *) ea_names "$EA_CW" egress_allow.sh && EA_RUN=1 ;;
+            esac
+            [ "$EA_RUN" = 1 ] && EA_PLAIN="$EA_NORM"
+        fi
         if [ "$EA_RUN" = 0 ] && [[ $EA_PLAIN == *egress_allow.sh* ]]; then
-            case "${EA_CW##*/}" in
+            case "$EA_CWB" in
                 bash|sh|zsh|dash|ksh|source|.|exec|env|command|nohup|timeout|time|sudo|xargs|nice|egress_allow.sh) EA_RUN=1 ;;
             esac
         fi
@@ -321,6 +607,8 @@ if [[ $CMD == *egress_allow.sh* ]]; then
             read -r EA_O EA_D _ <<< "$EA_T"
             case "$EA_O" in
                 list|domains) ;;
+                # Sourcing it with no operation runs nothing worth asking about.
+                '') case "$EA_CWB" in source|.) ;; *) EA_NEED=1 ;; esac ;;
                 *) EA_NEED=1; [ -n "$EA_OP" ] || { EA_OP="$EA_O"; EA_DOM="$EA_D"; } ;;
             esac
         done
@@ -337,9 +625,14 @@ Reason: ${EA_WHY}
 This moves a security boundary on a shared login node."
     done <<< "$EA_SEGS"
 fi
-ID_HITS=$(grep -oE "(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+($IDENTITY_KEYS)[[:space:]]+[^;&|]*" <<<"$CMD" 2>/dev/null)
+# The cheap substring test first: the pattern needs one of these two words (#34).
+ID_HITS=""
+case "$CMD" in
+    *settings.sh*|*set_setting*)
+        ID_HITS=$(grep -oE "(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+($IDENTITY_KEYS)[[:space:]]+[^;&|]*" <<<"$CMD" 2>/dev/null) ;;
+esac
 if [ -n "$ID_HITS" ]; then
-    HERE_S="$(cd "$(dirname "$0")/.." && pwd)/scripts/settings.sh"
+    HERE_S="$(cd "$HD/.." && pwd)/scripts/settings.sh"
     while IFS= read -r hit; do
         [ -n "$hit" ] || continue
         key=$(sed -E "s/^(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+([a-z_]+).*/\2/" <<<"$hit")
@@ -378,12 +671,35 @@ if ! is_launch_command "$CMD"; then
     # `grep -rn "ssh" docs/` is not (matched on the quote-free column).
     # In-shell matching only: a process per segment made this gate take ~27 s
     # on a 120-line script under Git Bash (#29, round 3).
-    case "$(uname -s 2>/dev/null)" in
+    #
+    # #34: D3 can only ever speak about a transport word, and `uname` is a
+    # process, so it is asked only when such a word could be in the segments.
+    # The segments are built from the command's own characters, in order, with
+    # quoted text and line continuations taken OUT (`s"x"sh` reads as ssh), so a
+    # word can only be there if its letters occur in the raw command in order.
+    # That test is a glob, no process, and can only say "maybe", never "no" wrongly.
+    # A glob with several stars is not linear on a long string, so a long command
+    # skips the shortcut and simply asks (8 KB: measured under 40 ms; at 130 KB it does not finish).
+    D3_UNAME=""
+    if [ "${#CMD}" -ge 8192 ]; then
+        D3_UNAME=$(uname -s 2>/dev/null)
+    else
+        case "$CMD" in
+            *s*s*h*|*s*c*p*|*r*s*y*n*c*|*s*f*t*p*) D3_UNAME=$(uname -s 2>/dev/null) ;;
+        esac
+    fi
+    case "$D3_UNAME" in
     MINGW*|MSYS*|CYGWIN*)
-        TCMD_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
-        [ -n "$TCMD_NB" ] || TCMD_NB="$CMD"
-        US=$(printf '\037')
-        TSEGS=$(printf '%s\n' "$TCMD_NB" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+        US=$'\037'
+        if [ -n "${ABF_SPLIT_SEGS-}" ] && [ "${ABF_SPLIT_FOR-}" = "$CMD" ]; then
+            # is_launch_command just split exactly this command the same way
+            TSEGS=$ABF_SPLIT_SEGS
+        else
+            TCMD_NB=$CMD
+            [[ $CMD == *'<<'* ]] && TCMD_NB=$(awk -f "$HD/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
+            [ -n "$TCMD_NB" ] || TCMD_NB="$CMD"
+            TSEGS=$(awk -f "$HD/split_segments.awk" <<<"$TCMD_NB" 2>/dev/null)
+        fi
         if [ -z "$TSEGS" ]; then
             TSEGS=$(printf '%s\n' "$TCMD_NB" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                     | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
@@ -488,7 +804,7 @@ WARN=""
 add() { WARN="${WARN}
   - $1"; }
 
-HERE="$(cd "$(dirname "$0")/.." && pwd)"
+HERE="$(cd "$HD/.." && pwd)"
 
 # Z2: whether an unset LAB_RUNS_DIR is a FAULT depends on `reach`. v2.6 settled
 # that under `ssh`/`none` this variable must NOT be set in the user's own
@@ -552,7 +868,11 @@ if [ -n "${LAB_RUNS_DIR:-}" ] && bash "$HERE/scripts/egress_ctl.sh" status 2>/de
     add "the egress channel is up somewhere other than where the compute environment expects it - see scripts/egress_ctl.sh env"
 fi
 
-if grep -qE '(^|/)tw[[:space:]]+launch' <<<"$CMD" && ! grep -q -- '--disable-optimization' <<<"$CMD"; then
+# In-shell (#34); a newline counts as a line start, as it did for grep.
+# Blanks are spelled out because [[:space:]] would also match across a newline.
+RE_TW_LAUNCH=$'(^|/|\n)tw[ \t\r\v\f]+launch'
+RE_TW_RELAUNCH=$'(^|/|\n)tw[ \t\r\v\f]+runs[ \t\r\v\f]+relaunch'
+if [[ $CMD =~ $RE_TW_LAUNCH && $CMD != *--disable-optimization* ]]; then
     add "no --disable-optimization: Platform right-sizes from run history, which fights a site whose accepted sizes are fixed - a helpfully reduced request can land below what the site will take"
 fi
 
@@ -563,7 +883,7 @@ fi
 # to a flag that does not exist - so state which of the two it is. It is not a
 # precondition the user can meet, so it does not go in the WARN list.
 NOTE=""
-if grep -qE '(^|/)tw[[:space:]]+runs[[:space:]]+relaunch' <<<"$CMD"; then
+if [[ $CMD =~ $RE_TW_RELAUNCH ]]; then
     NOTE="This is a relaunch, so the --disable-optimization question cannot be answered from the command line: the flag does not exist on \`tw runs relaunch\`, and the setting is inherited from the original launch. Check it in the Platform launch form before confirming."
 fi
 

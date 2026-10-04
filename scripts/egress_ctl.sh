@@ -123,6 +123,15 @@ PY
       # A relay started on a different login node is useless to us now.
       REC=$(python3 -c "import json;print(json.load(open('$STATE'))['host'])")
       [ "$REC" = "$HOSTNAME_NOW" ] || echo "WARNING: relay was started on '$REC' but you are on '$HOSTNAME_NOW'."
+      # What the running relay loaded of this deployment's own list, from the
+      # startup lines it logged - and, out loud, when it did not load (#45,
+      # spec 002 TC-023). A list that failed to load must not look like a
+      # deployment that never added any.
+      if [ -f "$LOG" ]; then
+        START_LN=$(grep -n 'nf-relay on ' "$LOG" | tail -1 | cut -d: -f1)
+        [ -n "$START_LN" ] && tail -n +"$START_LN" "$LOG" | grep 'this deployment' \
+          | sed -E 's/^[0-9]{2}:[0-9]{2}:[0-9]{2} +//' | head -8 || true
+      fi
     else echo "not running"; exit 1; fi
     ;;
   url) echo "$URL" ;;
@@ -131,7 +140,7 @@ PY
     # that the answer comes from a CONNECT proxy's log - see
     # docs/SITE_ADAPTER.md. A site with unrestricted egress prints nothing.
     if [ -f "$LOG" ]; then
-      out=$(grep DENY-DOMAIN "$LOG" | tail -"${2:-20}")
+      out=$(grep -E 'DENY-(DOMAIN|PRIVATE)' "$LOG" | tail -"${2:-20}")
       [ -n "$out" ] && printf '%s\n' "$out" || echo "nothing refused"
     else
       echo "no egress log at $LOG"

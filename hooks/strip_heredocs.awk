@@ -31,6 +31,85 @@
 # `<<<` is a here-STRING, not a here-doc. It is masked before scanning so
 # `grep ... <<< "$VAR"` is not mistaken for a here-doc named "VAR".
 
+# #35: does a pipe in str hand its input to something that runs it? After the
+# pipe come any wrappers (sudo -u x, srun --pty, env, timeout 60 ...) with their
+# options, then a shell or an interpreter. The plain `| bash` is one case of it.
+# hooks/strip_heredocs.awk carries the same two functions; keep them in step
+# (tests/confirm_cleanup_test.sh and confirm_launch_test.sh pin both).
+function is_runner(w) {
+    sub(/^\\/, "", w); sub(/^.*\//, "", w); sub(/\.exe$/, "", w)
+    return (w ~ /^(bash|sh|zsh|dash|ksh|pwsh|powershell|ssh|python[0-9.]*|perl|ruby|node|Rscript|R)$/)
+}
+# After independent acceptance (#35): does the runner at W[i] read its STDIN as code?
+# A shell does, always. An interpreter does unless it was given a script file
+# (`python3 count_words.py`): then stdin is data. ssh does unless it was given
+# a remote command (`ssh t3 'cat >> notes.md'`), and a remote command that is
+# itself a shell or an interpreter is judged the same way, one level down.
+# A lone `-`, or -c/-e, keeps it code: `python3 -`, `python3 -u -`, `perl -ne`.
+function reads_code(W, i, k, depth,   w, j, v, host, rw) {
+    w = W[i]; sub(/^\\/, "", w); sub(/^.*\//, "", w); sub(/\.exe$/, "", w)
+    if (w ~ /^(bash|sh|zsh|dash|ksh|pwsh|powershell)$/) return 1
+    if (w == "ssh") {
+        host = 0
+        for (j = i + 1; j <= k; j++) {
+            v = W[j]
+            if (v == "") continue
+            if (v ~ /^[0-9]*[<>]/ || v ~ /^&>/ || v ~ /^<</) continue
+            if (!host) {
+                if (v ~ /^-[bcDEeFIiJLlmOopQRSWw]$/) { j++; continue }
+                if (v ~ /^-/) continue
+                host = 1; continue
+            }
+            # the first word of the remote command
+            rw = v; gsub(/^["']+/, "", rw)
+            if (depth < 3) {
+                W[j] = rw
+                return reads_code(W, j, k, depth + 1)
+            }
+            return 1
+        }
+        return 1
+    }
+    # an interpreter: python/perl/ruby/node/Rscript/R
+    for (j = i + 1; j <= k; j++) {
+        v = W[j]
+        if (v == "") continue
+        if (v == "-" || v ~ /^-[A-Za-z]*[ce]$/) return 1
+        if (v ~ /^[0-9]*[<>]/ || v ~ /^&>/ || v ~ /^<</) continue
+        if (v ~ /^-/) continue
+        return 0
+    }
+    return 1
+}
+
+function pipes_into_runner(str,   t, seg, k, W, i, w, wrapped) {
+    t = str
+    while (match(t, /\|&?[ \t]*/)) {
+        seg = substr(t, RSTART + RLENGTH)
+        t = seg
+        sub(/[|;&\n].*$/, "", seg)
+        k = split(seg, W, /[ \t]+/)
+        wrapped = 0
+        for (i = 1; i <= k; i++) {
+            w = W[i]
+            if (w == "") continue
+            if (w ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue
+            if (is_runner(w)) { if (reads_code(W, i, k, 0)) return 1; break }
+            if (w ~ /^(sudo|doas|env|command|exec|nohup|srun|ionice|nice|stdbuf|setsid|time|runuser|flock|timeout)$/) {
+                wrapped = 1
+                if (w == "timeout") i++
+                continue
+            }
+            if (wrapped && w ~ /^-/) {
+                if (w !~ /^--/ && w !~ /=/ && length(w) == 2 && i < k && W[i+1] !~ /^-/ && !is_runner(W[i+1])) i++
+                continue
+            }
+            break
+        }
+    }
+    return 0
+}
+
 # Does the text before `<<` hand the body to something that runs it?
 # Any word of that segment counts, not only the first: `sudo -u bob bash`,
 # `timeout 60 bash`, `srun bash` all hand the body to bash (#29, round 2).
@@ -68,7 +147,7 @@ function scan(s,   m, d, isdash, pre, piped, out) {
     gsub(/"[^"]*"/, "", s)
     pre = ""
     # `cat <<EOF | bash` hands the body to a shell through a pipe instead.
-    piped = (s ~ /\|[ \t]*(sudo[ \t]+)?([^ \t|]*\/)?(bash|sh|zsh|dash|ksh|ssh)([ \t]|$)/)
+    piped = (s ~ /\|[ \t]*(sudo[ \t]+)?([^ \t|]*\/)?(bash|sh|zsh|dash|ksh|ssh)([ \t]|$)/) || pipes_into_runner(s)
     while (match(s, /<<-?[ \t]*("[^"]*"|'[^']*'|\\?[A-Za-z_][A-Za-z0-9_]*)/)) {
         m = substr(s, RSTART, RLENGTH)
         pre = pre substr(s, 1, RSTART - 1)

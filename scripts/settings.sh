@@ -1122,6 +1122,24 @@ token_state() {
     fi
 }
 
+# #45 (spec 002 US2-1): this deployment's own extra relay domains, shown beside
+# the rest of what it is configured as. The file is scripts/egress_allow.sh's
+# (one place decides where it lives: beside the token).
+egress_extra_state() {
+    local f n; f="$(dirname "$(token_file)")/egress_allow.tsv"
+    if [ ! -e "$f" ]; then printf 'none\n'
+    elif [ ! -r "$f" ]; then printf 'present but unreadable  %s\n' "$f"
+    else
+        n="$(awk -F'\t' '$1!=""{c++} END{print c+0}' "$f")"
+        if [ "$n" = 0 ]; then printf 'none\n'; else printf '%s (scripts/egress_allow.sh list)\n' "$n"; fi
+    fi
+}
+egress_extra_list() {
+    local f; f="$(dirname "$(token_file)")/egress_allow.tsv"
+    [ -r "$f" ] || return 0
+    awk -F'\t' '$1!="" {printf "    %-28s %-11s %s\n", $1, ($2==""?"-":$2), ($3==""?"(no reason recorded)":$3)}' "$f" | head -20
+}
+
 settings_summary() {
     [ "$SETTINGS_FOUND" = 1 ] || { settings_missing >&2; root_missing_reason >&2; return 1; }
     local r='  %-20s %s\n' host
@@ -1139,6 +1157,8 @@ settings_summary() {
     printf "$r" "compute environment" "$(setting compute_env 'not set')"
     printf "$r" "agent connection"    "$(setting agent_connection 'not set')"
     printf "$r" "token"               "$(token_state)"
+    printf "$r" "extra relay domains" "$(egress_extra_state)"
+    egress_extra_list
     echo
     # B2: this used to assert "mode 600" outright. token_state() above already
     # reads the mode back and reports what it actually is rather than what it
