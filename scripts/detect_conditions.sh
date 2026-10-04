@@ -112,7 +112,7 @@ measure() {
     if [ "$jq_present" = no ]; then
         cell=blocked-no-jq
         status=blocked
-        message="jq is required here and was not found. Install it: macOS \`brew install jq\`; Debian/Ubuntu or WSL \`sudo apt install jq\`; Windows \`winget install jqlang.jq\`."
+        message="jq is required here and was not found. What is refused is one missing capability (jq) - not this shell and not your folder. Install it: macOS \`brew install jq\`; Debian/Ubuntu or WSL \`sudo apt install jq\`; Windows \`winget install jqlang.jq\`."
     elif [ "$tier" = H3 ] && { [ "$reach" = ssh ] || [ "$reach" = local ]; }; then
         cell=blocked-h3-site
         status=blocked
@@ -120,7 +120,7 @@ measure() {
     elif [ "$os" = msys ] && [ "$reach" = ssh ] && [ "$bridge" = none ]; then
         cell=unsupported-msys-no-wsl
         status=unsupported
-        message="Native Windows Git Bash is recognised but this version found no WSL bridge here (\`wsl.exe -e true\` did not succeed). This shell's own ssh cannot hold the multiplexed connection the site needs (PITFALLS 16b); calling WSL's own ssh from here was measured to work instead (PITFALLS 16g). Install WSL (\`wsl --install\`) and retry - once it is there this same window falls through to supported. If WSL is not an option here, run /setup to see what this plugin can still do, or scripts/report.sh to let the maintainer know."
+        message="Native Windows Git Bash is recognised but this version found no WSL bridge here (\`wsl.exe -e true\` did not succeed). What is refused is one missing capability (WSL) - not this shell and not your folder. This shell's own ssh cannot hold the multiplexed connection the site needs (PITFALLS 16b); calling WSL's own ssh from here was measured to work instead (PITFALLS 16g). Install WSL (\`wsl --install\`) and retry - once it is there this same window falls through to supported. If WSL is not an option here, run /setup to see what this plugin can still do, or scripts/report.sh to let the maintainer know."
     elif [ "$reach" = none ]; then
         cell=unsupported-cloud-ce
         status=unsupported
