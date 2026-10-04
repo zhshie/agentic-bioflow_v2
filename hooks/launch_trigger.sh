@@ -17,7 +17,13 @@
 # run starts unannounced; a false positive means the gate fires on `grep`, and
 # a gate that cries wolf is one people learn to click through.
 
-LAUNCH_TRIGGER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The directory this file is in, with no process (#34: `cd`, `dirname` and a
+# subshell for it cost three). It is only ever used to find the .awk files beside
+# it, so a relative spelling is as good as an absolute one; it is made absolute
+# against $PWD in case the caller changes directory later.
+LAUNCH_TRIGGER_DIR="${BASH_SOURCE[0]%/*}"
+[ "$LAUNCH_TRIGGER_DIR" = "${BASH_SOURCE[0]}" ] && LAUNCH_TRIGGER_DIR=.
+case "$LAUNCH_TRIGGER_DIR" in /*|[A-Za-z]:*) ;; *) LAUNCH_TRIGGER_DIR="$PWD/$LAUNCH_TRIGGER_DIR" ;; esac
 
 # The verbs that start a run. `tw runs relaunch` is here for the same reason
 # the other three are: it submits work to the cluster. It was missing for a
@@ -56,7 +62,7 @@ LAUNCH_READONLY_RE='^[[:space:]]*(cat|less|more|head|tail|grep|rg|wc|chmod|shell
 
 is_launch_command() {
     local CMD="$1" STRIPPED SEGS S V US
-    US=$(printf '\037')
+    US=$'\037'
 
     [ -n "$CMD" ] || return 1
 
@@ -65,8 +71,12 @@ is_launch_command() {
     # commands. A body read by a shell or interpreter is kept - there it IS
     # the command (#29). If awk is missing this yields nothing and CMD is left
     # as-is.
-    STRIPPED=$(printf '%s\n' "$CMD" | awk -f "$LAUNCH_TRIGGER_DIR/strip_heredocs.awk" 2>/dev/null)
-    [ -n "$STRIPPED" ] && CMD="$STRIPPED"
+    # #34: with no `<<` there is no here-doc, and the stripper then prints every
+    # line unchanged - so the process is not started for it.
+    if [[ $CMD == *'<<'* ]]; then
+        STRIPPED=$(awk -f "$LAUNCH_TRIGGER_DIR/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
+        [ -n "$STRIPPED" ] && CMD="$STRIPPED"
+    fi
 
     # What the command runs is decided by split_segments.awk, shared with
     # confirm_cleanup.sh (#29). Each line is `<segment>\037<segment without
@@ -80,7 +90,12 @@ is_launch_command() {
     #
     # If awk cannot run, the old rule applies: split on separators, strip
     # quotes. Weaker, but a gate rather than none.
-    SEGS=$(printf '%s\n' "$CMD" | awk -f "$LAUNCH_TRIGGER_DIR/split_segments.awk" 2>/dev/null)
+    SEGS=$(awk -f "$LAUNCH_TRIGGER_DIR/split_segments.awk" <<<"$CMD" 2>/dev/null)
+    # Kept for a caller that has to read the same segments of the same command
+    # next (confirm_launch.sh's D3), so the splitter is started once per call
+    # rather than once per question (#34). Only the splitter's own answer is kept,
+    # never the fallback below.
+    ABF_SPLIT_FOR="$1"; ABF_SPLIT_SEGS="$SEGS"
     if [ -z "$SEGS" ]; then
         SEGS=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)

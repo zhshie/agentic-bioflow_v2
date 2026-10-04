@@ -114,12 +114,22 @@ looks_delete_shaped() {
 # hooks/in_use.sh for what "in use" means and why unsure counts as in use. A
 # hook directory that cannot supply in_use.sh answers "in use": the gate below
 # then runs exactly as it did before this existed.
-INPUT=$(cat)
+# Stdin to EOF without starting `cat` (#34: every process is expensive under Git Bash).
+IFS= read -r -d '' INPUT || true
+while [[ $INPUT == *$'\n' ]]; do INPUT=${INPUT%$'\n'}; done   # as $(cat) did
 HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 { . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
 abf_in_use "$INPUT" "$INPUT" || exit 0
 
-if ! printf '{}' | jq -e . >/dev/null 2>&1; then
+# One jq call reads what this hook needs, and when it works it stands in for the
+# "can jq run at all" probe (#34). It is trusted only when it produced exactly one
+# record, both fields plain strings, no separator inside them; anything else
+# (not JSON, no jq, an object-valued field, two JSON values) goes the way this
+# file always went: the probe, then one jq per field.
+JQ_FAST=0
+JQ_OUT=$(jq -j '[(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f")) | not) then join("\u001f") else empty end' <<<"$INPUT" 2>/dev/null) \
+  && { JQ_US=${JQ_OUT//[^$'\037']/}; [ "${#JQ_US}" = 1 ] && JQ_FAST=1; }
+if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
     RAW=$INPUT
     if looks_delete_shaped "$RAW"; then
         cat >&2 <<'EOF'
@@ -142,8 +152,15 @@ EOF
     exit 0
 fi
 
-TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' 2>/dev/null)
+if [ "$JQ_FAST" = 1 ]; then
+    TOOL="${JQ_OUT%%$'\037'*}"
+    CMD="${JQ_OUT#*$'\037'}"
+    while [[ $TOOL == *$'\n' ]]; do TOOL=${TOOL%$'\n'}; done   # as $(jq) did per field
+    while [[ $CMD == *$'\n' ]]; do CMD=${CMD%$'\n'}; done
+else
+    TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
+    CMD=$(echo "$INPUT" | jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' 2>/dev/null)
+fi
 
 # T1, part 2: jq is fine, but no field this file knows to check carried a
 # command. For Bash that never happens in practice; for anything else the
@@ -163,8 +180,12 @@ fi
 # Drop here-doc bodies: a document containing a path example is not a command
 # operating on that path, but the per-line segment scan below could not tell the
 # difference. If awk is missing this yields nothing and CMD is left as-is.
-STRIPPED=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
-[ -n "$STRIPPED" ] && CMD="$STRIPPED"
+# No `<<` means no here-doc, and the stripper then prints every line unchanged,
+# so the process is not started for it (#34).
+if [[ $CMD == *'<<'* ]]; then
+    STRIPPED=$(awk -f "$HD/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
+    [ -n "$STRIPPED" ] && CMD="$STRIPPED"
+fi
 
 deny() {
     jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
@@ -199,8 +220,8 @@ ask() {
 #
 # If awk cannot run, fall back to a plain split and keep going: noisier, but
 # still a gate, never an absent one.
-US=$(printf '\037')
-SEGMENTS=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+US=$'\037'
+SEGMENTS=$(awk -f "$HD/split_segments.awk" <<<"$CMD" 2>/dev/null)
 if [ -z "$SEGMENTS" ]; then
     SEGMENTS=$(printf '%s\n' "$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g' | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
 fi

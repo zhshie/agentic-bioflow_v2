@@ -120,12 +120,28 @@ looks_launch_shaped() {
 # of "in use" and the rule that unsure counts as in use. A hook directory
 # without in_use.sh, or one that cannot be sourced, answers "in use": the gate
 # below then runs exactly as it did before this existed.
-INPUT=$(cat)
+# Stdin to EOF without starting `cat` (#34: every process is expensive under Git Bash).
+IFS= read -r -d '' INPUT || true
+while [[ $INPUT == *$'\n' ]]; do INPUT=${INPUT%$'\n'}; done   # as $(cat) did
 HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 { . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
 abf_in_use "$INPUT" "$INPUT" || exit 0
 
-if ! printf '{}' | jq -e . >/dev/null 2>&1; then
+# One jq call reads what this hook needs, and it stands in for the "can jq run at
+# all" probe (#34). Only when it fails does the probe run, which tells "jq cannot
+# run" (the refusal below) from "this input is not JSON" (TOOL and CMD stay empty,
+# as they always did). The command is read Bash-first, then the other spellings a
+# non-Bash execution tool might use for the same idea; a tool this list does not
+# cover yet is exactly the case handled below.
+#
+# The fast path is taken only when that one call produced exactly one record with
+# both fields plain strings and no separator inside them. Anything else (not JSON,
+# no jq, a field that is an object, two JSON values on stdin) goes the way this
+# file always went: the probe, then one jq per field.
+JQ_FAST=0
+JQ_OUT=$(jq -j '[(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f")) | not) then join("\u001f") else empty end' <<<"$INPUT" 2>/dev/null) \
+  && { JQ_US=${JQ_OUT//[^$'\037']/}; [ "${#JQ_US}" = 1 ] && JQ_FAST=1; }
+if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
     RAW=$INPUT
     if looks_launch_shaped "$RAW"; then
         cat >&2 <<'EOF'
@@ -148,11 +164,15 @@ EOF
     exit 0
 fi
 
-TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
-# Bash-first, then the other spellings a non-Bash execution tool might use
-# for the same idea. A tool this list does not cover yet is exactly the case
-# handled below, not a case this line needs to anticipate by name.
-CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
+if [ "$JQ_FAST" = 1 ]; then
+    TOOL="${JQ_OUT%%$'\037'*}"
+    CMD="${JQ_OUT#*$'\037'}"
+    while [[ $TOOL == *$'\n' ]]; do TOOL=${TOOL%$'\n'}; done   # as $(jq) did per field
+    while [[ $CMD == *$'\n' ]]; do CMD=${CMD%$'\n'}; done
+else
+    TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
+    CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
+fi
 
 # "Does this string start a run" is a judgement several hooks need to reach
 # identically, so it lives in one sourced file instead of being restated here.
@@ -169,7 +189,7 @@ CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .to
 # every command is treated as one that might start a run. That is noisy, and
 # noisy is the correct behaviour for a safety net that has stopped being able
 # to judge.
-if ! . "$(dirname "$0")/launch_trigger.sh" 2>/dev/null \
+if ! . "$HD/launch_trigger.sh" 2>/dev/null \
    || ! declare -F is_launch_command >/dev/null 2>&1; then
     jq -n --arg m "GATE NOT WORKING: hooks/launch_trigger.sh could not be loaded, so this command was NOT checked and no other command will be either.
 
@@ -258,15 +278,18 @@ IDENTITY_KEYS='agent_connection|seqera_user|workspace_id|compute_env|site_host|s
 # stand between the name and its verb, so nothing asked (independent
 # acceptance of 002, H1 - the same gap as the allowlist gate below).
 RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh["'\'']?[[:space:]]+["'\'']?(start|stop|restart)([^[:alnum:]_-]|$)'
-if grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; then
+# In-shell, not grep (#34). grep reads one line at a time and [[:space:]] in
+# [[ =~ ]] also matches a newline, so a command with newlines is asked of grep.
+if [[ $CMD =~ $RESIDENT_RE ]] && { [[ $CMD != *$'\n'* ]] || grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; }; then
     # A relay (re)start is the moment this deployment's extra domains take
     # effect - however they got into the file, egress_allow.sh or an editor.
     # So the ask shows exactly what will be carried; approving a restart must
     # never mean approving a list nobody was shown (002 acceptance, H2).
     RELAY_LIST=""
-    if grep -qE 'egress_ctl\.sh["'\'']?[[:space:]]+["'\'']?(start|restart)([^[:alnum:]_-]|$)' <<<"$CMD" 2>/dev/null; then
+    RELAY_START_RE='egress_ctl\.sh["'\'']?[[:space:]]+["'\'']?(start|restart)([^[:alnum:]_-]|$)'
+    if [[ $CMD =~ $RELAY_START_RE ]] && { [[ $CMD != *$'\n'* ]] || grep -qE "$RELAY_START_RE" <<<"$CMD" 2>/dev/null; }; then
         RELAY_ERRF=$(mktemp 2>/dev/null) || RELAY_ERRF=/dev/null
-        RELAY_DOMS=$(bash "$(dirname "$0")/../scripts/egress_allow.sh" domains 2>"$RELAY_ERRF")
+        RELAY_DOMS=$(bash "$HD/../scripts/egress_allow.sh" domains 2>"$RELAY_ERRF")
         RELAY_ERR=""
         if [ "$RELAY_ERRF" != /dev/null ]; then RELAY_ERR=$(tr '\n' ' ' < "$RELAY_ERRF"); rm -f -- "$RELAY_ERRF"; fi
         if [ -n "$RELAY_DOMS" ]; then
@@ -317,10 +340,10 @@ EA_PRE=0
 case "$EA_N" in *egress_*|*.tsv*) EA_PRE=1 ;; esac
 if [ "$EA_PRE" = 0 ] && [[ $EA_N == *[\*\?\[\$]* ]] && [[ $EA_N =~ (^|[[:space:]])(add|remove)([[:space:]]|$) ]]; then EA_PRE=1; fi
 if [ "$EA_PRE" = 1 ]; then
-    EA_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
+    EA_NB=$(awk -f "$HD/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
     [ -n "$EA_NB" ] || EA_NB="$CMD"
-    EA_US=$(printf '\037')
-    EA_SEGS=$(printf '%s\n' "$EA_NB" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+    EA_US=$'\037'
+    EA_SEGS=$(awk -f "$HD/split_segments.awk" <<<"$EA_NB" 2>/dev/null)
     if [ -z "$EA_SEGS" ]; then
         EA_SEGS=$(printf '%s\n' "$EA_NB" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                   | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$EA_US" "$l"; done)
@@ -474,9 +497,14 @@ Reason: ${EA_WHY}
 This moves a security boundary on a shared login node."
     done <<< "$EA_SEGS"
 fi
-ID_HITS=$(grep -oE "(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+($IDENTITY_KEYS)[[:space:]]+[^;&|]*" <<<"$CMD" 2>/dev/null)
+# The cheap substring test first: the pattern needs one of these two words (#34).
+ID_HITS=""
+case "$CMD" in
+    *settings.sh*|*set_setting*)
+        ID_HITS=$(grep -oE "(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+($IDENTITY_KEYS)[[:space:]]+[^;&|]*" <<<"$CMD" 2>/dev/null) ;;
+esac
 if [ -n "$ID_HITS" ]; then
-    HERE_S="$(cd "$(dirname "$0")/.." && pwd)/scripts/settings.sh"
+    HERE_S="$(cd "$HD/.." && pwd)/scripts/settings.sh"
     while IFS= read -r hit; do
         [ -n "$hit" ] || continue
         key=$(sed -E "s/^(settings\.sh[[:space:]]+--set|set_setting)[[:space:]]+([a-z_]+).*/\2/" <<<"$hit")
@@ -515,12 +543,29 @@ if ! is_launch_command "$CMD"; then
     # `grep -rn "ssh" docs/` is not (matched on the quote-free column).
     # In-shell matching only: a process per segment made this gate take ~27 s
     # on a 120-line script under Git Bash (#29, round 3).
-    case "$(uname -s 2>/dev/null)" in
+    #
+    # #34: D3 can only ever speak about a transport word, and `uname` is a
+    # process, so it is asked only when such a word could be in the segments.
+    # The segments are built from the command's own characters, in order, with
+    # quoted text and line continuations taken OUT (`s"x"sh` reads as ssh), so a
+    # word can only be there if its letters occur in the raw command in order.
+    # That test is a glob, no process, and can only say "maybe", never "no" wrongly.
+    D3_UNAME=""
+    case "$CMD" in
+        *s*s*h*|*s*c*p*|*r*s*y*n*c*|*s*f*t*p*) D3_UNAME=$(uname -s 2>/dev/null) ;;
+    esac
+    case "$D3_UNAME" in
     MINGW*|MSYS*|CYGWIN*)
-        TCMD_NB=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
-        [ -n "$TCMD_NB" ] || TCMD_NB="$CMD"
-        US=$(printf '\037')
-        TSEGS=$(printf '%s\n' "$TCMD_NB" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+        US=$'\037'
+        if [ -n "${ABF_SPLIT_SEGS-}" ] && [ "${ABF_SPLIT_FOR-}" = "$CMD" ]; then
+            # is_launch_command just split exactly this command the same way
+            TSEGS=$ABF_SPLIT_SEGS
+        else
+            TCMD_NB=$CMD
+            [[ $CMD == *'<<'* ]] && TCMD_NB=$(awk -f "$HD/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
+            [ -n "$TCMD_NB" ] || TCMD_NB="$CMD"
+            TSEGS=$(awk -f "$HD/split_segments.awk" <<<"$TCMD_NB" 2>/dev/null)
+        fi
         if [ -z "$TSEGS" ]; then
             TSEGS=$(printf '%s\n' "$TCMD_NB" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                     | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
@@ -625,7 +670,7 @@ WARN=""
 add() { WARN="${WARN}
   - $1"; }
 
-HERE="$(cd "$(dirname "$0")/.." && pwd)"
+HERE="$(cd "$HD/.." && pwd)"
 
 # Z2: whether an unset LAB_RUNS_DIR is a FAULT depends on `reach`. v2.6 settled
 # that under `ssh`/`none` this variable must NOT be set in the user's own
@@ -689,7 +734,11 @@ if [ -n "${LAB_RUNS_DIR:-}" ] && bash "$HERE/scripts/egress_ctl.sh" status 2>/de
     add "the egress channel is up somewhere other than where the compute environment expects it - see scripts/egress_ctl.sh env"
 fi
 
-if grep -qE '(^|/)tw[[:space:]]+launch' <<<"$CMD" && ! grep -q -- '--disable-optimization' <<<"$CMD"; then
+# In-shell (#34); a newline counts as a line start, as it did for grep.
+# Blanks are spelled out because [[:space:]] would also match across a newline.
+RE_TW_LAUNCH=$'(^|/|\n)tw[ \t\r\v\f]+launch'
+RE_TW_RELAUNCH=$'(^|/|\n)tw[ \t\r\v\f]+runs[ \t\r\v\f]+relaunch'
+if [[ $CMD =~ $RE_TW_LAUNCH && $CMD != *--disable-optimization* ]]; then
     add "no --disable-optimization: Platform right-sizes from run history, which fights a site whose accepted sizes are fixed - a helpfully reduced request can land below what the site will take"
 fi
 
@@ -700,7 +749,7 @@ fi
 # to a flag that does not exist - so state which of the two it is. It is not a
 # precondition the user can meet, so it does not go in the WARN list.
 NOTE=""
-if grep -qE '(^|/)tw[[:space:]]+runs[[:space:]]+relaunch' <<<"$CMD"; then
+if [[ $CMD =~ $RE_TW_RELAUNCH ]]; then
     NOTE="This is a relaunch, so the --disable-optimization question cannot be answered from the command line: the flag does not exist on \`tw runs relaunch\`, and the setting is inherited from the original launch. Check it in the Platform launch form before confirming."
 fi
 
