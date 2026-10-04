@@ -89,9 +89,9 @@ looks_managed_write_shaped() {
 # hooks/in_use.sh for what "in use" means and why unsure counts as in use. A
 # hook directory that cannot supply in_use.sh answers "in use": the gate below
 # then runs exactly as it did before this existed.
-# Stdin to EOF without starting `cat` (#34: every process is expensive under Git Bash).
-IFS= read -r -d '' INPUT || true
-while [[ $INPUT == *$'\n' ]]; do INPUT=${INPUT%$'\n'}; done   # as $(cat) did
+# Stdin without starting `cat` (#34: every process is expensive under Git Bash). Not `read -d ''`:
+# that reads a pipe one byte at a time (a second per 300 KB) and stops at a NUL.
+INPUT=$(</dev/stdin)   # no `cat` process; drops NULs and trailing newlines exactly as $(cat) does
 HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 { . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
 abf_in_use "$INPUT" "$INPUT" || exit 0
@@ -102,8 +102,8 @@ abf_in_use "$INPUT" "$INPUT" || exit 0
 # else (not JSON, no jq, an object-valued field, two JSON values) goes the way this
 # file always went: the probe, then one jq per field.
 JQ_FAST=0
-JQ_OUT=$(jq -j '[(.tool_name // ""), (.tool_input.command // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.content // ""), (.transcript_path // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f")) | not) then join("\u001f") else empty end' <<<"$INPUT" 2>/dev/null) \
-  && { JQ_US=${JQ_OUT//[^$'\037']/}; [ "${#JQ_US}" = 4 ] && JQ_FAST=1; }
+JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.content // ""), (.transcript_path // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+  && [ -n "$JQ_OUT" ] && JQ_FAST=1
 if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
     RAW=$INPUT
     if looks_managed_write_shaped "$RAW"; then
@@ -138,18 +138,17 @@ ESCAPE4='略過計畫'     # said by the user, G4 stands down
 MAXLINES=4000          # transcript tail scanned; bounds the cost on a long one
 
 if [ "$JQ_FAST" = 1 ]; then
-    JQ_REST=$JQ_OUT
-    TOOL=${JQ_REST%%$'\037'*}; JQ_REST=${JQ_REST#*$'\037'}
-    CMD=${JQ_REST%%$'\037'*};  JQ_REST=${JQ_REST#*$'\037'}
-    FILE=${JQ_REST%%$'\037'*}; JQ_REST=${JQ_REST#*$'\037'}
-    CONTENT=${JQ_REST%%$'\037'*}
-    TP=${JQ_REST#*$'\037'}
-    # as $(jq) did, field by field
-    while [[ $TOOL == *$'\n' ]]; do TOOL=${TOOL%$'\n'}; done
-    while [[ $CMD == *$'\n' ]]; do CMD=${CMD%$'\n'}; done
-    while [[ $FILE == *$'\n' ]]; do FILE=${FILE%$'\n'}; done
-    while [[ $CONTENT == *$'\n' ]]; do CONTENT=${CONTENT%$'\n'}; done
-    while [[ $TP == *$'\n' ]]; do TP=${TP%$'\n'}; done
+    # The fields come as one string, each followed by the separator. They are read out in order:
+    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
+    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+    # newlines were trimmed by jq, as $(jq) did per field.
+    {
+        IFS= read -r -d $'\037' TOOL
+        IFS= read -r -d $'\037' CMD
+        IFS= read -r -d $'\037' FILE
+        IFS= read -r -d $'\037' CONTENT
+        IFS= read -r -d $'\037' TP
+    } <<<"$JQ_OUT"
 else
     TOOL=$(jq -r '.tool_name // ""'            <<<"$INPUT" 2>/dev/null)
     CMD=$(jq  -r '.tool_input.command // ""'   <<<"$INPUT" 2>/dev/null)

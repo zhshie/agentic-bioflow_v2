@@ -120,9 +120,9 @@ looks_launch_shaped() {
 # of "in use" and the rule that unsure counts as in use. A hook directory
 # without in_use.sh, or one that cannot be sourced, answers "in use": the gate
 # below then runs exactly as it did before this existed.
-# Stdin to EOF without starting `cat` (#34: every process is expensive under Git Bash).
-IFS= read -r -d '' INPUT || true
-while [[ $INPUT == *$'\n' ]]; do INPUT=${INPUT%$'\n'}; done   # as $(cat) did
+# Stdin without starting `cat` (#34: every process is expensive under Git Bash). Not `read -d ''`:
+# that reads a pipe one byte at a time (a second per 300 KB) and stops at a NUL.
+INPUT=$(</dev/stdin)   # no `cat` process; drops NULs and trailing newlines exactly as $(cat) does
 HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 { . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
 abf_in_use "$INPUT" "$INPUT" || exit 0
@@ -134,13 +134,14 @@ abf_in_use "$INPUT" "$INPUT" || exit 0
 # non-Bash execution tool might use for the same idea; a tool this list does not
 # cover yet is exactly the case handled below.
 #
-# The fast path is taken only when that one call produced exactly one record with
-# both fields plain strings and no separator inside them. Anything else (not JSON,
+# The fast path is taken only when that one call saw exactly ONE JSON document whose
+# fields are plain strings with no separator inside them (-s, so a second document
+# can never be silently dropped). Anything else (not JSON,
 # no jq, a field that is an object, two JSON values on stdin) goes the way this
 # file always went: the probe, then one jq per field.
 JQ_FAST=0
-JQ_OUT=$(jq -j '[(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f")) | not) then join("\u001f") else empty end' <<<"$INPUT" 2>/dev/null) \
-  && { JQ_US=${JQ_OUT//[^$'\037']/}; [ "${#JQ_US}" = 1 ] && JQ_FAST=1; }
+JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+  && [ -n "$JQ_OUT" ] && JQ_FAST=1
 if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
     RAW=$INPUT
     # Independent acceptance of 002: hooks.json now also routes Write/Edit/
@@ -185,10 +186,14 @@ EOF
 fi
 
 if [ "$JQ_FAST" = 1 ]; then
-    TOOL="${JQ_OUT%%$'\037'*}"
-    CMD="${JQ_OUT#*$'\037'}"
-    while [[ $TOOL == *$'\n' ]]; do TOOL=${TOOL%$'\n'}; done   # as $(jq) did per field
-    while [[ $CMD == *$'\n' ]]; do CMD=${CMD%$'\n'}; done
+    # The fields come as one string, each followed by the separator. They are read out in order:
+    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
+    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+    # newlines were trimmed by jq, as $(jq) did per field.
+    {
+        IFS= read -r -d $'\037' TOOL
+        IFS= read -r -d $'\037' CMD
+    } <<<"$JQ_OUT"
 else
     TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
     CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
@@ -673,10 +678,16 @@ if ! is_launch_command "$CMD"; then
     # quoted text and line continuations taken OUT (`s"x"sh` reads as ssh), so a
     # word can only be there if its letters occur in the raw command in order.
     # That test is a glob, no process, and can only say "maybe", never "no" wrongly.
+    # A glob with several stars is not linear on a long string, so a long command
+    # skips the shortcut and simply asks.
     D3_UNAME=""
-    case "$CMD" in
-        *s*s*h*|*s*c*p*|*r*s*y*n*c*|*s*f*t*p*) D3_UNAME=$(uname -s 2>/dev/null) ;;
-    esac
+    if [ "${#CMD}" -ge 2048 ]; then
+        D3_UNAME=$(uname -s 2>/dev/null)
+    else
+        case "$CMD" in
+            *s*s*h*|*s*c*p*|*r*s*y*n*c*|*s*f*t*p*) D3_UNAME=$(uname -s 2>/dev/null) ;;
+        esac
+    fi
     case "$D3_UNAME" in
     MINGW*|MSYS*|CYGWIN*)
         US=$'\037'

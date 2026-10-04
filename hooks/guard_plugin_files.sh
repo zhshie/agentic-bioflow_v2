@@ -100,9 +100,9 @@ ROOT_RAW="${CLAUDE_PLUGIN_ROOT:-}"
 # hooks/in_use.sh for what "in use" means and why unsure counts as in use. A
 # hook directory that cannot supply in_use.sh answers "in use": the guard below
 # then runs exactly as it did before this existed.
-# Stdin to EOF without starting `cat` (#34: every process is expensive under Git Bash).
-IFS= read -r -d '' INPUT || true
-while [[ $INPUT == *$'\n' ]]; do INPUT=${INPUT%$'\n'}; done   # as $(cat) did
+# Stdin without starting `cat` (#34: every process is expensive under Git Bash). Not `read -d ''`:
+# that reads a pipe one byte at a time (a second per 300 KB) and stops at a NUL.
+INPUT=$(</dev/stdin)   # no `cat` process; drops NULs and trailing newlines exactly as $(cat) does
 HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 { . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
 abf_in_use "$INPUT" "$INPUT" || exit 0
@@ -119,11 +119,11 @@ phys_dir() { # phys_dir <dir> -> REPLY; non-zero when it cannot be entered
     local old="$PWD"
     REPLY=""
     if [ -d "$old" ]; then
-        cd -P -- "$1" 2>/dev/null || return 1
+        CDPATH= cd -P -- "$1" 2>/dev/null || return 1
         REPLY="$PWD"
         cd -- "$old" 2>/dev/null
     else
-        REPLY=$(cd -P -- "$1" 2>/dev/null && pwd -P) || return 1
+        REPLY=$(CDPATH= cd -P -- "$1" 2>/dev/null && pwd -P) || return 1
     fi
 }
 phys_dir "$ROOT_RAW" || exit 0
@@ -145,7 +145,7 @@ root_spellings() {
     h="${HOME:-}"; hp=""
     # Only ever run inside $( ), so this `cd` moves a throwaway subshell and
     # needs no second one to find the physical path (#34).
-    [ -n "$h" ] && cd -P -- "$h" 2>/dev/null && hp="$PWD"
+    [ -n "$h" ] && CDPATH= cd -P -- "$h" 2>/dev/null && hp="$PWD"
     for p in "$ROOT_RAW" "$ROOT"; do
         for base in "$h" "$hp"; do
             [ -n "$base" ] || continue
@@ -197,21 +197,22 @@ root_in() { # root_in <text> - any spelling of the root, as a literal substring
 # anything else (not JSON, no jq, an object-valued field, two JSON values) goes
 # the way this file always went: the probe, then one jq per field.
 JQ_FAST=0
-JQ_OUT=$(jq -j '[(.tool_name // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f")) | not) then join("\u001f") else empty end' <<<"$INPUT" 2>/dev/null) \
-  && { JQ_US=${JQ_OUT//[^$'\037']/}; [ "${#JQ_US}" = 2 ] && JQ_FAST=1; }
+JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+  && [ -n "$JQ_OUT" ] && JQ_FAST=1
 if [ "$JQ_FAST" = 0 ] && ! jq_works; then
     root_in "$INPUT" && refuse_without_jq
     exit 0
 fi
 if [ "$JQ_FAST" = 1 ]; then
-    JQ_REST=$JQ_OUT
-    TOOL=${JQ_REST%%$'\037'*}; JQ_REST=${JQ_REST#*$'\037'}
-    FILE=${JQ_REST%%$'\037'*}
-    CMD=${JQ_REST#*$'\037'}
-    # as $(jq) did, field by field
-    while [[ $TOOL == *$'\n' ]]; do TOOL=${TOOL%$'\n'}; done
-    while [[ $FILE == *$'\n' ]]; do FILE=${FILE%$'\n'}; done
-    while [[ $CMD == *$'\n' ]]; do CMD=${CMD%$'\n'}; done
+    # The fields come as one string, each followed by the separator. They are read out in order:
+    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
+    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+    # newlines were trimmed by jq, as $(jq) did per field.
+    {
+        IFS= read -r -d $'\037' TOOL
+        IFS= read -r -d $'\037' FILE
+        IFS= read -r -d $'\037' CMD
+    } <<<"$JQ_OUT"
 else
     TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
 fi
