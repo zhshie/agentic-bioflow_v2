@@ -72,7 +72,7 @@ for c in 'ls -la' 'git status && git diff --stat | head -20' "grep -rn \"foo\" s
   check confirm_cleanup  2 "deletion guard: ${c:0:34}" "$c"
   check confirm_walkthrough 4 "walkthrough gate: ${c:0:34}" "$c"
 done
-check guard_plugin_files 3 "plugin-file guard: ls -la" 'ls -la'
+check guard_plugin_files 2 "plugin-file guard: ls -la" 'ls -la'
 
 echo
 echo "== a transport command and a deletion cost no more than a few more =="
