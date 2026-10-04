@@ -38,6 +38,8 @@ for p in /tmp/abf34_corpus/*; do
   for h in $HOOKS; do for c in $ctxs; do echo "$p $c $h" >> /tmp/abf34_jobs.txt; done; done
 done
 echo "jobs: $(wc -l < /tmp/abf34_jobs.txt)"
+: > /tmp/abf34_results.txt
+[ -n "$PREP_ONLY" ] && exit 0   # then run chunk.sh <from> <to> in slices (each well under 5 minutes)
 xargs -P 6 -L 1 bash "$HERE/worker.sh" < /tmp/abf34_jobs.txt > /tmp/abf34_results.txt
 echo "SAME $(grep -c '^SAME' /tmp/abf34_results.txt)  SLOW $(grep -c '^SLOW' /tmp/abf34_results.txt)  DIFF $(grep -c '^DIFF' /tmp/abf34_results.txt)"
 grep -E '^(DIFF|SLOW)' /tmp/abf34_results.txt | head -60
