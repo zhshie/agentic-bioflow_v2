@@ -81,7 +81,14 @@ case "${ON_SITE_MAX_PARALLEL:-}" in
   *[!0-9]*) ;;
   *) MAX_PARALLEL="$ON_SITE_MAX_PARALLEL" ;;
 esac
-SLOTS_DIR="${CP}.slots"
+# The lock directory is made by THIS shell, so it needs this shell's expanded
+# $HOME. Under the WSL bridge $CP is the literal '~/...' that WSL's own shell
+# expands on the far side of wsl.exe; made here unexpanded it would land
+# relative to the caller's cwd (#25). $CP itself stays untouched.
+case "$CP" in
+  '~/'*) SLOTS_DIR="${HOME:-}/${CP#\~/}.slots" ;;
+  *)     SLOTS_DIR="${CP}.slots" ;;
+esac
 SLOT_DIR=""
 
 die() { local rc="$1"; shift; printf '%s\n' "$@" >&2; exit "$rc"; }
