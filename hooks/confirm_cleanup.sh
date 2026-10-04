@@ -114,12 +114,22 @@ looks_delete_shaped() {
 # hooks/in_use.sh for what "in use" means and why unsure counts as in use. A
 # hook directory that cannot supply in_use.sh answers "in use": the gate below
 # then runs exactly as it did before this existed.
-INPUT=$(cat)
+# Stdin without starting `cat` (#34: every process is expensive under Git Bash). Not `read -d ''`:
+# that reads a pipe one byte at a time (a second per 300 KB) and stops at a NUL.
+INPUT=$(</dev/stdin)   # no `cat` process; drops NULs and trailing newlines exactly as $(cat) does
 HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 { . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
 abf_in_use "$INPUT" "$INPUT" || exit 0
 
-if ! printf '{}' | jq -e . >/dev/null 2>&1; then
+# One jq call reads what this hook needs, and when it works it stands in for the
+# "can jq run at all" probe (#34). It is trusted only when it produced exactly one
+# record, both fields plain strings, no separator inside them; anything else
+# (not JSON, no jq, an object-valued field, two JSON values) goes the way this
+# file always went: the probe, then one jq per field.
+JQ_FAST=0
+JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+  && [ -n "$JQ_OUT" ] && JQ_FAST=1
+if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
     RAW=$INPUT
     if looks_delete_shaped "$RAW"; then
         cat >&2 <<'EOF'
@@ -142,8 +152,19 @@ EOF
     exit 0
 fi
 
-TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' 2>/dev/null)
+if [ "$JQ_FAST" = 1 ]; then
+    # The fields come as one string, each followed by the separator. They are read out in order:
+    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
+    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+    # newlines were trimmed by jq, as $(jq) did per field.
+    {
+        IFS= read -r -d $'\037' TOOL
+        IFS= read -r -d $'\037' CMD
+    } <<<"$JQ_OUT"
+else
+    TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
+    CMD=$(echo "$INPUT" | jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' 2>/dev/null)
+fi
 
 # T1, part 2: jq is fine, but no field this file knows to check carried a
 # command. For Bash that never happens in practice; for anything else the
@@ -163,8 +184,12 @@ fi
 # Drop here-doc bodies: a document containing a path example is not a command
 # operating on that path, but the per-line segment scan below could not tell the
 # difference. If awk is missing this yields nothing and CMD is left as-is.
-STRIPPED=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/strip_heredocs.awk" 2>/dev/null)
-[ -n "$STRIPPED" ] && CMD="$STRIPPED"
+# No `<<` means no here-doc, and the stripper then prints every line unchanged,
+# so the process is not started for it (#34).
+if [[ $CMD == *'<<'* ]]; then
+    STRIPPED=$(awk -f "$HD/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
+    [ -n "$STRIPPED" ] && CMD="$STRIPPED"
+fi
 
 deny() {
     jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
@@ -199,8 +224,8 @@ ask() {
 #
 # If awk cannot run, fall back to a plain split and keep going: noisier, but
 # still a gate, never an absent one.
-US=$(printf '\037')
-SEGMENTS=$(printf '%s\n' "$CMD" | awk -f "$(dirname "$0")/split_segments.awk" 2>/dev/null)
+US=$'\037'
+SEGMENTS=$(awk -f "$HD/split_segments.awk" <<<"$CMD" 2>/dev/null)
 if [ -z "$SEGMENTS" ]; then
     SEGMENTS=$(printf '%s\n' "$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g' | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
 fi

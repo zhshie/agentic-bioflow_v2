@@ -100,7 +100,9 @@ ROOT_RAW="${CLAUDE_PLUGIN_ROOT:-}"
 # hooks/in_use.sh for what "in use" means and why unsure counts as in use. A
 # hook directory that cannot supply in_use.sh answers "in use": the guard below
 # then runs exactly as it did before this existed.
-INPUT=$(cat)
+# Stdin without starting `cat` (#34: every process is expensive under Git Bash). Not `read -d ''`:
+# that reads a pipe one byte at a time (a second per 300 KB) and stops at a NUL.
+INPUT=$(</dev/stdin)   # no `cat` process; drops NULs and trailing newlines exactly as $(cat) does
 HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 { . "$HD/in_use.sh"; } 2>/dev/null || abf_in_use() { return 0; }
 abf_in_use "$INPUT" "$INPUT" || exit 0
@@ -109,7 +111,23 @@ abf_in_use "$INPUT" "$INPUT" || exit 0
 # of one) must not let a write through just because the string on disk
 # differs from ${CLAUDE_PLUGIN_ROOT}. If the root itself cannot be resolved -
 # stale variable, deleted directory - there is nothing real to guard either.
-ROOT="$(cd -P -- "$ROOT_RAW" 2>/dev/null && pwd -P)" || exit 0
+#
+# #34: in this shell, no subshell. `cd -P` then $PWD is what `pwd -P` printed; the
+# directory is put back after. Where there is no way back (the caller's own
+# directory is gone) the subshell form below does it as it always did.
+phys_dir() { # phys_dir <dir> -> REPLY; non-zero when it cannot be entered
+    local old="$PWD"
+    REPLY=""
+    if [ -d "$old" ]; then
+        CDPATH= cd -P -- "$1" 2>/dev/null || return 1
+        REPLY="$PWD"
+        cd -- "$old" 2>/dev/null
+    else
+        REPLY=$(CDPATH= cd -P -- "$1" 2>/dev/null && pwd -P) || return 1
+    fi
+}
+phys_dir "$ROOT_RAW" || exit 0
+ROOT="$REPLY"
 [ -n "$ROOT" ] || exit 0
 
 # Every spelling a command can use for the root, not only the two above. The
@@ -125,7 +143,9 @@ root_spellings() {
     printf '%s\n' "$ROOT_RAW" "$ROOT" '$CLAUDE_PLUGIN_ROOT' '${CLAUDE_PLUGIN_ROOT}' \
         '$env:CLAUDE_PLUGIN_ROOT' '%CLAUDE_PLUGIN_ROOT%'
     h="${HOME:-}"; hp=""
-    [ -n "$h" ] && hp=$(cd -P -- "$h" 2>/dev/null && pwd -P)
+    # Only ever run inside $( ), so this `cd` moves a throwaway subshell and
+    # needs no second one to find the physical path (#34).
+    [ -n "$h" ] && CDPATH= cd -P -- "$h" 2>/dev/null && hp="$PWD"
     for p in "$ROOT_RAW" "$ROOT"; do
         for base in "$h" "$hp"; do
             [ -n "$base" ] || continue
@@ -145,17 +165,23 @@ root_spellings() {
         esac
     done
 }
-SPELLINGS=$(root_spellings | while IFS= read -r s; do
+# Each spelling, and with it the same spelling with backslashes (both as a shell
+# sees it and as it sits JSON-escaped in raw input). One subshell for the list, a
+# loop in this shell for the rest, no `sort -u`: root_in only asks "is any of
+# these a substring", so order and repeats mean nothing (#34).
+SPELLINGS=""
+while IFS= read -r s; do
     [ -n "$s" ] || continue
-    printf '%s\n' "$s"
+    SPELLINGS="$SPELLINGS$s"$'\n'
     case "$s" in */*)
         b="${s//\//\\}"
-        # both as a shell sees it and as it sits JSON-escaped in raw input
-        printf '%s\n' "$b" "${b//\\/\\\\}" ;;
+        SPELLINGS="$SPELLINGS$b"$'\n'"${b//\\/\\\\}"$'\n' ;;
     esac
-done | sort -u)
+done <<<"$(root_spellings)"
 case "$ROOT_RAW$ROOT" in [a-zA-Z]:*|/[a-zA-Z]/*) shopt -s nocasematch ;; esac
-case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) shopt -s nocasematch ;; esac
+# $OSTYPE is what bash itself was built for, the same fact `uname -s` reports
+# (msys under Git Bash, cygwin, or a native mingw build), without a process (#34).
+case "$OSTYPE" in msys*|cygwin*|mingw*) shopt -s nocasematch ;; esac
 
 root_in() { # root_in <text> - any spelling of the root, as a literal substring
     local s
@@ -165,11 +191,31 @@ root_in() { # root_in <text> - any spelling of the root, as a literal substring
     return 1
 }
 
-if ! jq_works; then
+# One jq call reads the three fields this hook can need, and when it works it
+# stands in for the "can jq run at all" probe (#34). It is trusted only when it
+# produced exactly one record, all three plain strings, no separator inside them;
+# anything else (not JSON, no jq, an object-valued field, two JSON values) goes
+# the way this file always went: the probe, then one jq per field.
+JQ_FAST=0
+JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+  && [ -n "$JQ_OUT" ] && JQ_FAST=1
+if [ "$JQ_FAST" = 0 ] && ! jq_works; then
     root_in "$INPUT" && refuse_without_jq
     exit 0
 fi
-TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
+if [ "$JQ_FAST" = 1 ]; then
+    # The fields come as one string, each followed by the separator. They are read out in order:
+    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
+    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+    # newlines were trimmed by jq, as $(jq) did per field.
+    {
+        IFS= read -r -d $'\037' TOOL
+        IFS= read -r -d $'\037' FILE
+        IFS= read -r -d $'\037' CMD
+    } <<<"$JQ_OUT"
+else
+    TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
+fi
 
 deny() {
     jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
@@ -202,7 +248,7 @@ case "$TOOL" in
 Write | Edit | MultiEdit | NotebookEdit)
     # notebook_path for NotebookEdit, file_path for the other three - the
     # same fallback confirm_walkthrough.sh uses beside this file.
-    FILE=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$INPUT" 2>/dev/null)
+    [ "$JQ_FAST" = 1 ] || FILE=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$INPUT" 2>/dev/null)
     [ -n "$FILE" ] || exit 0
 
     DIR=$(dirname -- "$FILE")
@@ -228,7 +274,7 @@ Bash | *[Ss]hell* | *[Pp]wsh* | *[Tt]erminal* | *[Cc]md* | *[Ee]xec*)
     # Any shell tool, not only Bash (issue #15): once Bash was blocked,
     # PowerShell was the natural fallback and this guard never saw it. The
     # same input fields the three confirm_* hooks try, in the same order.
-    CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
+    [ "$JQ_FAST" = 1 ] || CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
     if [ -z "$CMD" ]; then
         [ "$TOOL" = Bash ] && exit 0
         # A shell tool whose input shape this hook does not know. Judge the
