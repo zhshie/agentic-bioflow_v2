@@ -127,6 +127,26 @@ abf_in_use "$INPUT" "$INPUT" || exit 0
 
 if ! printf '{}' | jq -e . >/dev/null 2>&1; then
     RAW=$INPUT
+    # Independent acceptance of 002: hooks.json now also routes Write/Edit/
+    # MultiEdit/NotebookEdit calls here, and their raw payload is the FILE
+    # CONTENT, not a command - a README that says ` rsync ` is not a transfer.
+    # Without jq all that can still be read is the file's name: egress_allow.tsv
+    # asks (a hand-built JSON, there being no jq to build it), anything else
+    # passes untouched.
+    NJ_RE_TOOL='"tool_name"[[:space:]]*:[[:space:]]*"([A-Za-z]*)"'
+    NJ_TOOL=""
+    [[ $RAW =~ $NJ_RE_TOOL ]] && NJ_TOOL="${BASH_REMATCH[1]}"
+    case "$NJ_TOOL" in
+        Write|Edit|MultiEdit|NotebookEdit)
+            NJ_RE_FP='"(file_path|notebook_path)"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+            NJ_FP=""
+            if [[ $RAW =~ $NJ_RE_FP ]]; then NJ_FP="${BASH_REMATCH[2]}"; fi
+            NJ_FP="${NJ_FP//\\\\//}"; NJ_FP="${NJ_FP//\\//}"
+            if [ "${NJ_FP##*/}" = egress_allow.tsv ]; then
+                printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Direct change to egress_allow.tsv (jq is missing, so this hook can only read the file name). This moves a security boundary on a shared login node.","additionalContext":"GATE: this writes this deployment'"'"'s own relay allowlist file (egress_allow.tsv) directly, around scripts/egress_allow.sh and its checks. That moves a security boundary on the site'"'"'s SHARED login node. Show the user exactly which domain is being added or removed and why, and wait for their explicit yes. Prefer scripts/egress_allow.sh add/remove."}}'
+            fi
+            exit 0 ;;
+    esac
     if looks_launch_shaped "$RAW"; then
         cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/confirm_launch.sh cannot read what
@@ -349,15 +369,107 @@ if [ "$EA_PRE" = 1 ]; then
     EA_VARS=""
     # ea_names <word> <file name>: does the word name that file, literally or as
     # a glob (`egress_allo?.sh`)? The path in front of the name does not matter.
-    ea_names() {
-        local b="${1##*/}"
-        [[ $b == "$2" ]] && return 0
-        if [[ $b == *[\*\?\[]* ]]; then [[ $2 == $b ]] && return 0; fi
+    #
+    # Independent acceptance of 002: a glob that merely COULD match the name
+    # (`*.tsv`, `results/*/*.tsv`) is not naming it - `cp results/*.tsv /tmp/`
+    # asked every time. A glob names the file only when its own text carries
+    # the name (an obfuscation such as `egress_allo?.tsv` or `egr*ow.tsv` keeps
+    # a piece of it: egr / ess / allow) or when its folder is the one the file
+    # lives in (this deployment's config folder; for the script, the plugin's
+    # scripts folder). The literal name always counts, in any folder.
+    EA_CWD=""
+    EA_CFG_DIRS=""
+    EA_SCR_DIRS=""
+    if declare -F _abf_find_deployment >/dev/null 2>&1 && _abf_find_deployment 2>/dev/null; then
+        EA_CFG_DIRS="${_ABF_SETTINGS%/*}"$'\n'"${_ABF_ROOT}/config"
+        if declare -F _abf_canon >/dev/null 2>&1; then
+            _abf_canon "${_ABF_SETTINGS%/*}" 2>/dev/null && EA_CFG_DIRS="${EA_CFG_DIRS}"$'\n'"$REPLY"
+        fi
+    fi
+    EA_PLUGIN_DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)"
+    EA_SCR_DIRS="${EA_PLUGIN_DIR}/scripts"
+    [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && EA_SCR_DIRS="${EA_SCR_DIRS}"$'\n'"${CLAUDE_PLUGIN_ROOT%/}/scripts"
+    EA_RE_CWD='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+    if [[ $INPUT =~ $EA_RE_CWD ]]; then EA_CWD="${BASH_REMATCH[1]//\\\\//}"; EA_CWD="${EA_CWD//\\//}"; EA_CWD="${EA_CWD%/}"; fi
+    # ea_in_dir <folder part of a word> <newline list of folders>
+    ea_in_dir() {
+        local d="$1" t
+        d="${d//\\//}"
+        case "$d" in
+            '~'|'~/'*) d="${HOME:-}${d#\~}" ;;
+        esac
+        d="${d//\$\{HOME\}/${HOME:-}}"; d="${d//\$HOME/${HOME:-}}"
+        case "$d" in
+            /*|[A-Za-z]:*) ;;
+            *) [ -n "$EA_CWD" ] || return 1
+               d="$EA_CWD${d:+/$d}" ;;
+        esac
+        while [[ $d == *//* ]]; do d="${d//\/\//\/}"; done
+        while [[ $d == */./* ]]; do d="${d//\/.\//\/}"; done
+        d="${d%/.}"; d="${d%/}"
+        while IFS= read -r t; do
+            [ -n "$t" ] || continue
+            t="${t%/}"
+            # shellcheck disable=SC2053  # the word's folder may itself be a glob
+            [[ $t == $d ]] && return 0
+        done <<<"$2"
         return 1
+    }
+    ea_names() { # ea_names <word> <file name>
+        local b="${1##*/}" lit d=""
+        [[ $b == "$2" ]] && return 0
+        [[ $b == *[\*\?\[]* ]] || return 1
+        # shellcheck disable=SC2053
+        [[ $2 == $b ]] || return 1
+        lit="${b//[\*\?\[\]]/}"
+        case "$lit" in *egr*|*ess*|*allow*|*gress*) return 0 ;; esac
+        case "$1" in */*) d="${1%/*}"; [ -n "$d" ] || d=/ ;; esac
+        case "$2" in
+            *.tsv) ea_in_dir "$d" "$EA_CFG_DIRS" ;;
+            *)     ea_in_dir "$d" "$EA_SCR_DIRS" ;;
+        esac
+    }
+    # ea_tsv_scan <text>: sets EA_TSV=1 when a word names the allowlist file,
+    # and EA_DEST=1 when one of those words could be WRITTEN (a redirect, an
+    # operand that is not a copy's source). `cp egress_allow.tsv /tmp/bk` only
+    # reads it; `mv` removes it, so it is not a plain source.
+    ea_tsv_scan() {
+        local -a W; local i n w w2 last=-1 tflag=0 cpmode=0
+        read -r -a W <<<"$1"
+        n=${#W[@]}
+        case "$EA_CWB" in cp|scp|rsync|install) cpmode=1 ;; esac
+        for ((i = 1; i < n; i++)); do
+            w="${W[$i]}"
+            case "$w" in
+                -t|-t*|--target-directory|--target-directory=*) tflag=1 ;;
+                -*|[0-9]*[\<\>]*|[\<\>]*) ;;
+                *) last=$i ;;
+            esac
+        done
+        for ((i = 0; i < n; i++)); do
+            w2="${W[$i]}"
+            if [[ $w2 =~ ^[0-9]*[\<\>]+(.*)$ ]]; then
+                w2="${BASH_REMATCH[1]}"
+                ea_names "${w2##*=}" egress_allow.tsv && { EA_TSV=1; EA_DEST=1; }
+                continue
+            fi
+            w2="${w2##*=}"
+            if ea_names "$w2" egress_allow.tsv; then
+                EA_TSV=1
+                if [ "$cpmode" = 0 ]; then EA_DEST=1
+                elif [ "$tflag" = 0 ] && [ "$i" = "$last" ]; then EA_DEST=1; fi
+            fi
+        done
     }
     EA_SEG=""; EA_V=""; EA_CW=""
     while IFS="$EA_US" read -r EA_SEG EA_V EA_CW; do
-        EA_PLAIN="${EA_SEG//[\"\']/}"; EA_PLAIN="${EA_PLAIN//\\/}"
+        EA_PLAIN="${EA_SEG//[\"\']/}"
+        # Two readings of a backslash: an ESCAPE (`egr\ess_allow.tsv` - dropped,
+        # which is what a shell does) and a Windows path SEPARATOR
+        # (`C:\cfg\egress_allow.tsv`, `.\egress_allow.tsv` - read as `/`).
+        # The file's name is looked for in both; the script's is judged on the
+        # first only, as before.
+        EA_PLAIN_S="${EA_PLAIN//\\//}"; EA_PLAIN="${EA_PLAIN//\\/}"
         # `a=egress_allow` on its own is remembered and read into later segments.
         if [[ $EA_PLAIN =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=([^[:space:]]*)[[:space:]]*$ ]]; then
             EA_VARS="${EA_VARS}${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"$'\n'
@@ -366,6 +478,7 @@ if [ "$EA_PRE" = 1 ]; then
         while IFS='=' read -r EA_VN EA_VV; do
             [ -n "$EA_VN" ] || continue
             EA_PLAIN="${EA_PLAIN//\$\{$EA_VN\}/$EA_VV}"; EA_PLAIN="${EA_PLAIN//\$$EA_VN/$EA_VV}"
+            EA_PLAIN_S="${EA_PLAIN_S//\$\{$EA_VN\}/$EA_VV}"; EA_PLAIN_S="${EA_PLAIN_S//\$$EA_VN/$EA_VV}"
         done <<<"$EA_VARS"
         EA_CWB="${EA_CW##*/}"
         EA_SUB=""
@@ -374,28 +487,26 @@ if [ "$EA_PRE" = 1 ]; then
         fi
 
         # --- direct writes to the file the script keeps (#45) -----------------
-        EA_TSV=0
-        set -f
-        for EA_W in $EA_PLAIN; do
-            EA_W2="$EA_W"
-            # a redirect glued to its target (`>>cfg/x`, `2>cfg/x`) or a dd-style of=cfg/x
-            [[ $EA_W2 =~ ^[0-9]*[\<\>]+(.*)$ ]] && EA_W2="${BASH_REMATCH[1]}"
-            EA_W2="${EA_W2##*=}"
-            ea_names "$EA_W2" egress_allow.tsv && EA_TSV=1
-        done
-        set +f
+        # (a redirect glued to its target - `>>cfg/x`, `2>cfg/x` - and a dd-style
+        # of=cfg/x are read inside ea_tsv_scan; both readings of a backslash.)
+        EA_TSV=0; EA_DEST=0
+        ea_tsv_scan "$EA_PLAIN"
+        ea_tsv_scan "$EA_PLAIN_S"
         if [ "$EA_TSV" = 1 ]; then
             EA_WRITES=0
             if [[ $EA_V == *'>'* ]]; then
-                EA_T="$EA_PLAIN"
-                while [[ $EA_T =~ $EA_WR_RE ]]; do
-                    ea_names "${BASH_REMATCH[1]}" egress_allow.tsv && EA_WRITES=1
-                    EA_T="${EA_T#*"${BASH_REMATCH[0]}"}"
+                for EA_T in "$EA_PLAIN" "$EA_PLAIN_S"; do
+                    while [[ $EA_T =~ $EA_WR_RE ]]; do
+                        ea_names "${BASH_REMATCH[1]}" egress_allow.tsv && EA_WRITES=1
+                        EA_T="${EA_T#*"${BASH_REMATCH[0]}"}"
+                    done
                 done
             fi
             if [ "$EA_WRITES" = 0 ]; then
                 case "$EA_CWB" in
                     cat|less|more|head|tail|grep|egrep|fgrep|rg|ag|wc|ls|ll|dir|stat|file|diff|cmp|sort|uniq|cut|column|tr|nl|od|xxd|hexdump|md5sum|sha1sum|sha256sum|cksum|du|realpath|readlink|basename|dirname|test|'['|echo|printf|bat|jq|tac|rev|paste|join|comm|fold|strings|shellcheck) ;;
+                    get-content|gc|type|select-string|sls|test-path|get-item|gi|get-childitem|gci|get-filehash|measure-object|resolve-path|get-itemproperty) ;;
+                    cp|scp|rsync|install) [ "$EA_DEST" = 1 ] && EA_WRITES=1 ;;
                     sed|awk|gawk|perl|ruby) [[ $EA_PLAIN =~ $EA_INPLACE_RE ]] && EA_WRITES=1 ;;
                     git) case "$EA_SUB" in diff|log|show|blame|status|ls-files|grep|cat-file|annotate|whatchanged) ;; *) EA_WRITES=1 ;; esac ;;
                     *) EA_WRITES=1 ;;
@@ -424,14 +535,26 @@ This moves a security boundary on a shared login node."
         set -f
         for EA_W in $EA_PLAIN; do
             EA_B="${EA_W##*/}"
-            if [[ $EA_B == *[\*\?\[]* ]] && [[ egress_allow.sh == $EA_B ]]; then
+            if [[ $EA_B == *[\*\?\[]* ]] && ea_names "$EA_W" egress_allow.sh; then
                 EA_W="${EA_W%"$EA_B"}egress_allow.sh"; EA_MOD=1
             fi
             EA_NORM="$EA_NORM $EA_W"
         done
         set +f
+        # A variable-named script is read as ours only when something says it
+        # may be: the command text says egress, or the word's folder is the
+        # plugin's own (`scripts/$a.sh`, `$CLAUDE_PLUGIN_ROOT/...`). Without
+        # that, `bash $HOME/bin/todo.sh add milk` is somebody else's script.
         if [[ $EA_NORM =~ (^|[[:space:]])([^[:space:]]*\$[^[:space:]]*)[[:space:]]+(add|remove)([[:space:]]|$) ]]; then
-            EA_NORM="${EA_NORM/"${BASH_REMATCH[2]}"/egress_allow.sh}"; EA_MOD=1
+            EA_VW="${BASH_REMATCH[2]}"
+            EA_VHINT=0
+            [[ $EA_N == *egress* ]] && EA_VHINT=1
+            case "$EA_VW" in
+                *CLAUDE_PLUGIN_ROOT*|*/plugins/*|*agentic-bioflow*|scripts/*|*/scripts/*) EA_VHINT=1 ;;
+            esac
+            if [ "$EA_VHINT" = 1 ]; then
+                EA_NORM="${EA_NORM/"$EA_VW"/egress_allow.sh}"; EA_MOD=1
+            fi
         fi
         EA_RUN=0
         [[ $EA_V =~ $EA_RUN_RE ]] && EA_RUN=1
