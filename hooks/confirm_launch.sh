@@ -679,9 +679,9 @@ if ! is_launch_command "$CMD"; then
     # word can only be there if its letters occur in the raw command in order.
     # That test is a glob, no process, and can only say "maybe", never "no" wrongly.
     # A glob with several stars is not linear on a long string, so a long command
-    # skips the shortcut and simply asks.
+    # skips the shortcut and simply asks (8 KB: measured under 40 ms; at 130 KB it does not finish).
     D3_UNAME=""
-    if [ "${#CMD}" -ge 2048 ]; then
+    if [ "${#CMD}" -ge 8192 ]; then
         D3_UNAME=$(uname -s 2>/dev/null)
     else
         case "$CMD" in

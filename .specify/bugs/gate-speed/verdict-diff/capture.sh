@@ -1,6 +1,6 @@
 #!/bin/bash
 # Capture every stdin payload that the gate tests feed to the four hooks.
-SRC=/mnt/c/Users/ACER/Desktop/agentic-bioflow/wt-34-base
+SRC="${1:?baseline tree}"; shift
 CAP=/tmp/abf34_cap
 rm -rf "$CAP" /tmp/abf34_corpus_raw; mkdir -p "$CAP" /tmp/abf34_corpus_raw
 cp -r "$SRC"/. "$CAP"/ 2>/dev/null
