@@ -717,4 +717,14 @@ t "Start-Process nextflow -ArgumentList '-version'"    pass "#35 control: Start-
 t "a=($LAUNCH x); \"\${a[@]}\""                        gate "#35 control: command held in an array (already gated)"
 t "files=(a.txt b.txt); ls \"\${files[@]}\""           pass "#35 control: an array of file names"
 
+# After independent acceptance (#35): data piped into a runner that has its own script
+# file / remote command is data; a runner reading stdin is still code.
+t "echo '$LAUNCH x' | python3 count_words.py"         pass "#35b data piped into python3 script.py"
+t "echo '$LAUNCH x' | ssh t3 'cat >> notes.md'"        pass "#35b data piped into ssh host 'cmd'"
+t "echo '$LAUNCH x' | python3 -"                       gate "#35b control: | python3 -"
+t "echo '$LAUNCH x' | python3"                         gate "#35b control: | python3 (no script)"
+t "echo '$LAUNCH x' | sh"                              gate "#35b control: | sh"
+t "echo '$LAUNCH x' | ssh t3"                          gate "#35b control: | ssh host (no remote command)"
+t "echo '$LAUNCH x' | ssh t3 bash"                     gate "#35b control: | ssh host bash"
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
