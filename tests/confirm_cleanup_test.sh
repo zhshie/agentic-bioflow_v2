@@ -468,4 +468,33 @@ tps "Get-ChildItem \$dir | Move-Item -Destination C:\\tmp" ask "#35 control: lis
 tps "Get-ChildItem C:\\lab\\x | ForEach-Object { \$_.FullName } | Move-Item -Destination C:\\tmp" ask "#35 control: ForEach-Object can rewrite the path: asks"
 tps "Move-Item"                                    ask  "#35 control: Move-Item with no source at all asks"
 
+# After independent acceptance (#35): -n belongs to the WRAPPER, not to rsync/git.
+# `nice -n 10 rsync --delete` is a real delete; only an n among rsync's (or
+# git clean's) own options is a dry run.
+t "nice -n 10 rsync -a --delete /tmp/empty/ $P/results/"        deny "#35b nice -n 10 rsync --delete is not a dry run"
+t "srun -n 1 rsync -a --delete /tmp/empty/ $P/results/"         deny "#35b srun -n 1 rsync --delete"
+t "ssh -n t3 rsync -a --delete /tmp/empty/ $P/results/"         deny "#35b ssh -n host rsync --delete (unquoted)"
+t "sudo -n rsync -a --delete /tmp/empty/ $P/results/"           deny "#35b sudo -n rsync --delete"
+t "timeout -n 5 rsync -a --delete /tmp/empty/ $P/results/"      deny "#35b timeout -n 5 rsync --delete"
+t "ionice -n 7 rsync -a --remove-source-files $P/rawdata/ /backup/" ask "#35b ionice -n 7 rsync --remove-source-files"
+t "nice -n 19 rsync --remove-source-files $P/rawdata/ /backup/" ask  "#35b nice -n 19 rsync --remove-source-files"
+t "nice -n 10 git clean -fdx $P/results"                        deny "#35b nice -n 10 git clean -fdx of results/"
+t "nice -n 10 rsync -avn --delete /tmp/empty/ $P/results/"      pass "#35b control: the wrapper -n AND rsync -n: dry run"
+t "nice -n 10 rsync -a --delete -n /tmp/empty/ $P/results/"     pass "#35b control: rsync -n after other options"
+t "nice -n 10 rsync -a --dry-run --delete /tmp/empty/ $P/results/" pass "#35b control: --dry-run behind a wrapper"
+t "nice -n 10 git clean -n -fd $P/results"                      pass "#35b control: git clean -n behind a wrapper"
+# data piped into a runner that has its own script / remote command is data
+t "echo '$D -rf $P/results' | python3 count_words.py"           pass "#35b data piped into python3 script.py"
+t "echo '$D -rf $P/results' | python3 -u count_words.py"        pass "#35b ...with an option before the script"
+t "echo '$D -rf $P/results' | ssh t3 'cat >> notes.md'"         pass "#35b data piped into ssh host 'cmd'"
+t "echo '$D -rf $P/results' | python3 -"                        deny "#35b control: | python3 - reads code from stdin"
+t "echo '$D -rf $P/results' | python3"                          deny "#35b control: | python3 (no script) reads code"
+t "echo '$D -rf $P/results' | python3 -u -"                     deny "#35b control: | python3 -u - reads code"
+t "echo '$D -rf $P/results' | bash"                             deny "#35b control: | bash"
+t "echo '$D -rf $P/results' | ssh t3"                           deny "#35b control: | ssh host (no remote command)"
+t "echo '$D -rf $P/results' | ssh -p 22 t3 bash"                deny "#35b control: | ssh host bash"
+t "echo '$D -rf $P/results' | ssh t3 'bash -s'"                 deny "#35b control: | ssh host 'bash -s'"
+t "echo '$D -rf $P/results' | ssh t3 python3 -"                 deny "#35b control: | ssh host python3 -"
+t "echo '$D -rf $P/results' | ssh t3 python3 x.py"              pass "#35b | ssh host python3 x.py is data"
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

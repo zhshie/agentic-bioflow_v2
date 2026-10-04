@@ -794,5 +794,14 @@ idg "#45 sourcing it with no operation does not ask"       allow 'source "script
 idg "#45 control: sourcing it with add still asks"         ask   'source scripts/egress_allow.sh add x.org --reason r'
 idg "#45 control: a bare run with no operation still asks" ask   'bash scripts/egress_allow.sh'
 idg "#45 control: add after a reader segment still asks"   ask   'cat scripts/egress_allow.sh; bash scripts/egress_allow.sh add x.org --reason r'
+# After independent acceptance (#35): data piped into a runner that has its own script
+# file / remote command is data; a runner reading stdin is still code.
+t "echo '$LAUNCH x' | python3 count_words.py"         pass "#35b data piped into python3 script.py"
+t "echo '$LAUNCH x' | ssh t3 'cat >> notes.md'"        pass "#35b data piped into ssh host 'cmd'"
+t "echo '$LAUNCH x' | python3 -"                       gate "#35b control: | python3 -"
+t "echo '$LAUNCH x' | python3"                         gate "#35b control: | python3 (no script)"
+t "echo '$LAUNCH x' | sh"                              gate "#35b control: | sh"
+t "echo '$LAUNCH x' | ssh t3"                          gate "#35b control: | ssh host (no remote command)"
+t "echo '$LAUNCH x' | ssh t3 bash"                     gate "#35b control: | ssh host bash"
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
