@@ -160,7 +160,7 @@ mark_in_use() {
 # about - is reaching for the plugin as far as this can tell. The overview waits
 # for the prompt to START with it (below); the marker does not: unsure is in use.
 if [ "$IS_UPS" = 1 ]; then
-    case "$INPUT" in *'/agentic-bioflow:'*) mark_in_use ;; esac
+    case "$INPUT" in *'agentic-bioflow:'*) mark_in_use ;; esac   # with or without the slash (#53)
 fi
 [ -n "$SID" ] && [ -e "$MARKS/$SID" ] && exit 0
 

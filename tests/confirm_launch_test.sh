@@ -463,6 +463,11 @@ msys_ask  "ssh u@login 'ssh -o \"BatchMode=yes\" node01 squeue'" "M3a ...same wi
 msys_ask  "ssh -o BatchMode=yes -J u@login u@node01 squeue"  "M3b a jump host (-J) can still prompt: asks"
 msys_ask  "ssh -o BatchMode=yes -oProxyJump=u@login u@node01 squeue" "M3b ProxyJump option: asks"
 msys_ask  "ssh -o BatchMode=yes -o ProxyCommand='ssh u@login -W %h:%p' u@node01 squeue" "M3b ProxyCommand: asks"
+# #53: a config file named on the command line can carry a ProxyJump too.
+msys_ask  "ssh -o BatchMode=yes -F jump.cfg u@node01 squeue" "#53 -F cfg (may hold a ProxyJump): asks"
+msys_ask  "ssh -o BatchMode=yes -Fjump.cfg u@node01 squeue"  "#53 -Fcfg glued: asks"
+msys_ask  "scp -o BatchMode=yes -F jump.cfg a u@node01:b"    "#53 scp -F cfg: asks"
+msys_pass "ssh -o BatchMode=yes -i /k u@node01 squeue"       "#53 control: the same call without -F: not flagged"
 msys_ask  "ssh u@login squeue -o BatchMode=yes"        "M3c BatchMode after the destination belongs to the remote command: asks"
 msys_ask  "rsync -av a u@host:b -o BatchMode=yes"      "M3c rsync -o is not ssh's option: asks"
 msys_ask  "rsync -e 'ssh -o BatchMode=yes' a u@host:b" "M3c rsync -e carries its own ssh: asks"
