@@ -166,6 +166,38 @@ else
     CMD=$(echo "$INPUT" | jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' 2>/dev/null)
 fi
 
+# Fail-CLOSED output (invariant 13, SN3). Every verdict below is built by jq from
+# strings that can be as large as the command itself, and `jq --arg` puts them in
+# argv, which the OS limits (about 32 KB on Windows, 128 KiB on Linux). A jq that
+# fails there prints nothing and the hook used to exit 0 = the call PROCEEDS. So:
+# (1) what is displayed is bounded, with a marker saying what was left out (the
+# verdict was already reached on the whole text), and (2) if jq still cannot
+# build the output, a fixed minimal ask is printed instead of nothing.
+abf_cap() { # abf_cap <text> -> ABF_CAP, at most ~6000 characters
+    ABF_CAP=$1
+    if [ "${#1}" -gt 6000 ]; then
+        ABF_CAP="${1:0:3000}
+
+[... $(( ${#1} - 6000 )) characters left out of this display; the whole command was checked ...]
+
+${1: -3000}"
+    fi
+}
+abf_emit() { # abf_emit <ask|deny|-> <permissionDecisionReason or -> <additionalContext or ->
+    local o r c
+    abf_cap "$2"; r=$ABF_CAP; abf_cap "$3"; c=$ABF_CAP
+    if o=$(jq -n --arg d "$1" --arg r "$r" --arg c "$c" \
+        '{hookSpecificOutput: ({hookEventName: "PreToolUse"}
+            + (if $d != "-" then {permissionDecision: $d} else {} end)
+            + (if $r != "-" then {permissionDecisionReason: $r} else {} end)
+            + (if $c != "-" then {additionalContext: $c} else {} end))}' 2>/dev/null) \
+       && [[ $o == '{'* ]]; then
+        printf '%s\n' "$o"
+    else
+        printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"GATE: this hook could not build its own message (jq failed), so it cannot rule this call out. Show the user the full command and confirm it by hand before it runs.","additionalContext":"GATE: the hook could not build its message; treat this call as gated and confirm it with the user."}}'
+    fi
+}
+
 # T1, part 2: jq is fine, but no field this file knows to check carried a
 # command. For Bash that never happens in practice; for anything else the
 # tool's own shape is what this file cannot parse - not that there is
@@ -173,9 +205,7 @@ fi
 # except the message names the tool rather than the missing binary.
 if [ "$TOOL" != "Bash" ] && [ -z "$CMD" ]; then
     if looks_delete_shaped "$INPUT"; then
-        jq -n --arg m "GATE: this call came from a tool ('${TOOL:-<unnamed>}') whose input this hook does not parse - checked tool_input.command/script/cmd/commandLine/powershell/input, all empty - and the raw payload matches a deletion-shaped pattern. Confirm with the user, by hand, that this does not touch rawdata/, results/, analysis/ or .nextflow/plugins/ before it runs." \
-              --arg r "Unreadable tool input from '${TOOL:-<unnamed>}' that looks deletion-shaped." \
-          '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: $r, additionalContext: $m}}'
+        abf_emit ask "Unreadable tool input from '${TOOL:-<unnamed>}' that looks deletion-shaped." "GATE: this call came from a tool ('${TOOL:-<unnamed>}') whose input this hook does not parse - checked tool_input.command/script/cmd/commandLine/powershell/input, all empty - and the raw payload matches a deletion-shaped pattern. Confirm with the user, by hand, that this does not touch rawdata/, results/, analysis/ or .nextflow/plugins/ before it runs."
     fi
     exit 0
 fi
@@ -192,12 +222,11 @@ if [[ $CMD == *'<<'* ]]; then
 fi
 
 deny() {
-    jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
-        permissionDecision: "deny", permissionDecisionReason: $m}}'
+    abf_emit deny "$1" -
     exit 0
 }
 warn() {
-    jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $m}}'
+    abf_emit - - "$1"
     exit 0
 }
 # R2: same message as warn(), but also asks Claude Code itself to pause for
@@ -206,8 +235,7 @@ warn() {
 # the one branch PRINCIPLES.md actually names as needing explicit
 # confirmation - deleting work/ or .nextflow/cache/ - not every warn() below.
 ask() {
-    jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
-        permissionDecision: "ask", permissionDecisionReason: $m, additionalContext: $m}}'
+    abf_emit ask "$1" "$1"
     exit 0
 }
 

@@ -160,11 +160,41 @@ else
     TP=$(jq   -r '.transcript_path // ""'      <<<"$INPUT" 2>/dev/null)
 fi
 
+# Fail-CLOSED output (invariant 13, SN3). Every verdict below is built by jq from
+# strings that can be as large as the command itself, and `jq --arg` puts them in
+# argv, which the OS limits (about 32 KB on Windows, 128 KiB on Linux). A jq that
+# fails there prints nothing and the hook used to exit 0 = the call PROCEEDS. So:
+# (1) what is displayed is bounded, with a marker saying what was left out (the
+# verdict was already reached on the whole text), and (2) if jq still cannot
+# build the output, a fixed minimal ask is printed instead of nothing.
+abf_cap() { # abf_cap <text> -> ABF_CAP, at most ~6000 characters
+    ABF_CAP=$1
+    if [ "${#1}" -gt 6000 ]; then
+        ABF_CAP="${1:0:3000}
+
+[... $(( ${#1} - 6000 )) characters left out of this display; the whole command was checked ...]
+
+${1: -3000}"
+    fi
+}
+abf_emit() { # abf_emit <ask|deny|-> <permissionDecisionReason or -> <additionalContext or ->
+    local o r c
+    abf_cap "$2"; r=$ABF_CAP; abf_cap "$3"; c=$ABF_CAP
+    if o=$(jq -n --arg d "$1" --arg r "$r" --arg c "$c" \
+        '{hookSpecificOutput: ({hookEventName: "PreToolUse"}
+            + (if $d != "-" then {permissionDecision: $d} else {} end)
+            + (if $r != "-" then {permissionDecisionReason: $r} else {} end)
+            + (if $c != "-" then {additionalContext: $c} else {} end))}' 2>/dev/null) \
+       && [[ $o == '{'* ]]; then
+        printf '%s\n' "$o"
+    else
+        printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"GATE: this hook could not build its own message (jq failed), so it cannot rule this call out. Show the user the full command and confirm it by hand before it runs.","additionalContext":"GATE: the hook could not build its message; treat this call as gated and confirm it with the user."}}'
+    fi
+}
+
 allow() { exit 0; }
-deny()  { jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
-            permissionDecision: "deny", permissionDecisionReason: $m}}'; exit 0; }
-warn()  { jq -n --arg m "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
-            additionalContext: $m}}'; exit 0; }
+deny()  { abf_emit deny "$1" -; exit 0; }
+warn()  { abf_emit - - "$1"; exit 0; }
 
 # T1, part 2: everything below reads TOOL/CMD/FILE/CONTENT under the
 # assumption that TOOL is one of the five this file was written for. hooks.json's

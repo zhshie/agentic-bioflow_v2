@@ -199,6 +199,38 @@ else
     CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
 fi
 
+# Fail-CLOSED output (invariant 13, SN3). Every verdict below is built by jq from
+# strings that can be as large as the command itself, and `jq --arg` puts them in
+# argv, which the OS limits (about 32 KB on Windows, 128 KiB on Linux). A jq that
+# fails there prints nothing and the hook used to exit 0 = the call PROCEEDS. So:
+# (1) what is displayed is bounded, with a marker saying what was left out (the
+# verdict was already reached on the whole text), and (2) if jq still cannot
+# build the output, a fixed minimal ask is printed instead of nothing.
+abf_cap() { # abf_cap <text> -> ABF_CAP, at most ~6000 characters
+    ABF_CAP=$1
+    if [ "${#1}" -gt 6000 ]; then
+        ABF_CAP="${1:0:3000}
+
+[... $(( ${#1} - 6000 )) characters left out of this display; the whole command was checked ...]
+
+${1: -3000}"
+    fi
+}
+abf_emit() { # abf_emit <ask|deny|-> <permissionDecisionReason or -> <additionalContext or ->
+    local o r c
+    abf_cap "$2"; r=$ABF_CAP; abf_cap "$3"; c=$ABF_CAP
+    if o=$(jq -n --arg d "$1" --arg r "$r" --arg c "$c" \
+        '{hookSpecificOutput: ({hookEventName: "PreToolUse"}
+            + (if $d != "-" then {permissionDecision: $d} else {} end)
+            + (if $r != "-" then {permissionDecisionReason: $r} else {} end)
+            + (if $c != "-" then {additionalContext: $c} else {} end))}' 2>/dev/null) \
+       && [[ $o == '{'* ]]; then
+        printf '%s\n' "$o"
+    else
+        printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"GATE: this hook could not build its own message (jq failed), so it cannot rule this call out. Show the user the full command and confirm it by hand before it runs.","additionalContext":"GATE: the hook could not build its message; treat this call as gated and confirm it with the user."}}'
+    fi
+}
+
 # "Does this string start a run" is a judgement several hooks need to reach
 # identically, so it lives in one sourced file instead of being restated here.
 # Sourced relative to $0 the same way strip_heredocs.awk is, so a direct
@@ -216,10 +248,9 @@ fi
 # to judge.
 if ! . "$HD/launch_trigger.sh" 2>/dev/null \
    || ! declare -F is_launch_command >/dev/null 2>&1; then
-    jq -n --arg m "GATE NOT WORKING: hooks/launch_trigger.sh could not be loaded, so this command was NOT checked and no other command will be either.
+    abf_emit - - "GATE NOT WORKING: hooks/launch_trigger.sh could not be loaded, so this command was NOT checked and no other command will be either.
 
-Reinstall or repair the plugin. Until then the launch gate is absent: treat anything that can start a run - tw launch, tw runs relaunch, sbatch, nextflow run - as ungated, and confirm it with the user by hand." \
-      '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $m}}'
+Reinstall or repair the plugin. Until then the launch gate is absent: treat anything that can start a run - tw launch, tw runs relaunch, sbatch, nextflow run - as ungated, and confirm it with the user by hand."
     exit 0
 fi
 
@@ -227,8 +258,7 @@ fi
 # below and D3's transport ask further down both end here, rather than each
 # carrying its own `jq -n` call that could drift out of sync with the other.
 ask() { # ask <additionalContext message> <permissionDecisionReason>
-    jq -n --arg m "$1" --arg r "$2" \
-      '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: $r, additionalContext: $m}}'
+    abf_emit ask "$2" "$1"
     exit 0
 }
 
