@@ -804,4 +804,64 @@ t "echo '$LAUNCH x' | sh"                              gate "#35b control: | sh"
 t "echo '$LAUNCH x' | ssh t3"                          gate "#35b control: | ssh host (no remote command)"
 t "echo '$LAUNCH x' | ssh t3 bash"                     gate "#35b control: | ssh host bash"
 
+echo
+echo "== #45 after independent acceptance: glob and source false alarms, Write without jq, Windows paths =="
+# 3. a glob names egress_allow.tsv only if its text carries the name (egress...,
+# egr*ow, ...allow...) or its folder is this deployment's config folder
+idg "#45b cp results/*.tsv elsewhere does not ask"         allow 'cp /home/u/proj/results/*.tsv /tmp/out/'
+idg "#45b gzip analysis/*.tsv does not ask"                allow 'gzip /home/u/proj/analysis/*.tsv'
+idg "#45b a script over results/*/*.tsv does not ask"      allow 'python3 scripts/merge_tables.py /home/u/proj/results/*/*.tsv -o merged.tsv'
+idg "#45b csvtk concat results/*.tsv > all.tsv"            allow 'csvtk concat /home/u/proj/results/*.tsv > all.tsv'
+idg "#45b find . -name '*.tsv' -newer x does not ask"      allow "find . -name '*.tsv' -newer x"
+idg "#45b cp egress_allow.tsv elsewhere (a source) is a read" allow 'cp egress_allow.tsv /tmp/bk.tsv'
+idg "#45b cp cfg/egress_allow.tsv /tmp/bk.tsv is a read"   allow 'cp cfg/egress_allow.tsv /tmp/bk.tsv'
+idg "#45b scp-style read: rsync cfg/egress_allow.tsv /tmp/"  allow 'rsync -a cfg/egress_allow.tsv /tmp/'
+idg "#45b control: cp over it still asks"                  ask   'cp new.tsv cfg/egress_allow.tsv'
+idg "#45b control: cp -t its folder, source named, no ask" allow 'cp -t /tmp/bk cfg/egress_allow.tsv'
+idg "#45b control: mv of it asks (the source is removed)"  ask   'mv cfg/egress_allow.tsv /tmp/bk.tsv'
+idg "#45b control: a glob with egress in it asks"          ask   'echo x.org >> cfg/egress_allo?.tsv'
+idg "#45b control: egr*ow.tsv asks"                        ask   'echo x.org >> cfg/egr*ow.tsv'
+idg "#45b control: e*ss_allow.tsv asks"                    ask   'echo x.org >> cfg/e*ss_allow.tsv'
+idg "#45b control: a glob in the config folder asks"       ask   "echo x.org >> $TMP/*.tsv"
+idg "#45b control: a ?-glob in the config folder asks"     ask   "echo x.org >> $TMP/????????????.tsv"
+idg "#45b control: tee -a on a config-folder glob asks"    ask   "echo x.org | tee -a $TMP/*.tsv"
+idg "#45b control: cp to a config-folder glob asks"        ask   "cp new.tsv $TMP/*.tsv"
+# a variable-named script asks only when the text says egress or the script is in the plugin's scripts folder
+idg "#45b bash \$HOME/bin/todo.sh add milk does not ask"   allow 'bash $HOME/bin/todo.sh add milk'
+idg "#45b bash ./\$SCRIPT remove x does not ask"           allow 'bash ./$SCRIPT remove x'
+idg "#45b control: a variable script in scripts/ asks"     ask   'bash "scripts/$a.sh" add x.org --reason r'
+idg "#45b control: a variable script under the plugin root asks" ask 'bash "$CLAUDE_PLUGIN_ROOT/scripts/$a.sh" add x.org --reason r'
+# 5. Windows paths: a backslash is a separator, not an escape
+idg "#45b Add-Content C:\\...\\egress_allow.tsv asks"       ask   'Add-Content C:\Users\u\cfg\egress_allow.tsv '"'x'"
+idg "#45b Set-Content -Path C:\\...\\egress_allow.tsv asks" ask   'Set-Content -Path C:\Users\u\cfg\egress_allow.tsv '"'x'"
+idg "#45b | Out-File -Append C:\\...\\egress_allow.tsv asks" ask   "'x' | Out-File -Append "'C:\Users\u\cfg\egress_allow.tsv'
+idg "#45b Add-Content .\\egress_allow.tsv asks"             ask   'Add-Content .\egress_allow.tsv '"'x'"
+idg "#45b notepad C:\\...\\egress_allow.tsv asks"           ask   'notepad C:\Users\u\cfg\egress_allow.tsv'
+idg "#45b bash redirect to a quoted Windows path asks"     ask   'echo x >> "C:\Users\u\cfg\egress_allow.tsv"'
+idg "#45b control: a backslash-escaped name still asks"    ask   'echo x.org >> cfg/egr\ess_allow.tsv'
+idg "#45b control: Get-Content of it does not ask"         allow 'Get-Content C:\Users\u\cfg\egress_allow.tsv'
+idg "#45b control: a Windows path to another file"         allow 'Add-Content C:\Users\u\cfg\notes.txt '"'x'"
+# 4. Write/Edit without jq: the raw payload is file CONTENT, not a command
+NOJQ_S="$TMP/nojq_s"; mkdir -p "$NOJQ_S"; NOJQ_P=$(nojq_path "$NOJQ_S") || { echo "cannot build a PATH without jq"; exit 1; }
+nojqw() { # nojqw <label> <expect pass|ask|block> <tool> <file_path> <content>
+  local j o rc got
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":sys.argv[1],"hook_event_name":"PreToolUse","cwd":"/home/u/proj","tool_input":{"file_path":sys.argv[2],"content":sys.argv[3],"new_string":sys.argv[3]}}))' "$3" "$4" "$5")
+  o=$(printf '%s' "$j" | PATH="$NOJQ_P" bash "$H" 2>/dev/null); rc=$?
+  got=pass
+  [ "$rc" = 2 ] && got=block
+  [ "$rc" = 0 ] && grep -q '"permissionDecision": *"ask"' <<<"$o" && got=ask
+  printf '%-58s ' "$1"
+  [ "$got" = "$2" ] && echo ok || { echo "FAIL: expected $2, got $got (rc=$rc)"; fails=$((fails+1)); }
+}
+nojqw "#45b no jq: Write of a README mentioning ' rsync ' passes"  pass  Write /home/u/proj/README.md 'copy with rsync -a src dst'
+nojqw "#45b no jq: Write of a README mentioning ' ssh ' passes"    pass  Write /home/u/proj/README.md 'connect with ssh host'
+nojqw "#45b no jq: Edit mentioning ' sbatch ' passes"              pass  Edit  /home/u/proj/README.md 'submit with sbatch job.sh'
+nojqw "#45b no jq: MultiEdit mentioning tw launch passes"          pass  MultiEdit /home/u/proj/README.md 'run tw launch x'
+nojqw "#45b no jq: Write to egress_allow.tsv asks"                 ask   Write /home/u/cfg/egress_allow.tsv 'x.org'
+nojqw "#45b no jq: Write to a Windows egress_allow.tsv asks"       ask   Write 'C:\Users\u\cfg\egress_allow.tsv' 'x.org'
+nojqw "#45b no jq: control: egress_allow.tsv.bak passes"           pass  Write /home/u/cfg/egress_allow.tsv.bak 'x.org'
+printf '%-58s ' "#45b no jq: control: a Bash ssh is still BLOCKED"
+python3 -c "import json,sys;print(json.dumps({'tool_name':'Bash','tool_input':{'command':sys.argv[1]}}))" "ssh twnia3 ls" | PATH="$NOJQ_P" bash "$H" >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && echo ok || { echo "FAIL: rc=$rc"; fails=$((fails+1)); }
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
