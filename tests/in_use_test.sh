@@ -471,9 +471,16 @@ PS_IN=$(jq -nc --arg d "$OUTSIDE" --arg c 'Remove-Item -Recurse -Force $env:USER
 run confirm_cleanup.sh "$PS_IN" XDG_CONFIG_HOME="$CFG3"
 check "paths: control: \$env:USERPROFILE\\other3\\p\\results"              silent
 run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'x=~/runs3/p/results; rm -rf $x')" XDG_CONFIG_HOME="$CFG3"
-check "paths: x=~/runs3/p/results; rm -rf \$x"                             deny
+check "paths: x=~/runs3/p/results; rm -rf \$x (gated: ask or deny)"        'ask|deny'
 run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'x=~/other3/p/results; rm -rf $x')" XDG_CONFIG_HOME="$CFG3"
 check "paths: control: x=~/other3/p/results"                               silent
+U62=$(id -un 2>/dev/null)
+if [ -n "$U62" ]; then
+  run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "rm -rf ~$U62/runs3/p/results")" XDG_CONFIG_HOME="$CFG3" USER="$U62"
+  check "paths: ~<this user>/runs3/p/results"                               deny
+  run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "rm -rf ~$U62/other3/p/results")" XDG_CONFIG_HOME="$CFG3" USER="$U62"
+  check "paths: control: ~<this user>/other3/p/results"                     silent
+fi
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

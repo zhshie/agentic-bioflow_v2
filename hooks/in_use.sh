@@ -148,6 +148,28 @@ _abf_text_has() {
     return 1
 }
 
+# The relative path from canonical directory $1 to canonical path $2 (`runs3`,
+# `../runs3`, `home/runs3`), in REPLY. Case-insensitive like the rest
+# (nocasematch is on inside abf_in_use).
+_abf_rel() {
+    local f="$1" up=""
+    while [ -n "$f" ] && ! _abf_under "$2" "$f"; do
+        f="${f%/*}"; up="$up../"
+    done
+    REPLY="${2:${#f}}"; REPLY="$up${REPLY#/}"; REPLY="${REPLY%/}"
+}
+
+# True when text $1 holds relative path $2 at the start of a word (after a
+# blank, a quote, `=`, `:`, a separator, or `./`) as a whole path. A single
+# name under 4 characters is ignored: short names prove nothing.
+_abf_text_has_rel() {
+    local r="$2" re_before='(^|[[:space:]=":;&|(])(\./)?' re_after='($|[^A-Za-z0-9_.-])'
+    [ -n "$r" ] || return 1
+    case "$r" in */*) ;; *) [ "${#r}" -ge 4 ] || return 1 ;; esac
+    [[ $1 == *"$r"* ]] || return 1
+    [[ $1 =~ $re_before"$r"$re_after ]]
+}
+
 # _abf_read_key <file> <key>  ->  REPLY (empty when absent). The same reading
 # scripts/settings.sh does: `key: value`, cut at the first `#`.
 _abf_read_key() {
@@ -278,6 +300,23 @@ _abf_in_use_inner() {
         _abf_canon "$HOME"; h="$REPLY"
         text="${text//\$\{HOME\}/$h}"; text="${text//\$HOME/$h}"
         text="${text// \~\// $h/}"
+        # in-use-path-spellings: PowerShell's and cmd's names for the home
+        # directory, and a `~/` that starts the text or follows `=`, `:` or a
+        # quote (`x=~/runs3`, `--dir=~/runs3`, a command that starts with it).
+        case "$text" in
+            *USERPROFILE*|*'env:HOME'*)
+                text="${text//\$\{env:USERPROFILE\}/$h}"; text="${text//\$env:USERPROFILE/$h}"
+                text="${text//%USERPROFILE%/$h}"; text="${text//\$env:HOME/$h}" ;;
+        esac
+        case "$text" in
+            '~/'*|*'=~/'*|*':~/'*|*'"~/'*)
+                case "$text" in '~/'*) text="$h/${text#\~/}" ;; esac
+                text="${text//=\~\//=$h/}"; text="${text//:\~\//:$h/}"; text="${text//\"\~\//\"$h/}" ;;
+        esac
+        # `~<this user>/` is the same home directory.
+        local u="${USER:-${LOGNAME:-${USERNAME:-}}}"
+        u="${u//[^A-Za-z0-9._-]/}"
+        if [ -n "$u" ] && [[ $text == *"~$u/"* ]]; then text="${text//\~$u\//$h/}"; fi
     fi
     [[ $text =~ $re_tw ]] && return 0
     # Naming the plugin's install location without its resolved path: the
@@ -354,8 +393,29 @@ _abf_in_use_inner() {
             _abf_under "$c" "$b" && return 0
         done
     done
+    # in-use-path-spellings: `$LAB_RUNS_DIR` names this deployment's run area -
+    # the value this hook sees, or when it has none, the deployment's own
+    # storage_root (settings.sh exports one as the other). Any other
+    # `${LAB_RUNS_DIR...}` form (a default, a trim) names it as well.
+    if [[ $text == *LAB_RUNS_DIR* ]]; then
+        local lrd="${runs:-$sroot}"
+        if [ -n "$lrd" ]; then
+            text="${text//\$\{LAB_RUNS_DIR\}/$lrd}"; text="${text//\$LAB_RUNS_DIR/$lrd}"
+            text="${text//\$env:LAB_RUNS_DIR/$lrd}"; text="${text//%LAB_RUNS_DIR%/$lrd}"
+            [[ $text == *'${LAB_RUNS_DIR'* ]] && return 0
+        fi
+    fi
     for b in "${bases[@]}"; do
         _abf_text_has "$text" "$b" && return 0
+    done
+    # in-use-path-spellings: a relative path from the session's folder - one
+    # above storage_root (`runs3/p/results`, `cd runs3/p`) or beside it
+    # (`../runs3/p/results`). String work only, no process.
+    for c in "${cwds[@]}"; do
+        for b in "${bases[@]}"; do
+            _abf_rel "$c" "$b"
+            _abf_text_has_rel "$text" "$REPLY" && return 0
+        done
     done
     # A `cd` with no destination (or to ~ / $HOME) starts a relative walk from
     # home, so `cd && cd runs3 && ...` names no root as written (#53). When a
