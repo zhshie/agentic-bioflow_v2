@@ -111,6 +111,54 @@ tracing=$(grep -E '(^|[^[:alnum:]_])(set|bash|sh)[[:space:]]+-[euopxv]*x[euopxv]
 
 [ "$STATIC_ONLY" = 1 ] && { [ "$fails" -gt 0 ] && exit 1; exit 0; }
 
+# 4. NEVER IN A PARAMS FILE --------------------------------------------------
+# hooks/confirm_walkthrough.sh sees every write to a params file (Write, Edit,
+# a here-doc). A credential in one is carried into the run's record, the
+# provenance and every package built from it, so the write is refused whether
+# or not the walkthrough happened, and the user's 略過導覽 does not lift it.
+H="$ROOT/hooks/confirm_walkthrough.sh"
+if [ -x "$H" ] || [ -f "$H" ]; then
+    command -v jq >/dev/null 2>&1 || { echo "FAIL: jq not found; cannot run the params-file cases"; exit 1; }
+    TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+    python3 - "$TMP/escape.jsonl" "$TMP/empty.jsonl" <<'PY'
+import json, sys
+for path, turns in ((sys.argv[1], ["略過導覽"]), (sys.argv[2], [])):
+    with open(path, "w") as f:
+        for t in turns:
+            f.write(json.dumps({"type": "user", "message": {"content": [{"type": "text", "text": t}]}}) + "\n")
+PY
+    verdict() { # verdict <tool-json> <transcript> -> allow | deny
+        local out
+        out=$(python3 -c '
+import json,sys
+d=json.loads(sys.argv[1]); d["transcript_path"]=sys.argv[2]; print(json.dumps(d))' "$1" "$2" | bash "$H" 2>/dev/null)
+        if grep -q '"permissionDecision": *"deny"' <<<"$out"; then echo deny; else echo allow; fi
+    }
+    pw() { python3 -c '
+import json,sys
+print(json.dumps({"tool_name":"Write","tool_input":{"file_path":"/r/params.yaml","content":sys.argv[1]}}))' "$1"; }
+    ed() { python3 -c '
+import json,sys
+print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":"/r/params.yaml","old_string":"x: 1","new_string":sys.argv[1]}}))' "$1"; }
+    hd() { python3 -c '
+import json,sys
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":"cat > params.yaml <<EOF\n"+sys.argv[1]+"\nEOF"}}))' "$1"; }
+    case_() { # case_ <label> <want> <tool-json>
+        local got; got=$(verdict "$3" "$TMP/escape.jsonl")
+        [ "$got" = "$2" ] || fail "PARAMS  $1: got $got, wanted $2"
+    }
+    # Every case runs with 略過導覽 said, so the walkthrough gate itself is
+    # standing down: only the credential rule can be what answers.
+    case_ "ordinary parameters pass"                    allow "$(pw $'outdir: /w/projects/p/runs/r1/results\ninput: s.csv\nskip_trimming: true')"
+    case_ "a prose comment about tokens passes"         allow "$(pw $'# no token here, the settings area has it\noutdir: /w/projects/p/runs/r1/results')"
+    case_ "a token key with a long value is refused"    deny  "$(pw $'outdir: /w/projects/p/runs/r1/results\ntower_access_token: Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA')"
+    case_ "a password key is refused"                   deny  "$(pw $'outdir: /w/projects/p/runs/r1/results\ndb_password: hunter2hunter2')"
+    case_ "an api_key is refused"                       deny  "$(pw $'outdir: /w/projects/p/runs/r1/results\napi_key: abcd1234efgh5678')"
+    case_ "a JWT-shaped value under any key is refused" deny  "$(pw $'outdir: /w/projects/p/runs/r1/results\nnote: eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjEyMzQ1fQ.c2lnbmF0dXJlMTIzNDU')"
+    case_ "an Edit that adds a token is refused"        deny  "$(ed $'tower_access_token: Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA')"
+    case_ "a here-doc that writes a token is refused"   deny  "$(hd $'outdir: /w/projects/p/runs/r1/results\nsecret: Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA')"
+fi
+
 # ---------------------------------------------------------------------------
 if [ "$fails" -gt 0 ]; then
     echo
