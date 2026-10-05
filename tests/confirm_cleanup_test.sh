@@ -620,6 +620,8 @@ t "$RCL sync $P/results remote:backup"                    pass "control: rclone 
 t "$RCL purge remote:scratch"                             pass "control: rclone purge elsewhere"
 t "$RCL delete --dry-run $P/results"                      pass "control: rclone delete --dry-run"
 t "$RCL ls $P/results"                                    pass "control: rclone ls"
+tc "$P/work" "$RCL purge remote:scratch"                  pass "control: a remote path is not under the working folder"
+tc "$P/work" "$RCL sync $P/results remote:backup"         pass "control: ...nor is a remote destination"
 # deletes written as node / ruby / pathlib code: ask, as python already does
 t "node -e \"require('fs').rmSync('$P/results',{recursive:true})\"" ask "node require('fs').rmSync(...)"
 t "node -e \"fs.promises.rm('$P/results',{recursive:true})\""       ask "node fs.promises.rm(...)"
