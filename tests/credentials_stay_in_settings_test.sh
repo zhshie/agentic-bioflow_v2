@@ -151,7 +151,8 @@ print(json.dumps({"tool_name":"Bash","tool_input":{"command":"cat > params.yaml 
     # standing down: only the credential rule can be what answers.
     case_ "ordinary parameters pass"                    allow "$(pw $'outdir: /w/projects/p/runs/r1/results\ninput: s.csv\nskip_trimming: true')"
     case_ "a prose comment about tokens passes"         allow "$(pw $'# no token here, the settings area has it\noutdir: /w/projects/p/runs/r1/results')"
-    case_ "a token key with a long value is refused"    deny  "$(pw $'outdir: /w/projects/p/runs/r1/results\ntower_access_token: Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA')"
+    case_ "a parameter that merely contains 'token' passes" allow "$(pw $'tokenizer: models/bpe/tokenizer.model\nmax_tokens: 512')"
+    case_ "a token key with a long value is refused"   deny  "$(pw $'outdir: /w/projects/p/runs/r1/results\ntower_access_token: Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA')"
     case_ "a password key is refused"                   deny  "$(pw $'outdir: /w/projects/p/runs/r1/results\ndb_password: hunter2hunter2')"
     case_ "an api_key is refused"                       deny  "$(pw $'outdir: /w/projects/p/runs/r1/results\napi_key: abcd1234efgh5678')"
     case_ "a JWT-shaped value under any key is refused" deny  "$(pw $'outdir: /w/projects/p/runs/r1/results\nnote: eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjEyMzQ1fQ.c2lnbmF0dXJlMTIzNDU')"

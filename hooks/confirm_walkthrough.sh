@@ -250,6 +250,25 @@ case "$FILE" in
     *params*.yml|*params*.yaml) G2=1 ;;
 esac
 
+# G7: a credential never goes into a params file (constitution, Safety Net,
+# fourth rule). A params file is copied into the run's record, the provenance
+# and every package built from it; the deployment's settings area is the only
+# place a credential lives. Unlike G1-G6 this is not a missing walkthrough step,
+# so it is decided here, before the escape phrase and the transcript are read:
+# nothing the user said earlier lifts it. It runs only when the call already is
+# a params write, so every other call pays nothing. The payload is the raw JSON
+# (Write, Edit, MultiEdit and a here-doc all carry their text in it), so a key
+# may be followed by an escaped quote.
+if [ "$G2" = 1 ]; then
+    G7_KEY='(token|secret|passw(or)?d|api_?key|access_?key|private_?key)(_[A-Za-z0-9_]*)?[\\"'"'"']*[[:space:]]*[:=][[:space:]]*[\\"'"'"']*[A-Za-z0-9+/_=.-]{12,}'
+    G7_SHAPE='eyJ[A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]{10,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    G7_HIT=0
+    shopt -s nocasematch
+    { [[ $INPUT =~ $G7_KEY ]] || [[ $INPUT =~ $G7_SHAPE ]]; } && G7_HIT=1
+    shopt -u nocasematch
+    [ "$G7_HIT" = 1 ] && deny "GATE: this params file carries what looks like a credential (a token, password, secret or key with a value, or a token-shaped string). Credentials and personal details live only in the deployment's own settings area, readable by the owner only - never in a params file, which is copied into the run's record, its provenance and any package built from it. Take it out of the file. If the pipeline really needs a secret at run time, it belongs in Seqera Platform's secrets, not in params. This is not something the user's 略過導覽 lifts."
+fi
+
 # G4: writing analysis or plotting code into a project's analysis/ directory.
 #
 # The extension list is a whitelist on purpose. analysis/ also holds the plan
