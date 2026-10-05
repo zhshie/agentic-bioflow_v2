@@ -72,7 +72,8 @@ looks_managed_write_shaped() {
     local text=" $(printf '%s' "$1" | tr -s "$LOOKS_SHAPED_SEP" ' ') "
     case "$text" in
         *samplesheet*|*'params.yml'*|*'params.yaml'*|*' tw launch '*|*' tw runs relaunch '*|*' sbatch '*|*' nextflow run '*|*outdir*|*'analysis/'*| \
-        *' tw datasets add '*|*generate_samplesheet*|*fastq_dir_to_samplesheet*)
+        *' tw datasets add '*|*generate_samplesheet*|*fastq_dir_to_samplesheet*| \
+        *' kuberun '*|*' nf-core launch '*|*' pipelines launch '*|*' actions trigger '*|*' seqerakit '*'.yml'*|*' seqerakit '*'.yaml'*|*' seqerakit - '*|*'/launch '*|*'/launch?'*)
             return 0 ;;
     esac
     return 1

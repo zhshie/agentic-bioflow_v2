@@ -44,10 +44,32 @@ case "$LAUNCH_TRIGGER_DIR" in /*|[A-Za-z]:*) ;; *) LAUNCH_TRIGGER_DIR="$PWD/$LAU
 # scripts/relaunch_with_override.sh --confirm runs `tw runs cancel` + `tw runs
 # relaunch` itself, where this gate cannot see them, so the wrapper's own
 # --confirm is the launch; without --confirm it only prints its plan.
-LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch)|sbatch|nextflow(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+run|relaunch_with_override\.sh([[:space:]]+[^[:space:]]+)*[[:space:]]+--confirm)([[:space:]]|$)'
+#
+# launch-shapes-unconfirmed: three more verbs that start a run - `tw actions
+# trigger` (a Platform action launches its pipeline), `nextflow kuberun`, and
+# nf-core's launcher (`nf-core launch`, `nf-core pipelines launch`: its wizard
+# ends in `nextflow run`).
+LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch|actions[[:space:]]+trigger)|sbatch|nextflow(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+(run|kuberun)|nf-core(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+launch|relaunch_with_override\.sh([[:space:]]+[^[:space:]]+)*[[:space:]]+--confirm)([[:space:]]|$)'
 # The program in a variable (`$T launch x`, `"$TW" runs relaunch`), used only
 # when the command word itself is a variable.
-LAUNCH_VARPROG_RE='^[^[:space:]]+([[:space:]]+-[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch|run)([[:space:]]|$)'
+LAUNCH_VARPROG_RE='^[^[:space:]]+([[:space:]]+-[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch|actions[[:space:]]+trigger|run|kuberun)([[:space:]]|$)'
+
+# seqerakit runs `tw` for every resource in the YAML it is given, launches
+# included. A run of it with a YAML file (or `-`, stdin) starts whatever that
+# file says; `--dryrun` / `-d` only prints the commands (seqerakit's cli.py).
+LAUNCH_SEQERAKIT_RE='(^|[^[:alnum:]_.-])seqerakit(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+([^[:space:]]*\.[Yy][Aa]?[Mm][Ll]|-)([[:space:]]|$)'
+LAUNCH_SEQERAKIT_WORD_RE='(^|[^[:alnum:]_.-])seqerakit(\.exe)?([[:space:]]|$)'
+LAUNCH_SEQERAKIT_DRY_RE='(^|[[:space:]])(--dryrun|-d)([[:space:]]|$)'
+
+# The Platform API's own launch endpoint: POST /workflow/launch, and POST
+# /actions/<id>/launch for an action. An HTTP client or a code call outside
+# quotes, a path ending in /launch (read with quotes dropped - a URL is usually
+# quoted), and a POST: the word itself in any case (-X POST, --post-data,
+# requests.post(, method="POST", -Method Post) or a body flag that makes curl
+# POST. A GET of /workflow/<id>/launch only describes a launch and stays quiet.
+LAUNCH_HTTP_CLIENT_RE='(^|[^[:alnum:]_.-])(curl|wget|http|https|xh|xhs|httpie|[Ii]nvoke-[Ww]eb[Rr]equest|[Ii][Ww][Rr]|[Ii]nvoke-[Rr]est[Mm]ethod|[Ii][Rr][Mm])(\.exe)?([[:space:]]|$)|\.(post|request)[[:space:]]*\(|(^|[^[:alnum:]_.])(fetch|urlopen|Request)[[:space:]]*\('
+LAUNCH_HTTP_PATH_RE='/launch([^[:alnum:]_-]|$)'
+LAUNCH_HTTP_POST_RE='(^|[^[:alnum:]_])[Pp][Oo][Ss][Tt]([^[:alnum:]_]|$)|(^|[[:space:]])(-d|--data[^[:space:]]*|--json|-F|--form[^[:space:]]*)([^[:alpha:]-]|$)'
 
 # A nested shell anywhere on the line. main's rule, kept as a floor (#29,
 # round 4): when a shell re-reads part of this line, quoted text inside it is
@@ -118,7 +140,8 @@ is_launch_command() {
     local CAND
     if [ "${#SEGS}" -gt 16384 ]; then
         CAND=$(awk -F"$US" '$3 == "__too_deep__" { print; next }
-            { s = $1; gsub(/["\047]/, "", s); if (index(s, "launch") || index(s, "sbatch") || index(s, "run") || index(s, "--confirm") || index($2, "launch") || index($2, "sbatch") || index($2, "run") || index($2, "--confirm")) print }' \
+            { s = $1; gsub(/["\047]/, "", s); t = s "\037" $2
+              if (index(t, "launch") || index(t, "sbatch") || index(t, "run") || index(t, "--confirm") || index(t, "trigger") || index(t, "seqerakit")) print }' \
             <<<"$SEGS" 2>/dev/null) && SEGS=$CAND
     fi
 
@@ -134,14 +157,15 @@ is_launch_command() {
         [ "$W" = "__too_deep__" ] && return 0
         # #62: a segment with none of the words any launch spelling needs cannot be
         # one (every form of LAUNCH_TRIGGER_RE / LAUNCH_VARPROG_RE holds `launch`,
-        # `sbatch`, `run` or `--confirm`), and the regexes below are the costly part
+        # `sbatch`, `run`, `trigger` or `--confirm`, the seqerakit and HTTP checks
+        # `seqerakit` and `/launch`), and the regexes below are the costly part
         # on Git Bash: thousands of here-doc lines ran past the hook's timeout.
         # Looked for in the quote-free column and in the segment with its quote
         # characters dropped, the two texts the checks below read: `s"b"atch` has
         # the word only in the second.
         SQ=${S//[\"\']/}
         case "$SQ$US$V" in
-            *launch*|*sbatch*|*run*|*--confirm*) ;;
+            *launch*|*sbatch*|*run*|*--confirm*|*trigger*|*seqerakit*) ;;
             *) continue ;;
         esac
         if ! [[ $V =~ $LAUNCH_TRIGGER_RE ]]; then
@@ -151,7 +175,7 @@ is_launch_command() {
             # commit message quoting "tw launch" is still not a launch.
             HIT=0
             case "$W" in
-                tw|nextflow|sbatch|relaunch_with_override.sh)
+                tw|nextflow|sbatch|nf-core|relaunch_with_override.sh)
                     [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] && HIT=1 ;;
                 # `T=tw; $T launch x`: the program is a variable, and its first
                 # argument is a launch verb.
@@ -180,6 +204,20 @@ is_launch_command() {
                     fi
                     [ "$NESTED" = 1 ] && [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] && HIT=1 ;;
             esac
+            # launch-shapes-unconfirmed: seqerakit given a YAML file, and a POST
+            # to the Platform API's launch endpoint. The program has to be on the
+            # quote-free column (or be the command word), so a commit message or
+            # an echo that only quotes one is not a launch.
+            if [ "$HIT" = 0 ]; then
+                if [[ $SQ =~ $LAUNCH_SEQERAKIT_RE ]] \
+                   && { [[ $V =~ $LAUNCH_SEQERAKIT_WORD_RE ]] || [ "$W" = seqerakit ]; } \
+                   && ! [[ $SQ =~ $LAUNCH_SEQERAKIT_DRY_RE ]]; then
+                    HIT=1
+                elif [[ $SQ =~ $LAUNCH_HTTP_PATH_RE ]] && [[ $V =~ $LAUNCH_HTTP_CLIENT_RE ]] \
+                   && [[ $SQ =~ $LAUNCH_HTTP_POST_RE ]]; then
+                    HIT=1
+                fi
+            fi
             [ "$HIT" = 1 ] || continue
         fi
         [[ $V =~ $LAUNCH_READONLY_RE ]] && continue

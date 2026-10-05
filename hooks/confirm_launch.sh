@@ -104,6 +104,11 @@ looks_launch_shaped() {
     case "$text" in
         *' tw launch '*|*' tw runs relaunch '*|*' sbatch '*|*' nextflow run '*|*' ssh '*|*' scp '*|*' rsync '*|*' sftp '*)
             return 0 ;;
+        # launch-shapes-unconfirmed: the other ways to start a run. A path ending
+        # in /launch (the Platform API's endpoint) cannot be told GET from POST
+        # here, so it counts.
+        *' kuberun '*|*' nf-core launch '*|*' pipelines launch '*|*' actions trigger '*|*' seqerakit '*'.yml'*|*' seqerakit '*'.yaml'*|*' seqerakit - '*|*'/launch '*|*'/launch?'*)
+            return 0 ;;
         # Identity and shared-process changes (the gate after the jq parse
         # below). Without jq the value being replaced cannot be compared, so
         # any change to these keys counts.
@@ -168,8 +173,9 @@ if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
         cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/confirm_launch.sh cannot read what
 this command is precisely - and the raw text of this one matches a launch- or
-site-transport-shaped pattern (tw launch / tw runs relaunch / sbatch / nextflow
-run / ssh / scp / rsync / sftp), so it is refused rather than guessed at. A
+site-transport-shaped pattern (tw launch / tw runs relaunch / tw actions trigger
+/ sbatch / nextflow run|kuberun / nf-core launch / seqerakit <file>.yml / an API
+path ending in /launch / ssh / scp / rsync / sftp), so it is refused rather than guessed at. A
 command that matches none of those patterns is let through unchanged - this is
 a narrower refusal than before, not a blanket one, but it still cannot see a
 launch hidden behind a variable or an alias the way the real check can.
