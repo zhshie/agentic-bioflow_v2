@@ -30,3 +30,7 @@ No jq: `truncate -s 0 …/results/x.tsv` and `unlink …/results/x.tsv` pass -> 
 - RED bb93e07: 13 failures. GREEN 2f0f3ea: all pass; `gate_output_failclosed_test.sh`, `gate_process_count_test.sh` (no extra program: the token rides on the same jq call), `principle_13_test.sh`, `confirm_cleanup_behind_heredoc_test.sh` green.
 - **Already covered before, kept**: `tests/gate_output_failclosed_test.sh` (jq that cannot build the answer: ask), the "no jq" and "broken jq (exit 127)" cases of `tests/confirm_cleanup_test.sh`.
 - **Not changed**: the other three gates have the same shape (`printf '{}' | jq -e .` as the probe, `[[ $o == '{'* ]]` as the output check, the same raw scan); another branch owns them. A jq that answers a plausible but wrong command is not detected (only an adversary does that).
+
+## Follow-up (from the sibling branch's review, A2 3be3332)
+
+- RED 242fc0e / GREEN below: the probe accepts one trailing CR (a Windows jq.exe line end); before, every delete-shaped command was refused as if jq were broken. The separator check A2 added on its side was already here (the token, both separators and nothing else).

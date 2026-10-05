@@ -188,7 +188,9 @@ fi
 if [ "$JQ_FAST" = 0 ]; then
     # `command -v jq` would only prove a file exists, and `jq -e .`'s exit status
     # only that it exited: jq has to read a known field out of a known input.
-    [ "$(jq -e .abf -r <<<'{"abf":"jq-ok"}' 2>/dev/null)" = jq-ok ] || jq_refuse "jq is missing, cannot run here, or does not compute correctly"
+    # A Windows jq.exe may end the line with CR: allowed.
+    JQ_PROBE=$(jq -e .abf -r <<<'{"abf":"jq-ok"}' 2>/dev/null)
+    [ "${JQ_PROBE%$'\r'}" = jq-ok ] || jq_refuse "jq is missing, cannot run here, or does not compute correctly"
     TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
     CMD=$(echo "$INPUT" | jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' 2>/dev/null)
 fi
