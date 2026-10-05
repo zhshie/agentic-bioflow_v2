@@ -282,7 +282,9 @@ g7_credential_in_params() {
         [ -n "$c" ] || continue
         key="${c%%[:=]*}"; val="${c#*[:=]}"
         val="${val#"${val%%[![:space:]\\\"\']*}"}"
-        [[ ${key,,} =~ [_-](file|path|dir|name|policy|pattern|prefix|length|url|limit|count|size)([_-]|$) ]] && continue
+        shopt -s nocasematch   # case-insensitive without bash-4 case conversion (macOS has 3.2)
+        if [[ $key =~ [_-](file|path|dir|name|policy|pattern|prefix|length|url|limit|count|size)([_-]|$) ]]; then shopt -u nocasematch; continue; fi
+        shopt -u nocasematch
         [[ $val =~ ^([/~$]|[.]{1,2}/|[A-Za-z]:[/\]|[0-9]+$) ]] && continue
         return 0
     done < <(grep -oiE "$key_re" <<<"$INPUT")
