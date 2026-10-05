@@ -428,7 +428,9 @@ judge_delete_target() {
 # is_dry_run <quote-free segment>: 0 if it is a dry run of rsync / git clean.
 is_dry_run() {
     local W w b i=0 n seen=0
-    read -r -a W <<<"$1"
+    # Split without a here-string: it costs a pipe per call, and this runs for
+    # every segment (#62). Globbing is off so a `*` stays a word.
+    set -f; W=($1); set +f
     n=${#W[@]}
     for ((i = 0; i < n; i++)); do
         w=${W[$i]}; w=${w#\\}; b=${w##*/}
@@ -445,30 +447,50 @@ is_dry_run() {
     return 1
 }
 
+# #62: a large input - a 300 KB python here-doc is 11,000 segments - took this
+# loop 23-116 s on native Git Bash, past hooks.json's 30 s, and a hook cancelled
+# there lets the call PROCEED. Bash on MSYS slows down per operation once it
+# holds a few large strings (measured 18-30x), so no per-segment loop over such
+# an input is cheap there. So a large segment list is first filtered by one awk
+# pass: a segment is kept when its command word is one the loop handles
+# (CW_HANDLED, including the ones that only carry state: cd, the PowerShell
+# listers) or its quote-free text matches one of the loop's own trigger regexes
+# (RE_TRIGGER, built from the same variables the rules use). Each run of dropped
+# segments becomes one `__skipped__` line, which ends a lister pipeline as any
+# other command does. A rule added below needs its trigger here too;
+# tests/confirm_cleanup_behind_heredoc_test.sh runs every case of
+# tests/confirm_cleanup_test.sh through this path to catch one that has not.
+# Small inputs skip the filter: it is one more process (gate_process_count).
+CW_HANDLED='^(__too_deep__|cd|pushd|get-childitem|gci|ls|dir|get-item|gi|where-object|where|\?|select-object|select|sort-object|sort|measure-object|measure|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|[$`].*)$'
+RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)"
+if [ "${#SEGMENTS}" -gt 16384 ]; then
+    FILTERED=$(ABF_TRIG="$RE_TRIGGER" ABF_CWRE="$CW_HANDLED" awk -F "$US" '
+        BEGIN { t = ENVIRON["ABF_TRIG"]; c = ENVIRON["ABF_CWRE"] }
+        $3 == "" || $3 ~ c || $2 ~ t { print; g = 0; next }
+        !g { print "(skipped)" FS "(skipped)" FS "__skipped__"; g = 1 }' <<<"$SEGMENTS" 2>/dev/null) \
+      && [ -n "$FILTERED" ] && SEGMENTS=$FILTERED
+    FILTERED=""
+fi
+
+# #62: a deadline of the hook's own, well inside the 30 s hooks.json allows.
+# Past it the loop stops and the guard asks, saying so (invariant 13), rather
+# than being cut off with the call let through. ABF_CLEANUP_DEADLINE_S can only
+# lower it (the tests use 0).
+DEADLINE=20
+case "${ABF_CLEANUP_DEADLINE_S:-}" in
+    ''|*[!0-9]*) ;;
+    *) [ "$ABF_CLEANUP_DEADLINE_S" -lt "$DEADLINE" ] && DEADLINE=$ABF_CLEANUP_DEADLINE_S ;;
+esac
+NSEG=0
+TIMED_OUT=0
 while IFS="$US" read -r SEG VSEG CW; do
     [ -n "$SEG" ] || continue
-
-    # #62: a segment that cannot be one of the things judged below is dropped here,
-    # before ~25 regex tests and a dozen assignments cost it ~10 ms each on Git Bash
-    # (a 300 KB python here-doc is thousands of segments, and a hook that runs past
-    # its timeout is cancelled and the call PROCEEDS). It can only be skipped when
-    # its command word is none of the ones handled below AND none of the stems
-    # every later rule needs - a delete verb, find/rsync/mv, a redirect, a
-    # delete-shaped call - appears anywhere in the quote-free text. Stems are
-    # deliberately loose (`rm` also matches `format`): looser only means "judged
-    # as before". The one piece of state a skipped segment must still update is
-    # LISTER_OK, which any other command word resets.
-    if [ -n "$CW" ]; then
-        case "$CW" in
-            __too_deep__|cd|pushd|get-childitem|gci|ls|dir|get-item|gi|where-object|where|'?'|select-object|select|sort-object|sort|measure-object|measure) ;;
-            rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|'$'*|'`'*) ;;
-            *)
-                case "$VSEG" in
-                    *rm*|*unlink*|*shred*|*remove*|*Delete*|*find*|*rsync*|*mv*|*'>'*) ;;
-                    *) LISTER_OK=0; continue ;;
-                esac ;;
-        esac
-    fi
+    # #62: past the deadline, stop and ask (see DEADLINE above).
+    if [ "$SECONDS" -ge "$DEADLINE" ]; then TIMED_OUT=1; break; fi
+    NSEG=$((NSEG + 1))
+    # A run of segments the large-input filter dropped: like any other command
+    # word, it ends a lister pipeline.
+    if [ "$CW" = __skipped__ ]; then LISTER_OK=0; continue; fi
 
     # Deleting and overwriting are different acts and must not share a verdict.
     # They used to: a redirect set the same DESTRUCTIVE flag as rm, so its target
@@ -631,8 +653,9 @@ while IFS="$US" read -r SEG VSEG CW; do
     fi
     [ "$DESTRUCTIVE" = 1 ] || [ "$TRUNCATE" = 1 ] || [ "$MOVE_ONLY" = 1 ] || [ "$VARCMD" = 1 ] || continue
 
-    # Targets: every word after the first that is not a flag.
-    read -r -a WORDS <<<"$SEG_NR"
+    # Targets: every word after the first that is not a flag. (No here-string:
+    # see is_dry_run.)
+    set -f; WORDS=($SEG_NR); set +f
     NARGS=0
     # E9 (2026-09-30, maintainer decision): mv's LAST non-flag argument is the
     # destination being written INTO - that is normal, not a removal, and
@@ -787,6 +810,18 @@ Cleanup is limited to work/ and the Nextflow cache. If the user genuinely wants
 one of these paths removed, show them the command and let them run it themselves."
 
 # ── warn ─────────────────────────────────────────────────────────────────────
+# #62: the loop stopped at its deadline; whatever it had not judged yet is unknown.
+[ "$TIMED_OUT" = 1 ] && ask "CANNOT VERIFY: this guard could not finish checking this command in time.
+
+It stopped after ${NSEG} of its parts at its own ${DEADLINE} s limit, rather than
+being cut off by the hook timeout (which would let the command run unchecked).
+Nothing it had already read was a refused delete, but the rest is unchecked.
+
+Show the user the command, confirm it does not delete rawdata/, results/,
+analysis/, _references/, the image library or .nextflow/plugins/, and that any
+work/ or cache delete has their \"確認刪除\". A shorter command (the script in a
+file, run by name) is checked in full."
+
 # #29: these two pause (ask) rather than warn. A warning is prose the model
 # reads and may proceed past; the maintainer decided 2026-09-29 that a delete
 # whose target this hook cannot see is the user's to confirm.
