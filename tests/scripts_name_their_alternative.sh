@@ -71,7 +71,7 @@ hooks/strip_heredocs.awk|hooks/ is being edited by another agent; headers are ad
 "
 [ "${SCRIPTS_NAME_ALT_NO_ALLOWLIST:-0}" = 1 ] && TEMP_ALLOW=""
 # A scratch root (mutation test) never uses the real repo's allow-list.
-[ -n "${SCRIPTS_NAME_ALT_ROOT:-}" ] && [ "$ROOT" != "$DEFAULT_ROOT" ] && TEMP_ALLOW=""
+[ -n "${SCRIPTS_NAME_ALT_ROOT:-}" ] && [ "$ROOT" != "$DEFAULT_ROOT" ] && TEMP_ALLOW="${SCRIPTS_NAME_ALT_TEST_ALLOW:-}"
 
 missing=0
 short=0
@@ -198,6 +198,18 @@ if [ -z "${SCRIPTS_NAME_ALT_ROOT:-}" ]; then
     expect "hooks/ is scanned: no header fails"       1 hooks/h.sh   "# just prose, no answer to the question here at all."
     expect "hooks/ is scanned: external tool passes"  0 hooks/h.sh   "# Not a bare jq filter: it must also run when jq is missing."
     expect "too-short reason fails"                   1 scripts/a.sh "# Not tmux: short"
+    # A waived file must never produce an unqualified OK (the false green this
+    # check was filed against): the last line says PARTIAL and names the files.
+    rm -rf "$S/scripts" "$S/hooks"; mkdir -p "$S/scripts" "$S/hooks"
+    mk scripts/settings.sh "# Not tmux: a real external tool, with a long enough reason."
+    printf '#!/bin/bash
+echo no header
+' > "$S/hooks/waived.sh"
+    out=$(SCRIPTS_NAME_ALT_ROOT="$S" SCRIPTS_NAME_ALT_TEST_ALLOW='hooks/waived.sh|test' bash "$SELF" 2>&1); rc=$?
+    [ "$rc" = 0 ] || { echo "SELFTEST FAIL: a waived file alone must not fail (rc $rc)"; selffails=$((selffails + 1)); }
+    tail -1 <<<"$out" | grep -q '^PARTIAL' || { echo "SELFTEST FAIL: last line with a waived file must start with PARTIAL"; selffails=$((selffails + 1)); }
+    tail -1 <<<"$out" | grep -q 'hooks/waived.sh' || { echo "SELFTEST FAIL: last line must name the waived file"; selffails=$((selffails + 1)); }
+    grep -q '^OK' <<<"$out" && { echo "SELFTEST FAIL: an unqualified OK with a waived file"; selffails=$((selffails + 1)); }
     [ "$selffails" -gt 0 ] && { echo "FAIL: $selffails self-test(s) failed"; exit 1; }
 fi
 
