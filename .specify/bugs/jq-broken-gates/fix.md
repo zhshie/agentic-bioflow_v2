@@ -1,0 +1,12 @@
+# Fix: jq-broken-gates
+
+- **Branch**: `fix/gates-audit2-launch` (RED 724c46b, GREEN: the commit carrying this file)
+- **Changed**: `hooks/confirm_launch.sh`, `hooks/confirm_walkthrough.sh`, `hooks/guard_plugin_files.sh`, `hooks/plugin_intro.sh`; `tests/gate_output_failclosed_test.sh` (a separate block, 24 cases)
+- **Approach**:
+  - The one-call fast path (#34) is trusted only when every field was read with its separator (`read -d $'\037' && read ...`); otherwise the hook goes on as for a jq that failed.
+  - "Can jq be used" asks jq for a known answer: `.a` of `{"a":[1]}` must come back `[1]` (a trailing CR allowed: jq.exe on Windows ends lines with CRLF, measured). `jq -e .` alone was passed by a jq that exits 0 with `{}` or text. A wrong answer takes the existing no-jq path: the gates refuse what they guard from the raw text with BLOCKED and the install line on stderr and pass the rest; `plugin_intro.sh` marks the session and warns once.
+- **Coverage before this fix**: missing jq - all four (the "no jq" sections); jq failing on everything - launch gate and walkthrough gate tests, plugin_intro by its `jq -e .` probe, guard untested; jq answering wrongly - nothing; jq unable to build its output - `gate_output_failclosed_test.sh` (c018c15).
+- **Red -> green**: the new block runs three broken jqs (exits 3; prints `{}`; prints a line of text) through the four hooks with a guarded call and an unguarded one. 8 red on ed6fdfd: `{}` made the launch gate print `{}` (an empty verdict - `tw launch` proceeds), the walkthrough gate print `{}`, the guard stay silent on a write into the plugin, plugin_intro print `{}`; text made the launch and walkthrough gates print their fixed "could not build" ask without naming jq, the guard stay silent, plugin_intro print the text. All 24 green now; the unguarded calls stay quiet.
+- **Native check**: with the real jq.exe (CRLF output) the probe judges jq usable (a non-JSON input still reaches the with-jq path), and the overview still shows.
+- **Also green (WSL)**: `confirm_launch_test.sh`, `confirm_walkthrough_test.sh`, `guard_plugin_files_test.sh`, `plugin_intro_test.sh`, `gate_process_count_test.sh` (no new process on the common path: the probe runs only when the fast path fails, and in plugin_intro where it already ran), `principle_13_test.sh`.
+- **Not changed**: `hooks/confirm_cleanup.sh` has the same fast-path shape (other branch; the same two edits apply there).

@@ -26,6 +26,7 @@ mkdir -p "$P/hooks" "$P/scripts"
 cp "$ROOT/hooks/plugin_intro.sh" "$P/hooks/" 2>/dev/null
 cat > "$P/scripts/intro.sh" <<'EOF'
 #!/bin/bash
+[ "${1:-}" = --lang ] && shift 2   # the real intro.sh takes --lang; the hook passes it
 case "${1:-}" in
     "") echo "STUB-OVERVIEW-MARKER" ;;
     --banner) echo "STUB-BANNER-MARKER" ;;
@@ -99,6 +100,7 @@ lines=$(prompt s20 '/agentic-bioflow:setup' | field .systemMessage | wc -l | tr 
 printf '%-60s ' "a multi-line banner is still cut to one line"
 cat > "$P/scripts/intro_multiline.sh" <<'EOS'
 #!/bin/bash
+[ "${1:-}" = --lang ] && shift 2   # the real intro.sh takes --lang; the hook passes it
 case "${1:-}" in
     "") echo "STUB-OVERVIEW-MARKER" ;;
     --banner) printf 'STUB-BANNER-MARKER\nSECOND-LINE-MARKER\n' ;;
@@ -219,6 +221,49 @@ for w in RNA-seq nf-core FASTQ samplesheet Seqera; do
   printf '%-60s ' "SKILL.md's '$w' is still in plugin_intro.sh's topic list"
   grep -qF -- "$w" "$SKILL_MD" && grep -qF -- "$w" "$HOOK_SRC" && echo ok || { echo FAIL; fails=$((fails+1)); }
 done
+
+echo
+echo "== intro-marker-timeout: the in-use marker is written before any slow work =="
+# hooks.json gives this hook a timeout, and a hook that runs past it is killed.
+# Its per-session marker is what makes every other hook count the session as in
+# use (hooks/in_use.sh): a kill before it is written turned the whole safety
+# net off for a session that had reached for the plugin. Each case runs the hook
+# under `timeout 3` with every external tool it might start before the marker
+# made slow (jq, cat, tr, sed, grep, awk, find sleep 20 s), or with a slow
+# intro.sh, and the marker must exist afterwards.
+SLOW="$TMP/slowbin"; mkdir -p "$SLOW"
+for t in jq cat tr sed grep awk find; do printf '#!/bin/sh\nsleep 20\n' > "$SLOW/$t"; chmod +x "$SLOW/$t"; done
+slowrun() { # slowrun <json> [slow-intro]
+  if [ -n "${2:-}" ]; then
+    cp "$P/scripts/intro.sh" "$P/scripts/intro.sh.fast"
+    printf '#!/bin/bash\nsleep 20\n' > "$P/scripts/intro.sh"
+    printf '%s' "$1" | AGENTIC_BIOFLOW_STATE_DIR="$STATE" timeout 3 bash "$P/hooks/plugin_intro.sh" >/dev/null 2>&1
+    mv "$P/scripts/intro.sh.fast" "$P/scripts/intro.sh"
+  else
+    printf '%s' "$1" | PATH="$SLOW:$PATH" AGENTIC_BIOFLOW_STATE_DIR="$STATE" timeout 3 bash "$P/hooks/plugin_intro.sh" >/dev/null 2>&1
+  fi
+}
+marker() { # marker <label> <session>
+  printf '%-60s ' "$1"
+  [ -e "$STATE/in-use/$2" ] && echo ok || { echo "FAIL: no $STATE/in-use/$2"; fails=$((fails+1)); }
+}
+slowrun "$(jq -nc '{session_id:"slow1", hook_event_name:"UserPromptSubmit", prompt:"/agentic-bioflow:launch rnaseq"}')"
+marker "typed command, every tool slow and killed: marker written" slow1
+slowrun "$(jq -nc '{session_id:"slow2", hook_event_name:"PostToolUse", tool_name:"Skill", tool_input:{skill:"agentic-bioflow:launch"}}')"
+marker "skill load, every tool slow and killed: marker written" slow2
+slowrun "$(jq -nc '{session_id:"slow3", hook_event_name:"UserPromptSubmit", prompt:"please run the RNA-seq analysis on these FASTQ files"}')"
+marker "natural-language door, every tool slow and killed: marker" slow3
+slowrun "$(jq -nc '{session_id:"slow4", hook_event_name:"UserPromptSubmit", prompt:"/agentic-bioflow:setup"}')" slow-intro
+marker "typed command, intro.sh slow and killed: marker written" slow4
+slowrun "$(jq -nc '{session_id:"slow5", hook_event_name:"PostToolUse", tool_name:"Skill", tool_input:{skill:"agentic-bioflow:runs"}}')" slow-intro
+marker "skill load, intro.sh slow and killed: marker written" slow5
+slowrun "$(jq -nc '{session_id:"slow6", hook_event_name:"PostToolUse", tool_name:"Skill", tool_input:{skill:"superpowers:brainstorming", args:"plan agentic-bioflow:launch"}}')"
+printf '%-60s ' "control: another plugin's skill naming this one: no marker"
+[ ! -e "$STATE/in-use/slow6" ] && echo ok || { echo "FAIL: marked"; fails=$((fails+1)); }
+printf '%-60s ' "hooks.json gives plugin_intro.sh a realistic timeout (>= 15 s)"
+low=$(jq -r '[.hooks[][]?.hooks[]? | select(.command | endswith("plugin_intro.sh")) | .timeout // 600] | map(select(. < 15)) | length' "$ROOT/hooks/hooks.json" 2>/dev/null | tr -d '\r')
+n=$(jq -r '[.hooks[][]?.hooks[]? | select(.command | endswith("plugin_intro.sh"))] | length' "$ROOT/hooks/hooks.json" 2>/dev/null | tr -d '\r')
+[ "$low" = 0 ] && [ "${n:-0}" -ge 2 ] && echo ok || { echo "FAIL: $low of $n entries under 15 s"; fails=$((fails+1)); }
 
 # --- wiring -----------------------------------------------------------------
 HJ="$ROOT/hooks/hooks.json"

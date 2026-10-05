@@ -104,6 +104,11 @@ looks_launch_shaped() {
     case "$text" in
         *' tw launch '*|*' tw runs relaunch '*|*' sbatch '*|*' nextflow run '*|*' ssh '*|*' scp '*|*' rsync '*|*' sftp '*)
             return 0 ;;
+        # launch-shapes-unconfirmed: the other ways to start a run. A path ending
+        # in /launch (the Platform API's endpoint) cannot be told GET from POST
+        # here, so it counts.
+        *' kuberun '*|*' nf-core launch '*|*' pipelines launch '*|*' actions trigger '*|*' seqerakit '*'.yml'*|*' seqerakit '*'.yaml'*|*' seqerakit - '*|*'/launch '*|*'/launch?'*)
+            return 0 ;;
         # Identity and shared-process changes (the gate after the jq parse
         # below). Without jq the value being replaced cannot be compared, so
         # any change to these keys counts.
@@ -139,10 +144,28 @@ abf_in_use "$INPUT" "$INPUT" || exit 0
 # can never be silently dropped). Anything else (not JSON,
 # no jq, a field that is an object, two JSON values on stdin) goes the way this
 # file always went: the probe, then one jq per field.
+#
+# jq-broken-gates: the fast path is trusted only when every field came with its
+# separator. The fields are read out in order: pattern removal (`#*x`, `%%x*`,
+# `##*x`) and ${x//p/} are quadratic in bash on a long string, and a large Write
+# or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+# newlines were trimmed by jq, as $(jq) did per field. A jq that exits 0 with
+# `{}` or a line of text has not read this input: it goes to the probe below,
+# which asks jq for a known answer - `jq -e .` alone passed such a jq.
+abf_jq_works() { # a trailing CR is jq.exe on Windows
+    local o
+    o=$(jq -c .a <<<'{"a":[1]}' 2>/dev/null) || return 1
+    [ "${o%$'\r'}" = '[1]' ]
+}
 JQ_FAST=0
-JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
-  && [ -n "$JQ_OUT" ] && JQ_FAST=1
-if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
+if JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+   && [ -n "$JQ_OUT" ]; then
+    {
+        IFS= read -r -d $'\037' TOOL &&
+        IFS= read -r -d $'\037' CMD
+    } <<<"$JQ_OUT" && JQ_FAST=1
+fi
+if [ "$JQ_FAST" = 0 ] && ! abf_jq_works; then
     RAW=$INPUT
     # Independent acceptance of 002: hooks.json now also routes Write/Edit/
     # MultiEdit/NotebookEdit calls here, and their raw payload is the FILE
@@ -168,8 +191,9 @@ if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
         cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/confirm_launch.sh cannot read what
 this command is precisely - and the raw text of this one matches a launch- or
-site-transport-shaped pattern (tw launch / tw runs relaunch / sbatch / nextflow
-run / ssh / scp / rsync / sftp), so it is refused rather than guessed at. A
+site-transport-shaped pattern (tw launch / tw runs relaunch / tw actions trigger
+/ sbatch / nextflow run|kuberun / nf-core launch / seqerakit <file>.yml / an API
+path ending in /launch / ssh / scp / rsync / sftp), so it is refused rather than guessed at. A
 command that matches none of those patterns is let through unchanged - this is
 a narrower refusal than before, not a blanket one, but it still cannot see a
 launch hidden behind a variable or an alias the way the real check can.
@@ -185,16 +209,8 @@ EOF
     exit 0
 fi
 
-if [ "$JQ_FAST" = 1 ]; then
-    # The fields come as one string, each followed by the separator. They are read out in order:
-    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
-    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
-    # newlines were trimmed by jq, as $(jq) did per field.
-    {
-        IFS= read -r -d $'\037' TOOL
-        IFS= read -r -d $'\037' CMD
-    } <<<"$JQ_OUT"
-else
+if [ "$JQ_FAST" = 0 ]; then
+    # (The fast path's fields were read out above.)
     TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
     CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
 fi
@@ -335,7 +351,10 @@ IDENTITY_KEYS='agent_connection|seqera_user|workspace_id|compute_env|site_host|s
 RESIDENT_RE='(^|[^[:alnum:]_])(agent_ctl|egress_ctl)\.sh["'\'']?[[:space:]]+["'\'']?(start|stop|restart)([^[:alnum:]_-]|$)'
 # In-shell, not grep (#34). grep reads one line at a time and [[:space:]] in
 # [[ =~ ]] also matches a newline, so a command with newlines is asked of grep.
-if [[ $CMD =~ $RESIDENT_RE ]] && { [[ $CMD != *$'\n'* ]] || grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; }; then
+# #62: the cheap substring test first; the regex reads the whole command.
+RESIDENT_HIT=0
+case "$CMD" in *agent_ctl*|*egress_ctl*) [[ $CMD =~ $RESIDENT_RE ]] && RESIDENT_HIT=1 ;; esac
+if [ "$RESIDENT_HIT" = 1 ] && { [[ $CMD != *$'\n'* ]] || grep -qE "$RESIDENT_RE" <<<"$CMD" 2>/dev/null; }; then
     # A relay (re)start is the moment this deployment's extra domains take
     # effect - however they got into the file, egress_allow.sh or an editor.
     # So the ask shows exactly what will be carried; approving a restart must
@@ -362,8 +381,10 @@ Not loaded: ${RELAY_ERR}"
         # untrue. Through scripts/on_site.sh the variable is always replaced by the
         # file's list, so only a direct start is named.
         if [[ $CMD == *NF_RELAY_EXTRA_DOMAINS=* ]] && [[ $CMD != *on_site.sh* ]]; then
-            RELAY_OVR="${CMD#*NF_RELAY_EXTRA_DOMAINS=}"
-            RELAY_OVR="${RELAY_OVR%%[[:space:];&|]*}"
+            # A regex, not ${CMD#*...}: bash tries every prefix for that, quadratic
+            # on a long command (#62).
+            RELAY_OVR=""; RELAY_OVR_RE='NF_RELAY_EXTRA_DOMAINS=([^[:space:];&|]*)'
+            [[ $CMD =~ $RELAY_OVR_RE ]] && RELAY_OVR="${BASH_REMATCH[1]}"
             RELAY_LIST="${RELAY_LIST}
 THIS COMMAND ALSO SETS NF_RELAY_EXTRA_DOMAINS=${RELAY_OVR}, which overrides this deployment's list: the relay would carry THAT list, not the one shown above. Show the user the domains it names."
         fi
@@ -390,7 +411,11 @@ fi
 # glob or a `$` beside an `add`/`remove` word; the per-segment test then decides
 # what is really being run. The file the script keeps (egress_allow.tsv) is
 # guarded the same way: a redirect, an editor, tee, cp, sed -i and the like ask.
-EA_N="${CMD//\\/}"; EA_N="${EA_N//\"/}"; EA_N="${EA_N//\'/}"
+# #62: ${x//p/} costs a pass over the rest of the string per match, so a big
+# command full of quotes (a python here-doc) is handed to one `tr` instead.
+EA_N=""
+[ "${#CMD}" -gt 16384 ] && EA_N=$(tr -d '\\"'"'" <<<"$CMD" 2>/dev/null)
+[ -n "$EA_N" ] || { EA_N="${CMD//\\/}"; EA_N="${EA_N//\"/}"; EA_N="${EA_N//\'/}"; }
 EA_PRE=0
 case "$EA_N" in *egress_*|*.tsv*) EA_PRE=1 ;; esac
 if [ "$EA_PRE" = 0 ] && [[ $EA_N == *[\*\?\[\$]* ]] && [[ $EA_N =~ (^|[[:space:]])(add|remove)([[:space:]]|$) ]]; then EA_PRE=1; fi
@@ -399,6 +424,9 @@ if [ "$EA_PRE" = 1 ]; then
     [ -n "$EA_NB" ] || EA_NB="$CMD"
     EA_US=$'\037'
     EA_SEGS=$(awk -f "$HD/split_segments.awk" <<<"$EA_NB" 2>/dev/null)
+    # #62: is_launch_command (below) reads these same segments of this same
+    # command; it takes them from here instead of running both awk passes again.
+    [ -n "$EA_SEGS" ] && { ABF_SPLIT_FOR="$CMD"; ABF_SPLIT_SEGS="$EA_SEGS"; ABF_SPLIT_STRIPPED="$EA_NB"; }
     if [ -z "$EA_SEGS" ]; then
         EA_SEGS=$(printf '%s\n' "$EA_NB" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                   | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$EA_US" "$l"; done)
@@ -519,8 +547,26 @@ if [ "$EA_PRE" = 1 ]; then
             fi
         done
     }
+    # #62: which segments the checks below can act on at all. A word names the
+    # file or the script only if it holds a piece of their names (egr, ess,
+    # allow - ea_names), a variable (`$a.sh`, `$HOME/...`), or is a glob whose
+    # folder is the config or scripts folder: then the word holds a `/`, or the
+    # session is in that folder (EA_GLOB_HERE). Assignments are kept for the
+    # variables they set. Everything else is skipped before the word loops,
+    # which cost a lot per segment on Git Bash, and for a big command (a python
+    # here-doc is thousands of segments) one awk pass drops those segments
+    # before the shell reads them; if awk cannot run, every segment is read.
+    EA_GLOB_HERE=0
+    { ea_in_dir "" "$EA_CFG_DIRS" || ea_in_dir "" "$EA_SCR_DIRS"; } && EA_GLOB_HERE=1
+    if [ "${#EA_SEGS}" -gt 16384 ]; then
+        EA_CAND=$(awk -F"$EA_US" -v here="$EA_GLOB_HERE" '{
+            p = $1; gsub(/["\047]/, "", p); ps = p; gsub(/\\/, "/", ps); gsub(/\\/, "", p)
+            if (p ~ /egr|ess|allow|\$/ || p ~ /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]*$/ \
+                || (p ~ /[*?[]/ && (here == 1 || index(ps, "/")))) print }' <<<"$EA_SEGS" 2>/dev/null) && EA_SEGS=$EA_CAND
+    fi
     EA_SEG=""; EA_V=""; EA_CW=""
     while IFS="$EA_US" read -r EA_SEG EA_V EA_CW; do
+        [ -n "$EA_SEG" ] || continue
         EA_PLAIN="${EA_SEG//[\"\']/}"
         # Two readings of a backslash: an ESCAPE (`egr\ess_allow.tsv` - dropped,
         # which is what a shell does) and a Windows path SEPARATOR
@@ -533,11 +579,22 @@ if [ "$EA_PRE" = 1 ]; then
             EA_VARS="${EA_VARS}${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"$'\n'
             continue
         fi
-        while IFS='=' read -r EA_VN EA_VV; do
-            [ -n "$EA_VN" ] || continue
-            EA_PLAIN="${EA_PLAIN//\$\{$EA_VN\}/$EA_VV}"; EA_PLAIN="${EA_PLAIN//\$$EA_VN/$EA_VV}"
-            EA_PLAIN_S="${EA_PLAIN_S//\$\{$EA_VN\}/$EA_VV}"; EA_PLAIN_S="${EA_PLAIN_S//\$$EA_VN/$EA_VV}"
-        done <<<"$EA_VARS"
+        if [ -n "$EA_VARS" ] && [[ $EA_PLAIN == *'$'* ]]; then
+            while IFS='=' read -r EA_VN EA_VV; do
+                [ -n "$EA_VN" ] || continue
+                EA_PLAIN="${EA_PLAIN//\$\{$EA_VN\}/$EA_VV}"; EA_PLAIN="${EA_PLAIN//\$$EA_VN/$EA_VV}"
+                EA_PLAIN_S="${EA_PLAIN_S//\$\{$EA_VN\}/$EA_VV}"; EA_PLAIN_S="${EA_PLAIN_S//\$$EA_VN/$EA_VV}"
+            done <<<"$EA_VARS"
+        fi
+        case "$EA_PLAIN" in
+            *egr*|*ess*|*allow*|*'$'*) ;;
+            *[\*\?\[]*)
+                case "$EA_PLAIN_S" in
+                    */*) ;;
+                    *) [ "$EA_GLOB_HERE" = 1 ] || continue ;;
+                esac ;;
+            *) continue ;;
+        esac
         EA_CWB="${EA_CW##*/}"
         EA_SUB=""
         if [ "$EA_CWB" = git ]; then
@@ -734,6 +791,14 @@ if ! is_launch_command "$CMD"; then
             TSEGS=$(printf '%s\n' "$TCMD_NB" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                     | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
         fi
+        # #62: a big command is first cut down by one awk pass to the segments
+        # whose quote-free text holds a transport word - the loop's own first test
+        # below - so the shell does not walk thousands of here-doc lines. If awk
+        # cannot run, every segment goes through the loop.
+        if [ "${#TSEGS}" -gt 16384 ]; then
+            TCAND=$(awk -F"$US" 'index($2, "ssh") || index($2, "scp") || index($2, "rsync") || index($2, "sftp")' <<<"$TSEGS" 2>/dev/null) \
+                && TSEGS=$TCAND
+        fi
         TRANSPORT_RE='(^|[[:space:]]|[;&|(])(sudo[[:space:]]+)?([^[:space:]]*/)?(ssh|scp|rsync|sftp)([[:space:]]|$)'
         ONSITE_RE='(^|[[:space:]]|[;&|(])([^[:space:]]*/)?on_site\.sh([[:space:]]|$)'
         # Feature 005 (#48), FR-006: two shapes of ssh that cannot cost a code.
@@ -904,7 +969,7 @@ fi
 # Blanks are spelled out because [[:space:]] would also match across a newline.
 RE_TW_LAUNCH=$'(^|/|\n)tw[ \t\r\v\f]+launch'
 RE_TW_RELAUNCH=$'(^|/|\n)tw[ \t\r\v\f]+runs[ \t\r\v\f]+relaunch'
-if [[ $CMD =~ $RE_TW_LAUNCH && $CMD != *--disable-optimization* ]]; then
+if [[ $CMD != *--disable-optimization* && $CMD == *launch* && $CMD =~ $RE_TW_LAUNCH ]]; then
     add "no --disable-optimization: Platform right-sizes from run history, which fights a site whose accepted sizes are fixed - a helpfully reduced request can land below what the site will take"
 fi
 
@@ -915,7 +980,7 @@ fi
 # to a flag that does not exist - so state which of the two it is. It is not a
 # precondition the user can meet, so it does not go in the WARN list.
 NOTE=""
-if [[ $CMD =~ $RE_TW_RELAUNCH ]]; then
+if [[ $CMD == *relaunch* && $CMD =~ $RE_TW_RELAUNCH ]]; then
     NOTE="This is a relaunch, so the --disable-optimization question cannot be answered from the command line: the flag does not exist on \`tw runs relaunch\`, and the setting is inherited from the original launch. Check it in the Platform launch form before confirming."
 fi
 

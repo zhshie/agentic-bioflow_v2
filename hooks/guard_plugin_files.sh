@@ -68,7 +68,14 @@ set -uo pipefail
 # installed plugin's own directory, and a call that never names that
 # directory cannot write into it - so the no-jq path looks for the root in
 # the raw bytes and refuses only when it is there. Scoped, not silent.
-jq_works() { printf '{}' | jq -e . >/dev/null 2>&1; }
+# jq-broken-gates: a jq that exits 0 with `{}` or a line of text passed
+# `jq -e .`; it has to compute a known answer instead (a trailing CR is jq.exe
+# on Windows).
+jq_works() {
+    local o
+    o=$(jq -c .a <<<'{"a":[1]}' 2>/dev/null) || return 1
+    [ "${o%$'\r'}" = '[1]' ]
+}
 refuse_without_jq() {
     cat >&2 <<'EOF'
 BLOCKED: jq is missing or cannot run here, so hooks/guard_plugin_files.sh cannot read
@@ -197,23 +204,24 @@ root_in() { # root_in <text> - any spelling of the root, as a literal substring
 # anything else (not JSON, no jq, an object-valued field, two JSON values) goes
 # the way this file always went: the probe, then one jq per field.
 JQ_FAST=0
-JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
-  && [ -n "$JQ_OUT" ] && JQ_FAST=1
+if JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+   && [ -n "$JQ_OUT" ]; then
+    # The fields come as one string, each followed by the separator. They are read out in order:
+    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
+    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+    # newlines were trimmed by jq, as $(jq) did per field. jq-broken-gates: trusted only when
+    # every field came with its separator - a jq answering `{}` or text has not read this input.
+    {
+        IFS= read -r -d $'\037' TOOL &&
+        IFS= read -r -d $'\037' FILE &&
+        IFS= read -r -d $'\037' CMD
+    } <<<"$JQ_OUT" && JQ_FAST=1
+fi
 if [ "$JQ_FAST" = 0 ] && ! jq_works; then
     root_in "$INPUT" && refuse_without_jq
     exit 0
 fi
-if [ "$JQ_FAST" = 1 ]; then
-    # The fields come as one string, each followed by the separator. They are read out in order:
-    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
-    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
-    # newlines were trimmed by jq, as $(jq) did per field.
-    {
-        IFS= read -r -d $'\037' TOOL
-        IFS= read -r -d $'\037' FILE
-        IFS= read -r -d $'\037' CMD
-    } <<<"$JQ_OUT"
-else
+if [ "$JQ_FAST" = 0 ]; then
     TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
 fi
 

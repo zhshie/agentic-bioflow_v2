@@ -51,15 +51,15 @@
 set -uo pipefail
 exec 2>/dev/null
 
-INPUT=$(cat)
-
-# Shell separators AND the JSON punctuation around them folded to spaces, the
-# same trick hooks/confirm_launch.sh uses and for the same reason: this has to
-# work on the raw, still-quoted JSON payload without jq (jq may be exactly
-# what is missing), and a bare `tr -s ';&|()<>'` leaves `"agentic-bioflow`
-# glued to its opening quote, which no substring check could reliably bound.
-FOLD_SEP=$'\t\n\r;&|()<>"\'{}[],:='
-NORM=" $(printf '%s' "$INPUT" | tr -s "$FOLD_SEP" ' ') "
+# intro-marker-timeout: hooks.json gives this hook a timeout, and a hook past it
+# is killed. The in-use marker (below) is what turns every other hook on for
+# this session, so it is decided and written FIRST, from the raw input with
+# bash alone, before any program is started: before this, a busy machine could
+# kill the hook while `cat`, `tr` or `jq` were still running, and the session
+# then counted as not in use - the whole safety net silent. Stdin is read
+# without `cat` (#34).
+INPUT=$(</dev/stdin)
+HD="${0%/*}"; [ "$HD" = "$0" ] && HD=.
 
 # The literal door: a typed `/agentic-bioflow:...` command or a Skill load
 # naming this plugin. Checked on the raw text so it works with or without jq
@@ -70,7 +70,79 @@ case "$INPUT" in *agentic-bioflow:*) IS_LITERAL=1 ;; *) IS_LITERAL=0 ;; esac
 # PostToolUse Skill call is either the literal door above (this plugin's own
 # skill) or none of this hook's business, never a prompt to pattern-match.
 IS_UPS=0
-case "$NORM" in *' hook_event_name UserPromptSubmit '*) IS_UPS=1 ;; esac
+re_ups='"hook_event_name"[[:space:]]*:[[:space:]]*"UserPromptSubmit"'
+[[ $INPUT =~ $re_ups ]] && IS_UPS=1
+# A Skill load whose own `skill` field names this plugin (not its arguments).
+IS_SKILL=0
+re_skill='"skill"[[:space:]]*:[[:space:]]*"agentic-bioflow:'
+[[ $INPUT =~ $re_skill ]] && IS_SKILL=1
+
+# The session id names a file, so it is reduced to characters that cannot
+# climb out of the state directory. Extracted without jq - this has to work in
+# the no-jq branch below, and a single extraction here serves both
+# branches instead of two copies drifting apart; a degraded machine's PATH is
+# exactly the place to avoid reaching for one more external binary than the
+# job needs. Feature 005: the FIRST "session_id" in the input, by a bash regex - the same
+# reading hooks/in_use.sh does, so the file written here is the file read there.
+# (The sed that stood here took the LAST one, which is a nested copy when a
+# tool's response carries its own session_id.)
+SID_RAW=""
+re_sid='"session_id"[[:space:]]*:[[:space:]]*"([^"]*)"'
+if [[ $INPUT =~ $re_sid ]]; then SID_RAW="${BASH_REMATCH[1]}"; fi
+SID="${SID_RAW//[^A-Za-z0-9_-]/}"
+STATE="${AGENTIC_BIOFLOW_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-}/.local/state}/agentic-bioflow}"
+MARKS="$STATE/intro-shown"
+
+# Feature 005 (#48), Constitution 2.0.0: this is the moment a session starts
+# being "in use" - every other hook is silent until it has happened, or until
+# the call itself or the session's folder says so (hooks/in_use.sh). The marker
+# is a separate file from $MARKS above on purpose: that one means "the overview
+# was shown" and is written only after something went out; this one means "the
+# plugin was reached for" and is written as soon as that is known, so a failed
+# intro.sh does not leave the safety net off. A subagent's calls carry its
+# parent's session id, so one marker covers both. Fails open like everything
+# here: an unwritable state directory costs the marker, never the prompt - and
+# a state path that cannot be read or written is itself read as "in use" by
+# in_use.sh once a deployment exists, so a failed write here does not turn the
+# net off.
+# intro-marker-timeout: no `mkdir` when the folder is there, and the sweep of
+# month-old markers runs only when this session's marker is new, after it is
+# written (a kill during the sweep costs nothing).
+mark_in_use() {
+    [ -n "$SID" ] || return 0
+    [ -e "$STATE/in-use/$SID" ] && return 0
+    [ -d "$STATE/in-use" ] || mkdir -p "$STATE/in-use" 2>/dev/null || return 0
+    : > "$STATE/in-use/$SID" 2>/dev/null || return 0
+    find "$STATE/in-use" -type f -mtime +30 -exec rm -f {} + 2>/dev/null
+    return 0
+}
+# A prompt that names /agentic-bioflow: anywhere - mid-sentence, quoted, asked
+# about - is reaching for the plugin as far as this can tell. The overview waits
+# for the prompt to START with it (below); the marker does not: unsure is in use.
+if [ "$IS_UPS" = 1 ] && [ "$IS_LITERAL" = 1 ]; then mark_in_use; fi   # with or without the slash (#53)
+# A Skill load of this plugin's own skill: marked now; EVENT below still checks
+# it precisely before anything is shown.
+[ "$IS_SKILL" = 1 ] && mark_in_use
+
+# Nothing else this hook does applies to a call that is neither door.
+[ "$IS_LITERAL" = 1 ] || [ "$IS_UPS" = 1 ] || exit 0
+
+# Shell separators AND the JSON punctuation around them folded to spaces, the
+# same trick hooks/confirm_launch.sh uses and for the same reason: this has to
+# work on the raw, still-quoted JSON payload without jq (jq may be exactly
+# what is missing), and a bare `tr -s ';&|()<>'` leaves `"agentic-bioflow`
+# glued to its opening quote, which no substring check could reliably bound.
+# Folded in the shell for an ordinary prompt (no process before the
+# natural-language door can mark); one `tr` for a long one, where the shell's
+# replacements would be quadratic.
+FOLD_SEP=$'\t\n\r;&|()<>"\'{}[],:='
+FOLD_BR=$']\t\n\r;&|()<>"\'{}[,:='    # the same set, `]` first for a bracket expression
+if [ "${#INPUT}" -le 8192 ]; then
+    NORM=" ${INPUT//[$FOLD_BR]/ } "
+    while [[ $NORM == *"  "* ]]; do NORM="${NORM//  / }"; done
+else
+    NORM=" $(printf '%s' "$INPUT" | tr -s "$FOLD_SEP" ' ') "
+fi
 
 # Kept close to skills/operational/SKILL.md's own trigger vocabulary
 # (RNA-seq, amplicon/16S, metagenomics, variant calling, differential
@@ -117,51 +189,10 @@ fi
 
 [ "$IS_LITERAL" = 1 ] || [ "$IS_NL" = 1 ] || exit 0
 
-# The session id names a file, so it is reduced to characters that cannot
-# climb out of the state directory. Extracted without jq - this has to work in
-# the no-jq branch just below, and a single extraction here serves both
-# branches instead of two copies drifting apart; a degraded machine's PATH is
-# exactly the place to avoid reaching for one more external binary than the
-# job needs. Feature 005: the FIRST "session_id" in the input, by a bash regex - the same
-# reading hooks/in_use.sh does, so the file written here is the file read there.
-# (The sed that stood here took the LAST one, which is a nested copy when a
-# tool's response carries its own session_id.)
-SID_RAW=""
-re_sid='"session_id"[[:space:]]*:[[:space:]]*"([^"]*)"'
-if [[ $INPUT =~ $re_sid ]]; then SID_RAW="${BASH_REMATCH[1]}"; fi
-SID="${SID_RAW//[^A-Za-z0-9_-]/}"
-STATE="${AGENTIC_BIOFLOW_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-}/.local/state}/agentic-bioflow}"
-MARKS="$STATE/intro-shown"
-
-# Feature 005 (#48), Constitution 2.0.0: this is the moment a session starts
-# being "in use" - every other hook is silent until it has happened, or until
-# the call itself or the session's folder says so (hooks/in_use.sh). The marker
-# is a separate file from $MARKS above on purpose: that one means "the overview
-# was shown" and is written only after something went out; this one means "the
-# plugin was reached for" and is written as soon as that is known, so a failed
-# intro.sh does not leave the safety net off. A subagent's calls carry its
-# parent's session id, so one marker covers both. Fails open like everything
-# here: an unwritable state directory costs the marker, never the prompt - and
-# a state path that cannot be read or written is itself read as "in use" by
-# in_use.sh once a deployment exists, so a failed write here does not turn the
-# net off.
-mark_in_use() {
-    [ -n "$SID" ] || return 0
-    mkdir -p "$STATE/in-use" 2>/dev/null || return 0
-    : > "$STATE/in-use/$SID" 2>/dev/null
-    find "$STATE/in-use" -type f -mtime +30 -exec rm -f {} + 2>/dev/null
-    return 0
-}
 # The natural-language door is decided without jq, so it can mark now - before
-# the once-per-session exit below, which must not skip it. The literal door
-# marks once it is certain (below).
+# the once-per-session exit below, which must not skip it. The literal doors
+# marked at the top.
 [ "$IS_NL" = 1 ] && mark_in_use
-# A prompt that names /agentic-bioflow: anywhere - mid-sentence, quoted, asked
-# about - is reaching for the plugin as far as this can tell. The overview waits
-# for the prompt to START with it (below); the marker does not: unsure is in use.
-if [ "$IS_UPS" = 1 ]; then
-    case "$INPUT" in *'agentic-bioflow:'*) mark_in_use ;; esac   # with or without the slash (#53)
-fi
 [ -n "$SID" ] && [ -e "$MARKS/$SID" ] && exit 0
 
 # T3: jq missing/broken is now visible instead of silent - see the file
@@ -171,7 +202,15 @@ fi
 # blocked from ever showing the real overview by a marker written while it
 # was still broken.
 JQMARKS="$STATE/jq-warn-shown"
-if ! command -v jq >/dev/null 2>&1 || ! printf '{}' | jq -e . >/dev/null 2>&1; then
+# jq-broken-gates: "cannot run" includes a jq that exits 0 with the wrong answer
+# (`{}`, a line of text): it passed `jq -e .`, then its output went out as this
+# hook's own. It has to compute a known answer (a trailing CR is jq.exe).
+abf_jq_works() {
+    local o
+    o=$(jq -c .a <<<'{"a":[1]}' 2>/dev/null) || return 1
+    [ "${o%$'\r'}" = '[1]' ]
+}
+if ! command -v jq >/dev/null 2>&1 || ! abf_jq_works; then
     # Without jq the literal door cannot be checked precisely (a mere mention
     # of /agentic-bioflow: mid-sentence matches the loose test). Marking is the
     # safe direction: one gate too many beats one missed.
@@ -187,7 +226,14 @@ if ! command -v jq >/dev/null 2>&1 || ! printf '{}' | jq -e . >/dev/null 2>&1; t
     exit 0
 fi
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# No subshell for this: intro.sh finds its own root from its own path.
+ROOT="$HD/.."
+# intro-marker-timeout: the language is asked of settings.sh once here and
+# handed to both intro.sh calls below, rather than each of them asking it
+# again (a bash process apiece). Empty means no setting: zh-TW, intro.sh's own
+# default.
+INTRO_LANG=$(bash "$ROOT/scripts/settings.sh" language 2>/dev/null)
+[ -n "$INTRO_LANG" ] || INTRO_LANG=zh-TW
 
 if [ "$IS_LITERAL" = 1 ]; then
     EVENT=$(jq -r '
@@ -198,7 +244,7 @@ if [ "$IS_LITERAL" = 1 ]; then
     [ -n "$EVENT" ] || exit 0
     mark_in_use
 
-    INTRO="$(bash "$ROOT/scripts/intro.sh")" || exit 0
+    INTRO="$(bash "$ROOT/scripts/intro.sh" --lang "$INTRO_LANG")" || exit 0
     [ -n "$INTRO" ] || exit 0
 
     # Claude Code caps hook output at 10,000 characters and swaps anything
@@ -229,7 +275,7 @@ if [ "$IS_LITERAL" = 1 ]; then
     # every commands/*.md file's "Before anything else" section already
     # makes, and tests/plugin_intro_test.sh now pins the instruction's
     # presence rather than the old guarantee.
-    BANNER="$(bash "$ROOT/scripts/intro.sh" --banner 2>/dev/null)"
+    BANNER="$(bash "$ROOT/scripts/intro.sh" --lang "$INTRO_LANG" --banner 2>/dev/null)"
     [ -n "$BANNER" ] || BANNER="agentic-bioflow"
     BANNER="${BANNER%%$'\n'*}"
 
@@ -244,7 +290,7 @@ elif [ "$IS_NL" = 1 ]; then
     # once; a routing hint fired on ordinary conversational text is not, and
     # showing it every time would teach the user to ignore this hook the same
     # way a gate that cries wolf teaches people to click through it.
-    NUDGE="$(bash "$ROOT/scripts/intro.sh" --nudge)" || exit 0
+    NUDGE="$(bash "$ROOT/scripts/intro.sh" --lang "$INTRO_LANG" --nudge)" || exit 0
     [ -n "$NUDGE" ] || exit 0
     jq -n --arg m "$NUDGE" \
       '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $m}}' || exit 0
@@ -253,7 +299,7 @@ fi
 # Marked only after something went out, so a failure above leaves the next
 # use free to try again. Markers are a few bytes each; a month is long past
 # any session anyone resumes.
-if [ -n "$SID" ] && mkdir -p "$MARKS"; then
+if [ -n "$SID" ] && { [ -d "$MARKS" ] || mkdir -p "$MARKS"; }; then
     : > "$MARKS/$SID"
     find "$MARKS" -type f -mtime +30 -exec rm -f {} + 2>/dev/null
 fi

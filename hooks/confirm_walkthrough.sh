@@ -72,7 +72,8 @@ looks_managed_write_shaped() {
     local text=" $(printf '%s' "$1" | tr -s "$LOOKS_SHAPED_SEP" ' ') "
     case "$text" in
         *samplesheet*|*'params.yml'*|*'params.yaml'*|*' tw launch '*|*' tw runs relaunch '*|*' sbatch '*|*' nextflow run '*|*outdir*|*'analysis/'*| \
-        *' tw datasets add '*|*generate_samplesheet*|*fastq_dir_to_samplesheet*)
+        *' tw datasets add '*|*generate_samplesheet*|*fastq_dir_to_samplesheet*| \
+        *' kuberun '*|*' nf-core launch '*|*' pipelines launch '*|*' actions trigger '*|*' seqerakit '*'.yml'*|*' seqerakit '*'.yaml'*|*' seqerakit - '*|*'/launch '*|*'/launch?'*)
             return 0 ;;
     esac
     return 1
@@ -101,10 +102,32 @@ abf_in_use "$INPUT" "$INPUT" || exit 0
 # exactly one record, all five plain strings, no separator inside them; anything
 # else (not JSON, no jq, an object-valued field, two JSON values) goes the way this
 # file always went: the probe, then one jq per field.
+#
+# jq-broken-gates: trusted only when every field came with its separator (read
+# out in order, linear - see below); a jq that exits 0 with `{}` or text has not
+# read this input, and the probe then asks jq for a known answer, which such a
+# jq gets wrong (`jq -e .` alone passed it).
+abf_jq_works() { # a trailing CR is jq.exe on Windows
+    local o
+    o=$(jq -c .a <<<'{"a":[1]}' 2>/dev/null) || return 1
+    [ "${o%$'\r'}" = '[1]' ]
+}
 JQ_FAST=0
-JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.content // ""), (.transcript_path // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
-  && [ -n "$JQ_OUT" ] && JQ_FAST=1
-if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
+if JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.content // ""), (.transcript_path // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+   && [ -n "$JQ_OUT" ]; then
+    # The fields come as one string, each followed by the separator. They are read out in order:
+    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
+    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+    # newlines were trimmed by jq, as $(jq) did per field.
+    {
+        IFS= read -r -d $'\037' TOOL &&
+        IFS= read -r -d $'\037' CMD &&
+        IFS= read -r -d $'\037' FILE &&
+        IFS= read -r -d $'\037' CONTENT &&
+        IFS= read -r -d $'\037' TP
+    } <<<"$JQ_OUT" && JQ_FAST=1
+fi
+if [ "$JQ_FAST" = 0 ] && ! abf_jq_works; then
     RAW=$INPUT
     if looks_managed_write_shaped "$RAW"; then
         cat >&2 <<'EOF'
@@ -137,19 +160,8 @@ ESCAPE='略過導覽'      # said by the user, G1/G2/G3 stand down
 ESCAPE4='略過計畫'     # said by the user, G4 stands down
 MAXLINES=4000          # transcript tail scanned; bounds the cost on a long one
 
-if [ "$JQ_FAST" = 1 ]; then
-    # The fields come as one string, each followed by the separator. They are read out in order:
-    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
-    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
-    # newlines were trimmed by jq, as $(jq) did per field.
-    {
-        IFS= read -r -d $'\037' TOOL
-        IFS= read -r -d $'\037' CMD
-        IFS= read -r -d $'\037' FILE
-        IFS= read -r -d $'\037' CONTENT
-        IFS= read -r -d $'\037' TP
-    } <<<"$JQ_OUT"
-else
+if [ "$JQ_FAST" = 0 ]; then
+    # (The fast path's fields were read out above.)
     TOOL=$(jq -r '.tool_name // ""'            <<<"$INPUT" 2>/dev/null)
     CMD=$(jq  -r '.tool_input.command // ""'   <<<"$INPUT" 2>/dev/null)
     # notebook_path as well as file_path: MultiEdit and NotebookEdit reach the

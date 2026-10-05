@@ -100,5 +100,56 @@ mk "$TMP/bigrm.json" Bash "$BIG; $D -rf /work/u/lab_runs/x/results"
 run confirm_cleanup "$TMP/bigrm.json"
 check "deletion guard: a 70 KB command line still denies" "$([ "$(decision)" = deny ] && echo 1 || echo 0)" "got '$(decision)' rc=$RC"
 
+# ---------------------------------------------------------------------------
+# jq-broken-gates: a jq that is present but broken - it fails on everything, or
+# it answers 0 with something that is not the answer (`{}`, or text) - must not
+# turn the launch gate, the walkthrough gate, the plugin-file guard or the
+# overview hook silently permissive (invariant 13). Each must do what it does
+# with no jq at all: refuse what it guards from the raw text and name the fix
+# (the gates: exit 2, BLOCKED and the install line on stderr; plugin_intro.sh:
+# the jq warning, and the in-use marker), and stay quiet on a call it does not
+# guard. A `{}` answer is the dangerous one: it parses as an empty verdict.
+BJ="$TMP/badjq"; mkdir -p "$BJ/fail" "$BJ/empty" "$BJ/text" "$TMP/fakeplugin/hooks"
+printf '#!/bin/sh\ncat >/dev/null 2>&1\nexit 3\n' > "$BJ/fail/jq"
+printf '#!/bin/sh\ncat >/dev/null 2>&1\necho "{}"\n' > "$BJ/empty/jq"
+printf '#!/bin/sh\ncat >/dev/null 2>&1\necho "Segmentation fault (core dumped)"\n' > "$BJ/text/jq"
+chmod +x "$BJ"/*/jq
+BJ_LAUNCH=$(jq -nc --arg c "$TW launch nf-core/rnaseq -profile test" '{tool_name:"Bash", tool_input:{command:$c}}')
+BJ_LS='{"tool_name":"Bash","tool_input":{"command":"ls -la"}}'
+BJ_SS=$(jq -nc --arg t "$TMP/transcript.jsonl" '{tool_name:"Write", transcript_path:$t, tool_input:{file_path:"/r/samplesheet.csv", content:"sample,fastq_1\n"}}')
+BJ_NOTES=$(jq -nc --arg t "$TMP/transcript.jsonl" '{tool_name:"Write", transcript_path:$t, tool_input:{file_path:"/r/notes.txt", content:"x\n"}}')
+BJ_GUARD=$(jq -nc --arg p "$TMP/fakeplugin/hooks/x.sh" '{tool_name:"Write", tool_input:{file_path:$p, content:"x"}}')
+BJ_OTHER=$(jq -nc --arg p "$TMP/work/x.txt" '{tool_name:"Write", tool_input:{file_path:$p, content:"x"}}')
+bj_run() { # bj_run <kind> <hook> <json>  -> BJ_OUT BJ_ERR BJ_RC (no session id: in use)
+  BJ_OUT=$(printf '%s' "$3" | env -u LAB_SETTINGS_FILE PATH="$BJ/$1:$PATH" CLAUDE_PLUGIN_ROOT="$TMP/fakeplugin" \
+           AGENTIC_BIOFLOW_STATE_DIR="$TMP/bjstate" HOME="$TMP/home" timeout 60 bash "$HOOKS/$2.sh" 2>"$TMP/bj_err")
+  BJ_RC=$?; BJ_ERR=$(cat "$TMP/bj_err" 2>/dev/null)
+}
+bj_refuses() { # bj_refuses <label>: exit 2, BLOCKED and the install line on stderr, nothing on stdout
+  printf '%-78s ' "$1"
+  if [ "$BJ_RC" = 2 ] && [ -z "$BJ_OUT" ] && [[ $BJ_ERR == *BLOCKED* ]] && [[ $BJ_ERR == *'install jq'* || $BJ_ERR == *'jqlang.jq'* ]]; then echo ok
+  else echo "FAIL: rc=$BJ_RC out='${BJ_OUT:0:60}' err='${BJ_ERR:0:80}'"; fails=$((fails+1)); fi
+}
+bj_quiet() { # bj_quiet <label>: exit 0, nothing at all
+  printf '%-78s ' "$1"
+  if [ "$BJ_RC" = 0 ] && [ -z "$BJ_OUT" ] && [ -z "$BJ_ERR" ]; then echo ok
+  else echo "FAIL: rc=$BJ_RC out='${BJ_OUT:0:60}' err='${BJ_ERR:0:80}'"; fails=$((fails+1)); fi
+}
+echo
+echo "== jq-broken-gates: jq present but failing, or answering wrongly =="
+for k in fail empty text; do
+  bj_run "$k" confirm_launch "$BJ_LAUNCH";      bj_refuses "jq '$k': launch gate refuses tw launch, names the fix"
+  bj_run "$k" confirm_launch "$BJ_LS";          bj_quiet   "jq '$k': launch gate stays quiet on ls"
+  bj_run "$k" confirm_walkthrough "$BJ_SS";     bj_refuses "jq '$k': walkthrough gate refuses a samplesheet write, names the fix"
+  bj_run "$k" confirm_walkthrough "$BJ_NOTES";  bj_quiet   "jq '$k': walkthrough gate stays quiet on notes.txt"
+  bj_run "$k" guard_plugin_files "$BJ_GUARD";   bj_refuses "jq '$k': plugin-file guard refuses a write into the plugin"
+  bj_run "$k" guard_plugin_files "$BJ_OTHER";   bj_quiet   "jq '$k': plugin-file guard stays quiet elsewhere"
+  bj_run "$k" plugin_intro "$(jq -nc --arg s "bj-$k" '{session_id:$s, hook_event_name:"UserPromptSubmit", prompt:"/agentic-bioflow:setup"}')"
+  printf '%-78s ' "jq '$k': plugin_intro.sh warns that jq is broken, and marks the session"
+  if [ "$BJ_RC" = 0 ] && [[ $BJ_OUT == *'jq is missing or cannot run'* ]] && printf '%s' "$BJ_OUT" | jq -e .systemMessage >/dev/null 2>&1 \
+     && [ -e "$TMP/bjstate/in-use/bj-$k" ]; then echo ok
+  else echo "FAIL: rc=$BJ_RC out='${BJ_OUT:0:80}'"; fails=$((fails+1)); fi
+done
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
