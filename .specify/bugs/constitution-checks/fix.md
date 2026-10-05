@@ -30,7 +30,7 @@
 | I.2 no second copy of run state | `tests/no_second_run_state_test.sh` | 14 self-tests: sbatch / `nextflow run` / `tw launch` (also after `&&`, quoted, in Python), `nohup`, a polling loop, a run-state file, sqlite, an invented `tw` noun; quoted prose passes |
 | II.5 works without the host | `tests/works_without_host_test.sh` | 7 self-tests on mutated copies: sourcing a hook, running one with bash, reading `.claude-plugin/`, a script that does not parse, a doc citing a missing script; a comment naming a hook passes |
 | Credentials (git, printing, params) | `tests/credentials_stay_in_settings_test.sh` | 20 self-tests for the static scans; 9 hook cases for the params gate |
-| III.7 nobody needs the maintainer | Procedure P1, `docs/TESTING.md` Half 3 | manual; needs a person who is not the maintainer |
+| III.7 nobody needs the maintainer | Procedure P1, `docs/TESTING.md` Half 3 | manual; needs a person who is not the maintainer. The assessment also named `tests/onboarding_self_contained_test.sh` (a lint that no user-facing text sends the user to PITFALLS or the maintainer). **Dropped, not written:** a text lint cannot see whether a person got stuck, and the phrase it would grep for is exactly what a step written to dodge the lint would avoid. P1 checks the real thing. |
 | IV.8 evidence before claims | Procedure P2, `docs/TESTING.md` Half 3 | manual; no automation on purpose (a lint for "has a date" is green for every entry and proves nothing) |
 
 ### The two drafts left by the interrupted agent (commit `23335df`)
@@ -68,3 +68,21 @@ Only *Check:* lines added: I.2, II.5 (test named before the existing sentence), 
 1. G7 is a new refusal in a hook. It enforces a rule that already existed, but a pipeline with a parameter genuinely named like `*_token` and a long value would now be refused. The message says what to do; say if you want it narrower.
 2. "Never carried over from another member's copy" has no real check. Options: a Windows/Unix owner check in `settings.sh --migrate` (refuse a token file not owned by the current user), or reword the rule to what is enforced. I did neither.
 3. Remove the temporary allow-list in `tests/scripts_name_their_alternative.sh` once the other branch (`detect_conditions.sh`, `methods_text.py`) and the `hooks/` headers have merged.
+
+## Acceptance round 1 (rejected, fixed)
+
+| Finding | Commits | What changed |
+|---|---|---|
+| H1 false green in invariant 1's check | ac1f0c1 RED, 76d6ac1 GREEN | With any file waived the last line is now `PARTIAL: 51 of 64 ... 13 are waived ... and NOT checked:` plus the file names (exit 0). Hook headers not touched, as instructed. |
+| M1 G7 false positives, M2 G7 false negatives | 165816f RED (13 red), f0105f5 GREEN | G7 now reads params.json, keys api-key / apikey / credential(s) / bearer / auth_token, passwords with any characters. It skips keys naming a file, path, dir, name, policy, pattern, prefix, length, url, limit, count or size, and values that are paths (/, ~, ./, drive letter), an env reference or only digits. |
+| M3 G7 is a behaviour change | f0105f5, 9fc0d30 | The 2.0.1 impact now names G7 and its reach. G7 is in the hook's header table, in `CLAUDE.md`'s hook list and in `docs/PRINCIPLES.md`. 23 G7 cases (deny and allow) are in `tests/confirm_walkthrough_test.sh`, which gets one self-contained block at its end. The hook edit is one function plus one call in one place. |
+| M4 invariant 2 scan misses | 8e8ac6e RED (8 red), 989b710 GREEN | Quoted submissions (ssh, python), `until` / `while` + sleep loops, `tw runs list` cached with `>` or `tee`, snapshot file names. A SUBMIT allow-list with reasons (two text-only mentions of the nextflow command line) fails when stale. |
+| Credentials Check wording | 9fc0d30 | The constitution no longer cites `confirm_launch_test.sh` and `init_workspace_test.sh` for "never carried over from another member's copy" (they test other things). It says that clause has no automated check yet, pending the maintainer's choice between an owner check in `settings.sh --migrate` and rewording the rule. |
+
+## The real reach of the nets (stated, not chased)
+
+- **G7** (stated in the hook header and the 2.0.1 Amendments entry): it sees a Write, Edit, MultiEdit or here-doc to a params file (yaml, yml, json) holding a credential-named key with a 12+ character value on the same line, or a token shape. It does not see `tee`, `sed -i`, a python `open()`, the PowerShell tool, values under 12 characters, a value on the next line or in a block scalar, or a key without such a word in its name (for example `pat`).
+- **Invariant 2 scan** is a static net over scripts/: it finds the shapes listed in its header. A script that keeps state under a name nobody listed passes.
+- **Credentials static scan** finds the token shapes it knows plus long values under credential-named keys.
+- **Invariant 1** reports PARTIAL while the allow-list is non-empty.
+- LOW items L1-L3 from the acceptance review stay as known limits.

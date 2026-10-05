@@ -60,7 +60,7 @@ Rule: "The command layer MUST NOT name a scheduler, partition, queue or relay."
 Per item, red first (the tightened or new check failing, or shown failing under a mutation), then the fix, then green:
 
 1. Tighten I.1's check (external alternative, hooks/ scanned, explicit "Nothing existing" form); fix six headers; two scripts plus eleven hooks files on a commented temporary allow-list that reports them and fails when an entry goes stale.
-2. New `tests/no_second_run_state_test.sh` (I.2), `tests/works_without_host_test.sh` (II.5), `tests/credentials_stay_in_settings_test.sh` (Safety Net, credentials), `tests/onboarding_self_contained_test.sh` (III.7 lint); manual procedures for III.7 and IV.8 in `docs/TESTING.md`.
+2. New `tests/no_second_run_state_test.sh` (I.2), `tests/works_without_host_test.sh` (II.5), `tests/credentials_stay_in_settings_test.sh` (Safety Net, credentials), ~~`tests/onboarding_self_contained_test.sh` (III.7 lint)~~ (DROPPED, see fix.md: a lint for "no user-facing text names PITFALLS or the maintainer" would be green for the same reason an IV.8 lint would, and Procedure P1 checks the real thing); manual procedures for III.7 and IV.8 in `docs/TESTING.md`.
 3. Tighten `tests/command_layer_is_site_neutral.sh`; reword `commands/downstream.md:85`.
 4. Constitution 2.0.1 (PATCH): name each Check, short amendment note, update citing documents. Any change beyond naming goes to the maintainer instead.
 
