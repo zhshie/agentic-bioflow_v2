@@ -26,6 +26,7 @@ mkdir -p "$P/hooks" "$P/scripts"
 cp "$ROOT/hooks/plugin_intro.sh" "$P/hooks/" 2>/dev/null
 cat > "$P/scripts/intro.sh" <<'EOF'
 #!/bin/bash
+[ "${1:-}" = --lang ] && shift 2   # the real intro.sh takes --lang; the hook passes it
 case "${1:-}" in
     "") echo "STUB-OVERVIEW-MARKER" ;;
     --banner) echo "STUB-BANNER-MARKER" ;;
@@ -99,6 +100,7 @@ lines=$(prompt s20 '/agentic-bioflow:setup' | field .systemMessage | wc -l | tr 
 printf '%-60s ' "a multi-line banner is still cut to one line"
 cat > "$P/scripts/intro_multiline.sh" <<'EOS'
 #!/bin/bash
+[ "${1:-}" = --lang ] && shift 2   # the real intro.sh takes --lang; the hook passes it
 case "${1:-}" in
     "") echo "STUB-OVERVIEW-MARKER" ;;
     --banner) printf 'STUB-BANNER-MARKER\nSECOND-LINE-MARKER\n' ;;
