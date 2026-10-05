@@ -330,6 +330,8 @@ HIT_ROOT=""
 HIT_CODE=""
 HIT_GLOB=""
 HIT_MV_SOURCE=""
+HIT_CASE=""
+HIT_PERM=""
 
 # #29, round 3: everything below runs inside this shell - `[[ =~ ]]`, `case`
 # and parameter expansion - with no `echo | grep` per segment or per target.
@@ -347,7 +349,11 @@ RE_FIND_DEL='(^|[[:space:]])([^[:space:]]*/)?find[[:space:]](.*[[:space:]])?(-de
 RE_RSYNC_DEL='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--delete'
 RE_MV='(^|[[:space:]])([^[:space:]]*/)?\\?mv([[:space:]]|$)'
 RE_RSYNC_RSF='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--remove-source-files'
-RE_CODE_DEL='(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|(^|[^[:alnum:]_.])(unlink|rmtree|remove_tree)|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync)|::Delete)[[:space:]]*\('
+# sn1-delete-shapes: also any `.rm(` / `.rmdir(` / `.unlink(` call (node's
+# require('fs').rmSync(, fs.promises.rm(, python's pathlib .unlink()), the node
+# *Sync forms, Ruby's File/Dir.delete( and FileUtils.rm*/remove* - the last also
+# without parentheses, which Ruby allows.
+RE_CODE_DEL='(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|(^|[^[:alnum:]_.])(unlink|rmtree|remove_tree|rm_rf|rm_r|remove_dir|remove_entry(_secure)?)|\.(rm|rmdir|unlink|rmSync|rmdirSync|unlinkSync|removeSync|emptyDirSync|rm_rf|rm_r|rm_f)|(File|Dir)\.(delete|unlink|rmdir)|file\.remove|fs\.(rm|rmSync|unlinkSync|rmdirSync)|::Delete)[[:space:]]*\(|FileUtils\.(rm|rm_r|rm_rf|rm_f|rmtree|rmdir|remove[a-z_]*)([^[:alnum:]_]|$)'
 RE_DEVNULL='[0-9]*>&?[[:space:]]*/dev/null'
 RE_TRUNC='>[[:space:]]*/'
 RE_OVERWRITE='(^|/)(rawdata|results)(/|$)'
@@ -361,12 +367,45 @@ RE_SEQEXT='\.(fastq|fq|fasta|fa|fna|bam|cram)(\.gz)?$'
 RE_RAW='(^|/)(rawdata|raw_data)(/|$)'
 # SN2: Nextflow's own delete of a run's work/ directories.
 RE_NFCLEAN='(^|[[:space:]])([^[:space:]]*/)?nextflow(\.exe)?[[:space:]](.*[[:space:]])?clean([[:space:]]|$)'
+# sn1-delete-shapes: commands that delete as a side effect of something else -
+# archive and remove the originals, a sync tool's delete/move/sync, a link or a
+# mode laid over a folder, a redirect that only truncates.
+RE_TAR_RM='(^|[[:space:]])([^[:space:]]*/)?(g|bsd)?tar(\.exe)?[[:space:]](.*[[:space:]])?--rem[a-z-]*([[:space:]]|$)'
+RE_ZIP_MV='(^|[[:space:]])([^[:space:]]*/)?zip(\.exe)?[[:space:]](.*[[:space:]])?(-[A-Za-z0-9@$]*m[A-Za-z0-9@$]*|--move)([[:space:]]|$)'
+RE_RCLONE='(^|[[:space:]])([^[:space:]]*/)?rclone(\.exe)?[[:space:]](.*[[:space:]])?(purge|delete|deletefile|rmdir|rmdirs|move|moveto|sync)([[:space:]]|$)'
+RE_LN_F='(^|[[:space:]])([^[:space:]]*/)?ln(\.exe)?[[:space:]](.*[[:space:]])?(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)'
+RE_INSTALL_D='(^|[[:space:]])([^[:space:]]*/)?install(\.exe)?[[:space:]](.*[[:space:]])?(-[A-Za-z0-9]*d[A-Za-z0-9]*|--directory)([[:space:]]|$)'
+RE_PURE_TRUNC='^[[:space:]]*((:|true|false|printf|echo[[:space:]]+-n|cat[[:space:]]+/dev/null)[[:space:]]*)?[0-9]*>([^>&]|$)'
+RE_RECURSIVE='(^|[[:space:]])(-[A-Za-z]*[rR][A-Za-z]*|--recursive|/[sS])([[:space:]]|$)'
+RE_SEQPAT='\.(fastq|fq|fasta|fa|fna|bam|cram)([^[:alnum:]]|$)'
+# A folder the deployment's layout (docs/SETTINGS.md) fills with protected ones:
+# a member's area under lab_runs/, projects[/<p>] (rawdata/), runs[/<r>] (results/).
+RE_HOLDER='(^|/)(lab_runs(/[^/_.][^/]*)?|projects(/[^/]+)?|runs(/[^/]+)?)$'
+RE_GUARDED_LEAF='^(rawdata|results|analysis|_references|work|plugins|cache|[._]?(lab_)?singularity(_cache|_library)?)$'
+RE_WINPATH='^([A-Za-z]:/|/mnt/[A-Za-z]/|/cygdrive/[A-Za-z]/)'
+# Windows and macOS file systems ignore case: there RESULTS is results/.
+case "${OSTYPE:-}" in msys*|cygwin*|darwin*) CASE_FOLD=1 ;; *) CASE_FOLD=0 ;; esac
 
 # One delete target judged against every rule that depends on where it is. Called
 # for the word as written, for the word with backslashes read as escapes, and for
 # the word resolved against the working folder (#35).
 judge_delete_target() {
-        local A="$1" An GL NM RP
+        local A="$1" An GL NM RP FOLD=$CASE_FOLD CI=0
+            # sn1-delete-shapes: a never-delete name in other letter case
+            # (RESULTS). Where the file system ignores case (Git Bash, Cygwin,
+            # macOS, or a Windows-shaped path from anywhere) it is the same
+            # folder: refused like the exact name. Elsewhere it is a different
+            # folder that is the same one on such a system: ask. The other
+            # rules below (work/, leftovers, globs) keep comparing exactly.
+            [[ $A =~ $RE_WINPATH ]] && FOLD=1
+            if ! [[ $A =~ $RE_PROTECTED ]] && ! [[ $A =~ $RE_SHARED ]] && ! [[ $A =~ $RE_PLUGINS ]]; then
+                shopt -s nocasematch
+                [[ $A =~ $RE_PLUGINS ]] && CI=1 && [ "$FOLD" = 1 ] && HIT_PLUGINS="${HIT_PLUGINS}${A} "
+                [[ $A =~ $RE_SHARED ]] && CI=1 && [ "$FOLD" = 1 ] && HIT_SHARED="${HIT_SHARED}${A} "
+                [[ $A =~ $RE_PROTECTED ]] && CI=1 && [ "$FOLD" = 1 ] && HIT_PROTECTED="${HIT_PROTECTED}${A} "
+                shopt -u nocasematch
+                [ "$CI" = 1 ] && [ "$FOLD" = 0 ] && HIT_CASE="${HIT_CASE}${A} "
+            fi
             [[ $A =~ $RE_PLUGINS ]] && HIT_PLUGINS="${HIT_PLUGINS}${A} "
             # Shared across the whole lab: reference genomes and taxonomy
             # databases (_references/) and the read-only image library. One
@@ -422,12 +461,152 @@ judge_delete_target() {
             fi
 }
 
+# sn1-delete-shapes: SW holds a segment's words; REPLY = the index just past the
+# first one whose name (quotes and directory dropped) matches the ERE $1.
+past_word() { # past_word <ERE of command names>
+    local i x
+    for ((i = 0; i < ${#SW[@]}; i++)); do
+        x=${SW[$i]//[\"\']/}; x=${x##*/}
+        if [[ $x =~ ^($1)$ ]]; then REPLY=$((i + 1)); return 0; fi
+    done
+    REPLY=${#SW[@]}
+    return 1
+}
+
+# sn1-delete-shapes: does a folder hold protected folders, so that deleting it
+# recursively deletes them too? By the deployment's layout (RE_HOLDER), or, for
+# an absolute path that exists on this machine, by its own children. Builtins
+# only: no process.
+holds_protected() { # holds_protected <path>
+    local p="${1%/}" c
+    [ -n "$p" ] || return 1
+    [[ $p =~ $RE_HOLDER ]] && return 0
+    case "$p" in /*|[A-Za-z]:/*) ;; *) return 1 ;; esac
+    [ -d "$p" ] || return 1
+    for c in rawdata results analysis _references projects runs; do
+        [ -e "$p/$c" ] && return 0
+    done
+    return 1
+}
+
+# sn1-delete-shapes: a brace word as bash expands it - `res{ults,}` is results and
+# res, `{a,{b,c}}` nests, `{1..3}` and `{a..c}` are sequences. BRACE_OUT gets
+# every word, at most 64; returns 1 when there would be more (the words are then
+# unknown). The old flattening of `{`, `}` and `,` into `/` stays where it was.
+brace_expand() {
+    local todo=("$1") w i j d k s e c a pre post inner lo hi st n alts
+    BRACE_OUT=()
+    while [ "${#todo[@]}" -gt 0 ]; do
+        w=${todo[${#todo[@]}-1]}; unset 'todo[${#todo[@]}-1]'
+        s=-1
+        for ((i = 0; i < ${#w}; i++)); do
+            [ "${w:i:1}" = '{' ] || continue
+            d=0; k=0
+            for ((j = i; j < ${#w}; j++)); do
+                case "${w:j:1}" in
+                    '{') d=$((d + 1)) ;;
+                    '}') d=$((d - 1)); [ "$d" = 0 ] && break ;;
+                    ',') [ "$d" = 1 ] && k=1 ;;
+                esac
+            done
+            [ "$d" = 0 ] || continue
+            inner=${w:i+1:j-i-1}
+            if [ "$k" = 1 ] || [[ $inner =~ ^(-?[0-9]+\.\.-?[0-9]+|[A-Za-z]\.\.[A-Za-z])(\.\.-?[0-9]+)?$ ]]; then
+                s=$i; e=$j; break
+            fi
+        done
+        if [ "$s" -lt 0 ]; then
+            BRACE_OUT+=("$w"); [ "${#BRACE_OUT[@]}" -le 64 ] || return 1
+            continue
+        fi
+        pre=${w:0:s}; post=${w:e+1}; inner=${w:s+1:e-s-1}; alts=()
+        if [ "$k" = 1 ]; then
+            d=0; a=""
+            for ((j = 0; j < ${#inner}; j++)); do
+                c=${inner:j:1}
+                case "$c" in
+                    '{') d=$((d + 1)) ;;
+                    '}') d=$((d - 1)) ;;
+                    ',') if [ "$d" = 0 ]; then alts+=("$a"); a=""; continue; fi ;;
+                esac
+                a+=$c
+            done
+            alts+=("$a")
+        else
+            lo=${inner%%..*}; hi=${inner#*..}; st=1
+            case "$hi" in *..*) st=${hi#*..}; hi=${hi%%..*} ;; esac
+            st=${st#-}; [ "$st" = 0 ] && st=1
+            if [[ $lo =~ ^[A-Za-z]$ ]]; then
+                printf -v lo '%d' "'$lo"; printf -v hi '%d' "'$hi"; n=char
+            else
+                n=num
+            fi
+            if [ "$lo" -le "$hi" ]; then
+                for ((i = lo; i <= hi; i += st)); do
+                    if [ "$n" = char ]; then printf -v a '%x' "$i"; printf -v a "\\x$a"; else a=$i; fi
+                    alts+=("$a"); [ "${#alts[@]}" -le 64 ] || return 1
+                done
+            else
+                for ((i = lo; i >= hi; i -= st)); do
+                    if [ "$n" = char ]; then printf -v a '%x' "$i"; printf -v a "\\x$a"; else a=$i; fi
+                    alts+=("$a"); [ "${#alts[@]}" -le 64 ] || return 1
+                done
+            fi
+        fi
+        for a in "${alts[@]}"; do todo+=("$pre$a$post"); done
+        [ "${#todo[@]}" -le 64 ] || return 1
+    done
+    return 0
+}
+
+# sn1-delete-shapes: one target word as written: quote characters dropped,
+# backslashes read both as Windows separators and as escapes, a brace word
+# expanded, a relative path also resolved against the working folder. Each
+# spelling is then judged as deleted (mode ""), deleted with all it holds
+# ("rec"), or moved out ("move": only rawdata/, results/, analysis/, an ask).
+judge_word() { # judge_word <word> [""|rec|move]
+    local W=$1 M=${2:-} V E Y X=() SP=()
+    case "$W" in ''|-*) return 0 ;; esac
+    W=${W//\"/}; W=${W//\'/}
+    SP=("${W//\\//}"); [ "${W//\\/}" != "${W//\\//}" ] && SP+=("${W//\\/}")
+    for V in "${SP[@]}"; do
+        [ -n "$V" ] || continue
+        case "$V" in *'$'*|*'`'*) [ "$M" = move ] || UNRESOLVED="${UNRESOLVED}${V} " ;; esac
+        BRACE_OUT=("$V")
+        if [[ $V == *'{'*'}'* ]] && ! brace_expand "$V"; then
+            UNRESOLVED="${UNRESOLVED}(${V}: a brace list too long to read) "; BRACE_OUT=("$V")
+        fi
+        for E in "${BRACE_OUT[@]}"; do
+            X=("$E")
+            if [ -n "$VCWD" ]; then
+                case "$E" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$E"; X+=("$REPLY") ;; esac
+            fi
+            for Y in "${X[@]}"; do
+                case "$M" in
+                    move)
+                        [ "$CASE_FOLD" = 1 ] && shopt -s nocasematch
+                        [[ $Y =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${Y} "
+                        shopt -u nocasematch ;;
+                    *)
+                        judge_delete_target "$Y"
+                        [ "$M" = rec ] && holds_protected "$Y" \
+                            && HIT_PROTECTED="${HIT_PROTECTED}${Y} (it holds rawdata/, results/ or analysis/) "
+                        shopt -s nocasematch
+                        [[ $Y =~ $RE_SEQEXT ]] && HIT_SEQFILE="${HIT_SEQFILE}${Y} "
+                        shopt -u nocasematch ;;
+                esac
+            done
+        done
+    done
+}
+
 # A dry run deletes nothing (#35) - but only the options of the command ITSELF
 # say so. `nice -n 10 rsync --delete`, `srun -n 1 rsync ...`, `ssh -n h rsync`,
 # `sudo -n`, `ionice -n 7`, `timeout -n 5` carry an n that belongs to the
 # wrapper; read as rsync's -n it silenced a real delete. So: find the rsync
 # word (or `git ... clean`) and look only at the option words after it.
-# is_dry_run <quote-free segment>: 0 if it is a dry run of rsync / git clean.
+# is_dry_run <quote-free segment>: 0 if it is a dry run of rsync / rclone /
+# git clean / nextflow clean.
 is_dry_run() {
     local W w b i=0 n seen=0
     # Split without a here-string: it costs a pipe per call, and this runs for
@@ -437,7 +616,7 @@ is_dry_run() {
     for ((i = 0; i < n; i++)); do
         w=${W[$i]}; w=${w#\\}; b=${w##*/}
         if [ "$seen" = 0 ]; then
-            case "$b" in rsync|rsync.exe) seen=1 ;; clean) seen=1 ;; esac
+            case "$b" in rsync|rsync.exe|rclone|rclone.exe) seen=1 ;; clean) seen=1 ;; esac
             continue
         fi
         case "$w" in
@@ -463,8 +642,9 @@ is_dry_run() {
 # tests/confirm_cleanup_behind_heredoc_test.sh runs every case of
 # tests/confirm_cleanup_test.sh through this path to catch one that has not.
 # Small inputs skip the filter: it is one more process (gate_process_count).
-CW_HANDLED='^(__too_deep__|cd|pushd|get-childitem|gci|ls|dir|get-item|gi|where-object|where|\?|select-object|select|sort-object|sort|measure-object|measure|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|[$`].*)$'
+CW_HANDLED='^(__too_deep__|cd|pushd|get-childitem|gci|ls|dir|get-item|gi|where-object|where|\?|select-object|select|sort-object|sort|measure-object|measure|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
 RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)|($RE_NFCLEAN)"
+RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)"
 if [ "${#SEGMENTS}" -gt 16384 ]; then
     FILTERED=$(ABF_TRIG="$RE_TRIGGER" ABF_CWRE="$CW_HANDLED" awk -F "$US" '
         BEGIN { t = ENVIRON["ABF_TRIG"]; c = ENVIRON["ABF_CWRE"] }
@@ -633,6 +813,238 @@ while IFS="$US" read -r SEG VSEG CW; do
         DESTRUCTIVE=1
         UNRESOLVED="${UNRESOLVED}(git clean: removes untracked files, which ones depends on the repository) "
     fi
+
+    # sn1-delete-shapes: commands that delete as a side effect of something else.
+    # Each is read for the words it really removes, which are judged as an rm
+    # target would be (judge_word). Additive: the rules after this still run.
+    SHAPE=""
+    if [[ $VSEG =~ $RE_TAR_RM ]]; then SHAPE=tar
+    elif [[ $VSEG =~ $RE_ZIP_MV ]]; then SHAPE=zip
+    elif [[ $VSEG =~ $RE_RCLONE ]]; then SHAPE=rclone
+    elif [[ $VSEG =~ $RE_LN_F ]]; then SHAPE=ln
+    elif [[ $VSEG =~ $RE_INSTALL_D ]]; then SHAPE=install
+    else
+        # the command word itself quoted (`"tar" ...`): the quote-free copy lost it
+        SEGQ=${SEG//[\"\']/}
+        case "$CW" in
+            tar|gtar|bsdtar) [[ $SEGQ =~ $RE_TAR_RM ]] && SHAPE=tar ;;
+            zip) [[ $SEGQ =~ $RE_ZIP_MV ]] && SHAPE=zip ;;
+            rclone) [[ $SEGQ =~ $RE_RCLONE ]] && SHAPE=rclone ;;
+            ln) [[ $SEGQ =~ $RE_LN_F ]] && SHAPE=ln ;;
+            install) [[ $SEGQ =~ $RE_INSTALL_D ]] && SHAPE=install ;;
+        esac
+    fi
+    [ -n "$SHAPE" ] && { set -f; SW=($SEG_NR); set +f; }
+    case "$SHAPE" in
+    tar)
+        # tar --remove-files deletes every source once archived: not the archive
+        # (-f/--file, or `f` in an old-style first word), not the -C folder or
+        # another option's value. -T/--files-from: the sources are in a file.
+        past_word 'g?tar|bsdtar|tar\.exe'; XI=$REPLY; XSKIP=0; XFIRST=1
+        for ((; XI < ${#SW[@]}; XI++)); do
+            X=${SW[$XI]}; XQ=${X//[\"\']/}
+            if [ "$XSKIP" = 1 ]; then XSKIP=0; XFIRST=0; continue; fi
+            case "$XQ" in
+                -T|--files-from) UNRESOLVED="${UNRESOLVED}(tar --remove-files: the files listed in ${SW[$((XI + 1))]:-?}) "; XSKIP=1 ;;
+                --files-from=*) UNRESOLVED="${UNRESOLVED}(tar --remove-files: the files listed in ${XQ#*=}) " ;;
+                -f|--file|-C|--directory|-X|--exclude-from|-g|--listed-incremental|-b|--blocking-factor|-H|--format|-K|--starting-file|-L|--tape-length|-N|--newer|--after-date|-V|--label|--exclude|-I|--use-compress-program) XSKIP=1 ;;
+                --*) ;;
+                -?*) case "$XQ" in
+                         *T) UNRESOLVED="${UNRESOLVED}(tar --remove-files: the files listed in ${SW[$((XI + 1))]:-?}) "; XSKIP=1 ;;
+                         *[fCXgbHKLNVI]) XSKIP=1 ;;
+                     esac ;;
+                *) if [ "$XFIRST" = 1 ] && [[ $XQ =~ ^[A-Za-z]+$ ]]; then
+                       [[ $XQ == *f* ]] && XSKIP=1
+                   else
+                       judge_word "$X" rec
+                   fi ;;
+            esac
+            XFIRST=0
+        done ;;
+    zip)
+        # zip -m deletes every name after the zip file once added; not -x/-i
+        # patterns or another option's value. -@: the names come from stdin.
+        past_word 'zip|zip\.exe'; XI=$REPLY; XSKIP=0; XF=0; XPAT=0
+        for ((; XI < ${#SW[@]}; XI++)); do
+            X=${SW[$XI]}; XQ=${X//[\"\']/}
+            if [ "$XSKIP" = 1 ]; then XSKIP=0; continue; fi
+            case "$XQ" in
+                -x|-i|--exclude|--include) XPAT=1; continue ;;
+                -@|--names-stdin) UNRESOLVED="${UNRESOLVED}(zip -m: the names it reads from stdin) "; continue ;;
+                -b|-n|-t|-tt|-P|-Z|-s|-sp|-O|--temp-path|--suffixes|--from-date|--before-date|--password|--compression-method|--split-size|--output-file) XSKIP=1; continue ;;
+                -?*) XPAT=0; continue ;;
+            esac
+            [ "$XPAT" = 1 ] && continue
+            if [ "$XF" = 0 ]; then XF=1; continue; fi
+            judge_word "$X" rec
+        done ;;
+    rclone)
+        # purge/delete/deletefile/rmdir/rmdirs remove every path; sync deletes in
+        # its destination what the source lacks; move/moveto empty their sources
+        # (an mv source: ask, E9). A `remote:` prefix is judged with and without.
+        if [ "$DRYRUN" = 0 ]; then
+            past_word 'rclone|rclone\.exe'; XI=$REPLY; XV=""; XP=()
+            for ((; XI < ${#SW[@]}; XI++)); do
+                XQ=${SW[$XI]//[\"\']/}
+                if [ -z "$XV" ]; then
+                    case "$XQ" in purge|delete|deletefile|rmdir|rmdirs|move|moveto|sync) XV=$XQ ;; esac
+                    continue
+                fi
+                case "$XQ" in -*) continue ;; esac
+                XP+=("${SW[$XI]}")
+            done
+            for ((XI = 0; XI < ${#XP[@]}; XI++)); do
+                case "$XV" in
+                    sync) [ "$XI" = $((${#XP[@]} - 1)) ] || continue; XM=rec ;;
+                    move|moveto) [ "$XI" -lt $((${#XP[@]} - 1)) ] || continue; XM=move ;;
+                    *) XM=rec ;;
+                esac
+                judge_word "${XP[$XI]}" "$XM"
+                XQ=${XP[$XI]//[\"\']/}
+                [[ $XQ =~ ^[A-Za-z0-9_.-]+: ]] && judge_word "${XQ#*:}" "$XM"
+            done
+        fi ;;
+    ln)
+        # ln -f replaces its link name, and with -n/-T even a link to a folder:
+        # rawdata/ is often exactly that. Without -n/-T a folder is written INTO
+        # (staging a link in rawdata/), which stays quiet. Judged only when the
+        # link name IS a guarded folder.
+        past_word 'ln|ln\.exe'; XI=$REPLY; XSKIP=0; XT=0; XN=0; XA=()
+        for ((; XI < ${#SW[@]}; XI++)); do
+            XQ=${SW[$XI]//[\"\']/}
+            if [ "$XSKIP" = 1 ]; then XSKIP=0; continue; fi
+            case "$XQ" in
+                -t|--target-directory) XT=1; XSKIP=1 ;;
+                --target-directory=*) XT=1 ;;
+                -S|--suffix) XSKIP=1 ;;
+                --no-dereference|--no-target-directory) XN=1 ;;
+                --*) ;;
+                -?*) case "$XQ" in *[nT]*) XN=1 ;; esac
+                     case "$XQ" in *t) XT=1; XSKIP=1 ;; *t*) XT=1 ;; *S) XSKIP=1 ;; esac ;;
+                *) XA+=("${SW[$XI]}") ;;
+            esac
+        done
+        if [ "$XT" = 0 ] && [ "$XN" = 1 ] && [ "${#XA[@]}" -ge 1 ]; then
+            if [ "${#XA[@]}" = 1 ]; then X=${XA[0]//[\"\']/}; X=${X%/}; X=${X##*/}; else X=${XA[${#XA[@]}-1]}; fi
+            XQ=${X//[\"\']/}; XQ=${XQ//\\//}; XQ=${XQ%/}
+            shopt -s nocasematch
+            [[ ${XQ##*/} =~ $RE_GUARDED_LEAF ]] && XL=1 || XL=0
+            shopt -u nocasematch
+            [ "$XL" = 1 ] && judge_word "$XQ"
+        fi ;;
+    install)
+        # install -d on an existing folder sets its mode/owner: nothing removed,
+        # but -m 000 locks everyone out. Asked when it names a protected folder
+        # itself and sets a mode, owner or group.
+        past_word 'install|install\.exe'; XI=$REPLY; XSKIP=0; XM=0; XA=()
+        for ((; XI < ${#SW[@]}; XI++)); do
+            XQ=${SW[$XI]//[\"\']/}
+            if [ "$XSKIP" = 1 ]; then XSKIP=0; continue; fi
+            case "$XQ" in
+                -m|-o|-g|--mode|--owner|--group) XM=1; XSKIP=1 ;;
+                --mode=*|--owner=*|--group=*) XM=1 ;;
+                -t|-S|--target-directory|--suffix) XSKIP=1 ;;
+                --*) ;;
+                -?*) case "$XQ" in *[mog]*) XM=1 ;; esac
+                     case "$XQ" in *[mogtS]) XSKIP=1 ;; esac ;;
+                *) XA+=("$XQ") ;;
+            esac
+        done
+        if [ "$XM" = 1 ]; then
+            for X in ${XA[@]+"${XA[@]}"}; do
+                X=${X//\\//}; X=${X%/}
+                shopt -s nocasematch
+                if [[ ${X##*/} =~ $RE_GUARDED_LEAF ]] \
+                   && { [[ $X =~ $RE_PROTECTED ]] || [[ $X =~ $RE_SHARED ]] || [[ $X =~ $RE_PLUGINS ]]; }; then
+                    HIT_PERM="${HIT_PERM}${X} "
+                fi
+                shopt -u nocasematch
+            done
+        fi ;;
+    esac
+
+    # sn1-delete-shapes: a redirect with nothing written through it (`: > f`,
+    # `> f`, `true > f`, `cat /dev/null > f`) is `truncate -s 0 f`, and is judged
+    # the same way. `>>` appends, and anything else that writes stays an overwrite.
+    if [[ $VSEG =~ $RE_PURE_TRUNC ]]; then
+        set -f; SW=($SEG_NR); set +f
+        XP=(); XO=""; XN=0
+        for X in ${SW[@]+"${SW[@]}"}; do
+            if [ "$XN" = 1 ]; then XP+=("$X"); XN=0; continue; fi
+            case "$X" in
+                '>>'*|[0-9]'>>'*|'&>>'*) ;;
+                '>'|'>|'|[0-9]'>'|[0-9]'>|'|'&>') XN=1 ;;
+                '>&'*|[0-9]'>&'*) ;;
+                '>|'?*) XP+=("${X#>|}") ;;
+                '>'?*) XP+=("${X#>}") ;;
+                [0-9]'>|'?*) XP+=("${X#?>|}") ;;
+                [0-9]'>'?*) XP+=("${X#?>}") ;;
+                '&>'?*) XP+=("${X#&>}") ;;
+                *) XO="$XO $X" ;;
+            esac
+        done
+        case "${XO# }" in
+            ''|:|true|false|'cat /dev/null'|'echo -n'|"echo -n ''"|'echo -n ""'|printf|"printf ''"|'printf ""')
+                for X in ${XP[@]+"${XP[@]}"}; do judge_word "$X"; done ;;
+        esac
+    fi
+
+    # sn1-delete-shapes: a find that deletes is judged by where it starts. From a
+    # folder that holds protected ones it deletes inside them: refused when it has
+    # no name/path/depth filter or one aimed at sequencing files, asked about
+    # otherwise. A sequencing-file filter from a folder this guard cannot place
+    # is asked about too (/tmp and $TMPDIR excepted, as before).
+    if [ "$DESTRUCTIVE" = 1 ] && [[ $VSEG =~ $RE_FIND_DEL ]]; then
+        set -f; SW=($SEG_NR); set +f
+        past_word 'find|find\.exe'; XI=$REPLY; XR=(); XF=0; XS=0; XE=0; XPREV=""
+        while [ "$XI" -lt "${#SW[@]}" ]; do
+            case "${SW[$XI]}" in -H|-L|-P|-O*) XI=$((XI + 1)) ;; -D) XI=$((XI + 2)) ;; *) break ;; esac
+        done
+        while [ "$XI" -lt "${#SW[@]}" ]; do
+            XQ=${SW[$XI]//[\"\']/}
+            case "$XQ" in -*|'('|'!'|'\('|'\!'|,) break ;; esac
+            XR+=("$XQ"); XI=$((XI + 1))
+        done
+        for ((; XI < ${#SW[@]}; XI++)); do
+            XQ=${SW[$XI]//[\"\']/}
+            if [ "$XE" = 1 ]; then case "$XQ" in ';'|'\;'|+) XE=0 ;; esac; continue; fi
+            case "$XPREV" in
+                -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex|-lname|-ilname)
+                    shopt -s nocasematch; [[ $XQ =~ $RE_SEQPAT ]] && XS=1; shopt -u nocasematch ;;
+            esac
+            case "$XQ" in
+                -exec|-execdir|-ok|-okdir) XE=1 ;;
+                -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex|-lname|-ilname|-maxdepth|-prune) XF=1 ;;
+            esac
+            XPREV=$XQ
+        done
+        [ "${#XR[@]}" -gt 0 ] || XR=(.)
+        for X in "${XR[@]}"; do
+            X=${X//\\//}; XA=("$X")
+            if [ -n "$VCWD" ]; then
+                case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$X"; XA+=("$REPLY") ;; esac
+            fi
+            XH=0; XW=0; XT=0
+            for Y in "${XA[@]}"; do
+                holds_protected "$Y" && XH=1
+                [[ $Y =~ $RE_WORK ]] && XW=1
+                case "$Y/" in /tmp/*|/var/tmp/*|"${TMPDIR:-/tmp}"/*) XT=1 ;; esac
+            done
+            if [ "$XH" = 1 ]; then
+                if [ "$XF" = 0 ] || [ "$XS" = 1 ]; then
+                    HIT_PROTECTED="${HIT_PROTECTED}${X} (find deletes inside the rawdata/, results/ or analysis/ it holds) "
+                else
+                    UNRESOLVED="${UNRESOLVED}(find from ${X}, which holds rawdata/, results/ or analysis/: check that its filter keeps out of them) "
+                fi
+            elif [ "$XS" = 1 ] && [ "$XW" = 0 ] && [ "$XT" = 0 ]; then
+                UNRESOLVED="${UNRESOLVED}(find deletes every sequencing file under ${X}, and this guard cannot see whether rawdata/ is there) "
+            fi
+        done
+    fi
+    # a recursive rm / Remove-Item / rd of a folder that holds protected ones
+    RMODE=""
+    [ "$DESTRUCTIVE" = 1 ] && [[ $VSEG =~ $RE_RECURSIVE ]] && ! [[ $VSEG =~ $RE_FIND_DEL ]] && RMODE=rec
+
     # E9: what kind of move this is decides which arguments are SOURCES.
     #   mv   - every non-flag argument but the last (the last is written into)
     #   all  - every argument is a source: `mv -t DIR SRC…`, rename(1)
@@ -787,6 +1199,14 @@ while IFS="$US" read -r SEG VSEG CW; do
             # results), and the same word resolved against the working folder.
             [ "$A_ESC" != "$A" ] && judge_delete_target "$A_ESC"
             [ -n "$RES" ] && judge_delete_target "$RES"
+            # sn1-delete-shapes: a brace word as bash expands it (`res{ults,}`),
+            # beside the flattened form above; and a recursive delete of a folder
+            # that holds protected ones.
+            [[ ${WORDS[$wi]} == *'{'*'}'* ]] && judge_word "${WORDS[$wi]}" "$RMODE"
+            if [ "$RMODE" = rec ]; then
+                holds_protected "$A" && HIT_PROTECTED="${HIT_PROTECTED}${A} (it holds rawdata/, results/ or analysis/) "
+                [ -n "$RES" ] && holds_protected "$RES" && HIT_PROTECTED="${HIT_PROTECTED}${RES} (it holds rawdata/, results/ or analysis/) "
+            fi
         fi
         shopt -s nocasematch
         [[ $A =~ $RE_SEQEXT ]] && HIT_SEQFILE="${HIT_SEQFILE}${A} "
@@ -872,6 +1292,21 @@ Pattern: ${HIT_GLOB}
 
 List what it matches first (ls with the same pattern), show the user, and name
 the paths literally if any protected directory is among them."
+
+# sn1-delete-shapes: on a case-sensitive file system, a protected name in other case.
+[ -n "$HIT_CASE" ] && ask "CANNOT VERIFY: this deletes a folder named like a protected one in different
+letter case (${HIT_CASE}).
+
+On this machine's file system that is a different folder from rawdata/,
+results/, analysis/, _references/ or .nextflow/plugins/; on Windows or macOS,
+and on a Windows drive under WSL, it is the same one. Confirm with the user
+which folder this is before running it."
+
+# sn1-delete-shapes: install -d with a mode or owner, on a protected folder itself.
+[ -n "$HIT_PERM" ] && ask "About to change the mode or owner of a protected folder (${HIT_PERM}) with install -d.
+
+It removes nothing, but a mode such as 000 locks the pipeline and every other
+member out of it. Confirm with the user that this is intended."
 
 [ -n "$UNRESOLVED" ] && ask "CANNOT VERIFY: this destructive command's target is a shell variable, so the
 guard cannot tell what it points at.

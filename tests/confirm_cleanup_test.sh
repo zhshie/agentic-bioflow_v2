@@ -591,9 +591,11 @@ t "$D -rf C:/lab/proj/Results"                            deny "a Windows path: 
 t "$D -rf /mnt/c/lab/proj/RawData"                        deny "a WSL path to a Windows drive: deny"
 tps 'Remove-Item -Recurse C:\lab\proj\RESULTS'            deny "PowerShell Remove-Item RESULTS"
 t "$D -rf $P/Resultsheet.txt"                             pass "control: a name that only starts alike"
+t "$D -f C:/Users/me/Documents/Work/old.txt"              pass "control: a Windows folder named Work is not work/"
 # links and modes
 t "ln -sfn /tmp/x $P/results"                             deny "ln -sfn over results/"
-t "ln -sf /tmp/x $P/rawdata"                              deny "ln -sf over rawdata"
+t "ln --force --no-dereference -s /tmp/x $P/rawdata"      deny "ln --force --no-dereference over rawdata"
+t "ln -sf /data/orig/s1.fastq.gz $P/rawdata"              pass "control: ln -sf without -n links INTO rawdata/"
 t "ln -sfT /tmp/x $P/analysis/"                           deny "ln -sfT over analysis/"
 t "ln -sfn /tmp/x $P/work"                                ask  "ln -sfn over work/ asks"
 t "ln -sf /data/orig/s1.fastq.gz $P/rawdata/s1.fastq.gz"  pass "control: staging a link inside rawdata/"
