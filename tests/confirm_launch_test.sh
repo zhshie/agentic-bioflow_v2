@@ -880,6 +880,60 @@ python3 -c "import json,sys;print(json.dumps({'tool_name':'Bash','tool_input':{'
 [ "$rc" = 2 ] && echo ok || { echo "FAIL: rc=$rc"; fails=$((fails+1)); }
 
 echo
+echo "== launch-shapes-unconfirmed: other ways to start a run (each with a read-only control) =="
+# The Platform API's launch endpoint, tw actions trigger, seqerakit, nf-core's
+# launcher and nextflow kuberun all start a run; each passed with no output.
+KUBE="nextflow $(printf '\x6b\x75\x62\x65\x72\x75\x6e')"   # kuberun
+API="https://api.cloud.seqera.io"
+t "$KUBE nf-core/rnaseq"                                   gate "shapes: nextflow kuberun"
+t "nextflow -c k8s.config $(printf '\x6b\x75\x62\x65\x72\x75\x6e') nf-core/rnaseq -v pvc:/data" gate "shapes: nextflow -c x kuberun"
+t "nf-core $LVERB rnaseq"                                  gate "shapes: nf-core launch"
+t "nf-core pipelines $LVERB rnaseq -r 3.14.0"              gate "shapes: nf-core pipelines launch"
+t "nf-core -v pipelines $LVERB rnaseq"                     gate "shapes: nf-core -v pipelines launch"
+t "nf-core pipelines list"                                 pass "shapes: control: nf-core pipelines list"
+t "nf-core list"                                           pass "shapes: control: nf-core list"
+t "seqerakit run.yml"                                      gate "shapes: seqerakit run.yml"
+t "seqerakit --env-file env.yaml pipelines.yaml"           gate "shapes: seqerakit with options, .yaml"
+t "cat run.yml | seqerakit -"                              gate "shapes: seqerakit reading stdin"
+t "python3 -m seqerakit run.yml"                           gate "shapes: python3 -m seqerakit"
+t "seqerakit --dryrun run.yml"                             pass "shapes: control: seqerakit --dryrun"
+t "seqerakit -d run.yml"                                   pass "shapes: control: seqerakit -d"
+t "seqerakit --info"                                       pass "shapes: control: seqerakit --info"
+t "pip install seqerakit"                                  pass "shapes: control: pip install seqerakit"
+t "tw actions trigger -n nightly"                          gate "shapes: tw actions trigger"
+t "tw -o json actions trigger --name nightly"              gate "shapes: tw -o json actions trigger"
+t "tw actions list"                                        pass "shapes: control: tw actions list"
+t "curl -s -X POST -H \"Authorization: Bearer \$TOWER_ACCESS_TOKEN\" \"$API/workflow/$LVERB?workspaceId=1\" -d @l.json" gate "shapes: curl -X POST workflow/launch"
+t "curl -s \"$API/workflow/$LVERB?workspaceId=1\" -d @l.json" gate "shapes: curl -d (a POST) workflow/launch"
+t "curl --json @l.json $API/workflow/$LVERB"               gate "shapes: curl --json workflow/launch"
+t "curl -XPOST $API/workflow/$LVERB --data-binary @l.json" gate "shapes: curl -XPOST --data-binary"
+t "curl -X POST \"$API/actions/4xYz/$LVERB?workspaceId=1\"" gate "shapes: curl POST actions/<id>/launch"
+t "wget --post-data='{}' $API/workflow/$LVERB"            gate "shapes: wget --post-data workflow/launch"
+t "python3 -c \"import requests; requests.post('https://x/api/workflow/$LVERB')\"" gate "shapes: python requests.post workflow/launch"
+t "Invoke-RestMethod -Method Post -Uri $API/workflow/$LVERB -Body \$b" gate "shapes: Invoke-RestMethod -Method Post"
+t "curl -s \"$API/workflow?workspaceId=1\""                pass "shapes: control: curl GET /workflow"
+t "curl -s -H \"Authorization: Bearer \$T\" \"$API/workflow/abc/$LVERB\"" pass "shapes: control: curl GET workflow/<id>/launch (describes)"
+t "echo \"curl -X POST $API/workflow/$LVERB\""             pass "shapes: control: echo of the POST"
+t "git commit -m \"docs: nf-core $LVERB and seqerakit run.yml\"" pass "shapes: control: a commit message naming them"
+t "grep -rn kuberun docs/"                                 pass "shapes: control: grep for kuberun"
+t "make run"                                               pass "shapes: out of scope: make run"
+printf '%-56s ' "shapes: no jq + nf-core launch - BLOCKED"
+nojq "nf-core $LVERB rnaseq" >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && echo ok || { echo "FAIL: rc=$rc"; fails=$((fails+1)); }
+printf '%-56s ' "shapes: no jq + seqerakit run.yml - BLOCKED"
+nojq "seqerakit run.yml" >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && echo ok || { echo "FAIL: rc=$rc"; fails=$((fails+1)); }
+printf '%-56s ' "shapes: no jq + a POST to workflow/launch - BLOCKED"
+nojq "curl -X POST $API/workflow/$LVERB?workspaceId=1 -d @l.json" >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && echo ok || { echo "FAIL: rc=$rc"; fails=$((fails+1)); }
+printf '%-56s ' "shapes: no jq + tw actions trigger - BLOCKED"
+nojq "tw actions trigger -n x" >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && echo ok || { echo "FAIL: rc=$rc"; fails=$((fails+1)); }
+printf '%-56s ' "shapes: no jq + nf-core pipelines list - passes"
+nojq "nf-core pipelines list" >/dev/null 2>&1; rc=$?
+[ "$rc" = 0 ] && echo ok || { echo "FAIL: rc=$rc"; fails=$((fails+1)); }
+
+echo
 echo "== #62: every case above, again behind a 20 KB here-doc (the big-input path) =="
 # A command whose segments come to over 16 KB is filtered by one awk pass before
 # the shell looks at them (#62: walking thousands of here-doc lines in the shell
