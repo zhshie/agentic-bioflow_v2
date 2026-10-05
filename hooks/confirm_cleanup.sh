@@ -95,12 +95,49 @@ resolve_link() {
 # either shape into the same flat token soup.
 LOOKS_SHAPED_SEP=$'\t\n\r;&|()<>"\'{}[],:='
 looks_delete_shaped() {
-    local text=" $(printf '%s' "$1" | tr -s "$LOOKS_SHAPED_SEP" ' ') "
-    case "$text" in
+    local text
+    # jq-broken-cleanup: in raw JSON a line break is the two characters `\n`,
+    # which glued the next line's verb to an `n` (`\nrm`): the escapes for line
+    # breaks and tabs are separators too. If sed or tr cannot run, nothing here
+    # can be ruled out.
+    text=$(printf '%s' "$1" | sed 's/\\[ntr]/ /g' | tr -s "$LOOKS_SHAPED_SEP" ' ')
+    if [ -z "$text" ]; then [ -n "$1" ] && return 0; return 1; fi
+    case " $text " in
         *' rm '*|*' rmdir '*|*' shred '*|*' mv '*|*'-delete'*|*'--delete'*|*' find '*|*' rsync '*|*'Remove-Item'*|*'rmtree'*)
+            return 0 ;;
+        # jq-broken-cleanup: the other verbs and shapes the full check knows
+        *' unlink '*|*' truncate '*|*' rclone '*|*'--remove-files'*|*' nextflow '*' clean '*|*' git '*' clean '*)
+            return 0 ;;
+        *'rmSync'*|*'unlinkSync'*|*'rmdirSync'*|*'rm_rf'*|*'remove_tree'*|*'os.remove'*|*'os.unlink'*|*'FileUtils.rm'*)
             return 0 ;;
     esac
     return 1
+}
+
+# Invariant 13: with jq missing, unable to run, or answering wrongly, the raw text
+# is all there is. A command that could be a delete is refused, naming the fix;
+# anything else is let through, as before. Exit 2 rather than a JSON verdict:
+# building that JSON is itself a jq call.
+jq_refuse() { # jq_refuse <what is wrong with jq>
+    if looks_delete_shaped "$INPUT"; then
+        printf 'BLOCKED: %s, so hooks/confirm_cleanup.sh cannot read\n' "$1" >&2
+        cat >&2 <<'EOF'
+what this command would delete precisely - and the raw text of this one matches
+a deletion-shaped pattern (rm / rmdir / shred / mv / find ... -delete /
+rsync ... --delete), so it is refused rather than guessed at. A command that
+matches none of those patterns is let through unchanged - this is narrower
+than before, not a blanket refusal, though it still cannot see a delete hidden
+behind a variable or an alias the way the real check can. confirm_launch.sh
+and confirm_walkthrough.sh apply the same scoped rule.
+
+Install jq to get the full check back (this hook will not attempt to), then retry:
+  macOS:       brew install jq
+  Debian/WSL:  sudo apt install jq
+  Windows:     winget install jqlang.jq
+EOF
+        exit 2
+    fi
+    exit 0
 }
 
 # `command -v jq` would only prove a FILE exists. A jq that cannot run -
@@ -126,44 +163,41 @@ abf_in_use "$INPUT" "$INPUT" || exit 0
 # record, both fields plain strings, no separator inside them; anything else
 # (not JSON, no jq, an object-valued field, two JSON values) goes the way this
 # file always went: the probe, then one jq per field.
+# jq-broken-cleanup: "produced something" was not enough - a jq that prints `{}`
+# or a line of text for everything was read as an answer. The call now also
+# prints a token jq has to compute, and is trusted only when the token, the
+# two fields, their separators and nothing else came back.
 JQ_FAST=0
-JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then ("abf-" + "jq-ok\u001f") + (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
   && [ -n "$JQ_OUT" ] && JQ_FAST=1
-if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
-    RAW=$INPUT
-    if looks_delete_shaped "$RAW"; then
-        cat >&2 <<'EOF'
-BLOCKED: jq is missing or cannot run here, so hooks/confirm_cleanup.sh cannot read
-what this command would delete precisely - and the raw text of this one matches
-a deletion-shaped pattern (rm / rmdir / shred / mv / find ... -delete /
-rsync ... --delete), so it is refused rather than guessed at. A command that
-matches none of those patterns is let through unchanged - this is narrower
-than before, not a blanket refusal, though it still cannot see a delete hidden
-behind a variable or an alias the way the real check can. confirm_launch.sh
-and confirm_walkthrough.sh apply the same scoped rule.
-
-Install jq to get the full check back (this hook will not attempt to), then retry:
-  macOS:       brew install jq
-  Debian/WSL:  sudo apt install jq
-  Windows:     winget install jqlang.jq
-EOF
-        exit 2
-    fi
-    exit 0
-fi
 
 if [ "$JQ_FAST" = 1 ]; then
     # The fields come as one string, each followed by the separator. They are read out in order:
     # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
     # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
     # newlines were trimmed by jq, as $(jq) did per field.
+    JQ_TOKEN=""; JQ_REST=""; JQ_SHAPE=0
     {
-        IFS= read -r -d $'\037' TOOL
-        IFS= read -r -d $'\037' CMD
+        IFS= read -r -d $'\037' JQ_TOKEN && IFS= read -r -d $'\037' TOOL \
+          && IFS= read -r -d $'\037' CMD && JQ_SHAPE=1
+        IFS= read -r -d '' JQ_REST
     } <<<"$JQ_OUT"
-else
+    [ "$JQ_SHAPE" = 1 ] && [ "$JQ_TOKEN" = abf-jq-ok ] && [ "$JQ_REST" = $'\n' ] || JQ_FAST=0
+    JQ_OUT=""; JQ_REST=""
+fi
+if [ "$JQ_FAST" = 0 ]; then
+    # `command -v jq` would only prove a file exists, and `jq -e .`'s exit status
+    # only that it exited: jq has to read a known field out of a known input.
+    [ "$(jq -e .abf -r <<<'{"abf":"jq-ok"}' 2>/dev/null)" = jq-ok ] || jq_refuse "jq is missing, cannot run here, or does not compute correctly"
     TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
     CMD=$(echo "$INPUT" | jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' 2>/dev/null)
+fi
+# jq-broken-cleanup: no command read from a Bash input that plainly carries one
+# means jq's answer cannot be trusted (it failed on that field, or answered
+# emptily). Another tool's shape is the unreadable-input case below.
+RE_RAW_CMD='"(command|script|cmd|commandLine|powershell|input)"[[:space:]]*:[[:space:]]*"[^"]'
+if [ -z "$CMD" ] && { [ "$TOOL" = Bash ] || [ -z "$TOOL" ]; } && [[ $INPUT =~ $RE_RAW_CMD ]]; then
+    jq_refuse "jq runs here but read no command from an input that has one"
 fi
 
 # Fail-CLOSED output (invariant 13, SN3). Every verdict below is built by jq from
@@ -191,7 +225,11 @@ abf_emit() { # abf_emit <ask|deny|-> <permissionDecisionReason or -> <additional
             + (if $d != "-" then {permissionDecision: $d} else {} end)
             + (if $r != "-" then {permissionDecisionReason: $r} else {} end)
             + (if $c != "-" then {additionalContext: $c} else {} end))}' 2>/dev/null) \
-       && [[ $o == '{'* ]]; then
+       && [[ $o == '{'*'"hookSpecificOutput"'*'"hookEventName"'*'"PreToolUse"'* ]] \
+       && { [ "$1" = - ] || [[ $o == *'"permissionDecision"'*'"'"$1"'"'* ]]; } \
+       && { [ "$3" = - ] || [[ $o == *'"additionalContext"'* ]]; }; then
+        # jq-broken-cleanup: printed only when it is the answer asked for; a jq
+        # that prints `{}` (no decision: the call proceeds) gets the fixed ask.
         printf '%s\n' "$o"
     else
         printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"GATE: this hook could not build its own message (jq failed), so it cannot rule this call out. Show the user the full command and confirm it by hand before it runs.","additionalContext":"GATE: the hook could not build its message; treat this call as gated and confirm it with the user."}}'
