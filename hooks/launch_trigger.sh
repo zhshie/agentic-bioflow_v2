@@ -130,6 +130,17 @@ is_launch_command() {
         SEGS=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
     fi
+    # gates-audit2-low: outside quotes a backslash before a letter only escapes
+    # it, so `s\batch` and `tw l\aunch` run sbatch and tw launch. A segment that
+    # holds a backslash is judged again with its backslashes dropped - as an
+    # added copy, since on Windows a backslash is a path separator and the
+    # segment as written must still be judged too.
+    local SEGSB
+    if [[ $SEGS == *\\* ]]; then
+        SEGSB=$(awk '{ print } /\\/ { gsub(/\\/, ""); print }' <<<"$SEGS" 2>/dev/null) \
+          && [ -n "$SEGSB" ] && SEGS=$SEGSB
+        SEGSB=""
+    fi
 
     # #62: a big command (a here-doc body python reads is thousands of segments)
     # is first cut down by one awk pass to the segments the loop below could act
