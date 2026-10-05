@@ -536,6 +536,100 @@ if grep -q 'sequencing data' <<<"$out" && grep -q 'Nextflow scratch' <<<"$out"; 
   echo "FAIL: <<${out:0:120}>>"; fails=$((fails+1)); fi
 
 echo
+echo "== SN1: delete shapes the guard did not see (sn1-delete-shapes) =="
+# Each shape that removes a protected folder (or empties a file in one) must be
+# refused, or asked about where the target cannot be seen; each control must not
+# change. The verbs are assembled like $D where a gate watching the shell could
+# read them.
+TAR=$(printf '\x74\x61\x72'); ZIP=$(printf '\x7a\x69\x70'); RCL=$(printf '\x72\x63\x6c\x6f\x6e\x65')
+# archive-and-remove
+t "$TAR --remove-files -cf /tmp/r.tar $P/results"         deny "tar --remove-files of results/"
+t "$TAR -czf /tmp/r.tgz --remove-files -C $P results"     deny "tar --remove-files -C <run> results"
+t "$TAR cf /tmp/r.tar $P/rawdata --remove-files"          deny "old-style tar cf ... --remove-files"
+t "$TAR --remove-files -cf /tmp/w.tar $P/work"            ask  "tar --remove-files of work/ asks"
+t "$TAR --remove-files -cf /tmp/x.tar -T list.txt"        ask  "tar --remove-files -T list: sources unknown"
+t "$TAR -cf /tmp/r.tar $P/results"                        pass "control: tar without --remove-files"
+t "$TAR --remove-files -cf $P/results/old.tar /tmp/scratch" pass "control: the archive written INTO results/"
+t "$ZIP -rm /tmp/r.zip $P/results"                        deny "zip -rm of results/"
+t "$ZIP -r -m /tmp/r.zip $P/analysis"                     deny "zip -r -m of analysis/"
+t "$ZIP --move /tmp/r.zip $P/rawdata/a.fastq.gz"          deny "zip --move of a rawdata/ file"
+t "$ZIP -r /tmp/r.zip $P/results"                         pass "control: zip without -m"
+t "$ZIP -rm $P/results/figs.zip /tmp/figs"                pass "control: the zip file written INTO results/"
+# rclone
+t "$RCL purge $P/results"                                 deny "rclone purge results/"
+t "$RCL delete remote:proj/results"                       deny "rclone delete remote:.../results"
+t "$RCL deletefile $P/rawdata/a.fastq.gz"                 deny "rclone deletefile in rawdata/"
+t "$RCL rmdirs $P/analysis"                               deny "rclone rmdirs analysis/"
+t "$RCL sync /tmp/empty $P/results"                       deny "rclone sync INTO results/ (deletes what is not in the source)"
+t "$RCL move $P/results remote:backup"                    ask  "rclone move results/ out asks (as mv, E9)"
+t "$RCL delete $P/work"                                   ask  "rclone delete work/ asks"
+t "$RCL copy $P/results remote:backup"                    pass "control: rclone copy"
+t "$RCL sync $P/results remote:backup"                    pass "control: rclone sync FROM results/"
+t "$RCL purge remote:scratch"                             pass "control: rclone purge elsewhere"
+t "$RCL delete --dry-run $P/results"                      pass "control: rclone delete --dry-run"
+t "$RCL ls $P/results"                                    pass "control: rclone ls"
+# deletes written as node / ruby / pathlib code: ask, as python already does
+t "node -e \"require('fs').rmSync('$P/results',{recursive:true})\"" ask "node require('fs').rmSync(...)"
+t "node -e \"fs.promises.rm('$P/results',{recursive:true})\""       ask "node fs.promises.rm(...)"
+t "ruby -e 'require \"fileutils\"; FileUtils.rm_rf(\"$P/results\")'" ask "ruby FileUtils.rm_rf(...)"
+t "ruby -e 'FileUtils.rm_r \"$P/results\"'"                          ask "ruby FileUtils.rm_r without parentheses"
+t "python3 -c \"import pathlib; pathlib.Path('$P/results/x').unlink()\"" ask "python pathlib .unlink()"
+t "node -e \"console.log(1)\""                                       pass "control: node -e console.log"
+t "ruby -e 'puts FileUtils.pwd'"                                     pass "control: ruby FileUtils.pwd"
+t "$(printf 'python3 - <<%s\nlst = [1, 2]\nlst.remove(1)\nEOF\n' "'EOF'")" pass "control: python list.remove(...)"
+# a brace word, as bash expands it
+t "$D -rf $P/res{ults,}"                                  deny "brace res{ults,}"
+t "$D -rf $P/{tmp,ana{lysis,x}}"                          deny "nested brace naming analysis"
+t "$D -rf $P/re{s..s}ults"                                deny "brace sequence re{s..s}ults"
+t "$D -rf $P/tmp{1,2}"                                    pass "control: brace naming nothing protected"
+t "$D -rf /tmp/{a,b}"                                     pass "control: brace under /tmp"
+# case: the same folder on a file system that ignores case
+case "${OSTYPE:-}" in msys*|cygwin*|darwin*) CASE_EXP=deny ;; *) CASE_EXP=ask ;; esac
+t "$D -rf $P/RESULTS"                                     "$CASE_EXP" "RESULTS: deny where case is ignored, else ask"
+t "$D -rf $P/Analysis/x"                                  "$CASE_EXP" "Analysis/x: the same"
+t "$D -rf C:/lab/proj/Results"                            deny "a Windows path: case ignored, deny"
+t "$D -rf /mnt/c/lab/proj/RawData"                        deny "a WSL path to a Windows drive: deny"
+tps 'Remove-Item -Recurse C:\lab\proj\RESULTS'            deny "PowerShell Remove-Item RESULTS"
+t "$D -rf $P/Resultsheet.txt"                             pass "control: a name that only starts alike"
+# links and modes
+t "ln -sfn /tmp/x $P/results"                             deny "ln -sfn over results/"
+t "ln -sf /tmp/x $P/rawdata"                              deny "ln -sf over rawdata"
+t "ln -sfT /tmp/x $P/analysis/"                           deny "ln -sfT over analysis/"
+t "ln -sfn /tmp/x $P/work"                                ask  "ln -sfn over work/ asks"
+t "ln -sf /data/orig/s1.fastq.gz $P/rawdata/s1.fastq.gz"  pass "control: staging a link inside rawdata/"
+t "ln -s /tmp/x $P/results"                               pass "control: ln without -f (fails if it exists)"
+t "ln -sf $P/results /tmp/link"                           pass "control: results/ as the link's target"
+t "install -d -m 000 $P/results"                          ask  "install -d -m 000 results/ asks"
+t "install -d -o nobody $P/_references"                   ask  "install -d -o on _references/ asks"
+t "install -d $P/results"                                 pass "control: install -d without a mode (mkdir -p)"
+t "install -d -m 755 $P/results/fastqc_extra"             pass "control: install -d -m of a new folder inside"
+t "install -m 644 x.R $P/analysis/x.R"                    pass "control: install a file into analysis/"
+# a truncation by redirect is truncate -s 0
+t ": > $P/rawdata/s1.fastq.gz"                            deny ": > rawdata/<file>"
+t "> $P/results/multiqc_report.html"                      deny "> results/<file>"
+t "true > $P/analysis/de.tsv"                             deny "true > analysis/<file>"
+t "cat /dev/null > $P/results/x.tsv"                      deny "cat /dev/null > results/<file>"
+t ": > $P/work/x"                                         ask  ": > work/<file> asks"
+tc "$P/rawdata" ": > s1.fastq.gz"                         deny ": > <file> with cwd rawdata/"
+t ": > /tmp/x.log"                                        pass "control: : > /tmp/x.log"
+t "echo x > $P/results/notes.txt"                         warn "control: writing into results/ is unchanged (warn)"
+t ": >> $P/results/x.log"                                 warn "control: an append is not a truncation (warn)"
+# a recursive delete from above the protected folders
+t "find $P -name '*.fastq.gz' -delete"                    deny "find <run> -name '*.fastq.gz' -delete"
+t "find $P -iname '*.BAM' -exec $D {} +"                  deny "find <run> -iname '*.BAM' -exec rm"
+tc "$P" "find . -name '*.fq.gz' -delete"                  deny "find . -name '*.fq.gz' -delete in <run>"
+t "find $P -delete"                                       deny "find <run> -delete"
+t "$D -rf $P"                                             deny "rm -rf <run>"
+t "$D -rf /data/me/projects/p1/"                          deny "rm -rf <projects>/<p>"
+t "find $P -name '*.log' -delete"                         ask  "find <run> -name '*.log' -delete asks"
+t "find /data/proj -name '*.fastq.gz' -delete"            ask  "find <unknown> -name '*.fastq.gz' -delete asks"
+t "find $P/work -name '*.bam' -delete"                    ask  "control: find work/ -name '*.bam' asks (SN2)"
+t "find /tmp/x -name '*.fastq.gz' -delete"                warn "control: find /tmp/x -name '*.fastq.gz' unchanged (warn)"
+t "$D -f $P/tmp.txt"                                      pass "control: rm a file beside the protected folders"
+t "$D -rf $P/tmp"                                         pass "control: rm -rf a folder beside them"
+t "find $P -maxdepth 1 -name tmp_x"                       pass "control: find without -delete"
+
+echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
 # hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.
 # Past its own deadline (20 s; ABF_CLEANUP_DEADLINE_S can only lower it, for
