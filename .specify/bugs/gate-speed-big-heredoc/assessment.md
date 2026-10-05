@@ -36,7 +36,7 @@ Stage timings at 300 KB (profiling copy of the hook): read 2 ms, in_use 30 ms, j
 
 ## Proposed Remediation
 
-- When the segment list is large (over 16 KB), filter it with one awk pass before the loop. A segment is kept when its command word is one the loop handles (including `cd` and the PowerShell listers, which carry state) or its quote-free text matches one of the loop's own trigger regexes, passed to awk unchanged; each run of dropped segments becomes one marker line, which resets the lister state exactly as any other command does. The trigger list is built from the same variables the rules use, and `tests/confirm_cleanup_test.sh` is also run with every case behind a large here-doc, so a rule the filter does not reach fails a test.
+- When the segment list is large (over 8 KB), filter it with one awk pass before the loop. A segment is kept when its command word is one the loop handles (including `cd` and the PowerShell listers, which carry state) or its quote-free text matches one of the loop's own trigger regexes, passed to awk unchanged; each run of dropped segments becomes one marker line, which resets the lister state exactly as any other command does. The trigger list is built from the same variables the rules use, and `tests/confirm_cleanup_test.sh` is also run with every case behind a large here-doc, so a rule the filter does not reach fails a test.
 - Small inputs keep the current path (no extra process: `tests/gate_process_count_test.sh` budget), and the WIP stem list is removed.
 - No here-string in the per-segment path (`is_dry_run`, the target words).
 - A deadline: past 20 s of the hook's own time the loop stops and the hook asks, saying the command was too large to check in time (invariant 13), instead of being cancelled at 30 s.

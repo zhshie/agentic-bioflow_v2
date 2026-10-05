@@ -679,11 +679,12 @@ is_dry_run() {
 # other command does. A rule added below needs its trigger here too;
 # tests/confirm_cleanup_behind_heredoc_test.sh runs every case of
 # tests/confirm_cleanup_test.sh through this path to catch one that has not.
-# Small inputs skip the filter: it is one more process (gate_process_count).
+# Small inputs (under 8 KB of segments) skip the filter: it is one more process
+# (gate_process_count), and their full judgement costs well under a second.
 CW_HANDLED='^(__too_deep__|cd|pushd|get-childitem|gci|ls|dir|get-item|gi|where-object|where|\?|select-object|select|sort-object|sort|measure-object|measure|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
 RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)|($RE_NFCLEAN)"
 RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)"
-if [ "${#SEGMENTS}" -gt 16384 ]; then
+if [ "${#SEGMENTS}" -gt 8192 ]; then
     FILTERED=$(ABF_TRIG="$RE_TRIGGER" ABF_CWRE="$CW_HANDLED" awk -F "$US" '
         BEGIN { t = ENVIRON["ABF_TRIG"]; c = ENVIRON["ABF_CWRE"] }
         $3 == "" || $3 ~ c || $2 ~ t { print; g = 0; next }
