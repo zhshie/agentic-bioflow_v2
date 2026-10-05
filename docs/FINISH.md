@@ -69,7 +69,11 @@ the pipeline's `CITATIONS.md`. Both files come from, in this order:
 3. A fetch from the pipeline's GitHub repository at the revision the run's
    versions file records (the same `raw.githubusercontent.com` read `launch`
    uses for `nextflow_schema.json`, through the same proxy where there is one),
-   kept in 2 so the next build does not fetch again.
+   kept in 2 so the next build does not fetch again. A file is kept only
+   after it is checked to be what it claims (a login page that answers 200 is
+   not a `CITATIONS.md`). Only a commit SHA or a version tag is final in the
+   cache; a branch is fetched again each build, and the cached copy is used,
+   with a note that it may be out of date, only when that fetch fails.
 
 When none of the three works (no recorded revision, a pipeline that is not
 `owner/repo` on GitHub, a 404, no network) the tools are `[CITATION NEEDED]`

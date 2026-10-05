@@ -86,7 +86,8 @@ esac
 # expands on the far side of wsl.exe; made here unexpanded it would land
 # relative to the caller's cwd (#25). $CP itself stays untouched.
 case "$CP" in
-  '~/'*) SLOTS_DIR="${HOME:-}/${CP#\~/}.slots" ;;
+  '~/'*) [ -n "${HOME:-}" ] || { echo "on_site.sh: the control path $CP starts with ~/ but HOME is not set in this shell, so the session-slot directory cannot be placed. Set HOME (or ssh_control_path to an absolute path) and try again." >&2; exit 2; }
+         SLOTS_DIR="$HOME/${CP#\~/}.slots" ;;
   *)     SLOTS_DIR="${CP}.slots" ;;
 esac
 SLOT_DIR=""

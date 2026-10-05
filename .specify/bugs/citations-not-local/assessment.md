@@ -4,6 +4,7 @@
 - **Created**: 2026-10-05
 - **Source**: https://github.com/zhshie/agentic-bioflow_v2/issues/4
 - **Verdict**: valid
+- **Status**: fixed; reopened once after independent acceptance (see fix.md, round 2)
 - **Severity**: high for the default deployment (every first `finish` of every user lands in it); no data is wrong, but the package says "[CITATION NEEDED]" for tools that are well documented upstream and blames nothing true
 
 ## 給維護者

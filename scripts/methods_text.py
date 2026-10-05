@@ -248,6 +248,36 @@ def revision_candidates(rev):
     return out
 
 
+IMMUTABLE_REV_RE = re.compile(r"^[vV]?[0-9]+(\.[0-9]+){0,3}$")
+TEMPLATE_DATA_RE = re.compile(r"^data:\s*\|", re.M)
+
+
+def is_immutable(rev):
+    """A full commit SHA or a plain version tag never changes; a branch does."""
+    return bool(SHA_RE.match(rev) or IMMUTABLE_REV_RE.match(rev))
+
+
+def kind_of(path):
+    return "CITATIONS.md" if path == CITATIONS_PATH else "methods template"
+
+
+def not_usable(path, text):
+    """Why this text is not the file it should be, or None when it is."""
+    if not text.strip():
+        return "it is empty"
+    if path == CITATIONS_PATH:
+        if not parse_citation_lines(text.splitlines()):
+            return "it has no tool entries"
+    elif not TEMPLATE_DATA_RE.search(text):
+        return "it has no `data:` block"
+    return None
+
+
+def snippet(text):
+    first = " ".join(text.split())[:50]
+    return "starts: %r" % first
+
+
 class PipelineFiles:
     """Resolve one file of a pipeline's repository to a path on this machine."""
 
@@ -256,41 +286,68 @@ class PipelineFiles:
         self.fetcher = fetcher or disabled_fetcher
 
     def get(self, name, rev, path, assets_base):
-        """-> (file path or None, where it came from, reason it is missing)."""
+        """-> (file path or None, where it came from, reason it is missing, warning).
+
+        A file is only ever returned after it has been checked to be the kind
+        of file it should be: a captive portal's HTML page answers 200 too.
+        """
+        kind = kind_of(path)
         local = os.path.join(assets_base, name, *path.split("/")) if name else None
         if local and os.path.isfile(local):
-            return local, os.path.relpath(local, assets_base), None
+            src = os.path.relpath(local, assets_base)
+            with open(local, encoding="utf-8", errors="replace") as fh:
+                bad = not_usable(path, fh.read())
+            if bad:
+                return None, None, "%s is not a %s (%s)" % (src, kind, bad), None
+            return local, src, None, None
         if not name:
-            return None, None, "the run records no pipeline name"
+            return None, None, "the run records no pipeline name", None
         if not GITHUB_NAME_RE.match(name) or ".." in name:
             return None, None, ("%s is not a GitHub owner/repo, so there is nowhere "
-                                "to fetch it from" % name)
+                                "to fetch it from" % name), None
         rev = "" if rev is None else str(rev).strip()
         if not rev or rev.lower() in ("none", "null", "~"):
             return None, None, ("the run's versions file records no revision for %s, "
-                                "so there is no version to fetch" % name)
+                                "so there is no version to fetch" % name), None
         if not REV_RE.match(rev) or ".." in rev:
-            return None, None, "the recorded revision %r is not one GitHub can serve" % rev
+            return None, None, ("the recorded revision %r is not one GitHub can serve"
+                                % rev), None
         origin = "github.com/%s@%s %s" % (name, rev, path)
         cached = self._cache_path(name, rev, path)
+        stale = None
         if cached and os.path.isfile(cached):
-            return cached, origin, None
-        reason = None
+            with open(cached, encoding="utf-8", errors="replace") as fh:
+                good = not_usable(path, fh.read()) is None
+            if good and is_immutable(rev):
+                return cached, origin, None, None
+            if good:
+                stale = cached   # a branch moves: fetch again, keep this as the fallback
+
+        reason, bad = None, None
         for cand in revision_candidates(rev):
             text, reason = self.fetcher(name, cand, path)
-            if text is not None and text.strip():
-                return self._keep(cached, text), origin, None
             if text is not None:
-                reason = "empty file"
+                why = not_usable(path, text)
+                if why is None:
+                    f, warn = self._keep(cached, text)
+                    return f, origin, None, warn
+                bad = ("the file fetched from github.com/%s@%s is not a %s (%s; %s)"
+                       % (name, cand, kind, why, snippet(text)))
+                break
             if reason != "not found":
                 break
-        if reason == "not found":
-            tried = revision_candidates(rev)
+        if bad:
+            reason = bad
+        elif reason == "not found":
             reason = "%s not found in %s at %s (HTTP 404)" % (
-                path, name, " or ".join(tried))
+                path, name, " or ".join(revision_candidates(rev)))
         else:
             reason = "%s could not be fetched from %s@%s: %s" % (path, name, rev, reason)
-        return None, None, reason
+        if stale:
+            return stale, origin, None, (
+                "%s was not refreshed (%s); the copy cached by an earlier build is "
+                "used and may be out of date" % (path, reason))
+        return None, None, reason, None
 
     def _cache_path(self, name, rev, path):
         if not self.cache_dir:
@@ -298,7 +355,11 @@ class PipelineFiles:
         return os.path.join(self.cache_dir, name, rev.replace("/", "_"), *path.split("/"))
 
     def _keep(self, dest, text):
-        """Write atomically into the cache; fall back to scratch space."""
+        """Write atomically into the cache; fall back to scratch space.
+
+        -> (path, warning or None)
+        """
+        warn = None
         if dest:
             try:
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -306,15 +367,18 @@ class PipelineFiles:
                 with open(tmp, "w", encoding="utf-8") as fh:
                     fh.write(text)
                 os.replace(tmp, dest)
-                return dest
+                return dest, None
             except OSError as e:
-                sys.stderr.write("methods_text.py: could not write the cache at %s "
-                                 "(%s); using the fetched file once\n" % (dest, e))
+                warn = ("the cache at %s could not be written (%s); the fetched file "
+                        "was not kept and will be fetched again on the next build" % (dest, e))
+        else:
+            warn = ("no deployment root is known here, so the fetched file was not "
+                    "kept and will be fetched again on every build")
         scratch = tempfile.mkdtemp(dir=_scratch_dir())
         f = os.path.join(scratch, os.path.basename(dest or "file"))
         with open(f, "w", encoding="utf-8") as fh:
             fh.write(text)
-        return f
+        return f, warn
 
 
 def parse_citations(path):
@@ -324,26 +388,30 @@ def parse_citations(path):
     an indented `> citation`. Parsed rather than looked up, so a pipeline this
     has never seen works the same way.
     """
-    entries, current = {}, None
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                m = re.match(r"^\s*[-*]?\s*\[([^\]]+)\]\((http[^)]+)\)", line)
-                if m:
-                    current = m.group(1).strip()
-                    entries.setdefault(current, {"text": "", "doi": None})
-                    continue
-                if current and line.lstrip().startswith(">"):
-                    body = line.lstrip()[1:].strip()
-                    if body:
-                        e = entries[current]
-                        e["text"] = (e["text"] + " " + body).strip()
-                        if not e["doi"]:
-                            d = DOI_RE.search(body)
-                            if d:
-                                e["doi"] = d.group(0).rstrip(".")
+            return parse_citation_lines(fh)
     except OSError:
         return {}
+
+
+def parse_citation_lines(lines):
+    entries, current = {}, None
+    for line in lines:
+        m = re.match(r"^\s*[-*]?\s*\[([^\]]+)\]\((http[^)]+)\)", line)
+        if m:
+            current = m.group(1).strip()
+            entries.setdefault(current, {"text": "", "doi": None})
+            continue
+        if current and line.lstrip().startswith(">"):
+            body = line.lstrip()[1:].strip()
+            if body:
+                e = entries[current]
+                e["text"] = (e["text"] + " " + body).strip()
+                if not e["doi"]:
+                    d = DOI_RE.search(body)
+                    if d:
+                        e["doi"] = d.group(0).rstrip(".")
     return entries
 
 
@@ -482,7 +550,9 @@ def render(run, assets_base, files=None):
     files = files or PipelineFiles()
     rev = wf.get(name) if name else None
 
-    cits, cits_src, cits_why = files.get(name, rev, CITATIONS_PATH, assets_base)
+    cits, cits_src, cits_why, cits_warn = files.get(name, rev, CITATIONS_PATH, assets_base)
+    if cits_warn:
+        notes.append(cits_warn)
     matched, missing = ([], [(t, []) for t in citable])
     if cits:
         matched, missing = match_tools(citable, parse_citations(cits))
@@ -496,7 +566,9 @@ def render(run, assets_base, files=None):
     rendered = rendered_methods(run.get("quality_report"))
     tmpl_src, tmpl_why, body = None, None, None
     if not rendered:
-        tmpl, tmpl_src, tmpl_why = files.get(name, rev, TEMPLATE_PATH, assets_base)
+        tmpl, tmpl_src, tmpl_why, tmpl_warn = files.get(name, rev, TEMPLATE_PATH, assets_base)
+        if tmpl_warn:
+            notes.append(tmpl_warn)
         body = template_body(tmpl) if tmpl else None
 
     tool_citations = ""
