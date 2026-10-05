@@ -58,10 +58,37 @@ CODE=$(code_lines)
 CMDS='(sbatch|qsub|bsub|srun|nextflow[[:space:]]+run|tw[[:space:]]+launch)([[:space:]]|$)'
 PFX='^[^:]+:[0-9]+:'
 sub_hits=$(grep -E "${PFX}[[:space:]]*${CMDS}|${PFX}.*([;&|(\`]|[\$][(]|then|do|else)[[:space:]]*${CMDS}|${PFX}.*[\"']?[\$]?[{]?TW[}]?[\"']?[[:space:]]+launch([[:space:]]|$)|${PFX}.*[[(][\"'](sbatch|qsub|srun)[\"']" <<<"$CODE")
+# The same commands inside a quoted string: `ssh "$HOST" 'sbatch job.sh'`,
+# subprocess.run("sbatch job.sh", shell=True). A quote straight before the word
+# means the string BEGINS with the command; prose that merely mentions it does not.
+qs_hits=$(grep -E "${PFX}.*[\"'][[:space:]]*(sbatch|qsub|bsub|srun|nextflow[[:space:]]+run|tw[[:space:]]+launch)([[:space:]\"']|\$)" <<<"$CODE")
+# SUBMIT allow-list: "<file>|<why it is not submitting>". Stale entries fail.
+SUBMIT_ALLOW="
+scripts/collect_provenance.py|writes the reproduction command line into the provenance record as text; never runs it
+scripts/methods_text.py|writes the reproduction command line into the methods text as text; never runs it
+"
+if [ -n "$qs_hits" ]; then
+    kept=""
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        grep -q "^${line%%:*}|" <<<"$SUBMIT_ALLOW" || kept="$kept$line"$'
+'
+    done <<<"$qs_hits"
+    if [ -z "${NO_RUN_STATE_ROOT:-}" ]; then
+        while IFS='|' read -r file _; do
+            [ -n "$file" ] || continue
+            grep -q "^$file:" <<<"$qs_hits" || fail "STALE  $file no longer needs its SUBMIT allow-list entry; remove it from tests/no_second_run_state_test.sh"
+        done <<<"$SUBMIT_ALLOW"
+    fi
+    qs_hits="${kept%$'
+'}"
+fi
+[ -z "$qs_hits" ] || sub_hits="$sub_hits"$'
+'"$qs_hits"
 [ -z "$sub_hits" ] || { printf '%s\n' "$sub_hits" | cut -c1-160; fail "SUBMISSION  a script submits a job itself; submission is Platform's (I.2)"; }
 
 # 2. DAEMON -----------------------------------------------------------------
-dm_hits=$(grep -E '(^|[^[:alnum:]_])(nohup|setsid|disown|crontab|systemd-run|inotifywait|launchctl)([^[:alnum:]_]|$)|while[[:space:]]+(true|:)([[:space:];]|$)' <<<"$CODE")
+dm_hits=$(grep -E '(^|[^[:alnum:]_])(nohup|setsid|disown|crontab|systemd-run|inotifywait|launchctl)([^[:alnum:]_]|$)|while[[:space:]]+(true|:)([[:space:];]|$)|(while|until)[[:space:]][^#]*sleep|(^|[;&|[:space:]])until[[:space:]][^#]*;[[:space:]]*do([[:space:]]|$)|^[^:]+:[0-9]+:[[:space:]]*until[[:space:]]' <<<"$CODE")
 while IFS= read -r line; do
     [ -n "$line" ] || continue
     file="${line%%:*}"
@@ -78,7 +105,13 @@ while IFS='|' read -r file _; do
 done <<<"$DAEMON_ALLOW"
 
 # 3. RUN STATE --------------------------------------------------------------
-st_hits=$(grep -iE 'sqlite|[.]db["'"'"' ]|run_?state|runs?_(db|cache|index)|status_cache|state[.](json|yaml|txt)|status[.](json|yaml|txt)|runs[.](json|yaml|csv)' <<<"$CODE")
+st_hits=$(grep -iE 'snapshot|sqlite|[.]db["'"'"' ]|run_?state|runs?_(db|cache|index)|status_cache|state[.](json|yaml|txt)|status[.](json|yaml|txt)|runs[.](json|yaml|csv)' <<<"$CODE")
+# Run lists cached to a file: `tw runs list > f`, `| tee f`. Reading one into a
+# variable, or discarding it (>/dev/null, 2>&1), is not caching.
+CODE_NOREDIR=$(sed -E 's#[0-9]>>?&?[^[:space:]]*##g; s#>>?[[:space:]]*/dev/null##g' <<<"$CODE")
+cache_hits=$(grep -E 'runs[[:space:]]+(list|view|dump)[^;&]*(>|[|][[:space:]]*tee)' <<<"$CODE_NOREDIR")
+[ -z "$cache_hits" ] || st_hits="$st_hits"$'
+'"$cache_hits"
 [ -z "$st_hits" ] || { printf '%s\n' "$st_hits" | cut -c1-160; fail "RUN STATE  a script keeps its own copy of run state; ask the backend each time (I.2)"; }
 
 # 4. NOUNS ------------------------------------------------------------------
