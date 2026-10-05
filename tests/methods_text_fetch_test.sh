@@ -162,7 +162,7 @@ if grep -qF "Tools used within the workflow:" <<<"$out" && grep -q " v1.2.3 " "$
 else no "a tag recorded without its v is retried with it, and the match is cited" "log=$(cat "$LOG") <<$out>>"; fi
 
 # A SHA that does not exist is not retried under other names.
-mkrun r7c "nf-core/demo: fedcba9876543210fedcba9876543210fedcba98"
+mkrun r7c "nf-core/demo: 9876543210fedcba9876543210fedcba98765432"
 : > "$LOG"
 out=$(run r7c)
 [ "$(awk '{print $2}' "$LOG" | sort -u | wc -l | tr -d ' ')" = 1 ] \
@@ -178,7 +178,7 @@ if [ "$rc" = 0 ] && [ "$(calls)" = 0 ] && grep -qF "CITATION NEEDED: dada2" <<<"
   ok "a pipeline that is not owner/repo is not fetched, and says why"
 else no "a pipeline that is not owner/repo is not fetched, and says why" "rc=$rc calls=$(calls) <<$out>>"; fi
 
-mkrun r8b "../evil/..: v1.0"
+mkrun r8b "nf-core/..: v1.0"
 : > "$LOG"
 out=$(run r8b)
 [ "$(calls)" = 0 ] && [ ! -e "$TMP/evil" ] \
@@ -221,6 +221,167 @@ out=$(HOME="$TMP/home" LAB_SETTINGS_FILE="$TMP/root/config/env.yaml" ABF_PIPELIN
 if [ -s "$TMP/root/cache/pipeline_files/nf-core/demo/v1.2.3/CITATIONS.md" ]    && grep -qF "Tools used within the workflow:" "$TMP/proj/submission/methods.md" 2>/dev/null; then
   ok "build_package.sh keeps the cache under <root>/cache/pipeline_files"
 else no "build_package.sh keeps the cache under <root>/cache/pipeline_files" "<<$out>> $(find "$TMP/root" 2>&1)"; fi
+
+# =============================================================================
+# Acceptance round 2: validation before caching, branch revisions, each guard,
+# the real curl path, and the no-root limit.
+# =============================================================================
+reset() { rm -rf "$TMP/cache"; : > "$LOG"; rm -f "$FX/OFFLINE"; }
+
+# --- 12. a body that is not a CITATIONS.md is never cached (captive portal) --
+mkdir -p "$FX/nf-core/demo/v7.7.7/assets"
+echo '<html><body>Please log in to the network</body></html>' > "$FX/nf-core/demo/v7.7.7/CITATIONS.md"
+cp "$FX/nf-core/demo/v1.2.3/assets/methods_description_template.yml" "$FX/nf-core/demo/v7.7.7/assets/"
+mkrun r12 "nf-core/demo: v7.7.7"
+reset
+out=$(run r12)
+if grep -qF "CITATION NEEDED: dada2" <<<"$out" \
+   && grep -qE "no CITATIONS.md for nf-core/demo: .*not a CITATIONS.md" <<<"$out" \
+   && grep -qF "github.com/nf-core/demo@v7.7.7" <<<"$out" \
+   && [ ! -e "$TMP/cache/nf-core/demo/v7.7.7/CITATIONS.md" ] \
+   && ! grep -qE "citations .github.com" <<<"$out"; then
+  ok "an HTML 200 is not cached, is named as not a CITATIONS.md, is not a Source"
+else no "an HTML 200 is not cached, is named as not a CITATIONS.md, is not a Source" "<<$out>> $(find "$TMP/cache" 2>&1)"; fi
+out=$(HOME="$TMP/home" "$S" --assets "$TMP/nowhere" --cache-dir "$TMP/cache" --fetcher off "$TMP/r12/results" 2>&1)
+if grep -qF "CITATION NEEDED: dada2" <<<"$out" && ! grep -qE "citations .github.com" <<<"$out"; then
+  ok "...and a later run with fetching off finds nothing hidden in the cache"
+else no "...and a later run with fetching off finds nothing hidden in the cache" "<<$out>>"; fi
+
+# a template with no data: block is reported as such, not cached
+mkdir -p "$FX/nf-core/demo/v7.7.8/assets"
+cp "$FX/nf-core/demo/v1.2.3/CITATIONS.md" "$FX/nf-core/demo/v7.7.8/"
+echo '<html>nope</html>' > "$FX/nf-core/demo/v7.7.8/assets/methods_description_template.yml"
+mkrun r12b "nf-core/demo: v7.7.8"
+reset
+out=$(run r12b)
+if grep -qE "no methods template for nf-core/demo: .*not a methods template" <<<"$out" \
+   && [ ! -e "$TMP/cache/nf-core/demo/v7.7.8/assets/methods_description_template.yml" ]; then
+  ok "a template without a data: block is named as not a template, not cached"
+else no "a template without a data: block is named as not a template, not cached" "<<$out>>"; fi
+
+# an empty body has its own reason
+mkdir -p "$FX/nf-core/demo/v7.7.9"; : > "$FX/nf-core/demo/v7.7.9/CITATIONS.md"
+mkrun r12c "nf-core/demo: v7.7.9"
+reset
+out=$(run r12c)
+grep -qiE "no CITATIONS.md for nf-core/demo: .*empty" <<<"$out" \
+  && ok "an empty body is reported as empty" \
+  || no "an empty body is reported as empty" "<<$out>>"
+
+# a poisoned cache (zero entries, from an older build) is not trusted
+reset
+mkdir -p "$TMP/cache/nf-core/demo/v1.2.3"
+echo '<html>Please log in</html>' > "$TMP/cache/nf-core/demo/v1.2.3/CITATIONS.md"
+out=$(HOME="$TMP/home" "$S" --assets "$TMP/nowhere" --cache-dir "$TMP/cache" --fetcher off "$TMP/r1/results" 2>&1)
+if grep -qF "CITATION NEEDED: dada2" <<<"$out" && ! grep -qE "citations .github.com" <<<"$out" \
+   && grep -qF "no CITATIONS.md for nf-core/demo" <<<"$out"; then
+  ok "a cached file with no tool entries is not used, and is reported"
+else no "a cached file with no tool entries is not used, and is reported" "<<$out>>"; fi
+out=$(run r1)
+grep -qF "Tools used within the workflow:" <<<"$out" \
+  && ok "...and with fetching on it is replaced by a good copy" \
+  || no "...and with fetching on it is replaced by a good copy" "<<$out>>"
+
+# a local CITATIONS.md with zero entries is a visible gap too
+mkdir -p "$TMP/badassets/nf-core/demo"
+echo "nothing here" > "$TMP/badassets/nf-core/demo/CITATIONS.md"
+out=$(HOME="$TMP/home" "$S" --assets "$TMP/badassets" --fetcher off "$TMP/r1/results" 2>&1)
+if grep -qF "CITATION NEEDED: dada2" <<<"$out" && grep -qE "no CITATIONS.md for nf-core/demo: .*no tool entries" <<<"$out" \
+   && ! grep -qF "citations \`nf-core/demo/CITATIONS.md" <<<"$out"; then
+  ok "a local CITATIONS.md with no entries is a visible gap, not a Source"
+else no "a local CITATIONS.md with no entries is a visible gap, not a Source" "<<$out>>"; fi
+
+# --- 13. branch revisions are not cached as final ----------------------------
+put nf-core/demo main
+mkrun r13 "nf-core/demo: main"
+reset
+out=$(run r13); c1=$(calls)
+out=$(run r13); c2=$(calls)
+[ "$c2" -gt "$c1" ] && grep -qF "Tools used within the workflow:" <<<"$out" \
+  && ok "a branch revision is fetched again every build" \
+  || no "a branch revision is fetched again every build" "calls $c1 -> $c2"
+touch "$FX/OFFLINE"
+out=$(run r13)
+if grep -qF "Tools used within the workflow:" <<<"$out" && grep -qiE "out of date|stale" <<<"$out"; then
+  ok "offline, a branch falls back to the cached copy and says it may be stale"
+else no "offline, a branch falls back to the cached copy and says it may be stale" "<<$out>>"; fi
+rm -f "$FX/OFFLINE"
+put nf-core/demo 3.15.0dev
+mkrun r13b "nf-core/demo: 3.15.0dev"
+reset; run r13b >/dev/null; c1=$(calls); run r13b >/dev/null
+[ "$(calls)" -gt "$c1" ] && ok "a dev version is not treated as an immutable tag" \
+  || no "a dev version is not treated as an immutable tag" "calls $c1 -> $(calls)"
+
+# --- 14. each guard has a case that fails without it -------------------------
+mkrun g1 "nf-core/demo: a/../b"
+reset; out=$(run g1)
+[ "$(calls)" = 0 ] && grep -qF "CITATION NEEDED: dada2" <<<"$out" && grep -qiE "not one GitHub can serve" <<<"$out" \
+  && ok "guard: a revision with .. is refused (no traversal into the cache or URL)" \
+  || no "guard: a revision with .. is refused" "calls=$(calls) <<$out>>"
+[ ! -e "$TMP/cache/nf-core/demo/a" ] || no "guard: nothing written for a/../b" "$(find "$TMP/cache")"
+mkrun g2 "nf-core/demo: v1.0;touch"
+reset; out=$(run g2)
+[ "$(calls)" = 0 ] && grep -qiE "not one GitHub can serve" <<<"$out" \
+  && ok "guard: a revision with characters outside the allowed set is refused" \
+  || no "guard: a revision with characters outside the allowed set is refused" "calls=$(calls) <<$out>>"
+for bad in None null '~'; do
+  mkrun g3 "nf-core/demo: $bad"
+  reset; out=$(run g3)
+  [ "$(calls)" = 0 ] && grep -qiE "no revision" <<<"$out" \
+    && ok "guard: a recorded revision of '$bad' means no revision" \
+    || no "guard: a recorded revision of '$bad' means no revision" "calls=$(calls) <<$out>>"
+done
+mkrun g4 "nf-core/demo: v6.6.6"
+reset; out=$(run g4)
+grep -qiE "not found in nf-core/demo at v6.6.6 or 6.6.6" <<<"$out" \
+  && ok "guard: v1.2.3 is retried as 1.2.3 (the v is stripped)" \
+  || no "guard: v1.2.3 is retried as 1.2.3 (the v is stripped)" "<<$out>> log=$(cat "$LOG")"
+mkdir -p "$FX/nf-core/demo/6.6.6"; cp -r "$FX/nf-core/demo/v1.2.3/." "$FX/nf-core/demo/6.6.6/"
+reset; out=$(run g4)
+grep -qF "Tools used within the workflow:" <<<"$out" \
+  && ok "guard: ...and the stripped twin is used when it exists" \
+  || no "guard: ...and the stripped twin is used when it exists" "<<$out>>"
+mkrun g5 "nf-core/demo: 0123456789abcdef0123456789abcdef01234999"
+reset; out=$(run g5)
+[ "$(awk '{print $2}' "$LOG" | sort -u)" = "0123456789abcdef0123456789abcdef01234999" ] \
+  && ok "guard: a SHA that 404s is never retried as v<sha>" \
+  || no "guard: a SHA that 404s is never retried as v<sha>" "log=$(cat "$LOG")"
+
+# --- 15. the real curl path, with a fake curl on PATH ------------------------
+FB="$TMP/fakebin"; mkdir -p "$FB"; CURLLOG="$TMP/curl.log"
+cat > "$FB/curl" <<EOF
+#!/bin/bash
+echo "\$*" >> "$CURLLOG"
+case "\${FAKE_CURL:-ok}" in
+  ok)   printf '%s\n200' "\$(cat "$FX/nf-core/demo/v1.2.3/CITATIONS.md")" ;;
+  404)  printf '\n404' ;;
+  html) printf '<html>Please log in</html>\n200' ;;
+  503)  printf 'busy\n503' ;;
+  net)  echo "curl: (6) Could not resolve host: raw.githubusercontent.com" >&2; exit 6 ;;
+esac
+EOF
+chmod +x "$FB/curl"
+PYDIR="$(cd "$(dirname "$S")" && pwd)"
+cf() { FAKE_CURL="$1" PATH="$FB:$PATH" python3 -c "
+import sys; sys.path.insert(0, '$PYDIR'); import methods_text as m
+t, r = m.curl_fetcher('nf-core/demo', 'v1.2.3', 'CITATIONS.md'); print(repr((t is not None, r)))"; }
+[ "$(cf ok)" = "(True, None)" ] && grep -qF "https://raw.githubusercontent.com/nf-core/demo/v1.2.3/CITATIONS.md" "$CURLLOG" \
+  && ok "curl_fetcher: 200 returns the body from the raw.githubusercontent.com URL" \
+  || no "curl_fetcher: 200 returns the body" "$(cf ok) $(cat "$CURLLOG")"
+[ "$(cf 404)" = "(False, 'not found')" ] && ok "curl_fetcher: 404 is 'not found'" || no "curl_fetcher: 404" "$(cf 404)"
+cf 503 | grep -q "HTTP 503" && ok "curl_fetcher: another status is named" || no "curl_fetcher: 503" "$(cf 503)"
+cf net | grep -q "Could not resolve host" && ok "curl_fetcher: a network failure carries curl's message" || no "curl_fetcher: net" "$(cf net)"
+reset
+out=$(FAKE_CURL=html HOME="$TMP/home" PATH="$FB:$PATH" "$S" --assets "$TMP/nowhere" --cache-dir "$TMP/cache" "$TMP/r12/results" 2>&1)
+if grep -qF "CITATION NEEDED: dada2" <<<"$out" && grep -qF "not a CITATIONS.md" <<<"$out" && [ ! -e "$TMP/cache/nf-core/demo" ]; then
+  ok "end to end with curl answering an HTML 200: visible, nothing cached"
+else no "end to end with curl answering an HTML 200" "<<$out>> $(find "$TMP/cache" 2>&1)"; fi
+
+# --- 16. no cache dir: it works, and says it will fetch again ----------------
+out=$(HOME="$TMP/home" "$S" --assets "$TMP/nowhere" --fetcher "$FAKE" "$TMP/r1/results" 2>&1)
+if grep -qF "Tools used within the workflow:" <<<"$out" && grep -qiE "fetched again|not kept" <<<"$out"; then
+  ok "with no cache dir the file is used once and the notes say it is not kept"
+else no "with no cache dir the file is used once and the notes say it is not kept" "<<$out>>"; fi
 
 echo
 [ "$fails" = 0 ] && echo "OK: methods_text.py fetch" || { echo "$fails failed"; exit 1; }
