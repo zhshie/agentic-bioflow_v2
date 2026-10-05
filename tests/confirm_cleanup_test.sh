@@ -504,6 +504,38 @@ t "echo '$D -rf $P/results' | ssh t3 python3 -"                 deny "#35b contr
 t "echo '$D -rf $P/results' | ssh t3 python3 x.py"              pass "#35b | ssh host python3 x.py is data"
 
 echo
+echo "== SN2: work/ deletes that ran without the confirmation (nextflow-clean-unconfirmed) =="
+# `nextflow clean -f` deletes the task directories under work/ of a run - the same
+# act as rm -rf work/, so the same ask. Without -f (or with -n) Nextflow deletes
+# nothing and the guard stays quiet.
+NF=$(printf '\x6e\x65\x78\x74\x66\x6c\x6f\x77')
+t "$NF clean -f"                                   ask  "nextflow clean -f asks"
+t "$NF clean -f -k last"                           ask  "nextflow clean -f -k last"
+t "$NF clean -f -q"                                ask  "nextflow clean -f -q"
+t "$NF clean -f happy_euler"                       ask  "nextflow clean -f <run name>"
+t "$NF clean -f -but happy_euler"                  ask  "nextflow clean -f -but <run>"
+t "$NF clean -force -before happy_euler"           ask  "nextflow clean -force -before <run>"
+t "$NF -log /tmp/n.log clean -f"                   ask  "nextflow <global option> clean -f"
+t "srun $NF clean -f"                              ask  "nextflow clean -f behind srun"
+t "cd $P && $NF clean -f"                          ask  "nextflow clean -f after a cd"
+t "$NF clean -n"                                   pass "control: nextflow clean -n (dry run)"
+t "$NF clean -n -f"                                pass "control: nextflow clean -n -f (dry run wins)"
+t "$NF clean -dry-run"                             pass "control: nextflow clean -dry-run"
+t "$NF clean"                                      pass "control: nextflow clean (Nextflow refuses)"
+t "$NF clean -but happy_euler"                     pass "control: nextflow clean -but <run>, no -f"
+t "$NF log"                                        pass "control: nextflow log"
+t "$NF run nf-core/rnaseq -profile clean"          pass "control: a profile named clean"
+t "make clean -f Makefile"                         pass "control: make clean -f"
+# A warning used to end the hook before the work/ ask: these were warns.
+t "$D -f $P/work/ab/cdef/x.bam"                    ask  "work/ file with a sequencing name still asks"
+t "$D -rf $P/work/*.fastq.gz"                      ask  "work/ glob of sequencing files still asks"
+t "$D -rf $P/work && echo x > $P/results/notes.txt" ask "work/ delete beside an overwrite still asks"
+printf '%-58s ' "...and the ask keeps the warning's text"
+out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$D -f $P/work/ab/cdef/x.bam" | bash "$H")
+if grep -q 'sequencing data' <<<"$out" && grep -q 'Nextflow scratch' <<<"$out"; then echo ok; else
+  echo "FAIL: <<${out:0:120}>>"; fails=$((fails+1)); fi
+
+echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
 # hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.
 # Past its own deadline (20 s; ABF_CLEANUP_DEADLINE_S can only lower it, for
