@@ -112,6 +112,14 @@ is_launch_command() {
         # A command nested too deeply to read is treated as one that might
         # launch - noisy, and correct for a gate that could not judge.
         [ "$W" = "__too_deep__" ] && return 0
+        # #62: a segment with none of the words any launch spelling needs cannot be
+        # one (every form of LAUNCH_TRIGGER_RE / LAUNCH_VARPROG_RE holds `launch`,
+        # `sbatch`, `run` or `--confirm`), and the regexes below are the costly part
+        # on Git Bash: thousands of here-doc lines ran past the hook's timeout.
+        case "$S$V" in
+            *launch*|*sbatch*|*run*|*--confirm*) ;;
+            *) continue ;;
+        esac
         if ! [[ $V =~ $LAUNCH_TRIGGER_RE ]]; then
             # `"tw" launch x` quotes the program itself, so the quote-free copy
             # has lost it. When the command word IS a launcher, read the

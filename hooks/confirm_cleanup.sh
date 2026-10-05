@@ -448,6 +448,28 @@ is_dry_run() {
 while IFS="$US" read -r SEG VSEG CW; do
     [ -n "$SEG" ] || continue
 
+    # #62: a segment that cannot be one of the things judged below is dropped here,
+    # before ~25 regex tests and a dozen assignments cost it ~10 ms each on Git Bash
+    # (a 300 KB python here-doc is thousands of segments, and a hook that runs past
+    # its timeout is cancelled and the call PROCEEDS). It can only be skipped when
+    # its command word is none of the ones handled below AND none of the stems
+    # every later rule needs - a delete verb, find/rsync/mv, a redirect, a
+    # delete-shaped call - appears anywhere in the quote-free text. Stems are
+    # deliberately loose (`rm` also matches `format`): looser only means "judged
+    # as before". The one piece of state a skipped segment must still update is
+    # LISTER_OK, which any other command word resets.
+    if [ -n "$CW" ]; then
+        case "$CW" in
+            __too_deep__|cd|pushd|get-childitem|gci|ls|dir|get-item|gi|where-object|where|'?'|select-object|select|sort-object|sort|measure-object|measure) ;;
+            rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|'$'*|'`'*) ;;
+            *)
+                case "$VSEG" in
+                    *rm*|*unlink*|*shred*|*remove*|*Delete*|*find*|*rsync*|*mv*|*'>'*) ;;
+                    *) LISTER_OK=0; continue ;;
+                esac ;;
+        esac
+    fi
+
     # Deleting and overwriting are different acts and must not share a verdict.
     # They used to: a redirect set the same DESTRUCTIVE flag as rm, so its target
     # was tested against the never-delete list. That made

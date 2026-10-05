@@ -815,6 +815,8 @@ if ! is_launch_command "$CMD"; then
         }
         TSEG=""; TV=""; TCW=""
         while IFS="$US" read -r TSEG TV TCW; do
+            # #62: only a segment that names a transport word can be asked about.
+            case "$TV" in *ssh*|*scp*|*rsync*|*sftp*) ;; *) continue ;; esac
             [[ $TV =~ $ONSITE_RE ]] && continue
             case "${TCW##*[/\\]}" in wsl|wsl.exe) continue ;; esac
             if [[ $TV =~ $TRANSPORT_RE ]]; then
