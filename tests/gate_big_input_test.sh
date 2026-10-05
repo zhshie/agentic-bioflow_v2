@@ -82,6 +82,46 @@ check() {
   if [ -z "$why" ]; then echo "ok ($want)"; else echo "FAIL: $why"; fails=$((fails+1)); fi
 }
 
+# --- #62, deletion guard: a 300 KB python here-doc, then a delete of results/ -----
+# On native Git Bash this took 23-116 s before #62, past the 30 s timeout (and a
+# cancelled hook lets the delete proceed). Two bodies: filler lines, and code lines
+# full of delete-like letters (format, transform, remove_prefix) that a filter keyed
+# on substrings would keep. Judged: deny at both sizes; 300 KB within 20 s; and 10x
+# the input costing at most 25x the time once the run is long enough to measure
+# (linear is 10x, quadratic 100x), so a slow machine does not fail it.
+mk62() { # mk62 <file> <kb> <filler|code>
+  "$PY" - "$1" "$2" "$3" "$TMP" <<'PY'
+import json, sys
+f, kb, body, tmp = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+if body == "code":
+    line = lambda i: "v%d = transform(format(x%d, '.2f')).remove_prefix('r')\n" % (i, i)
+else:
+    line = lambda i: "x%d = %d  # filler line\n" % (i, i)
+pad = "".join(line(i) for i in range(20000))[: kb * 1024]
+pad = pad[: pad.rfind("\n") + 1]
+cmd = "python3 - <<'EOF'\n" + pad + "EOF\nrm -rf /work/u/lab_runs/x/results"
+assert cmd.count("\nEOF\n") == 1
+d = {"session_id": "big-s1", "cwd": tmp + "/work", "hook_event_name": "PreToolUse", "tool_name": "Bash",
+     "tool_input": {"command": cmd}}
+open(f, "w").write(json.dumps(d))
+PY
+}
+check62() { # check62 <filler|code>
+  local ms_small k_small ms_big k_big why=""
+  mk62 "$TMP/c62s.json" 30 "$1";  run confirm_cleanup "$TMP/c62s.json"; ms_small=$MS; k_small=$KIND
+  mk62 "$TMP/c62b.json" 300 "$1"; run confirm_cleanup "$TMP/c62b.json"; ms_big=$MS; k_big=$KIND
+  [ "$k_small" = deny ] || why="30 KB verdict $k_small, want deny. "
+  [ "$k_big" = deny ]   || why="${why}300 KB verdict $k_big, want deny. "
+  [ "$ms_big" -le 20000 ] || why="${why}300 KB took ${ms_big} ms (limit 20000). "
+  if [ "$ms_big" -gt 3000 ] && [ "$ms_big" -gt $((ms_small * 25)) ]; then why="${why}scaling: 30 KB ${ms_small} ms, 300 KB ${ms_big} ms (over 25x). "; fi
+  printf '%-62s %6s ms -> %6s ms  ' "#62 300 KB here-doc ($1) then rm -rf results (deletion guard)" "$ms_small" "$ms_big"
+  if [ -z "$why" ]; then echo "ok (deny)"; else echo "FAIL: $why"; fails=$((fails+1)); fi
+}
+echo "== #62: the deletion guard on a 300 KB here-doc =="
+check62 filler
+check62 code
+echo
+
 echo "== large inputs: still judged, same verdict, linear time =="
 check "Write of a 300 KB analysis script (walkthrough gate)"  confirm_walkthrough write  deny 75 300
 check "Write of a 300 KB analysis script (launch gate)"       confirm_launch       write  none 75 300

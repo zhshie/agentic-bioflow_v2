@@ -22,9 +22,15 @@ export MSYS2_ARG_CONV_EXCL='*'
 # JSONDecodeError on that stdin, which read as this hook having failed, not as
 # a test-harness encoding gap.
 fails=0
+# #62: tests/confirm_cleanup_behind_heredoc_test.sh runs this whole file again with
+# every judged command placed after a large here-doc (CLEANUP_TEST_PREFIX_FILE),
+# which is the path where the guard filters segments before judging them. Each
+# case must get the same verdict there.
+PFX=""
+if [ -n "${CLEANUP_TEST_PREFIX_FILE:-}" ]; then PFX=$(cat "$CLEANUP_TEST_PREFIX_FILE"; echo x); PFX=${PFX%x}; fi
 t() { # t <command> <expect pass|warn|deny> <label>
   printf '%-58s ' "$3"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   if [ -z "$out" ]; then got=pass; else
     got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out")
   fi
@@ -165,7 +171,7 @@ echo "== R2: Claude Code itself asks, for the work/ + cache branch only =="
 # every decision-carrying case (PITFALLS 28 appendix-2 fact 3).
 askcheck() { # askcheck <command> <label>
   printf '%-58s ' "$2"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   first="${out:0:1}"
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
@@ -175,7 +181,7 @@ askcheck() { # askcheck <command> <label>
 }
 denycheck() { # denycheck <command> <label>
   printf '%-58s ' "$2"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   first="${out:0:1}"
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
@@ -229,7 +235,7 @@ t "grep -rn 'shutil.rmtree' scripts/"             pass "#29 searching for rmtree
 
 tps() { # tps <powershell command> <expect> <label> - through the PowerShell tool
   printf '%-58s ' "$3"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   if [ -z "$out" ]; then got=pass; else
     got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out" 2>/dev/null)
   fi
@@ -356,7 +362,7 @@ echo
 echo "== #35: medium/low shapes left after #29 (each with a control) =="
 tc() { # tc <cwd> <command> <expect pass|warn|deny|ask> <label> - the hook input also carries the session's cwd
   printf '%-58s ' "$4"
-  out=$(python3 -c "import json,sys;print(json.dumps({'cwd':sys.argv[1],'tool_input':{'command':sys.argv[2]}}))" "$1" "$2" | bash "$H")
+  out=$(python3 -c "import json,sys;print(json.dumps({'cwd':sys.argv[1],'tool_input':{'command':sys.argv[2]}}))" "$1" "$PFX$2" | bash "$H")
   if [ -z "$out" ]; then got=pass; else
     got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out")
   fi
@@ -496,5 +502,26 @@ t "echo '$D -rf $P/results' | ssh -p 22 t3 bash"                deny "#35b contr
 t "echo '$D -rf $P/results' | ssh t3 'bash -s'"                 deny "#35b control: | ssh host 'bash -s'"
 t "echo '$D -rf $P/results' | ssh t3 python3 -"                 deny "#35b control: | ssh host python3 -"
 t "echo '$D -rf $P/results' | ssh t3 python3 x.py"              pass "#35b | ssh host python3 x.py is data"
+
+echo
+echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
+# hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.
+# Past its own deadline (20 s; ABF_CLEANUP_DEADLINE_S can only lower it, for
+# this test) the guard stops judging and asks, saying why (invariant 13).
+dl() { # dl <deadline> <command> -> OUT, GOT
+  OUT=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$2" \
+        | ABF_CLEANUP_DEADLINE_S="$1" bash "$H")
+  if [ -z "$OUT" ]; then GOT=pass; else
+    GOT=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$OUT")
+  fi
+}
+printf '%-58s ' "#62 deadline reached: asks, even for an ordinary delete"
+dl 0 "$D -rf /tmp/x"
+if [ "$GOT" = ask ] && grep -q 'in time' <<<"$OUT"; then echo "ok (ask)"; else
+  echo "FAIL: expected an ask that says it ran out of time, got $GOT <<${OUT:0:80}>>"; fails=$((fails+1)); fi
+printf '%-58s ' "#62 control: the same delete with the default deadline"
+dl "" "$D -rf /tmp/x"; [ "$GOT" = pass ] && echo "ok (pass)" || { echo "FAIL: got $GOT"; fails=$((fails+1)); }
+printf '%-58s ' "#62 control: a deadline that is not a number is ignored"
+dl "soon" "$D -rf /tmp/x"; [ "$GOT" = pass ] && echo "ok (pass)" || { echo "FAIL: got $GOT"; fails=$((fails+1)); }
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
