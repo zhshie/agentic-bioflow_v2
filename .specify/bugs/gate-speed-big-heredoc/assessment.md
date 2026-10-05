@@ -41,4 +41,12 @@ Stage timings at 300 KB (profiling copy of the hook): read 2 ms, in_use 30 ms, j
 - No here-string in the per-segment path (`is_dry_run`, the target words).
 - A deadline: past 20 s of the hook's own time the loop stops and the hook asks, saying the command was too large to check in time (invariant 13), instead of being cancelled at 30 s.
 - Tests: a 30 KB vs 300 KB timing case in `tests/gate_big_input_test.sh` (ratio, generous bound); the deadline case; every case of `tests/confirm_cleanup_test.sh` behind a large here-doc.
-- Out of scope: the launch, walkthrough and plugin-file gates (another branch owns them); `split_segments.awk` itself.
+- Out of scope: the launch, walkthrough and plugin-file gates (another branch owns them).
+
+## Found while fixing: a here-doc of pipelines (added 2026-10-05)
+
+A shell script fed to bash (`bash <<'EOF'`, every line `cat f | grep x | sort`) took 1 s at 30 KB and 39 s at 100 KB in `hooks/split_segments.awk` alone (native Git Bash), and 62 s for the whole hook; in WSL 300 KB ran past 30 s. Two causes:
+1. `pipes_into_runner` (in both `split_segments.awk` and `strip_heredocs.awk`) copies the rest of the string at every pipe (`substr(t, …)`, then a regex over that copy): quadratic in the number of pipes. The backtick scan (`index(substr(str, i + 1), "`")`) has the same shape.
+2. The large-input filter keeps every segment whose command word carries PowerShell lister state, and `sort`, `ls`, `dir`, `select`, `where` are among them: every line of such a script is kept.
+
+Remedy: split once on the pipes (each piece is the text between two pipes, so the work is linear) and scan forward for the closing backtick; in the filter, hold a run of listers and pipeline filters back and keep it only when a PowerShell move follows it (the only rule that reads that state). The splitter is shared with the launch gate (`hooks/launch_trigger.sh`); the change is meaning-preserving, and both copies of `pipes_into_runner` stay identical. Test: a third body ("pipes") in the #62 block of `tests/gate_big_input_test.sh`.
