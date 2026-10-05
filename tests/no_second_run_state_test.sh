@@ -128,6 +128,16 @@ if [ -z "${NO_RUN_STATE_ROOT:-}" ]; then
     case_ "a polling loop fails"                  1 scripts/a.sh 'while true; do tw runs list; sleep 5; done'
     case_ "a run_state file fails"                1 scripts/a.sh 'echo "$st" > "$D/run_state.json"'
     case_ "a sqlite store fails"                  1 scripts/a.sh 'sqlite3 runs.db "create table r(id)"'
+    case_ "sbatch inside single quotes (ssh) fails"   1 scripts/a.sh 'ssh "$HOST" '"'"'sbatch job.sh'"'"
+    case_ "sbatch in a python string fails"       1 scripts/a.py 'subprocess.run("sbatch job.sh", shell=True)'
+    case_ "nextflow run in a quoted string fails"  1 scripts/a.sh 'ssh "$HOST" "nextflow run nf-core/rnaseq"'
+    case_ "an until/sleep polling loop fails"      1 scripts/a.sh 'until tw runs view x | grep -q OK; do sleep 30; done'
+    case_ "a while/sleep polling loop fails"       1 scripts/a.sh 'while ! check_it; do sleep 5; done'
+    case_ "tw runs list cached to a file fails"    1 scripts/a.sh 'tw runs list > runs_snapshot.txt'
+    case_ "tw runs list piped to tee fails"        1 scripts/a.sh '"$TW" -o json runs list | tee "$D/r.json"'
+    case_ "a runs snapshot file name fails"        1 scripts/a.sh 'echo "$out" > "$D/runs_snapshot.json"'
+    case_ "tw runs list to /dev/null passes"       0 scripts/a.sh 'tw runs list >/dev/null 2>&1'
+    case_ "tw runs list read into a variable passes" 0 scripts/a.sh 'out=$(tw runs list)'
     case_ "an invented tw noun fails"             1 commands/a.md 'Run `tw frobnicate -i 1` first.'
     case_ "a Seqera noun passes"                  0 commands/a.md 'Run `tw runs list` first.'
     [ "$selffails" -gt 0 ] && { echo "FAIL: $selffails self-test(s) failed"; exit 1; }
