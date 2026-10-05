@@ -703,6 +703,16 @@ if [ "$GOT" = ask ] && grep -q 'in time' <<<"$OUT"; then echo "ok (ask)"; else
   echo "FAIL: expected an ask that says it ran out of time, got $GOT <<${OUT:0:80}>>"; fails=$((fails+1)); fi
 printf '%-58s ' "#62 control: the same delete with the default deadline"
 dl "" "$D -rf /tmp/x"; [ "$GOT" = pass ] && echo "ok (pass)" || { echo "FAIL: got $GOT"; fails=$((fails+1)); }
+# #62: a target is resolved through `readlink` only when a component of it is a
+# link here (it cost a program per target); a delete through a link into the
+# shared references must still be judged by where it lands.
+LK=$(mktemp -d)
+mkdir -p "$LK/lab/_references/genome" "$LK/run/other"
+ln -s "$LK/lab/_references" "$LK/run/references"
+t "$D -rf $LK/run/references/*"                   deny "#62 a delete through a link into _references/"
+tc "$LK/run" "$D -rf references/genome"           deny "#62 ...relative, from the working folder"
+t "$D -rf $LK/run/other"                          pass "#62 control: a real folder beside the link"
+rm -rf "$LK"
 printf '%-58s ' "#62 control: a deadline that is not a number is ignored"
 dl "soon" "$D -rf /tmp/x"; [ "$GOT" = pass ] && echo "ok (pass)" || { echo "FAIL: got $GOT"; fails=$((fails+1)); }
 

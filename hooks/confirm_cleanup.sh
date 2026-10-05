@@ -334,7 +334,10 @@ norm_path() {
         /*) pre=/; p="${p#/}" ;;
         [A-Za-z]:/*) pre="${p:0:3}"; p="${p:3}" ;;
     esac
-    IFS=/ read -r -a parts <<<"$p"
+    # #62: split without a here-string (a pipe per call, per target)
+    local IFS=/
+    set -f; parts=($p); set +f
+    unset IFS
     for seg in ${parts[@]+"${parts[@]}"}; do
         case "$seg" in
             ''|.) ;;
@@ -461,7 +464,10 @@ judge_delete_target() {
             # the link and is harmless, but `rm -rf <link>/*` deletes the lab's
             # copy. Resolve the path and judge by the destination - only when
             # something is there to resolve, since resolving costs a process.
-            if [ -e "$A" ] || [ -L "$A" ] || [ -e "${A%/*}" ]; then
+            # #62: and only when a component of the path (from / for a relative
+            # one) is a symbolic link here - resolving costs a program, which per
+            # target made `rm -f` of 500 names take a minute on Git Bash.
+            if { [ -e "$A" ] || [ -L "$A" ] || [ -e "${A%/*}" ]; } && has_link "$A"; then
                 RP=$(resolve_link "$A" 2>/dev/null || true)
                 if [ -n "$RP" ] && [ "$RP" != "$A" ] && [[ $RP =~ $RE_SHARED ]]; then
                     HIT_SHARED="${HIT_SHARED}${A} -> ${RP} "
@@ -497,6 +503,27 @@ judge_delete_target() {
             if [ "$A" != /dev/null ] && [[ $A =~ $RE_LEFTOVER ]]; then
                 HIT_LEFTOVER="${HIT_LEFTOVER}${A} "
             fi
+}
+
+# #62: does any component of a path exist here as a symbolic link? A relative
+# path is walked from this shell's folder ($PWD, which may itself pass through
+# one). Builtins only: `[ -L ]` per component, no program.
+has_link() { # has_link <path>
+    local rest="$1" pre="" seg
+    case "$rest" in
+        /*) pre=/; rest=${rest#/} ;;
+        [A-Za-z]:*) ;;
+        *) rest="${PWD#/}/$rest"; pre=/ ;;
+    esac
+    while [ -n "$rest" ]; do
+        seg=${rest%%/*}
+        if [ "$seg" = "$rest" ]; then rest=""; else rest=${rest#*/}; fi
+        [ -n "$seg" ] || continue
+        pre=$pre$seg
+        [ -L "$pre" ] && return 0
+        pre=$pre/
+    done
+    return 1
 }
 
 # sn1-delete-shapes: SW holds a segment's words; REPLY = the index just past the
@@ -873,7 +900,7 @@ while IFS="$US" read -r SEG VSEG CW; do
     elif [[ $VSEG =~ $RE_INSTALL_D ]]; then SHAPE=install
     else
         # the command word itself quoted (`"tar" ...`): the quote-free copy lost it
-        SEGQ=${SEG//[\"\']/}
+        case "$CW" in tar|gtar|bsdtar|zip|rclone|ln|install) SEGQ=${SEG//[\"\']/} ;; esac
         case "$CW" in
             tar|gtar|bsdtar) [[ $SEGQ =~ $RE_TAR_RM ]] && SHAPE=tar ;;
             zip) [[ $SEGQ =~ $RE_ZIP_MV ]] && SHAPE=zip ;;
@@ -1175,6 +1202,8 @@ while IFS="$US" read -r SEG VSEG CW; do
     fi
     LASTW=""
     for ((wi = 1; wi < ${#WORDS[@]}; wi++)); do
+        # #62: the deadline holds inside one long command too.
+        if [ "$SECONDS" -ge "$DEADLINE" ]; then TIMED_OUT=1; break 2; fi
         A=${WORDS[$wi]}
         PW=$LASTW; LASTW=$A
         # #35: the folder named by `mv -t DIR` / `--target-directory DIR` is where
