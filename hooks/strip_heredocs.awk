@@ -82,12 +82,16 @@ function reads_code(W, i, k, depth,   w, j, v, host, rw) {
     return 1
 }
 
-function pipes_into_runner(str,   t, seg, k, W, i, w, wrapped) {
-    t = str
-    while (match(t, /\|&?[ \t]*/)) {
-        seg = substr(t, RSTART + RLENGTH)
-        t = seg
-        sub(/[|;&\n].*$/, "", seg)
+# #62: the text after each pipe comes from one split on the pipes, not from a
+# copy of the rest of the string at every pipe - that was quadratic in the
+# number of pipes (39 s for a 100 KB script of pipelines under Git Bash). A piece
+# is the text between two pipes; cut at the first ; & or newline it is what
+# followed the pipe up to the end of that command, as before.
+function pipes_into_runner(str,   n, P, p, seg, k, W, i, w, wrapped) {
+    n = split(str, P, /\|&?/)
+    for (p = 2; p <= n; p++) {
+        seg = P[p]
+        sub(/[;&\n].*$/, "", seg)
         k = split(seg, W, /[ \t]+/)
         wrapped = 0
         for (i = 1; i <= k; i++) {
