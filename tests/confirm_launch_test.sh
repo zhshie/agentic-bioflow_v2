@@ -58,7 +58,11 @@ case "$(uname -s)" in
   *) echo ok ;;
 esac
 
+# #62: every case of t/idg/msys_ask/msys_pass is recorded and run again at the
+# end of this file with a big here-doc in front (the big-input path).
+T_CMD=(); T_EXP=(); T_LBL=()
 t() { # t <command> <expect gate|pass> <label>
+  T_CMD+=("$1"); T_EXP+=("$2"); T_LBL+=("$3")
   printf '%-56s ' "$3"
   out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
   got=pass; [ -n "$out" ] && got=gate
@@ -141,6 +145,12 @@ t "echo \$T $LVERB"                                   pass "#29c echoing a varia
 t "'/usr/local/bin/nextflow' $(printf '\x72\x75\x6e') main.nf" gate "#29b quoted path to nextflow"
 t "git commit -m \"docs: how $LAUNCH works\""         pass "#29b a commit message quoting a launch"
 t "grep -rn 'os.system(' scripts/"                    pass "#29b searching for os.system("
+# #62: quote splices inside the verb. A shell joins the pieces; asked on c018c15,
+# passed silently once a prefilter read the segment with its quotes still in.
+t "s\"b\"atch job.sh"                                 gate "#62 s\"b\"atch (quote splice in the program)"
+t "tw l\"aun\"ch x"                                   gate "#62 tw l\"aun\"ch (quote splice in the verb)"
+t "nextflow r\"u\"n main.nf"                          gate "#62 nextflow r\"u\"n (quote splice in the verb)"
+t "nextflow r''un main.nf"                            gate "#62 nextflow r''un (empty-quote splice)"
 
 tmcp() { # tmcp <tool_name> <expect gate|pass> <label> - an MCP tool, no command field
   printf '%-56s ' "$3"
@@ -406,7 +416,9 @@ chmod +x "$MSYSBIN/uname"
 
 # askcheck/nodecisioncheck above don't let the PATH be swapped, so D3 gets its
 # own pair rather than reusing theirs a second way.
+MS_CMD=(); MS_EXP=(); MS_LBL=()
 msys_ask() { # msys_ask <command> <label>
+  MS_CMD+=("$1"); MS_EXP+=(ask); MS_LBL+=("$2")
   printf '%-58s ' "$2"
   out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" \
         | PATH="$MSYSBIN:$PATH" bash "$H")
@@ -425,6 +437,7 @@ msys_ask() { # msys_ask <command> <label>
   esac
 }
 msys_pass() { # msys_pass <command> <label>
+  MS_CMD+=("$1"); MS_EXP+=(pass); MS_LBL+=("$2")
   printf '%-58s ' "$2"
   out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" \
         | PATH="$MSYSBIN:$PATH" bash "$H")
@@ -604,7 +617,9 @@ jq -en --arg m "$CC_MATCHER" '"mcp__seqera__list_runs" | test($m)' 2>/dev/null |
 # swapped agent_connection to a shared lab credential's id and started an
 # agent under it on the login node, asking nobody).
 printf 'agent_connection: me-lgn-1\nworkspace_id: 42\n' > "$TMP/id_env.yaml"; chmod 600 "$TMP/id_env.yaml"
+ID_CMD=(); ID_EXP=(); ID_LBL=()
 idg() { # idg <label> <expect ask|allow> <command>
+  ID_CMD+=("$3"); ID_EXP+=("$2"); ID_LBL+=("$1")
   local j o got
   j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$3")
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
@@ -863,5 +878,75 @@ nojqw "#45b no jq: control: egress_allow.tsv.bak passes"           pass  Write /
 printf '%-58s ' "#45b no jq: control: a Bash ssh is still BLOCKED"
 python3 -c "import json,sys;print(json.dumps({'tool_name':'Bash','tool_input':{'command':sys.argv[1]}}))" "ssh twnia3 ls" | PATH="$NOJQ_P" bash "$H" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && echo ok || { echo "FAIL: rc=$rc"; fails=$((fails+1)); }
+
+echo
+echo "== #62: every case above, again behind a 20 KB here-doc (the big-input path) =="
+# A command whose segments come to over 16 KB is filtered by one awk pass before
+# the shell looks at them (#62: walking thousands of here-doc lines in the shell
+# ran past the hook's timeout under Git Bash). The filter must keep every segment
+# a check can act on, so each case of this file runs once more behind a here-doc
+# that python reads (its body is kept and split like any other command), and
+# must get the same answer as on its own.
+# The inputs are built by one python call and the hook calls run 8 at a time:
+# about 300 calls, each reading 20 KB.
+B62="$TMP/big62"; mkdir -p "$B62"
+b62_add() { # b62_add <family> <label> <expect> <command>
+  local n=${#B62_FAM[@]}
+  B62_FAM+=("$1"); B62_LBL+=("$2"); B62_EXP+=("$3")
+  printf '%s' "$4" > "$B62/$n.cmd"
+}
+B62_FAM=(); B62_LBL=(); B62_EXP=()
+for i in "${!T_CMD[@]}";  do b62_add t   "${T_LBL[$i]}"  "${T_EXP[$i]}"  "${T_CMD[$i]}";  done
+for i in "${!ID_CMD[@]}"; do b62_add idg "${ID_LBL[$i]}" "${ID_EXP[$i]}" "${ID_CMD[$i]}"; done
+for i in "${!MS_CMD[@]}"; do b62_add ms  "${MS_LBL[$i]}" "${MS_EXP[$i]}" "${MS_CMD[$i]}"; done
+python3 - "$B62" "${#B62_FAM[@]}" <<'PY'
+import json, sys
+d, n = sys.argv[1], int(sys.argv[2])
+pad = "".join("x%d = %d  # filler line\n" % (i, i) for i in range(5000))[:20480]
+pad = pad[: pad.rfind("\n") + 1]
+for i in range(n):
+    cmd = open("%s/%d.cmd" % (d, i), encoding="utf-8", newline="").read()
+    with open("%s/%d.json" % (d, i), "w", encoding="utf-8") as f:
+        f.write(json.dumps({"tool_name": "Bash", "tool_input": {"command": "python3 - <<'EOF'\n" + pad + "EOF\n" + cmd}}))
+PY
+b62_run() { # b62_run <index>
+  case "${B62_FAM[$1]}" in
+    t)   bash "$H" < "$B62/$1.json" > "$B62/$1.out" 2>/dev/null ;;
+    idg) LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" < "$B62/$1.json" > "$B62/$1.out" 2>/dev/null ;;
+    ms)  PATH="$MSYSBIN:$PATH" bash "$H" < "$B62/$1.json" > "$B62/$1.out" 2>/dev/null ;;
+  esac
+}
+i=0
+while [ "$i" -lt "${#B62_FAM[@]}" ]; do
+  for j in 0 1 2 3 4 5 6 7; do
+    [ $((i + j)) -lt "${#B62_FAM[@]}" ] && b62_run $((i + j)) &
+  done
+  wait
+  i=$((i + 8))
+done
+for fam in t idg ms; do
+  n62=0; bad62=0
+  for i in "${!B62_FAM[@]}"; do
+    [ "${B62_FAM[$i]}" = "$fam" ] || continue
+    n62=$((n62+1)); o=$(cat "$B62/$i.out" 2>/dev/null)
+    case "$fam" in
+      t)   got=pass; [ -n "$o" ] && got=gate ;;
+      idg) got=allow; grep -q '"permissionDecision": *"ask"' <<<"$o" && got=ask ;;
+      ms)  d=$(jq -r '.hookSpecificOutput.permissionDecision // ""' <<<"$o" 2>/dev/null)
+           got=pass; [ "$d" = ask ] && got=ask ;;
+    esac
+    if [ "$got" != "${B62_EXP[$i]}" ]; then
+      printf '%-58s FAIL: expected %s, got %s\n' "big: ${B62_LBL[$i]}" "${B62_EXP[$i]}" "$got"
+      bad62=$((bad62+1))
+    fi
+  done
+  case "$fam" in
+    t)   what="launch spellings (t)" ;;
+    idg) what="identity / egress cases (idg)" ;;
+    ms)  what="D3 cases on MSYS" ;;
+  esac
+  printf '%-58s ' "$what: $n62 behind a big here-doc"
+  if [ "$bad62" = 0 ]; then echo ok; else echo "FAIL: $bad62 differ (above)"; fails=$((fails+1)); fi
+done
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
