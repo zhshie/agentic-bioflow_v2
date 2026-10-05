@@ -25,6 +25,7 @@ exists.
   a second copy of a run's state, and there MUST be no submission script of our own, no state
   machine, and no monitoring daemon. Where the backend is Seqera, the command layer follows
   Seqera's nouns (compute environment, then pipelines → datasets → launch, then runs).
+  *Check:* `tests/no_second_run_state_test.sh`.
 
 *Rationale:* three features were rebuilt here before anyone checked, and each was written and
 then deleted (PITFALLS 14). A second copy of run state drifts from the real one; making Seqera
@@ -42,8 +43,8 @@ optional means reading Nextflow's own records, not rebuilding Platform (`docs/ad
 - **5.** Judgment, procedure and site operations live in `docs/` and `scripts/`, readable and
   runnable by a person or another model. Whatever AI host runs the tool, its own capabilities
   (hooks, skills, commands or their equivalents) MUST be used fully.
-  *Check:* with `hooks/` and `.claude-plugin/` removed, the system still works from `docs/` and
-  `scripts/`: degraded, not equivalent, but usable.
+  *Check:* `tests/works_without_host_test.sh`: with `hooks/` and `.claude-plugin/` removed, the
+  system still works from `docs/` and `scripts/`: degraded, not equivalent, but usable.
 
 *Rationale:* one cluster is not the world, and a lowest common denominator would drop the
 safety net along with the hooks that carry it.
@@ -60,7 +61,8 @@ safety net along with the hooks that carry it.
   ask the maintainer to keep going. Each step MUST say what it will do before doing it, and
   onboarding MUST prove the environment on public test data, touching none of the user's data,
   before handing over the command list.
-  *Check:* someone completes onboarding with no point where outside knowledge was required.
+  *Check:* Procedure P1 in `docs/TESTING.md`: someone completes onboarding with no point where
+  outside knowledge was required.
 
 *Rationale:* nf-core labels are partial and stackable, so a label table goes stale the moment a
 pipeline adds one; and an unverified environment taken to real data fails where it costs most.
@@ -69,7 +71,8 @@ pipeline adds one; and an unverified environment taken to real data fails where 
 
 - **8.** Measure or read the source before claiming that something is needed, impossible, or
   general. The result goes in `docs/PITFALLS.md`.
-  *Check:* every PITFALLS entry corresponds to a real failure or a real piece of source read.
+  *Check:* Procedure P2 in `docs/TESTING.md`: every PITFALLS entry corresponds to a real failure
+  or a real piece of source read.
 - **9.** Anything written on a user's behalf MUST point at the file that produced it. A citation
   comes from the run's own files, a user-supplied DOI, or a page actually fetched, never from
   memory. A number comes from a file; a new statistic comes from a script that ran. A gap is
@@ -155,6 +158,11 @@ plan, and change only by a MAJOR amendment of this constitution.
 - Credentials and personal details live only in the deployment's own settings area, readable by
   the owner only; never printed, never in git, never in a params file, and never carried over
   from another member's copy.
+  *Check:* `tests/credentials_stay_in_settings_test.sh` (never in git, never printed by a script,
+  never in a params file); readable by the owner only: `tests/settings_test.sh`,
+  `tests/windows_privacy_test.sh`; never printed: `tests/inspect_sides_test.sh`,
+  `tests/status_test.sh`; not carried over: `tests/confirm_launch_test.sh`,
+  `tests/init_workspace_test.sh`.
 
 ## Development Workflow
 
@@ -226,6 +234,31 @@ silently when the answer is no.
 **Approval.** Maintainer's choice recorded in `specs/005-plugin-scope/spec.md` (Clarifications,
 2026-10-02); merge approval is the maintainer's, on the pull request that carries this change.
 
+### 2.0.1 (2026-10-05): every rule names a Check that exists
+
+**Rationale (#30, `.specify/bugs/constitution-checks`).** The preamble says each principle names the
+check that holds it, and a principle with no check is a slogan. A fresh audit against 2.0.0 found
+five rules where that was kept in form and not in fact: principles 2, 5, 7 and 8 and the Safety
+Net's credentials rule carried either no *Check:* or a sentence describing a check nobody had
+written. `tests/constitution_checks_exist_test.sh` now fails when a rule's *Check:* cites no
+`tests/` file and no Procedure, or cites one that does not exist.
+
+**What changes.** Only *Check:* lines are added or completed. Principles 2 and 5 and the
+credentials rule cite new automated tests; principles 7 and 8 cite Procedure P1 and Procedure P2,
+manual procedures written in `docs/TESTING.md` (Half 3), because what they ask (whether a person
+got stuck, whether a claim rests on evidence) cannot be measured by a script. No rule changes its
+meaning.
+
+**Impact on existing deployments.** None at run time for a person using the plugin. One thing
+behaves differently: `hooks/confirm_walkthrough.sh` now refuses to write a params file that carries
+a credential, which the credentials rule already required and nothing enforced; a params file
+that holds none is unaffected. The credentials rule's last clause, not carried over from another
+member's copy, still has only partial coverage (an identity change asks first; a settings file
+copied in from another account is not detected).
+
+**Version.** PATCH, under Governance: the amendment names checks and changes no meaning.
+**Approval.** The maintainer approves and merges the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -240,4 +273,4 @@ silently when the answer is no.
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 2.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-02
+**Version**: 2.0.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-05
