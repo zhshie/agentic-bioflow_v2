@@ -129,6 +129,28 @@ echo "== #62: the deletion guard on a 300 KB here-doc =="
 check62 filler
 check62 code
 check62 pipes
+# A delete with many targets: each relative one, in a folder that exists here, was
+# resolved through `readlink -f`, one program per target - 130 ms each on Git Bash
+# (500 targets: 66 s, past the timeout). The programs started must not grow with
+# the targets.
+mkdir -p "$TMP/proj" "$TMP/shim62"
+printf '#!/bin/bash\necho x >> "%s/rl62.log"\nexec %s "$@"\n' "$TMP" "$(command -v readlink)" > "$TMP/shim62/readlink"
+chmod +x "$TMP/shim62/readlink"
+"$PY" - "$TMP/many62.json" 200 "$TMP" <<'PY'
+import json, sys
+f, n, tmp = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+cmd = "rm -f " + " ".join("old_%d.tmp" % i for i in range(n))
+d = {"session_id": "big-s1", "cwd": tmp + "/proj", "hook_event_name": "PreToolUse", "tool_name": "Bash",
+     "tool_input": {"command": cmd}}
+open(f, "w").write(json.dumps(d))
+PY
+: > "$TMP/rl62.log"
+out62=$( ( cd "$TMP/proj" && env -u LAB_SETTINGS_FILE -u LAB_RUNS_DIR HOME="$TMP/home" XDG_CONFIG_HOME="$TMP/home/.config" \
+      AGENTIC_BIOFLOW_STATE_DIR="$TMP/state" CLAUDE_PLUGIN_ROOT="$ROOT" PATH="$TMP/shim62:$PATH" \
+      timeout 60 bash "$HOOKS/confirm_cleanup.sh" < "$TMP/many62.json" 2>/dev/null ) )
+n62=$(awk 'END {print NR+0}' "$TMP/rl62.log")
+printf '%-80s ' "#62 rm -f of 200 relative targets: readlink started $n62 times (at most 4)"
+if [ "$n62" -le 4 ] && [ -z "$out62" ]; then echo ok; else echo "FAIL: output <<${out62:0:60}>>"; fails=$((fails+1)); fi
 echo
 
 echo "== large inputs: still judged, same verdict, linear time =="
