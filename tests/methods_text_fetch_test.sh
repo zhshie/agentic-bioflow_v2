@@ -110,8 +110,11 @@ cat > "$TMP/assets/nf-core/demo/CITATIONS.md" <<'MD'
 - [FastQC](https://example.org/fastqc)
   > Local copy. doi: 10.1000/local.
 MD
+printf 'data: |
+  <p>Local template ${tool_citations}</p>
+' > "$TMP/assets/nf-core/demo/assets/methods_description_template.yml"
 out=$(HOME="$TMP/home" "$S" --assets "$TMP/assets" --cache-dir "$TMP/cache2" --fetcher "$FAKE" "$TMP/r1/results" 2>&1)
-if grep -qF "Local copy" <<<"$out" && [ "$(calls)" = 0 ]; then
+if grep -qF "10.1000/local" <<<"$out" && [ "$(calls)" = 0 ]; then
   ok "a local pipeline copy is read first and nothing is fetched for it"
 else no "a local pipeline copy is read first and nothing is fetched for it" "calls=$(calls) <<$out>>"; fi
 
@@ -167,7 +170,7 @@ out=$(run r7c)
   || no "a missing SHA is reported, not retried as another revision" "log=$(cat "$LOG")"
 
 # --- 8. a name that is not owner/repo ---------------------------------------
-mkrun r8 "https://example.org/some/where: v1.0"
+mkrun r8 "git.example.org/lab/pipeline: v1.0"
 : > "$LOG"
 out=$(run r8); rc=$?
 if [ "$rc" = 0 ] && [ "$(calls)" = 0 ] && grep -qF "CITATION NEEDED: dada2" <<<"$out" \
@@ -202,6 +205,22 @@ out=$(run r10)
 if grep -qF "CITATIONS.md" "$LOG" && ! grep -qF "methods_description_template" "$LOG"; then
   ok "the template is only fetched when no rendered report has the paragraph"
 else no "the template is only fetched when no rendered report has the paragraph" "log=$(cat "$LOG")"; fi
+
+# --- 11. build_package.sh puts the cache under the deployment's root --------
+BP="$(cd "$(dirname "$S")" && pwd)/build_package.sh"
+mkdir -p "$TMP/root/config" "$TMP/proj/runs/demo_20260101" "$TMP/proj/analysis/figures"
+: > "$TMP/root/config/env.yaml"
+printf -- '- **richness**
+  id: richness
+  question: Does treatment change richness?
+  status: accepted
+' > "$TMP/proj/analysis/analysis.md"
+cp -r "$TMP/r1/results" "$TMP/proj/runs/demo_20260101/results"
+cp "$TMP/r1/params.yaml" "$TMP/proj/runs/demo_20260101/params.yaml"
+out=$(HOME="$TMP/home" LAB_SETTINGS_FILE="$TMP/root/config/env.yaml" ABF_PIPELINE_FETCHER="$FAKE"       "$BP" "$TMP/proj" 2>&1)
+if [ -s "$TMP/root/cache/pipeline_files/nf-core/demo/v1.2.3/CITATIONS.md" ]    && grep -qF "Tools used within the workflow:" "$TMP/proj/submission/methods.md" 2>/dev/null; then
+  ok "build_package.sh keeps the cache under <root>/cache/pipeline_files"
+else no "build_package.sh keeps the cache under <root>/cache/pipeline_files" "<<$out>> $(find "$TMP/root" 2>&1)"; fi
 
 echo
 [ "$fails" = 0 ] && echo "OK: methods_text.py fetch" || { echo "$fails failed"; exit 1; }

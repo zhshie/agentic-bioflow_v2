@@ -1,11 +1,16 @@
 #!/bin/bash
 # The methods paragraph a pipeline already wrote, with the gap it left filled.
 #
-# Not writing a new methods paragraph: the pipeline's own
+# Nothing existing: nf-core's methods template and MultiQC already render the
+# paragraph, but both leave the per-tool citation slot empty, and no
+# maintained tool fills it from a run's versions file and the pipeline's
+# CITATIONS.md. That slot is all this adds.
+#
+# Why it does not write a new methods paragraph: the pipeline's own
 # assets/methods_description_template.yml already renders one into the
 # quality report; this only fills the citation slot it leaves empty (below).
 #
-#   methods_text.py [--assets <dir>] [--out <file>] <results-dir> [...]
+#   methods_text.py [--assets <dir>] [--cache-dir <dir>] [--out <file>] <results-dir> [...]
 #
 # nf-core pipelines ship assets/methods_description_template.yml: a citable
 # paragraph naming the pipeline, its DOI, Nextflow, Bioconda, Biocontainers,
@@ -31,6 +36,21 @@
 #
 # Anything a tool cannot be matched to becomes a visible CITATION NEEDED. A
 # citation this program cannot find is not a citation it may invent.
+#
+# Where CITATIONS.md and the template come from (issue #4). Pipelines here run
+# through Seqera Platform, so nothing ever ran `nextflow pull` on this machine
+# and ~/.nextflow/assets is empty on the first finish. Order: that directory
+# (read only, never written), then the deployment's own cache (--cache-dir,
+# <root>/cache/pipeline_files), then a fetch from the pipeline's GitHub
+# repository at the revision the run's versions file records - the same
+# raw.githubusercontent.com read scripts/prepare_launch.sh does for
+# nextflow_schema.json, so it takes the same proxy where there is one. A fetch
+# that cannot be done (no revision, not owner/repo, 404, offline) leaves the
+# tools as CITATION NEEDED and the note says which of those it was.
+# --fetcher <cmd> (or $ABF_PIPELINE_FETCHER; "off" disables) replaces the
+# network read: `<cmd> <owner/repo> <revision> <path>` prints the file, exits
+# 44 for "not found", anything else non-zero for "unreachable" with the reason
+# on stderr. It exists so tests never touch the network.
 ''''true
 HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 if [ -f "$HERE/require_python.sh" ]; then
@@ -43,9 +63,12 @@ exec python3 "$0" "$@"
 import argparse
 import json
 import os
+import atexit
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DOI_RE = re.compile(r"10\.\d{4,9}/[^\s)\]\"'<>,;]+")
@@ -145,6 +168,153 @@ def assets_dir(base, pipeline):
         return None
     d = os.path.join(base, pipeline)
     return d if os.path.isdir(d) else None
+
+
+# --- fetching what a local `nextflow pull` would have left ------------------
+GITHUB_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$")
+REV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]*$")
+SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+NOT_FOUND = 44
+CITATIONS_PATH = "CITATIONS.md"
+TEMPLATE_PATH = "assets/methods_description_template.yml"
+_SCRATCH = []
+
+
+def _scratch_dir():
+    """Where a fetched file goes when there is no cache to keep it in."""
+    if not _SCRATCH:
+        d = tempfile.mkdtemp(prefix="abf-pipeline-files-")
+        _SCRATCH.append(d)
+        atexit.register(shutil.rmtree, d, True)
+    return _SCRATCH[0]
+
+
+def curl_fetcher(repo, rev, path):
+    """(text, None) or (None, reason). The read prepare_launch.sh does."""
+    if not shutil.which("curl"):
+        return None, "curl is not installed here"
+    url = "https://raw.githubusercontent.com/%s/%s/%s" % (repo, rev, path)
+    try:
+        out = subprocess.run(
+            ["curl", "-sS", "-L", "--connect-timeout", "10", "--max-time", "60",
+             "-w", "\n%{http_code}", url], capture_output=True)
+    except OSError as e:
+        return None, "curl could not run: %s" % e
+    if out.returncode != 0:
+        err = out.stderr.decode("utf-8", "replace").strip().splitlines()
+        return None, "network unreachable (curl exit %d: %s)" % (
+            out.returncode, err[-1] if err else "no message")
+    body, _, code = out.stdout.rpartition(b"\n")
+    code = code.decode("ascii", "replace").strip()
+    if code == "200":
+        return body.decode("utf-8", "replace"), None
+    if code == "404":
+        return None, "not found"
+    return None, "GitHub answered HTTP %s" % code
+
+
+def command_fetcher(cmd):
+    def fetch(repo, rev, path):
+        try:
+            out = subprocess.run([cmd, repo, rev, path], capture_output=True)
+        except OSError as e:
+            return None, "fetcher could not run: %s" % e
+        if out.returncode == 0:
+            return out.stdout.decode("utf-8", "replace"), None
+        if out.returncode == NOT_FOUND:
+            return None, "not found"
+        err = out.stderr.decode("utf-8", "replace").strip()
+        return None, "network unreachable (%s)" % (err or "exit %d" % out.returncode)
+    return fetch
+
+
+def disabled_fetcher(_repo, _rev, _path):
+    return None, "fetching is switched off here"
+
+
+def revision_candidates(rev):
+    """The revision as recorded, then (tags only) its v-prefixed twin.
+
+    A versions file says `3.14.0` where the tag is `3.14.0`, or `1.2.3` where
+    it is `v1.2.3`. A commit SHA is exact and is never rewritten.
+    """
+    if SHA_RE.match(rev):
+        return [rev]
+    out = [rev]
+    if rev[0].isdigit():
+        out.append("v" + rev)
+    elif rev[0] in "vV" and rev[1:2].isdigit():
+        out.append(rev[1:])
+    return out
+
+
+class PipelineFiles:
+    """Resolve one file of a pipeline's repository to a path on this machine."""
+
+    def __init__(self, cache_dir=None, fetcher=None):
+        self.cache_dir = cache_dir
+        self.fetcher = fetcher or disabled_fetcher
+
+    def get(self, name, rev, path, assets_base):
+        """-> (file path or None, where it came from, reason it is missing)."""
+        local = os.path.join(assets_base, name, *path.split("/")) if name else None
+        if local and os.path.isfile(local):
+            return local, os.path.relpath(local, assets_base), None
+        if not name:
+            return None, None, "the run records no pipeline name"
+        if not GITHUB_NAME_RE.match(name) or ".." in name:
+            return None, None, ("%s is not a GitHub owner/repo, so there is nowhere "
+                                "to fetch it from" % name)
+        rev = "" if rev is None else str(rev).strip()
+        if not rev or rev.lower() in ("none", "null", "~"):
+            return None, None, ("the run's versions file records no revision for %s, "
+                                "so there is no version to fetch" % name)
+        if not REV_RE.match(rev) or ".." in rev:
+            return None, None, "the recorded revision %r is not one GitHub can serve" % rev
+        origin = "github.com/%s@%s %s" % (name, rev, path)
+        cached = self._cache_path(name, rev, path)
+        if cached and os.path.isfile(cached):
+            return cached, origin, None
+        reason = None
+        for cand in revision_candidates(rev):
+            text, reason = self.fetcher(name, cand, path)
+            if text is not None and text.strip():
+                return self._keep(cached, text), origin, None
+            if text is not None:
+                reason = "empty file"
+            if reason != "not found":
+                break
+        if reason == "not found":
+            tried = revision_candidates(rev)
+            reason = "%s not found in %s at %s (HTTP 404)" % (
+                path, name, " or ".join(tried))
+        else:
+            reason = "%s could not be fetched from %s@%s: %s" % (path, name, rev, reason)
+        return None, None, reason
+
+    def _cache_path(self, name, rev, path):
+        if not self.cache_dir:
+            return None
+        return os.path.join(self.cache_dir, name, rev.replace("/", "_"), *path.split("/"))
+
+    def _keep(self, dest, text):
+        """Write atomically into the cache; fall back to scratch space."""
+        if dest:
+            try:
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                tmp = dest + ".part%d" % os.getpid()
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    fh.write(text)
+                os.replace(tmp, dest)
+                return dest
+            except OSError as e:
+                sys.stderr.write("methods_text.py: could not write the cache at %s "
+                                 "(%s); using the fetched file once\n" % (dest, e))
+        scratch = tempfile.mkdtemp(dir=_scratch_dir())
+        f = os.path.join(scratch, os.path.basename(dest or "file"))
+        with open(f, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        return f
 
 
 def parse_citations(path):
@@ -302,25 +472,32 @@ def rationale(path):
     return out
 
 
-def render(run, assets_base):
+def render(run, assets_base, files=None):
     name = pipeline_name(run)
     wf = run.get("workflow") or {}
     tools = run.get("tools") or {}
     citable = run.get("citable_tools") or []
     lines, notes = [], []
 
-    adir = assets_dir(assets_base, name)
-    tmpl = os.path.join(adir, "assets", "methods_description_template.yml") if adir else None
-    cits = os.path.join(adir, "CITATIONS.md") if adir else None
+    files = files or PipelineFiles()
+    rev = wf.get(name) if name else None
 
-    body = template_body(tmpl) if tmpl and os.path.isfile(tmpl) else None
+    cits, cits_src, cits_why = files.get(name, rev, CITATIONS_PATH, assets_base)
     matched, missing = ([], [(t, []) for t in citable])
-    if cits and os.path.isfile(cits):
+    if cits:
         matched, missing = match_tools(citable, parse_citations(cits))
     else:
-        notes.append("no CITATIONS.md for %s under %s - every tool below is "
+        notes.append("no CITATIONS.md for %s: %s - every tool below is "
                      "unmatched for that reason alone, not because it is uncitable"
-                     % (name, assets_base))
+                     % (name, cits_why))
+
+    # The template is only needed when the quality report has no rendered
+    # paragraph to read, so it is only fetched then.
+    rendered = rendered_methods(run.get("quality_report"))
+    tmpl_src, tmpl_why, body = None, None, None
+    if not rendered:
+        tmpl, tmpl_src, tmpl_why = files.get(name, rev, TEMPLATE_PATH, assets_base)
+        body = template_body(tmpl) if tmpl else None
 
     tool_citations = ""
     if matched:
@@ -341,7 +518,6 @@ def render(run, assets_base):
         os.path.relpath(run["launch_params"], run["run_dir"])
         if run.get("launch_params") else "params.yaml")
 
-    rendered = rendered_methods(run.get("quality_report"))
     if rendered:
         # Fill only the gap MultiQC's own tool-citation matcher leaves empty -
         # never overwrite a slot the report already filled, because our own
@@ -380,15 +556,16 @@ def render(run, assets_base):
         filled = mark_unresolved_placeholders(filled)
         lines.append(html_to_md(filled))
         lines.append("\nSource: `%s` (the pipeline's methods template, filled here)"
-                     % os.path.relpath(tmpl, assets_base))
+                     % tmpl_src)
         notes.append("the command line shown is reconstructed against the run's "
                      "own params file; the one the report records points at an "
                      "ephemeral URL and cannot be re-run")
         notes.append("no rendered quality report was found, so the pipeline's DOI "
                      "could not be read from it - see the [DOI not shown] marker above")
     else:
-        notes.append("no methods template for %s - the paragraph below is only "
-                     "the tool list, not the pipeline's own wording" % name)
+        notes.append("no methods template for %s: %s - the paragraph below is only "
+                     "the tool list, not the pipeline's own wording"
+                     % (name, tmpl_why or "the file has no `data:` block"))
         lines.append("### Methods\n\nData was processed using %s %s with Nextflow %s."
                      % (name, wf.get(name, ""), wf.get("Nextflow", "")))
 
@@ -396,8 +573,7 @@ def render(run, assets_base):
     # #38 item 3: name where the list came from, as "Why these parameters" does.
     vsrc = (os.path.relpath(run["versions_file"], run["run_dir"])
             if run.get("versions_file") else "no versions file")
-    csrc = (os.path.relpath(cits, assets_base)
-            if cits and os.path.isfile(cits) else "no CITATIONS.md")
+    csrc = cits_src if cits else "no CITATIONS.md"
     lines.append("Source: versions `%s`; citations `%s`\n" % (vsrc, csrc))
     for tool, cited_as, entry in sorted(matched, key=lambda m: m[0].lower()):
         doi = (" doi:" + entry["doi"]) if entry.get("doi") else ""
@@ -443,13 +619,25 @@ def main(argv=None):
     p.add_argument("results", nargs="+")
     p.add_argument("--assets", default=os.path.expanduser("~/.nextflow/assets"),
                    help="where pipeline sources are cached (default ~/.nextflow/assets)")
+    p.add_argument("--cache-dir", default=os.environ.get("ABF_CACHE_DIR") or None,
+                   help="where fetched pipeline files are kept (the deployment's own "
+                        "cache; without it they are fetched again every run)")
+    p.add_argument("--fetcher", default=os.environ.get("ABF_PIPELINE_FETCHER") or None,
+                   help="command replacing the GitHub read (tests); 'off' disables it")
     p.add_argument("--out")
     args = p.parse_args(argv)
+    if args.fetcher == "off":
+        fetch = disabled_fetcher
+    elif args.fetcher:
+        fetch = command_fetcher(args.fetcher)
+    else:
+        fetch = curl_fetcher
+    files = PipelineFiles(args.cache_dir, fetch)
 
     runs = provenance(args.results)
     if runs is None:
         return 2
-    text = "\n\n".join(render(r, args.assets) for r in runs)
+    text = "\n\n".join(render(r, args.assets, files) for r in runs)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             fh.write(text + "\n")

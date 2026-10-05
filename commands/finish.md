@@ -94,6 +94,18 @@ is not itself the answer to "where does `submission/` belong". Ask first.
    `--json` without `--brief` only when a later step genuinely needs that
    full detail.
 
+   **Where the citations come from.** The pipeline's `CITATIONS.md` (and its
+   methods template, when the quality report did not already render the
+   paragraph) is read from `~/.nextflow/assets` if a local `nextflow pull`
+   left it, else from this deployment's cache, else fetched from the
+   pipeline's GitHub repository at the revision this run recorded — nothing
+   for the user to supply, and nothing written under `~/.nextflow`. Runs go
+   through Platform, so the fetch is the normal first-build path, not a
+   fallback. If it cannot happen (no revision, not a GitHub `owner/repo`,
+   404, offline) every tool is `[CITATION NEEDED]` and `methods.md`'s Notes
+   say which reason applied: pass that reason on, do not describe the tools as
+   uncitable.
+
 2. **Assemble.** `scripts/build_package.sh <project-dir>` writes
    `submission/`: provenance, the methods section, the bibliography, the
    manuscript, the figures, and the code that made them. It is idempotent —

@@ -59,9 +59,21 @@ otherwise reads as complete. The template's own footnote says what to do:
 
 > You should also cite all software used within this run.
 
-`scripts/methods_text.py` re-renders the template from
-`~/.nextflow/assets/nf-core/<pipeline>/assets/methods_description_template.yml`
-with that slot filled from `CITATIONS.md`.
+`scripts/methods_text.py` re-renders the template with that slot filled from
+the pipeline's `CITATIONS.md`. Both files come from, in this order:
+
+1. `~/.nextflow/assets/<owner>/<repo>/` - read if a local `nextflow pull` left
+   it there, never written. Pipelines here run through Seqera Platform, so on
+   most machines it is empty.
+2. The deployment's own cache, `<root>/cache/pipeline_files/<owner>/<repo>/<revision>/`.
+3. A fetch from the pipeline's GitHub repository at the revision the run's
+   versions file records (the same `raw.githubusercontent.com` read `launch`
+   uses for `nextflow_schema.json`, through the same proxy where there is one),
+   kept in 2 so the next build does not fetch again.
+
+When none of the three works (no recorded revision, a pipeline that is not
+`owner/repo` on GitHub, a 404, no network) the tools are `[CITATION NEEDED]`
+and the Notes section says which of those it was. The build is never stopped.
 
 **The recorded command is also not reproducible.** Launching through the
 Platform records an ephemeral parameters URL:

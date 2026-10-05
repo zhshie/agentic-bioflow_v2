@@ -8,7 +8,12 @@
 # every session and every command opens (docs/CONDITIONS.md is the matrix this
 # implements; the H1/H2/H3 tiers are plan section A2).
 #
-# Not a second interface detector: the cli|vscode|desktop|web|unknown value
+# Nothing existing: no maintained tool says whether a machine is one this
+# plugin was designed for - that is a question about this plugin's own support
+# matrix (docs/CONDITIONS.md), so the measurement is ours; it reads only the
+# OS, the shell, the interface and the settings file.
+#
+# Why it does not detect the interface itself: the cli|vscode|desktop|web|unknown value
 # comes from `status.sh --interface`, the exact same corroboration status.sh's
 # own claude_surface() uses (CLAUDE_CODE_ENTRYPOINT alone lies - measured on
 # this machine, see status.sh's own header comment). Two implementations of
