@@ -78,6 +78,7 @@ short=0
 inrepo=0
 count=0
 pending=0
+pending_files=""
 stale=0
 
 # Basenames of every file this repo ships: a "Not <that file>" is in-repo.
@@ -146,7 +147,7 @@ while IFS= read -r f; do
     if [ -n "$problem" ]; then
         if [ -n "$why" ]; then
             echo "PENDING  ${problem#* }   [temporary allow-list: $why]"
-            pending=$((pending + 1))
+            pending=$((pending + 1)); pending_files="$pending_files $rel"
         else
             echo "$problem"
             case "$problem" in
@@ -213,4 +214,8 @@ echo no header
     [ "$selffails" -gt 0 ] && { echo "FAIL: $selffails self-test(s) failed"; exit 1; }
 fi
 
-echo "OK: all $count scripts and hooks name an alternative outside this repo ($pending on the temporary allow-list)"
+if [ "$pending" -gt 0 ]; then
+    echo "PARTIAL: $((count - pending)) of $count scripts and hooks name an alternative outside this repo; $pending are waived by the temporary allow-list and NOT checked:$pending_files"
+    exit 0
+fi
+echo "OK: all $count scripts and hooks name an alternative outside this repo"
