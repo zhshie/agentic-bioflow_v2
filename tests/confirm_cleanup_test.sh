@@ -188,6 +188,12 @@ done
 printf '%-64s ' "a refusal for a wrong answer names jq and the fix"
 bj braces "$D -rf $P/results"
 if [ "$BJV" = blocked ] && [[ $BJERR == *"apt install jq"* ]]; then echo ok; else echo "FAIL: $BJV <<${BJERR:0:80}>>"; fails=$((fails+1)); fi
+# A Windows jq.exe ends its lines with CR: the probe must still accept its answer
+# (the one-call read is forced off here, so the probe decides).
+bjshim crlf 'for a in "$@"; do [ "$a" = -js ] && exit 4; [ "$a" = .abf ] && { "'"$REALJQ"'" "$@" | sed "s/\$/\r/"; exit; }; done; exec "'"$REALJQ"'" "$@"'
+printf '%-64s ' "jq that answers the probe with a trailing CR: judged in full"
+bj crlf "$D -f /tmp/x.txt"; a=$BJV; bj crlf "$D -rf $P/results"
+[ "$a" = pass ] && [ "$BJV" = asked ] && echo ok || { echo "FAIL: harmless $a, results $BJV <<${BJERR:0:60}>>"; fails=$((fails+1)); }
 printf '%-64s ' "no jq: a delete on a later line is refused too"
 bj nojq "$ML"
 [ "$BJV" = blocked ] && echo ok || { echo "FAIL: $BJV"; fails=$((fails+1)); }
