@@ -43,7 +43,9 @@ real failures, each with the fix.
   value, or before the agent/relay is started or stopped on the shared login
   node), `confirm_cleanup.sh`
   (guards destructive deletes), `confirm_walkthrough.sh` (refuses a step whose
-  prerequisite step left no evidence in the transcript), `session_start.sh`
+  prerequisite step left no evidence in the transcript, and, as G7, a params file
+  that carries a credential - always, the escape phrase does not lift it),
+  `session_start.sh`
   (reports in-flight runs), `plugin_intro.sh` (shows the plugin overview the
   first time the plugin is used in a session - a typed `/agentic-bioflow:`
   command or a loaded plugin skill - not at every session start),

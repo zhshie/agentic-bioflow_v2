@@ -19,14 +19,17 @@
 #   never in git    HERE: no tracked file holds a token-shaped value or has a
 #                   credential's name, and .gitignore names the credential files
 #                   so `git add .` in a checkout that holds a deployment skips them.
-#   never in params HERE: the walkthrough hook refuses a params file that carries
-#                   a credential, even after the walkthrough was waved through.
-#   not carried     tests/confirm_launch_test.sh (changing agent_connection to
-#                   another identity asks first) and tests/init_workspace_test.sh
-#                   (_personal/ is mode 700, per person). NOT enforced as a
-#                   check: a settings file copied in from another member's
-#                   account is not detected as such. docs/SETTINGS.md says one
-#                   root belongs to one person; nothing measures it.
+#   never in params HERE: the walkthrough hook (G7) refuses a params file that
+#                   carries a credential, even after the walkthrough was waved
+#                   through. A net for the common shapes: see G7 in the hook.
+#   not carried     NO automated check. tests/confirm_launch_test.sh (a changed
+#                   agent_connection asks first) and tests/init_workspace_test.sh
+#                   (_personal/ is mode 700) test other things and are not cited
+#                   for this clause. A settings file copied in from another
+#                   member's account is not detected; docs/SETTINGS.md says one
+#                   root belongs to one person and nothing measures it. The
+#                   maintainer decides between an owner check in settings.sh
+#                   --migrate and rewording the rule.
 #
 # This is a net, not a proof: a pattern list finds the shapes it knows. It is
 # narrow on purpose, because a scanner that cries wolf gets its allow-list

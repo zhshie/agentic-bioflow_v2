@@ -158,11 +158,13 @@ plan, and change only by a MAJOR amendment of this constitution.
 - Credentials and personal details live only in the deployment's own settings area, readable by
   the owner only; never printed, never in git, never in a params file, and never carried over
   from another member's copy.
-  *Check:* `tests/credentials_stay_in_settings_test.sh` (never in git, never printed by a script,
-  never in a params file); readable by the owner only: `tests/settings_test.sh`,
-  `tests/windows_privacy_test.sh`; never printed: `tests/inspect_sides_test.sh`,
-  `tests/status_test.sh`; not carried over: `tests/confirm_launch_test.sh`,
-  `tests/init_workspace_test.sh`.
+  *Check:* `tests/credentials_stay_in_settings_test.sh` (never in git; never printed by a script;
+  never in a params file, for the common shapes, see its header and the G7 note in
+  `hooks/confirm_walkthrough.sh`, with `tests/confirm_walkthrough_test.sh`); readable by the owner
+  only: `tests/settings_test.sh`, `tests/windows_privacy_test.sh`; never printed (a fixture token
+  is never in the output): `tests/inspect_sides_test.sh`, `tests/status_test.sh`. The clause
+  "never carried over from another member's copy" has no automated check yet; the maintainer
+  decides between an owner check in `scripts/settings.sh --migrate` and rewording the rule.
 
 ## Development Workflow
 
@@ -249,12 +251,18 @@ manual procedures written in `docs/TESTING.md` (Half 3), because what they ask (
 got stuck, whether a claim rests on evidence) cannot be measured by a script. No rule changes its
 meaning.
 
-**Impact on existing deployments.** None at run time for a person using the plugin. One thing
-behaves differently: `hooks/confirm_walkthrough.sh` now refuses to write a params file that carries
-a credential, which the credentials rule already required and nothing enforced; a params file
-that holds none is unaffected. The credentials rule's last clause, not carried over from another
-member's copy, still has only partial coverage (an identity change asks first; a settings file
-copied in from another account is not detected).
+**Impact on existing deployments.** The rules' text is unchanged, but one hook behaves
+differently. `hooks/confirm_walkthrough.sh` gains a gate, G7: a write to a params file (yaml, yml
+or json) that carries a credential is now refused, and neither the walkthrough evidence nor the
+user's escape phrase lifts it. The credentials rule already required this and nothing enforced
+it. A params file that holds no credential is unaffected. G7 is a net for the common shapes: a
+credential-named key with a value of 12 or more characters on the same line, or a token shape. It
+does not see a write by `tee`, `sed -i`, a python `open()` or the PowerShell tool, a short value,
+a value on the next line or in a block scalar, or a key without such a word in its name. A
+parameter genuinely named like a credential and holding a long opaque value is refused too; its
+key naming a file, path, name, policy or pattern, or its value being a path, is not. The
+credentials rule's last clause, not carried over from another member's copy, has no automated
+check yet.
 
 **Version.** PATCH, under Governance: the amendment names checks and changes no meaning.
 **Approval.** The maintainer approves and merges the pull request that carries this change.

@@ -260,7 +260,11 @@ first action once a command is decided, the same requirement every
 (`tests/skill_requires_intro_test.sh`). `hooks/confirm_walkthrough.sh`'s G6
 denies the first gated action inside a command whose opening card was never
 shown, whether reached by a typed command or by the skill
-(`tests/confirm_walkthrough_test.sh`, the G6 cases).
+(`tests/confirm_walkthrough_test.sh`, the G6 cases). Its G7 is the one gate
+that is not about a missing step: it refuses a params file (yaml, yml or json)
+that carries a credential, whatever the transcript shows, because the Safety
+Net says a credential is never in a params file (G7 cases in the same test).
+It is a net for the common shapes; its reach is stated in the hook's header.
 
 **13. When the safety net cannot do its job, it must say so — never quietly
 do nothing, and never refuse everything either.**
