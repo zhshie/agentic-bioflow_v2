@@ -145,6 +145,58 @@ printf '%-64s ' "does NOT refuse an unrelated command in the same broken-jq stat
 rm -rf "$BADDIR"
 
 echo
+echo "== jq present but broken in other ways (jq-broken-cleanup): fail closed, say so =="
+# A jq that runs but answers wrongly is the silent failure the probe above exists
+# to stop, in a form the probe did not catch. Each shim below is a jq on PATH;
+# a delete must be refused (exit 2 naming jq, as with no jq) or paused (ask/deny),
+# never let through; an unrelated command still passes.
+REALJQ=$(command -v jq)
+BJ=$(mktemp -d)
+bjshim() { # bjshim <name> <bash body>
+  mkdir -p "$BJ/$1"; printf '#!/bin/bash\n%s\n' "$2" > "$BJ/$1/jq"; chmod +x "$BJ/$1/jq"
+}
+bjshim braces   'echo "{}"'
+bjshim garbage  'echo "jq: something odd happened"'
+bjshim silent   'exit 0'
+bjshim emptycmd 'for a in "$@"; do [ "$a" = -js ] && { printf "Bash\037\037"; exit 0; }; done; exec "'"$REALJQ"'" "$@"'
+bjshim cmdfail  'for a in "$@"; do case "$a" in -js|*tool_input.command*) exit 4 ;; esac; done; exec "'"$REALJQ"'" "$@"'
+bjshim emitjunk 'for a in "$@"; do [ "$a" = -n ] && { echo "{}"; exit 0; }; done; exec "'"$REALJQ"'" "$@"'
+bj() { # bj <shim|nojq> <command> -> BJV: blocked | asked | pass | other
+  local p rc o e
+  if [ "$1" = nojq ]; then p=$NOJQ_PATH; else p="$BJ/$1:$PATH"; fi
+  o=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'Bash','tool_input':{'command':sys.argv[1]}}))" "$2" \
+      | PATH="$p" bash "$H" 2>"$BJ/err"); rc=$?
+  e=$(cat "$BJ/err")
+  BJERR=$e
+  if [ "$rc" = 2 ] && [[ $e == *BLOCKED*jq* ]]; then BJV=blocked
+  elif [ "$rc" = 0 ] && [[ $o == *'"permissionDecision"'*'"ask"'* || $o == *'"permissionDecision"'*'"deny"'* ]]; then BJV=asked
+  elif [ "$rc" = 0 ] && [ -z "$o" ] && [ -z "$e" ]; then BJV=pass
+  else BJV="other (rc=$rc out=${o:0:40})"; fi
+}
+ML=$(printf 'echo start\n%s -rf %s/results' "$D" "$P")
+for s in braces garbage silent emptycmd cmdfail emitjunk; do
+  printf '%-64s ' "jq that $s: a delete is refused or paused"
+  bj "$s" "$D -rf $P/results"
+  case "$BJV" in blocked|asked) echo "ok ($BJV)" ;; *) echo "FAIL: $BJV"; fails=$((fails+1)) ;; esac
+  printf '%-64s ' "jq that $s: a delete on a later line too"
+  bj "$s" "$ML"
+  case "$BJV" in blocked|asked) echo "ok ($BJV)" ;; *) echo "FAIL: $BJV"; fails=$((fails+1)) ;; esac
+  printf '%-64s ' "jq that $s: an unrelated command still passes"
+  bj "$s" "ls -la"
+  [ "$BJV" = pass ] && echo ok || { echo "FAIL: $BJV"; fails=$((fails+1)); }
+done
+printf '%-64s ' "a refusal for a wrong answer names jq and the fix"
+bj braces "$D -rf $P/results"
+if [ "$BJV" = blocked ] && [[ $BJERR == *"apt install jq"* ]]; then echo ok; else echo "FAIL: $BJV <<${BJERR:0:80}>>"; fails=$((fails+1)); fi
+printf '%-64s ' "no jq: a delete on a later line is refused too"
+bj nojq "$ML"
+[ "$BJV" = blocked ] && echo ok || { echo "FAIL: $BJV"; fails=$((fails+1)); }
+printf '%-64s ' "no jq: truncate / unlink are delete-shaped too"
+bj nojq "truncate -s 0 $P/results/x.tsv"; a=$BJV; bj nojq "unlink $P/results/x.tsv"
+[ "$a" = blocked ] && [ "$BJV" = blocked ] && echo ok || { echo "FAIL: truncate $a, unlink $BJV"; fails=$((fails+1)); }
+rm -rf "$BJ"
+
+echo
 echo "== T1 (c): a non-Bash, execution-shaped tool this file has never named =="
 printf '%-64s ' "a non-Bash tool using tool_input.command - judged exactly as Bash would be"
 out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$D -rf $P/results" | bash "$H")
