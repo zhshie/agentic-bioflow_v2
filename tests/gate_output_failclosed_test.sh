@@ -86,6 +86,33 @@ mk "$TMP/g.json" Bash "sed -i 's/a/b/' $ROOT/hooks/confirm_launch.sh"
 run guard_plugin_files "$TMP/g.json" "$TMP/bin"
 check "plugin-file guard: ask-or-deny when its message cannot be built" "$([ "$(decision)" = ask ] || [ "$(decision)" = deny ] && echo 1 || echo 0)" "got '$(decision)' rc=$RC"
 
+# gate-emit-empty-object: a jq that reads fine but BUILDS the wrong answer. `{}`
+# carries no decision (the call proceeds); a verdict without hookSpecificOutput
+# is ignored by Claude Code the same way. Each gate must print its fixed ask.
+mkdir -p "$TMP/bin_empty" "$TMP/bin_flat"
+{
+  echo '#!/bin/bash'
+  echo "for a in \"\$@\"; do [ \"\$a\" = -n ] && { echo '{}'; exit 0; }; done"
+  echo "exec \"$REALJQ\" \"\$@\""
+} > "$TMP/bin_empty/jq"
+{
+  echo '#!/bin/bash'
+  echo "for a in \"\$@\"; do [ \"\$a\" = -n ] && { echo '{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"x\",\"additionalContext\":\"x\"}'; exit 0; }; done"
+  echo "exec \"$REALJQ\" \"\$@\""
+} > "$TMP/bin_flat/jq"
+chmod +x "$TMP/bin_empty/jq" "$TMP/bin_flat/jq"
+askdeny() { case "$(decision)" in ask|deny) echo 1 ;; *) echo 0 ;; esac; }
+for k in empty flat; do
+  run confirm_launch "$TMP/launch.json" "$TMP/bin_$k"
+  check "jq builds '$k': launch gate still asks" "$([ "$(decision)" = ask ] && echo 1 || echo 0)" "got '$(decision)' rc=$RC out='${OUT:0:80}'"
+  run confirm_cleanup "$TMP/rm.json" "$TMP/bin_$k"
+  check "jq builds '$k': deletion guard still asks or denies" "$(askdeny)" "got '$(decision)' rc=$RC out='${OUT:0:80}'"
+  run confirm_walkthrough "$TMP/w.json" "$TMP/bin_$k"
+  check "jq builds '$k': walkthrough gate still asks or denies" "$(askdeny)" "got '$(decision)' rc=$RC out='${OUT:0:80}'"
+  run guard_plugin_files "$TMP/g.json" "$TMP/bin_$k"
+  check "jq builds '$k': plugin-file guard still asks or denies" "$(askdeny)" "got '$(decision)' rc=$RC out='${OUT:0:80}'"
+done
+
 echo
 echo "== a verdict whose text is huge is still delivered, and the display is bounded =="
 BIG=@BIG@
@@ -149,6 +176,19 @@ for k in fail empty text; do
   if [ "$BJ_RC" = 0 ] && [[ $BJ_OUT == *'jq is missing or cannot run'* ]] && printf '%s' "$BJ_OUT" | jq -e .systemMessage >/dev/null 2>&1 \
      && [ -e "$TMP/bjstate/in-use/bj-$k" ]; then echo ok
   else echo "FAIL: rc=$BJ_RC out='${BJ_OUT:0:80}'"; fails=$((fails+1)); fi
+done
+
+# jq-broken-later-line: in the raw input a line break is the two characters
+# `\n`, which glued the next line's first word to an `n` (`ntw`). A launch on
+# line 2 must be refused like one on line 1, with every kind of broken jq.
+mkdir -p "$BJ/missing"; printf '#!/bin/sh\nexit 127\n' > "$BJ/missing/jq"; chmod +x "$BJ/missing/jq"
+BJ_LAUNCH2=$(jq -nc --arg c "$(printf 'echo ok\n%s launch nf-core/rnaseq -profile test' "$TW")" '{tool_name:"Bash", tool_input:{command:$c}}')
+BJ_LS2=$(jq -nc --arg c "$(printf 'echo ok\nls -la')" '{tool_name:"Bash", tool_input:{command:$c}}')
+for k in missing fail empty text; do
+  bj_run "$k" confirm_launch "$BJ_LAUNCH2";      bj_refuses "jq '$k': launch gate refuses tw launch on line 2"
+  bj_run "$k" confirm_launch "$BJ_LS2";          bj_quiet   "jq '$k': launch gate stays quiet on ls on line 2"
+  bj_run "$k" confirm_walkthrough "$BJ_LAUNCH2"; bj_refuses "jq '$k': walkthrough gate refuses tw launch on line 2"
+  bj_run "$k" confirm_walkthrough "$BJ_LS2";     bj_quiet   "jq '$k': walkthrough gate stays quiet on ls on line 2"
 done
 
 echo

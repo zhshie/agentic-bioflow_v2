@@ -584,6 +584,13 @@ t "$NF clean -but happy_euler"                     pass "control: nextflow clean
 t "$NF log"                                        pass "control: nextflow log"
 t "$NF run nf-core/rnaseq -profile clean"          pass "control: a profile named clean"
 t "make clean -f Makefile"                         pass "control: make clean -f"
+# variable-nextflow-clean: the command word held in a variable
+t "N=$NF; \$N clean -f"                            ask  "N=nextflow; \$N clean -f asks"
+t "N=$NF; \${N} clean -f"                          ask  "N=nextflow; \${N} clean -f asks"
+t "N=$NF; \"\$N\" clean -f"                        ask  "N=nextflow; \"\$N\" clean -f asks"
+t "N=$NF; \$N clean -n -f"                         pass "control: \$N clean -n -f (dry run)"
+t "N=$NF; \$N log"                                 pass "control: \$N log"
+t "N=$NF; \$N clean"                               pass "control: \$N clean, no -f"
 # A warning used to end the hook before the work/ ask: these were warns.
 t "$D -f $P/work/ab/cdef/x.bam"                    ask  "work/ file with a sequencing name still asks"
 t "$D -rf $P/work/*.fastq.gz"                      ask  "work/ glob of sequencing files still asks"
@@ -690,6 +697,21 @@ t "find /tmp/x -name '*.fastq.gz' -delete"                warn "control: find /t
 t "$D -f $P/tmp.txt"                                      pass "control: rm a file beside the protected folders"
 t "$D -rf $P/tmp"                                         pass "control: rm -rf a folder beside them"
 t "find $P -maxdepth 1 -name tmp_x"                       pass "control: find without -delete"
+# backslash-delete-shapes: a leading backslash only skips an alias; the same
+# command runs and gets the same verdict.
+t "\\$NF clean -f"                                        ask  "\\nextflow clean -f asks"
+t "\\$TAR --remove-files -cf /tmp/r.tar $P/results"       deny "\\tar --remove-files of results/"
+t "\\$ZIP -m /tmp/r.zip $P/rawdata"                       deny "\\zip -m of rawdata/"
+t "\\$RCL purge $P/results"                               deny "\\rclone purge results/"
+t "\\ln -sfn /tmp/x $P/rawdata"                           deny "\\ln -sfn over rawdata/"
+t "\\find $P -delete"                                     deny "\\find <run> -delete"
+t "\\rsync -a --delete /tmp/empty/ $P/results/"           deny "\\rsync --delete into results/"
+t "\\install -d -m 000 $P/results"                        ask  "\\install -d -m 000 results/ asks"
+t "\\$TAR -cf /tmp/r.tar $P/results"                      pass "control: \\tar without --remove-files"
+t "\\$RCL copy $P/results remote:backup"                  pass "control: \\rclone copy"
+# gates-audit2-low: behind a wrapper the command word is srun; behind a large
+# here-doc only the filter's trigger regex keeps this segment.
+t "srun $TAR --remove-files -cf /tmp/r.tar $P/results"    deny "srun tar --remove-files of results/"
 
 echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
