@@ -474,4 +474,47 @@ t "#42 ...single-quoted, with an assignment first: still denied" deny \
 t "#42 bash -c with the generator quoted: still denied" deny \
   "$(bj 'bash -c "python3 scripts/generate_samplesheet.py --input x"')" "$TMP/empty42.jsonl"
 
+# ---------------------------------------------------------------------------
+# G7 - a credential never goes into a params file (Safety Net, fourth rule).
+#
+# Every case runs with 略過導覽 said, so the walkthrough gates stand down and
+# only the credential rule can be what answers. The reach is a net, not a
+# proof: it reads Write, Edit, MultiEdit and a here-doc aimed at a params file
+# (yaml, yml or json), and a credential-named key holding a long opaque value,
+# or a token shape. It does not see tee, sed -i, a python open(), the
+# PowerShell tool, values under 12 characters, a value on the next line or in a
+# block scalar, or a key it has no name for.
+g7w() { python3 -c '
+import json,sys
+print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[1],"content":sys.argv[2]}}))' "$1" "$2"; }
+g7h() { python3 -c '
+import json,sys
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":"cat > "+sys.argv[1]+" <<EOF\n"+sys.argv[2]+"\nEOF"}}))' "$1" "$2"; }
+E7="$TMP/escape.jsonl"
+OUT7='outdir: /w/projects/p/runs/r1/results'
+t "G7 denies a token key with a long value"        deny  "$(g7w /r/params.yaml "$OUT7"$'\ntower_access_token: Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA')" "$E7"
+t "G7 denies a quoted password with ! characters"  deny  "$(g7w /r/params.yaml "$OUT7"$'\ndb_password: "Hunter2!Hunter2!"')" "$E7"
+t "G7 denies a password with @ and #"              deny  "$(g7w /r/params.yaml "$OUT7"$'\ndb_password: p@ss#word-1234')" "$E7"
+t "G7 denies api-key (hyphen)"                     deny  "$(g7w /r/params.yaml "$OUT7"$'\napi-key: abcd1234efgh5678')" "$E7"
+t "G7 denies apikey"                               deny  "$(g7w /r/params.yaml "$OUT7"$'\napikey: abcd1234efgh5678')" "$E7"
+t "G7 denies credentials"                          deny  "$(g7w /r/params.yaml "$OUT7"$'\ncredentials: abcd1234efgh5678ij')" "$E7"
+t "G7 denies auth_token"                           deny  "$(g7w /r/params.yaml "$OUT7"$'\nauth_token: Zm9vYmFyYmF6cXV4')" "$E7"
+t "G7 denies bearer"                               deny  "$(g7w /r/params.yaml "$OUT7"$'\nbearer: Zm9vYmFyYmF6cXV4MTIz')" "$E7"
+t "G7 denies a JWT shape under any key"            deny  "$(g7w /r/params.yaml "$OUT7"$'\nnote: eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjEyMzQ1fQ.c2lnbmF0dXJlMTIzNDU')" "$E7"
+t "G7 denies a token in params.json (Write)"       deny  "$(g7w /r/params.json '{"tower_access_token": "Zm9vYmFyYmF6cXV4MTIzNDU2"}')" "$E7"
+t "G7 denies a token in params.json (here-doc)"    deny  "$(g7h params.json '{"api_key": "abcd1234efgh5678"}')" "$E7"
+t "G7 denies a token in a here-doc to params.yaml" deny  "$(g7h params.yaml 'secret: Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA')" "$E7"
+t "G7 allows ordinary parameters"                  allow "$(g7w /r/params.yaml "$OUT7"$'\ninput: s.csv\nskip_trimming: true')" "$E7"
+t "G7 allows ordinary params.json"                 allow "$(g7w /r/params.json '{"outdir": "/w/projects/p/runs/r1/results", "input": "s.csv"}')" "$E7"
+t "G7 allows a comment about tokens"               allow "$(g7w /r/params.yaml "# no token here, the settings area has it"$'\n'"$OUT7")" "$E7"
+t "G7 allows tokenizer and max_tokens"             allow "$(g7w /r/params.yaml "$OUT7"$'\ntokenizer: models/bpe/tokenizer.model\nmax_tokens: 512')" "$E7"
+t "G7 allows secret_name"                          allow "$(g7w /r/params.yaml "$OUT7"$'\nsecret_name: my-aws-secret-name-prod')" "$E7"
+t "G7 allows ssh_private_key_file"                 allow "$(g7w /r/params.yaml "$OUT7"$'\nssh_private_key_file: /home/user/.ssh/id_rsa')" "$E7"
+t "G7 allows access_key_id_file"                   allow "$(g7w /r/params.yaml "$OUT7"$'\naccess_key_id_file: /data/keys/aws.txt')" "$E7"
+t "G7 allows umi_token_pattern"                    allow "$(g7w /r/params.yaml "$OUT7"$'\numi_token_pattern: NNNNNNNNNNNNNNNN')" "$E7"
+t "G7 allows password_policy"                      allow "$(g7w /r/params.yaml "$OUT7"$'\npassword_policy: complexity-high-required')" "$E7"
+t "G7 allows a path value under a credential key"  allow "$(g7w /r/params.yaml "$OUT7"$'\naccess_key: /data/keys/aws.txt')" "$E7"
+t "G7 allows a home path value"                    allow "$(g7w /r/params.yaml "$OUT7"$'\ntoken: ~/.config/abf/.seqera_token')" "$E7"
+t "G7 allows a Windows path value"                 allow "$(g7w /r/params.yaml "$OUT7"$'\ntoken: C:\Users\me\token.txt')" "$E7"
+
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
