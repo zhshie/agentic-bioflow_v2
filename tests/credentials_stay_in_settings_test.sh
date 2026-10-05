@@ -68,6 +68,7 @@ SCANLIST=$(grep -vxF 'tests/credentials_stay_in_settings_test.sh' <<<"$FILES")
 # longer has a hit is stale and fails, so the list cannot only grow.
 FIXTURE_ALLOW="
 tests/positron_run_test.sh|marked FAKE in the value itself; planted so the test can grep the output for it
+tests/confirm_walkthrough_test.sh|planted so the G7 cases can feed the hook a credential
 tests/settings_test.sh|'not-a-real-token...'; planted so the test can grep --summary for it
 tests/windows_privacy_test.sh|base64 of 'tid:12345 NOTAREALTOKEN'; planted so the test can grep the report for it
 extensions/positron-bridge/test/bridge-core.test.js|a repeating a1b2c3d4e5f6 pattern for the bridge's own test
