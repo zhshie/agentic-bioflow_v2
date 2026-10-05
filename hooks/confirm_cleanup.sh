@@ -937,9 +937,16 @@ while IFS="$US" read -r SEG VSEG CW; do
                     move|moveto) [ "$XI" -lt $((${#XP[@]} - 1)) ] || continue; XM=move ;;
                     *) XM=rec ;;
                 esac
-                judge_word "${XP[$XI]}" "$XM"
                 XQ=${XP[$XI]//[\"\']/}
-                [[ $XQ =~ ^[A-Za-z0-9_.-]+: ]] && judge_word "${XQ#*:}" "$XM"
+                if [[ $XQ =~ ^[A-Za-z0-9_.-]+: ]] && ! [[ $XQ =~ ^[A-Za-z]:[/\\] ]]; then
+                    # a remote path is relative to the remote's root, not to
+                    # the working folder (a drive letter is a local path)
+                    XCWD=$VCWD; VCWD=""
+                    judge_word "$XQ" "$XM"; judge_word "${XQ#*:}" "$XM"
+                    VCWD=$XCWD
+                else
+                    judge_word "${XP[$XI]}" "$XM"
+                fi
             done
         fi ;;
     ln)
