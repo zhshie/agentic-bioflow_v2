@@ -73,32 +73,53 @@ is_launch_command() {
     # as-is.
     # #34: with no `<<` there is no here-doc, and the stripper then prints every
     # line unchanged - so the process is not started for it.
-    if [[ $CMD == *'<<'* ]]; then
-        STRIPPED=$(awk -f "$LAUNCH_TRIGGER_DIR/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
-        [ -n "$STRIPPED" ] && CMD="$STRIPPED"
-    fi
+    # #62: a caller that already stripped and split exactly this command
+    # (confirm_launch.sh's allowlist check) leaves the result here, so a big
+    # command is not run through both awk passes twice.
+    if [ -n "${ABF_SPLIT_SEGS-}" ] && [ "${ABF_SPLIT_FOR-}" = "$1" ]; then
+        [ -n "${ABF_SPLIT_STRIPPED-}" ] && CMD=$ABF_SPLIT_STRIPPED
+        SEGS=$ABF_SPLIT_SEGS
+    else
+        if [[ $CMD == *'<<'* ]]; then
+            STRIPPED=$(awk -f "$LAUNCH_TRIGGER_DIR/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
+            [ -n "$STRIPPED" ] && CMD="$STRIPPED"
+        fi
 
-    # What the command runs is decided by split_segments.awk, shared with
-    # confirm_cleanup.sh (#29). Each line is `<segment>\037<segment without
-    # quoted text>`. A quoted string is data - `grep -E 'a|sbatch|b' file` once
-    # tripped this gate - so the verb is looked for in the quote-free copy. But
-    # a string a shell re-reads (`bash -c "..."`, `ssh host '...'`,
-    # `on_site.sh '...'`, `echo '...' | bash`, `python3 -c "os.system('...')"`)
-    # and the inside of $(...), backticks and <(...) come back as segments of
-    # their own, so a launch cannot hide in any of them - each of those shapes
-    # once passed this gate with nothing printed (PITFALLS 37).
-    #
-    # If awk cannot run, the old rule applies: split on separators, strip
-    # quotes. Weaker, but a gate rather than none.
-    SEGS=$(awk -f "$LAUNCH_TRIGGER_DIR/split_segments.awk" <<<"$CMD" 2>/dev/null)
-    # Kept for a caller that has to read the same segments of the same command
-    # next (confirm_launch.sh's D3), so the splitter is started once per call
-    # rather than once per question (#34). Only the splitter's own answer is kept,
-    # never the fallback below.
-    ABF_SPLIT_FOR="$1"; ABF_SPLIT_SEGS="$SEGS"
+        # What the command runs is decided by split_segments.awk, shared with
+        # confirm_cleanup.sh (#29). Each line is `<segment>\037<segment without
+        # quoted text>`. A quoted string is data - `grep -E 'a|sbatch|b' file` once
+        # tripped this gate - so the verb is looked for in the quote-free copy. But
+        # a string a shell re-reads (`bash -c "..."`, `ssh host '...'`,
+        # `on_site.sh '...'`, `echo '...' | bash`, `python3 -c "os.system('...')"`)
+        # and the inside of $(...), backticks and <(...) come back as segments of
+        # their own, so a launch cannot hide in any of them - each of those shapes
+        # once passed this gate with nothing printed (PITFALLS 37).
+        #
+        # If awk cannot run, the old rule applies: split on separators, strip
+        # quotes. Weaker, but a gate rather than none.
+        SEGS=$(awk -f "$LAUNCH_TRIGGER_DIR/split_segments.awk" <<<"$CMD" 2>/dev/null)
+        # Kept for a caller that has to read the same segments of the same command
+        # next (confirm_launch.sh's D3), so the splitter is started once per call
+        # rather than once per question (#34). Only the splitter's own answer is kept,
+        # never the fallback below.
+        ABF_SPLIT_FOR="$1"; ABF_SPLIT_SEGS="$SEGS"; ABF_SPLIT_STRIPPED="$CMD"
+    fi
     if [ -z "$SEGS" ]; then
         SEGS=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
+    fi
+
+    # #62: a big command (a here-doc body python reads is thousands of segments)
+    # is first cut down by one awk pass to the segments the loop below could act
+    # on: the same test as the loop's own first one, on the same two texts. Under
+    # Git Bash a shell `read` loop over thousands of lines is superlinear and ran
+    # past the hook's timeout; awk is linear. If awk cannot run, every segment
+    # goes through the loop as before.
+    local CAND
+    if [ "${#SEGS}" -gt 16384 ]; then
+        CAND=$(awk -F"$US" '$3 == "__too_deep__" { print; next }
+            { s = $1; gsub(/["\047]/, "", s); if (index(s, "launch") || index(s, "sbatch") || index(s, "run") || index(s, "--confirm") || index($2, "launch") || index($2, "sbatch") || index($2, "run") || index($2, "--confirm")) print }' \
+            <<<"$SEGS" 2>/dev/null) && SEGS=$CAND
     fi
 
     # Decided per segment, never for the whole line: `cat notes.txt && tw launch ...`
@@ -106,8 +127,7 @@ is_launch_command() {
     # In-shell matching only ([[ =~ ]]): a process per segment made this gate
     # take a minute on a long script under Git Bash, past its timeout, and a
     # timed-out hook lets the command run (#29, round 3).
-    local SQ SQP SQW HIT NESTED=0
-    [[ $CMD =~ $LAUNCH_NESTED_SHELL_RE ]] && NESTED=1
+    local SQ SQP SQW HIT NESTED=-1
     while IFS="$US" read -r S V W; do
         # A command nested too deeply to read is treated as one that might
         # launch - noisy, and correct for a gate that could not judge.
@@ -116,7 +136,11 @@ is_launch_command() {
         # one (every form of LAUNCH_TRIGGER_RE / LAUNCH_VARPROG_RE holds `launch`,
         # `sbatch`, `run` or `--confirm`), and the regexes below are the costly part
         # on Git Bash: thousands of here-doc lines ran past the hook's timeout.
-        case "$S$V" in
+        # Looked for in the quote-free column and in the segment with its quote
+        # characters dropped, the two texts the checks below read: `s"b"atch` has
+        # the word only in the second.
+        SQ=${S//[\"\']/}
+        case "$SQ$US$V" in
             *launch*|*sbatch*|*run*|*--confirm*) ;;
             *) continue ;;
         esac
@@ -125,7 +149,6 @@ is_launch_command() {
             # has lost it. When the command word IS a launcher, read the
             # segment with only the quote characters dropped. Only then: a
             # commit message quoting "tw launch" is still not a launch.
-            SQ=${S//\"/}; SQ=${SQ//\'/}
             HIT=0
             case "$W" in
                 tw|nextflow|sbatch|relaunch_with_override.sh)
@@ -150,6 +173,11 @@ is_launch_command() {
                 # payload segments, which the splitter emits separately.
                 ssh|eval|bash|sh|zsh|ksh|dash|on_site.sh) ;;
                 *)
+                    # #62: the nested-shell test reads the whole command, so it is
+                    # made once, and only when a segment gets this far.
+                    if [ "$NESTED" = -1 ]; then
+                        NESTED=0; [[ $CMD =~ $LAUNCH_NESTED_SHELL_RE ]] && NESTED=1
+                    fi
                     [ "$NESTED" = 1 ] && [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] && HIT=1 ;;
             esac
             [ "$HIT" = 1 ] || continue

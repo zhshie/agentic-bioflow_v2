@@ -28,7 +28,9 @@
 # Fork-free on purpose (#34: every process is expensive under Git Bash, and this
 # runs before the hook's own jq probe). Bash builtins and [[ =~ ]] only, nothing
 # `set -e`-fragile, and nothing here changes the caller's shell options for
-# longer than one call. Portable to bash 3.2.
+# longer than one call. Portable to bash 3.2. The one exception is a text over
+# 8 KB (a big here-doc or Write): one sed normalises it, because the builtin
+# replacements are quadratic in bash and ran past the hooks' timeout (#62).
 
 # A path in one spelling: backslashes to slashes, doubled slashes collapsed,
 # C:\x and /mnt/c/x and /cygdrive/c/x all to /c/x, no trailing slash. Result in
@@ -121,16 +123,13 @@ _abf_state_ok() {
 # True when text $1 contains path $2 as a whole path: what follows it is the end
 # of the text, a slash, or a character that cannot continue a name (so /x/dep is
 # found in "rm /x/dep/a" but not in "/x/dep-neighbour").
+# One regex with the path quoted (literal): `${t#*"$p"}` made bash try every
+# prefix of the text, quadratic - 36 s on a 300 KB here-doc that ends with a
+# path under storage_root, past the hooks' timeout (#62).
 _abf_has_path() {
-    local t="$1" p="$2" rest
-    while [[ $t == *"$p"* ]]; do
-        rest="${t#*"$p"}"
-        case "$rest" in
-            ''|/*|[!A-Za-z0-9_.-]*) return 0 ;;
-        esac
-        t="$rest"
-    done
-    return 1
+    local re_after='($|[^A-Za-z0-9_.-])'
+    [[ $1 == *"$2"* ]] || return 1
+    [[ $1 =~ "$2"$re_after ]]
 }
 
 # True when the (lightly normalised) text $1 contains canonical path $2 in any
@@ -249,14 +248,31 @@ _abf_in_use_inner() {
     # (\n, \t) that glue a word to the one before it; backslashes become
     # slashes so a Windows path reads like any other. A JSON-escaped backslash
     # (two of them) goes first, or C:\\new would lose its n to the newline rule.
-    text="${text//\\\\//}"
-    text="${text//\\n/ }"; text="${text//\\t/ }"; text="${text//\\r/ }"
     # Quotes around a path part are not part of the path (#53): a JSON-escaped
     # double quote and a single quote are dropped, so "$HOME"/runs3 reads as
     # $HOME/runs3. This only widens what matches, the safe direction.
-    text="${text//\\\"/}"; text="${text//\'/}"
-    text="${text//\\//}"
-    while [[ $text == *//* ]]; do text="${text//\/\///}"; done
+    # #62: ${x//p/} costs a pass over the rest of the text per match, so a big
+    # text (a here-doc of thousands of lines: one `\n` each) is normalised the
+    # same way by one sed; a text under 8 KB keeps the fork-free form. Under
+    # MSYS/Cygwin that sed runs in C.UTF-8: in the plain C locale (what it gets
+    # when LANG is unset, as under Claude Code on Windows) GNU sed there is
+    # itself quadratic on one long line with many matches (measured: 50-120 s
+    # at 300 KB, 0.1-0.4 s in C.UTF-8).
+    local norm="" loc="${LC_ALL:-}"
+    if [ "${#text}" -gt 8192 ]; then
+        case "$OSTYPE" in msys*|cygwin*) loc=C.UTF-8 ;; esac
+        norm=$(LC_ALL=$loc sed -e 's#\\\\#/#g' -e 's#\\[ntr]# #g' -e 's#\\"##g' \
+               -e "s#'##g" -e 's#\\#/#g' -e 's#//*#/#g' <<<"$text" 2>/dev/null)
+    fi
+    if [ -n "$norm" ]; then
+        text=$norm
+    else
+        text="${text//\\\\//}"
+        text="${text//\\n/ }"; text="${text//\\t/ }"; text="${text//\\r/ }"
+        text="${text//\\\"/}"; text="${text//\'/}"
+        text="${text//\\//}"
+        while [[ $text == *//* ]]; do text="${text//\/\///}"; done
+    fi
     # ~ and $HOME spell the home directory; a path in the text may use either.
     if [ -n "${HOME:-}" ]; then
         _abf_canon "$HOME"; h="$REPLY"
@@ -345,13 +361,14 @@ _abf_in_use_inner() {
     # home, so `cd && cd runs3 && ...` names no root as written (#53). When a
     # root lives at or under home, such a walk may end in it: in use. Only a
     # question that matters for a command a gate would judge anyway.
-    if [ -n "$h" ] && [ "$h" != / ]; then
-        local t2=" $text "
-        t2="${t2//[;&|\"()]/ ; }"
-        t2="${t2//\~/ \~ }"
-        while [[ $t2 == *"  "* ]]; do t2="${t2//  / }"; done
-        t2="${t2// cd \~ / cd }"; t2="${t2// cd $h / cd }"
-        if [[ $t2 == *" cd ; "* || $t2 == *" cd " ]]; then
+    # `cd` as a word of its own (after a separator, a blank or a `~`), then
+    # nothing, `~` or the home path, then a separator or the end. Two regexes,
+    # not the global replacements this used to make: those were quadratic on a
+    # big text (#62).
+    if [ -n "$h" ] && [ "$h" != / ] && [[ $text == *cd* ]]; then
+        local re_cd='(^|[[:space:];&|"()~])cd[[:space:]]*(~[[:space:]]*)?([;&|"()]|$)'
+        local re_cdh='(^|[[:space:];&|"()~])cd[[:space:]]+' re_end='[[:space:]]*([;&|"()]|$)'
+        if [[ $text =~ $re_cd ]] || [[ $text =~ $re_cdh"$h"$re_end ]]; then
             for b in "${bases[@]}"; do
                 _abf_under "$b" "$h" && return 0
             done
