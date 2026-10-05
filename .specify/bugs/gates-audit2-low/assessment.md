@@ -16,8 +16,10 @@
 
 - `srun tar --remove-files -cf /tmp/r.tar <run>/results` after a 40 KB here-doc: deny (correct). With `($RE_TAR_RM)` removed from `RE_TRIGGER`: pass, and no test fails.
 - `tests/gate_output_failclosed_test.sh:14`: "covered by tests/gate_jq_failing_test.sh" - no such file.
+- `tw l\aunch nf-core/rnaseq`, `s\batch job.sh`: pass through confirm_launch and confirm_walkthrough (`\sbatch`, `\tw launch` already ask). The shell drops the backslash and runs the launcher.
 
 ## Proposed Remediation
 
 - A case in `tests/confirm_cleanup_behind_heredoc_test.sh` with `srun` before the tar, checked to fail with the trigger removed.
 - The comment names the "no jq" sections of the gate tests and this file's jq-broken-gates section.
+- `hooks/launch_trigger.sh`: a segment holding a backslash is judged a second time with its backslashes dropped (an added copy, so a Windows path is still judged as written). Tests in the launch-shapes section of `tests/confirm_launch_test.sh`, which its #62 section reruns behind a big here-doc.

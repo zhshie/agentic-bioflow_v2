@@ -917,6 +917,13 @@ t "echo \"curl -X POST $API/workflow/$LVERB\""             pass "shapes: control
 t "git commit -m \"docs: nf-core $LVERB and seqerakit run.yml\"" pass "shapes: control: a commit message naming them"
 t "grep -rn kuberun docs/"                                 pass "shapes: control: grep for kuberun"
 t "make run"                                               pass "shapes: out of scope: make run"
+# gates-audit2-low: outside quotes a backslash only escapes the next letter;
+# the shell runs the launcher all the same.
+t "tw l\\aunch nf-core/rnaseq"                             gate "shapes: tw l\\aunch"
+t "s\\batch job.sh"                                        gate "shapes: s\\batch"
+t "srun s\\batch job.sh"                                   gate "shapes: srun s\\batch"
+t "echo s\\batch"                                          pass "shapes: control: echo s\\batch"
+t "ls C:\\Users\\x\\sbatch_notes"                          pass "shapes: control: a Windows path naming sbatch"
 printf '%-56s ' "shapes: no jq + nf-core launch - BLOCKED"
 nojq "nf-core $LVERB rnaseq" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && echo ok || { echo "FAIL: rc=$rc"; fails=$((fails+1)); }
