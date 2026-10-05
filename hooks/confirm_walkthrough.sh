@@ -69,7 +69,14 @@ set -uo pipefail
 # too turns either shape into the same flat token soup.
 LOOKS_SHAPED_SEP=$'\t\n\r;&|()<>"\'{}[],:='
 looks_managed_write_shaped() {
-    local text=" $(printf '%s' "$1" | tr -s "$LOOKS_SHAPED_SEP" ' ') "
+    local text
+    # jq-broken-later-line: in raw JSON a line break is the two characters `\n`,
+    # which glued the next line's first word to an `n` (`ntw`): the escapes for
+    # line breaks and tabs are separators too. If sed or tr cannot run, nothing
+    # here can be ruled out.
+    text=$(printf '%s' "$1" | sed 's/\\[ntr]/ /g' | tr -s "$LOOKS_SHAPED_SEP" ' ')
+    if [ -z "$text" ]; then [ -n "$1" ] && return 0; return 1; fi
+    text=" $text "
     case "$text" in
         *samplesheet*|*'params.yml'*|*'params.yaml'*|*' tw launch '*|*' tw runs relaunch '*|*' sbatch '*|*' nextflow run '*|*outdir*|*'analysis/'*| \
         *' tw datasets add '*|*generate_samplesheet*|*fastq_dir_to_samplesheet*| \
@@ -197,7 +204,11 @@ abf_emit() { # abf_emit <ask|deny|-> <permissionDecisionReason or -> <additional
             + (if $d != "-" then {permissionDecision: $d} else {} end)
             + (if $r != "-" then {permissionDecisionReason: $r} else {} end)
             + (if $c != "-" then {additionalContext: $c} else {} end))}' 2>/dev/null) \
-       && [[ $o == '{'* ]]; then
+       && [[ $o == '{'*'"hookSpecificOutput"'*'"hookEventName"'*'"PreToolUse"'* ]] \
+       && { [ "$1" = - ] || [[ $o == *'"permissionDecision"'*'"'"$1"'"'* ]]; } \
+       && { [ "$3" = - ] || [[ $o == *'"additionalContext"'* ]]; }; then
+        # gate-emit-empty-object: printed only when it is the answer asked for; a
+        # jq that builds `{}` (no decision: the call proceeds) gets the fixed ask.
         printf '%s\n' "$o"
     else
         printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"GATE: this hook could not build its own message (jq failed), so it cannot rule this call out. Show the user the full command and confirm it by hand before it runs.","additionalContext":"GATE: the hook could not build its message; treat this call as gated and confirm it with the user."}}'

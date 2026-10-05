@@ -388,10 +388,10 @@ RE_DELVERB='(^|[[:space:]])([^[:space:]]*/)?\\?(rm|rmdir|unlink|shred)([[:space:
 # wrapper can come first (`srun find … -delete`, `ionice rsync --delete`).
 # Round 3 matched them only as the command word and let those through,
 # which main had denied (#29, round 4).
-RE_FIND_DEL='(^|[[:space:]])([^[:space:]]*/)?find[[:space:]](.*[[:space:]])?(-delete([[:space:]]|$)|-exec(dir)?[[:space:]]+([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$))'
-RE_RSYNC_DEL='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--delete'
+RE_FIND_DEL='(^|[[:space:]])([^[:space:]]*/)?\\?find[[:space:]](.*[[:space:]])?(-delete([[:space:]]|$)|-exec(dir)?[[:space:]]+([^[:space:]]*/)?(rm|rmdir|unlink|shred)([[:space:]]|$))'
+RE_RSYNC_DEL='(^|[[:space:]])([^[:space:]]*/)?\\?rsync[[:space:]](.*[[:space:]])?--delete'
 RE_MV='(^|[[:space:]])([^[:space:]]*/)?\\?mv([[:space:]]|$)'
-RE_RSYNC_RSF='(^|[[:space:]])([^[:space:]]*/)?rsync[[:space:]](.*[[:space:]])?--remove-source-files'
+RE_RSYNC_RSF='(^|[[:space:]])([^[:space:]]*/)?\\?rsync[[:space:]](.*[[:space:]])?--remove-source-files'
 # sn1-delete-shapes: also any `.rm(` / `.rmdir(` / `.unlink(` call (node's
 # require('fs').rmSync(, fs.promises.rm(, python's pathlib .unlink()), the node
 # *Sync forms, Ruby's File/Dir.delete( and FileUtils.rm*/remove* - the last also
@@ -409,15 +409,15 @@ RE_LEFTOVER='(^|/)(null|offline_data)(/|$)|(^|/)\.sendmail_tmp\.html$'
 RE_SEQEXT='\.(fastq|fq|fasta|fa|fna|bam|cram)(\.gz)?$'
 RE_RAW='(^|/)(rawdata|raw_data)(/|$)'
 # SN2: Nextflow's own delete of a run's work/ directories.
-RE_NFCLEAN='(^|[[:space:]])([^[:space:]]*/)?nextflow(\.exe)?[[:space:]](.*[[:space:]])?clean([[:space:]]|$)'
+RE_NFCLEAN='(^|[[:space:]])([^[:space:]]*/)?\\?nextflow(\.exe)?[[:space:]](.*[[:space:]])?clean([[:space:]]|$)'
 # sn1-delete-shapes: commands that delete as a side effect of something else -
 # archive and remove the originals, a sync tool's delete/move/sync, a link or a
 # mode laid over a folder, a redirect that only truncates.
-RE_TAR_RM='(^|[[:space:]])([^[:space:]]*/)?(g|bsd)?tar(\.exe)?[[:space:]](.*[[:space:]])?--rem[a-z-]*([[:space:]]|$)'
-RE_ZIP_MV='(^|[[:space:]])([^[:space:]]*/)?zip(\.exe)?[[:space:]](.*[[:space:]])?(-[A-Za-z0-9@$]*m[A-Za-z0-9@$]*|--move)([[:space:]]|$)'
-RE_RCLONE='(^|[[:space:]])([^[:space:]]*/)?rclone(\.exe)?[[:space:]](.*[[:space:]])?(purge|delete|deletefile|rmdir|rmdirs|move|moveto|sync)([[:space:]]|$)'
-RE_LN_F='(^|[[:space:]])([^[:space:]]*/)?ln(\.exe)?[[:space:]](.*[[:space:]])?(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)'
-RE_INSTALL_D='(^|[[:space:]])([^[:space:]]*/)?install(\.exe)?[[:space:]](.*[[:space:]])?(-[A-Za-z0-9]*d[A-Za-z0-9]*|--directory)([[:space:]]|$)'
+RE_TAR_RM='(^|[[:space:]])([^[:space:]]*/)?\\?(g|bsd)?tar(\.exe)?[[:space:]](.*[[:space:]])?--rem[a-z-]*([[:space:]]|$)'
+RE_ZIP_MV='(^|[[:space:]])([^[:space:]]*/)?\\?zip(\.exe)?[[:space:]](.*[[:space:]])?(-[A-Za-z0-9@$]*m[A-Za-z0-9@$]*|--move)([[:space:]]|$)'
+RE_RCLONE='(^|[[:space:]])([^[:space:]]*/)?\\?rclone(\.exe)?[[:space:]](.*[[:space:]])?(purge|delete|deletefile|rmdir|rmdirs|move|moveto|sync)([[:space:]]|$)'
+RE_LN_F='(^|[[:space:]])([^[:space:]]*/)?\\?ln(\.exe)?[[:space:]](.*[[:space:]])?(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)'
+RE_INSTALL_D='(^|[[:space:]])([^[:space:]]*/)?\\?install(\.exe)?[[:space:]](.*[[:space:]])?(-[A-Za-z0-9]*d[A-Za-z0-9]*|--directory)([[:space:]]|$)'
 RE_PURE_TRUNC='^[[:space:]]*((:|true|false|printf|echo[[:space:]]+-n|cat[[:space:]]+/dev/null)[[:space:]]*)?[0-9]*>([^>&]|$)'
 RE_RECURSIVE='(^|[[:space:]])(-[A-Za-z]*[rR][A-Za-z]*|--recursive|/[sS])([[:space:]]|$)'
 RE_SEQPAT='\.(fastq|fq|fasta|fa|fna|bam|cram)([^[:alnum:]]|$)'
@@ -533,7 +533,7 @@ has_link() { # has_link <path>
 past_word() { # past_word <ERE of command names>
     local i x
     for ((i = 0; i < ${#SW[@]}; i++)); do
-        x=${SW[$i]//[\"\']/}; x=${x##*/}
+        x=${SW[$i]//[\"\']/}; x=${x##*/}; x=${x#\\}   # backslash-delete-shapes: `\tar`
         if [[ $x =~ ^($1)$ ]]; then REPLY=$((i + 1)); return 0; fi
     done
     REPLY=${#SW[@]}
@@ -856,7 +856,7 @@ while IFS="$US" read -r SEG VSEG CW; do
         set -f; NFW=(${SEG//[\"\']/}); set +f
         NFI=0; NFS=""; NFF=0
         while [ "$NFI" -lt "${#NFW[@]}" ]; do
-            NFX=${NFW[$NFI]}; NFX=${NFX##*/}; NFI=$((NFI + 1))
+            NFX=${NFW[$NFI]}; NFX=${NFX##*/}; NFX=${NFX#\\}; NFI=$((NFI + 1))
             case "$NFX" in nextflow|nextflow.exe) break ;; esac
         done
         while [ "$NFI" -lt "${#NFW[@]}" ]; do
@@ -873,6 +873,26 @@ while IFS="$US" read -r SEG VSEG CW; do
             done
             [ "$NFF" = 1 ] && [ "$DRYRUN" = 0 ] && HIT_WORK="${HIT_WORK}(nextflow clean -f: the run's task directories under work/) "
             continue
+        fi
+    fi
+    # variable-nextflow-clean: a command word held in a variable (`N=nextflow;
+    # $N clean -f`) whose subcommand is `clean` with -f may be that same delete.
+    if [ "$VARCMD" = 1 ] && [ "$DRYRUN" = 0 ]; then
+        set -f; NFW=(${SEG//[\"\']/}); set +f
+        NFI=0; NFS=""; NFF=0
+        while [ "$NFI" -lt "${#NFW[@]}" ]; do
+            NFX=${NFW[$NFI]}; NFI=$((NFI + 1))
+            case "$NFX" in '$'*|'`'*) break ;; esac
+        done
+        while [ "$NFI" -lt "${#NFW[@]}" ]; do
+            NFX=${NFW[$NFI]}; NFI=$((NFI + 1))
+            case "$NFX" in -*) ;; *) NFS=$NFX; break ;; esac
+        done
+        if [ "$NFS" = clean ]; then
+            for ((; NFI < ${#NFW[@]}; NFI++)); do
+                case "${NFW[$NFI]}" in -f|-force|--force) NFF=1 ;; esac
+            done
+            [ "$NFF" = 1 ] && HIT_WORK="${HIT_WORK}(unknown command '${CW}' clean -f: if it is nextflow, the run's task directories under work/) "
         fi
     fi
     [[ $VSEG =~ $RE_RSYNC_DEL ]] && [ "$DRYRUN" = 0 ] && DESTRUCTIVE=1

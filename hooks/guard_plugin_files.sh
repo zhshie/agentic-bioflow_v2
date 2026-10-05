@@ -250,7 +250,11 @@ abf_emit() { # abf_emit <ask|deny|-> <permissionDecisionReason or -> <additional
             + (if $d != "-" then {permissionDecision: $d} else {} end)
             + (if $r != "-" then {permissionDecisionReason: $r} else {} end)
             + (if $c != "-" then {additionalContext: $c} else {} end))}' 2>/dev/null) \
-       && [[ $o == '{'* ]]; then
+       && [[ $o == '{'*'"hookSpecificOutput"'*'"hookEventName"'*'"PreToolUse"'* ]] \
+       && { [ "$1" = - ] || [[ $o == *'"permissionDecision"'*'"'"$1"'"'* ]]; } \
+       && { [ "$3" = - ] || [[ $o == *'"additionalContext"'* ]]; }; then
+        # gate-emit-empty-object: printed only when it is the answer asked for; a
+        # jq that builds `{}` (no decision: the call proceeds) gets the fixed ask.
         printf '%s\n' "$o"
     else
         printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"GATE: this hook could not build its own message (jq failed), so it cannot rule this call out. Show the user the full command and confirm it by hand before it runs.","additionalContext":"GATE: the hook could not build its message; treat this call as gated and confirm it with the user."}}'

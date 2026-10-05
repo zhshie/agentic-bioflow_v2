@@ -10,8 +10,11 @@
 #      and the displayed text is bounded (with a marker for what was left out);
 #   2. if jq reads the input fine but cannot build the answer, a fixed minimal
 #      `ask` is printed instead of nothing.
-# (Total absence of jq, and a jq that fails on everything, are covered by
-# tests/gate_jq_failing_test.sh.)
+# (Total absence of jq is covered by the "no jq" sections of
+# tests/confirm_launch_test.sh, tests/confirm_cleanup_test.sh and
+# tests/confirm_walkthrough_test.sh; a jq that fails on everything or answers
+# wrongly, by the jq-broken-gates section below and by the "jq present but
+# broken" section of tests/confirm_cleanup_test.sh.)
 #
 # The delete verb and the launch verb are assembled from hex so this file's own
 # text does not trip a gate watching the shell.
