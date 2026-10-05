@@ -202,7 +202,15 @@ fi
 # blocked from ever showing the real overview by a marker written while it
 # was still broken.
 JQMARKS="$STATE/jq-warn-shown"
-if ! command -v jq >/dev/null 2>&1 || ! printf '{}' | jq -e . >/dev/null 2>&1; then
+# jq-broken-gates: "cannot run" includes a jq that exits 0 with the wrong answer
+# (`{}`, a line of text): it passed `jq -e .`, then its output went out as this
+# hook's own. It has to compute a known answer (a trailing CR is jq.exe).
+abf_jq_works() {
+    local o
+    o=$(jq -c .a <<<'{"a":[1]}' 2>/dev/null) || return 1
+    [ "${o%$'\r'}" = '[1]' ]
+}
+if ! command -v jq >/dev/null 2>&1 || ! abf_jq_works; then
     # Without jq the literal door cannot be checked precisely (a mere mention
     # of /agentic-bioflow: mid-sentence matches the loose test). Marking is the
     # safe direction: one gate too many beats one missed.

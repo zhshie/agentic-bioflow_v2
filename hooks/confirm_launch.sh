@@ -144,10 +144,28 @@ abf_in_use "$INPUT" "$INPUT" || exit 0
 # can never be silently dropped). Anything else (not JSON,
 # no jq, a field that is an object, two JSON values on stdin) goes the way this
 # file always went: the probe, then one jq per field.
+#
+# jq-broken-gates: the fast path is trusted only when every field came with its
+# separator. The fields are read out in order: pattern removal (`#*x`, `%%x*`,
+# `##*x`) and ${x//p/} are quadratic in bash on a long string, and a large Write
+# or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
+# newlines were trimmed by jq, as $(jq) did per field. A jq that exits 0 with
+# `{}` or a line of text has not read this input: it goes to the probe below,
+# which asks jq for a known answer - `jq -e .` alone passed such a jq.
+abf_jq_works() { # a trailing CR is jq.exe on Windows
+    local o
+    o=$(jq -c .a <<<'{"a":[1]}' 2>/dev/null) || return 1
+    [ "${o%$'\r'}" = '[1]' ]
+}
 JQ_FAST=0
-JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
-  && [ -n "$JQ_OUT" ] && JQ_FAST=1
-if [ "$JQ_FAST" = 0 ] && ! printf '{}' | jq -e . >/dev/null 2>&1; then
+if JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+   && [ -n "$JQ_OUT" ]; then
+    {
+        IFS= read -r -d $'\037' TOOL &&
+        IFS= read -r -d $'\037' CMD
+    } <<<"$JQ_OUT" && JQ_FAST=1
+fi
+if [ "$JQ_FAST" = 0 ] && ! abf_jq_works; then
     RAW=$INPUT
     # Independent acceptance of 002: hooks.json now also routes Write/Edit/
     # MultiEdit/NotebookEdit calls here, and their raw payload is the FILE
@@ -191,16 +209,8 @@ EOF
     exit 0
 fi
 
-if [ "$JQ_FAST" = 1 ]; then
-    # The fields come as one string, each followed by the separator. They are read out in order:
-    # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
-    # large Write or here-doc then outlasts the hook's timeout (#34); `read` is linear. Trailing
-    # newlines were trimmed by jq, as $(jq) did per field.
-    {
-        IFS= read -r -d $'\037' TOOL
-        IFS= read -r -d $'\037' CMD
-    } <<<"$JQ_OUT"
-else
+if [ "$JQ_FAST" = 0 ]; then
+    # (The fast path's fields were read out above.)
     TOOL=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
     CMD=$(jq -r '.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // ""' <<<"$INPUT" 2>/dev/null)
 fi
