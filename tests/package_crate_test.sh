@@ -13,6 +13,7 @@
 set -uo pipefail
 S="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/package_crate.py"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+export ABF_PIPELINE_FETCHER=off   # no network in tests (#4); methods_text_fetch_test.sh covers fetching
 fails=0
 ok() { printf '%-68s ok\n' "$1"; }
 no() { printf '%-68s FAIL: %s\n' "$1" "$2"; fails=$((fails+1)); }

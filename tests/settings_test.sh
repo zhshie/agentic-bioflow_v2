@@ -355,6 +355,23 @@ has "...and says the token would be effectively public"     "effectively public"
 printf '%-64s ' "...and the empty file it just made is gone again"
 [ ! -e "$CANTHOLD" ] && echo ok \
   || { echo "FAIL: $CANTHOLD still exists"; fails=$((fails+1)); }
+# Invariant 11: every refusal says whether it declines a shell, a folder or a
+# capability. This one declines the folder, not the shell.
+has "...and says it is the folder that is refused, not the shell" \
+    "What is refused is this folder" "$out"
+has "...and that your shell is fine" "not your shell" "$out"
+
+# The same sentence on the three refusals of `--use`.
+out=$(HOME="$TMP/h11" LAB_SETTINGS_FILE="$TMP/h11.yaml" bash "$S" --use relative/dir 2>&1)
+has "--use with a relative path: says it refuses the folder, not the shell" \
+    "What is refused is that folder" "$out"
+: > "$TMP/a-file"
+out=$(HOME="$TMP/h11" LAB_SETTINGS_FILE="$TMP/h11.yaml" bash "$S" --use "$TMP/a-file" 2>&1)
+has "--use on a file: says it refuses the folder, not the shell" \
+    "What is refused is that folder" "$out"
+out=$(HOME="$TMP/h11" LAB_SETTINGS_FILE="$TMP/h11.yaml" bash "$S" --use "$TMP/a-file/sub" 2>&1)
+has "--use that cannot create it: says it refuses the folder, not the shell" \
+    "What is refused is that folder" "$out"
 
 # 16k: under MSYS the manufactured mode must not decide anything by itself.
 # 2.13.1 refused here - on a machine whose file was in fact owner-only - and
@@ -454,6 +471,10 @@ has "...and says its own list is not complete"   "not a complete list" "$out"
 has "...and says plainly that the token is in it" "config/.seqera_token" "$out"
 has "...and that a token can be revoked if it leaks" "revocable" "$out"
 has "...and warns large files do not belong there" "eat the sync quota" "$out"
+# SN4: the --use refusal says a cloud-drive folder "is no place for a token", so
+# this caution must not call the same folder the token's "intended home".
+hasnot "...and does not call a synced folder the token's intended home" "intended home" "$out"
+has    "...but a poor place for the token, same as the refusal says" "poor place for a token" "$out"
 
 
 # ---------------------------------------------------------------------------
