@@ -27,7 +27,7 @@
 
 | Rule | Check now | How it is shown to go red |
 |---|---|---|
-| I.2 no second copy of run state | `tests/no_second_run_state_test.sh` | 14 self-tests: sbatch / `nextflow run` / `tw launch` (also after `&&`, quoted, in Python), `nohup`, a polling loop, a run-state file, sqlite, an invented `tw` noun; quoted prose passes |
+| I.2 no second copy of run state | `tests/no_second_run_state_test.sh` | 28 self-tests (24 after round 1, 4 added in the leftovers round): sbatch / `nextflow run` / `tw launch` (also after `&&`, quoted, in Python), `nohup`, a polling loop, a run-state file, sqlite, an invented `tw` noun; quoted prose passes |
 | II.5 works without the host | `tests/works_without_host_test.sh` | 7 self-tests on mutated copies: sourcing a hook, running one with bash, reading `.claude-plugin/`, a script that does not parse, a doc citing a missing script; a comment naming a hook passes |
 | Credentials (git, printing, params) | `tests/credentials_stay_in_settings_test.sh` | 20 self-tests for the static scans; 9 hook cases for the params gate |
 | III.7 nobody needs the maintainer | Procedure P1, `docs/TESTING.md` Half 3 | manual; needs a person who is not the maintainer. The assessment also named `tests/onboarding_self_contained_test.sh` (a lint that no user-facing text sends the user to PITFALLS or the maintainer). **Dropped, not written:** a text lint cannot see whether a person got stuck, and the phrase it would grep for is exactly what a step written to dodge the lint would avoid. P1 checks the real thing. |
@@ -37,7 +37,7 @@
 
 Reviewed critically. Both were close and neither found a defect in the code.
 
-- `no_second_run_state_test.sh`: logic sound, 14 self-tests already there and all pass. Kept as is.
+- `no_second_run_state_test.sh`: logic sound, 14 self-tests already there in the draft and all passed. Kept as is. (Round 1 grew it to 24; the leftovers round to 28.)
 - `works_without_host_test.sh` had four real faults, all in the test:
   1. Its static scan matched any line that mentioned `hooks/`, so a comment, an echoed message and a docstring (`scripts/report.sh`, `scripts/turn_timing.py`) failed it. It now judges only lines that execute or load something (source, `.`, bash, sh, python, exec, cat, or a variable-built path).
   2. Its section 5 reported `scripts/portable_root.sh`, which `CLAUDE.md` cites to say it is gone. Lines that say removed or gone are skipped.
@@ -85,4 +85,18 @@ Only *Check:* lines added: I.2, II.5 (test named before the existing sentence), 
 - **Invariant 2 scan** is a static net over scripts/: it finds the shapes listed in its header. A script that keeps state under a name nobody listed passes.
 - **Credentials static scan** finds the token shapes it knows plus long values under credential-named keys.
 - **Invariant 1** reports PARTIAL while the allow-list is non-empty.
-- LOW items L1-L3 from the acceptance review stay as known limits.
+- LOW items L1-L3 from the acceptance review stay as known limits (below).
+
+## Known limits
+
+- L1: `works_without_host_test.sh` runs only a few scripts, not all of them. A script it does not run could still need the host.
+- L2: the heuristic in `scripts_name_their_alternative.sh` accepts any `# Not preflight:` line. It does not check that the line names a real alternative.
+- L3: the never-printed-credentials scan misses `curl -v`, `declare -p` and `env | grep`. Each can print a token without an `echo`.
+
+## Leftovers round (test gaps)
+
+Cases added; each was shown to fail when the code it covers is mutated, on a /tmp copy.
+
+- `tests/confirm_walkthrough_test.sh`: G7 denies a GitHub token shape (`ghp_...`) under a non-credential key; G7 allows an all-digits value under a credential key; G7 denies a letters-and-digits value there. Removing the `gh[pousr]_` shape, or the all-digits skip, turns them red.
+- `tests/no_second_run_state_test.sh`: an `until` loop with no `sleep`, line-leading and after `&&` (one case per branch of the pattern); `tw runs list > out.txt` and `tw runs view x >> out.txt` (a plain name, so the snapshot-name scan does not mask the `>` branch). Removing either `until` branch, or the `>` branch, turns them red.
+- Skipped: a ghp_ case in `credentials_stay_in_settings_test.sh`. It already has "a GitHub token fails".
