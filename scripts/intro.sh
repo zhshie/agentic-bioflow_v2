@@ -35,7 +35,11 @@
 #
 # Unknown command -> usage on stderr, exit 2. Success -> exit 0.
 #
-# Not settings.sh: intro.sh needs exactly one thing from it (the `language`
+# Nothing existing: no maintained tool prints a plugin's overview, a command's
+# opening and a flow-end signal from language-keyed text files; this script is
+# only the reader of those files.
+#
+# Why it does not source settings.sh: intro.sh needs exactly one thing from it (the `language`
 # key), and settings.sh already does that job - a second reader of the
 # settings file here would be the kind of duplicate this repo's own
 # principles rule out. No other file in this repo is a dependency, and this

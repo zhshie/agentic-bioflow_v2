@@ -11,7 +11,7 @@
 # turn every time a command file would otherwise have spent one deriving
 # them first.
 #
-# Not a hook: PreToolUse/SessionStart run in their OWN process and exit -
+# Why this is not a hook: PreToolUse/SessionStart run in their OWN process and exit -
 # nothing they export survives into the Bash tool call that follows. And the
 # Bash tool starts a fresh shell for every call, so one source at the top of
 # a command does not carry over either: each call that runs `tw` opens with

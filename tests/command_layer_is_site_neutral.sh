@@ -59,6 +59,42 @@ fi
 
 hits=$(printf '%s\n' "$raw" | site_terms_allow | sed "s|^$ROOT/||" | grep -v '^$')
 
+# Second scan (constitution-checks, item 3): the adapter's IMPLEMENTATION and
+# the relay's own parts. Constitution II.4 says the command layer MUST NOT name
+# a scheduler, partition, queue or relay, and a site adapter supplies the site
+# properties. Two different things were slipping past the vocabulary above:
+#
+#   - A specific site's name or implementation file: `configs/sites/nchc.config`
+#     in commands/downstream.md. A second site has no such file; the adapter
+#     contract (docs/SITE_ADAPTER.md, 1) already has a neutral name for it,
+#     "the site's resource-floor config".
+#   - The relay's own parts: nf_relay.py, its denied-names list, its port
+#     setting, a login-node host name.
+#
+# What is deliberately NOT banned: the contract-noun scripts the commands call
+# through `scripts/on_site.sh --script` - egress_ctl.sh, egress_allow.sh,
+# check_egress.py (contract 2, egress), why_pending.sh (contract 5),
+# agent_ctl.sh (contract 3). They are named for what they are in the adapter
+# contract, not for the relay or scheduler behind them, they are reached only
+# through the adapter's one sanctioned transport, and the prose around them
+# says "the outbound channel". Naming the sanctioned interface is how the
+# command layer asks; naming the proxy behind it would be naming a relay.
+ADAPTER_IMPL_TERMS='nchc|taiwania|configs/sites|nf_relay|relay_denied|relay_port|(^|[^[:alnum:]_])lgn[0-9]'
+impl_hits=$(grep -rinE "$ADAPTER_IMPL_TERMS" "$ROOT/commands" "$ROOT/skills" 2>&1)
+irc=$?
+if [ "$irc" -ge 2 ]; then
+    printf '%s\n' "$impl_hits"
+    echo "FAIL: the adapter-implementation scan itself errored (grep exit $irc)"
+    exit 1
+fi
+impl_hits=$(printf '%s\n' "$impl_hits" | sed "s|^$ROOT/||" | grep -v '^$')
+if [ -n "$impl_hits" ]; then
+    printf '%s\n' "$impl_hits"
+    echo
+    echo "FAIL: the command layer names a site or the relay's own parts (II.4). Say what the adapter supplies, not which file or host supplies it here."
+    exit 1
+fi
+
 if [ -n "$hits" ]; then
     printf '%s\n' "$hits"
     echo

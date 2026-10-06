@@ -25,6 +25,7 @@ exists.
   a second copy of a run's state, and there MUST be no submission script of our own, no state
   machine, and no monitoring daemon. Where the backend is Seqera, the command layer follows
   Seqera's nouns (compute environment, then pipelines → datasets → launch, then runs).
+  *Check:* `tests/no_second_run_state_test.sh`.
 
 *Rationale:* three features were rebuilt here before anyone checked, and each was written and
 then deleted (PITFALLS 14). A second copy of run state drifts from the real one; making Seqera
@@ -42,8 +43,8 @@ optional means reading Nextflow's own records, not rebuilding Platform (`docs/ad
 - **5.** Judgment, procedure and site operations live in `docs/` and `scripts/`, readable and
   runnable by a person or another model. Whatever AI host runs the tool, its own capabilities
   (hooks, skills, commands or their equivalents) MUST be used fully.
-  *Check:* with `hooks/` and `.claude-plugin/` removed, the system still works from `docs/` and
-  `scripts/`: degraded, not equivalent, but usable.
+  *Check:* `tests/works_without_host_test.sh`: with `hooks/` and `.claude-plugin/` removed, the
+  system still works from `docs/` and `scripts/`: degraded, not equivalent, but usable.
 
 *Rationale:* one cluster is not the world, and a lowest common denominator would drop the
 safety net along with the hooks that carry it.
@@ -60,7 +61,8 @@ safety net along with the hooks that carry it.
   ask the maintainer to keep going. Each step MUST say what it will do before doing it, and
   onboarding MUST prove the environment on public test data, touching none of the user's data,
   before handing over the command list.
-  *Check:* someone completes onboarding with no point where outside knowledge was required.
+  *Check:* Procedure P1 in `docs/TESTING.md`: someone completes onboarding with no point where
+  outside knowledge was required.
 
 *Rationale:* nf-core labels are partial and stackable, so a label table goes stale the moment a
 pipeline adds one; and an unverified environment taken to real data fails where it costs most.
@@ -69,7 +71,8 @@ pipeline adds one; and an unverified environment taken to real data fails where 
 
 - **8.** Measure or read the source before claiming that something is needed, impossible, or
   general. The result goes in `docs/PITFALLS.md`.
-  *Check:* every PITFALLS entry corresponds to a real failure or a real piece of source read.
+  *Check:* Procedure P2 in `docs/TESTING.md`: every PITFALLS entry corresponds to a real failure
+  or a real piece of source read.
 - **9.** Anything written on a user's behalf MUST point at the file that produced it. A citation
   comes from the run's own files, a user-supplied DOI, or a page actually fetched, never from
   memory. A number comes from a file; a new statistic comes from a script that ran. A gap is
@@ -153,8 +156,17 @@ plan, and change only by a MAJOR amendment of this constitution.
 - A launch command is shown in full and waits for explicit confirmation before it runs
   (`hooks/confirm_launch.sh`).
 - Credentials and personal details live only in the deployment's own settings area, readable by
-  the owner only; never printed, never in git, never in a params file, and never carried over
-  from another member's copy.
+  the owner only; never printed, never in git, never in a params file. The plugin never fills in one
+  member's credential from another member's settings: it asks the user for the value.
+  It does not detect a settings file a person copied in by hand.
+  *Check:* `tests/credentials_stay_in_settings_test.sh` (never in git; never printed by a script;
+  never in a params file, for the common shapes, see its header and the G7 note in
+  `hooks/confirm_walkthrough.sh`, with `tests/confirm_walkthrough_test.sh`); readable by the owner
+  only: `tests/settings_test.sh`, `tests/windows_privacy_test.sh`; never printed (a fixture token
+  is never in the output): `tests/inspect_sides_test.sh`, `tests/status_test.sh`. The last
+  sentence has no automated check, and does not need one: it states what the code does (a missing
+  value is asked for, never guessed or copied; a changed `agent_connection` asks first, see
+  `hooks/confirm_launch.sh`), not a detection the plugin performs.
 
 ## Development Workflow
 
@@ -226,6 +238,43 @@ silently when the answer is no.
 **Approval.** Maintainer's choice recorded in `specs/005-plugin-scope/spec.md` (Clarifications,
 2026-10-02); merge approval is the maintainer's, on the pull request that carries this change.
 
+### 2.0.1 (2026-10-05): every rule names a Check that exists
+
+**Rationale (#30, `.specify/bugs/constitution-checks`).** The preamble says each principle names the
+check that holds it, and a principle with no check is a slogan. A fresh audit against 2.0.0 found
+five rules where that was kept in form and not in fact: principles 2, 5, 7 and 8 and the Safety
+Net's credentials rule carried either no *Check:* or a sentence describing a check nobody had
+written. `tests/constitution_checks_exist_test.sh` now fails when a rule's *Check:* cites no
+`tests/` file and no Procedure, or cites one that does not exist.
+
+**What changes.** Only *Check:* lines are added or completed. Principles 2 and 5 and the
+credentials rule cite new automated tests; principles 7 and 8 cite Procedure P1 and Procedure P2,
+manual procedures written in `docs/TESTING.md` (Half 3), because what they ask (whether a person
+got stuck, whether a claim rests on evidence) cannot be measured by a script. No rule changes its
+meaning.
+
+**Impact on existing deployments.** The rules' text is unchanged, but one hook behaves
+differently. `hooks/confirm_walkthrough.sh` gains a gate, G7: a write to a params file (yaml, yml
+or json) that carries a credential is now refused, and neither the walkthrough evidence nor the
+user's escape phrase lifts it. The credentials rule already required this and nothing enforced
+it. A params file that holds no credential is unaffected. G7 is a net for the common shapes: a
+credential-named key with a value of 12 or more characters on the same line, or a token shape. It
+does not see a write by `tee`, `sed -i`, a python `open()` or the PowerShell tool, a short value,
+a value on the next line or in a block scalar, or a key without such a word in its name. A
+parameter genuinely named like a credential and holding a long opaque value is refused too; its
+key naming a file, path, name, policy or pattern, or its value being a path, is not. The
+credentials rule's last clause is reworded to say what the code does, see the clarification below.
+
+**Clarification (maintainer's decision, same 2.0.1).** The credentials rule used to end with
+"never carried over from another member's copy". Nothing enforced that: `scripts/settings.sh
+--migrate` has no owner check, and a settings file copied in by hand is not detected. The
+maintainer chose to reword the rule to what the code does, not to add a check. It now says the
+plugin never fills in a credential from another member's settings (it asks the user) and does not
+detect a copied file. No behavior changes; no deployment is affected.
+
+**Version.** PATCH, under Governance: the amendment names checks and changes no meaning.
+**Approval.** The maintainer approves and merges the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -240,4 +289,4 @@ silently when the answer is no.
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 2.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-02
+**Version**: 2.0.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-05

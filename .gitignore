@@ -16,3 +16,8 @@ extensions/*/out/
 
 # Spec Kit's downloaded extension catalog: a network cache, rebuilt on demand.
 .specify/extensions/.cache/
+
+# A deployment's credentials and settings (docs/SETTINGS.md). They live outside this
+# repository; if a checkout ever holds one, it must not be added.
+.seqera_token
+env.yaml

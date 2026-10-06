@@ -5,7 +5,10 @@
 # exactly this way: one background watch per in-flight run, all polling
 # on_site.sh in the same work session (docs/LAB_AGENTS.md, section 6).
 #
-# Not `task_health.sh`, called once per run: that already solves this
+# Nothing existing: neither `tw` nor Platform answers "which of these N runs is
+# stuck in the site's queue" in one round trip to the site.
+#
+# Why it is not task_health.sh called once per run: that already solves this
 # correctly for ONE run (its own header explains why), but calling it N
 # times for N runs opens N sessions on the same shared master - the thing
 # this file exists to avoid. The trick generalises cleanly because
@@ -16,7 +19,7 @@
 # run (a job on a shared account is not evidence about a run unless its own
 # name says so).
 #
-# Not `scripts/on_site.sh --script`'s own future batching (perf/latency is
+# Also not `scripts/on_site.sh --script`'s own future batching (perf/latency is
 # adding a way to run a whole GROUP of checks in one round trip - see that
 # branch's work on scripts/on_site.sh): until that lands, this file already
 # gets to "one round trip for N runs" on its own, by making exactly one

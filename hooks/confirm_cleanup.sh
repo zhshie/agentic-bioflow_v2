@@ -1,4 +1,6 @@
 #!/bin/bash
+# Nothing existing: Claude Code permission rules match a command by its prefix or pattern; none splits a shell line into its commands, reads which arguments name rawdata/results/analysis, or warns on an argument still holding a variable.
+#
 # PreToolUse/Bash: the deletion guard.
 #
 #   deny  - rawdata/ results/ analysis/ and .nextflow/plugins/

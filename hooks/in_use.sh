@@ -1,4 +1,6 @@
 #!/bin/bash
+# Nothing existing: Claude Code runs every installed plugin's hooks in every session and has no per-plugin switch for 'only when this plugin is in use', so each hook asks this check first.
+#
 # Sourced by every hook (feature 005, #48): is agentic-bioflow IN USE for this
 # call? The hooks exit 0 without a word when the answer is no, so a session that
 # has nothing to do with this plugin never sees it - not a gate, not a reminder,

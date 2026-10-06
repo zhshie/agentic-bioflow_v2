@@ -82,6 +82,84 @@ the opposite check.
 Record the answers in the release's own notes. A check nobody wrote down is a
 check that gets re-argued three sessions later.
 
+## Half 3 — procedures the constitution cites
+
+Two of the constitution's rules cannot be checked by a machine, because what
+they ask is whether a person got stuck and whether a claim rests on evidence.
+Each has a procedure here, and the constitution's *Check:* line names it. A
+procedure is done when its record is written down in the release notes; "I
+looked and it seemed fine" is not a record.
+
+`tests/constitution_checks_exist_test.sh` holds the pointers: it fails if the
+constitution cites a Procedure whose heading is not in this file.
+
+### Procedure P1: onboarding without the maintainer (Constitution III.7)
+
+When: every release that touches `commands/setup.md`, `commands/launch.md`,
+`skills/`, or anything a first-time user is shown. Once a quarter otherwise.
+
+Who: someone who has not worked on this plugin and is not the maintainer. A
+lab member who has never used it is right; the maintainer pretending to be new
+is not (they cannot un-know PITFALLS).
+
+1. Give them a machine with the AI host and the plugin installed, a Seqera
+   workspace they can use, and nothing else. They may not be given
+   `docs/PITFALLS.md`, and the maintainer is not in the room or on the chat.
+2. Tell them one thing: "set this up and run the test pipeline". Do not say
+   which command.
+3. Watch, and write down every point where they stop, ask someone, search the
+   web for something the plugin did not tell them, or open `docs/PITFALLS.md`.
+   Each is a failure of rule 7, whatever the cause.
+4. At each step, note whether the plugin said what it was about to do before it
+   did it. A step that acted first and explained after is a failure.
+5. When setup says the environment is proven, check that it ran on public test
+   data: list the files the run created and confirm none are under the
+   person's own data folders (`find <their data> -newer <start-time marker>`
+   prints nothing).
+6. The person is handed the command list only after step 5.
+
+Pass: the person reached the command list, with no stop-and-ask point and no
+step that acted before explaining. Record in the release notes: who, which
+host and surface, the stop points found (or "none"), and the date.
+
+Fail: every stop point becomes an issue against the text or script that left
+the gap. Do not coach the person through it and call it a pass.
+
+### Procedure P2: evidence before claims (Constitution IV.8)
+
+When: every release that adds or edits an entry in `docs/PITFALLS.md`; and once
+a quarter on a sample of older entries.
+
+Rule being checked: an entry rests on a failure someone actually saw or on
+source someone actually read, not on a belief that something is needed,
+impossible, or general.
+
+For each entry added or changed since the last release (and five older entries
+chosen at random):
+
+1. Find what the entry stands on. It must name one of: a failure with the
+   command or text that produced it, a file and revision that was read, or a
+   measurement with its number. An entry that names none is unproven.
+2. If it names source, open that file at that revision and find the line. If
+   the line is not there, or says something else, the entry is wrong.
+3. If it makes a universal claim ("always", "never", "every cluster", "all
+   pipelines"), find how many cases it was seen in. One case supports "this
+   happened here", not "this is general". The entry must say which.
+4. If it says something is impossible or that something must be built, find
+   what was tried. A claim of "impossible" with no attempt written down is
+   unproven.
+5. Mark each entry: supported, unproven, or wrong.
+
+Pass: no entry is "wrong"; every "unproven" entry is either given its
+evidence in the same release or reworded to say what is known and what is not.
+Record in the release notes: the entries checked, the verdict for each, and
+what was changed.
+
+Automation is not offered for this procedure on purpose. A script can see that
+an entry has a date or a code block, and every entry does; it cannot see
+whether the date is of a real failure. A check that is green for everything
+proves nothing.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in

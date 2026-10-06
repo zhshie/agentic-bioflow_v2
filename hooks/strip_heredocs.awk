@@ -1,3 +1,5 @@
+# Nothing existing: no standard tool removes here-document bodies from a command string while keeping the introducing line, and sed cannot track the delimiter across lines.
+#
 # Remove here-document BODIES from a shell command, keeping every real line.
 #
 # Why this exists: launch_trigger.sh (sourced by confirm_launch.sh),

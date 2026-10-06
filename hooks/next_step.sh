@@ -1,4 +1,6 @@
 #!/bin/bash
+# Nothing existing: Claude Code has no setting that requires a reply to end with a next step; only a Stop hook reading the transcript can check it.
+#
 # Stop: while a command's flow is active, the model's final message must end
 # with a next step - so the user is never left not knowing what to do next
 # (U7, plan section 六).

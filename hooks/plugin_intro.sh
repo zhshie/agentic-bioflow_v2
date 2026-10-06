@@ -1,4 +1,6 @@
 #!/bin/bash
+# Nothing existing: Claude Code has no first-use overview for a plugin; a hook on the user's first prompt or skill load is the only place to show one once per session.
+#
 # UserPromptSubmit + PostToolUse(Skill): show the overview the first time this
 # plugin is actually used in a session, not at every session start.
 #

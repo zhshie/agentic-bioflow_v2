@@ -1,4 +1,6 @@
 #!/bin/bash
+# Nothing existing: Seqera Platform holds the record of runs but does not tell a new Claude Code conversation what is still in flight; a SessionStart hook is the only place to ask.
+#
 # SessionStart: say what is still in flight, once, at the top of a conversation.
 #
 # Why this exists at all: the machine running Claude Code sleeps, and the login

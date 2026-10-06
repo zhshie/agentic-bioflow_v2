@@ -1,3 +1,5 @@
+# Nothing existing: no tool installed alongside Claude Code tells whether a command line starts a pipeline run; a plain regex on the text misreads quoted text and here-documents.
+#
 # Sourceable helper: does this command string start a pipeline run?
 #
 #   . "$(dirname "$0")/launch_trigger.sh"

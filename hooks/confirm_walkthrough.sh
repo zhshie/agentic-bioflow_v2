@@ -1,4 +1,6 @@
 #!/bin/bash
+# Nothing existing: a permission rule matches a command, not whether an earlier conversation step (the diagram shown, the user's answers) happened, so no maintained tool can hold the next step back until it did.
+#
 # PreToolUse/Bash|Write|Edit: make the walkthrough steps happen before the steps
 # that depend on them.
 #
@@ -25,6 +27,8 @@
 #   G4  writing analysis or   requires  an analysis plan the user answered
 #       plotting code
 #   G5  an outdir              requires  it to be inside a project
+#   G7  a params file          refuses   a credential in it (always; the escape phrase
+#       (yaml/yml/json)                does not lift it; reach is stated at G7 below)
 #
 # Unlike confirm_launch.sh beside it, this one DENIES. That is a departure and
 # it is bounded: doing the missing step puts the evidence in the transcript and
@@ -302,6 +306,51 @@ esac
 case "$FILE" in
     *params*.yml|*params*.yaml) G2=1 ;;
 esac
+
+# G7: a credential never goes into a params file (constitution, Safety Net,
+# fourth rule). A params file is copied into the run's record, the provenance
+# and every package built from it; the deployment's settings area is the only
+# place a credential lives. Unlike G1-G6 this is not a missing walkthrough step,
+# so it is decided here, before the escape phrase and the transcript are read:
+# nothing the user said earlier lifts it. It runs only when the call already is
+# a params write (yaml, yml or json: -params-file takes either), so every other
+# call pays nothing. The payload is the raw JSON (Write, Edit, MultiEdit and a
+# here-doc all carry their text in it).
+#
+# REACH, stated honestly: this is a net for the common shapes, not a proof. It
+# sees a credential-named key (token, secret, password, api key, access key,
+# private key, credential, bearer) holding a value of 12+ characters on the
+# same line, and token shapes (JWT, GitHub, AWS, Slack, a private key header).
+# It does not see: a write by tee, sed -i, a python open() or the PowerShell
+# tool; a value under 12 characters; a value on the next line or in a block
+# scalar; a key with no such word in its name. Keys that name a file, path, dir,
+# name, policy, pattern, prefix, length, url, limit, count or size, and values
+# that are paths or an environment reference, are not credentials.
+g7_credential_in_params() {
+    local key_re shape_re c key val
+    key_re='(token|secret|passw(or)?d|api[_-]?key|access[_-]?key|private[_-]?key|credentials?|bearer)([_-][A-Za-z0-9_-]*)?[\\"'"'"']*[[:space:]]*[:=][[:space:]]*[\\"'"'"']*[^[:space:]\\"'"'"',]{12,}'
+    shape_re='eyJ[A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]{10,}[.][A-Za-z0-9_-]{10,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    shopt -s nocasematch
+    if [[ $INPUT =~ $shape_re ]]; then shopt -u nocasematch; return 0; fi
+    shopt -u nocasematch
+    while IFS= read -r c; do
+        [ -n "$c" ] || continue
+        key="${c%%[:=]*}"; val="${c#*[:=]}"
+        val="${val#"${val%%[![:space:]\\\"\']*}"}"
+        shopt -s nocasematch   # case-insensitive without bash-4 case conversion (macOS has 3.2)
+        if [[ $key =~ [_-](file|path|dir|name|policy|pattern|prefix|length|url|limit|count|size)([_-]|$) ]]; then shopt -u nocasematch; continue; fi
+        shopt -u nocasematch
+        [[ $val =~ ^([/~$]|[.]{1,2}/|[A-Za-z]:[/\]|[0-9]+$) ]] && continue
+        return 0
+    done < <(grep -oiE "$key_re" <<<"$INPUT")
+    return 1
+}
+G7_TARGET=$G2
+case "$FILE" in *params*.json) G7_TARGET=1 ;; esac
+[ "$TOOL" = Bash ] && [[ $CMD =~ \>[[:space:]]*[^[:space:]]*params[^[:space:]]*\.json ]] && G7_TARGET=1
+if [ "$G7_TARGET" = 1 ] && g7_credential_in_params; then
+    deny "GATE: this params file carries what looks like a credential (a token, password, secret or key with a value, or a token-shaped string). Credentials and personal details live only in the deployment's own settings area, readable by the owner only - never in a params file, which is copied into the run's record, its provenance and any package built from it. Take it out of the file. If the pipeline really needs a secret at run time, it belongs in Seqera Platform's secrets, not in params. This is not something the user's 略過導覽 lifts."
+fi
 
 # G4: writing analysis or plotting code into a project's analysis/ directory.
 #
