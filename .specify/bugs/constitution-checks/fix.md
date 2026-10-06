@@ -100,3 +100,9 @@ Cases added; each was shown to fail when the code it covers is mutated, on a /tm
 - `tests/confirm_walkthrough_test.sh`: G7 denies a GitHub token shape (`ghp_...`) under a non-credential key; G7 allows an all-digits value under a credential key; G7 denies a letters-and-digits value there. Removing the `gh[pousr]_` shape, or the all-digits skip, turns them red.
 - `tests/no_second_run_state_test.sh`: an `until` loop with no `sleep`, line-leading and after `&&` (one case per branch of the pattern); `tw runs list > out.txt` and `tw runs view x >> out.txt` (a plain name, so the snapshot-name scan does not mask the `>` branch). Removing either `until` branch, or the `>` branch, turns them red.
 - Skipped: a ghp_ case in `credentials_stay_in_settings_test.sh`. It already has "a GitHub token fails".
+
+## After merging main (decisions applied)
+
+- Merged `origin/main` (PRs #64, #65): no textual conflicts; G7 and main's hook changes coexist, `confirm_walkthrough_test.sh`, `gate_output_failclosed_test.sh` and `gate_big_input_test.sh` pass.
+- Decision 3 done: the allow-list is gone (RED commit), and the 11 hooks carry a `# Nothing existing:` header (GREEN commit). `detect_conditions.sh` and `methods_text.py` already had theirs from line B.
+- Decision 2 done: the maintainer chose to reword. The credentials rule now says the plugin never fills in a credential from another member's settings (it asks) and does not detect a copied file. Constitution stays 2.0.1; a clarification paragraph is in its amendment entry.

@@ -1,10 +1,11 @@
 #!/bin/bash
 # Safety Net, fourth rule (constitution): credentials and personal details live
 # only in the deployment's own settings area, readable by the owner only; never
-# printed, never in git, never in a params file, and never carried over from
-# another member's copy.
+# printed, never in git, never in a params file. The plugin never fills in one
+# member's credential from another member's settings (it asks the user), and it
+# does not detect a settings file a person copied in by hand.
 #
-# The rule has five parts. Most are held by tests that already exist; this file
+# The rule has four checked parts. Most are held by tests that already exist; this file
 # holds the parts nothing held, and says where the others are so the whole rule
 # has one place to look.
 #
@@ -22,14 +23,13 @@
 #   never in params HERE: the walkthrough hook (G7) refuses a params file that
 #                   carries a credential, even after the walkthrough was waved
 #                   through. A net for the common shapes: see G7 in the hook.
-#   not carried     NO automated check. tests/confirm_launch_test.sh (a changed
-#                   agent_connection asks first) and tests/init_workspace_test.sh
-#                   (_personal/ is mode 700) test other things and are not cited
-#                   for this clause. A settings file copied in from another
-#                   member's account is not detected; docs/SETTINGS.md says one
-#                   root belongs to one person and nothing measures it. The
-#                   maintainer decides between an owner check in settings.sh
-#                   --migrate and rewording the rule.
+#   not copied      Not a detection, so no check. The rule says what the code does:
+#                   settings.sh asks for a missing value and never guesses or
+#                   copies one, and a changed agent_connection asks first
+#                   (hooks/confirm_launch.sh). A settings file a person copied in
+#                   by hand is not detected; docs/SETTINGS.md says one root
+#                   belongs to one person. The maintainer chose to reword the
+#                   rule (2.0.1), not to add an owner check to --migrate.
 #
 # This is a net, not a proof: a pattern list finds the shapes it knows. It is
 # narrow on purpose, because a scanner that cries wolf gets its allow-list

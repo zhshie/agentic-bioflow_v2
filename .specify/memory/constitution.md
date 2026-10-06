@@ -156,15 +156,17 @@ plan, and change only by a MAJOR amendment of this constitution.
 - A launch command is shown in full and waits for explicit confirmation before it runs
   (`hooks/confirm_launch.sh`).
 - Credentials and personal details live only in the deployment's own settings area, readable by
-  the owner only; never printed, never in git, never in a params file, and never carried over
-  from another member's copy.
+  the owner only; never printed, never in git, never in a params file. The plugin never fills in one
+  member's credential from another member's settings: it asks the user for the value.
+  It does not detect a settings file a person copied in by hand.
   *Check:* `tests/credentials_stay_in_settings_test.sh` (never in git; never printed by a script;
   never in a params file, for the common shapes, see its header and the G7 note in
   `hooks/confirm_walkthrough.sh`, with `tests/confirm_walkthrough_test.sh`); readable by the owner
   only: `tests/settings_test.sh`, `tests/windows_privacy_test.sh`; never printed (a fixture token
-  is never in the output): `tests/inspect_sides_test.sh`, `tests/status_test.sh`. The clause
-  "never carried over from another member's copy" has no automated check yet; the maintainer
-  decides between an owner check in `scripts/settings.sh --migrate` and rewording the rule.
+  is never in the output): `tests/inspect_sides_test.sh`, `tests/status_test.sh`. The last
+  sentence has no automated check, and does not need one: it states what the code does (a missing
+  value is asked for, never guessed or copied; a changed `agent_connection` asks first, see
+  `hooks/confirm_launch.sh`), not a detection the plugin performs.
 
 ## Development Workflow
 
@@ -261,8 +263,14 @@ does not see a write by `tee`, `sed -i`, a python `open()` or the PowerShell too
 a value on the next line or in a block scalar, or a key without such a word in its name. A
 parameter genuinely named like a credential and holding a long opaque value is refused too; its
 key naming a file, path, name, policy or pattern, or its value being a path, is not. The
-credentials rule's last clause, not carried over from another member's copy, has no automated
-check yet.
+credentials rule's last clause is reworded to say what the code does, see the clarification below.
+
+**Clarification (maintainer's decision, same 2.0.1).** The credentials rule used to end with
+"never carried over from another member's copy". Nothing enforced that: `scripts/settings.sh
+--migrate` has no owner check, and a settings file copied in by hand is not detected. The
+maintainer chose to reword the rule to what the code does, not to add a check. It now says the
+plugin never fills in a credential from another member's settings (it asks the user) and does not
+detect a copied file. No behavior changes; no deployment is affected.
 
 **Version.** PATCH, under Governance: the amendment names checks and changes no meaning.
 **Approval.** The maintainer approves and merges the pull request that carries this change.
