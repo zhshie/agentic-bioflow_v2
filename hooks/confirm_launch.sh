@@ -1,4 +1,6 @@
 #!/bin/bash
+# Nothing existing: Claude Code permission rules and Seqera Platform do not stop a launch typed in the shell and report the preconditions that would ruin it while the command is still on screen.
+#
 # PreToolUse/Bash: the execution gate for v2.
 #
 # v1 gated `nextflow run` and consulted a .cli_task.json phase machine to decide

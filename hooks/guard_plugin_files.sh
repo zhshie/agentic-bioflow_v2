@@ -1,4 +1,6 @@
 #!/bin/bash
+# Nothing existing: Claude Code has no setting that protects an installed plugin copy from the model's edits, and a user's permission rule cannot name a plugin root that differs per machine and version.
+#
 # PreToolUse/Write|Edit|MultiEdit|NotebookEdit and PreToolUse on every shell
 # tool (Bash, PowerShell, and anything shell-named - hooks.json): an
 # installed plugin copy is not edited in place.

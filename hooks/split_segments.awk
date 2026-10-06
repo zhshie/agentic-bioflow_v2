@@ -1,3 +1,5 @@
+# Nothing existing: no shell parser ships with Claude Code or the default Linux/macOS/Git Bash userland that splits a command line into its commands while keeping quoted text apart.
+#
 # Split a shell command into the simple commands it will run, one per line:
 #
 #     <segment as written>\037<the same segment with quoted text removed>\037<command word>

@@ -1,4 +1,6 @@
 #!/bin/bash
+# Nothing existing: a permission rule matches a command, not whether an earlier conversation step (the diagram shown, the user's answers) happened, so no maintained tool can hold the next step back until it did.
+#
 # PreToolUse/Bash|Write|Edit: make the walkthrough steps happen before the steps
 # that depend on them.
 #
