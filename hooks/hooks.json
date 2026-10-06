@@ -95,7 +95,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/plugin_intro.sh",
-            "timeout": 5
+            "timeout": 20
           }
         ]
       }
@@ -107,7 +107,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/plugin_intro.sh",
-            "timeout": 5
+            "timeout": 20
           }
         ]
       }

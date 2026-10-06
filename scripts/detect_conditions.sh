@@ -8,7 +8,12 @@
 # every session and every command opens (docs/CONDITIONS.md is the matrix this
 # implements; the H1/H2/H3 tiers are plan section A2).
 #
-# Not a second interface detector: the cli|vscode|desktop|web|unknown value
+# Nothing existing: no maintained tool says whether a machine is one this
+# plugin was designed for - that is a question about this plugin's own support
+# matrix (docs/CONDITIONS.md), so the measurement is ours; it reads only the
+# OS, the shell, the interface and the settings file.
+#
+# Why it does not detect the interface itself: the cli|vscode|desktop|web|unknown value
 # comes from `status.sh --interface`, the exact same corroboration status.sh's
 # own claude_surface() uses (CLAUDE_CODE_ENTRYPOINT alone lies - measured on
 # this machine, see status.sh's own header comment). Two implementations of
@@ -112,7 +117,7 @@ measure() {
     if [ "$jq_present" = no ]; then
         cell=blocked-no-jq
         status=blocked
-        message="jq is required here and was not found. Install it: macOS \`brew install jq\`; Debian/Ubuntu or WSL \`sudo apt install jq\`; Windows \`winget install jqlang.jq\`."
+        message="jq is required here and was not found. What is refused is one missing capability (jq) - not this shell and not your folder. Install it: macOS \`brew install jq\`; Debian/Ubuntu or WSL \`sudo apt install jq\`; Windows \`winget install jqlang.jq\`."
     elif [ "$tier" = H3 ] && { [ "$reach" = ssh ] || [ "$reach" = local ]; }; then
         cell=blocked-h3-site
         status=blocked
@@ -120,7 +125,7 @@ measure() {
     elif [ "$os" = msys ] && [ "$reach" = ssh ] && [ "$bridge" = none ]; then
         cell=unsupported-msys-no-wsl
         status=unsupported
-        message="Native Windows Git Bash is recognised but this version found no WSL bridge here (\`wsl.exe -e true\` did not succeed). This shell's own ssh cannot hold the multiplexed connection the site needs (PITFALLS 16b); calling WSL's own ssh from here was measured to work instead (PITFALLS 16g). Install WSL (\`wsl --install\`) and retry - once it is there this same window falls through to supported. If WSL is not an option here, run /setup to see what this plugin can still do, or scripts/report.sh to let the maintainer know."
+        message="Native Windows Git Bash is recognised but this version found no WSL bridge here (\`wsl.exe -e true\` did not succeed). What is refused is one missing capability (WSL) - not this shell and not your folder. This shell's own ssh cannot hold the multiplexed connection the site needs (PITFALLS 16b); calling WSL's own ssh from here was measured to work instead (PITFALLS 16g). Install WSL (\`wsl --install\`) and retry - once it is there this same window falls through to supported. If WSL is not an option here, run /setup to see what this plugin can still do, or scripts/report.sh to let the maintainer know."
     elif [ "$reach" = none ]; then
         cell=unsupported-cloud-ce
         status=unsupported

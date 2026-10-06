@@ -44,10 +44,32 @@ case "$LAUNCH_TRIGGER_DIR" in /*|[A-Za-z]:*) ;; *) LAUNCH_TRIGGER_DIR="$PWD/$LAU
 # scripts/relaunch_with_override.sh --confirm runs `tw runs cancel` + `tw runs
 # relaunch` itself, where this gate cannot see them, so the wrapper's own
 # --confirm is the launch; without --confirm it only prints its plan.
-LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch)|sbatch|nextflow(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+run|relaunch_with_override\.sh([[:space:]]+[^[:space:]]+)*[[:space:]]+--confirm)([[:space:]]|$)'
+#
+# launch-shapes-unconfirmed: three more verbs that start a run - `tw actions
+# trigger` (a Platform action launches its pipeline), `nextflow kuberun`, and
+# nf-core's launcher (`nf-core launch`, `nf-core pipelines launch`: its wizard
+# ends in `nextflow run`).
+LAUNCH_TRIGGER_RE='(^|[^[:alnum:]_.-])(tw(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch|actions[[:space:]]+trigger)|sbatch|nextflow(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+(run|kuberun)|nf-core(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+launch|relaunch_with_override\.sh([[:space:]]+[^[:space:]]+)*[[:space:]]+--confirm)([[:space:]]|$)'
 # The program in a variable (`$T launch x`, `"$TW" runs relaunch`), used only
 # when the command word itself is a variable.
-LAUNCH_VARPROG_RE='^[^[:space:]]+([[:space:]]+-[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch|run)([[:space:]]|$)'
+LAUNCH_VARPROG_RE='^[^[:space:]]+([[:space:]]+-[^[:space:]]+)*[[:space:]]+(launch|runs[[:space:]]+relaunch|actions[[:space:]]+trigger|run|kuberun)([[:space:]]|$)'
+
+# seqerakit runs `tw` for every resource in the YAML it is given, launches
+# included. A run of it with a YAML file (or `-`, stdin) starts whatever that
+# file says; `--dryrun` / `-d` only prints the commands (seqerakit's cli.py).
+LAUNCH_SEQERAKIT_RE='(^|[^[:alnum:]_.-])seqerakit(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+([^[:space:]]*\.[Yy][Aa]?[Mm][Ll]|-)([[:space:]]|$)'
+LAUNCH_SEQERAKIT_WORD_RE='(^|[^[:alnum:]_.-])seqerakit(\.exe)?([[:space:]]|$)'
+LAUNCH_SEQERAKIT_DRY_RE='(^|[[:space:]])(--dryrun|-d)([[:space:]]|$)'
+
+# The Platform API's own launch endpoint: POST /workflow/launch, and POST
+# /actions/<id>/launch for an action. An HTTP client or a code call outside
+# quotes, a path ending in /launch (read with quotes dropped - a URL is usually
+# quoted), and a POST: the word itself in any case (-X POST, --post-data,
+# requests.post(, method="POST", -Method Post) or a body flag that makes curl
+# POST. A GET of /workflow/<id>/launch only describes a launch and stays quiet.
+LAUNCH_HTTP_CLIENT_RE='(^|[^[:alnum:]_.-])(curl|wget|http|https|xh|xhs|httpie|[Ii]nvoke-[Ww]eb[Rr]equest|[Ii][Ww][Rr]|[Ii]nvoke-[Rr]est[Mm]ethod|[Ii][Rr][Mm])(\.exe)?([[:space:]]|$)|\.(post|request)[[:space:]]*\(|(^|[^[:alnum:]_.])(fetch|urlopen|Request)[[:space:]]*\('
+LAUNCH_HTTP_PATH_RE='/launch([^[:alnum:]_-]|$)'
+LAUNCH_HTTP_POST_RE='(^|[^[:alnum:]_])[Pp][Oo][Ss][Tt]([^[:alnum:]_]|$)|(^|[[:space:]])(-d|--data[^[:space:]]*|--json|-F|--form[^[:space:]]*)([^[:alpha:]-]|$)'
 
 # A nested shell anywhere on the line. main's rule, kept as a floor (#29,
 # round 4): when a shell re-reads part of this line, quoted text inside it is
@@ -73,32 +95,65 @@ is_launch_command() {
     # as-is.
     # #34: with no `<<` there is no here-doc, and the stripper then prints every
     # line unchanged - so the process is not started for it.
-    if [[ $CMD == *'<<'* ]]; then
-        STRIPPED=$(awk -f "$LAUNCH_TRIGGER_DIR/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
-        [ -n "$STRIPPED" ] && CMD="$STRIPPED"
-    fi
+    # #62: a caller that already stripped and split exactly this command
+    # (confirm_launch.sh's allowlist check) leaves the result here, so a big
+    # command is not run through both awk passes twice.
+    if [ -n "${ABF_SPLIT_SEGS-}" ] && [ "${ABF_SPLIT_FOR-}" = "$1" ]; then
+        [ -n "${ABF_SPLIT_STRIPPED-}" ] && CMD=$ABF_SPLIT_STRIPPED
+        SEGS=$ABF_SPLIT_SEGS
+    else
+        if [[ $CMD == *'<<'* ]]; then
+            STRIPPED=$(awk -f "$LAUNCH_TRIGGER_DIR/strip_heredocs.awk" <<<"$CMD" 2>/dev/null)
+            [ -n "$STRIPPED" ] && CMD="$STRIPPED"
+        fi
 
-    # What the command runs is decided by split_segments.awk, shared with
-    # confirm_cleanup.sh (#29). Each line is `<segment>\037<segment without
-    # quoted text>`. A quoted string is data - `grep -E 'a|sbatch|b' file` once
-    # tripped this gate - so the verb is looked for in the quote-free copy. But
-    # a string a shell re-reads (`bash -c "..."`, `ssh host '...'`,
-    # `on_site.sh '...'`, `echo '...' | bash`, `python3 -c "os.system('...')"`)
-    # and the inside of $(...), backticks and <(...) come back as segments of
-    # their own, so a launch cannot hide in any of them - each of those shapes
-    # once passed this gate with nothing printed (PITFALLS 37).
-    #
-    # If awk cannot run, the old rule applies: split on separators, strip
-    # quotes. Weaker, but a gate rather than none.
-    SEGS=$(awk -f "$LAUNCH_TRIGGER_DIR/split_segments.awk" <<<"$CMD" 2>/dev/null)
-    # Kept for a caller that has to read the same segments of the same command
-    # next (confirm_launch.sh's D3), so the splitter is started once per call
-    # rather than once per question (#34). Only the splitter's own answer is kept,
-    # never the fallback below.
-    ABF_SPLIT_FOR="$1"; ABF_SPLIT_SEGS="$SEGS"
+        # What the command runs is decided by split_segments.awk, shared with
+        # confirm_cleanup.sh (#29). Each line is `<segment>\037<segment without
+        # quoted text>`. A quoted string is data - `grep -E 'a|sbatch|b' file` once
+        # tripped this gate - so the verb is looked for in the quote-free copy. But
+        # a string a shell re-reads (`bash -c "..."`, `ssh host '...'`,
+        # `on_site.sh '...'`, `echo '...' | bash`, `python3 -c "os.system('...')"`)
+        # and the inside of $(...), backticks and <(...) come back as segments of
+        # their own, so a launch cannot hide in any of them - each of those shapes
+        # once passed this gate with nothing printed (PITFALLS 37).
+        #
+        # If awk cannot run, the old rule applies: split on separators, strip
+        # quotes. Weaker, but a gate rather than none.
+        SEGS=$(awk -f "$LAUNCH_TRIGGER_DIR/split_segments.awk" <<<"$CMD" 2>/dev/null)
+        # Kept for a caller that has to read the same segments of the same command
+        # next (confirm_launch.sh's D3), so the splitter is started once per call
+        # rather than once per question (#34). Only the splitter's own answer is kept,
+        # never the fallback below.
+        ABF_SPLIT_FOR="$1"; ABF_SPLIT_SEGS="$SEGS"; ABF_SPLIT_STRIPPED="$CMD"
+    fi
     if [ -z "$SEGS" ]; then
         SEGS=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g' \
                | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
+    fi
+    # gates-audit2-low: outside quotes a backslash before a letter only escapes
+    # it, so `s\batch` and `tw l\aunch` run sbatch and tw launch. A segment that
+    # holds a backslash is judged again with its backslashes dropped - as an
+    # added copy, since on Windows a backslash is a path separator and the
+    # segment as written must still be judged too.
+    local SEGSB
+    if [[ $SEGS == *\\* ]]; then
+        SEGSB=$(awk '{ print } /\\/ { gsub(/\\/, ""); print }' <<<"$SEGS" 2>/dev/null) \
+          && [ -n "$SEGSB" ] && SEGS=$SEGSB
+        SEGSB=""
+    fi
+
+    # #62: a big command (a here-doc body python reads is thousands of segments)
+    # is first cut down by one awk pass to the segments the loop below could act
+    # on: the same test as the loop's own first one, on the same two texts. Under
+    # Git Bash a shell `read` loop over thousands of lines is superlinear and ran
+    # past the hook's timeout; awk is linear. If awk cannot run, every segment
+    # goes through the loop as before.
+    local CAND
+    if [ "${#SEGS}" -gt 16384 ]; then
+        CAND=$(awk -F"$US" '$3 == "__too_deep__" { print; next }
+            { s = $1; gsub(/["\047]/, "", s); t = s "\037" $2
+              if (index(t, "launch") || index(t, "sbatch") || index(t, "run") || index(t, "--confirm") || index(t, "trigger") || index(t, "seqerakit")) print }' \
+            <<<"$SEGS" 2>/dev/null) && SEGS=$CAND
     fi
 
     # Decided per segment, never for the whole line: `cat notes.txt && tw launch ...`
@@ -106,21 +161,32 @@ is_launch_command() {
     # In-shell matching only ([[ =~ ]]): a process per segment made this gate
     # take a minute on a long script under Git Bash, past its timeout, and a
     # timed-out hook lets the command run (#29, round 3).
-    local SQ SQP SQW HIT NESTED=0
-    [[ $CMD =~ $LAUNCH_NESTED_SHELL_RE ]] && NESTED=1
+    local SQ SQP SQW HIT NESTED=-1
     while IFS="$US" read -r S V W; do
         # A command nested too deeply to read is treated as one that might
         # launch - noisy, and correct for a gate that could not judge.
         [ "$W" = "__too_deep__" ] && return 0
+        # #62: a segment with none of the words any launch spelling needs cannot be
+        # one (every form of LAUNCH_TRIGGER_RE / LAUNCH_VARPROG_RE holds `launch`,
+        # `sbatch`, `run`, `trigger` or `--confirm`, the seqerakit and HTTP checks
+        # `seqerakit` and `/launch`), and the regexes below are the costly part
+        # on Git Bash: thousands of here-doc lines ran past the hook's timeout.
+        # Looked for in the quote-free column and in the segment with its quote
+        # characters dropped, the two texts the checks below read: `s"b"atch` has
+        # the word only in the second.
+        SQ=${S//[\"\']/}
+        case "$SQ$US$V" in
+            *launch*|*sbatch*|*run*|*--confirm*|*trigger*|*seqerakit*) ;;
+            *) continue ;;
+        esac
         if ! [[ $V =~ $LAUNCH_TRIGGER_RE ]]; then
             # `"tw" launch x` quotes the program itself, so the quote-free copy
             # has lost it. When the command word IS a launcher, read the
             # segment with only the quote characters dropped. Only then: a
             # commit message quoting "tw launch" is still not a launch.
-            SQ=${S//\"/}; SQ=${SQ//\'/}
             HIT=0
             case "$W" in
-                tw|nextflow|sbatch|relaunch_with_override.sh)
+                tw|nextflow|sbatch|nf-core|relaunch_with_override.sh)
                     [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] && HIT=1 ;;
                 # `T=tw; $T launch x`: the program is a variable, and its first
                 # argument is a launch verb.
@@ -142,8 +208,27 @@ is_launch_command() {
                 # payload segments, which the splitter emits separately.
                 ssh|eval|bash|sh|zsh|ksh|dash|on_site.sh) ;;
                 *)
+                    # #62: the nested-shell test reads the whole command, so it is
+                    # made once, and only when a segment gets this far.
+                    if [ "$NESTED" = -1 ]; then
+                        NESTED=0; [[ $CMD =~ $LAUNCH_NESTED_SHELL_RE ]] && NESTED=1
+                    fi
                     [ "$NESTED" = 1 ] && [[ $SQ =~ $LAUNCH_TRIGGER_RE ]] && HIT=1 ;;
             esac
+            # launch-shapes-unconfirmed: seqerakit given a YAML file, and a POST
+            # to the Platform API's launch endpoint. The program has to be on the
+            # quote-free column (or be the command word), so a commit message or
+            # an echo that only quotes one is not a launch.
+            if [ "$HIT" = 0 ]; then
+                if [[ $SQ =~ $LAUNCH_SEQERAKIT_RE ]] \
+                   && { [[ $V =~ $LAUNCH_SEQERAKIT_WORD_RE ]] || [ "$W" = seqerakit ]; } \
+                   && ! [[ $SQ =~ $LAUNCH_SEQERAKIT_DRY_RE ]]; then
+                    HIT=1
+                elif [[ $SQ =~ $LAUNCH_HTTP_PATH_RE ]] && [[ $V =~ $LAUNCH_HTTP_CLIENT_RE ]] \
+                   && [[ $SQ =~ $LAUNCH_HTTP_POST_RE ]]; then
+                    HIT=1
+                fi
+            fi
             [ "$HIT" = 1 ] || continue
         fi
         [[ $V =~ $LAUNCH_READONLY_RE ]] && continue

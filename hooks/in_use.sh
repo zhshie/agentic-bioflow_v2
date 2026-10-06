@@ -28,7 +28,9 @@
 # Fork-free on purpose (#34: every process is expensive under Git Bash, and this
 # runs before the hook's own jq probe). Bash builtins and [[ =~ ]] only, nothing
 # `set -e`-fragile, and nothing here changes the caller's shell options for
-# longer than one call. Portable to bash 3.2.
+# longer than one call. Portable to bash 3.2. The one exception is a text over
+# 8 KB (a big here-doc or Write): one sed normalises it, because the builtin
+# replacements are quadratic in bash and ran past the hooks' timeout (#62).
 
 # A path in one spelling: backslashes to slashes, doubled slashes collapsed,
 # C:\x and /mnt/c/x and /cygdrive/c/x all to /c/x, no trailing slash. Result in
@@ -121,16 +123,13 @@ _abf_state_ok() {
 # True when text $1 contains path $2 as a whole path: what follows it is the end
 # of the text, a slash, or a character that cannot continue a name (so /x/dep is
 # found in "rm /x/dep/a" but not in "/x/dep-neighbour").
+# One regex with the path quoted (literal): `${t#*"$p"}` made bash try every
+# prefix of the text, quadratic - 36 s on a 300 KB here-doc that ends with a
+# path under storage_root, past the hooks' timeout (#62).
 _abf_has_path() {
-    local t="$1" p="$2" rest
-    while [[ $t == *"$p"* ]]; do
-        rest="${t#*"$p"}"
-        case "$rest" in
-            ''|/*|[!A-Za-z0-9_.-]*) return 0 ;;
-        esac
-        t="$rest"
-    done
-    return 1
+    local re_after='($|[^A-Za-z0-9_.-])'
+    [[ $1 == *"$2"* ]] || return 1
+    [[ $1 =~ "$2"$re_after ]]
 }
 
 # True when the (lightly normalised) text $1 contains canonical path $2 in any
@@ -147,6 +146,28 @@ _abf_text_has() {
         _abf_has_path "$t" "/cygdrive/$d$rest" && return 0
     fi
     return 1
+}
+
+# The relative path from canonical directory $1 to canonical path $2 (`runs3`,
+# `../runs3`, `home/runs3`), in REPLY. Case-insensitive like the rest
+# (nocasematch is on inside abf_in_use).
+_abf_rel() {
+    local f="$1" up=""
+    while [ -n "$f" ] && ! _abf_under "$2" "$f"; do
+        f="${f%/*}"; up="$up../"
+    done
+    REPLY="${2:${#f}}"; REPLY="$up${REPLY#/}"; REPLY="${REPLY%/}"
+}
+
+# True when text $1 holds relative path $2 at the start of a word (after a
+# blank, a quote, `=`, `:`, a separator, or `./`) as a whole path. A single
+# name under 4 characters is ignored: short names prove nothing.
+_abf_text_has_rel() {
+    local r="$2" re_before='(^|[[:space:]=":;&|(])(\./)?' re_after='($|[^A-Za-z0-9_.-])'
+    [ -n "$r" ] || return 1
+    case "$r" in */*) ;; *) [ "${#r}" -ge 4 ] || return 1 ;; esac
+    [[ $1 == *"$r"* ]] || return 1
+    [[ $1 =~ $re_before"$r"$re_after ]]
 }
 
 # _abf_read_key <file> <key>  ->  REPLY (empty when absent). The same reading
@@ -249,19 +270,53 @@ _abf_in_use_inner() {
     # (\n, \t) that glue a word to the one before it; backslashes become
     # slashes so a Windows path reads like any other. A JSON-escaped backslash
     # (two of them) goes first, or C:\\new would lose its n to the newline rule.
-    text="${text//\\\\//}"
-    text="${text//\\n/ }"; text="${text//\\t/ }"; text="${text//\\r/ }"
     # Quotes around a path part are not part of the path (#53): a JSON-escaped
     # double quote and a single quote are dropped, so "$HOME"/runs3 reads as
     # $HOME/runs3. This only widens what matches, the safe direction.
-    text="${text//\\\"/}"; text="${text//\'/}"
-    text="${text//\\//}"
-    while [[ $text == *//* ]]; do text="${text//\/\///}"; done
+    # #62: ${x//p/} costs a pass over the rest of the text per match, so a big
+    # text (a here-doc of thousands of lines: one `\n` each) is normalised the
+    # same way by one sed; a text under 8 KB keeps the fork-free form. Under
+    # MSYS/Cygwin that sed runs in C.UTF-8: in the plain C locale (what it gets
+    # when LANG is unset, as under Claude Code on Windows) GNU sed there is
+    # itself quadratic on one long line with many matches (measured: 50-120 s
+    # at 300 KB, 0.1-0.4 s in C.UTF-8).
+    local norm="" loc="${LC_ALL:-}"
+    if [ "${#text}" -gt 8192 ]; then
+        case "$OSTYPE" in msys*|cygwin*) loc=C.UTF-8 ;; esac
+        norm=$(LC_ALL=$loc sed -e 's#\\\\#/#g' -e 's#\\[ntr]# #g' -e 's#\\"##g' \
+               -e "s#'##g" -e 's#\\#/#g' -e 's#//*#/#g' <<<"$text" 2>/dev/null)
+    fi
+    if [ -n "$norm" ]; then
+        text=$norm
+    else
+        text="${text//\\\\//}"
+        text="${text//\\n/ }"; text="${text//\\t/ }"; text="${text//\\r/ }"
+        text="${text//\\\"/}"; text="${text//\'/}"
+        text="${text//\\//}"
+        while [[ $text == *//* ]]; do text="${text//\/\///}"; done
+    fi
     # ~ and $HOME spell the home directory; a path in the text may use either.
     if [ -n "${HOME:-}" ]; then
         _abf_canon "$HOME"; h="$REPLY"
         text="${text//\$\{HOME\}/$h}"; text="${text//\$HOME/$h}"
         text="${text// \~\// $h/}"
+        # in-use-path-spellings: PowerShell's and cmd's names for the home
+        # directory, and a `~/` that starts the text or follows `=`, `:` or a
+        # quote (`x=~/runs3`, `--dir=~/runs3`, a command that starts with it).
+        case "$text" in
+            *USERPROFILE*|*'env:HOME'*)
+                text="${text//\$\{env:USERPROFILE\}/$h}"; text="${text//\$env:USERPROFILE/$h}"
+                text="${text//%USERPROFILE%/$h}"; text="${text//\$env:HOME/$h}" ;;
+        esac
+        case "$text" in
+            '~/'*|*'=~/'*|*':~/'*|*'"~/'*)
+                case "$text" in '~/'*) text="$h/${text#\~/}" ;; esac
+                text="${text//=\~\//=$h/}"; text="${text//:\~\//:$h/}"; text="${text//\"\~\//\"$h/}" ;;
+        esac
+        # `~<this user>/` is the same home directory.
+        local u="${USER:-${LOGNAME:-${USERNAME:-}}}"
+        u="${u//[^A-Za-z0-9._-]/}"
+        if [ -n "$u" ] && [[ $text == *"~$u/"* ]]; then text="${text//\~$u\//$h/}"; fi
     fi
     [[ $text =~ $re_tw ]] && return 0
     # Naming the plugin's install location without its resolved path: the
@@ -338,20 +393,42 @@ _abf_in_use_inner() {
             _abf_under "$c" "$b" && return 0
         done
     done
+    # in-use-path-spellings: `$LAB_RUNS_DIR` names this deployment's run area -
+    # the value this hook sees, or when it has none, the deployment's own
+    # storage_root (settings.sh exports one as the other). Any other
+    # `${LAB_RUNS_DIR...}` form (a default, a trim) names it as well.
+    if [[ $text == *LAB_RUNS_DIR* ]]; then
+        local lrd="${runs:-$sroot}"
+        if [ -n "$lrd" ]; then
+            text="${text//\$\{LAB_RUNS_DIR\}/$lrd}"; text="${text//\$LAB_RUNS_DIR/$lrd}"
+            text="${text//\$env:LAB_RUNS_DIR/$lrd}"; text="${text//%LAB_RUNS_DIR%/$lrd}"
+            [[ $text == *'${LAB_RUNS_DIR'* ]] && return 0
+        fi
+    fi
     for b in "${bases[@]}"; do
         _abf_text_has "$text" "$b" && return 0
+    done
+    # in-use-path-spellings: a relative path from the session's folder - one
+    # above storage_root (`runs3/p/results`, `cd runs3/p`) or beside it
+    # (`../runs3/p/results`). String work only, no process.
+    for c in "${cwds[@]}"; do
+        for b in "${bases[@]}"; do
+            _abf_rel "$c" "$b"
+            _abf_text_has_rel "$text" "$REPLY" && return 0
+        done
     done
     # A `cd` with no destination (or to ~ / $HOME) starts a relative walk from
     # home, so `cd && cd runs3 && ...` names no root as written (#53). When a
     # root lives at or under home, such a walk may end in it: in use. Only a
     # question that matters for a command a gate would judge anyway.
-    if [ -n "$h" ] && [ "$h" != / ]; then
-        local t2=" $text "
-        t2="${t2//[;&|\"()]/ ; }"
-        t2="${t2//\~/ \~ }"
-        while [[ $t2 == *"  "* ]]; do t2="${t2//  / }"; done
-        t2="${t2// cd \~ / cd }"; t2="${t2// cd $h / cd }"
-        if [[ $t2 == *" cd ; "* || $t2 == *" cd " ]]; then
+    # `cd` as a word of its own (after a separator, a blank or a `~`), then
+    # nothing, `~` or the home path, then a separator or the end. Two regexes,
+    # not the global replacements this used to make: those were quadratic on a
+    # big text (#62).
+    if [ -n "$h" ] && [ "$h" != / ] && [[ $text == *cd* ]]; then
+        local re_cd='(^|[[:space:];&|"()~])cd[[:space:]]*(~[[:space:]]*)?([;&|"()]|$)'
+        local re_cdh='(^|[[:space:];&|"()~])cd[[:space:]]+' re_end='[[:space:]]*([;&|"()]|$)'
+        if [[ $text =~ $re_cd ]] || [[ $text =~ $re_cdh"$h"$re_end ]]; then
             for b in "${bases[@]}"; do
                 _abf_under "$b" "$h" && return 0
             done

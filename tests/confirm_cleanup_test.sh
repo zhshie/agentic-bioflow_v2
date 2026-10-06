@@ -22,9 +22,15 @@ export MSYS2_ARG_CONV_EXCL='*'
 # JSONDecodeError on that stdin, which read as this hook having failed, not as
 # a test-harness encoding gap.
 fails=0
+# #62: tests/confirm_cleanup_behind_heredoc_test.sh runs this whole file again with
+# every judged command placed after a large here-doc (CLEANUP_TEST_PREFIX_FILE),
+# which is the path where the guard filters segments before judging them. Each
+# case must get the same verdict there.
+PFX=""
+if [ -n "${CLEANUP_TEST_PREFIX_FILE:-}" ]; then PFX=$(cat "$CLEANUP_TEST_PREFIX_FILE"; echo x); PFX=${PFX%x}; fi
 t() { # t <command> <expect pass|warn|deny> <label>
   printf '%-58s ' "$3"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   if [ -z "$out" ]; then got=pass; else
     got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out")
   fi
@@ -139,6 +145,64 @@ printf '%-64s ' "does NOT refuse an unrelated command in the same broken-jq stat
 rm -rf "$BADDIR"
 
 echo
+echo "== jq present but broken in other ways (jq-broken-cleanup): fail closed, say so =="
+# A jq that runs but answers wrongly is the silent failure the probe above exists
+# to stop, in a form the probe did not catch. Each shim below is a jq on PATH;
+# a delete must be refused (exit 2 naming jq, as with no jq) or paused (ask/deny),
+# never let through; an unrelated command still passes.
+REALJQ=$(command -v jq)
+BJ=$(mktemp -d)
+bjshim() { # bjshim <name> <bash body>
+  mkdir -p "$BJ/$1"; printf '#!/bin/bash\n%s\n' "$2" > "$BJ/$1/jq"; chmod +x "$BJ/$1/jq"
+}
+bjshim braces   'echo "{}"'
+bjshim garbage  'echo "jq: something odd happened"'
+bjshim silent   'exit 0'
+bjshim emptycmd 'for a in "$@"; do [ "$a" = -js ] && { printf "Bash\037\037"; exit 0; }; done; exec "'"$REALJQ"'" "$@"'
+bjshim cmdfail  'for a in "$@"; do case "$a" in -js|*tool_input.command*) exit 4 ;; esac; done; exec "'"$REALJQ"'" "$@"'
+bjshim emitjunk 'for a in "$@"; do [ "$a" = -n ] && { echo "{}"; exit 0; }; done; exec "'"$REALJQ"'" "$@"'
+bj() { # bj <shim|nojq> <command> -> BJV: blocked | asked | pass | other
+  local p rc o e
+  if [ "$1" = nojq ]; then p=$NOJQ_PATH; else p="$BJ/$1:$PATH"; fi
+  o=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'Bash','tool_input':{'command':sys.argv[1]}}))" "$2" \
+      | PATH="$p" bash "$H" 2>"$BJ/err"); rc=$?
+  e=$(cat "$BJ/err")
+  BJERR=$e
+  if [ "$rc" = 2 ] && [[ $e == *BLOCKED*jq* ]]; then BJV=blocked
+  elif [ "$rc" = 0 ] && [[ $o == *'"permissionDecision"'*'"ask"'* || $o == *'"permissionDecision"'*'"deny"'* ]]; then BJV=asked
+  elif [ "$rc" = 0 ] && [ -z "$o" ] && [ -z "$e" ]; then BJV=pass
+  else BJV="other (rc=$rc out=${o:0:40})"; fi
+}
+ML=$(printf 'echo start\n%s -rf %s/results' "$D" "$P")
+for s in braces garbage silent emptycmd cmdfail emitjunk; do
+  printf '%-64s ' "jq that $s: a delete is refused or paused"
+  bj "$s" "$D -rf $P/results"
+  case "$BJV" in blocked|asked) echo "ok ($BJV)" ;; *) echo "FAIL: $BJV"; fails=$((fails+1)) ;; esac
+  printf '%-64s ' "jq that $s: a delete on a later line too"
+  bj "$s" "$ML"
+  case "$BJV" in blocked|asked) echo "ok ($BJV)" ;; *) echo "FAIL: $BJV"; fails=$((fails+1)) ;; esac
+  printf '%-64s ' "jq that $s: an unrelated command still passes"
+  bj "$s" "ls -la"
+  [ "$BJV" = pass ] && echo ok || { echo "FAIL: $BJV"; fails=$((fails+1)); }
+done
+printf '%-64s ' "a refusal for a wrong answer names jq and the fix"
+bj braces "$D -rf $P/results"
+if [ "$BJV" = blocked ] && [[ $BJERR == *"apt install jq"* ]]; then echo ok; else echo "FAIL: $BJV <<${BJERR:0:80}>>"; fails=$((fails+1)); fi
+# A Windows jq.exe ends its lines with CR: the probe must still accept its answer
+# (the one-call read is forced off here, so the probe decides).
+bjshim crlf 'for a in "$@"; do [ "$a" = -js ] && exit 4; [ "$a" = .abf ] && { "'"$REALJQ"'" "$@" | sed "s/\$/\r/"; exit; }; done; exec "'"$REALJQ"'" "$@"'
+printf '%-64s ' "jq that answers the probe with a trailing CR: judged in full"
+bj crlf "$D -f /tmp/x.txt"; a=$BJV; bj crlf "$D -rf $P/results"
+[ "$a" = pass ] && [ "$BJV" = asked ] && echo ok || { echo "FAIL: harmless $a, results $BJV <<${BJERR:0:60}>>"; fails=$((fails+1)); }
+printf '%-64s ' "no jq: a delete on a later line is refused too"
+bj nojq "$ML"
+[ "$BJV" = blocked ] && echo ok || { echo "FAIL: $BJV"; fails=$((fails+1)); }
+printf '%-64s ' "no jq: truncate / unlink are delete-shaped too"
+bj nojq "truncate -s 0 $P/results/x.tsv"; a=$BJV; bj nojq "unlink $P/results/x.tsv"
+[ "$a" = blocked ] && [ "$BJV" = blocked ] && echo ok || { echo "FAIL: truncate $a, unlink $BJV"; fails=$((fails+1)); }
+rm -rf "$BJ"
+
+echo
 echo "== T1 (c): a non-Bash, execution-shaped tool this file has never named =="
 printf '%-64s ' "a non-Bash tool using tool_input.command - judged exactly as Bash would be"
 out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$D -rf $P/results" | bash "$H")
@@ -165,7 +229,7 @@ echo "== R2: Claude Code itself asks, for the work/ + cache branch only =="
 # every decision-carrying case (PITFALLS 28 appendix-2 fact 3).
 askcheck() { # askcheck <command> <label>
   printf '%-58s ' "$2"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   first="${out:0:1}"
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
@@ -175,7 +239,7 @@ askcheck() { # askcheck <command> <label>
 }
 denycheck() { # denycheck <command> <label>
   printf '%-58s ' "$2"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   first="${out:0:1}"
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
@@ -229,7 +293,7 @@ t "grep -rn 'shutil.rmtree' scripts/"             pass "#29 searching for rmtree
 
 tps() { # tps <powershell command> <expect> <label> - through the PowerShell tool
   printf '%-58s ' "$3"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   if [ -z "$out" ]; then got=pass; else
     got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out" 2>/dev/null)
   fi
@@ -356,7 +420,7 @@ echo
 echo "== #35: medium/low shapes left after #29 (each with a control) =="
 tc() { # tc <cwd> <command> <expect pass|warn|deny|ask> <label> - the hook input also carries the session's cwd
   printf '%-58s ' "$4"
-  out=$(python3 -c "import json,sys;print(json.dumps({'cwd':sys.argv[1],'tool_input':{'command':sys.argv[2]}}))" "$1" "$2" | bash "$H")
+  out=$(python3 -c "import json,sys;print(json.dumps({'cwd':sys.argv[1],'tool_input':{'command':sys.argv[2]}}))" "$1" "$PFX$2" | bash "$H")
   if [ -z "$out" ]; then got=pass; else
     got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out")
   fi
@@ -496,5 +560,188 @@ t "echo '$D -rf $P/results' | ssh -p 22 t3 bash"                deny "#35b contr
 t "echo '$D -rf $P/results' | ssh t3 'bash -s'"                 deny "#35b control: | ssh host 'bash -s'"
 t "echo '$D -rf $P/results' | ssh t3 python3 -"                 deny "#35b control: | ssh host python3 -"
 t "echo '$D -rf $P/results' | ssh t3 python3 x.py"              pass "#35b | ssh host python3 x.py is data"
+
+echo
+echo "== SN2: work/ deletes that ran without the confirmation (nextflow-clean-unconfirmed) =="
+# `nextflow clean -f` deletes the task directories under work/ of a run - the same
+# act as rm -rf work/, so the same ask. Without -f (or with -n) Nextflow deletes
+# nothing and the guard stays quiet.
+NF=$(printf '\x6e\x65\x78\x74\x66\x6c\x6f\x77')
+t "$NF clean -f"                                   ask  "nextflow clean -f asks"
+t "$NF clean -f -k last"                           ask  "nextflow clean -f -k last"
+t "$NF clean -f -q"                                ask  "nextflow clean -f -q"
+t "$NF clean -f happy_euler"                       ask  "nextflow clean -f <run name>"
+t "$NF clean -f -but happy_euler"                  ask  "nextflow clean -f -but <run>"
+t "$NF clean -force -before happy_euler"           ask  "nextflow clean -force -before <run>"
+t "$NF -log /tmp/n.log clean -f"                   ask  "nextflow <global option> clean -f"
+t "srun $NF clean -f"                              ask  "nextflow clean -f behind srun"
+t "cd $P && $NF clean -f"                          ask  "nextflow clean -f after a cd"
+t "$NF clean -n"                                   pass "control: nextflow clean -n (dry run)"
+t "$NF clean -n -f"                                pass "control: nextflow clean -n -f (dry run wins)"
+t "$NF clean -dry-run"                             pass "control: nextflow clean -dry-run"
+t "$NF clean"                                      pass "control: nextflow clean (Nextflow refuses)"
+t "$NF clean -but happy_euler"                     pass "control: nextflow clean -but <run>, no -f"
+t "$NF log"                                        pass "control: nextflow log"
+t "$NF run nf-core/rnaseq -profile clean"          pass "control: a profile named clean"
+t "make clean -f Makefile"                         pass "control: make clean -f"
+# variable-nextflow-clean: the command word held in a variable
+t "N=$NF; \$N clean -f"                            ask  "N=nextflow; \$N clean -f asks"
+t "N=$NF; \${N} clean -f"                          ask  "N=nextflow; \${N} clean -f asks"
+t "N=$NF; \"\$N\" clean -f"                        ask  "N=nextflow; \"\$N\" clean -f asks"
+t "N=$NF; \$N clean -n -f"                         pass "control: \$N clean -n -f (dry run)"
+t "N=$NF; \$N log"                                 pass "control: \$N log"
+t "N=$NF; \$N clean"                               pass "control: \$N clean, no -f"
+# A warning used to end the hook before the work/ ask: these were warns.
+t "$D -f $P/work/ab/cdef/x.bam"                    ask  "work/ file with a sequencing name still asks"
+t "$D -rf $P/work/*.fastq.gz"                      ask  "work/ glob of sequencing files still asks"
+t "$D -rf $P/work && echo x > $P/results/notes.txt" ask "work/ delete beside an overwrite still asks"
+printf '%-58s ' "...and the ask keeps the warning's text"
+out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$D -f $P/work/ab/cdef/x.bam" | bash "$H")
+if grep -q 'sequencing data' <<<"$out" && grep -q 'Nextflow scratch' <<<"$out"; then echo ok; else
+  echo "FAIL: <<${out:0:120}>>"; fails=$((fails+1)); fi
+
+echo
+echo "== SN1: delete shapes the guard did not see (sn1-delete-shapes) =="
+# Each shape that removes a protected folder (or empties a file in one) must be
+# refused, or asked about where the target cannot be seen; each control must not
+# change. The verbs are assembled like $D where a gate watching the shell could
+# read them.
+TAR=$(printf '\x74\x61\x72'); ZIP=$(printf '\x7a\x69\x70'); RCL=$(printf '\x72\x63\x6c\x6f\x6e\x65')
+# archive-and-remove
+t "$TAR --remove-files -cf /tmp/r.tar $P/results"         deny "tar --remove-files of results/"
+t "$TAR -czf /tmp/r.tgz --remove-files -C $P results"     deny "tar --remove-files -C <run> results"
+t "$TAR cf /tmp/r.tar $P/rawdata --remove-files"          deny "old-style tar cf ... --remove-files"
+t "$TAR --remove-files -cf /tmp/w.tar $P/work"            ask  "tar --remove-files of work/ asks"
+t "$TAR --remove-files -cf /tmp/x.tar -T list.txt"        ask  "tar --remove-files -T list: sources unknown"
+t "$TAR -cf /tmp/r.tar $P/results"                        pass "control: tar without --remove-files"
+t "$TAR --remove-files -cf $P/results/old.tar /tmp/scratch" pass "control: the archive written INTO results/"
+t "$ZIP -rm /tmp/r.zip $P/results"                        deny "zip -rm of results/"
+t "$ZIP -r -m /tmp/r.zip $P/analysis"                     deny "zip -r -m of analysis/"
+t "$ZIP --move /tmp/r.zip $P/rawdata/a.fastq.gz"          deny "zip --move of a rawdata/ file"
+t "$ZIP -r /tmp/r.zip $P/results"                         pass "control: zip without -m"
+t "$ZIP -rm $P/results/figs.zip /tmp/figs"                pass "control: the zip file written INTO results/"
+# rclone
+t "$RCL purge $P/results"                                 deny "rclone purge results/"
+t "$RCL delete remote:proj/results"                       deny "rclone delete remote:.../results"
+t "$RCL deletefile $P/rawdata/a.fastq.gz"                 deny "rclone deletefile in rawdata/"
+t "$RCL rmdirs $P/analysis"                               deny "rclone rmdirs analysis/"
+t "$RCL sync /tmp/empty $P/results"                       deny "rclone sync INTO results/ (deletes what is not in the source)"
+t "$RCL move $P/results remote:backup"                    ask  "rclone move results/ out asks (as mv, E9)"
+t "$RCL delete $P/work"                                   ask  "rclone delete work/ asks"
+t "$RCL copy $P/results remote:backup"                    pass "control: rclone copy"
+t "$RCL sync $P/results remote:backup"                    pass "control: rclone sync FROM results/"
+t "$RCL purge remote:scratch"                             pass "control: rclone purge elsewhere"
+t "$RCL delete --dry-run $P/results"                      pass "control: rclone delete --dry-run"
+t "$RCL ls $P/results"                                    pass "control: rclone ls"
+tc "$P/work" "$RCL purge remote:scratch"                  pass "control: a remote path is not under the working folder"
+tc "$P/work" "$RCL sync $P/results remote:backup"         pass "control: ...nor is a remote destination"
+# deletes written as node / ruby / pathlib code: ask, as python already does
+t "node -e \"require('fs').rmSync('$P/results',{recursive:true})\"" ask "node require('fs').rmSync(...)"
+t "node -e \"fs.promises.rm('$P/results',{recursive:true})\""       ask "node fs.promises.rm(...)"
+t "ruby -e 'require \"fileutils\"; FileUtils.rm_rf(\"$P/results\")'" ask "ruby FileUtils.rm_rf(...)"
+t "ruby -e 'FileUtils.rm_r \"$P/results\"'"                          ask "ruby FileUtils.rm_r without parentheses"
+t "python3 -c \"import pathlib; pathlib.Path('$P/results/x').unlink()\"" ask "python pathlib .unlink()"
+t "node -e \"console.log(1)\""                                       pass "control: node -e console.log"
+t "ruby -e 'puts FileUtils.pwd'"                                     pass "control: ruby FileUtils.pwd"
+t "$(printf 'python3 - <<%s\nlst = [1, 2]\nlst.remove(1)\nEOF\n' "'EOF'")" pass "control: python list.remove(...)"
+# a brace word, as bash expands it
+t "$D -rf $P/res{ults,}"                                  deny "brace res{ults,}"
+t "$D -rf $P/{tmp,ana{lysis,x}}"                          deny "nested brace naming analysis"
+t "$D -rf $P/re{s..s}ults"                                deny "brace sequence re{s..s}ults"
+t "$D -rf $P/tmp{1,2}"                                    pass "control: brace naming nothing protected"
+t "$D -rf /tmp/{a,b}"                                     pass "control: brace under /tmp"
+# case: the same folder on a file system that ignores case
+case "${OSTYPE:-}" in msys*|cygwin*|darwin*) CASE_EXP=deny ;; *) CASE_EXP=ask ;; esac
+t "$D -rf $P/RESULTS"                                     "$CASE_EXP" "RESULTS: deny where case is ignored, else ask"
+t "$D -rf $P/Analysis/x"                                  "$CASE_EXP" "Analysis/x: the same"
+t "$D -rf C:/lab/proj/Results"                            deny "a Windows path: case ignored, deny"
+t "$D -rf /mnt/c/lab/proj/RawData"                        deny "a WSL path to a Windows drive: deny"
+tps 'Remove-Item -Recurse C:\lab\proj\RESULTS'            deny "PowerShell Remove-Item RESULTS"
+t "$D -rf $P/Resultsheet.txt"                             pass "control: a name that only starts alike"
+t "$D -f C:/Users/me/Documents/Work/old.txt"              pass "control: a Windows folder named Work is not work/"
+# links and modes
+t "ln -sfn /tmp/x $P/results"                             deny "ln -sfn over results/"
+t "ln --force --no-dereference -s /tmp/x $P/rawdata"      deny "ln --force --no-dereference over rawdata"
+t "ln -sf /data/orig/s1.fastq.gz $P/rawdata"              pass "control: ln -sf without -n links INTO rawdata/"
+t "ln -sfT /tmp/x $P/analysis/"                           deny "ln -sfT over analysis/"
+t "ln -sfn /tmp/x $P/work"                                ask  "ln -sfn over work/ asks"
+t "ln -sf /data/orig/s1.fastq.gz $P/rawdata/s1.fastq.gz"  pass "control: staging a link inside rawdata/"
+t "ln -s /tmp/x $P/results"                               pass "control: ln without -f (fails if it exists)"
+t "ln -sf $P/results /tmp/link"                           pass "control: results/ as the link's target"
+t "install -d -m 000 $P/results"                          ask  "install -d -m 000 results/ asks"
+t "install -d -o nobody $P/_references"                   ask  "install -d -o on _references/ asks"
+t "install -d $P/results"                                 pass "control: install -d without a mode (mkdir -p)"
+t "install -d -m 755 $P/results/fastqc_extra"             pass "control: install -d -m of a new folder inside"
+t "install -m 644 x.R $P/analysis/x.R"                    pass "control: install a file into analysis/"
+# a truncation by redirect is truncate -s 0
+t ": > $P/rawdata/s1.fastq.gz"                            deny ": > rawdata/<file>"
+t "> $P/results/multiqc_report.html"                      deny "> results/<file>"
+t "true > $P/analysis/de.tsv"                             deny "true > analysis/<file>"
+t "cat /dev/null > $P/results/x.tsv"                      deny "cat /dev/null > results/<file>"
+t ": > $P/work/x"                                         ask  ": > work/<file> asks"
+tc "$P/rawdata" ": > s1.fastq.gz"                         deny ": > <file> with cwd rawdata/"
+t ": > /tmp/x.log"                                        pass "control: : > /tmp/x.log"
+t "echo x > $P/results/notes.txt"                         warn "control: writing into results/ is unchanged (warn)"
+t ": >> $P/results/x.log"                                 warn "control: an append is not a truncation (warn)"
+# a recursive delete from above the protected folders
+t "find $P -name '*.fastq.gz' -delete"                    deny "find <run> -name '*.fastq.gz' -delete"
+t "find $P -iname '*.BAM' -exec $D {} +"                  deny "find <run> -iname '*.BAM' -exec rm"
+tc "$P" "find . -name '*.fq.gz' -delete"                  deny "find . -name '*.fq.gz' -delete in <run>"
+t "find $P -delete"                                       deny "find <run> -delete"
+t "$D -rf $P"                                             deny "rm -rf <run>"
+t "$D -rf /data/me/projects/p1/"                          deny "rm -rf <projects>/<p>"
+t "find $P -name '*.log' -delete"                         ask  "find <run> -name '*.log' -delete asks"
+t "find /data/proj -name '*.fastq.gz' -delete"            ask  "find <unknown> -name '*.fastq.gz' -delete asks"
+t "find $P/work -name '*.bam' -delete"                    ask  "control: find work/ -name '*.bam' asks (SN2)"
+t "find /tmp/x -name '*.fastq.gz' -delete"                warn "control: find /tmp/x -name '*.fastq.gz' unchanged (warn)"
+t "$D -f $P/tmp.txt"                                      pass "control: rm a file beside the protected folders"
+t "$D -rf $P/tmp"                                         pass "control: rm -rf a folder beside them"
+t "find $P -maxdepth 1 -name tmp_x"                       pass "control: find without -delete"
+# backslash-delete-shapes: a leading backslash only skips an alias; the same
+# command runs and gets the same verdict.
+t "\\$NF clean -f"                                        ask  "\\nextflow clean -f asks"
+t "\\$TAR --remove-files -cf /tmp/r.tar $P/results"       deny "\\tar --remove-files of results/"
+t "\\$ZIP -m /tmp/r.zip $P/rawdata"                       deny "\\zip -m of rawdata/"
+t "\\$RCL purge $P/results"                               deny "\\rclone purge results/"
+t "\\ln -sfn /tmp/x $P/rawdata"                           deny "\\ln -sfn over rawdata/"
+t "\\find $P -delete"                                     deny "\\find <run> -delete"
+t "\\rsync -a --delete /tmp/empty/ $P/results/"           deny "\\rsync --delete into results/"
+t "\\install -d -m 000 $P/results"                        ask  "\\install -d -m 000 results/ asks"
+t "\\$TAR -cf /tmp/r.tar $P/results"                      pass "control: \\tar without --remove-files"
+t "\\$RCL copy $P/results remote:backup"                  pass "control: \\rclone copy"
+# gates-audit2-low: behind a wrapper the command word is srun; behind a large
+# here-doc only the filter's trigger regex keeps this segment.
+t "srun $TAR --remove-files -cf /tmp/r.tar $P/results"    deny "srun tar --remove-files of results/"
+
+echo
+echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
+# hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.
+# Past its own deadline (20 s; ABF_CLEANUP_DEADLINE_S can only lower it, for
+# this test) the guard stops judging and asks, saying why (invariant 13).
+dl() { # dl <deadline> <command> -> OUT, GOT
+  OUT=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$2" \
+        | ABF_CLEANUP_DEADLINE_S="$1" bash "$H")
+  if [ -z "$OUT" ]; then GOT=pass; else
+    GOT=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$OUT")
+  fi
+}
+printf '%-58s ' "#62 deadline reached: asks, even for an ordinary delete"
+dl 0 "$D -rf /tmp/x"
+if [ "$GOT" = ask ] && grep -q 'in time' <<<"$OUT"; then echo "ok (ask)"; else
+  echo "FAIL: expected an ask that says it ran out of time, got $GOT <<${OUT:0:80}>>"; fails=$((fails+1)); fi
+printf '%-58s ' "#62 control: the same delete with the default deadline"
+dl "" "$D -rf /tmp/x"; [ "$GOT" = pass ] && echo "ok (pass)" || { echo "FAIL: got $GOT"; fails=$((fails+1)); }
+# #62: a target is resolved through `readlink` only when a component of it is a
+# link here (it cost a program per target); a delete through a link into the
+# shared references must still be judged by where it lands.
+LK=$(mktemp -d)
+mkdir -p "$LK/lab/_references/genome" "$LK/run/other"
+ln -s "$LK/lab/_references" "$LK/run/references"
+t "$D -rf $LK/run/references/*"                   deny "#62 a delete through a link into _references/"
+tc "$LK/run" "$D -rf references/genome"           deny "#62 ...relative, from the working folder"
+t "$D -rf $LK/run/other"                          pass "#62 control: a real folder beside the link"
+rm -rf "$LK"
+printf '%-58s ' "#62 control: a deadline that is not a number is ignored"
+dl "soon" "$D -rf /tmp/x"; [ "$GOT" = pass ] && echo "ok (pass)" || { echo "FAIL: got $GOT"; fails=$((fails+1)); }
 
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

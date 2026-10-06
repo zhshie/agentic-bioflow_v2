@@ -220,6 +220,8 @@ $LAB_RUNS_DIR/                     (site side, "site")
 
 <root>/                            (local side, "local" - the user's own root)
 ├── config/                        settings, token, this machine's own keys
+├── cache/pipeline_files/          CITATIONS.md and the methods template, fetched
+│                                  per pipeline and revision by `finish`; safe to delete
 └── projects/<same name as the site>/   (no <seqera_user> layer here: the
     ├── rawdata/      staging; scripts/push.sh sends this up    root belongs
     ├── runs/<same name as the site>/                           to one person

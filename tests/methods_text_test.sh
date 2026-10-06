@@ -15,6 +15,7 @@
 # rule joining those would just as happily cite Bowtie's paper for Bowtie 2.
 S="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/methods_text.py"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+export ABF_PIPELINE_FETCHER=off   # no network in tests (#4); methods_text_fetch_test.sh covers fetching
 fails=0
 ok() { printf '%-62s ok\n' "$1"; }
 no() { printf '%-62s FAIL: %s\n' "$1" "$2"; fails=$((fails+1)); }

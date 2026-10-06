@@ -270,6 +270,9 @@ has "status is blocked"            "status=blocked"       "$OUT"
 has "may_touch_site is still yes (jq is not one of its two triggers)" "may_touch_site=yes" "$OUT"
 has "message names the mac fix"    "brew install jq"      "$OUT"
 has "message names the WSL/Linux fix" "sudo apt install jq" "$OUT"
+# Invariant 11: every refusal says whether it declines a shell, a folder or a capability.
+has "message says what is refused: a capability, not shell or folder" \
+    "What is refused is one missing capability (jq)" "$OUT"
 
 echo
 echo "== cell: unsupported-msys-no-wsl =="
@@ -280,6 +283,8 @@ has "status is unsupported"           "status=unsupported"           "$OUT"
 has "message points at WSL"           "WSL"                          "$OUT"
 has "and names the report path"       "report.sh"                    "$OUT"
 has "and names /setup as the in-plugin next step" "/setup"           "$OUT"
+has "and says what is refused: a capability, not shell or folder" \
+    "What is refused is one missing capability (WSL)" "$OUT"
 has "and it still may not touch the site" "may_touch_site=no"        "$OUT"
 printf '%-64s ' "and does not repeat the retracted 16b conclusion"
 grep -q 'cannot hold the shared ssh connection' <<<"$OUT" \

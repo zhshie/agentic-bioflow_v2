@@ -740,6 +740,7 @@ warn_unmeasured_privacy() {
 refuse_unwritable_mode() {
     local file="$1" why="$2"
     echo "refusing to write settings to $file: it would not be private to you." >&2
+    echo "What is refused is this folder as the home for the settings file - not your shell." >&2
     echo "" >&2
     # 16k: this used to be one paragraph about chmod, because the mode was the
     # only thing it ever looked at. On Windows the mode is not what decides,
@@ -795,7 +796,8 @@ cloud_sync_caution() {   # cloud_sync_caution <path> <setting-key>
     echo "note: '$key' ($path) looks like it is inside a synced folder (OneDrive," >&2
     echo "Dropbox, Google Drive, iCloud's Library/Mobile Documents, Box, Nextcloud," >&2
     echo "...) - not a complete list, any folder that syncs anywhere is the same risk." >&2
-    echo "That is the intended home for it. Two things to know:" >&2
+    echo "A synced folder is accepted for the root, but it is a poor place for a token" >&2
+    echo "(the same reading as the permission refusal above). Two things to know:" >&2
     echo "  - large files (rawdata, results, container images) sync slowly and will" >&2
     echo "    eat the sync quota. They do not live here - rawdata and results stay" >&2
     echo "    on the site, and only what an IDE opens is kept in the root." >&2
@@ -821,6 +823,7 @@ use_root() {   # use_root <path>
         /*) ;;
         [A-Za-z]:[\\/]*) ;;   # a Windows path handed straight to Git Bash
         *) echo "the root must be an absolute path, not '$path'." >&2
+           echo "What is refused is that folder spelling, not your shell." >&2
            return 2 ;;
     esac
     path="${path%/}"
@@ -829,10 +832,12 @@ use_root() {   # use_root <path>
         : # an existing root: nothing to build, only to point at
     elif [ -e "$path" ] && [ ! -d "$path" ]; then
         echo "refusing to use $path: it exists and is not a directory." >&2
+        echo "What is refused is that folder, not your shell." >&2
         return 1
     else
         mkdir -p "$path/config/machines" "$path/projects" || {
             echo "could not create $path - check the path and permissions." >&2
+            echo "What is refused is that folder, not your shell." >&2
             echo "If this is a synced folder that has not appeared on this machine" >&2
             echo "yet, wait for the sync client rather than creating it by hand." >&2
             return 1

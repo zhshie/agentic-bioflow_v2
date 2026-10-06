@@ -425,4 +425,62 @@ printf '%-72s ' "session_start: a fresh session inside the deployment gets it to
 case "$OUT" in *"Deployment settings:"*) echo ok ;; *) echo "FAIL <<${OUT:0:100}>>"; fails=$((fails+1)) ;; esac
 
 echo
+echo "== in-use-path-spellings: more spellings of a path under the deployment (each with a control) =="
+# Constitution, Safety Net scope, condition 3: a call that names a path under
+# the deployment "in any spelling". storage_root is ~/runs3 (DEP3/CFG3 above),
+# no marker, and every cwd is outside the deployment.
+mkdir -p "$TMP/home/other" "$TMP/home/other3/p"
+# $LAB_RUNS_DIR is the deployment's run area by name: the value the hook sees,
+# or, when the hook's environment has none, the deployment's own storage_root.
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'rm -rf "$LAB_RUNS_DIR/p/results"')" XDG_CONFIG_HOME="$CFG3" LAB_RUNS_DIR="$TMP/home/runs3"
+check "paths: \$LAB_RUNS_DIR/p/results, LAB_RUNS_DIR is storage_root"    deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'rm -rf "${LAB_RUNS_DIR}/p/results"')" XDG_CONFIG_HOME="$CFG3" LAB_RUNS_DIR="$TMP/home/runs3"
+check "paths: \${LAB_RUNS_DIR}/p/results"                                deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'rm -rf "$LAB_RUNS_DIR/p/results"')" XDG_CONFIG_HOME="$CFG3"
+check "paths: \$LAB_RUNS_DIR unset in the hook: the deployment's storage_root" deny
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'rm -rf "$OTHER_DIR/p/results"')" XDG_CONFIG_HOME="$CFG3" LAB_RUNS_DIR="$TMP/home/runs3"
+check "paths: control: another variable is silent"                       silent
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'rm -rf "$LAB_RUNS_DIR/p/results"')" XDG_CONFIG_HOME="$CFG_NONE"
+check "paths: control: \$LAB_RUNS_DIR with no deployment at all: silent" silent
+# relative paths from a folder above, or beside, storage_root
+run confirm_cleanup.sh "$(bash_in s-new "$TMP/home" 'rm -rf runs3/p/results')" XDG_CONFIG_HOME="$CFG3"
+check "paths: cwd \$HOME, rm -rf runs3/p/results"                        deny
+run confirm_cleanup.sh "$(bash_in s-new "$TMP/home" 'rm -rf other3/p/results')" XDG_CONFIG_HOME="$CFG3"
+check "paths: control: cwd \$HOME, rm -rf other3/p/results"              silent
+run confirm_cleanup.sh "$(bash_in s-new "$TMP/home" 'cd runs3/p && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "paths: cwd \$HOME, cd runs3/p && rm -rf results"                   deny
+run confirm_cleanup.sh "$(bash_in s-new "$TMP/home" 'cd ./runs3/p && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "paths: cwd \$HOME, cd ./runs3/p && rm -rf results"                 deny
+run confirm_cleanup.sh "$(bash_in s-new "$TMP/home" 'cd other3/p && rm -rf results')" XDG_CONFIG_HOME="$CFG3"
+check "paths: control: cwd \$HOME, cd other3/p && rm -rf results"         silent
+run confirm_cleanup.sh "$(bash_in s-new "$TMP/home/other" 'rm -rf ../runs3/p/results')" XDG_CONFIG_HOME="$CFG3"
+check "paths: cwd a sibling folder, rm -rf ../runs3/p/results"            deny
+run confirm_cleanup.sh "$(bash_in s-new "$TMP/home/other" 'rm -rf ../other3/p/results')" XDG_CONFIG_HOME="$CFG3"
+check "paths: control: cwd a sibling folder, ../other3/p/results"         silent
+run confirm_cleanup.sh "$(bash_in s-new "$TMP" 'rm -rf home/runs3/p/results')" XDG_CONFIG_HOME="$CFG3"
+check "paths: cwd two levels up, rm -rf home/runs3/p/results"             deny
+run confirm_cleanup.sh "$(bash_in s-new "$TMP/home" 'rm -rf my_runs3/p/results')" XDG_CONFIG_HOME="$CFG3"
+check "paths: control: a name that only ends like it (my_runs3)"          silent
+# the home directory spelled by PowerShell, and ~ after `=`
+PS_IN=$(jq -nc --arg d "$OUTSIDE" --arg c 'Remove-Item -Recurse -Force $env:USERPROFILE\runs3\p\results' \
+  '{session_id:"s-new", cwd:$d, hook_event_name:"PreToolUse", tool_name:"PowerShell", tool_input:{command:$c}}')
+run confirm_cleanup.sh "$PS_IN" XDG_CONFIG_HOME="$CFG3"
+check "paths: PowerShell \$env:USERPROFILE\\runs3\\p\\results"              deny
+PS_IN=$(jq -nc --arg d "$OUTSIDE" --arg c 'Remove-Item -Recurse -Force $env:USERPROFILE\other3\p\results' \
+  '{session_id:"s-new", cwd:$d, hook_event_name:"PreToolUse", tool_name:"PowerShell", tool_input:{command:$c}}')
+run confirm_cleanup.sh "$PS_IN" XDG_CONFIG_HOME="$CFG3"
+check "paths: control: \$env:USERPROFILE\\other3\\p\\results"              silent
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'x=~/runs3/p/results; rm -rf $x')" XDG_CONFIG_HOME="$CFG3"
+check "paths: x=~/runs3/p/results; rm -rf \$x (gated: ask or deny)"        'ask|deny'
+run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" 'x=~/other3/p/results; rm -rf $x')" XDG_CONFIG_HOME="$CFG3"
+check "paths: control: x=~/other3/p/results"                               silent
+U62=$(id -un 2>/dev/null)
+if [ -n "$U62" ]; then
+  run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "rm -rf ~$U62/runs3/p/results")" XDG_CONFIG_HOME="$CFG3" USER="$U62"
+  check "paths: ~<this user>/runs3/p/results"                               deny
+  run confirm_cleanup.sh "$(bash_in s-new "$OUTSIDE" "rm -rf ~$U62/other3/p/results")" XDG_CONFIG_HOME="$CFG3" USER="$U62"
+  check "paths: control: ~<this user>/other3/p/results"                     silent
+fi
+
+echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

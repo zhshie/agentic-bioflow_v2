@@ -111,7 +111,13 @@ echo "runs      ${#RUNS[@]}"
 "$HERE/collect_provenance.py" --json "${RUNS[@]}" > "$OUT/provenance.json" || exit 1
 echo "wrote     submission/provenance.json"
 
-"$HERE/methods_text.py" --out "$OUT/methods.md" "${RUNS[@]}" || exit 1
+# CITATIONS.md and the methods template are fetched from the pipeline's own
+# repository when this machine never pulled it (issue #4). They are kept in the
+# deployment's cache, <root>/cache/pipeline_files - never under ~/.nextflow.
+CACHE_ARGS=()
+CACHE_ROOT="$( . "$HERE/settings.sh" >/dev/null 2>&1; printf '%s' "${ABF_ROOT:-}" )"
+[ -n "$CACHE_ROOT" ] && CACHE_ARGS=(--cache-dir "$CACHE_ROOT/cache/pipeline_files")
+"$HERE/methods_text.py" ${CACHE_ARGS[@]+"${CACHE_ARGS[@]}"} --out "$OUT/methods.md" "${RUNS[@]}" || exit 1
 echo "wrote     submission/methods.md"
 
 # --- the bibliography --------------------------------------------------------
