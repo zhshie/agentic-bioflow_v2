@@ -26,9 +26,9 @@ hasnt() { # hasnt <label> <file> <extended regex>
 }
 
 echo "== TC-021: the constitution =="
-has "version is 2.0.1 (PATCH on top of the 2.0.0 that made this change)" "$C" '**Version**: 2.0.1'
+has "version is 2.1.0 (2.0.0 made this change; 2.0.1 and 2.1.0 came after)" "$C" '**Version**: 2.1.0'
 has "the 2.0.0 amendment entry is still there"        "$C" '### 2.0.0 (2026-10-02)'
-has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-10-05'
+has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-10-07'
 has "Ratified date is untouched"               "$C" '**Ratified**: 2026-09-28'
 # The Safety Net section opens with its scope. Read the section on its own so a
 # mention elsewhere in the file cannot satisfy these.

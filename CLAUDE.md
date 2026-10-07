@@ -187,17 +187,19 @@ restated here, so that they cannot be restated differently (constitution,
 Governance). In short: invariants 1–13 each name their check; the Safety Net
 section is non-negotiable within a session in which the plugin is in use, and
 outside one the plugin stays silent (Constitution 2.0.0, `hooks/in_use.sh`); every non-typo change goes through the Spec Kit
-feature or bug workflow, with test cases approved by the maintainer before
-any plan, and only the maintainer merges to `main`. Shared vocabulary is
-`CONTEXT.md`.
+feature or bug workflow, with test cases written by the independent reviewer
+before any code, and merges follow the decision tiers in the constitution's
+Development Workflow (2.1.0). Shared vocabulary is `CONTEXT.md`.
 
-The two gates that are files: `/test-cases` (`.claude/skills/test-cases/`)
-writes `test-case.md` + `test-case-overview.md` into the feature directory
-after `/speckit-clarify` and stops for approval; `/speckit-plan` does not run
-while the overview says `狀態：草稿`. After implementing, acceptance is the
-read-only `verifier` agent (`.claude/agents/verifier.md`), started in a fresh
-context and given the feature directory - never the author's own review.
-`tests/dev_workflow_test.sh` keeps both gates shaped like gates.
+The roles and gates that are files: the read-only `verifier` agent
+(`.claude/agents/verifier.md`) writes `test-case.md` + `test-case-overview.md`
+after the plan (CONTRACT mode, following `.claude/skills/test-cases/`) and marks
+them `合約已確認`; implementation does not start while the overview says
+`狀態：草稿`. The `executor` agent (`.claude/agents/executor.md`) implements one
+task test-first and cannot stop until the full suite is green at HEAD or it
+reports BLOCKED. After implementing, acceptance is the `verifier` again
+(ACCEPTANCE mode), in a fresh context - never the author's own review.
+`tests/dev_workflow_test.sh` keeps these gates shaped like gates.
 
 ## Working conventions specific to this repo
 

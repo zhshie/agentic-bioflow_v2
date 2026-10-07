@@ -171,26 +171,37 @@ plan, and change only by a MAJOR amendment of this constitution.
 ## Development Workflow
 
 - **Features** (new or changed behavior) MUST go through the Spec Kit feature workflow:
-  `/speckit-specify` → `/speckit-clarify` → test cases → `/speckit-plan` → `/speckit-tasks` →
-  `/speckit-analyze` → `/speckit-implement` → `/speckit-converge`. Each spec opens with a User
+  `/speckit-specify` → `/speckit-clarify` → `/speckit-plan` → test cases (`合約已確認`) →
+  `/speckit-tasks` → `/speckit-analyze` → `/speckit-implement` → `/speckit-converge`. Each spec opens with a User
   Story, and every requirement has Given/When/Then scenarios of three kinds: normal, exception,
   and out of scope. A spec describes the change being made, not a retroactive inventory of
   existing behavior.
 - **Bugs** (existing behavior broken) MAY use the Spec Kit bug workflow instead
-  (`/speckit-bug-assess` → `/speckit-bug-fix` → `/speckit-bug-test`); the maintainer reviews the
-  assessment before any fix is made.
-- **Test cases before design.** For a feature, `test-case.md` and `test-case-overview.md` MUST be
-  written after clarify and approved by the maintainer before `/speckit-plan` runs. The plan MUST
-  cite the spec, the approved test cases, and this constitution.
+  (`/speckit-bug-assess` → `/speckit-bug-fix` → `/speckit-bug-test`); the independent reviewer
+  (below) reviews the assessment before any fix is made.
+- **Roles.** The development lead talks with the maintainer, writes specs and plans, and
+  dispatches work; it does not write the code. The executor (`.claude/agents/executor.md`)
+  implements one task at a time; the independent reviewer (`.claude/agents/verifier.md`) writes
+  the test cases and judges the result. The maintainer judges outcomes, not code: each spec quotes
+  his own examples of what he wants, verbatim.
+- **Test cases before code.** For a feature, `test-case.md` and `test-case-overview.md` MUST be
+  written by the independent reviewer from the spec, the maintainer's examples and the plan, and
+  the overview MUST say `合約已確認` (or `已核可`, when the maintainer approved them himself)
+  before implementation starts. The author of the code never writes or edits them.
 - **Green at every stage.** Implementation runs in stages; each stage ends with
-  `bash tests/run_all.sh` fully green and a test for every approved scenario. It runs in WSL or on
+  `bash tests/run_all.sh` fully green and a test for every confirmed scenario. It runs in WSL or on
   Linux; native Git Bash refuses it.
 - **Independent acceptance.** Acceptance is judged by a separate read-only reviewer against the
-  spec, the approved test cases and the diff, never by the author of the change.
-- **Manual walkthrough.** A change touching `commands/`, `skills/` or `hooks/` also passes the
-  manual half of `docs/TESTING.md`, after restarting the AI host so hooks reload.
+  spec, the confirmed test cases and the diff, never by the author of the change.
+- **Manual walkthrough.** Before a release that contains a change to `commands/`, `skills/` or
+  `hooks/`, the manual half of `docs/TESTING.md` passes, after restarting the AI host so hooks
+  reload.
 - **One change at a time, on a branch.** `main` receives merges only; CI
-  (`.github/workflows/tests.yml`) MUST be green first, and only the maintainer merges.
+  (`.github/workflows/tests.yml`) MUST be green first, and the independent acceptance MUST pass.
+  Who merges follows the decision tiers: the development lead merges fixes, tests, docs,
+  refactors and changes that only make the Safety Net stricter; a change in what a user sees, or
+  a modified or removed requirement, waits for the maintainer's yes on the result; amendments to
+  this constitution, releases, and anything that loosens the Safety Net are the maintainer's.
 
 ## Amendments
 
@@ -275,6 +286,34 @@ detect a copied file. No behavior changes; no deployment is affected.
 **Version.** PATCH, under Governance: the amendment names checks and changes no meaning.
 **Approval.** The maintainer approves and merges the pull request that carries this change.
 
+### 2.1.0 (2026-10-07): the maintainer judges outcomes; an independent reviewer writes the exam
+
+**Rationale.** The maintainer is not a programmer. Under 2.0.1 he was the gate for things he
+cannot judge (test cases, technical plans, every merge), and work queued behind him: on
+2026-10-04 six PRs waited for his merge. Anthropic's guidance is that verification, not a
+person reading code, is what makes autonomous work safe, and that the agent that does the work
+must not grade it (code.claude.com/docs/en/best-practices;
+anthropic.com/engineering/harness-design-long-running-apps). His decision on 2026-10-07: split
+the development role into a lead that talks with him and does not write code, an executor that
+implements, and an independent reviewer that writes the test cases from his own examples and
+grades the result; he answers only "is this what I wanted". He approved this amendment in his
+own words the same day ("同意修憲").
+
+**What changes.**
+- Test cases are written by the independent reviewer, after the plan and from his quoted
+  examples, and marked `合約已確認`; his own approval (`已核可`) still counts when he gives it.
+- The bug assessment is reviewed by the independent reviewer instead of the maintainer.
+- The manual walkthrough moves from every merge to every release that contains such changes.
+- Merging follows decision tiers (Development Workflow). Amendments, releases and loosening the
+  Safety Net stay with the maintainer, as before.
+
+**Impact on existing deployments.** None: this section governs how the repository is developed,
+not what the plugin does. The principles, the Safety Net and every check are unchanged. Features
+whose overview already says `已核可` stay valid.
+
+**Version.** MINOR, under Governance: no principle or Safety Net rule is removed or redefined;
+the Development Workflow is materially changed.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -289,4 +328,4 @@ detect a copied file. No behavior changes; no deployment is affected.
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 2.0.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-05
+**Version**: 2.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-07
