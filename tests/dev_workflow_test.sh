@@ -55,6 +55,8 @@ printf '%-70s ' "executor: cannot dispatch agents"
 ETOOLS=$(grep '^tools:' <<<"$EFM")
 if [ -n "$ETOOLS" ] && ! grep -qE 'Agent|Task|\*' <<<"$ETOOLS"; then echo ok; else echo "FAIL: $ETOOLS"; fails=$((fails+1)); fi
 has "executor: never weakens a test"                "$EX" "Never weaken a test to make it pass"
+printf '%-70s ' "executor: gate holds on a repeated stop attempt"
+if ! grep -q 'stop_hook_active.*exit 0' <<<"$EFM"; then echo ok; else echo "FAIL: stop_hook_active lets the second attempt through"; fails=$((fails+1)); fi
 
 has "constitution: test cases before code"          "$CO" "Test cases before code"
 has "constitution: independent acceptance"          "$CO" "Independent acceptance"

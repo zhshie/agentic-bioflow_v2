@@ -9,8 +9,10 @@ hooks:
     - hooks:
         - type: command
           command: |
+            # No early exit on stop_hook_active: the gate holds on every attempt.
+            # Claude Code itself lets a session stop after repeated blocks with no
+            # tool call in between, so this cannot loop forever.
             in=$(cat)
-            case "$in" in *'"stop_hook_active":true'*|*'"stop_hook_active": true'*) exit 0;; esac
             dir=$(printf '%s' "$in" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | sed 's/\\\\/\//g')
             gd=$(git -C "${dir:-.}" rev-parse --absolute-git-dir 2>/dev/null) || exit 0
             st="$gd/executor-status"

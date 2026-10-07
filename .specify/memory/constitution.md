@@ -171,8 +171,8 @@ plan, and change only by a MAJOR amendment of this constitution.
 ## Development Workflow
 
 - **Features** (new or changed behavior) MUST go through the Spec Kit feature workflow:
-  `/speckit-specify` → `/speckit-clarify` → test cases → `/speckit-plan` → `/speckit-tasks` →
-  `/speckit-analyze` → `/speckit-implement` → `/speckit-converge`. Each spec opens with a User
+  `/speckit-specify` → `/speckit-clarify` → `/speckit-plan` → test cases (`合約已確認`) →
+  `/speckit-tasks` → `/speckit-analyze` → `/speckit-implement` → `/speckit-converge`. Each spec opens with a User
   Story, and every requirement has Given/When/Then scenarios of three kinds: normal, exception,
   and out of scope. A spec describes the change being made, not a retroactive inventory of
   existing behavior.
