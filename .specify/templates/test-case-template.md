@@ -1,7 +1,7 @@
 # 測試案例：[功能名稱]
 
 <!--
-Written by the `test-cases` skill after /speckit-clarify, before /speckit-plan.
+Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after the plan, before any code.
 Reader: the maintainer, who is not an engineer. Write every row so that it can be
 judged without reading code: what is set up, what the person or the system does,
 what must be seen. No internal jargon without a one-line explanation.

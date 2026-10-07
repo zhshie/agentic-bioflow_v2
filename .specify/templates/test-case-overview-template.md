@@ -3,11 +3,13 @@
 狀態：草稿
 
 <!--
-The line above is the approval gate. The `test-cases` skill writes "草稿" and nothing
-else. It becomes
+The line above is the gate before code (constitution 2.1.0). The independent reviewer
+(`verifier`, CONTRACT mode) starts it at "草稿" and changes it to
+    狀態：合約已確認（YYYY-MM-DD，verifier）
+only when the plan has no blocking finding and every example of the maintainer's is
+covered. If the maintainer approves the cases himself, it may instead read
     狀態：已核可（YYYY-MM-DD，maintainer）
-only after the maintainer says so in the conversation, and the words he used are
-quoted under "核可紀錄" below. /speckit-plan does not run while it says 草稿.
+with his words quoted under "核可紀錄". Implementation does not start while it says 草稿.
 -->
 
 **規格**：`specs/[###-feature]/spec.md`　**明細**：`test-case.md`
