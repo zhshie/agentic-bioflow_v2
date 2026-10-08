@@ -1,5 +1,8 @@
 # Seqera Platform becomes an optional execution backend, not something we rebuild
 
+**Status: Superseded by ADR 0004 (2026-10-08).** Kept as history. Its Terms-of-Use reason still
+holds; its decision not to build a platform does not.
+
 The Prototype uses Seqera Platform as its execution backend and interface. The Product must also
 run without it, and we get there by driving open-source Nextflow directly — reading run state
 from Nextflow's own records (trace, report, weblog events, lineage) and adding a small local page

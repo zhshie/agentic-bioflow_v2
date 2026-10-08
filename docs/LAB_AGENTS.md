@@ -225,12 +225,21 @@ the decided design this document is required to reflect regardless.
 | R4 | Compute an input checksum at launch time | **Adopted, changed to "prefer an existing value"** | This repo currently computes no input checksum anywhere (verified by absence — nothing in `scripts/` hashes an input file today). Sequencing files run tens of gigabytes, so hashing on the login node is expensive: prefer whatever checksum a lab's own intake process already recorded; only fall back to computing one through `scripts/on_site.sh` (with `ON_SITE_TIMEOUT=0`, since this is a genuinely long call) when nothing exists. The result is data about the input, not run state, so it is written into the project directory, not tracked as run state (`PRINCIPLES.md`, invariant 2). M1 showed `nf-prov` records no checksum (PITFALLS 32), so this stays: `scripts/input_checksums.sh`. |
 | R5 | `finish` produces an `ro-crate-metadata.json` | **Adopted, depends on R1** | `scripts/build_package.sh` currently produces no such file (verified by absence). Every field in it must come from something already on disk, never invented (`PRINCIPLES.md`, invariant 9). |
 | R6 | Shared-identity hosts get a read-only role, left as an open, text-enforced question | **Rewritten** | See §3: H2 can reach the cluster (with hooks enforcing what it may do); H3 is refused structurally, by never holding a credential that reaches the cluster, not by an instruction it could ignore. |
-| R7 | Do not build an MCP server | **Adopted** | See §8 below — reaffirmed, with the one condition under which this project would reconsider. |
+| R7 | Do not build an MCP server | **Reversed by ADR 0004** (2026-10-08) | Adopted at first; the platform direction makes the platform an MCP server. See §8. |
 | R8 | A deployer-facing settings interface | **Adopted, with a real gap it closes** | `language` is documented in `CLAUDE.md` but is missing from `docs/SETTINGS.md`'s own key table (verified: `docs/SETTINGS.md`'s table, read in full for this document, has no `language` row). `ssh_max_parallel` and the record-adapter keys (§6, `docs/RECORD_ADAPTER.md`) are the new additions; `docs/SETTINGS.md` itself is edited in a later release by another track of this same round of changes. |
 | R9 | A PI gets a workspace role suited to oversight, not execution | **Folded into M5** | Same measurement as H2/H3's token roles (§10). |
 | R10 | The skill text should be portable, describing what is and is not possible when hooks are absent | **Adopted** | `skills/operational/SKILL.md`'s frontmatter today carries only `name` and `description`; a test enforces that its body states, per tier, what can and cannot be done without hooks — tying directly to §3 above. |
 
-## 8. "Not an MCP server" — reaffirmed, with a reconsideration trigger
+## 8. "Not an MCP server" — reversed by ADR 0004
+
+On 2026-10-08 the maintainer chose a self-hosted platform whose only AI entry
+point is an MCP server (ADR 0004). `PRINCIPLES.md`, "Where each piece belongs",
+says which of the four reasons below fell and which still hold: judgment and
+procedure stay in skills and `docs/`, MCP tools only act. For the tiers of §3,
+this means the H3 case is served the way the paragraph below foresaw: a host
+that cannot run a script reaches the site only through tools that carry their
+own gate. Until those tools exist, everything in this document describes
+2.17.0 as it is. The rest of this section is kept as history.
 
 `PRINCIPLES.md`'s "Where each piece belongs" section already gives four
 reasons this plugin is not, and does not wrap itself in, an MCP server:

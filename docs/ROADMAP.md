@@ -1,54 +1,63 @@
 # Roadmap
 
-Where the Prototype is going, stage by stage. The constitution
+Where the project is going, stage by stage. The constitution
 (`.specify/memory/constitution.md`) holds only what is true at every stage; everything that
 differs between stages lives here. Each stage's concrete work is opened as its own Spec Kit
-feature. Terms are defined in `CONTEXT.md`. Decided 2026-09-28.
+feature. Terms are defined in `CONTEXT.md`. First decided 2026-09-28; replaced 2026-10-08 by the
+platform direction (ADR 0004).
 
 ## Positioning
 
-> No HPC? Use an NCHC account or rent a cloud machine. Students describe the goal of their
-> experiment in conversation and go from raw data to publishable figures, tables and text. The
-> AI can be your own, and the data never leaves the lab.
+> 台灣版 Seqera: everything one lab uses from Seqera Platform, simpler, in Chinese, on an NCHC
+> account or the lab's own cloud account, with no paywall on members or runs. The platform has
+> no chat of its own; the lab talks to it from the harness it already uses.
 
-The Product is conversation-first, not a click-through GUI. Its core chain:
+The Product is a hosted platform (ADR 0004) reached through MCP:
 
-1. Draw the lab's experiment design out through conversation into an approved **Experiment spec**.
-2. Set up the matching nf-core pipeline from it.
-3. Run statistics and plot figures with ordinary **Python or R scripts**, following the
-   Operator's goal and preferred style. The scripts are handed over, so anyone can rerun them.
-4. Package figures, tables, and a methods text with citations in one step.
+1. A student describes the experiment in their own harness (Claude Desktop first); the harness
+   calls the platform's MCP tools.
+2. The platform sets up and launches the matching nf-core pipeline through a station agent that
+   reaches the site with the student's own credential.
+3. Statistics and figures are made with ordinary **Python or R scripts**, handed over so anyone
+   can rerun them.
+4. Figures, tables, and a methods text with citations are packaged in one step.
 
 It stops at figures and methods. Interpreting the results stays with the researcher.
 
-**Who:** the PI pays, and graduate students or research assistants operate it. The first labs
-are university agriculture, plant-pathology and microbiology labs, starting with 16S amplicon and
-RNA-seq. Hospitals are out of scope; human-subject data brings a separate body of regulation.
+**Who:** the PI pays and sees the whole lab; graduate students or research assistants operate
+it (ADR 0005). The first labs are university agriculture, plant-pathology and microbiology labs,
+starting with 16S amplicon and RNA-seq. Hospitals are out of scope; human-subject data brings a
+separate body of regulation.
 
-**What is sold:** a pre-installed Brain (local model, conversation, plotting, packaging) plus
-onboarding and support. Pipelines run on the Muscle, which is an HPC account or a rented cloud
-machine. The framework is open source (ADR 0002).
+**What is sold:** the hosted platform as a service, with onboarding and support. Compute runs on
+the lab's NCHC account or the lab's own cloud account, paid by the lab. The framework is open
+source (ADR 0002). A pre-installed box with a local model comes later (Stage 5).
 
 ## Stages
 
-Each stage changes exactly one thing, so a failure points at one cause. Engineering that is known
-to be doable comes first. Research with an unknown outcome (the local model) comes after it, and
-also waits for the evaluation Mac, which arrives in mid-October 2026.
+Each stage has a fixed done-when. One change is open at a time. Development and testing never go
+through Seqera's Services, its MCP server or `tw`; features are compared against Seqera's public
+documentation only (ADR 0004, `docs/SEQERA_PARITY.md`).
 
 | # | Stage | What changes | Done when |
 |---|---|---|---|
-| 1 | **Prototype** (now) | — Claude Code + Seqera Platform + NCHC HPC. Before moving on, the plugin is audited against the constitution and every violation found is fixed | Spec Kit adoption finished; constitution audit findings fixed; first feature through the full flow |
-| 2 | **Seqera optional** | Drive open-source Nextflow directly on HPC; read run state from Nextflow's own records; ship a local page to see progress and results (ADR 0001) | A 16S and an RNA-seq run complete on NCHC with no Seqera account |
-| 3 | **Local-model experiment** | Nothing ships. Run the evaluation below through Claude Code + Ollama (and llama.cpp) on a 48 GB Mac — no code change needed. Specified and planned as feature `001-local-model-eval`; implementation starts when the Mac arrives | The evaluation says whether a ~30B model is enough, which sets the Brain's hardware and price |
-| 4 | **Second host** | Keep Claude Code; add a Codex CLI adapter over the same host-independent core (ADR 0003). Codex cannot use Claude directly, so the safety-net tests are model-independent and must pass on both hosts; task tests keep Claude Code as the control | Safety-net tests green on both hosts |
-| 5 | **Cloud** | The Muscle can be one SSH-reachable Linux VM with Docker. The Operator creates it at first; automation comes later. TWCC is tried first, with GCP's Taiwan region as fallback | The same runs complete on a rented VM |
-| 6 | **Local model** | Ship a local open-weight model (Apache/MIT first, e.g. Qwen3.6) on the Brain, running on Codex — not on Claude Code, which cannot be redistributed | Evaluation below passes on the shipping host |
+| 0 | **Direction recorded** | ADR 0004 and 0005, ADR 0003 revised, constitution 3.0.0, this file, `docs/POSITIONING.md`, `docs/SEQERA_PARITY.md` | The maintainer merges constitution 3.0.0 |
+| 1 | **Station agent** (feature 007) | Seqera's Tower Agent pattern turned around: a small program on the user's machine (WSL) or the lab's always-on computer holds the SSH connection the user opened with their one-time code and connects outbound only to the platform for work. This repository's gates, preflight, relay and cleanup rules move into it | The agent runs on the maintainer's laptop; the platform's "list rawdata" and "launch ampliseq" both succeed through it; a gate refuses `rm results`; NCHC has answered M6 |
+| 2 | **Platform core** (features 008–010) | 008: Tower-compatible receiver for the `nf-tower` plugin's events, kept as a rebuildable index. 009: the MCP server, following Seqera MCP's tools plus `list_site_files`, `validate_samplesheet`, `estimate_su`, `read_task_log`, `run_downstream`, `build_package`; every write tool carries its own confirmation. 010: the two-role lab | A student in Claude Desktop runs a 16S analysis end to end from conversation, the PI sees it on the web, and nothing goes through Seqera |
+| 3 | **Web** (features 011–013) | 011: dashboard and run detail. 012: launch form from the pipeline schema, datasets, SU estimate with a cap. 013: rendered reports and the delivery package | Two members of the trial lab use it for two weeks with fewer than 10 new PITFALLS; the hosted service goes live (charging waits on the open questions below) |
+| 4 | **Cloud compute** | The station agent also runs on a VM the lab rents; Nextflow's AWS Batch executor; an estimate and cap before anything is billed; TWCC first | A lab with no NCHC account completes the same 16S |
+| 5 | **Model-neutral shipping** | Gates verified from Codex and other MCP clients; the local-model evaluation below (feature `001-local-model-eval`, when the evaluation Mac arrives); the box of ADR 0002 | The evaluation passes on the shipping host |
 
-Order changed 2026-09-29 by the maintainer: "Seqera optional" moved ahead of the local-model
-experiment, because the evaluation Mac arrives only in mid-October and the Seqera work needs no new
-hardware. Development toward stage 2 and beyond never goes through Seqera's Services (ADR 0001).
+Dropped on 2026-10-08: the old "local page to see progress and results" (replaced by the web of
+Stage 3) and the old "Codex adapter" stage (any MCP client is a host, ADR 0003).
 
-## Local-model evaluation (stages 3 and 6)
+Line A is unchanged: 2.17.0 goes to the trial lab first, and its installation steps are shown to
+the maintainer before they are sent.
+
+History: on 2026-09-29 the maintainer moved "Seqera optional" ahead of the local-model experiment
+(ADR 0001). That order is superseded by the stages above (ADR 0004).
+
+## Local-model evaluation (Stage 5)
 
 - A fixed, published task set covers 16S and RNA-seq on public test data.
 - Score the model's own work, not Nextflow's: is the Experiment spec → samplesheet and parameters
@@ -69,23 +78,33 @@ hardware. Development toward stage 2 and beyond never goes through Seqera's Serv
 ## Principles waiting for a check
 
 These are agreed but not yet in the constitution, because the constitution admits only rules a
-test or tool already enforces. Each is added by a MINOR amendment once its check exists.
+test or tool already enforces. Each is added by amendment once its check exists.
 
 | Principle | The check that has to exist first | Earliest stage |
 |---|---|---|
-| No pipeline is set up before the Operator approves the Experiment spec | A gate (hook or equivalent) refusing setup without an approved spec, plus its test | 1–4 |
-| Every Operator uses their own credentials; accounts are never shared (Anthropic's consumer terms forbid sharing, and HPC 2FA is per person) | A check that refuses a settings root already bound to another identity | 4 |
-| Model-neutral command layer: no command depends on one model's behaviour | The evaluation task set passing on a second model | 3–6 |
-| Any AI host without the safety net may query but never launch or delete | Safety-net tests that run against every supported host | 4 |
+| The platform's run index is never a second truth: it can be rebuilt from Nextflow's own records, and where they disagree the records win | A test that drops the index, rebuilds it from the records, and finds them equal | 2 |
+| The platform stores metadata only and never holds a site credential; credentials stay on the user's station agent | A test that the platform's store and API refuse or never receive a credential field | 1–2 |
+| Every platform write tool (launch, delete, clear `work/`) refuses without the user's confirmation step | A test per write tool: a call without the confirmation token is refused | 1–2 |
+| Gates live in the platform's tool layer, so whichever host calls a tool meets the same gate; the plugin's hooks become callers | The Safety Net's tests run against the tools, not the hooks | 1–2 |
+| PI and member roles are enforced: a member sees and runs their own work; a PI sees the lab and spends nothing by default; no lab sees another's | Role tests against the platform's API | 2 |
+| No pipeline is set up before the Operator approves the Experiment spec | A gate refusing setup without an approved spec, plus its test | 2 |
+| Every Operator uses their own credentials; accounts are never shared (Anthropic's consumer terms forbid sharing, and HPC 2FA is per person) | A check that refuses a station agent or settings root already bound to another identity | 1 |
+| Model-neutral command layer: no command depends on one model's behaviour | The evaluation task set passing on a second model | 5 |
+| A host reaches launch and delete only through tools that carry their own gate; a host that cannot show a confirmation cannot launch or delete | The tool-layer safety-net tests, run from more than one MCP client | 5 |
 | Data stays local: nothing leaves except what the Operator was told leaves. While Claude is the model, logs, samplesheets and error messages go to Anthropic, and the Prototype says so | A disclosure shown at first use, plus its test | 1 |
-| Any action that costs money needs the Operator's confirmation, and billable state is always visible and stoppable | A gate on billable cloud actions, plus its test | 5 |
+| Any action that costs money needs the Operator's confirmation, and billable state is always visible and stoppable | A gate on billable cloud actions, plus its test | 4 |
 
 ## Open questions (not decisions)
 
+Each must be answered before the hosted service charges anyone (Stage 3).
+
 - Can a person on alternative military service register a business, issue invoices or take
   payment? Ask the service authority before any money changes hands.
-- Before charging anyone, ask Seqera (or a lawyer) how its Terms of Use apply; check whether
-  nf-core has a trademark policy. The Product name cannot be "Nextflow <X>" (Nextflow trademark
-  policy).
+- How do Seqera's Terms of Use ("not for developing a competing product") read for a platform
+  built from public documentation only, never through Seqera's Services? Ask a lawyer or Seqera.
+  Check whether nf-core has a trademark policy. The Product name cannot be "Nextflow <X>"
+  (Nextflow trademark policy).
+- NCHC (M6, `docs/LAB_AGENTS.md`): may a login node keep a process running, and is automation on
+  one person's account allowed?
 - TWCC: how a lab without an NSTC project pays, whether a VM can run Docker and reach the internet,
   and how long account approval takes.

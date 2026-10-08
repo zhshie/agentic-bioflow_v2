@@ -32,6 +32,28 @@ Where pipelines actually compute: an HPC account (for labs with an NSTC project)
 cloud machine. It is an Execution backend seen from the Operator's side.
 _Avoid_: cluster (when cloud is also meant)
 
+**Platform** (平台):
+The planned self-hosted service of ADR 0004: everything a lab uses from Seqera Platform, hosted
+by the maintainer for many labs, with no chat of its own and reached through MCP. Not built yet.
+_Avoid_: Seqera Platform (when ours is meant), server
+
+**Station agent** (站台代理):
+A small program on the user's own machine or the lab's always-on computer that holds the site
+connection the user opened with their one-time code, and connects outbound only to the Platform
+to fetch work. The site credential never leaves it. Planned (Stage 1).
+_Avoid_: Tower Agent (that is Seqera's), daemon
+
+**Run index** (執行索引):
+The Platform's database of runs, built from the events Nextflow's `nf-tower` plugin sends. An
+index, never the truth: it can be rebuilt from Nextflow's own records, and they win when the two
+disagree. Planned (Stage 2).
+_Avoid_: run state, run database (when the truth is meant)
+
+**MCP tool layer** (MCP 工具層):
+The Platform's MCP tools, the one way an AI host acts on the Platform. Judgment stays in skills;
+the tools only act, and each write tool carries its own confirmation gate. Planned (Stage 2).
+_Avoid_: API (when the MCP tools are meant), plugin
+
 ### Who is involved
 
 **Buyer** (付費者):

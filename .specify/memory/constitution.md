@@ -13,23 +13,29 @@ exists.
 
 ## Core Principles
 
-### I. Build Only What Nobody Else Maintains
+### I. Build Only What Seqera Cannot or Will Not Do Here
 
 - **1.** Before anything is added, the change MUST name what Seqera, nf-core, or another
-  maintained tool already uses for the same job. Only when nothing can be named is it ours to
-  write. Every script under `scripts/` MUST state its answer in its own header:
-  `# Not <tool>: <reason>`, or `# Nothing existing: <why>` for thin glue.
+  maintained tool already uses for the same job, and then either reuse the open-source piece or
+  say why it does not serve a lab here: it cannot reach the site, it needs Seqera's Services, its
+  licence forbids the use, or its price does. Only then is it ours to write. Every script under
+  `scripts/` MUST state its answer in its own header: `# Not <tool>: <reason>`, or
+  `# Nothing existing: <why>` for thin glue.
   *Check:* `tests/scripts_name_their_alternative.sh`.
-- **2.** The execution backend is the single source of truth for run state: Seqera Platform
-  where it is used, Nextflow's own records where it is not. No file in this repository MAY keep
-  a second copy of a run's state, and there MUST be no submission script of our own, no state
-  machine, and no monitoring daemon. Where the backend is Seqera, the command layer follows
-  Seqera's nouns (compute environment, then pipelines → datasets → launch, then runs).
+- **2.** Nextflow's own records (trace, report, log, and the events its `nf-tower` plugin emits)
+  are the truth about a run. While the plugin uses Seqera Platform, Platform shows them; where
+  Platform's display and Nextflow's own records disagree, Nextflow's records win. No file in
+  this repository MAY keep a second copy of a run's state, and there MUST be no submission
+  script of our own, no state machine, and no monitoring daemon beyond the channels its check
+  allow-lists. Where the backend is Seqera, the
+  command layer follows Seqera's nouns (compute environment, then pipelines → datasets → launch,
+  then runs).
   *Check:* `tests/no_second_run_state_test.sh`.
 
 *Rationale:* three features were rebuilt here before anyone checked, and each was written and
-then deleted (PITFALLS 14). A second copy of run state drifts from the real one; making Seqera
-optional means reading Nextflow's own records, not rebuilding Platform (`docs/adr/0001`).
+then deleted (PITFALLS 14). A second copy of run state drifts from the real one. The platform of
+`docs/adr/0004` keeps an index of Nextflow's records, never a second truth; that rule joins here
+once its rebuild check exists (`docs/ROADMAP.md`, "Principles waiting for a check").
 
 ### II. Anyone, Anywhere
 
@@ -314,6 +320,40 @@ whose overview already says `已核可` stay valid.
 **Version.** MINOR, under Governance: no principle or Safety Net rule is removed or redefined;
 the Development Workflow is materially changed.
 
+### 3.0.0 (2026-10-08): a self-hosted platform, reached through MCP
+
+**Rationale.** On 2026-10-08 the maintainer changed the project's direction, in his words:
+「完全仿照 Seqera MCP 的模式，自建平台，功能延續 Seqera（一間實驗室用得到的全部＋簡化版多人），
+由我自己架雲端服務給大家用（像 cloud.seqera.io），對話不自己做——平台只開 MCP，使用者用自己的
+harness 接。」 `docs/adr/0004` records the decision and supersedes `docs/adr/0001`, which had
+ruled out rebuilding Platform; `docs/adr/0005` records the two-role lab. Principle 1 as written
+under 2.x forbade the platform outright, since Seqera already maintains one; principle 2 named
+"the execution backend" as the truth, which a platform of our own would become. Both are
+redefined so that they keep their purpose (do not rebuild what can be reused; never keep a
+second truth about a run) without forbidding the direction.
+
+**What changes.**
+- Principle I is retitled. Principle 1 still requires naming what Seqera, nf-core or another
+  maintained tool does for the same job, and now asks for one of two answers: reuse the
+  open-source piece, or say why it does not serve a lab here. Its check is unchanged.
+- Principle 2 names Nextflow's own records as the truth about a run, and says they win where
+  Seqera Platform's display disagrees. Its prohibitions and its check are unchanged. The
+  platform's run index is not written in as a rule yet: it is in `docs/ROADMAP.md`, "Principles
+  waiting for a check", until its rebuild test exists.
+- The Safety Net is unchanged, word for word. "Gates live in the platform's tool layer" is also
+  waiting for a check in `docs/ROADMAP.md`. Scope condition 3 names Seqera or Tower MCP tools
+  only; whether a call to the platform's own MCP tools counts as in use is decided by the
+  amendment that moves a gate there.
+- Development and testing toward the platform never go through Seqera's Services, its MCP
+  server or `tw` (`docs/adr/0004`).
+
+**Impact on existing deployments.** None. No hook, script, command or skill changes; 2.17.0
+behaves exactly as before, and the whole test suite passes with only the documents that quote
+these principles updated.
+
+**Version.** MAJOR, under Governance: principles 1 and 2 are redefined.
+**Approval.** The maintainer approves and merges the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -328,4 +368,4 @@ the Development Workflow is materially changed.
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 2.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-07
+**Version**: 3.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-08

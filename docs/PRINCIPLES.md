@@ -20,22 +20,30 @@ in a conversation does not survive the conversation.
 
 ## A. What this bridge is for
 
-**1. Build only what Seqera, nf-core, or any tool someone already maintains
-does not already do.**
+**1. Build only what Seqera cannot or will not do here; reuse open source for
+the rest.**
 
 The three things this project rebuilt before checking are in PITFALLS 14: a
 biotype warning nf-core already emits, a STAR index calculation the module
 already performs, and a samplesheet generator that shipped with the pipeline.
-Each was written, then deleted.
+Each was written, then deleted. That lesson still stands: name the existing
+tool first. What changed on 2026-10-08 (constitution 3.0.0, ADR 0004) is what
+counts as an answer. Until then, "Seqera already does it" ended the question,
+and so ruled out a platform of our own. Now Seqera is the comparison, not the
+substitute: the answer is either to reuse the open-source piece (Nextflow's
+`nf-tower` plugin, nf-core, MultiQC) or to say why it does not serve a lab here
+(it cannot reach the site, it needs Seqera's Services, its licence or its price).
 
-**2. Follow Seqera's shape; do not invent a parallel one.**
+**2. Nextflow's own records are the truth about a run; do not keep a second
+one.**
 
-The commands are Seqera's nouns — compute environment, then
-pipelines → datasets → launch, then runs. A user who knows Seqera already knows
-this tool, and anything Seqera ships later lands in a slot that already exists.
-The execution backend is the single source of truth for run state — Seqera
-Platform where it is used, Nextflow's own records where it is not
-(constitution, invariant 2) — and no file here keeps a second copy.
+While the plugin uses Seqera Platform, the commands are Seqera's nouns —
+compute environment, then pipelines → datasets → launch, then runs — so a user
+who knows Seqera already knows this tool. Underneath, Nextflow's own records
+are the truth, and where Platform's display disagrees they win (constitution,
+invariant 2); no file here keeps a second copy. The platform of ADR 0004 will
+keep an index of those records, rebuildable from them; that rule waits for its
+check in `docs/ROADMAP.md`.
 
 ## B. Who can use it, and where
 
@@ -302,7 +310,7 @@ answers are outside this repo.
 |---|---|---|
 | Resource-floor mapping | **upstream `nf-core/configs`** | 160 institutional configs already live there, installed by nobody. Kept here it helps only us |
 | Launchpad entries, datasets, pipeline schemas | **the Seqera workspace** | That is Seqera's data model. This is why there are no per-pipeline spec files here |
-| Platform operations | **Seqera's own `tw` and MCP server** | Their MCP already exposes the Platform API. Wrapping it again violates invariant 1 |
+| Platform operations | **Seqera's own `tw`** in 2.17.0; **the platform's own MCP server** once it exists (ADR 0004) | Wrapping Seqera's MCP adds nothing; the platform replaces it rather than wrapping it |
 | Judgment, safety net, entry points | **this plugin** | What is left once the rest goes where it belongs |
 
 Inside the plugin: the **skill** is the heart, because it is the only part that
@@ -312,18 +320,19 @@ genuinely requires a plugin: a gate must fire whether or not the model chose to
 load anything. **Commands** are thin entry points. **Scripts** and **docs** are
 the portable substance.
 
-Not an MCP server, for four reasons: Seqera already ships one (invariant 1); the
-site operations that remain are five shell scripts on a host that can run shell;
-an MCP tool cannot carry procedure or judgment, which is most of the value here;
-and a script stays runnable by a person or another model (invariant 5). Between
-`tw` and Seqera's MCP, both are Seqera's, so invariant 1 does not decide —
-invariant 5 does. Use `tw`; treat the MCP as opportunistic, never a dependency.
+**The platform is an MCP server** (ADR 0004, 2026-10-08). Until then this
+section gave four reasons not to be one: Seqera already ships one; the site
+operations were a few shell scripts on a host that can run shell; an MCP tool
+cannot carry procedure or judgment; and a script stays runnable by a person or
+another model. The first two fell with the direction: the platform is ours, and
+it must be callable from whatever harness the user brings, which only MCP
+offers. The last two still hold, and now decide the split instead of the
+answer: judgment and procedure stay in skills and `docs/`, MCP tools only act,
+and every action stays a script a person can run (invariant 5).
 
-When to look at this again: only when an agent that is not Claude Code needs
-a read-only question answered that neither Seqera's MCP (run state) nor the
-lab's record system (experiments, samples) can answer - "every run and output
-for this sample", say. "Everyone ships an MCP server" is not that condition.
-Which agents may touch what is `docs/LAB_AGENTS.md`.
+Until the platform's tools exist, 2.17.0 works as described above: `tw` for
+Platform operations, Seqera's MCP opportunistic, never a dependency. Which
+agents may touch what is `docs/LAB_AGENTS.md`.
 
 ---
 

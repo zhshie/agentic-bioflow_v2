@@ -54,8 +54,9 @@ works when nobody types a slash command: "I want to run RNA-seq" should reach
 this tool the same way `/agentic-bioflow:launch` does.
 
 Everything else is deliberately not built: no submission script, no run-state
-machine, no monitoring daemon, no per-pipeline parameter specs. Platform,
-`nextflow_schema.json` and `assets/schema_input.json` already provide them.
+machine, no monitoring daemon, no per-pipeline parameter specs. Platform (whose runs rest on
+Nextflow's own records, the truth under constitution 3.0.0), `nextflow_schema.json` and
+`assets/schema_input.json` already provide them.
 
 ## Requirements
 
