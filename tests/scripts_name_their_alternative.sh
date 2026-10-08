@@ -1,8 +1,10 @@
 #!/bin/bash
-# Invariant 1 (docs/PRINCIPLES.md, constitution I.1): before adding anything,
-# say out loud what Seqera, nf-core or any other maintained tool already does
-# the job. That was a spoken check, easy to skip under a deadline - this makes
-# it mechanical.
+# Invariant 1 (docs/PRINCIPLES.md, constitution 3.0.0, I.1): build only what
+# Seqera cannot or will not do here. Before adding anything, say out loud what
+# Seqera, nf-core or any other maintained tool already uses for the same job,
+# then reuse the open-source piece or say why it does not serve a lab here.
+# That was a spoken check, easy to skip under a deadline - this makes it
+# mechanical.
 #
 # Every file under scripts/ (and scripts/utils/) and under hooks/ must carry,
 # in its first 40 lines, a line of the form
