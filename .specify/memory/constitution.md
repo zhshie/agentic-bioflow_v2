@@ -338,7 +338,7 @@ second truth about a run) without forbidding the direction.
   open-source piece, or say why it does not serve a lab here. Its check is unchanged.
 - Principle 2 names Nextflow's own records as the truth about a run, and says they win where
   Seqera Platform's display disagrees. Its prohibitions and its check are unchanged. The
-  platform's run index is not written in as a rule yet: it is in `docs/ROADMAP.md`, "Principles
+  platform's index of runs is not written in as a rule yet: it is in `docs/ROADMAP.md`, "Principles
   waiting for a check", until its rebuild test exists.
 - The Safety Net is unchanged, word for word. "Gates live in the platform's tool layer" is also
   waiting for a check in `docs/ROADMAP.md`. Scope condition 3 names Seqera or Tower MCP tools
