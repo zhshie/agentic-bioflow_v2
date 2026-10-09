@@ -94,13 +94,18 @@ has "TC-011: self-hosted platform"                               "$ADR4" 'We bui
 has "TC-011: Tower-compatible API"                               "$ADR4" 'Tower-compatible'
 has "TC-011: ...so the nf-tower plugin reports straight to it"   "$ADR4" '`nf-tower` plugin (Apache-2.0)'
 has "TC-011: ...via tower.endpoint"                              "$ADR4" '`tower.endpoint`'
-has "TC-011: MCP is the only AI entry point"                     "$ADR4" 'MCP is the only AI entry point'
+has "TC-011: every AI path goes through the MCP tools"           "$ADR4" 'Every AI path goes through the MCP tools'
+has "TC-011: ...the platform's own chat is one such client"      "$ADR4" "the platform's own chat on the web, which connects to the model the user chooses, calls them"
 has "TC-011: the platform stores metadata only"                  "$ADR4" 'The platform stores metadata only'
 has "TC-011: site credentials never reach the platform"          "$ADR4" 'site credentials never reach the platform'
 has "TC-011: station agent connects outbound only"               "$ADR4" 'connects outbound only to the platform'
 
 O4=$(sec "$ADR4" '^## Considered Options' '^## ')
-inn "TC-012: rejected: our own harness or chat UI"                "$O4" 'Write our own harness or chat UI**: rejected'
+inn "TC-012: rejected: our own general-purpose harness"           "$O4" 'Write our own general-purpose harness**: rejected; harnesses are maintained by others'
+inn "TC-012: ...the platform's chat drives only its own tools"    "$O4" "The platform's chat drives only the platform's own tools"
+nin "TC-012: 'harness or chat UI' is no longer listed as rejected" "$O4" 'harness or chat UI'
+inn "TC-012: 'only MCP, no chat' is replaced on 2026-10-09"       "$O4" "Only MCP, no chat of our own (this record's first version, 2026-10-08)**: replaced on 2026-10-09"
+nin "TC-012: ...and is not listed as rejected"                    "$(printf '%s\n' "$O4" | flat | grep -oE 'Only MCP, no chat.{0,200}' | sed -E 's/- \*\*.*//')" 'rejected'
 inn "TC-012: rejected: fork of the archived nf-tower CE (MPL-2.0)" "$O4" 'Fork nf-tower Community Edition'
 inn "TC-012: ...MPL-2.0 and archived"                             "$O4" 'MPL-2.0'
 inn "TC-012: ...archived"                                         "$O4" 'archived'
@@ -112,7 +117,9 @@ inn "TC-013: consequences cite constitution 3.0.0"                "$Q4" 'Constit
 inn "TC-013: ...ADR 0003 is revised"                              "$Q4" 'ADR 0003 is revised'
 inn "TC-013: ...ADR 0001's Terms-of-Use reason still holds"       "$Q4" "ADR 0001's Terms-of-Use reason still holds"
 inn "TC-013: ...ADR 0002 stands, revenue gains a hosted service"  "$Q4" 'ADR 0002 stands for the code; the revenue gains a hosted service'
-inn "TC-013: ...one person rebuilding part of a company's product" "$Q4" "one person rebuilding part of a company's"
+inn "TC-013: ...Seqera Platform is the reference, narrowed to what a lab here uses" "$Q4" 'Seqera Platform is the reference: features follow its public documentation, narrowed to what a lab here uses'
+if flat < "$ADR4" | grep -qiF "rebuilding part of a company"; then bad "TC-013: ADR 0004 has no 'rebuilding part of a company'"; else ok "TC-013: ADR 0004 has no 'rebuilding part of a company'"; fi
+if flat < "$ADR4" | grep -qF "重做"; then bad "TC-013: ADR 0004 has no 重做"; else ok "TC-013: ADR 0004 has no 重做"; fi
 
 [ -f "$ADR5" ] && ok "TC-014: $ADR5 exists" || bad "TC-014: $ADR5 exists"
 has "TC-014: role member"                                         "$ADR5" 'A **member** runs their own analyses'
@@ -135,6 +142,8 @@ else bad "TC-015: ADR 0001 file found"; fi
 
 has "TC-016: host is any MCP client"                              "$ADR3" 'the host is whatever MCP client the user already has'
 has "TC-016: Claude Desktop first"                                "$ADR3" 'Claude Desktop first'
+has "TC-016: the platform's own chat is one more host"            "$ADR3" "The platform's own chat (ADR 0004, Stage 3) is one more host of the same tools"
+has "TC-016: general-purpose harness of our own still rejected"   "$ADR3" 'Our own general-purpose harness**: rejected in ADR 0004'
 has "TC-016: gates move into the platform's tool layer"           "$ADR3" "move into the platform's tool layer"
 has "TC-016: a host without hooks still cannot skip them"         "$ADR3" 'a host without hooks still cannot skip them'
 has "TC-016: the Claude Code plugin becomes a thin shell"         "$ADR3" 'becomes a thin shell'
@@ -182,7 +191,8 @@ inn "TC-022: stage table has a Done when column"                  "$STG" '| Done
 inn "TC-022: stage 0 is docs (direction recorded)"                "$STG" '| 0 | **Direction recorded**'
 inn "TC-022: stage 1 is the station agent (feature 007)"          "$STG" '| 1 | **Station agent** (feature 007)'
 inn "TC-022: stage 2 is platform core (008-010)"                  "$STG" '| 2 | **Platform core** (features 008–010)'
-inn "TC-022: stage 3 is web (011-013)"                            "$STG" '| 3 | **Web** (features 011–013)'
+inn "TC-022: stage 3 is web (011-014)"                            "$STG" '| 3 | **Web** (features 011–014)'
+inn "TC-022: 014 is the platform's chat, user-chosen model, MCP tools only" "$STG" "014: the platform's chat, connecting to the model the user chooses (their own API key or a local model) and calling only the MCP tools of 009"
 inn "TC-022: stage 4 is cloud compute"                            "$STG" '| 4 | **Cloud compute**'
 inn "TC-022: stage 5 is model-neutral shipping"                   "$STG" '| 5 | **Model-neutral shipping**'
 # every stage row has a non-empty last cell
@@ -222,7 +232,10 @@ inn "TC-025: the evaluation body is still there (20 runs, 18 of 20)" "$(sec "$RM
 
 # TC-026 / TC-027: POSITIONING
 has "TC-026: one-line positioning is 台灣版 Seqera"                 "$POS" '> 台灣版 Seqera'
-has "TC-026: core features: the platform only opens MCP, bring your own harness" "$POS" '平台只開 MCP，對話用你自己的 AI'
+has "TC-026: one-liner: own chat, model you choose, plus your own AI via MCP" "$POS" '平台有自己的聊天介面，可接你選的模型；也可以用你已經在用的 AI（Claude Desktop 等）透過 MCP 接上'
+has "TC-026: feature 2: MCP, your own AI or the platform's own chat" "$POS" '平台只開 MCP，對話用你自己的 AI，或平台自己的聊天介面'
+has "TC-026: feature 2: own API key or local model, same MCP tools" "$POS" '接自己選的模型（自己的 API key 或本地模型），它走的是同一組 MCP 工具'
+hasnt "TC-026: POSITIONING no longer says the platform does not do its own chat" "$POS" '平台不自己做對話'
 has "TC-027: competitor table: Seqera MCP, no confirmation mechanism in its docs" "$POS" '文件中查不到確認機制'
 has "TC-027: competitor table: pynf-agent"                        "$POS" '**pynf-agent**'
 has "TC-027: competitor table: Agent Skills standard"             "$POS" '**Agent Skills 標準**'
@@ -256,7 +269,12 @@ for item in 'Dashboard' 'Parameter form from the pipeline schema' 'Reports' 'two
   if grep -F '★' "$PAR" | grep -vF 'marked ★' | grep -qF -- "$item"; then ok "TC-028: ★ item: $item"; else bad "TC-028: ★ item: $item"; fi
 done
 
+if grep -F 'Co-Scientist' "$PAR" | grep -F 'Build' | grep -qvF '★'; then ok "TC-028: Co-Scientist row gains Build and carries no ★"; else bad "TC-028: Co-Scientist row gains Build and carries no ★"; fi
+has "TC-028: Co-Scientist Build is the platform's own chat (Stage 3, feature 014)" "$PAR" "Build: the platform's own chat with the model the user chooses (Stage 3, feature 014)"
+
 # TC-029 / TC-034: CONTEXT.md
+PLAT=$(awk 'index($0,"**Platform** ")==1{f=1;next} f&&/^$/{exit} f' CONTEXT.md)
+inn "TC-029: Platform is reached through MCP tools from its own chat or the user's harness" "$PLAT" "reached through MCP tools from its own chat or from the user's harness"
 for term in 'Platform' 'Station agent' 'Run index' 'MCP tool layer'; do
   if grep -qE "^\*\*$term\*\* " CONTEXT.md; then ok "TC-029: CONTEXT.md defines $term"; else bad "TC-029: CONTEXT.md defines $term"; fi
 done
@@ -275,7 +293,8 @@ else
 fi
 
 # TC-032: line A is new text in ROADMAP (not on main): present.
-has "TC-032: ROADMAP line A: 2.17.0 goes to the trial lab first"  "$RM" '2.17.0 goes to the trial lab first'
+has "TC-032: ROADMAP line A sentence present"                     "$RM" 'Line A is unchanged: 2.17.0 goes to the trial lab first'
+has "TC-032: ...installation steps shown to the maintainer"       "$RM" 'its installation steps are shown to the maintainer before they are sent'
 
 # TC-038: ROADMAP names all three.
 has "TC-038: ROADMAP: development and testing never go through Seqera's Services, its MCP server or tw" "$RM" "Development and testing never go through Seqera's Services, its MCP server or \`tw\`"
@@ -287,6 +306,33 @@ has "TC-059: CLAUDE.md still has 'Constitution 2.0.0'"             CLAUDE.md 'Co
 has "TC-059: CLAUDE.md still has 'hooks/in_use.sh'"                CLAUDE.md 'hooks/in_use.sh'
 has "TC-059: README.md: Platform's runs rest on Nextflow's own records" README.md "Nextflow's own records, the truth under constitution 3.0.0"
 has "TC-059: README.md still has 'Constitution 2.0.0'"             README.md 'Constitution 2.0.0'
+
+# TC-060: the platform's own chat (maintainer, 2026-10-09: 「也做聊天介面 可接模型」)
+CHATC=$(sec "$C" '^### 3[.]0[.]0 [(]2026-10-08[)]' '^##+ ')
+# (a) the chat is a Stage 3 web page (014 in ROADMAP), not a separate product
+has "TC-060a: ADR 0004: the chat is a page of the web (Stage 3)"   "$ADR4" 'It is a page of the web (Stage 3)'
+has "TC-060a: ROADMAP: 014 is the platform's chat inside Stage 3"  "$RM" '| 3 | **Web** (features 011–014)'
+has "TC-060a: ROADMAP positioning: the platform's own chat"        "$RM" "from the platform's own chat, with the model it chooses, or from the harness it already uses"
+# (b) the user picks and pays for the model
+has "TC-060b: ADR 0004: user picks the model and pays (API key or local model)" "$ADR4" 'the user picks the model and pays for it (their own API key, or a local model)'
+has "TC-060b: ROADMAP: their own API key or a local model"         "$RM" 'their own API key or a local model'
+# (c) only through the same MCP tools; no gate or rule of its own
+has "TC-060c: ADR 0004: only the same MCP tools, confirmation looks the same" "$ADR4" 'the chat reaches the platform only through the same MCP tools, so a confirmation looks the same in the chat as in any harness'
+has "TC-060c: ADR 0004: no gate or rule of its own"                "$ADR4" 'carries no gate or rule of its own'
+has "TC-060c: ROADMAP: chat calls only the MCP tools of 009"       "$RM" 'calling only the MCP tools of 009'
+# (d) no general-purpose harness of our own: still rejected in 0004 and 0003
+inn "TC-060d: ADR 0004 still rejects a general-purpose harness"    "$O4" 'general-purpose harness**: rejected'
+has "TC-060d: ADR 0003 still rejects it"                           "$ADR3" 'Our own general-purpose harness**: rejected in ADR 0004'
+# (e) bring-your-own harness through MCP stays
+has "TC-060e: ADR 0004: any harness the user already has calls the tools too" "$ADR4" 'so does any harness the user already has (Claude Desktop first; Claude Code, Codex and other MCP clients too)'
+has "TC-060e: ADR 0003: Claude Desktop first is still a host"      "$ADR3" 'Claude Desktop first, then Claude Code, Codex and others'
+# (f) the amendment record carries his words; Safety Net unchanged (TC-040..044, constitution_scope_test)
+inn "TC-060f: constitution 3.0.0 record has 「也做聊天介面 可接模型」"  "$CHATC" '「也做聊天介面 可接模型」'
+inn "TC-060f: ...and says it calls the same MCP tools"              "$CHATC" 'it calls the same MCP tools'
+# (g) ADR 0004: no 重做 / rebuilding part of a company's product; Seqera Platform is the reference
+if flat < "$ADR4" | grep -qF "重做"; then bad "TC-060g: ADR 0004 has no 重做"; else ok "TC-060g: ADR 0004 has no 重做"; fi
+if flat < "$ADR4" | grep -qiF "rebuilding part of a company"; then bad "TC-060g: ADR 0004 has no 'rebuilding part of a company'"; else ok "TC-060g: ADR 0004 has no 'rebuilding part of a company'"; fi
+has "TC-060g: ADR 0004: Seqera Platform is the reference"          "$ADR4" 'Seqera Platform is the reference'
 
 # TC-038/TC-039 (continued): the other planning documents.
 has "TC-039: ROADMAP positioning: each member uses their own credential on their own station agent" "$RM" 'student'"'"'s own credential'
