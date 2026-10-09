@@ -14,7 +14,7 @@ Claude Code plugin stays and becomes a thin shell; the local-model box moves lat
 is paid from the user's own cloud account; one trial lab with an NCHC account, within three months.
 
 Examples he gave of what the result must make true (quoted for the reviewer):
-- 「平台只開 MCP，使用者用自己的 harness 接」 → no conversation UI of our own is planned anywhere.
+- 「平台只開 MCP，使用者用自己的 harness 接」 → no conversation UI of our own is planned anywhere. *(Superseded 2026-10-09: the platform gets its own chat; see the Revision section.)*
 - 「簡化版多人：PI／成員兩角色」 → no organisation / workspace / team layer is planned.
 - 「開發與測試全程不經 Seqera 的服務／MCP／tw」 → every document that plans new work says so.
 - 「平台不持有國網憑證；只存 metadata」 → the platform design never stores a site credential.
@@ -28,11 +28,11 @@ All of this is documentation; no script, hook, command or skill changes behaviou
    plugin (`tower.endpoint`, Apache-2.0) sends run events to it with no change to Nextflow and no
    monitoring daemon of ours; MCP is the only AI entry point; the platform stores metadata only;
    site credentials stay with a station agent on the user's side that connects outbound only.
-   Considered and rejected: our own harness / chat UI; forking the archived nf-tower CE
+   Considered and rejected: our own harness / chat UI *(superseded 2026-10-09: only a general-purpose harness stays rejected)*; forking the archived nf-tower CE
    (MPL-2.0, Groovy/Angular); organisation / workspace layers; Studios (the user's own IDE
    instead). Consequences: constitution 3.0.0; ADR 0003 revised; the 0001 Terms-of-Use reason
    still holds (development never goes through Seqera's Services); ADR 0002's revenue line gains
-   a hosted service, the box moves later. Names the cost honestly: one person rebuilding part
+   a hosted service, the box moves later. *(Superseded 2026-10-09: the cost sentence is removed; Seqera is named as the reference.)* Names the cost honestly: one person rebuilding part
    of a company's product, bought with time and narrowed to what a Taiwanese lab uses.
 2. **`docs/adr/0005-single-lab-multiuser.md`** (new). Labs are separate on the hosted service (nothing above a lab), two roles (PI sees
    everything in the lab and spends nothing by default; member runs their own work), each person
