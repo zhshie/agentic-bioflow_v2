@@ -68,8 +68,8 @@ Judgment, procedure and site operations live in `docs/` and `scripts/`, which a
 person or another model can read and run directly. The host's own capabilities —
 hooks, skills, commands — are used fully, because dropping hooks would drop the
 safety net and dropping the skill would leave a tool that exists only when
-someone types a slash. The stronger form - a host that lacks the safety net may
-query but never launch or delete - is agreed but has no check yet, so it waits
+someone types a slash. The stronger form - a host reaches launch and delete only
+through tools that carry their own gate - is agreed but has no check yet, so it waits
 in `docs/ROADMAP.md` ("Principles waiting for a check") rather than in the
 constitution.
 
