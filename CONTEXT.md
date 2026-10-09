@@ -34,7 +34,8 @@ _Avoid_: cluster (when cloud is also meant)
 
 **Platform** (平台):
 The planned self-hosted service of ADR 0004: everything a lab uses from Seqera Platform, hosted
-by the maintainer for many labs, with no chat of its own and reached through MCP. Not built yet.
+by the maintainer for many labs, reached through MCP tools from its own chat or from the
+user's harness. Not built yet.
 _Avoid_: Seqera Platform (when ours is meant), server
 
 **Station agent** (站台代理):

@@ -325,7 +325,9 @@ the Development Workflow is materially changed.
 **Rationale.** On 2026-10-08 the maintainer changed the project's direction, in his words:
 「完全仿照 Seqera MCP 的模式，自建平台，功能延續 Seqera（一間實驗室用得到的全部＋簡化版多人），
 由我自己架雲端服務給大家用（像 cloud.seqera.io），對話不自己做——平台只開 MCP，使用者用自己的
-harness 接。」 `docs/adr/0004` records the decision and supersedes `docs/adr/0001`, which had
+harness 接。」 Reviewing this amendment on 2026-10-09 he added the platform's own chat, connecting
+to the model the user chooses (「也做聊天介面 可接模型」); it calls the same MCP tools.
+`docs/adr/0004` records the decision and supersedes `docs/adr/0001`, which had
 ruled out rebuilding Platform; `docs/adr/0005` records the two-role lab. Principle 1 as written
 under 2.x forbade the platform outright, since Seqera already maintains one; principle 2 named
 "the execution backend" as the truth, which a platform of our own would become. Both are

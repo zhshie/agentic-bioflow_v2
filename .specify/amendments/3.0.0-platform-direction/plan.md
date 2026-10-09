@@ -133,3 +133,26 @@ The suite checks the constitution's text in places. Expected to go red and be fi
 Any code for the platform, the station agent or the MCP server; changing any hook, script,
 command or skill; README / CLAUDE.md rewrites (they describe 2.17.0, which is still what ships);
 ADR 0002 itself; a release. (CLAUDE.md / README.md: only the one sentence each in item 12.)
+
+## Revision 2026-10-09: the maintainer's review of PR #72
+
+His answers, in his words: 「1. 保留 2. 不要特別寫到重做 只說參考 3. 也做聊天介面 可接模型 同意merge」.
+
+1. ROADMAP "Line A is unchanged…" sentence: kept as written (it is new text, not a copy of main;
+   TC-032's "same as main" premise is replaced by "the sentence is present").
+2. ADR 0004 Consequences: the sentence about one person rebuilding part of a company's product
+   is removed; it now says Seqera Platform is the reference, narrowed to what a lab here uses.
+3. The platform gets its own chat (web, Stage 3, feature 014) that connects to the model the
+   user chooses (their own API key or a local model) and reaches the platform only through the
+   same MCP tools; bring-your-own harness through MCP stays. Edited: ADR 0004 (title, intro,
+   his 10-09 words, a "How it is built" bullet, Considered Options: "only MCP, no chat" replaced;
+   "general-purpose harness of our own" still rejected), ADR 0003 (the chat is one more host),
+   ROADMAP (Positioning, flow step 1, Stage 3 = 011–014), POSITIONING (one-liner, feature 2),
+   CONTEXT (Platform), SEQERA_PARITY (Co-Scientist row gains Build, not ★: the ★ count stays 4),
+   constitution amendment record rationale (one sentence). Safety Net and principles unchanged.
+
+Tests to change: TC-012 (rejected options), TC-013 (cost sentence gone, "reference" present),
+TC-026 (one-liner/feature 2 wording), TC-032 (premise), TC-035 (no longer "no chat anywhere":
+the chat is planned, calls only the MCP tools, and no general-purpose harness is planned), plus
+a new TC for the chat's three properties (own page in Stage 3, user-chosen model paid by the user,
+only through the MCP tools) in ADR 0004 and ROADMAP.

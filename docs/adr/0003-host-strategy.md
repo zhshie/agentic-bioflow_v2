@@ -5,8 +5,8 @@ CLI as a second host through a thin adapter; that is replaced below. Its licence
 findings still hold and are kept.
 
 Under ADR 0004 the platform is reached through MCP, so the host is whatever MCP client the user
-already has: Claude Desktop first, then Claude Code, Codex and others. No host gets an adapter of
-its own. The gates (launch confirmation, cleanup confirmation, walkthrough, protected paths) move
+already has: Claude Desktop first, then Claude Code, Codex and others. The platform's own chat
+(ADR 0004, Stage 3) is one more host of the same tools. No host gets an adapter of its own. The gates (launch confirmation, cleanup confirmation, walkthrough, protected paths) move
 into the platform's tool layer as each action becomes a platform tool, so a host without hooks
 still cannot skip them: a write tool answers "needs confirmation", the host shows that, the user
 says yes, and the call is repeated with the token. Until then the gates stay where they are, in
@@ -39,7 +39,7 @@ protect every host.
 
 - **Claude Code plus a Codex adapter (the first version)**: replaced; an adapter per host does
   not scale, and the platform needs to be callable from hosts we do not maintain.
-- **Our own harness**: rejected in ADR 0004.
+- **Our own general-purpose harness**: rejected in ADR 0004; the platform's chat drives only the platform's tools.
 - **OpenCode, Goose as hosts with our hooks**: no longer the question; any of them is a host if
   it speaks MCP.
 

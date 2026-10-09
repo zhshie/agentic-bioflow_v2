@@ -9,13 +9,13 @@ platform direction (ADR 0004).
 ## Positioning
 
 > 台灣版 Seqera: everything one lab uses from Seqera Platform, simpler, in Chinese, on an NCHC
-> account or the lab's own cloud account, with no paywall on members or runs. The platform has
-> no chat of its own; the lab talks to it from the harness it already uses.
+> account or the lab's own cloud account, with no paywall on members or runs. The lab talks to
+> it from the platform's own chat, with the model it chooses, or from the harness it already uses.
 
 The Product is a hosted platform (ADR 0004) reached through MCP:
 
-1. A student describes the experiment in their own harness (Claude Desktop first); the harness
-   calls the platform's MCP tools.
+1. A student describes the experiment in the platform's chat or in their own harness (Claude
+   Desktop first); either one calls the platform's MCP tools.
 2. The platform sets up and launches the matching nf-core pipeline through a station agent that
    reaches the site with the student's own credential.
 3. Statistics and figures are made with ordinary **Python or R scripts**, handed over so anyone
@@ -44,7 +44,7 @@ documentation only (ADR 0004, `docs/SEQERA_PARITY.md`).
 | 0 | **Direction recorded** | ADR 0004 and 0005, ADR 0003 revised, constitution 3.0.0, this file, `docs/POSITIONING.md`, `docs/SEQERA_PARITY.md` | The maintainer merges constitution 3.0.0 |
 | 1 | **Station agent** (feature 007) | Seqera's Tower Agent pattern turned around: a small program on the user's machine (WSL) or the lab's always-on computer holds the SSH connection the user opened with their one-time code and connects outbound only to the platform for work. This repository's gates, preflight, relay and cleanup rules move into it | The agent runs on the maintainer's laptop; the platform's "list rawdata" and "launch ampliseq" both succeed through it; a gate refuses `rm results`; NCHC has answered M6 |
 | 2 | **Platform core** (features 008–010) | 008: Tower-compatible receiver for the `nf-tower` plugin's events, kept as a rebuildable index. 009: the MCP server, following Seqera MCP's tools plus `list_site_files`, `validate_samplesheet`, `estimate_su`, `read_task_log`, `run_downstream`, `build_package`; every write tool carries its own confirmation. 010: the two-role lab | A student in Claude Desktop runs a 16S analysis end to end from conversation, the PI sees it on the web, and nothing goes through Seqera |
-| 3 | **Web** (features 011–013) | 011: dashboard and run detail. 012: launch form from the pipeline schema, datasets, SU estimate with a cap. 013: rendered reports and the delivery package | Two members of the trial lab use it for two weeks with fewer than 10 new PITFALLS; the hosted service goes live (charging waits on the open questions below) |
+| 3 | **Web** (features 011–014) | 011: dashboard and run detail. 012: launch form from the pipeline schema, datasets, SU estimate with a cap. 013: rendered reports and the delivery package. 014: the platform's chat, connecting to the model the user chooses (their own API key or a local model) and calling only the MCP tools of 009 | Two members of the trial lab use it for two weeks with fewer than 10 new PITFALLS; the hosted service goes live (charging waits on the open questions below) |
 | 4 | **Cloud compute** | The station agent also runs on a VM the lab rents; Nextflow's AWS Batch executor; an estimate and cap before anything is billed; TWCC first | A lab with no NCHC account completes the same 16S |
 | 5 | **Model-neutral shipping** | Gates verified from Codex and other MCP clients; the local-model evaluation below (feature `001-local-model-eval`, when the evaluation Mac arrives); the box of ADR 0002 | The evaluation passes on the shipping host |
 

@@ -91,7 +91,7 @@ Not needed (Wave is AGPL-3.0; Fusion needs a Seqera licence even outside Platfor
 
 | Item | Verdict | Done |
 |---|---|---|
-| Co-Scientist equivalent | Have (the user's own harness) | |
+| Co-Scientist equivalent | Have (the user's own harness); Build: the platform's own chat with the model the user chooses (Stage 3, feature 014) | [ ] |
 | Seqera MCP | Build: our own MCP server (Stage 2) | [ ] |
 | nf-core pipeline search | Have | |
 | SRA / public data | Have | |

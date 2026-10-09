@@ -1,17 +1,19 @@
-# A self-hosted platform with a Tower-compatible API, reached only through MCP
+# A self-hosted platform with a Tower-compatible API, reached through MCP tools, with its own chat
 
 Supersedes ADR 0001 (2026-10-08).
 
 We build and host our own platform for running Nextflow / nf-core pipelines: everything one lab
 uses from Seqera Platform, a simplified two-role lab (ADR 0005), hosted by the maintainer for
-other labs the way cloud.seqera.io is hosted. It has no conversation of its own. Its only AI
-entry point is an MCP server, and the user brings their own harness (Claude Desktop first;
-Claude Code, Codex and other MCP clients too). The goal is the lowest learning cost for a lab in
-Taiwan.
+other labs the way cloud.seqera.io is hosted. Every AI path goes through its MCP tools: the
+platform's own chat on the web, which connects to the model the user chooses, calls them, and so
+does any harness the user already has (Claude Desktop first; Claude Code, Codex and other MCP
+clients too). The goal is the lowest learning cost for a lab in Taiwan.
 
 Decided by the maintainer on 2026-10-08, in his words: 「完全仿照 Seqera MCP 的模式，自建平台，
 功能延續 Seqera（一間實驗室用得到的全部＋簡化版多人），由我自己架雲端服務給大家用（像
 cloud.seqera.io），對話不自己做——平台只開 MCP，使用者用自己的 harness 接。」
+On 2026-10-09, reviewing this record, he added a chat of our own: 「也做聊天介面 可接模型」.
+The chat is a client of the same MCP tools, so it carries no gate or rule of its own.
 
 ## How it is built
 
@@ -29,19 +31,26 @@ cloud.seqera.io），對話不自己做——平台只開 MCP，使用者用自�
   connects outbound only to the platform to fetch work (launch, list files, read a log, run a
   downstream script) and report back. This is Seqera's Tower Agent pattern turned around: the
   gates, preflight, relay and cleanup rules this repository already has move into it.
-- **MCP is the only AI entry point.** Its tools follow Seqera MCP's published tool list
+- **Every AI path goes through the MCP tools.** Its tools follow Seqera MCP's published tool list
   (docs.seqera.io/platform-cloud/seqera-mcp/seqera-tools) plus what a lab here needs and Seqera
   does not offer: site file listing, samplesheet validation, an NCHC SU estimate, task logs,
   downstream analysis and the delivery package. Every write tool carries its own confirmation:
   it answers "needs confirmation", the harness shows that, the user says yes, and the call is
   repeated with the token. Judgment and procedure stay in skills; MCP tools only act.
+- **The platform's own chat connects to a model the user chooses.** It is a page of the web
+  (Stage 3) for a lab member with no AI tool of their own: the user picks the model and pays for
+  it (their own API key, or a local model), and the chat reaches the platform only through the
+  same MCP tools, so a confirmation looks the same in the chat as in any harness.
 
 ## Considered Options
 
 - **Keep Seqera optional and add a local progress page (ADR 0001)**: rejected by the maintainer;
   a page on one person's machine cannot be shared by a lab or hosted for others.
-- **Write our own harness or chat UI**: rejected; harnesses are maintained by others and the user
-  already has one. MCP lets any of them call the platform.
+- **Only MCP, no chat of our own (this record's first version, 2026-10-08)**: replaced on
+  2026-10-09 by the maintainer; a member with no AI tool of their own must still be able to use
+  the platform.
+- **Write our own general-purpose harness**: rejected; harnesses are maintained by others. The
+  platform's chat drives only the platform's own tools, and MCP lets any harness call them too.
 - **Fork nf-tower Community Edition** (github.com/seqeralabs/nf-tower, MPL-2.0, Groovy and
   Angular, archived): rejected as a base, kept as a reference for the API's shape.
 - **Organisations, workspaces, teams, SSO**: rejected; one lab with two roles (ADR 0005).
@@ -61,6 +70,5 @@ cloud.seqera.io），對話不自己做——平台只開 MCP，使用者用自�
   `tw`; features are compared against public documentation only. How those Terms read for this
   project is asked of a lawyer or Seqera before anyone is charged.
 - ADR 0002 stands for the code; the revenue gains a hosted service, and the box moves later.
-- The cost ADR 0001 named has not gone away: this is one person rebuilding part of a company's
-  product. It is narrowed to what a lab here uses, carried by the nf-tower plugin and other open
-  source, and paid for in time.
+- Seqera Platform is the reference: features follow its public documentation, narrowed to what
+  a lab here uses and carried by the nf-tower plugin and other open source.

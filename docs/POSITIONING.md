@@ -7,7 +7,7 @@
 
 ## 一句話定位
 
-> 台灣版 Seqera：一間實驗室用得到的 Seqera 功能，更簡單、中文、用國網帳號或自己的雲端帳號跑，成員與 run 數沒有免費版的牆。平台不自己做對話——你用自己已經在用的 AI（Claude Desktop 等）透過 MCP 接上。
+> 台灣版 Seqera：一間實驗室用得到的 Seqera 功能，更簡單、中文、用國網帳號或自己的雲端帳號跑，成員與 run 數沒有免費版的牆。平台有自己的聊天介面，可接你選的模型；也可以用你已經在用的 AI（Claude Desktop 等）透過 MCP 接上。
 
 （2026-09-28 的舊定位是「不做平台、對話優先、本地模型主機」，已被 ADR 0004 取代。）
 
@@ -16,7 +16,7 @@
 （平台、站台代理都還在規劃中；現在能用的是 2.17.0 的 Claude Code plugin。）
 
 1. **一間實驗室用得到的 Seqera 功能，由我們自架給大家用。** 跑管線、參數表單、樣本表、進度與失敗原因（讀 Nextflow 自己的紀錄）、從斷點續跑、報告、儀表板；簡化成 PI／成員兩種角色（`docs/adr/0005`）。不做：組織／工作區／團隊、SSO、稽核、GxP、Data Explorer、Fusion、Studios（見 `docs/adr/0004`）。
-2. **平台只開 MCP，對話用你自己的 AI。** MCP 是讓任何 AI 外殼程式呼叫外部工具的通用協定；Claude Desktop、Claude Code、Codex 都能接。判斷留在 skill，MCP 工具只做動作，每個寫入動作都要你確認（`docs/adr/0003`）。
+2. **平台只開 MCP，對話用你自己的 AI，或平台自己的聊天介面。** MCP 是讓任何 AI 外殼程式呼叫外部工具的通用協定；Claude Desktop、Claude Code、Codex 都能接。沒有 AI 工具的成員，用平台網頁上的聊天介面，接自己選的模型（自己的 API key 或本地模型），它走的是同一組 MCP 工具（2026-10-09 加入，`docs/adr/0004`）。判斷留在 skill，MCP 工具只做動作，每個寫入動作都要你確認（`docs/adr/0003`）。
 3. **一條龍做到可發表的成果。** 管線跑完之後，用一般的 **Python／R 腳本**做統計與繪圖（依使用者目的與風格），最後一鍵打包圖、表、方法段與引用。腳本交給使用者，誰都能重跑。Seqera 在自家平台上最多做到 MultiQC 結果摘要〔來源：[Co-Scientist 產品頁](https://seqera.io/platform/co-scientist/)〕；Galaxy 的 Vintent 在瀏覽器裡產生圖〔來源：[Galaxy 26.0 發布說明](https://docs.galaxyproject.org/en/release_26.0/releases/26.0_announce_user.html)〕。
 4. **在實驗室自己的算力上跑。** 國網帳號或實驗室自己的雲端帳號，費用由實驗室付；平台只存 metadata（描述資料的資料，如 run 名稱、狀態、時間），定序資料留在站台，國網憑證永遠在使用者自己的站台代理上（`docs/adr/0004`）。
 5. **跑的是 nf-core 標準管線**，審稿人認得；不是 agent 自己寫的新流程。
