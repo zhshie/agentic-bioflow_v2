@@ -1,20 +1,43 @@
 # 產品定位：競品比較、核心特點與目標客群
 
-2026-09-28 經 `/grill-with-docs`（29 題）、兩次獨立審查（Fable）與一次硬體評估（Opus）後定案。
-每個事實都附來源；**「推論」**標示的是判斷，不是來源說的。路線與階段見 `docs/ROADMAP.md`，
+2026-09-28 經 `/grill-with-docs`（29 題）、兩次獨立審查（Fable）與一次硬體評估（Opus）後定案；
+**2026-10-08 改為「台灣版 Seqera」**（`docs/adr/0004`）。每個事實都附來源；**「推論」**標示的是判斷，
+不是來源說的。路線與階段見 `docs/ROADMAP.md`，功能逐項對照見 `docs/SEQERA_PARITY.md`，
 詞彙見 `CONTEXT.md`。本檔是給人看的商業文件，所以用中文。
 
 ## 一句話定位
 
-> 沒有 HPC 也沒關係——用國網帳號或租一台雲端主機都行。學生用對話說出實驗目的，就能從原始資料一路做到可以發表的圖、表、文，AI 可以是你自己的，資料不離開實驗室。
+> 台灣版 Seqera：一間實驗室用得到的 Seqera 功能，更簡單、中文、用國網帳號或自己的雲端帳號跑，成員與 run 數沒有免費版的牆。平台有自己的聊天介面，可接你選的模型；也可以用你已經在用的 AI（Claude Desktop 等）透過 MCP 接上。
+
+（2026-09-28 的舊定位是「不做平台、對話優先、本地模型主機」，已被 ADR 0004 取代。）
 
 ## 核心特點
 
-1. **Seqera 的基本功能，不必學一整個平台、不必買企業版。** 保留：連上 HPC／雲端主機、依管線自動產生參數（改成對話問）、樣本表、進度與失敗原因（讀 Nextflow 自己的紀錄）、從斷點續跑、看報告。不做：組織／工作區／七種角色、SSO、稽核、GxP、Data Explorer、Fusion、Studios（見 `docs/adr/0001`）。
-2. **一條龍做到可發表的成果。** 管線跑完之後，用一般的 **Python／R 腳本**做統計與繪圖（依使用者目的與風格），最後一鍵打包圖、表、方法段與引用。腳本交給使用者，誰都能重跑。Seqera 在自家平台上最多做到 MultiQC 結果摘要〔來源：[Co-Scientist 產品頁](https://seqera.io/platform/co-scientist/)〕；Galaxy 的 Vintent 在瀏覽器裡產生圖〔來源：[Galaxy 26.0 發布說明](https://docs.galaxyproject.org/en/release_26.0/releases/26.0_announce_user.html)〕。
-3. **在使用者自己的算力上跑、AI 可以是自己的。** 國網帳號或租的雲端主機，不必有人維護伺服器；雛形用 Claude，產品換成本地模型，資料不離開實驗室。
-4. **跑的是 nf-core 標準管線**，審稿人認得；不是 agent 自己寫的新流程。
-5. **使用者覺得是自己在分析**：每一步都看得到，腳本和參數都在使用者手上。
+（平台、站台代理都還在規劃中；現在能用的是 2.17.0 的 Claude Code plugin。）
+
+1. **一間實驗室用得到的 Seqera 功能，由我們自架給大家用。** 跑管線、參數表單、樣本表、進度與失敗原因（讀 Nextflow 自己的紀錄）、從斷點續跑、報告、儀表板；簡化成 PI／成員兩種角色（`docs/adr/0005`）。不做：組織／工作區／團隊、SSO、稽核、GxP、Data Explorer、Fusion、Studios（見 `docs/adr/0004`）。
+2. **平台只開 MCP，對話用你自己的 AI，或平台自己的聊天介面。** MCP 是讓任何 AI 外殼程式呼叫外部工具的通用協定；Claude Desktop、Claude Code、Codex 都能接。沒有 AI 工具的成員，用平台網頁上的聊天介面，接自己選的模型（自己的 API key 或本地模型），它走的是同一組 MCP 工具（2026-10-09 加入，`docs/adr/0004`）。判斷留在 skill，MCP 工具只做動作，每個寫入動作都要你確認（`docs/adr/0003`）。
+3. **一條龍做到可發表的成果。** 管線跑完之後，用一般的 **Python／R 腳本**做統計與繪圖（依使用者目的與風格），最後一鍵打包圖、表、方法段與引用。腳本交給使用者，誰都能重跑。Seqera 在自家平台上最多做到 MultiQC 結果摘要〔來源：[Co-Scientist 產品頁](https://seqera.io/platform/co-scientist/)〕；Galaxy 的 Vintent 在瀏覽器裡產生圖〔來源：[Galaxy 26.0 發布說明](https://docs.galaxyproject.org/en/release_26.0/releases/26.0_announce_user.html)〕。
+4. **在實驗室自己的算力上跑。** 國網帳號或實驗室自己的雲端帳號，費用由實驗室付；平台只存 metadata（描述資料的資料，如 run 名稱、狀態、時間），定序資料留在站台，國網憑證永遠在使用者自己的站台代理上（`docs/adr/0004`）。
+5. **跑的是 nf-core 標準管線**，審稿人認得；不是 agent 自己寫的新流程。
+6. **使用者覺得是自己在分析**：每一步都看得到，腳本和參數都在使用者手上。
+
+## 十個突破點（推論）
+
+以下是 2026-10-08 方向討論的判斷，不是來源說的；每點標它靠什麼成立。
+
+| # | 突破點 | Seqera 為什麼做不到或不做 | 靠什麼成立 |
+|---|---|---|---|
+| 1 | 碰得到叢集：看國網上的檔案、驗樣本表路徑、失敗時翻 `work/`、擋 `rm`、下游 R 直接在結果上跑 | Seqera 只當調度台；Data Explorer／Studios 在國網實測被拒（`docs/SITE_ADAPTER.md`） | 現有的 SSH 線與閘門 |
+| 2 | 送出前估國網 SU（計算點數）與上限 | Seqera 只估雲端成本 | 國網費率已知（見下方競品表）；估算器要寫 |
+| 3 | 沒有免費版的牆 | 免費版 3 個同時 run、3 名成員〔來源：[pricing](https://seqera.io/pricing/)〕 | 自架；改成按實驗室計價 |
+| 4 | 資料不出台灣、不需雲端帳號 | Co-Scientist 自帶模型只限 Enterprise、只支援 Claude | 平台只收 metadata；MCP 不綁模型 |
+| 5 | 台灣適配：中文、OTP 登入流程、國網 QOS／partition／glibc／Java 的坑 | 不會為一個國家的 HPC 累積這些 | `docs/PITFALLS.md` |
+| 6 | 做到論文圖表為止：圖、表、方法、引用的交付包 | Seqera 停在 run 結束 | 現有 `downstream`、`finish` |
+| 7 | 安全網是結構不是提醒：刪 results 被拒、啟動全文確認、花錢先問 | Seqera MCP 文件沒提確認機制 | 閘門搬進 MCP 工具 |
+| 8 | 新手證明：新成員先用公開資料跑通才碰自己的資料 | 查不到對應的 onboarding 關卡 | feature 004 |
+| 9 | PI 一頁看全部：誰跑了什麼、花多少 SU、哪些失敗 | 要開組織／工作區／角色三層 | 兩角色（`docs/adr/0005`） |
+| 10 | 計畫報帳：每個 run 標國科會計畫編號，期末產 SU 用量表 | resource labels 只算雲端錢 | 待驗證有沒有人要 |
 
 > 已排除的「特點」：「從實驗目的出發」——Seqera 的使用者一樣自己挑管線，不算差異（2026-09-28 他更正）。
 
@@ -51,6 +74,11 @@
 | **Biomni** | 網頁或 Python | 本機或其網站 | 本身是 agent，可接本地模型 | ✅ Apache（部分整合工具有商用限制） | 查不到 | [GitHub](https://github.com/snap-stanford/Biomni) |
 | **BioMaster** | Python CLI | 本機，無 HPC 排程整合 | 本身是 agent，可接本地模型 | 無授權檔（等於保留所有權利） | — | [論文](https://pmc.ncbi.nlm.nih.gov/articles/PMC13494596/) |
 | **FlowAgent** | CLI、網頁、MCP | 本機或 SLURM | 本身是 agent，可接本地模型 | GPL-3（併入會強制整個產品開源） | 免費 | [GitHub](https://github.com/EnteloBio/flowagent) |
+| **Seqera MCP** | 任何 MCP 客戶端（Claude Code／Desktop、Cursor、Codex、VS Code、Windsurf） | 經 Seqera Platform | 使用者自己的 AI | 否 | 隨 Platform | [seqera-tools](https://docs.seqera.io/platform-cloud/seqera-mcp/seqera-tools)（20 個工具；文件中查不到確認機制或額度限制） |
+| **pynf-agent** | 查不到 | 查不到 | agent | 查不到 | 查不到 | 10-07 討論提及，查不到公開連結 |
+| **Agent Skills 標準** | 30+ 個 AI 工具讀同一份 `SKILL.md` | — | 任何 | — | — | [codex.danielvaughan.com](https://codex.danielvaughan.com)（2026-05-05） |
+| **MCP Apps** | MCP 伺服器在對話裡顯示小視窗（2026-01-26 官方擴充）；Claude Desktop 支援，終端機宿主查不到 | — | — | — | — | [mcp-apps](https://claude.com/docs/connectors/building/mcp-apps)、SEP-1865 |
+| **MadCowork** | 只找到 MCP 模組契約 | 查不到 | 查不到 | `madcowork-module-spec` 為 Apache-2.0 | 查不到 | [GitHub](https://github.com/MadCowork/madcowork-module-spec)；官網、demo、國網合作、模型支援全查不到，產品說法依口述、無公開來源 |
 | **國網 LIONS** | 帳號＋SSH 登入台灣杉 | 國網 HPC | 「GenAI × LIONS × HPC」細節查不到 | — | 國科會計畫 0.08 元/SU、學界 0.24 | [lions.nchc.org.tw](https://lions.nchc.org.tw/ngs.jsp) |
 
 **跟我們最接近的兩家、各缺一塊（推論）**：Seqera Co-Scientist 自帶模型只限 Enterprise、只支援 Claude；Galaxy 有 AI 助理與自然語言畫圖，但要有人架站、跑的是 Galaxy 包裝過的工具而非 nf-core 標準管線。
@@ -64,7 +92,9 @@
 
 ## 宿主（AI 外殼程式）與本地模型
 
-結論：**本地模型套 Claude Code 只做實驗；產品的本地模型跑在 Codex 上。** 決策見 `docs/adr/0003`。
+現行結論（2026-10-08，修訂後的 `docs/adr/0003`）：**宿主是任何 MCP 客戶端**；本地模型用哪個宿主出貨，到 Stage 5 再定。
+
+已被取代的過去決定（2026-09-28）：「本地模型套 Claude Code 只做實驗；產品的本地模型跑在 Codex 上。」以下事實仍成立，留作 Stage 5 的依據。
 
 - Claude Code 技術上接得了本地模型（Ollama 的 Anthropic 相容層〔來源：[Ollama 文件](https://docs.ollama.com/api/anthropic-compatibility)〕），但 Anthropic 官方「不支援」〔來源：[llm-gateway](https://code.claude.com/docs/en/llm-gateway)〕，且它是「All rights reserved」授權，不能預裝在賣的主機裡〔來源：anthropics/claude-code LICENSE.md〕。
 - Codex CLI（Apache-2.0）：`--oss` 接 Ollama／LM Studio；hook 事件與擋指令的寫法幾乎跟 Claude Code 相同；但不支援 `ask`（跳出確認）、對話紀錄路徑可能拿不到、只支援 `responses` 協定所以不能直接接 Claude〔來源：[hooks](https://learn.chatgpt.com/docs/hooks)、[config-reference](https://learn.chatgpt.com/docs/config-file/config-reference)〕。

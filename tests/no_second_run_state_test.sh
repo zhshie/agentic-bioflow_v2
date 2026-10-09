@@ -1,9 +1,11 @@
 #!/bin/bash
-# Invariant 2 (constitution I.2): the execution backend is the single source of
-# truth for run state. No file in this repository MAY keep a second copy of a
-# run's state, and there MUST be no submission script of our own, no state
-# machine, and no monitoring daemon. Where the backend is Seqera, the command
-# layer follows Seqera's nouns.
+# Invariant 2 (constitution 3.0.0, I.2): Nextflow's own records (trace, report,
+# log, and the events its nf-tower plugin emits) are the truth about a run; where
+# Seqera Platform's display and those records disagree, the records win. No file
+# in this repository MAY keep a second copy of a run's state, and there MUST be
+# no submission script of our own, no state machine, and no monitoring daemon
+# beyond the channels this check allow-lists. Where the backend is Seqera, the
+# command layer follows Seqera's nouns.
 #
 # This is a static scan, which is crude but catches what actually happens: a
 # helpful script that "just remembers" the last status, or one that "just

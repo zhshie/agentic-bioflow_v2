@@ -26,9 +26,9 @@ hasnt() { # hasnt <label> <file> <extended regex>
 }
 
 echo "== TC-021: the constitution =="
-has "version is 2.1.0 (2.0.0 made this change; 2.0.1 and 2.1.0 came after)" "$C" '**Version**: 2.1.0'
+has "version is 3.0.0 (2.0.0 made this change; 2.0.1, 2.1.0 and 3.0.0 came after)" "$C" '**Version**: 3.0.0'
 has "the 2.0.0 amendment entry is still there"        "$C" '### 2.0.0 (2026-10-02)'
-has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-10-07'
+has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-10-08'
 has "Ratified date is untouched"               "$C" '**Ratified**: 2026-09-28'
 # The Safety Net section opens with its scope. Read the section on its own so a
 # mention elsewhere in the file cannot satisfy these.
@@ -74,6 +74,61 @@ for f in CLAUDE.md README.md docs/PRINCIPLES.md docs/SITE_ADAPTER.md docs/TESTIN
   hasnt "$f: no 'every session / all sessions / always on' wording" "$f" \
     'safety net[^.]*(in every (session|project|conversation)|in all sessions|always on|unconditional)|(every|all) (session|conversation)s?[^.]*safety net'
 done
+
+echo
+echo "== 3.0.0 amendment (platform direction): TC-002, TC-019, TC-040..TC-044, TC-047 =="
+# TC-002: the 3.0.0 amendment record, and the three before it still there.
+AM3=$(awk '/^### 3\.0\.0 \(2026-10-08\)/{f=1;next} /^##+ /{f=0} f' "$C")
+am3_has() { if printf '%s\n' "$AM3" | tr '\n' ' ' | tr -s ' ' | grep -qF -- "$2"; then ok "$1"; else bad "$1" "no '$2' in the 3.0.0 amendment record"; fi; }
+has "TC-002: the 3.0.0 (2026-10-08) amendment heading exists"          "$C" '### 3.0.0 (2026-10-08)'
+has "TC-002: 2.0.0 amendment still there"                              "$C" '### 2.0.0 (2026-10-02)'
+has "TC-002: 2.0.1 amendment still there"                              "$C" '### 2.0.1 (2026-10-05)'
+has "TC-002: 2.1.0 amendment still there"                              "$C" '### 2.1.0 (2026-10-07)'
+am3_has "TC-002: rationale quotes the maintainer's decision"           'the maintainer changed the project'
+am3_has "TC-002: rationale cites ADR 0004"                             'docs/adr/0004'
+am3_has "TC-002: rationale cites ADR 0005"                             'docs/adr/0005'
+am3_has "TC-002: impact on existing deployments is stated"             'Impact on existing deployments.** None'
+am3_has "TC-002: version is MAJOR"                                     '**Version.** MAJOR'
+am3_has "TC-002: approval is the maintainer's"                         '**Approval.** The maintainer'
+
+# TC-019: PRINCIPLES.md invariants 1 and 2 follow 3.0.0 and keep the scope pointer.
+PA=$(awk '/^## A\. /{f=1;next} /^## /{f=0} f' docs/PRINCIPLES.md | tr '\n' ' ' | tr -s ' ')
+pa_has() { if printf '%s\n' "$PA" | grep -qF -- "$2"; then ok "$1"; else bad "$1" "no '$2' in PRINCIPLES.md section A"; fi; }
+pa_has "TC-019: invariant 1 restated: build only what Seqera cannot or will not do here" 'Build only what Seqera cannot or will not do here'
+pa_has "TC-019: invariant 1 cites constitution 3.0.0"                  'constitution 3.0.0'
+pa_has "TC-019: invariant 2 restated: Nextflow's own records are the truth" "Nextflow's own records are the truth about a run"
+has "TC-019: PRINCIPLES.md still has 'in use'"                         docs/PRINCIPLES.md 'in use'
+has "TC-019: PRINCIPLES.md still has 'Constitution 2.0.0'"             docs/PRINCIPLES.md 'Constitution 2.0.0'
+
+# TC-040..TC-044: the Safety Net is the same words as on main. Compared as a whole
+# against main, so no rule, no scope word, and no new paragraph can slip in.
+sn_has "TC-040: never delete rawdata/ results/ analysis/"              'Never delete a user'"'"'s source data: `rawdata/`, `results/`, `analysis/`'
+sn_has "TC-040: ...nor _references/ or the shared image cache"         "a run area's"
+sn_has "TC-040: ...nor .nextflow/plugins/"                             'Never delete `.nextflow/plugins/`.'
+sn_has "TC-041: work/ and cache deletion needs confirmation"           'Deleting `work/` or `.nextflow/cache/` requires the user'"'"'s explicit confirmation'
+sn_has "TC-041: ...via hooks/confirm_cleanup.sh"                       '`hooks/confirm_cleanup.sh`'
+sn_has "TC-042: a launch is shown in full and waits for confirmation"  'A launch command is shown in full and waits for explicit confirmation before it runs'
+sn_has "TC-042: ...via hooks/confirm_launch.sh"                        '`hooks/confirm_launch.sh`'
+sn_has "TC-043: credentials live only in the deployment's settings area" 'Credentials and personal details live only in the deployment'"'"'s own settings area'
+sn_has "TC-043: ...Check: credentials_stay_in_settings_test.sh"        '`tests/credentials_stay_in_settings_test.sh`'
+sn_has "TC-043: ...Check: windows_privacy_test.sh"                     '`tests/windows_privacy_test.sh`'
+sn_has "TC-043: ...Check: inspect_sides_test.sh"                       '`tests/inspect_sides_test.sh`'
+sn_has "TC-044: scope is still in use / unsure / silent / in_use.sh"   'The definition lives in `hooks/in_use.sh`.'
+sn_has "TC-044: the three Check files are still named"                 '`tests/in_use_test.sh`, `tests/in_use_speed_test.sh`, `tests/constitution_scope_test.sh`'
+sn_has "TC-044: only a MAJOR amendment changes the rules"              'change only by a MAJOR amendment of this constitution.'
+if git rev-parse --verify -q main >/dev/null 2>&1 && git show main:.specify/memory/constitution.md >/dev/null 2>&1; then
+  MAIN_SN=$(git show main:.specify/memory/constitution.md | awk '/^## Safety Net/{f=1;next} /^## /{f=0} f')
+  if [ -n "$MAIN_SN" ] && [ "$MAIN_SN" = "$SN" ]; then
+    ok "TC-040..TC-044: Safety Net section identical to main's, word for word"
+  else
+    bad "TC-040..TC-044: Safety Net section identical to main's" "$(diff <(printf '%s\n' "$MAIN_SN") <(printf '%s\n' "$SN") | head -5)"
+  fi
+else
+  echo "note: git or the 'main' ref is unavailable; TC-040..TC-044 whole-section comparison skipped (fixed-string checks above still ran)"
+fi
+
+# TC-047: the earlier scope assertions above run unchanged; only the version
+# and date lines moved. Nothing else to add beyond the amendment trail.
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
