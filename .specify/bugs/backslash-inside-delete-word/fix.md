@@ -62,3 +62,22 @@ Fix (general, not a list of command words): the awk pass marks each copy with a 
 | PowerShell `Get-ChildItem reports \| Move-Item -Destination x` (control) | pass | pass | pass |
 
 The two relative `cd` cases were already deny, because the copy resolved under the original's folder; the absolute-path form is the one that regressed. `Set-Location` is not handled by the hook at all (pass on main and branch), so it has no case.
+
+## Review round 2
+
+- **No-jq copy after a line-break escape.** The copy dropped backslashes from the raw JSON without the `\n`/`\t`/`\r` to space step the as-written pass does, so `echo hi\nr\m -rf results` became `...nrm` and passed. The copy is now made twice: (1) escaped backslashes (`\`) are set aside first, then `\n`/`\t`/`\r` become spaces, then the backslashes go; (2) plain, with every backslash dropped (for text that is a command line, and for the older single-backslash tests). `\rm` after a newline is covered by (1).
+- **Drive/UNC exception narrowed.** A word keeps its backslashes in the segment copy only when it starts with a drive and a separator (`C:\`, `C:/`, optionally quoted) or `\` plus a host-name character. `C:res\ults` and `a:res\ults` are relative words and now lose their backslash in the copy. The #35 PowerShell cases (`C:\lab\proj\y`) are unchanged.
+
+| Command | main | round 1 | round 2 |
+|---|---|---|---|
+| no jq: `echo hi\nr\m -rf results` | exit 0 | exit 0 | exit 2 BLOCKED |
+| no jq: `echo hi\tr\m -rf results` | exit 0 | exit 0 | exit 2 BLOCKED |
+| no jq: `echo hi\r\nr\m -rf results` | exit 0 | exit 0 | exit 2 BLOCKED |
+| no jq: `echo hi\nnextflow cl\ean -f` | exit 0 | exit 0 | exit 2 BLOCKED |
+| no jq: `echo hi\n\rm -rf results` | exit 0 | exit 0 | exit 2 BLOCKED |
+| no jq control: `echo hi\nls -la\nprintf "a\nb"` | exit 0 | exit 0 | exit 0 |
+| `rm -rf C:res\ults` (cwd run folder) | pass | pass | pass |
+| `rm -rf a:res\ults` | pass | pass | pass |
+| `rm -rf C:\res\ults` | pass | pass | pass |
+
+The three drive cases give the same verdict as main in all three columns, so the narrowing makes nothing looser; no command was found where it changes a verdict, so those cases are pinned as controls and have no RED of their own. Out of scope (separate issue): a backslash inside a `cd`/`pushd` target and `LISTER_OK`, same as main.

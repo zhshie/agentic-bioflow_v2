@@ -110,6 +110,14 @@ looks_delete_shaped() {
     # backslash is written twice). The text as written is judged above and stays
     # judged; this is an added copy with every backslash dropped.
     if [[ $1 == *\\* ]]; then
+        # Same treatment of the line-break escapes as above - or `hi\nr\\m` would
+        # lose its `r` to a `\n` that is not one - but an escaped backslash (`\\`)
+        # is taken out first, since `\\rm` is a backslash and `rm`, not a `\r`.
+        local EB=$'\001'
+        text=$(printf '%s' "$1" | sed "s/\\\\\\\\/$EB/g; s/\\\\[ntr]/ /g" | tr -d "\\\\$EB" | tr -s "$LOOKS_SHAPED_SEP" ' ')
+        [ -n "$text" ] && looks_delete_text "$text" && return 0
+        # ...and plain, for text that is a command line rather than JSON (there
+        # `\rm` is a backslash and `rm`, and no `\r` is a line break).
         text=$(printf '%s' "$1" | tr -d '\\' | tr -s "$LOOKS_SHAPED_SEP" ' ')
         [ -n "$text" ] && looks_delete_text "$text" && return 0
     fi
@@ -329,7 +337,7 @@ if [[ $SEGMENTS == *\\* ]]; then
             o = ""
             while (match(s, /[^ \t]+/)) {
                 w = substr(s, RSTART, RLENGTH)
-                if (w !~ /^["\047]?([A-Za-z]:|\\\\)/) gsub(/\\/, "", w)
+                if (w !~ /^["\047]?([A-Za-z]:[\\\/]|\\\\[A-Za-z0-9_.$-])/) gsub(/\\/, "", w)
                 o = o substr(s, 1, RSTART - 1) w
                 s = substr(s, RSTART + RLENGTH)
             }
