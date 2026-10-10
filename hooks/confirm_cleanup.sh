@@ -336,7 +336,7 @@ if [[ $SEGMENTS == *\\* ]]; then
             return o s
         }
         { print }
-        index($0, "\\") { n = $0; $1 = drop($1); $2 = drop($2); $3 = drop($3); if ($0 != n) print }' \
+        index($0, "\\") { n = $0; $1 = drop($1); $2 = drop($2); $3 = drop($3); if ($0 != n) { $4 = "copy"; print } }' \
         <<<"$SEGMENTS" 2>/dev/null) \
       && [ -n "$SEGSB" ] && SEGMENTS=$SEGSB
     SEGSB=""
@@ -786,7 +786,17 @@ case "${ABF_CLEANUP_DEADLINE_S:-}" in
 esac
 NSEG=0
 TIMED_OUT=0
-while IFS="$US" read -r SEG VSEG CW; do
+while IFS="$US" read -r SEG VSEG CW COPY; do
+    # #66: a segment marked `copy` is the dropped-backslash copy of the one just
+    # before it. It is judged, but it must never change what the segments after it
+    # are judged against: the state the loop carries from one segment to the next
+    # (VCWD, the folder a `cd` moved to; LISTER_OK, whether a lister named a known
+    # path - the only two it writes besides the accumulated findings, which only
+    # ever add) is put back as it stood when the copy started. Without this
+    # `cd <run>/results\old` set the folder from the original and the copy then
+    # moved it to `<run>/resultsold`, so a delete after it went unjudged.
+    if [ -n "${COPY_SAVED-}" ]; then VCWD=$COPY_VCWD; LISTER_OK=$COPY_LISTER; COPY_SAVED=; fi
+    if [ -n "$COPY" ]; then COPY_VCWD=$VCWD; COPY_LISTER=$LISTER_OK; COPY_SAVED=1; fi
     [ -n "$SEG" ] || continue
     # #62: past the deadline, stop and ask (see DEADLINE above).
     if [ "$SECONDS" -ge "$DEADLINE" ]; then TIMED_OUT=1; break; fi

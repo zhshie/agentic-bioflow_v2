@@ -43,3 +43,22 @@ The limit for these four is 3 s on Linux/WSL, 20 s elsewhere (#62's).
 RED d59c599: 13 failures in `confirm_cleanup_test.sh` (also behind the here-doc), 5 in `gates_without_jq_test.sh`, 2 in `gate_big_input_test.sh`. GREEN eecf944: all three and `confirm_cleanup_behind_heredoc_test.sh` pass.
 
 Full suite in WSL with jq: 94/95. The one failure, `conditions_matrix_test.sh`, fails the same 19 checks on `main` in this WSL: it runs with PATH `/usr/bin:/bin` and this WSL has jq only in `/tmp/jqbin`.
+
+## Review round 1: the copy must not change state
+
+The security review found that the dropped-backslash copy, judged as an extra segment after the original, wrote the loop's cross-segment state. The loop carries two such values, `VCWD` (the folder a `cd`/`pushd` moved to) and `LISTER_OK` (a lister named a known path); everything else it accumulates (`UNRESOLVED`, `HIT_*`) only adds findings, which can only make a verdict stricter.
+
+Fix (general, not a list of command words): the awk pass marks each copy with a fourth field; the loop saves `VCWD`/`LISTER_OK` when a copy starts and puts them back before the next segment. The copy is still judged. RED 176f422, GREEN below.
+
+| Command (cwd a run folder `x`) | main | branch before fix | after fix |
+|---|---|---|---|
+| `cd <x>/results\old; rm -rf x` | deny | pass | deny |
+| `pushd <x>/results\old; rm -rf x` | deny | pass | deny |
+| same, session cwd `/tmp` | deny | pass | deny |
+| `cd results\old; rm -rf x` | deny | deny | deny |
+| `cd .\results; rm -rf *` | deny | deny | deny |
+| PowerShell `Get-ChildItem results\old \| Move-Item -Destination x` | ask | pass | ask |
+| PowerShell `Get-ChildItem .\results \| Move-Item -Destination x` | ask | pass | ask |
+| PowerShell `Get-ChildItem reports \| Move-Item -Destination x` (control) | pass | pass | pass |
+
+The two relative `cd` cases were already deny, because the copy resolved under the original's folder; the absolute-path form is the one that regressed. `Set-Location` is not handled by the hook at all (pass on main and branch), so it has no case.
