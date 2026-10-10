@@ -56,7 +56,7 @@ shell 會把 `res\ults` 的反斜線拿掉，真的進到 results。關卡必須
 | TC-024 | #75 與 #76 合併：PowerShell 切換加反斜線 | 功能 | 工具＝PowerShell | `cd R; Set-Location res\ults; Remove-Item -Recurse x` | deny（平常寫法 deny；關卡保守地沿用 #66 的「反斜線拿掉也判」） | 自動：主測試 |
 | TC-025 | 不誤擋：切去無關資料夾 | 功能 | 工具＝PowerShell | `Set-Location /tmp; Remove-Item x` | pass | 自動：主測試 |
 | TC-026 | 不誤擋：相對切去無關資料夾 | 功能 | 工具＝PowerShell | `cd R; Set-Location tmp; Remove-Item -Recurse x` | pass | 自動：主測試 |
-| TC-027 | 不誤擋：進去又出來 | 功能 | 工具＝PowerShell | `cd R; Set-Location results; Set-Location ..; Remove-Item -Recurse x` | pass（用 cd 寫的同一串是 pass） | 自動：主測試 |
+| TC-027 | Revision 3：PowerShell 指令只增加候選、不移除；進過 results 就一直判 results（過度擋可接受，絕不放鬆） | 例外 | 工具＝PowerShell | `cd R; Set-Location results; Set-Location ..; Remove-Item -Recurse x` | deny（Revision 3 起；原合約是 pass。同一串用 `cd` 寫、且 `cd ..` 離開 results，仍是 pass，見 TC-010） | 自動：主測試 |
 
 ## User Story 3 — 反斜線資料夾名接管線搬移（#76 項 2，優先度 P2）
 
@@ -84,6 +84,35 @@ assessment 原本說這項「不會重現」，但那條用的是絕對路徑。
 | TC-038 | 既有案例整體不變鬆 | 例外 | 無 | 跑整份主測試 | 所有既有案例（含 #35、#66 第 1 至 3 輪、#62）判定與修改前完全相同，沒有被刪、被跳過、被放寬 | 自動：主測試 |
 | TC-039 | #62 大輸入路徑看得到新的切換指令 | 例外 | 工具＝Bash | 在超過 8 KB 的 here-doc 之後接 `Set-Location R/results; Remove-Item -Recurse x`；另接 `cd R; cd res\ults; rm -rf x` | 兩條都 deny，和不放 here-doc 時一樣 | 自動：`tests/confirm_cleanup_behind_heredoc_test.sh` |
 | TC-040 | #62 前置條件不變 | 例外 | 無 | 大輸入測試開頭的 awk 次數檢查 | 仍然是 3 次，且全部案例通過 | 自動：大輸入測試 |
+
+## 憲法與安全網（第二輪驗收退回後釘死：不得比 main 鬆）
+
+第二輪驗收發現：分支在某些寫法上 main 擋、分支放。Revision 3 的規則是「本 PR 新增的一切只能增加候選、不能移除」，所以下列每一條的預期＝main 的實測判定（TC-045、TC-046 比 main 更嚴；TC-062 是 Revision 3 接受的過度擋）。`R` 與前綴 `cd R; pushd results` 如上；除非另寫，工作目錄 `/tmp`。`⏎` 表示指令裡真的換行。
+
+| 編號 | 憲法條目 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-045 | Never delete source data：反斜線切進去之後的相對 cd 也要跟（#76 本意；Rev3 的「取代候選集」不能只對主幹解析） | 功能 | 工具＝Bash | `cd R; cd res\ults; cd sub; rm -rf x` | deny（平常寫法 `cd R; cd results; cd sub; rm -rf x` 是 deny；main 是 pass；`cd R; cd re\ports; cd sub; rm -rf x` 仍是 pass） | 自動：主測試 |
+| TC-046 | 同上：PowerShell 切進去之後的相對 cd | 功能 | 工具＝PowerShell | `cd R; Set-Location results; cd sub; Remove-Item -Recurse x` | deny（比 main 的 pass 嚴；理由同 TC-045） | 自動：主測試 |
+| TC-047 | 案例 A1：Bash 裡 Set-Location 不是內建，來回切不得讓真實位置掉出候選 | 例外 | 工具＝Bash | `cd R; Set-Location results; Set-Location R; cd ..; rm -rf x` | deny（main 是 deny；現行分支是 pass，這是退步） | 自動：主測試 |
+| TC-048 | 案例 A2 | 例外 | 工具＝Bash | `cd R; sl results; sl R; cd ..; rm -rf x` | deny（main deny） | 自動：主測試 |
+| TC-049 | 案例 A3 | 例外 | 工具＝Bash | `cd R; sl results; sl /tmp; cd ..; rm -rf x` | deny（main deny） | 自動：主測試 |
+| TC-050 | 案例 A4 | 例外 | 工具＝Bash | `cd R; sl results; sl ..; cd ..; rm -rf x` | deny（main deny） | 自動：主測試 |
+| TC-051 | 案例 A5：不認得的選項 | 例外 | 工具＝PowerShell | `cd R; sl results; sl -Foo R; cd ..; Remove-Item -Recurse x` | deny（main deny） | 自動：主測試 |
+| TC-052 | 案例 B：條件寫在別行的 popd 不算「一定執行」（Bash，前綴 `cd R; pushd results`，換行後接 `rm -rf x`） | 例外 | 工具＝Bash | 六種寫法各一條：`if false; then⏎ popd⏎fi`、`false &&⏎ popd`、`while false; do⏎ popd⏎done`、`case a in b)⏎ popd ;;⏎esac`、`{ false; } && {⏎ popd⏎}`、`foo() {⏎ popd⏎}` | 六條都 deny（main 六條都 deny） | 自動：主測試 |
+| TC-053 | 案例 B：子殼裡的 popd 不影響本 shell | 例外 | 工具＝Bash | `cd R; pushd results⏎bash -c 'popd'⏎rm -rf x` | deny（main deny） | 自動：主測試 |
+| TC-054 | 案例 B：PowerShell 多行條件 | 例外 | 工具＝PowerShell | 前綴 `cd R; pushd results⏎`，接 `if ($false) {⏎ Pop-Location⏎}⏎Remove-Item -Recurse x`；另一條把 if 換成 `foreach ($i in @()) {⏎ Pop-Location⏎}` | 兩條都 deny（main 都是 deny；同寫在單行的版本本來也是 deny） | 自動：主測試 |
+| TC-055 | 第一輪形狀：popd 帶參數或堆疊被動過，不能當成回到原處（工作目錄 R） | 例外 | 工具＝Bash | `pushd results; popd -n; rm -rf x`；`pushd /tmp; pushd results; popd +1; rm -rf x`；`pushd results; dirs -c; popd; rm -rf x` | 三條都 deny（main 都是 deny） | 自動：主測試 |
+| TC-056 | 第一輪形狀：單純 `popd` 也維持 main 的判定（Rev3 起不再「回到 pushd 的資料夾」） | 例外 | 工具＝Bash | `cd R; pushd results; popd; rm -rf x`；另一條 `cd R; pushd results; popd; popd; rm -rf x` | 兩條都 deny（main deny；原計畫曾寫成 pass，已作廢） | 自動：主測試 |
+| TC-057 | 第一輪形狀：PowerShell 讀不懂或不可預測的目標，不得讓判定變鬆（工作目錄 `R/results`） | 例外 | 工具＝PowerShell | `Push-Location -StackName a /tmp; Push-Location -StackName b /var; Pop-Location -StackName a; Remove-Item x`；`sl /tmp; sl -; Remove-Item x`；`Push-Location /tmp; Push-Location -; Remove-Item x`；`sl ../res*; Remove-Item x`；`sl ..; sl -Path (Join-Path $PWD results); Remove-Item x`；`sl ..; sl @("results"); Remove-Item x` | 六條都 deny（main 都是 deny） | 自動：主測試 |
+| TC-058 | 第一輪形狀：單行裡「可能沒執行」的 popd（工作目錄 R，前綴 `pushd results;`，後接 `rm -rf x`） | 例外 | 工具＝Bash | `false && popd`、`exit 0 \|\| popd`、`popd \| cat`、`(popd)`、`echo a \| popd`、`popd &`、`command popd` 各一條 | 七條都 deny（main 都是 deny） | 自動：主測試 |
+| TC-059 | 第一輪形狀：不認得的選項（工作目錄 `R/results`） | 例外 | 工具＝PowerShell | `sl -Foo /tmp; Remove-Item x`；`sl /tmp -WhatIf; Remove-Item x`；`false && sl /tmp; Remove-Item x`；`sl /tmp; Pop-Location -Foo; Remove-Item x` | 四條都 deny（main 都是 deny） | 自動：主測試 |
+| TC-060 | 對照：原先 r1 寫成「放行」的 control，Rev3 起維持 main | 例外 | 工具＝PowerShell；工作目錄 R | `Push-Location results; Pop-Location -PassThru; Remove-Item x` | deny（main deny；r1 曾期望 pass，已作廢） | 自動：主測試 |
+| TC-061 | 對照：無害的 PowerShell 切換不得被誤擋 | 功能 | 工具＝PowerShell；工作目錄 R | `sl -PassThru /tmp; Remove-Item x` | pass（main pass） | 自動：主測試 |
+| TC-062 | Rev3 接受的過度擋，釘住以免被悄悄改回去 | 例外 | 工具＝PowerShell | `Set-Location R/results; Set-Location /tmp; Remove-Item x` | deny（main 是 pass；進過 results 就一直判 results，與 TC-027 同理） | 自動：主測試 |
+| TC-063 | rclone 遠端路徑不看本機候選：整組候選要清空再還原（不得多出新的擋或問） | 例外 | 工具＝Bash | `cd R; sl results; rclone delete remote:x`；另一條 `cd R; cd res\ults; rclone delete remote:x` | 兩條都 pass（main 對 `cd R/results; rclone delete remote:x` 是 pass，兩條都與之相同） | 自動：主測試 |
+| TC-064 | 候選集合不爆炸：鏈很長也要在時限內完成 | 例外 | 工具＝Bash；工作目錄 R | `sl d1; sl d2; …; sl d25; rm -rf x`（25 個互不相同的相對目標） | 在關卡現有的時限內完成，沒有走 #62 逾時路徑；判定為 pass，或更嚴的 ask／deny 並附說明，不可卡住或報錯（main 是 pass） | 自動：主測試 |
+| TC-065 | 候選集合設上限時，受保護的候選不能被丟掉 | 例外 | 工具＝Bash；工作目錄 R | `sl d1; sl d2; …; sl d12; sl results; sl e1; …; sl e12; rm -rf x` | deny（含 `sl results` 的候選要保留；上限只能丟無害的，主幹永遠留著） | 自動：主測試 |
+| TC-066 | 整體對照：沒有任何形狀比 main 鬆 | 例外 | 無 | 把第二輪的 237 個形狀（`C:\Users\marvi\rv_all.txt`）加上 TC-045..065 的所有形狀，把 main（c4a7327）的判定當期望值寫進主測試；驗收時 verifier 再用 main 的 hook 重跑一遍 | 「main deny／ask、分支 pass」的列數＝0（接受名單為空）。不得出現期望值比對應 main 判定更鬆的斷言，r0／r1 測試裡「回到原夾所以放行」這類期望值都要改成 deny。「main pass、分支更嚴」的列允許，但要逐列列在 fix.md | 自動：主測試＋verifier 驗收重跑 |
 
 ## 不在範圍
 

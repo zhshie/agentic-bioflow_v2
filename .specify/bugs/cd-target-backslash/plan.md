@@ -1,4 +1,20 @@
-# Fix plan: cd-target-backslash (issues #76, #75) — revision 2 (after verifier CONTRACT review, 2026-10-10)
+# Fix plan: cd-target-backslash (issues #76, #75)
+
+## Revision 3 (2026-10-10, after two acceptance REJECTs) — supersedes items 1–3 below where they conflict
+
+Two rounds showed that modelling when the shell "really left" a directory keeps producing main-deny → branch-pass shapes (two slots cannot hold three candidates; conditions spanning lines; cmdlets that fail). New rule, chosen so that nothing can be looser than main by construction:
+
+- The gate keeps a **set** of candidate directories (not two slots). Every relative target is judged against every candidate; the strictest verdict wins.
+- Only what main already models replaces the set: `cd` / `pushd` to a literal target, exactly as main does today (main's own cd imprecision unchanged).
+- Everything this PR adds can only **add** candidates, never remove one: the dropped-backslash copy of a segment, PowerShell location cmdlets (`Set-Location`/`sl`/`chdir`/`Push-Location`/`Pop-Location`, either tool, any form), and `popd` (any form, any context). A target the gate cannot read adds nothing and removes nothing.
+- The pushd/popd stack, HIST_DIR, per-line suspicion and the exact-modelling rules of round 1 are removed; they are no longer needed.
+- LISTER_OK from a copy may only tighten (item 4) and CW_HANDLED (item 5) stay.
+- A relative `cd`/`pushd` target is resolved against **every** candidate (the set becomes {each candidate + target}); only an absolute target replaces the whole set (TC-045, TC-046).
+- The set has a cap. When it is exceeded, harmless candidates are dropped first; the trunk (main's own VCWD) and every protected-looking candidate are always kept (TC-064, TC-065). Dropping extras can never be looser than main because the trunk stays.
+- `popd`, `Pop-Location` and `dirs` add nothing and remove nothing, and the new handlers never `continue` past checks main already runs on those segments (TC-056, TC-066). The rclone remote-path branch clears the whole set and restores it afterwards (TC-063).
+- Consequence accepted by the developer-agent: within one command, PowerShell-entering a protected folder and then leaving it still judges the protected folder (TC-027 becomes deny), and a bare `popd` back out of results is judged as main does (deny). These are over-asks/over-denies inside a single tool call, never under-protection.
+
+# Revision 2 (after verifier CONTRACT review, 2026-10-10)
 
 Tier A (Safety Net stricter). Touches `hooks/` → `/code-review` security pass before merge.
 Governing rule for every item: nothing that main denies or asks may pass. Where the gate cannot tell which of two directories the shell is in, it judges both and the stricter verdict wins.
