@@ -104,11 +104,24 @@ looks_delete_shaped() {
     # can be ruled out.
     text=$(printf '%s' "$1" | sed 's/\\[ntr]/ /g' | tr -s "$LOOKS_SHAPED_SEP" ' ')
     if [ -z "$text" ]; then [ -n "$1" ] && return 0; return 1; fi
+    looks_delete_text "$text" && return 0
+    # #66: the shell drops a backslash outside quotes, so `r\m`, `\rm` and
+    # `--remo\ve-files` are the words they spell without it (in raw JSON the
+    # backslash is written twice). The text as written is judged above and stays
+    # judged; this is an added copy with every backslash dropped.
+    if [[ $1 == *\\* ]]; then
+        text=$(printf '%s' "$1" | tr -d '\\' | tr -s "$LOOKS_SHAPED_SEP" ' ')
+        [ -n "$text" ] && looks_delete_text "$text" && return 0
+    fi
+    return 1
+}
+looks_delete_text() { # looks_delete_text <flattened text>
+    local text="$1"
     case " $text " in
         *' rm '*|*' rmdir '*|*' shred '*|*' mv '*|*'-delete'*|*'--delete'*|*' find '*|*' rsync '*|*'Remove-Item'*|*'rmtree'*)
             return 0 ;;
         # jq-broken-cleanup: the other verbs and shapes the full check knows
-        *' unlink '*|*' truncate '*|*' rclone '*|*'--remove-files'*|*' nextflow '*' clean '*|*' git '*' clean '*)
+        *' unlink '*|*' truncate '*|*' rclone '*|*'--remove-files'*|*' nextflow clean '*|*' nextflow '*' clean '*|*' git '*' clean '*)
             return 0 ;;
         *'rmSync'*|*'unlinkSync'*|*'rmdirSync'*|*'rm_rf'*|*'remove_tree'*|*'os.remove'*|*'os.unlink'*|*'FileUtils.rm'*)
             return 0 ;;
@@ -298,6 +311,35 @@ US=$'\037'
 SEGMENTS=$(awk -f "$HD/split_segments.awk" <<<"$CMD" 2>/dev/null)
 if [ -z "$SEGMENTS" ]; then
     SEGMENTS=$(printf '%s\n' "$CMD" | sed -E 's/(\|\||&&|[;&|])/\n/g' | while IFS= read -r l; do printf '%s%s%s\n' "$l" "$US" "$l"; done)
+fi
+# #66: outside quotes the shell drops a backslash before a letter, so `r\m`,
+# `t\ar --remo\ve-files` and `nextflow cl\ean` run what they spell without it.
+# Every segment that holds a backslash is judged a second time with all its
+# backslashes dropped - an added copy (all three columns), since on Windows a
+# backslash is a path separator and the segment as written must still be judged.
+# Done before the large-input filter below, so that sees the copy too; and only
+# when there is a backslash, so a command without one costs no extra process.
+# (The same idea as hooks/launch_trigger.sh, gates-audit2-low.)
+if [[ $SEGMENTS == *\\* ]]; then
+    # A word that is a Windows drive path (`C:\lab\x`, quoted or not) or a UNC path
+    # keeps its backslashes: there they are separators, and `C:labx` is not a path
+    # anyone meant (it made a PowerShell `Move-Item` of two such paths ask).
+    SEGSB=$(awk -F"$US" -v OFS="$US" '
+        function drop(s,   o, w) {
+            o = ""
+            while (match(s, /[^ \t]+/)) {
+                w = substr(s, RSTART, RLENGTH)
+                if (w !~ /^["\047]?([A-Za-z]:|\\\\)/) gsub(/\\/, "", w)
+                o = o substr(s, 1, RSTART - 1) w
+                s = substr(s, RSTART + RLENGTH)
+            }
+            return o s
+        }
+        { print }
+        index($0, "\\") { n = $0; $1 = drop($1); $2 = drop($2); $3 = drop($3); if ($0 != n) print }' \
+        <<<"$SEGMENTS" 2>/dev/null) \
+      && [ -n "$SEGSB" ] && SEGMENTS=$SEGSB
+    SEGSB=""
 fi
 
 # The command word of a segment, lowercased: past sudo/env/command/exec/nohup/
