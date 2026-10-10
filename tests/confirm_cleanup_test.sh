@@ -740,6 +740,19 @@ t 'nextflow l\og'                                         pass "TC-020 control: 
 t "$RB -rf $P/rawdata"                                    deny "TC-035 r\\m of rawdata/"
 t "$RB -rf $P/.nextflow/plugins"                          deny "TC-036 r\\m of .nextflow/plugins/"
 
+# backslash-inside-delete-word (#66), security review round 1: the dropped-backslash
+# copy of a segment must never change what a later segment is judged against (the
+# folder a `cd` moved to, whether a lister named a known path). Each case gets
+# main's verdict (measured on main before the fix).
+tc "$P" "cd $P/results\old; $D -rf x"                    deny "#66 cd <results>\old, then a delete in it"
+tc "/tmp" "cd $P/results\old; $D -rf x"                  deny "#66 ...from another working folder"
+tc "$P" "pushd $P/results\old; $D -rf x"                 deny "#66 pushd <results>\old, then a delete in it"
+tc "$P" "cd results\old; $D -rf x"                       deny "#66 cd results\old (relative), then a delete"
+tc "$P" "cd .\results; $D -rf *"                         deny "#66 cd .\results, then a delete"
+tps 'Get-ChildItem results\old | Move-Item -Destination x'   ask "#66 lister of results\old feeding Move-Item"
+tps 'Get-ChildItem .\results | Move-Item -Destination x'     ask "#66 lister of .\results feeding Move-Item"
+tps 'Get-ChildItem reports | Move-Item -Destination x'       pass "#66 control: lister of an unprotected folder"
+
 echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
 # hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.
