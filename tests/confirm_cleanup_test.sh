@@ -773,6 +773,73 @@ tc "$P" "mv s:/p/raw\\data x"                              ask  "#66 r3 mv s:/p/
 tc "$P" "mv s:/p/res\\ults x"                              ask  "#66 r3 mv s:/p/res\\ults x"
 tc "$P" "mv C:/lab/proj/raw\\data x"                       ask  "#66 r3 mv C:/lab/proj/raw\\data x"
 
+# cd-target-backslash (#76, #75): the shell drops the backslash of `cd res\ults` and enters
+# results/, and PowerShell's Set-Location / sl / chdir / Push-Location change directory too.
+# Each case gets the verdict of the same command without the trick (measured on main).
+# tcp <tool> <cwd> <command> <expect> <label>: the hook input carries the tool name and the cwd.
+tcp() {
+  printf '%-58s ' "$5"
+  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':sys.argv[1],'cwd':sys.argv[2],'tool_input':{'command':sys.argv[3]}}))" "$1" "$2" "$PFX$3" | bash "$H")
+  if [ -z "$out" ]; then got=pass; else
+    got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out" 2>/dev/null)
+  fi
+  [ "$got" = "$4" ] && echo "ok ($got)" || { echo "FAIL: expected $4, got $got"; fails=$((fails+1)); }
+}
+# US1: Bash
+tc "/tmp" "cd $P; cd res\ults; $D -rf x"                 deny "TC-001 cd res\ults, then a delete"
+tc "/tmp" "cd $P; cd raw\data; $D -rf x"                 deny "TC-002 cd raw\data, then a delete"
+tc "/tmp" "cd $P; cd wo\rk; $D -rf x"                    ask  "TC-003 cd wo\rk, then a delete (work asks)"
+tc "/tmp" "pushd $P/.nextflow/plug\ins; $D -rf x"        deny "TC-004 pushd .nextflow/plug\ins, then a delete"
+tc "/tmp" "cd $P/res\ults; $D -rf ."                     deny "TC-005 cd <run>/res\ults, then rm -rf ."
+tc "/tmp" "cd $P; c\d results; $D -rf x"                 deny "TC-006 c\d results (backslash in the command word)"
+tc "/tmp" "cd $P; pu\shd results; $D -rf x"              deny "TC-007 pu\shd results"
+tc "/tmp" "cd $P; cd res\ults; find . -delete"           deny "TC-008 cd res\ults, then find -delete"
+tc "/tmp" "cd $P; cd raw\data; mv x y"                   ask  "TC-009 cd raw\data, then mv"
+tc "/tmp" "cd $P; cd res\ults; cd ..; $D -rf x"          pass "TC-010 cd res\ults; cd ..: back in the run folder"
+tc "/tmp" "cd $P; cd re\ports; $D -rf x"                 pass "TC-011 control: cd re\ports"
+tc "/tmp" "cd $P/re\ports; $D -rf x"                     pass "TC-012 control: cd <run>/re\ports"
+tc "/tmp" "cd $P; cd res\ults; cd /tmp; $D -rf x"        pass "TC-013 cd res\ults; cd /tmp"
+# US2: PowerShell location cmdlets
+tps "Set-Location $P/results; Remove-Item -Recurse x"            deny "TC-014 PowerShell Set-Location results"
+tps "sl $P/results; Remove-Item -Recurse x"                      deny "TC-015 PowerShell sl results"
+tps "Push-Location $P/results; Remove-Item -Recurse x"           deny "TC-016 PowerShell Push-Location results"
+tc "/tmp" "Set-Location $P/results; $D -rf x"                    deny "TC-017 Set-Location results, text run by Bash"
+tps "Set-Location -Path $P/results; Remove-Item -Recurse x"      deny "TC-018 Set-Location -Path results"
+tps "Set-Location -LiteralPath $P/results; Remove-Item -Recurse x" deny "TC-019 Set-Location -LiteralPath results"
+tps "Set-Location -Path:$P/results; Remove-Item -Recurse x"      deny "TC-020 Set-Location -Path:results (colon form)"
+tps "SET-LOCATION $P/results; Remove-Item -Recurse x"            deny "TC-021 SET-LOCATION (any case)"
+tps "cd $P; chdir results; Remove-Item -Recurse x"               deny "TC-022 chdir results"
+tps "cd $P; Set-Location results; Remove-Item -Recurse x"        deny "TC-023 cd <run>; Set-Location results"
+tps "cd $P; Set-Location res\ults; Remove-Item -Recurse x"       deny "TC-024 Set-Location res\ults"
+tps "Set-Location /tmp; Remove-Item x"                           pass "TC-025 control: Set-Location /tmp"
+tps "cd $P; Set-Location tmp; Remove-Item -Recurse x"            pass "TC-026 control: Set-Location tmp"
+tps "cd $P; Set-Location results; Set-Location ..; Remove-Item -Recurse x" pass "TC-027 Set-Location results; Set-Location .."
+# US3: a lister of a backslash folder feeding Move-Item
+tcp PowerShell "/tmp" 'Get-ChildItem res\ults | Move-Item -Destination x'     ask  "TC-028 Get-ChildItem res\ults | Move-Item"
+tcp PowerShell "/tmp" 'Get-ChildItem raw\data | Move-Item -Destination x'      ask  "TC-029 Get-ChildItem raw\data | Move-Item"
+tcp PowerShell "$P" 'Get-ChildItem res\ults | Move-Item -Destination x'        ask  "TC-030 ...from the run folder"
+tcp PowerShell "/tmp" 'gci res\ults | Move-Item -Destination /tmp/y'           ask  "TC-031 gci res\ults | Move-Item"
+tcp PowerShell "/tmp" "Get-ChildItem $P/res\\ults | Move-Item -Destination /tmp/y" ask "TC-032 absolute path, as before"
+tcp PowerShell "/tmp" 'Get-ChildItem re\ports | Move-Item -Destination x'      pass "TC-033 control: re\ports"
+# Constitution and safety net
+tps "cd $P/results; Push-Location /tmp; Pop-Location; Remove-Item -Recurse x"  deny "TC-034 Push-Location /tmp; Pop-Location: back in results"
+tc "/tmp" "cd $P/results; sl /tmp; $D -rf x"                    deny "TC-035 Bash: sl is not a built-in, the folder did not move"
+tps "cd $P; cd results; Pop-Location; Remove-Item -Recurse x"  deny "TC-036 Pop-Location with an empty stack changes nothing"
+# TC-037 and TC-038: the #66 round 1-3 cases above, unchanged.
+# TC-039 and TC-040: tests/confirm_cleanup_behind_heredoc_test.sh runs every case here behind a large here-doc.
+# Out of scope: main's behaviour is pinned
+tc "/tmp" "cd $P; cd \$d; $D -rf x"                              pass "TC-041 cd \$d: a variable stays unknown"
+tc "/tmp" "cd $P; cd \$(printf results); $D -rf x"               pass "TC-042 cd \$(...) stays unknown"
+tc "/tmp" "cd $P; alias go=cd; go results; $D -rf x"             pass "TC-043 an alias stays unknown"
+# Plan items beyond the TCs: the directory stack and the two views
+tc "/tmp" "cd $P; pushd results; popd; $D -rf x"                 pass "plan: pushd results; popd leaves results again"
+tc "/tmp" "cd $P; pushd res\ults; popd; $D -rf x"                pass "plan: pushd res\ults; popd leaves it again"
+tc "/tmp" "cd $P; pushd /tmp; popd; pushd res\ults; $D -rf x"    deny "plan: a stack entry does not leak into the next pushd"
+tps "cd $P; Push-Location results; Pop-Location; Remove-Item -Recurse x" pass "plan: Push-Location results; Pop-Location"
+tc "/tmp" "cd $P; Push-Location results; $D -rf x"               deny "plan: Bash Push-Location results is judged"
+tps "cd $P/results; Set-Location \$d; Remove-Item -Recurse x"    deny "plan: an unreadable Set-Location target keeps the old folder"
+tcp PowerShell "$P" 'Get-ChildItem reports | Move-Item -Destination x'         pass "plan: control: lister of reports, from the run folder"
+
 echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
 # hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.
