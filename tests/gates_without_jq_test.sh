@@ -66,5 +66,28 @@ gate "TC-009 walkthrough: echo token >> params.yaml"    block confirm_walkthroug
 gate "TC-010 guard: Edit a file under the plugin root"  block guard_plugin_files.sh "$(write_json Edit "$PR/hooks/confirm_launch.sh" 'x')"
 gate "TC-011 guard: sed -i a file under the plugin root" block guard_plugin_files.sh "$(bash_json "sed -i 's/a/b/' $PR/hooks/confirm_launch.sh")"
 
+
+# backslash-inside-delete-word (#66), TC-021..030, 037. A backslash in a command
+# word is gone once the shell has read it, so `r\m` is the delete. In the JSON the
+# hook receives, one backslash is written as two (bash_json takes the text as it
+# stands in JSON).
+gate 'TC-021 cleanup: r\m -rf results'                 block confirm_cleanup.sh "$(bash_json 'r\m -rf results')"
+gate 'TC-022 cleanup: tar --remo\ve-files'             block confirm_cleanup.sh "$(bash_json 'tar --remo\ve-files -cf a.tar results')"
+gate 'TC-023 cleanup: nextflow cl\ean -f'              block confirm_cleanup.sh "$(bash_json 'nextflow cl\ean -f')"
+gate 'TC-024 cleanup: \rm -rf results'                 block confirm_cleanup.sh "$(bash_json '\rm -rf results')"
+gate 'TC-025 cleanup: t\ar --remove-files (still blocked)' block confirm_cleanup.sh "$(bash_json 't\ar --remove-files -cf a.tar results')"
+gate "TC-026 cleanup: printf 'a\nb' is not a delete"   pass  confirm_cleanup.sh "$(bash_json "printf 'a\\nb'")"
+gate 'TC-027 cleanup: grep -E "a\sb" file'             pass  confirm_cleanup.sh "$(bash_json 'grep -E \"a\sb\" file')"
+gate "TC-028 cleanup: sed 's/a\/b/c/' f"              pass  confirm_cleanup.sh "$(bash_json "sed 's/a\\/b/c/' f")"
+gate 'TC-029 cleanup: echo C:\Users\x'                 pass  confirm_cleanup.sh "$(bash_json 'echo C:\Users\x')"
+gate 'TC-030 cleanup: ls C:\work\results'              pass  confirm_cleanup.sh "$(bash_json 'ls C:\work\results')"
+# TC-037: the refusal still says what is wrong and how to fix it
+printf '%-62s ' 'TC-037 r\m refusal names jq and the install commands'
+err=$(printf '%s' "$(bash_json 'r\m -rf results')" | PATH="$NOJQ_PATH" CLAUDE_PLUGIN_ROOT="$PR" bash "$HD/confirm_cleanup.sh" 2>&1 >/dev/null)
+if grep -q 'jq is missing' <<<"$err" && grep -q 'brew install jq' <<<"$err" && grep -q 'apt install jq' <<<"$err" && grep -q 'winget install jqlang.jq' <<<"$err"; then
+    echo ok
+else
+    echo "FAIL: stderr was '$err'"; fails=$((fails+1))
+fi
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

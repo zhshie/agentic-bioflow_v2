@@ -713,6 +713,33 @@ t "\\$RCL copy $P/results remote:backup"                  pass "control: \\rclon
 # here-doc only the filter's trigger regex keeps this segment.
 t "srun $TAR --remove-files -cf /tmp/r.tar $P/results"    deny "srun tar --remove-files of results/"
 
+# backslash-inside-delete-word (#66): a backslash in the MIDDLE of a command word
+# or option is dropped by the shell, so `r\m` runs the delete. Each case gets the
+# verdict of the same command without the backslash (TC-ids from the bug's test-case.md).
+RB="${D:0:1}\\${D:1}"; TB="${TAR:0:1}\\${TAR:1}"
+t "$RB -rf results"                                       deny "TC-001 r\\m -rf results"
+t "$TB --remove-files -cf a.tar results"                  deny "TC-002 t\\ar --remove-files ... results"
+t "$TAR --remo\\ve-files -cf a.tar results"               deny "TC-003 tar --remo\\ve-files ... results"
+t "nextflow cl\\ean -f"                                   ask  "TC-004 nextflow cl\\ean -f"
+t "$RB -rf $P/work"                                       ask  "TC-005 r\\m -rf work asks, as without \\"
+t "echo hi; $RB -rf $P/results"                           deny "TC-006 r\\m behind a ;"
+t "ssh twnia3 '$RB -rf $P/results'"                       deny "TC-007 r\\m inside ssh"
+t "sudo $RB -rf results"                                  deny "TC-008 sudo r\\m"
+t "$RB -rf $P/work $P/results"                            deny "TC-009 work and results: the strictest wins"
+t "$RB -rf res\\ults"                                     deny "TC-010 two backslashes (r\\m, res\\ults)"
+t "$D -rf res\\ults"                                      deny "TC-011 control: a backslash in the argument only"
+t "\\$D -rf results"                                      deny "TC-012 control: a leading backslash (#65)"
+t "printf 'a\\nb'"                                        pass "TC-013 control: printf 'a\\nb'"
+t 'grep -E "a\sb" file'                                   pass "TC-014 control: grep -E regex with \\s"
+t "sed 's/a\\/b/c/' f"                                    pass "TC-015 control: sed regex with \\/"
+t 'echo C:\Users\x'                                       pass "TC-016 control: a Windows path"
+t 'ls C:\work\results'                                    pass "TC-017 control: ls of a Windows results path"
+t "echo $RB -rf $P/results"                               deny "TC-018 echo r\\m: as main judges echo without the backslash"
+t "$RB -rf $P/re\\ports"                                  pass "TC-019 control: unprotected name, backslashes"
+t 'nextflow l\og'                                         pass "TC-020 control: a harmless nextflow subcommand"
+t "$RB -rf $P/rawdata"                                    deny "TC-035 r\\m of rawdata/"
+t "$RB -rf $P/.nextflow/plugins"                          deny "TC-036 r\\m of .nextflow/plugins/"
+
 echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
 # hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.
