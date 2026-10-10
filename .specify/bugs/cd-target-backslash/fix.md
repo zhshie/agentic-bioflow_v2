@@ -1,104 +1,119 @@
 # Fix: cd-target-backslash
 
-- **Branch**: `fix/76-cd-target-backslash` (RED a1094f5, GREEN see `git log`)
-- **Changed**: `hooks/confirm_cleanup.sh` (the only file under `hooks/`); `tests/confirm_cleanup_test.sh` (end of the #66 section: TC-001..036, 041..043 and seven plan cases). `tests/confirm_cleanup_behind_heredoc_test.sh` is unchanged and runs every one of them again behind a large here-doc (TC-039); its awk count stays 3 (TC-040).
+- **Branch**: `fix/76-cd-target-backslash`. Design: plan.md "Revision 3" (after two acceptance REJECTs the stack / two-view model was replaced).
+- **Changed**: `hooks/confirm_cleanup.sh` (the only file under `hooks/`); `tests/confirm_cleanup_test.sh`; `tests/confirm_cleanup_shapes.txt` (new, 300 shapes for TC-066).
 
 ## What changed
 
-- **Two candidate folders.** `VCWD_B` sits next to `VCWD`. Every relative target is judged against `VCWD` and, when `VCWD_B` differs, against `VCWD_B` too; findings only add, so the stricter verdict wins. All three resolution sites do it: `judge_word`, `find`, and the delete / `mv` source loop. The rclone remote-path branch saves, clears and restores `VCWD_B` as well.
-- **Copies update `VCWD_B` only.** A dropped-backslash copy (#74) starts from the `VCWD_B` the segment before it had and leaves its result there; `VCWD` and the stack still go back to what the original left (#74's rule). That is how `cd res\ults` leaves `VCWD=<run>/res/ults` and `VCWD_B=<run>/results`, and `c\d results` (whose original is not a `cd`) moves `VCWD_B`.
-- **Location cmdlets.** `Set-Location`, `sl`, `chdir`, `Push-Location`, `Pop-Location` (any case), target = first non-option word or `-Path` / `-LiteralPath` (also `-Path:X`; `-StackName` takes a word). Under the PowerShell tool they move both views like `cd` / `pushd` / `popd`. Under Bash they are not built-ins: Set-Location / sl / chdir / Push-Location move `VCWD_B` only, so the old folder is judged beside the new one. An unreadable target (`$d`, `~`, none) leaves the folder where it was; `cd` / `pushd` keep main's "unknown".
-- **Real stack.** `pushd` / `Push-Location` push, `popd` / `Pop-Location` pop, per view. A pop with an empty stack changes nothing, as on main (issue #78).
-- **Lister verdict may only tighten.** After the copy, `LISTER_OK` is 1 only if the original and the copy both left it 1. `Get-ChildItem res\ults | Move-Item ...` now asks like `Get-ChildItem results | ...`.
-- `CW_HANDLED` gained `popd|set-location|sl|chdir|push-location|pop-location`.
+- **A set of candidate folders.** `VCWD` stays main's own working folder (the trunk), moved exactly as main moves it. `CANDS` holds the other folders the shell may be in. Every relative target (judge_word, find, the delete / mv source loop) is judged against the trunk and every candidate; findings only add, so the strictest verdict wins. The rclone remote-path branch clears the set and restores it.
+- **Only main's own `cd` / `pushd` change the set.** An absolute target clears it; a relative one is followed from every candidate; an unreadable one leaves it alone. `pushd` options (`-n`, `+N`) are handled exactly as main does (the same code).
+- **Everything this PR adds can only add a candidate.** The dropped-backslash copy of a `cd` / `pushd` / cmdlet adds the folder the POSIX reading reaches, from the candidates as they stood before the segment it copies (`cd res\ults; cd sub` is judged in `results/sub`). The cmdlets `Set-Location`, `sl`, `chdir`, `Push-Location` (target = first non-option word or `-Path` / `-LiteralPath`, also `-Path:X`; `-`, `$`, `~`, wildcards, `( )` and `@(` add nothing) add their target, in any tool, in any form. `Pop-Location`, `popd` and `dirs` add nothing and remove nothing. The cmdlet segments then go on through the checks main runs on them (no `continue`).
+- **Cap.** At most 32 candidates; over that harmless ones go first, then merely guarded, newest kept; protected-looking ones last. The trunk is not in the set, so what main judges is always judged.
+- **Lister verdict from a copy may only tighten**: after the copy, `LISTER_OK` is 1 only if the original and the copy both left it 1.
+- `CW_HANDLED` gained `set-location|sl|chdir|push-location|pop-location`; the here-doc awk count stays 3.
+- Removed from the earlier revisions: the pushd / popd stack, `HIST_DIR`, per-line suspicion and exact-modelling.
 
-## Evidence (WSL, jq 1.7.1; session cwd /tmp, R = /work/u9613010/lab_runs/x)
+## Evidence (WSL, jq 1.7.1; main = c4a7327)
 
-Every row that changes. All other TC rows (TC-010..013, 025..027, 032..038, 040..044) give the same verdict on main and on the branch.
+- `tests/confirm_cleanup_shapes.txt`: the verifier's 237 shapes, TC-045..065 and the round-1/2 pushd shapes (300 rows). Expectation = main's measured verdict, except the rows listed below where this fix is stricter. **Rows where main denies or asks and the branch passes: 0.**
+- Behind a large here-doc every case gives the same verdict (`confirm_cleanup_behind_heredoc_test.sh`).
+- TC-064 (25 chained `sl dN`) and TC-065 (a `results` in the middle of a 25-step chain) finish inside the normal limit (pass, and deny).
 
-| TC | Command | Tool | main | branch |
-|---|---|---|---|---|
-| TC-001 | `cd R; cd res\ults; rm -rf x` | Bash | pass | deny |
-| TC-002 | `cd R; cd raw\data; rm -rf x` | Bash | pass | deny |
-| TC-003 | `cd R; cd wo\rk; rm -rf x` | Bash | pass | ask |
-| TC-004 | `pushd R/.nextflow/plug\ins; rm -rf x` | Bash | pass | deny |
-| TC-005 | `cd R/res\ults; rm -rf .` | Bash | pass | deny |
-| TC-006 | `cd R; c\d results; rm -rf x` | Bash | pass | deny |
-| TC-007 | `cd R; pu\shd results; rm -rf x` | Bash | pass | deny |
-| TC-008 | `cd R; cd res\ults; find . -delete` | Bash | pass | deny |
-| TC-009 | `cd R; cd raw\data; mv x y` | Bash | pass | ask |
-| TC-014 | `Set-Location R/results; Remove-Item -Recurse x` | PowerShell | pass | deny |
-| TC-015 | `sl R/results; Remove-Item -Recurse x` | PowerShell | pass | deny |
-| TC-016 | `Push-Location R/results; Remove-Item -Recurse x` | PowerShell | pass | deny |
-| TC-017 | `Set-Location R/results; rm -rf x` | Bash | pass | deny |
-| TC-018 | `Set-Location -Path R/results; Remove-Item -Recurse x` | PowerShell | pass | deny |
-| TC-019 | `Set-Location -LiteralPath R/results; ...` | PowerShell | pass | deny |
-| TC-020 | `Set-Location -Path:R/results; ...` | PowerShell | pass | deny |
-| TC-021 | `SET-LOCATION R/results; ...` | PowerShell | pass | deny |
-| TC-022 | `cd R; chdir results; ...` | PowerShell | pass | deny |
-| TC-023 | `cd R; Set-Location results; ...` | PowerShell | pass | deny |
-| TC-024 | `cd R; Set-Location res\ults; ...` | PowerShell | pass | deny |
-| TC-028 | `Get-ChildItem res\ults \| Move-Item -Destination x` | PowerShell | pass | ask |
-| TC-029 | `Get-ChildItem raw\data \| Move-Item -Destination x` | PowerShell | pass | ask |
-| TC-030 | same as TC-028, session cwd R | PowerShell | pass | ask |
-| TC-031 | `gci res\ults \| Move-Item -Destination /tmp/y` | PowerShell | pass | ask |
-| plan | `cd R; pushd results; popd; rm -rf x` | Bash | deny (popd ignored) | pass |
-| plan | `cd R; pushd /tmp; popd; pushd res\ults; rm -rf x` | Bash | pass | deny |
-| plan | `cd R; Push-Location results; rm -rf x` | Bash | pass | deny |
+## Assertions whose expectation changed (named by the contract)
 
-Intended differences from main (the branch passes, main denies or asks): see "Remaining intended differences" under Review round 1.
+| Case | Before | Now | Why |
+|---|---|---|---|
+| TC-027 `cd R; Set-Location results; Set-Location ..; Remove-Item -Recurse x` (PowerShell) | pass | deny | contract rev 3: entering results by PowerShell is judged for the rest of the command; main passes this line because it ignores the cmdlet |
+| TC-056 `cd R; pushd results; popd; rm -rf x` (and the r0 "plan" copy) | pass | deny | a bare popd adds nothing and removes nothing (main denies) |
+| TC-060 `Push-Location results; Pop-Location -PassThru; Remove-Item x` | pass | deny | same |
+| plan: `pushd res\ults; popd`, `Push-Location results; Pop-Location` | pass | deny | same rule; stricter than main |
 
-Controls pinned as unchanged: TC-010 `cd res\ults; cd ..` pass, TC-011/012 `re\ports` pass, TC-013 `cd /tmp` pass, TC-033 `Get-ChildItem re\ports | Move-Item` pass, TC-032 absolute lister ask, TC-034..036 deny, TC-041..043 (variable, `$(...)`, alias) pass as on main.
+No assertion that was in the repository before this PR was changed (#35, #62, #66 rounds 1-3 included).
 
-## RED / GREEN
+## Remaining differences from main: only stricter
 
-RED a1094f5: the 27 new cases listed above fail. GREEN: all of `confirm_cleanup_test.sh` (also behind the here-doc), `guard_plugin_files_test.sh` and the rest pass; see the PR for the full-suite result.
+81 shapes are stricter than main (13 pass to ask, 68 pass to deny); the rest are equal. The cause is always the bug itself (a directory change main does not follow) or the accepted over-judging of a folder the command entered. Listed: main verdict to branch verdict, tool, cwd, command (`@P` = /work/u9613010/lab_runs/x, `@D` = the delete verb).
 
-## Review round 1
-
-The security review found cases that main denies and the first GREEN (r0, 5a08db8) passed. One general rule replaces patching them one by one: **a directory change moves both views only when the gate can model it exactly** - a plain `cd` / `pushd` / `Set-Location` / `Push-Location` to a literal path (no `* ? [ ( ) @(`, no `$`, backtick or `~`, not `-`, no `-StackName`), or a bare `popd` / `Pop-Location` while the gate's own stack is whole (no `dirs` and no uncertain pop or named stack earlier). Anything else - and every cmdlet run under Bash - keeps the more protected of the two views as it was in `VCWD` and puts the possible new folder in `VCWD_B`; when the new folder cannot be read it is the most protected folder this command has been in (`HIST_DIR`, seeded with the session cwd). The old folder is never dropped. `cd` / `pushd` to an unreadable target still clear both views, as on main.
-
-| Command (R = /work/u9613010/lab_runs/x) | Tool | cwd | main | r0 | r1 |
-|---|---|---|---|---|---|
-| `pushd results; popd -n; rm -rf x` | Bash | R | deny | pass | deny |
-| `pushd /tmp; pushd results; popd +1; rm -rf x` | Bash | R | deny | pass | deny |
-| `pushd results; dirs -c; popd; rm -rf x` | Bash | R | deny | pass | deny |
-| `Push-Location -StackName a /tmp; Push-Location -StackName b /var; Pop-Location -StackName a; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
-| `sl /tmp; sl -; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
-| `Push-Location /tmp; Push-Location -; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
-| `sl ../res*; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
-| `sl ..; sl -Path (Join-Path $PWD results); Remove-Item x` | PowerShell | R/results | deny | pass | deny |
-| `sl ..; sl @("results"); Remove-Item x` | PowerShell | R/results | deny | pass | deny |
-| `cd R; cd res\ults; sl /tmp; rm -rf x` (the old known limit) | Bash | /tmp | pass | pass | deny |
-| `pushd results; popd; rm -rf x` (bare popd, whole stack) | Bash | R | deny | pass | pass |
-| `sl $d; Remove-Item x` (control) | PowerShell | /tmp | pass | pass | pass |
-
-The `popd` row is the one deliberate difference from main (see above). A target that does not exist (`sl /nonexistent`) still moves the view, as main's `cd /nonexistent` does; accepted, unchanged. The 44 contract cases and the seven extra cases pass unchanged. `dirs` was added to `CW_HANDLED` so the large-input filter keeps it; the here-doc awk count stays 3.
-
-### Verifier additions (same round)
-
-The new handlers (popd, Pop-Location, Set-Location, sl, chdir, Push-Location) are not modelled as a move when the segment may not run or may not touch this shell: its command line has `&`, `|`, a parenthesis or a backtick (after `&&` / `||`, in a pipe, in `( )`, backgrounded), it is wrapped (`command popd`), or the cmdlet has an option other than `-Path`, `-LiteralPath`, `-StackName`, `-PassThru` (`-Foo`, `-WhatIf`). Then the old folder is kept in one view and the possible new one goes to the other. `cd` and `pushd` are not changed (main's `false && cd /tmp` imprecision stays).
-
-| Command (R = /work/u9613010/lab_runs/x) | Tool | cwd | main | r0 | r1 |
-|---|---|---|---|---|---|
-| `pushd results; false && popd; rm -rf x` | Bash | R | deny | pass | deny |
-| `pushd results; exit 0 \|\| popd; rm -rf x` | Bash | R | deny | pass | deny |
-| `pushd results; popd \| cat; rm -rf x` | Bash | R | deny | pass | deny |
-| `pushd results; (popd); rm -rf x` | Bash | R | deny | pass | deny |
-| `pushd results; echo a \| popd; rm -rf x` | Bash | R | deny | pass | deny |
-| `pushd results; popd & rm -rf x` | Bash | R | deny | pass | deny |
-| `pushd results; command popd; rm -rf x` | Bash | R | deny | pass | deny |
-| `sl -Foo /tmp; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
-| `sl /tmp -WhatIf; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
-| `false && sl /tmp; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
-| `sl /tmp; Pop-Location -Foo; Remove-Item x` | PowerShell | R/results | deny | deny | deny |
-| `Push-Location results; Pop-Location -PassThru; Remove-Item x` (control) | PowerShell | R | deny | deny | pass |
-| `sl -PassThru /tmp; Remove-Item x` (control) | PowerShell | R | pass | pass | pass |
-
-### Remaining intended differences from main (branch passes, main denies or asks)
-
-- A bare `popd` / `Pop-Location` with a stack the gate kept whole really returns to the pushed folder (main never popped).
-- PowerShell moves that really leave a protected folder, under the PowerShell tool: `sl /tmp`, `Push-Location /tmp`, `Set-Location -Path ..`, `Set-Location -StackName s ..` (maintainer's developer-agent ruling in the overview, TC-025..027).
-- Under the Bash tool `Set-Location` / `sl` / `chdir` / `Push-Location` are not built-ins; they only add a second candidate and never drop the old folder, so nothing passes here that main denies.
-- A target that does not exist (`sl /nonexistent`) moves the view, the same class as main's `cd /nonexistent`.
-- Main's own `cd` imprecision (`false && cd /tmp`, a nonexistent target) is unchanged.
+| Main to branch | Tool | cwd | Command |
+|---|---|---|---|
+| pass to deny | Bash | /tmp | `cd @P; pushd res\ults; popd; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; pushd res\ults; popd; popd; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; Push-Location results; Pop-Location; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; Push-Location -StackName s results; Pop-Location -StackName s; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; Set-Location /tmp; Set-Location @P/results; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; Set-Location results; Set-Location /tmp; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; Set-Location results; Set-Location ..; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; cd results; cd ..; Set-Location results; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; cd res\ults; sl /tmp; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; cd res\ults; cd ../..; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; cd res\ults/sub; cd ..; @D -rf x` |
+| pass to ask | Bash | /tmp | `cd @P/wo\rk; @D -rf x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location results; Pop-Location; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location results; popd; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location results; Push-Location /tmp; Pop-Location; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location results; Push-Location /tmp; Pop-Location; Pop-Location; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location results; Pop-Location; Pop-Location; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location results; Pop-Location; Pop-Location; Pop-Location; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `Push-Location @P; Push-Location results; Pop-Location; Pop-Location; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location results; Set-Location ~; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location results; Set-Location; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location results; Set-Location -; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location res\ults; Set-Location /tmp; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location res\ults; Set-Location ..; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; cd res\ults; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location -Path results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location -LiteralPath results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location -PassThru results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location -Path:results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location -Path: results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location -Pa results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location -lit results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location .\results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location ./results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location -StackName s results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location -StackName s results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; sl -Path results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; chdir -Path results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location results\old; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | @P | `Set-Location results; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | @P | `Set-Location ..; Remove-Item -Recurse x` |
+| pass to ask | PowerShell | @P | `Get-ChildItem res\ults | Move-Item -Destination x` |
+| pass to ask | PowerShell | /tmp | `cd @P; Get-ChildItem res\ults | Move-Item -Destination x` |
+| pass to ask | PowerShell | /tmp | `cd @P; gci res\ults | Move-Item -Destination x` |
+| pass to ask | PowerShell | /tmp | `cd @P; Get-ChildItem res\ults | where Name -like a | Move-Item -Destination x` |
+| pass to ask | PowerShell | /tmp | `cd @P; Get-ChildItem res\ults | Select-Object -First 1 | Move-Item -Destination x` |
+| pass to ask | PowerShell | /tmp | `cd @P; Get-ChildItem reports; Get-ChildItem res\ults | Move-Item -Destination x` |
+| pass to ask | PowerShell | /tmp | `cd @P; Get-ChildItem -Path res\ults | Move-Item -Destination x` |
+| pass to ask | PowerShell | /tmp | `cd @P; Get-ChildItem -LiteralPath res\ults | Move-Item -Destination x` |
+| pass to ask | PowerShell | /tmp | `cd @P; ls raw\data | mi -Destination x` |
+| pass to ask | PowerShell | /tmp | `cd @P; dir res\ults | Move-Item -Destination x` |
+| pass to ask | PowerShell | /tmp | `cd @P; gi res\ults | Move-Item -Destination x` |
+| pass to ask | Bash | /tmp | `cd @P; Get-ChildItem res\ults | Move-Item -Destination x` |
+| pass to deny | Bash | /tmp | `cd @P; cd res\ults && @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; cd res\ults || @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P && (cd res\ults; @D -rf x)` |
+| pass to deny | Bash | /tmp | `cd @P; pushd res\ults; popd -n; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; pushd res\ults; dirs -c; popd; @D -rf x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location results; Pop-Location -StackName s; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location -StackName s results; Pop-Location; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location -StackName s results; Pop-Location -StackName s; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location results; Push-Location -StackName s /tmp; Pop-Location; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Push-Location results; Push-Location -StackName s /tmp; Pop-Location -StackName s; Remove-Item -Recurse x` |
+| pass to deny | Bash | /tmp | `cd @P; Set-Location results; Set-Location @P; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; Set-Location results; Pop-Location; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; Set-Location results; popd; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; Push-Location results; popd; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; pushd res\ults; Set-Location ..; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; cd res\ults; Set-Location ..; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; cd res\ults; Push-Location @P; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; c\d results; popd; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; c\d res\ults; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; pu\shd results; po\pd; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; pu\shd results; pu\shd /tmp; po\pd; @D -rf x` |
+| pass to deny | Bash | /tmp | `cd @P; cd res\ults; cd sub; @D -rf x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location results; cd sub; Remove-Item -Recurse x` |
+| pass to deny | PowerShell | @P | `Push-Location results; Pop-Location -PassThru; Remove-Item x` |
+| pass to deny | PowerShell | /tmp | `Set-Location @P/results; Set-Location /tmp; Remove-Item x` |
+| pass to deny | PowerShell | /tmp | `cd @P; Set-Location results; Set-Location ..; Remove-Item -Recurse x` |
+| pass to deny | Bash | @P | `sl d1; sl d2; sl d3; sl d4; sl d5; sl d6; sl d7; sl d8; sl d9; sl d10; sl d11; sl d12; sl results; sl e1; sl e2; sl e3; sl e4; sl e5; sl e6; sl e7; sl e8; sl e9; sl e10; sl e11; sl e12; @D -rf x` |

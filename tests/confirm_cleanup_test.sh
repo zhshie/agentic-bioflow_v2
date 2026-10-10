@@ -833,7 +833,7 @@ tc "/tmp" "cd $P; cd \$(printf results); $D -rf x"               pass "TC-042 cd
 tc "/tmp" "cd $P; alias go=cd; go results; $D -rf x"             pass "TC-043 an alias stays unknown"
 # Plan items beyond the TCs: the directory stack and the two views
 tc "/tmp" "cd $P; pushd results; popd; $D -rf x"                 deny "TC-056 pushd results; popd: judged as main does (Rev 3)"
-tc "/tmp" "cd $P; pushd res\ults; popd; $D -rf x"                pass "plan: pushd res\ults; popd leaves it again"
+tc "/tmp" "cd $P; pushd res\ults; popd; $D -rf x"                deny "plan: pushd res-ults; popd keeps results (Rev 3, stricter than main)"
 tc "/tmp" "cd $P; pushd /tmp; popd; pushd res\ults; $D -rf x"    deny "plan: a stack entry does not leak into the next pushd"
 tps "cd $P; Push-Location results; Pop-Location; Remove-Item -Recurse x" deny "plan: Push-Location results; Pop-Location keeps results (Rev 3)"
 tc "/tmp" "cd $P; Push-Location results; $D -rf x"               deny "plan: Bash Push-Location results is judged"

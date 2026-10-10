@@ -409,71 +409,62 @@ if [[ $INPUT =~ $RE_CWD ]]; then
     VCWD="${BASH_REMATCH[1]}"; VCWD="${VCWD//\\\\//}"; VCWD="${VCWD//\\//}"
     case "$VCWD" in /*|[A-Za-z]:/*) norm_path "$VCWD"; VCWD="$REPLY" ;; *) VCWD="" ;; esac
 fi
-# #76, #75: the folder the shell is in is not always the one the hook tracked. A
-# backslash in a `cd` target is a separator to PowerShell and Windows but is
-# dropped by a POSIX shell (`cd res\ults` enters results/), and PowerShell's
-# Set-Location is not a built-in under Bash. So there is a second candidate,
-# VCWD_B ("another folder the shell may be in"), and every relative target is
-# judged against VCWD and, when it differs, against VCWD_B; each finding only
-# ever adds, so the stricter verdict wins. STK_A / STK_B are the matching
-# pushd / Push-Location stacks, one entry per level, each led by STK_SEP.
-VCWD_B=$VCWD
-STK_A=""; STK_B=""; STK_SEP=$'\001'
-STK_TAINT=""; HIST_DIR=$VCWD
-PRE_B=$VCWD_B; PRE_STKB=""
-# cd_resolve <base folder> <target> -> REPLY: where a `cd` to <target> lands (the
-# target read as written, a backslash as a separator); "" when it cannot be known.
-cd_resolve() {
-    case "$2" in
-        /*|[A-Za-z]:*) norm_path "${2//\\//}" ;;
-        *) if [ -n "$1" ]; then norm_path "$1/${2//\\//}"; else REPLY=""; fi ;;
-    esac
-}
+# #76, #75: the folder the shell is in is not always the one this gate tracked. VCWD is
+# the trunk - what main's own cd / pushd leaves, exactly as before. CANDS holds the other
+# folders the shell may be in: a dropped-backslash copy of a cd (`cd res\ults` enters
+# results/) and PowerShell's location cmdlets can only ADD to it, never remove from it.
+# Every relative target is judged against the trunk and every candidate; each finding only
+# ever adds, so the strictest verdict wins. Only main's cd / pushd to a target replaces
+# the set: an absolute one clears it, a relative one is followed from every candidate.
+CANDS=()
+PRE_VCWD=""; PRE_CANDS=()
 # dir_rank <folder> -> DR: 2 protected (deny), 1 guarded (ask), 0 neither.
 dir_rank() {
     DR=0
     if [[ $1 =~ $RE_PROTECTED ]] || [[ $1 =~ $RE_PLUGINS ]]; then DR=2
     elif [[ $1 =~ $RE_ANY_GUARDED ]]; then DR=1; fi
 }
-# pick_strict <a> <b> -> REPLY: the more protected-looking folder; a on a tie; an empty one never wins.
-pick_strict() {
-    if [ -z "$2" ]; then REPLY=$1; return; fi
-    if [ -z "$1" ]; then REPLY=$2; return; fi
-    dir_rank "$1"; local ra=$DR; dir_rank "$2"
-    if [ "$DR" -gt "$ra" ]; then REPLY=$2; else REPLY=$1; fi
+# cd_resolve <base folder> <target> -> REPLY: where a `cd` to <target> lands, the target
+# read as written (a backslash as a separator); "" when it cannot be known.
+cd_resolve() {
+    case "$2" in
+        /*|[A-Za-z]:*) norm_path "${2//\\//}" ;;
+        *) if [ -n "$1" ]; then norm_path "$1/${2//\\//}"; else REPLY=""; fi ;;
+    esac
 }
-# hist_note <folder>: HIST_DIR is the most protected folder this command has been in.
-hist_note() {
+# cand_add <folder>: one more folder the shell may be in (not the trunk, not twice).
+cand_add() {
+    local c
     [ -n "$1" ] || return 0
-    pick_strict "$HIST_DIR" "$1"; HIST_DIR=$REPLY
+    [ "$1" = "$VCWD" ] && return 0
+    for c in ${CANDS[@]+"${CANDS[@]}"}; do [ "$c" = "$1" ] && return 0; done
+    CANDS+=("$1")
 }
-# seg_context_suspect -> REPLY 1/0: may the segment just read (SEG) fail to run, or run
-# somewhere other than this shell? Judged on the command line it came from: an `&`, `|`,
-# parenthesis or backtick on that line (after && or ||, in a pipe, in ( ), backgrounded),
-# or the line not found at all. A dropped-backslash copy is looked for with the
-# backslashes dropped from the line.
-seg_context_suspect() {
-    local rest=$CMD ln cmp found=0 sus=0
-    while :; do
-        ln=${rest%%$'\n'*}
-        cmp=$ln; [ -n "$COPY" ] && cmp=${ln//\/}
-        if [[ $cmp == *"$SEG"* ]]; then
-            found=1
-            case "$ln" in *'&'*|*'|'*|*'('*|*')'*|*'`'*) sus=1 ;; esac
-        fi
-        [ "$rest" = "$ln" ] && break
-        rest=${rest#*$'\n'}
+# cand_add_from_pre <target>: the folder a cd to <target> reaches from the trunk and the
+# candidates as they stood before the segment being read.
+cand_add_from_pre() {
+    local c
+    case "$1" in
+        ''|-|'~'*|*'$'*|*'`'*) return 0 ;;
+        /*|[A-Za-z]:*) cd_resolve "" "$1"; cand_add "$REPLY"; return 0 ;;
+    esac
+    [ -n "$PRE_VCWD" ] && { cd_resolve "$PRE_VCWD" "$1"; cand_add "$REPLY"; }
+    for c in ${PRE_CANDS[@]+"${PRE_CANDS[@]}"}; do cd_resolve "$c" "$1"; cand_add "$REPLY"; done
+}
+# cand_cap: at most 32 candidates. Over that the harmless ones go first (then the merely
+# guarded, newest kept); a protected-looking folder is the last to go, and the trunk is
+# not in the set at all, so what main judges is always judged.
+cand_cap() {
+    [ "${#CANDS[@]}" -gt 32 ] || return 0
+    local keep=() pass i n=${#CANDS[@]}
+    for pass in 2 1 0; do
+        for ((i = n - 1; i >= 0; i--)); do
+            [ "${#keep[@]}" -lt 32 ] || break
+            dir_rank "${CANDS[$i]}"
+            [ "$DR" = "$pass" ] && keep+=("${CANDS[$i]}")
+        done
     done
-    [ "$found" = 0 ] && sus=1
-    REPLY=$sus
-}
-# dc_uncertain <possible new folder or "">: the change cannot be modelled exactly.
-# VCWD keeps the more protected of the two views as they were; VCWD_B takes the
-# possible new folder, or the most protected folder seen when that is unknown.
-dc_uncertain() {
-    pick_strict "$VCWD" "$VCWD_B"; local keep=$REPLY
-    pick_strict "$1" "$HIST_DIR"; local nw=$REPLY
-    VCWD=$keep; VCWD_B=${nw:-$keep}
+    CANDS=("${keep[@]}")
 }
 # #35: is the segment before this one a lister of an explicit path, so a
 # `Move-Item` fed from it has a known source? (Pipeline-fed Move-Item.)
@@ -750,7 +741,7 @@ brace_expand() {
 # spelling is then judged as deleted (mode ""), deleted with all it holds
 # ("rec"), or moved out ("move": only rawdata/, results/, analysis/, an ask).
 judge_word() { # judge_word <word> [""|rec|move]
-    local W=$1 M=${2:-} V E Y X=() SP=()
+    local W=$1 M=${2:-} V E Y B X=() SP=()
     case "$W" in ''|-*) return 0 ;; esac
     W=${W//\"/}; W=${W//\'/}
     SP=("${W//\\//}"); [ "${W//\\/}" != "${W//\\//}" ] && SP+=("${W//\\/}")
@@ -766,9 +757,9 @@ judge_word() { # judge_word <word> [""|rec|move]
             if [ -n "$VCWD" ]; then
                 case "$E" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$E"; X+=("$REPLY") ;; esac
             fi
-            if [ -n "$VCWD_B" ] && [ "$VCWD_B" != "$VCWD" ]; then
-                case "$E" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD_B/$E"; X+=("$REPLY") ;; esac
-            fi
+            for B in ${CANDS[@]+"${CANDS[@]}"}; do
+                case "$E" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$B/$E"; X+=("$REPLY") ;; esac
+            done
             for Y in "${X[@]}"; do
                 case "$M" in
                     move)
@@ -831,7 +822,7 @@ is_dry_run() {
 # tests/confirm_cleanup_test.sh through this path to catch one that has not.
 # Small inputs (under 8 KB of segments) skip the filter: it is one more process
 # (gate_process_count), and their full judgement costs well under a second.
-CW_HANDLED='^(__too_deep__|cd|pushd|popd|dirs|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
+CW_HANDLED='^(__too_deep__|cd|pushd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
 RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)|($RE_NFCLEAN)"
 RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)"
 # The PowerShell listers and pipeline filters (LISTER_OK below) matter only to a
@@ -873,22 +864,19 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     # `cd <run>/results\old` set the folder from the original and the copy then
     # moved it to `<run>/resultsold`, so a delete after it went unjudged.
     #
-    # #76: the copy is the POSIX reading of the same command, so it is exactly what
-    # the second candidate folder (VCWD_B) follows: the copy starts from the state
-    # VCWD_B had before the segment it copies, and what it leaves in VCWD_B stays.
-    # VCWD and its stack still go back to what the original left. A copy may only
-    # tighten the lister verdict: the copy of `Get-ChildItem res\ults` reads the
-    # protected `results`, which clears LISTER_OK, and it must stay cleared.
+    # #76: a copy may only tighten the lister verdict: the copy of
+    # `Get-ChildItem res\ults` reads the protected `results`, which clears LISTER_OK,
+    # and it must stay cleared; a copy can never raise it. And the candidates a copy
+    # adds (cand_add_from_pre) are read from the state before the segment it copies.
     if [ -n "${COPY_SAVED-}" ]; then
-        VCWD=$COPY_VCWD; STK_A=$COPY_STKA
+        VCWD=$COPY_VCWD
         if [ "$LISTER_OK" = 1 ] && [ "$COPY_LISTER" = 1 ]; then LISTER_OK=1; else LISTER_OK=0; fi
         COPY_SAVED=
     fi
     if [ -n "$COPY" ]; then
-        COPY_VCWD=$VCWD; COPY_STKA=$STK_A; COPY_LISTER=$LISTER_OK; COPY_SAVED=1
-        VCWD_B=$PRE_B; STK_B=$PRE_STKB
+        COPY_VCWD=$VCWD; COPY_LISTER=$LISTER_OK; COPY_SAVED=1
     else
-        PRE_B=$VCWD_B; PRE_STKB=$STK_B
+        PRE_VCWD=$VCWD; PRE_CANDS=(${CANDS[@]+"${CANDS[@]}"})
     fi
     [ -n "$SEG" ] || continue
     # #62: past the deadline, stop and ask (see DEADLINE above).
@@ -923,118 +911,72 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     # explicit, unprotected path (for a pipeline-fed Move-Item two segments on).
     PREV_LISTER_OK=$LISTER_OK
     case "$CW" in
-        dirs)
-            # `dirs -c` and friends edit the stack in ways this gate does not model: a
-            # later popd is no longer one it can follow.
-            STK_TAINT=1; LISTER_OK=0
-            continue ;;
-        cd|pushd|popd|chdir|set-location|sl|push-location|pop-location)
-            # #76, #75: a directory change. cd, pushd and popd are the shell's own; under
-            # the PowerShell tool Set-Location (sl, chdir), Push-Location and Pop-Location
-            # are the same thing. Under Bash they are not built-ins, so the shell may
-            # not have moved.
-            #
-            # Review round 1, one rule: BOTH views move only when the change can be
-            # modelled exactly - a plain cd / pushd / Set-Location / Push-Location to a
-            # literal path, or a bare popd / Pop-Location with a stack this gate has kept
-            # whole. Anything else (an argument or option on a pop, `-`, -StackName, a
-            # wildcard or evaluated target, a pop after `dirs`, a cmdlet run under Bash)
-            # keeps the folder it was in (the more protected of the two views) in VCWD
-            # and puts the possible new one in VCWD_B: it never drops the old folder.
-            # Where the new folder cannot be read it is the most protected folder this
-            # command has been in (HIST_DIR).
-            DC_ACT=set; DC_ALL=1; DC_PS=0; DC_KEEP=0; DC_SN=0
-            case "$CW" in
-                pushd|push-location) DC_ACT=push ;;
-                popd|pop-location) DC_ACT=pop ;;
-            esac
-            case "$CW" in set-location|sl|chdir|push-location|pop-location) DC_PS=1; DC_KEEP=1 ;; esac
-            case "$TOOL" in
-                ""|Bash) [ "$DC_KEEP" = 1 ] && DC_ALL=0 ;;
-                *) DC_PS=1 ;;
-            esac
-            DC_T=""; DC_NARGS=0; DC_GOT=0; DC_UOPT=0; DC_CTX=0; DC_I=0
-            CDF=0; DC_TAKE=0; DC_SKIP=0
+        cd|pushd)
+            CDT=""; CDF=0
             read -r -a CDW <<<"${SEG//[\"\']/}"
-            shopt -s nocasematch
             for CDX in ${CDW[@]+"${CDW[@]}"}; do
-                if [ "$CDF" = 0 ]; then
-                    DC_W=${CDX#\\}; DC_W=${DC_W##*/}
-                    if [[ $DC_W == "$CW" ]]; then CDF=1; [ "$DC_I" -gt 0 ] && DC_CTX=1; fi
-                    DC_I=$((DC_I + 1))
-                    continue
-                fi
-                DC_NARGS=$((DC_NARGS + 1))
-                if [ "$DC_PS" = 0 ]; then
-                    if [ "$DC_GOT" = 0 ]; then case "$CDX" in -*) ;; *) DC_T=$CDX; DC_GOT=1 ;; esac; fi
-                    continue
-                fi
-                # PowerShell: the value of -Path / -LiteralPath (also -Path:value),
-                # else the first word that is not an option; `-` is the previous
-                # location; -StackName names another stack (and takes a word).
-                if [ "$DC_TAKE" = 1 ]; then DC_T=$CDX; DC_GOT=1; DC_TAKE=0; continue; fi
-                if [ "$DC_SKIP" = 1 ]; then DC_SKIP=0; continue; fi
-                case "$CDX" in
-                    -path|-literalpath|-lp|-pspath) DC_TAKE=1 ;;
-                    -path:?*|-literalpath:?*|-lp:?*|-pspath:?*) DC_T=${CDX#*:}; DC_GOT=1 ;;
-                    -stackname) DC_SKIP=1; DC_SN=1 ;;
-                    -stackname:*) DC_SN=1 ;;
-                    -) [ "$DC_GOT" = 0 ] && { DC_T=-; DC_GOT=1; } ;;
-                    -passthru) DC_NARGS=$((DC_NARGS - 1)) ;;
-                    -*) DC_UOPT=1 ;;
-                    *) [ "$DC_GOT" = 0 ] && { DC_T=$CDX; DC_GOT=1; } ;;
-                esac
+                if [ "$CDF" = 0 ]; then [ "$CDX" = "$CW" ] && CDF=1; continue; fi
+                case "$CDX" in -*) continue ;; esac
+                CDT="$CDX"; break
             done
-            shopt -u nocasematch
-            # the new handlers (popd, Pop-Location, the cmdlets) are not modelled when the
-            # segment may not run or may not touch this shell: after && or ||, in a pipe,
-            # in ( ), backgrounded, wrapped (command popd), or with an unknown option
-            if [ "$DC_KEEP" = 1 ] || [ "$DC_ACT" = pop ]; then
-                seg_context_suspect; [ "$REPLY" = 1 ] && DC_CTX=1
-            else DC_CTX=0; fi
-            [ "$DC_KEEP" = 1 ] && [ "$DC_UOPT" = 1 ] && DC_CTX=1
-            DC_UNREAD=0
-            case "$DC_T" in ''|-|'~'*|*'$'*|*'`'*) DC_UNREAD=1 ;; esac
-            DC_LIT=1   # a literal path, nothing PowerShell would evaluate
-            if [ "$DC_PS" = 1 ]; then
-                case "$DC_T" in *'*'*|*'?'*|*'['*|*'('*|*')'*|'@'*) DC_LIT=0 ;; esac
-            fi
-            if [ "$DC_ACT" = pop ]; then
-                if [ "$DC_ALL" = 1 ] && [ "$DC_NARGS" = 0 ] && [ "$DC_CTX" = 0 ] && [ -z "${STK_TAINT-}" ]; then
-                    if [ -n "$STK_A" ]; then VCWD=${STK_A##*"$STK_SEP"}; STK_A=${STK_A%"$STK_SEP"*}; fi
-                    if [ -n "$STK_B" ]; then VCWD_B=${STK_B##*"$STK_SEP"}; STK_B=${STK_B%"$STK_SEP"*}; fi
-                else
-                    STK_TAINT=1
-                    dc_uncertain ""
-                fi
+            # #76: main's own cd / pushd is the only thing that replaces the set of
+            # candidate folders (CANDS). The trunk (VCWD) moves exactly as it always did.
+            # A dropped-backslash copy never moves the trunk (#74); it only ADDS the
+            # folder the shell reaches when the backslash is dropped, from the
+            # candidates as they were before the segment it copies.
+            if [ -n "$COPY" ]; then
+                cand_add_from_pre "$CDT"
             else
-                if [ "$DC_ACT" = push ]; then
-                    if [ "$DC_SN" = 1 ]; then STK_TAINT=1
-                    else
-                        [ "$DC_ALL" = 1 ] && STK_A="$STK_A$STK_SEP$VCWD"
-                        STK_B="$STK_B$STK_SEP$VCWD_B"
-                    fi
-                fi
-                if [ "$DC_SN" = 0 ] && [ "$DC_ALL" = 1 ] && [ "$DC_CTX" = 0 ] && [ "$DC_UNREAD" = 0 ] && [ "$DC_LIT" = 1 ]; then
-                    cd_resolve "$VCWD" "$DC_T"; DC_NA=$REPLY
-                    cd_resolve "$VCWD_B" "$DC_T"; DC_NB=$REPLY
-                    VCWD=$DC_NA; VCWD_B=$DC_NB
-                elif [ "$DC_KEEP" = 0 ] && [ "$DC_UNREAD" = 1 ] && [ "$DC_SN" = 0 ]; then
-                    # cd / pushd to a target it cannot read: later relative targets are
-                    # unknown, as they always were
-                    VCWD=""; VCWD_B=""
-                elif [ "$DC_UNREAD" = 1 ]; then
-                    dc_uncertain ""
-                else
-                    cd_resolve "$VCWD" "$DC_T"; DC_NA=$REPLY
-                    cd_resolve "$VCWD_B" "$DC_T"; DC_NB=$REPLY
-                    pick_strict "$DC_NA" "$DC_NB"
-                    dc_uncertain "$REPLY"
-                fi
+                case "$CDT" in
+                    ''|-|'~'*|*'$'*|*'`'*) VCWD="" ;;
+                    /*|[A-Za-z]:*) norm_path "${CDT//\\//}"; VCWD="$REPLY"; CANDS=() ;;
+                    *)
+                        if [ -n "$VCWD" ]; then norm_path "$VCWD/${CDT//\\//}"; VCWD="$REPLY"; fi
+                        # a relative target is followed from every candidate
+                        DC_OLD=(${CANDS[@]+"${CANDS[@]}"}); CANDS=()
+                        for DC_C in ${DC_OLD[@]+"${DC_OLD[@]}"}; do
+                            cd_resolve "$DC_C" "$CDT"; cand_add "$REPLY"
+                        done ;;
+                esac
+                cand_cap
             fi
-            hist_note "$VCWD"; hist_note "$VCWD_B"
             LISTER_OK=0
             continue ;;
+        set-location|sl|chdir|push-location|pop-location)
+            # #75: PowerShell's location cmdlets. Under Bash they are not built-ins and
+            # under PowerShell they may fail, sit behind a condition or take a form this
+            # gate cannot read, so they can only ADD the folder they name as a candidate;
+            # they never remove one. Pop-Location, like popd, adds nothing. The segment
+            # then goes on through the checks main runs on it.
+            CDT=""; CDF=0; DC_TAKE=0; DC_SKIP=0
+            if [ "$CW" != pop-location ]; then
+                read -r -a CDW <<<"${SEG//[\"\']/}"
+                shopt -s nocasematch
+                for CDX in ${CDW[@]+"${CDW[@]}"}; do
+                    if [ "$CDF" = 0 ]; then
+                        DC_W=${CDX#\\}; DC_W=${DC_W##*/}
+                        [[ $DC_W == "$CW" ]] && CDF=1
+                        continue
+                    fi
+                    # -Path / -LiteralPath value (also -Path:value), else the first word
+                    # that is not an option; -StackName takes a word of its own.
+                    if [ "$DC_TAKE" = 1 ]; then CDT=$CDX; break; fi
+                    if [ "$DC_SKIP" = 1 ]; then DC_SKIP=0; continue; fi
+                    case "$CDX" in
+                        -path|-literalpath|-lp|-pspath) DC_TAKE=1 ;;
+                        -path:?*|-literalpath:?*|-lp:?*|-pspath:?*) CDT=${CDX#*:}; break ;;
+                        -stackname) DC_SKIP=1 ;;
+                        -*) ;;
+                        *) CDT=$CDX; break ;;
+                    esac
+                done
+                shopt -u nocasematch
+                case "$CDT" in
+                    ''|-|'~'*|*'$'*|*'`'*|*'*'*|*'?'*|*'['*|*'('*|*')'*|'@'*) ;;
+                    *) cand_add_from_pre "$CDT"; cand_cap ;;
+                esac
+            fi
+            LISTER_OK=0 ;;
         get-childitem|gci|ls|dir|get-item|gi)
             LISTER_OK=0; LARGS=0
             read -r -a LW <<<"${SEG//[\"\']/}"
@@ -1244,9 +1186,9 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 if [[ $XQ =~ ^[A-Za-z0-9_.-]+: ]] && ! [[ $XQ =~ ^[A-Za-z]:[/\\] ]]; then
                     # a remote path is relative to the remote's root, not to
                     # the working folder (a drive letter is a local path)
-                    XCWD=$VCWD; XCWD_B=$VCWD_B; VCWD=""; VCWD_B=""
+                    XCWD=$VCWD; XCANDS=(${CANDS[@]+"${CANDS[@]}"}); VCWD=""; CANDS=()
                     judge_word "$XQ" "$XM"; judge_word "${XQ#*:}" "$XM"
-                    VCWD=$XCWD; VCWD_B=$XCWD_B
+                    VCWD=$XCWD; CANDS=(${XCANDS[@]+"${XCANDS[@]}"})
                 else
                     judge_word "${XP[$XI]}" "$XM"
                 fi
@@ -1372,9 +1314,9 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             if [ -n "$VCWD" ]; then
                 case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$X"; XA+=("$REPLY") ;; esac
             fi
-            if [ -n "$VCWD_B" ] && [ "$VCWD_B" != "$VCWD" ]; then
-                case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD_B/$X"; XA+=("$REPLY") ;; esac
-            fi
+            for XB in ${CANDS[@]+"${CANDS[@]}"}; do
+                case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$XB/$X"; XA+=("$REPLY") ;; esac
+            done
             XH=0; XW=0; XT=0
             for Y in "${XA[@]}"; do
                 holds_protected "$Y" && XH=1
@@ -1495,19 +1437,19 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
         A=${A//\"/}; A=${A//\'/}; A=${A//\\//}; A=${A//\{//}; A=${A//\}//}; A=${A//,//}
         [ -n "$A" ] || continue
         # #35: a relative target is judged where it really is.
-        RES=""; RES_B=""
+        RES=""; RES_X=()
         if [ -n "$VCWD" ]; then
             case "$A" in
                 /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;;
                 *) norm_path "$VCWD/$A"; RES="$REPLY" ;;
             esac
         fi
-        if [ -n "$VCWD_B" ] && [ "$VCWD_B" != "$VCWD" ]; then
+        for XB in ${CANDS[@]+"${CANDS[@]}"}; do
             case "$A" in
                 /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;;
-                *) norm_path "$VCWD_B/$A"; RES_B="$REPLY" ;;
+                *) norm_path "$XB/$A"; RES_X+=("$REPLY") ;;
             esac
-        fi
+        done
         case "$A" in rm|rmdir|unlink|shred|truncate|mv|move-item) continue ;; esac   # a wrapped verb
         NARGS=$((NARGS + 1))
 
@@ -1523,7 +1465,9 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 || [[ ${WORDS[$wi]} == *'{'*','*'}'* ]]; }; then
             [[ $A =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${A} "
             [ -n "$RES" ] && [[ $RES =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${RES} "
-            [ -n "$RES_B" ] && [[ $RES_B =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${RES_B} "
+            for XR in ${RES_X[@]+"${RES_X[@]}"}; do
+                [[ $XR =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${XR} "
+            done
         fi
 
         # An unknown command word (`$(which rm)`, `$R`) is judged only when
@@ -1559,7 +1503,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             # results), and the same word resolved against the working folder.
             [ "$A_ESC" != "$A" ] && judge_delete_target "$A_ESC"
             [ -n "$RES" ] && judge_delete_target "$RES"
-            [ -n "$RES_B" ] && judge_delete_target "$RES_B"
+            for XR in ${RES_X[@]+"${RES_X[@]}"}; do judge_delete_target "$XR"; done
             # sn1-delete-shapes: a brace word as bash expands it (`res{ults,}`),
             # beside the flattened form above; and a recursive delete of a folder
             # that holds protected ones.
@@ -1567,7 +1511,9 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             if [ "$RMODE" = rec ]; then
                 holds_protected "$A" && HIT_PROTECTED="${HIT_PROTECTED}${A} (it holds rawdata/, results/ or analysis/) "
                 [ -n "$RES" ] && holds_protected "$RES" && HIT_PROTECTED="${HIT_PROTECTED}${RES} (it holds rawdata/, results/ or analysis/) "
-                [ -n "$RES_B" ] && holds_protected "$RES_B" && HIT_PROTECTED="${HIT_PROTECTED}${RES_B} (it holds rawdata/, results/ or analysis/) "
+                for XR in ${RES_X[@]+"${RES_X[@]}"}; do
+                    holds_protected "$XR" && HIT_PROTECTED="${HIT_PROTECTED}${XR} (it holds rawdata/, results/ or analysis/) "
+                done
             fi
         fi
         shopt -s nocasematch
