@@ -840,6 +840,20 @@ tc "/tmp" "cd $P; Push-Location results; $D -rf x"               deny "plan: Bas
 tps "cd $P/results; Set-Location \$d; Remove-Item -Recurse x"    deny "plan: an unreadable Set-Location target keeps the old folder"
 tcp PowerShell "$P" 'Get-ChildItem reports | Move-Item -Destination x'         pass "plan: control: lister of reports, from the run folder"
 
+# Review round 1: a directory change moves both views only when the gate can model it
+# exactly; anything else keeps the old folder in one view (never drops it). Main's verdict for each is deny.
+tcp Bash "$P" "pushd results; popd -n; $D -rf x"                                deny "R1 popd -n does not move"
+tcp Bash "$P" "pushd /tmp; pushd results; popd +1; $D -rf x"                    deny "R1 popd +1 does not move to the top"
+tcp Bash "$P" "pushd results; dirs -c; popd; $D -rf x"                          deny "R1 dirs -c empties the stack, popd fails"
+tcp PowerShell "$P/results" "Push-Location -StackName a /tmp; Push-Location -StackName b /var; Pop-Location -StackName a; Remove-Item x" deny "R1 named stacks"
+tcp PowerShell "$P/results" 'sl /tmp; sl -; Remove-Item x'                      deny "R1 sl - goes back"
+tcp PowerShell "$P/results" 'Push-Location /tmp; Push-Location -; Remove-Item x' deny "R1 Push-Location - goes back"
+tcp PowerShell "$P/results" 'sl ../res*; Remove-Item x'                         deny "R1 a wildcard target"
+tcp PowerShell "$P/results" 'sl ..; sl -Path (Join-Path $PWD results); Remove-Item x' deny "R1 an evaluated target"
+tcp PowerShell "$P/results" 'sl ..; sl @("results"); Remove-Item x'             deny "R1 an array target"
+tcp Bash "$P" "pushd results; popd; $D -rf x"                                   pass "R1 control: a bare popd with a known stack"
+tcp PowerShell "/tmp" 'sl $d; Remove-Item x'                                    pass "R1 control: an unknown target from a harmless folder"
+
 echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
 # hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.
