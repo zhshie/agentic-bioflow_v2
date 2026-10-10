@@ -28,6 +28,15 @@
 # suite itself needs only a Linux/macOS bash, not Claude Code, so the message
 # offers the login node (Remote-SSH) as well as WSL.
 # --allow-msys runs anyway, and the verdict then names the gap.
+#
+# Not without jq or python3 either (issue #70). On a machine with no jq, 22 of 94
+# files went red and read like a broken Safety Net; the gates were fine (each
+# refuses with exit 2 when jq is missing, PITFALLS 28) - the tests build their
+# inputs and read the hook answers with jq. So the runner checks both tools
+# before running anything, says so once, and stops with exit 3. The check that
+# the gates hold without jq is tests/gates_without_jq_test.sh, which needs no jq
+# and is exempt (alone it runs anyway). --allow-missing-tools runs regardless and
+# the verdict then names what was missing.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$ROOT/scripts/utils/portable.sh" || { echo "cannot read scripts/utils/portable.sh"; exit 1; }
@@ -39,6 +48,7 @@ VERBOSE=0
 usage() {
     cat >&2 <<'U'
 usage: run_all.sh [--only <substring>] [--timeout <secs>] [--verbose] [--list]
+                  [--allow-msys] [--allow-missing-tools]
 
   --only <substring>   run only test files whose name contains this
   --timeout <secs>     per-test limit (default 300; 0 disables)
@@ -46,12 +56,16 @@ usage: run_all.sh [--only <substring>] [--timeout <secs>] [--verbose] [--list]
   --list               list the test files that would run, then stop
   --allow-msys         run on native Windows Git Bash/MSYS anyway (failures
                        there are the known gap in PITFALLS 16b, not a regression)
+  --allow-missing-tools  run even though jq or python3 is missing or does not work
+                       (the reds are then those tools, not a regression; also
+                       skipped for python3 under --allow-msys, PITFALLS 20c)
 U
     exit 2
 }
 
 LIST=0
 ALLOW_MSYS=0
+ALLOW_MISSING=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --only)    ONLY="${2-}"; [ -n "$ONLY" ] || usage; shift 2 ;;
@@ -59,6 +73,7 @@ while [ $# -gt 0 ]; do
         --verbose) VERBOSE=1; shift ;;
         --list)    LIST=1; shift ;;
         --allow-msys) ALLOW_MSYS=1; shift ;;
+        --allow-missing-tools) ALLOW_MISSING=1; shift ;;
         -h|--help) usage ;;
         *)         echo "unknown option: $1" >&2; usage ;;
     esac
@@ -102,6 +117,44 @@ FILES="${FILES%$'\n'}"
 [ -n "$FILES" ] || { echo "no test files matched${ONLY:+ --only $ONLY}" >&2; exit 2; }
 
 if [ "$LIST" = 1 ]; then printf '%s\n' "$FILES"; exit 0; fi
+
+# jq and python3 must compute, not just exist (issue #70; same probe the hooks
+# use for jq, trailing CR allowed). Skipped when the only file selected is the
+# one that needs neither. --allow-msys skips python3: the Store stub there is the
+# known MSYS gap (PITFALLS 20c); jq is still checked.
+MISSING=""
+if [ "$FILES" != "gates_without_jq_test.sh" ]; then
+    probe=$(jq -c .a <<<'{"a":[1]}' 2>/dev/null); [ "${probe%$'\r'}" = '[1]' ] || MISSING="jq"
+    if [ "$ALLOW_MSYS" = 0 ]; then
+        probe=$(python3 -c 'print(1)' 2>/dev/null); [ "${probe%$'\r'}" = 1 ] || MISSING="${MISSING:+$MISSING and }python3"
+    fi
+fi
+if [ -n "$MISSING" ] && [ "$ALLOW_MISSING" = 0 ]; then
+    echo "The test suite is not run here: $MISSING is missing or does not work." >&2
+    case "$MISSING" in *jq*) cat >&2 <<'W'
+
+Most test files build their inputs and read the hooks' answers with jq, so
+without it they go red for that reason alone, which reads like a broken Safety
+Net. It is not one: the gates still refuse when jq is missing (exit 2, "BLOCKED";
+PITFALLS 28). To check exactly that, run the one test that needs no jq:
+
+  bash tests/gates_without_jq_test.sh
+
+Install jq to run the whole suite:
+  Debian/Ubuntu:  sudo apt install jq
+  macOS:          brew install jq
+W
+    ;; esac
+    case "$MISSING" in *python3*) cat >&2 <<'W'
+
+python3 must print when run (a Microsoft Store stub that exits silently does
+not count; docs/PITFALLS.md 20c). Install python3, then run this again.
+W
+    ;; esac
+    echo >&2
+    echo "To run anyway and see the reds: run_all.sh --allow-missing-tools" >&2
+    exit 3
+fi
 
 VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
     "$ROOT/.claude-plugin/plugin.json" 2>/dev/null | head -1)"
@@ -158,6 +211,9 @@ fi
 
 summary="$passed/$total passed"
 [ "$total" != "$expected" ] && summary="$summary - INCOMPLETE: only $total of $expected test files ran"
+if [ -n "$MISSING" ]; then
+    summary="$summary - run with --allow-missing-tools, $MISSING missing"
+fi
 [ "$failed"   -gt 0 ] && summary="$summary, $failed failed"
 [ "$timedout" -gt 0 ] && summary="$summary, $timedout timed out"
 echo "$summary"
