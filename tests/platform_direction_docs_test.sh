@@ -327,15 +327,17 @@ for term in 'Platform' 'Station agent' 'Run index' 'MCP tool layer'; do
   def=$(awk -v t="**$term** " 'index($0,t)==1{f=1;next} f&&/^$/{exit} f' CONTEXT.md | head -1)
   [ -n "$def" ] && ok "TC-029: $term has a one-sentence definition line" || bad "TC-029: $term has a definition"
 done
-if git rev-parse --verify -q main >/dev/null 2>&1 && git show main:CONTEXT.md >/dev/null 2>&1; then
-  missing=""
-  while IFS= read -r t; do
-    grep -qF -- "**$t**" CONTEXT.md || missing="$missing [$t]"
-  done < <(git show main:CONTEXT.md | grep -oE '^\*\*[^*]+\*\*' | sed -E 's/^\*\*(.*)\*\*$/\1/')
-  [ -z "$missing" ] && ok "TC-034: every term CONTEXT.md had on main is still there" || bad "TC-034: terms removed from CONTEXT.md" "$missing"
-else
-  echo "note: git or the 'main' ref is unavailable; TC-034 comparison against main skipped"
-fi
+# TC-034: every term CONTEXT.md defines today is still defined. The list is pinned
+# here (the 15 bold terms on main when this check was written), not read from a
+# git ref, so it runs in any checkout. New terms may be added freely; removing or
+# renaming one means editing this list in the same PR, where the reviewer sees it.
+PINNED_TERMS=('Prototype' 'Product' 'Execution backend' 'Brain' 'Muscle' 'Platform' 'Station agent' 'Run index' 'MCP tool layer' 'Buyer' 'Operator' 'Experiment spec' 'Deliverable' 'Reproducible' 'Data stays local')
+missing=""
+for t in "${PINNED_TERMS[@]}"; do
+  grep -qF -- "**$t**" CONTEXT.md || missing="$missing [$t]"
+done
+if [ "${#PINNED_TERMS[@]}" != 15 ]; then bad "TC-034: the pinned term list has 15 terms" "${#PINNED_TERMS[@]}"; fi
+[ -z "$missing" ] && ok "TC-034: every pinned CONTEXT.md term is still defined" || bad "TC-034: terms removed from CONTEXT.md" "$missing"
 
 # TC-032: line A is new text in ROADMAP (not on main): present.
 has "TC-032: ROADMAP line A sentence present"                     "$RM" 'Line A is unchanged: 2.17.0 goes to the trial lab first'
