@@ -429,7 +429,17 @@ dir_rank() {
 cd_resolve() {
     case "$2" in
         /*|[A-Za-z]:*) norm_path "${2//\\//}" ;;
-        *) if [ -n "$1" ]; then norm_path "$1/${2//\\//}"; else REPLY=""; fi ;;
+        *) if [ -n "$1" ]; then join_path "$1" "${2//\\//}"; else REPLY=""; fi ;;
+    esac
+}
+# join_path <normalised folder> <relative word> -> REPLY: the same as norm_path "$1/$2",
+# without its cost when the word has no `.`, `..`, `//` or trailing `/` to fold (a
+# candidate is always a normalised folder, so the join is already normal).
+join_path() {
+    case "$1" in */|'') norm_path "$1/$2"; return ;; esac
+    case "$2" in
+        ''|.|..|./*|../*|*/.|*/..|*/./*|*/../*|*//*|*/) norm_path "$1/$2" ;;
+        *) REPLY="$1/$2" ;;
     esac
 }
 # cand_add <folder>: one more folder the shell may be in (not the trunk, not twice).
@@ -451,15 +461,15 @@ cand_add_from_pre() {
     [ -n "$PRE_VCWD" ] && { cd_resolve "$PRE_VCWD" "$1"; cand_add "$REPLY"; }
     for c in ${PRE_CANDS[@]+"${PRE_CANDS[@]}"}; do cd_resolve "$c" "$1"; cand_add "$REPLY"; done
 }
-# cand_cap: at most 32 candidates. Over that the harmless ones go first (then the merely
+# cand_cap: at most 8 candidates. Over that the harmless ones go first (then the merely
 # guarded, newest kept); a protected-looking folder is the last to go, and the trunk is
 # not in the set at all, so what main judges is always judged.
 cand_cap() {
-    [ "${#CANDS[@]}" -gt 32 ] || return 0
+    [ "${#CANDS[@]}" -gt 8 ] || return 0
     local keep=() pass i n=${#CANDS[@]}
     for pass in 2 1 0; do
         for ((i = n - 1; i >= 0; i--)); do
-            [ "${#keep[@]}" -lt 32 ] || break
+            [ "${#keep[@]}" -lt 8 ] || break
             dir_rank "${CANDS[$i]}"
             [ "$DR" = "$pass" ] && keep+=("${CANDS[$i]}")
         done
@@ -758,7 +768,7 @@ judge_word() { # judge_word <word> [""|rec|move]
                 case "$E" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$E"; X+=("$REPLY") ;; esac
             fi
             for B in ${CANDS[@]+"${CANDS[@]}"}; do
-                case "$E" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$B/$E"; X+=("$REPLY") ;; esac
+                case "$E" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) join_path "$B" "$E"; X+=("$REPLY") ;; esac
             done
             for Y in "${X[@]}"; do
                 case "$M" in
@@ -925,7 +935,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             # folder the shell reaches when the backslash is dropped, from the
             # candidates as they were before the segment it copies.
             if [ -n "$COPY" ]; then
-                cand_add_from_pre "$CDT"
+                cand_add_from_pre "$CDT"; cand_cap
             else
                 case "$CDT" in
                     ''|-|'~'*|*'$'*|*'`'*) VCWD="" ;;
@@ -1315,7 +1325,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$X"; XA+=("$REPLY") ;; esac
             fi
             for XB in ${CANDS[@]+"${CANDS[@]}"}; do
-                case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$XB/$X"; XA+=("$REPLY") ;; esac
+                case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) join_path "$XB" "$X"; XA+=("$REPLY") ;; esac
             done
             XH=0; XW=0; XT=0
             for Y in "${XA[@]}"; do
@@ -1447,7 +1457,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
         for XB in ${CANDS[@]+"${CANDS[@]}"}; do
             case "$A" in
                 /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;;
-                *) norm_path "$XB/$A"; RES_X+=("$REPLY") ;;
+                *) join_path "$XB" "$A"; RES_X+=("$REPLY") ;;
             esac
         done
         case "$A" in rm|rmdir|unlink|shred|truncate|mv|move-item) continue ;; esac   # a wrapped verb
