@@ -46,7 +46,7 @@ Every row that changes. All other TC rows (TC-010..013, 025..027, 032..038, 040.
 | plan | `cd R; pushd /tmp; popd; pushd res\ults; rm -rf x` | Bash | pass | deny |
 | plan | `cd R; Push-Location results; rm -rf x` | Bash | pass | deny |
 
-The only row where the branch is looser than main is the `popd` one: main never popped, so a `pushd` into results stayed there for the rest of the command. The shell is back where it was after `popd`; this is the "real stack" of the plan. Under PowerShell, `sl /tmp` really moves, so a delete after it passes (TC-025..027, ruled by the developer-agent in the overview).
+Intended differences from main (the branch passes, main denies or asks): see "Remaining intended differences" under Review round 1.
 
 Controls pinned as unchanged: TC-010 `cd res\ults; cd ..` pass, TC-011/012 `re\ports` pass, TC-013 `cd /tmp` pass, TC-033 `Get-ChildItem re\ports | Move-Item` pass, TC-032 absolute lister ask, TC-034..036 deny, TC-041..043 (variable, `$(...)`, alias) pass as on main.
 
@@ -74,3 +74,31 @@ The security review found cases that main denies and the first GREEN (r0, 5a08db
 | `sl $d; Remove-Item x` (control) | PowerShell | /tmp | pass | pass | pass |
 
 The `popd` row is the one deliberate difference from main (see above). A target that does not exist (`sl /nonexistent`) still moves the view, as main's `cd /nonexistent` does; accepted, unchanged. The 44 contract cases and the seven extra cases pass unchanged. `dirs` was added to `CW_HANDLED` so the large-input filter keeps it; the here-doc awk count stays 3.
+
+### Verifier additions (same round)
+
+The new handlers (popd, Pop-Location, Set-Location, sl, chdir, Push-Location) are not modelled as a move when the segment may not run or may not touch this shell: its command line has `&`, `|`, a parenthesis or a backtick (after `&&` / `||`, in a pipe, in `( )`, backgrounded), it is wrapped (`command popd`), or the cmdlet has an option other than `-Path`, `-LiteralPath`, `-StackName`, `-PassThru` (`-Foo`, `-WhatIf`). Then the old folder is kept in one view and the possible new one goes to the other. `cd` and `pushd` are not changed (main's `false && cd /tmp` imprecision stays).
+
+| Command (R = /work/u9613010/lab_runs/x) | Tool | cwd | main | r0 | r1 |
+|---|---|---|---|---|---|
+| `pushd results; false && popd; rm -rf x` | Bash | R | deny | pass | deny |
+| `pushd results; exit 0 \|\| popd; rm -rf x` | Bash | R | deny | pass | deny |
+| `pushd results; popd \| cat; rm -rf x` | Bash | R | deny | pass | deny |
+| `pushd results; (popd); rm -rf x` | Bash | R | deny | pass | deny |
+| `pushd results; echo a \| popd; rm -rf x` | Bash | R | deny | pass | deny |
+| `pushd results; popd & rm -rf x` | Bash | R | deny | pass | deny |
+| `pushd results; command popd; rm -rf x` | Bash | R | deny | pass | deny |
+| `sl -Foo /tmp; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
+| `sl /tmp -WhatIf; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
+| `false && sl /tmp; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
+| `sl /tmp; Pop-Location -Foo; Remove-Item x` | PowerShell | R/results | deny | deny | deny |
+| `Push-Location results; Pop-Location -PassThru; Remove-Item x` (control) | PowerShell | R | deny | deny | pass |
+| `sl -PassThru /tmp; Remove-Item x` (control) | PowerShell | R | pass | pass | pass |
+
+### Remaining intended differences from main (branch passes, main denies or asks)
+
+- A bare `popd` / `Pop-Location` with a stack the gate kept whole really returns to the pushed folder (main never popped).
+- PowerShell moves that really leave a protected folder, under the PowerShell tool: `sl /tmp`, `Push-Location /tmp`, `Set-Location -Path ..`, `Set-Location -StackName s ..` (maintainer's developer-agent ruling in the overview, TC-025..027).
+- Under the Bash tool `Set-Location` / `sl` / `chdir` / `Push-Location` are not built-ins; they only add a second candidate and never drop the old folder, so nothing passes here that main denies.
+- A target that does not exist (`sl /nonexistent`) moves the view, the same class as main's `cd /nonexistent`.
+- Main's own `cd` imprecision (`false && cd /tmp`, a nonexistent target) is unchanged.

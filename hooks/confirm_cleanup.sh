@@ -447,6 +447,26 @@ hist_note() {
     [ -n "$1" ] || return 0
     pick_strict "$HIST_DIR" "$1"; HIST_DIR=$REPLY
 }
+# seg_context_suspect -> REPLY 1/0: may the segment just read (SEG) fail to run, or run
+# somewhere other than this shell? Judged on the command line it came from: an `&`, `|`,
+# parenthesis or backtick on that line (after && or ||, in a pipe, in ( ), backgrounded),
+# or the line not found at all. A dropped-backslash copy is looked for with the
+# backslashes dropped from the line.
+seg_context_suspect() {
+    local rest=$CMD ln cmp found=0 sus=0
+    while :; do
+        ln=${rest%%$'\n'*}
+        cmp=$ln; [ -n "$COPY" ] && cmp=${ln//\/}
+        if [[ $cmp == *"$SEG"* ]]; then
+            found=1
+            case "$ln" in *'&'*|*'|'*|*'('*|*')'*|*'`'*) sus=1 ;; esac
+        fi
+        [ "$rest" = "$ln" ] && break
+        rest=${rest#*$'\n'}
+    done
+    [ "$found" = 0 ] && sus=1
+    REPLY=$sus
+}
 # dc_uncertain <possible new folder or "">: the change cannot be modelled exactly.
 # VCWD keeps the more protected of the two views as they were; VCWD_B takes the
 # possible new folder, or the most protected folder seen when that is unknown.
@@ -933,14 +953,15 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 ""|Bash) [ "$DC_KEEP" = 1 ] && DC_ALL=0 ;;
                 *) DC_PS=1 ;;
             esac
-            DC_T=""; DC_NARGS=0; DC_GOT=0
+            DC_T=""; DC_NARGS=0; DC_GOT=0; DC_UOPT=0; DC_CTX=0; DC_I=0
             CDF=0; DC_TAKE=0; DC_SKIP=0
             read -r -a CDW <<<"${SEG//[\"\']/}"
             shopt -s nocasematch
             for CDX in ${CDW[@]+"${CDW[@]}"}; do
                 if [ "$CDF" = 0 ]; then
                     DC_W=${CDX#\\}; DC_W=${DC_W##*/}
-                    [[ $DC_W == "$CW" ]] && CDF=1
+                    if [[ $DC_W == "$CW" ]]; then CDF=1; [ "$DC_I" -gt 0 ] && DC_CTX=1; fi
+                    DC_I=$((DC_I + 1))
                     continue
                 fi
                 DC_NARGS=$((DC_NARGS + 1))
@@ -959,11 +980,19 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                     -stackname) DC_SKIP=1; DC_SN=1 ;;
                     -stackname:*) DC_SN=1 ;;
                     -) [ "$DC_GOT" = 0 ] && { DC_T=-; DC_GOT=1; } ;;
-                    -*) ;;
+                    -passthru) DC_NARGS=$((DC_NARGS - 1)) ;;
+                    -*) DC_UOPT=1 ;;
                     *) [ "$DC_GOT" = 0 ] && { DC_T=$CDX; DC_GOT=1; } ;;
                 esac
             done
             shopt -u nocasematch
+            # the new handlers (popd, Pop-Location, the cmdlets) are not modelled when the
+            # segment may not run or may not touch this shell: after && or ||, in a pipe,
+            # in ( ), backgrounded, wrapped (command popd), or with an unknown option
+            if [ "$DC_KEEP" = 1 ] || [ "$DC_ACT" = pop ]; then
+                seg_context_suspect; [ "$REPLY" = 1 ] && DC_CTX=1
+            else DC_CTX=0; fi
+            [ "$DC_KEEP" = 1 ] && [ "$DC_UOPT" = 1 ] && DC_CTX=1
             DC_UNREAD=0
             case "$DC_T" in ''|-|'~'*|*'$'*|*'`'*) DC_UNREAD=1 ;; esac
             DC_LIT=1   # a literal path, nothing PowerShell would evaluate
@@ -971,7 +1000,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 case "$DC_T" in *'*'*|*'?'*|*'['*|*'('*|*')'*|'@'*) DC_LIT=0 ;; esac
             fi
             if [ "$DC_ACT" = pop ]; then
-                if [ "$DC_ALL" = 1 ] && [ "$DC_NARGS" = 0 ] && [ -z "${STK_TAINT-}" ]; then
+                if [ "$DC_ALL" = 1 ] && [ "$DC_NARGS" = 0 ] && [ "$DC_CTX" = 0 ] && [ -z "${STK_TAINT-}" ]; then
                     if [ -n "$STK_A" ]; then VCWD=${STK_A##*"$STK_SEP"}; STK_A=${STK_A%"$STK_SEP"*}; fi
                     if [ -n "$STK_B" ]; then VCWD_B=${STK_B##*"$STK_SEP"}; STK_B=${STK_B%"$STK_SEP"*}; fi
                 else
@@ -986,7 +1015,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                         STK_B="$STK_B$STK_SEP$VCWD_B"
                     fi
                 fi
-                if [ "$DC_SN" = 0 ] && [ "$DC_ALL" = 1 ] && [ "$DC_UNREAD" = 0 ] && [ "$DC_LIT" = 1 ]; then
+                if [ "$DC_SN" = 0 ] && [ "$DC_ALL" = 1 ] && [ "$DC_CTX" = 0 ] && [ "$DC_UNREAD" = 0 ] && [ "$DC_LIT" = 1 ]; then
                     cd_resolve "$VCWD" "$DC_T"; DC_NA=$REPLY
                     cd_resolve "$VCWD_B" "$DC_T"; DC_NB=$REPLY
                     VCWD=$DC_NA; VCWD_B=$DC_NB
