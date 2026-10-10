@@ -1,0 +1,286 @@
+Bash|/tmp|deny|cd @P; pushd results; popd; @D -rf x
+Bash|/tmp|pass|cd @P; pushd results; pushd /tmp; popd; @D -rf x
+Bash|/tmp|pass|cd @P; pushd results; pushd /tmp; popd; popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd; popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd; popd; popd; @D -rf x
+Bash|/tmp|pass|cd @P/results; pushd /tmp; popd; @D -rf x
+Bash|/tmp|pass|cd @P/results; pushd /tmp; popd; popd; @D -rf x
+Bash|/tmp|pass|pushd @P/results; pushd @P; popd; @D -rf x
+Bash|/tmp|pass|pushd @P/results; pushd @P; popd; popd; @D -rf x
+Bash|/tmp|pass|cd @P; pushd res\ults; popd; @D -rf x
+Bash|/tmp|pass|cd @P; pushd res\ults; pushd /tmp; popd; @D -rf x
+Bash|/tmp|pass|cd @P; pushd res\ults; popd; popd; @D -rf x
+Bash|/tmp|pass|cd @P; cd res\ults; pushd /tmp; popd; @D -rf x
+Bash|/tmp|pass|cd @P; cd res\ults; pushd /tmp; popd; popd; @D -rf x
+Bash|/tmp|deny|cd @P; cd results; popd; @D -rf x
+Bash|/tmp|pass|cd @P; cd results; pushd /tmp; popd; popd; @D -rf x
+Bash|/tmp|deny|cd @P/results; Push-Location /tmp; Pop-Location; @D -rf x
+Bash|/tmp|deny|cd @P/results; Set-Location /tmp; @D -rf x
+Bash|/tmp|deny|cd @P/results; sl /tmp; @D -rf x
+Bash|/tmp|deny|cd @P/results; chdir /tmp; @D -rf x
+Bash|/tmp|deny|cd @P/results; Push-Location /tmp; @D -rf x
+Bash|/tmp|deny|cd @P/results; Push-Location /tmp; Pop-Location; Pop-Location; @D -rf x
+Bash|/tmp|pass|cd @P; Push-Location results; Pop-Location; @D -rf x
+Bash|/tmp|pass|cd @P; Push-Location -StackName s results; Pop-Location -StackName s; @D -rf x
+Bash|/tmp|deny|cd @P/results; Push-Location -StackName s /tmp; Pop-Location -StackName s; @D -rf x
+Bash|/tmp|deny|cd @P/results; Set-Location -Path /tmp; @D -rf x
+Bash|/tmp|deny|cd @P/results; Set-Location -Path:/tmp; @D -rf x
+Bash|/tmp|deny|cd @P/results; Set-Location -Path /tmp -PassThru; @D -rf x
+Bash|/tmp|deny|cd @P/results; Set-Location /tmp; Set-Location -; @D -rf x
+Bash|/tmp|deny|cd @P/results; Set-Location; @D -rf x
+Bash|/tmp|deny|cd @P/results; Set-Location ~; @D -rf x
+Bash|/tmp|pass|cd @P/results; cd ~; @D -rf x
+Bash|/tmp|deny|cd @P; Set-Location /tmp; cd results; @D -rf x
+Bash|/tmp|pass|cd @P; Set-Location /tmp; Set-Location @P/results; @D -rf x
+Bash|/tmp|pass|cd @P; Set-Location results; Set-Location /tmp; @D -rf x
+Bash|/tmp|pass|cd @P; Set-Location results; cd /tmp; @D -rf x
+Bash|/tmp|deny|cd @P; Set-Location results; cd ..; @D -rf x
+Bash|/tmp|pass|cd @P; Set-Location results; Set-Location ..; @D -rf x
+Bash|/tmp|deny|cd @P; cd results; Set-Location ..; @D -rf x
+Bash|/tmp|deny|cd @P; cd results; sl ..; @D -rf x
+Bash|/tmp|pass|cd @P; cd results; cd ..; Set-Location results; @D -rf x
+Bash|/tmp|pass|cd @P; cd res\ults; sl /tmp; @D -rf x
+Bash|/tmp|pass|cd @P; cd res\ults; cd ..; @D -rf x
+Bash|/tmp|pass|cd @P; cd res\ults; cd ../..; @D -rf x
+Bash|/tmp|pass|cd @P; cd res\ults/sub; cd ..; @D -rf x
+Bash|/tmp|pass|cd @P; cd res\ults/sub; cd ..; cd ..; @D -rf x
+Bash|/tmp|pass|cd @P; cd results/sub; cd ../..; @D -rf x
+Bash|/tmp|pass|cd @P; cd raw\data; cd ..; @D -rf x
+Bash|/tmp|pass|cd @P/wo\rk; @D -rf x
+Bash|/tmp|pass|cd @P; cd work; cd ..; @D -rf x
+PowerShell|/tmp|deny|cd @P/results; sl /tmp; Remove-Item x
+PowerShell|/tmp|deny|cd @P/results; Set-Location /tmp; Remove-Item x
+PowerShell|/tmp|pass|cd @P/results; cd /tmp; Remove-Item x
+PowerShell|/tmp|deny|cd @P/results; Push-Location /tmp; Remove-Item x
+PowerShell|/tmp|deny|cd @P/results; Push-Location /tmp; Pop-Location; Remove-Item x
+PowerShell|/tmp|deny|cd @P/results; Push-Location /tmp; Pop-Location; Pop-Location; Remove-Item x
+PowerShell|/tmp|deny|cd @P/results; Push-Location -StackName s /tmp; Pop-Location; Remove-Item x
+PowerShell|/tmp|deny|cd @P/results; Push-Location -StackName s /tmp; Pop-Location -StackName s; Remove-Item x
+PowerShell|/tmp|deny|cd @P/results; Push-Location -StackName s; Remove-Item x
+PowerShell|/tmp|deny|cd @P/results; Push-Location; Remove-Item x
+PowerShell|/tmp|deny|cd @P/results; Pop-Location; Remove-Item x
+PowerShell|/tmp|pass|cd @P; Push-Location results; Pop-Location; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P; pushd results; popd; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Push-Location results; popd; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P; pushd results; Pop-Location; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Push-Location results; Push-Location /tmp; Pop-Location; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Push-Location results; Push-Location /tmp; Pop-Location; Pop-Location; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Push-Location results; Pop-Location; Pop-Location; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Push-Location results; Pop-Location; Pop-Location; Pop-Location; Remove-Item -Recurse x
+PowerShell|/tmp|pass|Push-Location @P; Push-Location results; Pop-Location; Pop-Location; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location results; Set-Location ~; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location results; Set-Location; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location results; Set-Location -; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; cd results; cd -; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; cd results; cd; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location results; cd /tmp; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location res\ults; Set-Location /tmp; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location res\ults; Set-Location ..; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; cd res\ults; cd ..; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; cd res\ults; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location -Path results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location -LiteralPath results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location -PassThru results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location -Path:results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location -Path: results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location -Pa results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location -lit results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location .\results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location ./results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location -StackName s results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Push-Location -StackName s results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location /tmp -Path results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location -Path /tmp results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; sl -Path results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; chdir -Path results; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P; cd -Path results; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P; cd -LiteralPath results; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P; pushd -Path results; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P; cd -PassThru results; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Set-Location results\old; Remove-Item -Recurse x
+PowerShell|@P|pass|Set-Location results; Remove-Item -Recurse x
+PowerShell|@P|pass|Set-Location tmp; Remove-Item -Recurse x
+PowerShell|@P|pass|Set-Location ..; Remove-Item -Recurse x
+PowerShell|@P/results|deny|Set-Location ..; Remove-Item -Recurse x
+PowerShell|@P/results|deny|Remove-Item -Recurse x
+PowerShell|@P/results|deny|sl /tmp; Remove-Item x
+PowerShell|@P|pass|Get-ChildItem res\ults | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; Get-ChildItem res\ults | Move-Item -Destination x
+PowerShell|/tmp|ask|cd @P; Get-ChildItem results | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; gci res\ults | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; Get-ChildItem re\ports | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; Get-ChildItem res\ults | where Name -like a | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; Get-ChildItem res\ults | Select-Object -First 1 | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; Get-ChildItem res\ults; Move-Item a b
+PowerShell|/tmp|pass|cd @P; Get-ChildItem reports | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; Get-ChildItem reports; Get-ChildItem res\ults | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; Get-ChildItem res\ults; Get-ChildItem reports | Move-Item -Destination x
+PowerShell|/tmp|pass|Get-ChildItem /tmp | Move-Item -Destination @P/results
+PowerShell|/tmp|pass|cd @P; Get-ChildItem -Path res\ults | Move-Item -Destination x
+PowerShell|/tmp|ask|cd @P; Get-ChildItem -Path:res\ults | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; Get-ChildItem -LiteralPath res\ults | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; Get-ChildItem . | Move-Item -Destination x
+PowerShell|/tmp|ask|cd @P; Get-ChildItem *.fq | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; ls raw\data | mi -Destination x
+PowerShell|/tmp|pass|cd @P; dir res\ults | Move-Item -Destination x
+PowerShell|/tmp|pass|cd @P; gi res\ults | Move-Item -Destination x
+PowerShell|/tmp|pass|Get-ChildItem /tmp | Move-Item -Destination /tmp/y
+PowerShell|/tmp|pass|Get-ChildItem tmp\sub | Move-Item -Destination /tmp/y
+PowerShell|/tmp|ask|Get-ChildItem sub\dir | Move-Item -Destination @P\res\ults
+PowerShell|/tmp|ask|cd @P; Get-ChildItem sub\dir | Move-Item -Destination res\ults
+Bash|/tmp|pass|cd @P; Get-ChildItem res\ults | Move-Item -Destination x
+Bash|/tmp|ask|cd @P; ls res\ults | xargs @D -rf
+Bash|/tmp|pass|cd @P; cd res\ults && @D -rf x
+Bash|/tmp|pass|cd @P; cd res\ults || @D -rf x
+Bash|/tmp|pass|cd @P && (cd res\ults; @D -rf x)
+Bash|/tmp|deny|(cd @P; cd results); @D -rf x
+Bash|/tmp|deny|cd @P; (cd results); @D -rf x
+Bash|/tmp|pass|cd @P; cd results; cd /tmp; popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd /tmp; popd; @D -rf results
+Bash|/tmp|pass|cd @P; pushd /tmp; popd; @D -rf x
+Bash|/tmp|deny|pushd @P; pushd /tmp; popd; @D -rf results/x
+Bash|/tmp|pass|pushd @P/results; pushd /tmp; popd; popd; @D -rf x
+Bash|/tmp|pass|pushd @P/results; pushd /tmp; popd; @D -rf x
+Bash|/tmp|pass|pushd @P/results; cd /tmp; popd; @D -rf x
+Bash|/tmp|pass|pushd @P/results; cd /tmp; popd; popd; @D -rf x
+Bash|/tmp|pass|pushd @P; pushd results; cd /tmp; popd; @D -rf x
+Bash|/tmp|pass|pushd @P; pushd results; cd /tmp; popd; popd; @D -rf x
+Bash|/tmp|pass|pushd @P; pushd results; pushd /tmp; popd; popd; @D -rf x
+Bash|/tmp|pass|pushd @P; pushd results; pushd /tmp; popd; popd; popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd -n results; @D -rf x
+Bash|/tmp|pass|cd @P; pushd +1; @D -rf x
+Bash|/tmp|pass|cd @P; pushd results; pushd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd +0; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd -n; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; dirs -c; popd; @D -rf x
+Bash|/tmp|pass|cd @P; pushd results; pushd /tmp; popd -n; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd +1; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd -0; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd -1; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd -n; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd +0; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; dirs -c; popd; @D -rf x
+Bash|/tmp|pass|cd @P; pushd res\ults; popd -n; @D -rf x
+Bash|/tmp|pass|cd @P; pushd res\ults; dirs -c; popd; @D -rf x
+Bash|/tmp|pass|cd @P; pushd results; pushd /tmp; popd +1; @D -rf x
+Bash|/tmp|pass|cd @P; pushd results; pushd /tmp; popd -0; @D -rf x
+Bash|/tmp|pass|cd @P; pushd results; pushd /tmp; popd -n; popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd extra; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd 2>/dev/null; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd; popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd && popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; false && popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; echo popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; exit 0 || popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd | cat; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; (popd); @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; echo a | popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd & @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; if false; then popd; fi; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; command popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd; @D -rf x
+Bash|/tmp|pass|cd @P; pushd results; pushd; popd; @D -rf x
+Bash|/tmp|pass|cd @P; pushd results; cd /tmp; popd; @D -rf x
+PowerShell|/tmp|pass|cd @P; Push-Location results; Pop-Location -StackName s; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Push-Location -StackName s results; Pop-Location; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Push-Location -StackName s results; Pop-Location -StackName s; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Push-Location results; Push-Location -StackName s /tmp; Pop-Location; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P; Push-Location results; Push-Location -StackName s /tmp; Pop-Location -StackName s; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P; pushd results; popd -n; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P; pushd results; Pop-Location -Passthru; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P; pushd results; Set-Location -Path ..; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -Path ..; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -PassThru ..; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -StackName s ..; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -StackName s; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -Path; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -Foo /tmp; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -ErrorAction Stop /tmp; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -ErrorAction Stop; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -ea 0 /tmp; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -ea 0 ..; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location /nonexistent_zz; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location (Get-Item /tmp); Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -Path (pwd); Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -Path ./; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location . ; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location $PWD; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location $env:TEMP; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location ~; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location -; Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P/results; Set-Location; Remove-Item -Recurse x
+PowerShell|/tmp|pass|cd @P/results; cd ..; Remove-Item -Recurse x
+Bash|/tmp|deny|cd @P/results; Set-Location -Path ..; @D -rf x
+Bash|/tmp|deny|cd @P/results; Set-Location ..; @D -rf x
+Bash|/tmp|deny|cd @P/results; Set-Location @P; @D -rf x
+Bash|/tmp|pass|cd @P; Set-Location results; Set-Location @P; @D -rf x
+Bash|/tmp|deny|cd @P; Set-Location results; Set-Location @P; cd ..; @D -rf x
+Bash|/tmp|deny|cd @P/results; Push-Location @P; @D -rf x
+Bash|/tmp|deny|cd @P/results; Push-Location @P; Pop-Location; @D -rf x
+Bash|/tmp|pass|cd @P; Set-Location results; Pop-Location; @D -rf x
+Bash|/tmp|pass|cd @P; Set-Location results; popd; @D -rf x
+Bash|/tmp|pass|cd @P; Push-Location results; popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; Pop-Location; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; Set-Location ..; @D -rf x
+Bash|/tmp|pass|cd @P; pushd res\ults; Set-Location ..; @D -rf x
+Bash|/tmp|pass|cd @P; cd res\ults; Set-Location ..; @D -rf x
+Bash|/tmp|pass|cd @P; cd res\ults; Push-Location @P; @D -rf x
+Bash|/tmp|deny|cd @P; c\d results; cd ..; @D -rf x
+Bash|/tmp|pass|cd @P; c\d results; popd; @D -rf x
+Bash|/tmp|pass|cd @P; c\d res\ults; @D -rf x
+Bash|/tmp|pass|cd @P; pu\shd results; po\pd; @D -rf x
+Bash|/tmp|pass|cd @P; pu\shd results; pu\shd /tmp; po\pd; @D -rf x
+Bash|/tmp|pass|cd @P/results; false && cd /tmp; @D -rf x
+Bash|/tmp|pass|cd @P/results; (cd /tmp); @D -rf x
+Bash|/tmp|pass|cd @P/results; cd /tmp | cat; @D -rf x
+Bash|/tmp|pass|cd @P; cd results; cd /nonexistent; @D -rf x
+Bash|/tmp|deny|cd @P; cd res\ults; cd sub; @D -rf x
+Bash|/tmp|pass|cd @P; cd re\ports; cd sub; @D -rf x
+Bash|/tmp|deny|cd @P; cd results; cd sub; @D -rf x
+PowerShell|/tmp|deny|cd @P; Set-Location results; cd sub; Remove-Item -Recurse x
+Bash|/tmp|deny|cd @P; Set-Location results; Set-Location @P; cd ..; @D -rf x
+Bash|/tmp|deny|cd @P; sl results; sl @P; cd ..; @D -rf x
+Bash|/tmp|deny|cd @P; sl results; sl /tmp; cd ..; @D -rf x
+Bash|/tmp|deny|cd @P; sl results; sl ..; cd ..; @D -rf x
+PowerShell|/tmp|deny|cd @P; sl results; sl -Foo @P; cd ..; Remove-Item -Recurse x
+Bash|/tmp|deny|cd @P; pushd results⏎if false; then⏎ popd⏎fi⏎@D -rf x
+Bash|/tmp|deny|cd @P; pushd results⏎false &&⏎ popd⏎@D -rf x
+Bash|/tmp|deny|cd @P; pushd results⏎while false; do⏎ popd⏎done⏎@D -rf x
+Bash|/tmp|deny|cd @P; pushd results⏎case a in b)⏎ popd ;;⏎esac⏎@D -rf x
+Bash|/tmp|deny|cd @P; pushd results⏎{ false; } && {⏎ popd⏎}⏎@D -rf x
+Bash|/tmp|deny|cd @P; pushd results⏎foo() {⏎ popd⏎}⏎@D -rf x
+Bash|/tmp|deny|cd @P; pushd results⏎bash -c 'popd'⏎@D -rf x
+PowerShell|/tmp|deny|cd @P; pushd results⏎if ($false) {⏎ Pop-Location⏎}⏎Remove-Item -Recurse x
+PowerShell|/tmp|deny|cd @P; pushd results⏎foreach ($i in @()) {⏎ Pop-Location⏎}⏎Remove-Item -Recurse x
+Bash|@P|deny|pushd results; popd -n; @D -rf x
+Bash|@P|deny|pushd /tmp; pushd results; popd +1; @D -rf x
+Bash|@P|deny|pushd results; dirs -c; popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd; @D -rf x
+Bash|/tmp|deny|cd @P; pushd results; popd; popd; @D -rf x
+PowerShell|@P/results|deny|Push-Location -StackName a /tmp; Push-Location -StackName b /var; Pop-Location -StackName a; Remove-Item x
+PowerShell|@P/results|deny|sl /tmp; sl -; Remove-Item x
+PowerShell|@P/results|deny|Push-Location /tmp; Push-Location -; Remove-Item x
+PowerShell|@P/results|deny|sl ../res*; Remove-Item x
+PowerShell|@P/results|deny|sl ..; sl -Path (Join-Path $PWD results); Remove-Item x
+PowerShell|@P/results|deny|sl ..; sl @("results"); Remove-Item x
+Bash|@P|deny|pushd results; false && popd; @D -rf x
+Bash|@P|deny|pushd results; exit 0 || popd; @D -rf x
+Bash|@P|deny|pushd results; popd | cat; @D -rf x
+Bash|@P|deny|pushd results; (popd); @D -rf x
+Bash|@P|deny|pushd results; echo a | popd; @D -rf x
+Bash|@P|deny|pushd results; popd & @D -rf x
+Bash|@P|deny|pushd results; command popd; @D -rf x
+PowerShell|@P/results|deny|sl -Foo /tmp; Remove-Item x
+PowerShell|@P/results|deny|sl /tmp -WhatIf; Remove-Item x
+PowerShell|@P/results|deny|false && sl /tmp; Remove-Item x
+PowerShell|@P/results|deny|sl /tmp; Pop-Location -Foo; Remove-Item x
+PowerShell|@P|deny|Push-Location results; Pop-Location -PassThru; Remove-Item x
+PowerShell|@P|pass|sl -PassThru /tmp; Remove-Item x
+PowerShell|/tmp|deny|Set-Location @P/results; Set-Location /tmp; Remove-Item x
+PowerShell|/tmp|deny|cd @P; Set-Location results; Set-Location ..; Remove-Item -Recurse x
+Bash|/tmp|pass|cd @P; sl results; rclone delete remote:x
+Bash|/tmp|pass|cd @P; cd res\ults; rclone delete remote:x
+Bash|/tmp|pass|cd @P/results; rclone delete remote:x
+Bash|@P|pass|sl d1; sl d2; sl d3; sl d4; sl d5; sl d6; sl d7; sl d8; sl d9; sl d10; sl d11; sl d12; sl d13; sl d14; sl d15; sl d16; sl d17; sl d18; sl d19; sl d20; sl d21; sl d22; sl d23; sl d24; sl d25; @D -rf x
+Bash|@P|deny|sl d1; sl d2; sl d3; sl d4; sl d5; sl d6; sl d7; sl d8; sl d9; sl d10; sl d11; sl d12; sl results; sl e1; sl e2; sl e3; sl e4; sl e5; sl e6; sl e7; sl e8; sl e9; sl e10; sl e11; sl e12; @D -rf x

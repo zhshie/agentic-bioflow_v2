@@ -813,7 +813,7 @@ tps "cd $P; Set-Location results; Remove-Item -Recurse x"        deny "TC-023 cd
 tps "cd $P; Set-Location res\ults; Remove-Item -Recurse x"       deny "TC-024 Set-Location res\ults"
 tps "Set-Location /tmp; Remove-Item x"                           pass "TC-025 control: Set-Location /tmp"
 tps "cd $P; Set-Location tmp; Remove-Item -Recurse x"            pass "TC-026 control: Set-Location tmp"
-tps "cd $P; Set-Location results; Set-Location ..; Remove-Item -Recurse x" pass "TC-027 Set-Location results; Set-Location .."
+tps "cd $P; Set-Location results; Set-Location ..; Remove-Item -Recurse x" deny "TC-027 Set-Location results; Set-Location .."
 # US3: a lister of a backslash folder feeding Move-Item
 tcp PowerShell "/tmp" 'Get-ChildItem res\ults | Move-Item -Destination x'     ask  "TC-028 Get-ChildItem res\ults | Move-Item"
 tcp PowerShell "/tmp" 'Get-ChildItem raw\data | Move-Item -Destination x'      ask  "TC-029 Get-ChildItem raw\data | Move-Item"
@@ -832,10 +832,10 @@ tc "/tmp" "cd $P; cd \$d; $D -rf x"                              pass "TC-041 cd
 tc "/tmp" "cd $P; cd \$(printf results); $D -rf x"               pass "TC-042 cd \$(...) stays unknown"
 tc "/tmp" "cd $P; alias go=cd; go results; $D -rf x"             pass "TC-043 an alias stays unknown"
 # Plan items beyond the TCs: the directory stack and the two views
-tc "/tmp" "cd $P; pushd results; popd; $D -rf x"                 pass "plan: pushd results; popd leaves results again"
+tc "/tmp" "cd $P; pushd results; popd; $D -rf x"                 deny "TC-056 pushd results; popd: judged as main does (Rev 3)"
 tc "/tmp" "cd $P; pushd res\ults; popd; $D -rf x"                pass "plan: pushd res\ults; popd leaves it again"
 tc "/tmp" "cd $P; pushd /tmp; popd; pushd res\ults; $D -rf x"    deny "plan: a stack entry does not leak into the next pushd"
-tps "cd $P; Push-Location results; Pop-Location; Remove-Item -Recurse x" pass "plan: Push-Location results; Pop-Location"
+tps "cd $P; Push-Location results; Pop-Location; Remove-Item -Recurse x" deny "plan: Push-Location results; Pop-Location keeps results (Rev 3)"
 tc "/tmp" "cd $P; Push-Location results; $D -rf x"               deny "plan: Bash Push-Location results is judged"
 tps "cd $P/results; Set-Location \$d; Remove-Item -Recurse x"    deny "plan: an unreadable Set-Location target keeps the old folder"
 tcp PowerShell "$P" 'Get-ChildItem reports | Move-Item -Destination x'         pass "plan: control: lister of reports, from the run folder"
@@ -851,7 +851,7 @@ tcp PowerShell "$P/results" 'Push-Location /tmp; Push-Location -; Remove-Item x'
 tcp PowerShell "$P/results" 'sl ../res*; Remove-Item x'                         deny "R1 a wildcard target"
 tcp PowerShell "$P/results" 'sl ..; sl -Path (Join-Path $PWD results); Remove-Item x' deny "R1 an evaluated target"
 tcp PowerShell "$P/results" 'sl ..; sl @("results"); Remove-Item x'             deny "R1 an array target"
-tcp Bash "$P" "pushd results; popd; $D -rf x"                                   pass "R1 control: a bare popd with a known stack"
+tcp Bash "$P" "pushd results; popd; $D -rf x"                                   deny "TC-056 a bare popd is judged as main does"
 tcp PowerShell "/tmp" 'sl $d; Remove-Item x'                                    pass "R1 control: an unknown target from a harmless folder"
 # Review round 1, verifier additions: the new handlers (popd, Pop-Location, the PowerShell
 # location cmdlets) must not drop the old folder when they may not run or may not touch this shell.
@@ -865,9 +865,20 @@ tcp Bash "$P" "pushd results; command popd; $D -rf x"                           
 tcp PowerShell "$P/results" 'sl -Foo /tmp; Remove-Item x'                       deny "R1 an unknown option on Set-Location"
 tcp PowerShell "$P/results" 'sl /tmp -WhatIf; Remove-Item x'                    deny "R1 Set-Location -WhatIf"
 tcp PowerShell "$P/results" 'sl /tmp; Pop-Location -Foo; Remove-Item x'         deny "R1 Pop-Location with an unknown option"
-tcp PowerShell "$P" 'Push-Location results; Pop-Location -PassThru; Remove-Item x' pass "R1 control: Pop-Location -PassThru is a bare pop"
+tcp PowerShell "$P" 'Push-Location results; Pop-Location -PassThru; Remove-Item x' deny "TC-060 Pop-Location -PassThru is judged as main does"
 tcp PowerShell "$P" 'sl -PassThru /tmp; Remove-Item x'                          pass "R1 control: -PassThru is harmless"
 tcp PowerShell "$P/results" 'false && sl /tmp; Remove-Item x'                   deny "R1 sl after &&"
+
+# TC-066 (revision 3): every shape of the verifier's 237-shape list plus TC-045..065, with the
+# verdict c4a7327 gives it as the expectation (a row where this fix is stricter than main
+# carries the stricter verdict and is listed in .specify/bugs/cd-target-backslash/fix.md).
+# File format: tool|cwd|expected|command ; @P = the run folder, @D = the delete verb,
+# the character U+23CE = a line break in the command.
+while IFS='|' read -r s_tool s_cwd s_exp s_cmd; do
+  [ -n "$s_tool" ] || continue
+  s_cmd=${s_cmd//⏎/$'\n'}; s_cmd=${s_cmd//@P/$P}; s_cmd=${s_cmd//@D/$D}; s_cwd=${s_cwd//@P/$P}
+  tcp "$s_tool" "$s_cwd" "$s_cmd" "$s_exp" "TC-066 $s_tool $(printf '%s' "${s_cmd:0:44}" | tr '\n' ' ')"
+done < "$(dirname "${BASH_SOURCE[0]}")/confirm_cleanup_shapes.txt"
 
 echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
