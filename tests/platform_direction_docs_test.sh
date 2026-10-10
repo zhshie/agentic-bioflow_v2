@@ -86,6 +86,51 @@ inn "TC-008: platform's own MCP tools: decided by the amendment that moves a gat
 RULES=$(awk '/^## Core Principles/{f=1} /^## Development Workflow/{f=0} f' "$C")
 nin "TC-008: 'tool layer' is not written into the principles or the Safety Net"   "$RULES" 'tool layer'
 
+# Issue #71: the TC-034 check must run, and must catch a removed term, in a
+# checkout that has no 'main' ref (CI's shallow clone). These cases build scratch
+# shallow clones of HEAD, overlay the working-tree CONTEXT.md and this script,
+# and run this very script inside. DOC_TEST_INNER stops the inner run from
+# building clones of its own.
+if [ -z "${DOC_TEST_INNER:-}" ]; then
+  SCR=$(mktemp -d) || exit 1
+  trap 'rm -rf "$SCR"' EXIT
+  T34='TC-034: every pinned CONTEXT.md term is still defined'
+  P1="git show ma""in:"; P2="rev-parse --verify -q ma""in"; P3="skip""ped"
+  SELFN=$(basename "${BASH_SOURCE[0]}")
+  mkclone() { # mkclone <name> [withmain]
+    local d="$SCR/$1"
+    git clone -q --depth 1 --no-local "file://$ROOT" "$d" >/dev/null 2>&1 || return 1
+    if [ "${2:-}" = withmain ]; then git -C "$d" branch main HEAD >/dev/null 2>&1; fi
+    cp "$ROOT/CONTEXT.md" "$d/CONTEXT.md"; cp "$HERE/$SELFN" "$d/tests/"
+    echo "$d"
+  }
+  inner() { OUT=$(cd "$1" && DOC_TEST_INNER=1 "$BASH" "tests/$SELFN" 2>&1); RC=$?; }
+  t34ok() { printf '%s\n' "$OUT" | grep -F "$T34" | grep ' ok$' >/dev/null; }
+
+  echo "== issue #71: TC-034 runs and fails without a main ref =="
+  for mode in nomain withmain; do
+    D=$(mkclone "c-$mode" "$([ "$mode" = withmain ] && echo withmain)") || { bad "scratch clone ($mode)"; continue; }
+    # TC-010: unchanged
+    inner "$D"
+    if [ "$RC" = 0 ] && t34ok; then ok "TC-010: unchanged, $mode: TC-034 runs and is ok"; else bad "TC-010: unchanged, $mode: TC-034 runs and is ok" "rc=$RC"; fi
+    if printf '%s\n' "$OUT" | grep -i "$P3" >/dev/null; then bad "TC-010: $mode: no skip note in the output"; else ok "TC-010: $mode: no skip note in the output"; fi
+    # TC-014: a new term may be added freely
+    printf '\n**Zebra stripes**\nA term added for the test.\n' >> "$D/CONTEXT.md"
+    inner "$D"
+    if [ "$RC" = 0 ] && t34ok; then ok "TC-014: $mode: an added term still passes"; else bad "TC-014: $mode: an added term still passes" "rc=$RC"; fi
+    cp "$ROOT/CONTEXT.md" "$D/CONTEXT.md"
+    # TC-011 (no main) / TC-012 (main present): a removed term fails and is named
+    sed -i 's/^\*\*Run index\*\* /Run index /' "$D/CONTEXT.md"
+    inner "$D"
+    lbl="TC-01$([ "$mode" = nomain ] && echo 1 || echo 2): $mode: removing 'Run index' fails TC-034 and names it"
+    if [ "$RC" != 0 ] && printf '%s\n' "$OUT" | grep -F 'TC-034' | grep 'FAIL' | grep -F '[Run index]' >/dev/null; then ok "$lbl"; else bad "$lbl" "rc=$RC"; fi
+  done
+  # TC-015: this file has no comparison against main and no skip branch left
+  SELF="$HERE/$SELFN"
+  if grep -qF -e "$P1" -e "$P2" "$SELF"; then bad "TC-015: no comparison against the main ref left in this file"; else ok "TC-015: no comparison against the main ref left in this file"; fi
+  if grep -v "^[[:space:]]*#" "$SELF" | grep -F "$P3" >/dev/null; then bad "TC-015: no skip branch left in this file"; else ok "TC-015: no skip branch left in this file"; fi
+fi
+
 echo
 echo "== US2: ADRs (TC-011..TC-018, TC-037, TC-039) =="
 [ -f "$ADR4" ] && ok "TC-011: $ADR4 exists" || bad "TC-011: $ADR4 exists"
@@ -282,15 +327,17 @@ for term in 'Platform' 'Station agent' 'Run index' 'MCP tool layer'; do
   def=$(awk -v t="**$term** " 'index($0,t)==1{f=1;next} f&&/^$/{exit} f' CONTEXT.md | head -1)
   [ -n "$def" ] && ok "TC-029: $term has a one-sentence definition line" || bad "TC-029: $term has a definition"
 done
-if git rev-parse --verify -q main >/dev/null 2>&1 && git show main:CONTEXT.md >/dev/null 2>&1; then
-  missing=""
-  while IFS= read -r t; do
-    grep -qF -- "**$t**" CONTEXT.md || missing="$missing [$t]"
-  done < <(git show main:CONTEXT.md | grep -oE '^\*\*[^*]+\*\*' | sed -E 's/^\*\*(.*)\*\*$/\1/')
-  [ -z "$missing" ] && ok "TC-034: every term CONTEXT.md had on main is still there" || bad "TC-034: terms removed from CONTEXT.md" "$missing"
-else
-  echo "note: git or the 'main' ref is unavailable; TC-034 comparison against main skipped"
-fi
+# TC-034: every term CONTEXT.md defines today is still defined. The list is pinned
+# here (the 15 bold terms on main when this check was written), not read from a
+# git ref, so it runs in any checkout. New terms may be added freely; removing or
+# renaming one means editing this list in the same PR, where the reviewer sees it.
+PINNED_TERMS=('Prototype' 'Product' 'Execution backend' 'Brain' 'Muscle' 'Platform' 'Station agent' 'Run index' 'MCP tool layer' 'Buyer' 'Operator' 'Experiment spec' 'Deliverable' 'Reproducible' 'Data stays local')
+missing=""
+for t in "${PINNED_TERMS[@]}"; do
+  grep -qF -- "**$t**" CONTEXT.md || missing="$missing [$t]"
+done
+if [ "${#PINNED_TERMS[@]}" != 15 ]; then bad "TC-034: the pinned term list has 15 terms" "${#PINNED_TERMS[@]}"; fi
+[ -z "$missing" ] && ok "TC-034: every pinned CONTEXT.md term is still defined" || bad "TC-034: terms removed from CONTEXT.md" "$missing"
 
 # TC-032: line A is new text in ROADMAP (not on main): present.
 has "TC-032: ROADMAP line A sentence present"                     "$RM" 'Line A is unchanged: 2.17.0 goes to the trial lab first'

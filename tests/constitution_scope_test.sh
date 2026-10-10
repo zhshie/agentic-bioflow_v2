@@ -100,8 +100,8 @@ pa_has "TC-019: invariant 2 restated: Nextflow's own records are the truth" "Nex
 has "TC-019: PRINCIPLES.md still has 'in use'"                         docs/PRINCIPLES.md 'in use'
 has "TC-019: PRINCIPLES.md still has 'Constitution 2.0.0'"             docs/PRINCIPLES.md 'Constitution 2.0.0'
 
-# TC-040..TC-044: the Safety Net is the same words as on main. Compared as a whole
-# against main, so no rule, no scope word, and no new paragraph can slip in.
+# TC-040..TC-044: the Safety Net keeps its words. Fixed-string checks first, then the
+# whole section against a pinned fingerprint (below).
 sn_has "TC-040: never delete rawdata/ results/ analysis/"              'Never delete a user'"'"'s source data: `rawdata/`, `results/`, `analysis/`'
 sn_has "TC-040: ...nor _references/ or the shared image cache"         "a run area's"
 sn_has "TC-040: ...nor .nextflow/plugins/"                             'Never delete `.nextflow/plugins/`.'
@@ -116,15 +116,109 @@ sn_has "TC-043: ...Check: inspect_sides_test.sh"                       '`tests/i
 sn_has "TC-044: scope is still in use / unsure / silent / in_use.sh"   'The definition lives in `hooks/in_use.sh`.'
 sn_has "TC-044: the three Check files are still named"                 '`tests/in_use_test.sh`, `tests/in_use_speed_test.sh`, `tests/constitution_scope_test.sh`'
 sn_has "TC-044: only a MAJOR amendment changes the rules"              'change only by a MAJOR amendment of this constitution.'
-if git rev-parse --verify -q main >/dev/null 2>&1 && git show main:.specify/memory/constitution.md >/dev/null 2>&1; then
-  MAIN_SN=$(git show main:.specify/memory/constitution.md | awk '/^## Safety Net/{f=1;next} /^## /{f=0} f')
-  if [ -n "$MAIN_SN" ] && [ "$MAIN_SN" = "$SN" ]; then
-    ok "TC-040..TC-044: Safety Net section identical to main's, word for word"
+# The whole Safety Net section is pinned by a SHA-256 fingerprint of its text, so
+# no rule, no scope word and no new paragraph can slip in, in any checkout (CI's
+# shallow clone has no 'main' ref to compare with).
+# ANY change to the text of the Safety Net section, however small, must update
+# PINNED_SN_SHA256 in the same PR, so the reviewer sees it in the diff. On a
+# mismatch this test prints the current fingerprint.
+# Input: the section as extracted into $SN above, printed with printf '%s\n',
+# carriage returns removed (tr -d '\r'), hashed with SHA-256.
+PINNED_SN_SHA256=902e600bbbf638cafc6be90fe0860dd4d09d5259698b6724e19d30e58473de44
+sha256_stdin() { # first hash tool that exists; none at all is a failure, never a pass
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
+  elif command -v python3 >/dev/null 2>&1; then python3 -c 'import hashlib,sys;print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
+  else return 127
+  fi
+}
+SN_LABEL="TC-040..TC-044: Safety Net section matches the pinned fingerprint"
+if SN_FP=$(printf '%s\n' "$SN" | tr -d '\r' | sha256_stdin) && [ -n "$SN_FP" ]; then
+  if [ "$SN_FP" = "$PINNED_SN_SHA256" ]; then
+    ok "$SN_LABEL"
   else
-    bad "TC-040..TC-044: Safety Net section identical to main's" "$(diff <(printf '%s\n' "$MAIN_SN") <(printf '%s\n' "$SN") | head -5)"
+    bad "$SN_LABEL" "Safety Net section changed. current fingerprint: $SN_FP (pinned $PINNED_SN_SHA256). If the change is intended, update PINNED_SN_SHA256 in this file in the same PR. Section starts: $(printf '%s\n' "$SN" | grep -v '^[[:space:]]*$' | head -3 | tr '\n' '|')"
   fi
 else
-  echo "note: git or the 'main' ref is unavailable; TC-040..TC-044 whole-section comparison skipped (fixed-string checks above still ran)"
+  bad "$SN_LABEL" "no SHA-256 tool found (need sha256sum, shasum or python3); cannot check the fingerprint"
+fi
+
+# Issue #71: the pinned-fingerprint check must run and must catch a change in a
+# checkout that has no 'main' ref (CI's shallow clone). These cases build a
+# scratch shallow clone of HEAD, overlay the working-tree copies of the files
+# under test, and run this very script inside it. DOC_TEST_INNER stops the inner
+# run from building clones of its own.
+if [ -z "${DOC_TEST_INNER:-}" ]; then
+  SCR=$(mktemp -d) || exit 1
+  trap 'rm -rf "$SCR"' EXIT
+  FPL='Safety Net section matches the pinned fingerprint'
+  P1="git show ma""in:"; P2="rev-parse --verify -q ma""in"; P3="skip""ped"
+  mkclone() { # mkclone <name> [withmain]: shallow clone, working-tree files overlaid
+    local d="$SCR/$1"
+    git clone -q --depth 1 --no-local "file://$ROOT" "$d" >/dev/null 2>&1 || return 1
+    if [ "${2:-}" = withmain ]; then git -C "$d" branch main HEAD >/dev/null 2>&1; fi
+    cp "$ROOT/$C" "$d/$C"; cp "$ROOT/CONTEXT.md" "$d/CONTEXT.md"
+    cp "$HERE/$(basename "${BASH_SOURCE[0]}")" "$d/tests/"
+    echo "$d"
+  }
+  inner() { # inner <clone> [PATH]: run the script in the clone; output in $OUT, status in $RC
+    OUT=$(cd "$1" && DOC_TEST_INNER=1 PATH="${2:-$PATH}" "$BASH" "tests/$(basename "${BASH_SOURCE[0]}")" 2>&1); RC=$?
+  }
+  addsn() { sed -i '/^## Safety Net/a\
+\
+An extra sentence that is not in the pinned section.' "$1/$C"; }
+
+  echo "== issue #71: the check runs and fails without a main ref =="
+  D=$(mkclone nomain) || { bad "scratch shallow clone"; D=; }
+  if [ -n "$D" ]; then
+    if git -C "$D" show-ref --verify --quiet refs/heads/main 2>&1; then bad "scratch clone really has no main ref"; else ok "scratch clone really has no main ref"; fi
+    # TC-002
+    inner "$D"
+    if [ "$RC" = 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep ' ok$' >/dev/null; then ok "TC-002: unchanged, no main: the fingerprint line runs and is ok"; else bad "TC-002: unchanged, no main: the fingerprint line runs and is ok" "rc=$RC"; fi
+    if printf '%s\n' "$OUT" | grep -i "$P3" >/dev/null; then bad "TC-002: no skip note in the output"; else ok "TC-002: no skip note in the output"; fi
+    # TC-007: a change outside the Safety Net does not trip it
+    printf '\n### 9.9.9 (2099-01-01)\n\nA test amendment outside the Safety Net.\n' >> "$D/$C"
+    inner "$D"
+    if printf '%s\n' "$OUT" | grep -F "$FPL" | grep ' ok$' >/dev/null; then ok "TC-007: a change outside the Safety Net keeps the fingerprint ok"; else bad "TC-007: a change outside the Safety Net keeps the fingerprint ok"; fi
+    cp "$ROOT/$C" "$D/$C"
+    # TC-003: a change inside the Safety Net, no main
+    addsn "$D"
+    inner "$D"
+    if [ "$RC" != 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep 'FAIL' >/dev/null; then ok "TC-003: Safety Net changed, no main: fails on the fingerprint"; else bad "TC-003: Safety Net changed, no main: fails on the fingerprint" "rc=$RC"; fi
+    NEWFP=$(printf '%s\n' "$OUT" | grep -oE 'current fingerprint: [0-9a-f]{64}' | head -1 | awk '{print $3}')
+    if [ -n "$NEWFP" ]; then ok "TC-003: the failure prints the current fingerprint"; else bad "TC-003: the failure prints the current fingerprint"; fi
+    if printf '%s\n' "$OUT" | grep -F 'An extra sentence' >/dev/null; then ok "TC-003: the failure shows the start of the current section"; else bad "TC-003: the failure shows the start of the current section"; fi
+    # TC-008: same change, and the pinned value updated in the same PR: ok
+    if [ -n "$NEWFP" ]; then
+      sed -i -E "s/^PINNED_SN_SHA256=.*/PINNED_SN_SHA256=$NEWFP/" "$D/tests/$(basename "${BASH_SOURCE[0]}")"
+      inner "$D"
+      if printf '%s\n' "$OUT" | grep -F "$FPL" | grep ' ok$' >/dev/null; then ok "TC-008: change plus updated fingerprint passes"; else bad "TC-008: change plus updated fingerprint passes"; fi
+    else
+      bad "TC-008: change plus updated fingerprint passes" "no current fingerprint to pin"
+    fi
+  fi
+  # TC-004: with a main ref present, the same change still fails the same way
+  D=$(mkclone withmain withmain) || { bad "scratch clone with main"; D=; }
+  if [ -n "$D" ]; then
+    addsn "$D"
+    inner "$D"
+    if [ "$RC" != 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep 'FAIL' >/dev/null; then ok "TC-004: Safety Net changed, main present: fails on the fingerprint"; else bad "TC-004: Safety Net changed, main present: fails on the fingerprint" "rc=$RC"; fi
+  fi
+  # TC-006: no hash tool: FAIL
+  D=$(mkclone nohash) || { bad "scratch clone for TC-006"; D=; }
+  if [ -n "$D" ]; then
+    BIN="$SCR/bin"; mkdir -p "$BIN"
+    for t in awk gawk mawk tr grep egrep head tail sed ls dirname basename cat diff cut sort wc mkdir rm cp git printf sleep env; do
+      p=$(command -v "$t" 2>/dev/null) && [ -x "$p" ] && ln -sf "$p" "$BIN/$t"
+    done
+    inner "$D" "$BIN"
+    if [ "$RC" != 0 ] && printf '%s\n' "$OUT" | grep -i 'no SHA-256 tool' >/dev/null; then ok "TC-006: no hash tool on PATH: fails and says so"; else bad "TC-006: no hash tool on PATH: fails and says so" "rc=$RC"; fi
+    if printf '%s\n' "$OUT" | grep -i "$P3" >/dev/null; then bad "TC-006: ...and is not a skip note"; else ok "TC-006: ...and is not a skip note"; fi
+  fi
+  # TC-009: this file has no comparison against main and no skip branch left
+  SELF="$HERE/$(basename "${BASH_SOURCE[0]}")"
+  if grep -qF -e "$P1" -e "$P2" "$SELF"; then bad "TC-009: no comparison against the main ref left in this file"; else ok "TC-009: no comparison against the main ref left in this file"; fi
+  if grep -v "^[[:space:]]*#" "$SELF" | grep -F "$P3" >/dev/null; then bad "TC-009: no skip branch left in this file"; else ok "TC-009: no skip branch left in this file"; fi
 fi
 
 # TC-047: the earlier scope assertions above run unchanged; only the version
