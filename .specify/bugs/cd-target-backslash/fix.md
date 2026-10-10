@@ -8,7 +8,7 @@
 - **A set of candidate folders.** `VCWD` stays main's own working folder (the trunk), moved exactly as main moves it. `CANDS` holds the other folders the shell may be in. Every relative target (judge_word, find, the delete / mv source loop) is judged against the trunk and every candidate; findings only add, so the strictest verdict wins. The rclone remote-path branch clears the set and restores it.
 - **Only main's own `cd` / `pushd` change the set.** An absolute target clears it; a relative one is followed from every candidate; an unreadable one leaves it alone. `pushd` options (`-n`, `+N`) are handled exactly as main does (the same code).
 - **Everything this PR adds can only add a candidate.** The dropped-backslash copy of a `cd` / `pushd` / cmdlet adds the folder the POSIX reading reaches, from the candidates as they stood before the segment it copies (`cd res\ults; cd sub` is judged in `results/sub`). The cmdlets `Set-Location`, `sl`, `chdir`, `Push-Location` (target = first non-option word or `-Path` / `-LiteralPath`, also `-Path:X`; `-`, `$`, `~`, wildcards, `( )` and `@(` add nothing) add their target, in any tool, in any form. `Pop-Location`, `popd` and `dirs` add nothing and remove nothing. The cmdlet segments then go on through the checks main runs on them (no `continue`).
-- **Cap.** At most 8 candidates (a security review showed 32 pushed two long commands past the 20 s deadline: deny became ask); over that harmless ones go first, then merely guarded, newest kept; protected-looking ones last. The trunk is not in the set, so what main judges is always judged.
+- **Cap.** At most 8 candidates; over that harmless ones go first, then merely guarded, newest kept; protected-looking ones last. The trunk is not in the set, so what main judges is always judged.
 - **Lister verdict from a copy may only tighten**: after the copy, `LISTER_OK` is 1 only if the original and the copy both left it 1.
 - `CW_HANDLED` gained `set-location|sl|chdir|push-location|pop-location`; the here-doc awk count stays 3.
 - Removed from the earlier revisions: the pushd / popd stack, `HIST_DIR`, per-line suspicion and exact-modelling.
@@ -19,17 +19,22 @@
 - Behind a large here-doc every case gives the same verdict (`confirm_cleanup_behind_heredoc_test.sh`).
 - TC-064 (25 chained `sl dN`) and TC-065 (a `results` in the middle of a 25-step chain) finish inside the normal limit (pass, and deny).
 
-## Timing (WSL, jq 1.7.1; `tests/confirm_cleanup_candidates_timing_test.sh`)
+## Timing: the candidate checks are deferred
 
-Each candidate word was resolved with `norm_path` and judged; now the cap is 8, a candidate equal to the trunk or to another is not added, a copy's additions are capped too (they were not), and a relative word is joined to a candidate by string concatenation (`join_path`) unless it has `.`, `..`, `//` or a trailing `/` to fold. The commands: `cd R;` + 40 segments + 50 `rm -f` of five names + `rm -rf R/results`.
+A security review showed that judging every word against up to 32 candidates inside the segment loop made long commands several times slower than main, enough to reach the 20 s deadline on a slow machine (deny became ask). Now the loop judges every word against the trunk (`VCWD`) exactly as main does, and only **records** the extra checks the candidates imply (`defer_rec`: kind, word, flags, and a snapshot id of the candidate list). `defer_run` replays them after the loop while time remains. Replays can only add findings; at its own deadline (`DEFER_DEADLINE`, the same 20 s, lowered only by `ABF_CLEANUP_DEFER_DEADLINE_S`) they stop and the verdict stands as accumulated - never an `ask` for the deferred phase. The loop's own deadline behaviour is unchanged. The cap stays 8 and `join_path` stays; `LISTER_OK` tightening and `CW_HANDLED` are untouched.
 
-| Command | main | branch before the fix | branch now |
-|---|---|---|---|
-| 40 `Set-Location dN`, 50 `rm -f`, `rm -rf results` | deny 0.4 s | deny 6.6 s | deny 1.5 s |
-| 40 `cd dN\x`, 50 `rm -f`, `rm -rf results` | deny 0.7 s | ask 19.5 s (deadline) | deny 1.9 s |
-| TC-064: 25 chained `sl dN`, `rm -rf x` | pass 0.1 s | pass 0.4 s | pass 0.1 s |
+Commands: `cd R;` + 40 `Set-Location dN` (T1) or `cd dN\x` (T2) + 50 `rm -f` of five names + `rm -rf R/results`; TC-064 = 25 chained `sl dN` then `rm -rf x`. "Loop only" = `ABF_CLEANUP_DEFER_DEADLINE_S=0`, the cost the deferred design guarantees even when the deferred phase gets no time.
 
-(The security review measured main at about 8 s and 16 s on its machine; the ratio, not the absolute time, is the point.) The test asserts deny within 10 s (half the deadline) for the first two and pass for TC-064.
+| Command | Where | main | branch, loop only | branch, whole |
+|---|---|---|---|---|
+| T1 | WSL | deny 0.5 s | deny 0.5 s | deny 1.5 s |
+| T2 | WSL | deny 0.7 s | deny 0.8 s | deny 1.9 s |
+| TC-064 | WSL | pass 0.1 s | pass 0.1 s | pass 0.1 s |
+| T1 | native Git Bash | deny 661 ms | deny 790 ms | deny 8477 ms |
+| T2 | native Git Bash | deny 2610-2839 ms | deny 2761 ms | deny 11412 ms |
+| TC-064 | native Git Bash | pass 143-160 ms | pass 228 ms | pass 263 ms |
+
+The "whole" column on native Git Bash is the deferred phase using time main never spends; it is stopped at the 20 s deadline, so on a machine where main needs 8 s the branch stops replaying at 20 s and returns main's verdict (deny). `tests/confirm_cleanup_candidates_timing_test.sh` asserts that the branch's verdict equals main's (read from commit c4a7327 with `git archive`, skipped when that commit is not in the checkout) for T1, T2 and TC-064, prints both times, and checks that with the deferred phase out of time `cd R; sl results; rm -rf x` gives main's pass (not ask), T2 still gives deny, and the loop's own `ABF_CLEANUP_DEADLINE_S=0` still gives ask. (The "R1" / "R5" shapes named by the reviewer were not defined for this run; T1, T2 and TC-064 are the three measured.)
 
 ## Assertions whose expectation changed (named by the contract)
 
