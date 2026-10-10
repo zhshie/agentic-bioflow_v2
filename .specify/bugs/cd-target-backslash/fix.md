@@ -50,10 +50,27 @@ The only row where the branch is looser than main is the `popd` one: main never 
 
 Controls pinned as unchanged: TC-010 `cd res\ults; cd ..` pass, TC-011/012 `re\ports` pass, TC-013 `cd /tmp` pass, TC-033 `Get-ChildItem re\ports | Move-Item` pass, TC-032 absolute lister ask, TC-034..036 deny, TC-041..043 (variable, `$(...)`, alias) pass as on main.
 
-## Known limit
-
-Two candidates cannot follow three. `cd R; cd res\ults; sl /tmp; rm -rf x` under Bash (the POSIX view is results, the as-written view is `res/ults`, then `sl` replaces the POSIX view) passes, as it does on main. Nothing that main denies or asks passes.
-
 ## RED / GREEN
 
 RED a1094f5: the 27 new cases listed above fail. GREEN: all of `confirm_cleanup_test.sh` (also behind the here-doc), `guard_plugin_files_test.sh` and the rest pass; see the PR for the full-suite result.
+
+## Review round 1
+
+The security review found cases that main denies and the first GREEN (r0, 5a08db8) passed. One general rule replaces patching them one by one: **a directory change moves both views only when the gate can model it exactly** - a plain `cd` / `pushd` / `Set-Location` / `Push-Location` to a literal path (no `* ? [ ( ) @(`, no `$`, backtick or `~`, not `-`, no `-StackName`), or a bare `popd` / `Pop-Location` while the gate's own stack is whole (no `dirs` and no uncertain pop or named stack earlier). Anything else - and every cmdlet run under Bash - keeps the more protected of the two views as it was in `VCWD` and puts the possible new folder in `VCWD_B`; when the new folder cannot be read it is the most protected folder this command has been in (`HIST_DIR`, seeded with the session cwd). The old folder is never dropped. `cd` / `pushd` to an unreadable target still clear both views, as on main.
+
+| Command (R = /work/u9613010/lab_runs/x) | Tool | cwd | main | r0 | r1 |
+|---|---|---|---|---|---|
+| `pushd results; popd -n; rm -rf x` | Bash | R | deny | pass | deny |
+| `pushd /tmp; pushd results; popd +1; rm -rf x` | Bash | R | deny | pass | deny |
+| `pushd results; dirs -c; popd; rm -rf x` | Bash | R | deny | pass | deny |
+| `Push-Location -StackName a /tmp; Push-Location -StackName b /var; Pop-Location -StackName a; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
+| `sl /tmp; sl -; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
+| `Push-Location /tmp; Push-Location -; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
+| `sl ../res*; Remove-Item x` | PowerShell | R/results | deny | pass | deny |
+| `sl ..; sl -Path (Join-Path $PWD results); Remove-Item x` | PowerShell | R/results | deny | pass | deny |
+| `sl ..; sl @("results"); Remove-Item x` | PowerShell | R/results | deny | pass | deny |
+| `cd R; cd res\ults; sl /tmp; rm -rf x` (the old known limit) | Bash | /tmp | pass | pass | deny |
+| `pushd results; popd; rm -rf x` (bare popd, whole stack) | Bash | R | deny | pass | pass |
+| `sl $d; Remove-Item x` (control) | PowerShell | /tmp | pass | pass | pass |
+
+The `popd` row is the one deliberate difference from main (see above). A target that does not exist (`sl /nonexistent`) still moves the view, as main's `cd /nonexistent` does; accepted, unchanged. The 44 contract cases and the seven extra cases pass unchanged. `dirs` was added to `CW_HANDLED` so the large-input filter keeps it; the here-doc awk count stays 3.

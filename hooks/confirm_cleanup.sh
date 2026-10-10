@@ -419,6 +419,7 @@ fi
 # pushd / Push-Location stacks, one entry per level, each led by STK_SEP.
 VCWD_B=$VCWD
 STK_A=""; STK_B=""; STK_SEP=$'\001'
+STK_TAINT=""; HIST_DIR=$VCWD
 PRE_B=$VCWD_B; PRE_STKB=""
 # cd_resolve <base folder> <target> -> REPLY: where a `cd` to <target> lands (the
 # target read as written, a backslash as a separator); "" when it cannot be known.
@@ -427,6 +428,32 @@ cd_resolve() {
         /*|[A-Za-z]:*) norm_path "${2//\\//}" ;;
         *) if [ -n "$1" ]; then norm_path "$1/${2//\\//}"; else REPLY=""; fi ;;
     esac
+}
+# dir_rank <folder> -> DR: 2 protected (deny), 1 guarded (ask), 0 neither.
+dir_rank() {
+    DR=0
+    if [[ $1 =~ $RE_PROTECTED ]] || [[ $1 =~ $RE_PLUGINS ]]; then DR=2
+    elif [[ $1 =~ $RE_ANY_GUARDED ]]; then DR=1; fi
+}
+# pick_strict <a> <b> -> REPLY: the more protected-looking folder; a on a tie; an empty one never wins.
+pick_strict() {
+    if [ -z "$2" ]; then REPLY=$1; return; fi
+    if [ -z "$1" ]; then REPLY=$2; return; fi
+    dir_rank "$1"; local ra=$DR; dir_rank "$2"
+    if [ "$DR" -gt "$ra" ]; then REPLY=$2; else REPLY=$1; fi
+}
+# hist_note <folder>: HIST_DIR is the most protected folder this command has been in.
+hist_note() {
+    [ -n "$1" ] || return 0
+    pick_strict "$HIST_DIR" "$1"; HIST_DIR=$REPLY
+}
+# dc_uncertain <possible new folder or "">: the change cannot be modelled exactly.
+# VCWD keeps the more protected of the two views as they were; VCWD_B takes the
+# possible new folder, or the most protected folder seen when that is unknown.
+dc_uncertain() {
+    pick_strict "$VCWD" "$VCWD_B"; local keep=$REPLY
+    pick_strict "$1" "$HIST_DIR"; local nw=$REPLY
+    VCWD=$keep; VCWD_B=${nw:-$keep}
 }
 # #35: is the segment before this one a lister of an explicit path, so a
 # `Move-Item` fed from it has a known source? (Pipeline-fed Move-Item.)
@@ -784,7 +811,7 @@ is_dry_run() {
 # tests/confirm_cleanup_test.sh through this path to catch one that has not.
 # Small inputs (under 8 KB of segments) skip the filter: it is one more process
 # (gate_process_count), and their full judgement costs well under a second.
-CW_HANDLED='^(__too_deep__|cd|pushd|popd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
+CW_HANDLED='^(__too_deep__|cd|pushd|popd|dirs|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
 RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)|($RE_NFCLEAN)"
 RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)"
 # The PowerShell listers and pipeline filters (LISTER_OK below) matter only to a
@@ -876,13 +903,27 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     # explicit, unprotected path (for a pipeline-fed Move-Item two segments on).
     PREV_LISTER_OK=$LISTER_OK
     case "$CW" in
+        dirs)
+            # `dirs -c` and friends edit the stack in ways this gate does not model: a
+            # later popd is no longer one it can follow.
+            STK_TAINT=1; LISTER_OK=0
+            continue ;;
         cd|pushd|popd|chdir|set-location|sl|push-location|pop-location)
             # #76, #75: a directory change. cd, pushd and popd are the shell's own; under
             # the PowerShell tool Set-Location (sl, chdir), Push-Location and Pop-Location
             # are the same thing. Under Bash they are not built-ins, so the shell may
-            # not have moved: they change only the second candidate (VCWD_B), and the
-            # folder the hook already knew (VCWD) is still judged beside it.
-            DC_ACT=set; DC_ALL=1; DC_PS=0; DC_KEEP=0
+            # not have moved.
+            #
+            # Review round 1, one rule: BOTH views move only when the change can be
+            # modelled exactly - a plain cd / pushd / Set-Location / Push-Location to a
+            # literal path, or a bare popd / Pop-Location with a stack this gate has kept
+            # whole. Anything else (an argument or option on a pop, `-`, -StackName, a
+            # wildcard or evaluated target, a pop after `dirs`, a cmdlet run under Bash)
+            # keeps the folder it was in (the more protected of the two views) in VCWD
+            # and puts the possible new one in VCWD_B: it never drops the old folder.
+            # Where the new folder cannot be read it is the most protected folder this
+            # command has been in (HIST_DIR).
+            DC_ACT=set; DC_ALL=1; DC_PS=0; DC_KEEP=0; DC_SN=0
             case "$CW" in
                 pushd|push-location) DC_ACT=push ;;
                 popd|pop-location) DC_ACT=pop ;;
@@ -892,57 +933,77 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 ""|Bash) [ "$DC_KEEP" = 1 ] && DC_ALL=0 ;;
                 *) DC_PS=1 ;;
             esac
-            DC_T=""
-            if [ "$DC_ACT" != pop ]; then
-                CDF=0; DC_TAKE=0; DC_SKIP=0
-                read -r -a CDW <<<"${SEG//[\"\']/}"
-                shopt -s nocasematch
-                for CDX in ${CDW[@]+"${CDW[@]}"}; do
-                    if [ "$CDF" = 0 ]; then
-                        DC_W=${CDX#\\}; DC_W=${DC_W##*/}
-                        [[ $DC_W == "$CW" ]] && CDF=1
-                        continue
-                    fi
-                    if [ "$DC_PS" = 0 ]; then
-                        case "$CDX" in -*) continue ;; esac
-                        DC_T=$CDX; break
-                    fi
-                    # PowerShell: the value of -Path / -LiteralPath (also -Path:value),
-                    # else the first word that is not an option (-StackName takes a word).
-                    if [ "$DC_TAKE" = 1 ]; then DC_T=$CDX; break; fi
-                    if [ "$DC_SKIP" = 1 ]; then DC_SKIP=0; continue; fi
-                    case "$CDX" in
-                        -path|-literalpath|-lp|-pspath) DC_TAKE=1 ;;
-                        -path:?*|-literalpath:?*|-lp:?*|-pspath:?*) DC_T=${CDX#*:}; break ;;
-                        -stackname) DC_SKIP=1 ;;
-                        -*) ;;
-                        *) DC_T=$CDX; break ;;
-                    esac
-                done
-                shopt -u nocasematch
-            fi
+            DC_T=""; DC_NARGS=0; DC_GOT=0
+            CDF=0; DC_TAKE=0; DC_SKIP=0
+            read -r -a CDW <<<"${SEG//[\"\']/}"
+            shopt -s nocasematch
+            for CDX in ${CDW[@]+"${CDW[@]}"}; do
+                if [ "$CDF" = 0 ]; then
+                    DC_W=${CDX#\\}; DC_W=${DC_W##*/}
+                    [[ $DC_W == "$CW" ]] && CDF=1
+                    continue
+                fi
+                DC_NARGS=$((DC_NARGS + 1))
+                if [ "$DC_PS" = 0 ]; then
+                    if [ "$DC_GOT" = 0 ]; then case "$CDX" in -*) ;; *) DC_T=$CDX; DC_GOT=1 ;; esac; fi
+                    continue
+                fi
+                # PowerShell: the value of -Path / -LiteralPath (also -Path:value),
+                # else the first word that is not an option; `-` is the previous
+                # location; -StackName names another stack (and takes a word).
+                if [ "$DC_TAKE" = 1 ]; then DC_T=$CDX; DC_GOT=1; DC_TAKE=0; continue; fi
+                if [ "$DC_SKIP" = 1 ]; then DC_SKIP=0; continue; fi
+                case "$CDX" in
+                    -path|-literalpath|-lp|-pspath) DC_TAKE=1 ;;
+                    -path:?*|-literalpath:?*|-lp:?*|-pspath:?*) DC_T=${CDX#*:}; DC_GOT=1 ;;
+                    -stackname) DC_SKIP=1; DC_SN=1 ;;
+                    -stackname:*) DC_SN=1 ;;
+                    -) [ "$DC_GOT" = 0 ] && { DC_T=-; DC_GOT=1; } ;;
+                    -*) ;;
+                    *) [ "$DC_GOT" = 0 ] && { DC_T=$CDX; DC_GOT=1; } ;;
+                esac
+            done
+            shopt -u nocasematch
             DC_UNREAD=0
             case "$DC_T" in ''|-|'~'*|*'$'*|*'`'*) DC_UNREAD=1 ;; esac
+            DC_LIT=1   # a literal path, nothing PowerShell would evaluate
+            if [ "$DC_PS" = 1 ]; then
+                case "$DC_T" in *'*'*|*'?'*|*'['*|*'('*|*')'*|'@'*) DC_LIT=0 ;; esac
+            fi
             if [ "$DC_ACT" = pop ]; then
-                if [ "$DC_ALL" = 1 ] && [ -n "$STK_A" ]; then VCWD=${STK_A##*"$STK_SEP"}; STK_A=${STK_A%"$STK_SEP"*}; fi
-                if [ -n "$STK_B" ]; then VCWD_B=${STK_B##*"$STK_SEP"}; STK_B=${STK_B%"$STK_SEP"*}; fi
+                if [ "$DC_ALL" = 1 ] && [ "$DC_NARGS" = 0 ] && [ -z "${STK_TAINT-}" ]; then
+                    if [ -n "$STK_A" ]; then VCWD=${STK_A##*"$STK_SEP"}; STK_A=${STK_A%"$STK_SEP"*}; fi
+                    if [ -n "$STK_B" ]; then VCWD_B=${STK_B##*"$STK_SEP"}; STK_B=${STK_B%"$STK_SEP"*}; fi
+                else
+                    STK_TAINT=1
+                    dc_uncertain ""
+                fi
             else
                 if [ "$DC_ACT" = push ]; then
-                    [ "$DC_ALL" = 1 ] && STK_A="$STK_A$STK_SEP$VCWD"
-                    STK_B="$STK_B$STK_SEP$VCWD_B"
+                    if [ "$DC_SN" = 1 ]; then STK_TAINT=1
+                    else
+                        [ "$DC_ALL" = 1 ] && STK_A="$STK_A$STK_SEP$VCWD"
+                        STK_B="$STK_B$STK_SEP$VCWD_B"
+                    fi
                 fi
-                if [ "$DC_UNREAD" = 1 ]; then
-                    # cd / pushd: later relative targets are unknown, as they always were.
-                    # The PowerShell cmdlets: an unreadable target never counts as having
-                    # moved somewhere harmless, so the folder stays what it was.
-                    if [ "$DC_KEEP" = 0 ]; then VCWD=""; VCWD_B=""; fi
+                if [ "$DC_SN" = 0 ] && [ "$DC_ALL" = 1 ] && [ "$DC_UNREAD" = 0 ] && [ "$DC_LIT" = 1 ]; then
+                    cd_resolve "$VCWD" "$DC_T"; DC_NA=$REPLY
+                    cd_resolve "$VCWD_B" "$DC_T"; DC_NB=$REPLY
+                    VCWD=$DC_NA; VCWD_B=$DC_NB
+                elif [ "$DC_KEEP" = 0 ] && [ "$DC_UNREAD" = 1 ] && [ "$DC_SN" = 0 ]; then
+                    # cd / pushd to a target it cannot read: later relative targets are
+                    # unknown, as they always were
+                    VCWD=""; VCWD_B=""
+                elif [ "$DC_UNREAD" = 1 ]; then
+                    dc_uncertain ""
                 else
                     cd_resolve "$VCWD" "$DC_T"; DC_NA=$REPLY
                     cd_resolve "$VCWD_B" "$DC_T"; DC_NB=$REPLY
-                    [ "$DC_ALL" = 1 ] && VCWD=$DC_NA
-                    VCWD_B=$DC_NB
+                    pick_strict "$DC_NA" "$DC_NB"
+                    dc_uncertain "$REPLY"
                 fi
             fi
+            hist_note "$VCWD"; hist_note "$VCWD_B"
             LISTER_OK=0
             continue ;;
         get-childitem|gci|ls|dir|get-item|gi)
