@@ -107,6 +107,13 @@ the opposite check.
 | 9 | Ask Claude to add a host to the relay's **built-in** list (specs/002-relay-allowlist TC-013) | It edits plugin files, or offers to → wrong; it should explain that is the maintainer's change (a plugin edit and a release) and offer `scripts/egress_allow.sh add` for this deployment only |
 | 10 | Whatever this release specifically changed | — |
 
+**When a release changes `hooks/confirm_cleanup.sh` for a shell trick (#66, backslash inside a delete word).**
+Three checks for the reviewer, who needs a checkout of `main` and of the branch:
+
+1. *Other tricks are not in scope (TC-039).* Send `r''m -rf results` and `$'\x72'm -rf results` to the gate (the hook input is `{"tool_input":{"command":"..."}}` on stdin) on `main` and on the branch. The two verdicts must be identical for each command, and the diff must not add handling for quotes, `$'...'`, variables or aliases.
+2. *Only one hook changed (TC-040).* `git diff main...HEAD --stat -- hooks/` lists `hooks/confirm_cleanup.sh` and nothing else (`confirm_launch.sh`, `confirm_walkthrough.sh`, `guard_plugin_files.sh` and the rest are untouched).
+3. *Issue #71 is not touched (TC-041).* `git diff main...HEAD` and the tests mention no content of #71 (read the issue; none of its subject appears in the diff).
+
 Record the answers in the release's own notes. A check nobody wrote down is a
 check that gets re-argued three sessions later.
 

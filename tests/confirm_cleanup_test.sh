@@ -713,6 +713,66 @@ t "\\$RCL copy $P/results remote:backup"                  pass "control: \\rclon
 # here-doc only the filter's trigger regex keeps this segment.
 t "srun $TAR --remove-files -cf /tmp/r.tar $P/results"    deny "srun tar --remove-files of results/"
 
+# backslash-inside-delete-word (#66): a backslash in the MIDDLE of a command word
+# or option is dropped by the shell, so `r\m` runs the delete. Each case gets the
+# verdict of the same command without the backslash (TC-ids from the bug's test-case.md).
+RB="${D:0:1}\\${D:1}"; TB="${TAR:0:1}\\${TAR:1}"
+t "$RB -rf results"                                       deny "TC-001 r\\m -rf results"
+t "$TB --remove-files -cf a.tar results"                  deny "TC-002 t\\ar --remove-files ... results"
+t "$TAR --remo\\ve-files -cf a.tar results"               deny "TC-003 tar --remo\\ve-files ... results"
+t "nextflow cl\\ean -f"                                   ask  "TC-004 nextflow cl\\ean -f"
+t "$RB -rf $P/work"                                       ask  "TC-005 r\\m -rf work asks, as without \\"
+t "echo hi; $RB -rf $P/results"                           deny "TC-006 r\\m behind a ;"
+t "ssh twnia3 '$RB -rf $P/results'"                       deny "TC-007 r\\m inside ssh"
+t "sudo $RB -rf results"                                  deny "TC-008 sudo r\\m"
+t "$RB -rf $P/work $P/results"                            deny "TC-009 work and results: the strictest wins"
+t "$RB -rf res\\ults"                                     deny "TC-010 two backslashes (r\\m, res\\ults)"
+t "$D -rf res\\ults"                                      deny "TC-011 control: a backslash in the argument only"
+t "\\$D -rf results"                                      deny "TC-012 control: a leading backslash (#65)"
+t "printf 'a\\nb'"                                        pass "TC-013 control: printf 'a\\nb'"
+t 'grep -E "a\sb" file'                                   pass "TC-014 control: grep -E regex with \\s"
+t "sed 's/a\\/b/c/' f"                                    pass "TC-015 control: sed regex with \\/"
+t 'echo C:\Users\x'                                       pass "TC-016 control: a Windows path"
+t 'ls C:\work\results'                                    pass "TC-017 control: ls of a Windows results path"
+t "echo $RB -rf $P/results"                               deny "TC-018 echo r\\m: as main judges echo without the backslash"
+t "$RB -rf $P/re\\ports"                                  pass "TC-019 control: unprotected name, backslashes"
+t 'nextflow l\og'                                         pass "TC-020 control: a harmless nextflow subcommand"
+t "$RB -rf $P/rawdata"                                    deny "TC-035 r\\m of rawdata/"
+t "$RB -rf $P/.nextflow/plugins"                          deny "TC-036 r\\m of .nextflow/plugins/"
+
+# backslash-inside-delete-word (#66), security review round 1: the dropped-backslash
+# copy of a segment must never change what a later segment is judged against (the
+# folder a `cd` moved to, whether a lister named a known path). Each case gets
+# main's verdict (measured on main before the fix).
+tc "$P" "cd $P/results\old; $D -rf x"                    deny "#66 cd <results>\old, then a delete in it"
+tc "/tmp" "cd $P/results\old; $D -rf x"                  deny "#66 ...from another working folder"
+tc "$P" "pushd $P/results\old; $D -rf x"                 deny "#66 pushd <results>\old, then a delete in it"
+tc "$P" "cd results\old; $D -rf x"                       deny "#66 cd results\old (relative), then a delete"
+tc "$P" "cd .\results; $D -rf *"                         deny "#66 cd .\results, then a delete"
+tps 'Get-ChildItem results\old | Move-Item -Destination x'   ask "#66 lister of results\old feeding Move-Item"
+tps 'Get-ChildItem .\results | Move-Item -Destination x'     ask "#66 lister of .\results feeding Move-Item"
+tps 'Get-ChildItem reports | Move-Item -Destination x'       pass "#66 control: lister of an unprotected folder"
+
+# #66 review round 2: only a real drive path (C:\ or C:/) or UNC path keeps its backslashes
+# in the dropped-backslash copy; `C:res\ults` is a relative word and is judged with the
+# backslash dropped too. Main's verdict for each is pass (the hook reads `X:` words as
+# drive paths); the cases pin that the narrowing makes nothing looser than main.
+tc "$P" "$D -rf C:res\ults"                              pass "#66 r2 C:res\ults: no looser than main"
+tc "$P" "$D -rf a:res\ults"                              pass "#66 r2 a:res\ults: no looser than main"
+tc "$P" "$D -rf C:\res\ults"                            pass "#66 r2 C:\res\ults: a drive path, as main"
+
+# #66 review round 3: `X:/` is not a backslash path - the shell does not turn it into
+# anything - so a word that starts with it gets the dropped-backslash copy too. Each
+# gets the verdict of the same command without the backslash (main: pass for the mv
+# cases, which is looser; the first four were already judged, kept as controls).
+tc "$P" "C:/Program/Git/usr/bin/r\\m -rf results"          deny "#66 r3 C:/.../r\\m -rf results"
+tc "$P" "$D -rf C:/lab/proj/res\\ults"                     deny "#66 r3 rm -rf C:/lab/proj/res\\ults"
+tc "$P" "rsync -a --delete src/ n:/data/proj/res\\ults/"   deny "#66 r3 rsync --delete to n:/data/proj/res\\ults/"
+tc "$P" "$D -rf C:/lab/proj/raw\\data"                     deny "#66 r3 rm -rf C:/lab/proj/raw\\data"
+tc "$P" "mv s:/p/raw\\data x"                              ask  "#66 r3 mv s:/p/raw\\data x"
+tc "$P" "mv s:/p/res\\ults x"                              ask  "#66 r3 mv s:/p/res\\ults x"
+tc "$P" "mv C:/lab/proj/raw\\data x"                       ask  "#66 r3 mv C:/lab/proj/raw\\data x"
+
 echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
 # hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.

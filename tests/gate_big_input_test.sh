@@ -92,12 +92,19 @@ check() {
 # the input costing at most 25x the time once the run is long enough to measure
 # (linear is 10x, quadratic 100x), so a slow machine does not fail it.
 mk62() { # mk62 <file> <kb> <filler|code>
-  "$PY" - "$1" "$2" "$3" "$TMP" <<'PY'
+  "$PY" - "$1" "$2" "$3" "$TMP" "${4:-rm}" <<'PY'
 import json, sys
 f, kb, body, tmp = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+tail = sys.argv[5] if len(sys.argv) > 5 else "rm"
 runner = "python3 -"
 if body == "code":
     line = lambda i: "v%d = transform(format(x%d, '.2f')).remove_prefix('r')\n" % (i, i)
+elif body == "bs":
+    # #66: every line holds a backslash, so the dropped-backslash copy is made for each
+    line = lambda i: "v%d = s%d.split('\\t')  # a\\.b\n" % (i, i)
+elif body == "bspipes":
+    runner = "bash"
+    line = lambda i: "cat f%d.txt | grep -c a\\.b%d | sort\n" % (i, i)
 elif body == "pipes":
     # a shell script fed to bash: every line a pipeline, and `sort` is a word the
     # guard follows for PowerShell pipelines
@@ -107,28 +114,38 @@ else:
     line = lambda i: "x%d = %d  # filler line\n" % (i, i)
 pad = "".join(line(i) for i in range(20000))[: kb * 1024]
 pad = pad[: pad.rfind("\n") + 1]
-cmd = runner + " <<'EOF'\n" + pad + "EOF\nrm -rf /work/u/lab_runs/x/results"
+verb = "r\\m" if tail == "rbm" else "rm"
+cmd = runner + " <<'EOF'\n" + pad + "EOF\n" + verb + " -rf /work/u/lab_runs/x/results"
 assert cmd.count("\nEOF\n") == 1
 d = {"session_id": "big-s1", "cwd": tmp + "/work", "hook_event_name": "PreToolUse", "tool_name": "Bash",
      "tool_input": {"command": cmd}}
 open(f, "w").write(json.dumps(d))
 PY
 }
-check62() { # check62 <filler|code|pipes>
-  local ms_small k_small ms_big k_big why=""
-  mk62 "$TMP/c62s.json" 30 "$1";  run confirm_cleanup "$TMP/c62s.json"; ms_small=$MS; k_small=$KIND
-  mk62 "$TMP/c62b.json" 300 "$1"; run confirm_cleanup "$TMP/c62b.json"; ms_big=$MS; k_big=$KIND
+check62() { # check62 <filler|code|pipes|bs|bspipes> [rm|rbm]
+  local ms_small k_small ms_big k_big why="" tail="${2:-rm}" lim=20000 verb="rm -rf results"
+  # #66 (TC-033): a backslash on every line, then r\m -rf results. On Linux/WSL the
+  # 300 KB call must stay within 3 s; native Git Bash keeps the 20 s of #62.
+  case "$1" in bs|bspipes) [ "$(uname -s)" = Linux ] && lim=3000 ;; esac
+  [ "$tail" = rbm ] && verb='r\m -rf results'
+  mk62 "$TMP/c62s.json" 30 "$1" "$tail";  run confirm_cleanup "$TMP/c62s.json"; ms_small=$MS; k_small=$KIND
+  mk62 "$TMP/c62b.json" 300 "$1" "$tail"; run confirm_cleanup "$TMP/c62b.json"; ms_big=$MS; k_big=$KIND
   [ "$k_small" = deny ] || why="30 KB verdict $k_small, want deny. "
   [ "$k_big" = deny ]   || why="${why}300 KB verdict $k_big, want deny. "
-  [ "$ms_big" -le 20000 ] || why="${why}300 KB took ${ms_big} ms (limit 20000). "
+  [ "$ms_big" -le "$lim" ] || why="${why}300 KB took ${ms_big} ms (limit $lim). "
   if [ "$ms_big" -gt 3000 ] && [ "$ms_big" -gt $((ms_small * 25)) ]; then why="${why}scaling: 30 KB ${ms_small} ms, 300 KB ${ms_big} ms (over 25x). "; fi
-  printf '%-62s %6s ms -> %6s ms  ' "#62 300 KB here-doc ($1) then rm -rf results (deletion guard)" "$ms_small" "$ms_big"
+  printf '%-62s %6s ms -> %6s ms  ' "#62 300 KB here-doc ($1) then $verb (deletion guard)" "$ms_small" "$ms_big"
   if [ -z "$why" ]; then echo "ok (deny)"; else echo "FAIL: $why"; fails=$((fails+1)); fi
 }
 echo "== #62: the deletion guard on a 300 KB here-doc =="
 check62 filler
 check62 code
 check62 pipes
+# #66 TC-033 / TC-034: backslash on every line; the dropped-backslash copy is made for all of them
+check62 bs rbm
+check62 bspipes rbm
+check62 bs rm
+check62 bspipes rm
 # A delete with many targets: each relative one, in a folder that exists here, was
 # resolved through `readlink -f`, one program per target - 130 ms each on Git Bash
 # (500 targets: 66 s, past the timeout). The programs started must not grow with
