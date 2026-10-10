@@ -761,6 +761,18 @@ tc "$P" "$D -rf C:res\ults"                              pass "#66 r2 C:res\ults
 tc "$P" "$D -rf a:res\ults"                              pass "#66 r2 a:res\ults: no looser than main"
 tc "$P" "$D -rf C:\res\ults"                            pass "#66 r2 C:\res\ults: a drive path, as main"
 
+# #66 review round 3: `X:/` is not a backslash path - the shell does not turn it into
+# anything - so a word that starts with it gets the dropped-backslash copy too. Each
+# gets the verdict of the same command without the backslash (main: pass for the mv
+# cases, which is looser; the first four were already judged, kept as controls).
+tc "$P" "C:/Program/Git/usr/bin/r\\m -rf results"          deny "#66 r3 C:/.../r\\m -rf results"
+tc "$P" "$D -rf C:/lab/proj/res\\ults"                     deny "#66 r3 rm -rf C:/lab/proj/res\\ults"
+tc "$P" "rsync -a --delete src/ n:/data/proj/res\\ults/"   deny "#66 r3 rsync --delete to n:/data/proj/res\\ults/"
+tc "$P" "$D -rf C:/lab/proj/raw\\data"                     deny "#66 r3 rm -rf C:/lab/proj/raw\\data"
+tc "$P" "mv s:/p/raw\\data x"                              ask  "#66 r3 mv s:/p/raw\\data x"
+tc "$P" "mv s:/p/res\\ults x"                              ask  "#66 r3 mv s:/p/res\\ults x"
+tc "$P" "mv C:/lab/proj/raw\\data x"                       ask  "#66 r3 mv C:/lab/proj/raw\\data x"
+
 echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
 # hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.

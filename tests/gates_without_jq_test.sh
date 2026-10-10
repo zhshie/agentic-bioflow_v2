@@ -68,9 +68,11 @@ gate "TC-011 guard: sed -i a file under the plugin root" block guard_plugin_file
 
 
 # backslash-inside-delete-word (#66), TC-021..030, 037. A backslash in a command
-# word is gone once the shell has read it, so `r\m` is the delete. In the JSON the
-# hook receives, one backslash is written as two (bash_json takes the text as it
-# stands in JSON).
+# word is gone once the shell has read it, so `r\m` is the delete. TC-021..030 feed
+# the plain-command form on purpose: one backslash, as typed (no jq means the hook
+# reads raw text, and the plain form has to be caught too). In real JSON a backslash
+# is written twice; bash_json takes the text as it stands in JSON, and the true-JSON
+# (double-backslash) variants are the "r3" cases below.
 gate 'TC-021 cleanup: r\m -rf results'                 block confirm_cleanup.sh "$(bash_json 'r\m -rf results')"
 gate 'TC-022 cleanup: tar --remo\ve-files'             block confirm_cleanup.sh "$(bash_json 'tar --remo\ve-files -cf a.tar results')"
 gate 'TC-023 cleanup: nextflow cl\ean -f'              block confirm_cleanup.sh "$(bash_json 'nextflow cl\ean -f')"
@@ -89,6 +91,11 @@ gate 'r2 cleanup: CRLF, r\m -rf results'               block confirm_cleanup.sh 
 gate 'r2 cleanup: newline, nextflow cl\ean -f'          block confirm_cleanup.sh "$(bash_json 'echo hi\nnextflow cl\\ean -f')"
 gate 'r2 cleanup: newline, \rm -rf results'             block confirm_cleanup.sh "$(bash_json 'echo hi\n\\rm -rf results')"
 gate 'r2 control: a harmless multi-line command'        pass  confirm_cleanup.sh "$(bash_json 'echo hi\nls -la\nprintf \"a\\nb\"')"
+# #66 review round 3: the same four words as TC-021..024, in real JSON (each backslash doubled).
+gate 'r3 cleanup JSON: r\\m -rf results'                block confirm_cleanup.sh "$(bash_json 'r\\m -rf results')"
+gate 'r3 cleanup JSON: tar --remo\\ve-files'            block confirm_cleanup.sh "$(bash_json 'tar --remo\\ve-files -cf a.tar results')"
+gate 'r3 cleanup JSON: nextflow cl\\ean -f'             block confirm_cleanup.sh "$(bash_json 'nextflow cl\\ean -f')"
+gate 'r3 cleanup JSON: \\rm -rf results'                block confirm_cleanup.sh "$(bash_json '\\rm -rf results')"
 # TC-037: the refusal still says what is wrong and how to fix it
 printf '%-62s ' 'TC-037 r\m refusal names jq and the install commands'
 err=$(printf '%s' "$(bash_json 'r\m -rf results')" | PATH="$NOJQ_PATH" CLAUDE_PLUGIN_ROOT="$PR" bash "$HD/confirm_cleanup.sh" 2>&1 >/dev/null)
