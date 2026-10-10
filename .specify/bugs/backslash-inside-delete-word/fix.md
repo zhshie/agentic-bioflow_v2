@@ -98,4 +98,4 @@ The three drive cases give the same verdict as main in all three columns, so the
 | `rsync -a --delete src/ n:/data/proj/res\ults/` | deny | deny | deny |
 | `rsync -a --delete src/ s:res\ults/` | pass | pass | pass |
 
-Round 3 is no looser than main in any row. The last row stays pass in all three (the same command without the backslash is judged the same, so nothing is lost by the copy). The mv rows are the ones the narrowing actually changes (RED cf-next, GREEN below); the others are pinned as controls.
+Round 3 is no looser than main in any row. The last row stays pass in all three (the same command without the backslash is judged the same, so nothing is lost by the copy). The mv rows are the ones the narrowing actually changes (RED bd64950, GREEN 927c202); the others are pinned as controls.
