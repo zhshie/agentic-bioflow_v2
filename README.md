@@ -63,6 +63,14 @@ Nextflow's own records, the truth under constitution 3.0.0), `nextflow_schema.js
 - Seqera Platform workspace with a `slurm-platform` compute environment
 - `tw` CLI, Java 21 for `tw-agent.jar`, Nextflow
 - `LAB_RUNS_DIR` pointing at the execution area on shared storage
+- Claude Code 2.1.295 or later. The launch, delete, write and walkthrough
+  gates carry `"onFailure": "block"` (`hooks/hooks.json`): if a gate crashes,
+  times out or prints something Claude Code cannot read, the tool call is
+  blocked instead of running. Claude Code documents that setting from 2.1.295.
+  What a Claude Code older than 2.1.295 does with it is not documented and has
+  not been verified here: it may keep the old behaviour (a failed gate lets the
+  command run), or it may not recognise the field. Update Claude Code if you
+  rely on the gates.
 
 These are what `setup` actually onboards this version: a cluster Platform
 cannot reach into, run from the cluster itself or from a user's own machine

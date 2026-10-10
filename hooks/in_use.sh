@@ -390,8 +390,8 @@ _abf_in_use_inner() {
         if _abf_phys "$b"; then bases+=("$REPLY"); fi
     done
     if _abf_phys "$cwd"; then cwds+=("$REPLY"); fi
-    for c in "${cwds[@]}"; do
-        for b in "${bases[@]}"; do
+    for c in ${cwds[@]+"${cwds[@]}"}; do
+        for b in ${bases[@]+"${bases[@]}"}; do
             _abf_under "$c" "$b" && return 0
         done
     done
@@ -407,14 +407,14 @@ _abf_in_use_inner() {
             [[ $text == *'${LAB_RUNS_DIR'* ]] && return 0
         fi
     fi
-    for b in "${bases[@]}"; do
+    for b in ${bases[@]+"${bases[@]}"}; do
         _abf_text_has "$text" "$b" && return 0
     done
     # in-use-path-spellings: a relative path from the session's folder - one
     # above storage_root (`runs3/p/results`, `cd runs3/p`) or beside it
     # (`../runs3/p/results`). String work only, no process.
-    for c in "${cwds[@]}"; do
-        for b in "${bases[@]}"; do
+    for c in ${cwds[@]+"${cwds[@]}"}; do
+        for b in ${bases[@]+"${bases[@]}"}; do
             _abf_rel "$c" "$b"
             _abf_text_has_rel "$text" "$REPLY" && return 0
         done
@@ -431,7 +431,7 @@ _abf_in_use_inner() {
         local re_cd='(^|[[:space:];&|"()~])cd[[:space:]]*(~[[:space:]]*)?([;&|"()]|$)'
         local re_cdh='(^|[[:space:];&|"()~])cd[[:space:]]+' re_end='[[:space:]]*([;&|"()]|$)'
         if [[ $text =~ $re_cd ]] || [[ $text =~ $re_cdh"$h"$re_end ]]; then
-            for b in "${bases[@]}"; do
+            for b in ${bases[@]+"${bases[@]}"}; do
                 _abf_under "$b" "$h" && return 0
             done
         fi

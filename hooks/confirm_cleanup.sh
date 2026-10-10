@@ -476,7 +476,7 @@ cand_cap() {
             [ "$DR" = "$pass" ] && keep+=("${CANDS[$i]}")
         done
     done
-    CANDS=("${keep[@]}"); CANDS_DIRTY=1
+    CANDS=(${keep[@]+"${keep[@]}"}); CANDS_DIRTY=1
 }
 # Deferred candidate checks. The segment loop judges every word against the trunk
 # (VCWD) exactly as main does, at main's cost. The extra checks the candidate folders
@@ -503,7 +503,7 @@ defer_rec() { # defer_rec <kind> <word> [flag1 flag2 flag3]
     cand_ok "$2" || return 0
     if [ -n "$CANDS_DIRTY" ]; then
         local s="" c
-        for c in "${CANDS[@]}"; do s="$s$c$SEP1"; done
+        for c in ${CANDS[@]+"${CANDS[@]}"}; do s="$s$c$SEP1"; done
         CANDS_VER=$((CANDS_VER + 1)); SNAP[$CANDS_VER]=$s; CANDS_DIRTY=
     fi
     DEFER+=("$CANDS_VER$SEP2$1$SEP2$2$SEP2${3:-}$SEP2${4:-}$SEP2${5:-}")
@@ -816,7 +816,7 @@ brace_expand() {
                 done
             fi
         fi
-        for a in "${alts[@]}"; do todo+=("$pre$a$post"); done
+        for a in ${alts[@]+"${alts[@]}"}; do todo+=("$pre$a$post"); done
         [ "${#todo[@]}" -le 64 ] || return 1
     done
     return 0
@@ -832,19 +832,19 @@ judge_word() { # judge_word <word> [""|rec|move]
     case "$W" in ''|-*) return 0 ;; esac
     W=${W//\"/}; W=${W//\'/}
     SP=("${W//\\//}"); [ "${W//\\/}" != "${W//\\//}" ] && SP+=("${W//\\/}")
-    for V in "${SP[@]}"; do
+    for V in ${SP[@]+"${SP[@]}"}; do
         [ -n "$V" ] || continue
         case "$V" in *'$'*|*'`'*) [ "$M" = move ] || UNRESOLVED="${UNRESOLVED}${V} " ;; esac
         BRACE_OUT=("$V")
         if [[ $V == *'{'*'}'* ]] && ! brace_expand "$V"; then
             UNRESOLVED="${UNRESOLVED}(${V}: a brace list too long to read) "; BRACE_OUT=("$V")
         fi
-        for E in "${BRACE_OUT[@]}"; do
+        for E in ${BRACE_OUT[@]+"${BRACE_OUT[@]}"}; do
             X=("$E")
             if [ -n "$VCWD" ]; then
                 case "$E" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$E"; X+=("$REPLY") ;; esac
             fi
-            for Y in "${X[@]}"; do judge_y "$Y" "$M"; done
+            for Y in ${X[@]+"${X[@]}"}; do judge_y "$Y" "$M"; done
             defer_rec w "$E" "$M"
         done
     done
@@ -1391,14 +1391,14 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             XPREV=$XQ
         done
         [ "${#XR[@]}" -gt 0 ] || XR=(.)
-        for X in "${XR[@]}"; do
+        for X in ${XR[@]+"${XR[@]}"}; do
             X=${X//\\//}; XA=("$X")
             if [ -n "$VCWD" ]; then
                 case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$X"; XA+=("$REPLY") ;; esac
             fi
             defer_rec f "$X" "$XF" "$XS"
             XH=0; XW=0; XT=0
-            for Y in "${XA[@]}"; do
+            for Y in ${XA[@]+"${XA[@]}"}; do
                 holds_protected "$Y" && XH=1
                 [[ $Y =~ $RE_WORK ]] && XW=1
                 case "$Y/" in /tmp/*|/var/tmp/*|"${TMPDIR:-/tmp}"/*) XT=1 ;; esac

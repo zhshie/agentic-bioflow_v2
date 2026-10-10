@@ -114,6 +114,17 @@ Three checks for the reviewer, who needs a checkout of `main` and of the branch:
 2. *Only one hook changed (TC-040).* `git diff main...HEAD --stat -- hooks/` lists `hooks/confirm_cleanup.sh` and nothing else (`confirm_launch.sh`, `confirm_walkthrough.sh`, `guard_plugin_files.sh` and the rest are untouched).
 3. *Issue #71 is not touched (TC-041).* `git diff main...HEAD` and the tests mention no content of #71 (read the issue; none of its subject appears in the diff).
 
+**When a release changes which hooks fail closed (#80, `"onFailure": "block"` on the PreToolUse gates).**
+Needs Claude Code 2.1.295 or later. Do these once per release that touches `hooks/hooks.json`, and write the answers in the release notes.
+
+1. *A slow gate blocks (TC-008).* In a scratch copy of the plugin (never the real install), replace `hooks/confirm_cleanup.sh` with `#!/bin/bash` and `sleep 3`, set that entry's `timeout` to 1, keep `onFailure: block`, start Claude Code with that copy, and ask Claude to run `ls`. `ls` must not run, and the screen must say the hook failed and is blocking because `onFailure` is `block`, naming the gate. If `ls` runs, the field is not honoured.
+2. *The installed plugin honours the field (TC-009).* Install the changed plugin the normal way (Claude Code 2.1.296 or whatever you run). Replace one gate in the installed copy with `#!/bin/bash` and `exit 1`, ask Claude to run `ls`: it must be blocked. Put the real gate back, restart, and ask for something that triggers a launch confirmation: the confirmation must appear, so the plugin loads normally. If the plugin's `hooks.json` ignores `onFailure`, the first half runs `ls` and this release has not fixed #80.
+3. *A crashing gate names itself (TC-C01).* The same fake gate as step 2 (`exit 1`): the message must say which gate failed. Silent pass-through or an unexplained hang are both wrong.
+4. *README tells the truth (TC-019, TC-020).* Read `README.md`, "Requirements". It must say fail-closed needs Claude Code 2.1.295 or later, and for older versions say only that the behaviour is not documented and not verified. A sentence that claims what an older version does is wrong.
+5. *Scope of the diff (TC-023..025).* `git diff main...HEAD -- hooks/confirm_cleanup.sh` adds no length or depth cap; `hooks/next_step.sh` and `hooks/plugin_intro.sh` are untouched; `.specify/memory/constitution.md` is untouched.
+
+Known cost to weigh each time: these gates run in every project, including ones that never use the plugin. A broken install or a gate that cannot start now blocks Bash, Write and Edit everywhere until it is fixed or the plugin is disabled.
+
 Record the answers in the release's own notes. A check nobody wrote down is a
 check that gets re-argued three sessions later.
 

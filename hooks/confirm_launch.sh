@@ -851,7 +851,7 @@ if ! is_launch_command "$CMD"; then
                 fi
             done
             [ "$have" = 1 ] && W+=("$cur")
-            for w in "${W[@]}"; do
+            for w in ${W[@]+"${W[@]}"}; do
                 if [ -z "$kind" ]; then
                     w="${w##*/}"
                     case "$w" in
