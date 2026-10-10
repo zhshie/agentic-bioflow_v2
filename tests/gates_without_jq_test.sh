@@ -81,6 +81,14 @@ gate 'TC-027 cleanup: grep -E "a\sb" file'             pass  confirm_cleanup.sh 
 gate "TC-028 cleanup: sed 's/a\/b/c/' f"              pass  confirm_cleanup.sh "$(bash_json "sed 's/a\\/b/c/' f")"
 gate 'TC-029 cleanup: echo C:\Users\x'                 pass  confirm_cleanup.sh "$(bash_json 'echo C:\Users\x')"
 gate 'TC-030 cleanup: ls C:\work\results'              pass  confirm_cleanup.sh "$(bash_json 'ls C:\work\results')"
+# #66 review round 2: behind a JSON line-break escape (\n, \t, \r\n) the backslash
+# of the word is still dropped. A `\n` is a line break, not a backslash and an `n`.
+gate 'r2 cleanup: echo hi, newline, r\m -rf results'    block confirm_cleanup.sh "$(bash_json 'echo hi\nr\\m -rf results')"
+gate 'r2 cleanup: tab, r\m -rf results'                 block confirm_cleanup.sh "$(bash_json 'echo hi\tr\\m -rf results')"
+gate 'r2 cleanup: CRLF, r\m -rf results'               block confirm_cleanup.sh "$(bash_json 'echo hi\r\nr\\m -rf results')"
+gate 'r2 cleanup: newline, nextflow cl\ean -f'          block confirm_cleanup.sh "$(bash_json 'echo hi\nnextflow cl\\ean -f')"
+gate 'r2 cleanup: newline, \rm -rf results'             block confirm_cleanup.sh "$(bash_json 'echo hi\n\\rm -rf results')"
+gate 'r2 control: a harmless multi-line command'        pass  confirm_cleanup.sh "$(bash_json 'echo hi\nls -la\nprintf \"a\\nb\"')"
 # TC-037: the refusal still says what is wrong and how to fix it
 printf '%-62s ' 'TC-037 r\m refusal names jq and the install commands'
 err=$(printf '%s' "$(bash_json 'r\m -rf results')" | PATH="$NOJQ_PATH" CLAUDE_PLUGIN_ROOT="$PR" bash "$HD/confirm_cleanup.sh" 2>&1 >/dev/null)

@@ -753,6 +753,14 @@ tps 'Get-ChildItem results\old | Move-Item -Destination x'   ask "#66 lister of 
 tps 'Get-ChildItem .\results | Move-Item -Destination x'     ask "#66 lister of .\results feeding Move-Item"
 tps 'Get-ChildItem reports | Move-Item -Destination x'       pass "#66 control: lister of an unprotected folder"
 
+# #66 review round 2: only a real drive path (C:\ or C:/) or UNC path keeps its backslashes
+# in the dropped-backslash copy; `C:res\ults` is a relative word and is judged with the
+# backslash dropped too. Main's verdict for each is pass (the hook reads `X:` words as
+# drive paths); the cases pin that the narrowing makes nothing looser than main.
+tc "$P" "$D -rf C:res\ults"                              pass "#66 r2 C:res\ults: no looser than main"
+tc "$P" "$D -rf a:res\ults"                              pass "#66 r2 a:res\ults: no looser than main"
+tc "$P" "$D -rf C:\res\ults"                            pass "#66 r2 C:\res\ults: a drive path, as main"
+
 echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
 # hooks.json gives the hook 30 s; a hook cancelled there lets the call PROCEED.
