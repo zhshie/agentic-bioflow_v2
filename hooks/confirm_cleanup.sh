@@ -409,6 +409,150 @@ if [[ $INPUT =~ $RE_CWD ]]; then
     VCWD="${BASH_REMATCH[1]}"; VCWD="${VCWD//\\\\//}"; VCWD="${VCWD//\\//}"
     case "$VCWD" in /*|[A-Za-z]:/*) norm_path "$VCWD"; VCWD="$REPLY" ;; *) VCWD="" ;; esac
 fi
+# #76, #75: the folder the shell is in is not always the one this gate tracked. VCWD is
+# the trunk - what main's own cd / pushd leaves, exactly as before. CANDS holds the other
+# folders the shell may be in: a dropped-backslash copy of a cd (`cd res\ults` enters
+# results/) and PowerShell's location cmdlets can only ADD to it, never remove from it.
+# Every relative target is judged against the trunk and every candidate; each finding only
+# ever adds, so the strictest verdict wins. Only main's cd / pushd to a target replaces
+# the set: an absolute one clears it, a relative one is followed from every candidate.
+CANDS=()
+PRE_VCWD=""; PRE_CANDS=()
+# dir_rank <folder> -> DR: 2 protected (deny), 1 guarded (ask), 0 neither.
+dir_rank() {
+    DR=0
+    if [[ $1 =~ $RE_PROTECTED ]] || [[ $1 =~ $RE_PLUGINS ]]; then DR=2
+    elif [[ $1 =~ $RE_ANY_GUARDED ]]; then DR=1; fi
+}
+# cd_resolve <base folder> <target> -> REPLY: where a `cd` to <target> lands, the target
+# read as written (a backslash as a separator); "" when it cannot be known.
+cd_resolve() {
+    case "$2" in
+        /*|[A-Za-z]:*) norm_path "${2//\\//}" ;;
+        *) if [ -n "$1" ]; then join_path "$1" "${2//\\//}"; else REPLY=""; fi ;;
+    esac
+}
+# join_path <normalised folder> <relative word> -> REPLY: the same as norm_path "$1/$2",
+# without its cost when the word has no `.`, `..`, `//` or trailing `/` to fold (a
+# candidate is always a normalised folder, so the join is already normal).
+join_path() {
+    case "$1" in */|'') norm_path "$1/$2"; return ;; esac
+    case "$2" in
+        ''|.|..|./*|../*|*/.|*/..|*/./*|*/../*|*//*|*/) norm_path "$1/$2" ;;
+        *) REPLY="$1/$2" ;;
+    esac
+}
+# cand_add <folder>: one more folder the shell may be in (not the trunk, not twice).
+cand_add() {
+    local c
+    [ -n "$1" ] || return 0
+    [ "${#1}" -le 1024 ] || return 0
+    [ "$1" = "$VCWD" ] && return 0
+    for c in ${CANDS[@]+"${CANDS[@]}"}; do [ "$c" = "$1" ] && return 0; done
+    CANDS+=("$1"); CANDS_DIRTY=1
+}
+# cand_add_from_pre <target>: the folder a cd to <target> reaches from the trunk and the
+# candidates as they stood before the segment being read.
+cand_add_from_pre() {
+    local c
+    cand_ok "$1" || return 0
+    case "$1" in
+        ''|-|'~'*|*'$'*|*'`'*) return 0 ;;
+        /*|[A-Za-z]:*) cd_resolve "" "$1"; cand_add "$REPLY"; return 0 ;;
+    esac
+    [ -n "$PRE_VCWD" ] && { cd_resolve "$PRE_VCWD" "$1"; cand_add "$REPLY"; }
+    for c in ${PRE_CANDS[@]+"${PRE_CANDS[@]}"}; do cd_resolve "$c" "$1"; cand_add "$REPLY"; done
+}
+# cand_cap: at most 8 candidates. Over that the harmless ones go first (then the merely
+# guarded, newest kept); a protected-looking folder is the last to go, and the trunk is
+# not in the set at all, so what main judges is always judged.
+cand_cap() {
+    [ "${#CANDS[@]}" -gt 8 ] || return 0
+    local keep=() pass i n=${#CANDS[@]}
+    for pass in 2 1 0; do
+        for ((i = n - 1; i >= 0; i--)); do
+            [ "${#keep[@]}" -lt 8 ] || break
+            dir_rank "${CANDS[$i]}"
+            [ "$DR" = "$pass" ] && keep+=("${CANDS[$i]}")
+        done
+    done
+    CANDS=("${keep[@]}"); CANDS_DIRTY=1
+}
+# Deferred candidate checks. The segment loop judges every word against the trunk
+# (VCWD) exactly as main does, at main's cost. The extra checks the candidate folders
+# (CANDS) imply are only RECORDED there (defer_rec) and run after the loop (defer_run),
+# while time remains: they can only add findings, so stopping them early leaves main's
+# verdict plus whatever stricter hits were already found - never an `ask` for running
+# out of time. A record holds the version of the candidate list it was made under,
+# the kind (w word, f find, d delete / mv source), the word and up to three flags.
+# Hard budgets: candidate work only ever ADDS strictness, so it is skipped, never waited
+# for, once SECONDS (the time since the hook started) reaches CAND_BUDGET, and for any
+# word or folder longer than 1024 characters. Skipping leaves main's verdict. The
+# environment variable can only lower the budget (the tests use 0).
+CAND_BUDGET=8
+case "${ABF_CLEANUP_CAND_BUDGET_S:-}" in
+    ''|*[!0-9]*) ;;
+    *) [ "$ABF_CLEANUP_CAND_BUDGET_S" -lt "$CAND_BUDGET" ] && CAND_BUDGET=$ABF_CLEANUP_CAND_BUDGET_S ;;
+esac
+# cand_ok <word or folder>: may candidate work be done for it now?
+cand_ok() { [ "$SECONDS" -lt "$CAND_BUDGET" ] && [ "${#1}" -le 1024 ]; }
+DEFER=(); SNAP=(); CANDS_VER=0; CANDS_DIRTY=1
+SEP1=$'\001'; SEP2=$'\002'
+defer_rec() { # defer_rec <kind> <word> [flag1 flag2 flag3]
+    [ "${#CANDS[@]}" -gt 0 ] || return 0
+    cand_ok "$2" || return 0
+    if [ -n "$CANDS_DIRTY" ]; then
+        local s="" c
+        for c in "${CANDS[@]}"; do s="$s$c$SEP1"; done
+        CANDS_VER=$((CANDS_VER + 1)); SNAP[$CANDS_VER]=$s; CANDS_DIRTY=
+    fi
+    DEFER+=("$CANDS_VER$SEP2$1$SEP2$2$SEP2${3:-}$SEP2${4:-}$SEP2${5:-}")
+}
+# judge_y <resolved word> <mode>: what judge_word does for one resolved spelling.
+judge_y() {
+    local Y=$1 M=${2:-}
+    case "$M" in
+        move)
+            [ "$CASE_FOLD" = 1 ] && shopt -s nocasematch
+            [[ $Y =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${Y} "
+            shopt -u nocasematch ;;
+        *)
+            judge_delete_target "$Y"
+            [ "$M" = rec ] && holds_protected "$Y" \
+                && HIT_PROTECTED="${HIT_PROTECTED}${Y} (it holds rawdata/, results/ or analysis/) "
+            shopt -s nocasematch
+            [[ $Y =~ $RE_SEQEXT ]] && HIT_SEQFILE="${HIT_SEQFILE}${Y} "
+            shopt -u nocasematch ;;
+    esac
+}
+defer_run() {
+    local rec ver kind w f1 f2 f3 c Y CL=() RL=$DEFER_DEADLINE
+    [ "$CAND_BUDGET" -lt "$RL" ] && RL=$CAND_BUDGET
+    for rec in ${DEFER[@]+"${DEFER[@]}"}; do
+        [ "$SECONDS" -ge "$RL" ] && break
+        IFS=$SEP2 read -r ver kind w f1 f2 f3 <<<"$rec"
+        case "$w" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) continue ;; esac
+        IFS=$SEP1 read -r -a CL <<<"${SNAP[$ver]}"
+        for c in ${CL[@]+"${CL[@]}"}; do
+            [ "$SECONDS" -ge "$RL" ] && break 2
+            join_path "$c" "$w"; Y=$REPLY
+            [ "${#Y}" -le 1024 ] || continue
+            case "$kind" in
+                w) judge_y "$Y" "$f1" ;;
+                f) if holds_protected "$Y"; then
+                       if [ "$f1" = 0 ] || [ "$f2" = 1 ]; then
+                           HIT_PROTECTED="${HIT_PROTECTED}${Y} (find deletes inside the rawdata/, results/ or analysis/ it holds) "
+                       else
+                           UNRESOLVED="${UNRESOLVED}(find from ${Y}, which holds rawdata/, results/ or analysis/: check that its filter keeps out of them) "
+                       fi
+                   fi ;;
+                d) [ "$f1" = 1 ] && [[ $Y =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${Y} "
+                   [ "$f2" = 1 ] && judge_delete_target "$Y"
+                   [ "$f3" = 1 ] && holds_protected "$Y" && HIT_PROTECTED="${HIT_PROTECTED}${Y} (it holds rawdata/, results/ or analysis/) " ;;
+            esac
+        done
+    done
+}
 # #35: is the segment before this one a lister of an explicit path, so a
 # `Move-Item` fed from it has a known source? (Pipeline-fed Move-Item.)
 LISTER_OK=0
@@ -700,21 +844,8 @@ judge_word() { # judge_word <word> [""|rec|move]
             if [ -n "$VCWD" ]; then
                 case "$E" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$E"; X+=("$REPLY") ;; esac
             fi
-            for Y in "${X[@]}"; do
-                case "$M" in
-                    move)
-                        [ "$CASE_FOLD" = 1 ] && shopt -s nocasematch
-                        [[ $Y =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${Y} "
-                        shopt -u nocasematch ;;
-                    *)
-                        judge_delete_target "$Y"
-                        [ "$M" = rec ] && holds_protected "$Y" \
-                            && HIT_PROTECTED="${HIT_PROTECTED}${Y} (it holds rawdata/, results/ or analysis/) "
-                        shopt -s nocasematch
-                        [[ $Y =~ $RE_SEQEXT ]] && HIT_SEQFILE="${HIT_SEQFILE}${Y} "
-                        shopt -u nocasematch ;;
-                esac
-            done
+            for Y in "${X[@]}"; do judge_y "$Y" "$M"; done
+            defer_rec w "$E" "$M"
         done
     done
 }
@@ -762,7 +893,7 @@ is_dry_run() {
 # tests/confirm_cleanup_test.sh through this path to catch one that has not.
 # Small inputs (under 8 KB of segments) skip the filter: it is one more process
 # (gate_process_count), and their full judgement costs well under a second.
-CW_HANDLED='^(__too_deep__|cd|pushd|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
+CW_HANDLED='^(__too_deep__|cd|pushd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
 RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)|($RE_NFCLEAN)"
 RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)"
 # The PowerShell listers and pipeline filters (LISTER_OK below) matter only to a
@@ -792,6 +923,15 @@ case "${ABF_CLEANUP_DEADLINE_S:-}" in
     ''|*[!0-9]*) ;;
     *) [ "$ABF_CLEANUP_DEADLINE_S" -lt "$DEADLINE" ] && DEADLINE=$ABF_CLEANUP_DEADLINE_S ;;
 esac
+# The deferred candidate checks (defer_run) have a deadline of their own: they only add
+# findings, so past it they stop and the verdict stands as it is. ABF_CLEANUP_DEFER_DEADLINE_S
+# can only lower it (the tests use 0).
+DEFER_DEADLINE=$DEADLINE
+[ "$DEFER_DEADLINE" -le 15 ] || DEFER_DEADLINE=15
+case "${ABF_CLEANUP_DEFER_DEADLINE_S:-}" in
+    ''|*[!0-9]*) ;;
+    *) [ "$ABF_CLEANUP_DEFER_DEADLINE_S" -lt "$DEFER_DEADLINE" ] && DEFER_DEADLINE=$ABF_CLEANUP_DEFER_DEADLINE_S ;;
+esac
 NSEG=0
 TIMED_OUT=0
 while IFS="$US" read -r SEG VSEG CW COPY; do
@@ -803,8 +943,21 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     # ever add) is put back as it stood when the copy started. Without this
     # `cd <run>/results\old` set the folder from the original and the copy then
     # moved it to `<run>/resultsold`, so a delete after it went unjudged.
-    if [ -n "${COPY_SAVED-}" ]; then VCWD=$COPY_VCWD; LISTER_OK=$COPY_LISTER; COPY_SAVED=; fi
-    if [ -n "$COPY" ]; then COPY_VCWD=$VCWD; COPY_LISTER=$LISTER_OK; COPY_SAVED=1; fi
+    #
+    # #76: a copy may only tighten the lister verdict: the copy of
+    # `Get-ChildItem res\ults` reads the protected `results`, which clears LISTER_OK,
+    # and it must stay cleared; a copy can never raise it. And the candidates a copy
+    # adds (cand_add_from_pre) are read from the state before the segment it copies.
+    if [ -n "${COPY_SAVED-}" ]; then
+        VCWD=$COPY_VCWD
+        if [ "$LISTER_OK" = 1 ] && [ "$COPY_LISTER" = 1 ]; then LISTER_OK=1; else LISTER_OK=0; fi
+        COPY_SAVED=
+    fi
+    if [ -n "$COPY" ]; then
+        COPY_VCWD=$VCWD; COPY_LISTER=$LISTER_OK; COPY_SAVED=1
+    else
+        PRE_VCWD=$VCWD; PRE_CANDS=(${CANDS[@]+"${CANDS[@]}"})
+    fi
     [ -n "$SEG" ] || continue
     # #62: past the deadline, stop and ask (see DEADLINE above).
     if [ "$SECONDS" -ge "$DEADLINE" ]; then TIMED_OUT=1; break; fi
@@ -846,13 +999,66 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 case "$CDX" in -*) continue ;; esac
                 CDT="$CDX"; break
             done
-            case "$CDT" in
-                ''|-|'~'*|*'$'*|*'`'*) VCWD="" ;;
-                /*|[A-Za-z]:*) norm_path "${CDT//\\//}"; VCWD="$REPLY" ;;
-                *) if [ -n "$VCWD" ]; then norm_path "$VCWD/${CDT//\\//}"; VCWD="$REPLY"; fi ;;
-            esac
+            # #76: main's own cd / pushd is the only thing that replaces the set of
+            # candidate folders (CANDS). The trunk (VCWD) moves exactly as it always did.
+            # A dropped-backslash copy never moves the trunk (#74); it only ADDS the
+            # folder the shell reaches when the backslash is dropped, from the
+            # candidates as they were before the segment it copies.
+            if [ -n "$COPY" ]; then
+                cand_add_from_pre "$CDT"; cand_cap
+            else
+                case "$CDT" in
+                    ''|-|'~'*|*'$'*|*'`'*) VCWD="" ;;
+                    /*|[A-Za-z]:*) norm_path "${CDT//\\//}"; VCWD="$REPLY"; CANDS=(); CANDS_DIRTY=1 ;;
+                    *)
+                        if [ -n "$VCWD" ]; then norm_path "$VCWD/${CDT//\\//}"; VCWD="$REPLY"; fi
+                        # a relative target is followed from every candidate
+                        DC_OLD=(${CANDS[@]+"${CANDS[@]}"}); CANDS=(); CANDS_DIRTY=1
+                        if cand_ok "$CDT"; then
+                            for DC_C in ${DC_OLD[@]+"${DC_OLD[@]}"}; do
+                                cd_resolve "$DC_C" "$CDT"; cand_add "$REPLY"
+                            done
+                        fi ;;
+                esac
+                cand_cap
+            fi
             LISTER_OK=0
             continue ;;
+        set-location|sl|chdir|push-location|pop-location)
+            # #75: PowerShell's location cmdlets. Under Bash they are not built-ins and
+            # under PowerShell they may fail, sit behind a condition or take a form this
+            # gate cannot read, so they can only ADD the folder they name as a candidate;
+            # they never remove one. Pop-Location, like popd, adds nothing. The segment
+            # then goes on through the checks main runs on it.
+            CDT=""; CDF=0; DC_TAKE=0; DC_SKIP=0
+            if [ "$CW" != pop-location ]; then
+                read -r -a CDW <<<"${SEG//[\"\']/}"
+                shopt -s nocasematch
+                for CDX in ${CDW[@]+"${CDW[@]}"}; do
+                    if [ "$CDF" = 0 ]; then
+                        DC_W=${CDX#\\}; DC_W=${DC_W##*/}
+                        [[ $DC_W == "$CW" ]] && CDF=1
+                        continue
+                    fi
+                    # -Path / -LiteralPath value (also -Path:value), else the first word
+                    # that is not an option; -StackName takes a word of its own.
+                    if [ "$DC_TAKE" = 1 ]; then CDT=$CDX; break; fi
+                    if [ "$DC_SKIP" = 1 ]; then DC_SKIP=0; continue; fi
+                    case "$CDX" in
+                        -path|-literalpath|-lp|-pspath) DC_TAKE=1 ;;
+                        -path:?*|-literalpath:?*|-lp:?*|-pspath:?*) CDT=${CDX#*:}; break ;;
+                        -stackname) DC_SKIP=1 ;;
+                        -*) ;;
+                        *) CDT=$CDX; break ;;
+                    esac
+                done
+                shopt -u nocasematch
+                case "$CDT" in
+                    ''|-|'~'*|*'$'*|*'`'*|*'*'*|*'?'*|*'['*|*'('*|*')'*|'@'*) ;;
+                    *) cand_add_from_pre "$CDT"; cand_cap ;;
+                esac
+            fi
+            LISTER_OK=0 ;;
         get-childitem|gci|ls|dir|get-item|gi)
             LISTER_OK=0; LARGS=0
             read -r -a LW <<<"${SEG//[\"\']/}"
@@ -1062,9 +1268,9 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 if [[ $XQ =~ ^[A-Za-z0-9_.-]+: ]] && ! [[ $XQ =~ ^[A-Za-z]:[/\\] ]]; then
                     # a remote path is relative to the remote's root, not to
                     # the working folder (a drive letter is a local path)
-                    XCWD=$VCWD; VCWD=""
+                    XCWD=$VCWD; XCANDS=(${CANDS[@]+"${CANDS[@]}"}); VCWD=""; CANDS=(); CANDS_DIRTY=1
                     judge_word "$XQ" "$XM"; judge_word "${XQ#*:}" "$XM"
-                    VCWD=$XCWD
+                    VCWD=$XCWD; CANDS=(${XCANDS[@]+"${XCANDS[@]}"}); CANDS_DIRTY=1
                 else
                     judge_word "${XP[$XI]}" "$XM"
                 fi
@@ -1190,6 +1396,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             if [ -n "$VCWD" ]; then
                 case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$X"; XA+=("$REPLY") ;; esac
             fi
+            defer_rec f "$X" "$XF" "$XS"
             XH=0; XW=0; XT=0
             for Y in "${XA[@]}"; do
                 holds_protected "$Y" && XH=1
@@ -1332,6 +1539,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 || [[ ${WORDS[$wi]} == *'{'*','*'}'* ]]; }; then
             [[ $A =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${A} "
             [ -n "$RES" ] && [[ $RES =~ $RE_PROTECTED ]] && HIT_MV_SOURCE="${HIT_MV_SOURCE}${RES} "
+            defer_rec d "$A" 1 0 0
         fi
 
         # An unknown command word (`$(which rm)`, `$R`) is judged only when
@@ -1367,6 +1575,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             # results), and the same word resolved against the working folder.
             [ "$A_ESC" != "$A" ] && judge_delete_target "$A_ESC"
             [ -n "$RES" ] && judge_delete_target "$RES"
+            defer_rec d "$A" 0 1 0
             # sn1-delete-shapes: a brace word as bash expands it (`res{ults,}`),
             # beside the flattened form above; and a recursive delete of a folder
             # that holds protected ones.
@@ -1374,6 +1583,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             if [ "$RMODE" = rec ]; then
                 holds_protected "$A" && HIT_PROTECTED="${HIT_PROTECTED}${A} (it holds rawdata/, results/ or analysis/) "
                 [ -n "$RES" ] && holds_protected "$RES" && HIT_PROTECTED="${HIT_PROTECTED}${RES} (it holds rawdata/, results/ or analysis/) "
+                defer_rec d "$A" 0 0 1
             fi
         fi
         shopt -s nocasematch
@@ -1387,6 +1597,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
         UNRESOLVED="${UNRESOLVED}(${CW}: no target on the command line - it comes from a pipe) "
     fi
 done <<< "$SEGMENTS"
+[ "$TIMED_OUT" = 1 ] || defer_run
 
 # ── deny ─────────────────────────────────────────────────────────────────────
 [ -n "$HIT_ROOT" ] && deny "BLOCKED: that target is a filesystem root, not a cleanup target.
