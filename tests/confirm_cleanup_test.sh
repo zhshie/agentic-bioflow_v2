@@ -853,6 +853,21 @@ tcp PowerShell "$P/results" 'sl ..; sl -Path (Join-Path $PWD results); Remove-It
 tcp PowerShell "$P/results" 'sl ..; sl @("results"); Remove-Item x'             deny "R1 an array target"
 tcp Bash "$P" "pushd results; popd; $D -rf x"                                   pass "R1 control: a bare popd with a known stack"
 tcp PowerShell "/tmp" 'sl $d; Remove-Item x'                                    pass "R1 control: an unknown target from a harmless folder"
+# Review round 1, verifier additions: the new handlers (popd, Pop-Location, the PowerShell
+# location cmdlets) must not drop the old folder when they may not run or may not touch this shell.
+tcp Bash "$P" "pushd results; false && popd; $D -rf x"                          deny "R1 false && popd"
+tcp Bash "$P" "pushd results; exit 0 || popd; $D -rf x"                         deny "R1 exit 0 || popd"
+tcp Bash "$P" "pushd results; popd | cat; $D -rf x"                             deny "R1 popd | cat"
+tcp Bash "$P" "pushd results; (popd); $D -rf x"                                 deny "R1 (popd)"
+tcp Bash "$P" "pushd results; echo a | popd; $D -rf x"                          deny "R1 echo a | popd"
+tcp Bash "$P" "pushd results; popd & $D -rf x"                                  deny "R1 popd &"
+tcp Bash "$P" "pushd results; command popd; $D -rf x"                           deny "R1 command popd"
+tcp PowerShell "$P/results" 'sl -Foo /tmp; Remove-Item x'                       deny "R1 an unknown option on Set-Location"
+tcp PowerShell "$P/results" 'sl /tmp -WhatIf; Remove-Item x'                    deny "R1 Set-Location -WhatIf"
+tcp PowerShell "$P/results" 'sl /tmp; Pop-Location -Foo; Remove-Item x'         deny "R1 Pop-Location with an unknown option"
+tcp PowerShell "$P" 'Push-Location results; Pop-Location -PassThru; Remove-Item x' pass "R1 control: Pop-Location -PassThru is a bare pop"
+tcp PowerShell "$P" 'sl -PassThru /tmp; Remove-Item x'                          pass "R1 control: -PassThru is harmless"
+tcp PowerShell "$P/results" 'false && sl /tmp; Remove-Item x'                   deny "R1 sl after &&"
 
 echo
 echo "== #62: a guard that cannot finish in time asks, instead of being cancelled =="
