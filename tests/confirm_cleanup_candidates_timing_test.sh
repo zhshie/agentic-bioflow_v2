@@ -10,7 +10,7 @@
 #
 # Here: two long commands (40 Set-Location or `cd dN\x`, 50 `rm -f` of five names, then the
 # one real delete of results/) must get the verdict main gives (read from main's own hook
-# in git, as tests/in_use_speed_test.sh does), the times are printed for both, and a
+# in git, as tests/in_use_speed_test.sh does, when that commit is in the checkout; the pinned verdicts always run), the times are printed for both, and a
 # deferred phase that is out of time (ABF_CLEANUP_DEFER_DEADLINE_S=0) leaves main's verdict
 # - not an ask - while the same command with time left finds the candidate-only delete.
 set -uo pipefail
@@ -25,9 +25,9 @@ U=/work/u/lab_runs/x
 BASE=c4a7327
 TMP=$(mktemp -d); trap 'command rm -rf "$TMP"' EXIT
 MAINH=""
-if git -C "$ROOT" cat-file -e "$BASE:hooks/confirm_cleanup.sh" 2>/dev/null; then
+if (cd "$ROOT" && git cat-file -e "$BASE:hooks/confirm_cleanup.sh") 2>/dev/null; then
   mkdir -p "$TMP/main"
-  git -C "$ROOT" archive "$BASE" hooks 2>/dev/null | tar -x -C "$TMP/main" 2>/dev/null && MAINH="$TMP/main/hooks/confirm_cleanup.sh"
+  (cd "$ROOT" && git archive "$BASE" hooks) 2>/dev/null | tar -x -C "$TMP/main" 2>/dev/null && MAINH="$TMP/main/hooks/confirm_cleanup.sh"
 fi
 fails=0
 ms_now() { "$PY" -c 'import time;print(int(time.time()*1000))'; }
@@ -38,21 +38,23 @@ verdict() { # verdict <hook> <command> [ENV=val] -> VERDICT, MS
   t1=$(ms_now); MS=$((t1 - t0))
   if [ -z "$out" ]; then VERDICT=pass; else VERDICT=$(jq -r '.hookSpecificOutput.permissionDecision // "warn"' <<<"$out"); fi
 }
-same_as_main() { # same_as_main <label> <command>
-  local bv bm="-" mv="-"
-  verdict "$H" "$2"; bv=$VERDICT; local bms=$MS
+same_as_main() { # same_as_main <label> <command> <pinned verdict>
+  local bv mv="-" bm="-" bms why=""
+  verdict "$H" "$2"; bv=$VERDICT; bms=$MS
   if [ -n "$MAINH" ]; then verdict "$MAINH" "$2"; mv=$VERDICT; bm=$MS; fi
-  printf '%-52s main %-5s %6s ms   branch %-5s %6s ms  ' "$1" "$mv" "$bm" "$bv" "$bms"
-  if [ -z "$MAINH" ]; then echo "(no $BASE here: main not compared)"; return; fi
-  if [ "$bv" = "$mv" ]; then echo "ok"; else echo "FAIL: branch $bv, main $mv"; fails=$((fails + 1)); fi
+  printf '%-44s main %-5s %6s ms   branch %-5s %6s ms  ' "$1" "$mv" "$bm" "$bv" "$bms"
+  # the pinned verdict always runs; the comparison with main is an extra when c4a7327 is here
+  [ "$bv" = "$3" ] || why="want $3, got $bv. "
+  [ -z "$MAINH" ] || [ "$bv" = "$mv" ] || why="${why}main gives $mv. "
+  if [ -z "$why" ]; then echo "ok"; else echo "FAIL: $why"; fails=$((fails + 1)); fi
 }
 c1="cd $U;"; for i in $(seq 1 40); do c1="$c1 Set-Location d$i;"; done
 c2="cd $U;"; for i in $(seq 1 40); do c2="$c2 cd d$i\\x;"; done
 tail50=""; for i in $(seq 1 50); do tail50="$tail50 $D -f f$i.txt a$i b$i c$i d$i;"; done
 c3="cd $U;"; for i in $(seq 1 25); do c3="$c3 sl d$i;"; done
-same_as_main "T1 40 Set-Location, 50 rm -f, rm -rf results"  "$c1$tail50 $D -rf $U/results"
-same_as_main "T2 40 cd dN\\x, 50 rm -f, rm -rf results"       "$c2$tail50 $D -rf $U/results"
-same_as_main "TC-064 25 chained Set-Location, rm -rf x"       "$c3 $D -rf x"
+same_as_main "T1 40 Set-Location, 50 rm -f, rm -rf" "$c1$tail50 $D -rf $U/results" deny
+same_as_main "T2 40 cd dN\x, 50 rm -f, rm -rf" "$c2$tail50 $D -rf $U/results" deny
+same_as_main "TC-064 25 Set-Location, rm -rf x" "$c3 $D -rf x" pass
 
 # the deferred phase out of time: main's verdict stands, no ask
 cmd="cd $U; sl results; $D -rf x"

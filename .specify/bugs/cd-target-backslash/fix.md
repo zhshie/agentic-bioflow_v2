@@ -34,6 +34,8 @@ Commands: `cd R;` + 40 `Set-Location dN` (T1) or `cd dN\x` (T2) + 50 `rm -f` of 
 | T2 | native Git Bash | deny 2610-2839 ms | deny 2761 ms | deny 11412 ms |
 | TC-064 | native Git Bash | pass 143-160 ms | pass 228 ms | pass 263 ms |
 
+The comparison with main in the timing test is optional (it needs commit c4a7327 in the checkout, so a shallow CI clone skips it); the pinned verdicts (T1 deny, T2 deny, TC-064 pass) always run and are the check.
+
 The "whole" column on native Git Bash is the deferred phase using time main never spends; it is stopped at the 20 s deadline, so on a machine where main needs 8 s the branch stops replaying at 20 s and returns main's verdict (deny). `tests/confirm_cleanup_candidates_timing_test.sh` asserts that the branch's verdict equals main's (read from commit c4a7327 with `git archive`, skipped when that commit is not in the checkout) for T1, T2 and TC-064, prints both times, and checks that with the deferred phase out of time `cd R; sl results; rm -rf x` gives main's pass (not ask), T2 still gives deny, and the loop's own `ABF_CLEANUP_DEADLINE_S=0` still gives ask. (The "R1" / "R5" shapes named by the reviewer were not defined for this run; T1, T2 and TC-064 are the three measured.)
 
 ## Assertions whose expectation changed (named by the contract)
