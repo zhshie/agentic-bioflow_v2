@@ -10,7 +10,7 @@ place several classes of defect can show up at all.
 bash tests/run_all.sh
 ```
 
-71 files, about 100 seconds, one verdict and a non-zero exit if anything fails.
+About 100 seconds, one verdict and a non-zero exit if anything fails.
 Failing output is printed at the end; full logs land in a temp directory the
 banner names. `--only <substring>` narrows it, `--verbose` streams each file's
 own output, `--timeout <secs>` changes the per-test limit (default 300, only
@@ -28,6 +28,34 @@ only a Linux or macOS bash with `jq` and `python3`, not Claude Code: on Windows,
 run it on the cluster's login node (for example over VS Code Remote-SSH) or in
 a WSL shell. `--allow-msys` runs
 it anyway, and the verdict line then says those failures are that gap.
+
+The suite also needs `jq` and `python3` that actually work (the same probe the
+hooks use: they must compute a known answer, not merely exist). If either does
+not, the runner stops with **exit 3** and names it, before running any file:
+the 22 files that went red on a machine without jq (issue #70) were the tests
+unable to build their inputs, not the gates failing open. `--allow-missing-tools`
+runs anyway and the verdict names the missing tool; `--allow-msys` also skips the
+python3 check (the Store stub, PITFALLS 20c) but not jq. `--list` and
+`--only gates_without_jq` need no tools.
+
+`tests/gates_without_jq_test.sh` is the check that a missing jq does not open the
+gates: it hides jq from PATH, feeds each gate the shapes from the issue and
+expects exit 2 and "BLOCKED" (exit 0 for a command with nothing to gate). It uses
+no jq itself, and fails rather than skips if jq cannot be hidden. Two manual
+steps go with it, since the suite cannot check them:
+
+1. **On a WSL without jq** (the maintainer's desktop): `bash tests/run_all.sh` exits 3 with the message;
+   `bash tests/run_all.sh --only gates_without_jq` and `bash tests/gates_without_jq_test.sh` both pass.
+2. **Mutation check, whenever a gate's no-jq path is touched:** locally change
+   one hook's no-jq `exit 2` to `exit 0` (for example the last line of
+   `refuse_without_jq` in `hooks/guard_plugin_files.sh`), run
+   `bash tests/gates_without_jq_test.sh`, confirm it names the row that let the
+   call through, then `git checkout hooks`. Never commit that edit.
+
+Before opening a PR for a test-only change, also confirm `git diff main --stat`
+shows no change under `hooks/`, settings, hook registration or the constitution,
+and that `.github/workflows/tests.yml` still installs jq so CI runs the with-jq
+paths.
 
 Run it **twice** per release:
 

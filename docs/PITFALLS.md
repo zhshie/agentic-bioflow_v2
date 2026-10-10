@@ -1923,3 +1923,25 @@ not be there, again with nothing printed. Every gate's timeout is now 30 s and a
 test holds it there. Splitting a command line is now one shared file,
 `hooks/split_segments.awk`, so the two gates cannot disagree about what a line
 runs.
+
+**38. 22 red files without jq were the tests, not the gates.** Issue #70,
+measured 2026-10-10 on WSL Ubuntu without `jq` (main 7a64a31, 72/94).
+
+The gate cases read "expected ask/deny, got pass/allow", which looks like a
+Safety Net that fails open. It is not: fed directly, every gate exits 2 with
+"BLOCKED: jq is missing..." (confirm_cleanup, confirm_launch,
+confirm_walkthrough, guard_plugin_files; only a command with nothing to gate,
+such as `ls -la`, passes, issue #15). The reds come from the tests, which build
+their inputs and read the hook's JSON answer with jq: without it the hook takes
+its no-jq path (exit 2, no JSON) and the test records "pass" or "exit:2" against
+an expected "ask". Eight more files stopped at the top with "jq is required" and
+were counted as failures with no explanation.
+
+Fix, tests only (no hook changed): `tests/run_all.sh` checks that jq and python3
+compute a known answer before running anything and stops with exit 3 naming the
+missing tool (`--allow-missing-tools` runs anyway and the verdict names it), and
+`tests/gates_without_jq_test.sh` feeds every gate the shapes from the issue with
+jq hidden, using no jq itself, so it runs on the machine where the rest cannot.
+It fails, rather than skips, if jq cannot be hidden. Scope: one machine without
+jq, one run; it shows the tests were the cause, not that no future hook change
+can fail open - that is what the new file is for.
