@@ -446,6 +446,7 @@ join_path() {
 cand_add() {
     local c
     [ -n "$1" ] || return 0
+    [ "${#1}" -le 1024 ] || return 0
     [ "$1" = "$VCWD" ] && return 0
     for c in ${CANDS[@]+"${CANDS[@]}"}; do [ "$c" = "$1" ] && return 0; done
     CANDS+=("$1"); CANDS_DIRTY=1
@@ -454,6 +455,7 @@ cand_add() {
 # candidates as they stood before the segment being read.
 cand_add_from_pre() {
     local c
+    cand_ok "$1" || return 0
     case "$1" in
         ''|-|'~'*|*'$'*|*'`'*) return 0 ;;
         /*|[A-Za-z]:*) cd_resolve "" "$1"; cand_add "$REPLY"; return 0 ;;
@@ -483,10 +485,22 @@ cand_cap() {
 # verdict plus whatever stricter hits were already found - never an `ask` for running
 # out of time. A record holds the version of the candidate list it was made under,
 # the kind (w word, f find, d delete / mv source), the word and up to three flags.
+# Hard budgets: candidate work only ever ADDS strictness, so it is skipped, never waited
+# for, once SECONDS (the time since the hook started) reaches CAND_BUDGET, and for any
+# word or folder longer than 1024 characters. Skipping leaves main's verdict. The
+# environment variable can only lower the budget (the tests use 0).
+CAND_BUDGET=8
+case "${ABF_CLEANUP_CAND_BUDGET_S:-}" in
+    ''|*[!0-9]*) ;;
+    *) [ "$ABF_CLEANUP_CAND_BUDGET_S" -lt "$CAND_BUDGET" ] && CAND_BUDGET=$ABF_CLEANUP_CAND_BUDGET_S ;;
+esac
+# cand_ok <word or folder>: may candidate work be done for it now?
+cand_ok() { [ "$SECONDS" -lt "$CAND_BUDGET" ] && [ "${#1}" -le 1024 ]; }
 DEFER=(); SNAP=(); CANDS_VER=0; CANDS_DIRTY=1
 SEP1=$'\001'; SEP2=$'\002'
 defer_rec() { # defer_rec <kind> <word> [flag1 flag2 flag3]
     [ "${#CANDS[@]}" -gt 0 ] || return 0
+    cand_ok "$2" || return 0
     if [ -n "$CANDS_DIRTY" ]; then
         local s="" c
         for c in "${CANDS[@]}"; do s="$s$c$SEP1"; done
@@ -512,14 +526,17 @@ judge_y() {
     esac
 }
 defer_run() {
-    local rec ver kind w f1 f2 f3 c Y CL=()
+    local rec ver kind w f1 f2 f3 c Y CL=() RL=$DEFER_DEADLINE
+    [ "$CAND_BUDGET" -lt "$RL" ] && RL=$CAND_BUDGET
     for rec in ${DEFER[@]+"${DEFER[@]}"}; do
-        [ "$SECONDS" -ge "$DEFER_DEADLINE" ] && break
+        [ "$SECONDS" -ge "$RL" ] && break
         IFS=$SEP2 read -r ver kind w f1 f2 f3 <<<"$rec"
         case "$w" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) continue ;; esac
         IFS=$SEP1 read -r -a CL <<<"${SNAP[$ver]}"
         for c in ${CL[@]+"${CL[@]}"}; do
+            [ "$SECONDS" -ge "$RL" ] && break 2
             join_path "$c" "$w"; Y=$REPLY
+            [ "${#Y}" -le 1024 ] || continue
             case "$kind" in
                 w) judge_y "$Y" "$f1" ;;
                 f) if holds_protected "$Y"; then
@@ -533,7 +550,6 @@ defer_run() {
                    [ "$f2" = 1 ] && judge_delete_target "$Y"
                    [ "$f3" = 1 ] && holds_protected "$Y" && HIT_PROTECTED="${HIT_PROTECTED}${Y} (it holds rawdata/, results/ or analysis/) " ;;
             esac
-            [ "$SECONDS" -ge "$DEFER_DEADLINE" ] && break 2
         done
     done
 }
@@ -911,6 +927,7 @@ esac
 # findings, so past it they stop and the verdict stands as it is. ABF_CLEANUP_DEFER_DEADLINE_S
 # can only lower it (the tests use 0).
 DEFER_DEADLINE=$DEADLINE
+[ "$DEFER_DEADLINE" -le 15 ] || DEFER_DEADLINE=15
 case "${ABF_CLEANUP_DEFER_DEADLINE_S:-}" in
     ''|*[!0-9]*) ;;
     *) [ "$ABF_CLEANUP_DEFER_DEADLINE_S" -lt "$DEFER_DEADLINE" ] && DEFER_DEADLINE=$ABF_CLEANUP_DEFER_DEADLINE_S ;;
@@ -997,9 +1014,11 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                         if [ -n "$VCWD" ]; then norm_path "$VCWD/${CDT//\\//}"; VCWD="$REPLY"; fi
                         # a relative target is followed from every candidate
                         DC_OLD=(${CANDS[@]+"${CANDS[@]}"}); CANDS=(); CANDS_DIRTY=1
-                        for DC_C in ${DC_OLD[@]+"${DC_OLD[@]}"}; do
-                            cd_resolve "$DC_C" "$CDT"; cand_add "$REPLY"
-                        done ;;
+                        if cand_ok "$CDT"; then
+                            for DC_C in ${DC_OLD[@]+"${DC_OLD[@]}"}; do
+                                cd_resolve "$DC_C" "$CDT"; cand_add "$REPLY"
+                            done
+                        fi ;;
                 esac
                 cand_cap
             fi

@@ -38,6 +38,20 @@ The comparison with main in the timing test is optional (it needs commit c4a7327
 
 The "whole" column on native Git Bash is the deferred phase using time main never spends; it is stopped at the 20 s deadline, so on a machine where main needs 8 s the branch stops replaying at 20 s and returns main's verdict (deny). `tests/confirm_cleanup_candidates_timing_test.sh` asserts that the branch's verdict equals main's (read from commit c4a7327 with `git archive`, skipped when that commit is not in the checkout) for T1, T2 and TC-064, prints both times, and checks that with the deferred phase out of time `cd R; sl results; rm -rf x` gives main's pass (not ask), T2 still gives deny, and the loop's own `ABF_CLEANUP_DEADLINE_S=0` still gives ask. (The "R1" / "R5" shapes named by the reviewer were not defined for this run; T1, T2 and TC-064 are the three measured.)
 
+## Hard budgets for candidate work (final security review)
+
+Candidate work only ever adds strictness, so it is skipped, never waited for. `CAND_BUDGET` (8 s from the hook start; `ABF_CLEANUP_CAND_BUDGET_S` can only lower it) ends all of it: the in-loop re-resolution of a `cd` / `pushd` target against the candidates (`cand_add`, `cand_add_from_pre`; when the budget is gone the candidate list is cleared, never left stale), recording (`defer_rec`) and replay (`defer_run`). Any target, word or candidate folder longer than 1024 characters is skipped too. The replay deadline is `min(DEFER_DEADLINE, 15 s)`, and is checked before every candidate judged, so total time stays near main's plus the budget and far from the 30 s hook timeout. Skipping leaves main's verdict.
+
+| Check | Where | main | branch |
+|---|---|---|---|
+| T1 / T2 (40 `Set-Location` / `cd dN\x`, 50 `rm -f`, `rm -rf results`) | WSL | deny 0.4 s / 0.7 s | deny 1.5 s / 1.9 s |
+| T1 / T2 | native Git Bash | deny 678 ms / 2845 ms | deny 7478 ms / 8092 ms (stops at the 8 s budget) |
+| TC-064 | WSL / native | pass 0.06 s / 158 ms | pass 0.13 s / 260 ms |
+| ~16 KB `..`-heavy cd target, then `rm -rf results` | WSL / native | deny 0.10 s / 923 ms | deny 0.11 s / 812 ms |
+| ~32 KB cd target | WSL | deny 0.14 s | deny 0.15 s |
+
+(The review's 4.8 s / 15.9 s main figures for 16 / 32 KB targets did not reproduce here with generated `dd/` ... `../` targets; the branch is not slower than main on them. The test asserts deny, equality with main when c4a7327 is present, and branch time <= main + 10 s.) With `ABF_CLEANUP_CAND_BUDGET_S=0` the branch gives main's verdict on all 156 shapes rows where main denies or asks (`tests/confirm_cleanup_shapes_main.txt` holds main's measured verdicts, so the check needs no git history), a candidate-only delete passes as on main, and a target over 1024 characters adds no candidate while a short one does.
+
 ## Assertions whose expectation changed (named by the contract)
 
 | Case | Before | Now | Why |
