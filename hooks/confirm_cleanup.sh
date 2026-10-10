@@ -337,7 +337,7 @@ if [[ $SEGMENTS == *\\* ]]; then
             o = ""
             while (match(s, /[^ \t]+/)) {
                 w = substr(s, RSTART, RLENGTH)
-                if (w !~ /^["\047]?([A-Za-z]:[\\\/]|\\\\[A-Za-z0-9_.$-])/) gsub(/\\/, "", w)
+                if (w !~ /^["\047]?([A-Za-z]:\\|\\\\[A-Za-z0-9_.$-])/) gsub(/\\/, "", w)
                 o = o substr(s, 1, RSTART - 1) w
                 s = substr(s, RSTART + RLENGTH)
             }

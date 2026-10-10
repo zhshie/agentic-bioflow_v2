@@ -81,3 +81,21 @@ The two relative `cd` cases were already deny, because the copy resolved under t
 | `rm -rf C:\res\ults` | pass | pass | pass |
 
 The three drive cases give the same verdict as main in all three columns, so the narrowing makes nothing looser; no command was found where it changes a verdict, so those cases are pinned as controls and have no RED of their own. Out of scope (separate issue): a backslash inside a `cd`/`pushd` target and `LISTER_OK`, same as main.
+
+## Review round 3
+
+- **`X:/` is not a backslash path.** The drive exception also matched `C:/` and a single-letter host (`s:/p/raw\data`, `n:/data/...`), whose backslash the shell drops like any other. The exception is now only `X:\` (backslash separator, quoted or not) and `\` plus a host-name character. The #35 PowerShell cases (`C:\lab\proj\y`) are unchanged.
+- **No-jq tests.** The comment above TC-021..030 said JSON backslashes are doubled while those ten feed single ones; the ten assertions are untouched and the comment now says the plain-command form is on purpose. Four true-JSON (double-backslash) variants were added: `r\m -rf results`, `tar --remo\ve-files ...`, `nextflow cl\ean -f`, `\rm -rf results`, all exit 2 BLOCKED (they already did).
+
+| Command (cwd a run folder) | main | round 2 | round 3 |
+|---|---|---|---|
+| `mv s:/p/raw\data x` | pass | pass | ask |
+| `mv s:/p/res\ults x` | pass | pass | ask |
+| `mv C:/lab/proj/raw\data x` | pass | pass | ask |
+| `C:/Program/Git/usr/bin/r\m -rf results` | pass | deny | deny |
+| `rm -rf C:/lab/proj/res\ults` | deny | deny | deny |
+| `rm -rf C:/lab/proj/raw\data` | deny | deny | deny |
+| `rsync -a --delete src/ n:/data/proj/res\ults/` | deny | deny | deny |
+| `rsync -a --delete src/ s:res\ults/` | pass | pass | pass |
+
+Round 3 is no looser than main in any row. The last row stays pass in all three (the same command without the backslash is judged the same, so nothing is lost by the copy). The mv rows are the ones the narrowing actually changes (RED cf-next, GREEN below); the others are pinned as controls.
