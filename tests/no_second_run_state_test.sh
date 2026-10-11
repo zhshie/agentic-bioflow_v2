@@ -16,8 +16,8 @@
 #   1. SUBMISSION  no script runs sbatch/qsub/bsub/srun, `nextflow run`, or
 #                  `tw launch`. Launching is Platform's, behind the launch gate;
 #                  scripts only prepare for it and look at its result. The scan
-#                  also reads platform/abf_platform and platform/abf_station
-#                  (.py and .sh; not platform/tests/, whose fake site is called
+#                  also reads platform/
+#                  (every .py and .sh under platform/, symlinks followed; not platform/tests/, whose fake site is called
 #                  sbatch). There a submission passes only through LAUNCH_ALLOW
 #                  below: at most one entry, each naming the test that refuses
 #                  an unconfirmed launch. A submission in scripts/ is never
@@ -56,7 +56,8 @@ scripts/on_site.sh|a bounded wait for a free session slot; it exits at its own b
 #   "<file>|<test file>::<test name>|<why>"
 # <file> is under platform/abf_platform/ or platform/abf_station/. <test file> is
 # under platform/tests/ and must define <test name> (`def <name>(` or
-# `async def <name>(`; a mention in a comment or a string does not count): that
+# `async def <name>(`, found by python3's ast; a mention in a comment, a string or
+# a docstring does not count, and a missing python3 fails the entry): that
 # test is the one proving an unconfirmed launch is refused. At most one entry.
 # Stale entries fail. Empty until the launch job is built (feature 007b).
 LAUNCH_ALLOW="
@@ -85,7 +86,7 @@ platform_code_lines() {
     local f
     while IFS= read -r f; do
         grep -nE '.' "$f" | grep -vE '^[0-9]+:[[:space:]]*(#|//)' | sed "s|^|${f#"$ROOT"/}:|"
-    done < <(find "$ROOT/platform/abf_platform" "$ROOT/platform/abf_station" -type f \( -name '*.py' -o -name '*.sh' \) 2>/dev/null | sort)
+    done < <(find -L "$ROOT/platform" -path "$ROOT/platform/tests" -prune -o -type f \( -name '*.py' -o -name '*.sh' \) -print 2>/dev/null | sort)
 }
 PCODE=$(platform_code_lines)
 SCODE="$CODE"$'
@@ -143,7 +144,9 @@ while IFS='|' read -r lfile ltest _; do
         platform/tests/*) ;;
         *) tfile="" ;;
     esac
-    if [ -z "$tfile" ] || ! [[ "$tname" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [ ! -f "$ROOT/$tfile" ]        || ! grep -qE "^[[:space:]]*(async[[:space:]]+)?def[[:space:]]+${tname}[[:space:]]*\(" "$ROOT/$tfile"; then
+    if [ -z "$tfile" ] || ! [[ "$tname" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [ ! -f "$ROOT/$tfile" ]        || ! python3 -c 'import ast, sys
+t = ast.parse(open(sys.argv[1], encoding="utf-8").read())
+sys.exit(0 if any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == sys.argv[2] for n in ast.walk(t)) else 1)' "$ROOT/$tfile" "$tname" >/dev/null 2>&1; then
         fail "LAUNCH  $lfile submits, but its confirmation test $tname does not exist"
     fi
 done <<<"$(grep -vE '^[[:space:]]*$' <<<"$LAUNCH_ALLOW")"
@@ -305,6 +308,16 @@ x = "def test_refuses("'
     lrun_ "an entry for scripts/ fails, and does not excuse the submission" 1 '^LAUNCH  scripts/a[.]sh: only platform code may hold the launch path' "scripts/a.sh|platform/tests/test_x.py::test_refuses|no"
     lt_; lf_ platform/abf_station/x.py 'nohup ./w &'; lf_ platform/abf_platform/x.py 'store = "runs.db"'
     lrun_ "scans 2 and 3 do not read platform/ (its index is not run state)" 0 - ""
+    lt_; lf_ platform/abf_other/x.py "$SUB"
+    lrun_ "a submission in a new platform package (platform/abf_other) fails" 1 '^LAUNCH  platform/abf_other/x[.]py submits and has no entry' ""
+    lt_; mkdir -p "$S/t/elsewhere"; printf '%s
+' "$SUB" > "$S/t/elsewhere/x.py"; ln -s ../../elsewhere/x.py "$S/t/platform/abf_station/x.py"
+    lrun_ "a symlinked .py under platform/abf_station that submits fails" 1 "$NOENTRY" ""
+    lt_; lf_ platform/abf_station/x.py "$SUB"; lf_ platform/tests/test_x.py 'def test_other():
+    """
+    def test_refuses(): only in a docstring
+    """'
+    lrun_ "a test name found only inside a docstring fails"             1 "$NOTEST" "$ENTRY"
     [ "$selffails" -gt 0 ] && { echo "FAIL: $selffails self-test(s) failed"; exit 1; }
 fi
 
