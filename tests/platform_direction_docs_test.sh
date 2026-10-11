@@ -77,7 +77,7 @@ nin "TC-005: ...not 'exactly one'"                                              
 inn "TC-006: ...runs only after the user has seen the full launch command and confirmed it" "$P1" 'runs only after the user has seen the full launch command and confirmed it'
 inn "TC-007: ...after the hand-off everything comes from Nextflow's records"       "$P1" "everything known about the run comes from Nextflow's records"
 inn "TC-004: ...Seqera's nouns where the backend is Seqera"                       "$P1" "follows Seqera's nouns"
-inn "TC-004: I.2 Check is tests/no_second_run_state_test.sh"                      "$P1" '*Check:* `tests/no_second_run_state_test.sh`.'
+inn "TC-008: I.2 Check is tests/no_second_run_state_test.sh, covering scripts/ and platform/" "$P1" '*Check:* `tests/no_second_run_state_test.sh` (its submission scan covers `scripts/` and `platform/`).'
 inn "TC-005: where Seqera's display and Nextflow's records disagree, Nextflow's win" "$P1" "where Platform's display and Nextflow's own records disagree, Nextflow's records win"
 if grep -qi 'run index' "$C"; then bad "TC-006: the constitution does not contain 'run index'" "$(grep -ni 'run index' "$C" | head -2)"; else ok "TC-006: the constitution does not contain 'run index'"; fi
 inn "TC-007: principle I rationale cites docs/adr/0004"                           "$P1" 'docs/adr/0004'
