@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from helpers import FIXTURES, PLATFORM_DIR, free_port, pkg_env, run_cli
 
-PIPELINES = FIXTURES / "pipelines"
+FLOWS = FIXTURES / "flows"
 
 
 class Recorder:
@@ -104,7 +104,7 @@ class Env:
         endpoint = endpoint or self.url
         host = urlparse(endpoint).hostname
         assert host in ("127.0.0.1", "localhost", "::1"), "tower.endpoint must be local: " + endpoint
-        return ["bash", self.cfg["launcher"], "run", str(PIPELINES / pipeline / "main.nf"),
+        return ["bash", self.cfg["launcher"], "run", str(FLOWS / pipeline / "main.nf"),
                 "-with-tower", endpoint, "-with-trace"] + list(args)
 
     def run_nf(self, pipeline, launch_dir, args=(), token=None, extra_env=None, timeout=240):
