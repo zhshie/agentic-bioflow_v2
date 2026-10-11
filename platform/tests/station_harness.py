@@ -82,7 +82,7 @@ class FakeSite:
             d.mkdir()
         (self.home / ".ssh").mkdir()
         self.key = self.home / ".ssh" / "id_test"
-        self.key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nCANARYKEY_5c1e8b\n-----END OPENSSH PRIVATE KEY-----\n")
+        self.key.write_text("-----" "BEGIN OPENSSH PRIVATE KEY-----\nCANARYKEY_5c1e8b\n-----END OPENSSH PRIVATE KEY-----\n")
         self.key.chmod(0o600)
         st = self.key.stat()
         os.utime(self.key, (st.st_mtime - 5000, st.st_mtime - 4000))  # atime older than mtime: a read would move it

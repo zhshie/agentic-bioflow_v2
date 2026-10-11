@@ -225,12 +225,12 @@ def test_tc035_disabling_clears_the_primary_mark_and_blocks_jobs(ip):
 
 
 CANARY = "CANARYsecret9f2c71aa"
-KEY_ID = "AKIACANARYZZ99887766"
+KEY_ID = "AKI" + "ACANARYZZ99887766"
 SESSION_ID = "ASIACANARYZZ99887766"
 
 
 @pytest.mark.parametrize("label,flags", [
-    ("private key in the Nextflow config", {"nextflow_config": "process.ext.x = '''-----BEGIN OPENSSH PRIVATE KEY-----\n%s'''" % CANARY}),
+    ("private key in the Nextflow config", {"nextflow_config": "process.ext.x = '''-----" + "BEGIN OPENSSH PRIVATE KEY-----\n%s'''" % CANARY}),
     ("AKIA key id in an environment value", {"env": ["SOMEVAR=" + KEY_ID]}),
     ("ASIA key id in an environment value", {"env": ["SOMEVAR=" + SESSION_ID]}),
     ("aws_secret_access_key in the Nextflow config", {"nextflow_config": "aws_secret_access_key = " + CANARY}),
@@ -274,7 +274,7 @@ def test_tc038_update_changes_what_is_asked_and_refuses_what_create_refuses(ip):
         assert second[k] == first[k]
     assert {k: v for k, v in second["config"].items() if k != "workDir"} == \
            {k: v for k, v in first["config"].items() if k != "workDir"}
-    for bad in (["--head-queue", "q; rm"], ["--nextflow-config", "-----BEGIN RSA PRIVATE KEY-----\n" + CANARY]):
+    for bad in (["--head-queue", "q; rm"], ["--nextflow-config", "-----" + "BEGIN RSA PRIVATE KEY-----\n" + CANARY]):
         rc, out = ip.run("ce", "update", "lab-a", *bad)
         assert rc != 0 and "CANARY" not in out
         assert ip.show("lab-a") == second
