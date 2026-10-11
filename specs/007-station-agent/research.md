@@ -89,3 +89,34 @@ Seqera Compute has no counterpart outside Seqera.
 | Seqera Compute | Not needed | It is Seqera's own managed AWS and has no counterpart outside Seqera. |
 | Credentials | Kept by the station agent, never by the platform | The 10-08 red line. The platform stores only the name of a credential. |
 | Types other than Slurm | Modelled now, enabled one at a time | Constitution §II-4: a second site adapter is written only when a real second site exists. Each type needs a real account first. |
+
+## Compute environment type identifiers (read 2026-10-11, executor)
+
+Only public documentation was read, through `docs.seqera.io` (its `llms-full.txt` text export of the same pages). No Seqera service, API, MCP server or `tw` was called.
+
+- Source A, the platform value table: https://docs.seqera.io/platform-enterprise/enterprise/configuration/overview (section "Compute environments", table "Available platform values").
+- Source B, the command names: https://docs.seqera.io/platform-cloud/cli/commands (`tw compute-envs add <type>`).
+
+The API reference page for the compute environment object (https://docs.seqera.io/platform-api/info/compute-envs-info) is drawn in the browser and its text export does not list the allowed values of `platform`. So the value of the `platform` field is taken from source A, the only place the public documentation names a type identifier. If Seqera's API uses another spelling, only this table and `abf_platform/compute_envs.py` change.
+
+| Type | `platform` identifier (source A) | `tw` command (source B) | Slice 1 |
+|---|---|---|---|
+| Slurm | `slurm-platform` | `slurm` | supported |
+| PBS Pro (Altair) | `altair-platform` | `altair` | modelled only |
+| IBM Spectrum LSF | `lsf-platform` | `lsf` | modelled only |
+| Grid Engine | `uge-platform` | `uge` | modelled only |
+| Moab | `moab-platform` | `moab` | modelled only |
+| AWS Batch | `awsbatch-platform` | `aws-batch` | modelled only |
+| AWS Cloud | `awscloud-platform` | `aws-cloud` | modelled only |
+| Azure Batch | `azbatch-platform` | `azure-batch` | modelled only |
+| Azure Cloud | `azcloud-platform` | `azure-cloud` | modelled only |
+| Google Cloud Batch | `googlebatch-platform` | `google-batch` | modelled only |
+| Google Cloud | `googlecloud-platform` | `google-cloud` | modelled only |
+| Kubernetes | `k8s-platform` | `k8s` | modelled only |
+| Amazon EKS | `eks-platform` | `eks` | modelled only |
+| Google GKE | `gke-platform` | `gke` | modelled only |
+| Seqera Compute | none in source A | `seqera-compute` | refused: Seqera's own hosted service, no counterpart |
+
+Source A also lists `local-platform` ("evaluation and development only"); it is not one of the 14 and is refused as an unknown type.
+
+The Slurm options in source B give the field names used for the Slurm `config`: `workDir`, `launchDir`, `headQueue`, `computeQueue`, `maxQueueSize`, `headJobOptions`, `hostName`, `userName`, `port`, plus the shared `preRunScript`, `postRunScript`, `nextflowConfig` and `environment`.
