@@ -1,11 +1,13 @@
 #!/bin/bash
-# Invariant 2 (constitution 3.0.0, I.2): Nextflow's own records (trace, report,
+# Invariant 2 (constitution 4.0.0, I.2): Nextflow's own records (trace, report,
 # log, and the events its nf-tower plugin emits) are the truth about a run; where
 # Seqera Platform's display and those records disagree, the records win. No file
 # in this repository MAY keep a second copy of a run's state, and there MUST be
-# no submission script of our own, no state machine, and no monitoring daemon
-# beyond the channels this check allow-lists. Where the backend is Seqera, the
-# command layer follows Seqera's nouns.
+# no state machine and no monitoring daemon beyond the channels this check
+# allow-lists. There MAY be at most one submission path of our own: the station
+# agent's launch job, which runs only after the user has confirmed the full
+# launch command. Where the backend is Seqera, the command layer follows
+# Seqera's nouns.
 #
 # This is a static scan, which is crude but catches what actually happens: a
 # helpful script that "just remembers" the last status, or one that "just
@@ -13,7 +15,13 @@
 #
 #   1. SUBMISSION  no script runs sbatch/qsub/bsub/srun, `nextflow run`, or
 #                  `tw launch`. Launching is Platform's, behind the launch gate;
-#                  scripts only prepare for it and look at its result.
+#                  scripts only prepare for it and look at its result. The scan
+#                  also reads platform/abf_platform and platform/abf_station
+#                  (.py and .sh; not platform/tests/, whose fake site is called
+#                  sbatch). There a submission passes only through LAUNCH_ALLOW
+#                  below: at most one entry, each naming the test that refuses
+#                  an unconfirmed launch. A submission in scripts/ is never
+#                  excused by it.
 #   2. DAEMON      nohup/setsid/disown/cron/inotify/`while true` appear only in
 #                  the allow-list below, each entry with the reason it is not a
 #                  monitoring daemon.
@@ -27,7 +35,10 @@
 # is still the last line. It is a net, not a proof.
 #
 # NO_RUN_STATE_ROOT points the scan at a scratch tree; the self-tests at the
-# bottom use it to prove each scan can go red.
+# bottom use it to prove each scan can go red. LAUNCH_ALLOW_EXTRA adds
+# LAUNCH_ALLOW entries for those self-tests and is read only when
+# NO_RUN_STATE_ROOT is set, so on the real tree the environment cannot excuse a
+# launch.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_ROOT="$(cd "$HERE/.." && pwd)"
@@ -39,6 +50,19 @@ scripts/agent_ctl.sh|starts Seqera's own Tower Agent on the login node (the outp
 scripts/egress_ctl.sh|starts the login-node outbound channel (CONNECT proxy); it relays connections and keeps no run state
 scripts/on_site.sh|a bounded wait for a free session slot; it exits at its own budget and holds no state about any run
 "
+
+# LAUNCH allow-list (constitution 4.0.0, I.2): the one submission path of our
+# own, in platform code only. Entries are
+#   "<file>|<test file>::<test name>|<why>"
+# <file> is under platform/abf_platform/ or platform/abf_station/. <test file> is
+# under platform/tests/ and must define <test name> (`def <name>(` or
+# `async def <name>(`; a mention in a comment or a string does not count): that
+# test is the one proving an unconfirmed launch is refused. At most one entry.
+# Stale entries fail. Empty until the launch job is built (feature 007b).
+LAUNCH_ALLOW="
+"
+[ -z "${NO_RUN_STATE_ROOT:-}" ] || LAUNCH_ALLOW="$LAUNCH_ALLOW"$'
+'"${LAUNCH_ALLOW_EXTRA:-}"
 
 # Seqera CLI nouns (tw --help). The command layer may use these and no others.
 TW_NOUNS=" actions collaborators compute-envs credentials data-links datasets info labels launch members organizations participants pipelines runs secrets studios teams workspaces "
@@ -55,15 +79,26 @@ code_lines() {
     done
 }
 CODE=$(code_lines)
+# Scan 1 alone also reads the platform's own code (scans 2-4 stay on scripts/:
+# the platform's index is not a run-state store, docs/adr/0004).
+platform_code_lines() {
+    local f
+    while IFS= read -r f; do
+        grep -nE '.' "$f" | grep -vE '^[0-9]+:[[:space:]]*(#|//)' | sed "s|^|${f#"$ROOT"/}:|"
+    done < <(find "$ROOT/platform/abf_platform" "$ROOT/platform/abf_station" -type f \( -name '*.py' -o -name '*.sh' \) 2>/dev/null | sort)
+}
+PCODE=$(platform_code_lines)
+SCODE="$CODE"$'
+'"$PCODE"
 
 # 1. SUBMISSION -------------------------------------------------------------
 CMDS='(sbatch|qsub|bsub|srun|nextflow[[:space:]]+run|tw[[:space:]]+launch)([[:space:]]|$)'
 PFX='^[^:]+:[0-9]+:'
-sub_hits=$(grep -E "${PFX}[[:space:]]*${CMDS}|${PFX}.*([;&|(\`]|[\$][(]|then|do|else)[[:space:]]*${CMDS}|${PFX}.*[\"']?[\$]?[{]?TW[}]?[\"']?[[:space:]]+launch([[:space:]]|$)|${PFX}.*[[(][\"'](sbatch|qsub|srun)[\"']" <<<"$CODE")
+sub_hits=$(grep -E "${PFX}[[:space:]]*${CMDS}|${PFX}.*([;&|(\`]|[\$][(]|then|do|else)[[:space:]]*${CMDS}|${PFX}.*[\"']?[\$]?[{]?TW[}]?[\"']?[[:space:]]+launch([[:space:]]|$)|${PFX}.*[[(][\"'](sbatch|qsub|srun)[\"']" <<<"$SCODE")
 # The same commands inside a quoted string: `ssh "$HOST" 'sbatch job.sh'`,
 # subprocess.run("sbatch job.sh", shell=True). A quote straight before the word
 # means the string BEGINS with the command; prose that merely mentions it does not.
-qs_hits=$(grep -E "${PFX}.*[\"'][[:space:]]*(sbatch|qsub|bsub|srun|nextflow[[:space:]]+run|tw[[:space:]]+launch)([[:space:]\"']|\$)" <<<"$CODE")
+qs_hits=$(grep -E "${PFX}.*[\"'][[:space:]]*(sbatch|qsub|bsub|srun|nextflow[[:space:]]+run|tw[[:space:]]+launch)([[:space:]\"']|\$)" <<<"$SCODE")
 # SUBMIT allow-list: "<file>|<why it is not submitting>". Stale entries fail.
 SUBMIT_ALLOW="
 scripts/collect_provenance.py|writes the reproduction command line into the provenance record as text; never runs it
@@ -87,6 +122,37 @@ if [ -n "$qs_hits" ]; then
 fi
 [ -z "$qs_hits" ] || sub_hits="$sub_hits"$'
 '"$qs_hits"
+# Platform code may submit only through LAUNCH_ALLOW; scripts/ never.
+launch_hits=$(grep -E '^platform/' <<<"$sub_hits")
+sub_hits=$(grep -vE '^platform/' <<<"$sub_hits")
+n_launch=0
+while IFS='|' read -r lfile ltest _; do
+    [ -n "$lfile" ] || continue
+    n_launch=$((n_launch + 1))
+done <<<"$(grep -vE '^[[:space:]]*$' <<<"$LAUNCH_ALLOW")"
+[ "$n_launch" -le 1 ] || fail "LAUNCH  only one submission path is allowed (I.2); found $n_launch"
+while IFS='|' read -r lfile ltest _; do
+    [ -n "$lfile" ] || continue
+    case "$lfile" in
+        platform/abf_platform/*|platform/abf_station/*) ;;
+        *) fail "LAUNCH  $lfile: only platform code may hold the launch path"; continue ;;
+    esac
+    grep -q "^$lfile:" <<<"$launch_hits" || { fail "STALE  $lfile no longer needs its LAUNCH allow-list entry; remove it from tests/no_second_run_state_test.sh"; continue; }
+    tfile="${ltest%%::*}"; tname="${ltest#*::}"
+    case "$tfile" in
+        platform/tests/*) ;;
+        *) tfile="" ;;
+    esac
+    if [ -z "$tfile" ] || ! [[ "$tname" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [ ! -f "$ROOT/$tfile" ]        || ! grep -qE "^[[:space:]]*(async[[:space:]]+)?def[[:space:]]+${tname}[[:space:]]*\(" "$ROOT/$tfile"; then
+        fail "LAUNCH  $lfile submits, but its confirmation test $tname does not exist"
+    fi
+done <<<"$(grep -vE '^[[:space:]]*$' <<<"$LAUNCH_ALLOW")"
+while IFS= read -r lfile; do
+    [ -n "$lfile" ] || continue
+    grep -qE "^${lfile//./[.]}[|]" <<<"$LAUNCH_ALLOW" && continue
+    grep "^$lfile:" <<<"$launch_hits" | cut -c1-160
+    fail "LAUNCH  $lfile submits and has no entry in LAUNCH_ALLOW; only one confirmed launch path may exist (I.2)"
+done < <(cut -d: -f1 <<<"$launch_hits" | sort -u)
 [ -z "$sub_hits" ] || { printf '%s\n' "$sub_hits" | cut -c1-160; fail "SUBMISSION  a script submits a job itself; submission is Platform's (I.2)"; }
 
 # 2. DAEMON -----------------------------------------------------------------
