@@ -213,7 +213,7 @@ def test_tc051_the_endpoint_is_local_and_tw_is_not_needed(world):
 
 # ---------------------------------------------------------------- rebuild (US4)
 
-_COMPARED = ("id", "name", "session_id", "status", "started_at", "tasks", "processes", "failed_tasks")
+_COMPARED = ("id", "name", "session_id", "status", "tasks", "processes", "failed_tasks")
 
 
 def _compared(v):
@@ -226,8 +226,10 @@ def _same_runs(before, after):
     for i, b in before.items():
         a = after[i]
         assert _compared(a) == _compared(b), i
+        # Start and end are whole seconds, but Nextflow writes them from different clock samples in the
+        # live message and in its files (research.md, "Time resolution"): they may sit one second apart.
+        assert abs(_epoch(a["started_at"]) - _epoch(b["started_at"])) <= 1, (i, a["started_at"], b["started_at"])
         if b["ended_at"]:
-            # whole seconds; the live path and the log can sit on either side of a second boundary
             assert abs(_epoch(a["ended_at"]) - _epoch(b["ended_at"])) <= 1, (i, a["ended_at"], b["ended_at"])
         else:
             assert a["ended_at"] == b["ended_at"]

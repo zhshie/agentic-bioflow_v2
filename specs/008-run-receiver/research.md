@@ -111,7 +111,7 @@ Everything below was downloaded once and hashed. `platform/tests/pins.env` holds
   - script hash
   - session ID
   - the command line (never stored)
-- The start second equals the whole-second part of `workflow.start` in the `begin` payload.
+- The start second is close to, but not always the same as, the whole-second part of `workflow.start` in the `begin` payload (see "Time resolution" below).
 - `.nextflow.log`, `.nextflow.log.1`, …: Nextflow rotates one log per run.
   - Line prefix `Oct-11 11:04:02.315`: no year, local time.
   - `Session UUID: <id>` and `Run name: <name>` identify the run (`nextflow.Session` DEBUG lines).
@@ -139,15 +139,14 @@ It is applied identically to live events and to a rebuild.
 - One function (`abf_platform.common.extract_error`) reads such text and returns the task name and the lines of its `Command error:` section, up to the blank line before `Work dir:`, with the indentation removed. If the section is missing, it returns the `Caused by:` line instead.
 - Only the process that ended the run carries a message, in both paths.
 
-### Time resolution and the one place the two paths can differ
+### Time resolution and the places where the two paths can differ
 
-- Start and end times are stored in whole seconds (UTC, shown as ISO 8601 with `Z`). The start second agrees between the `begin` payload and `.nextflow/history`.
-- The end second has no common source:
-  - the live path takes it from `workflow.complete` in the `complete` request;
-  - the rebuild takes it from the log line `Session await > all barriers passed`, which Nextflow writes about 4 ms before it stamps `workflow.complete`.
-- When the run ends within those milliseconds of a second boundary, the two end times can differ by one second.
-- TC-030 therefore compares the end time with a tolerance of one second and every other field exactly. This is a limit of what Nextflow records, not something the platform can remove.
-- For a run with no completion record, the rebuild keeps the time of the last log line as its last message.
+- Start and end times are stored in whole seconds (UTC, shown as ISO 8601 with `Z`).
+- Neither time has one source that both paths can read, because Nextflow samples its clock several times and writes each sample in a different place:
+  - Start. The live path takes `workflow.start` from the `begin` request. The rebuild takes the start second of `.nextflow/history`. In a real run, `workflow.start` was 11:04:02.315, the log line `Run name:` was 11:04:02.058 and the history second was 11:04:02. These samples are a few hundred milliseconds apart, so when a run starts close to a second boundary the two seconds differ by one.
+  - End. The live path takes `workflow.complete` from the `complete` request. The rebuild takes the log line `Session await > all barriers passed`, which sits 4 to 6 ms away from that stamp (before it in a successful run, after it in a failed one). Again, near a second boundary the two seconds can differ by one.
+- TC-030 and TC-031 therefore compare the start and end times with a tolerance of one second, and every other field exactly. This is a limit of what Nextflow records. The platform cannot remove it, short of storing times at a coarser resolution than seconds.
+- For a run with no completion record, the rebuild keeps the time of the last timestamped log line as its last message.
 
 ### Run id
 
