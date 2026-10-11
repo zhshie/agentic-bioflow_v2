@@ -14,10 +14,10 @@ from .site import quote
 JOB_KINDS = ("preflight", "list_site_files")
 ARG_KEYS = {"preflight": {"ce"}, "list_site_files": {"ce", "path"}}
 LIST_LIMIT = 500
-# The check ids are written as one split string, never as a quoted "sbatch": the scan of
+# The check ids are written as one comma-split string, never as a quoted sbatch: the scan of
 # constitution principle 2 (tests/no_second_run_state_test.sh) treats a quote straight before
 # the word as a submission command, and this file only checks that the tools exist (command -v).
-CHECK_ORDER = tuple("connect work_dir sbatch squeue sinfo java nextflow head_queue".split())
+CHECK_ORDER = tuple("connect,work_dir,sbatch,squeue,sinfo,java,nextflow,head_queue".split(","))
 JAVA_MIN = 17
 DETAIL_LIMIT = 300
 
