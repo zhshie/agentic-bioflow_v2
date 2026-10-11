@@ -136,6 +136,32 @@ The machine part is `tests/platform_test.sh` (run by `run_all.sh`). These seven 
 6. *The plugin was not touched (TC-064).* `git diff main...HEAD --stat -- hooks/ scripts/ skills/ commands/ .claude-plugin/` lists nothing.
 7. *The existing checks were not touched (TC-073).* `git diff main...HEAD --stat -- tests/no_hardcoded_paths.sh tests/scripts_name_their_alternative.sh tests/no_second_run_state_test.sh tests/run_all.sh` lists nothing. `bash tests/run_all.sh --list` includes `platform_test.sh`, and those three checks pass as before.
 
+**When a release adds or changes the station agent or the compute environments (`platform/abf_station/`, `docs/PLATFORM.md` sections 6 to 8; feature 007).**
+The machine part is `tests/platform_test.sh` (run by `run_all.sh`): it starts a real platform process and a real agent process against a fake site. These eight cases need a person or a git diff. Write the answers in the release notes.
+
+1. *The document is enough (TC-076).* Give `docs/PLATFORM.md` and nothing else to someone who has not done this. Without help they must manage: start the platform, issue an agent token, start the agent, create a Slurm environment, run the preflight and list a folder. Every example command in sections 6 and 7, copied as it stands (with the placeholders filled in), must run. Record each place they got stuck.
+2. *The real cluster (TC-079).* In WSL on the maintainer's laptop: open the connection to the cluster the old way, once, typing the one-time code in the WSL terminal. Start the platform and the agent as in section 6, then `list_agents` must show the agent `online`. Create the cluster's Slurm environment (`ce create`, `docs/PLATFORM.md` section 7) and run `ce preflight`: the environment must become `available`, every check passing. Then ask an AI client (or call the tool) for `list_site_files` on the `rawdata` folder: the names, sizes and times must equal what you see yourself on the cluster.
+3. *A destructive job is refused on the real cluster (TC-080).* With the agent from step 2 still connected to the real cluster, replace the platform by this small tool, which hands the agent a job the platform would never send (run it from `platform/`, with the agent started against the URL it prints):
+
+   ```python
+   # PYTHONPATH=.:tests python3 refuse_demo.py     (a scratch file, not committed)
+   import time
+   from station_harness import FakePlatform
+   f = FakePlatform()
+   print("start the agent against", f.url)
+   input("press Enter when the agent has connected: ")
+   jid = f.push("rm", {"path": "<your results folder>"})
+   print(f.wait_result(jid))     # expected: state "refused", a reason that says the kind is not supported
+   time.sleep(1)
+   ```
+
+   Then list the same `results` folder again with `list_site_files`: nothing may have changed. (`rm` is not a job kind, and no job kind writes.)
+4. *Both suites are green where it matters (TC-081).* In WSL run `bash tests/run_all.sh` (`cd ~ && wsl.exe -d Ubuntu -- bash -c 'cd /mnt/c/<path to the repo> && bash tests/run_all.sh'` from Git Bash); the output must show `platform_test.sh` passed and no `E2E SKIPPED`. Then read the CI result of the pull request: the same, nothing skipped.
+5. *The constitution was not touched (TC-088).* `git diff main...HEAD -- .specify/memory/constitution.md` is empty and its version line still reads 3.0.0. In `docs/ROADMAP.md` the rows of "Principles waiting for a check" are all still in that table (a note that a check exists is the most that may be added).
+6. *The existing checks and the plugin were not touched (TC-093).* `git diff main...HEAD --stat -- tests/no_hardcoded_paths.sh tests/scripts_name_their_alternative.sh tests/no_second_run_state_test.sh tests/command_layer_is_site_neutral.sh tests/credentials_stay_in_settings_test.sh tests/run_all.sh hooks/ scripts/ skills/ commands/ .claude-plugin/` lists nothing, and `bash tests/run_all.sh --list` includes `platform_test.sh`.
+7. *No 008 assertion was weakened (TC-094).* `git diff main...HEAD -- platform/tests/test_mcp.py platform/tests/test_scope.py platform/tests/test_receiver.py platform/tests/test_cli.py platform/tests/test_secrets.py platform/tests/test_status.py platform/tests/test_common.py platform/tests/test_nextflow_e2e.py platform/tests/test_wrapper.py platform/tests/conftest.py platform/tests/helpers.py platform/tests/e2e_harness.py`: only the named changes appear. The tool count of the two MCP tests goes from two to six, every tool still read-only and no input field named like a command; the header check of `test_scope.py` also covers `abf_station/`. Any removed, loosened or re-valued assertion is a failure.
+8. *The plan answers the constitution (TC-095).* Read `specs/007-station-agent/plan.md`, "Constitution Check": it must answer principle 1 (the alternatives), principle 2 (why the poll loop and the job table are neither a monitoring daemon nor a state machine), principle 3, section II-4 (why modelling thirteen types is allowed), principle V (WSL and Git Bash), principle VI, the Safety Net scope (the agent is a path that passes no hook; its allow-list and the tests guard it) and where credentials live.
+
 Record the answers in the release's own notes. A check nobody wrote down is a
 check that gets re-argued three sessions later.
 
