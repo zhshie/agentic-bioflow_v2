@@ -211,10 +211,19 @@ def test_plugin_zip_falls_back_to_jar_when_there_is_no_unzip(tmp_path, warm):
 
 
 def test_plugin_zip_uses_python_only_after_unzip_and_jar_failed(tmp_path, warm):
-    r, calls, cache = _unpack_run(tmp_path, "c", ("unzip", "jar"), fail=True)
+    # A small well-formed zip with a sha256 the test controls: Python 3.12 rejects the real nf-tower
+    # zip (overlapping entries), so the real one cannot be the subject of the Python fallback.
+    import hashlib
+    import zipfile
+    small = tmp_path / "small.zip"
+    with zipfile.ZipFile(small, "w") as z:
+        z.writestr("classes/marker.txt", "x")
+        z.writestr("lib/marker.txt", "y")
+    r, calls, cache = _unpack_run(tmp_path, "c", ("unzip", "jar"), fail=True, zip_file=small,
+                                  sha=hashlib.sha256(small.read_bytes()).hexdigest())
     assert calls == ["unzip", "jar"], calls
     assert r.returncode == 0, r.stdout + r.stderr
-    assert (cache / "nxf-home-26.04.7" / "plugins" / "nf-tower-1.28.3" / "classes").is_dir()
+    assert (cache / "nxf-home-26.04.7" / "plugins" / "nf-tower-1.28.3" / "classes" / "marker.txt").is_file()
 
 
 def test_a_zip_nothing_can_unpack_is_a_hard_failure(tmp_path, warm):
