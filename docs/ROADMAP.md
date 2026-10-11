@@ -82,7 +82,7 @@ test or tool already enforces. Each is added by amendment once its check exists.
 
 | Principle | The check that has to exist first | Earliest stage |
 |---|---|---|
-| The platform's run index is never a second truth: it can be rebuilt from Nextflow's own records, and where they disagree the records win | A test that drops the index, rebuilds it from the records, and finds them equal | 2 |
+| The platform's run index is never a second truth: it can be rebuilt from Nextflow's own records, and where they disagree the records win | A test that drops the index, rebuilds it from the records, and finds them equal. *Note (feature 008): the check now exists, `platform/tests/test_nextflow_e2e.py` (`test_tc030_rebuild_gives_back_every_field`, `test_tc031_nextflows_records_win_over_a_damaged_index`); the constitutional amendment is the next step, as its own pull request.* | 2 |
 | The platform stores metadata only and never holds a site credential; credentials stay on the user's station agent | A test that the platform's store and API refuse or never receive a credential field | 1–2 |
 | Every platform write tool (launch, delete, clear `work/`) refuses without the user's confirmation step | A test per write tool: a call without the confirmation token is refused | 1–2 |
 | Gates live in the platform's tool layer, so whichever host calls a tool meets the same gate; the plugin's hooks become callers | The Safety Net's tests run against the tools, not the hooks | 1–2 |

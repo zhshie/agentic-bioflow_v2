@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abf-platform"
+version = "0.1.0"
+description = "Receiver for Nextflow's trace messages, plus a read-only MCP server over the runs it recorded"
+requires-python = ">=3.10"
+dependencies = ["mcp>=2.3,<3"]
+
+[project.optional-dependencies]
+test = ["pytest", "httpx"]
+
+[project.scripts]
+abf-platform = "abf_platform.cli:main"
+
+[tool.setuptools]
+packages = ["abf_platform"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

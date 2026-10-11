@@ -21,3 +21,11 @@ extensions/*/out/
 # repository; if a checkout ever holds one, it must not be added.
 .seqera_token
 env.yaml
+
+# 008 platform: run indexes and token files are created at run time, never committed.
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+# the platform test venv normally lives in ~/.cache; this covers a checkout-local one
+abf-platform-venv/
