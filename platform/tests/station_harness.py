@@ -1,0 +1,584 @@
+# Nothing existing: glue that builds a fake site, runs the real platform and the real agent as processes and plays a fake platform; no shared fixture library speaks this protocol.
+"""Harness for the station-agent tests (feature 007): a fake site, real processes, a fake platform."""
+import asyncio
+import hashlib
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+from helpers import (PLATFORM_DIR, REPO_ROOT, free_port, mcp_call, pkg_env, run_cli, start_cli,
+                     stop_proc, tool_json, wait_port)
+
+# Tools the site scripts need. The fake site's PATH holds only these (as links) and the fake scheduler
+# programs, so "java is missing" or "sinfo is missing" is true on any machine, a laptop with Java included.
+TOOLS = ["bash", "sh", "env", "find", "ls", "stat", "cat", "head", "tail", "tr", "sed", "awk", "grep", "sleep",
+         "mktemp", "rm", "mkdir", "cp", "mv", "tar", "date", "uname", "dirname", "basename", "readlink", "timeout",
+         "wc", "sort", "cut", "id", "printf", "true", "false", "touch", "chmod", "python3", "kill", "sha256sum",
+         "xargs", "tee", "expr", "realpath", "gzip", "jq", "hostname", "uniq", "tput", "ps", "ln", "cmp"]
+FAKE_TOOLS = ["sbatch", "squeue", "sinfo", "scancel", "srun", "qsub", "bsub", "java", "nextflow"]
+CANARY_TOKEN = "TOKENCANARY_7d3f9a1c5b2e4f60"
+
+
+def write_exec(path, text):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    path.chmod(0o755)
+
+
+def snapshot(root):
+    """Every entry under root (and root itself): kind, size, mtime_ns and, for files, the content hash."""
+    root = Path(root)
+    out = {}
+    for p in [root] + sorted(root.rglob("*")):
+        st = p.lstat()
+        digest = hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() and not p.is_symlink() else None
+        out[str(p.relative_to(root))] = (p.is_dir(), st.st_size if p.is_file() else 0, st.st_mtime_ns, digest)
+    return out
+
+
+def snapshot_file(path):
+    """Content hash and modification time of one file; None when it is gone."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    return (hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mtime_ns)
+
+
+class FakeSite:
+    """A deployment root plus a site directory tree and fake scheduler programs that log every call."""
+
+    def __init__(self, tmp, reach="local", ssh="ok"):
+        self.tmp = Path(tmp)
+        self.reach = reach
+        self.root = self.tmp / "deploy"
+        self.config = self.root / "config"
+        self.config.mkdir(parents=True)
+        self.site = self.tmp / "site"
+        self.state = self.tmp / "state"
+        self.state.mkdir()
+        self.calls_log = self.tmp / "calls.log"
+        self.calls_log.write_text("")
+        self.work = self.site / "work"
+        self.launch = self.site / "launch"
+        self.storage = self.site / "storage"
+        self.evil = self.site / "work-evil"
+        for d in (self.work, self.launch, self.evil, self.storage / "rawdata", self.storage / "results",
+                  self.storage / "analysis"):
+            d.mkdir(parents=True)
+        for name in ("rawdata", "results", "analysis"):
+            (self.storage / name / "guard.txt").write_text("guard content of " + name + "\n")
+        self.home = self.tmp / "home"
+        self.cwd = self.tmp / "cwd"
+        self.tmpdir = self.tmp / "tmpdir"
+        for d in (self.home, self.cwd, self.tmpdir):
+            d.mkdir()
+        (self.home / ".ssh").mkdir()
+        self.key = self.home / ".ssh" / "id_test"
+        self.key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nCANARYKEY_5c1e8b\n-----END OPENSSH PRIVATE KEY-----\n")
+        self.key.chmod(0o600)
+        st = self.key.stat()
+        os.utime(self.key, (st.st_mtime - 5000, st.st_mtime - 4000))  # atime older than mtime: a read would move it
+        self.key_atime = os.stat(self.key).st_atime_ns
+        self.bin = self.tmp / "fakebin"
+        self.bin_off = self.tmp / "fakebin-off"
+        self.toolbin = self.tmp / "toolbin"
+        self.bin_off.mkdir()
+        self.toolbin.mkdir()
+        for t in TOOLS:
+            real = shutil.which(t)
+            if real:
+                (self.toolbin / t).symlink_to(real)
+        self._fakes()
+        self.ssh_bin = None
+        self.control = self.tmp / "cm"
+        lines = ["reach: " + reach, "storage_root: " + str(self.storage),
+                 "agent_connection: CANARY_agent_connection_91ab", "tw_token_file: CANARY_tw_token_77cd"]
+        if reach == "ssh":
+            lines += ["site_host: tester@fake.example", "site_bridge: none", "ssh_control_path: " + str(self.control)]
+            self.ssh_bin = self._fake_ssh(ssh)
+        self.settings = self.config / "env.yaml"
+        self.settings.write_text("\n".join(lines) + "\n")
+        self.settings.chmod(0o600)
+        self.guards = {n: snapshot_file(self.storage / n / "guard.txt") for n in ("rawdata", "results", "analysis")}
+
+    # --- the fake programs --------------------------------------------------------
+    def _fakes(self):
+        log, st = str(self.calls_log), str(self.state)
+        head = "#!/bin/bash\nprintf '%s\n' \"$(basename \"$0\") $*\" >> '" + log + "'\n"
+        write_exec(self.bin / "sbatch", head + "case \"$1\" in --version|-V) echo 'slurm 23.02.7' ;; esac\nexit 0\n")
+        write_exec(self.bin / "squeue", head + "exit 0\n")
+        sinfo = head + (
+            "env > '@ST@/sinfo_env.txt'\n"
+            "[ -f '@ST@/sinfo_sleep' ] && sleep \"$(cat '@ST@/sinfo_sleep')\"\n"
+            "[ -f '@ST@/sinfo_noise' ] && { head -c 30000 /dev/zero | tr '\0' 'x'; echo; }\n"
+            "if [ -f '@ST@/queues' ]; then cat '@ST@/queues'; else printf 'normal*\ndev\n'; fi\n")
+        write_exec(self.bin / "sinfo", sinfo.replace("@ST@", st))
+        for n in ("scancel", "srun", "qsub", "bsub"):
+            write_exec(self.bin / n, head + "exit 0\n")
+        write_exec(self.bin / "ssh", head + "exit 1\n")  # the ssh on PATH must never be called
+        real_find = shutil.which("find")
+        write_exec(self.bin / "find", ("#!/bin/bash\n[ -f '@ST@/find_sleep' ] && sleep \"$(cat '@ST@/find_sleep')\"\n"
+                                       "exec '" + str(real_find) + "' \"$@\"\n").replace("@ST@", st))
+        java = head + (
+            "if [ -f '@ST@/java_dump_env' ]; then env >&2; echo 'java failed' >&2; exit 1; fi\n"
+            "if [ -f '@ST@/java_text' ]; then cat '@ST@/java_text' >&2; else "
+            "echo 'openjdk version \"17.0.9\" 2023-10-17' >&2; fi\n")
+        write_exec(self.bin / "java", java.replace("@ST@", st))
+        nf = head + (
+            "if [ \"$1\" = run ]; then exit 0; fi\n"
+            "if [ -f '@ST@/nextflow_text' ]; then cat '@ST@/nextflow_text'; else "
+            "printf '      N E X T F L O W\n      version 24.10.5 build 5935\n'; fi\n")
+        write_exec(self.bin / "nextflow", nf.replace("@ST@", st))
+
+    def _fake_ssh(self, mode):
+        """A stand-in for ssh. -O check answers by mode; any other call runs the last argument locally.
+
+        state/ssh_drop_after holds a number: after that many working calls the connection is "gone".
+        """
+        st = str(self.state)
+        text = (
+            "#!/bin/bash\n"
+            "last=\"${@: -1}\"\n"
+            "for a in \"$@\"; do [ \"$a\" = check ] && {\n"
+            "  [ -f '@ST@/ssh_down' ] && exit 255\n"
+            "  [ \"$(cat '@ST@/ssh_mode')\" = nomaster ] && exit 255\n"
+            "  exit 0; }; done\n"
+            "[ -f '@ST@/ssh_down' ] && { echo 'Connection closed by remote host' >&2; exit 255; }\n"
+            "if [ \"$(cat '@ST@/ssh_mode')\" = hang ]; then sleep 60; exit 0; fi\n"
+            "if [ -f '@ST@/ssh_drop_after' ]; then n=$(cat '@ST@/ssh_drop_after'); "
+            "if [ \"$n\" -le 0 ]; then touch '@ST@/ssh_down'; echo 'Connection closed by remote host' >&2; exit 255; fi; "
+            "echo $((n - 1)) > '@ST@/ssh_drop_after'; fi\n"
+            "[ \"$last\" = true ] && exit 0\n"
+            "exec bash -c \"$last\"\n").replace("@ST@", st)
+        (self.state / "ssh_mode").write_text({"ok": "ok", "nomaster": "nomaster", "hang": "hang"}[mode])
+        path = self.tmp / "fake-ssh"
+        write_exec(path, text)
+        return path
+
+    # --- changing the site -----------------------------------------------------------
+    def set(self, name, text):
+        (self.state / name).write_text(text)
+
+    def clear(self, name):
+        try:
+            (self.state / name).unlink()
+        except FileNotFoundError:
+            pass
+
+    def remove(self, tool):
+        shutil.move(str(self.bin / tool), str(self.bin_off / tool))
+
+    def restore(self, tool):
+        shutil.move(str(self.bin_off / tool), str(self.bin / tool))
+
+    # --- what the programs saw -----------------------------------------------------
+    def calls(self):
+        return [ln for ln in self.calls_log.read_text().splitlines() if ln.strip()]
+
+    def dangerous(self):
+        bad = []
+        for ln in self.calls():
+            parts = ln.split()
+            prog, args = parts[0], parts[1:]
+            if prog in ("sbatch", "srun", "qsub", "bsub") and args and args not in (["--version"], ["-V"]):
+                bad.append(ln)
+            elif prog in ("srun", "qsub", "bsub") and not args:
+                bad.append(ln)
+            elif prog == "nextflow" and args[:1] == ["run"]:
+                bad.append(ln)
+            elif prog == "scancel":
+                bad.append(ln)
+        return bad
+
+    def guards_intact(self):
+        return all(snapshot_file(self.storage / n / "guard.txt") == self.guards[n] for n in self.guards)
+
+    # --- the agent's environment ------------------------------------------------------
+    def agent_env(self, **extra):
+        env = {"PATH": str(self.bin) + os.pathsep + str(self.toolbin), "HOME": str(self.home),
+               "TMPDIR": str(self.tmpdir), "LANG": "C.UTF-8",
+               "PYTHONPATH": str(PLATFORM_DIR), "PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1"}
+        if self.ssh_bin:
+            env["ON_SITE_SSH_BIN"] = str(self.ssh_bin)
+        env.update({k: str(v) for k, v in extra.items()})
+        return env
+
+    def ce_args(self, name="lab-a", agent=None, **over):
+        """Command-line flags of `abf-platform ce create` for a Slurm environment on this site."""
+        f = {"--name": name, "--platform": "slurm-platform", "--work-dir": str(self.work),
+             "--launch-dir": str(self.launch), "--head-queue": "normal", "--compute-queue": "dev",
+             "--host-name": "login.example", "--credentials": "site-login"}
+        if agent:
+            f["--agent"] = agent
+        f.update(over)
+        out = []
+        for k, v in f.items():
+            if v is not None:
+                out += [k, str(v)]
+        return out
+
+
+# ---------------------------------------------------------------------------------------
+# Running the real platform, the real agent, and MCP calls against them
+# ---------------------------------------------------------------------------------------
+
+class RealPlatform:
+    """`abf-platform serve` as a process on a free loopback port, with its own data folder."""
+
+    def __init__(self, tmp, env_extra=None, start=True):
+        self.dir = Path(tmp) / "plat"
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.data = self.dir / "data"
+        self.index = self.data / "index.db"
+        self.tokens = self.data / "tokens.db"
+        self.state_db = self.data / "platform.db"
+        self.env_extra = dict(env_extra or {})
+        self.env = pkg_env(ABF_PLATFORM_DB=self.index, **self.env_extra)
+        self.port = free_port()
+        self.url = "http://127.0.0.1:%d" % self.port
+        self.log = self.dir / "serve.log"
+        self.proc = None
+        if start:
+            self.start()
+
+    def start(self):
+        self.proc = start_cli(["serve", "--port", str(self.port)], self.env, self.log)
+        wait_port(self.port, proc=self.proc)
+
+    def stop(self):
+        if self.proc is not None:
+            stop_proc(self.proc)
+            self.proc = None
+
+    def cli(self, args, **extra):
+        env = dict(self.env)
+        env.update({k: str(v) for k, v in extra.items()})
+        return run_cli(list(args), env=env)
+
+    def agent_token(self, name):
+        r = self.cli(["agent-token", "new", name])
+        assert r.returncode == 0, r.stdout + r.stderr
+        return re.search(r"abf_[A-Za-z0-9_-]{20,}", r.stdout).group(0)
+
+    def token_file(self, name, tmp, token=None):
+        token = token or self.agent_token(name)
+        path = Path(tmp) / ("token-" + name)
+        path.write_text(token + "\n")
+        path.chmod(0o600)
+        return path, token
+
+    def mcp(self, calls, **extra):
+        env = dict(self.env)
+        env.update({k: str(v) for k, v in extra.items()})
+        return mcp_call(env, list(calls))
+
+    def mcp_json(self, name, args=None, **extra):
+        _, outs = self.mcp([(name, args or {})], **extra)
+        return tool_json(outs[0])
+
+    def db_rows(self, sql, args=()):
+        import sqlite3
+        if not self.state_db.exists():
+            return []
+        con = sqlite3.connect("file:%s?mode=ro" % self.state_db, uri=True)
+        try:
+            return con.execute(sql, args).fetchall()
+        finally:
+            con.close()
+
+    def create_ce(self, site, name="lab-a", agent=None, **over):
+        return self.cli(["ce", "create"] + site.ce_args(name, agent, **over))
+
+    def wait_ce(self, name, status, timeout=30):
+        end = time.time() + timeout
+        last = None
+        while time.time() < end:
+            rows = self.db_rows("SELECT status, message FROM compute_envs WHERE name = ?", (name,))
+            last = rows[0] if rows else None
+            if last and last[0] == status:
+                return last
+            time.sleep(0.2)
+        raise AssertionError("compute environment %s never became %s (last: %s)" % (name, status, last))
+
+    def wait_agent_online(self, name, timeout=30):
+        end = time.time() + timeout
+        while time.time() < end:
+            if self.db_rows("SELECT 1 FROM agents WHERE name = ?", (name,)):
+                return
+            time.sleep(0.1)
+        raise AssertionError("agent %s never said hello" % name)
+
+    def preflight(self, ce="lab-a"):
+        return self.cli(["ce", "preflight", ce])
+
+    def checks_of(self, text):
+        """{check name: 'pass'|'fail'|'unchecked'} from the lines `ce preflight` prints: '<name>: <status> - <detail>'."""
+        out = {}
+        for ln in text.splitlines():
+            m = re.match(r"^\s*([a-z_]+):\s+(pass|fail|unchecked)\b", ln)
+            if m:
+                out[m.group(1)] = m.group(2)
+        return out
+
+
+class AgentProc:
+    """`python -m abf_station run ...` as a process; its output goes to a log file."""
+
+    def __init__(self, url, token_file, site, name, tmp, extra_args=(), env_extra=None, env=None, cwd=None):
+        self.name = name
+        self.log_path = Path(tmp) / ("agent-%s.log" % name)
+        self.cmd = [sys.executable, "-m", "abf_station", "run", "--platform", url, "--token-file", str(token_file),
+                    "--deployment", str(site.root), "--name", name] + list(extra_args)
+        e = env if env is not None else site.agent_env()
+        e = dict(e)
+        e.update({k: str(v) for k, v in (env_extra or {}).items()})
+        self.log = open(self.log_path, "w")
+        self.proc = subprocess.Popen(self.cmd, env=e, cwd=str(cwd or site.cwd), stdout=self.log,
+                                     stderr=subprocess.STDOUT)
+
+    def output(self):
+        self.log.flush()
+        return self.log_path.read_text(errors="replace")
+
+    def wait(self, timeout):
+        return self.proc.wait(timeout=timeout)
+
+    def alive(self):
+        return self.proc.poll() is None
+
+    def stop(self, sig=signal.SIGTERM, timeout=10):
+        if self.proc.poll() is None:
+            self.proc.send_signal(sig)
+            try:
+                self.proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait()
+        self.log.close()
+        return self.proc.returncode
+
+
+def start_agent(plat, site, name, tmp, **kw):
+    """Issue a token for name, start the agent with it, wait until the platform has seen it."""
+    tf, token = plat.token_file(name, tmp)
+    agent = AgentProc(plat.url, tf, site, name, tmp, **kw)
+    agent.token = token
+    agent.token_file = tf
+    plat.wait_agent_online(name)
+    return agent
+
+
+# ---------------------------------------------------------------------------------------
+# A fake platform: speaks only the agent protocol, hands out whatever job the test wants
+# ---------------------------------------------------------------------------------------
+
+class FakePlatform:
+    def __init__(self, always_status=None, poll_seconds=0.4):
+        import uvicorn
+        from starlette.applications import Starlette
+        from starlette.responses import JSONResponse
+        from starlette.routing import Route
+
+        self.always_status = always_status
+        self.poll_seconds = poll_seconds
+        self.requests = []
+        self.results = {}
+        self.pending = []
+        self.next_id = 1
+        self.hello_reply = {"heartbeat_seconds": 20, "poll_seconds": 1}
+        self.lock = threading.Lock()
+
+        async def body_of(request):
+            raw = await request.body()
+            try:
+                return json.loads(raw) if raw else None
+            except ValueError:
+                return None
+
+        async def hello(request):
+            with self.lock:
+                self.requests.append(("hello", await body_of(request), request.headers.get("authorization")))
+            if self.always_status:
+                return JSONResponse({"message": "no"}, status_code=self.always_status)
+            return JSONResponse(self.hello_reply)
+
+        async def poll(request):
+            with self.lock:
+                self.requests.append(("poll", await body_of(request), request.headers.get("authorization")))
+            if self.always_status:
+                return JSONResponse({"message": "no"}, status_code=self.always_status)
+            end = time.time() + self.poll_seconds
+            while time.time() < end:
+                with self.lock:
+                    if self.pending:
+                        return JSONResponse({"job": self.pending.pop(0)})
+                await asyncio.sleep(0.05)
+            return JSONResponse({"job": None})
+
+        async def result(request):
+            body = await body_of(request)
+            jid = request.path_params["jid"]
+            with self.lock:
+                self.requests.append(("result", body, request.headers.get("authorization")))
+                self.results[jid] = body
+            return JSONResponse({"accepted": True})
+
+        app = Starlette(routes=[Route("/agent/hello", hello, methods=["POST"]),
+                                Route("/agent/poll", poll, methods=["POST"]),
+                                Route("/agent/result/{jid}", result, methods=["POST"])])
+        self.port = free_port()
+        self.url = "http://127.0.0.1:%d" % self.port
+        self.server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning"))
+        self.thread = threading.Thread(target=self.server.run, daemon=True)
+        self.thread.start()
+        end = time.time() + 30
+        while not self.server.started and time.time() < end:
+            time.sleep(0.05)
+        assert self.server.started
+
+    def stop(self):
+        self.server.should_exit = True
+        self.thread.join(timeout=20)
+
+    def count(self, kind=None):
+        with self.lock:
+            return len([r for r in self.requests if kind is None or r[0] == kind])
+
+    def push(self, kind, args=None):
+        """Queue a job exactly as given (kind and args are not checked); returns its id as a string."""
+        with self.lock:
+            jid = self.next_id
+            self.next_id += 1
+            self.pending.append({"id": jid, "kind": kind, "args": args if args is not None else {}})
+        return str(jid)
+
+    def push_raw(self, job):
+        with self.lock:
+            jid = self.next_id
+            self.next_id += 1
+            job = dict(job)
+            job["id"] = jid
+            self.pending.append(job)
+        return str(jid)
+
+    def wait_result(self, jid, timeout=30):
+        end = time.time() + timeout
+        while time.time() < end:
+            with self.lock:
+                if jid in self.results:
+                    return self.results[jid]
+            time.sleep(0.05)
+        raise AssertionError("the agent never answered job %s" % jid)
+
+
+def ce_snapshot(site, **over):
+    """The environment part of a job's arguments, the way the platform sends it."""
+    ce = {"name": "lab-a", "platform": "slurm-platform", "workDir": str(site.work), "launchDir": str(site.launch),
+          "headQueue": "normal", "computeQueue": "dev", "readRoots": []}
+    ce.update(over)
+    return ce
+
+
+# ---------------------------------------------------------------------------------------
+# The command line and MCP tools, run inside the test process against private files
+# ---------------------------------------------------------------------------------------
+
+class Inproc:
+    """`abf-platform ...` and the MCP tools in this process, on private files under tmp."""
+
+    def __init__(self, tmp, monkeypatch):
+        self.data = Path(tmp) / "data"
+        self.index = self.data / "index.db"
+        self.tokens = self.data / "tokens.db"
+        self.state_db = self.data / "platform.db"
+        for k in list(os.environ):
+            if k.startswith("ABF_PLATFORM_"):
+                monkeypatch.delenv(k)
+        monkeypatch.setenv("ABF_PLATFORM_DB", str(self.index))
+        self.monkeypatch = monkeypatch
+
+    def run(self, *args):
+        """(exit code, stdout + stderr) of one command line."""
+        import contextlib
+        import io
+        from abf_platform import cli
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            try:
+                rc = cli.main([str(a) for a in args])
+            except SystemExit as e:
+                rc = e.code if isinstance(e.code, int) else 1
+        return (rc or 0), buf.getvalue()
+
+    def create(self, name, platform="slurm-platform", work_dir="/data/work", **flags):
+        argv = ["ce", "create", "--name", name, "--platform", platform]
+        if work_dir is not None:
+            argv += ["--work-dir", work_dir]
+        for k, v in flags.items():
+            flag = "--" + k.replace("_", "-")
+            if isinstance(v, (list, tuple)):
+                for x in v:
+                    argv += [flag, str(x)]
+            elif v is not None:
+                argv += [flag, str(v)]
+        return self.run(*argv)
+
+    def create_slurm(self, name, **flags):
+        flags.setdefault("launch_dir", "/data/launch")
+        flags.setdefault("head_queue", "normal")
+        return self.create(name, **flags)
+
+    def show(self, name):
+        rc, out = self.run("ce", "show", name)
+        assert rc == 0, out
+        return json.loads(out)
+
+    def rows(self):
+        import sqlite3
+        if not self.state_db.exists():
+            return {}
+        con = sqlite3.connect(str(self.state_db))
+        try:
+            return {t: con.execute("SELECT * FROM " + t).fetchall() for t in ("compute_envs", "agents", "jobs")}
+        finally:
+            con.close()
+
+    def mcp(self, calls):
+        return mcp_inproc(self.index, calls)
+
+    def mcp_json(self, name, args=None):
+        _, outs = self.mcp([(name, args or {})])
+        return tool_json(outs[0])
+
+    def all_bytes(self):
+        from helpers import db_bytes
+        return db_bytes(self.index, self.tokens, self.state_db)
+
+
+def mcp_inproc(index, calls):
+    """(tools, results) of MCP tool calls made against the server object in this process."""
+    from mcp import Client
+    from abf_platform import mcp_server
+
+    async def go():
+        async with Client(mcp_server.build_server(index)) as client:
+            tools = (await client.list_tools()).tools
+            outs = []
+            for name, args in calls:
+                outs.append(await client.call_tool(name, args))
+            return tools, outs
+
+    return asyncio.run(go())
+
+
+def mcp_inproc_json(index, name, args=None):
+    _, outs = mcp_inproc(index, [(name, args or {})])
+    return tool_json(outs[0])
