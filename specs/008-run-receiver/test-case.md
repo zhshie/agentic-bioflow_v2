@@ -40,7 +40,7 @@
 | TC-011 | FR-003；US2 情境 1 | 例外 | 資料庫是空的，先記下各表列數 | 不帶 Authorization 送 create | 回 401。runs、processes、failed_tasks 的列數都沒變（零紀錄） | 自動 |
 | TC-012 | FR-003；US2 情境 1 | 例外 | 同上 | 用錯的 token，分別對五個端點（create、begin、progress、heartbeat、complete）和 user-info 送件 | 全部回 401，列數都沒變 | 自動 |
 | TC-013 | US2 情境 1 | 例外 | 成功管線，故意給錯的 token | e2e：啟動真 Nextflow | Nextflow 以非零退出碼停下，輸出含驗證失敗的相關訊息。trace 檔沒有任何 task 列（開跑前就停下）。平台上零紀錄 | 自動：e2e |
-| TC-014 | FR-003 | 功能 | 一組平台發的 token | 分別用 `Authorization: Bearer <token>` 和 Basic（使用者名 `@token`、密碼空白，也就是 Nextflow 實際送出的樣子）送 create | 兩種都回 2xx 並建立 run。TC-001 裡真 Nextflow 用平台發的 token 跑成功（證明 token 格式與 Nextflow 的送法相容） | 自動 |
+| TC-014 | FR-003 | 功能 | 一組平台發的 token | 分別用 `Authorization: Bearer <token>` 和 Basic（使用者名 `@token`、密碼就是 token，也就是 Nextflow 26.04.7 實際送出的 `base64("@token:<token>")`，見 `TowerClient.groovy:236-268` 與錄下的送件）送 create | 兩種都回 2xx 並建立 run。TC-001 裡真 Nextflow 用平台發的 token 跑成功（證明 token 格式與 Nextflow 的送法相容） | 自動 |
 | TC-015 | FR-003；US2 情境 2 | 例外 | token A 建立了 run A，token B 是另一組有效 token | 用 B 對 run A 送 progress、heartbeat、complete | 全部被拒（401 或 403），run A 的資料列內容與送件前完全相同。B 自己的 create 仍然成功 | 自動 |
 | TC-016 | FR-003 | 功能 | 用 `token new` 發一組 token | 檢查資料庫位元組；重啟平台後，再用同一組 token 送件 | 資料庫位元組裡找不到 token 明文，只有雜湊。重啟後 token 仍然有效 | 自動 |
 | TC-017 | FR-003 | 功能 | 無 | 連續執行兩次 `abf-platform token new` | token 只在發出當下顯示一次。兩組不同，每組至少 32 個字元。之後無法再查到明文 | 自動 |
