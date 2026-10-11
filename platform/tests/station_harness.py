@@ -23,7 +23,7 @@ TOOLS = ["bash", "sh", "env", "find", "ls", "stat", "cat", "head", "tail", "tr",
          "wc", "sort", "cut", "id", "printf", "true", "false", "touch", "chmod", "python3", "kill", "sha256sum",
          "xargs", "tee", "expr", "realpath", "gzip", "jq", "hostname", "uniq", "tput", "ps", "ln", "cmp"]
 FAKE_TOOLS = ["sbatch", "squeue", "sinfo", "scancel", "srun", "qsub", "bsub", "java", "nextflow"]
-CANARY_TOKEN = "TOKENCANARY_7d3f9a1c5b2e4f60"
+CANARY_TOKEN = "CANARY_" "7d3f9a1c5b2e4f60"
 
 
 def write_exec(path, text):
