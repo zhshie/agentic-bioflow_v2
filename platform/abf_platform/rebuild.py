@@ -139,7 +139,7 @@ def _build_run(folder, session, name, hist_status, start, log, notes):
         notes.append("%s: no log found for run %s, task numbers are unknown" % (folder, name))
     totals = _empty_counts()
     procs = {}
-    failed = []
+    failed_by_name = {}
     for r in rows:
         key = _STATUS.get(r.get("status"))
         proc = (r.get("name") or "").split(" ", 1)[0]
@@ -152,8 +152,11 @@ def _build_run(folder, session, name, hist_status, start, log, notes):
                 code = int(r.get("exit"))
             except (TypeError, ValueError):
                 code = None
-            failed.append(("%s:1" % r.get("task_id"), r.get("name"), code,
-                           (log or {}).get("errors", {}).get(r.get("name"))))
+            failed_by_name[r.get("name")] = ("%s:1" % r.get("task_id"), r.get("name"), code,
+                                             (log or {}).get("errors", {}).get(r.get("name")))
+        else:
+            # the same task ran again and did not fail: the earlier failure is not a failure of the run (as live)
+            failed_by_name.pop(r.get("name"), None)
     ended = None
     log = log or {}
     last = _log_epoch(log.get("last_line"), start)
@@ -165,7 +168,7 @@ def _build_run(folder, session, name, hist_status, start, log, notes):
         last_message = last or start
     return {
         "id": common.run_id(session, name), "session": session, "name": name, "final": final, "start": start,
-        "ended": ended, "last_message": last_message, "totals": totals, "procs": procs, "failed": failed,
+        "ended": ended, "last_message": last_message, "totals": totals, "procs": procs, "failed": list(failed_by_name.values()),
     }
 
 

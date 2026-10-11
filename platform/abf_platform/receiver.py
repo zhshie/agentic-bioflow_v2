@@ -69,17 +69,22 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
                         con.execute("INSERT OR REPLACE INTO processes (run_id, name, %s) VALUES (?, ?, %s)"
                                     % (cols, ", ".join("?" * len(COUNT_FIELDS))),
                                     [rid, str(p["name"])] + [_int(p.get(f)) for f in COUNT_FIELDS])
-        for t in tasks if isinstance(tasks, list) else []:
-            if not isinstance(t, dict) or not t.get("name"):
-                continue
+        listed = [t for t in (tasks if isinstance(tasks, list) else []) if isinstance(t, dict) and t.get("name")]
+        # earlier attempts first: a retry is a new task record (nf-tower 1.17.5 gives it a new task id, and may
+        # send no `attempt` at all), so the order decides which attempt is the last word
+        listed.sort(key=lambda t: (_int(t.get("attempt"), 0), _int(t.get("taskId"), 0)))
+        for t in listed:
             key = "%s:%s" % (t.get("taskId"), t.get("attempt"))
+            name = str(t["name"])
+            # one row per task name: a later attempt of the same task replaces the earlier one, whatever its outcome
+            con.execute("DELETE FROM failed_tasks WHERE run_id = ? AND name = ? AND task_key != ?", (rid, name, key))
             if t.get("status") == "FAILED":
                 code = _int(t.get("exit"), None)
                 if code is not None and code >= INT_UNSET:
                     code = None
                 con.execute("INSERT INTO failed_tasks (run_id, task_key, name, exit_code) VALUES (?, ?, ?, ?) "
                             "ON CONFLICT(run_id, task_key) DO UPDATE SET name = excluded.name, exit_code = excluded.exit_code",
-                            (rid, key, str(t["name"]), code))
+                            (rid, key, name, code))
             else:
                 con.execute("DELETE FROM failed_tasks WHERE run_id = ? AND task_key = ?", (rid, key))
 

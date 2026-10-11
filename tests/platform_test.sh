@@ -26,11 +26,13 @@
 #   ABF_PLATFORM_DIR          platform folder to test (default: platform/ of this repo)
 #   ABF_PLATFORM_CACHE        download folder (default: <cache>/abf-platform)
 #   ABF_PLATFORM_VENV         venv folder (default: <cache>/abf-platform-venv)
-#   ABF_PLATFORM_PREFLIGHT_ONLY=1   stop after the checks and downloads, run no pytest
+#   ABF_PLATFORM_PREFLIGHT_ONLY=1   stop after the checks and downloads of the first Nextflow pair, run no pytest
+#   ABF_PLATFORM_PREFLIGHT_ONLY=2   the same after the second pair (Nextflow 25.10.4, feature 007b) as well
 #   ABF_PYTEST_ARGS           extra pytest arguments
 #   ABF_PYTEST_TARGETS        what pytest runs, relative to the platform folder (default: tests)
 #   ABF_NF_LAUNCHER_URL / ABF_NF_DIST_URL / ABF_NFTOWER_URL and the matching
-#   ABF_*_SHA256              override one pin
+#   ABF_*_SHA256              override one pin; ABF_NF2_LAUNCHER_URL / ABF_NF2_DIST_URL / ABF_NFTOWER2_URL (and
+#                             the matching ABF_NF2_*_SHA256, ABF_NFTOWER2_SHA256) do the same for the second pair
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -206,6 +208,64 @@ if [ "${ABF_PLATFORM_PREFLIGHT_ONLY:-}" = "1" ]; then
         echo "preflight done, end-to-end tests would be skipped"
     else
         echo "preflight OK"
+    fi
+    exit 0
+fi
+
+# --- 2b. the second pinned Nextflow (feature 007b) -----------------------------
+# Nextflow 25.10.4 with nf-tower 1.17.5 is what the cluster runs. It is set up the same way as the
+# first pair (every sha256 checked, a mismatch stops the run in both modes, a download that cannot be
+# had is fatal on CI) but only after the first pair's preflight exit above, so ABF_PLATFORM_PREFLIGHT_ONLY=1
+# keeps meaning "the first pair" and =2 means "both pairs".
+NF2_LAUNCHER_URL="${ABF_NF2_LAUNCHER_URL:-$NF2_LAUNCHER_URL}"
+NF2_LAUNCHER_SHA256="${ABF_NF2_LAUNCHER_SHA256:-$NF2_LAUNCHER_SHA256}"
+NF2_DIST_URL="${ABF_NF2_DIST_URL:-$NF2_DIST_URL}"
+NF2_DIST_SHA256="${ABF_NF2_DIST_SHA256:-$NF2_DIST_SHA256}"
+NFTOWER2_URL="${ABF_NFTOWER2_URL:-$NFTOWER2_URL}"
+NFTOWER2_SHA256="${ABF_NFTOWER2_SHA256:-$NFTOWER2_SHA256}"
+NXF2_HOME_DIR="$CACHE/nxf-home-$NF2_VERSION"
+LAUNCHER2="$CACHE/downloads/nextflow-$NF2_VERSION"
+E2E2_SKIP_REASON=""
+if [ -z "$E2E_SKIP_REASON" ]; then
+    DIST2="$CACHE/downloads/nextflow-$NF2_VERSION-dist"
+    ZIP2="$CACHE/downloads/nf-tower-$NFTOWER2_VERSION.zip"
+    ok=1
+    before_reason="$E2E_SKIP_REASON"
+    fetch "$NF2_LAUNCHER_URL" "$LAUNCHER2" "$NF2_LAUNCHER_SHA256" || ok=0
+    if [ "$ok" = 1 ]; then fetch "$NF2_DIST_URL" "$DIST2" "$NF2_DIST_SHA256" || ok=0; fi
+    if [ "$ok" = 1 ]; then fetch "$NFTOWER2_URL" "$ZIP2" "$NFTOWER2_SHA256" || ok=0; fi
+    if [ "$ok" = 1 ] && [ "$E2E_SKIP_REASON" = "$before_reason" ]; then
+        mkdir -p "$NXF2_HOME_DIR/framework/$NF2_VERSION" "$NXF2_HOME_DIR/plugins"
+        cp -f "$DIST2" "$NXF2_HOME_DIR/framework/$NF2_VERSION/nextflow-$NF2_VERSION-dist"
+        PLUGIN_DIR2="$NXF2_HOME_DIR/plugins/nf-tower-$NFTOWER2_VERSION"
+        if [ "$(cat "$PLUGIN_DIR2/.abf-sha256" 2>/dev/null)" != "$NFTOWER2_SHA256" ]; then
+            unpack_zip "$ZIP2" "$PLUGIN_DIR2" || hard_fail "cannot unpack $ZIP2"
+            echo "$NFTOWER2_SHA256" > "$PLUGIN_DIR2/.abf-sha256"
+        fi
+    fi
+    if [ "$E2E_SKIP_REASON" != "$before_reason" ] || [ "$ok" = 0 ]; then
+        # env_problem put the reason in E2E_SKIP_REASON for the first pair's variable; the first pair
+        # itself is fine, so the second pair's reason gets its own variable and the first is restored.
+        E2E2_SKIP_REASON="${E2E_SKIP_REASON:-no reason recorded}"
+        E2E_SKIP_REASON="$before_reason"
+    fi
+fi
+if [ -n "$E2E_SKIP_REASON" ]; then
+    E2E2_SKIP_REASON="$E2E_SKIP_REASON"
+fi
+if [ -n "$E2E2_SKIP_REASON" ]; then
+    export ABF_E2E2_SKIP_REASON="$E2E2_SKIP_REASON"
+else
+    export ABF_NXF2_LAUNCHER="$LAUNCHER2"
+    export ABF_NXF2_HOME="$NXF2_HOME_DIR"
+    export ABF_NXF2_VER="$NF2_VERSION"
+fi
+
+if [ "${ABF_PLATFORM_PREFLIGHT_ONLY:-}" = "2" ]; then
+    if [ -n "$E2E2_SKIP_REASON" ]; then
+        echo "preflight done, the end-to-end tests of Nextflow $NF2_VERSION would be skipped"
+    else
+        echo "preflight OK (both pairs)"
     fi
     exit 0
 fi
