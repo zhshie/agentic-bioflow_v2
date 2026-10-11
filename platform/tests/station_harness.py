@@ -345,7 +345,10 @@ class AgentProc:
                                      stderr=subprocess.STDOUT)
 
     def output(self):
-        self.log.flush()
+        try:
+            self.log.flush()
+        except ValueError:  # already closed by stop(): the file still holds everything
+            pass
         return self.log_path.read_text(errors="replace")
 
     def wait(self, timeout):
@@ -521,14 +524,13 @@ class Inproc:
     def create(self, name, platform="slurm-platform", work_dir="/data/work", **flags):
         argv = ["ce", "create", "--name", name, "--platform", platform]
         if work_dir is not None:
-            argv += ["--work-dir", work_dir]
+            argv.append("--work-dir=%s" % work_dir)
         for k, v in flags.items():
             flag = "--" + k.replace("_", "-")
-            if isinstance(v, (list, tuple)):
-                for x in v:
-                    argv += [flag, str(x)]
-            elif v is not None:
-                argv += [flag, str(v)]
+            values = v if isinstance(v, (list, tuple)) else [v]
+            for x in values:
+                if x is not None:
+                    argv.append("%s=%s" % (flag, x))  # the = form lets a value start with --
         return self.run(*argv)
 
     def create_slurm(self, name, **flags):
@@ -544,7 +546,7 @@ class Inproc:
     def rows(self):
         import sqlite3
         if not self.state_db.exists():
-            return {}
+            return {"compute_envs": [], "agents": [], "jobs": []}
         con = sqlite3.connect(str(self.state_db))
         try:
             return {t: con.execute("SELECT * FROM " + t).fetchall() for t in ("compute_envs", "agents", "jobs")}

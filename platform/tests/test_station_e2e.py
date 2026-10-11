@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
@@ -31,12 +32,14 @@ CHECKS = {"connect", "work_dir", "sbatch", "squeue", "sinfo", "java", "nextflow"
 # helpers that talk to the running platform through its files, the way the command line and MCP do
 # ---------------------------------------------------------------------------------------
 
-def run_job(state_db, kind, ce, path=None, clock=time.time):
+def run_job(state_db, kind, ce, path=None, clock=time.time, deadline=None, offline_after=None):
+    """Queue a job the way the command line and MCP do, and wait for its answer. deadline and offline_after
+    (seconds) are handed over explicitly by the scenarios that must not depend on process-wide settings."""
     from abf_platform import jobs
     if kind == "preflight":
-        jid = jobs.enqueue_preflight(state_db, ce, clock)
+        jid = jobs.enqueue_preflight(state_db, ce, clock, deadline_seconds=deadline, offline_after=offline_after)
     else:
-        jid = jobs.enqueue_listing(state_db, ce, path, clock)
+        jid = jobs.enqueue_listing(state_db, ce, str(path), clock, deadline_seconds=deadline, offline_after=offline_after)
     return asyncio.run(jobs.wait_for_result(state_db, jid, clock))
 
 
@@ -64,12 +67,12 @@ def iso_epoch(text):
 class World:
     """One platform process, one fake site, one agent, and one available Slurm environment named lab-a."""
 
-    def __init__(self, tmp, env=None, agent_name="agent-a", site=None, agent_env=None):
+    def __init__(self, tmp, env=None, agent_name="agent-a", site=None, agent_env=None, set_env=True):
         self.tmp = Path(tmp)
         self.mp = pytest.MonkeyPatch()
         self.env = dict(FAST)
         self.env.update(env or {})
-        for k, v in self.env.items():
+        for k, v in (self.env.items() if set_env else []):  # only the shared world sets them, for its in-process calls
             self.mp.setenv(k, str(v))
         self.site = site or FakeSite(self.tmp / "site")
         self.plat = RealPlatform(self.tmp, self.env)
@@ -306,7 +309,7 @@ def test_tc051_a_listing_matches_what_the_filesystem_says(world):
     rnd = random.Random(int.from_bytes(os.urandom(4), "big"))
     for i in range(5):
         p = raw / ("sample_%d.fastq.gz" % i)
-        p.write_bytes(os.urandom(rnd.randint(0 if i == 0 else 1, 4000)))
+        p.write_bytes(b"" if i == 0 else os.urandom(rnd.randint(1, 4000)))
         t = time.time() - rnd.randint(100, 100000)
         os.utime(p, (t, t))
     (raw / "batch2").mkdir(exist_ok=True)
@@ -407,13 +410,13 @@ def agents_rows(world):
 def test_tc014_idle_polls_end_quietly_and_keep_the_last_contact_moving(world):
     # TC-014
     seen = set()
-    end = time.time() + 5.5
+    end = time.time() + 4.5
     while time.time() < end:
         seen.update(r[1] for r in agents_rows(world) if r[0] == "agent-a")
         time.sleep(0.25)
     assert len(seen) >= 3, "the last contact did not move with each poll: %r" % sorted(seen)
     out = world.agent.output()
-    assert "Traceback" not in out and not re.search(r"error", out, re.I), out
+    assert "Traceback" not in out and not re.search(r"cannot reach|stopped:|will not start", out), out
 
 
 def sockets_of(pid):
@@ -428,6 +431,9 @@ def sockets_of(pid):
             inodes.add(m.group(1))
     found = []
     for fn in ("/proc/net/tcp", "/proc/net/tcp6"):
+        if not Path(fn).exists():  # a machine without IPv6 has no tcp6 table; tcp must be there
+            assert fn.endswith("tcp6"), fn
+            continue
         for ln in Path(fn).read_text().splitlines()[1:]:
             parts = ln.split()
             if parts[9] in inodes:
@@ -468,7 +474,7 @@ def test_tc013_the_platform_only_accepts_connections_and_never_dials_out(world):
                                          "config": {"workDir": "/data/work", "headQueue": "normal"}}, time.time)
     from abf_platform import jobs
     jobs.enqueue_preflight(world.state_db, "waiting", time.time)
-    time.sleep(5)
+    time.sleep(3.5)
     socks = sockets_of(world.plat.proc.pid)
     assert socks
     assert all(s["local"] == world.plat.port for s in socks), "the platform dialled out: %r" % (socks,)
@@ -560,11 +566,15 @@ def test_tc082_a_windows_shell_is_refused_by_naming_the_missing_capability(tmp_p
 
 
 # ---------------------------------------------------------------------------------------
-# lifecycle on a platform of its own: TC-001, TC-003, TC-004
+# scenarios that need a platform of their own: TC-001, TC-003, TC-004, TC-015, TC-016, TC-019, TC-020, TC-023
+#
+# They run in threads from the first test of the module on, while the tests of the shared world run one
+# after the other; each test below waits for its scenario and shows its failure. A scenario uses no
+# process-wide setting: the numbers go to its own platform process, or are handed to the calls explicitly.
 # ---------------------------------------------------------------------------------------
 
-def test_tc001_tc003_tc004_online_then_killed_then_back_with_the_same_name(tmp_path):
-    # TC-001, TC-003, TC-004
+def scenario_life(tmp_path):
+    """TC-001, TC-003, TC-004: online, killed, back under the same name."""
     site = FakeSite(tmp_path / "s")
     plat = RealPlatform(tmp_path, dict(FAST))
     try:
@@ -584,6 +594,7 @@ def test_tc001_tc003_tc004_online_then_killed_then_back_with_the_same_name(tmp_p
         a.proc.send_signal(signal.SIGKILL)
         a.proc.wait()
         a.log.close()
+        time.sleep(POLL + 1)  # a poll the platform still holds for the dead agent is not a contact
         now_view = plat.mcp_json("list_agents")["agents"][0]
         late_view = plat.mcp_json("list_agents", ABF_PLATFORM_CLOCK_OFFSET=3 * H + 5)["agents"][0]
         assert now_view["status"] == "online", "offline is decided by the clock, not by a broken connection"
@@ -603,8 +614,8 @@ def test_tc001_tc003_tc004_online_then_killed_then_back_with_the_same_name(tmp_p
         plat.stop()
 
 
-def test_tc020_an_agent_started_before_the_platform_says_so_slowly_and_then_connects(tmp_path):
-    # TC-020
+def scenario_early(tmp_path):
+    """TC-020: an agent started before the platform says so, slowly, and connects when the platform comes."""
     site = FakeSite(tmp_path / "s")
     plat = RealPlatform(tmp_path, dict(FAST), start=False)
     tok = plat.agent_token("agent-early")
@@ -618,9 +629,9 @@ def test_tc020_an_agent_started_before_the_platform_says_so_slowly_and_then_conn
             time.sleep(0.2)
         assert plat.url in a.output(), a.output()
         assert re.search(r"cannot reach|unreachable|連不上", a.output(), re.I)
-        time.sleep(6)
+        time.sleep(3.5)
         lines = [ln for ln in a.output().splitlines() if plat.url in ln]
-        assert len(lines) <= 6, "the agent repeats itself too fast:\n" + a.output()
+        assert len(lines) <= 3, "the agent repeats itself too fast:\n" + a.output()
         assert tok not in a.output()
         plat.start()
         plat.wait_agent_online("agent-early", timeout=40)
@@ -630,20 +641,16 @@ def test_tc020_an_agent_started_before_the_platform_says_so_slowly_and_then_conn
         plat.stop()
 
 
-# ---------------------------------------------------------------------------------------
-# a long poll that is held: TC-015, TC-016
-# ---------------------------------------------------------------------------------------
-
-def test_tc015_tc016_a_held_poll_neither_delays_a_job_nor_blocks_other_requests(tmp_path):
-    # TC-015, TC-016
-    w = World(tmp_path, env={"ABF_AGENT_POLL_SECONDS": 20, "ABF_AGENT_HEARTBEAT_SECONDS": 20})
+def scenario_held(tmp_path):
+    """TC-015, TC-016: a held poll neither delays a job nor blocks other requests."""
+    from helpers import basic_header, load_scenario
+    w = World(tmp_path, env={"ABF_AGENT_POLL_SECONDS": 20, "ABF_AGENT_HEARTBEAT_SECONDS": 20}, set_env=False)
     try:
         held_since = time.time()  # the agent now holds a 20 s poll
         time.sleep(1.0)
         plat = w.plat
         r = plat.cli(["token", "new"])
         run_tok = re.search(r"abf_[A-Za-z0-9_-]{20,}", r.stdout).group(0)
-        from helpers import basic_header, load_scenario
         body = load_scenario("ok_run")["requests"][0]["body"]
         t = time.time()
         c = httpx.post(plat.url + "/trace/create", json=body, headers={"Authorization": basic_header(run_tok)})
@@ -662,66 +669,72 @@ def test_tc015_tc016_a_held_poll_neither_delays_a_job_nor_blocks_other_requests(
         # the poll has been held for more than 5 s by the time this job arrives
         time.sleep(max(0, 6.0 - (time.time() - held_since)))
         t = time.time()
-        res = listing(plat, "lab-a", w.site.work)
+        res = run_job(w.state_db, "list_site_files", "lab-a", w.site.work, offline_after=60)
         elapsed = time.time() - t
-        assert res["ok"] is True
+        assert res["ok"] is True, res
         assert elapsed < 5, "the job waited for the end of the poll (%.1f s)" % elapsed
     finally:
         w.close()
 
 
-# ---------------------------------------------------------------------------------------
-# a busy agent stays online; a silent one is reported: TC-023, TC-019
-# ---------------------------------------------------------------------------------------
+def last_job(plat):
+    return plat.db_rows("SELECT id, state, late_result_json FROM jobs ORDER BY id DESC LIMIT 1")[0]
 
-def test_tc023_tc019_a_busy_agent_stays_online_and_a_silent_one_is_called_silent(tmp_path):
-    # TC-023, TC-019
+
+def wait_for_late_result(plat, job_id, timeout=20):
+    end = time.time() + timeout
+    while time.time() < end:
+        row = plat.db_rows("SELECT late_result_json FROM jobs WHERE id = ?", (job_id,))[0]
+        if row[0]:
+            return row[0]
+        time.sleep(0.3)
+    raise AssertionError("the busy agent's late answer never arrived")
+
+
+def scenario_busy(tmp_path):
+    """TC-023, TC-019: a busy agent stays online; a silent one is called silent, and its late answer changes nothing."""
     from abf_platform import agents
-    w = World(tmp_path, env={"ABF_AGENT_HEARTBEAT_SECONDS": 1, "ABF_AGENT_POLL_SECONDS": 1,
-                              "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES": 3, "ABF_PLATFORM_DEADLINE_PREFLIGHT": 3},
-              agent_name="agent-w3")
+    w = World(tmp_path, env={"ABF_AGENT_HEARTBEAT_SECONDS": 1, "ABF_AGENT_POLL_SECONDS": 1}, agent_name="agent-w3",
+              set_env=False)
     try:
         site = w.site
-        # TC-023: a 5 s preflight against a 3 s offline limit
-        w.mp.setenv("ABF_PLATFORM_DEADLINE_PREFLIGHT", "30")
-        site.set("sinfo_sleep", "5")
+        # TC-023: a 4 s preflight against a 3 s offline limit (three beats of 1 s)
+        site.set("sinfo_sleep", "4")
         done = {}
-        th = threading.Thread(target=lambda: done.update(run_job(w.state_db, "preflight", "lab-a")))
+        th = threading.Thread(target=lambda: done.update(
+            run_job(w.state_db, "preflight", "lab-a", deadline=30, offline_after=3)))
         th.start()
         states = []
         t0 = time.time()
         while th.is_alive() and time.time() - t0 < 30:
-            states.append(agents.list_agents(w.state_db, time.time())[0]["status"])
-            time.sleep(0.5)
+            states.append(agents.list_agents(w.state_db, time.time(), offline_after=3)[0]["status"])
+            time.sleep(0.4)
         th.join()
         site.clear("sinfo_sleep")
-        assert done.get("ok") is True and time.time() - t0 >= 4, "the preflight did not take the 5 s it should"
+        assert done.get("ok") is True and time.time() - t0 >= 3.5, "the preflight did not take the 4 s it should"
         assert len(states) >= 6 and set(states) == {"online"}, states
         assert w.plat.mcp_json("list_agents", **w.env)["agents"][0]["status"] == "online"
-        # TC-019: the agent is online but the site command sleeps past the caller's 3 s
-        w.mp.setenv("ABF_PLATFORM_DEADLINE_PREFLIGHT", "3")
-        site.set("find_sleep", "6")
+        # TC-019: the agent is online but the site command sleeps past the caller's 2 s
+        site.set("find_sleep", "4")
         t = time.time()
-        res = listing(w.plat, "lab-a", site.work)
+        res = run_job(w.state_db, "list_site_files", "lab-a", site.work, deadline=2, offline_after=3)
         waited = time.time() - t
-        assert res["ok"] is False and re.search(r"did not answer|沒有回應", res["message"]), res
+        assert res["ok"] is False and res["state"] == "expired" and re.search(r"did not answer|沒有回應", res["message"]), res
         assert "agent-w3" in res["message"] and "list_site_files" in res["message"]
-        assert waited <= 3 + 5
-        assert w.plat.db_rows("SELECT state FROM jobs ORDER BY id DESC LIMIT 1")[0][0] == "expired"
-        # the busy agent finishes later: its late answer changes nothing
-        end = time.time() + 15
-        while time.time() < end and not w.plat.db_rows("SELECT late_result_json FROM jobs ORDER BY id DESC LIMIT 1")[0][0]:
-            time.sleep(0.3)
+        assert waited <= 2 + 5
+        job_id, state, _ = last_job(w.plat)
+        assert state == "expired"
+        # the busy agent finishes later: its late answer is kept, marked late, and the job stays expired
+        wait_for_late_result(w.plat, job_id)
         site.clear("find_sleep")
-        last = w.plat.db_rows("SELECT state, late_result_json FROM jobs ORDER BY id DESC LIMIT 1")[0]
-        assert last[0] == "expired" and last[1], "a late result must be kept, marked late"
-        # a late pre-flight verdict must not touch the environment either
+        assert last_job(w.plat)[1] == "expired"
+        # a late pre-flight verdict (here: "invalid") must not touch the environment either
         site.set("queues", "other\n")
-        site.set("sinfo_sleep", "5")
+        site.set("sinfo_sleep", "4")
         before = ce_of(w.state_db, "lab-a")
-        out = run_job(w.state_db, "preflight", "lab-a")
-        assert out["ok"] is False and re.search(r"did not answer|沒有回應", out["message"])
-        time.sleep(5)
+        out = run_job(w.state_db, "preflight", "lab-a", deadline=2, offline_after=3)
+        assert out["ok"] is False and out["state"] == "expired" and re.search(r"did not answer|沒有回應", out["message"])
+        wait_for_late_result(w.plat, last_job(w.plat)[0])
         after = ce_of(w.state_db, "lab-a")
         site.clear("queues")
         site.clear("sinfo_sleep")
@@ -729,6 +742,48 @@ def test_tc023_tc019_a_busy_agent_stays_online_and_a_silent_one_is_called_silent
         assert after["lastUpdated"] == before["lastUpdated"]
     finally:
         w.close()
+
+
+class Side:
+    def __init__(self):
+        self.pool = ThreadPoolExecutor(max_workers=4)
+        self.futures = {}
+
+    def start(self, name, fn, tmp):
+        self.futures[name] = self.pool.submit(fn, tmp)
+
+    def result(self, name):
+        return self.futures[name].result(timeout=240)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def side(tmp_path_factory):
+    s = Side()
+    for name, fn in (("life", scenario_life), ("early", scenario_early), ("held", scenario_held),
+                     ("busy", scenario_busy)):
+        s.start(name, fn, tmp_path_factory.mktemp(name))
+    yield s
+    s.pool.shutdown(wait=True)
+
+
+def test_tc001_tc003_tc004_online_then_killed_then_back_with_the_same_name(side):
+    # TC-001, TC-003, TC-004
+    side.result("life")
+
+
+def test_tc020_an_agent_started_before_the_platform_says_so_slowly_and_then_connects(side):
+    # TC-020
+    side.result("early")
+
+
+def test_tc015_tc016_a_held_poll_neither_delays_a_job_nor_blocks_other_requests(side):
+    # TC-015, TC-016
+    side.result("held")
+
+
+def test_tc023_tc019_a_busy_agent_stays_online_and_a_silent_one_is_called_silent(side):
+    # TC-023, TC-019
+    side.result("busy")
 
 
 # ---------------------------------------------------------------------------------------

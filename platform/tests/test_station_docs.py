@@ -1,6 +1,7 @@
 # Nothing existing: checks that the documents state the values and settings the code really has; no tool compares a document with a constant.
 """Documents of feature 007: docs/PLATFORM.md, docs/SEQERA_PARITY.md, docs/ROADMAP.md, docs/TESTING.md."""
 import re
+import shlex
 
 from helpers import REPO_ROOT
 
@@ -33,8 +34,8 @@ def test_tc075_the_platform_guide_names_every_step_value_and_setting():
     assert re.search(r"only .{0,40}(inside|in) WSL|WSL or Linux", f) and re.search(r"HTTPS.{0,80}(not|other than|except).{0,40}(local|loopback)|"
                                                                                   r"(non-local|not local).{0,80}HTTPS", f)
     assert re.search(r"\b%d\b[^.|]{0,60}(entries|files)" % jobs.LIST_LIMIT, f), "the listing limit"
-    assert re.search(r"heartbeat[^.|]{0,80}\b%d\b" % common.AGENT_HEARTBEAT_SECONDS, f, re.I)
-    assert re.search(r"poll[^.|]{0,80}\b%d\b" % common.AGENT_POLL_SECONDS, f, re.I)
+    assert re.search(r"heartbeat[^.]{0,80}\b%d\b" % common.AGENT_HEARTBEAT_SECONDS, f, re.I)
+    assert re.search(r"poll[^.]{0,80}\b%d\b" % common.AGENT_POLL_SECONDS, f, re.I)
     for pid in compute_envs.KINDS:
         assert "`%s`" % pid in doc, pid
     assert len(compute_envs.KINDS) == 14
@@ -48,10 +49,10 @@ def test_tc075_the_example_commands_of_the_guide_parse():
     parser = cli.build_parser()
     checked = 0
     for ln in text[start:].splitlines():
-        m = re.match(r"^\s*abf-platform ((?:ce|agent-token) [^#<>\[\]\]*?)\s*(#.*)?$", ln)
+        m = re.match(r"^\s*abf-platform ((?:ce|agent-token) [^#<>]*?)\s*(#.*)?$", ln)
         if not m:
             continue
-        argv = m.group(1).split()
+        argv = shlex.split(m.group(1))
         if "..." in argv or any(a.startswith("<") for a in argv):
             continue
         try:

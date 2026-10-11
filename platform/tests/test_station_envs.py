@@ -284,11 +284,11 @@ def test_tc038_update_changes_what_is_asked_and_refuses_what_create_refuses(ip):
 def test_tc096_only_a_usable_environment_can_be_primary(ip):
     # TC-096
     assert ip.create_slurm("S", agent="a1")[0] == 0
-    make_available(ip, "S")
-    assert ip.run("ce", "primary", "S")[0] == 0
+    assert ip.create_slurm("D", agent="a1")[0] == 0
     assert ip.run("ce", "create", "--name", "U", "--platform", "awsbatch-platform",
                   "--config-json", json.dumps(UNSUPPORTED["awsbatch-platform"]))[0] == 0
-    assert ip.create_slurm("D", agent="a1")[0] == 0
+    make_available(ip, "S")
+    assert ip.run("ce", "primary", "S")[0] == 0
     make_available(ip, "D")
     assert ip.run("ce", "disable", "D")[0] == 0
     before = ip.rows()
@@ -439,21 +439,20 @@ def test_tc084_no_launch_door_anywhere(tmp_path):
     assert not re.search(r"\blaunch\b|\bsubmit\b", helptext, re.I)
 
 
-def test_tc085_the_unsupported_types_never_touch_a_cloud_tool_or_library(tmp_path):
+def test_tc085_the_unsupported_types_never_touch_a_cloud_tool_or_library(ip, tmp_path, monkeypatch):
     # TC-085
     from station_harness import write_exec
     bindir = tmp_path / "bin"
     log = tmp_path / "cloud.log"
     for t in ("aws", "kubectl", "gcloud", "az", "ssh"):
         write_exec(bindir / t, "#!/bin/bash\necho \"$0 $*\" >> '%s'\n" % log)
-    env = pkg_env(ABF_PLATFORM_DB=tmp_path / "data" / "index.db")
-    env["PATH"] = str(bindir) + os.pathsep + env["PATH"]
+    monkeypatch.setenv("PATH", str(bindir) + os.pathsep + os.environ["PATH"])
     for pid, fields in UNSUPPORTED.items():
-        r = run_cli(["ce", "create", "--name", "ce-" + pid, "--platform", pid, "--config-json", json.dumps(fields)], env=env)
-        assert r.returncode == 0, r.stdout + r.stderr
-        r = run_cli(["ce", "preflight", "ce-" + pid], env=env)
-        assert r.returncode != 0 and re.search(r"unsupported|not supported|尚未支援", r.stdout + r.stderr)
-        assert "available" not in r.stdout.lower().replace("unavailable", "")
+        rc, out = ip.run("ce", "create", "--name", "ce-" + pid, "--platform", pid, "--config-json", json.dumps(fields))
+        assert rc == 0, out
+        rc, out = ip.run("ce", "preflight", "ce-" + pid)
+        assert rc != 0 and re.search(r"unsupported|not supported|尚未支援", out)
+        assert ip.show("ce-" + pid)["status"] == "unsupported"
     assert not log.exists() or log.read_text() == ""
     toml = (PLATFORM_DIR / "pyproject.toml").read_text()
     for lib in ("boto3", "botocore", "azure", "google-cloud", "kubernetes"):

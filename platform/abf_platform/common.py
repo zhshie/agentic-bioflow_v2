@@ -1,7 +1,9 @@
 # Nothing existing: the few functions shared by the receiver and the rebuild (run id, times, secret names, Nextflow's error text) so both paths agree by construction.
 """Shared rules. Both the live receiver and the rebuild call these, so they cannot drift apart."""
+import base64
 import datetime
 import hashlib
+import os
 import re
 
 # Nextflow 26.04.7 sends one message at least every minute while a run is alive
@@ -83,3 +85,61 @@ def extract_error(text):
         cause = re.search(r"\nCaused by:\n\s*(.+)", rest)
         message = cause.group(1).strip() if cause else ""
     return name, message
+
+
+# ---- agents and jobs (feature 007) --------------------------------------------------
+# An agent sends a beat every AGENT_HEARTBEAT_SECONDS and holds each poll for AGENT_POLL_SECONDS.
+# It is offline when its last contact is older than three beats. docs/PLATFORM.md states the same
+# numbers; the environment variables only exist so the tests can shorten them.
+AGENT_HEARTBEAT_SECONDS = 20
+AGENT_POLL_SECONDS = 25
+AGENT_OFFLINE_AFTER_BEATS = 3
+
+
+def _seconds_from_env(name, default):
+    raw = os.environ.get(name)
+    try:
+        value = float(raw) if raw not in (None, "") else float(default)
+    except ValueError:
+        value = float(default)
+    return value if value > 0 else float(default)
+
+
+def heartbeat_seconds():
+    """ABF_AGENT_HEARTBEAT_SECONDS, else 20."""
+    return _seconds_from_env("ABF_AGENT_HEARTBEAT_SECONDS", AGENT_HEARTBEAT_SECONDS)
+
+
+def poll_seconds():
+    """ABF_AGENT_POLL_SECONDS, else 25."""
+    return _seconds_from_env("ABF_AGENT_POLL_SECONDS", AGENT_POLL_SECONDS)
+
+
+def offline_after_seconds():
+    return AGENT_OFFLINE_AFTER_BEATS * heartbeat_seconds()
+
+
+def epoch_iso_ms(epoch):
+    """ISO 8601 UTC with milliseconds, the form Seqera uses for its dates."""
+    if epoch is None:
+        return None
+    dt = datetime.datetime.fromtimestamp(float(epoch), datetime.timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + "%03dZ" % (dt.microsecond // 1000)
+
+
+def token_from_header(value):
+    """Bearer <token>, or Basic base64('@token:<token>') as Nextflow sends it."""
+    if not value:
+        return None
+    scheme, _, cred = value.strip().partition(" ")
+    cred = cred.strip()
+    if scheme.lower() == "bearer":
+        return cred or None
+    if scheme.lower() == "basic":
+        try:
+            decoded = base64.b64decode(cred, validate=True).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            return None
+        user, _, password = decoded.partition(":")
+        return password if user == "@token" and password else None
+    return None
