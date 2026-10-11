@@ -1,0 +1,72 @@
+{
+ "_header": {
+  "nextflow": "25.10.4",
+  "nf-tower": "1.17.5",
+  "recorded": "2026-10-11",
+  "authorization": "Basic base64('@token:' + token); Content-Type application/json; charset=utf-8",
+  "sanitized": "labuser<-OS user name, host1<-host name, ~<-home dir, /LAUNCH<-launch dir, /REPO<-repo checkout, /CACHE<-tool cache, /wk/<-/work/, workflow id replaced by {id}; received_at is seconds since the first request",
+  "scenario": "a run of more than four minutes; only kind and time of each message are kept"
+ },
+ "requests": [
+  {
+   "method": "POST",
+   "path": "/trace/create",
+   "received_at": 0.0,
+   "kind": "create"
+  },
+  {
+   "method": "PUT",
+   "path": "/trace/{id}/begin",
+   "received_at": 2.789,
+   "kind": "begin"
+  },
+  {
+   "method": "PUT",
+   "path": "/trace/{id}/progress",
+   "received_at": 3.933,
+   "kind": "progress"
+  },
+  {
+   "method": "PUT",
+   "path": "/trace/{id}/progress",
+   "received_at": 4.931,
+   "kind": "progress"
+  },
+  {
+   "method": "PUT",
+   "path": "/trace/{id}/heartbeat",
+   "received_at": 64.926,
+   "kind": "heartbeat"
+  },
+  {
+   "method": "PUT",
+   "path": "/trace/{id}/heartbeat",
+   "received_at": 124.93,
+   "kind": "heartbeat"
+  },
+  {
+   "method": "PUT",
+   "path": "/trace/{id}/heartbeat",
+   "received_at": 185.03,
+   "kind": "heartbeat"
+  },
+  {
+   "method": "PUT",
+   "path": "/trace/{id}/heartbeat",
+   "received_at": 245.126,
+   "kind": "heartbeat"
+  },
+  {
+   "method": "PUT",
+   "path": "/trace/{id}/progress",
+   "received_at": 254.399,
+   "kind": "progress"
+  },
+  {
+   "method": "PUT",
+   "path": "/trace/{id}/complete",
+   "received_at": 254.54,
+   "kind": "complete"
+  }
+ ]
+}
