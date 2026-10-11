@@ -25,17 +25,24 @@ exists.
 - **2.** Nextflow's own records (trace, report, log, and the events its `nf-tower` plugin emits)
   are the truth about a run. While the plugin uses Seqera Platform, Platform shows them; where
   Platform's display and Nextflow's own records disagree, Nextflow's records win. No file in
-  this repository MAY keep a second copy of a run's state, and there MUST be no submission
-  script of our own, no state machine, and no monitoring daemon beyond the channels its check
-  allow-lists. Where the backend is Seqera, the
-  command layer follows Seqera's nouns (compute environment, then pipelines → datasets → launch,
-  then runs).
-  *Check:* `tests/no_second_run_state_test.sh`.
+  this repository MAY keep a second copy of a run's state, and there MUST be no state machine
+  and no monitoring daemon beyond the channels its check allow-lists. There MAY be at most one
+  submission path of our own: the station agent's launch job, which hands the Nextflow head job
+  to the site's own scheduler the way Seqera Platform does, and runs only after the user has
+  seen the full launch command and confirmed it. A file that submits is allow-listed by the
+  check together with the test that refuses an unconfirmed launch; nothing else submits. After
+  the hand-off, everything known about the run comes from Nextflow's records. Where the backend
+  is Seqera, the command layer follows Seqera's nouns (compute environment, then pipelines →
+  datasets → launch, then runs).
+  *Check:* `tests/no_second_run_state_test.sh` (its submission scan covers `scripts/` and
+  `platform/`).
 
 *Rationale:* three features were rebuilt here before anyone checked, and each was written and
 then deleted (PITFALLS 14). A second copy of run state drifts from the real one. The platform of
 `docs/adr/0004` keeps an index of Nextflow's records, never a second truth; that rule joins here
-once its rebuild check exists (`docs/ROADMAP.md`, "Principles waiting for a check").
+once its rebuild check exists (`docs/ROADMAP.md`, "Principles waiting for a check"). The one
+submission path exists because a self-hosted platform must do Seqera's submit step, and only the
+user's confirmation lets it run.
 
 ### II. Anyone, Anywhere
 
@@ -356,6 +363,58 @@ these principles updated.
 **Version.** MAJOR, under Governance: principles 1 and 2 are redefined.
 **Approval.** The maintainer approves and merges the pull request that carries this change.
 
+### 4.0.0 (2026-10-11): one submission path of our own, behind the user's confirmation
+
+**Rationale.** On 2026-10-11 the maintainer set the order for the platform: 「照原本路線」,
+「雲端伺服器（像 Seqera 有 AWS 等）也要一起」, and 「雲端伺服器不限於 AWS，請直接參考 Seqera
+Platform 的設計」. When asked to begin this amendment he said 「開始」. Principle 2 as written
+in 3.0.0 says there MUST be "no submission script of our own". That was right while Seqera
+Platform launched every run. A self-hosted platform modelled on Seqera has to do what Seqera
+does: hand the Nextflow head job to the site's scheduler through its own submit step (a cluster
+job in the head queue). Nextflow has no command that submits its own head job, and nothing
+maintained and open source does it for a site reached through a user's shared SSH connection;
+Tower Agent is closed and talks only to Seqera. So the ban cannot stand as written, and it is
+redefined so that it keeps its purpose: no second truth about a run, no state machine, no
+monitoring daemon, and the confirmation the Safety Net demands of a launch.
+
+**What changes.**
+- Principle 2 no longer bans a submission script outright. It now says there MAY be at most one
+  submission path of our own: the station agent's launch job, run only after the user has seen
+  the full launch command and confirmed it. The ban on a second copy of a run's state, on a state
+  machine and on a monitoring daemon stands. After the hand-off, everything known about the run
+  comes from Nextflow's records. The text names "the site's own scheduler", no single scheduler
+  and no single cloud.
+- Its check, `tests/no_second_run_state_test.sh`, is stricter, never looser. The submission scan
+  also reads `platform/abf_platform` and `platform/abf_station` (not `platform/tests/`, whose
+  fake site is called `sbatch`); scans 2 to 4 stay on `scripts/`. A new allow-list,
+  `LAUNCH_ALLOW`, takes at most one entry, in platform code only, naming the test that refuses
+  an unconfirmed launch; the test must be defined under `platform/tests/`, and a stale entry
+  fails. A submission in `scripts/` is never excused by it.
+- When this amendment is merged no submission path exists: `LAUNCH_ALLOW` is empty, and the
+  launch job (feature 007b) builds the one path, with its entry and its test.
+- `platform/abf_station/handlers.py` is rewritten in one place so that no quoted `sbatch`
+  stands in the source; it only runs `command -v` checks. Its check ids, their order and every
+  text a user sees are unchanged.
+- Documents that cite principle 2 follow: `README.md`, `CLAUDE.md`, `docs/ROADMAP.md` and the
+  tests that pin the version and the wording.
+- The Safety Net is unchanged, word for word. Its launch rule ("shown in full and waits for
+  explicit confirmation") already says what is wanted. Its scope (sessions in which the plugin is
+  in use, guarded by hooks) does not reach the platform's own path, and no hook guards that
+  path. So principle 2 itself carries the confirmation requirement for the platform's launch.
+  Moving the gates into the platform's tool layer is still a waiting principle
+  (`docs/ROADMAP.md`).
+- Work left to 007b: `platform/tests/test_scope.py` TC-071 and
+  `platform/tests/test_station_static.py` TC-084 forbid submission in platform code under
+  principle 2 as it stood. They are untouched here and 007b revises them.
+
+**Impact on existing deployments.** None. No hook, script, command or skill changes behaviour;
+`handlers.py` changes only how two lists are written. The allow-list is empty, so the repository
+still has zero submission paths until 007b, and the plugin still launches through Seqera, behind
+`hooks/confirm_launch.sh`.
+
+**Version.** MAJOR, under Governance: principle 2 is redefined.
+**Approval.** The maintainer approves and merges the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -370,4 +429,4 @@ these principles updated.
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 3.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-08
+**Version**: 4.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11

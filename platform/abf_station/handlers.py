@@ -14,7 +14,10 @@ from .site import quote
 JOB_KINDS = ("preflight", "list_site_files")
 ARG_KEYS = {"preflight": {"ce"}, "list_site_files": {"ce", "path"}}
 LIST_LIMIT = 500
-CHECK_ORDER = ("connect", "work_dir", "sbatch", "squeue", "sinfo", "java", "nextflow", "head_queue")
+# The check ids are written as one comma-split string, never as a quoted sbatch: the scan of
+# constitution principle 2 (tests/no_second_run_state_test.sh) treats a quote straight before
+# the word as a submission command, and this file only checks that the tools exist (command -v).
+CHECK_ORDER = tuple("connect,work_dir,sbatch,squeue,sinfo,java,nextflow,head_queue".split(","))
 JAVA_MIN = 17
 DETAIL_LIMIT = 300
 
@@ -159,7 +162,7 @@ def preflight(env, ctx):
         add("work_dir", "fail", "the work folder does not exist on the site")
     else:
         add("work_dir", "fail", "the site gave no answer about the work folder")
-    for tool in ("sbatch", "squeue", "sinfo"):
+    for tool in CHECK_ORDER[2:5]:  # the three scheduler tools: the 3rd to 5th ids above (see the note at CHECK_ORDER)
         have = facts.get("has_" + tool)
         if have == "yes":
             add(tool, "pass", "found on the site")

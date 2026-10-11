@@ -53,9 +53,9 @@ The skill in `skills/` carries the operational canon, and is the part that
 works when nobody types a slash command: "I want to run RNA-seq" should reach
 this tool the same way `/agentic-bioflow:launch` does.
 
-Everything else is deliberately not built: no submission script, no run-state
+Everything else is deliberately not built: no submission script outside the one confirmed launch path (constitution 4.0.0), no run-state
 machine, no monitoring daemon, no per-pipeline parameter specs. Platform (whose runs rest on
-Nextflow's own records, the truth under constitution 3.0.0), `nextflow_schema.json` and
+Nextflow's own records, the truth under constitution 4.0.0), `nextflow_schema.json` and
 `assets/schema_input.json` already provide them.
 
 ## Requirements

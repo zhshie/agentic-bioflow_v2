@@ -49,9 +49,9 @@ nin() {
 
 echo "== US1: the constitution (TC-001, TC-003..TC-009) =="
 LAST=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
-if [ "$LAST" = '**Version**: 3.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-08' ]; then
-  ok "TC-001: last line is exactly the 3.0.0 version line"
-else bad "TC-001: last line is exactly the 3.0.0 version line" "got: $LAST"; fi
+if [ "$LAST" = '**Version**: 4.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11' ]; then
+  ok "TC-001: last line is exactly the 4.0.0 version line"
+else bad "TC-001: last line is exactly the 4.0.0 version line" "got: $LAST"; fi
 
 P1=$(awk '/^### I\. /{f=1} /^### II\. /{f=0} f' "$C")
 inn "TC-003: principle I is titled Build Only What Seqera Cannot or Will Not Do Here" "$P1" '### I. Build Only What Seqera Cannot or Will Not Do Here'
@@ -70,9 +70,14 @@ inn "TC-009: I.1 Check is tests/scripts_name_their_alternative.sh"              
 inn "TC-004: I.2 Nextflow's own records (trace, report, log, nf-tower events) are the truth" "$P1" "Nextflow's own records (trace, report, log, and the events its \`nf-tower\` plugin emits) are the truth about a run"
 inn "TC-004: ...Seqera Platform's display counts while the plugin uses it"        "$P1" 'While the plugin uses Seqera Platform, Platform shows them'
 inn "TC-004: ...no second copy of a run's state in this repository"               "$P1" "No file in this repository MAY keep a second copy of a run's state"
-inn "TC-004: ...no submission script, state machine, or monitoring daemon"        "$P1" 'no submission script of our own, no state machine, and no monitoring daemon beyond the channels its check allow-lists'
+inn "TC-004: ...no state machine and no monitoring daemon"                        "$P1" 'no state machine and no monitoring daemon beyond the channels its check allow-lists'
+inn "TC-005: ...at most one submission path of our own"                            "$P1" 'There MAY be at most one submission path of our own'
+inn "TC-005: ...it is the station agent's launch job, the way Seqera Platform does" "$P1" "the station agent's launch job, which hands the Nextflow head job to the site's own scheduler the way Seqera Platform does"
+nin "TC-005: ...not 'exactly one'"                                                 "$P1" 'exactly one'
+inn "TC-006: ...runs only after the user has seen the full launch command and confirmed it" "$P1" 'runs only after the user has seen the full launch command and confirmed it'
+inn "TC-007: ...after the hand-off everything comes from Nextflow's records"       "$P1" "everything known about the run comes from Nextflow's records"
 inn "TC-004: ...Seqera's nouns where the backend is Seqera"                       "$P1" "follows Seqera's nouns"
-inn "TC-004: I.2 Check is tests/no_second_run_state_test.sh"                      "$P1" '*Check:* `tests/no_second_run_state_test.sh`.'
+inn "TC-008: I.2 Check is tests/no_second_run_state_test.sh, covering scripts/ and platform/" "$P1" '*Check:* `tests/no_second_run_state_test.sh` (its submission scan covers `scripts/` and `platform/`).'
 inn "TC-005: where Seqera's display and Nextflow's records disagree, Nextflow's win" "$P1" "where Platform's display and Nextflow's own records disagree, Nextflow's records win"
 if grep -qi 'run index' "$C"; then bad "TC-006: the constitution does not contain 'run index'" "$(grep -ni 'run index' "$C" | head -2)"; else ok "TC-006: the constitution does not contain 'run index'"; fi
 inn "TC-007: principle I rationale cites docs/adr/0004"                           "$P1" 'docs/adr/0004'
@@ -348,10 +353,10 @@ has "TC-038: ROADMAP: development and testing never go through Seqera's Services
 
 # TC-059: CLAUDE.md and README.md
 has "TC-059: CLAUDE.md: 2.17.0 uses Platform as the backend, Nextflow's records underneath" CLAUDE.md "Platform is the execution backend 2.17.0 uses; the truth about a run underneath it is Nextflow's own records"
-has "TC-059: CLAUDE.md points at constitution 3.0.0"                CLAUDE.md 'constitution 3.0.0'
+has "TC-059: CLAUDE.md points at constitution 4.0.0"                CLAUDE.md 'constitution 4.0.0'
 has "TC-059: CLAUDE.md still has 'Constitution 2.0.0'"             CLAUDE.md 'Constitution 2.0.0'
 has "TC-059: CLAUDE.md still has 'hooks/in_use.sh'"                CLAUDE.md 'hooks/in_use.sh'
-has "TC-059: README.md: Platform's runs rest on Nextflow's own records" README.md "Nextflow's own records, the truth under constitution 3.0.0"
+has "TC-059: README.md: Platform's runs rest on Nextflow's own records" README.md "Nextflow's own records, the truth under constitution 4.0.0"
 has "TC-059: README.md still has 'Constitution 2.0.0'"             README.md 'Constitution 2.0.0'
 
 # TC-060: the platform's own chat (maintainer, 2026-10-09: 「也做聊天介面 可接模型」)
