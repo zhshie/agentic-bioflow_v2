@@ -1,10 +1,10 @@
 # Not nf-shard: it accepts any non-empty token and keeps its data in Postgres; this receiver checks tokens it issued itself and keeps a small SQLite index.
-"""The receiver: the five requests Nextflow's nf-tower plugin sends, plus GET /user-info.
+"""The receiver: the five requests Nextflow's nf-tower plugin sends, plus GET /user-info, plus the three
+requests of the agents (agents.py).
 
 The plugin source is the specification (specs/008-run-receiver/research.md). Anything the
 plugin sends that is not listed there is ignored, never stored, and never an error.
 """
-import base64
 import json
 import time
 
@@ -12,7 +12,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from . import common, store
+from . import agents, common, store
 
 INT_UNSET = 2147483647  # Nextflow's 'no exit code yet'
 COUNT_FIELDS = ("succeeded", "cached", "failed", "aborted", "running", "pending", "submitted")
@@ -22,22 +22,7 @@ def _reply(status_code, message, **extra):
     return JSONResponse(dict(message=message, **extra), status_code=status_code)
 
 
-def _token_from_header(value):
-    """Bearer <token>, or Basic base64('@token:<token>') as Nextflow sends it."""
-    if not value:
-        return None
-    scheme, _, cred = value.strip().partition(" ")
-    cred = cred.strip()
-    if scheme.lower() == "bearer":
-        return cred or None
-    if scheme.lower() == "basic":
-        try:
-            decoded = base64.b64decode(cred, validate=True).decode("utf-8")
-        except (ValueError, UnicodeDecodeError):
-            return None
-        user, _, password = decoded.partition(":")
-        return password if user == "@token" and password else None
-    return None
+_token_from_header = common.token_from_header
 
 
 def _int(value, default=0):
@@ -47,8 +32,9 @@ def _int(value, default=0):
         return default
 
 
-def create_app(index_path, tokens_path, clock=time.time):
+def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
     store.init_index(index_path)
+    platform_path = platform_path or store.default_platform_path(index_path)
 
     def authorize(request):
         """Token id, or None. The check comes before anything is read or written."""
@@ -239,5 +225,5 @@ def create_app(index_path, tokens_path, clock=time.time):
         Route("/trace/{rid}/heartbeat", progress_like, methods=["PUT"]),
         Route("/trace/{rid}/complete", complete, methods=["PUT"]),
         Route("/user-info", user_info, methods=["GET"]),
-    ]
+    ] + agents.make_routes(platform_path, tokens_path, clock)
     return Starlette(routes=routes)

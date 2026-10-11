@@ -12,10 +12,16 @@ from pathlib import Path
 from helpers import PLATFORM_DIR, REPO_ROOT
 
 PKG = PLATFORM_DIR / "abf_platform"
+STATION = PLATFORM_DIR / "abf_station"
 
 
 def _sources():
     return sorted(p for p in PKG.rglob("*.py"))
+
+
+def _header_sources():
+    """Feature 007 (plan Revision 2 item 8): the header rule covers the agent package too."""
+    return _sources() + sorted(p for p in STATION.rglob("*.py"))
 
 
 def _all_platform_files():
@@ -69,8 +75,9 @@ def judge(path, repo_names):
 def test_tc070_every_python_source_names_its_alternative(tmp_path):
     # TC-070
     names = _repo_names()
-    files = _sources() + sorted((PLATFORM_DIR / "tests").glob("*.py"))
+    files = _header_sources() + sorted((PLATFORM_DIR / "tests").glob("*.py"))
     assert (PKG / "cli.py") in files, "cli.py must exist and be checked"
+    assert (STATION / "agent.py") in files and (STATION / "handlers.py") in files, "abf_station must be checked"
     problems = [judge(f, names) for f in files]
     assert [p for p in problems if p] == []
     # the rule must be able to go red
