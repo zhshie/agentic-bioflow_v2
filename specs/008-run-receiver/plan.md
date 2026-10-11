@@ -1,5 +1,15 @@
 # Plan: 008-run-receiver
 
+## Revision 3 (2026-10-11, after implementation; accepted by the developer-agent)
+
+- **Contract clarification for TC-030 and TC-031.** The start and end times of a rebuilt run may differ from the live values by at most 1 second, in whole seconds. Every other compared field must still be exactly equal.
+  - The reason is that Nextflow takes separate clock readings for its live events and for its own files, and `.nextflow/history` has only second precision. `research.md` records the measured samples.
+  - This loosens the literal "完全相同" of the contract on those two timestamps only. `test-case.md` itself is unchanged.
+- **Known limit, not in the contract.** A rebuilt run has no token owner, so its later messages are refused. `docs/PLATFORM.md` §5 tells users not to rebuild while a run is still going.
+- **Follow-up, not in this feature.**
+  - When `ABF_PLATFORM_CLOCK_OFFSET` is set, say so visibly.
+  - Under no CI, the whole platform suite skips when the venv cannot be built; it prints `PLATFORM TESTS SKIPPED`.
+
 ## Revision 2 (2026-10-11, after verifier CONTRACT review): supersedes the sections below where they conflict
 
 - **M1, tokens survive a rebuild.** Tokens live in their own SQLite file, `tokens.db`, next to the index, with its own override `ABF_PLATFORM_TOKENS`. `rebuild` only ever drops and recreates the index file and never opens `tokens.db` (TC-032).

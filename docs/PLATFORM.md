@@ -107,6 +107,7 @@ abf-platform rebuild /path/to/launch_folder_1 /path/to/launch_folder_2
 - The run ids, names, session ids, states and task numbers come out the same as before. Start and end times are whole seconds and can differ by one second from what the live messages said, because Nextflow writes them from separate clock readings.
 - A run that Nextflow never finished (killed) comes back as `lost`, never as running or succeeded.
 - Tokens are kept in a separate file that `rebuild` never opens, so issued tokens stay valid.
+- **Do not rebuild while a run is still going.** A rebuilt run has no token owner, so the platform refuses that run's later messages, and Nextflow stops a run whose progress message is refused. Wait until every run has finished, or accept that a still-running run is shown as `lost` and may be stopped.
 - Nextflow keeps the logs of only a limited number of past runs per folder. A run whose log or trace file is gone is rebuilt from `.nextflow/history` alone, with a note, and its task numbers are zero.
 
 ## Where the files are
