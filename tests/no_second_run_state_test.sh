@@ -180,6 +180,65 @@ do :; done'
     case_ "tw runs list read into a variable passes" 0 scripts/a.sh 'out=$(tw runs list)'
     case_ "an invented tw noun fails"             1 commands/a.md 'Run `tw frobnicate -i 1` first.'
     case_ "a Seqera noun passes"                  0 commands/a.md 'Run `tw runs list` first.'
+    # Constitution 4.0.0: scan 1 also reads platform/abf_platform and platform/abf_station.
+    # lt_ makes an empty scratch tree; lf_ writes a file into it; lrun_ runs the check
+    # on it with LAUNCH_ALLOW_EXTRA set, and wants an exit code and an output line
+    # (an ERE, anchored with ^ where the line must open with the word).
+    lt_() { rm -rf "$S/t"; mkdir -p "$S/t/scripts" "$S/t/commands" "$S/t/skills" "$S/t/platform/tests" "$S/t/platform/abf_station" "$S/t/platform/abf_platform"; }
+    lf_() { mkdir -p "$(dirname "$S/t/$1")"; printf '%s\n' "$2" > "$S/t/$1"; }
+    lrun_() { # lrun_ <label> <want-rc> <want-line ERE, or -> <LAUNCH_ALLOW_EXTRA text>
+        local out rc
+        out=$(LAUNCH_ALLOW_EXTRA="$4" NO_RUN_STATE_ROOT="$S/t" bash "${BASH_SOURCE[0]}" 2>&1); rc=$?
+        [ "$rc" = "$2" ] || { echo "SELFTEST FAIL: $1 (rc $rc, wanted $2)"; selffails=$((selffails + 1)); return; }
+        [ "$3" = "-" ] || grep -qE -- "$3" <<<"$out" || { echo "SELFTEST FAIL: $1 (no output line matching $3)"; selffails=$((selffails + 1)); }
+    }
+    NOENTRY='^LAUNCH  platform/abf_station/x[.]py submits and has no entry'
+    NOTEST='^LAUNCH  platform/abf_station/x[.]py submits, but its confirmation test test_refuses does not exist'
+    ENTRY='platform/abf_station/x.py|platform/tests/test_x.py::test_refuses|refuses an unconfirmed launch'
+    SUB='subprocess.run(["sbatch", "job.sh"])'
+    lt_; lf_ platform/abf_station/x.py "$SUB"
+    lrun_ "a submission in platform/abf_station with no entry fails"    1 "$NOENTRY" ""
+    lt_; lf_ platform/abf_platform/x.py "$SUB"; lf_ platform/abf_platform/x.sh 'sbatch job.sh'
+    lrun_ "a submission in platform/abf_platform (.py and .sh) with no entry fails" 1 '^LAUNCH  platform/abf_platform/x[.]py submits and has no entry' ""
+    lrun_ "...and the .sh file is read as well"                         1 '^LAUNCH  platform/abf_platform/x[.]sh submits and has no entry' ""
+    lt_; lf_ platform/tests/x.py 'sbatch job.sh'
+    lrun_ "a submission under platform/tests passes (the fake site is called sbatch)" 0 - ""
+    lt_; lf_ platform/abf_station/x.py "$SUB"; lf_ platform/tests/test_x.py 'def test_refuses():
+    pass'
+    lrun_ "a listed submission with an existing confirmation test passes" 0 - "$ENTRY"
+    lt_; lf_ platform/abf_station/x.py "$SUB"; lf_ platform/tests/test_x.py 'def test_other():
+    pass'
+    lrun_ "a listed submission whose test name is not defined fails"    1 "$NOTEST" "$ENTRY"
+    lt_; lf_ platform/abf_station/x.py "$SUB"
+    lrun_ "a listed submission whose test file does not exist fails"    1 "$NOTEST" "$ENTRY"
+    lt_; lf_ platform/abf_station/x.py 'x = 1'; lf_ platform/tests/test_x.py 'def test_refuses():
+    pass'
+    lrun_ "a stale LAUNCH_ALLOW entry fails"                            1 '^STALE  platform/abf_station/x[.]py' "$ENTRY"
+    # LAUNCH_ALLOW_EXTRA counts only in a scratch tree: run a copy of this check as if it
+    # were the real one (NO_RUN_STATE_ROOT unset), with an entry that would otherwise pass.
+    lt_; lf_ platform/abf_station/x.py "$SUB"; lf_ platform/tests/test_x.py 'def test_refuses():
+    pass'
+    mkdir -p "$S/t/tests"; cp "${BASH_SOURCE[0]}" "$S/t/tests/no_second_run_state_test.sh"
+    out=$(env -u NO_RUN_STATE_ROOT LAUNCH_ALLOW_EXTRA="$ENTRY" bash "$S/t/tests/no_second_run_state_test.sh" 2>&1); rc=$?
+    { [ "$rc" = 1 ] && grep -qE -- "$NOENTRY" <<<"$out"; } || { echo "SELFTEST FAIL: LAUNCH_ALLOW_EXTRA is ignored when NO_RUN_STATE_ROOT is not set (rc $rc)"; selffails=$((selffails + 1)); }
+    lt_; lf_ platform/abf_station/x.py "$SUB"; lf_ platform/abf_station/y.py "$SUB"; lf_ platform/tests/test_x.py 'def test_refuses():
+    pass'
+    lrun_ "a second LAUNCH_ALLOW entry fails"                           1 '^LAUNCH  only one submission path is allowed \(I[.]2\); found 2' "$ENTRY
+platform/abf_station/y.py|platform/tests/test_x.py::test_refuses|second"
+    lt_; lf_ platform/abf_station/x.py "$SUB"; lf_ platform/tests/test_x.py '# def test_refuses(): a comment does not define it
+x = "def test_refuses("'
+    lrun_ "a test name found only in a comment or a string fails"       1 "$NOTEST" "$ENTRY"
+    lt_; lf_ platform/abf_station/x.py "$SUB"; lf_ tests/test_x.py 'def test_refuses():
+    pass'
+    lrun_ "a test file outside platform/tests fails"                    1 "$NOTEST" "platform/abf_station/x.py|tests/test_x.py::test_refuses|wrong place"
+    lt_; lf_ platform/abf_station/x.py "$SUB"; lf_ platform/tests/test_x.py 'async def test_refuses():
+    pass'
+    lrun_ "an async def confirmation test counts"                       0 - "$ENTRY"
+    lt_; lf_ scripts/a.sh 'sbatch job.sh'; lf_ platform/tests/test_x.py 'def test_refuses():
+    pass'
+    lrun_ "an entry for scripts/ fails, and does not excuse the submission" 1 '^LAUNCH  scripts/a[.]sh: only platform code may hold the launch path' "scripts/a.sh|platform/tests/test_x.py::test_refuses|no"
+    lt_; lf_ platform/abf_station/x.py 'nohup ./w &'; lf_ platform/abf_platform/x.py 'store = "runs.db"'
+    lrun_ "scans 2 and 3 do not read platform/ (its index is not run state)" 0 - ""
     [ "$selffails" -gt 0 ] && { echo "FAIL: $selffails self-test(s) failed"; exit 1; }
 fi
 
