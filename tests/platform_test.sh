@@ -106,6 +106,22 @@ fetch() {
     return 0
 }
 
+# unpack_zip <zip> <dest>: unzip, else jar (a JDK is required anyway), and only then
+# Python's zipfile. Python 3.12 refuses the sha256-verified nf-tower zip ("Overlapped
+# entries ... possible zip bomb"), so it must not be the first or only way.
+unpack_zip() {
+    local zip="$1" dest="$2"
+    case "$zip" in /*) ;; *) zip="$PWD/$zip" ;; esac
+    rm -rf "$dest"; mkdir -p "$dest"
+    if command -v unzip >/dev/null 2>&1 && unzip -q -o "$zip" -d "$dest"; then return 0; fi
+    rm -rf "$dest"; mkdir -p "$dest"
+    if command -v jar >/dev/null 2>&1 && (cd "$dest" && jar xf "$zip"); then return 0; fi
+    rm -rf "$dest"; mkdir -p "$dest"
+    "$VPY" -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$zip" "$dest" && return 0
+    rm -rf "$dest"
+    return 1
+}
+
 # --- 1. Python and the venv ---------------------------------------------------
 PY=""
 for c in python3.13 python3.12 python3.11 python3.10 python3; do
@@ -171,9 +187,7 @@ if [ -z "$E2E_SKIP_REASON" ]; then
         cp -f "$DIST" "$NXF_HOME_DIR/framework/$NF_VERSION/nextflow-$NF_VERSION-dist"
         PLUGIN_DIR="$NXF_HOME_DIR/plugins/nf-tower-$NFTOWER_VERSION"
         if [ "$(cat "$PLUGIN_DIR/.abf-sha256" 2>/dev/null)" != "$NFTOWER_SHA256" ]; then
-            rm -rf "$PLUGIN_DIR"
-            "$VPY" -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$ZIP" "$PLUGIN_DIR" \
-                || hard_fail "cannot unpack $ZIP"
+            unpack_zip "$ZIP" "$PLUGIN_DIR" || hard_fail "cannot unpack $ZIP"
             echo "$NFTOWER_SHA256" > "$PLUGIN_DIR/.abf-sha256"
         fi
     fi
