@@ -145,3 +145,84 @@ def test_tc056_a_download_with_the_wrong_content_is_discarded(tmp_path, warm):
     assert not list((cache / "downloads").glob("*.part*"))
     # the real downloads are in the cache folder, never inside the repository
     assert str(REPO_ROOT) not in str(REAL_CACHE)
+
+
+# ---- unpacking the plugin zip must not depend on Python's zipfile (CI: Python 3.12 rejects the
+# ---- verified nf-tower zip with "Overlapped entries: possible zip bomb") -------------------
+
+def _stub_bin(tmp_path, name, log, real=None, fail=False):
+    """A bin dir with the commands the wrapper needs plus logging stand-ins for unzip and jar."""
+    d = tmp_path / ("bin-" + name)
+    d.mkdir()
+    for n in NEEDED + ["java", "jar", "unzip"]:
+        p = shutil.which(n)
+        if p and n not in ("unzip", "jar"):
+            os.symlink(p, d / n)
+    for tool in ("unzip", "jar"):
+        script = d / tool
+        if tool in (real or ()):
+            body = 'echo %s >> "%s"\n' % (tool, log)
+            if fail:
+                body += "exit 1\n"
+            elif tool == "unzip":
+                # unzip -q -o <zip> -d <dir>, done with the real jar so the stand-in works where unzip is absent
+                body += 'zip="$3"; dir="$5"; mkdir -p "$dir"; cd "$dir" && %s xf "$zip"\n' % shutil.which("jar")
+            else:
+                body += 'exec %s "$@"\n' % shutil.which("jar")
+            script.write_text("#!/bin/bash\n" + body)
+            script.chmod(0o755)
+    return d
+
+
+def _seeded_cache(tmp_path):
+    cache = tmp_path / "cache"
+    (cache / "downloads").mkdir(parents=True)
+    for f in (REAL_CACHE / "downloads").glob("nextflow-*"):
+        shutil.copy(f, cache / "downloads" / f.name)
+    return cache
+
+
+def _unpack_run(tmp_path, tag, tools, fail=False, zip_file=None, sha=None):
+    log = tmp_path / (tag + ".log")
+    cache = _seeded_cache(tmp_path / tag)
+    path = str(_stub_bin(tmp_path / tag, tag, log, real=tools, fail=fail))
+    extra = {}
+    if zip_file:
+        extra = dict(ABF_NFTOWER_URL="file://" + str(zip_file), ABF_NFTOWER_SHA256=sha)
+    else:
+        extra = dict(ABF_NFTOWER_URL="file://" + str(REAL_CACHE / "downloads" / "nf-tower-1.28.3.zip"))
+    r = _wrapper(_preflight_env(PATH=path, CI="true", ABF_PLATFORM_CACHE=str(cache), **extra))
+    calls = log.read_text().split() if log.exists() else []
+    return r, calls, cache
+
+
+def test_plugin_zip_is_unpacked_with_unzip_first(tmp_path, warm):
+    r, calls, cache = _unpack_run(tmp_path, "a", ("unzip", "jar"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert calls == ["unzip"], calls
+    assert (cache / "nxf-home-26.04.7" / "plugins" / "nf-tower-1.28.3" / "classes").is_dir()
+
+
+def test_plugin_zip_falls_back_to_jar_when_there_is_no_unzip(tmp_path, warm):
+    r, calls, cache = _unpack_run(tmp_path, "b", ("jar",))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert calls == ["jar"], calls
+    assert (cache / "nxf-home-26.04.7" / "plugins" / "nf-tower-1.28.3" / "classes").is_dir()
+
+
+def test_plugin_zip_uses_python_only_after_unzip_and_jar_failed(tmp_path, warm):
+    r, calls, cache = _unpack_run(tmp_path, "c", ("unzip", "jar"), fail=True)
+    assert calls == ["unzip", "jar"], calls
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (cache / "nxf-home-26.04.7" / "plugins" / "nf-tower-1.28.3" / "classes").is_dir()
+
+
+def test_a_zip_nothing_can_unpack_is_a_hard_failure(tmp_path, warm):
+    import hashlib
+    junk = tmp_path / "junk.zip"
+    junk.write_bytes(b"this is not a zip file")
+    r, calls, _ = _unpack_run(tmp_path, "d", ("unzip", "jar"), fail=True, zip_file=junk,
+                              sha=hashlib.sha256(junk.read_bytes()).hexdigest())
+    assert r.returncode != 0
+    assert "cannot unpack" in r.stdout
+    assert calls == ["unzip", "jar"]
