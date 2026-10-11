@@ -141,7 +141,11 @@ def test_tc042_one_fault_at_a_time_fails_exactly_that_check(world):
         finally:
             fix_it()
         assert failed(out) == want, (name, verdicts(out))
-        assert all(s in ("pass", "unchecked") for n, s in verdicts(out).items() if n not in want), (name, verdicts(out))
+        # strict: the faulted item fails, every other item passes; only without sinfo is head_queue unchecked
+        expected = {n: ("fail" if n in want else "pass") for n in CHECKS}
+        if name == "sinfo":
+            expected["head_queue"] = "unchecked"
+        assert verdicts(out) == expected, (name, verdicts(out))
         ce = ce_of(world.state_db, "lab-a")
         assert ce["status"] == "invalid" and name in ce["message"], (name, ce["message"])
     assert run_job(world.state_db, "preflight", "lab-a")["ok"] is True
