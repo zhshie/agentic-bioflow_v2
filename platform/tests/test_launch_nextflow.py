@@ -46,7 +46,8 @@ class Chain:
 
     def start(self, run, flow, n=8, kill_group=False):
         (self.tmp / ("relay-" + run)).mkdir()
-        relay = Relay(self.tmp / ("relay-" + run), forward=self.env.port)
+        relay = Relay(self.tmp / ("relay-" + run), forward=self.env.port,
+                      instance=store.instance_id(store.default_platform_path(self.env.index)))
         self.relays[run] = relay
         from abf_station import launch
         ce = ce_snapshot(workDir=str(self.tmp / ("work-" + run)), launchDir=None, headQueue="normal", computeQueue=None, environment=[

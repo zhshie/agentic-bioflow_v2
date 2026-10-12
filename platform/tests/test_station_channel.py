@@ -142,6 +142,8 @@ def test_tc038_tc012_two_launches_share_one_forward_and_both_files_hold_its_port
     assert (personal(site) / "forward_port").read_text().strip() == "41234"
     relay_file = site.storage / "_relay" / "forward_port"
     assert relay_file.read_text().strip() == "41234" and stat.S_IMODE(relay_file.stat().st_mode) == 0o600
+    inst_file = site.storage / "_relay" / "forward_instance"
+    assert inst_file.read_text().strip() == INSTANCE and stat.S_IMODE(inst_file.stat().st_mode) == 0o600
     scripts = site.scripts()
     assert len(scripts) == 2 and all(str(relay_file) in s for s in scripts)
     assert all("-Dhttp.nonProxyHosts=" in s for s in scripts)
@@ -212,6 +214,7 @@ def test_tc038_abf_station_unforward_cancels_and_removes_both_files(tmp_path, si
     assert [c for c in site.ssh_calls() if "-O cancel" in c]
     assert not (personal(site) / "forward_port").exists()
     assert not (site.storage / "_relay" / "forward_port").exists()
+    assert not (site.storage / "_relay" / "forward_instance").exists()
 
 
 def test_tc064_after_the_shared_connection_ends_nothing_rebuilds_the_forward(tmp_path, site, fake):

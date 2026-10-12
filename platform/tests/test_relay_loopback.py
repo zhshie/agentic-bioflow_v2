@@ -18,11 +18,22 @@ RELAY = REPO_ROOT / "scripts" / "nf_relay.py"
 GOLDEN = Path(__file__).resolve().parent / "fixtures" / "relay_golden.json"
 
 
-class Counting:
-    """A server on 127.0.0.1 that answers every request with 'ok', keeps the connection open, and records what it saw."""
+INSTANCE = "inst-0123456789abcdef"
 
-    def __init__(self, port=None):
+
+class Counting:
+    """A server on 127.0.0.1 that answers every request with 'ok', keeps the connection open, and records what it saw.
+
+    Like the platform it answers the relay's question (a GET /user-info with the header X-ABF-Probe) with a 401 that names
+    its instance id. `mode` makes it an impostor instead: "noheader" answers 401 with no id, "wrongid" another id, "ok200"
+    a 200, "silent" nothing at all. `requests` holds the requests that were not that question; `raw` everything it received."""
+
+    def __init__(self, port=None, mode="platform", instance=INSTANCE):
         self.port = port or free_port()
+        self.mode = mode
+        self.instance = instance
+        self.raw = b""
+        self.probes = 0
         self.connections = 0
         self.requests = []          # (connection number, request line)
         self.lock = threading.Lock()
@@ -62,7 +73,20 @@ class Counting:
                     buf += conn.recv(4096)
                 buf = buf[need:]
                 with self.lock:
-                    self.requests.append((n, line))
+                    self.raw += head + b"\r\n\r\n"
+                    if b"x-abf-probe" in head.lower():
+                        self.probes += 1
+                    else:
+                        self.requests.append((n, line))
+                if b"x-abf-probe" in head.lower():
+                    answer = {"platform": b"HTTP/1.1 401 Unauthorized\r\nX-ABF-Platform: " + self.instance.encode() + b"\r\nContent-Length: 0\r\n\r\n",
+                              "noheader": b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n",
+                              "wrongid": b"HTTP/1.1 401 Unauthorized\r\nX-ABF-Platform: someone-else-0000\r\nContent-Length: 0\r\n\r\n",
+                              "ok200": b"HTTP/1.1 200 OK\r\nX-ABF-Platform: " + self.instance.encode() + b"\r\nContent-Length: 0\r\n\r\n",
+                              "silent": b""}[self.mode]
+                    if answer:
+                        conn.sendall(answer)
+                    continue
                 conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")   # and the connection stays open
         except OSError:
             pass
@@ -75,11 +99,14 @@ class Counting:
 
 
 class Relay:
-    def __init__(self, tmp, forward=None):
+    def __init__(self, tmp, forward=None, instance=INSTANCE):
         self.port = free_port()
         self.forward_file = Path(tmp) / "forward_port"
+        self.instance_file = Path(tmp) / "forward_instance"
         if forward is not None:
             self.forward_file.write_text(str(forward) + "\n")
+            if instance:
+                self.instance_file.write_text(instance + "\n")
         self.log = Path(tmp) / "relay.log"
         env = dict(os.environ, NF_RELAY_FORWARD_FILE=str(self.forward_file), NF_RELAY_EXTRA_DOMAINS="abf-golden.example.org",
                    PYTHONDONTWRITEBYTECODE="1")
@@ -314,3 +341,39 @@ def test_tc075_with_no_forward_file_the_relay_answers_exactly_as_it_did_before_f
     golden = json.loads(GOLDEN.read_text())
     assert golden["recorded_from"].startswith("bd9d42b")
     assert got == golden["answers"]
+
+
+@pytest.mark.parametrize("mode", ["noheader", "wrongid", "ok200", "silent"])
+def test_tc080_a_listener_that_took_over_the_forward_port_never_sees_a_run_token(tmp_path, mode):
+    # security F1: when the shared connection ends, its port is free and another user of the login node can listen on it
+    impostor = Counting(mode=mode)
+    relay = Relay(tmp_path, forward=impostor.port)
+    token = "abf_STOLEN_RUN_TOKEN_CANARY_93ac"
+    try:
+        for method, path in (("PUT", "/trace/abc/progress"), ("POST", "/trace/create"), ("GET", "/user-info")):
+            answer = relay.send(get("http://127.0.0.1:%d%s" % (impostor.port, path), method=method, body=b"{}" if method != "GET" else b"",
+                                    extra=("Authorization: Bearer %s\r\n" % token).encode()))
+            assert status(answer) in (None, 403), (mode, answer[:80])
+        assert impostor.requests == [], "nothing but the question reached it"
+        assert token.encode() not in impostor.raw
+        assert any("DENY-LOOPBACK" in ln for ln in relay.lines())
+    finally:
+        relay.stop()
+        impostor.stop()
+
+
+def test_tc080_without_an_instance_file_or_with_a_broken_one_the_door_stays_shut(tmp_path, world):
+    relay, srv = world
+    F = srv.port
+    for content in (None, b"", b"short\n", b"has space in it\n", b"x" * 100, b"\xff\x00\x01 not text"):
+        if content is None:
+            relay.instance_file.unlink()
+        else:
+            relay.instance_file.write_bytes(content)
+        assert status(relay.send(get("http://127.0.0.1:%d/trace/create" % F, method="POST", body=b"{}"))) in (None, 403), content
+    assert srv.requests == []
+    relay.instance_file.write_text(INSTANCE + "\n")
+    assert status(relay.send(get("http://127.0.0.1:%d/trace/create" % F, method="POST", body=b"{}"))) == 200
+    relay.instance_file.write_text("another-platform-id\n")      # the file names another platform than the one that answers
+    assert status(relay.send(get("http://127.0.0.1:%d/trace/create" % F, method="POST", body=b"{}"))) in (None, 403)
+    assert len(srv.requests) == 1
