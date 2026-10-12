@@ -41,3 +41,15 @@ def e2e_cfg():
         "home": os.environ["ABF_NXF_HOME"],
         "ver": os.environ["ABF_NXF_VER"],
     }
+
+
+@pytest.fixture(scope="session")
+def e2e_cfg2():
+    """Where the wrapper put the second pinned Nextflow (25.10.4 with nf-tower 1.17.5, feature 007b). Skips loudly, never silently."""
+    reason = os.environ.get("ABF_E2E2_SKIP_REASON") or os.environ.get("ABF_E2E_SKIP_REASON")
+    if reason:
+        pytest.skip("E2E SKIPPED: " + reason)
+    launcher = os.environ.get("ABF_NXF2_LAUNCHER")
+    if not launcher:
+        pytest.fail("the end-to-end tests of the launch path need the second pinned Nextflow: run them through tests/platform_test.sh")
+    return {"launcher": launcher, "home": os.environ["ABF_NXF2_HOME"], "ver": os.environ["ABF_NXF2_VER"]}
