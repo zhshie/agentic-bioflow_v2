@@ -284,17 +284,18 @@ if [ -n "${ABF_PYTEST_TARGETS:-}" ] || [ -n "${ABF_PYTEST_SERIAL:-}" ]; then
 else
     # Several pytest processes at once, by test file. The suite is long (real Nextflow runs, real processes, long polls that
     # wait) and the files do not share state: each makes its own folders and takes its own free ports. The shards are fixed
-    # lists, balanced by the time each file took when they were made; every other file goes into the last shard. One file
-    # checks times within a second (a rebuilt end time against the live one) and failed when other shards were busy, so it
-    # runs by itself afterwards. Output is printed shard by shard at the end.
-    LAST="tests/test_nextflow_e2e.py"
+    # lists, balanced by the time each file took when they were made; every other file goes into the last shard. Two files
+    # check the clock closely (the agent's heartbeats are 2 s apart and a rebuilt end time must be within a second of the live
+    # one) and failed on a runner with two cores when other shards were busy, so they run one after the other, alone, once the
+    # shards have finished. Output is printed shard by shard at the end.
+    LAST="tests/test_station_e2e.py tests/test_nextflow_e2e.py"
     SHARDS="
 tests/test_wrapper_nf2.py
-tests/test_wrapper.py tests/test_launch_nextflow.py
-tests/test_station_e2e.py tests/test_station_cancel.py
+tests/test_wrapper.py
+tests/test_launch_nextflow.py
 tests/test_launch_e2e.py tests/test_station_fakeplatform.py tests/test_station_channel.py
-tests/test_launch_cli.py tests/test_station_launch.py
-tests/test_relay_loopback.py tests/test_station_envs.py
+tests/test_station_cancel.py tests/test_launch_cli.py
+tests/test_station_launch.py tests/test_relay_loopback.py tests/test_station_envs.py
 "
     listed=" $(echo $SHARDS) $LAST "
     rest=""
@@ -318,9 +319,11 @@ tests/test_relay_loopback.py tests/test_station_envs.py
     start_shard "$rest"
     shard_rc=""
     for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
-    pids=""
-    start_shard "$LAST"
-    for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
+    for f in $LAST; do
+        pids=""
+        start_shard "$f"
+        for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
+    done
     : > "$LOG"
     for i in $(seq 1 "$n"); do
         echo "===== pytest shard $i ====="

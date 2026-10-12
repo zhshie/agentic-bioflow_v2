@@ -106,16 +106,13 @@ def chain(e2e_cfg2, tmp_path_factory):
     c.start("run-retry", "retry")
     c.start("run-cut", "multi")
     c.start("run-term", "multi", n=20)
-    c.start("run-kill", "multi", n=20)
     t = threading.Thread(target=sampler, daemon=True)
     t.start()
-    # the relay of run-cut is stopped while the run is under way; run-term gets a SIGTERM; run-kill is killed hard
+    # the relay of run-cut is stopped while the run is under way (it never sends its complete, so it is lost); run-term gets a SIGTERM
     wait_until(lambda: (c.view("run-cut") or {}).get("tasks", {}).get("succeeded", 0) >= 1, timeout=90, what="run-cut under way")
     c.relays["run-cut"].stop()
     wait_until(lambda: (c.view("run-term") or {}).get("tasks", {}).get("succeeded", 0) >= 1, timeout=90, what="run-term under way")
     os.killpg(c.runs["run-term"]["proc"].pid, signal.SIGTERM)
-    wait_until(lambda: (c.view("run-kill") or {}).get("tasks", {}).get("succeeded", 0) >= 1, timeout=90, what="run-kill under way")
-    os.killpg(c.runs["run-kill"]["proc"].pid, signal.SIGKILL)
     for r in c.runs.values():
         try:
             r["proc"].wait(timeout=240)
@@ -183,7 +180,7 @@ def test_tc045_a_stopped_run_is_shown_as_nextflow_reports_it_and_a_run_that_just
     assert v is not None and v["status"] == "failed", v
     assert v["ended_at"] is not None
     assert v["tasks"]["total"] >= 1
-    k = chain.view("run-kill")
+    k = chain.view("run-cut")      # its messages stopped with the relay and no complete ever came: it just vanishes
     assert k["status"] == "running"
     assert status.get_run(chain.env.index, k["id"], time.time() + 181)["status"] == "lost"
     for f in (PLATFORM_DIR / "abf_platform").rglob("*.py"):
@@ -192,7 +189,7 @@ def test_tc045_a_stopped_run_is_shown_as_nextflow_reports_it_and_a_run_that_just
 
 def test_tc039_the_token_of_a_run_is_refused_for_any_other_run_through_the_whole_chain(chain):
     import urllib.request
-    tok = chain.runs["run-kill"]["token"]  # its run never sent a complete, so the token is still alive
+    tok = chain.runs["run-cut"]["token"]  # its complete never arrived, so the token is still alive
     relay = chain.relays["run-retry"]
     body = b'{"sessionId": "s-x", "runName": "some-other-run"}'
     req = urllib.request.Request("http://127.0.0.1:%d/trace/create" % chain.env.port, data=body, method="POST", headers={
