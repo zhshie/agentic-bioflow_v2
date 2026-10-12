@@ -13,7 +13,7 @@ import sys
 import urllib.parse
 from pathlib import Path
 
-from . import __version__, agent, site
+from . import __version__, site   # agent is imported in cmd_run: its imports (urllib, tarfile) load shutil, which cannot load under a Windows shell
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 WINDOWS_MOUNTS = ("drvfs", "9p", "fuse.drvfs")
@@ -105,6 +105,7 @@ def cmd_run(args):
             return EXIT_REFUSED
     token = Path(args.token_file).read_text(encoding="utf-8").strip()
     settings = Path(args.deployment) / "config" / "env.yaml"
+    from . import agent
     return agent.run(args.platform, token, args.name, plugin_root, settings)
 
 
@@ -148,5 +149,10 @@ def build_parser():
 
 
 def main(argv=None):
+    # first of all: on a Windows shell argparse itself imports shutil, which cannot load there, so the refusal comes before the parser is built
+    problem = windows_problem()
+    if problem:
+        say("abf-station will not start: %s" % problem)
+        return EXIT_REFUSED
     args = build_parser().parse_args(argv)
     return args.func(args)
