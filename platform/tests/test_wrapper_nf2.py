@@ -86,3 +86,16 @@ def test_tc054_without_the_second_pair_ci_fails_and_a_local_run_skips_loudly(tmp
     line = _skipped_line(local.stdout)
     assert line and "download failed" in line[0], local.stdout
     assert "would be skipped" in local.stdout
+
+
+def test_a_failing_test_is_named_in_the_last_lines_of_the_wrapper_output(tmp_path, warm2):
+    # round 2: run_all.sh shows only the tail of this wrapper's output, so the failing test ids must be at its end
+    from helpers import PLATFORM_DIR
+    copy = tmp_path / "platform"
+    shutil.copytree(PLATFORM_DIR, copy, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"))
+    (copy / "tests" / "test_deliberate_failure_b.py").write_text("def test_deliberately_failing_marker_b():\n    assert 1 == 2\n")
+    r = _wrapper(_clean_env(ABF_PLATFORM_DIR=str(copy), ABF_PYTEST_TARGETS="tests/test_deliberate_failure_b.py"))
+    assert r.returncode != 0
+    tail = r.stdout.strip().splitlines()[-4:]
+    assert any("failing tests:" in ln for ln in tail) or any("test_deliberately_failing_marker_b" in ln for ln in tail), tail
+    assert "FAILED tests/test_deliberate_failure_b.py::test_deliberately_failing_marker_b" in "\n".join(tail)

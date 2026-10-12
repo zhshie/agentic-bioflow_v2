@@ -279,7 +279,7 @@ export PYTHONDONTWRITEBYTECODE=1
 if [ -n "${ABF_PYTEST_TARGETS:-}" ] || [ -n "${ABF_PYTEST_SERIAL:-}" ]; then
     # one pytest process: what was asked for (the wrapper's own tests do this to run a single file)
     # shellcheck disable=SC2086
-    "$VPY" -m pytest -rs -p no:cacheprovider ${ABF_PYTEST_TARGETS:-tests} ${ABF_PYTEST_ARGS:-} 2>&1 | tee "$LOG"
+    "$VPY" -m pytest -rsfE -p no:cacheprovider ${ABF_PYTEST_TARGETS:-tests} ${ABF_PYTEST_ARGS:-} 2>&1 | tee "$LOG"
     rc=${PIPESTATUS[0]}
 else
     # Several pytest processes at once, by test file. The suite is long (real Nextflow runs, real processes, long polls that
@@ -309,23 +309,25 @@ tests/test_relay_loopback.py tests/test_station_envs.py
         # A job started with & by a script is started with SIGINT ignored, and every program under it would inherit that: a test
         # that sends the agent SIGINT would find it deaf. So Python puts SIGINT back to its default and then becomes pytest.
         # shellcheck disable=SC2086
-        "$VPY" -c 'import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execv(sys.executable, [sys.executable, "-m", "pytest"] + sys.argv[1:])'             -rs -p no:cacheprovider $1 ${ABF_PYTEST_ARGS:-} > "$LOG.$n" 2>&1 &
+        "$VPY" -c 'import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execv(sys.executable, [sys.executable, "-m", "pytest"] + sys.argv[1:])'             -rsfE -p no:cacheprovider $1 ${ABF_PYTEST_ARGS:-} > "$LOG.$n" 2>&1 &
         pids="$pids $!"
     }
     while IFS= read -r files; do
         [ -n "$files" ] && start_shard "$files"
     done <<< "$SHARDS"
     start_shard "$rest"
-    for pid in $pids; do wait "$pid" || rc=1; done
+    shard_rc=""
+    for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
     pids=""
     start_shard "$LAST"
-    for pid in $pids; do wait "$pid" || rc=1; done
+    for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
     : > "$LOG"
     for i in $(seq 1 "$n"); do
         echo "===== pytest shard $i ====="
         cat "$LOG.$i"
         cat "$LOG.$i" >> "$LOG"
     done
+    echo "pytest exit code of each shard, in order: $shard_rc"
 fi
 
 skipped=0
@@ -333,6 +335,12 @@ for k in $(sed -n 's/.* \([0-9][0-9]*\) skipped.*/\1/p' "$LOG"); do skipped=$((s
 echo
 if [ -n "$E2E_SKIP_REASON" ]; then
     echo "E2E SKIPPED: $E2E_SKIP_REASON"
+fi
+# which tests failed, last, so that a log cut to its tail (tests/run_all.sh prints the last lines only) still names them
+failing="$(grep -E '^(FAILED|ERROR) ' "$LOG" | sort -u)"
+if [ -n "$failing" ]; then
+    echo "failing tests:"
+    printf '%s\n' "$failing" | cut -c1-200
 fi
 echo "platform tests: pytest exit $rc, $skipped skipped"
 if [ "$rc" = 0 ] && [ "$CI_MODE" = 1 ] && [ "$skipped" != 0 ]; then
