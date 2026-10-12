@@ -308,14 +308,25 @@ def test_tc090_the_new_tables_have_no_run_state_and_the_job_kinds_are_locked_in_
     for t in tables:
         for col in [c[1].lower() for c in con.execute("PRAGMA table_info(%s)" % t)] + [t]:
             for word in ("run", "workflow", "session", "task", "exit"):
+                # feature 007b (TC-060): the hand-off record names a run and its folder, and nothing else here does
+                if word == "run" and (t, col) in (("launches", "run_name"), ("launches", "run_folder")):
+                    continue
                 assert word not in col, (t, col)
     for kind in ("rm", "launch", "scancel", "write_file", ""):
         with pytest.raises(sqlite3.IntegrityError):
             con.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at) "
                         "VALUES ('a1', 'x', ?, '{}', 'queued', 1, 2)", (kind,))
-    for kind in ("preflight", "list_site_files"):
-        con.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at) "
-                    "VALUES ('a1', 'x', ?, '{}', 'queued', 1, 2)", (kind,))
+    # feature 007b (TC-060): exactly five kinds; the two that write need a confirmation
+    con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c1', 'x', 'launch', 1)")
+    con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c2', 'x', 'cancel', 1)")
+    for kind, cid in (("preflight", None), ("list_site_files", None), ("launch_nextflow", "c1"), ("cancel_run", "c2"),
+                      ("fetch_run_records", None)):
+        con.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, confirmation_id) "
+                    "VALUES ('a1', 'x', ?, '{}', 'queued', 1, 2, ?)", (kind, cid))
+    declared = re.search(r"kind TEXT NOT NULL CHECK \(kind IN \(([^)]*)\)\)",
+                         con.execute("SELECT sql FROM sqlite_master WHERE name = 'jobs'").fetchone()[0]).group(1)
+    assert set(re.findall(r"'([a-z_]+)'", declared)) == {"preflight", "list_site_files", "launch_nextflow", "cancel_run",
+                                                         "fetch_run_records"}
     con.close()
 
 

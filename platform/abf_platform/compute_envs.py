@@ -47,13 +47,13 @@ class CEError(Exception):
 
 # ---- rules shared by the fields ----------------------------------------------------------
 
-_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
-_QUEUE = re.compile(r"^[A-Za-z0-9_.-]+$")
-_PATH_CHARS = re.compile(r"^[A-Za-z0-9_./@+=:,-]+$")
-_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$")
-_USER = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$")
-_CRED_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,99}$")
-_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,99}$")
+_NAME = re.compile(r"^[A-Za-z0-9_.-]+\Z")
+_QUEUE = re.compile(r"^[A-Za-z0-9_.-]+\Z")
+_PATH_CHARS = re.compile(r"^[A-Za-z0-9_./@+=:,-]+\Z")
+_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{0,252}\Z")
+_USER = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\Z")
+_CRED_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,99}\Z")
+_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,99}\Z")
 MAX_PATH = 1024
 
 
@@ -249,7 +249,7 @@ def clean(fields):
     if cred is not None and (not isinstance(cred, str) or not _CRED_NAME.match(cred)):
         raise CEError("credentialsId is the NAME of a credential (letters, digits, _ . : @ -), never the credential itself")
     agent = fields.get("agent")
-    if agent is not None and (not isinstance(agent, str) or not re.match(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$", agent)):
+    if agent is not None and (not isinstance(agent, str) or not re.match(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z", agent)):
         raise CEError("agent must be an agent name (letters, digits, _ . -)")
     config = fields.get("config")
     if config is None:

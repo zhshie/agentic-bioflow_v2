@@ -421,7 +421,13 @@ def test_tc063_no_door_takes_a_job_kind_or_a_command(tmp_path, monkeypatch):
 
     walk(cli.build_parser(), [])
     words = {w for _, w in seen}
-    assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "launch", "submit", "enqueue"}), words
+    # feature 007b (TC-060): the subcommands are the old ones plus launch, cancel, fetch-records and launches; the words
+    # launch and cancel appear nowhere else
+    assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "submit", "enqueue"}), words
+    top_level = set(next(a for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)).choices)
+    assert top_level == {"serve", "token", "agent-token", "ce", "mcp", "rebuild", "launch", "cancel", "fetch-records",
+                         "launches"}, top_level
+    assert [(trail, w) for trail, w in seen if w in ("launch", "cancel")] == [([], "launch"), ([], "cancel")]
     assert {"ce", "agent-token", "serve", "token", "mcp", "rebuild"} <= words
 
 
@@ -436,7 +442,19 @@ def test_tc084_no_launch_door_anywhere(tmp_path):
         sub.format_help() for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)
         for sub in a.choices.values())
     helptext = re.sub(r"launch folders?", "", helptext)  # `rebuild` takes the folders Nextflow was launched in
-    assert not re.search(r"\blaunch\b|\bsubmit\b", helptext, re.I)
+    # feature 007b (TC-060): the words launch and cancel may stand only as the names of the two new subcommands, and only in
+    # these three places: the one list of subcommand names (exactly this list), their two lines in the table of subcommands,
+    # and the usage line of each of the two
+    names = "{serve,token,agent-token,ce,mcp,rebuild,launch,cancel,launches,fetch-records}"
+    assert helptext.count(names) >= 1, "the list of subcommands is exactly the old ones plus the four new ones"
+    helptext = helptext.replace(names, names.replace(",launch,cancel,", ","))
+    rows = re.findall(r"(?m)^ {4}(launch|cancel) {2,}\S", helptext)
+    assert rows == ["launch", "cancel"], rows
+    helptext = re.sub(r"(?m)^ {4}(launch|cancel)( {2,}\S)", lambda m: "    " + m.group(2), helptext)
+    usages = re.findall(r"(?m)^usage: abf-platform (launch|cancel) ", helptext)
+    assert usages == ["launch", "cancel"], usages
+    helptext = re.sub(r"(?m)^usage: abf-platform (launch|cancel) ", "usage: abf-platform ", helptext)
+    assert not re.search(r"\blaunch\b|\bsubmit\b|\bcancel\b", helptext, re.I)
 
 
 def test_tc085_the_unsupported_types_never_touch_a_cloud_tool_or_library(ip, tmp_path, monkeypatch):

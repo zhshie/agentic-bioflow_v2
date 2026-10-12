@@ -71,8 +71,11 @@ def test_tc091_only_one_module_starts_programs_and_it_does_so_without_a_shell():
 def test_tc084_nothing_in_either_package_submits_a_job_or_starts_a_run():
     # TC-084 (static half)
     pats = [r"nextflow\s+run", r"--wrap", r"""nextflow["']\s*,\s*["']run""", r"\b(srun|qsub|bsub)\b"]
-    assert hits(station_sources() + sorted(PLAT.rglob("*.py")), pats) == []
-    for f in station_sources():
+    # feature 007b (TC-060): the one file that holds the launch (platform/abf_station/launch.py, the LAUNCH_ALLOW entry) may
+    # hold these words; every other file of both packages may not
+    others = [f for f in station_sources() if f.name != "launch.py"]
+    assert hits(others + sorted(PLAT.rglob("*.py")), pats) == []
+    for f in others:
         for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
             assert not re.search(r"\bsbatch\s+(?!--version|-V)[\w./-]", line), (f.name, n, line)
 

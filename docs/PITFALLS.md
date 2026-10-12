@@ -1945,3 +1945,14 @@ jq hidden, using no jq itself, so it runs on the machine where the rest cannot.
 It fails, rather than skips, if jq cannot be hidden. Scope: one machine without
 jq, one run; it shows the tests were the cause, not that no future hook change
 can fail open - that is what the new file is for.
+
+**39. GatewayPorts off on NCHC: reverse forward is loopback-only (measured 2026-10-11).**
+`ssh -O forward -R 0.0.0.0:28933:127.0.0.1:18787` on the shared connection was accepted, and sshd bound it to `127.0.0.1:28933` anyway
+(`ss -ltn`). A `curl` to `127.0.0.1:28933` on the login node reached the laptop; to `<login node>:28933` it did not. So a compute node can
+never use the forward directly, and "forward on 0.0.0.0" is not an option on this site. The way back goes through the relay, which runs on
+the login node and so can reach its loopback (specs/007b-launch/research.md); the relay got one narrow rule for that and nothing else.
+
+**40. Seqera launcher scripts hold the token in a 755 file.**
+Measured 2026-10-11 on a run Seqera had launched: `_work/nf-<id>.launcher.sh` is mode 755 and carries the Tower access token as base64 in
+`NXF_PRERUN_BASE64`. Only the mode 700 of the folder around it protects it. The 007b launch does not copy this: the token is in a mode 600
+file, `<run folder>/tower.token`, read into the head job's environment, and never in the script text.

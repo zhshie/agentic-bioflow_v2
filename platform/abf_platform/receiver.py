@@ -35,13 +35,21 @@ def _int(value, default=0):
 def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
     store.init_index(index_path)
     platform_path = platform_path or store.default_platform_path(index_path)
+    instance = store.instance_id(platform_path)
+
+    def token_row(request):
+        """The run token of the request ({'id', 'run_name', ...}), or None. The check comes before anything is read or written."""
+        row = store.lookup_token(tokens_path, _token_from_header(request.headers.get("authorization")))
+        return row if row and row["kind"] == "run" else None
 
     def authorize(request):
-        """Token id, or None. The check comes before anything is read or written."""
-        return store.token_id(tokens_path, _token_from_header(request.headers.get("authorization")))
+        row = token_row(request)
+        return row["id"] if row else None
 
     def unauthorized():
-        return _reply(401, "Unauthorized: missing or unknown access token")
+        # the header lets a program that probes a port tell this platform from whatever else answers there
+        return JSONResponse({"message": "Unauthorized: missing or unknown access token"}, status_code=401,
+                            headers={"X-ABF-Platform": instance})
 
     async def json_object(request):
         raw = await request.body()
@@ -69,39 +77,50 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
                         con.execute("INSERT OR REPLACE INTO processes (run_id, name, %s) VALUES (?, ?, %s)"
                                     % (cols, ", ".join("?" * len(COUNT_FIELDS))),
                                     [rid, str(p["name"])] + [_int(p.get(f)) for f in COUNT_FIELDS])
-        for t in tasks if isinstance(tasks, list) else []:
-            if not isinstance(t, dict) or not t.get("name"):
-                continue
+        listed = [t for t in (tasks if isinstance(tasks, list) else []) if isinstance(t, dict) and t.get("name")]
+        # earlier attempts first: a retry is a new task record (nf-tower 1.17.5 gives it a new task id, and may
+        # send no `attempt` at all), so the order decides which attempt is the last word
+        listed.sort(key=lambda t: (_int(t.get("attempt"), 0), _int(t.get("taskId"), 0)))
+        for t in listed:
             key = "%s:%s" % (t.get("taskId"), t.get("attempt"))
+            name = str(t["name"])
+            # one row per task name: a later attempt of the same task replaces the earlier one, whatever its outcome
+            con.execute("DELETE FROM failed_tasks WHERE run_id = ? AND name = ? AND task_key != ?", (rid, name, key))
             if t.get("status") == "FAILED":
                 code = _int(t.get("exit"), None)
                 if code is not None and code >= INT_UNSET:
                     code = None
                 con.execute("INSERT INTO failed_tasks (run_id, task_key, name, exit_code) VALUES (?, ?, ?, ?) "
                             "ON CONFLICT(run_id, task_key) DO UPDATE SET name = excluded.name, exit_code = excluded.exit_code",
-                            (rid, key, str(t["name"]), code))
+                            (rid, key, name, code))
             else:
                 con.execute("DELETE FROM failed_tasks WHERE run_id = ? AND task_key = ?", (rid, key))
 
-    def locate(con, rid, tid):
-        """(row, error response): 404 for an unknown run, 403 for a run of another token."""
-        row = con.execute("SELECT id, token_id FROM runs WHERE id = ?", (rid,)).fetchone()
+    def locate(con, rid, trow):
+        """(row, error response): 404 for an unknown run, 403 for a run of another token, and 403 for a token the platform made
+        for one run name when the run has another name."""
+        row = con.execute("SELECT id, token_id, run_name FROM runs WHERE id = ?", (rid,)).fetchone()
         if row is None:
             return None, _reply(404, "No such run")
-        if row["token_id"] != tid:
+        if row["token_id"] != trow["id"]:
             return None, _reply(403, "This run belongs to another token")
+        if trow["run_name"] is not None and trow["run_name"] != row["run_name"]:
+            return None, _reply(403, "This token is for another run")
         return row, None
 
     async def create(request):
-        tid = authorize(request)
-        if tid is None:
+        row = token_row(request)
+        if row is None:
             return unauthorized()
+        tid = row["id"]
         body, err = await json_object(request)
         if err:
             return err
         sid, name = body.get("sessionId"), body.get("runName")
         if not (isinstance(sid, str) and sid and isinstance(name, str) and name):
             return _reply(400, "sessionId and runName are required")
+        if row["run_name"] is not None and row["run_name"] != name:
+            return _reply(403, "This token is for another run")
         rid = common.run_id(sid, name)
         now = clock()
         con = store.connect_index(index_path)
@@ -122,13 +141,13 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
         return JSONResponse({"workflowId": rid})
 
     async def begin(request):
-        tid = authorize(request)
-        if tid is None:
+        trow = token_row(request)
+        if trow is None:
             return unauthorized()
         rid = request.path_params["rid"]
         con = store.connect_index(index_path)
         try:
-            _, err = locate(con, rid, tid)
+            _, err = locate(con, rid, trow)
             if err:
                 return err
             body, err = await json_object(request)
@@ -154,13 +173,13 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
 
     async def progress_like(request):
         """progress and heartbeat: the counters Nextflow keeps, and the tasks that changed."""
-        tid = authorize(request)
-        if tid is None:
+        trow = token_row(request)
+        if trow is None:
             return unauthorized()
         rid = request.path_params["rid"]
         con = store.connect_index(index_path)
         try:
-            _, err = locate(con, rid, tid)
+            _, err = locate(con, rid, trow)
             if err:
                 return err
             body, err = await json_object(request)
@@ -174,13 +193,14 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
         return JSONResponse({"status": "OK"})
 
     async def complete(request):
-        tid = authorize(request)
-        if tid is None:
+        trow = token_row(request)
+        if trow is None:
             return unauthorized()
+        tid = trow["id"]
         rid = request.path_params["rid"]
         con = store.connect_index(index_path)
         try:
-            _, err = locate(con, rid, tid)
+            _, err = locate(con, rid, trow)
             if err:
                 return err
             body, err = await json_object(request)
@@ -211,6 +231,9 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
                                     "VALUES (?, ?, ?, ?)", (rid, "report:" + name, name, message))
         finally:
             con.close()
+        if trow["run_name"] is not None:
+            # a token the platform made for one launch ends with that run; a token of `token new` is not for one run
+            store.revoke_token(tokens_path, trow["id"])
         return JSONResponse({"status": "OK"})
 
     async def user_info(request):

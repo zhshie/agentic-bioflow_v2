@@ -13,7 +13,7 @@ import sys
 import urllib.parse
 from pathlib import Path
 
-from . import __version__, agent, site
+from . import __version__, site   # agent is imported in cmd_run: its imports (urllib, tarfile) load shutil, which cannot load under a Windows shell
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 WINDOWS_MOUNTS = ("drvfs", "9p", "fuse.drvfs")
@@ -105,7 +105,29 @@ def cmd_run(args):
             return EXIT_REFUSED
     token = Path(args.token_file).read_text(encoding="utf-8").strip()
     settings = Path(args.deployment) / "config" / "env.yaml"
+    from . import agent
     return agent.run(args.platform, token, args.name, plugin_root, settings)
+
+
+def cmd_unforward(args):
+    """Cancel the reverse forward and remove its records on both sides. By hand only: nothing in the agent does it by itself."""
+    plugin_root = Path(args.plugin_root).resolve() if args.plugin_root else Path(__file__).resolve().parents[2]
+    problem = windows_problem() or deployment_problem(args.deployment, plugin_root)
+    if problem:
+        say("abf-station will not do this: %s" % problem)
+        return EXIT_REFUSED
+    settings = Path(args.deployment) / "config" / "env.yaml"
+    from .site import Site, quote
+    from . import rules
+    site = Site(plugin_root, settings, log=lambda *_: None)
+    res = site.call(["--unforward"])
+    say(res.out.decode("utf-8", errors="replace").strip() or res.err.strip())
+    storage = rules.read_setting(str(settings), "storage_root")
+    if storage and not rules.path_problem(storage):
+        target = rules.normalize(storage) + "/_relay/forward_port"
+        gone = site.call(["rm -f -- %s %s" % (quote(target), quote(rules.normalize(storage) + "/_relay/forward_instance"))])
+        say("the copy on the site (%s) is removed" % target if gone.rc == 0 else "could not remove the copy on the site: %s" % gone.err.strip()[:200])
+    return 0 if res.rc == 0 else 1
 
 
 def build_parser():
@@ -119,9 +141,18 @@ def build_parser():
     r.add_argument("--name", help="the agent name the token was made for (default: what the token says)")
     r.add_argument("--plugin-root", help="the plugin folder holding scripts/on_site.sh (default: the one this install came from)")
     r.set_defaults(func=cmd_run)
+    u = sub.add_parser("unforward", help="cancel the reverse forward of live progress and remove its records (nothing does this by itself)")
+    u.add_argument("--deployment", required=True, help="the deployment root (the folder holding config/env.yaml)")
+    u.add_argument("--plugin-root", help="the plugin folder holding scripts/on_site.sh (default: the one this install came from)")
+    u.set_defaults(func=cmd_unforward)
     return p
 
 
 def main(argv=None):
+    # first of all: on a Windows shell argparse itself imports shutil, which cannot load there, so the refusal comes before the parser is built
+    problem = windows_problem()
+    if problem:
+        say("abf-station will not start: %s" % problem)
+        return EXIT_REFUSED
     args = build_parser().parse_args(argv)
     return args.func(args)

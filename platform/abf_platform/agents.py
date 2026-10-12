@@ -15,14 +15,16 @@ agent token is refused on the trace endpoints.
 import asyncio
 import json
 import re
+import sqlite3
 import time
+from pathlib import Path
 
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from . import common, jobs, store
 
-_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 
 
 def status_of(last_seen_at, at, offline_after=None):
@@ -47,17 +49,43 @@ def list_agents(state_path, at, offline_after=None):
         con.close()
 
 
-def register(state_path, name, version, clock=time.time):
-    """Record that the agent called now; the same name is the same agent, never a second row."""
+clean_facts = common.clean_facts
+
+
+def register(state_path, name, version, clock=time.time, facts=None):
+    """Record that the agent called now; the same name is the same agent, never a second row.
+
+    A hello with facts replaces the facts stored for the agent (an account that was unset is then stored as unset);
+    a call without facts (a beat of an older agent, a poll) leaves them as they were."""
     now = clock()
+    facts = clean_facts(facts)
     con = store.connect_state(state_path)
     try:
         with con:
             con.execute("INSERT INTO agents (name, version, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?) "
                         "ON CONFLICT(name) DO UPDATE SET version = COALESCE(excluded.version, agents.version), "
                         "last_seen_at = excluded.last_seen_at", (name, version, now, now))
+            if facts is not None:
+                con.execute("UPDATE agents SET slurm_account = ?, facts_json = ? WHERE name = ?",
+                            (facts["slurm_account"], json.dumps(facts, sort_keys=True), name))
     finally:
         con.close()
+
+
+def get_facts(state_path, name):
+    """The facts an agent reported (see FACT_TEXT, FACT_FLAGS), or None when it never reported any. Read-only."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT facts_json FROM agents WHERE name = ?", (name,)).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
+    if row is None or not row["facts_json"]:
+        return None
+    return json.loads(row["facts_json"])
 
 
 def touch(state_path, name, clock):
@@ -115,9 +143,9 @@ def make_routes(state_path, tokens_path, clock=time.time):
             return wrong_name()
         version = body.get("version")
         version = version[:64] if isinstance(version, str) and version else None
-        register(state_path, name, version, clock)
+        register(state_path, name, version, clock, facts=body.get("facts"))
         return JSONResponse({"agent": name, "heartbeat_seconds": common.heartbeat_seconds(),
-                             "poll_seconds": common.poll_seconds()})
+                             "poll_seconds": common.poll_seconds(), "instance": store.instance_id(state_path)})
 
     async def poll(request):
         row = auth(request)
@@ -132,14 +160,14 @@ def make_routes(state_path, tokens_path, clock=time.time):
         register(state_path, name, None, clock)
         # an asyncio deadline loop on the real clock: other requests are served while this one waits
         end = time.monotonic() + common.poll_seconds()
-        job = jobs.claim(state_path, name, clock)
+        job = jobs.claim(state_path, name, clock, tokens_path)
         while job is None and time.monotonic() < end:
             await asyncio.sleep(min(0.5, max(0.0, end - time.monotonic())))
             if await request.is_disconnected():  # the agent is gone: not a contact, and no job is taken for it
                 return JSONResponse({"job": None})
             if auth(request) is None:  # revoked while waiting
                 return unauthorized()
-            job = jobs.claim(state_path, name, clock)
+            job = jobs.claim(state_path, name, clock, tokens_path)
         touch(state_path, name, clock)
         return JSONResponse({"job": job})
 
@@ -158,7 +186,8 @@ def make_routes(state_path, tokens_path, clock=time.time):
         except ValueError:
             return JSONResponse({"message": "No such job"}, status_code=404)
         register(state_path, name, None, clock)
-        code, answer = jobs.take_result(state_path, name, job_id, body.get("state"), body.get("result"), clock)
+        code, answer = jobs.take_result(state_path, name, job_id, body.get("state"), body.get("result"), clock,
+                                        tokens_path=tokens_path, records_dir=Path(state_path).parent / "records")
         return JSONResponse(answer, status_code=code)
 
     return [

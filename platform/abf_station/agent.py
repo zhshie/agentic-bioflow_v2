@@ -15,7 +15,7 @@ import urllib.request
 
 from abf_platform import common
 
-from . import __version__, handlers
+from . import __version__, handlers, launch
 from .site import Site
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
@@ -70,16 +70,18 @@ class Client:
 class Beat(threading.Thread):
     """While a job runs: say hello every beat so the platform keeps showing the agent as online."""
 
-    def __init__(self, client, interval):
+    def __init__(self, client, interval, facts=None):
         super().__init__(name="beat")
         self.client = client
         self.interval = interval
+        self.facts = facts
         self.stopping = threading.Event()
 
     def run(self):
         while not self.stopping.wait(self.interval):
             try:
-                self.client.post("/agent/hello", {"name": self.client.name, "version": __version__}, timeout=5)
+                self.client.post("/agent/hello", {"name": self.client.name, "version": __version__,
+                                                  "facts": self.facts() if self.facts else None}, timeout=5)
             except NetworkError:
                 pass
 
@@ -118,7 +120,8 @@ class Agent:
         """Until the platform answers; a refusal stops the agent."""
         while True:
             try:
-                status, body = self.client.post("/agent/hello", {"name": self.client.name, "version": __version__}, 10)
+                status, body = self.client.post("/agent/hello", {"name": self.client.name, "version": __version__,
+                                                                 "facts": launch.own_facts(self.context)}, 10)
             except NetworkError as e:
                 self.wait_or_retry(str(e))
                 continue
@@ -128,6 +131,8 @@ class Agent:
                 self.wait_or_retry("answered %d" % status)
                 continue
             self.failures = 0
+            if isinstance(body.get("instance"), str):
+                self.context.instance_id = body["instance"]
             for key, attr in (("heartbeat_seconds", "heartbeat"), ("poll_seconds", "poll")):
                 v = body.get(key)
                 if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
@@ -151,8 +156,10 @@ class Agent:
         if isinstance(job_id, bool) or not isinstance(job_id, int):
             say("a job without a usable id was ignored")
             return
-        beat = Beat(self.client, self.heartbeat)
+        beat = Beat(self.client, self.heartbeat, lambda: launch.own_facts(self.context))
         beat.start()
+        self.context.job_started = time.monotonic()
+        self.context.agent_name = self.client.name
         try:
             state, result = handlers.handle(job, self.context)
         finally:
@@ -188,14 +195,19 @@ def _on_term(signum, frame):
 class Context:
     """What a handler may use: the site script and the deployment's settings file."""
 
-    def __init__(self, site, settings_file):
+    def __init__(self, site, settings_file, platform_url="", agent_name=""):
         self.site = site
         self.settings_file = str(settings_file)
+        self.platform_url = platform_url
+        self.agent_name = agent_name
+        self.instance_id = None            # the id of the platform, from its hello answer: the way back is checked against it
+        self.used_confirmations = set()    # confirmation ids this agent has run: a repeat is refused even if the platform repeats it
+        self.job_started = time.monotonic()
 
 
 def run(url, token, name, plugin_root, settings_file):
     """Run until told to stop. Returns the exit code."""
-    agent = Agent(url, token, name, Context(Site(plugin_root, settings_file, log=say), settings_file))
+    agent = Agent(url, token, name, Context(Site(plugin_root, settings_file, log=say), settings_file, url, name))
     signal.signal(signal.SIGTERM, _on_term)
     try:
         agent.loop()

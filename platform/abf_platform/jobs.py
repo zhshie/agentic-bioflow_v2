@@ -1,26 +1,39 @@
-# Not Celery or RQ: they need a separate broker process; two read-only job kinds in one SQLite table are enough, and the table is not a run state machine.
-"""The queue of read-only jobs that agents poll for.
+# Not Celery or RQ: they need a separate broker process; five job kinds in one SQLite table are enough, and the table is not a run state machine.
+"""The queue of jobs that agents poll for.
 
-Only `preflight` and `list_site_files` exist (a CHECK constraint in platform.db says so). Every job is
-a question put to one agent, with a deadline. A job whose deadline passed is `expired`: it is never
-handed out, and an answer that arrives late is kept apart and changes nothing.
+Five kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files` and `fetch_run_records`
+only read; `launch_nextflow` and `cancel_run` write on the site, so a job of those two kinds can only be queued with
+a confirmation: the row the terminal command writes when the user answers y, bound to the hash of the content the
+user saw. Every job is a question or an order put to one agent, with a deadline. A job whose deadline passed is
+`expired` and is never handed out; an answer that arrives late is kept apart, and for a launch or a cancel the one
+fact in it (the Slurm number, the time of the request) is still written to the hand-off record, because losing it
+would leave a head job on the site that nobody knows about.
 
-Who writes: the command line and the MCP server queue jobs; the receiver hands them out and takes the
-answers. Nobody else writes platform.db, and `rebuild` never opens it.
+Who writes: the command line (through confirm.py for the two that need a confirmation) and the MCP server queue
+jobs; the receiver hands them out and takes the answers. Nobody else writes platform.db, and `rebuild` never opens it.
 """
 import asyncio
 import json
 import os
+import re
+import sqlite3
 import time
 
-from . import common, compute_envs, store
+from . import common, compute_envs, records, store
 
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
-DEADLINE_SECONDS = {"preflight": 180, "list_site_files": 60}
+DEADLINE_SECONDS = {"preflight": 180, "list_site_files": 60, "launch_nextflow": 300, "cancel_run": 90,
+                    "fetch_run_records": 180}
 _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
-                 "list_site_files": "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES"}
+                 "list_site_files": "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES",
+                 "launch_nextflow": "ABF_PLATFORM_DEADLINE_LAUNCH",
+                 "cancel_run": "ABF_PLATFORM_DEADLINE_CANCEL",
+                 "fetch_run_records": "ABF_PLATFORM_DEADLINE_FETCH"}
 KINDS = tuple(DEADLINE_SECONDS)
+# the two kinds that write on the site, and the kind of confirmation each needs
+CONFIRMED = {"launch_nextflow": "launch", "cancel_run": "cancel"}
+_RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
 
 
 class JobRefused(Exception):
@@ -45,52 +58,93 @@ def check_listing_path(path):
     return compute_envs.normalize_path(path)
 
 
-def _enqueue(state_path, ce_name, kind, listing_path, clock, deadline, offline_after=None):
+def _target(con, ce_name, kind, now, offline_after):
+    """The compute environment row of a job's target, after every check that does not depend on the content."""
     if not isinstance(ce_name, str) or not ce_name:
         raise JobRefused("a compute environment name is required")
-    if kind == "list_site_files":
-        listing_path = check_listing_path(listing_path)
-    now = clock()
-    seconds = float(deadline) if deadline is not None else deadline_seconds(kind)
+    row = con.execute("SELECT * FROM compute_envs WHERE name = ?", (ce_name,)).fetchone()
+    if row is None:
+        raise JobRefused("compute environment %r not found (找不到)" % ce_name[:100])
+    status = row["status"]
+    if status == compute_envs.UNSUPPORTED:
+        raise JobRefused("%s is a %s environment: %s" % (ce_name, compute_envs.KINDS.get(row["platform"], "?"),
+                                                          compute_envs.NOT_SUPPORTED_MESSAGE))
+    if status == compute_envs.DISABLED:
+        raise JobRefused("%s is disabled (已停用), so it accepts no job" % ce_name)
+    agent = row["agent"]
+    if not agent:
+        raise JobRefused("%s has no agent. Set one with `abf-platform ce update %s --agent <name>`." % (ce_name, ce_name))
+    seen = con.execute("SELECT last_seen_at FROM agents WHERE name = ?", (agent,)).fetchone()
+    limit = common.offline_after_seconds() if offline_after is None else offline_after
+    if seen is None or now - seen["last_seen_at"] > limit:
+        raise JobRefused("agent %s is offline (代理離線); nothing was queued" % agent)
+    if kind in ("list_site_files", "launch_nextflow") and status != compute_envs.AVAILABLE:
+        raise JobRefused("%s has the status %s, and only an available environment can %s (目前的狀態不能執行工作). "
+                         "Run `abf-platform ce preflight %s` first." % (
+                             ce_name, status, "list files" if kind == "list_site_files" else "run an analysis", ce_name))
+    return row
+
+
+def _insert_job(con, row, kind, args, now, seconds, confirmation_id=None):
+    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ?", (now - PRUNE_AFTER_SECONDS,))
+    cur = con.execute(
+        "INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, confirmation_id) "
+        "VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)",
+        (row["agent"], row["name"], kind, json.dumps(args), now, now + seconds, confirmation_id))
+    return cur.lastrowid
+
+
+def transaction(state_path, work):
+    """work(con) inside one BEGIN IMMEDIATE transaction on platform.db; returns what work returns."""
     con = store.connect_state(state_path)
     try:
         con.isolation_level = None
         con.execute("BEGIN IMMEDIATE")
         try:
-            row = con.execute("SELECT * FROM compute_envs WHERE name = ?", (ce_name,)).fetchone()
-            if row is None:
-                raise JobRefused("compute environment %r not found (找不到)" % ce_name[:100])
-            status = row["status"]
-            if status == compute_envs.UNSUPPORTED:
-                raise JobRefused("%s is a %s environment: %s" % (ce_name, compute_envs.KINDS.get(row["platform"], "?"),
-                                                                  compute_envs.NOT_SUPPORTED_MESSAGE))
-            if status == compute_envs.DISABLED:
-                raise JobRefused("%s is disabled (已停用), so it accepts no job" % ce_name)
-            agent = row["agent"]
-            if not agent:
-                raise JobRefused("%s has no agent. Set one with `abf-platform ce update %s --agent <name>`." % (ce_name, ce_name))
-            seen = con.execute("SELECT last_seen_at FROM agents WHERE name = ?", (agent,)).fetchone()
-            limit = common.offline_after_seconds() if offline_after is None else offline_after
-            if seen is None or now - seen["last_seen_at"] > limit:
-                raise JobRefused("agent %s is offline (代理離線); nothing was queued" % agent)
-            if kind == "list_site_files" and status != compute_envs.AVAILABLE:
-                raise JobRefused("%s has the status %s, and only an available environment can list files "
-                                 "(目前的狀態不能執行工作). Run `abf-platform ce preflight %s` first." % (ce_name, status, ce_name))
-            con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ?", (now - PRUNE_AFTER_SECONDS,))
-            args = {"ce": compute_envs.snapshot(row)}
-            if kind == "list_site_files":
-                args["path"] = listing_path
-            cur = con.execute(
-                "INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at) "
-                "VALUES (?, ?, ?, ?, 'queued', ?, ?)", (agent, ce_name, kind, json.dumps(args), now, now + seconds))
-            job_id = cur.lastrowid
+            out = work(con)
             con.execute("COMMIT")
         except BaseException:
-            con.execute("ROLLBACK")
+            try:
+                con.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
             raise
-        return job_id
+        return out
     finally:
         con.close()
+
+
+def check_target(state_path, ce_name, kind, clock=time.time, offline_after=None):
+    """Raise JobRefused, in the words enqueue would use, when the environment cannot take a job of this kind now.
+    It only reads, so the terminal commands can use it to refuse before they ask the user anything."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        raise JobRefused("this platform has no data yet (還沒有任何環境)")
+    try:
+        _target(con, ce_name, kind, clock(), offline_after)
+    finally:
+        con.close()
+
+
+def _seconds(kind, deadline):
+    return float(deadline) if deadline is not None else deadline_seconds(kind)
+
+
+def _enqueue(state_path, ce_name, kind, listing_path, clock, deadline, offline_after=None):
+    """The kinds that need no confirmation and no run: preflight and list_site_files."""
+    if kind == "list_site_files":
+        listing_path = check_listing_path(listing_path)
+    now = clock()
+    seconds = _seconds(kind, deadline)
+
+    def work(con):
+        row = _target(con, ce_name, kind, now, offline_after)
+        args = {"ce": compute_envs.snapshot(row)}
+        if kind == "list_site_files":
+            args["path"] = listing_path
+        return _insert_job(con, row, kind, args, now, seconds)
+
+    return transaction(state_path, work)
 
 
 def enqueue_preflight(state_path, ce_name, clock=time.time, deadline_seconds=None, offline_after=None):
@@ -101,25 +155,141 @@ def enqueue_listing(state_path, ce_name, listing_path, clock=time.time, deadline
     return _enqueue(state_path, ce_name, "list_site_files", listing_path, clock, deadline_seconds, offline_after)
 
 
-def claim(state_path, agent, clock):
-    """Hand the agent its oldest live job, once: the claim is one write inside one transaction."""
+def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, offline_after=None):
+    """Ask the agent to read Nextflow's own records of one launch back. It only reads, so it needs no confirmation. The
+    run must be in the hand-off record: the platform never asks for a folder it did not launch into."""
+    now = clock()
+    seconds = _seconds("fetch_run_records", deadline_seconds)
+
+    def work(con):
+        launch = con.execute("SELECT * FROM launches WHERE run_name = ?", (run_name,)).fetchone() \
+            if isinstance(run_name, str) else None
+        if launch is None:
+            raise JobRefused("%r was not launched from this platform (不是平台自己送出的), so there is no folder to read"
+                             % str(run_name)[:80])
+        row = _target(con, launch["ce"], "fetch_run_records", now, offline_after)
+        if row["agent"] != launch["agent"]:
+            raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
+                run_name, launch["agent"], launch["ce"], row["agent"]))
+        args = {"ce": compute_envs.snapshot(row), "run_name": launch["run_name"], "run_folder": launch["run_folder"]}
+        return _insert_job(con, row, "fetch_run_records", args, now, seconds)
+
+    return transaction(state_path, work)
+
+
+def _check_confirmation(con, kind, bundle, confirmation_id):
+    """The one guard of the two kinds that write: a confirmation of the right kind, not spent, for exactly this content."""
+    want = CONFIRMED[kind]
+    if not isinstance(confirmation_id, str) or not confirmation_id or len(confirmation_id) > 64:
+        raise JobRefused("no confirmation: a %s is queued only after the user answered y on the terminal "
+                         "(沒有確認憑證)" % want)
+    conf = con.execute("SELECT * FROM confirmations WHERE id = ?", (confirmation_id,)).fetchone()
+    if conf is None:
+        raise JobRefused("no such confirmation (查無此確認憑證)")
+    if conf["kind"] != want:
+        raise JobRefused("that confirmation is for a %s, not for a %s (憑證種類不符)" % (conf["kind"], want))
+    if conf["used_at"] is not None:
+        raise JobRefused("that confirmation was used already (憑證已用過)")
+    if con.execute("SELECT 1 FROM jobs WHERE confirmation_id = ?", (confirmation_id,)).fetchone():
+        raise JobRefused("that confirmation belongs to a job already (憑證已用過)")
+    sha = common.bundle_sha256(bundle)
+    if conf["sha256"] != sha:
+        raise JobRefused("the content is not the content that was confirmed (內容與確認時不符)")
+    return sha
+
+
+def enqueue_confirmed(con, ce_name, kind, bundle, confirmation_id, now, seconds, offline_after=None):
+    """Inside the caller's transaction. enqueue_launch and enqueue_cancel call it, and so does confirm.py, which writes
+    the confirmation in the same transaction. A launch also writes its row of the hand-off record here."""
+    if not isinstance(bundle, dict):
+        raise JobRefused("the content is not an object")
+    sha = _check_confirmation(con, kind, bundle, confirmation_id)
+    row = _target(con, ce_name, kind, now, offline_after)
+    run_name = bundle.get("run_name")
+    if not isinstance(run_name, str) or not _RUN_NAME.match(run_name) or not isinstance(bundle.get("run_folder"), str):
+        raise JobRefused("the content names no run (沒有 run 名稱或專屬資料夾)")
+    if bundle.get("agent") != row["agent"]:
+        raise JobRefused("the content is for agent %r, not for the agent of %s (%s)" % (
+            str(bundle.get("agent"))[:64], ce_name, row["agent"]))
+    if kind == "launch_nextflow":
+        old = con.execute("SELECT id, submitted_at FROM launches WHERE run_name = ?", (run_name,)).fetchone()
+        if old is not None:
+            last = None
+            for j in con.execute("SELECT state, args_json FROM jobs WHERE kind = 'launch_nextflow' ORDER BY id DESC"):
+                if json.loads(j["args_json"]).get("bundle", {}).get("run_name") == run_name:
+                    last = j
+                    break
+            # a name is free again only if the last try was refused outright: nothing was done on the site
+            if old["submitted_at"] is None and last is not None and last["state"] == "refused":
+                con.execute("DELETE FROM launches WHERE id = ?", (old["id"],))
+            else:
+                raise JobRefused("the run name %s was used already (run 名稱已用過); choose another name" % run_name)
+        con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at) VALUES (?, ?, ?, ?, ?)",
+                    (run_name, bundle["run_folder"], ce_name, row["agent"], now))
+    else:
+        launch = con.execute("SELECT * FROM launches WHERE run_name = ?", (run_name,)).fetchone()
+        if launch is None or launch["slurm_job_id"] is None:
+            raise JobRefused("run %s has no Slurm job number in the hand-off record (不是平台自己送出的，或尚未送出)" % run_name)
+    args = {"bundle": bundle, "confirmation_id": confirmation_id, "bundle_sha256": sha}
+    return _insert_job(con, row, kind, args, now, seconds, confirmation_id)
+
+
+def enqueue_launch(state_path, ce_name, bundle, confirmation_id, clock=time.time, deadline_seconds=None, offline_after=None):
+    """Queue a launch for a confirmation that exists, is unspent and was made for exactly this bundle; else JobRefused."""
+    now = clock()
+    seconds = _seconds("launch_nextflow", deadline_seconds)
+    return transaction(state_path, lambda con: enqueue_confirmed(con, ce_name, "launch_nextflow", bundle, confirmation_id,
+                                                                 now, seconds, offline_after))
+
+
+def enqueue_cancel(state_path, ce_name, bundle, confirmation_id, clock=time.time, deadline_seconds=None, offline_after=None):
+    now = clock()
+    seconds = _seconds("cancel_run", deadline_seconds)
+    return transaction(state_path, lambda con: enqueue_confirmed(con, ce_name, "cancel_run", bundle, confirmation_id,
+                                                                 now, seconds, offline_after))
+
+
+def claim(state_path, agent, clock, tokens_path=None):
+    """Hand the agent its oldest live job, once: the claim is one write inside one transaction.
+
+    A job of a confirmed kind is handed out with its confirmation row (the agent checks the hash against its own) and
+    the confirmation is marked used. A launch also gets its run token here and nowhere earlier: so a launch that is
+    answered n, or never claimed, has no token at all. The plain token is in this reply and in no database."""
     now = clock()
     con = store.connect_state(state_path)
     try:
         con.isolation_level = None
         con.execute("BEGIN IMMEDIATE")
         try:
-            row = con.execute("SELECT id, kind, args_json FROM jobs WHERE agent = ? AND state = 'queued' "
-                              "AND deadline_at > ? ORDER BY id LIMIT 1", (agent, now)).fetchone()
+            row = con.execute("SELECT id, kind, args_json, confirmation_id, deadline_at FROM jobs WHERE agent = ? "
+                              "AND state = 'queued' AND deadline_at > ? ORDER BY id LIMIT 1", (agent, now)).fetchone()
+            out = None
             if row is not None:
+                out = {"id": row["id"], "kind": row["kind"], "args": json.loads(row["args_json"]),
+                       "remaining": max(0.0, row["deadline_at"] - now)}
+                if row["kind"] in CONFIRMED:
+                    conf = con.execute("SELECT * FROM confirmations WHERE id = ?", (row["confirmation_id"],)).fetchone()
+                    if conf is None or conf["used_at"] is not None or conf["kind"] != CONFIRMED[row["kind"]]:
+                        con.execute("UPDATE jobs SET state = 'refused', finished_at = ?, result_json = ? WHERE id = ?",
+                                    (now, json.dumps({"ok": False, "message": "no usable confirmation (沒有可用的確認憑證)"}),
+                                     row["id"]))
+                        con.execute("COMMIT")
+                        return None
+                    con.execute("UPDATE confirmations SET used_at = ? WHERE id = ?", (now, conf["id"]))
+                    out["confirmation"] = {"id": conf["id"], "sha256": conf["sha256"], "kind": conf["kind"]}
+                    if row["kind"] == "launch_nextflow":
+                        if tokens_path is None:
+                            raise RuntimeError("a launch is claimed with the token file at hand")
+                        out["run_token"] = store.create_token(tokens_path, run_name=out["args"]["bundle"]["run_name"])
                 con.execute("UPDATE jobs SET state = 'claimed', claimed_at = ? WHERE id = ?", (now, row["id"]))
             con.execute("COMMIT")
         except BaseException:
-            con.execute("ROLLBACK")
+            try:
+                con.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
             raise
-        if row is None:
-            return None
-        return {"id": row["id"], "kind": row["kind"], "args": json.loads(row["args_json"])}
+        return out
     finally:
         con.close()
 
@@ -132,7 +302,11 @@ def _short(text, limit):
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
 
-def clean_result(kind, result):
+def _int(value, low=0, high=2 ** 31 - 1):
+    return value if isinstance(value, int) and not isinstance(value, bool) and low <= value <= high else None
+
+
+def clean_result(kind, result, stored=None):
     """Only what the platform expects, with every text bounded; an agent cannot make the platform store more."""
     if not isinstance(result, dict):
         return {"ok": False, "message": "the agent sent no result"}
@@ -149,6 +323,16 @@ def clean_result(kind, result):
         out["checks"] = checks
         if any(c["status"] != "pass" for c in checks) or not checks:
             out["ok"] = False
+    elif kind in ("launch_nextflow", "cancel_run"):
+        sid = _int(result.get("slurm_job_id"), 1)
+        if sid is not None:
+            out["slurm_job_id"] = sid
+        for key, limit in (("run_name", 64), ("run_folder", 1100), ("left_on_site", 600)):
+            if isinstance(result.get(key), str):
+                out[key] = _short(result[key], limit)
+    elif kind == "fetch_run_records":
+        out["files"] = [{"name": f["name"], "size": f["size"], "truncated": f["truncated"]} for f in (stored or {}).get("files", [])]
+        out["refused"] = [_short(x, 200) for x in (stored or {}).get("refused", [])][:50]
     else:
         for key in ("path",):
             if isinstance(result.get(key), str):
@@ -169,15 +353,43 @@ def clean_result(kind, result):
     return out
 
 
-def take_result(state_path, agent, job_id, state, result, clock):
+def _apply_handover(con, job, state, cleaned, now):
+    """What an answer changes in the hand-off record. Returns the run name whose token is to be revoked, else None.
+
+    A launch that was submitted writes its Slurm number and the time; any other answer to a launch (refused, an error,
+    an unknown outcome) revokes the run token, because the run may never start. A cancel that was sent writes the time of
+    the request: it is a fact about a request, and no state of the run.
+    """
+    if job["kind"] == "launch_nextflow":
+        run_name = json.loads(job["args_json"])["bundle"]["run_name"]
+        sid = cleaned.get("slurm_job_id")
+        if state == "done" and cleaned.get("ok") and sid is not None:
+            con.execute("UPDATE launches SET slurm_job_id = ?, submitted_at = COALESCE(submitted_at, ?) WHERE run_name = ?",
+                        (sid, now, run_name))
+            return None
+        return run_name
+    if job["kind"] == "cancel_run" and state == "done" and cleaned.get("ok"):
+        run_name = json.loads(job["args_json"])["bundle"]["run_name"]
+        con.execute("UPDATE launches SET cancel_requested_at = ? WHERE run_name = ?", (now, run_name))
+    return None
+
+
+def take_result(state_path, agent, job_id, state, result, clock, tokens_path=None, records_dir=None):
     """Record an agent's answer. Returns (http status, body).
 
     404 no such job, 403 not this agent's job, 409 not handed out or already answered. An answer that comes
-    after the deadline is kept in late_result_json, the job stays expired, and nothing else changes.
+    after the deadline is kept in late_result_json and the job stays expired; for a launch or a cancel the fact in it is
+    still written to the hand-off record (see _apply_handover).
     """
     if state not in _STATES:
         return 400, {"message": "state must be one of %s" % ", ".join(_STATES)}
     now = clock()
+    stored = None
+    peek = _read(state_path, job_id)
+    if (peek is not None and peek["kind"] == "fetch_run_records" and peek["agent"] == agent and state == "done"
+            and peek["state"] in ("claimed", "expired") and records_dir is not None and isinstance(result, dict)):
+        stored = records.store_files(records_dir, json.loads(peek["args_json"]).get("run_name"), result.get("files"))
+    revoke = None
     con = store.connect_state(state_path)
     try:
         con.isolation_level = None
@@ -190,7 +402,7 @@ def take_result(state_path, agent, job_id, state, result, clock):
             if job["agent"] != agent:
                 con.execute("ROLLBACK")
                 return 403, {"message": "This job belongs to another agent"}
-            cleaned = clean_result(job["kind"], result)
+            cleaned = clean_result(job["kind"], result, stored)
             if job["state"] == "queued":
                 con.execute("ROLLBACK")
                 return 409, {"message": "This job was not handed out"}
@@ -200,14 +412,17 @@ def take_result(state_path, agent, job_id, state, result, clock):
             if job["state"] == "expired" or now > job["deadline_at"]:
                 con.execute("UPDATE jobs SET state = 'expired', late_result_json = ?, finished_at = COALESCE(finished_at, ?) "
                             "WHERE id = ?", (json.dumps({"state": state, "result": cleaned}), now, job_id))
+                revoke = _apply_handover(con, job, state, cleaned, now)
                 con.execute("COMMIT")
-                return 200, {"accepted": False, "late": True}
-            con.execute("UPDATE jobs SET state = ?, result_json = ?, finished_at = ? WHERE id = ?",
-                        (state, json.dumps(cleaned), now, job_id))
-            if job["kind"] == "preflight" and state == "done":
-                compute_envs.apply_preflight(con, job["compute_env"], cleaned["ok"], cleaned.get("checks", []), now)
-            con.execute("COMMIT")
-            return 200, {"accepted": True, "late": False}
+                body = {"accepted": False, "late": True}
+            else:
+                con.execute("UPDATE jobs SET state = ?, result_json = ?, finished_at = ? WHERE id = ?",
+                            (state, json.dumps(cleaned), now, job_id))
+                if job["kind"] == "preflight" and state == "done":
+                    compute_envs.apply_preflight(con, job["compute_env"], cleaned["ok"], cleaned.get("checks", []), now)
+                revoke = _apply_handover(con, job, state, cleaned, now)
+                con.execute("COMMIT")
+                body = {"accepted": True, "late": False}
         except BaseException:
             try:
                 con.execute("ROLLBACK")
@@ -216,6 +431,9 @@ def take_result(state_path, agent, job_id, state, result, clock):
             raise
     finally:
         con.close()
+    if revoke and tokens_path is not None:
+        store.revoke_run_tokens(tokens_path, revoke)
+    return 200, body
 
 
 def _read(state_path, job_id):
@@ -259,5 +477,6 @@ async def wait_for_result(state_path, job_id, clock=time.time, sleep=asyncio.sle
                 "kind": row["kind"]}
     _expire(state_path, job_id, clock)
     return {"state": "expired", "ok": False, "result": None, "agent": row["agent"], "kind": row["kind"],
+            "claimed": row["claimed_at"] is not None,
             "message": "The agent did not answer (代理沒有回應): agent %s did not finish the %s job in time. "
                        "The job was dropped and will not run later." % (row["agent"], row["kind"])}

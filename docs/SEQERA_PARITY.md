@@ -129,3 +129,13 @@ Not needed (Wave is AGPL-3.0; Fusion needs a Seqera licence even outside Platfor
 | Nextflow version selection | Have | |
 | Data privacy | Have | |
 | Pricing tiers | Not needed (no paywall is a selling point) | |
+
+## L. Launch, live progress and cancel through the station agent (feature 007b, 3 rows; outside the 83 counted above)
+
+| Item | Verdict | Done |
+|---|---|---|
+| Launch | Have, from the command line only, behind a terminal question (007b); the web form is Stage 3 | [x] 007b |
+| Live progress | Partly have: per-process done, running and failed counts and the failed task's name and reason come from Nextflow's own messages (`get_run`) | [x] 007b |
+| Cancel | Have, from the command line, behind the same question (007b) | [x] 007b |
+
+Not built yet, and so not in the rows above: the list of every task, CPU and memory per task, logs and reports, and a queued state (a run that is submitted and has sent nothing says only `已送出，尚未收到 Nextflow 事件`; that is a fact, not a state).

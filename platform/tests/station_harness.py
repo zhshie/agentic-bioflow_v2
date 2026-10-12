@@ -55,9 +55,10 @@ def snapshot_file(path):
 class FakeSite:
     """A deployment root plus a site directory tree and fake scheduler programs that log every call."""
 
-    def __init__(self, tmp, reach="local", ssh="ok"):
+    def __init__(self, tmp, reach="local", ssh="ok", account=None, site_user=None, settings=(), destructive_log=False):
         self.tmp = Path(tmp)
         self.reach = reach
+        self.destructive_log = destructive_log
         self.root = self.tmp / "deploy"
         self.config = self.root / "config"
         self.config.mkdir(parents=True)
@@ -101,6 +102,11 @@ class FakeSite:
         self.control = self.tmp / "cm"
         lines = ["reach: " + reach, "storage_root: " + str(self.storage),
                  "agent_connection: CANARY_agent_connection_91ab", "tw_token_file: CANARY_tw_token_77cd"]
+        if account:
+            lines.append("slurm_account: " + account)
+        if site_user:
+            lines.append("site_user: " + site_user)
+        lines += list(settings)
         if reach == "ssh":
             lines += ["site_host: tester@fake.example", "site_bridge: none", "ssh_control_path: " + str(self.control)]
             self.ssh_bin = self._fake_ssh(ssh)
@@ -113,15 +119,56 @@ class FakeSite:
     def _fakes(self):
         log, st = str(self.calls_log), str(self.state)
         head = "#!/bin/bash\nprintf '%s\n' \"$(basename \"$0\") $*\" >> '" + log + "'\n"
-        write_exec(self.bin / "sbatch", head + "case \"$1\" in --version|-V) echo 'slurm 23.02.7' ;; esac\nexit 0\n")
-        write_exec(self.bin / "squeue", head + "exit 0\n")
+        sbatch = head + (
+            "case \"$1\" in --version|-V) echo 'slurm 23.02.7'; exit 0 ;; esac\n"
+            "for last; do :; done\n"
+            "mkdir -p '@ST@/scripts'; n=$(ls '@ST@/scripts' | wc -l)\n"
+            "[ -f \"$last\" ] && cp \"$last\" \"@ST@/scripts/$((n + 1)).sh\"\n"
+            "[ -f '@ST@/sbatch_sleep' ] && sleep \"$(cat '@ST@/sbatch_sleep')\"\n"
+            "if [ -f '@ST@/sbatch_fail' ]; then cat '@ST@/sbatch_fail' >&2; exit 1; fi\n"
+            "[ -f '@ST@/sbatch_garbage' ] && { echo 'Submitted batch job abc'; exit 0; }\n"
+            "id=$(cat '@ST@/sbatch_id' 2>/dev/null || echo 4242)\n"
+            "name=$(sed -n 's/^#SBATCH -J \\(.*\\)$/\\1/p' \"$last\" | head -1)\n"
+            "dir=$(sed -n 's/^#SBATCH -D \\(.*\\)$/\\1/p' \"$last\" | head -1)\n"
+            "echo \"$id|$name|$(cat '@ST@/site_user' 2>/dev/null || echo tester)|$dir\" >> '@ST@/jobs.tsv'\n"
+            "echo \"Submitted batch job $id\"\n"
+            "[ -f '@ST@/sbatch_exit' ] && exit \"$(cat '@ST@/sbatch_exit')\"\n"
+            "exit 0\n")
+        write_exec(self.bin / "sbatch", sbatch.replace("@ST@", st))
+        squeue = head + (
+            "[ -f '@ST@/squeue_fail' ] && exit 1\n"
+            "id=''; while [ $# -gt 0 ]; do case \"$1\" in -j) id=\"$2\"; shift ;; esac; shift; done\n"
+            "[ -f '@ST@/jobs.tsv' ] && awk -F'|' -v id=\"$id\" '$1 == id {print $2 \"|\" $3 \"|\" $4}' '@ST@/jobs.tsv'\n"
+            "exit 0\n")
+        write_exec(self.bin / "squeue", squeue.replace("@ST@", st))
+        curl = head + (
+            "mode=direct; for a in \"$@\"; do [ \"$a\" = -x ] && mode=proxy; done\n"
+            "how=$(cat \"@ST@/curl_$mode\" 2>/dev/null || echo ok)\n"
+            "case \"$how\" in\n"
+            "  ok) printf 'HTTP/1.1 401 Unauthorized\\r\\nX-ABF-Platform: %s\\r\\n\\r\\ncode=401\\n' \"$(cat '@ST@/instance_id')\"; exit 0 ;;\n"
+            "  refused) echo 'curl: (7) Failed to connect' >&2; exit 7 ;;\n"
+            "  silent) exit 28 ;;\n"
+            "  e403) printf 'HTTP/1.1 403 Forbidden\\r\\n\\r\\ncode=403\\n'; exit 0 ;;\n"
+            "  e502) printf 'HTTP/1.1 502 Bad Gateway\\r\\n\\r\\ncode=502\\n'; exit 0 ;;\n"
+            "  other) printf 'HTTP/1.1 401 Unauthorized\\r\\n\\r\\ncode=401\\n'; exit 0 ;;\n"
+            "  wrongid) printf 'HTTP/1.1 401 Unauthorized\\r\\nX-ABF-Platform: someone-else\\r\\n\\r\\ncode=401\\n'; exit 0 ;;\n"
+            "esac\nexit 0\n")
+        write_exec(self.bin / "curl", curl.replace("@ST@", st))
+        if self.destructive_log:
+            for n in ("rm", "rmdir", "mv", "tar"):
+                real = shutil.which(n)
+                write_exec(self.bin / n, ("#!/bin/bash\n[ -n \"$ABF_FAKE_SITE_SIDE\" ] && printf '%s\\n' \"" + n + " $*\" >> '@ST@/destructive.log'\n"
+                                          "exec '" + str(real) + "' \"$@\"\n").replace("@ST@", st))
         sinfo = head + (
             "env > '@ST@/sinfo_env.txt'\n"
             "[ -f '@ST@/sinfo_sleep' ] && sleep \"$(cat '@ST@/sinfo_sleep')\"\n"
             "[ -f '@ST@/sinfo_noise' ] && { head -c 30000 /dev/zero | tr '\0' 'x'; echo; }\n"
             "if [ -f '@ST@/queues' ]; then cat '@ST@/queues'; else printf 'normal*\ndev\n'; fi\n")
         write_exec(self.bin / "sinfo", sinfo.replace("@ST@", st))
-        for n in ("scancel", "srun", "qsub", "bsub"):
+        write_exec(self.bin / "scancel", (head + (
+            "[ -f '@ST@/scancel_keep' ] || { [ -f '@ST@/jobs.tsv' ] && grep -v \"^$1|\" '@ST@/jobs.tsv' > '@ST@/jobs.tmp'; "
+            "[ -f '@ST@/jobs.tmp' ] && mv '@ST@/jobs.tmp' '@ST@/jobs.tsv'; }\nexit 0\n")).replace("@ST@", st))
+        for n in ("srun", "qsub", "bsub"):
             write_exec(self.bin / n, head + "exit 0\n")
         write_exec(self.bin / "ssh", head + "exit 1\n")  # the ssh on PATH must never be called
         real_find = shutil.which("find")
@@ -147,16 +194,25 @@ class FakeSite:
         text = (
             "#!/bin/bash\n"
             "last=\"${@: -1}\"\n"
-            "for a in \"$@\"; do [ \"$a\" = check ] && {\n"
-            "  [ -f '@ST@/ssh_down' ] && exit 255\n"
-            "  [ \"$(cat '@ST@/ssh_mode')\" = nomaster ] && exit 255\n"
-            "  exit 0; }; done\n"
+            "printf '%s\\n' \"$*\" >> '@ST@/ssh.log'\n"
+            "op=''; prev=''; for a in \"$@\"; do [ \"$prev\" = -O ] && op=\"$a\"; prev=\"$a\"; done\n"
+            "case \"$op\" in\n"
+            "  check)\n"
+            "    [ -f '@ST@/ssh_down' ] && exit 255\n"
+            "    [ \"$(cat '@ST@/ssh_mode')\" = nomaster ] && exit 255\n"
+            "    echo \"Master running (pid=$(cat '@ST@/master_pid' 2>/dev/null || echo 4242))\" >&2; exit 0 ;;\n"
+            "  forward)\n"
+            "    [ -f '@ST@/fwd_fail' ] && { echo 'mux_client_forward: forwarding request failed' >&2; exit 255; }\n"
+            "    n=$(cat '@ST@/fwd_next' 2>/dev/null || echo 41234); echo $((n + 1)) > '@ST@/fwd_next'; echo \"$n\"; exit 0 ;;\n"
+            "  cancel|exit) exit 0 ;;\n"
+            "esac\n"
             "[ -f '@ST@/ssh_down' ] && { echo 'Connection closed by remote host' >&2; exit 255; }\n"
             "if [ \"$(cat '@ST@/ssh_mode')\" = hang ]; then sleep 60; exit 0; fi\n"
             "if [ -f '@ST@/ssh_drop_after' ]; then n=$(cat '@ST@/ssh_drop_after'); "
             "if [ \"$n\" -le 0 ]; then touch '@ST@/ssh_down'; echo 'Connection closed by remote host' >&2; exit 255; fi; "
             "echo $((n - 1)) > '@ST@/ssh_drop_after'; fi\n"
             "[ \"$last\" = true ] && exit 0\n"
+            "export ABF_FAKE_SITE_SIDE=1\n"
             "exec bash -c \"$last\"\n").replace("@ST@", st)
         (self.state / "ssh_mode").write_text({"ok": "ok", "nomaster": "nomaster", "hang": "hang"}[mode])
         path = self.tmp / "fake-ssh"
@@ -198,6 +254,27 @@ class FakeSite:
                 bad.append(ln)
         return bad
 
+    def scripts(self):
+        """The head scripts sbatch was given, in order, as text."""
+        d = self.state / "scripts"
+        return [p.read_text() for p in sorted(d.glob("*.sh"), key=lambda p: int(p.stem))] if d.exists() else []
+
+    def destructive(self):
+        f = self.state / "destructive.log"
+        return f.read_text().splitlines() if f.exists() else []
+
+    def ssh_calls(self):
+        f = self.state / "ssh.log"
+        return f.read_text().splitlines() if f.exists() else []
+
+    def add_job(self, jid, name, user, folder):
+        with open(self.state / "jobs.tsv", "a") as f:
+            f.write("%s|%s|%s|%s\n" % (jid, name, user, folder))
+
+    def slurm_jobs(self):
+        f = self.state / "jobs.tsv"
+        return f.read_text().splitlines() if f.exists() else []
+
     def guards_intact(self):
         return all(snapshot_file(self.storage / n / "guard.txt") == self.guards[n] for n in self.guards)
 
@@ -208,6 +285,8 @@ class FakeSite:
                "PYTHONPATH": str(PLATFORM_DIR), "PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1"}
         if self.ssh_bin:
             env["ON_SITE_SSH_BIN"] = str(self.ssh_bin)
+        elif self.destructive_log:
+            env["ABF_FAKE_SITE_SIDE"] = "1"
         env.update({k: str(v) for k, v in extra.items()})
         return env
 

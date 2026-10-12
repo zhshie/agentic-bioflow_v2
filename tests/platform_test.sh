@@ -26,11 +26,13 @@
 #   ABF_PLATFORM_DIR          platform folder to test (default: platform/ of this repo)
 #   ABF_PLATFORM_CACHE        download folder (default: <cache>/abf-platform)
 #   ABF_PLATFORM_VENV         venv folder (default: <cache>/abf-platform-venv)
-#   ABF_PLATFORM_PREFLIGHT_ONLY=1   stop after the checks and downloads, run no pytest
+#   ABF_PLATFORM_PREFLIGHT_ONLY=1   stop after the checks and downloads of the first Nextflow pair, run no pytest
+#   ABF_PLATFORM_PREFLIGHT_ONLY=2   the same after the second pair (Nextflow 25.10.4, feature 007b) as well
 #   ABF_PYTEST_ARGS           extra pytest arguments
 #   ABF_PYTEST_TARGETS        what pytest runs, relative to the platform folder (default: tests)
 #   ABF_NF_LAUNCHER_URL / ABF_NF_DIST_URL / ABF_NFTOWER_URL and the matching
-#   ABF_*_SHA256              override one pin
+#   ABF_*_SHA256              override one pin; ABF_NF2_LAUNCHER_URL / ABF_NF2_DIST_URL / ABF_NFTOWER2_URL (and
+#                             the matching ABF_NF2_*_SHA256, ABF_NFTOWER2_SHA256) do the same for the second pair
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -210,21 +212,138 @@ if [ "${ABF_PLATFORM_PREFLIGHT_ONLY:-}" = "1" ]; then
     exit 0
 fi
 
+# --- 2b. the second pinned Nextflow (feature 007b) -----------------------------
+# Nextflow 25.10.4 with nf-tower 1.17.5 is what the cluster runs. It is set up the same way as the
+# first pair (every sha256 checked, a mismatch stops the run in both modes, a download that cannot be
+# had is fatal on CI) but only after the first pair's preflight exit above, so ABF_PLATFORM_PREFLIGHT_ONLY=1
+# keeps meaning "the first pair" and =2 means "both pairs".
+NF2_LAUNCHER_URL="${ABF_NF2_LAUNCHER_URL:-$NF2_LAUNCHER_URL}"
+NF2_LAUNCHER_SHA256="${ABF_NF2_LAUNCHER_SHA256:-$NF2_LAUNCHER_SHA256}"
+NF2_DIST_URL="${ABF_NF2_DIST_URL:-$NF2_DIST_URL}"
+NF2_DIST_SHA256="${ABF_NF2_DIST_SHA256:-$NF2_DIST_SHA256}"
+NFTOWER2_URL="${ABF_NFTOWER2_URL:-$NFTOWER2_URL}"
+NFTOWER2_SHA256="${ABF_NFTOWER2_SHA256:-$NFTOWER2_SHA256}"
+NXF2_HOME_DIR="$CACHE/nxf-home-$NF2_VERSION"
+LAUNCHER2="$CACHE/downloads/nextflow-$NF2_VERSION"
+E2E2_SKIP_REASON=""
+if [ -z "$E2E_SKIP_REASON" ]; then
+    DIST2="$CACHE/downloads/nextflow-$NF2_VERSION-dist"
+    ZIP2="$CACHE/downloads/nf-tower-$NFTOWER2_VERSION.zip"
+    ok=1
+    before_reason="$E2E_SKIP_REASON"
+    fetch "$NF2_LAUNCHER_URL" "$LAUNCHER2" "$NF2_LAUNCHER_SHA256" || ok=0
+    if [ "$ok" = 1 ]; then fetch "$NF2_DIST_URL" "$DIST2" "$NF2_DIST_SHA256" || ok=0; fi
+    if [ "$ok" = 1 ]; then fetch "$NFTOWER2_URL" "$ZIP2" "$NFTOWER2_SHA256" || ok=0; fi
+    if [ "$ok" = 1 ] && [ "$E2E_SKIP_REASON" = "$before_reason" ]; then
+        mkdir -p "$NXF2_HOME_DIR/framework/$NF2_VERSION" "$NXF2_HOME_DIR/plugins"
+        cp -f "$DIST2" "$NXF2_HOME_DIR/framework/$NF2_VERSION/nextflow-$NF2_VERSION-dist"
+        PLUGIN_DIR2="$NXF2_HOME_DIR/plugins/nf-tower-$NFTOWER2_VERSION"
+        if [ "$(cat "$PLUGIN_DIR2/.abf-sha256" 2>/dev/null)" != "$NFTOWER2_SHA256" ]; then
+            unpack_zip "$ZIP2" "$PLUGIN_DIR2" || hard_fail "cannot unpack $ZIP2"
+            echo "$NFTOWER2_SHA256" > "$PLUGIN_DIR2/.abf-sha256"
+        fi
+    fi
+    if [ "$E2E_SKIP_REASON" != "$before_reason" ] || [ "$ok" = 0 ]; then
+        # env_problem put the reason in E2E_SKIP_REASON for the first pair's variable; the first pair
+        # itself is fine, so the second pair's reason gets its own variable and the first is restored.
+        E2E2_SKIP_REASON="${E2E_SKIP_REASON:-no reason recorded}"
+        E2E_SKIP_REASON="$before_reason"
+    fi
+fi
+if [ -n "$E2E_SKIP_REASON" ]; then
+    E2E2_SKIP_REASON="$E2E_SKIP_REASON"
+fi
+if [ -n "$E2E2_SKIP_REASON" ]; then
+    export ABF_E2E2_SKIP_REASON="$E2E2_SKIP_REASON"
+else
+    export ABF_NXF2_LAUNCHER="$LAUNCHER2"
+    export ABF_NXF2_HOME="$NXF2_HOME_DIR"
+    export ABF_NXF2_VER="$NF2_VERSION"
+fi
+
+if [ "${ABF_PLATFORM_PREFLIGHT_ONLY:-}" = "2" ]; then
+    if [ -n "$E2E2_SKIP_REASON" ]; then
+        echo "preflight done, the end-to-end tests of Nextflow $NF2_VERSION would be skipped"
+    else
+        echo "preflight OK (both pairs)"
+    fi
+    exit 0
+fi
+
 # --- 3. pytest ------------------------------------------------------------------
 LOG="$(mktemp "${TMPDIR:-/tmp}/abf-platform-pytest.XXXXXX")" || exit 1
-trap 'rm -f "$LOG"' EXIT
+trap 'rm -f "$LOG" "$LOG".[0-9]*' EXIT
 cd "$PLATFORM_DIR" || exit 1
 export PYTHONPATH="$PLATFORM_DIR${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONDONTWRITEBYTECODE=1
-# shellcheck disable=SC2086
-"$VPY" -m pytest -rs -p no:cacheprovider ${ABF_PYTEST_TARGETS:-tests} ${ABF_PYTEST_ARGS:-} 2>&1 | tee "$LOG"
-rc=${PIPESTATUS[0]}
+if [ -n "${ABF_PYTEST_TARGETS:-}" ] || [ -n "${ABF_PYTEST_SERIAL:-}" ]; then
+    # one pytest process: what was asked for (the wrapper's own tests do this to run a single file)
+    # shellcheck disable=SC2086
+    "$VPY" -m pytest -rsfE -p no:cacheprovider ${ABF_PYTEST_TARGETS:-tests} ${ABF_PYTEST_ARGS:-} 2>&1 | tee "$LOG"
+    rc=${PIPESTATUS[0]}
+else
+    # Several pytest processes at once, by test file. The suite is long (real Nextflow runs, real processes, long polls that
+    # wait) and the files do not share state: each makes its own folders and takes its own free ports. The shards are fixed
+    # lists, balanced by the time each file took when they were made; every other file goes into the last shard. Two files
+    # check the clock closely (the agent's heartbeats are 2 s apart and a rebuilt end time must be within a second of the live
+    # one) and failed on a runner with two cores when other shards were busy, so they run one after the other, alone, once the
+    # shards have finished. Output is printed shard by shard at the end.
+    LAST="tests/test_station_e2e.py tests/test_nextflow_e2e.py"
+    SHARDS="
+tests/test_wrapper_nf2.py
+tests/test_wrapper.py
+tests/test_launch_nextflow.py
+tests/test_launch_e2e.py tests/test_station_fakeplatform.py tests/test_station_channel.py
+tests/test_station_cancel.py tests/test_launch_cli.py
+tests/test_station_launch.py tests/test_relay_loopback.py tests/test_station_envs.py
+"
+    listed=" $(echo $SHARDS) $LAST "
+    rest=""
+    for f in tests/test_*.py; do
+        case "$listed" in *" $f "*) ;; *) rest="$rest $f" ;; esac
+    done
+    rc=0
+    n=0
+    pids=""
+    start_shard() {
+        n=$((n + 1))
+        # A job started with & by a script is started with SIGINT ignored, and every program under it would inherit that: a test
+        # that sends the agent SIGINT would find it deaf. So Python puts SIGINT back to its default and then becomes pytest.
+        # shellcheck disable=SC2086
+        "$VPY" -c 'import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execv(sys.executable, [sys.executable, "-m", "pytest"] + sys.argv[1:])'             -rsfE -p no:cacheprovider $1 ${ABF_PYTEST_ARGS:-} > "$LOG.$n" 2>&1 &
+        pids="$pids $!"
+    }
+    while IFS= read -r files; do
+        [ -n "$files" ] && start_shard "$files"
+    done <<< "$SHARDS"
+    start_shard "$rest"
+    shard_rc=""
+    for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
+    for f in $LAST; do
+        pids=""
+        start_shard "$f"
+        for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
+    done
+    : > "$LOG"
+    for i in $(seq 1 "$n"); do
+        echo "===== pytest shard $i ====="
+        cat "$LOG.$i"
+        cat "$LOG.$i" >> "$LOG"
+    done
+    echo "pytest exit code of each shard, in order: $shard_rc"
+fi
 
-skipped="$(sed -n 's/.* \([0-9][0-9]*\) skipped.*/\1/p' "$LOG" | tail -1)"
-skipped="${skipped:-0}"
+skipped=0
+for k in $(sed -n 's/.* \([0-9][0-9]*\) skipped.*/\1/p' "$LOG"); do skipped=$((skipped + k)); done
 echo
 if [ -n "$E2E_SKIP_REASON" ]; then
     echo "E2E SKIPPED: $E2E_SKIP_REASON"
+fi
+# which tests failed, last, so that a log cut to its tail (tests/run_all.sh prints the last lines only) still names them
+failing="$(grep -E '^(FAILED|ERROR) ' "$LOG" | sort -u)"
+if [ -n "$failing" ]; then
+    echo "failing tests:"
+    printf '%s\n' "$failing" | cut -c1-200
 fi
 echo "platform tests: pytest exit $rc, $skipped skipped"
 if [ "$rc" = 0 ] && [ "$CI_MODE" = 1 ] && [ "$skipped" != 0 ]; then

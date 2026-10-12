@@ -3,6 +3,7 @@
 import base64
 import datetime
 import hashlib
+import json
 import os
 import re
 
@@ -32,7 +33,7 @@ def scrub_params(value):
     return value
 
 
-_ISO = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)?$")
+_ISO = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)?\Z")
 
 
 def parse_iso_epoch(text):
@@ -143,3 +144,37 @@ def token_from_header(value):
         user, _, password = decoded.partition(":")
         return password if user == "@token" and password else None
     return None
+
+
+# ---- launch and cancel (feature 007b) ---------------------------------------------------------------
+# The confirmation binds a hash of the exact content the user saw. The terminal command, the platform's queue and the agent all
+# compute it with this one function, so they cannot disagree about what "the same content" means.
+
+def canonical_json(obj):
+    """The bytes the hash is taken over: keys sorted, no spaces, UTF-8 as is."""
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def bundle_sha256(bundle):
+    return hashlib.sha256(canonical_json(bundle)).hexdigest()
+
+
+# What an agent may tell the platform about itself in hello: the facts a launch screen has to show and a bundle is built from.
+# None of them is a credential; each is bounded, and a value of the wrong type is dropped. The platform stores them with this
+# function and the agent builds the same shape with it, so the two sides compare like with like.
+FACT_TEXT = {"slurm_account": 64, "reach": 16, "endpoint": 300, "forward_file": 1100, "storage_root": 1100}
+FACT_FLAGS = ("platform_local",)
+
+
+def clean_facts(facts):
+    """The facts of a hello, each as text/boolean/None within its bound; None when there were no facts at all."""
+    if not isinstance(facts, dict):
+        return None
+    out = {}
+    for key, limit in FACT_TEXT.items():
+        v = facts.get(key)
+        out[key] = v if isinstance(v, str) and 0 < len(v) <= limit else None
+    for key in FACT_FLAGS:
+        v = facts.get(key)
+        out[key] = v if isinstance(v, bool) else None
+    return out
