@@ -175,7 +175,7 @@ def test_tc009_a_job_given_twice_is_done_once(tmp_path, site, fake):
         assert first["state"] == "done", first
         before = snapshot(folder(site))
         second = run_job(fake, job)
-        assert second["state"] == "refused"
+        assert second["state"] == "refused" and re.search(r"已經用過|used already", second["result"]["message"]), second
         assert snapshot(folder(site)) == before
     assert len([c for c in site.calls() if c.startswith("sbatch")]) == 1
 
@@ -397,3 +397,17 @@ def test_tc015_a_big_samplesheet_with_chinese_names_is_written_byte_for_byte_and
     for canary in (cell, param):
         assert canary not in out and not [c for c in site.calls() + site.ssh_calls() if canary in c]
         assert canary in (f / "samplesheet.csv").read_text() + (f / "params.yaml").read_text()
+
+
+def test_tc053_a_consistent_bundle_under_the_old_hash_is_refused_for_the_hash_not_for_what_it_says(tmp_path, site, fake):
+    # TC-053 (a): the bundle is changed AND built again so that it is internally consistent (the agent's own rebuild-and-compare
+    # would accept it); the hash and the confirmation are those of the first one. Only the check of the hash can refuse it.
+    old = bundle_for(site, fake, params={"primer": "AGRG", "pacbio": True})
+    new = bundle_for(site, fake, params={"primer": "SOMETHING-ELSE", "pacbio": True})
+    assert new != old
+    good = job_of(old)
+    job = dict(good, args={"bundle": new, "confirmation_id": good["args"]["confirmation_id"], "bundle_sha256": good["args"]["bundle_sha256"]})
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job)
+        assert res["state"] == "refused" and re.search(r"不符|not the content", res["result"]["message"]), res
+    nothing_happened(site)
