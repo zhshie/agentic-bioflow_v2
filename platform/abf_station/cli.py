@@ -124,7 +124,7 @@ def cmd_unforward(args):
     storage = rules.read_setting(str(settings), "storage_root")
     if storage and not rules.path_problem(storage):
         target = rules.normalize(storage) + "/_relay/forward_port"
-        gone = site.call(["rm -f -- %s" % quote(target)])
+        gone = site.call(["rm -f -- %s %s" % (quote(target), quote(rules.normalize(storage) + "/_relay/forward_instance"))])
         say("the copy on the site (%s) is removed" % target if gone.rc == 0 else "could not remove the copy on the site: %s" % gone.err.strip()[:200])
     return 0 if res.rc == 0 else 1
 

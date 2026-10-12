@@ -525,8 +525,12 @@ def _channel(ctx, bundle):
         port = lines[-1] if lines and lines[-1].isdigit() else None
         if port is None:
             raise rules.Refusal("反向通道開了，但讀不出站台選的 port (could not read the port the site chose)")
+    fi = os.path.dirname(ff) + "/forward_instance"
     wrote = site.call(["mkdir -p %s && umask 077 && cat > %s && chmod 600 %s" % (quote(os.path.dirname(ff)), quote(ff), quote(ff))],
                       input=(port + "\n").encode("ascii"))
+    if wrote.rc == 0:
+        # the relay asks the port who answers and compares with this id before it passes a run token on
+        wrote = site.call(["umask 077 && cat > %s && chmod 600 %s" % (quote(fi), quote(fi))], input=(ctx.instance_id + "\n").encode("ascii"))
     if wrote.rc != 0:
         raise rules.Refusal("沒辦法在站台上寫 relay 要讀的 port 檔 %s（結束碼 %d）(could not write the forward file on the site)" % (ff, wrote.rc))
     url = "http://127.0.0.1:%s/user-info" % port

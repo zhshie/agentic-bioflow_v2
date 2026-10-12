@@ -348,7 +348,9 @@ def connect_upstream(host, port):
 #   - the port is read from the file (NF_RELAY_FORWARD_FILE, else $NF_RELAY_STATE_DIR/forward_port, else
 #     $LAB_RUNS_DIR/_relay/forward_port) for EVERY request, and any doubt about the file means no;
 #   - only the paths /trace/... and /user-info (the query string is not a path);
-#   - one request per connection: the relay closes both ends after the answer.
+#   - one request per connection: the relay closes both ends after the answer;
+#   - before a request is passed on, the port is asked (no token) who answers; only the platform whose instance id is on file
+#     (forward_instance, beside forward_port) gets it, so a stale port taken by another user never sees a run token.
 # Every other spelling of loopback is refused here and never reaches the domain code below.
 _LOOPBACKISH = re.compile(r"^(?:[^@/]*@)?(?:127\.|0x7f|0177|2130706433(?:$|:)|localhost|0\.0\.0\.0|\[|::|0:)", re.I)
 _FORWARD_TARGET = re.compile(r"^127\.0\.0\.1:([0-9]{1,5})$")
@@ -384,6 +386,52 @@ def pass_answer(up, c):
         if not data:
             break
         c.sendall(data)
+
+
+def forward_instance():
+    """The instance id of the platform the forward is for (written next to the port file by the agent), or None."""
+    path = forward_file()
+    if not path:
+        return None
+    try:
+        with open(os.path.join(os.path.dirname(path), "forward_instance"), "rb") as f:
+            raw = f.read(80)
+    except OSError:
+        return None
+    m = re.fullmatch(rb"([A-Za-z0-9._-]{8,64})\n?", raw)
+    return m.group(1).decode("ascii") if m else None
+
+
+def platform_answers_at(port, want):
+    """True only if what listens on 127.0.0.1:<port> is the platform the forward was made for.
+
+    When the shared connection ends, its forwarded port is free again and any other user of this login node can listen on it.
+    So before a request that carries a run token is passed on, one request with no token asks the port who it is: the answer
+    must be a 401 whose X-ABF-Platform header is exactly the instance id on file. Anything else, a silence included, is no.
+    """
+    try:
+        s = socket.create_connection(("127.0.0.1", port), timeout=3)
+    except OSError:
+        return False
+    try:
+        s.settimeout(3)
+        s.sendall(b"GET /user-info HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nConnection: close\r\nX-ABF-Probe: 1\r\n\r\n" % port)
+        got = b""
+        while b"\r\n\r\n" not in got and len(got) < 16384:
+            data = s.recv(4096)
+            if not data:
+                break
+            got += data
+    except OSError:
+        return False
+    finally:
+        s.close()
+    head = got.partition(b"\r\n\r\n")[0].replace(b"\r", b"")
+    lines = head.split(b"\n")
+    if not lines or not re.match(rb"HTTP/1\.[01] 401( |$)", lines[0]):
+        return False
+    marks = [ln.split(b":", 1)[1].strip() for ln in lines[1:] if ln.lower().startswith(b"x-abf-platform:")]
+    return len(marks) == 1 and marks[0] == want.encode("ascii")
 
 
 def forward_file():
@@ -552,6 +600,9 @@ class Handler(socketserver.BaseRequestHandler):
         if not (path == "/user-info" or (path.startswith("/trace/") and len(path) > 7)) or not _SAFE_PATH.match(path) \
                 or "//" in path or any(seg in (".", "..") for seg in path.split("/")):
             return deny("path " + _clean(path, 60))
+        want = forward_instance()
+        if want is None or not platform_answers_at(port, want):
+            return deny("the port is not answered by the platform it was made for")
         head, _, tail = buf.partition(b"\r\n\r\n")
         lines = head.split(b"\r\n")[1:]
         kept, length = [], 0
