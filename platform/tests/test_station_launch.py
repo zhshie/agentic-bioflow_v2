@@ -1,0 +1,378 @@
+# Nothing existing: tests that hand the real agent launch jobs, honest and hostile, through a fake platform and watch a fake site; the protocol and the site are ours.
+"""The agent's launch_nextflow job (feature 007b): refusals before anything is written, and what is written when it is allowed."""
+import copy
+import json
+import os
+import re
+import secrets
+import stat
+import subprocess
+import tarfile
+import time
+from pathlib import Path
+
+import pytest
+
+from station_harness import FakePlatform, FakeSite, snapshot, snapshot_file
+from test_launch_bundle import ce_snapshot, parse_yaml, sbatch_lines, only_template_sbatch
+from test_station_fakeplatform import agent_on, wait_for
+
+ACCT = "ACCT-TEST-7"
+TOKEN = "abf_RUNTOKENCANARY_3b9d7f41c2aa5e10"
+
+
+@pytest.fixture
+def site(tmp_path):
+    s = FakeSite(tmp_path / "s", account=ACCT, site_user="tester", destructive_log=True)
+    (s.storage / "cache").mkdir()
+    (s.storage / "rawdata" / "s1.fq").write_text("x")
+    return s
+
+
+@pytest.fixture
+def fake():
+    f = FakePlatform()
+    yield f
+    f.stop()
+
+
+def bundle_for(site, fake, run="run-a", agent="agent-f", options="-A %s -c 4 --mem=26G -t 1-00:00:00" % ACCT, **over):
+    from abf_station import launch
+    env = [{"name": "NXF_SINGULARITY_CACHEDIR", "value": str(site.storage / "cache"), "head": True, "compute": False}]
+    ce = ce_snapshot(workDir=str(site.work), launchDir=str(site.launch), headQueue="normal", computeQueue="dev",
+                     environment=env, headJobOptions=options, nextflowConfig="process.executor = 'slurm'\n")
+    ce.update(over.pop("ce", {}))
+    facts = {"slurm_account": ACCT, "reach": "local", "platform_local": True, "endpoint": fake.url, "forward_file": None,
+             "storage_root": str(site.storage)}
+    facts.update(over.pop("facts", {}))
+    roots = [str(site.work), str(site.launch), str(site.storage)]
+    kw = dict(ce=ce, agent=agent, facts=facts, roots=roots, run_name=run, pipeline="nf-core/ampliseq", revision="2.18.0",
+              samplesheet=[["sample", "fastq_1"], ["s1", str(site.storage / "rawdata" / "s1.fq")]],
+              params={"primer": "AGRG", "pacbio": True})
+    kw.update(over)
+    return launch.render_bundle(**kw)
+
+
+def job_of(bundle, cid=None, sha=None, kind="launch_nextflow", conf_kind="launch", token=TOKEN, remaining=300, **extra):
+    from abf_platform import common
+    cid = cid or secrets.token_hex(16)
+    sha = sha or common.bundle_sha256(bundle)
+    job = {"kind": kind, "args": {"bundle": bundle, "confirmation_id": cid, "bundle_sha256": sha},
+           "confirmation": {"id": cid, "sha256": sha, "kind": conf_kind}, "run_token": token, "remaining": remaining}
+    job.update(extra)
+    return job
+
+
+def rehash(bundle, **top):
+    """A job whose confirmation was made for exactly this (possibly odd) bundle: only the agent's own checks can refuse it."""
+    return job_of(bundle, **top)
+
+
+def run_job(fake, job, timeout=60):
+    return fake.wait_result(fake.push_raw(job), timeout)
+
+
+def folder(site, run="run-a"):
+    return site.work / "runs" / run
+
+
+def nothing_happened(site):
+    assert site.calls() == [] or all(c.split()[0] in ("sinfo", "java", "nextflow") for c in site.calls()), site.calls()
+    assert not (site.work / "runs").exists()
+    assert site.dangerous() == [] and site.destructive() == []
+    assert site.guards_intact()
+
+
+# ---- the one launch path refuses what is not confirmed ------------------------------------------------------------
+
+def test_unconfirmed_launch_is_refused(tmp_path, site, fake):
+    # TC-052, TC-053, TC-008: no confirmation, nothing on the site and nothing in the platform's rows. The LAUNCH_ALLOW entry
+    # of tests/no_second_run_state_test.sh names this test: it must go red when the check of the confirmation is taken out.
+    b = bundle_for(site, fake)
+    good = job_of(b)
+    with agent_on(fake, site, tmp_path, name="agent-f") as a:
+        wait_for(lambda: fake.count("hello"))
+        for label, job in (("no confirmation id", dict(good, args={"bundle": b, "bundle_sha256": good["args"]["bundle_sha256"]})),
+                           ("no confirmation row", {k: v for k, v in good.items() if k != "confirmation"}),
+                           ("sha mismatch", dict(good, confirmation=dict(good["confirmation"], sha256="0" * 64))),
+                           ("wrong kind", dict(good, confirmation=dict(good["confirmation"], kind="cancel")))):
+            res = run_job(fake, job)
+            assert res["state"] == "refused", (label, res)
+        assert a.alive()
+    nothing_happened(site)
+
+
+@pytest.mark.parametrize("cid", [None, "", 7, ["x"], {"a": 1}, True])
+def test_tc008_a_confirmation_id_of_the_wrong_kind_or_none_is_refused(tmp_path, site, fake, cid):
+    b = bundle_for(site, fake)
+    job = job_of(b)
+    job["args"]["confirmation_id"] = cid
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        assert run_job(fake, job)["state"] == "refused"
+        good = run_job(fake, {"kind": "preflight", "args": {"ce": {"name": "x", "platform": "slurm-platform", "workDir": str(site.work),
+                                                                 "launchDir": None, "headQueue": "normal", "computeQueue": None,
+                                                                 "readRoots": []}}})
+        assert good["state"] == "done", good
+    nothing_happened(site)
+
+
+def test_tc008_unknown_arguments_a_used_confirmation_and_a_confirmation_for_the_other_kind_are_refused(tmp_path, site, fake):
+    b = bundle_for(site, fake)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        job = job_of(b)
+        job["args"]["cmd"] = "touch x"
+        assert run_job(fake, job)["state"] == "refused"
+        job = job_of(b)
+        job["confirmation"]["used_at"] = 12345.0
+        assert run_job(fake, job)["state"] == "refused"
+        assert run_job(fake, job_of(b, kind="cancel_run", conf_kind="launch"))["state"] == "refused"
+        assert run_job(fake, job_of(b, kind="cancel_run"))["state"] == "refused"  # a launch bundle is no cancel bundle
+        job = job_of(b)
+        job["confirmation"]["id"] = "another-id"
+        assert run_job(fake, job)["state"] == "refused"
+    nothing_happened(site)
+
+
+def tampered(site, fake, how):
+    b = bundle_for(site, fake)
+    good = job_of(b)
+    t = copy.deepcopy(b)
+    sha = good["args"]["bundle_sha256"]
+    if how == "params":
+        t["files"]["params.yaml"] = t["files"]["params.yaml"].replace("AGRG", "AGRX")
+    elif how == "samplesheet":
+        t["files"]["samplesheet.csv"] = t["files"]["samplesheet.csv"].replace("s1,", "s9,")
+        t["samplesheet"][1][0] = "s9"
+    elif how == "head":
+        t["files"]["head.sh"] = t["files"]["head.sh"] + "touch /tmp/evil\n"
+    elif how == "folder":
+        t["run_folder"] = t["run_folder"] + "x"
+    elif how == "revision":
+        t["revision"] = "2.18.1"
+    elif how == "ce":
+        t["ce"]["computeQueue"] = "other"
+    elif how == "account":
+        t["account"] = "ACCT-OTHER-9"
+    elif how == "sha":
+        sha = sha[:-1] + ("0" if sha[-1] != "0" else "1")
+    return dict(good, args={"bundle": t, "confirmation_id": good["args"]["confirmation_id"], "bundle_sha256": sha})
+
+
+@pytest.mark.parametrize("how", ["params", "samplesheet", "head", "folder", "revision", "ce", "account", "sha"])
+def test_tc007_a_bundle_changed_after_the_yes_is_refused(tmp_path, site, fake, how):
+    with agent_on(fake, site, tmp_path, name="agent-f") as a:
+        res = run_job(fake, tampered(site, fake, how))
+        assert res["state"] == "refused" and re.search(r"不符|mismatch|不一致", res["result"]["message"]), res
+        assert a.alive()
+    nothing_happened(site)
+
+
+def test_tc009_a_job_given_twice_is_done_once(tmp_path, site, fake):
+    b = bundle_for(site, fake)
+    job = job_of(b)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        first = run_job(fake, job)
+        assert first["state"] == "done", first
+        before = snapshot(folder(site))
+        second = run_job(fake, job)
+        assert second["state"] == "refused"
+        assert snapshot(folder(site)) == before
+    assert len([c for c in site.calls() if c.startswith("sbatch")]) == 1
+
+
+# ---- the agent builds the bundle again ------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name,mut", [
+    ("run name", lambda b: b.update(run_name="Bad")), ("pipeline", lambda b: b.update(pipeline="-hub/x")),
+    ("revision", lambda b: b.update(revision="main")), ("path", lambda b: b.update(samplesheet=[["sample", "fastq_1"], ["s", "/etc/passwd"]])),
+    ("queue", lambda b: b["ce"].update(headQueue="normal; touch c")), ("agent", lambda b: b.update(agent="agent-other")),
+    ("options", lambda b: b["ce"].update(headJobOptions="-c 4 --wrap=touch c")),
+    ("outdir", lambda b: b.update(params={"outdir": "/x"})), ("pre-run", lambda b: b["ce"].update(preRunScript="echo hi")),
+    ("platform type", lambda b: b["ce"].update(platform="awsbatch-platform"))])
+def test_tc011_tc025_the_agent_refuses_values_the_command_line_would_have_refused(tmp_path, site, fake, name, mut):
+    b = bundle_for(site, fake)
+    mut(b)
+    canary = tmp_path / "canary"
+    with agent_on(fake, site, tmp_path, name="agent-f") as a:
+        res = run_job(fake, rehash(b))
+        assert res["state"] == "refused", (name, res)
+        assert a.alive()
+    assert not canary.exists()
+    nothing_happened(site)
+
+
+def test_tc021_a_change_of_the_account_between_the_yes_and_the_run_is_refused(tmp_path, site, fake):
+    b = bundle_for(site, fake)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        site.settings.write_text(site.settings.read_text().replace("slurm_account: " + ACCT, "slurm_account: ACCT-CHANGED-3"))
+        res = run_job(fake, job_of(b))
+        assert res["state"] == "refused" and re.search(r"帳號", res["result"]["message"]), res
+    nothing_happened(site)
+
+
+# ---- a launch that is allowed ----------------------------------------------------------------------------------------
+
+def test_tc012_tc015_tc019_an_allowed_launch_writes_five_private_files_and_submits_once(tmp_path, site, fake):
+    b = bundle_for(site, fake)
+    with agent_on(fake, site, tmp_path, name="agent-f") as a:
+        res = run_job(fake, job_of(b))
+        assert res["state"] == "done", res
+        r = res["result"]
+        assert r["ok"] and r["slurm_job_id"] == 4242 and r["run_name"] == "run-a" and r["run_folder"] == str(folder(site))
+        out = a.output()
+    f = folder(site)
+    assert stat.S_IMODE(f.stat().st_mode) == 0o700
+    names = sorted(p.name for p in f.iterdir())
+    assert names == sorted(["samplesheet.csv", "params.yaml", "nextflow.config", "tower.token", "head.sh"])
+    for p in f.iterdir():
+        assert stat.S_IMODE(p.stat().st_mode) == 0o600, p.name
+    for name, text in b["files"].items():
+        assert (f / name).read_bytes() == text.encode("utf-8"), name
+    assert (f / "tower.token").read_text() == TOKEN
+    # the order on the site: the folder above, one call that makes the folder and unpacks, then sbatch, once
+    calls = site.calls()
+    sb = [c for c in calls if c.startswith("sbatch")]
+    assert len(sb) == 1 and sb[0].split()[1] == str(f / "head.sh")
+    assert len([c for c in site.destructive() if c.startswith("tar")]) == 1, site.destructive()
+    assert site.scripts() == [b["files"]["head.sh"]]
+    only_template_sbatch(site.scripts()[0])
+    assert subprocess.run(["bash", "-n", str(f / "head.sh")]).returncode == 0
+    # the token is nowhere but in tower.token
+    assert TOKEN not in out
+    for p in f.iterdir():
+        if p.name != "tower.token":
+            assert TOKEN not in p.read_text(), p.name
+    for c in calls + site.ssh_calls():
+        assert TOKEN not in c
+    assert TOKEN not in site.scripts()[0]
+    assert not [c for c in site.destructive() if c.split()[0] in ("rm", "rmdir", "mv")]
+    assert site.guards_intact()
+
+
+def test_tc014_hostile_text_is_written_as_text_and_run_by_nothing(tmp_path, site, fake):
+    canary = tmp_path / "canary"
+    params = {"a": "x'; touch %s; '" % canary, "b": "$(touch %s)" % canary, "c": "`touch %s`" % canary}
+    rows = [["sample", "fastq_1"], ["$(touch %s)" % canary, str(site.storage / "rawdata" / "s1.fq")], ["a,b\nc", str(site.storage / "rawdata" / "s1.fq")]]
+    b = bundle_for(site, fake, params=params, samplesheet=rows)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        assert run_job(fake, job_of(b))["state"] == "done"
+    f = folder(site)
+    assert parse_yaml((f / "params.yaml").read_text())["b"] == params["b"]
+    import csv, io
+    assert list(csv.reader(io.StringIO((f / "samplesheet.csv").read_text()))) == rows
+    assert subprocess.run(["bash", "-n", str(f / "head.sh")]).returncode == 0
+    assert not canary.exists()
+
+
+def test_tc013_the_script_the_site_got_runs_nextflow_the_way_seqera_does(tmp_path, site, fake):
+    b = bundle_for(site, fake)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        assert run_job(fake, job_of(b))["state"] == "done"
+    f = folder(site)
+    bindir = tmp_path / "nfbin"
+    bindir.mkdir()
+    nf = bindir / "nextflow"
+    nf.write_text("#!/usr/bin/env python3\nimport json, os, sys\njson.dump({'argv': sys.argv[1:], 'env': dict(os.environ), 'cwd': os.getcwd()}, "
+                  "open(os.environ['ABF_TEST_OUT'], 'w'))\n")
+    nf.chmod(0o755)
+    env = {"PATH": str(bindir) + os.pathsep + os.environ["PATH"], "ABF_TEST_OUT": str(tmp_path / "seen.json")}
+    assert subprocess.run(["bash", str(f / "head.sh")], env=env).returncode == 0
+    seen = json.load(open(tmp_path / "seen.json"))
+    assert seen["argv"] == ["run", "nf-core/ampliseq", "-r", "2.18.0", "-name", "run-a", "-params-file", "params.yaml", "-c",
+                            "nextflow.config", "-with-tower", fake.url]
+    assert os.path.realpath(seen["cwd"]) == os.path.realpath(str(f))
+    assert seen["env"]["SLURM_ACCOUNT"] == ACCT and seen["env"]["TOWER_ACCESS_TOKEN"] == TOKEN
+    assert seen["env"]["NXF_SINGULARITY_CACHEDIR"] == str(site.storage / "cache")
+    assert "NXF_LOG_FILE" not in seen["env"]
+
+
+def test_tc016_an_existing_folder_is_refused_and_nothing_in_it_changes(tmp_path, site, fake):
+    f = folder(site)
+    f.mkdir(parents=True)
+    (f / "guard.txt").write_text("guard")
+    before = snapshot(f)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(bundle_for(site, fake)))
+        assert res["state"] == "refused" and re.search(r"已存在|exists", res["result"]["message"]), res
+    assert snapshot(f) == before
+    assert not [c for c in site.calls() if c.startswith("sbatch")]
+    assert not [c for c in site.destructive() if c.split()[0] in ("rm", "rmdir", "mv")]
+
+
+def test_tc017_sbatch_failing_is_reported_with_what_is_left_and_never_retried(tmp_path, site, fake):
+    site.set("sbatch_fail", "sbatch: error: Batch job submission failed: Invalid account\n")
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(bundle_for(site, fake)))
+        assert res["state"] == "error" and not res["result"]["ok"], res
+        assert str(folder(site)) in res["result"]["left_on_site"] or str(folder(site)) in res["result"]["message"]
+    assert len([c for c in site.calls() if c.startswith("sbatch")]) == 1
+    assert not [c for c in site.destructive() if c.split()[0] in ("rm", "rmdir", "mv")]
+    assert folder(site).is_dir()
+
+
+def test_tc017_an_unreadable_answer_and_a_number_followed_by_a_dropped_connection_are_told_as_unknown(tmp_path, site, fake):
+    site.set("sbatch_garbage", "1")
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(bundle_for(site, fake, run="run-g")))
+        assert res["state"] == "error" and re.search(r"可能已送出", res["result"]["message"]), res
+        site.clear("sbatch_garbage")
+        site.set("sbatch_exit", "255")
+        res = run_job(fake, job_of(bundle_for(site, fake, run="run-h")))
+        assert res["state"] == "error" and re.search(r"可能已送出", res["result"]["message"]), res
+        assert "slurm_job_id" not in res["result"] or res["result"].get("ok") is False
+    assert len([c for c in site.calls() if c.startswith("sbatch")]) == 2
+
+
+def test_tc018_the_agent_does_not_submit_when_too_little_of_the_deadline_is_left(tmp_path, site, fake):
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(bundle_for(site, fake), remaining=30))
+        assert res["state"] == "refused" and re.search(r"時間|time", res["result"]["message"]), res
+    assert not [c for c in site.calls() if c.startswith("sbatch")]
+    assert not (site.work / "runs").exists()
+
+
+def test_tc022_a_preflight_failure_a_read_only_cache_and_an_unset_account_stop_the_launch_before_anything_is_made(tmp_path, site, fake):
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        site.remove("sinfo")
+        res = run_job(fake, job_of(bundle_for(site, fake)))
+        assert res["state"] == "refused" and "sinfo" in res["result"]["message"], res
+        site.restore("sinfo")
+        os.chmod(site.storage / "cache", 0o500)
+        try:
+            res = run_job(fake, job_of(bundle_for(site, fake, run="run-b")))
+            assert res["state"] == "refused" and re.search(r"NXF_SINGULARITY_CACHEDIR|快取", res["result"]["message"]), res
+        finally:
+            os.chmod(site.storage / "cache", 0o700)
+    assert not (site.work / "runs").exists()
+    assert not [c for c in site.calls() if c.startswith("sbatch")]
+
+
+def test_tc023_over_local_reach_no_forward_is_opened_and_the_endpoint_is_the_platform(tmp_path, site, fake):
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        assert run_job(fake, job_of(bundle_for(site, fake)))["state"] == "done"
+    assert site.ssh_calls() == []
+    assert ("-with-tower %s" % fake.url) in site.scripts()[0]
+
+
+def test_tc073_no_launch_flow_touches_the_guard_files_or_deletes_anything(tmp_path, site, fake):
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        run_job(fake, job_of(bundle_for(site, fake)))
+        run_job(fake, tampered(site, fake, "head"))
+        site.set("sbatch_fail", "no\n")
+        run_job(fake, job_of(bundle_for(site, fake, run="run-z")))
+    assert site.guards_intact()
+    assert not [c for c in site.destructive() if c.split()[0] in ("rm", "rmdir", "mv")]
+
+
+def test_tc065_the_agent_has_no_login_of_its_own_to_offer(tmp_path):
+    src = "".join(p.read_text(encoding="utf-8") for p in (Path(__file__).resolve().parents[1] / "abf_station").glob("*.py"))
+    assert not re.search(r"getpass|pexpect|paramiko|\botp\b|passphrase", src)
+
+
+def test_hello_carries_the_facts_a_launch_is_built_from(tmp_path, site, fake):
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        wait_for(lambda: fake.count("hello"))
+        hello = [r for r in fake.requests if r[0] == "hello"][0][1]
+    f = hello["facts"]
+    assert f["slurm_account"] == ACCT and f["reach"] == "local" and f["platform_local"] is True
+    assert f["endpoint"] == fake.url and f["storage_root"] == str(site.storage) and f["forward_file"] is None
