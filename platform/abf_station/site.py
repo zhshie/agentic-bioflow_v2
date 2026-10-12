@@ -50,10 +50,15 @@ class Site:
         self.settings_file = str(settings_file)
         self.log = log
 
-    def call(self, args):
-        """Run `on_site.sh <args>`; args is a list of strings. Returns a SiteResult, never raises for a failing command."""
+    def call(self, args, input=None, timeout=None):
+        """Run `on_site.sh <args>`; args is a list of strings. Returns a SiteResult, never raises for a failing command.
+
+        input (bytes) is handed to the command on its standard input and is never logged or put on a command line;
+        timeout (seconds) replaces the default clock of this one call."""
         env = dict(os.environ)
         env["LAB_SETTINGS_FILE"] = self.settings_file
+        if timeout is not None:
+            env["ON_SITE_TIMEOUT"] = str(int(timeout))
         env.setdefault("ON_SITE_TIMEOUT", DEFAULT_SITE_TIMEOUT)
         try:
             site_limit = int(env["ON_SITE_TIMEOUT"])
@@ -63,7 +68,8 @@ class Site:
         self.log("site: " + (shown if len(shown) <= 400 else shown[:400] + "..."))
         try:
             p = subprocess.run(["bash", str(self.script)] + list(args), capture_output=True, env=env,
-                               stdin=subprocess.DEVNULL, timeout=(site_limit + 15) if site_limit > 0 else None)
+                               input=input, stdin=None if input is not None else subprocess.DEVNULL,
+                               timeout=(site_limit + 15) if site_limit > 0 else None)
         except subprocess.TimeoutExpired:
             return SiteResult(124, b"", "the site script did not return in time", timed_out=True)
         except OSError as e:

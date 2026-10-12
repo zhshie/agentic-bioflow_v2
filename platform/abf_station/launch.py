@@ -18,6 +18,7 @@ storage root), through the facts the agent reports in hello.
 import csv
 import io
 import math
+import os
 import re
 import shlex
 
@@ -388,3 +389,164 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
     return {"version": BUNDLE_VERSION, "agent": agent, "ce": ce_out, "run_name": run_name, "run_folder": run_folder,
             "pipeline": pipeline, "revision": revision, "samplesheet": sheet, "params": user_params,
             "path_columns": sorted(set(path_columns or [])), "account": account, "tower": tower, "files": files}
+
+
+# ======================================================================================================================
+# The launch itself: what the agent does with a confirmed job
+# ======================================================================================================================
+
+import base64
+import io
+import tarfile
+import time
+from urllib.parse import urlparse
+
+from abf_platform import common
+
+from .site import quote
+
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+MIN_REMAINING = 60.0                       # seconds of the job's deadline that must be left before sbatch (ABF_STATION_MIN_REMAINING)
+LAUNCH_KEYS = {"bundle", "confirmation_id", "bundle_sha256"}
+SUBMITTED = re.compile(r"Submitted batch job ([0-9]+)\s*$", re.M)
+
+
+def own_facts(ctx):
+    """What this agent says about itself in hello, from the deployment's settings; the same shape the platform stores."""
+    sf = ctx.settings_file
+    reach = rules.read_setting(sf, "reach") or "local"
+    storage = rules.read_setting(sf, "storage_root")
+    if not storage or rules.path_problem(storage) or rules.normalize(storage) == "/":
+        storage = None
+    else:
+        storage = rules.normalize(storage)
+    url = (ctx.platform_url or "").rstrip("/")
+    forward_file = storage + "/_relay/forward_port" if storage and reach not in ("local", "none") else None
+    return common.clean_facts({"slurm_account": rules.read_setting(sf, "slurm_account") or None, "reach": reach,
+                               "platform_local": (urlparse(url).hostname or "") in LOOPBACK, "endpoint": url or None,
+                               "forward_file": forward_file, "storage_root": storage})
+
+
+def verify_confirmation(job, ctx, want):
+    """The bundle of a confirmed job, or rules.Refusal: it carries a confirmation of the right kind that was made for exactly
+    this content and has not been used by this agent before. Nothing is written or run before this has passed."""
+    args = job.get("args")
+    conf = job.get("confirmation")
+    cid = args.get("confirmation_id") if isinstance(args, dict) else None
+    if not isinstance(cid, str) or not cid:
+        raise rules.Refusal("沒有確認憑證：送出與取消只在使用者於終端機答 y 之後才會執行 (no confirmation)")
+    if not isinstance(conf, dict) or conf.get("id") != cid:
+        raise rules.Refusal("平台沒有附上這個確認憑證的紀錄 (the platform sent no matching confirmation row)")
+    if conf.get("kind") != want or conf.get("used_at") is not None:
+        raise rules.Refusal("確認憑證的種類不符，或已用過 (wrong kind of confirmation, or used already)")
+    bundle = args.get("bundle")
+    if not isinstance(bundle, dict):
+        raise rules.Refusal("沒有內容包 (no bundle)")
+    sha = common.bundle_sha256(bundle)
+    if not (isinstance(conf.get("sha256"), str) and conf["sha256"] == args.get("bundle_sha256") == sha):
+        raise rules.Refusal("內容與確認時不符：代理執行的必須是使用者看到的那一份 (the content is not the content that was confirmed)")
+    if cid in ctx.used_confirmations:
+        raise rules.Refusal("這個確認憑證已經用過 (this confirmation was used already)")
+    ctx.used_confirmations.add(cid)
+    return bundle
+
+
+def _left(ctx, job):
+    """Seconds of the job's deadline that are left, by this agent's own clock."""
+    remaining = job.get("remaining")
+    if isinstance(remaining, bool) or not isinstance(remaining, (int, float)):
+        remaining = 0.0
+    return remaining - (time.monotonic() - ctx.job_started)
+
+
+def _min_remaining():
+    try:
+        return float(os.environ.get("ABF_STATION_MIN_REMAINING", MIN_REMAINING))
+    except ValueError:
+        return MIN_REMAINING
+
+
+def _tar(folder_files):
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as t:
+        for name, data in folder_files:
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mode = 0o600
+            info.mtime = int(time.time())
+            t.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def _channel(ctx, bundle):
+    raise rules.Refusal("反向通道尚未實作 (the reverse channel is not built yet)")
+
+
+def run_launch(job, ctx, preflight):
+    """(state, result) of one launch_nextflow job. preflight(env, ctx) is handlers.preflight, passed in so that the checks of
+    007 run first and unchanged."""
+    bundle = verify_confirmation(job, ctx, "launch")
+    env = rules.clean_environment(bundle.get("ce"))
+    if bundle.get("agent") != ctx.agent_name:
+        raise rules.Refusal("這個內容包是給另一個代理的 (the bundle is for another agent)")
+    facts = own_facts(ctx)
+    token = job.get("run_token")
+    if not isinstance(token, str) or not token or len(token) > 200:
+        raise rules.Refusal("平台沒有給這次執行的 token (no run token was sent)")
+    try:
+        rebuilt = render_bundle(ce=bundle["ce"], agent=bundle["agent"], facts=facts, roots=rules.allowed_roots(env, ctx.settings_file),
+                                run_name=bundle["run_name"], pipeline=bundle["pipeline"], revision=bundle["revision"],
+                                samplesheet=bundle["samplesheet"], params=bundle["params"], path_columns=bundle["path_columns"])
+    except (BundleError, KeyError, TypeError) as e:
+        raise rules.Refusal("內容不合規則：%s" % e)
+    if rebuilt != bundle:
+        why = "帳號與部署設定不符" if rebuilt.get("account") != bundle.get("account") else "內容與代理依自己的設定重新產生的不一致"
+        raise rules.Refusal("%s：不送出 (the bundle is not what this agent builds from its own settings)" % why)
+    if _left(ctx, job) < _min_remaining():
+        raise rules.Refusal("工作期限剩下的時間不足以安全送出 (too little of the deadline is left to submit safely)")
+    site = ctx.site
+    run, folder, work = bundle["run_name"], bundle["run_folder"], env["workDir"]
+
+    verdict = preflight(env, ctx)
+    failed = [c for c in verdict["checks"] if c["status"] != "pass"]
+    if failed:
+        raise rules.Refusal("預檢未通過，沒有建立任何東西：" + "；".join("%s（%s）" % (c["name"], c["detail"]) for c in failed))
+    cache = next((e["value"] for e in bundle["ce"].get("environment", []) if e.get("name") == "NXF_SINGULARITY_CACHEDIR" and e.get("head", True)), None)
+    if cache:
+        if rules.path_problem(cache):
+            raise rules.Refusal("NXF_SINGULARITY_CACHEDIR 不是合法的路徑 (not a plain path)")
+        c = quote(cache)
+        res = site.call(["if test -d %s; then test -w %s && echo cache=ok || echo cache=no; else d=$(dirname %s); "
+                         "test -d \"$d\" && test -w \"$d\" && echo cache=ok || echo cache=no; fi" % (c, c, c)])
+        if "cache=ok" not in res.out.decode("utf-8", errors="replace"):
+            raise rules.Refusal("容器快取 NXF_SINGULARITY_CACHEDIR=%s 不可寫；請改成可寫的資料夾後再試，沒有建立任何東西 (the container cache "
+                                "cannot be written)" % cache)
+    if bundle["tower"]["mode"] == "forward":
+        _channel(ctx, bundle)
+
+    res = site.call(["mkdir -p %s" % quote(work + "/runs")])
+    if res.rc != 0:
+        return "error", {"ok": False, "message": "站台上建不起 %s/runs（結束碼 %d）；沒有建立專屬資料夾 (nothing was made)" % (work, res.rc)}
+    files = [(name, bundle["files"][name].encode("utf-8")) for name in FILE_NAMES] + [("tower.token", token.encode("utf-8"))]
+    res = site.call(["umask 077; mkdir %s && tar -x --no-same-owner -C %s" % (quote(folder), quote(folder))],
+                    input=_tar(files), timeout=120)
+    if res.rc != 0:
+        if "File exists" in res.err:
+            raise rules.Refusal("專屬資料夾 %s 已存在，不覆蓋；請換一個 run 名稱。沒有改動任何東西 (the run folder exists already)" % folder)
+        left = "資料夾 %s 可能已建立，檔案可能不完整，尚未送出" % folder
+        return "error", {"ok": False, "message": "寫入專屬資料夾時出錯（結束碼 %d）。%s" % (res.rc, left), "left_on_site": left}
+    if _left(ctx, job) < _min_remaining():
+        left = "資料夾 %s 與其中的檔案已寫好，尚未送出（工作期限剩下的時間不足）" % folder
+        return "error", {"ok": False, "message": "不送出：" + left, "left_on_site": left}
+    res = site.call(["sbatch %s" % quote(folder + "/head.sh")], timeout=120)
+    text = res.out.decode("utf-8", errors="replace")
+    m = SUBMITTED.search(text)
+    unknown = "可能已送出，請查專屬資料夾 %s 與 Slurm 工作 nf-%s" % (folder, run)
+    if res.rc == 0 and m:
+        n = int(m.group(1))
+        return "done", {"ok": True, "slurm_job_id": n, "run_name": run, "run_folder": folder,
+                        "message": "已送出：Slurm 工作編號 %d，run 名稱 %s，專屬資料夾 %s" % (n, run, folder)}
+    if res.rc == 0 or m or res.timed_out or res.rc in (124, 255):
+        return "error", {"ok": False, "message": "sbatch 的結果不明：%s" % unknown, "left_on_site": "資料夾 %s；%s" % (folder, unknown)}
+    return "error", {"ok": False, "message": "sbatch 沒有成功（結束碼 %d）：%s。不重試。" % (res.rc, res.err.strip()[:200] or "沒有訊息"),
+                     "left_on_site": "資料夾 %s 與其中的檔案（未送出，未刪除）" % folder}

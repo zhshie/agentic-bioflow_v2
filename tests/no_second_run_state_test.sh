@@ -35,7 +35,7 @@
 # is still the last line. It is a net, not a proof.
 #
 # NO_RUN_STATE_ROOT points the scan at a scratch tree; the self-tests at the
-# bottom use it to prove each scan can go red. LAUNCH_ALLOW_EXTRA adds
+# bottom use it to prove each scan can go red. LAUNCH_ALLOW_EXTRA replaces
 # LAUNCH_ALLOW entries for those self-tests and is read only when
 # NO_RUN_STATE_ROOT is set, so on the real tree the environment cannot excuse a
 # launch.
@@ -59,11 +59,11 @@ scripts/on_site.sh|a bounded wait for a free session slot; it exits at its own b
 # `async def <name>(`, found by python3's ast; a mention in a comment, a string or
 # a docstring does not count, and a missing python3 fails the entry): that
 # test is the one proving an unconfirmed launch is refused. At most one entry.
-# Stale entries fail. Empty until the launch job is built (feature 007b).
+# Stale entries fail. The one entry is the station agent's launch job (feature 007b).
 LAUNCH_ALLOW="
+platform/abf_station/launch.py|platform/tests/test_station_launch.py::test_unconfirmed_launch_is_refused|the head job is submitted only after the confirmation row, its hash and the bundle are checked; the test hands the agent a launch with no valid confirmation and sees no call on the site
 "
-[ -z "${NO_RUN_STATE_ROOT:-}" ] || LAUNCH_ALLOW="$LAUNCH_ALLOW"$'
-'"${LAUNCH_ALLOW_EXTRA:-}"
+[ -z "${NO_RUN_STATE_ROOT:-}" ] || LAUNCH_ALLOW="${LAUNCH_ALLOW_EXTRA:-}"  # a scratch tree has entries of its own, never the real one
 
 # Seqera CLI nouns (tw --help). The command layer may use these and no others.
 TW_NOUNS=" actions collaborators compute-envs credentials data-links datasets info labels launch members organizations participants pipelines runs secrets studios teams workspaces "

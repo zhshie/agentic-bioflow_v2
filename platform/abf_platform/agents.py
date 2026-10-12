@@ -49,24 +49,7 @@ def list_agents(state_path, at, offline_after=None):
         con.close()
 
 
-# What an agent may tell the platform about itself in hello (feature 007b): the facts a launch screen has to show
-# and a bundle is built from. None of them is a credential; each is bounded, and a value of the wrong type is dropped.
-FACT_TEXT = {"slurm_account": 64, "reach": 16, "endpoint": 300, "forward_file": 1100, "storage_root": 1100}
-FACT_FLAGS = ("platform_local",)
-
-
-def clean_facts(facts):
-    """The facts of a hello, each as text/boolean/None within its bound; None when the hello carried no facts at all."""
-    if not isinstance(facts, dict):
-        return None
-    out = {}
-    for key, limit in FACT_TEXT.items():
-        v = facts.get(key)
-        out[key] = v if isinstance(v, str) and 0 < len(v) <= limit else None
-    for key in FACT_FLAGS:
-        v = facts.get(key)
-        out[key] = v if isinstance(v, bool) else None
-    return out
+clean_facts = common.clean_facts
 
 
 def register(state_path, name, version, clock=time.time, facts=None):

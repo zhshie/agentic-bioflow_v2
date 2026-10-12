@@ -157,3 +157,24 @@ def canonical_json(obj):
 
 def bundle_sha256(bundle):
     return hashlib.sha256(canonical_json(bundle)).hexdigest()
+
+
+# What an agent may tell the platform about itself in hello: the facts a launch screen has to show and a bundle is built from.
+# None of them is a credential; each is bounded, and a value of the wrong type is dropped. The platform stores them with this
+# function and the agent builds the same shape with it, so the two sides compare like with like.
+FACT_TEXT = {"slurm_account": 64, "reach": 16, "endpoint": 300, "forward_file": 1100, "storage_root": 1100}
+FACT_FLAGS = ("platform_local",)
+
+
+def clean_facts(facts):
+    """The facts of a hello, each as text/boolean/None within its bound; None when there were no facts at all."""
+    if not isinstance(facts, dict):
+        return None
+    out = {}
+    for key, limit in FACT_TEXT.items():
+        v = facts.get(key)
+        out[key] = v if isinstance(v, str) and 0 < len(v) <= limit else None
+    for key in FACT_FLAGS:
+        v = facts.get(key)
+        out[key] = v if isinstance(v, bool) else None
+    return out
