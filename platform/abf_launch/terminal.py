@@ -53,14 +53,12 @@ def pair(label, value):
 def terminal_problem():
     """Why the answer cannot be taken from a person, or None. Input and output must be the terminal the program
     belongs to; a program that merely has a terminal as its input, but none as its controlling terminal, is refused."""
+    if not (os.isatty(0) and os.isatty(1)):
+        return "輸入或輸出不是終端機"
     try:
-        if not (os.isatty(0) and os.isatty(1)):
-            return "輸入或輸出不是終端機"
-        fd = os.open("/dev/tty", os.O_RDWR)
+        os.close(os.open("/dev/tty", os.O_RDWR))
     except OSError:
         return "這個程式沒有控制終端機"
-    finally:
-        os.close(fd)
     try:  # Linux: the controlling terminal of this process, from /proc, must be the device standard input is
         with open("/proc/self/stat", encoding="ascii") as f:
             tty_nr = int(f.read().rsplit(")", 1)[1].split()[4])
