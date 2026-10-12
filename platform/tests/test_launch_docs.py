@@ -1,5 +1,5 @@
 # Nothing existing: checks that the documents of feature 007b say what the code really does and name the limits it really has; no tool compares a document with a constant.
-"""docs/PLATFORM.md section 9, SEQERA_PARITY.md, PITFALLS.md, ROADMAP.md, TESTING.md (feature 007b, TC-058)."""
+"""docs/PLATFORM.md section 9, SEQERA_PARITY.md, PITFALLS.md, TESTING.md (feature 007b, TC-058). docs/ROADMAP.md is not written by the executor: see specs/007b-launch/tasks.md."""
 import re
 
 from helpers import REPO_ROOT
@@ -79,13 +79,6 @@ def test_tc058_pitfalls_gets_the_two_new_entries():
     p = flat(read("PITFALLS.md"))
     assert re.search(r"GatewayPorts off on NCHC: reverse forward is loopback-only \(measured 2026-10-11\)", p)
     assert re.search(r"Seqera launcher scripts hold the token in a 755 file", p)
-
-
-def test_tc058_the_roadmap_notes_007b_and_does_not_move_the_waiting_principle_into_the_constitution():
-    rm = flat(read("ROADMAP.md"))
-    assert "007b is built" in rm and "TC-047" in rm
-    assert "Every platform write tool (launch, delete, clear `work/`) refuses without the user's confirmation step" in rm
-    assert re.search(r"007b builds it for launch and cancel", rm)
 
 
 def test_tc058_testing_md_has_the_manual_steps_of_the_real_cluster_cases():

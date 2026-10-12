@@ -18,7 +18,7 @@ from test_launch_bundle import ce_snapshot, parse_yaml, sbatch_lines, only_templ
 from test_station_fakeplatform import agent_on, wait_for
 
 ACCT = "ACCT-TEST-7"
-TOKEN = "abf_RUNTOKENCANARY_3b9d7f41c2aa5e10"
+TOKEN = "abf_" + secrets.token_hex(16)   # made at run time: a fixed value of this shape in a tracked file fails tests/credentials_stay_in_settings_test.sh
 
 
 @pytest.fixture
