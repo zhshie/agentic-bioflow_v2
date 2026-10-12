@@ -20,6 +20,11 @@
 #   on_site.sh <command...>              run a command
 #   on_site.sh --script <path> [args]    run one of this plugin's own scripts
 #   on_site.sh --check-reach             can the site be reached right now?
+#   on_site.sh --forward <local port>    ask the shared connection for a reverse forward: the site's sshd chooses the
+#                                        port (on the site's loopback only), which is printed and recorded in
+#                                        <deployment>/_personal/forward_port (mode 600). ssh mode only (007b)
+#   on_site.sh --check-forward           is a forward recorded AND made on this very connection? prints its port
+#   on_site.sh --unforward               cancel it and remove the records
 #
 #   ON_SITE_DRY_RUN=1   print where a command would run and what it would be,
 #                       and run nothing. This is the seam the tests use, so
@@ -148,6 +153,9 @@ MODE=command SCRIPT=""
 case "${1:-}" in
   --check-reach) MODE=check;  shift ;;
   --script)      MODE=script; SCRIPT="${2:?--script needs a path}"; shift 2 ;;
+  --forward)       MODE=forward; FWD_LOCAL="${2:?--forward needs the local port}"; shift 2 ;;
+  --unforward)     MODE=unforward; shift ;;
+  --check-forward) MODE=checkfwd; shift ;;
 esac
 
 case "$REACH" in
@@ -298,6 +306,80 @@ sessions_exhausted() {
 # clocked() comes from scripts/utils/portable.sh via settings.sh: `timeout` is
 # GNU coreutils and is not on a stock macOS at all, where this used to fail
 # with "timeout: command not found" on every single call to the site.
+
+# --- the reverse forward (feature 007b) --------------------------------------------------------------------
+# A head job on a compute node reports to the platform on this machine. Compute nodes cannot reach this machine, and the
+# site's sshd binds a reverse forward to its own loopback only (PITFALLS), so the forward ends on the login node and the
+# relay there carries the last step. The forward is an option of the connection that already exists: no process is
+# started here. The port sshd chooses is recorded beside the settings, and with it the pid of the master, so that a
+# record left over from an earlier connection is not mistaken for a live forward.
+fwd_dir() {
+  local d; d="$(dirname "$SETTINGS_FILE")"
+  case "$d" in */config) d="$(dirname "$d")" ;; esac
+  printf '%s/_personal\n' "$d"
+}
+master_pid() { "$SSH" -O check -o ControlPath="$CP" "$HOST" 2>&1 | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1; }
+
+case "$MODE" in
+  forward|unforward|checkfwd)
+    if [ "$REACH" != ssh ]; then
+      echo "on_site.sh: reach is '$REACH': this deployment runs on the site itself, so there is no reverse forward to open." >&2
+      exit 3
+    fi
+    FWD_DIR="$(fwd_dir)"
+    FWD_PORT_FILE="$FWD_DIR/forward_port" FWD_STATE_FILE="$FWD_DIR/forward_state"
+    ;;
+esac
+
+if [ "$MODE" = checkfwd ]; then
+  master_is_up || no_master
+  [ -r "$FWD_PORT_FILE" ] || { echo "on_site.sh: no reverse forward is recorded." >&2; exit 1; }
+  fport="$(head -c 16 "$FWD_PORT_FILE" | tr -d '[:space:]')"
+  case "$fport" in ''|*[!0-9]*) echo "on_site.sh: the recorded forward port is not a number." >&2; exit 1 ;; esac
+  recorded="$(sed -n 's/^master_pid=//p' "$FWD_STATE_FILE" 2>/dev/null | head -1)"
+  now="$(master_pid)"
+  if [ -z "$recorded" ] || [ "$recorded" != "$now" ]; then
+    echo "on_site.sh: the recorded forward was made on another connection (the shared connection was opened again since)." >&2
+    exit 1
+  fi
+  printf '%s\n' "$fport"
+  exit 0
+fi
+
+if [ "$MODE" = forward ]; then
+  case "$FWD_LOCAL" in ''|*[!0-9]*) die 2 "--forward needs the local port as a number, not '$FWD_LOCAL'." ;; esac
+  { [ "$FWD_LOCAL" -ge 1 ] && [ "$FWD_LOCAL" -le 65535 ]; } || die 2 "--forward: the local port $FWD_LOCAL is out of range."
+  master_is_up || no_master
+  errf="$(mktemp)"
+  fout="$(clocked "$CHECK_TMO" "$SSH" -O forward -o ControlPath="$CP" -R "127.0.0.1:0:127.0.0.1:$FWD_LOCAL" "$HOST" 2>"$errf")"
+  rc=$?
+  ferr="$(tr -c '[:print:]\n' ' ' < "$errf" | head -c 400)"; rm -f -- "$errf"
+  [ "$rc" = 124 ] && sessions_exhausted "$CHECK_TMO"
+  [ "$rc" = 0 ] || die 3 "the shared connection did not accept the reverse forward (exit code $rc): $ferr" \
+                         "The site's sshd may not allow remote forwards for this account (AllowTcpForwarding)."
+  # the allocated port: ssh prints it alone on a line; older versions say 'Allocated port N for remote forward'
+  fport="$(printf '%s\n%s\n' "$fout" "$ferr" | sed -n 's/^[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p; s/.*Allocated port \([0-9][0-9]*\).*/\1/p' | tail -1)"
+  [ -n "$fport" ] || die 3 "the shared connection accepted the forward but did not say which port the site chose."
+  umask 077
+  mkdir -p "$FWD_DIR"
+  printf '%s\n' "$fport" > "$FWD_PORT_FILE"
+  printf 'master_pid=%s\nlocal_port=%s\n' "$(master_pid)" "$FWD_LOCAL" > "$FWD_STATE_FILE"
+  chmod 600 "$FWD_PORT_FILE" "$FWD_STATE_FILE" 2>/dev/null
+  printf '%s\n' "$fport"
+  exit 0
+fi
+
+if [ "$MODE" = unforward ]; then
+  fport="$(head -c 16 "$FWD_PORT_FILE" 2>/dev/null | tr -d '[:space:]')"
+  flocal="$(sed -n 's/^local_port=//p' "$FWD_STATE_FILE" 2>/dev/null | head -1)"
+  if [ -n "$fport" ] && [ -n "$flocal" ] && master_is_up; then
+    "$SSH" -O cancel -o ControlPath="$CP" -R "127.0.0.1:$fport:127.0.0.1:$flocal" "$HOST" >/dev/null 2>&1 \
+      || echo "on_site.sh: the connection did not confirm the cancel of the forward; it ends with the connection." >&2
+  fi
+  rm -f -- "$FWD_PORT_FILE" "$FWD_STATE_FILE"
+  echo "reverse forward cancelled and its records removed"
+  exit 0
+fi
 
 if [ "$MODE" = check ]; then
   [ "$REACH" = local ] && exit 0

@@ -340,6 +340,79 @@ def connect_upstream(host, port):
     return None, err
 
 
+# ---- the one loopback door (specs/007b-launch, FR-005) ---------------------------------------------------------------
+# Feature 007b needs a Nextflow head job on a compute node to report to the platform on the user's laptop. The laptop's
+# shared ssh connection carries a reverse forward, but this site's sshd binds it to the login node's loopback only, so only a
+# process ON the login node can reach it - this relay. The door is as narrow as it can be made:
+#   - plain HTTP in absolute form only (never CONNECT), to exactly 127.0.0.1:<the port in the forward file>;
+#   - the port is read from the file (NF_RELAY_FORWARD_FILE, else $NF_RELAY_STATE_DIR/forward_port, else
+#     $LAB_RUNS_DIR/_relay/forward_port) for EVERY request, and any doubt about the file means no;
+#   - only the paths /trace/... and /user-info (the query string is not a path);
+#   - one request per connection: the relay closes both ends after the answer.
+# Every other spelling of loopback is refused here and never reaches the domain code below.
+_LOOPBACKISH = re.compile(r"^(?:[^@/]*@)?(?:127\.|0x7f|0177|2130706433(?:$|:)|localhost|0\.0\.0\.0|\[|::|0:)", re.I)
+_FORWARD_TARGET = re.compile(r"^127\.0\.0\.1:([0-9]{1,5})$")
+_SAFE_PATH = re.compile(r"^[A-Za-z0-9._~/-]+$")
+LOOPBACK_METHODS = ("GET", "POST", "PUT")
+LOOPBACK_BODY_LIMIT = 8 * 1024 * 1024
+_DROP_HEADERS = ("connection", "proxy-connection", "keep-alive", "upgrade", "http2-settings", "te", "expect", "trailer")
+
+
+def pass_answer(up, c):
+    """Pass one answer from the platform on: as long as its Content-Length says, else until the platform closes (it was
+    told to). A server that ignores 'Connection: close' and keeps its end open does not keep the client's end open."""
+    head = b""
+    while b"\r\n\r\n" not in head and len(head) < 65536:
+        data = up.recv(65536)
+        if not data:
+            break
+        head += data
+    c.sendall(head)
+    header, sep, rest = head.partition(b"\r\n\r\n")
+    length = re.search(rb"(?im)^content-length:[ \t]*([0-9]{1,9})[ \t]*$", header.replace(b"\r", b""))
+    if sep and length:
+        remaining = int(length.group(1)) - len(rest)
+        while remaining > 0:
+            data = up.recv(min(65536, remaining))
+            if not data:
+                break
+            c.sendall(data)
+            remaining -= len(data)
+        return
+    while True:
+        data = up.recv(65536)
+        if not data:
+            break
+        c.sendall(data)
+
+
+def forward_file():
+    explicit = os.environ.get("NF_RELAY_FORWARD_FILE")
+    if explicit:
+        return explicit
+    state = os.environ.get("NF_RELAY_STATE_DIR")
+    if not state and os.environ.get("LAB_RUNS_DIR"):
+        state = os.path.join(os.environ["LAB_RUNS_DIR"], "_relay")
+    return os.path.join(state, "forward_port") if state else None
+
+
+def forward_port():
+    """The port of the reverse forward, or None when the file is missing, unreadable, malformed or out of range."""
+    path = forward_file()
+    if not path:
+        return None
+    try:
+        with open(path, "rb") as f:
+            raw = f.read(64)
+    except OSError:
+        return None
+    m = re.fullmatch(rb"([1-9][0-9]{3,4})\n?", raw)
+    if not m:
+        return None
+    port = int(m.group(1))
+    return port if 1024 <= port <= 65535 and port != PORT else None
+
+
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         c = self.request
@@ -433,6 +506,9 @@ class Handler(socketserver.BaseRequestHandler):
             log("REJECT non-absolute", url[:60], "from", peer_name)
             return
         hostport, _, path = url[7:].partition("/")
+        if _LOOPBACKISH.match(hostport):
+            self.forward_loopback(c, parts, buf, peer_name, hostport, "/" + path)
+            return
         if ":" in hostport:
             host, _, port = hostport.rpartition(":")
             port = int(port)
@@ -459,6 +535,71 @@ class Handler(socketserver.BaseRequestHandler):
         log("OPEN-HTTP", host, port, "from", peer_name)
         self.pump(c, up)
         log("CLOSE-HTTP", host, port, "from", peer_name)
+
+    def forward_loopback(self, c, parts, buf, peer_name, hostport, target):
+        """One plain-HTTP request to the reverse forward, if and only if every condition of the door holds."""
+        def deny(why, code=b"403 Forbidden"):
+            c.sendall(b"HTTP/1.1 " + code + b"\r\n\r\n")
+            log("DENY-LOOPBACK", _clean(hostport, 60), why, "from", peer_name)
+
+        m = _FORWARD_TARGET.match(hostport)
+        port = forward_port()
+        if not m or port is None or m.group(1) != str(port):
+            return deny("not the forward port")
+        if parts[0].upper() not in LOOPBACK_METHODS:
+            return deny("method", b"405 Method Not Allowed")
+        path = re.split(r"[?#]", target, 1)[0]
+        if not (path == "/user-info" or (path.startswith("/trace/") and len(path) > 7)) or not _SAFE_PATH.match(path) \
+                or "//" in path or any(seg in (".", "..") for seg in path.split("/")):
+            return deny("path " + _clean(path, 60))
+        head, _, tail = buf.partition(b"\r\n\r\n")
+        lines = head.split(b"\r\n")[1:]
+        kept, length = [], 0
+        for ln in lines:
+            name, sep, value = ln.partition(b":")
+            lname = name.strip().lower().decode("latin-1")
+            if not sep or not lname:
+                return deny("malformed header", b"400 Bad Request")
+            if lname == "transfer-encoding":
+                return deny("chunked body", b"411 Length Required")
+            if lname == "content-length":
+                if not re.fullmatch(rb"[0-9]{1,8}", value.strip()):
+                    return deny("content-length", b"400 Bad Request")
+                length = int(value.strip())
+            if lname in _DROP_HEADERS:
+                continue
+            kept.append(ln)
+        if length > LOOPBACK_BODY_LIMIT:
+            return deny("body too large", b"413 Payload Too Large")
+        body = tail
+        while len(body) < length:
+            chunk = c.recv(65536)
+            if not chunk:
+                return deny("short body", b"400 Bad Request")
+            body += chunk
+        body = body[:length]          # whatever follows the body is not another request
+        try:
+            up = socket.create_connection(("127.0.0.1", port), timeout=5)
+        except OSError as e:
+            c.sendall(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
+            log("FAIL", "127.0.0.1", port, "from", peer_name, repr(e))
+            return
+        up.settimeout(60)
+        request = ("%s %s HTTP/1.1" % (parts[0].upper(), target)).encode("latin-1") + b"\r\n" \
+            + b"".join(k + b"\r\n" for k in kept) + b"Connection: close\r\n\r\n" + body
+        log("OPEN-HTTP", "127.0.0.1", port, "from", peer_name)
+        try:
+            up.sendall(request)
+            pass_answer(up, c)
+        except OSError:
+            pass
+        finally:
+            for sk in (up, c):
+                try:
+                    sk.close()
+                except OSError:
+                    pass
+        log("CLOSE-HTTP", "127.0.0.1", port, "from", peer_name)
 
     @staticmethod
     def pump(a, b):

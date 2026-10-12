@@ -188,10 +188,12 @@ def test_tc037_each_broken_hop_is_named_with_its_own_fix_and_nothing_is_made(tmp
 
 
 def test_tc037_the_two_messages_for_a_closed_tunnel_and_a_silent_platform_differ(tmp_path, site, fake):
-    site.set("curl_direct", "refused")
-    (a,), _ = launch(site, fake, tmp_path, ["run-a"])
-    site.set("curl_direct", "silent")
-    (b,), _ = launch(site, fake, tmp_path, ["run-b"])
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        wait_for(lambda: fake.count("hello"))
+        site.set("curl_direct", "refused")
+        a = run_job(fake, ssh_site_job(site, fake, "run-a"))
+        site.set("curl_direct", "silent")
+        b = run_job(fake, ssh_site_job(site, fake, "run-b"))
     assert a["result"]["message"] != b["result"]["message"]
 
 

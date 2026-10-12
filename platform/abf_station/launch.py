@@ -478,8 +478,78 @@ def _tar(folder_files):
     return buf.getvalue()
 
 
+def _curl(site, url, proxy=None):
+    """(exit code, http code or None, X-ABF-Platform header or None) of one request made ON the login node. No token is sent."""
+    cmd = "curl -sS -D - -o /dev/null -w %s --max-time 10 %s%s" % (quote("code=%{http_code}\\n"), ("-x %s " % quote(proxy)) if proxy else "",
+                                                                    quote(url))
+    res = site.call([cmd], timeout=40)
+    text = res.out.decode("utf-8", errors="replace")
+    code = re.search(r"code=([0-9]{3})", text)
+    mark = re.search(r"(?im)^x-abf-platform:[ \t]*(\S+)", text)
+    return res.rc, (code.group(1) if code else None), (mark.group(1) if mark else None)
+
+
 def _channel(ctx, bundle):
-    raise rules.Refusal("反向通道尚未實作 (the reverse channel is not built yet)")
+    """Make sure the way back from the compute nodes to this platform is open, hop by hop, before anything is written on the site.
+
+    The reverse forward is an option of the user's shared connection (scripts/on_site.sh --forward): one is made when none is
+    recorded for this connection, and every launch after it uses the same one. Its port is also written on the site, where the
+    relay reads it. Then two probes run on the login node, with no token: straight to the forward, and through the relay the way
+    the head job will go. Each failure names the hop and the fix.
+    """
+    site = ctx.site
+    ff = bundle["tower"]["forward_file"]
+    proxy = next((e["value"] for e in bundle["ce"].get("environment", [])
+                  if e.get("name") in ("http_proxy", "HTTP_PROXY") and e.get("head", True) and e.get("value")), None)
+    if not proxy:
+        raise rules.Refusal("環境沒有 http_proxy（relay 的位址），無法檢查計算節點回報的路；請先用 scripts/ce_apply.sh 補上，沒有建立任何東西 "
+                            "(the compute environment has no http_proxy)")
+    if not getattr(ctx, "instance_id", None):
+        raise rules.Refusal("代理不知道這個平台的實例編號（平台太舊？），無法確認通道另一端是它 (the platform did not tell its instance id)")
+    local = urlparse(ctx.platform_url).port or (443 if urlparse(ctx.platform_url).scheme == "https" else 80)
+    found = site.call(["--check-forward"])
+    port = None
+    if found.rc == 0:
+        port = found.out.decode("utf-8", errors="replace").strip().splitlines()[-1:] or [""]
+        port = port[0] if port[0].isdigit() else None
+    elif found.rc != 1:
+        from .handlers import connect_failure
+        raise rules.Refusal("不能確認反向通道：%s" % connect_failure(found))
+    if port is None:
+        made = site.call(["--forward", str(local)])
+        if made.rc != 0:
+            from .handlers import connect_failure
+            why = connect_failure(made) if ("needs-human" in made.err or made.timed_out) else made.err.strip()[-300:]
+            raise rules.Refusal("反向通道開不起來：%s（沒有建立任何東西）" % why)
+        lines = made.out.decode("utf-8", errors="replace").strip().splitlines()
+        port = lines[-1] if lines and lines[-1].isdigit() else None
+        if port is None:
+            raise rules.Refusal("反向通道開了，但讀不出站台選的 port (could not read the port the site chose)")
+    wrote = site.call(["mkdir -p %s && umask 077 && cat > %s && chmod 600 %s" % (quote(os.path.dirname(ff)), quote(ff), quote(ff))],
+                      input=(port + "\n").encode("ascii"))
+    if wrote.rc != 0:
+        raise rules.Refusal("沒辦法在站台上寫 relay 要讀的 port 檔 %s（結束碼 %d）(could not write the forward file on the site)" % (ff, wrote.rc))
+    url = "http://127.0.0.1:%s/user-info" % port
+    fix_tunnel = "反向通道沒開：登入節點連不到 127.0.0.1:%s。請確認平台在跑，再重試；仍不行就執行 `abf-station unforward` 後再試。" % port
+    silent = "平台沒有回應：反向通道有開，但另一端的平台沒有回答。請檢查 abf-platform serve 是否在跑、port 是否對。"
+    taken = "這個 port 上回答的不是這個平台（回應沒有帶這個平台的 X-ABF-Platform 編號）：有別的程式佔用。請 `abf-station unforward` 後重試。"
+    rc, code, mark = _curl(site, url)
+    if rc == 7:
+        raise rules.Refusal(fix_tunnel)
+    if rc != 0 or code is None or code in ("000", "502", "504"):
+        raise rules.Refusal(silent)
+    if code != "401" or mark != ctx.instance_id:
+        raise rules.Refusal(taken)
+    rc, code, mark = _curl(site, url, proxy)
+    if rc == 7:
+        raise rules.Refusal("relay 沒在跑（登入節點上連不到 %s）：請啟動 relay：`bash scripts/egress_ctl.sh start`（經 scripts/on_site.sh --script 在站台上執行）。" % proxy)
+    if code == "403":
+        raise rules.Refusal("relay 是舊版，還沒有放行反向通道：請重啟 relay：`bash scripts/egress_ctl.sh restart`（經 scripts/on_site.sh --script "
+                            "在站台上執行）。")
+    if rc != 0 or code is None or code in ("000", "502", "504"):
+        raise rules.Refusal(silent + "（這次是經過 relay 的那一段沒通）")
+    if code != "401" or mark != ctx.instance_id:
+        raise rules.Refusal(taken)
 
 
 def run_launch(job, ctx, preflight):

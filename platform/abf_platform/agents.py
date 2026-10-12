@@ -145,7 +145,7 @@ def make_routes(state_path, tokens_path, clock=time.time):
         version = version[:64] if isinstance(version, str) and version else None
         register(state_path, name, version, clock, facts=body.get("facts"))
         return JSONResponse({"agent": name, "heartbeat_seconds": common.heartbeat_seconds(),
-                             "poll_seconds": common.poll_seconds()})
+                             "poll_seconds": common.poll_seconds(), "instance": store.instance_id(state_path)})
 
     async def poll(request):
         row = auth(request)

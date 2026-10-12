@@ -131,6 +131,8 @@ class Agent:
                 self.wait_or_retry("answered %d" % status)
                 continue
             self.failures = 0
+            if isinstance(body.get("instance"), str):
+                self.context.instance_id = body["instance"]
             for key, attr in (("heartbeat_seconds", "heartbeat"), ("poll_seconds", "poll")):
                 v = body.get(key)
                 if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
@@ -198,6 +200,7 @@ class Context:
         self.settings_file = str(settings_file)
         self.platform_url = platform_url
         self.agent_name = agent_name
+        self.instance_id = None            # the id of the platform, from its hello answer: the way back is checked against it
         self.used_confirmations = set()    # confirmation ids this agent has run: a repeat is refused even if the platform repeats it
         self.job_started = time.monotonic()
 

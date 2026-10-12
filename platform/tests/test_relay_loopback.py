@@ -164,15 +164,20 @@ def test_tc030_the_one_forward_port_is_reached_by_plain_http_and_the_file_is_rea
 def test_tc031_every_other_door_to_loopback_stays_shut_and_a_broken_forward_file_shuts_all(tmp_path, world):
     relay, srv = world
     F = srv.port
-    others = {n: Counting(n) for n in (F + 1, 80, 22, 1, 65535) if n != relay.port}
-    targets = ["http://127.0.0.1:%d/user-info" % n for n in others] + [
+    others = {}
+    for n in (F + 1, 65535, 80, 22, 1):      # a server is only put where an ordinary user may listen; the others are still asked for
+        try:
+            others[n] = Counting(n)
+        except OSError:
+            pass
+    targets = ["http://127.0.0.1:%d/user-info" % n for n in (F + 1, 65535, 80, 22, 1, relay.port)] + [
         "http://localhost:%d/user-info" % F, "http://[::1]:%d/user-info" % F, "http://127.0.0.2:%d/user-info" % F,
         "http://127.1:%d/user-info" % F, "http://0x7f.0.0.1:%d/user-info" % F, "http://2130706433:%d/user-info" % F,
         "http://0.0.0.0:%d/user-info" % F, "http://127.0.0.1.:%d/user-info" % F, "http://user@127.0.0.1:%d/user-info" % F,
         "http://127.0.0.1:%d@evil.example/user-info" % F, "http://127.0.0.1:" + str(F).translate({ord(c): ord(c) + 0xFEE0 for c in "0123456789"}) + "/user-info",
         "http://127.0.0.1:+%d/user-info" % F,
         "http://127.0.0.1:0%d/user-info" % F, "http://127.0.0.1: %d/user-info" % F, "http://127.0.0.1/user-info",
-        "http://127.0.0.1:%d/user-info" % relay.port]
+]
     for t in targets:
         answer = relay.send(get(t))
         assert status(answer) in (None, 400, 403, 405, 502), (t, answer[:80])
