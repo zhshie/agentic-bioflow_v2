@@ -141,7 +141,7 @@ def test_tc004_without_a_terminal_for_the_answer_nothing_is_sent(data, tmp_path,
     argv = NOT_A_TERMINAL[how] + cli_argv(*data.launch_args(tmp_path))
     p = Pty(argv, data.env())
     rc, screen = p.finish(60)
-    assert rc != 0 and re.search(r"終端機|terminal", screen), screen
+    assert rc != 0 and "要在終端機上互動回答 y" in screen and "Traceback" not in screen and "Error" not in screen, screen
     assert QUESTION_LAUNCH not in screen or "未送出" in screen
     assert data.snapshot() == (0, 0, 0, 0)
 
@@ -150,7 +150,7 @@ def test_tc004_a_program_with_no_controlling_terminal_is_refused_even_if_its_inp
     p = start(data, tmp_path, controlling=False)
     p.send("y\n")
     rc, screen = p.finish(60)
-    assert rc != 0 and re.search(r"終端機|terminal", screen), screen
+    assert rc != 0 and "要在終端機上互動回答 y" in screen and "Traceback" not in screen and "Error" not in screen, screen
     assert data.snapshot() == (0, 0, 0, 0)
 
 
@@ -386,7 +386,7 @@ def test_tc041_a_cancel_without_a_terminal_sends_nothing(data, tmp_path):
     hand_over(data)
     p = Pty(["bash", "-c", 'echo y | "$@"', "_"] + cli_argv("cancel", "run-one"), data.env())
     rc, screen = p.finish(30)
-    assert rc != 0 and re.search(r"終端機|terminal", screen)
+    assert rc != 0 and "要在終端機上互動回答 y" in screen and "Traceback" not in screen and "Error" not in screen, screen
     assert (data.count("jobs"), data.count("confirmations")) == (0, 0)
 
 
