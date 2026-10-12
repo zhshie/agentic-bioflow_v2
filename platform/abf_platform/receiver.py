@@ -35,13 +35,21 @@ def _int(value, default=0):
 def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
     store.init_index(index_path)
     platform_path = platform_path or store.default_platform_path(index_path)
+    instance = store.instance_id(platform_path)
+
+    def token_row(request):
+        """The run token of the request ({'id', 'run_name', ...}), or None. The check comes before anything is read or written."""
+        row = store.lookup_token(tokens_path, _token_from_header(request.headers.get("authorization")))
+        return row if row and row["kind"] == "run" else None
 
     def authorize(request):
-        """Token id, or None. The check comes before anything is read or written."""
-        return store.token_id(tokens_path, _token_from_header(request.headers.get("authorization")))
+        row = token_row(request)
+        return row["id"] if row else None
 
     def unauthorized():
-        return _reply(401, "Unauthorized: missing or unknown access token")
+        # the header lets a program that probes a port tell this platform from whatever else answers there
+        return JSONResponse({"message": "Unauthorized: missing or unknown access token"}, status_code=401,
+                            headers={"X-ABF-Platform": instance})
 
     async def json_object(request):
         raw = await request.body()
@@ -98,15 +106,18 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
         return row, None
 
     async def create(request):
-        tid = authorize(request)
-        if tid is None:
+        row = token_row(request)
+        if row is None:
             return unauthorized()
+        tid = row["id"]
         body, err = await json_object(request)
         if err:
             return err
         sid, name = body.get("sessionId"), body.get("runName")
         if not (isinstance(sid, str) and sid and isinstance(name, str) and name):
             return _reply(400, "sessionId and runName are required")
+        if row["run_name"] is not None and row["run_name"] != name:
+            return _reply(403, "This token is for another run")
         rid = common.run_id(sid, name)
         now = clock()
         con = store.connect_index(index_path)
@@ -179,9 +190,10 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
         return JSONResponse({"status": "OK"})
 
     async def complete(request):
-        tid = authorize(request)
-        if tid is None:
+        trow = token_row(request)
+        if trow is None:
             return unauthorized()
+        tid = trow["id"]
         rid = request.path_params["rid"]
         con = store.connect_index(index_path)
         try:
@@ -216,6 +228,9 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
                                     "VALUES (?, ?, ?, ?)", (rid, "report:" + name, name, message))
         finally:
             con.close()
+        if trow["run_name"] is not None:
+            # a token the platform made for one launch ends with that run; a token of `token new` is not for one run
+            store.revoke_token(tokens_path, trow["id"])
         return JSONResponse({"status": "OK"})
 
     async def user_info(request):

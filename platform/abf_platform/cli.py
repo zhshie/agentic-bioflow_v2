@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | token new | agent-token new|revoke | ce ... | mcp [--http] | rebuild <launch folder>..."""
+"""abf-platform: serve | token new | agent-token new|revoke | ce ... | mcp [--http] | rebuild [<launch folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
@@ -7,7 +7,7 @@ import re
 import sys
 import time
 
-from . import agents, common, compute_envs, jobs, rebuild as rebuild_mod, store
+from . import agents, common, compute_envs, jobs, rebuild as rebuild_mod, records, store
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 _AGENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -246,7 +246,12 @@ def cmd_mcp(args):
 
 def cmd_rebuild(args):
     index = store.default_index_path()
-    result = rebuild_mod.rebuild(args.folders, index, out=_say)
+    # the logs that `fetch-records` brought here are one more place to read, each in the shape of a launch folder
+    folders = list(args.folders) + records.roots(store.default_platform_path(index).parent / "records")
+    if not folders:
+        _err("rejected: no launch folder given, and no records fetched yet (`abf-platform fetch-records <run>`)")
+        return 2
+    result = rebuild_mod.rebuild(folders, index, out=_say)
     _say("Rebuilt %d run(s) from %d launch folder(s); skipped %d folder(s)." % (
         result.runs, result.folders, len(result.skipped)))
     return 1 if result.skipped else 0
@@ -329,8 +334,12 @@ def build_parser():
     m.set_defaults(func=cmd_mcp)
 
     r = sub.add_parser("rebuild", help="drop the index and build it again from Nextflow's records")
-    r.add_argument("folders", nargs="+", help="launch folders (the ones holding .nextflow/ and .nextflow.log)")
+    r.add_argument("folders", nargs="*", help="launch folders (the ones holding .nextflow/ and .nextflow.log); the records "
+                                              "brought here by fetch-records are read too")
     r.set_defaults(func=cmd_rebuild)
+
+    from abf_launch import cli as launch_cli
+    launch_cli.add_commands(sub)
     return p
 
 

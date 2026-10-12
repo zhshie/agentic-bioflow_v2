@@ -3,6 +3,7 @@
 import base64
 import datetime
 import hashlib
+import json
 import os
 import re
 
@@ -143,3 +144,16 @@ def token_from_header(value):
         user, _, password = decoded.partition(":")
         return password if user == "@token" and password else None
     return None
+
+
+# ---- launch and cancel (feature 007b) ---------------------------------------------------------------
+# The confirmation binds a hash of the exact content the user saw. The terminal command, the platform's queue and the agent all
+# compute it with this one function, so they cannot disagree about what "the same content" means.
+
+def canonical_json(obj):
+    """The bytes the hash is taken over: keys sorted, no spaces, UTF-8 as is."""
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def bundle_sha256(bundle):
+    return hashlib.sha256(canonical_json(bundle)).hexdigest()
