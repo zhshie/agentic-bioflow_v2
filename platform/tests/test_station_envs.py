@@ -421,7 +421,13 @@ def test_tc063_no_door_takes_a_job_kind_or_a_command(tmp_path, monkeypatch):
 
     walk(cli.build_parser(), [])
     words = {w for _, w in seen}
-    assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "launch", "submit", "enqueue"}), words
+    # feature 007b (TC-060): the subcommands are the old ones plus launch, cancel, fetch-records and launches; the words
+    # launch and cancel appear nowhere else
+    assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "submit", "enqueue"}), words
+    top_level = set(next(a for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)).choices)
+    assert top_level == {"serve", "token", "agent-token", "ce", "mcp", "rebuild", "launch", "cancel", "fetch-records",
+                         "launches"}, top_level
+    assert [(trail, w) for trail, w in seen if w in ("launch", "cancel")] == [([], "launch"), ([], "cancel")]
     assert {"ce", "agent-token", "serve", "token", "mcp", "rebuild"} <= words
 
 
@@ -436,7 +442,12 @@ def test_tc084_no_launch_door_anywhere(tmp_path):
         sub.format_help() for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)
         for sub in a.choices.values())
     helptext = re.sub(r"launch folders?", "", helptext)  # `rebuild` takes the folders Nextflow was launched in
-    assert not re.search(r"\blaunch\b|\bsubmit\b", helptext, re.I)
+    # feature 007b (TC-060): the words launch and cancel may stand only as the names of the two new subcommands
+    # (in the list of subcommands, on their own line of that list, and in their own usage line)
+    helptext = re.sub(r"\{[^}]*\}", lambda m: m.group(0).replace("launch,", "").replace("cancel,", ""), helptext)
+    helptext = re.sub(r"(?m)^\s{2,4}(launch|cancel)\s{2,}", "  ", helptext)
+    helptext = re.sub(r"(?m)^usage: abf-platform (launch|cancel)\b", "usage: abf-platform", helptext)
+    assert not re.search(r"\blaunch\b|\bsubmit\b|\bcancel\b", helptext, re.I)
 
 
 def test_tc085_the_unsupported_types_never_touch_a_cloud_tool_or_library(ip, tmp_path, monkeypatch):
