@@ -114,3 +114,31 @@ def test_tc074_no_token_or_account_is_committed():
         if re.search(r"abf_[A-Za-z0-9_-]{30,}", text) and not f.startswith("platform/tests/"):
             bad.append(f)
     assert bad == []
+
+
+def test_the_one_waiting_loop_of_the_terminal_commands_is_pinned_in_place_and_in_time():
+    # the only loop and the only sleep in abf_launch: the foreground wait of `abf-platform launch` for a late answer of the agent,
+    # in _report_launch, bounded by the grace time (default 120 s), with a person at the terminal. Nowhere else.
+    loops, sleeps = [], []
+    for path in sorted((PLATFORM_DIR / "abf_launch").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+            for n in ast.walk(fn):
+                if isinstance(n, ast.While):
+                    loops.append((path.name, fn.name, ast.unparse(n.test)))
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "sleep":
+                    sleeps.append((path.name, fn.name))
+    assert [(f, name) for f, name, _ in loops] == [("cli.py", "_report_launch")], loops
+    assert "time.time() < end" in loops[0][2], "the loop has a time limit in its own condition"
+    assert sleeps == [("cli.py", "_report_launch")], sleeps
+    text = (PLATFORM_DIR / "abf_launch" / "cli.py").read_text(encoding="utf-8")
+    assert re.search(r"^GRACE_DEFAULT = 120\.0$", text, re.M)
+    assert re.search(r"end = time\.time\(\) \+ _grace\(\)", text) and "time.sleep(0.25)" in text
+
+
+def test_nothing_else_in_the_new_code_sleeps_or_waits_in_a_loop():
+    for p in code_files():
+        if p.parent.name == "abf_launch" or p.name in ("agent.py", "agents.py", "jobs.py", "site.py"):  # the 007 poll loops
+            continue
+        text = "".join(l + "\n" for _, l in real_lines(p))
+        assert not re.search(r"\btime\.sleep\(|\basyncio\.sleep\(", text), p.name
