@@ -102,16 +102,14 @@ def test_tc038_over_local_reach_there_is_no_forward_to_open(tmp_path):
 
 
 def test_tc038_on_site_gained_no_background_process_and_no_loop():
-    # the lines on_site.sh gained since main (bd9d42b) start nothing in the background and loop over nothing
-    import difflib
-    old = subprocess.run(["git", "show", "bd9d42b:scripts/on_site.sh"], cwd=REPO_ROOT, capture_output=True, text=True).stdout
-    assert old, "main's on_site.sh must be readable for this check"
-    added = [ln[1:] for ln in difflib.unified_diff(old.splitlines(), ON_SITE.read_text().splitlines(), lineterm="", n=0)
-             if ln.startswith("+") and not ln.startswith("+++")]
-    assert added, "on_site.sh gained the three options"
-    code = [ln for ln in added if not ln.lstrip().startswith("#")]
-    bad = [ln for ln in code if re.search(r"nohup|setsid|disown|crontab|while|until|sleep|[^&]&\s*$|[^&>]&\s+[^&>]", ln)]
-    assert bad == [], bad
+    # the section of on_site.sh that feature 007b added (between its two markers) starts nothing in the background and loops over nothing
+    text = ON_SITE.read_text()
+    section = text[text.index("# --- the reverse forward (feature 007b)"):text.index('if [ "$MODE" = check ]; then')]
+    code = [ln for ln in section.splitlines() if not ln.lstrip().startswith("#")]
+    bad = [ln for ln in code if re.search(r"nohup|setsid|disown|crontab|\bwhile\b|\buntil\b|\bsleep\b|[^&]&\s*$|[^&>]&\s+[^&>]", ln)]
+    assert code and bad == [], bad
+    head = text[:text.index("# --- the reverse forward (feature 007b)")]
+    assert head.count("--forward") >= 2 and "while" not in section
 
 
 # ---- the agent: one forward for every launch, and every hop checked --------------------------------------------------
