@@ -223,3 +223,19 @@ def test_tc064_after_the_shared_connection_ends_nothing_rebuilds_the_forward(tmp
     assert len([c for c in site.ssh_calls() if "-O forward" in c]) == n
     text = ON_SITE.read_text()
     assert "while true" not in text and "nohup" not in text
+
+
+@pytest.mark.parametrize("n", [1, 3, 5, 8, 11, 14, 17, 20, 24])
+def test_tc017_a_connection_that_drops_at_any_call_ends_in_an_honest_answer_and_at_most_one_sbatch(tmp_path, site, fake, n):
+    site.set("ssh_drop_after", str(n))
+    (res,), _ = launch(site, fake, tmp_path, ["run-a"])
+    assert res["state"] in ("refused", "error", "done"), res
+    assert len([c for c in site.calls() if c.startswith("sbatch")]) <= 1
+    assert not [c for c in site.destructive() if c.split()[0] in ("rm", "rmdir", "mv")]
+    assert res["result"].get("message"), res
+    if res["state"] != "done":
+        assert not res["result"]["ok"]
+        folder = site.work / "runs" / "run-a"
+        if folder.exists():
+            assert str(folder) in res["result"]["message"] + res["result"].get("left_on_site", ""), "what is left is told"
+    assert site.guards_intact()

@@ -272,16 +272,64 @@ fi
 
 # --- 3. pytest ------------------------------------------------------------------
 LOG="$(mktemp "${TMPDIR:-/tmp}/abf-platform-pytest.XXXXXX")" || exit 1
-trap 'rm -f "$LOG"' EXIT
+trap 'rm -f "$LOG" "$LOG".[0-9]*' EXIT
 cd "$PLATFORM_DIR" || exit 1
 export PYTHONPATH="$PLATFORM_DIR${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONDONTWRITEBYTECODE=1
-# shellcheck disable=SC2086
-"$VPY" -m pytest -rs -p no:cacheprovider ${ABF_PYTEST_TARGETS:-tests} ${ABF_PYTEST_ARGS:-} 2>&1 | tee "$LOG"
-rc=${PIPESTATUS[0]}
+if [ -n "${ABF_PYTEST_TARGETS:-}" ] || [ -n "${ABF_PYTEST_SERIAL:-}" ]; then
+    # one pytest process: what was asked for (the wrapper's own tests do this to run a single file)
+    # shellcheck disable=SC2086
+    "$VPY" -m pytest -rs -p no:cacheprovider ${ABF_PYTEST_TARGETS:-tests} ${ABF_PYTEST_ARGS:-} 2>&1 | tee "$LOG"
+    rc=${PIPESTATUS[0]}
+else
+    # Several pytest processes at once, by test file. The suite is long (real Nextflow runs, real processes, long polls that
+    # wait) and the files do not share state: each makes its own folders and takes its own free ports. The shards are fixed
+    # lists, balanced by the time each file took when they were made; every other file goes into the last shard. One file
+    # checks times within a second (a rebuilt end time against the live one) and failed when other shards were busy, so it
+    # runs by itself afterwards. Output is printed shard by shard at the end.
+    LAST="tests/test_nextflow_e2e.py"
+    SHARDS="
+tests/test_wrapper_nf2.py
+tests/test_wrapper.py tests/test_launch_nextflow.py
+tests/test_station_e2e.py tests/test_station_cancel.py
+tests/test_launch_e2e.py tests/test_station_fakeplatform.py tests/test_station_channel.py
+tests/test_launch_cli.py tests/test_station_launch.py
+tests/test_relay_loopback.py tests/test_station_envs.py
+"
+    listed=" $(echo $SHARDS) $LAST "
+    rest=""
+    for f in tests/test_*.py; do
+        case "$listed" in *" $f "*) ;; *) rest="$rest $f" ;; esac
+    done
+    rc=0
+    n=0
+    pids=""
+    start_shard() {
+        n=$((n + 1))
+        # A job started with & by a script is started with SIGINT ignored, and every program under it would inherit that: a test
+        # that sends the agent SIGINT would find it deaf. So Python puts SIGINT back to its default and then becomes pytest.
+        # shellcheck disable=SC2086
+        "$VPY" -c 'import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execv(sys.executable, [sys.executable, "-m", "pytest"] + sys.argv[1:])'             -rs -p no:cacheprovider $1 ${ABF_PYTEST_ARGS:-} > "$LOG.$n" 2>&1 &
+        pids="$pids $!"
+    }
+    while IFS= read -r files; do
+        [ -n "$files" ] && start_shard "$files"
+    done <<< "$SHARDS"
+    start_shard "$rest"
+    for pid in $pids; do wait "$pid" || rc=1; done
+    pids=""
+    start_shard "$LAST"
+    for pid in $pids; do wait "$pid" || rc=1; done
+    : > "$LOG"
+    for i in $(seq 1 "$n"); do
+        echo "===== pytest shard $i ====="
+        cat "$LOG.$i"
+        cat "$LOG.$i" >> "$LOG"
+    done
+fi
 
-skipped="$(sed -n 's/.* \([0-9][0-9]*\) skipped.*/\1/p' "$LOG" | tail -1)"
-skipped="${skipped:-0}"
+skipped=0
+for k in $(sed -n 's/.* \([0-9][0-9]*\) skipped.*/\1/p' "$LOG"); do skipped=$((skipped + k)); done
 echo
 if [ -n "$E2E_SKIP_REASON" ]; then
     echo "E2E SKIPPED: $E2E_SKIP_REASON"

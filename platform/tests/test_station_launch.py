@@ -376,3 +376,24 @@ def test_hello_carries_the_facts_a_launch_is_built_from(tmp_path, site, fake):
     f = hello["facts"]
     assert f["slurm_account"] == ACCT and f["reach"] == "local" and f["platform_local"] is True
     assert f["endpoint"] == fake.url and f["storage_root"] == str(site.storage) and f["forward_file"] is None
+
+
+def test_tc015_a_big_samplesheet_with_chinese_names_is_written_byte_for_byte_and_its_values_stay_off_the_command_lines(tmp_path, site, fake):
+    cell, param = "CELLCANARY_77aa31", "PARAMCANARY_5d8e1f"
+    raw = str(site.storage / "rawdata" / "s1.fq")
+    rows = [["sample", "fastq_1"]] + [["樣本%05d" % i if i != 5 else cell, raw] for i in range(10000)]
+    b = bundle_for(site, fake, samplesheet=rows, params={"note": param})
+    assert len(b["files"]["samplesheet.csv"].encode("utf-8")) > 1_000_000
+    with agent_on(fake, site, tmp_path, name="agent-f") as a:
+        res = run_job(fake, job_of(b), timeout=120)
+        assert res["state"] == "done", res
+        out = a.output()
+    f = folder(site)
+    for name, text in b["files"].items():
+        assert (f / name).read_bytes() == text.encode("utf-8"), name
+    assert "樣本09999" in (f / "samplesheet.csv").read_text(encoding="utf-8")
+    assert len([c for c in site.destructive() if c.startswith("tar")]) == 1, "one call writes all the files"
+    assert sorted(p.name for p in f.iterdir()) == sorted(["samplesheet.csv", "params.yaml", "nextflow.config", "tower.token", "head.sh"])
+    for canary in (cell, param):
+        assert canary not in out and not [c for c in site.calls() + site.ssh_calls() if canary in c]
+        assert canary in (f / "samplesheet.csv").read_text() + (f / "params.yaml").read_text()
