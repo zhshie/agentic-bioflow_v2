@@ -25,16 +25,16 @@ import shlex
 from . import rules
 
 BUNDLE_VERSION = 1
-RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
-REVISION = re.compile(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})$")
-PIPELINE_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
-ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,99}$")
-ACCOUNT = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
-QUEUE = re.compile(r"^[A-Za-z0-9_.-]+$")
-TIME = re.compile(r"^([0-9]{1,3}-)?[0-9]{1,2}:[0-9]{2}:[0-9]{2}$")
-URL = re.compile(r"^https?://[A-Za-z0-9.:\[\]-]+(/[A-Za-z0-9._~/-]*)?$")
-DEFAULT_PATH_COLUMN = re.compile(r"^(fastq|fq|bam|cram|reads|file|path|reference)([_-]?[0-9]+)?$|_(file|path)$", re.I)
+RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
+REVISION = re.compile(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")
+PIPELINE_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
+PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,99}\Z")
+ACCOUNT = re.compile(r"^[A-Za-z0-9_.-]{1,64}\Z")
+QUEUE = re.compile(r"^[A-Za-z0-9_.-]+\Z")
+TIME = re.compile(r"^([0-9]{1,3}-)?[0-9]{1,2}:[0-9]{2}:[0-9]{2}\Z")
+URL = re.compile(r"^https?://[A-Za-z0-9.:\[\]-]+(/[A-Za-z0-9._~/-]*)?\Z")
+DEFAULT_PATH_COLUMN = re.compile(r"^(fastq|fq|bam|cram|reads|file|path|reference)([_-]?[0-9]+)?\Z|_(file|path)\Z", re.I)
 MAX_VALUE = 100000
 SET_BY_THE_SCRIPT = ("TOWER_ACCESS_TOKEN", "NXF_LOG_FILE")
 BIDI = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A)) | {0x200E, 0x200F, 0x061C}
@@ -131,13 +131,13 @@ def _check_ce(ce):
 
 
 _OPTION_SHAPES = [
-    ("cpus", re.compile(r"^-c$"), True, re.compile(r"^[0-9]{1,4}$")),
-    ("cpus", re.compile(r"^--cpus-per-task=([0-9]{1,4})$"), False, None),
-    ("mem", re.compile(r"^--mem=([0-9]{1,7}[MG])$"), False, None),
-    ("time", re.compile(r"^-t$"), True, TIME),
-    ("time", re.compile(r"^--time=(.+)$"), False, TIME),
-    ("account", re.compile(r"^-A$"), True, ACCOUNT),
-    ("qos", re.compile(r"^--qos=([A-Za-z0-9_.-]+)$"), False, None),
+    ("cpus", re.compile(r"^-c\Z"), True, re.compile(r"^[0-9]{1,4}\Z")),
+    ("cpus", re.compile(r"^--cpus-per-task=([0-9]{1,4})\Z"), False, None),
+    ("mem", re.compile(r"^--mem=([0-9]{1,7}[MG])\Z"), False, None),
+    ("time", re.compile(r"^-t\Z"), True, TIME),
+    ("time", re.compile(r"^--time=(.+)\Z"), False, TIME),
+    ("account", re.compile(r"^-A\Z"), True, ACCOUNT),
+    ("qos", re.compile(r"^--qos=([A-Za-z0-9_.-]+)\Z"), False, None),
 ]
 
 

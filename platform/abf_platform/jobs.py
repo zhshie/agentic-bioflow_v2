@@ -33,7 +33,7 @@ _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
 KINDS = tuple(DEADLINE_SECONDS)
 # the two kinds that write on the site, and the kind of confirmation each needs
 CONFIRMED = {"launch_nextflow": "launch", "cancel_run": "cancel"}
-_RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+_RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
 
 
 class JobRefused(Exception):

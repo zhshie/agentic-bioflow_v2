@@ -10,7 +10,7 @@ import time
 from . import agents, common, compute_envs, jobs, rebuild as rebuild_mod, records, store
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
-_AGENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_AGENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 
 
 def _say(text):

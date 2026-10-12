@@ -34,7 +34,7 @@ def run_cancel(job, ctx):
     if isinstance(number, bool) or not isinstance(number, int) or not 1 <= number <= 2 ** 31 - 1:
         raise rules.Refusal("Slurm 工作編號必須是一個十進位數字 (the job number must be one decimal number)")
     user = site_user(ctx.settings_file)
-    if not user or not re.match(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$", user):
+    if not user or not re.match(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\Z", user):
         raise rules.Refusal("部署設定沒有 site_user，無法核對工作的擁有者 (site_user is not set)")
     site = ctx.site
     res = site.call(["squeue -h -j %d -o %s" % (number, quote("%j|%u|%Z"))])

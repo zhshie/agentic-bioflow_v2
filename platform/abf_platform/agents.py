@@ -24,7 +24,7 @@ from starlette.routing import Route
 
 from . import common, jobs, store
 
-_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 
 
 def status_of(last_seen_at, at, offline_after=None):

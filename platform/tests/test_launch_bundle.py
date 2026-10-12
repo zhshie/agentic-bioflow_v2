@@ -450,3 +450,43 @@ def test_tc013_the_script_is_a_single_template_in_one_module():
     # TC-052 (render half): the function the screen shows is the function the agent runs
     from abf_station import launch
     assert launch.render_bundle.__module__ == "abf_station.launch"
+
+
+# ---- security F4: a name that ends in a newline is not a name -------------------------------------------------------
+
+def test_security_f4_a_trailing_newline_is_refused_by_every_validator():
+    nl = "\n"
+    refused(run_name="run-one" + nl)
+    refused(revision="2.18.0" + nl)
+    refused(revision="0123456789abcdef0123456789abcdef01234567" + nl)
+    refused(pipeline="nf-core/ampliseq" + nl)
+    refused(pipeline="nf-core" + nl + "/ampliseq")
+    refused(params={"depth" + nl: 1})
+    refused(facts=facts(slurm_account=ACCOUNT + nl))
+    refused(ce=ce_snapshot(headQueue="normal" + nl))
+    refused(ce=ce_snapshot(workDir="/data/w1" + nl))
+    refused(ce=ce_snapshot(environment=[{"name": "A" + nl, "value": "v", "head": True, "compute": False}]))
+    refused(ce=ce_snapshot(headJobOptions="-t 1-00:00:00" + nl))
+    refused(samplesheet=[["sample", "fastq_1"], ["s1", "/data/storage/rawdata/a.fq" + nl]])
+
+
+def test_security_f4_the_other_validators_too():
+    from abf_station import fetch, launch, rules
+    from abf_platform import jobs, records
+    assert not launch.TIME.fullmatch("1-00:00:00\n") and not launch.TIME.match("1-00:00:00\n")
+    assert not launch.URL.match("http://127.0.0.1:8787\n")
+    assert not records.name_ok(".nextflow.log\n") and not records.name_ok("trace-1.txt\n")
+    assert not fetch._LOG.match(".nextflow.log\n") and not fetch._TRACE.match("trace-1.txt\n")
+    assert not jobs._RUN_NAME.match("run-one\n") and not records._RUN_NAME.match("run-one\n")
+    assert rules.path_problem("/data/w1\n") is not None
+    try:
+        rules.clean_queue("normal\n", "headQueue")
+    except rules.Refusal:
+        pass
+    else:
+        raise AssertionError("a queue name with a newline was accepted")
+    from abf_platform import compute_envs, agents
+    for rx in (compute_envs._NAME, compute_envs._QUEUE, compute_envs._PATH_CHARS, compute_envs._HOST, compute_envs._USER,
+               compute_envs._CRED_NAME, compute_envs._ENV_NAME, agents._NAME):
+        assert not rx.match("abc\n"), rx.pattern
+    assert compute_envs.path_problem("/data/w1\n") is not None

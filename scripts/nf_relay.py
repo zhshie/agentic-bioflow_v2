@@ -353,8 +353,8 @@ def connect_upstream(host, port):
 #     (forward_instance, beside forward_port) gets it, so a stale port taken by another user never sees a run token.
 # Every other spelling of loopback is refused here and never reaches the domain code below.
 _LOOPBACKISH = re.compile(r"^(?:[^@/]*@)?(?:127\.|0x7f|0177|2130706433(?:$|:)|localhost|0\.0\.0\.0|\[|::|0:)", re.I)
-_FORWARD_TARGET = re.compile(r"^127\.0\.0\.1:([0-9]{1,5})$")
-_SAFE_PATH = re.compile(r"^[A-Za-z0-9._~/-]+$")
+_FORWARD_TARGET = re.compile(r"^127\.0\.0\.1:([0-9]{1,5})\Z")
+_SAFE_PATH = re.compile(r"^[A-Za-z0-9._~/-]+\Z")
 LOOPBACK_METHODS = ("GET", "POST", "PUT")
 LOOPBACK_BODY_LIMIT = 8 * 1024 * 1024
 _DROP_HEADERS = ("connection", "proxy-connection", "keep-alive", "upgrade", "http2-settings", "te", "expect", "trailer")

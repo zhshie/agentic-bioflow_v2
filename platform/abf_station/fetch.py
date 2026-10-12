@@ -13,8 +13,8 @@ from . import launch, rules
 from .site import quote
 
 LIMIT = 20 * 1024 * 1024
-_LOG = re.compile(r"^\.nextflow\.log(\.[0-9]{1,3})?$")
-_TRACE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$")
+_LOG = re.compile(r"^\.nextflow\.log(\.[0-9]{1,3})?\Z")
+_TRACE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\Z")
 _NOT_RECORDS = {"tower.token", "params.yaml", "head.sh", "nextflow.config", "samplesheet.csv"}
 ARGS = {"ce", "run_name", "run_folder"}
 

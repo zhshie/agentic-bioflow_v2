@@ -8,8 +8,8 @@ the deployment's storage_root. Nothing else is listed.
 import re
 
 MAX_PATH = 1024
-_PATH_CHARS = re.compile(r"^[A-Za-z0-9_./@+=:,-]+$")
-_QUEUE = re.compile(r"^[A-Za-z0-9_.-]+$")
+_PATH_CHARS = re.compile(r"^[A-Za-z0-9_./@+=:,-]+\Z")
+_QUEUE = re.compile(r"^[A-Za-z0-9_.-]+\Z")
 
 SLURM = "slurm-platform"
 
