@@ -348,7 +348,7 @@ def test_tc080_a_listener_that_took_over_the_forward_port_never_sees_a_run_token
     # security F1: when the shared connection ends, its port is free and another user of the login node can listen on it
     impostor = Counting(mode=mode)
     relay = Relay(tmp_path, forward=impostor.port)
-    token = "abf_STOLEN_RUN_TOKEN_CANARY_93ac"
+    token = "abf_" + os.urandom(16).hex()      # made at run time: a fixed token-shaped value would fail the credentials check
     try:
         for method, path in (("PUT", "/trace/abc/progress"), ("POST", "/trace/create"), ("GET", "/user-info")):
             answer = relay.send(get("http://127.0.0.1:%d%s" % (impostor.port, path), method=method, body=b"{}" if method != "GET" else b"",
