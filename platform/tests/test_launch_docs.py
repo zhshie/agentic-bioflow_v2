@@ -86,3 +86,12 @@ def test_tc058_testing_md_has_the_manual_steps_of_the_real_cluster_cases():
     for tc in ("TC-047", "TC-048", "TC-049", "TC-050", "TC-053", "TC-060", "TC-076", "TC-077"):
         assert tc in t, tc
     assert "abf-station unforward" in t and "ss -ltn" in t and "squeue" in t and "git diff" in t
+
+
+def test_security_f2_f3_the_accepted_limits_are_written_in_plain_english():
+    s = section9()
+    assert re.search(r"does not authenticate the platform", s)
+    assert re.search(r"anything that answers[^.]*/agent/poll[^.]*self-consistent confirmed job", s, re.I)
+    assert re.search(r"A process that drives a pty can answer y", s)
+    assert s.count("same-user trust boundary") >= 2
+    assert s.count("Claude Code ask rule on `abf-platform launch|cancel`") >= 2
