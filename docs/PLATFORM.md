@@ -287,6 +287,72 @@ Seqera Compute is not a type here: it is Seqera's own hosted service and has no 
 
 For a modelled type, give the settings as JSON: `abf-platform ce create --name=aws1 --platform=awsbatch-platform --config-json=@settings.json`. Only the shared checks apply (name, credential name, the credential scan); there is no field list.
 
+## 9. Launch and cancel
+
+Feature 007b. The station agent can now start a Nextflow analysis on the cluster and stop it, and Nextflow reports its progress back while it runs. This is the one place in this repository that submits a job of its own (constitution 4.0.0, principle 2), so it is built to do nothing until a person has seen all of it and said yes.
+
+### Launch
+
+```bash
+abf-platform launch --ce lab-a --pipeline nf-core/ampliseq --revision 2.18.0 --run-name ampliseq-d5 --samplesheet samples.csv --param pacbio=true --param FW_primer=AGRGTTYGATYMTGGCTCAG
+```
+
+- `--revision` is a release tag or a full 40-character commit. A branch name is refused.
+- `--samplesheet` is the CSV you wrote, with one row per sample. Columns that hold file paths (by default `fastq_1`, `fastq_2`, `reads`, `file`, `path` and similar; name more with `--path-column`) must hold absolute paths inside the compute environment's work folder, launch folder, `readRoots`, or the deployment's `storage_root`.
+- `--param name=value` (repeatable) or `--params-file file` (flat `name: value` lines). `input` and `outdir` are fixed: `outdir` is always `<run folder>/results`.
+- The compute environment must be available, its agent online, and the deployment's `slurm_account` set. There is no default account: a default would bill somebody else's project. If the environment's `headJobOptions` carries `-A`, it must be the same account.
+
+**Before anything happens the command shows all of it**: pipeline and version, environment, the run folder, the account, the head queue and its options, every row of the samplesheet, `params.yaml`, `nextflow.config` and the whole of `head.sh` (the script that will be submitted). Every line starts with `| `; every control character in a value is written out (`\t`, `\x1b`, `‮`, `\\`), so no value can hide a line or rewrite the screen. NUL, CR, ESC and bidirectional controls in a samplesheet cell or a parameter are refused, before the question. Then it asks `確定送出？(y/N)`.
+
+**Only y or Y, typed on the terminal the command runs in, sends it.** Anything else, Enter, Ctrl-C, Ctrl-D, a closed terminal, a pipe, a program that has no controlling terminal, does not. There is no flag (`--yes` is an unknown option) and no environment variable that answers for you, and none is documented because none exists.
+
+What `y` does: the platform writes one confirmation row (a random id and the sha256 of exactly what you saw) and one `launch_nextflow` job in a single transaction. The agent, which is the only program that can submit, refuses a launch unless all of this holds: the job carries a confirmation of the right kind whose hash equals the hash of the bundle it received; it has not used that confirmation before; and when it builds the bundle again from the same choices and its own settings (account, storage root, reach) the result is identical to what was confirmed. Then it runs the 007 preflight, checks the container cache is writable, opens the way back (below), creates `<workDir>/runs/<run name>` (an existing folder is refused, nothing is overwritten), writes five files into it in one step (`samplesheet.csv`, `params.yaml`, `nextflow.config`, `head.sh`, and `tower.token`, mode 600, folder mode 700) and calls `sbatch` once, never again. A failure says what is left on the site and leaves it; nothing is deleted. The agent will not submit when fewer than 60 seconds of the job's deadline remain (`ABF_STATION_MIN_REMAINING`).
+
+The deadline of a launch is 300 seconds (`ABF_PLATFORM_DEADLINE_LAUNCH`). If the agent answers after it, the Slurm number is still written to the record, and the command waits up to `ABF_PLATFORM_LAUNCH_GRACE` seconds (default 120) for it; if the agent died, the command says `結果不明：請查國網上的 <run folder> 與 Slurm 工作 nf-<run>`.
+
+### Cancel
+
+```bash
+abf-platform cancel ampliseq-d5
+```
+
+It shows the run name, the Slurm job number and the run folder and asks `確定取消？(y/N)` in the same way. The agent asks Slurm once (`squeue -h -j <id> -o '%j|%u|%Z'`) and sends one stop to that one number only if the answer is exactly one line with the job name `nf-<run>`, your `site_user`, and the run folder. Nextflow receives the signal and stops its tasks, then reports the end it chose: `get_run` shows that (a stopped run is shown as failed, with Nextflow's own reason), and `abf-platform launches` adds the fact "取消請求已於 T 送出". The platform never writes "cancelled" as a state. Tasks that were already running on the cluster may take a moment to go; check `squeue` yourself.
+
+### What was handed over
+
+```bash
+abf-platform launches
+```
+
+Lists, for each launch, the run name, the Slurm job number, the folder and the time you confirmed. A run that was submitted and has sent no event yet says `已送出，尚未收到 Nextflow 事件`; one that has says to look at `get_run`. This is a record of what was done, never a status: it does not say whether a run is running, and it writes nothing.
+
+### Live progress: the way back
+
+The head job runs on a compute node, which cannot reach your machine. The route is: Nextflow on the node, the relay on the login node (`scripts/nf_relay.py`, the one the compute nodes already use for downloads), a reverse forward on your shared ssh connection, the platform on your machine.
+
+- The forward is an option of the connection you opened yourself, made by `scripts/on_site.sh --forward`. The site's sshd chooses its port and binds it to the **loopback** of the login node only, so nothing else on the cluster network can use it except through the relay. The port is recorded in `<deployment>/_personal/forward_port` (mode 600) and, by the agent, in `<storage_root>/_relay/forward_port` on the site, where the relay reads it for every request. One forward serves every run while the connection lives; the head job reads the port from that file when it starts.
+- **The relay's rule is narrow and fails closed.** It answers a plain-HTTP request in absolute form to exactly `127.0.0.1:<that port>` and nothing else on loopback; only the paths `/trace/...` and `/user-info` (the query string does not count); never CONNECT; and it closes the connection after the answer, so a second request on the same connection never reaches the platform. A missing, unreadable or malformed port file means no. A relay process started before this rule exists answers 403; the launch then says `請重啟 relay：bash scripts/egress_ctl.sh restart`.
+- **The platform and the agent must be on the same machine** (the agent's `--platform` is `http://127.0.0.1:<port>`): the reverse forward ends at the agent's loopback. Otherwise the command refuses before it asks.
+- **Before the files are written, every hop is probed** on the login node with no token: first straight to the forward, then through the relay the way the head job will go. A pass is an HTTP 401 whose header `X-ABF-Platform` carries this platform's instance id (a random id kept in `platform.db`, the same after a restart). Each failure names the hop and its fix: no shared connection (open it in WSL), tunnel closed, relay not running, relay out of date, platform not answering, or some other program on that port.
+- `abf-station unforward --deployment <root>` cancels the forward and removes both port files. Nothing does that for you: not a run ending, not a cancel. The forward ends with the shared connection (at most 8 hours, `ControlPersist`); a run that is still going then keeps running, its live progress stops and shows `lost` after three minutes of silence, and the records bring it right (below). Nothing rebuilds the forward by itself.
+
+### The run token
+
+Nextflow needs a token to report. The platform makes it **when the agent claims the launch job**, not when you answer y: a launch you decline, or that no agent takes, never has one. The platform keeps only its hash; the plain token travels once, in the agent's poll reply, and lives on the site only in `<run folder>/tower.token` (mode 600) and in the environment of the head job (`export TOWER_ACCESS_TOKEN="$(cat tower.token)"`). It is never in `head.sh`, never on a command line, never printed. It is bound to the run name: it cannot create another run. It is revoked when that run's `complete` message arrives, when the agent refuses or fails the launch, and in any case 14 days after it was made. **A cancel does not revoke it**, because Nextflow needs it to send its `complete` after the stop. (Seqera's own launcher keeps the token in a mode 755 script; see PITFALLS.)
+
+### Reading Nextflow's records back
+
+```bash
+abf-platform fetch-records ampliseq-d5
+abf-platform rebuild
+```
+
+`fetch-records` asks the agent, read-only, for `.nextflow.log*`, `.nextflow/history` and the trace file that a log names, from that one run folder (never `tower.token`, `params.yaml` or anything else, never through a symbolic link, at most 20 MB each, "truncated" is said). **These records are sent to the platform and stored on this machine under `<platform data>/records/<run>/`; they contain the paths and parameters of the run.** `rebuild` reads that folder as one more launch folder, and the run becomes what Nextflow's records say, whatever the live messages said.
+
+### The limits of the confirmation
+
+The question is a human gate only as far as a human sits at the terminal. A process of your own user that can write `platform.db` can write a confirmation, and a program (an AI included) that opens its own pseudo-terminal (pty) can fake a y: the agent checks the hash and that a confirmation is used once, but it cannot know who typed. The real gate is the terminal plus your Claude Code approval setting: put `abf-platform launch|cancel` on the list of commands that always ask for your approval (a permission `ask` rule), so an assistant cannot run them unseen. The confirmation, the 14-day token and the loopback-only relay rule are layers, not a substitute for that.
+
 ## Where the files are
 
 Nothing is hard-coded; every location can be changed.
@@ -295,15 +361,18 @@ Nothing is hard-coded; every location can be changed.
 |---|---|---|
 | Run index | `${XDG_DATA_HOME:-~/.local/share}/abf-platform/index.db` | `ABF_PLATFORM_DB` |
 | Token file | `tokens.db` in the same folder as the index (run tokens and agent tokens; a file made by an earlier version is upgraded in place, and its tokens stay run tokens) | `ABF_PLATFORM_TOKENS` |
-| Compute environments, agents and jobs | `platform.db` in the same folder as the index. `rebuild` never opens it. | `ABF_PLATFORM_STATE` |
+| Compute environments, agents, jobs, confirmations, the hand-off record (`launches`) and the platform's instance id | `platform.db` in the same folder as the index. `rebuild` never opens it. A file made by 007 is upgraded in place, in one transaction. | `ABF_PLATFORM_STATE` |
+| Nextflow's records read back by `fetch-records` | `records/<run name>/` in the same folder as the index; `rebuild` reads each as a launch folder | (moves with `ABF_PLATFORM_STATE`'s folder) |
 
 The folders are created on first use. The `.gitignore` of this repository keeps `*.db` files out of version control.
 
-`ABF_PLATFORM_CLOCK_OFFSET` (seconds, default 0) shifts the clock the query side uses. It exists so the tests can look at a run "three minutes later"; leave it unset.
+`ABF_PLATFORM_CLOCK_OFFSET` (seconds, default 0) shifts the clock the query side uses. It exists so the tests can look at a run "three minutes later"; leave it unset. It also moves the clock by which a run token expires.
+
+Settings that only the tests change: `ABF_PLATFORM_DEADLINE_LAUNCH` (default 300), `ABF_PLATFORM_DEADLINE_CANCEL` (90) and `ABF_PLATFORM_DEADLINE_FETCH` (180) are the deadlines in seconds of the three new job kinds, `ABF_PLATFORM_LAUNCH_GRACE` (120) is how long `abf-platform launch` waits for a late answer, and `ABF_STATION_MIN_REMAINING` (60) is how much of a launch's deadline the agent needs left before it submits.
 
 ## What it does not do
 
-No launching, cancelling or deleting of runs, no clean-up of `work/`, no web pages or login, no roles. The agent only answers two read-only questions (check a site, list a folder); it submits nothing, writes nothing and runs no command a platform sends it. Compute environments of the thirteen other types are stored and never used. Launching, with a confirmation step, is a later feature (007b), and MCP tools that create or change environments are a later one (009).
+No deleting of runs, no clean-up of `work/`, no web pages or login, no roles, and nothing that resumes, retries or relaunches (section 9 launches once and cancels once). The agent writes only the new run folder of a confirmed launch and sends only a confirmed stop; it never removes or moves anything on the site. Compute environments of the thirteen other types are stored and never used. MCP tools that create or change environments, and a web page for the confirmation, are a later feature (009); today a launch and a cancel can only be made from the command line.
 
 ## Tests
 

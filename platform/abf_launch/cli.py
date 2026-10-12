@@ -250,15 +250,18 @@ def _report_launch(state, job_id, bundle):
         return 1
     # the deadline passed. The agent may still be finishing; its answer is applied to the record whenever it comes.
     end = time.time() + _grace()
-    while True:
+    late = None
+    while time.time() < end and late is None:     # bounded by the grace time; a person is waiting at the terminal
         row = _row(state, run)
         if row is not None and row["submitted_at"] is not None:
-            _say(_submitted_line(row) + "（代理在期限之後才回報；這個編號已記下。）")
-            return 0
-        late = _late_message(state, job_id)
-        if late or time.time() >= end:
             break
-        time.sleep(0.25)
+        late = _late_message(state, job_id)
+        if late is None:
+            time.sleep(0.25)
+    row = _row(state, run)
+    if row is not None and row["submitted_at"] is not None:
+        _say(_submitted_line(row) + "（代理在期限之後才回報；這個編號已記下。）")
+        return 0
     if not out.get("claimed"):
         _err("代理沒有領走這個工作，國網上沒有任何改變 (the agent never took the job; nothing was done on the site)")
         return 1

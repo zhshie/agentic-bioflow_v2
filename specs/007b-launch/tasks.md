@@ -9,4 +9,4 @@ Progress ledger. Order per plan "Tasks"; each task is RED (tests, seen failing) 
   - Existing tests narrowed here (TC-060): test_station_envs TC-063 and TC-084, test_station_platform TC-090.
 - [x] T3 agent side: `launch.py` execution, `cancel.py`, `fetch.py`, `Site.call(input=)`, hello facts, extended fake site, LAUNCH_ALLOW entry. Commits a2099de (RED), see git log for the GREEN. cancel/fetch tests (test_station_cancel.py) were written after the code, not before.
 - [x] T4 channel: `on_site.sh --forward/--unforward/--check-forward`, `nf_relay.py` loopback rule (golden file from main bd9d42b), hop-by-hop preflight (`launch._channel`), `abf-station unforward`, hello carries the platform instance id, real-Nextflow chain tests (TC-026, 027, 033, 039, 045). Commits 2fd2c49 (RED), GREEN after it.
-- [ ] T5 checks and docs: `LAUNCH_ALLOW` entry, docs (TC-058), full suite, executor-status.
+- [ ] T5 checks and docs: docs written (PLATFORM section 9, SEQERA_PARITY L, PITFALLS 39 and 40, ROADMAP, TESTING); remaining: full suite timing, run_all, executor-status, final report.
