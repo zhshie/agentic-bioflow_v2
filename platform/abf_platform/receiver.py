@@ -96,13 +96,16 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
             else:
                 con.execute("DELETE FROM failed_tasks WHERE run_id = ? AND task_key = ?", (rid, key))
 
-    def locate(con, rid, tid):
-        """(row, error response): 404 for an unknown run, 403 for a run of another token."""
-        row = con.execute("SELECT id, token_id FROM runs WHERE id = ?", (rid,)).fetchone()
+    def locate(con, rid, trow):
+        """(row, error response): 404 for an unknown run, 403 for a run of another token, and 403 for a token the platform made
+        for one run name when the run has another name."""
+        row = con.execute("SELECT id, token_id, run_name FROM runs WHERE id = ?", (rid,)).fetchone()
         if row is None:
             return None, _reply(404, "No such run")
-        if row["token_id"] != tid:
+        if row["token_id"] != trow["id"]:
             return None, _reply(403, "This run belongs to another token")
+        if trow["run_name"] is not None and trow["run_name"] != row["run_name"]:
+            return None, _reply(403, "This token is for another run")
         return row, None
 
     async def create(request):
@@ -138,13 +141,13 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
         return JSONResponse({"workflowId": rid})
 
     async def begin(request):
-        tid = authorize(request)
-        if tid is None:
+        trow = token_row(request)
+        if trow is None:
             return unauthorized()
         rid = request.path_params["rid"]
         con = store.connect_index(index_path)
         try:
-            _, err = locate(con, rid, tid)
+            _, err = locate(con, rid, trow)
             if err:
                 return err
             body, err = await json_object(request)
@@ -170,13 +173,13 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
 
     async def progress_like(request):
         """progress and heartbeat: the counters Nextflow keeps, and the tasks that changed."""
-        tid = authorize(request)
-        if tid is None:
+        trow = token_row(request)
+        if trow is None:
             return unauthorized()
         rid = request.path_params["rid"]
         con = store.connect_index(index_path)
         try:
-            _, err = locate(con, rid, tid)
+            _, err = locate(con, rid, trow)
             if err:
                 return err
             body, err = await json_object(request)
@@ -197,7 +200,7 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
         rid = request.path_params["rid"]
         con = store.connect_index(index_path)
         try:
-            _, err = locate(con, rid, tid)
+            _, err = locate(con, rid, trow)
             if err:
                 return err
             body, err = await json_object(request)

@@ -707,3 +707,24 @@ def test_tc061_the_command_line_has_no_resume_no_retry_and_no_confirm_command():
     walk(cli.build_parser())
     assert {"launch", "cancel", "launches", "fetch-records"} <= seen
     assert not (seen & {"resume", "retry", "relaunch", "confirm", "yes", "y", "force", "assume-yes", "no-confirm"}), seen
+
+
+def test_security_f1_every_trace_event_of_a_bound_token_is_for_the_tokens_run_only(tmp_path):
+    # begin, progress, heartbeat and complete are bound to the run name of the token, as create is
+    plat, tok, clock = setup(tmp_path)
+    _queue_launch(plat, clock)
+    t = poll(plat, tok).json()["job"]["run_token"]
+    r = plat.send("POST", "/trace/create", create_body("run-one"), token=t)
+    wid = r.json()["workflowId"]
+    # the run row now says another name (damaged index, or a run made another way): the token is not for it
+    con = sqlite3.connect(str(plat.index))
+    con.execute("UPDATE runs SET run_name = 'some-other-run' WHERE id = ?", (wid,))
+    con.commit()
+    con.close()
+    before = db_bytes(plat.index)
+    wf = {"workflow": {"success": True, "exitStatus": 0, "start": "2026-10-11T10:00:00Z"}, "progress": {}}
+    for method, path, body in (("PUT", "/trace/%s/begin" % wid, wf), ("PUT", "/trace/%s/progress" % wid, {"progress": {}}),
+                               ("PUT", "/trace/%s/heartbeat" % wid, {"progress": {}}), ("PUT", "/trace/%s/complete" % wid, wf)):
+        assert plat.send(method, path, body, token=t).status_code == 403, path
+    assert db_bytes(plat.index) == before
+    assert tokens_rows(plat)[0][2] is None, "a refused complete does not revoke the token"
