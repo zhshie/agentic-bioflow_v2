@@ -382,7 +382,8 @@ No deleting of runs, no clean-up of `work/`, no web pages or login, no roles, an
 ## Tests
 
 ```bash
-bash tests/platform_test.sh      # also run by tests/run_all.sh
+bash tests/platform_test.sh        # also run by tests/run_all.sh: every test file but two
+bash tests/platform_clock_test.sh  # the other entry of run_all.sh: those two files, which check the clock, run alone
 ```
 
 It builds a venv in `${XDG_CACHE_HOME:-$HOME/.cache}/abf-platform-venv`, downloads the pinned Nextflow and its `nf-tower` plugin into `${XDG_CACHE_HOME:-$HOME/.cache}/abf-platform` (every file checked against a pinned sha256), and runs `pytest` in `platform/`. The end-to-end tests run the real Nextflow, against a receiver on `127.0.0.1`, with small pipelines from `platform/tests/fixtures/flows/` that need no container.
