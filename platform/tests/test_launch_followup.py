@@ -32,7 +32,7 @@ FOLDER = "/data/w1/runs/%s"
 # ---- helpers: rows written the way the platform writes them ------------------------------------------------------
 
 def add_launch(db, run, slurm=None, state="refused", message=REFUSAL, left=None, deadline="future", late=None, no_job=False,
-               cancel_at=None, link=True, folder=None):
+               cancel_at=None, link=True, folder=None, agent="a1"):
     """One launches row and (unless no_job) the launch job behind it. Returns (launch id, job id)."""
     now = time.time()
     folder = folder or FOLDER % run
@@ -51,13 +51,13 @@ def add_launch(db, run, slurm=None, state="refused", message=REFUSAL, left=None,
             dl = {"future": now + 3600, "past": now - 10}[deadline]
             cur = con.execute(
                 "INSERT INTO jobs (agent, compute_env, kind, args_json, state, result_json, late_result_json, created_at, deadline_at, "
-                "claimed_at, finished_at, confirmation_id) VALUES ('a1', 'lab-a', 'launch_nextflow', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (json.dumps({"bundle": {"run_name": run, "run_folder": folder}, "confirmation_id": cid}), state,
+                "claimed_at, finished_at, confirmation_id) VALUES (?, 'lab-a', 'launch_nextflow', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (agent, json.dumps({"bundle": {"run_name": run, "run_folder": folder}, "confirmation_id": cid}), state,
                  json.dumps(result) if result else None, json.dumps(late) if late else None, now - 100, dl,
                  None if state == "queued" else now - 60, None if state in ("queued", "claimed") else now - 30, cid))
             job_id = cur.lastrowid
         cols = ["run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at", "submitted_at", "cancel_requested_at"]
-        vals = [run, slurm, folder, "lab-a", "a1", now - 100, now - 90 if slurm else None, cancel_at]
+        vals = [run, slurm, folder, "lab-a", agent, now - 100, now - 90 if slurm else None, cancel_at]
         if link:
             cols.append("job_id")
             vals.append(job_id)
@@ -338,7 +338,7 @@ def test_tcf0_05_a_reusable_name_still_needs_the_y_on_the_terminal(data, tmp_pat
     p.send("n\n")
     rc, screen = p.finish(60)
     assert rc != 0 and "未送出" in screen and data.snapshot() == before
-    p = Pty(cli_argv(*data.launch_args(tmp_path, run="run-one")), data.env(), stdin_tty=False)
+    p = Pty(cli_argv(*data.launch_args(tmp_path, run="run-one")), data.env(), stdin_tty=False, controlling=False)
     rc, screen = p.finish(60)
     assert rc != 0 and data.snapshot() == before
 
@@ -393,8 +393,8 @@ def test_tcf2_07_cancel_fetch_and_the_closing_report_find_the_newest_row(data, t
     from abf_launch import cli
     from abf_platform import jobs
     db = data.ip.state_db
-    add_launch(db, "run-one", folder="/data/w1/runs/OLD")
-    _, jdone = add_launch(db, "run-one", slurm=99, state="done", message="ok", folder="/data/w1/runs/NEW")
+    add_launch(db, "run-one", folder="/data/w1/runs/OLD", agent=data.agent)
+    _, jdone = add_launch(db, "run-one", slurm=99, state="done", message="ok", folder="/data/w1/runs/NEW", agent=data.agent)
     p = Pty(cli_argv("cancel", "run-one"), data.env())
     assert p.wait_for(QUESTION_CANCEL, 30), p.text()
     shown = p.text()

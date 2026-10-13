@@ -179,15 +179,16 @@ def test_tc055_launches_holds_the_facts_of_the_handover_and_no_state(tmp_path):
     store.connect_state(db).close()
     con = sqlite3.connect(str(db))
     cols = [r[1] for r in con.execute("PRAGMA table_info(launches)")]
+    # follow-up 1 (F2): job_id links a row to the launch job it made; run_name is no longer unique, because a launch the agent
+    # refused keeps its row and its name can be used again (the plan names this change; the rest of the test is as it was)
     assert sorted(cols) == sorted(["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at",
-                                   "submitted_at", "cancel_requested_at"])
+                                   "submitted_at", "cancel_requested_at", "job_id"])
     for c in cols:
         assert not re.search(r"status|state|phase|result|exit|progress|ended", c), c
     unique = [r for r in con.execute("PRAGMA index_list(launches)") if r[2]]
-    assert any([i[2] for i in con.execute("PRAGMA index_info(%s)" % u[1])] == ["run_name"] for u in unique), "run_name is unique"
+    assert not any([i[2] for i in con.execute("PRAGMA index_info(%s)" % u[1])] == ["run_name"] for u in unique), "run_name may repeat"
     con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at) VALUES ('r', '/f', 'lab-a', 'a1', 1)")
-    with pytest.raises(sqlite3.IntegrityError):
-        con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at) VALUES ('r', '/g', 'lab-a', 'a1', 2)")
+    con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at) VALUES ('r', '/g', 'lab-a', 'a1', 2)")
     con.close()
 
 
@@ -546,7 +547,8 @@ def test_a_launch_that_failed_leaves_the_row_without_a_submission_and_its_name_c
                      headers=bearer(tok))
     # refused: nothing was done on the site, so the same name may be tried again
     cid3, jid3 = confirm.confirm_launch(state_db(plat), "lab-a", bundle("run-two"), clock=clock)
-    assert jid3 != jid2 and len(sql(plat, "SELECT * FROM launches WHERE run_name = 'run-two'")) == 1
+    # follow-up 1 (F2): the refused row stays as a fact, and the new try is a second row
+    assert jid3 != jid2 and len(sql(plat, "SELECT * FROM launches WHERE run_name = 'run-two'")) == 2
 
 
 def test_a_confirmed_launch_needs_an_available_environment_an_online_agent_and_a_supported_type(tmp_path):

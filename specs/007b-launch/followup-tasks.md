@@ -17,6 +17,7 @@ F1 was reproduced in the same run: `abf-platform launches` printed "未送出：
 
 ## Items
 
-- [ ] F1 launches shows refused / waiting
-- [ ] F2 name reuse keeps the row (table migration, name check before the question)
+- [x] F1 `launches` reads the launch's own job (`launches.job_id`) and prints 被代理拒絕 / 等代理處理中 / the old line (+ the agent's message and left_on_site on `error`). `abf_launch/cli.py` `_not_submitted_lines`, `jobs.launch_job`. Tests: TC-F1-01..08 in `platform/tests/test_launch_followup.py`.
+- [x] F2 `launches` gets `job_id` and loses UNIQUE(run_name) (`store._migrate_launches`: one transaction, copies ids and the AUTOINCREMENT counter, backfills job_id by created_at == confirmed_at, else the newest unclaimed job of the name); `jobs.name_problem` (strictest row decides) is used by `enqueue_confirmed` (inside the transaction, so two at once let one through) and by `jobs.check_run_name` before the question in `abf-platform launch`; the DELETE is gone; results, cancel, fetch and the closing report find their own / the newest row. Tests: TC-F2-01..13 (`test_launch_followup.py`, `test_launch_followup_e2e.py`).
+  Two existing assertions had to change because they said the opposite of F2 (the plan's own change): `test_tc055_launches_holds_the_facts...` (column list gains job_id; run_name no longer UNIQUE, two rows of one name now insert) and `test_a_launch_that_failed...` (two rows of the reused name, not one).
 - [ ] F3 platform_test.sh headroom
