@@ -195,7 +195,7 @@ class FakeSite:
             "#!/bin/bash\n"
             "last=\"${@: -1}\"\n"
             "printf '%s\\n' \"$*\" >> '@ST@/ssh.log'\n"
-            "op=''; prev=''; for a in \"$@\"; do [ \"$prev\" = -O ] && op=\"$a\"; prev=\"$a\"; done\n"
+            "op=''; spec=''; prev=''; for a in \"$@\"; do [ \"$prev\" = -O ] && op=\"$a\"; [ \"$prev\" = -R ] && spec=\"$a\"; prev=\"$a\"; done\n"
             "case \"$op\" in\n"
             "  check)\n"
             "    [ -f '@ST@/ssh_down' ] && exit 255\n"
@@ -203,8 +203,24 @@ class FakeSite:
             "    echo \"Master running (pid=$(cat '@ST@/master_pid' 2>/dev/null || echo 4242))\" >&2; exit 0 ;;\n"
             "  forward)\n"
             "    [ -f '@ST@/fwd_fail' ] && { echo 'mux_client_forward: forwarding request failed' >&2; exit 255; }\n"
-            "    n=$(cat '@ST@/fwd_next' 2>/dev/null || echo 41234); echo $((n + 1)) > '@ST@/fwd_next'; echo \"$n\"; exit 0 ;;\n"
-            "  cancel|exit) exit 0 ;;\n"
+            "    p=$(echo \"$spec\" | awk -F: '{print $2}')\n"
+            "    if [ \"$p\" = 0 ]; then n=$(cat '@ST@/fwd_next' 2>/dev/null || echo 41234); echo $((n + 1)) > '@ST@/fwd_next'; else n=\"$p\"; fi\n"
+            "    echo \"$spec $n\" >> '@ST@/fwd_specs'; echo \"$n\" >> '@ST@/listening'; echo \"$n\"; exit 0 ;;\n"
+            # like OpenSSH 8.9p1 (PITFALLS 2026-10-13): a cancel only matches the spec the forward was opened with; a
+            # refusal is two lines on stderr and the exit code is still 0
+            "  cancel)\n"
+            "    [ -f '@ST@/cancel_error' ] && { echo 'Control socket connect: No such file or directory' >&2; exit 255; }\n"
+            "    refuse() { echo 'mux_client_forward: forwarding request failed: port not forwarded' >&2; "
+            "echo 'muxclient: master cancel forward request failed' >&2; exit 0; }\n"
+            "    [ -f '@ST@/cancel_refuse_text' ] && { cat '@ST@/cancel_refuse_text' >&2; exit 0; }\n"
+            "    [ -f '@ST@/cancel_refuse_once' ] && { rm -f '@ST@/cancel_refuse_once'; refuse; }\n"
+            "    n=$(awk -v s=\"$spec\" '$1 == s {print $2; exit}' '@ST@/fwd_specs' 2>/dev/null)\n"
+            "    [ -n \"$n\" ] || refuse\n"
+            "    [ -f '@ST@/cancel_warning' ] && cat '@ST@/cancel_warning' >&2\n"
+            "    grep -vx \"$n\" '@ST@/listening' > '@ST@/listening.tmp'; mv '@ST@/listening.tmp' '@ST@/listening'\n"
+            "    awk -v s=\"$spec\" '$1 == s && !d {d = 1; next} {print}' '@ST@/fwd_specs' > '@ST@/fwd_specs.tmp'; mv '@ST@/fwd_specs.tmp' '@ST@/fwd_specs'\n"
+            "    exit 0 ;;\n"
+            "  exit) exit 0 ;;\n"
             "esac\n"
             "[ -f '@ST@/ssh_down' ] && { echo 'Connection closed by remote host' >&2; exit 255; }\n"
             "if [ \"$(cat '@ST@/ssh_mode')\" = hang ]; then sleep 60; exit 0; fi\n"
@@ -262,6 +278,11 @@ class FakeSite:
     def destructive(self):
         f = self.state / "destructive.log"
         return f.read_text().splitlines() if f.exists() else []
+
+    def listening(self):
+        """The ports the fake sshd on the site listens on because of a reverse forward (the truth; ssh.log is not)."""
+        f = self.state / "listening"
+        return f.read_text().split() if f.exists() else []
 
     def ssh_calls(self):
         f = self.state / "ssh.log"
