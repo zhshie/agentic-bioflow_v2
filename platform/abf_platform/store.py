@@ -7,6 +7,7 @@ tokens.db    the accepted tokens, as hashes (run tokens and agent tokens). `rebu
 platform.db  compute environments, agents and the queue of read-only jobs. `rebuild` never opens it.
 """
 import hashlib
+import json
 import os
 import secrets
 import sqlite3
@@ -114,17 +115,8 @@ CREATE TABLE IF NOT EXISTS confirmations (
     used_at REAL
 );
 %(jobs)s
-CREATE TABLE IF NOT EXISTS launches (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_name TEXT NOT NULL UNIQUE,
-    slurm_job_id INTEGER,
-    run_folder TEXT NOT NULL,
-    ce TEXT NOT NULL,
-    agent TEXT NOT NULL,
-    confirmed_at REAL NOT NULL,
-    submitted_at REAL,
-    cancel_requested_at REAL
-);
+%(launches)s;
+CREATE INDEX IF NOT EXISTS launches_run_name ON launches (run_name);
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -147,7 +139,24 @@ _JOBS_TABLE = """CREATE TABLE %(name)s (
     confirmation_id TEXT UNIQUE REFERENCES confirmations(id),
     CHECK (kind NOT IN ('launch_nextflow', 'cancel_run') OR confirmation_id IS NOT NULL)
 )"""
-STATE_SCHEMA = STATE_SCHEMA % {"jobs": (_JOBS_TABLE % {"name": "IF NOT EXISTS jobs"}) + ";"}
+# One row per launch that was confirmed. A run name may have several rows (a launch the agent refused leaves its row, and
+# the name can be used again), so run_name is not unique; job_id is the launch job that this very row made, which is how
+# a row finds its own answer. The table has the same columns in the same order whether it was made new or upgraded.
+_LAUNCHES_TABLE = """CREATE TABLE %(name)s (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_name TEXT NOT NULL,
+    slurm_job_id INTEGER,
+    run_folder TEXT NOT NULL,
+    ce TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    confirmed_at REAL NOT NULL,
+    submitted_at REAL,
+    cancel_requested_at REAL,
+    job_id INTEGER
+)"""
+_LAUNCH_COLUMNS = "id, run_name, slurm_job_id, run_folder, ce, agent, confirmed_at, submitted_at, cancel_requested_at"
+STATE_SCHEMA = STATE_SCHEMA % {"jobs": (_JOBS_TABLE % {"name": "IF NOT EXISTS jobs"}) + ";",
+                               "launches": _LAUNCHES_TABLE % {"name": "IF NOT EXISTS launches"}}
 _JOB_COLUMNS = ("id, agent, compute_env, kind, args_json, state, result_json, late_result_json, created_at, deadline_at, "
                 "claimed_at, finished_at")
 
@@ -236,6 +245,72 @@ def _migrate_jobs(con):
         con.isolation_level = ""
 
 
+def _launch_job_ids(con, launches):
+    """For each old launches row (id, run_name, confirmed_at), the id of the launch job it made, or None.
+
+    The platform wrote a row and its job in one transaction with one clock reading, so the job whose created_at equals the
+    row's confirmed_at and whose content names the same run is the row's own; failing that, the newest job of that run
+    that no other row has taken (the old table had one row per name, and the old code kept the last job of the name).
+    """
+    jobs_of = {}
+    for j in con.execute("SELECT id, args_json, created_at FROM jobs WHERE kind = 'launch_nextflow' ORDER BY id"):
+        try:
+            name = json.loads(j[1]).get("bundle", {}).get("run_name")
+        except (ValueError, AttributeError):
+            continue
+        jobs_of.setdefault(name, []).append((j[0], j[2]))
+    taken, out = set(), {}
+    for rid, name, confirmed in launches:
+        cands = [(i, t) for i, t in jobs_of.get(name, []) if i not in taken]
+        exact = [i for i, t in cands if t == confirmed]
+        pick = exact[-1] if exact else (cands[-1][0] if cands else None)
+        if pick is not None:
+            taken.add(pick)
+        out[rid] = pick
+    return out
+
+
+def _launches_need_upgrade(con):
+    cols = [r[1] for r in con.execute("PRAGMA table_info(launches)")]
+    return bool(cols) and "job_id" not in cols
+
+
+def _migrate_launches(con):
+    """A platform.db made before the follow-up has a launches table with run_name UNIQUE and no job_id.
+
+    Same shape of work as _migrate_jobs: one transaction, build the new table, copy every row (the ids and the
+    AUTOINCREMENT counter too), give each row the job it made, drop the old table, rename. Any failure rolls it all back.
+    """
+    if not _launches_need_upgrade(con):
+        return
+    con.isolation_level = None
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        if not _launches_need_upgrade(con):     # another process did it first
+            con.execute("COMMIT")
+            return
+        con.execute(_LAUNCHES_TABLE % {"name": "launches_new"})
+        con.execute("INSERT INTO launches_new (%s) SELECT %s FROM launches" % (_LAUNCH_COLUMNS, _LAUNCH_COLUMNS))
+        ids = _launch_job_ids(con, con.execute("SELECT id, run_name, confirmed_at FROM launches ORDER BY id").fetchall())
+        for rid, jid in ids.items():
+            con.execute("UPDATE launches_new SET job_id = ? WHERE id = ?", (jid, rid))
+        _migration_step("copied")
+        seq = con.execute("SELECT seq FROM sqlite_sequence WHERE name = 'launches'").fetchone()
+        con.execute("DROP TABLE launches")
+        con.execute("ALTER TABLE launches_new RENAME TO launches")
+        if seq is not None:
+            con.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'launches'", (seq[0],))
+        con.execute("COMMIT")
+    except BaseException:
+        try:
+            con.execute("ROLLBACK")
+        except sqlite3.Error:
+            pass
+        raise
+    finally:
+        con.isolation_level = ""
+
+
 def _add_agent_columns(con):
     have = {r[1] for r in con.execute("PRAGMA table_info(agents)")}
     with con:
@@ -252,6 +327,7 @@ def connect_state(path):
     con.execute("PRAGMA foreign_keys = ON")
     try:
         _migrate_jobs(con)
+        _migrate_launches(con)
         con.executescript(STATE_SCHEMA)
         _add_agent_columns(con)
     except BaseException:

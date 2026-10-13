@@ -162,8 +162,7 @@ def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, 
     seconds = _seconds("fetch_run_records", deadline_seconds)
 
     def work(con):
-        launch = con.execute("SELECT * FROM launches WHERE run_name = ?", (run_name,)).fetchone() \
-            if isinstance(run_name, str) else None
+        launch = latest_launch(con, run_name) if isinstance(run_name, str) else None
         if launch is None:
             raise JobRefused("%r was not launched from this platform (不是平台自己送出的), so there is no folder to read"
                              % str(run_name)[:80])
@@ -198,6 +197,68 @@ def _check_confirmation(con, kind, bundle, confirmation_id):
     return sha
 
 
+def latest_launch(con, run_name):
+    """The newest row of the hand-off record for a run name, or None. A name may have several rows (a refused launch
+    leaves its row and the name can be used again); the newest is the one a cancel, a read-back or a report is about."""
+    return con.execute("SELECT * FROM launches WHERE run_name = ? ORDER BY id DESC LIMIT 1", (run_name,)).fetchone()
+
+
+def launch_job(con, launch, now):
+    """('refused' | 'waiting' | 'unknown', job row or None) for a launch row without a Slurm number: what its own job says.
+
+    Waiting is a job still queued or handed out whose deadline has not passed (the clock decides, not the state column);
+    refused is the state `refused`; anything else, and a row with no job to be found, is unknown.
+    """
+    job = None
+    if "job_id" in launch.keys() and launch["job_id"] is not None:
+        job = con.execute("SELECT * FROM jobs WHERE id = ?", (launch["job_id"],)).fetchone()
+    if job is None:
+        return "unknown", None
+    if job["state"] == "refused":
+        return "refused", job
+    if job["state"] in ("queued", "claimed") and job["deadline_at"] > now:
+        return "waiting", job
+    return "unknown", job
+
+
+def name_problem(con, run_name, now):
+    """The sentence that says why a run name cannot be used for a new launch, or None when it can.
+
+    It can only when every earlier row of the name has no Slurm job number AND its own launch job was refused by the
+    agent (nothing was done on the site). Submitted, still waiting, or unknown: the name stays taken, and the strictest row
+    decides. Read-only, so the terminal command can ask it before it asks the person anything.
+    """
+    rows = con.execute("SELECT * FROM launches WHERE run_name = ? ORDER BY id", (run_name,)).fetchall()
+    submitted = [r for r in rows if r["slurm_job_id"] is not None]
+    if submitted:
+        return ("the run name %s was used already (run 名稱已用過)：它已送出過，Slurm 工作編號是 %s；請換一個名稱"
+                % (run_name, submitted[-1]["slurm_job_id"]))
+    kinds = [launch_job(con, r, now)[0] for r in rows]
+    if "unknown" in kinds:
+        return ("the run name %s was used already (run 名稱已用過)：上一次送出的結果不明，請先查國網上的專屬資料夾與 nf-%s，"
+                "確認沒有留下東西之後換一個名稱" % (run_name, run_name))
+    if "waiting" in kinds:
+        return ("the run name %s was used already (run 名稱已用過)：上一次送出還在等代理處理，請等它有結果再說，或換一個名稱"
+                % run_name)
+    return None
+
+
+def check_run_name(state_path, run_name, clock=time.time):
+    """Raise JobRefused, in the words enqueue_confirmed would use, when the run name cannot be used for a new launch."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return
+    try:
+        try:
+            problem = name_problem(con, run_name, clock())
+        except sqlite3.Error:
+            return
+    finally:
+        con.close()
+    if problem:
+        raise JobRefused(problem)
+
+
 def enqueue_confirmed(con, ce_name, kind, bundle, confirmation_id, now, seconds, offline_after=None):
     """Inside the caller's transaction. enqueue_launch and enqueue_cancel call it, and so does confirm.py, which writes
     the confirmation in the same transaction. A launch also writes its row of the hand-off record here."""
@@ -212,24 +273,17 @@ def enqueue_confirmed(con, ce_name, kind, bundle, confirmation_id, now, seconds,
         raise JobRefused("the content is for agent %r, not for the agent of %s (%s)" % (
             str(bundle.get("agent"))[:64], ce_name, row["agent"]))
     if kind == "launch_nextflow":
-        old = con.execute("SELECT id, submitted_at FROM launches WHERE run_name = ?", (run_name,)).fetchone()
-        if old is not None:
-            last = None
-            for j in con.execute("SELECT state, args_json FROM jobs WHERE kind = 'launch_nextflow' ORDER BY id DESC"):
-                if json.loads(j["args_json"]).get("bundle", {}).get("run_name") == run_name:
-                    last = j
-                    break
-            # a name is free again only if the last try was refused outright: nothing was done on the site
-            if old["submitted_at"] is None and last is not None and last["state"] == "refused":
-                con.execute("DELETE FROM launches WHERE id = ?", (old["id"],))
-            else:
-                raise JobRefused("the run name %s was used already (run 名稱已用過); choose another name" % run_name)
-        con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at) VALUES (?, ?, ?, ?, ?)",
-                    (run_name, bundle["run_folder"], ce_name, row["agent"], now))
-    else:
-        launch = con.execute("SELECT * FROM launches WHERE run_name = ?", (run_name,)).fetchone()
-        if launch is None or launch["slurm_job_id"] is None:
-            raise JobRefused("run %s has no Slurm job number in the hand-off record (不是平台自己送出的，或尚未送出)" % run_name)
+        problem = name_problem(con, run_name, now)
+        if problem:
+            raise JobRefused(problem)
+        args = {"bundle": bundle, "confirmation_id": confirmation_id, "bundle_sha256": sha}
+        job_id = _insert_job(con, row, kind, args, now, seconds, confirmation_id)
+        con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, job_id) VALUES (?, ?, ?, ?, ?, ?)",
+                    (run_name, bundle["run_folder"], ce_name, row["agent"], now, job_id))
+        return job_id
+    launch = latest_launch(con, run_name)
+    if launch is None or launch["slurm_job_id"] is None:
+        raise JobRefused("run %s has no Slurm job number in the hand-off record (不是平台自己送出的，或尚未送出)" % run_name)
     args = {"bundle": bundle, "confirmation_id": confirmation_id, "bundle_sha256": sha}
     return _insert_job(con, row, kind, args, now, seconds, confirmation_id)
 
@@ -364,13 +418,15 @@ def _apply_handover(con, job, state, cleaned, now):
         run_name = json.loads(job["args_json"])["bundle"]["run_name"]
         sid = cleaned.get("slurm_job_id")
         if state == "done" and cleaned.get("ok") and sid is not None:
-            con.execute("UPDATE launches SET slurm_job_id = ?, submitted_at = COALESCE(submitted_at, ?) WHERE run_name = ?",
-                        (sid, now, run_name))
+            # the row this very job made, not any row of the name
+            con.execute("UPDATE launches SET slurm_job_id = ?, submitted_at = COALESCE(submitted_at, ?) WHERE job_id = ?",
+                        (sid, now, job["id"]))
             return None
         return run_name
     if job["kind"] == "cancel_run" and state == "done" and cleaned.get("ok"):
-        run_name = json.loads(job["args_json"])["bundle"]["run_name"]
-        con.execute("UPDATE launches SET cancel_requested_at = ? WHERE run_name = ?", (now, run_name))
+        bundle = json.loads(job["args_json"])["bundle"]
+        con.execute("UPDATE launches SET cancel_requested_at = ? WHERE run_name = ? AND slurm_job_id = ?",
+                    (now, bundle["run_name"], bundle.get("slurm_job_id")))
     return None
 
 

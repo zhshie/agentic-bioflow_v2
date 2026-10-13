@@ -43,6 +43,44 @@ VENV="${ABF_PLATFORM_VENV:-$CACHE_BASE/abf-platform-venv}"
 CI_MODE=0
 [ "${CI:-}" = "true" ] && CI_MODE=1
 
+# Which part of the platform tests this run is (see the shards below): main (the default), clock, or all.
+PART="${ABF_PLATFORM_PART:-main}"
+case "$PART" in main|clock|all) ;; *) echo "FAIL: ABF_PLATFORM_PART must be main, clock or all, not '$PART'"; exit 1 ;; esac
+
+# The fixed lists. The shards are balanced by the time each file took when they were made; every other test file goes into
+# the last shard. LAST are the files that check the clock closely. Sets SHARDS (one shard per line), LAST and REST.
+set_platform_parts() {
+    LAST="tests/test_station_e2e.py tests/test_nextflow_e2e.py"
+    SHARDS="
+tests/test_wrapper_nf2.py
+tests/test_wrapper.py
+tests/test_launch_nextflow.py
+tests/test_launch_e2e.py tests/test_station_fakeplatform.py tests/test_station_channel.py
+tests/test_station_cancel.py tests/test_launch_cli.py
+tests/test_station_launch.py tests/test_relay_loopback.py tests/test_station_envs.py
+"
+    local listed f
+    listed=" $(echo $SHARDS) $LAST "
+    REST=""
+    for f in tests/test_*.py; do
+        case "$listed" in *" $f "*) ;; *) REST="$REST $f" ;; esac
+    done
+}
+
+# ABF_PLATFORM_LIST=1: print the test files of this part, one line per shard (or per serial file), and stop. A check, not a run.
+if [ "${ABF_PLATFORM_LIST:-}" = "1" ]; then
+    cd "$PLATFORM_DIR" || exit 1
+    set_platform_parts
+    if [ "$PART" != "clock" ]; then
+        while IFS= read -r files; do [ -n "$files" ] && echo "shard: $files"; done <<< "$SHARDS"
+        echo "shard:$REST"
+    fi
+    if [ "$PART" != "main" ]; then
+        for f in $LAST; do echo "alone: $f"; done
+    fi
+    exit 0
+fi
+
 PINS="$PLATFORM_DIR/tests/pins.env"
 [ -r "$PINS" ] || PINS="$ROOT/platform/tests/pins.env"
 # shellcheck disable=SC1090
@@ -288,20 +326,13 @@ else
     # check the clock closely (the agent's heartbeats are 2 s apart and a rebuilt end time must be within a second of the live
     # one) and failed on a runner with two cores when other shards were busy, so they run one after the other, alone, once the
     # shards have finished. Output is printed shard by shard at the end.
-    LAST="tests/test_station_e2e.py tests/test_nextflow_e2e.py"
-    SHARDS="
-tests/test_wrapper_nf2.py
-tests/test_wrapper.py
-tests/test_launch_nextflow.py
-tests/test_launch_e2e.py tests/test_station_fakeplatform.py tests/test_station_channel.py
-tests/test_station_cancel.py tests/test_launch_cli.py
-tests/test_station_launch.py tests/test_relay_loopback.py tests/test_station_envs.py
-"
-    listed=" $(echo $SHARDS) $LAST "
-    rest=""
-    for f in tests/test_*.py; do
-        case "$listed" in *" $f "*) ;; *) rest="$rest $f" ;; esac
-    done
+    #
+    # Two run_all.sh entries share this file, so that neither comes near the per-test limit of run_all.sh (the whole suite
+    # took 298 s of 300 on a CI runner in one entry): this one (ABF_PLATFORM_PART=main, the default) runs the shards, and
+    # tests/platform_clock_test.sh (ABF_PLATFORM_PART=clock) runs the two clock-sensitive files, one after the other. run_all.sh
+    # runs one entry at a time, so those two still run alone. ABF_PLATFORM_PART=all runs both parts, as this file once did.
+    # Every test file is in exactly one part: the files named here, and everything else in the last shard.
+    set_platform_parts
     rc=0
     n=0
     pids=""
@@ -313,17 +344,21 @@ tests/test_station_launch.py tests/test_relay_loopback.py tests/test_station_env
         "$VPY" -c 'import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execv(sys.executable, [sys.executable, "-m", "pytest"] + sys.argv[1:])'             -rsfE -p no:cacheprovider $1 ${ABF_PYTEST_ARGS:-} > "$LOG.$n" 2>&1 &
         pids="$pids $!"
     }
-    while IFS= read -r files; do
-        [ -n "$files" ] && start_shard "$files"
-    done <<< "$SHARDS"
-    start_shard "$rest"
     shard_rc=""
-    for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
-    for f in $LAST; do
-        pids=""
-        start_shard "$f"
+    if [ "$PART" != "clock" ]; then
+        while IFS= read -r files; do
+            [ -n "$files" ] && start_shard "$files"
+        done <<< "$SHARDS"
+        start_shard "$REST"
         for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
-    done
+    fi
+    if [ "$PART" != "main" ]; then
+        for f in $LAST; do
+            pids=""
+            start_shard "$f"
+            for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
+        done
+    fi
     : > "$LOG"
     for i in $(seq 1 "$n"); do
         echo "===== pytest shard $i ====="

@@ -187,6 +187,10 @@ def cmd_launch(args):
             samplesheet=rows, params=params, path_columns=args.path_column))
     except bundle_mod.BundleError as e:
         return _refuse(str(e))
+    try:
+        jobs.check_run_name(state, bundle["run_name"])    # a name that cannot be used is refused before anything is shown
+    except jobs.JobRefused as e:
+        return _refuse(str(e))
     why = terminal.terminal_problem()
     if why:
         return _refuse("要在終端機上互動回答 y 才會送出，這裡不行（%s）。沒有任何旗標或環境變數能代替這個回答 (needs an interactive terminal)" % why)
@@ -209,11 +213,23 @@ def _grace():
 
 
 def _row(state, run_name):
+    """The newest row of the hand-off record for a run name (a refused launch leaves its row, and the name can be used again)."""
     con = store.open_readonly(state)
     if con is None:
         return None
     try:
-        return con.execute("SELECT * FROM launches WHERE run_name = ?", (run_name,)).fetchone()
+        return jobs.latest_launch(con, run_name)
+    finally:
+        con.close()
+
+
+def _row_of_job(state, job_id):
+    """The row that this very launch job made."""
+    con = store.open_readonly(state)
+    if con is None:
+        return None
+    try:
+        return con.execute("SELECT * FROM launches WHERE job_id = ?", (job_id,)).fetchone()
     finally:
         con.close()
 
@@ -239,7 +255,7 @@ def _report_launch(state, job_id, bundle):
     run = bundle["run_name"]
     out = asyncio.run(jobs.wait_for_result(state, job_id))
     if out["state"] == "done" and out["ok"]:
-        row = _row(state, run)
+        row = _row_of_job(state, job_id)
         _say(_submitted_line(row) + "進度請用 `abf-platform launches` 看送出的事實，Nextflow 起來後用 get_run 看每個 process。")
         return 0
     if out["state"] in ("refused", "error"):
@@ -252,13 +268,13 @@ def _report_launch(state, job_id, bundle):
     end = time.time() + _grace()
     late = None
     while time.time() < end and late is None:     # bounded by the grace time; a person is waiting at the terminal
-        row = _row(state, run)
+        row = _row_of_job(state, job_id)
         if row is not None and row["submitted_at"] is not None:
             break
         late = _late_message(state, job_id)
         if late is None:
             time.sleep(0.25)
-    row = _row(state, run)
+    row = _row_of_job(state, job_id)
     if row is not None and row["submitted_at"] is not None:
         _say(_submitted_line(row) + "（代理在期限之後才回報；這個編號已記下。）")
         return 0
@@ -325,13 +341,45 @@ def _when(epoch):
 
 # ---- launches ---------------------------------------------------------------------------------------------------------
 
+def _agent_result(job):
+    try:
+        return json.loads(job["result_json"]) if job is not None and job["result_json"] else {}
+    except ValueError:
+        return {}
+
+
+def _not_submitted_lines(row, kind, job):
+    """What to say of a launch that has no Slurm number: what its own job says, in the agent's words, never the platform's."""
+    if kind == "refused":
+        message = _agent_result(job).get("message")
+        return ["  被代理拒絕：%s" % (terminal.esc(message) if message else "（代理沒有附原因）")]
+    if kind == "waiting":
+        return ["  等代理處理中（工作 %d）" % job["id"]]
+    lines = ["  未送出：代理沒有回報 Slurm 工作編號（結果不明時請查國網上的專屬資料夾與 nf-%s）" % row["run_name"]]
+    if job is not None and job["state"] == "error":     # the agent said what went wrong and what it left on the site
+        res = _agent_result(job)
+        if res.get("message"):
+            lines.append("  代理回報：%s" % terminal.esc(res["message"]))
+        if res.get("left_on_site"):
+            lines.append("  國網上留下：%s" % terminal.esc(res["left_on_site"]))
+    return lines
+
+
 def cmd_launches(args):
     state = _state()
     con = store.open_readonly(state)
     rows = []
+    what = {}      # launch row id -> (kind, job row or None) for the rows that have no Slurm number
     if con is not None:
         try:
             rows = con.execute("SELECT * FROM launches ORDER BY id").fetchall()
+            now = store._now()
+            for r in rows:
+                if r["slurm_job_id"] is None:
+                    try:
+                        what[r["id"]] = jobs.launch_job(con, r, now)
+                    except Exception:     # a database not upgraded yet: the row is shown as unknown, never a crash
+                        what[r["id"]] = ("unknown", None)
         except Exception:
             rows = []
         finally:
@@ -354,7 +402,8 @@ def cmd_launches(args):
                                                terminal.esc(r["run_folder"]), _when(r["confirmed_at"]))
         _say(head)
         if r["submitted_at"] is None:
-            _say("  未送出：代理沒有回報 Slurm 工作編號（結果不明時請查國網上的專屬資料夾與 nf-%s）" % r["run_name"])
+            for line in _not_submitted_lines(r, *what.get(r["id"], ("unknown", None))):
+                _say(line)
         elif r["run_name"] in known:
             _say("  已收到 Nextflow 的事件；請用 get_run 看（run id %s）" % known[r["run_name"]])
         else:
