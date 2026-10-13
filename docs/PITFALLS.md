@@ -1956,3 +1956,11 @@ the login node and so can reach its loopback (specs/007b-launch/research.md); th
 Measured 2026-10-11 on a run Seqera had launched: `_work/nf-<id>.launcher.sh` is mode 755 and carries the Tower access token as base64 in
 `NXF_PRERUN_BASE64`. Only the mode 700 of the folder around it protects it. The 007b launch does not copy this: the token is in a mode 600
 file, `<run folder>/tower.token`, read into the head job's environment, and never in the script text.
+
+**41. `ssh -O cancel` matches the spec the forward was opened with, and says no with exit code 0 (measured 2026-10-13, OpenSSH 8.9p1).**
+The forward was opened as `-R 127.0.0.1:0:127.0.0.1:8787`; sshd chose 41179. `ssh -O cancel -R 127.0.0.1:41179:127.0.0.1:8787` was
+refused: stderr `mux_client_forward: forwarding request failed: port not forwarded` and `muxclient: master cancel forward request failed`,
+**exit code 0**. `ssh -O cancel -R 127.0.0.1:0:127.0.0.1:8787` worked, and the port left `ss -ltn`. So the exit code cannot tell a
+cancel that worked from one that did not; `on_site.sh --unforward` repeats the recorded opening spec (`cancel_spec` in `forward_state`)
+and reads the master's stderr, and a refusal keeps the records and exits non-zero. Before this, `abf-station unforward` printed
+"cancelled" while the port stayed open on the login node with no record anywhere.

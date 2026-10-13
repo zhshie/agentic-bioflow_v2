@@ -312,7 +312,8 @@ sessions_exhausted() {
 # site's sshd binds a reverse forward to its own loopback only (PITFALLS), so the forward ends on the login node and the
 # relay there carries the last step. The forward is an option of the connection that already exists: no process is
 # started here. The port sshd chooses is recorded beside the settings, and with it the pid of the master, so that a
-# record left over from an earlier connection is not mistaken for a live forward.
+# record left over from an earlier connection is not mistaken for a live forward. forward_state also holds the -R spec the
+# forward was opened with: that is what a cancel has to repeat.
 fwd_dir() {
   local d; d="$(dirname "$SETTINGS_FILE")"
   case "$d" in */config) d="$(dirname "$d")" ;; esac
@@ -363,18 +364,42 @@ if [ "$MODE" = forward ]; then
   umask 077
   mkdir -p "$FWD_DIR"
   printf '%s\n' "$fport" > "$FWD_PORT_FILE"
-  printf 'master_pid=%s\nlocal_port=%s\n' "$(master_pid)" "$FWD_LOCAL" > "$FWD_STATE_FILE"
+  printf 'master_pid=%s\nlocal_port=%s\ncancel_spec=127.0.0.1:0:127.0.0.1:%s\n' "$(master_pid)" "$FWD_LOCAL" "$FWD_LOCAL" > "$FWD_STATE_FILE"
   chmod 600 "$FWD_PORT_FILE" "$FWD_STATE_FILE" 2>/dev/null
   printf '%s\n' "$fport"
   exit 0
 fi
 
 if [ "$MODE" = unforward ]; then
+  # OpenSSH matches a cancel against the spec the forward was OPENED with (port 0), not against the port sshd chose, and
+  # `-O cancel` exits 0 even when the master refuses (PITFALLS 2026-10-13). So the exit code proves nothing: the words
+  # the master writes on stderr decide, and a refused cancel keeps every record and says the forward is still open.
   fport="$(head -c 16 "$FWD_PORT_FILE" 2>/dev/null | tr -d '[:space:]')"
   flocal="$(sed -n 's/^local_port=//p' "$FWD_STATE_FILE" 2>/dev/null | head -1)"
-  if [ -n "$fport" ] && [ -n "$flocal" ] && master_is_up; then
-    "$SSH" -O cancel -o ControlPath="$CP" -R "127.0.0.1:$fport:127.0.0.1:$flocal" "$HOST" >/dev/null 2>&1 \
-      || echo "on_site.sh: the connection did not confirm the cancel of the forward; it ends with the connection." >&2
+  fspec="$(sed -n 's/^cancel_spec=//p' "$FWD_STATE_FILE" 2>/dev/null | head -1)"
+  frec="$(sed -n 's/^master_pid=//p' "$FWD_STATE_FILE" 2>/dev/null | head -1)"
+  if [ -n "$fport" ] && master_is_up; then
+    [ -n "$fspec" ] || { [ -n "$flocal" ] && fspec="127.0.0.1:0:127.0.0.1:$flocal"; }
+    [ -n "$fspec" ] || die 1 "on_site.sh: the record of the reverse forward on port $fport is incomplete (the local port is missing), so the cancel cannot be confirmed." \
+                             "The forward may still be open. Its records are kept; end the shared connection to end the forward."
+    now="$(master_pid)"
+    if [ -n "$frec" ] && [ "$frec" != "$now" ]; then
+      rm -f -- "$FWD_PORT_FILE" "$FWD_STATE_FILE"
+      echo "the reverse forward ended with the earlier connection (the shared connection was opened again since); its records are removed"
+      exit 0
+    fi
+    errf="$(mktemp)"
+    clocked "$CHECK_TMO" "$SSH" -O cancel -o ControlPath="$CP" -R "$fspec" "$HOST" >/dev/null 2>"$errf"
+    rc=$?
+    cerr="$(tr -c '[:print:]\n' ' ' < "$errf" | head -c 400)"; rm -f -- "$errf"
+    if [ "$rc" != 0 ]; then
+      die 1 "on_site.sh: the cancel of the reverse forward on port $fport failed (exit code $rc): $cerr" \
+            "The forward may still be open. Its records are kept; run the unforward again, or end the shared connection."
+    fi
+    if printf '%s' "$cerr" | grep -qi -e 'forwarding request failed' -e 'cancel forward request failed'; then
+      die 1 "on_site.sh: the reverse forward on port $fport is still open: the shared connection refused to cancel it ($cerr)" \
+            "Its records are kept; run the unforward again, or end the shared connection (the forward ends with it)."
+    fi
   fi
   rm -f -- "$FWD_PORT_FILE" "$FWD_STATE_FILE"
   echo "reverse forward cancelled and its records removed"

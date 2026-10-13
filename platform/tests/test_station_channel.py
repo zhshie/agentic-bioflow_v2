@@ -78,7 +78,8 @@ def test_tc038_unforward_cancels_the_forward_and_removes_the_records(site):
     r = on_site(site, "--unforward")
     assert r.returncode == 0, r.stderr
     cancels = [c for c in site.ssh_calls() if "-O cancel" in c]
-    assert len(cancels) == 1 and "-R 127.0.0.1:41234:127.0.0.1:8787" in cancels[0]
+    assert len(cancels) == 1 and "-R 127.0.0.1:0:127.0.0.1:8787" in cancels[0]   # the spec the forward was opened with (TC-U2-34)
+    assert site.listening() == []
     assert not (personal(site) / "forward_port").exists() and not (personal(site) / "forward_state").exists()
     assert on_site(site, "--check-forward").returncode == 1
 
@@ -242,3 +243,248 @@ def test_tc017_a_connection_that_drops_at_any_call_ends_in_an_honest_answer_and_
         if folder.exists():
             assert str(folder) in res["result"]["message"] + res["result"].get("left_on_site", ""), "what is left is told"
     assert site.guards_intact()
+
+
+# ---- follow-up 2 (2026-10-13): unforward must really end the forward, and say so when it could not ------------------
+# The fake ssh behaves like OpenSSH 8.9p1 here: a cancel matches only the -R spec the forward was opened with, and a
+# refused cancel is two lines on stderr with exit code 0. The truth is site.listening(), not ssh.log.
+
+SPEC = "127.0.0.1:0:127.0.0.1:%s"
+OK_LINE = "reverse forward cancelled and its records removed"
+GONE = {"forward_port": None, "forward_state": None}
+
+
+def forwarded(site, port="8787"):
+    r = on_site(site, "--forward", port)
+    assert r.returncode == 0, r.stderr
+    return r
+
+
+def records(site):
+    return {n: (personal(site) / n).read_bytes() if (personal(site) / n).exists() else None for n in ("forward_port", "forward_state")}
+
+
+def fake_ssh_run(site, *args):
+    return subprocess.run([str(site.ssh_bin)] + list(args), capture_output=True, text=True, timeout=30)
+
+
+def test_tc_u2_06_the_fake_ssh_refuses_a_cancel_with_the_allocated_port_like_openssh(site):
+    forwarded(site)
+    assert site.listening() == ["41234"]
+    a = fake_ssh_run(site, "-O", "cancel", "-R", "127.0.0.1:41234:127.0.0.1:8787", "h")
+    assert a.returncode == 0
+    assert "mux_client_forward: forwarding request failed: port not forwarded" in a.stderr
+    assert "muxclient: master cancel forward request failed" in a.stderr
+    assert site.listening() == ["41234"]
+    b = fake_ssh_run(site, "-O", "cancel", "-R", SPEC % 8787, "h")
+    assert b.returncode == 0 and b.stderr == "" and b.stdout == ""
+    assert site.listening() == []
+
+
+def test_tc_u2_01_unforward_really_ends_the_forward_with_the_spec_it_was_opened_with(site):
+    forwarded(site)
+    assert site.listening() == ["41234"]
+    r = on_site(site, "--unforward")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == OK_LINE and r.stderr == ""
+    cancels = [c for c in site.ssh_calls() if "-O cancel" in c]
+    assert len(cancels) == 1 and "-R 127.0.0.1:0:127.0.0.1:8787" in cancels[0]
+    assert site.listening() == []
+    assert not (personal(site) / "forward_port").exists() and not (personal(site) / "forward_state").exists()
+    assert on_site(site, "--check-forward").returncode == 1
+
+
+def test_tc_u2_02_the_forward_records_what_a_cancel_needs_and_nothing_secret(site):
+    forwarded(site)
+    text = (personal(site) / "forward_state").read_text()
+    assert re.search(r"^master_pid=\d+$", text, re.M) and "local_port=8787" in text.splitlines()
+    assert SPEC % 8787 in text
+    for n in ("forward_state", "forward_port"):
+        assert stat.S_IMODE((personal(site) / n).stat().st_mode) == 0o600
+    assert not re.search(r"(?i)token|CANARY|secret|BEGIN|password", text + (personal(site) / "forward_port").read_text())
+    assert on_site(site, "--check-forward").stdout.strip() == "41234"
+
+
+def test_tc_u2_03_another_local_port_is_cancelled_the_same_way(site):
+    forwarded(site, "9100")
+    r = on_site(site, "--unforward")
+    assert r.returncode == 0, r.stderr
+    cancels = [c for c in site.ssh_calls() if "-O cancel" in c]
+    assert len(cancels) == 1 and "-R 127.0.0.1:0:127.0.0.1:9100" in cancels[0]
+    assert site.listening() == [] and records(site) == GONE
+
+
+def test_tc_u2_05_a_record_written_by_the_old_code_can_still_be_cancelled(site):
+    forwarded(site)
+    pid = [ln for ln in (personal(site) / "forward_state").read_text().splitlines() if ln.startswith("master_pid=")][0]
+    (personal(site) / "forward_state").write_text(pid + "\nlocal_port=8787\n")
+    assert on_site(site, "--check-forward").stdout.strip() == "41234"           # TC-U2-32: the old format reads the same
+    r = on_site(site, "--unforward")
+    assert r.returncode == 0, r.stderr
+    assert "-R 127.0.0.1:0:127.0.0.1:8787" in [c for c in site.ssh_calls() if "-O cancel" in c][0]
+    assert site.listening() == [] and records(site) == GONE
+
+
+def test_tc_u2_10_a_cancel_the_connection_refuses_is_said_aloud_and_nothing_is_forgotten(site):
+    forwarded(site)
+    state = personal(site) / "forward_state"
+    state.write_text("\n".join(l for l in state.read_text().splitlines() if "127.0.0.1:" not in l).replace("local_port=8787", "local_port=9999") + "\n")
+    before = records(site)
+    r = on_site(site, "--unforward")
+    assert r.returncode != 0
+    assert "41234" in r.stderr and re.search(r"(?i)still open", r.stderr)
+    assert "cancelled" not in r.stdout and "records removed" not in r.stdout
+    assert records(site) == before
+    assert site.listening() == ["41234"]
+    assert on_site(site, "--check-forward").stdout.strip() == "41234"
+
+
+def test_tc_u2_11_after_a_refusal_the_second_try_works(site):
+    forwarded(site)
+    site.set("cancel_refuse_once", "1")
+    before = records(site)
+    first = on_site(site, "--unforward")
+    assert first.returncode != 0 and records(site) == before and site.listening() == ["41234"]
+    second = on_site(site, "--unforward")
+    assert second.returncode == 0 and second.stdout.strip() == OK_LINE
+    assert site.listening() == [] and records(site) == GONE
+
+
+def run_abf_unforward(site):
+    env = dict(site.agent_env(), PYTHONPATH=str(PLATFORM_DIR))
+    return subprocess.run([sys.executable, "-m", "abf_station", "unforward", "--deployment", str(site.root)], env=env,
+                          capture_output=True, text=True, timeout=60)
+
+
+def test_tc_u2_12_abf_station_unforward_shows_the_failure_exits_non_zero_and_keeps_both_copies(tmp_path, site, fake):
+    (res,), _ = launch(site, fake, tmp_path, ["run-a"])
+    assert res["state"] == "done"
+    relay = site.storage / "_relay"
+    site.set("cancel_refuse_once", "1")
+    n_before = len(site.destructive())
+    r = run_abf_unforward(site)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0
+    assert "41234" in out and re.search(r"(?i)still open", out) and "cancelled and its records removed" not in out
+    assert (personal(site) / "forward_port").exists()
+    assert (relay / "forward_port").exists() and (relay / "forward_instance").exists()
+    assert len(site.destructive()) == n_before and site.listening() == ["41234"]    # nothing on the site was removed
+    r2 = run_abf_unforward(site)
+    assert r2.returncode == 0, r2.stdout + r2.stderr
+    assert OK_LINE in r2.stdout and "the copy on the site" in r2.stdout
+    assert site.listening() == []
+    assert not (personal(site) / "forward_port").exists()
+    assert not (relay / "forward_port").exists() and not (relay / "forward_instance").exists()
+
+
+def test_tc_u2_13_cmd_unforward_prints_both_outputs_and_follows_the_script_exit_code(site, monkeypatch, capsys):
+    import argparse
+    sys.path.insert(0, str(PLATFORM_DIR))
+    from abf_station import cli, site as site_mod
+
+    class Fake:
+        def __init__(self, *a, **k):
+            pass
+
+        def call(self, args, **k):
+            return site_mod.SiteResult(1 if args == ["--unforward"] else 0, b"OUT-TEXT\n", "ERR-TEXT\n")
+
+    monkeypatch.setattr(site_mod, "Site", Fake)
+    rc = cli.cmd_unforward(argparse.Namespace(plugin_root=str(REPO_ROOT), deployment=str(site.root)))
+    cap = capsys.readouterr()
+    assert rc != 0 and "OUT-TEXT" in cap.out + cap.err and "ERR-TEXT" in cap.out + cap.err
+    assert "removed" not in (cap.out + cap.err).replace("OUT-TEXT", "")             # no site-copy removal after a failure
+
+
+def test_tc_u2_14_without_a_shared_connection_the_records_just_go(site):
+    forwarded(site)
+    site.set("ssh_mode", "nomaster")
+    r = on_site(site, "--unforward")
+    assert r.returncode == 0 and r.stdout.strip() == OK_LINE and r.stderr == ""
+    assert not [c for c in site.ssh_calls() if "-O cancel" in c]
+    assert records(site) == GONE
+
+
+def test_tc_u2_15_a_forward_of_an_earlier_connection_does_not_leave_a_record_that_cannot_be_cleared(site):
+    forwarded(site)
+    site.set("master_pid", "9999")                                                   # the connection was opened again
+    r = on_site(site, "--unforward")
+    assert r.returncode == 0, r.stderr
+    assert re.search(r"(?i)earlier connection", r.stdout + r.stderr)
+    assert not re.search(r"(?i)still open", r.stdout + r.stderr)
+    assert records(site) == GONE
+
+
+def test_tc_u2_16_a_cancel_that_errors_out_keeps_the_records_and_names_the_port(site):
+    forwarded(site)
+    site.set("cancel_error", "1")
+    before = records(site)
+    r = on_site(site, "--unforward")
+    assert r.returncode != 0 and "41234" in r.stderr and re.search(r"(?i)still be open|still open", r.stderr)
+    assert "cancelled" not in r.stdout and records(site) == before
+
+
+@pytest.mark.parametrize("text", ["mux_client_forward: forwarding request failed: port not forwarded\n",
+                                  "muxclient: master cancel forward request failed\n"])
+def test_tc_u2_17_one_of_the_two_refusal_lines_is_enough_to_call_it_a_failure(site, text):
+    forwarded(site)
+    site.set("cancel_refuse_text", text)
+    before = records(site)
+    r = on_site(site, "--unforward")
+    assert r.returncode != 0 and "41234" in r.stderr and records(site) == before
+
+
+def test_tc_u2_18_an_unrelated_warning_on_stderr_is_not_a_failure(site):
+    forwarded(site)
+    site.set("cancel_warning", "Warning: Permanently added 'lgn304' (ED25519) to the list of known hosts.\n")
+    r = on_site(site, "--unforward")
+    assert r.returncode == 0 and r.stdout.strip() == OK_LINE
+    assert site.listening() == [] and records(site) == GONE
+
+
+def test_tc_u2_19_with_no_record_there_is_nothing_to_cancel_and_nothing_is_created(site):
+    r = on_site(site, "--unforward")
+    assert r.returncode == 0 and r.stdout.strip() == OK_LINE
+    assert not [c for c in site.ssh_calls() if "-O cancel" in c]
+    assert not personal(site).exists() or list(personal(site).iterdir()) == []
+
+
+@pytest.mark.parametrize("state", [None, "master_pid=4242\n"])
+def test_tc_u2_20_a_record_that_is_incomplete_does_not_claim_the_forward_is_gone(site, state):
+    forwarded(site)
+    if state is None:
+        (personal(site) / "forward_state").unlink()
+    else:
+        (personal(site) / "forward_state").write_text(state)
+    r = on_site(site, "--unforward")
+    assert r.returncode != 0 and "41234" in r.stderr and re.search(r"(?i)incomplete", r.stderr)
+    assert "cancelled" not in r.stdout
+    assert (personal(site) / "forward_port").exists() and site.listening() == ["41234"]
+
+
+def test_tc_u2_30_the_success_path_says_exactly_what_it_said_before(site):
+    forwarded(site)
+    r = on_site(site, "--unforward")
+    assert (r.returncode, r.stdout, r.stderr) == (0, OK_LINE + "\n", "")
+
+
+def test_tc_u2_33_a_poll_opens_no_extra_connection_and_unforward_opens_none(site):
+    forwarded(site)
+    on_site(site, "--check-forward")
+    on_site(site, "--unforward")
+    calls = site.ssh_calls()
+    assert [c for c in calls if "-O " not in c] == []                                # every call is a mux operation
+    assert len([c for c in calls if "-O forward" in c]) == 1
+
+
+def test_tc_u2_51_a_failed_unforward_removes_nothing_and_a_good_one_removes_only_its_two_files(tmp_path, site, fake):
+    (res,), _ = launch(site, fake, tmp_path, ["run-a"])
+    site.set("cancel_refuse_once", "1")
+    before = site.destructive()
+    run_abf_unforward(site)
+    assert site.destructive() == before
+    r = run_abf_unforward(site)
+    assert r.returncode == 0
+    new = site.destructive()[len(before):]
+    assert len(new) == 1 and new[0].startswith("rm -f") and new[0].count("_relay/") == 2
+    assert site.guards_intact() and (site.storage / "rawdata" / "s1.fq").exists() and (site.storage / "cache").is_dir()

@@ -121,13 +121,20 @@ def cmd_unforward(args):
     from . import rules
     site = Site(plugin_root, settings, log=lambda *_: None)
     res = site.call(["--unforward"])
-    say(res.out.decode("utf-8", errors="replace").strip() or res.err.strip())
+    out = res.out.decode("utf-8", errors="replace").strip()
+    if out:
+        say(out)
+    if res.err.strip():
+        print(res.err.strip(), file=sys.stderr, flush=True)
+    if res.rc != 0:
+        # the script says the forward may still be open and keeps its records; so does this side: the copy on the site stays
+        return 1
     storage = rules.read_setting(str(settings), "storage_root")
     if storage and not rules.path_problem(storage):
         target = rules.normalize(storage) + "/_relay/forward_port"
         gone = site.call(["rm -f -- %s %s" % (quote(target), quote(rules.normalize(storage) + "/_relay/forward_instance"))])
         say("the copy on the site (%s) is removed" % target if gone.rc == 0 else "could not remove the copy on the site: %s" % gone.err.strip()[:200])
-    return 0 if res.rc == 0 else 1
+    return 0
 
 
 def build_parser():
