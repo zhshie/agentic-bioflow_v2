@@ -17,3 +17,9 @@ two stderr lines and still exits 0. Switches: `cancel_refuse_once`, `cancel_erro
 TC-U2-06 (the fake itself) passes.
 
 ## Items
+
+- [x] Fake ssh like OpenSSH (`station_harness.py`), tests TC-U2-01..20, 30, 33, 51 in `platform/tests/test_station_channel.py`; `test_tc038_unforward...` corrected (spec `...:0:...`, plus `listening() == []`), nothing else loosened, no test removed.
+- [x] `scripts/on_site.sh`: `--forward` also records `cancel_spec=` in `forward_state`; `--unforward` cancels with that spec (old records: port 0 + `local_port`), decides by the master's stderr and exit code (not the exit code alone), no extra sshd connection (only `-O` calls). Refused/erroring cancel: records kept, stderr "... is still open" / "may still be open" with the port, exit 1. Master gone: records removed as before. Master replaced: records removed with a note. Port recorded but no `local_port`/spec: "incomplete", kept, exit 1.
+- [x] `platform/abf_station/cli.py` `cmd_unforward`: prints stdout and stderr both; script failure -> return 1 and the copy on the site is not touched.
+- [x] `docs/PITFALLS.md` entry 41 (TC-U2-53). `docs/PLATFORM.md` unchanged.
+- Manual, not mine: TC-U2-34 (diff review), 40, 41, 54 (maintainer on real NCHC).
