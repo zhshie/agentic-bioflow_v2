@@ -448,7 +448,9 @@ def test_tc020_complete_revokes_the_token_and_the_run_data_stays(tmp_path):
     before = status.get_run(plat.index, wid, clock())
     assert before["status"] == "succeeded"
     assert plat.send("POST", "/trace/create", create_body("run-one"), token=t).status_code == 401
-    assert plat.send("PUT", "/trace/%s/heartbeat" % wid, {"progress": {}}, token=t).status_code == 401
+    # follow-up 3 (TC-F3-40): Nextflow may send one more message for the same run after its complete (a second complete of
+    # an aborted run); it gets a 2xx and changes nothing. The line used to expect 401. Every other check stays as it was.
+    assert plat.send("PUT", "/trace/%s/heartbeat" % wid, {"progress": {}}, token=t).status_code == 200
     assert status.get_run(plat.index, wid, clock()) == before
 
 

@@ -2,6 +2,7 @@
 """007b follow-up 3, G1 and G2: the reason Nextflow gave for a failed run, and the messages after `complete`."""
 import copy
 import json
+import time
 import sqlite3
 
 import pytest
@@ -209,3 +210,147 @@ def test_tcf3_32_an_old_index_is_read_without_a_crash_and_without_a_write(tmp_pa
     assert v["status"] == "failed" and REASON not in v and v["failed_tasks"][0]["error_message"] == "boom"
     assert sorted(r["id"] for r in status.list_runs(idx, 1_800_000_100)) == ["run00", "run01", "run02"]
     assert idx.read_bytes() == raw and idx.stat().st_mtime_ns == mtime
+
+
+# ---- G2: what Nextflow sends after `complete` -------------------------------------------------------------------------
+# nf-tower 1.28.3 sends nothing after traceComplete in TowerObserver.onFlowComplete (plugins/nf-tower/.../TowerObserver.groovy
+# :257-272, the sender thread is joined first at :261-264). But for a run that was ABORTED (a failed task, a cancel),
+# Session.abort() runs shutdown0() -> notifyFlowComplete() (Session.groovy:830, :775, :1091-1093) and the ScriptRunner then
+# calls session.destroy() -> shutdown0() -> notifyFlowComplete() again (ScriptRunner.groovy:131-139, :244; Session.groovy:720):
+# onFlowComplete runs twice and the second one PUTs `complete` once more. So the message after complete is a second `complete`.
+# The tests below also send progress and heartbeat, the other two kinds a late sender could produce.
+
+def bound_token(plat, run="run-one"):
+    return store.create_token(plat.tokens, run_name=run)
+
+
+def finished_run(plat, scenario="nf2510_ok", run="run-one"):
+    t = bound_token(plat, run)
+    wid, resp = plat.replay(variant(scenario, run, "sess-" + run, plat.clock()), t)
+    assert all(r.status_code < 300 for r in resp), [r.status_code for r in resp]
+    return t, wid
+
+
+def late(plat, wid, token, kind):
+    if kind == "heartbeat":
+        return plat.send("PUT", "/trace/%s/heartbeat" % wid, {"progress": {"running": 9}}, token=token)
+    if kind == "progress":
+        return plat.send("PUT", "/trace/%s/progress" % wid, {"progress": {"succeeded": 1, "running": 4, "pending": 3},
+                                                              "tasks": [{"taskId": 99, "name": "X (1)", "status": "RUNNING", "attempt": 1}]},
+                         token=token)
+    body = copy.deepcopy(complete_of(variant("nf2510_ok", "run-one", "sess-run-one", plat.clock()))["body"])
+    body["workflow"].update(success=False, exitStatus=77, errorMessage="LATE")
+    return plat.send("PUT", "/trace/%s/complete" % wid, body, token=token)
+
+
+KINDS = ("heartbeat", "progress", "complete")
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_tcf3_05_06_a_message_after_complete_is_answered_ok_and_changes_nothing(plat, kind):
+    # TC-F3-05, TC-F3-06
+    t, wid = finished_run(plat)
+    rows, shown = db_rows(plat.index), view(plat, wid)
+    r = late(plat, wid, t, kind)
+    assert r.status_code == 200 and r.json() == {"status": "OK"}, (r.status_code, r.text)
+    assert db_rows(plat.index) == rows
+    assert view(plat, wid) == shown
+
+
+def test_tcf3_07_the_token_is_still_marked_revoked_by_the_complete(plat):
+    # TC-F3-07: FR-004 "revoked when complete arrives" stays true in the token file
+    t, wid = finished_run(plat)
+    con = sqlite3.connect(str(plat.tokens))
+    assert con.execute("SELECT revoked_at FROM tokens WHERE run_name = 'run-one'").fetchone()[0] is not None
+    con.close()
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_tcf3_24_a_message_after_a_failed_run_does_not_turn_it_back(plat, kind):
+    # TC-F3-24
+    t, wid = finished_run(plat, "nf2510_fail")
+    before, rows = view(plat, wid), db_rows(plat.index)
+    assert before["status"] == "failed" and before["failed_tasks"]
+    assert late(plat, wid, t, kind).status_code == 200
+    assert view(plat, wid) == before and db_rows(plat.index) == rows
+
+
+def test_tcf3_25_the_ended_token_cannot_make_a_run(plat):
+    # TC-F3-25
+    t, wid = finished_run(plat)
+    n = plat.counts()["runs"]
+    for sid, name in (("sess-new", "run-one"), ("sess-run-one", "other-run"), ("sess-run-one", "run-one")):
+        r = plat.send("POST", "/trace/create", {"sessionId": sid, "runName": name}, token=t)
+        assert r.status_code in (401, 403), (sid, name, r.status_code)
+    r = plat.send("PUT", "/trace/%s/begin" % wid, {"workflow": {"params": {"x": 1}}}, token=t)
+    assert r.status_code in (401, 403)
+    assert plat.counts()["runs"] == n
+
+
+def test_tcf3_26_the_ended_token_cannot_touch_another_run(plat):
+    # TC-F3-26
+    t, wid = finished_run(plat)
+    other = bound_token(plat, "run-two")
+    wid2, _ = plat.replay(variant("nf2510_ok", "run-two", "sess-run-two", plat.clock()), other, stop_before="complete")
+    rows2 = db_rows(plat.index, wid2)
+    for kind in KINDS:
+        assert late(plat, wid2, t, kind).status_code in (401, 403, 404), kind
+    assert db_rows(plat.index, wid2) == rows2 and view(plat, wid2)["status"] == "running"
+    n = plat.counts()["runs"]
+    assert late(plat, "0123456789abcdef", t, "heartbeat").status_code in (401, 403, 404)
+    assert plat.counts()["runs"] == n
+
+
+def test_tcf3_26_the_door_is_only_for_a_run_that_has_a_complete_on_record(plat):
+    # a token that was marked ended while its own run never completed (a stray row) gets no door
+    live = bound_token(plat, "run-three")
+    wid3, _ = plat.replay(variant("nf2510_ok", "run-three", "sess-run-three", plat.clock()), live, stop_before="complete")
+    con = sqlite3.connect(str(plat.tokens))
+    con.execute("UPDATE tokens SET revoked_at = ?, ended_at = ? WHERE run_name = 'run-three'", (time.time(), time.time()))
+    con.commit()
+    con.close()
+    assert late(plat, wid3, live, "heartbeat").status_code == 401
+
+
+def test_tcf3_27_the_door_closes_after_a_fixed_time(plat, monkeypatch):
+    # TC-F3-27
+    t, wid = finished_run(plat)
+    g = store.ENDED_GRACE_SECONDS
+    assert 0 < g <= 14 * 86400
+    monkeypatch.setenv("ABF_PLATFORM_CLOCK_OFFSET", str(g - 30))
+    assert late(plat, wid, t, "heartbeat").status_code == 200
+    monkeypatch.setenv("ABF_PLATFORM_CLOCK_OFFSET", str(g + 30))
+    for kind in KINDS:
+        r = late(plat, wid, t, kind)
+        assert r.status_code == 401 and "X-ABF-Platform" in r.headers, kind
+    r = plat.send("POST", "/trace/create", {"sessionId": "s", "runName": "run-one"}, token=t)
+    assert r.status_code == 401
+
+
+def test_tcf3_28_other_ways_of_revoking_still_end_a_token_at_once(plat):
+    # TC-F3-28: revoke_token and revoke_run_tokens on a live token; an explicit revoke after the complete closes the door
+    t = bound_token(plat, "run-a")
+    wid, _ = plat.replay(variant("nf2510_ok", "run-a", "sess-run-a", plat.clock()), t, stop_before="complete")
+    row = [r for r in sqlite3.connect(str(plat.tokens)).execute("SELECT id FROM tokens WHERE run_name = 'run-a'")][0]
+    store.revoke_token(plat.tokens, row[0])
+    for kind in ("heartbeat", "progress"):
+        assert late(plat, wid, t, kind).status_code == 401
+    t2 = bound_token(plat, "run-b")
+    wid2, _ = plat.replay(variant("nf2510_ok", "run-b", "sess-run-b", plat.clock()), t2, stop_before="complete")
+    assert store.revoke_run_tokens(plat.tokens, "run-b") == 1
+    assert late(plat, wid2, t2, "heartbeat").status_code == 401
+    t3, wid3 = finished_run(plat, run="run-c")
+    assert late(plat, wid3, t3, "heartbeat").status_code == 200
+    store.revoke_run_tokens(plat.tokens, "run-c")
+    assert late(plat, wid3, t3, "heartbeat").status_code == 401   # an explicit revoke closes the door at once
+
+
+def test_tcf3_43_82_the_ended_token_reads_nothing_and_a_plain_token_is_not_affected(plat):
+    t, wid = finished_run(plat)
+    assert plat.send("GET", "/user-info", token=t).status_code == 401
+    for bad in (None, "abf_nope"):
+        r = plat.send("PUT", "/trace/%s/heartbeat" % wid, {}, token=bad)
+        assert r.status_code == 401 and r.json()["message"] == "Unauthorized: missing or unknown access token"
+    plain = plat.new_token()
+    wid2, _ = plat.replay(variant("nf2510_ok", "run-free", "sess-run-free", plat.clock()), plain)
+    assert plat.send("PUT", "/trace/%s/heartbeat" % wid2, {"progress": {}}, token=plain).status_code == 200
