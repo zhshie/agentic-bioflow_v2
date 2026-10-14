@@ -1,18 +1,20 @@
 #!/bin/bash
 # Run every test file in this directory and report one verdict.
 #
-# Why this exists: there are 39 test files and the release procedure says to
-# run them twice - once in the repo, once in the deployed copy - which nobody
-# does by hand 78 times. A release check that is too tedious to perform is a
-# release check that does not happen.
+# Why this exists: the release procedure says to run every test file twice -
+# once in the repo, once in the deployed copy - which nobody does by hand. A
+# release check that is too tedious to perform is a release check that does
+# not happen. The files are every *.sh in this directory except run_all.sh,
+# found and counted at run time, so no number is written here to go stale; the
+# final summary line reports how many ran.
 #
 # It resolves its own root, so `bash <deployed>/tests/run_all.sh` tests the
 # DEPLOYED copy, not this one. The banner prints which root and which version
-# it is testing, because "39 passed" means nothing if you tested the wrong
+# it is testing, because a pass means nothing if you tested the wrong
 # tree - the exact mistake the deploy step is supposed to catch.
 #
-# Every test file here signals pass/fail with its exit code (verified across
-# all 39), so the verdict rests on that and never on parsing their output.
+# Every test file here signals pass/fail with its exit code, so the verdict
+# rests on that and never on parsing their output.
 #
 # Not in scope: relay_connect_test.py is a manual probe needing a live relay
 # and a host argument, so it is not a file this can run. Nothing here touches
