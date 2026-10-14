@@ -249,6 +249,62 @@ def test_tc012_tc015_tc019_an_allowed_launch_writes_five_private_files_and_submi
     assert site.guards_intact()
 
 
+def _launch_under_umask_022(tmp_path, site, fake):
+    """One allowed launch, with an agent whose umask is 022 (the usual one on a login node). Returns the result."""
+    site.set("sbatch_out", "1")
+    old = os.umask(0o022)
+    try:
+        with agent_on(fake, site, tmp_path, name="agent-f"):
+            return run_job(fake, job_of(bundle_for(site, fake)))
+    finally:
+        os.umask(old)
+
+
+def test_tcf3_08_09_no_file_of_the_run_folder_is_wider_than_0700_not_even_the_one_slurm_opens(tmp_path, site, fake):
+    # TC-F3-08, TC-F3-09 (TC-047: slurm-*.out was 644 in a 700 folder). The fake sbatch opens slurm-<id>.out with
+    # 666 & ~umask of its caller, as Slurm does, and the agent runs under umask 022.
+    res = _launch_under_umask_022(tmp_path, site, fake)
+    assert res["state"] == "done", res
+    f = folder(site)
+    assert stat.S_IMODE(f.stat().st_mode) == 0o700
+    out = f / "slurm-4242.out"
+    assert out.exists(), sorted(p.name for p in f.iterdir())
+    assert stat.S_IMODE(out.stat().st_mode) == 0o600, oct(stat.S_IMODE(out.stat().st_mode))
+    names = sorted(p.name for p in f.iterdir())
+    assert names == sorted(["samplesheet.csv", "params.yaml", "nextflow.config", "tower.token", "head.sh", "slurm-4242.out"])
+    for p in f.iterdir():
+        mode = stat.S_IMODE(p.stat().st_mode)
+        assert mode & 0o077 == 0, (p.name, oct(mode))
+        assert mode in ((0o600, 0o700) if p.name == "head.sh" else (0o600,)), (p.name, oct(mode))
+
+
+def test_tcf3_10_sbatch_is_called_once_with_the_same_argument_under_umask_077(tmp_path, site, fake):
+    # TC-F3-10: the umask is what the fake sbatch itself saw, not the text of the command
+    res = _launch_under_umask_022(tmp_path, site, fake)
+    assert res["state"] == "done", res
+    f = folder(site)
+    sb = [c for c in site.calls() if c.startswith("sbatch")]
+    assert len(sb) == 1 and sb[0].split() == ["sbatch", str(f / "head.sh")], sb
+    assert [int(u, 8) for u in site.sbatch_umasks()] == [0o077], site.sbatch_umasks()
+    assert res["result"]["message"] == "已送出：Slurm 工作編號 4242，run 名稱 run-a，專屬資料夾 %s" % f
+
+
+def test_tcf3_30_a_failed_sbatch_leaves_the_folder_and_its_files_no_wider(tmp_path, site, fake):
+    # TC-F3-30 (the permission part; the messages are asserted by the existing TC-017 tests)
+    site.set("sbatch_fail", "sbatch: error: Invalid account\n")
+    old = os.umask(0o022)
+    try:
+        with agent_on(fake, site, tmp_path, name="agent-f"):
+            res = run_job(fake, job_of(bundle_for(site, fake)))
+    finally:
+        os.umask(old)
+    assert res["state"] == "error", res
+    f = folder(site)
+    assert stat.S_IMODE(f.stat().st_mode) == 0o700
+    for p in f.iterdir():
+        assert stat.S_IMODE(p.stat().st_mode) & 0o077 == 0, p.name
+
+
 def test_tc014_hostile_text_is_written_as_text_and_run_by_nothing(tmp_path, site, fake):
     canary = tmp_path / "canary"
     params = {"a": "x'; touch %s; '" % canary, "b": "$(touch %s)" % canary, "c": "`touch %s`" % canary}
