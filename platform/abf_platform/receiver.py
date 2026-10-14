@@ -212,11 +212,14 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
             now = clock()
             ended = common.parse_iso_epoch(wf.get("complete"))
             with con:
-                con.execute("UPDATE runs SET last_message_at = ?, final_status = ?, ended_at = ?, exit_status = ? "
-                            "WHERE id = ?",
-                            (now, "succeeded" if wf.get("success") is True else "failed",
+                succeeded = wf.get("success") is True
+                # Nextflow's own words for a failure (never made up here); a run that succeeded has none
+                reason = None if succeeded else common.run_failure_reason(wf.get("errorMessage"), wf.get("errorReport"))
+                con.execute("UPDATE runs SET last_message_at = ?, final_status = ?, ended_at = ?, exit_status = ?, "
+                            "failure_reason = ? WHERE id = ?",
+                            (now, "succeeded" if succeeded else "failed",
                              ended if ended is not None else int(now),
-                             _int(wf.get("exitStatus"), None), rid))
+                             _int(wf.get("exitStatus"), None), reason, rid))
                 start = common.parse_iso_epoch(wf.get("start"))
                 if start is not None:
                     con.execute("UPDATE runs SET started_at = ? WHERE id = ?", (start, rid))

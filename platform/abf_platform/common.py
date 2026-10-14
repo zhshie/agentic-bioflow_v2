@@ -97,6 +97,24 @@ AGENT_POLL_SECONDS = 25
 AGENT_OFFLINE_AFTER_BEATS = 3
 
 
+REASON_MAX_CHARS = 1000
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]+")
+
+
+def run_failure_reason(error_message, error_report):
+    """Nextflow's own words for why a run failed, or None: workflow.errorMessage, else the first non-empty line of
+    workflow.errorReport. Nothing is made up. The text is one line of printable text: every run of control characters
+    (ESC, NUL, CR, LF, tab, DEL) becomes one space; it is cut at REASON_MAX_CHARS (above the 255 Nextflow itself keeps)."""
+    for text, lines in ((error_message, None), (error_report, True)):
+        if not isinstance(text, str):
+            continue
+        for line in text.splitlines() if lines else [text]:
+            line = _CONTROL.sub(" ", line).strip()
+            if line:
+                return line[:REASON_MAX_CHARS]
+    return None
+
+
 def _seconds_from_env(name, default):
     raw = os.environ.get(name)
     try:

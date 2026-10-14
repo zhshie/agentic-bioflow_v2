@@ -130,8 +130,8 @@ def test_tcf3_22_no_reason_from_nextflow_means_no_reason_and_nothing_made_up(pla
     assert "cancel" not in text and "unknown error" not in text
 
 
-@pytest.mark.parametrize("wf", [{"errorMessage": 42}, {"errorMessage": {"a": 1}}, {"errorMessage": ["x"]},
-                                {"errorMessage": None, "errorReport": 7}, {"errorMessage": 3.5, "errorReport": ["Error"]}])
+@pytest.mark.parametrize("wf", [{"errorMessage": 42, "errorReport": 7}, {"errorMessage": {"a": 1}, "errorReport": 7},
+                                {"errorMessage": ["x"], "errorReport": 7}, {"errorMessage": None, "errorReport": 7}, {"errorMessage": 3.5, "errorReport": ["Error"]}])
 def test_tcf3_23_a_wrong_type_does_not_break_the_receiver(plat, token, wf):
     # TC-F3-23: failed_tasks come out as before; the reason is empty
     wid, resp = replay_with(plat, token, "fail_run", wf=wf)

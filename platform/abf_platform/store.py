@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS runs (
     nextflow_version TEXT,
     exit_status INTEGER,
     params_json TEXT,
+    failure_reason TEXT,
     n_succeeded INTEGER NOT NULL DEFAULT 0,
     n_cached INTEGER NOT NULL DEFAULT 0,
     n_failed INTEGER NOT NULL DEFAULT 0,
@@ -195,8 +196,24 @@ def connect(path, schema):
     return con
 
 
+REASON_MAX_CHARS = 1000   # Nextflow cuts workflow.errorMessage at 255 itself; the bound only stops a hostile sender
+
+
+def _migrate_index(con):
+    """An index.db made before follow-up 3 has no failure_reason column: add it; every row stays, its reason is NULL."""
+    if "failure_reason" not in {r[1] for r in con.execute("PRAGMA table_info(runs)")}:
+        try:
+            with con:
+                con.execute("ALTER TABLE runs ADD COLUMN failure_reason TEXT")
+        except sqlite3.OperationalError:
+            if "failure_reason" not in {r[1] for r in con.execute("PRAGMA table_info(runs)")}:
+                raise   # a second process may have added it first; anything else is a real error
+
+
 def connect_index(path):
-    return connect(path, SCHEMA)
+    con = connect(path, SCHEMA)
+    _migrate_index(con)
+    return con
 
 
 def init_index(path):
