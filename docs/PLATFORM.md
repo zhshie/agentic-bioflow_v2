@@ -85,7 +85,7 @@ claude mcp add abf-platform -- abf-platform mcp
 }
 ```
 
-Use the full path of the command if Desktop cannot find it. Then ask, for example, "what is the state of my latest runs?"; the AI calls `list_runs` (newest first, with name, state, start time and task numbers) and, for one run, `get_run` (adds the per-process numbers and the failed tasks with exit code and error text).
+Use the full path of the command if Desktop cannot find it. Then ask, for example, "what is the state of my latest runs?"; the AI calls `list_runs` (newest first, with name, state, start time and task numbers) and, for one run, `get_run` (adds the per-process numbers, the failed tasks with exit code and error text, and for a failed run `failure_reason`: Nextflow's own `errorMessage`, else the first line of its `errorReport`, on one line and at most 1000 characters; absent when Nextflow gave none, and absent on a run rebuilt from the run folder, whose log does not hold it).
 
 **Streamable HTTP**, for a client that wants a URL:
 
@@ -338,7 +338,7 @@ The head job runs on a compute node, which cannot reach your machine. The route 
 
 ### The run token
 
-Nextflow needs a token to report. The platform makes it **when the agent claims the launch job**, not when you answer y: a launch you decline, or that no agent takes, never has one. The platform keeps only its hash; the plain token travels once, in the agent's poll reply, and lives on the site only in `<run folder>/tower.token` (mode 600) and in the environment of the head job (`export TOWER_ACCESS_TOKEN="$(cat tower.token)"`). It is never in `head.sh`, never on a command line, never printed. It is bound to the run name: it cannot create another run. It is revoked when that run's `complete` message arrives, when the agent refuses or fails the launch, and in any case 14 days after it was made. **A cancel does not revoke it**, because Nextflow needs it to send its `complete` after the stop. (Seqera's own launcher keeps the token in a mode 755 script; see PITFALLS.)
+Nextflow needs a token to report. The platform makes it **when the agent claims the launch job**, not when you answer y: a launch you decline, or that no agent takes, never has one. The platform keeps only its hash; the plain token travels once, in the agent's poll reply, and lives on the site only in `<run folder>/tower.token` (mode 600) and in the environment of the head job (`export TOWER_ACCESS_TOKEN="$(cat tower.token)"`). It is never in `head.sh`, never on a command line, never printed. It is bound to the run name: it cannot create another run. It is revoked when that run's `complete` message arrives, when the agent refuses or fails the launch, and in any case 14 days after it was made. One narrow exception, for 300 seconds after the `complete`: a message for that same run (a second `complete`, a `progress` or a `heartbeat`; Nextflow can send one after the first, PITFALLS 43) is answered OK and changes nothing, so Nextflow's log has no 401 warning. The token still cannot create or touch any other run, and after the 300 seconds, or after any other revoke, it is refused like any revoked token. **A cancel does not revoke it**, because Nextflow needs it to send its `complete` after the stop. (Seqera's own launcher keeps the token in a mode 755 script; see PITFALLS.)
 
 ### Reading Nextflow's records back
 

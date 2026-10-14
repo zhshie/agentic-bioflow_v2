@@ -612,7 +612,8 @@ def run_launch(job, ctx, preflight):
     if _left(ctx, job) < _min_remaining():
         left = "資料夾 %s 與其中的檔案已寫好，尚未送出（工作期限剩下的時間不足）" % folder
         return "error", {"ok": False, "message": "不送出：" + left, "left_on_site": left}
-    res = site.call(["sbatch %s" % quote(folder + "/head.sh")], timeout=120)
+    # Slurm opens the job's output file (slurm-<id>.out) with the umask of whoever submits; 077 keeps it 0600
+    res = site.call(["umask 077; sbatch %s" % quote(folder + "/head.sh")], timeout=120)
     text = res.out.decode("utf-8", errors="replace")
     m = SUBMITTED.search(text)
     unknown = "可能已送出，請查專屬資料夾 %s 與 Slurm 工作 nf-%s" % (folder, run)

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS runs (
     nextflow_version TEXT,
     exit_status INTEGER,
     params_json TEXT,
+    failure_reason TEXT,
     n_succeeded INTEGER NOT NULL DEFAULT 0,
     n_cached INTEGER NOT NULL DEFAULT 0,
     n_failed INTEGER NOT NULL DEFAULT 0,
@@ -70,9 +71,17 @@ CREATE TABLE IF NOT EXISTS tokens (
     agent_name TEXT,
     revoked_at REAL,
     run_name TEXT,
-    expires_at REAL
+    expires_at REAL,
+    ended_at REAL
 );
 """
+
+# Nextflow can send one more message for a run after its `complete` (an aborted run runs onFlowComplete twice, so a second
+# `complete` follows). The token is marked revoked at the complete (revoked_at) and also ended (ended_at); for
+# ENDED_GRACE_SECONDS after that it is accepted for ONE thing only: a message for its own, already completed run, which
+# the receiver answers OK without writing anything. Every other revoke (revoke_token, revoke_run_tokens, ...) clears
+# ended_at, so it ends the token at once.
+ENDED_GRACE_SECONDS = 300
 
 # A run token the platform made when an agent claimed a launch (feature 007b) is for one run name and lives 14 days.
 RUN_TOKEN_TTL = 14 * 86400
@@ -195,8 +204,24 @@ def connect(path, schema):
     return con
 
 
+REASON_MAX_CHARS = 1000   # Nextflow cuts workflow.errorMessage at 255 itself; the bound only stops a hostile sender
+
+
+def _migrate_index(con):
+    """An index.db made before follow-up 3 has no failure_reason column: add it; every row stays, its reason is NULL."""
+    if "failure_reason" not in {r[1] for r in con.execute("PRAGMA table_info(runs)")}:
+        try:
+            with con:
+                con.execute("ALTER TABLE runs ADD COLUMN failure_reason TEXT")
+        except sqlite3.OperationalError:
+            if "failure_reason" not in {r[1] for r in con.execute("PRAGMA table_info(runs)")}:
+                raise   # a second process may have added it first; anything else is a real error
+
+
 def connect_index(path):
-    return connect(path, SCHEMA)
+    con = connect(path, SCHEMA)
+    _migrate_index(con)
+    return con
 
 
 def init_index(path):
@@ -389,6 +414,8 @@ def _migrate_tokens(con):
             con.execute("ALTER TABLE tokens ADD COLUMN run_name TEXT")
         if "expires_at" not in have:
             con.execute("ALTER TABLE tokens ADD COLUMN expires_at REAL")
+        if "ended_at" not in have:
+            con.execute("ALTER TABLE tokens ADD COLUMN ended_at REAL")
 
 
 def connect_tokens(path):
@@ -441,19 +468,52 @@ def lookup_token(tokens_path, token):
         con.close()
 
 
+def lookup_ended_token(tokens_path, token):
+    """{'id', 'kind', 'agent_name', 'run_name'} of a run token that a `complete` ended less than ENDED_GRACE_SECONDS ago
+    (and that has not expired and was not revoked by anything else), else None. It is good for nothing but the no-op
+    answer to a message for its own completed run."""
+    if not token or not Path(tokens_path).exists():
+        return None
+    now = _now()
+    con = connect_tokens(tokens_path)
+    try:
+        row = con.execute("SELECT id, kind, agent_name, run_name FROM tokens WHERE token_hash = ? AND kind = 'run' "
+                          "AND run_name IS NOT NULL AND revoked_at IS NOT NULL AND ended_at IS NOT NULL "
+                          "AND ? < ended_at + ? AND (expires_at IS NULL OR expires_at > ?)",
+                          (_hash(token), now, ENDED_GRACE_SECONDS, now)).fetchone()
+        return dict(row) if row else None
+    finally:
+        con.close()
+
+
 def token_id(tokens_path, token):
     """Id of a run token, or None. An agent token is not a run token and never writes a run."""
     row = lookup_token(tokens_path, token)
     return row["id"] if row and row["kind"] == "run" else None
 
 
-def revoke_token(tokens_path, token_id_):
-    """Revoke one token by its id (not by its value); returns how many were live."""
+def end_token(tokens_path, token_id_):
+    """The token of a run that has completed: revoked now, and ended (the short door of ENDED_GRACE_SECONDS, see above)."""
     if not Path(tokens_path).exists():
         return 0
     con = connect_tokens(tokens_path)
     try:
         with con:
+            now = time.time()
+            return con.execute("UPDATE tokens SET revoked_at = ?, ended_at = ? WHERE id = ? AND revoked_at IS NULL",
+                               (now, now, token_id_)).rowcount
+    finally:
+        con.close()
+
+
+def revoke_token(tokens_path, token_id_):
+    """Revoke one token by its id (not by its value); returns how many were live. Also closes the door of an ended token."""
+    if not Path(tokens_path).exists():
+        return 0
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            con.execute("UPDATE tokens SET ended_at = NULL WHERE id = ?", (token_id_,))
             return con.execute("UPDATE tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
                                (time.time(), token_id_)).rowcount
     finally:
@@ -467,6 +527,7 @@ def revoke_run_tokens(tokens_path, run_name):
     con = connect_tokens(tokens_path)
     try:
         with con:
+            con.execute("UPDATE tokens SET ended_at = NULL WHERE kind = 'run' AND run_name = ?", (run_name,))
             return con.execute("UPDATE tokens SET revoked_at = ? WHERE kind = 'run' AND run_name = ? AND revoked_at IS NULL",
                                (time.time(), run_name)).rowcount
     finally:

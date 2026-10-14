@@ -121,6 +121,7 @@ class FakeSite:
         head = "#!/bin/bash\nprintf '%s\n' \"$(basename \"$0\") $*\" >> '" + log + "'\n"
         sbatch = head + (
             "case \"$1\" in --version|-V) echo 'slurm 23.02.7'; exit 0 ;; esac\n"
+            "umask >> '@ST@/sbatch_umask'\n"  # the umask sbatch is called under: Slurm opens the job's output file with it
             "for last; do :; done\n"
             "mkdir -p '@ST@/scripts'; n=$(ls '@ST@/scripts' | wc -l)\n"
             "[ -f \"$last\" ] && cp \"$last\" \"@ST@/scripts/$((n + 1)).sh\"\n"
@@ -131,6 +132,9 @@ class FakeSite:
             "name=$(sed -n 's/^#SBATCH -J \\(.*\\)$/\\1/p' \"$last\" | head -1)\n"
             "dir=$(sed -n 's/^#SBATCH -D \\(.*\\)$/\\1/p' \"$last\" | head -1)\n"
             "echo \"$id|$name|$(cat '@ST@/site_user' 2>/dev/null || echo tester)|$dir\" >> '@ST@/jobs.tsv'\n"
+            # like Slurm: slurm-<id>.out in the -D folder, opened with 666 & ~umask of the submitter. Only when the test
+            # asks (state file sbatch_out): older tests list the files of the run folder and know five of them
+            "[ -f '@ST@/sbatch_out' ] && [ -d \"$dir\" ] && : > \"$dir/slurm-$id.out\"\n"
             "echo \"Submitted batch job $id\"\n"
             "[ -f '@ST@/sbatch_exit' ] && exit \"$(cat '@ST@/sbatch_exit')\"\n"
             "exit 0\n")
@@ -274,6 +278,11 @@ class FakeSite:
         """The head scripts sbatch was given, in order, as text."""
         d = self.state / "scripts"
         return [p.read_text() for p in sorted(d.glob("*.sh"), key=lambda p: int(p.stem))] if d.exists() else []
+
+    def sbatch_umasks(self):
+        """The umask of each sbatch call (the fake writes it before anything else), as octal text."""
+        f = self.state / "sbatch_umask"
+        return f.read_text().split() if f.exists() else []
 
     def destructive(self):
         f = self.state / "destructive.log"

@@ -214,6 +214,9 @@ def test_tc051_the_endpoint_is_local_and_tw_is_not_needed(world):
 # ---------------------------------------------------------------- rebuild (US4)
 
 _COMPARED = ("id", "name", "session_id", "status", "tasks", "processes", "failed_tasks")
+# Named on purpose (007b follow-up 3, TC-F3-11): get_run also has "failure_reason", Nextflow's own words from the complete
+# message. .nextflow.log does not hold workflow.errorMessage, so a rebuilt run has none; test_tcf3_11 checks both sides.
+_NOT_REBUILT = ("failure_reason",)
 
 
 def _compared(v):
@@ -262,6 +265,24 @@ def test_tc030_rebuild_gives_back_every_field(world, tmp_path):
     after = _runs_via_mcp(cli_env)
     assert len(after) == len(before) > 0
     _same_runs(before, after)
+
+
+def test_tcf3_11_the_live_run_has_nextflows_reason_and_a_rebuilt_one_has_none(world, tmp_path):
+    # TC-F3-11: real Nextflow, failing task "FIXTURE_BOOM_7": live get_run says why; rebuild cannot (the log has no
+    # errorMessage), so the field is the one that differs and every compared field is still equal (TC-030 stays strict)
+    env = world["env"]
+    live = _runs_via_mcp(env.cli_env())
+    name = world["fail"].run_name
+    assert _by_name(live, name)["failure_reason"] == "FIXTURE_BOOM_7"
+    assert all("failure_reason" not in v for k, v in live.items() if v["status"] == "succeeded")
+    index = tmp_path / "w" / "index.db"
+    index.parent.mkdir()
+    cli_env = pkg_env(ABF_PLATFORM_DB=index, ABF_PLATFORM_TOKENS=env.tokens)
+    r = run_cli(["rebuild", str(world["ok_dir"]), str(world["fail_dir"])], env=cli_env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    rebuilt = _runs_via_mcp(cli_env)
+    assert all(k not in v for v in rebuilt.values() for k in _NOT_REBUILT)
+    _same_runs(live, rebuilt)
 
 
 def test_tc031_nextflows_records_win_over_a_damaged_index(world, tmp_path):

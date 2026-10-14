@@ -46,6 +46,19 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
         row = token_row(request)
         return row["id"] if row else None
 
+    def after_complete(request, rid):
+        """True for a message that comes after the `complete` of its own run, from the token that complete ended, inside the
+        short grace of store.ENDED_GRACE_SECONDS: the caller answers OK and writes nothing. Anything else is False."""
+        row = store.lookup_ended_token(tokens_path, _token_from_header(request.headers.get("authorization")))
+        if row is None:
+            return False
+        con = store.connect_index(index_path)
+        try:
+            run = con.execute("SELECT token_id, run_name, final_status FROM runs WHERE id = ?", (rid,)).fetchone()
+        finally:
+            con.close()
+        return bool(run and run["final_status"] and run["token_id"] == row["id"] and run["run_name"] == row["run_name"])
+
     def unauthorized():
         # the header lets a program that probes a port tell this platform from whatever else answers there
         return JSONResponse({"message": "Unauthorized: missing or unknown access token"}, status_code=401,
@@ -175,6 +188,8 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
         """progress and heartbeat: the counters Nextflow keeps, and the tasks that changed."""
         trow = token_row(request)
         if trow is None:
+            if after_complete(request, request.path_params["rid"]):
+                return JSONResponse({"status": "OK"})   # a message after complete: nothing is written
             return unauthorized()
         rid = request.path_params["rid"]
         con = store.connect_index(index_path)
@@ -195,6 +210,8 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
     async def complete(request):
         trow = token_row(request)
         if trow is None:
+            if after_complete(request, request.path_params["rid"]):
+                return JSONResponse({"status": "OK"})   # a second complete of an aborted run: nothing is written
             return unauthorized()
         tid = trow["id"]
         rid = request.path_params["rid"]
@@ -212,11 +229,14 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
             now = clock()
             ended = common.parse_iso_epoch(wf.get("complete"))
             with con:
-                con.execute("UPDATE runs SET last_message_at = ?, final_status = ?, ended_at = ?, exit_status = ? "
-                            "WHERE id = ?",
-                            (now, "succeeded" if wf.get("success") is True else "failed",
+                succeeded = wf.get("success") is True
+                # Nextflow's own words for a failure (never made up here); a run that succeeded has none
+                reason = None if succeeded else common.run_failure_reason(wf.get("errorMessage"), wf.get("errorReport"))
+                con.execute("UPDATE runs SET last_message_at = ?, final_status = ?, ended_at = ?, exit_status = ?, "
+                            "failure_reason = ? WHERE id = ?",
+                            (now, "succeeded" if succeeded else "failed",
                              ended if ended is not None else int(now),
-                             _int(wf.get("exitStatus"), None), rid))
+                             _int(wf.get("exitStatus"), None), reason, rid))
                 start = common.parse_iso_epoch(wf.get("start"))
                 if start is not None:
                     con.execute("UPDATE runs SET started_at = ? WHERE id = ?", (start, rid))
@@ -233,7 +253,7 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
             con.close()
         if trow["run_name"] is not None:
             # a token the platform made for one launch ends with that run; a token of `token new` is not for one run
-            store.revoke_token(tokens_path, trow["id"])
+            store.end_token(tokens_path, trow["id"])
         return JSONResponse({"status": "OK"})
 
     async def user_info(request):
