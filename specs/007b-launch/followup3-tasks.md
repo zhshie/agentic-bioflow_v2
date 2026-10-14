@@ -36,3 +36,13 @@ grace end and the revoke cases; the rest hold on main already). The only changed
 - [x] Docs: PITFALLS 42, 43, 44; PLATFORM.md token paragraph and `get_run` line.
 - Not verified offline (wait for TC-F3-13 at NCHC): real Slurm umask behaviour, why head.sh was 711, the real cancel
   errorMessage, that the real post-complete message is a second `complete`.
+
+## TC-F3-14(c) why this door (from the executor's report, added by developer-agent)
+Both a narrow rule and a time limit: after `complete`, the token may reach only its own run that already has a
+`complete`, and only as a no-op `OK`; `create`, `begin`, `/user-info` and other runs stay 401. The door closes 300 s
+after `complete` (`store.ENDED_GRACE_SECONDS`). Reason: the second `complete` comes from the same shutdown
+(`Session.destroy()` calling `shutdown0()` again), so it arrives within seconds; 300 s covers it with room, and the end
+point stays short instead of relying on the 14-day expiry. Other revocations (refused, failed, by hand) clear
+`ended_at` and are immediate.
+
+Verifier acceptance 2026-10-15: 48 PASS / 0 FAIL / 2 UNVERIFIED (TC-F3-13 NCHC recheck pending; TC-F3-14(c) answered above).
