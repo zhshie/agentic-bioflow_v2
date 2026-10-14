@@ -15,3 +15,7 @@ FAILED test_tcf3_10_...:   AssertionError: ['0022']  (umask sbatch saw; wanted 0
 2 failed, 2 passed
 ```
 (the `sbatch_out` file is opt-in because the older TC-012 test lists exactly five files of the folder and may not be edited.)
+
+### G1 red (TC-F3-01..04, 12, 20, 21, 22, 23, 32, 63) on unfixed receiver
+`pytest tests/test_followup3.py`: 10 failed, 16 passed before the fix (the 16 are the "stays absent / does not crash"
+cases that hold on main too: TC-F3-04 for succeeded runs, 22, 23, 32, 63).
