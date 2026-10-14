@@ -216,7 +216,7 @@ def test_tcf3_32_an_old_index_is_read_without_a_crash_and_without_a_write(tmp_pa
 # nf-tower 1.28.3 sends nothing after traceComplete in TowerObserver.onFlowComplete (plugins/nf-tower/.../TowerObserver.groovy
 # :257-272, the sender thread is joined first at :261-264). But for a run that was ABORTED (a failed task, a cancel),
 # Session.abort() runs shutdown0() -> notifyFlowComplete() (Session.groovy:830, :775, :1091-1093) and the ScriptRunner then
-# calls session.destroy() -> shutdown0() -> notifyFlowComplete() again (ScriptRunner.groovy:131-139, :244; Session.groovy:720):
+# calls session.destroy() -> shutdown0() -> notifyFlowComplete() again (ScriptRunner.groovy:134-136, :243-244; Session.groovy:720):
 # onFlowComplete runs twice and the second one PUTs `complete` once more. So the message after complete is a second `complete`.
 # The tests below also send progress and heartbeat, the other two kinds a late sender could produce.
 

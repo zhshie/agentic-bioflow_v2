@@ -36,7 +36,8 @@ def build_server(index_path, platform_path=None):
 
     @server.tool(name="get_run", annotations=_READ_ONLY,
                  description="One run by its id: status, times, task numbers, task numbers per process, and the "
-                             "failed tasks with their exit code and error message.")
+                             "failed tasks with their exit code and error message; a failed run also has failure_reason, "
+                             "Nextflow's own words for why it failed, when it gave any.")
     def get_run(run_id: str) -> dict:
         view = status.get_run(index_path, run_id, status.now())
         if view is None:

@@ -1964,3 +1964,35 @@ refused: stderr `mux_client_forward: forwarding request failed: port not forward
 cancel that worked from one that did not; `on_site.sh --unforward` repeats the recorded opening spec (`cancel_spec` in `forward_state`)
 and reads the master's stderr, and a refusal keeps the records and exits non-zero. Before this, `abf-station unforward` printed
 "cancelled" while the port stayed open on the login node with no record anywhere.
+
+**42. Slurm opens the job's output file with the submitter's umask, so `sbatch` is called under `umask 077` (007b follow-up 3, 2026-10-14).**
+Seen: the first acceptance on NCHC (specs/007b-launch/acceptance-nchc.md, TC-047, 2026-10-13) found `slurm-*.out` 644 inside the 700 run
+folder. The launch writes its own files under `umask 077`, but `sbatch` ran under the agent's umask (022). The fix puts `umask 077;` in
+front of the one `sbatch` call in `platform/abf_station/launch.py`. What is proven offline: the fake sbatch creates `slurm-<id>.out` with
+`666 & ~umask` of its caller; with the agent at umask 022 the file was 0644 before the fix (`test_tcf3_08_09...`) and 0600 after. What is
+**not** proven: that the real Slurm 23.02 on Taiwania 3 behaves like the fake (that is the assumption of the fix), and why `head.sh` was
+711 there. The launch writes `head.sh` through a tar entry of mode 0600 under `umask 077` and the offline test finds it 0600 before and
+after this change, so `head.sh` was **not** changed by this fix and its 711 is unexplained. Both wait for TC-F3-13 on the site.
+
+**43. The message after `complete` is a second `complete`, from an aborted run (nf-tower 1.28.3 / Nextflow 26.04.7, read 2026-10-14).**
+Source read at tag v26.04.7 of nextflow-io/nextflow: `plugins/nf-tower/src/main/io/seqera/tower/plugin/TowerObserver.groovy:257-272`
+(`onFlowComplete`: the sender thread is joined at `:261-264`, then `client.traceComplete(...)` at `:271`, nothing is sent after it), and
+`modules/nextflow/src/main/groovy/nextflow/Session.groovy:814-830` (`abort()` calls `shutdown0()`), `:761-775` (`shutdown0()` ends with
+`notifyFlowComplete()`), `:713-720` (`destroy()` calls `shutdown0()` again), `:1091-1093` (`notifyFlowComplete()` calls every observer's
+`onFlowComplete()`), and `modules/nextflow/src/main/groovy/nextflow/script/ScriptRunner.groovy:134-136` (`await()`, then `shutdown()`) with `:243-244`
+(`shutdown()` -> `session.destroy()`); `abort()` itself is called from the `catch` at `:137-139` and by the code that handles a failed
+task (that caller was not read). Nothing guards the second call, so a run that was aborted (a failed task, a cancel) runs
+`onFlowComplete` twice and PUTs `complete` twice. Version 25.10.4 (`Session.groovy:717-724`, `:765-779`, `:818-834`) and nf-tower 1.17.5
+(`TowerClient.groovy:401-418`, `sender.join()` before the complete) have the same shape. This is read from source, **not seen** in a log:
+the 401 of TC-048 was one warning after a cancel, which fits a second `complete`, but the message itself has not been captured. Until it is
+(TC-F3-13), treat "a second complete" as the reading of the source, not as an observation.
+The receiver therefore keeps the token revoked at `complete` (`revoked_at`), and also marks it ended (`ended_at`); for 300 seconds
+(`store.ENDED_GRACE_SECONDS`) a message for the same run, which already has a `complete` on record, from that token gets `{"status":"OK"}`
+and writes nothing. Everything else (another run, `create`, `begin`, `/user-info`, any other revoke) stays 401.
+
+**44. What Nextflow says when a run is cancelled has not been measured.**
+`workflow.errorMessage` (the field `get_run` now shows as `failure_reason` for a failed run) is cut at 255 characters by Nextflow. For a
+failing task it was `FIXTURE_BOOM_7` with Nextflow 26.04.7 (recorded 2026-10-11, `platform/tests/fixtures/payloads/fail_run.json`, and
+confirmed live by `test_tcf3_11...` against the pinned launcher). For a cancel on the cluster (25.10.4) the text has not been captured:
+the acceptance run of TC-048 predates the field. The platform writes only what Nextflow sends and invents nothing; a rebuilt run has no
+reason because `.nextflow.log` does not hold `errorMessage`.

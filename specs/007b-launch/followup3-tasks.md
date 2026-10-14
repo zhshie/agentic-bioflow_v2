@@ -24,3 +24,15 @@ cases that hold on main too: TC-F3-04 for succeeded runs, 22, 23, 32, 63).
 `pytest tests/test_followup3.py`: 9 failed, 30 passed (the failures are the late heartbeat/progress/complete answered 401, the
 grace end and the revoke cases; the rest hold on main already). The only changed old assertion is the heartbeat line of
 `test_tc020_complete_revokes_the_token_and_the_run_data_stays` (401 -> 200, rest of the test untouched).
+
+## Done / decisions
+- [x] G3: `umask 077; sbatch <folder>/head.sh` (launch.py, the one sbatch call). TC-F3-08/09/10/30 green.
+- [x] G1: `runs.failure_reason` (new column; `store._migrate_index` adds it to an old index.db, rows kept, NULL), written by
+  `receiver.complete` through `common.run_failure_reason` (errorMessage, else first non-empty line of errorReport; control
+  characters -> one space; at most 1000 chars, Nextflow's own limit is 255), shown by `status.get_run` for a failed run only.
+  Rebuild: no reason (the log does not hold errorMessage); named as `_NOT_REBUILT` in `test_nextflow_e2e.py`.
+- [x] G2: `tokens.ended_at`; `complete` calls `store.end_token` (revoked_at set as before); for `ENDED_GRACE_SECONDS = 300` a
+  message for the token's own run that already has a `complete` is answered OK and writes nothing. Other revokes clear `ended_at`.
+- [x] Docs: PITFALLS 42, 43, 44; PLATFORM.md token paragraph and `get_run` line.
+- Not verified offline (wait for TC-F3-13 at NCHC): real Slurm umask behaviour, why head.sh was 711, the real cancel
+  errorMessage, that the real post-complete message is a second `complete`.
