@@ -37,7 +37,9 @@ The developer-agent's message names:
 - the plan file, and the test cases (`test-case.md` whose overview says `合約已確認`
   or `已核可`), or for a bug the bug directory (`.specify/bugs/<slug>/`);
 - the progress ledger to update (the feature's `tasks.md`, or the bug's fix record);
-- the commit trailer lines to end every commit message with.
+- the commit trailer lines to end every commit message with;
+- optionally, a worktree path: if given, `cd` there as your first action; every git and
+  test command below runs in that path, and you never touch the main checkout.
 
 Read, in order, before touching code: the root `CLAUDE.md`, `.specify/memory/constitution.md`,
 the plan, the test cases, and the parts of `docs/PITFALLS.md` the plan names. Then read the
@@ -72,6 +74,8 @@ and the developer-agent can.
   `cd ~ && wsl.exe -d Ubuntu -- bash -c 'cd /mnt/c/<path to repo> && bash tests/run_all.sh'`.
   Calling `wsl.exe` from a directory whose path has non-ASCII characters fails with
   "Failed to translate"; `--cd` was unreliable too.
+- If you were given a worktree path, the `/mnt/c/<path to repo>` above is that worktree's
+  path, not the main checkout's.
 - Two runs on the same checkout at once corrupt each other's temporary copies. Run one at a time.
 
 ## You must never
