@@ -8,7 +8,7 @@ A Claude Code plugin (`agentic-bioflow`) that runs Nextflow/nf-core pipelines
 through **Seqera Platform** on a firewalled HPC cluster (NCHC Taiwania-3, the
 one site adapter that exists). Platform is the execution backend 2.17.0 uses;
 the truth about a run underneath it is Nextflow's own records (constitution
-4.0.0, principle 2; the planned platform is ADR 0004); this plugin supplies only what Platform cannot
+4.1.0, principle 2; the planned platform is ADR 0004); this plugin supplies only what Platform cannot
 do for a cluster whose compute nodes have no route out: rounding resource
 requests up to the site's QOS floor, and proxying egress.
 

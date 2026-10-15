@@ -1,5 +1,7 @@
 # The host is any MCP client; the gates move into the platform; the Claude Code plugin becomes a thin shell
 
+Amended 2026-10-15 by ADR 0006: gates live in the action layer the tools and the web pages call; a harness kit is not an adapter
+
 Revised 2026-10-08 for ADR 0004. The first version (2026-09-28) kept Claude Code and added Codex
 CLI as a second host through a thin adapter; that is replaced below. Its licence and local-model
 findings still hold and are kept.

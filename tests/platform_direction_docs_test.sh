@@ -275,7 +275,8 @@ cnt=$(printf '%s\n' "$WL" | grep -cE '^\| ' || true)
 [ "${cnt:-0}" -ge 12 ] && ok "TC-023: waiting list has the 5 new rows on top of the 6 original (rows incl. header: $cnt)" || bad "TC-023: waiting list row count" "$cnt rows"
 inn "TC-023: old row rewritten: host reaches launch/delete only through tools that carry their own gate" "$WL" 'A host reaches launch and delete only through tools that carry their own gate'
 nin "TC-023: ...the old 'may query but never launch or delete' wording is gone" "$WL" 'may query but never'
-[ "${cnt:-0}" = 16 ] && ok "TC-025: waiting list has 16 table lines (14 rows + header + separator)" || bad "TC-025: waiting list has 16 table lines" "$cnt lines"
+cnt16=$(printf '%s\n' "$WL" | grep -cE '^[|]' || true)
+[ "${cnt16:-0}" = 16 ] && ok "TC-025: waiting list has 16 table lines (14 rows + header + separator)" || bad "TC-025: waiting list has 16 table lines" "$cnt16 lines"
 # old stage numbers are gone: nothing waits for a stage that no longer exists
 if printf '%s\n' "$WL" | grep -qE '\| (6|7) \|[[:space:]]*$'; then bad "TC-023: no row waits for stage 6 or 7"; else ok "TC-023: no row waits for stage 6 or 7"; fi
 
