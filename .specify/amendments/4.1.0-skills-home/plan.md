@@ -143,6 +143,30 @@ them).
   0006, Consequences: they change with feature 009's follow-up).
 - No CHANGELOG (it starts on `v3`).
 
+### 8. Fix round after `/code-review` (2026-10-15, developer-agent; two contradictions, one readability item)
+
+- `docs/ROADMAP.md`, "Principles waiting for a check", the row `Every platform write tool (launch, delete,
+  clear \`work/\`) refuses without the user's confirmation step`: its check `A test per write tool: a call
+  without the confirmation token is refused.` becomes `A test per write tool: a call without a person's
+  answer on a human channel is refused; the confirmation token is only the record of that answer (ADR 0006).`
+  The *Note* sentence that follows stays verbatim. (Reason: the row beneath it says a token is not the
+  confirmation; the two rows contradicted each other.)
+- `CONTEXT.md`, `**MCP tool layer**` entry: `the tools only act, and each write tool carries its own
+  confirmation gate. Planned (Stage 2). Since ADR 0006 the tools call the action layer; the gate lives there.`
+  becomes `the tools only act. Planned (Stage 2). Since ADR 0006 the tools call the action layer; the gate of
+  a write action lives there, answered by a person on a human channel.` (Reason: one entry said the gate is
+  both in the tool and in the action layer.) TC-031's pinned sentence changes accordingly: the test asserts the
+  new sentence and `nin` the old `each write tool carries its own confirmation gate`; `test-case.md` TC-031
+  is updated with a one-line note "amended 2026-10-15 after /code-review".
+- `tests/platform_direction_docs_test.sh`: every `ok`/`bad`/`has`/`inn`/`nin` label inside the 4.1.0 block
+  is prefixed `4.1.0 ` (e.g. `4.1.0 TC-025: …`) so a failure line is not confused with the earlier
+  amendment's TC-003…TC-029 labels in the same file. No assertion changes.
+
+Rejected findings (recorded so they are not re-raised): ADR 0003/0004 bodies stay as written (an ADR is
+amended by a note, not rewritten); MINOR is the conservative bump class; the `v3` CI trigger is on the `v3`
+branch (pending push); the 16-row count is a pin like the version line and is updated by each amendment;
+ADR context facts are dated statements; the confirmation page is listed in the 009 row.
+
 ## Red first
 
 The verifier's test cases pin the new sentences; before the edits, `tests/platform_direction_docs_test.sh`

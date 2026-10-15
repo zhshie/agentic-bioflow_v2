@@ -31,3 +31,20 @@ block) and `bash tests/constitution_scope_test.sh` on the unedited documents.
 ## Suite result and what was not done
 
 See the final report (filled in after the WSL run).
+
+## Fix round 1 (2026-10-15, after /code-review; plan §8)
+
+- Item 2 red first: `tests/platform_direction_docs_test.sh` TC-031 edited before `CONTEXT.md`; run in the WSL clone
+  showed `FAIL` on `4.1.0 TC-031: MCP tool layer: the old 'each write tool carries its own gate' is gone` (the old
+  sentence still found) and on the new-sentence `inn`. Then `CONTEXT.md` edited: green.
+- The old pin `...gains the ADR 0006 sentence` (`...the gate lives there.`) became stale with the new sentence, so
+  its pinned string now reads the full new sentence (without this the test failed and TC-010/TC-014 of issue #71
+  cascaded); the plan said "keep the other TC-031 assertions", this is the same assertion with the new text.
+- Item 1: `docs/ROADMAP.md` waiting-list row check text replaced; the *Note* is untouched; 16 rows unchanged.
+- Item 2: `CONTEXT.md` MCP tool layer sentence replaced; `test-case.md` TC-031 expected text updated, note
+  `（2026-10-15 /code-review 後修正）`.
+- Item 3: every label in the 4.1.0 block (from the `# ---- Constitution 4.1.0` header to the end) prefixed `4.1.0 `;
+  the header `echo` and the earlier amendment's labels are untouched; no pinned string changed (other than item 2).
+- Results (WSL, clean clone suite-clone-4-1-0 with the edited files copied in): `tests/platform_direction_docs_test.sh`
+  all passed; `tests/constitution_scope_test.sh` all passed. The full suite was not run this round (only these two
+  tests and the two docs changed), as instructed.

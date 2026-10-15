@@ -71,7 +71,7 @@ E5 的做法：觸發設定在 `v3` 分支自己的 `tests.yml`（push 觸發讀
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-031 | 計畫 §4 第一條 | 功能 | 修憲完成 | 讀 `**MCP tool layer**` 條目 | 原三句仍在（含 `each write tool carries its own confirmation gate`、`Planned (Stage 2).`），並新增一句 `Since ADR 0006 the tools call the action layer; the gate lives there.` | 自動：`tests/platform_direction_docs_test.sh` |
+| TC-031 | 計畫 §4 第一條 | 功能 | 修憲完成 | 讀 `**MCP tool layer**` 條目 | 改為 `the tools only act.`（舊句 `each write tool carries its own confirmation gate` 已移除，測試用 nin 確認），`Planned (Stage 2).` 仍在，並有 `Since ADR 0006 the tools call the action layer; the gate of a write action lives there, answered by a person on a human channel.`（2026-10-15 /code-review 後修正） | 自動：`tests/platform_direction_docs_test.sh` |
 | TC-032 | 計畫 §4 第二條 | 功能 | 同上 | 讀新條目 `**action layer** (動作層)` | 與 MCP tool layer 在同一個詞彙區段；內容含 `one function per platform action`、`called by the MCP tools, the web pages and the chat alike`、`the gate of a write action lives here`、`Planned (Stage 2, feature 009)`、`_Avoid_: API, backend` | 自動：`tests/platform_direction_docs_test.sh` |
 | TC-033 | 計畫 §4 第三條；ADR「按 yes 的是人」 | 功能 | 同上 | 讀新條目 `**human channel** (人通道)` | 同區段；含 `the way a person, not the model, answers a gate`、`an elicitation form in the harness, or a confirmation page on the platform`、`The token is the record of that answer, not the answer.`、`Planned (Stage 2).`、`_Avoid_: confirmation token (when the act is meant)` | 自動：`tests/platform_direction_docs_test.sh` |
 | TC-034 | 既有 TC-029、TC-034 | 功能 | 同上 | 檢查 CONTEXT.md | 既有 15 個釘住的詞仍都有定義，兩個新詞的粗體條目都是一行定義開頭（與 TC-029 同形）；沒有任何舊詞被刪或改名 | 自動：`tests/platform_direction_docs_test.sh` |
