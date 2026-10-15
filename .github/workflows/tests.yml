@@ -28,7 +28,7 @@ name: tests
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, v3]
 
 jobs:
   run_all:
