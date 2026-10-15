@@ -490,11 +490,7 @@ def _setting_lines(block):
 
 def test_abort_tc001_tc002_the_config_ends_with_both_settings_after_the_users_text_verbatim():
     # TC-001, TC-002
-    text = "process.executor = 'slurm'
-executor.queueSize = 50
-
-process.queue = 'normal'
-"
+    text = "process.executor = 'slurm'\nexecutor.queueSize = 50\n\nprocess.queue = 'normal'\n"
     cfg = render_plain(ce=ce_snapshot(nextflowConfig=text))["files"]["nextflow.config"]
     block = _block_after(text, cfg)
     assert [ln.strip() for ln in cfg.splitlines()][-2:] == _OVERWRITE
@@ -505,24 +501,21 @@ def test_abort_tc003_a_config_without_a_final_newline_gets_the_block_on_a_new_li
     # TC-003
     text = "process.executor = 'slurm'"
     cfg = render_plain(ce=ce_snapshot(nextflowConfig=text))["files"]["nextflow.config"]
-    assert cfg.startswith(text + "
-")
+    assert cfg.startswith(text + "\n")
     assert _setting_lines(cfg[len(text):]) == _OVERWRITE
 
 
 def test_abort_tc004_a_ce_without_a_config_keeps_its_comment_and_gets_the_block():
     # TC-004
     cfg = render_plain(ce=ce_snapshot(nextflowConfig=""))["files"]["nextflow.config"]
-    assert cfg.startswith("//") and cfg.endswith("
-")
+    assert cfg.startswith("//") and cfg.endswith("\n")
     assert "no Nextflow config" in cfg.splitlines()[0]
     assert _setting_lines(cfg) == _OVERWRITE
 
 
 def test_abort_tc005_tc006_the_block_is_commented_and_holds_exactly_the_two_settings():
     # TC-005, TC-006, TC-026 (no path, account or cluster name in the block)
-    text = "process.executor = 'slurm'
-"
+    text = "process.executor = 'slurm'\n"
     block = _block_after(text, render_plain()["files"]["nextflow.config"])
     comments = [ln for ln in block.splitlines() if ln.strip().startswith("//")]
     assert comments and re.search(r"twice", " ".join(comments))
@@ -534,8 +527,7 @@ def test_abort_tc005_tc006_the_block_is_commented_and_holds_exactly_the_two_sett
 
 def test_abort_tc020_trace_and_dag_are_not_touched():
     # TC-020
-    for text in ("process.executor = 'slurm'
-", ""):
+    for text in ("process.executor = 'slurm'\n", ""):
         cfg = render_plain(ce=ce_snapshot(nextflowConfig=text))["files"]["nextflow.config"]
         assert "trace.overwrite" not in cfg and "dag.overwrite" not in cfg
 
