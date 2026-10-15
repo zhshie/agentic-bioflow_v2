@@ -138,4 +138,4 @@ Not needed (Wave is AGPL-3.0; Fusion needs a Seqera licence even outside Platfor
 | Live progress | Partly have: per-process done, running and failed counts and the failed task's name and reason come from Nextflow's own messages (`get_run`) | [x] 007b |
 | Cancel | Have, from the command line, behind the same question (007b) | [x] 007b |
 
-Not built yet, and so not in the rows above: the list of every task, CPU and memory per task, logs and reports, and a queued state (a run that is submitted and has sent nothing says only `已送出，尚未收到 Nextflow 事件`; that is a fact, not a state).
+Not built yet, and so not in the rows above: the list of every task, CPU and memory per task, logs and reports, and a queued state (a run that is submitted and has sent nothing says only `已送出，尚未收到 Nextflow 事件`; that is a fact, not a state). Also missing: earlier failed attempts of a task that was retried and then succeeded. `get_run` lists only the last attempt, so a retried task never appears in `failed_tasks`, while its failed count still shows it (seen on NCHC 2026-10-15: FASTQC exit 134, retried, succeeded). Seqera lists every attempt.
