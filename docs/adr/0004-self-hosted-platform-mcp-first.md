@@ -1,5 +1,7 @@
 # A self-hosted platform with a Tower-compatible API, reached through MCP tools, with its own chat
 
+Amended 2026-10-15 by ADR 0006: the web pages are a non-AI entry to the same actions; the confirmation is a person's act on a human channel
+
 Supersedes ADR 0001 (2026-10-08).
 
 We build and host our own platform for running Nextflow / nf-core pipelines: everything one lab
