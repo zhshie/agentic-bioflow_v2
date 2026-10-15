@@ -105,7 +105,12 @@ if [ -z "${DOC_TEST_INNER:-}" ]; then
   mkclone() { # mkclone <name> [withmain]
     local d="$SCR/$1"
     git clone -q --depth 1 --no-local "file://$ROOT" "$d" >/dev/null 2>&1 || return 1
-    if [ "${2:-}" = withmain ]; then git -C "$d" branch main HEAD >/dev/null 2>&1; fi
+    if [ "${2:-}" = withmain ]; then
+      git -C "$d" show-ref --verify --quiet refs/heads/main || git -C "$d" branch main HEAD >/dev/null 2>&1
+    else # scratch-clone-main: the clone inherits the source branch (main on push CI); detach and drop it
+      git -C "$d" checkout -q --detach >/dev/null 2>&1
+      if git -C "$d" show-ref --verify --quiet refs/heads/main; then git -C "$d" branch -q -D main >/dev/null 2>&1; fi
+    fi
     cp "$ROOT/CONTEXT.md" "$d/CONTEXT.md"; cp "$HERE/$SELFN" "$d/tests/"
     echo "$d"
   }
