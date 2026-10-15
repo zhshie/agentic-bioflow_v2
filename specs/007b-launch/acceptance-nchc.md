@@ -54,7 +54,7 @@ Platform and agent restarted on #90 (databases backed up first). Two runs of the
 - `fu3-cancel` FASTQC: one task ended with exit 134, was retried, and succeeded; `failed_tasks` is empty by design
   (only the last attempt counts). Recorded as a Seqera gap in `docs/SEQERA_PARITY.md`.
 
-## TC-050 Seqera comparison (2026-10-15) — PASS
+## TC-050 Seqera comparison (2026-10-15) — PASS by the acceptor; the maintainer's joint judgement of the five gaps is pending
 - Seqera side: 9/20 run `ampliseq_sclerotia_d5_noviz_20260920` (launched through Seqera Platform), its
   `execution_trace_2026-09-20_23-07-05.txt` on the site: 35 processes, 71 tasks.
 - Platform side: `get_run` of `fu3-ok` (10 samples, TC-047 settings; whether its samplesheet equals the 9/20 one was not checked): the same 35 process names (last segment of
