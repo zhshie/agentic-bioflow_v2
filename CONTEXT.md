@@ -52,8 +52,14 @@ _Avoid_: run state, run database (when the truth is meant)
 
 **MCP tool layer** (MCP 工具層):
 The Platform's MCP tools, the one way an AI host acts on the Platform. Judgment stays in skills;
-the tools only act, and each write tool carries its own confirmation gate. Planned (Stage 2).
+the tools only act. Planned (Stage 2). Since ADR 0006 the tools call the action layer; the gate of a write action lives there, answered by a person on a human channel.
 _Avoid_: API (when the MCP tools are meant), plugin
+
+**action layer** (動作層): one function per platform action (launch, cancel, list files…), called by the MCP tools, the web pages and the chat alike; the gate of a write action lives here. Planned (Stage 2, feature 009).
+_Avoid_: API, backend
+
+**human channel** (人通道): the way a person, not the model, answers a gate: an elicitation form in the harness, or a confirmation page on the platform. The token is the record of that answer, not the answer. Planned (Stage 2).
+_Avoid_: confirmation token (when the act is meant)
 
 ### Who is involved
 

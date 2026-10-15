@@ -49,9 +49,9 @@ nin() {
 
 echo "== US1: the constitution (TC-001, TC-003..TC-009) =="
 LAST=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
-if [ "$LAST" = '**Version**: 4.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11' ]; then
-  ok "TC-001: last line is exactly the 4.0.0 version line"
-else bad "TC-001: last line is exactly the 4.0.0 version line" "got: $LAST"; fi
+if [ "$LAST" = '**Version**: 4.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-15' ]; then
+  ok "TC-001: last line is exactly the 4.1.0 version line"
+else bad "TC-001: last line is exactly the 4.1.0 version line" "got: $LAST"; fi
 
 P1=$(awk '/^### I\. /{f=1} /^### II\. /{f=0} f' "$C")
 inn "TC-003: principle I is titled Build Only What Seqera Cannot or Will Not Do Here" "$P1" '### I. Build Only What Seqera Cannot or Will Not Do Here'
@@ -90,6 +90,7 @@ inn "TC-008: platform's own MCP tools: decided by the amendment that moves a gat
 # constitution never says it (it is in the ROADMAP waiting list).
 RULES=$(awk '/^## Core Principles/{f=1} /^## Development Workflow/{f=0} f' "$C")
 nin "TC-008: 'tool layer' is not written into the principles or the Safety Net"   "$RULES" 'tool layer'
+nin "TC-050: 'action layer' is not written into the principles or the Safety Net"  "$RULES" 'action layer'
 
 # Issue #71: the TC-034 check must run, and must catch a removed term, in a
 # checkout that has no 'main' ref (CI's shallow clone). These cases build scratch
@@ -260,13 +261,22 @@ inn "TC-023: new row: run index rebuildable (stage 2)"            "$WL" "The pla
 inn "TC-023: new row: metadata only, no site credential"          "$WL" 'The platform stores metadata only and never holds a site credential'
 inn "TC-023: new row: write tools refuse without a confirmation step" "$WL" 'Every platform write tool (launch, delete, clear `work/`) refuses without the user'"'"'s confirmation step'
 inn "TC-023: new row: PI and member roles enforced"               "$WL" 'PI and member roles are enforced'
-inn "TC-023: new row: gates live in the platform's tool layer"    "$WL" "Gates live in the platform's tool layer"
+inn "TC-023: row: gates live in the platform's action layer, a person answers on a human channel" "$WL" "Gates live in the platform's action layer, which the MCP tools and the web pages both call, and a person answers each gate on a human channel; the plugin's hooks become callers"
+inn "TC-023: ...check: refused through the MCP tool and through the web route" "$WL" "An unconfirmed launch is refused through the MCP tool and through the web route"
+nin "TC-023: ...the old 'platform's tool layer' gate row is gone" "$WL" "Gates live in the platform's tool layer"
+inn "TC-024: new row: every entry reaches the same action"         "$WL" "Every entry (MCP client, web page, platform chat, shell) reaches the same action"
+inn "TC-024: ...check: parity test, mcp_server and web import only actions" "$WL" 'A parity test: every action has an MCP tool and a web route, and `mcp_server` and the web import only `actions`'
+inn "TC-024: new row: a call to the platform's own tools counts as in use" "$WL" "A call to the platform's own tools counts as a session in use"
+inn "TC-024: ...check: scope test covers the platform's tools"     "$WL" "The Safety Net's scope test covers the platform's tools"
+inn "TC-024: new row: web pages and tools match one to one"        "$WL" "The web pages and the tools match one to one"
 inn "TC-023: ...with their stages: 2, 1–2, 1–2, 2, 1–2"          "$WL" '| 1–2 |'
 cnt=$(printf '%s\n' "$WL" | grep -cE '^\| ' || true)
 # header + separator + 5 new + 6 original + 1 split row = 13 or more
 [ "${cnt:-0}" -ge 12 ] && ok "TC-023: waiting list has the 5 new rows on top of the 6 original (rows incl. header: $cnt)" || bad "TC-023: waiting list row count" "$cnt rows"
 inn "TC-023: old row rewritten: host reaches launch/delete only through tools that carry their own gate" "$WL" 'A host reaches launch and delete only through tools that carry their own gate'
 nin "TC-023: ...the old 'may query but never launch or delete' wording is gone" "$WL" 'may query but never'
+cnt16=$(printf '%s\n' "$WL" | grep -cE '^[|]' || true)
+[ "${cnt16:-0}" = 16 ] && ok "TC-025: waiting list has 16 table lines (14 rows + header + separator)" || bad "TC-025: waiting list has 16 table lines" "$cnt16 lines"
 # old stage numbers are gone: nothing waits for a stage that no longer exists
 if printf '%s\n' "$WL" | grep -qE '\| (6|7) \|[[:space:]]*$'; then bad "TC-023: no row waits for stage 6 or 7"; else ok "TC-023: no row waits for stage 6 or 7"; fi
 
@@ -283,7 +293,12 @@ inn "TC-025: the evaluation body is still there (20 runs, 18 of 20)" "$(sec "$RM
 # TC-026 / TC-027: POSITIONING
 has "TC-026: one-line positioning is 台灣版 Seqera"                 "$POS" '> 台灣版 Seqera'
 has "TC-026: one-liner: own chat, model you choose, plus your own AI via MCP" "$POS" '平台有自己的聊天介面，可接你選的模型；也可以用你已經在用的 AI（Claude Desktop 等）透過 MCP 接上'
-has "TC-026: feature 2: MCP, your own AI or the platform's own chat" "$POS" '平台只開 MCP，對話用你自己的 AI，或平台自己的聊天介面'
+has "TC-026: feature 2: four entries" "$POS" '平台有四個入口：你自己的 AI（接 MCP 網址）、平台網頁、平台自己的聊天介面、命令列'
+hasnt "TC-026: the old 'MCP only' lead is gone" "$POS" '平台只開 MCP'
+has "TC-029: feature 2: web pages need no model; chat is the model-using entry" "$POS" '沒有 AI 工具的成員直接用平台網頁點選，不需要任何模型；想用對話的，用平台自己的聊天介面，接自己選的模型（自己的 API key 或本地模型），它走的是同一組 MCP 工具（2026-10-09 加入，`docs/adr/0004`；2026-10-15 四個入口，`docs/adr/0006`）。'
+hasnt "TC-029: the old 'chat interface on the web pages' wording is gone" "$POS" '沒有 AI 工具的成員，用平台網頁上的聊天介面'
+has "TC-028: feature 2: the person presses yes, not the model" "$POS" '判斷留在 skill，工具只做動作，每個寫入動作都要你本人確認——按 yes 的是人，不是模型（`docs/adr/0006`）。'
+hasnt "TC-028: the old gate sentence is gone" "$POS" '每個寫入動作都要你確認（`docs/adr/0003`）'
 has "TC-026: feature 2: own API key or local model, same MCP tools" "$POS" '接自己選的模型（自己的 API key 或本地模型），它走的是同一組 MCP 工具'
 hasnt "TC-026: POSITIONING no longer says the platform does not do its own chat" "$POS" '平台不自己做對話'
 has "TC-027: competitor table: Seqera MCP, no confirmation mechanism in its docs" "$POS" '文件中查不到確認機制'
@@ -353,10 +368,10 @@ has "TC-038: ROADMAP: development and testing never go through Seqera's Services
 
 # TC-059: CLAUDE.md and README.md
 has "TC-059: CLAUDE.md: 2.17.0 uses Platform as the backend, Nextflow's records underneath" CLAUDE.md "Platform is the execution backend 2.17.0 uses; the truth about a run underneath it is Nextflow's own records"
-has "TC-059: CLAUDE.md points at constitution 4.0.0"                CLAUDE.md 'constitution 4.0.0'
+has "TC-059: CLAUDE.md points at constitution 4.1.0"                CLAUDE.md 'constitution 4.1.0'
 has "TC-059: CLAUDE.md still has 'Constitution 2.0.0'"             CLAUDE.md 'Constitution 2.0.0'
 has "TC-059: CLAUDE.md still has 'hooks/in_use.sh'"                CLAUDE.md 'hooks/in_use.sh'
-has "TC-059: README.md: Platform's runs rest on Nextflow's own records" README.md "Nextflow's own records, the truth under constitution 4.0.0"
+has "TC-059: README.md: Platform's runs rest on Nextflow's own records" README.md "Nextflow's own records, the truth under constitution 4.1.0"
 has "TC-059: README.md still has 'Constitution 2.0.0'"             README.md 'Constitution 2.0.0'
 
 # TC-060: the platform's own chat (maintainer, 2026-10-09: 「也做聊天介面 可接模型」)
@@ -388,6 +403,123 @@ has "TC-060g: ADR 0004: Seqera Platform is the reference"          "$ADR4" 'Seqe
 
 # TC-038/TC-039 (continued): the other planning documents.
 has "TC-039: ROADMAP positioning: each member uses their own credential on their own station agent" "$RM" 'student'"'"'s own credential'
+
+# ---- Constitution 4.1.0 (skills/ is a home of judgment; ADR 0006) ----
+# Test cases: .specify/amendments/4.1.0-skills-home/test-case.md
+echo
+echo "== 4.1.0: constitution II.5, the 4.1.0 record, ROADMAP, CONTEXT, ADR 0006 (TC-003..TC-049) =="
+ADR6=docs/adr/0006-four-entries-one-action-layer.md
+P2=$(awk '/^### II\. /{f=1} /^### III\. /{f=0} f' "$C")
+inn "4.1.0 TC-003: II.5 names skills/, docs/ and scripts/ as the home of judgment" "$P2" '**5.** Judgment, procedure and site operations live in `skills/`, `docs/` and `scripts/`, readable and runnable by a person or another model.'
+inn "4.1.0 TC-004: II.5 Check names the test and skills/ in the fallback"          "$P2" '*Check:* `tests/works_without_host_test.sh`: with `hooks/` and `.claude-plugin/` removed, the system still works from `skills/`, `docs/` and `scripts/`: degraded, not equivalent, but usable.'
+inn "4.1.0 TC-005: II.5 second sentence unchanged"                                "$P2" 'Whatever AI host runs the tool, its own capabilities (hooks, skills, commands or their equivalents) MUST be used fully.'
+if grep -qxF '### 4.1.0 (2026-10-15): skills are a home of judgment; the platform has four entries' "$C"; then ok "4.1.0 TC-006: the 4.1.0 heading is exact"; else bad "4.1.0 TC-006: the 4.1.0 heading is exact"; fi
+l40=$(grep -nF '### 4.0.0 (2026-10-11)' "$C" | head -1 | cut -d: -f1); l41=$(grep -nxF '### 4.1.0 (2026-10-15): skills are a home of judgment; the platform has four entries' "$C" | head -1 | cut -d: -f1); lg=$(grep -n '^## Governance' "$C" | head -1 | cut -d: -f1)
+if [ -n "$l40" ] && [ -n "$l41" ] && [ -n "$lg" ] && [ "$l40" -lt "$l41" ] && [ "$l41" -lt "$lg" ]; then ok "4.1.0 TC-006: 4.1.0 sits after 4.0.0 and before Governance"; else bad "4.1.0 TC-006: 4.1.0 sits after 4.0.0 and before Governance" "$l40/$l41/$lg"; fi
+AM41=$(sec "$C" '^### 4[.]1[.]0 [(]2026-10-15[)]' '^##+ ')
+prev=0; okorder=1
+for h in '**Rationale.**' '**What changes.**' '**Impact on existing deployments.**' '**Version.**' '**Approval.**'; do
+  n=$(printf '%s\n' "$AM41" | grep -nF -- "$h" | head -1 | cut -d: -f1)
+  if [ -z "$n" ] || [ "$n" -le "$prev" ]; then okorder=0; fi; prev=${n:-0}
+done
+[ "$okorder" = 1 ] && ok "4.1.0 TC-007: the five parts of the 4.1.0 record, in order" || bad "4.1.0 TC-007: the five parts of the 4.1.0 record, in order"
+inn "4.1.0 TC-008: Rationale quotes 「只加 MCP 網址就能用」"           "$AM41" '「只加 MCP 網址就能用」'
+inn "4.1.0 TC-008: ...and cites docs/adr/0006"                        "$AM41" 'docs/adr/0006'
+inn "4.1.0 TC-009: Rationale quotes 「平台純粹靠GUI介面也要能使用」"   "$AM41" '「平台純粹靠GUI介面也要能使用」'
+inn "4.1.0 TC-010: Rationale quotes the chat sentence"                "$AM41" '「平台也要有對話介面，若使用者不需要使用claude code等harness介面的話也可以直接對話使用」'
+inn "4.1.0 TC-011: the web scope: setup → launch → runs → rendered reports → the package" "$AM41" 'setup → launch → runs → rendered reports → the package'
+inn "4.1.0 TC-011: ...figures are made in the chat or in a harness"   "$AM41" 'figures'
+inn "4.1.0 TC-011: ...v3 is built on the branch v3"                   "$AM41" '`v3`'
+inn "4.1.0 TC-011: ...the CI trigger is configured on the v3 branch"  "$AM41" 'CI trigger'
+inn "4.1.0 TC-012: What changes: II.5 names skills/ and its check already packs it" "$AM41" '`skills/`'
+inn "4.1.0 TC-012: ...the new principles wait in ROADMAP 'Principles waiting for a check'" "$AM41" 'Principles waiting for a check'
+inn "4.1.0 TC-012: ...they join by the MAJOR amendment that ships with feature 009" "$AM41" 'the MAJOR amendment that ships with feature 009'
+inn "4.1.0 TC-012: ...the Safety Net is unchanged, word for word"     "$AM41" 'The Safety Net is unchanged, word for word.'
+inn "4.1.0 TC-013: Impact: None, no hook, script, command or skill changes" "$AM41" '**Impact on existing deployments.** None. No hook, script, command or skill changes'
+inn "4.1.0 TC-014: Version: MINOR, under Governance"                  "$AM41" '**Version.** MINOR, under Governance'
+inn "4.1.0 TC-014: ...a principle is expanded, none removed or redefined" "$AM41" 'none is removed or redefined'
+inn "4.1.0 TC-014: Approval: the maintainer approves and merges"      "$AM41" '**Approval.** The maintainer approves and merges the pull request'
+nin "4.1.0 TC-015: the 4.1.0 record does not say 'run index'"         "$AM41" 'run index'
+nin "4.1.0 TC-015: ...nor 'tool layer'"                               "$AM41" 'tool layer'
+nin "4.1.0 TC-015: ...nor 'action layer'"                             "$AM41" 'action layer'
+nin "4.1.0 TC-046: ...nor a promised MAJOR number 6.0.0"              "$AM41" '(^|[^0-9.])6\.0\.0'
+nin "4.1.0 TC-046: ADR 0006 promises no MAJOR number 6.0.0"           "$(cat "$ADR6")" '(^|[^0-9.])6\.0\.0'
+
+# ROADMAP: Stage 2 and 3 rows, v2/v3 paragraph (TC-016..TC-022)
+R2=$(printf '%s\n' "$STG" | grep -E '^\| 2 \|' | head -1)
+R3=$(printf '%s\n' "$STG" | grep -E '^\| 3 \|' | head -1)
+inn "4.1.0 TC-016: 009: the action layer, one function per action"     "$R2" 'the action layer (one function per action, called by the MCP tools, the web pages and the chat)'
+inn "4.1.0 TC-016: 009: following Seqera MCP's tools plus the extra ones" "$R2" "following Seqera MCP's tools plus \`list_site_files\`, \`validate_samplesheet\`, \`estimate_su\`, \`read_task_log\`, \`run_downstream\`, \`build_package\`"
+inn "4.1.0 TC-016: 009: every write action's gate on a human channel"  "$R2" "every write action's gate answered on a human channel (elicitation form or a confirmation page)"
+inn "4.1.0 TC-016: 009: OAuth 2.1 / personal access token and identity" "$R2" 'OAuth 2.1 / personal-access-token authorization and the identity each token carries'
+inn "4.1.0 TC-016: 009: instructions and one prompt per skill"         "$R2" "the server's \`instructions\` and one prompt per skill mirroring \`skills/\`"
+inn "4.1.0 TC-016: 009: Skills over MCP endpoint"                      "$R2" 'the Skills over MCP endpoint'
+inn "4.1.0 TC-016: 009: skills/ copied into the package"               "$R2" '`skills/` copied into the package'
+inn "4.1.0 TC-016: 009: the relay sending events to a public address"  "$R2" 'the relay sending events to a public address'
+inn "4.1.0 TC-017: 008 is unchanged"                                   "$R2" "008: Tower-compatible receiver for the \`nf-tower\` plugin's events, kept as a rebuildable index."
+inn "4.1.0 TC-017: 010 is unchanged"                                   "$R2" '010: the two-role lab'
+inn "4.1.0 TC-017: Stage 2 done-when is unchanged"                     "$R2" 'A student in Claude Desktop runs a 16S analysis end to end from conversation, the PI sees it on the web, and nothing goes through Seqera'
+nin "4.1.0 TC-017: the old 'every write tool carries its own confirmation' is gone" "$R2" 'every write tool carries its own confirmation'
+inn "4.1.0 TC-018: 011 matches the actions one to one"                 "$R3" '011: dashboard and run detail, matching the actions one to one (parity test)'
+inn "4.1.0 TC-018: 012 matches the actions one to one"                 "$R3" 'SU estimate with a cap, matching the actions one to one (parity test)'
+inn "4.1.0 TC-018: 013 matches the actions one to one"                 "$R3" 'the delivery package, matching the actions one to one (parity test)'
+inn "4.1.0 TC-019: 014 is verbatim"                                    "$R3" "014: the platform's chat, connecting to the model the user chooses (their own API key or a local model) and calling only the MCP tools of 009"
+inn "4.1.0 TC-020: Stage 3 done-when opens with a member with no AI tool" "$R3" "A lab member with no AI tool completes setup → launch → runs → rendered reports → the package from the web pages alone (figures from scripts are made in the platform's chat or in a harness); Two members of the trial lab"
+nin "4.1.0 TC-021: no Stage 3 sentence gives figures to the web pages"  "$R3" 'web pages? (make|draw|plot)'
+inn "4.1.0 TC-022: the v2 and v3 paragraph, verbatim"                  "$STG" 'v2 and v3 (2026-10-15, ADR 0006): `main` is the v2 line until v3.0.0; v3 is built on the branch `v3`. v2 takes bug fixes and changes that make the Safety Net stricter, released as 2.17.x only when a fix affects a user. Line A is unchanged:'
+
+# CONTEXT.md (TC-031..TC-033, TC-064)
+MTL=$(awk 'index($0,"**MCP tool layer** ")==1{f=1;next} f&&/^$/{exit} f' CONTEXT.md)
+nin "4.1.0 TC-031: MCP tool layer: the old 'each write tool carries its own gate' is gone" "$MTL" 'each write tool carries its own confirmation gate'
+inn "4.1.0 TC-031: ...the gate of a write action lives in the action layer, answered by a person" "$MTL" 'the gate of a write action lives there, answered by a person on a human channel'
+inn "4.1.0 TC-031: ...and Planned (Stage 2)."                          "$MTL" 'Planned (Stage 2).'
+inn "4.1.0 TC-031: ...gains the ADR 0006 sentence"                     "$MTL" 'Since ADR 0006 the tools call the action layer; the gate of a write action lives there, answered by a person on a human channel.'
+ACT=$(awk 'index($0,"**action layer** ")==1{f=1;print;next} f&&/^$/{exit} f' CONTEXT.md)
+inn "4.1.0 TC-032: action layer (動作層) is defined"                    "$ACT" '**action layer** (動作層)'
+inn "4.1.0 TC-032: ...one function per platform action"                "$ACT" 'one function per platform action'
+inn "4.1.0 TC-032: ...called by the tools, pages and chat alike"       "$ACT" 'called by the MCP tools, the web pages and the chat alike'
+inn "4.1.0 TC-032: ...the gate of a write action lives here"           "$ACT" 'the gate of a write action lives here'
+inn "4.1.0 TC-032: ...Planned (Stage 2, feature 009)"                  "$ACT" 'Planned (Stage 2, feature 009)'
+inn "4.1.0 TC-032: ..._Avoid_: API, backend"                           "$ACT" '_Avoid_: API, backend'
+HUM=$(awk 'index($0,"**human channel** ")==1{f=1;print;next} f&&/^$/{exit} f' CONTEXT.md)
+inn "4.1.0 TC-033: human channel (人通道) is defined"                   "$HUM" '**human channel** (人通道)'
+inn "4.1.0 TC-033: ...the way a person, not the model, answers a gate" "$HUM" 'the way a person, not the model, answers a gate'
+inn "4.1.0 TC-033: ...elicitation form or confirmation page"           "$HUM" 'an elicitation form in the harness, or a confirmation page on the platform'
+inn "4.1.0 TC-033: ...the token is the record, not the answer"         "$HUM" 'The token is the record of that answer, not the answer.'
+inn "4.1.0 TC-033: ...Planned (Stage 2)."                              "$HUM" 'Planned (Stage 2).'
+inn "4.1.0 TC-033: ..._Avoid_: confirmation token (when the act is meant)" "$HUM" '_Avoid_: confirmation token (when the act is meant)'
+
+# ADR 0006 (TC-035..TC-043), ADR 0003 and 0004 notes (TC-044, TC-045)
+has "4.1.0 TC-035: ADR 0006 title"                                     "$ADR6" '# Four entries, one action layer'
+has "4.1.0 TC-035: ...amends ADR 0003 and ADR 0004"                    "$ADR6" 'Amends ADR 0003 and ADR 0004 (2026-10-15)'
+has "4.1.0 TC-036: ADR 0006 quotes 「只加 MCP 網址就能用」"              "$ADR6" 'Install cost: 「只加 MCP 網址就能用」 — a user adds one MCP URL to the harness they already have; nothing else is required.'
+has "4.1.0 TC-037: ADR 0006 quotes the GUI sentence"                   "$ADR6" "「平台純粹靠GUI介面也要能使用」 — the platform's web pages are a complete entry for a person with no AI tool."
+has "4.1.0 TC-038: ADR 0006 quotes the chat sentence"                  "$ADR6" "「平台也要有對話介面，若使用者不需要使用claude code等harness介面的話也可以直接對話使用」 — the platform's own chat is a full entry too, not a later extra."
+has "4.1.0 TC-039: ADR 0006 states the web scope"                      "$ADR6" "the web pages complete **setup → launch → runs → rendered reports → the package of the pipeline's outputs**; figures from scripts are made in the platform's chat or in a harness."
+has "4.1.0 TC-040: ADR 0006: v3 on the long-lived branch v3"           "$ADR6" 'v3 is built on the long-lived branch `v3`'
+has "4.1.0 TC-040: ...CI trigger configured on the v3 branch itself"   "$ADR6" "the CI trigger for \`v3\` is configured on the \`v3\` branch itself, not in this record's pull request"
+has "4.1.0 TC-040: ...the maintainer approved the CI change"           "$ADR6" 'the maintainer approved the CI change on 2026-10-15'
+has "4.1.0 TC-040: ...main stays the v2 line until v3.0.0"             "$ADR6" '`main` stays the v2 line until v3.0.0'
+for h in '### Four entries, one action layer' '### The "yes" must come from a person' '### Where the platform runs, and who is calling' '### Hooks and the gates they carry' '### What the web pages must do without AI' '### v2 and v3' '### The constitution' '## Considered Options' '## Consequences'; do
+  if grep -qxF -- "$h" "$ADR6"; then ok "4.1.0 TC-041: ADR 0006 has '$h'"; else bad "4.1.0 TC-041: ADR 0006 has '$h'"; fi
+done
+HK=$(sec "$ADR6" '^### Hooks and the gates they carry' '^### ')
+inn "4.1.0 TC-042: confirm_launch.sh rides with the MAJOR amendment with feature 009" "$HK" '| `hooks/confirm_launch.sh` |'
+inn "4.1.0 TC-042: ...confirm_cleanup.sh kept for good"                "$HK" 'kept for good'
+inn "4.1.0 TC-042: ...confirm_walkthrough.sh (G7)"                     "$HK" '`hooks/confirm_walkthrough.sh` (G7)'
+inn "4.1.0 TC-042: ...guard_plugin_files.sh kept"                      "$HK" '`hooks/guard_plugin_files.sh`'
+inn "4.1.0 TC-042: removing a gate hook is the maintainer's and MAJOR" "$HK" "the maintainer's and MAJOR"
+CON6=$(sec "$ADR6" '^### The constitution' '^## ')
+inn "4.1.0 TC-043: ADR 0006 says 4.1.0 (MINOR), II.5 names skills/"    "$CON6" '4.1.0 (MINOR): principle II.5 names `skills/`'
+inn "4.1.0 TC-043: ...the new principles wait in the ROADMAP"          "$CON6" 'Waiting for a check in `docs/ROADMAP.md`'
+has "4.1.0 TC-044: ADR 0003 gains the ADR 0006 note"                   "$ADR3" "Amended 2026-10-15 by ADR 0006: gates live in the action layer the tools and the web pages call; a harness kit is not an adapter"
+has "4.1.0 TC-045: ADR 0004 gains the ADR 0006 note"                   "$ADR4" "Amended 2026-10-15 by ADR 0006: the web pages are a non-AI entry to the same actions; the confirmation is a person's act on a human channel"
+
+# Citing documents (TC-047, TC-049)
+hasnt "4.1.0 TC-047: CLAUDE.md no longer says constitution 4.0.0"      CLAUDE.md 'constitution 4\.0\.0'
+hasnt "4.1.0 TC-047: README.md no longer says constitution 4.0.0"      README.md 'constitution 4\.0\.0'
+has "4.1.0 TC-049: PRINCIPLES.md point 5 names skills/, docs/ and scripts/" "$PR" 'Judgment, procedure and site operations live in `skills/`, `docs/` and `scripts/`, which a person or another model can read and run directly.'
+hasnt "4.1.0 TC-049: ...the docs/-and-scripts/-only wording is gone"    "$PR" 'operations live in `docs/` and `scripts/`'
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
