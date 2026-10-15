@@ -219,6 +219,12 @@ _COMPARED = ("id", "name", "session_id", "status", "tasks", "processes", "failed
 _NOT_REBUILT = ("failure_reason",)
 
 
+# Allowed gap between live and rebuilt started_at / ended_at. It was 1 s; CI run 38598019862 (2026-10-14, commit cba254d,
+# first attempt) saw started_at differ by 2 s (live 16:33:36Z, rebuilt 16:33:38Z) and passed on rerun. The cause is not
+# proven: research.md "Time resolution" explains a 1 s gap only. 3 s covers that 2 s case with margin.
+_CLOCK_SLACK_SECONDS = 3
+
+
 def _compared(v):
     out = {k: v[k] for k in _COMPARED}
     return out
@@ -230,12 +236,49 @@ def _same_runs(before, after):
         a = after[i]
         assert _compared(a) == _compared(b), i
         # Start and end are whole seconds, but Nextflow writes them from different clock samples in the
-        # live message and in its files (research.md, "Time resolution"): they may sit one second apart.
-        assert abs(_epoch(a["started_at"]) - _epoch(b["started_at"])) <= 1, (i, a["started_at"], b["started_at"])
+        # live message and in its files (research.md, "Time resolution"): they may sit a little apart.
+        assert abs(_epoch(a["started_at"]) - _epoch(b["started_at"])) <= _CLOCK_SLACK_SECONDS, (i, a["started_at"], b["started_at"])
         if b["ended_at"]:
-            assert abs(_epoch(a["ended_at"]) - _epoch(b["ended_at"])) <= 1, (i, a["ended_at"], b["ended_at"])
+            assert abs(_epoch(a["ended_at"]) - _epoch(b["ended_at"])) <= _CLOCK_SLACK_SECONDS, (i, a["ended_at"], b["ended_at"])
         else:
             assert a["ended_at"] == b["ended_at"]
+
+
+# ---- guard for _same_runs (flaky-time, TC-FT-03/04/06): pure functions, no Nextflow needed.
+
+def _run(started="2026-10-14T16:33:36Z", ended="2026-10-14T16:34:00Z"):
+    return {"id": "r1", "name": "n", "session_id": "s", "status": "SUCCEEDED", "tasks": 1, "processes": 1,
+            "failed_tasks": 0, "started_at": started, "ended_at": ended}
+
+
+def _shift(iso, seconds):
+    t = datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")) + datetime.timedelta(seconds=seconds)
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_ft03_same_runs_accepts_the_two_second_ci_gap():
+    # TC-FT-03: CI run 38598019862 had started_at 16:33:36Z live vs 16:33:38Z rebuilt
+    _same_runs({"r1": _run()}, {"r1": _run(started="2026-10-14T16:33:38Z")})
+    _same_runs({"r1": _run()}, {"r1": _run(ended="2026-10-14T16:34:02Z")})
+
+
+@pytest.mark.parametrize("field", ["started_at", "ended_at"])
+@pytest.mark.parametrize("gap", [60, _CLOCK_SLACK_SECONDS + 1])
+def test_ft04_same_runs_still_fails_on_a_large_gap(field, gap):
+    # TC-FT-04 (guard): a gap beyond the slack must still fail, for both fields
+    base = _run()
+    other = dict(base, **{field: _shift(base[field], gap)})
+    with pytest.raises(AssertionError):
+        _same_runs({"r1": base}, {"r1": other})
+
+
+def test_ft06_same_runs_ended_at_none_is_exact():
+    # TC-FT-06: one side None must fail (the live side raises AttributeError from _epoch(None); either way the test fails)
+    _same_runs({"r1": _run(ended=None)}, {"r1": _run(ended=None)})
+    with pytest.raises(AssertionError):
+        _same_runs({"r1": _run(ended=None)}, {"r1": _run()})
+    with pytest.raises((AssertionError, AttributeError)):
+        _same_runs({"r1": _run()}, {"r1": _run(ended=None)})
 
 
 def _delete_index(env):
