@@ -115,6 +115,12 @@ if [ -z "${DOC_TEST_INNER:-}" ]; then
   echo "== issue #71: TC-034 runs and fails without a main ref =="
   for mode in nomain withmain; do
     D=$(mkclone "c-$mode" "$([ "$mode" = withmain ] && echo withmain)") || { bad "scratch clone ($mode)"; continue; }
+    # scratch-clone-main TC-006: nomain clones are detached with no main; withmain clones have main
+    if [ "$mode" = nomain ]; then
+      if ! git -C "$D" show-ref --verify --quiet refs/heads/main && [ -z "$(git -C "$D" symbolic-ref -q HEAD 2>/dev/null)" ]; then ok "nomain clone: no main ref, detached (scratch-clone-main TC-006)"; else bad "nomain clone: no main ref, detached (scratch-clone-main TC-006)"; fi
+    else
+      if git -C "$D" show-ref --verify --quiet refs/heads/main; then ok "withmain clone has a main ref (scratch-clone-main TC-006)"; else bad "withmain clone has a main ref (scratch-clone-main TC-006)"; fi
+    fi
     # TC-010: unchanged
     inner "$D"
     if [ "$RC" = 0 ] && t34ok; then ok "TC-010: unchanged, $mode: TC-034 runs and is ok"; else bad "TC-010: unchanged, $mode: TC-034 runs and is ok" "rc=$RC"; fi

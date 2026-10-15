@@ -172,6 +172,8 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
   D=$(mkclone nomain) || { bad "scratch shallow clone"; D=; }
   if [ -n "$D" ]; then
     if git -C "$D" show-ref --verify --quiet refs/heads/main 2>&1; then bad "scratch clone really has no main ref"; else ok "scratch clone really has no main ref"; fi
+    # scratch-clone-main TC-004: the no-main clone is detached, not parked on a branch
+    if [ -z "$(git -C "$D" symbolic-ref -q HEAD 2>/dev/null)" ]; then ok "scratch clone is detached (scratch-clone-main TC-004)"; else bad "scratch clone is detached (scratch-clone-main TC-004)"; fi
     # TC-002
     inner "$D"
     if [ "$RC" = 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep ' ok$' >/dev/null; then ok "TC-002: unchanged, no main: the fingerprint line runs and is ok"; else bad "TC-002: unchanged, no main: the fingerprint line runs and is ok" "rc=$RC"; fi
@@ -200,6 +202,8 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
   # TC-004: with a main ref present, the same change still fails the same way
   D=$(mkclone withmain withmain) || { bad "scratch clone with main"; D=; }
   if [ -n "$D" ]; then
+    # scratch-clone-main TC-005: a withmain clone keeps a main ref at its HEAD
+    if [ "$(git -C "$D" rev-parse -q --verify refs/heads/main 2>/dev/null)" = "$(git -C "$D" rev-parse HEAD)" ]; then ok "withmain clone has main at HEAD (scratch-clone-main TC-005)"; else bad "withmain clone has main at HEAD (scratch-clone-main TC-005)"; fi
     addsn "$D"
     inner "$D"
     if [ "$RC" != 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep 'FAIL' >/dev/null; then ok "TC-004: Safety Net changed, main present: fails on the fingerprint"; else bad "TC-004: Safety Net changed, main present: fails on the fingerprint" "rc=$RC"; fi
