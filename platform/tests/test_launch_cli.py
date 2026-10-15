@@ -83,7 +83,10 @@ def test_tc001_the_whole_launch_is_shown_before_the_question_and_nothing_is_writ
     for name, value in (("primer", '"AGRG"'), ("pacbio", "true"), ("depth", "3")):
         assert "%s: %s" % (name, value) in shown_params
     config = [unescape(x) for x in section(lines, "nextflow.config")]
-    assert config == ["process.executor = 'slurm'"]
+    # abort-report-overwrite (TC-007, TC-015): the user's line first and verbatim, then the platform's block, shown before the question
+    assert config[0] == "process.executor = 'slurm'"
+    assert [x for x in config[1:] if x.strip() and not x.startswith("//")] == ["report.overwrite = true", "timeline.overwrite = true"]
+    assert any(x.startswith("//") for x in config[1:])
     # the head script as shown is the one the function renders for the same input
     from abf_platform import compute_envs
     from abf_station import launch

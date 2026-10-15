@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from station_harness import FakePlatform, FakeSite, snapshot, snapshot_file
-from test_launch_bundle import ce_snapshot, parse_yaml, sbatch_lines, only_template_sbatch
+from test_launch_bundle import ce_snapshot, parse_yaml, sbatch_lines, only_template_sbatch, render as render_plain
 from test_station_fakeplatform import agent_on, wait_for
 
 ACCT = "ACCT-TEST-7"
@@ -153,12 +153,17 @@ def tampered(site, fake, how):
         t["ce"]["computeQueue"] = "other"
     elif how == "account":
         t["account"] = "ACCT-OTHER-9"
+    elif how == "config_block":
+        # TC-008: the platform's own overwrite block taken out of nextflow.config after the yes
+        cfg = t["files"]["nextflow.config"]
+        assert "report.overwrite" in cfg
+        t["files"]["nextflow.config"] = cfg[:cfg.index("report.overwrite")]
     elif how == "sha":
         sha = sha[:-1] + ("0" if sha[-1] != "0" else "1")
     return dict(good, args={"bundle": t, "confirmation_id": good["args"]["confirmation_id"], "bundle_sha256": sha})
 
 
-@pytest.mark.parametrize("how", ["params", "samplesheet", "head", "folder", "revision", "ce", "account", "sha"])
+@pytest.mark.parametrize("how", ["params", "samplesheet", "head", "folder", "revision", "ce", "account", "config_block", "sha"])
 def test_tc007_a_bundle_changed_after_the_yes_is_refused(tmp_path, site, fake, how):
     with agent_on(fake, site, tmp_path, name="agent-f") as a:
         res = run_job(fake, tampered(site, fake, how))
@@ -467,3 +472,88 @@ def test_tc053_a_consistent_bundle_under_the_old_hash_is_refused_for_the_hash_no
         res = run_job(fake, job)
         assert res["state"] == "refused" and re.search(r"不符|not the content", res["result"]["message"]), res
     nothing_happened(site)
+
+
+# ---- abort-report-overwrite: the rendered nextflow.config allows report/timeline overwrite -----------------------------
+
+_OVERWRITE = ["report.overwrite = true", "timeline.overwrite = true"]
+
+
+def _block_after(user_text, cfg):
+    assert cfg.startswith(user_text), (user_text, cfg)
+    return cfg[len(user_text):]
+
+
+def _setting_lines(block):
+    return [ln.strip() for ln in block.splitlines() if ln.strip() and not ln.strip().startswith("//")]
+
+
+def test_abort_tc001_tc002_the_config_ends_with_both_settings_after_the_users_text_verbatim():
+    # TC-001, TC-002
+    text = "process.executor = 'slurm'
+executor.queueSize = 50
+
+process.queue = 'normal'
+"
+    cfg = render_plain(ce=ce_snapshot(nextflowConfig=text))["files"]["nextflow.config"]
+    block = _block_after(text, cfg)
+    assert [ln.strip() for ln in cfg.splitlines()][-2:] == _OVERWRITE
+    assert _setting_lines(block) == _OVERWRITE
+
+
+def test_abort_tc003_a_config_without_a_final_newline_gets_the_block_on_a_new_line():
+    # TC-003
+    text = "process.executor = 'slurm'"
+    cfg = render_plain(ce=ce_snapshot(nextflowConfig=text))["files"]["nextflow.config"]
+    assert cfg.startswith(text + "
+")
+    assert _setting_lines(cfg[len(text):]) == _OVERWRITE
+
+
+def test_abort_tc004_a_ce_without_a_config_keeps_its_comment_and_gets_the_block():
+    # TC-004
+    cfg = render_plain(ce=ce_snapshot(nextflowConfig=""))["files"]["nextflow.config"]
+    assert cfg.startswith("//") and cfg.endswith("
+")
+    assert "no Nextflow config" in cfg.splitlines()[0]
+    assert _setting_lines(cfg) == _OVERWRITE
+
+
+def test_abort_tc005_tc006_the_block_is_commented_and_holds_exactly_the_two_settings():
+    # TC-005, TC-006, TC-026 (no path, account or cluster name in the block)
+    text = "process.executor = 'slurm'
+"
+    block = _block_after(text, render_plain()["files"]["nextflow.config"])
+    comments = [ln for ln in block.splitlines() if ln.strip().startswith("//")]
+    assert comments and re.search(r"twice", " ".join(comments))
+    assert block.lstrip().startswith("//") and block.index("//") < block.index("report.overwrite")
+    assert _setting_lines(block) == _OVERWRITE
+    for bad in ("report.enabled", "timeline.enabled", "report.file", "/", "nchc", "NCHC"):
+        assert bad not in "".join(_setting_lines(block)), bad
+
+
+def test_abort_tc020_trace_and_dag_are_not_touched():
+    # TC-020
+    for text in ("process.executor = 'slurm'
+", ""):
+        cfg = render_plain(ce=ce_snapshot(nextflowConfig=text))["files"]["nextflow.config"]
+        assert "trace.overwrite" not in cfg and "dag.overwrite" not in cfg
+
+
+def test_abort_tc016_only_launch_py_renders_the_overwrite_settings():
+    # TC-016
+    root = Path(__file__).resolve().parent.parent
+    found = sorted(p.relative_to(root).as_posix() for p in root.rglob("*.py")
+                   if "tests" not in p.relative_to(root).parts
+                   and re.search(r"report\.overwrite|timeline\.overwrite", p.read_text(encoding="utf-8")))
+    assert found == ["abf_station/launch.py"], found
+
+
+def test_abort_tc009_the_agent_rebuilds_the_same_bundle_with_the_block_and_writes_it_byte_for_byte(tmp_path, site, fake):
+    # TC-009
+    b = bundle_for(site, fake)
+    assert "report.overwrite = true" in b["files"]["nextflow.config"]
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+        assert res["state"] == "done", res
+    assert (folder(site) / "nextflow.config").read_bytes() == b["files"]["nextflow.config"].encode("utf-8")

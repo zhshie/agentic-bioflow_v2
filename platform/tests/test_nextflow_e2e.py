@@ -430,3 +430,67 @@ def test_tc034_a_killed_run_is_lost_before_and_after_a_rebuild(e2e_cfg, tmp_path
         if proc.poll() is None:
             os.killpg(proc.pid, signal.SIGKILL)
         env.stop()
+
+
+# ---------------------------------------------------------------- abort-report-overwrite (the rendered nextflow.config)
+
+_REPORT_CONFIG = ("report.enabled = true\nreport.file = 'pipeline_info/execution_report.html'\n"
+                  "timeline.enabled = true\ntimeline.file = 'pipeline_info/execution_timeline.html'\n")
+
+
+def _platform_config(user_text, with_block):
+    """The nextflow.config the platform would write for a compute environment carrying user_text (or only that text)."""
+    from test_launch_bundle import ce_snapshot, render
+    if with_block:
+        return render(ce=ce_snapshot(nextflowConfig=user_text))["files"]["nextflow.config"]
+    return user_text
+
+
+def _aborted_log(e2e_cfg, tmp_path, with_block):
+    env = Env(e2e_cfg, tmp_path)
+    launch = tmp_path / "launch"
+    launch.mkdir()
+    (launch / "nextflow.config").write_text(_platform_config(_REPORT_CONFIG, with_block))
+    proc = env.start_nf("slow", launch)
+    try:
+        wait_until(lambda: [b for _, _, b, _ in env.recorder.of_kind("progress") if b["progress"]["running"] >= 1],
+                   timeout=90, what="a running task")
+        os.killpg(proc.pid, signal.SIGINT)   # the cancel: what scancel / Ctrl-C does to the head job
+        proc.wait(timeout=120)
+        time.sleep(1.0)
+        return (launch / ".nextflow.log").read_text(errors="replace")
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+        env.stop()
+
+
+def test_abort_tc011_without_the_block_an_aborted_run_logs_report_file_already_exists(e2e_cfg, tmp_path):
+    # TC-011: the teeth of TC-010 (the cancel really reaches the report writer a second time)
+    log = _aborted_log(e2e_cfg, tmp_path, with_block=False)
+    assert re.search(r"(Report|Timeline) file already exists", log), log[-3000:]
+
+
+def test_abort_tc010_with_the_block_an_aborted_run_does_not_log_it(e2e_cfg, tmp_path):
+    # TC-010
+    log = _aborted_log(e2e_cfg, tmp_path, with_block=True)
+    assert "already exists" not in log
+    assert "report.overwrite" not in log and "timeline.overwrite" not in log
+
+
+def test_abort_tc013_with_the_block_a_normal_run_still_writes_both_files(e2e_cfg, tmp_path):
+    # TC-013
+    env = Env(e2e_cfg, tmp_path)
+    try:
+        launch = tmp_path / "launch"
+        launch.mkdir()
+        (launch / "nextflow.config").write_text(_platform_config(_REPORT_CONFIG, True))
+        p = env.run_nf("ok", launch)
+        assert p.returncode == 0, p.stdout + p.stderr
+        for name in ("execution_report.html", "execution_timeline.html"):
+            f = launch / "pipeline_info" / name
+            assert f.is_file() and f.stat().st_size > 0, name
+        log = (launch / ".nextflow.log").read_text(errors="replace")
+        assert not [ln for ln in log.splitlines() if " ERROR " in ln and re.search(r"report|timeline", ln, re.I)]
+    finally:
+        env.stop()
