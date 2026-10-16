@@ -94,9 +94,9 @@ fi
 [ -z "$hits" ] || { printf '%s' "$hits"; fail "TOKEN  a tracked file holds a token-shaped value; credentials live in the deployment's settings area only"; }
 
 # 2. CREDENTIAL FILES NOT IN GIT, AND IGNORED --------------------------------
-named=$(grep -E '(^|/)([.]seqera_token|env[.]yaml|egress_allow[.]tsv|id_rsa[^/]*|id_ed25519[^/]*|[^/]*[.]pem)$' <<<"$FILES")
+named=$(grep -E '(^|/)([.]seqera_token|[.]typesafe_key|env[.]yaml|egress_allow[.]tsv|id_rsa[^/]*|id_ed25519[^/]*|[^/]*[.]pem)$' <<<"$FILES")
 [ -z "$named" ] || { printf '%s\n' "$named"; fail "TRACKED  a credential or settings file is tracked; it belongs in the deployment's settings area"; }
-for pat in '.seqera_token' 'env.yaml'; do
+for pat in '.seqera_token' 'env.yaml' '.typesafe_key'; do
     grep -qxF "$pat" "$ROOT/.gitignore" 2>/dev/null \
         || fail "IGNORE  .gitignore does not list '$pat'; a checkout that holds a deployment would add it with 'git add .'"
 done
@@ -107,7 +107,7 @@ done
 # is the point of the settings area and is fine.
 code=$(cd "$ROOT" && grep -HnE '.' scripts/*.sh scripts/*.py scripts/utils/*.sh hooks/*.sh 2>/dev/null \
        | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(#|//)')
-TOKVAR='(^|[^\\])[$][{]?(TOWER_ACCESS_TOKEN|SEQERA_TOKEN|TOKEN|_env_token|token|tok)[}]?([^A-Za-z0-9_]|$)'
+TOKVAR='(^|[^\\])[$][{]?(TOWER_ACCESS_TOKEN|SEQERA_TOKEN|TOKEN|_env_token|token|tok|TYPESAFE_API_KEY|JEV_KEY)[}]?([^A-Za-z0-9_]|$)'
 printing=$(grep -E "(echo|printf|print\(|cat <<)[^|>]*${TOKVAR}" <<<"$code" | grep -vE '>[[:space:]]*"?[$][{]?[A-Za-z_]*[Tt]oken[A-Za-z_]*[}]?"?[[:space:]]*$' | cut -c1-160)
 [ -z "$printing" ] || { printf '%s\n' "$printing"; fail "PRINT  a script prints a token variable; the token is never printed"; }
 tracing=$(grep -E '(^|[^[:alnum:]_])(set|bash|sh)[[:space:]]+-[euopxv]*x[euopxv]*([[:space:]]|$)' <<<"$code" | cut -c1-160)
@@ -178,7 +178,8 @@ if [ -z "${CRED_ROOT:-}" ]; then
     scratch() { # scratch <want-rc> <label> <file> <content> [gitignore content]
         rm -rf "$S/t"; mkdir -p "$S/t/scripts" "$S/t/hooks" "$S/t/docs"
         printf '%s\n' "${5:-.seqera_token
-env.yaml}" > "$S/t/.gitignore"
+env.yaml
+.typesafe_key}" > "$S/t/.gitignore"
         mkdir -p "$S/t/$(dirname "$3")"; printf '%s\n' "$4" > "$S/t/$3"
         CRED_ROOT="$S/t" bash "$SELF" --static-only >/dev/null 2>&1; local rc=$?
         [ "$rc" = "$1" ] || { echo "SELFTEST FAIL: $2 (rc $rc, wanted $1)"; selffails=$((selffails + 1)); }
@@ -199,6 +200,12 @@ env.yaml}" > "$S/t/.gitignore"
     scratch 1 "a tracked env.yaml fails"                     config/env.yaml 'workspace_id: 1'
     scratch 1 "a .gitignore without .seqera_token fails"     docs/a.md 'x' 'env.yaml'
     scratch 1 "a .gitignore without env.yaml fails"          docs/a.md 'x' '.seqera_token'
+    scratch 1 "a .gitignore without .typesafe_key fails"    docs/a.md 'x' '.seqera_token
+env.yaml'
+    scratch 1 "a tracked .typesafe_key fails"               config/.typesafe_key 'x'
+    scratch 1 "echoing TYPESAFE_API_KEY fails"               scripts/a.sh 'echo "key is $TYPESAFE_API_KEY"'
+    scratch 1 "printf of JEV_KEY fails"                      scripts/a.sh 'printf "%s\n" "$JEV_KEY"'
+    scratch 0 "reading TYPESAFE_API_KEY into a variable passes" scripts/a.sh 'JEV_KEY="${TYPESAFE_API_KEY:-}"'
     scratch 1 "echoing the token fails"                      scripts/a.sh 'echo "token is $TOWER_ACCESS_TOKEN"'
     scratch 1 "printf of the token fails"                    scripts/a.sh 'printf "%s\n" "${TOKEN}"'
     scratch 1 "set -x fails"                                 scripts/a.sh 'set -x'
