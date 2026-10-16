@@ -351,6 +351,50 @@ design. The warning says the two things above and adds that large files
 (rawdata, results, container images) do not belong there: they live on the
 site, and the root holds only what an IDE opens.
 
+## Jev triage (optional, off by default)
+
+An optional step in the runs skill's FAILED flow: when a run failed, the site refused nothing and the
+task did not exit 137, `scripts/jev.sh triage` asks TypeSafe's Jev service which of eight categories
+the failure belongs to, so the AI can read the right page first. Reasoning and limits:
+`docs/adr/0007-jev-optional-triage.md`. A deployment that never sets `jev.enabled` is unchanged.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `jev.enabled` | `false` | `true` turns the step on. Environment: `JEV_ENABLED`. |
+| `jev.daily_cap` | `500` | Most triage calls per local day. Environment: `JEV_DAILY_CAP`. |
+| `jev.min_confidence` | `0.80` | Below this, or category `unknown`, the original flow is followed. A confidence equal to it counts as sure. Environment: `JEV_MIN_CONFIDENCE`. |
+
+Read them with `scripts/settings.sh --jev enabled|daily_cap|min_confidence`. The environment variable beats the file.
+
+**The key is yours, not the project's.** `TYPESAFE_API_KEY` in the environment, else
+`<root>/config/.typesafe_key` (beside the settings file, the same rule as the Seqera token), plaintext. Create it so only you can read it:
+
+```bash
+umask 077; printf '%s' "$KEY" > <settings dir>/.typesafe_key
+```
+
+`scripts/jev.sh` never creates that file; a key file readable by anyone else is refused with a printed
+line. The key goes to `curl` on its standard input (never on the command line) and is never printed or
+written anywhere else.
+
+**What is sent**, and only this: the last 200 lines of the failing task's `.command.err` (cleaned to
+valid UTF-8) and its exit code, as the `err_tail` and `exit_code` fields, to `api.typesafe.ai`. It can
+contain paths and sample names. TypeSafe offers "does not retain data" to enterprise customers only.
+The first use on a machine prints this before sending anything.
+
+**Where it counts.** The daily counter and the "already told you" marker are two tiny files on the
+machine, `${AGENTIC_BIOFLOW_STATE_DIR:-${XDG_STATE_HOME:-~/.local/state}/agentic-bioflow}/jev-count-<day>` (one integer) and
+`jev-notice-shown` (empty). They are not run state and never enter the repository or the root.
+
+**Endpoint.** `JEV_ENDPOINT` overrides `https://api.typesafe.ai/v1/systemone`, which is how a local,
+compatible service would be used later. `JEV_DRY_RUN=<dir>` reads fixture answers instead of calling
+anything (`tests/fixtures/jev/`).
+
+**Off again:** set `jev.enabled: false` or delete the line. Whether Jev is worth switching on is the
+maintainer's call after `scripts/dev/jev_replay.sh` has been run with a real key on the 37 scorable
+items of `specs/015-jev-triage/labels.json` (`docs/TESTING.md`); this document will say so, and only
+then.
+
 ## The extra relay allowlist
 
 `<root>/config/egress_allow.tsv`, mode 600 - one line per domain,

@@ -244,6 +244,39 @@ when a refusal is the cause:
     - **No `.command.log` and no `.exitcode` at all.** 🤖 The work directory is
       probably not visible from the compute side — report that; there is
       nothing further to diagnose from here.
+    - **Jev triage, only if the user turned it on** (optional, off by default;
+      `docs/adr/0007-jev-optional-triage.md`). 🤖 Call it for the first failing task
+      that `tw runs view` finds, once per run, never per task:
+
+      ```bash
+      scripts/jev.sh triage --err <that task's .command.err> --exit <its exit code, or none>
+      ```
+
+      The script always exits 0 and prints a machine line first,
+      `JEV status=<…> category=<…> confidence=<…> sent_chars=<…>`. That line is
+      for you to parse; never show it to the user. (If the script prints a
+      notice about what is sent before it, that notice is for the user: pass it
+      on in full, it appears once per machine.)
+        - **`status=disabled`.** Say nothing about Jev: the report the user sees
+          has no Jev wording and no extra line, and is the same as it would be
+          without this step. Go on to "Anything else".
+        - **`status=ok`, category not `unknown`, confidence at least
+          `jev.min_confidence`** (read it with `scripts/settings.sh --jev
+          min_confidence`; a confidence equal to it counts as sure). Add one line
+          to the report, `Jev 判斷：<category>（信心 0.xx）`, read only the last
+          200 lines of `.command.err` (not the whole file), and follow that
+          category's route in "Jev categories", below. `memory` goes to "Out of
+          memory".
+        - **`status=ok`, but the confidence is below the threshold, or the
+          category is `unknown`.** Say `Jev 沒把握，照原流程` and go on to
+          "Anything else".
+        - **`status=no_key`, `failed`, `capped` or `empty`.** Pass on the one
+          sentence the script printed after the machine line (it says why Jev
+          was skipped and that the original flow follows), then go on to
+          "Anything else".
+
+      Jev only points; it decides nothing. Every ⏸ below stays a stop for the
+      user's say-so: Jev 的判斷不讓任何需要使用者同意的事變成自動.
     - **Anything else.** This has no branch above — follow
       `skills/operational/SKILL.md`'s "Off-design: when nothing here covers
       it" (T2: a failure with no branch), category `pipeline`, command
@@ -261,6 +294,69 @@ bug in the code that reads the rejection, not a clue about the cause. That is
 why the refusal is asked about before the log, not after: reading the log
 first sends the diagnosis toward whatever it names, and in this shape of
 failure that is never the actual cause.
+
+### Jev categories
+
+Where a confident Jev category leads. Each route says what to look at first, the
+usual fix, and when to stop and ask; none of them skips a ⏸ that exists
+elsewhere. For Jev, `memory` is the "Out of memory" section below, `unknown` is "Anything else".
+
+#### `walltime`
+- **Look first:** the task's `.command.log` and `.exitcode` for a time-limit
+  message, and how long the task ran against the time it asked for.
+- **Usual fix:** the task needed more time than it requested; relaunch with a
+  larger time request for that process (a resource change goes through
+  `skills/launch/SKILL.md`).
+- **Ask the user** before relaunching: more time is a different request than the
+  one they made. 🤖 Reading the log and measuring is yours.
+
+#### `network`
+- **Look first:** which host the task tried to reach (the last lines of
+  `.command.err`), then run the refusal check at the top of this section for
+  that time window.
+- **Usual fix:** a host the site refuses is allowed only by the user's decision;
+  a transient download failure usually just needs a relaunch.
+- ⏸ **Ask the user** before allowing any host: that moves a security boundary
+  (`scripts/egress_allow.sh add <host> --reason "<the run that needed it>"`, as
+  in the refusal branch above). Retrying a plain download failure is yours.
+
+#### `container`
+- **Look first:** the image name and tag in the error, whether the pull, the
+  conversion or the start failed, and whether the same image started for an
+  earlier task of this run.
+- **Usual fix:** a wrong or retired tag is a pipeline-version question; a pull
+  that failed once usually works on relaunch; a full scratch area needs the
+  user to free space.
+- **Ask the user** before changing the pipeline version or deleting anything
+  to free space. 🤖 Retrying the pull is yours.
+
+#### `input`
+- **Look first:** the file named in the error: does it exist where the task
+  looked, is it empty or truncated, does its header match what the process
+  expects (`scripts/input_checksums.sh` compares it with what was recorded at
+  launch).
+- **Usual fix:** regenerate or re-stage the input, or correct the samplesheet
+  row, then relaunch.
+- **Ask the user** before replacing any input file: it is their data. 🤖
+  Reading and comparing it is yours.
+
+#### `params`
+- **Look first:** the option the error names, against the params file this run
+  was launched with (`tw runs view -i <id> params`).
+- **Usual fix:** correct or remove that option, then relaunch.
+- ⏸ **Ask the user** before changing any pipeline parameter: that is a call
+  about the run that was requested, not about the site.
+
+#### `tool_bug`
+- **Look first:** the tool's name and version in the error, and whether the
+  same tool worked on other samples in this run.
+- **Usual fix:** a crash on valid input is not something to fix from here;
+  report it with the tool, version and the last lines, and check that tool's
+  issue tracker for a fixed version.
+- **Ask the user** before relaunching with a different tool or pipeline
+  version. This route ends in a report, not a repair: follow
+  `skills/operational/SKILL.md`'s "Off-design: when nothing here covers it" if
+  nothing known matches.
 
 ### Out of memory
 

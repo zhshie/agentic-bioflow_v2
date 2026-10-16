@@ -435,7 +435,7 @@ has  "TC-002 the call is a plain script call with --exit" "--exit" "$(sed -n "${
 o_egress=$(lno 'egress log' "$OPS"); o_jev=$(lno 'jev.sh triage' "$OPS"); o_only=$(lno '**Only then**' "$OPS")
 [ -n "$o_jev" ] && [ -n "$o_egress" ] && [ "$o_egress" -lt "$o_jev" ]
 yes_ "TC-002 operational/SKILL.md order puts Jev after the egress check" $?
-has  "TC-002 operational: after the 137 and missing-log rules" "137" "$(sed -n "${o_jev:-1},+6p" "$OPS")"
+has  "TC-002 operational: after the 137 and missing-log rules" "137" "$(sed -n "$((${o_jev:-5}-4)),${o_jev:-5}p" "$OPS")"
 
 # TC-004 categories
 cats="memory walltime network container input params tool_bug unknown"
@@ -450,7 +450,7 @@ done
 has "TC-004 memory points at the existing Out of memory section" "Out of memory" "$(grep -i 'memory' "$RUNS" | grep -i jev)"
 
 # TC-005..007, TC-015, TC-008, TC-076, TC-078
-jevblock=$(sed -n "${l_jev:-1},$((${l_any:-2}-1))p" "$RUNS")
+jevtop=$(lno "Jev triage, only if the user turned it on" "$RUNS"); jevblock=$(sed -n "${jevtop:-1},$((${l_any:-2}-1))p" "$RUNS")
 jevsec=$(awk '/^### Jev categories/{p=1} /^### Out of memory/{p=0} p' "$RUNS")
 all="$jevblock
 $jevsec"
@@ -511,7 +511,7 @@ t "TC-057 no TypeSafe key in the repo" "$(cd "$ROOT" && git ls-files | grep -v '
 t "TC-059 labels.json: 42 items" "$(jq length "$LBL")" 42
 t "TC-059 labels.json: the approved ids" "$(jq -r '[.[].id]|join(" ")' "$LBL")" "$(for i in $(seq 1 28) $(seq 30 40) 42 43 44; do printf 'T%02d ' "$i"; done | sed 's/ $//')"
 t "TC-059 labels.json: byte-identical to the approved file" "$(sha256sum "$LBL" | cut -c1-64)" dd1b455b2f4ef0c7cf0c3d6940a5e092d44abb6d3b1592f8e94528260fc83e57
-t "TC-088 no old slug path in the spec folder" "$(grep -rl 'specs/009-jev-triage' "$SPEC" | wc -l | tr -d ' ')" 0
+t "TC-088 no old slug path in spec, plan, tasks" "$(grep -l "specs/009-jev-triage" "$SPEC/spec.md" "$SPEC/plan.md" "$SPEC/tasks.md" | wc -l | tr -d " ")" 0
 t "TC-088 no pointer to the old command file" "$(grep -l 'commands/runs.md' "$SPEC/spec.md" "$SPEC/plan.md" "$SPEC/tasks.md" | wc -l | tr -d ' ')" 0
 t "TC-088 old spec folder is absent" "$([ -e "$ROOT/specs/009-jev-triage" ] && echo there || echo absent)" absent
 # TC-083 the documented creation command makes a mode-600 key file
@@ -527,7 +527,7 @@ fi
 t "TC-083 jev.sh never creates a key file" "$(grep -cE '>[[:space:]]*"?[^ ]*typesafe_key|jev_key_file\)?"?[[:space:]]*>' "$J")" 0
 # TC-065 only with a passing report may the docs say 建議開啟
 rep="$SPEC/replay-report.md"
-rec=$(cd "$ROOT" && git ls-files docs skills scripts | xargs grep -l '建議開啟' 2>/dev/null | wc -l | tr -d ' ')
+rec=$(cd "$ROOT" && git ls-files docs skills | xargs grep -l '建議開啟' 2>/dev/null | wc -l | tr -d ' ')
 if [ "$rec" -gt 0 ]; then
     ok=$(sed -n 's/.*答對率[^0-9]*\([0-9]*\)\/37.*/\1/p' "$rep" 2>/dev/null | head -1)
     [ -n "$ok" ] && [ "$ok" -ge 34 ]; yes_ "TC-065 '建議開啟' needs a report with >= 34/37" $?

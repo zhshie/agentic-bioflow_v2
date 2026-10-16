@@ -403,6 +403,32 @@ token_file() {
     printf '%s\n' "$(dirname "$SETTINGS_FILE")/.seqera_token"
 }
 
+# Feature 015 (optional Jev triage): the TypeSafe key sits beside the Seqera
+# token, by the same rule - the settings file's own directory, never a path of
+# anyone's machine - and is never printed (tests/credentials_stay_in_settings_test.sh).
+# The trade is the same one token_file() states: plaintext, mode 600, revocable
+# by the owner of the key. scripts/jev.sh never creates this file; the person
+# does, with the command in docs/SETTINGS.md.
+jev_key_file() {
+    if [ -n "${JEV_KEY_FILE:-}" ]; then printf '%s\n' "$JEV_KEY_FILE"; return 0; fi
+    printf '%s\n' "$(dirname "$SETTINGS_FILE")/.typesafe_key"
+}
+
+# The three Jev settings with their defaults; an environment variable
+# (JEV_ENABLED, JEV_DAILY_CAP, JEV_MIN_CONFIDENCE) beats the settings file.
+# Off by default: a deployment that never mentions Jev never talks to it.
+jev_setting() {   # jev_setting <enabled|daily_cap|min_confidence>
+    local name="$1" env_name def
+    case "$name" in
+        enabled)        env_name="${JEV_ENABLED:-}";        def=false ;;
+        daily_cap)      env_name="${JEV_DAILY_CAP:-}";      def=500 ;;
+        min_confidence) env_name="${JEV_MIN_CONFIDENCE:-}"; def=0.80 ;;
+        *) echo "unknown jev setting: $name" >&2; return 1 ;;
+    esac
+    if [ -n "$env_name" ]; then printf '%s\n' "$env_name"; return 0; fi
+    setting "jev.$name" "$def"
+}
+
 # One derivation of "is the WSL bridge in play", for on_site.sh, fetch.sh,
 # push.sh, reset_master.sh and detect_conditions.sh. Those five worked it out
 # four separate times when the bridge first landed, and two of the copies
@@ -1215,6 +1241,8 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
                 echo "no root set on this machine (see $ROOT_POINTER)" >&2; exit 1; fi ;;
         --machine-file)
             printf '%s\n' "${MACHINE_SETTINGS_FILE:-}" ;;
+        --jev)
+            jev_setting "${2:?usage: settings.sh --jev <enabled|daily_cap|min_confidence>}" ;;
         --reconstruct)
             reconstruct_settings ;;
         *)
