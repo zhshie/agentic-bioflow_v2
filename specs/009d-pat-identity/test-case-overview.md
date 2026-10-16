@@ -1,49 +1,45 @@
-# 測試案例總覽：009d 個人存取權杖（PAT）與使用者身分，`mcp --http` 必須帶權杖
+# 測試案例總覽：009d 個人存取權杖（PAT）——讓平台認得「誰在呼叫」，HTTP MCP 現在必須帶權杖
 
 狀態：合約已確認（2026-10-16，verifier）
 
-<!--
-Gate before code (constitution 2.1.0). Plan has no blocking finding; every sentence of the maintainer's
-three-sentence promise is covered by TCs that use his words. Non-blocking plan notes are in the verifier report.
--->
-
-**規格**：無 `spec.md`（依維護者指示，一律以 `specs/009d-pat-identity/plan.md` 為準；plan 的「給維護者」三句是他看得懂的承諾）　**明細**：`test-case.md`
+**規格**：無 `spec.md`；依維護者指示只用 `specs/009d-pat-identity/plan.md` 當依據　**明細**：`test-case.md`
 
 ## 一眼看完
 
 | User Story | 功能 | 例外 | 不在範圍 | 合計 |
 |---|---|---|---|---|
-| US1 — 在終端機建立使用者與發權杖（只顯示一次） | 7 | 2 | 2 | 11 |
-| US2 — `mcp --http` 必須帶權杖，stdio 不變 | 5 | 9 | 0 | 14 |
-| US3 — 權杖不開別的門，別種權杖也不開 MCP | 2 | 4 | 0 | 6 |
-| US4 — 身分只被記錄，不是新的確認方式 | 8 | 4 | 0 | 12 |
-| US5 — 舊檔相容、既有測試不變、文件 | 7 | 0 | 0 | 7 |
-| US6 — 這一步不做的事 | 0 | 0 | 8 | 8 |
-| 憲法與安全網 | 5 | 1 | 0 | 6 |
-| **合計** | 34 | 20 | 10 | 64 |
+| US1 — 建立使用者、發個人權杖，只在終端機、只顯示一次 | 9 | 3 | 0 | 12 |
+| US2 — `mcp --http` 必須帶權杖，否則 401；本機 stdio 不變 | 7 | 8 | 0 | 15 |
+| US3 — 一種權杖只開一扇門 | 2 | 5 | 0 | 7 |
+| US4 — 身分只是被記錄，不是新的確認方式 | 9 | 3 | 0 | 12 |
+| US5 — 文件、標頭、整體綠燈與紀錄 | 6 | 0 | 0 | 6 |
+| 不在範圍（計畫「Not in this PR」） | 0 | 0 | 8 | 8 |
+| 憲法與安全網 | 4 | 0 | 0 | 4 |
+| **合計** | 37 | 19 | 8 | 64 |
 
-自動驗證 62 條、手動驗證 2 條（TC-P46、TC-P58：由驗收者用 `git diff v3...HEAD` 比對，不需要你操作）。
+自動驗證 57 條、手動驗證 7 條（TC-B15、TC-E02、TC-E03、TC-E05、TC-E06、TC-F08、TC-G04，由驗收審查者讀 diff、`ledger.md`、文件，或在兩個分支各跑一次）。
 
 ## 請你判斷的三件事
 
-1. **每條是不是你要的？** 重點看三句：「`mcp --http` 現在必須帶 `Authorization: Bearer <PAT>`，否則 401；stdio（本機）不變、不用權杖」（US2）、「權杖只在終端機建立與撤銷，只顯示一次」（US1）、「送出與取消仍然只能在終端機按 y；身分只是被記錄下來，不是新的確認方式」（US4）。
-2. **有沒有漏掉的出錯情況？** 例如：權杖被撤銷、使用者被停用、拿錯種類的權杖、不帶權杖。
-3. **「不在範圍」對嗎？** 這次不做 OAuth、公開網址／TLS、角色權限（010）、每人算力限制、權杖到期／輪替、網頁登入。
+1. **每條是不是你要的？** 你的承諾只有計畫「給維護者」那三句：權杖只在終端機建立與撤銷且只顯示一次、`mcp --http` 不帶權杖就 401（stdio 不變）、送出與取消仍然只能在終端機按 y。看 TC-A02、TC-A07、TC-B01、TC-B10、TC-D05、TC-D06、TC-D08 是不是你的意思。
+2. **有沒有漏掉的出錯情況？** 想像別人（或模型）會怎麼用錯它：不帶標頭、寫成 Basic、亂填、用已撤銷的、用被停用使用者的、拿 run／agent 權杖冒充、拿 PAT 去打接收端或 agent 入口、帶著身分又想繞過終端機確認（TC-B01 至 TC-B07、TC-C01 至 TC-C04、TC-D05 至 TC-D07）。
+3. **「不在範圍」對嗎？** 這次不做：OAuth、公開網址／TLS、角色與實驗室權限、每人算力限制、權杖到期輪替、網頁登入、新的確認方式、改動釘住的測試與 hooks／憲法（TC-F01 至 TC-F08）。
 
 ## 覆蓋檢查
 
-- 規格裡的需求（FR）：沒有 spec.md；以 plan 的 7 條設計決定（Design 1 到 7）與 7 個變更步驟代替，全部都有測試案例：是。
-- plan「給維護者」三句（維護者的承諾）全部都有直接使用其用語的測試案例：是（第 1 句：TC-P01、P03、P06、P07；第 2 句：TC-P12 到 P21；第 3 句：TC-P34 到 P38、P57）。
-- plan「Not in this PR」共 8 條（OAuth／探索資料；公開網址與 TLS；角色／PI／實驗室權限；每人算力限制；權杖到期輪替；網頁登入；新的確認方式；PAT 或 user 工具／不得改動 TC-010、tc024、TC-061、LAUNCH_ALLOW、hooks、憲法、`.github/`），全部都有「不在範圍」測試案例：是（TC-P09、P10、P51 到 P58）。
-- plan「Pinned guards」九項皆有對應 TC：是（tc024、tc025、TC-010/TC-061、009b 規則、tc040、tc070、pyproject、credentials 腳本、test_cli/test_station_envs 見 TC-P42、P43、P46 到 P48、C02、C05）。
+- 規格裡的需求（FR）：無 `spec.md`，故無 FR。改以計畫的 7 項設計決定、7 步變更、Pinned guards 與 Constitution Check 逐條對應：全部都有測試案例：是
+- 規格裡的驗收情境：無；以計畫「給維護者」三句與 Changes 第 2 步列出的測試項目當情境，全部都有測試案例：是
+- 規格裡「不在範圍」共 8 條（計畫「Not in this PR」：OAuth 與 discovery、公開網址與 TLS、角色／PI／實驗室權限、每人算力限制、權杖到期或輪替、網頁登入、新的確認方式與 MCP 內的 PAT／使用者工具、不改釘住的測試／`LAUNCH_ALLOW`／hooks／憲法／`.github/`）：全部都有「不在範圍」測試案例：是（TC-F01 至 TC-F08）
 
 ## 我（撰寫者）不確定的地方
 
-1. `pat new --label` 的標籤要存在哪？plan 只說 tokens 加 `user_id`。（不影響檢查內容：TC-P04 只驗標籤在 `pat list` 看得到。）
-2. 沒有「停用使用者」的指令，是這一步刻意不做嗎？（TC-P17 靠直接改資料庫來製造停用。）
-3. 重複姓名的 `user add`、不存在使用者的 `pat new`，plan 沒說要怎麼回應；TC 只驗「不會有兩個同名使用者」。需要更明確的話，請回到 plan 補。
-4. 確認紀錄上記的是使用者姓名還是 id？TC 接受兩者其一，只要能辨認出是誰。
+1. 計畫沒有「停用使用者」的指令（只有 `user add` 與 `pat revoke`），但 `lookup_pat` 規定停用的使用者要被拒。TC-B06、TC-C06 只能在測試夾具裡直接設定 `disabled_at`。你要不要一個 `user disable` 指令？（要的話是另一步，不在這份合約。）
+2. `pat revoke <id>` 如果拿到不存在的 id，或拿到 run／agent 權杖的 id，計畫沒說該怎麼辦，我沒有為它出題。你希望它拒絕嗎？
+3. `user add` 重複姓名、`pat new` 找不到使用者的錯誤文字計畫沒寫；TC-A09、TC-A10 只要求「被拒絕、什麼都沒新增」，不要求特定字句。這樣可以嗎？
+4. TC-D12 把「`http_auth` 只能 import `store` 與 `actions`」讀成只限 abf_platform 內部模組（標準函式庫與 MCP／ASGI 套件不算），否則中介層寫不出來。對嗎？
+5. TC-B15、TC-E02、TC-E03、TC-E05、TC-E06、TC-F08、TC-G04 是看 diff、文件、ledger 或跨分支比較，`docs/TESTING.md` 沒有對應手動步驟；沿用 009b 的做法，標「手動」由驗收審查者執行，可以嗎？
+6. TC-C01、TC-C02 的「被拒絕」不指定狀態碼，只要求「與未知權杖被拒的方式相同」；TC-F01 假設 `mcp --http` 現在沒有 `/.well-known/*` 路由（若 SDK 預設有，以「本分支沒有新增 OAuth 欄位」為準）。
 
 ## 核可紀錄
 
-（無；本次由 verifier 確認合約，維護者未另行核可。）
+（無：本合約由 verifier 確認，維護者尚未另行核可。）
