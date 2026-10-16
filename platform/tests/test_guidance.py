@@ -422,6 +422,18 @@ def test_tc701_tc703_the_new_files_do_not_launch_read_env_or_confirm():
                 assert not any(re.search(r"confirm|jobs|terminal|abf_launch|actions", x) for x in names), (p.name, names)
 
 
+def test_tc701_the_http_routes_are_those_of_v3(tmp_path):
+    # TC-701 (routes half): the receiver keeps exactly the v3 routes (no launch/cancel/confirm path), and the MCP app is the one /mcp door.
+    from abf_platform import receiver
+    from test_actions_layer import ROUTES_V3
+    app = receiver.create_app(tmp_path / "index.db", tmp_path / "tokens.db")
+    got = sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in app.routes)
+    assert got == ROUTES_V3
+    assert not any(re.search(r"launch|cancel|confirm", path) for path, _ in got)
+    mcp_paths = sorted(getattr(r, "path", "?") for r in _server(tmp_path).streamable_http_app().routes)
+    assert mcp_paths == ["/mcp"]
+
+
 def test_tc705_dev_variables_change_nothing(tmp_path, monkeypatch):
     before = guidance().routing_instructions()
     for k in ("ABF_DEV", "ABF_PLATFORM_DEV", "ABF_PLATFORM_YES", "ABF_YES"):

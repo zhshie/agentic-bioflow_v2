@@ -17,3 +17,7 @@
 - `skills/` untouched; the six tools untouched. Plan's header for guidance.py was rewritten (tc070 judged the planned one IN-REPO).
 - `platform/tests` pytest (test_guidance, test_actions_layer, test_mcp, test_scope): 93 passed; TC-404 wheel build ran (not skipped).
 - Full suite (WSL, tests/run_all.sh, at the GREEN commit): 104/104 passed, all green. Rerun at HEAD after this ledger line: see executor-status.
+
+## Fix round (verifier: TC-701 had no route check)
+
+- Added `test_tc701_the_http_routes_are_those_of_v3` in `platform/tests/test_guidance.py`: receiver routes equal `ROUTES_V3` (imported from `test_actions_layer.py`), none match launch/cancel/confirm, and the MCP HTTP app has only `/mcp`. It guards behaviour that did not change, so it passed on first run (no code change was needed). No existing test touched.
