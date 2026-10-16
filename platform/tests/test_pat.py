@@ -134,8 +134,10 @@ def test_tca03_the_label_shows_in_pat_list(tmp_path):
     env = _env(tmp_path)
     run_cli(["user", "add", "alice", "--lab", "lab-x"], env=env)
     assert run_cli(["pat", "new", "--user", "alice", "--label", "筆電"], env=env).returncode == 0
+    assert run_cli(["pat", "new", "--user", "alice"], env=env).returncode == 0
     out = run_cli(["pat", "list"], env=env)
     assert out.returncode == 0 and "筆電" in out.stdout
+    assert _rows(_tokens(tmp_path), "SELECT label FROM tokens WHERE kind = 'pat' ORDER BY id") == [("筆電",), (None,)]
 
 
 def test_tca04_pat_list_one_row_each_marks_revoked_and_holds_no_value_or_hash(tmp_path):
@@ -219,7 +221,7 @@ def test_tca08_an_old_tokens_db_migrates(tmp_path):
     con.close()
     assert st.lookup_token(path, old)["kind"] == "run"
     uid = st.create_user(path, "alice", "lab-x")
-    pat = st.create_token(path, kind="pat", user_id=uid)
+    pat = st.create_token(path, kind="pat", user_id=uid, label="筆電")
     cols = {r[1] for r in _rows(path, "PRAGMA table_info(tokens)")}
     assert {"user_id", "label"} <= cols
     assert _rows(path, "SELECT name FROM users") == [("alice",)]
@@ -230,7 +232,7 @@ def test_tca09_pat_new_for_an_unknown_user_is_refused_and_creates_nothing(tmp_pa
     # TC-A09
     env = _env(tmp_path)
     r = run_cli(["pat", "new", "--user", "nobody"], env=env)
-    assert r.returncode != 0 and (r.stderr + r.stdout).strip()
+    assert r.returncode != 0 and len((r.stderr + r.stdout).strip().splitlines()) == 1
     assert not PAT_RE.findall(r.stdout + r.stderr)
     if _tokens(tmp_path).exists():
         assert _rows(_tokens(tmp_path), "SELECT COUNT(*) FROM tokens")[0][0] == 0
@@ -241,7 +243,7 @@ def test_tca10_a_second_user_add_with_the_same_name_is_refused(tmp_path):
     env = _env(tmp_path)
     assert run_cli(["user", "add", "王小明", "--lab", "lab-1"], env=env).returncode == 0
     r = run_cli(["user", "add", "王小明", "--lab", "lab-2"], env=env)
-    assert r.returncode != 0 and (r.stderr + r.stdout).strip()
+    assert r.returncode != 0 and len((r.stderr + r.stdout).strip().splitlines()) == 1
     assert _rows(_tokens(tmp_path), "SELECT name, lab FROM users") == [("王小明", "lab-1")]
 
 
@@ -682,6 +684,24 @@ def test_tcf05_a_pat_does_not_expire_and_there_is_no_rotate(tmp_path):
     for word in ("new", "list", "revoke"):
         assert word in h
     assert not re.search(r"rotat|renew|extend", h, re.I)
+    u = run_cli(["user", "--help"]).stdout
+    assert "add" in u and not re.search(r"disable|remove|delete|edit", u, re.I)
+
+
+def test_tcd14_tool_bodies_stay_one_call_with_caller_and_read_the_http_auth_context():
+    # TC-D14
+    tree = ast.parse((PKG / "mcp_server.py").read_text(encoding="utf-8"))
+    build = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "build_server"][0]
+    tools = [n for n in ast.walk(build) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not build]
+    assert len(tools) == 6
+    for fn in tools:
+        assert len(fn.body) == 1 and isinstance(fn.body[0], ast.Return), fn.name
+        call = fn.body[0].value
+        call = call.value if isinstance(call, ast.Await) else call
+        assert isinstance(call.func, ast.Attribute) and call.func.value.id == "actions" and call.func.attr == fn.name
+        kw = {k.arg: k.value for k in call.keywords}
+        assert list(kw) == ["caller"] and isinstance(kw["caller"], ast.Call) and kw["caller"].func.id == "_caller"
+        assert not [n for n in ast.walk(fn) if isinstance(n, (ast.If, ast.Try, ast.For, ast.While))]
 
 
 def test_tcf06_no_login_routes_and_no_cookie(tmp_path):
