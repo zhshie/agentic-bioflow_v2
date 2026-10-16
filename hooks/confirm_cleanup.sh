@@ -925,9 +925,10 @@ if [ "${#SEGMENTS}" -gt 8192 ]; then
     FILTERED=$(ABF_TRIG="$RE_TRIGGER" ABF_CWRE="$CW_HANDLED" ABF_LIST="$CW_LISTER" awk -F "$US" '
         BEGIN { t = ENVIRON["ABF_TRIG"]; c = ENVIRON["ABF_CWRE"]; l = ENVIRON["ABF_LIST"]
                 s = "(skipped)" FS "(skipped)" FS "__skipped__" }
-        # #110: the segment after a trailing `>` is its target (`>|` is cut in two)
+        # #110: a quoted `>` (gone from the quote-free column) in a command that can write keeps the segment;
+        # the segment after a trailing `>` is its target (`>|` is cut in two)
         p { printf "%s", b; b = ""; print; g = 0; p = 0; next }
-        $3 == "" || $3 ~ c || $2 ~ t { printf "%s", b; b = ""; print; g = 0; if ($2 ~ />[[:space:]]*$/) p = 1; next }
+        $3 == "" || $3 ~ c || $2 ~ t || ($1 ~ />/ && $3 !~ /^(echo|printf|git|grep|egrep|fgrep|rg|jq)$/) { printf "%s", b; b = ""; print; g = 0; if ($2 ~ />[[:space:]]*$/) p = 1; next }
         $3 ~ l { b = b $0 "\n"; next }
         { b = "" }
         !g { print s; g = 1 }
