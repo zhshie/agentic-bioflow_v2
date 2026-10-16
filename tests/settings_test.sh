@@ -171,7 +171,7 @@ echo
 # Two homes on one machine.
 #
 # The failure this prevents, measured on a real laptop: setup was done in WSL
-# (commands/setup.md requires it - PITFALLS 16b), and Claude Code's Bash tool
+# (skills/setup/SKILL.md requires it - PITFALLS 16b), and Claude Code's Bash tool
 # runs Git Bash. Different $HOME, a filesystem the other shell cannot read, and
 # an export in WSL's ~/.bashrc that this shell never sees. Every candidate path
 # is truthfully absent and the settings file is truthfully there, so the search

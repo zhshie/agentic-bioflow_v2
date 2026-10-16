@@ -15,9 +15,12 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
+. "$HERE/lib/flow_skills.sh"
 fail=0
-for f in "$ROOT"/commands/*.md; do
+read_n=0
+for f in $(flow_skill_files); do
     rel="${f#"$ROOT"/}"
+    [ -r "$f" ] && read_n=$((read_n+1))
     grep -qE '(^|[^A-Za-z0-9_/.-])(scripts|docs|configs)/[A-Za-z0-9_./-]+' "$f" || continue
     if ! grep -q 'CLAUDE_PLUGIN_ROOT' "$f"; then
         echo "$rel: names its own files but never says which root they are under"
@@ -25,6 +28,10 @@ for f in "$ROOT"/commands/*.md; do
     fi
 done
 
+if [ "$read_n" -ne 5 ]; then
+    echo "FAIL: read $read_n flow skill files, expected 5 - nothing was really checked."
+    exit 1
+fi
 if [ "$fail" = 1 ]; then
     echo
     echo "FAIL: a plugin user has no checkout - these paths resolve to nothing."

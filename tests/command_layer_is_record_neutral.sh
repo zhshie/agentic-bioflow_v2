@@ -4,7 +4,7 @@
 #
 # The command layer asks only "where does this run's record go" - it may not
 # name a record system by name, the same way it may not name a scheduler. A
-# specific ELN baked into commands/*.md or skills/operational/SKILL.md is a
+# specific ELN baked into skills/*/SKILL.md or skills/operational/SKILL.md is a
 # command that only works for a lab that picked that one, and this plugin
 # does not know, at the time these files are read, which one (if any) a given
 # deployment picked (docs/RECORD_ADAPTER.md - only `none` is implemented).
@@ -24,12 +24,14 @@ ROOT="${CMD_LAYER_ROOT:-$(cd "$HERE/.." && pwd)}"
 NAMES='eLabFTW|elabftw|RSpace|Benchling|LabArchives|SciNote|Labguru|Scispot|openBIS|Kadi4Mat|Chemotion|SampleDB'
 
 TARGETS=()
-[ -d "$ROOT/commands" ] && while IFS= read -r f; do TARGETS+=("$f"); done \
-    < <(find "$ROOT/commands" -maxdepth 1 -name '*.md' 2>/dev/null | sort)
+. "$HERE/lib/flow_skills.sh"
+for n in $FLOW_SKILLS; do [ -f "$(flow_skill_file "$n")" ] && TARGETS+=("$(flow_skill_file "$n")"); done
 [ -f "$ROOT/skills/operational/SKILL.md" ] && TARGETS+=("$ROOT/skills/operational/SKILL.md")
 
-if [ "${#TARGETS[@]}" -eq 0 ]; then
-    echo "FAIL: no command files found under $ROOT - nothing was checked."
+# Five flow skills + skills/operational/SKILL.md. A missing one is a failure,
+# not a skip: a test that reads fewer files than it claims proves nothing.
+if [ "${#TARGETS[@]}" -ne 6 ]; then
+    echo "FAIL: read ${#TARGETS[@]} skill files under $ROOT, expected 6 (five flow skills + operational) - nothing was really checked."
     exit 1
 fi
 
@@ -42,4 +44,4 @@ if [ -n "$hits" ]; then
     echo "scripts/record_adapter.sh - see docs/RECORD_ADAPTER.md."
     exit 1
 fi
-echo "OK: commands/ and skills/operational/SKILL.md name no record system"
+echo "OK: the five flow skills and skills/operational/SKILL.md name no record system"

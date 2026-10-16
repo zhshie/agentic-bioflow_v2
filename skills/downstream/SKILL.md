@@ -1,4 +1,5 @@
 ---
+name: downstream
 description: Turn a SUCCEEDED run's outputs into figures or further analysis
 argument-hint: [run id or path to results]
 ---

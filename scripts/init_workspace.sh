@@ -136,7 +136,7 @@ fi
 [ -n "$RUN_NAME" ] && [ -z "$PROJECT" ] \
     && die 2 "--run needs --project - a run belongs to one project." \
              "Ask which project this run is part of, or start a new one, before" \
-             "launching it. See commands/launch.md."
+             "launching it. See skills/launch/SKILL.md."
 if [ -n "$USER_NAME" ]; then
     case "$USER_NAME" in
         */*|.|..) die 2 "--user '$USER_NAME' must be a bare name, not a path." ;;

@@ -31,7 +31,7 @@ need hooks/plugin_intro.sh 'operational' \
      "the routing hint still points at the operational skill"
 
 # The skill's own first-action requirement (T5): the same script name every
-# commands/*.md file already requires of a typed command.
+# skills/*/SKILL.md file already requires of a typed command.
 need skills/operational/SKILL.md 'scripts/intro\.sh <command>' \
      "SKILL.md still names intro.sh as the first action"
 

@@ -1,4 +1,5 @@
 ---
+name: setup
 description: Prepare this cluster to run pipelines through Seqera Platform, or repair it when something broke
 ---
 

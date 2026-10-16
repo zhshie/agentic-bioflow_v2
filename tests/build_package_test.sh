@@ -180,7 +180,7 @@ grep -qF "this shell is unsupported" <<<"$out" \
   || ok "...never blames the shell"
 
 # ---------------------------------------------------------------------------
-# Issue #5: commands/downstream.md step 3b presents analysis.md's fields as a
+# Issue #5: skills/downstream/SKILL.md step 3b presents analysis.md's fields as a
 # column list, which reads naturally as a markdown table - and a
 # table-formatted analysis.md matched zero entries against the old
 # heading/bullet-block parser, with no error. The Results section came out

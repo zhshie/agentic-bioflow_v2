@@ -38,8 +38,8 @@ run finishes.
 for submission" is a `finish`.
 
 **Then read that command's file in full before doing anything else** —
-`${CLAUDE_PLUGIN_ROOT}/commands/<command>.md` when installed as a plugin,
-`commands/<command>.md` in the repository otherwise. This is not optional
+`${CLAUDE_PLUGIN_ROOT}/skills/<command>/SKILL.md` when installed as a plugin,
+`skills/<command>/SKILL.md` in the repository otherwise. This is not optional
 background reading. A user who types `/launch` has that whole file put in
 front of the model by the runtime; a user who says "I want to run RNA-seq"
 does not, and this skill is a summary of which command applies, never a
@@ -55,7 +55,7 @@ that works everywhere.
 `"${CLAUDE_PLUGIN_ROOT}/scripts/intro.sh"`, the repository root's
 otherwise - there is no `scripts/` beside this SKILL.md, and resolving it
 from here was the first failed call of the 2.15.0 Windows launch) — put its five sections in front of the user
-before doing anything else, exactly what every `commands/*.md` file's own
+before doing anything else, exactly what every `skills/*/SKILL.md` file's own
 "Before anything else" section already requires of a typed slash command.
 This skill is the *other* door into the same five commands (PRINCIPLES.md,
 "the skill is the heart, because it is the only part that works when the
@@ -73,7 +73,7 @@ says to.
 **T6: relay column output inside a fenced code block.** `preflight.sh`,
 `runs_board.sh`, `settings.sh`, `status.sh`, `tune_resources.sh`, `where.sh` and
 `why_pending.sh` line their output up with runs of spaces, and every
-`commands/*.md` file carries this same rule. Outside a code block a GUI
+`skills/*/SKILL.md` file carries this same rule. Outside a code block a GUI
 surface collapses those runs and the columns stop meaning anything
 (PITFALLS 35) - the same rendering difference that stopped the overview from
 being shipped in a hook's `systemMessage`.
@@ -233,7 +233,7 @@ situations this design did not anticipate. There are three:
 
 **Upstream pipeline problems are not this repo's to report.** A stale
 `tower.yml` or a pipeline bug belongs to the pipeline's own repository —
-tell the user that plainly (`commands/runs.md`'s SUCCEEDED section has the
+tell the user that plainly (`skills/runs/SKILL.md`'s SUCCEEDED section has the
 worked example) and stop; do not route it through `report.sh`.
 
 ## The safety net

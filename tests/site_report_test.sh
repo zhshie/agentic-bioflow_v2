@@ -1,7 +1,7 @@
 #!/bin/bash
 # Tests for scripts/site_report.sh (T9): one call bundling agent/resources/
 # provenance/inventory, in place of the two or three separate `on_site.sh`
-# round trips `commands/downstream.md` used to make back-to-back.
+# round trips `skills/downstream/SKILL.md` used to make back-to-back.
 #
 # site_report.sh finds its four dependencies beside itself
 # (`$(dirname "${BASH_SOURCE[0]}")`), which is also exactly how it runs once

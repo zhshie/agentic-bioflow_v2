@@ -6,7 +6,7 @@
 #
 #   setup_proof.sh --check
 #       exit 0 and `proven on this machine: <record>` if this machine has a
-#       record; exit 1 and say how to get one (commands/setup.md step 8) if not.
+#       record; exit 1 and say how to get one (skills/setup/SKILL.md step 8) if not.
 #   setup_proof.sh --record <run-id>
 #       asks Platform (`tw -o json runs list`, the same call and token loading
 #       as scripts/runs_board.sh) about that run. It is recorded only if the
@@ -52,7 +52,7 @@ if [ "$MODE" = check ]; then
         exit 0
     fi
     echo "not proven: this machine has not yet run nf-core/demo successfully on public test data."
-    echo "Do commands/setup.md step 8, then record the run with: scripts/setup_proof.sh --record <run-id>"
+    echo "Do skills/setup/SKILL.md step 8, then record the run with: scripts/setup_proof.sh --record <run-id>"
     exit 1
 fi
 

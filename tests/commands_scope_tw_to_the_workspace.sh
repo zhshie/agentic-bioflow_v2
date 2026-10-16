@@ -19,9 +19,12 @@ ROOT="$(cd "$HERE/.." && pwd)"
 
 SCOPED='tw (launch|pipelines|runs|datasets|compute-envs|actions|labels|secrets|members|teams|participants)'
 
+. "$HERE/lib/flow_skills.sh"
 fail=0
-for f in "$ROOT"/commands/*.md; do
+read_n=0
+for f in $(flow_skill_files); do
     rel="${f#"$ROOT"/}"
+    [ -r "$f" ] && read_n=$((read_n+1))
     grep -qE "$SCOPED" "$f" || continue
     if ! grep -q 'workspace_id' "$f"; then
         echo "$rel: calls a workspace-scoped tw subcommand but never says which workspace"
@@ -29,6 +32,10 @@ for f in "$ROOT"/commands/*.md; do
     fi
 done
 
+if [ "$read_n" -ne 5 ]; then
+    echo "FAIL: read $read_n flow skill files, expected 5 - nothing was really checked."
+    exit 1
+fi
 if [ "$fail" = 1 ]; then
     echo
     echo "FAIL: these calls will answer from the wrong workspace and look like an answer."

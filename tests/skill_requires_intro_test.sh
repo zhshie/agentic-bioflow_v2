@@ -1,5 +1,5 @@
 #!/bin/bash
-# T5: skills/operational/SKILL.md must say, as plainly as every commands/*.md
+# T5: skills/operational/SKILL.md must say, as plainly as every skills/*/SKILL.md
 # file already does, that the first action once a command is decided is
 # `scripts/intro.sh <command>`. This is the OTHER door into the five
 # commands (PRINCIPLES.md - "the skill is the heart, because it is the only
@@ -20,20 +20,24 @@ printf '%-70s ' "SKILL.md exists"
 
 t "names scripts/intro.sh as the first action once a command is decided" "scripts/intro.sh <command>"
 t "mentions running it before anything else" "first action"
-t "names --end for closing the flow, same as every commands/*.md file" "scripts/intro.sh --end <command>"
+t "names --end for closing the flow, same as every skills/*/SKILL.md file" "scripts/intro.sh --end <command>"
 
-# The same requirement, stated as a fact commands/*.md files ALSO carry -
+# The same requirement, stated as a fact skills/*/SKILL.md files ALSO carry -
 # every one of the five already opens with "Run \`scripts/intro.sh <cmd>\`".
 # This does not assert identical wording (that would make SKILL.md a copy of
 # five files instead of the second door PRINCIPLES.md describes) - only that
 # the same script name and the same "before anything else" idea is present
 # in both, so the two doors cannot silently drift into disagreement about
 # whether this call is required at all.
-printf '%-70s ' "every commands/*.md file agrees intro.sh runs before anything else"
+printf '%-70s ' "every skills/*/SKILL.md file agrees intro.sh runs before anything else"
 mismatch=""
-for f in "$ROOT"/commands/*.md; do
-    grep -qF "scripts/intro.sh" "$f" 2>/dev/null || mismatch="$mismatch $(basename "$f")"
+. "$HERE/lib/flow_skills.sh"
+read_n=0
+for f in $(flow_skill_files); do
+    [ -r "$f" ] && read_n=$((read_n+1))
+    grep -qF "scripts/intro.sh" "$f" 2>/dev/null || mismatch="$mismatch $(basename "$(dirname "$f")")"
 done
+[ "$read_n" -eq 5 ] || mismatch="$mismatch (read only $read_n of 5 files)"
 [ -z "$mismatch" ] && echo ok || { echo "FAIL: missing intro.sh mention in:$mismatch"; fails=$((fails+1)); }
 
 echo

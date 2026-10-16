@@ -88,7 +88,7 @@ TOKEN_FILE="$(token_file)"
 OVERRIDE_DIR="${RELAUNCH_OVERRIDE_DIR:-${LAB_RUNS_DIR:+${LAB_RUNS_DIR%/}/_overrides}}"
 if [ -z "$OVERRIDE_DIR" ]; then
     echo "LAB_RUNS_DIR is not set, so there is nowhere in the run area to keep" >&2
-    echo "the override. Set it (see commands/setup.md) or point" >&2
+    echo "the override. Set it (see skills/setup/SKILL.md) or point" >&2
     echo "RELAUNCH_OVERRIDE_DIR at the run area by hand." >&2
     exit 1
 fi

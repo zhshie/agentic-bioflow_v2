@@ -50,7 +50,7 @@ if [ "$PF_RC" = 0 ]; then
         exit 0
     fi
     echo "Settings are complete, but this machine has not yet proven the environment"
-    echo "on public test data - commands/setup.md step 8, then step 9 and 10."
+    echo "on public test data - skills/setup/SKILL.md step 8, then step 9 and 10."
     echo "Nothing before step 8 needs redoing."
     echo
     printf '%s\n' "$PF_OUT"
@@ -58,7 +58,7 @@ if [ "$PF_RC" = 0 ]; then
 fi
 
 echo "Settings exist, but preflight found something still missing - continuing"
-echo "into repair rather than first-run (commands/setup.md's 'Present -> repair')."
+echo "into repair rather than first-run (skills/setup/SKILL.md's 'Present -> repair')."
 echo
 printf '%s\n' "$PF_OUT"
 exit 1

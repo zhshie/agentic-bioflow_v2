@@ -23,11 +23,11 @@ real failures, each with the fix.
 
 ## Repository layout
 
-- `commands/` — the slash commands. Three follow Seqera's own nouns
-  (`setup.md`, `launch.md`, `runs.md`): compute environment →
+- `skills/` — the five flow skills (`setup`, `launch`, `runs`, `downstream`, `finish`, each a `SKILL.md` in Agent Skills format, exposed as slash commands in Claude Code) and `operational`. Three follow Seqera's own nouns
+  (`setup`, `launch`, `runs`): compute environment →
   pipelines/datasets/launch → runs. Two more cover what happens after a run
-  finishes: `downstream.md` from a SUCCEEDED run to accepted figures, and
-  `finish.md` from those to a package that can be sent somewhere. **Both carry
+  finishes: `downstream` from a SUCCEEDED run to accepted figures, and
+  `finish` from those to a package that can be sent somewhere. **Both carry
   no pipeline-specific knowledge, which is the condition under which either
   was allowed to exist** — `tests/no_per_pipeline_config.sh` scans them by
   name, so read their own headers before changing them. These are prose
@@ -110,8 +110,8 @@ real failures, each with the fix.
   <project>` (T29) is the same idea for `rawdata/`/`runs/`/`analysis/`/
   `submission/` on the local side, whose shape branches two ways (the old
   `<seqera_user>`-layered layout for a project already living there, the
-  current one for a new project) - `commands/downstream.md` and
-  `commands/finish.md` ask it rather than constructing a path themselves.
+  current one for a new project) - `skills/downstream/SKILL.md` and
+  `skills/finish/SKILL.md` ask it rather than constructing a path themselves.
 - `scripts/settings.sh --use`/`--migrate`/`--reconstruct` — **T30: one root
   the user names** (`docs/SETTINGS.md`), holding `config/env.yaml`, the
   token, `config/machines/<machine id>.yaml` for the keys that cannot
@@ -160,7 +160,7 @@ check the test file's header for the specific knobs it uses.
 
 ## Architecture: the site adapter
 
-The command layer (`commands/*.md`) is written to be **site-neutral** — it may
+The command layer (`skills/*/SKILL.md`) is written to be **site-neutral** — it may
 not name a scheduler, a partition, a queue, or a relay. It asks the adapter
 "what does the site need," and a site supplies six contracts (resource
 mapping, egress + refusal log, outputs-reading bridge, storage, a way to ask

@@ -124,7 +124,7 @@ not-used-by-another-machine rule on the proof limits the damage).
 **Every key in that file is discovered or recorded, never asked for** - `tw_bin` by
 `scripts/install_deps.sh`, `site_bridge` by probing for `wsl.exe`,
 `ssh_control_path` from its own default, `proof_run` from Platform's own answer (below). So the machines/ directory is not
-something a user has to know exists, and nothing but `proof_run` is lost if it is deleted - that one is earned again by step 8 of `commands/setup.md`.
+something a user has to know exists, and nothing but `proof_run` is lost if it is deleted - that one is earned again by step 8 of `skills/setup/SKILL.md`.
 
 `agent_java` and `agent_jar` are deliberately **not** on that list: under both
 `reach: local` and `reach: ssh` they are paths on the **site**, identical no
@@ -289,7 +289,7 @@ that spelling out of the config rather than trusting this page.
 skeleton applies going forward, to what gets created from here on - not
 retroactively to what already exists.
 
-Setup asks two questions that decide what gets built (`commands/setup.md`,
+Setup asks two questions that decide what gets built (`skills/setup/SKILL.md`,
 "Two more questions, before step 1"): where the source data already is
 (input is not really a choice - it has to end up on the site, because compute
 nodes are what read it, so `scripts/push.sh` moves it there when it starts on

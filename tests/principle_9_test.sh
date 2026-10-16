@@ -33,9 +33,9 @@ need scripts/build_package.sh 'no plan entry claims it' \
      "a figure nobody planned is called out"
 need scripts/build_package.sh 'trace to a file or to a script' \
      "the results prose is told where its numbers must come from"
-need commands/downstream.md   'from the data' \
+need skills/downstream/SKILL.md   'from the data' \
      "a figure is described from the data, never from the picture"
-need commands/finish.md       'never from memory' \
+need skills/finish/SKILL.md       'never from memory' \
      "the citation rule is stated where the work is done"
 
 # The one that is easiest to lose by accident: the manuscript must not gain

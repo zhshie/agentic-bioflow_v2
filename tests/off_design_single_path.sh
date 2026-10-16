@@ -40,7 +40,7 @@ printf '%-70s ' "SKILL.md carries the off-design heading exactly once"
 # way without a GNU-only flag (tests/portable_userland.sh forbids those).
 check_file() {
     local f="$1" name bad
-    name=$(basename "$f")
+    name=$(basename "$(dirname "$f")")
     bad=$(awk -v RS='' '
         /\*\*Anything else\.|[Dd]iagnose it fully|([Aa]ttempts?|[Tt]ry|[Tt]ries)[[:space:]]+(to[[:space:]]+|a[[:space:]]+)?fix|[Ff]ix it yourself|[Ww]ork around it|[Ff]igure (it )?out yourself|[Ii]mprovise/ {
             if ($0 !~ /skills\/operational\/SKILL\.md/ && $0 !~ /Off-design: when nothing here covers it/) {
@@ -59,25 +59,30 @@ check_file() {
     return 1
 }
 
-for f in "$ROOT"/commands/*.md; do
+. "$HERE/lib/flow_skills.sh"
+read_n=0
+for f in $(flow_skill_files); do
+    [ -r "$f" ] && read_n=$((read_n+1))
     check_file "$f" || fails=$((fails+1))
 done
+printf '%-70s ' "all five flow skill files were read"
+[ "$read_n" -eq 5 ] && echo ok || { echo "FAIL: read $read_n, expected 5"; fails=$((fails+1)); }
 
 # Positive control: runs.md's FAILED branch is exactly the case this file
 # exists to police (it used to read "Anything else. Diagnose it fully."),
 # so it must still point at the off-design section by path - the main loop
-# above would silently pass on an empty commands/ directory too.
-printf '%-70s ' "commands/runs.md's catch-all points at skills/operational/SKILL.md"
-grep -qF "skills/operational/SKILL.md" "$ROOT/commands/runs.md" && echo ok || { echo "FAIL"; fails=$((fails+1)); }
+# above would silently pass on an missing flow skills too.
+printf '%-70s ' "skills/runs/SKILL.md's catch-all points at skills/operational/SKILL.md"
+grep -qF "skills/operational/SKILL.md" "$ROOT/skills/runs/SKILL.md" && echo ok || { echo "FAIL"; fails=$((fails+1)); }
 
 # E1: downstream.md and finish.md had no off-design pointer anywhere in the
 # file - unlike setup.md, launch.md and runs.md, a step here that hit
 # something outside its own design had nowhere to go. Each now names the
 # off-design section at least once.
-for f in downstream.md finish.md; do
-    printf '%-70s ' "commands/$f points at the off-design section somewhere"
-    grep -qF "skills/operational/SKILL.md" "$ROOT/commands/$f" \
-      && grep -qF "Off-design: when nothing here covers it" "$ROOT/commands/$f" \
+for f in downstream finish; do
+    printf '%-70s ' "skills/$f/SKILL.md points at the off-design section somewhere"
+    grep -qF "skills/operational/SKILL.md" "$(flow_skill_file "$f")" \
+      && grep -qF "Off-design: when nothing here covers it" "$(flow_skill_file "$f")" \
       && echo ok || { echo "FAIL"; fails=$((fails+1)); }
 done
 

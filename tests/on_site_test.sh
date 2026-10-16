@@ -49,7 +49,7 @@ t "ssh: script mode ships settings.sh"    0 "script egress_ctl.sh"   -- --script
 
 # T9: scripts/site_report.sh bundles agent/resources/provenance/inventory into
 # one call, so a caller that used to make two or three `on_site.sh --script`
-# round trips (commands/downstream.md's step 1 + step 2's >500MB branch) now
+# round trips (skills/downstream/SKILL.md's step 1 + step 2's >500MB branch) now
 # makes one. It travels through --script exactly like any other script here -
 # nothing special about how on_site.sh routes it.
 t "ssh: site_report.sh is a valid --script target" 0 "script site_report.sh" \

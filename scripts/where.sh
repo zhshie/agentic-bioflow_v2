@@ -104,7 +104,7 @@ if [ "${1:-}" = --run-paths ]; then
     exit 0
 fi
 
-# T29: commands/downstream.md and commands/finish.md ask HERE for a project's
+# T29: skills/downstream/SKILL.md and skills/finish/SKILL.md ask HERE for a project's
 # local pieces rather than constructing the path themselves - the whole
 # reason this exists is that the shape now branches three ways (old layout,
 # new layout, portable-redirected analysis/submission) and a command file

@@ -11,7 +11,7 @@
 # three fail on the machine Claude's shell is actually running on -
 # why_pending.sh exits 2, the other two abort before their first line of real
 # work. check_resource_contract.sh is the same shape of script and is listed
-# for the same reason, even though nothing in commands/ names it today.
+# for the same reason, even though nothing in the flow skills names it today.
 #
 # Crude, like the other vocabulary checks here: a bare `scripts/<name>` is
 # what actually happened (runs.md:43, :90, :183; downstream.md:50; setup.md
@@ -29,7 +29,8 @@ ROOT="$(cd "$HERE/.." && pwd)"
 SITE_ONLY='why_pending|egress_ctl|agent_ctl|check_resource_contract'
 
 fail=0
-hits=$(grep -rnE "scripts/($SITE_ONLY)\.(sh|py)" "$ROOT/commands" 2>/dev/null) || true
+. "$HERE/lib/flow_skills.sh"
+hits=$(grep -nE "scripts/($SITE_ONLY)\.(sh|py)" $(flow_skill_files) 2>/dev/null) || true
 
 if [ -n "$hits" ]; then
     while IFS= read -r hit; do
@@ -43,7 +44,7 @@ if [ -n "$hits" ]; then
         fi
     done <<<"$hits"
 else
-    echo "FAIL: no site-only script is named in commands/ at all - this test has nothing to check."
+    echo "FAIL: no site-only script is named in the flow skills at all - this test has nothing to check."
     echo "  (expected at least why_pending.sh, egress_ctl.sh and agent_ctl.sh to appear)"
     fail=1
 fi
@@ -53,4 +54,4 @@ if [ "$fail" = 1 ]; then
     echo "FAIL: a site-only script is called where the site cannot be reached."
     exit 1
 fi
-echo "OK: every site-only script named in commands/ is routed through scripts/on_site.sh"
+echo "OK: every site-only script named in the flow skills is routed through scripts/on_site.sh"

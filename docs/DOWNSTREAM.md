@@ -1,6 +1,6 @@
 # Downstream: worked examples
 
-`commands/downstream.md` reads a results tree through
+`skills/downstream/SKILL.md` reads a results tree through
 `scripts/inventory_outputs.py` and knows nothing about any pipeline. This file
 is where the pipeline-specific knowledge goes instead — because examples go
 stale the moment a pipeline changes its output layout, and the command must

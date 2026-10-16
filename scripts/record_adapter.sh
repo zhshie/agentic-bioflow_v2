@@ -9,7 +9,7 @@
 # Mirrors on_site.sh's shape for a different question. The command layer never
 # names a record system - it asks this adapter to resolve, attach or look up a
 # reference, and the adapter answers. Full contract in docs/RECORD_ADAPTER.md;
-# tests/command_layer_is_record_neutral.sh enforces that commands/*.md and
+# tests/command_layer_is_record_neutral.sh enforces that `skills/*/SKILL.md` and
 # skills/operational/SKILL.md never name one either.
 #
 #   record_adapter.sh resolve <ref>

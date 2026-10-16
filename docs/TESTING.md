@@ -133,7 +133,7 @@ The machine part is `tests/platform_test.sh` (run by `run_all.sh`). These seven 
 3. *The whole suite is green where it matters (TC-052).* In WSL (Windows) run `cd ~ && wsl.exe -d Ubuntu -- bash -c 'cd /mnt/c/<path to the repo> && bash tests/run_all.sh'`, or `bash tests/run_all.sh` in Linux. The output must show `platform_test.sh` ran and passed, and no line `E2E SKIPPED`. Then read the CI result of the pull request: the same, `platform_test.sh` passed, nothing skipped. (`conditions_matrix_test.sh` fails in WSL for a reason that predates this feature; compare with `main`.)
 4. *A real pipeline from the internet (TC-053).* In WSL, with the receiver and a token as in `docs/PLATFORM.md`, run `nextflow run nextflow-io/hello -with-tower http://127.0.0.1:8787` once so that it succeeds, and once made to fail (for example by stopping the run with Ctrl-C part way, or by pointing it at an input that does not exist). `list_runs` and `get_run` must show the same state and the same task numbers as Nextflow printed. This is the one check that uses a pipeline fetched from the internet; the automated tests use only the local fixtures.
 5. *The constitution was not touched (TC-063).* `git diff main...HEAD -- .specify/memory/constitution.md` is empty, and its version line still reads 3.0.0. In `docs/ROADMAP.md`, the row "The platform's run index is never a second truth" is still in the table "Principles waiting for a check", with only a note added that the check exists (`platform/tests/test_nextflow_e2e.py`, `test_tc030_rebuild_gives_back_every_field`) and the amendment is next. It must not have moved into the constitution.
-6. *The plugin was not touched (TC-064).* `git diff main...HEAD --stat -- hooks/ scripts/ skills/ commands/ .claude-plugin/` lists nothing.
+6. *The plugin was not touched (TC-064).* `git diff main...HEAD --stat -- hooks/ scripts/ skills/ .claude-plugin/` lists nothing.
 7. *The existing checks were not touched (TC-073).* `git diff main...HEAD --stat -- tests/no_hardcoded_paths.sh tests/scripts_name_their_alternative.sh tests/no_second_run_state_test.sh tests/run_all.sh` lists nothing. `bash tests/run_all.sh --list` includes `platform_test.sh`, and those three checks pass as before.
 
 **When a release adds or changes the station agent or the compute environments (`platform/abf_station/`, `docs/PLATFORM.md` sections 6 to 8; feature 007).**
@@ -158,7 +158,7 @@ The machine part is `tests/platform_test.sh` (run by `run_all.sh`): it starts a 
    Then list the same `results` folder again with `list_site_files`: nothing may have changed. (`rm` is not a job kind, and no job kind writes.)
 4. *Both suites are green where it matters (TC-081).* In WSL run `bash tests/run_all.sh` (`cd ~ && wsl.exe -d Ubuntu -- bash -c 'cd /mnt/c/<path to the repo> && bash tests/run_all.sh'` from Git Bash); the output must show `platform_test.sh` passed and no `E2E SKIPPED`. Then read the CI result of the pull request: the same, nothing skipped.
 5. *The constitution was not touched (TC-088).* `git diff main...HEAD -- .specify/memory/constitution.md` is empty and its version line still reads 3.0.0. In `docs/ROADMAP.md` the rows of "Principles waiting for a check" are all still in that table (a note that a check exists is the most that may be added).
-6. *The existing checks and the plugin were not touched (TC-093).* `git diff main...HEAD --stat -- tests/no_hardcoded_paths.sh tests/scripts_name_their_alternative.sh tests/no_second_run_state_test.sh tests/command_layer_is_site_neutral.sh tests/credentials_stay_in_settings_test.sh tests/run_all.sh hooks/ scripts/ skills/ commands/ .claude-plugin/` lists nothing, and `bash tests/run_all.sh --list` includes `platform_test.sh`.
+6. *The existing checks and the plugin were not touched (TC-093).* `git diff main...HEAD --stat -- tests/no_hardcoded_paths.sh tests/scripts_name_their_alternative.sh tests/no_second_run_state_test.sh tests/command_layer_is_site_neutral.sh tests/credentials_stay_in_settings_test.sh tests/run_all.sh hooks/ scripts/ skills/ .claude-plugin/` lists nothing, and `bash tests/run_all.sh --list` includes `platform_test.sh`.
 7. *No 008 assertion was weakened (TC-094).* `git diff main...HEAD -- platform/tests/test_mcp.py platform/tests/test_scope.py platform/tests/test_receiver.py platform/tests/test_cli.py platform/tests/test_secrets.py platform/tests/test_status.py platform/tests/test_common.py platform/tests/test_nextflow_e2e.py platform/tests/test_wrapper.py platform/tests/conftest.py platform/tests/helpers.py platform/tests/e2e_harness.py`: only the named changes appear. The tool count of the two MCP tests goes from two to six, every tool still read-only and no input field named like a command; the header check of `test_scope.py` also covers `abf_station/`. Any removed, loosened or re-valued assertion is a failure.
 8. *The plan answers the constitution (TC-095).* Read `specs/007-station-agent/plan.md`, "Constitution Check": it must answer principle 1 (the alternatives), principle 2 (why the poll loop and the job table are neither a monitoring daemon nor a state machine), principle 3, section II-4 (why modelling thirteen types is allowed), principle V (WSL and Git Bash), principle VI, the Safety Net scope (the agent is a path that passes no hook; its allow-list and the tests guard it) and where credentials live.
 
@@ -174,7 +174,7 @@ The machine part is `tests/platform_test.sh`. These cases need the real cluster 
 4. *Seqera comparison (TC-050).* While the run of step 1 is going, compare `get_run` with what Seqera showed for the 2026-09-20 run (process names, how the counts grow). Write down in plain words what is missing compared with Seqera and check `docs/SEQERA_PARITY.md` section L says the same (the list of every task, CPU and memory, logs and reports, a queued state).
 5. *The tests cannot be talked out of it (TC-053).* In `platform/abf_station/launch.py` temporarily remove the lines of `verify_confirmation` that compare the hashes; run `test_unconfirmed_launch_is_refused` and the tests of TC-007, TC-008, TC-009 in `platform/tests/test_station_launch.py`: all four go red. Restore the file and they go green. Put the steps and results in the acceptance report.
 6. *Existing assertions were only narrowed (TC-060).* `git diff main...HEAD -- platform/tests tests` shows, among the existing tests, changes only in `test_station_envs.py` (the two subcommand/help assertions), `test_station_platform.py` (the job kinds and the one table name that may contain "run"), `test_station_static.py` (the launch module may hold the submitting words) and `tests/no_second_run_state_test.sh` (LAUNCH_ALLOW and its self-test); no assertion is deleted, weakened or turned into a skip.
-7. *Nothing else was touched (TC-076).* `git diff main...HEAD --stat -- hooks skills commands .claude-plugin .github scripts tests` lists no change under `hooks/`, `skills/`, `commands/`, `.claude-plugin/`, `.github/`; under `scripts/` only `on_site.sh` (the three forward options) and `nf_relay.py` (the loopback rule); under `tests/` only `no_second_run_state_test.sh` and `platform_test.sh` (the second pinned Nextflow).
+7. *Nothing else was touched (TC-076).* `git diff main...HEAD --stat -- hooks skills .claude-plugin .github scripts tests` lists no change under `hooks/`, `skills/`, `.claude-plugin/`, `.github/`; under `scripts/` only `on_site.sh` (the three forward options) and `nf_relay.py` (the loopback rule); under `tests/` only `no_second_run_state_test.sh` and `platform_test.sh` (the second pinned Nextflow).
 8. *The relay question and the constitution (TC-077).* `git diff main...HEAD -- .specify/memory/constitution.md` is empty. The pull request description asks the maintainer, as a separate question, whether the relay may reach one loopback destination, and attaches the comparison with main (the 30-request golden file `platform/tests/fixtures/relay_golden.json`).
 
 ## Half 3 — procedures the constitution cites
@@ -190,8 +190,8 @@ constitution cites a Procedure whose heading is not in this file.
 
 ### Procedure P1: onboarding without the maintainer (Constitution III.7)
 
-When: every release that touches `commands/setup.md`, `commands/launch.md`,
-`skills/`, or anything a first-time user is shown. Once a quarter otherwise.
+When: every release that touches `skills/setup/SKILL.md`, `skills/launch/SKILL.md`,
+`skills/runs/SKILL.md`, `skills/downstream/SKILL.md`, `skills/finish/SKILL.md`, or anything a first-time user is shown. Once a quarter otherwise.
 
 Who: someone who has not worked on this plugin and is not the maintainer. A
 lab member who has never used it is right; the maintainer pretending to be new
@@ -254,6 +254,77 @@ Automation is not offered for this procedure on purpose. A script can see that
 an entry has a date or a code block, and every entry does; it cannot see
 whether the date is of a real failure. A check that is green for everything
 proves nothing.
+
+## When a release moves the flow files (commands → skills)
+
+Used by whoever reviews a change that moves or renames the five flow files
+(first used by 009a, `commands/<name>.md` → `skills/<name>/SKILL.md`). Run from
+the PR branch; "base" is `v3`, never `main`.
+
+1. *Five renames, content kept.* `git diff -M --stat v3...HEAD` shows five
+   renames, each with similarity of at least 95%. The body diff of each file is
+   only the added `name:` line and `commands/<name>.md` → `skills/<name>/SKILL.md`
+   path pointers; no judgment text, step or wording changed, and nothing was
+   rewritten to call platform actions.
+2. *`description:` unchanged.* Compare each file's `description:` before (on the
+   base) and after: identical, character for character.
+3. *`argument-hint:` and `model:` unchanged.* `finish` still has `model: sonnet`;
+   `launch`, `runs`, `downstream`, `finish` keep their `argument-hint:`; `setup`
+   still has none.
+4. *`claude plugin validate .`* passes; the output is in the ledger.
+5. *`.claude-plugin/marketplace.json`* description begins "Five skills (slash
+   commands in Claude Code):" and the rest of the sentence is unchanged.
+6. *`CHANGELOG.md`* has the one line under Unreleased naming the move.
+7. *The PR base is `v3` and `main` is untouched.* Note `main`'s sha before the
+   work (the one in the PR description, or `git rev-parse origin/main` taken
+   earlier) and compare it after: `git rev-parse origin/main` gives the same
+   sha, and `git log origin/main..HEAD` lists only this branch's commits.
+   (`git diff main...main` is always empty and proves nothing.)
+8. *Old location gone.* `commands/` does not exist. Exemptions to the stale-path
+   guard in `tests/flow_skills_layout_test.sh` are only those listed in that
+   file with a reason each.
+9. *Pointers and messages.* `skills/operational/SKILL.md` differs from the base
+   only in path pointers; every message printed by `scripts/` that names a flow
+   file names an existing `skills/<name>/SKILL.md`; the diff of `scripts/` is
+   string literals and comments only.
+10. *Out of scope stays untouched.* No change under `hooks/`, `platform/`,
+    `.github/`, `.specify/memory/constitution.md`; the version in
+    `.claude-plugin/plugin.json` is unchanged; no Codex `plugin.json`, no
+    `.mcp.json`, no `docs/INSTALL.md` was added.
+11. *No test was loosened.* Compare every touched test with its base version:
+    only paths, texts and the source of the file list changed; no assertion was
+    deleted, skipped or relaxed. A loop over the five files must fail when it
+    reads fewer than five.
+12. *The five commands work.* Restart Claude Code with the plugin: `/agentic-bioflow:setup`,
+    `:launch`, `:runs`, `:downstream`, `:finish` each appear exactly once, and
+    opening one shows the same flow as before.
+13. *Red before green.* `specs/009a-skills-format/ledger.md` records the failing
+    run of `tests/flow_skills_layout_test.sh` before the move; in `git log` the
+    `RED:` commit comes before the `GREEN:` commit. To see it again, check out
+    the `RED:` commit and run the test: it fails and names the missing
+    `skills/<name>/SKILL.md`; at HEAD it passes.
+14. *The `tw`-era tests and scripts are all still there.*
+    `git diff -M --name-status v3...HEAD` shows no `D` line for `tests/` or
+    `scripts/`; in the diffs of `commands_scope_tw_to_the_workspace.sh`,
+    `no_second_run_state_test.sh`, `launch_provenance_test.sh`,
+    `prepare_launch_test.sh`, `egress_allow_test.sh`, `runs_report_format_test.sh`
+    and `setup_doc_test.sh` no assertion line is removed (only paths and texts
+    change).
+15. *History is untouched.* `git diff --stat v3...HEAD` lists nothing under
+    `docs/PITFALLS.md`, `docs/adr/`, or any `specs/*` other than
+    `specs/009a-skills-format/`; `.specify/memory/constitution.md` is not listed.
+16. *Fixture strings.* `tests/confirm_launch_test.sh:74` and the synthetic inputs
+    in `tests/command_layer_is_site_neutral.sh` (about lines 55-62) still say
+    `commands/...`: they are test inputs. One recorded exception: in
+    `tests/no_second_run_state_test.sh` the two `commands/a.md` fixture paths
+    became `skills/a/SKILL.md` and the scratch trees no longer create
+    `commands/`, because that test now scans `skills/` only and a fixture under
+    `commands/` would never be read. The fixture text itself is unchanged; the
+    ledger records this deviation.
+17. *Deliberate leftovers.* `platform/tests/test_scope.py:65` still has
+    `commands/` in its regex (last ledger line says so);
+    `hooks/plugin_intro.sh:277` and `hooks/confirm_walkthrough.sh:7` still say
+    `commands/` in comments, and `hooks/` has no diff.
 
 ## When something is red
 

@@ -714,7 +714,7 @@ def jupyter_client_problem():
     because of what used to happen without it. --check passed, a session was
     found, the file holding that session's HMAC key was written to disk, and
     only then did `from jupyter_client import ...` fail - with a raw traceback,
-    out of a tool that weighs every other line it prints. commands/downstream.md
+    out of a tool that weighs every other line it prints. skills/downstream/SKILL.md
     tells a person to run --check first and stop if it reports trouble; a check
     that passes when the run cannot possibly work is not a check.
     """

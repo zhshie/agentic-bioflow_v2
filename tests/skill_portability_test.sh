@@ -19,9 +19,7 @@ fails=0
 t()  { printf '%-70s ' "$1"; grep -qF -- "$2" <<<"$3" && echo ok || { echo "FAIL: lacks '$2'"; fails=$((fails+1)); }; }
 eq() { printf '%-70s ' "$1"; [ "$2" = "$3" ] && echo ok || { echo "FAIL: got '$2', wanted '$3'"; fails=$((fails+1)); }; }
 
-printf '%-70s ' "SKILL.md exists"
-[ -r "$SKILL" ] && echo ok || { echo "FAIL: $SKILL not found"; echo; echo "1 failed"; exit 1; }
-
+shape_checks() {  # shape_checks <path to a SKILL.md> <label>
 # --- frontmatter: a valid YAML block between the first two '---' lines,
 # carrying at least `name` and `description`. Not a real YAML parser - this
 # repo's own rule for its settings file (scripts/settings.sh) applies here
@@ -32,11 +30,11 @@ awk '
     NR==1 { if ($0 != "---") { print "BADSTART"; exit 1 } next }
     /^---$/ { exit 0 }
     { print }
-' "$SKILL" > "$FRONT" 2>/dev/null
+' "$1" > "$FRONT" 2>/dev/null
 front_ok=1
 [ -s "$FRONT" ] || front_ok=0
 
-printf '%-70s ' "frontmatter block is present and non-empty"
+printf '%-70s ' "$2: frontmatter block is present and non-empty"
 [ "$front_ok" = 1 ] && echo ok || { echo "FAIL"; fails=$((fails+1)); }
 
 bad_lines=0
@@ -47,24 +45,69 @@ while IFS= read -r line; do
         *) bad_lines=$((bad_lines+1)) ;;
     esac
 done < "$FRONT"
-printf '%-70s ' "every frontmatter line is a plain 'key: value'"
+printf '%-70s ' "$2: every frontmatter line is a plain 'key: value'"
 [ "$bad_lines" = 0 ] && echo ok || { echo "FAIL: $bad_lines line(s) do not parse as key: value"; fails=$((fails+1)); }
 
 name_val=$(sed -n 's/^name:[[:space:]]*//p' "$FRONT" | head -1)
 desc_val=$(sed -n 's/^description:[[:space:]]*//p' "$FRONT" | head -1)
 rm -f "$FRONT"
 
-printf '%-70s ' "frontmatter has a 'name' key"
+printf '%-70s ' "$2: frontmatter has a 'name' key"
 [ -n "$name_val" ] && echo ok || { echo "FAIL: no name: line"; fails=$((fails+1)); }
-printf '%-70s ' "name matches ^[a-z0-9-]+\$"
+printf '%-70s ' "$2: name matches ^[a-z0-9-]+\$"
 [[ "$name_val" =~ ^[a-z0-9-]+$ ]] && echo ok || { echo "FAIL: '$name_val'"; fails=$((fails+1)); }
 
-printf '%-70s ' "frontmatter has a 'description' key"
+printf '%-70s ' "$2: frontmatter has a 'description' key"
 [ -n "$desc_val" ] && echo ok || { echo "FAIL: no description: line"; fails=$((fails+1)); }
-printf '%-70s ' "description is non-empty and <= 1024 chars"
+printf '%-70s ' "$2: description is non-empty and <= 1024 chars"
 [ -n "$desc_val" ] && [ "${#desc_val}" -le 1024 ] && echo ok \
     || { echo "FAIL: length ${#desc_val}"; fails=$((fails+1)); }
 
+# --- every ${CLAUDE_PLUGIN_ROOT} mention carries its "otherwise" in the same
+# paragraph. Same paragraph-grouping trick tests/off_design_single_path.sh
+# uses (awk RS='', portable - no GNU-only paragraph flag).
+bad=$(awk -v RS='' '
+    /\$\{CLAUDE_PLUGIN_ROOT\}/ {
+        if ($0 !~ /otherwise/) {
+            print "----- paragraph with no otherwise -----"
+            print $0
+        }
+    }
+' "$1")
+printf '%-70s ' "$2: every \${CLAUDE_PLUGIN_ROOT} mention has 'otherwise' in the same paragraph"
+if [ -z "$bad" ]; then
+    echo ok
+else
+    echo "FAIL"
+    printf '%s\n' "$bad"
+    fails=$((fails+1))
+fi
+
+# --- positive control: at least one ${CLAUDE_PLUGIN_ROOT} mention exists, so
+# the check above is not vacuously passing on an empty file.
+printf '%-70s ' "$2: SKILL.md mentions \${CLAUDE_PLUGIN_ROOT} at least once"
+grep -qF '${CLAUDE_PLUGIN_ROOT}' "$1" && echo ok || { echo "FAIL"; fails=$((fails+1)); }
+
+}
+
+printf '%-70s ' "SKILL.md exists"
+[ -r "$SKILL" ] && echo ok || { echo "FAIL: $SKILL not found"; echo; echo "1 failed"; exit 1; }
+
+# TC-027: the shape checks run over all six skills (the five flow skills moved
+# from commands/ in 009a, plus operational).
+. "$HERE/lib/flow_skills.sh"
+read_n=0
+for n in $FLOW_SKILLS; do
+    f="$(flow_skill_file "$n")"
+    [ -r "$f" ] && read_n=$((read_n+1))
+    [ -r "$f" ] && shape_checks "$f" "$n" || { printf '%-70s FAIL: %s not found
+' "$n: SKILL.md exists" "$f"; fails=$((fails+1)); }
+done
+printf '%-70s ' "all five flow skills were read"
+[ "$read_n" = 5 ] && echo ok || { echo "FAIL: read $read_n of 5"; fails=$((fails+1)); }
+shape_checks "$SKILL" operational
+
+# TC-028/TC-040: from here on, operational only (heading, H3, LAB_AGENTS).
 # --- the section: exactly one occurrence, exact heading text -----------------
 count=$(grep -Fxc "$HEADING" "$SKILL")
 eq "the heading appears exactly once, verbatim" "$count" "1"
@@ -86,30 +129,6 @@ t "the section names tier H3"                 "H3"                  "$(cat "$SEC
 t "the section points at docs/LAB_AGENTS.md"  "docs/LAB_AGENTS.md"  "$(cat "$SECTION")"
 rm -f "$SECTION"
 
-# --- every ${CLAUDE_PLUGIN_ROOT} mention carries its "otherwise" in the same
-# paragraph. Same paragraph-grouping trick tests/off_design_single_path.sh
-# uses (awk RS='', portable - no GNU-only paragraph flag).
-bad=$(awk -v RS='' '
-    /\$\{CLAUDE_PLUGIN_ROOT\}/ {
-        if ($0 !~ /otherwise/) {
-            print "----- paragraph with no otherwise -----"
-            print $0
-        }
-    }
-' "$SKILL")
-printf '%-70s ' "every \${CLAUDE_PLUGIN_ROOT} mention has 'otherwise' in the same paragraph"
-if [ -z "$bad" ]; then
-    echo ok
-else
-    echo "FAIL"
-    printf '%s\n' "$bad"
-    fails=$((fails+1))
-fi
-
-# --- positive control: at least one ${CLAUDE_PLUGIN_ROOT} mention exists, so
-# the check above is not vacuously passing on an empty file.
-printf '%-70s ' "SKILL.md mentions \${CLAUDE_PLUGIN_ROOT} at least once"
-grep -qF '${CLAUDE_PLUGIN_ROOT}' "$SKILL" && echo ok || { echo "FAIL"; fails=$((fails+1)); }
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

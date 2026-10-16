@@ -190,7 +190,7 @@ bad_nouns=""
 while IFS= read -r noun; do
     [ -n "$noun" ] || continue
     case "$TW_NOUNS" in *" $noun "*) ;; *) bad_nouns="$bad_nouns $noun" ;; esac
-done < <(grep -rhoE '(^|[^[:alnum:]_/.-])tw[[:space:]]+[a-z][a-z-]+' "$ROOT/commands" "$ROOT/skills" 2>/dev/null \
+done < <(grep -rhoE '(^|[^[:alnum:]_/.-])tw[[:space:]]+[a-z][a-z-]+' "$ROOT/skills" 2>/dev/null \
          | sed -E 's/^.*tw[[:space:]]+//' | sort -u)
 # "tw" followed by an ordinary English word is prose, not a command; the
 # command layer writes `tw ...` in backticks or code blocks, and the nouns it
@@ -215,7 +215,7 @@ if [ -z "${NO_RUN_STATE_ROOT:-}" ]; then
     S=$(mktemp -d); trap 'rm -rf "$S"' EXIT
     selffails=0
     case_() { # case_ <label> <want-rc> <file under scratch> <line>
-        rm -rf "$S/t"; mkdir -p "$S/t/scripts" "$S/t/commands" "$S/t/skills"
+        rm -rf "$S/t"; mkdir -p "$S/t/scripts" "$S/t/skills/a"
         printf '#!/bin/bash\n%s\n' "$4" > "$S/t/$3"
         NO_RUN_STATE_ROOT="$S/t" bash "${BASH_SOURCE[0]}" >/dev/null 2>&1; rc=$?
         [ "$rc" = "$2" ] || { echo "SELFTEST FAIL: $1 (rc $rc, wanted $2)"; selffails=$((selffails + 1)); }
@@ -247,13 +247,13 @@ do :; done'
     case_ "tw runs view cached with >> fails"      1 scripts/a.sh 'tw runs view x >> out.txt'
     case_ "tw runs list to /dev/null passes"       0 scripts/a.sh 'tw runs list >/dev/null 2>&1'
     case_ "tw runs list read into a variable passes" 0 scripts/a.sh 'out=$(tw runs list)'
-    case_ "an invented tw noun fails"             1 commands/a.md 'Run `tw frobnicate -i 1` first.'
-    case_ "a Seqera noun passes"                  0 commands/a.md 'Run `tw runs list` first.'
+    case_ "an invented tw noun fails"             1 skills/a/SKILL.md 'Run `tw frobnicate -i 1` first.'
+    case_ "a Seqera noun passes"                  0 skills/a/SKILL.md 'Run `tw runs list` first.'
     # Constitution 4.0.0: scan 1 also reads platform/abf_platform and platform/abf_station.
     # lt_ makes an empty scratch tree; lf_ writes a file into it; lrun_ runs the check
     # on it with LAUNCH_ALLOW_EXTRA set, and wants an exit code and an output line
     # (an ERE, anchored with ^ where the line must open with the word).
-    lt_() { rm -rf "$S/t"; mkdir -p "$S/t/scripts" "$S/t/commands" "$S/t/skills" "$S/t/platform/tests" "$S/t/platform/abf_station" "$S/t/platform/abf_platform"; }
+    lt_() { rm -rf "$S/t"; mkdir -p "$S/t/scripts" "$S/t/skills" "$S/t/platform/tests" "$S/t/platform/abf_station" "$S/t/platform/abf_platform"; }
     lf_() { mkdir -p "$(dirname "$S/t/$1")"; printf '%s\n' "$2" > "$S/t/$1"; }
     lrun_() { # lrun_ <label> <want-rc> <want-line ERE, or -> <LAUNCH_ALLOW_EXTRA text>
         local out rc

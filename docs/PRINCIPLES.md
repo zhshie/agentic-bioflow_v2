@@ -148,7 +148,7 @@ covers it"). The maintainer designs it in instead of filing it. Which
 conditions count as designed is `docs/CONDITIONS.md`, measured by
 `scripts/detect_conditions.sh` rather than guessed.
 
-*How it is held:* `tests/off_design_single_path.sh` (no catch-all in `commands/` that
+*How it is held:* `tests/off_design_single_path.sh` (no catch-all in the flow skills that
 does not point at that section), `tests/conditions_matrix_test.sh` (every cell
 the script can print is in the matrix, and the reverse), `tests/report_test.sh`
 (nothing leaves the machine that is not a whitelisted field).
@@ -178,7 +178,7 @@ Opening Claude Code somewhere decides exactly one thing: which shell it
 inherits. It does not decide where a member's work may live, and nothing here
 needs it to. The plugin's own files resolve under `${CLAUDE_PLUGIN_ROOT}`,
 never the working directory — every command file says so in its own header
-(`commands/launch.md:6-8`), and `tests/commands_resolve_their_own_paths.sh`
+(`skills/launch/SKILL.md:6-8`), and `tests/commands_resolve_their_own_paths.sh`
 holds it. Every script locates itself from `${BASH_SOURCE[0]}`
 (`scripts/on_site.sh:35`, `scripts/preflight.sh:11`), never from `pwd`.
 Personal and site paths come from the settings file and `$LAB_RUNS_DIR`, never
@@ -264,7 +264,7 @@ toward `agentic-bioflow:operational`, and leaves a pure knowledge question
 alone (`tests/plugin_intro_test.sh`, "T3: natural-language routing").
 `skills/operational/SKILL.md` states `scripts/intro.sh <command>` as the
 first action once a command is decided, the same requirement every
-`commands/*.md` file already carries for a typed slash command
+`skills/*/SKILL.md` file already carries for a typed slash command
 (`tests/skill_requires_intro_test.sh`). `hooks/confirm_walkthrough.sh`'s G6
 denies the first gated action inside a command whose opening card was never
 shown, whether reached by a typed command or by the skill

@@ -347,7 +347,7 @@ printf '%-62s ' "a gap marker is not glued to a following link"
 if grep -qF '][' <<<"$(grep -F 'project site' <<<"$out3")"; then
   echo "FAIL: $(grep -F 'project site' <<<"$out3")"; fails=$((fails+1)); else echo ok; fi
 
-FIN="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/commands/finish.md"
+FIN="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/skills/finish/SKILL.md"
 for phrase in "has no id" "no image file" "Also in figures/, not embedded"; do
   printf '%-62s ' "finish.md step 3 knows: $phrase"
   if sed -n '/^3\. \*\*Read what it produced/,/^4\. /p' "$FIN" | grep -qF "$phrase"; then echo ok; else

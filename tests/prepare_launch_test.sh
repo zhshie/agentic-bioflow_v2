@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tests for scripts/prepare_launch.sh (T10): one call merging the
-# no-judgement parts of commands/launch.md's steps 1-6 - revision lookup,
+# no-judgement parts of skills/launch/SKILL.md's steps 1-6 - revision lookup,
 # schema fetch, registration check, a samplesheet draft, and preflight -
 # into one structured summary.
 #
