@@ -4,7 +4,7 @@
 - **Branch**: `feat/009b-action-layer`, base **`v3`** (never `main`)
 - **Created**: 2026-10-16 by the developer-agent
 - **Umbrella**: GitHub issue #93 step 4 (spec 009), first slice. Decision record: `docs/adr/0006-four-entries-one-action-layer.md` ("the action layer, `platform/abf_platform/actions/`: one function per action; the MCP tools, the web routes and the chat call these functions and nothing else").
-- **Tier**: A (refactor + new tests; no user-visible behaviour change; no gate loosened). The maintainer asked on 2026-10-16 to speed development up and approved running this slice in parallel with 009a.
+- **Tier**: A (refactor + new tests; no user-visible behaviour change; no gate loosened).
 
 ## 給維護者
 
@@ -30,7 +30,7 @@
 5. New test `platform/tests/test_actions_layer.py`:
    - (a) parity: every MCP tool name in `build_server(...)` has a same-named function in `actions` (read-only six).
    - (b) import restriction: `mcp_server.py` imports nothing from `abf_platform` except `actions` (AST scan); `confirm` is imported only by `actions` (AST scan over `platform/`).
-   - (c) `actions.launch(..., confirmed_by="yes")`, `confirmed_by=True`, `None`, and a missing keyword are all refused and enqueue nothing (assert jobs table unchanged). Same for `actions.cancel`.
+   - (c) `actions.launch(..., confirmed_by="yes")`, `confirmed_by=True`, `None`, and a missing keyword are all refused and enqueue nothing (assert jobs table unchanged).
    - (d) `actions.launch` with `actions.TERMINAL` and a valid bundle enqueues exactly one job (same as today's confirm path).
    Red first: (a)(b)(c)(d) fail before the package exists.
 6. Existing tests keep their assertions; only import paths change where a test called `confirm` directly as a fixture (list each in the ledger).
@@ -47,9 +47,18 @@
 ## Not in this PR
 
 - No new MCP tool, no write tool, no HTTP route, no elicitation, no confirmation page (009c). No identity (009d). No resume (009e). No dev mode (009f). No `instructions`/prompts changes (009g).
-- No edit to TC-010, tc024, TC-061 or `LAUNCH_ALLOW`; no hooks, no constitution, no `.github/`, no `skills/`, no `tests/` outside `platform/tests/` (009a is changing those in parallel).
+- No edit to TC-010, tc024, TC-061 or `LAUNCH_ALLOW`; no hooks, no constitution, no `.github/`.
 
 ## Constitution Check
 
 - I.2 single submission path: unchanged (station `launch.py` is still the only submitter; the platform still only queues after a terminal yes).
 - Safety Net: unchanged; this PR adds a refusal (non-terminal `confirmed_by`), it loosens nothing.
+
+## Contract round 1 (verifier, 2026-10-16): decisions that override anything above
+
+1. **Default paths and clock live in `actions`**: `actions` exports `platform_path_for(index_path, platform_path=None)` (wraps `store.default_platform_path`) and every read action that needs the time calls `status.now()` inside `actions`. `build_server` in `mcp_server.py` calls only `actions.*`, so 5(b) holds as written.
+2. **Fact corrected**: today there is NO allow-list scan of `confirm_*` callers; design 4's "update the caller scan" is void. 5(b)'s "`confirm` is imported only by `actions`" is a NEW check. Scope: non-test Python under `platform/abf_platform/`, `platform/abf_station/`, `platform/abf_launch/` (AST). `platform/tests/` is out of scope.
+3. **Signatures**: `actions.launch` / `actions.cancel` also take keyword-only `clock=time.time, deadline_seconds=None, offline_after=None`, passed through to `confirm.*` unchanged. Existing tests that call `confirm.confirm_launch/confirm_cancel` directly with a fake clock stay exactly as they are (tests are outside the 5(b) scope). Design 6 therefore means: no existing test file changes except where an import breaks.
+4. **`platform/pyproject.toml`**: add `"abf_platform.actions"` to `[tool.setuptools] packages` (TC-049).
+5. **Accepted**: TC-046 (`mcp_server.py` must not mention `launch`, `cancel` or `TERMINAL` from actions); TC-050 (`actions/__init__.py` carries the `# Not …:` / `# Nothing existing:` header required by tc070); TC-073 (`mcp_server.py` still never matches `confirm\b`).
+6. **Order**: the `confirmed_by` check runs first, before any validation or database access; a refused call opens no connection and enqueues nothing.
