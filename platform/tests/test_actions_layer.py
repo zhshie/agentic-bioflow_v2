@@ -601,7 +601,7 @@ def test_tcd04_docs_have_an_action_layer_section():
 def test_tcd05_changelog_has_a_line_for_it():
     text = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     unreleased = text.split("## 3.0.0-dev")[1]
-    assert re.search(r"action layer", unreleased, re.I)
+    assert re.search(r"^- .*009b.*action layer|^- .*action layer.*009b", unreleased, re.I | re.M)
 
 
 # ---- not in scope ------------------------------------------------------------------------------------------------------------
