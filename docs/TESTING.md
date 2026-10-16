@@ -275,8 +275,11 @@ the PR branch; "base" is `v3`, never `main`.
 5. *`.claude-plugin/marketplace.json`* description begins "Five skills (slash
    commands in Claude Code):" and the rest of the sentence is unchanged.
 6. *`CHANGELOG.md`* has the one line under Unreleased naming the move.
-7. *The PR base is `v3` and `main` is untouched* (`git diff main...main` is the
-   v2 line; nothing was committed to it).
+7. *The PR base is `v3` and `main` is untouched.* Note `main`'s sha before the
+   work (the one in the PR description, or `git rev-parse origin/main` taken
+   earlier) and compare it after: `git rev-parse origin/main` gives the same
+   sha, and `git log origin/main..HEAD` lists only this branch's commits.
+   (`git diff main...main` is always empty and proves nothing.)
 8. *Old location gone.* `commands/` does not exist. Exemptions to the stale-path
    guard in `tests/flow_skills_layout_test.sh` are only those listed in that
    file with a reason each.
@@ -295,6 +298,33 @@ the PR branch; "base" is `v3`, never `main`.
 12. *The five commands work.* Restart Claude Code with the plugin: `/agentic-bioflow:setup`,
     `:launch`, `:runs`, `:downstream`, `:finish` each appear exactly once, and
     opening one shows the same flow as before.
+13. *Red before green.* `specs/009a-skills-format/ledger.md` records the failing
+    run of `tests/flow_skills_layout_test.sh` before the move; in `git log` the
+    `RED:` commit comes before the `GREEN:` commit. To see it again, check out
+    the `RED:` commit and run the test: it fails and names the missing
+    `skills/<name>/SKILL.md`; at HEAD it passes.
+14. *The `tw`-era tests and scripts are all still there.*
+    `git diff -M --name-status v3...HEAD` shows no `D` line for `tests/` or
+    `scripts/`; in the diffs of `commands_scope_tw_to_the_workspace.sh`,
+    `no_second_run_state_test.sh`, `launch_provenance_test.sh`,
+    `prepare_launch_test.sh`, `egress_allow_test.sh`, `runs_report_format_test.sh`
+    and `setup_doc_test.sh` no assertion line is removed (only paths and texts
+    change).
+15. *History is untouched.* `git diff --stat v3...HEAD` lists nothing under
+    `docs/PITFALLS.md`, `docs/adr/`, or any `specs/*` other than
+    `specs/009a-skills-format/`; `.specify/memory/constitution.md` is not listed.
+16. *Fixture strings.* `tests/confirm_launch_test.sh:74` and the synthetic inputs
+    in `tests/command_layer_is_site_neutral.sh` (about lines 55-62) still say
+    `commands/...`: they are test inputs. One recorded exception: in
+    `tests/no_second_run_state_test.sh` the two `commands/a.md` fixture paths
+    became `skills/a/SKILL.md` and the scratch trees no longer create
+    `commands/`, because that test now scans `skills/` only and a fixture under
+    `commands/` would never be read. The fixture text itself is unchanged; the
+    ledger records this deviation.
+17. *Deliberate leftovers.* `platform/tests/test_scope.py:65` still has
+    `commands/` in its regex (last ledger line says so);
+    `hooks/plugin_intro.sh:277` and `hooks/confirm_walkthrough.sh:7` still say
+    `commands/` in comments, and `hooks/` has no diff.
 
 ## When something is red
 

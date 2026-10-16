@@ -60,7 +60,6 @@ done
 #   docs/PITFALLS.md                      history
 #   docs/adr/*                            history
 #   tests/command_layer_is_site_neutral.sh synthetic fixture inputs
-#   tests/no_second_run_state_test.sh     commands/a.md fixtures
 #   tests/confirm_launch_test.sh          gate fixture (a shell command text)
 #   tests/flow_skills_layout_test.sh      this file spells the pattern
 PAT='commands/(setup|launch|runs|downstream|finish)\.md'
@@ -68,7 +67,7 @@ PAT_ROOT='\$ROOT/commands([^[:alnum:]_]|$)'
 exempt() {
     case "$1" in
         docs/PITFALLS.md|docs/adr/*|tests/command_layer_is_site_neutral.sh|\
-tests/no_second_run_state_test.sh|tests/confirm_launch_test.sh|tests/flow_skills_layout_test.sh) return 0;;
+tests/confirm_launch_test.sh|tests/flow_skills_layout_test.sh) return 0;;
     esac
     return 1
 }
