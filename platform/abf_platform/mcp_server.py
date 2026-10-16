@@ -12,13 +12,13 @@ environment. All tools carry readOnlyHint, which is only a hint; read-only here 
 from mcp.server.mcpserver import MCPServer
 from mcp_types import ToolAnnotations
 
-from . import agents, compute_envs, jobs, status, store
+from . import actions
 
 _READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 
 
 def build_server(index_path, platform_path=None):
-    platform_path = platform_path or store.default_platform_path(index_path)
+    platform_path = actions.platform_path_for(index_path, platform_path)
     server = MCPServer(
         "abf-platform",
         instructions="Read-only view of Nextflow runs, compute environments and agents. list_runs gives the newest "
@@ -32,39 +32,31 @@ def build_server(index_path, platform_path=None):
                  description="List the Nextflow runs the platform knows, newest first, each with its name, status "
                              "(running, succeeded, failed or lost), start time and task numbers.")
     def list_runs() -> dict:
-        return {"runs": status.list_runs(index_path, status.now())}
+        return actions.list_runs(index_path)
 
     @server.tool(name="get_run", annotations=_READ_ONLY,
                  description="One run by its id: status, times, task numbers, task numbers per process, and the "
                              "failed tasks with their exit code and error message; a failed run also has failure_reason, "
                              "Nextflow's own words for why it failed, when it gave any.")
     def get_run(run_id: str) -> dict:
-        view = status.get_run(index_path, run_id, status.now())
-        if view is None:
-            return {"found": False, "id": run_id,
-                    "message": "Run not found: %s (找不到這個 run)" % run_id}
-        return view
+        return actions.get_run(index_path, run_id)
 
     @server.tool(name="list_compute_envs", annotations=_READ_ONLY,
                  description="List the compute environments: name, type, credential name, status, message, primary, "
                              "dates and config. A credential itself is never stored, only its name.")
     def list_compute_envs() -> dict:
-        return {"compute_envs": compute_envs.list_all(platform_path)}
+        return actions.list_compute_envs(platform_path)
 
     @server.tool(name="get_compute_env", annotations=_READ_ONLY,
                  description="One compute environment by its name, with its config.")
     def get_compute_env(name: str) -> dict:
-        view = compute_envs.get(platform_path, name)
-        if view is None:
-            return {"found": False, "name": name,
-                    "message": "Compute environment not found: %s (找不到這個算力環境)" % name}
-        return view
+        return actions.get_compute_env(platform_path, name)
 
     @server.tool(name="list_agents", annotations=_READ_ONLY,
                  description="List the agents that have connected: name, version, online or offline, and the time of "
                              "their last contact. Offline means no contact for three heartbeats.")
     def list_agents() -> dict:
-        return {"agents": agents.list_agents(platform_path, status.now())}
+        return actions.list_agents(platform_path)
 
     @server.tool(name="list_site_files", annotations=_READ_ONLY,
                  description="List one folder on the site through the agent of a compute environment: file names, "
@@ -72,22 +64,7 @@ def build_server(index_path, platform_path=None):
                              "inside the places the agent may read; at most 500 entries are shown and a cut is said "
                              "so. Nothing is written or run.")
     async def list_site_files(compute_env: str, path: str) -> dict:
-        answer = {"compute_env": compute_env, "path": path}
-        try:
-            job_id = jobs.enqueue_listing(platform_path, compute_env, path, status.now)
-        except jobs.JobRefused as e:
-            answer.update(ok=False, message=str(e))
-            return answer
-        out = await jobs.wait_for_result(platform_path, job_id, status.now)
-        result = out["result"]
-        if out["state"] == "done" and result and result.get("ok"):
-            answer.update(result)
-            answer["path"] = result.get("path", path)
-            return answer
-        answer.update(ok=False, message=out["message"])
-        if result and result.get("error"):
-            answer["error"] = result["error"]
-        return answer
+        return await actions.list_site_files(platform_path, compute_env, path)
 
     return server
 

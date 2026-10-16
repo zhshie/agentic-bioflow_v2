@@ -1,8 +1,9 @@
 # Nothing existing: Seqera's launch button and Tower Agent are closed, and no queue library knows a "yes" that is bound to the hash of what was shown; this is the one function that writes one.
 """The user's "yes" to a launch or a cancel, written in the same transaction as the job it allows (feature 007b).
 
-Only the terminal commands (abf_launch) call this module, after the person answered y at the question. No HTTP route,
-no MCP tool and no other module of this package calls it, and tests/test_launch_platform.py scans for that. The
+Only the action layer (abf_platform/actions) calls this module, and until the confirmation page (009c) it does so only for
+the terminal commands (abf_launch), after the person answered y at the question. No HTTP route, no MCP tool and no other
+module imports it (tests/test_actions_layer.py checks the imports). The
 confirmation row holds the hash of the canonical content that was shown (common.bundle_sha256); jobs.py refuses to
 queue a launch or a cancel for any content whose hash is not in an unspent row of the right kind.
 """

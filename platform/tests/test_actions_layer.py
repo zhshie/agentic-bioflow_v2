@@ -592,7 +592,7 @@ def test_tcd03_confirm_says_who_may_call_it_now():
 
 def test_tcd04_docs_have_an_action_layer_section():
     text = (REPO_ROOT / "docs" / "PLATFORM.md").read_text(encoding="utf-8")
-    m = re.search(r"^#+ .*Action layer.*\n(.*?)(?=^#+ |\Z)", text, re.S | re.M | re.I)
+    m = re.search(r"^#+ [^\n]*Action layer[^\n]*\n(.*?)(?=^#+ |\Z)", text, re.S | re.M | re.I)
     assert m, "no 'Action layer' section"
     body = m.group(1)
     assert "platform/abf_platform/actions" in body and "terminal" in body.lower() and len(body.splitlines()) < 30
