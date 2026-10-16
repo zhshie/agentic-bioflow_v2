@@ -29,6 +29,7 @@
 6. The redirect check reads the quote-free copy (the one the TRUNCATE test already uses), so a `>` inside quotes is text: `echo "x>y"`, `awk '$1>3'`, `git log --format='a->b'`.
 7. `[[ a > b ]]` / `[ a \> b ]` comparisons are not redirects.
 8. `RE_CD_COND` ignores text after an unquoted `#` comment and inside quotes: `cd /tmp # a | b` and `cd /tmp; echo "a&b"` clear as a plain cd would.
+**Ruling 2026-10-17 after acceptance round 1:** decision 6's relief applies only when the segment's command word is text-only (`echo`, `printf`, `git`, `grep`/`egrep`/`fgrep`/`rg`, `jq`); interpreters that can write (`awk`, `perl`, `python`, `sed`, `sh -c`, …) keep asking on a quoted `>` (so `awk '$1>3'` still asks — accepted). Decision 7 covers only `[[ … ]]` and an escaped `\>`; a bare `[ a > s1 ]` is a redirect and asks.
 **Not changed:** `cd "$dir"` / `cd $(…)` still set the lost state (#104, deliberate); a relative delete through a variable (`d=s1; rm -rf $d`) stays as today (listed as a known gap).
 
 ## Changes, in order (red first)

@@ -1030,7 +1030,8 @@ PEND_REDIR=0
 RE_TRAIL_GT='>[[:space:]]*$'
 lost_redirects() { # lost_redirects <segment text with quotes kept>
     local s=$1 n i j c d q="" wq="" w pv nx amp
-    if [[ $s =~ $RE_TEST2 ]]; then s=${s#*]]}; elif [[ $s =~ $RE_TEST1 ]]; then s=${s#* ]}; fi
+    # `[[ a > b ]]` is a comparison; a single-bracket `[ a > b ]` is a real redirect (bash), so it is scanned
+    [[ $s =~ $RE_TEST2 ]] && s=${s#*]]}
     n=${#s}
     for ((i = 0; i < n; i++)); do
         c=${s:i:1}
@@ -1136,6 +1137,15 @@ lost_writers() { # lost_writers <command word>
         lost_rel "$f" && lost_ask "overwrite ${f}"
     done
 }
+RE_REDIR_REL='(^|[^>&<])[0-9]*>[[:space:]]*([^[:space:]>&|<()/;]+)'
+lost_redirects_blind() { # lost_redirects_blind <segment>: the #104 scan, quotes read as plain characters
+    local RD_T=$1 RD_W
+    while [[ $RD_T =~ $RE_REDIR_REL ]]; do
+        RD_W=${BASH_REMATCH[2]}; RD_W=${RD_W//\"/}; RD_W=${RD_W//\'/}
+        lost_rel "$RD_W" && lost_ask "overwrite ${RD_W}"
+        RD_T=${RD_T#*"${BASH_REMATCH[0]}"}
+    done
+}
 NSEG=0
 TIMED_OUT=0
 while IFS="$US" read -r SEG VSEG CW COPY; do
@@ -1152,6 +1162,9 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     # `Get-ChildItem res\ults` reads the protected `results`, which clears LISTER_OK,
     # and it must stay cleared; a copy can never raise it. And the candidates a copy
     # adds (cand_add_from_pre) are read from the state before the segment it copies.
+    # #110: this row is the backslash-stripped copy of the previous one; a `>` there is a real `>`
+    # only in the copy, so the redirect scans read the original row alone
+    IS_COPYROW=0; [ -n "$COPY" ] && IS_COPYROW=1
     if [ -n "${COPY_SAVED-}" ]; then
         VCWD=$COPY_VCWD
         if [ "$LISTER_OK" = 1 ] && [ "$COPY_LISTER" = 1 ]; then LISTER_OK=1; else LISTER_OK=0; fi
@@ -1344,7 +1357,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     V_NR=$VSEG;  while [[ $V_NR =~ $RE_DEVNULL ]]; do V_NR=${V_NR/"${BASH_REMATCH[0]}"/}; done
     [[ $V_NR =~ $RE_TRUNC ]] && TRUNCATE=1
     # #104: a relative `>` target overwrites a file in a folder this gate cannot name.
-    if [ "$CWD_LOST" = 1 ]; then
+    if [ "$CWD_LOST" = 1 ] && [ "$IS_COPYROW" = 0 ]; then
         # #110: scanned with the quote state, so a `>` inside quotes is text and a quoted
         # target is still a target; the writers below take a relative file as an argument.
         # `>|` is split by the splitter into `cmd >` and the target: the target opens the next segment
@@ -1354,6 +1367,11 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             lost_target "$PR_W"
         fi
         [[ $SEG_NR == *'>'* ]] && lost_redirects "$SEG_NR"
+        # a quoted `>` is text only for commands that cannot write with it (ruling 2026-10-17); for any other
+        # command word (awk, perl, python, sed, sh -c, ...) the quote-blind scan of #104 still applies
+        if [[ $SEG_NR == *">"* ]] && ! [[ $SEG_NR =~ $RE_TEST2 || $SEG_NR =~ $RE_TEST1 ]]; then
+            case "${CW##*/}" in echo|printf|git|grep|egrep|fgrep|rg|jq) ;; *) lost_redirects_blind "$SEG_NR" ;; esac
+        fi
         case "${CW##*/}" in tee|sort|cp|sed|dd) lost_writers "$CW" ;; esac
     fi
     PEND_REDIR=0; [[ $SEG_NR =~ $RE_TRAIL_GT ]] && PEND_REDIR=1

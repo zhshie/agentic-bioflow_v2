@@ -1,0 +1,996 @@
+input	94a1c30	origin/main	branch
+harmless cmd mentioning 'Platform run'	pass	pass	pass
+harmless cmd containing 'confirm'	pass	pass	pass
+delete results/	deny	deny	deny
+delete rawdata/	deny	deny	deny
+delete plugins/	deny	deny	deny
+delete work/ (R2: structural ask, not just a warning)	ask	ask	ask
+delete inside compound	deny	deny	deny
+delete results/ wrapped in ssh	deny	deny	deny
+read-only grep whose regex contains the verb	pass	pass	pass
+ssh is not by itself suspicious	pass	pass	pass
+delete rawdata/ wrapped in on_site.sh	deny	deny	deny
+the library, as the rule spelled it	deny	deny	deny
+as nchc.config defaults it	deny	deny	deny
+as this deployment actually sets it	deny	deny	deny
+a name that merely starts alike	pass	pass	pass
+someone's notes about it	pass	pass	pass
+a redirection is not a deletion target	pass	pass	pass
+nor is a discarded stdout	pass	pass	pass
+the real null/ leftover still warns	warn	warn	warn
+(b) no jq + a real delete - still BLOCKED	rc=2, no stdout	rc=2, no stdout	rc=2, no stdout
+(a) no jq + a harmless command - exit 0, no noise	rc=0, silent	rc=0, silent	rc=0, silent
+jq that braces: a delete is refused or paused	blocked	blocked	blocked
+jq that braces: a delete on a later line too	blocked	blocked	blocked
+jq that garbage: a delete is refused or paused	blocked	blocked	blocked
+jq that garbage: a delete on a later line too	blocked	blocked	blocked
+jq that silent: a delete is refused or paused	blocked	blocked	blocked
+jq that silent: a delete on a later line too	blocked	blocked	blocked
+jq that emptycmd: a delete is refused or paused	asked	asked	asked
+jq that emptycmd: a delete on a later line too	asked	asked	asked
+jq that cmdfail: a delete is refused or paused	blocked	blocked	blocked
+jq that cmdfail: a delete on a later line too	blocked	blocked	blocked
+jq that emitjunk: a delete is refused or paused	asked	asked	asked
+jq that emitjunk: a delete on a later line too	asked	asked	asked
+a non-Bash tool using tool_input.command - judged exactly as Bash would be	deny	deny	deny
+an unparseable tool (unknown field) that looks deletion-shaped - ask	ask	ask	ask
+an unparseable tool with harmless content - allowed, no output	no output at all	no output at all	no output at all
+#29 double-quoted protected target	deny	deny	deny
+#29 single-quoted protected target	deny	deny	deny
+#29 quoted target containing a space	deny	deny	deny
+#29 quoted work/ still asks	ask	ask	ask
+#29 variable target still judged by its literal part	deny	deny	deny
+#29 variable target pauses (ask), not a warning	ask	ask	ask
+#29 here-doc piped into bash	deny	deny	deny
+#29 delete inside a quoted bash -c	deny	deny	deny
+#29 delete piped into sh	deny	deny	deny
+#29 quoted prose mentioning the verb	pass	pass	pass
+#29 bare variable target pauses too	ask	ask	ask
+#29 xargs delete: target unknown here, pause	ask	ask	ask
+#29 here-doc fed to ssh bash	deny	deny	deny
+#29 here-doc fed to bash	deny	deny	deny
+#29 here-doc written to a file is prose	pass	pass	pass
+#29 python here-doc that deletes a tree	ask	ask	ask
+#29 searching for rmtree is not deleting	pass	pass	pass
+#29 PowerShell Remove-Item on results/	deny	deny	deny
+#29 PowerShell, backslash path	deny	deny	deny
+#29 cmd-style rd /s	deny	deny	deny
+#29 PowerShell on work/ asks	ask	ask	ask
+#29 listing results/ is harmless	pass	pass	pass
+#29b the verb with a path	deny	deny	deny
+#29b the verb escaped to skip an alias	deny	deny	deny
+#29b the verb itself in quotes	deny	deny	deny
+#29b command <verb>	deny	deny	deny
+#29b sudo with an option	deny	deny	deny
+#29b quote glued to a trailing slash	deny	deny	deny
+#29b quote closed before the last component	deny	deny	deny
+#29b quotes inside the name	deny	deny	deny
+#29b brace expansion naming results	deny	deny	deny
+#29b stray quotes around the verb	deny	deny	deny
+#29b find -exec <verb>	deny	deny	deny
+#29b unlink	deny	deny	deny
+#29b truncate	deny	deny	deny
+#29b the verb inside $(...)	deny	deny	deny
+#29b perl -e system(...)	deny	deny	deny
+#29b python -c os.system(...)	deny	deny	deny
+#29b here-doc into timeout bash	deny	deny	deny
+#29b here-doc into sudo -u bash	deny	deny	deny
+#29b command word is a substitution	ask	ask	ask
+#29b command word is a variable	ask	ask	ask
+#29b a glob that can match results/	ask	ask	ask
+#29b a glob that cannot	pass	pass	pass
+#29b PowerShell alias ri	deny	deny	deny
+#29b powershell -Command payload	deny	deny	deny
+#29b Remove-Item fed by the pipeline	ask	ask	ask
+#29b .NET Delete call	ask	ask	ask
+#29c srun wrapper (a regression in round 2)	deny	deny	deny
+#29c singularity exec wrapper	deny	deny	deny
+#29c GNU parallel	deny	deny	deny
+#29c flock wrapper	deny	deny	deny
+#29c doas	deny	deny	deny
+#29c ionice	deny	deny	deny
+#29c bash with options before -c	deny	deny	deny
+#29c bash --norc -c	deny	deny	deny
+#29c here-string into bash	deny	deny	deny
+#29c |& into bash	deny	deny	deny
+#29c | env bash	deny	deny	deny
+#29c process substitution read by bash	deny	deny	deny
+#29c python with options before -c	ask	ask	ask
+#29c bare rmtree(...)	ask	ask	ask
+#29c perl rmtree	ask	ask	ask
+#29c deeply nested $(...)	deny	deny	deny
+#29c a quoted <<EOF is not a here-doc	deny	deny	deny
+#29c python 'del results' under Bash	pass	pass	pass
+#29d find -delete behind srun (main: deny)	deny	deny	deny
+#29d find -delete behind ionice	deny	deny	deny
+#29d find -delete behind singularity exec	deny	deny	deny
+#29d rsync --delete behind srun (main: deny)	deny	deny	deny
+#29d rsync --delete behind ionice	deny	deny	deny
+#29d mv behind srun now asks (E9 supersedes the old warn)	ask	ask	ask
+#29d a multi-line quoted argument after the target	deny	deny	deny
+#29e mv results/ (bare relative path) elsewhere asks	ask	ask	ask
+#29e mv an unexpanded $VAR/rawdata/ still asks (literal match)	ask	ask	ask
+#29e mv INTO results/ is writing, stays quiet	pass	pass	pass
+#29e an ordinary mv with nothing protected, stays quiet	pass	pass	pass
+#29e mv in a compound, nothing protected, stays quiet	pass	pass	pass
+#29e PowerShell Move-Item on results/ asks	ask	ask	ask
+#29e mv -t: every argument is a source	ask	ask	ask
+#29e mv --target-directory=	ask	ask	ask
+#29e brace rename of results/	ask	ask	ask
+#29e brace list with rawdata as the source	ask	ask	ask
+#29e rsync --remove-source-files empties the source	ask	ask	ask
+#29e rename(1) on results/	ask	ask	ask
+#29e grep for the word mv is not a move	pass	pass	pass
+#29e Move-Item with named parameters reversed	ask	ask	ask
+#29e PowerShell alias mi	ask	ask	ask
+#29e Rename-Item on results/	ask	ask	ask
+#29e Move-Item fed by the pipeline	ask	ask	ask
+#29e Move-Item INTO results/ stays quiet	pass	pass	pass
+#29c a 200-line here-doc is judged in under 15 s	0 s, deny	0 s, deny	0 s, deny
+#29b grep for 'del' is not a delete	pass	pass	pass
+#29b grep for 'RD' is not a delete	pass	pass	pass
+#29b searching for a delete call	pass	pass	pass
+#29b searching for unlink(	pass	pass	pass
+#29b a commit message naming a call	pass	pass	pass
+#29b a comment in a python here-doc	pass	pass	pass
+#29b reading results/	pass	pass	pass
+#29b jq filter with a pipe	pass	pass	pass
+#29b awk program with a semicolon	pass	pass	pass
+#35 flock -c delete of analysis/	deny	deny	deny
+#35 flock -c delete of work/ asks	ask	ask	ask
+#35 su - lab -c delete of results/	deny	deny	deny
+#35 su -c, double-quoted	deny	deny	deny
+#35 tmux new -d delete	deny	deny	deny
+#35 tmux new-session delete	deny	deny	deny
+#35 tmux send-keys delete	deny	deny	deny
+#35 screen -X stuff delete	deny	deny	deny
+#35 control: screen with the verb as an argument (already denied)	deny	deny	deny
+#35 control: flock -c ls	pass	pass	pass
+#35 control: su -c echo	pass	pass	pass
+#35 control: tmux new htop	pass	pass	pass
+#35 control: tmux ls	pass	pass	pass
+#35 cmd /c rd /s /q results	deny	deny	deny
+#35 cmd.exe /c del under results/	deny	deny	deny
+#35 cmd /c with the whole command quoted	deny	deny	deny
+#35 cmd /c rd of work/ asks	ask	ask	ask
+#35 control: cmd.exe /c rmdir (already denied)	deny	deny	deny
+#35 control: cmd /c dir	pass	pass	pass
+#35 control: cmd /c echo rd	pass	pass	pass
+#35 control: rsync --remove-source-files from rawdata/ (already asks)	ask	ask	ask
+#35 control: ...from an unprotected folder	pass	pass	pass
+#35 piped into sudo -u x bash	deny	deny	deny
+#35 piped into srun bash	deny	deny	deny
+#35 piped into srun --pty bash	deny	deny	deny
+#35 piped into ssh h bash	deny	deny	deny
+#35 piped into sudo -E bash -s	deny	deny	deny
+#35 control: piped into grep bash	pass	pass	pass
+#35 control: piped into sudo tee	pass	pass	pass
+#35 here-doc piped into sudo -u x bash	deny	deny	deny
+#35 here-doc piped into srun bash	deny	deny	deny
+#35 here-doc piped into python3	ask	ask	ask
+#35 python code piped into python3	ask	ask	ask
+#35 control: here-doc written to a file	pass	pass	pass
+#35 R -e unlink	ask	ask	ask
+#35 R --no-save -e unlink	ask	ask	ask
+#35 control: R -e print	pass	pass	pass
+#35 control: R --version	pass	pass	pass
+#35 cwd results/: rm -rf fastqc	deny	deny	deny
+#35 cwd results/: rm -rf ./fastqc	deny	deny	deny
+#35 cwd results/sub: rm -rf ../fastqc	deny	deny	deny
+#35 cwd analysis/: rm a file	deny	deny	deny
+#35 cwd rawdata/: rm a file	deny	deny	deny
+#35 cd results && rm -rf fastqc	deny	deny	deny
+#35 cd results; rm -rf fastqc	deny	deny	deny
+#35 (cd results && rm ...) in a subshell	deny	deny	deny
+#35 cd <absolute>/results && rm ...	deny	deny	deny
+#35 cd "results" quoted	deny	deny	deny
+#35 two cds down into results/sub	deny	deny	deny
+#35 cwd work/: rm -rf fastqc asks	ask	ask	ask
+#35 cd work && rm -rf fastqc asks	ask	ask	ask
+#35 control: rm in an ordinary cwd	pass	pass	pass
+#35 control: cwd results/, ls	pass	pass	pass
+#35 control: cd results && ls	pass	pass	pass
+#35 control: cd .. leaves results/	pass	pass	pass
+#35 control: cd into an unprotected folder	pass	pass	pass
+#35 control: an absolute target outside results/	pass	pass	pass
+#35 cd to a variable: lost cwd now asks (#104)	pass	ask	ask
+#35 perl remove_tree	ask	ask	ask
+#35 control: perl make_path	pass	pass	pass
+#35 git clean -fdx	ask	ask	ask
+#35 git clean -fd of results/	deny	deny	deny
+#35 git clean -fdx inside results/	deny	deny	deny
+#35 control: git clean -n (dry run)	pass	pass	pass
+#35 control: git clean --dry-run	pass	pass	pass
+#35 control: git status	pass	pass	pass
+#35 command held in an array	deny	deny	deny
+#35 control: an array of file names	pass	pass	pass
+#35 backslash inside the name (re\sults)	deny	deny	deny
+#35 backslash, nested (r\esults/x)	deny	deny	deny
+#35 control: a backslash in an unprotected name	pass	pass	pass
+#35 rsync --dry-run --delete is not a delete	pass	pass	pass
+#35 rsync -avn --delete is not a delete	pass	pass	pass
+#35 rsync --dry-run --remove-source-files	pass	pass	pass
+#35 control: the real rsync --delete into results/	deny	deny	deny
+#35 xargs -I{} rm: ask, not deny	ask	ask	ask
+#35 piped xargs -I{} rm: ask, not deny	ask	ask	ask
+#35 control: find -exec rm {} under results/	deny	deny	deny
+#35 find -exec rm {} elsewhere: ask, not a bogus root deny	ask	ask	ask
+#35 mv -t results/ a b writes INTO results/	pass	pass	pass
+#35 control: mv --target-directory=results/ a b (already quiet)	pass	pass	pass
+#35 mv -t results a b (relative)	pass	pass	pass
+#35 control: mv -t /tmp results asks (results is a source)	ask	ask	ask
+#35 control: ...relative	ask	ask	ask
+#35 control: a brace in the last argument expands to two sources, asks	ask	ask	ask
+#35 pipeline-fed Move-Item, nothing protected	pass	pass	pass
+#35 ...with a filter in the pipeline	pass	pass	pass
+#35 ...relative lister path	pass	pass	pass
+#35 control: a lister with no path (may be the cwd): asks	ask	ask	ask
+#35 control: lister names results/: asks	ask	ask	ask
+#35 control: lister path is a variable: asks	ask	ask	ask
+#35 control: ForEach-Object can rewrite the path: asks	ask	ask	ask
+#35 control: Move-Item with no source at all asks	ask	ask	ask
+#35b nice -n 10 rsync --delete is not a dry run	deny	deny	deny
+#35b srun -n 1 rsync --delete	deny	deny	deny
+#35b ssh -n host rsync --delete (unquoted)	deny	deny	deny
+#35b sudo -n rsync --delete	deny	deny	deny
+#35b timeout -n 5 rsync --delete	deny	deny	deny
+#35b ionice -n 7 rsync --remove-source-files	ask	ask	ask
+#35b nice -n 19 rsync --remove-source-files	ask	ask	ask
+#35b nice -n 10 git clean -fdx of results/	deny	deny	deny
+#35b control: the wrapper -n AND rsync -n: dry run	pass	pass	pass
+#35b control: rsync -n after other options	pass	pass	pass
+#35b control: --dry-run behind a wrapper	pass	pass	pass
+#35b control: git clean -n behind a wrapper	pass	pass	pass
+#35b data piped into python3 script.py	pass	pass	pass
+#35b ...with an option before the script	pass	pass	pass
+#35b data piped into ssh host 'cmd'	pass	pass	pass
+#35b control: | python3 - reads code from stdin	deny	deny	deny
+#35b control: | python3 (no script) reads code	deny	deny	deny
+#35b control: | python3 -u - reads code	deny	deny	deny
+#35b control: | bash	deny	deny	deny
+#35b control: | ssh host (no remote command)	deny	deny	deny
+#35b control: | ssh host bash	deny	deny	deny
+#35b control: | ssh host 'bash -s'	deny	deny	deny
+#35b control: | ssh host python3 -	deny	deny	deny
+#35b | ssh host python3 x.py is data	pass	pass	pass
+nextflow clean -f asks	ask	ask	ask
+nextflow clean -f -k last	ask	ask	ask
+nextflow clean -f -q	ask	ask	ask
+nextflow clean -f <run name>	ask	ask	ask
+nextflow clean -f -but <run>	ask	ask	ask
+nextflow clean -force -before <run>	ask	ask	ask
+nextflow <global option> clean -f	ask	ask	ask
+nextflow clean -f behind srun	ask	ask	ask
+nextflow clean -f after a cd	ask	ask	ask
+control: nextflow clean -n (dry run)	pass	pass	pass
+control: nextflow clean -n -f (dry run wins)	pass	pass	pass
+control: nextflow clean -dry-run	pass	pass	pass
+control: nextflow clean (Nextflow refuses)	pass	pass	pass
+control: nextflow clean -but <run>, no -f	pass	pass	pass
+control: nextflow log	pass	pass	pass
+control: a profile named clean	pass	pass	pass
+control: make clean -f	pass	pass	pass
+N=nextflow; $N clean -f asks	ask	ask	ask
+N=nextflow; ${N} clean -f asks	ask	ask	ask
+N=nextflow; "$N" clean -f asks	ask	ask	ask
+control: $N clean -n -f (dry run)	pass	pass	pass
+control: $N log	pass	pass	pass
+control: $N clean, no -f	pass	pass	pass
+work/ file with a sequencing name still asks	ask	ask	ask
+work/ glob of sequencing files still asks	ask	ask	ask
+work/ delete beside an overwrite still asks	ask	ask	ask
+tar --remove-files of results/	deny	deny	deny
+tar --remove-files -C <run> results	deny	deny	deny
+old-style tar cf ... --remove-files	deny	deny	deny
+tar --remove-files of work/ asks	ask	ask	ask
+tar --remove-files -T list: sources unknown	ask	ask	ask
+control: tar without --remove-files	pass	pass	pass
+control: the archive written INTO results/	pass	pass	pass
+zip -rm of results/	deny	deny	deny
+zip -r -m of analysis/	deny	deny	deny
+zip --move of a rawdata/ file	deny	deny	deny
+control: zip without -m	pass	pass	pass
+control: the zip file written INTO results/	pass	pass	pass
+rclone purge results/	deny	deny	deny
+rclone delete remote:.../results	deny	deny	deny
+rclone deletefile in rawdata/	deny	deny	deny
+rclone rmdirs analysis/	deny	deny	deny
+rclone sync INTO results/ (deletes what is not in the source)	deny	deny	deny
+rclone move results/ out asks (as mv, E9)	ask	ask	ask
+rclone delete work/ asks	ask	ask	ask
+control: rclone copy	pass	pass	pass
+control: rclone sync FROM results/	pass	pass	pass
+control: rclone purge elsewhere	pass	pass	pass
+control: rclone delete --dry-run	pass	pass	pass
+control: rclone ls	pass	pass	pass
+control: a remote path is not under the working folder	pass	pass	pass
+control: ...nor is a remote destination	pass	pass	pass
+node require('fs').rmSync(...)	ask	ask	ask
+node fs.promises.rm(...)	ask	ask	ask
+ruby FileUtils.rm_rf(...)	ask	ask	ask
+ruby FileUtils.rm_r without parentheses	ask	ask	ask
+python pathlib .unlink()	ask	ask	ask
+control: node -e console.log	pass	pass	pass
+control: ruby FileUtils.pwd	pass	pass	pass
+control: python list.remove(...)	pass	pass	pass
+brace res{ults,}	deny	deny	deny
+nested brace naming analysis	deny	deny	deny
+brace sequence re{s..s}ults	deny	deny	deny
+control: brace naming nothing protected	pass	pass	pass
+control: brace under /tmp	pass	pass	pass
+RESULTS: deny where case is ignored, else ask	ask	ask	ask
+Analysis/x: the same	ask	ask	ask
+a Windows path: case ignored, deny	deny	deny	deny
+a WSL path to a Windows drive: deny	deny	deny	deny
+PowerShell Remove-Item RESULTS	deny	deny	deny
+control: a name that only starts alike	pass	pass	pass
+control: a Windows folder named Work is not work/	pass	pass	pass
+ln -sfn over results/	deny	deny	deny
+ln --force --no-dereference over rawdata	deny	deny	deny
+control: ln -sf without -n links INTO rawdata/	pass	pass	pass
+ln -sfT over analysis/	deny	deny	deny
+ln -sfn over work/ asks	ask	ask	ask
+control: staging a link inside rawdata/	pass	pass	pass
+control: ln without -f (fails if it exists)	pass	pass	pass
+control: results/ as the link's target	pass	pass	pass
+install -d -m 000 results/ asks	ask	ask	ask
+install -d -o on _references/ asks	ask	ask	ask
+control: install -d without a mode (mkdir -p)	pass	pass	pass
+control: install -d -m of a new folder inside	pass	pass	pass
+control: install a file into analysis/	pass	pass	pass
+: > rawdata/<file>	deny	deny	deny
+> results/<file>	deny	deny	deny
+true > analysis/<file>	deny	deny	deny
+cat /dev/null > results/<file>	deny	deny	deny
+: > work/<file> asks	ask	ask	ask
+: > <file> with cwd rawdata/	deny	deny	deny
+control: : > /tmp/x.log	pass	pass	pass
+control: writing into results/ is unchanged (warn)	warn	warn	warn
+control: an append is not a truncation (warn)	warn	warn	warn
+find <run> -name '*.fastq.gz' -delete	deny	deny	deny
+find <run> -iname '*.BAM' -exec rm	deny	deny	deny
+find . -name '*.fq.gz' -delete in <run>	deny	deny	deny
+find <run> -delete	deny	deny	deny
+rm -rf <run>	deny	deny	deny
+rm -rf <projects>/<p>	deny	deny	deny
+find <run> -name '*.log' -delete asks	ask	ask	ask
+find <unknown> -name '*.fastq.gz' -delete asks	ask	ask	ask
+control: find work/ -name '*.bam' asks (SN2)	ask	ask	ask
+control: find /tmp/x -name '*.fastq.gz' unchanged (warn)	warn	warn	warn
+control: rm a file beside the protected folders	pass	pass	pass
+control: rm -rf a folder beside them	pass	pass	pass
+control: find without -delete	pass	pass	pass
+\nextflow clean -f asks	ask	ask	ask
+\tar --remove-files of results/	deny	deny	deny
+\zip -m of rawdata/	deny	deny	deny
+\rclone purge results/	deny	deny	deny
+\ln -sfn over rawdata/	deny	deny	deny
+\find <run> -delete	deny	deny	deny
+\rsync --delete into results/	deny	deny	deny
+\install -d -m 000 results/ asks	ask	ask	ask
+control: \tar without --remove-files	pass	pass	pass
+control: \rclone copy	pass	pass	pass
+srun tar --remove-files of results/	deny	deny	deny
+TC-001 r\m -rf results	deny	deny	deny
+TC-002 t\ar --remove-files ... results	deny	deny	deny
+TC-003 tar --remo\ve-files ... results	deny	deny	deny
+TC-004 nextflow cl\ean -f	ask	ask	ask
+TC-005 r\m -rf work asks, as without \	ask	ask	ask
+TC-006 r\m behind a ;	deny	deny	deny
+TC-007 r\m inside ssh	deny	deny	deny
+TC-008 sudo r\m	deny	deny	deny
+TC-009 work and results: the strictest wins	deny	deny	deny
+TC-010 two backslashes (r\m, res\ults)	deny	deny	deny
+TC-011 control: a backslash in the argument only	deny	deny	deny
+TC-012 control: a leading backslash (#65)	deny	deny	deny
+TC-013 control: printf 'a\nb'	pass	pass	pass
+TC-014 control: grep -E regex with \s	pass	pass	pass
+TC-015 control: sed regex with \/	pass	pass	pass
+TC-016 control: a Windows path	pass	pass	pass
+TC-017 control: ls of a Windows results path	pass	pass	pass
+TC-018 echo r\m: as main judges echo without the backslash	deny	deny	deny
+TC-019 control: unprotected name, backslashes	pass	pass	pass
+TC-020 control: a harmless nextflow subcommand	pass	pass	pass
+TC-035 r\m of rawdata/	deny	deny	deny
+TC-036 r\m of .nextflow/plugins/	deny	deny	deny
+#66 cd <results>\old, then a delete in it	deny	deny	deny
+#66 ...from another working folder	deny	deny	deny
+#66 pushd <results>\old, then a delete in it	deny	deny	deny
+#66 cd results\old (relative), then a delete	deny	deny	deny
+#66 cd .\results, then a delete	deny	deny	deny
+#66 lister of results\old feeding Move-Item	ask	ask	ask
+#66 lister of .\results feeding Move-Item	ask	ask	ask
+#66 control: lister of an unprotected folder	pass	pass	pass
+#66 r2 C:res\ults: no looser than main	pass	pass	pass
+#66 r2 a:res\ults: no looser than main	pass	pass	pass
+#66 r2 C:\res\ults: a drive path, as main	pass	pass	pass
+#66 r3 C:/.../r\m -rf results	deny	deny	deny
+#66 r3 rm -rf C:/lab/proj/res\ults	deny	deny	deny
+#66 r3 rsync --delete to n:/data/proj/res\ults/	deny	deny	deny
+#66 r3 rm -rf C:/lab/proj/raw\data	deny	deny	deny
+#66 r3 mv s:/p/raw\data x	ask	ask	ask
+#66 r3 mv s:/p/res\ults x	ask	ask	ask
+#66 r3 mv C:/lab/proj/raw\data x	ask	ask	ask
+TC-001 cd res\ults, then a delete	deny	deny	deny
+TC-002 cd raw\data, then a delete	deny	deny	deny
+TC-003 cd wo\rk, then a delete (work asks)	ask	ask	ask
+TC-004 pushd .nextflow/plug\ins, then a delete	deny	deny	deny
+TC-005 cd <run>/res\ults, then rm -rf .	deny	deny	deny
+TC-006 c\d results (backslash in the command word)	deny	deny	deny
+TC-007 pu\shd results	deny	deny	deny
+TC-008 cd res\ults, then find -delete	deny	deny	deny
+TC-009 cd raw\data, then mv	ask	ask	ask
+TC-010 cd res\ults; cd ..: back in the run folder	pass	pass	pass
+TC-011 control: cd re\ports	pass	pass	pass
+TC-012 control: cd <run>/re\ports	pass	pass	pass
+TC-013 cd res\ults; cd /tmp	pass	pass	pass
+TC-014 PowerShell Set-Location results	deny	deny	deny
+TC-015 PowerShell sl results	deny	deny	deny
+TC-016 PowerShell Push-Location results	deny	deny	deny
+TC-017 Set-Location results, text run by Bash	deny	deny	deny
+TC-018 Set-Location -Path results	deny	deny	deny
+TC-019 Set-Location -LiteralPath results	deny	deny	deny
+TC-020 Set-Location -Path:results (colon form)	deny	deny	deny
+TC-021 SET-LOCATION (any case)	deny	deny	deny
+TC-022 chdir results	deny	deny	deny
+TC-023 cd <run>; Set-Location results	deny	deny	deny
+TC-024 Set-Location res\ults	deny	deny	deny
+TC-025 control: Set-Location /tmp	pass	pass	pass
+TC-026 control: Set-Location tmp	pass	pass	pass
+TC-027 Set-Location results; Set-Location ..	deny	deny	deny
+TC-028 Get-ChildItem res\ults | Move-Item	ask	ask	ask
+TC-029 Get-ChildItem raw\data | Move-Item	ask	ask	ask
+TC-030 ...from the run folder	ask	ask	ask
+TC-031 gci res\ults | Move-Item	ask	ask	ask
+TC-032 absolute path, as before	ask	ask	ask
+TC-033 control: re\ports	pass	pass	pass
+TC-034 Push-Location /tmp; Pop-Location: back in results	deny	deny	deny
+TC-035 Bash: sl is not a built-in, the folder did not move	deny	deny	deny
+TC-036 Pop-Location with an empty stack changes nothing	deny	deny	deny
+TC-041 cd d: lost cwd now asks (#104)	pass	ask	ask
+TC-042 cd command-substitution: lost cwd now asks (#104)	pass	ask	ask
+TC-043 an alias stays unknown	pass	pass	pass
+TC-078-01 cd -; relative delete asks	ask	ask	ask
+TC-078-02 bare cd asks	ask	ask	ask
+TC-078-03 pushd /tmp; popd asks	ask	ask	ask
+TC-078-04 popd with no pushd asks	ask	ask	ask
+TC-078-05 cd "res\ults" asks: main already denies (candidate results/), stays deny	deny	deny	deny
+TC-078-06 cd 'res\ults' asks: main already denies (candidate results/), stays deny	deny	deny	deny
+TC-078-07 pushd "res\ults" asks: main already denies (candidate results/), stays deny	deny	deny	deny
+TC-078-08 bare pushd asks	ask	ask	ask
+TC-078-09 PowerShell cd - asks	ask	ask	ask
+TC-078-10 PowerShell bare cd asks	ask	ask	ask
+TC-078-11 Pop-Location asks	ask	ask	ask
+TC-078-12 lost state survives an unrelated command	ask	ask	ask
+TC-078-13 lost cwd: relative results stays deny (never loosened to ask)	deny	deny	deny
+TC-078-15 lost cwd: find root asks	ask	ask	ask
+TC-078-16 lost cwd: brace list asks	ask	ask	ask
+TC-078-17 lost cwd: mv source asks	ask	ask	ask
+TC-078-18 control: absolute target still passes	pass	pass	pass
+TC-078-19 control: absolute cd clears the loss	pass	pass	pass
+TC-078-20 control: no delete, no ask	pass	pass	pass
+TC-078-21 control: mv destination only	pass	pass	pass
+TC-078-24 lost cwd now asks (#104)	pass	ask	ask
+TC-078-27 lost cwd now asks (#104)	pass	ask	ask
+TC-078-29 no stack model: ask	ask	ask	ask
+TC-078-05 mech: cd "tm\p" (no protected candidate) asks	ask	ask	ask
+TC-078-06 mech: cd 'tm\p' asks	ask	ask	ask
+TC-078-07 mech: pushd "tm\p" asks	ask	ask	ask
+TC-104-01 cd ~/x; relative delete asks	pass	ask	ask
+TC-104-02 cd $HOME/rawdata asks	pass	ask	ask
+TC-104-03 cd $(...) asks	pass	ask	ask
+TC-104-04 cd $d asks (lost cwd now asks #104)	pass	ask	ask
+TC-104-05 cd $(...) asks (lost cwd now asks #104)	pass	ask	ask
+TC-104-06 cd ~ asks (lost cwd now asks #104)	pass	ask	ask
+TC-104-07 cd $HOME && rm asks (lost cwd now asks #104)	pass	ask	ask
+TC-104-09 ~s1 is relative when the folder is lost	pass	ask	ask
+TC-104-10 control: ~/x stays a known path	pass	pass	pass
+TC-104-11 cd inside ( ) does not clear	pass	ask	ask
+TC-104-12 backgrounded cd does not clear	pass	ask	ask
+TC-104-13 cd after || does not clear	pass	ask	ask
+TC-104-14 cd inside if does not clear	ask	ask	ask
+TC-104-15 variable target does not clear	ask	ask	ask
+TC-104-16 control: plain absolute cd clears	pass	pass	pass
+TC-104-17 control: absolute cd && clears	pass	pass	pass
+TC-104-18 { cd /abs; } does not clear (ruling: main asked)	ask	ask	ask
+TC-104-18b false && { cd /abs; } does not clear	ask	ask	ask
+TC-104-19 control: absolute cd clears (as TC-078-19)	pass	pass	pass
+TC-104-20a control: absolute target after cd ~	pass	pass	pass
+TC-104-20b control: absolute target after cd -	pass	pass	pass
+TC-104-21 results stays deny	deny	deny	deny
+TC-104-22 lost cwd: : > s1 asks	pass	ask	ask
+TC-104-23 lost cwd: echo hi > s1 asks	pass	ask	ask
+TC-104-25 control: known folder, relative > as main	pass	pass	pass
+TC-104-26 control: absolute > target	pass	pass	pass
+TC-104-27 control: nothing written, no ask	pass	pass	pass
+TC-104-28 PowerShell sl - asks	pass	ask	ask
+TC-104-29 PowerShell bare sl asks	pass	ask	ask
+TC-104-30 PowerShell bare Set-Location asks	pass	ask	ask
+TC-104-31 PowerShell quoted backslash target asks	pass	ask	ask
+TC-104-32 Bash: sl is not a built-in	pass	pass	pass
+TC-104-33 control: later quoted backslash is not the cd target	pass	pass	pass
+TC-104-34a quoted backslash target asks	ask	ask	ask
+TC-104-34b single-quoted backslash target asks	ask	ask	ask
+TC-104-34c pushd quoted backslash target asks	ask	ask	ask
+TC-104-35 popd asks	ask	ask	ask
+TC-104-36 pushd /tmp; popd asks	ask	ask	ask
+TC-104-37 find -exec mv asks	ask	ask	ask
+TC-104-38 find -delete asks	ask	ask	ask
+TC-104-41 alias stays pass (no alias model)	pass	pass	pass
+TC-104-42a known gap: tar --remove-files	pass	pass	pass
+TC-104-42b known gap: zip -m	pass	pass	pass
+TC-104-42c known gap: rclone move	pass	pass	pass
+TC-104-44a pushd results; popd stays deny	deny	deny	deny
+TC-104-44b no stack model: ask	ask	ask	ask
+TC-110-01 false && cd does not clear	pass	pass	ask
+TC-110-02 test && cd does not clear	pass	pass	ask
+TC-110-03 multi-line if does not clear	pass	pass	ask
+TC-110-04 multi-line for does not clear	pass	pass	ask
+TC-110-05 multi-line while	pass	pass	ask
+TC-110-06 multi-line until	pass	pass	ask
+TC-110-07 multi-line case	pass	pass	ask
+TC-110-08 multi-line select	pass	pass	ask
+TC-110-09 multi-line ( )	pass	pass	ask
+TC-110-10 multi-line function	pass	pass	ask
+TC-110-11 multi-line { }	pass	pass	ask
+TC-110-12 here-doc before the cd	pass	pass	ask
+TC-110-13 builtin cd does not clear	pass	pass	ask
+TC-110-14 command cd does not clear	pass	pass	ask
+TC-110-15 VAR=x cd does not clear	pass	pass	ask
+TC-110-16 control: plain absolute cd clears	pass	pass	pass
+TC-110-17 control: cd first then && clears	pass	pass	pass
+TC-110-18 control: cd /abs && rm	pass	pass	pass
+TC-110-19 control: plain newlines clear	pass	pass	pass
+TC-110-20 control: if after the cd	pass	pass	pass
+TC-110-21 { cd; } still asks	ask	ask	ask
+TC-110-22 >| overwrite	pass	pass	ask
+TC-110-23 >&file	pass	pass	ask
+TC-110-24 >& file	pass	pass	ask
+TC-110-25 > "$F"	pass	pass	ask
+TC-110-26 > $(...)	pass	pass	ask
+TC-110-27 > backticks	pass	pass	ask
+TC-110-28 control: 2>&1	pass	pass	pass
+TC-110-29 control: >&2	pass	pass	pass
+TC-110-30 control: known folder	pass	pass	pass
+TC-110-31 control: known folder, $ target	pass	pass	pass
+TC-110-32 tee FILE	pass	pass	ask
+TC-110-33 sort -o	pass	pass	ask
+TC-110-34 cp dest	pass	pass	ask
+TC-110-35 sed -i	pass	pass	ask
+TC-110-36 dd of=	pass	pass	ask
+TC-110-37 control: tee -a as today	pass	pass	pass
+TC-110-38 control: known folder tee	pass	pass	pass
+TC-110-39 control: cp relative source only	pass	pass	pass
+TC-110-40 control: tee absolute	pass	pass	pass
+TC-110-41 control: sort without -o	pass	pass	pass
+TC-110-42 control: sed without -i	pass	pass	pass
+TC-110-43 control: dd of= absolute	pass	pass	pass
+TC-110-44 quoted > is text	pass	ask	pass
+TC-110-45 awk comparison (ruling 2026-10-17: awk can write, asks; accepted cost)	pass	ask	ask
+TC-110-46 [[ a > b ]]	pass	ask	pass
+TC-110-47 [ a \> b ]	pass	ask	pass
+TC-110-48 quoted ->	pass	ask	pass
+TC-110-49 comment after cd	pass	ask	pass
+TC-110-50 control: comment, known folder	pass	pass	pass
+TC-110-51 quoted & is text	pass	ask	pass
+TC-110-52 quoted > then relative delete	ask	ask	ask
+TC-110-53 real redirect after quoted >	pass	ask	ask
+TC-110-54 quoted target	pass	ask	ask
+TC-110-55 single-quoted target	pass	ask	ask
+TC-110-56 comparison then real redirect	pass	ask	ask
+TC-110-57 awk then real redirect	pass	ask	ask
+TC-110-58 backgrounded cd	pass	ask	ask
+TC-110-59 || cd	pass	ask	ask
+TC-110-60 cd "$dir" still lost	pass	ask	ask
+TC-110-62 variable relative delete as today	ask	ask	ask
+TC-110-66 known gap: cd target existence	pass	pass	pass
+TC-110-70 comment cd then results	deny	deny	deny
+TC-110-71 results stays deny	deny	deny	deny
+TC-056 pushd results; popd: judged as main does (Rev 3)	deny	deny	deny
+plan: pushd res-ults; popd keeps results (Rev 3, stricter than main)	deny	deny	deny
+plan: a stack entry does not leak into the next pushd	deny	deny	deny
+plan: Push-Location results; Pop-Location keeps results (Rev 3)	deny	deny	deny
+plan: Bash Push-Location results is judged	deny	deny	deny
+plan: an unreadable Set-Location target keeps the old folder	deny	deny	deny
+plan: control: lister of reports, from the run folder	pass	pass	pass
+R1 popd -n does not move	deny	deny	deny
+R1 popd +1 does not move to the top	deny	deny	deny
+R1 dirs -c empties the stack, popd fails	deny	deny	deny
+R1 named stacks	deny	deny	deny
+R1 sl - goes back	deny	deny	deny
+R1 Push-Location - goes back	deny	deny	deny
+R1 a wildcard target	deny	deny	deny
+R1 an evaluated target	deny	deny	deny
+R1 an array target	deny	deny	deny
+TC-056 a bare popd is judged as main does	deny	deny	deny
+R1 control: an unknown target from a harmless folder	pass	pass	pass
+R1 false && popd	deny	deny	deny
+R1 exit 0 || popd	deny	deny	deny
+R1 popd | cat	deny	deny	deny
+R1 (popd)	deny	deny	deny
+R1 echo a | popd	deny	deny	deny
+R1 popd &	deny	deny	deny
+R1 command popd	deny	deny	deny
+R1 an unknown option on Set-Location	deny	deny	deny
+R1 Set-Location -WhatIf	deny	deny	deny
+R1 Pop-Location with an unknown option	deny	deny	deny
+TC-060 Pop-Location -PassThru is judged as main does	deny	deny	deny
+R1 control: -PassThru is harmless	pass	pass	pass
+R1 sl after &&	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; pushd	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; pushd	ask	ask	ask
+TC-066 Bash pushd /work/u9613010/lab_runs/x/results; pus	ask	ask	ask
+TC-066 Bash pushd /work/u9613010/lab_runs/x/results; pus	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd res\ults	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd res\ults	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd res\ults	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults; p	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults; p	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd results; po	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd results; pu	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; sl /tm	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; chdir	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; cd ~;	pass	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location /	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location /	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location r	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd results; Se	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd results; sl	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd results; cd	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults; s	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults; c	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults; c	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults/su	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults/su	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd results/sub	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd raw\data; c	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x/wo\rk; rm -rf x	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd work; cd ..	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; sl /tm	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; cd /tm	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Pop-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell Push-Location /work/u9613010/lab_runs/x; Pus	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; cd results; cd	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; cd results; cd	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location r	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; cd res\ults; c	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; cd res\ults; R	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location -	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location -	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location -	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location -	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location -	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location -	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location -	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location .	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location .	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location -	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location /	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location -	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; sl -Path resul	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; chdir -Path re	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; cd -Path resul	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; cd -LiteralPat	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; pushd -Path re	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; cd -PassThru r	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 PowerShell Set-Location results; Remove-Item -Recurse x	deny	deny	deny
+TC-066 PowerShell Set-Location tmp; Remove-Item -Recurse x	pass	pass	pass
+TC-066 PowerShell Set-Location ..; Remove-Item -Recurse x	deny	deny	deny
+TC-066 PowerShell Set-Location ..; Remove-Item -Recurse x	deny	deny	deny
+TC-066 PowerShell Remove-Item -Recurse x	deny	deny	deny
+TC-066 PowerShell sl /tmp; Remove-Item x	deny	deny	deny
+TC-066 PowerShell Get-ChildItem res\ults | Move-Item -Destinat	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; gci res\ults |	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	pass	pass	pass
+TC-066 PowerShell Get-ChildItem /tmp | Move-Item -Destination	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	pass	pass	pass
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; ls raw\data |	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; dir res\ults |	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; gi res\ults |	ask	ask	ask
+TC-066 PowerShell Get-ChildItem /tmp | Move-Item -Destination	pass	pass	pass
+TC-066 PowerShell Get-ChildItem tmp\sub | Move-Item -Destinati	pass	pass	pass
+TC-066 PowerShell Get-ChildItem sub\dir | Move-Item -Destinati	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; Get-ChildItem	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; ls res\ults |	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults &&	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults ||	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x && (cd res\ults	deny	deny	deny
+TC-066 Bash (cd /work/u9613010/lab_runs/x; cd results);	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; (cd results);	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd results; cd	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd /tmp; po	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd /tmp; po	ask	ask	ask
+TC-066 Bash pushd /work/u9613010/lab_runs/x; pushd /tmp;	deny	deny	deny
+TC-066 Bash pushd /work/u9613010/lab_runs/x/results; pus	ask	ask	ask
+TC-066 Bash pushd /work/u9613010/lab_runs/x/results; pus	ask	ask	ask
+TC-066 Bash pushd /work/u9613010/lab_runs/x/results; cd	ask	ask	ask
+TC-066 Bash pushd /work/u9613010/lab_runs/x/results; cd	ask	ask	ask
+TC-066 Bash pushd /work/u9613010/lab_runs/x; pushd resul	ask	ask	ask
+TC-066 Bash pushd /work/u9613010/lab_runs/x; pushd resul	ask	ask	ask
+TC-066 Bash pushd /work/u9613010/lab_runs/x; pushd resul	ask	ask	ask
+TC-066 Bash pushd /work/u9613010/lab_runs/x; pushd resul	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd -n resul	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd +1; rm -	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd res\ults	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd res\ults	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	ask	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x/results; cd ..;	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Set-Lo	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; Push-L	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Push-Location	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd res\ults	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults; S	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults; P	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; c\d results; c	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; c\d results; p	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; c\d res\ults;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pu\shd results	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pu\shd results	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; false	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; (cd /t	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; cd /tm	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd results; cd	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults; c	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd re\ports; c	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd results; cd	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; sl results; sl	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; sl results; sl	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; sl results; sl	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; sl results; sl	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; pushd results	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; pushd results	deny	deny	deny
+TC-066 Bash pushd results; popd -n; rm -rf x	deny	deny	deny
+TC-066 Bash pushd /tmp; pushd results; popd +1; rm -rf x	deny	deny	deny
+TC-066 Bash pushd results; dirs -c; popd; rm -rf x	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; pushd results;	deny	deny	deny
+TC-066 PowerShell Push-Location -StackName a /tmp; Push-Locati	deny	deny	deny
+TC-066 PowerShell sl /tmp; sl -; Remove-Item x	deny	deny	deny
+TC-066 PowerShell Push-Location /tmp; Push-Location -; Remove-	deny	deny	deny
+TC-066 PowerShell sl ../res*; Remove-Item x	deny	deny	deny
+TC-066 PowerShell sl ..; sl -Path (Join-Path $PWD results); Re	deny	deny	deny
+TC-066 PowerShell sl ..; sl @("results"); Remove-Item x	deny	deny	deny
+TC-066 Bash pushd results; false && popd; rm -rf x	deny	deny	deny
+TC-066 Bash pushd results; exit 0 || popd; rm -rf x	deny	deny	deny
+TC-066 Bash pushd results; popd | cat; rm -rf x	deny	deny	deny
+TC-066 Bash pushd results; (popd); rm -rf x	deny	deny	deny
+TC-066 Bash pushd results; echo a | popd; rm -rf x	deny	deny	deny
+TC-066 Bash pushd results; popd & rm -rf x	deny	deny	deny
+TC-066 Bash pushd results; command popd; rm -rf x	deny	deny	deny
+TC-066 PowerShell sl -Foo /tmp; Remove-Item x	deny	deny	deny
+TC-066 PowerShell sl /tmp -WhatIf; Remove-Item x	deny	deny	deny
+TC-066 PowerShell false && sl /tmp; Remove-Item x	deny	deny	deny
+TC-066 PowerShell sl /tmp; Pop-Location -Foo; Remove-Item x	deny	deny	deny
+TC-066 PowerShell Push-Location results; Pop-Location -PassThr	deny	deny	deny
+TC-066 PowerShell sl -PassThru /tmp; Remove-Item x	pass	pass	pass
+TC-066 PowerShell Set-Location /work/u9613010/lab_runs/x/resul	deny	deny	deny
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; Set-Location r	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x; sl results; rc	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd res\ults; r	pass	pass	pass
+TC-066 Bash cd /work/u9613010/lab_runs/x/results; rclone	pass	pass	pass
+TC-066 Bash sl d1; sl d2; sl d3; sl d4; sl d5; sl d6; sl	pass	pass	pass
+TC-066 Bash sl d1; sl d2; sl d3; sl d4; sl d5; sl d6; sl	deny	deny	deny
+TC-066 Bash pushd -n results; popd; mv sample1 /tmp/y	ask	ask	ask
+TC-066 Bash pushd -n results; popd; rm -rf sample1	deny	deny	deny
+TC-066 Bash pushd -n rawdata; popd; mv sample1 /tmp/y	ask	ask	ask
+TC-066 Bash pushd -n rawdata; popd; rm -rf sample1	deny	deny	deny
+TC-066 Bash pushd -n analysis; popd; mv sample1 /tmp/y	ask	ask	ask
+TC-066 Bash pushd -n analysis; popd; rm -rf sample1	deny	deny	deny
+TC-066 Bash pushd -n .nextflow/plugins; popd; mv sample1	ask	ask	ask
+TC-066 Bash pushd -n .nextflow/plugins; popd; rm -rf sam	deny	deny	deny
+TC-066 Bash pushd -n results/a; popd; mv sample1 /tmp/y	ask	ask	ask
+TC-066 Bash pushd -n results/a; popd; rm -rf sample1	deny	deny	deny
+TC-066 Bash pushd /tmp; pushd -n results; popd; rm -rf *	deny	deny	deny
+TC-066 Bash pushd results; pushd +1; popd; rm -rf ../*	deny	deny	deny
+TC-066 Bash pushd results; pushd +0; popd; rm -rf ../wor	deny	deny	deny
+TC-066 Bash pushd results; pushd +1; popd; rm -rf ../wor	deny	deny	deny
+TC-066 Bash cd /work/u9613010/lab_runs/x/rawdata; cd ~/x	pass	ask	ask
+TC-066 Bash cd $HOME/rawdata; rm -rf s1	pass	ask	ask
+TC-066 Bash cd $(echo /tmp); rm -rf s1	pass	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x/rawdata; cd -;	pass	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x/rawdata; cd -;	pass	ask	ask
+TC-066 Bash cd -; cd /tmp & rm -rf s1	pass	ask	ask
+TC-066 Bash cd -; true || cd /tmp; rm -rf s1	pass	ask	ask
+TC-066 Bash cd -; cd $d; rm -rf s1	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x/rawdata; cd -;	pass	ask	ask
+TC-066 Bash cd -; echo hi > s1	pass	ask	ask
+TC-066 PowerShell cd /work/u9613010/lab_runs/x; sl -; Remove-I	pass	ask	ask
+TC-066 Bash cd -; { cd /tmp; }; rm -rf s1	ask	ask	ask
+TC-066 Bash cd -; false && { cd /tmp; }; rm -rf s1	ask	ask	ask
+TC-066 Bash cd /work/u9613010/lab_runs/x; cd -; false &&	pass	pass	ask
+TC-066 Bash cd -; [ -d x ] && cd /tmp; rm -rf s1	pass	pass	ask
+TC-066 Bash cd - if true then cd /tmp fi rm -rf s1	pass	pass	ask
+TC-066 Bash cd - for i in; do cd /tmp done rm -rf s1	pass	pass	ask
+TC-066 Bash cd - while true; do cd /tmp done rm -rf s1	pass	pass	ask
+TC-066 Bash cd - until false; do cd /tmp done rm -rf s1	pass	pass	ask
+TC-066 Bash cd - case x in x) cd /tmp ;; esac rm -rf s1	pass	pass	ask
+TC-066 Bash cd - select i in a; do cd /tmp done rm -rf s	pass	pass	ask
+TC-066 Bash cd - ( cd /tmp ) rm -rf s1	pass	pass	ask
+TC-066 Bash cd - f() { cd /tmp } rm -rf s1	pass	pass	ask
+TC-066 Bash cd - { cd /tmp } rm -rf s1	pass	pass	ask
+TC-066 Bash cd - cat <<EOF x EOF cd /tmp rm -rf s1	pass	pass	ask
+TC-066 Bash cd -; builtin cd /tmp; rm -rf s1	pass	pass	ask
+TC-066 Bash cd -; command cd /tmp; rm -rf s1	pass	pass	ask
+TC-066 Bash cd -; X=1 cd /tmp; rm -rf s1	pass	pass	ask
+TC-066 Bash cd - cd /tmp rm -rf s1	pass	pass	pass
+TC-066 Bash cd - cd /tmp if true; then echo; fi rm -rf s	pass	pass	pass
+TC-066 Bash cd -; ls >| s1	pass	pass	ask
+TC-066 Bash cd -; ls >&s1	pass	pass	ask
+TC-066 Bash cd -; ls >& s1	pass	pass	ask
+TC-066 Bash cd -; echo x > "$F"	pass	pass	ask
+TC-066 Bash cd -; echo x > $(mktemp)	pass	pass	ask
+TC-066 Bash cd -; ls 2>&1	pass	pass	pass
+TC-066 Bash cd -; ls >&2	pass	pass	pass
+TC-066 Bash cd -; echo x | tee s1	pass	pass	ask
+TC-066 Bash cd -; echo x | tee -a s1	pass	pass	pass
+TC-066 Bash cd -; sort -o s1 s1	pass	pass	ask
+TC-066 Bash cd -; cp /tmp/a s1	pass	pass	ask
+TC-066 Bash cd -; cp s1 /tmp/b	pass	pass	pass
+TC-066 Bash cd -; sed -i s/a/b/ s1	pass	pass	ask
+TC-066 Bash cd -; sed s/a/b/ s1	pass	pass	pass
+TC-066 Bash cd -; dd if=/dev/zero of=s1 count=1	pass	pass	ask
+TC-066 Bash cd -; dd if=s1 of=/tmp/o	pass	pass	pass
+TC-066 Bash cd -; echo "x>y"	pass	ask	pass
+TC-066 Bash cd -; awk '$1>3' /tmp/f	pass	ask	ask
+TC-066 Bash cd -; [[ a > b ]]	pass	ask	pass
+TC-066 Bash cd -; git log --format='a->b'	pass	ask	pass
+TC-066 Bash cd -; cd /tmp # a | b rm -rf s1	pass	ask	pass
+TC-066 Bash cd -; cd /tmp; echo "a&b"; rm -rf s1	pass	ask	pass
+TC-066 Bash cd -; echo "x>y"; rm -rf s1	ask	ask	ask
+TC-066 Bash cd -; echo x > "s1"	pass	ask	ask
+TC-066 Bash cd -; [[ a > b ]]; echo x > s1	pass	ask	ask
+TC-066 Bash cd -; awk '$1>3' /tmp/f > s1	pass	ask	ask
+TC-066 Bash cd -; echo x > `mktemp`	pass	pass	ask
+TC-066 Bash cd -; [ a \> b ]	pass	ask	pass
+TC-066 Bash ls > s1	pass	pass	pass
+TC-066 Bash cd -; sort s1	pass	pass	pass
+TC-066 Bash cd -; echo x | tee /tmp/s1	pass	pass	pass
+TC-066 Bash cd -; cd /tmp; rm -rf s1	pass	pass	pass
+TC-066 Bash cd -; cd /tmp && rm -rf s1	pass	pass	pass
+TC-066 Bash cd /tmp && rm -rf s1	pass	pass	pass
+TC-066 Bash cd /tmp; echo x > "$F"	pass	pass	pass
+TC-066 Bash cd -; echo "a>b" > s1	pass	ask	ask
+TC-066 Bash cd -; echo x > 's1'	pass	ask	ask
+TC-066 Bash cd -; awk 'BEGIN{print "x" > "s1"}'	pass	ask	ask
+TC-066 Bash cd -; gawk '{print > FILENAME".bak"}' f	pass	ask	ask
+TC-066 Bash cd -; perl -e 'open(F,">s1")'	pass	ask	ask
+TC-066 Bash cd -; [ a > s1 ]	pass	ask	ask
+#62 deadline reached: asks, even for an ordinary delete	ask	ask	ask
+#62 control: the same delete with the default deadline	pass	pass	pass
+#62 a delete through a link into _references/	deny	deny	deny
+#62 ...relative, from the working folder	deny	deny	deny
+#62 control: a real folder beside the link	pass	pass	pass
+#62 control: a deadline that is not a number is ignored	pass	pass	pass

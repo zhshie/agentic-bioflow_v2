@@ -959,7 +959,7 @@ tc "/tmp" "cd -; sort s1"                                            pass "TC-11
 tc "/tmp" "cd -; sed s/a/b/ s1"                                      pass "TC-110-42 control: sed without -i"
 tc "/tmp" "cd -; dd if=s1 of=/tmp/o"                                 pass "TC-110-43 control: dd of= absolute"
 tc "/tmp" "cd -; echo \"x>y\""                                       pass "TC-110-44 quoted > is text"
-tc "/tmp" "cd -; awk '\$1>3' /tmp/f"                                 pass "TC-110-45 awk comparison"
+tc "/tmp" "cd -; awk '\$1>3' /tmp/f"                                 ask  "TC-110-45 awk comparison (ruling 2026-10-17: awk can write, asks; accepted cost)"
 tc "/tmp" "cd -; [[ a > b ]]"                                        pass "TC-110-46 [[ a > b ]]"
 tc "/tmp" "cd -; [ a \> b ]"                                        pass "TC-110-47 [ a \> b ]"
 tc "/tmp" "cd -; git log --format='a->b'"                            pass "TC-110-48 quoted ->"
