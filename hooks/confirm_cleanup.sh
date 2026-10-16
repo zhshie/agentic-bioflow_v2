@@ -413,9 +413,13 @@ RE_QBS='"[^"]*\\[^"]*"|'"'"'[^'"'"']*\\[^'"'"']*'"'"''
 lost_rel() { # lost_rel <word as written>: relative, no variable, and the folder is lost
     [ "$CWD_LOST" = 1 ] || return 1
     case "$1" in
-        ''|-*|/*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) return 1 ;;
+        ''|-*|/*|[A-Za-z]:*|'~'|'~/'*|*'$'*|*'`'*) return 1 ;;
     esac
     return 0
+}
+# #104: one place builds the UNRESOLVED entry for every consumer of lost_rel.
+lost_ask() { # lost_ask <phrase naming the relative word>
+    UNRESOLVED="${UNRESOLVED}(working folder unknown after cd - / cd / popd: $1 - confirm which folder this is) "
 }
 RE_CWD='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
 if [[ $INPUT =~ $RE_CWD ]]; then
@@ -908,7 +912,7 @@ is_dry_run() {
 # (gate_process_count), and their full judgement costs well under a second.
 CW_HANDLED='^(__too_deep__|cd|pushd|popd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
 RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)|($RE_NFCLEAN)"
-RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)"
+RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)|(>[[:space:]]*[^[:space:]>&|/])"
 # The PowerShell listers and pipeline filters (LISTER_OK below) matter only to a
 # Move-Item they feed, which is in CW_HANDLED: a run of them is held back and
 # kept only when a kept segment follows it. Kept always, `sort` and `ls` made
@@ -945,6 +949,23 @@ case "${ABF_CLEANUP_DEFER_DEADLINE_S:-}" in
     ''|*[!0-9]*) ;;
     *) [ "$ABF_CLEANUP_DEFER_DEADLINE_S" -lt "$DEFER_DEADLINE" ] && DEFER_DEADLINE=$ABF_CLEANUP_DEFER_DEADLINE_S ;;
 esac
+# #104: an absolute cd clears the "working folder unknown" state only when it runs in the
+# main shell unconditionally. The splitter does not say what wraps a segment, so cd_uncond
+# reads the lines of the command that hold the segment: any subshell, command substitution,
+# background `&`, pipe, `||`, if/while/case/for, or a string another shell re-reads (-c,
+# eval, ssh) there means the cd does not clear (safe default: more asks, never fewer).
+RE_CD_COND='[&|(`]|(^|[^[:alnum:]_.-])(if|while|until|case|for|select|eval|ssh|-c)[[:space:]]'
+cd_uncond() { # 0 when the segment was found and every line holding it is free of those shapes
+    local l t found=1
+    while IFS= read -r l; do
+        [[ $l == *"$SEG"* ]] || continue
+        found=0
+        t=${l//&&/ }; t=${t//>&/ }; t=${t//&>/ }
+        [[ $t =~ $RE_CD_COND ]] && return 1
+    done <<<"$CMD"
+    return $found
+}
+RE_REDIR_REL='(^|[^>&<])[0-9]*>[[:space:]]*([^[:space:]>&|<()/;]+)'
 NSEG=0
 TIMED_OUT=0
 while IFS="$US" read -r SEG VSEG CW COPY; do
@@ -1005,12 +1026,14 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     PREV_LISTER_OK=$LISTER_OK
     case "$CW" in
         cd|pushd)
-            CDT=""; CDF=0
+            CDT=""; CDF=0; CDI=-1; CDRAW=""
             read -r -a CDW <<<"${SEG//[\"\']/}"
+            read -r -a CDR <<<"$SEG"
             for CDX in ${CDW[@]+"${CDW[@]}"}; do
+                CDI=$((CDI + 1))
                 if [ "$CDF" = 0 ]; then [ "$CDX" = "$CW" ] && CDF=1; continue; fi
                 case "$CDX" in -*) continue ;; esac
-                CDT="$CDX"; break
+                CDT="$CDX"; CDRAW=""; for ((CDJ = CDI; CDJ < ${#CDR[@]}; CDJ++)); do CDRAW="$CDRAW ${CDR[$CDJ]}"; done; break
             done
             # #76: main's own cd / pushd is the only thing that replaces the set of
             # candidate folders (CANDS). The trunk (VCWD) moves exactly as it always did.
@@ -1022,11 +1045,16 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             else
                 case "$CDT" in
                     ''|-) VCWD=""; CWD_LOST=1 ;;
-                    '~'*|*'$'*|*'`'*) VCWD="" ;;
-                    /*|[A-Za-z]:*) norm_path "${CDT//\\//}"; VCWD="$REPLY"; CANDS=(); CANDS_DIRTY=1; CWD_LOST=0 ;;
+                    # #104: a target this gate cannot name is a folder it does not know
+                    '~'*|*'$'*|*'`'*) VCWD=""; CWD_LOST=1 ;;
+                    /*|[A-Za-z]:*)
+                        norm_path "${CDT//\\//}"; VCWD="$REPLY"; CANDS=(); CANDS_DIRTY=1
+                        # #104: only a plain main-shell cd to a named folder says where we are
+                        [ "$CWD_LOST" = 1 ] && cd_uncond && CWD_LOST=0 ;;
                     *)
                         # #78: a quoted target holding a backslash is Windows or a real name
-                        [[ $SEG =~ $RE_QBS ]] && CWD_LOST=1
+                        # (#104: judged on the target as written, not the whole segment)
+                        [[ $CDRAW =~ $RE_QBS ]] && CWD_LOST=1
                         if [ -n "$VCWD" ]; then norm_path "$VCWD/${CDT//\\//}"; VCWD="$REPLY"; fi
                         # a relative target is followed from every candidate
                         DC_OLD=(${CANDS[@]+"${CANDS[@]}"}); CANDS=(); CANDS_DIRTY=1
@@ -1051,6 +1079,18 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             # then goes on through the checks main runs on it.
             CDT=""; CDF=0; DC_TAKE=0; DC_SKIP=0
             [ "$CW" = pop-location ] && CWD_LOST=1
+            # #104: under PowerShell a bare location cmdlet, `sl -` and a quoted backslash
+            # target leave a folder this gate cannot name. Under Bash they are not built-ins.
+            case "$TOOL" in
+                ""|Bash) ;;
+                *)
+                    if [ "$CW" != pop-location ]; then
+                        PS_REST=${SEG#*[[:space:]]}; [ "$PS_REST" = "$SEG" ] && PS_REST=""
+                        PS_T=${PS_REST//[\"\']/}; PS_T=${PS_T#"${PS_T%%[![:space:]]*}"}
+                        if [ -z "$PS_T" ] || [ "$PS_T" = "-" ]; then CWD_LOST=1
+                        elif [[ $PS_REST =~ $RE_QBS ]]; then CWD_LOST=1; fi
+                    fi ;;
+            esac
             if [ "$CW" != pop-location ]; then
                 read -r -a CDW <<<"${SEG//[\"\']/}"
                 shopt -s nocasematch
@@ -1130,6 +1170,15 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     SEG_NR=$SEG; while [[ $SEG_NR =~ $RE_DEVNULL ]]; do SEG_NR=${SEG_NR/"${BASH_REMATCH[0]}"/}; done
     V_NR=$VSEG;  while [[ $V_NR =~ $RE_DEVNULL ]]; do V_NR=${V_NR/"${BASH_REMATCH[0]}"/}; done
     [[ $V_NR =~ $RE_TRUNC ]] && TRUNCATE=1
+    # #104: a relative `>` target overwrites a file in a folder this gate cannot name.
+    if [ "$CWD_LOST" = 1 ] && [[ $SEG_NR == *'>'* ]]; then
+        RD_T=$SEG_NR
+        while [[ $RD_T =~ $RE_REDIR_REL ]]; do
+            RD_W=${BASH_REMATCH[2]}; RD_W=${RD_W//\"/}; RD_W=${RD_W//\'/}
+            lost_rel "$RD_W" && lost_ask "overwrite ${RD_W}"
+            RD_T=${RD_T#*"${BASH_REMATCH[0]}"}
+        done
+    fi
     [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1
     # A dry run deletes nothing (#35): `--dry-run`, or an n among the short options.
     DRYRUN=0
@@ -1417,7 +1466,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$X"; XA+=("$REPLY") ;; esac
             fi
             defer_rec f "$X" "$XF" "$XS"
-            [ "$DESTRUCTIVE" = 1 ] && lost_rel "$X" && UNRESOLVED="${UNRESOLVED}(working folder unknown after cd - / cd / popd: find from ${X} - confirm where it runs) "
+            [ "$DESTRUCTIVE" = 1 ] && lost_rel "$X" && lost_ask "find from ${X}"
             XH=0; XW=0; XT=0
             for Y in ${XA[@]+"${XA[@]}"}; do
                 holds_protected "$Y" && XH=1
@@ -1551,9 +1600,9 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
         # #78: a relative delete target (or mv source) after the working folder was lost
         if [ "$CWD_LOST" = 1 ] && lost_rel "$A0"; then
             if [ "$DESTRUCTIVE" = 1 ]; then
-                UNRESOLVED="${UNRESOLVED}(working folder unknown after cd - / cd / popd: ${A0} - confirm which folder this is) "
+                lost_ask "${A0}"
             elif [ "$MOVE_ONLY" = 1 ] && { [ "$NARGS" -lt "$TOTAL_TARGETS" ] || [ "$MOVE_KIND" = all ]; }; then
-                UNRESOLVED="${UNRESOLVED}(working folder unknown after cd - / cd / popd: move source ${A0} - confirm which folder this is) "
+                lost_ask "move source ${A0}"
             fi
         fi
 
