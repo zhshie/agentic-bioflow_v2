@@ -29,3 +29,6 @@ env.yaml
 *.db-journal
 # the platform test venv normally lives in ~/.cache; this covers a checkout-local one
 abf-platform-venv/
+
+# TypeSafe key for the optional Jev triage (docs/SETTINGS.md)
+.typesafe_key

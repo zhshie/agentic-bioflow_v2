@@ -88,7 +88,7 @@
 - ✅ Nextflow（Apache-2.0）、nf-core 管線與工具（MIT）、`tw`、tower-agent（Apache-2.0）、一般 R／Python 套件。
 - ⚠️ Wave（AGPL-3.0，改過再對外提供服務要公開原始碼）；Fusion（即使不經 Platform 也要 Seqera 授權）——避開。
 - ❌ 生資 agent 都不適合當零件：FlowAgent GPL-3；BioMaster、CellAgent 無授權檔；Biomni 可參考寫法，但它不跑 nf-core。「讓 AI 照步驟做事」這一層本來就是我們自己的核心。
-- ❌ Jev（TypeSafe）：只能呼叫雲端付費 API（`api.typesafe.ai`），查不到自架版本，「不保留資料」只給企業客戶——跟「資料不離開實驗室」「不依賴別家」衝突〔來源：[docs.typesafe.ai/api](https://docs.typesafe.ai/api.md)、[legal](https://docs.typesafe.ai/legal.md)〕。
+- ⚠️ Jev（TypeSafe）：選配、預設關、使用者自備金鑰、外送內容已揭露（只送失敗 task 的錯誤訊息最後 200 行與 exit code，第一次使用前告知）。仍是雲端付費 API（`api.typesafe.ai`），查不到自架版本，「不保留資料」只給企業客戶，所以不是必要零件；`JEV_ENDPOINT` 留著將來改指本地服務。理由與條件見 [ADR 0007](adr/0007-jev-optional-triage.md)〔來源：[docs.typesafe.ai/api](https://docs.typesafe.ai/api.md)、[legal](https://docs.typesafe.ai/legal.md)〕。
 
 ## 宿主（AI 外殼程式）與本地模型
 
