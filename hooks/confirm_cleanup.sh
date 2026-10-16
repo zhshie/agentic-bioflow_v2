@@ -910,9 +910,9 @@ is_dry_run() {
 # tests/confirm_cleanup_test.sh through this path to catch one that has not.
 # Small inputs (under 8 KB of segments) skip the filter: it is one more process
 # (gate_process_count), and their full judgement costs well under a second.
-CW_HANDLED='^(__too_deep__|cd|pushd|popd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
+CW_HANDLED='^(__too_deep__|[{]|cd|pushd|popd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
 RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)|($RE_NFCLEAN)"
-RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)"
+RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)|(>[[:space:]]*[^[:space:]>&|/])"
 # The PowerShell listers and pipeline filters (LISTER_OK below) matter only to a
 # Move-Item they feed, which is in CW_HANDLED: a run of them is held back and
 # kept only when a kept segment follows it. Kept always, `sort` and `ls` made
@@ -950,13 +950,21 @@ case "${ABF_CLEANUP_DEFER_DEADLINE_S:-}" in
     *) [ "$ABF_CLEANUP_DEFER_DEADLINE_S" -lt "$DEFER_DEADLINE" ] && DEFER_DEADLINE=$ABF_CLEANUP_DEFER_DEADLINE_S ;;
 esac
 # #104: an absolute cd clears the "working folder unknown" state only when it runs in the
-# main shell unconditionally. The splitter does not say what wraps a segment, so any
-# subshell, command substitution, background `&`, pipe, `||`, or if/while/case/for in the
-# command means no cd in it clears (safe default: more asks, never fewer).
-CD_COND=0
-CD_TXT=${CMD//&&/ }; CD_TXT=${CD_TXT//>&/ }; CD_TXT=${CD_TXT//&>/ }
-RE_CD_COND='[&|(`]|(^|[^[:alnum:]_.-])(if|while|until|case|for|select)[[:space:]]'
-[[ $CD_TXT =~ $RE_CD_COND ]] && CD_COND=1
+# main shell unconditionally. The splitter does not say what wraps a segment, so cd_uncond
+# reads the lines of the command that hold the segment: any subshell, command substitution,
+# background `&`, pipe, `||`, if/while/case/for, or a string another shell re-reads (-c,
+# eval, ssh) there means the cd does not clear (safe default: more asks, never fewer).
+RE_CD_COND='[&|(`]|(^|[^[:alnum:]_.-])(if|while|until|case|for|select|eval|ssh|-c)[[:space:]]'
+cd_uncond() { # 0 when the segment was found and every line holding it is free of those shapes
+    local l t found=1
+    while IFS= read -r l; do
+        [[ $l == *"$SEG"* ]] || continue
+        found=0
+        t=${l//&&/ }; t=${t//>&/ }; t=${t//&>/ }
+        [[ $t =~ $RE_CD_COND ]] && return 1
+    done <<<"$CMD"
+    return $found
+}
 RE_REDIR_REL='(^|[^>&<])[0-9]*>[[:space:]]*([^[:space:]>&|<()/;]+)'
 NSEG=0
 TIMED_OUT=0
@@ -1032,7 +1040,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 CDI=$((CDI + 1))
                 if [ "$CDF" = 0 ]; then [ "$CDX" = "$CW" ] && CDF=1; continue; fi
                 case "$CDX" in -*) continue ;; esac
-                CDT="$CDX"; CDRAW="${CDR[*]:$CDI}"; break
+                CDT="$CDX"; CDRAW=""; for ((CDJ = CDI; CDJ < ${#CDR[@]}; CDJ++)); do CDRAW="$CDRAW ${CDR[$CDJ]}"; done; break
             done
             # #76: main's own cd / pushd is the only thing that replaces the set of
             # candidate folders (CANDS). The trunk (VCWD) moves exactly as it always did.
@@ -1049,7 +1057,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                     /*|[A-Za-z]:*)
                         norm_path "${CDT//\\//}"; VCWD="$REPLY"; CANDS=(); CANDS_DIRTY=1
                         # #104: only a plain main-shell cd to a named folder says where we are
-                        [ "$CD_COND" = 0 ] && CWD_LOST=0 ;;
+                        [ "$CWD_LOST" = 1 ] && cd_uncond && CWD_LOST=0 ;;
                     *)
                         # #78: a quoted target holding a backslash is Windows or a real name
                         # (#104: judged on the target as written, not the whole segment)
