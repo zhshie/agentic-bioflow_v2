@@ -64,8 +64,8 @@ adapter should have to know that.
 
 **5. Portable substance, but never a lowest common denominator.**
 
-Judgment, procedure and site operations live in `docs/` and `scripts/`, which a
-person or another model can read and run directly. The host's own capabilities —
+Judgment, procedure and site operations live in `skills/`, `docs/` and `scripts/`, which a person or another model can read and
+run directly. The host's own capabilities —
 hooks, skills, commands — are used fully, because dropping hooks would drop the
 safety net and dropping the skill would leave a tool that exists only when
 someone types a slash. The stronger form - a host reaches launch and delete only

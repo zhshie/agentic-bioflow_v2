@@ -53,11 +53,11 @@ user's confirmation lets it run.
   the contract in `docs/SITE_ADAPTER.md`. The command layer MUST NOT name a scheduler, partition,
   queue or relay. A second site adapter MUST NOT be written until a real second site exists.
   *Check:* `tests/command_layer_is_site_neutral.sh`.
-- **5.** Judgment, procedure and site operations live in `docs/` and `scripts/`, readable and
-  runnable by a person or another model. Whatever AI host runs the tool, its own capabilities
+- **5.** Judgment, procedure and site operations live in `skills/`, `docs/` and `scripts/`,
+  readable and runnable by a person or another model. Whatever AI host runs the tool, its own capabilities
   (hooks, skills, commands or their equivalents) MUST be used fully.
   *Check:* `tests/works_without_host_test.sh`: with `hooks/` and `.claude-plugin/` removed, the
-  system still works from `docs/` and `scripts/`: degraded, not equivalent, but usable.
+  system still works from `skills/`, `docs/` and `scripts/`: degraded, not equivalent, but usable.
 
 *Rationale:* one cluster is not the world, and a lowest common denominator would drop the
 safety net along with the hooks that carry it.
@@ -415,6 +415,34 @@ still has zero submission paths until 007b, and the plugin still launches throug
 **Version.** MAJOR, under Governance: principle 2 is redefined.
 **Approval.** The maintainer approves and merges the pull request that carries this change.
 
+### 4.1.0 (2026-10-15): skills are a home of judgment; the platform has four entries
+
+**Rationale.** On 2026-10-15 the maintainer settled how the platform is reached, in his words:
+「只加 MCP 網址就能用」, 「平台純粹靠GUI介面也要能使用」, and 「平台也要有對話介面，若使用者不需要使用claude code等harness介面的話也可以直接對話使用」.
+He accepted the scope of the web pages as setup → launch → runs → rendered reports → the package,
+with figures from scripts made in the platform's chat or in a harness. He also said 「好，加 v3
+分支觸發」: the platform generation is built on a branch `v3`, and its CI trigger is configured on
+that branch itself, not in this pull request. `docs/adr/0006` records the decision. Principle
+II.5 said that judgment and procedure live in `docs/` and `scripts/`; the guidance for every
+harness is going to live in `skills/` (the Agent Skills format), so the sentence is made to name it.
+
+**What changes.**
+- Principle II.5 names `skills/` beside `docs/` and `scripts/`. Its check,
+  `tests/works_without_host_test.sh`, already packs `skills/`. Nothing else in the principle
+  changes.
+- The four principles that follow from ADR 0006 (every entry reaches the same action; gates live
+  where both the tools and the web pages meet them and a person answers each one; the platform's
+  own tools count as in use; the web pages and the tools match one to one) have no check yet. They
+  wait in `docs/ROADMAP.md`, "Principles waiting for a check", and join by the MAJOR amendment
+  that ships with feature 009. No number is promised for it.
+- The Safety Net is unchanged, word for word.
+
+**Impact on existing deployments.** None. No hook, script, command or skill changes; 2.17.0
+behaves exactly as before, and only documents and the tests that pin them change.
+
+**Version.** MINOR, under Governance: a principle is expanded; none is removed or redefined.
+**Approval.** The maintainer approves and merges the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -429,4 +457,4 @@ still has zero submission paths until 007b, and the plugin still launches throug
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 4.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11
+**Version**: 4.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-15

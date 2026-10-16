@@ -41,7 +41,7 @@ BIDI = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A)) | {0x200E, 0x200F
 FILE_NAMES = ("samplesheet.csv", "params.yaml", "nextflow.config", "head.sh")
 # Appended to every rendered nextflow.config, after the compute environment's own text (which stays first and unchanged).
 # When a run is cancelled Nextflow runs its workflow-complete observers twice (Session.destroy() calls shutdown0() again,
-# docs/PITFALLS.md 46); the second report/timeline write refuses an existing file and logs "Report file already exists".
+# docs/PITFALLS.md 50); the second report/timeline write refuses an existing file and logs "Report file already exists".
 # Only these two settings, they concern files of this one run. The block is part of the bundle that is shown and hashed.
 OVERWRITE_BLOCK = (
     "\n"
