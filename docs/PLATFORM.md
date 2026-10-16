@@ -358,6 +358,10 @@ The question is a human gate only as far as a human sits at the terminal. A proc
 - **The agent does not authenticate the platform.** It sends its agent token to the address it was started with and believes what that address answers. Anything that answers `/agent/poll` on the laptop at that address can hand the agent a self-consistent confirmed job: a bundle, a confirmation row whose hash matches it, and a token. The agent checks the bundle against its own settings and the hash against the confirmation, but it cannot know who wrote the confirmation. This is the same-user trust boundary of plan Revision 2 item 11: a process running as you is trusted as much as you are. The human gate is the terminal plus the Claude Code ask rule on `abf-platform launch|cancel`.
 - **A process that drives a pty can answer y.** The question reads the terminal it runs in, and a program that opens its own pseudo-terminal is that terminal. Nothing in the code can tell it from a person. Again the same-user trust boundary; again the gate is the terminal plus the Claude Code ask rule on `abf-platform launch|cancel`, so that a launch or a cancel started by an assistant stops and asks you first.
 
+## Action layer
+
+The platform's actions live in one place, `platform/abf_platform/actions/`: one function per action (list runs, get a run, list or get compute environments, list agents, list site files, launch, cancel). The MCP tools call these functions and nothing else, and so will the web pages and the chat. The only way to confirm a launch or a cancel today is the terminal: `abf-platform launch|cancel` asks, and only a yes on the terminal reaches `actions.launch` or `actions.cancel`. Anything else is refused with "no human confirmation channel".
+
 ## Where the files are
 
 Nothing is hard-coded; every location can be changed.

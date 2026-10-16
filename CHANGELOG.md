@@ -11,3 +11,4 @@ The v3 line (ADR 0006, 2026-10-15): the platform generation. `main` stays v2 (2.
   feature 009 (the action layer, write tools, human-channel confirmation, authorization, prompts
   and skills over MCP); constitution 6.0.0; each skill rewritten to call the platform; the
   harness kits (Claude Code, Codex, Claude Desktop); the web pages; the chat.
+- 009b: the action layer (`platform/abf_platform/actions/`): the MCP tools and the terminal launch/cancel call one function per action; behaviour unchanged.
