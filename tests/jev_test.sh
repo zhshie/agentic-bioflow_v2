@@ -26,6 +26,9 @@ OPS="$ROOT/skills/operational/SKILL.md"
 . "$ROOT/tests/lib/nojq_path.sh"
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+# TC-044: snapshot repo status now; other tests may leave files behind, so compare before/after, not absolute
+repo_status() { git -C "$ROOT" status --porcelain -- . ':!tests' ':!scripts' ':!skills' ':!docs' ':!specs' ':!CHANGELOG.md' ':!.gitignore' 2>/dev/null; }
+REPO_BEFORE=$(repo_status)
 fails=0
 t()    { printf '%-72s ' "$1"; if [ "$2" = "$3" ]; then echo ok; else echo "FAIL: got '$2', wanted '$3'"; fails=$((fails+1)); fi; }
 yes_() { printf '%-72s ' "$1"; if [ "$2" = 0 ]; then echo ok; else echo "FAIL"; fails=$((fails+1)); fi; }
@@ -391,7 +394,7 @@ t "TC-070 state dir holds only a counter and a marker" "$(ls "$STATE" | sed 's/[
 t "TC-069 counter is one integer" "$(cat "$STATE"/jev-count-* | tr -d '[:space:]')" 1
 t "TC-069 marker is empty" "$(wc -c < "$STATE/jev-notice-shown" | tr -d ' ')" 0
 # TC-044 nothing in the repo
-t "TC-044 no repo file changed or added by running it" "$(git -C "$ROOT" status --porcelain -- . ':!tests' ':!scripts' ':!skills' ':!docs' ':!specs' ':!CHANGELOG.md' ':!.gitignore' 2>/dev/null | wc -l | tr -d ' ')" 0
+t "TC-044 no repo file changed or added by running it" "$(repo_status)" "$REPO_BEFORE"
 
 # TC-074 every non-ok path says something a person can read
 echo "== VI-13: no quiet pass"

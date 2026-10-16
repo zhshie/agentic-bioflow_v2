@@ -11,3 +11,4 @@
 - [x] T011/T012 all 42 items through jev.sh under JEV_DRY_RUN; scripts/dev/jev_replay.sh (offline and real)
 - [x] T013 SETTINGS.md Jev section, TESTING.md on/off walkthrough, CHANGELOG one line (plugin.json unchanged)
 - [x] T014 full suite 105/105 green in WSL; claude plugin validate passes (README warning predates this work); the real-key replay is the maintainer's manual step
+- [x] Fix (CI-only failure, run 38887221932): TC-044 asserted `git status --porcelain` was empty, so any untracked file left by earlier run_all tests failed it (reproduced: dummy untracked file -> FAIL). Now snapshots the same pathspec at script start (REPO_BEFORE) and compares after the triage calls; equal passes. With a dummy file present it passes; a file the script wrote into the repo mid-run would change the status and fail. Audited other repo-state checks (TC-057 and the refs/rec scans use `git ls-files`, tracked files only): not affected, unchanged.
