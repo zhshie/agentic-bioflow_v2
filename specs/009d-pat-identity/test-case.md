@@ -1,6 +1,6 @@
 # 測試案例：009d 個人存取權杖（PAT）——讓平台認得「誰在呼叫」，HTTP MCP 現在必須帶權杖
 
-**規格**：無 `spec.md`（依維護者指示一律以 `specs/009d-pat-identity/plan.md` 為準，含其「Contract round 1」六條決定；plan 的「給維護者」三句是他看得懂的承諾）　**總覽**：`test-case-overview.md`
+**規格**：無 `spec.md`（依維護者指示一律以 `specs/009d-pat-identity/plan.md` 為準，含其「Contract round 1」六條決定與「Contract round 2」四條決定；plan 的「給維護者」三句是他看得懂的承諾）　**總覽**：`test-case-overview.md`
 
 類型只有三種：
 
@@ -16,7 +16,7 @@
 
 下面 TC-A02、TC-A07、TC-B01、TC-B10、TC-D05、TC-D06、TC-D08、TC-F01 至 TC-F03 直接用這三句當輸入與預期結果。
 
-名詞：**PAT**＝個人存取權杖（personal access token），一串只發給某位使用者的密碼，值以 `abf_pat_` 開頭；**tokens.db**＝只存權杖雜湊（hash，單向轉換後的指紋，看不出原值）的資料庫；**canary 掃描**＝先造一個已知的假值，再把整個資料庫檔案逐位元組找這個值，找到就算洩漏；**401**＝HTTP「未授權」；**stdio**＝本機標準輸入輸出，MCP 的本機連線方式；**caller（呼叫者）**＝`Caller(user_id, name, lab)`，代表「是哪位使用者在呼叫」，`None` 代表本機終端機／stdio；**TERMINAL**＝只代表「人在終端機按了 y」的專用記號；**AST 掃描**＝用程式讀原始碼的結構（不是只搜文字）來檢查誰引用了誰；**夾具（fixture）**＝測試開始前造好的假資料，PAT 一律在測試執行時才造，不寫成檔案裡的字面值。
+名詞：**PAT**＝個人存取權杖（personal access token），一串只發給某位使用者的密碼，值以 `abf_pat_` 開頭；**tokens.db**＝只存權杖雜湊（hash，單向轉換後的指紋，看不出原值）的資料庫；**canary 掃描**＝先造一個已知的假值，再把整個資料庫檔案逐位元組找這個值，找到就算洩漏；**401**＝HTTP「未授權」；**stdio**＝本機標準輸入輸出，MCP 的本機連線方式；**caller（呼叫者）**＝`Caller(user_id, name, lab)`，代表「是哪位使用者在呼叫」，`None` 代表本機終端機／stdio；**TERMINAL**＝只代表「人在終端機按了 y」的專用記號；**AST 掃描**＝用程式讀原始碼的結構（不是只搜文字）來檢查誰引用了誰；**夾具（fixture）**＝測試開始前造好的假資料，PAT 一律在測試執行時才造，不寫成檔案裡的字面值；**釘住的測試（pinned test）**＝先前功能留下、用來守住某個保證的既有測試，不能放寬。
 
 「前後一樣」的基準＝計畫起點 `v3`（009b 合併之後）的行為。
 
@@ -36,7 +36,7 @@
 | TC-A08 | 計畫·設計 1、Contract round 1 第 2 條；Changes 第 2 步（an old tokens.db migrates） | 功能 | 一份舊格式 tokens.db（只有 008 的欄位、沒有 `user_id`、沒有 `label`、沒有 `users` 表），內含一把舊 run 權杖 | 用新程式開啟，然後建立使用者、發 PAT（含 `--label`） | 開啟不出錯；舊 run 權杖仍然查得到、種類仍是 `run`；新增了 `user_id`、`label` 欄位與 `users` 表；新發的 PAT 可用 | 自動：`test_pat.py` |
 | TC-A09 | 給維護者 第 1 句：「先建立使用者，再替他發 PAT」；Contract round 1 第 4 條 | 例外 | 沒有名為 `nobody` 的使用者 | 執行 `pat new --user nobody` | 非零結束碼；輸出一行說明「沒有這個使用者」；沒有發出任何權杖，tokens.db 裡沒有新增列 | 自動：`test_pat.py` |
 | TC-A10 | 計畫·設計 1（`name UNIQUE`）；Contract round 1 第 4 條 | 例外 | 已有使用者「王小明」 | 再執行一次 `user add 王小明 --lab <另一個實驗室>` | 非零結束碼；輸出一行說明「這個名字已存在」；`users` 表仍然只有一列，原本的實驗室沒有被改掉 | 自動：`test_pat.py` |
-| TC-A11 | 計畫·設計 3：「No MCP tool, no web route, no action for these」 | 功能 | 伺服器與接收端（receiver）建好 | 列出 MCP 工具；列出接收端與 `abf_platform.actions` 的所有路由／函式 | MCP 工具仍然正好六個，名稱與輸入欄位裡沒有 `user`、`pat`、`token`；接收端沒有任何建立或撤銷使用者／PAT 的路由；`actions` 裡沒有建立或撤銷使用者／PAT 的函式。建立與撤銷只存在於終端機指令 | 自動：`test_pat.py` |
+| TC-A11 | 計畫·設計 3：「No MCP tool, no web route, no action for these」 | 功能 | 伺服器與接收端（receiver）建好 | 列出 MCP 工具；列出接收端與 `abf_platform.actions` 的所有路由／函式 | MCP 工具仍然正好六個，名稱與輸入欄位裡沒有獨立的 `user`、`pat`、`token` 字（以整字比對；釘住的輸入名 `path` 含 `pat` 字母不算）；接收端沒有任何建立或撤銷使用者／PAT 的路由；`actions` 裡沒有建立或撤銷使用者／PAT 的函式。建立與撤銷只存在於終端機指令 | 自動：`test_pat.py` |
 | TC-A12 | 計畫·設計 1（`create_token` 只接受已知種類） | 例外 | 無 | 呼叫 `create_token(path, kind="admin")`（種類不是 run／agent／pat） | 丟 `ValueError`；沒有寫入任何權杖 | 自動：`test_pat.py` |
 
 ## User Story 2 — `mcp --http` 必須帶權杖，否則 401；本機 stdio 不變（優先度 P1）
@@ -47,7 +47,7 @@
 |---|---|---|---|---|---|---|
 | TC-B01 | 給維護者 第 2 句；設計 4 | 例外 | 啟動 `mcp --http`（本機迴圈位址），資料庫裡有一位使用者 | 不帶任何 `Authorization` 標頭，送出 MCP 請求 | 回應 401，並帶標頭 `WWW-Authenticate: Bearer`；沒有任何工具被執行 | 自動：`test_pat.py`；`test_mcp.py` tc025 的「沒帶標頭」情形 |
 | TC-B02 | 設計 4（wrong scheme） | 例外 | 同上，另有一把有效 PAT | 標頭寫成 `Authorization: Basic <有效 PAT>`，以及 `Authorization: Token <有效 PAT>` | 兩種都回應 401 與 `WWW-Authenticate: Bearer` | 自動：`test_pat.py` |
-| TC-B03 | 設計 4（malformed） | 例外 | 同上 | 標頭寫成 `Authorization: Bearer`（後面沒有值），以及 `Authorization: Bearer `（只有空白） | 都回應 401 與 `WWW-Authenticate: Bearer` | 自動：`test_pat.py` |
+| TC-B03 | 設計 4（malformed） | 例外 | 同上 | 標頭寫成 `Authorization: Bearer`（後面沒有值），以及 `Authorization: Bearer `（只有空白；因 HTTP 客戶端函式庫不肯送，改用原始 socket 送出） | 都回應 401 與 `WWW-Authenticate: Bearer` | 自動：`test_pat.py` |
 | TC-B04 | 設計 4（unknown / garbage） | 例外 | 同上 | 標頭寫成 `Bearer garbage`，以及一串長得像 PAT 但從沒發過的 `Bearer abf_pat_<隨機>` | 都回應 401 與 `WWW-Authenticate: Bearer` | 自動：`test_pat.py` |
 | TC-B05 | 計畫 Changes 第 2 步：revoked → 401 | 例外 | 一把 PAT，先用它成功呼叫一次 | 執行 `pat revoke`，不重啟伺服器，再用同一把 PAT 呼叫 | 第一次成功；撤銷之後同一把 PAT 回應 401 | 自動：`test_pat.py` |
 | TC-B06 | 設計 2、`lookup_pat`：disabled user = None；Contract round 1 第 3 條 | 例外 | 一位使用者有一把有效 PAT；測試夾具直接把該使用者的 `disabled_at` 設成現在（本步沒有停用指令） | 用該 PAT 呼叫 | 回應 401（權杖本身沒被撤銷，但使用者已停用） | 自動：`test_pat.py` |
@@ -59,7 +59,7 @@
 | TC-B12 | 設計 6：non-loopback host | 功能 | 無 | 以非迴圈位址（例如 `--host 0.0.0.0`）啟動 `mcp --http` | 仍印出原本的風險提示（`_risk_line`），並多一句說明需要權杖；以迴圈位址啟動不印風險提示 | 自動：`test_pat.py`（或 `test_cli.py` 既有寫法旁） |
 | TC-B13 | 設計 6：「no flag or env var turns auth off」 | 例外 | 無 | 執行 `mcp --http --no-auth`、`--insecure`、`--no-token`；另用 AST 掃 `http_auth.py`、`mcp_server.py`、`cli.py` 的 `cmd_mcp` | 三個旗標都被命令列解析器拒絕（unrecognized arguments）；`http_auth.py` 與 `mcp_server.py` 沒有讀任何環境變數；`mcp` 的 `--help` 沒有任何關閉驗證的選項 | 自動：`test_pat.py` |
 | TC-B14 | 設計 4：「sets a contextvars caller for the request」 | 功能 | 兩位使用者各有一把 PAT | 依序送：A 的有效請求、不帶標頭的請求、B 的有效請求 | A 的請求看到的呼叫者是 A；不帶標頭的請求是 401，沒有沿用 A；B 的請求看到的呼叫者是 B（呼叫者不會殘留到下一個請求） | 自動：`test_pat.py` |
-| TC-B15 | Changes 第 5 步：tc025 只改輸入 | 功能 | 對 `v3` 比較 `platform/tests/test_mcp.py` 的 diff | 驗收審查者讀 diff | tc025 的改動只有「建使用者、發 PAT、送標頭」；它的斷言（回應與工具清單）一字未動、沒有放寬；`test_mcp.py` 其他測試未動；`ledger.md` 列出 tc025 是輸入被改的釘住測試之一 | 手動：驗收審查者讀 diff 與 `ledger.md` |
+| TC-B15 | Changes 第 5 步：tc025 只改輸入 | 功能 | 對 `v3` 比較 `platform/tests/test_mcp.py` 的 diff | 驗收審查者讀 diff | tc025 的改動只有「建使用者、發 PAT、送標頭」；它的斷言（回應與工具清單）一字未動、沒有放寬；`test_mcp.py` 其他測試（含 tc024）未動；`ledger.md` 列出 tc025 是輸入被改的釘住測試之一 | 手動：驗收審查者讀 diff 與 `ledger.md` |
 
 ## User Story 3 — 一種權杖只開一扇門（優先度 P1）
 
@@ -71,7 +71,7 @@
 | TC-C04 | 設計 2：agent 權杖在 MCP 被拒絕 | 例外 | 一把有效 agent 權杖（`agent-token new` 發的） | 用它當 Bearer 連 `mcp --http` | 回應 401 與 `WWW-Authenticate: Bearer` | 自動：`test_pat.py` |
 | TC-C05 | 設計 2：`lookup_pat` 回傳值 | 功能 | 一位使用者與一把有效 PAT | 呼叫 `lookup_pat(tokens_path, PAT)` | 回傳含 `user_id`、`name`、`lab`、`token_id` 四個欄位，值與該使用者與該權杖一致 | 自動：`test_pat.py` |
 | TC-C06 | 設計 2：`lookup_pat` 的 None 情形 | 例外 | 已撤銷的 PAT、使用者已停用的 PAT、從沒發過的值、空字串、`None`、run 權杖、agent 權杖 | 逐一呼叫 `lookup_pat` | 全部回傳 `None`，不丟例外 | 自動：`test_pat.py` |
-| TC-C07 | 計畫「Pinned guards」：`test_cli.py`、`test_station_envs.py` 的 tokens.db 檢查 | 功能 | 既有測試 | 執行 `test_cli.py`、`test_station_envs.py`、`test_receiver.py` | 全綠；`token new`、`agent-token new`、`agent-token revoke` 的行為與輸出與 `v3` 相同 | 自動：既有測試不改動 |
+| TC-C07 | 計畫「Pinned guards」：`test_cli.py`、`test_station_envs.py` 的 tokens.db 檢查 | 功能 | 既有測試 | 執行 `test_cli.py`、`test_station_envs.py`、`test_receiver.py` | 全綠；`test_cli.py`、`test_receiver.py` 不改動；`test_station_envs.py` 只有 TC-E07 至 TC-E10 列出的四個測試被改，其餘不動；`token new`、`agent-token new`、`agent-token revoke` 的行為與輸出與 `v3` 相同 | 自動：既有測試 |
 
 ## User Story 4 — 身分只是被記錄，不是新的確認方式（優先度 P1）
 
@@ -94,7 +94,7 @@
 | TC-D13 | Contract round 1 第 1 條：tce04 的參數清單 | 功能 | `actions.launch`、`actions.cancel` | 讀它們的簽名 | 參數順序恰為 `state_path, ce_name, bundle, confirmed_by, clock, deadline_seconds, offline_after, caller`；`caller` 是只能用關鍵字傳的參數、預設 `None`；`confirmed_by` 與 `clock` 仍是只能用關鍵字傳的參數；沒有其他新參數 | 自動：`test_actions_layer.py` tce04 |
 | TC-D14 | Contract round 1 第 6 條；009b TC-A13、tca10 | 功能 | 原始碼與已建好的伺服器 | AST 掃 `build_server` 內每個工具；比對伺服器的指示文字、工具名稱、描述、註記、輸入 schema 與 `v3` 基準 | 每個工具本體仍然只有一個 return、一次對 `actions.<同名>(...)` 的呼叫，呼叫者用 `caller=_caller()` 帶入，沒有 `if`／`try`／迴圈；所有工具輸入 schema 與 `v3` 逐字相同（沒有新增欄位）；`_caller()` 讀的是 `http_auth` 設的 context var | 自動：`test_actions_layer.py` tca10、tca13（不改動）＋`test_pat.py` |
 
-## User Story 5 — 文件、標頭、整體綠燈與紀錄（優先度 P2）
+## User Story 5 — 文件、標頭、整體綠燈、紀錄與被改動的釘住測試（優先度 P2）
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
@@ -103,7 +103,11 @@
 | TC-E03 | Changes 第 6 步 | 功能 | 讀 `CHANGELOG.md` | 驗收審查者找 3.0.0-dev 區段 | 有一行寫明 breaking：`mcp --http` 需要 PAT | 手動：驗收審查者讀 `CHANGELOG.md` |
 | TC-E04 | Changes 第 7 步 | 功能 | 實作完成 | `cd platform && python -m pytest -q`；WSL 內 `bash tests/run_all.sh` | 兩者全綠（CI 同） | 自動：CI；`platform/tests/`；`tests/run_all.sh` |
 | TC-E05 | Changes 第 1、2、7 步 | 功能 | 讀 `specs/009d-pat-identity/ledger.md` | 驗收審查者核對 | 有「SDK 確實提供 streamable HTTP 的 ASGI app、如何包它」的事實紀錄；有寫測試後、寫程式前的 FAIL 證據，以及之後的 PASS 證據 | 手動：驗收審查者讀 `ledger.md` |
-| TC-E06 | 計畫「Pinned guards」；Contract round 1 第 1 條：釘住的測試不動 | 功能 | 對 `v3` 比較全部被改的測試檔 | 驗收審查者讀 diff | `test_mcp.py` tc024、`test_launch_platform.py` TC-010／TC-061、`test_secrets.py` tc040、`test_cli.py`、`test_station_envs.py`、`test_actions_layer.py` 的 tca10／tca13 沒有被刪除、放寬或跳過任何斷言；既有測試中被改的只有三個：tc025（只改輸入）、tcc01（import 規則只多一個名字 `http_auth`）、tce04（參數清單只多最後一個 `caller`，`confirmed_by`／`clock` 的只能用關鍵字檢查原封不動，只可新增斷言）；`ledger.md` 逐一列出這三個 | 手動：驗收審查者讀 diff 與 `ledger.md` |
+| TC-E06 | 計畫「Pinned guards」；Contract round 1 第 1 條、Contract round 2：釘住的測試不動，被改的只有七個 | 功能 | 對 `v3` 比較全部被改的測試檔 | 驗收審查者讀 diff | `test_mcp.py` tc024、`test_launch_platform.py` TC-010／TC-061、`test_secrets.py` tc040、`test_cli.py`、`test_actions_layer.py` 的 tca10／tca13，以及 `test_station_envs.py` 中下述四個以外的測試，沒有被刪除、放寬或跳過任何斷言；既有測試中被改的只有七個：tc025（只改輸入）、tcc01（import 規則只多一個名字 `http_auth`）、tce04（參數清單只多最後一個 `caller`，`confirmed_by`／`clock` 的只能用關鍵字檢查原封不動，只可新增斷言）、tc063、tc084、tc086、tc071（改法見 TC-E07 至 TC-E10，不得多於所述）；`ledger.md` 逐一列出這七個 | 手動：驗收審查者讀 diff 與 `ledger.md` |
+| TC-E07 | Contract round 2 第 1 條：`test_station_envs.py` `test_tc063_no_door_takes_a_job_kind_or_a_command` | 功能 | 對 `v3` 比較該測試的 diff | 讀 diff，並執行該測試 | 只有「預期的頂層子指令集合」多了剛好 `user` 與 `pat` 兩個名字；其餘斷言（沒有任何入口接受工作種類或指令）一字未動；測試通過 | 手動：驗收審查者讀 diff；自動：`test_station_envs.py` tc063 |
+| TC-E08 | Contract round 2 第 2 條：`test_tc084_no_launch_door_anywhere` | 功能 | 對 `v3` 比較該測試的 diff | 讀 diff，並執行該測試 | 只有「預期的 usage 子指令清單」多了剛好 `user,pat`；「沒有任何送出入口」的斷言與其他所有斷言一字未動；測試通過 | 手動：驗收審查者讀 diff；自動：`test_station_envs.py` tc084 |
+| TC-E09 | Contract round 2 第 3 條：`test_tc086_no_web_pages_no_confirmation_page_no_role_tables`（理由：ADR 0006 把身分放在 009，角色留給 010） | 功能 | 對 `v3` 比較該測試的 diff | 讀 diff，並執行該測試 | tokens.db 的字詞掃描只多免掃剛好這些名字：表名 `users`，欄位名 `user_id`、`caller_user_id`、`label`、`lab`、`name`、`disabled_at`；`role`、`org`、`team`、`login`、`password`、`email`、`session`、`cookie` 仍然禁止（掃描仍會抓到它們）；「沒有網頁、沒有確認頁」的檢查一字未動；測試通過。並由驗收審查者確認：在 tokens.db 加一個名為 `role` 的欄位會讓此測試失敗 | 手動：驗收審查者讀 diff（並可暫時造一個 `role` 欄位試跑）；自動：`test_station_envs.py` tc086 |
+| TC-E10 | Contract round 2 第 4 條：`test_tc071_exactly_six_read_only_tools_over_stdio_and_http` | 功能 | 對 `v3` 比較該測試的 diff | 讀 diff，並執行該測試 | HTTP 那一半只多了「建使用者、發 PAT、送標頭」；斷言（正好六個唯讀工具、stdio 與 HTTP 都是）一字未動；測試通過 | 手動：驗收審查者讀 diff；自動：`test_station_envs.py` tc071 |
 
 ## 不在範圍（計畫「Not in this PR」）
 
@@ -125,4 +129,4 @@
 | TC-G01 | 原則 2：只有一條排工作的路，且不另存 run 狀態 | 功能 | 實作完成 | 執行 `tests/no_second_run_state_test.sh` | 全綠；`LAUNCH_ALLOW` 沒變；`caller` 只被「記錄」，沒有新增任何排工作或存 run 狀態的路徑 | 自動：`tests/no_second_run_state_test.sh` |
 | TC-G02 | 安全網：送出命令要完整顯示並等明確確認 | 功能 | 實作完成 | 執行 `test_launch_platform.py`（TC-010、TC-061）與 `test_launch_cli.py` | 全綠且未被改動；TC-D05 至 TC-D07 證明帶了身分也不能繞過確認 | 自動：`platform/tests/test_launch_platform.py` |
 | TC-G03 | 安全網：憑證不進 git、不被印出、只放在部署自己的設定區 | 功能 | 實作完成 | 執行 `tests/credentials_stay_in_settings_test.sh`；掃所有被追蹤檔案找 `abf_pat_` 後面接 20 個以上字元的字面值 | 腳本全綠；沒有任何被追蹤檔案含 PAT 形狀的字面值（測試的 PAT 都在執行時才造）；沒有腳本印出權杖變數 | 自動：`tests/credentials_stay_in_settings_test.sh`；`test_pat.py` |
-| TC-G04 | 計畫 Constitution Check：「Loosens nothing; adds one refusal」 | 功能 | 對 `v3` 與本分支各跑一次相同的閘門測試 | 驗收審查者在兩個分支跑 `test_mcp.py` tc024、`test_launch_platform.py`、`test_receiver.py`、`test_station_envs.py`、`test_secrets.py`，並用同一組「`v3` 會拒絕」的請求（無權杖打接收端、未知權杖打 agent 入口、非 TERMINAL 的 `confirmed_by`）各打一次 | `v3` 拒絕的，本分支全部仍然拒絕；唯一新增的拒絕是 `mcp --http` 沒帶有效 PAT；沒有任何 `v3` 拒絕的請求在本分支被放行 | 手動：驗收審查者在兩個分支跑並比較 |
+| TC-G04 | 計畫 Constitution Check：「Loosens nothing; adds one refusal」 | 功能 | 對 `v3` 與本分支各跑一次相同的閘門測試 | 驗收審查者在兩個分支跑 `test_mcp.py` tc024、`test_launch_platform.py`、`test_receiver.py`、`test_station_envs.py`、`test_secrets.py`，並用同一組「`v3` 會拒絕」的請求（無權杖打接收端、未知權杖打 agent 入口、非 TERMINAL 的 `confirmed_by`）各打一次 | `v3` 拒絕的，本分支全部仍然拒絕；唯一新增的拒絕是 `mcp --http` 沒帶有效 PAT；沒有任何 `v3` 拒絕的請求在本分支被放行；`test_station_envs.py` 在兩個分支的差異只有 TC-E07 至 TC-E10 所述 | 手動：驗收審查者在兩個分支跑並比較 |
