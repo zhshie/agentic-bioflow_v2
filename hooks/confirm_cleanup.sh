@@ -191,7 +191,7 @@ abf_in_use "$INPUT" "$INPUT" || exit 0
 # prints a token jq has to compute, and is trusted only when the token, the
 # two fields, their separators and nothing else came back.
 JQ_FAST=0
-JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then ("abf-" + "jq-ok\u001f") + (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or test("\u0000")) | not) then ("abf-" + "jq-ok\u001f") + (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
   && [ -n "$JQ_OUT" ] && JQ_FAST=1
 
 if [ "$JQ_FAST" = 1 ]; then

@@ -24,6 +24,7 @@ trap 'command rm -rf "$TMP"' EXIT
 fails=0
 
 command -v jq >/dev/null 2>&1 || { echo "jq is required for this test"; exit 1; }
+echo "jq in use: $(jq --version 2>&1) ($(command -v jq))"
 
 # --- shims: one per external program a hook could start ----------------------
 SHIMS="$TMP/shims"; mkdir -p "$SHIMS"
