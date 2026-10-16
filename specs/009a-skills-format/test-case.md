@@ -47,7 +47,7 @@ Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after t
 | TC-019 | round 1 第 2 點；憲法 III.7（印出來的指引要能找到檔案） | 功能 | 搬家完成 | 看 `scripts/init_workspace.sh:139`、`relaunch_with_override.sh:91`、`settings.sh:1005`、`setup_proof.sh:55`、`setup_verify.sh:53,61` 以及 `scripts/` 其他會印出 `commands/<名字>.md` 的 echo／printf 行 | 印出的都是 `skills/<名字>/SKILL.md`，且這些檔案真的存在 | 自動：`tests/flow_skills_layout_test.sh`（f）加（a） |
 | TC-020 | round 1 第 2 點 | 功能 | 搬家完成 | 搜尋 `scripts/*` 的註解有沒有 `commands/<名字>.md` | 註解也改成新路徑；只動文字，不動程式邏輯 | 自動：`tests/flow_skills_layout_test.sh`（f） |
 | TC-021 | round 1 第 3 點 | 功能 | 搬家完成 | 守門測試掃描 `tests/`、`docs/`、`scripts/`、`skills/`、`CLAUDE.md`、`README.md`，pattern 為 `commands/(setup\|launch\|runs\|downstream\|finish)\.md`，在 `tests/` 另外抓 `$ROOT/commands` | 沒有任何未豁免的舊路徑；測試通過 | 自動：`tests/flow_skills_layout_test.sh`（f） |
-| TC-022 | round 1 第 3 點 | 功能 | 搬家完成 | 讀守門測試裡的豁免清單 | 豁免只有：`docs/PITFALLS.md`、`docs/adr/`、`tests/command_layer_is_site_neutral.sh` 的假資料字串、`tests/no_second_run_state_test.sh` 的 `commands/a.md` 假資料、`tests/confirm_launch_test.sh` 的閘門測試字串、守門測試檔本身；每一項旁邊有一行理由；`specs/` 與 `hooks/` 不在掃描範圍 | 手動：`docs/TESTING.md` TESTING 新小節 |
+| TC-022 | round 1 第 3 點 | 功能 | 搬家完成 | 讀守門測試裡的豁免清單 | 豁免只有：`docs/PITFALLS.md`、`docs/adr/`、`tests/command_layer_is_site_neutral.sh` 的假資料字串、`tests/confirm_launch_test.sh` 的閘門測試字串、守門測試檔本身；每一項旁邊有一行理由；`specs/` 與 `hooks/` 不在掃描範圍 | 手動：`docs/TESTING.md` TESTING 新小節 |
 
 ## User Story 3 — 測試與文件跟著搬（優先度 P2）
 
@@ -78,7 +78,7 @@ Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after t
 | TC-040 | 不在範圍：不改寫 `## On a host without these hooks` 與 H1–H3 | 不在範圍 | 搬家完成 | 跑 `tests/skill_portability_test.sh`；看 `skills/operational/SKILL.md` 該標題與 H1–H3 文字的 diff | 標題在檔內恰好出現一次且逐字不變，H1–H3 文字沒有改動 | 自動：`tests/skill_portability_test.sh` |
 | TC-041 | 不在範圍：不淘汰 `tw` 時代的測試與腳本（第 6 步才做） | 不在範圍 | PR 對 `v3` 的差異 | 看 `commands_scope_tw_to_the_workspace.sh`、`no_second_run_state_test.sh`、`launch_provenance_test.sh`、`prepare_launch_test.sh`、`egress_allow_test.sh`、`runs_report_format_test.sh`、`setup_doc_test.sh` 與 `scripts/` 裡呼叫 `tw` 的 20 支腳本 | 全部還在，沒有被刪除或改成停用；`tw` 相關的斷言沒有被拿掉 | 手動：`docs/TESTING.md` TESTING 新小節 |
 | TC-042 | 計畫 Facts：`docs/PITFALLS.md` 與 `specs/*` 是歷史，維持原樣；round 1 第 3 點 `docs/adr/` | 不在範圍 | PR 對 `v3` 的差異 | 看 `docs/PITFALLS.md`、`docs/adr/` 與其他功能的 `specs/*` 的 diff | 都沒有被改（本功能自己的 `specs/009a-skills-format/ledger.md` 除外） | 手動：`docs/TESTING.md` TESTING 新小節 |
-| TC-043 | 計畫「Changes」第 4 步：假資料字串留著 | 不在範圍 | PR 對 `v3` 的差異 | 看 `tests/confirm_launch_test.sh:74`、`tests/command_layer_is_site_neutral.sh` 的合成輸入（約 46–53 行）、`tests/no_second_run_state_test.sh` 的 `commands/a.md` 假資料（約 250–251 行） | 這些字串沒有被改（它們是測試輸入，不是版面路徑） | 手動：`docs/TESTING.md` TESTING 新小節 |
+| TC-043 | 計畫「Changes」第 4 步：假資料字串留著 | 不在範圍 | PR 對 `v3` 的差異 | 看 `tests/confirm_launch_test.sh:74`、`tests/command_layer_is_site_neutral.sh` 的合成輸入（約 46–53 行）、`tests/no_second_run_state_test.sh` 的假資料（約 250–251 行） | 前兩者沒有被改；`no_second_run_state_test.sh` 的假資料改成 `skills/a/SKILL.md`（2026-10-16 developer-agent 修訂：該測試改掃 `skills/`，假資料留在 `commands/` 會讀不到、自測變紅；只動路徑、內容文字不變） | 手動：`docs/TESTING.md` TESTING 新小節 |
 | TC-044 | 決策 8 | 不在範圍 | PR 對 `v3` 的差異 | 看 `platform/tests/test_scope.py:65` 與 ledger | 該行 regex 仍含 `commands/`（沒有刪），且 ledger 記了「刻意保留」 | 手動：`docs/TESTING.md` TESTING 新小節 |
 
 ## 憲法與安全網
