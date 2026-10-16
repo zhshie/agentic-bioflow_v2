@@ -3,7 +3,7 @@
 - **Slug**: 009d-pat-identity
 - **Branch**: `feat/009d-pat-identity`, base **`v3`** (never `main`)
 - **Created**: 2026-10-16 by the developer-agent
-- **Umbrella**: GitHub issue #93 step 4 (spec 009), after 009b (merged #100) and 009g (same lane: both edit `mcp_server.py`; this plan starts from v3 after 009g merged). Decision record: `docs/adr/0006-four-entries-one-action-layer.md` ("Where the platform runs, and who is calling", ~103-119: OAuth 2.1 "with a personal access token for clients without OAuth", identity = user, lab, agent, compute environments).
+- **Umbrella**: GitHub issue #93 step 4 (spec 009), after 009b (merged #100). Runs in parallel with 009g (separate lane); both touch `mcp_server.py` in different functions, the second to merge brings the first in with `git merge`. Do not wait for 009g. Decision record: `docs/adr/0006-four-entries-one-action-layer.md` ("Where the platform runs, and who is calling", ~103-119: OAuth 2.1 "with a personal access token for clients without OAuth", identity = user, lab, agent, compute environments).
 - **Tier**: B (user-visible: `abf-platform mcp --http` now answers 401 without a token).
 
 ## 給維護者
