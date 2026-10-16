@@ -65,7 +65,7 @@ while IFS=$'\t' read -r id code label; do
     without="$(jq -Rs 'length' < "$f")"
     with200="$(tail -n 200 "$f" | jq -Rs 'length')"
     t0="$(now_ms)"
-    out="$("$JEV" triage --err "$f" --exit "$ex" 2>/dev/null)"
+    out="$(bash "$JEV" triage --err "$f" --exit "$ex" 2>/dev/null)"
     t1="$(now_ms)"
     m="$(grep -m1 '^JEV status=' <<<"$out")"
     status="$(sed -n 's/^JEV status=\([a-z_]*\) .*/\1/p' <<<"$m")"
