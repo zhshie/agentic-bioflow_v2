@@ -10,4 +10,4 @@
 - [x] T010 golden: FAILED-flow scripts and hooks untouched and do not mention jev (checked in jev_test.sh, TC-020/021/027/075)
 - [x] T011/T012 all 42 items through jev.sh under JEV_DRY_RUN; scripts/dev/jev_replay.sh (offline and real)
 - [x] T013 SETTINGS.md Jev section, TESTING.md on/off walkthrough, CHANGELOG one line (plugin.json unchanged)
-- [ ] T014 full suite green in WSL (see final report); the real-key replay is the maintainer's manual step
+- [x] T014 full suite 105/105 green in WSL; claude plugin validate passes (README warning predates this work); the real-key replay is the maintainer's manual step
