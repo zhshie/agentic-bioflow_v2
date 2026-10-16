@@ -165,8 +165,8 @@ if [ -n "${JEV_DRY_RUN:-}" ]; then
     esac
 else
     cfg="header = \"Authorization: Bearer $JEV_KEY\""
-    resp="$work/response.json"; attempt=1
-    while :; do
+    resp="$work/response.json"
+    for attempt in 1 2 3; do
         rc=0
         code="$(printf '%s\n' "$cfg" | curl -sS --max-time 10 -o "$resp" -w '%{http_code}' --config - \
                   -X POST -H 'Content-Type: application/json' --data-binary "@$req" "$ENDPOINT" 2>/dev/null)" || rc=$?
@@ -177,7 +177,7 @@ else
             429|529)
                 if [ "$attempt" -ge 3 ]; then fail "HTTP $code，重試後仍失敗"; fi
                 if [ "$attempt" -eq 1 ]; then sleep 1; else sleep 3; fi
-                attempt=$((attempt + 1)) ;;
+                ;;
             *) fail "HTTP ${code:-?}" ;;
         esac
     done

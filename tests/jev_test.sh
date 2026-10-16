@@ -512,7 +512,7 @@ t "TC-059 labels.json: 42 items" "$(jq length "$LBL")" 42
 t "TC-059 labels.json: the approved ids" "$(jq -r '[.[].id]|join(" ")' "$LBL")" "$(for i in $(seq 1 28) $(seq 30 40) 42 43 44; do printf 'T%02d ' "$i"; done | sed 's/ $//')"
 t "TC-059 labels.json: byte-identical to the approved file" "$(sha256sum "$LBL" | cut -c1-64)" dd1b455b2f4ef0c7cf0c3d6940a5e092d44abb6d3b1592f8e94528260fc83e57
 t "TC-088 no old slug path in spec, plan, tasks" "$(grep -l "specs/009-jev-triage" "$SPEC/spec.md" "$SPEC/plan.md" "$SPEC/tasks.md" | wc -l | tr -d " ")" 0
-t "TC-088 no pointer to the old command file" "$(grep -l 'commands/runs.md' "$SPEC/spec.md" "$SPEC/plan.md" "$SPEC/tasks.md" | wc -l | tr -d ' ')" 0
+t "TC-088 no pointer to the old command file" "$(grep -l 'commands/r''uns.md' "$SPEC/spec.md" "$SPEC/plan.md" "$SPEC/tasks.md" | wc -l | tr -d ' ')" 0
 t "TC-088 old spec folder is absent" "$([ -e "$ROOT/specs/009-jev-triage" ] && echo there || echo absent)" absent
 # TC-083 the documented creation command makes a mode-600 key file
 cmd=$(grep -F "umask 077; printf '%s' " "$ROOT/docs/SETTINGS.md" | head -1 | sed 's/^[[:space:]`]*//; s/`[[:space:]]*$//')
