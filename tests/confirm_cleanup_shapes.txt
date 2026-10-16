@@ -311,3 +311,46 @@ Bash|/tmp|ask|cd -; echo hi > s1
 PowerShell|/tmp|ask|cd @P; sl -; Remove-Item -Recurse x
 Bash|/tmp|ask|cd -; { cd /tmp; }; @D -rf s1
 Bash|/tmp|ask|cd -; false && { cd /tmp; }; @D -rf s1
+Bash|/tmp|ask|cd @P; cd -; false && cd /tmp; @D -rf s1
+Bash|/tmp|ask|cd -; [ -d x ] && cd /tmp; @D -rf s1
+Bash|/tmp|ask|cd -⏎if true⏎then⏎cd /tmp⏎fi⏎@D -rf s1
+Bash|/tmp|ask|cd -⏎for i in; do⏎cd /tmp⏎done⏎@D -rf s1
+Bash|/tmp|ask|cd -⏎while true; do⏎cd /tmp⏎done⏎@D -rf s1
+Bash|/tmp|ask|cd -⏎until false; do⏎cd /tmp⏎done⏎@D -rf s1
+Bash|/tmp|ask|cd -⏎case x in x)⏎cd /tmp⏎;;⏎esac⏎@D -rf s1
+Bash|/tmp|ask|cd -⏎select i in a; do⏎cd /tmp⏎done⏎@D -rf s1
+Bash|/tmp|ask|cd -⏎(⏎cd /tmp⏎)⏎@D -rf s1
+Bash|/tmp|ask|cd -⏎f() {⏎cd /tmp⏎}⏎@D -rf s1
+Bash|/tmp|ask|cd -⏎{⏎cd /tmp⏎}⏎@D -rf s1
+Bash|/tmp|ask|cd -⏎cat <<EOF⏎x⏎EOF⏎cd /tmp⏎@D -rf s1
+Bash|/tmp|ask|cd -; builtin cd /tmp; @D -rf s1
+Bash|/tmp|ask|cd -; command cd /tmp; @D -rf s1
+Bash|/tmp|ask|cd -; X=1 cd /tmp; @D -rf s1
+Bash|/tmp|pass|cd -⏎cd /tmp⏎@D -rf s1
+Bash|/tmp|pass|cd -⏎cd /tmp⏎if true; then echo; fi⏎@D -rf s1
+Bash|/tmp|ask|cd -; ls >| s1
+Bash|/tmp|ask|cd -; ls >&s1
+Bash|/tmp|ask|cd -; ls >& s1
+Bash|/tmp|ask|cd -; echo x > "$F"
+Bash|/tmp|ask|cd -; echo x > $(mktemp)
+Bash|/tmp|pass|cd -; ls 2>&1
+Bash|/tmp|pass|cd -; ls >&2
+Bash|/tmp|ask|cd -; echo x | tee s1
+Bash|/tmp|pass|cd -; echo x | tee -a s1
+Bash|/tmp|ask|cd -; sort -o s1 s1
+Bash|/tmp|ask|cd -; cp /tmp/a s1
+Bash|/tmp|pass|cd -; cp s1 /tmp/b
+Bash|/tmp|ask|cd -; sed -i s/a/b/ s1
+Bash|/tmp|pass|cd -; sed s/a/b/ s1
+Bash|/tmp|ask|cd -; dd if=/dev/zero of=s1 count=1
+Bash|/tmp|pass|cd -; dd if=s1 of=/tmp/o
+Bash|/tmp|pass|cd -; echo "x>y"
+Bash|/tmp|pass|cd -; awk '$1>3' /tmp/f
+Bash|/tmp|pass|cd -; [[ a > b ]]
+Bash|/tmp|pass|cd -; git log --format='a->b'
+Bash|/tmp|pass|cd -; cd /tmp # a | b⏎@D -rf s1
+Bash|/tmp|pass|cd -; cd /tmp; echo "a&b"; @D -rf s1
+Bash|/tmp|ask|cd -; echo "x>y"; @D -rf s1
+Bash|/tmp|ask|cd -; echo x > "s1"
+Bash|/tmp|ask|cd -; [[ a > b ]]; echo x > s1
+Bash|/tmp|ask|cd -; awk '$1>3' /tmp/f > s1

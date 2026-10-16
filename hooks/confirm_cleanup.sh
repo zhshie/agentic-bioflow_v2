@@ -955,17 +955,182 @@ esac
 # background `&`, pipe, `||`, if/while/case/for, or a string another shell re-reads (-c,
 # eval, ssh) there means the cd does not clear (safe default: more asks, never fewer).
 RE_CD_COND='[&|(`]|(^|[^[:alnum:]_.-])(if|while|until|case|for|select|eval|ssh|-c)[[:space:]]'
+# #110: text a shell would not read as commands. Quoted text and an unquoted `#` comment are
+# dropped (a `|` or `&` inside them is text); when a quote stays open on the line the line is
+# returned unchanged (safe default: more asks, never fewer).
+strip_quoted() { # strip_quoted <text> -> REPLY
+    local s=$1 out="" c q="" i n=${#1} p=" "
+    [ "$n" -le 4000 ] || { REPLY=$s; return; }
+    for ((i = 0; i < n; i++)); do
+        c=${s:i:1}
+        if [ -n "$q" ]; then
+            if [ "$c" = "$q" ]; then q=""; p="x"
+            elif [ "$c" = '\' ] && [ "$q" = '"' ]; then i=$((i + 1)); fi
+            continue
+        fi
+        case "$c" in
+            '\') out+=" "; i=$((i + 1)) ;;
+            '"'|"'") q=$c; out+=" " ;;
+            '#') case "$p" in ' '|$'\t') break ;; esac; out+=$c ;;
+            *) out+=$c ;;
+        esac
+        p=$c
+    done
+    if [ -n "$q" ]; then REPLY=$s; else REPLY=$out; fi
+}
+# #110: a cd clears the lost folder only when it starts its own top-level command: nothing
+# joined before it by `&&`, no `builtin`/`command`/`VAR=x` in front, and (in a command with
+# several lines) no loop, function, block, group or here-doc opened between the segment that
+# lost the folder and the cd. LOST_SEG is that segment.
+RE_CD_BLOCK='(^|[^[:alnum:]_.-])(if|for|while|until|case|select|function)[[:space:]]|[(){]|<<'
+LOST_SEG=""; LAST_SEG=""
 cd_uncond() { # 0 when the segment was found and every line holding it is free of those shapes
-    local l t found=1
+    local l t found=1 rest pre
+    [[ $SEG =~ ^[[:space:]]*(cd|pushd)([[:space:]]|$) ]] || return 1
     while IFS= read -r l; do
         [[ $l == *"$SEG"* ]] || continue
         found=0
-        t=${l//&&/ }; t=${t//>&/ }; t=${t//&>/ }
+        strip_quoted "$l"; t=$REPLY
+        t=${t//&&/ }; t=${t//>&/ }; t=${t//&>/ }
         [[ $t =~ $RE_CD_COND ]] && return 1
     done <<<"$CMD"
-    return $found
+    [ "$found" = 0 ] || return 1
+    if [ -n "$LOST_SEG" ] && [[ $CMD == *"$LOST_SEG"* ]]; then
+        rest=${CMD#*"$LOST_SEG"}
+        [[ $rest == *"$SEG"* ]] || return 1
+        pre=${rest%%"$SEG"*}
+    else
+        pre=${CMD%%"$SEG"*}
+    fi
+    t=$pre
+    while [[ $t == *' ' || $t == *$'\t' ]]; do t=${t%?}; done
+    case "$t" in ''|*';'|*$'\n') ;; *) return 1 ;; esac
+    if [[ $pre == *$'\n'* ]] && [[ $pre =~ $RE_CD_BLOCK ]]; then return 1; fi
+    return 0
 }
-RE_REDIR_REL='(^|[^>&<])[0-9]*>[[:space:]]*([^[:space:]>&|<()/;]+)'
+# #110: every unquoted `>` target in a segment, when the folder is lost. `>>` appends and
+# `>&2` / `2>&1` write no file, so they are left; `>|`, `>&file`, a quoted target and a target
+# written with $ or a substitution are overwrites of a file whose folder is not known.
+RE_TEST2='^[[:space:]]*\[\['
+RE_TEST1='^[[:space:]]*\[[[:space:]]'
+lost_target() { # lost_target <redirect target word, quotes removed>
+    [ -n "$1" ] || return 0
+    case "$1" in
+        /*|[A-Za-z]:*|'~'|'~/'*) ;;
+        *'$'*|*'`'*) lost_ask "overwrite ${1}" ;;
+        *) lost_rel "$1" && lost_ask "overwrite ${1}" ;;
+    esac
+}
+PEND_REDIR=0
+RE_TRAIL_GT='>[[:space:]]*$'
+lost_redirects() { # lost_redirects <segment text with quotes kept>
+    local s=$1 n i j c d q="" wq="" w pv nx amp
+    if [[ $s =~ $RE_TEST2 ]]; then s=${s#*]]}; elif [[ $s =~ $RE_TEST1 ]]; then s=${s#* ]}; fi
+    n=${#s}
+    for ((i = 0; i < n; i++)); do
+        c=${s:i:1}
+        if [ -n "$q" ]; then
+            if [ "$c" = "$q" ]; then q=""
+            elif [ "$c" = '\' ] && [ "$q" = '"' ]; then i=$((i + 1)); fi
+            continue
+        fi
+        case "$c" in
+            '\') i=$((i + 1)); continue ;;
+            '"'|"'") q=$c; continue ;;
+            '>') ;;
+            *) continue ;;
+        esac
+        pv=""; [ "$i" -gt 0 ] && pv=${s:i-1:1}
+        case "$pv" in '>'|'&'|'<') continue ;; esac
+        nx=${s:i+1:1}; j=$((i + 1)); amp=0
+        case "$nx" in
+            '>') continue ;;
+            '|') j=$((j + 1)) ;;
+            '&') j=$((j + 1)); amp=1 ;;
+        esac
+        while [[ ${s:j:1} == ' ' || ${s:j:1} == $'\t' ]]; do j=$((j + 1)); done
+        if [ "$amp" = 1 ]; then case "${s:j:1}" in [0-9-]) continue ;; esac; fi
+        w=""; wq=""
+        while [ "$j" -lt "$n" ]; do
+            d=${s:j:1}
+            if [ -n "$wq" ]; then
+                if [ "$d" = "$wq" ]; then wq=""; else w+=$d; fi
+            else
+                case "$d" in
+                    '"'|"'") wq=$d ;;
+                    ' '|$'\t'|';'|'&'|'|'|'<'|'>'|'('|')') break ;;
+                    *) w+=$d ;;
+                esac
+            fi
+            j=$((j + 1))
+        done
+        lost_target "$w"
+    done
+}
+# #110: commands that write a file named by a relative word: tee (without -a), sort -o,
+# cp (the destination), sed -i, dd of=. Called only when the folder is lost.
+lost_writers() { # lost_writers <command word>
+    local -a W F
+    local cw=${1##*/} i k n x f a=0 sc=0 ip=0 td="" nw=0 st=0
+    set -f; W=(${SEG//[\"\']/}); set +f
+    n=${#W[@]}
+    for ((i = 0; i < n; i++)); do x=${W[i]}; [ "${x##*/}" = "$cw" ] && { st=$((i + 1)); break; }; done
+    F=()
+    case "$cw" in
+        tee)
+            for ((i = st; i < n; i++)); do
+                x=${W[i]}
+                case "$x" in --append) a=1 ;; --*) ;; -*a*) a=1 ;; -*) ;; *) F+=("$x") ;; esac
+            done
+            [ "$a" = 1 ] && F=() ;;
+        sort)
+            for ((i = st; i < n; i++)); do
+                x=${W[i]}
+                case "$x" in
+                    -o|--output|-[!-]*o) i=$((i + 1)); F+=("${W[i]-}") ;;
+                    -o?*) F+=("${x#-o}") ;;
+                    --output=*) F+=("${x#--output=}") ;;
+                esac
+            done ;;
+        cp)
+            for ((i = st; i < n; i++)); do
+                x=${W[i]}
+                case "$x" in
+                    -t|--target-directory) i=$((i + 1)); td=${W[i]-} ;;
+                    --target-directory=*) td=${x#*=} ;;
+                    -t?*) td=${x#-t} ;;
+                    -*) ;;
+                    *) nw=$((nw + 1)); f=$x ;;
+                esac
+            done
+            if [ -n "$td" ]; then F+=("$td"); elif [ "$nw" -ge 2 ]; then F+=("$f"); fi ;;
+        sed)
+            local -a NO=()
+            for ((i = st; i < n; i++)); do
+                x=${W[i]}
+                case "$x" in
+                    -e|-f|--expression|--file) sc=1; i=$((i + 1)) ;;
+                    --expression=*|--file=*) sc=1 ;;
+                    --in-place*) ip=1 ;;
+                    --*) ;;
+                    -*i*) ip=1 ;;
+                    -*) ;;
+                    *) NO+=("$x") ;;
+                esac
+            done
+            if [ "$ip" = 1 ]; then
+                k=0; [ "$sc" = 1 ] || k=1
+                for ((; k < ${#NO[@]}; k++)); do F+=("${NO[k]}"); done
+            fi ;;
+        dd)
+            for ((i = st; i < n; i++)); do
+                x=${W[i]}; case "$x" in of=*) F+=("${x#of=}") ;; esac
+            done ;;
+    esac
+    for f in ${F[@]+"${F[@]}"}; do
+        lost_rel "$f" && lost_ask "overwrite ${f}"
+    done
+}
 NSEG=0
 TIMED_OUT=0
 while IFS="$US" read -r SEG VSEG CW COPY; do
@@ -992,6 +1157,9 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     else
         PRE_VCWD=$VCWD; PRE_CANDS=(${CANDS[@]+"${CANDS[@]}"})
     fi
+    # #110: the segment that made the folder unknown (see cd_uncond)
+    if [ "$CWD_LOST" = 1 ] && [ -z "$LOST_SEG" ]; then LOST_SEG=$LAST_SEG; fi
+    LAST_SEG=$SEG
     [ -n "$SEG" ] || continue
     # #62: past the deadline, stop and ask (see DEADLINE above).
     if [ "$SECONDS" -ge "$DEADLINE" ]; then TIMED_OUT=1; break; fi
@@ -1050,7 +1218,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                     /*|[A-Za-z]:*)
                         norm_path "${CDT//\\//}"; VCWD="$REPLY"; CANDS=(); CANDS_DIRTY=1
                         # #104: only a plain main-shell cd to a named folder says where we are
-                        [ "$CWD_LOST" = 1 ] && cd_uncond && CWD_LOST=0 ;;
+                        [ "$CWD_LOST" = 1 ] && cd_uncond && { CWD_LOST=0; LOST_SEG=""; } ;;
                     *)
                         # #78: a quoted target holding a backslash is Windows or a real name
                         # (#104: judged on the target as written, not the whole segment)
@@ -1171,14 +1339,19 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     V_NR=$VSEG;  while [[ $V_NR =~ $RE_DEVNULL ]]; do V_NR=${V_NR/"${BASH_REMATCH[0]}"/}; done
     [[ $V_NR =~ $RE_TRUNC ]] && TRUNCATE=1
     # #104: a relative `>` target overwrites a file in a folder this gate cannot name.
-    if [ "$CWD_LOST" = 1 ] && [[ $SEG_NR == *'>'* ]]; then
-        RD_T=$SEG_NR
-        while [[ $RD_T =~ $RE_REDIR_REL ]]; do
-            RD_W=${BASH_REMATCH[2]}; RD_W=${RD_W//\"/}; RD_W=${RD_W//\'/}
-            lost_rel "$RD_W" && lost_ask "overwrite ${RD_W}"
-            RD_T=${RD_T#*"${BASH_REMATCH[0]}"}
-        done
+    if [ "$CWD_LOST" = 1 ]; then
+        # #110: scanned with the quote state, so a `>` inside quotes is text and a quoted
+        # target is still a target; the writers below take a relative file as an argument.
+        # `>|` is split by the splitter into `cmd >` and the target: the target opens the next segment
+        if [ "$PEND_REDIR" = 1 ]; then
+            PR_W=${SEG_NR#"${SEG_NR%%[![:space:]]*}"}; PR_W=${PR_W%%[[:space:]]*}
+            PR_W=${PR_W//\"/}; PR_W=${PR_W//\'/}
+            lost_target "$PR_W"
+        fi
+        [[ $SEG_NR == *'>'* ]] && lost_redirects "$SEG_NR"
+        case "${CW##*/}" in tee|sort|cp|sed|dd) lost_writers "$CW" ;; esac
     fi
+    PEND_REDIR=0; [[ $SEG_NR =~ $RE_TRAIL_GT ]] && PEND_REDIR=1
     [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1
     # A dry run deletes nothing (#35): `--dry-run`, or an n among the short options.
     DRYRUN=0
