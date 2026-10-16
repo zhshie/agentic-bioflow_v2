@@ -404,6 +404,19 @@ norm_path() {
     [ -n "$REPLY" ] || REPLY=.
 }
 VCWD=""
+# #78: set once the shell may be in a folder this gate cannot name (`cd -`, a bare `cd`,
+# `popd`, a quoted backslash target). Monotone until an absolute cd. It never changes a
+# verdict by itself: only a relative delete / find root / mv source that would otherwise
+# pass is turned into an ask (lost_rel).
+CWD_LOST=0
+RE_QBS='"[^"]*\\[^"]*"|'"'"'[^'"'"']*\\[^'"'"']*'"'"''
+lost_rel() { # lost_rel <word as written>: relative, no variable, and the folder is lost
+    [ "$CWD_LOST" = 1 ] || return 1
+    case "$1" in
+        ''|-*|/*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) return 1 ;;
+    esac
+    return 0
+}
 RE_CWD='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
 if [[ $INPUT =~ $RE_CWD ]]; then
     VCWD="${BASH_REMATCH[1]}"; VCWD="${VCWD//\\\\//}"; VCWD="${VCWD//\\//}"
@@ -893,7 +906,7 @@ is_dry_run() {
 # tests/confirm_cleanup_test.sh through this path to catch one that has not.
 # Small inputs (under 8 KB of segments) skip the filter: it is one more process
 # (gate_process_count), and their full judgement costs well under a second.
-CW_HANDLED='^(__too_deep__|cd|pushd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
+CW_HANDLED='^(__too_deep__|cd|pushd|popd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
 RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)|($RE_NFCLEAN)"
 RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)"
 # The PowerShell listers and pipeline filters (LISTER_OK below) matter only to a
@@ -1008,9 +1021,12 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 cand_add_from_pre "$CDT"; cand_cap
             else
                 case "$CDT" in
-                    ''|-|'~'*|*'$'*|*'`'*) VCWD="" ;;
-                    /*|[A-Za-z]:*) norm_path "${CDT//\\//}"; VCWD="$REPLY"; CANDS=(); CANDS_DIRTY=1 ;;
+                    ''|-) VCWD=""; CWD_LOST=1 ;;
+                    '~'*|*'$'*|*'`'*) VCWD="" ;;
+                    /*|[A-Za-z]:*) norm_path "${CDT//\\//}"; VCWD="$REPLY"; CANDS=(); CANDS_DIRTY=1; CWD_LOST=0 ;;
                     *)
+                        # #78: a quoted target holding a backslash is Windows or a real name
+                        [[ $SEG =~ $RE_QBS ]] && CWD_LOST=1
                         if [ -n "$VCWD" ]; then norm_path "$VCWD/${CDT//\\//}"; VCWD="$REPLY"; fi
                         # a relative target is followed from every candidate
                         DC_OLD=(${CANDS[@]+"${CANDS[@]}"}); CANDS=(); CANDS_DIRTY=1
@@ -1024,6 +1040,9 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             fi
             LISTER_OK=0
             continue ;;
+        popd)
+            # #78: the stack is not modelled; where popd lands is unknown.
+            CWD_LOST=1; LISTER_OK=0 ;;
         set-location|sl|chdir|push-location|pop-location)
             # #75: PowerShell's location cmdlets. Under Bash they are not built-ins and
             # under PowerShell they may fail, sit behind a condition or take a form this
@@ -1031,6 +1050,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
             # they never remove one. Pop-Location, like popd, adds nothing. The segment
             # then goes on through the checks main runs on it.
             CDT=""; CDF=0; DC_TAKE=0; DC_SKIP=0
+            [ "$CW" = pop-location ] && CWD_LOST=1
             if [ "$CW" != pop-location ]; then
                 read -r -a CDW <<<"${SEG//[\"\']/}"
                 shopt -s nocasematch
@@ -1397,6 +1417,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                 case "$X" in /*|[A-Za-z]:*|'~'*|*'$'*|*'`'*) ;; *) norm_path "$VCWD/$X"; XA+=("$REPLY") ;; esac
             fi
             defer_rec f "$X" "$XF" "$XS"
+            [ "$DESTRUCTIVE" = 1 ] && lost_rel "$X" && UNRESOLVED="${UNRESOLVED}(working folder unknown after cd - / cd / popd: find from ${X} - confirm where it runs) "
             XH=0; XW=0; XT=0
             for Y in ${XA[@]+"${XA[@]}"}; do
                 holds_protected "$Y" && XH=1
@@ -1513,6 +1534,7 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
         # uses backslashes; a brace list names each member. A_ESC is the same
         # word with its backslashes read as escapes instead (`re\sults` is
         # `results`, #35): both readings are judged.
+        A0=${A//\"/}; A0=${A0//\'/}
         A_ESC=${A//\"/}; A_ESC=${A_ESC//\'/}; A_ESC=${A_ESC//\\/}; A_ESC=${A_ESC//\{//}; A_ESC=${A_ESC//\}//}; A_ESC=${A_ESC//,//}
         A=${A//\"/}; A=${A//\'/}; A=${A//\\//}; A=${A//\{//}; A=${A//\}//}; A=${A//,//}
         [ -n "$A" ] || continue
@@ -1526,6 +1548,14 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
         fi
         case "$A" in rm|rmdir|unlink|shred|truncate|mv|move-item) continue ;; esac   # a wrapped verb
         NARGS=$((NARGS + 1))
+        # #78: a relative delete target (or mv source) after the working folder was lost
+        if [ "$CWD_LOST" = 1 ] && lost_rel "$A0"; then
+            if [ "$DESTRUCTIVE" = 1 ]; then
+                UNRESOLVED="${UNRESOLVED}(working folder unknown after cd - / cd / popd: ${A0} - confirm which folder this is) "
+            elif [ "$MOVE_ONLY" = 1 ] && { [ "$NARGS" -lt "$TOTAL_TARGETS" ] || [ "$MOVE_KIND" = all ]; }; then
+                UNRESOLVED="${UNRESOLVED}(working folder unknown after cd - / cd / popd: move source ${A0} - confirm which folder this is) "
+            fi
+        fi
 
         # E9: judge every mv SOURCE (every arg but the last) against the same
         # three protected directories rm/find/rsync already deny on. The
