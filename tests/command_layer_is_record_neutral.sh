@@ -28,8 +28,10 @@ TARGETS=()
 for n in $FLOW_SKILLS; do [ -f "$(flow_skill_file "$n")" ] && TARGETS+=("$(flow_skill_file "$n")"); done
 [ -f "$ROOT/skills/operational/SKILL.md" ] && TARGETS+=("$ROOT/skills/operational/SKILL.md")
 
-if [ "${#TARGETS[@]}" -eq 0 ]; then
-    echo "FAIL: no command files found under $ROOT - nothing was checked."
+# Five flow skills + skills/operational/SKILL.md. A missing one is a failure,
+# not a skip: a test that reads fewer files than it claims proves nothing.
+if [ "${#TARGETS[@]}" -ne 6 ]; then
+    echo "FAIL: read ${#TARGETS[@]} skill files under $ROOT, expected 6 (five flow skills + operational) - nothing was really checked."
     exit 1
 fi
 

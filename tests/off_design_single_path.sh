@@ -60,9 +60,13 @@ check_file() {
 }
 
 . "$HERE/lib/flow_skills.sh"
+read_n=0
 for f in $(flow_skill_files); do
+    [ -r "$f" ] && read_n=$((read_n+1))
     check_file "$f" || fails=$((fails+1))
 done
+printf '%-70s ' "all five flow skill files were read"
+[ "$read_n" -eq 5 ] && echo ok || { echo "FAIL: read $read_n, expected 5"; fails=$((fails+1)); }
 
 # Positive control: runs.md's FAILED branch is exactly the case this file
 # exists to police (it used to read "Anything else. Diagnose it fully."),
