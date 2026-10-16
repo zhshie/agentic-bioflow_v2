@@ -309,3 +309,5 @@ Bash|/tmp|ask|cd -; cd $d; @D -rf s1
 Bash|/tmp|ask|cd @P/rawdata; cd -; : > s1
 Bash|/tmp|ask|cd -; echo hi > s1
 PowerShell|/tmp|ask|cd @P; sl -; Remove-Item -Recurse x
+Bash|/tmp|ask|cd -; { cd /tmp; }; @D -rf s1
+Bash|/tmp|ask|cd -; false && { cd /tmp; }; @D -rf s1

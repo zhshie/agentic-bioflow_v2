@@ -878,7 +878,9 @@ tc "/tmp" "cd -; if true; then cd /tmp; fi; $D -rf s1"           ask  "TC-104-14
 tc "/tmp" "cd -; cd \$d; $D -rf s1"                              ask  "TC-104-15 variable target does not clear"
 tc "/tmp" "cd -; cd /tmp; $D -rf s1"                             pass "TC-104-16 control: plain absolute cd clears"
 tc "/tmp" "cd -; cd /tmp && $D -rf s1"                           pass "TC-104-17 control: absolute cd && clears"
-tc "/tmp" "cd -; { cd /tmp; }; $D -rf s1"                        pass "TC-104-18 control: { cd /abs; } clears"
+# Ruling 2026-10-17 (supersedes TC-104-18 brace half): a cd inside { } never clears; main asked here.
+tc "/tmp" "cd -; { cd /tmp; }; $D -rf s1"                        ask  "TC-104-18 { cd /abs; } does not clear (ruling: main asked)"
+tc "/tmp" "cd -; false && { cd /tmp; }; $D -rf s1"               ask  "TC-104-18b false && { cd /abs; } does not clear"
 tc "/tmp" "cd -; cd $P; $D -rf x"                                pass "TC-104-19 control: absolute cd clears (as TC-078-19)"
 tc "/tmp" "cd ~; $D -rf /tmp/s1"                                 pass "TC-104-20a control: absolute target after cd ~"
 tc "/tmp" "cd -; $D -rf $P/tmp"                                  pass "TC-104-20b control: absolute target after cd -"
