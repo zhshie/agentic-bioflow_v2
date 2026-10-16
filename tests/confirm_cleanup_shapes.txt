@@ -29,7 +29,7 @@ Bash|/tmp|deny|cd @P/results; Set-Location -Path /tmp -PassThru; @D -rf x
 Bash|/tmp|deny|cd @P/results; Set-Location /tmp; Set-Location -; @D -rf x
 Bash|/tmp|deny|cd @P/results; Set-Location; @D -rf x
 Bash|/tmp|deny|cd @P/results; Set-Location ~; @D -rf x
-Bash|/tmp|pass|cd @P/results; cd ~; @D -rf x
+Bash|/tmp|ask|cd @P/results; cd ~; @D -rf x
 Bash|/tmp|deny|cd @P; Set-Location /tmp; cd results; @D -rf x
 Bash|/tmp|deny|cd @P; Set-Location /tmp; Set-Location @P/results; @D -rf x
 Bash|/tmp|deny|cd @P; Set-Location results; Set-Location /tmp; @D -rf x
@@ -298,3 +298,14 @@ Bash|@P|deny|pushd /tmp; pushd -n results; popd; @D -rf *
 Bash|@P|deny|pushd results; pushd +1; popd; @D -rf ../*
 Bash|@P|deny|pushd results; pushd +0; popd; @D -rf ../work
 Bash|@P|deny|pushd results; pushd +1; popd; @D -rf ../work
+Bash|/tmp|ask|cd @P/rawdata; cd ~/x; @D -rf s1
+Bash|/tmp|ask|cd $HOME/rawdata; @D -rf s1
+Bash|/tmp|ask|cd $(echo /tmp); @D -rf s1
+Bash|/tmp|ask|cd @P/rawdata; cd -; @D -rf ~s1
+Bash|/tmp|ask|cd @P/rawdata; cd -; (cd /tmp); @D -rf s1
+Bash|/tmp|ask|cd -; cd /tmp & @D -rf s1
+Bash|/tmp|ask|cd -; true || cd /tmp; @D -rf s1
+Bash|/tmp|ask|cd -; cd $d; @D -rf s1
+Bash|/tmp|ask|cd @P/rawdata; cd -; : > s1
+Bash|/tmp|ask|cd -; echo hi > s1
+PowerShell|/tmp|ask|cd @P; sl -; Remove-Item -Recurse x
