@@ -910,9 +910,12 @@ is_dry_run() {
 # tests/confirm_cleanup_test.sh through this path to catch one that has not.
 # Small inputs (under 8 KB of segments) skip the filter: it is one more process
 # (gate_process_count), and their full judgement costs well under a second.
-CW_HANDLED='^(__too_deep__|cd|pushd|popd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|[$`].*)$'
+CW_HANDLED='^(__too_deep__|cd|pushd|popd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|tee|cp|sed|dd|[$`].*)$'
 RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)|($RE_NFCLEAN)"
 RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)|(>[[:space:]]*[^[:space:]>&|/])"
+# #110: the writers and redirect forms the lost-folder check reads (sort -o; a `>` that ends the
+# segment, because the splitter cuts `>|` and a quoted target leaves nothing after it; `>&file`).
+RE_TRIGGER="$RE_TRIGGER|(^[[:space:]]*sort[[:space:]].*(-[A-Za-z]*o|--output))|(>[[:space:]]*$)|(>&[[:space:]]*[^[:space:]0-9-])"
 # The PowerShell listers and pipeline filters (LISTER_OK below) matter only to a
 # Move-Item they feed, which is in CW_HANDLED: a run of them is held back and
 # kept only when a kept segment follows it. Kept always, `sort` and `ls` made
@@ -922,7 +925,9 @@ if [ "${#SEGMENTS}" -gt 8192 ]; then
     FILTERED=$(ABF_TRIG="$RE_TRIGGER" ABF_CWRE="$CW_HANDLED" ABF_LIST="$CW_LISTER" awk -F "$US" '
         BEGIN { t = ENVIRON["ABF_TRIG"]; c = ENVIRON["ABF_CWRE"]; l = ENVIRON["ABF_LIST"]
                 s = "(skipped)" FS "(skipped)" FS "__skipped__" }
-        $3 == "" || $3 ~ c || $2 ~ t { printf "%s", b; b = ""; print; g = 0; next }
+        # #110: the segment after a trailing `>` is its target (`>|` is cut in two)
+        p { printf "%s", b; b = ""; print; g = 0; p = 0; next }
+        $3 == "" || $3 ~ c || $2 ~ t { printf "%s", b; b = ""; print; g = 0; if ($2 ~ />[[:space:]]*$/) p = 1; next }
         $3 ~ l { b = b $0 "\n"; next }
         { b = "" }
         !g { print s; g = 1 }
