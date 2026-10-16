@@ -29,3 +29,6 @@ env.yaml
 *.db-journal
 # the platform test venv normally lives in ~/.cache; this covers a checkout-local one
 abf-platform-venv/
+
+# 009g: the build copies skills/ here for the wheel; skills/ stays the only source.
+platform/abf_platform/skills/

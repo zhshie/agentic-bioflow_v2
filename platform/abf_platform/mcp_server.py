@@ -12,7 +12,7 @@ environment. All tools carry readOnlyHint, which is only a hint; read-only here 
 from mcp.server.mcpserver import MCPServer
 from mcp_types import ToolAnnotations
 
-from . import actions
+from . import actions, guidance
 
 _READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 
@@ -21,11 +21,7 @@ def build_server(index_path, platform_path=None):
     platform_path = actions.platform_path_for(index_path, platform_path)
     server = MCPServer(
         "abf-platform",
-        instructions="Read-only view of Nextflow runs, compute environments and agents. list_runs gives the newest "
-                     "runs first; get_run gives one run with its processes and failed tasks. list_compute_envs and "
-                     "get_compute_env show the compute environments; list_agents shows whether each agent is online; "
-                     "list_site_files lists one folder on the site through an agent (names, sizes and modification "
-                     "times, which go to the model you chose).",
+        instructions=guidance.routing_instructions(),
     )
 
     @server.tool(name="list_runs", annotations=_READ_ONLY,
@@ -66,7 +62,25 @@ def build_server(index_path, platform_path=None):
     async def list_site_files(compute_env: str, path: str) -> dict:
         return await actions.list_site_files(platform_path, compute_env, path)
 
+    _add_guidance(server)
     return server
+
+
+def _whole_file(name):
+    return lambda: guidance.read_skill(name)
+
+
+def _body_of(text):
+    return lambda: text
+
+
+def _add_guidance(server):
+    """The skills of skills/ as one prompt per flow and one fixed resource per file (spec 009g). Nothing here takes an argument."""
+    for name, doc in guidance.load_skills().items():
+        server.resource("skill://%s/SKILL.md" % name, name="skill-" + name, description=doc.description,
+                        mime_type="text/markdown")(_whole_file(name))
+        if name != "operational":
+            server.prompt(name=name, description=doc.description)(_body_of(doc.body_text))
 
 
 def run_stdio(index_path):
