@@ -1,4 +1,5 @@
 ---
+name: launch
 description: Set up and submit one analysis - pipeline, samplesheet, parameters, launch
 argument-hint: [pipeline] [path to input data]
 ---
@@ -521,7 +522,7 @@ AVAILABLE - none of which the gate can see.
    `skills/operational/SKILL.md`'s off-design procedure (T2), category
    `pipeline`, command `launch`, step naming this one, before attempting a
    fix. Do not relaunch blind: read what `tw` printed first, the same way
-   `commands/runs.md`'s SUBMITTED section reads it for a run that reached
+   `skills/runs/SKILL.md`'s SUBMITTED section reads it for a run that reached
    Platform but never reached the queue.
 
 9. **Watch it without asking first.** Arm a background watch on the run's

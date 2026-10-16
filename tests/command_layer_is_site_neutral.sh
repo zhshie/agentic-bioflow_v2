@@ -17,10 +17,10 @@
 # directories this deployment must never lose. Both are correct, and both would
 # fail this check.
 #
-# skills/ IS scanned, alongside commands/: skills/operational/SKILL.md is the
+# skills/ IS scanned (the five flow skills and skills/operational/SKILL.md; the latter is the
 # same operational knowledge reachable without a slash command
 # (CLAUDE.md, "Repository layout"), so it is bound by the same neutrality this
-# check exists to hold commands/*.md to.
+# check exists to hold the flow skills to.
 #
 # The term list and the `reach: ssh` exemption live in tests/lib/site_terms.sh,
 # shared with tests/launch_provenance_test.sh so the two cannot drift apart
@@ -29,8 +29,17 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 . "$HERE/lib/site_terms.sh"
+. "$HERE/lib/flow_skills.sh"
 
-raw=$(site_terms_grep "$ROOT/commands" "$ROOT/skills" 2>&1)
+# TC-046: the scan must really cover the five flow skills, not an empty tree.
+read_n=0
+for f in $(flow_skill_files); do [ -r "$f" ] && read_n=$((read_n+1)); done
+if [ "$read_n" -ne 5 ]; then
+    echo "FAIL: read $read_n flow skill files, expected 5 - nothing was really checked."
+    exit 1
+fi
+
+raw=$(site_terms_grep "$ROOT/skills" 2>&1)
 rc=$?
 if [ "$rc" -ge 2 ]; then
     printf '%s\n' "$raw"
@@ -80,7 +89,7 @@ hits=$(printf '%s\n' "$raw" | site_terms_allow | sed "s|^$ROOT/||" | grep -v '^$
 # says "the outbound channel". Naming the sanctioned interface is how the
 # command layer asks; naming the proxy behind it would be naming a relay.
 ADAPTER_IMPL_TERMS='nchc|taiwania|configs/sites|nf_relay|relay_denied|relay_port|(^|[^[:alnum:]_])lgn[0-9]'
-impl_hits=$(grep -rinE "$ADAPTER_IMPL_TERMS" "$ROOT/commands" "$ROOT/skills" 2>&1)
+impl_hits=$(grep -rinE "$ADAPTER_IMPL_TERMS" "$ROOT/skills" 2>&1)
 irc=$?
 if [ "$irc" -ge 2 ]; then
     printf '%s\n' "$impl_hits"
@@ -101,4 +110,4 @@ if [ -n "$hits" ]; then
     echo "FAIL: the command layer names site machinery. Move it behind the adapter."
     exit 1
 fi
-echo "OK: commands/ and skills/ name no scheduler, no egress mechanism, no container runtime"
+echo "OK: skills/ (the five flow skills and operational) name no scheduler, no egress mechanism, no container runtime"

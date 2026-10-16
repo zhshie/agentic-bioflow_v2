@@ -6,7 +6,7 @@
 # is a rule that rots.
 #
 # So this asserts two things, and the second is the one that matters:
-#   1. every commands/*.md file and skills/operational/SKILL.md state the rule
+#   1. every skills/*/SKILL.md file and skills/operational/SKILL.md state the rule
 #   2. the list of scripts they name is exactly the set that actually aligns
 #      output today, measured by scanning for printf '%-<n>s'
 #
@@ -19,7 +19,10 @@ fails=0
 
 check() { printf '%-62s ' "$1"; shift; if "$@"; then echo ok; else echo FAIL; fails=$((fails+1)); fi; }
 
-DOCS=("$ROOT"/commands/*.md "$ROOT/skills/operational/SKILL.md")
+. "$ROOT/tests/lib/flow_skills.sh"
+DOCS=()
+for n in $FLOW_SKILLS; do DOCS+=("$(flow_skill_file "$n")"); done
+DOCS+=("$ROOT/skills/operational/SKILL.md")
 
 for f in "${DOCS[@]}"; do
     rel="${f#$ROOT/}"

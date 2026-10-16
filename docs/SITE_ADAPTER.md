@@ -84,7 +84,7 @@ answer for it correctly, and those paths and their tests are unchanged. What
 does not exist is a *site* actually built against it: no cloud compute
 environment has been onboarded, exercised or proven through this plugin.
 `reach: none` is therefore **recognised, not supported in this version** —
-`commands/setup.md` says so rather than walking a user through the nine steps
+`skills/setup/SKILL.md` says so rather than walking a user through the nine steps
 that assume a login node, and points them at the off-design procedure
 (`skills/operational/SKILL.md`, "Off-design: when nothing here covers it")
 instead of an onboarding path that was never built.

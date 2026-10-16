@@ -10,7 +10,7 @@
 # this repo), only to surface it before they spend a queue slot finding out
 # by hand.
 #
-# Written as its own callable piece, not inline in commands/launch.md,
+# Written as its own callable piece, not inline in skills/launch/SKILL.md,
 # because this same check is where perf/latency's scripts/prepare_launch.sh
 # is meant to fold it in. Once that script exists, its pre-launch summary
 # should call
@@ -21,8 +21,8 @@
 # and append this call's own stdout (if any, one line per match) to
 # whatever it is already showing before the confirm-and-launch step - the
 # same "show everything, then wait for confirmation" shape
-# commands/launch.md step 7 already uses. Until prepare_launch.sh exists,
-# commands/launch.md step 4 calls this directly, right after the
+# skills/launch/SKILL.md step 7 already uses. Until prepare_launch.sh exists,
+# skills/launch/SKILL.md step 4 calls this directly, right after the
 # samplesheet is built and registered.
 #
 # Heuristic, not a state machine: this repo keeps no record of what

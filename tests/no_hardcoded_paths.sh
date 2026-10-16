@@ -32,7 +32,7 @@ PATTERN='(/home|/work|/scratch|/staging|/lustre)/[A-Za-z][A-Za-z0-9_.-]*/'
 # of the grep -P bug this batch otherwise fixes, but the same principle
 # applies to all of them and closing it now is cheap. Repo-coordinate/
 # hostname checks belong with a separate report.sh fix, not here.
-SCAN_TARGETS=("$ROOT/scripts" "$ROOT/commands" "$ROOT/configs" "$ROOT/skills" \
+SCAN_TARGETS=("$ROOT/scripts" "$ROOT/configs" "$ROOT/skills" \
               "$ROOT/hooks" "$ROOT/README.md" "$ROOT/CLAUDE.md")
 
 raw=$(grep -rInE "$PATTERN" "${SCAN_TARGETS[@]}" 2>&1)
@@ -56,4 +56,4 @@ if [ "$hits" -gt 0 ]; then
     echo "FAIL: $hits hardcoded path(s). Read these from the deployment settings instead."
     exit 1
 fi
-echo "OK: no hardcoded personal or cluster paths in scripts/, commands/, configs/, skills/, hooks/, README.md, CLAUDE.md"
+echo "OK: no hardcoded personal or cluster paths in scripts/, configs/, skills/, hooks/, README.md, CLAUDE.md"

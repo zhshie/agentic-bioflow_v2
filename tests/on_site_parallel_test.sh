@@ -163,7 +163,7 @@ rm -rf "$SLOTS"
 
 # ---------------------------------------------------------------------------
 # T9: scripts/site_report.sh bundles four checks (agent, resources,
-# provenance, inventory) that commands/downstream.md used to reach through
+# provenance, inventory) that skills/downstream/SKILL.md used to reach through
 # two or three separate `on_site.sh --script` calls - each its own ssh
 # session under this site's per-connection session cap (PITFALLS 16e). The
 # whole point is that it is now ONE call, so it must cost exactly ONE ssh

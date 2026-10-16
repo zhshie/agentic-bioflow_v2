@@ -17,7 +17,7 @@
 # saves the round trips. GitHub issue #13's own accounting is why it matters: under
 # `reach: ssh` every `on_site.sh` call is a real ssh session, and this site's
 # sshd caps how many a single connection may carry at once (PITFALLS 16e) -
-# so `commands/downstream.md`'s step 1 (agent) and step 2's own >500MB branch
+# so `skills/downstream/SKILL.md`'s step 1 (agent) and step 2's own >500MB branch
 # (inventory, plus provenance to learn the run's pipeline+revision before
 # fetching its `docs/output.md`) used to cost two or three of those in a row.
 # `scripts/on_site.sh --script scripts/site_report.sh` now costs one.

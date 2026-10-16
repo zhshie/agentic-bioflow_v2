@@ -1,5 +1,5 @@
 #!/bin/bash
-# U5: every status branch in commands/runs.md reports through the same four
+# U5: every status branch in skills/runs/SKILL.md reports through the same four
 # labelled lines - Status / Layer / (I will handle or You decide) / Next step
 # - so a person reading a diagnosis always finds the same four questions
 # answered in the same order, and "layer" is always one of the five values
@@ -15,7 +15,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-FILE="$ROOT/commands/runs.md"
+FILE="$ROOT/skills/runs/SKILL.md"
 
 BRANCHES="SUBMITTED RUNNING FAILED SUCCEEDED CANCELLED UNKNOWN"
 
@@ -35,7 +35,7 @@ fail=0
 for b in $BRANCHES; do
     body="$(section "$b")"
     if [ -z "$body" ]; then
-        echo "FAIL: commands/runs.md has no '## $b' branch"
+        echo "FAIL: skills/runs/SKILL.md has no '## $b' branch"
         fail=1
         continue
     fi
@@ -57,4 +57,4 @@ if [ "$fail" = 1 ]; then
     echo "FAIL: not every branch in runs.md reports through the fixed four-line format."
     exit 1
 fi
-echo "OK: every branch in commands/runs.md (${BRANCHES// /, }) carries all four report labels"
+echo "OK: every branch in skills/runs/SKILL.md (${BRANCHES// /, }) carries all four report labels"

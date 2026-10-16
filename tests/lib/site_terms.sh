@@ -33,7 +33,7 @@ site_terms_grep() {
 #   - `reach: ssh` / `reach=ssh` - the site adapter's own contract value
 #     (docs/SITE_ADAPTER.md); a command that helps a user choose between the
 #     three `reach` values must be able to name them.
-#   - "Relay what they ..." - the verb, in the five commands/*.md openings
+#   - "Relay what they ..." - the verb, in the five skills/*/SKILL.md openings
 #     that tell Claude to relay a script's output; nothing to do with
 #     scripts/nf_relay.py.
 #   - "relay column output" - skills/operational/SKILL.md's own name for the

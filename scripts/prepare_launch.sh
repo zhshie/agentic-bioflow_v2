@@ -7,13 +7,13 @@
 # outside tool does on this plugin's behalf.
 #
 # The largest single change from GitHub issue #13's latency accounting:
-# `commands/launch.md` steps 1-6 used to be a long, sequential chain of `tw`/
+# `skills/launch/SKILL.md` steps 1-6 used to be a long, sequential chain of `tw`/
 # schema/samplesheet/preflight calls, each one its own tool call and
 # therefore its own full model round trip (20-40 of them across a whole
 # launch walk). Everything in that chain that needs no judgement - looking
 # up a revision, fetching a schema, checking registration, drafting a
 # samplesheet, running preflight - runs here in one call instead. What is
-# left in commands/launch.md is exactly the part that DOES need judgement:
+# left in skills/launch/SKILL.md is exactly the part that DOES need judgement:
 # putting the results in front of the user and asking what they decide.
 #
 #   prepare_launch.sh --repo <owner/name> [--revision <rev>] [--input <dir>]
@@ -304,7 +304,7 @@ done <<<"$PF_OUT"
 
 # --- parameters needing a user decision --------------------------------------
 # The source URL is printed even when --fixture-dir was used (it is simply
-# labelled as such) - not decoration: commands/launch.md tells the caller to
+# labelled as such) - not decoration: skills/launch/SKILL.md tells the caller to
 # show this whole summary to the user as its own text, and
 # hooks/confirm_walkthrough.sh's G2 gate looks for exactly this URL in an
 # assistant text block as its evidence that the schema was read before

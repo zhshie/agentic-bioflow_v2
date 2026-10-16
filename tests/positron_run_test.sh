@@ -599,7 +599,7 @@ elif ! grep -qF "could not get connection info" <<<"$out"; then
 else echo "ok"; fi
 
 # --------------------------------------------------------------------------
-# The invocation commands/downstream.md actually tells a person to type.
+# The invocation skills/downstream/SKILL.md actually tells a person to type.
 # Every case above runs "$PY" "$S", which is not that line and cannot fail the
 # way that line fails: a file without its executable bit, or a shebang naming
 # an interpreter that is a Microsoft Store stub on the machine this tool is for

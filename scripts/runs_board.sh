@@ -6,11 +6,11 @@
 # Not `tw runs list` alone: that answers with EVERY run in the workspace,
 # every member, every terminal state it ever reached - reading that as "what
 # is going on right now" is the same misread PRINCIPLES.md already warns
-# about for an empty list (commands/runs.md's own workspace-scoping note).
+# about for an empty list (skills/runs/SKILL.md's own workspace-scoping note).
 # This filters to this member's own SUBMITTED/RUNNING rows and adds the two
 # things Platform's own listing does not carry: which project a run belongs
 # to, and where its outputs land on the site - both read from the run's own
-# launch params (`tw runs view --params`), the exact call commands/launch.md
+# launch params (`tw runs view --params`), the exact call skills/launch/SKILL.md
 # step 5's route (1) already uses. Nothing here is a second copy of run
 # state (`docs/PRINCIPLES.md`, invariant 2): every field is re-asked of
 # Platform on every call.
@@ -70,7 +70,7 @@ out=$("$TW" -o json runs list --workspace "$WS" 2>&1) \
     || { echo "ERROR: could not list runs - $out" >&2; exit 2; }
 
 # Active = not yet terminal. SUBMITTED and RUNNING are the two statuses
-# commands/runs.md itself still has open branches for; SUCCEEDED, FAILED,
+# skills/runs/SKILL.md itself still has open branches for; SUCCEEDED, FAILED,
 # CANCELLED and any UNKNOWN Platform adds later are already resolved and
 # belong to a history view, not a work board.
 filter='.workflows[] | select(.workflow.status == "SUBMITTED" or .workflow.status == "RUNNING")'

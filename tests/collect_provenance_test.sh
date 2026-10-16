@@ -211,7 +211,7 @@ has "$out" "nextflow run nf-core/ampliseq -r 2.18.0 -params-file remote.yaml" \
   || no "the command field carries tw's own text verbatim" "<<$out>>"
 
 # --- the wrroc crate nf-prov writes, when provenance was on for this run ----
-# (commands/launch.md, R1/PITFALLS 32) - present, absent and invalid JSON.
+# (skills/launch/SKILL.md, R1/PITFALLS 32) - present, absent and invalid JSON.
 # A minimal but real shape: a metadata descriptor pointing at the root
 # dataset via `about`, and the root dataset's own `conformsTo` naming the
 # profiles PITFALLS 32 actually measured.

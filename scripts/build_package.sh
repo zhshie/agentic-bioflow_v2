@@ -166,7 +166,7 @@ echo "copied    $n_fig figure(s), $n_src script(s)"
 # so this is where that survives into the write-up.
 #
 # Run separately from the `{ ... } > "$QMD"` group below, not inside it: issue
-# #5 was exactly a silent zero here - commands/downstream.md's own step 3b
+# #5 was exactly a silent zero here - skills/downstream/SKILL.md's own step 3b
 # worked example presents analysis.md's fields as a column list, which reads
 # naturally as a markdown table, and a table-formatted analysis.md matched
 # zero entries against the old parser with no error at all. The Results
@@ -185,7 +185,7 @@ COLUMN_ALIASES = {"問題": "question"}
 
 
 def parse_table(text):
-    """The shape commands/downstream.md step 3b's own worked example uses: a
+    """The shape skills/downstream/SKILL.md step 3b's own worked example uses: a
     markdown table whose header names analysis.md's fields. One row is one
     entry; a header cell is matched case-insensitively against FIELDS so
     column order (and extra columns nobody asked for) does not matter.
@@ -244,7 +244,7 @@ if not entries:
     sys.stderr.write(
         "build_package.sh: matched 0 plan entries in %s (%d line(s), %d non-blank)\n"
         "  expected either a markdown table whose header names id/question/source/"
-        "method/why/status (commands/downstream.md step 3b), or the older block "
+        "method/why/status (skills/downstream/SKILL.md step 3b), or the older block "
         "form - a heading or bullet followed by 'id: <value>' / 'question: <value>' "
         "lines.\n"
         "  Not writing a Results section that would look complete and say "
@@ -328,7 +328,7 @@ for row in entries:
         emitted.update(claimed)
     else:
         print("[GAP: no figure file starting with '%s' in figures/]\n" % fid)
-    # Visible, not an HTML comment (#32): step 4 of commands/finish.md replaces
+    # Visible, not an HTML comment (#32): step 4 of skills/finish/SKILL.md replaces
     # it with prose; one it skips must still show in the rendered document.
     print("[GAP: Results for '%s' not written yet - say what it shows, from the "
           "data; every number must trace to a file or to a script in scripts/]\n"

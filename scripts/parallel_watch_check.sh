@@ -10,7 +10,7 @@
 # an error, so the only real defence is saying something before it happens.
 #
 # Counts this member's own SUBMITTED/RUNNING runs as a proxy for how many
-# background watches (commands/launch.md step 9) are already sharing the
+# background watches (skills/launch/SKILL.md step 9) are already sharing the
 # connection - each run launched there arms exactly one. Approximate on
 # purpose: a watch can end early, `/runs` itself makes its own occasional
 # call too, and this project keeps no file that would let it count watches
@@ -34,7 +34,7 @@
 #
 # and fold whatever line it prints (if any) into its own pre-launch summary,
 # the same way scripts/duplicate_run_check.sh documents itself being called.
-# Until prepare_launch.sh exists, commands/launch.md step 9 calls this
+# Until prepare_launch.sh exists, skills/launch/SKILL.md step 9 calls this
 # directly, and scripts/runs_board.sh also calls it (see its own header) so
 # a growing count shows up wherever a member is actually looking.
 set -uo pipefail

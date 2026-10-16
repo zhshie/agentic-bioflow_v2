@@ -39,8 +39,8 @@ done
 #    somewhere instead - which is the regression, whether or not a file named
 #    after a pipeline ever appears.
 for want in 'nextflow_schema.json' 'assets/schema_input.json' 'docs/images/'; do
-    grep -qF "$want" "$ROOT/commands/launch.md" || {
-        echo "FAIL: commands/launch.md no longer mentions $want"
+    grep -qF "$want" "$ROOT/skills/launch/SKILL.md" || {
+        echo "FAIL: skills/launch/SKILL.md no longer mentions $want"
         fail=1
     }
 done
@@ -78,15 +78,15 @@ fi
 #    handed a results tree and must derive everything from it, so a remembered
 #    filename there is not an example, it is the dependency.
 #
-#    This was hardcoded to downstream.md until finish.md was written. Adding a
+#    This was hardcoded to downstream until finish.md was written. Adding a
 #    third is one word.
-BLIND="downstream.md finish.md"
+BLIND="downstream finish"
 DS_LITERALS='report\.tsv|short_summary'
 for name in $BLIND; do
-    f="$ROOT/commands/$name"
-    [ -f "$f" ] || continue
+    f="$ROOT/skills/$name/SKILL.md"
+    [ -f "$f" ] || { echo "FAIL: $f missing - nothing was checked"; fail=1; continue; }
     if hits=$(grep -inE "\\b($TOOLS|$DS_LITERALS)\\b" "$f"); then
-        echo "FAIL: commands/$name names a pipeline tool or output file:"
+        echo "FAIL: skills/$name/SKILL.md names a pipeline tool or output file:"
         printf '  %s\n' "$hits"
         echo "  It must read the results tree at run time, not remember what one pipeline wrote."
         fail=1

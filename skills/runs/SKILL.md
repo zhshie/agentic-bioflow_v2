@@ -1,4 +1,5 @@
 ---
+name: runs
 description: Check on, debug, or deliver a pipeline run
 argument-hint: [run id or name]
 ---

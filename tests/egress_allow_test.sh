@@ -189,13 +189,13 @@ t "a CRLF-ended hand line still loads (the CR is not part of the name)" \
 
 # TC-012 [FR-009]: the commands' "allow it" step names this mechanism, and no
 # sentence tells anyone to edit plugin files to let a host through.
-for f in commands/runs.md commands/launch.md; do
+for f in skills/runs/SKILL.md skills/launch/SKILL.md; do
     has "TC-012 $f names egress_allow.sh add" 'scripts/egress_allow.sh add <host> --reason' "$(cat "$ROOT/$f")"
     t "TC-012 $f never says to edit the relay or its built-in list" \
       "$(grep -ciE '(edit|change|modify|add to)[^.]{0,40}(nf_relay|ALLOW_DOMAINS|plugin file)' "$ROOT/$f")" "0"
 done
 # TC-013 is checked by hand; the text it checks must at least exist.
-has "TC-013 runs.md says the built-in list is the maintainer's change" "maintainer's change" "$(cat "$ROOT/commands/runs.md")"
+has "TC-013 runs.md says the built-in list is the maintainer's change" "maintainer's change" "$(cat "$ROOT/skills/runs/SKILL.md")"
 
 
 # =============================================================================

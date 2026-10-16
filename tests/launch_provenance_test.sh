@@ -1,17 +1,17 @@
 #!/bin/bash
-# commands/launch.md: provenance is on by default for a launch (R1,
+# skills/launch/SKILL.md: provenance is on by default for a launch (R1,
 # docs/PITFALLS.md 32), and step 2's evidence has to survive the gate that
 # reads it (docs/PITFALLS.md 33).
 #
 # Static, not behavioural, for the same reason tests/no_per_pipeline_config.sh
-# and tests/command_layer_is_site_neutral.sh are: commands/*.md is prose
+# and tests/command_layer_is_site_neutral.sh are: skills/*/SKILL.md is prose
 # Claude follows, not code with a return value, so the only thing checkable
 # without running a real session is what the text actually says.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 . "$HERE/lib/site_terms.sh"
-L="$ROOT/commands/launch.md"
+L="$ROOT/skills/launch/SKILL.md"
 fails=0
 
 ok() { printf '%-72s ok\n' "$1"; }
@@ -72,7 +72,7 @@ grep -qiE 'final text' "$L" \
   || no "step 2 says the diagram/stage list must be the final text of the turn" \
         "no 'final text' language found"
 
-# 6. commands/*.md stays site-neutral and pipeline-agnostic even with this
+# 6. skills/*/SKILL.md stays site-neutral and pipeline-agnostic even with this
 #    addition - the same shared term list tests/command_layer_is_site_neutral.sh
 #    enforces (tests/lib/site_terms.sh), checked here directly so a regression
 #    in this file shows up under this test's own name too. A grep error

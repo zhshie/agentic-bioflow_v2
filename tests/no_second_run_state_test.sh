@@ -190,7 +190,7 @@ bad_nouns=""
 while IFS= read -r noun; do
     [ -n "$noun" ] || continue
     case "$TW_NOUNS" in *" $noun "*) ;; *) bad_nouns="$bad_nouns $noun" ;; esac
-done < <(grep -rhoE '(^|[^[:alnum:]_/.-])tw[[:space:]]+[a-z][a-z-]+' "$ROOT/commands" "$ROOT/skills" 2>/dev/null \
+done < <(grep -rhoE '(^|[^[:alnum:]_/.-])tw[[:space:]]+[a-z][a-z-]+' "$ROOT/skills" 2>/dev/null \
          | sed -E 's/^.*tw[[:space:]]+//' | sort -u)
 # "tw" followed by an ordinary English word is prose, not a command; the
 # command layer writes `tw ...` in backticks or code blocks, and the nouns it

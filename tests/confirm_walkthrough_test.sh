@@ -2,7 +2,7 @@
 # Tests for hooks/confirm_walkthrough.sh, the gate that makes launch.md's
 # walkthrough steps actually happen.
 #
-# The failure it exists for: commands/launch.md has required since 2.0.6 that
+# The failure it exists for: skills/launch/SKILL.md has required since 2.0.6 that
 # the pipeline's diagram and stage list be shown before anyone is asked to
 # configure it, and that the parameter choices be put to the user rather than
 # decided for them. A model that had read that file skipped both. Nothing

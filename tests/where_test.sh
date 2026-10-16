@@ -171,8 +171,8 @@ t "--run-paths with no seqera_user is refused, not guessed"  "$rc"  "2"
 hasnot "and prints no site_run_dir line at all"  "site_run_dir=" "$out"
 
 # ---------------------------------------------------------------------------
-# T29: --project-paths - the interface commands/downstream.md and
-# commands/finish.md are told to call instead of constructing a path
+# T29: --project-paths - the interface skills/downstream/SKILL.md and
+# skills/finish/SKILL.md are told to call instead of constructing a path
 # themselves, now that the shape branches three ways (old layout, new
 # layout, portable-redirected analysis/submission).
 out=$(clean HOME="$HOME2" LAB_RUNS_DIR="$RUNS" -- \

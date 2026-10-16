@@ -42,9 +42,15 @@ t="commands/ does not exist (two entries would register)"
 
 # --- (e)
 OP="$ROOT/skills/operational/SKILL.md"
+# operational routes to the five by one spelling, skills/<command>/SKILL.md,
+# plus the installed-plugin form; each of the five must resolve under it.
+for p in 'skills/<command>/SKILL.md' '${CLAUDE_PLUGIN_ROOT}/skills/<command>/SKILL.md' 'skills/runs/SKILL.md'; do
+    t="operational names $p"
+    grep -qF -- "$p" "$OP" 2>/dev/null && ok "$t" || bad "$t" "not named"
+done
 for n in $FLOW_SKILLS; do
-    t="operational names skills/$n/SKILL.md"
-    grep -qF "skills/$n/SKILL.md" "$OP" 2>/dev/null && ok "$t" || bad "$t" "not named"
+    t="operational's pointer resolves for $n"
+    [ -s "$(flow_skill_file "$n")" ] && ok "$t" || bad "$t" "no file"
 done
 
 # --- (f) stale-path guard.

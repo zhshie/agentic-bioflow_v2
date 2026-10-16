@@ -5,7 +5,7 @@
 """Build an nf-core samplesheet from a directory of sequencing files.
 
 Columns come from the caller (which reads them out of the pipeline's own
-`assets/schema_input.json` at the pinned revision - see commands/launch.md),
+`assets/schema_input.json` at the pinned revision - see skills/launch/SKILL.md),
 never from a pipeline definition stored next to this script. The retired
 nextflow-development skill kept a full per-pipeline YAML here (v1's spec.yaml) -
 genome options, run command templates, outputs, troubleshooting - which

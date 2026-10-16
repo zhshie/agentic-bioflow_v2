@@ -337,7 +337,7 @@ steered_past_a_real_file() {
 
 # Windows puts two homes on one machine and only one of them is the one setup
 # used. Git Bash's $HOME is the Windows profile; a deployment set up in WSL -
-# which commands/setup.md requires, because PITFALLS 16b measured that only WSL
+# which skills/setup/SKILL.md requires, because PITFALLS 16b measured that only WSL
 # can hold the site connection - sits in a filesystem this shell cannot reach,
 # and WSL's ~/.bashrc, where LAB_SETTINGS_FILE is exported, is never read here.
 # So the candidate list above is a true answer to the wrong question: every path
@@ -480,8 +480,8 @@ site_control_path_default() {   # site_control_path_default <bridge-kind>
 
 # --- T29: the local side's project layout -----------------------------------
 # One place, so scripts/init_workspace.sh (which builds these directories)
-# and scripts/where.sh (which answers "where are they" for commands/
-# downstream.md and commands/finish.md) compute the SAME path by
+# and scripts/where.sh (which answers "where are they" for skills/downstream/SKILL.md
+# and skills/finish/SKILL.md) compute the SAME path by
 # construction, never by a test asserting two independent formulas happen to
 # agree.
 #
@@ -1002,7 +1002,7 @@ reconstruct_settings() {
     if [ -z "${TOWER_ACCESS_TOKEN:-}" ]; then
         echo "no Seqera token available (checked $tokf and \$TOWER_ACCESS_TOKEN) -" >&2
         echo "reconstruction needs one to ask Platform anything at all. See" >&2
-        echo "docs/SETTINGS.md / commands/setup.md step 3 for how to get one." >&2
+        echo "docs/SETTINGS.md / skills/setup/SKILL.md step 3 for how to get one." >&2
         return 1
     fi
 

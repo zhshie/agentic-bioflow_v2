@@ -53,7 +53,7 @@ inrepo=0
 count=0
 
 # Basenames of every file this repo ships: a "Not <that file>" is in-repo.
-REPO_NAMES=$(find "$ROOT/scripts" "$ROOT/hooks" "$ROOT/tests" "$ROOT/commands" "$ROOT/skills" "$ROOT/docs" \
+REPO_NAMES=$(find "$ROOT/scripts" "$ROOT/hooks" "$ROOT/tests" "$ROOT/skills" "$ROOT/docs" \
                   -type f 2>/dev/null | sed 's|.*/||' | grep -E '[.](sh|py|awk|md)$' | sort -u)
 
 
@@ -80,7 +80,7 @@ judge_file() {
     x="$(printf '%s' "$text" | sed -E -e 's/^#[[:space:]]*Not[[:space:]]+//' -e 's/:.*$//')"
     # (a) names a file or path of this repo
     case "$x" in
-        *scripts/*|*hooks/*|*tests/*|*commands/*|*skills/*|*docs/*)
+        *scripts/*|*hooks/*|*tests/*|*skills/*|*docs/*)
             echo "IN-REPO  $rel:$ln 'Not $x' names a path in this repo; name what is maintained OUTSIDE it, or write '# Nothing existing: <why>'"
             return ;;
     esac

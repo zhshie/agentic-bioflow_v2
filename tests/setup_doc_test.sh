@@ -1,5 +1,5 @@
 #!/bin/bash
-# Feature 004 (specs/004-onboarding-proof), TC-012..TC-014: commands/setup.md
+# Feature 004 (specs/004-onboarding-proof), TC-012..TC-014: skills/setup/SKILL.md
 # is the instruction the model follows, so the new routing has to be IN it:
 #   TC-012  T27 paragraph: setup_verify.sh exit 3 -> straight to step 8, then
 #           steps 9 and 10, without redoing steps 1-7
@@ -11,7 +11,7 @@
 # phrase is only credited if it sits in the section it belongs to (a mention in
 # some other part of the file does not satisfy it).
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DOC="$ROOT/commands/setup.md"
+DOC="$ROOT/skills/setup/SKILL.md"
 fails=0
 
 # section <start-regex> <stop-regex>: the lines from the first start match up
@@ -26,7 +26,7 @@ section() {
 # ok <label> <section-text> <ERE>
 ok() {
     printf '%-72s ' "$1"
-    if [ -z "$2" ]; then echo "FAIL: section not found in commands/setup.md"; fails=$((fails+1)); return; fi
+    if [ -z "$2" ]; then echo "FAIL: section not found in skills/setup/SKILL.md"; fails=$((fails+1)); return; fi
     if grep -qE -- "$3" <<<"$2"; then echo ok; else echo "FAIL: no match for /$3/"; fails=$((fails+1)); fi
 }
 

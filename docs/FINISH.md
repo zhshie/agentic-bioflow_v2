@@ -1,6 +1,6 @@
 # Finishing: worked examples
 
-`commands/finish.md` carries no pipeline-specific knowledge, on purpose. This
+`skills/finish/SKILL.md` carries no pipeline-specific knowledge, on purpose. This
 file is where that knowledge goes instead — because a pipeline's output layout
 changes on its own schedule, and the command must not depend on anything that
 can go stale. Everything below is measured, with the date it was measured.

@@ -17,7 +17,7 @@
 #      run), settings.sh, the samplesheet generator's usage, report.sh.
 #   4. report.sh without plugin.json says what is missing and keeps the report
 #      queued: degraded, never silent.
-#   5. Every scripts/<file> that commands/, skills/ and docs/ cite resolves in
+#   5. Every scripts/<file> that skills/ and docs/ cite resolves in
 #      the copy, so a person following the docs reaches a real file.
 #
 # What this does NOT prove: that a person can finish a real run with it. That is
@@ -37,7 +37,7 @@ command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 not found"; exit 1; 
 
 COPY="$TMP/copy"; mkdir -p "$COPY"
 # Only what a person or another model would use without the host.
-( cd "$SRC" && tar -c scripts docs commands skills README.md CLAUDE.md 2>/dev/null ) | tar -x -C "$COPY"
+( cd "$SRC" && tar -c scripts docs skills README.md CLAUDE.md 2>/dev/null ) | tar -x -C "$COPY"
 [ ! -e "$COPY/hooks" ] && [ ! -e "$COPY/.claude-plugin" ] || { echo "FAIL: the copy still has hooks/ or .claude-plugin/"; exit 1; }
 [ -d "$COPY/scripts" ] && [ -d "$COPY/docs" ] || { echo "FAIL: the copy lacks scripts/ or docs/"; exit 1; }
 
@@ -89,9 +89,9 @@ fi
 
 echo "== 5. the docs point at files that exist =="
 # A doc that says a script is gone is not a dangling pointer.
-missing=$(grep -rhE '`scripts/[A-Za-z0-9_./-]+[.](sh|py)`' commands skills docs README.md CLAUDE.md 2>/dev/null           | grep -viE '(are|is|was|were) (now )?(gone|removed|deleted)|no longer|used to|removed'           | grep -oE '`scripts/[A-Za-z0-9_./-]+[.](sh|py)`' | tr -d '`' | sort -u           | while read -r p; do [ -e "$p" ] || echo "$p"; done)
-t "every scripts/<file> cited by commands/, skills/, docs/ exists" "$([ -z "$missing" ] && echo ok || echo "$missing" | head -5 | tr '\n' ' ')"
-for need in docs/PITFALLS.md docs/SITE_ADAPTER.md docs/SETTINGS.md skills/operational/SKILL.md commands/setup.md commands/launch.md commands/runs.md; do
+missing=$(grep -rhE '`scripts/[A-Za-z0-9_./-]+[.](sh|py)`' skills docs README.md CLAUDE.md 2>/dev/null           | grep -viE '(are|is|was|were) (now )?(gone|removed|deleted)|no longer|used to|removed'           | grep -oE '`scripts/[A-Za-z0-9_./-]+[.](sh|py)`' | tr -d '`' | sort -u           | while read -r p; do [ -e "$p" ] || echo "$p"; done)
+t "every scripts/<file> cited by skills/, docs/ exists" "$([ -z "$missing" ] && echo ok || echo "$missing" | head -5 | tr '\n' ' ')"
+for need in docs/PITFALLS.md docs/SITE_ADAPTER.md docs/SETTINGS.md skills/operational/SKILL.md skills/setup/SKILL.md skills/launch/SKILL.md skills/runs/SKILL.md; do
     t "the reduced tree still has $need" "$([ -s "$need" ] && echo ok || echo "missing or empty")"
 done
 
@@ -101,7 +101,7 @@ if [ -z "${WORKS_WITHOUT_HOST_SRC:-}" ]; then
     selffails=0
     mutate() { # mutate <want-rc> <label> <file> <line to append> [sed expr applied to the file instead]
         local S="$TMP/mut"; rm -rf "$S"; mkdir -p "$S"
-        ( cd "$SRC" && tar -c scripts docs commands skills README.md CLAUDE.md 2>/dev/null ) | tar -x -C "$S"
+        ( cd "$SRC" && tar -c scripts docs skills README.md CLAUDE.md 2>/dev/null ) | tar -x -C "$S"
         printf '%s
 ' "$4" >> "$S/$3"
         WORKS_WITHOUT_HOST_SRC="$S" bash "$SELF" >/dev/null 2>&1; local rc=$?

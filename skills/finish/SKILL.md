@@ -1,4 +1,5 @@
 ---
+name: finish
 description: Assemble a project into a package that can be submitted or sent to a collaborator
 argument-hint: [project name or path]
 model: sonnet
