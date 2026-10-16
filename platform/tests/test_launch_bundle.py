@@ -108,7 +108,11 @@ def test_the_bundle_is_plain_json_and_holds_what_will_be_written():
     p = parse_yaml(b["files"]["params.yaml"])
     assert p == {"primer": "AGRG", "pacbio": True, "depth": 3, "input": "/data/w1/runs/run-one/samplesheet.csv",
                  "outdir": "/data/w1/runs/run-one/results"}
-    assert b["files"]["nextflow.config"] == "process.executor = 'slurm'\n"
+    # abort-report-overwrite (TC-015): the user's text first, verbatim; then the platform's commented block, nothing else
+    cfg = b["files"]["nextflow.config"]
+    assert cfg.startswith("process.executor = 'slurm'\n")
+    assert [ln for ln in cfg[len("process.executor = 'slurm'\n"):].splitlines() if ln.strip() and not ln.startswith("//")] \
+        == ["report.overwrite = true", "timeline.overwrite = true"]
     from abf_platform import common
     assert common.bundle_sha256(b) == common.bundle_sha256(json.loads(json.dumps(b)))
 
