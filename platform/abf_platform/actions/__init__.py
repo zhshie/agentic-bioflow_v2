@@ -7,6 +7,7 @@ writes the confirmation and the job in one transaction. Until the confirmation p
 terminal: `confirmed_by` must be the object TERMINAL, which only abf_launch/cli.py uses, after terminal.ask answered yes.
 Anything else is refused before a database is opened.
 """
+import dataclasses
 import time
 
 from .. import agents, compute_envs, confirm, jobs, status, store
@@ -22,17 +23,26 @@ class _Terminal:
 TERMINAL = _Terminal()
 
 
+@dataclasses.dataclass(frozen=True)
+class Caller:
+    """Who is calling: a user of the platform. None (the default everywhere) is the local terminal or stdio. A caller is
+    recorded and nothing more: it is never a confirmation, and the read actions ignore it."""
+    user_id: int
+    name: str
+    lab: str
+
+
 def platform_path_for(index_path, platform_path=None):
     return platform_path or store.default_platform_path(index_path)
 
 
 # ---- read ------------------------------------------------------------------------------------------------------------
 
-def list_runs(index_path):
+def list_runs(index_path, *, caller=None):
     return {"runs": status.list_runs(index_path, status.now())}
 
 
-def get_run(index_path, run_id):
+def get_run(index_path, run_id, *, caller=None):
     view = status.get_run(index_path, run_id, status.now())
     if view is None:
         return {"found": False, "id": run_id,
@@ -40,11 +50,11 @@ def get_run(index_path, run_id):
     return view
 
 
-def list_compute_envs(platform_path):
+def list_compute_envs(platform_path, *, caller=None):
     return {"compute_envs": compute_envs.list_all(platform_path)}
 
 
-def get_compute_env(platform_path, name):
+def get_compute_env(platform_path, name, *, caller=None):
     view = compute_envs.get(platform_path, name)
     if view is None:
         return {"found": False, "name": name,
@@ -52,11 +62,11 @@ def get_compute_env(platform_path, name):
     return view
 
 
-def list_agents(platform_path):
+def list_agents(platform_path, *, caller=None):
     return {"agents": agents.list_agents(platform_path, status.now())}
 
 
-async def list_site_files(platform_path, compute_env, path):
+async def list_site_files(platform_path, compute_env, path, *, caller=None):
     answer = {"compute_env": compute_env, "path": path}
     try:
         job_id = jobs.enqueue_listing(platform_path, compute_env, path, status.now)
@@ -82,15 +92,17 @@ def _require_human(confirmed_by):
         raise jobs.JobRefused("no human confirmation channel")
 
 
-def launch(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None):
+def launch(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
+           caller=None):
     """Queue a launch of exactly `bundle`. Returns (confirmation id, job id)."""
     _require_human(confirmed_by)
     return confirm.confirm_launch(state_path, ce_name, bundle, clock=clock, deadline_seconds=deadline_seconds,
-                                  offline_after=offline_after)
+                                  offline_after=offline_after, caller_user_id=caller.user_id if caller else None)
 
 
-def cancel(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None):
+def cancel(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
+           caller=None):
     """Queue a cancel of exactly `bundle`. Returns (confirmation id, job id)."""
     _require_human(confirmed_by)
     return confirm.confirm_cancel(state_path, ce_name, bundle, clock=clock, deadline_seconds=deadline_seconds,
-                                  offline_after=offline_after)
+                                  offline_after=offline_after, caller_user_id=caller.user_id if caller else None)

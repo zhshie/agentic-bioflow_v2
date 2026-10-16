@@ -13,23 +13,28 @@ import time
 from . import common, jobs
 
 
-def _confirm(state_path, ce_name, kind, job_kind, bundle, clock, deadline_seconds, offline_after):
+def _confirm(state_path, ce_name, kind, job_kind, bundle, clock, deadline_seconds, offline_after, caller_user_id):
     now = clock()
     seconds = jobs._seconds(job_kind, deadline_seconds)
     cid = secrets.token_hex(16)
 
     def work(con):
-        con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES (?, ?, ?, ?)",
-                    (cid, common.bundle_sha256(bundle), kind, now))
+        con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, caller_user_id) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (cid, common.bundle_sha256(bundle), kind, now, caller_user_id))
         return cid, jobs.enqueue_confirmed(con, ce_name, job_kind, bundle, cid, now, seconds, offline_after)
 
     return jobs.transaction(state_path, work)
 
 
-def confirm_launch(state_path, ce_name, bundle, clock=time.time, deadline_seconds=None, offline_after=None):
+def confirm_launch(state_path, ce_name, bundle, clock=time.time, deadline_seconds=None, offline_after=None,
+                   caller_user_id=None):
     """Write the confirmation and queue the launch, or neither (JobRefused). Returns (confirmation id, job id)."""
-    return _confirm(state_path, ce_name, "launch", "launch_nextflow", bundle, clock, deadline_seconds, offline_after)
+    return _confirm(state_path, ce_name, "launch", "launch_nextflow", bundle, clock, deadline_seconds, offline_after,
+                    caller_user_id)
 
 
-def confirm_cancel(state_path, ce_name, bundle, clock=time.time, deadline_seconds=None, offline_after=None):
-    return _confirm(state_path, ce_name, "cancel", "cancel_run", bundle, clock, deadline_seconds, offline_after)
+def confirm_cancel(state_path, ce_name, bundle, clock=time.time, deadline_seconds=None, offline_after=None,
+                   caller_user_id=None):
+    return _confirm(state_path, ce_name, "cancel", "cancel_run", bundle, clock, deadline_seconds, offline_after,
+                    caller_user_id)

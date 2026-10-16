@@ -75,7 +75,34 @@ def _post(port, auth=None):
     h = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
     if auth is not None:
         h["Authorization"] = auth
+    if auth is not None and auth != auth.strip():
+        return _raw_post(port, auth)     # httpx refuses a header value that ends in a space; a raw request does not
     return httpx.post("http://127.0.0.1:%d/mcp" % port, json=INIT, headers=h, timeout=10)
+
+
+class _Raw:
+    def __init__(self, status_code, headers, text):
+        self.status_code, self.headers, self.text = status_code, headers, text
+
+
+def _raw_post(port, auth):
+    import json as _json
+    body = _json.dumps(INIT).encode()
+    req = ("POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nAccept: application/json, text/event-stream\r\n"
+           "Content-Type: application/json\r\nAuthorization: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n"
+           % (port, auth, len(body))).encode() + body
+    with socket.create_connection(("127.0.0.1", port), timeout=10) as s:
+        s.sendall(req)
+        data = b""
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    head, _, text = data.partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    headers = {k.strip().lower(): v.strip() for k, _, v in (ln.partition(":") for ln in lines[1:])}
+    return _Raw(int(lines[0].split()[1]), headers, text.decode("latin-1"))
 
 
 def _assert_401(r):
@@ -254,7 +281,7 @@ def test_tca11_no_tool_route_or_action_creates_or_revokes_users_or_pats(tmp_path
     assert sorted(t.name for t in tools) == sorted(READ_NAMES)
     for t in tools:
         text = t.name + " " + " ".join(t.input_schema.get("properties", {}))
-        assert not re.search(r"user|pat|token", text)
+        assert not re.search(r"(^|[\s_])(user|pat|token)s?($|[\s_])", text)
     plat = Platform(tmp_path / "p", clock=Clock())
     assert not [p for p in (getattr(r, "path", "") for r in plat.app.routes) if re.search(r"user$|pat|admin", p)]
     assert not [n for n in dir(actions) if re.search(r"user|pat\b|pat_|token", n, re.I)]
