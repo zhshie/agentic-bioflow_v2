@@ -156,7 +156,12 @@ if [ -z "${DOC_TEST_INNER:-}" ]; then
   mkclone() { # mkclone <name> [withmain]: shallow clone, working-tree files overlaid
     local d="$SCR/$1"
     git clone -q --depth 1 --no-local "file://$ROOT" "$d" >/dev/null 2>&1 || return 1
-    if [ "${2:-}" = withmain ]; then git -C "$d" branch main HEAD >/dev/null 2>&1; fi
+    if [ "${2:-}" = withmain ]; then
+      git -C "$d" show-ref --verify --quiet refs/heads/main || git -C "$d" branch main HEAD >/dev/null 2>&1
+    else # scratch-clone-main: the clone inherits the source branch (main on push CI); detach and drop it
+      git -C "$d" checkout -q --detach >/dev/null 2>&1
+      if git -C "$d" show-ref --verify --quiet refs/heads/main; then git -C "$d" branch -q -D main >/dev/null 2>&1; fi
+    fi
     cp "$ROOT/$C" "$d/$C"; cp "$ROOT/CONTEXT.md" "$d/CONTEXT.md"
     cp "$HERE/$(basename "${BASH_SOURCE[0]}")" "$d/tests/"
     echo "$d"
@@ -172,6 +177,8 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
   D=$(mkclone nomain) || { bad "scratch shallow clone"; D=; }
   if [ -n "$D" ]; then
     if git -C "$D" show-ref --verify --quiet refs/heads/main 2>&1; then bad "scratch clone really has no main ref"; else ok "scratch clone really has no main ref"; fi
+    # scratch-clone-main TC-004: the no-main clone is detached, not parked on a branch
+    if [ -z "$(git -C "$D" symbolic-ref -q HEAD 2>/dev/null)" ]; then ok "scratch clone is detached (scratch-clone-main TC-004)"; else bad "scratch clone is detached (scratch-clone-main TC-004)"; fi
     # TC-002
     inner "$D"
     if [ "$RC" = 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep ' ok$' >/dev/null; then ok "TC-002: unchanged, no main: the fingerprint line runs and is ok"; else bad "TC-002: unchanged, no main: the fingerprint line runs and is ok" "rc=$RC"; fi
@@ -200,6 +207,8 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
   # TC-004: with a main ref present, the same change still fails the same way
   D=$(mkclone withmain withmain) || { bad "scratch clone with main"; D=; }
   if [ -n "$D" ]; then
+    # scratch-clone-main TC-005: a withmain clone keeps a main ref at its HEAD
+    if [ "$(git -C "$D" rev-parse -q --verify refs/heads/main 2>/dev/null)" = "$(git -C "$D" rev-parse HEAD)" ]; then ok "withmain clone has main at HEAD (scratch-clone-main TC-005)"; else bad "withmain clone has main at HEAD (scratch-clone-main TC-005)"; fi
     addsn "$D"
     inner "$D"
     if [ "$RC" != 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep 'FAIL' >/dev/null; then ok "TC-004: Safety Net changed, main present: fails on the fingerprint"; else bad "TC-004: Safety Net changed, main present: fails on the fingerprint" "rc=$RC"; fi
