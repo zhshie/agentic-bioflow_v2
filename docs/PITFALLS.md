@@ -2003,3 +2003,21 @@ reason because `.nextflow.log` does not hold `errorMessage`.
 passed. The cause is not proven (research.md "Time resolution" explains 1 second only). The allowance is now `_CLOCK_SLACK_SECONDS = 3`. Do not widen it
 again without a new CI instance, and do not replace it with a retry or `xfail`: `test_ft04_same_runs_still_fails_on_a_large_gap` fails if a gap of
 60 seconds, or of one second more than the constant, is accepted. The `last_message_at` check (`<= 1`) was left alone on purpose (out of scope of this fix); it was not re-examined.
+
+**46. Tests that make a temporary clone go all red when run in WSL from a Windows-made worktree (2026-10-14).**
+Windows git writes an absolute path into the worktree's `.git` file (`gitdir: C:/Users/...`). Git inside WSL cannot read it and answers
+`fatal: not a git repository`, so every test that clones the repo into a temporary directory fails in the WSL full suite. The cause is the absolute
+path, not the tests. Create the worktree with `git worktree add --relative-paths`, or fix an existing one with `git worktree repair --relative-paths`;
+git must be 2.48 or newer on both sides (Windows and WSL).
+
+**47. A subagent's `gh pr create` and `gh pr merge` are refused by the auto mode classifier (2026-10-14).**
+What a subagent is told is not counted as the user's request, so Claude Code's auto mode classifier judged `gh pr create` as "Unrequested Commit in a
+Connected App" and `gh pr merge` as "Merge Without Review" (PRs #88, #89). Let the subagent push; the main session (developer-agent) opens the PR and
+merges, and the workspace permission rules allow those commands explicitly.
+
+**48. A fix loop spins when the verifier says UNVERIFIED and nothing else (2026-10-14).**
+When every test case is manual, the verifier returns UNVERIFIED while reporting no FAIL, no weakened test and no empty shell. Sending an executor again
+changes nothing; it only reruns the full suite. Hand such a result back to a person to judge instead of starting a fix round.
+
+**49. Two WSL full suites plus several agents at once run a laptop out of memory (2026-10-14).**
+A background command was killed by the system for low memory. Keep `maxParallel` at 2 on the laptop; raise it only on the always-on desktop.
