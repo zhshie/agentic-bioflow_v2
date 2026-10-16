@@ -2,7 +2,7 @@
 
 狀態：合約已確認（2026-10-16，verifier）
 
-**規格**：無 `spec.md`；依維護者指示只用 `specs/009d-pat-identity/plan.md` 當依據　**明細**：`test-case.md`
+**規格**：無 `spec.md`；依維護者指示只用 `specs/009d-pat-identity/plan.md`（含其「Contract round 1」六條決定）當依據　**明細**：`test-case.md`
 
 ## 一眼看完
 
@@ -11,13 +11,15 @@
 | US1 — 建立使用者、發個人權杖，只在終端機、只顯示一次 | 9 | 3 | 0 | 12 |
 | US2 — `mcp --http` 必須帶權杖，否則 401；本機 stdio 不變 | 7 | 8 | 0 | 15 |
 | US3 — 一種權杖只開一扇門 | 2 | 5 | 0 | 7 |
-| US4 — 身分只是被記錄，不是新的確認方式 | 9 | 3 | 0 | 12 |
+| US4 — 身分只是被記錄，不是新的確認方式 | 11 | 3 | 0 | 14 |
 | US5 — 文件、標頭、整體綠燈與紀錄 | 6 | 0 | 0 | 6 |
 | 不在範圍（計畫「Not in this PR」） | 0 | 0 | 8 | 8 |
 | 憲法與安全網 | 4 | 0 | 0 | 4 |
-| **合計** | 37 | 19 | 8 | 64 |
+| **合計** | 39 | 19 | 8 | 66 |
 
-自動驗證 57 條、手動驗證 7 條（TC-B15、TC-E02、TC-E03、TC-E05、TC-E06、TC-F08、TC-G04，由驗收審查者讀 diff、`ledger.md`、文件，或在兩個分支各跑一次）。
+自動驗證 59 條、手動驗證 7 條（TC-B15、TC-E02、TC-E03、TC-E05、TC-E06、TC-F08、TC-G04，由驗收審查者讀 diff、`ledger.md`、文件，或在兩個分支各跑一次）。
+
+本輪（計畫加入「Contract round 1」六條決定之後）的變動：TC-A03、TC-A08 加入新的 `label` 欄位；TC-A09、TC-A10 改成「非零結束碼＋一行說明」；TC-D08 至 TC-D11 改成確認紀錄存 `caller_user_id`（整數、可為空）；新增 TC-D13（`launch`／`cancel` 的參數清單，即 tce04 的改動）與 TC-D14（工具本體仍是一行呼叫、輸入 schema 不變）；TC-E06 由「唯二」改為三個被改的既有測試（tc025、tcc01、tce04）。
 
 ## 請你判斷的三件事
 
@@ -27,18 +29,19 @@
 
 ## 覆蓋檢查
 
-- 規格裡的需求（FR）：無 `spec.md`，故無 FR。改以計畫的 7 項設計決定、7 步變更、Pinned guards 與 Constitution Check 逐條對應：全部都有測試案例：是
+- 規格裡的需求（FR）：無 `spec.md`，故無 FR。改以計畫的 7 項設計決定、7 步變更、Pinned guards、Constitution Check 與 Contract round 1 六條決定逐條對應：全部都有測試案例：是
 - 規格裡的驗收情境：無；以計畫「給維護者」三句與 Changes 第 2 步列出的測試項目當情境，全部都有測試案例：是
 - 規格裡「不在範圍」共 8 條（計畫「Not in this PR」：OAuth 與 discovery、公開網址與 TLS、角色／PI／實驗室權限、每人算力限制、權杖到期或輪替、網頁登入、新的確認方式與 MCP 內的 PAT／使用者工具、不改釘住的測試／`LAUNCH_ALLOW`／hooks／憲法／`.github/`）：全部都有「不在範圍」測試案例：是（TC-F01 至 TC-F08）
 
 ## 我（撰寫者）不確定的地方
 
-1. 計畫沒有「停用使用者」的指令（只有 `user add` 與 `pat revoke`），但 `lookup_pat` 規定停用的使用者要被拒。TC-B06、TC-C06 只能在測試夾具裡直接設定 `disabled_at`。你要不要一個 `user disable` 指令？（要的話是另一步，不在這份合約。）
-2. `pat revoke <id>` 如果拿到不存在的 id，或拿到 run／agent 權杖的 id，計畫沒說該怎麼辦，我沒有為它出題。你希望它拒絕嗎？
-3. `user add` 重複姓名、`pat new` 找不到使用者的錯誤文字計畫沒寫；TC-A09、TC-A10 只要求「被拒絕、什麼都沒新增」，不要求特定字句。這樣可以嗎？
+1. （已解決）計畫 Contract round 1 第 3 條已說明本步沒有停用使用者的指令，測試直接設定 `disabled_at`；TC-B06、TC-C06 照此寫，TC-F05 順帶確認 `user` 只有 `add`。
+2. `pat revoke <id>` 如果拿到不存在的 id，或拿到 run／agent 權杖的 id，計畫沒說該怎麼辦，我沒有為它出題。這不阻擋；你希望它拒絕嗎？
+3. （已解決）計畫 Contract round 1 第 4 條規定 `user add` 重複姓名與 `pat new` 找不到使用者都是非零結束碼＋一行說明，TC-A09、TC-A10 已照寫（只要求「一行說明」，不要求特定字句）。
 4. TC-D12 把「`http_auth` 只能 import `store` 與 `actions`」讀成只限 abf_platform 內部模組（標準函式庫與 MCP／ASGI 套件不算），否則中介層寫不出來。對嗎？
 5. TC-B15、TC-E02、TC-E03、TC-E05、TC-E06、TC-F08、TC-G04 是看 diff、文件、ledger 或跨分支比較，`docs/TESTING.md` 沒有對應手動步驟；沿用 009b 的做法，標「手動」由驗收審查者執行，可以嗎？
 6. TC-C01、TC-C02 的「被拒絕」不指定狀態碼，只要求「與未知權杖被拒的方式相同」；TC-F01 假設 `mcp --http` 現在沒有 `/.well-known/*` 路由（若 SDK 預設有，以「本分支沒有新增 OAuth 欄位」為準）。
+7. TC-D08／TC-D09 依 Contract round 1 第 5 條只要求確認紀錄存使用者 id，姓名在顯示時才由 `users` 表查；若你希望紀錄上直接存姓名，要改計畫，不是改這份合約。
 
 ## 核可紀錄
 
