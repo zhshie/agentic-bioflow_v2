@@ -95,3 +95,11 @@ def test_security_f2_f3_the_accepted_limits_are_written_in_plain_english():
     assert re.search(r"A process that drives a pty can answer y", s)
     assert s.count("same-user trust boundary") >= 2
     assert s.count("Claude Code ask rule on `abf-platform launch|cancel`") >= 2
+
+
+def test_abort_tc019_the_platform_guide_says_the_config_gets_an_overwrite_block():
+    # TC-019 (abort-report-overwrite)
+    s = section9()
+    assert "report.overwrite" in s and "timeline.overwrite" in s
+    assert re.search(r"nextflow\.config[^.]*(last|end|after)", s) or re.search(r"(last|end|after)[^.]*nextflow\.config", s)
+    assert re.search(r"twice", s) and re.search(r"(your|compute environment's)[^.]*(config|text)[^.]*(first|before|unchanged|verbatim)", s, re.I)

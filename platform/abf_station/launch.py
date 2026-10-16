@@ -39,6 +39,17 @@ MAX_VALUE = 100000
 SET_BY_THE_SCRIPT = ("TOWER_ACCESS_TOKEN", "NXF_LOG_FILE")
 BIDI = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A)) | {0x200E, 0x200F, 0x061C}
 FILE_NAMES = ("samplesheet.csv", "params.yaml", "nextflow.config", "head.sh")
+# Appended to every rendered nextflow.config, after the compute environment's own text (which stays first and unchanged).
+# When a run is cancelled Nextflow runs its workflow-complete observers twice (Session.destroy() calls shutdown0() again,
+# docs/PITFALLS.md 50); the second report/timeline write refuses an existing file and logs "Report file already exists".
+# Only these two settings, they concern files of this one run. The block is part of the bundle that is shown and hashed.
+OVERWRITE_BLOCK = (
+    "\n"
+    "// added by the platform: when a run is cancelled Nextflow writes its report and timeline twice;\n"
+    "// without this the second write is refused and the log of the cancelled run holds an ERROR.\n"
+    "report.overwrite = true\n"
+    "timeline.overwrite = true\n"
+)
 NO_SCRIPTS = "不支援：這一片不執行事前／事後腳本"
 
 
@@ -382,8 +393,8 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
     files = {
         "samplesheet.csv": _csv_text(sheet),
         "params.yaml": _params_yaml(user_params, run_folder),
-        "nextflow.config": (config if config.endswith("\n") else config + "\n") if config.strip()
-        else "// the compute environment carries no Nextflow config\n",
+        "nextflow.config": ((config if config.endswith("\n") else config + "\n") if config.strip()
+                            else "// the compute environment carries no Nextflow config\n") + OVERWRITE_BLOCK,
         "head.sh": _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower),
     }
     return {"version": BUNDLE_VERSION, "agent": agent, "ce": ce_out, "run_name": run_name, "run_folder": run_folder,
