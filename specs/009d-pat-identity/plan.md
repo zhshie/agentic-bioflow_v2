@@ -62,3 +62,12 @@
 - I.2 single submission path: unchanged; `caller` is only recorded.
 - Safety Net credentials rule: PAT shown once, stored hashed, never logged; fixtures build tokens at runtime.
 - Loosens nothing; adds one refusal (401). Stdio stays local and unauthenticated by design.
+
+## Contract round 1 (executor BLOCKED, 2026-10-16): developer-agent decisions
+
+1. **009b's `test_tce04_the_write_actions_take_no_identity`** (`platform/tests/test_actions_layer.py`) is the third pinned assertion this slice changes, besides tcc01 and tc025: its expected parameter list for `actions.launch` / `actions.cancel` becomes `["state_path","ce_name","bundle","confirmed_by","clock","deadline_seconds","offline_after","caller"]` with `caller` keyword-only, default `None`. Its intent is kept and made explicit in the same test: `caller` is never a confirmation — `launch(..., confirmed_by=<anything but TERMINAL>, caller=<a real user>)` is refused and writes nothing.
+2. **PAT label** is stored in a new nullable `label` column on the tokens table (same in-place migration as `user_id`).
+3. **Disabled users**: no CLI command to disable a user in this slice; tests set `disabled_at` directly.
+4. `user add` with an existing name exits non-zero with one line saying the name exists; `pat new --user <unknown>` exits non-zero with one line saying no such user. No token is created in either case.
+5. The confirmation row records the user's `id` (integer, nullable column `caller_user_id`); name is looked up when shown.
+6. MCP tool bodies stay one statement each (009b TC-A13): the caller reaches the read actions as `actions.<name>(..., caller=_caller())`, where `_caller()` reads the context var set by `http_auth`; tool input schemas gain no field.
