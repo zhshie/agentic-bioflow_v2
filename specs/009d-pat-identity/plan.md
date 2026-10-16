@@ -71,3 +71,14 @@
 4. `user add` with an existing name exits non-zero with one line saying the name exists; `pat new --user <unknown>` exits non-zero with one line saying no such user. No token is created in either case.
 5. The confirmation row records the user's `id` (integer, nullable column `caller_user_id`); name is looked up when shown.
 6. MCP tool bodies stay one statement each (009b TC-A13): the caller reaches the read actions as `actions.<name>(..., caller=_caller())`, where `_caller()` reads the context var set by `http_auth`; tool input schemas gain no field.
+
+## Contract round 2 (executor BLOCKED at 69cc27b, 2026-10-16): developer-agent decisions
+
+Four more pinned 008 tests in `platform/tests/test_station_envs.py` fail because of what this slice is meant to add. They change as follows and in no other way; TC-E06's list of edited pinned tests grows from three to seven.
+
+1. `test_tc063_no_door_takes_a_job_kind_or_a_command`: the expected top-level subcommand set gains exactly `user` and `pat`.
+2. `test_tc084_no_launch_door_anywhere`: the expected usage subcommand list gains exactly `user,pat`; every other assertion (no launch door) unchanged.
+3. `test_tc086_no_web_pages_no_confirmation_page_no_role_tables`: in the tokens.db word scan, exempt exactly the table name `users` and the column names `user_id`, `caller_user_id`, `label`, `lab`, `name`, `disabled_at`; the words `role`, `org`, `team`, `login`, `password`, `email`, `session`, `cookie` stay forbidden, and the web-page / confirmation-page checks stay as they are. Reason: ADR 0006 puts identity (user, lab) in feature 009; roles stay out until 010.
+4. `test_tc071_exactly_six_read_only_tools_over_stdio_and_http`: the HTTP half sends a PAT (same change as tc025: input only, assertions unchanged).
+
+The executor's two fixes inside its own `test_pat.py` (whole-word match for `pat` in TC-A11; raw socket for the `Bearer ` trailing-space header) are accepted.
