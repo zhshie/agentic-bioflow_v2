@@ -15,7 +15,7 @@
 ## Facts (origin/v3, 2026-10-16)
 
 - `platform/abf_platform/` has no `actions/`. `mcp_server.py:15` imports `agents, compute_envs, jobs, status, store` and implements six read-only tools inline (`list_runs` 34, `get_run` 41, `list_compute_envs` 51, `get_compute_env` 56, `list_agents` 66, `list_site_files` 74).
-- `confirm.py` (`confirm_launch` 28, `confirm_cancel` 33) is documented (lines 3-7) as callable only from terminal commands; `test_launch_platform.py` scans for other callers.
+- `confirm.py` (`confirm_launch` 28, `confirm_cancel` 33) is documented (lines 3-7) as callable only from terminal commands. No test lists its allowed callers today; TC-010 only forbids `confirm_*` / `confirm.` text in mcp_server.py, receiver.py and agents.py.
 - `abf_launch/cli.py:21` imports `agents, compute_envs, confirm, jobs, store` from `abf_platform`; launch path `cmd_launch` 165-205 (`jobs.check_run_name` 191, `confirm.confirm_launch` 201, `jobs.wait_for_result` 256); `cmd_cancel` 292.
 - Pinned guards that MUST stay green and unedited: `test_launch_platform.py:254` (TC-010, no launch/cancel/confirm route), `:275` and `test_mcp.py` tc024 (exactly six read-only tools, banned input fields), `:696` (TC-061, no resume/retry/yes on the CLI), `tests/no_second_run_state_test.sh:63` (`LAUNCH_ALLOW` = `platform/abf_station/launch.py` only).
 
@@ -26,7 +26,7 @@
    - write: `launch(state_path, ce_name, bundle, *, confirmed_by)` and `cancel(state_path, ce_name, bundle, *, confirmed_by)`. Each validates (`jobs.check_target` / `jobs.check_run_name` as today), then calls `confirm.confirm_launch` / `confirm_cancel`. `confirmed_by` is a required keyword; in 009b the only accepted value is the constant `actions.TERMINAL` (a sentinel object, not a string), and anything else raises `jobs.JobRefused("no human confirmation channel")`. This is the seam 009c fills with elicitation / confirmation page; it adds no new way to confirm.
 2. `mcp_server.py` tool bodies become one-line calls into `actions`; tool names, docstrings, annotations, `instructions` text unchanged byte-for-byte.
 3. `abf_launch/cli.py` calls `actions.launch` / `actions.cancel` with `confirmed_by=actions.TERMINAL` only after `terminal.ask` returned yes; it no longer imports `confirm` directly. The TTY check and y/n prompt stay in `abf_launch/terminal.py`.
-4. `confirm.py` docstring updated: callable only from `actions` (and `actions` only with the terminal sentinel until 009c). The scan in `test_launch_platform.py` that lists allowed callers of `confirm_*` is updated from the CLI to `abf_platform/actions/` — this keeps the same strength (exactly one caller module), not looser.
+4. `confirm.py` docstring updated: callable only from `actions` (and `actions` only with the terminal sentinel until 009c). (Void, see Contract round 1 item 2: there is no existing caller scan; 5(b) adds new ones.)
 5. New test `platform/tests/test_actions_layer.py`:
    - (a) parity: every MCP tool name in `build_server(...)` has a same-named function in `actions` (read-only six).
    - (b) import restriction: `mcp_server.py` imports nothing from `abf_platform` except `actions` (AST scan); `confirm` is imported only by `actions` (AST scan over `platform/`).
@@ -62,3 +62,10 @@
 4. **`platform/pyproject.toml`**: add `"abf_platform.actions"` to `[tool.setuptools] packages` (TC-049).
 5. **Accepted**: TC-046 (`mcp_server.py` must not mention `launch`, `cancel` or `TERMINAL` from actions); TC-050 (`actions/__init__.py` carries the `# Not …:` / `# Nothing existing:` header required by tc070); TC-073 (`mcp_server.py` still never matches `confirm\b`).
 6. **Order**: the `confirmed_by` check runs first, before any validation or database access; a refused call opens no connection and enqueues nothing.
+
+## Contract round 2 (verifier, 2026-10-16)
+
+1. **Accepted, blocking**: add to 5(b) an AST scan over non-test Python in `platform/abf_platform/`, `platform/abf_station/`, `platform/abf_launch/`: no file other than `abf_launch/cli.py` and the `actions` package itself references `actions.launch`, `actions.cancel` or `TERMINAL` (attribute access, from-import, or alias). Together with the TC-010 regex this keeps the old strength: the terminal CLI is the only path to a queued launch/cancel. The verifier wrote this as TC-036.
+2. Missing `confirmed_by`: Python's TypeError is acceptable; the only requirement is that nothing is written to jobs, confirmations or launches.
+3. Read-action parameter names are not fixed; first positional argument is the path.
+4. Test-case numbering in this task is its own; references in this plan to other features' TC numbers are descriptions, not ids.
