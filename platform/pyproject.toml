@@ -17,7 +17,7 @@ abf-platform = "abf_platform.cli:main"
 abf-station = "abf_station.cli:main"
 
 [tool.setuptools]
-packages = ["abf_platform", "abf_station", "abf_launch"]
+packages = ["abf_platform", "abf_platform.actions", "abf_station", "abf_launch"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
