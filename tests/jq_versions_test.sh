@@ -1,10 +1,15 @@
 #!/bin/bash
-# #95: the hooks' one-call jq fast path must compile on jq 1.6 (Ubuntu 22.04 / WSL
-# default) as well as 1.7. The 1.7-only `sub("\n+\z"; "")` made it fail on 1.6, so
-# every call fell back to one jq per field. This test runs the process-count test
-# and the trailing-newline equivalence cases under each jq version it can find.
-#   ABF_JQ16 / ABF_JQ17 name a binary; otherwise /usr/bin/jq and /usr/local/bin/jq.
-# A version that cannot be found (or is not that version) prints SKIP, never PASS.
+# #95: the hooks' one-call jq fast path must compile and give the same answer on jq
+# 1.6 (Ubuntu 22.04 / WSL default) as on 1.7.x / 1.8.x. On 1.6 `contains("\u0000")`
+# is true for every string (C-string compare), so the NUL guard made the program
+# print nothing and every call fell back to one jq per field. The guard is
+# `test("\u0000")`.
+#
+# This test takes the program text out of each of the four hooks (not a copy of it)
+# and runs it under every jq version it can find: ABF_JQ16 / ABF_JQ17 / ABF_JQ18,
+# /usr/bin/jq, /usr/local/bin/jq and the first jq on PATH, each labelled with its
+# real --version. A version that is not found prints SKIP, never PASS; if no version
+# ran at all the test FAILS.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -15,79 +20,193 @@ ok()   { echo "PASS: $1"; }
 bad()  { echo "FAIL: $1"; fails=$((fails+1)); }
 skip() { echo "SKIP: $1"; }
 
-find_jq() { # find_jq <override> <default> <version-prefix>
-  local c
-  for c in "$1" "$2"; do
-    [ -n "$c" ] && [ -x "$c" ] || continue
-    case "$("$c" --version 2>/dev/null)" in "jq-$3"*) echo "$c"; return 0 ;; esac
-  done
-  return 1
-}
-JQ16=$(find_jq "${ABF_JQ16:-}" /usr/bin/jq 1.6) || JQ16=""
-JQ17=$(find_jq "${ABF_JQ17:-}" /usr/local/bin/jq 1.7) || JQ17=""
-[ -n "$JQ17" ] || JQ17=$(find_jq "" "$(command -v jq 2>/dev/null)" 1.7) || JQ17=""
+HOOKS="confirm_cleanup confirm_launch confirm_walkthrough guard_plugin_files"
 
-# --- the program text the four hooks really carry ----------------------------
-DEF='def t: if endswith("\n") then .[:-1] | t else . end;'
-for h in confirm_cleanup confirm_launch confirm_walkthrough guard_plugin_files; do
-  if grep -qF "$DEF" "$ROOT/hooks/$h.sh" && grep -qF 'map(t + "\u001f")' "$ROOT/hooks/$h.sh" \
-     && ! grep -qF 'sub("\\n+\\z"' "$ROOT/hooks/$h.sh"; then
-    ok "hooks/$h.sh carries the regex-free strip"
-  else
-    bad "hooks/$h.sh does not carry the regex-free strip (def t / map(t + ...))"
-  fi
+# --- the program text each hook really carries --------------------------------
+extract() { # extract <hook> : print the fast-path jq program of hooks/<hook>.sh
+  local line n
+  n=$(grep -cF "jq -js '" "$ROOT/hooks/$1.sh")
+  [ "$n" = 1 ] || return 1
+  line=$(grep -F "jq -js '" "$ROOT/hooks/$1.sh")
+  line=${line#*"jq -js '"}
+  printf '%s' "${line%%"' <<<"*}"
+}
+for h in $HOOKS; do
+  if p=$(extract "$h") && [ -n "$p" ]; then printf '%s' "$p" > "$TMP/prog.$h"; ok "extracted the fast-path program from hooks/$h.sh"
+  else bad "could not extract exactly one fast-path program from hooks/$h.sh"; : > "$TMP/prog.$h"; fi
 done
-OLD='[.] | map(sub("\\n+\\z"; "") + "\u001f") | join("")'
-NEW="$DEF [.] | map(t + \"\u001f\") | join(\"\")"
 
-# --- inputs (TC-007..TC-015) --------------------------------------------------
-IN="$TMP/in"; mkdir -p "$IN"
-printf 'ls -la' > "$IN/none"
-printf 'ls -la\n' > "$IN/one"
-printf 'ls -la\n\n\n' > "$IN/many"
-printf '\n\n\n' > "$IN/only"
-printf 'a\nb\n\nc\n' > "$IN/interior"
-printf 'a\r\n' > "$IN/crlf"
-printf 'a\r' > "$IN/cr"
-printf '中文 😀 text\n\n' > "$IN/unicode"
-{ head -c 100000 /dev/zero | tr '\0' x; printf '\n'; } > "$IN/big"
-{ printf 'body'; yes '' | head -n 5000; } > "$IN/nl5000"
+# Static: the parts every hook shares must be identical text in all four, and the
+# 1.6-unsafe form must be gone.
+HEAD_='if length == 1 then (.[0] | ['
+GUARD='if all(.[]; type == "string") and (any(.[]; contains("\u001f") or test("\u0000")) | not) then'
+TAIL_='(map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end'
+for part in HEAD_ GUARD TAIL_; do
+  want=${!part}; same=1
+  for h in $HOOKS; do grep -qF -- "$want" "$TMP/prog.$h" || same=0; done
+  if [ "$same" = 1 ]; then ok "all four hooks carry the identical $part text"
+  else bad "the four hooks do not all carry the identical $part text: $want"; fi
+done
+for h in $HOOKS; do
+  if grep -qF 'contains("\u0000")' "$TMP/prog.$h"; then bad "hooks/$h.sh still uses contains(\"\\u0000\") (true for every string on jq 1.6)"
+  else ok "hooks/$h.sh has no contains(\"\\u0000\")"; fi
+done
 
-run_equiv() { # run_equiv <jq> <label> : new program on every input; compare with old on 1.7
-  local J="$1" label="$2" f n
-  command -v timeout >/dev/null 2>&1 && local TO="timeout 60" || local TO=""
-  for f in "$IN"/*; do
-    n=$(basename "$f")
-    "$J" -Rs . "$f" > "$TMP/$n.json"
-    $TO "$J" -j "$NEW" "$TMP/$n.json" > "$TMP/$n.new.$label" 2>/dev/null
-    if [ -n "$JQ17" ]; then
-      [ -f "$TMP/$n.old" ] || "$JQ17" -j "$OLD" "$TMP/$n.json" > "$TMP/$n.old" 2>/dev/null
-      if cmp -s "$TMP/$n.new.$label" "$TMP/$n.old"; then ok "equiv $n on $label"; else bad "equiv $n on $label differs from old program"; fi
-    else
-      [ -s "$TMP/$n.new.$label" ] && ok "equiv $n on $label (no 1.7 reference)" || bad "equiv $n on $label produced nothing"
+# --- versions ------------------------------------------------------------------
+LABELS=(); BINS=()
+consider() { # consider <path>
+  local c="$1" v l
+  [ -n "$c" ] && [ -x "$c" ] || return 0
+  v=$("$c" --version 2>/dev/null) || return 0
+  case "$v" in jq-1.6|jq-1.7*|jq-1.8*) ;; *) return 0 ;; esac
+  for l in ${LABELS[@]+"${LABELS[@]}"}; do [ "$l" = "$v" ] && return 0; done
+  LABELS+=("$v"); BINS+=("$c")
+}
+consider "${ABF_JQ16:-}"; consider /usr/bin/jq
+consider "${ABF_JQ17:-}"; consider /usr/local/bin/jq
+consider "${ABF_JQ18:-}"; consider "$(command -v jq 2>/dev/null)"
+case " ${LABELS[*]:-} " in *" jq-1.6 "*) ;; *) skip "jq 1.6 not found; the 1.6 half did not run" ;; esac
+if [ "${#LABELS[@]}" -eq 0 ]; then
+  bad "no usable jq (1.6, 1.7.x or 1.8.x) found: nothing ran"; echo "$fails failed"; exit 1
+fi
+
+# --- inputs ----------------------------------------------------------------------
+# JSON fed to a hook: tool_name Bash; command = V; file_path p; content c;
+# transcript_path t. The expected answer lists the fields in the order the hook emits.
+US=$'\037'
+mkjson() { # mkjson <json-escaped V> <out file>
+  printf '{"tool_name":"Bash","tool_input":{"command":"%s","file_path":"p","content":"c"},"transcript_path":"t"}' "$1" > "$2"
+}
+expect() { # expect <hook> <stripped V> <out file>
+  case "$1" in
+    confirm_cleanup)     printf 'abf-jq-ok%sBash%s%s%s' "$US" "$US" "$2" "$US" > "$3" ;;
+    confirm_launch)      printf 'Bash%s%s%s' "$US" "$2" "$US" > "$3" ;;
+    confirm_walkthrough) printf 'Bash%s%s%sp%sc%st%s' "$US" "$2" "$US" "$US" "$US" "$US" > "$3" ;;
+    guard_plugin_files)  printf 'Bash%sp%s%s%s' "$US" "$US" "$2" "$US" > "$3" ;;
+  esac
+}
+# name | JSON-escaped value | stripped value (printf %b form)
+CASES=(
+  'none|ls -la|ls -la'
+  'one|ls -la\n|ls -la'
+  'many|ls -la\n\n\n|ls -la'
+  'only|\n\n\n|'
+  'interior|a\nb\n\nc\n|a\nb\n\nc'
+  'crlf|a\r\n|a\r'
+  'cr|a\r|a\r'
+  'unicode|中文 😀 text\n\n|中文 😀 text'
+)
+# Inputs whose fast-path answer must be EMPTY (the hook then takes its slow path)
+EMPTY_CASES=(
+  'embedded-NUL|a\u0000b'
+  'embedded-0x1f|a\u001fb'
+  'NUL-and-0x1f|a\u0000b\u001fc'
+  'NUL-only|\u0000'
+  'NUL-plus-trailing-newline|a\u0000\n\n'
+)
+
+run_prog() { # run_prog <jq> <hook> <input> <out> : sets RC; stderr in <out>.err
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 30 "$1" -js "$(cat "$TMP/prog.$2")" "$3" > "$4" 2> "$4.err"; RC=$?
+  else
+    "$1" -js "$(cat "$TMP/prog.$2")" "$3" > "$4" 2> "$4.err"; RC=$?
+  fi
+}
+errtxt() { head -c 200 "$1.err" | tr '\n' ' '; }
+
+# 1 MB body of x, and 20,000 JSON-escaped newlines
+head -c 1000000 /dev/zero | tr '\0' x > "$TMP/big.body"
+NLK=$(printf '\\n%.0s' $(seq 1 1000))
+: > "$TMP/nl.json"
+k=0; while [ $k -lt 20 ]; do printf '%s' "$NLK" >> "$TMP/nl.json"; k=$((k+1)); done
+[ "$(wc -c < "$TMP/nl.json")" -eq 40000 ] || bad "test setup: nl.json is not 20,000 newline escapes"
+
+check_version() { # check_version <jq> <label>
+  local J="$1" label="$2" h c name val want ms t0 t1
+  for h in $HOOKS; do
+    for c in "${CASES[@]}"; do
+      IFS='|' read -r name val want <<<"$c"
+      mkjson "$val" "$TMP/in.json"
+      expect "$h" "$(printf '%b' "$want")" "$TMP/exp"
+      run_prog "$J" "$h" "$TMP/in.json" "$TMP/out"
+      if [ "$RC" -eq 0 ] && [ -s "$TMP/out" ] && [ ! -s "$TMP/out.err" ] && cmp -s "$TMP/out" "$TMP/exp"; then
+        ok "$label $h $name"
+      else
+        bad "$label $h $name (rc=$RC, $(wc -c < "$TMP/out") bytes out, stderr: $(errtxt "$TMP/out"))"
+      fi
+      cp "$TMP/out" "$TMP/res.$h.$name.$label"
+    done
+    for c in "${EMPTY_CASES[@]}"; do
+      IFS='|' read -r name val <<<"$c"
+      mkjson "$val" "$TMP/in.json"
+      run_prog "$J" "$h" "$TMP/in.json" "$TMP/out"
+      if [ "$RC" -eq 0 ] && [ ! -s "$TMP/out" ] && [ ! -s "$TMP/out.err" ]; then ok "$label $h $name -> empty (slow path)"
+      else bad "$label $h $name should be empty with rc 0 (rc=$RC, $(wc -c < "$TMP/out") bytes out, stderr: $(errtxt "$TMP/out"))"; fi
+      cp "$TMP/out" "$TMP/res.$h.$name.$label"
+    done
+
+    # mixed: a clean command with a NUL in file_path. confirm_walkthrough and
+    # guard_plugin_files read file_path, so they must give empty; the other two do not.
+    printf '{"tool_name":"Bash","tool_input":{"command":"ok\\n","file_path":"a\\u0000b","content":"c"},"transcript_path":"t"}' > "$TMP/in.json"
+    run_prog "$J" "$h" "$TMP/in.json" "$TMP/out"
+    case "$h" in
+      confirm_walkthrough|guard_plugin_files)
+        if [ "$RC" -eq 0 ] && [ ! -s "$TMP/out" ] && [ ! -s "$TMP/out.err" ]; then ok "$label $h NUL in a later field -> empty"
+        else bad "$label $h NUL in a later field should be empty (rc=$RC, stderr: $(errtxt "$TMP/out"))"; fi ;;
+      *)
+        if [ "$RC" -eq 0 ] && [ -s "$TMP/out" ] && [ ! -s "$TMP/out.err" ]; then ok "$label $h NUL in an unread field -> still answers"
+        else bad "$label $h NUL in an unread field should still answer (rc=$RC, stderr: $(errtxt "$TMP/out"))"; fi ;;
+    esac
+    # a non-string field (transcript_path: 5) -> empty on the hook that reads it
+    printf '{"tool_name":"Bash","tool_input":{"command":"ok\\n","file_path":"p","content":"c"},"transcript_path":5}' > "$TMP/in.json"
+    run_prog "$J" "$h" "$TMP/in.json" "$TMP/out"
+    if [ "$h" = confirm_walkthrough ]; then
+      if [ "$RC" -eq 0 ] && [ ! -s "$TMP/out" ] && [ ! -s "$TMP/out.err" ]; then ok "$label $h non-string field -> empty"
+      else bad "$label $h non-string field should be empty (rc=$RC, stderr: $(errtxt "$TMP/out"))"; fi
     fi
+
+    # 1 MB body ending in 20,000 newlines: same answer, and under 2 s
+    { printf '{"tool_name":"Bash","tool_input":{"command":"'; cat "$TMP/big.body" "$TMP/nl.json"
+      printf '","file_path":"p","content":"c"},"transcript_path":"t"}'; } > "$TMP/in.json"
+    expect "$h" "$(cat "$TMP/big.body")" "$TMP/exp"
+    t0=$(date +%s%N)
+    run_prog "$J" "$h" "$TMP/in.json" "$TMP/out"
+    t1=$(date +%s%N); ms=$(( (t1 - t0) / 1000000 ))
+    if [ "$RC" -eq 0 ] && [ -s "$TMP/out" ] && [ ! -s "$TMP/out.err" ] && cmp -s "$TMP/out" "$TMP/exp"; then
+      ok "$label $h 1 MB body + 20,000 trailing newlines: correct"
+    else
+      bad "$label $h 1 MB body + 20,000 trailing newlines: wrong (rc=$RC, $(wc -c < "$TMP/out") bytes out, stderr: $(errtxt "$TMP/out"))"
+    fi
+    if [ "$ms" -lt 2000 ]; then ok "$label $h big body took ${ms} ms (< 2000)"; else bad "$label $h big body took ${ms} ms (limit 2000)"; fi
   done
 }
 
-run_version() { # run_version <jq-or-empty> <label>
-  local J="$1" label="$2" d out
-  if [ -z "$J" ]; then skip "jq $label not found (or not that version); this half did not run"; return; fi
-  d="$TMP/shim-$label"; mkdir -p "$d"; ln -s "$J" "$d/jq"
-  echo "--- jq $label: $("$J" --version) at $J"
+# --- run each version --------------------------------------------------------------
+i=0
+while [ "$i" -lt "${#LABELS[@]}" ]; do
+  label="${LABELS[$i]}"; J="${BINS[$i]}"; i=$((i+1))
+  echo "--- $label at $J"
+  d="$TMP/shim-$label"; mkdir -p "$d"; ln -s "$J" "$d/jq" 2>/dev/null || cp "$J" "$d/jq"
+  if [ "$("$d/jq" --version 2>/dev/null)" = "$label" ]; then ok "shim for $label reports $label"
+  else bad "shim for $label reports '$("$d/jq" --version 2>&1)', not $label"; continue; fi
+  check_version "$d/jq" "$label"
   out=$(PATH="$d:$PATH" bash "$HERE/gate_process_count_test.sh" 2>&1); rc=$?
-  echo "$out" | tail -n 4
-  if [ $rc -eq 0 ] && echo "$out" | grep -q 'all passed'; then ok "gate_process_count_test.sh under jq $label"; else bad "gate_process_count_test.sh under jq $label"; fi
-  run_equiv "$J" "$label"
-}
+  echo "$out" | tail -n 3
+  if [ $rc -eq 0 ] && echo "$out" | grep -q 'all passed'; then ok "gate_process_count_test.sh under $label"
+  else bad "gate_process_count_test.sh under $label (rc=$rc)"; fi
+done
 
-run_version "$JQ16" 1.6
-run_version "$JQ17" 1.7
-
-if [ -n "$JQ16" ] && [ -n "$JQ17" ]; then
-  for f in "$IN"/*; do n=$(basename "$f")
-    cmp -s "$TMP/$n.new.1.6" "$TMP/$n.new.1.7" && ok "1.6 and 1.7 agree on $n" || bad "1.6 and 1.7 disagree on $n"
+# --- versions agree --------------------------------------------------------------------
+if [ "${#LABELS[@]}" -gt 1 ]; then
+  for f in "$TMP"/res.*."${LABELS[0]}"; do
+    base=${f%."${LABELS[0]}"}; k=1
+    while [ "$k" -lt "${#LABELS[@]}" ]; do
+      if cmp -s "$f" "$base.${LABELS[$k]}"; then ok "${LABELS[0]} and ${LABELS[$k]} agree on $(basename "$base")"
+      else bad "${LABELS[0]} and ${LABELS[$k]} disagree on $(basename "$base")"; fi
+      k=$((k+1))
+    done
   done
 fi
 
-[ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
+if [ "$fails" -eq 0 ]; then echo "all passed"; exit 0; fi
 echo "$fails failed"; exit 1

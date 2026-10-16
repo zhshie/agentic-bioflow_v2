@@ -206,7 +206,7 @@ root_in() { # root_in <text> - any spelling of the root, as a literal substring
 # anything else (not JSON, no jq, an object-valued field, two JSON values) goes
 # the way this file always went: the probe, then one jq per field.
 JQ_FAST=0
-if JQ_OUT=$(jq -js 'def t: if endswith("\n") then .[:-1] | t else . end; if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or test("\u0000")) | not) then (map(t + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+if JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.command // .tool_input.script // .tool_input.cmd // .tool_input.commandLine // .tool_input.powershell // .tool_input.input // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or test("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
    && [ -n "$JQ_OUT" ]; then
     # The fields come as one string, each followed by the separator. They are read out in order:
     # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a
