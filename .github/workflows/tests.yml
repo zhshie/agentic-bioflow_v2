@@ -23,6 +23,15 @@
 # relay_connect_test.py is excluded the same way run_all.sh already excludes
 # it from itself - a manual probe needing a live relay and a host argument,
 # not a file this can run unattended.
+#
+# jq 1.6 fast path (issue #95): the hooks' one-call jq program broke silently on
+# jq 1.6 - the default on WSL / Ubuntu 22.04, where most members run - because
+# the runner's apt jq is newer and never exercised it. So a second step downloads
+# the official jq 1.6 binary, checks a pinned sha256 (published in the jq repo at
+# sig/v1.6/sha256sum.txt, tag jq-1.6), keeps it off the default PATH, and runs
+# tests/jq_versions_test.sh with ABF_JQ16 pointing at it. That test FAILS (not
+# SKIPs) when ABF_JQ16 is set but is not a working jq 1.6, so the step cannot
+# pass vacuously.
 name: tests
 
 on:
@@ -41,3 +50,13 @@ jobs:
 
       - name: bash tests/run_all.sh
         run: bash tests/run_all.sh
+
+      - name: jq 1.6 fast path
+        run: |
+          set -euo pipefail
+          d="$RUNNER_TEMP/jq16"
+          mkdir -p "$d"
+          curl -fsSL -o "$d/jq" https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64
+          echo "af986793a515d500ab2d35f8d2aecd656e764504b789b66d7e1a0b727a124c44  $d/jq" | sha256sum -c -
+          chmod +x "$d/jq"
+          ABF_JQ16="$d/jq" bash tests/jq_versions_test.sh

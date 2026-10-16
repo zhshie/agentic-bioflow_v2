@@ -65,7 +65,11 @@ consider() { # consider <path>
 consider "${ABF_JQ16:-}"; consider /usr/bin/jq
 consider "${ABF_JQ17:-}"; consider /usr/local/bin/jq
 consider "${ABF_JQ18:-}"; consider "$(command -v jq 2>/dev/null)"
-case " ${LABELS[*]:-} " in *" jq-1.6 "*) ;; *) skip "jq 1.6 not found; the 1.6 half did not run" ;; esac
+if [ -n "${ABF_JQ16:-}" ] && [ "$("$ABF_JQ16" --version 2>/dev/null)" != "jq-1.6" ]; then
+  bad "ABF_JQ16=$ABF_JQ16 is set but is not a working jq 1.6 (got: $("$ABF_JQ16" --version 2>&1 | head -n1))"
+else
+  case " ${LABELS[*]:-} " in *" jq-1.6 "*) ;; *) skip "jq 1.6 not found; the 1.6 half did not run" ;; esac
+fi
 if [ "${#LABELS[@]}" -eq 0 ]; then
   bad "no usable jq (1.6, 1.7.x or 1.8.x) found: nothing ran"; echo "$fails failed"; exit 1
 fi
