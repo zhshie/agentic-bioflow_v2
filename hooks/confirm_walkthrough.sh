@@ -124,7 +124,7 @@ abf_jq_works() { # a trailing CR is jq.exe on Windows
     [ "${o%$'\r'}" = '[1]' ]
 }
 JQ_FAST=0
-if JQ_OUT=$(jq -js 'if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.content // ""), (.transcript_path // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or contains("\u0000")) | not) then (map(sub("\\n+\\z"; "") + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
+if JQ_OUT=$(jq -js 'def t: if endswith("\n") then .[:-1] | t else . end; if length == 1 then (.[0] | [(.tool_name // ""), (.tool_input.command // ""), (.tool_input.file_path // .tool_input.notebook_path // ""), (.tool_input.content // ""), (.transcript_path // "")] | if all(.[]; type == "string") and (any(.[]; contains("\u001f") or test("\u0000")) | not) then (map(t + "\u001f") | join("")) else empty end) else empty end' <<<"$INPUT" 2>/dev/null) \
    && [ -n "$JQ_OUT" ]; then
     # The fields come as one string, each followed by the separator. They are read out in order:
     # pattern removal (`#*x`, `%%x*`, `##*x`) and ${x//p/} are quadratic in bash on a long string, and a

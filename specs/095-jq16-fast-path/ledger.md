@@ -20,3 +20,9 @@ deletion guard on a 60-line here-doc [confirm_cleanup: 3, budget 3]        ok
 all passed
 5 failed
 ```
+
+## Green
+- [x] Hooks (4): `sub("\n+\z"; "")` -> `def t` / `map(t + ...)`, as planned. Plan deviation: the real cause on 1.6 was `contains("\u0000")` (C-string compare, true for every string); with only that fixed the old `sub` already worked on 1.6. NUL check is now `test("\u0000")` in the four hooks; the `t` swap is kept as planned.
+- [x] `tests/jq_versions_test.sh` new; `tests/gate_process_count_test.sh` +1 line (prints jq version).
+- [x] `docs/PITFALLS.md` entry 51. `CHANGELOG.md` does not exist in the repo: not created, nothing to add.
+- [x] WSL `tests/run_all.sh` with jq 1.6 first on PATH: 104/104 passed. With jq 1.7.1 first: 104/104 passed. `jq_versions_test.sh` on WSL: both halves ran, all passed.
