@@ -495,7 +495,9 @@ def test_tc086_no_web_pages_no_confirmation_page_no_role_tables(tmp_path):
         con = sqlite3.connect(str(db))
         names = []
         for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
-            names += [c[1].lower() for c in con.execute("PRAGMA table_info(%s)" % t)] + [t.lower()]
+            # exempt only (index.db, runs, session_id): added in 06848d0, Nextflow run session, not a web session (maintainer approved 2026-10-17)
+            names += [c[1].lower() for c in con.execute("PRAGMA table_info(%s)" % t)
+                      if not (db.name == "index.db" and t == "runs" and c[1].lower() == "session_id")] + [t.lower()]
         con.close()
         # 009d: identity (user, lab) is feature 009 (ADR 0006); roles stay out until 010
         allowed = {"users", "user_id", "caller_user_id", "label", "lab", "name", "disabled_at"}
