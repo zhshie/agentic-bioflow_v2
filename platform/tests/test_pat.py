@@ -654,8 +654,8 @@ def test_tcd12_the_import_rules(tmp_path):
 
 # ---- US5 / not in scope ------------------------------------------------------------------------------------------------------
 
-def test_tcf01_no_oauth_metadata_and_a_plain_bearer_challenge(tmp_path):
-    # TC-F01
+def test_tcf01_no_authorization_server_in_the_mcp_process_and_a_resource_metadata_challenge_only_with_a_public_url(tmp_path):
+    # TC-F01 (009i: the first half is the 009d test as it was; the second half is the new metadata and challenge, TC-A01 and TC-A02)
     pat, _ = _pat(tmp_path)
     port, proc = _start_http(tmp_path)
     try:
@@ -666,16 +666,29 @@ def test_tcf01_no_oauth_metadata_and_a_plain_bearer_challenge(tmp_path):
         assert r.headers["www-authenticate"] == "Bearer" and "resource_metadata" not in r.headers["www-authenticate"]
     finally:
         stop_proc(proc)
+    _store().set_meta(tmp_path / "data" / "platform.db", "web_base_url", "https://abf.example")
+    port2 = free_port()
+    proc2 = start_cli(["mcp", "--http", "--port", str(port2), "--public-url", "https://mcp.example"], _env(tmp_path), tmp_path / "mcp2.log")
+    try:
+        wait_port(port2, proc=proc2)
+        url = "https://mcp.example/.well-known/oauth-protected-resource/mcp"
+        assert _post(port2).headers["www-authenticate"] == 'Bearer resource_metadata="%s"' % url
+        assert httpx.get("http://127.0.0.1:%d/.well-known/oauth-protected-resource/mcp" % port2, timeout=10).status_code == 200
+        r = httpx.get("http://127.0.0.1:%d/.well-known/oauth-authorization-server" % port2, headers={"Authorization": "Bearer " + pat}, timeout=10)
+        assert r.status_code == 404           # the authorization server is the web app's, never the MCP process's
+    finally:
+        stop_proc(proc2)
     assert "AuthSettings" not in (PKG / "mcp_server.py").read_text(encoding="utf-8")
 
 
-def test_tcf02_no_tls_or_public_url_options():
-    # TC-F02
+def test_tcf02_no_tls_options_and_the_public_url_is_the_only_new_one():
+    # TC-F02 (009i: `public` is allowed, as --public-url, and run_http gains public_url; ssl, cert and tls stay out)
     h = run_cli(["mcp", "--help"]).stdout
-    assert not re.search(r"ssl|cert|public|tls", h, re.I)
+    assert not re.search(r"ssl|cert|tls", h, re.I)
+    assert {x.lower() for x in re.findall(r"public", h, re.I)} == {"public"} and "--public-url" in h
     src = inspect.getsource(__import__("abf_platform.mcp_server", fromlist=["x"]).run_http)
     assert not re.search(r"ssl|cert", src, re.I) and list(inspect.signature(
-        __import__("abf_platform.mcp_server", fromlist=["x"]).run_http).parameters) == ["index_path", "host", "port"]
+        __import__("abf_platform.mcp_server", fromlist=["x"]).run_http).parameters) == ["index_path", "host", "port", "public_url"]
 
 
 def test_tcf03_f04_the_users_table_has_no_role_and_both_labs_see_the_same(tmp_path):
