@@ -188,8 +188,8 @@ def test_tcb04_the_two_hundred_and_first_client_is_refused(w, rig):
     cid = rig.new_client()
     now = w.clock()
     for i in range(oauth().MAX_CLIENTS - 1):
-        tokens_sql(w, "INSERT INTO oauth_clients (client_id, info_json, created_at, last_used_at, registered_from) VALUES (?, ?, ?, ?, ?)",
-                   ("filler-%d" % i, json.dumps({"client_id": "filler-%d" % i, "redirect_uris": [REDIRECT]}), now, now, "10.0.0.%d" % (i % 250)))
+        tokens_sql(w, "INSERT INTO oauth_clients (client_id, info_json, created_at, last_used_at) VALUES (?, ?, ?, ?)",
+                   ("filler-%d" % i, json.dumps({"client_id": "filler-%d" % i, "redirect_uris": [REDIRECT]}), now, now))
     assert tokens_rows(w, "SELECT COUNT(*) FROM oauth_clients")[0][0] == oauth().MAX_CLIENTS == 200
     r = rig.register()
     assert r.status_code == 400, r.text

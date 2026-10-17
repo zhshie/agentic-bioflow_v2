@@ -1,14 +1,20 @@
-# Not the SDK's OAuth AuthSettings: OAuth 2.1 and its discovery pages are a later slice (ADR 0006); this is one plain bearer check against the personal access tokens in tokens.db, nothing more.
-"""The bearer check in front of the MCP server over HTTP (spec 009d).
+# Not the SDK's resource-server auth settings on the MCP app: this one bearer check stays the only door (a personal access token, or since 009i an OAuth access token from tokens.db); the SDK only supplies the protected-resource metadata document.
+"""The bearer check in front of the MCP server over HTTP (spec 009d, 009i).
 
-Every request needs `Authorization: Bearer <personal access token>` of a user who is not disabled; anything else is a
-401 with `WWW-Authenticate: Bearer` and a body that never repeats what was sent. A valid one sets the caller for the
-duration of the request, read through current_caller(). There is no way to switch this off. Local stdio never comes
-through here, so its caller stays None.
+Every request needs `Authorization: Bearer <token>` where the token is a personal access token or a live OAuth access token (made by
+abf_platform.oauth after a web login and a click) of a user who is not disabled; anything else is a 401 with `WWW-Authenticate: Bearer`
+(with `resource_metadata="<url>"` when this server has a public address, so a connector can find its way to the login) and a body that
+never repeats what was sent. A valid token sets the caller for the duration of the request, read through current_caller(); a PAT and an
+OAuth token of the same user give the same Caller. There is no way to switch this off. Local stdio never comes through here, so its
+caller stays None. The one thing served without a token is the protected-resource metadata document (GET, that exact path).
 """
 import collections
 import contextvars
 import json
+from urllib.parse import urlparse
+
+from mcp.server.auth.routes import build_resource_metadata_url, create_protected_resource_routes
+from starlette.applications import Starlette
 
 from . import store
 from .actions import Caller
@@ -59,11 +65,12 @@ async def _reject(send, status, error, message):
     await send({"type": "http.response.body", "body": body})
 
 
-async def _refuse(send):
-    body = json.dumps({"error": "unauthorized", "message": "a personal access token is required "
+async def _refuse(send, metadata_url=None):
+    body = json.dumps({"error": "unauthorized", "message": "a personal access token or an OAuth access token is required "
                        "(Authorization: Bearer <token>)"}).encode()
+    challenge = b'Bearer resource_metadata="' + metadata_url.encode("ascii", "ignore") + b'"' if metadata_url else b"Bearer"
     await send({"type": "http.response.start", "status": 401,
-                "headers": [(b"www-authenticate", b"Bearer"), (b"content-type", b"application/json"),
+                "headers": [(b"www-authenticate", challenge), (b"content-type", b"application/json"),
                             (b"content-length", str(len(body)).encode())]})
     await send({"type": "http.response.body", "body": body})
 
@@ -73,21 +80,46 @@ class BearerAuth:
     Mcp-Session-Id) is used only with a token of the user who opened it. The caller of a request is put in the request's own
     scope (`abf_caller`), which is what the tools read: not a variable that outlives the request."""
 
-    def __init__(self, app, tokens_path):
+    def __init__(self, app, tokens_path, platform_path=None, public_url=None):
         self.app = app
         self.tokens_path = tokens_path
+        self.platform_path = platform_path
+        self.public_url = (public_url or "").rstrip("/")
         self.sessions = collections.OrderedDict()      # session id -> user id of the token that opened it
+        self._discovered = None                        # (authorization server address, metadata url, metadata app)
+
+    def discovery(self):
+        """(metadata url, the SDK's metadata app) when this server has a public address and the web app has published its own,
+        else (None, None): without both there is nothing to point a connector at."""
+        if not self.public_url or not self.platform_path:
+            return None, None
+        try:
+            server = store.get_meta(self.platform_path, "web_base_url")
+        except Exception:
+            server = None
+        if not server:
+            return None, None
+        if self._discovered is None or self._discovered[0] != server:
+            resource = self.public_url + "/mcp"
+            routes = create_protected_resource_routes(resource, [server], resource_name="abf-platform")
+            self._discovered = (server, str(build_resource_metadata_url(resource)), Starlette(routes=routes))
+        return self._discovered[1], self._discovered[2]
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        metadata_url, metadata_app = self.discovery()
+        if metadata_app is not None and scope.get("method") == "GET" and scope.get("path") == urlparse(metadata_url).path:
+            await metadata_app(scope, receive, send)          # the one answer given without a token
+            return
         try:
-            who = store.lookup_pat(self.tokens_path, _bearer(scope))
+            token = _bearer(scope)
+            who = store.lookup_pat(self.tokens_path, token) or store.lookup_oauth_access(self.tokens_path, token)
         except Exception:
             who = None
         if who is None:
-            await _refuse(send)
+            await _refuse(send, metadata_url)
             return
         session = _header(scope, b"mcp-session-id")
         if session is not None:
