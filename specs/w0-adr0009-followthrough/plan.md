@@ -28,6 +28,15 @@
 8. Record the maintainer's open questions in ROADMAP's open list (not decided here): account creation for the hosted service; whether runs without a recorded person are shown; whether uploads/downloads may pass through the hosted platform; whether each resume/relaunch needs the confirmation page; Studios on NCHC (a second submission path, needs a constitution amendment); cloud account and monthly cap number.
 9. Do not touch the constitution, hooks, `PLATFORM.md`, SEQERA_PARITY's counts or Done ticks, or any code.
 
+## Round-2 rulings (2026-10-17, after contract review)
+- **Studios 016 inside Stage 3**: the Stage 3 row heading becomes `| 3 | **Web** (features 011–014, 016)`; pins `tests/platform_direction_docs_test.sh:256` and `:392` are added to the rewrite list (old/new/reason in the ledger).
+- **Waiting-list count**: TC-025's count (`cnt16 = 16`, ~`:289`) becomes 17 for the one added row; added to the rewrite list.
+- **POSITIONING**: `:31` (the measured fact "Data Explorer / Studios refused on NCHC", `SITE_ADAPTER.md:184`) stays as it is — it is still true. `:39` (breakthrough #9, "PI sees everything / two roles") is reworded to "postponed (ADR 0009)". `:18` follows decision 7.
+- **Stage 3 done-when**: the second half ("Two members of the trial lab use it for two weeks with fewer than 10 new PITFALLS; the hosted service goes live (charging waits on the open questions below)") is kept verbatim after the new first half.
+- **Open questions**: the six questions go into a new subsection "Open questions from ADR 0009 (answered before the slice that needs them)" right after the existing open list; the existing intro sentence is unchanged.
+- **Parity sentence**: 011–013 keep "matching the actions one to one (parity test)".
+- CONTEXT.md terms (Analysis, Project) and ADR 0004 line 8 are out of this PR.
+
 ## Changes, in order (red first)
 1. Red: extend `tests/platform_direction_docs_test.sh` with cases expecting the new wording (Stage 2/3 rows and done-whens, 010 postponed, no "dashboard page" in ROADMAP, Studios = 016, owed-parity row, ADR 0004 pointer line while `Studios**: rejected` still present, POSITIONING no longer lists Studios as not done, SEQERA_PARITY counts unchanged). Run → red; record in the ledger.
 2. Rewrite only the pins named under Facts that the new wording breaks (`:274`, `:471-472`, `:474-476`, `:478-479`); for each: old expectation, new expectation, reason in the ledger. No other assertion is deleted or loosened.
