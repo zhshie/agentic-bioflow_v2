@@ -323,3 +323,92 @@ def test_f2_stdio_keeps_reading_any_path_and_the_root_is_a_setting(w, tmp_path, 
     (tmp_path / "ann").mkdir()
     (tmp_path / "ann" / "s.csv").write_bytes(w.sheet.read_bytes())
     assert ask(w, ann, "s.csv", run="run-y")["ok"] is True
+
+
+# ---- finding 4: an MCP session belongs to the token that opened it ---------------------------------------------------------------------------------
+
+def _pat(w, user):
+    from abf_platform import store
+    return store.create_token(w.ip.tokens, kind="pat", user_id=user.user_id)
+
+
+def _rpc(url, token, body, session=None):
+    import httpx
+    h = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+    if token:
+        h["Authorization"] = "Bearer " + token
+    if session:
+        h["Mcp-Session-Id"] = session
+        h["Mcp-Protocol-Version"] = "2025-06-18"
+    return httpx.post(url, json=body, headers=h, timeout=15)
+
+
+INIT = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}}
+LIST = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+
+
+def test_f4_a_session_id_is_no_use_with_another_persons_token(w):
+    from test_pat import _Served
+    ann, bob = w.user("ann"), w.user("bob")
+    pa, pb = _pat(w, ann), _pat(w, bob)
+    with _Served(w.ip.index, w.ip.tokens) as s:
+        opened = _rpc(s.url, pa, INIT)
+        sid = opened.headers["mcp-session-id"]
+        assert _rpc(s.url, pa, LIST, sid).status_code == 200                       # the owner
+        assert _rpc(s.url, pb, LIST, sid).status_code in (401, 403)                # another valid token on ann's session
+        assert _rpc(s.url, None, LIST, sid).status_code == 401                     # no token
+        assert _rpc(s.url, pa, LIST, "0" * 32).status_code in (403, 404)           # a session this server never opened for anybody
+        assert _rpc(s.url, pa, LIST, sid).status_code == 200                       # and the owner is not hurt by any of it
+
+
+def test_f4_each_call_names_the_caller_of_that_request(w):
+    from helpers import mcp_http_call
+    from test_pat import _Served
+    ann, bob = w.user("ann"), w.user("bob")
+    pa, pb = _pat(w, ann), _pat(w, bob)
+    with _Served(w.ip.index, w.ip.tokens) as s:
+        for tok, who, run in ((pa, ann, "run-a"), (pb, bob, "run-b"), (pa, ann, "run-c")):
+            _, outs = mcp_http_call(s.url, [("launch", w.in_area(who, w.choices(run=run)))], token=tok)
+            assert tool_json(outs[0])["ok"] is True
+    owners = {r["id"]: r["caller_user_id"] for r in w.confirmations()}
+    assert sorted(owners.values()) == sorted([ann.user_id, bob.user_id, ann.user_id])
+
+
+def test_f4_the_tools_read_the_caller_from_the_request_not_from_a_variable_of_the_session():
+    import inspect
+    from abf_platform import mcp_server
+    src = inspect.getsource(mcp_server)
+    assert "request_context" in src and "abf_caller" in src
+
+
+# ---- finding 10: say when the confirmation address cannot be opened from where the caller is --------------------------------------------------------------
+
+def test_f10_a_remote_caller_with_only_a_loopback_page_is_told_how_to_fix_it(w, monkeypatch):
+    from abf_platform import http_auth
+    ann = w.user("ann")
+    monkeypatch.setattr(http_auth, "current_remote", lambda: True, raising=False)
+    out = w.launch(caller=ann)
+    assert out["sent"] is False and "127.0.0.1" in out["confirmation_url"]
+    msg = out["message"]
+    assert "--public-url" in msg and "https://" in msg and "只有" in msg           # only reachable on the platform machine
+    # with a reachable address stored, there is nothing to warn about
+    from abf_platform import store
+    store.set_meta(w.ip.state_db, "web_base_url", "https://abf.example")
+    out = w.launch(caller=ann, run="run-two")
+    assert out["confirmation_url"].startswith("https://abf.example/c/") and "--public-url" not in out["message"]
+
+
+def test_f10_a_caller_on_this_machine_gets_no_warning(w):
+    out = w.launch(caller=w.user("ann"))
+    assert "--public-url" not in out["message"]
+
+
+def test_f10_remote_means_a_peer_or_a_host_name_beyond_loopback():
+    from abf_platform import http_auth
+    def scope(client, host):
+        return {"client": client, "headers": [(b"host", host)]}
+    assert http_auth.is_remote(scope(("127.0.0.1", 5), b"127.0.0.1:8788")) is False
+    assert http_auth.is_remote(scope(("::1", 5), b"localhost:8788")) is False
+    assert http_auth.is_remote(scope(("10.0.0.7", 5), b"10.0.0.2:8788")) is True
+    assert http_auth.is_remote(scope(("127.0.0.1", 5), b"abf.example")) is True          # a proxy on this machine in front
