@@ -42,8 +42,9 @@ def test_wco2_origin_null_and_foreign_are_refused_the_own_origin_is_accepted(w):
     assert c.post("/login", data=data, headers={"Origin": "http://evil.example"}).status_code == 403
     assert c.post("/login", data=data, headers={"Referer": "http://evil.example/x"}).status_code == 403
     host = "127.0.0.1:8788"
-    r = c.post("/login", data=data, headers={"Host": host, "Origin": "http://" + host})
-    assert r.status_code == 303
+    nxt = {"name": "ann", "password": PASSWORD, "next": "/c/" + "a" * 32}
+    r = c.post("/login", data=nxt, headers={"Host": host, "Origin": "http://" + host})
+    assert r.status_code == 303 and r.headers["location"] == nxt["next"]
 
 
 DRIVER = textwrap.dedent('''
@@ -59,12 +60,11 @@ DRIVER = textwrap.dedent('''
             sys.exit(77)
         page = b.new_page()
         page.on("response", lambda r: posts.append((r.request.method, r.status)) if r.request.method == "POST" else None)
-        page.goto(base + "/login")
+        page.goto(base + "/login?next=/c/" + rid)
         page.fill("input[name=name]", name)
         page.fill("input[name=password]", password)
         page.click("button[type=submit]")
         page.wait_for_load_state()
-        page.goto(base + "/c/" + rid)
         page.click("button[type=submit]")
         page.wait_for_load_state()
         print("POSTS", posts)
