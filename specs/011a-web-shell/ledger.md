@@ -24,7 +24,7 @@ Found only by the full run (older tests that pinned the old page; each change is
 | `test_owner_binding.py` tc011 | `/` was in the loop of paths that must be 404 | `/` taken out of the loop; added: `GET /` is 200 and does not contain the other user's request id | `/` is now the board; the test's point (the web shows no list of requests, never somebody else's) is kept |
 | `test_owner_binding.py` tc068 | routes set `{/login, /logout, /c/{rid}}` | adds `/` | Decision 2: the sixth route |
 | `test_review_fixes_2.py` r3 | `w.login(c, "ann").status_code == 200` after 10 failures | `== 303` | Same as the first row; the test still shows a right password works after wrong ones |
-| `test_launch_static.py` tc069/tc070 (no site name in a program) | scans every program file for `nchc` | for `web_board.py` only, the exact label `NCHC SU` is removed from the scanned text | The maintainer's cost block must read "NCHC SU —" (TC-H09b). It is display text, not a site setting. **Verifier: please judge this exemption; the alternative is another label, which needs a plan change** |
+| `test_launch_static.py` tc069/tc070 | (exemption added in round 1 for the label `NCHC SU`) | restored exactly as before 011a | Plan ruling option B: the label is the site-neutral `SU —`, so no exemption is needed |
 
 No other existing test was edited, deleted, skipped or loosened (TC-D05). One fix inside my own new tests during GREEN: `test_tch09_cost` counted the digit in `<h2>`; it now strips tags before looking for digits.
 
@@ -32,3 +32,4 @@ No other existing test was edited, deleted, skipped or loosened (TC-D05). One fi
 
 - `docs/ROADMAP.md` still says the parity test "arrives with 011a"; that file is not mine to edit.
 - No change to `actions/`, `jobs.py`, `mcp_server.py`, `store.py`, `hooks/`, `.claude/` (TC-N07, TC-K5).
+- Round 2 (plan ruling option B): cost label `SU —` / `雲端 —` (TC-H09b, now also asserts no "NCHC" in page or `web_board.py`); `test_tch21_stage_strip_and_bodies` now asserts both times and each count paired with its state (TC-H21c); the tc069/tc070 exemption is removed.

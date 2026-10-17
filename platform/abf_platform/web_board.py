@@ -128,7 +128,7 @@ def _middle(selected, stage_param):
 
 
 def _right(runs):
-    out = ["<div class=\"pane\" data-pane=\"right\"><div data-cost=\"month\"><h2>本月費用</h2><p>NCHC SU —</p><p>雲端 —</p></div>"]
+    out = ["<div class=\"pane\" data-pane=\"right\"><div data-cost=\"month\"><h2>本月費用</h2><p>SU —</p><p>雲端 —</p></div>"]
     for s in STAGES:
         items = [r for r in runs if stage_of(r["status"]) == s]
         if s in PLACEHOLDER and not items:
