@@ -1,4 +1,4 @@
-# Not a hand-written OAuth server, and not the SDK's AuthSettings on the MCP door: the mcp==2.3.0 handlers (metadata, /authorize, /token, /register, /revoke, the S256 PKCE check, the redirect-uri match) do the protocol; this is only their storage in tokens.db, the limits, and the consent page's database side. Alternatives: Authlib / a hosted IdP (a second service for one connector) and a pasted token (what this replaces).
+# Not a hand-written OAuth server, and not the SDK's AuthSettings on the MCP door: the mcp==2.3.0 handlers (metadata, /authorize, /token, /register, /revoke, the S256 PKCE check, the redirect-uri match) do the protocol; this is only their storage in tokens.db, the limits, and the consent page's database side. Alternatives: Authlib / a hosted identity provider (a second service for one connector) and a pasted token (what this replaces).
 """Minimal OAuth 2.1 for Claude Desktop's custom connector (spec 009i).
 
 The authorization server lives in the 009c web app (abf_platform.web): metadata, /register, /authorize, /token, /revoke and a consent

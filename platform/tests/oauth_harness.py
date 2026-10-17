@@ -114,8 +114,10 @@ class Rig:
 
     # ---- the person ------------------------------------------------------------------------------------------------
     def log_in(self, name, c=None):
-        r = self.w.login(c or self.c, name)
+        c = c or self.c
+        r = self.w.login(c, name)
         assert r.status_code in (200, 303), r.text
+        c.abf_user = name           # whose cookie this browser holds
         return r
 
     def csrf(self, path, c=None):
@@ -137,7 +139,7 @@ class Rig:
         """The whole walk up to the code: register, authorize, log in as `name` (if not yet), press Allow. Returns a Flow."""
         c = c or self.c
         path, verifier, cid = self.start(client_id=client_id, redirect=redirect, state=state, c=c, **extra)
-        if not c.cookies.get("abf_web"):
+        if getattr(c, "abf_user", None) != name or not c.cookies.get("abf_web"):
             self.log_in(name, c)
         token = self.csrf(path, c)
         r = self.decide(path, decision, c=c, csrf=token)
@@ -209,3 +211,22 @@ def pat_of(w, name):
 
 def table_counts(w):
     return {t: tokens_rows(w, "SELECT COUNT(*) FROM %s" % t)[0][0] for t in ("oauth_requests", "oauth_codes", "tokens", "web_sessions")}
+
+
+def http_calls(url, token, calls, answer=None):
+    """Tool calls [(name, args)] over Streamable HTTP with an Authorization: Bearer token; `answer` is the client's form callback
+    (None: a client that cannot show forms). Returns (tool names, [result...])."""
+    import asyncio
+
+    import httpx2
+    from mcp import Client
+    from mcp.client.streamable_http import streamable_http_client
+
+    async def go():
+        transport = streamable_http_client(url, http_client=httpx2.AsyncClient(headers={"Authorization": "Bearer " + token}))
+        kw = {"elicitation_callback": answer, "mode": "legacy"} if answer else {}
+        async with Client(transport, **kw) as client:
+            tools = (await client.list_tools()).tools
+            return tools, [await client.call_tool(n, a) for n, a in calls]
+
+    return asyncio.run(go())
