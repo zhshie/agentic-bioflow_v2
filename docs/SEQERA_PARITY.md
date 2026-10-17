@@ -67,8 +67,12 @@ at Stage 4.
 
 ## E. Studios (9 items)
 
-The IDE equivalent: Have (the user's own IDE). The rest: Not needed (refused on NCHC,
-`docs/SITE_ADAPTER.md`).
+**Build (ADR 0008, 2026-10-17)**: a Studio is the person's own RStudio or Jupyter session on a
+compute environment, opened from the browser with a run's outputs mounted; it is the path for
+`downstream` without AI. Seqera refuses Studios on a Slurm compute environment (measured,
+`docs/SITE_ADAPTER.md`), so where ours runs on NCHC is decided in the Studios feature's plan. Until
+then the IDE equivalent stays: Have (the user's own IDE). The other Studios items are not counted
+individually.
 
 ## F. Compute environments (13 items)
 
@@ -76,6 +80,8 @@ One verdict per type (feature 007, slice 1; identifiers and sources in `specs/00
 `docs/PLATFORM.md` section 8). **Modelled, needs a real account**: the type can be created and its settings
 are stored, its status is `unsupported`, nothing runs for it, and connecting it waits for someone with a real
 account (opening one and capping its cost is not done by a test). Pre-flight checks: Have, for Slurm.
+The web page lists, creates and edits every type below, cloud types included (ADR 0008); a type
+turns supported only after a run on a real account the maintainer opened.
 
 | Item | Verdict | Done |
 |---|---|---|
@@ -139,3 +145,10 @@ Not needed (Wave is AGPL-3.0; Fusion needs a Seqera licence even outside Platfor
 | Cancel | Have, from the command line, behind the same question (007b) | [x] 007b |
 
 Not built yet, and so not in the rows above: the list of every task, CPU and memory per task, logs and reports, and a queued state (a run that is submitted and has sent nothing says only `已送出，尚未收到 Nextflow 事件`; that is a fact, not a state). Also missing: earlier failed attempts of a task that was retried and then succeeded. `get_run` lists only the last attempt, so a retried task never appears in `failed_tasks`, while its failed count still shows it (seen on NCHC 2026-10-15: FASTQC exit 134, retried, succeeded). Seqera lists every attempt.
+
+## M. Items found in Seqera's page map (ADR 0008, 2026-10-17; outside the 83 counted above)
+
+| Item | Verdict | Done |
+|---|---|---|
+| Projects (pipelines, datasets and runs grouped, with their own runs list and launch) | Build (may map onto the lab's project folders; decided in its feature plan) | [ ] |
+| AI agents (Seqera's own agents run as service accounts) | Not needed: the MCP entry and the chat act through the same action layer and gates (ADR 0006) | |
