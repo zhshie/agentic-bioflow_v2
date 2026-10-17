@@ -49,7 +49,7 @@ TC-112-39 `echo x > >(tee s1)`, TC-112-40 `cat <(tee s1)`, TC-112-48 `( cp a s1 
   - a sed script with a space (`sed -i 's/a b/c/' /tmp/x`, `sed -i '1 d' f`, `sed -i -e 'a b' f`): the words after the first space of the script are file candidates again (main asks for them, as a false positive);
   - an empty quoted name (`cp -t '' a`) is `./`.
 - `lw_tokens` now: every `~` in a word that had a quote or backslash becomes `./~`; a word whose first raw char is a backslash and that cooks to `-...` gets `./` in front; a backslash at the end of the text is the file name `\`; an escaped `/` gets `./` in front; an empty quoted word is `./`.
-- RED (tests/confirm_cleanup_test.sh, labels `TC-112-66e`, 34 probes; 33 asks failed before, the 3 controls passed): `4c24618`, then the two later RED commits. GREEN: `fb8231e` and the commit after the last RED.
+- RED (tests/confirm_cleanup_test.sh, labels `TC-112-66e`, 34 probes; the 31 asks failed before, the 3 controls passed): `4c24618`, then the two later RED commits. GREEN: `fb8231e` and the commit after the last RED.
 - Differential, main vs branch, cwd=/tmp, `cd -` and 3 more lost states, 6845 + 1280 sentences (37 writer forms x escaped / quoted / spaced / empty operands): ask/deny to pass **0** (the remaining differences are pass to ask, mostly the new writers of plan item 4/7).
 - Replay (specs/110-cleanup-gate-rest/replay.tsv, 2132 rows, main vs branch): ask/deny to pass **0**, pass to ask 37 (as before).
 - Known and left (main passes too, so not a regression): `xargs env tee`, `xargs timeout 5 cp a s1`, `find . -exec nohup cp a s1 \;`, `find . -fprint s1`, `curl -D s1`, `awk -iinplace`.
