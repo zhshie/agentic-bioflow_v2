@@ -429,6 +429,31 @@ def test_tc035_an_owner_can_be_reassigned(d):
     assert rc != 0
 
 
+def test_tc035_reassigned_environment_with_its_registered_agent_is_usable_by_the_new_owner(d):
+    # TC-035 (fix round): the environment and its agent are both alice's; one `ce update --owner` hands both to bob
+    d.bobs_environment(name="x1", agent="agent-x", owner=d.a.user_id)
+    assert d.launch(d.b, run="run-pre", ce_name="x1", answer=form_answer())["sent"] is False
+    rc, out = d.w.ip.run("ce", "update", "x1", "--owner=bob")
+    assert rc == 0, out
+    assert sql_rows(d.state, "SELECT owner_user_id FROM agents WHERE name = 'agent-x'")[0][0] == d.b.user_id
+    assert "agent-x" in [a["name"] for a in d.call("list_agents", caller=d.b)["agents"]]
+    assert "agent-x" not in [a["name"] for a in d.call("list_agents", caller=d.a)["agents"]]
+    out = d.launch(d.b, run="run-two", ce_name="x1", answer=form_answer())
+    assert out["ok"] is True and out["sent"] is True, out
+    out = d.launch(d.a, run="run-three", ce_name="x1", answer=form_answer())
+    assert out["sent"] is False and "找不到" in out["message"]
+
+
+def test_tc035_reassigning_is_refused_while_the_agent_still_serves_another_environment_of_the_old_owner(d):
+    # TC-035 (fix round): the agent has one owner, so it cannot leave alice while another environment of hers uses it
+    d.bobs_environment(name="x1", agent="agent-x", owner=d.a.user_id)
+    d.bobs_environment(name="x2", agent="agent-x", owner=d.a.user_id)
+    rc, out = d.w.ip.run("ce", "update", "x1", "--owner=bob")
+    assert rc != 0 and "x2" in out
+    assert sql_rows(d.state, "SELECT owner_user_id FROM compute_envs WHERE name = 'x1'")[0][0] == d.a.user_id
+    assert sql_rows(d.state, "SELECT owner_user_id FROM agents WHERE name = 'agent-x'")[0][0] == d.a.user_id
+
+
 def test_tc036_ce_list_names_the_owner(d):
     # TC-036
     d.bobs_environment()
