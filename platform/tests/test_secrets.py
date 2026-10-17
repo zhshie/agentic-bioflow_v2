@@ -78,3 +78,24 @@ def test_a_secret_looking_value_with_an_innocent_name_is_kept(plat, token):
     reqs = _begin_with(load_scenario("ok_run")["requests"], params={"outdir": "AKIAFAKEVALUE0000"})
     wid, _ = plat.replay(reqs, token)
     assert _params_of(plat, wid)["outdir"] == "AKIAFAKEVALUE0000"
+
+
+def test_tc_i03_an_oauth_walk_leaves_no_code_or_token_in_any_file_of_the_data_folder(tmp_path, monkeypatch):
+    # 009i TC-I03: the canary scan reaches the authorization code, the access token and the refresh token, byte by byte, in every file
+    from human_harness import PASSWORD, World
+    from oauth_harness import Rig, tokens_rows
+    w = World(tmp_path, monkeypatch)
+    w.user("ann")
+    rig = Rig(w)
+    out = rig.tokens_for("ann")
+    renewed = rig.refresh(out["refresh_token"], out["flow"].client_id).json()
+    seen = [out["flow"].code, out["access_token"], out["refresh_token"], renewed["access_token"], renewed["refresh_token"]]
+    blob = b""
+    for p in w.ip.data.rglob("*"):
+        if p.is_file():
+            blob += p.read_bytes()
+    for secret in seen:
+        assert secret.encode() not in blob
+    import hashlib
+    hashes = {r[0] for r in tokens_rows(w, "SELECT token_hash FROM tokens WHERE kind LIKE 'oauth_%'")} | {r[0] for r in tokens_rows(w, "SELECT code_hash FROM oauth_codes")}
+    assert hashes == {hashlib.sha256(s.encode()).hexdigest() for s in seen}

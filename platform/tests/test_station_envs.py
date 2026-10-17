@@ -431,7 +431,7 @@ def test_tc063_no_door_takes_a_job_kind_or_a_command(tmp_path, monkeypatch):
     assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "submit", "enqueue"}), words
     top_level = set(next(a for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)).choices)
     assert top_level == {"serve", "token", "agent-token", "ce", "mcp", "rebuild", "launch", "cancel", "fetch-records",
-                         "launches", "user", "pat", "web"}, top_level     # 009c: plus `web`, the confirmation page
+                         "launches", "user", "pat", "web", "oauth"}, top_level     # 009c: plus `web`, the confirmation page; 009i: plus `oauth` (revoke)
     assert [(trail, w) for trail, w in seen if w in ("launch", "cancel")] == [([], "launch"), ([], "cancel")]
     assert {"ce", "agent-token", "serve", "token", "mcp", "rebuild"} <= words
 
@@ -450,7 +450,7 @@ def test_tc084_no_launch_door_anywhere(tmp_path):
     # feature 007b (TC-060): the words launch and cancel may stand only as the names of the two new subcommands, and only in
     # these three places: the one list of subcommand names (exactly this list), their two lines in the table of subcommands,
     # and the usage line of each of the two
-    names = "{serve,web,token,agent-token,user,pat,ce,mcp,rebuild,launch,cancel,launches,fetch-records}"    # 009c: plus `web`
+    names = "{serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,launch,cancel,launches,fetch-records}"    # 009c: plus `web`; 009i: plus `oauth`
     assert helptext.count(names) >= 1, "the list of subcommands is exactly the old ones plus the four new ones"
     helptext = helptext.replace(names, names.replace(",launch,cancel,", ","))
     rows = re.findall(r"(?m)^ {4}(launch|cancel) {2,}\S", helptext)

@@ -533,8 +533,8 @@ def build_parser():
     m.add_argument("--http", action="store_true", help="Streamable HTTP instead of stdio")
     m.add_argument("--host", default="127.0.0.1")
     m.add_argument("--port", type=int, default=8788)
-    m.add_argument("--public-url", help="the address people reach this server at (https://host, no path); with it a 401 points a Claude "
-                                        "Desktop connector to the login (OAuth, needs `abf-platform web --public-url` too)")
+    m.add_argument("--public-url", help="the address people reach this server at (https://host, no path); with it a 401 tells a Claude "
+                                        "Desktop connector where to log in (needs `abf-platform web --public-url` too)")
     m.set_defaults(func=cmd_mcp)
 
     r = sub.add_parser("rebuild", help="drop the index and build it again from Nextflow's records")

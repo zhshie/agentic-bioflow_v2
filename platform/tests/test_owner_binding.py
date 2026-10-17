@@ -817,11 +817,15 @@ def test_tc067_old_runs_are_for_the_terminal_only(d):
 def test_tc068_no_new_way_to_log_in(w):
     # TC-068
     client = w.web()
-    assert {r.path for r in client.app.routes} == {"/login", "/logout", "/c/{rid}"}
+    # 009i: the login is still the one name + web password; the only routes added are the OAuth ones, which log nobody in
+    assert {r.path for r in client.app.routes} == {"/login", "/logout", "/c/{rid}", "/consent/{rid}", "/authorize", "/token", "/register",
+                                                   "/revoke", "/.well-known/oauth-authorization-server"}
     page = (PLATFORM_DIR / "abf_platform" / "web.py").read_text(encoding="utf-8")
     assert set(re.findall(r"store\.(\w+)", page)) == {"MAX_PASSWORD_CHARS", "MIN_PASSWORD_CHARS", "WEB_SESSION_SECONDS", "check_web_password",
                                                      "create_web_session", "default_tokens_path", "end_web_session", "set_meta",
                                                      "web_session_user"}
-    assert not re.search(r"oauth|openid|saml|ldap", (PLATFORM_DIR / "abf_platform" / "cli.py").read_text(encoding="utf-8"), re.I)
+    cli_src = (PLATFORM_DIR / "abf_platform" / "cli.py").read_text(encoding="utf-8")
+    assert not re.search(r"openid|saml|ldap", cli_src, re.I)
+    assert {m.lower() for m in re.findall(r"oauth\w*", cli_src, re.I)} <= {"oauth", "oauth_revoke", "oauth_command", "oauth_tokens"}      # 009i: only `oauth revoke`
     auth = (PLATFORM_DIR / "abf_platform" / "http_auth.py").read_text(encoding="utf-8")
-    assert set(re.findall(r"store\.(\w+)", auth)) == {"lookup_pat", "default_tokens_path"}
+    assert set(re.findall(r"store\.(\w+)", auth)) == {"lookup_pat", "lookup_oauth_access", "get_meta", "default_tokens_path"}      # 009i: the OAuth lookup
