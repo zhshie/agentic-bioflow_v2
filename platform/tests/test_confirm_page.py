@@ -298,13 +298,13 @@ def test_tcg03_web_has_no_tls_option():
     assert not re.search(r"ssl_|certfile|keyfile", inspect.getsource(cli.cmd_web))
 
 
-def test_tcg04_g05_g06_the_web_app_has_five_routes_and_nothing_else(w):
+def test_tcg04_g05_g06_the_web_app_has_six_routes_and_nothing_else(w):
     # TC-G04, TC-G05, TC-G06
     c = w.web()
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
-    assert routes == [("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)), ("/login", ("GET", "HEAD")), ("/login", ("POST",)),
-                      ("/logout", ("POST",))], routes
-    for path in ("/", "/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/launch", "/submit",
+    assert routes == [("/", ("GET", "HEAD")), ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)), ("/login", ("GET", "HEAD")),
+                      ("/login", ("POST",)), ("/logout", ("POST",))], routes
+    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/launch", "/submit",
                  "/upload", "/password", "/passwd", "/settings", "/api/launch"):
         assert c.get(path).status_code == 404, path
         assert c.post(path, data={"a": "b"}).status_code in (404, 405), path
