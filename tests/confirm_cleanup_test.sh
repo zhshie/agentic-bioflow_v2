@@ -1087,6 +1087,9 @@ tc "/tmp" "cd -; sudo nice -n 5 timeout 5 cp a s1"                    ask  "TC-1
 tc "/tmp" "cd -; timeout -k 1 5 cp a s1"                              ask  "TC-112-66w timeout -k"
 tc "/tmp" "cd -; sudo cp a /tmp/s1"                                   pass "TC-112-66w sudo cp absolute passes"
 tc "/tmp" "cd -; nohup xargs tee s1"                                  ask  "TC-112-66w nohup xargs"
+tc "/tmp" "cd -; sudo -n cp a s1"                                     ask  "TC-112-66w sudo -n cp"
+tc "/tmp" "cd -; sudo -n tee s1"                                      ask  "TC-112-66w sudo -n tee"
+tc "/tmp" "cd -; env -i tee s1"                                       ask  "TC-112-66w env -i tee"
 rs() { # rs <command> -> OUT: the reason text of the gate
   OUT=$(python3 -c "import json,sys;print(json.dumps({'cwd':'/tmp','tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   OUT=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin)['hookSpecificOutput'].get('permissionDecisionReason',''))" <<<"$OUT")
