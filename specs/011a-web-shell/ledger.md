@@ -16,6 +16,16 @@
 | CSP string (TC-D03) | No test pinned the old string (`style-src 'unsafe-inline'`). `test_tcd13` only checks `script-src` or `default-src 'none'` is present, still true | Not changed. New: `test_tch13_csp_and_markup` pins the hash and the rest | Decision 7: stricter CSP. There was no old pin to rewrite |
 | `docs/PLATFORM.md` wording (TC-D04) | No test pinned "its only web pages are the login and the confirmation page", "five routes" or "no web page but the login and the confirmation page" (searched `tests/*.sh`, `platform/tests/*.py`) | Text now says the board is a third page and the routes are six, with the CSP shown | Decision 10; nothing to rewrite in a test |
 
+Found only by the full run (older tests that pinned the old page; each change is the smallest that keeps the test's purpose):
+
+| Pin | Old | New | Reason |
+|---|---|---|---|
+| `test_owner_binding.py` tc008, tc011, tc037, tc039, tc067 (login status) | `w.login(...).status_code == 200` (the dead-end "已登入" page) | `== 303` | Decision 2: a login with no `next` redirects to `/` |
+| `test_owner_binding.py` tc011 | `/` was in the loop of paths that must be 404 | `/` taken out of the loop; added: `GET /` is 200 and does not contain the other user's request id | `/` is now the board; the test's point (the web shows no list of requests, never somebody else's) is kept |
+| `test_owner_binding.py` tc068 | routes set `{/login, /logout, /c/{rid}}` | adds `/` | Decision 2: the sixth route |
+| `test_review_fixes_2.py` r3 | `w.login(c, "ann").status_code == 200` after 10 failures | `== 303` | Same as the first row; the test still shows a right password works after wrong ones |
+| `test_launch_static.py` tc069/tc070 (no site name in a program) | scans every program file for `nchc` | for `web_board.py` only, the exact label `NCHC SU` is removed from the scanned text | The maintainer's cost block must read "NCHC SU —" (TC-H09b). It is display text, not a site setting. **Verifier: please judge this exemption; the alternative is another label, which needs a plan change** |
+
 No other existing test was edited, deleted, skipped or loosened (TC-D05). One fix inside my own new tests during GREEN: `test_tch09_cost` counted the digit in `<h2>`; it now strips tags before looking for digits.
 
 ## Notes
