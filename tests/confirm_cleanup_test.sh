@@ -1115,6 +1115,17 @@ tc "/tmp" "cd -; cp a \"/tmp/my file\""                               ask  "TC-1
 tc "/tmp" "cd -; sed -i p \"/tmp/my file\""                           ask  "TC-112-66e sed -i quoted abs path with a space"
 tc "/tmp" "cd -; tee '/tmp/a b'"                                      ask  "TC-112-66e tee single-quoted abs path, space"
 tc "/tmp" "cd -; tee /tmp/x"                                          pass "TC-112-66e tee absolute path passes"
+tc "/tmp" "cd -; cp -t\/tmp/x a"                                      ask  "TC-112-66e cp -t\/tmp/x"
+tc "/tmp" "cd -; cp --target-directory=\/tmp/x a"                       ask  "TC-112-66e cp --target-directory=\/tmp/x"
+tc "/tmp" "cd -; sort -o\/tmp/x"                                       ask  "TC-112-66e sort -o\/tmp/x"
+tc "/tmp" "cd -; dd of=\/tmp/x if=a"                                     ask  "TC-112-66e dd of=\/tmp/x"
+# main cut a sed script at its spaces, so its words were file names: still asks
+tc "/tmp" "cd -; sed -i 's/a b/c/' /tmp/x"                               ask  "TC-112-66e sed -i script with a space"
+tc "/tmp" "cd -; sed -i '1 d' /tmp/x"                                    ask  "TC-112-66e sed -i 1 d"
+tc "/tmp" "cd -; sed -i -e 'a b' /tmp/x"                                ask  "TC-112-66e sed -i -e script with a space"
+tc "/tmp" "cd -; sed -i \"p q\""                                          ask  "TC-112-66e sed -i only a script with a space"
+tc "/tmp" "cd -; sed -i 's/a/b/' /tmp/x"                                 pass "TC-112-66e sed -i script no space passes"
+tc "/tmp" "cd -; sed -i -f s.sed /tmp/x"                                pass "TC-112-66e sed -i -f script file passes"
 rs() { # rs <command> -> OUT: the reason text of the gate
   OUT=$(python3 -c "import json,sys;print(json.dumps({'cwd':'/tmp','tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   OUT=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin)['hookSpecificOutput'].get('permissionDecisionReason',''))" <<<"$OUT")
