@@ -253,7 +253,7 @@ inn "TC-022: stage table has a Done when column"                  "$STG" '| Done
 inn "TC-022: stage 0 is docs (direction recorded)"                "$STG" '| 0 | **Direction recorded**'
 inn "TC-022: stage 1 is the station agent (feature 007)"          "$STG" '| 1 | **Station agent** (feature 007)'
 inn "TC-022: stage 2 is platform core (008-010)"                  "$STG" '| 2 | **Platform core** (features 008–010)'
-inn "TC-022: stage 3 is web (011-014)"                            "$STG" '| 3 | **Web** (features 011–014)'
+inn "TC-022: stage 3 is web (011-014)"                            "$STG" '| 3 | **Web** (features 011–014, 016)'
 inn "TC-022: 014 is the platform's chat, user-chosen model, MCP tools only" "$STG" "014: the platform's chat, connecting to the model the user chooses (their own API key or a local model) and calling only the MCP tools of 009"
 inn "TC-022: stage 4 is cloud compute"                            "$STG" '| 4 | **Cloud compute**'
 inn "TC-022: stage 5 is model-neutral shipping"                   "$STG" '| 5 | **Model-neutral shipping**'
@@ -287,7 +287,7 @@ cnt=$(printf '%s\n' "$WL" | grep -cE '^\| ' || true)
 inn "TC-023: old row rewritten: host reaches launch/delete only through tools that carry their own gate" "$WL" 'A host reaches launch and delete only through tools that carry their own gate'
 nin "TC-023: ...the old 'may query but never launch or delete' wording is gone" "$WL" 'may query but never'
 cnt16=$(printf '%s\n' "$WL" | grep -cE '^[|]' || true)
-[ "${cnt16:-0}" = 16 ] && ok "TC-025: waiting list has 16 table lines (14 rows + header + separator)" || bad "TC-025: waiting list has 16 table lines" "$cnt16 lines"
+[ "${cnt16:-0}" = 17 ] && ok "TC-025: waiting list has 17 table lines (15 rows + header + separator)" || bad "TC-025: waiting list has 17 table lines" "$cnt16 lines"
 # old stage numbers are gone: nothing waits for a stage that no longer exists
 if printf '%s\n' "$WL" | grep -qE '\| (6|7) \|[[:space:]]*$'; then bad "TC-023: no row waits for stage 6 or 7"; else ok "TC-023: no row waits for stage 6 or 7"; fi
 
@@ -389,7 +389,7 @@ has "TC-059: README.md still has 'Constitution 2.0.0'"             README.md 'Co
 CHATC=$(sec "$C" '^### 3[.]0[.]0 [(]2026-10-08[)]' '^##+ ')
 # (a) the chat is a Stage 3 web page (014 in ROADMAP), not a separate product
 has "TC-060a: ADR 0004: the chat is a page of the web (Stage 3)"   "$ADR4" 'It is a page of the web (Stage 3)'
-has "TC-060a: ROADMAP: 014 is the platform's chat inside Stage 3"  "$RM" '| 3 | **Web** (features 011–014)'
+has "TC-060a: ROADMAP: 014 is the platform's chat inside Stage 3"  "$RM" '| 3 | **Web** (features 011–014, 016)'
 has "TC-060a: ROADMAP positioning: the platform's own chat"        "$RM" "from the platform's own chat, with the model it chooses, or from the harness it already uses"
 # (b) the user picks and pays for the model
 has "TC-060b: ADR 0004: user picks the model and pays (API key or local model)" "$ADR4" 'the user picks the model and pays for it (their own API key, or a local model)'
@@ -468,14 +468,14 @@ inn "4.1.0 TC-016: 009: Skills over MCP endpoint"                      "$R2" 'th
 inn "4.1.0 TC-016: 009: skills/ copied into the package"               "$R2" '`skills/` copied into the package'
 inn "4.1.0 TC-016: 009: the relay sending events to a public address"  "$R2" 'the relay sending events to a public address'
 inn "4.1.0 TC-017: 008 is unchanged"                                   "$R2" "008: Tower-compatible receiver for the \`nf-tower\` plugin's events, kept as a rebuildable index."
-inn "4.1.0 TC-017: 010 is unchanged"                                   "$R2" '010: the two-role lab'
-inn "4.1.0 TC-017: Stage 2 done-when is unchanged"                     "$R2" 'A student in Claude Desktop runs a 16S analysis end to end from conversation, the PI sees it on the web, and nothing goes through Seqera'
+inn "4.1.0 TC-017: 010 is postponed (ADR 0009)"                                   "$R2" '010: postponed (ADR 0009)'
+inn "4.1.0 TC-017: Stage 2 done-when: the student sees it on the web"                     "$R2" 'A student in Claude Desktop runs a 16S analysis end to end from conversation, the student sees it on the web, and nothing goes through Seqera'
 nin "4.1.0 TC-017: the old 'every write tool carries its own confirmation' is gone" "$R2" 'every write tool carries its own confirmation'
-inn "4.1.0 TC-018: 011 matches the actions one to one"                 "$R3" '011: dashboard and run detail, matching the actions one to one (parity test)'
-inn "4.1.0 TC-018: 012 matches the actions one to one"                 "$R3" 'SU estimate with a cap, matching the actions one to one (parity test)'
-inn "4.1.0 TC-018: 013 matches the actions one to one"                 "$R3" 'the delivery package, matching the actions one to one (parity test)'
+inn "4.1.0 TC-018: 011 matches the actions one to one"                 "$R3" '011a–e), matching the actions one to one (parity test)'
+inn "4.1.0 TC-018: 012 matches the actions one to one"                 "$R3" '(012a–d); cost shown per compute environment (NCHC SU and cloud money apart), a cloud cap per person per month (the number is set when an account opens), and no NCHC SU cap in dev mode; matching the actions one to one (parity test)'
+inn "4.1.0 TC-018: 013 matches the actions one to one"                 "$R3" 'the finished page with the delivery package (013a–b), matching the actions one to one (parity test)'
 inn "4.1.0 TC-019: 014 is verbatim"                                    "$R3" "014: the platform's chat, connecting to the model the user chooses (their own API key or a local model) and calling only the MCP tools of 009"
-inn "4.1.0 TC-020: Stage 3 done-when opens with a member with no AI tool" "$R3" "A lab member with no AI tool completes setup → launch → runs → rendered reports → the package from the web pages alone (figures from scripts are made in the platform's chat or in a harness); Two members of the trial lab"
+inn "4.1.0 TC-020: Stage 3 done-when opens with a person with no AI tool" "$R3" "A person with no AI tool completes setup → launch → running → results → downstream (in a Studio) → finished from the web alone; Two members of the trial lab"
 nin "4.1.0 TC-021: no Stage 3 sentence gives figures to the web pages"  "$R3" 'web pages? (make|draw|plot)'
 inn "4.1.0 TC-022: the v2 and v3 paragraph, verbatim"                  "$STG" 'v2 and v3 (2026-10-15, ADR 0006): `main` is the v2 line until v3.0.0; v3 is built on the branch `v3`. v2 takes bug fixes and changes that make the Safety Net stricter, released as 2.17.x only when a fix affects a user. Line A is unchanged:'
 
@@ -532,5 +532,84 @@ hasnt "4.1.0 TC-047: README.md no longer says constitution 4.0.0"      README.md
 has "4.1.0 TC-049: PRINCIPLES.md point 5 names skills/, docs/ and scripts/" "$PR" 'Judgment, procedure and site operations live in `skills/`, `docs/` and `scripts/`, which a person or another model can read and run directly.'
 hasnt "4.1.0 TC-049: ...the docs/-and-scripts/-only wording is gone"    "$PR" 'operations live in `docs/` and `scripts/`'
 
+
+# ---- W0 (ADR 0009 follow-through): specs/w0-adr0009-followthrough/test-case.md ----
+echo "== W0: ROADMAP, POSITIONING, ADR 0004 follow ADR 0009 =="
+W2=$(printf '%s\n' "$STG" | grep -E '^\| 2 \|' | head -1)
+W3=$(printf '%s\n' "$STG" | grep -E '^\| 3 \|' | head -1)
+WWHO=$(awk '/^\*\*Who:\*\*/{f=1} f&&/^$/{exit} f' "$RM")
+inn "W0 TC-001: 010 is postponed (ADR 0009)"                     "$W2" '010: postponed (ADR 0009)'
+nin "W0 TC-001: ...no longer '010: the two-role lab'"            "$W2" '010: the two-role lab'
+inn "W0 TC-002: Stage 2 done-when: the student sees it on the web" "$W2" 'the student sees it on the web'
+nin "W0 TC-002: ...the PI no longer sees it on the web"          "$W2" 'the PI sees it on the web'
+inn "W0 TC-002: ...16S end to end from conversation kept"        "$W2" 'A student in Claude Desktop runs a 16S analysis end to end from conversation'
+inn "W0 TC-002: ...nothing goes through Seqera kept"             "$W2" 'and nothing goes through Seqera'
+inn "W0 TC-003: Stage 2 heading unchanged"                       "$W2" '| 2 | **Platform core** (features 008–010)'
+inn "W0 TC-003: 009 action layer kept"                           "$W2" 'the action layer (one function per action, called by the MCP tools, the web pages and the chat)'
+nin "W0 TC-004: Who: the old PI-pays sentence is gone"           "$WWHO" 'the PI pays and sees the whole lab'
+inn "W0 TC-005: Who: one person per account, only their own runs" "$WWHO" 'only their own runs'
+inn "W0 TC-006: Who: PI view postponed with roles (ADR 0009)"    "$WWHO" 'postponed'
+inn "W0 TC-006: ...names ADR 0009"                               "$WWHO" 'ADR 0009'
+inn "W0 TC-007: Who: first labs kept"                            "$WWHO" 'starting with 16S amplicon and RNA-seq'
+inn "W0 TC-007: Who: hospitals out of scope kept"                "$WWHO" 'Hospitals are out of scope'
+
+inn "W0 TC-008: Stage 3 heading is features 011–014, 016"        "$STG" '| 3 | **Web** (features 011–014, 016)'
+inn "W0 TC-009: 011 is the shell, right pane, projects, run detail, failure sentence (011a–e)" "$W3" '011a–e'
+inn "W0 TC-009: ...right pane shows progress of all analyses"    "$W3" 'right pane'
+nin "W0 TC-010: no 'dashboard page' in ROADMAP"                  "$(cat "$RM")" 'dashboard page'
+nin "W0 TC-010: ...Stage 3 has no '011: dashboard and run detail'" "$W3" '011: dashboard and run detail'
+inn "W0 TC-011: 012 is settings, launch stage, uploads (012a–d)" "$W3" '012a–d'
+inn "W0 TC-012: cost per compute environment"                    "$W3" 'per compute environment'
+inn "W0 TC-012: ...cloud cap per person per month"               "$W3" 'per person per month'
+inn "W0 TC-013: ...no NCHC SU cap in dev mode"                   "$W3" 'no NCHC SU cap in dev mode'
+nin "W0 TC-014: 'SU estimate with a cap' is gone"                "$W3" 'SU estimate with a cap'
+inn "W0 TC-015: 013 is results and the package (013a–b)"         "$W3" '013a–b'
+n_par=$(printf '%s\n' "$W3" | flat | grep -oF 'matching the actions one to one (parity test)' | wc -l | tr -d ' ')
+[ "$n_par" = 3 ] && ok "W0 TC-016: parity sentence appears three times in Stage 3" || bad "W0 TC-016: parity sentence appears three times in Stage 3" "got $n_par"
+inn "W0 TC-017: 014 verbatim"                                    "$W3" "014: the platform's chat, connecting to the model the user chooses (their own API key or a local model) and calling only the MCP tools of 009"
+inn "W0 TC-018: Studios is feature 016, inside Stage 3"          "$W3" '016: Studios'
+inn "W0 TC-019: Stage 3 done-when: setup → launch → running → results → downstream (in a Studio) → finished" "$W3" 'setup → launch → running → results → downstream (in a Studio) → finished'
+inn "W0 TC-020: Stage 3 done-when second half kept verbatim"     "$W3" 'Two members of the trial lab use it for two weeks with fewer than 10 new PITFALLS; the hosted service goes live (charging waits on the open questions below)'
+nin "W0 TC-021: no Stage 3 sentence gives figures to the web"    "$W3" 'web pages? (make|draw|plot)'
+for n in 0 1 4 5; do
+  if printf '%s\n' "$STG" | grep -qE "^\| $n \| \*\*"; then ok "W0 TC-022: stage $n row still present"; else bad "W0 TC-022: stage $n row still present"; fi
+done
+
+inn "W0 TC-023: role row is re-staged postponed (ADR 0009)"      "$WL" "Role tests against the platform's API | postponed (ADR 0009) |"
+inn "W0 TC-024: new owed-parity row"                             "$WL" 'owed parity — every action has an MCP tool and a web route; the owed list only shrinks'
+inn "W0 TC-025: ...its check arrives with 011a's parity test"    "$WL" '011a'
+cntW=$(printf '%s\n' "$WL" | grep -cE '^[|]' || true)
+[ "${cntW:-0}" = 17 ] && ok "W0 TC-026: waiting list has 17 table lines" || bad "W0 TC-026: waiting list has 17 table lines" "$cntW"
+inn "W0 TC-027: other rows untouched (run index)"                "$WL" "The platform's run index is never a second truth"
+inn "W0 TC-027: ...(model-neutral command layer)"                "$WL" "Model-neutral command layer: no command depends on one model's behaviour"
+
+inn "W0 TC-028: ADR 0009 open-questions subsection"              "$(cat "$RM")" 'Open questions from ADR 0009 (answered before the slice that needs them)'
+inn "W0 TC-028: ...original intro sentence unchanged"            "$OQ" 'Each must be answered before the hosted service charges anyone (Stage 3).'
+inn "W0 TC-029: original four stay (military service)"           "$OQ" 'alternative military service'
+inn "W0 TC-029: ...(Seqera terms)"                               "$OQ" 'not for developing a competing product'
+inn "W0 TC-029: ...(NCHC M6)"                                    "$OQ" 'NCHC (M6'
+inn "W0 TC-029: ...(TWCC)"                                       "$OQ" 'TWCC: how a lab without an NSTC project pays'
+OQ9=$(sec "$RM" '^### Open questions from ADR 0009' '^##+ ')
+inn "W0 TC-030: asks how a hosted account is created"            "$OQ9" 'is an account created'
+inn "W0 TC-031: asks about runs with no recorded person"         "$OQ9" 'no recorded person'
+inn "W0 TC-032: asks whether uploads/downloads pass through the hosted platform" "$OQ9" 'pass through the hosted platform'
+inn "W0 TC-033: asks whether each resume/relaunch needs the confirmation page" "$OQ9" 'resume or relaunch'
+inn "W0 TC-034: asks about Studios on NCHC, a second submission path"  "$OQ9" 'second submission path'
+inn "W0 TC-034: ...needs a constitution amendment"               "$OQ9" 'constitution amendment'
+inn "W0 TC-035: asks about the cloud account and the monthly cap number" "$OQ9" 'monthly cap'
+
+inn "W0 TC-036: ADR 0004 points to ADR 0008 and 0009 for Studios" "$O4" 'Superseded for Studios by ADR 0008 and ADR 0009.'
+inn "W0 TC-037: ADR 0004 pinned Studios sentence stays"          "$O4" "Studios**: rejected; the user's own IDE on the site does that job"
+POS18=$(grep -F '1. **一間實驗室' "$POS")
+nin "W0 TC-039: POSITIONING point 1 no longer lists Studios as not built" "$POS18" 'Fusion、Studios'
+inn "W0 TC-040: ...Data Explorer still not built"                "$POS18" 'Data Explorer'
+inn "W0 TC-040: ...no dashboard page; the right pane replaces it" "$POS18" '右欄'
+nin "W0 TC-041: ...no longer simplified to PI／member roles"     "$POS18" '簡化成 PI／成員兩種角色'
+inn "W0 TC-041: ...roles postponed, ADR 0009"                    "$POS18" 'adr/0009'
+inn "W0 TC-042: breakthrough 1 keeps the measured NCHC refusal"  "$(cat "$POS")" 'Data Explorer／Studios 在國網實測被拒'
+POS9=$(grep -E '^\| 9 \|' "$POS")
+inn "W0 TC-043: breakthrough 9 is postponed"                     "$POS9" '延後'
+inn "W0 TC-043: ...points to ADR 0009"                           "$POS9" 'adr/0009'
+hasnt "W0 TC-059: 'owed parity' is not in the constitution"      "$C" 'owed parity'
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

@@ -58,6 +58,7 @@ The chat is a client of the same MCP tools, so it carries no gate or rule of its
 - **Organisations, workspaces, teams, SSO**: rejected; one lab with two roles (ADR 0005).
 - **Studios**: rejected; the user's own IDE on the site does that job (Studios were refused on
   NCHC, `docs/SITE_ADAPTER.md`).
+  Superseded for Studios by ADR 0008 and ADR 0009.
 
 ## Consequences
 
