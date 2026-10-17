@@ -1126,6 +1126,8 @@ tc "/tmp" "cd -; sed -i -e 'a b' /tmp/x"                                ask  "TC
 tc "/tmp" "cd -; sed -i \"p q\""                                          ask  "TC-112-66e sed -i only a script with a space"
 tc "/tmp" "cd -; sed -i 's/a/b/' /tmp/x"                                 pass "TC-112-66e sed -i script no space passes"
 tc "/tmp" "cd -; sed -i -f s.sed /tmp/x"                                pass "TC-112-66e sed -i -f script file passes"
+tc "/tmp" "cd -; cp -t '' a"                                            ask  "TC-112-66e cp -t '' (empty quoted folder)"
+tc "/tmp" "cd -; cp --target-directory \"\" a"                           ask  "TC-112-66e cp --target-directory \"\""
 rs() { # rs <command> -> OUT: the reason text of the gate
   OUT=$(python3 -c "import json,sys;print(json.dumps({'cwd':'/tmp','tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   OUT=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin)['hookSpecificOutput'].get('permissionDecisionReason',''))" <<<"$OUT")
