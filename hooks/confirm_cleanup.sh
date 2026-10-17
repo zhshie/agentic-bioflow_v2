@@ -419,7 +419,9 @@ lost_rel() { # lost_rel <word as written>: relative, no variable, and the folder
 }
 # #104: one place builds the UNRESOLVED entry for every consumer of lost_rel.
 lost_ask() { # lost_ask <phrase naming the relative word>
-    UNRESOLVED="${UNRESOLVED}(working folder unknown after cd - / cd / popd: $1 - confirm which folder this is) "
+    local m="(working folder unknown after cd - / cd / popd: $1 - confirm which folder this is) "
+    # #112: the same reason is printed once
+    [[ $UNRESOLVED == *"$m"* ]] || UNRESOLVED="${UNRESOLVED}${m}"
 }
 RE_CWD='"cwd"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
 if [[ $INPUT =~ $RE_CWD ]]; then
@@ -910,12 +912,15 @@ is_dry_run() {
 # tests/confirm_cleanup_test.sh through this path to catch one that has not.
 # Small inputs (under 8 KB of segments) skip the filter: it is one more process
 # (gate_process_count), and their full judgement costs well under a second.
-CW_HANDLED='^(__too_deep__|cd|pushd|popd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|tee|cp|sed|dd|[$`].*)$'
+CW_HANDLED='^(__too_deep__|cd|pushd|popd|set-location|sl|chdir|push-location|pop-location|rm|rmdir|unlink|shred|truncate|remove-item|ri|del|erase|rd|xargs|cmd|git|rename|move-item|rename-item|mi|move|rni|ren|nextflow|tar|gtar|bsdtar|zip|rclone|ln|install|tee|cp|sed|dd|shuf|split|curl|wget|perl|awk|gawk|\{|then|do|else|elif|if|while|until|[$`].*)$'
 RE_TRIGGER="($RE_DELVERB)|($RE_FIND_DEL)|($RE_RSYNC_DEL)|($RE_MV)|($RE_RSYNC_RSF)|($RE_CODE_DEL)|($RE_TRUNC)|($RE_NFCLEAN)"
 RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_INSTALL_D)|($RE_PURE_TRUNC)|(>[[:space:]]*[^[:space:]>&|/])"
 # #110: the writers and redirect forms the lost-folder check reads (sort -o; a `>` that ends the
 # segment, because the splitter cuts `>|` and a quoted target leaves nothing after it; `>&file`).
-RE_TRIGGER="$RE_TRIGGER|(^[[:space:]]*sort[[:space:]].*(-[A-Za-z]*o|--output))|(>[[:space:]]*$)|(>&[[:space:]]*[^[:space:]0-9-])"
+RE_TRIGGER="$RE_TRIGGER|(^[[:space:]]*sort[[:space:]].*(-[A-Za-z]*o|--output))|(>[[:space:]]*$)|(>&[[:space:]]*[^[:space:]0-9-])|(-(exec|execdir|ok|okdir)[[:space:]])"
+# #112: a segment that starts with a wrapper (sudo, env, nohup, timeout ...) is kept: the
+# command word cmdword() finds after `sudo -n` or `timeout -k 1 5` is not always the command.
+RE_TRIGGER="$RE_TRIGGER|(^[[:space:]]*(sudo|env|command|builtin|exec|nohup|nice|stdbuf|timeout)([[:space:]]|$))"
 # The PowerShell listers and pipeline filters (LISTER_OK below) matter only to a
 # Move-Item they feed, which is in CW_HANDLED: a run of them is held back and
 # kept only when a kept segment follows it. Kept always, `sort` and `ls` made
@@ -999,38 +1004,66 @@ cd_uncond() { # 0 when the segment was found and every line holding it is free o
     case "$pl" in *'&&'|*'||'|*'|') return 1 ;; esac
     return 0
 }
-# #110: every unquoted `>` target in a segment, when the folder is lost. `>>` appends and
+# #110: every `>` target in a segment, when the folder is lost. `>>` appends and
 # `>&2` / `2>&1` write no file, so they are left; `>|`, `>&file`, a quoted target and a target
 # written with $ or a substitution are overwrites of a file whose folder is not known.
-lost_target() { # lost_target <redirect target word, quotes removed>
+# #112: a word that starts with `-` is a file name here (`> -out`); only an unquoted leading
+# `~` is the home folder, a quoted one is a relative folder named `~`.
+lost_target() { # lost_target <target word, quotes removed> [1 when the word was quoted]
     [ -n "$1" ] || return 0
+    [ "$CWD_LOST" = 1 ] || return 0
     case "$1" in
-        /*|[A-Za-z]:*|'~'|'~/'*) ;;
-        *'$'*|*'`'*) lost_ask "overwrite ${1}" ;;
-        *) lost_rel "$1" && lost_ask "overwrite ${1}" ;;
+        /*|[A-Za-z]:*) ;;
+        '~'|'~/'*) [ "${2:-0}" = 1 ] && lost_ask "overwrite ${1}" ;;
+        *) lost_ask "overwrite ${1}" ;;
     esac
+    return 0
 }
 PEND_REDIR=0
 RE_TRAIL_GT='>[[:space:]]*$'
+# #112: the one scanner for redirects. A `>` that is plain (not in quotes, not escaped) is read
+# as the shell reads it. A `>` in quotes or escaped is read as the quote-blind #104 scan did,
+# as an ordinary character followed by a word (`echo "x>y"` still asks, as on main).
 lost_redirects() { # lost_redirects <segment text with quotes kept>
-    local s=$1 n i j c d q="" wq="" w pv nx amp rw
+    local s=$1 n i j c d q="" wq="" w pv nx amp rw blind wqd
     n=${#s}
     for ((i = 0; i < n; i++)); do
         c=${s:i:1}
+        blind=0; rw=0
         if [ -n "$q" ]; then
-            if [ "$c" = "$q" ]; then q=""
-            elif [ "$c" = '\' ] && [ "$q" = '"' ]; then i=$((i + 1)); fi
+            if [ "$c" = "$q" ]; then q=""; continue
+            elif [ "$c" = '\' ] && [ "$q" = '"' ]; then
+                if [ "${s:i+1:1}" = '>' ]; then i=$((i + 1)); blind=1; else i=$((i + 1)); continue; fi
+            elif [ "$c" = '>' ]; then blind=1
+            else continue; fi
+        else
+            case "$c" in
+                '\') if [ "${s:i+1:1}" = '>' ]; then i=$((i + 1)); blind=1; else i=$((i + 1)); continue; fi ;;
+                '"'|"'") q=$c; continue ;;
+                '>') ;;
+                # `<>file` opens the file for reading and writing, and creates it
+                '<') if [ "${s:i+1:1}" = '>' ]; then i=$((i + 1)); rw=1; else continue; fi ;;
+                *) continue ;;
+            esac
+        fi
+        if [ "$blind" = 1 ]; then
+            pv=""; [ "$i" -gt 0 ] && pv=${s:i-1:1}
+            case "$pv" in '>'|'&'|'<') continue ;; esac
+            j=$((i + 1))
+            while [[ ${s:j:1} == [[:space:]] ]]; do j=$((j + 1)); done
+            w=""
+            while [ "$j" -lt "$n" ]; do
+                d=${s:j:1}
+                case "$d" in
+                    [[:space:]]|'>'|'&'|'|'|'<'|'('|')'|'/'|';') break ;;
+                    *) w+=$d ;;
+                esac
+                j=$((j + 1))
+            done
+            w=${w//\"/}; w=${w//\'/}
+            lost_rel "$w" && lost_ask "overwrite ${w}"
             continue
         fi
-        rw=0
-        case "$c" in
-            '\') i=$((i + 1)); continue ;;
-            '"'|"'") q=$c; continue ;;
-            '>') ;;
-            # `<>file` opens the file for reading and writing, and creates it
-            '<') if [ "${s:i+1:1}" = '>' ]; then i=$((i + 1)); rw=1; else continue; fi ;;
-            *) continue ;;
-        esac
         pv=""; [ "$i" -gt 0 ] && [ "$rw" = 0 ] && pv=${s:i-1:1}
         nx=${s:i+1:1}; j=$((i + 1)); amp=0
         if [ "$pv" = '&' ]; then
@@ -1047,67 +1080,193 @@ lost_redirects() { # lost_redirects <segment text with quotes kept>
         esac
         while [[ ${s:j:1} == ' ' || ${s:j:1} == $'\t' ]]; do j=$((j + 1)); done
         if [ "$amp" = 1 ]; then case "${s:j:1}" in [0-9-]) continue ;; esac; fi
-        w=""; wq=""
+        w=""; wq=""; wqd=0
         while [ "$j" -lt "$n" ]; do
             d=${s:j:1}
             if [ -n "$wq" ]; then
                 if [ "$d" = "$wq" ]; then wq=""; else w+=$d; fi
             else
                 case "$d" in
-                    '"'|"'") wq=$d ;;
+                    '"'|"'") wq=$d; wqd=1 ;;
                     ' '|$'\t'|';'|'&'|'|'|'<'|'>'|'('|')') break ;;
                     *) w+=$d ;;
                 esac
             fi
             j=$((j + 1))
         done
-        lost_target "$w"
+        lost_target "$w" "$wqd"
     done
 }
-# #110: commands that write a file named by a relative word: tee (without -a), sort -o,
-# cp (the destination), sed -i, dd of=. Called only when the folder is lost.
-lost_writers() { # lost_writers <command word>
-    local -a W F
-    local cw=${1##*/} i k n x f a=0 sc=0 ip=0 td="" nw=0 st=0
-    set -f; W=(${SEG//[\"\']/}); set +f
-    n=${#W[@]}
-    for ((i = 0; i < n; i++)); do x=${W[i]}; [ "${x##*/}" = "$cw" ] && { st=$((i + 1)); break; }; done
-    F=()
+# #112: a segment as words, quotes read: LW_V the word with its quotes removed, LW_T 1 when the
+# word starts with `~` but had a quote or backslash in it (so the shell will not expand it).
+# A redirect token (`> f`, `2>/dev/null`) is not an operand and is left out.
+RE_LW_REDIR='^([0-9]*(>>?|>[|&]|<>?)|&>>?)(.*)$'
+LW_V=(); LW_T=()
+lw_tokens() { # lw_tokens <segment text>
+    local s=$1 n=${#1} i c q="" w="" started=0 has=0 skip=0 fc=""
+    LW_V=(); LW_T=()
+    for ((i = 0; i <= n; i++)); do
+        c=${s:i:1}
+        if [ "$i" -lt "$n" ] && [ -n "$q" ]; then
+            if [ "$c" = "$q" ]; then q=""
+            elif [ "$c" = '\' ] && [ "$q" = '"' ] && { [ "${s:i+1:1}" = '"' ] || [ "${s:i+1:1}" = '\' ]; }; then i=$((i + 1)); w+=${s:i:1}
+            else w+=$c; fi
+            continue
+        fi
+        if [ "$i" -eq "$n" ] || [[ $c == [[:space:]] ]]; then
+            if [ "$started" = 1 ]; then
+                if [ "$has" = 0 ] && [[ $w =~ $RE_LW_REDIR ]]; then
+                    # an operator on its own takes the next word as its target
+                    if [ -z "${BASH_REMATCH[3]}" ]; then skip=1; else skip=0; fi
+                elif [ "$skip" = 1 ]; then skip=0
+                else
+                    # A word with a quote or backslash in it is a file name, never the home
+                    # folder: every `~` in it is made relative (`./~`), so the same word
+                    # asks wherever the writer reads it (`of=\~`, `--target-directory=\~`).
+                    # A word that starts with a backslash is not an option either, even
+                    # when what follows is `-x`: `\-x` is the relative file name `./-x`.
+                    if [ "$has" = 1 ]; then
+                        w=${w//\~/./~}
+                        [ "$fc" = '\' ] && [[ $w == -* ]] && w="./$w"
+                        # an empty quoted word (`''`) was a relative name to the #110 gate
+                        [ -z "$w" ] && w=./
+                    fi
+                    LW_V+=("$w")
+                    if [ "$has" = 1 ] && [[ $w == '~'* ]]; then LW_T+=(1); else LW_T+=(0); fi
+                fi
+            fi
+            w=""; started=0; has=0; fc=""
+            continue
+        fi
+        [ "$started" = 0 ] && fc=$c
+        started=1
+        case "$c" in
+            '"'|"'") q=$c; has=1 ;;
+            # a backslash at the very end is itself the file name (`cp a \`)
+            '\')
+                has=1
+                if [ $((i + 1)) -ge "$n" ]; then w+='\'
+                else
+                    i=$((i + 1))
+                    # an escaped `/` does not make an absolute path: the #110 gate read
+                    # `\/tmp/x`, `-t\/tmp/x` and `of=\/tmp/x` as relative names
+                    [ "${s:i:1}" = / ] && w+=./
+                    w+=${s:i:1}
+                fi ;;
+            *) w+=$c ;;
+        esac
+    done
+}
+# #112: one writer, the words from index $1 on. Asks for every file it may write that is a
+# relative path (lost_target). With $2 = 1 the arguments that will be appended are not known
+# (xargs, find -exec): any use that writes at all is asked.
+lw_add() { LW_F+=("$1"); LW_Q+=("${2:-0}"); }
+# A file name with a space in it (`"/tmp/my file"`, `a\ b`) is also read the way the #110 gate
+# read it, cut at every space: each piece must be absolute too.
+lw_target() { # lw_target <file name> <1 when quoted>
+    local p
+    local -a P
+    lost_target "$1" "$2"
+    if [[ $1 == *[[:space:]]* ]]; then
+        read -ra P <<<"$1"
+        for p in ${P[@]+"${P[@]}"}; do lost_target "$p" "$2"; done
+    fi
+    return 0
+}
+lw_cmd() { # lw_cmd <index of the command word> <0|1 unknown appended arguments>
+    local st=$1 unk=$2 cw n=${#LW_V[@]} i j k x v c nd=0 wr=0 a=0 td="" tdq=0 nw=0 dflag=0 ip=0 sc=0
+    local cwdw="" sw=0 hasO=0 pfx="" pfxq=0 spider=0 script=0 od=0 lastv="" lastq=0
+    local -a LW_F LW_Q OPS OPQ NO SCR
+    LW_F=(); LW_Q=(); OPS=(); OPQ=(); NO=(); SCR=()
+    cw=${LW_V[st]##*/}; cw=${cw%.exe}
     case "$cw" in
         tee)
-            for ((i = st; i < n; i++)); do
-                x=${W[i]}
-                case "$x" in --append) a=1 ;; --*) ;; -*a*) a=1 ;; -*) ;; *) F+=("$x") ;; esac
-            done
-            [ "$a" = 1 ] && F=() ;;
-        sort)
-            for ((i = st; i < n; i++)); do
-                x=${W[i]}
+            wr=1
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                if [ "$nd" = 1 ]; then lw_add "$x" "${LW_T[i]}"; continue; fi
                 case "$x" in
-                    -o|--o|--ou|--out|--outp|--outpu|--output|-[!-]*o) i=$((i + 1)); F+=("${W[i]-}") ;;
-                    -o?*) F+=("${x#-o}") ;;
-                    --o=*|--ou=*|--out=*|--outp=*|--outpu=*|--output=*) F+=("${x#*=}") ;;
+                    --) nd=1 ;;
+                    --append) a=1 ;;
+                    --*) ;;
+                    -?*) case "$x" in *a*) a=1 ;; esac ;;
+                    *) lw_add "$x" "${LW_T[i]}" ;;
+                esac
+            done
+            [ "$a" = 1 ] && { LW_F=(); LW_Q=(); } ;;
+        sort|shuf)
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                [ "$nd" = 1 ] && continue
+                case "$x" in
+                    --) nd=1 ;;
+                    -o|--o|--ou|--out|--outp|--outpu|--output|-[!-]*o) wr=1; i=$((i + 1)); lw_add "${LW_V[i]-}" "${LW_T[i]-0}" ;;
+                    -o?*) wr=1; lw_add "${x#-o}" 0 ;;
+                    --o=*|--ou=*|--out=*|--outp=*|--outpu=*|--output=*) wr=1; lw_add "${x#*=}" "${LW_T[i]}" ;;
                 esac
             done ;;
         cp)
-            for ((i = st; i < n; i++)); do
-                x=${W[i]}
+            wr=1
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                if [ "$nd" = 1 ]; then nw=$((nw + 1)); lastv=$x; lastq=${LW_T[i]}; continue; fi
                 case "$x" in
-                    -t|--target-directory) i=$((i + 1)); td=${W[i]-} ;;
+                    --) nd=1 ;;
+                    -t|--target-directory) i=$((i + 1)); td=${LW_V[i]-}; tdq=${LW_T[i]-0} ;;
                     --target-directory=*) td=${x#*=} ;;
                     -t?*) td=${x#-t} ;;
                     -*) ;;
-                    *) nw=$((nw + 1)); f=$x ;;
+                    *) nw=$((nw + 1)); lastv=$x; lastq=${LW_T[i]} ;;
                 esac
             done
-            if [ -n "$td" ]; then F+=("$td"); elif [ "$nw" -ge 2 ]; then F+=("$f"); fi ;;
-        sed)
-            local -a NO=()
-            for ((i = st; i < n; i++)); do
-                x=${W[i]}
+            if [ -n "$td" ]; then lw_add "$td" "$tdq"; elif [ "$nw" -ge 2 ] || { [ "$nw" = 1 ] && [[ $lastv == *[[:space:]]* ]]; }; then lw_add "$lastv" "$lastq"; fi ;;
+        install|ln)
+            wr=1
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                if [ "$nd" = 1 ]; then OPS+=("$x"); OPQ+=("${LW_T[i]}"); continue; fi
                 case "$x" in
-                    -e|-f|--expression|--file) sc=1; i=$((i + 1)) ;;
-                    --expression=*|--file=*) sc=1 ;;
+                    --) nd=1 ;;
+                    -t|--target-directory) i=$((i + 1)); td=${LW_V[i]-}; tdq=${LW_T[i]-0} ;;
+                    --target-directory=*) td=${x#*=} ;;
+                    -t?*) td=${x#-t} ;;
+                    --directory) dflag=1 ;;
+                    -m|-o|-g|-S|--mode|--owner|--group|--suffix) [ "$cw" = install ] && i=$((i + 1)) ;;
+                    --*) ;;
+                    -?*) [ "$cw" = install ] && case "$x" in *d*) dflag=1 ;; esac ;;
+                    *) OPS+=("$x"); OPQ+=("${LW_T[i]}") ;;
+                esac
+            done
+            nw=${#OPS[@]}
+            if [ -n "$td" ]; then lw_add "$td" "$tdq"
+            elif [ "$cw" = install ] && [ "$dflag" = 1 ]; then
+                for ((k = 0; k < nw; k++)); do lw_add "${OPS[k]}" "${OPQ[k]}"; done
+            elif [ "$nw" -ge 2 ]; then lw_add "${OPS[nw-1]}" "${OPQ[nw-1]}"
+            elif [ "$cw" = ln ] && [ "$nw" = 1 ]; then cwdw="a link in the working folder"
+            fi ;;
+        split)
+            wr=1
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                if [ "$nd" = 1 ]; then OPS+=("$x"); OPQ+=("${LW_T[i]}"); continue; fi
+                case "$x" in
+                    --) nd=1 ;;
+                    -a|-b|-C|-l|-n|-t|--suffix-length|--bytes|--line-bytes|--lines|--number|--separator|--filter|--additional-suffix) i=$((i + 1)) ;;
+                    -?*) ;;
+                    *) OPS+=("$x"); OPQ+=("${LW_T[i]}") ;;
+                esac
+            done
+            if [ "${#OPS[@]}" -ge 2 ]; then lw_add "${OPS[1]}" "${OPQ[1]}"; else cwdw="split output files in the working folder"; fi ;;
+        sed)
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                if [ "$nd" = 1 ]; then NO+=("$x"); continue; fi
+                case "$x" in
+                    --) nd=1 ;;
+                    -e|--expression) sc=1; i=$((i + 1)); SCR+=("${LW_V[i]-}") ;;
+                    -f|--file) sc=1; i=$((i + 1)) ;;
+                    --expression=*) sc=1; SCR+=("${x#*=}") ;;
+                    --file=*) sc=1 ;;
                     --in-place*) ip=1 ;;
                     --*) ;;
                     -?*)
@@ -1116,37 +1275,206 @@ lost_writers() { # lost_writers <command word>
                         for ((k = 1; k < ${#x}; k++)); do
                             case "${x:k:1}" in
                                 i) ip=1; break ;;
-                                e|f) sc=1; [ "$k" -eq $((${#x} - 1)) ] && i=$((i + 1)); break ;;
+                                e|f)
+                                    sc=1
+                                    if [ "${x:k:1}" = e ]; then
+                                        if [ "$k" -lt $((${#x} - 1)) ]; then SCR+=("${x:k+1}"); else SCR+=("${LW_V[i+1]-}"); fi
+                                    fi
+                                    [ "$k" -eq $((${#x} - 1)) ] && i=$((i + 1))
+                                    break ;;
                             esac
                         done ;;
                     *) NO+=("$x") ;;
                 esac
             done
             if [ "$ip" = 1 ]; then
-                k=0; [ "$sc" = 1 ] || k=1
-                for ((; k < ${#NO[@]}; k++)); do F+=("${NO[k]}"); done
+                wr=1
+                k=0; [ "$sc" = 1 ] || { k=1; SCR+=("${NO[0]-}"); }
+                for ((; k < ${#NO[@]}; k++)); do lw_add "${NO[k]}" 0; done
+                # The #110 gate cut every word at a space, so the words of a script that has
+                # spaces in it (`'s/a b/c/'`, `'1 d'`) were read as file names: they still ask.
+                for ((j = 0; j < ${#SCR[@]}; j++)); do
+                    x=${SCR[j]}
+                    [[ $x == *[[:space:]]* ]] && lw_add "${x#*[[:space:]]}" 0
+                done
             fi ;;
         dd)
-            for ((i = st; i < n; i++)); do
-                x=${W[i]}; case "$x" in of=*) F+=("${x#of=}") ;; esac
+            wr=1
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}; case "$x" in of=*) lw_add "${x#of=}" "${LW_T[i]}" ;; esac
             done ;;
+        curl)
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                case "$x" in
+                    --output) wr=1; i=$((i + 1)); [ "${LW_V[i]-}" = - ] || lw_add "${LW_V[i]-}" "${LW_T[i]-0}" ;;
+                    --output=*) wr=1; v=${x#*=}; [ "$v" = - ] || lw_add "$v" "${LW_T[i]}" ;;
+                    --remote-name|--remote-name-all) wr=1; cwdw="curl writes the remote file name in the working folder" ;;
+                    --*) ;;
+                    -?*)
+                        for ((k = 1; k < ${#x}; k++)); do
+                            c=${x:k:1}
+                            case "$c" in
+                                o)
+                                    wr=1
+                                    if [ "$k" -lt $((${#x} - 1)) ]; then v=${x:k+1}; else i=$((i + 1)); v=${LW_V[i]-}; fi
+                                    [ "$v" = - ] || lw_add "$v" 0
+                                    break ;;
+                                O) wr=1; cwdw="curl writes the remote file name in the working folder" ;;
+                                A|b|c|C|d|D|e|E|F|H|K|m|P|Q|r|T|u|U|w|x|X|y|Y|z)
+                                    [ "$k" -eq $((${#x} - 1)) ] && i=$((i + 1))
+                                    break ;;
+                            esac
+                        done ;;
+                esac
+            done ;;
+        wget)
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                case "$x" in
+                    --output-document) hasO=1; i=$((i + 1)); [ "${LW_V[i]-}" = - ] || lw_add "${LW_V[i]-}" "${LW_T[i]-0}" ;;
+                    --output-document=*) hasO=1; v=${x#*=}; [ "$v" = - ] || lw_add "$v" "${LW_T[i]}" ;;
+                    --output-file|--append-output) i=$((i + 1)); lw_add "${LW_V[i]-}" "${LW_T[i]-0}" ;;
+                    --output-file=*|--append-output=*) lw_add "${x#*=}" "${LW_T[i]}" ;;
+                    --directory-prefix) i=$((i + 1)); pfx=${LW_V[i]-}; pfxq=${LW_T[i]-0} ;;
+                    --directory-prefix=*) pfx=${x#*=}; pfxq=${LW_T[i]} ;;
+                    --spider) spider=1 ;;
+                    --*) ;;
+                    -?*)
+                        for ((k = 1; k < ${#x}; k++)); do
+                            c=${x:k:1}
+                            case "$c" in
+                                O|P|o|a)
+                                    if [ "$k" -lt $((${#x} - 1)) ]; then v=${x:k+1}; else i=$((i + 1)); v=${LW_V[i]-}; fi
+                                    case "$c" in
+                                        O) hasO=1; [ "$v" = - ] || lw_add "$v" 0 ;;
+                                        P) pfx=$v; pfxq=0 ;;
+                                        *) lw_add "$v" 0 ;;
+                                    esac
+                                    break ;;
+                                e|t|T|w|l|Q|U|i|B|I|X|D|A|R)
+                                    [ "$k" -eq $((${#x} - 1)) ] && i=$((i + 1))
+                                    break ;;
+                            esac
+                        done ;;
+                esac
+            done
+            if [ "$hasO" = 0 ] && [ "$spider" = 0 ]; then
+                if [ -n "$pfx" ]; then lw_add "$pfx" "$pfxq"; else cwdw="wget downloads into the working folder"; fi
+            fi
+            wr=1 ;;
+        perl)
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                if [ "$od" = 0 ]; then
+                    case "$x" in
+                        --) od=1; continue ;;
+                        -?*)
+                            for ((k = 1; k < ${#x}; k++)); do
+                                case "${x:k:1}" in
+                                    i) ip=1; break ;;
+                                    e|E) sc=1; [ "$k" -eq $((${#x} - 1)) ] && i=$((i + 1)); break ;;
+                                    M|m|I|F|x|C|d|D) [ "$k" -eq $((${#x} - 1)) ] && i=$((i + 1)); break ;;
+                                esac
+                            done
+                            continue ;;
+                    esac
+                    od=1
+                    if [ "$sc" = 0 ]; then script=1; continue; fi
+                fi
+                NO+=("$x")
+            done
+            if [ "$ip" = 1 ]; then
+                wr=1
+                for ((k = 0; k < ${#NO[@]}; k++)); do lw_add "${NO[k]}" 0; done
+            fi ;;
+        awk|gawk)
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                if [ "$od" = 0 ]; then
+                    case "$x" in
+                        --) od=1; continue ;;
+                        -i|--include) i=$((i + 1)); case "${LW_V[i]-}" in inplace|inplace.awk|*/inplace|*/inplace.awk) ip=1 ;; esac; continue ;;
+                        --include=inplace*) ip=1; continue ;;
+                        -f|--file|-e|--source) sc=1; i=$((i + 1)); continue ;;
+                        --file=*|--source=*) sc=1; continue ;;
+                        -F|-v|-l|-E|-W|--field-separator|--assign|--load) i=$((i + 1)); continue ;;
+                        -?*) continue ;;
+                    esac
+                    od=1
+                    if [ "$sc" = 0 ]; then script=1; continue; fi
+                fi
+                [[ $x =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && continue
+                NO+=("$x")
+            done
+            if [ "$ip" = 1 ]; then
+                wr=1
+                for ((k = 0; k < ${#NO[@]}; k++)); do lw_add "${NO[k]}" 0; done
+            fi ;;
+        xargs)
+            # the arguments come from stdin, which this hook never sees
+            for ((i = st + 1; i < n; i++)); do
+                x=${LW_V[i]}
+                case "$x" in
+                    -I|-n|-P|-L|-d|-E|-s|-a|--arg-file|--delimiter|--max-args|--max-procs|--max-lines|--max-chars|--eof) i=$((i + 1)) ;;
+                    -?*) ;;
+                    *) lw_cmd "$i" 1; break ;;
+                esac
+            done
+            return 0 ;;
+        find)
+            for ((i = st + 1; i < n; i++)); do
+                case "${LW_V[i]}" in -exec|-execdir|-ok|-okdir) lw_cmd $((i + 1)) 1 ;; esac
+            done
+            return 0 ;;
     esac
-    for f in ${F[@]+"${F[@]}"}; do
-        case "$f" in
-            /*|[A-Za-z]:*|'~'|'~/'*) ;;
-            *'$'*|*'`'*) lost_ask "overwrite ${f}" ;;
-            *) lost_rel "$f" && lost_ask "overwrite ${f}" ;;
+    if [ "$unk" = 1 ]; then
+        if [ "$wr" = 1 ] || [ -n "$cwdw" ]; then
+            lost_ask "${cw} run by xargs / find -exec writes files named by arguments this gate cannot see"
+        fi
+        return 0
+    fi
+    [ -n "$cwdw" ] && lost_ask "$cwdw"
+    for ((k = 0; k < ${#LW_F[@]}; k++)); do lw_target "${LW_F[k]}" "${LW_Q[k]}"; done
+    return 0
+}
+RE_LW_CMDS='(tee|sort|shuf|cp|install|ln|split|sed|dd|curl|wget|perl|awk|gawk|xargs|find)'
+lost_writers() { # lost_writers <segment text>: the commands that write a file named by a word
+    [[ $1 =~ $RE_LW_CMDS ]] || return 0
+    local i=0 n x w wrap=0 po=0
+    lw_tokens "$1"; n=${#LW_V[@]}
+    while [ "$i" -lt "$n" ]; do
+        x=${LW_V[i]}
+        case "$x" in
+            '{'|then|do|else|elif|if|while|until|'!') i=$((i + 1)) ;;
+            # The wrapper words main's cmdword() sees through (the #29 shape: a
+            # wrapper in front of a writer must not hide the writer).
+            sudo|env|command|builtin|exec|nohup|time|nice|stdbuf|timeout) wrap=1; i=$((i + 1)) ;;
+            [A-Za-z_]*=*) i=$((i + 1)) ;;
+            *) break ;;
         esac
     done
-}
-RE_REDIR_REL='(^|[^>&<])[0-9]*>[[:space:]]*([^[:space:]>&|<()/;]+)'
-lost_redirects_blind() { # lost_redirects_blind <segment>: the #104 scan, quotes read as plain characters
-    local RD_T=$1 RD_W
-    while [[ $RD_T =~ $RE_REDIR_REL ]]; do
-        RD_W=${BASH_REMATCH[2]}; RD_W=${RD_W//\"/}; RD_W=${RD_W//\'/}
-        lost_rel "$RD_W" && lost_ask "overwrite ${RD_W}"
-        RD_T=${RD_T#*"${BASH_REMATCH[0]}"}
+    [ "$i" -lt "$n" ] || return 0
+    if [ "$wrap" = 0 ]; then lw_cmd "$i" 0; return 0; fi
+    # After a wrapper the command word is not at a fixed place (`sudo -u x cp`,
+    # `nice -n 5 cp`, `timeout -k 1 5 cp`, `env -i cp`): an option may or may
+    # not own the word after it. Fail closed: every word that could be the
+    # command is tried, up to the first known writer.
+    for ((; i < n; i++)); do
+        x=${LW_V[i]}
+        case "$x" in
+            -*) po=1; continue ;;
+            [A-Za-z_]*=*) po=0; continue ;;
+            sudo|env|command|builtin|exec|nohup|time|nice|stdbuf|timeout) po=0; continue ;;
+        esac
+        [[ $x =~ ^[0-9.]+[smhd]?$ ]] && { po=0; continue; }
+        w=${x##*/}; w=${w%.exe}
+        lw_cmd "$i" 0
+        [[ $w =~ ^$RE_LW_CMDS$ ]] && break
+        [ "$po" = 1 ] || break
+        po=0
     done
+    return 0
 }
 NSEG=0
 TIMED_OUT=0
@@ -1235,7 +1563,8 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
                     /*|[A-Za-z]:*)
                         norm_path "${CDT//\\//}"; VCWD="$REPLY"; CANDS=(); CANDS_DIRTY=1
                         # #104: only a plain main-shell cd to a named folder says where we are
-                        [ "$CWD_LOST" = 1 ] && cd_uncond && { CWD_LOST=0; LOST_SEG=""; } ;;
+                        # #112: and only when that folder exists, else the shell stays where it was
+                        [ "$CWD_LOST" = 1 ] && [ -d "${CDT//\\//}" ] && cd_uncond && { CWD_LOST=0; LOST_SEG=""; } ;;
                     *)
                         # #78: a quoted target holding a backslash is Windows or a real name
                         # (#104: judged on the target as written, not the whole segment)
@@ -1361,14 +1690,12 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
         # `>|` is split by the splitter into `cmd >` and the target: the target opens the next segment
         if [ "$PEND_REDIR" = 1 ]; then
             PR_W=${SEG_NR#"${SEG_NR%%[![:space:]]*}"}; PR_W=${PR_W%%[[:space:]]*}
+            PR_Q=0; [[ $PR_W == *['"'"'"]* ]] && PR_Q=1
             PR_W=${PR_W//\"/}; PR_W=${PR_W//\'/}
-            lost_target "$PR_W"
+            lost_target "$PR_W" "$PR_Q"
         fi
-        if [[ $SEG_NR == *'>'* ]]; then
-            lost_redirects_blind "$SEG_NR"
-            lost_redirects "$SEG_NR"
-        fi
-        case "${CW##*/}" in tee|sort|cp|sed|dd) lost_writers "$CW" ;; esac
+        [[ $SEG_NR == *'>'* ]] && lost_redirects "$SEG_NR"
+        lost_writers "$SEG_NR"
     fi
     PEND_REDIR=0; [[ $SEG_NR =~ $RE_TRAIL_GT ]] && PEND_REDIR=1
     [[ $VSEG =~ $RE_FIND_DEL ]] && DESTRUCTIVE=1
