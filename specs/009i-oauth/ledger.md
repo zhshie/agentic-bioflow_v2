@@ -46,3 +46,7 @@ Nothing deleted, skipped or loosened; `test_receiver.py`, `test_human_channel.py
 ## Order of work (honest note)
 
 The discovery and registration tests were committed red first. The provider, the consent routes and the token endpoint were then written in one go, so the consent, token and door tests passed when first run and have no separate red commit.
+
+## Test infrastructure
+
+- `tests/platform_test.sh`: the four new OAuth test files are one more shard in the fixed list (`SHARDS`). Without it they fell into the last shard (`REST`, one serial pytest) and `platform_test.sh` passed the 300 s limit of `run_all.sh`. No test was changed by this.
