@@ -318,7 +318,8 @@ def test_tcg02_no_switch_turns_the_confirmation_off():
         if "tests" in p.parts:
             continue
         for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-            if p.name == "cli.py" and "# 116b-owner" in line:      # `runs assign --force` changes the owner of an old run; it confirms nothing
+            # `runs assign --force` changes the owner of an old run; it confirms nothing. Only these two exact lines, named by content, not by a comment.
+            if p.name == "cli.py" and ("to change the owner add --force" in line or 'add_argument("--force", action="store_true", help="change the owner of a run that already has one")' in line):
                 continue
             if re.search(r"ABF_[A-Z_]*(DEV|YES|SKIP|NOCONFIRM|AUTO_?CONFIRM|ASSUME)|--(yes|force|no-confirm|assume-yes)\b", line):
                 bad.append("%s:%d %s" % (p.name, n, line.strip()))

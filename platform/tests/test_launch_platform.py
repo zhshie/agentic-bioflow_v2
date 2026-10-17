@@ -717,16 +717,18 @@ def test_tc061_the_command_line_has_no_resume_no_retry_and_no_confirm_command():
     from abf_platform import cli
     seen = set()
 
-    def walk(parser):
+    def walk(parser, path=()):
         for act in parser._actions:
             for opt in getattr(act, "option_strings", []):
+                # 116b: only `runs assign --force` (changes the owner of an old run) is let through; it is not a way to force a launch
+                if path == ("runs", "assign") and opt == "--force":
+                    continue
                 seen.add(opt.lstrip("-"))
             ch = getattr(act, "choices", None)
             if isinstance(ch, dict):
                 for name, sub in ch.items():
                     seen.add(name)
-                    if name != "runs":         # 116b: `runs assign --force` changes the owner of an old run; it is not a way to force a launch
-                        walk(sub)
+                    walk(sub, path + (name,))
 
     walk(cli.build_parser())
     assert {"launch", "cancel", "launches", "fetch-records"} <= seen
