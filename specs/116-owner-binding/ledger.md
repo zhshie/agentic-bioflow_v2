@@ -8,7 +8,7 @@ Branch `feat/116-owner-binding`. Tests were written first (commit `RED:`), then 
 - [x] D2 one rule: a caller sees only its own rows; another's or nobody's answers like a missing one (`compute_envs.get/list_all(owner=)`, `agents.list_agents(owner=)`, `actions/__init__.py`).
 - [x] D3 runs: the newest `launches` row of a name decides (`jobs.owned_run_names`, `status.list_runs(names=)`, `actions.list_runs/get_run`).
 - [x] D4 launch and listing: `primary_environment`/`prepare_launch` choose among the caller's own; `jobs._target` and `enqueue_confirmed` refuse when the confirmation's caller is not the owner of the environment and of its agent; `ce create|update` refuse an agent with a different owner; `set_primary` is per owner.
-- [x] D5 agents: `agent-token new --user`, `create_token` allows `user_id` for an agent token, `lookup_token` returns `user_id`, `agents.register(owner_user_id=)` fills an empty owner and refuses another (403 on hello, poll, result); `ce create --owner` (default: the only user, required with two or more), `ce update --owner`.
+- [x] D5 agents: `agent-token new --user`, `create_token` allows `user_id` for an agent token, `lookup_token` returns `user_id`, `agents.register(owner_user_id=)` fills an empty owner and refuses another (403 on hello, poll, result); `ce create --owner` (default: the only user, required with two or more), `ce update --owner` (fix round: it also hands the environment's agent to the new owner when the old owner had it, `compute_envs._hand_agent_along`; refused while another environment of the old owner uses that agent).
 - [x] D6 cancel: `prepare_cancel(owner=)` and the queue's cancel branch check that the confirmation's caller launched the run; the 009c `launched_by` check is untouched; the terminal cancel names no account.
 - [x] D7 terminal launch: `abf-platform launch --user NAME` (required once a user exists, unknown name refused before the question, no user: NULL); `_require_human` / `terminal_problem` untouched.
 - [x] D8 path cells: `build.prepare_launch(area=)` checks every path cell with links followed against `actions.caller_area()` (the samplesheet's own area), on top of the environment's roots; terminal and stdio pass no area.
@@ -24,7 +24,7 @@ Branch `feat/116-owner-binding`. Tests were written first (commit `RED:`), then 
 | 014-023 | tc014 to tc023 | `build.prepare_launch`, `jobs._target`, `jobs.enqueue_confirmed`, `jobs.enqueue_listing`, `compute_envs.set_primary` |
 | 024-027 | tc024 to tc027 | `build.prepare_cancel`, `jobs.enqueue_confirmed` (cancel branch) |
 | 028-030 | tc028 to tc030 | `store.create_token/lookup_token`, `agents.register`, `agents.make_routes` |
-| 031-036 | tc031 to tc036 | `compute_envs.create/update`, `cli.py` (`--owner`, `ce list`) |
+| 031-036 | tc031 to tc036 (TC-035 also: two added tests, the agent goes with the environment and is then usable by the new owner; refused while the old owner's other environment uses it) | `compute_envs.create/update`, `cli.py` (`--owner`, `ce list`) |
 | 037 | tc037 | unchanged page rule (`web.view_of`) |
 | 038-040 | tc038 to tc040 | `jobs.enqueue_confirmed`, `confirm.approve` |
 | 041-047 | tc041 to tc047 | `abf_launch/cli.py` (`_account`, `cmd_launch`, `cmd_launches`) |

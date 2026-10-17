@@ -353,6 +353,25 @@ def _agent_owner_problem(con, agent, owner):
     return None
 
 
+def _hand_agent_along(con, name, old_agent, new_agent, old_owner, new_owner):
+    """`ce update --owner` on an environment whose agent (unchanged) belongs to the old owner gives that agent to the new owner too,
+    so the new owner can use what they were given (116). An agent has one owner: if another environment of the old owner still
+    uses it, the hand-over is refused and nothing changes. Runs inside the caller's transaction."""
+    if new_owner is None or new_owner == old_owner or not new_agent or new_agent != old_agent:
+        return
+    row = con.execute("SELECT owner_user_id FROM agents WHERE name = ?", (new_agent,)).fetchone()
+    if row is None or row["owner_user_id"] is None or row["owner_user_id"] != old_owner:
+        return
+    others = [r["name"] for r in con.execute(
+        "SELECT name FROM compute_envs WHERE agent = ? AND name != ? AND owner_user_id IS ? ORDER BY name",
+        (new_agent, name, old_owner))]
+    if others:
+        listed = ", ".join(others)[:200]
+        raise CEError("agent %s also serves %s of the current owner, so it cannot move with this environment; move or rebind those first "
+                      "(這個代理還在服務原擁有者的環境 %s，不能一起轉移)" % (new_agent[:64], listed, listed))
+    con.execute("UPDATE agents SET owner_user_id = ? WHERE name = ?", (new_owner, new_agent))
+
+
 def _row(con, name):
     row = con.execute("SELECT * FROM compute_envs WHERE name = ?", (name,)).fetchone()
     if row is None:
@@ -401,6 +420,7 @@ def update(state_path, name, fields, clock=time.time):
             for key, value in (fields.get("config") or {}).items():
                 merged["config"][key] = value
             rec = clean(merged)
+            _hand_agent_along(con, name, cur["agent"], rec["agent"], row["owner_user_id"], rec["owner_user_id"])
             problem = _agent_owner_problem(con, rec["agent"], rec["owner_user_id"])
             if problem:
                 raise CEError(problem)
