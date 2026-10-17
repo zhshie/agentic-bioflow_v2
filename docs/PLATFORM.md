@@ -373,6 +373,16 @@ The question is a human gate only as far as a human sits at the terminal. A proc
 
 The platform's actions live in one place, `platform/abf_platform/actions/`: one function per action (list runs, get a run, list or get compute environments, list agents, list site files, launch, cancel). The MCP tools call these functions and nothing else, and so will the web pages and the chat. The only way to confirm a launch or a cancel today is the terminal: `abf-platform launch|cancel` asks, and only a yes on the terminal reaches `actions.launch` or `actions.cancel`. Anything else is refused with "no human confirmation channel".
 
+## Guidance over the URL
+
+A person who pastes the server's address into Claude gets the "how to use it" along with the tools, with nothing to install. It comes in three forms, all made from the one folder `skills/`:
+
+- **Instructions.** On connecting, the client hands the model the routing table of `skills/operational/SKILL.md` (which command to reach for: "I want to run RNA-seq" is a `launch`) and one fixed sentence: the six tools are read-only, launching and cancelling happen only in the terminal, and the full steps are the prompts. The text is generated from the file, never typed a second time; if the table is gone the server refuses to start rather than send an empty text.
+- **Prompts.** One per flow skill (`setup`, `launch`, `runs`, `downstream`, `finish`), no arguments, holding the whole SKILL.md without its frontmatter. Clients list them as commands; how Claude Desktop shows them is checked by hand (docs/TESTING.md).
+- **Skills as resources.** The same six files (the five flows and `operational`) are also served as fixed resources, `skill://<name>/SKILL.md`, type `text/markdown`, one per file, with no path template, so no path can be passed in and anything else is refused. This is the fallback for a client that shows resources but not prompts. The pinned `mcp` SDK (2.3.0) has no Skills extension API, so the resources are plain ones; when the pin moves to an SDK that has one, only the registration changes.
+
+The text exists once, in `skills/`. The build copies that folder into the package as `abf_platform/skills/` (`platform/setup.py`; the copy is not committed), and a test builds a wheel and compares the copy with the folder byte for byte. Nothing here adds a tool, a login or a way to launch.
+
 ## Where the files are
 
 Nothing is hard-coded; every location can be changed.

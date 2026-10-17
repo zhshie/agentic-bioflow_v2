@@ -634,7 +634,7 @@ def test_tcd12_the_import_rules(tmp_path):
     # TC-D12
     mcp_src = (PKG / "mcp_server.py").read_text(encoding="utf-8")
     auth_src = (PKG / "http_auth.py").read_text(encoding="utf-8")
-    assert platform_submodules(mcp_src, "abf_platform/mcp_server.py") == {"actions", "http_auth"}
+    assert platform_submodules(mcp_src, "abf_platform/mcp_server.py") == {"actions", "guidance", "http_auth"}  # 009g adds guidance; 009d's http_auth stays
     assert action_refs(mcp_src, "abf_platform/mcp_server.py") == []
     assert platform_submodules(auth_src, "abf_platform/http_auth.py") == {"store", "actions"}
     names = imported_names(auth_src, "abf_platform/http_auth.py")
