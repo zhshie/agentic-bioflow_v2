@@ -427,7 +427,7 @@ def test_tch07_no_new_channel(w, rig):
     rig.tokens_for("ann")
     assert not w.sql("SELECT 1 FROM confirmations")
     for p in list((PLATFORM_DIR / "abf_platform" / "actions").glob("*.py")) + [PLATFORM_DIR / "abf_platform" / n for n in ("confirm.py", "jobs.py")]:
-        assert "OAUTH" not in p.read_text(encoding="utf-8").upper().replace("OAUTH_", "") or p.name not in ("confirm.py",), p
+        assert "OAUTH" not in p.read_text(encoding="utf-8").upper(), p
     from abf_platform import actions
     assert {actions.TERMINAL.name, actions.ELICITED.name, actions.PAGE.name} == {"TERMINAL", "ELICITED", "PAGE"}
     assert not [n for n in dir(actions) if n.isupper() and "OAUTH" in n]
@@ -464,6 +464,10 @@ def test_tci03_i04_no_secret_of_the_flow_is_kept_or_said(w, rig, capsys, caplog)
     haystack = "\n".join(pages + [said, seen.out, seen.err, caplog.text])
     for secret in secrets_:
         assert secret and secret not in haystack
+    # The replayed-code and revoke answers must not echo any secret (the first two bodies carry tokens by design).
+    for body in bodies[2:]:
+        for secret in secrets_:
+            assert secret not in body
     for secret in (f.code, out["access_token"], out["refresh_token"], new["access_token"], new["refresh_token"]):
         for p in w.ip.data.rglob("*"):
             if p.is_file():

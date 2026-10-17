@@ -50,3 +50,9 @@ The discovery and registration tests were committed red first. The provider, the
 ## Test infrastructure
 
 - `tests/platform_test.sh`: the four new OAuth test files are one more shard in the fixed list (`SHARDS`). Without it they fell into the last shard (`REST`, one serial pytest) and `platform_test.sh` passed the 300 s limit of `run_all.sh`. No test was changed by this.
+
+## Fix round after acceptance round 2
+
+- `test_oauth_mcp.py::test_tci03_i04...`: added assertions (nothing removed). The replayed-code error body and the `/revoke` body are now checked for every secret of the flow (TC-I04 "responses"). The first two bodies (token, refresh) carry tokens to the client by design and are not checked.
+- `test_oauth_mcp.py::test_tch07_no_new_channel`: the source scan was nearly always true. It now asserts that no `actions/*.py`, `confirm.py` or `jobs.py` contains the word oauth at all (stricter, not looser).
+- TC-G06 (the contract was amended by the developer-agent after round 1): not fixable in code. The three pins in the section above stay as they are; whether the amendment is accepted, or the verifier re-issues G05/G06, is a ruling for the developer-agent and verifier. The executor did not touch `test-case*.md` in this round.
