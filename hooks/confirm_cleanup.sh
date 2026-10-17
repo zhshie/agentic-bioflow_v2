@@ -1128,6 +1128,8 @@ lw_tokens() { # lw_tokens <segment text>
                     if [ "$has" = 1 ]; then
                         w=${w//\~/./~}
                         [ "$fc" = '\' ] && [[ $w == -* ]] && w="./$w"
+                        # an empty quoted word (`''`) was a relative name to the #110 gate
+                        [ -z "$w" ] && w=./
                     fi
                     LW_V+=("$w")
                     if [ "$has" = 1 ] && [[ $w == '~'* ]]; then LW_T+=(1); else LW_T+=(0); fi
