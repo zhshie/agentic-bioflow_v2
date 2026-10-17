@@ -66,3 +66,15 @@ Technical rulings by the developer-agent on the contract review's points 2-5:
 - The rewritten pins beyond the list at "Facts" are **accepted** as recorded in `ledger.md` (the "Rewritten pins" table and its notes): `test_pat.py` tca11, tcb08_b09, tcb10, tcf03_f04; `test_guidance.py` tc501; `test_launch_e2e.py` tc010_tc061; `test_station_envs.py` tc071, tc063, tc084; `test_actions_layer.py` tca10; the version and Safety Net fingerprint pins in `tests/constitution_scope_test.sh` and `tests/platform_direction_docs_test.sh`. Each is a necessary consequence of six tools becoming eight, the new `web` subcommand, the `password_hash` column, or the 5.0.0 amendment; the verifier read every diff and found no assertion deleted, skipped or loosened.
 - `docs/ROADMAP.md`'s waiting row "Gates live in the platform's action layer…" is updated in W0 (ADR 0009 follow-through), not here.
 - Known limit recorded for the maintainer: the MCP `launch` samplesheet is a path on the platform machine; before the platform is reachable by other people (009h public URL), the path must be confined to the caller's own area. Follow-up issue, not this PR.
+
+## Ruling after the second code review (2026-10-17, developer-agent)
+Fix in this PR (each with a red test first):
+1. `request_cancel` refuses a run whose launch confirmation was not made by the caller (runs with no recorded caller cannot be cancelled over MCP; the terminal path is unchanged).
+2. `find_cancel` is filtered by caller and only reuses a confirmed cancel whose job is still pending or running; after done/failed a new cancel asks again.
+3. Login throttle: record the attempt before the scrypt await (or hold a per-key lock), so parallel requests cannot all pass the check.
+4. `confirmations.state` default becomes `pending` (fail closed); the migration backfills old rows with an explicit UPDATE to confirmed/TERMINAL.
+5. The repeat-call dedupe reuses a pending row only with more than 60 s left; otherwise it creates a new row.
+6. Samplesheet: read the file once after the confinement check (open with O_NOFOLLOW or pass the bytes on), so a swapped symlink cannot be read.
+7. `hmac.compare_digest` compares bytes; a non-ASCII cookie or csrf value is a refusal, not a 500.
+8. `abf-platform web` binds loopback only; a non-loopback `--host` is refused whatever `--public-url` says (TLS is the proxy's job, e.g. Funnel). Prune also clears `bundle_json`/`screen_text` of confirmed page rows older than 7 days.
+Deferred to #116 (owner binding, before 009h public URL): read tools filtering by caller (list_runs, get_run, list_site_files) and samplesheet path cells confined to the caller's own area. Recorded as a known limit in the PR.
