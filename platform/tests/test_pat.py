@@ -17,7 +17,7 @@ import pytest
 
 from helpers import (Clock, Platform, PLATFORM_DIR, db_bytes, free_port, mcp_call, mcp_http_call, pkg_env, run_cli,
                      start_cli, stop_proc, tool_json, wait_port)
-from test_actions_layer import READ_NAMES, imported_names, platform_submodules, action_refs
+from test_actions_layer import READ_NAMES, WRITE_NAMES, imported_names, platform_submodules, action_refs
 from test_launch_platform import bundle, setup, sql
 from test_actions_layer import _cancel_bundle
 from test_station_platform import agent_token, bearer, state_db
@@ -278,7 +278,7 @@ def test_tca11_no_tool_route_or_action_creates_or_revokes_users_or_pats(tmp_path
     # TC-A11
     from abf_platform import actions, mcp_server
     tools = asyncio.run(mcp_server.build_server(str(tmp_path / "i.db")).list_tools())
-    assert sorted(t.name for t in tools) == sorted(READ_NAMES)
+    assert sorted(t.name for t in tools) == sorted(READ_NAMES + WRITE_NAMES)    # 009c: plus launch and cancel
     for t in tools:
         text = t.name + " " + " ".join(t.input_schema.get("properties", {}))
         assert not re.search(r"(^|[\s_])(user|pat|token)s?($|[\s_])", text)
@@ -367,7 +367,7 @@ def test_tcb08_b09_a_valid_pat_gives_the_six_tools_and_the_stdio_answers(tmp_pat
         tools, via_http = mcp_http_call("http://127.0.0.1:%d/mcp" % port, calls, token=pat)
     finally:
         stop_proc(proc)
-    assert sorted(t.name for t in tools) == sorted(READ_NAMES)
+    assert sorted(t.name for t in tools) == sorted(READ_NAMES + WRITE_NAMES)    # 009c: plus launch and cancel
     for a, b in zip(via_stdio, via_http):
         assert tool_json(a) == tool_json(b)
 
@@ -674,7 +674,8 @@ def test_tcf03_f04_the_users_table_has_no_role_and_both_labs_see_the_same(tmp_pa
     t = _tokens(tmp_path)
     p1 = st.create_token(t, kind="pat", user_id=st.create_user(t, "alice", "lab-a"))
     p2 = st.create_token(t, kind="pat", user_id=st.create_user(t, "bob", "lab-b"))
-    assert [r[1] for r in _rows(t, "PRAGMA table_info(users)")] == ["id", "name", "lab", "created_at", "disabled_at"]
+    assert [r[1] for r in _rows(t, "PRAGMA table_info(users)")] == ["id", "name", "lab", "created_at", "disabled_at",
+                                                                  "password_hash"]    # 009c: the one new column, the web password hash; still no role
     plat, _ = _three_runs(tmp_path / "x")
     t2 = plat.tokens
     q1 = st.create_token(t2, kind="pat", user_id=st.create_user(t2, "alice", "lab-a"))

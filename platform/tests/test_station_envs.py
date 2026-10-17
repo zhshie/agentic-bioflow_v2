@@ -492,17 +492,33 @@ def test_tc086_no_web_pages_no_confirmation_page_no_role_tables(tmp_path):
         assert plat.client.get(p).status_code in (404, 401, 405), p
         assert plat.client.get(p, headers={"Authorization": "Bearer " + tok}).status_code in (404, 405), p
     for db in (plat.index, plat.tokens, plat.dir / "platform.db"):
-        con = sqlite3.connect(str(db))
-        names = []
-        for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
-            # exempt only (index.db, runs, session_id): added in 06848d0, Nextflow run session, not a web session (maintainer approved 2026-10-17)
-            names += [c[1].lower() for c in con.execute("PRAGMA table_info(%s)" % t)
-                      if not (db.name == "index.db" and t == "runs" and c[1].lower() == "session_id")] + [t.lower()]
-        con.close()
-        # 009d: identity (user, lab) is feature 009 (ADR 0006); roles stay out until 010
-        allowed = {"users", "user_id", "caller_user_id", "label", "lab", "name", "disabled_at"}
-        for word in ("user", "role", "org", "team", "member", "login", "password", "email", "session", "cookie"):
-            assert not [n for n in names if word in n and n not in allowed], (db.name, word, names)
+        assert banned_schema_words(db) == [], db.name
+
+
+# 009c: the exception to the ban on session and password names, written as exact (database, table, column) triples like the one for
+# index.db: the web password's hash and the browser login's table, both in tokens.db (decided by the maintainer 2026-10-17, plan
+# "round 2"). A column of any other name or in any other place is still caught. The scan was the body of tc086; it is a function so a
+# test (test_human_channel.py) can show that an extra column is still caught.
+EXEMPT = {("index.db", "runs", "session_id"),     # added in 06848d0, Nextflow run session, not a web session (maintainer approved 2026-10-17)
+          ("tokens.db", "users", "password_hash"),
+          ("tokens.db", "web_sessions", "id_hash"), ("tokens.db", "web_sessions", "user_id"),
+          ("tokens.db", "web_sessions", "created_at"), ("tokens.db", "web_sessions", "expires_at")}
+EXEMPT_TABLES = {("tokens.db", "web_sessions")}
+
+
+def banned_schema_words(db):
+    """The (word, name) pairs of one database file's schema that the ban of tc086 catches."""
+    con = sqlite3.connect(str(db))
+    names = []
+    for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
+        names += [c[1].lower() for c in con.execute("PRAGMA table_info(%s)" % t) if (db.name, t, c[1].lower()) not in EXEMPT]
+        if (db.name, t) not in EXEMPT_TABLES:
+            names.append(t.lower())
+    con.close()
+    # 009d: identity (user, lab) is feature 009 (ADR 0006); roles stay out until 010
+    allowed = {"users", "user_id", "caller_user_id", "label", "lab", "name", "disabled_at"}
+    return [(word, n) for word in ("user", "role", "org", "team", "member", "login", "password", "email", "session", "cookie")
+            for n in names if word in n and n not in allowed]
 
 
 def test_tc039_environments_agents_and_tokens_survive_a_restart_and_a_rebuild(tmp_path):

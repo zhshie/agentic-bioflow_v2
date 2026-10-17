@@ -25,6 +25,7 @@ PKG = PLATFORM_DIR / "abf_platform"
 SCAN_DIRS = [PLATFORM_DIR / "abf_platform", PLATFORM_DIR / "abf_station", PLATFORM_DIR / "abf_launch"]
 REFUSED = "no human confirmation channel"
 READ_NAMES = ["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files"]
+WRITE_NAMES = ["launch", "cancel"]    # 009c: the two tools that make a request a person must say yes to
 ROUTES_V3 = [('/agent/hello', ('POST',)), ('/agent/poll', ('POST',)), ('/agent/result/{jid}', ('POST',)),
              ('/trace/create', ('POST',)), ('/trace/{rid}/begin', ('PUT',)), ('/trace/{rid}/complete', ('PUT',)),
              ('/trace/{rid}/heartbeat', ('PUT',)), ('/trace/{rid}/progress', ('PUT',)), ('/user-info', ('GET', 'HEAD'))]
@@ -144,10 +145,11 @@ def _tools(server):
     return asyncio.run(server.list_tools())
 
 
-def test_tca02_every_tool_has_a_same_named_action_and_there_are_exactly_the_six_read_ones(tmp_path):
+def test_tca02_every_tool_has_a_same_named_action_and_there_are_exactly_the_six_read_ones_and_the_two_write_ones(tmp_path):
+    # 009c (TC-A08): was "exactly the six read ones"; now the same six plus launch and cancel, each still with an action of its name
     a = actions()
     names = {t.name for t in _tools(_server(str(tmp_path / "index.db")))}
-    assert names == set(READ_NAMES)
+    assert names == set(READ_NAMES + WRITE_NAMES)
     for n in names:
         assert callable(getattr(a, n, None)), n
 
@@ -214,7 +216,7 @@ def test_tca10_the_server_is_byte_for_byte_the_one_of_the_starting_point(tmp_pat
     assert server.instructions == guidance.routing_instructions()
     for word in ("setup", "launch", "runs", "downstream", "finish", "read-only", "terminal"):
         assert word in server.instructions
-    tools = sorted(_tools(server), key=lambda t: t.name)
+    tools = sorted([t for t in _tools(server) if t.name in READ_NAMES], key=lambda t: t.name)    # 009c: the six read tools, unchanged; launch and cancel are new
     got = [{"name": t.name, "description": t.description,
             "annotations": t.annotations.model_dump(exclude_none=True) if t.annotations else None,
             "schema": t.input_schema} for t in tools]
@@ -611,9 +613,13 @@ def test_tcd05_changelog_has_a_line_for_it():
 
 # ---- not in scope ------------------------------------------------------------------------------------------------------------
 
-def test_tce01_no_write_tool_on_the_server(tmp_path):
-    names = {t.name for t in _tools(_server(str(tmp_path / "index.db")))}
-    assert names == set(READ_NAMES) and not any(re.search(r"launch|cancel|confirm", n) for n in names)
+def test_tce01_the_only_write_tools_are_launch_and_cancel_and_none_can_confirm(tmp_path):
+    # 009c (TC-A08): was "no write tool"; the two tools only make a request a person must say yes to (see test_human_channel.py)
+    tools = _tools(_server(str(tmp_path / "index.db")))
+    names = {t.name for t in tools}
+    assert names == set(READ_NAMES + WRITE_NAMES) and not any(re.search(r"confirm|approve|passwd|login", n) for n in names)
+    for t in tools:
+        assert t.annotations.read_only_hint is (t.name in READ_NAMES)
 
 
 def test_tce02_the_receiver_has_the_routes_of_the_starting_point(tmp_path):
@@ -623,9 +629,19 @@ def test_tce02_the_receiver_has_the_routes_of_the_starting_point(tmp_path):
     assert got == ROUTES_V3
 
 
-def test_tce03_no_elicitation_in_the_platform():
-    bad = [rel for p, rel in source_files() if "elicit" in p.read_text(encoding="utf-8").lower()]
-    assert bad == []
+def test_tce03_elicitation_lives_in_one_module():
+    # 009c (TC-C12): was "no elicitation anywhere". Now the word is in abf_platform/elicit.py, and nowhere else but the single
+    # import line of it in the action layer (some module has to import it; no other file may even name it)
+    bad = []
+    for p, rel in source_files():
+        if rel == "abf_platform/elicit.py":
+            continue
+        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            if "elicit" in line.lower() and not (rel == "abf_platform/actions/__init__.py" and re.fullmatch(r"from \.\. import .*", line.strip())):
+                bad.append("%s:%d" % (rel, n))
+    assert bad == [] and (PKG / "elicit.py").is_file()
+    imports = [ln for ln in (PKG / "actions" / "__init__.py").read_text(encoding="utf-8").splitlines() if "elicit" in ln.lower()]
+    assert len(imports) == 1
 
 
 def test_tce04_the_write_actions_take_no_identity():

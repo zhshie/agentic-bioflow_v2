@@ -50,20 +50,26 @@ def test_tc022_unknown_run_id_is_a_clear_answer_not_an_error(tmp_path):
     assert len(tool_json(outs[1])["runs"]) == 3
 
 
-def test_tc024_exactly_six_read_only_tools(tmp_path):
+def test_tc024_six_read_only_tools_and_the_two_that_ask_a_person(tmp_path):
     # TC-024 (and the tool half of TC-060). Feature 007 adds four read-only tools to the two of 008
     # (specs/007-station-agent/plan.md, Revision 2 item 8): the count becomes six, and each tool is
     # still read-only; no input field may be named like a command.
+    # 009c (TC-A08): was "exactly six read-only tools". Now the same six plus `launch` and `cancel`, which only make a request that a
+    # person must say yes to; each of the six is as read-only as before, the two are marked as writing, and no field can say yes.
     plat, _ = _three_runs(tmp_path)
     tools, _ = mcp_call(pkg_env(ABF_PLATFORM_DB=plat.index), [])
-    assert sorted(t.name for t in tools) == ["get_compute_env", "get_run", "list_agents", "list_compute_envs",
+    assert sorted(t.name for t in tools) == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
                                              "list_runs", "list_site_files"]
     for t in tools:
         assert t.annotations is not None
+        assert not re.search(r"delete|clean|write|confirm|approve", t.name)
+        assert not (set(t.input_schema.get("properties", {})) & {"command", "cmd", "script", "kind", "shell", "args"})
+        if t.name in ("launch", "cancel"):
+            assert t.annotations.read_only_hint is False
+            continue
         assert t.annotations.read_only_hint is True
         assert t.annotations.destructive_hint is not True
-        assert not re.search(r"launch|cancel|delete|clean|write", t.name)
-        assert not (set(t.input_schema.get("properties", {})) & {"command", "cmd", "script", "kind", "shell", "args"})
+        assert not re.search(r"launch|cancel", t.name)
 
 
 def test_tc025_streamable_http_gives_the_same_answers_on_loopback(tmp_path):
@@ -81,8 +87,8 @@ def test_tc025_streamable_http_gives_the_same_answers_on_loopback(tmp_path):
     try:
         wait_port(port, proc=proc)
         tools, via_http = mcp_http_call("http://127.0.0.1:%d/mcp" % port, calls, token=pat)
-        assert sorted(t.name for t in tools) == ["get_compute_env", "get_run", "list_agents", "list_compute_envs",
-                                                 "list_runs", "list_site_files"]
+        assert sorted(t.name for t in tools) == ["cancel", "get_compute_env", "get_run", "launch", "list_agents",
+                                                 "list_compute_envs", "list_runs", "list_site_files"]    # 009c: plus launch and cancel
         assert_loopback_only(port)
     finally:
         stop_proc(proc)
