@@ -125,3 +125,22 @@
 - ADR 0010: no script, no external resource, and a stricter CSP.
 - Safety Net: no hook or deny is changed.
 - Governance: tier B, no amendment.
+
+## Contract-review rulings (2026-10-18, developer-agent)
+1. **Parity tables (replaces decision 9's table list).** Every public name in `actions` is in exactly one table.
+   - `WEB_ROUTES`: read actions a web route calls. Rule: each one has a same-named MCP tool. Contents: `list_runs`, `get_run`.
+   - `WEB_ONLY`: the PAGE confirmation channel, which is web-only by design because the MCP side uses the form channel. Contents: `describe_request`, `approve`, `platform_path_for`. A one-line reason is kept next to each entry. The same-name rule does not apply here.
+   - `OWED`: actions with an MCP tool but no web route yet. Exactly six names: `list_compute_envs`, `get_compute_env`, `list_agents`, `list_site_files`, `launch`, `cancel`. The test pins the set, so adding a name means changing the test and this plan.
+   - `INTERNAL`: helpers, classes and constants that no route or tool exposes by name. Contents: `request_launch`, `request_cancel`, `find_approved`, `void_request`, `person_at`, `caller_area`, `confined_samplesheet`, `read_confined_samplesheet`, `Caller`, `NotApproved`, `PAGE`, `ELICITED`, `TERMINAL`, `DEFAULT_WEB_BASE`, and any other non-callable constant.
+   - Assertions:
+     - (a) The union of the four tables equals the public names of `actions`.
+     - (b) Every `WEB_ROUTES` name has a same-named MCP tool.
+     - (c) No `OWED` name is called by a web route.
+     - (d) The AST scan of `web.py` and `web_board.py` uses only names from `WEB_ROUTES`, `WEB_ONLY` and `INTERNAL`.
+   - The two red demos for TC-H16: a new public function in no table, and an `OWED` name called by a web route.
+2. **Arrows.** They are links to the previous and next stage. `launch` has no previous stage and `finished` has no next one.
+3. **Placeholder stages.** Each shows "—" and the feature id that will provide it: launch → 012b, downstream → 016, finished → 013b.
+4. **Caps.** Every list (the left list and each right-hand group) is capped at 100 rows, with "還有 N 筆" below. A group header shows the full total.
+5. **The 404 page.** It never echoes the requested id. Another user's run and a missing id get byte-identical pages.
+6. **Symbols.** running ▶, succeeded ✓, failed ✗, lost ⏸. The tests check the text and the class. The screenshot shows the symbols.
+7. **Manual steps.** Add `docs/TESTING.md` steps for the visual check and the ledger review.
