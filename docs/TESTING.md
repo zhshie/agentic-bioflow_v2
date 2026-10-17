@@ -301,6 +301,21 @@ Needs the platform running (`abf-platform serve`, `abf-platform mcp --http`, `ab
 5. **Claude Code kit.** With `extensions/claude-code-kit/settings.json` merged into your Claude Code settings, calling `launch` or `cancel` asks you first. Remove the rule: the platform still queues nothing without your yes (the rule is a second layer, not the gate).
 6. **Browser.** The cookie is `HttpOnly` and `SameSite=Strict` (developer tools, Application, Cookies); behind an https address it is also `Secure`. Five wrong passwords for one name lock that name for a minute.
 
+## The web shell (011a): the visual check and the ledger review
+
+Needs `abf-platform web` on loopback, a data folder with e2e runs of the four statuses (running, succeeded, failed, lost; `platform/tests/e2e_harness.py` or a copy of a real index), two users with web passwords (`abf-platform user passwd <name>`), and a run each launched by those users.
+
+**Visual check (TC-V01 to TC-V05).**
+
+1. Log in as the first user and open `/`. Take a screenshot (TC-V01). Pass: three columns; left "我的 run" newest first; right "本月費用" with "NCHC SU —" and "雲端 —" on two lines, then five groups.
+2. Click a succeeded run and take a screenshot (TC-V02). Pass: the stage strip stands on results; status, times and a progress bar show.
+3. Click a failed run and take a screenshot (TC-V03). Pass: the failed state and the failure reason in Nextflow's words.
+4. Turn the screenshot of step 1 black and white (TC-V04). Pass: the four states still differ by symbol and text (▶ ✓ ✗ ⏸).
+5. Make the window narrower than 900 px and take a screenshot (TC-V05). Pass: the panes stack and nothing is cut off.
+6. Log in as the second user. Pass: none of the first user's runs appear, and opening `/?run=<their run id>` gives the same 404 page as a made-up id.
+
+**Ledger review (TC-D01 to TC-D09, TC-N07, TC-K5).** Read `specs/011a-web-shell/ledger.md` and `git diff v3...HEAD`. Pass: every rewritten pin has an old value, a new value and a reason (TC-G04 six routes; the "已登入 … 請回到 AI" page replaced by the redirect to `/`; CSP and `PLATFORM.md` wording); no other test was deleted, skipped or loosened; `docs/PLATFORM.md` names six routes; the CHANGELOG has a 011a line; `web.py`'s header describes `GET /`; nothing under `hooks/`, `.claude/`, `actions/`, `jobs.py`, `mcp_server.py` or `store.py` changed.
+
 ## Owner binding (116): the reviewer checks the rewritten pins
 
 This one is read, not run. Open `specs/116-owner-binding/ledger.md` next to the diff of `platform/tests/`. Pass: every existing test that was changed is listed there with the old expectation, the new one and the reason; no assertion was deleted, skipped or loosened (a changed expectation must say what the new rule makes true instead); and `git diff <base> -- platform/tests` shows no test removed. Then, with two real users, check once by hand that one cannot see the other's environment, agent, run or upload folder over MCP and over the page.

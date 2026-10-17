@@ -1,9 +1,12 @@
-# Not Starlette's SessionMiddleware or an OAuth login: they keep the whole session in the cookie, or hand login to another service; this is five routes, a password hash that only a terminal can set, and a cookie whose id is kept as a hash.
+# Not Starlette's SessionMiddleware or an OAuth login: they keep the whole session in the cookie, or hand login to another service; this is six routes, a password hash that only a terminal can set, and a cookie whose id is kept as a hash.
 """The confirmation page (spec 009c): where a person presses 送出, as the same user that the AI asked for.
 
 A separate small app (`abf-platform web`), not part of the MCP server's bearer check and not part of the receiver: a browser has no
-bearer token and must never be given one. The only routes there are:
+bearer token and must never be given one. Spec 011a added the first page that shows anything but a login or one request: GET /, the
+three-pane board (my runs, the stage board of one run, all my runs by stage), read-only and for the logged-in user's own runs only.
+The only routes there are:
 
+  GET  /             the board (spec 011a): ?run=<id> picks the run of the middle pane, ?stage=<name> its stage; needs the cookie
   GET  /login        the login form (name + web password)
   POST /login        log in; the password is checked against its scrypt hash; a cookie of 12 hours
   POST /logout       end this browser login
@@ -12,13 +15,15 @@ bearer token and must never be given one. The only routes there are:
 
 `Authorization: Bearer` is never looked at here: an AI that holds a personal access token cannot log in, cannot read a summary and
 cannot press the button. The cookie is `<random id>.<signature>`; only the sha256 of the id is stored (tokens.db, web_sessions).
-Everything the page shows is escaped, and a content-security-policy forbids scripts anyway.
+Everything the page shows is escaped, and a content-security-policy forbids scripts anyway; its style-src is the sha256 of the one
+stylesheet (web_board.STYLE). Rendering is in web_board.py; this file keeps the routes and the login.
 """
 import hashlib
 import hmac
 import html
 import os
 import re
+import sqlite3
 import tempfile
 import time
 import urllib.parse
@@ -29,7 +34,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from . import actions, store
+from . import actions, store, web_board
 
 COOKIE = "abf_web"
 KEY_FILE = "web_signing.key"
@@ -43,7 +48,9 @@ MAX_BODY = 16384
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 _HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
             "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"}
+            "Content-Security-Policy": "default-src 'none'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+            % web_board.style_source()}
+HOME = "/"                  # where a login with no (or a refused) `next` goes: a constant, so there is no open redirect
 
 
 KEY_MIN_BYTES = 32
@@ -96,11 +103,7 @@ def _esc(text):
 
 
 def _page(title, body, status=200):
-    doc = ("<!doctype html><html lang=\"zh-Hant\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
-           "<title>%s</title><style>body{font-family:sans-serif;max-width:60em;margin:1.5em auto;padding:0 1em}"
-           "pre{background:#f4f4f4;padding:1em;overflow-x:auto;white-space:pre-wrap}button{font-size:1.1em;padding:.4em 1.2em}"
-           ".bad{color:#a00}.ok{color:#070}</style></head><body><h1>%s</h1>%s</body></html>" % (_esc(title), _esc(title), body))
-    return HTMLResponse(doc, status_code=status, headers=_HEADERS)
+    return HTMLResponse(web_board.document(title, "<h1>%s</h1>%s" % (_esc(title), body)), status_code=status, headers=_HEADERS)
 
 
 def _login_form(next_path="", message="", status=200):
@@ -228,12 +231,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if not table.get(k, True):
                 table.pop(k, None)
         sid, _ = store.create_web_session(tokens_path, who["user_id"], now)
-        if nxt:
-            response = RedirectResponse(nxt, status_code=303, headers=_HEADERS)
-        else:
-            response = _page("已登入 (logged in)", "<p class=\"ok\">已登入為 %s。請回到 AI 給你的網址按「送出」。</p>"
-                             "<form method=\"post\" action=\"/logout\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
-                             "<button type=\"submit\">登出</button></form>" % (_esc(who["name"]), _esc(csrf(sid, "logout"))))
+        response = RedirectResponse(nxt or HOME, status_code=303, headers=_HEADERS)
         response.set_cookie(COOKIE, cookie_value(sid), max_age=int(store.WEB_SESSION_SECONDS), httponly=True, samesite="Strict",
                             secure=secure, path="/")
         return response
@@ -307,7 +305,35 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return _page("未送出", "<p class=\"bad\">未送出：%s。請回到 AI 重新送出。</p>" % _esc(e), code)
         return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。你可以回到 AI，用同樣的參數再呼叫一次，它會告訴你工作編號。</p>" % _esc(job_id))
 
-    app = Starlette(routes=[Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
+    def read_runs(caller):
+        try:
+            return actions.list_runs(index_path, caller=caller, platform_path=platform_path)["runs"]
+        except sqlite3.Error:          # an empty or damaged index answers like an empty one; a page is never a 500
+            return []
+
+    def read_run(run_id, caller):
+        try:
+            view = actions.get_run(index_path, run_id, caller=caller, platform_path=platform_path)
+        except sqlite3.Error:
+            return None
+        return None if view.get("found") is False else view
+
+    async def board(request):
+        sid, user = user_of(request)
+        if user is None:
+            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        run_id = request.query_params.get("run") or ""
+        selected = None
+        if run_id:
+            selected = await run_in_threadpool(read_run, run_id, caller)
+            if selected is None:        # another person's run and a missing id answer alike, and the page never repeats the id
+                return _page("找不到 (not found)", "<p>沒有這個 run。</p>", 404)
+        runs = await run_in_threadpool(read_runs, caller)
+        doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, request.query_params.get("stage"))
+        return HTMLResponse(doc, headers=_HEADERS)
+
+    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/c/{rid}", confirm_get, methods=["GET"]), Route("/c/{rid}", confirm_post, methods=["POST"])])
     app.state.csrf_token = csrf_token

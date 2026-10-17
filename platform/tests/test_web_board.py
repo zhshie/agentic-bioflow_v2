@@ -261,7 +261,7 @@ def test_tch09_cost(w):
     assert right.index("NCHC SU —") < right.index('data-stage="launch"')
     assert right.index("雲端 —") < right.index('data-stage="launch"')
     box = re.search(r'data-cost="month"[^>]*>(.*?)</div>', t, re.S).group(1)
-    assert not re.search(r"\d", box) and "<a " not in box
+    assert not re.search(r"\d", re.sub(r"<[^>]+>", "", box)) and "<a " not in box
     assert box.count("<p") == 2 or box.count("<li") == 2       # two separate lines
 
 
