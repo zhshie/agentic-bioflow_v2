@@ -23,7 +23,7 @@
 #   references.bib    scripts/cite.sh over every DOI those two turned up.
 #                     Resolved over the network, never recalled; anything
 #                     unresolved stays in the file as CITATION NEEDED.
-#   manuscript.qmd    methods.md, then one section per accepted entry in
+#   manuscript.qmd    methods.md, then one section per entry read from
 #                     analysis.md, each with its figure and the question that
 #                     entry says it answers.
 #   figures/          what the analysis produced, plus anything the pipelines
@@ -68,7 +68,7 @@ OUT="$PROJECT/submission"
     "no analysis plan at $PLAN." \
     "" \
     "The package is built from the plan: it is what says which figures were" \
-    "accepted and what question each one answers, and those questions become" \
+    "planned and what question each one answers, and those questions become" \
     "the captions. Run /downstream first - its step 3 agrees the plan and" \
     "writes it there." >&2; exit 2; }
 
@@ -161,8 +161,8 @@ cp -p "$PLAN" "$OUT/scripts/analysis.md" 2>/dev/null
 echo "copied    $n_fig figure(s), $n_src script(s)"
 
 # --- the manuscript ----------------------------------------------------------
-# One section per figure the plan accepted, captioned with the question that
-# entry says it answers. The plan is the only record of why a figure exists,
+# One section per entry read from the plan (whatever its status), captioned with the
+# question that entry says it answers. The plan is the only record of why a figure exists,
 # so this is where that survives into the write-up.
 #
 # Run separately from the `{ ... } > "$QMD"` group below, not inside it: issue
@@ -173,10 +173,11 @@ echo "copied    $n_fig figure(s), $n_src script(s)"
 # section came out looking complete and was empty. Parsing entries as its own
 # step, before anything is written to $QMD, is what lets a zero-entry read
 # stop the build instead of producing a document that looks finished.
-RESULTS_SECTION=$("$PY" - "$PLAN" "$OUT/figures" <<'PY'
+NOTES=$(mktemp)
+RESULTS_SECTION=$("$PY" - "$PLAN" "$OUT/figures" "$NOTES" <<'PY'
 import os, re, sys
 
-plan, figdir = sys.argv[1], sys.argv[2]
+plan, figdir, notes = sys.argv[1], sys.argv[2], sys.argv[3]
 text = open(plan, encoding="utf-8", errors="replace").read()
 figs = sorted(os.listdir(figdir)) if os.path.isdir(figdir) else []
 
@@ -234,7 +235,11 @@ def parse_kv_blocks(text):
         if not ident:
             continue
         q = re.search(r"(?:^|\n)\s*(?:question|問題)\s*[:=]\s*(.+)", block)
-        entries.append({"id": ident.group(1), "question": q.group(1).strip() if q else ""})
+        st = re.search(r"(?:^|\n)\s*status\s*[:=]\s*(.+)", block, re.I)
+        e = {"id": ident.group(1), "question": q.group(1).strip() if q else ""}
+        if st:
+            e["status"] = st.group(1).strip().strip("`")
+        entries.append(e)
     return entries
 
 
@@ -288,6 +293,8 @@ def fig_matches(fid, figs):
 
 all_ids = [row["id"] for row in entries if row["id"]]
 emitted = set()
+n_results = 0
+not_accepted = []
 for row in entries:
     fid = row["id"]
     qtext = row.get("question") or fid
@@ -333,11 +340,24 @@ for row in entries:
     print("[GAP: Results for '%s' not written yet - say what it shows, from the "
           "data; every number must trace to a file or to a script in scripts/]\n"
           % fid)
+    n_results += 1
+    st = (row.get("status") or "").strip()
+    if st.lower() != "accepted":
+        not_accepted.append((fid, st or "(none)"))
 for f in figs:
     if f not in emitted:
         print("[GAP: figures/%s is in the package but no plan entry claims it]" % f)
+# Side channel for the shell: the manuscript text goes to stdout, so how many
+# Results placeholders were written and which entries are not accepted go here.
+with open(notes, "w", encoding="utf-8") as nf:
+    nf.write("N=%d\n" % n_results)
+    for fid, st in not_accepted:
+        nf.write("not accepted %s: status %s - still in Results; accept it in "
+                 "analysis.md or remove it before submitting\n" % (fid, st))
 PY
-) || exit 1
+) || { rm -f "$NOTES"; exit 1; }
+N_RESULTS=$(sed -n 's/^N=//p' "$NOTES")
+N_RESULTS=${N_RESULTS:-0}
 
 QMD="$OUT/manuscript.qmd"
 {
@@ -361,13 +381,18 @@ QMD="$OUT/manuscript.qmd"
     echo "*[GAP: not drafted - the discussion is the authors' scientific"
     echo "judgement, and this program has no basis for any of it.]*"
 } > "$QMD"
-echo "wrote     submission/manuscript.qmd"
+echo "wrote     submission/manuscript.qmd (scaffold: $N_RESULTS Results section(s) and the Discussion still need prose)"
+grep '^not accepted ' "$NOTES"
+rm -f "$NOTES"
 
 # --- README: the reproducible reference --------------------------------------
 {
     echo "# $(basename "$PROJECT")"
     echo
     echo "Built by scripts/build_package.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ)."
+    echo
+    echo "Status: scaffold, not a finished manuscript - $N_RESULTS Results section(s)"
+    echo "and the Discussion still need prose written by the authors."
     echo
     echo "## How to reproduce the runs"
     echo

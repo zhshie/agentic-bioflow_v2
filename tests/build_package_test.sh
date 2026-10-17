@@ -230,5 +230,183 @@ if grep -qF "wrote     submission/manuscript.qmd" <<<"$out"; then
   echo "FAIL: printed 'wrote' after failing to parse the plan"; fails=$((fails+1))
 else echo ok; fi
 
+
+# ---------------------------------------------------------------------------
+# Issue #12 part 2: the success line says "scaffold", and entries that are not
+# accepted are listed (they still go into Results; nothing is refused).
+mkp() {  # mkp <name>: a project whose analysis.md is read from stdin
+  local d="$TMP/$1"
+  mkdir -p "$d/runs/demo_20260101/results/pipeline_info" "$d/analysis/figures"
+  cp "$P/runs/demo_20260101/results/pipeline_info/software_versions.yml" \
+     "$d/runs/demo_20260101/results/pipeline_info/"
+  echo '{}' > "$d/runs/demo_20260101/results/pipeline_info/params_2026-01-01_00-00-00.json"
+  cat > "$d/analysis/analysis.md"
+}
+runp() { out=$(CITE_CURL=false bash "$S" "$TMP/$1" 2>&1); rc=$?; }
+NA=' - still in Results; accept it in analysis.md or remove it before submitting'
+chk() { grep -qF -- "$2" <<<"$out" && ok "$1" || no "$1" "missing <<$2>> in <<$out>>"; }
+nochk() { grep -qF -- "$2" <<<"$out" && no "$1" "unexpected <<$2>>" || ok "$1"; }
+HDR='| id | question | source | method | why | status |
+|---|---|---|---|---|---|'
+
+# TC-001, TC-005, TC-006, TC-018
+mkp s1 <<MD
+$HDR
+| richness | Q1? | s | m | w | accepted |
+| evenness | Q2? | s | m | w | accepted |
+MD
+runp s1
+chk "TC-001 scaffold line with N=2" "wrote     submission/manuscript.qmd (scaffold: 2 Results section(s) and the Discussion still need prose)"
+nochk "TC-018 all accepted: no not-accepted line" "not accepted"
+R="$TMP/s1/submission/README.md"
+l=$(grep -n 'scaffold' "$R" | head -1 | cut -d: -f1); h=$(grep -n '^## How to reproduce the runs' "$R" | cut -d: -f1)
+{ [ -n "$l" ] && [ -n "$h" ] && [ "$l" -lt "$h" ] && sed -n "${l}p" "$R" | grep -qF '2 Results section(s)'; } \
+  && ok "TC-005 README says scaffold before the reproduce heading" || no "TC-005 README says scaffold" "l=$l h=$h"
+miss=""
+for f in provenance.json methods.md manuscript.qmd README.md ro-crate-metadata.json figures scripts; do
+  [ -e "$TMP/s1/submission/$f" ] || miss="$miss $f"; done
+[ -z "$miss" ] && ok "TC-006 same files are written" || no "TC-006 same files are written" "missing:$miss"
+
+# TC-002, 010-016, 030
+mkp s2 <<MD
+$HDR
+| acc | Qa? | s | m | w | accepted |
+| prop | Qp? | s | m | w | proposed |
+| rej | Qr? | s | m | w | rejected |
+| none | Qn? | s | m | w |  |
+MD
+runp s2
+chk "TC-002 N=4" "scaffold: 4 Results section(s) and the Discussion still need prose"
+[ "$(grep -c "^\[GAP: Results for '" "$TMP/s2/submission/manuscript.qmd")" = 4 ] \
+  && ok "TC-002/016 four Results placeholders, none dropped" || no "TC-016" "count differs"
+chk "TC-010 proposed" "not accepted prop: status proposed$NA"
+chk "TC-011 rejected" "not accepted rej: status rejected$NA"
+chk "TC-012 empty shows (none)" "not accepted none: status (none)$NA"
+nochk "TC-014 accepted entry not listed" "not accepted acc"
+[ "$(grep -c '^not accepted' <<<"$out")" = 3 ] && ok "TC-014 exactly three lines" || no "TC-014" "count"
+w=$(grep -n 'wrote     submission/manuscript.qmd' <<<"$out" | head -1 | cut -d: -f1)
+f=$(grep -n '^not accepted' <<<"$out" | head -1 | cut -d: -f1)
+[ -n "$w" ] && [ -n "$f" ] && [ "$w" -lt "$f" ] && ok "TC-015 listed after the manuscript line" || no "TC-015" "w=$w f=$f"
+for i in acc prop rej none; do
+  grep -qF "[GAP: Results for '$i' not written yet" "$TMP/s2/submission/manuscript.qmd" \
+    && ok "TC-016 $i still in Results" || no "TC-016 $i still in Results" "gone"; done
+[ "$rc" = 0 ] && [ -s "$TMP/s2/submission/manuscript.qmd" ] && [ -s "$TMP/s2/submission/README.md" ] \
+  && ok "TC-030 unaccepted entries do not stop the build" || no "TC-030" "rc=$rc"
+
+# TC-013
+mkp s3 <<MD
+$HDR
+| rev | Qv? | s | m | w | revised |
+MD
+runp s3; chk "TC-013 revised" "not accepted rev: status revised$NA"
+
+# TC-017
+mkp s4 <<MD
+$HDR
+| a1 | Q? | s | m | w | Accepted |
+| a2 | Q? | s | m | w |  accepted  |
+MD
+runp s4; nochk "TC-017 Accepted / ' accepted ' count as accepted" "not accepted"
+
+# TC-019
+mkp s5 <<MD
+$HDR
+| cap | Q? | s | m | w |  Proposed  |
+MD
+runp s5; chk "TC-019 status printed as written, trimmed" "not accepted cap: status Proposed - still in Results;"
+
+# TC-003, TC-020
+mkp s6 <<MD
+$HDR
+| one | Q1? | s | m | w | accepted |
+|  | idless question | s | m | w | proposed |
+| two | Q2? | s | m | w | accepted |
+MD
+runp s6
+chk "TC-003 id-less row not counted" "scaffold: 2 Results section(s)"
+grep -qF "[GAP: a plan row has no id" "$TMP/s6/submission/manuscript.qmd" \
+  && ok "TC-003 id-less GAP still there" || no "TC-003" "GAP gone"
+nochk "TC-020 id-less row gets no not-accepted line" "not accepted"
+
+# TC-004
+mkp s7 <<MD
+$HDR
+|  | only a question | s | m | w | accepted |
+MD
+runp s7
+chk "TC-004 N=0 still says scaffold" "wrote     submission/manuscript.qmd (scaffold: 0 Results section(s) and the Discussion still need prose)"
+
+# TC-021, TC-022, TC-034 (older block format)
+mkp o1 <<'MD'
+- **x**
+  id: x
+  question: Qx?
+  status: accepted
+- **y**
+  id: y
+  question: Qy?
+  status: Accepted
+MD
+runp o1
+nochk "TC-021 older format, accepted: no not-accepted line" "not accepted"
+chk "TC-021 older format N=2" "scaffold: 2 Results section(s)"
+mkp o2 <<'MD'
+- **old1**
+  id: old1
+  question: Qo?
+  status: proposed
+MD
+runp o2; chk "TC-022 older format proposed listed" "not accepted old1: status proposed$NA"
+mkp o3 <<'MD'
+- **nostat**
+  id: nostat
+  question: No status here?
+MD
+runp o3
+[ "$rc" = 0 ] && grep -qF "No status here?" "$TMP/o3/submission/manuscript.qmd" \
+  && ok "TC-034 older format without status still parses" || no "TC-034 no status" "rc=$rc"
+mkp t1 <<'MD'
+| extra | 問題 | status | id |
+|---|---|---|---|
+| zz | Shuffled question? | accepted | shuf |
+MD
+runp t1
+[ "$rc" = 0 ] && grep -qF "Shuffled question?" "$TMP/t1/submission/manuscript.qmd" \
+  && ok "TC-034 shuffled/aliased table parses" || no "TC-034 table" "rc=$rc"
+
+# TC-040
+mkp s8 <<MD
+$HDR
+| p1 | Q? | s | m | w | proposed |
+| p2 | Q? | s | m | w | rejected |
+MD
+runp s8
+[ "$rc" = 0 ] && [ "$(grep -c '^not accepted' <<<"$out")" = 2 ] \
+  && ok "TC-040 nothing accepted still builds, both listed" || no "TC-040" "rc=$rc <<$out>>"
+
+# TC-031 (extra): unparseable plan prints no scaffold / not accepted
+mkp u1 <<'MD'
+We looked at richness and it seemed fine.
+MD
+runp u1
+[ "$rc" != 0 ] && ! grep -qE 'scaffold|not accepted' <<<"$out" \
+  && ok "TC-031 unparseable plan: no scaffold or not-accepted output" || no "TC-031" "rc=$rc <<$out>>"
+
+# TC-032 is covered by the existing --render test above.
+
+# TC-033
+if grep -qE 'one section per accepted entry|One section per figure the plan accepted' "$S"; then
+  no "TC-033 old 'accepted only' claims are gone" "still in build_package.sh"
+else ok "TC-033 old 'accepted only' claims are gone"; fi
+
+# TC-041
+HK="$(dirname "$S")/../hooks"
+{ [ ! -e "$HK/confirm_finish.sh" ] && ! grep -qiE 'build_package|finish' "$HK/hooks.json"; } \
+  && ok "TC-041 no finish hook added" || no "TC-041" "hook present"
+
+# TC-042
+bad=$(grep -rlF 'wrote     submission/manuscript.qmd' "$(dirname "$S")/../commands" "$(dirname "$S")/../docs" "$(dirname "$S")/intro" 2>/dev/null \
+  | xargs -r grep -LF '(scaffold:')
+[ -z "$bad" ] && ok "TC-042 docs quoting the old line carry the new one" || no "TC-042" "$bad"
 echo
 [ "$fails" = 0 ] && echo "OK: build_package.sh" || { echo "$fails failed"; exit 1; }
