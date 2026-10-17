@@ -113,3 +113,137 @@ def test_f9_expired_and_void_rows_lose_their_content_after_seven_days(w):
         assert r["sha256"] and r["kind"] == "launch" and r["caller_user_id"] == ann.user_id and r["created_at"] and r["state"]
     assert rows[ok["id"]]["bundle_json"] is not None
     assert rows[fresh]["bundle_json"] is not None
+
+
+# ---- finding 3: the login throttle and the password limit ----------------------------------------------------------------------------------
+
+def bad(w, c, name, n=1):
+    return [w.login(c, name, "wrong-password-xx").status_code for _ in range(n)]
+
+
+def test_f3_failures_are_counted_per_client_address_too(w):
+    from abf_platform import web
+    w.user("ann")
+    c = w.web()
+    codes = [w.login(c, "nobody-%d" % i, "wrong-password-xx").status_code for i in range(web.IP_FAIL_LIMIT)]
+    assert set(codes) == {401}
+    assert w.login(c, "ann").status_code == 429          # a name never tried, the right password, the same address: still blocked
+
+
+def test_f3_a_live_counter_is_never_dropped_to_make_room(w, monkeypatch):
+    from abf_platform import web
+    monkeypatch.setattr(web, "MAX_TRACKED", 3)
+    for n in ("n1", "n2", "n3", "fresh"):
+        w.user(n)
+    c = w.web()
+    for n in ("n1", "n2", "n3"):
+        assert bad(w, c, n) == [401]
+    assert w.login(c, "fresh").status_code == 429        # no room for a new key: refused, nothing evicted
+    assert bad(w, c, "n1", 4) == [401, 401, 401, 401]    # n1 still has its first failure: the fifth blocks it
+    assert w.login(c, "n1").status_code == 429
+    w.clock.t += web.FAIL_WINDOW + 1                     # the windows end; expired keys make room
+    assert w.login(c, "fresh").status_code in (200, 303)
+
+
+def test_f3_the_password_is_hashed_off_the_event_loop(w, monkeypatch):
+    from abf_platform import store
+    w.user("ann")
+    seen = []
+    real = store.check_web_password
+
+    def spy(*a, **k):
+        try:
+            asyncio.get_running_loop()
+            seen.append("loop")
+        except RuntimeError:
+            seen.append("thread")
+        return real(*a, **k)
+
+    monkeypatch.setattr(store, "check_web_password", spy)
+    assert w.login(w.web(), "ann").status_code in (200, 303)
+    assert seen == ["thread"]
+
+
+def test_f3_the_password_limit_is_the_same_in_passwd_and_login(w):
+    from abf_platform import store
+    assert store.MAX_PASSWORD_CHARS == 1000
+    w.user("ann", password=None)
+    with pytest.raises(ValueError, match="1000"):
+        store.set_web_password(w.ip.tokens, "ann", "p" * 1001)
+    store.set_web_password(w.ip.tokens, "ann", "p" * 1000)
+    c = w.web()
+    r = w.login(c, "ann", "p" * 1001)                     # never cut down to the first 1000 characters
+    assert r.status_code == 401 and "1000" in r.text
+    assert w.login(c, "ann", "p" * 1000).status_code in (200, 303)
+    assert "1000" in c.get("/login").text
+
+
+# ---- finding 7: same-origin posts, and no plain http beyond this machine ------------------------------------------------------------------------
+
+def test_f7_a_post_from_another_origin_is_refused_on_login_and_on_the_button(w):
+    ann = w.user("ann")
+    rid = w.launch(caller=ann)["id"]
+    c = w.web()
+    evil = {"Origin": "https://evil.example"}
+    r = c.post("/login", data={"name": "ann", "password": "correct horse battery"}, headers=evil)
+    assert r.status_code == 403 and "set-cookie" not in r.headers
+    assert c.post("/login", data={"name": "ann", "password": "correct horse battery"},
+                  headers={"Referer": "https://evil.example/x"}).status_code == 403
+    assert w.login(c, "ann").status_code in (200, 303)
+    token = csrf_of(c.get("/c/" + rid).text)
+    assert c.post("/c/" + rid, data={"csrf": token}, headers=evil).status_code == 403
+    assert w.jobs() == [] and w.confirmations()[0]["state"] == "pending"
+    same = {"Origin": "http://testserver"}
+    assert c.post("/c/" + rid, data={"csrf": token}, headers=same).status_code == 200
+    assert len(w.jobs("launch_nextflow")) == 1
+
+
+def test_f7_the_public_origin_is_accepted_behind_a_proxy(w):
+    w.user("ann")
+    c = w.web(public_url="https://abf.example")
+    r = c.post("/login", data={"name": "ann", "password": "correct horse battery"}, headers={"Origin": "https://abf.example"})
+    assert r.status_code in (200, 303)
+
+
+@pytest.mark.parametrize("args", [["--host", "0.0.0.0"], ["--host", "0.0.0.0", "--public-url", "http://abf.example"],
+                                  ["--host", "::"], ["--host", "192.168.1.5", "--public-url", "http://192.168.1.5:8789"]])
+def test_f7_f10_the_page_is_not_served_beyond_this_machine_without_an_https_address(w, args):
+    from helpers import run_cli
+    r = run_cli(["web", "--port", "0"] + args, env=w.data.env(), timeout=30)
+    assert r.returncode != 0 and "--public-url" in r.stderr + r.stdout and "https" in r.stderr + r.stdout
+    from abf_platform import store
+    assert store.get_meta(w.ip.state_db, "web_base_url") is None
+
+
+# ---- finding 8: the signing key ----------------------------------------------------------------------------------------------------------------
+
+def test_f8_a_short_or_empty_key_file_stops_the_start(w, tmp_path):
+    from abf_platform import web
+    folder = tmp_path / "keys"
+    folder.mkdir()
+    for content in (b"", b"\n", b"short", b"x" * 31 + b"\n"):
+        (folder / web.KEY_FILE).write_bytes(content)
+        with pytest.raises(ValueError, match="32"):
+            web._signing_key(folder)
+
+
+def test_f8_a_new_key_is_written_whole_by_rename_and_kept(w, tmp_path):
+    import os
+    from abf_platform import web
+    folder = tmp_path / "keys2"
+    key = web._signing_key(folder)
+    assert len(key) >= 32 and web._signing_key(folder) == key
+    assert sorted(os.listdir(folder)) == [web.KEY_FILE]          # no temporary file left behind
+    if os.name == "posix":
+        assert (folder / web.KEY_FILE).stat().st_mode & 0o777 == 0o600
+
+
+def test_f8_two_starts_at_once_end_with_one_key(w, tmp_path):
+    import threading
+    from abf_platform import web
+    folder = tmp_path / "keys3"
+    got = []
+    ts = [threading.Thread(target=lambda: got.append(web._signing_key(folder))) for _ in range(8)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert len(got) == 8 and len(set(got)) == 1
