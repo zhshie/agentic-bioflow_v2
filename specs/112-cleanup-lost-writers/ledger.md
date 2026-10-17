@@ -40,3 +40,17 @@ TC-112-39 `echo x > >(tee s1)`, TC-112-40 `cat <(tee s1)`, TC-112-48 `( cp a s1 
 - Differential, main vs branch, cwd=/tmp: 4 lost states x 19 wrapper forms x 14 commands (cp, tee, tee -a, sort -o, sed -i, dd of=, mv, install, ln, curl -o, xargs tee, `>` redirect, rm, touch) = 1064 sentences. Ask/deny to pass: **0**. Every difference is pass to ask, and all are the new writers of plan item 4/7 (install, ln, curl, xargs) or a wrapped writer main did not see either way.
 - No existing expectation was edited in this round.
 - Second part of the fix (found by the full suite at the first GREEN: `confirm_cleanup_behind_heredoc_test.sh` failed `TC-112-66w timeout -k`): behind a large here-doc the large-input filter dropped `timeout -k 1 5 cp a s1` and `sudo -n cp a s1`, because `cmdword()` reads `1` / `a` as their command word (same on main). RED added 3 probes (`sudo -n cp`, `sudo -n tee`, `env -i tee`); GREEN: `RE_TRIGGER` keeps any segment that starts with a wrapper word. Tighter only (more segments kept).
+
+## Fix round 2 (verifier finding on TC-112-66: backslash-escaped writer operands)
+- Finding: after a lost folder main asked and the branch passed for `cp a \-x`, `tee \-x`, `sed -i p \-x`, `dd of=\~ if=a`, `sed -i p \~`, `cp --target-directory=\~ a`, and a lone trailing backslash (`cp a \`, `tee \`, `sort -o \`, `dd of=\`, `cp a \ `). Cause: `lw_tokens` dropped the backslash, so `\-x` looked like an option, `of=\~` / `--target-directory=\~` lost the "quoted tilde" mark (it only covered a word that starts with `~`), and a lone `\` became an empty word.
+- Main reads the raw text cut at every space (no quote or escape awareness), so every word that is not literally `/...` is relative to it. The differential found more of the same family, all fixed here:
+  - `\/tmp/x`, `-t\/tmp/x`, `--target-directory=\/tmp/x`, `sort -o\/tmp/x`, `of=\/tmp/x`: an escaped `/` now adds `./` in front, so it is relative;
+  - quoted names with a space (`tee "/tmp/my file"`, `cp a '/tmp/x y'`) and a single operand with a space (`cp "a b"`, `cp \ a`): new `lw_target` also checks every piece cut at a space (tighter than main only where main passed);
+  - a sed script with a space (`sed -i 's/a b/c/' /tmp/x`, `sed -i '1 d' f`, `sed -i -e 'a b' f`): the words after the first space of the script are file candidates again (main asks for them, as a false positive);
+  - an empty quoted name (`cp -t '' a`) is `./`.
+- `lw_tokens` now: every `~` in a word that had a quote or backslash becomes `./~`; a word whose first raw char is a backslash and that cooks to `-...` gets `./` in front; a backslash at the end of the text is the file name `\`; an escaped `/` gets `./` in front; an empty quoted word is `./`.
+- RED (tests/confirm_cleanup_test.sh, labels `TC-112-66e`, 34 probes; 33 asks failed before, the 3 controls passed): `4c24618`, then the two later RED commits. GREEN: `fb8231e` and the commit after the last RED.
+- Differential, main vs branch, cwd=/tmp, `cd -` and 3 more lost states, 6845 + 1280 sentences (37 writer forms x escaped / quoted / spaced / empty operands): ask/deny to pass **0** (the remaining differences are pass to ask, mostly the new writers of plan item 4/7).
+- Replay (specs/110-cleanup-gate-rest/replay.tsv, 2132 rows, main vs branch): ask/deny to pass **0**, pass to ask 37 (as before).
+- Known and left (main passes too, so not a regression): `xargs env tee`, `xargs timeout 5 cp a s1`, `find . -exec nohup cp a s1 \;`, `find . -fprint s1`, `curl -D s1`, `awk -iinplace`.
+- No existing expectation was edited in this round.
