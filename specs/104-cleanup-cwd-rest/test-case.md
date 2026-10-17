@@ -44,7 +44,7 @@ The gate is only run on text; nothing here deletes anything.
 | TC-104-15 | 設計 2（「目標不是變數」） | 例外 | 目前資料夾 `/tmp` | 送 `cd -; cd $d; rm -rf s1` | 問（目標是變數，不能當作已知位置） | 自動：`tests/confirm_cleanup_test.sh` |
 | TC-104-16 | 設計 2；改動 1 對照組 | 功能 | 目前資料夾 `/tmp` | 送 `cd -; cd /tmp; rm -rf s1` | 放行（單獨、無條件的絕對 cd 解除「位置不明」） | 自動：`tests/confirm_cleanup_test.sh` |
 | TC-104-17 | 設計 2；改動 1 對照組 | 功能 | 目前資料夾 `/tmp` | 送 `cd -; cd /tmp && rm -rf s1` | 放行（`&&` 後面只在 cd 成功後才執行，算解除） | 自動：`tests/confirm_cleanup_test.sh` |
-| TC-104-18 | 設計 2（「`{ cd /abs; }` 也解除」） | 功能 | 目前資料夾 `/tmp` | 送 `cd -; { cd /tmp; }; rm -rf s1` | 放行（大括號群組在主 shell 執行，算解除） | 自動：`tests/confirm_cleanup_test.sh` |
+| TC-104-18 | 設計 2（「`{ cd /abs; }` 也解除」） | 功能 | 目前資料夾 `/tmp` | 送 `cd -; { cd /tmp; }; rm -rf s1` | 放行（大括號群組在主 shell 執行，算解除） | 自動：`tests/confirm_cleanup_test.sh` <br>Note: brace half superseded by the 2026-10-17 ruling (plan Design 2). |
 | TC-104-19 | 事實（TC-078-19 不動） | 功能 | 目前資料夾 `/tmp` | 送 `cd -; cd <run>; rm -rf x` | 放行（#78 既有行為不變） | 自動：`tests/confirm_cleanup_test.sh` |
 | TC-104-20 | 改動 1 對照組；事實（TC-078-18 不動） | 功能 | 目前資料夾 `/tmp` | 送 `cd ~; rm -rf /tmp/s1`；以及 `cd -; rm -rf <run>/tmp` | 兩句都放行（刪的是絕對路徑，不受「位置不明」影響） | 自動：`tests/confirm_cleanup_test.sh` |
 | TC-104-21 | 事實（TC-078-13 不動）；憲法 | 例外 | 目前資料夾 `/tmp` | 送 `cd <run>; cd -; rm -rf results` | 擋（維持 deny，不可被放寬成問） | 自動：`tests/confirm_cleanup_test.sh` |
