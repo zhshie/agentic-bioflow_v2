@@ -191,3 +191,14 @@ def test_r3_two_hundred_pending_requests_in_total_and_expired_ones_are_purged(w,
     w.clock.t += 601                                               # all expired: the next /authorize clears them and is served
     assert "/consent/" in rig.authorize(cid, challenge).headers["location"]
     assert tokens_rows(w, "SELECT COUNT(*) FROM oauth_requests")[0][0] == 1
+
+
+# ---- CI: the errors the provider raises are plain exceptions (the SDK's are frozen dataclasses, and a newer Python sets __traceback__ on raise) ----
+
+def test_r3_the_raised_errors_are_not_frozen():
+    from abf_platform import oauth
+    for err in (oauth.RegistrationError("invalid_client_metadata", "x"), oauth.AuthorizeError("temporarily_unavailable", "x"),
+                oauth.TokenError("invalid_grant", "x")):
+        err.__traceback__ = None
+        err.note = 1                                   # a frozen dataclass refuses both
+        assert isinstance(err, Exception)
