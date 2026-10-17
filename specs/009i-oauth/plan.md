@@ -117,3 +117,10 @@
 6. The registration rate cap is 10 per address per hour, a named constant documented in `docs/PLATFORM.md`.
 7. The cookie stays `SameSite=Strict`. A second login prompt after a cross-site redirect is accepted, because security comes before convenience.
 8. Consent is not bound to an initiator, which is standard OAuth. The consent page shows the client name and the redirect host. TC-C05 is the human check.
+
+## Ruling after acceptance round 1 (2026-10-18, developer-agent): option (a)
+- Pins to rewrite also include `test_owner_binding.py::test_tc068` (the web route set, the `cli.py` no-`oauth` scan, now an exact allow-list; the `http_auth.py` store-call set) and `test_station_envs.py::test_tc063` / `test_tc084` (the top-level subcommand set and `--help` string gain `oauth`). Each is a necessary consequence of design 3, design 6 and TC-E05. Each stays an exact set: nothing is widened beyond the new names. The ledger entries already present are accepted.
+- Contract amendment, same date:
+  - TC-G05's "test_station_envs.py unchanged" is narrowed to "tc086 unchanged".
+  - TC-G06's allowed list adds the three pins above.
+- `openid`, `saml` and `ldap` stay banned in `cli.py`.

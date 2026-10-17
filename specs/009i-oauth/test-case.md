@@ -152,8 +152,8 @@
 | TC-G02 | Pins to rewrite：tcf02 | 功能 | 對 `v3` 比較 tcf02 | 讀 diff 並執行 | `run_http` 簽名只多 `public_url`；`mcp --help` 仍不出現 ssl、cert、tls（只放行 `public`）；ledger 有紀錄 | 自動；手動：讀 ledger |
 | TC-G03 | Pins to rewrite：`test_confirm_page.py` 的 `/oauth/*`（第 307 行附近） | 例外 | 網頁服務路由全集 | 對舊清單（`/`、`/runs`、`/ce`、`/compute-envs`、`/admin`、`/launch`、`/submit`、`/oauth/*` 等）與任意未列路徑 GET／POST | 只有 ledger 列出的路徑存在（009c 的登入、登出、`/c/{rid}` 加 OAuth 的 metadata、`/authorize`、`/token`、`/register`、`/revoke` 與同意頁）；其餘一律 404；舊清單裡沒被列入的仍是 404 | 自動 |
 | TC-G04 | Pins to rewrite：tcb01–b07 | 功能 | 對 `v3` 比較 tcb01–b07 | 讀 diff 並執行 | 只改標頭文字斷言；狀態碼 401、「絕不回顯」等斷言一條不少 | 自動；手動：讀 diff |
-| TC-G05 | Unchanged pins；憲法安全網 | 功能 | `test_receiver.py`、`test_station_envs.py`（tc086）、`test_human_channel.py` 的 tcf10_f11、`test_pat.py` tcc03／c04 | 執行（檔案內容不改） | 全綠；新增的 `oauth_*` 表與欄位不含禁字（`user` 只以 `user_id`，不含 session／login／password／email／org／team／member／cookie／role）；`EXEMPT` 一字未動 | 自動 |
-| TC-G06 | 驗收規則：弱化測試 | 功能 | 對 `v3` 比較全部被改的測試檔、`spec`／`test-case*.md` | 驗收審查者讀 diff 與 `ledger.md` | 被改寫的只有計畫列出的 tcf01、tcf02、`test_confirm_page.py` 路徑清單、tcb01–b07 與文件／版本釘；每條有舊、新、理由；沒有刪除、跳過、放寬；實作期間沒有編輯本合約 | 手動：驗收審查者讀 diff |
+| TC-G05 | Unchanged pins；憲法安全網 | 功能 | `test_receiver.py`、`test_station_envs.py`（tc086）、`test_human_channel.py` 的 tcf10_f11、`test_pat.py` tcc03／c04 | 執行（tc086、receiver、tcf10_f11、tcc03／c04 內容不改；test_station_envs.py 只准 tc063、tc084 依 plan「Ruling after acceptance round 1」改寫） | 全綠；新增的 `oauth_*` 表與欄位不含禁字（`user` 只以 `user_id`，不含 session／login／password／email／org／team／member／cookie／role）；`EXEMPT` 一字未動 | 自動 |
+| TC-G06 | 驗收規則：弱化測試 | 功能 | 對 `v3` 比較全部被改的測試檔、`spec`／`test-case*.md` | 驗收審查者讀 diff 與 `ledger.md` | 被改寫的只有計畫列出的 tcf01、tcf02、`test_confirm_page.py` 路徑清單、tcb01–b07、文件／版本釘，以及 plan「Ruling after acceptance round 1」點名的 tc068、tc063、tc084；每條有舊、新、理由；沒有刪除、跳過、放寬；實作期間沒有編輯本合約 | 手動：驗收審查者讀 diff |
 | TC-G07 | Pins to rewrite：Docs and version pins | 功能 | 文件與版本釘的測試 | 執行 | 通過，且改動只是新版本號與新文件段落 | 自動 |
 
 ## 不在範圍（計畫「Not in this PR」）
