@@ -139,11 +139,12 @@ class Rig:
         path, verifier, cid = self.start(client_id=client_id, redirect=redirect, state=state, c=c, **extra)
         if not c.cookies.get("abf_web"):
             self.log_in(name, c)
-        r = self.decide(path, decision, c=c)
+        token = self.csrf(path, c)
+        r = self.decide(path, decision, c=c, csrf=token)
         assert r.status_code == 302, (r.status_code, r.text)
         loc = urlparse(r.headers["location"])
         q = parse_qs(loc.query)
-        return Flow(path=path, verifier=verifier, client_id=cid, redirect=redirect, state=q.get("state", [None])[0],
+        return Flow(path=path, csrf=token, verifier=verifier, client_id=cid, redirect=redirect, state=q.get("state", [None])[0],
                     code=q.get("code", [None])[0], error=q.get("error", [None])[0], location=r.headers["location"])
 
     def tokens_for(self, name="ann", **kw):
@@ -199,3 +200,12 @@ def mcp_post(port, token=None, path="/mcp", method="POST", headers=None, body=IN
         h["Authorization"] = "Bearer " + token
     h.update(headers or {})
     return httpx.request(method, "http://127.0.0.1:%d%s" % (port, path), json=body if method in ("POST", "PUT") else None, headers=h, timeout=10)
+
+
+def pat_of(w, name):
+    from abf_platform import store
+    return store.create_token(w.ip.tokens, kind="pat", user_id=store.user_id_of(w.ip.tokens, name))
+
+
+def table_counts(w):
+    return {t: tokens_rows(w, "SELECT COUNT(*) FROM %s" % t)[0][0] for t in ("oauth_requests", "oauth_codes", "tokens", "web_sessions")}

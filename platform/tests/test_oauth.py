@@ -12,7 +12,7 @@ import pytest
 
 from helpers import free_port, pkg_env, run_cli, start_cli, stop_proc, wait_port
 from human_harness import PASSWORD, World, csrf_of
-from oauth_harness import BASE, INIT, REDIRECT, Rig, Served, dump, mcp_post, pkce, tokens_rows, tokens_sql
+from oauth_harness import BASE, INIT, REDIRECT, Rig, Served, dump, mcp_post, pat_of, pkce, table_counts, tokens_rows, tokens_sql
 
 MCP_PUBLIC = "https://mcp.example"
 WEB_PUBLIC = "https://abf.example"
@@ -32,11 +32,6 @@ def rig(w):
 def oauth():
     from abf_platform import oauth as module
     return module
-
-
-def pat_of(w, name):
-    from abf_platform import store
-    return store.create_token(w.ip.tokens, kind="pat", user_id=store.user_id_of(w.ip.tokens, name))
 
 
 def mcp_process(w, tmp_path, *args):

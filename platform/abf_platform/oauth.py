@@ -256,6 +256,7 @@ class PlatformOAuthProvider:
                 elif con.execute("SELECT 1 FROM users WHERE id = ? AND disabled_at IS NULL", (authorization_code.user_id,)).fetchone() is None:
                     refused = "user"
                 else:
+                    con.execute("UPDATE oauth_clients SET last_used_at = ? WHERE client_id = ?", (now, client.client_id))     # in use: not idle
                     return self._mint(con, authorization_code.user_id, client.client_id, authorization_code.grant_id, now)
         finally:
             con.close()
@@ -290,8 +291,9 @@ class PlatformOAuthProvider:
                 took = con.execute("UPDATE tokens SET revoked_at = ? WHERE token_hash = ? AND kind = 'oauth_refresh' AND revoked_at IS NULL",
                                    (now, digest)).rowcount
                 if row is None or took != 1:
-                    refused = True
+                    pass
                 else:
+                    con.execute("UPDATE oauth_clients SET last_used_at = ? WHERE client_id = ?", (now, client.client_id))
                     return self._mint(con, row["user_id"], client.client_id, row["grant_id"], now)
         finally:
             con.close()
