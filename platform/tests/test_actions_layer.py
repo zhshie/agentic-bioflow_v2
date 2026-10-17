@@ -516,7 +516,8 @@ def test_tcb19_the_question_and_the_terminal_check_stay_in_terminal_py():
 
 def test_tcc01_mcp_server_imports_only_actions_from_the_platform():
     src = (PKG / "mcp_server.py").read_text(encoding="utf-8")
-    assert platform_submodules(src, "abf_platform/mcp_server.py") == {"actions"}
+    # 009d: exactly one more allowed name, http_auth (the bearer check); the rule is otherwise unchanged
+    assert platform_submodules(src, "abf_platform/mcp_server.py") == {"actions", "http_auth"}
 
 
 def test_tcc02_mcp_server_does_not_mention_launch_cancel_terminal_or_confirm():
@@ -627,9 +628,12 @@ def test_tce04_the_write_actions_take_no_identity():
     a = actions()
     for fn in (a.launch, a.cancel):
         params = inspect.signature(fn).parameters
-        assert list(params) == ["state_path", "ce_name", "bundle", "confirmed_by", "clock", "deadline_seconds", "offline_after"]
+        # 009d: `caller` (keyword-only, default None) is recorded only; it is never a confirmation
+        assert list(params) == ["state_path", "ce_name", "bundle", "confirmed_by", "clock", "deadline_seconds", "offline_after",
+                                "caller"]
         assert params["confirmed_by"].kind is inspect.Parameter.KEYWORD_ONLY
         assert params["clock"].kind is inspect.Parameter.KEYWORD_ONLY
+        assert params["caller"].kind is inspect.Parameter.KEYWORD_ONLY and params["caller"].default is None
 
 
 def test_tce05_no_resume_or_retry_in_the_action_layer():

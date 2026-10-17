@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS failed_tasks (
 );
 """
 
-# kind is 'run' (a Nextflow run writes with it) or 'agent' (an agent polls with it).
+# kind is 'run' (a Nextflow run writes with it), 'agent' (an agent polls with it) or 'pat' (a person's personal access
+# token for the MCP server, spec 009d: it has a user_id and opens no other door; users are in the table below).
 # Files written by feature 008 have no kind, agent_name or revoked_at: _migrate_tokens adds them.
 TOKEN_SCHEMA = """
 CREATE TABLE IF NOT EXISTS tokens (
@@ -72,7 +73,16 @@ CREATE TABLE IF NOT EXISTS tokens (
     revoked_at REAL,
     run_name TEXT,
     expires_at REAL,
-    ended_at REAL
+    ended_at REAL,
+    user_id INTEGER,
+    label TEXT
+);
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    lab TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    disabled_at REAL
 );
 """
 
@@ -121,7 +131,8 @@ CREATE TABLE IF NOT EXISTS confirmations (
     sha256 TEXT NOT NULL,
     kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel')),
     created_at REAL NOT NULL,
-    used_at REAL
+    used_at REAL,
+    caller_user_id INTEGER
 );
 %(jobs)s
 %(launches)s;
@@ -344,6 +355,13 @@ def _add_agent_columns(con):
                 con.execute("ALTER TABLE agents ADD COLUMN %s TEXT" % col)
 
 
+def _add_confirmation_column(con):
+    """A platform.db made before 009d has no caller_user_id on its confirmations: add it, old rows keep NULL."""
+    if "caller_user_id" not in {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}:
+        with con:
+            con.execute("ALTER TABLE confirmations ADD COLUMN caller_user_id INTEGER")
+
+
 def connect_state(path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -355,6 +373,7 @@ def connect_state(path):
         _migrate_launches(con)
         con.executescript(STATE_SCHEMA)
         _add_agent_columns(con)
+        _add_confirmation_column(con)
     except BaseException:
         con.close()
         raise
@@ -416,6 +435,10 @@ def _migrate_tokens(con):
             con.execute("ALTER TABLE tokens ADD COLUMN expires_at REAL")
         if "ended_at" not in have:
             con.execute("ALTER TABLE tokens ADD COLUMN ended_at REAL")
+        if "user_id" not in have:
+            con.execute("ALTER TABLE tokens ADD COLUMN user_id INTEGER")
+        if "label" not in have:
+            con.execute("ALTER TABLE tokens ADD COLUMN label TEXT")
 
 
 def connect_tokens(path):
@@ -424,29 +447,110 @@ def connect_tokens(path):
     return con
 
 
-def create_token(tokens_path, kind="run", agent_name=None, run_name=None):
+def create_token(tokens_path, kind="run", agent_name=None, run_name=None, user_id=None, label=None):
     """Make a token, keep only its hash, and return the plain token once.
 
     With run_name the token is for that one run (the platform makes it when an agent claims a launch): it lives
-    RUN_TOKEN_TTL seconds and can only create a run of that name.
+    RUN_TOKEN_TTL seconds and can only create a run of that name. A 'pat' is for one user (user_id), never expires and
+    starts with abf_pat_.
     """
-    if kind not in ("run", "agent"):
-        raise ValueError("token kind must be run or agent")
+    if kind not in ("run", "agent", "pat"):
+        raise ValueError("token kind must be run, agent or pat")
     if (kind == "agent") != bool(agent_name):
         raise ValueError("an agent token is made for one agent name, and only an agent token has one")
     if run_name is not None and kind != "run":
         raise ValueError("only a run token is for a run name")
-    token = "abf_" + secrets.token_urlsafe(32)
+    if (kind == "pat") != (user_id is not None):
+        raise ValueError("a personal access token is made for one user, and only it has a user")
+    if label is not None and kind != "pat":
+        raise ValueError("only a personal access token has a label")
+    token = ("abf_pat_" if kind == "pat" else "abf_") + secrets.token_urlsafe(32)
     now = time.time()
     con = connect_tokens(tokens_path)
     try:
         with con:
-            con.execute("INSERT INTO tokens (token_hash, created_at, kind, agent_name, run_name, expires_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
-                        (_hash(token), now, kind, agent_name, run_name, now + RUN_TOKEN_TTL if run_name else None))
+            con.execute("INSERT INTO tokens (token_hash, created_at, kind, agent_name, run_name, expires_at, user_id, label) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (_hash(token), now, kind, agent_name, run_name, now + RUN_TOKEN_TTL if run_name else None,
+                         user_id, label))
     finally:
         con.close()
     return token
+
+
+def create_user(tokens_path, name, lab):
+    """Add a user and return the id; ValueError when the name is taken (the name is unique)."""
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            try:
+                return con.execute("INSERT INTO users (name, lab, created_at) VALUES (?, ?, ?)",
+                                   (name, lab, time.time())).lastrowid
+            except sqlite3.IntegrityError:
+                raise ValueError("a user named %s exists" % name)
+    finally:
+        con.close()
+
+
+def user_id_of(tokens_path, name):
+    if not Path(tokens_path).exists():
+        return None
+    con = connect_tokens(tokens_path)
+    try:
+        row = con.execute("SELECT id FROM users WHERE name = ?", (name,)).fetchone()
+        return row[0] if row else None
+    finally:
+        con.close()
+
+
+def has_users(tokens_path):
+    if not Path(tokens_path).exists():
+        return False
+    con = connect_tokens(tokens_path)
+    try:
+        return con.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0
+    finally:
+        con.close()
+
+
+def lookup_pat(tokens_path, token):
+    """{'user_id', 'name', 'lab', 'token_id'} of a live personal access token of an enabled user, else None."""
+    if not token or not isinstance(token, str) or not Path(tokens_path).exists():
+        return None
+    con = connect_tokens(tokens_path)
+    try:
+        row = con.execute("SELECT u.id AS user_id, u.name AS name, u.lab AS lab, t.id AS token_id FROM tokens t "
+                          "JOIN users u ON u.id = t.user_id WHERE t.token_hash = ? AND t.kind = 'pat' "
+                          "AND t.revoked_at IS NULL AND u.disabled_at IS NULL", (_hash(token),)).fetchone()
+        return dict(row) if row else None
+    finally:
+        con.close()
+
+
+def list_pats(tokens_path):
+    """One dict per personal access token: id, user, label, created_at, revoked_at. Never the value or the hash."""
+    if not Path(tokens_path).exists():
+        return []
+    con = connect_tokens(tokens_path)
+    try:
+        return [dict(r) for r in con.execute(
+            "SELECT t.id AS id, u.name AS user, t.label AS label, t.created_at AS created_at, t.revoked_at AS revoked_at "
+            "FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.kind = 'pat' ORDER BY t.id")]
+    finally:
+        con.close()
+
+
+def revoke_pat(tokens_path, token_id_):
+    """Revoke one personal access token by id; returns how many were live (0 for an id that is not a PAT)."""
+    if not Path(tokens_path).exists():
+        return 0
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            return con.execute("UPDATE tokens SET revoked_at = ? WHERE id = ? AND kind = 'pat' AND revoked_at IS NULL",
+                               (time.time(), token_id_)).rowcount
+    finally:
+        con.close()
 
 
 def _now():

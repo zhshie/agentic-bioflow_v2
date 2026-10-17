@@ -73,11 +73,14 @@ def test_tc025_streamable_http_gives_the_same_answers_on_loopback(tmp_path):
     wid = status.list_runs(plat.index, __import__("time").time())[0]["id"]
     calls = [("list_runs", {}), ("get_run", {"run_id": wid}), ("get_run", {"run_id": "deadbeefdeadbeef"})]
     _, via_stdio = mcp_call(env, calls)
+    # 009d: HTTP needs a personal access token; only this input changed, the assertions below did not
+    from abf_platform import store
+    pat = store.create_token(plat.tokens, kind="pat", user_id=store.create_user(plat.tokens, "tc025", "lab"))
     port = free_port()
     proc = start_cli(["mcp", "--http", "--port", str(port)], env, tmp_path / "mcp.log")
     try:
         wait_port(port, proc=proc)
-        tools, via_http = mcp_http_call("http://127.0.0.1:%d/mcp" % port, calls)
+        tools, via_http = mcp_http_call("http://127.0.0.1:%d/mcp" % port, calls, token=pat)
         assert sorted(t.name for t in tools) == ["get_compute_env", "get_run", "list_agents", "list_compute_envs",
                                                  "list_runs", "list_site_files"]
         assert_loopback_only(port)
