@@ -1,5 +1,7 @@
 # One lab, two roles: PI and member
 
+> Postponed by ADR 0009 (2026-10-17): v3 has one role, every user sees only their own runs.
+
 The platform (ADR 0004) is shared by the people of one lab, and has two roles. A **member** runs
 their own analyses and sees their own runs. A **PI** sees every run in the lab, who ran it, how
 much it cost in NCHC SU and which failed, and spends nothing by default. Each person uses their

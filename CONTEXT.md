@@ -70,6 +70,7 @@ _Avoid_: customer, user
 **Operator** (操作者):
 The graduate student or research assistant who actually runs analyses with the tool.
 _Avoid_: user (ambiguous between Buyer and Operator), member
+In v3 every platform user is an Operator; there is no second role yet (ADR 0009).
 
 ### What goes in
 
@@ -78,6 +79,18 @@ The Operator-approved record of the study question, sample groups, comparisons, 
 wanted figures, drawn out through conversation. Pipeline setup, the figure plan and the methods
 text are derived from it; nothing is set up before it is approved.
 _Avoid_: experiment design (the lab's own plan, before it is written down), metadata, samplesheet
+
+**Project** (專案):
+One folder of the Operator's work: its raw data, every run made from it, the analysis written on
+those runs and the package built from them. How work is split into projects is the Operator's
+choice; one project may hold more than one Experiment spec.
+_Avoid_: workspace, experiment
+
+**Analysis** (分析):
+One piece of work inside a Project, from choosing a pipeline to downloading its package, with its
+conversation and every run made for it. A resume or a relaunch with the same inputs is another
+attempt of the same Analysis; changing the samples or the parameters is a new Analysis.
+_Avoid_: run (one Nextflow execution), conversation, job
 
 ### What comes out
 
