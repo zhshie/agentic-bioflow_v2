@@ -174,3 +174,16 @@
 - **The one relaxation, named:** a resume writes into an existing run folder (a launch refuses an existing folder). It is narrow: only `head-N.sh` and `tower.token`; only after the session id, the input-file hashes and a dead predecessor are all checked on the site; never an overwrite of `head.sh` or the inputs; never deleting. If the reviewer calls it a Safety Net change, the tier becomes C.
 - **116 / 116b:** owner-only, not-found words for everybody else, chain owner enforced at the queue, upload_paths re-recorded and re-checked.
 - **Governance:** tier B. Update `docs/PLATFORM.md` (sections 9 and "Whose it is"), the `skills/` text, CHANGELOG, and the ledger for the rewritten pins. No amendment. A maintainer merge is not required unless the escalation above applies.
+
+## Ruling (2026-10-18, developer-agent): the eight pins that resume and relaunch necessarily move
+Approved. Edit each one separately with the Edit tool, not a bulk script. In the ledger's Rewritten pins table, record the old expectation, the new one and the reason. Each stays an exact set or exact value, with only the new names added.
+1. `test_station_envs.py::test_tc071`: the tool list gains `resume` and `relaunch` (10 tools).
+2. `test_station_envs.py::test_tc063`: the top-level subcommand set gains `resume` and `relaunch`.
+3. `test_station_envs.py::test_tc084`: the `--help` subcommand string gains them, in registration order.
+4. `test_pat.py::test_tcb10`: 8 tools becomes 10.
+5. `test_pat.py::test_tcd10`: `cli.py` calls to `actions.launch`/`cancel` go from 2 to 3. All three still pass `confirmed_by=TERMINAL` and a non-None caller expression, as before.
+6. `test_owner_binding.py::test_tc066`: revert the previous round's edit to the original `old_cols + ["user_id"]`. `old_cols` already contains the new columns, so the edit was wrong.
+7. `test_confirm_page.py::test_tcg01`: allow exactly `resume`, `relaunch`, `request_resume` and `request_relaunch`. `retry` and anything else stay forbidden.
+8. `test_station_platform.py::test_tc090`: the allow-list gains exactly `("launches","parent_run")`.
+
+**Suite time.** If `platform_test.sh` still exceeds the 300 s per-test limit in `tests/run_all.sh`, rebalance its pytest shards so each shard stays under the limit. Do not raise the limit.
