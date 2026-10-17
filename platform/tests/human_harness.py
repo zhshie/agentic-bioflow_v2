@@ -38,9 +38,23 @@ class World:
         c.update(over)
         return c
 
-    def mcp(self, calls, caller=None, answer=None):
+    def in_area(self, caller, args):
+        """Over HTTP a samplesheet must be in the caller's own upload folder (review finding 2): put a copy of the given file there."""
+        import shutil
+        from pathlib import Path
+        src = Path(args["samplesheet"])
+        dest = self.ip.state_db.parent / "uploads" / caller.name / src.name
+        if src.is_file() and not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(str(src), str(dest))
+        return dict(args, samplesheet=str(dest))
+
+    def mcp(self, calls, caller=None, answer=None, raw=False):
         """Tool calls in process. `caller` is who the HTTP bearer check would have found (None: local stdio); `answer` is the
-        form callback of the client (None: a client that cannot show forms)."""
+        form callback of the client (None: a client that cannot show forms). A launch from a caller reads the file from the caller's
+        own upload folder, so the file is copied there first, unless raw=True (a test of the confinement itself)."""
+        if caller is not None and not raw:
+            calls = [(n, self.in_area(caller, a) if n == "launch" and isinstance(a.get("samplesheet"), str) else a) for n, a in calls]
         from mcp import Client
         from abf_platform import http_auth, mcp_server
         self.monkeypatch.setattr(http_auth, "current_caller", lambda: caller)

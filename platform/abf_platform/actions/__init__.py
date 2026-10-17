@@ -13,6 +13,7 @@ bundle and screen as the terminal, write a pending request (no job), and ask the
 call finds the yes (find_approved) and returns the job that exists; it never queues a second.
 """
 import dataclasses
+import os
 import time
 
 from abf_launch import build
@@ -184,6 +185,24 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
                        "again with the same arguments)" % (url, kind, kind)}
 
 
+def confined_samplesheet(platform_path, caller, samplesheet):
+    """The samplesheet of an HTTP caller as a real path inside <uploads_root>/<caller name>/ (a relative path means that folder),
+    or build.Refusal. Symlinks are resolved first, so a link cannot lead out. The refusal names the caller's own folder and
+    nothing else: not the path that was given, not another folder, not any content."""
+    area = os.path.realpath(os.path.join(str(store.uploads_root(platform_path)), caller.name))
+    refusal = build.Refusal("samplesheet 必須是你自己上傳資料夾裡的檔案：%s (the samplesheet must be a file inside your own uploads folder)" % area)
+    name = caller.name
+    if not name or name in (".", "..") or "/" in name or "\\" in name or chr(0) in name:
+        raise refusal
+    if not isinstance(samplesheet, str) or not samplesheet or chr(0) in samplesheet:
+        raise refusal
+    joined = samplesheet if os.path.isabs(samplesheet) else os.path.join(area, samplesheet)
+    real = os.path.realpath(joined)
+    if real == area or not real.startswith(area + os.sep):
+        raise refusal
+    return real
+
+
 async def request_launch(platform_path, *, pipeline, revision, run_name, samplesheet, ce_name=None, params=None, path_columns=None,
                          caller=None, person=None, clock=time.time):
     """Ask for a launch the way the terminal command does: same choices, same bundle, same screen, same refusals. Writes a pending
@@ -193,6 +212,8 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
     if path_columns is not None and (not isinstance(path_columns, list) or not all(isinstance(c, str) for c in path_columns)):
         return _no("path_columns 必須是文字清單 (path_columns must be a list of names)")
     try:
+        if caller is not None:         # over HTTP the file must be the caller's own; stdio and the terminal read the path as given
+            samplesheet = confined_samplesheet(platform_path, caller, samplesheet)
         ce, bundle = build.prepare_launch(platform_path, ce=ce_name, pipeline=pipeline, revision=revision, run_name=run_name,
                                           samplesheet=samplesheet, params=params, path_columns=path_columns, check_name=False)
     except build.Refusal as e:

@@ -231,6 +231,15 @@ def default_platform_path(index_path=None, env=None):
     return Path(index_path or default_index_path(env)).parent / "platform.db"
 
 
+def uploads_root(platform_path=None, env=None):
+    """The platform setting `uploads_root`: ABF_PLATFORM_UPLOADS, else `uploads` next to platform.db. Over MCP/HTTP a samplesheet
+    must be a file inside <uploads_root>/<the caller's name>/."""
+    env = os.environ if env is None else env
+    if env.get("ABF_PLATFORM_UPLOADS"):
+        return Path(env["ABF_PLATFORM_UPLOADS"])
+    return Path(platform_path or default_platform_path(None, env)).parent / "uploads"
+
+
 def connect(path, schema):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

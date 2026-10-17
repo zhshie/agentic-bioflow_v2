@@ -223,7 +223,7 @@ def test_tca12_a13_over_http_a_call_needs_a_token_and_the_token_only_names_the_c
                        "params": {"name": "launch", "arguments": w.choices()}},
                        headers={"Accept": "application/json, text/event-stream"}, timeout=10)
         assert r.status_code == 401 and w.confirmations() == []
-        _, outs = mcp_http_call("http://127.0.0.1:%d/mcp" % port, [("launch", w.choices())], token=pat)
+        _, outs = mcp_http_call("http://127.0.0.1:%d/mcp" % port, [("launch", w.in_area(ann, w.choices()))], token=pat)
     finally:
         stop_proc(proc)
     out = tool_json(outs[0])
@@ -417,7 +417,7 @@ def test_tce06_an_approved_request_older_than_ten_minutes_is_not_used_again(w):
     now = w.confirmations()[0]["created_at"]
     assert a.find_approved(w.ip.state_db, "launch", b, caller=ann, clock=lambda: now + 5)["job_id"] == w.jobs()[0]["id"]
     assert a.find_approved(w.ip.state_db, "launch", b, caller=ann, clock=lambda: now + 601) is None
-    out = asyncio.run(a.request_launch(w.ip.state_db, caller=ann, clock=lambda: now + 601, **w.choices()))
+    out = asyncio.run(a.request_launch(w.ip.state_db, caller=ann, clock=lambda: now + 601, **w.in_area(ann, w.choices())))
     assert out["sent"] is False and len(w.jobs("launch_nextflow")) == 1
 
 

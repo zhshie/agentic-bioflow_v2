@@ -270,7 +270,7 @@ def put_sheet(w, name, rel="s.csv", text=None):
 
 
 def ask(w, caller, sheet, **over):
-    _, outs = w.mcp([("launch", w.choices(samplesheet=str(sheet), **over))], caller=caller)
+    _, outs = w.mcp([("launch", w.choices(samplesheet=str(sheet), **over))], caller=caller, raw=True)
     return tool_json(outs[0])
 
 
