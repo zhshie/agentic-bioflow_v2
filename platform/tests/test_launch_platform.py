@@ -193,7 +193,8 @@ def test_tc055_launches_holds_the_facts_of_the_handover_and_no_state(tmp_path):
     # follow-up 1 (F2): job_id links a row to the launch job it made; run_name is no longer unique, because a launch the agent
     # refused keeps its row and its name can be used again (the plan names this change; the rest of the test is as it was)
     assert sorted(cols) == sorted(["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at",
-                                   "submitted_at", "cancel_requested_at", "job_id", "user_id"])      # 116: user_id, who sent it (last)
+                                   "submitted_at", "cancel_requested_at", "job_id", "user_id",      # 116: user_id, who sent it
+                                   "parent_run", "attempt", "attempt_kind"])      # 009e: what a resume or a relaunch is made from, which attempt, which kind (last)
     for c in cols:
         assert not re.search(r"status|state|phase|result|exit|progress|ended", c), c
     unique = [r for r in con.execute("PRAGMA index_list(launches)") if r[2]]
@@ -298,12 +299,13 @@ def test_tc010_the_mcp_tools_are_six_read_only_ones_and_two_that_ask_a_person_wi
             return (await c.list_tools()).tools
 
     ts = asyncio.run(tools())
+    # 009e: plus resume and relaunch, which are asked the same way and take the name of a run and nothing else
     assert sorted(t.name for t in ts) == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
-                                          "list_runs", "list_site_files"]
+                                          "list_runs", "list_site_files", "relaunch", "resume"]
     banned = {"confirm", "confirmation", "yes", "y", "launch", "cancel", "kind", "command", "fetch", "run_name", "pipeline"}
     saying_yes = {"confirm", "confirmed", "confirmation", "confirmation_id", "yes", "y", "approve", "approved", "kind", "command"}
     for t in ts:
-        if t.name in ("launch", "cancel"):
+        if t.name in ("launch", "cancel", "resume", "relaunch"):
             assert t.annotations.read_only_hint is False
             assert not (set(t.input_schema.get("properties", {})) & saying_yes), t.name
             continue
@@ -712,8 +714,9 @@ def test_tc045_the_platform_writes_no_run_state_called_cancelled_anywhere():
         assert not re.search(r"['\"](cancelled|canceled|已取消)['\"]", text), f.name
 
 
-def test_tc061_the_command_line_has_no_resume_no_retry_and_no_confirm_command():
-    # TC-061, TC-062
+def test_tc061_the_command_line_has_resume_and_relaunch_and_no_retry_and_no_confirm_command():
+    # TC-061, TC-062. 009e: was "no resume, no retry, no relaunch and no confirm command". There are now exactly the two commands resume and
+    # relaunch, which take the name of a run (and --user) and no flag that says yes; retry, confirm and the flags are still not there.
     from abf_platform import cli
     seen = set()
 
@@ -731,8 +734,8 @@ def test_tc061_the_command_line_has_no_resume_no_retry_and_no_confirm_command():
                     walk(sub, path + (name,))
 
     walk(cli.build_parser())
-    assert {"launch", "cancel", "launches", "fetch-records"} <= seen
-    assert not (seen & {"resume", "retry", "relaunch", "confirm", "yes", "y", "force", "assume-yes", "no-confirm"}), seen
+    assert {"launch", "cancel", "resume", "relaunch", "launches", "fetch-records"} <= seen
+    assert not (seen & {"retry", "confirm", "yes", "y", "force", "assume-yes", "no-confirm"}), seen
 
 
 def test_security_f1_every_trace_event_of_a_bound_token_is_for_the_tokens_run_only(tmp_path):

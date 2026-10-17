@@ -131,6 +131,13 @@ class Rig:
             con.execute("UPDATE jobs SET state = ?, finished_at = ? WHERE id = ?", (state, time.time(), job_id))
         con.close()
 
+    def age_requests(self, seconds=3600):
+        """Make every request of a person's yes older than the ten minutes it is alive for."""
+        con = sqlite3.connect(str(self.state))
+        with con:
+            con.execute("UPDATE confirmations SET expires_at = expires_at - ? WHERE expires_at IS NOT NULL", (seconds,))
+        con.close()
+
     # ---- the actions, asked ----------------------------------------------------------------------------------------------------------------------
     def ask(self, verb, run, caller=None, person=None, remote=False):
         from abf_platform import actions

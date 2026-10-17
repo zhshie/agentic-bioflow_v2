@@ -154,8 +154,8 @@ def test_tc065_to_tc069_the_relaunch_screen(rig):
     text = screen_of(person)
     assert "這是原樣重跑：全新資料夾，樣本與參數不變" in text
     assert "x" in text and "第 2 次" in text and "4711" in text
-    ce, b, row = rig.prepare("relaunch", "x")
-    plain = build.as_text(build.launch_screen(b, ce))
+    b = rig.bundle_of_job(out["job_id"])
+    plain = build.as_text(build.launch_screen(b, "lab-a"))
     for name in ("samplesheet.csv", "params.yaml", "nextflow.config", "head.sh"):
         assert "== %s" % name in text, name
     for line in plain.splitlines()[1:]:
@@ -330,6 +330,7 @@ def test_tc051_an_older_attempt_is_refused_and_the_newer_one_is_named(rig):
     # TC-051
     rig.first("x")
     rig.attempt("resume", "x")
+    rig.age_requests()           # the repeat of the same call within the life of its request gets the job (TC-085); this is a later one
     before = rig.counts()
     for verb in ("resume", "relaunch"):
         msg = refused(rig.ask(verb, "x", person=FakePerson(True)))

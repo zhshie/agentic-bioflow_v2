@@ -200,7 +200,10 @@ _LAUNCHES_TABLE = """CREATE TABLE %(name)s (
     submitted_at REAL,
     cancel_requested_at REAL,
     job_id INTEGER,
-    user_id INTEGER
+    user_id INTEGER,
+    parent_run TEXT,
+    attempt INTEGER,
+    attempt_kind TEXT CHECK (attempt_kind IN ('resume', 'relaunch'))
 )"""
 _LAUNCH_COLUMNS = "id, run_name, slurm_job_id, run_folder, ce, agent, confirmed_at, submitted_at, cancel_requested_at"
 STATE_SCHEMA = STATE_SCHEMA % {"jobs": (_JOBS_TABLE % {"name": "IF NOT EXISTS jobs"}) + ";",
@@ -405,6 +408,23 @@ def _add_owner_columns(con):
                     raise    # a second process may have added it first; anything else is a real error
 
 
+_ATTEMPT_COLUMNS = (("parent_run", "TEXT"), ("attempt", "INTEGER"),
+                    ("attempt_kind", "TEXT CHECK (attempt_kind IN ('resume', 'relaunch'))"))
+
+
+def _add_attempt_columns(con):
+    """A platform.db made before 009e has no lineage on a launch (the run it resumes or relaunches, which attempt, which kind): add the
+    three columns, every old row keeps NULL (NULL is a first launch). In place, new columns last, so the old order is kept."""
+    for col, decl in _ATTEMPT_COLUMNS:
+        if col not in {r[1] for r in con.execute("PRAGMA table_info(launches)")}:
+            try:
+                with con:
+                    con.execute("ALTER TABLE launches ADD COLUMN %s %s" % (col, decl))
+            except sqlite3.OperationalError:
+                if col not in {r[1] for r in con.execute("PRAGMA table_info(launches)")}:
+                    raise    # a second process may have added it first; anything else is a real error
+
+
 def _add_confirmation_column(con):
     """A platform.db made before 009d has no caller_user_id on its confirmations: add it, old rows keep NULL."""
     if "caller_user_id" not in {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}:
@@ -445,6 +465,7 @@ def connect_state(path):
         con.executescript(STATE_SCHEMA)
         _add_agent_columns(con)
         _add_owner_columns(con)
+        _add_attempt_columns(con)
         _add_confirmation_column(con)
         _add_confirmation_state(con)
     except BaseException:

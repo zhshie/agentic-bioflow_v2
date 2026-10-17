@@ -83,10 +83,11 @@ def test_tc080_tc136_the_tool_shows_the_person_the_form_and_queues_a_job_only_af
     assert out["sent"] is True and out["state"] == "queued" and out["job_id"]
     assert len(seen) == 1 and "這是續跑：同一個資料夾，沿用已完成的 task；樣本和參數不變" in seen[0].message
     assert rig.row_of_job(out["job_id"])["attempt_kind"] == "resume"
+    rig.first("y")
     seen = []
-    declined = tool_json(rig.w.call("relaunch", {"run_name": "x"}, answer=form_answer(action="decline", seen=seen)))
+    declined = tool_json(rig.w.call("relaunch", {"run_name": "y"}, answer=form_answer(action="decline", seen=seen)))
     assert declined["sent"] is False and len(seen) == 1 and "這是原樣重跑" in seen[0].message
-    assert len(rig.jobs()) == 2
+    assert len(rig.jobs()) == 3      # the two first launches and the resume
 
 
 def test_tc082_tc083_over_http_without_a_form_the_tool_answers_pending_and_the_page_address(rig, duo):

@@ -754,7 +754,7 @@ def _probe(folder, of_run, user, script):
             'if [ -L "$f"/tower.token ]; then echo token=link; else echo token=ok; fi; '
             'echo session=$(cut -f6 "$f"/.nextflow/history 2>/dev/null | grep -m1 -E %s); '
             '(cd "$f" 2>/dev/null && sha256sum -- %s 2>/dev/null | sed %s); '
-            'q=$(squeue -h -n %s -u %s 2>&1); echo squeue_rc=$?; echo alive=$(printf "%%s\n" "$q" | grep -c .)'
+            'q=$(squeue -h -n %s -u %s 2>&1); echo squeue_rc=$?; echo alive=$(printf "%%s\\n" "$q" | grep -c .)'
             % (f, s, s, quote("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"), " ".join(FILE_NAMES), quote("s/^/sha=/"),
                quote("nf-" + of_run), quote(user)))
 
