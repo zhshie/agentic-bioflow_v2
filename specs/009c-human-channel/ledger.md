@@ -59,3 +59,9 @@ Unchanged on purpose (they still pass as written): `tcb04/08/09/10`, `tcc01/02`,
 6. **`create_app(public_url=...)` writes the address into `platform.db` (`meta.web_base_url`)** so the MCP process, a different process, can name it; `abf-platform web` writes the loopback address when none is given. Without `abf-platform web` ever started the answers name `http://127.0.0.1:8789`.
 7. `launch` reads the samplesheet from a path on the platform's machine (the plan's "samplesheet path"). Through HTTP that means a remote client can make the platform read any readable CSV/UTF-8 file it names into the summary that only that user sees. Same-user trust boundary as the rest of the plan; flagging it.
 8. The skills (`skills/*/SKILL.md`) still describe launching only through the terminal command; rewriting them to use the tools is the "each skill rewritten to call the platform" step of the changelog, not this PR.
+
+## Fix round (verifier TC-F06, 2026-10-17)
+- Finding: the tests listed below were rewritten to the new expectation but are not named in plan.md line 18. Procedural gap only: the table above has each old expectation, new expectation and reason, and the diff has no deleted, skipped or loosened assertion. No code or test changed in this round.
+- Not named by the plan: `test_pat.py` tca11, tcb08_b09, tcb10, tcf03_f04; `test_guidance.py` tc501; `test_launch_e2e.py` tc010_tc061; `test_station_envs.py` tc071, tc063, tc084; `test_actions_layer.py` tca10; `tests/constitution_scope_test.sh` and `tests/platform_direction_docs_test.sh` (version pins).
+- Needs from the developer-agent: one ruling line in plan.md that accepts these as rewrites (plan.md is not the executor's to edit).
+- `test_station_envs.py::test_tc071` keeps its old function name (`..._exactly_six_...`) on purpose so the TC mapping does not move; it now asserts eight tools (six read plus launch and cancel). Rename only if the developer-agent wants it.
