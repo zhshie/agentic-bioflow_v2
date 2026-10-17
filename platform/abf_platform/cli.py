@@ -50,10 +50,29 @@ def cmd_web(args):
     index = store.default_index_path()
     tokens = store.default_tokens_path(index)
     state = store.default_platform_path(index)
-    shown = args.host if args.host not in ("0.0.0.0", "::") else "127.0.0.1"
-    base = (args.public_url or "http://%s:%s" % (shown, args.port)).rstrip("/")
+    public = (args.public_url or "").rstrip("/")
+    if public:
+        from urllib.parse import urlparse
+        u = urlparse(public)
+        if u.scheme not in ("http", "https") or not u.hostname:
+            _err("rejected: --public-url must look like https://host (--public-url 要是 https://主機 的形式)")
+            return 1
+        if u.scheme == "http" and u.hostname not in LOOPBACK:
+            _err("rejected: --public-url %s is plain http; the login cookie would travel in clear text. Use an https:// address "
+                 "(a TLS proxy in front of this page) (--public-url 必須是 https)" % public)
+            return 1
+    if args.host not in LOOPBACK and not public.startswith("https://"):
+        _err("rejected: serving the confirmation page on %s needs --public-url https://<address people open> (put a TLS proxy in front); "
+             "plain http beyond this machine would send the login cookie in clear text, and the MCP answers could not name a reachable "
+             "address (不在本機以外提供明文 http；請加 --public-url https://…)" % args.host)
+        return 1
+    base = public or "http://%s:%s" % (args.host, args.port)
+    try:
+        app = web.create_app(index, tokens, state, public_url=public or None)
+    except ValueError as e:
+        _err("rejected: %s" % e)
+        return 1
     store.set_meta(state, "web_base_url", base)    # the MCP server names this address in its answers
-    app = web.create_app(index, tokens, state, public_url=args.public_url)
     _say("abf-platform confirmation page on http://%s:%s, named to people as %s (tokens %s, platform %s)" % (
         args.host, args.port, base, tokens, state))
     if args.host not in LOOPBACK:
@@ -413,7 +432,7 @@ def build_parser():
     ua.add_argument("name")
     ua.add_argument("--lab", required=True)
     ua.set_defaults(func=cmd_user_add)
-    up = usub.add_parser("passwd", help="set the password a person logs into the confirmation page with (typed at a terminal)",
+    up = usub.add_parser("passwd", help="set the password a person logs into the confirmation page with (typed at a terminal, 8 to 1000 characters)",
                          allow_abbrev=False)
     up.add_argument("name")
     up.set_defaults(func=cmd_user_passwd)

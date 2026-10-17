@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS web_sessions (
 # WEB_SESSION_SECONDS. The password never opens the MCP server, and a personal access token never opens the web.
 WEB_SESSION_SECONDS = 12 * 3600
 MIN_PASSWORD_CHARS = 8
+MAX_PASSWORD_CHARS = 1000      # `user passwd` and the login page both stop here; nothing is cut down silently
 SCRYPT = (2 ** 14, 8, 1)
 
 # Nextflow can send one more message for a run after its `complete` (an aborted run runs onFlowComplete twice, so a second
@@ -753,6 +754,8 @@ def set_web_password(tokens_path, name, password):
     ValueError for an unknown user or a password that is too short. The caller is the terminal command: nothing else may call it."""
     if not isinstance(password, str) or len(password) < MIN_PASSWORD_CHARS:
         raise ValueError("the password must be at least %d characters (密碼至少 %d 個字元)" % (MIN_PASSWORD_CHARS, MIN_PASSWORD_CHARS))
+    if len(password) > MAX_PASSWORD_CHARS:
+        raise ValueError("the password must be at most %d characters (密碼最多 %d 個字元)" % (MAX_PASSWORD_CHARS, MAX_PASSWORD_CHARS))
     stored = hash_password(password)
     con = connect_tokens(tokens_path)
     try:

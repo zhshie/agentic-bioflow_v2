@@ -14,17 +14,18 @@ bearer token and must never be given one. The only routes there are:
 cannot press the button. The cookie is `<random id>.<signature>`; only the sha256 of the id is stored (tokens.db, web_sessions).
 Everything the page shows is escaped, and a content-security-policy forbids scripts anyway.
 """
-import collections
 import hashlib
 import hmac
 import html
 import os
 import re
+import tempfile
 import time
 import urllib.parse
 from pathlib import Path
 
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
@@ -33,8 +34,11 @@ from . import actions, store
 COOKIE = "abf_web"
 KEY_FILE = "web_signing.key"
 RID = re.compile(r"^[0-9a-f]{32}\Z")
-FAIL_LIMIT = 5
+FAIL_LIMIT = 5              # failures within FAIL_WINDOW that block one name
+IP_FAIL_LIMIT = 20          # failures within FAIL_WINDOW that block one client address (many names from one address)
 FAIL_WINDOW = 60.0
+MAX_TRACKED = 10000         # names (and addresses) with a live failure window; past this, new ones are refused, no live counter is dropped
+MAX_NAME_CHARS = 100
 MAX_BODY = 16384
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 _HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
@@ -42,17 +46,39 @@ _HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Po
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"}
 
 
+KEY_MIN_BYTES = 32
+
+
 def _signing_key(folder):
-    """The key that signs cookies and CSRF tokens: made once, owner-only, kept next to the databases, never printed."""
+    """The key that signs cookies and CSRF tokens: made once, written whole to a temporary file and linked into place (so a start
+    never sees half a key and two starts end with one key), owner-only, kept next to the databases, never printed. A key file of
+    fewer than 32 bytes is refused (ValueError): there is no empty-key path."""
     path = Path(folder) / KEY_FILE
     Path(folder).mkdir(parents=True, exist_ok=True)
-    try:
-        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        return path.read_bytes().strip()
-    key = os.urandom(32).hex().encode("ascii")
-    with os.fdopen(fd, "wb") as f:
-        f.write(key + b"\n")
+    if not path.exists():
+        fd, tmp = tempfile.mkstemp(prefix=".key-", dir=str(folder))
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(os.urandom(32).hex().encode("ascii") + b"\n")
+            try:
+                os.chmod(tmp, 0o600)
+            except OSError:
+                pass
+            try:
+                os.link(tmp, str(path))          # atomic, and never replaces a key another start made first
+            except FileExistsError:
+                pass
+            except OSError:
+                if not path.exists():
+                    os.replace(tmp, str(path))
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+    key = path.read_bytes().strip()
+    if len(key) < KEY_MIN_BYTES:
+        raise ValueError("the signing key file %s has fewer than %d bytes; delete it and start again (簽章金鑰檔太短，拒絕啟動)" % (path, KEY_MIN_BYTES))
     return key
 
 
@@ -75,10 +101,13 @@ def _page(title, body, status=200):
 def _login_form(next_path="", message="", status=200):
     note = "<p class=\"bad\">%s</p>" % _esc(message) if message else ""
     nxt = "<input type=\"hidden\" name=\"next\" value=\"%s\">" % _esc(next_path) if next_path else ""
+    limit = "（%d 到 %d 個字元 / %d to %d characters）" % (store.MIN_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS,
+                                                     store.MIN_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS)
     return _page("登入 (log in)", note + "<p>請用你的姓名與<strong>網頁密碼</strong>登入（網頁密碼不是 AI 用的權杖；它只能在終端機用 "
                  "<code>abf-platform user passwd</code> 設定）。</p><form method=\"post\" action=\"/login\">"
                  "<p><label>姓名 <input name=\"name\" autocomplete=\"username\" required></label></p>"
-                 "<p><label>密碼 <input name=\"password\" type=\"password\" autocomplete=\"current-password\" required></label></p>"
+                 "<p><label>密碼 <input name=\"password\" type=\"password\" autocomplete=\"current-password\" required></label> "
+                 "<small>" + _esc(limit) + "</small></p>"
                  + nxt + "<p><button type=\"submit\">登入</button></p></form>", status)
 
 
@@ -96,7 +125,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     secure = parsed.scheme == "https" and (parsed.hostname or "") not in LOOPBACK_HOSTS
     if public_url:
         store.set_meta(platform_path, "web_base_url", public_url.rstrip("/"))     # the MCP server names this address in its answers
-    failures = collections.defaultdict(list)
+    by_name, by_ip = {}, {}          # key -> times of failures inside the window; a key with a live window is never dropped
 
     def cookie_value(sid):
         return "%s.%s" % (sid, _mac(key, "cookie", sid))
@@ -118,13 +147,36 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     def csrf_token(cookie, rid):
         return csrf(cookie.split(".")[0], rid)
 
-    def blocked(name, now):
-        recent = [t for t in failures.get(name, ()) if now - t < FAIL_WINDOW]
-        if recent:
-            failures[name] = recent
+    def recent(table, key, now):
+        live = [t for t in table.get(key, ()) if now - t < FAIL_WINDOW]
+        if live:
+            table[key] = live
         else:
-            failures.pop(name, None)
-        return len(recent) >= FAIL_LIMIT
+            table.pop(key, None)
+        return live
+
+    def no_room(table, key, now):
+        """True when `key` would be a new entry and the table is full of live windows (expired ones are removed first)."""
+        if key in table or len(table) < MAX_TRACKED:
+            return False
+        for k in list(table):
+            recent(table, k, now)
+        return key not in table and len(table) >= MAX_TRACKED
+
+    def same_origin(request):
+        """A POST from a browser carries Origin (or at least Referer); it must be this page's own origin or the public address."""
+        seen = request.headers.get("origin")
+        if seen is None:
+            seen = request.headers.get("referer")
+        if seen is None:
+            return True            # not a browser (a browser always sends one of the two on a POST); the cookie and the CSRF token still apply
+        allowed = {request.headers.get("host", "").lower()}
+        if parsed.netloc:
+            allowed.add(parsed.netloc.lower())
+        return urllib.parse.urlparse(seen).netloc.lower() in allowed and seen != "null"
+
+    def foreign(request):
+        return _page("來源不符 (wrong origin)", "<p class=\"bad\">這個表單不是從本頁送出的，什麼都沒有改。</p>", 403)
 
     async def body_of(request):
         raw = b""
@@ -139,21 +191,30 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return _login_form(nxt if RID.match(nxt[3:]) and nxt.startswith("/c/") else "")
 
     async def login_post(request):
+        if not same_origin(request):
+            return foreign(request)
         form = await body_of(request)
-        name = str(form.get("name", ""))[:100]
-        password = str(form.get("password", ""))[:1000]
+        raw_name = str(form.get("name", ""))
+        name = raw_name[:MAX_NAME_CHARS]
+        password = str(form.get("password", ""))
+        ip = request.client.host if request.client else ""
         nxt = form.get("next", "")
         nxt = nxt if nxt.startswith("/c/") and RID.match(nxt[3:]) else ""
         now = clock()
-        if blocked(name, now):
+        if (len(recent(by_name, name, now)) >= FAIL_LIMIT or len(recent(by_ip, ip, now)) >= IP_FAIL_LIMIT
+                or no_room(by_name, name, now) or no_room(by_ip, ip, now)):
             return _login_form(nxt, "登入失敗太頻繁，請一分鐘後再試 (too many tries, wait a minute)", 429)
-        who = store.check_web_password(tokens_path, name, password)
+        who = None
+        too_long = len(password) > store.MAX_PASSWORD_CHARS or len(raw_name) > MAX_NAME_CHARS
+        if not too_long:
+            who = await run_in_threadpool(store.check_web_password, tokens_path, name, password)     # scrypt is slow: not on the event loop
         if who is None:
-            failures[name].append(now)
-            if len(failures) > 2000:
-                for old in list(failures)[:1000]:
-                    failures.pop(old, None)
-            return _login_form(nxt, "姓名或密碼不對 (wrong name or password)", 401)
+            by_name.setdefault(name, []).append(now)
+            by_ip.setdefault(ip, []).append(now)
+            note = ("密碼最長 %d 個字元，姓名最長 %d (password at most %d characters, name at most %d)"
+                    % (store.MAX_PASSWORD_CHARS, MAX_NAME_CHARS, store.MAX_PASSWORD_CHARS, MAX_NAME_CHARS)
+                    if too_long else "姓名或密碼不對 (wrong name or password)")
+            return _login_form(nxt, note, 401)
         sid, _ = store.create_web_session(tokens_path, who["user_id"], now)
         if nxt:
             response = RedirectResponse(nxt, status_code=303, headers=_HEADERS)
@@ -166,6 +227,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return response
 
     async def logout_post(request):
+        if not same_origin(request):
+            return foreign(request)
         sid = session_id(request)
         form = await body_of(request)
         if sid and hmac.compare_digest(str(form.get("csrf", "")), csrf(sid, "logout")):
@@ -208,6 +271,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return answer or state_page(req, sid, rid)
 
     async def confirm_post(request):
+        if not same_origin(request):
+            return foreign(request)
         rid = request.path_params["rid"]
         if not RID.match(rid):
             return _page("找不到 (not found)", "<p>沒有這個網址。</p>", 404)
