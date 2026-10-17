@@ -37,3 +37,22 @@
 ## Not in this PR
 - Per-user site folders for a remote station (009h).
 - Roles and sharing (010).
+
+## Ruling after the #125 code review (2026-10-18, developer-agent). Fix in this PR, each with a red test first
+1. `abf_station/handlers.py` `_real_path`:
+   - Resolve with NUL-separated output (`realpath -z -m`), or with one call per path.
+   - Require exactly the expected number of results.
+   - Fail closed: if realpath fails or the count is wrong, the request is refused, never checked the v3 way.
+   - Never take an allowed root from realpath output except the roots' own resolution, matched by position.
+2. `abf_station/launch.py` `_check_upload_paths`:
+   - The same NUL-separated or per-entry resolution.
+   - `len(now) == len(entries)` exactly, and the full lists are compared.
+   - Fail closed.
+3. `abf_launch/build.py` `_param_path`. Replace the "contains `/`" heuristic. A str param is a path when any of these holds:
+   - it starts with `/` or `~`;
+   - it is `.` or `..`, or has a `.`/`..` path component;
+   - it starts with `./` or `../`;
+   - it names an existing file or directory under the caller's area or a read root;
+   - it contains `/` and is not a scheme URL (`xxx://`) and does not match `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$` (an `owner/name` identifier such as `nf-core/rnaseq`).
+
+   Path-valued values are confined as before. `owner/name` identifiers and scheme URLs pass. Tests must cover `..`, `.`, a directory name, `nf-core/rnaseq`, `https://x/y`, `s3://b/k` and `data/x.fq`.
