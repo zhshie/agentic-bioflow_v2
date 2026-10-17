@@ -305,6 +305,10 @@ Needs the platform running (`abf-platform serve`, `abf-platform mcp --http`, `ab
 
 This one is read, not run. Open `specs/116-owner-binding/ledger.md` next to the diff of `platform/tests/`. Pass: every existing test that was changed is listed there with the old expectation, the new one and the reason; no assertion was deleted, skipped or loosened (a changed expectation must say what the new rule makes true instead); and `git diff <base> -- platform/tests` shows no test removed. Then, with two real users, check once by hand that one cannot see the other's environment, agent, run or upload folder over MCP and over the page.
 
+## Owner binding, the gaps (116b): the reviewer checks the rewritten pins
+
+This one is read, not run. Open `specs/116b-owner-gaps/ledger.md` next to `git diff main -- platform/tests` (the base is the branch this one was cut from if `main` is v2). Pass: every existing test that was changed is listed in the ledger with the old expectation, the new one and the reason; no assertion was deleted, skipped or loosened; and no test was removed.
+
 ## When a release moves the flow files (commands → skills)
 
 Used by whoever reviews a change that moves or renames the five flow files

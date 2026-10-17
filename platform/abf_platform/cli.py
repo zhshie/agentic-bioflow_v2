@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|revoke | user add|passwd | pat new|list|revoke | ce ... | mcp [--http] | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | web | token new | agent-token new|revoke | user add|passwd | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
@@ -388,6 +388,46 @@ def cmd_mcp(args):
     return 0
 
 
+def cmd_runs_assign(args):
+    """Give a run that nobody owns to a user (116b). Terminal only: it writes launches.user_id of the newest row of the run and nothing else."""
+    user = store.user_by_name(store.default_tokens_path(), args.user)
+    if user is None:
+        _err("rejected: no such user: %s (沒有這個使用者); nothing was changed" % args.user)
+        return 1
+    state = store.default_platform_path(store.default_index_path())
+    names = store.user_names(store.default_tokens_path())
+
+    def work(con):
+        row = jobs.latest_launch(con, args.run_name)
+        if row is None:
+            return "no_run", None
+        old = row["user_id"]
+        if old == user["user_id"]:
+            return "same", old
+        if old is not None and not args.force:
+            return "owned", old
+        con.execute("UPDATE launches SET user_id = ? WHERE id = ?", (user["user_id"], row["id"]))
+        return "done", old
+
+    what, old = jobs.transaction(state, work)
+    if what == "no_run":
+        _err("rejected: no launch of a run named %s (沒有這個 run); nothing was changed" % args.run_name)
+        return 1
+    if what == "owned":
+        _err("rejected: run %s already belongs to %s; to change the owner add --force (這個 run 已經有擁有者，要改請加 --force)" % (      # 116b-owner
+            args.run_name, names.get(old, "user #%s" % old)))
+        return 1
+    if what == "same":
+        _say("run %s already belongs to %s; nothing to change (已經是他的)" % (args.run_name, args.user))
+        return 0
+    if old is None:
+        _say("run %s now belongs to %s (已指定給 %s)" % (args.run_name, args.user, args.user))
+    else:
+        _say("run %s: owner changed from %s to %s (擁有者由 %s 改為 %s)" % (
+            args.run_name, names.get(old, "user #%s" % old), args.user, names.get(old, "user #%s" % old), args.user))
+    return 0
+
+
 def cmd_rebuild(args):
     index = store.default_index_path()
     # the logs that `fetch-records` brought here are one more place to read, each in the shape of a launch folder
@@ -515,6 +555,14 @@ def build_parser():
     r.add_argument("folders", nargs="*", help="launch folders (the ones holding .nextflow/ and .nextflow.log); the records "
                                               "brought here by fetch-records are read too")
     r.set_defaults(func=cmd_rebuild)
+
+    rn = sub.add_parser("runs", help="the owner of a run in the hand-off record")
+    rsub = rn.add_subparsers(dest="runs_command", required=True)
+    ra = rsub.add_parser("assign", help="give a run that nobody owns to a user (changing an owner that exists takes one more flag)", allow_abbrev=False)
+    ra.add_argument("run_name")
+    ra.add_argument("--user", required=True, help="the user who launched it")
+    ra.add_argument("--force", action="store_true", help="change the owner of a run that already has one")      # 116b-owner: not a confirmation switch
+    ra.set_defaults(func=cmd_runs_assign)
 
     from abf_launch import cli as launch_cli
     launch_cli.add_commands(sub)

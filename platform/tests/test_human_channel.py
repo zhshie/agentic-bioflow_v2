@@ -67,7 +67,12 @@ def test_tca02_a06_the_summary_and_the_bundle_are_the_ones_of_the_terminal(w, tm
     p.send("y\n")
     p.finish(60)
     terminal_row = [r for r in w.confirmations() if r["id"] != pending["id"]][0]
-    assert terminal_row["sha256"] == pending["sha256"]
+    # 116b: the page's bundle also carries `upload_paths` (the real paths of the caller's own files); without that record it is the terminal's bundle, byte for byte
+    from abf_platform import common
+    page_bundle = json.loads(pending["bundle_json"])
+    assert "upload_paths" in page_bundle
+    del page_bundle["upload_paths"]
+    assert terminal_row["sha256"] == common.bundle_sha256(page_bundle)
 
 
 def test_tca03_nothing_is_queued_while_nobody_has_said_yes(w):

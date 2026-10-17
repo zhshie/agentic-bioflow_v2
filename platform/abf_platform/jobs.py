@@ -253,14 +253,29 @@ def launch_job(con, launch, now):
     return "unknown", job
 
 
-def name_problem(con, run_name, now):
+NAME_TAKEN = "this run name is taken; choose another"      # what an HTTP caller is told when the name is somebody else's or nobody's (116b)
+
+
+def name_problem(con, run_name, now, caller_user_id=None):
     """The sentence that says why a run name cannot be used for a new launch, or None when it can.
+
+    With a caller (a user id, 116b) a name whose newest row is not that user's own gets NAME_TAKEN and nothing else: no Slurm number, no
+    state. The names stay unique for everybody, since the run folder is shared on the site. None keeps the detailed words (the terminal).
 
     It can only when every earlier row of the name has no Slurm job number AND its own launch job was refused by the
     agent (nothing was done on the site). Submitted, still waiting, or unknown: the name stays taken, and the strictest row
     decides. Read-only, so the terminal command can ask it before it asks the person anything.
     """
     rows = con.execute("SELECT * FROM launches WHERE run_name = ? ORDER BY id", (run_name,)).fetchall()
+    problem = _name_problem_of(con, rows, run_name, now)
+    if problem and caller_user_id is not None:
+        newest = rows[-1]
+        if "user_id" not in newest.keys() or newest["user_id"] != caller_user_id:
+            return NAME_TAKEN
+    return problem
+
+
+def _name_problem_of(con, rows, run_name, now):
     submitted = [r for r in rows if r["slurm_job_id"] is not None]
     if submitted:
         return ("the run name %s was used already (run 名稱已用過)：它已送出過，Slurm 工作編號是 %s；請換一個名稱"
@@ -275,14 +290,14 @@ def name_problem(con, run_name, now):
     return None
 
 
-def check_run_name(state_path, run_name, clock=time.time):
+def check_run_name(state_path, run_name, clock=time.time, caller_user_id=None):
     """Raise JobRefused, in the words enqueue_confirmed would use, when the run name cannot be used for a new launch."""
     con = store.open_readonly(state_path)
     if con is None:
         return
     try:
         try:
-            problem = name_problem(con, run_name, clock())
+            problem = name_problem(con, run_name, clock(), caller_user_id)
         except sqlite3.Error:
             return
     finally:
@@ -307,7 +322,7 @@ def enqueue_confirmed(con, ce_name, kind, bundle, confirmation_id, now, seconds,
         raise JobRefused("the content is for agent %r, not for the agent of %s (%s)" % (
             str(bundle.get("agent"))[:64], ce_name, row["agent"]))
     if kind == "launch_nextflow":
-        problem = name_problem(con, run_name, now)
+        problem = name_problem(con, run_name, now, caller_id)
         if problem:
             raise JobRefused(problem)
         args = {"bundle": bundle, "confirmation_id": confirmation_id, "bundle_sha256": sha}
