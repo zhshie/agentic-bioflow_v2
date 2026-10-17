@@ -310,5 +310,15 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     app = Starlette(routes=[Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/c/{rid}", confirm_get, methods=["GET"]), Route("/c/{rid}", confirm_post, methods=["POST"])])
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    async def add_headers(request, call_next):
+        """The framework's own 404 and 405 are not made by `_page`: they get the same headers."""
+        response = await call_next(request)
+        for k, v in _HEADERS.items():
+            response.headers.setdefault(k, v)
+        return response
+
+    app.add_middleware(BaseHTTPMiddleware, dispatch=add_headers)
     app.state.csrf_token = csrf_token
     return app
