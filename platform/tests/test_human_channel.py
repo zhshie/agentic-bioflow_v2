@@ -134,8 +134,13 @@ def test_tca15_control_characters_are_refused_before_anything_is_made(w, tmp_pat
     sheet = w.data.samplesheet(tmp_path, rows=[("s01", "/data/storage/rawdata/\x1b[2Js01.fastq.gz")], name="bad.csv")
     out = w.launch(caller=w.user("ann"), samplesheet=str(sheet))
     assert out["ok"] is False and w.confirmations() == []
-    out = w.launch(caller=w.user("bob"), params={"primer": "A\x07G"})
-    assert out["ok"] is False and w.confirmations() == []
+    # a control character in a param is not refused by the bundle (as at the terminal, TC-006): it is shown spelled out, never raw
+    out = w.launch(caller=w.user("bob"), params={"primer": "A\x07G\x1b[2J"})
+    if out["ok"] is False:
+        assert w.confirmations() == []
+    else:
+        assert "\x07" not in out["summary"] and "\x1b" not in out["summary"] and "\\x07" in out["summary"]
+        assert "\x07" not in w.confirmations()[0]["screen_text"]
 
 
 def test_tca08_exactly_eight_tools_and_none_of_them_can_say_yes(w):
@@ -375,11 +380,15 @@ def test_tce03_waiting_is_not_a_job_and_the_same_request_is_reused(w):
 
 
 def test_tce04_a_changed_content_gets_a_new_request_and_never_the_old_yes(w):
-    # TC-E04
+    # TC-E04. The same run name with another version is refused outright, because the first job holds the name (no job either way);
+    # another name and another version is a new content and gets a new pending request. The old yes is used for neither.
     ann = w.user("ann")
     first = w.launch(caller=ann)
     _approve_on_the_page(w, "ann", first["id"])
-    changed = w.launch(caller=ann, revision="2.17.0")
+    same_name = w.launch(caller=ann, revision="2.17.0")
+    assert same_name["ok"] is False and same_name["sent"] is False and "已用過" in same_name["message"]
+    assert len(w.jobs("launch_nextflow")) == 1 and len(w.confirmations()) == 1
+    changed = w.launch(caller=ann, revision="2.17.0", run="run-two")
     assert changed["sent"] is False and changed["id"] != first["id"]
     assert len(w.jobs("launch_nextflow")) == 1 and len(w.confirmations()) == 2
     assert [r["state"] for r in w.confirmations() if r["id"] == changed["id"]] == ["pending"]
@@ -525,14 +534,13 @@ def test_tcf07_the_three_singletons_pass(tmp_path):
 
 
 def test_tcf08_the_channels_are_three_different_objects_and_only_the_cli_uses_terminal():
-    # TC-F08
+    # TC-F08 (the scan of test_tcc04 does the same for launch, cancel and TERMINAL everywhere else)
     from abf_platform import actions as a
     from helpers import PLATFORM_DIR
+    from test_actions_layer import action_refs, source_files
     assert len({id(a.TERMINAL), id(a.ELICITED), id(a.PAGE)}) == 3
-    for name, who in (("TERMINAL", ["abf_launch/cli.py", "abf_platform/actions/__init__.py"]),):
-        users = [p.relative_to(PLATFORM_DIR).as_posix() for p in PLATFORM_DIR.rglob("*.py")
-                 if "tests" not in p.parts and name in p.read_text(encoding="utf-8")]
-        assert sorted(users) == sorted(who), users
+    users = {rel for p, rel in source_files() if "TERMINAL" in " ".join(action_refs(p.read_text(encoding="utf-8"), rel))}
+    assert users == {"abf_launch/cli.py", "abf_platform/actions/__init__.py"}, users
     web = (PLATFORM_DIR / "abf_platform" / "web.py").read_text(encoding="utf-8")
     assert "actions.PAGE" in web and "ELICITED" not in web and "TERMINAL" not in web
     mcp = (PLATFORM_DIR / "abf_platform" / "mcp_server.py").read_text(encoding="utf-8")
@@ -581,6 +589,8 @@ def test_tcf10_f11_the_ban_on_session_and_password_names_has_exactly_one_excepti
     state = plat.dir / "platform.db"
     from abf_platform import store
     store.connect_state(state).close()
+    store.connect_tokens(plat.tokens).close()
+    store.connect_index(plat.index).close()
     dbs = {"index.db": plat.index, "tokens.db": plat.tokens, "platform.db": state}
     assert {"web_sessions"} <= {r[0] for r in sqlite3.connect(str(plat.tokens)).execute("SELECT name FROM sqlite_master")}
     assert EXEMPT == {("index.db", "runs", "session_id"), ("tokens.db", "users", "password_hash"),

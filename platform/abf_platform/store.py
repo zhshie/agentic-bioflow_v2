@@ -6,7 +6,9 @@ index.db     the run index. It is an index, not the truth: `rebuild` drops it an
 tokens.db    the accepted tokens, as hashes (run tokens and agent tokens). `rebuild` never opens it.
 platform.db  compute environments, agents and the queue of read-only jobs. `rebuild` never opens it.
 """
+import base64
 import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -82,9 +84,23 @@ CREATE TABLE IF NOT EXISTS users (
     name TEXT NOT NULL UNIQUE,
     lab TEXT NOT NULL,
     created_at REAL NOT NULL,
-    disabled_at REAL
+    disabled_at REAL,
+    password_hash TEXT
+);
+CREATE TABLE IF NOT EXISTS web_sessions (
+    id_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL
 );
 """
+
+# The web password (spec 009c): users.password_hash holds only a scrypt hash with its own salt, written by `abf-platform user passwd`
+# on a real terminal and by nothing else; web_sessions holds only the sha256 of a browser login's random id, which lives
+# WEB_SESSION_SECONDS. The password never opens the MCP server, and a personal access token never opens the web.
+WEB_SESSION_SECONDS = 12 * 3600
+MIN_PASSWORD_CHARS = 8
+SCRYPT = (2 ** 14, 8, 1)
 
 # Nextflow can send one more message for a run after its `complete` (an aborted run runs onFlowComplete twice, so a second
 # `complete` follows). The token is marked revoked at the complete (revoked_at) and also ended (ended_at); for
@@ -132,7 +148,15 @@ CREATE TABLE IF NOT EXISTS confirmations (
     kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel')),
     created_at REAL NOT NULL,
     used_at REAL,
-    caller_user_id INTEGER
+    caller_user_id INTEGER,
+    state TEXT NOT NULL DEFAULT 'confirmed' CHECK (state IN ('pending', 'confirmed', 'void')),
+    channel TEXT,
+    confirmed_at REAL,
+    expires_at REAL,
+    ce_name TEXT,
+    bundle_json TEXT,
+    screen_text TEXT,
+    void_reason TEXT
 );
 %(jobs)s
 %(launches)s;
@@ -362,6 +386,27 @@ def _add_confirmation_column(con):
             con.execute("ALTER TABLE confirmations ADD COLUMN caller_user_id INTEGER")
 
 
+_CONFIRMATION_COLUMNS = (
+    ("state", "TEXT NOT NULL DEFAULT 'confirmed' CHECK (state IN ('pending', 'confirmed', 'void'))"),
+    ("channel", "TEXT"), ("confirmed_at", "REAL"), ("expires_at", "REAL"), ("ce_name", "TEXT"), ("bundle_json", "TEXT"),
+    ("screen_text", "TEXT"), ("void_reason", "TEXT"))
+
+
+def _add_confirmation_state(con):
+    """A platform.db made before 009c has confirmations that are all a person's yes at a terminal: add the columns of the pending
+    request, and mark every old row confirmed through TERMINAL, at the time it was made."""
+    if "state" in {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}:
+        return
+    try:
+        with con:
+            for name, decl in _CONFIRMATION_COLUMNS:
+                con.execute("ALTER TABLE confirmations ADD COLUMN %s %s" % (name, decl))
+            con.execute("UPDATE confirmations SET channel = 'TERMINAL', confirmed_at = created_at")
+    except sqlite3.OperationalError:
+        if "state" not in {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}:
+            raise    # a second process may have added them first; anything else is a real error
+
+
 def connect_state(path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -374,6 +419,7 @@ def connect_state(path):
         con.executescript(STATE_SCHEMA)
         _add_agent_columns(con)
         _add_confirmation_column(con)
+        _add_confirmation_state(con)
     except BaseException:
         con.close()
         raise
@@ -439,6 +485,13 @@ def _migrate_tokens(con):
             con.execute("ALTER TABLE tokens ADD COLUMN user_id INTEGER")
         if "label" not in have:
             con.execute("ALTER TABLE tokens ADD COLUMN label TEXT")
+    if "password_hash" not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
+        try:
+            with con:
+                con.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+        except sqlite3.OperationalError:
+            if "password_hash" not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
+                raise
 
 
 def connect_tokens(path):
@@ -660,5 +713,134 @@ def live_agent_names(tokens_path):
     try:
         return [r[0] for r in con.execute("SELECT DISTINCT agent_name FROM tokens WHERE kind = 'agent' "
                                           "AND revoked_at IS NULL ORDER BY agent_name")]
+    finally:
+        con.close()
+
+
+# ---- the web password and the browser login (spec 009c) ------------------------------------------------------------------
+
+def _b64(raw):
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _unb64(text):
+    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+
+
+def _scrypt(password, salt, n, r, p):
+    return hashlib.scrypt(password.encode("utf-8"), salt=salt, n=n, r=r, p=p, dklen=32, maxmem=128 * n * r * 2 + 4 * 1024 * 1024)
+
+
+def hash_password(password):
+    """scrypt$N$r$p$salt$hash: a slow hash with a salt of its own; the password itself is kept nowhere."""
+    n, r, p = SCRYPT
+    salt = os.urandom(16)
+    return "scrypt$%d$%d$%d$%s$%s" % (n, r, p, _b64(salt), _b64(_scrypt(password, salt, n, r, p)))
+
+
+def password_matches(stored, password):
+    try:
+        kind, n, r, p, salt, digest = stored.split("$")
+        if kind != "scrypt":
+            return False
+        return hmac.compare_digest(_scrypt(password, _unb64(salt), int(n), int(r), int(p)), _unb64(digest))
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+def set_web_password(tokens_path, name, password):
+    """Set (or replace) a user's web password; every browser login of that user ends in the same transaction.
+    ValueError for an unknown user or a password that is too short. The caller is the terminal command: nothing else may call it."""
+    if not isinstance(password, str) or len(password) < MIN_PASSWORD_CHARS:
+        raise ValueError("the password must be at least %d characters (密碼至少 %d 個字元)" % (MIN_PASSWORD_CHARS, MIN_PASSWORD_CHARS))
+    stored = hash_password(password)
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            row = con.execute("SELECT id FROM users WHERE name = ?", (name,)).fetchone()
+            if row is None:
+                raise ValueError("no such user: %s (沒有這個使用者)" % name)
+            con.execute("UPDATE users SET password_hash = ? WHERE id = ?", (stored, row["id"]))
+            con.execute("DELETE FROM web_sessions WHERE user_id = ?", (row["id"],))
+    finally:
+        con.close()
+
+
+def check_web_password(tokens_path, name, password):
+    """{'user_id', 'name', 'lab'} when the name and the web password are right and the user is not disabled, else None. A user who
+    has no web password never passes, and every refusal costs the same hashing time."""
+    dummy = "scrypt$%d$%d$%d$%s$%s" % (SCRYPT[0], SCRYPT[1], SCRYPT[2], _b64(b"\0" * 16), _b64(b"\0" * 32))
+    row = None
+    if isinstance(name, str) and isinstance(password, str) and name and Path(tokens_path).exists():
+        con = connect_tokens(tokens_path)
+        try:
+            row = con.execute("SELECT id, name, lab, disabled_at, password_hash FROM users WHERE name = ?", (name,)).fetchone()
+        finally:
+            con.close()
+    stored = row["password_hash"] if row is not None and row["password_hash"] else dummy
+    ok = password_matches(stored, password if isinstance(password, str) else "")
+    if row is None or not row["password_hash"] or not ok or row["disabled_at"] is not None:
+        return None
+    return {"user_id": row["id"], "name": row["name"], "lab": row["lab"]}
+
+
+def create_web_session(tokens_path, user_id, now):
+    """A browser login: returns the random id (shown once, kept only as a hash) and when it ends."""
+    sid = secrets.token_urlsafe(32)
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            con.execute("DELETE FROM web_sessions WHERE expires_at <= ?", (now,))
+            con.execute("INSERT INTO web_sessions (id_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                        (_hash(sid), user_id, now, now + WEB_SESSION_SECONDS))
+    finally:
+        con.close()
+    return sid, now + WEB_SESSION_SECONDS
+
+
+def web_session_user(tokens_path, sid, now):
+    """{'user_id', 'name', 'lab'} of a live browser login of a user who is not disabled, else None."""
+    if not sid or not isinstance(sid, str) or not Path(tokens_path).exists():
+        return None
+    con = connect_tokens(tokens_path)
+    try:
+        row = con.execute("SELECT u.id AS user_id, u.name AS name, u.lab AS lab FROM web_sessions s JOIN users u ON u.id = s.user_id "
+                          "WHERE s.id_hash = ? AND s.expires_at > ? AND u.disabled_at IS NULL", (_hash(sid), now)).fetchone()
+        return dict(row) if row else None
+    finally:
+        con.close()
+
+
+def end_web_session(tokens_path, sid):
+    if not sid or not Path(tokens_path).exists():
+        return 0
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            return con.execute("DELETE FROM web_sessions WHERE id_hash = ?", (_hash(sid),)).rowcount
+    finally:
+        con.close()
+
+
+# ---- small facts the processes share through platform.db ------------------------------------------------------------------
+
+def set_meta(state_path, key, value):
+    con = connect_state(state_path)
+    try:
+        with con:
+            con.execute("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+    finally:
+        con.close()
+
+
+def get_meta(state_path, key):
+    con = open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+    except sqlite3.Error:
+        return None
     finally:
         con.close()

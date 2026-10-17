@@ -119,11 +119,12 @@ def target_problem(state, ce_name, kind):
 
 
 def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet, params_file=None, param_items=None, params=None,
-                   path_columns=None):
+                   path_columns=None, check_name=True):
     """(environment name, bundle) for these choices, or Refusal. Nothing is shown, asked or written.
 
     param_items are `name=value` strings as typed on a command line (the value is read as a number or true/false when it looks
-    like one); params is a mapping that already has its types (the MCP tool). Both are put over the params file."""
+    like one); params is a mapping that already has its types (the MCP tool). Both are put over the params file.
+    check_name=False leaves the run-name check to the caller (the MCP tool looks for a yes that already exists first)."""
     ce_name = ce or primary_environment(state)
     if not ce_name:
         raise Refusal("沒有指定環境（--ce），也找不到唯一可用的環境 (no --ce, and no single available environment)")
@@ -148,10 +149,11 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet,
             samplesheet=rows, params=merged, path_columns=path_columns))
     except bundle_mod.BundleError as e:
         raise Refusal(str(e))
-    try:
-        jobs.check_run_name(state, bundle["run_name"])    # a name that cannot be used is refused before anything is shown
-    except jobs.JobRefused as e:
-        raise Refusal(str(e))
+    if check_name:
+        try:
+            jobs.check_run_name(state, bundle["run_name"])    # a name that cannot be used is refused before anything is shown
+        except jobs.JobRefused as e:
+            raise Refusal(str(e))
     return ce_name, bundle
 
 

@@ -47,6 +47,7 @@ class World:
 
         async def go():
             kw = {"elicitation_callback": answer} if answer else {}
+            kw["mode"] = "legacy"     # the handshake with a back channel, which is what a form needs (Claude Code connects this way)
             async with Client(mcp_server.build_server(self.ip.index), **kw) as c:
                 tools = (await c.list_tools()).tools
                 return tools, [await c.call_tool(n, a) for n, a in calls]

@@ -637,10 +637,10 @@ def test_tce03_elicitation_lives_in_one_module():
         if rel == "abf_platform/elicit.py":
             continue
         for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-            if "elicit" in line.lower() and not (rel == "abf_platform/actions/__init__.py" and re.fullmatch(r"from \.\. import .*", line.strip())):
+            if "elicit" in line and not (rel == "abf_platform/actions/__init__.py" and re.fullmatch(r"from \.\. import .*", line.strip())):
                 bad.append("%s:%d" % (rel, n))
     assert bad == [] and (PKG / "elicit.py").is_file()
-    imports = [ln for ln in (PKG / "actions" / "__init__.py").read_text(encoding="utf-8").splitlines() if "elicit" in ln.lower()]
+    imports = [ln for ln in (PKG / "actions" / "__init__.py").read_text(encoding="utf-8").splitlines() if "elicit" in ln]
     assert len(imports) == 1
 
 

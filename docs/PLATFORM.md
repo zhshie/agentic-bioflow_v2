@@ -3,9 +3,9 @@
 `platform/` holds a small program, `abf-platform`, that does two things, and a second program, `abf-station` (the station agent, section 6), that lets it ask about a site without ever holding a credential:
 
 1. It **receives** what Nextflow reports about a run. Nextflow's own `nf-tower` plugin sends the start of a run, its progress, a heartbeat once a minute and its end to whatever address you set as `tower.endpoint`. The receiver accepts those messages and keeps a small index of the runs.
-2. It **answers questions** about that index to an AI client over MCP (Model Context Protocol), with read-only tools: `list_runs` and `get_run` for runs, `list_compute_envs`, `get_compute_env`, `list_agents` and `list_site_files` for the compute environments and the agent (sections 6 to 8).
+2. It **answers questions** about that index to an AI client over MCP (Model Context Protocol), with six read-only tools: `list_runs` and `get_run` for runs, `list_compute_envs`, `get_compute_env`, `list_agents` and `list_site_files` for the compute environments and the agent (sections 6 to 8). Two more tools, `launch` and `cancel`, only ask: they start nothing until a person says yes (section 9, "The confirmation page").
 
-It does not start, cancel or delete anything, it has no web pages, and it never contacts Seqera Platform (ADR 0004). Nextflow's own records stay the truth about a run; the index can be thrown away and rebuilt (see "Rebuild the index").
+It does not delete anything, it starts or cancels a run only after a person's yes, its only web pages are the login and the confirmation page (`abf-platform web`), and it never contacts Seqera Platform (ADR 0004). Nextflow's own records stay the truth about a run; the index can be thrown away and rebuilt (see "Rebuild the index").
 
 ## What you need
 
@@ -271,7 +271,7 @@ What goes back is the agent's own short wording (300 characters at most per chec
 
 ### The MCP tools
 
-Six tools, all read-only (`readOnlyHint`): `list_runs`, `get_run`, `list_compute_envs`, `get_compute_env`, `list_agents` and `list_site_files`. `list_site_files` puts one read-only question in the job queue and waits for the answer; it cannot name a command or a kind of job. There is no tool that creates or changes an environment: that is the command line for now.
+Eight tools. Six are read-only (`readOnlyHint`): `list_runs`, `get_run`, `list_compute_envs`, `get_compute_env`, `list_agents` and `list_site_files`. `list_site_files` puts one read-only question in the job queue and waits for the answer; it cannot name a command or a kind of job. The other two, `launch` and `cancel` (spec 009c), are marked as writing (`cancel` also as destructive) but start and stop nothing by themselves: each builds what the terminal command builds, writes a pending request and asks the person (section 9, "The confirmation page"). They have no argument that could say yes. There is no tool that creates or changes an environment, a user or a password: that is the command line.
 
 ## 8. The types
 
@@ -360,6 +360,23 @@ abf-platform rebuild
 
 `fetch-records` asks the agent, read-only, for `.nextflow.log*`, `.nextflow/history` and the trace file that a log names, from that one run folder (never `tower.token`, `params.yaml` or anything else, never through a symbolic link, at most 20 MB each, "truncated" is said). **These records are sent to the platform and stored on this machine under `<platform data>/records/<run>/`; they contain the paths and parameters of the run.** `rebuild` reads that folder as one more launch folder, and the run becomes what Nextflow's records say, whatever the live messages said.
 
+### The confirmation page
+
+*(Spec 009c, constitution 5.0.0.)* A launch or a cancel asked for through MCP is never sent on the model's word. `launch` and `cancel` take the same choices as `abf-platform launch` (pipeline, revision, run name, samplesheet path, environment, params) and `cancel` takes the run name; they build the same bundle and the same summary (pipeline, samples, where it runs, where the results go, and every file that will be written), write it as a **pending request** (a row of `confirmations` with `state = pending`, no job, ten minutes to live) and ask the person:
+
+1. **A client with forms (Claude Code).** The client shows the summary with one yes/no field, 送出. Only an accepted answer whose 送出 is true flips the request and queues the job. Declined, cancelled, empty, wrong content, a client that fails, or no answer in ten minutes: the request is void and nothing is queued.
+2. **Any other client (Claude Desktop, Codex).** The answer carries an address, `<base>/c/<id>`, and says: open it, log in as yourself, press 送出, then call the tool again with the same arguments. The repeated call finds the person's yes and returns the job number of the job that exists; it never queues a second one. A changed argument is a different content and gets a new request. Over local stdio, without a form, the tools refuse and say to use the terminal command or HTTP with a token.
+
+The page is a small separate program, `abf-platform web` (loopback and port 8789 by default; `--public-url` is the address the answers name and, when it is `https` and not loopback, makes the cookie `Secure`; it serves plain http, so put a TLS proxy in front when it is public). It has five routes and nothing else: `GET|POST /login`, `POST /logout`, `GET|POST /c/<id>`. Rules:
+
+- **Login is a name and a web password, not a token.** The password is set by the person with `abf-platform user passwd <name>`, typed twice on a real terminal (no flag, no file, no variable can stand in for the keyboard), and kept only as a scrypt hash with its own salt in `tokens.db`. A personal access token never logs into the web, and an `Authorization: Bearer` header is never looked at by the page. Five wrong tries in a minute lock that name for the rest of the minute. The cookie is signed, `HttpOnly`, `SameSite=Strict`, lasts 12 hours, and only the sha256 of its id is stored (`web_sessions`); a new password or a disabled user ends it at once. The signing key is a file in the data folder, owner-only.
+- **Only the person who asked can press.** The page shows the summary only to the user the request was made for; anyone else sees "not yours" and no summary. The button needs the cookie, the same user, and a CSRF token made for this login and this request. A GET never changes anything; a second press does nothing more; an expired or void request cannot be brought back.
+- **When the queue refuses after the yes** (the environment went offline, the run name was taken meanwhile), the request becomes void with the reason, nothing is queued, and the person asks the AI again.
+
+The Claude Code kit adds a permission `ask` rule for `mcp__abf-platform__launch` and `mcp__abf-platform__cancel` (`configs/claude-code-kit/settings.json`). That is a second layer. It is not the gate: the gate is the platform's action layer, which refuses without a person's yes whatever a client's settings say.
+
+**The honest boundary.** An AI that can run commands on your own machine can do what you can: type at your terminal, read your browser. The gate stops the AI clients that reach the platform only over MCP, which is what a platform shared by several people has to stop. It does not make a machine you hand to an AI safe from that AI.
+
 ### The limits of the confirmation
 
 The question is a human gate only as far as a human sits at the terminal. A process of your own user that can write `platform.db` can write a confirmation, and a program (an AI included) that opens its own pseudo-terminal (pty) can fake a y: the agent checks the hash and that a confirmation is used once, but it cannot know who typed. The real gate is the terminal plus your Claude Code approval setting: put `abf-platform launch|cancel` on the list of commands that always ask for your approval (a permission `ask` rule), so an assistant cannot run them unseen. The confirmation, the 14-day token and the loopback-only relay rule are layers, not a substitute for that.
@@ -371,7 +388,7 @@ The question is a human gate only as far as a human sits at the terminal. A proc
 
 ## Action layer
 
-The platform's actions live in one place, `platform/abf_platform/actions/`: one function per action (list runs, get a run, list or get compute environments, list agents, list site files, launch, cancel). The MCP tools call these functions and nothing else, and so will the web pages and the chat. The only way to confirm a launch or a cancel today is the terminal: `abf-platform launch|cancel` asks, and only a yes on the terminal reaches `actions.launch` or `actions.cancel`. Anything else is refused with "no human confirmation channel".
+The platform's actions live in one place, `platform/abf_platform/actions/`: one function per action (list runs, get a run, list or get compute environments, list agents, list site files, launch, cancel). The MCP tools call these functions and nothing else, and so will the web pages and the chat. A launch or a cancel is confirmed through one of three channels, each one object (`TERMINAL`, `ELICITED`, `PAGE`) that `actions.launch` and `actions.cancel` accept as `confirmed_by`: the terminal (`abf-platform launch|cancel` after a `y`), the form of the person's MCP client, and the confirmation page as the same logged-in user. Anything else, a string or a copy of one of them included, is refused with "no human confirmation channel" before a database is opened. The MCP tools `launch` and `cancel` call `request_launch` and `request_cancel`, which only write a pending request and ask; `approve` flips it, for the form or the page, and queues the job in the same transaction.
 
 ## Guidance over the URL
 
@@ -402,7 +419,7 @@ Settings that only the tests change: `ABF_PLATFORM_DEADLINE_LAUNCH` (default 300
 
 ## What it does not do
 
-No deleting of runs, no clean-up of `work/`, no web pages or login, no roles, and nothing that resumes, retries or relaunches (section 9 launches once and cancels once). The agent writes only the new run folder of a confirmed launch and sends only a confirmed stop; it never removes or moves anything on the site. Compute environments of the thirteen other types are stored and never used. MCP tools that create or change environments, and a web page for the confirmation, are a later feature (009); today a launch and a cancel can only be made from the command line.
+No deleting of runs, no clean-up of `work/`, no web page but the login and the confirmation page, no roles, and nothing that resumes, retries or relaunches (section 9 launches once and cancels once). The agent writes only the new run folder of a confirmed launch and sends only a confirmed stop; it never removes or moves anything on the site. Compute environments of the thirteen other types are stored and never used. MCP tools that create or change environments, a way to submit from a web page, and TLS in the program itself are later features (009 and after).
 
 ## Tests
 

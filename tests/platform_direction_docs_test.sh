@@ -49,9 +49,9 @@ nin() {
 
 echo "== US1: the constitution (TC-001, TC-003..TC-009) =="
 LAST=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
-if [ "$LAST" = '**Version**: 4.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-15' ]; then
-  ok "TC-001: last line is exactly the 4.1.0 version line"
-else bad "TC-001: last line is exactly the 4.1.0 version line" "got: $LAST"; fi
+if [ "$LAST" = '**Version**: 5.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-17' ]; then
+  ok "TC-001: last line is exactly the 5.0.0 version line"
+else bad "TC-001: last line is exactly the 5.0.0 version line" "got: $LAST"; fi
 
 P1=$(awk '/^### I\. /{f=1} /^### II\. /{f=0} f' "$C")
 inn "TC-003: principle I is titled Build Only What Seqera Cannot or Will Not Do Here" "$P1" '### I. Build Only What Seqera Cannot or Will Not Do Here'
@@ -379,10 +379,10 @@ has "TC-038: ROADMAP: development and testing never go through Seqera's Services
 
 # TC-059: CLAUDE.md and README.md
 has "TC-059: CLAUDE.md: 2.17.0 uses Platform as the backend, Nextflow's records underneath" CLAUDE.md "Platform is the execution backend 2.17.0 uses; the truth about a run underneath it is Nextflow's own records"
-has "TC-059: CLAUDE.md points at constitution 4.1.0"                CLAUDE.md 'constitution 4.1.0'
+has "TC-059: CLAUDE.md points at constitution 5.0.0"                CLAUDE.md 'constitution 5.0.0'
 has "TC-059: CLAUDE.md still has 'Constitution 2.0.0'"             CLAUDE.md 'Constitution 2.0.0'
 has "TC-059: CLAUDE.md still has 'hooks/in_use.sh'"                CLAUDE.md 'hooks/in_use.sh'
-has "TC-059: README.md: Platform's runs rest on Nextflow's own records" README.md "Nextflow's own records, the truth under constitution 4.1.0"
+has "TC-059: README.md: Platform's runs rest on Nextflow's own records" README.md "Nextflow's own records, the truth under constitution 5.0.0"
 has "TC-059: README.md still has 'Constitution 2.0.0'"             README.md 'Constitution 2.0.0'
 
 # TC-060: the platform's own chat (maintainer, 2026-10-09: 「也做聊天介面 可接模型」)

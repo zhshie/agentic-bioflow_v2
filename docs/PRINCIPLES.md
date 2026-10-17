@@ -45,6 +45,22 @@ invariant 2); no file here keeps a second copy. The platform of ADR 0004 will
 keep an index of those records, rebuildable from them; that rule waits for its
 check in `docs/ROADMAP.md`.
 
+*Who may say yes (constitution 5.0.0, spec 009c).* The one submission path runs only
+after the user confirmed it, and for a platform that is reached by an MCP client the
+word "confirmed" had to be made exact. A terminal question is a person's yes only
+where a person sits at the terminal; an MCP tool that answers "needs confirmation"
+hands the decision to the model, which can decide the user agreed and repeat the call.
+So the yes must come through a channel a person operates: the terminal, the form of the
+person's MCP client (the client shows it, the person answers it), or the platform's
+confirmation page, where the person logs in with a web password that only a terminal can
+set (a token must not log in, or an AI holding it could press for the person). A request
+that is only pending is never a yes, and the queue itself checks that. The gate stays in
+the platform's action layer, not in a client's permission rule: a rule protects only the
+host that holds it. What it cannot do is written in the amendment and in
+`docs/PLATFORM.md`: an AI that can run commands on the person's own machine can do what
+the person can. The check that holds the rule is that an unconfirmed launch is refused
+through the MCP tool and through the web route.
+
 ## B. Who can use it, and where
 
 **3. Anyone can install it.**

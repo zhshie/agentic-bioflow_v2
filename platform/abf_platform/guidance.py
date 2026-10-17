@@ -13,9 +13,10 @@ HEADING = "## The five commands"
 PARAGRAPH_START = "**The user does not have to name a command.**"
 MAX_BYTES = 2048
 
-FIXED_SENTENCE = ("The six tools of this server are read-only. Launching and cancelling a run happen only in the "
-                  "terminal, never through this server. The complete steps of each command are the MCP prompt of "
-                  "the same name (setup, launch, runs, downstream, finish).")
+FIXED_SENTENCE = ("Six tools of this server are read-only. The tools launch and cancel only ask: nothing is sent until the "
+                  "person says yes in their own client's form or on the page that the answer names, and you cannot say it for "
+                  "them (in the terminal, abf-platform launch and cancel ask the same way). The complete steps of each command "
+                  "are the MCP prompt of the same name (setup, launch, runs, downstream, finish).")
 
 SkillDoc = namedtuple("SkillDoc", "name description body_text")
 

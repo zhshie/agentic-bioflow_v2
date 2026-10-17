@@ -3,8 +3,8 @@
 
 Five kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files` and `fetch_run_records`
 only read; `launch_nextflow` and `cancel_run` write on the site, so a job of those two kinds can only be queued with
-a confirmation: the row the terminal command writes when the user answers y, bound to the hash of the content the
-user saw. Every job is a question or an order put to one agent, with a deadline. A job whose deadline passed is
+a confirmation: a row that a person's yes made (state confirmed: y at the terminal, a form in the MCP client, or the
+confirmation page), bound to the hash of the content the user saw. Every job is a question or an order put to one agent, with a deadline. A job whose deadline passed is
 `expired` and is never handed out; an answer that arrives late is kept apart, and for a launch or a cancel the one
 fact in it (the Slurm number, the time of the request) is still written to the hand-off record, because losing it
 would leave a head job on the site that nobody knows about.
@@ -187,6 +187,8 @@ def _check_confirmation(con, kind, bundle, confirmation_id):
         raise JobRefused("no such confirmation (查無此確認憑證)")
     if conf["kind"] != want:
         raise JobRefused("that confirmation is for a %s, not for a %s (憑證種類不符)" % (conf["kind"], want))
+    if conf["state"] != "confirmed":
+        raise JobRefused("no person has said yes to that request (還沒有人確認這個申請)")    # 009c: a pending or void request is no yes
     if conf["used_at"] is not None:
         raise JobRefused("that confirmation was used already (憑證已用過)")
     if con.execute("SELECT 1 FROM jobs WHERE confirmation_id = ?", (confirmation_id,)).fetchone():
@@ -323,7 +325,7 @@ def claim(state_path, agent, clock, tokens_path=None):
                        "remaining": max(0.0, row["deadline_at"] - now)}
                 if row["kind"] in CONFIRMED:
                     conf = con.execute("SELECT * FROM confirmations WHERE id = ?", (row["confirmation_id"],)).fetchone()
-                    if conf is None or conf["used_at"] is not None or conf["kind"] != CONFIRMED[row["kind"]]:
+                    if conf is None or conf["used_at"] is not None or conf["kind"] != CONFIRMED[row["kind"]] or conf["state"] != "confirmed":
                         con.execute("UPDATE jobs SET state = 'refused', finished_at = ?, result_json = ? WHERE id = ?",
                                     (now, json.dumps({"ok": False, "message": "no usable confirmation (沒有可用的確認憑證)"}),
                                      row["id"]))
