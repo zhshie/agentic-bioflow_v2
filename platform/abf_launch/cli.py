@@ -1,7 +1,8 @@
 # Not Seqera's Launchpad form or its command line: they are Seqera's and send the run to Seqera; these commands show the whole analysis on a terminal, ask, and hand it to the agent that sits next to the cluster.
 """abf-platform launch | cancel | launches | fetch-records (feature 007b).
 
-launch   builds the bundle (abf_station.launch.render_bundle, the same function the agent runs), shows all of it, and
+launch   builds the bundle (abf_station.launch.render_bundle(), the same function the agent runs; the code that
+         calls it is build.py, which the MCP tools use too), shows all of it, and
          sends it only after y or Y on the terminal. cancel does the same for one run. Both refuse in the person's
          words, before any question, when a choice cannot be made into a launch.
 launches lists the hand-off record: facts only (what was sent, the Slurm number, when a cancel was requested). It
@@ -9,19 +10,15 @@ launches lists the hand-off record: facts only (what was sent, the Slurm number,
 fetch-records asks the agent to read Nextflow's own logs of one launch back, for `rebuild`. It only reads.
 """
 import asyncio
-import csv
-import io
 import json
 import os
-import re
 import sys
 import time
-from pathlib import Path
 
-from abf_platform import actions, agents, compute_envs, jobs, store
-from abf_station import launch as bundle_mod
+from abf_platform import actions, jobs, store
+from abf_station import launch as bundle_mod    # BundleError and the one render function live here; build.py calls them (tests/test_launch_static.py reads this line)
 
-from . import terminal
+from . import build, terminal
 
 QUESTION_LAUNCH = "確定送出？(y/N)"
 QUESTION_CANCEL = "確定取消？(y/N)"
@@ -41,99 +38,10 @@ def _state():
     return store.default_platform_path()
 
 
-# ---- reading what the person gave -------------------------------------------------------------------------------
+# ---- reading what the person gave, the checks before any question and the screens are in abf_launch/build.py (shared with the MCP tools)
 
-def read_samplesheet(path):
-    try:
-        raw = Path(path).read_bytes()
-    except OSError as e:
-        raise bundle_mod.BundleError("samplesheet: 讀不到 %s (%s)" % (path, e.__class__.__name__))
-    if b"\x00" in raw:
-        raise bundle_mod.BundleError("samplesheet: 含有 NUL 字元，一律拒絕 (contains a NUL character)")
-    try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        raise bundle_mod.BundleError("samplesheet: 不是 UTF-8 文字 (not UTF-8 text)")
-    try:
-        rows = [r for r in csv.reader(io.StringIO(text, newline="")) if r]
-    except csv.Error as e:
-        raise bundle_mod.BundleError("samplesheet: 不是合法的 CSV (%s)" % e)
-    return rows
-
-
-def infer(text):
-    if text in ("true", "false"):
-        return text == "true"
-    if re.fullmatch(r"-?[0-9]+", text) and len(text) < 16:
-        return int(text)
-    if re.fullmatch(r"-?[0-9]+\.[0-9]+", text) and len(text) < 20:
-        return float(text)
-    return text
-
-
-def read_params_file(path):
-    """A flat `name: value` file (YAML or the same in JSON). Nesting and lists are refused, not guessed at."""
-    try:
-        text = Path(path).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as e:
-        raise bundle_mod.BundleError("params-file: 讀不到 %s (%s)" % (path, e.__class__.__name__))
-    if str(path).endswith(".json"):
-        try:
-            data = json.loads(text)
-        except ValueError:
-            raise bundle_mod.BundleError("params-file: 不是合法的 JSON (not valid JSON)")
-        if not isinstance(data, dict):
-            raise bundle_mod.BundleError("params-file: 必須是名稱到值的對照 (a mapping)")
-        return data
-    out = {}
-    for n, ln in enumerate(text.splitlines(), 1):
-        s = ln.rstrip()
-        if not s.strip() or s.lstrip().startswith("#"):
-            continue
-        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):[ \t]+(.*)$", s)
-        if not m:
-            raise bundle_mod.BundleError("params-file 第 %d 行: 只支援一行一個 `名稱: 值`；巢狀、清單與多行值不支援，"
-                                         "請改用 --param (flat `name: value` lines only)" % n)
-        v = m.group(2).strip()
-        if v[:1] in ("'", '"'):
-            q = v[0]
-            end = v.find(q, 1)
-            if end < 0 or v[end + 1:].strip() not in ("",) and not v[end + 1:].strip().startswith("#"):
-                raise bundle_mod.BundleError("params-file 第 %d 行: 引號沒有成對 (unbalanced quote)" % n)
-            val = v[1:end]
-            if q == '"':
-                try:
-                    val = json.loads('"' + val + '"')
-                except ValueError:
-                    raise bundle_mod.BundleError("params-file 第 %d 行: 跳脫字元不合法 (bad escape)" % n)
-            out[m.group(1)] = val
-            continue
-        v = re.sub(r"\s+#.*$", "", v)
-        if v in ("", "|", ">", "[", "{") or v.startswith(("[", "{", "- ")):
-            raise bundle_mod.BundleError("params-file 第 %d 行: 巢狀或清單不支援，請改用 --param (nested values are not supported)" % n)
-        out[m.group(1)] = infer(v)
-    return out
-
-
-# ---- the checks that come before any question --------------------------------------------------------------------
-
-def _primary_environment(state):
-    envs = [c for c in compute_envs.list_all(state) if c["platform"] == compute_envs.SUPPORTED and c["status"] == compute_envs.AVAILABLE]
-    primary = [c for c in envs if c["primary"]]
-    if primary:
-        return primary[0]["name"]
-    if len(envs) == 1:
-        return envs[0]["name"]
-    return None
-
-
-def _target_problem(state, ce_name, kind):
-    """The sentence that says why the environment cannot take this kind of job right now, or None."""
-    try:
-        jobs.check_target(state, ce_name, kind)
-    except jobs.JobRefused as e:
-        return str(e)
-    return None
+read_samplesheet, infer, read_params_file = build.read_samplesheet, build.infer, build.read_params_file
+launch_screen = build.launch_screen
 
 
 def _refuse(text):
@@ -143,53 +51,13 @@ def _refuse(text):
 
 # ---- launch ---------------------------------------------------------------------------------------------------------
 
-def launch_screen(bundle, ce_name):
-    ce = bundle["ce"]
-    lines = [terminal.PREFIX + "== 送出確認：下面就是會被送出的全部內容 =="]
-    for label, value in (("管線", bundle["pipeline"]), ("版本", bundle["revision"]), ("環境", ce_name),
-                         ("代理", bundle["agent"]), ("run 名稱", bundle["run_name"]), ("專屬資料夾", bundle["run_folder"]),
-                         ("計費帳號", bundle["account"]), ("主控佇列", ce["headQueue"]),
-                         ("主控送出選項", ce["headJobOptions"] or "(無)")):
-        lines.append(terminal.pair(label, value))
-    rows = bundle["samplesheet"]
-    lines.append(terminal.PREFIX + "== samplesheet.csv（%d 列資料）==" % (len(rows) - 1))
-    for row in rows:
-        buf = io.StringIO()
-        csv.writer(buf, lineterminator="").writerow(row)
-        lines.append(terminal.PREFIX + terminal.esc(buf.getvalue()))
-    for name in ("params.yaml", "nextflow.config", "head.sh"):
-        lines += terminal.block(name, bundle["files"][name])
-    return lines
-
-
 def cmd_launch(args):
     state = _state()
-    ce_name = args.ce or _primary_environment(state)
-    if not ce_name:
-        return _refuse("沒有指定環境（--ce），也找不到唯一可用的環境 (no --ce, and no single available environment)")
-    problem = _target_problem(state, ce_name, "launch_nextflow")
-    if problem:
-        return _refuse(problem)
-    view = compute_envs.get(state, ce_name)
-    facts = agents.get_facts(state, view["agent"])
-    if facts is None:
-        return _refuse("代理 %s 還沒有回報送出需要的資料；請確認代理是新版並已連線 (the agent has not reported its facts)" % view["agent"])
     try:
-        rows = read_samplesheet(args.samplesheet)
-        params = read_params_file(args.params_file) if args.params_file else {}
-        for item in args.param or []:
-            key, eq, value = item.partition("=")
-            if not eq:
-                raise bundle_mod.BundleError("--param: %r 不是 名稱=值 (name=value)" % item[:40])
-            params[key] = infer(value)
-        bundle = bundle_mod.render_bundle(**bundle_mod.inputs_from_environment(
-            view, view["agent"], facts, run_name=args.run_name, pipeline=args.pipeline, revision=args.revision,
-            samplesheet=rows, params=params, path_columns=args.path_column))
-    except bundle_mod.BundleError as e:
-        return _refuse(str(e))
-    try:
-        jobs.check_run_name(state, bundle["run_name"])    # a name that cannot be used is refused before anything is shown
-    except jobs.JobRefused as e:
+        ce_name, bundle = build.prepare_launch(
+            state, ce=args.ce, pipeline=args.pipeline, revision=args.revision, run_name=args.run_name, samplesheet=args.samplesheet,
+            params_file=args.params_file, param_items=args.param, path_columns=args.path_column)
+    except build.Refusal as e:
         return _refuse(str(e))
     why = terminal.terminal_problem()
     if why:
@@ -291,37 +159,19 @@ def _report_launch(state, job_id, bundle):
 
 def cmd_cancel(args):
     state = _state()
-    row = _row(state, args.run)
-    if row is None:
-        return _refuse("%s 不是平台自己送出的（hand-off 紀錄裡沒有它）(not launched from this platform)" % args.run)
-    if row["slurm_job_id"] is None:
-        return _refuse("%s 沒有 Slurm 工作編號：它尚未送出，或結果不明；請先查國網上的 %s (no Slurm job number recorded)"
-                       % (args.run, row["run_folder"]))
-    view = compute_envs.get(state, row["ce"])
-    if view is None:
-        return _refuse("環境 %s 找不到 (not found)" % row["ce"])
-    if view["agent"] != row["agent"]:
-        return _refuse("%s 是經由代理 %s 送出的，環境 %s 現在的代理是 %s；不取消別的代理送出的工作 (a different agent)"
-                       % (args.run, row["agent"], row["ce"], view["agent"]))
-    problem = _target_problem(state, row["ce"], "cancel_run")
-    if problem:
-        return _refuse(problem)
-    bundle = {"version": 1, "run_name": row["run_name"], "slurm_job_id": row["slurm_job_id"], "run_folder": row["run_folder"],
-              "agent": row["agent"], "ce": bundle_mod.snapshot_ce(view)}
+    try:
+        ce_name, bundle, row = build.prepare_cancel(state, args.run)
+    except build.Refusal as e:
+        return _refuse(str(e))
     why = terminal.terminal_problem()
     if why:
         return _refuse("要在終端機上互動回答 y 才會取消，這裡不行（%s）(needs an interactive terminal)" % why)
-    lines = [terminal.PREFIX + "== 取消確認：只會對下面這一個 Slurm 工作送出取消 =="]
-    for label, value in (("run 名稱", bundle["run_name"]), ("Slurm 工作編號", bundle["slurm_job_id"]),
-                         ("專屬資料夾", bundle["run_folder"]), ("代理", bundle["agent"])):
-        lines.append(terminal.pair(label, value))
-    if row["cancel_requested_at"] is not None:
-        lines.append(terminal.pair("提醒", "這個 run 的取消請求已經在 %s 送出過一次" % _when(row["cancel_requested_at"])))
+    lines = build.cancel_screen(bundle, row)
     if not terminal.ask(lines, QUESTION_CANCEL):
         _err("未取消")
         return 1
     try:
-        cid, job_id = actions.cancel(state, row["ce"], bundle, confirmed_by=actions.TERMINAL, caller=None)
+        cid, job_id = actions.cancel(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=None)
     except jobs.JobRefused as e:
         return _refuse(str(e))
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))

@@ -179,8 +179,9 @@ def test_tc010_tc061_no_web_page_and_no_mcp_tool_can_launch_or_cancel(world):
             assert httpx.request(method, base + path, json={}).status_code in (401, 404, 405), path
     _, outs = world.plat.mcp([("list_agents", {})])
     tools, _ = world.plat.mcp([])
-    assert sorted(t.name for t in tools) == ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs",
-                                              "list_site_files"]
+    # 009c: the six read tools plus launch and cancel, which only make a pending request (no job without a person's yes)
+    assert sorted(t.name for t in tools) == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
+                                              "list_runs", "list_site_files"]
 
 
 def test_tc034_fetch_records_brings_the_logs_back_and_rebuild_puts_a_lost_run_right(world, e2e_cfg2):

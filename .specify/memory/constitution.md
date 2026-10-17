@@ -29,13 +29,23 @@ exists.
   and no monitoring daemon beyond the channels its check allow-lists. There MAY be at most one
   submission path of our own: the station agent's launch job, which hands the Nextflow head job
   to the site's own scheduler the way Seqera Platform does, and runs only after the user has
-  seen the full launch command and confirmed it. A file that submits is allow-listed by the
+  seen the full launch command and confirmed it, through a channel a person operates: the
+  terminal, the form of the person's MCP client, or the platform's confirmation page as the
+  same logged-in user (the three are the only ones; a pending request, a token, or any answer
+  the model itself can give is none of them). A form answer is accepted from whatever MCP
+  client holds the person's token and declares forms, so a client program an AI controls can
+  answer it: the token is what must be kept where an AI cannot read it. Over stdio there is no
+  caller, so the same-user check does not apply there; over HTTP and on the page there always
+  is one. A file that submits is allow-listed by the
   check together with the test that refuses an unconfirmed launch; nothing else submits. After
   the hand-off, everything known about the run comes from Nextflow's records. Where the backend
   is Seqera, the command layer follows Seqera's nouns (compute environment, then pipelines →
   datasets → launch, then runs).
   *Check:* `tests/no_second_run_state_test.sh` (its submission scan covers `scripts/` and
   `platform/`).
+  The channel rule has its own check, run by `tests/platform_test.sh`: an unconfirmed launch
+  is refused through the MCP tool and through the web route (the platform tests
+  `test_tch09_*` of `test_human_channel.py` and `test_tch09_b_c_*` of `test_confirm_page.py`).
 
 *Rationale:* three features were rebuilt here before anyone checked, and each was written and
 then deleted (PITFALLS 14). A second copy of run state drifts from the real one. The platform of
@@ -167,7 +177,9 @@ plan, and change only by a MAJOR amendment of this constitution.
 - Deleting `work/` or `.nextflow/cache/` requires the user's explicit confirmation
   (`hooks/confirm_cleanup.sh`).
 - A launch command is shown in full and waits for explicit confirmation before it runs
-  (`hooks/confirm_launch.sh`).
+  (`hooks/confirm_launch.sh` in the Claude Code kit; on the platform, the gate in
+  `platform/abf_platform/actions`, which takes a person's yes only from the terminal, the form
+  of an MCP client or the confirmation page).
 - Credentials and personal details live only in the deployment's own settings area, readable by
   the owner only; never printed, never in git, never in a params file. The plugin never fills in one
   member's credential from another member's settings: it asks the user for the value.
@@ -443,6 +455,77 @@ behaves exactly as before, and only documents and the tests that pin them change
 **Version.** MINOR, under Governance: a principle is expanded; none is removed or redefined.
 **Approval.** The maintainer approves and merges the pull request that carries this change.
 
+### 5.0.0 (2026-10-17): a person's yes may come through the terminal, an MCP form or the confirmation page
+
+**Rationale.** Until now "the user confirmed it" meant one thing: `y` typed at the question of
+`abf-platform launch`, on a real terminal. The platform is now reached by an MCP client (Claude
+Desktop, Claude Code, Codex) that cannot show that question, and a launch asked for there would
+either be impossible or be answered by the model itself, which receives "needs confirmation" and
+can decide the user agreed (`docs/adr/0006`, "The yes must come from a person"). In his words on
+2026-10-17: 「正式上線後：不管用 Claude Desktop、Claude Code、Codex 還是平台網頁，送出前都跳出摘要頁（管線、樣本、跑在哪、結果放哪），我按「送出」才跑；按的必須是我本人、AI 不能代按；別人打開同一連結不能送出。」
+He then chose how he logs into the page: a web password of its own, set only at a terminal by
+the person (`abf-platform user passwd`), kept only as a scrypt hash; a personal access token
+never logs into the web, and an `Authorization: Bearer` header never does either. So principle
+I.2 and the Safety Net's launch rule now say which channels count as a person's yes.
+
+**What changes.**
+- Principle I.2: "confirmed it" becomes "confirmed it, through a channel a person operates: the
+  terminal, the form of the person's MCP client, or the platform's confirmation page as the same
+  logged-in user". A pending request, a token, and anything the model can answer are not a
+  channel. The action layer takes the channel as one of three objects and refuses anything else
+  before it opens a database; a pending request is never a confirmation (`state = confirmed` is
+  required by the queue); a request that was declined, expired or refused by the queue is void
+  for good.
+- What the MCP tools do, exactly: `launch` and `cancel` build the terminal's bundle and screen and
+  write a pending request. When the client answers its form with an accepted 送出 = true, that
+  same call confirms the request and queues the job (channel ELICITED). Otherwise the call only
+  leaves the pending request and names the page, whose button (channel PAGE) is pressed by the
+  user who made it, after which a repeated call returns the job. The same-user check (`caller` of
+  the request equals the user who pressed) applies to the page and to HTTP; stdio has no caller,
+  so it does not apply there, and stdio can say yes only through a form. If the queue refuses
+  after a yes, the request is void for good but its row keeps the channel and `confirmed_at`, so
+  the audit still shows that a person said yes.
+- I.2 gains the check that this amendment exists to hold: an unconfirmed launch is refused
+  through the MCP tool *and* through the web route, not only by the action function.
+- The Safety Net's launch rule names both its holders: `hooks/confirm_launch.sh` in the Claude
+  Code kit (it protects only that host) and the gate of the platform's action layer (it protects
+  every entry). The kit's permission `ask` rule for the two write tools is a second layer, never
+  the gate.
+- The honest boundary, written here and in `docs/PLATFORM.md`: an AI that can run commands on the
+  person's own machine can do what the person can, including typing at the person's terminal or
+  reading the person's browser. The form is open to any MCP client that holds the person's token
+  and declares forms, over HTTP too (the maintainer decided on 2026-10-17 to keep it that way,
+  「不好」to dropping it: 維持網路連線也能用對話框按), so a client program an AI controls can
+  answer it; the token is the thing to protect. The gate stops the AI clients that reach the platform only over
+  MCP, which is what a platform shared by several people has to stop.
+
+**Sync Impact Report.** Updated in this pull request, together: `docs/PRINCIPLES.md` (the reasoning
+and the history of the change), `docs/adr/0006-four-entries-one-action-layer.md` (the amendment
+it promised has landed, and how the three channels work), `docs/PLATFORM.md` (the confirmation
+page, `abf-platform web`, `user passwd`, the boundary), `docs/TESTING.md` (the manual checks with a
+real client and a real browser), `README.md` and `CLAUDE.md` (the version they cite), `CHANGELOG.md`,
+the tests that pin the version and the wording (`tests/constitution_scope_test.sh`,
+`tests/platform_direction_docs_test.sh`), and the platform tests whose old expectation was "no tool
+writes anything" (listed with old expectation, new expectation and reason in
+`specs/009c-human-channel/ledger.md`). `docs/ROADMAP.md` still lists the waiting principle "Gates
+live in the platform's action layer…"; the maintainer decides when it is struck.
+
+**Impact on existing deployments.**
+- No deployment uses a write over HTTP today (the HTTP MCP server had six read-only tools), so
+  nothing that works stops working. The terminal commands behave exactly as before, byte for byte
+  (`platform/tests/test_launch_cli.py` passes unchanged).
+- The platform's `platform.db` is upgraded in place the first time it is opened: every earlier
+  confirmation becomes `confirmed` through `TERMINAL`; no job and no hand-off row changes.
+- `tokens.db` gains a `password_hash` column and a `web_sessions` table. Nothing reads them until a
+  person sets a web password. `abf-platform serve` and `abf-platform mcp` do not change.
+- The MCP server has eight tools instead of six; the two new ones can only write a pending request.
+  A deployment that wants the confirmation page starts `abf-platform web` and sets a web password
+  for each user; without it, a client that cannot show a form gets an address nobody can log into,
+  and nothing is launched.
+
+**Version.** MAJOR, under Governance: a principle (I.2) and a Safety Net rule are redefined.
+**Approval.** The maintainer approves and merges the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -457,4 +540,4 @@ behaves exactly as before, and only documents and the tests that pin them change
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 4.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-15
+**Version**: 5.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-17

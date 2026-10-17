@@ -363,7 +363,8 @@ def test_tc073_the_read_only_tools_write_nothing_and_show_no_token(ip):
 
 
 def test_tc071_exactly_six_read_only_tools_over_stdio_and_http(tmp_path):
-    # TC-071
+    # TC-071. 009c: the six read-only tools are still exactly these and still read-only, over stdio and HTTP alike; the server has
+    # two more, launch and cancel, which are marked as writing and are looked at in test_human_channel.py
     env = pkg_env(ABF_PLATFORM_DB=tmp_path / "data" / "index.db")
     calls = [("list_compute_envs", {}), ("list_agents", {})]
     tools, via_stdio = mcp_call(env, calls)
@@ -380,8 +381,8 @@ def test_tc071_exactly_six_read_only_tools_over_stdio_and_http(tmp_path):
         stop_proc(proc)
     want = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files"]
     for ts in (tools, tools_http):
-        assert sorted(t.name for t in ts) == want
-        for t in ts:
+        assert sorted(t.name for t in ts) == sorted(want + ["launch", "cancel"])
+        for t in [t for t in ts if t.name in want]:
             assert t.annotations is not None and t.annotations.read_only_hint is True
             assert t.annotations.destructive_hint is not True
             assert not re.search(r"launch|cancel|delete|clean|write|create|update|enqueue", t.name)
@@ -430,7 +431,7 @@ def test_tc063_no_door_takes_a_job_kind_or_a_command(tmp_path, monkeypatch):
     assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "submit", "enqueue"}), words
     top_level = set(next(a for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)).choices)
     assert top_level == {"serve", "token", "agent-token", "ce", "mcp", "rebuild", "launch", "cancel", "fetch-records",
-                         "launches", "user", "pat"}, top_level
+                         "launches", "user", "pat", "web"}, top_level     # 009c: plus `web`, the confirmation page
     assert [(trail, w) for trail, w in seen if w in ("launch", "cancel")] == [([], "launch"), ([], "cancel")]
     assert {"ce", "agent-token", "serve", "token", "mcp", "rebuild"} <= words
 
@@ -449,7 +450,7 @@ def test_tc084_no_launch_door_anywhere(tmp_path):
     # feature 007b (TC-060): the words launch and cancel may stand only as the names of the two new subcommands, and only in
     # these three places: the one list of subcommand names (exactly this list), their two lines in the table of subcommands,
     # and the usage line of each of the two
-    names = "{serve,token,agent-token,user,pat,ce,mcp,rebuild,launch,cancel,launches,fetch-records}"
+    names = "{serve,web,token,agent-token,user,pat,ce,mcp,rebuild,launch,cancel,launches,fetch-records}"    # 009c: plus `web`
     assert helptext.count(names) >= 1, "the list of subcommands is exactly the old ones plus the four new ones"
     helptext = helptext.replace(names, names.replace(",launch,cancel,", ","))
     rows = re.findall(r"(?m)^ {4}(launch|cancel) {2,}\S", helptext)
@@ -492,17 +493,33 @@ def test_tc086_no_web_pages_no_confirmation_page_no_role_tables(tmp_path):
         assert plat.client.get(p).status_code in (404, 401, 405), p
         assert plat.client.get(p, headers={"Authorization": "Bearer " + tok}).status_code in (404, 405), p
     for db in (plat.index, plat.tokens, plat.dir / "platform.db"):
-        con = sqlite3.connect(str(db))
-        names = []
-        for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
-            # exempt only (index.db, runs, session_id): added in 06848d0, Nextflow run session, not a web session (maintainer approved 2026-10-17)
-            names += [c[1].lower() for c in con.execute("PRAGMA table_info(%s)" % t)
-                      if not (db.name == "index.db" and t == "runs" and c[1].lower() == "session_id")] + [t.lower()]
-        con.close()
-        # 009d: identity (user, lab) is feature 009 (ADR 0006); roles stay out until 010
-        allowed = {"users", "user_id", "caller_user_id", "label", "lab", "name", "disabled_at"}
-        for word in ("user", "role", "org", "team", "member", "login", "password", "email", "session", "cookie"):
-            assert not [n for n in names if word in n and n not in allowed], (db.name, word, names)
+        assert banned_schema_words(db) == [], db.name
+
+
+# 009c: the exception to the ban on session and password names, written as exact (database, table, column) triples like the one for
+# index.db: the web password's hash and the browser login's table, both in tokens.db (decided by the maintainer 2026-10-17, plan
+# "round 2"). A column of any other name or in any other place is still caught. The scan was the body of tc086; it is a function so a
+# test (test_human_channel.py) can show that an extra column is still caught.
+EXEMPT = {("index.db", "runs", "session_id"),     # added in 06848d0, Nextflow run session, not a web session (maintainer approved 2026-10-17)
+          ("tokens.db", "users", "password_hash"),
+          ("tokens.db", "web_sessions", "id_hash"), ("tokens.db", "web_sessions", "user_id"),
+          ("tokens.db", "web_sessions", "created_at"), ("tokens.db", "web_sessions", "expires_at")}
+EXEMPT_TABLES = {("tokens.db", "web_sessions")}
+
+
+def banned_schema_words(db):
+    """The (word, name) pairs of one database file's schema that the ban of tc086 catches."""
+    con = sqlite3.connect(str(db))
+    names = []
+    for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
+        names += [c[1].lower() for c in con.execute("PRAGMA table_info(%s)" % t) if (db.name, t, c[1].lower()) not in EXEMPT]
+        if (db.name, t) not in EXEMPT_TABLES:
+            names.append(t.lower())
+    con.close()
+    # 009d: identity (user, lab) is feature 009 (ADR 0006); roles stay out until 010
+    allowed = {"users", "user_id", "caller_user_id", "label", "lab", "name", "disabled_at"}
+    return [(word, n) for word in ("user", "role", "org", "team", "member", "login", "password", "email", "session", "cookie")
+            for n in names if word in n and n not in allowed]
 
 
 def test_tc039_environments_agents_and_tokens_survive_a_restart_and_a_rebuild(tmp_path):

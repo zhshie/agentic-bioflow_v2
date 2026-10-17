@@ -392,9 +392,11 @@ def test_tc411_guidance_imports_only_the_standard_library():
 # ---- US5: the tools stay, nothing is written ------------------------------------------------------------------------------
 
 def test_tc501_six_read_only_tools_remain(tmp_path):
+    # 009c: the six are unchanged and read-only; `launch` and `cancel` are added (they write nothing without a person's yes)
     tools = asyncio.run(_server(tmp_path).list_tools())
-    assert sorted(t.name for t in tools) == SIX_TOOLS
-    assert all(t.annotations.read_only_hint is True and t.annotations.destructive_hint is not True for t in tools)
+    assert sorted(t.name for t in tools) == sorted(SIX_TOOLS + ["launch", "cancel"])
+    reads = [t for t in tools if t.name in SIX_TOOLS]
+    assert all(t.annotations.read_only_hint is True and t.annotations.destructive_hint is not True for t in reads)
 
 
 def _snapshot(root):

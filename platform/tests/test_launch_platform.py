@@ -46,7 +46,7 @@ def make_confirmation(db, kind, b, sha=None, used=None, cid=None):
     import secrets
     cid = cid or secrets.token_hex(16)
     con = sqlite3.connect(str(db))
-    con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, used_at) VALUES (?, ?, ?, ?, ?)",
+    con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, used_at, state) VALUES (?, ?, ?, ?, ?, 'confirmed')",
                 (cid, sha or common.bundle_sha256(b), kind, time.time(), used))
     con.commit()
     con.close()
@@ -266,14 +266,17 @@ def test_tc010_there_is_no_door_for_a_launch_or_a_cancel_and_no_module_that_is_o
                 assert r.status_code in (401, 404, 405), (method, path, r.status_code)
     assert before == (len(sql(plat, "SELECT * FROM jobs")), len(sql(plat, "SELECT * FROM confirmations")),
                       len(sql(plat, "SELECT * FROM launches")))
-    for name in ("mcp_server.py", "receiver.py", "agents.py"):
+    # 009c: the MCP server and the web page now ask the action layer to make a pending request; they still reach neither the queue nor
+    # the confirmation module. The receiver and the agents module never mention confirm or the queue writers, as before.
+    for name in ("mcp_server.py", "receiver.py", "agents.py", "web.py"):
         text = (PLATFORM_DIR / "abf_platform" / name).read_text(encoding="utf-8")
         assert not re.search(r"enqueue_launch|enqueue_cancel|confirm_launch|confirm_cancel|confirm\.|import confirm|INSERT INTO "
                              r"(confirmations|jobs|launches)", text), name
 
 
-def test_tc010_the_mcp_tools_are_still_six_read_only_ones_without_a_launch_field(tmp_path, monkeypatch):
-    # TC-010, TC-061
+def test_tc010_the_mcp_tools_are_six_read_only_ones_and_two_that_ask_a_person_without_a_yes_field(tmp_path, monkeypatch):
+    # TC-010, TC-061. 009c: was "still six read-only ones"; launch and cancel are added, may not carry a field that says yes, and
+    # the six are as before (read-only, no launch field)
     import asyncio
     from mcp import Client
     from abf_platform import mcp_server
@@ -284,10 +287,15 @@ def test_tc010_the_mcp_tools_are_still_six_read_only_ones_without_a_launch_field
             return (await c.list_tools()).tools
 
     ts = asyncio.run(tools())
-    assert sorted(t.name for t in ts) == ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs",
-                                          "list_site_files"]
+    assert sorted(t.name for t in ts) == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
+                                          "list_runs", "list_site_files"]
     banned = {"confirm", "confirmation", "yes", "y", "launch", "cancel", "kind", "command", "fetch", "run_name", "pipeline"}
+    saying_yes = {"confirm", "confirmed", "confirmation", "confirmation_id", "yes", "y", "approve", "approved", "kind", "command"}
     for t in ts:
+        if t.name in ("launch", "cancel"):
+            assert t.annotations.read_only_hint is False
+            assert not (set(t.input_schema.get("properties", {})) & saying_yes), t.name
+            continue
         assert t.annotations.read_only_hint is True
         assert not (set(t.input_schema.get("properties", {})) & banned), t.name
 

@@ -26,9 +26,9 @@ hasnt() { # hasnt <label> <file> <extended regex>
 }
 
 echo "== TC-021: the constitution =="
-has "version is 4.1.0 (2.0.0 made this change; 2.0.1, 2.1.0, 3.0.0, 4.0.0 and 4.1.0 came after)" "$C" '**Version**: 4.1.0'
+has "version is 5.0.0 (2.0.0 made this change; 2.0.1, 2.1.0, 3.0.0, 4.0.0, 4.1.0 and 5.0.0 came after)" "$C" '**Version**: 5.0.0'
 has "the 2.0.0 amendment entry is still there"        "$C" '### 2.0.0 (2026-10-02)'
-has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-10-15'
+has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-10-17'
 has "Ratified date is untouched"               "$C" '**Ratified**: 2026-09-28'
 # The Safety Net section opens with its scope. Read the section on its own so a
 # mention elsewhere in the file cannot satisfy these.
@@ -124,7 +124,7 @@ sn_has "TC-044: only a MAJOR amendment changes the rules"              'change o
 # mismatch this test prints the current fingerprint.
 # Input: the section as extracted into $SN above, printed with printf '%s\n',
 # carriage returns removed (tr -d '\r'), hashed with SHA-256.
-PINNED_SN_SHA256=902e600bbbf638cafc6be90fe0860dd4d09d5259698b6724e19d30e58473de44
+PINNED_SN_SHA256=fd9129685c1c52a2790926ed8f6d92e186c9ff036bb8d24155837bcbe51de0ae
 sha256_stdin() { # first hash tool that exists; none at all is a failure, never a pass
   if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
   elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1

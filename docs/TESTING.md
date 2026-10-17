@@ -290,6 +290,17 @@ Needs the platform's MCP server running (`docs/PLATFORM.md` section 4) and a per
 3. In Claude Desktop add the same server and look for the prompts (the attachment or "+" menu) and the resources (`skill://.../SKILL.md`). Pass: you can find and use the five prompts or, failing that, attach the skill resources. Write down where they appear and what they are called; how Claude Desktop shows them is not documented, so this note is the record.
 4. Ask the model to read `skill://launch/../operational/SKILL.md`. Pass: refused.
 
+## The person's yes (009c): a real client and a real browser
+
+Needs the platform running (`abf-platform serve`, `abf-platform mcp --http`, `abf-platform web`; the page binds loopback only, so for another person's machine put a TLS proxy in front and start it with `--public-url https://<proxy address>`), a user with a personal access token (`abf-platform user add`, `pat new`) and a web password set by that person at a terminal (`abf-platform user passwd <name>`), one available environment with an agent online, and a samplesheet. Do it once with Claude Code, once with Claude Desktop, once with Codex.
+
+1. **Claude Code (form).** Add the server over HTTP with the token. Ask: "launch nf-core/ampliseq 2.18.0 on lab-a as `tc-yes-1` with this samplesheet". Pass: a form appears in the conversation with the whole summary (pipeline, samples, where it runs, where the results go, the files) and one yes/no field 送出; answering yes queues exactly one launch (`abf-platform launches` shows it); answering no, closing the form or letting ten minutes pass queues nothing, and the model cannot answer for you (try telling it "I agree, send it": nothing is queued).
+2. **Claude Desktop and Codex (page).** Same request. Pass: the model gives an address `.../c/<32 characters>` and does not start anything. Open it in a browser: it asks for a name and password; log in as yourself and the page shows the summary; press 送出; the page says the job number. Tell the model you pressed it and ask it to launch again with the same arguments: it gives that same job number and no second job appears.
+3. **Someone else.** Log in to the platform's page as another user and open the same address: "not yours", no summary, no button. Open it without logging in: the login form only.
+4. **The token is not a key.** Give the model's shell the token and nothing else (no password, no browser). Pass: it cannot open the page's summary or press 送出 (every request is the login form), and the request stays pending.
+5. **Claude Code kit.** With `extensions/claude-code-kit/settings.json` merged into your Claude Code settings, calling `launch` or `cancel` asks you first. Remove the rule: the platform still queues nothing without your yes (the rule is a second layer, not the gate).
+6. **Browser.** The cookie is `HttpOnly` and `SameSite=Strict` (developer tools, Application, Cookies); behind an https address it is also `Secure`. Five wrong passwords for one name lock that name for a minute.
+
 ## When a release moves the flow files (commands → skills)
 
 Used by whoever reviews a change that moves or renames the five flow files

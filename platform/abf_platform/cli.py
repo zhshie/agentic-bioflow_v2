@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | token new | agent-token new|revoke | user add | pat new|list|revoke | ce ... | mcp [--http] | rebuild [<launch folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | web | token new | agent-token new|revoke | user add|passwd | pat new|list|revoke | ce ... | mcp [--http] | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
@@ -42,6 +42,44 @@ def cmd_serve(args):
     return 0
 
 
+def cmd_web(args):
+    """The confirmation page, a process of its own (spec 009c): loopback by default, plain http, no bearer check (a browser has none)."""
+    import uvicorn
+    from . import web
+
+    index = store.default_index_path()
+    tokens = store.default_tokens_path(index)
+    state = store.default_platform_path(index)
+    public = (args.public_url or "").rstrip("/")
+    if public:
+        from urllib.parse import urlparse
+        u = urlparse(public)
+        if u.scheme not in ("http", "https") or not u.hostname:
+            _err("rejected: --public-url must look like https://host (--public-url 要是 https://主機 的形式)")
+            return 1
+        if u.scheme == "http" and u.hostname not in LOOPBACK:
+            _err("rejected: --public-url %s is plain http; the login cookie would travel in clear text. Use an https:// address "
+                 "(a TLS proxy in front of this page) (--public-url 必須是 https)" % public)
+            return 1
+    if args.host not in LOOPBACK:
+        _err("rejected: the confirmation page binds loopback only (127.0.0.1, ::1 or localhost), not %s, whatever --public-url says. It "
+             "serves plain http and the login cookie must not cross a network in clear text: put a TLS proxy (for example Tailscale "
+             "Funnel) on this machine in front of it and give the proxy's address as --public-url https://<address people open> "
+             "(確認頁只綁本機位址；要給別人用，請在本機前面放 TLS 代理，並用 --public-url https://… 告訴大家網址)" % args.host)
+        return 1
+    base = public or "http://%s:%s" % (args.host, args.port)
+    try:
+        app = web.create_app(index, tokens, state, public_url=public or None)
+    except ValueError as e:
+        _err("rejected: %s" % e)
+        return 1
+    store.set_meta(state, "web_base_url", base)    # the MCP server names this address in its answers
+    _say("abf-platform confirmation page on http://%s:%s, named to people as %s (tokens %s, platform %s)" % (
+        args.host, args.port, base, tokens, state))
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    return 0
+
+
 def cmd_token_new(args):
     tokens = store.default_tokens_path()
     token = store.create_token(tokens)
@@ -69,6 +107,37 @@ def cmd_user_add(args):
         _err("rejected: a user named %s already exists (這個名字已存在)" % args.name)
         return 1
     _say("added user %s (lab %s); issue a token with: abf-platform pat new --user %s" % (args.name, args.lab, args.name))
+    return 0
+
+
+def cmd_user_passwd(args):
+    """Set a user's web password. The person types it, twice, on a real terminal: there is no flag, no file and no variable for it."""
+    import getpass
+    from abf_launch import terminal
+
+    why = terminal.terminal_problem()
+    if why:
+        _err("rejected: 密碼只能在真正的終端機上由本人輸入，這裡不行（%s）(the password is typed at a real terminal, nothing else can give it)" % why)
+        return 1
+    tokens = store.default_tokens_path()
+    if store.user_id_of(tokens, args.name) is None:
+        _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name)
+        return 1
+    try:
+        first = getpass.getpass("New web password for %s: " % args.name)
+        second = getpass.getpass("Type it again: ")
+    except (EOFError, KeyboardInterrupt):
+        _err("\nrejected: nothing was entered, nothing was changed (沒有輸入，什麼都沒改)")
+        return 1
+    if first != second:
+        _err("rejected: the two entries differ, nothing was changed (兩次輸入不一致，什麼都沒改)")
+        return 1
+    try:
+        store.set_web_password(tokens, args.name, first)
+    except ValueError as e:
+        _err("rejected: %s" % e)
+        return 1
+    _say("web password of %s is set; every browser login of that user has ended (網頁密碼已設定，舊的登入全部結束)" % args.name)
     return 0
 
 
@@ -334,6 +403,15 @@ def build_parser():
     s.add_argument("--port", type=int, default=8787)
     s.set_defaults(func=cmd_serve)
 
+    wb = sub.add_parser("web", help="run the confirmation page where a person presses send (own process, this machine only by default)",
+                        allow_abbrev=False)
+    wb.add_argument("--host", default="127.0.0.1", help="address to listen on: loopback only (127.0.0.1, ::1, localhost); a non-loopback "
+                                                       "address is refused (see the docs for the proxy in front)")
+    wb.add_argument("--port", type=int, default=8789)
+    wb.add_argument("--public-url", help="the address people reach this page at; the MCP answers name it, and a https one "
+                                         "makes the cookie Secure")
+    wb.set_defaults(func=cmd_web)
+
     t = sub.add_parser("token", help="manage access tokens")
     tsub = t.add_subparsers(dest="token_command", required=True)
     tn = tsub.add_parser("new", help="issue a token and show it once")
@@ -354,6 +432,10 @@ def build_parser():
     ua.add_argument("name")
     ua.add_argument("--lab", required=True)
     ua.set_defaults(func=cmd_user_add)
+    up = usub.add_parser("passwd", help="set the password a person logs into the confirmation page with (typed at a terminal, 8 to 1000 characters)",
+                         allow_abbrev=False)
+    up.add_argument("name")
+    up.set_defaults(func=cmd_user_passwd)
 
     pt = sub.add_parser("pat", help="personal access tokens for the MCP server over HTTP")
     psub = pt.add_subparsers(dest="pat_command", required=True)

@@ -100,6 +100,17 @@ The check that lets this join the constitution (the MAJOR amendment that ships w
 unconfirmed launch is refused through the MCP tool *and* through the web route", not a test of the
 action function alone.
 
+**Landed (spec 009c, 2026-10-17).** The amendment is constitution 5.0.0. The three channels above
+are three objects of the action layer (`TERMINAL`, `ELICITED`, `PAGE`); the MCP tools `launch` and
+`cancel` write a pending request and ask the person, and a pending request is no confirmation (the
+queue requires `state = confirmed`). The page is `abf-platform web`, a program of its own, not part of
+the MCP server's bearer check. Its login is a name and a **web password** that only
+`abf-platform user passwd` can set, typed at a real terminal and kept as a scrypt hash: a first
+version that logged in with the personal access token was refused at review, because an AI that holds
+the token could then log in and press for the person. The honest boundary is in the constitution and in
+`docs/PLATFORM.md`: an AI that can run commands on the person's own machine can do what the person
+can; the gate stops the AI clients that reach the platform only over MCP.
+
 ### Where the platform runs, and who is calling
 
 "One URL" and the maintainer's definition of v3.0.0 (a student in Claude Desktop runs a 16S
