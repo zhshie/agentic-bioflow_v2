@@ -32,3 +32,10 @@ TC-112-39 `echo x > >(tee s1)`, TC-112-40 `cat <(tee s1)`, TC-112-48 `( cp a s1 
 
 ## Not in this PR
 - #112 item 7 (performance of the large-input filter) is left as is; it is already fail-closed. `tests/confirm_cleanup_candidates_timing_test.sh` is not edited.
+
+## Fix round (verifier finding on TC-112-66: wrapper words)
+- Finding: the rewritten `lost_writers` did not see through `sudo|env|command|builtin|exec|nohup|time|nice|stdbuf|timeout`, so `cd -; sudo cp a s1` asked on main and passed on the branch (ask to pass, a #29-type regression). The replay file has no such rows, so "ask/deny to pass: 0" above held only for it.
+- RED `tests/confirm_cleanup_test.sh`: 19 probes labelled `TC-112-66w` (the verifier's shapes, plus `sudo nice -n 5 timeout 5 cp`, `timeout -k 1 5 cp`, `nohup xargs tee`, and one control: `sudo cp a /tmp/s1` passes); 18 failed before the fix.
+- GREEN `hooks/confirm_cleanup.sh` `lost_writers`: after a wrapper word, every word that could be the command (past options, numbers/durations, VAR=, the value word of an option) is tried until the first known writer. This is fail closed: `sudo -u x cp`, `sudo -n cp`, `nice -n 5 cp`, `env -i cp`, `timeout -k 1 5 cp` all ask. With no wrapper the old path is unchanged.
+- Differential, main vs branch, cwd=/tmp: 4 lost states x 19 wrapper forms x 14 commands (cp, tee, tee -a, sort -o, sed -i, dd of=, mv, install, ln, curl -o, xargs tee, `>` redirect, rm, touch) = 1064 sentences. Ask/deny to pass: **0**. Every difference is pass to ask, and all are the new writers of plan item 4/7 (install, ln, curl, xargs) or a wrapped writer main did not see either way.
+- No existing expectation was edited in this round.

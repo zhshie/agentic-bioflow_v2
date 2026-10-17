@@ -1390,18 +1390,40 @@ lw_cmd() { # lw_cmd <index of the command word> <0|1 unknown appended arguments>
 RE_LW_CMDS='(tee|sort|shuf|cp|install|ln|split|sed|dd|curl|wget|perl|awk|gawk|xargs|find)'
 lost_writers() { # lost_writers <segment text>: the commands that write a file named by a word
     [[ $1 =~ $RE_LW_CMDS ]] || return 0
-    local i=0 n x
+    local i=0 n x w wrap=0 po=0
     lw_tokens "$1"; n=${#LW_V[@]}
     while [ "$i" -lt "$n" ]; do
         x=${LW_V[i]}
         case "$x" in
-            '{'|then|do|else|elif|if|while|until|'!'|time) i=$((i + 1)) ;;
+            '{'|then|do|else|elif|if|while|until|'!') i=$((i + 1)) ;;
+            # The wrapper words main's cmdword() sees through (the #29 shape: a
+            # wrapper in front of a writer must not hide the writer).
+            sudo|env|command|builtin|exec|nohup|time|nice|stdbuf|timeout) wrap=1; i=$((i + 1)) ;;
             [A-Za-z_]*=*) i=$((i + 1)) ;;
             *) break ;;
         esac
     done
     [ "$i" -lt "$n" ] || return 0
-    lw_cmd "$i" 0
+    if [ "$wrap" = 0 ]; then lw_cmd "$i" 0; return 0; fi
+    # After a wrapper the command word is not at a fixed place (`sudo -u x cp`,
+    # `nice -n 5 cp`, `timeout -k 1 5 cp`, `env -i cp`): an option may or may
+    # not own the word after it. Fail closed: every word that could be the
+    # command is tried, up to the first known writer.
+    for ((; i < n; i++)); do
+        x=${LW_V[i]}
+        case "$x" in
+            -*) po=1; continue ;;
+            [A-Za-z_]*=*) po=0; continue ;;
+            sudo|env|command|builtin|exec|nohup|time|nice|stdbuf|timeout) po=0; continue ;;
+        esac
+        [[ $x =~ ^[0-9.]+[smhd]?$ ]] && { po=0; continue; }
+        w=${x##*/}; w=${w%.exe}
+        lw_cmd "$i" 0
+        [[ $w =~ ^$RE_LW_CMDS$ ]] && break
+        [ "$po" = 1 ] || break
+        po=0
+    done
+    return 0
 }
 NSEG=0
 TIMED_OUT=0
