@@ -228,6 +228,8 @@ def _confine(state, bundle, area, roots):
         if _below(real, uploads) or (lexical and rules.inside(lexical, spellings)):
             if not _below(real, area):
                 raise params_area_refusal(name, area)
+            if not lexical:
+                raise outside      # the agent writes and resolves only plain paths
             entries.append({"where": "params %s" % name, "given": judged, "real": real})
         elif not lexical or not rules.inside(lexical, roots):
             raise outside

@@ -246,13 +246,25 @@ def _failure(code, text):
     return "error", {"ok": False, "error": code, "message": text}
 
 
+def _real_path(site, path, roots):
+    """(the real path of `path` on the site, or None; the real paths of the roots). One call, links resolved (116b)."""
+    res = site.call(["for p in %s; do realpath -m -- \"$p\"; done" % " ".join(quote(p) for p in [path] + list(roots))])
+    lines = res.out.decode("utf-8", errors="replace").split("\n")
+    if res.rc != 0 or len(lines) < len(roots) + 1:
+        return None, []
+    return lines[0], lines[1:len(roots) + 1]
+
+
 def listing(env, path, ctx):
     path = rules.clean_path(path, "path")
     roots = rules.allowed_roots(env, ctx.settings_file)
     if not rules.inside(path, roots):
         raise rules.Refusal("the path is outside the allowed read roots (在允許範圍之外)")
     site = ctx.site
-    p = quote(path)
+    real, real_roots = _real_path(site, path, roots)
+    if real is not None and real != path and not rules.inside(real, list(roots) + real_roots):      # a link in the way leads out of the places this agent may read
+        raise rules.Refusal("the path leads outside the allowed read roots by a link (捷徑指向允許範圍之外)")
+    p = quote(real if real is not None and real != path else path)      # list what the link leads to, never follow one out of it
     kind = site.call(["if test -d %s; then echo kind=dir; elif test -e %s; then echo kind=other; "
                       "else echo kind=missing; fi" % (p, p)])
     if kind.rc != 0:

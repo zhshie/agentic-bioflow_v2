@@ -570,6 +570,31 @@ def _channel(ctx, bundle):
         raise rules.Refusal(taken)
 
 
+def _check_upload_paths(record, ctx):
+    """116b: the paths of an HTTP caller's launch that lay in the caller's upload folder were recorded with their real paths when the
+    person said yes. Resolve each again now, on the site, and refuse the job when one leads somewhere else or outside the recorded
+    folder: a link swapped after the yes. This only ever refuses; what the agent may read is still judged by rules.allowed_roots."""
+    swapped = "上傳資料夾裡的路徑在你核可之後變了（捷徑被改指別處），不送出 (a path in your uploads folder leads somewhere else than when you approved)"
+    try:
+        area = record["area"]
+        entries = [(e["given"], e["real"]) for e in record["paths"]]
+        if not isinstance(area, str) or not all(isinstance(g, str) and isinstance(r, str) for g, r in entries):
+            raise TypeError
+    except (KeyError, TypeError):
+        raise rules.Refusal("上傳路徑的記錄格式不對，不送出 (the record of the upload paths is malformed)")
+    for given, real in entries:
+        if rules.path_problem(given) or rules.path_problem(real) or rules.path_problem(area):
+            raise rules.Refusal(swapped)
+        if not rules.inside(rules.normalize(real), [rules.normalize(area)]):
+            raise rules.Refusal("記錄的真實路徑不在擁有者的上傳資料夾裡，不送出 (a recorded path lies outside the owner's folder)")
+    if not entries:
+        return
+    res = ctx.site.call(["realpath -m -- " + " ".join(quote(g) for g, _ in entries)])
+    now = res.out.decode("utf-8", errors="replace").split("\n")
+    if res.rc != 0 or now[:len(entries)] != [r for _, r in entries]:
+        raise rules.Refusal(swapped)
+
+
 def run_launch(job, ctx, preflight):
     """(state, result) of one launch_nextflow job. preflight(env, ctx) is handlers.preflight, passed in so that the checks of
     007 run first and unchanged."""
@@ -587,9 +612,11 @@ def run_launch(job, ctx, preflight):
                                 samplesheet=bundle["samplesheet"], params=bundle["params"], path_columns=bundle["path_columns"])
     except (BundleError, KeyError, TypeError) as e:
         raise rules.Refusal("內容不合規則：%s" % e)
-    if rebuilt != bundle:
+    if rebuilt != {k: v for k, v in bundle.items() if k != "upload_paths"}:      # the record of the upload-area paths is the platform's; the agent checks it below
         why = "帳號與部署設定不符" if rebuilt.get("account") != bundle.get("account") else "內容與代理依自己的設定重新產生的不一致"
         raise rules.Refusal("%s：不送出 (the bundle is not what this agent builds from its own settings)" % why)
+    if "upload_paths" in bundle:
+        _check_upload_paths(bundle["upload_paths"], ctx)
     if _left(ctx, job) < _min_remaining():
         raise rules.Refusal("工作期限剩下的時間不足以安全送出 (too little of the deadline is left to submit safely)")
     site = ctx.site
