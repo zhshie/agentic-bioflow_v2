@@ -20,6 +20,8 @@ import time
 from . import common, jobs, store
 
 PENDING_SECONDS = 600
+MAX_OPEN_PENDING = 10             # open requests one caller may have at a time
+KEEP_CONTENT_SECONDS = 7 * 86400   # an expired or void request keeps its content (bundle, screen) this long; its audit columns stay
 JOB_KIND = {"launch": "launch_nextflow", "cancel": "cancel_run"}
 
 
@@ -68,10 +70,18 @@ def create_pending(state_path, kind, ce_name, bundle, screen_text, caller_user_i
     sha = common.bundle_sha256(bundle)
 
     def work(con):
+        con.execute("UPDATE confirmations SET bundle_json = NULL, screen_text = NULL WHERE bundle_json IS NOT NULL AND "
+                    "((state = 'void' AND created_at < ?) OR (state = 'pending' AND expires_at < ?))",
+                    (now - KEEP_CONTENT_SECONDS, now - KEEP_CONTENT_SECONDS))
         old = con.execute("SELECT id FROM confirmations WHERE state = 'pending' AND kind = ? AND sha256 = ? AND caller_user_id IS ? "
                           "AND expires_at > ? ORDER BY created_at DESC LIMIT 1", (kind, sha, caller_user_id, now)).fetchone()
         if old is not None:
             return old["id"]
+        open_now = con.execute("SELECT COUNT(*) FROM confirmations WHERE state = 'pending' AND caller_user_id IS ? AND expires_at > ?",
+                               (caller_user_id, now)).fetchone()[0]
+        if open_now >= MAX_OPEN_PENDING:
+            raise jobs.JobRefused("已經有 %d 個等待中的申請，請先處理（按送出或等它逾時）再申請新的 (at most %d open requests per person; "
+                                  "finish or wait for the open ones)" % (open_now, MAX_OPEN_PENDING))
         rid = secrets.token_hex(16)
         con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, caller_user_id, state, expires_at, ce_name, bundle_json, "
                     "screen_text) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)",
@@ -130,7 +140,8 @@ def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_
         except jobs.JobRefused as e:
             con.execute("ROLLBACK TO enqueue")
             con.execute("RELEASE enqueue")
-            con.execute("UPDATE confirmations SET state = 'void', channel = NULL, confirmed_at = NULL, void_reason = ? WHERE id = ?",
+            # channel and confirmed_at stay on the void row: a person did say yes, and the audit keeps that
+            con.execute("UPDATE confirmations SET state = 'void', void_reason = ? WHERE id = ?",
                         (str(e)[:300], rid))
             return "failed", str(e), None
         con.execute("RELEASE enqueue")
@@ -142,18 +153,38 @@ def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_
     return rid, job_id
 
 
-def find_approved(state_path, kind, bundle, caller_user_id, clock=time.time):
+def find_approved(state_path, kind, bundle, caller_user_id, clock=time.time, include_spent=False):
     """{'id', 'job_id'} of a request that this caller got a person's yes for, for exactly this content, that is still alive
-    (confirmed through a form or the page, not spent by an agent, not older than PENDING_SECONDS), or None."""
+    (confirmed through a form or the page, not spent by an agent, not older than PENDING_SECONDS), or None.
+
+    include_spent=True (the repeated tool call) also finds the request after the agent took its job (used_at is set), as long as the
+    job was not refused or expired: the answer is then the job that exists, never a new question."""
     con = store.open_readonly(state_path)
     if con is None:
         return None
     try:
-        row = con.execute("SELECT c.id AS id, (SELECT j.id FROM jobs j WHERE j.confirmation_id = c.id) AS job_id FROM confirmations c "
+        spent = "" if include_spent else "AND c.used_at IS NULL "
+        row = con.execute("SELECT c.id AS id, j.id AS job_id FROM confirmations c JOIN jobs j ON j.confirmation_id = c.id "
                           "WHERE c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE') AND c.kind = ? AND c.sha256 = ? "
-                          "AND c.caller_user_id IS ? AND c.used_at IS NULL AND c.expires_at > ? ORDER BY c.created_at DESC LIMIT 1",
-                          (kind, common.bundle_sha256(bundle), caller_user_id, clock())).fetchone()
-        return dict(row) if row and row["job_id"] is not None else None
+                          "AND c.caller_user_id IS ? " + spent + "AND c.expires_at > ? "
+                          + ("AND j.state NOT IN ('refused', 'expired') " if include_spent else "")
+                          + "ORDER BY c.created_at DESC LIMIT 1", (kind, common.bundle_sha256(bundle), caller_user_id, clock())).fetchone()
+        return dict(row) if row else None
+    finally:
+        con.close()
+
+
+def find_cancel(state_path, bundle):
+    """{'id', 'job_id'} of a cancel of exactly this run that somebody confirmed and whose job is not refused or expired, or None.
+    A run that has one is never asked for again."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT c.id AS id, j.id AS job_id FROM confirmations c JOIN jobs j ON j.confirmation_id = c.id "
+                          "WHERE c.state = 'confirmed' AND c.kind = 'cancel' AND c.sha256 = ? AND j.state NOT IN ('refused', 'expired') "
+                          "ORDER BY c.created_at DESC LIMIT 1", (common.bundle_sha256(bundle),)).fetchone()
+        return dict(row) if row else None
     finally:
         con.close()
 

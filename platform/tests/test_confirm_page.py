@@ -160,11 +160,14 @@ def test_tcd11_an_invented_address_is_a_404_that_says_nothing(w):
 
 def test_tcd12_the_addresses_are_long_random_and_different(w):
     # TC-D12
-    ann = w.user("ann")
-    calls = [("launch", w.choices(run="run-%02d" % i)) for i in range(20)]
-    _, outs = w.mcp(calls, caller=ann)
+    # 20 requests, from two people: one person may have at most 10 open requests (review finding 9)
+    ann, bob = w.user("ann"), w.user("bob")
     from helpers import tool_json
-    ids = [tool_json(o)["id"] for o in outs]
+    ids = []
+    for who in (ann, bob):
+        calls = [("launch", w.choices(run="run-%02d" % i)) for i in range(10)]
+        _, outs = w.mcp(calls, caller=who)
+        ids += [tool_json(o)["id"] for o in outs]
     assert len(set(ids)) == 20 and all(re.fullmatch(r"[0-9a-f]{32}", i) for i in ids)
 
 

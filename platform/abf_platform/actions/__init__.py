@@ -156,7 +156,10 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
               "(no one can say yes here: use the terminal command, or HTTP with a token)" % kind)
     if caller is None and not form:
         return _no(nobody)
-    rid = confirm.create_pending(platform_path, kind, ce_name, bundle, text, caller_id, clock)
+    try:
+        rid = confirm.create_pending(platform_path, kind, ce_name, bundle, text, caller_id, clock)
+    except jobs.JobRefused as e:
+        return _no("未送出：%s" % e)
     if form:
         yes, why = await person.says_yes(text)
         if yes is not None:
@@ -194,7 +197,7 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
                                           samplesheet=samplesheet, params=params, path_columns=path_columns, check_name=False)
     except build.Refusal as e:
         return _no("未送出：%s" % e)
-    found = confirm.find_approved(platform_path, "launch", bundle, _caller_id(caller), clock)
+    found = confirm.find_approved(platform_path, "launch", bundle, _caller_id(caller), clock, include_spent=True)
     if found:
         return _queued(found["id"], found["job_id"], bundle["run_name"])
     try:
@@ -211,7 +214,8 @@ async def request_cancel(platform_path, *, run_name, caller=None, person=None, c
         ce, bundle, row = build.prepare_cancel(platform_path, run_name)
     except build.Refusal as e:
         return _no("未取消：%s" % e)
-    found = confirm.find_approved(platform_path, "cancel", bundle, _caller_id(caller), clock)
+    found = (confirm.find_approved(platform_path, "cancel", bundle, _caller_id(caller), clock, include_spent=True)
+             or confirm.find_cancel(platform_path, bundle))
     if found:
         return _queued(found["id"], found["job_id"], run_name)
     text = build.as_text(build.cancel_screen(bundle, row))
