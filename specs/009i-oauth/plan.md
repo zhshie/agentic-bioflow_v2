@@ -107,3 +107,13 @@
 - Safety Net: refusals are only added. The authorization page accepts only the 009c web password.
 - V/VI: hashes only. The `test_secrets` canary is extended to OAuth tokens.
 - Governance: no amendment. Update `docs/PLATFORM.md`, `docs/TESTING.md` and CHANGELOG.
+
+## Contract rulings (2026-10-17, developer-agent, on the verifier's open points)
+1. Without `--public-url`, the 401 stays a bare `Bearer`, and the PAT works (TC-A05 as written).
+2. A reused authorization code also revokes every token issued from that code (RFC 6749 §4.1.2). Add this as an assertion in TC-D03.
+3. `abf-platform oauth revoke USER` revokes only OAuth tokens. PATs use `pat revoke` (TC-E05 as written).
+4. A disabled user's refresh token is refused as well (TC-D10 confirmed).
+5. The resource-metadata path is the SDK default. Its URL is stored and read the same way as `web_base_url`.
+6. The registration rate cap is 10 per address per hour, a named constant documented in `docs/PLATFORM.md`.
+7. The cookie stays `SameSite=Strict`. A second login prompt after a cross-site redirect is accepted, because security comes before convenience.
+8. Consent is not bound to an initiator, which is standard OAuth. The consent page shows the client name and the redirect host. TC-C05 is the human check.
