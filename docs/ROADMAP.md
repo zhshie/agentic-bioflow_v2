@@ -120,11 +120,11 @@ Each must be answered before the hosted service charges anyone (Stage 3).
 
 ### Open questions from ADR 0009 (answered before the slice that needs them)
 
-Asked here, not decided here.
+Asked by ADR 0009. The maintainer answered five of them on 2026-10-17, recorded in ADR 0010 ("Decided").
 
-- How is an account created on the hosted service, and by whom?
-- Are runs with no recorded person (started outside the platform) shown, and to whom?
-- May uploads and downloads pass through the hosted platform, or only through the station agent?
-- Does each resume or relaunch need the confirmation page again?
-- Studios on NCHC would be a second submission path and needs a constitution amendment: may it be built?
-- Which cloud account is used, and what number is the monthly cap per person?
+- How is an account created on the hosted service, and by whom? Answered: the operator creates it at a terminal; no self sign-up in v3.0.0.
+- Are runs with no recorded person (started outside the platform) shown, and to whom? Answered: a terminal launch names the account; a run with no recorded person is hidden on the web and seen only on the local command line.
+- May uploads and downloads pass through the hosted platform, or only through the station agent? Answered: loopback on the agent's machine, otherwise relayed through the platform with nothing written to disk (ADR 0010).
+- Does each resume or relaunch need the confirmation page again? Answered: yes, every time.
+- Studios on NCHC would be a second submission path and needs a constitution amendment: may it be built? Answered: not in v3.0.0.
+- Which cloud account is used, and what number is the monthly cap per person? Partly answered: the cap is set when an account opens, and the page shows "—" until then; the cloud account is still open.
