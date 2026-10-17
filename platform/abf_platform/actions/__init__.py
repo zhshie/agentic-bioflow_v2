@@ -130,6 +130,11 @@ def cancel(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadli
 DEFAULT_WEB_BASE = "http://127.0.0.1:8789"
 
 
+def _is_loopback_url(url):
+    from urllib.parse import urlparse
+    return (urlparse(url).hostname or "") in ("127.0.0.1", "localhost", "::1")
+
+
 def _caller_id(caller):
     return caller.user_id if caller else None
 
@@ -149,7 +154,7 @@ def person_at(ctx):
     return forms.Person(ctx)
 
 
-async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock):
+async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False):
     """The yes of a person for a bundle that is built and checked: through the form, else by the page; never by the caller itself."""
     caller_id = _caller_id(caller)
     form = person is not None and person.can_ask()
@@ -179,8 +184,14 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
             return _no(nobody)
     base = store.get_meta(platform_path, "web_base_url") or DEFAULT_WEB_BASE
     url = "%s/c/%s" % (base.rstrip("/"), rid)
+    unreachable = ""
+    if remote and _is_loopback_url(base):
+        unreachable = ("⚠ 這個網址目前只有在平台那台機器上才打得開（%s 是本機位址），你從別的電腦連進來所以打不開。請平台管理者用 "
+                       "`abf-platform web --public-url https://<大家打得開的位址>` 設定公開網址（要有 https）。 (this address only opens on the "
+                       "platform machine; the administrator must run `abf-platform web --public-url https://<address people can open>`) ")
+        unreachable = unreachable % base
     return {"ok": True, "sent": False, "state": "pending", "id": rid, "confirmation_url": url, "summary": text,
-            "message": "還沒送出 (not sent yet)。請本人打開這個網址、用自己的帳號登入、看過摘要後按「送出」：%s ——按了之後，用同樣的參數再呼叫 `%s` "
+            "message": unreachable + "還沒送出 (not sent yet)。請本人打開這個網址、用自己的帳號登入、看過摘要後按「送出」：%s ——按了之後，用同樣的參數再呼叫 `%s` "
                        "一次，就會得到工作編號。AI 不能代按。 (open the address, log in as yourself and press 送出; then call `%s` "
                        "again with the same arguments)" % (url, kind, kind)}
 
@@ -204,7 +215,7 @@ def confined_samplesheet(platform_path, caller, samplesheet):
 
 
 async def request_launch(platform_path, *, pipeline, revision, run_name, samplesheet, ce_name=None, params=None, path_columns=None,
-                         caller=None, person=None, clock=time.time):
+                         caller=None, person=None, clock=time.time, remote=False):
     """Ask for a launch the way the terminal command does: same choices, same bundle, same screen, same refusals. Writes a pending
     request and asks the person; the answer says whether a job exists. Nothing is queued without a person's yes."""
     if params is not None and not isinstance(params, dict):
@@ -226,10 +237,10 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
     except jobs.JobRefused as e:
         return _no("未送出：%s" % e)
     text = build.as_text(build.launch_screen(bundle, ce))
-    return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock)
+    return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote)
 
 
-async def request_cancel(platform_path, *, run_name, caller=None, person=None, clock=time.time):
+async def request_cancel(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False):
     """Ask for the cancel of one run of this platform, the way the terminal command does."""
     try:
         ce, bundle, row = build.prepare_cancel(platform_path, run_name)
@@ -240,7 +251,7 @@ async def request_cancel(platform_path, *, run_name, caller=None, person=None, c
     if found:
         return _queued(found["id"], found["job_id"], run_name)
     text = build.as_text(build.cancel_screen(bundle, row))
-    return await _ask(platform_path, "cancel", ce, bundle, text, run_name, caller, person, clock)
+    return await _ask(platform_path, "cancel", ce, bundle, text, run_name, caller, person, clock, remote)
 
 
 def approve(platform_path, request_id, *, confirmed_by, caller=None, clock=time.time, deadline_seconds=None, offline_after=None):
