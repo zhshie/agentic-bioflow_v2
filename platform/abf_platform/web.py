@@ -41,7 +41,7 @@ MAX_TRACKED = 10000         # names (and addresses) with a live failure window; 
 MAX_NAME_CHARS = 100
 MAX_BODY = 16384
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
-_HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
+_HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"}
 
