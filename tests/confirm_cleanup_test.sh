@@ -1104,6 +1104,17 @@ tc "/tmp" "cd -; sed -i p \\"                                         ask  "TC-1
 tc "/tmp" "cd -; sort -o \\"                                          ask  "TC-112-66e sort -o trailing backslash"
 tc "/tmp" "cd -; dd of=\\"                                            ask  "TC-112-66e dd of= trailing backslash"
 tc "/tmp" "cd -; cp a \\ "                                            ask  "TC-112-66e cp a escaped space"
+# main reads a word cut at every space and a word that starts with a backslash as relative
+tc "/tmp" "cd -; cp a \\/tmp/x"                                       ask  "TC-112-66e cp a \\/tmp/x"
+tc "/tmp" "cd -; tee \\/tmp/x"                                        ask  "TC-112-66e tee \\/tmp/x"
+tc "/tmp" "cd -; sort -o \\/tmp/x"                                    ask  "TC-112-66e sort -o \\/tmp/x"
+tc "/tmp" "cd -; cp \\ a"                                             ask  "TC-112-66e cp one escaped-space operand"
+tc "/tmp" "cd -; cp 'a b'"                                            ask  "TC-112-66e cp one quoted operand with a space"
+tc "/tmp" "cd -; tee \"/tmp/my file\""                                ask  "TC-112-66e tee quoted abs path with a space"
+tc "/tmp" "cd -; cp a \"/tmp/my file\""                               ask  "TC-112-66e cp quoted abs path with a space"
+tc "/tmp" "cd -; sed -i p \"/tmp/my file\""                           ask  "TC-112-66e sed -i quoted abs path with a space"
+tc "/tmp" "cd -; tee '/tmp/a b'"                                      ask  "TC-112-66e tee single-quoted abs path, space"
+tc "/tmp" "cd -; tee /tmp/x"                                          pass "TC-112-66e tee absolute path passes"
 rs() { # rs <command> -> OUT: the reason text of the gate
   OUT=$(python3 -c "import json,sys;print(json.dumps({'cwd':'/tmp','tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   OUT=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin)['hookSpecificOutput'].get('permissionDecisionReason',''))" <<<"$OUT")
