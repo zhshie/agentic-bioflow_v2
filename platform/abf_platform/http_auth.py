@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from mcp.server.auth.routes import build_resource_metadata_url, create_protected_resource_routes
 from starlette.applications import Starlette
 
-from . import oauth, store
+from . import store
 from .actions import Caller
 
 _caller = contextvars.ContextVar("abf_platform_caller", default=None)
@@ -134,8 +134,8 @@ class BearerAuth:
                 await _reject(send, 403, "forbidden", "this session was opened by another token")
                 return
             self.sessions.move_to_end(session)
-        caller = Caller(who["user_id"], who["name"], who["lab"], "connector" if oauth_who else "pat",
-                        oauth.form_allowed(oauth_who.get("redirect_uris", ())) if oauth_who else True)
+        caller = (Caller.connector(who["user_id"], who["name"], who["lab"], oauth_who["form_ok"]) if oauth_who
+                  else Caller(who["user_id"], who["name"], who["lab"]))
         scope["abf_caller"] = caller
         scope["abf_remote"] = is_remote(scope)
         user_id, method = who["user_id"], scope.get("method")

@@ -81,3 +81,7 @@ The discovery and registration tests were committed red first. The provider, the
 ### CI fix (same round)
 
 - CI (`.github/workflows/tests.yml` pins no Python version, so ubuntu-latest's default python3, newer than WSL's 3.10) failed `test_tcb04` with `FrozenInstanceError: cannot assign to field '__traceback__'`: the SDK's `RegistrationError`/`AuthorizeError`/`TokenError` are frozen dataclasses. `oauth.py` now raises same-named plain-exception subclasses (`__setattr__` of `Exception`); `test_r3_the_raised_errors_are_not_frozen` pins it. No existing test changed.
+
+### Correction after the full platform run (no existing test changed)
+
+- `Caller` keeps exactly three fields (`test_pat.py::test_tcd04`); the flag lives on `actions.ConnectorCaller(Caller)` (extra `form_ok`), made by `Caller.connector(...)`. `http_auth.py` imports no new module (`test_tcd12`); `store.lookup_oauth_access` returns `form_ok` (judged by `oauth.form_allowed`, imported lazily). This replaces the `auth`/`redirect_hosts` fields described above. `RegisterBodyCap` has no `while True` (`test_tc068`/`test_tc071` forbid a resident loop).

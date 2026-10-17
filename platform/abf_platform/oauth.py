@@ -147,8 +147,8 @@ class RegisterBodyCap:
         if not (scope["type"] == "http" and scope["path"] == "/register" and scope["method"] == "POST"):
             await self.app(scope, receive, send)
             return
-        chunks, size = [], 0
-        while True:
+        chunks, size, more = [], 0, True
+        while more:
             message = await receive()
             if message["type"] != "http.request":
                 break
@@ -159,8 +159,7 @@ class RegisterBodyCap:
                 await response(scope, receive, send)
                 return
             chunks.append(message.get("body", b""))
-            if not message.get("more_body", False):
-                break
+            more = message.get("more_body", False)
         body, sent = b"".join(chunks), False
 
         async def replay():

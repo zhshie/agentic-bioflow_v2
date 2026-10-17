@@ -46,8 +46,17 @@ class Caller:
     user_id: int
     name: str
     lab: str
-    auth: str = "pat"                # how the caller was proven: "pat" (a personal access token or a web login) or "connector" (a connector's token)
-    form_ok: bool = True             # whether the client's own 送出 form may be shown to this caller; a connector's token says it per client (spec 009i)
+
+
+    @staticmethod
+    def connector(user_id, name, lab, form_ok):
+        """The caller proven by a connector's token (spec 009i): the same three fields, and whether the client's own form may be shown."""
+        return ConnectorCaller(user_id, name, lab, bool(form_ok))
+
+
+@dataclasses.dataclass(frozen=True)
+class ConnectorCaller(Caller):
+    form_ok: bool = False
 
 
 def platform_path_for(index_path, platform_path=None):
@@ -192,7 +201,7 @@ def person_at(ctx):
 def form_is_trusted(caller):
     """Whether this caller may be shown the client's own form: stdio (None) and a PAT always; a connector's token only when its client
     was vetted when the token was read (see the connector's redirect rule in docs/PLATFORM.md). The rest get the page only."""
-    return caller is None or caller.form_ok
+    return caller is None or getattr(caller, "form_ok", True)
 
 
 async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False):

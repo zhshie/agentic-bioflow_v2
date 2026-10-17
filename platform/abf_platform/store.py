@@ -688,11 +688,13 @@ def lookup_oauth_access(tokens_path, token):
             return None
         out = dict(row)
         info = out.pop("info_json")
-        # the redirects the token's client registered; () for a client that is gone, which is vetted by nobody
+        # whether the token's client may be shown the client's own form: judged on the redirects it registered (a client that is gone: no)
+        from . import oauth
         try:
-            out["redirect_uris"] = [str(u) for u in (json.loads(info).get("redirect_uris") or ())] if info else []
+            uris = json.loads(info).get("redirect_uris") or () if info else ()
         except (ValueError, AttributeError):
-            out["redirect_uris"] = []
+            uris = ()
+        out["form_ok"] = oauth.form_allowed(uris)
         return out
     finally:
         con.close()
