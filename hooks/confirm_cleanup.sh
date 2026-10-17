@@ -1103,7 +1103,7 @@ lost_redirects() { # lost_redirects <segment text with quotes kept>
 RE_LW_REDIR='^([0-9]*(>>?|>[|&]|<>?)|&>>?)(.*)$'
 LW_V=(); LW_T=()
 lw_tokens() { # lw_tokens <segment text>
-    local s=$1 n=${#1} i c q="" w="" started=0 has=0 skip=0
+    local s=$1 n=${#1} i c q="" w="" started=0 has=0 skip=0 fc=""
     LW_V=(); LW_T=()
     for ((i = 0; i <= n; i++)); do
         c=${s:i:1}
@@ -1120,17 +1120,37 @@ lw_tokens() { # lw_tokens <segment text>
                     if [ -z "${BASH_REMATCH[3]}" ]; then skip=1; else skip=0; fi
                 elif [ "$skip" = 1 ]; then skip=0
                 else
+                    # A word with a quote or backslash in it is a file name, never the home
+                    # folder: every `~` in it is made relative (`./~`), so the same word
+                    # asks wherever the writer reads it (`of=\~`, `--target-directory=\~`).
+                    # A word that starts with a backslash is not an option either, even
+                    # when what follows is `-x`: `\-x` is the relative file name `./-x`.
+                    if [ "$has" = 1 ]; then
+                        w=${w//\~/./~}
+                        [ "$fc" = '\' ] && [[ $w == -* ]] && w="./$w"
+                    fi
                     LW_V+=("$w")
                     if [ "$has" = 1 ] && [[ $w == '~'* ]]; then LW_T+=(1); else LW_T+=(0); fi
                 fi
             fi
-            w=""; started=0; has=0
+            w=""; started=0; has=0; fc=""
             continue
         fi
+        [ "$started" = 0 ] && fc=$c
         started=1
         case "$c" in
             '"'|"'") q=$c; has=1 ;;
-            '\') has=1; i=$((i + 1)); w+=${s:i:1} ;;
+            # a backslash at the very end is itself the file name (`cp a \`)
+            '\')
+                has=1
+                if [ $((i + 1)) -ge "$n" ]; then w+='\'
+                else
+                    i=$((i + 1))
+                    # an escaped `/` does not make an absolute path: the #110 gate read
+                    # `\/tmp/x`, `-t\/tmp/x` and `of=\/tmp/x` as relative names
+                    [ "${s:i:1}" = / ] && w+=./
+                    w+=${s:i:1}
+                fi ;;
             *) w+=$c ;;
         esac
     done
@@ -1139,11 +1159,23 @@ lw_tokens() { # lw_tokens <segment text>
 # relative path (lost_target). With $2 = 1 the arguments that will be appended are not known
 # (xargs, find -exec): any use that writes at all is asked.
 lw_add() { LW_F+=("$1"); LW_Q+=("${2:-0}"); }
+# A file name with a space in it (`"/tmp/my file"`, `a\ b`) is also read the way the #110 gate
+# read it, cut at every space: each piece must be absolute too.
+lw_target() { # lw_target <file name> <1 when quoted>
+    local p
+    local -a P
+    lost_target "$1" "$2"
+    if [[ $1 == *[[:space:]]* ]]; then
+        read -ra P <<<"$1"
+        for p in "${P[@]}"; do lost_target "$p" "$2"; done
+    fi
+    return 0
+}
 lw_cmd() { # lw_cmd <index of the command word> <0|1 unknown appended arguments>
     local st=$1 unk=$2 cw n=${#LW_V[@]} i j k x v c nd=0 wr=0 a=0 td="" tdq=0 nw=0 dflag=0 ip=0 sc=0
     local cwdw="" sw=0 hasO=0 pfx="" pfxq=0 spider=0 script=0 od=0 lastv="" lastq=0
-    local -a LW_F LW_Q OPS OPQ NO
-    LW_F=(); LW_Q=(); OPS=(); OPQ=(); NO=()
+    local -a LW_F LW_Q OPS OPQ NO SCR
+    LW_F=(); LW_Q=(); OPS=(); OPQ=(); NO=(); SCR=()
     cw=${LW_V[st]##*/}; cw=${cw%.exe}
     case "$cw" in
         tee)
@@ -1185,7 +1217,7 @@ lw_cmd() { # lw_cmd <index of the command word> <0|1 unknown appended arguments>
                     *) nw=$((nw + 1)); lastv=$x; lastq=${LW_T[i]} ;;
                 esac
             done
-            if [ -n "$td" ]; then lw_add "$td" "$tdq"; elif [ "$nw" -ge 2 ]; then lw_add "$lastv" "$lastq"; fi ;;
+            if [ -n "$td" ]; then lw_add "$td" "$tdq"; elif [ "$nw" -ge 2 ] || { [ "$nw" = 1 ] && [[ $lastv == *[[:space:]]* ]]; }; then lw_add "$lastv" "$lastq"; fi ;;
         install|ln)
             wr=1
             for ((i = st + 1; i < n; i++)); do
@@ -1229,8 +1261,10 @@ lw_cmd() { # lw_cmd <index of the command word> <0|1 unknown appended arguments>
                 if [ "$nd" = 1 ]; then NO+=("$x"); continue; fi
                 case "$x" in
                     --) nd=1 ;;
-                    -e|-f|--expression|--file) sc=1; i=$((i + 1)) ;;
-                    --expression=*|--file=*) sc=1 ;;
+                    -e|--expression) sc=1; i=$((i + 1)); SCR+=("${LW_V[i]-}") ;;
+                    -f|--file) sc=1; i=$((i + 1)) ;;
+                    --expression=*) sc=1; SCR+=("${x#*=}") ;;
+                    --file=*) sc=1 ;;
                     --in-place*) ip=1 ;;
                     --*) ;;
                     -?*)
@@ -1239,7 +1273,13 @@ lw_cmd() { # lw_cmd <index of the command word> <0|1 unknown appended arguments>
                         for ((k = 1; k < ${#x}; k++)); do
                             case "${x:k:1}" in
                                 i) ip=1; break ;;
-                                e|f) sc=1; [ "$k" -eq $((${#x} - 1)) ] && i=$((i + 1)); break ;;
+                                e|f)
+                                    sc=1
+                                    if [ "${x:k:1}" = e ]; then
+                                        if [ "$k" -lt $((${#x} - 1)) ]; then SCR+=("${x:k+1}"); else SCR+=("${LW_V[i+1]-}"); fi
+                                    fi
+                                    [ "$k" -eq $((${#x} - 1)) ] && i=$((i + 1))
+                                    break ;;
                             esac
                         done ;;
                     *) NO+=("$x") ;;
@@ -1247,8 +1287,13 @@ lw_cmd() { # lw_cmd <index of the command word> <0|1 unknown appended arguments>
             done
             if [ "$ip" = 1 ]; then
                 wr=1
-                k=0; [ "$sc" = 1 ] || k=1
+                k=0; [ "$sc" = 1 ] || { k=1; SCR+=("${NO[0]-}"); }
                 for ((; k < ${#NO[@]}; k++)); do lw_add "${NO[k]}" 0; done
+                # The #110 gate cut every word at a space, so the words of a script that has
+                # spaces in it (`'s/a b/c/'`, `'1 d'`) were read as file names: they still ask.
+                for x in "${SCR[@]}"; do
+                    [[ $x == *[[:space:]]* ]] && lw_add "${x#*[[:space:]]}" 0
+                done
             fi ;;
         dd)
             wr=1
@@ -1387,7 +1432,7 @@ lw_cmd() { # lw_cmd <index of the command word> <0|1 unknown appended arguments>
         return 0
     fi
     [ -n "$cwdw" ] && lost_ask "$cwdw"
-    for ((k = 0; k < ${#LW_F[@]}; k++)); do lost_target "${LW_F[k]}" "${LW_Q[k]}"; done
+    for ((k = 0; k < ${#LW_F[@]}; k++)); do lw_target "${LW_F[k]}" "${LW_Q[k]}"; done
     return 0
 }
 RE_LW_CMDS='(tee|sort|shuf|cp|install|ln|split|sed|dd|curl|wget|perl|awk|gawk|xargs|find)'
