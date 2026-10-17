@@ -19,12 +19,31 @@ import time
 from contextlib import contextmanager
 from urllib.parse import urlparse
 
-from mcp.server.auth.provider import (AccessToken, AuthorizationCode, AuthorizationParams, AuthorizeError, RefreshToken, RegistrationError,
-                                      TokenError, construct_redirect_uri)
+from mcp.server.auth import provider as _sdk
+from mcp.server.auth.provider import (AccessToken, AuthorizationCode, AuthorizationParams, RefreshToken, construct_redirect_uri)
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.responses import JSONResponse
 
 from . import store
+
+
+
+# The SDK's error classes are frozen dataclasses; a newer Python sets __traceback__ on them when they are raised and fails with
+# FrozenInstanceError (seen in CI). These subclasses are the same errors (the SDK handlers catch them by class) but plain exceptions.
+class RegistrationError(_sdk.RegistrationError):
+    __setattr__ = Exception.__setattr__
+    __delattr__ = Exception.__delattr__
+
+
+class AuthorizeError(_sdk.AuthorizeError):
+    __setattr__ = Exception.__setattr__
+    __delattr__ = Exception.__delattr__
+
+
+class TokenError(_sdk.TokenError):
+    __setattr__ = Exception.__setattr__
+    __delattr__ = Exception.__delattr__
+
 
 SCOPE = "mcp"                       # the one scope: what a PAT can do, as the user
 ACCESS_SECONDS = 3600
