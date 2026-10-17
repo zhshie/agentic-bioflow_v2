@@ -40,8 +40,9 @@ PAGE = _Channel("PAGE")
 
 @dataclasses.dataclass(frozen=True)
 class Caller:
-    """Who is calling: a user of the platform. None (the default everywhere) is the local terminal or stdio. A caller is
-    recorded and nothing more: it is never a confirmation, and the read actions ignore it."""
+    """Who is calling: a user of the platform. None (the default everywhere) is the local terminal or stdio, and it sees and uses
+    everything. A caller is never a confirmation; since 116 it also bounds what the action reaches: only the environments, agents,
+    runs and upload folder that are the caller's own. What belongs to somebody else, or to nobody, answers like what is missing."""
     user_id: int
     name: str
     lab: str
@@ -53,12 +54,18 @@ def platform_path_for(index_path, platform_path=None):
 
 # ---- read ------------------------------------------------------------------------------------------------------------
 
-def list_runs(index_path, *, caller=None):
-    return {"runs": status.list_runs(index_path, status.now())}
+def list_runs(index_path, *, caller=None, platform_path=None):
+    names = None
+    if caller is not None:      # the runs the caller launched: those whose newest launch record names the caller
+        names = jobs.owned_run_names(platform_path_for(index_path, platform_path), caller.user_id)
+    return {"runs": status.list_runs(index_path, status.now(), names=names)}
 
 
-def get_run(index_path, run_id, *, caller=None):
+def get_run(index_path, run_id, *, caller=None, platform_path=None):
     view = status.get_run(index_path, run_id, status.now())
+    if view is not None and caller is not None and view["name"] not in jobs.owned_run_names(
+            platform_path_for(index_path, platform_path), caller.user_id):
+        view = None
     if view is None:
         return {"found": False, "id": run_id,
                 "message": "Run not found: %s (找不到這個 run)" % run_id}
@@ -66,11 +73,11 @@ def get_run(index_path, run_id, *, caller=None):
 
 
 def list_compute_envs(platform_path, *, caller=None):
-    return {"compute_envs": compute_envs.list_all(platform_path)}
+    return {"compute_envs": compute_envs.list_all(platform_path, owner=_caller_id(caller))}
 
 
 def get_compute_env(platform_path, name, *, caller=None):
-    view = compute_envs.get(platform_path, name)
+    view = compute_envs.get(platform_path, name, owner=_caller_id(caller))
     if view is None:
         return {"found": False, "name": name,
                 "message": "Compute environment not found: %s (找不到這個算力環境)" % name}
@@ -78,13 +85,39 @@ def get_compute_env(platform_path, name, *, caller=None):
 
 
 def list_agents(platform_path, *, caller=None):
-    return {"agents": agents.list_agents(platform_path, status.now())}
+    return {"agents": agents.list_agents(platform_path, status.now(), owner=_caller_id(caller))}
+
+
+def _inside(path, root):
+    """True when path is root or lies below it, compared by whole path components (never by prefix text)."""
+    want, base = [p for p in path.split("/") if p], [p for p in root.split("/") if p]
+    return want[:len(base)] == base
+
+
+def _uploads_problem(platform_path, caller, path):
+    """The sentence that refuses a listing of somebody else's upload folder, or None. A path inside <uploads_root> is allowed for a
+    caller only inside <uploads_root>/<their name>; any other path follows the rule of the environment's read roots."""
+    if not isinstance(path, str) or compute_envs.path_problem(path):
+        return None                       # the queue refuses a path that is not a plain absolute one, in its own words
+    want = compute_envs.normalize_path(path)
+    root = os.path.abspath(str(store.uploads_root(platform_path)))
+    spellings = {compute_envs.normalize_path(root), compute_envs.normalize_path(os.path.realpath(root))}
+    if not any(_inside(want, s) for s in spellings):
+        return None
+    if caller.name and any(_inside(want, compute_envs.normalize_path(os.path.join(s, caller.name))) for s in spellings):
+        return None
+    return "只能列你自己的上傳資料夾 (you may list only your own uploads folder): %s" % os.path.realpath(os.path.join(root, caller.name))
 
 
 async def list_site_files(platform_path, compute_env, path, *, caller=None):
     answer = {"compute_env": compute_env, "path": path}
+    if caller is not None:
+        problem = _uploads_problem(platform_path, caller, path)
+        if problem:
+            answer.update(ok=False, message=problem)
+            return answer
     try:
-        job_id = jobs.enqueue_listing(platform_path, compute_env, path, status.now)
+        job_id = jobs.enqueue_listing(platform_path, compute_env, path, status.now, caller_user_id=_caller_id(caller))
     except jobs.JobRefused as e:
         answer.update(ok=False, message=str(e))
         return answer
@@ -196,6 +229,16 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
                        "again with the same arguments)" % (url, kind, kind)}
 
 
+def caller_area(platform_path, caller):
+    """The real path of the caller's own upload folder, <uploads_root>/<caller name>: the one area a samplesheet and the path cells
+    in it must lie in over HTTP. Symlinks are resolved. build.Refusal when the name cannot be the name of a folder."""
+    area = os.path.realpath(os.path.join(str(store.uploads_root(platform_path)), caller.name))
+    name = caller.name
+    if not name or name in (".", "..") or "/" in name or "\\" in name or chr(0) in name:
+        raise build.area_refusal(area)
+    return area
+
+
 def confined_samplesheet(platform_path, caller, samplesheet):
     """The samplesheet of an HTTP caller as a real path inside <uploads_root>/<caller name>/ (a relative path means that folder),
     or build.Refusal. Symlinks are resolved first, so a link cannot lead out. The refusal names the caller's own folder and
@@ -236,12 +279,13 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
     if path_columns is not None and (not isinstance(path_columns, list) or not all(isinstance(c, str) for c in path_columns)):
         return _no("path_columns 必須是文字清單 (path_columns must be a list of names)")
     try:
-        raw = None
+        raw = area = None
         if caller is not None:         # over HTTP the file must be the caller's own, and is read once; stdio and the terminal read the path as given
             raw = read_confined_samplesheet(platform_path, caller, samplesheet)
+            area = caller_area(platform_path, caller)      # and so must every path cell in it (116); the environment must be the caller's too
         ce, bundle = build.prepare_launch(platform_path, ce=ce_name, pipeline=pipeline, revision=revision, run_name=run_name,
                                           samplesheet=samplesheet, params=params, path_columns=path_columns, check_name=False,
-                                          samplesheet_raw=raw)
+                                          samplesheet_raw=raw, owner=_caller_id(caller), area=area)
     except build.Refusal as e:
         return _no("未送出：%s" % e)
     found = confirm.find_approved(platform_path, "launch", bundle, _caller_id(caller), clock, include_spent=True)
@@ -258,7 +302,7 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
 async def request_cancel(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False):
     """Ask for the cancel of one run of this platform, the way the terminal command does."""
     try:
-        ce, bundle, row = build.prepare_cancel(platform_path, run_name)
+        ce, bundle, row = build.prepare_cancel(platform_path, run_name, owner=_caller_id(caller))
     except build.Refusal as e:
         return _no("未取消：%s" % e)
     if caller is not None and not confirm.launched_by(platform_path, run_name, caller.user_id):

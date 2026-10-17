@@ -81,7 +81,10 @@ def test_tc025_streamable_http_gives_the_same_answers_on_loopback(tmp_path):
     _, via_stdio = mcp_call(env, calls)
     # 009d: HTTP needs a personal access token; only this input changed, the assertions below did not
     from abf_platform import store
-    pat = store.create_token(plat.tokens, kind="pat", user_id=store.create_user(plat.tokens, "tc025", "lab"))
+    uid = store.create_user(plat.tokens, "tc025", "lab")
+    pat = store.create_token(plat.tokens, kind="pat", user_id=uid)
+    from helpers import own_runs        # 116: the runs are this user's, as the hand-off record says, so the HTTP answers are the stdio answers
+    own_runs(plat.dir / "platform.db", uid, [r["name"] for r in status.list_runs(plat.index, __import__("time").time())])
     port = free_port()
     proc = start_cli(["mcp", "--http", "--port", str(port)], env, tmp_path / "mcp.log")
     try:

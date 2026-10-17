@@ -174,6 +174,19 @@ def all_files_digest(*paths):
     return h.hexdigest()
 
 
+def own_runs(state_path, user_id, names):
+    """116: the hand-off record names this user as the one who launched each of these runs, so that user's HTTP calls see them."""
+    from abf_platform import store
+    con = store.connect_state(state_path)
+    try:
+        with con:
+            for name in names:
+                con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES (?, '/f', 'lab-a', 'a1', 1, ?)",
+                            (name, user_id))
+    finally:
+        con.close()
+
+
 def free_port():
     s = socket.socket()
     s.bind(("127.0.0.1", 0))

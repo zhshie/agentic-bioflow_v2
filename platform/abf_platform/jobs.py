@@ -58,13 +58,24 @@ def check_listing_path(path):
     return compute_envs.normalize_path(path)
 
 
-def _target(con, ce_name, kind, now, offline_after):
-    """The compute environment row of a job's target, after every check that does not depend on the content."""
+def _not_found(ce_name):
+    return JobRefused("compute environment %r not found (找不到)" % ce_name[:100])
+
+
+def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
+    """The compute environment row of a job's target, after every check that does not depend on the content.
+
+    With a caller (a user id, 116) the environment and its agent must both be that user's own: one that belongs to somebody else, or
+    to nobody, is refused in the words of a missing one, before anything else is said about it. None is the local terminal."""
     if not isinstance(ce_name, str) or not ce_name:
         raise JobRefused("a compute environment name is required")
     row = con.execute("SELECT * FROM compute_envs WHERE name = ?", (ce_name,)).fetchone()
-    if row is None:
-        raise JobRefused("compute environment %r not found (找不到)" % ce_name[:100])
+    if row is None or (caller_user_id is not None and row["owner_user_id"] != caller_user_id):
+        raise _not_found(ce_name)
+    if caller_user_id is not None and row["agent"]:
+        owned = con.execute("SELECT owner_user_id FROM agents WHERE name = ?", (row["agent"],)).fetchone()
+        if owned is not None and owned["owner_user_id"] != caller_user_id:
+            raise _not_found(ce_name)
     status = row["status"]
     if status == compute_envs.UNSUPPORTED:
         raise JobRefused("%s is a %s environment: %s" % (ce_name, compute_envs.KINDS.get(row["platform"], "?"),
@@ -114,14 +125,16 @@ def transaction(state_path, work):
         con.close()
 
 
-def check_target(state_path, ce_name, kind, clock=time.time, offline_after=None):
+def check_target(state_path, ce_name, kind, clock=time.time, offline_after=None, caller_user_id=None):
     """Raise JobRefused, in the words enqueue would use, when the environment cannot take a job of this kind now.
     It only reads, so the terminal commands can use it to refuse before they ask the user anything."""
     con = store.open_readonly(state_path)
     if con is None:
         raise JobRefused("this platform has no data yet (還沒有任何環境)")
     try:
-        _target(con, ce_name, kind, clock(), offline_after)
+        _target(con, ce_name, kind, clock(), offline_after, caller_user_id)
+    except sqlite3.OperationalError:
+        raise _not_found(ce_name)      # a platform.db made before 116 that no command has opened yet: nobody owns anything in it
     finally:
         con.close()
 
@@ -130,7 +143,7 @@ def _seconds(kind, deadline):
     return float(deadline) if deadline is not None else deadline_seconds(kind)
 
 
-def _enqueue(state_path, ce_name, kind, listing_path, clock, deadline, offline_after=None):
+def _enqueue(state_path, ce_name, kind, listing_path, clock, deadline, offline_after=None, caller_user_id=None):
     """The kinds that need no confirmation and no run: preflight and list_site_files."""
     if kind == "list_site_files":
         listing_path = check_listing_path(listing_path)
@@ -138,7 +151,7 @@ def _enqueue(state_path, ce_name, kind, listing_path, clock, deadline, offline_a
     seconds = _seconds(kind, deadline)
 
     def work(con):
-        row = _target(con, ce_name, kind, now, offline_after)
+        row = _target(con, ce_name, kind, now, offline_after, caller_user_id)
         args = {"ce": compute_envs.snapshot(row)}
         if kind == "list_site_files":
             args["path"] = listing_path
@@ -151,8 +164,9 @@ def enqueue_preflight(state_path, ce_name, clock=time.time, deadline_seconds=Non
     return _enqueue(state_path, ce_name, "preflight", None, clock, deadline_seconds, offline_after)
 
 
-def enqueue_listing(state_path, ce_name, listing_path, clock=time.time, deadline_seconds=None, offline_after=None):
-    return _enqueue(state_path, ce_name, "list_site_files", listing_path, clock, deadline_seconds, offline_after)
+def enqueue_listing(state_path, ce_name, listing_path, clock=time.time, deadline_seconds=None, offline_after=None,
+                    caller_user_id=None):
+    return _enqueue(state_path, ce_name, "list_site_files", listing_path, clock, deadline_seconds, offline_after, caller_user_id)
 
 
 def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, offline_after=None):
@@ -197,6 +211,22 @@ def _check_confirmation(con, kind, bundle, confirmation_id):
     if conf["sha256"] != sha:
         raise JobRefused("the content is not the content that was confirmed (內容與確認時不符)")
     return sha
+
+
+def owned_run_names(state_path, user_id):
+    """The run names whose newest row of the hand-off record names this user (116): the runs that user launched. A run with no row,
+    or whose newest row has no user, is nobody's here. A platform.db made before 116 that no command has opened yet has no user column,
+    so it has no owner of anything."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return set()
+    try:
+        return {r[0] for r in con.execute("SELECT run_name FROM launches WHERE id IN (SELECT MAX(id) FROM launches GROUP BY run_name) "
+                                          "AND user_id = ?", (user_id,))}
+    except sqlite3.OperationalError:
+        return set()
+    finally:
+        con.close()
 
 
 def latest_launch(con, run_name):
@@ -267,7 +297,9 @@ def enqueue_confirmed(con, ce_name, kind, bundle, confirmation_id, now, seconds,
     if not isinstance(bundle, dict):
         raise JobRefused("the content is not an object")
     sha = _check_confirmation(con, kind, bundle, confirmation_id)
-    row = _target(con, ce_name, kind, now, offline_after)
+    # whose yes it is (116): the environment and its agent must be that user's own; a yes typed at the terminal has no user and is not checked
+    caller_id = con.execute("SELECT caller_user_id FROM confirmations WHERE id = ?", (confirmation_id,)).fetchone()[0]
+    row = _target(con, ce_name, kind, now, offline_after, caller_id)
     run_name = bundle.get("run_name")
     if not isinstance(run_name, str) or not _RUN_NAME.match(run_name) or not isinstance(bundle.get("run_folder"), str):
         raise JobRefused("the content names no run (沒有 run 名稱或專屬資料夾)")
@@ -280,10 +312,12 @@ def enqueue_confirmed(con, ce_name, kind, bundle, confirmation_id, now, seconds,
             raise JobRefused(problem)
         args = {"bundle": bundle, "confirmation_id": confirmation_id, "bundle_sha256": sha}
         job_id = _insert_job(con, row, kind, args, now, seconds, confirmation_id)
-        con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, job_id) VALUES (?, ?, ?, ?, ?, ?)",
-                    (run_name, bundle["run_folder"], ce_name, row["agent"], now, job_id))
+        con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, job_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (run_name, bundle["run_folder"], ce_name, row["agent"], now, job_id, caller_id))
         return job_id
     launch = latest_launch(con, run_name)
+    if launch is not None and caller_id is not None and launch["user_id"] != caller_id:
+        launch = None      # the run was launched by somebody else (or by nobody): to this caller it is a run that is not there
     if launch is None or launch["slurm_job_id"] is None:
         raise JobRefused("run %s has no Slurm job number in the hand-off record (不是平台自己送出的，或尚未送出)" % run_name)
     args = {"bundle": bundle, "confirmation_id": confirmation_id, "bundle_sha256": sha}

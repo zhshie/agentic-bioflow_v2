@@ -42,12 +42,12 @@ def count(plat, table):
         con.close()
 
 
-def make_ce(plat, name="lab-a", agent="a1", **config):
+def make_ce(plat, name="lab-a", agent="a1", owner_user_id=None, **config):
     from abf_platform import compute_envs
     cfg = {"workDir": "/data/work", "launchDir": "/data/launch", "headQueue": "normal"}
     cfg.update(config)
     return compute_envs.create(state_db(plat), {"name": name, "platform": "slurm-platform", "agent": agent,
-                                                "config": cfg}, plat.clock)
+                                                "config": cfg, "owner_user_id": owner_user_id}, plat.clock)
 
 
 @pytest.fixture(autouse=True)

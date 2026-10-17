@@ -9,6 +9,7 @@ A choice that cannot be made into a launch raises Refusal, whose text is said to
 import csv
 import io
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -104,8 +105,10 @@ def read_params_file(path):
 
 # ---- the checks that come before any question --------------------------------------------------------------------
 
-def primary_environment(state):
-    envs = [c for c in compute_envs.list_all(state) if c["platform"] == compute_envs.SUPPORTED and c["status"] == compute_envs.AVAILABLE]
+def primary_environment(state, owner=None):
+    """The environment a launch uses when none is named. With `owner` (a user id, 116) it is chosen among that user's own."""
+    envs = [c for c in compute_envs.list_all(state, owner=owner)
+            if c["platform"] == compute_envs.SUPPORTED and c["status"] == compute_envs.AVAILABLE]
     primary = [c for c in envs if c["primary"]]
     if primary:
         return primary[0]["name"]
@@ -114,30 +117,35 @@ def primary_environment(state):
     return None
 
 
-def target_problem(state, ce_name, kind):
-    """The sentence that says why the environment cannot take this kind of job right now, or None."""
+def target_problem(state, ce_name, kind, owner=None):
+    """The sentence that says why the environment cannot take this kind of job right now, or None. With `owner` (116) an environment
+    or an agent of somebody else is 'not found'."""
     try:
-        jobs.check_target(state, ce_name, kind)
+        jobs.check_target(state, ce_name, kind, caller_user_id=owner)
     except jobs.JobRefused as e:
         return str(e)
     return None
 
 
 def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet, params_file=None, param_items=None, params=None,
-                   path_columns=None, check_name=True, samplesheet_raw=None):
+                   path_columns=None, check_name=True, samplesheet_raw=None, owner=None, area=None):
     """(environment name, bundle) for these choices, or Refusal. Nothing is shown, asked or written.
+
+    owner (a user id, 116): the environment is chosen among, and must be, that user's own; None is the local terminal without an
+    account. area (the real path of the caller's own upload folder): every path cell of the samplesheet must lie inside it, on top of
+    the environment's own roots; None keeps the old roots (the terminal and stdio).
 
     param_items are `name=value` strings as typed on a command line (the value is read as a number or true/false when it looks
     like one); params is a mapping that already has its types (the MCP tool). Both are put over the params file.
     check_name=False leaves the run-name check to the caller (the MCP tool looks for a yes that already exists first).
     samplesheet_raw (bytes) is the samplesheet already read; then `samplesheet` is not opened again."""
-    ce_name = ce or primary_environment(state)
+    ce_name = ce or primary_environment(state, owner)
     if not ce_name:
         raise Refusal("沒有指定環境（--ce），也找不到唯一可用的環境 (no --ce, and no single available environment)")
-    problem = target_problem(state, ce_name, "launch_nextflow")
+    problem = target_problem(state, ce_name, "launch_nextflow", owner)
     if problem:
         raise Refusal(problem)
-    view = compute_envs.get(state, ce_name)
+    view = compute_envs.get(state, ce_name, owner)
     facts = agents.get_facts(state, view["agent"])
     if facts is None:
         raise Refusal("代理 %s 還沒有回報送出需要的資料；請確認代理是新版並已連線 (the agent has not reported its facts)" % view["agent"])
@@ -155,6 +163,8 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet,
             samplesheet=rows, params=merged, path_columns=path_columns))
     except bundle_mod.BundleError as e:
         raise Refusal(str(e))
+    if area is not None:
+        _check_area(bundle, area)
     if check_name:
         try:
             jobs.check_run_name(state, bundle["run_name"])    # a name that cannot be used is refused before anything is shown
@@ -163,14 +173,29 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet,
     return ce_name, bundle
 
 
-def prepare_cancel(state, run):
-    """(environment name, bundle, hand-off row) for a cancel of one run of this platform, or Refusal."""
+def area_refusal(area):
+    return Refusal("samplesheet 裡的每個路徑都必須在你自己的上傳資料夾裡：%s (every path in the samplesheet must lie inside your own uploads folder)" % area)
+
+
+def _check_area(bundle, area):
+    """Every path cell of the samplesheet, with its links followed, lies below `area` (the real path of the caller's own folder)."""
+    for _, _, cell in bundle_mod.path_cells(bundle["samplesheet"], bundle["path_columns"]):
+        real = os.path.realpath(cell)
+        if not real.startswith(area + os.sep):
+            raise area_refusal(area)
+
+
+def prepare_cancel(state, run, owner=None):
+    """(environment name, bundle, hand-off row) for a cancel of one run of this platform, or Refusal. With `owner` (116) only a run
+    that user launched is there: another user's run is 'not launched from this platform' to them, as a missing one is."""
     con = _open(state)
     try:
         row = jobs.latest_launch(con, run) if con is not None else None
     finally:
         if con is not None:
             con.close()
+    if row is not None and owner is not None and ("user_id" not in row.keys() or row["user_id"] != owner):
+        row = None
     if row is None:
         raise Refusal("%s 不是平台自己送出的（hand-off 紀錄裡沒有它）(not launched from this platform)" % run)
     if row["slurm_job_id"] is None:
@@ -182,7 +207,7 @@ def prepare_cancel(state, run):
     if view["agent"] != row["agent"]:
         raise Refusal("%s 是經由代理 %s 送出的，環境 %s 現在的代理是 %s；不取消別的代理送出的工作 (a different agent)"
                       % (run, row["agent"], row["ce"], view["agent"]))
-    problem = target_problem(state, row["ce"], "cancel_run")
+    problem = target_problem(state, row["ce"], "cancel_run", owner)
     if problem:
         raise Refusal(problem)
     bundle = {"version": 1, "run_name": row["run_name"], "slurm_job_id": row["slurm_job_id"], "run_folder": row["run_folder"],

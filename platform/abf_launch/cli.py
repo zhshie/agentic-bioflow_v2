@@ -51,12 +51,34 @@ def _refuse(text):
 
 # ---- launch ---------------------------------------------------------------------------------------------------------
 
+def _account(name):
+    """(Caller or None, why not): who a launch typed here is for (116). Once any user exists the terminal must name the account
+    (--user NAME), because the launch is recorded as that user's and may use only that user's environments. With no user at all
+    there is nobody to name and the record stays empty. Whoever has this terminal can name any account: the terminal is the
+    administrator's, and the typed y is still theirs to give."""
+    tokens = store.default_tokens_path()
+    if name is None:
+        if store.user_names(tokens):
+            return None, ("要用 --user 名字 指明這次送出是誰的（平台上已有使用者）(name the account with --user NAME: "
+                          "this platform has users, and a launch is recorded as one of theirs)")
+        return None, None
+    user = store.user_by_name(tokens, name)
+    if user is None:
+        return None, "沒有這個帳號：%s (no such account)" % name
+    return actions.Caller(user["user_id"], user["name"], user["lab"]), None
+
+
 def cmd_launch(args):
     state = _state()
+    store.assign_orphans(state, store.default_tokens_path())
+    caller, why = _account(args.user)
+    if why:
+        return _refuse(why)
     try:
         ce_name, bundle = build.prepare_launch(
             state, ce=args.ce, pipeline=args.pipeline, revision=args.revision, run_name=args.run_name, samplesheet=args.samplesheet,
-            params_file=args.params_file, param_items=args.param, path_columns=args.path_column)
+            params_file=args.params_file, param_items=args.param, path_columns=args.path_column,
+            owner=caller.user_id if caller else None)
     except build.Refusal as e:
         return _refuse(str(e))
     why = terminal.terminal_problem()
@@ -66,7 +88,7 @@ def cmd_launch(args):
         _err(NOT_SENT)
         return 1
     try:
-        cid, job_id = actions.launch(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=None)
+        cid, job_id = actions.launch(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=caller)
     except jobs.JobRefused as e:
         return _refuse(str(e))
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
@@ -247,9 +269,13 @@ def cmd_launches(args):
             known = {}
         finally:
             index.close()
+    users = store.user_names(store.default_tokens_path())
     for r in rows:
         head = "%s  Slurm %s  %s  確認於 %s" % (r["run_name"], r["slurm_job_id"] if r["slurm_job_id"] is not None else "-",
                                                terminal.esc(r["run_folder"]), _when(r["confirmed_at"]))
+        owner = r["user_id"] if "user_id" in r.keys() else None
+        if owner is not None or users:          # who sent it (116); a platform with no users at all lists as it always did
+            head += "  送出者 %s" % terminal.esc(users.get(owner) or "(none: local only)")
         _say(head)
         if r["submitted_at"] is None:
             for line in _not_submitted_lines(r, *what.get(r["id"], ("unknown", None))):
@@ -301,6 +327,8 @@ def add_commands(sub):
     s.add_argument("--param", action="append", help="name=value, repeatable")
     s.add_argument("--params-file", help="a flat file of name: value lines")
     s.add_argument("--path-column", action="append", help="a samplesheet column that holds file paths, repeatable")
+    s.add_argument("--user", help="the account this is sent as: the person it is for; required once the platform has users "
+                                  "(whoever has this terminal can name any account)")
     s.set_defaults(func=cmd_launch)
 
     c = sub.add_parser("cancel", allow_abbrev=False, help="stop one analysis of this platform, after the same kind of question",

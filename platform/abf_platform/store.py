@@ -133,7 +133,8 @@ CREATE TABLE IF NOT EXISTS compute_envs (
     config_json TEXT NOT NULL,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
-    last_used_at REAL
+    last_used_at REAL,
+    owner_user_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS agents (
     name TEXT PRIMARY KEY,
@@ -141,7 +142,8 @@ CREATE TABLE IF NOT EXISTS agents (
     first_seen_at REAL NOT NULL,
     last_seen_at REAL NOT NULL,
     slurm_account TEXT,
-    facts_json TEXT
+    facts_json TEXT,
+    owner_user_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS confirmations (
     id TEXT PRIMARY KEY,
@@ -197,7 +199,8 @@ _LAUNCHES_TABLE = """CREATE TABLE %(name)s (
     confirmed_at REAL NOT NULL,
     submitted_at REAL,
     cancel_requested_at REAL,
-    job_id INTEGER
+    job_id INTEGER,
+    user_id INTEGER
 )"""
 _LAUNCH_COLUMNS = "id, run_name, slurm_job_id, run_folder, ce, agent, confirmed_at, submitted_at, cancel_requested_at"
 STATE_SCHEMA = STATE_SCHEMA % {"jobs": (_JOBS_TABLE % {"name": "IF NOT EXISTS jobs"}) + ";",
@@ -389,6 +392,19 @@ def _add_agent_columns(con):
                 con.execute("ALTER TABLE agents ADD COLUMN %s TEXT" % col)
 
 
+def _add_owner_columns(con):
+    """A platform.db made before 116 has no owner on an environment, an agent or a launch: add the three columns, every old row
+    keeps NULL (only the local terminal can use it until assign_orphans or a command gives it an owner). In place, new columns last."""
+    for table, col in (("compute_envs", "owner_user_id"), ("agents", "owner_user_id"), ("launches", "user_id")):
+        if col not in {r[1] for r in con.execute("PRAGMA table_info(%s)" % table)}:
+            try:
+                with con:
+                    con.execute("ALTER TABLE %s ADD COLUMN %s INTEGER" % (table, col))
+            except sqlite3.OperationalError:
+                if col not in {r[1] for r in con.execute("PRAGMA table_info(%s)" % table)}:
+                    raise    # a second process may have added it first; anything else is a real error
+
+
 def _add_confirmation_column(con):
     """A platform.db made before 009d has no caller_user_id on its confirmations: add it, old rows keep NULL."""
     if "caller_user_id" not in {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}:
@@ -428,6 +444,7 @@ def connect_state(path):
         _migrate_launches(con)
         con.executescript(STATE_SCHEMA)
         _add_agent_columns(con)
+        _add_owner_columns(con)
         _add_confirmation_column(con)
         _add_confirmation_state(con)
     except BaseException:
@@ -515,7 +532,7 @@ def create_token(tokens_path, kind="run", agent_name=None, run_name=None, user_i
 
     With run_name the token is for that one run (the platform makes it when an agent claims a launch): it lives
     RUN_TOKEN_TTL seconds and can only create a run of that name. A 'pat' is for one user (user_id), never expires and
-    starts with abf_pat_.
+    starts with abf_pat_. An agent token may name the user whose agent it is (116): the agent's owner is then that user.
     """
     if kind not in ("run", "agent", "pat"):
         raise ValueError("token kind must be run, agent or pat")
@@ -523,8 +540,10 @@ def create_token(tokens_path, kind="run", agent_name=None, run_name=None, user_i
         raise ValueError("an agent token is made for one agent name, and only an agent token has one")
     if run_name is not None and kind != "run":
         raise ValueError("only a run token is for a run name")
-    if (kind == "pat") != (user_id is not None):
-        raise ValueError("a personal access token is made for one user, and only it has a user")
+    if kind == "pat" and user_id is None:
+        raise ValueError("a personal access token is made for one user")
+    if kind == "run" and user_id is not None:
+        raise ValueError("only a personal access token or an agent token has a user")
     if label is not None and kind != "pat":
         raise ValueError("only a personal access token has a label")
     token = ("abf_pat_" if kind == "pat" else "abf_") + secrets.token_urlsafe(32)
@@ -576,6 +595,29 @@ def has_users(tokens_path):
         con.close()
 
 
+def user_names(tokens_path):
+    """{user id: name} of every user (disabled ones too); {} when there is no token file."""
+    if not Path(tokens_path).exists():
+        return {}
+    con = connect_tokens(tokens_path)
+    try:
+        return {r[0]: r[1] for r in con.execute("SELECT id, name FROM users")}
+    finally:
+        con.close()
+
+
+def user_by_name(tokens_path, name):
+    """{'user_id', 'name', 'lab'} of the enabled user with this name, else None."""
+    if not Path(tokens_path).exists():
+        return None
+    con = connect_tokens(tokens_path)
+    try:
+        row = con.execute("SELECT id AS user_id, name, lab FROM users WHERE name = ? AND disabled_at IS NULL", (name,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        con.close()
+
+
 def lookup_pat(tokens_path, token):
     """{'user_id', 'name', 'lab', 'token_id'} of a live personal access token of an enabled user, else None."""
     if not token or not isinstance(token, str) or not Path(tokens_path).exists():
@@ -622,13 +664,14 @@ def _now():
 
 
 def lookup_token(tokens_path, token):
-    """{'id', 'kind', 'agent_name', 'run_name'} of a token this platform issued and has neither revoked nor let
-    expire, else None."""
+    """{'id', 'kind', 'agent_name', 'run_name', 'user_id'} of a token this platform issued and has neither revoked nor let
+    expire, else None. user_id is the user of an agent token (116), else None."""
     if not token or not Path(tokens_path).exists():
         return None
     con = connect_tokens(tokens_path)
     try:
-        row = con.execute("SELECT id, kind, agent_name, run_name FROM tokens WHERE token_hash = ? AND revoked_at IS NULL "
+        row = con.execute("SELECT id, kind, agent_name, run_name, CASE WHEN kind = 'agent' THEN user_id END AS user_id FROM tokens "
+                          "WHERE token_hash = ? AND revoked_at IS NULL "
                           "AND (expires_at IS NULL OR expires_at > ?)", (_hash(token), _now())).fetchone()
         return dict(row) if row else None
     finally:
@@ -841,6 +884,32 @@ def set_meta(state_path, key, value):
     try:
         with con:
             con.execute("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+    finally:
+        con.close()
+
+
+def assign_orphans(state_path, tokens_path):
+    """Give the environments, agents and launches that have no owner (made before 116) to the only user, when there is exactly one.
+
+    Zero users: nothing happens, no file is opened but tokens.db when it exists. Two or more: nothing is adopted (the rows stay
+    for the local terminal until `ce update --owner` or a new agent token gives them one). Idempotent: a second call finds no row
+    to change and writes nothing. The meta key `owners_assigned` is written once at least one user exists. rebuild never calls this."""
+    if not Path(tokens_path).exists():
+        return
+    tcon = connect_tokens(tokens_path)
+    try:
+        users = [r[0] for r in tcon.execute("SELECT id FROM users ORDER BY id")]
+    finally:
+        tcon.close()
+    if not users:
+        return
+    con = connect_state(state_path)
+    try:
+        with con:
+            if len(users) == 1:
+                for table, col in (("compute_envs", "owner_user_id"), ("agents", "owner_user_id"), ("launches", "user_id")):
+                    con.execute("UPDATE %s SET %s = ? WHERE %s IS NULL" % (table, col, col), (users[0],))
+            con.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('owners_assigned', ?)", (str(int(time.time())),))
     finally:
         con.close()
 

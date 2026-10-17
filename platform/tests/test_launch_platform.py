@@ -68,6 +68,15 @@ def setup(tmp_path, clock=None, agent="a1"):
     return plat, tok, clock
 
 
+def own_all(plat, user_id):
+    """116: what the setup made (environments, agents, launch records) belongs to this user, so a caller with this id may use it."""
+    con = sqlite3.connect(str(state_db(plat)))
+    with con:
+        for table, col in (("compute_envs", "owner_user_id"), ("agents", "owner_user_id"), ("launches", "user_id")):
+            con.execute("UPDATE %s SET %s = ?" % (table, col), (user_id,))
+    con.close()
+
+
 def sql(plat, text, args=()):
     con = sqlite3.connect(str(state_db(plat)))
     try:
@@ -102,7 +111,9 @@ def test_tc051_a_platform_db_made_by_007_is_upgraded_and_keeps_every_row(tmp_pat
     store.connect_state(db).close()
     con = sqlite3.connect(str(db))
     con.row_factory = sqlite3.Row
-    assert [tuple(r) for r in con.execute("SELECT * FROM compute_envs")] == before["compute_envs"]
+    # 116: the upgrade adds the owner column last, empty; the columns that were there are as they were
+    assert [tuple(r)[:len(before["compute_envs"][0])] for r in con.execute("SELECT * FROM compute_envs")] == before["compute_envs"]
+    assert [r["owner_user_id"] for r in con.execute("SELECT owner_user_id FROM compute_envs")] == [None]
     old_jobs = [tuple(r)[:12] for r in con.execute("SELECT * FROM jobs ORDER BY id")]
     assert old_jobs == before["jobs"]
     assert [r["confirmation_id"] for r in con.execute("SELECT confirmation_id FROM jobs")] == [None, None]
@@ -182,7 +193,7 @@ def test_tc055_launches_holds_the_facts_of_the_handover_and_no_state(tmp_path):
     # follow-up 1 (F2): job_id links a row to the launch job it made; run_name is no longer unique, because a launch the agent
     # refused keeps its row and its name can be used again (the plan names this change; the rest of the test is as it was)
     assert sorted(cols) == sorted(["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at",
-                                   "submitted_at", "cancel_requested_at", "job_id"])
+                                   "submitted_at", "cancel_requested_at", "job_id", "user_id"])      # 116: user_id, who sent it (last)
     for c in cols:
         assert not re.search(r"status|state|phase|result|exit|progress|ended", c), c
     unique = [r for r in con.execute("PRAGMA index_list(launches)") if r[2]]

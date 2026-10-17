@@ -58,7 +58,9 @@ def test_tca02_a06_the_summary_and_the_bundle_are_the_ones_of_the_terminal(w, tm
     ann = w.user("ann")
     out = w.launch(caller=ann)
     pending = w.confirmations()[0]
-    p = Pty(cli_argv(*w.data.launch_args(tmp_path)), w.data.env())
+    # 116: the terminal names the account and reads the very samplesheet the page's caller sent (its paths are in her folder)
+    mine = w.in_area(ann, {"samplesheet": str(w.sheet)})["samplesheet"]
+    p = Pty(cli_argv(*w.data.launch_args(tmp_path, extra=("--user", "ann", "--samplesheet", mine))), w.data.env())
     assert p.wait_for(QUESTION_LAUNCH, 30), p.text()
     lines, _ = parts(p.text(), QUESTION_LAUNCH)
     assert "\n".join(lines) == out["summary"]
