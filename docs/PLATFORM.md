@@ -373,7 +373,7 @@ The page is a small separate program, `abf-platform web` (loopback and port 8789
 - **Only the person who asked can press.** The page shows the summary only to the user the request was made for; anyone else sees "not yours" and no summary. The button needs the cookie, the same user, and a CSRF token made for this login and this request. A GET never changes anything; a second press does nothing more; an expired or void request cannot be brought back.
 - **When the queue refuses after the yes** (the environment went offline, the run name was taken meanwhile), the request becomes void with the reason, nothing is queued, and the person asks the AI again.
 
-The Claude Code kit adds a permission `ask` rule for `mcp__abf-platform__launch` and `mcp__abf-platform__cancel` (`configs/claude-code-kit/settings.json`). That is a second layer. It is not the gate: the gate is the platform's action layer, which refuses without a person's yes whatever a client's settings say.
+The Claude Code kit adds a permission `ask` rule for `mcp__abf-platform__launch` and `mcp__abf-platform__cancel` (`extensions/claude-code-kit/settings.json`). That is a second layer. It is not the gate: the gate is the platform's action layer, which refuses without a person's yes whatever a client's settings say.
 
 **The honest boundary.** An AI that can run commands on your own machine can do what you can: type at your terminal, read your browser. The gate stops the AI clients that reach the platform only over MCP, which is what a platform shared by several people has to stop. It does not make a machine you hand to an AI safe from that AI.
 

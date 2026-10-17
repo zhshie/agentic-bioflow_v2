@@ -298,7 +298,7 @@ Needs the platform running (`abf-platform serve`, `abf-platform mcp --http`, `ab
 2. **Claude Desktop and Codex (page).** Same request. Pass: the model gives an address `.../c/<32 characters>` and does not start anything. Open it in a browser: it asks for a name and password; log in as yourself and the page shows the summary; press 送出; the page says the job number. Tell the model you pressed it and ask it to launch again with the same arguments: it gives that same job number and no second job appears.
 3. **Someone else.** Log in to the platform's page as another user and open the same address: "not yours", no summary, no button. Open it without logging in: the login form only.
 4. **The token is not a key.** Give the model's shell the token and nothing else (no password, no browser). Pass: it cannot open the page's summary or press 送出 (every request is the login form), and the request stays pending.
-5. **Claude Code kit.** With `configs/claude-code-kit/settings.json` merged into your Claude Code settings, calling `launch` or `cancel` asks you first. Remove the rule: the platform still queues nothing without your yes (the rule is a second layer, not the gate).
+5. **Claude Code kit.** With `extensions/claude-code-kit/settings.json` merged into your Claude Code settings, calling `launch` or `cancel` asks you first. Remove the rule: the platform still queues nothing without your yes (the rule is a second layer, not the gate).
 6. **Browser.** The cookie is `HttpOnly` and `SameSite=Strict` (developer tools, Application, Cookies); behind an https address it is also `Secure`. Five wrong passwords for one name lock that name for a minute.
 
 ## When a release moves the flow files (commands → skills)
