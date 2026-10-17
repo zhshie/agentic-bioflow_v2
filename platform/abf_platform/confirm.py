@@ -21,7 +21,8 @@ from . import common, jobs, store
 
 PENDING_SECONDS = 600
 MAX_OPEN_PENDING = 10             # open requests one caller may have at a time
-KEEP_CONTENT_SECONDS = 7 * 86400   # an expired or void request keeps its content (bundle, screen) this long; its audit columns stay
+REUSE_MIN_SECONDS = 60             # a repeated call reuses an open request only while more than this is left of it
+KEEP_CONTENT_SECONDS = 7 * 86400   # an expired, void or confirmed request keeps its content (bundle, screen) this long; its audit columns stay
 JOB_KIND = {"launch": "launch_nextflow", "cancel": "cancel_run"}
 
 
@@ -65,16 +66,17 @@ def confirm_cancel(state_path, ce_name, bundle, clock=time.time, deadline_second
 
 def create_pending(state_path, kind, ce_name, bundle, screen_text, caller_user_id, clock=time.time):
     """Write a pending request for exactly `bundle` and return its id; no job, and nothing a queue would accept. The same person
-    asking again for the same content, while the first request is alive, gets the first one back."""
+    asking again for the same content, while the first request has more than REUSE_MIN_SECONDS left, gets the first one back."""
     now = clock()
     sha = common.bundle_sha256(bundle)
 
     def work(con):
         con.execute("UPDATE confirmations SET bundle_json = NULL, screen_text = NULL WHERE bundle_json IS NOT NULL AND "
-                    "((state = 'void' AND created_at < ?) OR (state = 'pending' AND expires_at < ?))",
+                    "((state IN ('void', 'confirmed') AND created_at < ?) OR (state = 'pending' AND expires_at < ?))",
                     (now - KEEP_CONTENT_SECONDS, now - KEEP_CONTENT_SECONDS))
         old = con.execute("SELECT id FROM confirmations WHERE state = 'pending' AND kind = ? AND sha256 = ? AND caller_user_id IS ? "
-                          "AND expires_at > ? ORDER BY created_at DESC LIMIT 1", (kind, sha, caller_user_id, now)).fetchone()
+                          "AND expires_at > ? ORDER BY created_at DESC LIMIT 1",
+                          (kind, sha, caller_user_id, now + REUSE_MIN_SECONDS)).fetchone()
         if old is not None:
             return old["id"]
         open_now = con.execute("SELECT COUNT(*) FROM confirmations WHERE state = 'pending' AND caller_user_id IS ? AND expires_at > ?",
@@ -174,16 +176,32 @@ def find_approved(state_path, kind, bundle, caller_user_id, clock=time.time, inc
         con.close()
 
 
-def find_cancel(state_path, bundle):
-    """{'id', 'job_id'} of a cancel of exactly this run that somebody confirmed and whose job is not refused or expired, or None.
-    A run that has one is never asked for again."""
+def launched_by(state_path, run_name, caller_user_id):
+    """Whether the newest launch of `run_name` in the hand-off record was confirmed by this caller (its launch job's confirmation is
+    a confirmed row with this caller_user_id). A launch typed at a terminal, one without a job, or somebody else's is not."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return False
+    try:
+        row = con.execute("SELECT c.caller_user_id AS caller, c.state AS state FROM launches l LEFT JOIN jobs j ON j.id = l.job_id "
+                          "LEFT JOIN confirmations c ON c.id = j.confirmation_id WHERE l.run_name = ? "
+                          "ORDER BY l.id DESC LIMIT 1", (run_name,)).fetchone()
+        return row is not None and row["state"] == "confirmed" and caller_user_id is not None and row["caller"] == caller_user_id
+    finally:
+        con.close()
+
+
+def find_cancel(state_path, bundle, caller_user_id):
+    """{'id', 'job_id'} of a cancel of exactly this run that this caller got a yes for and whose job is still queued or running
+    (queued or claimed), or None. After the job is done, failed, refused or expired a new cancel asks again."""
     con = store.open_readonly(state_path)
     if con is None:
         return None
     try:
         row = con.execute("SELECT c.id AS id, j.id AS job_id FROM confirmations c JOIN jobs j ON j.confirmation_id = c.id "
-                          "WHERE c.state = 'confirmed' AND c.kind = 'cancel' AND c.sha256 = ? AND j.state NOT IN ('refused', 'expired') "
-                          "ORDER BY c.created_at DESC LIMIT 1", (common.bundle_sha256(bundle),)).fetchone()
+                          "WHERE c.state = 'confirmed' AND c.kind = 'cancel' AND c.sha256 = ? AND c.caller_user_id IS ? "
+                          "AND j.state IN ('queued', 'claimed') ORDER BY c.created_at DESC LIMIT 1",
+                          (common.bundle_sha256(bundle), caller_user_id)).fetchone()
         return dict(row) if row else None
     finally:
         con.close()

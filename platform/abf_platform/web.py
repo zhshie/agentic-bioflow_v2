@@ -86,6 +86,11 @@ def _mac(key, *parts):
     return hmac.new(key, "\x1f".join(parts).encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def _same(a, b):
+    """Constant-time equality of two texts as bytes: compare_digest on str raises for a non-ASCII value, which would be a 500."""
+    return hmac.compare_digest(str(a).encode("utf-8", "replace"), str(b).encode("utf-8", "replace"))
+
+
 def _esc(text):
     return html.escape(str(text), quote=True)
 
@@ -133,7 +138,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     def session_id(request):
         raw = request.cookies.get(COOKIE) or ""
         sid, dot, sig = raw.partition(".")
-        if not dot or not sid or not hmac.compare_digest(sig, _mac(key, "cookie", sid)):
+        if not dot or not sid or not _same(sig, _mac(key, "cookie", sid)):
             return None
         return sid
 
@@ -206,15 +211,22 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return _login_form(nxt, "登入失敗太頻繁，請一分鐘後再試 (too many tries, wait a minute)", 429)
         who = None
         too_long = len(password) > store.MAX_PASSWORD_CHARS or len(raw_name) > MAX_NAME_CHARS
+        # The attempt is counted before the slow check, in the same step as the limit check (no await between them), so parallel
+        # requests cannot all pass the check while the first is still hashing; a right password takes its own entry back.
+        by_name.setdefault(name, []).append(now)
+        by_ip.setdefault(ip, []).append(now)
         if not too_long:
             who = await run_in_threadpool(store.check_web_password, tokens_path, name, password)     # scrypt is slow: not on the event loop
         if who is None:
-            by_name.setdefault(name, []).append(now)
-            by_ip.setdefault(ip, []).append(now)
             note = ("密碼最長 %d 個字元，姓名最長 %d (password at most %d characters, name at most %d)"
                     % (store.MAX_PASSWORD_CHARS, MAX_NAME_CHARS, store.MAX_PASSWORD_CHARS, MAX_NAME_CHARS)
                     if too_long else "姓名或密碼不對 (wrong name or password)")
             return _login_form(nxt, note, 401)
+        for table, k in ((by_name, name), (by_ip, ip)):
+            if now in table.get(k, ()):
+                table[k].remove(now)
+            if not table.get(k, True):
+                table.pop(k, None)
         sid, _ = store.create_web_session(tokens_path, who["user_id"], now)
         if nxt:
             response = RedirectResponse(nxt, status_code=303, headers=_HEADERS)
@@ -231,7 +243,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return foreign(request)
         sid = session_id(request)
         form = await body_of(request)
-        if sid and hmac.compare_digest(str(form.get("csrf", "")), csrf(sid, "logout")):
+        if sid and _same(form.get("csrf", ""), csrf(sid, "logout")):
             store.end_web_session(tokens_path, sid)
         response = RedirectResponse("/login", status_code=303, headers=_HEADERS)
         response.delete_cookie(COOKIE, path="/")
@@ -283,7 +295,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if answer is not None:
             return answer
         form = await body_of(request)
-        if not hmac.compare_digest(str(form.get("csrf", "")), csrf(sid, rid)):
+        if not _same(form.get("csrf", ""), csrf(sid, rid)):
             return _page("表單已失效", "<p class=\"bad\">這個表單的記號不對或已失效，什麼都沒有送出。請重新整理頁面再按。</p>", 403)
         try:
             _, job_id = actions.approve(platform_path, rid, confirmed_by=actions.PAGE,

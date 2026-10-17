@@ -68,18 +68,23 @@ def test_f6_after_the_agent_claimed_the_job_a_repeated_launch_still_returns_it(w
     assert len(w.confirmations()) == 1 and len(w.jobs("launch_nextflow")) == 1
 
 
-def test_f6_a_confirmed_cancel_is_never_asked_for_twice(w):
-    w.hand_over()
+def test_f6_a_confirmed_cancel_is_not_asked_for_twice_while_its_job_is_alive(w):
+    # rewritten by the second review (item 2): reused only by the caller who got the yes, and only while the job is queued or running
     ann, bob = w.user("ann"), w.user("bob")
+    w.hand_over(by=ann)
     first = tool_json(w.call("cancel", {"run_name": "run-one"}, caller=ann, answer=form_answer()))
     assert first["sent"] is True and len(w.jobs("cancel_run")) == 1
     job_id = w.jobs("cancel_run")[0]["id"]
-    update(w, "UPDATE confirmations SET used_at = created_at + 1")
-    update(w, "UPDATE jobs SET state = 'claimed'")
-    for who in (ann, bob):
-        again = tool_json(w.call("cancel", {"run_name": "run-one"}, caller=who))
-        assert again["sent"] is True and again["job_id"] == job_id
+    update(w, "UPDATE confirmations SET used_at = created_at + 1 WHERE kind = 'cancel'")
+    update(w, "UPDATE jobs SET state = 'claimed' WHERE kind = 'cancel_run'")
+    again = tool_json(w.call("cancel", {"run_name": "run-one"}, caller=ann))
+    assert again["sent"] is True and again["job_id"] == job_id
+    other = tool_json(w.call("cancel", {"run_name": "run-one"}, caller=bob))          # not his launch, and not his yes
+    assert other["sent"] is False and other.get("job_id") is None
     assert len(w.confirmations()) == 1 and len(w.jobs("cancel_run")) == 1
+    update(w, "UPDATE jobs SET state = 'done' WHERE kind = 'cancel_run'")
+    asked = tool_json(w.call("cancel", {"run_name": "run-one"}, caller=ann))           # the job is over: a new cancel asks again
+    assert asked["sent"] is False and asked["state"] == "pending"
 
 
 # ---- finding 9: a cap on open requests, and old rows lose their content -----------------------------------------------------------------
@@ -111,7 +116,7 @@ def test_f9_expired_and_void_rows_lose_their_content_after_seven_days(w):
         r = rows[rid]
         assert r["bundle_json"] is None and r["screen_text"] is None
         assert r["sha256"] and r["kind"] == "launch" and r["caller_user_id"] == ann.user_id and r["created_at"] and r["state"]
-    assert rows[ok["id"]]["bundle_json"] is not None
+    assert rows[ok["id"]]["bundle_json"] is None and rows[ok["id"]]["screen_text"] is None     # second review (item 8): confirmed rows lose it too
     assert rows[fresh]["bundle_json"] is not None
 
 

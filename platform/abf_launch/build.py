@@ -30,6 +30,11 @@ def read_samplesheet(path):
         raw = Path(path).read_bytes()
     except OSError as e:
         raise bundle_mod.BundleError("samplesheet: 讀不到 %s (%s)" % (path, e.__class__.__name__))
+    return parse_samplesheet(raw)
+
+
+def parse_samplesheet(raw):
+    """The rows of a samplesheet given as bytes (the MCP tool reads the file once, after its own check, and passes the bytes on)."""
     if b"\x00" in raw:
         raise bundle_mod.BundleError("samplesheet: 含有 NUL 字元，一律拒絕 (contains a NUL character)")
     try:
@@ -119,12 +124,13 @@ def target_problem(state, ce_name, kind):
 
 
 def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet, params_file=None, param_items=None, params=None,
-                   path_columns=None, check_name=True):
+                   path_columns=None, check_name=True, samplesheet_raw=None):
     """(environment name, bundle) for these choices, or Refusal. Nothing is shown, asked or written.
 
     param_items are `name=value` strings as typed on a command line (the value is read as a number or true/false when it looks
     like one); params is a mapping that already has its types (the MCP tool). Both are put over the params file.
-    check_name=False leaves the run-name check to the caller (the MCP tool looks for a yes that already exists first)."""
+    check_name=False leaves the run-name check to the caller (the MCP tool looks for a yes that already exists first).
+    samplesheet_raw (bytes) is the samplesheet already read; then `samplesheet` is not opened again."""
     ce_name = ce or primary_environment(state)
     if not ce_name:
         raise Refusal("沒有指定環境（--ce），也找不到唯一可用的環境 (no --ce, and no single available environment)")
@@ -136,7 +142,7 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet,
     if facts is None:
         raise Refusal("代理 %s 還沒有回報送出需要的資料；請確認代理是新版並已連線 (the agent has not reported its facts)" % view["agent"])
     try:
-        rows = read_samplesheet(samplesheet)
+        rows = parse_samplesheet(samplesheet_raw) if samplesheet_raw is not None else read_samplesheet(samplesheet)
         merged = read_params_file(params_file) if params_file else {}
         for item in param_items or []:
             key, eq, value = item.partition("=")

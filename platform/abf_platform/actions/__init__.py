@@ -214,6 +214,19 @@ def confined_samplesheet(platform_path, caller, samplesheet):
     return real
 
 
+def read_confined_samplesheet(platform_path, caller, samplesheet):
+    """The bytes of the caller's samplesheet, read once: the path is checked (confined_samplesheet), then opened without following a
+    link at the end, so a link swapped in after the check is refused and not read. build.Refusal otherwise."""
+    real = confined_samplesheet(platform_path, caller, samplesheet)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    try:
+        fd = os.open(real, flags)
+    except OSError:
+        raise build.Refusal("samplesheet 讀不到，或不是你自己上傳資料夾裡的一般檔案 (cannot read the samplesheet as a plain file in your own uploads folder)")
+    with os.fdopen(fd, "rb") as f:
+        return f.read()
+
+
 async def request_launch(platform_path, *, pipeline, revision, run_name, samplesheet, ce_name=None, params=None, path_columns=None,
                          caller=None, person=None, clock=time.time, remote=False):
     """Ask for a launch the way the terminal command does: same choices, same bundle, same screen, same refusals. Writes a pending
@@ -223,10 +236,12 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
     if path_columns is not None and (not isinstance(path_columns, list) or not all(isinstance(c, str) for c in path_columns)):
         return _no("path_columns 必須是文字清單 (path_columns must be a list of names)")
     try:
-        if caller is not None:         # over HTTP the file must be the caller's own; stdio and the terminal read the path as given
-            samplesheet = confined_samplesheet(platform_path, caller, samplesheet)
+        raw = None
+        if caller is not None:         # over HTTP the file must be the caller's own, and is read once; stdio and the terminal read the path as given
+            raw = read_confined_samplesheet(platform_path, caller, samplesheet)
         ce, bundle = build.prepare_launch(platform_path, ce=ce_name, pipeline=pipeline, revision=revision, run_name=run_name,
-                                          samplesheet=samplesheet, params=params, path_columns=path_columns, check_name=False)
+                                          samplesheet=samplesheet, params=params, path_columns=path_columns, check_name=False,
+                                          samplesheet_raw=raw)
     except build.Refusal as e:
         return _no("未送出：%s" % e)
     found = confirm.find_approved(platform_path, "launch", bundle, _caller_id(caller), clock, include_spent=True)
@@ -246,8 +261,9 @@ async def request_cancel(platform_path, *, run_name, caller=None, person=None, c
         ce, bundle, row = build.prepare_cancel(platform_path, run_name)
     except build.Refusal as e:
         return _no("未取消：%s" % e)
-    found = (confirm.find_approved(platform_path, "cancel", bundle, _caller_id(caller), clock, include_spent=True)
-             or confirm.find_cancel(platform_path, bundle))
+    if caller is not None and not confirm.launched_by(platform_path, run_name, caller.user_id):
+        return _no("未取消：%s 不是你從這個平台送出的（hand-off 紀錄裡沒有你的送出確認）(not launched from this platform by you)" % run_name)
+    found = confirm.find_cancel(platform_path, bundle, _caller_id(caller))
     if found:
         return _queued(found["id"], found["job_id"], run_name)
     text = build.as_text(build.cancel_screen(bundle, row))

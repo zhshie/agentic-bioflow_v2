@@ -61,10 +61,11 @@ def cmd_web(args):
             _err("rejected: --public-url %s is plain http; the login cookie would travel in clear text. Use an https:// address "
                  "(a TLS proxy in front of this page) (--public-url 必須是 https)" % public)
             return 1
-    if args.host not in LOOPBACK and not public.startswith("https://"):
-        _err("rejected: serving the confirmation page on %s needs --public-url https://<address people open> (put a TLS proxy in front); "
-             "plain http beyond this machine would send the login cookie in clear text, and the MCP answers could not name a reachable "
-             "address (不在本機以外提供明文 http；請加 --public-url https://…)" % args.host)
+    if args.host not in LOOPBACK:
+        _err("rejected: the confirmation page binds loopback only (127.0.0.1, ::1 or localhost), not %s, whatever --public-url says. It "
+             "serves plain http and the login cookie must not cross a network in clear text: put a TLS proxy (for example Tailscale "
+             "Funnel) on this machine in front of it and give the proxy's address as --public-url https://<address people open> "
+             "(確認頁只綁本機位址；要給別人用，請在本機前面放 TLS 代理，並用 --public-url https://… 告訴大家網址)" % args.host)
         return 1
     base = public or "http://%s:%s" % (args.host, args.port)
     try:
@@ -75,8 +76,6 @@ def cmd_web(args):
     store.set_meta(state, "web_base_url", base)    # the MCP server names this address in its answers
     _say("abf-platform confirmation page on http://%s:%s, named to people as %s (tokens %s, platform %s)" % (
         args.host, args.port, base, tokens, state))
-    if args.host not in LOOPBACK:
-        _risk_line("the confirmation page", args.host, args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0
 
@@ -406,7 +405,8 @@ def build_parser():
 
     wb = sub.add_parser("web", help="run the confirmation page where a person presses send (own process, this machine only by default)",
                         allow_abbrev=False)
-    wb.add_argument("--host", default="127.0.0.1", help="address to listen on (default: 127.0.0.1, this machine only)")
+    wb.add_argument("--host", default="127.0.0.1", help="address to listen on: loopback only (127.0.0.1, ::1, localhost); a non-loopback "
+                                                       "address is refused (see the docs for the proxy in front)")
     wb.add_argument("--port", type=int, default=8789)
     wb.add_argument("--public-url", help="the address people reach this page at; the MCP answers name it, and a https one "
                                          "makes the cookie Secure")

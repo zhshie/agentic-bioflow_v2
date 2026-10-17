@@ -22,6 +22,7 @@ class World:
         self.monkeypatch = monkeypatch
         self.clock = Clock(time.time())
         self.sheet = self.data.samplesheet(tmp_path)
+        self._setup_jobs, self._setup_confirmations = set(), set()     # made by hand_over(by=...): the launch a cancel needs, not the test's subject
 
     # ---- the people ---------------------------------------------------------------------------------------------
     def user(self, name, password=PASSWORD):
@@ -86,17 +87,30 @@ class World:
 
     def jobs(self, kind=None):
         rows = self.sql("SELECT * FROM jobs WHERE kind IN ('launch_nextflow', 'cancel_run')")
-        return [r for r in rows if kind is None or r["kind"] == kind]
+        return [r for r in rows if (kind is None or r["kind"] == kind) and r["id"] not in self._setup_jobs]
 
     def confirmations(self):
-        return self.sql("SELECT * FROM confirmations ORDER BY created_at, id")
+        return [r for r in self.sql("SELECT * FROM confirmations ORDER BY created_at, id") if r["id"] not in self._setup_confirmations]
 
     def counts(self):
         return (len(self.jobs()), len(self.confirmations()), len(self.sql("SELECT * FROM launches")))
 
-    def hand_over(self, run="run-one", slurm=4242):
-        from test_launch_cli import hand_over
-        hand_over(self.data, run=run, slurm=slurm)
+    def hand_over(self, run="run-one", slurm=4242, by=None):
+        """A launched run with a Slurm number. By default the terminal's kind of row (no launch job, nobody's confirmation); with
+        `by` (a Caller) the run was launched by that user through a form, as a cancel over MCP now needs (second review, item 1)."""
+        if by is None:
+            from test_launch_cli import hand_over
+            hand_over(self.data, run=run, slurm=slurm)
+            return
+        out = self.launch(caller=by, answer=form_answer(), run=run)
+        assert out["sent"] is True, out
+        self._setup_jobs.add(out["job_id"])
+        self._setup_confirmations.add(out["id"])
+        con = sqlite3.connect(str(self.ip.state_db))
+        con.execute("UPDATE launches SET slurm_job_id = ?, submitted_at = confirmed_at WHERE run_name = ?", (slurm, run))
+        con.execute("UPDATE jobs SET state = 'done' WHERE kind = 'launch_nextflow'")
+        con.commit()
+        con.close()
 
     # ---- the confirmation page ---------------------------------------------------------------------------------------
     def web(self, public_url=None, clock=None):

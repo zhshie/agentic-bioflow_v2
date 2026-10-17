@@ -200,8 +200,8 @@ def test_tcd14_extra_form_fields_are_ignored(w):
 
 def test_tcd15_a_cancel_is_named_and_queues_one_cancel(w):
     # TC-D15
-    w.hand_over()
     ann = w.user("ann")
+    w.hand_over(by=ann)
     from helpers import tool_json
     out = tool_json(w.call("cancel", {"run_name": "run-one"}, caller=ann))
     c = logged_in(w, "ann")

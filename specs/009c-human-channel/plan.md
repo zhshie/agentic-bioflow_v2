@@ -65,7 +65,7 @@ Technical rulings by the developer-agent on the contract review's points 2-5:
 ## Ruling after acceptance round 3 (2026-10-17, developer-agent)
 - The rewritten pins beyond the list at "Facts" are **accepted** as recorded in `ledger.md` (the "Rewritten pins" table and its notes): `test_pat.py` tca11, tcb08_b09, tcb10, tcf03_f04; `test_guidance.py` tc501; `test_launch_e2e.py` tc010_tc061; `test_station_envs.py` tc071, tc063, tc084; `test_actions_layer.py` tca10; the version and Safety Net fingerprint pins in `tests/constitution_scope_test.sh` and `tests/platform_direction_docs_test.sh`. Each is a necessary consequence of six tools becoming eight, the new `web` subcommand, the `password_hash` column, or the 5.0.0 amendment; the verifier read every diff and found no assertion deleted, skipped or loosened.
 - `docs/ROADMAP.md`'s waiting row "Gates live in the platform's action layer…" is updated in W0 (ADR 0009 follow-through), not here.
-- Known limit recorded for the maintainer: the MCP `launch` samplesheet is a path on the platform machine; before the platform is reachable by other people (009h public URL), the path must be confined to the caller's own area. Follow-up issue, not this PR.
+- Known limit recorded for the maintainer: over MCP/HTTP the samplesheet file path is confined to the caller's own uploads folder (read once, no link followed). Still open, deferred to #116 (owner binding, before the 009h public URL): the read tools (`list_runs`, `get_run`, `list_site_files`) do not filter by caller, and the path cells inside a samplesheet are not confined to the caller's own area.
 
 ## Ruling after the second code review (2026-10-17, developer-agent)
 Fix in this PR (each with a red test first):

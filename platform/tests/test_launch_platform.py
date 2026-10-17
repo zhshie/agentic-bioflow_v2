@@ -46,7 +46,7 @@ def make_confirmation(db, kind, b, sha=None, used=None, cid=None):
     import secrets
     cid = cid or secrets.token_hex(16)
     con = sqlite3.connect(str(db))
-    con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, used_at) VALUES (?, ?, ?, ?, ?)",
+    con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, used_at, state) VALUES (?, ?, ?, ?, ?, 'confirmed')",
                 (cid, sha or common.bundle_sha256(b), kind, time.time(), used))
     con.commit()
     con.close()

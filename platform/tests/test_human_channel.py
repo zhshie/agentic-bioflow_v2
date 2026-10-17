@@ -104,8 +104,9 @@ def test_tca04_a11_a_pending_or_void_row_cannot_queue_a_job(tmp_path):
 
 def test_tca05_a_cancel_is_a_pending_request_too_and_the_tool_says_destructive(w):
     # TC-A05
-    w.hand_over()
-    tools, outs = w.mcp([("cancel", {"run_name": "run-one"})], caller=w.user("ann"))
+    ann = w.user("ann")
+    w.hand_over(by=ann)
+    tools, outs = w.mcp([("cancel", {"run_name": "run-one"})], caller=ann)
     out = tool_json(outs[0])
     assert out["sent"] is False and "還沒送出" in out["message"] and "Slurm" in out["summary"]
     assert w.jobs() == [] and w.confirmations()[0]["kind"] == "cancel" and w.confirmations()[0]["state"] == "pending"
@@ -309,8 +310,9 @@ def test_tcc07_a_model_cannot_answer_for_the_person(w):
 
 def test_tcc08_a_cancel_through_the_form(w):
     # TC-C08
-    w.hand_over()
-    tools, outs = w.mcp([("cancel", {"run_name": "run-one"})], caller=w.user("ann"), answer=form_answer())
+    ann = w.user("ann")
+    w.hand_over(by=ann)
+    tools, outs = w.mcp([("cancel", {"run_name": "run-one"})], caller=ann, answer=form_answer())
     out = tool_json(outs[0])
     assert out["sent"] is True and len(w.jobs("cancel_run")) == 1
     assert w.confirmations()[0]["channel"] == "ELICITED" and w.confirmations()[0]["kind"] == "cancel"

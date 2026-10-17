@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS confirmations (
     created_at REAL NOT NULL,
     used_at REAL,
     caller_user_id INTEGER,
-    state TEXT NOT NULL DEFAULT 'confirmed' CHECK (state IN ('pending', 'confirmed', 'void')),
+    state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'confirmed', 'void')),
     channel TEXT,
     confirmed_at REAL,
     expires_at REAL,
@@ -397,7 +397,7 @@ def _add_confirmation_column(con):
 
 
 _CONFIRMATION_COLUMNS = (
-    ("state", "TEXT NOT NULL DEFAULT 'confirmed' CHECK (state IN ('pending', 'confirmed', 'void'))"),
+    ("state", "TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'confirmed', 'void'))"),
     ("channel", "TEXT"), ("confirmed_at", "REAL"), ("expires_at", "REAL"), ("ce_name", "TEXT"), ("bundle_json", "TEXT"),
     ("screen_text", "TEXT"), ("void_reason", "TEXT"))
 
@@ -411,7 +411,7 @@ def _add_confirmation_state(con):
         with con:
             for name, decl in _CONFIRMATION_COLUMNS:
                 con.execute("ALTER TABLE confirmations ADD COLUMN %s %s" % (name, decl))
-            con.execute("UPDATE confirmations SET channel = 'TERMINAL', confirmed_at = created_at")
+            con.execute("UPDATE confirmations SET state = 'confirmed', channel = 'TERMINAL', confirmed_at = created_at")
     except sqlite3.OperationalError:
         if "state" not in {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}:
             raise    # a second process may have added them first; anything else is a real error
