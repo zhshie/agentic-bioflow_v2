@@ -12,20 +12,23 @@
 3. 不會因此擋下打包（要不要擋，是另一個問題，之後再問你）。
 
 ## Facts (origin/main)
-- `scripts/build_package.sh:164-176`: Results has one section per *accepted* entry of `analysis.md`; the entries are parsed by an embedded Python (`FIELDS = ("id","question","source","method","why","status")`, `:183`). A zero-entry read already stops the build (issue #5).
+- **Corrected after contract review (2026-10-17):** the comments at `:26`, `:71`, `:164` say "one section per accepted entry", but the embedded Python does **not** filter on `status`: every entry, accepted or not, gets a Results section. Filtering would change the deliverable (and could trip the zero-entry stop), so it is not done here; it is the tier-B question already listed under Not in this PR.
+- `scripts/build_package.sh:164-176`: Results sections are built from `analysis.md` entries; the entries are parsed by an embedded Python (`FIELDS = ("id","question","source","method","why","status")`, `:183`). A zero-entry read already stops the build (issue #5).
 - `:355-363`: each Results section is a placeholder comment (`<!-- Describe what this shows, from the data. ... -->`) and the Discussion is a `[GAP: not drafted …]` line.
 - `:364`: prints `wrote     submission/manuscript.qmd` with no hint that it is a scaffold.
 - Tests: `tests/build_package_test.sh`.
 
 ## Design decisions (developer-agent)
 1. The success line becomes `wrote     submission/manuscript.qmd (scaffold: N Results section(s) and the Discussion still need prose)`, N counted from the placeholders actually written. When N is 0 and no GAP remains (not possible today, but keep it honest) it prints the plain line.
-2. After the manuscript line, if `analysis.md` holds entries whose `status` is not `accepted` (e.g. `proposed`, `revised`, `rejected`, empty), print one line per entry: `left out   <id>: status <status> (not accepted, so not in Results)`. Rejected entries are listed too (the person sees exactly what is out).
-3. The README the script writes gets the same "scaffold" sentence near its top.
-4. No exit-code change, no refusal, no new hook, no change to which entries go in.
-5. zh-TW / en intro texts (`scripts/intro/*/finish.txt`) unchanged unless they quote the old line.
+2. After the manuscript line, for each entry whose `status` (trimmed, case-insensitive) is not `accepted` — `proposed`, `revised`, `rejected`, or empty — print one line: `not accepted <id>: status <status or "(none)"> - still in Results; accept it in analysis.md or remove it before submitting`. This is what the build really does today (it includes them); the line makes it visible.
+3. The README the script writes gets the same scaffold sentence, with N, before its `## How to reproduce the runs` heading. (So README.md's text changes; which files are written does not.)
+4. N counts only the Results placeholders (one per entry section); a plan row without an id (its own GAP) is not counted.
+5. The three source comments that claim "accepted only" (`:26`, `:71`, `:164`) are corrected to say every parsed entry gets a section.
+6. No exit-code change, no refusal, no new hook, no change to which entries go in.
+7. zh-TW / en intro texts (`scripts/intro/*/finish.txt`) unchanged unless they quote the old line.
 
 ## Changes, in order (red first)
-1. Red: in `tests/build_package_test.sh` add cases: (a) two accepted entries → output contains `scaffold: 2 Results section(s) and the Discussion still need prose`; (b) one accepted + one `proposed` + one `rejected` → output lists `left out` for the two with their statuses, Results has exactly one section; (c) all accepted → no `left out` line; (d) README mentions scaffold. Run → red; record in the ledger.
+1. Red: in `tests/build_package_test.sh` add cases: (a) two accepted entries → output contains `scaffold: 2 Results section(s) and the Discussion still need prose`; (b) one accepted + one `proposed` + one `rejected` + one with no status → output has a `not accepted` line for the three (the empty one shows `(none)`), Results still has four sections, N is 4; (b2) `Accepted` / ` accepted ` count as accepted; (c) all accepted → no `left out` line; (d) README mentions scaffold. Run → red; record in the ledger.
 2. Implement in `scripts/build_package.sh`.
 3. Update `commands/finish.md` / `docs/FINISH.md` only where they quote the old output line.
 4. WSL `bash tests/run_all.sh` green.
