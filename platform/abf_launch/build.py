@@ -14,7 +14,7 @@ import re
 import time
 from pathlib import Path
 
-from abf_platform import agents, compute_envs, jobs
+from abf_platform import agents, compute_envs, jobs, store
 from abf_station import launch as bundle_mod
 
 from . import terminal
@@ -158,13 +158,13 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet,
                 raise bundle_mod.BundleError("--param: %r 不是 名稱=值 (name=value)" % item[:40])
             merged[key] = infer(value)
         merged.update(params or {})
-        bundle = bundle_mod.render_bundle(**bundle_mod.inputs_from_environment(
-            view, view["agent"], facts, run_name=run_name, pipeline=pipeline, revision=revision,
-            samplesheet=rows, params=merged, path_columns=path_columns))
+        inputs = bundle_mod.inputs_from_environment(view, view["agent"], facts, run_name=run_name, pipeline=pipeline, revision=revision,
+                                                    samplesheet=rows, params=merged, path_columns=path_columns)
+        bundle = bundle_mod.render_bundle(**inputs)
     except bundle_mod.BundleError as e:
         raise Refusal(str(e))
     if area is not None:
-        _check_area(bundle, area)
+        bundle["upload_paths"] = _confine(state, bundle, area, inputs["roots"])
     if check_name:
         try:
             jobs.check_run_name(state, bundle["run_name"])    # a name that cannot be used is refused before anything is shown
@@ -177,12 +177,61 @@ def area_refusal(area):
     return Refusal("samplesheet 裡的每個路徑都必須在你自己的上傳資料夾裡：%s (every path in the samplesheet must lie inside your own uploads folder)" % area)
 
 
-def _check_area(bundle, area):
-    """Every path cell of the samplesheet, with its links followed, lies below `area` (the real path of the caller's own folder)."""
-    for _, _, cell in bundle_mod.path_cells(bundle["samplesheet"], bundle["path_columns"]):
+SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+
+def params_area_refusal(name, area):
+    return Refusal("params %s: 路徑必須在你自己的上傳資料夾裡：%s (a path in params must lie inside your own uploads folder)" % (name, area))
+
+
+def _below(real, area):
+    return real == area or real.startswith(area + os.sep)
+
+
+def _param_path(value, area, roots):
+    """The path to judge for a params value that looks like a path, else None. It looks like one when it contains /, starts with ~, or
+    names an existing file in the caller's folder or under a read root (a web address such as https://... is not a file path)."""
+    if SCHEME.match(value) and not value.lower().startswith("file:"):
+        return None
+    if "/" in value or value.startswith("~"):
+        return value
+    for root in [area] + [r for r in roots if isinstance(r, str)]:
+        if value and os.path.isfile(os.path.join(root, value)):
+            return os.path.join(root, value)
+    return None
+
+
+def _confine(state, bundle, area, roots):
+    """Every path of an HTTP caller's launch that lies in the upload area (the path cells of the samplesheet and the path-like values of
+    params) is below `area`, the real path of the caller's own folder, with its links followed; the others follow the read roots. Returns
+    the record that goes into the bundle (so that the approved hash covers it): the real path of each upload-area path, as of now.
+    The agent resolves them again at job time and refuses a job whose paths moved (116b)."""
+    rules = bundle_mod.rules
+    entries = []
+    for r, c, cell in bundle_mod.path_cells(bundle["samplesheet"], bundle["path_columns"]):
         real = os.path.realpath(cell)
         if not real.startswith(area + os.sep):
             raise area_refusal(area)
+        entries.append({"where": "samplesheet 第 %d 列第 %d 欄" % (r, c), "given": cell, "real": real})
+    root = store.uploads_root(state)
+    uploads = os.path.realpath(str(root))
+    spellings = {rules.normalize(os.path.abspath(str(root))), rules.normalize(uploads)}
+    for name, value in bundle["params"].items():
+        judged = _param_path(value, area, roots) if isinstance(value, str) else None
+        if judged is None:
+            continue
+        outside = Refusal("params %s: 路徑在允許讀取的範圍之外 (outside the allowed read roots)" % name)
+        if not os.path.isabs(judged):
+            raise outside      # ~/x and x/y are not places a read root names
+        real = os.path.realpath(judged)
+        lexical = rules.normalize(judged) if rules.path_problem(judged) is None else None
+        if _below(real, uploads) or (lexical and rules.inside(lexical, spellings)):
+            if not _below(real, area):
+                raise params_area_refusal(name, area)
+            entries.append({"where": "params %s" % name, "given": judged, "real": real})
+        elif not lexical or not rules.inside(lexical, roots):
+            raise outside
+    return {"area": area, "paths": entries}
 
 
 def prepare_cancel(state, run, owner=None):
@@ -240,6 +289,10 @@ def launch_screen(bundle, ce_name):
         buf = io.StringIO()
         csv.writer(buf, lineterminator="").writerow(row)
         lines.append(terminal.PREFIX + terminal.esc(buf.getvalue()))
+    if bundle.get("upload_paths"):         # 116b: what the paths in your own folder lead to now; the agent refuses the job if they lead elsewhere later
+        lines.append(terminal.PREFIX + "== 上傳區真實路徑（核可當下解開捷徑後的位置，送出時代理會再核對）==")
+        for e in bundle["upload_paths"]["paths"]:
+            lines.append(terminal.pair(e["where"], e["real"]))
     for name in ("params.yaml", "nextflow.config", "head.sh"):
         lines += terminal.block(name, bundle["files"][name])
     return lines

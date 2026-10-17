@@ -96,17 +96,17 @@ def _inside(path, root):
 
 def _uploads_problem(platform_path, caller, path):
     """The sentence that refuses a listing of somebody else's upload folder, or None. A path inside <uploads_root> is allowed for a
-    caller only inside <uploads_root>/<their name>; any other path follows the rule of the environment's read roots."""
+    caller only inside <uploads_root>/<their name>; any other path follows the rule of the environment's read roots. The path is
+    judged as written and again with its links followed (116b), so a link cannot lead from anywhere into another folder."""
     if not isinstance(path, str) or compute_envs.path_problem(path):
         return None                       # the queue refuses a path that is not a plain absolute one, in its own words
-    want = compute_envs.normalize_path(path)
     root = os.path.abspath(str(store.uploads_root(platform_path)))
     spellings = {compute_envs.normalize_path(root), compute_envs.normalize_path(os.path.realpath(root))}
-    if not any(_inside(want, s) for s in spellings):
-        return None
-    if caller.name and any(_inside(want, compute_envs.normalize_path(os.path.join(s, caller.name))) for s in spellings):
-        return None
-    return "只能列你自己的上傳資料夾 (you may list only your own uploads folder): %s" % os.path.realpath(os.path.join(root, caller.name))
+    own = [compute_envs.normalize_path(os.path.join(s, caller.name)) for s in spellings] if caller.name else []
+    for want in {compute_envs.normalize_path(path), compute_envs.normalize_path(os.path.realpath(path))}:
+        if any(_inside(want, s) for s in spellings) and not any(_inside(want, o) for o in own):
+            return "只能列你自己的上傳資料夾 (you may list only your own uploads folder): %s" % os.path.realpath(os.path.join(root, caller.name))
+    return None
 
 
 async def list_site_files(platform_path, compute_env, path, *, caller=None):
@@ -292,7 +292,7 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
     if found:
         return _queued(found["id"], found["job_id"], bundle["run_name"])
     try:
-        jobs.check_run_name(platform_path, bundle["run_name"], clock)
+        jobs.check_run_name(platform_path, bundle["run_name"], clock, _caller_id(caller))
     except jobs.JobRefused as e:
         return _no("未送出：%s" % e)
     text = build.as_text(build.launch_screen(bundle, ce))

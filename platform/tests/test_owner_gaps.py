@@ -119,11 +119,11 @@ def test_tc010_the_terminal_and_stdio_keep_the_old_rule(d):
     # TC-010
     from abf_launch import build
     with_bob(d)
-    for value in (str(d.area(d.a) / "a.fq"), "/elsewhere/x.fa"):
-        ce, bundle = build.prepare_launch(d.state, ce="lab-a", pipeline="nf-core/ampliseq", revision="2.18.0", run_name="run-t",
+    for n, value in enumerate((str(d.area(d.a) / "a.fq"), "/elsewhere/x.fa")):
+        ce, bundle = build.prepare_launch(d.state, ce="lab-a", pipeline="nf-core/ampliseq", revision="2.18.0", run_name="run-t%d" % n,
                                           samplesheet=str(d.sheet(d.a)), params={"ref": value})
         assert bundle["params"] == {"ref": value} and "upload_paths" not in bundle
-        out = d.launch(None, run="run-s", answer=form_answer(), raw_args={"params": {"ref": value}})
+        out = d.launch(None, run="run-s%d" % n, answer=form_answer(), sheet=d.sheet(d.a), raw_args={"params": {"ref": value}})
         assert out["sent"] is True, out
 
 
@@ -323,7 +323,7 @@ def test_tc050_nothing_new_is_made_on_the_site(d):
     d.sent(d.a)
     bundle = json.loads(d.w.sql("SELECT args_json FROM jobs WHERE kind = 'launch_nextflow'")[0]["args_json"])["bundle"]
     assert bundle["run_folder"] == "/data/w1/runs/run-one" and "alice" not in json.dumps(bundle["ce"])
-    assert "alice" not in json.dumps(bundle["files"])
+    assert "alice" not in bundle["files"]["head.sh"] + bundle["files"]["nextflow.config"] + bundle["run_folder"]
     assert set(bundle) - {"version", "agent", "ce", "run_name", "run_folder", "pipeline", "revision", "samplesheet", "params",
                           "path_columns", "account", "tower", "files"} == {"upload_paths"}
 
