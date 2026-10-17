@@ -137,3 +137,62 @@ def test_tc026b_a_requested_folder_that_is_a_link_out_of_every_read_root_is_refu
         res = fake.wait_result(fake.push("list_site_files", list_args(site, str(site.storage / "up_link"))))
         assert res["state"] == "refused", res
         assert "f.txt" not in str(res)
+
+
+# ---- 116b fix round: a link whose target holds a newline must not add lines or allowed roots (ruling after the #125 review, items 1-2) ----
+
+def _newline_link(path, target):
+    """Make a link whose target holds a newline; the test is skipped only where the OS cannot create one (say so: Windows)."""
+    try:
+        os.symlink(target, str(path))
+    except (OSError, ValueError, NotImplementedError) as e:
+        pytest.skip("this OS cannot create a link whose target holds a newline: %s" % e.__class__.__name__)
+
+
+def test_ruling1_a_link_target_with_a_newline_cannot_forge_an_allowed_root(tmp_path, site, fake):
+    # ruling item 1 (handlers._real_path): the target "OUT\nOUT" would add a line equal to a forged root
+    outside = tmp_path / "o"
+    outside.mkdir()
+    (outside / "f.txt").write_text("x")
+    _newline_link(site.storage / "inj", str(outside) + "\n" + str(outside))
+    with agent_on(fake, site, tmp_path):
+        res = fake.wait_result(fake.push("list_site_files", list_args(site, str(site.storage / "inj"))))
+        assert res["state"] != "done" and "f.txt" not in str(res), res
+
+
+def test_ruling1_realpath_failing_refuses_the_listing(tmp_path, site, fake):
+    # ruling item 1: fail closed. A site on which realpath does not work refuses; it is never checked the v3 way
+    (site.toolbin / "realpath").unlink()
+    (site.toolbin / "realpath").write_text("#!/bin/sh\nexit 1\n")
+    (site.toolbin / "realpath").chmod(0o755)
+    with agent_on(fake, site, tmp_path):
+        res = fake.wait_result(fake.push("list_site_files", list_args(site, str(site.storage / "rawdata"))))
+        assert res["state"] == "refused", res
+
+
+def test_ruling2_a_link_target_with_a_newline_cannot_pass_the_recheck(tmp_path, site, fake):
+    # ruling item 2 (launch._check_upload_paths): the new resolution "REAL\n/zzz" would have passed as the recorded REAL
+    alice, _ = make_areas(site)
+    real = alice / "real" / "x.fq"
+    os.remove(alice / "lnk")
+    b = with_record(site, fake, alice / "lnk", real, alice)
+    job = job_of(b)
+    _newline_link(alice / "lnk", os.path.realpath(real) + "\n/zzz")
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job)
+    assert res["state"] == "refused", res
+    nothing_happened(site)
+
+
+def test_ruling2_realpath_failing_refuses_the_launch(tmp_path, site, fake):
+    # ruling item 2: fail closed when realpath fails
+    alice, _ = make_areas(site)
+    b = with_record(site, fake, alice / "lnk", alice / "real" / "x.fq", alice)
+    job = job_of(b)
+    (site.toolbin / "realpath").unlink()
+    (site.toolbin / "realpath").write_text("#!/bin/sh\nexit 1\n")
+    (site.toolbin / "realpath").chmod(0o755)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job)
+    assert res["state"] == "refused", res
+    nothing_happened(site)

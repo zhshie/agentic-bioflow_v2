@@ -415,3 +415,22 @@ def test_tc048_there_are_no_roles_or_sharing(d):
         rc, out = d.w.ip.run("runs", "assign", "r-old", "--user", "alice", flag, "x")
         assert rc != 0
     assert owner_of(d, "r-old") == [None]
+
+
+# ---- 116b fix round: what is a path in params (ruling after the #125 review, item 3) ------------------------------------------
+
+@pytest.mark.parametrize("value", ["..", ".", "sub", "data/x.fq", "./x", "../x", "a/../b"])
+def test_ruling3_these_values_are_paths_and_are_confined(d, value):
+    # ruling item 3: `..`, `.`, a directory name that exists in my folder, `data/x.fq`
+    with_bob(d)
+    (d.area(d.b) / "sub").mkdir()
+    out = bob_launch(d, {"ref": value})
+    assert out["ok"] is False and out["sent"] is False, (value, out)
+
+
+@pytest.mark.parametrize("value", ["nf-core/rnaseq", "https://x/y", "s3://b/k"])
+def test_ruling3_identifiers_and_addresses_are_not_paths(d, value):
+    # ruling item 3: an owner/name identifier and a scheme URL pass
+    with_bob(d)
+    out = bob_launch(d, {"ref": value})
+    assert out["ok"] is True and out["state"] == "pending", (value, out)
