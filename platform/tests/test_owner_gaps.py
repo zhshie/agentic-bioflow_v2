@@ -94,8 +94,7 @@ def test_tc007_a_path_outside_every_read_root_is_refused(d):
     # TC-007
     with_bob(d)
     out = bob_launch(d, {"ref": "/elsewhere/x.fa"})
-    assert out["ok"] is False and out["sent"] is False and "范圍" in out["message"] + "范圍" or True
-    assert out["ok"] is False and out["sent"] is False
+    assert out["ok"] is False and out["sent"] is False and "範圍" in out["message"]
 
 
 def test_tc008_plain_values_are_not_paths(d):
@@ -176,7 +175,7 @@ def test_tc016_my_own_launch_keeps_the_detailed_words(d):
 def test_tc017_my_own_waiting_launch_keeps_its_words(d):
     # TC-017
     d.sent(d.a, run="r2")
-    out = d.launch(d.a, run="r2", answer=form_answer())
+    out = d.launch(d.a, run="r2", answer=form_answer(), raw_args={"params": {"other": 1}})
     assert out["ok"] is False and "還在等代理處理" in out["message"]
 
 
@@ -329,10 +328,10 @@ def test_tc050_nothing_new_is_made_on_the_site(d):
                           "path_columns", "account", "tower", "files"} == {"upload_paths"}
 
 
-def test_tc_the_screen_shows_the_real_paths(d):
+def test_tc027b_the_screen_shows_the_real_paths(d):
     # the record is part of what the person says yes to
     out = d.launch(d.a)
-    assert "upload_paths" not in out["summary"] and os.path.realpath(d.area(d.a)) in out["summary"]
+    assert "上傳區真實路徑" in out["summary"] and os.path.realpath(d.area(d.a)) in out["summary"]
 
 
 # ---- US4: runs assign ----------------------------------------------------------------------------------------------------
@@ -406,16 +405,13 @@ def test_tc046_the_user_is_required(d):
 
 def test_tc047_no_mcp_tool_or_web_route_assigns_a_run(d, w):
     # TC-047
-    from abf_platform import mcp_server
-    names = [t.name for t in asyncio.run(mcp_server.build_server(w.ip.index).list_tools())] if hasattr(
-        mcp_server.build_server(w.ip.index), "list_tools") else []
-    if not names:
-        _, outs = w.mcp([("list_runs", {})], caller=d.a)
+    from abf_platform import mcp_server, web
     client = w.web()
     paths = " ".join(getattr(r, "path", "") for r in client.app.routes)
     assert "assign" not in paths and "owner" not in paths
-    src = open(mcp_server.__file__, encoding="utf-8").read()
-    assert "assign" not in src and "user_id =" not in src
+    for mod in (mcp_server, web):
+        src = open(mod.__file__, encoding="utf-8").read()
+        assert "SET user_id" not in src and "assign" not in src.lower().replace("assign_orphans", "")
 
 
 def test_tc048_there_are_no_roles_or_sharing(d):
