@@ -29,3 +29,12 @@ After the shell's folder is lost, any command that may write to a relative path 
 - Every probe in #112 is a test that asks (red on main, green here).
 - The #110 replay (`specs/110-cleanup-gate-rest/replay.tsv`) is run and shows 0 transitions from ask/deny to pass versus main. Any pass→ask is listed in the ledger.
 - `bash tests/run_all.sh` green on WSL.
+
+## Contract-review rulings (2026-10-17, developer-agent)
+- Item 6 flips three existing pins, named here:
+  - TC-110-66 (lost folder, then cd to a missing absolute folder, then a delete of `s1`) changes from pass to ask. This is the known gap being closed.
+  - TC-078-19 and TC-104-19 (lost folder, then `cd $P`, then a delete) mean "an absolute cd to a real folder recovers". Their `$P` does not exist on the test machine, so the tests are rewritten to use a folder that exists (a `mktemp -d` path). The expectation stays pass. Old, new and reason go in the ledger.
+- Item 6 only concerns a state that is already lost. When the folder is known, `cd` to a missing absolute path is unchanged; `confirm_cleanup_shapes.txt:237` stays pass.
+- Probes that already ask on main (`echo x > >(tee s1)`, `cat <(tee s1)`, `( cp a s1 )`) are "must keep asking" cases; the ledger records them as "ask on main, ask here", not red to green.
+- Absolute targets: `ln`, `split`, `curl -o`, `wget -O`, `install`, `shuf -o` are asked only when a target or output path is relative (the general rule). `wget -O -` and `curl` without `-o/-O` write to stdout and pass. Bare `wget` without `-O` writes into the cwd and is asked. `ln` with one operand creates a link in the cwd and is asked.
+- `xargs <writer>` and `find ... -exec/-execdir/-ok <writer>` are asked when lost, even with absolute-looking literal operands, because the appended arguments are unknown (fail closed).
