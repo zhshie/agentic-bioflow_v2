@@ -144,3 +144,9 @@
 5. **The 404 page.** It never echoes the requested id. Another user's run and a missing id get byte-identical pages.
 6. **Symbols.** running ▶, succeeded ✓, failed ✗, lost ⏸. The tests check the text and the class. The screenshot shows the symbols.
 7. **Manual steps.** Add `docs/TESTING.md` steps for the visual check and the ledger review.
+
+## Ruling after acceptance round 2 (2026-10-18, developer-agent): option B
+- The cost line is labelled `SU —` and `雲端 —`, not `NCHC SU`. Code stays site-neutral (tc069/tc070 unchanged). The site's name will come from the compute environment's own name once 011d shows real costs.
+- Remove the `test_launch_static.py` exemption and restore tc069/tc070 exactly.
+- Strengthen `test_tch21_stage_strip_and_bodies` to assert the end time and each task-count number shown in the middle pane, as TC-H21c says.
+- The contract amendment for TC-H09b ("SU —" instead of "NCHC SU —") is made by the verifier in contract mode, not by the executor.
