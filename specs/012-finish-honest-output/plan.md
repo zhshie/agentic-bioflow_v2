@@ -8,7 +8,7 @@
 
 ## 給維護者
 1. `finish` 組好投稿包時，以前只印「wrote manuscript.qmd」，看起來像完成了；以後會寫明「還有 N 段結果和討論要人來寫，這是草稿骨架」。
-2. 分析計畫裡還沒被你接受的項目，會被列出來說「這些沒放進去」，不再默默略過。
+2. 分析計畫裡還沒被你接受的項目，現在其實也會被放進結果；以後會逐項列出「這些還沒接受，送出前要接受或拿掉」。
 3. 不會因此擋下打包（要不要擋，是另一個問題，之後再問你）。
 
 ## Facts (origin/main)
@@ -28,7 +28,7 @@
 7. zh-TW / en intro texts (`scripts/intro/*/finish.txt`) unchanged unless they quote the old line.
 
 ## Changes, in order (red first)
-1. Red: in `tests/build_package_test.sh` add cases: (a) two accepted entries → output contains `scaffold: 2 Results section(s) and the Discussion still need prose`; (b) one accepted + one `proposed` + one `rejected` + one with no status → output has a `not accepted` line for the three (the empty one shows `(none)`), Results still has four sections, N is 4; (b2) `Accepted` / ` accepted ` count as accepted; (c) all accepted → no `left out` line; (d) README mentions scaffold. Run → red; record in the ledger.
+1. Red: in `tests/build_package_test.sh` add cases: (a) two accepted entries → output contains `scaffold: 2 Results section(s) and the Discussion still need prose`; (b) one accepted + one `proposed` + one `rejected` + one with no status → output has a `not accepted` line for the three (the empty one shows `(none)`), Results still has four sections, N is 4; (b2) `Accepted` / ` accepted ` count as accepted; (c) all accepted → no `not accepted` line; (d) README mentions scaffold. Run → red; record in the ledger.
 2. Implement in `scripts/build_package.sh`.
 3. Update `commands/finish.md` / `docs/FINISH.md` only where they quote the old output line.
 4. WSL `bash tests/run_all.sh` green.
