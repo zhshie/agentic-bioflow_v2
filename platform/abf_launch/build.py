@@ -188,16 +188,26 @@ def _below(real, area):
     return real == area or real.startswith(area + os.sep)
 
 
+OWNER_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
 def _param_path(value, area, roots):
-    """The path to judge for a params value that looks like a path, else None. It looks like one when it contains /, starts with ~, or
-    names an existing file in the caller's folder or under a read root (a web address such as https://... is not a file path)."""
+    """The path to judge for a params value, else None. A value is a path when it starts with / or ~, is . or .. or has a . or ..
+    component, starts with ./ or ../, names an existing file or folder under the caller's folder or a read root, or contains / and is
+    neither a scheme address (https://...) nor an owner/name identifier such as nf-core/rnaseq (116b ruling)."""
+    if not value:
+        return None
+    if value.startswith("/") or value.startswith("~"):
+        return value
+    if any(part in (".", "..") for part in value.split("/")):
+        return value
     if SCHEME.match(value) and not value.lower().startswith("file:"):
         return None
-    if "/" in value or value.startswith("~"):
-        return value
     for root in [area] + [r for r in roots if isinstance(r, str)]:
-        if value and os.path.isfile(os.path.join(root, value)):
+        if os.path.exists(os.path.join(root, value)):
             return os.path.join(root, value)
+    if "/" in value and not OWNER_NAME.match(value):
+        return value
     return None
 
 

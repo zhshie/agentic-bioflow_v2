@@ -419,9 +419,9 @@ def test_tc048_there_are_no_roles_or_sharing(d):
 
 # ---- 116b fix round: what is a path in params (ruling after the #125 review, item 3) ------------------------------------------
 
-@pytest.mark.parametrize("value", ["..", ".", "sub", "data/x.fq", "./x", "../x", "a/../b"])
+@pytest.mark.parametrize("value", ["..", ".", "./x", "../x", "a/../b"])
 def test_ruling3_these_values_are_paths_and_are_confined(d, value):
-    # ruling item 3: `..`, `.`, a directory name that exists in my folder, `data/x.fq`
+    # ruling item 3: `..`, `.`, `./x`, `../x`, `a/../b`
     with_bob(d)
     (d.area(d.b) / "sub").mkdir()
     out = bob_launch(d, {"ref": value})
@@ -434,3 +434,32 @@ def test_ruling3_identifiers_and_addresses_are_not_paths(d, value):
     with_bob(d)
     out = bob_launch(d, {"ref": value})
     assert out["ok"] is True and out["state"] == "pending", (value, out)
+
+
+def test_ruling3_a_directory_name_is_a_path_and_is_recorded_and_a_link_one_to_another_is_refused(d):
+    # ruling item 3: a name that is an existing folder of my own is judged as a path (recorded in upload_paths); as a link to another's folder it is refused
+    with_bob(d)
+    (d.area(d.b) / "sub").mkdir()
+    out = bob_launch(d, {"ref": "sub"})
+    assert out["ok"] is True and out["state"] == "pending", out
+    bundle = json.loads(d.w.sql("SELECT bundle_json FROM confirmations")[0]["bundle_json"])
+    assert any(e["where"] == "params ref" for e in bundle["upload_paths"]["paths"])
+    os.symlink(str(d.area(d.a)), str(d.area(d.b) / "evil"))
+    out = bob_launch(d, {"ref": "evil"}, run="run-b2")
+    assert out["ok"] is False and out["sent"] is False, out
+
+
+def test_ruling3_data_x_fq_is_confined_when_it_names_a_file_of_the_folder(d):
+    # ruling item 3, `data/x.fq`: it matches the owner/name shape, so it is a path only when it names an existing file under my folder (the plan's rule);
+    # then it is recorded and confined, and as a link to another's file it is refused. Not existing, it is left alone like nf-core/rnaseq.
+    with_bob(d)
+    (d.area(d.b) / "data").mkdir()
+    (d.area(d.b) / "data" / "x.fq").write_text("x")
+    out = bob_launch(d, {"ref": "data/x.fq"})
+    assert out["ok"] is True and out["state"] == "pending", out
+    bundle = json.loads(d.w.sql("SELECT bundle_json FROM confirmations")[0]["bundle_json"])
+    assert any(e["where"] == "params ref" for e in bundle["upload_paths"]["paths"])
+    os.remove(d.area(d.b) / "data" / "x.fq")
+    os.symlink(str(d.area(d.a) / "a.fq"), str(d.area(d.b) / "data" / "x.fq"))
+    out = bob_launch(d, {"ref": "data/x.fq"}, run="run-b2")
+    assert out["ok"] is False and out["sent"] is False, out

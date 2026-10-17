@@ -589,9 +589,11 @@ def _check_upload_paths(record, ctx):
             raise rules.Refusal("記錄的真實路徑不在擁有者的上傳資料夾裡，不送出 (a recorded path lies outside the owner's folder)")
     if not entries:
         return
-    res = ctx.site.call(["realpath -m -- " + " ".join(quote(g) for g, _ in entries)])
-    now = res.out.decode("utf-8", errors="replace").split("\n")
-    if res.rc != 0 or now[:len(entries)] != [r for _, r in entries]:
+    res = ctx.site.call(["realpath -z -m -- " + " ".join(quote(g) for g, _ in entries)])      # NUL-separated: a newline in a link target adds no line
+    if res.rc != 0 or not res.out.endswith(b"\0"):
+        raise rules.Refusal(swapped)
+    now = [x.decode("utf-8", errors="replace") for x in res.out[:-1].split(b"\0")]
+    if len(now) != len(entries) or now != [r for _, r in entries]:
         raise rules.Refusal(swapped)
 
 
