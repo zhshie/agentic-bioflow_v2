@@ -3,12 +3,13 @@
 import asyncio
 import json
 import os
+import secrets
 import sqlite3
 import time
 from pathlib import Path
 
 SESSION = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d"
-OLD_TOKEN = "abf_old_0123456789abcdef"      # the token of the first launch, which is in tower.token until the resume replaces it
+OLD_TOKEN = "abf_" + secrets.token_hex(16)      # the token of the first launch, which is in tower.token until the resume replaces it; made at run time: a fixed value of this shape in a tracked file fails tests/credentials_stay_in_settings_test.sh
 FILE_NAMES = ("samplesheet.csv", "params.yaml", "nextflow.config", "head.sh")
 
 
