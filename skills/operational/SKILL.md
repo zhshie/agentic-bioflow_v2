@@ -153,6 +153,12 @@ Work outward from the layer most likely to be lying to you.
 3. **Is a task sitting unstarted?** Ask the site adapter's scheduler why. A
    request below the site's resource floor never schedules and never errors.
 4. **Only then** read the failing task's own `.command.err` and `.command.log`.
+   Two rules come first (exit code 137 is out of memory; no `.command.log` and
+   no `.exitcode` means the work directory is not visible from the compute
+   side). If the user has turned the optional Jev triage on, `skills/runs/SKILL.md`
+   then runs `scripts/jev.sh triage` once, before reading the whole file, and
+   uses what it says only as a pointer to a page of that skill; with Jev off
+   (the default) this step does not exist for the user.
 
 ## Off-design: when nothing here covers it
 

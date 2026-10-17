@@ -331,11 +331,19 @@ def mcp_call(env, calls, errlog=None):
     return asyncio.run(go())
 
 
-def mcp_http_call(url, calls):
+def mcp_http_call(url, calls, token=None):
+    """The same calls over Streamable HTTP; with a token the client sends Authorization: Bearer <token> (009d)."""
     from mcp import Client
 
+    def transport():
+        if token is None:
+            return url
+        import httpx2
+        from mcp.client.streamable_http import streamable_http_client
+        return streamable_http_client(url, http_client=httpx2.AsyncClient(headers={"Authorization": "Bearer " + token}))
+
     async def go():
-        async with Client(url) as client:
+        async with Client(transport()) as client:
             tools = (await client.list_tools()).tools
             outs = []
             for name, args in calls:

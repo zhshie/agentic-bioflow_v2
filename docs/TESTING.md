@@ -177,6 +177,32 @@ The machine part is `tests/platform_test.sh`. These cases need the real cluster 
 7. *Nothing else was touched (TC-076).* `git diff main...HEAD --stat -- hooks skills .claude-plugin .github scripts tests` lists no change under `hooks/`, `skills/`, `.claude-plugin/`, `.github/`; under `scripts/` only `on_site.sh` (the three forward options) and `nf_relay.py` (the loopback rule); under `tests/` only `no_second_run_state_test.sh` and `platform_test.sh` (the second pinned Nextflow).
 8. *The relay question and the constitution (TC-077).* `git diff main...HEAD -- .specify/memory/constitution.md` is empty. The pull request description asks the maintainer, as a separate question, whether the relay may reach one loopback destination, and attaches the comparison with main (the 30-request golden file `platform/tests/fixtures/relay_golden.json`).
 
+### Jev triage, on and off (feature 015)
+
+Needs a run that failed with an ordinary error (not out of memory, nothing refused by the site). One
+quick way: launch a small test run with a deliberately wrong input path. You also need your own
+TypeSafe key for the "on" half. Do **off** first.
+
+**Off (the default).** Make sure `jev.enabled` is not `true` in your settings
+(`scripts/settings.sh --jev enabled` prints `false`). Run `/agentic-bioflow:runs` on the failed run.
+Expected: the usual diagnosis, with **no** word "Jev" anywhere and no extra line. If you see one, the
+step is leaking when it should be silent.
+
+**On.** Put your key where only you can read it, as written in `docs/SETTINGS.md` ("Jev triage"), then
+`scripts/settings.sh --set jev.enabled true`. Run `/agentic-bioflow:runs` on the same failed run.
+Expected: the first time on this machine, a notice saying what is sent (the last 200 lines of the error
+file and the exit code, to `api.typesafe.ai`); then a report line `Jev 判斷：<category>（信心 0.xx）`, and
+the AI reads only the end of the error file. When Jev is unsure the report says `Jev 沒把握，照原流程`.
+Anything that needs your decision (allowing a host, changing a parameter) must still stop and ask you.
+Wrong looks like: the AI proceeds to change a parameter or allow a host on Jev's say-so; the key
+appears in any output.
+
+**Measure it (maintainer only).** With a real key: `scripts/dev/jev_replay.sh`. It scores the 37 items
+that reach Jev (T01, T03, T05, T14 and T43 are handled by earlier rules and the report shows they never
+call Jev) and writes `specs/015-jev-triage/replay-report.md`: overall and per-category accuracy, the wrong
+ids, a confidence-threshold suggestion, tokens and latency, and the characters the AI reads with and
+without Jev. Only a report at 34 of 37 or better allows `docs/SETTINGS.md` to recommend switching it on.
+
 ## Half 3 — procedures the constitution cites
 
 Two of the constitution's rules cannot be checked by a machine, because what

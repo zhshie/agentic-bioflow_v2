@@ -95,6 +95,17 @@ abf-platform mcp --http                # http://127.0.0.1:8788/mcp, this machine
 
 The same warning as for the receiver applies to `--host`.
 
+**Who is calling: users and personal access tokens (spec 009d).** Over HTTP the platform needs to know who calls. A user (name and lab) is made on the terminal, and gets a personal access token (PAT), which is what the client sends:
+
+```bash
+abf-platform user add 王小明 --lab lab-x
+abf-platform pat new --user 王小明 --label laptop   # prints abf_pat_... ONCE; only its hash is kept
+abf-platform pat list                               # id, user, label, created, revoked; never a value
+abf-platform pat revoke <id>                        # refused from the next request on
+```
+
+`mcp --http` answers 401 (`WWW-Authenticate: Bearer`) to every request that does not carry `Authorization: Bearer <PAT>` of a live token of a user who is not disabled; with no users yet, every request is 401 and the command says so. Put the PAT in the client's header setting, for example `claude mcp add --transport http abf-platform http://127.0.0.1:8788/mcp --header "Authorization: Bearer <PAT>"`. Local stdio (`abf-platform mcp`) needs no token. Users and PATs are made and revoked only on the terminal (no MCP tool, no web route); the tokens live in tokens.db, so `rebuild` never loses them. A PAT opens only the MCP door (not the receiver, not the agents), and a run or agent token does not open MCP. The caller is only recorded (the confirmation of a launch or cancel stores the user's id when one is given); it is never a confirmation, which stays the terminal's y. Not in this step: OAuth, a public URL or TLS, roles, token expiry.
+
 ## 5. Rebuild the index
 
 The index is not the truth; Nextflow's own records are. If the index is lost or wrong, drop it and build it again from the launch folders (the folders you ran `nextflow` in, holding `.nextflow/`, `.nextflow.log` and the trace file):

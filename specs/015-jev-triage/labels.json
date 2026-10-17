@@ -1,0 +1,380 @@
+[
+  {
+    "id": "T01",
+    "exit_code": 137,
+    "err_tail": "/bin/bash: line 1: 48213 Killed                  samtools sort -@ 2 -o <sample>.sorted.bam <sample>.bam\n.command.run: line 114: kill: (48201) - No such process\n# sacct: nf-SAMTOOLS_SORT__3_  ngs13G  FAILED  137:0",
+    "label": "memory",
+    "source": "docs/PITFALLS.md:427 (137:0 狀態為真實引用; 其餘為合成)",
+    "tricky": false,
+    "reason_zh": "exit 137 且 sacct 顯示 FAILED 137:0，是被 OOM 殺掉的標準樣子。"
+  },
+  {
+    "id": "T02",
+    "exit_code": 1,
+    "err_tail": "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space\n\tat java.base/java.util.Arrays.copyOf(Arrays.java:3512)\n\tat htsjdk.samtools.util.ResourceLimitedMap.put(ResourceLimitedMap.java:61)\n\tat picard.sam.markduplicates.MarkDuplicates.buildSortedReadEndLists(MarkDuplicates.java:512)\n\tat picard.sam.markduplicates.MarkDuplicates.doWork(MarkDuplicates.java:270)\n\tat picard.cmdline.CommandLineProgram.instanceMain(CommandLineProgram.java:308)",
+    "label": "memory",
+    "source": "synthetic",
+    "tricky": true,
+    "reason_zh": "Exit 1 但訊息是 Java heap space，實為 JVM 記憶體不足，不是工具 bug。"
+  },
+  {
+    "id": "T03",
+    "exit_code": 137,
+    "err_tail": "INFO:    Converting SIF file to temporary sandbox...\nslurmstepd: error: Detected 1 oom_kill event in StepId=2053143.batch. Some of the step tasks have been OOM Killed.\n.command.sh: line 3: 9120 Killed   STAR --runThreadN 8 --genomeDir star_index --readFilesIn r1.fq.gz r2.fq.gz",
+    "label": "memory",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "Slurm 報 oom_kill，明確是記憶體上限。"
+  },
+  {
+    "id": "T04",
+    "exit_code": 1,
+    "err_tail": "== Error ==  system call for: \"['/opt/spades/bin/spades-hammer', '/tmp/work/corrected/configs/config.info']\" finished abnormally, OS return value: -9\nterminate called after throwing an instance of 'std::bad_alloc'\n  what():  std::bad_alloc\nCannot allocate memory",
+    "label": "memory",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "spades 明講無法配置記憶體。"
+  },
+  {
+    "id": "T05",
+    "exit_code": 137,
+    "err_tail": "Command exit status:\n  137\nCommand error:\n  .command.sh: line 2: 31877 Killed   bwa mem -t 16 genome.fa <sample>_1.fq.gz <sample>_2.fq.gz",
+    "label": "memory",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "exit 137 且被 Killed，是典型 OOM。"
+  },
+  {
+    "id": "T06",
+    "exit_code": 1,
+    "err_tail": "Traceback (most recent call last):\n  File \"/usr/local/bin/multiqc\", line 10, in <module>\n    sys.exit(run_cli())\n  File \"/usr/local/lib/python3.10/site-packages/multiqc/multiqc.py\", line 188, in run\n    modules.run()\n  File \"/usr/local/lib/python3.10/site-packages/pandas/core/frame.py\", line 842, in __init__\n    mgr = ndarray_to_mgr(data, index, columns, dtype=dtype, copy=copy)\nMemoryError: Unable to allocate 18.4 GiB for an array with shape (2470000000,) and data type float64",
+    "label": "memory",
+    "source": "synthetic",
+    "tricky": true,
+    "reason_zh": "Python 工具有 traceback，但最後一行是 MemoryError，根因是記憶體，不是工具 bug。"
+  },
+  {
+    "id": "T07",
+    "exit_code": 140,
+    "err_tail": "slurmstepd: error: *** JOB 2053201 ON cpn3857 CANCELLED AT 2026-10-02T04:11:09 DUE TO TIME LIMIT ***\nslurmstepd: error: *** STEP 2053201.batch ON cpn3857 CANCELLED AT 2026-10-02T04:11:09 DUE TO TIME LIMIT ***",
+    "label": "walltime",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "Slurm 明講 DUE TO TIME LIMIT，exit 140 是逾時慣例。"
+  },
+  {
+    "id": "T08",
+    "exit_code": 140,
+    "err_tail": "# sacct: nf-MEGAHIT__1_  ngs13G  TIMEOUT  0:15\n.command.sh: line 2: 22040 Terminated   megahit -1 r1.fq.gz -2 r2.fq.gz -o out",
+    "label": "walltime",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "Exit 140 加上 TIMEOUT 狀態，是逾時。"
+  },
+  {
+    "id": "T09",
+    "exit_code": 143,
+    "err_tail": "slurmstepd: error: *** JOB 2053310 ON cpn3858 CANCELLED AT 2026-10-05T19:22:41 DUE TO TIME LIMIT ***\n.command.sh: line 1: 7731 Terminated   bowtie2 -p 8 -x idx -1 r1.fq.gz -2 r2.fq.gz -S out.sam",
+    "label": "walltime",
+    "source": "synthetic",
+    "tricky": true,
+    "reason_zh": "Exit 143 (SIGTERM) 看似被手動終止，但搭配 TIME LIMIT 字樣就是排程器逾時殺掉。"
+  },
+  {
+    "id": "T10",
+    "exit_code": 140,
+    "err_tail": "Command exit status:\n  140\nCommand output:\n  (empty)\nCommand error:\n  (empty)",
+    "label": "walltime",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "Nextflow 回報 exit 140 且無錯誤輸出，標準逾時。"
+  },
+  {
+    "id": "T11",
+    "exit_code": null,
+    "err_tail": "Process `NFCORE_RNASEQ:RNASEQ:ALIGN_STAR:STAR_ALIGN (<sample>)` terminated for an unknown reason -- Likely it has been terminated by the external system\nJob exceeded the time limit of 4h (process time directive)",
+    "label": "walltime",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "任務超過 process 的 time 指令上限而被中止，屬時間。"
+  },
+  {
+    "id": "T12",
+    "exit_code": 1,
+    "err_tail": "--2026-10-03 11:02:14--  https://ftp.ncbi.nlm.nih.gov/refseq/release/viral/viral.1.1.genomic.fna.gz\nResolving ftp.ncbi.nlm.nih.gov (ftp.ncbi.nlm.nih.gov)... failed: Temporary failure in name resolution.\nwget: unable to resolve host address 'ftp.ncbi.nlm.nih.gov'",
+    "label": "network",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "DNS 解析失敗，連不到主機。"
+  },
+  {
+    "id": "T13",
+    "exit_code": 1,
+    "err_tail": "curl: (7) Failed to connect to ftp.ebi.ac.uk port 443: Connection refused\nError: could not download reference from https://ftp.ebi.ac.uk/pub/databases/GO/goa/UNIPROT/goa_uniprot_all.gaf.gz",
+    "label": "network",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "連線被拒絕，計算節點對外被擋。"
+  },
+  {
+    "id": "T14",
+    "exit_code": 1,
+    "err_tail": "[2026-09-30 13:22:52] ERROR multiqc.utils.version_check: Could not connect to api.multiqc.info\nHTTPSConnectionPool(host='api.multiqc.info', port=443): Max retries exceeded with url: /version (Caused by NewConnectionError: Failed to establish a new connection: [Errno 111] Connection refused)\n# relay: 13:22:52 DENY-DOMAIN multiqc.info 80 from cpn3859",
+    "label": "network",
+    "source": "docs/PITFALLS.md:279 (DENY-DOMAIN 行為真實; 其餘為合成)",
+    "tricky": false,
+    "reason_zh": "relay 日誌顯示 DENY-DOMAIN，是出口白名單擋住，屬網路。"
+  },
+  {
+    "id": "T15",
+    "exit_code": 1,
+    "err_tail": "Downloading kraken2 standard database...\ncurl: (28) Connection timed out after 300001 milliseconds\nError: failed to download https://genome-idx.s3.amazonaws.com/kraken/k2_standard_20240605.tar.gz",
+    "label": "network",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "連線逾時，下載資料庫失敗。"
+  },
+  {
+    "id": "T16",
+    "exit_code": 1,
+    "err_tail": "ERROR ~ Plugin 'nf-schema@2.1.1' resolution failed\njava.util.UnknownFormatConversionException: Conversion = '4'\n\tat java.base/java.util.Formatter.checkText(Formatter.java:2732)\nCaused by: java.net.SocketTimeoutException: Connect timed out",
+    "label": "network",
+    "source": "docs/PITFALLS.md:212,252 (描述真實; 錯誤文字為合成)",
+    "tricky": true,
+    "reason_zh": "插件下載被擋，Nextflow 卻報成 Java 格式例外或逾時，看不出網域；根因是出口被擋，標 network。"
+  },
+  {
+    "id": "T17",
+    "exit_code": 255,
+    "err_tail": "FATAL:   Unable to pull docker://quay.io/biocontainers/fastp:0.23.4--h5f740d0_0: while fetching image from oci: Get \"https://quay.io/v2/\": dial tcp: lookup quay.io on 10.0.0.2:53: server misbehaving\nFailed to pull singularity image\n  command: singularity pull --name quay.io-biocontainers-fastp-0.23.4--h5f740d0_0.img.pulling.1 docker://quay.io/biocontainers/fastp:0.23.4--h5f740d0_0",
+    "label": "network",
+    "source": "synthetic",
+    "tricky": true,
+    "reason_zh": "錯誤出在容器『拉取』時的網路問題：標 network 而非 container，因為根因是 DNS 連不到 registry，映像本身沒問題。"
+  },
+  {
+    "id": "T18",
+    "exit_code": 255,
+    "err_tail": "FATAL:   Unable to handle docker://quay.io/biocontainers/fastqc:0.99.9--hdfd78af_0 uri: failed to get checksum for docker://quay.io/biocontainers/fastqc:0.99.9--hdfd78af_0: reading manifest 0.99.9--hdfd78af_0 in quay.io/biocontainers/fastqc: manifest unknown: manifest unknown",
+    "label": "container",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "manifest unknown：映像標籤不存在。"
+  },
+  {
+    "id": "T19",
+    "exit_code": 127,
+    "err_tail": "/bin/bash: docker: command not found\n.command.run: line 164: docker: command not found",
+    "label": "container",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "找不到 docker 指令，環境未安裝容器引擎。"
+  },
+  {
+    "id": "T20",
+    "exit_code": 255,
+    "err_tail": "FATAL:   While making image from oci registry: error fetching image to cache: failed to get checksum: while creating squashfs: create command failed: exit status 1: FATAL: Failed to create SIF; mksquashfs: Write failed because No space left on device\nFailed to pull singularity image",
+    "label": "container",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "singularity 建置 SIF 時暫存空間不足，屬容器建置問題。"
+  },
+  {
+    "id": "T21",
+    "exit_code": 255,
+    "err_tail": "FATAL:   could not open image /cache/singularity/depot.galaxyproject.org-singularity-bwa-0.7.17.img: failed to retrieve path for /cache/singularity/depot.galaxyproject.org-singularity-bwa-0.7.17.img: lstat /cache/singularity: no such file or directory",
+    "label": "container",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "apptainer 找不到本機映像檔。"
+  },
+  {
+    "id": "T22",
+    "exit_code": 255,
+    "err_tail": "FATAL:   Unable to pull docker://ghcr.io/<org>/internal-tool:1.2: while fetching image: failed to get checksum: unauthorized: authentication required",
+    "label": "container",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "沒有權限拉取私有映像，錯誤來自 registry，歸容器。"
+  },
+  {
+    "id": "T23",
+    "exit_code": 127,
+    "err_tail": "/bin/bash: line 2: salmon: command not found\n.command.sh: line 2: salmon: command not found\n# image used: quay.io/biocontainers/fastp:0.23.4--h5f740d0_0",
+    "label": "container",
+    "source": "synthetic",
+    "tricky": true,
+    "reason_zh": "訊息像工具壞了（command not found），但真因是映像選錯、容器內沒有該執行檔。"
+  },
+  {
+    "id": "T24",
+    "exit_code": 1,
+    "err_tail": "gzip: <sample>_R1.fastq.gz: unexpected end of file\nfastp: ERROR: failed to read from <sample>_R1.fastq.gz",
+    "label": "input",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "gzip 檔損毀。"
+  },
+  {
+    "id": "T25",
+    "exit_code": 1,
+    "err_tail": "ERROR ~ Error executing process > 'NFCORE_RNASEQ:RNASEQ:FASTQC (<sample>)'\nCaused by:\n  Missing input file: /data/<user>/fastq/<sample>_R2.fastq.gz\n[ -e /data/<user>/fastq/<sample>_R2.fastq.gz ] failed: No such file or directory",
+    "label": "input",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "檔案路徑錯誤。"
+  },
+  {
+    "id": "T26",
+    "exit_code": 1,
+    "err_tail": "ERROR ~ Validation of samplesheet failed!\n -- Check '.nextflow.log' file for details\nThe following errors have been detected:\n* -- Entry 3: Missing required field(s): fastq_1\n* -- Entry 5: Missing required field(s): sample",
+    "label": "input",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "samplesheet 欄位錯誤，nf-schema 驗證不過。"
+  },
+  {
+    "id": "T27",
+    "exit_code": 1,
+    "err_tail": "Traceback (most recent call last):\n  File \"/usr/local/bin/cutadapt\", line 8, in <module>\n    sys.exit(main_cli())\n  File \"/usr/local/lib/python3.10/site-packages/cutadapt/cli.py\", line 912, in main_cli\n    main(cmdargs)\n  File \"/usr/local/lib/python3.10/site-packages/dnaio/readers.py\", line 174, in __iter__\n    raise FastqFormatError(\"Premature end of file encountered. The file ends in the middle of a record.\", line=n)\ndnaio.exceptions.FastqFormatError: Premature end of file encountered. The file ends in the middle of a record.",
+    "label": "input",
+    "source": "synthetic",
+    "tricky": true,
+    "reason_zh": "工具 traceback 看似 tool_bug，但原因是 FASTQ 被截斷，輸入壞掉才是根因。"
+  },
+  {
+    "id": "T28",
+    "exit_code": 1,
+    "err_tail": "[E::fai_build_region] Failed to build index: sequence line lengths differ in '>chr3'\n[faidx] Could not build fai index genome.fa.fai",
+    "label": "input",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "FASTA 格式有誤。"
+  },
+  {
+    "id": "T30",
+    "exit_code": 1,
+    "err_tail": "ERROR ~ Validation of pipeline parameters failed!\n -- Check '.nextflow.log' file for details\nThe following invalid input values have been detected:\n* Missing required parameter: --outdir",
+    "label": "params",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "nf-schema 參數驗證錯誤：缺必要參數。"
+  },
+  {
+    "id": "T31",
+    "exit_code": 1,
+    "err_tail": "ERROR ~ Validation of pipeline parameters failed!\n* --aligner: 'bwamem2' is not a valid choice (Available choices (5 of 5): star_salmon, star_rsem, hisat2, bowtie2_salmon, no_alignment)",
+    "label": "params",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "參數值不在列舉範圍。"
+  },
+  {
+    "id": "T32",
+    "exit_code": 1,
+    "err_tail": "ERROR ~ Please specify either --genome or --fasta + --gtf, not both.\n -- Check script 'main.nf' at line: 94",
+    "label": "params",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "互斥選項同時指定。"
+  },
+  {
+    "id": "T33",
+    "exit_code": 1,
+    "err_tail": "ERROR ~ Validation of pipeline parameters failed!\n* --skip_trimming_typo: Unexpected parameter, did you mean 'skip_trimming'?",
+    "label": "params",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "不存在的參數被 nf-schema 擋下。"
+  },
+  {
+    "id": "T34",
+    "exit_code": 1,
+    "err_tail": "ERROR ~ The provided genome 'GRCh39' is not available in the iGenomes file. Currently the available genomes are GRCh37, GRCh38, GRCm38, GRCm39\n -- Check script 'subworkflows/local/utils_nfcore_pipeline/main.nf' at line: 62",
+    "label": "params",
+    "source": "synthetic",
+    "tricky": true,
+    "reason_zh": "指到不存在的 genome key，看似輸入檔錯誤，但本質是 --genome 參數值無效。"
+  },
+  {
+    "id": "T35",
+    "exit_code": 139,
+    "err_tail": "/bin/bash: line 1: 18422 Segmentation fault      (core dumped) bwa mem -t 8 genome.fa r1.fq r2.fq\nCommand exit status:\n  139",
+    "label": "tool_bug",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "工具本身 segmentation fault，輸入看似正常。"
+  },
+  {
+    "id": "T36",
+    "exit_code": 1,
+    "err_tail": "stringtie: ../src/rlink.cpp:3321: void process_refguides(...): Assertion `ref_id >= 0' failed.\nAborted (core dumped)",
+    "label": "tool_bug",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "工具內部斷言失敗。"
+  },
+  {
+    "id": "T37",
+    "exit_code": 1,
+    "err_tail": "Error in `[.data.frame`(counts, , samples) : undefined columns selected\nCalls: DESeq -> estimateSizeFactors -> .local -> [ -> [.data.frame\nExecution halted",
+    "label": "tool_bug",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "工具內的 R 錯誤，輸入檔格式正常。"
+  },
+  {
+    "id": "T38",
+    "exit_code": 1,
+    "err_tail": "Traceback (most recent call last):\n  File \"/usr/local/bin/macs2\", line 653, in <module>\n    main()\n  File \"/usr/local/lib/python3.8/site-packages/MACS2/callpeak_cmd.py\", line 214, in run\n    peakdetect.call_peaks()\n  File \"MACS2/IO/PeakIO.pyx\", line 337, in MACS2.IO.PeakIO.PeakIO.filter_fc\nAttributeError: module 'numpy' has no attribute 'int'",
+    "label": "tool_bug",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "Python 套件內部 AttributeError，是工具與 numpy 版本不相容。"
+  },
+  {
+    "id": "T39",
+    "exit_code": 134,
+    "err_tail": "free(): invalid pointer\n.command.sh: line 2: 9981 Aborted    (core dumped) featureCounts -T 8 -a genes.gtf -o counts.txt <sample>.bam\n# free -m: 71234 MB available; no oom_kill in slurm log",
+    "label": "tool_bug",
+    "source": "synthetic",
+    "tricky": true,
+    "reason_zh": "abort 且日誌顯示可用記憶體充足、無 oom 證據，標 tool_bug；有人可能猜記憶體。"
+  },
+  {
+    "id": "T40",
+    "exit_code": 1,
+    "err_tail": "Command exit status:\n  1\nCommand output:\n  (empty)\nCommand error:\n  (empty)",
+    "label": "unknown",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "只有 exit 1，沒有任何訊息，資訊不足。"
+  },
+  {
+    "id": "T42",
+    "exit_code": 1,
+    "err_tail": "bash: /data/<user>/refs/genome.fa: Permission denied\n.command.sh: line 3: cannot open file for reading",
+    "label": "unknown",
+    "source": "synthetic",
+    "tricky": true,
+    "reason_zh": "可能是輸入檔權限，也可能是容器掛載問題，證據不足以二選一。"
+  },
+  {
+    "id": "T43",
+    "exit_code": 137,
+    "err_tail": "Command exit status:\n  137\nCommand error:\n  Terminated\n# (no sacct line, no oom_kill, no memory request logged)",
+    "label": "memory",
+    "source": "synthetic",
+    "tricky": true,
+    "reason_zh": "exit 137 沒有其他證據時，照現行規則（runs.md OOM 段）當記憶體不足處理；與 T05 一致。"
+  },
+  {
+    "id": "T44",
+    "exit_code": 2,
+    "err_tail": "usage: tool [-h] [--threads N] input output\ntool: error: the following arguments are required: output",
+    "label": "unknown",
+    "source": "synthetic",
+    "tricky": false,
+    "reason_zh": "只有用法訊息，無法判斷是參數還是輸入。"
+  }
+]

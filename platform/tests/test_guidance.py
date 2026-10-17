@@ -227,15 +227,23 @@ def _stdio_view(tmp_path):
 
 
 def _http_view(tmp_path):
+    # 009d made every HTTP call need a personal access token, so the HTTP client of TC-112 carries one;
+    # it asks for no extra credential for the guidance: the view must still equal the stdio one.
+    import httpx2
     from mcp import Client
+    from mcp.client.streamable_http import streamable_http_client
+    from test_pat import _env, _pat
+    env = _env(tmp_path)
+    (tmp_path / "data").mkdir(exist_ok=True)
+    token, _uid = _pat(tmp_path)
     port = free_port()
-    proc = start_cli(["mcp", "--http", "--port", str(port)], pkg_env(ABF_PLATFORM_DB=tmp_path / "index.db"),
-                     tmp_path / "mcp.log")
+    proc = start_cli(["mcp", "--http", "--port", str(port)], env, tmp_path / "mcp.log")
     try:
         wait_port(port, proc=proc)
 
         async def go():
-            async with Client("http://127.0.0.1:%d/mcp" % port) as client:
+            http_client = httpx2.AsyncClient(headers={"Authorization": "Bearer " + token})
+            async with Client(streamable_http_client("http://127.0.0.1:%d/mcp" % port, http_client=http_client)) as client:
                 return await _client_view(client)
         return asyncio.run(go())
     finally:
@@ -257,7 +265,7 @@ def test_tc111_tc206_tc305_stdio_client_sees_the_guidance(tmp_path):
     assert not any(view["prompt_args"].values())
 
 
-def test_tc112_tc207_tc306_http_client_without_credentials_sees_the_same(tmp_path):
+def test_tc112_tc207_tc306_http_client_with_a_pat_sees_the_same(tmp_path):
     http = _http_view(tmp_path)
     exp = _expected_view()
     assert http["instructions"] == exp["instructions"]

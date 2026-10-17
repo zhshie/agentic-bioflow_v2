@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | token new | agent-token new|revoke | ce ... | mcp [--http] | rebuild [<launch folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | token new | agent-token new|revoke | user add | pat new|list|revoke | ce ... | mcp [--http] | rebuild [<launch folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
@@ -60,6 +60,49 @@ def cmd_agent_token_new(args):
     _say(token)
     _say("Put it in a file that only you can read (chmod 600) and start the agent with --token-file <that file>.")
     return 0
+
+
+def cmd_user_add(args):
+    try:
+        store.create_user(store.default_tokens_path(), args.name, args.lab)
+    except ValueError:
+        _err("rejected: a user named %s already exists (這個名字已存在)" % args.name)
+        return 1
+    _say("added user %s (lab %s); issue a token with: abf-platform pat new --user %s" % (args.name, args.lab, args.name))
+    return 0
+
+
+def cmd_pat_new(args):
+    tokens = store.default_tokens_path()
+    uid = store.user_id_of(tokens, args.user)
+    if uid is None:
+        _err("rejected: no such user: %s (沒有這個使用者); add one with: abf-platform user add" % args.user)
+        return 1
+    token = store.create_token(tokens, kind="pat", user_id=uid, label=args.label)
+    _say("New personal access token for %s (it is shown once and cannot be shown again; only its hash is kept):" % args.user)
+    _say(token)
+    _say("Give it to the MCP client as the header Authorization: Bearer <token> when it connects to `abf-platform mcp --http`.")
+    return 0
+
+
+def cmd_pat_list(args):
+    rows = store.list_pats(store.default_tokens_path())
+    for r in rows:
+        _say("id %s  user %s  label %s  created %s  %s" % (
+            r["id"], r["user"], r["label"] or "-", time.strftime("%Y-%m-%d %H:%M", time.localtime(r["created_at"])),
+            "revoked" if r["revoked_at"] else "not revoked"))
+    if not rows:
+        _say("no personal access tokens")
+    return 0
+
+
+def cmd_pat_revoke(args):
+    n = store.revoke_pat(store.default_tokens_path(), args.id)
+    if n:
+        _say("revoked token %s; it is refused from its next request" % args.id)
+        return 0
+    _err("rejected: no live personal access token with id %s" % args.id)
+    return 1
 
 
 def cmd_agent_token_revoke(args):
@@ -238,6 +281,10 @@ def cmd_mcp(args):
     if args.http:
         if args.host not in LOOPBACK:
             _risk_line("the MCP server", args.host, args.port)
+            _say("A token is required: every request needs Authorization: Bearer <personal access token>.")
+        if not store.has_users(store.default_tokens_path(index)):
+            _say("There are no users yet, so every request will get 401 until you run: abf-platform user add <name> --lab <lab>, "
+                 "then abf-platform pat new --user <name>.")
         mcp_server.run_http(index, args.host, args.port)
     else:
         mcp_server.run_stdio(index)
@@ -300,6 +347,25 @@ def build_parser():
     ar = asub.add_parser("revoke", help="revoke every token of an agent name")
     ar.add_argument("name")
     ar.set_defaults(func=cmd_agent_token_revoke)
+
+    u = sub.add_parser("user", help="the people who may call the MCP server")
+    usub = u.add_subparsers(dest="user_command", required=True)
+    ua = usub.add_parser("add", help="add a user (name and lab)")
+    ua.add_argument("name")
+    ua.add_argument("--lab", required=True)
+    ua.set_defaults(func=cmd_user_add)
+
+    pt = sub.add_parser("pat", help="personal access tokens for the MCP server over HTTP")
+    psub = pt.add_subparsers(dest="pat_command", required=True)
+    pn = psub.add_parser("new", help="issue a token for a user and show it once")
+    pn.add_argument("--user", required=True)
+    pn.add_argument("--label")
+    pn.set_defaults(func=cmd_pat_new)
+    pl = psub.add_parser("list", help="list the tokens (never their values)")
+    pl.set_defaults(func=cmd_pat_list)
+    pr = psub.add_parser("revoke", help="revoke one token by its id")
+    pr.add_argument("id", type=int)
+    pr.set_defaults(func=cmd_pat_revoke)
 
     c = sub.add_parser("ce", help="compute environments")
     csub = c.add_subparsers(dest="ce_command", required=True)
