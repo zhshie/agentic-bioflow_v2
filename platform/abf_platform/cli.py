@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|revoke | user add|passwd | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME [--force] | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | web | token new | agent-token new|revoke | user add|passwd | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
@@ -414,7 +414,7 @@ def cmd_runs_assign(args):
         _err("rejected: no launch of a run named %s (沒有這個 run); nothing was changed" % args.run_name)
         return 1
     if what == "owned":
-        _err("rejected: run %s already belongs to %s; to change the owner add --force (這個 run 已經有擁有者，要改請加 --force)" % (
+        _err("rejected: run %s already belongs to %s; to change the owner add --force (這個 run 已經有擁有者，要改請加 --force)" % (      # 116b-owner
             args.run_name, names.get(old, "user #%s" % old)))
         return 1
     if what == "same":
@@ -558,10 +558,10 @@ def build_parser():
 
     rn = sub.add_parser("runs", help="the owner of a run in the hand-off record")
     rsub = rn.add_subparsers(dest="runs_command", required=True)
-    ra = rsub.add_parser("assign", help="give a run that nobody owns to a user (a run that has an owner needs --force)", allow_abbrev=False)
+    ra = rsub.add_parser("assign", help="give a run that nobody owns to a user (changing an owner that exists takes one more flag)", allow_abbrev=False)
     ra.add_argument("run_name")
     ra.add_argument("--user", required=True, help="the user who launched it")
-    ra.add_argument("--force", action="store_true", help="change the owner of a run that already has one")
+    ra.add_argument("--force", action="store_true", help="change the owner of a run that already has one")      # 116b-owner: not a confirmation switch
     ra.set_defaults(func=cmd_runs_assign)
 
     from abf_launch import cli as launch_cli

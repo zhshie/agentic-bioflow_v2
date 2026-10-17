@@ -328,12 +328,6 @@ def test_tc050_nothing_new_is_made_on_the_site(d):
                           "path_columns", "account", "tower", "files"} == {"upload_paths"}
 
 
-def test_tc027b_the_screen_shows_the_real_paths(d):
-    # the record is part of what the person says yes to
-    out = d.launch(d.a)
-    assert "上傳區真實路徑" in out["summary"] and os.path.realpath(d.area(d.a)) in out["summary"]
-
-
 # ---- US4: runs assign ----------------------------------------------------------------------------------------------------
 
 def owner_of(d, run):

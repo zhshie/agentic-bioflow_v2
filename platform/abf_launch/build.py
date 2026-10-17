@@ -291,10 +291,6 @@ def launch_screen(bundle, ce_name):
         buf = io.StringIO()
         csv.writer(buf, lineterminator="").writerow(row)
         lines.append(terminal.PREFIX + terminal.esc(buf.getvalue()))
-    if bundle.get("upload_paths"):         # 116b: what the paths in your own folder lead to now; the agent refuses the job if they lead elsewhere later
-        lines.append(terminal.PREFIX + "== 上傳區真實路徑（核可當下解開捷徑後的位置，送出時代理會再核對）==")
-        for e in bundle["upload_paths"]["paths"]:
-            lines.append(terminal.pair(e["where"], e["real"]))
     for name in ("params.yaml", "nextflow.config", "head.sh"):
         lines += terminal.block(name, bundle["files"][name])
     return lines
