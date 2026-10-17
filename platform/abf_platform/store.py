@@ -680,10 +680,20 @@ def lookup_oauth_access(tokens_path, token):
         return None
     con = connect_tokens(tokens_path)
     try:
-        row = con.execute("SELECT u.id AS user_id, u.name AS name, u.lab AS lab, t.id AS token_id FROM tokens t "
-                          "JOIN users u ON u.id = t.user_id WHERE t.token_hash = ? AND t.kind = 'oauth_access' "
+        row = con.execute("SELECT u.id AS user_id, u.name AS name, u.lab AS lab, t.id AS token_id, c.info_json AS info_json FROM tokens t "
+                          "JOIN users u ON u.id = t.user_id LEFT JOIN oauth_clients c ON c.client_id = t.label "
+                          "WHERE t.token_hash = ? AND t.kind = 'oauth_access' "
                           "AND t.revoked_at IS NULL AND t.expires_at > ? AND u.disabled_at IS NULL", (_hash(token), _now())).fetchone()
-        return dict(row) if row else None
+        if row is None:
+            return None
+        out = dict(row)
+        info = out.pop("info_json")
+        # the redirects the token's client registered; () for a client that is gone, which is vetted by nobody
+        try:
+            out["redirect_uris"] = [str(u) for u in (json.loads(info).get("redirect_uris") or ())] if info else []
+        except (ValueError, AttributeError):
+            out["redirect_uris"] = []
+        return out
     finally:
         con.close()
 

@@ -255,9 +255,9 @@ def test_tcf03_an_oauth_token_cannot_open_or_press_the_confirmation_page(w, rig)
 
 
 def test_tcf04_with_a_form_the_person_says_yes_or_no_as_with_a_pat(w, rig):
-    # TC-F04
+    # TC-F04 (the connector here is one whose redirect is claude.ai: the only kind that gets the form, see test_oauth_review.py R1)
     ann = w.user("ann")
-    out = rig.tokens_for("ann")
+    out = rig.tokens_for("ann", redirect="https://claude.ai/api/mcp/auth_callback")
     with Served(w) as s:
         _, (said_no,) = http_calls(s.url, out["access_token"], [("launch", w.in_area(ann, w.choices()))], answer=form_answer("decline"))
         assert w.jobs() == []

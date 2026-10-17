@@ -19,7 +19,7 @@ import time
 from contextlib import contextmanager
 from urllib.parse import urlparse
 
-from mcp.server.auth.provider import (AccessToken, AuthorizationCode, AuthorizationParams, RefreshToken, RegistrationError,
+from mcp.server.auth.provider import (AccessToken, AuthorizationCode, AuthorizationParams, AuthorizeError, RefreshToken, RegistrationError,
                                       TokenError, construct_redirect_uri)
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.responses import JSONResponse
@@ -37,6 +37,28 @@ REGISTRATIONS_PER_HOUR = 10         # per client address, counted over the last 
 MAX_TRACKED_ADDRESSES = 10000
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
 ALLOWED_GRANTS = ("authorization_code", "refresh_token")
+# The one place that says which connectors may be shown the client's own 送出 form (docs/PLATFORM.md): a client whose every registered
+# redirect host is on this list. A code is delivered only to a registered redirect, so a consent phished for a client whose redirect is
+# claude.ai (or this machine) gives the attacker no token; any other client gets the confirmation page only.
+FORM_REDIRECT_HOSTS = ("claude.ai", "127.0.0.1", "::1", "localhost")
+MAX_REGISTER_BODY = 16 * 1024
+MAX_CLIENT_NAME = 100
+MAX_REDIRECT_URIS = 5
+MAX_REDIRECT_URI_LENGTH = 512
+UNUSED_CLIENT_SECONDS = 86400       # a client that never exchanged a code is forgotten after this
+MAX_PENDING_PER_CLIENT = 20
+MAX_PENDING_TOTAL = 200
+
+
+def form_allowed(redirect_uris):
+    """Whether a client with these registered redirects may be shown the client's own form: it has some, and every host is on
+    FORM_REDIRECT_HOSTS (and the redirect is a valid one). No redirects (a client that is gone) is not vetted."""
+    uris = list(redirect_uris)
+    try:
+        hosts = [(urlparse(str(u)).hostname or "").lower() for u in uris]
+    except ValueError:
+        return False
+    return bool(hosts) and all(redirect_is_allowed(u) and h in FORM_REDIRECT_HOSTS for u, h in zip(uris, hosts))
 
 
 def redirect_is_allowed(uri):
@@ -95,6 +117,43 @@ class RegisterRateCap:
         await self.app(scope, receive, send)
 
 
+class RegisterBodyCap:
+    """ASGI middleware: a POST /register body over MAX_REGISTER_BODY bytes is a 413, counted as it arrives (a missing or false
+    Content-Length does not get round it), and the handler never sees it."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if not (scope["type"] == "http" and scope["path"] == "/register" and scope["method"] == "POST"):
+            await self.app(scope, receive, send)
+            return
+        chunks, size = [], 0
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                break
+            size += len(message.get("body", b""))
+            if size > MAX_REGISTER_BODY:
+                response = JSONResponse({"error": "invalid_client_metadata", "error_description": "the registration is too large"},
+                                        status_code=413, headers={"Cache-Control": "no-store"})
+                await response(scope, receive, send)
+                return
+            chunks.append(message.get("body", b""))
+            if not message.get("more_body", False):
+                break
+        body, sent = b"".join(chunks), False
+
+        async def replay():
+            nonlocal sent
+            if not sent:
+                sent = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, send)
+
+
 class PlatformOAuthProvider:
     """The SDK's OAuthAuthorizationServerProvider over tokens.db. `clock` is a parameter so a test can move time."""
 
@@ -109,6 +168,8 @@ class PlatformOAuthProvider:
     # ---- clients -----------------------------------------------------------------------------------------------------
     def _forget_idle_clients(self, con, now):
         con.execute("DELETE FROM oauth_clients WHERE COALESCE(last_used_at, created_at) < ?", (now - CLIENT_IDLE_SECONDS,))
+        con.execute("DELETE FROM oauth_clients WHERE created_at < ? AND client_id NOT IN (SELECT label FROM tokens WHERE label IS NOT NULL "
+                    "AND kind IN ('oauth_access', 'oauth_refresh'))", (now - UNUSED_CLIENT_SECONDS,))
         con.execute("DELETE FROM oauth_requests WHERE expires_at < ?", (now - 86400,))
 
     async def get_client(self, client_id):
@@ -131,6 +192,11 @@ class PlatformOAuthProvider:
         if not set(client_info.grant_types) <= set(ALLOWED_GRANTS) or list(client_info.response_types) != ["code"]:
             raise RegistrationError("invalid_client_metadata", "only grant_types authorization_code and refresh_token, and response_types code, are served")
         # This server registers public clients only (PKCE protects the code): a secret the SDK minted is not kept and not asked for.
+        if len(client_info.client_name or "") > MAX_CLIENT_NAME or len(uris) > MAX_REDIRECT_URIS or any(len(str(u)) > MAX_REDIRECT_URI_LENGTH for u in uris):
+            raise RegistrationError("invalid_client_metadata", "client_name at most %d characters, at most %d redirect_uris of at most %d characters"
+                                    % (MAX_CLIENT_NAME, MAX_REDIRECT_URIS, MAX_REDIRECT_URI_LENGTH))
+        for link in ("logo_uri", "client_uri", "tos_uri", "policy_uri"):      # links a stranger chose are not kept and never shown
+            setattr(client_info, link, None)
         client_info.token_endpoint_auth_method = "none"
         client_info.client_secret = None
         client_info.client_secret_expires_at = None
@@ -139,7 +205,8 @@ class PlatformOAuthProvider:
         try:
             with _immediate(con):
                 self._forget_idle_clients(con, now)
-                if con.execute("SELECT COUNT(*) FROM oauth_clients").fetchone()[0] >= MAX_CLIENTS:
+                if con.execute("SELECT COUNT(*) FROM oauth_clients WHERE client_id IN (SELECT label FROM tokens WHERE label IS NOT NULL "
+                               "AND kind IN ('oauth_access', 'oauth_refresh'))").fetchone()[0] >= MAX_CLIENTS:
                     raise RegistrationError("invalid_client_metadata", "too many registered connectors; try again later")
                 con.execute("INSERT INTO oauth_clients (client_id, info_json, created_at, last_used_at) VALUES (?, ?, ?, NULL)",
                             (client_info.client_id, client_info.model_dump_json(), now))
@@ -152,7 +219,12 @@ class PlatformOAuthProvider:
         now = self.clock()
         con = self._con()
         try:
-            with con:
+            with _immediate(con):
+                con.execute("DELETE FROM oauth_requests WHERE expires_at <= ?", (now,))
+                if (con.execute("SELECT COUNT(*) FROM oauth_requests WHERE client_id = ? AND decision IS NULL", (client.client_id,)).fetchone()[0]
+                        >= MAX_PENDING_PER_CLIENT
+                        or con.execute("SELECT COUNT(*) FROM oauth_requests WHERE decision IS NULL").fetchone()[0] >= MAX_PENDING_TOTAL):
+                    raise AuthorizeError("temporarily_unavailable", "too many requests are waiting for a person; try again later")
                 con.execute("INSERT INTO oauth_requests (id, client_id, redirect_uri, redirect_explicit, code_challenge, state, resource, "
                             "created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (rid, client.client_id, str(params.redirect_uri), int(params.redirect_uri_provided_explicitly),
@@ -176,6 +248,7 @@ class PlatformOAuthProvider:
         parsed = urlparse(row["redirect_uri"])
         return {"id": rid, "client_id": row["client_id"], "client_name": info.get("client_name") or "", "redirect_host": parsed.hostname or "",
                 "redirect_origin": "%s://%s" % (parsed.scheme, parsed.netloc), "decision": row["decision"],
+                "form_ok": form_allowed(info.get("redirect_uris") or ()),
                 "expired": row["expires_at"] <= self.clock()}
 
     def consent_decide(self, rid, user_id, decision):

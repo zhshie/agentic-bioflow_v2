@@ -46,6 +46,8 @@ class Caller:
     user_id: int
     name: str
     lab: str
+    auth: str = "pat"                # how the caller was proven: "pat" (a personal access token or a web login) or "connector" (a connector's token)
+    form_ok: bool = True             # whether the client's own 送出 form may be shown to this caller; a connector's token says it per client (spec 009i)
 
 
 def platform_path_for(index_path, platform_path=None):
@@ -187,10 +189,16 @@ def person_at(ctx):
     return forms.Person(ctx)
 
 
+def form_is_trusted(caller):
+    """Whether this caller may be shown the client's own form: stdio (None) and a PAT always; a connector's token only when its client
+    was vetted when the token was read (see the connector's redirect rule in docs/PLATFORM.md). The rest get the page only."""
+    return caller is None or caller.form_ok
+
+
 async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False):
     """The yes of a person for a bundle that is built and checked: through the form, else by the page; never by the caller itself."""
     caller_id = _caller_id(caller)
-    form = person is not None and person.can_ask()
+    form = person is not None and person.can_ask() and form_is_trusted(caller)
     nobody = ("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單）。請改用終端機指令 `abf-platform %s`，或用帶權杖的 HTTP 連線 "
               "(no one can say yes here: use the terminal command, or HTTP with a token)" % kind)
     if caller is None and not form:

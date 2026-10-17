@@ -180,15 +180,19 @@ def test_tcb03_a_redirect_that_is_neither_https_nor_loopback_is_refused_whole(w,
 
 def test_tcb04_the_two_hundred_and_first_client_is_refused(w, rig):
     # TC-B04
+    w.user("ann")
     cid = rig.new_client()
     now = w.clock()
-    for i in range(oauth().MAX_CLIENTS - 1):
+    uid = tokens_rows(w, "SELECT id FROM users WHERE name = 'ann'")[0][0]
+    for i in range(oauth().MAX_CLIENTS):        # the cap counts clients that completed a token exchange (ruling after the #126 review)
         tokens_sql(w, "INSERT INTO oauth_clients (client_id, info_json, created_at, last_used_at) VALUES (?, ?, ?, ?)",
                    ("filler-%d" % i, json.dumps({"client_id": "filler-%d" % i, "redirect_uris": [REDIRECT]}), now, now))
-    assert tokens_rows(w, "SELECT COUNT(*) FROM oauth_clients")[0][0] == oauth().MAX_CLIENTS == 200
+        tokens_sql(w, "INSERT INTO tokens (token_hash, created_at, kind, expires_at, user_id, label, grant_id) VALUES (?, ?, 'oauth_access', ?, ?, ?, ?)",
+                   ("h-%d" % i, now, now + 3600, uid, "filler-%d" % i, "g-%d" % i))
+    assert tokens_rows(w, "SELECT COUNT(*) FROM oauth_clients")[0][0] == oauth().MAX_CLIENTS + 1 and oauth().MAX_CLIENTS == 200
     r = rig.register()
     assert r.status_code == 400, r.text
-    assert tokens_rows(w, "SELECT COUNT(*) FROM oauth_clients")[0][0] == 200
+    assert tokens_rows(w, "SELECT COUNT(*) FROM oauth_clients")[0][0] == 201
     verifier, challenge = pkce()
     assert rig.authorize(cid, challenge).status_code == 302        # an existing client still walks
 
@@ -209,8 +213,9 @@ def test_tcb05_one_address_cannot_register_without_end(w):
 
 def test_tcb06_a_client_unused_for_thirty_days_is_gone_and_a_used_one_stays(w, rig):
     # TC-B06
+    w.user("ann")
     x = rig.new_client()
-    y = rig.new_client()
+    y = rig.tokens_for("ann")["flow"].client_id          # Y exchanged a code, so the one-day purge of unused clients does not take it
     w.clock.t += 29 * 86400
     verifier, challenge = pkce()
     assert rig.authorize(y, challenge).status_code == 302                  # Y is used on day 29

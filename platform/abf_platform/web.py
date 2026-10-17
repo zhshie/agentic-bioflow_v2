@@ -343,15 +343,20 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     def consent_page(info, sid):
         who = info["client_name"] or "(沒有名稱 unnamed)"
+        if info["form_ok"]:
+            limits = ("<p>允許之後，它可以讀你的 runs，也可以請求送出分析。送出前，它可以在 AI 程式裡跳出「送出」表單，由你本人在表單上按；"
+                      "它不能自己代按。 (It can read your runs and ask to launch; the AI app can show you a 送出 form and you press it yourself.)</p>")
+        else:
+            limits = ("<p>允許之後，它可以讀你的 runs，也可以請求送出分析；但它<strong>不能替你送出</strong>——"
+                      "每次送出或取消，都要你本人在這個網站的確認頁按「送出」。 (It can read your runs and ask to launch; it cannot send an analysis: "
+                      "each launch or cancel must be confirmed by you on this website.)</p>")
         body = ("<p>名為 <strong>%s</strong> 的連接器（程式代號 %s）要求連到這個平台，並以<strong>你的身分</strong>運作。</p>"
                 "<p>它會把你導回：<strong>%s</strong>。如果你不認得這個網站，按「拒絕」。</p>"
-                "<p>允許之後，它可以讀你的 runs，也可以請求送出分析；但它<strong>不能替你送出</strong>——"
-                "每次送出或取消，仍要你本人在確認頁按「送出」。 (It can read your runs and ask to launch; it cannot send an analysis: "
-                "you still press 送出 each time.)</p>"
+                "%s"
                 "<form method=\"post\" action=\"/consent/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
                 "<button type=\"submit\" name=\"decision\" value=\"allow\">允許</button> "
                 "<button type=\"submit\" name=\"decision\" value=\"deny\">拒絕</button></form>"
-                % (_esc(who), _esc(info["client_id"]), _esc(info["redirect_host"]), info["id"], _esc(consent_csrf(sid, info["id"]))))
+                % (_esc(who), _esc(info["client_id"]), _esc(info["redirect_host"]), limits, info["id"], _esc(consent_csrf(sid, info["id"]))))
         return _page("允許連接器 (allow a connector)", body, form_action=info["redirect_origin"])
 
     def consent_gone(info):
@@ -400,6 +405,6 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/c/{rid}", confirm_get, methods=["GET"]), Route("/c/{rid}", confirm_post, methods=["POST"]),
                             Route("/consent/{rid}", consent_get, methods=["GET"]), Route("/consent/{rid}", consent_post, methods=["POST"])]
-                    + auth_routes, middleware=[Middleware(oauth.RegisterRateCap, clock=clock)])
+                    + auth_routes, middleware=[Middleware(oauth.RegisterBodyCap), Middleware(oauth.RegisterRateCap, clock=clock)])
     app.state.csrf_token = csrf_token
     return app

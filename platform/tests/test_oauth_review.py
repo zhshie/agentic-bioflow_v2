@@ -88,13 +88,13 @@ def test_r1_the_allow_list_is_a_named_constant():
 # ---- R2: the consent text --------------------------------------------------------------------------------------------
 
 def consent_text(w, rig, redirect):
-    w.user("ann")
     path, verifier, cid = rig.start(redirect=redirect)
     rig.log_in("ann")
     return rig.c.get(path).text
 
 
 def test_r2_the_consent_text_tells_the_truth_for_each_kind_of_client(w, rig):
+    w.user("ann")
     listed = consent_text(w, rig, CLAUDE_AI)
     other = consent_text(w, rig, EVIL)
     assert "表單" in listed and "不能替你送出" not in listed

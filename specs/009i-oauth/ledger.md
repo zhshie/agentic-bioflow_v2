@@ -62,3 +62,18 @@ The discovery and registration tests were committed red first. The provider, the
 - Conflicts in CHANGELOG.md, docs/PLATFORM.md, platform/tests/test_station_envs.py resolved as the union; no assertion loosened or removed.
 - CHANGELOG: the 116b entry and the 009i entry both kept. PLATFORM.md: "Closing the gaps of 116" (116b) kept, then "Claude Desktop's custom connector" (009i); one "Not here" line.
 - tc063: subcommand set now contains both `runs` and `oauth`. tc084: help string is `{serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,launch,cancel,launches,fetch-records}` (the order cli.py registers them).
+
+## Ruling after the #126 code review (2026-10-18): done
+
+- [x] Item 1: `Caller` has `auth` ("pat" | "connector") and `form_ok`; `store.lookup_oauth_access` also returns the client's `redirect_uris`; `http_auth.BearerAuth` sets `form_ok` from `oauth.form_allowed` (every redirect host on `oauth.FORM_REDIRECT_HOSTS`; a client that is gone is not vetted); `actions._ask` offers the form only when `form_is_trusted(caller)`. The word "oauth" is not written in `actions/` (TC-H07 pins that), hence "connector". Tests `test_oauth_review.py` R1 (attacker redirect auto-accepting: `pending`, URL, zero jobs, form never shown).
+- [x] Item 2: consent text differs by `form_ok` (R2).
+- [x] Item 3: `oauth.RegisterBodyCap` (16 KiB, 413), field caps and dropped links in `register_client`, `MAX_CLIENTS` counts clients with an oauth token row, 24 h purge of never-exchanged clients, 20 per client / 200 total pending requests (`AuthorizeError temporarily_unavailable`), expired requests purged at each `/authorize` (R3).
+- [x] Item 4: `docs/PLATFORM.md` registration limits, consent wording, honest-boundary allow-list and reason.
+
+### Pins changed (old, new, reason); none is looser
+
+| Test | Old | New | Reason |
+|---|---|---|---|
+| `test_oauth_mcp.py::test_tcf04` | connector redirect `https://claude.example/cb` gets the form | connector registered with `https://claude.ai/api/mcp/auth_callback`; every assertion unchanged | the old redirect is not on the allow-list, so it now gets the page only (R1 asserts that); the same form behaviour is still proven for a vetted client |
+| `test_oauth.py::test_tcb04` | 199 fillers without tokens plus 1 real client = 200 clients, the 201st refused | 200 fillers each with an `oauth_access` row (plus the one real, unexchanged client): the next registration is refused; the existing client still walks | `MAX_CLIENTS` now counts only clients that exchanged a code; the cap is asserted at the same number |
+| `test_oauth.py::test_tcb06` | Y is "used" by an `/authorize` on day 29 and stays at day 30 | Y completed a token exchange first (`tokens_for`), then the same day-29 `/authorize`; the rest unchanged | a never-exchanged client is now purged after 24 h, so X is gone by that rule as well as the 30-day one (the assertion that X is gone still holds) |
