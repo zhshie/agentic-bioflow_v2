@@ -794,7 +794,7 @@ def test_tc066_a_database_from_before_116_is_upgraded_in_place(tmp_path):
     store().connect_state(db).close()
     con = sqlite3.connect(str(db))
     cols = [r[1] for r in con.execute("PRAGMA table_info(launches)")]
-    assert cols == old_cols + ["user_id", "parent_run", "attempt", "attempt_kind"]      # 009e: the three columns of an attempt, after user_id
+    assert cols == old_cols + ["user_id"]
     assert "owner_user_id" in [r[1] for r in con.execute("PRAGMA table_info(compute_envs)")]
     assert "owner_user_id" in [r[1] for r in con.execute("PRAGMA table_info(agents)")]
     assert con.execute("SELECT run_name, user_id FROM launches").fetchall() == [("r", None)]

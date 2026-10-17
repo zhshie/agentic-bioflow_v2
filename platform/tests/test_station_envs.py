@@ -381,7 +381,7 @@ def test_tc071_exactly_six_read_only_tools_over_stdio_and_http(tmp_path):
         stop_proc(proc)
     want = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files"]
     for ts in (tools, tools_http):
-        assert sorted(t.name for t in ts) == sorted(want + ["launch", "cancel"])
+        assert sorted(t.name for t in ts) == sorted(want + ["launch", "cancel", "resume", "relaunch"])    # 009e: plus resume and relaunch
         for t in [t for t in ts if t.name in want]:
             assert t.annotations is not None and t.annotations.read_only_hint is True
             assert t.annotations.destructive_hint is not True
@@ -431,7 +431,7 @@ def test_tc063_no_door_takes_a_job_kind_or_a_command(tmp_path, monkeypatch):
     assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "submit", "enqueue"}), words
     top_level = set(next(a for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)).choices)
     assert top_level == {"serve", "token", "agent-token", "ce", "mcp", "rebuild", "launch", "cancel", "fetch-records",
-                         "launches", "user", "pat", "web", "runs"}, top_level     # 009c: plus `web`, the confirmation page; 116b: plus `runs` (assign)
+                         "launches", "user", "pat", "web", "runs", "resume", "relaunch"}, top_level     # 009c: plus `web`, the confirmation page; 116b: plus `runs` (assign); 009e: plus `resume`, `relaunch`
     assert [(trail, w) for trail, w in seen if w in ("launch", "cancel")] == [([], "launch"), ([], "cancel")]
     assert {"ce", "agent-token", "serve", "token", "mcp", "rebuild"} <= words
 
@@ -450,9 +450,9 @@ def test_tc084_no_launch_door_anywhere(tmp_path):
     # feature 007b (TC-060): the words launch and cancel may stand only as the names of the two new subcommands, and only in
     # these three places: the one list of subcommand names (exactly this list), their two lines in the table of subcommands,
     # and the usage line of each of the two
-    names = "{serve,web,token,agent-token,user,pat,ce,mcp,rebuild,runs,launch,cancel,launches,fetch-records}"    # 009c: plus `web`; 116b: plus `runs`
+    names = "{serve,web,token,agent-token,user,pat,ce,mcp,rebuild,runs,launch,resume,relaunch,cancel,launches,fetch-records}"    # 009c: plus `web`; 116b: plus `runs`; 009e: plus `resume`, `relaunch` in registration order
     assert helptext.count(names) >= 1, "the list of subcommands is exactly the old ones plus the four new ones (and runs)"
-    helptext = helptext.replace(names, names.replace(",launch,cancel,", ","))
+    helptext = helptext.replace(names, names.replace(",launch,resume,relaunch,cancel,", ","))
     rows = re.findall(r"(?m)^ {4}(launch|cancel) {2,}\S", helptext)
     assert rows == ["launch", "cancel"], rows
     helptext = re.sub(r"(?m)^ {4}(launch|cancel)( {2,}\S)", lambda m: "    " + m.group(2), helptext)

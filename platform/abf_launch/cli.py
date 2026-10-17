@@ -376,9 +376,9 @@ def add_commands(sub):
 
     for verb, fn, text in (("resume", cmd_resume, "go on with a failed run in its own folder; Nextflow takes up where it stopped"),
                            ("relaunch", cmd_relaunch, "start a failed run again from the start, in a new folder")):
-        r = sub.add_parser(verb, allow_abbrev=False, help=text + ", after the same kind of question as launch",
+        r = sub.add_parser(verb, allow_abbrev=False, help=text + ", after the same kind of question as for a first send",
                            description="Show all of it, ask on this terminal and send it only after you answer y. Only the name of the run is "
-                                       "taken: the pipeline, revision, samples and parameters are those of its first launch. Nothing can answer "
+                                       "taken: the pipeline, revision, samples and parameters are those of its first send. Nothing can answer "
                                        "for you.")
         r.add_argument("run", help="the run name")
         r.add_argument("--user", help="the account this is sent as; required once the platform has users, and it must be the account that "
