@@ -118,6 +118,13 @@ def test_tch21_stage_strip_and_bodies(w):
     assert t.count("→") >= 1
     for needle in ("執行中", "2023-11-14"):
         assert needle in t
+    # TC-H21c: both times verbatim, each count paired with its state, on a run whose end time is known
+    done = seed(w, "run-d", "failed", ann, started=1_700_000_000, counts=dict(succeeded=3, running=2, failed=1))
+    mid = c.get("/?run=" + done).text.split('data-pane="middle"')[1].split('data-pane="right"')[0]
+    plain = re.sub(r"<[^>]+>", " ", mid)
+    assert "2023-11-14T22:13:20Z" in plain and "2023-11-14T22:15:00Z" in plain
+    for label, n in (("succeeded", 3), ("running", 2), ("failed", 1)):
+        assert re.search(r"%s\s*:\s*%d(?!\d)" % (label, n), plain), (label, n)
     for label in ("succeeded", "running", "pending"):
         assert label in t
     assert "Process terminated with an error exit status (137)" in c.get("/?run=" + fid).text
@@ -253,15 +260,17 @@ def test_tch19_long_lists(w):
 # ---- cost ----------------------------------------------------------------------------------------------------------------------
 
 def test_tch09_cost(w):
+    from abf_platform import web_board
     # TC-H09a, TC-H09b, TC-H09c, TC-N03
     ann = w.user("ann")
     seed(w, "x", "running", ann, counts=dict(succeeded=500, running=40))
     t = login(w, "ann").get("/").text
     right = t.split("本月費用")[1]
-    assert right.index("NCHC SU —") < right.index('data-stage="launch"')
+    assert right.index("SU —") < right.index('data-stage="launch"')
     assert right.index("雲端 —") < right.index('data-stage="launch"')
     box = re.search(r'data-cost="month"[^>]*>(.*?)</div>', t, re.S).group(1)
     assert not re.search(r"\d", re.sub(r"<[^>]+>", "", box)) and "<a " not in box
+    assert "NCHC" not in t and "NCHC" not in Path(web_board.__file__).read_text(encoding="utf-8")
     assert box.count("<p") == 2 or box.count("<li") == 2       # two separate lines
 
 

@@ -67,8 +67,6 @@ def test_tc069_tc070_the_account_the_login_node_and_the_relay_port_are_in_no_pro
     site_words = re.compile(r"\b(ngs[0-9]*[gGmM]?|lgn[0-9]*|nchc|taiwania|18080)\b", re.I)
     for p in code_files():
         text = "".join(l + "\n" for _, l in real_lines(p))
-        if p.name == "web_board.py":
-            text = text.replace("NCHC SU", "")      # 011a: the maintainer's own label of the cost block ("NCHC SU —"), display text only
         assert not account.search(text), p.name
         assert not site_words.search(text), (p.name, site_words.search(text).group(0))
     for f in (REPO_ROOT / "tests" / "platform_test.sh",):
