@@ -925,10 +925,10 @@ if [ "${#SEGMENTS}" -gt 8192 ]; then
     FILTERED=$(ABF_TRIG="$RE_TRIGGER" ABF_CWRE="$CW_HANDLED" ABF_LIST="$CW_LISTER" awk -F "$US" '
         BEGIN { t = ENVIRON["ABF_TRIG"]; c = ENVIRON["ABF_CWRE"]; l = ENVIRON["ABF_LIST"]
                 s = "(skipped)" FS "(skipped)" FS "__skipped__" }
-        # #110: a quoted `>` (gone from the quote-free column) in a command that can write keeps the segment;
+        # #110: any `>` in the quote-kept column keeps the segment (no command is exempt);
         # the segment after a trailing `>` is its target (`>|` is cut in two)
         p { printf "%s", b; b = ""; print; g = 0; p = 0; next }
-        $3 == "" || $3 ~ c || $2 ~ t || ($1 ~ />/ && $3 !~ /^(echo|printf|git|grep|egrep|fgrep|rg|jq)$/) { printf "%s", b; b = ""; print; g = 0; if ($2 ~ />[[:space:]]*$/) p = 1; next }
+        $3 == "" || $3 ~ c || $2 ~ t || $1 ~ />/ { printf "%s", b; b = ""; print; g = 0; if ($2 ~ />[[:space:]]*$/) p = 1; next }
         $3 ~ l { b = b $0 "\n"; next }
         { b = "" }
         !g { print s; g = 1 }
@@ -961,29 +961,6 @@ esac
 # background `&`, pipe, `||`, if/while/case/for, or a string another shell re-reads (-c,
 # eval, ssh) there means the cd does not clear (safe default: more asks, never fewer).
 RE_CD_COND='[&|(`]|(^|[^[:alnum:]_.-])(if|while|until|case|for|select|eval|ssh|-c)[[:space:]]'
-# #110: text a shell would not read as commands. Quoted text and an unquoted `#` comment are
-# dropped (a `|` or `&` inside them is text); when a quote stays open on the line the line is
-# returned unchanged (safe default: more asks, never fewer).
-strip_quoted() { # strip_quoted <text> -> REPLY
-    local s=$1 out="" c q="" i n=${#1} p=" "
-    [ "$n" -le 4000 ] || { REPLY=$s; return; }
-    for ((i = 0; i < n; i++)); do
-        c=${s:i:1}
-        if [ -n "$q" ]; then
-            if [ "$c" = "$q" ]; then q=""; p="x"
-            elif [ "$c" = '\' ] && [ "$q" = '"' ]; then i=$((i + 1)); fi
-            continue
-        fi
-        case "$c" in
-            '\') out+=" "; i=$((i + 1)) ;;
-            '"'|"'") q=$c; out+=" " ;;
-            '#') case "$p" in ' '|$'\t') break ;; esac; out+=$c ;;
-            *) out+=$c ;;
-        esac
-        p=$c
-    done
-    if [ -n "$q" ]; then REPLY=$s; else REPLY=$out; fi
-}
 # #110: a cd clears the lost folder only when it starts its own top-level command: nothing
 # joined before it by `&&`, no `builtin`/`command`/`VAR=x` in front, and (in a command with
 # several lines) no loop, function, block, group or here-doc opened between the segment that
@@ -996,8 +973,7 @@ cd_uncond() { # 0 when the segment was found and every line holding it is free o
     while IFS= read -r l; do
         [[ $l == *"$SEG"* ]] || continue
         found=0
-        strip_quoted "$l"; t=$REPLY
-        t=${t//&&/ }; t=${t//>&/ }; t=${t//&>/ }
+        t=${l//&&/ }; t=${t//>&/ }; t=${t//&>/ }
         [[ $t =~ $RE_CD_COND ]] && return 1
     done <<<"$CMD"
     [ "$found" = 0 ] || return 1
@@ -1012,13 +988,20 @@ cd_uncond() { # 0 when the segment was found and every line holding it is free o
     while [[ $t == *' ' || $t == *$'\t' ]]; do t=${t%?}; done
     case "$t" in ''|*';'|*$'\n') ;; *) return 1 ;; esac
     if [[ $pre == *$'\n'* ]] && [[ $pre =~ $RE_CD_BLOCK ]]; then return 1; fi
+    # a line ending in `&&`, `||` or `|` continues onto the cd line: the cd is then conditional or piped
+    local pl="" pt
+    while IFS= read -r l; do
+        pt=${l#"${l%%[![:space:]]*}"}
+        case "$pt" in ''|'#'*) continue ;; esac
+        pt=${pt%"${pt##*[![:space:]]}"}
+        pl=$pt
+    done <<<"$pre"
+    case "$pl" in *'&&'|*'||'|*'|') return 1 ;; esac
     return 0
 }
 # #110: every unquoted `>` target in a segment, when the folder is lost. `>>` appends and
 # `>&2` / `2>&1` write no file, so they are left; `>|`, `>&file`, a quoted target and a target
 # written with $ or a substitution are overwrites of a file whose folder is not known.
-RE_TEST2='^[[:space:]]*\[\['
-RE_TEST1='^[[:space:]]*\[[[:space:]]'
 lost_target() { # lost_target <redirect target word, quotes removed>
     [ -n "$1" ] || return 0
     case "$1" in
@@ -1030,9 +1013,7 @@ lost_target() { # lost_target <redirect target word, quotes removed>
 PEND_REDIR=0
 RE_TRAIL_GT='>[[:space:]]*$'
 lost_redirects() { # lost_redirects <segment text with quotes kept>
-    local s=$1 n i j c d q="" wq="" w pv nx amp
-    # `[[ a > b ]]` is a comparison; a single-bracket `[ a > b ]` is a real redirect (bash), so it is scanned
-    [[ $s =~ $RE_TEST2 ]] && s=${s#*]]}
+    local s=$1 n i j c d q="" wq="" w pv nx amp rw
     n=${#s}
     for ((i = 0; i < n; i++)); do
         c=${s:i:1}
@@ -1041,15 +1022,24 @@ lost_redirects() { # lost_redirects <segment text with quotes kept>
             elif [ "$c" = '\' ] && [ "$q" = '"' ]; then i=$((i + 1)); fi
             continue
         fi
+        rw=0
         case "$c" in
             '\') i=$((i + 1)); continue ;;
             '"'|"'") q=$c; continue ;;
             '>') ;;
+            # `<>file` opens the file for reading and writing, and creates it
+            '<') if [ "${s:i+1:1}" = '>' ]; then i=$((i + 1)); rw=1; else continue; fi ;;
             *) continue ;;
         esac
-        pv=""; [ "$i" -gt 0 ] && pv=${s:i-1:1}
-        case "$pv" in '>'|'&'|'<') continue ;; esac
+        pv=""; [ "$i" -gt 0 ] && [ "$rw" = 0 ] && pv=${s:i-1:1}
         nx=${s:i+1:1}; j=$((i + 1)); amp=0
+        if [ "$pv" = '&' ]; then
+            # `&>file` and `&>>file` write both streams to a file
+            [ "$nx" = '>' ] && j=$((j + 1))
+            nx=""
+        else
+            case "$pv" in '>'|'<') continue ;; esac
+        fi
         case "$nx" in
             '>') continue ;;
             '|') j=$((j + 1)) ;;
@@ -1094,9 +1084,9 @@ lost_writers() { # lost_writers <command word>
             for ((i = st; i < n; i++)); do
                 x=${W[i]}
                 case "$x" in
-                    -o|--output|-[!-]*o) i=$((i + 1)); F+=("${W[i]-}") ;;
+                    -o|--o|--ou|--out|--outp|--outpu|--output|-[!-]*o) i=$((i + 1)); F+=("${W[i]-}") ;;
                     -o?*) F+=("${x#-o}") ;;
-                    --output=*) F+=("${x#--output=}") ;;
+                    --o=*|--ou=*|--out=*|--outp=*|--outpu=*|--output=*) F+=("${x#*=}") ;;
                 esac
             done ;;
         cp)
@@ -1120,8 +1110,15 @@ lost_writers() { # lost_writers <command word>
                     --expression=*|--file=*) sc=1 ;;
                     --in-place*) ip=1 ;;
                     --*) ;;
-                    -*i*) ip=1 ;;
-                    -*) ;;
+                    -?*)
+                        # a short-option cluster: `i` takes the rest as a suffix; `e`/`f` take the
+                        # rest as the script (or the next word when nothing follows it)
+                        for ((k = 1; k < ${#x}; k++)); do
+                            case "${x:k:1}" in
+                                i) ip=1; break ;;
+                                e|f) sc=1; [ "$k" -eq $((${#x} - 1)) ] && i=$((i + 1)); break ;;
+                            esac
+                        done ;;
                     *) NO+=("$x") ;;
                 esac
             done
@@ -1135,7 +1132,11 @@ lost_writers() { # lost_writers <command word>
             done ;;
     esac
     for f in ${F[@]+"${F[@]}"}; do
-        lost_rel "$f" && lost_ask "overwrite ${f}"
+        case "$f" in
+            /*|[A-Za-z]:*|'~'|'~/'*) ;;
+            *'$'*|*'`'*) lost_ask "overwrite ${f}" ;;
+            *) lost_rel "$f" && lost_ask "overwrite ${f}" ;;
+        esac
     done
 }
 RE_REDIR_REL='(^|[^>&<])[0-9]*>[[:space:]]*([^[:space:]>&|<()/;]+)'
@@ -1163,9 +1164,6 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     # `Get-ChildItem res\ults` reads the protected `results`, which clears LISTER_OK,
     # and it must stay cleared; a copy can never raise it. And the candidates a copy
     # adds (cand_add_from_pre) are read from the state before the segment it copies.
-    # #110: this row is the backslash-stripped copy of the previous one; a `>` there is a real `>`
-    # only in the copy, so the redirect scans read the original row alone
-    IS_COPYROW=0; [ -n "$COPY" ] && IS_COPYROW=1
     if [ -n "${COPY_SAVED-}" ]; then
         VCWD=$COPY_VCWD
         if [ "$LISTER_OK" = 1 ] && [ "$COPY_LISTER" = 1 ]; then LISTER_OK=1; else LISTER_OK=0; fi
@@ -1358,20 +1356,17 @@ while IFS="$US" read -r SEG VSEG CW COPY; do
     V_NR=$VSEG;  while [[ $V_NR =~ $RE_DEVNULL ]]; do V_NR=${V_NR/"${BASH_REMATCH[0]}"/}; done
     [[ $V_NR =~ $RE_TRUNC ]] && TRUNCATE=1
     # #104: a relative `>` target overwrites a file in a folder this gate cannot name.
-    if [ "$CWD_LOST" = 1 ] && [ "$IS_COPYROW" = 0 ]; then
-        # #110: scanned with the quote state, so a `>` inside quotes is text and a quoted
-        # target is still a target; the writers below take a relative file as an argument.
+    if [ "$CWD_LOST" = 1 ]; then
+        # #110: main's quote-blind scan (#104) runs unchanged on every segment; the scans below only add.
         # `>|` is split by the splitter into `cmd >` and the target: the target opens the next segment
         if [ "$PEND_REDIR" = 1 ]; then
             PR_W=${SEG_NR#"${SEG_NR%%[![:space:]]*}"}; PR_W=${PR_W%%[[:space:]]*}
             PR_W=${PR_W//\"/}; PR_W=${PR_W//\'/}
             lost_target "$PR_W"
         fi
-        [[ $SEG_NR == *'>'* ]] && lost_redirects "$SEG_NR"
-        # a quoted `>` is text only for commands that cannot write with it (ruling 2026-10-17); for any other
-        # command word (awk, perl, python, sed, sh -c, ...) the quote-blind scan of #104 still applies
-        if [[ $SEG_NR == *">"* ]] && ! [[ $SEG_NR =~ $RE_TEST2 || $SEG_NR =~ $RE_TEST1 ]]; then
-            case "${CW##*/}" in echo|printf|git|grep|egrep|fgrep|rg|jq) ;; *) lost_redirects_blind "$SEG_NR" ;; esac
+        if [[ $SEG_NR == *'>'* ]]; then
+            lost_redirects_blind "$SEG_NR"
+            lost_redirects "$SEG_NR"
         fi
         case "${CW##*/}" in tee|sort|cp|sed|dd) lost_writers "$CW" ;; esac
     fi

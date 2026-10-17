@@ -344,18 +344,18 @@ Bash|/tmp|ask|cd -; sed -i s/a/b/ s1
 Bash|/tmp|pass|cd -; sed s/a/b/ s1
 Bash|/tmp|ask|cd -; dd if=/dev/zero of=s1 count=1
 Bash|/tmp|pass|cd -; dd if=s1 of=/tmp/o
-Bash|/tmp|pass|cd -; echo "x>y"
+Bash|/tmp|ask|cd -; echo "x>y"
 Bash|/tmp|ask|cd -; awk '$1>3' /tmp/f
-Bash|/tmp|pass|cd -; [[ a > b ]]
+Bash|/tmp|ask|cd -; [[ a > b ]]
 Bash|/tmp|ask|cd -; git log --format='a->b'
-Bash|/tmp|pass|cd -; cd /tmp # a | b⏎@D -rf s1
-Bash|/tmp|pass|cd -; cd /tmp; echo "a&b"; @D -rf s1
+Bash|/tmp|ask|cd -; cd /tmp # a | b⏎@D -rf s1
+Bash|/tmp|ask|cd -; cd /tmp; echo "a&b"; @D -rf s1
 Bash|/tmp|ask|cd -; echo "x>y"; @D -rf s1
 Bash|/tmp|ask|cd -; echo x > "s1"
 Bash|/tmp|ask|cd -; [[ a > b ]]; echo x > s1
 Bash|/tmp|ask|cd -; awk '$1>3' /tmp/f > s1
 Bash|/tmp|ask|cd -; echo x > `mktemp`
-Bash|/tmp|pass|cd -; [ a \> b ]
+Bash|/tmp|ask|cd -; [ a \> b ]
 Bash|/tmp|pass|ls > s1
 Bash|/tmp|pass|cd -; sort s1
 Bash|/tmp|pass|cd -; echo x | tee /tmp/s1
@@ -381,3 +381,18 @@ Bash|/tmp|ask|cd -; echo x &>> s1
 Bash|/tmp|pass|cd -⏎cd /tmp⏎@D -rf s1
 Bash|/tmp|pass|cd -; echo x &> /tmp/s1
 Bash|/tmp|pass|cd -; echo x 2>&1
+Bash|/tmp|ask|cd -; echo "echo hi > f" | bash
+PowerShell|/tmp|ask|Pop-Location; echo hi \> out.txt
+Bash|/tmp|ask|cd -; sed -i -es/a/b/ s1
+Bash|/tmp|ask|cd -; sed -i -nes/a/b/ s1
+Bash|/tmp|ask|cd -; sed -ni -es/a/b/ s1
+Bash|/tmp|ask|cd -; echo x | tee $F
+Bash|/tmp|ask|cd -; cp a $F
+Bash|/tmp|ask|cd -; sort -o "$F" x
+Bash|/tmp|ask|cd -; dd if=a of=$(x)
+Bash|/tmp|ask|cd -; sort --out=s1 x
+Bash|/tmp|ask|cd -; sort --o=s1 x
+Bash|/tmp|ask|cd -; sort --out s1 x
+Bash|/tmp|ask|cd -; echo x 1<> s1
+Bash|/tmp|pass|cd -; sort -o /tmp/s1 x
+Bash|/tmp|pass|cd -; echo x | tee /tmp/$F

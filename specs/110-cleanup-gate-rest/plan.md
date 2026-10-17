@@ -30,6 +30,8 @@
 7. `[[ a > b ]]` / `[ a \> b ]` comparisons are not redirects.
 8. `RE_CD_COND` ignores text after an unquoted `#` comment and inside quotes: `cd /tmp # a | b` and `cd /tmp; echo "a&b"` clear as a plain cd would.
 **Ruling 2026-10-17 after acceptance round 1:** decision 6's relief applies only when the segment's command word is text-only (`echo`, `printf`, `git`, `grep`/`egrep`/`fgrep`/`rg`, `jq`); interpreters that can write (`awk`, `perl`, `python`, `sed`, `sh -c`, …) keep asking on a quoted `>` (so `awk '$1>3'` still asks — accepted). Decision 7 covers only `[[ … ]]` and an escaped `\>`; a bare `[ a > s1 ]` is a redirect and asks.
+**Ruling after acceptance round 2 (2026-10-17):** `git` and `rg` leave the text-only list (aliases, `rebase -x`, `core.pager`, `rg --pre` can write); the list is `echo`, `printf`, `grep`, `egrep`, `fgrep`, `jq`. Also tightened: a cd after a line ending in `&&`/`||`/`|` does not clear; `&>`/`&>>` to a relative target ask under a lost folder.
+**Ruling after `/code-review` on #111 (2026-10-17): Part 2 (decisions 6–8) is dropped entirely.** Every relief tried let a real write pass that main asks about (`echo "…>f" | bash`, PowerShell `\>`, a quoted `;cd /abs`). This PR is now Part 1 only: zero ask→pass versus current main. Part 1 also gains: `sed -i` with an attached script, writer targets with `$`/`$(…)`/backticks, `sort --out=` prefixes, `<>`. Nested/wrapped writers stay a known gap.
 **Not changed:** `cd "$dir"` / `cd $(…)` still set the lost state (#104, deliberate); a relative delete through a variable (`d=s1; rm -rf $d`) stays as today (listed as a known gap).
 
 ## Changes, in order (red first)
