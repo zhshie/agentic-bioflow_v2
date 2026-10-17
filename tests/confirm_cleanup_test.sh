@@ -1090,6 +1090,20 @@ tc "/tmp" "cd -; nohup xargs tee s1"                                  ask  "TC-1
 tc "/tmp" "cd -; sudo -n cp a s1"                                     ask  "TC-112-66w sudo -n cp"
 tc "/tmp" "cd -; sudo -n tee s1"                                      ask  "TC-112-66w sudo -n tee"
 tc "/tmp" "cd -; env -i tee s1"                                       ask  "TC-112-66w env -i tee"
+# fix round 2 (TC-112-66): a backslash-escaped file name is a relative name (not an option,
+# not the home folder, not empty); main asks for all of these after a lost folder.
+tc "/tmp" "cd -; cp a \\-x"                                           ask  "TC-112-66e cp a \\-x"
+tc "/tmp" "cd -; tee \\-x"                                            ask  "TC-112-66e tee \\-x"
+tc "/tmp" "cd -; sed -i p \\-x"                                       ask  "TC-112-66e sed -i p \\-x"
+tc "/tmp" "cd -; dd of=\\~ if=a"                                      ask  "TC-112-66e dd of=\\~"
+tc "/tmp" "cd -; sed -i p \\~"                                        ask  "TC-112-66e sed -i p \\~"
+tc "/tmp" "cd -; cp --target-directory=\\~ a"                         ask  "TC-112-66e cp --target-directory=\\~"
+tc "/tmp" "cd -; cp a \\"                                             ask  "TC-112-66e cp a trailing backslash"
+tc "/tmp" "cd -; tee \\"                                              ask  "TC-112-66e tee trailing backslash"
+tc "/tmp" "cd -; sed -i p \\"                                         ask  "TC-112-66e sed -i p trailing backslash"
+tc "/tmp" "cd -; sort -o \\"                                          ask  "TC-112-66e sort -o trailing backslash"
+tc "/tmp" "cd -; dd of=\\"                                            ask  "TC-112-66e dd of= trailing backslash"
+tc "/tmp" "cd -; cp a \\ "                                            ask  "TC-112-66e cp a escaped space"
 rs() { # rs <command> -> OUT: the reason text of the gate
   OUT=$(python3 -c "import json,sys;print(json.dumps({'cwd':'/tmp','tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   OUT=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin)['hookSpecificOutput'].get('permissionDecisionReason',''))" <<<"$OUT")
