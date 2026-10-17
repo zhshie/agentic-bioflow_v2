@@ -1066,6 +1066,27 @@ tc "/tmp" "cd -; echo a | xargs cp /tmp/a"                           ask  "TC-11
 tc "/tmp" "cd -; find . -exec cp a {} \\;"                           ask  "TC-112-56 find -exec"
 tc "/tmp" "cd -; find . -execdir cp a {} \\;"                        ask  "TC-112-57 find -execdir"
 tc "/tmp" "cd -; find . -ok cp a {} \\;"                             ask  "TC-112-58 find -ok"
+# fix round (TC-112-66): a wrapper word in front of a writer must not hide it.
+# Main's cmdword skips these; lost_writers must too.
+tc "/tmp" "cd -; nohup cp a s1"                                       ask  "TC-112-66w nohup cp"
+tc "/tmp" "cd -; env cp a s1"                                         ask  "TC-112-66w env cp"
+tc "/tmp" "cd -; command cp a s1"                                     ask  "TC-112-66w command cp"
+tc "/tmp" "cd -; sudo cp a s1"                                        ask  "TC-112-66w sudo cp"
+tc "/tmp" "cd -; nice cp a s1"                                        ask  "TC-112-66w nice cp"
+tc "/tmp" "cd -; timeout 5 cp a s1"                                   ask  "TC-112-66w timeout cp"
+tc "/tmp" "cd -; exec tee s1"                                         ask  "TC-112-66w exec tee"
+tc "/tmp" "cd -; sudo tee s1"                                         ask  "TC-112-66w sudo tee"
+tc "/tmp" "cd -; env tee s1"                                          ask  "TC-112-66w env tee"
+tc "/tmp" "cd -; nohup tee s1"                                        ask  "TC-112-66w nohup tee"
+tc "/tmp" "cd -; stdbuf -oL tee s1"                                   ask  "TC-112-66w stdbuf tee"
+tc "/tmp" "cd -; builtin cp a s1"                                     ask  "TC-112-66w builtin cp"
+tc "/tmp" "cd -; time nohup cp a s1"                                  ask  "TC-112-66w time nohup cp"
+tc "/tmp" "cd -; echo a | nohup tee s1"                               ask  "TC-112-66w pipe nohup tee"
+tc "/tmp" "cd -; sudo -u x cp a s1"                                   ask  "TC-112-66w sudo -u x cp"
+tc "/tmp" "cd -; sudo nice -n 5 timeout 5 cp a s1"                    ask  "TC-112-66w chained wrappers"
+tc "/tmp" "cd -; timeout -k 1 5 cp a s1"                              ask  "TC-112-66w timeout -k"
+tc "/tmp" "cd -; sudo cp a /tmp/s1"                                   pass "TC-112-66w sudo cp absolute passes"
+tc "/tmp" "cd -; nohup xargs tee s1"                                  ask  "TC-112-66w nohup xargs"
 rs() { # rs <command> -> OUT: the reason text of the gate
   OUT=$(python3 -c "import json,sys;print(json.dumps({'cwd':'/tmp','tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
   OUT=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin)['hookSpecificOutput'].get('permissionDecisionReason',''))" <<<"$OUT")
