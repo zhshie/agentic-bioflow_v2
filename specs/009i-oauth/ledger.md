@@ -56,3 +56,9 @@ The discovery and registration tests were committed red first. The provider, the
 - `test_oauth_mcp.py::test_tci03_i04...`: added assertions (nothing removed). The replayed-code error body and the `/revoke` body are now checked for every secret of the flow (TC-I04 "responses"). The first two bodies (token, refresh) carry tokens to the client by design and are not checked.
 - `test_oauth_mcp.py::test_tch07_no_new_channel`: the source scan was nearly always true. It now asserts that no `actions/*.py`, `confirm.py` or `jobs.py` contains the word oauth at all (stricter, not looser).
 - TC-G06 (the contract was amended by the developer-agent after round 1): not fixable in code. The three pins in the section above stay as they are; whether the amendment is accepted, or the verifier re-issues G05/G06, is a ruling for the developer-agent and verifier. The executor did not touch `test-case*.md` in this round.
+
+## Merge of origin/v3 (116b `runs`)
+
+- Conflicts in CHANGELOG.md, docs/PLATFORM.md, platform/tests/test_station_envs.py resolved as the union; no assertion loosened or removed.
+- CHANGELOG: the 116b entry and the 009i entry both kept. PLATFORM.md: "Closing the gaps of 116" (116b) kept, then "Claude Desktop's custom connector" (009i); one "Not here" line.
+- tc063: subcommand set now contains both `runs` and `oauth`. tc084: help string is `{serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,launch,cancel,launches,fetch-records}` (the order cli.py registers them).
