@@ -209,7 +209,11 @@ def test_tca09_a_listing_that_cannot_be_queued_is_an_answer_not_an_exception(tmp
 def test_tca10_the_server_is_byte_for_byte_the_one_of_the_starting_point(tmp_path):
     base = json.loads(BASELINE)
     server = _server(str(tmp_path / "index.db"))
-    assert server.instructions == base["instructions"]
+    # 009g: the instructions are now the generated routing table (spec 009g, TC-602); the tools half is unchanged.
+    from abf_platform import guidance
+    assert server.instructions == guidance.routing_instructions()
+    for word in ("setup", "launch", "runs", "downstream", "finish", "read-only", "terminal"):
+        assert word in server.instructions
     tools = sorted(_tools(server), key=lambda t: t.name)
     got = [{"name": t.name, "description": t.description,
             "annotations": t.annotations.model_dump(exclude_none=True) if t.annotations else None,
@@ -516,8 +520,8 @@ def test_tcb19_the_question_and_the_terminal_check_stay_in_terminal_py():
 
 def test_tcc01_mcp_server_imports_only_actions_from_the_platform():
     src = (PKG / "mcp_server.py").read_text(encoding="utf-8")
-    # 009d: exactly one more allowed name, http_auth (the bearer check); the rule is otherwise unchanged
-    assert platform_submodules(src, "abf_platform/mcp_server.py") == {"actions", "http_auth"}
+    # 009d: http_auth (the bearer check); 009g: guidance (instructions, prompts, resources). The rule is otherwise unchanged
+    assert platform_submodules(src, "abf_platform/mcp_server.py") == {"actions", "guidance", "http_auth"}
 
 
 def test_tcc02_mcp_server_does_not_mention_launch_cancel_terminal_or_confirm():
@@ -658,5 +662,14 @@ def test_tce06_the_action_layer_reads_no_environment_and_no_switch_opens_it(tmp_
     assert _counts(plat) == before
 
 
-def test_tce07_no_prompts_on_the_server(tmp_path):
-    assert asyncio.run(_server(str(tmp_path / "index.db")).list_prompts()) == []
+def test_tce07_exactly_the_five_flow_prompts_on_the_server(tmp_path):
+    # 009g (TC-603): 009b's prompt-less server is superseded by one prompt per flow skill, text = SKILL.md body.
+    server = _server(str(tmp_path / "index.db"))
+    prompts = asyncio.run(server.list_prompts())
+    flow_dirs = sorted(d.name for d in (REPO_ROOT / "skills").iterdir() if d.is_dir() and d.name != "operational")
+    assert sorted(p.name for p in prompts) == flow_dirs == ["downstream", "finish", "launch", "runs", "setup"]
+    for name in flow_dirs:
+        raw = (REPO_ROOT / "skills" / name / "SKILL.md").read_bytes().decode("utf-8")
+        body = raw[raw.index("\n---\n", 3) + len("\n---\n"):]
+        res = asyncio.run(server.get_prompt(name))
+        assert len(res.messages) == 1 and res.messages[0].content.text == body

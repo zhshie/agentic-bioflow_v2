@@ -281,6 +281,15 @@ an entry has a date or a code block, and every entry does; it cannot see
 whether the date is of a real failure. A check that is green for everything
 proves nothing.
 
+## Guidance over the MCP URL (009g): how the client shows the prompts
+
+Needs the platform's MCP server running (`docs/PLATFORM.md` section 4) and a person at Claude Code and at Claude Desktop.
+
+1. In Claude Code add the server (`claude mcp add ...` as in PLATFORM.md section 4) and type `/` in a session. Pass: five entries of the form `/mcp__abf-platform__setup`, `...launch`, `...runs`, `...downstream`, `...finish` appear (the exact prefix is the client's), none named `operational`. Choosing one puts that flow's whole text in front of the model.
+2. Say "I want to run RNA-seq" without typing a command. Pass: the model says it is the launch flow, because the instructions it was handed on connecting list it.
+3. In Claude Desktop add the same server and look for the prompts (the attachment or "+" menu) and the resources (`skill://.../SKILL.md`). Pass: you can find and use the five prompts or, failing that, attach the skill resources. Write down where they appear and what they are called; how Claude Desktop shows them is not documented, so this note is the record.
+4. Ask the model to read `skill://launch/../operational/SKILL.md`. Pass: refused.
+
 ## When a release moves the flow files (commands → skills)
 
 Used by whoever reviews a change that moves or renames the five flow files
