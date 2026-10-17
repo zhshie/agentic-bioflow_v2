@@ -247,3 +247,79 @@ def test_f8_two_starts_at_once_end_with_one_key(w, tmp_path):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert len(got) == 8 and len(set(got)) == 1
+
+
+# ---- finding 2: over HTTP the samplesheet must be inside the caller's own upload folder ------------------------------------------------------------------
+
+CANARY_ROW = "CANARY-secret-row-5c1e"
+
+
+def area_of(w, name):
+    return w.ip.state_db.parent / "uploads" / name
+
+
+def put_sheet(w, name, rel="s.csv", text=None):
+    import shutil
+    dest = area_of(w, name) / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if text is None:
+        shutil.copy(str(w.sheet), str(dest))
+    else:
+        dest.write_text(text, encoding="utf-8")
+    return dest
+
+
+def ask(w, caller, sheet, **over):
+    _, outs = w.mcp([("launch", w.choices(samplesheet=str(sheet), **over))], caller=caller)
+    return tool_json(outs[0])
+
+
+def test_f2_a_sheet_inside_the_callers_own_area_is_accepted_and_a_relative_path_means_that_area(w):
+    ann = w.user("ann")
+    inside = put_sheet(w, "ann")
+    assert ask(w, ann, inside)["ok"] is True
+    assert ask(w, ann, "s.csv", run="run-rel")["ok"] is True
+
+
+def test_f2_a_sheet_outside_the_area_is_refused_without_echoing_paths_or_content(w, tmp_path):
+    ann = w.user("ann")
+    put_sheet(w, "ann")
+    secret = tmp_path / "private" / "secret.csv"
+    secret.parent.mkdir()
+    secret.write_text("sample,fastq_1\n%s,/data/storage/rawdata/a.fastq.gz\n" % CANARY_ROW, encoding="utf-8")
+    other = put_sheet(w, "bob", text="sample,fastq_1\n%s,/x.fq\n" % CANARY_ROW) if w.user("bob") else None
+    for path in (secret, other, "../bob/s.csv", str(area_of(w, "ann")) + "/../bob/s.csv", "/etc/passwd"):
+        out = ask(w, ann, path)
+        text = json.dumps(out, ensure_ascii=False)
+        assert out["ok"] is False and out["sent"] is False and "上傳" in out["message"], out
+        assert CANARY_ROW not in text and str(secret) not in text and "private" not in text and "root:" not in text
+        assert str(area_of(w, "bob")) not in text
+    assert w.confirmations() == []
+
+
+def test_f2_a_symlink_cannot_leave_the_area(w, tmp_path):
+    import os
+    ann = w.user("ann")
+    secret = tmp_path / "elsewhere.csv"
+    secret.write_text("sample,fastq_1\n%s,/data/storage/rawdata/a.fastq.gz\n" % CANARY_ROW, encoding="utf-8")
+    area_of(w, "ann").mkdir(parents=True)
+    try:
+        os.symlink(str(secret), str(area_of(w, "ann") / "link.csv"))
+        os.symlink(str(tmp_path), str(area_of(w, "ann") / "dir"))
+    except (OSError, NotImplementedError):
+        pytest.skip("no symlinks here")
+    for p in ("link.csv", "dir/elsewhere.csv"):
+        out = ask(w, ann, p)
+        assert out["ok"] is False and CANARY_ROW not in json.dumps(out, ensure_ascii=False)
+        assert "elsewhere" not in out["message"]
+
+
+def test_f2_stdio_keeps_reading_any_path_and_the_root_is_a_setting(w, tmp_path, monkeypatch):
+    out = tool_json(w.call("launch", w.choices(), caller=None, answer=form_answer()))      # stdio: today's behaviour
+    assert out["sent"] is True
+    ann = w.user("ann")
+    assert ask(w, ann, w.sheet, run="run-x")["ok"] is False                                 # the default root is <data dir>/uploads
+    monkeypatch.setenv("ABF_PLATFORM_UPLOADS", str(tmp_path))                               # the setting moves the root
+    (tmp_path / "ann").mkdir()
+    (tmp_path / "ann" / "s.csv").write_bytes(w.sheet.read_bytes())
+    assert ask(w, ann, "s.csv", run="run-y")["ok"] is True
