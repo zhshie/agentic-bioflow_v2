@@ -124,3 +124,24 @@
   - TC-G05's "test_station_envs.py unchanged" is narrowed to "tc086 unchanged".
   - TC-G06's allowed list adds the three pins above.
 - `openid`, `saml` and `ldap` stay banned in `cli.py`.
+
+## Ruling after the #126 code review (2026-10-18, developer-agent). Fix in this PR, each with a red test first
+1. **The form channel (ELICITED) for OAuth tokens.**
+   - `Caller` carries how the caller was proven: `auth="pat" | "oauth"`, plus for OAuth the client's redirect hosts.
+   - `_ask` offers the form only to:
+     - a PAT caller, as today (the maintainer's 009c decision);
+     - stdio;
+     - an OAuth caller whose client's registered redirect URIs all have host `claude.ai` or are loopback (127.0.0.1, ::1, localhost). The allow-list is a named constant in `oauth.py`, documented in `docs/PLATFORM.md`.
+   - Every other OAuth caller gets the PAGE path only: a pending request plus the confirmation URL, so the person presses 送出 in the browser.
+   - **Why this holds:** a code is only ever delivered to a registered redirect URI. An attacker who phishes a consent for a client whose redirect is claude.ai never receives the code. A client whose redirect is the attacker's own host never gets the form.
+   - Tests:
+     - an attacker-registered client (https://evil.example/cb) with an auto-accepting form gets `pending` and no job;
+     - a claude.ai-redirect client and a loopback client get the form;
+     - a PAT is unchanged.
+2. **Consent text is truthful.** For allow-listed clients the page says the connector can show you a 送出 form inside the AI app. For other clients it says each launch or cancel must be confirmed on this website. Remove the absolute claim.
+3. **Registration and authorize abuse.**
+   - Cap the request body at 16 KiB. Cap metadata fields: `client_name` 100 characters, at most 5 `redirect_uris` of at most 512 characters each, and drop `logo_uri`, `client_uri`, `tos_uri` and `policy_uri`.
+   - Count `MAX_CLIENTS` only over clients that completed at least one token exchange. Purge clients that never exchanged after 24 h.
+   - Cap pending `oauth_requests` at 20 per client and 200 in total. Over the cap, the answer is refused. Purge expired requests on every `/authorize`.
+   - Tests cover each cap.
+4. The `docs/PLATFORM.md` honest-boundary paragraph names the allow-list and its reason.
