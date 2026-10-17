@@ -1,5 +1,7 @@
 # The web pages after the Seqera page map: Studios, Projects and cloud compute environments
 
+> Point 1 (the page skeleton) is replaced by ADR 0009 (2026-10-17): three panes around a project's analyses.
+
 Decided by the maintainer on 2026-10-17, after reading the page-by-page list of what a Seqera
 Platform user sees (compiled for reference only; ADR 0004's terms note stands: no Seqera code or
 page text is copied, only which features exist). It adds to ADR 0006, section "What the web pages

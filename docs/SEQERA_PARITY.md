@@ -50,9 +50,9 @@ When an item is built, tick it and name the feature that did it.
 | Logs | Have | |
 | Run control | Have | |
 | Cancel | Have | |
-| Cost estimate | Build, as NCHC SU (Stage 2–3) | [ ] |
+| Cost estimate | Build, as NCHC SU and cloud money, never converted (Stage 2–3; ADR 0009) | [ ] |
 | Reports | Build ★, rendered (Stage 3) | [ ] |
-| Dashboard | Build ★ (Stage 3) | [ ] |
+| Dashboard | Build ★ (Stage 3), as the right pane, not a page (ADR 0009) | [ ] |
 | Lineage | Not needed | |
 | Notifications | Not needed | |
 
@@ -62,7 +62,8 @@ Datasets: Have.
 
 ## D. Data Explorer (5 items)
 
-Not needed: NCHC had nothing to register (`docs/SITE_ADAPTER.md`). Bucket browsing is revisited
+Not needed (ADR 0009): upload into the person's own storage plus the run's Outputs view replace it.
+NCHC had nothing to register (`docs/SITE_ADAPTER.md`). Bucket browsing is revisited
 at Stage 4.
 
 ## E. Studios (9 items)
@@ -70,7 +71,8 @@ at Stage 4.
 **Build (ADR 0008, 2026-10-17)**: a Studio is the person's own RStudio or Jupyter session on a
 compute environment, opened from the browser with a run's outputs mounted; it is the path for
 `downstream` without AI. Seqera refuses Studios on a Slurm compute environment (measured,
-`docs/SITE_ADAPTER.md`), so where ours runs on NCHC is decided in the Studios feature's plan. Until
+`docs/SITE_ADAPTER.md`), so where ours runs on NCHC is decided in the Studios feature's plan. RStudio and Jupyter both, on the person's own computer by default, shown inside the web page
+(ADR 0009). Until
 then the IDE equivalent stays: Have (the user's own IDE). The other Studios items are not counted
 individually.
 
@@ -107,7 +109,7 @@ Credentials: Have. Secrets: Have.
 
 ## H. Organisations, workspaces, teams, roles, SSO (7 items)
 
-Not needed. The simplified two-role lab (PI / member, ADR 0005): Build ★ (Stage 2). [ ]
+Not needed. The simplified two-role lab (PI / member, ADR 0005): Build ★ (Stage 2), postponed by ADR 0009: v3 has one role. [ ]
 
 ## I. Wave and Fusion (3 items)
 
@@ -130,7 +132,7 @@ Not needed (Wave is AGPL-3.0; Fusion needs a Seqera licence even outside Platfor
 |---|---|---|
 | Resource optimisation | Have (to re-evaluate without Seqera) | |
 | Audit log | Not needed | |
-| Billing | Build, as NCHC SU | [ ] |
+| Billing | Build, as NCHC SU and cloud money; a monthly cloud cap per person (ADR 0009) | [ ] |
 | Notifications | Not needed | |
 | Nextflow version selection | Have | |
 | Data privacy | Have | |
