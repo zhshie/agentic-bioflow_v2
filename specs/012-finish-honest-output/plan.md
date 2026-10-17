@@ -27,6 +27,13 @@
 6. No exit-code change, no refusal, no new hook, no change to which entries go in.
 7. zh-TW / en intro texts (`scripts/intro/*/finish.txt`) unchanged unless they quote the old line.
 
+**Round 3 rulings (2026-10-17, after contract review):**
+- Facts correction: the per-entry Results placeholder on main is the visible line `[GAP: Results for '<id>' not written yet - …]` (~`:300-302`, after #32), not an HTML comment. N counts those lines.
+- The older block format (`parse_kv_blocks`, ~`:150-160`) does not return `status` today. It is extended to also return `status` when a block has a `status:` line — the only parser change; which entries are parsed and which sections are written stay the same. Without it, an older-format plan with `status: accepted` would be falsely reported as `not accepted … (none)`. Add a test with the older format + `status: accepted` (no `not accepted` line) and + `status: proposed` (listed).
+- N = 0 with entries present (only id-less rows) prints `scaffold: 0 Results section(s) and the Discussion still need prose`.
+- Rows without an id get no `not accepted` line (they already have their own GAP).
+- The status is printed as written (trimmed); the accepted test is case-insensitive.
+
 ## Changes, in order (red first)
 1. Red: in `tests/build_package_test.sh` add cases: (a) two accepted entries → output contains `scaffold: 2 Results section(s) and the Discussion still need prose`; (b) one accepted + one `proposed` + one `rejected` + one with no status → output has a `not accepted` line for the three (the empty one shows `(none)`), Results still has four sections, N is 4; (b2) `Accepted` / ` accepted ` count as accepted; (c) all accepted → no `not accepted` line; (d) README mentions scaffold. Run → red; record in the ledger.
 2. Implement in `scripts/build_package.sh`.
