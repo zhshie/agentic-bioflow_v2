@@ -1169,7 +1169,7 @@ lw_target() { # lw_target <file name> <1 when quoted>
     lost_target "$1" "$2"
     if [[ $1 == *[[:space:]]* ]]; then
         read -ra P <<<"$1"
-        for p in "${P[@]}"; do lost_target "$p" "$2"; done
+        for p in ${P[@]+"${P[@]}"}; do lost_target "$p" "$2"; done
     fi
     return 0
 }
@@ -1293,7 +1293,8 @@ lw_cmd() { # lw_cmd <index of the command word> <0|1 unknown appended arguments>
                 for ((; k < ${#NO[@]}; k++)); do lw_add "${NO[k]}" 0; done
                 # The #110 gate cut every word at a space, so the words of a script that has
                 # spaces in it (`'s/a b/c/'`, `'1 d'`) were read as file names: they still ask.
-                for x in "${SCR[@]}"; do
+                for ((j = 0; j < ${#SCR[@]}; j++)); do
+                    x=${SCR[j]}
                     [[ $x == *[[:space:]]* ]] && lw_add "${x#*[[:space:]]}" 0
                 done
             fi ;;
