@@ -918,6 +918,9 @@ RE_TRIGGER="$RE_TRIGGER|($RE_TAR_RM)|($RE_ZIP_MV)|($RE_RCLONE)|($RE_LN_F)|($RE_I
 # #110: the writers and redirect forms the lost-folder check reads (sort -o; a `>` that ends the
 # segment, because the splitter cuts `>|` and a quoted target leaves nothing after it; `>&file`).
 RE_TRIGGER="$RE_TRIGGER|(^[[:space:]]*sort[[:space:]].*(-[A-Za-z]*o|--output))|(>[[:space:]]*$)|(>&[[:space:]]*[^[:space:]0-9-])|(-(exec|execdir|ok|okdir)[[:space:]])"
+# #112: a segment that starts with a wrapper (sudo, env, nohup, timeout ...) is kept: the
+# command word cmdword() finds after `sudo -n` or `timeout -k 1 5` is not always the command.
+RE_TRIGGER="$RE_TRIGGER|(^[[:space:]]*(sudo|env|command|builtin|exec|nohup|nice|stdbuf|timeout)([[:space:]]|$))"
 # The PowerShell listers and pipeline filters (LISTER_OK below) matter only to a
 # Move-Item they feed, which is in CW_HANDLED: a run of them is held back and
 # kept only when a kept segment follows it. Kept always, `sort` and `ls` made
