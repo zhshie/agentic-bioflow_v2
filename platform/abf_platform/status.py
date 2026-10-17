@@ -71,14 +71,15 @@ def _view(con, row, at, detail):
     return view
 
 
-def list_runs(index_path, at=None):
+def list_runs(index_path, at=None, names=None):
+    """Every run, newest first; with `names` (a set of run names) only the runs of those names."""
     at = now() if at is None else at
     con = _open_readonly(index_path)
     if con is None:
         return []
     try:
         rows = con.execute("SELECT * FROM runs ORDER BY started_at DESC, rowid DESC").fetchall()
-        return [_view(con, r, at, detail=False) for r in rows]
+        return [_view(con, r, at, detail=False) for r in rows if names is None or r["run_name"] in names]
     finally:
         con.close()
 

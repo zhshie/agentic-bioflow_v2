@@ -203,9 +203,9 @@ def test_tc016_the_environment_chosen_for_me_is_my_own(d):
     from abf_platform import compute_envs
     compute_envs.set_primary(d.state, "lab-a")
     out = d.launch(d.b, ce_name=None)
-    assert out["ok"] is True and re.search(r"環境: b1", out["summary"]) and "環境: lab-a" not in out["summary"]
+    assert out["ok"] is True and re.search(r"環境: b1(?![a-z0-9])", out["summary"]) and "環境: lab-a" not in out["summary"]
     out = d.launch(d.a, run="run-two", ce_name=None)
-    assert out["ok"] is True and "環境: lab-a" in out["summary"] and not re.search(r"環境: b1", out["summary"])
+    assert out["ok"] is True and "環境: lab-a" in out["summary"] and not re.search(r"環境: b1(?![a-z0-9])", out["summary"])
 
 
 def test_tc017_primary_is_per_owner(d):
@@ -418,7 +418,7 @@ def test_tc034_two_users_need_the_owner_flag(tmp_path, monkeypatch):
 def test_tc035_an_owner_can_be_reassigned(d):
     # TC-035
     rc, out = d.w.ip.run("ce", "create", "--name=x1", "--platform=slurm-platform", "--work-dir=/data/x", "--head-queue=normal",
-                         "--owner=alice")
+                         "--owner=alice", "--agent=agent-x")
     assert rc == 0, out
     assert d.call("get_compute_env", {"name": "x1"}, caller=d.a)["name"] == "x1"
     rc, out = d.w.ip.run("ce", "update", "x1", "--owner=bob")
@@ -793,7 +793,10 @@ def test_tc068_no_new_way_to_log_in(w):
     # TC-068
     client = w.web()
     assert {r.path for r in client.app.routes} == {"/login", "/logout", "/c/{rid}"}
-    for name in ("http_auth.py", "cli.py", "web.py"):
-        src = (PLATFORM_DIR / "abf_platform" / name).read_text(encoding="utf-8")
-        assert not re.search(r"oauth|openid|saml|ldap", src, re.I), name
-    assert "lookup_pat" in (PLATFORM_DIR / "abf_platform" / "http_auth.py").read_text(encoding="utf-8")
+    page = (PLATFORM_DIR / "abf_platform" / "web.py").read_text(encoding="utf-8")
+    assert set(re.findall(r"store\.(\w+)", page)) == {"MAX_PASSWORD_CHARS", "MIN_PASSWORD_CHARS", "WEB_SESSION_SECONDS", "check_web_password",
+                                                     "create_web_session", "default_tokens_path", "end_web_session", "set_meta",
+                                                     "web_session_user"}
+    assert not re.search(r"oauth|openid|saml|ldap", (PLATFORM_DIR / "abf_platform" / "cli.py").read_text(encoding="utf-8"), re.I)
+    auth = (PLATFORM_DIR / "abf_platform" / "http_auth.py").read_text(encoding="utf-8")
+    assert set(re.findall(r"store\.(\w+)", auth)) == {"lookup_pat", "default_tokens_path"}

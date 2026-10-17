@@ -301,6 +301,10 @@ Needs the platform running (`abf-platform serve`, `abf-platform mcp --http`, `ab
 5. **Claude Code kit.** With `extensions/claude-code-kit/settings.json` merged into your Claude Code settings, calling `launch` or `cancel` asks you first. Remove the rule: the platform still queues nothing without your yes (the rule is a second layer, not the gate).
 6. **Browser.** The cookie is `HttpOnly` and `SameSite=Strict` (developer tools, Application, Cookies); behind an https address it is also `Secure`. Five wrong passwords for one name lock that name for a minute.
 
+## Owner binding (116): the reviewer checks the rewritten pins
+
+This one is read, not run. Open `specs/116-owner-binding/ledger.md` next to the diff of `platform/tests/`. Pass: every existing test that was changed is listed there with the old expectation, the new one and the reason; no assertion was deleted, skipped or loosened (a changed expectation must say what the new rule makes true instead); and `git diff <base> -- platform/tests` shows no test removed. Then, with two real users, check once by hand that one cannot see the other's environment, agent, run or upload folder over MCP and over the page.
+
 ## When a release moves the flow files (commands → skills)
 
 Used by whoever reviews a change that moves or renames the five flow files

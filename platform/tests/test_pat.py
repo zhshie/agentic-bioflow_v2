@@ -18,7 +18,7 @@ import pytest
 from helpers import (Clock, Platform, PLATFORM_DIR, db_bytes, free_port, mcp_call, mcp_http_call, pkg_env, run_cli,
                      start_cli, stop_proc, tool_json, wait_port)
 from test_actions_layer import READ_NAMES, WRITE_NAMES, imported_names, platform_submodules, action_refs
-from test_launch_platform import bundle, setup, sql
+from test_launch_platform import bundle, own_all, setup, sql
 from test_actions_layer import _cancel_bundle
 from test_station_platform import agent_token, bearer, state_db
 
@@ -354,9 +354,12 @@ def test_tcb08_b09_a_valid_pat_gives_the_six_tools_and_the_stdio_answers(tmp_pat
     plat, _ = _three_runs(tmp_path)
     tokens = plat.tokens
     st = _store()
-    pat = st.create_token(tokens, kind="pat", user_id=st.create_user(tokens, "alice", "lab-x"))
+    uid = st.create_user(tokens, "alice", "lab-x")
+    pat = st.create_token(tokens, kind="pat", user_id=uid)
     from abf_platform import status
     wid = status.list_runs(plat.index, time.time())[0]["id"]
+    from helpers import own_runs       # 116: the three runs are alice's, as the hand-off record says, so her HTTP answers are the stdio answers
+    own_runs(state_db(plat), uid, [r["name"] for r in status.list_runs(plat.index, time.time())])
     calls = [("list_runs", {}), ("get_run", {"run_id": wid}), ("list_compute_envs", {}), ("list_agents", {})]
     env = pkg_env(ABF_PLATFORM_DB=plat.index)
     _, via_stdio = mcp_call(env, calls)
@@ -579,6 +582,7 @@ def test_tcd08_a_terminal_launch_with_a_caller_records_the_user(tmp_path):
     tokens = tmp_path / "tk.db"
     uid = st.create_user(tokens, "alice", "lab-x")
     u = _caller(uid)
+    own_all(plat, uid)      # 116: a caller may use only what is theirs
     before = sql(plat, "SELECT COUNT(*) FROM jobs")[0][0]
     cid, jid = actions.launch(state_db(plat), "lab-a", bundle("run-one"), confirmed_by=actions.TERMINAL, caller=u, clock=clock)
     assert sql(plat, "SELECT COUNT(*) FROM jobs")[0][0] == before + 1
@@ -590,8 +594,10 @@ def test_tcd09_a_terminal_cancel_with_a_caller_records_the_user(tmp_path):
     # TC-D09
     from abf_platform import actions
     plat, _, clock = setup(tmp_path)
+    cb = _cancel_bundle(plat)
+    own_all(plat, 5)        # 116: the environment, its agent and the launch are the caller's own
     before = sql(plat, "SELECT COUNT(*) FROM jobs")[0][0]
-    cid, jid = actions.cancel(state_db(plat), "lab-a", _cancel_bundle(plat), confirmed_by=actions.TERMINAL,
+    cid, jid = actions.cancel(state_db(plat), "lab-a", cb, confirmed_by=actions.TERMINAL,
                               caller=_caller(5), clock=clock)
     assert sql(plat, "SELECT COUNT(*) FROM jobs")[0][0] == before + 1
     assert sql(plat, "SELECT caller_user_id, kind FROM confirmations WHERE id = ?", (cid,)) == [(5, "cancel")]
@@ -607,7 +613,10 @@ def test_tcd10_the_terminal_passes_caller_none_and_the_row_is_null(tmp_path):
     assert len(calls) == 2
     for c in calls:
         kw = {k.arg: k.value for k in c.keywords}
-        assert isinstance(kw.get("caller"), ast.Constant) and kw["caller"].value is None
+        if c.func.attr == "cancel":      # 116: a cancel at the terminal still names no account
+            assert isinstance(kw.get("caller"), ast.Constant) and kw["caller"].value is None
+        else:                            # a launch at the terminal passes the account named with --user, None when there is no user at all
+            assert isinstance(kw.get("caller"), ast.Name) and kw["caller"].id == "caller"
     plat, _, clock = setup(tmp_path)
     cid, _ = actions.launch(state_db(plat), "lab-a", bundle("run-one"), confirmed_by=actions.TERMINAL, clock=clock)
     assert sql(plat, "SELECT caller_user_id FROM confirmations WHERE id = ?", (cid,)) == [(None,)]
@@ -624,6 +633,7 @@ def test_tcd11_an_old_platform_db_gets_the_column_in_place(tmp_path):
     con.commit()
     assert "caller_user_id" not in [r[1] for r in con.execute("PRAGMA table_info(confirmations)")]
     con.close()
+    own_all(plat, 9)        # 116: a caller may use only what is theirs
     cid, _ = actions.launch(state_db(plat), "lab-a", bundle("run-one"), confirmed_by=actions.TERMINAL,
                             caller=_caller(9), clock=clock)
     assert sql(plat, "SELECT caller_user_id FROM confirmations WHERE id = 'old1'") == [(None,)]
@@ -678,11 +688,12 @@ def test_tcf03_f04_the_users_table_has_no_role_and_both_labs_see_the_same(tmp_pa
                                                                   "password_hash"]    # 009c: the one new column, the web password hash; still no role
     plat, _ = _three_runs(tmp_path / "x")
     t2 = plat.tokens
-    q1 = st.create_token(t2, kind="pat", user_id=st.create_user(t2, "alice", "lab-a"))
-    q2 = st.create_token(t2, kind="pat", user_id=st.create_user(t2, "bob", "lab-b"))
+    ua, ub = st.create_user(t2, "alice", "lab-a"), st.create_user(t2, "bob", "lab-b")
+    q1 = st.create_token(t2, kind="pat", user_id=ua)
+    q2 = st.create_token(t2, kind="pat", user_id=ub)
     from test_station_platform import make_ce
-    make_ce(plat)
-    make_ce(plat, name="lab-b")
+    make_ce(plat, owner_user_id=ua)                              # 116: an environment is its owner's
+    make_ce(plat, name="lab-b", agent="a2", owner_user_id=ub)
     calls = [(n, {}) for n in ("list_runs", "list_compute_envs", "list_agents")] + [("get_compute_env", {"name": "lab-b"})]
     env = pkg_env(ABF_PLATFORM_DB=plat.index)
     port = free_port()
@@ -693,8 +704,11 @@ def test_tcf03_f04_the_users_table_has_no_role_and_both_labs_see_the_same(tmp_pa
         _, b = mcp_http_call("http://127.0.0.1:%d/mcp" % port, calls, token=q2)
     finally:
         stop_proc(proc)
-    assert [tool_json(x) for x in a] == [tool_json(x) for x in b]
-    assert len(tool_json(a[1])["compute_envs"]) == 2
+    # 116: this was "both labs see the same"; no lab shares anything now: each sees its own environment and neither sees the other's
+    assert [e["name"] for e in tool_json(a[1])["compute_envs"]] == ["lab-a"]
+    assert [e["name"] for e in tool_json(b[1])["compute_envs"]] == ["lab-b"]
+    assert tool_json(a[0]) == tool_json(b[0]) == {"runs": []}      # the three runs have no launch record, so they are nobody's here
+    assert tool_json(a[3])["found"] is False and tool_json(b[3])["name"] == "lab-b"
 
 
 def test_tcf05_a_pat_does_not_expire_and_there_is_no_rotate(tmp_path):
@@ -728,7 +742,10 @@ def test_tcd14_tool_bodies_stay_one_call_with_caller_and_read_the_http_auth_cont
         call = call.value if isinstance(call, ast.Await) else call
         assert isinstance(call.func, ast.Attribute) and call.func.value.id == "actions" and call.func.attr == fn.name
         kw = {k.arg: k.value for k in call.keywords}
-        assert list(kw) == ["caller"] and isinstance(kw["caller"], ast.Call) and kw["caller"].func.id == "_caller"
+        # 116: the two run tools also say where the hand-off record is (a run is its launcher's), by the one name the server was built with
+        assert list(kw) == (["caller", "platform_path"] if fn.name in ("list_runs", "get_run") else ["caller"])
+        assert isinstance(kw["caller"], ast.Call) and kw["caller"].func.id == "_caller"
+        assert "platform_path" not in kw or (isinstance(kw["platform_path"], ast.Name) and kw["platform_path"].id == "platform_path")
         assert not [n for n in ast.walk(fn) if isinstance(n, (ast.If, ast.Try, ast.For, ast.While))]
 
 

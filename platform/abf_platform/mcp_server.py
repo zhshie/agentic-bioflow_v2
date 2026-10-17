@@ -36,14 +36,14 @@ def build_server(index_path, platform_path=None):
                  description="List the Nextflow runs the platform knows, newest first, each with its name, status "
                              "(running, succeeded, failed or lost), start time and task numbers.")
     def list_runs(ctx: Context) -> dict:
-        return actions.list_runs(index_path, caller=_caller(ctx))
+        return actions.list_runs(index_path, caller=_caller(ctx), platform_path=platform_path)
 
     @server.tool(name="get_run", annotations=_READ_ONLY,
                  description="One run by its id: status, times, task numbers, task numbers per process, and the "
                              "failed tasks with their exit code and error message; a failed run also has failure_reason, "
                              "Nextflow's own words for why it failed, when it gave any.")
     def get_run(ctx: Context, run_id: str) -> dict:
-        return actions.get_run(index_path, run_id, caller=_caller(ctx))
+        return actions.get_run(index_path, run_id, caller=_caller(ctx), platform_path=platform_path)
 
     @server.tool(name="list_compute_envs", annotations=_READ_ONLY,
                  description="List the compute environments: name, type, credential name, status, message, primary, "

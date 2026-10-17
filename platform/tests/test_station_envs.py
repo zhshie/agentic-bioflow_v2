@@ -517,7 +517,7 @@ def banned_schema_words(db):
             names.append(t.lower())
     con.close()
     # 009d: identity (user, lab) is feature 009 (ADR 0006); roles stay out until 010
-    allowed = {"users", "user_id", "caller_user_id", "label", "lab", "name", "disabled_at"}
+    allowed = {"users", "user_id", "caller_user_id", "owner_user_id", "label", "lab", "name", "disabled_at"}    # 116: owner_user_id names an owner, not a login
     return [(word, n) for word in ("user", "role", "org", "team", "member", "login", "password", "email", "session", "cookie")
             for n in names if word in n and n not in allowed]
 

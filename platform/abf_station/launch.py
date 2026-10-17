@@ -209,6 +209,15 @@ def _check_revision(revision):
                           "(a tag or a full commit, never a branch)" % str(revision)[:60])
 
 
+def path_cells(rows, path_columns):
+    """(row number, column number, cell) of every cell of a checked samplesheet that is read as a path: a cell of a path column
+    (named, or one of the usual names) or any cell that starts with /. Empty cells are not paths. Numbers count from 1 and the header is row 1."""
+    explicit = set(path_columns or [])
+    path_cols = {i for i, h in enumerate(rows[0]) if h in explicit or DEFAULT_PATH_COLUMN.match(h)}
+    return [(r, c + 1, cell) for r, row in enumerate(rows[1:], 2) for c, cell in enumerate(row)
+            if cell != "" and (c in path_cols or cell.startswith("/"))]
+
+
 def _check_samplesheet(rows, path_columns, roots):
     f = "samplesheet"
     if not isinstance(rows, list) or len(rows) < 2:
@@ -226,19 +235,13 @@ def _check_samplesheet(rows, path_columns, roots):
     unknown = explicit - set(clean[0])
     if unknown:
         raise BundleError("%s: 沒有名為 %s 的欄 (no such column)" % (f, sorted(unknown)[0]))
-    path_cols = {i for i, h in enumerate(clean[0]) if h in explicit or DEFAULT_PATH_COLUMN.match(h)}
-    for r, row in enumerate(clean[1:], 2):
-        for c, cell in enumerate(row):
-            if not (c in path_cols or cell.startswith("/")):
-                continue
-            if cell == "":
-                continue
-            where = "%s 第 %d 列第 %d 欄（%s）" % (f, r, c + 1, clean[0][c][:40])
-            problem = rules.path_problem(cell)
-            if problem:
-                raise BundleError("%s: %s" % (where, rules.path_reason("路徑", problem)))
-            if not rules.inside(rules.normalize(cell), roots):
-                raise BundleError("%s: 路徑在允許讀取的範圍之外 (outside the allowed read roots)" % where)
+    for r, c, cell in path_cells(clean, path_columns):
+        where = "%s 第 %d 列第 %d 欄（%s）" % (f, r, c, clean[0][c - 1][:40])
+        problem = rules.path_problem(cell)
+        if problem:
+            raise BundleError("%s: %s" % (where, rules.path_reason("路徑", problem)))
+        if not rules.inside(rules.normalize(cell), roots):
+            raise BundleError("%s: 路徑在允許讀取的範圍之外 (outside the allowed read roots)" % where)
     return clean
 
 

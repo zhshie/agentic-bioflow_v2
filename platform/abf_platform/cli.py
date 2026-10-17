@@ -93,8 +93,16 @@ def cmd_agent_token_new(args):
     if not _AGENT_NAME.match(args.name):
         _err("rejected: an agent name is letters, digits, _ . - (1 to 64 characters)")
         return 1
-    token = store.create_token(store.default_tokens_path(), kind="agent", agent_name=args.name)
-    _say("New agent token for %s (it is shown once and cannot be shown again; only its hash is kept):" % args.name)
+    tokens = store.default_tokens_path()
+    uid = None
+    if args.user is not None:
+        uid = store.user_id_of(tokens, args.user)
+        if uid is None:
+            _err("rejected: no such user: %s (沒有這個使用者); add one with: abf-platform user add" % args.user)
+            return 1
+    token = store.create_token(tokens, kind="agent", agent_name=args.name, user_id=uid)
+    _say("New agent token for %s%s (it is shown once and cannot be shown again; only its hash is kept):" % (
+        args.name, " of user %s" % args.user if args.user else ""))
     _say(token)
     _say("Put it in a file that only you can read (chmod 600) and start the agent with --token-file <that file>.")
     return 0
@@ -240,7 +248,25 @@ def _fields_from_args(args, partial):
         if getattr(args, attr, None) is not None:
             fields[key] = getattr(args, attr)
     fields["config"] = _config_from_args(args)
+    if args.owner is not None or not partial:
+        fields["owner_user_id"] = _owner_id(args.owner)
     return fields
+
+
+def _owner_id(name):
+    """The user id an environment belongs to (116): the user named by --owner; without it the only user there is, or nobody when there
+    are no users yet. With two or more users the flag is required."""
+    tokens = store.default_tokens_path()
+    if name is not None:
+        user = store.user_by_name(tokens, name)
+        if user is None:
+            raise compute_envs.CEError("no such user: %s (沒有這個使用者)" % name)
+        return user["user_id"]
+    users = store.user_names(tokens)
+    if len(users) > 1:
+        raise compute_envs.CEError("there is more than one user, so say whose environment this is with --owner NAME "
+                                   "(有多位使用者，請用 --owner 名字 指定這個環境是誰的)")
+    return next(iter(users)) if users else None
 
 
 def _queue_first_preflight(state, ce):
@@ -298,9 +324,11 @@ def cmd_ce_update(args):
 
 
 def cmd_ce_list(args):
-    for ce in compute_envs.list_all(store.default_platform_path()):
-        _say("%s%s  %s  %s  %s" % (ce["name"], " (primary)" if ce["primary"] else "", ce["platform"], ce["status"],
-                                    ce["agent"] or "-"))
+    state = store.default_platform_path()
+    owner_of, names = compute_envs.owners(state), store.user_names(store.default_tokens_path())
+    for ce in compute_envs.list_all(state):
+        _say("%s%s  %s  %s  %s  owner %s" % (ce["name"], " (primary)" if ce["primary"] else "", ce["platform"], ce["status"],
+                                              ce["agent"] or "-", names.get(owner_of.get(ce["name"])) or "(none: local only)"))
     return 0
 
 
@@ -374,6 +402,7 @@ def cmd_rebuild(args):
 
 
 def _add_ce_fields(p):
+    p.add_argument("--owner", help="the user this environment belongs to (default: the only user; required when there are several)")
     p.add_argument("--description")
     p.add_argument("--credentials", help="the NAME of a credential (the credential itself stays with the agent)")
     p.add_argument("--agent", help="the agent that serves this environment")
@@ -421,6 +450,7 @@ def build_parser():
     asub = a.add_subparsers(dest="agent_token_command", required=True)
     an = asub.add_parser("new", help="issue a token for one agent name and show it once")
     an.add_argument("name")
+    an.add_argument("--user", help="the user this agent belongs to; the agent then belongs to that user, and nobody else's token can take it")
     an.set_defaults(func=cmd_agent_token_new)
     ar = asub.add_parser("revoke", help="revoke every token of an agent name")
     ar.add_argument("name")
@@ -491,6 +521,17 @@ def build_parser():
     return p
 
 
+ADOPTING = ("serve", "web", "mcp", "ce")
+
+
+def adopt_orphans():
+    """What a start does first (116): with exactly one user, the environments, agents and launches that nobody owns become his."""
+    index = store.default_index_path()
+    store.assign_orphans(store.default_platform_path(index), store.default_tokens_path(index))
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    if args.command in ADOPTING:
+        adopt_orphans()
     return args.func(args)

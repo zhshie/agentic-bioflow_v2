@@ -16,8 +16,10 @@ class World:
     """One platform data folder (an available environment, an agent with facts), plus users, MCP calls and the web page."""
 
     def __init__(self, tmp_path, monkeypatch):
+        from abf_platform import store
         self.ip = Inproc(tmp_path / "ip", monkeypatch)
-        self.data = LaunchData(self.ip)
+        self.uploads = store.uploads_root(self.ip.state_db)
+        self.data = LaunchData(self.ip, read_root=[str(self.uploads)])       # 116: over HTTP a path cell must lie in the caller's folder, which the environment may read
         self.tmp = tmp_path
         self.monkeypatch = monkeypatch
         self.clock = Clock(time.time())
@@ -28,6 +30,7 @@ class World:
     def user(self, name, password=PASSWORD):
         from abf_platform import actions, store
         uid = store.create_user(self.ip.tokens, name, "lab-x")
+        store.assign_orphans(self.ip.state_db, self.ip.tokens)     # 116: the first person to exist owns what the setup made (the migration does the same)
         if password is not None:
             store.set_web_password(self.ip.tokens, name, password)
         return actions.Caller(uid, name, "lab-x")
@@ -39,15 +42,50 @@ class World:
         c.update(over)
         return c
 
+    def move_into_area(self, src, dest, area):
+        """Copy a samplesheet to `dest`, each absolute path in it moved under `area` (116: over HTTP every path cell must lie in the
+        caller's own folder). The cell keeps its whole old path below the folder, so two cells stay two cells."""
+        import csv
+        from pathlib import Path
+        dest = Path(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with open(src, newline="", encoding="utf-8") as f:
+            rows = list(csv.reader(f))
+        with open(dest, "w", newline="", encoding="utf-8") as f:
+            out = csv.writer(f, lineterminator="\n")
+            for i, row in enumerate(rows):
+                out.writerow(row if i == 0 else [str(area) + c if c.startswith("/") else c for c in row])
+        return dest
+
+    def env_for(self, caller):
+        """The environment this caller launches on: `lab-a` for its owner (and for stdio), else an environment of their own, made
+        on first use in the shape of lab-a with an agent of their own (116: nobody launches on somebody else's)."""
+        from abf_platform import agents, compute_envs
+        if caller is None or self.sql("SELECT owner_user_id FROM compute_envs WHERE name = 'lab-a'")[0][0] == caller.user_id:
+            return "lab-a"
+        name, agent = "lab-" + caller.name, "agent-" + caller.name
+        if not self.sql("SELECT 1 FROM compute_envs WHERE name = ?", (name,)):
+            base = compute_envs.get(self.ip.state_db, "lab-a")
+            compute_envs.create(self.ip.state_db, {"name": name, "platform": base["platform"], "agent": agent,
+                                                   "owner_user_id": caller.user_id, "config": base["config"]})
+            con = sqlite3.connect(str(self.ip.state_db))
+            with con:
+                con.execute("UPDATE compute_envs SET status = 'available', checked_ok = 1 WHERE name = ?", (name,))
+            con.close()
+            agents.register(self.ip.state_db, agent, "0.1.0", time.time, facts=self.data.facts, owner_user_id=caller.user_id)
+        return name
+
     def in_area(self, caller, args):
-        """Over HTTP a samplesheet must be in the caller's own upload folder (review finding 2): put a copy of the given file there."""
-        import shutil
+        """Over HTTP a samplesheet must be in the caller's own upload folder (review finding 2), and so must every path in it (116):
+        put a copy of the given file there, and launch on an environment the caller owns (the first user owns lab-a)."""
         from pathlib import Path
         src = Path(args["samplesheet"])
-        dest = self.ip.state_db.parent / "uploads" / caller.name / src.name
+        area = self.ip.state_db.parent / "uploads" / caller.name
+        dest = area / src.name
         if src.is_file() and not dest.exists():
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(str(src), str(dest))
+            self.move_into_area(src, dest, area)
+        if args.get("ce_name") == "lab-a":
+            args = dict(args, ce_name=self.env_for(caller))
         return dict(args, samplesheet=str(dest))
 
     def mcp(self, calls, caller=None, answer=None, raw=False):

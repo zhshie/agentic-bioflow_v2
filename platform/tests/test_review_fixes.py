@@ -268,7 +268,7 @@ def put_sheet(w, name, rel="s.csv", text=None):
     dest = area_of(w, name) / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     if text is None:
-        shutil.copy(str(w.sheet), str(dest))
+        w.move_into_area(w.sheet, dest, area_of(w, name))        # 116: the paths in it must lie in the folder too
     else:
         dest.write_text(text, encoding="utf-8")
     return dest
@@ -326,7 +326,8 @@ def test_f2_stdio_keeps_reading_any_path_and_the_root_is_a_setting(w, tmp_path, 
     assert ask(w, ann, w.sheet, run="run-x")["ok"] is False                                 # the default root is <data dir>/uploads
     monkeypatch.setenv("ABF_PLATFORM_UPLOADS", str(tmp_path))                               # the setting moves the root
     (tmp_path / "ann").mkdir()
-    (tmp_path / "ann" / "s.csv").write_bytes(w.sheet.read_bytes())
+    w.move_into_area(w.sheet, tmp_path / "ann" / "s.csv", tmp_path / "ann")                 # 116: and the environment must be able to read it
+    assert w.ip.run("ce", "update", "lab-a", "--read-root=%s" % tmp_path)[0] == 0
     assert ask(w, ann, "s.csv", run="run-y")["ok"] is True
 
 
