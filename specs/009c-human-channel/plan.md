@@ -50,3 +50,14 @@
 How you log into the confirmation page in a browser:
 - **(recommended) Log in once with your username + personal token, the browser remembers you for 12 hours** (a signed cookie; only its hash is stored). This is also the login the later web pages use. It undoes 009d's new "no session/cookie" ban in tc086 for exactly one `web_sessions` table.
 - Paste your personal token every time you confirm (no cookie, but clumsy on a phone).
+
+## Decided 2026-10-17 (round 2): web password set only at a terminal
+The maintainer first chose the token login above; after the contract review showed an AI holding the PAT could log in and approve, he answered 「好的」 to: a separate web password, set with `abf-platform user passwd` (needs a real TTY, typed by the person), kept only as a slow hash (scrypt) in the users table; the web login takes name + this password, never a PAT; `Authorization: Bearer` never logs into the web (TC-B14). Cookie 12 h. Honest boundary written into the constitution and `docs/PLATFORM.md`: an AI that can run commands on the person's own machine can do what the person can; the gate stops AI clients that reach the platform only over MCP.
+
+Technical rulings by the developer-agent on the contract review's points 2-5:
+- Pending confirmations live in the `confirmations` table with added columns `state` (pending / confirmed / void), `channel`, `confirmed_at`, `expires_at`, `ce_name`, `bundle_json`; `_check_confirmation` additionally requires `state = confirmed` (a tightening); existing rows are upgraded as confirmed / TERMINAL.
+- The pending row keeps the full bundle and `ce_name` so the page can enqueue.
+- MCP `launch` takes the same choices the terminal command takes (pipeline, revision, samplesheet path, params, ce_name, run name); the bundle and screen builder move from `abf_launch` into `actions` (shared, output unchanged). Elicitation lives in one module `abf_platform/elicit.py`; new actions `request_launch`, `request_cancel`, `approve`, `find_approved`, signatures listed in the ledger; `launch` / `cancel` signatures unchanged.
+- The page is a separate Starlette app served by `abf-platform web` (own process, loopback, own port; `--public-url` sets the base the MCP answer names). The receiver's ROUTES_V3 is unchanged.
+- Enqueue failure after approval: the row goes void with the reason; the person retries from the AI (new pending). Signing key kept in the platform data dir (mode 600). Cookie HttpOnly, SameSite=Strict, Secure when not loopback. Login failures limited to 5 per minute per name.
+- tc086's single exception: table `web_sessions` (`id_hash`, `user_id`, `created_at`, `expires_at`) and the users table's `password_hash` column, in platform.db only.
