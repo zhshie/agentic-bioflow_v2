@@ -33,3 +33,4 @@ No other existing test was edited, deleted, skipped or loosened (TC-D05). One fi
 - `docs/ROADMAP.md` still says the parity test "arrives with 011a"; that file is not mine to edit.
 - No change to `actions/`, `jobs.py`, `mcp_server.py`, `store.py`, `hooks/`, `.claude/` (TC-N07, TC-K5).
 - Round 2 (plan ruling option B): cost label `SU —` / `雲端 —` (TC-H09b, now also asserts no "NCHC" in page or `web_board.py`); `test_tch21_stage_strip_and_bodies` now asserts both times and each count paired with its state (TC-H21c); the tc069/tc070 exemption is removed.
+- Round 2 fix: docs/TESTING.md step 1 (TC-V01) now says "SU —" to match the page.

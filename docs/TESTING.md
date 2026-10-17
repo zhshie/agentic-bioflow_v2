@@ -307,7 +307,7 @@ Needs `abf-platform web` on loopback, a data folder with e2e runs of the four st
 
 **Visual check (TC-V01 to TC-V05).**
 
-1. Log in as the first user and open `/`. Take a screenshot (TC-V01). Pass: three columns; left "我的 run" newest first; right "本月費用" with "NCHC SU —" and "雲端 —" on two lines, then five groups.
+1. Log in as the first user and open `/`. Take a screenshot (TC-V01). Pass: three columns; left "我的 run" newest first; right "本月費用" with "SU —" and "雲端 —" on two lines, then five groups.
 2. Click a succeeded run and take a screenshot (TC-V02). Pass: the stage strip stands on results; status, times and a progress bar show.
 3. Click a failed run and take a screenshot (TC-V03). Pass: the failed state and the failure reason in Nextflow's words.
 4. Turn the screenshot of step 1 black and white (TC-V04). Pass: the four states still differ by symbol and text (▶ ✓ ✗ ⏸).
