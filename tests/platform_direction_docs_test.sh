@@ -253,7 +253,7 @@ inn "TC-022: stage table has a Done when column"                  "$STG" '| Done
 inn "TC-022: stage 0 is docs (direction recorded)"                "$STG" '| 0 | **Direction recorded**'
 inn "TC-022: stage 1 is the station agent (feature 007)"          "$STG" '| 1 | **Station agent** (feature 007)'
 inn "TC-022: stage 2 is platform core (008-010)"                  "$STG" '| 2 | **Platform core** (features 008–010)'
-inn "TC-022: stage 3 is web (011-014)"                            "$STG" '| 3 | **Web** (features 011–014)'
+inn "TC-022: stage 3 is web (011-014)"                            "$STG" '| 3 | **Web** (features 011–014, 016)'
 inn "TC-022: 014 is the platform's chat, user-chosen model, MCP tools only" "$STG" "014: the platform's chat, connecting to the model the user chooses (their own API key or a local model) and calling only the MCP tools of 009"
 inn "TC-022: stage 4 is cloud compute"                            "$STG" '| 4 | **Cloud compute**'
 inn "TC-022: stage 5 is model-neutral shipping"                   "$STG" '| 5 | **Model-neutral shipping**'
@@ -287,7 +287,7 @@ cnt=$(printf '%s\n' "$WL" | grep -cE '^\| ' || true)
 inn "TC-023: old row rewritten: host reaches launch/delete only through tools that carry their own gate" "$WL" 'A host reaches launch and delete only through tools that carry their own gate'
 nin "TC-023: ...the old 'may query but never launch or delete' wording is gone" "$WL" 'may query but never'
 cnt16=$(printf '%s\n' "$WL" | grep -cE '^[|]' || true)
-[ "${cnt16:-0}" = 16 ] && ok "TC-025: waiting list has 16 table lines (14 rows + header + separator)" || bad "TC-025: waiting list has 16 table lines" "$cnt16 lines"
+[ "${cnt16:-0}" = 17 ] && ok "TC-025: waiting list has 17 table lines (15 rows + header + separator)" || bad "TC-025: waiting list has 17 table lines" "$cnt16 lines"
 # old stage numbers are gone: nothing waits for a stage that no longer exists
 if printf '%s\n' "$WL" | grep -qE '\| (6|7) \|[[:space:]]*$'; then bad "TC-023: no row waits for stage 6 or 7"; else ok "TC-023: no row waits for stage 6 or 7"; fi
 
@@ -389,7 +389,7 @@ has "TC-059: README.md still has 'Constitution 2.0.0'"             README.md 'Co
 CHATC=$(sec "$C" '^### 3[.]0[.]0 [(]2026-10-08[)]' '^##+ ')
 # (a) the chat is a Stage 3 web page (014 in ROADMAP), not a separate product
 has "TC-060a: ADR 0004: the chat is a page of the web (Stage 3)"   "$ADR4" 'It is a page of the web (Stage 3)'
-has "TC-060a: ROADMAP: 014 is the platform's chat inside Stage 3"  "$RM" '| 3 | **Web** (features 011–014)'
+has "TC-060a: ROADMAP: 014 is the platform's chat inside Stage 3"  "$RM" '| 3 | **Web** (features 011–014, 016)'
 has "TC-060a: ROADMAP positioning: the platform's own chat"        "$RM" "from the platform's own chat, with the model it chooses, or from the harness it already uses"
 # (b) the user picks and pays for the model
 has "TC-060b: ADR 0004: user picks the model and pays (API key or local model)" "$ADR4" 'the user picks the model and pays for it (their own API key, or a local model)'
@@ -468,14 +468,14 @@ inn "4.1.0 TC-016: 009: Skills over MCP endpoint"                      "$R2" 'th
 inn "4.1.0 TC-016: 009: skills/ copied into the package"               "$R2" '`skills/` copied into the package'
 inn "4.1.0 TC-016: 009: the relay sending events to a public address"  "$R2" 'the relay sending events to a public address'
 inn "4.1.0 TC-017: 008 is unchanged"                                   "$R2" "008: Tower-compatible receiver for the \`nf-tower\` plugin's events, kept as a rebuildable index."
-inn "4.1.0 TC-017: 010 is unchanged"                                   "$R2" '010: the two-role lab'
-inn "4.1.0 TC-017: Stage 2 done-when is unchanged"                     "$R2" 'A student in Claude Desktop runs a 16S analysis end to end from conversation, the PI sees it on the web, and nothing goes through Seqera'
+inn "4.1.0 TC-017: 010 is postponed (ADR 0009)"                                   "$R2" '010: postponed (ADR 0009)'
+inn "4.1.0 TC-017: Stage 2 done-when: the student sees it on the web"                     "$R2" 'A student in Claude Desktop runs a 16S analysis end to end from conversation, the student sees it on the web, and nothing goes through Seqera'
 nin "4.1.0 TC-017: the old 'every write tool carries its own confirmation' is gone" "$R2" 'every write tool carries its own confirmation'
-inn "4.1.0 TC-018: 011 matches the actions one to one"                 "$R3" '011: dashboard and run detail, matching the actions one to one (parity test)'
-inn "4.1.0 TC-018: 012 matches the actions one to one"                 "$R3" 'SU estimate with a cap, matching the actions one to one (parity test)'
-inn "4.1.0 TC-018: 013 matches the actions one to one"                 "$R3" 'the delivery package, matching the actions one to one (parity test)'
+inn "4.1.0 TC-018: 011 matches the actions one to one"                 "$R3" '011a–e), matching the actions one to one (parity test)'
+inn "4.1.0 TC-018: 012 matches the actions one to one"                 "$R3" '(012a–d); cost shown per compute environment (NCHC SU and cloud money apart), a cloud cap per person per month (the number is set when an account opens), and no NCHC SU cap in dev mode; matching the actions one to one (parity test)'
+inn "4.1.0 TC-018: 013 matches the actions one to one"                 "$R3" 'the finished page with the delivery package (013a–b), matching the actions one to one (parity test)'
 inn "4.1.0 TC-019: 014 is verbatim"                                    "$R3" "014: the platform's chat, connecting to the model the user chooses (their own API key or a local model) and calling only the MCP tools of 009"
-inn "4.1.0 TC-020: Stage 3 done-when opens with a member with no AI tool" "$R3" "A lab member with no AI tool completes setup → launch → runs → rendered reports → the package from the web pages alone (figures from scripts are made in the platform's chat or in a harness); Two members of the trial lab"
+inn "4.1.0 TC-020: Stage 3 done-when opens with a person with no AI tool" "$R3" "A person with no AI tool completes setup → launch → running → results → downstream (in a Studio) → finished from the web alone; Two members of the trial lab"
 nin "4.1.0 TC-021: no Stage 3 sentence gives figures to the web pages"  "$R3" 'web pages? (make|draw|plot)'
 inn "4.1.0 TC-022: the v2 and v3 paragraph, verbatim"                  "$STG" 'v2 and v3 (2026-10-15, ADR 0006): `main` is the v2 line until v3.0.0; v3 is built on the branch `v3`. v2 takes bug fixes and changes that make the Safety Net stricter, released as 2.17.x only when a fix affects a user. Line A is unchanged:'
 
@@ -590,7 +590,7 @@ inn "W0 TC-029: ...(Seqera terms)"                               "$OQ" 'not for 
 inn "W0 TC-029: ...(NCHC M6)"                                    "$OQ" 'NCHC (M6'
 inn "W0 TC-029: ...(TWCC)"                                       "$OQ" 'TWCC: how a lab without an NSTC project pays'
 OQ9=$(sec "$RM" '^### Open questions from ADR 0009' '^##+ ')
-inn "W0 TC-030: asks how a hosted account is created"            "$OQ9" 'account is created'
+inn "W0 TC-030: asks how a hosted account is created"            "$OQ9" 'is an account created'
 inn "W0 TC-031: asks about runs with no recorded person"         "$OQ9" 'no recorded person'
 inn "W0 TC-032: asks whether uploads/downloads pass through the hosted platform" "$OQ9" 'pass through the hosted platform'
 inn "W0 TC-033: asks whether each resume/relaunch needs the confirmation page" "$OQ9" 'resume or relaunch'
