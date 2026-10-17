@@ -32,7 +32,11 @@ exists.
   seen the full launch command and confirmed it, through a channel a person operates: the
   terminal, the form of the person's MCP client, or the platform's confirmation page as the
   same logged-in user (the three are the only ones; a pending request, a token, or any answer
-  the model itself can give is none of them). A file that submits is allow-listed by the
+  the model itself can give is none of them). A form answer is accepted from whatever MCP
+  client holds the person's token and declares forms, so a client program an AI controls can
+  answer it: the token is what must be kept where an AI cannot read it. Over stdio there is no
+  caller, so the same-user check does not apply there; over HTTP and on the page there always
+  is one. A file that submits is allow-listed by the
   check together with the test that refuses an unconfirmed launch; nothing else submits. After
   the hand-off, everything known about the run comes from Nextflow's records. Where the backend
   is Seqera, the command layer follows Seqera's nouns (compute environment, then pipelines →
@@ -472,6 +476,15 @@ I.2 and the Safety Net's launch rule now say which channels count as a person's 
   before it opens a database; a pending request is never a confirmation (`state = confirmed` is
   required by the queue); a request that was declined, expired or refused by the queue is void
   for good.
+- What the MCP tools do, exactly: `launch` and `cancel` build the terminal's bundle and screen and
+  write a pending request. When the client answers its form with an accepted 送出 = true, that
+  same call confirms the request and queues the job (channel ELICITED). Otherwise the call only
+  leaves the pending request and names the page, whose button (channel PAGE) is pressed by the
+  user who made it, after which a repeated call returns the job. The same-user check (`caller` of
+  the request equals the user who pressed) applies to the page and to HTTP; stdio has no caller,
+  so it does not apply there, and stdio can say yes only through a form. If the queue refuses
+  after a yes, the request is void for good but its row keeps the channel and `confirmed_at`, so
+  the audit still shows that a person said yes.
 - I.2 gains the check that this amendment exists to hold: an unconfirmed launch is refused
   through the MCP tool *and* through the web route, not only by the action function.
 - The Safety Net's launch rule names both its holders: `hooks/confirm_launch.sh` in the Claude
@@ -480,7 +493,10 @@ I.2 and the Safety Net's launch rule now say which channels count as a person's 
   the gate.
 - The honest boundary, written here and in `docs/PLATFORM.md`: an AI that can run commands on the
   person's own machine can do what the person can, including typing at the person's terminal or
-  reading the person's browser. The gate stops the AI clients that reach the platform only over
+  reading the person's browser. The form is open to any MCP client that holds the person's token
+  and declares forms, over HTTP too (the maintainer decided on 2026-10-17 to keep it that way,
+  「不好」to dropping it: 維持網路連線也能用對話框按), so a client program an AI controls can
+  answer it; the token is the thing to protect. The gate stops the AI clients that reach the platform only over
   MCP, which is what a platform shared by several people has to stop.
 
 **Sync Impact Report.** Updated in this pull request, together: `docs/PRINCIPLES.md` (the reasoning
