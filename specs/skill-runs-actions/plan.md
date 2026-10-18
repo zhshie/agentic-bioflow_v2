@@ -17,3 +17,11 @@ In `skills/runs/SKILL.md`, every step that today reads run state through `tw` (S
 
 ## Out of scope
 Other skills (one PR each, later). platform/ code. hooks/. CHANGELOG.md is NOT edited (other lanes). docs/PLATFORM.md not edited.
+
+## Rulings after acceptance round (developer-agent, 2026-10-18)
+- S1 Status mapping (v3 get_run/list_runs only return running, succeeded, failed, lost). Keep the six branch headings (tests pin them) and put one mapping line under each: SUBMITTED = the launch was confirmed but the run is not in `list_runs` yet (say "已送出、還沒開始", check again later; never wait forever — after 3 checks tell the person); RUNNING = running; FAILED = failed; SUCCEEDED = succeeded; CANCELLED = failed whose facts say a cancel was sent (Nextflow reports a cancelled run as failed, docs/PLATFORM.md); UNKNOWN = lost (three heartbeats silent) or any other value.
+- S2 Fix the contradiction: resume = same folder, finished tasks come back from the cache; relaunch = new folder, from the start. Correct the RUNNING section's sentence.
+- S3 get_run gives no work-folder path for a failed task. Where the skill needs `.command.err` / Jev triage input, say plainly "v3 尚未提供 task 的資料夾路徑" and list it in the ledger as owed (a platform tool to add later). Do not invent a path.
+- S4 Agree with the verifier's reading: steps that call scripts which use `tw` internally (task_health.sh, tune_resources.sh, relaunch_with_override.sh, runs_board.sh, agent_ctl.sh) stay, each marked "v3 尚未提供" and listed as owed. The scripts are not changed here.
+- S5 Add one manual step to docs/TESTING.md under the runs/009e section: ask the AI, following the new skills/runs/SKILL.md, about one failed and one running run on a test platform; check it uses list_runs/get_run, never `tw`, and that every cancel/resume/relaunch waits for the person's yes.
+- S6 Keep tests/column_output_relay_rule.sh and tests/jev_test.sh anchors green; if a pinned name is removed, update that test per rule 4 and log it in the ledger.
