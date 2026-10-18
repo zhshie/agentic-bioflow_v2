@@ -2,7 +2,8 @@
 
 <!--
 Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after the plan, before any code.
-There is no spec.md for this task; `specs/keep-submissions/plan.md` carries the maintainer's words, the rulings (1-6, R1-R13), and the five examples.
+There is no spec.md for this task; `specs/keep-submissions/plan.md` carries the maintainer's words, the rulings (1-6, R1-R16), and the five examples.
+Revised 2026-10-18 after "Rulings after acceptance round 1" (R14, R15, R16): TC-052 narrowed, TC-056 to TC-059, TC-064 to TC-066, TC-094 and TC-095 added, TC-074 and TC-093 reworded. No other TC changed meaning; no id was renumbered.
 -->
 
 **規格**：`specs/keep-submissions/plan.md`（本任務沒有 spec.md，計畫即規格）　**總覽**：`test-case-overview.md`
@@ -15,7 +16,7 @@ There is no spec.md for this task; `specs/keep-submissions/plan.md` carries the 
 - **例外**：出錯、缺東西、使用者做了不該做的事時，系統怎麼反應（拒絕、提示、停下）。
 - **不在範圍**：計畫明講這次不做的事；測試確認它真的沒做。
 
-名詞：「內容」＝一筆送出紀錄裡的 `bundle_json`（當時要跑什麼）和 `screen_text`（使用者當時看到並同意的畫面文字）。「稽核欄位」＝紀錄本身（誰、何時、哪一種、狀態）。「未送出」＝狀態是 `void`（作廢）或 `pending`（等待中）且已逾時的申請。新增的測試全部寫在 `platform/tests/test_keep_submissions.py`，每個測試用註解寫出它對應的 TC 編號（計畫 R13）。本表所有「自動」都指這個檔案，除非另外寫明。
+名詞：「內容」＝一筆送出紀錄裡的 `bundle_json`（當時要跑什麼）和 `screen_text`（使用者當時看到並同意的畫面文字）。「稽核欄位」＝紀錄本身（誰、何時、哪一種、狀態）。「未送出」＝狀態是 `void`（作廢）或 `pending`（等待中）且已逾時的申請。「工作」＝`jobs` 表的一列，平台交給叢集代理去做的一件事（啟動、取消…），它自己也留一份排隊時的內容副本。新增的測試全部寫在 `platform/tests/test_keep_submissions.py`，每個測試用註解寫出它對應的 TC 編號（計畫 R13）。本表所有「自動」都指這個檔案，除非另外寫明。
 
 ## User Story 1 — 已確認送出的內容不會被時間清掉（優先度 P1）
 
@@ -71,25 +72,32 @@ There is no spec.md for this task; `specs/keep-submissions/plan.md` carries the 
 | TC-040 | R1（固定的工具清單） | 功能 | `test_human_channel.py`（約 158 行）、`test_guidance.py`（約 397 行）、`test_actions_layer.py`（約 28 行）裡的 MCP 工具清單 | 讀這些清單，並列出平台實際註冊的工具 | 每份清單恰好比 main 多一個 `forget`，其餘一個字不變；實際註冊的工具也包含 `forget` | 自動 |
 | TC-041 | R9 | 功能 | R1 的取消申請有兩筆：一筆是 A 的，一筆是另一個人 B 的（兩筆都指名 R1，都有內容） | A 透過 MCP 對 R1 執行 `forget` 並同意 | A 的那筆被清掉；B 的那筆內容不動 | 自動 |
 
-## User Story 4 — 現在不能刪的時候（優先度 P1）
+## User Story 4 — 現在不能刪的時候，與不用等的時候（優先度 P1）
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
 | TC-050 | 例子 5；規則 3；R7 | 例外 | 擁有者的 R1 正在跑（狀態 running），內容在 | 擁有者透過 MCP 要求 `forget R1` | 被拒絕，回答同時有中文和英文說明「還在跑，不能刪」；資料庫一個字都沒變 | 自動 |
 | TC-051 | R7 | 例外 | R1 的狀態是 lost（失聯，叢集上可能還在跑） | 擁有者要求 `forget R1` | 被拒絕，內容與工作紀錄都沒變 | 自動 |
-| TC-052 | R7 | 例外 | R1 已送出啟動工作，但 run 索引裡還沒有 R1（`get_run` 回 found:false，而啟動工作存在） | 擁有者要求 `forget R1` | 被拒絕，回答「這個 run 還在準備中，不能刪除 (the run is still starting)」；沒有任何變動 | 自動 |
+| TC-052 | R7；R15 | 例外 | R1 的啟動工作狀態是排隊中（queued），run 索引裡還沒有 R1（`get_run` 回 found:false） | 擁有者要求 `forget R1` | 被拒絕，回答「這個 run 還在準備中，不能刪除 (the run is still starting)」；沒有任何變動 | 自動 |
 | TC-053 | R7 | 例外 | R1 狀態已是 succeeded，但它有一筆 `jobs` 還在排隊（queued，例如一個取消工作） | 擁有者要求 `forget R1` | 被拒絕，沒有任何變動 | 自動 |
 | TC-054 | R7 | 例外 | R1 狀態已是 succeeded，但它有一筆 `jobs` 已被代理領走（claimed） | 擁有者要求 `forget R1` | 被拒絕，沒有任何變動 | 自動 |
 | TC-055 | R7；R5 | 例外 | R1 正在跑 | 在終端機執行 `abf-platform forget R1` | 同樣被拒絕（終端機沒有擁有者檢查，但狀態檢查照樣有），資料庫一個字都沒變 | 自動 |
+| TC-056 | R15 | 例外 | R1 的啟動工作狀態是已被代理領走（claimed），run 索引裡還沒有 R1 | 擁有者要求 `forget R1` | 被拒絕，回答同 TC-052 的「還在準備中」那句；沒有任何變動 | 自動 |
+| TC-057 | R15 | 功能 | R1 的啟動工作被代理拒絕了（`refused`），R1 從來沒進過 run 索引；確認紀錄與工作紀錄都有內容 | 擁有者要求 `forget R1`，同意 | 允許（不是「還在準備中」，也不是「查無」）；確認紀錄與工作那份內容被清掉，稽核欄位保留，有 `forgotten_at` | 自動 |
+| TC-058 | R15 | 功能 | R1 的啟動工作失敗了（`error`），R1 從來沒進過 run 索引；有內容 | 擁有者要求 `forget R1`，同意 | 同 TC-057：允許、內容被清掉、稽核保留 | 自動 |
+| TC-059 | R15 | 功能 | R1 的啟動工作已逾時（`expired`），R1 從來沒進過 run 索引；有內容 | 擁有者要求 `forget R1`，同意 | 同 TC-057：允許、內容被清掉、稽核保留 | 自動 |
 
-## User Story 5 — 刪除之後，別的地方不能壞（優先度 P2）
+## User Story 5 — 刪除之後，別的地方不能壞；已知的限制（優先度 P2）
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
 | TC-060 | R10；規則 4 | 功能 | R1 的啟動工作已逾時（expired）；擁有者之後執行了 `forget R1`；之後代理才遲到地回報這個工作的結果 | 代理送出遲到的結果 | 系統照常收下，沒有當掉；仍能從被留下的 run 名處理（`_apply_handover` 讀得到 `R1`） | 自動 |
 | TC-061 | R10 | 功能 | 同 TC-060，但是 R1 的取消工作（cancel_run） | 代理送出遲到的結果 | 系統沒有當掉（讀不到取消用的 Slurm 編號時，不去改任何別的 run） | 自動 |
-| TC-062 | 規則 4 | 功能 | `specs/keep-submissions/ledger.md` | 讀它 | 若 009e（續跑／原樣重跑）還不在 v3：ledger 寫下「讀已確認 bundle 的人要在哪裡把『內容已被擁有者刪除 (content deleted by its owner)』當成拒絕訊息」的接入點；同時 diff 裡沒有 009e 的程式碼 | 自動 |
-| TC-063 | R12 | 功能 | `specs/keep-submissions/ledger.md` | 讀它 | 記下 `forget` 是欠下的網頁對等功能（`docs/ROADMAP.md:98`），因為目前沒有網頁路由 | 自動 |
+| TC-062 | 規則 4 | 功能 | `specs/keep-submissions/ledger.md` | 讀它 | 若 009e（續跑／原樣重跑）還不在 v3：ledger 寫下「讀已確認 bundle 的人要在哪裡把『內容已被擁有者刪除 (content deleted by its owner)』當成拒絕訊息」的接入點；同時 diff 裡沒有 009e 的程式碼 | 自動（驗收者讀檔與 diff） |
+| TC-063 | R12 | 功能 | `specs/keep-submissions/ledger.md` | 讀它 | 記下 `forget` 是欠下的網頁對等功能（`docs/ROADMAP.md:98`），因為目前沒有網頁路由 | 自動（驗收者讀檔） |
+| TC-064 | R16 | 功能 | `specs/keep-submissions/ledger.md` | 讀它 | 記下三項已知限制：（一）工作自己那份副本仍在工作結束 7 天後隨該列被刪；（二）`result_json`／`late_result_json` 是結果不是送出內容，`forget` 不清；（三）沒有網頁刪除。三項都明說「維護者可再議」或等同意思 | 自動（驗收者讀檔） |
+| TC-065 | R16（二） | 功能 | R1 的工作有 `result_json` 與 `late_result_json` 內容；R1 已結束 | `forget R1` 並同意 | 這兩欄一個字都沒變（`forget` 只清送出內容，不清結果） | 自動 |
+| TC-066 | R16（一） | 功能 | 一筆已確認的啟動（表單確認），它的工作 8 天前就結束；確認紀錄有內容 | 之後再排入一個新工作（會順手清掉結束超過 7 天的工作列） | 該舊工作列被清掉（現行行為原樣保留），但那筆已確認紀錄的 bundle 與畫面文字還在 | 自動 |
 
 ## User Story 6 — 文件與測試紀錄（優先度 P2）
 
@@ -99,7 +107,7 @@ There is no spec.md for this task; `specs/keep-submissions/plan.md` carries the 
 | TC-071 | 規則 6 | 功能 | `docs/PLATFORM.md` | 讀新動作的說明 | 有 `forget`：終端機 `abf-platform forget RUN` 與 MCP 工具 `forget`；只有擁有者；跑到一半不能刪；刪了無法復原；紀錄保留 | 自動 |
 | TC-072 | R4 | 功能 | `docs/PLATFORM.md` | 找「the job keeps its own copy of what was queued」那一句 | 那一句已改成也說明 `forget` 會把這份工作自己留的副本一起清掉 | 自動 |
 | TC-073 | 規則 6 | 功能 | `CHANGELOG` | 讀最上面的新條目 | 有一條說明：已確認內容不再被時間清掉、新增 `forget` | 自動 |
-| TC-074 | R13 | 功能 | `platform/tests/test_keep_submissions.py` | 讀檔案 | 本合約每一條標「自動」的 TC 編號，都在這個檔案某個測試的註解裡出現；沒有寫了編號卻空的或只檢查檔案存在的測試 | 自動（驗收者讀檔） |
+| TC-074 | R13 | 功能 | `platform/tests/test_keep_submissions.py` | 讀檔案 | 本合約每一條標「自動」、驗證方式是這個檔案的 TC 編號，都在某個測試的註解裡出現（不含由驗收者讀檔／讀差異判斷或用既有腳本的 TC-010、062、063、064、084、090、091、093、095）；沒有寫了編號卻空的或只檢查檔案存在的測試 | 自動（驗收者讀檔） |
 
 ## 不在範圍（計畫「Out of scope」與相關禁止事項）
 
@@ -118,4 +126,6 @@ There is no spec.md for this task; `specs/keep-submissions/plan.md` carries the 
 | TC-090 | 第 2 條（不得留第二份 run 狀態） | 功能 | 這個分支 | 執行 `bash tests/no_second_run_state_test.sh` | 通過；新增的 `forgotten_at`、`forgotten_by` 只記「內容被刪」這件稽核事實，不記 run 的狀態，檢查沒有被放寬 | 自動：`tests/no_second_run_state_test.sh` |
 | TC-091 | 安全網：啟動前必須有人確認 | 例外 | 沒有人確認的啟動請求 | 透過 MCP 與網頁各送一次未確認的啟動 | 仍然都被拒絕（`test_human_channel.py` 的 `test_tch09_*`、`test_confirm_page.py` 的 `test_tch09_b_c_*` 通過且未被修改）；`forget` 沒有開出新的送出路徑 | 自動：`tests/platform_test.sh` |
 | TC-092 | 安全網：不刪使用者原始資料（`rawdata/`、`results/`、`analysis/`） | 功能 | R1 在叢集與本機有這三類資料夾 | `forget R1` 並同意 | 這些資料夾與裡面的檔案一個都沒少（見 TC-080 沒有排任何工作） | 自動 |
-| TC-093 | 開發流程：不得放寬舊測試 | 功能 | diff 裡所有被修改的測試檔 | 逐檔對照 main | 除了 TC-010 與 TC-040 指名的那幾處，沒有任何斷言被刪除、放寬、跳過或把預期值改成配合新輸出；`spec.md`、`test-case*.md` 沒有在實作期間被編輯 | 自動（驗收者對照 main 的差異） |
+| TC-093 | 開發流程：不得放寬舊測試 | 功能 | diff 裡所有被修改的測試檔 | 逐檔對照 main | 除了 R1 點名的處（TC-010、TC-040）與 R14 點名的處（TC-094、TC-095），沒有任何斷言被刪除、放寬、跳過或把預期值改成配合新輸出；R14 點名的每一處都只是「加上 `forget`」、「加上 `forgotten_at`／`forgotten_by` 兩個欄位名」或「工具數 8 改 9」；`spec.md`、`test-case*.md` 沒有在實作期間被編輯 | 自動（驗收者對照 main 的差異） |
+| TC-094 | R14（`test_station_envs.py` 的禁字掃描） | 例外 | `platform/tests/test_station_envs.py` 約 520-521 行的 `banned_schema_words` 掃描（欄位名含禁字如 `org` 就失敗） | 讀這個掃描與它的允許名單，並用一個虛構欄位名 `forgotten_org` 餵給它 | 允許名單只多了剛好 `forgotten_at` 與 `forgotten_by` 兩個確切名字；`forgotten_org`（或任何其他含禁字的名字）仍然失敗，且有一條斷言證明這點；掃描的其他部分沒變 | 自動（`platform/tests/test_station_envs.py`；驗收者對照 main 的差異） |
+| TC-095 | R14（舊測試裡的工具清單、數量、指令清單） | 功能 | `test_station_envs.py` 約 384、434、453、455 行；`test_pat.py` 約 383；`test_oauth_mcp.py` 約 44、329；`test_mcp.py` 約 61、67；`test_launch_e2e.py` 約 183；`test_launch_platform.py` 約 301、306 | 逐處對照 main | 每一處只有兩種變動：清單或指令集與說明文字多了 `forget`、工具數量 8 改成 9；其餘一個字不變；這些測試在新版程式上通過 | 自動（驗收者對照 main 的差異；測試本身隨 `bash tests/platform_test.sh`） |
