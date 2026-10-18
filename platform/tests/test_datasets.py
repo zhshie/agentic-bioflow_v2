@@ -327,7 +327,8 @@ def test_tc051_a_big_samplesheet(d):
     r = register(d, d.a, text=text, files=p)
     assert r["ok"] is False and "太大" in r["message"] and rows_of(d) == []
     text = sheet([("a", p[0], p[1])])
-    text += "#" * (1_048_576 - len(text.encode()))
+    left = 1_048_576 - len(text.encode())
+    text += "z\n" * (left // 2) + "z" * (left % 2)                 # many short rows: one huge cell would trip the csv field limit
     assert len(text.encode()) == 1_048_576                      # exactly 1 MiB is still allowed
     assert register(d, d.a, text=text, files=p)["ok"] is True
 
@@ -450,6 +451,8 @@ def test_tc064_other_sessions_files_are_untouched():
     diff = git("diff", "--stat", "origin/v3", "--", *files)
     assert diff.returncode == 0 and diff.stdout.strip() == "", diff.stdout
     for f in files:
+        if not (REPO / f).exists():
+            continue                                    # web_board.py is another session's file and may not exist yet
         text = (REPO / f).read_text(encoding="utf-8")
         for word in ("register_dataset", "list_datasets", "get_dataset", "draft_samplesheet", "check_web_upload", "pair_fastq", "actions.datasets"):
             assert word not in text, (f, word)
