@@ -83,6 +83,9 @@ bad23=$(grep -nE '`(resume|relaunch)`' "$SK" | grep -iE 'larger|bigger|smaller|m
 # TC-023 (fix round): the same, but for the word "relaunch" with or without backticks (tables, bullets, "relaunching")
 bad23b=$(grep -niE 'relaunch(ing|es|ed)?\b' "$SK" | grep -iE 'tier|larger|bigger|smaller|above|more time|raise|floor|box size|memory' | grep -viE 'cannot|not available|never|same|no smaller' | cut -c1-80)
 [ -z "$bad23b" ]; chk "TC-023 no line (backticked or not) says a relaunch can change the box ($bad23b)" $?
+# TC-023 (fix round 2): no line says relaunch/resume can correct, remove or change parameters/options
+bad23c=$(grep -niE 'relaunch|resume' "$SK" | grep -iE 'param|option' | grep -iE 'correct|remov|chang|edit|fix|adjust' | grep -viE 'cannot|can.t|never|new `launch`' | cut -c1-80)
+[ -z "$bad23c" ]; chk "TC-023 no line says relaunch/resume can change parameters ($bad23c)" $?
 cancelled=$(section CANCELLED)
 grep -qF '`resume`' <<<"$cancelled" && grep -qF '`relaunch`' <<<"$cancelled" && grep -qF 'new `launch`' <<<"$cancelled" && grep -qiE 'same folder' <<<"$cancelled"; chk "TC-022 CANCELLED keeps resume vs relaunch and the new launch" $?
 
