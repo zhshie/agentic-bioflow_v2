@@ -327,7 +327,7 @@ def test_tcs19_s20_left_column(w):
     for r in rows(t):
         name = re.search(r"\b(go|bad|gone|L{60})\b", plain(r)).group(1)
         got[name[:4]] = r
-    want = {"go": ("▶", "執行中", "running"), "bad": ("✗", "執行中", "failed"), "gone": ("⏸", "執行中", "lost"), "LLLL": ("✓", "結果", "succeeded")}
+    want = {"go": ("▶", "執行中", "running"), "bad": ("✗", "失敗", "failed"), "gone": ("⏸", "失聯/暫停", "lost"), "LLLL": ("✓", "成功", "succeeded")}  # R10: status text, not stage
     for key, (sym, stage, st) in want.items():
         r = got[key]
         assert 'href="/?run=id-' in r and sym in r and stage in plain(r) and re.search(r'class="[^"]*\bstate-%s\b' % st, r), key
@@ -493,11 +493,11 @@ def test_tcl25_l26_failed_key_fact(w):
     seed(w, "empty", "failed", ann, reason="")
     t = login(w, "ann").get("/").text
     its = {re.search(r"\d+: (long|short|none|empty) ", plain(x)).group(1): plain(x) for x in items(t, "running")}
-    assert its["long"].endswith("A" * 80) and "B" not in its["long"] and "SECONDLINE" not in its["long"]
+    assert its["long"].endswith("A" * 79 + "…") and "A" * 80 not in its["long"] and "B" not in its["long"]  # R10: cut at 79 + ellipsis and "SECONDLINE" not in its["long"]
     assert its["short"].endswith("short reason")
     assert its["none"].endswith("原因未記錄") and its["empty"].endswith("原因未記錄")
     lines = {re.search(r"(long|short|none|empty)", plain(x)).group(1): plain(x) for x in card_lines(t, "attention")}
-    assert lines["long"].endswith("A" * 80) and "B" not in lines["long"] and lines["short"].endswith("short reason")
+    assert lines["long"].endswith("A" * 79 + "…") and "A" * 80 not in lines["long"] and "B" not in lines["long"] and lines["short"].endswith("short reason")
     assert lines["none"].endswith("原因未記錄") and lines["empty"].endswith("原因未記錄")
 
 
@@ -1331,3 +1331,32 @@ def test_tcs51_no_time_in_right_column(w):
         ok = [plain(x) for x in its if re.search(r"\bok\b", plain(x))]
         assert len(ok) == 1 and "✓" in ok[0] and "成功" in ok[0] and "3/3" in ok[0], ok
     assert "10-18 09:12" in plain(pane(c.get("/?run=" + s).text, "middle"))
+
+
+def test_r10_reason_marker_left_tag_and_wrapping(w):
+    # R10-1: a cut reason ends with the ellipsis (total <= 80); an exact-80 reason is not cut; the detail keeps it all
+    ann = w.user("ann")
+    full = "A" * 79 + "B" * 40
+    seed(w, "cut", "failed", ann, reason=full, run_id="id-cut")
+    seed(w, "exact", "failed", ann, reason="E" * 80)
+    t = login(w, "ann").get("/").text
+    its = {re.search(r"\d+: (cut|exact) ", plain(x)).group(1): plain(x) for x in items(t, "running")}
+    assert its["cut"].endswith("A" * 79 + "…") and its["exact"].endswith("E" * 80) and "…" not in its["exact"]
+    lines = {re.search(r"(cut|exact)", plain(x)).group(1): plain(x) for x in card_lines(t, "attention")}
+    assert lines["cut"].endswith("A" * 79 + "…") and lines["exact"].endswith("E" * 80)
+    assert full in login(w, "ann").get("/?run=id-cut").text
+    # R10-2: left tag is the status text, both languages
+    bob = w.user("bob")
+    for n, st in (("r1", "running"), ("r2", "failed"), ("r3", "succeeded"), ("r4", "lost")):
+        seed(w, n, st, bob)
+    for lang, want in (("", {"r1": "執行中", "r2": "失敗", "r3": "成功", "r4": "失聯/暫停"}),
+                       ("?lang=en", {"r1": "Running", "r2": "Failed", "r3": "Succeeded", "r4": "Lost/paused"})):
+        page = login(w, "bob").get("/" + lang).text
+        for r in rows(page):
+            name = re.search(r"(r[1-4])", plain(r)).group(1)
+            assert re.search(r'<span class="stg">%s</span>' % re.escape(want[name]), r), (lang, name)
+    # R10-3: the stylesheet lets long names and reasons wrap
+    css = style_of(page)
+    for cls in (".card", ".item", ".reason", ".line", ".why"):
+        assert re.search(r"%s\{[^}]*(overflow-wrap:\s*anywhere|min-width:\s*0)" % re.escape(cls), css), cls
+    assert re.search(r"\.line \.nm\{[^}]*overflow-wrap:\s*anywhere", css)
