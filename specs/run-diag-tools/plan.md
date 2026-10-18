@@ -13,3 +13,11 @@ workdir stored and returned for failed tasks; absent when the event lacks it; re
 
 ## Out of scope
 skills/ (PR #136 updates after this lands), web, CHANGELOG.md, docs other than the PLATFORM.md tool list lines for these tools.
+
+## Rulings after contract round 1 (developer-agent, 2026-10-18)
+- D1 Existing tests this change must update (each listed in specs/run-diag-tools/ledger.md with old expectation, new expectation, reason): (a) platform/tests/test_followup3.py:77 — the failed-task key set gains `workdir` on fail_run, nf2510_fail, nf2510_retry; (b) platform/tests/test_nextflow_e2e.py `_COMPARED` / `_same_runs` — add a named exclusion `_NOT_REBUILT = {"workdir"}` because rebuild.py reads the trace file, which has no full workdir; a rebuilt run simply has no workdir; (c) platform/tests/test_actions_layer.py `BASELINE` and the tool lists in test_mcp.py, test_oauth_mcp.py, test_pat.py, test_human_channel.py, test_guidance.py gain `read_task_log` and the new get_run description. No count lowered, no assertion removed without replacement.
+- D2 `task` = the task name exactly as get_run shows it in failed_tasks. A name that is not one of the run's failed tasks is refused as "no recorded workdir for this task".
+- D3 `cancel_requested_at` = exactly the fact `abf-platform launches` prints (launches.cancel_requested_at, written when the cancel job finished ok). Confirmed-but-queued or refused cancels do not set it.
+- D4 New job kind `read_task_log`: extend the jobs.kind CHECK with a table-rebuild migration following store.py:352; an older platform.db opens, keeps its rows and can take the new job (test). Add the agent handler and whitelist its kind and argument keys in abf_station/handlers.py; the agent confines the read to the recorded workdir (no `..`, no symlink out), like list_site_files.
+- D5 Other refusals: a run not launched from this platform (no launches row) -> "no station agent is known for this run"; file missing in the workdir -> "file not found in the task folder". The cap (200 lines / 64 KB, last lines kept) is enforced on the agent and re-checked on the platform; the answer says when it was cut. The tool description warns, like list_site_files, that log text goes to the model the user chose.
+- Files: also platform/abf_station/handlers.py, platform/abf_platform/jobs.py, and the tests named in D1.
