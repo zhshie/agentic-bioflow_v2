@@ -786,14 +786,16 @@ def test_tcl44_no_external_url_script_or_style_attribute(w):
     ann = w.user("ann")
     ids = seed_three(w, ann)
     c = login(w, "ann")
-    empty = login(w, "ann")
+    w.user("bob")  # no runs: the empty-state page
+    empty = login(w, "bob")
     urls = ["/", "/?run=" + ids["running"], "/?run=%s&stage=running" % ids["running"], "/?run=nope"]
     urls += [u + ("&" if "?" in u else "?") + "lang=en" for u in urls]
-    for u in urls:
-        t = c.get(u).text
+    pages = [(u, c.get(u).text) for u in urls]
+    pages += [("empty " + u, empty.get(u).text) for u in ("/", "/?lang=en", "/?run=nope")]
+    assert "No runs yet" in empty.get("/?lang=en").text
+    for u, t in pages:
         assert not re.search(r"https?://", t) and not re.search(r'(?:href|src|action)="(?:https?:)?//', t), u
         assert "<script" not in t.lower() and not re.search(r"\sstyle=", t) and not re.search(r"\son[a-z]+=", t, re.I), u
-    assert empty
 
 
 # ---- not in this PR (layout B) ---------------------------------------------------------------------------------------------------

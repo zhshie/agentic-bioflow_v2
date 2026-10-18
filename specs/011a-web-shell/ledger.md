@@ -66,3 +66,5 @@ Resolved as the union; nothing loosened from either side.
 
 Unchanged and still passing: H01a, H02, H03, H04, H05, H06, H07, H08 (progress), H10, H11, H12, H13, H14, H15, H17, H18, K1, N02, N04, N05 (their markup needles still exist: `rel="prev"`, `data-current`, "還沒有", `<progress>`).
 `test_launch_static.py` tc069/tc070 are untouched.
+
+Fix round (verifier, TC-L44): `test_tcl44_no_external_url_script_or_style_attribute` now creates a second user "bob" with no runs and checks the empty-state page (`/`, `/?lang=en`, `/?run=nope`) with the same three checks (no http(s) URL, no `<script`, no `style=` or `on*=`), replacing the stub `empty = login(...)` / `assert empty`. Test-only change; product code untouched.
