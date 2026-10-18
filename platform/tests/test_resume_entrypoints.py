@@ -42,8 +42,8 @@ def tools_of(rig):
 
 def test_tc132_the_tools_are_the_old_ones_and_exactly_resume_and_relaunch(rig):
     # TC-132 (test_mcp.py tc024 is rewritten to the same list)
-    assert sorted(tools_of(rig)) == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
-                                     "list_site_files", "relaunch", "resume"]
+    assert sorted(tools_of(rig)) == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
+                                     "list_runs", "list_site_files", "relaunch", "resume"]       # keep-submissions (F3): plus forget
 
 
 @pytest.mark.parametrize("name", ["resume", "relaunch"])

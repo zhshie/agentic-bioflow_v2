@@ -13,7 +13,9 @@ import pytest
 
 from helpers import REPO_ROOT, run_cli, tool_json
 from human_harness import World, form_answer
-from launch_harness import Pty, cli_argv
+from launch_harness import QUESTION_LAUNCH, LaunchData, Pty, cli_argv
+from resume_harness import SESSION, FakePerson, Rig
+from station_harness import Inproc
 
 DAY = 86400
 WARNING = "刪除後無法復原；這個 run 之後不能再續跑或原樣重跑。紀錄（誰、何時送出）會保留。"
@@ -28,6 +30,16 @@ SPEC = REPO_ROOT / "specs" / "keep-submissions"
 @pytest.fixture
 def w(tmp_path, monkeypatch):
     return World(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def rig(tmp_path, monkeypatch):
+    return Rig(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def data(tmp_path, monkeypatch):
+    return LaunchData(Inproc(tmp_path / "ip", monkeypatch))
 
 
 def actions():
@@ -248,26 +260,18 @@ def test_tc015_a_confirmed_cancel_and_its_job_are_cleared_too(w):
     assert conf(w, ccid)["forgotten_at"] is not None and w.sql("SELECT forgotten_at FROM jobs WHERE id = ?", (cjid,))[0][0] is not None
 
 
-def test_tc016_a_terminal_confirmed_launch_has_only_its_job_copy_cleared(w):
-    # TC-016
-    ann = w.user("ann")
-    now = time.time()
-    import secrets
-    cid = secrets.token_hex(16)
-    bundle = {"version": 1, "run_name": "run-one", "run_folder": "/data/w1/runs/run-one", "agent": "agent-t"}
-    sql_exec(w, "INSERT INTO confirmations (id, sha256, kind, created_at, state, channel, confirmed_at) "
-                "VALUES (?, 'sha-t', 'launch', ?, 'confirmed', 'TERMINAL', ?)", (cid, now, now))
-    sql_exec(w, "INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, finished_at, confirmation_id) "
-                "VALUES ('agent-t', 'lab-a', 'launch_nextflow', ?, 'done', ?, ?, ?, ?)",
-             (json.dumps({"bundle": bundle, "confirmation_id": cid}), now, now + 300, now, cid))
-    jid = w.sql("SELECT id FROM jobs WHERE confirmation_id = ?", (cid,))[0]["id"]
-    sql_exec(w, "INSERT INTO launches (run_name, slurm_job_id, run_folder, ce, agent, confirmed_at, job_id, user_id) "
-                "VALUES ('run-one', 4242, '/data/w1/runs/run-one', 'lab-a', 'agent-t', ?, ?, ?)", (now, jid, ann.user_id))
-    add_index_run(w, "run-one")
+def test_tc016_a_terminal_confirmed_launch_has_both_copies_cleared(rig):
+    # TC-016 (F5: the confirmation of a terminal launch holds the content too; the job holds a copy)
+    rig.first("run-one")
+    w = rig.w
+    cid = w.sql("SELECT id FROM confirmations WHERE channel = 'TERMINAL' AND kind = 'launch'")[0]["id"]
+    jid = rig.sql("SELECT id FROM jobs WHERE confirmation_id = ?", (cid,))[0]["id"]
+    assert conf(w, cid)["bundle_json"] is not None
+    c0 = audit(conf(w, cid))
     r = forget_action(w)
     assert r["ok"] is True, r
-    assert job_cleared(w, jid, "run-one")
-    assert conf(w, cid)["bundle_json"] is None and conf(w, cid)["forgotten_at"] is None
+    assert cleared(w, cid) and audit(conf(w, cid)) == c0 and conf(w, cid)["forgotten_at"] is not None
+    assert job_cleared(w, jid, "run-one") and w.sql("SELECT forgotten_at FROM jobs WHERE id = ?", (jid,))[0][0] is not None
 
 
 def test_tc017_pending_and_void_requests_of_the_run_are_cleared_and_the_open_one_is_voided(w):
@@ -470,11 +474,11 @@ def test_tc040_forget_is_a_registered_tool_and_the_fixed_lists_grew_by_it(w):
     # TC-040
     tools, _ = w.mcp([])
     by = {t.name: t for t in tools}
-    assert "forget" in by and by["forget"].annotations.destructive_hint is True
+    assert {"forget", "resume", "relaunch"} <= set(by) and by["forget"].annotations.destructive_hint is True
     assert not (set(by["forget"].input_schema.get("properties", {})) - {"run_name"})
     for fname, needle in (("test_human_channel.py", '"cancel", "forget", "get_compute_env"'),
-                          ("test_guidance.py", '"launch", "cancel", "forget"'),
-                          ("test_actions_layer.py", 'WRITE_NAMES = ["launch", "cancel", "forget"]')):
+                          ("test_guidance.py", '["launch", "cancel", "forget", "resume", "relaunch"]'),
+                          ("test_actions_layer.py", 'WRITE_NAMES = ["launch", "cancel", "forget", "resume", "relaunch"]')):
         assert needle in (REPO_ROOT / "platform" / "tests" / fname).read_text(encoding="utf-8"), fname
     assert callable(getattr(actions(), "forget", None))
 
@@ -606,11 +610,14 @@ def test_tc061_a_late_answer_for_a_forgotten_cancel_job_changes_no_other_run(w):
     assert [r[0] for r in w.sql("SELECT cancel_requested_at FROM launches")] == [None, None]
 
 
-def test_tc062_the_ledger_names_the_hook_point_for_009e():
-    # TC-062
+def test_tc062_the_ledger_records_what_the_follow_up_did():
+    # TC-062 (F1 to F5 are done: 009e is merged, so the hook point became real code)
     text = (SPEC / "ledger.md").read_text(encoding="utf-8")
-    assert "009e" in text and "content deleted by its owner" in text and "內容已被擁有者刪除" in text
-    assert "forgotten" in text and "args_json" in text
+    assert "origin/v3" in text and "內容已被擁有者刪除" in text and "content deleted by its owner" in text
+    assert "009e is not on v3" not in text and "none of its code was pulled in" not in text
+    for needle in ("F1", "F2", "F3", "F4", "F5"):
+        assert re.search(r"- \[x\][^\n]*%s" % needle, text), needle
+    assert not re.search(r"- \[ \]", text)
 
 
 def test_tc063_the_ledger_records_the_owed_web_parity():
@@ -629,6 +636,7 @@ def test_tc070_the_retention_paragraph_says_confirmed_content_stays_until_its_ow
     # TC-070
     text = _platform_md()
     assert "a confirmed request keeps its content until its owner deletes it" in text
+    assert "whatever the channel" in text and "terminal" in text.split("whatever the channel", 1)[1][:120]
     assert "void or expired pending request loses its content (bundle and summary) after 7 days" in text
     assert "an expired, void or confirmed request loses its content" not in text
 
@@ -663,6 +671,8 @@ def test_tc064_the_ledger_records_the_three_known_limits():
     low = text.lower()
     assert "7 days after" in low and "result_json" in text and "late_result_json" in text
     assert "no web delete" in low and "maintainer may revisit" in low
+    assert "has its bundle only in the job copy" not in text      # F5: no longer true of a new row
+    assert "old" in low and "format" in low
 
 
 def test_tc065_forget_leaves_the_results_a_job_holds(w):
@@ -686,20 +696,30 @@ def test_tc066_an_old_job_row_goes_but_the_confirmed_content_stays(w):
     assert not cleared(w, confirmation) and conf(w, confirmation)["bundle_json"] is not None
 
 
-def test_tc094_tc095_nine_tools_and_the_column_names_scan_still_catches_other_names(w):
-    # TC-094 (the proof that forgotten_org still fails is in test_station_envs.py), TC-095 (the old lists are compared with main by
-    # the acceptor; here the registered tools are nine, with forget among them)
+def test_tc094_tc095_tc104_eleven_tools_and_the_column_names_scan_still_catches_other_names(w):
+    # TC-094 (the proof that forgotten_org still fails is in test_station_envs.py), TC-095 (the old lists are compared with v3 by the
+    # acceptor), TC-104 (the registered tools: six read, five that only ask, no field that says yes)
     tools, _ = w.mcp([])
-    assert len(tools) == 9 and "forget" in {t.name for t in tools}
+    names = sorted(t.name for t in tools)
+    assert names == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
+                     "list_site_files", "relaunch", "resume"]
+    saying_yes = {"yes", "y", "confirm", "confirmed", "confirmation", "confirmation_id", "approve", "approved", "kind", "command"}
+    for t in tools:
+        if t.name in ("launch", "cancel", "resume", "relaunch", "forget"):
+            assert t.annotations.read_only_hint is False and not (set(t.input_schema.get("properties", {})) & saying_yes), t.name
+        else:
+            assert t.annotations.read_only_hint is True, t.name
 
 
 def test_tc074_every_automatic_test_case_is_named_in_a_comment_of_this_file():
-    # TC-074
+    # TC-074 (the cases the acceptor judges from files or git are not asked for here)
     src = open(__file__, encoding="utf-8").read()
     cases = (SPEC / "test-case.md").read_text(encoding="utf-8")
     ids = sorted(set(re.findall(r"^\| (TC-\d{3}) ", cases, re.M)))
-    assert len(ids) == 72
-    missing = [i for i in ids if not re.search(r"#[^\n]*\b%s\b" % i, src)]
+    by_reading = {10, 62, 63, 64, 75, 84, 90, 91, 93, 94, 95, 100, 101, 102, 103, 105, 106, 110, 111, 112}
+    wanted = [i for i in ids if int(i[3:]) not in by_reading]
+    assert len(ids) >= 120 and len(wanted) >= 100
+    missing = [i for i in wanted if not re.search(r"#[^\n]*\b%s\b" % i, src)]
     assert missing == []
     for node in ast.walk(ast.parse(src)):
         if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
@@ -755,12 +775,21 @@ def test_tc083_no_new_confirmation_kind_and_approve_knows_nothing_of_forget():
     assert "forget" not in inspect.getsource(confirm.approve)
 
 
-def test_tc084_no_resume_or_relaunch_code_came_in():
-    # TC-084
+V3_ATTEMPT_NAMES = {"prepare_resume", "prepare_relaunch", "resume_screen", "relaunch_screen", "request_resume", "request_relaunch",
+                    "resume_tool", "relaunch_tool", "cmd_resume", "cmd_relaunch", "render_resume_bundle", "render_resume", "run_resume"}
+
+
+def test_tc084_no_resume_or_relaunch_code_of_our_own_came_in():
+    # TC-084: 009e is in; what this task added to it is not a function of its own that resumes or relaunches. Every function whose name
+    # says resume or relaunch is one that v3 has; the confirmation flow and the submit file were not touched (no new door).
+    found = set()
     for p in (REPO_ROOT / "platform").rglob("*.py"):
         if "tests" in p.parts:
             continue
-        assert not re.search(r"def\s+(resume|relaunch)", p.read_text(encoding="utf-8")), p
+        found |= {n.name for n in ast.walk(ast.parse(p.read_text(encoding="utf-8")))
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and re.search(r"resume|relaunch", n.name)}
+    assert found - V3_ATTEMPT_NAMES == set(), found - V3_ATTEMPT_NAMES
+    assert "forget" not in inspect.getsource(actions().launch) and "forget" not in inspect.getsource(actions().approve)
 
 
 # ---- the safety net -------------------------------------------------------------------------------------------------------------
@@ -781,8 +810,421 @@ def test_tc091_an_unconfirmed_launch_still_queues_nothing(w):
 
 def test_tc093_the_contract_files_were_not_edited_after_the_contract_commit():
     # TC-093
-    r = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--name-only", "1cd2ee5", "HEAD", "--", "specs/keep-submissions/plan.md",
+    r = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--name-only", "93038bd", "HEAD", "--", "specs/keep-submissions/plan.md",
                         "specs/keep-submissions/test-case.md", "specs/keep-submissions/test-case-overview.md"],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == ""
+
+
+# ==== follow-up after PR #133: F1 to F5 ==================================================================================================
+
+FORGOTTEN_WORDS = "內容已被擁有者刪除"
+TOO_OLD = "太久了，這次送出的內容已經清掉"
+NOT_FOUND = "找不到這個 run (Run not found): %s"
+
+
+def jobs_of(w):
+    return [tuple(r) for r in w.sql("SELECT * FROM jobs ORDER BY id")]
+
+
+def hours_ago(w, job_id, hours):
+    sql_exec(w, "UPDATE jobs SET finished_at = ? WHERE id = ?", (time.time() - hours * 3600, job_id))
+
+
+# ---- US7: catching up with v3 ------------------------------------------------------------------------------------------------------
+
+def test_tc107_the_instructions_name_all_five_tools_and_keep_the_009e_sentence_within_the_limit():
+    # TC-107
+    from abf_platform import guidance
+    text = guidance.routing_instructions()
+    for name in ("launch", "cancel", "resume", "relaunch", "forget"):
+        assert name in text, name
+    assert "A failed run is resumed or relaunched with its name alone." in text
+    assert "deletes nothing until the person says yes" in guidance.FIXED_SENTENCE
+    assert len(text.encode("utf-8")) <= guidance.MAX_BYTES
+
+
+def test_tc108_the_action_names_and_the_command_set_hold_both_sides():
+    # TC-108
+    a = actions()
+    assert callable(a.request_resume) and callable(a.request_relaunch) and callable(a.forget) and callable(a.request_forget)
+    from abf_launch import cli
+    top = set(next(x for x in cli.build_parser()._actions if isinstance(getattr(x, "choices", None), dict)).choices)
+    assert {"resume", "relaunch", "forget", "oauth", "cancel", "launch"} <= top
+    text = (REPO_ROOT / "platform" / "tests" / "test_station_envs.py").read_text(encoding="utf-8")
+    assert "launch,resume,relaunch,cancel,forget,launches" in text
+
+
+def test_tc109_an_older_platform_db_gains_the_009e_and_the_forgotten_columns_and_loses_no_row(tmp_path):
+    # TC-109
+    from abf_platform import store
+    path = tmp_path / "old" / "platform.db"
+    store.init_state(path)
+    con = sqlite3.connect(str(path))
+    drops = {"launches": ("parent_run", "attempt", "attempt_kind"), "confirmations": ("forgotten_at", "forgotten_by"),
+             "jobs": ("forgotten_at", "forgotten_by")}
+    for table, cols in drops.items():
+        for col in cols:
+            if col in {r[1] for r in con.execute("PRAGMA table_info(%s)" % table)}:
+                con.execute("ALTER TABLE %s DROP COLUMN %s" % (table, col))
+    now = time.time()
+    con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, state) VALUES ('c1', 's', 'launch', ?, 'confirmed')", (now,))
+    con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at) VALUES ('r', '/f', 'ce', 'a', ?)", (now,))
+    con.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at) "
+                "VALUES ('a', 'ce', 'preflight', '{}', 'done', ?, ?)", (now, now + 5))
+    con.commit()
+    old = {t: [tuple(r) for r in con.execute("SELECT * FROM %s ORDER BY 1" % t)] for t in drops}
+    old_cols = {t: [r[1] for r in con.execute("PRAGMA table_info(%s)" % t)] for t in drops}
+    con.close()
+    store.connect_state(path).close()
+    con = sqlite3.connect(str(path))
+    for t in drops:
+        cols = [r[1] for r in con.execute("PRAGMA table_info(%s)" % t)]
+        assert cols[:len(old_cols[t])] == old_cols[t] and cols[len(old_cols[t]):] == list(drops[t]), (t, cols)
+        assert [tuple(r) for r in con.execute("SELECT %s FROM %s ORDER BY 1" % (", ".join(old_cols[t]), t))] == old[t], t
+    con.close()
+
+
+def test_tc113_both_allow_lists_survived_the_merge():
+    # TC-113
+    envs = (REPO_ROOT / "platform" / "tests" / "test_station_envs.py").read_text(encoding="utf-8")
+    plat = (REPO_ROOT / "platform" / "tests" / "test_station_platform.py").read_text(encoding="utf-8")
+    assert "forgotten_at" in envs and "forgotten_by" in envs and "forgotten_org" in envs
+    assert '("launches", "parent_run")' in plat
+
+
+# ---- US8: a forgotten run cannot be resumed or relaunched --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("verb", ["resume", "relaunch"])
+def test_tc120_tc121_the_terminal_refuses_a_forgotten_run(rig, verb):
+    # TC-120 (resume), TC-121 (relaunch)
+    rig.first("x")
+    assert forget_action(rig.w, "x")["ok"] is True
+    before = tables(rig.w)
+    r = run_cli([verb, "x"], env=rig.w.data.env(), timeout=60)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and FORGOTTEN_WORDS in out and TOO_OLD not in out and "Traceback" not in out, out
+    assert "找不到" not in out
+    assert tables(rig.w) == before
+
+
+@pytest.mark.parametrize("verb", ["resume", "relaunch"])
+def test_tc122_tc123_the_mcp_tool_refuses_a_forgotten_run(rig, verb):
+    # TC-122 (resume), TC-123 (relaunch)
+    rig.first("x")
+    assert forget_action(rig.w, "x")["ok"] is True
+    before = tables(rig.w)
+    out = rig.ask(verb, "x", person=FakePerson(True))
+    assert out["ok"] is False and out["sent"] is False and FORGOTTEN_WORDS in out["message"] and TOO_OLD not in out["message"], out
+    assert tables(rig.w) == before
+
+
+def test_tc124_the_first_launch_is_forgotten_and_a_later_attempt_is_refused(rig):
+    # TC-124
+    rig.first("x")
+    rig.attempt("resume", "x")                       # x-a2, failed too
+    assert forget_action(rig.w, "x")["ok"] is True
+    before = tables(rig.w)
+    for verb in ("resume", "relaunch"):
+        out = rig.ask(verb, "x-a2", person=FakePerson(True))
+        assert out["sent"] is False and FORGOTTEN_WORDS in out["message"], (verb, out)
+    assert tables(rig.w) == before
+
+
+def test_tc125_the_run_it_is_made_from_is_forgotten_and_the_first_launch_is_not(rig):
+    # TC-125
+    rig.first("x")
+    rig.attempt("resume", "x")
+    assert forget_action(rig.w, "x-a2")["ok"] is True
+    first_cid = rig.w.sql("SELECT id FROM confirmations WHERE kind = 'launch' ORDER BY created_at, id")[0]["id"]
+    assert not cleared(rig.w, first_cid)
+    before = tables(rig.w)
+    for verb in ("resume", "relaunch"):
+        out = rig.ask(verb, "x-a2", person=FakePerson(True))
+        assert out["sent"] is False and FORGOTTEN_WORDS in out["message"], (verb, out)
+    assert tables(rig.w) == before
+
+
+@pytest.mark.parametrize("verb", ["resume", "relaunch"])
+def test_tc126_tc127_a_bundle_made_before_the_forget_is_refused_when_it_is_queued(rig, verb):
+    # TC-126 (resume), TC-127 (relaunch)
+    from abf_platform import jobs
+    rig.first("x")
+    ce, bundle, _row = rig.prepare(verb, "x")
+    assert forget_action(rig.w, "x")["ok"] is True
+    before = tables(rig.w)
+    with pytest.raises(jobs.JobRefused) as e:
+        actions().launch(rig.state, ce, bundle, confirmed_by=actions().TERMINAL)
+    assert FORGOTTEN_WORDS in str(e.value)
+    assert tables(rig.w) == before
+
+
+def test_tc128_somebody_else_gets_not_found_for_a_forgotten_run(rig):
+    # TC-128
+    from owner_harness import Duo
+    duo = Duo(rig.w)
+    out = duo.sent(duo.a, run="x")
+    rig.hand_over(out["job_id"], "x")
+    rig.set_run("x", "failed")
+    assert forget_action(rig.w, "x", caller=duo.a, by=actions().ELICITED)["ok"] is True
+    for verb in ("resume", "relaunch"):
+        theirs = rig.ask(verb, "x", caller=duo.b, person=FakePerson(True))
+        nothing = rig.ask(verb, "nope", caller=duo.b, person=FakePerson(True))
+        assert theirs["sent"] is False and theirs["message"] == nothing["message"].replace("nope", "x"), (theirs, nothing)
+        assert NOT_FOUND % "x" in theirs["message"] and FORGOTTEN_WORDS not in theirs["message"]
+
+
+@pytest.mark.parametrize("verb", ["resume", "relaunch"])
+def test_tc129_a_forgotten_run_whose_job_is_long_gone_says_deleted_not_too_old(rig, verb):
+    # TC-129
+    rig.first("x")
+    assert forget_action(rig.w, "x")["ok"] is True
+    jid = rig.sql("SELECT job_id FROM launches WHERE run_name = 'x'")[0][0]
+    hours_ago(rig.w, jid, 8 * 24)
+    rig.first("y")                                   # any later launch prunes the finished jobs older than seven days
+    assert rig.sql("SELECT COUNT(*) FROM jobs WHERE id = ?", (jid,))[0][0] == 0
+    out = rig.ask(verb, "x", person=FakePerson(True))
+    assert out["sent"] is False and FORGOTTEN_WORDS in out["message"] and TOO_OLD not in out["message"], out
+
+
+def test_tc130_another_run_is_not_affected(rig):
+    # TC-130
+    rig.first("run-one")
+    rig.first("run-two")
+    assert forget_action(rig.w, "run-one")["ok"] is True
+    out = rig.ask("resume", "run-two", person=FakePerson(True))
+    assert out["sent"] is True, out
+
+
+def test_tc131_a_request_waiting_for_the_page_dies_when_the_run_is_forgotten(rig):
+    # TC-131
+    from owner_harness import Duo
+    duo = Duo(rig.w)
+    out = duo.sent(duo.a, run="x")
+    rig.hand_over(out["job_id"], "x")
+    rig.set_run("x", "failed")
+    waiting = rig.resume("x", caller=duo.a, person=None)
+    assert waiting["state"] == "pending"
+    assert forget_action(rig.w, "x", caller=duo.a, by=actions().ELICITED)["ok"] is True
+    jobs_before = jobs_of(rig.w)
+    with pytest.raises(Exception) as e:
+        actions().approve(rig.state, waiting["id"], confirmed_by=actions().PAGE, caller=duo.a)
+    assert FORGOTTEN_WORDS in str(e.value)
+    assert jobs_of(rig.w) == jobs_before
+
+
+# ---- US9: forget while the launch is still starting ---------------------------------------------------------------------------------
+
+def _launched(w, ann, hours, index=False, final="succeeded"):
+    out = scn(w, ann, index=False)
+    hours_ago(w, out["job_id"], hours)
+    if index:
+        add_index_run(w, "run-one", None if final == "running" else final)
+    return out
+
+
+@pytest.mark.parametrize("hours", [1, 23])
+def test_tc140_tc141_a_launch_that_went_out_but_is_not_in_the_index_is_still_starting(w, hours):
+    # TC-140 (1 hour ago), TC-141 (23 hours ago)
+    ann = w.user("ann")
+    _launched(w, ann, hours)
+    before = tables(w)
+    r = forget_tool(w, "run-one", ann, form_answer())
+    assert r["ok"] is False and STARTING in r["message"] and "還在準備中，不能刪除" in r["message"], r
+    assert tables(w) == before
+
+
+def test_tc142_after_24_hours_it_is_treated_as_never_having_reached_the_index(w):
+    # TC-142
+    ann = w.user("ann")
+    out = _launched(w, ann, 25)
+    r = forget_tool(w, "run-one", ann, form_answer())
+    assert r["ok"] is True, r
+    assert cleared(w, out["id"]) and conf(w, out["id"])["forgotten_at"] is not None
+
+
+def test_tc143_once_the_index_sees_the_run_there_is_no_waiting(w):
+    # TC-143
+    ann = w.user("ann")
+    out = _launched(w, ann, 1, index=True)
+    assert forget_tool(w, "run-one", ann, form_answer())["ok"] is True
+    assert cleared(w, out["id"])
+
+
+def test_tc144_a_running_run_in_the_index_is_still_refused(w):
+    # TC-144
+    ann = w.user("ann")
+    _launched(w, ann, 1, index=True, final="running")
+    before = tables(w)
+    r = forget_tool(w, "run-one", ann, form_answer())
+    assert r["ok"] is False and "running" in r["message"] and tables(w) == before
+
+
+@pytest.mark.parametrize("job_state", ["refused", "error", "expired"])
+def test_tc145_a_launch_that_just_ended_badly_may_be_forgotten_at_once(w, job_state):
+    # TC-145
+    ann = w.user("ann")
+    out = scn(w, ann, index=False, job_state=job_state)
+    hours_ago(w, out["job_id"], 1 / 60)
+    r = forget_tool(w, "run-one", ann, form_answer())
+    assert r["ok"] is True and STARTING not in r["message"], r
+    assert cleared(w, out["id"])
+
+
+def test_tc146_the_terminal_refuses_a_starting_launch_with_the_same_words(w):
+    # TC-146
+    ann = w.user("ann")
+    _launched(w, ann, 1)
+    before = tables(w)
+    r = run_cli(["forget", "run-one"], env=w.data.env(), timeout=60)
+    assert r.returncode != 0 and "還在準備中" in r.stdout + r.stderr and QUESTION_FORGET not in r.stdout + r.stderr
+    assert tables(w) == before
+
+
+def test_tc097_no_column_but_the_two_and_no_stored_starting_flag():
+    # TC-097
+    from abf_platform import store
+    cols = re.findall(r"forgot\w*|starting\w*|preparing\w*", store.STATE_SCHEMA)
+    assert set(cols) <= {"forgotten_at", "forgotten_by"}, cols
+    src = inspect.getsource(actions().forget_check)
+    assert "24" in src and "finished_at" in src
+
+
+# ---- US10: any channel keeps its content ----------------------------------------------------------------------------------------------
+
+def terminal_launch(data, tmp_path, run="run-one"):
+    p = Pty(cli_argv(*data.launch_args(tmp_path, run=run)), data.env())
+    assert p.wait_for(QUESTION_LAUNCH, 30), p.text()
+    p.send("y\n")
+    p.finish(60)
+
+
+def cli_rows(data, table, where="1 = 1"):
+    con = sqlite3.connect(str(data.ip.state_db))
+    con.row_factory = sqlite3.Row
+    try:
+        return con.execute("SELECT * FROM %s WHERE %s" % (table, where)).fetchall()
+    finally:
+        con.close()
+
+
+def test_tc150_tc151_tc161_a_terminal_launch_leaves_its_content_in_the_confirmation(data, tmp_path):
+    # TC-150, TC-151, TC-161
+    from abf_launch import build
+    from abf_platform import common
+    base = (len(cli_rows(data, "confirmations")), len(cli_rows(data, "jobs", "kind = 'launch_nextflow'")))
+    terminal_launch(data, tmp_path)
+    confs = cli_rows(data, "confirmations", "kind = 'launch'")
+    jobs_ = cli_rows(data, "jobs", "kind = 'launch_nextflow'")
+    assert (len(confs), len(jobs_)) == (base[0] + 1, base[1] + 1)                                 # TC-161: one and one
+    c, j = confs[-1], jobs_[-1]
+    assert j["confirmation_id"] == c["id"] and c["state"] == "confirmed" and c["channel"] == "TERMINAL"
+    sent = json.loads(j["args_json"])["bundle"]
+    assert json.loads(c["bundle_json"]) == sent                                                   # TC-150
+    assert c["screen_text"] == build.as_text(build.launch_screen(sent, "lab-a"))
+    assert common.bundle_sha256(json.loads(c["bundle_json"])) == c["sha256"]                      # TC-151
+
+
+def test_tc152_a_form_and_a_page_confirmation_keep_their_content_as_before(w):
+    # TC-152
+    ann = w.user("ann")
+    by_form = scn(w, ann, "run-one")
+    page = w.launch(caller=ann, run="run-two")
+    assert page["sent"] is False
+    from human_harness import pending_id_of
+    a = actions()
+    rid = pending_id_of(page["confirmation_url"])
+    a.approve(w.ip.state_db, rid, confirmed_by=a.PAGE, caller=ann)
+    for one in (by_form["id"], rid):
+        row = conf(w, one)
+        assert row["bundle_json"] is not None and row["screen_text"] is not None and row["state"] == "confirmed"
+
+
+def _terminal_confirmed(w, run="run-one", screen="what the person approved"):
+    """A launch confirmed at the terminal (actions.launch with TERMINAL), as abf-platform launch does it."""
+    from abf_launch import build
+    ce, bundle = build.prepare_launch(w.ip.state_db, ce="lab-a", pipeline="nf-core/ampliseq", revision="2.18.0", run_name=run,
+                                      samplesheet=str(w.sheet), params={"primer": "AGRG"})
+    cid, jid = actions().launch(w.ip.state_db, ce, bundle, confirmed_by=actions().TERMINAL, screen_text=screen)
+    return cid, jid
+
+
+def test_tc153_a_terminal_launch_confirmed_400_days_ago_keeps_its_content(w):
+    # TC-153
+    w.user("ann")
+    cid, _ = _terminal_confirmed(w)
+    then = time.time() - 400 * DAY
+    sql_exec(w, "UPDATE confirmations SET created_at = ?, confirmed_at = ? WHERE id = ?", (then, then, cid))
+    prune(w)
+    assert conf(w, cid)["bundle_json"] is not None and conf(w, cid)["screen_text"] == "what the person approved"
+
+
+def test_tc154_the_old_job_goes_after_seven_days_and_the_terminal_confirmation_stays(w):
+    # TC-154
+    w.user("ann")
+    cid, jid = _terminal_confirmed(w, "run-one")
+    sql_exec(w, "UPDATE jobs SET state = 'done', finished_at = ? WHERE id = ?", (time.time() - 8 * DAY, jid))
+    _terminal_confirmed(w, "run-two")                 # queues a new job, which prunes the finished ones older than seven days
+    assert w.sql("SELECT id FROM jobs WHERE id = ?", (jid,)) == []
+    assert conf(w, cid)["bundle_json"] is not None and conf(w, cid)["screen_text"] is not None
+
+
+def test_tc155_a_terminal_run_is_forgotten_in_both_places(rig):
+    # TC-155
+    rig.first("run-one")
+    cid = rig.w.sql("SELECT id FROM confirmations WHERE channel = 'TERMINAL' AND kind = 'launch'")[0]["id"]
+    jid = rig.sql("SELECT id FROM jobs WHERE confirmation_id = ?", (cid,))[0]["id"]
+    c0 = audit(conf(rig.w, cid))
+    assert forget_action(rig.w)["ok"] is True
+    assert cleared(rig.w, cid) and audit(conf(rig.w, cid)) == c0 and conf(rig.w, cid)["forgotten_at"] is not None
+    assert job_cleared(rig.w, jid, "run-one") and rig.w.sql("SELECT forgotten_at FROM jobs WHERE id = ?", (jid,))[0][0] is not None
+
+
+def _prune_job_of(rig, run, other):
+    jid = rig.sql("SELECT job_id FROM launches WHERE run_name = ?", (run,))[0][0]
+    hours_ago(rig.w, jid, 10 * 24)
+    rig.first(other)                                  # any later launch prunes
+    assert rig.sql("SELECT COUNT(*) FROM jobs WHERE id = ?", (jid,))[0][0] == 0
+
+
+def test_tc156_a_resume_reads_the_confirmation_when_the_job_is_gone(rig):
+    # TC-156
+    rig.first("x")
+    _prune_job_of(rig, "x", "y")
+    out = rig.resume("x", person=FakePerson(True))
+    assert out["sent"] is True and TOO_OLD not in out["message"], out
+
+
+def test_tc157_a_relaunch_reads_the_confirmation_and_keeps_samples_and_parameters(rig):
+    # TC-157
+    first = rig.first("x")
+    _prune_job_of(rig, "x", "y")
+    out = rig.relaunch("x", person=FakePerson(True))
+    assert out["sent"] is True, out
+    sent = rig.bundle_of_job(out["job_id"])
+    assert sent["samplesheet"] == first["samplesheet"] and sent["params"] == first["params"] and sent["pipeline"] == first["pipeline"]
+
+
+def _old_format(rig):
+    sql_exec(rig.w, "UPDATE confirmations SET bundle_json = NULL, screen_text = NULL WHERE channel = 'TERMINAL'")
+
+
+def test_tc158_an_old_format_row_is_read_from_its_job(rig):
+    # TC-158
+    rig.first("x")
+    _old_format(rig)
+    out = rig.resume("x", person=FakePerson(True))
+    assert out["sent"] is True, out
+
+
+@pytest.mark.parametrize("verb", ["resume", "relaunch"])
+def test_tc159_tc160_an_old_format_row_whose_job_is_gone_says_too_old(rig, verb):
+    # TC-159 (resume), TC-160 (relaunch)
+    rig.first("x")
+    _old_format(rig)
+    sql_exec(rig.w, "DELETE FROM jobs WHERE id = (SELECT job_id FROM launches WHERE run_name = 'x')")
+    before = rig.counts()
+    out = rig.ask(verb, "x", person=FakePerson(True))
+    assert out["sent"] is False and TOO_OLD in out["message"], out
+    assert rig.counts() == before
