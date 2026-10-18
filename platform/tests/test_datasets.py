@@ -210,7 +210,9 @@ def test_tc026_to_028_one_byte_over(d):
     assert r["ok"] is False and r["over"] == ["big_R1.fastq.gz"] and r["command"]
     dest = area(d, d.a) + "/rawdata"
     assert r["command"].startswith("bash scripts/push.sh <你電腦上的資料夾> ") and r["command"].endswith(dest)       # TC-027
-    assert dest in r["message"] and "scripts/push.sh" not in r["message"].replace(r["command"], "")                  # TC-028
+    outside = r["message"].replace(r["command"], "")                                                                  # TC-028
+    assert "scripts/push.sh" not in outside and dest in outside   # second sentence: dest appears again outside the command
+    assert r["message"].count(dest) >= 2
 
 
 def test_tc029_only_the_big_one_is_listed(d):
