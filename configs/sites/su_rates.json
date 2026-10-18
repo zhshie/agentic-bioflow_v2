@@ -1,0 +1,19 @@
+{
+  "_about": "SU (the NCHC compute point) rates for estimate_su. 'factor' = SU per cpu-hour of one partition. No factor is recorded anywhere in this repo, so every factor is null and the SU of a run is reported unknown until the maintainer or lab-agent fills them in from NCHC. Do not guess a number here.",
+  "source": "https://lions.nchc.org.tw/ngs.jsp",
+  "nstc_twd_per_su": 0.08,
+  "academic_twd_per_su": 0.24,
+  "sites": {
+    "nchc": {
+      "partitions": {
+        "ngs7G":   {"factor": null},
+        "ngs13G":  {"factor": null},
+        "ngs26G":  {"factor": null},
+        "ngs53G":  {"factor": null},
+        "ngs92G":  {"factor": null},
+        "ngs186G": {"factor": null},
+        "ngs372G": {"factor": null}
+      }
+    }
+  }
+}
