@@ -2,19 +2,19 @@
 
 <!--
 Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after the plan, before any code.
-This is the contract REOPENED for web design v1 (plan section "REDO per web design v1": G0-G11, rulings R1-R7, 2026-10-18 night).
+This is the contract REOPENED for web design v1 (plan section "REDO per web design v1": G0-G11, rulings R1-R7, 2026-10-18 night), AMENDED on 2026-10-19 for rulings R8 and R9 (build round: no Jev anywhere on the platform; the red number beside 「現在」; succeeded items show symbol + status + done/total only).
 It replaces the layout-B contract (confirmed 2026-10-18 earlier). Kind: ui + backend; both specialist rules (專長守則) apply.
-There is no spec.md for 011a. The maintainer's own words are in three places: the plan's section 「給維護者」 (3 points, point 2 as ruled by R1),
-the ten verbatim quotes in DESIGN.md ("Maintainer's words"), and the plan's TC-H01 to TC-H19 base.
+There is no spec.md for 011a. The maintainer's own words are in three places: the plan's section 「給維護者」 (3 points, point 2 as ruled by R1 and R9), the ten verbatim quotes in DESIGN.md ("Maintainer's words"), and the plan's TC-H01 to TC-H19 base.
 Nothing here invents behaviour the plan, DESIGN.md or the reference demo does not state; the places where the plan is silent are listed in the overview under "我（撰寫者）不確定的地方".
 IDs: TC-H, TC-L, TC-D, TC-V, TC-N, TC-K keep their old numbers. A struck-through row (~~ ~~) is superseded and keeps its row; the row that replaces it is named in its last cell.
-New rows: TC-S01 to TC-S49, TC-D12, TC-V11 to TC-V18, TC-N12 to TC-N20.
+Rows from the first design-v1 contract: TC-S01 to TC-S49, TC-D12, TC-V11 to TC-V18, TC-N12 to TC-N20.
+Rows added or amended by the R8/R9 amendment (2026-10-19): new TC-S50, TC-S51, TC-D13, TC-K6; amended TC-S39, TC-S40, TC-N14 (Jev removed, R8), TC-D12 (the command could never pass because the developer-agent legitimately edits plan.md; now it tests what it was meant to test).
 Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as they are.
 -->
 
-**規格**：`specs/011a-web-shell/plan.md`（含「REDO per web design v1」與其後的裁定 R1 至 R7）、根目錄 `DESIGN.md`、`PRODUCT.md`、參考稿 `specs/011a-web-shell/design-v1-demo.html`（DESIGN.md 與參考稿不同時以 DESIGN.md 為準）　**總覽**：`test-case-overview.md`
+**規格**：`specs/011a-web-shell/plan.md`（含「REDO per web design v1」與其後的裁定 R1 至 R9）、根目錄 `DESIGN.md`、`PRODUCT.md`、參考稿 `specs/011a-web-shell/design-v1-demo.html`（DESIGN.md 與參考稿不同時以 DESIGN.md 為準；DESIGN.md 第 12 畫面的「Jev 金鑰（選填）」依裁定 R8 在 011a 刪除）　**總覽**：`test-case-overview.md`
 
-「給維護者」三點（點 2 依裁定 R1 改為頂欄），下面簡稱「維護者 1／2／3」：
+「給維護者」三點（點 2 依裁定 R1 改為頂欄，R9 確認舊句已被取代），下面簡稱「維護者 1／2／3」：
 
 1. 登入網頁後看到三欄畫面：左邊是你的 run 清單，專案功能還沒做，頁面會照實寫出來；中間是選到的那個 run 的五階段板；右邊是你所有 run 的進度，照階段分組、用顏色加文字標狀態。
 2. 費用讀數「SU —」「雲端 NT$ —」（原文寫「右欄最上面一行『本月 SU — · 雲端 —』」，設計稿 v1 與裁定 R1 把它移到頂欄兩行）。
@@ -46,6 +46,7 @@ Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as 
 - 「CJK 字元」= 中日韓文字。英文版的測試用純 ASCII 的 run 名稱與使用者名稱，才能證明「畫面上的字」全部換成英文。
 - 「路由集合」= 合併 v3 後的既有路由（含 009i 的 OAuth／同意頁）加上 GET `/` 與 GET `/settings`。
 - 「被選取標記」= 同一種標記（執行者自選名稱，如 `aria-current` 加 class），TC-L28 規定樣式表要對它設外框。
+- 「現在旁的紅色數字」= 左欄「現在」那一項旁邊的數字徽章（設計稿「red count of items awaiting the person」），依裁定 R9 等於「需要注意」卡的數字。
 
 類型只有三種：
 
@@ -102,7 +103,7 @@ Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as 
 
 ## User Story 2 — 頂欄的費用讀數（優先度 P1）
 
-維護者原本寫的是「右邊最上面一行」；設計稿 v1 把費用放在頂欄，裁定 R1 照設計稿改為頂欄兩行純文字。
+維護者原本寫的是「右邊最上面一行」；設計稿 v1 把費用放在頂欄，裁定 R1 照設計稿改為頂欄兩行純文字（沒有進度條、沒有連結；費用頁是 012d）。裁定 R9 確認「給維護者」點 2 與 G1「連到費用頁」那句已被 R1 取代。
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
@@ -111,7 +112,7 @@ Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as 
 | TC-H09c | 維護者 2；H09 | 功能 | 已登入，有 run | GET `/` | 費用讀數裡沒有任何數字、也沒有連結、沒有進度條 | 自動 |
 | ~~TC-L17~~ | ~~維護者 2；B1~~ | ~~功能~~ | ~~已登入，有 run~~ | ~~GET `/`~~ | ~~右欄最上面一行「本月 SU — · 雲端 —」~~ | 已取代：TC-S03（裁定 R1：移到頂欄） |
 | TC-L18 | 維護者 2；option B；R1 | 功能 | 已登入 | GET `/`，並讀 `web_board.py` 原始碼 | 頁面沒有「本月費用」標題；頁面與 `web_board.py` 都不出現站名「NCHC」（標籤是不帶站名的「SU」，程式維持與站台無關） | 自動 |
-| TC-S03 | 維護者 2；R1；G1 | 功能 | 已登入，有 run | GET `/` | 頂欄（在三欄之前）有兩個分開的純文字行，各自一個元素，文字（去掉標籤與多餘空白後）正好是「SU —」與「雲端 NT$ —」；兩行都不在連結內，頂欄裡沒有 `<progress>`；右欄沒有第二份費用行 | 自動 |
+| TC-S03 | 維護者 2；R1；G1；R9 | 功能 | 已登入，有 run | GET `/` | 頂欄（在三欄之前）有兩個分開的純文字行，各自一個元素，文字（去掉標籤與多餘空白後）正好是「SU —」與「雲端 NT$ —」；兩行都不在連結內，頂欄裡沒有 `<progress>`；右欄沒有第二份費用行 | 自動 |
 | TC-S04 | R1；設計原話 5 | 功能 | 已登入 | GET `/?lang=en` | 頂欄兩行純文字正好是「SU —」與「Cloud NT$ —」，同樣不是連結、沒有進度條 | 自動 |
 
 ## User Story 3 — 整頁只能看，每人只看到自己的 run（優先度 P1）
@@ -182,10 +183,10 @@ Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as 
 | TC-D09 | 裁定 7（contract-review） | 功能 | `docs/TESTING.md` | 讀 | 有「視覺檢查」（TC-V11 至 TC-V18）與「ledger 檢視」兩組具體步驟，照著做得出來 | 手動：`docs/TESTING.md` |
 | TC-D10 | G9；憲法「弱化測試」 | 功能 | `specs/011a-web-shell/ledger.md` 與本分支對 layout B 版（commit 13daa79）的測試 diff | 對照「釘住舊版面標記」的測試與 ledger | 每一條為設計稿 v1 改過的斷言，ledger 都寫有舊斷言、新斷言、理由；沒有任何斷言被刪掉而沒有替代 | 手動：`docs/TESTING.md`（ledger 檢視） |
 | TC-D11 | 計畫「Ruling after acceptance round 2」 | 功能 | `platform/tests/test_launch_static.py` | 與 v3 比對 | tc069、tc070 與 v3 逐字相同，沒有任何為站名加的豁免 | 手動：`docs/TESTING.md`（ledger 檢視） |
-| TC-D12 | 專長守則（ui）；憲法「驗收期間不得改規格」 | 功能 | commit 637dc7c 的 `DESIGN.md`、`PRODUCT.md` | `git diff 637dc7c HEAD -- DESIGN.md PRODUCT.md specs/011a-web-shell/plan.md` | 沒有任何差異（執行者沒有改設計稿、產品說明與計畫；計畫的更動由 developer-agent 另開提交） | 手動：`docs/TESTING.md`（ledger 檢視） |
+| TC-D12 | 專長守則（ui）；憲法「驗收期間不得改規格」 | 功能 | 本分支的 git 歷史（設計稿提交 637dc7c 之後） | `git log --format='%h %s' 637dc7c..HEAD -- DESIGN.md PRODUCT.md specs/011a-web-shell/plan.md specs/011a-web-shell/test-case.md specs/011a-web-shell/test-case-overview.md`，再 `git diff 637dc7c HEAD -- DESIGN.md PRODUCT.md` | `DESIGN.md`、`PRODUCT.md` 沒有任何差異；log 列出的提交，主題都不是執行者的提交（不以 `RED:`、`GREEN:` 開頭，也不是合併提交）——只有 developer-agent 的 `plan(011a):` 提交與 verifier 的 `chore(011a-web-shell): test cases from verifier` 提交動過計畫與測試案例（執行者沒有改設計稿、產品說明、計畫、測試案例） | 手動：`docs/TESTING.md`（ledger 檢視） |
+| TC-D13 | R8；ADR 0007 | 功能 | `specs/011a-web-shell/ledger.md` 與本分支對 `origin/v3` 的 diff | 讀 ledger；`git diff origin/v3...HEAD -- tests/jev_test.sh`；`grep -rli jev platform/` | ledger 記下：設定頁在 011a 沒有 Jev 項目（原因：平台任何地方都不點名 Jev，ADR 0007 把 Jev 放在外掛端）、DESIGN.md 第 12 畫面的「Jev 金鑰（選填）」在 011a 刪除並留待 ADR 0009/0010 修訂；先前的「Open item: tests/jev_test.sh TC-085」已改成已決定；`tests/jev_test.sh` 與 v3 沒有任何差異；`grep -rli jev platform/` 沒有輸出任何檔案（含 `platform/tests/`） | 手動：`docs/TESTING.md`（ledger 檢視） |
 | TC-S08 | G0 | 功能 | 本分支的 git 歷史 | `git log --merges --first-parent` 與 `git merge-base --is-ancestor 0d36bcf HEAD` | 有一個單獨的合併提交（把 `origin/v3` 併進來，提交裡只有解衝突的內容，沒有別的功能改動）；合併前的提交（0d36bcf 之前的歷史）仍是祖先，歷史沒有被 rebase 或強推改寫；衝突處 `docs/PLATFORM.md`、`test_confirm_page.py`、`test_review_fixes_2.py` 兩邊的內容都留著（v3 新增的 keep-submissions、resume/relaunch、013a 等測試與文件仍在） | 手動：`docs/TESTING.md`（ledger 檢視） |
 | TC-S09 | G8 | 功能 | 設計稿 `DESIGN.md` 與 `specs/011a-web-shell/design-v1-demo.html` 裡標了「JS」的地方（「現在」頁的即時更新、右欄進度的即時更新） | 讀 ledger | ledger 列出這幾處 JS 位置，並說明 011a 改用 15 秒 meta refresh、沒有加任何 JS（頁面實際沒有 `<script>`，見 TC-H13e） | 手動：`docs/TESTING.md`（ledger 檢視） |
-| ~~TC-V01~~ | ~~Tier B 視覺檢查；維護者 1~~ | ~~功能~~ | ~~本機啟動 `abf-platform web`，灌入 e2e 假 run~~ | ~~登入後開 `/`，截圖~~ | ~~三欄、右欄「本月費用」與五個群組~~ | 已取代：TC-V11 |
 | TC-V02 | Tier B 視覺檢查 | 功能 | 本機啟動 `abf-platform web`，灌入 e2e 假 run，有一個 succeeded 的 run | 選該 run，截圖 | 截圖附在 PR；中欄五階段板的「結果」是目前階段，看得到狀態、時間（`MM-DD HH:mm`）、進度條 | 手動：`docs/TESTING.md`（視覺檢查） |
 | TC-V03 | Tier B 視覺檢查 | 功能 | 同上，有一個 failed 的 run | 選該 run，截圖 | 截圖附在 PR；中欄看得到失敗狀態與失敗原因 | 手動：`docs/TESTING.md`（視覺檢查） |
 | TC-V04 | 維護者 1；裁定 6 | 功能 | 本機頁面的截圖 | 用肉眼看（可轉成黑白） | 四種狀態各有文字與符號（▶ ✓ ✗ ⏸），不靠顏色也分得出來 | 手動：`docs/TESTING.md`（視覺檢查） |
@@ -221,7 +222,7 @@ Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as 
 | TC-N11 | 不做：專案與分析（011b）；裁定 B4、R7 | 不在範圍 | 已登入 | GET `/`，並列出路由 | 左欄沒有專案或分析的連結、清單或表單；尚未做的項目只是灰字「之後開放」，不在連結內；路由集合同 TC-H11d | 自動 |
 | TC-N12 | 不做：費用頁、首次使用設定（設計稿第 2、11 畫面；R7、R1） | 不在範圍 | 已登入 | GET `/`、`/settings` | 費用讀數不是連結（沒有 `#cost` 或費用頁網址）；沒有「歡迎使用」「第一次使用」「建立第一個專案」之類的步驟畫面 | 自動 |
 | TC-N13 | 不做：「系統自動處理紀錄」表與「待你決定」計數（R3） | 不在範圍 | 已登入，有各種狀態的 run | GET `/` | 「現在」頁沒有「系統自動處理紀錄」表、沒有「待你決定」「Awaiting you」字樣、沒有 `<table>` | 自動 |
-| TC-N14 | 不做：金鑰輸入、Jev 開關（R4；設計原話 9） | 不在範圍 | 已登入 | GET `/settings` | 「AI 模型金鑰」「Jev 金鑰（選填）」只是灰字加「之後開放」，沒有任何輸入欄；整頁沒有「Jev 開」「Jev 關」之類的切換 | 自動 |
+| TC-N14 | 不做：金鑰輸入、Jev（R4、R8；設計原話 9） | 不在範圍 | 已登入 | GET `/settings` 與 `/settings?lang=en` | 「AI 模型金鑰」只是灰字加「之後開放」，沒有任何輸入欄；中、英文兩份整頁都不出現「Jev」字樣（不分大小寫），也沒有任何金鑰開關或切換；執行這項檢查的測試，自己不得在 `platform/` 底下以字面寫出該字（用字串拼接組出來），否則 `tests/jev_test.sh` TC-085 會失敗（見 TC-K6） | 自動 |
 | TC-N15 | 不做：登入頁的權杖欄位與「記住 12 小時」（R5；憲法 5.0.0） | 不在範圍 | 未登入 | GET `/login` | 表單欄位只有姓名與密碼（加選用的隱藏 `next`）；沒有 checkbox、沒有權杖欄位、沒有「記住 12 小時」「Remember 12 h」字樣 | 自動 |
 | TC-N16 | 不做：聊天（014）；設計原話 2 的對話框 | 不在範圍 | 已登入 | GET `/` | 右欄「聊天」只是灰字加「之後開放」，沒有未讀數字、沒有訊息輸入框、不是連結、不是按鈕 | 自動 |
 | TC-N17 | 不做：網頁終端機（設計原話 10 已取消） | 不在範圍 | 已登入 | GET `/`、`/?run=<id>`、`/settings` | 頁面沒有終端機或指令輸入元件（沒有 `<iframe>`、`<textarea>`、指令輸入欄、「終端機」「Terminal」字樣） | 自動 |
@@ -231,7 +232,7 @@ Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as 
 
 ## User Story 7 — 設計稿 v1 的框架：頂欄、三欄、左欄、右欄、階段條（優先度 P1）
 
-對應計畫「REDO per web design v1」G1 至 G3、G5、G6 與裁定 R1、R6、R7，以及 `DESIGN.md` 的骨架、token、狀態表。layout B 版的 TC-L01 至 TC-L06 由本節的 TC-S 列取代；L07 起的階段條與右欄項目列保留或改寫。
+對應計畫「REDO per web design v1」G1 至 G3、G5、G6 與裁定 R1、R6、R7、R9，以及 `DESIGN.md` 的骨架、token、狀態表。layout B 版的 TC-L01 至 TC-L06 由本節的 TC-S 列取代；L07 起的階段條與右欄項目列保留或改寫。
 
 ### 頂欄與整體格線
 
@@ -280,15 +281,16 @@ Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as 
 | TC-L21 | 維護者 1；L4；L5 | 功能 | 一個 running 的 run | GET `/` | 右欄該項目是一整塊，整塊在同一個連到 `/?run=<id>` 的連結內，並帶 running 專屬 class | 自動 |
 | TC-L22 | B3；R6 | 功能 | 使用者有 3 個 run，開始時間依序為 t1、t2、t3（t1 最早） | GET `/` | 右欄同一群組內由上到下標成「3: 名稱」「2: 名稱」「1: 名稱」（最新在上），序號 1 是 t1 那個 run | 自動 |
 | TC-L23 | B3；C5 | 功能 | 一個 running 的 run：succeeded 6、cached 2、total 10 | GET `/` | 該項目的 done/total 是「8/10」（完成數 = 成功 + 快取） | 自動 |
-| ~~TC-L24~~ | ~~B3；C5~~ | ~~功能~~ | ~~succeeded 的 run，已知結束時間~~ | ~~GET `/`~~ | ~~右欄項目重點是結束時間~~ | 已取代：TC-S27（裁定 R6：第二行是符號、狀態字、done/total） |
+| ~~TC-L24~~ | ~~B3；C5~~ | ~~功能~~ | ~~succeeded 的 run，已知結束時間~~ | ~~GET `/`~~ | ~~右欄項目重點是結束時間~~ | 已取代：TC-S27（裁定 R6：第二行是符號、狀態字、done/total）；TC-S51 釘「不再有結束時間」 |
 | TC-L25 | B3；C4 | 功能 | 一個 failed 的 run，`failure_reason` 第一行有 120 個字元，其後還有第二行 | GET `/` | 項目與「現在」卡裡的重點是第一行，最多 80 個字元：第 81 個字元之後與第二行的內容都不出現；第一行不超過 80 字時完整顯示 | 自動 |
 | TC-L26 | C4 | 例外 | 一個 failed 的 run，`failure_reason` 缺少；另一個 failed 的 run，`failure_reason` 是空字串 | GET `/` | 兩者的重點都是「原因未記錄」，頁面不是 500 | 自動 |
 | ~~TC-L27~~ | ~~B3~~ | ~~功能~~ | ~~一個 lost 的 run~~ | ~~GET `/`~~ | ~~重點是「—」~~ | 已取代：TC-S27 |
 | TC-L28 | L4；R6 | 功能 | 3 個 run | GET `/?run=<其中第二個>`，再 GET `/`（不選 run） | 前者：右欄只有被選的那個項目帶「被選取」標記，且樣式表對該標記設了外框（outline）；後者：右欄沒有任何項目帶該標記 | 自動 |
 | TC-L29 | C4；決策 3；R3 | 功能 | 使用者有 250 個 failed 的 run；測試記錄 `actions` 的呼叫 | GET `/`（不選 run） | 整頁（右欄加「現在」卡）呼叫的 action 只有 `list_runs` 與 `get_run`；`get_run` 涉及的不同 run 不超過 100 個，每次都帶登入者的 `caller`；「執行中」群組只列 100 個項目 | 自動 |
 | TC-L30 | B3；裁定 4 | 功能 | 使用者有 250 個 succeeded 的 run，開始時間各不同 | GET `/` | 「結果」群組標題 250，只列 100 個；最上面項目序號 250，第 100 個項目序號 151（序號是在全部 250 個 run 裡算的） | 自動 |
-| TC-S27 | R6；設計稿右欄項目 | 功能 | running（成功 6、快取 2、total 10）、failed（成功 1、total 10）、lost（成功 4、total 10）、succeeded（成功 10、total 10）各一 | GET `/` | 每個項目的文字依序含：「序號:」、run 名稱、狀態符號、狀態字、done/total：「▶ 執行中 8/10」「✗ 失敗 1/10」「⏸ 失聯/暫停 4/10」「✓ 成功 10/10」；failed 項目另含失敗原因第一行（TC-L25） | 自動 |
+| TC-S27 | R6；R9；設計稿右欄項目 | 功能 | running（成功 6、快取 2、total 10）、failed（成功 1、total 10）、lost（成功 4、total 10）、succeeded（成功 10、total 10）各一 | GET `/` | 每個項目的文字依序含：「序號:」、run 名稱、狀態符號、狀態字、done/total：「▶ 執行中 8/10」「✗ 失敗 1/10」「⏸ 失聯/暫停 4/10」「✓ 成功 10/10」；failed 項目另含失敗原因第一行（TC-L25） | 自動 |
 | TC-S28 | R6；DESIGN 右欄 | 功能 | 同上，再加一個 total 為 0 的 run | GET `/` | 每個項目都有細的原生 `<progress>`，value 等於 done、max 等於 total；total 為 0 的那個沒有 value 屬性；沒有 `style=` | 自動 |
+| TC-S51 | R9；R6 | 功能 | 一個 succeeded 的 run：開始 2026-10-17 20:30 UTC、結束 2026-10-18 01:12 UTC；一個 lost 的 run；一個 running 的 run | GET `/`，再 GET `/?run=<succeeded 的 id>` | 右欄 succeeded 項目、lost 項目、running 項目的文字裡都沒有任何時間字串（沒有 `MM-DD HH:mm` 形式，尤其沒有結束時間「10-18 09:12」），lost 項目也沒有單獨一個「—」當重點；succeeded 項目只有序號與名稱、符號「✓」、「成功」、done/total；同一個結束時間仍出現在 `/?run=<id>` 的中欄（TC-H21c） | 自動 |
 
 ### 階段條
 
@@ -310,7 +312,7 @@ Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as 
 
 ## User Story 8 — 「現在」首頁與通知卡（優先度 P1）
 
-對應 G4 與裁定 R3、設計稿第 1 畫面、設計原話 1「進來之後馬上可以看到各個run的狀態與進度…只有需要使用者決定的才會通知使用者」、設計原話 3「AI一律先除錯，不是使用者能決定的事情一律直接處理」。011a 只讀、只有 `list_runs`：「需要注意」＝失敗與失聯的 run；其他一律不通知。
+對應 G4 與裁定 R3、R9、設計稿第 1 畫面、設計原話 1「進來之後馬上可以看到各個run的狀態與進度…只有需要使用者決定的才會通知使用者」、設計原話 3「AI一律先除錯，不是使用者能決定的事情一律直接處理」。011a 只讀、只有 `list_runs`：「需要注意」＝失敗與失聯的 run；其他一律不通知。
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
@@ -320,16 +322,17 @@ Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as 
 | TC-S35 | R3；設計原話 1、3 | 功能 | 只有 succeeded 的 run；另一次是沒有 running 的 run | GET `/` | succeeded 的 run 不出現在任何一張卡（成功不通知）；沒有 running 時「正在跑」卡仍在、數字是 0；沒有 failed 與 lost 時「需要注意」卡仍在、數字是 0 | 自動 |
 | TC-S36 | R3；G8 | 功能 | 有 failed 與 running 的 run | GET `/` | 兩張卡裡沒有 `<button>`、沒有表單、沒有指向 `/?run=<id>` 與 `/settings` 以外的連結；沒有「重跑」「續跑」「上傳」「確認」之類的動作字樣 | 自動 |
 | TC-S37 | 決策 6（清單上限）；H19 | 功能 | 使用者有 250 個 failed 的 run | GET `/` | 「需要注意」卡的數字是 250，只列 100 行，下面寫「還有 150 筆」 | 自動 |
+| TC-S50 | R9；R3；設計稿左欄「red count」 | 功能 | 三次各一個使用者：(甲) running 2、failed 1、lost 1、succeeded 3；(乙) failed 1、lost 0；(丙) 只有 succeeded 與 running | GET `/`、`/?run=<id>`、`/settings`、`/?lang=en`（各使用者各取） | 左欄「現在」旁的紅色數字等於同頁「需要注意」卡的數字、也等於右欄計數列「!」的數字：甲是 2、乙是 1；四種頁面（含選了 run、設定頁、英文版）數字相同；樣式表對它設的是 failed 狀態色（紅），而且它本身是文字數字（不只靠顏色）；丙（需要注意 0 筆）沒有出現大於 0 的數字（顯示 0 或不顯示皆可）；數字不是第二份儲存的狀態（每次由 `list_runs` 算出，見 TC-H07a） | 自動 |
 
 ## User Story 9 — 設定頁與登入頁（優先度 P1）
 
-對應 G6、裁定 R4（設定頁，全部灰字）、R5（登入頁只改樣式）、設計稿第 12、13 畫面、設計原話 2「系統設定先」、設計原話 9「不需要Jev "開關"，只要在設定讓使用者可以放金鑰」。
+對應 G6、裁定 R4（設定頁，全部灰字）、R5（登入頁只改樣式）、R8（平台任何地方都不點名 Jev）、設計稿第 12、13 畫面、設計原話 2「系統設定先」、設計原話 9「不需要Jev "開關"，只要在設定讓使用者可以放金鑰」。011a 的設定頁沒有任何可輸入的欄位，所以「放金鑰」這件事本身（AI 模型金鑰的輸入）要等 012a／014；Jev 金鑰項目在 011a 整個刪除（裁定 R8）。
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
 | TC-S38 | R4；H01 | 例外 | 沒有登入；另一次只帶 Bearer | GET `/settings` | 回 303 轉到 `/login`，回應內容沒有設定頁內容 | 自動 |
-| TC-S39 | R4；設計原話 2、9 | 功能 | 已登入 | GET `/settings` | 回 200；中欄標題「設定」，依序有六節：運算環境、憑證、密碼與金鑰、個人、營運者後台、角色（老師／學生）；「密碼與金鑰」裡列出「AI 模型金鑰」與「Jev 金鑰（選填）」；「個人」裡列出「逐步模式」與「開發模式」；每一節（或每一項）旁寫灰字「之後開放」；沒有任何一項是連結、表單或輸入欄 | 自動 |
-| TC-S40 | R4；G8；設計原話 9 | 功能 | 已登入 | GET `/settings` | 整頁唯一的表單是登出；沒有 `<input>`（登出的 CSRF 隱藏欄除外）、`<select>`、`<textarea>`、checkbox、除登出按鈕外的 `<button>`；沒有 Jev 的開／關切換；GET 之後資料庫雜湊不變（同 TC-H11e） | 自動 |
+| TC-S39 | R4；R8；設計原話 2、9 | 功能 | 已登入 | GET `/settings` | 回 200；中欄標題「設定」，依序有六節：運算環境、憑證、密碼與金鑰、個人、營運者後台、角色（老師／學生）；「密碼與金鑰」裡只列出「AI 模型金鑰」一項（沒有任何第二把金鑰的項目）；「個人」裡列出「逐步模式」與「開發模式」；每一節（或每一項）旁寫灰字「之後開放」；沒有任何一項是連結、表單或輸入欄 | 自動 |
+| TC-S40 | R4；G8；設計原話 9 | 功能 | 已登入 | GET `/settings` | 整頁唯一的表單是登出；沒有 `<input>`（登出的 CSRF 隱藏欄除外）、`<select>`、`<textarea>`、checkbox、除登出按鈕外的 `<button>`；沒有任何金鑰輸入欄或開／關切換；GET 之後資料庫雜湊不變（同 TC-H11e） | 自動 |
 | TC-S41 | R4；G6 | 功能 | 已登入 | GET `/settings` | 設定頁有和 `/` 一樣的頂欄、左欄、右欄（含右欄進度）；左欄「設定」帶被選取標記（TC-S23）；中欄是設定內容 | 自動 |
 | TC-S42 | R5；憲法 5.0.0 | 功能 | 已登入 | GET `/settings`、`/settings?lang=en` | 頁面不出現「12 小時」「12 h」「12 hours」（網頁登入不用權杖，也沒有 12 小時免登入） | 自動 |
 | TC-S43 | G6；R5 | 功能 | 未登入 | GET `/login` | 回 200；用同一份唯一樣式表（CSP 雜湊相符、整頁一個 `<style>`）；表單只有「姓名」「密碼」兩個欄位與送出鈕（帶 `next` 時多一個隱藏欄）；頁面是中文；沒有 `<script>`、`style=`、外部網址 | 自動 |
@@ -368,6 +371,7 @@ Language: 繁體中文; identifiers (TC-, H, L, S, G, R) and file paths stay as 
 | TC-K1 | 原則 I.2（確認只能由人在指定管道做） | 功能 | 記下 `launches`、`jobs`、待確認申請的筆數 | GET `/`、`/?run=<id>`、`/settings` 數次（含 `lang=en`） | 筆數都沒變；網頁讀取不會建立任何申請或工作 | 自動 |
 | TC-K2 | 原則 I.2（未確認的送出被拒） | 例外 | 既有的 `test_tch09_*`（`test_human_channel.py`）與 `test_tch09_b_c_*`（`test_confirm_page.py`） | 跑 `tests/platform_test.sh` | 兩組仍全過，內容未被放寬 | 自動 |
 | TC-K3 | 開發流程「每階段全綠」；G9 | 功能 | 合併 v3 之後的本分支 | 在 WSL 或 CI 跑 `bash tests/run_all.sh` | 全部通過；v3 帶進來的測試（keep-submissions、resume/relaunch、013a 等）一併在內且都綠 | 自動：`tests/run_all.sh` |
-| TC-H07a | 原則 I.2（不存第二份 run 狀態）；H07 | 功能 | 本分支的資料庫結構與 `web_board.py` | 檢查資料表欄位與程式 | 沒有儲存「階段」的欄位或檔案；階段、序號、計數、通知卡每次由狀態與開始時間算出，沒有存下來 | 自動 |
+| TC-H07a | 原則 I.2（不存第二份 run 狀態）；H07 | 功能 | 本分支的資料庫結構與 `web_board.py` | 檢查資料表欄位與程式 | 沒有儲存「階段」的欄位或檔案；階段、序號、計數、通知卡、現在旁的紅色數字每次由狀態與開始時間算出，沒有存下來 | 自動 |
 | TC-H07b | 原則 I.2；H07 | 功能 | 本分支 | 跑 `tests/no_second_run_state_test.sh` | 通過 | 自動：`tests/no_second_run_state_test.sh` |
 | TC-K5 | 安全網（不得放寬） | 功能 | 本分支對 v3 的 diff | 看 `hooks/`、`.claude/`、deny 規則是否被動到 | 沒有任何 hook 或 deny 被改動 | 手動：`docs/TESTING.md`（ledger 檢視） |
+| TC-K6 | R8；ADR 0007（平台不點名 Jev）；憲法「弱化測試」 | 功能 | 本分支，`tests/jev_test.sh` 原封不動 | 跑 `bash tests/jev_test.sh` | 全部通過，其中 TC-085「`platform/` 底下沒有任何檔案提到 jev」的計數是 0（涵蓋 `web_board.py`、`test_web_board.py` 與所有 `platform/tests/` 檔）；TC-S39／TC-N14 的測試沒有靠放寬這條而過 | 自動：`tests/jev_test.sh` |
