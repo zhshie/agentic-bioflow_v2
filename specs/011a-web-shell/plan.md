@@ -9,7 +9,7 @@
    - 左邊是你的 run 清單。專案功能還沒做，頁面會照實寫出來。
    - 中間是選到的那個 run 的五階段板。
    - 右邊是你所有 run 的進度，照階段分組、用顏色加文字標狀態。
-2. 右邊最上面寫「本月費用」，現在顯示「—」。國網 SU 和雲端費用分兩行。
+2. 右欄最上面一行「本月 SU — · 雲端 —」（B1）。
 3. 整頁只能看，沒有會改東西的按鈕。每人只看到自己送出的 run；沒記錄送出者的舊 run 不顯示，只能在本機終端機查。
 
 ## Facts
@@ -171,3 +171,11 @@ L9. Manual: re-take the screenshots (wide and <900px, zh and en) into the PR for
 - B4 Unbuilt items: the single grey text `之後開放` everywhere (left tree items, 設定). This supersedes decision 6's "專案與分析（011b）尚未開放" and "設定（尚未開放）" wording.
 - B5 Right-pane groups: follow the reference — 執行中 (running, failed), 結果 (succeeded, lost), and one grey block `之後開放` standing for 送出, 下游, 完成. This supersedes decision 6's five groups.
 - B6 Language: every link the board pages generate keeps `lang=en` when the page was rendered in English. Only the board pages (and the board's own 404) are translated in 011a; the login and confirmation pages stay Chinese (later slice).
+
+### Rulings after layout-B contract round 2 (2026-10-18, developer-agent)
+- C1 lost goes in 執行中 (reference file, decision 4, TC-H06 and B2 agree). B5 is corrected: 執行中 = running, failed, lost; 結果 = succeeded; plus the grey 之後開放 block.
+- C2 Wording authority: where 給維護者, decision 6 or the Tests section still carry the old cost/unbuilt/group wording, B1, B4, B5 and C1 win. (給維護者 point 2 has been rewritten.)
+- C3 Routes: "exactly six routes" now means the route set of v3 as merged (including 009i's OAuth/consent routes) plus `GET /`. TC-H11 pins that union.
+- C4 Failed key fact: the right pane calls `get_run` (with `caller=`) for each failed item shown (at most 100, the cap); `failure_reason` missing or empty -> `原因未記錄` / `reason not recorded`.
+- C5 done = succeeded + cached (same as decision 5's progress bar). End time uses the same formatter as the middle pane.
+- C6 The seven task-count cells, in this order, zh / en: 成功 succeeded, 快取 cached, 失敗 failed, 中止 aborted, 執行中 running, 等待 pending, 已送出 submitted (receiver.COUNT_FIELDS). Tests may pin label-number pairs.
