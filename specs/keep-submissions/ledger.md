@@ -50,3 +50,4 @@ Kept as they are; the maintainer may revisit any of them:
 - [x] F12: web parity for `forget` stays owed (see Owed above).
 
 - [x] CI follow-up: TC-093 now skips only when contract commit 4f41759 is absent from the clone (shallow CI checkout); when the history exists the assertion is unchanged.
+- [x] CI follow-up 2: TC-093 no longer uses git or skips (CI forbids skips and its clone is shallow); it asserts the sha256 of plan.md, test-case.md and test-case-overview.md against constants taken from contract commit 4f41759. Equivalent: any edit to those files after the contract commit still fails it.

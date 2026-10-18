@@ -808,17 +808,20 @@ def test_tc091_an_unconfirmed_launch_still_queues_nothing(w):
     assert not [r for r in w.sql("SELECT id FROM confirmations") if conf(w, r["id"])["state"] == "confirmed"]
 
 
+# Taken from contract commit 4f41759, so the check needs no git history (CI checkouts are shallow and may not skip).
+CONTRACT_SHA256 = {
+    "specs/keep-submissions/plan.md": "a6725b71e548cb4710408960aabcf342c99f1ac62fc3cd590816ff17e2110159",
+    "specs/keep-submissions/test-case.md": "af5d312a0bddf65b58b990c935f3e94c466f51c5ea65f172e7a73f08fae2b7db",
+    "specs/keep-submissions/test-case-overview.md": "8aa79ec0a9f72d6028ed1d98bdb9faf9747d7f36d00548caa4413974c6bcf86d",
+}
+
+
 def test_tc093_the_contract_files_were_not_edited_after_the_contract_commit():
     # TC-093
-    have = subprocess.run(["git", "-C", str(REPO_ROOT), "rev-parse", "--verify", "--quiet", "4f41759^{commit}"],
-                          capture_output=True, text=True, timeout=60)
-    if have.returncode != 0:
-        pytest.skip("contract commit not in this clone (shallow CI checkout); checked locally and by the verifier")
-    r = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--name-only", "4f41759", "HEAD", "--", "specs/keep-submissions/plan.md",
-                        "specs/keep-submissions/test-case.md", "specs/keep-submissions/test-case-overview.md"],
-                       capture_output=True, text=True, timeout=60)
-    assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == ""
+    import hashlib
+    for rel, want in CONTRACT_SHA256.items():
+        data = (REPO_ROOT / rel).read_bytes().replace(b"\r\n", b"\n")
+        assert hashlib.sha256(data).hexdigest() == want, rel
 
 
 # ==== follow-up after PR #133: F1 to F5 ==================================================================================================
