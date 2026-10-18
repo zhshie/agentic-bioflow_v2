@@ -179,3 +179,83 @@ L9. Manual: re-take the screenshots (wide and <900px, zh and en) into the PR for
 - C4 Failed key fact: the right pane calls `get_run` (with `caller=`) for each failed item shown (at most 100, the cap); `failure_reason` missing or empty -> `原因未記錄` / `reason not recorded`.
 - C5 done = succeeded + cached (same as decision 5's progress bar). End time uses the same formatter as the middle pane.
 - C6 The seven task-count cells, in this order, zh / en: 成功 succeeded, 快取 cached, 失敗 failed, 中止 aborted, 執行中 running, 等待 pending, 已送出 submitted (receiver.COUNT_FIELDS). Tests may pin label-number pairs.
+
+---
+
+# REDO per web design v1 (2026-10-18 night) — SUPERSEDES the layout sections above
+
+kind: ui + backend. The maintainer approved web design v1 (UI/UX session; his words: 「確保目前這個介面跑得動整趟分析流程後，就把這第一版送回主開發session」). Authority for every screen is now `DESIGN.md` and `PRODUCT.md` at the repo root (added in this branch) and the reference demo `specs/011a-web-shell/design-v1-demo.html`. Everything above about layout B (L1–L9, B1–B6, C1–C6) is superseded where it conflicts with DESIGN.md; the backend of this PR (routes, owner rule, parity tables, caps, 404 rule, symbols, read-only, CSP) STAYS.
+
+## G0 First step
+`git merge origin/v3` (plain merge, never rebase or force). Expect conflicts in docs/PLATFORM.md, platform/tests/test_confirm_page.py, test_review_fixes_2.py and others: keep both sides (v3 has since gained keep-submissions/forget, 009e resume/relaunch, OPERATIONS/MIGRATION/INSTALL docs, 013a). Commit the merge on its own.
+
+## Scope of 011a (the frame only; later slices are 011b–e, 012a–d, 013a/b, 014, 016)
+G1 Top bar: as DESIGN.md (product name, the cost readout linking to the cost page — the cost page itself is 012d, so the link target shows "之後開放"/coming later), user name, 中｜EN.
+G2 Left pane: project tree as DESIGN.md. Projects are not stored on the platform yet — show the user's runs under one honest heading and unbuilt items in grey "之後開放", exactly as DESIGN.md specifies for the not-yet state.
+G3 Right pane: progress column as DESIGN.md (the Progress｜Chat toggle shows Chat greyed "之後開放" — chat is 014).
+G4 「現在」home page with the notification component (running / needs attention cards from list_runs) as DESIGN.md.
+G5 Five-stage strip with done/current/later states styled as DESIGN.md (colours, dashed later).
+G6 Settings page shell (keys only; every unbuilt item greyed), login page restyled to DESIGN.md, ≤900px stacking, `?lang=en` (links keep lang).
+G7 Times shown in Asia/Taipei in a human format (DESIGN.md), never raw ISO.
+G8 Still read-only in 011a: no write action from the web in this slice (launch/upload/resume pages are 012/011b+). Zero JS unless DESIGN.md marks a JS spot inside this slice's screens — then stop and list it in the ledger, do not add JS here.
+G9 Tests: keep every backend test green; update old layout-markup tests to DESIGN.md structure, each changed assertion listed in the ledger (old/new/reason), none deleted without replacement. Pin: no `style=` attribute, no `<script`, no external URL; every link on every 011a page resolves (no dead link); `?lang=en` has no Chinese UI string from the table.
+G10 Manual: Playwright screenshots, desktop width and phone width, zh and en, of 「現在」, a selected failed run, the empty state, settings, login — attach to the PR.
+G11 Run `/impeccable critique`-equivalent self-check is NOT the executor's job; the developer-agent does it on the screenshots.
+
+## 專長守則（ui）
+
+# 專長守則：ui（改畫面的任務）
+
+### executor
+
+- 先讀專案根目錄的 `PRODUCT.md`（給誰用、要解決什麼）與 `DESIGN.md`（版面線框、tokens、每個畫面與狀態、維護者的原話例子）。讀不到就 BLOCKED，不自己發明設計。
+- 只准用 `DESIGN.md` 定義的 tokens（色彩、字型、字級、間距、圓角）與版面。不新增任何視覺決策：不自創顏色、字型、間距數值，不順手「美化」。
+- `DESIGN.md` 沒決定的事，一律寫進報告的「卡住的原因／要問的問題」，不猜。
+- `DESIGN.md` 列出的每個畫面、每個狀態都必須做出來，包含空狀態、載入中、錯誤、失敗。少一個就不算完成。
+- 遵守計畫寫明的前端限制（例如 CSP、禁用 inline style、不載外部資源、只在允許處使用 JS）。限制與設計衝突時停下來問，不自行取捨。
+- 狀態絕不只靠顏色：一律「符號＋文字＋顏色」三者並用。
+- 手機寬度可用（不橫向捲動、點擊目標夠大），鍵盤操作時焦點外框可見。
+- 介面文字用使用者視角的白話，不露出內部術語、錯誤代碼或程式名詞；錯誤訊息說發生什麼事與下一步。
+
+### verifier
+
+**CONTRACT（出題）必須轉成測試案例（TC）：**
+- `DESIGN.md` 的每個畫面、每個狀態都至少對應 1 個 TC（含空、載入、錯誤、失敗）。
+- 維護者的原話例子逐字對應到 TC。
+- 計畫列的前端限制各對應 TC（例如頁面不得含 inline style、不得請求外部網址、CSP 標頭存在）。
+- 狀態表達 TC：每個狀態輸出的 HTML 同時含符號、文字，不得只靠 class 顏色。
+
+**ACCEPTANCE（閱卷）必須檢查：**
+- 把每個有改動的頁面渲染成 HTML 檔（用專案的 test client，或計畫指名的 fixture）。做不到就標 UNVERIFIED，並寫明需要什麼才能驗。
+- 對渲染出的 HTML 跑 Impeccable 偵測器（唯讀）：`sh "G:/我的雲端硬碟/謝馬爾/.claude/skills/impeccable/scripts/impeccable" detect <file.html>`。
+- **FAIL**：違反 `DESIGN.md` 的 tokens／畫面／狀態；違反計畫寫明的前端限制；狀態只靠顏色；缺少 DESIGN.md 列出的畫面或狀態。
+- **「需要人看的事」**：偵測器的其他發現（對比、常見字型、AI 範本味等）與品味問題。這些不判 FAIL。
+- 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+- 注意：「看起來好不好」的最終判斷屬於維護者，靠 developer-agent 附在 PR 的截圖（B 級）決定，verifier 不替他下結論。
+
+## 專長守則（backend）
+
+# 專長守則：backend（動作層、資料、權限）
+
+### executor
+
+- 每個網頁／API／聊天指令的動作，都呼叫專案唯一共用的動作層（一個動作一個函式）。路由處理函式裡不得有第二份邏輯。
+- 每個寫入動作都必須經過專案定義的人工確認管道；沒有確認就不得寫入。
+- 擁有者規則：使用者只能看到與修改自己的紀錄。篩選條件放在動作層、依呼叫者身分過濾，不能只靠畫面藏起來。
+- 錯誤訊息說明發生了什麼事、使用者該怎麼處理；不露出堆疊、內部路徑或 SQL。
+- 密鑰、token、密碼不得出現在日誌或任何回應中。
+- 資料結構或資料內容有變動，必須附 migration，或在計畫裡明寫「不需要 migration」的理由。
+
+### verifier
+
+**CONTRACT（出題）必須轉成測試案例（TC）：**
+- 對等性 TC：列舉使用者可見的動作清單與動作層函式清單，兩邊一一對應（測試同時列舉兩邊，缺一邊就失敗）。
+- 跨使用者 TC：用第二位使用者的 token 讀取、修改第一位的紀錄，必須被拒絕（讀與寫各一條）。
+- 確認管道 TC：每個寫入動作，未經確認時不得改變資料。
+- 錯誤訊息與日誌 TC：錯誤回應含原因與處理方式；日誌與回應不含密鑰。
+- 有資料結構變動時，migration 可套用的 TC。
+
+**ACCEPTANCE（閱卷）必須檢查：**
+- **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
+- **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
+- 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
