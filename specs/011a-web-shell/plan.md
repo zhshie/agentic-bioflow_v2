@@ -150,3 +150,16 @@
 - Remove the `test_launch_static.py` exemption and restore tc069/tc070 exactly.
 - Strengthen `test_tch21_stage_strip_and_bodies` to assert the end time and each task-count number shown in the middle pane, as TC-H21c says.
 - The contract amendment for TC-H09b ("SU —" instead of "NCHC SU —") is made by the verifier in contract mode, not by the executor.
+
+## Layout redo: option B "Galaxy three-column workbench" (maintainer chose B, 2026-10-18)
+The maintainer rejected the round-2 layout. The backend of this PR (routes, owner rule, parity tables, caps, 404, symbols, cost labels) STAYS; only the page layout and its stylesheet are redone in `web_board.py` (and the shared style if it lives in `web.py`). Visual reference, committed next to this plan: `specs/011a-web-shell/layoutB-reference.html` (zero JS, one stylesheet, no inline style — its CSS is the starting point for STYLE). `design-brief-v3.md` describes the full product; everything in it beyond the list below is LATER slices (011b–e, 012, 013, 014), not this PR.
+
+L1. Top bar: thin dark strip; left `agentic-bioflow`, right the user's name and a `中｜EN` switch.
+L2. Left column 232px: project tree (project → analyses). Projects are not stored yet (Facts), so the tree shows the runs under one honest heading as today, and unbuilt items as grey text `之後開放`. Bottom left: 設定 (grey, 之後開放) and 登出.
+L3. Middle column: analysis name + status badge; five-stage strip with classes `is-done` / `is-current` / `is-later` (dashed); one stage content card (progress + 7 task-count cells); `← 上一階段` / `下一階段 →` links (ruling 2 still holds).
+L4. Right column 272px: one line `本月 SU — · 雲端 —` (ruling option B labels), then history items grouped by stage, each item a whole block with a status background (number + name / symbol status · key fact); the selected run has a focus outline; failed runs are grouped under 執行中 (maintainer OK 10-18).
+L5. Status always = symbol + text + colour (ruling 6).
+L6. Zero JS, one stylesheet, no `style=` attribute, no external URL; CSP unchanged except that the single stylesheet's sha256 changes. Below 900px the columns stack: middle, right, left.
+L7. Language: every UI string comes from one table with `zh` and `en`; `?lang=en` selects English, default Chinese; the switch is two plain links that keep the current path and selection. No JS, no cookie. Run names and data are never translated.
+L8. Tests: keep every existing test green except those that pin the old layout's markup — update those to the new structure and list each changed assertion in the ledger (no assertion may be deleted without a replacement). New: column widths/classes present; stage classes; the 900px media query exists; `?lang=en` renders the English strings and no Chinese UI string from the table; no `style=`, no `<script`, no `http` URL in any page.
+L9. Manual: re-take the screenshots (wide and <900px, zh and en) into the PR for the maintainer.

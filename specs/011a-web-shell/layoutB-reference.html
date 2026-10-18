@@ -1,0 +1,320 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>agentic-bioflow · demo B</title><style>:root{--surface:#f6f5f2;--surface-raised:#ffffff;--surface-sunken:#ecebe6;--ink:#1f2328;--ink-muted:#575e66;--line:#d6d3cc;--line-strong:#8f8b82;--accent:#1c5d8a;--accent-weak:#e2edf5;--focus:#1c5d8a;--status-running:#0b5aa8;--status-running-bg:#e3edf9;--status-succeeded:#1b6837;--status-succeeded-bg:#e2f0e6;--status-failed:#b0261d;--status-failed-bg:#fae6e3;--status-lost:#865700;--status-lost-bg:#f7edd6;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--radius-sm:4px;--radius-md:6px;--radius-pill:999px;--font-sans:system-ui, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif;--font-mono:ui-monospace, "Cascadia Mono", Consolas, "Noto Sans Mono", monospace}@media (prefers-color-scheme:dark){:root{--surface:#15171a;--surface-raised:#1e2125;--surface-sunken:#101214;--ink:#e9e7e2;--ink-muted:#a2a8b0;--line:#33373d;--line-strong:#646a73;--accent:#7db8e2;--accent-weak:#1a2c3a;--focus:#9cccf0;--status-running:#80b6f2;--status-running-bg:#15263a;--status-succeeded:#78c792;--status-succeeded-bg:#14291c;--status-failed:#f28b81;--status-failed-bg:#3a1916;--status-lost:#e2b35e;--status-lost-bg:#33270e}}/* abf Web Board — the one stylesheet. Stands in for web_board.STYLE: a single sheet (its sha256 goes in the CSP),
+   no style= attribute, no external address, no script. Widths come from classes or <progress>, never inline. */
+.abf{font-family:var(--font-sans);font-size:14px;line-height:21px;color:var(--ink);background:var(--surface);margin:0}
+.abf *{box-sizing:border-box}
+.abf a{color:var(--accent);text-decoration:none}
+.abf a:hover{text-decoration:underline}
+.abf a:focus-visible,.abf summary:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--radius-sm)}
+.abf h1{font-size:20px;line-height:28px;font-weight:600;margin:0}
+.abf h2{font-size:15px;line-height:22px;font-weight:600;margin:0}
+.abf h3{font-size:12px;line-height:18px;font-weight:600;margin:0;color:var(--ink-muted)}
+.abf p{margin:0}
+.abf .muted{color:var(--ink-muted)}
+.abf .small{font-size:12px;line-height:18px}
+.abf .mono{font-family:var(--font-mono);font-size:13px;line-height:19px}
+.abf .num{font-variant-numeric:tabular-nums}
+.abf .later{color:var(--ink-muted);font-size:12px}
+
+/* status badge: symbol + word + colour, never colour alone */
+.abf-badge{display:inline-flex;align-items:center;gap:var(--space-1);padding:0 var(--space-2);border-radius:var(--radius-pill);font-size:12px;line-height:20px;font-weight:600;white-space:nowrap}
+.abf-badge.is-running{color:var(--status-running);background:var(--status-running-bg)}
+.abf-badge.is-succeeded{color:var(--status-succeeded);background:var(--status-succeeded-bg)}
+.abf-badge.is-failed{color:var(--status-failed);background:var(--status-failed-bg)}
+.abf-badge.is-lost{color:var(--status-lost);background:var(--status-lost-bg)}
+
+/* progress: the native element, so the width needs no inline style */
+.abf-progress{-webkit-appearance:none;appearance:none;display:block;width:100%;height:6px;border:0;border-radius:var(--radius-pill);background:var(--surface-sunken);overflow:hidden}
+.abf-progress::-webkit-progress-bar{background:var(--surface-sunken);border-radius:var(--radius-pill)}
+.abf-progress::-webkit-progress-value{background:var(--accent);border-radius:var(--radius-pill)}
+.abf-progress::-moz-progress-bar{background:var(--accent);border-radius:var(--radius-pill)}
+.abf-progress.is-succeeded::-webkit-progress-value{background:var(--status-succeeded)}
+.abf-progress.is-succeeded::-moz-progress-bar{background:var(--status-succeeded)}
+.abf-progress.is-failed::-webkit-progress-value{background:var(--status-failed)}
+.abf-progress.is-failed::-moz-progress-bar{background:var(--status-failed)}
+.abf-progress.is-lost::-webkit-progress-value{background:var(--status-lost)}
+.abf-progress.is-lost::-moz-progress-bar{background:var(--status-lost)}
+.abf-meter{display:flex;flex-direction:column;gap:var(--space-1)}
+.abf-meter .row{display:flex;justify-content:space-between;font-size:12px;line-height:18px;color:var(--ink-muted)}
+
+/* stage stepper: launch → running → results → downstream → finished */
+.abf-steps{display:flex;gap:var(--space-2);list-style:none;margin:0;padding:0}
+.abf-steps li{flex:1;min-width:0}
+.abf-steps a,.abf-steps .step{display:block;padding:var(--space-2) 0 0;border-top:3px solid var(--line);color:var(--ink-muted);font-size:13px;line-height:19px}
+.abf-steps .k{display:block;font-size:12px;line-height:18px;font-weight:400}
+.abf-steps .is-done a{border-top-color:var(--status-succeeded);color:var(--ink)}
+.abf-steps .is-current a{border-top-color:var(--accent);color:var(--ink);font-weight:600}
+.abf-steps .is-later .step{border-top-style:dashed;border-top-color:var(--line-strong)}
+.abf-pager{display:flex;justify-content:space-between;font-size:13px}
+
+/* shared blocks */
+.abf-card{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-md)}
+.abf-card > .hd{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--line)}
+.abf-card > .bd{padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4)}
+.abf-counts{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--space-2);margin:0}
+.abf-counts div{background:var(--surface-sunken);border-radius:var(--radius-sm);padding:6px var(--space-2)}
+.abf-counts dt{font-size:12px;line-height:18px;color:var(--ink-muted)}
+.abf-counts dd{margin:0;font-size:15px;line-height:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.abf-kv{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--space-4);margin:0}
+.abf-kv dt{font-size:12px;line-height:18px;color:var(--ink-muted)}
+.abf-kv dd{margin:0;font-weight:600}
+.abf-pre{font-family:var(--font-mono);font-size:13px;line-height:19px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:var(--radius-sm);padding:var(--space-3);white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.abf-pre.is-failed{border-color:var(--status-failed)}
+.abf-cost{display:flex;justify-content:space-between;gap:var(--space-3);padding:var(--space-2) var(--space-3);background:var(--surface-sunken);border-radius:var(--radius-sm);font-size:13px}
+
+/* Draft A — Seqera: top bar, list page, detail page with tabs */
+.abf-top{display:flex;align-items:center;gap:var(--space-6);height:48px;padding:0 var(--space-6);background:var(--surface-raised);border-bottom:1px solid var(--line)}
+.abf-top .brand{font-weight:600;color:var(--ink)}
+.abf-top nav{display:flex;gap:var(--space-1)}
+.abf-top nav a,.abf-top nav .off{padding:var(--space-1) var(--space-3);border-radius:var(--radius-md);color:var(--ink-muted)}
+.abf-top nav a.here{background:var(--accent-weak);color:var(--accent);font-weight:600}
+.abf-top .end{margin-left:auto;display:flex;align-items:center;gap:var(--space-4);font-size:13px}
+.abf-page{padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-4)}
+.abf-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-4)}
+.abf-filters{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.abf-chip{padding:2px var(--space-3);border:1px solid var(--line-strong);border-radius:var(--radius-pill);background:var(--surface-raised);color:var(--ink);font-size:13px}
+.abf-chip.here{border-color:var(--accent);background:var(--accent-weak);color:var(--accent);font-weight:600}
+.abf-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden}
+.abf-table th{text-align:left;font-size:12px;line-height:18px;font-weight:600;color:var(--ink-muted);padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line);background:var(--surface-sunken)}
+.abf-table td{padding:10px var(--space-3);border-bottom:1px solid var(--line);vertical-align:middle}
+.abf-table tr:last-child td{border-bottom:0}
+.abf-table tr.here td{background:var(--accent-weak)}
+.abf-table .w-state{width:120px}.abf-table .w-prog{width:180px}.abf-table .w-time{width:120px}
+.abf-tabs{display:flex;padding:0 var(--space-4);border-bottom:1px solid var(--line)}
+.abf-tabs a,.abf-tabs .off{padding:10px var(--space-3);color:var(--ink-muted);border-bottom:2px solid var(--surface-raised);margin-bottom:-1px}
+.abf-tabs a.here{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.abf-crumb{font-size:13px}
+
+/* Draft B — Galaxy: three columns, colour-filled history on the right */
+.abf-mast{display:flex;align-items:center;gap:var(--space-4);height:40px;padding:0 var(--space-4);background:var(--ink);color:var(--surface)}
+.abf-mast .brand{font-weight:600}
+.abf-mast .end{margin-left:auto;font-size:13px}
+.abf-wb{display:grid;grid-template-columns:232px 1fr 272px;min-height:600px}
+.abf-wb > *{min-width:0}
+.abf-side{background:var(--surface-raised);border-right:1px solid var(--line);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4)}
+.abf-side .foot{margin-top:auto;border-top:1px solid var(--line);padding-top:var(--space-3);display:flex;flex-direction:column;gap:var(--space-1)}
+.abf-tree{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.abf-tree a,.abf-tree .off{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm);color:var(--ink)}
+.abf-tree .off{color:var(--ink-muted)}
+.abf-tree a.here{background:var(--accent-weak);color:var(--accent);font-weight:600}
+.abf-tree .sub a{padding-left:var(--space-6)}
+.abf-main{padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-4)}
+.abf-hist{background:var(--surface-raised);border-left:1px solid var(--line);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
+.abf-hist ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.abf-item{display:block;padding:6px 10px;border-radius:var(--radius-sm);color:var(--ink)}
+.abf-item:hover{text-decoration:none}
+.abf-item .t{display:flex;gap:6px;font-size:13px;line-height:19px;font-weight:600;color:var(--ink)}
+.abf-item .s{font-size:12px;line-height:18px;font-weight:600}
+.abf-item.is-running{background:var(--status-running-bg)}.abf-item.is-running .s{color:var(--status-running)}
+.abf-item.is-succeeded{background:var(--status-succeeded-bg)}.abf-item.is-succeeded .s{color:var(--status-succeeded)}
+.abf-item.is-failed{background:var(--status-failed-bg)}.abf-item.is-failed .s{color:var(--status-failed)}
+.abf-item.is-lost{background:var(--status-lost-bg)}.abf-item.is-lost .s{color:var(--status-lost)}
+.abf-item.here{outline:2px solid var(--focus);outline-offset:-2px}
+
+/* Draft C — one column: left rail, totals, collapsible rows (<details>, no script) */
+.abf-c{display:grid;grid-template-columns:200px 1fr;min-height:600px}
+.abf-c > *{min-width:0}
+.abf-rail{background:var(--surface-sunken);border-right:1px solid var(--line);padding:var(--space-4) var(--space-3);display:flex;flex-direction:column;gap:2px}
+.abf-rail .brand{font-weight:600;padding:0 10px var(--space-4)}
+.abf-rail a,.abf-rail .off{padding:6px 10px;border-radius:var(--radius-sm);color:var(--ink-muted)}
+.abf-rail a.here{background:var(--surface-raised);color:var(--ink);font-weight:600}
+.abf-rail .foot{margin-top:auto;display:flex;flex-direction:column;gap:2px}
+.abf-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:var(--space-3)}
+.abf-stat{display:block;padding:var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-raised);color:var(--ink)}
+.abf-stat:hover{text-decoration:none;border-color:var(--line-strong)}
+.abf-stat b{display:block;font-size:20px;line-height:28px;font-variant-numeric:tabular-nums}
+.abf-stat span{font-size:12px;line-height:18px;font-weight:600}
+.abf-stat.is-running span{color:var(--status-running)}.abf-stat.is-succeeded span{color:var(--status-succeeded)}
+.abf-stat.is-failed span{color:var(--status-failed)}.abf-stat.is-lost span{color:var(--status-lost)}
+.abf-group{display:flex;flex-direction:column;gap:6px}
+.abf-acc{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-raised)}
+.abf-acc summary{display:grid;grid-template-columns:16px 112px 1fr 180px 96px;gap:var(--space-3);align-items:center;padding:10px var(--space-3);cursor:pointer;list-style:none}
+.abf-acc summary::-webkit-details-marker{display:none}
+.abf-acc .chev::before{content:"▸";color:var(--ink-muted)}
+.abf-acc[open] .chev::before{content:"▾"}
+.abf-acc[open] summary{border-bottom:1px solid var(--line)}
+.abf-acc .bd{padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
+
+body{margin:0;background:var(--surface)}
+.lang{position:absolute;opacity:0;pointer-events:none}
+#lang-en:checked ~ .abf .zh{display:none}
+#lang-zh:checked ~ .abf .en,.abf .en{display:none}
+#lang-en:checked ~ .abf .en{display:inline}
+.abf-mast .switch{display:flex;border:1px solid var(--surface);border-radius:var(--radius-pill);overflow:hidden}
+.abf-mast .switch label{padding:2px 12px;font-size:12px;cursor:pointer;color:var(--surface)}
+#lang-zh:checked ~ .abf label[for=lang-zh],#lang-en:checked ~ .abf label[for=lang-en]{background:var(--surface);color:var(--ink);font-weight:600}
+.abf-mast .end{display:flex;align-items:center;gap:16px}
+.screen{display:none}
+.abf-main:not(:has(.screen:target)) #home,.screen:target{display:flex;flex-direction:column;gap:16px}
+.abf-nav{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.abf-nav a{display:block;padding:4px 8px;border-radius:var(--radius-sm);color:var(--ink);font-weight:600}
+.now{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.now .abf-card > .hd b{font-size:20px;line-height:28px}
+.now .is-run b{color:var(--status-running)}.now .is-bad b{color:var(--status-failed)}
+.rows{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.rows li{display:flex;flex-direction:column;gap:4px}
+.rows .top{display:flex;justify-content:space-between;gap:8px}
+.abf-badge.is-queued,.abf-item.is-queued{color:var(--ink-muted);background:var(--surface-sunken)}
+.abf-item.is-queued .s{color:var(--ink-muted)}
+.tabs-wrap > input{position:absolute;opacity:0;pointer-events:none}
+.tabs-wrap .abf-tabs label{padding:10px 12px;color:var(--ink-muted);border-bottom:2px solid var(--surface-raised);margin-bottom:-1px;cursor:pointer}
+.panel{display:none;padding:16px;flex-direction:column;gap:12px}
+.tabs-wrap > input:nth-of-type(1):checked ~ .abf-tabs label:nth-child(1),.tabs-wrap > input:nth-of-type(2):checked ~ .abf-tabs label:nth-child(2),.tabs-wrap > input:nth-of-type(3):checked ~ .abf-tabs label:nth-child(3),.tabs-wrap > input:nth-of-type(4):checked ~ .abf-tabs label:nth-child(4),.tabs-wrap > input:nth-of-type(5):checked ~ .abf-tabs label:nth-child(5){color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.tabs-wrap > input:nth-of-type(1):checked ~ .p1,.tabs-wrap > input:nth-of-type(2):checked ~ .p2,.tabs-wrap > input:nth-of-type(3):checked ~ .p3,.tabs-wrap > input:nth-of-type(4):checked ~ .p4,.tabs-wrap > input:nth-of-type(5):checked ~ .p5{display:flex}
+.empty{align-items:flex-start;padding:48px 0;max-width:560px}
+.empty h1{font-size:20px}
+.empty ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px}
+.set{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.set li{padding:16px;border:1px dashed var(--line-strong);border-radius:var(--radius-md);background:var(--surface-raised)}
+.abf-tree .grp{padding:8px 8px 2px;font-size:12px;font-weight:600;color:var(--ink-muted)}
+@media (max-width:900px){.abf-wb{grid-template-columns:1fr}.abf-main{order:-2}.abf-hist{order:-1}.now{grid-template-columns:1fr}}
+</style></head><body>
+<input class="lang" type="radio" name="lang" id="lang-zh" checked><input class="lang" type="radio" name="lang" id="lang-en">
+<div class="abf">
+<header class="abf-mast"><span class="brand">agentic-bioflow</span>
+  <span class="end"><span class="switch"><label for="lang-zh">中</label><label for="lang-en">EN</label></span><span>謝宗翰</span></span></header>
+<div class="abf-wb">
+  <aside class="abf-side">
+    <ul class="abf-nav"><li><a href="#home"><span class="zh">現在</span><span class="en">Now</span></a></li><li><a href="#runs"><span class="zh">全部 run</span><span class="en">All runs</span></a></li></ul>
+    <ul class="abf-tree">
+      <li class="grp"><span class="zh">專案</span><span class="en">Projects</span></li>
+      <li><a href="#home"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span> <span class="small muted num">4</span></a>
+        <ul class="abf-tree sub"><li><a class="here" href="#run-v3">seedrot-16S-v3</a></li><li><a href="#run-v2">seedrot-16S-v2</a></li><li><a href="#run-v3">seedrot-16S-v1</a></li></ul></li>
+      <li><a href="#run-v3"><span class="zh">Trinickia 引子</span><span class="en">Trinickia primers</span> <span class="small muted num">2</span></a></li>
+      <li><span class="off"><span class="zh">上傳資料</span><span class="en">Uploads</span> <span class="later"><span class="zh">之後開放</span><span class="en">coming later</span></span></span></li>
+    </ul>
+    <div class="foot">
+      <a href="#settings"><span class="zh">設定</span><span class="en">Settings</span></a>
+      <a href="#empty" class="small"><span class="zh">（demo）新使用者畫面</span><span class="en">(demo) new-user view</span></a>
+      <a href="#"><span class="zh">登出</span><span class="en">Log out</span></a>
+    </div>
+  </aside>
+
+  <main class="abf-main">
+    <section class="screen" id="home">
+      <div class="abf-head"><h1><span class="zh">現在</span><span class="en">Now</span></h1><span class="small muted"><span class="zh">每 15 秒自動更新 · 只顯示你的 run</span><span class="en">Refreshes every 15 s · only your runs</span></span></div>
+      <div class="now">
+        <section class="abf-card is-run"><div class="hd"><h2>▶ <span class="zh">正在跑</span><span class="en">Running now</span></h2><b class="num">2</b></div><div class="bd">
+          <ul class="rows"><li><span class="top"><a href="#run-v3">seedrot-16S-v3</a><span class="small muted num">142/210</span></span><progress class="abf-progress" value="142" max="210">142/210</progress></li><li><span class="top"><a href="#run-v3">trinickia-rpoB-amplicon</a><span class="small muted num">31/120</span></span><progress class="abf-progress" value="31" max="120">31/120</progress></li></ul></div></section>
+        <section class="abf-card is-bad"><div class="hd"><h2>✗ <span class="zh">需要你注意</span><span class="en">Needs attention</span></h2><b class="num">2</b></div><div class="bd">
+          <ul class="rows">
+            <li><span class="top"><a href="#run-v2">seedrot-16S-v2</a><span class="abf-badge is-failed">✗ <span class="zh">失敗</span><span class="en">Failed</span></span></span><span class="small mono">DADA2_TAXONOMY · exit 137 <span class="zh">（記憶體不足）</span><span class="en">(out of memory)</span></span></li>
+            <li><span class="top"><a href="#run-v2">seedrot-16S-v2 <span class="zh">續跑</span><span class="en">resume</span></a><span class="abf-badge is-lost">⏸ <span class="zh">失聯/暫停</span><span class="en">Lost/Paused</span></span></span><span class="small muted"><span class="zh">站台代理 23:52 後沒回應</span><span class="en">Site agent silent since 23:52</span></span></li>
+          </ul></div></section>
+      </div>
+      <section class="abf-card"><div class="hd"><h2><span class="zh">最近打開的分析</span><span class="en">Last opened analysis</span>：seedrot-16S-v3</h2><span class="abf-badge is-running">▶ <span class="zh">執行中</span><span class="en">Running</span></span></div><div class="bd">
+        <ol class="abf-steps"><li class="is-done"><a href="#"><span class="k">1 · ✓</span><span class="zh">送出</span><span class="en">Launch</span></a></li><li class="is-current"><a href="#"><span class="k">2 · <span class="zh">目前</span><span class="en">now</span></span><span class="zh">執行中</span><span class="en">Running</span></a></li><li class=""><a href="#"><span class="k">3</span><span class="zh">結果</span><span class="en">Results</span></a></li><li class="is-later"><span class="step"><span class="k">4 · <span class="zh">之後開放</span><span class="en">coming later</span></span><span class="zh">下游分析</span><span class="en">Downstream</span></span></li><li class="is-later"><span class="step"><span class="k">5 · <span class="zh">之後開放</span><span class="en">coming later</span></span><span class="zh">完成</span><span class="en">Finished</span></span></li></ol>
+        <div class="abf-meter"><div class="row"><span><span class="zh">Tasks 完成</span><span class="en">Tasks done</span></span><span class="num">142 / 210</span></div><progress class="abf-progress" value="142" max="210">142/210</progress></div>
+      </div></section>
+    </section>
+
+    <section class="screen" id="runs">
+      <div class="abf-head"><h1><span class="zh">全部 run</span><span class="en">All runs</span></h1><span class="small muted num"><span class="zh">本月</span><span class="en">This month</span> SU — · <span class="zh">雲端</span><span class="en">Cloud</span> —</span></div>
+      <nav class="abf-filters"><a class="abf-chip here" href="#runs"><span class="zh">全部</span><span class="en">All</span> 7</a><a class="abf-chip" href="#runs">▶ 2</a><a class="abf-chip" href="#runs">✗ 1</a><a class="abf-chip" href="#runs">⏸ 1</a><a class="abf-chip" href="#runs">… 1</a><a class="abf-chip" href="#runs">✓ 2</a></nav>
+      <table class="abf-table"><thead><tr><th class="w-state"><span class="zh">狀態</span><span class="en">Status</span></th><th><span class="zh">名稱</span><span class="en">Name</span></th><th><span class="zh">管線</span><span class="en">Pipeline</span></th><th class="w-time"><span class="zh">開始</span><span class="en">Started</span></th><th><span class="zh">擁有者</span><span class="en">Owner</span></th><th><span class="zh">費用</span><span class="en">Cost</span></th><th class="w-prog"><span class="zh">進度</span><span class="en">Progress</span></th></tr></thead><tbody>
+      <tr><td><span class="abf-badge is-running">▶ <span class="zh">執行中</span><span class="en">Running</span></span></td><td><a href="#run-v3">seedrot-16S-v3</a></td><td class="mono">nf-core/ampliseq 2.11.0</td><td class="small num">10-18 08:12</td><td class="small">謝宗翰</td><td class="small num">SU —</td><td><progress class="abf-progress" value="142" max="210">142/210</progress></td></tr><tr><td><span class="abf-badge is-running">▶ <span class="zh">執行中</span><span class="en">Running</span></span></td><td><a href="#run-v3">trinickia-rpoB-amplicon</a></td><td class="mono">nf-core/ampliseq 2.11.0</td><td class="small num">10-18 07:40</td><td class="small">謝宗翰</td><td class="small num">SU —</td><td><progress class="abf-progress" value="31" max="120">31/120</progress></td></tr><tr><td><span class="abf-badge is-failed">✗ <span class="zh">失敗</span><span class="en">Failed</span></span></td><td><a href="#run-v2">seedrot-16S-v2</a></td><td class="mono">nf-core/ampliseq 2.11.0</td><td class="small num">10-17 21:04</td><td class="small">謝宗翰</td><td class="small num">SU —</td><td><progress class="abf-progress is-failed" value="188" max="210">188/210</progress></td></tr><tr><td><span class="abf-badge is-lost">⏸ <span class="zh">失聯/暫停</span><span class="en">Lost/Paused</span></span></td><td><a href="#run-v2">seedrot-16S-v2 <span class="zh">續跑</span><span class="en">resume</span></a></td><td class="mono">nf-core/ampliseq 2.11.0</td><td class="small num">10-17 23:30</td><td class="small">謝宗翰</td><td class="small num">SU —</td><td><progress class="abf-progress is-lost" value="190" max="210">190/210</progress></td></tr><tr><td><span class="abf-badge is-queued">… <span class="zh">排隊中</span><span class="en">Queued</span></span></td><td><a href="#run-v3">trinickia-16S-pilot</a></td><td class="mono">nf-core/ampliseq 2.11.0</td><td class="small num">—</td><td class="small">謝宗翰</td><td class="small num">SU —</td><td><progress class="abf-progress"></progress></td></tr><tr><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td><a href="#run-v3">seedrot-16S-v1</a></td><td class="mono">nf-core/ampliseq 2.11.0</td><td class="small num">10-15 10:02</td><td class="small">謝宗翰</td><td class="small num">SU —</td><td><progress class="abf-progress is-succeeded" value="210" max="210">210/210</progress></td></tr><tr><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td><a href="#run-v3">test-ampliseq-profile</a></td><td class="mono">nf-core/ampliseq 2.11.0</td><td class="small num">10-14 16:20</td><td class="small">謝宗翰</td><td class="small num">SU —</td><td><progress class="abf-progress is-succeeded" value="58" max="58">58/58</progress></td></tr>
+      </tbody></table>
+    </section>
+
+    
+<section class="screen" id="run-v3">
+  <p class="abf-crumb"><a href="#runs"><span class="zh">全部 run</span><span class="en">All runs</span></a> <span class="muted">/</span> seedrot-16S-v3</p>
+  <div class="abf-head"><h1>seedrot-16S-v3</h1><span class="abf-badge is-running">▶ <span class="zh">執行中</span><span class="en">Running</span></span></div>
+  <ol class="abf-steps"><li class="is-done"><a href="#"><span class="k">1 · ✓</span><span class="zh">送出</span><span class="en">Launch</span></a></li><li class="is-current"><a href="#"><span class="k">2 · <span class="zh">目前</span><span class="en">now</span></span><span class="zh">執行中</span><span class="en">Running</span></a></li><li class=""><a href="#"><span class="k">3</span><span class="zh">結果</span><span class="en">Results</span></a></li><li class="is-later"><span class="step"><span class="k">4 · <span class="zh">之後開放</span><span class="en">coming later</span></span><span class="zh">下游分析</span><span class="en">Downstream</span></span></li><li class="is-later"><span class="step"><span class="k">5 · <span class="zh">之後開放</span><span class="en">coming later</span></span><span class="zh">完成</span><span class="en">Finished</span></span></li></ol>
+  <div class="abf-card tabs-wrap">
+    <input type="radio" name="tab-v3" id="v3-t1" checked><input type="radio" name="tab-v3" id="v3-t2"><input type="radio" name="tab-v3" id="v3-t3"><input type="radio" name="tab-v3" id="v3-t4"><input type="radio" name="tab-v3" id="v3-t5">
+    <nav class="abf-tabs"><label for="v3-t1"><span class="zh">執行資訊</span><span class="en">Run info</span></label><label for="v3-t2">Tasks</label><label for="v3-t3"><span class="zh">日誌</span><span class="en">Logs</span></label><label for="v3-t4"><span class="zh">指標/報告</span><span class="en">Metrics/Report</span></label><label for="v3-t5"><span class="zh">輸出</span><span class="en">Outputs</span></label></nav>
+    <div class="panel p1">
+      <dl class="abf-kv">
+        <div><dt><span class="zh">開始</span><span class="en">Started</span></dt><dd class="num">10-18 08:12</dd></div>
+        <div><dt><span class="zh">擁有者</span><span class="en">Owner</span></dt><dd>謝宗翰</dd></div>
+        <div><dt><span class="zh">管線</span><span class="en">Pipeline</span></dt><dd class="mono">nf-core/ampliseq 2.11.0</dd></div>
+        <div><dt><span class="zh">費用</span><span class="en">Cost</span></dt><dd class="num">SU —</dd></div>
+      </dl>
+      <div class="abf-meter"><div class="row"><span><span class="zh">Tasks 完成</span><span class="en">Tasks done</span></span><span class="num">142 / 210</span></div><progress class="abf-progress" value="142" max="210">142/210</progress></div>
+      <dl class="abf-counts"><div><dt><span class="zh">成功</span><span class="en">Succeeded</span></dt><dd>128</dd></div><div><dt><span class="zh">快取</span><span class="en">Cached</span></dt><dd>14</dd></div><div><dt><span class="zh">失敗</span><span class="en">Failed</span></dt><dd>0</dd></div><div><dt><span class="zh">中止</span><span class="en">Aborted</span></dt><dd>0</dd></div><div><dt><span class="zh">執行中</span><span class="en">Running</span></dt><dd>6</dd></div><div><dt><span class="zh">等待</span><span class="en">Pending</span></dt><dd>62</dd></div><div><dt><span class="zh">已送出</span><span class="en">Submitted</span></dt><dd>0</dd></div></dl>
+      
+    </div>
+    <div class="panel p2">
+      <table class="abf-table"><thead><tr><th>Process</th><th class="w-state"><span class="zh">狀態</span><span class="en">Status</span></th><th class="w-time"><span class="zh">耗時</span><span class="en">Duration</span></th></tr></thead><tbody>
+        <tr><td class="mono">FASTQC</td><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td class="num small">4m 12s</td></tr>
+        <tr><td class="mono">CUTADAPT</td><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td class="num small">9m 40s</td></tr>
+        <tr><td class="mono">DADA2_DENOISING</td><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td class="num small">38m 05s</td></tr>
+        <tr><td class="mono">DADA2_TAXONOMY</td><td><span class="abf-badge is-running">▶ <span class="zh">執行中</span><span class="en">Running</span></span></td><td class="num small">—</td></tr>
+      </tbody></table>
+    </div>
+    <div class="panel p3"><pre class="abf-pre">[10-17 21:04] Launching nf-core/ampliseq 2.11.0
+[10-17 21:09] FASTQC (48 samples) ✓
+[10-17 21:58] DADA2_DENOISING ✓
+[10-18 09:58] DADA2_TAXONOMY running…</pre></div>
+    <div class="panel p4"><p class="later"><span class="zh">之後開放：CPU／記憶體用量圖與 MultiQC 報告</span><span class="en">Coming later: CPU/memory charts and the MultiQC report</span></p></div>
+    <div class="panel p5"><p class="later"><span class="zh">之後開放：結果檔清單與下載</span><span class="en">Coming later: result files and downloads</span></p></div>
+  </div>
+</section>
+    
+<section class="screen" id="run-v2">
+  <p class="abf-crumb"><a href="#runs"><span class="zh">全部 run</span><span class="en">All runs</span></a> <span class="muted">/</span> seedrot-16S-v2</p>
+  <div class="abf-head"><h1>seedrot-16S-v2</h1><span class="abf-badge is-failed">✗ <span class="zh">失敗</span><span class="en">Failed</span></span></div>
+  <ol class="abf-steps"><li class="is-done"><a href="#"><span class="k">1 · ✓</span><span class="zh">送出</span><span class="en">Launch</span></a></li><li class="is-current"><a href="#"><span class="k">2 · <span class="zh">目前</span><span class="en">now</span></span><span class="zh">執行中</span><span class="en">Running</span></a></li><li class=""><a href="#"><span class="k">3</span><span class="zh">結果</span><span class="en">Results</span></a></li><li class="is-later"><span class="step"><span class="k">4 · <span class="zh">之後開放</span><span class="en">coming later</span></span><span class="zh">下游分析</span><span class="en">Downstream</span></span></li><li class="is-later"><span class="step"><span class="k">5 · <span class="zh">之後開放</span><span class="en">coming later</span></span><span class="zh">完成</span><span class="en">Finished</span></span></li></ol>
+  <div class="abf-card tabs-wrap">
+    <input type="radio" name="tab-v2" id="v2-t1" checked><input type="radio" name="tab-v2" id="v2-t2"><input type="radio" name="tab-v2" id="v2-t3"><input type="radio" name="tab-v2" id="v2-t4"><input type="radio" name="tab-v2" id="v2-t5">
+    <nav class="abf-tabs"><label for="v2-t1"><span class="zh">執行資訊</span><span class="en">Run info</span></label><label for="v2-t2">Tasks</label><label for="v2-t3"><span class="zh">日誌</span><span class="en">Logs</span></label><label for="v2-t4"><span class="zh">指標/報告</span><span class="en">Metrics/Report</span></label><label for="v2-t5"><span class="zh">輸出</span><span class="en">Outputs</span></label></nav>
+    <div class="panel p1">
+      <dl class="abf-kv">
+        <div><dt><span class="zh">開始</span><span class="en">Started</span></dt><dd class="num">10-17 21:04</dd></div>
+        <div><dt><span class="zh">擁有者</span><span class="en">Owner</span></dt><dd>謝宗翰</dd></div>
+        <div><dt><span class="zh">管線</span><span class="en">Pipeline</span></dt><dd class="mono">nf-core/ampliseq 2.11.0</dd></div>
+        <div><dt><span class="zh">費用</span><span class="en">Cost</span></dt><dd class="num">SU —</dd></div>
+      </dl>
+      <div class="abf-meter"><div class="row"><span><span class="zh">Tasks 完成</span><span class="en">Tasks done</span></span><span class="num">188 / 210</span></div><progress class="abf-progress is-failed" value="188" max="210">188/210</progress></div>
+      <dl class="abf-counts"><div><dt><span class="zh">成功</span><span class="en">Succeeded</span></dt><dd>170</dd></div><div><dt><span class="zh">快取</span><span class="en">Cached</span></dt><dd>18</dd></div><div><dt><span class="zh">失敗</span><span class="en">Failed</span></dt><dd>1</dd></div><div><dt><span class="zh">中止</span><span class="en">Aborted</span></dt><dd>0</dd></div><div><dt><span class="zh">執行中</span><span class="en">Running</span></dt><dd>0</dd></div><div><dt><span class="zh">等待</span><span class="en">Pending</span></dt><dd>0</dd></div><div><dt><span class="zh">已送出</span><span class="en">Submitted</span></dt><dd>0</dd></div></dl>
+      <pre class="abf-pre is-failed">Process `NFCORE_AMPLISEQ:AMPLISEQ:DADA2_TAXONOMY (1)` terminated with an error exit status (137)
+<span class="zh">可能原因：記憶體不足（exit 137＝被系統砍掉）</span><span class="en">Likely cause: out of memory (exit 137 = killed by the system)</span></pre>
+    </div>
+    <div class="panel p2">
+      <table class="abf-table"><thead><tr><th>Process</th><th class="w-state"><span class="zh">狀態</span><span class="en">Status</span></th><th class="w-time"><span class="zh">耗時</span><span class="en">Duration</span></th></tr></thead><tbody>
+        <tr><td class="mono">FASTQC</td><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td class="num small">4m 12s</td></tr>
+        <tr><td class="mono">CUTADAPT</td><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td class="num small">9m 40s</td></tr>
+        <tr><td class="mono">DADA2_DENOISING</td><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td class="num small">38m 05s</td></tr>
+        <tr><td class="mono">DADA2_TAXONOMY</td><td><span class="abf-badge is-failed">✗ <span class="zh">失敗</span><span class="en">Failed</span></span></td><td class="num small">21m 33s</td></tr>
+      </tbody></table>
+    </div>
+    <div class="panel p3"><pre class="abf-pre">[10-17 21:04] Launching nf-core/ampliseq 2.11.0
+[10-17 21:09] FASTQC (48 samples) ✓
+[10-17 21:58] DADA2_DENOISING ✓
+[10-17 22:31] DADA2_TAXONOMY ✗ exit 137</pre></div>
+    <div class="panel p4"><p class="later"><span class="zh">之後開放：CPU／記憶體用量圖與 MultiQC 報告</span><span class="en">Coming later: CPU/memory charts and the MultiQC report</span></p></div>
+    <div class="panel p5"><p class="later"><span class="zh">之後開放：結果檔清單與下載</span><span class="en">Coming later: result files and downloads</span></p></div>
+  </div>
+</section>
+
+    <section class="screen" id="settings">
+      <div class="abf-head"><h1><span class="zh">設定</span><span class="en">Settings</span></h1></div>
+      <ul class="set">
+        <li><h2><span class="zh">運算環境</span><span class="en">Compute environment</span></h2><p class="later"><span class="zh">之後開放</span><span class="en">coming later</span></p></li>
+        <li><h2><span class="zh">憑證</span><span class="en">Credentials</span></h2><p class="later"><span class="zh">之後開放</span><span class="en">coming later</span></p></li>
+        <li><h2><span class="zh">密碼與金鑰</span><span class="en">Secrets</span></h2><p class="later"><span class="zh">之後開放</span><span class="en">coming later</span></p></li>
+        <li><h2><span class="zh">個人</span><span class="en">Personal</span></h2><p class="later"><span class="zh">之後開放：語言、時區</span><span class="en">coming later: language, time zone</span></p></li>
+      </ul>
+    </section>
+
+    <section class="screen empty" id="empty">
+      <h1><span class="zh">你還沒有任何分析</span><span class="en">You have no analyses yet</span></h1>
+      <p class="muted"><span class="zh">這個網頁只用來看進度；送出分析在 Claude Desktop 做。</span><span class="en">This page is for watching progress; you launch analyses from Claude Desktop.</span></p>
+      <ol>
+        <li><span class="zh">打開 Claude Desktop，對 agentic-bioflow 說「幫我跑 16S」。</span><span class="en">Open Claude Desktop and tell agentic-bioflow "run 16S for me".</span></li>
+        <li><span class="zh">在確認頁按下送出。</span><span class="en">Press submit on the confirmation page.</span></li>
+        <li><span class="zh">回到這裡，run 會出現在「現在」。</span><span class="en">Come back here; the run shows up under "Now".</span></li>
+      </ol>
+    </section>
+  </main>
+
+  <aside class="abf-hist">
+    <div class="abf-cost"><span><span class="zh">本月</span><span class="en">This month</span></span><span class="num">SU — · <span class="zh">雲端</span><span class="en">Cloud</span> —</span></div>
+    <h3><span class="zh">執行中</span><span class="en">Running</span>（5）</h3>
+    <ol><li><a class="abf-item is-running here" href="#run-v3"><span class="t"><span class="num">7</span> seedrot-16S-v3</span><span class="s">▶ <span class="zh">執行中</span><span class="en">Running</span> · 142/210</span></a></li><li><a class="abf-item is-running" href="#run-v3"><span class="t"><span class="num">6</span> trinickia-rpoB-amplicon</span><span class="s">▶ <span class="zh">執行中</span><span class="en">Running</span> · 31/120</span></a></li><li><a class="abf-item is-failed" href="#run-v2"><span class="t"><span class="num">5</span> seedrot-16S-v2</span><span class="s">✗ <span class="zh">失敗</span><span class="en">Failed</span> · DADA2_TAXONOMY</span></a></li><li><a class="abf-item is-lost" href="#run-v2"><span class="t"><span class="num">4</span> seedrot-16S-v2 <span class="zh">續跑</span><span class="en">resume</span></span><span class="s">⏸ <span class="zh">失聯/暫停</span><span class="en">Lost/Paused</span> · 190/210</span></a></li><li><a class="abf-item is-queued" href="#run-v3"><span class="t"><span class="num">3</span> trinickia-16S-pilot</span><span class="s">… <span class="zh">排隊中</span><span class="en">Queued</span> · <span class="zh">等待排程</span><span class="en">waiting for slot</span></span></a></li></ol>
+    <h3><span class="zh">結果</span><span class="en">Results</span>（2）</h3>
+    <ol><li><a class="abf-item is-succeeded" href="#run-v3"><span class="t"><span class="num">2</span> seedrot-16S-v1</span><span class="s">✓ <span class="zh">成功</span><span class="en">Succeeded</span> · 210/210</span></a></li><li><a class="abf-item is-succeeded" href="#run-v3"><span class="t"><span class="num">1</span> test-ampliseq-profile</span><span class="s">✓ <span class="zh">成功</span><span class="en">Succeeded</span> · 58/58</span></a></li></ol>
+    <h3><span class="zh">送出 · 下游分析 · 完成</span><span class="en">Launch · Downstream · Finished</span></h3>
+    <p class="later"><span class="zh">之後開放</span><span class="en">coming later</span></p>
+  </aside>
+</div></div></body></html>
