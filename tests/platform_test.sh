@@ -52,9 +52,9 @@ case "$PART" in main|clock|all) ;; *) echo "FAIL: ABF_PLATFORM_PART must be main
 set_platform_parts() {
     LAST="tests/test_station_e2e.py tests/test_nextflow_e2e.py"
     SHARDS="
-tests/test_wrapper_nf2.py
-tests/test_wrapper.py
-tests/test_launch_nextflow.py
+tests/test_wrapper_nf2.py tests/test_owner_binding.py
+tests/test_wrapper.py tests/test_pat.py
+tests/test_launch_nextflow.py tests/test_oauth_review.py
 tests/test_launch_e2e.py tests/test_station_fakeplatform.py tests/test_station_channel.py
 tests/test_station_cancel.py tests/test_launch_cli.py
 tests/test_station_launch.py tests/test_relay_loopback.py tests/test_station_envs.py
