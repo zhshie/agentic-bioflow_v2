@@ -90,3 +90,23 @@ R10. The cleared job copy is not NULL: `args_json` becomes `{"forgotten": true, 
 R11 (clarifies R2). "Over stdio" means stdio with no usable form. stdio with a client form may forget, same as `cancel`.
 R12. Record `forget` in the ledger as owed web parity (docs/ROADMAP.md:98): it has no web route yet.
 R13. New tests go in `platform/tests/test_keep_submissions.py`; each test names its TC id in a comment.
+
+## Rulings after acceptance round 1 (developer-agent, 2026-10-18)
+
+R14. Old-test edits this plan forces, named here and allowed (in addition to R1). Each only adds `forget` or the two new
+   column names; none loosens what the test checks for anything else:
+   - `test_station_envs.py` ~520-521: `banned_schema_words` gets an explicit allow-list entry for exactly `forgotten_at` and
+     `forgotten_by` (the banned word `org` is a substring of `forgotten`; the column names are fixed by R8). Any other name
+     containing a banned word must still fail; add one assertion that proves it (e.g. a made-up `forgotten_org` still fails).
+   - `test_station_envs.py` ~384, ~434, ~453, ~455: the CLI subcommand set, help text and tool list gain `forget`.
+   - Tool counts 8 -> 9 and tool lists gain `forget`: `test_pat.py` ~383, `test_oauth_mcp.py` ~44 and ~329, `test_mcp.py` ~61
+     and ~67, `test_launch_e2e.py` ~183, `test_launch_platform.py` ~301 and ~306.
+   The contract's "no old test loosened" case accepts exactly these plus R1, nothing else.
+R15 (narrows R7's "still starting"). 「還在準備中」 applies only while the run's launch job is queued or claimed. A launch whose
+   job ended without the run ever reaching the index (refused by the agent, failed, expired) may be forgotten: the owner can
+   delete content the platform will never use.
+R16. Kept as is, recorded in the ledger as known limits (maintainer may revisit):
+   - a `jobs` row's own copy is still removed with the row 7 days after the job ends (the confirmation keeps the content, so
+     the submission is kept; a terminal-confirmed launch has its bundle only in the job copy and the run folder);
+   - `result_json` / `late_result_json` are results, not submission content: `forget` leaves them;
+   - no web delete (owed web parity, R12).
