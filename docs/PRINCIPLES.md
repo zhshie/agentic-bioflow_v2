@@ -42,8 +42,8 @@ compute environment, then pipelines → datasets → launch, then runs — so a 
 who knows Seqera already knows this tool. Underneath, Nextflow's own records
 are the truth, and where Platform's display disagrees they win (constitution,
 invariant 2); no file here keeps a second copy. The platform of ADR 0004 will
-keep an index of those records, rebuildable from them; that rule waits for its
-check in `docs/ROADMAP.md`.
+keep an index of those records, rebuildable from them; that rule joined the constitution
+in 6.0.0 (I.2), held by `test_tc030` and `test_tc031` of `test_nextflow_e2e.py`.
 
 *Who may say yes (constitution 5.0.0, spec 009c).* The one submission path runs only
 after the user confirmed it, and for a platform that is reached by an MCP client the
@@ -60,6 +60,24 @@ host that holds it. What it cannot do is written in the amendment and in
 `docs/PLATFORM.md`: an AI that can run commands on the person's own machine can do what
 the person can. The check that holds the rule is that an unconfirmed launch is refused
 through the MCP tool and through the web route.
+
+*Three rules joined (constitution 6.0.0).* The roadmap kept principles that were agreed
+but had no check yet; on 2026-10-18 the maintainer approved three whose checks now exist.
+(1) Principle I.2: the platform's run index is rebuildable from Nextflow's own records,
+and the records win where they disagree; held by `test_tc030_rebuild_gives_back_every_field`
+and `test_tc031_nextflows_records_win_over_a_damaged_index` of `test_nextflow_e2e.py`.
+(2) The Safety Net's write-tool rule: `launch`, `cancel`, `resume`, `relaunch` and `forget`
+all refuse until a person has answered on a human channel; held by `test_actions_layer.py`,
+`test_human_channel.py`, `test_resume_entrypoints.py` and `test_keep_submissions.py`, and a
+new write tool must bring its own refusal test. (3) The Safety Net's credential rule: a
+credential that arrives inside a run's data or an OAuth exchange is never stored; held by
+`test_secrets.py`, `test_nextflow_e2e.py` and `test_human_channel.py`. Not moved, and why:
+"every entry reaches the same action" and "the web pages and the tools match one to one"
+wait for the parity test (011a); "a call to the platform's own tools counts as a session
+in use" waits for a scope test, since `hooks/hooks.json` matches only Seqera and Tower tools
+today; "the plugin's hooks become callers of the action layer" is not true yet, because
+`hooks/confirm_launch.sh` still stands alone; and the API refusing a credential field has
+no check.
 
 ## B. Who can use it, and where
 
