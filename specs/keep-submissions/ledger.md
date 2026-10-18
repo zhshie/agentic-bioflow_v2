@@ -48,3 +48,5 @@ Kept as they are; the maintainer may revisit any of them:
 - [x] F10: `confirm.forget_content` voids every pending resume or relaunch request whose `of_run` is the forgotten run (content cleared, `forgotten_at` set); other runs' requests are untouched. The job-time check of F2 stays. TC-131 now expects the request void at once.
 - [x] F11: a terminal-confirmed cancel keeps its bundle and screen text (`cmd_cancel` calls `actions.keep_screen`); tests TC-162 to TC-165.
 - [x] F12: web parity for `forget` stays owed (see Owed above).
+
+- [x] CI follow-up: TC-093 now skips only when contract commit 4f41759 is absent from the clone (shallow CI checkout); when the history exists the assertion is unchanged.

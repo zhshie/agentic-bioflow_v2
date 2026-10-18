@@ -810,6 +810,10 @@ def test_tc091_an_unconfirmed_launch_still_queues_nothing(w):
 
 def test_tc093_the_contract_files_were_not_edited_after_the_contract_commit():
     # TC-093
+    have = subprocess.run(["git", "-C", str(REPO_ROOT), "rev-parse", "--verify", "--quiet", "4f41759^{commit}"],
+                          capture_output=True, text=True, timeout=60)
+    if have.returncode != 0:
+        pytest.skip("contract commit not in this clone (shallow CI checkout); checked locally and by the verifier")
     r = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--name-only", "4f41759", "HEAD", "--", "specs/keep-submissions/plan.md",
                         "specs/keep-submissions/test-case.md", "specs/keep-submissions/test-case-overview.md"],
                        capture_output=True, text=True, timeout=60)
