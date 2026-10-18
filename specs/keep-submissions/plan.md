@@ -61,3 +61,32 @@ R5. Terminal `abf-platform forget RUN`: no owner check, same as `abf-platform ca
    The owner check (#116 rule, same "not found" for not-yours and missing) applies to MCP/HTTP callers.
 R6. A run with no confirmed content left (already forgotten): answer 「已經刪除過了 (already deleted)」, change nothing, no
    error. `forget` also clears pending and void rows of that run, and voids any open pending request for it.
+
+## Rulings after contract round 2 (developer-agent, 2026-10-18)
+
+R7 (replaces the source part of R3). `forget` is allowed only when the run's status, as `status.py` gives it, is a stored final
+   status: succeeded, failed or aborted. Refused, with nothing changed:
+   - `running`;
+   - `lost` (it may still be running on the cluster: same reason 009e refuses lost runs);
+   - launched but not in the run index yet (`get_run` found:false while a launch job exists): 「這個 run 還在準備中，不能刪除
+     (the run is still starting)」;
+   - any `jobs` row of the run queued or claimed.
+   The name is mapped to the run the same way `request_cancel` already maps a run name to its run; reuse that, no new mapping.
+R8 (replaces the confirmation-row part of R2). No new `kind` and no CHECK change: `forget` writes no `confirmations` row. The
+   accepted form answer is the confirmation. The audit is two new nullable columns, added through the existing add-columns
+   upgrade in `store.py`: `forgotten_at REAL` and `forgotten_by TEXT` (user id, NULL from the terminal), set on every row whose
+   content `forget` clears, in `confirmations` and in `jobs`. An old platform.db gains them on open, losing no rows.
+R9. The rows of a run:
+   - its launch confirmation: `launches.job_id -> jobs.confirmation_id`;
+   - its cancel confirmations, and its pending or void launch/cancel requests: the rows whose `bundle_json` names that run_name.
+     Over MCP/HTTP, only those whose `caller_user_id` is the caller;
+   - its jobs: the launch job and the cancel jobs of that run.
+   A terminal-confirmed launch has no content in `confirmations`, so only its job copy is cleared. Rows of other runs are never
+   touched.
+R10. The cleared job copy is not NULL: `args_json` becomes `{"forgotten": true, "bundle": {"run_name": "<name>"}}`. Only the
+   name is kept, so `jobs._apply_handover` (late answer for an expired job) still reads the run name and goes on without a
+   crash. Any reader that needs more than the name (009e later, the page) must see `forgotten` and refuse with 「內容已被擁有者
+   刪除 (content deleted by its owner)」. Add one test for the late-answer path on a forgotten job.
+R11 (clarifies R2). "Over stdio" means stdio with no usable form. stdio with a client form may forget, same as `cancel`.
+R12. Record `forget` in the ledger as owed web parity (docs/ROADMAP.md:98): it has no web route yet.
+R13. New tests go in `platform/tests/test_keep_submissions.py`; each test names its TC id in a comment.
