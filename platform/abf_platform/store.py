@@ -63,7 +63,10 @@ CREATE TABLE IF NOT EXISTS failed_tasks (
 """
 
 # kind is 'run' (a Nextflow run writes with it), 'agent' (an agent polls with it) or 'pat' (a person's personal access
-# token for the MCP server, spec 009d: it has a user_id and opens no other door; users are in the table below).
+# token for the MCP server, spec 009d: it has a user_id and opens no other door; users are in the table below). 009i adds
+# 'oauth_access' (1 hour) and 'oauth_refresh' (30 days), made only by abf_platform.oauth after a login and a click: both carry
+# user_id, label = the client id and expires_at; grant_id ties the tokens of one authorization together so that one reuse ends them all.
+# oauth_clients / oauth_requests / oauth_codes are that flow's own tables: hashes only, no secret in clear.
 # Files written by feature 008 have no kind, agent_name or revoked_at: _migrate_tokens adds them.
 TOKEN_SCHEMA = """
 CREATE TABLE IF NOT EXISTS tokens (
@@ -77,7 +80,8 @@ CREATE TABLE IF NOT EXISTS tokens (
     expires_at REAL,
     ended_at REAL,
     user_id INTEGER,
-    label TEXT
+    label TEXT,
+    grant_id TEXT
 );
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,6 +96,38 @@ CREATE TABLE IF NOT EXISTS web_sessions (
     user_id INTEGER NOT NULL,
     created_at REAL NOT NULL,
     expires_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS oauth_clients (
+    client_id TEXT PRIMARY KEY,
+    info_json TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    last_used_at REAL
+);
+CREATE TABLE IF NOT EXISTS oauth_requests (
+    id TEXT PRIMARY KEY,
+    client_id TEXT NOT NULL,
+    redirect_uri TEXT NOT NULL,
+    redirect_explicit INTEGER NOT NULL,
+    code_challenge TEXT NOT NULL,
+    state TEXT,
+    resource TEXT,
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    decision TEXT,
+    decided_at REAL
+);
+CREATE TABLE IF NOT EXISTS oauth_codes (
+    code_hash TEXT PRIMARY KEY,
+    grant_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    redirect_uri TEXT NOT NULL,
+    redirect_explicit INTEGER NOT NULL,
+    code_challenge TEXT NOT NULL,
+    resource TEXT,
+    user_id INTEGER NOT NULL,
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    used_at REAL
 );
 """
 
@@ -513,6 +549,9 @@ def _hash(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+token_hash = _hash         # the one way a token is kept: abf_platform.oauth uses it for codes and OAuth tokens too
+
+
 def _migrate_tokens(con):
     """A token file made by feature 008 has no kind column: add the three columns, old tokens stay run tokens."""
     have = {r[1] for r in con.execute("PRAGMA table_info(tokens)")}
@@ -533,6 +572,8 @@ def _migrate_tokens(con):
             con.execute("ALTER TABLE tokens ADD COLUMN user_id INTEGER")
         if "label" not in have:
             con.execute("ALTER TABLE tokens ADD COLUMN label TEXT")
+        if "grant_id" not in have:
+            con.execute("ALTER TABLE tokens ADD COLUMN grant_id TEXT")
     if "password_hash" not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
         try:
             with con:
@@ -649,6 +690,46 @@ def lookup_pat(tokens_path, token):
                           "JOIN users u ON u.id = t.user_id WHERE t.token_hash = ? AND t.kind = 'pat' "
                           "AND t.revoked_at IS NULL AND u.disabled_at IS NULL", (_hash(token),)).fetchone()
         return dict(row) if row else None
+    finally:
+        con.close()
+
+
+def lookup_oauth_access(tokens_path, token):
+    """{'user_id', 'name', 'lab', 'token_id'} of a live OAuth access token (spec 009i) of an enabled user, else None. A refresh
+    token, a personal access token and every other kind find nothing here. The same four fields as lookup_pat: one Caller."""
+    if not token or not isinstance(token, str) or not Path(tokens_path).exists():
+        return None
+    con = connect_tokens(tokens_path)
+    try:
+        row = con.execute("SELECT u.id AS user_id, u.name AS name, u.lab AS lab, t.id AS token_id, c.info_json AS info_json FROM tokens t "
+                          "JOIN users u ON u.id = t.user_id LEFT JOIN oauth_clients c ON c.client_id = t.label "
+                          "WHERE t.token_hash = ? AND t.kind = 'oauth_access' "
+                          "AND t.revoked_at IS NULL AND t.expires_at > ? AND u.disabled_at IS NULL", (_hash(token), _now())).fetchone()
+        if row is None:
+            return None
+        out = dict(row)
+        info = out.pop("info_json")
+        # whether the token's client may be shown the client's own form: judged on the redirects it registered (a client that is gone: no)
+        from . import oauth
+        try:
+            uris = json.loads(info).get("redirect_uris") or () if info else ()
+        except (ValueError, AttributeError):
+            uris = ()
+        out["form_ok"] = oauth.form_allowed(uris)
+        return out
+    finally:
+        con.close()
+
+
+def revoke_oauth_tokens(tokens_path, name):
+    """Revoke every live OAuth token (access and refresh) of the user with this name; returns how many. A PAT is not touched."""
+    if not Path(tokens_path).exists():
+        return 0
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            return con.execute("UPDATE tokens SET revoked_at = ? WHERE kind IN ('oauth_access', 'oauth_refresh') AND revoked_at IS NULL "
+                               "AND user_id = (SELECT id FROM users WHERE name = ?)", (time.time(), name)).rowcount
     finally:
         con.close()
 

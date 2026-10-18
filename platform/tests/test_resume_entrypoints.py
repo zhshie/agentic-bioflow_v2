@@ -100,6 +100,21 @@ def test_tc082_tc083_over_http_without_a_form_the_tool_answers_pending_and_the_p
     assert len(rig.jobs()) == 1
 
 
+def test_009e_009i_a_connector_that_is_not_allow_listed_gets_the_page_only_for_resume_and_relaunch(rig, duo):
+    # 009e x 009i: resume and relaunch go through the same _ask, so a connector whose client was not vetted is never shown the form
+    from abf_platform import actions
+    first = duo.sent(duo.a, run="x")
+    rig.hand_over(first["job_id"], "x")
+    rig.set_run("x", "failed")
+    conn = actions.Caller.connector(duo.a.user_id, duo.a.name, duo.a.lab, False)
+    for name in ("resume", "relaunch"):
+        seen = []
+        out = tool_json(rig.w.call(name, {"run_name": "x"}, caller=conn, answer=form_answer(seen=seen)))
+        assert out["sent"] is False and out["state"] == "pending" and "/c/" in out["confirmation_url"], out
+        assert seen == [], "the form must not be shown to a connector that is not allow-listed"
+    assert len(rig.jobs()) == 1
+
+
 def test_tc100_tc101_over_http_somebody_else_is_told_the_run_is_not_found(rig, duo):
     first = duo.sent(duo.a, run="x")
     rig.hand_over(first["job_id"], "x")

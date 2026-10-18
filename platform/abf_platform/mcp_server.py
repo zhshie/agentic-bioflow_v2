@@ -176,13 +176,15 @@ def _remote(ctx):
     return http_auth.current_remote()
 
 
-def build_http_app(index_path, tokens_path=None, host="127.0.0.1"):
-    """The server's Streamable HTTP app behind the bearer check: no valid personal access token, no answer."""
+def build_http_app(index_path, tokens_path=None, host="127.0.0.1", public_url=None):
+    """The server's Streamable HTTP app behind the bearer check: no valid personal access token or OAuth access token, no answer.
+    `public_url` is the address people reach this server at; with it the 401 points a connector to the resource metadata (009i)."""
     app = build_server(index_path).streamable_http_app(host=host)
-    return http_auth.BearerAuth(app, http_auth.tokens_path_for(index_path, tokens_path))
+    return http_auth.BearerAuth(app, http_auth.tokens_path_for(index_path, tokens_path),
+                                platform_path=actions.platform_path_for(index_path), public_url=public_url)
 
 
-def run_http(index_path, host, port):
+def run_http(index_path, host, port, public_url=None):
     import uvicorn
 
-    uvicorn.run(build_http_app(index_path, host=host), host=host, port=port, log_level="info")
+    uvicorn.run(build_http_app(index_path, host=host, public_url=public_url), host=host, port=port, log_level="info")

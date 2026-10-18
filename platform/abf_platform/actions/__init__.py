@@ -52,6 +52,17 @@ class Caller:
     lab: str
 
 
+    @staticmethod
+    def connector(user_id, name, lab, form_ok):
+        """The caller proven by a connector's token (spec 009i): the same three fields, and whether the client's own form may be shown."""
+        return ConnectorCaller(user_id, name, lab, bool(form_ok))
+
+
+@dataclasses.dataclass(frozen=True)
+class ConnectorCaller(Caller):
+    form_ok: bool = False
+
+
 def platform_path_for(index_path, platform_path=None):
     return platform_path or store.default_platform_path(index_path)
 
@@ -191,11 +202,17 @@ def person_at(ctx):
     return forms.Person(ctx)
 
 
+def form_is_trusted(caller):
+    """Whether this caller may be shown the client's own form: stdio (None) and a PAT always; a connector's token only when its client
+    was vetted when the token was read (see the connector's redirect rule in docs/PLATFORM.md). The rest get the page only."""
+    return caller is None or getattr(caller, "form_ok", True)
+
+
 async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False, tool=None):
     """The yes of a person for a bundle that is built and checked: through the form, else by the page; never by the caller itself.
     `kind` is the kind of confirmation; `tool` is the name the person knows it by (resume, relaunch), the kind when none is given."""
     caller_id = _caller_id(caller)
-    form = person is not None and person.can_ask()
+    form = person is not None and person.can_ask() and form_is_trusted(caller)
     tool = tool or kind
     nobody = ("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單）。請改用終端機指令 `abf-platform %s`，或用帶權杖的 HTTP 連線 "
               "(no one can say yes here: use the terminal command, or HTTP with a token)" % tool)
