@@ -180,7 +180,7 @@ def test_tc010_tc061_no_web_page_and_no_mcp_tool_can_launch_or_cancel(world):
     _, outs = world.plat.mcp([("list_agents", {})])
     tools, _ = world.plat.mcp([])
     # 009c: the six read tools plus launch and cancel, which only make a pending request (no job without a person's yes)
-    assert sorted(t.name for t in tools) == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
+    assert sorted(t.name for t in tools) == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
                                               "list_runs", "list_site_files"]
 
 

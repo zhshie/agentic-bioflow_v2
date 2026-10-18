@@ -4,6 +4,7 @@ The v3 line (ADR 0006, 2026-10-15): the platform generation. `main` stays v2 (2.
 
 ## 3.0.0-dev (unreleased, branch `v3`)
 
+- keep-submissions: a confirmed submission keeps its content (bundle and screen text) until its owner deletes it; no clock clears it any more (a void or expired pending request still loses its content after 7 days, `KEEP_CONTENT_SECONDS` is now `KEEP_UNSENT_SECONDS`). New `abf-platform forget RUN` and MCP tool `forget` delete it after a yes (terminal `y`, or the client's form), only for a finished run and only for its owner; the record of who sent it and when stays (`forgotten_at`, `forgotten_by`). See docs/PLATFORM.md, "Forget".
 - Opened 2026-10-15 from `main` at 2.17.0 (commit 42261eb). CI runs on pushes to `v3`.
 - commands/*.md moved to skills/<name>/SKILL.md (Agent Skills format); invocation names unchanged.
 - Optional, off-by-default Jev triage for FAILED runs (feature 015, ADR 0007): `scripts/jev.sh` names the likely cause category from the last 200 lines of `.command.err`; bring your own key, disclosed on first use, fails open.

@@ -380,7 +380,7 @@ def test_tcb10_stdio_needs_no_token_and_no_user(tmp_path):
     plat, _ = _three_runs(tmp_path)
     assert not plat.tokens.exists() or _rows(plat.tokens, "SELECT COUNT(*) FROM tokens WHERE kind = 'pat'")[0][0] == 0
     tools, outs = mcp_call(pkg_env(ABF_PLATFORM_DB=plat.index), [("list_runs", {})])
-    assert len(tools) == 8 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel
+    assert len(tools) == 9 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel
 
 
 def test_tcb11_without_users_http_starts_says_so_and_answers_401(tmp_path):

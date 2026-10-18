@@ -1,5 +1,5 @@
 # Not Seqera's Launchpad form or its command line: they are Seqera's and send the run to Seqera; these commands show the whole analysis on a terminal, ask, and hand it to the agent that sits next to the cluster.
-"""abf-platform launch | cancel | launches | fetch-records (feature 007b).
+"""abf-platform launch | cancel | forget | launches | fetch-records (feature 007b; forget: keep-submissions).
 
 launch   builds the bundle (abf_station.launch.render_bundle(), the same function the agent runs; the code that
          calls it is build.py, which the MCP tools use too), shows all of it, and
@@ -22,6 +22,7 @@ from . import build, terminal
 
 QUESTION_LAUNCH = "確定送出？(y/N)"
 QUESTION_CANCEL = "確定取消？(y/N)"
+QUESTION_FORGET = "確定刪除？(y/N)"
 NOT_SENT = "未送出"
 GRACE_DEFAULT = 120.0
 
@@ -207,6 +208,35 @@ def cmd_cancel(args):
     return 1
 
 
+# ---- forget ---------------------------------------------------------------------------------------------------------
+
+def cmd_forget(args):
+    state = _state()
+    index = store.default_index_path()
+    code, message = actions.forget_check(state, index, args.run)
+    if code == "nothing":
+        _say(message)
+        return 0
+    if code != "ok":
+        return _refuse_forget(message)
+    why = terminal.terminal_problem()
+    if why:
+        return _refuse_forget("要在終端機上互動回答 y 才會刪除，這裡不行（%s）(needs an interactive terminal)" % why)
+    if not terminal.ask(build.forget_screen(args.run), QUESTION_FORGET):
+        _err("未刪除")
+        return 1
+    out = actions.forget(state, index, args.run, confirmed_by=actions.TERMINAL, caller=None)
+    if not out["ok"]:
+        return _refuse_forget(out["message"])
+    _say(out["message"])
+    return 0
+
+
+def _refuse_forget(text):
+    _err("未刪除: %s" % text)
+    return 1
+
+
 def _when(epoch):
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(epoch))
 
@@ -335,6 +365,12 @@ def add_commands(sub):
                        description="Send a stop to the one Slurm job this platform started for the run, after you answer y.")
     c.add_argument("run", help="the run name")
     c.set_defaults(func=cmd_cancel)
+
+    fg = sub.add_parser("forget", allow_abbrev=False, help="delete the content a finished run was sent with, after the same kind of question",
+                        description="Clear the bundle and the screen text kept for one run (the record of who sent it and when stays), "
+                                    "after you answer y. It cannot be undone.")
+    fg.add_argument("run", help="the run name")
+    fg.set_defaults(func=cmd_forget)
 
     ls = sub.add_parser("launches", allow_abbrev=False, help="list what was handed to agents: facts only, never a run's state",
                         description="The hand-off record: run, Slurm job number, folder, time, and whether a stop was requested.")

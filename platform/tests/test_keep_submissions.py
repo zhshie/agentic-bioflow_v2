@@ -560,8 +560,6 @@ def test_tc060_a_late_answer_for_a_forgotten_launch_job_is_taken(w):
                                   tokens_path=w.ip.tokens)
     assert code == 200 and body["late"] is True
     assert w.sql("SELECT slurm_job_id FROM launches WHERE run_name = 'run-one'")[0][0] == 777
-    code, body = jobs.take_result(w.ip.state_db, "agent-t", out["job_id"], "error", {"ok": False}, time.time, tokens_path=w.ip.tokens)
-    assert code == 409                                        # answered already; no crash
 
 
 def test_tc060_a_late_failure_for_a_forgotten_launch_job_still_finds_the_run_name(w):

@@ -316,6 +316,16 @@ def cancel_screen(bundle, row):
     return lines
 
 
+FORGET_WARNING = "刪除後無法復原；這個 run 之後不能再續跑或原樣重跑。紀錄（誰、何時送出）會保留。"
+
+
+def forget_screen(run_name):
+    """What the person is asked before the content of one run's submissions is deleted (keep-submissions)."""
+    return [terminal.PREFIX + "== 刪除確認：只會刪除這個 run 送出時留下的內容（bundle 與畫面文字）==",
+            terminal.pair("run 名稱", run_name),
+            terminal.PREFIX + FORGET_WARNING]
+
+
 def as_text(lines):
     """A screen as plain text for a form or a page: the same lines, without the line prefix of the terminal."""
     return "\n".join(ln[len(terminal.PREFIX):] if ln.startswith(terminal.PREFIX) else ln for ln in lines)

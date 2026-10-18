@@ -70,13 +70,14 @@ def build_server(index_path, platform_path=None):
     async def list_site_files(ctx: Context, compute_env: str, path: str) -> dict:
         return await actions.list_site_files(platform_path, compute_env, path, caller=_caller(ctx))
 
-    _add_write_tools(server, platform_path)
+    _add_write_tools(server, platform_path, index_path)
     _add_guidance(server)
     return server
 
 
-def _add_write_tools(server, platform_path):
-    """launch and cancel: a pending request and a question to the person. Nothing here says yes for anybody."""
+def _add_write_tools(server, platform_path, index_path):
+    """launch and cancel: a pending request and a question to the person; forget: a question to the person. Nothing here says yes
+    for anybody."""
 
     @server.tool(name="launch", annotations=_WRITES,
                  description="Ask to launch a Nextflow pipeline on a compute environment. This does NOT start anything: it builds the "
@@ -101,6 +102,17 @@ def _add_write_tools(server, platform_path):
     async def cancel_tool(ctx: Context, run_name: str) -> dict:
         return await actions.request_cancel(platform_path, run_name=run_name, caller=_caller(ctx), person=actions.person_at(ctx),
                                             remote=_remote(ctx))
+
+    @server.tool(name="forget", annotations=_STOPS,
+                 description="Ask to delete what was kept of one run you launched: the bundle and the screen text of its requests and "
+                             "jobs. This does NOT delete anything by itself: the person is asked in their own client's form, and you "
+                             "cannot answer it for them. It cannot be undone, and the run can no longer be resumed or launched again "
+                             "as it was; the record of who sent it and when stays. Only for a run that has finished (not running, "
+                             "not lost). A client that cannot show a form is told to use the terminal command "
+                             "`abf-platform forget RUN`.")
+    async def forget_tool(ctx: Context, run_name: str) -> dict:
+        return await actions.request_forget(platform_path, index_path, run_name=run_name, caller=_caller(ctx),
+                                            person=actions.person_at(ctx))
 
 
 def _whole_file(name):
