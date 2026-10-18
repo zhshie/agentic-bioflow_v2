@@ -381,7 +381,7 @@ def test_tc071_exactly_six_read_only_tools_over_stdio_and_http(tmp_path):
         stop_proc(proc)
     want = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files"]
     for ts in (tools, tools_http):
-        assert sorted(t.name for t in ts) == sorted(want + ["launch", "cancel"])
+        assert sorted(t.name for t in ts) == sorted(want + ["launch", "cancel", "forget", "resume", "relaunch"])    # 009e: plus resume and relaunch
         for t in [t for t in ts if t.name in want]:
             assert t.annotations is not None and t.annotations.read_only_hint is True
             assert t.annotations.destructive_hint is not True
@@ -431,7 +431,7 @@ def test_tc063_no_door_takes_a_job_kind_or_a_command(tmp_path, monkeypatch):
     assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "submit", "enqueue"}), words
     top_level = set(next(a for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)).choices)
     assert top_level == {"serve", "token", "agent-token", "ce", "mcp", "rebuild", "launch", "cancel", "fetch-records",
-                         "launches", "user", "pat", "web", "runs", "oauth"}, top_level     # 009c: plus `web`, the confirmation page; 116b: plus `runs`; 009i: plus `oauth` (revoke)
+                         "launches", "user", "pat", "web", "runs", "oauth", "resume", "relaunch", "forget"}, top_level     # 009c: plus `web`, the confirmation page; 116b: plus `runs` (assign); 009i: plus `oauth`; 009e: plus `resume`, `relaunch`
     assert [(trail, w) for trail, w in seen if w in ("launch", "cancel")] == [([], "launch"), ([], "cancel")]
     assert {"ce", "agent-token", "serve", "token", "mcp", "rebuild"} <= words
 
@@ -450,9 +450,9 @@ def test_tc084_no_launch_door_anywhere(tmp_path):
     # feature 007b (TC-060): the words launch and cancel may stand only as the names of the two new subcommands, and only in
     # these three places: the one list of subcommand names (exactly this list), their two lines in the table of subcommands,
     # and the usage line of each of the two
-    names = "{serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,launch,cancel,launches,fetch-records}"    # 009c: plus `web`; 009i: plus `oauth`; 116b: plus `runs`
+    names = "{serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,launch,resume,relaunch,cancel,forget,launches,fetch-records}"    # 009c: plus `web`; 009i: plus `oauth`; 116b: plus `runs`; 009e: plus `resume`, `relaunch` in registration order
     assert helptext.count(names) >= 1, "the list of subcommands is exactly the old ones plus the four new ones (and runs, oauth)"
-    helptext = helptext.replace(names, names.replace(",launch,cancel,", ","))
+    helptext = helptext.replace(names, names.replace(",launch,resume,relaunch,cancel,forget,", ","))
     rows = re.findall(r"(?m)^ {4}(launch|cancel) {2,}\S", helptext)
     assert rows == ["launch", "cancel"], rows
     helptext = re.sub(r"(?m)^ {4}(launch|cancel)( {2,}\S)", lambda m: "    " + m.group(2), helptext)
@@ -496,6 +496,16 @@ def test_tc086_no_web_pages_no_confirmation_page_no_role_tables(tmp_path):
         assert banned_schema_words(db) == [], db.name
 
 
+def test_banned_words_still_catch_a_name_next_to_the_forgotten_ones(tmp_path):
+    # TC-094 (keep-submissions): only the exact names forgotten_at and forgotten_by are allowed; another name with "org" still fails
+    db = tmp_path / "platform.db"
+    con = sqlite3.connect(str(db))
+    con.execute("CREATE TABLE t (forgotten_at REAL, forgotten_by TEXT, forgotten_org TEXT)")
+    con.commit()
+    con.close()
+    assert banned_schema_words(db) == [("org", "forgotten_org")]
+
+
 # 009c: the exception to the ban on session and password names, written as exact (database, table, column) triples like the one for
 # index.db: the web password's hash and the browser login's table, both in tokens.db (decided by the maintainer 2026-10-17, plan
 # "round 2"). A column of any other name or in any other place is still caught. The scan was the body of tc086; it is a function so a
@@ -517,7 +527,8 @@ def banned_schema_words(db):
             names.append(t.lower())
     con.close()
     # 009d: identity (user, lab) is feature 009 (ADR 0006); roles stay out until 010
-    allowed = {"users", "user_id", "caller_user_id", "owner_user_id", "label", "lab", "name", "disabled_at"}    # 116: owner_user_id names an owner, not a login
+    allowed = {"users", "user_id", "caller_user_id", "owner_user_id", "label", "lab", "name", "disabled_at",
+               "forgotten_at", "forgotten_by"}    # keep-submissions: "org" sits inside "forgotten"; these name when and by whom content was deleted    # 116: owner_user_id names an owner, not a login
     return [(word, n) for word in ("user", "role", "org", "team", "member", "login", "password", "email", "session", "cookie")
             for n in names if word in n and n not in allowed]
 

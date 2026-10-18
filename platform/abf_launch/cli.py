@@ -1,10 +1,13 @@
 # Not Seqera's Launchpad form or its command line: they are Seqera's and send the run to Seqera; these commands show the whole analysis on a terminal, ask, and hand it to the agent that sits next to the cluster.
-"""abf-platform launch | cancel | launches | fetch-records (feature 007b).
+"""abf-platform launch | resume | relaunch | cancel | forget | launches | fetch-records (feature 007b, resume and relaunch: 009e; forget: keep-submissions).
 
 launch   builds the bundle (abf_station.launch.render_bundle(), the same function the agent runs; the code that
          calls it is build.py, which the MCP tools use too), shows all of it, and
          sends it only after y or Y on the terminal. cancel does the same for one run. Both refuse in the person's
          words, before any question, when a choice cannot be made into a launch.
+resume   goes on with a failed or cancelled run in its own folder (Nextflow takes up where it stopped); relaunch starts it again from the
+         start in a new folder. Both take only the name of the run: the samples and parameters are those of the first launch. Both show
+         everything, ask the same question and take the same y as launch; there is no flag that answers.
 launches lists the hand-off record: facts only (what was sent, the Slurm number, when a cancel was requested). It
          never says how a run is doing; that is Nextflow's to say (get_run).
 fetch-records asks the agent to read Nextflow's own logs of one launch back, for `rebuild`. It only reads.
@@ -22,6 +25,9 @@ from . import build, terminal
 
 QUESTION_LAUNCH = "確定送出？(y/N)"
 QUESTION_CANCEL = "確定取消？(y/N)"
+QUESTION_FORGET = "確定刪除？(y/N)"
+QUESTION_RESUME = "確定續跑？(y/N)"
+QUESTION_RELAUNCH = "確定重跑？(y/N)"
 NOT_SENT = "未送出"
 GRACE_DEFAULT = 120.0
 
@@ -84,15 +90,55 @@ def cmd_launch(args):
     why = terminal.terminal_problem()
     if why:
         return _refuse("要在終端機上互動回答 y 才會送出，這裡不行（%s）。沒有任何旗標或環境變數能代替這個回答 (needs an interactive terminal)" % why)
-    if not terminal.ask(launch_screen(bundle, ce_name), QUESTION_LAUNCH):
+    lines = launch_screen(bundle, ce_name)
+    if not terminal.ask(lines, QUESTION_LAUNCH):
         _err(NOT_SENT)
         return 1
     try:
         cid, job_id = actions.launch(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=caller)
     except jobs.JobRefused as e:
         return _refuse(str(e))
+    actions.keep_screen(state, cid, build.as_text(lines))      # keep-submissions: the confirmation keeps what the person was shown
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
     return _report_launch(state, job_id, bundle)
+
+
+def _attempt(args, verb):
+    """resume or relaunch one run: the same steps as cmd_launch, from the name of a run instead of from choices."""
+    state = _state()
+    store.assign_orphans(state, store.default_tokens_path())
+    caller, why = _account(args.user)
+    if why:
+        return _refuse(why)
+    prepare, screen, question = ((build.prepare_resume, build.resume_screen, QUESTION_RESUME) if verb == "resume"
+                                 else (build.prepare_relaunch, build.relaunch_screen, QUESTION_RELAUNCH))
+    try:
+        ce_name, bundle, row = prepare(state, args.run, index_path=store.default_index_path(), owner=caller.user_id if caller else None)
+    except build.Refusal as e:
+        return _refuse(str(e))
+    why = terminal.terminal_problem()
+    if why:
+        return _refuse("要在終端機上互動回答 y 才會%s，這裡不行（%s）。沒有任何旗標或環境變數能代替這個回答 (needs an interactive terminal)"
+                       % (build.WORDS[verb], why))
+    lines = screen(bundle, row)
+    if not terminal.ask(lines, question):
+        _err(NOT_SENT)
+        return 1
+    try:
+        cid, job_id = actions.launch(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=caller)
+    except jobs.JobRefused as e:
+        return _refuse(str(e))
+    actions.keep_screen(state, cid, build.as_text(lines))      # keep-submissions: the confirmation keeps what the person was shown
+    _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
+    return _report_launch(state, job_id, bundle)
+
+
+def cmd_resume(args):
+    return _attempt(args, "resume")
+
+
+def cmd_relaunch(args):
+    return _attempt(args, "relaunch")
 
 
 def _grace():
@@ -196,6 +242,7 @@ def cmd_cancel(args):
         cid, job_id = actions.cancel(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=None)
     except jobs.JobRefused as e:
         return _refuse(str(e))
+    actions.keep_screen(state, cid, build.as_text(lines))      # keep-submissions: the confirmation keeps what the person was shown
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
     out = asyncio.run(jobs.wait_for_result(state, job_id))
     if out["state"] == "done" and out["ok"]:
@@ -204,6 +251,35 @@ def cmd_cancel(args):
         return 0
     res = out["result"] or {}
     _err("未取消：%s" % (res.get("message") or out["message"]))
+    return 1
+
+
+# ---- forget ---------------------------------------------------------------------------------------------------------
+
+def cmd_forget(args):
+    state = _state()
+    index = store.default_index_path()
+    code, message = actions.forget_check(state, index, args.run)
+    if code == "nothing":
+        _say(message)
+        return 0
+    if code != "ok":
+        return _refuse_forget(message)
+    why = terminal.terminal_problem()
+    if why:
+        return _refuse_forget("要在終端機上互動回答 y 才會刪除，這裡不行（%s）(needs an interactive terminal)" % why)
+    if not terminal.ask(build.forget_screen(args.run), QUESTION_FORGET):
+        _err("未刪除")
+        return 1
+    out = actions.forget(state, index, args.run, confirmed_by=actions.TERMINAL, caller=None)
+    if not out["ok"]:
+        return _refuse_forget(out["message"])
+    _say(out["message"])
+    return 0
+
+
+def _refuse_forget(text):
+    _err("未刪除: %s" % text)
     return 1
 
 
@@ -277,6 +353,8 @@ def cmd_launches(args):
         if owner is not None or users:          # who sent it (116); a platform with no users at all lists as it always did
             head += "  送出者 %s" % terminal.esc(users.get(owner) or "(none: local only)")
         _say(head)
+        if "attempt_kind" in r.keys() and r["attempt_kind"]:      # 009e: a request's lineage, a fact like the rest of the line; not how the attempt went
+            _say("  attempt %s (%s of %s)" % (r["attempt"], r["attempt_kind"], terminal.esc(r["parent_run"])))
         if r["submitted_at"] is None:
             for line in _not_submitted_lines(r, *what.get(r["id"], ("unknown", None))):
                 _say(line)
@@ -331,10 +409,27 @@ def add_commands(sub):
                                   "(whoever has this terminal can name any account)")
     s.set_defaults(func=cmd_launch)
 
+    for verb, fn, text in (("resume", cmd_resume, "go on with a failed run in its own folder; Nextflow takes up where it stopped"),
+                           ("relaunch", cmd_relaunch, "start a failed run again from the start, in a new folder")):
+        r = sub.add_parser(verb, allow_abbrev=False, help=text + ", after the same kind of question as for a first send",
+                           description="Show all of it, ask on this terminal and send it only after you answer y. Only the name of the run is "
+                                       "taken: the pipeline, revision, samples and parameters are those of its first send. Nothing can answer "
+                                       "for you.")
+        r.add_argument("run", help="the run name")
+        r.add_argument("--user", help="the account this is sent as; required once the platform has users, and it must be the account that "
+                                      "launched the run")
+        r.set_defaults(func=fn)
+
     c = sub.add_parser("cancel", allow_abbrev=False, help="stop one analysis of this platform, after the same kind of question",
                        description="Send a stop to the one Slurm job this platform started for the run, after you answer y.")
     c.add_argument("run", help="the run name")
     c.set_defaults(func=cmd_cancel)
+
+    fg = sub.add_parser("forget", allow_abbrev=False, help="delete the content a finished run was sent with, after the same kind of question",
+                        description="Clear the bundle and the screen text kept for one run (the record of who sent it and when stays), "
+                                    "after you answer y. It cannot be undone.")
+    fg.add_argument("run", help="the run name")
+    fg.set_defaults(func=cmd_forget)
 
     ls = sub.add_parser("launches", allow_abbrev=False, help="list what was handed to agents: facts only, never a run's state",
                         description="The hand-off record: run, Slurm job number, folder, time, and whether a stop was requested.")

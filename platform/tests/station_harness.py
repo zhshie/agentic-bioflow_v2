@@ -141,8 +141,10 @@ class FakeSite:
         write_exec(self.bin / "sbatch", sbatch.replace("@ST@", st))
         squeue = head + (
             "[ -f '@ST@/squeue_fail' ] && exit 1\n"
-            "id=''; while [ $# -gt 0 ]; do case \"$1\" in -j) id=\"$2\"; shift ;; esac; shift; done\n"
-            "[ -f '@ST@/jobs.tsv' ] && awk -F'|' -v id=\"$id\" '$1 == id {print $2 \"|\" $3 \"|\" $4}' '@ST@/jobs.tsv'\n"
+            # -j <id>: that job. 009e: -n <name> (with no -j): the jobs of that name, which is how a resume asks "is the predecessor alive"
+            "id=''; name=''; while [ $# -gt 0 ]; do case \"$1\" in -j) id=\"$2\"; shift ;; -n) name=\"$2\"; shift ;; esac; shift; done\n"
+            "[ -f '@ST@/jobs.tsv' ] && awk -F'|' -v id=\"$id\" -v name=\"$name\" "
+            "'(id != \"\" && $1 == id) || (id == \"\" && name != \"\" && $2 == name) {print $2 \"|\" $3 \"|\" $4}' '@ST@/jobs.tsv'\n"
             "exit 0\n")
         write_exec(self.bin / "squeue", squeue.replace("@ST@", st))
         curl = head + (

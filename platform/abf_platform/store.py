@@ -195,7 +195,9 @@ CREATE TABLE IF NOT EXISTS confirmations (
     ce_name TEXT,
     bundle_json TEXT,
     screen_text TEXT,
-    void_reason TEXT
+    void_reason TEXT,
+    forgotten_at REAL,
+    forgotten_by TEXT
 );
 %(jobs)s
 %(launches)s;
@@ -206,6 +208,8 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 """
 
+# forgotten_at / forgotten_by (keep-submissions) sit before confirmation_id, which has always been the last column; a platform.db made before
+# them gets them last through _add_forgotten_columns (every reader names its columns).
 _JOBS_TABLE = """CREATE TABLE %(name)s (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent TEXT NOT NULL,
@@ -219,6 +223,8 @@ _JOBS_TABLE = """CREATE TABLE %(name)s (
     deadline_at REAL NOT NULL,
     claimed_at REAL,
     finished_at REAL,
+    forgotten_at REAL,
+    forgotten_by TEXT,
     confirmation_id TEXT UNIQUE REFERENCES confirmations(id),
     CHECK (kind NOT IN ('launch_nextflow', 'cancel_run') OR confirmation_id IS NOT NULL)
 )"""
@@ -236,7 +242,10 @@ _LAUNCHES_TABLE = """CREATE TABLE %(name)s (
     submitted_at REAL,
     cancel_requested_at REAL,
     job_id INTEGER,
-    user_id INTEGER
+    user_id INTEGER,
+    parent_run TEXT,
+    attempt INTEGER,
+    attempt_kind TEXT CHECK (attempt_kind IN ('resume', 'relaunch'))
 )"""
 _LAUNCH_COLUMNS = "id, run_name, slurm_job_id, run_folder, ce, agent, confirmed_at, submitted_at, cancel_requested_at"
 STATE_SCHEMA = STATE_SCHEMA % {"jobs": (_JOBS_TABLE % {"name": "IF NOT EXISTS jobs"}) + ";",
@@ -441,11 +450,42 @@ def _add_owner_columns(con):
                     raise    # a second process may have added it first; anything else is a real error
 
 
+_ATTEMPT_COLUMNS = (("parent_run", "TEXT"), ("attempt", "INTEGER"),
+                    ("attempt_kind", "TEXT CHECK (attempt_kind IN ('resume', 'relaunch'))"))
+
+
+def _add_attempt_columns(con):
+    """A platform.db made before 009e has no lineage on a launch (the run it resumes or relaunches, which attempt, which kind): add the
+    three columns, every old row keeps NULL (NULL is a first launch). In place, new columns last, so the old order is kept."""
+    for col, decl in _ATTEMPT_COLUMNS:
+        if col not in {r[1] for r in con.execute("PRAGMA table_info(launches)")}:
+            try:
+                with con:
+                    con.execute("ALTER TABLE launches ADD COLUMN %s %s" % (col, decl))
+            except sqlite3.OperationalError:
+                if col not in {r[1] for r in con.execute("PRAGMA table_info(launches)")}:
+                    raise    # a second process may have added it first; anything else is a real error
+
+
 def _add_confirmation_column(con):
     """A platform.db made before 009d has no caller_user_id on its confirmations: add it, old rows keep NULL."""
     if "caller_user_id" not in {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}:
         with con:
             con.execute("ALTER TABLE confirmations ADD COLUMN caller_user_id INTEGER")
+
+
+def _add_forgotten_columns(con):
+    """A platform.db made before keep-submissions has no record of a forget: add forgotten_at (REAL) and forgotten_by (the user id
+    as text, NULL from the terminal) to confirmations and jobs. Old rows keep NULL. They say only that the content was deleted."""
+    for table in ("confirmations", "jobs"):
+        for col, decl in (("forgotten_at", "REAL"), ("forgotten_by", "TEXT")):
+            if col not in {r[1] for r in con.execute("PRAGMA table_info(%s)" % table)}:
+                try:
+                    with con:
+                        con.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, col, decl))
+                except sqlite3.OperationalError:
+                    if col not in {r[1] for r in con.execute("PRAGMA table_info(%s)" % table)}:
+                        raise    # a second process may have added it first; anything else is a real error
 
 
 _CONFIRMATION_COLUMNS = (
@@ -481,8 +521,10 @@ def connect_state(path):
         con.executescript(STATE_SCHEMA)
         _add_agent_columns(con)
         _add_owner_columns(con)
+        _add_attempt_columns(con)
         _add_confirmation_column(con)
         _add_confirmation_state(con)
+        _add_forgotten_columns(con)
     except BaseException:
         con.close()
         raise

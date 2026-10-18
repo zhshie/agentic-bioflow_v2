@@ -346,6 +346,14 @@ This one is read, not run. Open `specs/116-owner-binding/ledger.md` next to the 
 
 This one is read, not run. Open `specs/116b-owner-gaps/ledger.md` next to `git diff main -- platform/tests` (the base is the branch this one was cut from if `main` is v2). Pass: every existing test that was changed is listed in the ledger with the old expectation, the new one and the reason; no assertion was deleted, skipped or loosened; and no test was removed.
 
+## Resume and relaunch (009e): the reviewer checks, and one run on the cluster
+
+1. **The rewritten pins (read, not run).** Open `specs/009e-resume-relaunch/ledger.md` next to `git diff <base> -- platform/tests`. Pass: every existing test that was changed is listed with the old expectation, the new one and the reason (the CLI pin TC-061, the tool lists of `test_mcp.py` tc024/tc025 and the other tool lists, the `launches` column pins, the action-layer pins), and no assertion was deleted, skipped or loosened. The kit's settings had no test; `test_resume_entrypoints.py` adds one.
+2. **The words.** `docs/PLATFORM.md` section 9 ("Resume and relaunch" and the owner paragraph), `skills/operational/SKILL.md`, `skills/runs/SKILL.md` and `CHANGELOG.md` say what a resume and a relaunch are, that each asks for a yes, and that the samples and parameters cannot change.
+3. **A real resume on Taiwania-3 (not yet done).** Take a run that really failed on the cluster (kill a task, or `abf-platform cancel` one). `abf-platform resume RUN` at your own terminal and answer y. Pass: Nextflow starts with `-resume <session id> -name <RUN>-a2` in the same folder and runs (this is what a fake site cannot say: that Nextflow accepts a new `-name` with the old session in one folder).
+4. **The cache is reused (not yet done).** After the resume starts, `get_run` of `<RUN>-a2`. Pass: it shows tasks as cached, the ones that finished before.
+5. **The pull request** says "not yet accepted on NCHC" until 3 and 4 are done.
+
 ## When a release moves the flow files (commands → skills)
 
 Used by whoever reviews a change that moves or renames the five flow files
@@ -416,6 +424,32 @@ the PR branch; "base" is `v3`, never `main`.
     `commands/` in its regex (last ledger line says so);
     `hooks/plugin_intro.sh:277` and `hooks/confirm_walkthrough.sh:7` still say
     `commands/` in comments, and `hooks/` has no diff.
+
+## Testing the web
+
+The web has two halves, like the rest of this document: what the machine checks, and what only a person can check.
+
+### Web, half 1 — the machine
+
+The web pages are tested with Starlette's `TestClient`: the test sends a request to the app in the same process and asserts on the HTML that comes back. It checks the status code, the key text on the page, and that the forms and links are there (a form that posts to the right place, a link to the next page). No browser is started.
+
+Real examples already in the repo: `platform/tests/test_confirm_page.py` (the confirmation page, driven with `TestClient`) and `platform/tests/test_web_login.py` (the login form and cookie).
+
+The suite adds no browser-automation dependency (no Playwright, Selenium or Puppeteer in `platform/pyproject.toml` or `platform/constraints.txt`). Two reasons: it is one more heavy dependency to install and pin, and browser automation is flaky on WSL and in CI. This is about the automated suite only; the one-off real-Chrome check in "Chrome login (web-chrome-origin)" above is run by hand and is not a test dependency. `tests/testing_web_doc_test.sh` holds these claims.
+
+**Parity test.** ROADMAP's rule: every action has an MCP tool and a web route, and the owed list only shrinks. The test arrives with 011a. It is not built yet: no file on this branch implements it. When it lands, replace this sentence with its file name.
+
+### Web, half 2 — the person: click-only 16S end to end
+
+This is the procedure for Stage 3 (web 011 to 013). The pages it walks are not all built yet; do it once the stage's pages exist, and where a page is missing, record that instead of working around it. Every step is done by clicking in the web: no terminal command, no MCP tool, no asking an AI to do it for you.
+
+1. **Setup.** Open the web, sign in, and follow the guided setup until a compute environment is connected. Check: the setup page says connected, with no error sentence. Record: the date, the address you used, the environment name.
+2. **Launch.** Create a project, choose the 16S analysis, pick the data, review the estimate, and press launch (then answer the confirmation page yourself). Check: the estimate is shown before you confirm, and the analysis appears in the left pane. Record: the analysis name and the cost shown.
+3. **Running.** Watch the right pane and the run detail page until tasks are moving. Check: progress changes without you reloading by hand, and a failed task (if any) shows a plain sentence saying what failed. Record: the time it started, any failure sentence word for word.
+4. **Results.** When the run ends, open the results page. Check: the expected outputs are listed and open (tables and figures). Record: which outputs opened, which did not.
+5. **Finished.** Open the finished page and get the delivery package. Check: the page says finished and the package downloads and opens. Record: the package name and size, and every place you got stuck or had to guess what to click.
+
+Keep the record with the release notes of the run. A step you could not do by clicking alone is a finding, not a skipped step.
 
 ## When something is red
 

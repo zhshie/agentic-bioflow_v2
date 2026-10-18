@@ -41,7 +41,7 @@ def test_tce01_an_oauth_token_opens_the_mcp_as_the_person(w, rig):
     assert {k: a[k] for k in ("user_id", "name", "lab")} == {k: b[k] for k in ("user_id", "name", "lab")}
     with Served(w) as s:
         tools, (runs,) = http_calls(s.url, out["access_token"], [("list_runs", {})])
-        assert len(tools) == 8 and "runs" in tool_json(runs)
+        assert len(tools) == 11 and "runs" in tool_json(runs)
         args = w.in_area(ann, w.choices())
         _, (launch,) = http_calls(s.url, out["access_token"], [("launch", args)])
     j = tool_json(launch)
@@ -319,14 +319,14 @@ def test_tcf06_the_consent_flow_and_the_confirmation_flow_do_not_cross(w, rig):
     assert state_rows(w) == before and w.jobs() == [] and tokens_rows(w, "SELECT COUNT(*) FROM oauth_codes")[0][0] == 0
 
 
-def test_tcf07_the_tools_are_the_same_eight_and_none_can_say_yes(w, rig):
-    # TC-F07 (test_mcp.py is the other half)
+def test_tcf07_the_tools_are_the_same_ten_and_none_can_say_yes(w, rig):
+    # TC-F07 (test_mcp.py is the other half) (009e adds resume and relaunch to the eight)
     w.user("ann")
     out = rig.tokens_for("ann")
     with Served(w) as s:
         tools, _ = http_calls(s.url, out["access_token"], [])
     names = sorted(t.name for t in tools)
-    assert names == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs", "list_site_files"]
+    assert names == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "relaunch", "resume"]
     assert not [n for n in names if re.search(r"approve|confirm|oauth|login|consent", n)]
     for t in tools:
         props = " ".join((t.input_schema or {}).get("properties", {}).keys())

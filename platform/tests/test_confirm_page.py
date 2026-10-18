@@ -333,8 +333,10 @@ def test_tcg01_no_resume_or_retry_door_in_tools_or_actions(w):
     # TC-G01
     from abf_platform import actions
     tools, _ = w.mcp([])
-    assert not [t.name for t in tools if re.search(r"resume|retry|relaunch", t.name)]
-    assert not [n for n in dir(actions) if re.search(r"resume|retry|relaunch", n)]
+    # 009e: the two tools that ask (resume, relaunch) and the two requests behind them are the only names allowed; retry and anything else stay out
+    assert {t.name for t in tools if re.search(r"resume|retry|relaunch", t.name)} == {"resume", "relaunch"}
+    assert {n for n in dir(actions) if re.search(r"resume|retry|relaunch", n)} <= {"resume", "relaunch", "request_resume", "request_relaunch"}
+    assert not [n for n in dir(actions) if re.search(r"retry", n)]
 
 
 # ---- the constitution's new check: an unconfirmed launch is refused through the tool and through the web ------------------------------

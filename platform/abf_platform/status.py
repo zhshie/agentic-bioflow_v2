@@ -94,3 +94,17 @@ def get_run(index_path, run_id, at=None):
         return _view(con, row, at, detail=True) if row else None
     finally:
         con.close()
+
+
+def find_run(index_path, run_name, at=None):
+    """The view of the newest run of this name in the index (as list_runs shows it), or None. The name is what the hand-off record and a
+    person know; the id is made of the session and the name. Nextflow refuses to reuse a name, so there is normally one."""
+    at = now() if at is None else at
+    con = _open_readonly(index_path)
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT * FROM runs WHERE run_name = ? ORDER BY started_at DESC, rowid DESC LIMIT 1", (run_name,)).fetchone()
+        return _view(con, row, at, detail=False) if row else None
+    finally:
+        con.close()
