@@ -246,13 +246,33 @@ def _failure(code, text):
     return "error", {"ok": False, "error": code, "message": text}
 
 
+def _real_path(site, path, roots):
+    """(the real path of `path` on the site, the real paths of the roots matched by position), or None when the site cannot say.
+    NUL-separated output, so that a link whose target holds a newline adds no line; the count must be exact (116b)."""
+    want = [path] + list(roots)
+    res = site.call(["realpath -z -m -- " + " ".join(quote(p) for p in want)])
+    if res.rc != 0 or not res.out.endswith(b"\0"):
+        return None
+    parts = res.out[:-1].split(b"\0")
+    if len(parts) != len(want):
+        return None
+    texts = [x.decode("utf-8", errors="replace") for x in parts]
+    return texts[0], texts[1:]
+
+
 def listing(env, path, ctx):
     path = rules.clean_path(path, "path")
     roots = rules.allowed_roots(env, ctx.settings_file)
     if not rules.inside(path, roots):
         raise rules.Refusal("the path is outside the allowed read roots (在允許範圍之外)")
     site = ctx.site
-    p = quote(path)
+    resolved = _real_path(site, path, roots)
+    if resolved is None:      # fail closed: a path the site cannot resolve is never judged the v3 way
+        raise rules.Refusal("the site could not say where the path leads, so it is not listed (站台無法確認路徑的真實位置)")
+    real, real_roots = resolved
+    if real != path and not rules.inside(real, list(roots) + real_roots):      # a link in the way leads out of the places this agent may read
+        raise rules.Refusal("the path leads outside the allowed read roots by a link (捷徑指向允許範圍之外)")
+    p = quote(real if real != path else path)      # list what the link leads to, never follow one out of it
     kind = site.call(["if test -d %s; then echo kind=dir; elif test -e %s; then echo kind=other; "
                       "else echo kind=missing; fi" % (p, p)])
     if kind.rc != 0:

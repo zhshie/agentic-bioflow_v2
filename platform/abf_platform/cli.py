@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|revoke | user add|passwd | pat new|list|revoke | ce ... | mcp [--http] | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | web | token new | agent-token new|revoke | user add|passwd | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
@@ -69,7 +69,7 @@ def cmd_web(args):
         return 1
     base = public or "http://%s:%s" % (args.host, args.port)
     try:
-        app = web.create_app(index, tokens, state, public_url=public or None)
+        app = web.create_app(index, tokens, state, public_url=public or None, base_url=base)
     except ValueError as e:
         _err("rejected: %s" % e)
         return 1
@@ -180,6 +180,16 @@ def cmd_pat_revoke(args):
         return 0
     _err("rejected: no live personal access token with id %s" % args.id)
     return 1
+
+
+def cmd_oauth_revoke(args):
+    tokens = store.default_tokens_path()
+    if store.user_id_of(tokens, args.user) is None:
+        _err("no user named %s (沒有這個使用者)" % args.user)
+        return 1
+    n = store.revoke_oauth_tokens(tokens, args.user)
+    _say("revoked %d OAuth token(s) of %s; their personal access tokens are untouched (已撤銷 %d 個 OAuth 權杖)" % (n, args.user, n))
+    return 0
 
 
 def cmd_agent_token_revoke(args):
@@ -382,9 +392,57 @@ def cmd_mcp(args):
         if not store.has_users(store.default_tokens_path(index)):
             _say("There are no users yet, so every request will get 401 until you run: abf-platform user add <name> --lab <lab>, "
                  "then abf-platform pat new --user <name>.")
-        mcp_server.run_http(index, args.host, args.port)
+        public = (args.public_url or "").rstrip("/")
+        if public:
+            from urllib.parse import urlparse
+            u = urlparse(public)
+            if not u.hostname or u.path not in ("", "/") or not (u.scheme == "https" or (u.scheme == "http" and u.hostname in LOOPBACK)):
+                _err("rejected: --public-url must be https://host (or http://127.0.0.1:port on this machine), with no path "
+                     "(--public-url 要是 https://主機 的形式)")
+                return 1
+        mcp_server.run_http(index, args.host, args.port, public_url=public or None)
     else:
         mcp_server.run_stdio(index)
+    return 0
+
+
+def cmd_runs_assign(args):
+    """Give a run that nobody owns to a user (116b). Terminal only: it writes launches.user_id of the newest row of the run and nothing else."""
+    user = store.user_by_name(store.default_tokens_path(), args.user)
+    if user is None:
+        _err("rejected: no such user: %s (沒有這個使用者); nothing was changed" % args.user)
+        return 1
+    state = store.default_platform_path(store.default_index_path())
+    names = store.user_names(store.default_tokens_path())
+
+    def work(con):
+        row = jobs.latest_launch(con, args.run_name)
+        if row is None:
+            return "no_run", None
+        old = row["user_id"]
+        if old == user["user_id"]:
+            return "same", old
+        if old is not None and not args.force:
+            return "owned", old
+        con.execute("UPDATE launches SET user_id = ? WHERE id = ?", (user["user_id"], row["id"]))
+        return "done", old
+
+    what, old = jobs.transaction(state, work)
+    if what == "no_run":
+        _err("rejected: no launch of a run named %s (沒有這個 run); nothing was changed" % args.run_name)
+        return 1
+    if what == "owned":
+        _err("rejected: run %s already belongs to %s; to change the owner add --force (這個 run 已經有擁有者，要改請加 --force)" % (      # 116b-owner
+            args.run_name, names.get(old, "user #%s" % old)))
+        return 1
+    if what == "same":
+        _say("run %s already belongs to %s; nothing to change (已經是他的)" % (args.run_name, args.user))
+        return 0
+    if old is None:
+        _say("run %s now belongs to %s (已指定給 %s)" % (args.run_name, args.user, args.user))
+    else:
+        _say("run %s: owner changed from %s to %s (擁有者由 %s 改為 %s)" % (
+            args.run_name, names.get(old, "user #%s" % old), args.user, names.get(old, "user #%s" % old), args.user))
     return 0
 
 
@@ -479,6 +537,12 @@ def build_parser():
     pr.add_argument("id", type=int)
     pr.set_defaults(func=cmd_pat_revoke)
 
+    oa = sub.add_parser("oauth", help="the OAuth logins of Claude Desktop connectors")
+    osub = oa.add_subparsers(dest="oauth_command", required=True)
+    orv = osub.add_parser("revoke", help="end every OAuth login (access and refresh tokens) of one user; their personal access tokens stay")
+    orv.add_argument("user")
+    orv.set_defaults(func=cmd_oauth_revoke)
+
     c = sub.add_parser("ce", help="compute environments")
     csub = c.add_subparsers(dest="ce_command", required=True)
     cc = csub.add_parser("create", help="store a compute environment (Slurm is checked; the other types are only stored)")
@@ -509,12 +573,22 @@ def build_parser():
     m.add_argument("--http", action="store_true", help="Streamable HTTP instead of stdio")
     m.add_argument("--host", default="127.0.0.1")
     m.add_argument("--port", type=int, default=8788)
+    m.add_argument("--public-url", help="the address people reach this server at (https://host, no path); with it a 401 tells a Claude "
+                                        "Desktop connector where to log in (needs `abf-platform web --public-url` too)")
     m.set_defaults(func=cmd_mcp)
 
     r = sub.add_parser("rebuild", help="drop the index and build it again from Nextflow's records")
     r.add_argument("folders", nargs="*", help="launch folders (the ones holding .nextflow/ and .nextflow.log); the records "
                                               "brought here by fetch-records are read too")
     r.set_defaults(func=cmd_rebuild)
+
+    rn = sub.add_parser("runs", help="the owner of a run in the hand-off record")
+    rsub = rn.add_subparsers(dest="runs_command", required=True)
+    ra = rsub.add_parser("assign", help="give a run that nobody owns to a user (changing an owner that exists takes one more flag)", allow_abbrev=False)
+    ra.add_argument("run_name")
+    ra.add_argument("--user", required=True, help="the user who launched it")
+    ra.add_argument("--force", action="store_true", help="change the owner of a run that already has one")      # 116b-owner: not a confirmation switch
+    ra.set_defaults(func=cmd_runs_assign)
 
     from abf_launch import cli as launch_cli
     launch_cli.add_commands(sub)

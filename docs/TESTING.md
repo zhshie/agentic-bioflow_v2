@@ -315,10 +315,36 @@ Needs `abf-platform web` on loopback, a data folder with e2e runs of the four st
 6. Log in as the second user. Pass: none of the first user's runs appear, and opening `/?run=<their run id>` gives the same 404 page as a made-up id.
 
 **Ledger review (TC-D01 to TC-D09, TC-N07, TC-K5).** Read `specs/011a-web-shell/ledger.md` and `git diff v3...HEAD`. Pass: every rewritten pin has an old value, a new value and a reason (TC-G04 six routes; the "已登入 … 請回到 AI" page replaced by the redirect to `/`; CSP and `PLATFORM.md` wording); no other test was deleted, skipped or loosened; `docs/PLATFORM.md` names six routes; the CHANGELOG has a 011a line; `web.py`'s header describes `GET /`; nothing under `hooks/`, `.claude/`, `actions/`, `jobs.py`, `mcp_server.py` or `store.py` changed.
+## Chrome login (web-chrome-origin)
+
+Needs a Python with Playwright and Google Chrome installed; CI has neither, so this is not in the automated suite (WCO-3 of `specs/web-chrome-origin`).
+
+1. From the repo root run `ABF_PLAYWRIGHT_PYTHON=<python with playwright> python scripts/dev/check_chrome_login.py` (run it in WSL or Linux, the platform side is Unix-only; use the platform test venv python (`~/.cache/abf-platform-venv/bin/python`, built by `tests/platform_test.sh`), which has the repo's test dependencies. `ABF_PLAYWRIGHT_PYTHON` may be a Windows python, e.g. `/mnt/c/.../Scripts/python.exe`, to use Windows Chrome). Without the variable it uses its own Python if that has playwright.
+2. Pass: it prints `PASS: WCO-3` and exits 0 (a real headless Chrome logged in with a 303, pressed 送出, no 403, the page said it was sent). Exit 77 means no playwright or no Chrome, so nothing was checked.
+
+## Claude Desktop custom connector (#117)
+
+Two parts. Part A needs only one machine; part B needs the public https address (009h) and has **not been done**: Claude Desktop reaches the platform from the cloud, so nothing below is claimed as tested with Claude Desktop yet.
+
+**Part A: the OAuth login on one machine, with a stand-in client (no cloud).** Needs a user with a web password (`abf-platform user add`, `abf-platform user passwd <name>` at a terminal) and three terminals: `abf-platform web` (port 8789), `abf-platform mcp --http` (port 8788), and one for the commands below. The "client" is `curl`; the address of the page stands in for the redirect.
+
+1. Register: `curl -s -X POST http://127.0.0.1:8789/register -H 'Content-Type: application/json' -d '{"redirect_uris":["http://127.0.0.1:9/cb"],"client_name":"stand-in","token_endpoint_auth_method":"none"}'`. Pass: the answer has a `client_id` and no `client_secret`. Write the id down.
+2. Make a PKCE pair: `V=$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))')` then `C=$(printf %s "$V" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')`.
+3. Open in a browser: `http://127.0.0.1:8789/authorize?response_type=code&client_id=<id>&redirect_uri=http://127.0.0.1:9/cb&code_challenge=<C>&code_challenge_method=S256&state=abc`. Pass: you land on a page that asks for a name and password (not a token). Log in with your web password. The page names `stand-in`, says it returns to `127.0.0.1`, and says it can read your runs but cannot send an analysis; there are two buttons, 允許 and 拒絕, and nothing to type a token into.
+4. Press 允許. The browser goes to `http://127.0.0.1:9/cb?code=...&state=abc` and shows an error page (nothing listens on port 9): that is expected. Copy the `code` from the address bar. Pass: the address has `state=abc`.
+5. Swap it: `curl -s -X POST http://127.0.0.1:8789/token -d grant_type=authorization_code -d code=<code> -d code_verifier="$V" -d client_id=<id> -d redirect_uri=http://127.0.0.1:9/cb`. Pass: JSON with `access_token`, `refresh_token`, `expires_in` 3600. Run it a second time: it is refused.
+6. Use it: `curl -s -X POST http://127.0.0.1:8788/mcp -H 'Authorization: Bearer <access_token>' -H 'Accept: application/json, text/event-stream' -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}'`. Pass: 200. Without the header: 401.
+7. Allowing is not agreeing: through an MCP client holding that token, ask for a launch. Pass: it only gives you a page address; nothing is queued until you log in and press 送出 there. `abf-platform oauth revoke <name>` then makes the token 401 at once.
+
+**Part B: Claude Desktop, once the platform has a public https address (009h).** Start `abf-platform web --public-url https://<web address>` and `abf-platform mcp --http --public-url https://<mcp address>`. In Claude Desktop add a custom connector pointing at `https://<mcp address>/mcp`. Record, in the ledger of the slice or an issue comment, **all three** (they fix the allowed redirect addresses; they are not to be guessed): (a) whether the connector can send a custom `Authorization: Bearer` header at all; (b) the redirect URI it registers (read it from `oauth_clients`: `sqlite3 tokens.db "select info_json from oauth_clients"`); (c) the Claude Desktop version. Then walk steps 3 to 7 with the browser it opens. Until this is done the rule "https, or loopback" is the only redirect policy.
 
 ## Owner binding (116): the reviewer checks the rewritten pins
 
 This one is read, not run. Open `specs/116-owner-binding/ledger.md` next to the diff of `platform/tests/`. Pass: every existing test that was changed is listed there with the old expectation, the new one and the reason; no assertion was deleted, skipped or loosened (a changed expectation must say what the new rule makes true instead); and `git diff <base> -- platform/tests` shows no test removed. Then, with two real users, check once by hand that one cannot see the other's environment, agent, run or upload folder over MCP and over the page.
+
+## Owner binding, the gaps (116b): the reviewer checks the rewritten pins
+
+This one is read, not run. Open `specs/116b-owner-gaps/ledger.md` next to `git diff main -- platform/tests` (the base is the branch this one was cut from if `main` is v2). Pass: every existing test that was changed is listed in the ledger with the old expectation, the new one and the reason; no assertion was deleted, skipped or loosened; and no test was removed.
 
 ## When a release moves the flow files (commands → skills)
 

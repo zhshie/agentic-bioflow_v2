@@ -34,3 +34,11 @@ No other existing test was edited, deleted, skipped or loosened (TC-D05). One fi
 - No change to `actions/`, `jobs.py`, `mcp_server.py`, `store.py`, `hooks/`, `.claude/` (TC-N07, TC-K5).
 - Round 2 (plan ruling option B): cost label `SU —` / `雲端 —` (TC-H09b, now also asserts no "NCHC" in page or `web_board.py`); `test_tch21_stage_strip_and_bodies` now asserts both times and each count paired with its state (TC-H21c); the tc069/tc070 exemption is removed.
 - Round 2 fix: docs/TESTING.md step 1 (TC-V01) now says "SU —" to match the page.
+
+## Merge of v3 (#126 009i OAuth, #128 same-origin referrer and header middleware)
+
+Resolved as the union; nothing loosened from either side.
+
+- `web.py`: routes = `/` + 009c's five + `/consent/{rid}` (GET, POST) + the SDK's OAuth routes; the middlewares `RegisterBodyCap`, `RegisterRateCap` and `add_headers` of v3 are kept, so `/` (and its framework 404/405) carry the same headers as every page (same-origin referrer, the CSP with the stylesheet hash). The consent page renders through `_page`, which renders through `web_board.document` (one stylesheet, one hashed `style-src`); v3's second inline stylesheet is gone. `_page` keeps 009i's `form_action` parameter (the consent page adds the connector's origin to `form-action`). Login: no `next` goes to `/`; `next` allows `/c/<hex>` and `/consent/<hex>`.
+- Tests: `test_confirm_page.py` TC-G04 and `test_owner_binding.py` tc068 route sets are the union (011a's `/` added to 009i's sets; `/` leaves the "must be 404" loop as before). `test_web_parity.py`: `ConnectorCaller` and `form_is_trusted` (new public names from 009i) are INTERNAL (MCP side only, the web never calls them); the OAuth web routes are not actions, so WEB_ONLY gets no entry.
+- Docs: CHANGELOG, `docs/PLATFORM.md` (route sentence is the union, the CSP sentence kept and told that the consent page adds one `form-action` origin), `docs/TESTING.md` (both sections kept).

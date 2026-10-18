@@ -22,8 +22,9 @@ WEB_ONLY = {
 # Actions with an MCP tool and no web route yet. The list only shrinks: adding a name means changing this test and the plan.
 OWED = {"list_compute_envs": "012a", "get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d",
         "launch": "terminal only, with request forms on /c/", "cancel": "terminal only, with request forms on /c/"}
+# 009i added ConnectorCaller (the caller an OAuth token stands for) and form_is_trusted (does the MCP client show a 送出 form): MCP-side only, the web never calls them; the OAuth web routes are not actions, so they are not in WEB_ONLY.
 INTERNAL = {"request_launch", "request_cancel", "find_approved", "void_request", "person_at", "caller_area", "confined_samplesheet",
-            "read_confined_samplesheet", "Caller", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE"}
+            "read_confined_samplesheet", "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE"}
 FORBIDDEN_IMPORTS = {"confirm", "jobs", "compute_envs", "agents", "status"}
 
 

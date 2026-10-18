@@ -48,6 +48,17 @@ class Caller:
     lab: str
 
 
+    @staticmethod
+    def connector(user_id, name, lab, form_ok):
+        """The caller proven by a connector's token (spec 009i): the same three fields, and whether the client's own form may be shown."""
+        return ConnectorCaller(user_id, name, lab, bool(form_ok))
+
+
+@dataclasses.dataclass(frozen=True)
+class ConnectorCaller(Caller):
+    form_ok: bool = False
+
+
 def platform_path_for(index_path, platform_path=None):
     return platform_path or store.default_platform_path(index_path)
 
@@ -96,17 +107,17 @@ def _inside(path, root):
 
 def _uploads_problem(platform_path, caller, path):
     """The sentence that refuses a listing of somebody else's upload folder, or None. A path inside <uploads_root> is allowed for a
-    caller only inside <uploads_root>/<their name>; any other path follows the rule of the environment's read roots."""
+    caller only inside <uploads_root>/<their name>; any other path follows the rule of the environment's read roots. The path is
+    judged as written and again with its links followed (116b), so a link cannot lead from anywhere into another folder."""
     if not isinstance(path, str) or compute_envs.path_problem(path):
         return None                       # the queue refuses a path that is not a plain absolute one, in its own words
-    want = compute_envs.normalize_path(path)
     root = os.path.abspath(str(store.uploads_root(platform_path)))
     spellings = {compute_envs.normalize_path(root), compute_envs.normalize_path(os.path.realpath(root))}
-    if not any(_inside(want, s) for s in spellings):
-        return None
-    if caller.name and any(_inside(want, compute_envs.normalize_path(os.path.join(s, caller.name))) for s in spellings):
-        return None
-    return "只能列你自己的上傳資料夾 (you may list only your own uploads folder): %s" % os.path.realpath(os.path.join(root, caller.name))
+    own = [compute_envs.normalize_path(os.path.join(s, caller.name)) for s in spellings] if caller.name else []
+    for want in {compute_envs.normalize_path(path), compute_envs.normalize_path(os.path.realpath(path))}:
+        if any(_inside(want, s) for s in spellings) and not any(_inside(want, o) for o in own):
+            return "只能列你自己的上傳資料夾 (you may list only your own uploads folder): %s" % os.path.realpath(os.path.join(root, caller.name))
+    return None
 
 
 async def list_site_files(platform_path, compute_env, path, *, caller=None):
@@ -187,10 +198,16 @@ def person_at(ctx):
     return forms.Person(ctx)
 
 
+def form_is_trusted(caller):
+    """Whether this caller may be shown the client's own form: stdio (None) and a PAT always; a connector's token only when its client
+    was vetted when the token was read (see the connector's redirect rule in docs/PLATFORM.md). The rest get the page only."""
+    return caller is None or getattr(caller, "form_ok", True)
+
+
 async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False):
     """The yes of a person for a bundle that is built and checked: through the form, else by the page; never by the caller itself."""
     caller_id = _caller_id(caller)
-    form = person is not None and person.can_ask()
+    form = person is not None and person.can_ask() and form_is_trusted(caller)
     nobody = ("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單）。請改用終端機指令 `abf-platform %s`，或用帶權杖的 HTTP 連線 "
               "(no one can say yes here: use the terminal command, or HTTP with a token)" % kind)
     if caller is None and not form:
@@ -292,7 +309,7 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
     if found:
         return _queued(found["id"], found["job_id"], bundle["run_name"])
     try:
-        jobs.check_run_name(platform_path, bundle["run_name"], clock)
+        jobs.check_run_name(platform_path, bundle["run_name"], clock, _caller_id(caller))
     except jobs.JobRefused as e:
         return _no("未送出：%s" % e)
     text = build.as_text(build.launch_screen(bundle, ce))
