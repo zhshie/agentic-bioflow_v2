@@ -12,3 +12,9 @@
 - MCP 工具（estimate_su 的工具）：欠，隨 012d 完成。
 - 網頁顯示：欠，隨同位對照（parity）工作完成。
 - 雲端費用：不算，Stage 4 前顯示「—」。
+
+## Rulings E1-E3 (2026-10-18)
+
+- [x] E1 merged origin/v3 (plain merge, no conflicts; keep-submissions' `forget` tool is now in TC-029's expected tool list)
+- [x] E2 month_total: month is Asia/Taipei (UTC+8) by run start; any unknown run makes the month unknown; no runs is 0 (TC-034..TC-040)
+- [x] E3 rates stay 0.08 / 0.24 with source; factors stay null (owed above)
