@@ -46,11 +46,15 @@ exists.
   The channel rule has its own check, run by `tests/platform_test.sh`: an unconfirmed launch
   is refused through the MCP tool and through the web route (the platform tests
   `test_tch09_*` of `test_human_channel.py` and `test_tch09_b_c_*` of `test_confirm_page.py`).
+  The platform's run index is never a second truth: it MUST be rebuildable from Nextflow's own
+  records alone, and where the index and the records disagree, the records win.
+  *Check:* `platform/tests/test_nextflow_e2e.py` (`test_tc030_rebuild_gives_back_every_field`,
+  `test_tc031_nextflows_records_win_over_a_damaged_index`), run by `tests/platform_test.sh`.
 
 *Rationale:* three features were rebuilt here before anyone checked, and each was written and
 then deleted (PITFALLS 14). A second copy of run state drifts from the real one. The platform of
-`docs/adr/0004` keeps an index of Nextflow's records, never a second truth; that rule joins here
-once its rebuild check exists (`docs/ROADMAP.md`, "Principles waiting for a check"). The one
+`docs/adr/0004` keeps an index of Nextflow's records, never a second truth; that rule joined here in 6.0.0,
+when its rebuild check existed. The one
 submission path exists because a self-hosted platform must do Seqera's submit step, and only the
 user's confirmation lets it run.
 
@@ -180,6 +184,14 @@ plan, and change only by a MAJOR amendment of this constitution.
   (`hooks/confirm_launch.sh` in the Claude Code kit; on the platform, the gate in
   `platform/abf_platform/actions`, which takes a person's yes only from the terminal, the form
   of an MCP client or the confirmation page).
+- Every write tool of the platform (today `launch`, `cancel`, `resume` and `relaunch`) refuses
+  until a person has answered on one of those channels; a token, a pending request or the
+  model's own answer is never that answer. A new write tool joins this rule with its own
+  refusal test before it ships.
+  *Check:* `platform/tests/test_actions_layer.py` (`test_tcb04_*` to `test_tcb08_*`),
+  `platform/tests/test_human_channel.py` (`test_tch09_*`, `test_tca14_*`),
+  `platform/tests/test_resume_entrypoints.py` (`test_tc142_*`, `test_tc144_*`), run by
+  `tests/platform_test.sh`.
 - Credentials and personal details live only in the deployment's own settings area, readable by
   the owner only; never printed, never in git, never in a params file. The plugin never fills in one
   member's credential from another member's settings: it asks the user for the value.
@@ -192,6 +204,12 @@ plan, and change only by a MAJOR amendment of this constitution.
   sentence has no automated check, and does not need one: it states what the code does (a missing
   value is asked for, never guessed or copied; a changed `agent_connection` asks first, see
   `hooks/confirm_launch.sh`), not a detection the plugin performs.
+- The platform never stores a credential that reaches it inside what it receives (a run's
+  config, command line, environment or secret parameters, or an OAuth exchange): none is
+  written to its database or its data folder.
+  *Check:* `platform/tests/test_secrets.py` (`test_tc040_*`, `test_tc042_*`, `test_tc_i03_*`),
+  `platform/tests/test_nextflow_e2e.py` (`test_tc041_*`), `platform/tests/test_human_channel.py`
+  (`test_tcf10_f11_*`), run by `tests/platform_test.sh`.
 
 ## Development Workflow
 
@@ -526,6 +544,40 @@ live in the platform's action layer…"; the maintainer decides when it is struc
 **Version.** MAJOR, under Governance: a principle (I.2) and a Safety Net rule are redefined.
 **Approval.** The maintainer approves and merges the pull request that carries this change.
 
+### 6.0.0 (2026-10-18): three agreed rules join, each with the check that holds it
+
+**Rationale.** `docs/ROADMAP.md` keeps principles that were agreed but had no check yet. On
+2026-10-18 an audit of branch `v3` found three whose checks now exist, and the maintainer
+approved them, in his words: 「都沒問題，好」. Before, each was a promise in the roadmap;
+after, each is a rule here with the test that holds it.
+
+**What changes.**
+- Principle I.2 gains the rule that the platform's run index can be rebuilt from Nextflow's own
+  records and loses to them when they disagree (feature 008's rebuild tests).
+- The Safety Net's launch rule is extended to every write tool the platform has today:
+  `launch` and `cancel` (as in 5.0.0), and now `resume` and `relaunch`. A write tool added
+  later must bring its own refusal test.
+- The Safety Net's credentials rule gains the platform's half: a credential that arrives inside
+  a run's data or an OAuth exchange is never stored. The wider wording in the roadmap ("the API
+  refuses a credential field") has no check and stays there.
+- Not moved, and why: "every entry reaches the same action" and "the web pages and the tools
+  match one to one" wait for the parity test (011a); "a call to the platform's own tools counts
+  as a session in use" waits for a scope test, since `hooks/hooks.json` matches only Seqera and
+  Tower tools today; "the plugin's hooks become callers of the action layer" is not true yet,
+  because `hooks/confirm_launch.sh` still stands alone. The roadmap row "gates live in the
+  platform's action layer" is struck: 5.0.0 already holds it in I.2.
+
+**Sync Impact Report.** Updated together: `docs/ROADMAP.md` (rows struck or narrowed),
+`docs/PRINCIPLES.md` (history), `README.md` and `CLAUDE.md` (the version they cite), and the
+tests that pin the version (`tests/constitution_scope_test.sh`,
+`tests/platform_direction_docs_test.sh`).
+
+**Impact on existing deployments.** None. No hook, script, command, skill or platform code
+changes behaviour; every check named here already passes on `v3`.
+
+**Version.** MAJOR, under Governance: Safety Net rules are redefined (made stricter).
+**Approval.** The maintainer approves and merges the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -540,4 +592,4 @@ live in the platform's action layer…"; the maintainer decides when it is struc
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 5.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-17
+**Version**: 6.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-18
