@@ -80,6 +80,9 @@ grep -qF '`cancel`' "$SK"; chk "TC-020 cancel is named" $?
 ! grep -qiE "\b(I|AI|assistant) (will )?(confirm|say yes|answer the form|press)|confirm(ed|s)? (it )?myself" "$SK"; chk "TC-021 the AI is never the one who confirms" $?
 bad23=$(grep -nE '`(resume|relaunch)`' "$SK" | grep -iE 'larger|bigger|smaller|more time|raise|memory|box size' | grep -viE 'cannot|not |never|same')
 [ -z "$bad23" ]; chk "TC-023 resume/relaunch are not said to change resources" $?
+# TC-023 (fix round): the same, but for the word "relaunch" with or without backticks (tables, bullets, "relaunching")
+bad23b=$(grep -niE 'relaunch(ing|es|ed)?\b' "$SK" | grep -iE 'tier|larger|bigger|smaller|above|more time|raise|floor|box size|memory' | grep -viE 'cannot|not available|never|same|no smaller' | cut -c1-80)
+[ -z "$bad23b" ]; chk "TC-023 no line (backticked or not) says a relaunch can change the box ($bad23b)" $?
 cancelled=$(section CANCELLED)
 grep -qF '`resume`' <<<"$cancelled" && grep -qF '`relaunch`' <<<"$cancelled" && grep -qF 'new `launch`' <<<"$cancelled" && grep -qiE 'same folder' <<<"$cancelled"; chk "TC-022 CANCELLED keeps resume vs relaunch and the new launch" $?
 
