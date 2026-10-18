@@ -6,12 +6,14 @@ SU of a task = cpus x realtime hours x the factor of its partition. The factors 
 rates file) the answer is None with the reasons, never a guess and never 0. Nothing is stored: a total is added up from the index
 at the moment someone asks.
 """
+import datetime
 import json
 from pathlib import Path
 
 from . import jobs, status
 
 RATES_PATH = Path(__file__).resolve().parents[2] / "configs" / "sites" / "su_rates.json"
+TAIPEI = datetime.timezone(datetime.timedelta(hours=8))   # a month is a calendar month in Asia/Taipei (UTC+8)
 MS_PER_HOUR = 3600000.0       # Nextflow's trace holds realtime in milliseconds (platform/tests/fixtures/payloads)
 NOT_STORED = ("這個 run 的紀錄沒有保存每個 task 的 cpus、realtime 與分區 "
               "(the run record does not keep each task's cpus, realtime and partition)")
@@ -81,14 +83,23 @@ def run_su(index_path, run_name, site, rates, tasks_of=None):
     return su_of_tasks(tasks, site, rates)
 
 
+def _taipei_month(iso_utc):
+    """'YYYY-MM' in Taipei time of an ISO 8601 UTC stamp (status.list_runs gives 'YYYY-MM-DDTHH:MM:SSZ'), or None."""
+    try:
+        t = datetime.datetime.strptime(iso_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+    except (TypeError, ValueError):
+        return None
+    return t.astimezone(TAIPEI).strftime("%Y-%m")
+
+
 def month_total(index_path, platform_path, user_id, month, site, rates, tasks_of=None):
-    """Total SU of the runs this user launched that started in `month` ('YYYY-MM', UTC), added up now from the index.
+    """Total SU of the runs this user launched that started in `month` ('YYYY-MM', Taipei time, by start), added up now from the index.
     None when any of those runs has an unknown SU (a partial sum would pass for the whole)."""
     names = jobs.owned_run_names(platform_path, user_id)
     total = 0.0
     for r in status.list_runs(index_path, status.now(), names=names):
         started = r.get("started_at")
-        if not started or started[:7] != month:
+        if not started or _taipei_month(started) != month:
             continue
         su = run_su(index_path, r["name"], site, rates, tasks_of)["su"]
         if su is None:
