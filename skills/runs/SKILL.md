@@ -191,8 +191,9 @@ that touches no resource at all (`docs/PITFALLS.md` 6c). So once a number
 needs to change, relaunching is the only route there is; it is not a
 compromise, and there is nothing to build in its place. On v3 that relaunch is
 a `relaunch` request (same settings) or a new `launch` (changed settings), and
-in both the person says yes. The cost is one more
-spell in the queue, not the run over again.
+in both the person says yes. Either way it starts from the
+start in a new folder, so the cost is one more spell in the queue and the
+whole run again.
 
 ## FAILED
 

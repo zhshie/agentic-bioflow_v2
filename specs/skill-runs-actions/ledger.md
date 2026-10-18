@@ -31,6 +31,7 @@ The "Reading a measurement" table and the walltime bullet still told the AI to "
 
 - S1: each of the six branch headings keeps one `Mapping:` line (SUBMITTED = launched but not in `list_runs`, max 3 checks, "已送出、還沒開始"; RUNNING/FAILED/SUCCEEDED = the platform status; CANCELLED = failed plus a cancel request sent; UNKNOWN = lost or any other). Open question for the maintainer: the "cancel request was sent" fact is in `abf-platform launches`, not in the ten MCP tools, so the skill names no tool for it.
 - S2: the RUNNING "reversible" sentence now says `resume` (same folder, cache); CANCELLED paragraph split so `relaunch` is only "new folder, from the start".
+- S2 fix round: the end of the RUNNING section still said a relaunch costs "one more spell in the queue, not the run over again" (a tw-era line from when relaunch used -resume). It now says a relaunch starts from the start in a new folder. `tests/skill_runs_uses_actions_test.sh` TC-088 gained a paragraph-level check for that wording (an added assertion, none loosened).
 - S3: the .command.err step and the Jev triage step say "v3 尚未提供 task 的資料夾路徑" and no path is built.
 - S4: unchanged from the first round; the scripts that use the Seqera CLI inside (task_health.sh, tune_resources.sh, relaunch_with_override.sh) are marked and owed below; runs_board.sh and agent_ctl.sh are replaced by `list_runs` / `list_agents`. No script touched.
 - S5: one step added to docs/TESTING.md (step 6 of the 009e section).
