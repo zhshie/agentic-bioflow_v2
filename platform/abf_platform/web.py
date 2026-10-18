@@ -10,6 +10,12 @@ bearer token and must never be given one. The only routes there are:
   GET  /c/{rid}      the summary of one pending request, for the user who made it; never changes anything
   POST /c/{rid}      the button: needs the cookie, the same user as the request, and the CSRF token of this login and this request
 
+and, since spec 009i, the authorization server a Claude Desktop connector logs in through (abf_platform.oauth, the SDK's handlers):
+
+  GET  /.well-known/oauth-authorization-server, POST /register, GET|POST /authorize, POST /token, POST /revoke   (the connector's own calls)
+  GET  /consent/{rid}   the consent page: who is asking, Allow / Deny; needs this same login, never changes anything
+  POST /consent/{rid}   Allow or Deny: needs the cookie and the CSRF token of this login and this request; writes no confirmation
+
 `Authorization: Bearer` is never looked at here: an AI that holds a personal access token cannot log in, cannot read a summary and
 cannot press the button. The cookie is `<random id>.<signature>`; only the sha256 of the id is stored (tokens.db, web_sessions).
 Everything the page shows is escaped, and a content-security-policy forbids scripts anyway.
@@ -24,16 +30,23 @@ import time
 import urllib.parse
 from pathlib import Path
 
+from mcp.server.auth.handlers.metadata import MetadataHandler
+from mcp.server.auth.routes import build_metadata, cors_middleware, create_auth_routes
+from mcp.server.auth.settings import ClientRegistrationOptions, RevocationOptions
+from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
+from starlette.middleware import Middleware
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from . import actions, store
+from . import actions, oauth, store
 
 COOKIE = "abf_web"
 KEY_FILE = "web_signing.key"
 RID = re.compile(r"^[0-9a-f]{32}\Z")
+NEXT = re.compile(r"^/(c|consent)/[0-9a-f]{32}\Z")        # where a login may send the browser next: one of this app's own pages
+DEFAULT_BASE = "http://127.0.0.1:8789"
 FAIL_LIMIT = 5              # failures within FAIL_WINDOW that block one name
 IP_FAIL_LIMIT = 20          # failures within FAIL_WINDOW that block one client address (many names from one address)
 FAIL_WINDOW = 60.0
@@ -95,12 +108,15 @@ def _esc(text):
     return html.escape(str(text), quote=True)
 
 
-def _page(title, body, status=200):
+def _page(title, body, status=200, form_action=None):
     doc = ("<!doctype html><html lang=\"zh-Hant\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
            "<title>%s</title><style>body{font-family:sans-serif;max-width:60em;margin:1.5em auto;padding:0 1em}"
            "pre{background:#f4f4f4;padding:1em;overflow-x:auto;white-space:pre-wrap}button{font-size:1.1em;padding:.4em 1.2em}"
            ".bad{color:#a00}.ok{color:#070}</style></head><body><h1>%s</h1>%s</body></html>" % (_esc(title), _esc(title), body))
-    return HTMLResponse(doc, status_code=status, headers=_HEADERS)
+    headers = _HEADERS
+    if form_action:        # the consent form ends in a redirect to the connector, which a form-action rule also covers
+        headers = dict(_HEADERS, **{"Content-Security-Policy": _HEADERS["Content-Security-Policy"].replace("form-action 'self'", "form-action 'self' " + form_action)})
+    return HTMLResponse(doc, status_code=status, headers=headers)
 
 
 def _login_form(next_path="", message="", status=200):
@@ -121,8 +137,10 @@ def _form(fields):
     return {k: v[0] for k, v in out.items()}
 
 
-def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.time, public_url=None):
-    """The confirmation page as an ASGI app. `clock` and the files are parameters so a test can move time and use its own folder."""
+def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.time, public_url=None, base_url=None):
+    """The confirmation page and the OAuth authorization server as an ASGI app. `clock` and the files are parameters so a test can move
+    time and use its own folder. The issuer of the OAuth metadata is `public_url`, else `base_url` (where this app listens), else the default
+    loopback address; the SDK refuses a plain-http issuer that is not loopback (ValueError)."""
     tokens_path = tokens_path or store.default_tokens_path(index_path)
     platform_path = actions.platform_path_for(index_path, platform_path)
     key = _signing_key(Path(platform_path).parent)
@@ -193,7 +211,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     async def login_form(request):
         nxt = request.query_params.get("next", "")
-        return _login_form(nxt if RID.match(nxt[3:]) and nxt.startswith("/c/") else "")
+        return _login_form(nxt if NEXT.match(nxt) else "")
 
     async def login_post(request):
         if not same_origin(request):
@@ -204,7 +222,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         password = str(form.get("password", ""))
         ip = request.client.host if request.client else ""
         nxt = form.get("next", "")
-        nxt = nxt if nxt.startswith("/c/") and RID.match(nxt[3:]) else ""
+        nxt = nxt if NEXT.match(nxt) else ""
         now = clock()
         if (len(recent(by_name, name, now)) >= FAIL_LIMIT or len(recent(by_ip, ip, now)) >= IP_FAIL_LIMIT
                 or no_room(by_name, name, now) or no_room(by_ip, ip, now)):
@@ -307,9 +325,87 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return _page("未送出", "<p class=\"bad\">未送出：%s。請回到 AI 重新送出。</p>" % _esc(e), code)
         return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。你可以回到 AI，用同樣的參數再呼叫一次，它會告訴你工作編號。</p>" % _esc(job_id))
 
+    # ---- the OAuth consent page (spec 009i) -------------------------------------------------------------------------
+    issuer = (public_url or base_url or DEFAULT_BASE).rstrip("/")
+    provider = oauth.PlatformOAuthProvider(tokens_path, issuer, clock=clock)
+    registration = ClientRegistrationOptions(enabled=True, valid_scopes=[oauth.SCOPE], default_scopes=[oauth.SCOPE])
+    revocation = RevocationOptions(enabled=True)
+    auth_routes = create_auth_routes(provider, AnyHttpUrl(issuer), client_registration_options=registration, revocation_options=revocation)
+    # every client here is public (PKCE, no secret): say so in the metadata instead of the SDK's secret-based defaults
+    metadata = build_metadata(issuer, None, registration, revocation)
+    metadata.token_endpoint_auth_methods_supported = ["none"]
+    metadata.revocation_endpoint_auth_methods_supported = ["none"]
+    auth_routes = [Route("/.well-known/oauth-authorization-server", endpoint=cors_middleware(MetadataHandler(metadata).handle, ["GET", "OPTIONS"]),
+                         methods=["GET", "OPTIONS"]) if r.path == "/.well-known/oauth-authorization-server" else r for r in auth_routes]
+
+    def consent_csrf(sid, rid):
+        return csrf(sid, "consent:" + rid)
+
+    def consent_page(info, sid):
+        who = info["client_name"] or "(沒有名稱 unnamed)"
+        if info["form_ok"]:
+            limits = ("<p>允許之後，它可以讀你的 runs，也可以請求送出分析。送出前，它可以在 AI 程式裡跳出「送出」表單，由你本人在表單上按；"
+                      "它不能自己代按。 (It can read your runs and ask to launch; the AI app can show you a 送出 form and you press it yourself.)</p>")
+        else:
+            limits = ("<p>允許之後，它可以讀你的 runs，也可以請求送出分析；但它<strong>不能替你送出</strong>——"
+                      "每次送出或取消，都要你本人在這個網站的確認頁按「送出」。 (It can read your runs and ask to launch; it cannot send an analysis: "
+                      "each launch or cancel must be confirmed by you on this website.)</p>")
+        body = ("<p>名為 <strong>%s</strong> 的連接器（程式代號 %s）要求連到這個平台，並以<strong>你的身分</strong>運作。</p>"
+                "<p>它會把你導回：<strong>%s</strong>。如果你不認得這個網站，按「拒絕」。</p>"
+                "%s"
+                "<form method=\"post\" action=\"/consent/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
+                "<button type=\"submit\" name=\"decision\" value=\"allow\">允許</button> "
+                "<button type=\"submit\" name=\"decision\" value=\"deny\">拒絕</button></form>"
+                % (_esc(who), _esc(info["client_id"]), _esc(info["redirect_host"]), limits, info["id"], _esc(consent_csrf(sid, info["id"]))))
+        return _page("允許連接器 (allow a connector)", body, form_action=info["redirect_origin"])
+
+    def consent_gone(info):
+        if info["decision"] is not None:
+            return _page("已處理", "<p>這個申請已經處理過了。請回到連接器重新開始。</p>", 409)
+        if info["expired"]:
+            return _page("已逾時", "<p class=\"bad\">這個申請已逾時（10 分鐘）。請回到連接器重新開始。</p>", 410)
+        return None
+
+    async def consent_get(request):
+        rid = request.path_params["rid"]
+        info = provider.consent_request(rid) if RID.match(rid) else None
+        if info is None:
+            return _page("找不到 (not found)", "<p>沒有這個申請。</p>", 404)
+        gone = consent_gone(info)
+        if gone is not None:
+            return gone
+        sid, user = user_of(request)
+        if user is None:
+            return _login_form("/consent/" + rid)
+        return consent_page(info, sid)
+
+    async def consent_post(request):
+        if not same_origin(request):
+            return foreign(request)
+        rid = request.path_params["rid"]
+        info = provider.consent_request(rid) if RID.match(rid) else None
+        if info is None:
+            return _page("找不到 (not found)", "<p>沒有這個申請。</p>", 404)
+        sid, user = user_of(request)
+        if user is None:
+            return _login_form("/consent/" + rid, "請先登入 (log in first)", 401)
+        form = await body_of(request)
+        if not _same(form.get("csrf", ""), consent_csrf(sid, rid)):
+            return _page("表單已失效", "<p class=\"bad\">這個表單的記號不對或已失效，什麼都沒有改。請重新整理頁面再按。</p>", 403)
+        decision = form.get("decision")
+        if decision not in ("allow", "deny"):
+            return _page("未處理", "<p class=\"bad\">請按「允許」或「拒絕」。</p>", 400)
+        status, location = provider.consent_decide(rid, user["user_id"], decision)
+        if location is not None:
+            return RedirectResponse(location, status_code=302, headers=_HEADERS)
+        gone = consent_gone(provider.consent_request(rid)) if status in ("decided", "expired") else None
+        return gone or _page("未處理", "<p class=\"bad\">什麼都沒有改。請回到連接器重新開始。</p>", 403 if status == "user" else 404)
+
     app = Starlette(routes=[Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
-                            Route("/c/{rid}", confirm_get, methods=["GET"]), Route("/c/{rid}", confirm_post, methods=["POST"])])
+                            Route("/c/{rid}", confirm_get, methods=["GET"]), Route("/c/{rid}", confirm_post, methods=["POST"]),
+                            Route("/consent/{rid}", consent_get, methods=["GET"]), Route("/consent/{rid}", consent_post, methods=["POST"])]
+                    + auth_routes, middleware=[Middleware(oauth.RegisterBodyCap), Middleware(oauth.RegisterRateCap, clock=clock)])
     from starlette.middleware.base import BaseHTTPMiddleware
 
     async def add_headers(request, call_next):

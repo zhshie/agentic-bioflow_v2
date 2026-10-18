@@ -39,3 +39,30 @@ def test_wco2_origin_null_and_foreign_are_refused_the_own_origin_is_accepted(w):
     r = c.post("/login", data=nxt, headers={"Host": host, "Origin": "http://" + host})
     assert r.status_code == 303 and r.headers["location"] == nxt["next"]
 
+
+
+def test_wco1_the_oauth_routes_and_the_register_cap_carry_the_header_too(w):
+    # WCO-1 (after merging 009i): consent page (logged in and not), /register (ok, over the 16 KiB cap, bad body), /authorize, /token, a refusal at the consent POST
+    import json
+    from oauth_harness import Rig
+    w.user("ann")
+    rig = Rig(w)
+    path, verifier, cid = rig.start()
+    anon = rig.another()
+    answers = [anon.get(path)]                                           # consent page, not logged in: the login form
+    rig.log_in("ann")
+    page = rig.c.get(path)
+    assert page.status_code == 200 and "允許" in page.text
+    answers += [page,                                                    # consent page, logged in
+                rig.register(),                                          # 201
+                rig.c.post("/register", content=json.dumps({"redirect_uris": ["x"], "padding": "p" * 17000}),
+                           headers={"content-type": "application/json"}),    # 413 from RegisterBodyCap, which answers before the routes
+                rig.c.post("/register", content="not json", headers={"content-type": "application/json"}),
+                rig.authorize("no-such-client", "c" * 43),               # 400
+                rig.token({"grant_type": "authorization_code", "code": "nope"}),
+                rig.c.post(path, data={"csrf": "wrong", "decision": "allow"}),       # 403
+                rig.c.get("/consent/" + "0" * 32)]                       # 404
+    assert answers[3].status_code == 413 and answers[2].status_code == 201
+    for r in answers:
+        assert r.headers.get("referrer-policy") == "same-origin", (r.url, r.status_code)
+        assert r.headers.get("x-frame-options") == "DENY", (r.url, r.status_code)
