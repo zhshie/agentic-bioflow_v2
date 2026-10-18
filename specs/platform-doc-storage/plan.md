@@ -9,3 +9,8 @@ Source: issue #119 item 'What the platform stores' (ADR 0004 'metadata only' vs 
 Test (write first) tests/platform_storage_doc_test.sh: the new heading exists; each table row's 'where' file/table name exists in platform/ code; the ask list sentence names exactly the tools in extensions/claude-code-kit/settings.json's ask list.
 
 Out of scope: code, CHANGELOG.md, other docs.
+
+## Rulings after contract round 1 (developer-agent, 2026-10-18)
+- P1 Item 3 becomes verify-only: line ~411 already names the five tools (d2ba5a7). The test pins that sentence to the settings.json ask list so it cannot drift again. Do NOT change lines ~417-422 (they are about the terminal commands `abf-platform launch|cancel`, not the kit's MCP ask list).
+- P2 Also fix the two stale tool lists the verifier found: line ~6 ("Two more tools, `launch` and `cancel`") and the action list near line ~460 so they name the current write tools (launch, cancel, resume, relaunch, forget) consistently with line ~274 / ~466. The test checks these lists against mcp_server.py's write tools.
+- P3 Heading: `## What the platform stores`; table columns What / Where / How long. Disclosure: one paragraph, at most 3 sentences.
