@@ -27,3 +27,17 @@ The verifier's TC-093 allows only the places TC-010 and TC-040 name. These edits
 - `test_pat.py:383`, `test_oauth_mcp.py:44,329`: tool count 8 becomes 9.
 
 The executor cannot make TC-093 pass by code: removing these edits makes those old tests fail, and renaming the columns breaks TC-013/027. Decision needed from the developer-agent: amend R1 to name these, or rule another way.
+
+## Acceptance round 1 (R14 to R16)
+
+- [x] R15 (actions/__init__.py `forget_check`): "still starting" now means the launch job is queued or claimed; a launch whose job was refused, failed (`error`) or `expired` and never reached the run index can be forgotten. A terminal hand-off with no launch job and no index entry stays refused (the safe side; not covered by the plan).
+- [x] R14: the old-test edits listed above are the ones R14 now names (test_station_envs.py allow-list plus one test that `forgotten_org` still fails; CLI set, help and tool lists gain `forget`; tool counts 8 to 9). TC-093 compares the contract files with commit 1cd2ee5.
+- The earlier "Not asked by the plan" note about refused launches is settled by R15.
+
+## Known limits (R16)
+
+Kept as they are; the maintainer may revisit any of them:
+
+1. A `jobs` row's own copy is still removed with the row 7 days after the job ends (`jobs._insert_job` prunes). The confirmation keeps the content, so the submission is kept; a terminal-confirmed launch has its bundle only in the job copy and the run folder.
+2. `result_json` and `late_result_json` are results, not submission content: `forget` leaves them.
+3. No web delete (owed web parity, R12 above).

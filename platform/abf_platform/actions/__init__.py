@@ -374,13 +374,17 @@ def forget_check(platform_path, index_path, run_name, *, caller=None):
     con = store.open_readonly(platform_path)
     try:
         launch = jobs.latest_launch(con, run_name) if con is not None and isinstance(run_name, str) else None
+        job = (con.execute("SELECT state FROM jobs WHERE id = ?", (launch["job_id"],)).fetchone()
+               if launch is not None and "job_id" in launch.keys() and launch["job_id"] is not None else None)
     finally:
         if con is not None:
             con.close()
     if launch is None or (caller is not None and run_name not in jobs.owned_run_names(platform_path, caller.user_id)):
         return "notfound", RUN_NOT_FOUND
     seen = [v for v in status.list_runs(index_path, status.now()) if v["name"] == run_name]
-    if not seen:
+    if not seen and (job is None or job["state"] in ("queued", "claimed")):
+        # R15: "starting" is a launch job still queued or claimed. A launch that ended without ever reaching the index (refused,
+        # failed, expired) may be forgotten. With no job to read (a terminal hand-off) it stays refused: the safe side.
         return "refused", FORGET_STARTING
     if any(v["status"] == "running" for v in seen):
         return "refused", "這個 run 還在跑，不能刪除 (the run is still running; it cannot be deleted)"
