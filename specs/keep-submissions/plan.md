@@ -110,3 +110,11 @@ R16. Kept as is, recorded in the ledger as known limits (maintainer may revisit)
      the submission is kept; a terminal-confirmed launch has its bundle only in the job copy and the run folder);
    - `result_json` / `late_result_json` are results, not submission content: `forget` leaves them;
    - no web delete (owed web parity, R12).
+
+## Follow-up after PR #133 review (developer-agent, 2026-10-18): catch up with v3 (009e) and close two gaps
+- F1 First step, before any test: `git merge origin/v3` (plain merge, never rebase, never force-push). 14 files conflict (docs/PLATFORM.md, abf_launch/build.py, abf_launch/cli.py, mcp_server.py, several platform/tests/*, tests/platform_test.sh). Keep BOTH sides: the Forget section and the Resume and relaunch section both stay in PLATFORM.md; forget_screen and the 009e attempt screens both stay in build.py; tool lists keep both forget and resume/relaunch. Commit the merge on its own.
+- F2 resume and relaunch refuse a forgotten run: when the run they are made from (or its first launch) has been forgotten, the answer is 「內容已被擁有者刪除」 (CLI, MCP and the queue check at job time), nothing is queued. Forget's own warning already says 之後不能再續跑或原樣重跑; this makes it true.
+- F3 Reconcile every list and count of MCP tools and actions (tests, docs, `instructions`, parity tables): the union of the 009e tools and `forget`. No count may be lowered to pass.
+- F4 (verifier question a) Forget is refused while a launch job has ended successfully (the sbatch went out) but the run is not yet in the run index: 「這個 run 還在準備中，不能刪除」, until the index sees the run or 24 hours after the job ended (then it is treated as never having reached the index, R15). A refused/failed/expired launch stays forgettable at once (R15 unchanged).
+- F5 (verifier question b) "kept until the owner deletes it" must hold for a terminal-confirmed launch too: the confirmed request row keeps its bundle and screen text whatever the channel (terminal, form, page), so the 7-day job prune cannot remove the only copy. 009e's resume/relaunch read the content from the request row first and fall back to the job only for rows made before this change; the 「太久了…」 answer remains only for that fallback.
+- F6 TC-084 and any case contradicted by F2–F5 are amended by the verifier in CONTRACT mode; the executor never edits test cases.
