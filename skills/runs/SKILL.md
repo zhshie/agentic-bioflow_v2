@@ -88,6 +88,8 @@ inferring it from the symptom.
 
 ## SUBMITTED
 
+Mapping: SUBMITTED = the person confirmed the launch but the run is not in `list_runs` yet; tell them "已送出、還沒開始" and check again later, at most 3 checks, and after the 3rd tell the person where it stands (never wait forever).
+
 A run that has not left the queue looks identical, from the platform's side, to
 one working hard: the platform has no "submitted" status, so a launched run that
 has not started either is not in `list_runs` yet or shows as `running` with no
@@ -115,6 +117,8 @@ scripts/on_site.sh --script scripts/why_pending.sh
 
 ## RUNNING
 
+Mapping: RUNNING = the platform reports `running`.
+
 `get_run` for per-task progress: it returns the task numbers for each process and the failed tasks.
 
 **A task sitting unstarted is the failure mode to watch for.** Platform keeps
@@ -125,9 +129,9 @@ not a checklist — take the first branch that matches and stop there.
 **🤖 marks a step taken alone. ⏸ marks one that stops and asks the person.**
 One rule decides which mark a step gets, everywhere in this file: **act alone
 where there is a measurement or the action is reversible; stop and ask where
-the choice would be a guess, or would move a security boundary.** A relaunch
-counts as reversible in the sense that matters here — it resumes, and finished
-tasks come back from cache rather than running again.
+the choice would be a guess, or would move a security boundary.** A `resume`
+counts as reversible in the sense that matters here — it continues in the same folder, and finished
+tasks come back from cache rather than running again; the person says yes to it first.
 
 Ask the site why, through the adapter — the scheduler it asks only exists
 there:
@@ -192,6 +196,8 @@ spell in the queue, not the run over again.
 
 ## FAILED
 
+Mapping: FAILED = the platform reports `failed`.
+
 **Ask what the site refused, before reading the Nextflow log** — through the
 adapter, since the refusal log lives wherever the outbound channel runs:
 
@@ -222,15 +228,15 @@ when a refusal is the cause:
 - **No refusal lines up with the failure time.** Read `.command.err` and
   `.exitcode` for the failing task (`get_run` finds it: it lists the failed
   tasks with their exit code and error message, and gives `failure_reason`
-  when Nextflow said why). Downloading the log through the platform is not available on v3 yet (owed: log-download); read the file from the work
-  directory with `scripts/fetch.sh`.
+  when Nextflow said why). v3 尚未提供 task 的資料夾路徑 - not available on v3 yet (owed: task-folder-path): `get_run` gives no work folder for a failed task, so do not build one; use the error message and `failure_reason` it gives, and ask the person for the folder if they know it. Downloading the log through the platform is not available on v3 yet (owed: log-download); once the person gives the folder, read the file there with `scripts/fetch.sh`.
     - **137, or killed.** 🤖 See "out of memory", below.
     - **No `.command.log` and no `.exitcode` at all.** 🤖 The work directory is
       probably not visible from the compute side — report that; there is
       nothing further to diagnose from here.
     - **Jev triage, only if the user turned it on** (optional, off by default;
       `docs/adr/0007-jev-optional-triage.md`). 🤖 Call it for the first failing task
-      that `get_run` lists, once per run, never per task:
+      that `get_run` lists, once per run, never per task: v3 尚未提供 task 的資料夾路徑 - not available on v3 yet (owed: task-folder-path), so run it only when the person has given the task folder; otherwise skip to "Anything else".
+
 
       ```bash
       scripts/jev.sh triage --err <that task's .command.err> --exit <its exit code, or none>
@@ -398,6 +404,8 @@ carries `peak_rss` and `peak_vmem` per task. This is the measurement to use on v
 
 ## SUCCEEDED
 
+Mapping: SUCCEEDED = the platform reports `succeeded`.
+
 1. **Check the site can still serve outputs** — through the adapter:
    `list_agents` (name, online or offline, last contact).
    Where Platform reads results through something running on the cluster, that
@@ -503,6 +511,8 @@ carries `peak_rss` and `peak_vmem` per task. This is the measurement to use on v
 
 ## CANCELLED
 
+Mapping: CANCELLED = `failed` whose facts say a cancel request was sent (Nextflow reports a cancelled run as failed, `docs/PLATFORM.md`).
+
 Platform did not do this on its own — someone asked to, from the platform or
 the site, and this command did not do it either unless it just relaunched something
 by hand. Establish which before touching anything: a cancellation can land
@@ -514,9 +524,11 @@ asking is a decision that was never this command's to make.
     You decide:      relaunch it, or leave it cancelled
     Next step:       say the word and it relaunches the same way any other run does
 
-To stop a run that is still going, call `cancel` with its name: it only asks, and the person confirms it on their own channel. For a run that the platform launched (`abf-platform launch`, or the MCP `launch` tool), a failed or cancelled one is gone on with by its name alone, after the person says yes each time: `abf-platform resume RUN` (or the MCP tool `resume`) takes up where Nextflow stopped, in the same folder, and `abf-platform relaunch RUN` (or `relaunch`) starts it again from the start in a new folder. The samples and parameters are those of the first launch; changing them is a new `launch`.
+To stop a run that is still going, call `cancel` with its name: it only asks, and the person confirms it on their own channel. A failed or cancelled run that the platform launched is gone on with by its name alone, after the person says yes each time. `resume` (or `abf-platform resume RUN`) takes up where Nextflow stopped, in the same folder, and finished tasks come back from the cache. `relaunch` (or `abf-platform relaunch RUN`) starts the run again from the start in a new folder. The samples and parameters are those of the first launch; changing them is a new `launch`.
 
 ## UNKNOWN
+
+Mapping: UNKNOWN = `lost` (three heartbeats silent) or any other value this file does not list.
 
 `list_runs` and `get_run` can report a status this file has no branch for - `lost`, or
 a status the platform adds that this file has not been updated to cover. Say exactly what

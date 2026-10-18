@@ -26,3 +26,13 @@ Retired assertions: none. No existing test was edited, deleted or loosened; the 
 ## Fix round (TC-023)
 
 The "Reading a measurement" table and the walltime bullet still told the AI to "relaunch one tier up" or relaunch with more time. They now say a larger box or more time is a new `launch` the person confirms (consistent with owed: resize-relaunch). `tests/skill_runs_uses_actions_test.sh` TC-023 gained a second check that looks at "relaunch" with or without backticks (this adds an assertion; none was loosened).
+
+## Rulings S1 to S6 round
+
+- S1: each of the six branch headings keeps one `Mapping:` line (SUBMITTED = launched but not in `list_runs`, max 3 checks, "已送出、還沒開始"; RUNNING/FAILED/SUCCEEDED = the platform status; CANCELLED = failed plus a cancel request sent; UNKNOWN = lost or any other). Open question for the maintainer: the "cancel request was sent" fact is in `abf-platform launches`, not in the ten MCP tools, so the skill names no tool for it.
+- S2: the RUNNING "reversible" sentence now says `resume` (same folder, cache); CANCELLED paragraph split so `relaunch` is only "new folder, from the start".
+- S3: the .command.err step and the Jev triage step say "v3 尚未提供 task 的資料夾路徑" and no path is built.
+- S4: unchanged from the first round; the scripts that use the Seqera CLI inside (task_health.sh, tune_resources.sh, relaunch_with_override.sh) are marked and owed below; runs_board.sh and agent_ctl.sh are replaced by `list_runs` / `list_agents`. No script touched.
+- S5: one step added to docs/TESTING.md (step 6 of the 009e section).
+- S6: tests/column_output_relay_rule.sh and tests/jev_test.sh were not edited and pass.
+- owed: task-folder-path  a task's work-folder path in `get_run` (a platform tool to add later); needed to read `.command.err` and to feed Jev triage.
