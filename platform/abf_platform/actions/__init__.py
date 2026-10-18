@@ -87,7 +87,7 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
     return view
 
 
-def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site="nchc", rates=None, tasks_of=None):
+def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site=None, rates=None, tasks_of=None):
     """The SU a run used, and what that costs, from its trace. The run must be the caller's own (else the same answer as get_run's
     not found). Unknown (None, with the reasons) when the record lacks what the formula needs; never a guess."""
     view = status.find_run(index_path, run_name, status.now())
@@ -97,7 +97,10 @@ def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site="
     if view is None:
         return {"found": False, "id": run_name,
                 "message": "Run not found: %s (找不到這個 run)" % run_name}
-    return su.run_su(index_path, run_name, site, rates if rates is not None else su.load_rates(), tasks_of)
+    rates = rates if rates is not None else su.load_rates()
+    if site is None and isinstance(rates, dict):
+        site = rates.get("default_site")        # the one site the rates file names as the default
+    return su.run_su(index_path, run_name, site, rates, tasks_of)
 
 
 def list_compute_envs(platform_path, *, caller=None):

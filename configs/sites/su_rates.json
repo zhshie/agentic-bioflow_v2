@@ -3,6 +3,7 @@
   "source": "https://lions.nchc.org.tw/ngs.jsp",
   "nstc_twd_per_su": 0.08,
   "academic_twd_per_su": 0.24,
+  "default_site": "nchc",
   "sites": {
     "nchc": {
       "partitions": {
