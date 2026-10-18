@@ -15,26 +15,27 @@ runs and the columns stop meaning anything (PITFALLS 35).
 
 ## Before anything else
 
-Run `. scripts/env.sh && scripts/intro.sh runs` — sourcing `env.sh` first sets
-`PATH` and `TOWER_ACCESS_TOKEN` from this deployment's own settings.
-Each Bash tool call is a fresh shell,
-so nothing exported here survives into the next one: every later call that
-runs `tw` starts with `. scripts/env.sh &&` too - a prefix inside that same
-call, never a round trip of its own (`scripts/env.sh`'s own header). Put `intro.sh`'s five sections in front of
-the user before doing anything below. When this invocation's diagnosis or
-delivery has been given, run `scripts/intro.sh --end runs`.
+Run `. scripts/env.sh && scripts/intro.sh runs`. Each Bash tool call is a fresh
+shell, so nothing exported here survives into the next one. Put `intro.sh`'s five
+sections in front of the user before doing anything below. When this invocation's
+diagnosis or delivery has been given, run `scripts/intro.sh --end runs`.
 
-Pass the workspace on every `tw` call that is scoped to one:
-`--workspace $(scripts/settings.sh workspace_id)`. Left off, `tw` answers from
-the caller's personal workspace - where the lab's pipelines, runs and compute
-environments do not exist - so `pipelines list` and `runs list` come back empty
-and the emptiness reads as an answer. Sourcing a shell env file is not enough:
-it carries the token, not the workspace.
-
-Seqera Platform is the only source of truth for run state. Start there, then add
-the two things Platform cannot see: what the site's scheduler is doing, and what
-the site refused to send out. Both are reached through the site adapter
+Run state comes from the abf platform's MCP tools: `list_runs` for the runs it
+knows (newest first, with status and task numbers), `get_run` (it takes the run's
+id) for one run's status, task numbers per process, failed tasks and, for a failed
+run, `failure_reason` - Nextflow's own words for why it failed. The platform
+reports four statuses: running, succeeded, failed and lost. Then add the two
+things the platform cannot see: what the site's scheduler is doing, and what the
+site refused to send out. Both are reached through the site adapter
 (`docs/SITE_ADAPTER.md`), never by naming a scheduler here.
+
+**Actions only ask.** `cancel`, `resume` and `relaunch` (each takes the run's name,
+`run_name`) do not stop or start anything: each writes a request and shows the
+person what would happen, and the person says yes on their own channel - a form
+in their client or a page whose address the tool returns. You cannot say it for
+them. After the person has pressed send, call the same tool again with the same
+`run_name` to get the job number. Wherever this file says "relaunch" or "resume",
+it means asking this way.
 
 With a run named — an id, a run name, or a code from the board below —
 resolve it and branch on status. With nothing named, show the work board
@@ -46,45 +47,21 @@ Before asking about one run, find out what is actually in flight — a member
 running several analyses at once should never have to open several windows
 to see them all in one place:
 
-```bash
-scripts/runs_board.sh --workspace $(scripts/settings.sh workspace_id) \
-    --user $(scripts/settings.sh seqera_user)
-```
+Call `list_runs`. The runs still in flight are the ones whose status is
+`running` (a launched run that has not started yet may not be listed at all;
+the SUBMITTED section below says how to find it). Show each with its run name,
+status, elapsed time and task numbers, and give each a short code (`r1`, `r2`,
+...) in the order the tool returned them. The codes are computed fresh on every
+call from the platform's own listing, never stored (`docs/PRINCIPLES.md`,
+invariant 2), so a later `/runs <code>` is resolved by calling `list_runs`
+again and taking the same position, then continuing with that run's id in every
+branch below exactly as if the user had named the run outright. `/runs <run id
+or name>` skips the board entirely and goes straight to the branch below.
 
-This lists every SUBMITTED/RUNNING run this member has right now — run
-name, pipeline, status, elapsed time, project, and where its outputs land —
-each with a short code (`r1`, `r2`, ...). The codes are computed fresh on
-every call from Platform's own listing, never stored
-(`docs/PRINCIPLES.md`, invariant 2), so a later `/runs <code>` resolves the
-same way:
-
-```bash
-scripts/runs_board.sh --resolve <code> --workspace $(scripts/settings.sh workspace_id) \
-    --user $(scripts/settings.sh seqera_user)
-```
-
-and continues with that run's id in every branch below, exactly as if the
-user had named the run outright. `/runs <run id or name>` skips the board
-entirely and goes straight to the branch below.
-
-**The board's own site-side check costs one round trip for every run shown,
-never one per run.** Reading whether a task is stuck (the same question the
-RUNNING section below answers for one run) the same way `task_health.sh`
-does it, once per run on the board, would open one site session per run in
-the same work session — exactly the shape PITFALLS 16e's session cap gets
-hit by. `scripts/runs_board.sh` calls `scripts/runs_board_site_probe.sh`
-instead, which takes every active run id in one call and reports one line
-per run from a single round trip. It is written as its own small,
-independently-runnable script rather than folded into `scripts/on_site.sh`,
-so it keeps working unchanged once `on_site.sh --script` grows its own way
-to run a whole group of checks in one round trip — at that point this
-script's one call is a natural candidate to fold into that group; nothing
-about how the board calls it has to change first.
-
-If the board's own count is closing in on `ssh_max_parallel`, it says so —
-each run being watched in the background is another caller sharing the same
-site session budget, and the failure on the far side of that limit is a
-silent hang, not an error (PITFALLS 16e).
+One `list_runs` call covers every run, so the board costs the site nothing.
+Asking the site about each run one by one would open one site session per run
+(PITFALLS 16e's session cap, `ssh_max_parallel`): ask the site only about the
+run the user picked.
 
 ## Reporting format
 
@@ -105,15 +82,17 @@ as a different tool answering.
 
 **This formalises the 🤖/⏸ distinction used throughout this file, it does not
 replace it:** a 🤖 step reports through `I will handle`, a ⏸ step through
-`You decide`. Layer is never a guess — `task_health.sh` and `why_pending.sh`
-(below) print their own `layer=<value>` alongside their verdict; read it from
-there rather than inferring it from the symptom.
+`You decide`. Layer is never a guess — `why_pending.sh` (below) prints its own
+`layer=<value>` alongside its verdict; read it from there rather than
+inferring it from the symptom.
 
 ## SUBMITTED
 
-A run that has not left the queue looks identical, from Platform's side, to
-one working hard — `tw runs list` shows SUBMITTED either way, and only the
-site's own scheduler can say which. Ask it the same way RUNNING does, below:
+A run that has not left the queue looks identical, from the platform's side, to
+one working hard: the platform has no "submitted" status, so a launched run that
+has not started either is not in `list_runs` yet or shows as `running` with no
+task done in `get_run`, and only the site's own scheduler can say which. Ask it
+the same way RUNNING does, below:
 
 ```bash
 scripts/on_site.sh --script scripts/why_pending.sh
@@ -121,13 +100,13 @@ scripts/on_site.sh --script scripts/why_pending.sh
 
 - **Nothing pending for this account.** 🤖 The submission likely never
   reached the site's scheduler at all — this is a launch-time failure, not a
-  queue wait. Look at what `tw launch` itself returned rather than waiting
+  queue wait. Look at what the `launch` tool returned, and whether the person pressed send, rather than waiting
   longer for something that is not there.
 
       Status:          submitted to Platform, but nothing is waiting on the site
       Layer:           scheduler
       I will handle:   report this as a launch failure, not a queue wait
-      Next step:       read what `tw launch` returned; the answer is there, not in the queue
+      Next step:       read what the `launch` tool returned and whether the request was sent; the answer is there, not in the queue
 
 - **Something is pending.** Its reason resolves exactly the way RUNNING's own
   table does, below — a SUBMITTED run waiting on a floor it will never clear
@@ -136,7 +115,7 @@ scripts/on_site.sh --script scripts/why_pending.sh
 
 ## RUNNING
 
-`tw runs view -i <id> tasks` for per-task progress.
+`get_run` for per-task progress: it returns the task numbers for each process and the failed tasks.
 
 **A task sitting unstarted is the failure mode to watch for.** Platform keeps
 reporting the run as RUNNING and shows no error, so waiting longer looks like
@@ -165,11 +144,10 @@ the scheduler itself is the problem:
     I will handle:   wait — queued work survives this, there is nothing to fix at the run's end
     Next step:       ask again once it responds; no action needed from you
 
-`scripts/task_health.sh <run-id>` is the tasks-table check plus this same
-question, as one command — the background watch armed under launch.md step 9
-should already be polling it rather than only `--status`; run it by hand here
-for the same reason the watch does: silence from `--status` is not evidence
-of progress.
+For a run that looks stuck, read `get_run`'s task numbers (tasks submitted but
+none started, for a long time) and ask the site the question above: silence
+from a status check is not evidence of progress. The one-command check that
+joined the two (`scripts/task_health.sh`) is not available on v3 yet (owed: task-health), so do both by hand.
 
 - **The site's scheduler is not answering** (exit 3). 🤖 Report that and wait —
   queued work survives it, and there is nothing to fix at the run's end. A
@@ -182,8 +160,10 @@ of progress.
   NEVER.** 🤖 The resource contract has drifted from what the site actually
   enforces; fix it with `scripts/ce_apply.sh` — never by waiting longer, since
   this request was never going to start.
-- **The time requested exceeds what is allowed → NEVER.** 🤖 Raise the time and
-  relaunch.
+- **The time requested exceeds what is allowed → NEVER.** 🤖 Raising the time
+  and relaunching is not available on v3 yet (owed: resize-relaunch): the
+  `relaunch` tool restarts with the same settings and cannot change the time.
+  Say so, and that a changed request is a new `launch`, which the person confirms.
 - **The nodes requested are unavailable → NEVER.** ⏸ Whether to keep waiting
   for them or move the request is the person's call, not this command's —
   both are legitimate and neither is reversible the way a relaunch is.
@@ -191,10 +171,10 @@ of progress.
   branch: is there a measurement for this process? ("Reading a measurement",
   below, says where that comes from.)
     - **Yes.** Does peak memory × 1.5 still fit inside a smaller box?
-        - **Yes.** 🤖 `scripts/relaunch_with_override.sh` — the number came from
-          a measurement, not a guess, so there is no question to ask about the
-          size. The relaunch itself is still a launch: show the command and
-          wait for the user's confirmation (the launch gate asks for it).
+        - **Yes.** 🤖 Relaunching into the smaller box is not available on v3 yet (owed: resize-relaunch): `scripts/relaunch_with_override.sh`
+          depends on the old Seqera CLI, and the `relaunch` tool cannot change
+          the size. The number came from a measurement, so say what it is and
+          that a new `launch` is the route; the person confirms that launch.
         - **No.** 🤖 Say plainly that it is already as small as it can go —
           there is no smaller box to relaunch into.
     - **No.** ⏸ Propose a number with the evidence behind it, and wait for a
@@ -205,7 +185,9 @@ A job already sitting in the site's scheduler cannot be resized where it
 sits — the site refuses that outright, for every field, including a rename
 that touches no resource at all (`docs/PITFALLS.md` 6c). So once a number
 needs to change, relaunching is the only route there is; it is not a
-compromise, and there is nothing to build in its place. The cost is one more
+compromise, and there is nothing to build in its place. On v3 that relaunch is
+a `relaunch` request (same settings) or a new `launch` (changed settings), and
+in both the person says yes. The cost is one more
 spell in the queue, not the run over again.
 
 ## FAILED
@@ -238,15 +220,17 @@ when a refusal is the cause:
       only; adding it to the built-in list is the maintainer's change (a
       plugin edit and a release).
 - **No refusal lines up with the failure time.** Read `.command.err` and
-  `.exitcode` for the failing task (`tw runs view -i <id> tasks` finds it;
-  `tw runs view -i <id> download --type log` if the log itself is needed).
+  `.exitcode` for the failing task (`get_run` finds it: it lists the failed
+  tasks with their exit code and error message, and gives `failure_reason`
+  when Nextflow said why). Downloading the log through the platform is not available on v3 yet (owed: log-download); read the file from the work
+  directory with `scripts/fetch.sh`.
     - **137, or killed.** 🤖 See "out of memory", below.
     - **No `.command.log` and no `.exitcode` at all.** 🤖 The work directory is
       probably not visible from the compute side — report that; there is
       nothing further to diagnose from here.
     - **Jev triage, only if the user turned it on** (optional, off by default;
       `docs/adr/0007-jev-optional-triage.md`). 🤖 Call it for the first failing task
-      that `tw runs view` finds, once per run, never per task:
+      that `get_run` lists, once per run, never per task:
 
       ```bash
       scripts/jev.sh triage --err <that task's .command.err> --exit <its exit code, or none>
@@ -304,9 +288,9 @@ elsewhere. For Jev, `memory` is the "Out of memory" section below, `unknown` is 
 #### `walltime`
 - **Look first:** the task's `.command.log` and `.exitcode` for a time-limit
   message, and how long the task ran against the time it asked for.
-- **Usual fix:** the task needed more time than it requested; relaunch with a
-  larger time request for that process (a resource change goes through
-  `skills/launch/SKILL.md`).
+- **Usual fix:** the task needed more time than it requested; a larger time
+  request for that process is a changed request, so a new `launch` (through
+  `skills/launch/SKILL.md`) - changing it by relaunch is not available on v3 yet (owed: resize-relaunch).
 - **Ask the user** before relaunching: more time is a different request than the
   one they made. 🤖 Reading the log and measuring is yours.
 
@@ -342,7 +326,8 @@ elsewhere. For Jev, `memory` is the "Out of memory" section below, `unknown` is 
 
 #### `params`
 - **Look first:** the option the error names, against the params file this run
-  was launched with (`tw runs view -i <id> params`).
+  was launched with. Reading a run's parameters back from the platform is not available on v3 yet (owed: run-params); use the params file the launch was
+  built from.
 - **Usual fix:** correct or remove that option, then relaunch.
 - ⏸ **Ask the user** before changing any pipeline parameter: that is a call
   about the run that was requested, not about the site.
@@ -378,9 +363,10 @@ attempt 2   next box up   COMPLETED     0:0
   itself, and name the box it needed — that tells the next launch where to
   start, rather than where this one started.
 - **The retry also died** (this site allows one retry, and it is now spent).
-  🤖 `scripts/relaunch_with_override.sh` with a floor above what the retry
-  reached. Asking for the same size again is not a smaller request, it is the
-  same failure repeated.
+  🤖 A relaunch with a floor above what the retry reached is not available on v3 yet (owed: resize-relaunch); a `relaunch` request would repeat the same
+  size. Asking for the same size again is not a smaller request, it is the same
+  failure repeated, so say that and offer a new `launch`, which the person
+  confirms.
 
 The old wording here claimed the opposite: that a doubled request lands
 between two boxes and strands, and that a genuine out-of-memory failure needs
@@ -393,20 +379,13 @@ the thing already happening automatically. Do not reintroduce either claim.
 Both branches above turn on whether a measurement exists for a process. This
 is where it comes from — verified, not assumed:
 
-```
-tw runs view -i <id> -w <ws> metrics
-  → per process: RSS, virtual memory, and the PERCENTAGE of the box used
-    PICARD_MARKDUPLICATES | 19GB 34GB 54%
-    QUALIMAP_RNASEQ       |  6GB 33GB 16%
-    SAMTOOLS_INDEX        | 13MB 210MB  0%
-tw runs view -i <id> -w <ws> task -t <n> --resources-usage
-tw runs view -i <id> -w <ws> task -t <n> --resources-requested
-```
+Reading per-process memory use and per-task requested and used resources
+(the percentage of the box used, peak RSS) through the platform is not available on v3 yet (owed: measurements): `get_run` carries task numbers and
+failures, not what a task used.
 
-The same numbers exist a second way, on the filesystem:
+The numbers exist on the filesystem:
 `pipeline_info/execution_trace_*.txt` is a TSV despite its extension, and
-carries `peak_rss` and `peak_vmem` per task. These are two views of one thing —
-prefer whichever is actually available.
+carries `peak_rss` and `peak_vmem` per task. This is the measurement to use on v3.
 
 | signal | meaning | action |
 |---|---|---|
@@ -420,7 +399,7 @@ prefer whichever is actually available.
 ## SUCCEEDED
 
 1. **Check the site can still serve outputs** — through the adapter:
-   `scripts/on_site.sh --script scripts/agent_ctl.sh online <id>`.
+   `list_agents` (name, online or offline, last contact).
    Where Platform reads results through something running on the cluster, that
    something being down makes every output look like it was never produced.
    Never tell the user an output is missing without checking this first.
@@ -476,7 +455,7 @@ prefer whichever is actually available.
    differentialabundance puts it in DESeq2 size factors, a MAD-correlation
    outlier call and a sample dendrogram, under `other/` and `plots/`. Find what
    this pipeline actually made. **A missing MultiQC is not a QC report of
-   none** — it is the same shape of mistake as an empty `tw` listing read as an
+   none** — it is the same shape of mistake as an empty listing read as an
    answer.
 
 3. **Deliver, as a table.** Naming a few files in prose was how this was done
@@ -506,40 +485,17 @@ prefer whichever is actually available.
    refuses an oversized path rather than starting a transfer that will not
    finish, so pass it `results/`, never the work directory beside it.
 
-4. **Offer to tune the box sizes**, now that this run has real measurements
-   behind it:
-
-   ```bash
-   scripts/tune_resources.sh <run-id>
-   ```
-
-   Invariant 1 is answered unusually strongly by this one script. Platform
-   already ships a resource optimiser, and this deployment must keep it off
-   (`tw launch --disable-optimization`, `docs/PITFALLS.md` 9) — it right-sizes
-   from run history, which is exactly wrong on a site where the acceptable
-   sizes are a handful of fixed boxes rather than a range: a "helpfully"
-   reduced request lands below a box's floor and never schedules at all.
-   Platform's optimiser does not know the boxes exist. This is the one that
-   does, and until now nothing did.
-
-   Show the table it prints — only a process a full tier oversized appears
-   with a suggested move; the rest are shown unchanged, so the reader can see
-   that everything was actually checked rather than wondering what was left
-   out. ⏸ **Ask whether to save it.** Saving is configuration, no different
-   from a parameters file, so it does not touch run state — that stays only on
-   Platform (PRINCIPLES.md, invariant 2). Only on a yes:
-
-   ```bash
-   scripts/tune_resources.sh --config --samples <n> --input-size <size> <run-id>
-   ```
-
-   and save what it prints as `<run area>/tuned/<pipeline>@<revision>.config`.
-   It refuses to print anything without both numbers: the same sizing on
-   materially more data is an out-of-memory failure, not a faster run
-   (`docs/PITFALLS.md` 6d), so the file has to say what it was tuned against.
-   Keep that line visible wherever a later launch offers this file back as
-   "reuse the previous settings" — it is the difference between a shortcut and
-   a trap.
+4. **Offer to tune the box sizes** - this is not available on v3 yet (owed: tune-resources):
+   `scripts/tune_resources.sh` read its measurements through the old Seqera CLI.
+   Say so, and leave the step out of the delivery until it is back. The
+   reasoning stays for when it returns: Platform's own resource optimiser must
+   stay off (`docs/PITFALLS.md` 9) - it right-sizes from run history, which is
+   exactly wrong on a site where the acceptable sizes are a handful of fixed
+   boxes rather than a range. A tuned file has to say what it was tuned against
+   (how many samples, how big an input): the same sizing on materially more
+   data is an out-of-memory failure, not a faster run (`docs/PITFALLS.md` 6d).
+   Keep that line visible wherever a later launch offers such a file back as
+   "reuse the previous settings".
 
 5. **Offer cleanup of `work/` only**, and only with explicit confirmation.
    Never `rawdata/`, `results/`, `analysis/`, `_references/`, the shared image
@@ -547,8 +503,8 @@ prefer whichever is actually available.
 
 ## CANCELLED
 
-Platform did not do this on its own — someone asked to, from `tw` or the web
-UI, and this command did not do it either unless it just relaunched something
+Platform did not do this on its own — someone asked to, from the platform or
+the site, and this command did not do it either unless it just relaunched something
 by hand. Establish which before touching anything: a cancellation can land
 before, during, or after a task started, and treating it as a mistake without
 asking is a decision that was never this command's to make.
@@ -558,12 +514,12 @@ asking is a decision that was never this command's to make.
     You decide:      relaunch it, or leave it cancelled
     Next step:       say the word and it relaunches the same way any other run does
 
-For a run that the platform launched (`abf-platform launch`, or the MCP `launch` tool), a failed or cancelled one is gone on with by its name alone, after the person says yes each time: `abf-platform resume RUN` (or the MCP tool `resume`) takes up where Nextflow stopped, in the same folder, and `abf-platform relaunch RUN` (or `relaunch`) starts it again from the start in a new folder. The samples and parameters are those of the first launch; changing them is a new `launch`.
+To stop a run that is still going, call `cancel` with its name: it only asks, and the person confirms it on their own channel. For a run that the platform launched (`abf-platform launch`, or the MCP `launch` tool), a failed or cancelled one is gone on with by its name alone, after the person says yes each time: `abf-platform resume RUN` (or the MCP tool `resume`) takes up where Nextflow stopped, in the same folder, and `abf-platform relaunch RUN` (or `relaunch`) starts it again from the start in a new folder. The samples and parameters are those of the first launch; changing them is a new `launch`.
 
 ## UNKNOWN
 
-`tw runs list` can report a status this file has no branch for — Platform
-adding a status this adapter has not been updated to cover. Say exactly what
+`list_runs` and `get_run` can report a status this file has no branch for - `lost`, or
+a status the platform adds that this file has not been updated to cover. Say exactly what
 Platform reported and stop there rather than guessing what it implies; NEVER
 and "waiting" are both claims this file makes only where a rule above already
 covers the reason.

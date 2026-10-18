@@ -64,7 +64,7 @@ tools=$(grep -oE 'name="[a-z_]+"' "$SERVER" | sed 's/name="//;s/"//' | sort -u)
 args="run_id run_name compute_env"
 badnames=""
 for t in $(grep -oE '`[a-z]+_[a-z_]+`' "$SK" | tr -d '`' | sort -u); do
-    case "$t" in tool_bug|peak_rss|peak_vmem|ssh_max_parallel) continue;; esac
+    case "$t" in tool_bug|failure_reason|peak_rss|peak_vmem|ssh_max_parallel) continue;; esac
     grep -qxF "$t" <<<"$tools" && continue
     grep -qwF "$t" <<<"$args" && continue
     badnames="$badnames $t"
