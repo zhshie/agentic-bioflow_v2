@@ -129,6 +129,8 @@ b88=$(sent | grep -E 'relaunch' | grep -vE 'resume' | grep -iE 'cache|same folde
 [ -z "$b88" ]; chk "TC-088 no sentence gives relaunch the cache or the same folder ($b88)" $?
 b88=$(sent | grep -E '`resume`' | grep -vE 'relaunch' | grep -iE 'new folder|from the start' | cut -c1-70)
 [ -z "$b88" ]; chk "TC-088 no sentence gives resume a new folder or a restart ($b88)" $?
+b88=$(paras | grep -E "relaunch" | grep -iE "not the run over again|not the whole run|without starting over|rather than starting over" | cut -c1-70)
+[ -z "$b88" ]; chk "TC-088 no paragraph says a relaunch spares the run from starting over ($b88)" $?
 run1=$(tr -s "[:space:]" " " <<<"$run")
 grep -qE "[Aa] .resume. counts as reversible" <<<"$run1" && ! grep -qE "relaunch counts as reversible" <<<"$run1"; chk "TC-087 RUNNING: the cache sentence is about resume" $?
 
