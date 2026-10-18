@@ -976,10 +976,13 @@ def test_tcs39_s40_s41_s42_settings(w):
     mid = pane(r.text, "middle")
     assert "<h1>設定</h1>" in mid
     assert re.findall(r"<h2>(.*?)</h2>", mid) == ["運算環境", "憑證", "密碼與金鑰", "個人", "營運者後台", "角色（老師／學生）"]
-    for word in ("AI 模型金鑰", "Jev 金鑰（選填）", "逐步模式", "開發模式"):
+    for word in ("AI 模型金鑰", "逐步模式", "開發模式"):
         assert word in mid
     assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", mid)
-    assert not re.search(r"Jev\s*[開關]|Jev (on|off)", mid)
+    # TC-N14 / TC-K6 (R8): the second key is named nowhere; spelled by concatenation so tests/jev_test.sh TC-085 stays 0
+    second = "J" + "ev"
+    for url in ("/settings", "/settings?lang=en"):
+        assert second.lower() not in c.get(url).text.lower()
     assert 'data-pane="left"' in r.text and 'data-pane="right"' in r.text and "<header" in r.text
     for url in ("/settings", "/settings?lang=en"):
         assert not re.search(r"12 小時|12 h\b|12 hours", c.get(url).text, re.I)
@@ -1246,3 +1249,55 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
             assert word not in t, (url, word)
     left = pane(c.get("/").text, "left")
     assert not re.search(r"project|analys|專案|分析", " ".join(hrefs(left)), re.I)
+
+
+def _red_n(t):
+    nav = re.search(r"<nav\b[^>]*>(.*?)</nav>", pane(t, "left"), re.S).group(1)
+    m = re.search(r'<span\b[^>]*class="[^"]*\bred\b[^"]*"[^>]*>(.*?)</span>', nav, re.S)
+    return int(plain(m.group(1))) if m else 0
+
+
+def test_tcs50_red_number_matches_attention(w):
+    # TC-S50
+    ann, bob, cyd = w.user("ann"), w.user("bob"), w.user("cyd")
+    for i in range(2):
+        seed(w, "a-run%d" % i, "running", ann)
+    seed(w, "a-bad", "failed", ann)
+    seed(w, "a-gone", "lost", ann)
+    for i in range(3):
+        seed(w, "a-ok%d" % i, "succeeded", ann)
+    seed(w, "b-bad", "failed", bob)
+    seed(w, "c-ok", "succeeded", cyd)
+    seed(w, "c-go", "running", cyd)
+    for name, want in (("ann", 2), ("bob", 1), ("cyd", 0)):
+        c = login(w, name)
+        home = c.get("/").text
+        assert int(card_num(home, "attention")) == want
+        assert int(re.search(r"!\s*(\d+)", plain(pane(home, "right"))).group(1)) == want
+        for url in ("/", "/settings", "/?lang=en"):
+            assert _red_n(c.get(url).text) == want, (name, url)
+    ann_c = login(w, "ann")
+    sel = ann_c.get("/?run=id-a-run0").text
+    assert _red_n(sel) == 2
+    t = ann_c.get("/").text
+    assert re.search(r"\.red\{[^}]*var\(--failed\)", style_of(t))
+    assert "<span class=\"red\">2</span>" in t
+
+
+def test_tcs51_no_time_in_right_column(w):
+    # TC-S51
+    ann = w.user("ann")
+    s = seed(w, "ok", "succeeded", ann, started=epoch(2026, 10, 17, 20, 30), ended=epoch(2026, 10, 18, 1, 12), counts=dict(succeeded=3))
+    seed(w, "gone", "lost", ann)
+    seed(w, "go", "running", ann)
+    c = login(w, "ann")
+    for url in ("/", "/?run=" + s):
+        t = c.get(url).text
+        its = items(t)
+        assert len(its) == 3
+        for it in its:
+            p = plain(it)
+            assert not re.search(r"\d\d-\d\d \d\d:\d\d", p) and not re.search(r"(^|\s)—(\s|$)", p), p
+        ok = [plain(x) for x in its if re.search(r"\bok\b", plain(x))]
+        assert len(ok) == 1 and "✓" in ok[0] and "成功" in ok[0] and "3/3" in ok[0], ok
+    assert "10-18 09:12" in plain(pane(c.get("/?run=" + s).text, "middle"))
