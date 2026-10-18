@@ -380,7 +380,7 @@ def test_tcb10_stdio_needs_no_token_and_no_user(tmp_path):
     plat, _ = _three_runs(tmp_path)
     assert not plat.tokens.exists() or _rows(plat.tokens, "SELECT COUNT(*) FROM tokens WHERE kind = 'pat'")[0][0] == 0
     tools, outs = mcp_call(pkg_env(ABF_PLATFORM_DB=plat.index), [("list_runs", {})])
-    assert len(tools) == 8 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel
+    assert len(tools) == 10 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch
 
 
 def test_tcb11_without_users_http_starts_says_so_and_answers_401(tmp_path):
@@ -610,7 +610,7 @@ def test_tcd10_the_terminal_passes_caller_none_and_the_row_is_null(tmp_path):
     tree = ast.parse(text)
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
              and n.func.attr in ("launch", "cancel") and getattr(n.func.value, "id", "") == "actions"]
-    assert len(calls) == 2
+    assert len(calls) == 3      # 009e: launch, resume and relaunch each call actions.launch once, and cancel once (the plan's ruling, item 5)
     for c in calls:
         kw = {k.arg: k.value for k in c.keywords}
         if c.func.attr == "cancel":      # 116: a cancel at the terminal still names no account

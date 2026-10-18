@@ -558,6 +558,8 @@ asking is a decision that was never this command's to make.
     You decide:      relaunch it, or leave it cancelled
     Next step:       say the word and it relaunches the same way any other run does
 
+For a run that the platform launched (`abf-platform launch`, or the MCP `launch` tool), a failed or cancelled one is gone on with by its name alone, after the person says yes each time: `abf-platform resume RUN` (or the MCP tool `resume`) takes up where Nextflow stopped, in the same folder, and `abf-platform relaunch RUN` (or `relaunch`) starts it again from the start in a new folder. The samples and parameters are those of the first launch; changing them is a new `launch`.
+
 ## UNKNOWN
 
 `tw runs list` can report a status this file has no branch for — Platform

@@ -58,6 +58,10 @@ tests/test_launch_nextflow.py
 tests/test_launch_e2e.py tests/test_station_fakeplatform.py tests/test_station_channel.py
 tests/test_station_cancel.py tests/test_launch_cli.py
 tests/test_station_launch.py tests/test_relay_loopback.py tests/test_station_envs.py
+tests/test_station_resume.py
+tests/test_resume_platform.py tests/test_resume_entrypoints.py tests/test_resume_lineage.py tests/test_resume_scope.py tests/test_resume_render.py
+tests/test_owner_binding.py tests/test_pat.py tests/test_human_channel.py
+tests/test_confirm_page.py tests/test_owner_gaps.py tests/test_launch_followup.py tests/test_web_login.py
 tests/test_oauth.py tests/test_oauth_consent.py tests/test_oauth_tokens.py tests/test_oauth_mcp.py
 "
     local listed f

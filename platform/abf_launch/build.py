@@ -6,6 +6,7 @@ the bundle that is hashed, the screen that is shown and every refusal are the sa
 writes nothing: it reads the samplesheet and the params, the platform's tables (read-only) and calls abf_station.launch.render_bundle().
 A choice that cannot be made into a launch raises Refusal, whose text is said to the person as it is.
 """
+import copy
 import csv
 import io
 import json
@@ -14,7 +15,7 @@ import re
 import time
 from pathlib import Path
 
-from abf_platform import agents, compute_envs, jobs, store
+from abf_platform import agents, compute_envs, jobs, status, store
 from abf_station import launch as bundle_mod
 
 from . import terminal
@@ -127,8 +128,8 @@ def target_problem(state, ce_name, kind, owner=None):
     return None
 
 
-def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet, params_file=None, param_items=None, params=None,
-                   path_columns=None, check_name=True, samplesheet_raw=None, owner=None, area=None):
+def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet=None, params_file=None, param_items=None, params=None,
+                   path_columns=None, check_name=True, samplesheet_raw=None, owner=None, area=None, samplesheet_rows=None):
     """(environment name, bundle) for these choices, or Refusal. Nothing is shown, asked or written.
 
     owner (a user id, 116): the environment is chosen among, and must be, that user's own; None is the local terminal without an
@@ -138,7 +139,8 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet,
     param_items are `name=value` strings as typed on a command line (the value is read as a number or true/false when it looks
     like one); params is a mapping that already has its types (the MCP tool). Both are put over the params file.
     check_name=False leaves the run-name check to the caller (the MCP tool looks for a yes that already exists first).
-    samplesheet_raw (bytes) is the samplesheet already read; then `samplesheet` is not opened again."""
+    samplesheet_raw (bytes) is the samplesheet already read; then `samplesheet` is not opened again. samplesheet_rows (a list of rows) is
+    one that was read and checked before, a resume or a relaunch taking the rows of the first launch; then nothing is opened either."""
     ce_name = ce or primary_environment(state, owner)
     if not ce_name:
         raise Refusal("沒有指定環境（--ce），也找不到唯一可用的環境 (no --ce, and no single available environment)")
@@ -150,7 +152,10 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet,
     if facts is None:
         raise Refusal("代理 %s 還沒有回報送出需要的資料；請確認代理是新版並已連線 (the agent has not reported its facts)" % view["agent"])
     try:
-        rows = parse_samplesheet(samplesheet_raw) if samplesheet_raw is not None else read_samplesheet(samplesheet)
+        if samplesheet_rows is not None:
+            rows = copy.deepcopy(samplesheet_rows)
+        else:
+            rows = parse_samplesheet(samplesheet_raw) if samplesheet_raw is not None else read_samplesheet(samplesheet)
         merged = read_params_file(params_file) if params_file else {}
         for item in param_items or []:
             key, eq, value = item.partition("=")
@@ -281,6 +286,150 @@ def _open(state):
     return store.open_readonly(state)
 
 
+# ---- resume and relaunch (spec 009e) --------------------------------------------------------------------------------
+
+WORDS = {"resume": "續跑", "relaunch": "重跑"}
+TOO_OLD = "太久了，這次送出的內容已經清掉，請當成新分析重新送出 (the content of that launch is cleared after 7 days; send it again as a new analysis)"
+CHANGED = ("環境或設定在第一次送出之後變了（%s）。換環境就是新的分析，請用 launch 當成新分析重新送出 "
+           "(the environment is not the one of the first launch; that is a new analysis, send it with launch)")
+
+
+def attempt_name(root, attempt):
+    """<root>-a<N>, the root cut so that the whole name is at most 64 characters. Given by the platform; nobody types it."""
+    suffix = "-a%d" % attempt
+    return root[:64 - len(suffix)] + suffix
+
+
+def _predecessor(state, run, verb, index_path, owner):
+    """Everything a resume or a relaunch of `run` is made from, or Refusal (the words are said to the person as they are):
+    (its row of the hand-off record, the first launch's bundle that made its folder, the hash that was confirmed for that bundle,
+    its end as the run index says, the number of the new attempt, the name that began the analysis).
+
+    The run must be a run of this platform that the caller may see, with a Slurm number, and its end must be a failure in Nextflow's own
+    records (the index; a cancelled run is a failed run there). It must be the newest attempt of its analysis. Nothing of the state of a
+    run is stored by the platform: it is read from the index each time."""
+    word = WORDS[verb]
+    con = _open(state)
+    try:
+        row = jobs.latest_launch(con, run) if con is not None else None
+        if row is not None and owner is not None and jobs._col(row, "user_id") != owner:
+            row = None
+        if row is None:
+            raise Refusal(jobs.RUN_NOT_FOUND % run)
+        if row["slurm_job_id"] is None:
+            raise Refusal("%s 沒有 Slurm 工作編號：它尚未送出，或結果不明；請先查國網上的 %s (no Slurm job number recorded)" % (run, row["run_folder"]))
+        view = status.find_run(index_path, run)
+        if view is None:
+            raise Refusal("%s 還在跑，或還沒有回報任何事件，不能%s (still running or waiting)" % (run, word))
+        if view["status"] == "succeeded":
+            raise Refusal("%s 已成功，不需要%s (it succeeded)" % (run, word))
+        if view["status"] != "failed":
+            raise Refusal("%s 還在跑，或已失去聯絡（%s），無法確定它已結束，不能%s；等 Nextflow 的紀錄顯示失敗之後再試 (not ended)"
+                          % (run, view["status"], word))
+        now = time.time()
+        standing = jobs.standing_attempts(con, run, now)
+        mine = jobs._col(row, "attempt") or 1
+        newer = sorted([(n, r["run_name"]) for r, n in standing if n > mine])
+        if newer:
+            raise Refusal("%s 已有較新的一次：%s（第 %d 次）；只能對最新的一次%s (a newer attempt exists: %s)"
+                          % (run, newer[-1][1], newer[-1][0], word, newer[-1][1]))
+        source = None
+        for r in con.execute("SELECT * FROM launches WHERE run_folder = ? ORDER BY id DESC", (row["run_folder"],)).fetchall():
+            if jobs._col(r, "attempt_kind") == "resume":
+                continue
+            kind, job = jobs.launch_job(con, r, now)
+            if kind == "refused":
+                continue
+            source = job
+            break
+        if source is None:
+            raise Refusal(TOO_OLD)
+        try:
+            args = json.loads(source["args_json"])
+            origin, sha = args["bundle"], args["bundle_sha256"]
+        except (ValueError, KeyError, TypeError):
+            raise Refusal(TOO_OLD)
+        if not isinstance(origin, dict) or not isinstance(sha, str):
+            raise Refusal(TOO_OLD)
+        return row, origin, sha, view, jobs.next_attempt(con, run, now), jobs.analysis_root(con, run)
+    finally:
+        if con is not None:
+            con.close()
+
+
+def _same_environment(state, row):
+    """The name of the environment the predecessor went through, which must still be there with the agent that took it."""
+    view = compute_envs.get(state, row["ce"])
+    if view is None:
+        raise Refusal("環境 %s 找不到 (not found)" % row["ce"])
+    if view["agent"] != row["agent"]:
+        raise Refusal("%s 是經由代理 %s 送出的，環境 %s 現在的代理是 %s；換代理就是新的分析，請用 launch 重新送出 (a different agent)"
+                      % (row["run_name"], row["agent"], row["ce"], view["agent"]))
+    return row["ce"]
+
+
+def _name(state, root, attempt, owner):
+    name = attempt_name(root, attempt)
+    try:
+        jobs.check_run_name(state, name, time.time, owner)
+    except jobs.JobRefused as e:
+        raise Refusal(str(e))
+    return name
+
+
+def prepare_resume(state, run, *, index_path, owner=None, area=None):
+    """(environment name, bundle, the predecessor's row) for the resume of the failed run `run`, or Refusal. Nothing is shown, asked or
+    written. The bundle has no samples and no parameters of its own: they are the first launch's bundle, kept verbatim, so that they cannot
+    change. It is rebuilt from the platform's facts of today, as the agent will rebuild it, and must come out the same: a resume of
+    another environment is a new analysis. owner and area are the 116 and 116b limits of a launch; with an area the real paths of the
+    samples are looked at again and recorded in the bundle, and a link that now leads out of the caller's folder is refused here."""
+    row, origin, _sha, view, attempt, root = _predecessor(state, run, "resume", index_path, owner)
+    ce_name = _same_environment(state, row)
+    session = view.get("session_id")
+    if not isinstance(session, str) or not bundle_mod.SESSION_ID.match(session):
+        raise Refusal("%s 的 Nextflow session id 看起來不對，不續跑 (the session id of the run is not a UUID)" % run)
+    new_name = _name(state, root, attempt, owner)
+    try:
+        _, rebuilt = prepare_launch(state, ce=ce_name, pipeline=origin["pipeline"], revision=origin["revision"], run_name=origin["run_name"],
+                                    params=origin["params"], path_columns=origin["path_columns"], check_name=False, owner=owner, area=area,
+                                    samplesheet_rows=origin["samplesheet"])
+    except (KeyError, TypeError):
+        raise Refusal(TOO_OLD)
+    upload = rebuilt.pop("upload_paths", None)
+    if rebuilt != {k: v for k, v in origin.items() if k not in bundle_mod.RECORDS}:
+        raise Refusal(CHANGED % "與第一次送出時各自重建的內容不一致")
+    try:
+        bundle = bundle_mod.render_resume_bundle(origin=rebuilt, run_name=new_name, attempt=attempt, session_id=session, of_run=run,
+                                                 of_slurm_job_id=row["slurm_job_id"])
+    except bundle_mod.BundleError as e:
+        raise Refusal(str(e))
+    bundle["resume"]["origin"] = copy.deepcopy(origin)      # the bundle as it was confirmed, with the records the platform added to it
+    if upload is not None:
+        bundle["upload_paths"] = upload
+    return ce_name, bundle, row
+
+
+def prepare_relaunch(state, run, *, index_path, owner=None, area=None):
+    """(environment name, bundle, the predecessor's row) for the relaunch of the failed run `run`: the first launch's pipeline, revision,
+    samples and parameters under a new name and a new folder, as `prepare_launch` makes them, with one record more, `relaunch`: what it is a
+    relaunch of, which attempt it is, and the hash that was confirmed for the launch that made the old folder."""
+    row, origin, sha, _view, attempt, root = _predecessor(state, run, "relaunch", index_path, owner)
+    ce_name = _same_environment(state, row)
+    new_name = _name(state, root, attempt, owner)      # 116b: the check carries the caller, so another user's run is not told about
+    try:
+        _, bundle = prepare_launch(state, ce=ce_name, pipeline=origin["pipeline"], revision=origin["revision"], run_name=new_name,
+                                   params=origin["params"], path_columns=origin["path_columns"], check_name=False, owner=owner, area=area,
+                                   samplesheet_rows=origin["samplesheet"])
+        same = all(bundle.get(k) == origin.get(k) for k in ("ce", "agent", "account", "tower", "pipeline", "revision", "samplesheet", "params",
+                                                           "path_columns"))
+    except (KeyError, TypeError):
+        raise Refusal(TOO_OLD)
+    if not same:
+        raise Refusal(CHANGED % "環境、代理或連線方式不是第一次送出時的那一個")
+    bundle["relaunch"] = {"of_run": run, "attempt": attempt, "of_sha256": sha}
+    return ce_name, bundle, row
+
+
 # ---- the screens ----------------------------------------------------------------------------------------------------
 
 def when(epoch):
@@ -314,6 +463,37 @@ def cancel_screen(bundle, row):
     if row["cancel_requested_at"] is not None:
         lines.append(terminal.pair("提醒", "這個 run 的取消請求已經在 %s 送出過一次" % when(row["cancel_requested_at"])))
     return lines
+
+
+def _attempt_lines(title, bundle, row, attempt, sentence, pipeline, revision, samples, script):
+    lines = [terminal.PREFIX + title]
+    for label, value in (("上一次的 run", row["run_name"]), ("這是第幾次", "第 %d 次" % attempt), ("上一次的 Slurm 工作編號", row["slurm_job_id"]),
+                         ("新的 run 名稱", bundle["run_name"]), ("專屬資料夾", bundle["run_folder"]), ("管線", pipeline), ("版本", revision),
+                         ("樣本數", samples), ("環境", row["ce"]), ("代理", bundle["agent"])):
+        lines.append(terminal.pair(label, value))
+    lines.append(terminal.PREFIX + sentence)
+    last = [ln for ln in bundle["files"][script].split("\n") if ln][-1]       # the line that starts Nextflow, as the script has it
+    lines.append(terminal.pair("指令（%s 的最後一行）" % script, last))
+    return lines
+
+
+def resume_screen(bundle, row):
+    """What a person sees before saying yes to a resume: whose it is, which attempt, what stays as it is, and the exact line that runs."""
+    r = bundle["resume"]
+    o = r["origin"]
+    script = next(iter(bundle["files"]))
+    lines = _attempt_lines("== 續跑確認：同一個資料夾，Nextflow 接著上次做 ==", bundle, row, r["attempt"],
+                           "這是續跑：同一個資料夾，沿用已完成的 task；樣本和參數不變", o["pipeline"], o["revision"], len(o["samplesheet"]) - 1, script)
+    lines.append(terminal.pair("接續的 session", r["session_id"]))
+    lines += terminal.block(script, bundle["files"][script])
+    return lines
+
+
+def relaunch_screen(bundle, row):
+    """What a person sees before saying yes to a relaunch: the same as a launch shows, with what it is a relaunch of in front."""
+    lines = _attempt_lines("== 重跑確認：全新的資料夾，從頭開始 ==", bundle, row, bundle["relaunch"]["attempt"],
+                           "這是原樣重跑：全新資料夾，樣本與參數不變", bundle["pipeline"], bundle["revision"], len(bundle["samplesheet"]) - 1, "head.sh")
+    return lines + launch_screen(bundle, row["ce"])[1:]
 
 
 def as_text(lines):

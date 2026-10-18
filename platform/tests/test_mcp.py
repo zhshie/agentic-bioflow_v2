@@ -56,20 +56,21 @@ def test_tc024_six_read_only_tools_and_the_two_that_ask_a_person(tmp_path):
     # still read-only; no input field may be named like a command.
     # 009c (TC-A08): was "exactly six read-only tools". Now the same six plus `launch` and `cancel`, which only make a request that a
     # person must say yes to; each of the six is as read-only as before, the two are marked as writing, and no field can say yes.
+    # 009e: the same eight plus `resume` and `relaunch`, which are asked like the two before them and take the name of a run only
     plat, _ = _three_runs(tmp_path)
     tools, _ = mcp_call(pkg_env(ABF_PLATFORM_DB=plat.index), [])
     assert sorted(t.name for t in tools) == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
-                                             "list_runs", "list_site_files"]
+                                             "list_runs", "list_site_files", "relaunch", "resume"]
     for t in tools:
         assert t.annotations is not None
         assert not re.search(r"delete|clean|write|confirm|approve", t.name)
         assert not (set(t.input_schema.get("properties", {})) & {"command", "cmd", "script", "kind", "shell", "args"})
-        if t.name in ("launch", "cancel"):
+        if t.name in ("launch", "cancel", "resume", "relaunch"):
             assert t.annotations.read_only_hint is False
             continue
         assert t.annotations.read_only_hint is True
         assert t.annotations.destructive_hint is not True
-        assert not re.search(r"launch|cancel", t.name)
+        assert not re.search(r"launch|cancel|resume", t.name)
 
 
 def test_tc025_streamable_http_gives_the_same_answers_on_loopback(tmp_path):
@@ -91,7 +92,8 @@ def test_tc025_streamable_http_gives_the_same_answers_on_loopback(tmp_path):
         wait_port(port, proc=proc)
         tools, via_http = mcp_http_call("http://127.0.0.1:%d/mcp" % port, calls, token=pat)
         assert sorted(t.name for t in tools) == ["cancel", "get_compute_env", "get_run", "launch", "list_agents",
-                                                 "list_compute_envs", "list_runs", "list_site_files"]    # 009c: plus launch and cancel
+                                                 "list_compute_envs", "list_runs", "list_site_files", "relaunch",
+                                                 "resume"]    # 009c: plus launch and cancel; 009e: plus resume and relaunch
         assert_loopback_only(port)
     finally:
         stop_proc(proc)

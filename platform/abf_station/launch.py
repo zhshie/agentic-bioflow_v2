@@ -15,6 +15,7 @@ Nothing here names a cluster, a partition, a login node or a port: they come fro
 queue, options, environment variables and Nextflow config) and from the deployment's settings (the account, the
 storage root), through the facts the agent reports in hello.
 """
+import copy
 import csv
 import io
 import math
@@ -26,6 +27,7 @@ from . import rules
 
 BUNDLE_VERSION = 1
 RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
+SESSION_ID = re.compile(r"^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")      # a Nextflow session id is a UUID; it is put in a script, so nothing else gets in
 REVISION = re.compile(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")
 PIPELINE_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
 ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
@@ -330,7 +332,7 @@ def _csv_text(rows):
     return buf.getvalue()
 
 
-def _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower):
+def _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower, resume_session=None):
     q = shlex.quote
     lines = ["#!/bin/bash",
              "#SBATCH -D %s" % run_folder,
@@ -363,8 +365,9 @@ def _head_script(run_name, run_folder, pipeline, revision, queue, options, accou
     else:
         endpoint = q(tower["endpoint"])
     lines.append('export TOWER_ACCESS_TOKEN="$(cat tower.token)"')
-    lines.append("exec nextflow run %s -r %s -name %s -params-file params.yaml -c nextflow.config -with-tower %s"
-                 % (q(pipeline), q(revision), q(run_name), endpoint))
+    resume = "" if resume_session is None else " -resume %s" % q(resume_session)      # 009e: the one thing a resume adds to the last line
+    lines.append("exec nextflow run %s -r %s%s -name %s -params-file params.yaml -c nextflow.config -with-tower %s"
+                 % (q(pipeline), q(revision), resume, q(run_name), endpoint))
     return "\n".join(lines) + "\n"
 
 
@@ -405,11 +408,55 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
             "path_columns": sorted(set(path_columns or [])), "account": account, "tower": tower, "files": files}
 
 
+def render_resume(*, origin, run_name, attempt, session_id):
+    """{ "head-<attempt>.sh": text }: the head script of a resume (spec 009e). `origin` is a launch bundle as render_bundle made it. The
+    text is the first launch's head script but for the job name, the new -name and `-resume <session id>`; it runs in the same folder, so
+    Nextflow finds its cache there. Raises BundleError, naming the field."""
+    if not isinstance(run_name, str) or not RUN_NAME.match(run_name):
+        raise BundleError("run 名稱: %r 不是合法的 run 名稱 (run name)" % str(run_name)[:70])
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 2 or attempt > 9999:
+        raise BundleError("attempt: 必須是 2 以上的整數 (a whole number from 2)")
+    if not isinstance(session_id, str) or not SESSION_ID.match(session_id):
+        raise BundleError("session id: 必須是 Nextflow 的 session id（UUID）(a UUID)")
+    try:
+        ce, account, tower = origin["ce"], origin["account"], origin["tower"]
+        pipeline, revision, run_folder = origin["pipeline"], origin["revision"], origin["run_folder"]
+    except (KeyError, TypeError):
+        raise BundleError("origin: 不是一份送出的內容包 (not a launch bundle)")
+    _check_pipeline(pipeline)
+    _check_revision(revision)
+    work, queue, config, env = _check_ce(ce)
+    if not isinstance(account, str) or not ACCOUNT.match(account):
+        raise BundleError("帳號: 不是合法的帳號 (account)")
+    if not isinstance(run_folder, str) or rules.path_problem(run_folder) or not rules.inside(rules.normalize(run_folder), [work + "/runs"]):
+        raise BundleError("run_folder: 不在 %s/runs 之下 (not below the work folder's runs)" % work)
+    if not isinstance(tower, dict) or tower.get("mode") not in ("forward", "direct"):
+        raise BundleError("tower: 不是合法的連線方式 (not a way back to the platform)")
+    options = _parse_options(ce.get("headJobOptions") or "", account)
+    return {"head-%d.sh" % attempt: _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower,
+                                                  resume_session=session_id)}
+
+
+def render_resume_bundle(*, origin, run_name, attempt, session_id, of_run, of_slurm_job_id):
+    """The bundle of a resume (spec 009e): the folder of `origin` and the one new file, head-<attempt>.sh. It has no samplesheet and no
+    parameters of its own; they are the origin's, which is kept verbatim in `resume`, so they cannot change between the yes and the run."""
+    files = render_resume(origin=origin, run_name=run_name, attempt=attempt, session_id=session_id)
+    if not isinstance(of_run, str) or not RUN_NAME.match(of_run):
+        raise BundleError("of_run: 不是合法的 run 名稱 (run name)")
+    if isinstance(of_slurm_job_id, bool) or not isinstance(of_slurm_job_id, int) or of_slurm_job_id < 1:
+        raise BundleError("of_slurm_job_id: 必須是 Slurm 工作編號 (a Slurm job number)")
+    return {"version": BUNDLE_VERSION, "agent": origin["agent"], "ce": copy.deepcopy(origin["ce"]), "run_name": run_name,
+            "run_folder": origin["run_folder"], "files": files,
+            "resume": {"of_run": of_run, "of_slurm_job_id": of_slurm_job_id, "session_id": session_id, "attempt": attempt,
+                       "origin": copy.deepcopy(origin)}}
+
+
 # ======================================================================================================================
 # The launch itself: what the agent does with a confirmed job
 # ======================================================================================================================
 
 import base64
+import hashlib
 import io
 import tarfile
 import time
@@ -422,6 +469,8 @@ from .site import quote
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 MIN_REMAINING = 60.0                       # seconds of the job's deadline that must be left before sbatch (ABF_STATION_MIN_REMAINING)
 LAUNCH_KEYS = {"bundle", "confirmation_id", "bundle_sha256"}
+RECORDS = ("upload_paths", "relaunch")      # keys of a launch bundle that the platform adds to what render_bundle makes
+RESUME_KEYS = {"of_run", "of_slurm_job_id", "session_id", "attempt", "origin"}
 SUBMITTED = re.compile(r"Submitted batch job ([0-9]+)\s*$", re.M)
 
 
@@ -601,6 +650,8 @@ def run_launch(job, ctx, preflight):
     """(state, result) of one launch_nextflow job. preflight(env, ctx) is handlers.preflight, passed in so that the checks of
     007 run first and unchanged."""
     bundle = verify_confirmation(job, ctx, "launch")
+    if "resume" in bundle:
+        return run_resume(job, ctx, preflight, bundle)
     env = rules.clean_environment(bundle.get("ce"))
     if bundle.get("agent") != ctx.agent_name:
         raise rules.Refusal("這個內容包是給另一個代理的 (the bundle is for another agent)")
@@ -614,32 +665,12 @@ def run_launch(job, ctx, preflight):
                                 samplesheet=bundle["samplesheet"], params=bundle["params"], path_columns=bundle["path_columns"])
     except (BundleError, KeyError, TypeError) as e:
         raise rules.Refusal("內容不合規則：%s" % e)
-    if rebuilt != {k: v for k, v in bundle.items() if k != "upload_paths"}:      # the record of the upload-area paths is the platform's; the agent checks it below
+    if rebuilt != {k: v for k, v in bundle.items() if k not in RECORDS}:      # the records of the upload-area paths and of a relaunch are the platform's; the first is checked below
         why = "帳號與部署設定不符" if rebuilt.get("account") != bundle.get("account") else "內容與代理依自己的設定重新產生的不一致"
         raise rules.Refusal("%s：不送出 (the bundle is not what this agent builds from its own settings)" % why)
-    if "upload_paths" in bundle:
-        _check_upload_paths(bundle["upload_paths"], ctx)
-    if _left(ctx, job) < _min_remaining():
-        raise rules.Refusal("工作期限剩下的時間不足以安全送出 (too little of the deadline is left to submit safely)")
+    _prechecks(job, ctx, preflight, env, bundle, bundle)
     site = ctx.site
     run, folder, work = bundle["run_name"], bundle["run_folder"], env["workDir"]
-
-    verdict = preflight(env, ctx)
-    failed = [c for c in verdict["checks"] if c["status"] != "pass"]
-    if failed:
-        raise rules.Refusal("預檢未通過，沒有建立任何東西：" + "；".join("%s（%s）" % (c["name"], c["detail"]) for c in failed))
-    cache = next((e["value"] for e in bundle["ce"].get("environment", []) if e.get("name") == "NXF_SINGULARITY_CACHEDIR" and e.get("head", True)), None)
-    if cache:
-        if rules.path_problem(cache):
-            raise rules.Refusal("NXF_SINGULARITY_CACHEDIR 不是合法的路徑 (not a plain path)")
-        c = quote(cache)
-        res = site.call(["if test -d %s; then test -w %s && echo cache=ok || echo cache=no; else d=$(dirname %s); "
-                         "test -d \"$d\" && test -w \"$d\" && echo cache=ok || echo cache=no; fi" % (c, c, c)])
-        if "cache=ok" not in res.out.decode("utf-8", errors="replace"):
-            raise rules.Refusal("容器快取 NXF_SINGULARITY_CACHEDIR=%s 不可寫；請改成可寫的資料夾後再試，沒有建立任何東西 (the container cache "
-                                "cannot be written)" % cache)
-    if bundle["tower"]["mode"] == "forward":
-        _channel(ctx, bundle)
 
     res = site.call(["mkdir -p %s" % quote(work + "/runs")])
     if res.rc != 0:
@@ -652,11 +683,43 @@ def run_launch(job, ctx, preflight):
             raise rules.Refusal("專屬資料夾 %s 已存在，不覆蓋；請換一個 run 名稱。沒有改動任何東西 (the run folder exists already)" % folder)
         left = "資料夾 %s 可能已建立，檔案可能不完整，尚未送出" % folder
         return "error", {"ok": False, "message": "寫入專屬資料夾時出錯（結束碼 %d）。%s" % (res.rc, left), "left_on_site": left}
+    return _submit(job, ctx, folder, run, "head.sh", "資料夾 %s 與其中的檔案已寫好，尚未送出（工作期限剩下的時間不足）" % folder)
+
+
+def _prechecks(job, ctx, preflight, env, bundle, shape):
+    """What a launch and a resume ask before they touch the site: the record of the upload paths (116b), the time left, the preflight of
+    007, the container cache and the way back to the platform. `shape` is the bundle that holds the environment's variables and the way
+    back (`tower`): the bundle itself for a launch, the origin as the agent rebuilt it for a resume."""
+    if "upload_paths" in bundle:
+        _check_upload_paths(bundle["upload_paths"], ctx)
     if _left(ctx, job) < _min_remaining():
-        left = "資料夾 %s 與其中的檔案已寫好，尚未送出（工作期限剩下的時間不足）" % folder
-        return "error", {"ok": False, "message": "不送出：" + left, "left_on_site": left}
+        raise rules.Refusal("工作期限剩下的時間不足以安全送出 (too little of the deadline is left to submit safely)")
+    site = ctx.site
+    verdict = preflight(env, ctx)
+    failed = [c for c in verdict["checks"] if c["status"] != "pass"]
+    if failed:
+        raise rules.Refusal("預檢未通過，沒有建立任何東西：" + "；".join("%s（%s）" % (c["name"], c["detail"]) for c in failed))
+    cache = next((e["value"] for e in shape["ce"].get("environment", []) if e.get("name") == "NXF_SINGULARITY_CACHEDIR" and e.get("head", True)), None)
+    if cache:
+        if rules.path_problem(cache):
+            raise rules.Refusal("NXF_SINGULARITY_CACHEDIR 不是合法的路徑 (not a plain path)")
+        c = quote(cache)
+        res = site.call(["if test -d %s; then test -w %s && echo cache=ok || echo cache=no; else d=$(dirname %s); "
+                         "test -d \"$d\" && test -w \"$d\" && echo cache=ok || echo cache=no; fi" % (c, c, c)])
+        if "cache=ok" not in res.out.decode("utf-8", errors="replace"):
+            raise rules.Refusal("容器快取 NXF_SINGULARITY_CACHEDIR=%s 不可寫；請改成可寫的資料夾後再試，沒有建立任何東西 (the container cache "
+                                "cannot be written)" % cache)
+    if shape["tower"]["mode"] == "forward":
+        _channel(ctx, shape)
+
+
+def _submit(job, ctx, folder, run, script, written):
+    """The last step of a launch and of a resume: the time left, then ONE sbatch of folder/script, and the answer in the same words."""
+    site = ctx.site
+    if _left(ctx, job) < _min_remaining():
+        return "error", {"ok": False, "message": "不送出：" + written, "left_on_site": written}
     # Slurm opens the job's output file (slurm-<id>.out) with the umask of whoever submits; 077 keeps it 0600
-    res = site.call(["umask 077; sbatch %s" % quote(folder + "/head.sh")], timeout=120)
+    res = site.call(["umask 077; sbatch %s" % quote(folder + "/" + script)], timeout=120)
     text = res.out.decode("utf-8", errors="replace")
     m = SUBMITTED.search(text)
     unknown = "可能已送出，請查專屬資料夾 %s 與 Slurm 工作 nf-%s" % (folder, run)
@@ -668,3 +731,117 @@ def run_launch(job, ctx, preflight):
         return "error", {"ok": False, "message": "sbatch 的結果不明：%s" % unknown, "left_on_site": "資料夾 %s；%s" % (folder, unknown)}
     return "error", {"ok": False, "message": "sbatch 沒有成功（結束碼 %d）：%s。不重試。" % (res.rc, res.err.strip()[:200] or "沒有訊息"),
                      "left_on_site": "資料夾 %s 與其中的檔案（未送出，未刪除）" % folder}
+
+
+# ======================================================================================================================
+# A resume (spec 009e): the same run folder, one new head script, one new token
+# ======================================================================================================================
+
+def _site_user(settings_file):
+    from .cancel import site_user      # cancel.py imports this module, so it is read here and not at the top
+    user = site_user(settings_file)
+    if not user or not re.match(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\Z", user):
+        raise rules.Refusal("部署設定沒有 site_user，無法確認前一次已經結束，不續跑 (site_user is not set)")
+    return user
+
+
+def _probe(folder, of_run, user, script):
+    """ONE question to the site about the folder of a resume. Every line of the answer is `key=value`; nothing is written or run."""
+    f, s = quote(folder), quote(script)
+    return ("f=%s; "
+            'if [ -d "$f" ] && [ "$(realpath -- "$f")" = "$f" ]; then echo dir=ok; else echo dir=no; fi; '
+            'if [ -e "$f"/%s ] || [ -L "$f"/%s ]; then echo head=exists; else echo head=free; fi; '
+            'if [ -L "$f"/tower.token ]; then echo token=link; else echo token=ok; fi; '
+            'echo session=$(cut -f6 "$f"/.nextflow/history 2>/dev/null | grep -m1 -E %s); '
+            '(cd "$f" 2>/dev/null && sha256sum -- %s 2>/dev/null | sed %s); '
+            'q=$(squeue -h -n %s -u %s 2>&1); echo squeue_rc=$?; echo alive=$(printf "%%s\\n" "$q" | grep -c .)'
+            % (f, s, s, quote("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"), " ".join(FILE_NAMES), quote("s/^/sha=/"),
+               quote("nf-" + of_run), quote(user)))
+
+
+def _check_folder(folder, answer, resume, origin, script):
+    """The refusal (rules.Refusal) when what the site says of the folder is not what was confirmed; None when it is."""
+    def stop(why):
+        return rules.Refusal("續跑的專屬資料夾 %s %s；沒有改動任何東西 (nothing was changed)" % (folder, why))
+
+    values = {}
+    for line in answer.splitlines():
+        key, _, value = line.partition("=")
+        values.setdefault(key, []).append(value)
+    one = lambda key: (values.get(key) or [""])[0].strip()
+    if one("dir") != "ok":
+        return stop("不是一個一般的資料夾（不存在，或要經過捷徑才到得了）(not a plain folder: missing, or reached through a link)")
+    if one("head") != "free":
+        return stop("裡已經有 %s，不覆蓋 (%s exists already)" % (script, script))
+    if one("token") != "ok":
+        return stop("裡的 tower.token 是捷徑 (tower.token is a link)")
+    if one("session").lower() != resume["session_id"].lower():
+        return stop("的 .nextflow/history 裡第一個 session 不是 %s（是 %s）(the session of the folder is not the one confirmed)"
+                    % (resume["session_id"], one("session") or "沒有"))
+    seen = {}
+    for entry in values.get("sha", []):
+        digest, _, name = entry.partition("  ")
+        seen[name.strip()] = digest.strip()
+    for name in FILE_NAMES:
+        if seen.get(name) != hashlib.sha256(origin["files"][name].encode("utf-8")).hexdigest():
+            return stop("裡的 %s 和第一次送出時寫下的不一樣，或不見了 (%s is not what the first launch wrote)" % (name, name))
+    if one("squeue_rc") != "0":
+        return stop("無法確認前一次是否已經結束（查 Slurm 佇列失敗）(could not ask the queue)")
+    if one("alive") != "0":
+        return stop("的前一次（Slurm 工作 nf-%s）還在佇列裡，還活著 (the predecessor is still in the queue)" % resume["of_run"])
+    return None
+
+
+def run_resume(job, ctx, preflight, bundle):
+    """(state, result) of a confirmed resume: the bundle is judged exactly as a launch is (rebuilt from this agent's own facts), then the
+    folder is looked at on the site in one question, and only if all of it agrees are head-N.sh and a new tower.token written into it
+    (nothing else, nothing deleted) and ONE sbatch made."""
+    resume = bundle.get("resume")
+    if not isinstance(resume, dict) or set(resume) != RESUME_KEYS or not isinstance(resume.get("origin"), dict):
+        raise rules.Refusal("續跑的內容包欄位不對 (the resume bundle has other fields than it should)")
+    origin = resume["origin"]
+    env = rules.clean_environment(origin.get("ce"))
+    if bundle.get("agent") != ctx.agent_name or origin.get("agent") != ctx.agent_name:
+        raise rules.Refusal("這個內容包是給另一個代理的 (the bundle is for another agent)")
+    token = job.get("run_token")
+    if not isinstance(token, str) or not token or len(token) > 200:
+        raise rules.Refusal("平台沒有給這次執行的 token (no run token was sent)")
+    folder, work = bundle.get("run_folder"), env["workDir"]
+    if (not isinstance(folder, str) or rules.path_problem(folder) or folder != origin.get("run_folder")
+            or rules.normalize(folder) == work + "/runs" or not rules.inside(rules.normalize(folder), [work + "/runs"])):
+        raise rules.Refusal("續跑的專屬資料夾必須就是第一次送出的那個，且在 %s/runs 之下 (the run folder is not the one of the first launch, "
+                            "or not below the runs folder)" % work)
+    try:
+        rebuilt = render_bundle(ce=origin["ce"], agent=origin["agent"], facts=own_facts(ctx), roots=rules.allowed_roots(env, ctx.settings_file),
+                                run_name=origin["run_name"], pipeline=origin["pipeline"], revision=origin["revision"],
+                                samplesheet=origin["samplesheet"], params=origin["params"], path_columns=origin["path_columns"])
+    except (BundleError, KeyError, TypeError) as e:
+        raise rules.Refusal("內容不合規則：%s" % e)
+    if rebuilt != {k: v for k, v in origin.items() if k not in RECORDS}:
+        why = "帳號與部署設定不符" if rebuilt.get("account") != origin.get("account") else "內容與代理依自己的設定重新產生的不一致"
+        raise rules.Refusal("%s：不續跑 (the origin is not what this agent builds from its own settings)" % why)
+    try:
+        expected = render_resume_bundle(origin=rebuilt, run_name=bundle.get("run_name"), attempt=resume["attempt"],
+                                        session_id=resume["session_id"], of_run=resume["of_run"], of_slurm_job_id=resume["of_slurm_job_id"])
+    except BundleError as e:
+        raise rules.Refusal("內容不合規則：%s" % e)
+    expected["resume"]["origin"] = origin      # the records the platform added to it (upload paths, relaunch) were taken out above; it is the same origin
+    if expected != {k: v for k, v in bundle.items() if k != "upload_paths"}:
+        raise rules.Refusal("內容與代理依自己的設定重新產生的不一致：不續跑 (the bundle is not what this agent builds from its own settings)")
+    script = "head-%d.sh" % resume["attempt"]
+    run = bundle["run_name"]
+    user = _site_user(ctx.settings_file)
+    _prechecks(job, ctx, preflight, env, bundle, rebuilt)
+    site = ctx.site
+    res = site.call([_probe(folder, resume["of_run"], user, script)])
+    if res.rc != 0:
+        raise rules.Refusal("續跑的專屬資料夾 %s 查不了（結束碼 %d）；沒有改動任何東西 (the folder could not be looked at)" % (folder, res.rc))
+    refusal = _check_folder(folder, res.out.decode("utf-8", errors="replace"), resume, origin, script)
+    if refusal is not None:
+        raise refusal
+    files = [(script, bundle["files"][script].encode("utf-8")), ("tower.token", token.encode("utf-8"))]
+    res = site.call(["umask 077; tar -x --no-same-owner -C %s" % quote(folder)], input=_tar(files), timeout=120)
+    if res.rc != 0:
+        left = "資料夾 %s 裡的 %s 與 tower.token 可能不完整，尚未送出" % (folder, script)
+        return "error", {"ok": False, "message": "寫入專屬資料夾時出錯（結束碼 %d）。%s" % (res.rc, left), "left_on_site": left}
+    return _submit(job, ctx, folder, run, script, "資料夾 %s 裡的 %s 與 tower.token 已寫好，尚未送出（工作期限剩下的時間不足）" % (folder, script))
