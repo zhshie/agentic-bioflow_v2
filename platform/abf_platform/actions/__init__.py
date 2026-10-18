@@ -430,10 +430,10 @@ def forget_check(platform_path, index_path, run_name, *, caller=None):
     if launch is None or (caller is not None and run_name not in jobs.owned_run_names(platform_path, caller.user_id)):
         return "notfound", RUN_NOT_FOUND
     seen = [v for v in status.list_runs(index_path, status.now()) if v["name"] == run_name]
-    if not seen and (job is None or job["state"] in ("queued", "claimed") or (job["state"] == "done" and _went_out_lately(job))):
+    if not seen and job is not None and (job["state"] in ("queued", "claimed") or (job["state"] == "done" and _went_out_lately(job))):
         # R15: "starting" is a launch job still queued or claimed. A launch that ended without ever reaching the index (refused,
         # failed, expired) may be forgotten. F4: so may one whose job went out (done) more than 24 hours ago and the index still does
-        # not know; before that the index may only be late. With no job to read (a terminal hand-off) it stays refused: the safe side.
+        # not know; before that the index may only be late. F7: with no job row to read (pruned) the run is treated as never having reached the index.
         return "refused", FORGET_STARTING
     if any(v["status"] == "running" for v in seen):
         return "refused", "這個 run 還在跑，不能刪除 (the run is still running; it cannot be deleted)"

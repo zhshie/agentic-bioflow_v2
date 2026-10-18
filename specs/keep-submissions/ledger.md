@@ -39,3 +39,12 @@ Kept as they are; the maintainer may revisit any of them:
 1. A `jobs` row's own copy is still removed with the row 7 days after the job ends (`jobs._insert_job` prunes). The confirmation keeps the content whatever the channel, so the submission is kept. Only a row made before F5 (the old format: a terminal launch of an older version) holds its content only in the job copy and the run folder.
 2. `result_json` and `late_result_json` are results, not submission content: `forget` leaves them.
 3. No web delete (owed web parity, R12 above).
+
+## Rulings F7 to F12
+
+- [x] F7: `actions.forget_check` refuses "still starting" only while the launch job row exists; with the job row pruned and the run not in the index, forget is allowed. `confirm.forget_content` also finds the launch confirmation through `jobs.launch_confirmation` when the job link is gone. Test: TC-147.
+- [x] F8: `forget` is in the ask list of `extensions/claude-code-kit/settings.json`; `test_resume_entrypoints.py::test_tc137_*` pins the five names (the four old assertions are unchanged).
+- [x] F9: the two 009e "太久了" tests were changed in their setup only: `test_resume_platform.py` TC-053/054 and the real-clean-up one call `old_format(rig)` first; their assertions are word for word what they were.
+- [x] F10: `confirm.forget_content` voids every pending resume or relaunch request whose `of_run` is the forgotten run (content cleared, `forgotten_at` set); other runs' requests are untouched. The job-time check of F2 stays. TC-131 now expects the request void at once.
+- [x] F11: a terminal-confirmed cancel keeps its bundle and screen text (`cmd_cancel` calls `actions.keep_screen`); tests TC-162 to TC-165.
+- [x] F12: web parity for `forget` stays owed (see Owed above).

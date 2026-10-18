@@ -281,6 +281,17 @@ def _named(text, run_name):
     return data if isinstance(bundle, dict) and bundle.get("run_name") == run_name else None
 
 
+def _made_from(text, run_name):
+    """Whether a request's bundle is a resume or a relaunch made from `run_name` (F10): it names the new run, and this one in of_run."""
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError):
+        return False
+    bundle = data.get("bundle", data) if isinstance(data, dict) else None
+    return isinstance(bundle, dict) and any(isinstance(bundle.get(k), dict) and bundle[k].get("of_run") == run_name
+                                            for k in ("resume", "relaunch"))
+
+
 def forget_content(state_path, run_name, forgotten_by=None, only_user=None, clock=time.time, dry_run=False):
     """Clear the content of every row behind one run: the bundle and screen of its confirmations (the launch's, its cancels', its
     pending and void requests, which an open one is voided by) and the copy each of its jobs keeps (args_json). Audit columns stay;
@@ -303,6 +314,13 @@ def forget_content(state_path, run_name, forgotten_by=None, only_user=None, cloc
         for r in con.execute("SELECT id, bundle_json FROM confirmations WHERE bundle_json IS NOT NULL AND bundle_json LIKE ?", (like,)):
             if _named(r["bundle_json"], run_name) is not None:
                 ids.add(r["id"])
+        for r in con.execute("SELECT id, bundle_json FROM confirmations WHERE state = 'pending' AND bundle_json LIKE ?", (like,)):
+            if _made_from(r["bundle_json"], run_name):         # F10: a waiting resume or relaunch of this run dies with it
+                ids.add(r["id"])
+        for lr in con.execute("SELECT * FROM launches WHERE run_name = ?", (run_name,)).fetchall():
+            c = jobs.launch_confirmation(con, lr)             # F7: the launch job may be gone; its confirmation is still found
+            if c is not None and c["kind"] == "launch" and c["bundle_json"] is not None and _named(c["bundle_json"], run_name) is not None:
+                ids.add(c["id"])
         todo_conf = [r["id"] for r in con.execute("SELECT id, caller_user_id FROM confirmations WHERE bundle_json IS NOT NULL")
                      if r["id"] in ids and (only_user is None or r["caller_user_id"] == only_user)]
         if dry_run:

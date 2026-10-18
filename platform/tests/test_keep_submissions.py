@@ -1009,7 +1009,7 @@ def test_tc131_a_request_waiting_for_the_page_dies_when_the_run_is_forgotten(rig
     jobs_before = jobs_of(rig.w)
     with pytest.raises(Exception) as e:
         actions().approve(rig.state, waiting["id"], confirmed_by=actions().PAGE, caller=duo.a)
-    assert FORGOTTEN_WORDS in str(e.value)
+    assert conf(rig.w, waiting["id"])["state"] == "void" and "void" in str(e.value)          # F10: void at once, not refused at approve
     assert jobs_of(rig.w) == jobs_before
 
 
@@ -1248,7 +1248,7 @@ def test_tc147_a_launch_whose_job_row_is_gone_may_be_forgotten(w):
     ann = w.user("ann")
     out = scn(w, ann, "run-one", index=False)
     sql_exec(w, "DELETE FROM jobs WHERE id = ?", (out["job_id"],))
-    assert w.sql("SELECT COUNT(*) FROM jobs")[0][0] == 0
+    assert w.sql("SELECT COUNT(*) FROM jobs WHERE id = ?", (out["job_id"],))[0][0] == 0
     cid = out["id"]
     c0 = audit(conf(w, cid))
     res = actions().forget(w.ip.state_db, w.ip.index, "run-one", confirmed_by=actions().ELICITED, caller=ann)
@@ -1325,7 +1325,9 @@ def test_tc162_tc163_tc164_a_terminal_cancel_keeps_its_content(data):
     con.commit()
     con.close()
     confirm.create_pending(state, "launch", "lab-a", {"run_name": "trigger", "n": time.time()}, "text", None)    # TC-163
-    actions().cancel(state, "lab-a", dict(b, run_name="run-two"), confirmed_by=actions().TERMINAL)    # TC-164: a new job prunes the old
+    from test_launch_cli import hand_over
+    hand_over(data, "run-two", slurm=4343)
+    actions().cancel(state, "lab-a", dict(b, run_name="run-two", slurm_job_id=4343), confirmed_by=actions().TERMINAL)    # TC-164: a new job prunes the old
     assert cli_rows(data, "jobs", "confirmation_id = '%s'" % c["id"]) == []
     kept = cli_rows(data, "confirmations", "id = '%s'" % c["id"])[0]
     assert kept["bundle_json"] is not None and kept["screen_text"] is not None
