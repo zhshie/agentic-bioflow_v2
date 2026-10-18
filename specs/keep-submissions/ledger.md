@@ -7,37 +7,35 @@ Maintainer's words (2026-10-18): 送出內容除非使用者刪除不然不刪.
 - [x] Rule 3, R6, R7, R9, R10 (confirm.forget_content, actions.forget_check / forget / request_forget): clears bundle and screen of the run's confirmations and the job copy (`args_json` becomes `{"forgotten": true, "bundle": {"run_name": ...}}`); refused for running, lost, not yet in the index, or a queued/claimed job; already forgotten answers 「已經刪除過了 (already deleted)」.
 - [x] Terminal `abf-platform forget RUN` (abf_launch/cli.py cmd_forget, screen in build.forget_screen): asks `y`, no `--yes`, no owner check, status check kept. MCP tool `forget` (R2, R11): the client's form only; otherwise the terminal hint, nothing written.
 - [x] Docs: docs/PLATFORM.md retention paragraph and the `forget` action; CHANGELOG.
+- [x] R15 (actions/__init__.py `forget_check`): "still starting" means the launch job is queued or claimed; a launch whose job was refused, failed (`error`) or `expired` and never reached the run index can be forgotten.
+- [x] R14: the old-test edits R14 names (test_station_envs.py allow-list plus one test that `forgotten_org` still fails; CLI set, help and tool lists gain `forget`; tool counts gain one).
 
-## Hook point for 009e (rule 4)
+## Follow-up after PR #133 review (F1 to F5)
 
-009e (resume / relaunch) is not on v3, and none of its code was pulled in. Whoever reads a confirmed bundle later must check, before using it, that the content is still there: a confirmation row with `bundle_json IS NULL` and `forgotten_at IS NOT NULL`, or a job whose `args_json` has `"forgotten": true` (the helper `confirm.forgotten_args` writes that shape, and `_named` in confirm.py reads it). That reader must refuse with 「內容已被擁有者刪除 (content deleted by its owner)」, not crash on the missing bundle.
+- [x] F1: `origin/v3` merged into the branch with a plain merge (commit e4c967f, nothing rebased, nothing force-pushed). 14 files conflicted; both sides were kept: the Forget and the Resume and relaunch sections of docs/PLATFORM.md, `forget_screen` and the 009e attempt screens in build.py, the `forget`, `resume` and `relaunch` subcommands and tools, and the 009e shard lists of tests/platform_test.sh with `test_keep_submissions.py` added to the last shard (fixed in the commit after the merge).
+- [x] F2: resume and relaunch refuse a forgotten run with 「內容已被擁有者刪除 (content deleted by its owner)」, nothing queued: in `build._predecessor` (so the terminal commands and the MCP tools, after the owner check, so somebody else still gets "not found"), and in `jobs._lineage` (the queue check, so a yes given before the forget cannot start it; a pending request approved later is made void). `jobs.run_forgotten` reads it from the rows, for the run and every run it was made from. The hook point noted earlier (a confirmation with `forgotten_at`, or a job whose `args_json` has `"forgotten": true`) is exactly what it reads.
+- [x] F3: every list and count of tools and actions is the union of the 009e tools and `forget`: eleven tools (`list_runs`, `get_run`, `list_compute_envs`, `get_compute_env`, `list_agents`, `list_site_files`, `launch`, `cancel`, `resume`, `relaunch`, `forget`), in the tests, in docs/PLATFORM.md ("Eleven tools"), in the MCP `instructions` (guidance.FIXED_SENTENCE), in the command set and help text. No count was lowered.
+- [x] F4: `forget` is refused (「這個 run 還在準備中，不能刪除」) while the launch job went out (`done`) and the index does not know the run yet, until the index sees it or 24 hours after the job ended (`actions.FORGET_WAIT_SECONDS`, worked out from `jobs.finished_at`; nothing stored). A refused, failed or expired launch stays forgettable at once.
+- [x] F5: the confirmation row of a terminal launch (and cancel) holds the bundle and the screen text (`confirm._confirm`, `actions.launch_shown` and `cancel_shown`, which abf_launch/cli.py calls; `launch` and `cancel` keep their signatures and store the bundle alone); `confirm.describe` still does not show a TERMINAL row on the page. 009e reads the content from the confirmation first (`jobs.launch_content`, used by `build._predecessor`), and from the launch job only for a row made before this change; 「太久了…」 is said only then. Link between a launch row and its confirmation: the launch job names it; when the job is gone, the confirmed launch made at the very moment the hand-off row says it was confirmed (`jobs.launch_confirmation`). No column was added for it.
 
 ## Owed
 
-- Web parity (R12): `forget` has an MCP tool and a terminal command but no web route. It is owed under `docs/ROADMAP.md:98` (owed parity: every action has an MCP tool and a web route). The web stays read-only here (011a).
-- Not asked by the plan, left as it is: a launch the agent refused never reaches the run index, so `forget` answers "still starting" for it (R7 read literally) and its content cannot be forgotten yet; and `jobs._insert_job` still deletes finished job rows 7 days after they finish (the job copy goes by time, the confirmation row does not). Both are for the developer-agent to decide.
+- Web parity (R12): `forget` has an MCP tool and a terminal command but no web route. It is owed under `docs/ROADMAP.md:98` (owed parity: every action has an MCP tool and a web route). `resume` and `relaunch` (009e) have no web route either and are owed the same way: the owed list holds `forget`, `resume` and `relaunch`. The web stays read-only here (011a).
 
-## Old-test edits the plan (R1) does not name (fix round, 2026-10-18)
+## Old-test edits the plan does not name (fix rounds)
 
-The verifier's TC-093 allows only the places TC-010 and TC-040 name. These edits to old tests are NOT named there. Each is forced by something the plan itself fixes; none can be undone without undoing the plan. They are listed so the plan owner can name them in R1 (or rule otherwise). Nothing was removed or skipped; every one only adds `forget` or a count.
+Each only adds `forget`, a count, or moves pre-data to the old format; no assertion was removed, loosened or skipped.
 
-- `test_station_envs.py:520-521` `banned_schema_words` allow-list: adds `forgotten_at`, `forgotten_by`. The scan rejects any column name containing `org`; the plan (R8) and TC-013/027 fix these two column names, and `org` sits inside `forgotten`. This is the only loosening (two exact names allowed).
-- `test_station_envs.py:434, 453, 455`: CLI subcommand set and help text gain `forget` (plan: terminal `abf-platform forget RUN`).
-- `test_station_envs.py:384`, `test_mcp.py:61,67,93`, `test_launch_e2e.py:183`, `test_launch_platform.py:301,306`, `test_human_channel.py:158`-style lists: tool list gains `forget` (same kind as the three lists R1 names).
-- `test_pat.py:383`, `test_oauth_mcp.py:44,329`: tool count 8 becomes 9.
-
-The executor cannot make TC-093 pass by code: removing these edits makes those old tests fail, and renaming the columns breaks TC-013/027. Decision needed from the developer-agent: amend R1 to name these, or rule another way.
-
-## Acceptance round 1 (R14 to R16)
-
-- [x] R15 (actions/__init__.py `forget_check`): "still starting" now means the launch job is queued or claimed; a launch whose job was refused, failed (`error`) or `expired` and never reached the run index can be forgotten. A terminal hand-off with no launch job and no index entry stays refused (the safe side; not covered by the plan).
-- [x] R14: the old-test edits listed above are the ones R14 now names (test_station_envs.py allow-list plus one test that `forgotten_org` still fails; CLI set, help and tool lists gain `forget`; tool counts 8 to 9). TC-093 compares the contract files with commit 1cd2ee5.
-- The earlier "Not asked by the plan" note about refused launches is settled by R15.
+- `test_station_envs.py` `banned_schema_words` allow-list: adds `forgotten_at`, `forgotten_by` (the scan rejects names containing `org`, and `org` sits inside `forgotten`); a made-up `forgotten_org` still fails, with one assertion that proves it. CLI set, help text and tool lists gain `forget` next to 009e's `resume` and `relaunch`.
+- `test_pat.py`, `test_oauth_mcp.py`, `test_mcp.py`, `test_launch_e2e.py`, `test_launch_platform.py`, `test_human_channel.py`, `test_guidance.py`, `test_actions_layer.py`: tool lists gain `forget`; counts are v3's plus one (10 becomes 11).
+- `test_resume_entrypoints.py::test_tc132_*`: the tool list gains `forget` (F3).
+- `test_resume_scope.py::test_tc152_*`: the constant `confirm.KEEP_CONTENT_SECONDS` is named `KEEP_UNSENT_SECONDS` (plan rule 2).
+- F5, forced: the two 009e "too old" tests (`test_resume_platform.py` TC-053/054 and the real-clean-up one) now make the first launch an old-format row first (`old_format(rig)`: the TERMINAL confirmation's bundle and screen set to NULL), because a terminal launch keeps its content in its confirmation now. Their assertions are word for word what they were.
 
 ## Known limits (R16)
 
 Kept as they are; the maintainer may revisit any of them:
 
-1. A `jobs` row's own copy is still removed with the row 7 days after the job ends (`jobs._insert_job` prunes). The confirmation keeps the content, so the submission is kept; a terminal-confirmed launch has its bundle only in the job copy and the run folder.
+1. A `jobs` row's own copy is still removed with the row 7 days after the job ends (`jobs._insert_job` prunes). The confirmation keeps the content whatever the channel, so the submission is kept. Only a row made before F5 (the old format: a terminal launch of an older version) holds its content only in the job copy and the run folder.
 2. `result_json` and `late_result_json` are results, not submission content: `forget` leaves them.
 3. No web delete (owed web parity, R12 above).

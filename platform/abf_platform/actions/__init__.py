@@ -157,20 +157,34 @@ def _require_human(confirmed_by):
 
 def launch(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
            caller=None):
-    """Queue a launch of exactly `bundle`. Returns (confirmation id, job id)."""
+    """Queue a launch of exactly `bundle`. Returns (confirmation id, job id). The confirmation keeps the bundle until the owner forgets
+    the run; launch_shown also keeps the text the person was shown."""
+    return launch_shown(state_path, ce_name, bundle, None, confirmed_by=confirmed_by, clock=clock, deadline_seconds=deadline_seconds,
+                        offline_after=offline_after, caller=caller)
+
+
+def launch_shown(state_path, ce_name, bundle, screen_text, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
+                 caller=None):
+    """launch, and the confirmation also keeps `screen_text`, what the person was shown and said yes to (keep-submissions, F5)."""
     _require_human(confirmed_by)
     return confirm.confirm_launch(state_path, ce_name, bundle, clock=clock, deadline_seconds=deadline_seconds,
                                   offline_after=offline_after, caller_user_id=caller.user_id if caller else None,
-                                  channel=confirmed_by.name)
+                                  channel=confirmed_by.name, screen_text=screen_text)
 
 
 def cancel(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
            caller=None):
     """Queue a cancel of exactly `bundle`. Returns (confirmation id, job id)."""
+    return cancel_shown(state_path, ce_name, bundle, None, confirmed_by=confirmed_by, clock=clock, deadline_seconds=deadline_seconds,
+                        offline_after=offline_after, caller=caller)
+
+
+def cancel_shown(state_path, ce_name, bundle, screen_text, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
+                 caller=None):
     _require_human(confirmed_by)
     return confirm.confirm_cancel(state_path, ce_name, bundle, clock=clock, deadline_seconds=deadline_seconds,
                                   offline_after=offline_after, caller_user_id=caller.user_id if caller else None,
-                                  channel=confirmed_by.name)
+                                  channel=confirmed_by.name, screen_text=screen_text)
 
 
 # ---- write, through a pending request: the MCP tools and the confirmation page ---------------------------------------------------------
@@ -401,13 +415,21 @@ def _forgot(ok, message, forgotten=False, **more):
     return dict(more, ok=ok, forgotten=forgotten, message=message)
 
 
+FORGET_WAIT_SECONDS = 24 * 3600      # how long a launch that went out may take to show in the run index (F4); worked out from the job, never stored
+
+
+def _went_out_lately(job):
+    finished = job["finished_at"]
+    return finished is None or time.time() - finished < FORGET_WAIT_SECONDS
+
+
 def forget_check(platform_path, index_path, run_name, *, caller=None):
     """(code, message) for forgetting one run: 'ok' (there is content to clear), 'nothing' (already deleted), 'refused' (not now)
     or 'notfound'. Reads only. With a caller (HTTP, or stdio with an account) only that user's own runs are there."""
     con = store.open_readonly(platform_path)
     try:
         launch = jobs.latest_launch(con, run_name) if con is not None and isinstance(run_name, str) else None
-        job = (con.execute("SELECT state FROM jobs WHERE id = ?", (launch["job_id"],)).fetchone()
+        job = (con.execute("SELECT state, finished_at FROM jobs WHERE id = ?", (launch["job_id"],)).fetchone()
                if launch is not None and "job_id" in launch.keys() and launch["job_id"] is not None else None)
     finally:
         if con is not None:
@@ -415,9 +437,10 @@ def forget_check(platform_path, index_path, run_name, *, caller=None):
     if launch is None or (caller is not None and run_name not in jobs.owned_run_names(platform_path, caller.user_id)):
         return "notfound", RUN_NOT_FOUND
     seen = [v for v in status.list_runs(index_path, status.now()) if v["name"] == run_name]
-    if not seen and (job is None or job["state"] in ("queued", "claimed")):
+    if not seen and (job is None or job["state"] in ("queued", "claimed") or (job["state"] == "done" and _went_out_lately(job))):
         # R15: "starting" is a launch job still queued or claimed. A launch that ended without ever reaching the index (refused,
-        # failed, expired) may be forgotten. With no job to read (a terminal hand-off) it stays refused: the safe side.
+        # failed, expired) may be forgotten. F4: so may one whose job went out (done) more than 24 hours ago and the index still does
+        # not know; before that the index may only be late. With no job to read (a terminal hand-off) it stays refused: the safe side.
         return "refused", FORGET_STARTING
     if any(v["status"] == "running" for v in seen):
         return "refused", "這個 run 還在跑，不能刪除 (the run is still running; it cannot be deleted)"

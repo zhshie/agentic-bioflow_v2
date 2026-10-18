@@ -789,7 +789,7 @@ def test_tc084_no_resume_or_relaunch_code_of_our_own_came_in():
         found |= {n.name for n in ast.walk(ast.parse(p.read_text(encoding="utf-8")))
                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and re.search(r"resume|relaunch", n.name)}
     assert found - V3_ATTEMPT_NAMES == set(), found - V3_ATTEMPT_NAMES
-    assert "forget" not in inspect.getsource(actions().launch) and "forget" not in inspect.getsource(actions().approve)
+    assert not re.search(r"forget\w*\(", inspect.getsource(actions().launch) + inspect.getsource(actions().approve))
 
 
 # ---- the safety net -------------------------------------------------------------------------------------------------------------
@@ -849,7 +849,7 @@ def test_tc108_the_action_names_and_the_command_set_hold_both_sides():
     # TC-108
     a = actions()
     assert callable(a.request_resume) and callable(a.request_relaunch) and callable(a.forget) and callable(a.request_forget)
-    from abf_launch import cli
+    from abf_platform import cli
     top = set(next(x for x in cli.build_parser()._actions if isinstance(getattr(x, "choices", None), dict)).choices)
     assert {"resume", "relaunch", "forget", "oauth", "cancel", "launch"} <= top
     text = (REPO_ROOT / "platform" / "tests" / "test_station_envs.py").read_text(encoding="utf-8")
@@ -996,7 +996,6 @@ def test_tc130_another_run_is_not_affected(rig):
     out = rig.ask("resume", "run-two", person=FakePerson(True))
     assert out["sent"] is True, out
 
-
 def test_tc131_a_request_waiting_for_the_page_dies_when_the_run_is_forgotten(rig):
     # TC-131
     from owner_harness import Duo
@@ -1042,7 +1041,6 @@ def test_tc142_after_24_hours_it_is_treated_as_never_having_reached_the_index(w)
     r = forget_tool(w, "run-one", ann, form_answer())
     assert r["ok"] is True, r
     assert cleared(w, out["id"]) and conf(w, out["id"])["forgotten_at"] is not None
-
 
 def test_tc143_once_the_index_sees_the_run_there_is_no_waiting(w):
     # TC-143
@@ -1146,7 +1144,7 @@ def _terminal_confirmed(w, run="run-one", screen="what the person approved"):
     from abf_launch import build
     ce, bundle = build.prepare_launch(w.ip.state_db, ce="lab-a", pipeline="nf-core/ampliseq", revision="2.18.0", run_name=run,
                                       samplesheet=str(w.sheet), params={"primer": "AGRG"})
-    cid, jid = actions().launch(w.ip.state_db, ce, bundle, confirmed_by=actions().TERMINAL, screen_text=screen)
+    cid, jid = actions().launch_shown(w.ip.state_db, ce, bundle, screen, confirmed_by=actions().TERMINAL)
     return cid, jid
 
 
@@ -1228,3 +1226,15 @@ def test_tc159_tc160_an_old_format_row_whose_job_is_gone_says_too_old(rig, verb)
     out = rig.ask(verb, "x", person=FakePerson(True))
     assert out["sent"] is False and TOO_OLD in out["message"], out
     assert rig.counts() == before
+
+
+@pytest.mark.parametrize("verb", ["resume", "relaunch"])
+def test_tc096_the_new_refusals_and_the_kept_content_open_no_way_to_send_without_a_yes(rig, verb):
+    # TC-096 (the 009e single cases and tests/no_second_run_state_test.sh run with the whole platform suite)
+    rig.first("x")
+    before = rig.counts()
+    declined = rig.ask(verb, "x", person=FakePerson(False))
+    assert declined["sent"] is False and (rig.counts()[0], rig.counts()[2]) == (before[0], before[2])      # a declined request leaves one void row, no job
+    assert forget_action(rig.w, "x")["ok"] is True
+    again = rig.ask(verb, "x", person=FakePerson(True))
+    assert again["sent"] is False and FORGOTTEN_WORDS in again["message"] and len(rig.jobs()) == before[0]

@@ -243,6 +243,79 @@ def _col(row, name):
 RUN_NOT_FOUND = "找不到這個 run (Run not found): %s"      # what anybody is told of a run that is not theirs, or not there (116, 009e)
 
 
+FORGOTTEN = "內容已被擁有者刪除 (content deleted by its owner)"      # what a resume or a relaunch of a forgotten run is told (keep-submissions, F2)
+
+
+def launch_confirmation(con, launch):
+    """The confirmation row of one row of the hand-off record, or None. The launch job names it; when the job is gone (the clean-up of
+    finished jobs removes it after 7 days) the row is found by what both wrote in the same transaction: a confirmed launch made at
+    the very moment the hand-off row says it was confirmed. There is no column that links the two, and none is added."""
+    job = None
+    if "job_id" in launch.keys() and launch["job_id"] is not None:
+        job = con.execute("SELECT confirmation_id FROM jobs WHERE id = ?", (launch["job_id"],)).fetchone()
+    if job is not None and job["confirmation_id"]:
+        row = con.execute("SELECT * FROM confirmations WHERE id = ?", (job["confirmation_id"],)).fetchone()
+        if row is not None:
+            return row
+    return con.execute("SELECT * FROM confirmations WHERE kind = 'launch' AND state = 'confirmed' AND confirmed_at = ? "
+                       "ORDER BY created_at DESC LIMIT 1", (launch["confirmed_at"],)).fetchone()
+
+
+def _row_forgotten(con, launch):
+    conf = launch_confirmation(con, launch)
+    if conf is not None and conf["forgotten_at"] is not None:
+        return True
+    if "job_id" in launch.keys() and launch["job_id"] is not None:
+        job = con.execute("SELECT args_json, forgotten_at FROM jobs WHERE id = ?", (launch["job_id"],)).fetchone()
+        if job is not None:
+            if job["forgotten_at"] is not None:
+                return True
+            try:
+                return bool(json.loads(job["args_json"]).get("forgotten"))
+            except (TypeError, ValueError, AttributeError):
+                return False
+    return False
+
+
+def run_forgotten(con, run_name):
+    """Whether the owner deleted the content of this run, or of any run it was made from (the analysis it belongs to goes back to a first
+    launch). Read from the rows themselves: nothing about it is stored under the run. A platform.db that no command has opened since the
+    columns were added has nothing forgotten."""
+    try:
+        seen, name = set(), run_name
+        while name is not None and name not in seen:
+            seen.add(name)
+            rows = con.execute("SELECT * FROM launches WHERE run_name = ? ORDER BY id", (name,)).fetchall()
+            if any(_row_forgotten(con, r) for r in rows):
+                return True
+            name = _col(rows[-1], "parent_run") if rows else None
+    except sqlite3.OperationalError:
+        return False
+    return False
+
+
+def launch_content(con, launch, job):
+    """(bundle, the hash that was confirmed for it) of one row of the hand-off record, or None. The confirmation holds it first (it is kept
+    until the owner forgets it); a row made before that holds it only in its launch job, which is cleared 7 days after it finished."""
+    conf = launch_confirmation(con, launch)
+    if conf is not None and conf["bundle_json"]:
+        try:
+            bundle = json.loads(conf["bundle_json"])
+        except (TypeError, ValueError):
+            bundle = None
+        if isinstance(bundle, dict):
+            return bundle, conf["sha256"]
+    if job is not None:
+        try:
+            args = json.loads(job["args_json"])
+            bundle, sha = args["bundle"], args["bundle_sha256"]
+        except (TypeError, ValueError, KeyError):
+            return None
+        if isinstance(bundle, dict) and isinstance(sha, str):
+            return bundle, sha
+    return None
+
+
 def analysis_root(con, run_name):
     """The run name that began the analysis `run_name` belongs to: follow parent_run up until a row has none. The root is a first launch.
     There is no column for it; a resume or a relaunch is the same analysis as the run it was made from (ADR 0009)."""
@@ -379,6 +452,8 @@ def _lineage(con, bundle, caller_id, now):
     parent = latest_launch(con, parent_name)
     if parent is None or (caller_id is not None and _col(parent, "user_id") != caller_id):
         raise JobRefused(RUN_NOT_FOUND % parent_name)
+    if run_forgotten(con, parent_name):
+        raise JobRefused(FORGOTTEN)       # keep-submissions (F2): a yes made before the owner forgot the run cannot start it again
     if attempt != next_attempt(con, parent_name, now):
         raise JobRefused("another attempt was started meanwhile (這個分析在你確認的時候已經有別的一次嘗試); ask again to see where it stands")
     same_folder = bundle.get("run_folder") == parent["run_folder"]

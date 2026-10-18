@@ -90,11 +90,12 @@ def cmd_launch(args):
     why = terminal.terminal_problem()
     if why:
         return _refuse("要在終端機上互動回答 y 才會送出，這裡不行（%s）。沒有任何旗標或環境變數能代替這個回答 (needs an interactive terminal)" % why)
-    if not terminal.ask(launch_screen(bundle, ce_name), QUESTION_LAUNCH):
+    lines = launch_screen(bundle, ce_name)
+    if not terminal.ask(lines, QUESTION_LAUNCH):
         _err(NOT_SENT)
         return 1
     try:
-        cid, job_id = actions.launch(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=caller)
+        cid, job_id = actions.launch_shown(state, ce_name, bundle, build.as_text(lines), confirmed_by=actions.TERMINAL, caller=caller)
     except jobs.JobRefused as e:
         return _refuse(str(e))
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
@@ -118,11 +119,12 @@ def _attempt(args, verb):
     if why:
         return _refuse("要在終端機上互動回答 y 才會%s，這裡不行（%s）。沒有任何旗標或環境變數能代替這個回答 (needs an interactive terminal)"
                        % (build.WORDS[verb], why))
-    if not terminal.ask(screen(bundle, row), question):
+    lines = screen(bundle, row)
+    if not terminal.ask(lines, question):
         _err(NOT_SENT)
         return 1
     try:
-        cid, job_id = actions.launch(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=caller)
+        cid, job_id = actions.launch_shown(state, ce_name, bundle, build.as_text(lines), confirmed_by=actions.TERMINAL, caller=caller)
     except jobs.JobRefused as e:
         return _refuse(str(e))
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
@@ -235,7 +237,7 @@ def cmd_cancel(args):
         _err("未取消")
         return 1
     try:
-        cid, job_id = actions.cancel(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=None)
+        cid, job_id = actions.cancel_shown(state, ce_name, bundle, build.as_text(lines), confirmed_by=actions.TERMINAL, caller=None)
     except jobs.JobRefused as e:
         return _refuse(str(e))
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
