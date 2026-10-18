@@ -95,9 +95,10 @@ def cmd_launch(args):
         _err(NOT_SENT)
         return 1
     try:
-        cid, job_id = actions.launch_shown(state, ce_name, bundle, build.as_text(lines), confirmed_by=actions.TERMINAL, caller=caller)
+        cid, job_id = actions.launch(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=caller)
     except jobs.JobRefused as e:
         return _refuse(str(e))
+    actions.keep_screen(state, cid, build.as_text(lines))      # keep-submissions: the confirmation keeps what the person was shown
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
     return _report_launch(state, job_id, bundle)
 
@@ -124,9 +125,10 @@ def _attempt(args, verb):
         _err(NOT_SENT)
         return 1
     try:
-        cid, job_id = actions.launch_shown(state, ce_name, bundle, build.as_text(lines), confirmed_by=actions.TERMINAL, caller=caller)
+        cid, job_id = actions.launch(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=caller)
     except jobs.JobRefused as e:
         return _refuse(str(e))
+    actions.keep_screen(state, cid, build.as_text(lines))      # keep-submissions: the confirmation keeps what the person was shown
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
     return _report_launch(state, job_id, bundle)
 
@@ -237,9 +239,10 @@ def cmd_cancel(args):
         _err("未取消")
         return 1
     try:
-        cid, job_id = actions.cancel_shown(state, ce_name, bundle, build.as_text(lines), confirmed_by=actions.TERMINAL, caller=None)
+        cid, job_id = actions.cancel(state, ce_name, bundle, confirmed_by=actions.TERMINAL, caller=None)
     except jobs.JobRefused as e:
         return _refuse(str(e))
+    actions.keep_screen(state, cid, build.as_text(lines))      # keep-submissions: the confirmation keeps what the person was shown
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
     out = asyncio.run(jobs.wait_for_result(state, job_id))
     if out["state"] == "done" and out["ok"]:

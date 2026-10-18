@@ -36,9 +36,9 @@ class NotApproved(jobs.JobRefused):
         self.job_id = job_id
 
 
-def _confirm(state_path, ce_name, kind, job_kind, bundle, clock, deadline_seconds, offline_after, caller_user_id, channel, screen_text=None):
-    """The confirmation row keeps what was run (bundle_json) and what the person approved (screen_text) whatever the channel, as a request
-    that came through a form or the page does: it is kept until its owner forgets it (keep-submissions)."""
+def _confirm(state_path, ce_name, kind, job_kind, bundle, clock, deadline_seconds, offline_after, caller_user_id, channel):
+    """The confirmation row keeps what was run (bundle_json) whatever the channel, as a request that came through a form or the page does;
+    keep_screen adds what the person approved. Both are kept until the owner forgets the run (keep-submissions)."""
     now = clock()
     seconds = jobs._seconds(job_kind, deadline_seconds)
     cid = secrets.token_hex(16)
@@ -46,23 +46,23 @@ def _confirm(state_path, ce_name, kind, job_kind, bundle, clock, deadline_second
     def work(con):
         con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, caller_user_id, state, channel, confirmed_at, ce_name, "
                     "bundle_json, screen_text) VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?)",
-                    (cid, common.bundle_sha256(bundle), kind, now, caller_user_id, channel, now, ce_name, json.dumps(bundle), screen_text))
+                    (cid, common.bundle_sha256(bundle), kind, now, caller_user_id, channel, now, ce_name, json.dumps(bundle), None))
         return cid, jobs.enqueue_confirmed(con, ce_name, job_kind, bundle, cid, now, seconds, offline_after)
 
     return jobs.transaction(state_path, work)
 
 
 def confirm_launch(state_path, ce_name, bundle, clock=time.time, deadline_seconds=None, offline_after=None,
-                   caller_user_id=None, channel="TERMINAL", screen_text=None):
+                   caller_user_id=None, channel="TERMINAL"):
     """Write the confirmation and queue the launch, or neither (JobRefused). Returns (confirmation id, job id)."""
     return _confirm(state_path, ce_name, "launch", "launch_nextflow", bundle, clock, deadline_seconds, offline_after,
-                    caller_user_id, channel, screen_text)
+                    caller_user_id, channel)
 
 
 def confirm_cancel(state_path, ce_name, bundle, clock=time.time, deadline_seconds=None, offline_after=None,
-                   caller_user_id=None, channel="TERMINAL", screen_text=None):
+                   caller_user_id=None, channel="TERMINAL"):
     return _confirm(state_path, ce_name, "cancel", "cancel_run", bundle, clock, deadline_seconds, offline_after,
-                    caller_user_id, channel, screen_text)
+                    caller_user_id, channel)
 
 
 # ---- the pending request -----------------------------------------------------------------------------------------------------
@@ -94,6 +94,15 @@ def create_pending(state_path, kind, ce_name, bundle, screen_text, caller_user_i
         return rid
 
     return jobs.transaction(state_path, work)
+
+
+def keep_screen(state_path, rid, screen_text):
+    """Add the text shown at the terminal to the confirmed terminal row `rid` that has none. Returns whether a row was changed."""
+    def work(con):
+        return con.execute("UPDATE confirmations SET screen_text = ? WHERE id = ? AND state = 'confirmed' AND channel = 'TERMINAL' "
+                           "AND screen_text IS NULL AND forgotten_at IS NULL", (str(screen_text), rid)).rowcount
+
+    return bool(jobs.transaction(state_path, work))
 
 
 def void(state_path, rid, reason):

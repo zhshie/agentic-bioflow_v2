@@ -157,34 +157,27 @@ def _require_human(confirmed_by):
 
 def launch(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
            caller=None):
-    """Queue a launch of exactly `bundle`. Returns (confirmation id, job id). The confirmation keeps the bundle until the owner forgets
-    the run; launch_shown also keeps the text the person was shown."""
-    return launch_shown(state_path, ce_name, bundle, None, confirmed_by=confirmed_by, clock=clock, deadline_seconds=deadline_seconds,
-                        offline_after=offline_after, caller=caller)
-
-
-def launch_shown(state_path, ce_name, bundle, screen_text, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
-                 caller=None):
-    """launch, and the confirmation also keeps `screen_text`, what the person was shown and said yes to (keep-submissions, F5)."""
+    """Queue a launch of exactly `bundle`. Returns (confirmation id, job id). The confirmation row keeps the bundle until the owner
+    forgets the run (keep-submissions); keep_screen adds the text the person was shown."""
     _require_human(confirmed_by)
     return confirm.confirm_launch(state_path, ce_name, bundle, clock=clock, deadline_seconds=deadline_seconds,
                                   offline_after=offline_after, caller_user_id=caller.user_id if caller else None,
-                                  channel=confirmed_by.name, screen_text=screen_text)
+                                  channel=confirmed_by.name)
 
 
 def cancel(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
            caller=None):
     """Queue a cancel of exactly `bundle`. Returns (confirmation id, job id)."""
-    return cancel_shown(state_path, ce_name, bundle, None, confirmed_by=confirmed_by, clock=clock, deadline_seconds=deadline_seconds,
-                        offline_after=offline_after, caller=caller)
-
-
-def cancel_shown(state_path, ce_name, bundle, screen_text, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
-                 caller=None):
     _require_human(confirmed_by)
     return confirm.confirm_cancel(state_path, ce_name, bundle, clock=clock, deadline_seconds=deadline_seconds,
                                   offline_after=offline_after, caller_user_id=caller.user_id if caller else None,
-                                  channel=confirmed_by.name, screen_text=screen_text)
+                                  channel=confirmed_by.name)
+
+
+def keep_screen(state_path, confirmation_id, screen_text):
+    """Keep, with the confirmation a person gave at the terminal, the text they were shown and said yes to (keep-submissions, F5). It
+    writes only that text, only on a confirmed row of the terminal that has none yet; it queues nothing and confirms nothing."""
+    return confirm.keep_screen(state_path, confirmation_id, screen_text)
 
 
 # ---- write, through a pending request: the MCP tools and the confirmation page ---------------------------------------------------------

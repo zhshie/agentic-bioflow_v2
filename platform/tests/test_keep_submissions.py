@@ -1144,7 +1144,8 @@ def _terminal_confirmed(w, run="run-one", screen="what the person approved"):
     from abf_launch import build
     ce, bundle = build.prepare_launch(w.ip.state_db, ce="lab-a", pipeline="nf-core/ampliseq", revision="2.18.0", run_name=run,
                                       samplesheet=str(w.sheet), params={"primer": "AGRG"})
-    cid, jid = actions().launch_shown(w.ip.state_db, ce, bundle, screen, confirmed_by=actions().TERMINAL)
+    cid, jid = actions().launch(w.ip.state_db, ce, bundle, confirmed_by=actions().TERMINAL)
+    assert actions().keep_screen(w.ip.state_db, cid, screen) is True
     return cid, jid
 
 
