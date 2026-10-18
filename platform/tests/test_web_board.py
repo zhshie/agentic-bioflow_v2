@@ -273,6 +273,20 @@ def test_tcs17_one_stylesheet_nothing_external(w):
         assert "@import" not in css and "@font-face" not in css and "url(" not in css
 
 
+def test_tcs31_no_other_platform_names(w):
+    # TC-S31 (ADR 0004): neither the pages nor the style sheet name the platforms we replace; spelled by concatenation so the words stay out of the sources
+    names = ("Seq" + "era", "Gal" + "axy", "Tow" + "er")
+    ann = w.user("ann")
+    rid = seed(w, "x", "running", ann)
+    seed(w, "bad", "failed", ann, reason="Out of memory")
+    c = login(w, "ann")
+    for url in ("/", "/?lang=en", "/?run=" + rid, "/settings", "/settings?lang=en"):
+        t = c.get(url).text
+        assert style_of(t), url  # the style sheet is inline: this covers it too
+        for n in names:
+            assert n.lower() not in t.lower(), (url, n)
+
+
 def test_tcs18_focus_outline(w):
     # TC-S18
     w.user("ann")

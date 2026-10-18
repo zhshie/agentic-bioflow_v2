@@ -120,3 +120,7 @@ The red number beside 「現在」 in the left pane is the count of failed plus 
 ### Manual rows left to the verifier / developer-agent
 
 TC-V02 to TC-V04, TC-V11 to TC-V18 (screenshots with Playwright, the detector, the Tab walk) and the ledger-review rows TC-D01 to TC-D12, TC-S07 to TC-S09, TC-N07, TC-K5 follow `docs/TESTING.md`. No schema, `actions/`, `jobs.py`, `mcp_server.py`, `store.py`, `hooks/` or `.claude/` file was changed (no migration needed: nothing stored).
+
+### Fix round: TC-S31 had no test
+
+`test_tcs31_no_other_platform_names` in `platform/tests/test_web_board.py` reads `/`, `/?lang=en`, `/?run=<id>`, `/settings` and `/settings?lang=en` (the style sheet is inline, so it is inside each page) and fails if any names the platforms ADR 0004 replaces (case-insensitive; the words are built by concatenation so they stay out of the sources). The implementation already passed; the test was checked to fail when a forbidden word is injected into the page. No code under `platform/abf_platform/` changed.
