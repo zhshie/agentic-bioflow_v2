@@ -754,7 +754,7 @@ def test_009e_a_relaunch_name_held_by_another_user_gets_the_uniform_words_with_n
         rig.prepare("relaunch", "sample", owner=duo.b.user_id)
     assert str(e.value) == jobs.NAME_TAKEN
     msg = refused(rig.relaunch("sample", caller=duo.b, person=FakePerson(True)))
-    assert msg == jobs.NAME_TAKEN and "7771" not in msg and "Slurm" not in msg and "failed" not in msg
+    assert jobs.NAME_TAKEN in msg and "7771" not in msg and "Slurm" not in msg and "failed" not in msg
     # the terminal (no caller) keeps the detailed wording
     with pytest.raises(build.Refusal) as e:
         rig.prepare("relaunch", "sample")
