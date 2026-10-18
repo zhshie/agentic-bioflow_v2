@@ -1,0 +1,14 @@
+# constitution-6: finish the 6.0.0 amendment (Sync Impact + version pins)
+
+The branch already has commit 85c2fbd by the developer-agent: `.specify/memory/constitution.md` is amended to 6.0.0 (read the new `### 6.0.0 (2026-10-18)` section and the diff `git diff origin/v3 -- .specify/memory/constitution.md`). Maintainer approved the three rules on 2026-10-18 (「都沒問題，好」). DO NOT change the constitution text itself, except to fix a check reference that a test proves wrong (then say so in the ledger). This is a constitution amendment: the maintainer merges it himself, never auto-merge.
+
+## Do
+1. `docs/ROADMAP.md`, table "Principles waiting for a check": delete the row "The platform's run index is never a second truth..." and the row "Gates live in the platform's action layer..." (both now in the constitution). Narrow the row "The platform stores metadata only and never holds a site credential..." to what is still unchecked (the API refusing a credential field / never receiving one), with a note that 6.0.0 took the half 'a credential inside received data is never stored'. Narrow the row "Every platform write tool (launch, delete, clear `work/`)..." to the write tools that do not exist yet (delete, clear `work/`, forget), noting 6.0.0 holds launch, cancel, resume, relaunch. Leave every other row unchanged.
+2. `docs/PRINCIPLES.md`: add a short history entry for 6.0.0 in the same style as the 5.0.0 one (what joined, which tests hold it, what did not join and why — copy the reasons from the amendment's 'Not moved' bullet).
+3. `README.md` and `CLAUDE.md`: every 'constitution 5.0.0' citation becomes 'constitution 6.0.0' (README lines ~56 and ~58, CLAUDE.md ~11). No other wording change.
+4. Tests that pin the version: `tests/constitution_scope_test.sh` (line ~29: version string and the list of versions that came after 2.0.0 gains 6.0.0) and `tests/platform_direction_docs_test.sh` (lines ~52-54 exact last line becomes `**Version**: 6.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-18`; TC-059 lines ~382/385 cite 6.0.0). These are named here deliberately: the change of the pinned value is the plan, not a weakening.
+5. Add a test `tests/constitution_6_test.sh`: (a) the constitution names each check file it cites in the three new rules and each file exists; (b) each named test function prefix (test_tc030_rebuild_gives_back_every_field, test_tc031_nextflows_records_win_over_a_damaged_index, test_tcb04_, test_tcb08_, test_tch09_, test_tca14_, test_tc142_, test_tc144_, test_tc040_, test_tc042_, test_tc_i03_, test_tc041_, test_tcf10_f11_) is defined (`def <prefix>`) in the file the constitution names for it; (c) ROADMAP no longer has the two deleted rows. Also confirm `tests/constitution_checks_exist_test.sh` passes with the new Check lines.
+6. Full `bash tests/run_all.sh` green (WSL).
+
+## Out of scope
+CHANGELOG.md (do not edit), platform code, hooks, any other doc.
