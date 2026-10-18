@@ -496,6 +496,16 @@ def test_tc086_no_web_pages_no_confirmation_page_no_role_tables(tmp_path):
         assert banned_schema_words(db) == [], db.name
 
 
+def test_banned_words_still_catch_a_name_next_to_the_forgotten_ones(tmp_path):
+    # TC-094 (keep-submissions): only the exact names forgotten_at and forgotten_by are allowed; another name with "org" still fails
+    db = tmp_path / "platform.db"
+    con = sqlite3.connect(str(db))
+    con.execute("CREATE TABLE t (forgotten_at REAL, forgotten_by TEXT, forgotten_org TEXT)")
+    con.commit()
+    con.close()
+    assert banned_schema_words(db) == [("org", "forgotten_org")]
+
+
 # 009c: the exception to the ban on session and password names, written as exact (database, table, column) triples like the one for
 # index.db: the web password's hash and the browser login's table, both in tokens.db (decided by the maintainer 2026-10-17, plan
 # "round 2"). A column of any other name or in any other place is still caught. The scan was the body of tc086; it is a function so a

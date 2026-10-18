@@ -84,12 +84,16 @@ def add_index_run(w, name, final="succeeded", last_message_ago=0):
         con.close()
 
 
-def scn(w, ann, name="run-one", final="succeeded", index=True):
+def scn(w, ann, name="run-one", final="succeeded", index=True, job_state="done"):
     """A run ann launched through a form (a confirmed row with content, a done launch job, a Slurm number), listed in the index."""
     out = w.launch(caller=ann, answer=form_answer(), run=name)
     assert out["sent"] is True, out
     sql_exec(w, "UPDATE launches SET slurm_job_id = 4242, submitted_at = confirmed_at WHERE run_name = ?", (name,))
-    sql_exec(w, "UPDATE jobs SET state = 'done', finished_at = ? WHERE id = ?", (time.time(), out["job_id"]))
+    if job_state == "done":
+        sql_exec(w, "UPDATE jobs SET state = 'done', finished_at = ? WHERE id = ?", (time.time(), out["job_id"]))
+    else:
+        sql_exec(w, "UPDATE jobs SET state = ?, finished_at = ? WHERE id = ?",
+                 (job_state, time.time() if job_state not in ("queued", "claimed") else None, out["job_id"]))
     if index:
         if final == "lost":
             add_index_run(w, name, None, last_message_ago=10 ** 6)
@@ -511,14 +515,29 @@ def test_tc051_a_lost_run_is_refused(w):
     assert r["ok"] is False and tables(w) == before
 
 
-def test_tc052_a_run_that_is_not_in_the_index_yet_is_still_starting(w):
-    # TC-052
+@pytest.mark.parametrize("job_state", ["queued", "claimed"])
+def test_tc052_tc056_a_run_whose_launch_job_is_queued_or_claimed_is_still_starting(w, job_state):
+    # TC-052 (queued), TC-056 (claimed)
     ann = w.user("ann")
-    scn(w, ann, index=False)
+    scn(w, ann, index=False, job_state=job_state)
     before = tables(w)
     r = forget_tool(w, "run-one", ann, form_answer())
     assert r["ok"] is False and STARTING in r["message"]
     assert tables(w) == before
+
+
+@pytest.mark.parametrize("job_state", ["refused", "error", "expired"])
+def test_tc057_tc058_tc059_a_launch_that_ended_without_reaching_the_index_may_be_forgotten(w, job_state):
+    # TC-057 (refused), TC-058 (error), TC-059 (expired)
+    ann = w.user("ann")
+    out = scn(w, ann, index=False, job_state=job_state)
+    confirmation = w.sql("SELECT id FROM confirmations WHERE state = 'confirmed' AND kind = 'launch'")[0]["id"]
+    before = audit(conf(w, confirmation))
+    r = forget_tool(w, "run-one", ann, form_answer())
+    assert r["ok"] is True and STARTING not in r["message"], r
+    assert cleared(w, confirmation) and audit(conf(w, confirmation)) == before
+    assert job_cleared(w, out["job_id"], "run-one")
+    assert conf(w, confirmation)["forgotten_at"] is not None
 
 
 @pytest.mark.parametrize("state", ["queued", "claimed"])
@@ -638,12 +657,48 @@ def test_tc073_the_changelog_top_entry_names_the_change():
     assert "keep-submissions" in bullets[0] and "forget" in bullets[0] and "confirmed" in bullets[0]
 
 
+def test_tc064_the_ledger_records_the_three_known_limits():
+    # TC-064
+    text = (SPEC / "ledger.md").read_text(encoding="utf-8")
+    low = text.lower()
+    assert "7 days after" in low and "result_json" in text and "late_result_json" in text
+    assert "no web delete" in low and "maintainer may revisit" in low
+
+
+def test_tc065_forget_leaves_the_results_a_job_holds(w):
+    # TC-065
+    ann = w.user("ann")
+    out = scn(w, ann)
+    sql_exec(w, "UPDATE jobs SET result_json = ?, late_result_json = ? WHERE id = ?", ('{"ok": true}', '{"late": 1}', out["job_id"]))
+    assert forget_tool(w, "run-one", ann, form_answer())["ok"] is True
+    row = w.sql("SELECT result_json, late_result_json FROM jobs WHERE id = ?", (out["job_id"],))[0]
+    assert (row["result_json"], row["late_result_json"]) == ('{"ok": true}', '{"late": 1}')
+
+
+def test_tc066_an_old_job_row_goes_but_the_confirmed_content_stays(w):
+    # TC-066
+    ann = w.user("ann")
+    out = scn(w, ann, "run-one")
+    confirmation = w.sql("SELECT id FROM confirmations WHERE state = 'confirmed' AND kind = 'launch'")[0]["id"]
+    sql_exec(w, "UPDATE jobs SET state = 'done', finished_at = ? WHERE id = ?", (time.time() - 8 * DAY, out["job_id"]))
+    scn(w, ann, "run-two")                      # queues a new job, which prunes the finished ones older than seven days
+    assert w.sql("SELECT id FROM jobs WHERE id = ?", (out["job_id"],)) == []
+    assert not cleared(w, confirmation) and conf(w, confirmation)["bundle_json"] is not None
+
+
+def test_tc094_tc095_nine_tools_and_the_column_names_scan_still_catches_other_names(w):
+    # TC-094 (the proof that forgotten_org still fails is in test_station_envs.py), TC-095 (the old lists are compared with main by
+    # the acceptor; here the registered tools are nine, with forget among them)
+    tools, _ = w.mcp([])
+    assert len(tools) == 9 and "forget" in {t.name for t in tools}
+
+
 def test_tc074_every_automatic_test_case_is_named_in_a_comment_of_this_file():
     # TC-074
     src = open(__file__, encoding="utf-8").read()
     cases = (SPEC / "test-case.md").read_text(encoding="utf-8")
     ids = sorted(set(re.findall(r"^\| (TC-\d{3}) ", cases, re.M)))
-    assert len(ids) == 63
+    assert len(ids) == 72
     missing = [i for i in ids if not re.search(r"#[^\n]*\b%s\b" % i, src)]
     assert missing == []
     for node in ast.walk(ast.parse(src)):
@@ -726,7 +781,7 @@ def test_tc091_an_unconfirmed_launch_still_queues_nothing(w):
 
 def test_tc093_the_contract_files_were_not_edited_after_the_contract_commit():
     # TC-093
-    r = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--name-only", "94554a4", "HEAD", "--", "specs/keep-submissions/plan.md",
+    r = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--name-only", "1cd2ee5", "HEAD", "--", "specs/keep-submissions/plan.md",
                         "specs/keep-submissions/test-case.md", "specs/keep-submissions/test-case-overview.md"],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
