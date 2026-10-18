@@ -44,3 +44,13 @@ Added to the test helper `station_harness.py`: the fake `squeue` also answers `-
 - **A resume made at the terminal of a run first launched over HTTP.** The `origin` is kept verbatim, including its `upload_paths` of the first time; a terminal resume adds no new record (no area), and the agent only ever checks a record that is in the bundle.
 - **TC-168, TC-169, TC-170.** Not yet accepted on NCHC. The pull request must say so.
 - **Suite time (plan "Suite time").** The last shard of `tests/platform_test.sh` (every file not named in a list) took 303 s of the 300 s limit on a 16-core WSL box, so `run_all.sh` reported a timeout though all tests passed. Two named shards were added (`test_owner_binding`/`test_pat`/`test_human_channel`; `test_confirm_page`/`test_owner_gaps`/`test_launch_followup`/`test_web_login`); the rest shard went from 777 tests/303 s to 483 tests/140 s, the whole file from 303 s to 141 s. Every file is still in exactly one shard; no limit raised, no test changed.
+
+## Merge of v3 (009i OAuth, #126) into this branch
+
+Merged `origin/v3` (never rebased). Conflicts resolved as the union:
+
+- `platform/abf_platform/actions/__init__.py`: one `_ask` with both `form_is_trusted(caller)` (009i) and the `tool` name (009e). `request_resume` and `request_relaunch` already call `_ask`, so a connector that is not allow-listed gets the page only. New test `test_resume_entrypoints.py::test_009e_009i_a_connector_that_is_not_allow_listed_gets_the_page_only_for_resume_and_relaunch`: pending + URL, form never shown, zero new jobs.
+- `test_station_envs.py` tc063/tc084: exact sets contain both `oauth` and `resume`/`relaunch`; the list of names is in registration order `...pat,oauth,ce,mcp,rebuild,runs,launch,resume,relaunch,cancel,...`.
+- `tests/platform_test.sh`: both shard edits kept (the resume shards and the oauth shard); every test file is in exactly one shard.
+- `CHANGELOG.md`: both entries (009e and 009i).
+- `test_oauth_mcp.py` (from v3) counted eight tools; with this feature the MCP has ten (`resume`, `relaunch` added), so the count and the exact name list there were updated: the same change as `test_resume_entrypoints.py::test_tc132`, not a weakened check.
