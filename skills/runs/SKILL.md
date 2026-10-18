@@ -291,7 +291,7 @@ elsewhere. For Jev, `memory` is the "Out of memory" section below, `unknown` is 
 - **Usual fix:** the task needed more time than it requested; a larger time
   request for that process is a changed request, so a new `launch` (through
   `skills/launch/SKILL.md`) - changing it by relaunch is not available on v3 yet (owed: resize-relaunch).
-- **Ask the user** before relaunching: more time is a different request than the
+- **Ask the user** before a new `launch` with more time: that is a different request than the
   one they made. 🤖 Reading the log and measuring is yours.
 
 #### `network`
@@ -390,8 +390,8 @@ carries `peak_rss` and `peak_vmem` per task. This is the measurement to use on v
 | signal | meaning | action |
 |---|---|---|
 | 137 / killed, retry succeeded | recovered by itself | 🤖 report the box it needed |
-| 137 / killed, retry also died | one tier was not enough | 🤖 relaunch above what the retry reached |
-| ≥ 85% of the box, task failed | died against its own ceiling | 🤖 relaunch one tier up |
+| 137 / killed, retry also died | one tier was not enough | 🤖 report the box the retry reached; a larger one is a new `launch` the person confirms |
+| ≥ 85% of the box, task failed | died against its own ceiling | 🤖 report it; a larger box is a new `launch` the person confirms |
 | ≤ 30% and waiting on resources | badly over-allocated | 🤖 down to the box fitting peak RSS × 1.5 |
 | 30–85% | reasonable | 🤖 leave it; the wait is a real queue, not a sizing problem |
 | no measurement at all | nothing to reason from | ⏸ propose and wait |

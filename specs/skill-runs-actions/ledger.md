@@ -22,3 +22,7 @@
 ## Retired tests
 
 Retired assertions: none. No existing test was edited, deleted or loosened; the existing tests that read skills/runs/SKILL.md (runs_report_format_test.sh, jev_test.sh, egress_allow_test.sh, flow_skills_layout_test.sh, off_design_single_path.sh, works_without_host_test.sh, column_output_relay_rule.sh) pass unchanged.
+
+## Fix round (TC-023)
+
+The "Reading a measurement" table and the walltime bullet still told the AI to "relaunch one tier up" or relaunch with more time. They now say a larger box or more time is a new `launch` the person confirms (consistent with owed: resize-relaunch). `tests/skill_runs_uses_actions_test.sh` TC-023 gained a second check that looks at "relaunch" with or without backticks (this adds an assertion; none was loosened).
