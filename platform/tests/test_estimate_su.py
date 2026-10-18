@@ -337,3 +337,80 @@ def test_tcc04_su_py_says_why_nothing_existing():
 def test_tcc05_money_rates_are_not_in_the_code():
     # TC-C05
     assert not re.search(r"0\.08|0\.24", SU_PY.read_text(encoding="utf-8"))
+
+
+# ---- US4 Taipei month (plan E2) --------------------------------------------------------------------------------------
+
+import calendar
+
+
+def _utc(y, mo, d, h, mi, s):
+    return calendar.timegm((y, mo, d, h, mi, s))
+
+
+def _one_run_total(tmp_path, start, month, ended=None):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    db, plat = _index(tmp_path, [("a-run", 1, start)])
+    if ended is not None:
+        from abf_platform import store
+        con = store.connect_index(db)
+        with con:
+            con.execute("UPDATE runs SET ended_at = ?", (ended,))
+        con.close()
+    return _total(db, plat, {"a-run": 8}, 1, month)
+
+
+def test_tc034_utc_sept_30_16h_is_taipei_october(tmp_path):
+    # TC-034
+    assert _one_run_total(tmp_path, _utc(2026, 9, 30, 16, 0, 0), "2026-10") == pytest.approx(8)
+
+
+def test_tc035_utc_sept_30_1559_is_taipei_september(tmp_path):
+    # TC-035
+    t = _utc(2026, 9, 30, 15, 59, 59)
+    assert _one_run_total(tmp_path / "x", t, "2026-10") == 0
+    assert _one_run_total(tmp_path / "y", t, "2026-09") == pytest.approx(8)
+
+
+def test_tc036_utc_oct_31_16h_is_taipei_november(tmp_path):
+    # TC-036
+    t = _utc(2026, 10, 31, 16, 0, 0)
+    assert _one_run_total(tmp_path / "x", t, "2026-10") == 0
+    assert _one_run_total(tmp_path / "y", t, "2026-11") == pytest.approx(8)
+
+
+def test_tc037_month_follows_start_not_end(tmp_path):
+    # TC-037: starts Taipei 2026-09-30 22:00 (= UTC 14:00), ends in October
+    start = _utc(2026, 9, 30, 14, 0, 0)
+    end = _utc(2026, 10, 1, 1, 0, 0)
+    assert _one_run_total(tmp_path / "x", start, "2026-09", end) == pytest.approx(8)
+    assert _one_run_total(tmp_path / "y", start, "2026-10", end) == 0
+
+
+def test_tc038_unknown_run_makes_month_unknown(tmp_path):
+    # TC-038
+    db, plat = _index(tmp_path, [("a-1", 1, OCT), ("a-2", 1, OCT + 86400)])
+
+    def tasks_of(index_path, run_name):
+        if run_name == "a-1":
+            return [{"queue": "p1", "cpus": 1, "realtime": H * 10 / 1.5}]
+        return [{"queue": "p1", "cpus": None, "realtime": 1}]
+    assert su_mod().month_total(db, plat, 1, "2026-10", "testsite", rates(), tasks_of) is None
+
+
+def test_tc039_month_without_runs_is_zero_not_none(tmp_path):
+    # TC-039
+    db, plat = _index(tmp_path, [("a-sep", 1, SEP)])
+    out = _total(db, plat, {"a-sep": 5}, 1, "2026-10")
+    assert out == 0 and out is not None
+
+
+def test_tc040_other_users_unknown_run_does_not_matter(tmp_path):
+    # TC-040
+    db, plat = _index(tmp_path, [("a-oct", 1, OCT), ("b-oct", 2, OCT)])
+
+    def tasks_of(index_path, run_name):
+        if run_name == "b-oct":
+            return None
+        return [{"queue": "p1", "cpus": 1, "realtime": H * 10 / 1.5}]
+    assert su_mod().month_total(db, plat, 1, "2026-10", "testsite", rates(), tasks_of) == pytest.approx(10)
