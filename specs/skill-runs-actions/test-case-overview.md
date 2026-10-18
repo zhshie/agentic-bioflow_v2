@@ -2,7 +2,9 @@
 
 狀態：合約已確認（2026-10-18，verifier）
 
-**規格**：`specs/skill-runs-actions/plan.md`（此功能沒有獨立 spec.md；計畫即規格）　**明細**：`test-case.md`
+<!-- 第 2 版：developer-agent 在第一輪驗收後把裁示 S1 至 S6 寫進 plan.md，合約因此重開；本版把 S1 至 S6 逐條加成 TC-080 至 TC-097，並把 diff 類案例的基底從 main 改成這個 PR 實際的基底 origin/v3。第 1 版的編號一個都沒動。 -->
+
+**規格**：`specs/skill-runs-actions/plan.md`（此功能沒有獨立 spec.md；計畫含末段 S1 至 S6 即規格）　**明細**：`test-case.md`
 
 ## 一眼看完
 
@@ -14,33 +16,39 @@
 | 4 結構與既有測試不退步（TC-040 至 TC-047） | 8 | 0 | 0 | 8 |
 | 5 淘汰舊測試的規矩（TC-050、TC-051） | 1 | 1 | 0 | 2 |
 | 6 不在範圍（TC-060 至 TC-065） | 0 | 0 | 6 | 6 |
+| 7 驗收後裁示 S1 至 S6（TC-080 至 TC-097） | 12 | 5 | 1 | 18 |
 | 憲法與安全網（TC-070 至 TC-072） | 3 | 0 | 0 | 3 |
-| **合計** | 30 | 5 | 6 | 41 |
+| **合計** | 42 | 10 | 7 | 59 |
 
-自動驗證 40 條、手動驗證 1 條（TC-024，引用 `docs/TESTING.md` 既有的「Resume and relaunch (009e)」第 2 步）。
+自動驗證 56 條、手動驗證 3 條（TC-024，引用 `docs/TESTING.md` 既有的「Resume and relaunch (009e)」第 2 步；TC-094、TC-095，引用 S5 新增的那一步）。
+
+區塊 7 細分：S1 七條（TC-080 至 TC-086）、S2 兩條（TC-087、TC-088）、S3 三條（TC-089 至 TC-091）、S4 一條（TC-092）、S5 四條（TC-093 至 TC-095、TC-097）、S6 一條（TC-096）。
 
 ## 請你判斷的三件事
 
-1. **每條是不是你要的？** 特別看 TC-001（skill 裡不能再有 `tw` 指令）、TC-020／TC-021（動作只請求、確認一定是人）、TC-030（還在呼叫 tw 的腳本要明講「v3 尚未提供」）。
-2. **有沒有漏掉的出錯情況？** 例如 AI 對使用者說「我幫你確認了」、或 skill 說 `relaunch` 工具能改記憶體大小。這些在 TC-021、TC-023。
-3. **「不在範圍」對嗎？** 其他 skill、platform/、hooks/、CHANGELOG.md、docs/PLATFORM.md、所有 scripts 都不動（TC-060 至 TC-065）。
+1. **每條是不是你要的？** 特別看 TC-001（skill 裡不能再有 `tw` 指令）、TC-020／TC-021（動作只請求、確認一定是人）、TC-080 至 TC-084（六種狀態各怎麼對應到平台只回的四種狀態）。
+2. **有沒有漏掉的出錯情況？** 例如 AI 對使用者說「我幫你確認了」（TC-021）、skill 說 `relaunch` 能改記憶體大小（TC-023）、「已送出、還沒開始」一直等下去（TC-081）、AI 憑空拼出 task 資料夾路徑（TC-090）。
+3. **「不在範圍」對嗎？** 其他 skill、platform/、hooks/、CHANGELOG.md、docs/PLATFORM.md、所有 scripts、docs/TESTING.md 既有步驟都不動（TC-060 至 TC-065、TC-097）。
 
 ## 覆蓋檢查
 
 - 計畫的目標與規則共 5 組（Goal；Rule 1 只用 v3 存在的工具；Rule 2 沒有對應就明講並記帳；Rule 3 結構與語氣不變；Rule 4 淘汰舊測試的規矩），全部都有測試案例：是。
 - 計畫「Tests」兩點全部都有測試案例：是（第 1 點：TC-001、TC-002、TC-003、TC-012、TC-014、TC-020；第 2 點：TC-046、TC-047）。
-- 計畫的範例與句子：沒有維護者逐字範例，TC 全部取自計畫的目標、規則與 Tests 原文。
-- 計畫「Out of scope」共 5 條（其他 skill、platform/、hooks/、CHANGELOG.md、docs/PLATFORM.md），加上 Rule 4 的「不改其他 script」共 6 條，全部都有「不在範圍」測試案例：是。
-- 驗收時要在 main 與本分支各跑一次新測試（TC-014）：新測試對 main 必須失敗。
+- 計畫裁示 S1 至 S6 共 6 條，全部都有測試案例：是（S1：TC-080 至 TC-086；S2：TC-087、TC-088；S3：TC-089 至 TC-091；S4：TC-030、TC-092、TC-065；S5：TC-093 至 TC-095、TC-097；S6：TC-044、TC-045、TC-096）。
+- 計畫的範例與句子：沒有維護者逐字範例，TC 全部取自計畫的目標、規則、Tests 與裁示原文；計畫裡被引號框起來的使用者面對用語（「已送出、還沒開始」）照字面寫進 TC-080。
+- 計畫「Out of scope」共 5 條（其他 skill、platform/、hooks/、CHANGELOG.md、docs/PLATFORM.md），加上 Rule 4 的「不改其他 script」與 S5 的「只加一步」共 7 條，全部都有「不在範圍」測試案例：是（TC-060 至 TC-065、TC-097）。
+- 驗收時要在基底分支與本分支各跑一次新測試（TC-014）：新測試對基底分支版必須失敗。
+- 第 1 版的三個疑問（狀態字怎麼對應、還在呼叫 tw 的腳本、沒有人實際跑一次的手動步驟）已由裁示 S1、S4、S5 回答，並轉成 TC-080 至 TC-095。
 
 ## 我（撰寫者）不確定的地方
 
-1. **狀態字怎麼對應？** v3 的 `get_run` 只回 running、succeeded、failed、lost；沒有 SUBMITTED、CANCELLED（取消的 run 對 Nextflow 是 failed）。六個分支標題被 `tests/runs_report_format_test.sh` 釘住。計畫沒說這兩個分支在 v3 要怎麼接，所以我沒有為「對應方式」寫 TC。這需要 developer-agent 在實作前答覆，最好寫進 ledger。
-2. **還在呼叫 tw 的腳本要算進來嗎？** `task_health.sh`、`tune_resources.sh`、`relaunch_with_override.sh`、`runs_board.sh`、`agent_ctl.sh` 內部都呼叫 tw，而計畫又不許改腳本。我把規則 2 套用在它們身上（TC-030）：要嘛換成平台工具，要嘛明講 v3 尚未提供並記進 ledger。若計畫只想管 SKILL.md 的字面 tw，請明說，TC-030 就要放寬。
-3. **TC-011 是推論。** 「Seqera Platform 是唯一真相」那句直接和新做法衝突，我當作「只改怎麼讀狀態」的一部分。若你認為那句該保留，TC-011 要刪。
-4. **沒有人實際讓 AI 照新 skill 跑一次的手動步驟。** 憲法要求動 `skills/` 的發版前要走手動半邊；計畫沒有新增 `docs/TESTING.md` 的步驟，我只能引用現有的 resume／relaunch 那一步（TC-024）。
-5. **「tw」出現在說明文字算不算違規？** TC-001 允許「某句明講這一步 v3 尚未提供」時提到 `tw`；其他地方一律不准。
+1. **CANCELLED 的「取消請求已送出」這個事實，AI 在 MCP 上從哪裡拿？** S1 說 CANCELLED ＝ failed 且「facts 說取消已送出」，但 docs/PLATFORM.md 說這個 fact 在終端指令 `abf-platform launches`，十個 MCP 工具都不回它。TC-083 只檢查 skill 有寫對應、沒有編造工具；不論答案是什麼，檢查內容不變，但若是缺口，該不該記進 ledger 的待補？
+2. **S3、S4 的標記要用中文原句，還是 skill 全文那樣的英文？** TC-089、TC-092 接受兩者；TC-080 的「已送出、還沒開始」則要求照字面。要不要三處統一用中文？
+3. **runs_board.sh、agent_ctl.sh 已被 list_runs／list_agents 取代，這樣可以嗎？** S4 寫「stay」，但現行 skill 已換成平台工具（更符合 Goal）。TC-030／TC-092 兩種都接受。
+4. **TC-011 仍是推論。** 「Seqera Platform 是唯一真相」那句和新做法衝突，我當作「只改怎麼讀狀態」的一部分；若你認為該保留，TC-011 要刪。
+
+以上四點都不改變已寫出的 TC 要檢查的內容，只決定是否要放寬或追加。
 
 ## 核可紀錄
 
-（尚無。狀態由 verifier 依「計畫無阻擋問題、所有計畫句子皆有 TC」設為合約已確認；上列不確定處不改變已寫出的 TC 的檢查內容，只決定是否要追加或放寬。）
+（尚無。狀態由 verifier 依「計畫無阻擋問題、計畫每一句（含 S1 至 S6）皆有 TC」設為合約已確認。）
