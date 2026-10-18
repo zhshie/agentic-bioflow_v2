@@ -43,3 +43,26 @@ Resolved as the union; nothing loosened from either side.
 - Tests: `test_confirm_page.py` TC-G04 and `test_owner_binding.py` tc068 route sets are the union (011a's `/` added to 009i's sets; `/` leaves the "must be 404" loop as before). `test_web_parity.py`: `ConnectorCaller` and `form_is_trusted` (new public names from 009i) are INTERNAL (MCP side only, the web never calls them); the OAuth web routes are not actions, so WEB_ONLY gets no entry.
 - Docs: CHANGELOG, `docs/PLATFORM.md` (route sentence is the union, the CSP sentence kept and told that the consent page adds one `form-action` origin), `docs/TESTING.md` (both sections kept).
 - `test_web_board.py` TC-H11 (`test_tch11_read_only`): its pinned route list now also holds the 009i OAuth/consent routes (same union as TC-G04); the read-only assertions (one form, one button, POST / is 405) are unchanged.
+
+## Layout B redo (plan "Layout redo", L1 to L9, rulings B1 to B6, C1 to C6)
+
+- [x] RED `3429979`: `test_web_board.py` rewritten for the new markup, plus TC-L01 to L44 (L-numbers below), TC-H12d, TC-N08 to N11.
+- [x] GREEN: `web_board.py` redone (top bar, 232/1fr/272 grid, stage cells `is-done`/`is-current`/`is-later`, whole-block history items, one string table `STRINGS` zh/en, `render_not_found`); `web.py` board route reads `lang`, reads `failure_reason` through `get_run(caller=...)` for the failed items shown (at most 100), and answers the 404 through `render_not_found`.
+- [x] Docs: CHANGELOG, `docs/PLATFORM.md` (right column and the switch), `docs/TESTING.md` (visual check TC-V06 to TC-V10), `web.py` header.
+- [ ] Manual (verifier): TC-V06 to V10 screenshots (wide, <900 px, zh and en); TC-D10, TC-D11 by this ledger and the diff.
+
+### Test assertions changed for the new markup (TC-D10); none deleted without a replacement
+
+| Old test and assertion | New | Reason |
+|---|---|---|
+| `test_tch01b_h20_h21a_three_panes`: page contains "本月費用", "專案與分析（011b）尚未開放", "設定（尚未開放）", the user name | `test_tcl02_h21a_three_panes`: no "本月費用", "011b" or "尚未開放" anywhere; cost line "本月 SU — · 雲端 —"; each run a link to `/?run=<id>`; "之後開放" outside every link; settings grey; one form | B1, B4 replace the wording; TC-L02, L05, L06. The user name moved to the top bar (asserted in `test_tcl01_top_bar`) |
+| `test_tch20a_newest_first`: `text.split("本月費用")[0]` was the left column | `pane(text, "left")` | the cost heading is gone; columns are found by `data-pane` |
+| `test_tch21_stage_strip_and_bodies`: stage order by `stage=` index, `→` between cells, counts as `label : n` in English words | split into `test_tch21_stage_bodies` (times verbatim, count label paired with number, reason, placeholders), `test_tcl07_to_l13_stage_strip` (five cells, `is-*` classes, `aria-current`), `test_tcl14_l15_l16_middle` (badge, seven cells in C6 order, prev/next links) | L3, B2, C6: no arrows between cells, count labels are the C6 Chinese words |
+| `test_tch22_groups_and_counts`: five groups in stage order, "3" not in the running head | `test_tch22_l19_l20_groups_and_counts`: groups running, results, later; heads exactly "執行中（4）" and "結果（3）"; no 送出/下游/完成 group; failed and lost items under running | B5, C1 |
+| `test_tch08_states_readable_without_colour`: `state-*` class on a `<span>` followed by the label | `test_tch08_l21_states_readable_without_colour`: each of the four right-column items is one link with the `state-*` class, "symbol label" text and `href=/?run=`; four distinct classes | L4, L5, TC-L21 |
+| `test_tch09_cost`: two lines, "雲端 —" before the first group | one line exactly "本月 SU — · 雲端 —" before any group, no link, no number, no "NCHC", no "本月費用" | B1, option B, TC-L17, L18 |
+| `test_tch19_long_lists`: `split("本月費用")` into left/right | `pane(t, ...)`; same counts (100 shown, "還有 150 筆" in both columns) | same reason as `test_tch20a` |
+| `group_head` helper | reads the right column by `data-pane` | same |
+
+Unchanged and still passing: H01a, H02, H03, H04, H05, H06, H07, H08 (progress), H10, H11, H12, H13, H14, H15, H17, H18, K1, N02, N04, N05 (their markup needles still exist: `rel="prev"`, `data-current`, "還沒有", `<progress>`).
+`test_launch_static.py` tc069/tc070 are untouched.

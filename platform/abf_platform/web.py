@@ -3,10 +3,10 @@
 
 A separate small app (`abf-platform web`), not part of the MCP server's bearer check and not part of the receiver: a browser has no
 bearer token and must never be given one. Spec 011a added the first page that shows anything but a login or one request: GET /, the
-three-pane board (my runs, the stage board of one run, all my runs by stage), read-only and for the logged-in user's own runs only.
+three-column board (my runs, the stage board of one run, all my runs by stage; after Galaxy, English with ?lang=en), read-only and for the logged-in user's own runs only.
 The only routes there are:
 
-  GET  /             the board (spec 011a): ?run=<id> picks the run of the middle pane, ?stage=<name> its stage; needs the cookie
+  GET  /             the board (spec 011a): ?run=<id> picks the run of the middle pane, ?stage=<name> its stage, ?lang=en the English page; needs the cookie
   GET  /login        the login form (name + web password)
   POST /login        log in; the password is checked against its scrypt hash; a cookie of 12 hours
   POST /logout       end this browser login
@@ -336,19 +336,29 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return None
         return None if view.get("found") is False else view
 
+    def read_reasons(ids, caller):
+        """The failure_reason of each failed run the right column shows (at most the cap), read with the caller's own rights."""
+        out = {}
+        for rid in ids:
+            view = read_run(rid, caller)
+            out[rid] = (view or {}).get("failure_reason")
+        return out
+
     async def board(request):
         sid, user = user_of(request)
         if user is None:
             return RedirectResponse("/login", status_code=303, headers=_HEADERS)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        lang = web_board.pick_lang(request.query_params.get("lang"))
         run_id = request.query_params.get("run") or ""
         selected = None
         if run_id:
             selected = await run_in_threadpool(read_run, run_id, caller)
             if selected is None:        # another person's run and a missing id answer alike, and the page never repeats the id
-                return _page("找不到 (not found)", "<p>沒有這個 run。</p>", 404)
+                return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
         runs = await run_in_threadpool(read_runs, caller)
-        doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, request.query_params.get("stage"))
+        reasons = await run_in_threadpool(read_reasons, web_board.failed_ids_shown(runs), caller)
+        doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, request.query_params.get("stage"), lang, reasons)
         return HTMLResponse(doc, headers=_HEADERS)
 
 

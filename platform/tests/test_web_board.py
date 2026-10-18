@@ -334,7 +334,7 @@ def test_tch19_long_lists(w):
     con.close()
     con2.close()
     t = login(w, "ann").get("/").text
-    left, right = t.split("本月費用")
+    left, right = pane(t, "left"), pane(t, "right")
     assert len(re.findall(r"run\d{3}", left)) == 100 and "還有 150 筆" in left
     assert len(re.findall(r"run\d{3}", right)) == 100 and "還有 150 筆" in right
     assert "250" in group_head(t, "results")

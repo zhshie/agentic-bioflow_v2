@@ -305,13 +305,13 @@ Needs the platform running (`abf-platform serve`, `abf-platform mcp --http`, `ab
 
 Needs `abf-platform web` on loopback, a data folder with e2e runs of the four statuses (running, succeeded, failed, lost; `platform/tests/e2e_harness.py` or a copy of a real index), two users with web passwords (`abf-platform user passwd <name>`), and a run each launched by those users.
 
-**Visual check (TC-V01 to TC-V05).**
+**Visual check (TC-V02 to TC-V10).**
 
-1. Log in as the first user and open `/`. Take a screenshot (TC-V01). Pass: three columns; left "我的 run" newest first; right "本月費用" with "SU —" and "雲端 —" on two lines, then five groups.
+1. Log in as the first user and open `/` (wide window, Chinese). Take a screenshot (TC-V06). Pass: a thin dark top bar (`agentic-bioflow` left, the user name and 中 | EN right), a 232 px left column of my runs with grey "之後開放", the right column starting with one line "本月 SU — · 雲端 —", then the groups "執行中" and "結果" with colour-filled whole-block items.
 2. Click a succeeded run and take a screenshot (TC-V02). Pass: the stage strip stands on results; status, times and a progress bar show.
 3. Click a failed run and take a screenshot (TC-V03). Pass: the failed state and the failure reason in Nextflow's words.
 4. Turn the screenshot of step 1 black and white (TC-V04). Pass: the four states still differ by symbol and text (▶ ✓ ✗ ⏸).
-5. Make the window narrower than 900 px and take a screenshot (TC-V05). Pass: the panes stack and nothing is cut off.
+5. Make the window narrower than 900 px and take a screenshot (TC-V07). Pass: the columns stack in the order middle, right, left and nothing is cut off. Then open `/?lang=en` with a run picked, wide (TC-V08) and narrow (TC-V09). Pass: every interface word is English, run names unchanged. Last, put TC-V06 beside `specs/011a-web-shell/layoutB-reference.html` (TC-V10): same skeleton (solid and dashed stage strip, filled items, outlined selected run).
 6. Log in as the second user. Pass: none of the first user's runs appear, and opening `/?run=<their run id>` gives the same 404 page as a made-up id.
 
 **Ledger review (TC-D01 to TC-D09, TC-N07, TC-K5).** Read `specs/011a-web-shell/ledger.md` and `git diff v3...HEAD`. Pass: every rewritten pin has an old value, a new value and a reason (TC-G04 six routes; the "已登入 … 請回到 AI" page replaced by the redirect to `/`; CSP and `PLATFORM.md` wording); no other test was deleted, skipped or loosened; `docs/PLATFORM.md` names six routes; the CHANGELOG has a 011a line; `web.py`'s header describes `GET /`; nothing under `hooks/`, `.claude/`, `actions/`, `jobs.py`, `mcp_server.py` or `store.py` changed.
