@@ -43,7 +43,7 @@ def test_tc013_the_finding_names_the_field_and_never_holds_the_value(label):
     cfg = {"workDir": "/data/work", "nextflowConfig": "process.ext.x = '%s'" % KEYS[label],
            "environment": [{"name": "SOMEVAR", "value": KEYS[label]}]}
     found = compute_envs.credential_findings(cfg, "config")
-    assert "config.nextflowConfig" in found and "config.environment[0]" in found, found
+    assert "config.nextflowConfig" in found and "config.environment[0].value" in found, found
     assert KEYS[label] not in json.dumps(found)
 
 

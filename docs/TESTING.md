@@ -340,6 +340,14 @@ This one is read, not run. Open `specs/116b-owner-gaps/ledger.md` next to `git d
 4. **The cache is reused (not yet done).** After the resume starts, `get_run` of `<RUN>-a2`. Pass: it shows tasks as cached, the ones that finished before.
 5. **The pull request** says "not yet accepted on NCHC" until 3 and 4 are done.
 
+## Browser chat backend (014a): the reviewer checks three things
+
+The automated tests are `platform/tests/test_chat_tools.py` and `platform/tests/test_model_key_refusal.py`. Three test cases cannot be checked by a test and are done by hand, from the root of the branch.
+
+1. **Only the allowed files changed (TC-032).** Run `git diff main...HEAD --stat`. Expected: only `platform/abf_platform/actions/chat_tools.py`, `platform/abf_platform/compute_envs.py`, the two test files above, `docs/TESTING.md` and files under `specs/014a-chat-backend/`. `platform/abf_platform/actions/__init__.py`, `mcp_server.py`, `web.py` and `web_board.py` are not in the list, and no `.js`, `.html` or style file was added.
+2. **No doc or release file was touched (TC-036).** Run `git diff main...HEAD --stat -- docs/PLATFORM.md docs/ROADMAP.md CHANGELOG.md`. Expected: empty output.
+3. **No existing test was weakened (TC-043).** Run `git diff main...HEAD -- platform/tests tests`. Expected: only the two new test files appear; no assertion in an existing test file was removed, loosened, re-valued or skipped. Then run the whole suite in WSL (`bash tests/run_all.sh`) and see it green.
+
 ## When a release moves the flow files (commands → skills)
 
 Used by whoever reviews a change that moves or renames the five flow files
