@@ -339,8 +339,12 @@ def test_tch11_read_only(w):
         assert re.search(r'name="csrf" value="[^"]+"', t)
     assert c.post("/").status_code == 405
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
-    assert routes == [("/", ("GET", "HEAD")), ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)), ("/login", ("GET", "HEAD")),
-                      ("/login", ("POST",)), ("/logout", ("POST",))], routes
+    # 009i: the OAuth routes and the consent page are the only additions to the six of 011a; none of them is a board or a run page
+    assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")),
+                      ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)),
+                      ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/login", ("GET", "HEAD")),
+                      ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
+                      ("/revoke", ("OPTIONS", "POST")), ("/token", ("OPTIONS", "POST"))], routes
 
 
 def _digest(w):
