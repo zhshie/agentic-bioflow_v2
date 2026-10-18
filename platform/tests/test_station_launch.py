@@ -102,6 +102,30 @@ def test_unconfirmed_launch_is_refused(tmp_path, site, fake):
     nothing_happened(site)
 
 
+def test_unconfirmed_resume_is_refused(tmp_path, site, fake):
+    # 009e TC-040: the sibling of test_unconfirmed_launch_is_refused, in the one file that submits. A resume job without a valid confirmation
+    # gives no call on the site at all: not the questions to the queue, not the tar, not the sbatch, and the run folder is as it was.
+    from resume_harness import make_folder, resume_bundle
+    origin, b = resume_bundle(site, fake)
+    f = make_folder(origin)
+    before = snapshot(f)
+    good = job_of(b)
+    with agent_on(fake, site, tmp_path, name="agent-f") as a:
+        wait_for(lambda: fake.count("hello"))
+        for label, job in (("no confirmation id", dict(good, args={"bundle": b, "bundle_sha256": good["args"]["bundle_sha256"]})),
+                           ("no confirmation row", {k: v for k, v in good.items() if k != "confirmation"}),
+                           ("sha mismatch", dict(good, confirmation=dict(good["confirmation"], sha256="0" * 64))),
+                           ("wrong kind", dict(good, confirmation=dict(good["confirmation"], kind="cancel"))),
+                           ("spent", dict(good, confirmation=dict(good["confirmation"], used_at=12345.0)))):
+            res = run_job(fake, job)
+            assert res["state"] == "refused", (label, res)
+        assert a.alive()
+    assert snapshot(f) == before
+    assert site.calls() == [] or all(c.split()[0] in ("sinfo", "java", "nextflow") for c in site.calls()), site.calls()
+    assert site.dangerous() == [] and site.destructive() == []
+    assert site.guards_intact()
+
+
 @pytest.mark.parametrize("cid", [None, "", 7, ["x"], {"a": 1}, True])
 def test_tc008_a_confirmation_id_of_the_wrong_kind_or_none_is_refused(tmp_path, site, fake, cid):
     b = bundle_for(site, fake)

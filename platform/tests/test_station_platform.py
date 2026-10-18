@@ -309,7 +309,7 @@ def test_tc090_the_new_tables_have_no_run_state_and_the_job_kinds_are_locked_in_
         for col in [c[1].lower() for c in con.execute("PRAGMA table_info(%s)" % t)] + [t]:
             for word in ("run", "workflow", "session", "task", "exit"):
                 # feature 007b (TC-060): the hand-off record names a run and its folder, and nothing else here does
-                if word == "run" and (t, col) in (("launches", "run_name"), ("launches", "run_folder")):
+                if word == "run" and (t, col) in (("launches", "run_name"), ("launches", "run_folder"), ("launches", "parent_run")):    # 009e: parent_run, the run this one is an attempt of
                     continue
                 assert word not in col, (t, col)
     for kind in ("rm", "launch", "scancel", "write_file", ""):

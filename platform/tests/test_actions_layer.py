@@ -25,7 +25,7 @@ PKG = PLATFORM_DIR / "abf_platform"
 SCAN_DIRS = [PLATFORM_DIR / "abf_platform", PLATFORM_DIR / "abf_station", PLATFORM_DIR / "abf_launch"]
 REFUSED = "no human confirmation channel"
 READ_NAMES = ["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files"]
-WRITE_NAMES = ["launch", "cancel", "forget"]    # 009c: the two tools that make a request a person must say yes to
+WRITE_NAMES = ["launch", "cancel", "forget", "resume", "relaunch"]    # 009c: the two tools that make a request a person must say yes to; 009e: and the two for a failed run
 ROUTES_V3 = [('/agent/hello', ('POST',)), ('/agent/poll', ('POST',)), ('/agent/result/{jid}', ('POST',)),
              ('/trace/create', ('POST',)), ('/trace/{rid}/begin', ('PUT',)), ('/trace/{rid}/complete', ('PUT',)),
              ('/trace/{rid}/heartbeat', ('PUT',)), ('/trace/{rid}/progress', ('PUT',)), ('/user-info', ('GET', 'HEAD'))]
@@ -151,7 +151,8 @@ def test_tca02_every_tool_has_a_same_named_action_and_there_are_exactly_the_six_
     names = {t.name for t in _tools(_server(str(tmp_path / "index.db")))}
     assert names == set(READ_NAMES + WRITE_NAMES)
     for n in names:
-        assert callable(getattr(a, n, None)), n
+        # 009e: the action of resume and relaunch is the request (they only ask; the terminal's yes goes through `launch`, with a new bundle)
+        assert callable(getattr(a, n if n in READ_NAMES + ["launch", "cancel"] else "request_" + n, None)), n
 
 
 def test_tca03_default_platform_path_and_explicit_platform_path(tmp_path):
@@ -656,9 +657,14 @@ def test_tce04_the_write_actions_take_no_identity():
         assert params["caller"].kind is inspect.Parameter.KEYWORD_ONLY and params["caller"].default is None
 
 
-def test_tce05_no_resume_or_retry_in_the_action_layer():
+def test_tce05_no_retry_and_no_resume_that_acts_in_the_action_layer():
+    # 009e: was "no resume or retry in the action layer". A resume and a relaunch exist, but only as a request that a person must say yes to
+    # (request_resume, request_relaunch, which write a pending request and never a job); nothing that retries, and no function named resume
+    # or relaunch that would act on its own.
     a = actions()
-    assert not [n for n in dir(a) if re.search(r"resume|retry", n)]
+    assert not [n for n in dir(a) if re.search(r"retry", n)]
+    assert [n for n in dir(a) if re.search(r"resume|relaunch", n)] == ["request_relaunch", "request_resume"]
+    assert asyncio.iscoroutinefunction(a.request_resume) and asyncio.iscoroutinefunction(a.request_relaunch)
 
 
 def test_tce06_the_action_layer_reads_no_environment_and_no_switch_opens_it(tmp_path, monkeypatch):

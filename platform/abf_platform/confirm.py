@@ -15,6 +15,7 @@ A row gets there in one of two ways:
 """
 import json
 import secrets
+import sqlite3
 import time
 
 from . import common, jobs, store
@@ -172,6 +173,27 @@ def find_approved(state_path, kind, bundle, caller_user_id, clock=time.time, inc
                           + ("AND j.state NOT IN ('refused', 'expired') " if include_spent else "")
                           + "ORDER BY c.created_at DESC LIMIT 1", (kind, common.bundle_sha256(bundle), caller_user_id, clock())).fetchone()
         return dict(row) if row else None
+    finally:
+        con.close()
+
+
+def find_attempt(state_path, parent_run, kind, caller_user_id, clock=time.time):
+    """{'id', 'job_id', 'run_name'} of an attempt of this kind ('resume' or 'relaunch') of the run `parent_run` that this caller got a
+    person's yes for through a form or the page, whose job was not refused, and whose request is still alive; or None. The repeated
+    tool call gets the job that exists (spec 009e); by then the attempt is a newer one of its analysis, so it is looked for by what it
+    is made from and not by building it again."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT c.id AS id, j.id AS job_id, l.run_name AS run_name FROM launches l JOIN jobs j ON j.id = l.job_id "
+                          "JOIN confirmations c ON c.id = j.confirmation_id WHERE l.parent_run = ? AND l.attempt_kind = ? "
+                          "AND c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE') AND c.kind = 'launch' AND c.caller_user_id IS ? "
+                          "AND c.expires_at > ? AND j.state NOT IN ('refused', 'expired') ORDER BY l.id DESC LIMIT 1",
+                          (parent_run, kind, caller_user_id, clock())).fetchone()
+        return dict(row) if row else None
+    except sqlite3.OperationalError:
+        return None       # a platform.db made before 009e that no command has opened since: it has no attempts
     finally:
         con.close()
 

@@ -11,6 +11,10 @@ The MCP tools launch and cancel do not call launch and cancel. They call request
 bundle and screen as the terminal, write a pending request (no job), and ask the person: through the client's form if it has one
 (then approve() runs with ELICITED), else by naming the confirmation page, whose button calls approve() with PAGE. A repeated tool
 call finds the yes (find_approved) and returns the job that exists; it never queues a second.
+
+The tools resume and relaunch (spec 009e) are asked the same way, through request_resume and request_relaunch. Their one argument is the
+name of a failed run; what is resumed or started again is the first launch's own bundle, so nothing of the analysis can be said again.
+They write the same kind of confirmation (a launch) and queue the same kind of job; what tells them apart is the content the hash covers.
 """
 import dataclasses
 import os
@@ -204,12 +208,14 @@ def form_is_trusted(caller):
     return caller is None or getattr(caller, "form_ok", True)
 
 
-async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False):
-    """The yes of a person for a bundle that is built and checked: through the form, else by the page; never by the caller itself."""
+async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False, tool=None):
+    """The yes of a person for a bundle that is built and checked: through the form, else by the page; never by the caller itself.
+    `kind` is the kind of confirmation; `tool` is the name the person knows it by (resume, relaunch), the kind when none is given."""
     caller_id = _caller_id(caller)
     form = person is not None and person.can_ask() and form_is_trusted(caller)
+    tool = tool or kind
     nobody = ("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單）。請改用終端機指令 `abf-platform %s`，或用帶權杖的 HTTP 連線 "
-              "(no one can say yes here: use the terminal command, or HTTP with a token)" % kind)
+              "(no one can say yes here: use the terminal command, or HTTP with a token)" % tool)
     if caller is None and not form:
         return _no(nobody)
     try:
@@ -243,7 +249,7 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
     return {"ok": True, "sent": False, "state": "pending", "id": rid, "confirmation_url": url, "summary": text,
             "message": unreachable + "還沒送出 (not sent yet)。請本人打開這個網址、用自己的帳號登入、看過摘要後按「送出」：%s ——按了之後，用同樣的參數再呼叫 `%s` "
                        "一次，就會得到工作編號。AI 不能代按。 (open the address, log in as yourself and press 送出; then call `%s` "
-                       "again with the same arguments)" % (url, kind, kind)}
+                       "again with the same arguments)" % (url, tool, tool)}
 
 
 def caller_area(platform_path, caller):
@@ -329,6 +335,33 @@ async def request_cancel(platform_path, *, run_name, caller=None, person=None, c
         return _queued(found["id"], found["job_id"], run_name)
     text = build.as_text(build.cancel_screen(bundle, row))
     return await _ask(platform_path, "cancel", ce, bundle, text, run_name, caller, person, clock, remote)
+
+
+async def _request_attempt(verb, platform_path, run_name, caller, person, clock, remote, index_path):
+    word = build.WORDS[verb]
+    caller_id = _caller_id(caller)
+    found = confirm.find_attempt(platform_path, run_name, verb, caller_id, clock)
+    if found:
+        return _queued(found["id"], found["job_id"], found["run_name"])
+    prepare, screen = (build.prepare_resume, build.resume_screen) if verb == "resume" else (build.prepare_relaunch, build.relaunch_screen)
+    try:
+        area = caller_area(platform_path, caller) if caller is not None else None      # over HTTP the samples must still be in the caller's folder (116b)
+        ce, bundle, row = prepare(platform_path, run_name, index_path=index_path or store.default_index_path(), owner=caller_id, area=area)
+    except build.Refusal as e:
+        return _no("未%s：%s" % (word, e))
+    text = build.as_text(screen(bundle, row))
+    return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote, tool=verb)
+
+
+async def request_resume(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False, index_path=None):
+    """Ask for the resume of a failed or cancelled run of this platform: the same folder, Nextflow goes on where it stopped, the samples and
+    parameters of the first launch. The only argument is the name of the run. Nothing is queued without a person's yes."""
+    return await _request_attempt("resume", platform_path, run_name, caller, person, clock, remote, index_path)
+
+
+async def request_relaunch(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False, index_path=None):
+    """Ask for the relaunch of a failed or cancelled run: a new folder under a new name, the same samples and parameters, from the start."""
+    return await _request_attempt("relaunch", platform_path, run_name, caller, person, clock, remote, index_path)
 
 
 def approve(platform_path, request_id, *, confirmed_by, caller=None, clock=time.time, deadline_seconds=None, offline_after=None):
