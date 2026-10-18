@@ -5,7 +5,7 @@
 1. It **receives** what Nextflow reports about a run. Nextflow's own `nf-tower` plugin sends the start of a run, its progress, a heartbeat once a minute and its end to whatever address you set as `tower.endpoint`. The receiver accepts those messages and keeps a small index of the runs.
 2. It **answers questions** about that index to an AI client over MCP (Model Context Protocol), with six read-only tools: `list_runs` and `get_run` for runs, `list_compute_envs`, `get_compute_env`, `list_agents` and `list_site_files` for the compute environments and the agent (sections 6 to 8). Five more tools, `launch`, `cancel`, `resume`, `relaunch` and `forget`, only ask: they start, stop or delete nothing until a person says yes (section 9, "The confirmation page").
 
-It does not delete anything, it starts or cancels a run only after a person's yes, its only web pages are the login and the confirmation page (`abf-platform web`), and it never contacts Seqera Platform (ADR 0004). Nextflow's own records stay the truth about a run; the index can be thrown away and rebuilt (see "Rebuild the index").
+It never deletes a run, a run folder or a result on the site (it only prunes finished job rows after 7 days, and the owner can delete a submission's kept content with `forget`), it starts or cancels a run only after a person's yes, its only web pages are the login and the confirmation page (`abf-platform web`), and it never contacts Seqera Platform (ADR 0004). Nextflow's own records stay the truth about a run; the index can be thrown away and rebuilt (see "Rebuild the index").
 
 ## What you need
 
@@ -505,7 +505,7 @@ Settings that only the tests change: `ABF_PLATFORM_DEADLINE_LAUNCH` (default 300
 
 ## What it does not do
 
-No deleting of runs, no clean-up of `work/`, no web page but the login and the confirmation page, no roles, and nothing that resumes, retries or relaunches on its own (section 9: a resume or a relaunch is asked for by name and waits for a person's yes each time; the web page and the buttons for them are later, and so is the automatic resume). The agent writes only the new run folder of a confirmed launch, the `head-<N>.sh` and `tower.token` of a confirmed resume, and sends only a confirmed stop; it never removes or moves anything on the site. Compute environments of the thirteen other types are stored and never used. MCP tools that create or change environments, a way to submit from a web page, and TLS in the program itself are later features (009 and after).
+No deleting of runs, run folders or results on the site (finished job rows are pruned after 7 days, and the owner can `forget` a submission's kept content), no clean-up of `work/`, no web page but the login and the confirmation page, no roles, and nothing that resumes, retries or relaunches on its own (section 9: a resume or a relaunch is asked for by name and waits for a person's yes each time; the web page and the buttons for them are later, and so is the automatic resume). The agent writes only the new run folder of a confirmed launch, the `head-<N>.sh` and `tower.token` of a confirmed resume, and sends only a confirmed stop; it never removes or moves anything on the site. Compute environments of the thirteen other types are stored and never used. MCP tools that create or change environments, a way to submit from a web page, and TLS in the program itself are later features (009 and after).
 
 ## Tests
 

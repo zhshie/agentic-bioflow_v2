@@ -179,6 +179,9 @@ if out=$(run "$DOC" "$WORK/s_less.json" lists); then bad "TC-017 a missing forge
 elif grep -q "forget" <<<"$out"; then ok "TC-017 a missing forget fails and is named"
 else bad "TC-017 failed without naming forget"; fi
 
+# P4: the old absolute sentence contradicted the storage table
+if grep -q "It does not delete anything" "$DOC"; then bad "P4 old phrase still present"; else ok "P4 old phrase It does not delete anything is gone"; fi
+
 # TC-026: paths in the document are covered by tests/no_hardcoded_paths.sh (run by run_all.sh)
 if [ -f tests/no_hardcoded_paths.sh ]; then ok "TC-026 tests/no_hardcoded_paths.sh exists"; else bad "TC-026 no_hardcoded_paths.sh"; fi
 
