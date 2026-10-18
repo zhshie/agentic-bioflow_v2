@@ -15,3 +15,8 @@ platform/tests/test_estimate_su.py: formula on a hand-made trace (2 tasks, known
 
 ## Out of scope
 receiver changes, MCP/web, CHANGELOG.md, docs/PLATFORM.md (another task).
+
+## Rulings after acceptance (developer-agent, 2026-10-18; maintainer: 「都照你的建議」)
+- E1 First `git merge origin/v3` (plain merge; #133 keep-submissions landed and also edits actions/__init__.py — keep both sides).
+- E2 Month total uses Asia/Taipei (UTC+8), by run start time. A month with any unknown run is unknown (keep current rule). A month with no runs is 0.
+- E3 Rates stay 0.08 / 0.24 TWD per SU with their source; factors stay null until NCHC confirms (owed, lab-agent).
