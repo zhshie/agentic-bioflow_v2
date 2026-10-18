@@ -62,7 +62,7 @@ tests/test_station_resume.py
 tests/test_resume_platform.py tests/test_resume_entrypoints.py tests/test_resume_lineage.py tests/test_resume_scope.py tests/test_resume_render.py
 tests/test_owner_binding.py tests/test_pat.py tests/test_human_channel.py
 tests/test_confirm_page.py tests/test_owner_gaps.py tests/test_launch_followup.py tests/test_web_login.py
-tests/test_oauth.py tests/test_oauth_consent.py tests/test_oauth_tokens.py tests/test_oauth_mcp.py
+tests/test_oauth.py tests/test_oauth_consent.py tests/test_oauth_tokens.py tests/test_oauth_mcp.py tests/test_keep_submissions.py
 "
     local listed f
     listed=" $(echo $SHARDS) $LAST "

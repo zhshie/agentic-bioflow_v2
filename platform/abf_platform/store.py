@@ -195,7 +195,9 @@ CREATE TABLE IF NOT EXISTS confirmations (
     ce_name TEXT,
     bundle_json TEXT,
     screen_text TEXT,
-    void_reason TEXT
+    void_reason TEXT,
+    forgotten_at REAL,
+    forgotten_by TEXT
 );
 %(jobs)s
 %(launches)s;
@@ -206,6 +208,8 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 """
 
+# forgotten_at / forgotten_by (keep-submissions) sit before confirmation_id, which has always been the last column; a platform.db made before
+# them gets them last through _add_forgotten_columns (every reader names its columns).
 _JOBS_TABLE = """CREATE TABLE %(name)s (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent TEXT NOT NULL,
@@ -219,6 +223,8 @@ _JOBS_TABLE = """CREATE TABLE %(name)s (
     deadline_at REAL NOT NULL,
     claimed_at REAL,
     finished_at REAL,
+    forgotten_at REAL,
+    forgotten_by TEXT,
     confirmation_id TEXT UNIQUE REFERENCES confirmations(id),
     CHECK (kind NOT IN ('launch_nextflow', 'cancel_run') OR confirmation_id IS NOT NULL)
 )"""
@@ -468,6 +474,20 @@ def _add_confirmation_column(con):
             con.execute("ALTER TABLE confirmations ADD COLUMN caller_user_id INTEGER")
 
 
+def _add_forgotten_columns(con):
+    """A platform.db made before keep-submissions has no record of a forget: add forgotten_at (REAL) and forgotten_by (the user id
+    as text, NULL from the terminal) to confirmations and jobs. Old rows keep NULL. They say only that the content was deleted."""
+    for table in ("confirmations", "jobs"):
+        for col, decl in (("forgotten_at", "REAL"), ("forgotten_by", "TEXT")):
+            if col not in {r[1] for r in con.execute("PRAGMA table_info(%s)" % table)}:
+                try:
+                    with con:
+                        con.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, col, decl))
+                except sqlite3.OperationalError:
+                    if col not in {r[1] for r in con.execute("PRAGMA table_info(%s)" % table)}:
+                        raise    # a second process may have added it first; anything else is a real error
+
+
 _CONFIRMATION_COLUMNS = (
     ("state", "TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'confirmed', 'void'))"),
     ("channel", "TEXT"), ("confirmed_at", "REAL"), ("expires_at", "REAL"), ("ce_name", "TEXT"), ("bundle_json", "TEXT"),
@@ -504,6 +524,7 @@ def connect_state(path):
         _add_attempt_columns(con)
         _add_confirmation_column(con)
         _add_confirmation_state(con)
+        _add_forgotten_columns(con)
     except BaseException:
         con.close()
         raise
