@@ -37,6 +37,14 @@ def first_http(rig, duo, caller, run="x", status="failed", session=SESSION):
     return out
 
 
+def old_format(rig):
+    """The rows a terminal launch left before keep-submissions (F5): the confirmation has no content, the job's copy is the only one."""
+    con = sqlite3.connect(str(rig.state))
+    with con:
+        con.execute("UPDATE confirmations SET bundle_json = NULL, screen_text = NULL WHERE channel = 'TERMINAL'")
+    con.close()
+
+
 def screen_of(person):
     assert len(person.seen) == 1, person.seen
     return person.seen[0]
@@ -361,6 +369,7 @@ def test_tc052_an_attempt_whose_job_was_refused_does_not_stand_in_the_way(rig):
 def test_tc053_tc054_a_launch_whose_content_was_cleared_cannot_be_resumed_or_relaunched(rig, verb):
     # TC-053, TC-054
     rig.first("x")
+    old_format(rig)       # keep-submissions (F5): a terminal launch keeps its content in its confirmation now, so the row is made the old kind
     con = sqlite3.connect(str(rig.state))
     with con:
         con.execute("DELETE FROM jobs WHERE id = (SELECT job_id FROM launches WHERE run_name = 'x')")
@@ -375,6 +384,7 @@ def test_tc053_the_real_clean_up_after_seven_days_leads_to_the_same_words(rig):
     from abf_platform import jobs
     assert jobs.PRUNE_AFTER_SECONDS == 7 * 86400
     rig.first("x")
+    old_format(rig)       # keep-submissions (F5): the old kind of row, whose only copy of the content is the job's
     con = sqlite3.connect(str(rig.state))
     with con:
         con.execute("UPDATE jobs SET finished_at = ? WHERE kind = 'launch_nextflow'", (time.time() - 8 * 86400,))
