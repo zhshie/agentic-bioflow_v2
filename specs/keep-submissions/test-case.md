@@ -2,11 +2,15 @@
 
 <!--
 Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after the plan, before any code.
-There is no spec.md for this task; `specs/keep-submissions/plan.md` carries the maintainer's words, the rulings (1-6, R1-R16, F1-F6), and the five examples.
+There is no spec.md for this task; `specs/keep-submissions/plan.md` carries the maintainer's words, the rulings (1-6, R1-R16, F1-F12), and the five examples.
 Revised 2026-10-18 after "Follow-up after PR #133 review" (F1-F6, the developer-agent reopened the contract; F6 lets the verifier amend):
   amended: TC-016, TC-040, TC-062, TC-064, TC-070, TC-074, TC-084, TC-093, TC-095;
   added: TC-075, TC-100 to TC-113 (catch up with v3 / 009e), TC-120 to TC-131 (resume and relaunch refuse a forgotten run, F2),
          TC-140 to TC-146 (forget while the launch is still starting, F4), TC-150 to TC-161 (any channel keeps its content, F5), TC-096, TC-097.
+Revised again 2026-10-18 after "Rulings after follow-up acceptance" (F7-F12; the developer-agent reopened the contract, F6 lets the verifier amend):
+  amended: TC-062, TC-074, TC-084, TC-093, TC-131;
+  added: TC-114, TC-115 (F8 ask list, F9 named old-test edits), TC-132, TC-133 (F10 pending resume/relaunch voided at once), TC-147 (F7 launch job row pruned),
+         TC-162 to TC-165 (F11 terminal-confirmed cancel keeps its content).
 No id was renumbered. Every other row is word for word what was confirmed before.
 -->
 
@@ -97,7 +101,7 @@ No id was renumbered. Every other row is word for word what was confirmed before
 |---|---|---|---|---|---|---|
 | TC-060 | R10；規則 4 | 功能 | R1 的啟動工作已逾時（expired）；擁有者之後執行了 `forget R1`；之後代理才遲到地回報這個工作的結果 | 代理送出遲到的結果 | 系統照常收下，沒有當掉；仍能從被留下的 run 名處理（`_apply_handover` 讀得到 `R1`） | 自動 |
 | TC-061 | R10 | 功能 | 同 TC-060，但是 R1 的取消工作（cancel_run） | 代理送出遲到的結果 | 系統沒有當掉（讀不到取消用的 Slurm 編號時，不去改任何別的 run） | 自動 |
-| TC-062 | 規則 4；F1–F5（改寫：009e 已經進來，不再是「記下接入點」） | 功能 | `specs/keep-submissions/ledger.md` | 讀它 | 不再寫「009e 還不在 v3、沒有帶進它的程式碼」；改為記下：已合併 `origin/v3`（F1）、續跑與重跑拒絕已刪除的 run 的位置（F2：命令列、MCP、排隊檢查三處）、F3 的清單對帳、F4、F5 各自完成；沒有已完成的項目是空白打勾 | 自動（驗收者讀檔） |
+| TC-062 | 規則 4；F1–F5、F7–F12（改寫：009e 已經進來，不再是「記下接入點」；F7 至 F12 也要記下） | 功能 | `specs/keep-submissions/ledger.md` | 讀它 | 不再寫「009e 還不在 v3、沒有帶進它的程式碼」；改為記下：已合併 `origin/v3`（F1）、續跑與重跑拒絕已刪除的 run 的位置（F2：命令列、MCP、排隊檢查三處）、F3 的清單對帳、F4、F5 各自完成；並記下 F7（啟動工作列已被清掉時允許刪）、F8（`forget` 加進 settings.json 的 ask 清單）、F9（被點名的兩個 009e 測試只改前置資料）、F10（刪除時把指向該 run 的等待中續跑／重跑申請作廢）、F11（終端機確認的取消也保留內容）、F12（網頁對等仍欠）；沒有已完成的項目是空白打勾 | 自動（驗收者讀檔） |
 | TC-063 | R12 | 功能 | `specs/keep-submissions/ledger.md` | 讀它 | 記下 `forget` 是欠下的網頁對等功能（`docs/ROADMAP.md:98`），因為目前沒有網頁路由 | 自動（驗收者讀檔） |
 | TC-064 | R16；F5（改寫：限制（一）縮小了） | 功能 | `specs/keep-submissions/ledger.md` | 讀它 | 記下三項已知限制：（一）工作自己那份副本仍在工作結束 7 天後隨該列被刪，但現在不論哪個管道確認的送出，確認紀錄都保有內容；只有 F5 之前做的終端機啟動（舊格式的列）內容只在工作副本；（二）`result_json`／`late_result_json` 是結果不是送出內容，`forget` 不清；（三）沒有網頁刪除。三項都明說「維護者可再議」或等同意思；且不再寫「終端機確認的啟動只有工作副本有內容」這句對新列已不成立的話 | 自動（驗收者讀檔） |
 | TC-065 | R16（二） | 功能 | R1 的工作有 `result_json` 與 `late_result_json` 內容；R1 已結束 | `forget R1` 並同意 | 這兩欄一個字都沒變（`forget` 只清送出內容，不清結果） | 自動 |
@@ -111,19 +115,19 @@ No id was renumbered. Every other row is word for word what was confirmed before
 | TC-071 | 規則 6 | 功能 | `docs/PLATFORM.md` | 讀新動作的說明 | 有 `forget`：終端機 `abf-platform forget RUN` 與 MCP 工具 `forget`；只有擁有者；跑到一半不能刪；刪了無法復原；紀錄保留 | 自動 |
 | TC-072 | R4 | 功能 | `docs/PLATFORM.md` | 找「the job keeps its own copy of what was queued」那一句 | 那一句已改成也說明 `forget` 會把這份工作自己留的副本一起清掉 | 自動 |
 | TC-073 | 規則 6 | 功能 | `CHANGELOG` | 讀最上面的新條目 | 有一條說明：已確認內容不再被時間清掉、新增 `forget` | 自動 |
-| TC-074 | R13（改寫：排除名單更新） | 功能 | `platform/tests/test_keep_submissions.py` | 讀檔案 | 本合約每一條標「自動」、驗證方式是這個檔案的 TC 編號，都在某個測試的註解裡出現（不含由驗收者讀檔／讀差異判斷或用既有腳本的 TC-010、062、063、064、075、084、090、091、093、094、095、100、101、102、103、105、106、110、111、112）；沒有寫了編號卻空的或只檢查檔案存在的測試 | 自動（驗收者讀檔） |
+| TC-074 | R13（改寫：排除名單更新） | 功能 | `platform/tests/test_keep_submissions.py` | 讀檔案 | 本合約每一條標「自動」、驗證方式是這個檔案的 TC 編號，都在某個測試的註解裡出現（不含由驗收者讀檔／讀差異判斷或用既有腳本或既有測試檔的 TC-010、062、063、064、075、084、090、091、093、094、095、100、101、102、103、105、106、110、111、112、114、115）；沒有寫了編號卻空的或只檢查檔案存在的測試 | 自動（驗收者讀檔） |
 | TC-075 | F2；F4；F5 | 功能 | `docs/PLATFORM.md` | 讀「續跑與重跑」那一節與 `forget` 那一節 | 寫明：已刪除內容的 run 不能續跑或重跑（答「內容已被擁有者刪除」）；`forget` 在「啟動成功但 run 尚未進索引」時拒絕，直到索引看到它或工作結束後 24 小時；續跑與重跑先讀確認紀錄的內容、只有舊格式的列才退回讀工作副本、「太久了」只用在退回的情況 | 自動（驗收者讀檔） |
 
 ## User Story 7 — 追上 v3（009e）：合併、兩邊並存、清單與數量對帳（優先度 P1）
 
-這一段對應 F1 與 F3。重點：兩邊的功能都在，任何數量都不能為了讓測試過而調低。
+這一段對應 F1、F3 與 F8。重點：兩邊的功能都在，任何數量都不能為了讓測試過而調低。
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
 | TC-100 | F1 | 功能 | 本分支的 git 紀錄 | 看紀錄 | `origin/v3` 當時的最新一筆是本分支的祖先；有一筆單獨的合併提交（兩個父提交）只放合併與衝突解決；本分支原有的提交（含 6199677、d75e7f7）都仍是祖先（沒有 rebase，也沒有被改寫掉） | 自動（驗收者讀 git 紀錄） |
 | TC-101 | F1 | 功能 | `docs/PLATFORM.md` | 讀全文的章節標題與內容 | 「Forget」那一節與 009e 的「Resume and relaunch」那一節都在，兩邊原有的段落沒有被丟掉；沒有衝突標記（`<<<<<<<`、`=======`、`>>>>>>>`）殘留在任何檔案 | 自動（驗收者讀檔與 `git grep`） |
 | TC-102 | F1 | 功能 | `platform/abf_launch/build.py`、`platform/abf_launch/cli.py`、`platform/abf_platform/mcp_server.py` | 讀這三個檔 | `build.py` 同時有 `forget_screen` 與 009e 的 `prepare_resume`、`prepare_relaunch`、`resume_screen`、`relaunch_screen`；`cli.py` 同時有 `forget`、`resume`、`relaunch` 三個子指令；`mcp_server.py` 同時註冊 `forget`、`resume`、`relaunch` | 自動（驗收者讀檔） |
-| TC-103 | F1 | 功能 | `platform/tests/test_resume_*.py`、`test_station_resume.py`、`test_station_launch.py` 及其他 009e 帶來的測試 | 對照 `origin/v3` 的同名檔 | 009e 的測試全部還在、全部通過；對它們的改動只有兩種：F3 的「加上 `forget` 與數量加 1」，以及 TC-093 允許的 F5 前置資料調整；沒有 009e 的斷言被刪除、放寬、跳過 | 自動（驗收者對照 `origin/v3` 的差異） |
+| TC-103 | F1 | 功能 | `platform/tests/test_resume_*.py`、`test_station_resume.py`、`test_station_launch.py` 及其他 009e 帶來的測試 | 對照 `origin/v3` 的同名檔 | 009e 的測試全部還在、全部通過；對它們的改動只有兩種：F3 的「加上 `forget` 與數量加 1」，以及 TC-093 允許的 F9 前置資料調整；沒有 009e 的斷言被刪除、放寬、跳過 | 自動（驗收者對照 `origin/v3` 的差異） |
 | TC-104 | F3 | 功能 | 平台實際註冊的 MCP 工具 | 列出工具 | 恰好 11 個：`list_runs`、`get_run`、`list_compute_envs`、`get_compute_env`、`list_agents`、`list_site_files`、`launch`、`cancel`、`resume`、`relaunch`、`forget`；其中會寫東西的五個（launch、cancel、resume、relaunch、forget）都沒有任何能代替人說「是」的欄位；六個唯讀的仍是唯讀 | 自動 |
 | TC-105 | F3 | 功能 | 所有寫著工具數量的測試（`test_pat.py`、`test_oauth_mcp.py`、`test_mcp.py`、`test_launch_e2e.py`、`test_launch_platform.py`、`test_human_channel.py`、`test_guidance.py`、`test_actions_layer.py`、`test_station_envs.py`） | 逐處對照 `origin/v3` | 每個數量都是 v3 的數量加 1（10 變 11），沒有任何一處是 8 或 9（那會是漏了 009e 的兩個），沒有任何數量比 v3 小；每份名單都同時含 `resume`、`relaunch`、`forget` | 自動（驗收者對照差異；測試本身隨 `bash tests/platform_test.sh`） |
 | TC-106 | F3 | 功能 | `docs/PLATFORM.md` 描述工具的那一段（原寫「Nine tools」） | 讀 | 數量與名單是 11 個並逐個點名，與 TC-104 一致；找不到「Nine tools」「Ten tools」這類舊數量 | 自動（驗收者讀檔） |
@@ -134,10 +138,12 @@ No id was renumbered. Every other row is word for word what was confirmed before
 | TC-111 | F1 | 功能 | `CHANGELOG.md` | 讀最上面的幾個條目 | 009e 的條目與本任務的條目都在，兩邊的文字沒有被併掉或遺漏 | 自動（驗收者讀檔） |
 | TC-112 | F1；F3 | 功能 | 合併完成、F2–F5 實作完成的分支 | 跑整個平台測試（`bash tests/platform_test.sh`，Windows 走 WSL，或看 CI 結果） | 全部通過；`tests/platform_test.sh` 的分片裡，每個測試檔剛好在一個分片（含 `test_keep_submissions.py` 與 009e 新增的測試檔）；單一分片的時間限制沒有被調高 | 自動（驗收者讀 CI 結果與 `tests/platform_test.sh`） |
 | TC-113 | R14；F1 | 功能 | `test_station_envs.py` 的禁字掃描允許名單與 `test_station_platform.py` 的欄位檢查允許名單 | 讀 | 禁字掃描允許名單仍剛好多 `forgotten_at`、`forgotten_by` 兩個名字（TC-094 不變）；009e 加的 `("launches","parent_run")` 允許項仍在；兩邊都沒有被另一邊覆蓋掉 | 自動 |
+| TC-114 | F8 | 功能 | `extensions/claude-code-kit/settings.json`，與釘住這份清單的測試（`platform/tests/test_resume_entrypoints.py` 約第 151 行） | 讀 `permissions.ask`，並讀那個測試 | `ask` 剛好五個名字：`mcp__abf-platform__launch`、`cancel`、`resume`、`relaunch`、`forget`（前四個原本就有，沒有被拿掉，沒有多出別的）；釘住的測試要求這五個，原本對前四個的斷言都還在 | 自動：`platform/tests/test_resume_entrypoints.py`（驗收者讀檔與差異） |
+| TC-115 | F9 | 功能 | `specs/keep-submissions/ledger.md` 與 009e 兩個答「太久了」的測試（一個續跑、一個重跑；對照 `origin/v3`） | 讀 ledger，並逐行對照這兩個測試與 `origin/v3` 的同名測試 | ledger 逐一點名這兩個測試；兩個測試與 `origin/v3` 的差別只在前置資料（把那一列造成沒有內容的舊格式），所有斷言一字不變 | 自動（驗收者讀檔與差異） |
 
 ## User Story 8 — 續跑與重跑不能用在已刪除的 run（優先度 P1）
 
-這一段對應 F2。拒絕的字句是「內容已被擁有者刪除」（計畫 R10 的完整句是「內容已被擁有者刪除 (content deleted by its owner)」，測試只要求前半句出現）。所有拒絕都不排任何工作。
+這一段對應 F2 與 F10。拒絕的字句是「內容已被擁有者刪除」（計畫 R10 的完整句是「內容已被擁有者刪除 (content deleted by its owner)」，測試只要求前半句出現）。所有拒絕都不排任何工作。
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
@@ -152,11 +158,13 @@ No id was renumbered. Every other row is word for word what was confirmed before
 | TC-128 | F2；#116 規則 | 例外 | R1 是使用者 A 的、已失敗，A 已 `forget` 它；使用者 B 是另一個人 | B 透過 MCP 對 R1 要求 `resume`，再要求 `relaunch` | 兩次的回答都和「根本沒有這個 run」一模一樣（「找不到」），不透露 R1 存在或已被刪 | 自動 |
 | TC-129 | F2；F5 | 例外 | R1 已被 `forget`，而且 R1 的啟動工作副本早已超過 7 天被清掉（舊版這種情況會答「太久了」） | 擁有者要求續跑與重跑 R1 | 回答是「內容已被擁有者刪除」，不是「太久了，這次送出的內容已經清掉…」 | 自動 |
 | TC-130 | F2（不誤傷） | 功能 | R1、R2 是擁有者的兩個不同的、已失敗的 run；R1 已被 `forget` | 擁有者要求續跑 R2，並按「是」 | R2 照常排入續跑工作（不受 R1 被刪影響） | 自動 |
-| TC-131 | F2（已存在的等待中申請） | 例外 | 擁有者在 `forget R1` 之前用 MCP 為 R1 要求過續跑，申請還在等待中、尚未按送出；之後 R1 被 `forget` | 之後才按下送出 | 不排任何工作（不論是被作廢，還是被排隊檢查擋下）；`jobs` 沒有新增任何一列 | 自動 |
+| TC-131 | F2（已存在的等待中申請）；F10（改寫：現在要求當場作廢） | 例外 | 擁有者在 `forget R1` 之前用 MCP 為 R1 要求過續跑，申請還在等待中、尚未按送出；之後 R1 被 `forget` | `forget` 完成後，再按下送出 | 那筆申請在 `forget` 完成時就已經是作廢（`void`），不是等到按送出才被擋；按送出不排任何工作，`jobs` 沒有新增任何一列 | 自動 |
+| TC-132 | F10 | 功能 | 擁有者的 R1 已失敗；擁有者用 MCP 為 R1 各要求過一次續跑與一次重跑，兩筆申請都在等待中、尚未逾時、尚未按送出，內容都在 | 擁有者對 R1 `forget` 並同意 | `forget` 完成的當下，這兩筆申請的狀態都已是作廢（`void`），不必等按送出、也不必等逾時；兩筆的 bundle 與畫面文字被清掉，並有 `forgotten_at` | 自動 |
+| TC-133 | F10（不誤傷） | 功能 | 同 TC-132，另有擁有者為另一個失敗的 run R2 要求過的等待中續跑申請 | 擁有者對 R1 `forget` 並同意 | R2 那筆申請仍是等待中，內容完整、沒有 `forgotten_at`，之後按「是」仍能照常排入續跑 | 自動 |
 
 ## User Story 9 — `forget` 與「啟動剛成功但 run 還沒進索引」（優先度 P1）
 
-這一段對應 F4。「工作成功結束」＝代理回報 sbatch 已經送出去了。
+這一段對應 F4 與 F7。「工作成功結束」＝代理回報 sbatch 已經送出去了。
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
@@ -167,10 +175,11 @@ No id was renumbered. Every other row is word for word what was confirmed before
 | TC-144 | F4；R7 | 例外 | 同 TC-143，但索引裡 R1 的狀態是 running | 擁有者要求 `forget R1` | 被拒絕（還在跑），沒有任何變動 | 自動 |
 | TC-145 | F4（R15 不變） | 功能 | R1 的啟動工作 1 分鐘前剛被代理拒絕（另兩次：剛失敗 `error`、剛逾時 `expired`），R1 從沒進過索引 | 擁有者對各次要求 `forget R1`，同意 | 三種都立刻允許，不必等 24 小時，也不答「還在準備中」 | 自動 |
 | TC-146 | F4；R5 | 例外 | 同 TC-140 | 在終端機執行 `abf-platform forget R1` | 同樣被拒絕，同一句「還在準備中」；資料庫一個字都沒變 | 自動 |
+| TC-147 | F7 | 功能 | R1 的啟動確實送出過（確認紀錄在），但它的啟動工作列早已被清掉（刪掉那一列來造出這種舊資料），run 索引裡沒有 R1（`get_run` 回 found:false） | 擁有者要求 `forget R1`，同意 | 允許：不是「這個 run 還在準備中」，也不是「查無」，也不是程式錯誤；R1 在確認紀錄裡能被找到的內容被清掉並有 `forgotten_at`，稽核欄位保留 | 自動 |
 
 ## User Story 10 — 不論哪個管道確認的送出，內容都保留到使用者刪除（優先度 P1）
 
-這一段對應 F5。他的原話：「送出內容除非使用者刪除不然不刪」。以前終端機確認的啟動，唯一一份內容在 7 天就被清的工作副本裡。
+這一段對應 F5 與 F11。他的原話：「送出內容除非使用者刪除不然不刪」。以前終端機確認的啟動，唯一一份內容在 7 天就被清的工作副本裡。
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
@@ -186,6 +195,10 @@ No id was renumbered. Every other row is word for word what was confirmed before
 | TC-159 | F5（舊格式的列，工作已被清掉） | 例外 | 同 TC-158，但啟動工作已超過 7 天被清掉 | 擁有者要求續跑 R1 | 回答「太久了，這次送出的內容已經清掉，請當成新分析重新送出」；沒有排任何工作 | 自動 |
 | TC-160 | F5（同上，重跑） | 例外 | 同 TC-159 | 擁有者要求重跑 R1 | 同 TC-159 的「太久了…」；沒有排任何工作 | 自動 |
 | TC-161 | F5（不改壞原本的啟動） | 功能 | 使用者在終端機確認一個啟動 | 確認完成後看 `confirmations` 與 `jobs` | 恰好新增一筆確認紀錄與一筆啟動工作，工作的 `confirmation_id` 指向這筆確認；與沒有這項改動時的行為相同 | 自動 |
+| TC-162 | F11 | 功能 | 一個使用者在終端機看完畫面，輸入 `y` 確認一個取消（cancel） | 確認完成後讀 `confirmations` 那一列 | 該列 `bundle_json` 是剛才確認的取消內容（指名那個 run，與送出的 bundle 一字不差），`screen_text` 是當時畫面上讓他同意的文字，`state` 是 `confirmed`、`channel` 是 TERMINAL，sha256 與存起來的 bundle 一致 | 自動 |
+| TC-163 | F11；規則 1 | 功能 | 一筆終端機確認的取消，400 天前確認 | 之後任何人呼叫一次 `create_pending` | 這列的 bundle 與畫面文字都還在 | 自動 |
+| TC-164 | F11；R16（一） | 功能 | 一筆終端機確認的取消，它的取消工作 8 天前就結束 | 之後再排入一個新工作（會清掉結束超過 7 天的工作列） | 舊工作列被清掉（現行行為保留），但終端機確認那一列的 bundle 與畫面文字還在 | 自動 |
+| TC-165 | F11；規則 3；R9 | 功能 | R1 已結束，另有一筆終端機確認的取消（指名 R1），確認紀錄有內容 | 擁有者 `forget R1` 並答 `y` | 這筆取消確認紀錄的 bundle 與畫面文字被清掉，稽核欄位保留，有 `forgotten_at` | 自動 |
 
 ## 不在範圍（計畫「Out of scope」與相關禁止事項）
 
@@ -195,7 +208,7 @@ No id was renumbered. Every other row is word for word what was confirmed before
 | TC-081 | 不在範圍：從 run 清單刪 run | 不在範圍 | R1 已結束，在 run 清單裡 | `forget R1` 並同意 | R1 仍在 run 清單裡，`get_run` 仍找得到它，狀態與原來相同 | 自動 |
 | TC-082 | 不在範圍：任何網頁介面；規則 5 | 不在範圍 | 網頁服務（唯讀） | 檢查網頁的路由，並對網頁送出一個 forget 的請求 | 網頁沒有任何刪除按鈕或 forget 路由；請求得到「找不到」或被拒，R1 沒變 | 自動 |
 | TC-083 | R2；R8（不動既有的確認機制） | 不在範圍 | 程式碼 | 讀 `confirm.JOB_KIND` 與 `confirmations.kind` 的 CHECK 限制 | `JOB_KIND` 仍只有 launch、cancel 兩項，`kind` 的 CHECK 仍只允許 `'launch'`、`'cancel'`，`confirm.approve` 沒有為 forget 加分支（009e 的續跑與重跑本來就用 `launch`，也沒有新增種類） | 自動 |
-| TC-084 | 規則 4；F1（改寫：009e 現在進來了，守住「不去改它」） | 不在範圍 | 本分支相對 `origin/v3` 的差異 | 看 `git diff origin/v3...HEAD` 裡 009e 的檔案（`abf_station/launch.py`、`build.py` 的續跑與重跑部分、`jobs.py` 的世系部分、`status.py` 等） | 對 009e 程式的改動只有三類：F2 的「已刪除就拒絕」、F5 的「先讀確認紀錄、舊格式才退回讀工作副本」、F3 加上 `forget` 到清單與數量；沒有改變續跑或重跑的確認流程、三個確認管道、`LAUNCH_ALLOW` 的唯一提交檔、資料夾規則（續跑只寫 `head-N.sh` 與 `tower.token`）；沒有為 `forget` 新增第二個提交路徑 | 自動（驗收者讀 diff） |
+| TC-084 | 規則 4；F1；F10（改寫：009e 現在進來了，守住「不去改它」） | 不在範圍 | 本分支相對 `origin/v3` 的差異 | 看 `git diff origin/v3...HEAD` 裡 009e 的檔案（`abf_station/launch.py`、`build.py` 的續跑與重跑部分、`jobs.py` 的世系部分、`status.py` 等） | 對 009e 程式的改動只有四類：F2 的「已刪除就拒絕」、F5 的「先讀確認紀錄、舊格式才退回讀工作副本」、F3 加上 `forget` 到清單與數量、F10 的「`forget` 完成時把指向該 run 的等待中續跑／重跑申請作廢」；沒有改變續跑或重跑的確認流程、三個確認管道、`LAUNCH_ALLOW` 的唯一提交檔、資料夾規則（續跑只寫 `head-N.sh` 與 `tower.token`）；沒有為 `forget` 新增第二個提交路徑 | 自動（驗收者讀 diff） |
 
 ## 憲法與安全網
 
@@ -204,7 +217,7 @@ No id was renumbered. Every other row is word for word what was confirmed before
 | TC-090 | 第 2 條（不得留第二份 run 狀態） | 功能 | 這個分支 | 執行 `bash tests/no_second_run_state_test.sh` | 通過；新增的 `forgotten_at`、`forgotten_by` 只記「內容被刪」這件稽核事實，不記 run 的狀態，檢查沒有被放寬；F4 的「還在準備中」沒有新增任何儲存的狀態（見 TC-097） | 自動：`tests/no_second_run_state_test.sh` |
 | TC-091 | 安全網：啟動前必須有人確認 | 例外 | 沒有人確認的啟動請求 | 透過 MCP 與網頁各送一次未確認的啟動 | 仍然都被拒絕（`test_human_channel.py` 的 `test_tch09_*`、`test_confirm_page.py` 的 `test_tch09_b_c_*` 通過且未被修改）；`forget` 沒有開出新的送出路徑 | 自動：`tests/platform_test.sh` |
 | TC-092 | 安全網：不刪使用者原始資料（`rawdata/`、`results/`、`analysis/`） | 功能 | R1 在叢集與本機有這三類資料夾 | `forget R1` 並同意 | 這些資料夾與裡面的檔案一個都沒少（見 TC-080 沒有排任何工作） | 自動 |
-| TC-093 | 開發流程：不得放寬舊測試（改寫：基準改為合併後的 `origin/v3`） | 功能 | diff 裡所有被修改的測試檔 | 逐檔對照 `origin/v3`（本任務自己的改動）與 main | 除了這些有名字的改動，沒有任何斷言被刪除、放寬、跳過或把預期值改成配合新輸出：R1（TC-010、TC-040）、R14 與 F3（TC-094、TC-095、TC-104、TC-105、TC-108、TC-113）；每一處都只是「加上 `forget`」、「加上 `forgotten_at`／`forgotten_by` 欄位名」或「數量加 1」。唯一另外允許的是 F5 強迫的：009e 兩個「太久了」測試（續跑、重跑）若因為終端機確認現在保有內容而必須改前置資料，只能把前置資料改成「舊格式的列」，斷言一字不動，並在 ledger 逐一列出。合併衝突解決後的測試檔，兩個父提交的斷言都在（沒有任一邊被丟掉）。`spec.md`、`test-case*.md` 沒有在實作期間被編輯 | 自動（驗收者對照差異） |
+| TC-093 | 開發流程：不得放寬舊測試（改寫：基準改為合併後的 `origin/v3`；F8、F9 點名） | 功能 | diff 裡所有被修改的測試檔 | 逐檔對照 `origin/v3`（本任務自己的改動）與 main | 除了這些有名字的改動，沒有任何斷言被刪除、放寬、跳過或把預期值改成配合新輸出：R1（TC-010、TC-040）、R14 與 F3（TC-094、TC-095、TC-104、TC-105、TC-108、TC-113）、F8（TC-114：釘住 ask 清單的測試改成五個名字，原本四個名字的斷言仍在）；每一處都只是「加上 `forget`」、「加上 `forgotten_at`／`forgotten_by` 欄位名」或「數量加 1」。唯一另外允許的是 F9 點名的：009e 的兩個「太久了」測試（續跑、重跑）只能改前置資料成「舊格式的列」，斷言一字不動，並在 ledger 逐一列出（TC-115）。合併衝突解決後的測試檔，兩個父提交的斷言都在（沒有任一邊被丟掉）。`spec.md`、`test-case*.md` 沒有在實作期間被編輯 | 自動（驗收者對照差異） |
 | TC-094 | R14（`test_station_envs.py` 的禁字掃描） | 例外 | `platform/tests/test_station_envs.py` 的 `banned_schema_words` 掃描（欄位名含禁字如 `org` 就失敗） | 讀這個掃描與它的允許名單，並用一個虛構欄位名 `forgotten_org` 餵給它 | 允許名單只多了剛好 `forgotten_at` 與 `forgotten_by` 兩個確切名字；`forgotten_org`（或任何其他含禁字的名字）仍然失敗，且有一條斷言證明這點；掃描的其他部分沒變 | 自動（`platform/tests/test_station_envs.py`；驗收者對照差異） |
 | TC-095 | R14；F3（改寫：基準是 v3，數量 10 變 11） | 功能 | `test_station_envs.py`、`test_pat.py`、`test_oauth_mcp.py`、`test_mcp.py`、`test_launch_e2e.py`、`test_launch_platform.py` 裡的工具清單、數量、指令集合與說明文字 | 逐處對照 `origin/v3` | 每一處只有兩種變動：清單或指令集與說明文字多了 `forget`、工具數量從 v3 的數字加 1（10 變 11）；其餘一個字不變（包括 009e 加的 `resume`、`relaunch`）；這些測試在合併後的程式上通過 | 自動（驗收者對照差異；測試本身隨 `bash tests/platform_test.sh`） |
 | TC-096 | 安全網：每一次提交都要人按「是」；F2/F4/F5 沒開新路 | 例外 | 這個分支 | 跑 009e 的 `test_unconfirmed_resume_is_refused`、三個確認管道的單例測試與 `tests/no_second_run_state_test.sh` 的唯一提交檔檢查 | 全部通過且未被修改；F2 的拒絕路徑、F4 的拒絕、F5 多寫的確認紀錄內容，都沒有讓任何沒有人確認的內容被送出 | 自動：`tests/platform_test.sh` |
