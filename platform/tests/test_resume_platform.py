@@ -743,7 +743,10 @@ def test_009e_a_relaunch_name_held_by_another_user_gets_the_uniform_words_with_n
     # 116b over relaunch: the generated name sample-a2 is user A's run with Slurm id 7771; B relaunching own run `sample` is told NAME_TAKEN only
     from abf_launch import build
     from abf_platform import jobs
-    first_http(rig, duo, duo.b, run="sample")
+    duo.bobs_environment()
+    out_b = duo.sent(duo.b, run="sample", ce_name="b1")
+    rig.hand_over(out_b["job_id"], "sample")
+    rig.set_run("sample", "failed")
     out_a = duo.sent(duo.a, run="sample-a2")
     rig.hand_over(out_a["job_id"], "sample-a2", slurm=7771)
     rig.set_run("sample-a2", "failed")
