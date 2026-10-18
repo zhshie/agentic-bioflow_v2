@@ -87,8 +87,12 @@ cancelled=$(section CANCELLED)
 grep -qF '`resume`' <<<"$cancelled" && grep -qF '`relaunch`' <<<"$cancelled" && grep -qF 'new `launch`' <<<"$cancelled" && grep -qiE 'same folder' <<<"$cancelled"; chk "TC-022 CANCELLED keeps resume vs relaunch and the new launch" $?
 
 # TC-030/031/032: steps that still need tw say so, and the ledger owes them
-holes=$(paras | awk 'NR>1' | grep -E '(task_health|tune_resources|relaunch_with_override|runs_board|agent_ctl)\.sh' | grep -vF "$UNAVAIL" | grep -v 'line their output up' | cut -c1-60)
+holes=$(paras | awk 'NR>1' | grep -E '(task_health|tune_resources|relaunch_with_override|runs_board|agent_ctl|ce_apply).sh' | grep -vF "$UNAVAIL" | grep -v 'line their output up' | cut -c1-60)
 [ -z "$holes" ]; chk "TC-030 no script that calls tw is sent to the AI unmarked ($holes)" $?
+# TC-030 (fix round): the paragraph check above is too coarse (a whole bullet list is one paragraph), so check bullet by bullet
+holes_b=$(awk '/^[[:space:]]*- / || /^[[:space:]]*$/ { if (rec != "") print rec; rec = ""; if ($0 ~ /^[[:space:]]*$/) next } { rec = rec " " $0 } END { if (rec != "") print rec }' "$SK" \
+    | grep -E '(task_health|tune_resources|relaunch_with_override|runs_board|agent_ctl|ce_apply)\.sh' | grep -vF "$UNAVAIL" | grep -v 'line their output up' | cut -c1-60)
+[ -z "$holes_b" ]; chk "TC-030 no bullet sends the AI to a tw script without saying it is unavailable ($holes_b)" $?
 ids=$(grep -oE "$UNAVAIL \(owed: [a-z0-9-]+\)" "$SK" | sed 's/.*owed: //;s/)//' | sort -u)
 [ -n "$ids" ]; chk "TC-031 at least one step is marked not available on v3 yet, with an owed id" $?
 all_n=$(grep -o "$UNAVAIL" "$SK" | wc -l); tagged_n=$(grep -oE "$UNAVAIL \(owed: [a-z0-9-]+\)" "$SK" | wc -l)
