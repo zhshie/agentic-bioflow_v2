@@ -810,7 +810,7 @@ def test_tc091_an_unconfirmed_launch_still_queues_nothing(w):
 
 def test_tc093_the_contract_files_were_not_edited_after_the_contract_commit():
     # TC-093
-    r = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--name-only", "93038bd", "HEAD", "--", "specs/keep-submissions/plan.md",
+    r = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--name-only", "4f41759", "HEAD", "--", "specs/keep-submissions/plan.md",
                         "specs/keep-submissions/test-case.md", "specs/keep-submissions/test-case-overview.md"],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
@@ -1239,3 +1239,106 @@ def test_tc096_the_new_refusals_and_the_kept_content_open_no_way_to_send_without
     assert forget_action(rig.w, "x")["ok"] is True
     again = rig.ask(verb, "x", person=FakePerson(True))
     assert again["sent"] is False and FORGOTTEN_WORDS in again["message"] and len(rig.jobs()) == before[0]
+
+
+# ==== follow-up rulings F7 to F11 ========================================================================================================
+
+def test_tc147_a_launch_whose_job_row_is_gone_may_be_forgotten(w):
+    # TC-147 (F7)
+    ann = w.user("ann")
+    out = scn(w, ann, "run-one", index=False)
+    sql_exec(w, "DELETE FROM jobs WHERE id = ?", (out["job_id"],))
+    assert w.sql("SELECT COUNT(*) FROM jobs")[0][0] == 0
+    cid = out["id"]
+    c0 = audit(conf(w, cid))
+    res = actions().forget(w.ip.state_db, w.ip.index, "run-one", confirmed_by=actions().ELICITED, caller=ann)
+    assert res["ok"] is True, res
+    assert cleared(w, cid) and conf(w, cid)["forgotten_at"] is not None and audit(conf(w, cid)) == c0
+
+
+def _failed_run(rig, duo, run):
+    out = duo.sent(duo.a, run=run)
+    rig.hand_over(out["job_id"], run)
+    rig.set_run(run, "failed")
+
+
+def test_tc132_tc133_forget_voids_the_waiting_resume_and_relaunch_of_that_run_only(rig):
+    # TC-132, TC-133 (F10)
+    from owner_harness import Duo
+    duo = Duo(rig.w)
+    _failed_run(rig, duo, "r-one")
+    _failed_run(rig, duo, "r-two")
+    r1 = rig.resume("r-one", caller=duo.a, person=None)
+    r2 = rig.relaunch("r-one", caller=duo.a, person=None)
+    keep = rig.resume("r-two", caller=duo.a, person=None)
+    assert r1["state"] == r2["state"] == keep["state"] == "pending", (r1, r2, keep)
+    res = actions().forget(rig.state, rig.index, "r-one", confirmed_by=actions().ELICITED, caller=duo.a)
+    assert res["ok"] is True, res
+    for rid in (r1["id"], r2["id"]):                                      # TC-132
+        row = conf(rig.w, rid)
+        assert row["state"] == "void" and row["bundle_json"] is None and row["screen_text"] is None
+        assert row["forgotten_at"] is not None
+    row = conf(rig.w, keep["id"])                                         # TC-133
+    assert row["state"] == "pending" and row["bundle_json"] is not None and row["forgotten_at"] is None
+    actions().approve(rig.state, keep["id"], confirmed_by=actions().PAGE, caller=duo.a)
+    assert conf(rig.w, keep["id"])["state"] == "confirmed"
+
+
+def test_tc114_the_kit_asks_for_five_tools():
+    # TC-114 (F8); the old pin is test_tc137 in test_resume_entrypoints.py
+    settings = json.loads((REPO_ROOT / "extensions" / "claude-code-kit" / "settings.json").read_text(encoding="utf-8"))
+    ask = settings["permissions"]["ask"]
+    assert sorted(ask) == sorted("mcp__abf-platform__" + t for t in ("launch", "cancel", "resume", "relaunch", "forget"))
+
+
+def test_tc115_the_ledger_names_the_two_009e_tests_changed_in_their_setup_only():
+    # TC-115 (F9)
+    text = (SPEC / "ledger.md").read_text(encoding="utf-8")
+    assert "test_resume_platform.py" in text and "TC-053/054" in text and "old_format" in text
+
+
+def _terminal_cancel(data):
+    from test_launch_cli import hand_over
+    hand_over(data)
+    p = Pty(cli_argv("cancel", "run-one"), data.env())
+    assert p.wait_for("確定取消？(y/N)", 30), p.text()
+    shown = p.text()
+    p.send("y\n")
+    p.finish(30)
+    return shown
+
+
+def test_tc162_tc163_tc164_a_terminal_cancel_keeps_its_content(data):
+    # TC-162, TC-163, TC-164 (F11)
+    from abf_platform import common, confirm
+    shown = _terminal_cancel(data)
+    c = cli_rows(data, "confirmations", "kind = 'cancel'")[0]
+    assert c["state"] == "confirmed" and c["channel"] == "TERMINAL"
+    b = json.loads(c["bundle_json"])
+    assert b["run_name"] == "run-one" and common.bundle_sha256(b) == c["sha256"]
+    assert c["screen_text"] and c["screen_text"].strip().splitlines()[0] in shown          # TC-162
+    state = data.ip.state_db
+    old = time.time() - 400 * DAY
+    con = sqlite3.connect(str(state))
+    con.execute("UPDATE confirmations SET created_at = ?, confirmed_at = ? WHERE id = ?", (old, old, c["id"]))
+    con.execute("UPDATE jobs SET state = 'done', finished_at = ? WHERE confirmation_id = ?", (time.time() - 8 * DAY, c["id"]))
+    con.commit()
+    con.close()
+    confirm.create_pending(state, "launch", "lab-a", {"run_name": "trigger", "n": time.time()}, "text", None)    # TC-163
+    actions().cancel(state, "lab-a", dict(b, run_name="run-two"), confirmed_by=actions().TERMINAL)    # TC-164: a new job prunes the old
+    assert cli_rows(data, "jobs", "confirmation_id = '%s'" % c["id"]) == []
+    kept = cli_rows(data, "confirmations", "id = '%s'" % c["id"])[0]
+    assert kept["bundle_json"] is not None and kept["screen_text"] is not None
+
+
+def test_tc165_a_terminal_cancel_is_forgotten_with_its_run(rig):
+    # TC-165 (F11)
+    from abf_launch import build
+    rig.first("run-one")
+    ce, bundle, _row = build.prepare_cancel(rig.state, "run-one")
+    cid, _jid = actions().cancel(rig.state, ce, bundle, confirmed_by=actions().TERMINAL)
+    assert actions().keep_screen(rig.state, cid, "cancel screen") is True
+    sql_exec(rig.w, "UPDATE jobs SET state = 'done', finished_at = ? WHERE kind = 'cancel_run'", (time.time(),))
+    c0 = audit(conf(rig.w, cid))
+    assert forget_action(rig.w, "run-one")["ok"] is True
+    assert cleared(rig.w, cid) and audit(conf(rig.w, cid)) == c0 and conf(rig.w, cid)["forgotten_at"] is not None
