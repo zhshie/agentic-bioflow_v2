@@ -54,3 +54,7 @@ Merged `origin/v3` (never rebased). Conflicts resolved as the union:
 - `tests/platform_test.sh`: both shard edits kept (the resume shards and the oauth shard); every test file is in exactly one shard.
 - `CHANGELOG.md`: both entries (009e and 009i).
 - `test_oauth_mcp.py` (from v3) counted eight tools; with this feature the MCP has ten (`resume`, `relaunch` added), so the count and the exact name list there were updated: the same change as `test_resume_entrypoints.py::test_tc132`, not a weakened check.
+
+## Fix from /code-review: relaunch name check carries the caller (116b)
+
+`build.prepare_relaunch` called `prepare_launch(check_name=True)` with no owner, so `jobs.check_run_name` ran without the caller id and, when the generated name (`sample-a2`) was held by another user's run, answered with the detailed text including that user's Slurm job number. It now checks the name with `_name(state, root, attempt, owner)` exactly as `prepare_resume` does, and calls `prepare_launch(check_name=False)`: another user's run gets the uniform `NAME_TAKEN`; the terminal (no caller) keeps the detailed words. Test: `test_resume_platform.py::test_009e_a_relaunch_name_held_by_another_user_gets_the_uniform_words_with_no_slurm_id_or_state` (red first, then green).

@@ -415,10 +415,10 @@ def prepare_relaunch(state, run, *, index_path, owner=None, area=None):
     relaunch of, which attempt it is, and the hash that was confirmed for the launch that made the old folder."""
     row, origin, sha, _view, attempt, root = _predecessor(state, run, "relaunch", index_path, owner)
     ce_name = _same_environment(state, row)
-    new_name = attempt_name(root, attempt)
+    new_name = _name(state, root, attempt, owner)      # 116b: the check carries the caller, so another user's run is not told about
     try:
         _, bundle = prepare_launch(state, ce=ce_name, pipeline=origin["pipeline"], revision=origin["revision"], run_name=new_name,
-                                   params=origin["params"], path_columns=origin["path_columns"], check_name=True, owner=owner, area=area,
+                                   params=origin["params"], path_columns=origin["path_columns"], check_name=False, owner=owner, area=area,
                                    samplesheet_rows=origin["samplesheet"])
         same = all(bundle.get(k) == origin.get(k) for k in ("ce", "agent", "account", "tower", "pipeline", "revision", "samplesheet", "params",
                                                            "path_columns"))
