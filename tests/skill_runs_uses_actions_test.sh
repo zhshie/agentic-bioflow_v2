@@ -105,6 +105,49 @@ fi
 fm=$(sed -n 1,5p "$SK")
 [ "$fm" = "$(printf -- '---\nname: runs\ndescription: Check on, debug, or deliver a pipeline run\nargument-hint: [run id or name]\n---')" ]; chk "TC-040 frontmatter unchanged" $?
 
+# ---- rulings S1 to S6 (TC-080 to TC-097) ----
+# one "Mapping:" line directly under each of the six branch headings
+maps() { section "$1" | grep -E '^Mapping:'; }
+for h in SUBMITTED RUNNING FAILED SUCCEEDED CANCELLED UNKNOWN; do
+    n=$(maps "$h" | wc -l); [ "$n" = 1 ]; chk "TC-085 $h has exactly one Mapping line" $?
+done
+m=$(maps SUBMITTED)
+grep -qF '`list_runs`' <<<"$m" && grep -qF '已送出、還沒開始' <<<"$m" && grep -qiE 'again later|check again' <<<"$m"; chk "TC-080 SUBMITTED maps to not-in-list_runs-yet, says 已送出、還沒開始, checks later" $?
+grep -qE '3 (checks|times)|three (checks|times)' <<<"$m" && grep -qiE 'tell the person|never wait forever' <<<"$m"; chk "TC-081 SUBMITTED checks at most 3 times, then tells the person" $?
+grep -qF '`running`' <<<"$(maps RUNNING)"; chk "TC-082 RUNNING = running" $?
+grep -qF '`failed`' <<<"$(maps FAILED)"; chk "TC-082 FAILED = failed" $?
+grep -qF '`succeeded`' <<<"$(maps SUCCEEDED)"; chk "TC-082 SUCCEEDED = succeeded" $?
+m=$(maps CANCELLED)
+grep -qF '`failed`' <<<"$m" && grep -qiE 'cancel' <<<"$m" && grep -qiE 'Nextflow reports a cancelled run as failed' <<<"$m"; chk "TC-083 CANCELLED = failed with a cancel request sent" $?
+m=$(maps UNKNOWN)
+grep -qF '`lost`' <<<"$m" && grep -qiE 'three heartbeats' <<<"$m" && grep -qiE 'any other' <<<"$m"; chk "TC-084 UNKNOWN = lost (three heartbeats) or any other value" $?
+! paras | grep -vE '^Mapping:' | grep -E '(list_runs|get_run|[Pp]latform)[^.]*report[a-z]* [^.]*(SUBMITTED|CANCELLED)' | grep -q .; chk "TC-086 no sentence says the platform reports SUBMITTED or CANCELLED" $?
+
+# S2: resume = same folder, cache; relaunch = new folder, from the start (checked sentence by sentence)
+sent() { paras | sed 's/\([.!?]\) /\1\n/g'; }
+b88=$(sent | grep -E 'relaunch' | grep -vE 'resume' | grep -iE 'cache|same folder|where Nextflow stopped|takes up|picks up' | cut -c1-70)
+[ -z "$b88" ]; chk "TC-088 no sentence gives relaunch the cache or the same folder ($b88)" $?
+b88=$(sent | grep -E '`resume`' | grep -vE 'relaunch' | grep -iE 'new folder|from the start' | cut -c1-70)
+[ -z "$b88" ]; chk "TC-088 no sentence gives resume a new folder or a restart ($b88)" $?
+grep -qE '[Aa] `resume` counts as reversible' <<<"$run" && ! grep -qE 'relaunch counts as reversible' <<<"$run"; chk "TC-087 RUNNING: the cache sentence is about resume" $?
+
+# S3: no task folder path on v3
+n=$(grep -c '尚未提供 task 的資料夾路徑' "$SK"); [ "$n" -ge 2 ]; chk "TC-089 task folder path said missing in at least 2 places (command.err and Jev)" $?
+grep -q '尚未提供 task 的資料夾路徑' <<<"$(grep -n 'No refusal lines up' -A5 "$SK")"; chk "TC-089 the .command.err step says it" $?
+grep -q '尚未提供 task 的資料夾路徑' <<<"$(grep -n 'Jev triage, only if' -A5 "$SK")"; chk "TC-089 the Jev triage step says it" $?
+! grep -qE '`(workdir|work_dir|path)`|work/[0-9a-f]{2}/' "$SK"; chk "TC-090 no invented work-folder field or hashed path" $?
+if [ -r "$LEDGER" ]; then
+    grep -qE '^- owed: task-folder-path' "$LEDGER" && grep -q 'task-folder-path' "$SK"; chk "TC-091 task folder path is ledgered and tagged" $?
+fi
+
+# S5: one manual step in docs/TESTING.md under the 009e section
+step=$(awk '/^## Resume and relaunch \(009e\)/{g=1;next} g&&/^## /{exit} g' "$ROOT/docs/TESTING.md" | grep -E 'skills/runs/SKILL.md' | grep -E 'list_runs' | grep -E 'get_run' | grep -E '\btw\b' | grep -iE 'yes')
+[ -n "$step" ]; chk "TC-093 TESTING.md 009e has the runs-skill walkthrough step" $?
+if git -C "$ROOT" rev-parse --verify -q origin/v3 >/dev/null 2>&1; then
+    dn=$(git -C "$ROOT" diff origin/v3...HEAD --numstat -- docs/TESTING.md | awk '{print $1" "$2}')
+    [ "$dn" = "1 0" ]; chk "TC-097 TESTING.md gained exactly one line and lost none ($dn)" $?
+fi
+
 # TC-014: the same checks must fail on the tw-era skill
 if [ -z "${ABF_RUNS_INNER:-}" ]; then
     out=$(ABF_RUNS_INNER=1 SKILL_FILE="$HERE/fixtures/runs_skill/SKILL.tw-era.md" bash "$0" 2>&1); rc=$?
