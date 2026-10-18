@@ -129,10 +129,8 @@ b88=$(sent | grep -E 'relaunch' | grep -vE 'resume' | grep -iE 'cache|same folde
 [ -z "$b88" ]; chk "TC-088 no sentence gives relaunch the cache or the same folder ($b88)" $?
 b88=$(sent | grep -E '`resume`' | grep -vE 'relaunch' | grep -iE 'new folder|from the start' | cut -c1-70)
 [ -z "$b88" ]; chk "TC-088 no sentence gives resume a new folder or a restart ($b88)" $?
-run1=$(tr "
-" " " <<<"$run")
+run1=$(tr -s "[:space:]" " " <<<"$run")
 grep -qE "[Aa] .resume. counts as reversible" <<<"$run1" && ! grep -qE "relaunch counts as reversible" <<<"$run1"; chk "TC-087 RUNNING: the cache sentence is about resume" $?
-" " " <<<"$run" | grep -qE "relaunch counts as reversible"; chk "TC-087 RUNNING: the cache sentence is about resume" $?
 
 # S3: no task folder path on v3
 n=$(grep -c '尚未提供 task 的資料夾路徑' "$SK"); [ "$n" -ge 2 ]; chk "TC-089 task folder path said missing in at least 2 places (command.err and Jev)" $?
