@@ -737,3 +737,22 @@ def test_a_user_whose_name_cannot_be_a_folder_is_refused_like_a_launch(rig, duo)
     weird = actions.Caller(duo.a.user_id, "../x", "lab-x")
     out = rig.resume("x", caller=weird, person=FakePerson(True))
     assert out["sent"] is False and "你自己的上傳資料夾" in out["message"]
+
+
+def test_009e_a_relaunch_name_held_by_another_user_gets_the_uniform_words_with_no_slurm_id_or_state(rig, duo):
+    # 116b over relaunch: the generated name sample-a2 is user A's run with Slurm id 7771; B relaunching own run `sample` is told NAME_TAKEN only
+    from abf_launch import build
+    from abf_platform import jobs
+    first_http(rig, duo, duo.b, run="sample")
+    out_a = duo.sent(duo.a, run="sample-a2")
+    rig.hand_over(out_a["job_id"], "sample-a2", slurm=7771)
+    rig.set_run("sample-a2", "failed")
+    with pytest.raises(build.Refusal) as e:
+        rig.prepare("relaunch", "sample", owner=duo.b.user_id)
+    assert str(e.value) == jobs.NAME_TAKEN
+    msg = refused(rig.relaunch("sample", caller=duo.b, person=FakePerson(True)))
+    assert msg == jobs.NAME_TAKEN and "7771" not in msg and "Slurm" not in msg and "failed" not in msg
+    # the terminal (no caller) keeps the detailed wording
+    with pytest.raises(build.Refusal) as e:
+        rig.prepare("relaunch", "sample")
+    assert "7771" in str(e.value)
