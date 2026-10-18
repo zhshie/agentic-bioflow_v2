@@ -153,5 +153,12 @@ if grep -qE '[0-9a-f]{64}' "$R" || grep -qiE 'checksum|sha256' <<<"$inp"; then n
 if head -30 "$S" 2>/dev/null | grep -q 'require_python.sh' && head -30 "$S" | grep -q 'require_python ||'
 then ok "TC-C06 require_python used"; else no "TC-C06" "missing"; fi
 
+# TC-030 / TC-C08: build_package.sh runs report_facts.py directly, so git must
+# record it as executable (a 100644 file fails with Permission denied on Linux/CI)
+mode=$(git -C "$ROOT" ls-files -s -- scripts/report_facts.py 2>/dev/null | awk '{print $1}')
+if [ -z "$mode" ]; then ok "TC-030 exec bit (not a git checkout, skipped)"
+elif [ "$mode" = 100755 ]; then ok "TC-030 report_facts.py is executable in git"
+else no "TC-030 report_facts.py git mode" "$mode"; fi
+
 echo
 [ "$fails" = 0 ] && echo "OK: report_facts.py" || { echo "$fails failed"; exit 1; }
