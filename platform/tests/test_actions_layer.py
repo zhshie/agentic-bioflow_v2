@@ -25,7 +25,7 @@ PKG = PLATFORM_DIR / "abf_platform"
 SCAN_DIRS = [PLATFORM_DIR / "abf_platform", PLATFORM_DIR / "abf_station", PLATFORM_DIR / "abf_launch"]
 REFUSED = "no human confirmation channel"
 READ_NAMES = ["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files"]
-WRITE_NAMES = ["launch", "cancel"]    # 009c: the two tools that make a request a person must say yes to
+WRITE_NAMES = ["launch", "cancel", "forget"]    # 009c: the two tools that make a request a person must say yes to
 ROUTES_V3 = [('/agent/hello', ('POST',)), ('/agent/poll', ('POST',)), ('/agent/result/{jid}', ('POST',)),
              ('/trace/create', ('POST',)), ('/trace/{rid}/begin', ('PUT',)), ('/trace/{rid}/complete', ('PUT',)),
              ('/trace/{rid}/heartbeat', ('PUT',)), ('/trace/{rid}/progress', ('PUT',)), ('/user-info', ('GET', 'HEAD'))]

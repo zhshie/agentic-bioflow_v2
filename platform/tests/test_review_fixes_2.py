@@ -279,7 +279,8 @@ def test_r8_confirmed_rows_lose_their_content_after_seven_days_too(w):
     fresh = w.launch(caller=ann, run="run-d")["id"]
     rows = {r["id"]: r for r in w.confirmations()}
     for rid in (ok["id"], page):
-        assert rows[rid]["bundle_json"] is None and rows[rid]["screen_text"] is None
+        # keep-submissions (maintainer, 2026-10-18, TC-010): a confirmed row keeps its content at any age (the test name is the old rule)
+        assert rows[rid]["bundle_json"] is not None and rows[rid]["screen_text"] is not None
         assert rows[rid]["state"] == "confirmed" and rows[rid]["channel"] in ("ELICITED", "PAGE") and rows[rid]["confirmed_at"]
     assert rows[fresh]["bundle_json"] is not None
     assert len(w.jobs("launch_nextflow")) == 2             # the jobs keep their own copy of the bundle

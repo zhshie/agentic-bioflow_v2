@@ -155,7 +155,8 @@ def test_tca08_exactly_eight_tools_and_none_of_them_can_say_yes(w):
     # TC-A08
     tools, _ = w.mcp([])
     names = sorted(t.name for t in tools)
-    assert names == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
+    # keep-submissions (TC-040): one more tool, forget
+    assert names == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
                      "list_site_files"]
     assert not [n for n in names if re.search(r"approve|confirm|passwd|login", n)]
     by = {t.name: t for t in tools}
