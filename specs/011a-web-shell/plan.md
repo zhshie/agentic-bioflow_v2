@@ -1,6 +1,6 @@
 # Plan 011a: the web shell — three panes, read-only
 
-- **Slug**: 011a-web-shell. **Branch**: `feat/011a-web-shell`, base **v3**. Rebase onto v3 after #116 (owner binding) merges; implementation waits for that.
+- **Slug**: 011a-web-shell. **Branch**: `feat/011a-web-shell`, base **v3**..
 - **Tier**: B. The user sees something new, and the maintainer looks at the screenshots. No principle changes, and no deny is weakened. Per ADR 0010, this real page is the demo the maintainer asked for.
 - **Created**: 2026-10-17 by the developer-agent from a Plan-agent draft. Facts are on origin/v3 43774c0; re-check the line numbers after #116.
 
@@ -163,3 +163,11 @@ L6. Zero JS, one stylesheet, no `style=` attribute, no external URL; CSP unchang
 L7. Language: every UI string comes from one table with `zh` and `en`; `?lang=en` selects English, default Chinese; the switch is two plain links that keep the current path and selection. No JS, no cookie. Run names and data are never translated.
 L8. Tests: keep every existing test green except those that pin the old layout's markup — update those to the new structure and list each changed assertion in the ledger (no assertion may be deleted without a replacement). New: column widths/classes present; stage classes; the 900px media query exists; `?lang=en` renders the English strings and no Chinese UI string from the table; no `style=`, no `<script`, no `http` URL in any page.
 L9. Manual: re-take the screenshots (wide and <900px, zh and en) into the PR for the maintainer.
+
+### Rulings after layout-B contract round (2026-10-18, developer-agent)
+- B1 Cost line: L4 wins (the maintainer chose layout B, which shows it this way). One line `本月 SU — · 雲端 —`, no "本月費用" heading, no line count pinned. This supersedes 給維護者 point 2, decision 6's two-line wording and the old TC-H09 wording. 給維護者 point 2 now reads: 右欄最上面一行「本月 SU — · 雲端 —」。
+- B2 Stage classes: the run's own stage is `is-current`; stages before it `is-done`; stages after it `is-later`. A `?stage=` selection does not change classes; the selected cell gets `aria-current="step"` and a focus outline instead. A succeeded run's own stage is results.
+- B3 History item: number = the run's sequence number among this user's runs ordered by start time, oldest = 1 (newest first in the list, like the reference). Key fact: running → `done/total` tasks; failed → first line of `failure_reason`, cut to 80 characters; succeeded → end time; lost → `—`.
+- B4 Unbuilt items: the single grey text `之後開放` everywhere (left tree items, 設定). This supersedes decision 6's "專案與分析（011b）尚未開放" and "設定（尚未開放）" wording.
+- B5 Right-pane groups: follow the reference — 執行中 (running, failed), 結果 (succeeded, lost), and one grey block `之後開放` standing for 送出, 下游, 完成. This supersedes decision 6's five groups.
+- B6 Language: every link the board pages generate keeps `lang=en` when the page was rendered in English. Only the board pages (and the board's own 404) are translated in 011a; the login and confirmation pages stay Chinese (later slice).
