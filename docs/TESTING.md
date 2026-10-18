@@ -411,6 +411,32 @@ the PR branch; "base" is `v3`, never `main`.
     `hooks/plugin_intro.sh:277` and `hooks/confirm_walkthrough.sh:7` still say
     `commands/` in comments, and `hooks/` has no diff.
 
+## Testing the web
+
+The web has two halves, like the rest of this document: what the machine checks, and what only a person can check.
+
+### Web, half 1 — the machine
+
+The web pages are tested with Starlette's `TestClient`: the test sends a request to the app in the same process and asserts on the HTML that comes back. It checks the status code, the key text on the page, and that the forms and links are there (a form that posts to the right place, a link to the next page). No browser is started.
+
+Real examples already in the repo: `platform/tests/test_confirm_page.py` (the confirmation page, driven with `TestClient`) and `platform/tests/test_web_login.py` (the login form and cookie).
+
+The suite adds no browser-automation dependency (no Playwright, Selenium or Puppeteer in `platform/pyproject.toml` or `platform/constraints.txt`). Two reasons: it is one more heavy dependency to install and pin, and browser automation is flaky on WSL and in CI. This is about the automated suite only; the one-off real-Chrome check in "Chrome login (web-chrome-origin)" above is run by hand and is not a test dependency. `tests/testing_web_doc_test.sh` holds these claims.
+
+**Parity test.** ROADMAP's rule: every action has an MCP tool and a web route, and the owed list only shrinks. The test arrives with 011a. It is not built yet: no file on this branch implements it. When it lands, replace this sentence with its file name.
+
+### Web, half 2 — the person: click-only 16S end to end
+
+This is the procedure for Stage 3 (web 011 to 013). The pages it walks are not all built yet; do it once the stage's pages exist, and where a page is missing, record that instead of working around it. Every step is done by clicking in the web: no terminal command, no MCP tool, no asking an AI to do it for you.
+
+1. **Setup.** Open the web, sign in, and follow the guided setup until a compute environment is connected. Check: the setup page says connected, with no error sentence. Record: the date, the address you used, the environment name.
+2. **Launch.** Create a project, choose the 16S analysis, pick the data, review the estimate, and press launch (then answer the confirmation page yourself). Check: the estimate is shown before you confirm, and the analysis appears in the left pane. Record: the analysis name and the cost shown.
+3. **Running.** Watch the right pane and the run detail page until tasks are moving. Check: progress changes without you reloading by hand, and a failed task (if any) shows a plain sentence saying what failed. Record: the time it started, any failure sentence word for word.
+4. **Results.** When the run ends, open the results page. Check: the expected outputs are listed and open (tables and figures). Record: which outputs opened, which did not.
+5. **Finished.** Open the finished page and get the delivery package. Check: the page says finished and the package downloads and opens. Record: the package name and size, and every place you got stuck or had to guess what to click.
+
+Keep the record with the release notes of the run. A step you could not do by clicking alone is a finding, not a skipped step.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in
