@@ -102,8 +102,8 @@ def mcp_called_actions():
 def test_tcs06_owed_follows_the_rule():
     # TC-S06 (replaces TC-H16d): R2, every public action a tool calls and no web route calls is in OWED or INTERNAL
     assert {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files"} <= set(OWED)
-    for name in mcp_called_actions():
-        assert name in set(WEB_ROUTES) | set(OWED) | INTERNAL, name
+    for name in mcp_called_actions():          # platform_path_for is the helper every entry uses to find platform.db
+        assert name in set(WEB_ROUTES) | set(WEB_ONLY) | set(OWED) | INTERNAL, name
     assert not (set(OWED) & called_actions((WEB).read_text(encoding="utf-8")))
     assert {"forget_check", "keep_screen"} <= INTERNAL
 

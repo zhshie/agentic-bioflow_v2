@@ -303,18 +303,22 @@ Needs the platform running (`abf-platform serve`, `abf-platform mcp --http`, `ab
 
 ## The web shell (011a): the visual check and the ledger review
 
-Needs `abf-platform web` on loopback, a data folder with e2e runs of the four statuses (running, succeeded, failed, lost; `platform/tests/e2e_harness.py` or a copy of a real index), two users with web passwords (`abf-platform user passwd <name>`), and a run each launched by those users.
+Needs `abf-platform web` on loopback, a data folder with e2e runs of the four statuses (running, succeeded, failed, lost; `platform/tests/e2e_harness.py` or a copy of a real index), two users with web passwords (`abf-platform user passwd <name>`), a run each launched by those users, and a third user with no run. Playwright (or any browser with a screenshot tool) for the screenshots; the page itself needs no JavaScript.
 
-**Visual check (TC-V02 to TC-V10).**
+**Visual check (TC-V02 to TC-V04, TC-V11 to TC-V18).**
 
-1. Log in as the first user and open `/` (wide window, Chinese). Take a screenshot (TC-V06). Pass: a thin dark top bar (`agentic-bioflow` left, the user name and 中 | EN right), a 232 px left column of my runs with grey "之後開放", the right column starting with one line "本月 SU — · 雲端 —", then the groups "執行中" and "結果" with colour-filled whole-block items.
-2. Click a succeeded run and take a screenshot (TC-V02). Pass: the stage strip stands on results; status, times and a progress bar show.
-3. Click a failed run and take a screenshot (TC-V03). Pass: the failed state and the failure reason in Nextflow's words.
-4. Turn the screenshot of step 1 black and white (TC-V04). Pass: the four states still differ by symbol and text (▶ ✓ ✗ ⏸).
-5. Make the window narrower than 900 px and take a screenshot (TC-V07). Pass: the columns stack in the order middle, right, left and nothing is cut off. Then open `/?lang=en` with a run picked, wide (TC-V08) and narrow (TC-V09). Pass: every interface word is English, run names unchanged. Last, put TC-V06 beside `specs/011a-web-shell/layoutB-reference.html` (TC-V10): same skeleton (solid and dashed stage strip, filled items, outlined selected run).
-6. Log in as the second user. Pass: none of the first user's runs appear, and opening `/?run=<their run id>` gives the same 404 page as a made-up id.
+1. Log in as the first user and open `/` (wide window, Chinese). Take five screenshots (TC-V11): the Now page, a selected failed run, the empty state (log in as the user with no run), `/settings`, and `/login`. Pass: a thin dark top bar (`agentic-bioflow` left; on the right the two cost lines, 中 | EN and the user name), the left, middle and right columns, the Now page with the cards 正在跑 and 需要注意, every section of the settings page grey "之後開放", and the login page with only a name and a password.
+2. Click a succeeded run and take a screenshot (TC-V02). Pass: the stage strip stands on 結果; status, times (`MM-DD HH:mm`) and a progress bar show. Click a failed run (TC-V03). Pass: the failed state and the failure reason in Nextflow's words.
+3. Turn a screenshot of step 1 black and white (TC-V04). Pass: the four states still differ by symbol and text (▶ ✓ ✗ ⏸).
+4. Make the window 390 px wide and take the same five screenshots (TC-V12, TC-V17). Pass: one column in the order middle, right, left; no cost lines in the bar; nothing is cut off (in the browser console, `document.documentElement.scrollWidth` is not larger than the window width).
+5. Open `?lang=en`: the Now page, a selected failed run, the empty state and `/settings`, wide (TC-V13) and 390 px (TC-V14). Pass: every interface word is English, run names unchanged.
+6. Put the wide screenshots beside `specs/011a-web-shell/design-v1-demo.html` (TC-V15). Pass: same skeleton (dark bar, three columns, solid and dashed stage strip, filled items on the right, an outline on the selected run); the differences are only the items listed as "之後開放".
+7. Save the Now page, a selected run, `/settings`, `/login` and the empty state as HTML files and run `impeccable detect <file.html>` on each (TC-V16). Write every finding in the report; findings are for a person to read.
+8. Press Tab through the Now page (TC-V18). Pass: every link shows an outline when it has the focus.
+9. Log in as the second user. Pass: none of the first user's runs appear, and opening `/?run=<their run id>` gives the same 404 page as a made-up id.
 
-**Ledger review (TC-D01 to TC-D09, TC-N07, TC-K5).** Read `specs/011a-web-shell/ledger.md` and `git diff v3...HEAD`. Pass: every rewritten pin has an old value, a new value and a reason (TC-G04 six routes; the "已登入 … 請回到 AI" page replaced by the redirect to `/`; CSP and `PLATFORM.md` wording); no other test was deleted, skipped or loosened; `docs/PLATFORM.md` names six routes; the CHANGELOG has a 011a line; `web.py`'s header describes `GET /`; nothing under `hooks/`, `.claude/`, `actions/`, `jobs.py`, `mcp_server.py` or `store.py` changed.
+**Ledger review (TC-D01 to TC-D12, TC-S07, TC-S08, TC-S09, TC-N07, TC-K5).** Read `specs/011a-web-shell/ledger.md` and `git diff v3...HEAD`. Pass: every rewritten pin has an old value, a new value and a reason; no other test was deleted, skipped or loosened; the merge of `origin/v3` is one commit (`git log --merges --first-parent`) and `git merge-base --is-ancestor 0d36bcf HEAD` holds; the OWED list in `platform/tests/test_web_parity.py` is the same as the one in the ledger; the ledger names where DESIGN.md wants JavaScript and says 011a uses the meta refresh; `docs/PLATFORM.md` names `GET /` and `GET /settings`; the CHANGELOG has a 011a line; `web.py`'s header describes both; `git diff 637dc7c HEAD -- DESIGN.md PRODUCT.md specs/011a-web-shell/plan.md` is empty; nothing under `hooks/`, `.claude/`, `actions/`, `jobs.py`, `mcp_server.py` or `store.py` changed.
+
 ## Chrome login (web-chrome-origin)
 
 Needs a Python with Playwright and Google Chrome installed; CI has neither, so this is not in the automated suite (WCO-3 of `specs/web-chrome-origin`).
@@ -437,7 +441,7 @@ Real examples already in the repo: `platform/tests/test_confirm_page.py` (the co
 
 The suite adds no browser-automation dependency (no Playwright, Selenium or Puppeteer in `platform/pyproject.toml` or `platform/constraints.txt`). Two reasons: it is one more heavy dependency to install and pin, and browser automation is flaky on WSL and in CI. This is about the automated suite only; the one-off real-Chrome check in "Chrome login (web-chrome-origin)" above is run by hand and is not a test dependency. `tests/testing_web_doc_test.sh` holds these claims.
 
-**Parity test.** ROADMAP's rule: every action has an MCP tool and a web route, and the owed list only shrinks. The test arrives with 011a. It is not built yet: no file on this branch implements it. When it lands, replace this sentence with its file name.
+**Parity test.** ROADMAP's rule: every action has an MCP tool and a web route, and the owed list only shrinks. The test is `platform/tests/test_web_parity.py` (011a).
 
 ### Web, half 2 — the person: click-only 16S end to end
 

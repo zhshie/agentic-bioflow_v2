@@ -68,3 +68,51 @@ Unchanged and still passing: H01a, H02, H03, H04, H05, H06, H07, H08 (progress),
 `test_launch_static.py` tc069/tc070 are untouched.
 
 Fix round (verifier, TC-L44): `test_tcl44_no_external_url_script_or_style_attribute` now creates a second user "bob" with no runs and checks the empty-state page (`/`, `/?lang=en`, `/?run=nope`) with the same three checks (no http(s) URL, no `<script`, no `style=` or `on*=`), replacing the stub `empty = login(...)` / `assert empty`. Test-only change; product code untouched.
+
+## Web design v1 redo (plan "REDO per web design v1": G0 to G10, rulings R1 to R7)
+
+- [x] G0 `24cd5fb`: plain merge of `origin/v3` (no rebase, no force). One conflict, `docs/PLATFORM.md` ("What it does not do"): kept v3's text (resume/relaunch asked for by name, `head-<N>.sh`) and our "read-only board" wording. The test files auto-merged; keep-submissions, resume/relaunch and 013a tests are all still in.
+- [x] RED `d35670b`: `platform/tests/test_web_board.py` rewritten to the DESIGN.md structure (TC-S01 to S49, TC-L, TC-H, TC-N rows), `test_web_parity.py` tables recomputed for v3.
+- [x] GREEN: `web_board.py` redone (DESIGN.md tokens only, mast with the two cost lines, 272/fluid/320 grid, Now page, settings page, `render_settings`, Taipei time, `<details open>` groups), `web.py` adds `GET /settings`.
+
+### OWED written out (TC-S06, TC-S07; rule R2; the list may only shrink)
+
+OWED (an action with an MCP tool of the same name and no web route): `list_compute_envs`, `get_compute_env`, `list_agents`, `list_site_files`, `launch`, `cancel`, `forget`.
+Since the v3 merge the MCP side also has the tools `resume` and `relaunch`; they call `request_resume` and `request_relaunch`, which with `request_forget` are in INTERNAL, as are `forget_check`, `keep_screen`, the `FORGET_*` words, `FORGETTABLE` and `RUN_NOT_FOUND`.
+
+### JS spots of DESIGN.md that 011a does not build (TC-S09, G8)
+
+DESIGN.md "Constraints" marks JS for: live updates (the Now page and the right column), client-side pipeline search, chat send/streaming, drag-and-drop upload, the MultiQC embed and the Studio iframe. In 011a only the first is on a screen of this slice: both the Now page and the right column refresh with `<meta http-equiv="refresh" content="15">` on `/` (no script, no `<script>` anywhere; TC-H13e pins it). The others belong to 012b, 014, 012c, 013 and 016.
+
+### Test assertions changed for the design v1 markup (TC-D10); none deleted without a replacement
+
+| Old assertion (layout B) | New | Reason |
+|---|---|---|
+| right column held the cost line `本月 SU — · 雲端 —` | `test_tcs03_s04_cost_readout`: two elements `SU —` and `雲端 NT$ —` (`Cloud NT$ —`) in the mast, no link, no `<progress>`, none in the panes | R1 |
+| left heading `我的 run` over a list, `設定` grey, grid `232px 1fr 272px` | `現在` first, then `我的 run`, grey tools, `設定` a link to `/settings`; grid `272px minmax(0,1fr) 320px`, 1200 px and 900 px queries | G1, G2, R4, TC-S11 to S13 |
+| groups were `<section><h3>` | `<details open><summary>`; counts row `▶ n`, `! n`, `✓ n` | R6, TC-L19, TC-S26 |
+| item line 2 was `symbol label · key fact` (end time for succeeded, `—` for lost) | `symbol label done/total`, a `<progress>`, and for failed a reason line | R6 (the B3 rule is superseded), TC-S27 |
+| middle with no run said `選一個 run` | the Now page with the cards 正在跑 and 需要注意 | G4, R3 |
+| times verbatim ISO `2023-11-14T22:13:20Z` | `MM-DD HH:mm` Asia/Taipei | G7, TC-H21c, TC-S46 |
+| stage cells had no mark | done cells start with `✓ ` | TC-S29 |
+| `test_tn04` listed `/settings` as a 404 path | `/settings` taken out (it is a route now), `/cost` and `/setup` added | R4, TC-N04 |
+| `test_tn05` expected the eight tools | the eleven tools of v3 (adds forget, resume, relaunch) | the merge; no tool is added by 011a |
+| `test_tch16d` OWED is exactly six | TC-S06 (rule) and TC-S07 (the literal list above) | R2 |
+| login redirect and `tn08` | unchanged | |
+
+Unchanged and still passing: the confirmation page and consent tests (`test_confirm_page.py`, `test_oauth_consent.py` and the rest) pass as they were; `test_launch_static.py` tc069/tc070 are untouched.
+
+### Older pins changed for `GET /settings` (TC-D01, TC-D10)
+
+| Pin | Old | New | Reason |
+|---|---|---|---|
+| `test_confirm_page.py` TC-G04 | routes were the union of 009c, 009i and `GET /`; `/settings` in the must-be-404 loop | routes add `("/settings", ("GET", "HEAD"))`; `/settings` taken out of the 404 loop and `/cost` put in | R4: `GET /settings` is the seventh page route; the loop's point (nothing else exists) is kept |
+| `test_owner_binding.py` tc068 | route paths were the union plus `/` | adds `/settings` | same |
+
+### Open item: `tests/jev_test.sh` TC-085 against TC-S39 and TC-N14
+
+TC-S39 and TC-N14 require the settings page to list "Jev 金鑰（選填）" (and "Jev key (optional)" in English) as a grey item. `tests/jev_test.sh` TC-085 says `grep -rli jev platform/` finds nothing, and the string must therefore not stand in `platform/abf_platform/web_board.py` or in the test that checks it. Both cannot hold. Nothing was changed in `jev_test.sh` (not named in the plan). The developer-agent has to decide: allow `web_board.py` and `test_web_board.py` in TC-085, or drop the Jev item from TC-S39 and TC-N14.
+
+### Manual rows left to the verifier / developer-agent
+
+TC-V02 to TC-V04, TC-V11 to TC-V18 (screenshots with Playwright, the detector, the Tab walk) and the ledger-review rows TC-D01 to TC-D12, TC-S07 to TC-S09, TC-N07, TC-K5 follow `docs/TESTING.md`. No schema, `actions/`, `jobs.py`, `mcp_server.py`, `store.py`, `hooks/` or `.claude/` file was changed (no migration needed: nothing stored).

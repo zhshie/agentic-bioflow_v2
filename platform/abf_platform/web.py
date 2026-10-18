@@ -2,11 +2,13 @@
 """The confirmation page (spec 009c): where a person presses 送出, as the same user that the AI asked for.
 
 A separate small app (`abf-platform web`), not part of the MCP server's bearer check and not part of the receiver: a browser has no
-bearer token and must never be given one. Spec 011a added the first page that shows anything but a login or one request: GET /, the
-three-column board (my runs, the stage board of one run, all my runs by stage; after Galaxy, English with ?lang=en), read-only and for the logged-in user's own runs only.
+bearer token and must never be given one. Spec 011a added the first pages that show anything but a login or one request, after web design v1 (DESIGN.md): GET /, the
+three-column board (left: my runs; middle: the Now page of running and needs-attention cards, or the five-stage board of one run; right: all my
+runs by stage; English with ?lang=en), and GET /settings (every section still to come), read-only and for the logged-in user's own runs only.
 The only routes there are:
 
-  GET  /             the board (spec 011a): ?run=<id> picks the run of the middle pane, ?stage=<name> its stage, ?lang=en the English page; needs the cookie
+  GET  /             the board (spec 011a): the Now page, or with ?run=<id> that run, ?stage=<name> its stage, ?lang=en the English page; needs the cookie
+  GET  /settings     the settings frame (spec 011a): read-only, every section greyed "coming later"; needs the cookie
   GET  /login        the login form (name + web password)
   POST /login        log in; the password is checked against its scrypt hash; a cookie of 12 hours
   POST /logout       end this browser login
@@ -361,6 +363,16 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, request.query_params.get("stage"), lang, reasons)
         return HTMLResponse(doc, headers=_HEADERS)
 
+    async def settings(request):
+        sid, user = user_of(request)
+        if user is None:
+            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        runs = await run_in_threadpool(read_runs, caller)
+        reasons = await run_in_threadpool(read_reasons, web_board.failed_ids_shown(runs), caller)
+        return HTMLResponse(web_board.render_settings(user["name"], csrf(sid, "logout"), runs, lang, reasons), headers=_HEADERS)
+
 
     # ---- the OAuth consent page (spec 009i) -------------------------------------------------------------------------
     issuer = (public_url or base_url or DEFAULT_BASE).rstrip("/")
@@ -438,7 +450,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         gone = consent_gone(provider.consent_request(rid)) if status in ("decided", "expired") else None
         return gone or _page("未處理", "<p class=\"bad\">什麼都沒有改。請回到連接器重新開始。</p>", 403 if status == "user" else 404)
 
-    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
+    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/c/{rid}", confirm_get, methods=["GET"]), Route("/c/{rid}", confirm_post, methods=["POST"]),
                             Route("/consent/{rid}", consent_get, methods=["GET"]), Route("/consent/{rid}", consent_post, methods=["POST"])]

@@ -526,7 +526,7 @@ def test_tch19a_left_cap(w):
     ann = w.user("ann")
     bulk(w, ann, 250, "succeeded", "run")
     left = pane(login(w, "ann").get("/").text, "left")
-    assert len(re.findall(r"run\d{3}", left)) == 100 and "還有 150 筆" in left
+    assert len(re.findall(r">run\d{3}<", left)) == 100 and "還有 150 筆" in left
 
 
 # ---- stage strip and the middle column --------------------------------------------------------------------------------------------
