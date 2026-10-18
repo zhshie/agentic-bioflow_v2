@@ -301,6 +301,13 @@ Needs the platform running (`abf-platform serve`, `abf-platform mcp --http`, `ab
 5. **Claude Code kit.** With `extensions/claude-code-kit/settings.json` merged into your Claude Code settings, calling `launch` or `cancel` asks you first. Remove the rule: the platform still queues nothing without your yes (the rule is a second layer, not the gate).
 6. **Browser.** The cookie is `HttpOnly` and `SameSite=Strict` (developer tools, Application, Cookies); behind an https address it is also `Secure`. Five wrong passwords for one name lock that name for a minute.
 
+## Chrome login (web-chrome-origin)
+
+Needs a Python with Playwright and Google Chrome installed; CI has neither, so this is not in the automated suite (WCO-3 of `specs/web-chrome-origin`).
+
+1. From the repo root run `ABF_PLAYWRIGHT_PYTHON=<python with playwright> python scripts/dev/check_chrome_login.py` (run it in WSL or Linux, the platform side is Unix-only; use the platform test venv python (`~/.cache/abf-platform-venv/bin/python`, built by `tests/platform_test.sh`), which has the repo's test dependencies. `ABF_PLAYWRIGHT_PYTHON` may be a Windows python, e.g. `/mnt/c/.../Scripts/python.exe`, to use Windows Chrome). Without the variable it uses its own Python if that has playwright.
+2. Pass: it prints `PASS: WCO-3` and exits 0 (a real headless Chrome logged in with a 303, pressed 送出, no 403, the page said it was sent). Exit 77 means no playwright or no Chrome, so nothing was checked.
+
 ## Claude Desktop custom connector (#117)
 
 Two parts. Part A needs only one machine; part B needs the public https address (009h) and has **not been done**: Claude Desktop reaches the platform from the cloud, so nothing below is claimed as tested with Claude Desktop yet.
