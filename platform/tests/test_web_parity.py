@@ -19,12 +19,16 @@ WEB_ONLY = {
     "approve": "the button of the confirmation page: the PAGE channel's yes",
     "platform_path_for": "the page finds platform.db from the index path, the way every entry does",
 }
-# Actions with an MCP tool and no web route yet. The list only shrinks: adding a name means changing this test and the plan.
+# Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).
 OWED = {"list_compute_envs": "012a", "get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d",
-        "launch": "terminal only, with request forms on /c/", "cancel": "terminal only, with request forms on /c/"}
-# 009i added ConnectorCaller (the caller an OAuth token stands for) and form_is_trusted (does the MCP client show a 送出 form): MCP-side only, the web never calls them; the OAuth web routes are not actions, so they are not in WEB_ONLY.
-INTERNAL = {"request_launch", "request_cancel", "find_approved", "void_request", "person_at", "caller_area", "confined_samplesheet",
-            "read_confined_samplesheet", "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE"}
+        "launch": "terminal only, with request forms on /c/", "cancel": "terminal only, with request forms on /c/",
+        "forget": "terminal only (v3 keep-submissions), with a request form on /c/"}
+# Helpers, classes and constants that no web route or tool exposes by name. 009i: ConnectorCaller, form_is_trusted (MCP side only).
+# v3 (keep-submissions, resume/relaunch): request_forget, request_resume, request_relaunch are what the tools forget, resume, relaunch call; forget_check and keep_screen are helpers; the FORGET_* and RUN_NOT_FOUND words are constants.
+INTERNAL = {"request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
+            "person_at", "caller_area", "confined_samplesheet", "read_confined_samplesheet", "forget_check", "keep_screen",
+            "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE",
+            "FORGETTABLE", "FORGET_ALREADY", "FORGET_NO_FORM", "FORGET_STARTING", "FORGET_WAIT_SECONDS", "RUN_NOT_FOUND"}
 FORBIDDEN_IMPORTS = {"confirm", "jobs", "compute_envs", "agents", "status"}
 
 
@@ -90,9 +94,26 @@ def test_tch16c_web_routes_have_a_same_named_tool(tmp_path, monkeypatch):
     assert set(WEB_ROUTES) <= {t.name for t in tools}
 
 
-def test_tch16d_owed_is_exactly_six():
-    # TC-H16d
-    assert set(OWED) == {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "launch", "cancel"}
+def mcp_called_actions():
+    """The names the MCP server's tool handlers take from `actions` (AST of mcp_server.py)."""
+    return called_actions((PLATFORM_DIR / "abf_platform" / "mcp_server.py").read_text(encoding="utf-8"))
+
+
+def test_tcs06_owed_follows_the_rule():
+    # TC-S06 (replaces TC-H16d): R2, every public action a tool calls and no web route calls is in OWED or INTERNAL
+    assert {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files"} <= set(OWED)
+    for name in mcp_called_actions():
+        assert name in set(WEB_ROUTES) | set(OWED) | INTERNAL, name
+    assert not (set(OWED) & called_actions((WEB).read_text(encoding="utf-8")))
+    assert {"forget_check", "keep_screen"} <= INTERNAL
+
+
+def test_tcs07_owed_is_written_out():
+    # TC-S07: the literal list, also in the ledger; it may only shrink
+    assert set(OWED) == {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "launch", "cancel", "forget"}
+    ledger = (PLATFORM_DIR.parent / "specs" / "011a-web-shell" / "ledger.md").read_text(encoding="utf-8")
+    for name in OWED:
+        assert name in ledger
 
 
 def test_tch16e_no_owed_name_is_called_by_the_web():

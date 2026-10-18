@@ -1,11 +1,15 @@
-# Nothing existing: tests of the three-pane read-only page of spec 011a (GET /); the page, its stage rule and its limits are ours.
-"""011a: the web shell. Test cases are named in the comments (TC-H01a ...). Runs are seeded straight into index.db and launches."""
+# Nothing existing: tests of the read-only board of spec 011a (web design v1: GET /, GET /settings); the page, its stage rule and its limits are ours.
+"""011a: the web shell after web design v1. Test cases are named in the comments (TC-H01a, TC-S10 ...). Runs are seeded straight into index.db and launches."""
 import ast
 import base64
+import calendar
 import hashlib
+import html as htmllib
+import logging
 import re
 import time
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -22,7 +26,7 @@ def w(tmp_path, monkeypatch):
     return World(tmp_path, monkeypatch)
 
 
-def seed(w, name, status="running", owner=None, started=None, counts=None, reason=None, run_id=None, launch_row=True):
+def seed(w, name, status="running", owner=None, started=None, counts=None, reason=None, run_id=None, launch_row=True, ended=None):
     """One run in index.db (its status as the page will derive it) and a launches row naming `owner` (a Caller, or None for NULL)."""
     from abf_platform import store
     rid = run_id or "id-" + name
@@ -35,7 +39,7 @@ def seed(w, name, status="running", owner=None, started=None, counts=None, reaso
     with con:
         con.execute("INSERT INTO runs (id, session_id, run_name, final_status, started_at, ended_at, last_message_at, failure_reason,"
                     " n_succeeded, n_cached, n_failed, n_aborted, n_running, n_pending, n_submitted) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (rid, "s-" + rid, name, final, started, started + 100 if final else None, last, reason,
+                    (rid, "s-" + rid, name, final, started, (ended if ended is not None else started + 100) if final else None, last, reason,
                      c["succeeded"], c["cached"], c["failed"], c["aborted"], c["running"], c["pending"], c["submitted"]))
     con.close()
     if launch_row:
@@ -71,21 +75,52 @@ def plain(html_text):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html_text)).strip()
 
 
+def style_of(text):
+    return re.search(r"<style>(.*?)</style>", text, re.S).group(1)
+
+
 def group_head(text, stage):
-    """The heading text of the right-hand group of one stage."""
-    return re.search(r'data-stage="%s"[^>]*>.*?<h3[^>]*>(.*?)</h3>' % stage, pane(text, "right"), re.S).group(1)
+    """The summary text of the right-hand group of one stage."""
+    return re.search(r'<details\b[^>]*data-stage="%s"[^>]*>\s*<summary[^>]*>(.*?)</summary>' % stage, pane(text, "right"), re.S).group(1)
 
 
 def items(text, stage=None):
-    """The right-hand history items (whole-block links), in page order, of one group or of all."""
+    """The right-hand items (whole-block links), in page order, of one group or of all."""
     right = pane(text, "right")
     if stage:
-        right = re.search(r'data-stage="%s"[^>]*>(.*?)</section>' % stage, right, re.S).group(1)
+        right = re.search(r'data-stage="%s"[^>]*>(.*?)</(?:details|section)>' % stage, right, re.S).group(1)
     return re.findall(r'<a\b[^>]*class="[^"]*\bitem\b[^"]*"[^>]*>.*?</a>', right, re.S)
 
 
+def rows(text):
+    """The left-hand run links, in page order."""
+    return re.findall(r'<a\b[^>]*class="[^"]*\brow\b[^"]*"[^>]*>.*?</a>', pane(text, "left"), re.S)
+
+
+def card(text, which):
+    """One card of the Now page: running or attention."""
+    return re.search(r'<section\b[^>]*data-card="%s"[^>]*>(.*?)</section>' % which, pane(text, "middle"), re.S).group(1)
+
+
+def card_lines(text, which):
+    return re.findall(r"<li\b[^>]*>.*?</li>", card(text, which), re.S)
+
+
+def card_num(text, which):
+    return plain(re.search(r'<span\b[^>]*class="num"[^>]*>(.*?)</span>', card(text, which), re.S).group(1))
+
+
+def tally(text):
+    row = re.search(r'<p\b[^>]*class="[^"]*\btally\b[^"]*"[^>]*>(.*?)</p>', pane(text, "right"), re.S).group(1)
+    return re.findall(r"[▶!✓⟳?…]\s*\d+", plain(row))
+
+
 def cjk(text):
-    return re.findall(r"[　-〿㐀-鿿豈-﫿＀-￯]", text)
+    return re.findall(r"[　-〿㐀-鿿豈-﫿＀-￯]", text)
+
+
+def no_cjk(text):
+    return cjk(re.sub(r">中<", "><", text)) == []
 
 
 def strip_cells(text):
@@ -96,34 +131,41 @@ def strip_cells(text):
     return out
 
 
-# ---- login and the shell --------------------------------------------------------------------------------------------------------
+def epoch(y, mo, d, h, mi):
+    return calendar.timegm((y, mo, d, h, mi, 0))
+
+
+def four(w, ann, prefix="n-"):
+    return {st: seed(w, prefix + st, st, ann) for st in ("running", "succeeded", "failed", "lost")}
+
+
+def bulk(w, owner, n, status, prefix, reason="boom"):
+    """n runs of one user in one go (newest first: run<prefix>000 is the newest)."""
+    from abf_platform import store
+    con = store.connect_index(w.ip.index)
+    con2 = store.connect_state(w.ip.state_db)
+    now = int(time.time())
+    with con, con2:
+        for i in range(n):
+            name = "%s%03d" % (prefix, i)
+            final = status if status in ("succeeded", "failed") else None
+            con.execute("INSERT INTO runs (id, session_id, run_name, final_status, started_at, ended_at, last_message_at, failure_reason)"
+                        " VALUES (?,?,?,?,?,?,?,?)", ("i-" + name, "s", name, final, now - 10 * i - 10 ** 5, now - 10 * i - 10 ** 5 + 5, now,
+                                                      reason if status == "failed" else None))
+            con2.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES (?,?,?,?,?,?)",
+                         (name, "/f", "lab-a", "ag", now, owner.user_id))
+    con.close()
+    con2.close()
+
+
+# ---- login and the shell ----------------------------------------------------------------------------------------------------------
 
 def test_tch01a_no_cookie_goes_to_login(w):
-    # TC-H01a
+    # TC-H01a, TC-S38 (no cookie)
     seed(w, "secret-run", owner=w.user("zed"))
-    r = w.web().get("/")
-    assert r.status_code == 303 and r.headers["location"] == "/login" and "secret-run" not in r.text
-
-
-def test_tcl02_h21a_three_panes(w):
-    # TC-L02, TC-H21a (replace TC-H01b), TC-L05, TC-L06 (replace TC-H20b, TC-H20d)
-    ann = w.user("ann")
-    for n in ("r1", "r2", "r3"):
-        seed(w, n, "running", ann)
-    r = login(w, "ann").get("/")
-    assert r.status_code == 200
-    left, mid, right = (pane(r.text, n) for n in ("left", "middle", "right"))
-    assert "我的 run" in left and "選一個 run" in mid and "本月 SU — · 雲端 —" in plain(right)
-    assert "本月費用" not in r.text and "011b" not in r.text and "尚未開放" not in r.text
-    # TC-L05: each run is a link to /?run=<id>; the unbuilt items are grey text outside every link
-    assert sorted(re.findall(r'<a\b[^>]*href="/\?run=([^"&]*)"', left)) == ["id-r1", "id-r2", "id-r3"]
-    assert "之後開放" in left
-    assert not any("之後開放" in a for a in re.findall(r"<a\b.*?</a>", left, re.S))
-    # TC-L06: settings is grey text, the logout form is the only form
-    foot = left[left.index("設定"):]
-    assert "之後開放" in foot and "登出" in foot
-    assert not [h for h in hrefs(r.text) if "settings" in h]
-    assert len(re.findall(r"<form\b", r.text)) == 1
+    for path in ("/", "/settings"):
+        r = w.web().get(path)
+        assert r.status_code == 303 and r.headers["location"] == "/login" and "secret-run" not in r.text
 
 
 def test_tch02_login_lands_on_root(w):
@@ -150,70 +192,185 @@ def test_tch20a_newest_first(w):
     assert left.index("new-one") < left.index("mid-one") < left.index("old-one")
 
 
-def test_tch21_stage_bodies(w):
-    # TC-H21c, TC-H21d, TC-H21e, TC-H21f, TC-H21g
+def test_tcs10_mast(w):
+    # TC-S10
+    w.user("ann")
+    t = login(w, "ann").get("/").text
+    top = t[:t.index('data-pane="left"')]
+    assert 'class="mast"' in top and top.index("agentic-bioflow") < top.index("SU —") < top.index(">中<") < top.index(">EN<") < top.index("ann")
+    assert "登出" not in top and "<form" not in top
+    assert re.search(r"\.mast\{[^}]*height:\s*40px", style_of(t))
+
+
+def test_tcs03_s04_cost_readout(w):
+    # TC-S03, TC-S04 (replace TC-H09a, TC-H09b, TC-L17), TC-H09c, TC-L18
+    from abf_platform import web_board
     ann = w.user("ann")
-    rid = seed(w, "run-a", "running", ann, started=1_700_000_000, counts=dict(succeeded=3, running=2, pending=1))
-    fid = seed(w, "run-f", "failed", ann, reason="Process terminated with an error exit status (137)")
+    seed(w, "x", "running", ann, counts=dict(succeeded=500, running=40))
     c = login(w, "ann")
-    # TC-H21c: both times verbatim, each count paired with its label, on a run whose end time is known
-    done = seed(w, "run-d", "failed", ann, started=1_700_000_000, counts=dict(succeeded=3, running=2, failed=1))
-    mid = plain(pane(c.get("/?run=" + done).text, "middle"))
-    assert "2023-11-14T22:13:20Z" in mid and "2023-11-14T22:15:00Z" in mid
-    for label, n in (("成功", 3), ("執行中", 2), ("失敗", 1), ("快取", 0)):
-        assert re.search(r"%s\s*%d(?!\d)" % (label, n), mid), (label, n)
-    assert "Process terminated with an error exit status (137)" in c.get("/?run=" + fid).text
-    for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "013b")):
-        body = pane(c.get("/?run=%s&stage=%s" % (rid, stage)).text, "middle")
-        assert "—" in body and feature in body, stage
+    for url, want in (("/", ["SU —", "雲端 NT$ —"]), ("/?lang=en", ["SU —", "Cloud NT$ —"])):
+        t = c.get(url).text
+        top = t[:t.index('data-pane="left"')]
+        lines = re.findall(r'<(\w+)\b[^>]*class="[^"]*\bcost\b[^"]*"[^>]*>(.*?)</\1>', top, re.S)
+        assert [plain(x[1]) for x in lines] == want, url
+        assert all("<" not in x[1] for x in lines)
+        assert "<progress" not in top
+        assert not [h for h in re.findall(r"<a\b.*?</a>", top, re.S) if "SU" in h or "NT$" in h]
+        assert "SU —" not in pane(t, "right") and "NT$" not in pane(t, "right") and "NT$" not in pane(t, "left")
+    t = c.get("/").text
+    assert "本月費用" not in t and "NCHC" not in t and "NCHC" not in Path(web_board.__file__).read_text(encoding="utf-8")
+    assert not re.search(r"\d", plain(re.search(r"<header.*?</header>", t, re.S).group(0)).replace("SU", ""))
 
 
-def test_tcl07_to_l13_stage_strip(w):
-    # TC-L07, TC-L08, TC-L09, TC-L10, TC-L11, TC-L12, TC-L13
+def test_tcs11_s12_s13_layout_css(w):
+    # TC-S11, TC-S12, TC-S13
+    w.user("ann")
+    css = style_of(login(w, "ann").get("/").text).replace(" ", "")
+    assert "grid-template-columns:272pxminmax(0,1fr)320px" in css
+    assert re.search(r"@media\(max-width:1200px\)\{[^@]*grid-template-columns:232pxminmax\(0,1fr\)288px", css)
+    m = re.search(r"@media\(max-width:900px\)\{(.*?)\}\}", css + "}}", re.S).group(1)
+    assert re.search(r"\.wb\{[^}]*grid-template-columns:1fr", m)
+    assert re.search(r"\.main\{[^}]*order:-2", m) and re.search(r"\.rail\{[^}]*order:-1", m)
+    assert re.search(r"\.costs[^{]*\{[^}]*display:none", m)
+
+
+def test_tcs14_s15_s16_tokens(w):
+    # TC-S14, TC-S15, TC-S16
+    w.user("ann")
+    css = style_of(login(w, "ann").get("/").text)
+    light = ["#f6f5f2", "#ffffff", "#ecebe6", "#1f2328", "#575e66", "#d6d3cc", "#8f8b82", "#1c5d8a", "#e2edf5",
+             "#0b5aa8", "#e3edf9", "#1b6837", "#e2f0e6", "#b0261d", "#fae6e3", "#865700", "#f7edd6"]
+    dark = ["#15171a", "#1e2125", "#101214", "#e9e7e2", "#a2a8b0", "#33373d", "#646a73", "#7db8e2", "#1a2c3a", "#9cccf0",
+            "#80b6f2", "#15263a", "#78c792", "#14291c", "#f28b81", "#3a1916", "#e2b35e", "#33270e"]
+    dark_block = css[css.index("prefers-color-scheme"):]
+    root = css[:css.index("prefers-color-scheme")]
+    for v in light:
+        assert v in root, v
+    for v in dark:
+        assert v in dark_block, v
+    for v in re.findall(r"#[0-9a-fA-F]{3,8}\b", css):
+        assert v.lower() in light + dark, v
+    assert not re.search(r"\b(rgba?|hsla?)\(", css)
+    families = set(re.findall(r"font-family:([^;}]+)", css))
+    assert len(families) == 2
+    for fam in families:
+        assert fam.startswith("ui-monospace") or ("Noto Sans TC" in fam and "Microsoft JhengHei" in fam), fam
+    assert set(re.findall(r"font-size:([^;}]+)", css)) <= {"12px", "13px", "15px", "16px", "22px", "inherit"}
+    assert set(re.findall(r"border-radius:([^;}]+)", css)) <= {"0", "4px", "6px", "999px"}
+    for prop, val in re.findall(r"(?<![-\w])((?:padding|margin|gap|row-gap|column-gap)(?:-(?:top|right|bottom|left))?):([^;}]+)", css):
+        for px in re.findall(r"(-?\d+(?:\.\d+)?)px", val):
+            assert px in ("0", "4", "8", "12", "16", "24"), (prop, val)
+
+
+def test_tcs17_one_stylesheet_nothing_external(w):
+    # TC-S17
     ann = w.user("ann")
-    ids = {st: seed(w, "n-" + st, st, ann) for st in ("running", "succeeded", "failed", "lost")}
+    seed(w, "x", "running", ann)
     c = login(w, "ann")
-    expect = {"running": ["is-done", "is-current", "is-later", "is-later", "is-later"],
-              "failed": ["is-done", "is-current", "is-later", "is-later", "is-later"],
-              "lost": ["is-done", "is-current", "is-later", "is-later", "is-later"],
-              "succeeded": ["is-done", "is-done", "is-current", "is-later", "is-later"]}
-    for st, want in expect.items():
-        cells = strip_cells(c.get("/?run=" + ids[st]).text)
-        assert list(cells) == list(STAGES), st                                        # TC-L07: five cells in order
-        got = [[k for k in cells[s][0] if k.startswith("is-")] for s in STAGES]
-        assert got == [[x] for x in want], (st, got)
-    names = [plain(strip_cells(c.get("/?run=" + ids["running"]).text)[s][1]) for s in STAGES]
-    assert names == ["送出", "執行中", "結果", "下游", "完成"]
-    # TC-L12: choosing a stage never changes the classes; only the chosen cell has aria-current
-    cells = strip_cells(c.get("/?run=%s&stage=results" % ids["running"]).text)
-    assert [[k for k in cells[s][0] if k.startswith("is-")] for s in STAGES] == [[x] for x in expect["running"]]
-    assert [s for s in STAGES if 'aria-current="step"' in cells[s][1]] == ["results"]
-    # TC-L13: with no stage chosen, the run's own stage is the current step
-    for st, own in (("succeeded", "results"), ("failed", "running")):
-        cells = strip_cells(c.get("/?run=" + ids[st]).text)
-        assert [s for s in STAGES if 'aria-current="step"' in cells[s][1]] == [own]
+    for t in (c.get("/").text, c.get("/settings").text, w.web().get("/login").text):
+        assert len(re.findall(r"<style\b", t)) == 1 and not re.search(r"<link\b", t, re.I)
+        css = style_of(t)
+        assert "@import" not in css and "@font-face" not in css and "url(" not in css
 
 
-def test_tcl14_l15_l16_middle(w):
-    # TC-L14, TC-L15, TC-L16
+def test_tcs18_focus_outline(w):
+    # TC-S18
+    w.user("ann")
+    css = style_of(login(w, "ann").get("/").text)
+    for sel in ("a", "summary"):
+        m = re.search(r"%s:focus-visible\{[^}]*outline:\s*(\d+)px solid var\(--focus\)" % sel, css)
+        assert m and int(m.group(1)) >= 2, sel
+    assert "--focus:#1c5d8a" in css and "--focus:#9cccf0" in css
+
+
+# ---- the left column --------------------------------------------------------------------------------------------------------------
+
+def test_tcs19_s20_left_column(w):
+    # TC-S19, TC-S20
     ann = w.user("ann")
-    f = seed(w, "bad-one", "failed", ann, counts=dict(succeeded=11, cached=12, failed=13, aborted=14, running=15, pending=16, submitted=17))
+    long = "L" * 60
+    seed(w, long, "succeeded", ann)
+    seed(w, "go", "running", ann)
+    seed(w, "bad", "failed", ann)
+    seed(w, "gone", "lost", ann)
+    t = login(w, "ann").get("/").text
+    left = pane(t, "left")
+    first = re.search(r"<a\b[^>]*>.*?</a>", left, re.S).group(0)
+    assert 'href="/"' in first and plain(first) == "現在"
+    assert left.index("現在") < left.index("我的 run") < left.index("go") < left.index("設定") < left.index("登出")
+    got = {}
+    for r in rows(t):
+        name = re.search(r"\b(go|bad|gone|L{60})\b", plain(r)).group(1)
+        got[name[:4]] = r
+    want = {"go": ("▶", "執行中", "running"), "bad": ("✗", "執行中", "failed"), "gone": ("⏸", "執行中", "lost"), "LLLL": ("✓", "結果", "succeeded")}
+    for key, (sym, stage, st) in want.items():
+        r = got[key]
+        assert 'href="/?run=id-' in r and sym in r and stage in plain(r) and re.search(r'class="[^"]*\bstate-%s\b' % st, r), key
+        assert re.search(r'<span\b[^>]*class="[^"]*\bnm\b[^"]*"[^>]*>', r)
+    assert re.search(r"\.nm\{[^}]*text-overflow:\s*ellipsis", style_of(t))
+
+
+def test_tcs21_s22_left_grey_and_settings(w):
+    # TC-S21, TC-S22, TC-N11, TC-N18
+    ann = w.user("ann")
+    seed(w, "r", "running", ann)
+    t = login(w, "ann").get("/").text
+    left = pane(t, "left")
+    anchors = re.findall(r"<a\b.*?</a>", left, re.S)
+    for word in ("＋ 新專案", "搜尋專案或分析", "↑ 上傳資料", "資料瀏覽", "儀表板"):
+        assert re.search(r'<span class="off">%s <span class="later">之後開放</span></span>' % re.escape(word), left), word
+        assert not [a for a in anchors if word in a], word
+    assert re.search(r'<a\b[^>]*href="/settings"[^>]*>\s*設定\s*</a>', left)
+    forms = re.findall(r"<form\b[^>]*>", t)
+    assert len(forms) == 1 and 'action="/logout"' in forms[0] and len(re.findall(r"<input\b", left)) == 1
+    for banned in ("Launchpad", "Runs", "Datasets", "Studios"):
+        assert banned not in t
+
+
+def test_tcs23_selected_mark(w):
+    # TC-S23
+    ann = w.user("ann")
+    rid = seed(w, "r", "running", ann)
     c = login(w, "ann")
-    mid = pane(c.get("/?run=" + f).text, "middle")
-    head = re.search(r'<[^>]*class="[^"]*\bstate-failed\b[^"]*"[^>]*>[^<]*</', mid)
-    assert head and "✗" in head.group(0) and "失敗" in head.group(0) and mid.index("bad-one") < mid.index(head.group(0))
-    cells = re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", mid, re.S)
-    assert cells == [("成功", "11"), ("快取", "12"), ("失敗", "13"), ("中止", "14"), ("執行中", "15"), ("等待", "16"), ("已送出", "17")]
-    run = pane(c.get("/?run=%s&stage=running" % f).text, "middle")
-    prev = re.search(r'<a\b[^>]*rel="prev"[^>]*>(.*?)</a>', run, re.S)
-    nxt = re.search(r'<a\b[^>]*rel="next"[^>]*>(.*?)</a>', run, re.S)
-    assert prev.group(1) == "← 上一階段" and nxt.group(1) == "下一階段 →"
-    assert "stage=launch" in prev.group(0) and "run=" + f in prev.group(0)
-    assert "stage=results" in nxt.group(0) and "run=" + f in nxt.group(0)
+    here = lambda html_: re.findall(r'<a\b[^>]*class="[^"]*\bhere\b[^"]*"[^>]*>(.*?)</a>', html_, re.S)
+    assert [plain(x) for x in here(pane(c.get("/").text, "left"))] == ["現在"]
+    t = c.get("/?run=" + rid).text
+    assert len(here(pane(t, "left"))) == 1 and "現在" not in plain(here(pane(t, "left"))[0]) and "r" in plain(here(pane(t, "left"))[0])
+    assert len(here(pane(t, "right"))) == 1
+    t = c.get("/settings").text
+    assert [plain(x) for x in here(pane(t, "left"))] == ["設定"]
 
 
-def test_tch22_l19_l20_groups_and_counts(w):
-    # TC-H22b, TC-L19, TC-L20 (replace TC-H22a)
+# ---- the right column -------------------------------------------------------------------------------------------------------------
+
+def test_tcs24_s25_right_head(w):
+    # TC-S24, TC-S25, TC-N16
+    w.user("ann")
+    right = pane(login(w, "ann").get("/").text, "right")
+    assert "分析進度" in right and right.index("分析進度") < right.index("聊天")
+    assert re.search(r'<span class="off">聊天 <span class="later">之後開放</span></span>', right)
+    head = right[:right.index("全部分析")]
+    assert not re.search(r"<(a|button|input)\b", head) and not re.search(r"聊天.{0,80}\d", plain(head))
+    assert "只顯示你的" in right
+    assert re.search(r'<span class="off">搜尋 <span class="later">之後開放</span></span>', right) and "<input" not in right
+
+
+def test_tcs26_counts_row(w):
+    # TC-S26
+    ann = w.user("ann")
+    for i in range(3):
+        seed(w, "r%d" % i, "running", ann)
+    seed(w, "f", "failed", ann)
+    for i in range(2):
+        seed(w, "l%d" % i, "lost", ann)
+    for i in range(4):
+        seed(w, "s%d" % i, "succeeded", ann)
+    t = login(w, "ann").get("/").text
+    assert tally(t) == ["▶ 3", "! 3", "✓ 4"]
+
+
+def test_tch22_l19_l20_groups(w):
+    # TC-H22b, TC-L19, TC-L20
     ann = w.user("ann")
     for i in range(2):
         seed(w, "r%d" % i, "running", ann)
@@ -223,14 +380,156 @@ def test_tch22_l19_l20_groups_and_counts(w):
         seed(w, "s%d" % i, "succeeded", ann)
     t = login(w, "ann").get("/").text
     right = pane(t, "right")
+    assert re.findall(r"<details open\b[^>]*data-stage=\"([a-z]+)\"", right) == ["running", "results"]
     assert re.findall(r'data-stage="([a-z]+)"', right) == ["running", "results", "later"]
     assert plain(group_head(t, "running")) == "執行中（4）" and plain(group_head(t, "results")) == "結果（3）"
     later = re.search(r'data-stage="later"[^>]*>(.*?)</section>', right, re.S).group(1)
-    assert "之後開放" in later and "<a " not in later and "<h3" not in later
-    for gone in ("送出（", "下游（", "完成（"):
+    assert "之後開放" in later and "<a " not in later and "<details" not in later
+    for gone in ("送出（", "下游（", "完成（", "SU —"):
         assert gone not in right
     names = lambda stage: sorted(re.search(r"\b([rlfs]\d)\b", plain(x)).group(1) for x in items(t, stage))
     assert names("running") == ["f1", "l1", "r0", "r1"] and names("results") == ["s0", "s1", "s2"]
+
+
+def test_tcs01_ten_runs_at_once(w):
+    # TC-S01
+    ann = w.user("ann")
+    names = []
+    for st, n in (("running", 4), ("failed", 2), ("lost", 1), ("succeeded", 3)):
+        for i in range(n):
+            names.append("job-%s-%d" % (st, i))
+            seed(w, names[-1], st, ann)
+    t = login(w, "ann").get("/").text
+    for n in names:
+        assert n in pane(t, "left") and n in pane(t, "right"), n
+    assert "還有" not in t
+    assert plain(group_head(t, "running")) == "執行中（7）" and plain(group_head(t, "results")) == "結果（3）"
+    assert tally(t) == ["▶ 4", "! 3", "✓ 3"]
+    assert (card_num(t, "running"), card_num(t, "attention")) == ("4", "3")
+
+
+def test_tcl21_item_is_one_link(w):
+    # TC-L21, TC-H08a to TC-H08e
+    ann = w.user("ann")
+    for name, st in (("a", "running"), ("b", "succeeded"), ("c", "failed"), ("d", "lost")):
+        seed(w, name, st, ann)
+    t = login(w, "ann").get("/").text
+    its = items(t)
+    assert len(its) == 4
+    classes = {}
+    for label, symbol, st in (("執行中", "▶", "running"), ("成功", "✓", "succeeded"), ("失敗", "✗", "failed"), ("失聯/暫停", "⏸", "lost")):
+        hit = [x for x in its if re.search(r'class="[^"]*\bstate-%s\b' % st, x)]
+        assert len(hit) == 1 and symbol + " " + label in plain(hit[0]) and 'href="/?run=id-' in hit[0], (st, label)
+        classes[st] = re.search(r'class="([^"]*)"', hit[0]).group(1)
+    assert len(set(classes.values())) == 4
+
+
+def test_tcl22_l23_numbers_and_done(w):
+    # TC-L22, TC-L23
+    ann = w.user("ann")
+    now = time.time()
+    seed(w, "first", "running", ann, started=now - 3000, counts=dict(succeeded=6, cached=2, running=2))
+    seed(w, "second", "lost", ann, started=now - 2000)
+    seed(w, "third", "running", ann, started=now - 1000)
+    t = login(w, "ann").get("/").text
+    its = [plain(x) for x in items(t, "running")]
+    assert [x.split()[0] for x in its] == ["3:", "2:", "1:"]
+    assert [x.split()[1] for x in its] == ["third", "second", "first"]
+    assert "▶ 執行中 8/10" in its[2]
+
+
+def test_tcs27_s28_item_lines(w):
+    # TC-S27, TC-S28
+    ann = w.user("ann")
+    seed(w, "a-run", "running", ann, counts=dict(succeeded=6, cached=2, running=2))
+    seed(w, "b-fail", "failed", ann, counts=dict(succeeded=1, failed=9), reason="exit 137\nlater")
+    seed(w, "c-lost", "lost", ann, counts=dict(succeeded=4, pending=6))
+    seed(w, "d-ok", "succeeded", ann, counts=dict(succeeded=10))
+    seed(w, "e-zero", "running", ann)
+    t = login(w, "ann").get("/").text
+    got = {re.search(r"[a-e]-\w+", plain(x)).group(0): x for x in items(t)}
+    for key, text in (("a-run", "a-run ▶ ▶ 執行中 8/10"), ("b-fail", "b-fail ✗ ✗ 失敗 1/10"), ("c-lost", "c-lost ⏸ ⏸ 失聯/暫停 4/10"),
+                      ("d-ok", "d-ok ✓ ✓ 成功 10/10")):
+        p = plain(got[key])
+        assert re.search(r"\d+: ", p) and text in p, (key, p)
+    assert "exit 137" in plain(got["b-fail"]) and "later" not in got["b-fail"]
+    tag = re.search(r"<progress[^>]*>", got["a-run"]).group(0)
+    assert 'value="8"' in tag and 'max="10"' in tag
+    assert "value" not in re.search(r"<progress[^>]*>", got["e-zero"]).group(0)
+    assert all("<progress" in x for x in got.values()) and not re.search(r"\sstyle=", t)
+
+
+def test_tcl25_l26_failed_key_fact(w):
+    # TC-L25, TC-L26, TC-S34
+    ann = w.user("ann")
+    seed(w, "long", "failed", ann, reason="A" * 80 + "B" * 40 + "\nSECONDLINE")
+    seed(w, "short", "failed", ann, reason="short reason\nmore")
+    seed(w, "none", "failed", ann, reason=None)
+    seed(w, "empty", "failed", ann, reason="")
+    t = login(w, "ann").get("/").text
+    its = {re.search(r"\d+: (long|short|none|empty) ", plain(x)).group(1): plain(x) for x in items(t, "running")}
+    assert its["long"].endswith("A" * 80) and "B" not in its["long"] and "SECONDLINE" not in its["long"]
+    assert its["short"].endswith("short reason")
+    assert its["none"].endswith("原因未記錄") and its["empty"].endswith("原因未記錄")
+    lines = {re.search(r"(long|short|none|empty)", plain(x)).group(1): plain(x) for x in card_lines(t, "attention")}
+    assert lines["long"].endswith("A" * 80) and "B" not in lines["long"] and lines["short"].endswith("short reason")
+    assert lines["none"].endswith("原因未記錄") and lines["empty"].endswith("原因未記錄")
+
+
+def test_tcl28_selected_item(w):
+    # TC-L28
+    from abf_platform import web_board
+    ann = w.user("ann")
+    now = time.time()
+    ids = [seed(w, n, "running", ann, started=now - k) for k, n in ((300, "one"), (200, "two"), (100, "three"))]
+    c = login(w, "ann")
+    t = c.get("/?run=" + ids[1]).text
+    marked = [x for x in items(t) if re.search(r'class="[^"]*\bhere\b', x)]
+    assert len(marked) == 1 and "two" in marked[0]
+    assert [x for x in items(c.get("/").text) if re.search(r'class="[^"]*\bhere\b', x)] == []
+    assert re.search(r"\.item\.here\{[^}]*outline", web_board.STYLE)
+
+
+def test_tcl29_failed_items_ask_get_run_at_most_100_times(w, monkeypatch):
+    # TC-L29
+    from abf_platform import actions
+    ann = w.user("ann")
+    bulk(w, ann, 250, "failed", "bad")
+    real, calls, lists = actions.get_run, [], []
+
+    def spy(index, run_id, **kw):
+        calls.append((run_id, kw))
+        return real(index, run_id, **kw)
+    real_list = actions.list_runs
+    monkeypatch.setattr(actions, "get_run", spy)
+    monkeypatch.setattr(actions, "list_runs", lambda *a, **kw: lists.append(kw) or real_list(*a, **kw))
+    t = login(w, "ann").get("/").text
+    assert len(items(t, "running")) == 100 and "還有 150 筆" in pane(t, "right")
+    assert 0 < len({r for r, _ in calls}) <= 100
+    assert all(k.get("caller") is not None and k["caller"].user_id == ann.user_id for _, k in calls)
+    assert lists and all(k.get("caller") is not None for k in lists)
+    assert "boom" in items(t, "running")[0]
+
+
+def test_tcl30_numbers_count_all_runs(w):
+    # TC-L30, TC-H19b
+    ann = w.user("ann")
+    bulk(w, ann, 250, "succeeded", "ok")
+    t = login(w, "ann").get("/").text
+    its = items(t, "results")
+    assert plain(group_head(t, "results")) == "結果（250）" and len(its) == 100 and "還有 150 筆" in pane(t, "right")
+    assert plain(its[0]).split()[0] == "250:" and plain(its[99]).split()[0] == "151:"
+
+
+def test_tch19a_left_cap(w):
+    # TC-H19a
+    ann = w.user("ann")
+    bulk(w, ann, 250, "succeeded", "run")
+    left = pane(login(w, "ann").get("/").text, "left")
+    assert len(re.findall(r"run\d{3}", left)) == 100 and "還有 150 筆" in left
+
+
+# ---- stage strip and the middle column --------------------------------------------------------------------------------------------
 
 def test_tch06_stage_of_table():
     # TC-H06a
@@ -248,20 +547,91 @@ def test_tch06_default_stage(w):
     assert 'data-current="running"' in c.get("/?run=" + f).text
 
 
-def test_tch08_l21_states_readable_without_colour(w):
-    # TC-H08a, TC-H08b, TC-H08c, TC-H08d, TC-H08e, TC-L21
+def test_tch21_stage_bodies(w):
+    # TC-H21c, TC-H21d, TC-H21e, TC-H21f, TC-H21g, TC-S46
     ann = w.user("ann")
-    for name, st in (("a", "running"), ("b", "succeeded"), ("c", "failed"), ("d", "lost")):
-        seed(w, name, st, ann)
-    t = login(w, "ann").get("/").text
-    its = items(t)
-    assert len(its) == 4
-    classes = {}
-    for label, symbol, st in (("執行中", "▶", "running"), ("成功", "✓", "succeeded"), ("失敗", "✗", "failed"), ("失聯/暫停", "⏸", "lost")):
-        hit = [x for x in its if re.search(r'class="[^"]*\bstate-%s\b' % st, x)]
-        assert len(hit) == 1 and symbol + " " + label in plain(hit[0]) and 'href="/?run=id-' in hit[0], (st, label)
-        classes[st] = re.search(r'class="([^"]*)"', hit[0]).group(1)
-    assert len(set(classes.values())) == 4
+    a = seed(w, "run-a", "failed", ann, started=epoch(2026, 10, 17, 20, 30), ended=epoch(2026, 10, 18, 1, 12),
+             counts=dict(succeeded=11, cached=12, failed=13, aborted=14, running=15, pending=16, submitted=17),
+             reason="Process terminated with an error exit status (137)")
+    b = seed(w, "run-b", "succeeded", ann, started=epoch(2026, 10, 18, 1, 5), ended=epoch(2026, 10, 18, 1, 6))
+    c = login(w, "ann")
+    for lang in ("", "&lang=en"):
+        mid = plain(pane(c.get("/?run=" + a + lang).text, "middle"))
+        assert "10-18 04:30" in mid and "10-18 09:12" in mid, lang
+    mid = plain(pane(c.get("/?run=" + a).text, "middle"))
+    for label, n in (("成功", 11), ("快取", 12), ("失敗", 13), ("中止", 14), ("執行中", 15), ("等待", 16), ("已送出", 17)):
+        assert re.search(r"%s\s*%d(?!\d)" % (label, n), mid), (label, n)
+    assert "10-18 09:05" in plain(pane(c.get("/?run=" + b).text, "middle"))
+    assert "Process terminated with an error exit status (137)" in c.get("/?run=" + a).text
+    for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "013b")):
+        body = pane(c.get("/?run=%s&stage=%s" % (a, stage)).text, "middle")
+        assert "—" in body and feature in body, stage
+
+
+def test_tcs47_no_raw_iso_time(w):
+    # TC-S47
+    ann = w.user("ann")
+    rid = seed(w, "r", "succeeded", ann, started=1_700_000_000)
+    c = login(w, "ann")
+    for url in ("/", "/?run=" + rid, "/settings", "/?run=nope"):
+        t = c.get(url).text
+        assert not re.search(r"\d{4}-\d\d-\d\dT\d\d", t) and not re.search(r"\d\d:\d\d:\d\dZ|\+00:00", t), url
+
+
+def test_tcl07_to_l13_stage_strip(w):
+    # TC-L07, TC-L08, TC-L09, TC-L10, TC-L11, TC-L12, TC-L13
+    ann = w.user("ann")
+    ids = {st: seed(w, "n-" + st, st, ann) for st in ("running", "succeeded", "failed", "lost")}
+    c = login(w, "ann")
+    expect = {"running": ["is-done", "is-current", "is-later", "is-later", "is-later"],
+              "failed": ["is-done", "is-current", "is-later", "is-later", "is-later"],
+              "lost": ["is-done", "is-current", "is-later", "is-later", "is-later"],
+              "succeeded": ["is-done", "is-done", "is-current", "is-later", "is-later"]}
+    for st, want in expect.items():
+        cells = strip_cells(c.get("/?run=" + ids[st]).text)
+        assert list(cells) == list(STAGES), st
+        got = [[k for k in cells[s][0] if k.startswith("is-")] for s in STAGES]
+        assert got == [[x] for x in want], (st, got)
+    names = [plain(strip_cells(c.get("/?run=" + ids["running"]).text)[s][1]) for s in STAGES]
+    assert [n.replace("✓ ", "") for n in names] == ["送出", "執行中", "結果", "下游", "完成"]
+    cells = strip_cells(c.get("/?run=%s&stage=results" % ids["running"]).text)
+    assert [[k for k in cells[s][0] if k.startswith("is-")] for s in STAGES] == [[x] for x in expect["running"]]
+    assert [s for s in STAGES if 'aria-current="step"' in cells[s][1]] == ["results"]
+    for st, own in (("succeeded", "results"), ("failed", "running")):
+        cells = strip_cells(c.get("/?run=" + ids[st]).text)
+        assert [s for s in STAGES if 'aria-current="step"' in cells[s][1]] == [own]
+
+
+def test_tcs29_stage_strip_style(w):
+    # TC-S29
+    ann = w.user("ann")
+    rid = seed(w, "r", "succeeded", ann)
+    t = login(w, "ann").get("/?run=" + rid).text
+    css = style_of(t).replace(" ", "")
+    assert re.search(r"\.is-done[^{]*\{[^}]*border-top:3pxsolidvar\(--succeeded\)", css)
+    assert re.search(r"\.is-current[^{]*\{[^}]*border-top:3pxsolidvar\(--accent\)", css)
+    assert re.search(r"\.is-later[^{]*\{[^}]*border-top:3pxdashed", css)
+    cells = strip_cells(t)
+    assert all("✓" in plain(cells[s][1]) for s in ("launch", "running")) and "✓" not in plain(cells["results"][1])
+
+
+def test_tcl14_l15_l16_middle(w):
+    # TC-L14, TC-L15, TC-L16
+    ann = w.user("ann")
+    f = seed(w, "bad-one", "failed", ann, counts=dict(succeeded=11, cached=12, failed=13, aborted=14, running=15, pending=16, submitted=17))
+    c = login(w, "ann")
+    mid = pane(c.get("/?run=" + f).text, "middle")
+    head = re.search(r'<[^>]*class="[^"]*\bstate-failed\b[^"]*"[^>]*>[^<]*</', mid)
+    assert head and "✗" in head.group(0) and "失敗" in head.group(0) and mid.index("bad-one") < mid.index(head.group(0))
+    cells = re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", mid, re.S)
+    assert cells == [("成功", "11"), ("快取", "12"), ("失敗", "13"), ("中止", "14"), ("執行中", "15"), ("等待", "16"), ("已送出", "17")]
+    run = pane(c.get("/?run=%s&stage=running" % f).text, "middle")
+    prev = re.search(r'<a\b[^>]*rel="prev"[^>]*>(.*?)</a>', run, re.S)
+    nxt = re.search(r'<a\b[^>]*rel="next"[^>]*>(.*?)</a>', run, re.S)
+    assert "←" in prev.group(1) and "→" in nxt.group(1)
+    assert "stage=launch" in prev.group(0) and "run=" + f in prev.group(0)
+    assert "stage=results" in nxt.group(0) and "run=" + f in nxt.group(0)
+
 
 def test_tch08_progress(w):
     # TC-H08f, TC-H08g
@@ -269,13 +639,13 @@ def test_tch08_progress(w):
     a = seed(w, "p1", "running", ann, counts=dict(succeeded=6, cached=2, running=2))
     z = seed(w, "p0", "running", ann)
     c = login(w, "ann")
-    tag = re.search(r"<progress[^>]*>", c.get("/?run=" + a).text).group(0)
+    tag = re.search(r"<progress[^>]*>", pane(c.get("/?run=" + a).text, "middle")).group(0)
     assert 'value="8"' in tag and 'max="10"' in tag
-    assert "value" not in re.search(r"<progress[^>]*>", c.get("/?run=" + z).text).group(0)
+    assert "value" not in re.search(r"<progress[^>]*>", pane(c.get("/?run=" + z).text, "middle")).group(0)
 
 
 def test_tch10_stage_param(w):
-    # TC-H10a, TC-H10b, TC-H10c, TC-H10d, TC-H10e
+    # TC-H10a, TC-H10b, TC-H10c, TC-H10d, TC-H10e, TC-S02
     ann = w.user("ann")
     rid = seed(w, "ok", "succeeded", ann)
     c = login(w, "ann")
@@ -292,70 +662,110 @@ def test_tch10_stage_param(w):
     assert 'rel="prev"' not in first and 'rel="next"' in first
     last = c.get("/?run=%s&stage=finished" % rid).text
     assert 'rel="next"' not in last and 'rel="prev"' in last
+    r = c.get("/?stage=running")
+    assert r.status_code == 200 and 'data-card="running"' in r.text and "data-current" not in r.text
 
 
-def test_tch14_refresh_only_on_root(w):
-    # TC-H14a, TC-H14b
-    w.user("ann")
+def test_tch08_states_and_symbols(w):
+    # TC-S30, TC-H08a to TC-H08e, TC-L14
+    ann = w.user("ann")
+    ids = four(w, ann)
     c = login(w, "ann")
-    assert '<meta http-equiv="refresh" content="15">' in c.get("/").text
-    for p in (w.web().get("/login").text, c.get("/c/" + "b" * 32).text, c.get("/?run=nope").text):
-        assert "http-equiv" not in p
+    t = c.get("/").text
+    for st, sym in (("running", "▶"), ("succeeded", "✓"), ("failed", "✗"), ("lost", "⏸")):
+        mine = [r for r in rows(t) if "n-" + st in plain(r)]
+        assert len(mine) == 1 and sym in plain(mine[0]) and "state-" + st in mine[0]
+        mid = pane(c.get("/?run=" + ids[st]).text, "middle")
+        assert re.search(r'class="badge state-%s"[^>]*>\s*%s\s' % (st, sym), mid)
+    for st, label in (("running", "執行中"), ("succeeded", "成功"), ("failed", "失敗"), ("lost", "失聯/暫停")):
+        line = [x for x in card_lines(t, "running") + card_lines(t, "attention") if "n-" + st in plain(x)]
+        if st == "succeeded":
+            assert line == []
+        else:
+            assert len(line) == 1 and label in plain(line[0]) and "state-" + st in line[0], st
 
+
+# ---- the Now page -----------------------------------------------------------------------------------------------------------------
+
+def test_tcs32_s33_s34_now_page(w):
+    # TC-S32, TC-S33, TC-S34, TC-S35
+    ann = w.user("ann")
+    for i in range(2):
+        seed(w, "run%d" % i, "running", ann)
+    seed(w, "bad1", "failed", ann, reason="Out of memory\nsecond")
+    seed(w, "bad2", "failed", ann)
+    seed(w, "gone1", "lost", ann)
+    for i in range(3):
+        seed(w, "fine%d" % i, "succeeded", ann)
+    t = login(w, "ann").get("/").text
+    mid = pane(t, "middle")
+    assert "<h1>現在</h1>" in mid and "正在跑" in mid and "需要注意" in mid
+    assert (card_num(t, "running"), card_num(t, "attention")) == ("2", "3")
+    lines = card_lines(t, "running")
+    assert len(lines) == 2
+    for line in lines:
+        assert "▶" in line and "執行中" in plain(line) and re.search(r'<a\b[^>]*href="/\?run=id-run\d"', line)
+    att = {re.search(r"(bad1|bad2|gone1)", plain(x)).group(1): x for x in card_lines(t, "attention")}
+    assert len(att) == 3
+    assert "✗" in att["bad1"] and "失敗" in plain(att["bad1"]) and plain(att["bad1"]).endswith("Out of memory")
+    assert plain(att["bad2"]).endswith("原因未記錄")
+    assert "⏸" in att["gone1"] and "失聯/暫停" in plain(att["gone1"]) and "原因" not in plain(att["gone1"])
+    for line in att.values():
+        assert re.search(r'<a\b[^>]*href="/\?run=id-[a-z0-9]+"', line)
+    assert "fine" not in card(t, "running") and "fine" not in card(t, "attention")
+
+
+def test_tcs35_nothing_to_notify(w):
+    # TC-S35
+    ann = w.user("ann")
+    seed(w, "fine", "succeeded", ann)
+    t = login(w, "ann").get("/").text
+    assert (card_num(t, "running"), card_num(t, "attention")) == ("0", "0") and card_lines(t, "running") == [] and card_lines(t, "attention") == []
+
+
+def test_tcs36_cards_are_read_only(w):
+    # TC-S36
+    ann = w.user("ann")
+    seed(w, "bad", "failed", ann, reason="boom")
+    seed(w, "go", "running", ann)
+    t = login(w, "ann").get("/").text
+    mid = pane(t, "middle")
+    assert "<button" not in mid and "<form" not in mid
+    for h in hrefs(mid):
+        u = urlsplit(htmllib.unescape(h))
+        assert u.path == "/" and "run" in parse_qs(u.query), h
+    for word in ("重跑", "續跑", "上傳", "確認", "Resume", "Retry"):
+        assert word not in mid
+
+
+def test_tcs37_attention_cap(w):
+    # TC-S37
+    ann = w.user("ann")
+    bulk(w, ann, 250, "failed", "bad")
+    t = login(w, "ann").get("/").text
+    assert card_num(t, "attention") == "250" and len(card_lines(t, "attention")) == 100 and "還有 150 筆" in card(t, "attention")
+
+
+# ---- empty and broken index -------------------------------------------------------------------------------------------------------
 
 def test_tch18_empty_states(w):
     # TC-H18a, TC-H18b, TC-H18c
     w.user("ann")
     c = login(w, "ann")
     r = c.get("/")
-    assert r.status_code == 200 and "還沒有" in r.text                 # no index.db at all
+    assert r.status_code == 200 and "還沒有" in pane(r.text, "left") and "還沒有" in pane(r.text, "middle") and "還沒有" in pane(r.text, "right")
+    assert (card_num(r.text, "running"), card_num(r.text, "attention")) == ("0", "0")
     Path(w.ip.index).write_bytes(b"")
     r = c.get("/")
-    assert r.status_code == 200 and "還沒有" in r.text                 # an empty file
+    assert r.status_code == 200 and "還沒有" in r.text
     Path(w.ip.index).unlink()
     from abf_platform import store
     store.init_index(w.ip.index)
-    assert "還沒有" in c.get("/").text                                 # an index with no run
+    assert "還沒有" in c.get("/").text
+    assert c.get("/settings").status_code == 200
 
 
-def test_tch19_long_lists(w):
-    # TC-H19a, TC-H19b
-    ann = w.user("ann")
-    from abf_platform import store
-    con = store.connect_index(w.ip.index)
-    con2 = store.connect_state(w.ip.state_db)
-    now = time.time()
-    with con, con2:
-        for i in range(250):
-            con.execute("INSERT INTO runs (id, session_id, run_name, final_status, started_at, ended_at, last_message_at) VALUES (?,?,?,?,?,?,?)",
-                        ("i%03d" % i, "s", "run%03d" % i, "succeeded", int(now) - i, int(now), now))
-            con2.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES (?,?,?,?,?,?)",
-                         ("run%03d" % i, "/f", "lab-a", "ag", now, ann.user_id))
-    con.close()
-    con2.close()
-    t = login(w, "ann").get("/").text
-    left, right = pane(t, "left"), pane(t, "right")
-    assert len(re.findall(r"run\d{3}", left)) == 100 and "還有 150 筆" in left
-    assert len(re.findall(r"run\d{3}", right)) == 100 and "還有 150 筆" in right
-    assert "250" in group_head(t, "results")
-
-
-# ---- cost ----------------------------------------------------------------------------------------------------------------------
-
-def test_tch09_cost(w):
-    from abf_platform import web_board
-    # TC-H09c, TC-L17, TC-L18, TC-N03 (replace TC-H09a, TC-H09b)
-    ann = w.user("ann")
-    seed(w, "x", "running", ann, counts=dict(succeeded=500, running=40))
-    t = login(w, "ann").get("/").text
-    right = pane(t, "right")
-    box = re.search(r'data-cost="month"[^>]*>(.*?)</(?:p|div)>', right, re.S).group(1)
-    assert plain(box) == "本月 SU — · 雲端 —" and "<a " not in box
-    assert right.index('data-cost="month"') < right.index('data-stage="')       # before any group
-    assert "本月費用" not in t and "NCHC" not in t and "NCHC" not in Path(web_board.__file__).read_text(encoding="utf-8")
-
-
-# ---- who sees what ---------------------------------------------------------------------------------------------------------------
+# ---- who sees what ----------------------------------------------------------------------------------------------------------------
 
 def test_tch03_only_own_runs(w):
     # TC-H03a, TC-H03b
@@ -363,10 +773,12 @@ def test_tch03_only_own_runs(w):
     seed(w, "ann-run", "running", ann)
     for i in range(5):
         seed(w, "bob-secret-%d" % i, "failed", bob)
-    t = login(w, "ann").get("/").text
-    assert "bob-secret" not in t and "ann-run" in t
-    head = group_head(t, "running")
-    assert "1" in head and "5" not in head and "6" not in head
+    c = login(w, "ann")
+    for url in ("/", "/settings"):
+        assert "bob-secret" not in c.get(url).text
+    t = c.get("/").text
+    assert "ann-run" in t and plain(group_head(t, "running")) == "執行中（1）"
+    assert tally(t) == ["▶ 1", "! 0", "✓ 0"] and (card_num(t, "running"), card_num(t, "attention")) == ("1", "0")
 
 
 def test_tch04_hidden_submitter(w):
@@ -374,7 +786,7 @@ def test_tch04_hidden_submitter(w):
     from abf_platform import actions
     w.user("ann")
     w.user("bob")
-    seed(w, "orphan-nolaunch", "running", launch_row=False)
+    seed(w, "orphan-nolaunch", "failed", launch_row=False)
     seed(w, "orphan-nulluser", "running", None)
     for who in ("ann", "bob"):
         assert "orphan-" not in login(w, who).get("/").text
@@ -383,7 +795,7 @@ def test_tch04_hidden_submitter(w):
 
 
 def test_tch05_not_mine_looks_missing(w):
-    # TC-H05a, TC-H05b, TC-H05c, TC-H05d
+    # TC-H05a, TC-H05b, TC-H05c, TC-H05d, TC-S49
     w.user("ann")
     bob = w.user("bob")
     seed(w, "bobs", "running", bob, run_id="bob-run-id")
@@ -394,38 +806,42 @@ def test_tch05_not_mine_looks_missing(w):
     assert other.content == missing.content
     r = c.get("/", params={"run": "UNIQUE-needle-8841"})
     assert r.status_code == 404 and "UNIQUE-needle-8841" not in r.text
+    assert "找不到這個 run" in r.text and 'href="/"' in r.text
+    en = c.get("/", params={"run": "UNIQUE-needle-8841", "lang": "en"})
+    assert 'href="/?lang=en"' in en.text and "UNIQUE-needle-8841" not in en.text
+    assert style_of(r.text) == style_of(c.get("/").text)
 
 
 def test_tch15_bearer_is_not_a_login(w):
-    # TC-H15
+    # TC-H15, TC-S38
     from abf_platform import store
     ann = w.user("ann")
     tok = store.create_token(w.ip.tokens, kind="pat", user_id=ann.user_id)
-    r = w.web().get("/", headers={"Authorization": "Bearer %s" % tok})
-    assert r.status_code == 303 and r.headers["location"] == "/login"
+    for path in ("/", "/settings"):
+        r = w.web().get(path, headers={"Authorization": "Bearer %s" % tok})
+        assert r.status_code == 303 and r.headers["location"] == "/login"
 
 
-# ---- read-only ------------------------------------------------------------------------------------------------------------------
+# ---- read-only --------------------------------------------------------------------------------------------------------------------
 
 def test_tch11_read_only(w):
-    # TC-H11a, TC-H11b, TC-H11c, TC-H11d, TC-N01, TC-N06
+    # TC-H11a, TC-H11b, TC-H11c, TC-H11d
     ann = w.user("ann")
     rid = seed(w, "ok", "failed", ann, reason="boom")
     c = login(w, "ann")
-    for url in ("/", "/?run=" + rid):
+    for url in ("/", "/?run=" + rid, "/settings"):
         t = c.get(url).text
         forms = re.findall(r"<form\b[^>]*>", t)
         assert len(forms) == 1 and 'action="/logout"' in forms[0]
         assert t.count("<button") == 1
         assert re.search(r'name="csrf" value="[^"]+"', t)
-    assert c.post("/").status_code == 405
+    assert c.post("/").status_code == 405 and c.post("/settings").status_code == 405
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
-    # 009i: the OAuth routes and the consent page are the only additions to the six of 011a; none of them is a board or a run page
     assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")),
                       ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)),
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
-                      ("/revoke", ("OPTIONS", "POST")), ("/token", ("OPTIONS", "POST"))], routes
+                      ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/token", ("OPTIONS", "POST"))], routes
 
 
 def _digest(w):
@@ -439,7 +855,7 @@ def test_tch11e_k1_a_get_writes_nothing(w):
     c = login(w, "ann")
     before, counts = _digest(w), w.counts()
     for _ in range(2):
-        for url in ("/", "/?run=" + rid, "/?stage=running", "/?run=zzz"):
+        for url in ("/", "/?run=" + rid, "/?stage=running", "/?lang=en", "/settings", "/settings?lang=en", "/?run=zzz"):
             c.get(url)
     assert _digest(w) == before and w.counts() == counts
 
@@ -448,33 +864,42 @@ def test_tch12_escaping(w):
     # TC-H12a, TC-H12b, TC-H12c
     ann = w.user("ann")
     nasty = '<script>alert(1)</script>"><b>'
-    seed(w, nasty, "running", ann, run_id='x"y\'z<q>')
+    nid = seed(w, nasty, "running", ann, run_id='x"y\'z<q>')
     fid = seed(w, "f", "failed", ann, reason="<img src=x onerror=1>")
     c = login(w, "ann")
-    t = c.get("/").text
-    assert "<script>" not in t and "<b>" not in t and "&lt;script&gt;" in t
-    assert 'href="/?run=x"y' not in t
-    for h in hrefs(t):
-        assert "<" not in h and '"' not in h
+    for url in ("/", "/?lang=en", "/?run=" + nid):
+        t = c.get(url).text
+        assert "<script>" not in t and "<b>" not in t and "&lt;script&gt;" in t
+        assert 'href="/?run=x"y' not in t
+        for h in hrefs(t):
+            assert "<" not in h and '"' not in h
     f = c.get("/?run=" + fid).text
     assert "<img" not in f and "&lt;img" in f
 
 
+def test_tch12d_item_fact_is_escaped(w):
+    # TC-H12d
+    ann = w.user("ann")
+    seed(w, "f", "failed", ann, reason="<img src=x onerror=1>\nrest")
+    t = login(w, "ann").get("/").text
+    assert "<img" not in t and "&lt;img src=x onerror=1&gt;" in items(t, "running")[0] and "&lt;img src=x onerror=1&gt;" in card(t, "attention")
+
+
 def test_tch13_csp_and_markup(w):
-    # TC-H13a, TC-H13b, TC-H13c, TC-H13d, TC-H13e, TC-H13f, TC-H13g, TC-H13h, TC-H13i
+    # TC-H13a to TC-H13i, TC-S17
     ann = w.user("ann")
     rid = seed(w, "ok", "running", ann, counts=dict(succeeded=1, running=1))
     c = login(w, "ann")
-    pages = [c.get("/"), c.get("/?run=" + rid), w.web().get("/login"), c.get("/c/" + "b" * 32), c.get("/?run=nope")]
+    pages = [c.get("/"), c.get("/?lang=en"), c.get("/?run=" + rid), c.get("/settings"), c.get("/?run=nope"), w.web().get("/login"),
+             c.get("/c/" + "b" * 32)]
     for r in pages:
         csp = r.headers["content-security-policy"]
         assert "script-src" not in csp and "'unsafe-inline'" not in csp
         for keep in ("default-src 'none'", "form-action 'self'", "frame-ancestors 'none'", "base-uri 'none'"):
             assert keep in csp
-        style = re.search(r"<style>(.*?)</style>", r.text, re.S).group(1)
-        digest = base64.b64encode(hashlib.sha256(style.encode("utf-8")).digest()).decode()
+        digest = base64.b64encode(hashlib.sha256(style_of(r.text).encode("utf-8")).digest()).decode()
         assert "style-src 'sha256-%s'" % digest in csp, r.url
-    for r in pages[:2]:
+    for r in pages:
         t = r.text
         assert "<script" not in t.lower() and not re.search(r"\sstyle=", t) and not re.search(r"\son[a-z]+=", t, re.I)
         assert "http://" not in t and "https://" not in t and not re.search(r"(src|href|action)=\"//", t)
@@ -504,171 +929,102 @@ def test_tch07_nothing_stored():
     assert not re.search(r"sqlite3|INSERT|UPDATE|\bopen\(|write_", BOARD.read_text(encoding="utf-8"))
 
 
-# ---- not in this PR ---------------------------------------------------------------------------------------------------------------
-
-def test_tn02_no_detail_logs_or_resume(w):
-    # TC-N02
+def test_tch14_refresh_only_on_root(w):
+    # TC-H14a, TC-H14b
     ann = w.user("ann")
-    rid = seed(w, "bad", "failed", ann, reason="boom")
+    rid = seed(w, "r", "running", ann)
     c = login(w, "ann")
-    t = c.get("/?run=" + rid).text
-    assert not re.search(r"(?i)resume|restart|/logs|\blogs?\b", t) and "boom" in t
-    for p in ("/runs/" + rid, "/runs/%s/logs" % rid, "/resume", "/restart"):
-        assert c.get(p).status_code == 404 and c.post(p).status_code in (404, 405), p
+    for url in ("/", "/?run=" + rid):
+        assert '<meta http-equiv="refresh" content="15">' in c.get(url).text
+    for p in (w.web().get("/login").text, c.get("/c/" + "b" * 32).text, c.get("/?run=nope").text, c.get("/settings").text):
+        assert "http-equiv" not in p
 
 
-def test_tn04_other_paths_stay_missing(w):
-    # TC-N04
+def test_tcs05_no_leaks(w, caplog):
+    # TC-S05
+    caplog.set_level(logging.DEBUG)
     w.user("ann")
+    bob = w.user("bob")
+    seed(w, "bobs", "running", bob, run_id="bob-run-id")
     c = login(w, "ann")
-    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/launch", "/submit", "/upload",
-                 "/password", "/passwd", "/settings", "/api/launch"):
-        assert c.get(path).status_code == 404, path
-        assert c.post(path, data={"a": "b"}).status_code in (404, 405), path
+    cookie = c.cookies.get("abf_web")
+    bodies = [c.get("/?run=bob-run-id").text]
+    Path(w.ip.index).write_bytes(b"")
+    bodies.append(c.get("/").text)
+    Path(w.ip.index).unlink()
+    bodies.append(c.get("/").text)
+    bodies.append(w.login(w.web(), "ann", "wrong-secret-pw").text)
+    fl = w.web()
+    for _ in range(5):
+        w.login(fl, "bob", "wrong-secret-pw")
+    bodies.append(w.login(fl, "bob", PASSWORD).text)
+    for t in bodies:
+        for bad in ("Traceback", "sqlite", ".db", "web_signing", cookie, "wrong-secret-pw", PASSWORD):
+            assert bad not in t, bad
+    assert cookie not in caplog.text and "wrong-secret-pw" not in caplog.text and PASSWORD not in caplog.text
 
 
-def test_tn05_no_new_tool_or_action(w):
-    # TC-N05
-    from abf_platform import actions
-    tools, _ = w.mcp([])
-    assert sorted(t.name for t in tools) == sorted(["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents",
-                                                    "list_site_files", "launch", "cancel"])
-    assert not [n for n in dir(actions) if "board" in n]
+# ---- settings, login --------------------------------------------------------------------------------------------------------------
+
+def test_tcs39_s40_s41_s42_settings(w):
+    # TC-S39, TC-S40, TC-S41, TC-S42, TC-N14, TC-N12
+    ann = w.user("ann")
+    seed(w, "r", "running", ann)
+    c = login(w, "ann")
+    r = c.get("/settings")
+    assert r.status_code == 200
+    mid = pane(r.text, "middle")
+    assert "<h1>設定</h1>" in mid
+    assert re.findall(r"<h2>(.*?)</h2>", mid) == ["運算環境", "憑證", "密碼與金鑰", "個人", "營運者後台", "角色（老師／學生）"]
+    for word in ("AI 模型金鑰", "Jev 金鑰（選填）", "逐步模式", "開發模式"):
+        assert word in mid
+    assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", mid)
+    assert not re.search(r"Jev\s*[開關]|Jev (on|off)", mid)
+    assert 'data-pane="left"' in r.text and 'data-pane="right"' in r.text and "<header" in r.text
+    for url in ("/settings", "/settings?lang=en"):
+        assert not re.search(r"12 小時|12 h\b|12 hours", c.get(url).text, re.I)
+    for banned in ("歡迎使用", "第一次使用", "建立第一個專案"):
+        assert banned not in r.text and banned not in c.get("/").text
 
 
-# ---- layout B: top bar, columns, history items, language (plan section "Layout redo", L1 to L9, B1 to B6, C1 to C6) ------------------
-
-def bulk(w, owner, n, status, prefix, reason="boom"):
-    """n runs of one user in one go (newest first: run<prefix>000 is the newest); returns the time the newest one started."""
-    from abf_platform import store
-    con = store.connect_index(w.ip.index)
-    con2 = store.connect_state(w.ip.state_db)
-    now = int(time.time())
-    with con, con2:
-        for i in range(n):
-            name = "%s%03d" % (prefix, i)
-            final = status if status in ("succeeded", "failed") else None
-            con.execute("INSERT INTO runs (id, session_id, run_name, final_status, started_at, ended_at, last_message_at, failure_reason)"
-                        " VALUES (?,?,?,?,?,?,?,?)", ("i-" + name, "s", name, final, now - 10 * i - 10 ** 5, now - 10 * i - 10 ** 5 + 5, now,
-                                                      reason if status == "failed" else None))
-            con2.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES (?,?,?,?,?,?)",
-                         (name, "/f", "lab-a", "ag", now, owner.user_id))
-    con.close()
-    con2.close()
-
-
-def test_tcl01_top_bar(w):
-    # TC-L01
+def test_tcs43_s44_login_page(w):
+    # TC-S43, TC-S44, TC-N15
     w.user("ann")
-    t = login(w, "ann").get("/").text
-    top = t[:t.index('data-pane="left"')]
-    assert 'class="mast"' in top and "agentic-bioflow" in top and "ann" in top
-    assert re.search(r'<a\b[^>]*>中</a>', top) and re.search(r'<a\b[^>]*>EN</a>', top)
-    assert top.index("agentic-bioflow") < top.index("ann")
+    c = w.web()
+    r = c.get("/login")
+    t = r.text
+    assert r.status_code == 200 and len(re.findall(r"<style\b", t)) == 1
+    digest = base64.b64encode(hashlib.sha256(style_of(t).encode("utf-8")).digest()).decode()
+    assert "style-src 'sha256-%s'" % digest in r.headers["content-security-policy"]
+    assert re.findall(r"<input\b[^>]*name=\"(\w+)\"", t) == ["name", "password"]
+    assert "checkbox" not in t and "記住" not in t and "Remember" not in t and len(re.findall(r"<button\b", t)) == 1
+    bad = w.login(c, "ann", "wrong wrong")
+    ghost = w.login(c, "nobody", "wrong wrong")
+    assert bad.status_code == 401 and ghost.status_code == 401 and "姓名或密碼不對" in bad.text and "姓名或密碼不對" in ghost.text
+    assert "<form" in bad.text and "set-cookie" not in bad.headers and "set-cookie" not in ghost.headers
+    for _ in range(5):
+        w.login(c, "ann", "wrong wrong")
+    r = w.login(c, "ann", PASSWORD)
+    assert r.status_code == 429 and "登入失敗太頻繁" in r.text and "set-cookie" not in r.headers
 
 
-def test_tcl03_l04_stylesheet(w):
-    # TC-L03, TC-L04
-    from abf_platform import web_board
-    css = web_board.STYLE
-    assert re.search(r"grid-template-columns:\s*232px\s+1fr\s+272px", css)
-    assert re.search(r"@media\s*\(max-width:\s*900px\)", css)
-    order = css[css.index("@media (max-width:900px)"):]
-    assert re.search(r"\.main\{[^}]*order:-2", order) and re.search(r"\.hist\{[^}]*order:-1", order)      # middle, right, left
-
-
-def test_tcl22_l23_l27_items(w):
-    # TC-L21, TC-L22, TC-L23, TC-L27
+def test_tcs45_confirm_pages_share_the_style(w):
+    # TC-S45, TC-N08
     ann = w.user("ann")
-    now = time.time()
-    seed(w, "first", "running", ann, started=now - 3000, counts=dict(succeeded=6, cached=2, running=2))
-    seed(w, "second", "lost", ann, started=now - 2000)
-    seed(w, "third", "running", ann, started=now - 1000)
-    t = login(w, "ann").get("/").text
-    its = [plain(x) for x in items(t, "running")]
-    assert [x.split()[0] for x in its] == ["3", "2", "1"]
-    assert [x.split()[1] for x in its] == ["third", "second", "first"]
-    assert its[2].endswith("▶ 執行中 · 8/10") and its[1].endswith("⏸ 失聯/暫停 · —")
-
-
-def test_tcl24_succeeded_key_fact_is_the_end_time(w):
-    # TC-L24
-    ann = w.user("ann")
-    rid = seed(w, "fin", "succeeded", ann, started=1_700_000_000)
+    rid = w.launch(caller=ann)["id"]
     c = login(w, "ann")
-    item = plain(items(c.get("/").text, "results")[0])
-    assert item.endswith("✓ 成功 · 2023-11-14T22:15:00Z")
-    assert "2023-11-14T22:15:00Z" in plain(pane(c.get("/?run=" + rid).text, "middle"))
+    r = c.get("/c/" + rid)
+    digest = base64.b64encode(hashlib.sha256(style_of(r.text).encode("utf-8")).digest()).decode()
+    assert "style-src 'sha256-%s'" % digest in r.headers["content-security-policy"] and style_of(r.text) == style_of(c.get("/").text)
+    assert c.get("/c/%s?lang=en" % rid).text == r.text
+    assert w.web().get("/login?lang=en").text == w.web().get("/login").text
 
 
-def test_tcl25_l26_failed_key_fact(w):
-    # TC-L25, TC-L26
-    ann = w.user("ann")
-    seed(w, "long", "failed", ann, reason="A" * 80 + "B" * 40 + "\nSECONDLINE")
-    seed(w, "short", "failed", ann, reason="short reason\nmore")
-    seed(w, "none", "failed", ann, reason=None)
-    seed(w, "empty", "failed", ann, reason="")
-    its = {re.search(r"\d+ (long|short|none|empty) ", plain(x)).group(1): plain(x) for x in items(login(w, "ann").get("/").text, "running")}
-    assert its["long"].endswith("✗ 失敗 · " + "A" * 80) and "B" not in its["long"] and "SECONDLINE" not in its["long"]
-    assert its["short"].endswith("✗ 失敗 · short reason")
-    assert its["none"].endswith("✗ 失敗 · 原因未記錄") and its["empty"].endswith("✗ 失敗 · 原因未記錄")
-
-
-def test_tcl28_selected_item(w):
-    # TC-L28
-    from abf_platform import web_board
-    ann = w.user("ann")
-    now = time.time()
-    ids = [seed(w, n, "running", ann, started=now - k) for k, n in ((300, "one"), (200, "two"), (100, "three"))]
-    c = login(w, "ann")
-    t = c.get("/?run=" + ids[1]).text
-    marked = [x for x in items(t) if re.search(r'class="[^"]*\bhere\b', x)]
-    assert len(marked) == 1 and "two" in marked[0]
-    assert [x for x in items(c.get("/").text) if re.search(r'class="[^"]*\bhere\b', x)] == []
-    assert re.search(r"\.item\.here\{[^}]*outline", web_board.STYLE)
-
-
-def test_tcl29_failed_items_ask_get_run_at_most_100_times(w, monkeypatch):
-    # TC-L29
-    from abf_platform import actions
-    ann = w.user("ann")
-    bulk(w, ann, 250, "failed", "bad")
-    real, calls = actions.get_run, []
-
-    def spy(*a, **kw):
-        calls.append(kw)
-        return real(*a, **kw)
-    monkeypatch.setattr(actions, "get_run", spy)
-    t = login(w, "ann").get("/").text
-    assert len(items(t, "running")) == 100 and "還有 150 筆" in pane(t, "right")
-    assert 0 < len(calls) <= 100
-    assert all(k.get("caller") is not None and k["caller"].user_id == ann.user_id for k in calls)
-    assert "boom" in items(t, "running")[0]
-
-
-def test_tcl30_numbers_count_all_runs(w):
-    # TC-L30
-    ann = w.user("ann")
-    bulk(w, ann, 250, "succeeded", "ok")
-    t = login(w, "ann").get("/").text
-    its = items(t, "results")
-    assert plain(group_head(t, "results")) == "結果（250）" and len(its) == 100
-    assert plain(its[0]).split()[0] == "250" and plain(its[99]).split()[0] == "151"
-
-
-def test_tch12d_item_fact_is_escaped(w):
-    # TC-H12d
-    ann = w.user("ann")
-    seed(w, "f", "failed", ann, reason="<img src=x onerror=1>\nrest")
-    t = login(w, "ann").get("/").text
-    assert "<img" not in t and "&lt;img src=x onerror=1&gt;" in items(t, "running")[0]
-
-
-# ---- language ---------------------------------------------------------------------------------------------------------------------
+# ---- language and links -----------------------------------------------------------------------------------------------------------
 
 def seed_three(w, ann):
     return {st: seed(w, "n-" + st, st, ann, counts=dict(succeeded=1, cached=2, failed=3, aborted=4, running=5, pending=6, submitted=7),
-                     reason="boom" if st == "failed" else None) for st in ("running", "failed", "succeeded")}
+                     reason="boom" if st == "failed" else None) for st in ("running", "failed", "succeeded", "lost")}
 
 
 def test_tcl31_default_is_chinese(w):
@@ -676,7 +1032,7 @@ def test_tcl31_default_is_chinese(w):
     ann = w.user("ann")
     ids = seed_three(w, ann)
     t = login(w, "ann").get("/?run=" + ids["running"]).text
-    assert "執行中" in t and "之後開放" in t and "登出" in t and 'lang="zh-Hant"' in t
+    assert "現在" in t and "執行中" in t and "之後開放" in t and "登出" in t and 'lang="zh-Hant"' in t
     for word in ("Cached", "Aborted", "Pending", "Submitted"):
         assert word not in t
 
@@ -686,9 +1042,9 @@ def test_tcl32_l33_english(w):
     ann = w.user("ann")
     ids = seed_three(w, ann)
     c = login(w, "ann")
-    for st in ids:
-        t = c.get("/?run=%s&lang=en" % ids[st]).text
-        assert cjk(re.sub(r">中<", "><", t)) == [], (st, cjk(t))
+    for url in ["/?lang=en", "/settings?lang=en"] + ["/?run=%s&lang=en" % i for i in ids.values()]:
+        t = c.get(url).text
+        assert no_cjk(t), (url, cjk(t))
         assert 'lang="en"' in t
     mid = pane(c.get("/?run=%s&lang=en" % ids["running"]).text, "middle")
     cells = [(a.lower(), b) for a, b in re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", mid, re.S)]
@@ -701,30 +1057,30 @@ def test_tcl34_english_reason_not_recorded(w):
     ann = w.user("ann")
     seed(w, "nr", "failed", ann, reason=None)
     t = login(w, "ann").get("/?lang=en").text
-    assert plain(items(t, "running")[0]).endswith("reason not recorded")
+    assert plain(items(t, "running")[0]).endswith("reason not recorded") and plain(card_lines(t, "attention")[0]).endswith("reason not recorded")
 
 
 def test_tcl35_l36_l37_switch_and_links(w):
     # TC-L35, TC-L36, TC-L37
-    from urllib.parse import parse_qs, urlsplit
-    import html as htmllib
     ann = w.user("ann")
     rid = seed(w, "r", "running", ann)
     seed(w, "s", "succeeded", ann)
+    seed(w, "bad", "failed", ann)
     c = login(w, "ann")
     t = c.get("/?run=%s&stage=results" % rid).text
     en = htmllib.unescape(re.search(r'<a\b[^>]*href="([^"]*)"[^>]*>EN</a>', t).group(1))
     zh = htmllib.unescape(re.search(r'<a\b[^>]*href="([^"]*)"[^>]*>中</a>', t).group(1))
     assert urlsplit(en).path == "/" and parse_qs(urlsplit(en).query) == {"run": [rid], "stage": ["results"], "lang": ["en"]}
     assert urlsplit(zh).path == "/" and parse_qs(urlsplit(zh).query) == {"run": [rid], "stage": ["results"]}
-    assert not re.search(r"<form\b[^>]*>[^<]*(中|EN)", t)
-    # TC-L36: English page: every board link keeps lang=en; the only one that drops it is the 中 link
-    t = c.get("/?run=%s&stage=running&lang=en" % rid).text
-    others = [htmllib.unescape(h) for h in hrefs(t)]
-    zh_en = htmllib.unescape(re.search(r'<a\b[^>]*href="([^"]*)"[^>]*>中</a>', t).group(1))
-    others.remove(zh_en)
-    assert len(others) >= 8 and all("lang=en" in h for h in others), [h for h in others if "lang=en" not in h]
-    # TC-L37: Chinese page: no link carries lang=en except the EN link
+    st = c.get("/settings").text
+    assert htmllib.unescape(re.search(r'<a\b[^>]*href="([^"]*)"[^>]*>EN</a>', st).group(1)) == "/settings?lang=en"
+    assert htmllib.unescape(re.search(r'<a\b[^>]*href="([^"]*)"[^>]*>中</a>', st).group(1)) == "/settings"
+    for url in ("/?run=%s&stage=running&lang=en" % rid, "/settings?lang=en"):
+        t = c.get(url).text
+        zh_link = htmllib.unescape(re.search(r'<a\b[^>]*href="([^"]*)"[^>]*>中</a>', t).group(1))
+        others = [htmllib.unescape(h) for h in hrefs(t)]
+        others.remove(zh_link)
+        assert len(others) >= 8 and all("lang=en" in h for h in others), [h for h in others if "lang=en" not in h]
     t = c.get("/?run=%s&stage=running" % rid).text
     en_link = htmllib.unescape(re.search(r'<a\b[^>]*href="([^"]*)"[^>]*>EN</a>', t).group(1))
     rest = [htmllib.unescape(h) for h in hrefs(t)]
@@ -750,9 +1106,8 @@ def test_tcl39_l40_english_404(w):
     c = login(w, "ann")
     missing = c.get("/?run=nope-xyz-4471&lang=en")
     other = c.get("/?run=bob-run-id&lang=en")
-    assert missing.status_code == 404 and other.status_code == 404
-    assert cjk(re.sub(r">中<", "><", missing.text)) == []
-    assert missing.content.replace(b"nope-xyz-4471", b"") == missing.content and "nope-xyz-4471" not in missing.text
+    assert missing.status_code == 404 and other.status_code == 404 and no_cjk(missing.text)
+    assert "nope-xyz-4471" not in missing.text
     assert other.content == c.get("/?run=another-missing&lang=en").content
 
 
@@ -761,8 +1116,9 @@ def test_tcl41_odd_lang_values(w):
     w.user("ann")
     c = login(w, "ann")
     for v in ("fr", "", "<script>", "EN", "en,zh"):
-        r = c.get("/", params={"lang": v})
-        assert r.status_code == 200 and 'lang="zh-Hant"' in r.text and "<script>" not in r.text, v
+        for path in ("/", "/settings"):
+            r = c.get(path, params={"lang": v})
+            assert r.status_code == 200 and 'lang="zh-Hant"' in r.text and "<script>" not in r.text, v
 
 
 def test_tcl42_string_table():
@@ -778,7 +1134,7 @@ def test_tcl43_english_empty_state(w):
     # TC-L43
     w.user("ann")
     r = login(w, "ann").get("/?lang=en")
-    assert r.status_code == 200 and cjk(re.sub(r">中<", "><", r.text)) == [] and "No runs yet" in r.text
+    assert r.status_code == 200 and no_cjk(r.text) and "No runs yet" in r.text
 
 
 def test_tcl44_no_external_url_script_or_style_attribute(w):
@@ -786,9 +1142,9 @@ def test_tcl44_no_external_url_script_or_style_attribute(w):
     ann = w.user("ann")
     ids = seed_three(w, ann)
     c = login(w, "ann")
-    w.user("bob")  # no runs: the empty-state page
+    w.user("bob")
     empty = login(w, "bob")
-    urls = ["/", "/?run=" + ids["running"], "/?run=%s&stage=running" % ids["running"], "/?run=nope"]
+    urls = ["/", "/settings", "/?run=" + ids["running"], "/?run=%s&stage=running" % ids["running"], "/?run=nope"]
     urls += [u + ("&" if "?" in u else "?") + "lang=en" for u in urls]
     pages = [(u, c.get(u).text) for u in urls]
     pages += [("empty " + u, empty.get(u).text) for u in ("/", "/?lang=en", "/?run=nope")]
@@ -798,14 +1154,68 @@ def test_tcl44_no_external_url_script_or_style_attribute(w):
         assert "<script" not in t.lower() and not re.search(r"\sstyle=", t) and not re.search(r"\son[a-z]+=", t, re.I), u
 
 
-# ---- not in this PR (layout B) ---------------------------------------------------------------------------------------------------
+def test_tcs48_no_dead_links(w):
+    # TC-S48
+    ann = w.user("ann")
+    ids = four(w, ann)
+    w.user("bob")
+    bob = login(w, "bob")
+    c = login(w, "ann")
+    mine = set(ids.values())
+    starts = ["/", "/settings", "/?run=nope", "/?lang=en"]
+    seen = set()
+    for who, client in (("ann", c), ("bob", bob)):
+        urls = starts + (["/?run=%s&stage=%s" % (i, s) for i in ids.values() for s in STAGES] if who == "ann" else [])
+        for url in urls:
+            for h in hrefs(client.get(url).text):
+                h = htmllib.unescape(h)
+                assert h.startswith("/") and not h.startswith("//"), h
+                if (who, h) in seen:
+                    continue
+                seen.add((who, h))
+                assert client.get(h).status_code == 200, h
+                rids = parse_qs(urlsplit(h).query).get("run")
+                assert not rids or rids[0] in mine, h
 
-def test_tn08_login_and_confirm_pages_stay_chinese(w):
-    # TC-N08
+
+# ---- not in this PR ---------------------------------------------------------------------------------------------------------------
+
+def test_tn02_no_detail_logs_or_resume(w):
+    # TC-N02
+    ann = w.user("ann")
+    rid = seed(w, "bad", "failed", ann, reason="boom")
+    c = login(w, "ann")
+    t = c.get("/?run=" + rid).text
+    assert not re.search(r"(?i)resume|restart|/logs|\blogs?\b", t) and "boom" in t
+    for p in ("/runs/" + rid, "/runs/%s/logs" % rid, "/resume", "/restart"):
+        assert c.get(p).status_code == 404 and c.post(p).status_code in (404, 405), p
+
+
+def test_tn04_other_paths_stay_missing(w):
+    # TC-N04
     w.user("ann")
     c = login(w, "ann")
-    assert w.web().get("/login?lang=en").text == w.web().get("/login").text
-    assert c.get("/c/%s?lang=en" % ("b" * 32)).text == c.get("/c/%s" % ("b" * 32)).text
+    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/launch", "/submit", "/upload",
+                 "/password", "/passwd", "/cost", "/setup", "/api/launch"):
+        assert c.get(path).status_code == 404, path
+        assert c.post(path, data={"a": "b"}).status_code in (404, 405), path
+
+
+def test_tn05_no_new_tool_or_action(w):
+    # TC-N05
+    from abf_platform import actions
+    tools, _ = w.mcp([])
+    assert sorted(t.name for t in tools) == sorted(["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents",
+                                                    "list_site_files", "launch", "cancel", "forget", "resume", "relaunch"])
+    assert not [n for n in dir(actions) if "board" in n]
+
+
+def test_tn06_no_push_routes(w):
+    # TC-N06
+    w.user("ann")
+    c = login(w, "ann")
+    assert not [r.path for r in c.app.routes if re.search(r"ws|stream|events|sse", r.path)]
+    assert "<script" not in c.get("/").text
 
 
 def test_tn09_language_is_not_remembered(w):
@@ -818,19 +1228,21 @@ def test_tn09_language_is_not_remembered(w):
     assert 'lang="zh-Hant"' in c.get("/").text
 
 
-def test_tn10_n11_nothing_beyond_the_plan(w):
-    # TC-N10, TC-N11
-    from urllib.parse import parse_qs, urlsplit
-    import html as htmllib
+def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
+    # TC-N10, TC-N13, TC-N17, TC-N19, TC-N20
     ann = w.user("ann")
-    rid = seed(w, "r", "running", ann)
+    rid = seed(w, "r", "running", ann, counts=dict(succeeded=1, running=1))
     c = login(w, "ann")
-    for url in ("/", "/?run=" + rid):
+    for url in ["/", "/settings"] + ["/?run=%s&stage=%s" % (rid, s) for s in STAGES]:
         t = c.get(url).text
-        assert "<textarea" not in t and "<details" not in t and 'type="radio"' not in t
+        for tag in ("<textarea", "<select", "<iframe", "<table", 'type="radio"', 'type="checkbox"'):
+            assert tag not in t, (url, tag)
         assert [m for m in re.findall(r"<input\b[^>]*>", t) if 'type="hidden"' not in m or 'name="csrf"' not in m] == []
+        assert t.count("<details") == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):
             u = urlsplit(htmllib.unescape(h))
-            assert u.path == "/" and set(parse_qs(u.query)) <= {"run", "stage", "lang"}, h
-        left = pane(t, "left")
-        assert not re.search(r"project|analys|專案|分析", " ".join(hrefs(left)), re.I)
+            assert u.path in ("/", "/settings") and set(parse_qs(u.query)) <= {"run", "stage", "lang"}, h
+        for word in ("系統自動處理紀錄", "待你決定", "Awaiting you", "終端機", "Terminal", "目前步驟", "Current step", "拖放", "MultiQC", "Metrics"):
+            assert word not in t, (url, word)
+    left = pane(c.get("/").text, "left")
+    assert not re.search(r"project|analys|專案|分析", " ".join(hrefs(left)), re.I)
