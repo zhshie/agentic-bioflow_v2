@@ -133,7 +133,7 @@ def test_tc160_no_state_of_a_run_is_written_anywhere_after_a_round_of_resumes_an
 def test_tc152_the_clean_up_of_finished_jobs_was_not_made_longer():
     # TC-152 (the behaviour is in test_resume_platform)
     from abf_platform import confirm, jobs
-    assert jobs.PRUNE_AFTER_SECONDS == 7 * 86400 and confirm.KEEP_CONTENT_SECONDS == 7 * 86400
+    assert jobs.PRUNE_AFTER_SECONDS == 7 * 86400 and confirm.KEEP_UNSENT_SECONDS == 7 * 86400
 
 
 def test_tc155_the_token_of_a_run_is_still_for_one_run_name_and_has_no_attempt():

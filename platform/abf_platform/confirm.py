@@ -23,7 +23,7 @@ from . import common, jobs, store
 PENDING_SECONDS = 600
 MAX_OPEN_PENDING = 10             # open requests one caller may have at a time
 REUSE_MIN_SECONDS = 60             # a repeated call reuses an open request only while more than this is left of it
-KEEP_CONTENT_SECONDS = 7 * 86400   # an expired, void or confirmed request keeps its content (bundle, screen) this long; its audit columns stay
+KEEP_UNSENT_SECONDS = 7 * 86400    # a void request, or a pending one past its time, keeps its content (bundle, screen) this long; its audit columns stay. A confirmed request keeps it until its owner forgets it (forget_content)
 JOB_KIND = {"launch": "launch_nextflow", "cancel": "cancel_run"}
 
 
@@ -37,14 +37,16 @@ class NotApproved(jobs.JobRefused):
 
 
 def _confirm(state_path, ce_name, kind, job_kind, bundle, clock, deadline_seconds, offline_after, caller_user_id, channel):
+    """The confirmation row keeps what was run (bundle_json) whatever the channel, as a request that came through a form or the page does;
+    keep_screen adds what the person approved. Both are kept until the owner forgets the run (keep-submissions)."""
     now = clock()
     seconds = jobs._seconds(job_kind, deadline_seconds)
     cid = secrets.token_hex(16)
 
     def work(con):
-        con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, caller_user_id, state, channel, confirmed_at) "
-                    "VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?)",
-                    (cid, common.bundle_sha256(bundle), kind, now, caller_user_id, channel, now))
+        con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, caller_user_id, state, channel, confirmed_at, ce_name, "
+                    "bundle_json, screen_text) VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?)",
+                    (cid, common.bundle_sha256(bundle), kind, now, caller_user_id, channel, now, ce_name, json.dumps(bundle), None))
         return cid, jobs.enqueue_confirmed(con, ce_name, job_kind, bundle, cid, now, seconds, offline_after)
 
     return jobs.transaction(state_path, work)
@@ -73,8 +75,8 @@ def create_pending(state_path, kind, ce_name, bundle, screen_text, caller_user_i
 
     def work(con):
         con.execute("UPDATE confirmations SET bundle_json = NULL, screen_text = NULL WHERE bundle_json IS NOT NULL AND "
-                    "((state IN ('void', 'confirmed') AND created_at < ?) OR (state = 'pending' AND expires_at < ?))",
-                    (now - KEEP_CONTENT_SECONDS, now - KEEP_CONTENT_SECONDS))
+                    "((state = 'void' AND created_at < ?) OR (state = 'pending' AND expires_at < ?))",
+                    (now - KEEP_UNSENT_SECONDS, now - KEEP_UNSENT_SECONDS))
         old = con.execute("SELECT id FROM confirmations WHERE state = 'pending' AND kind = ? AND sha256 = ? AND caller_user_id IS ? "
                           "AND expires_at > ? ORDER BY created_at DESC LIMIT 1",
                           (kind, sha, caller_user_id, now + REUSE_MIN_SECONDS)).fetchone()
@@ -92,6 +94,15 @@ def create_pending(state_path, kind, ce_name, bundle, screen_text, caller_user_i
         return rid
 
     return jobs.transaction(state_path, work)
+
+
+def keep_screen(state_path, rid, screen_text):
+    """Add the text shown at the terminal to the confirmed terminal row `rid` that has none. Returns whether a row was changed."""
+    def work(con):
+        return con.execute("UPDATE confirmations SET screen_text = ? WHERE id = ? AND state = 'confirmed' AND channel = 'TERMINAL' "
+                           "AND screen_text IS NULL AND forgotten_at IS NULL", (str(screen_text), rid)).rowcount
+
+    return bool(jobs.transaction(state_path, work))
 
 
 def void(state_path, rid, reason):
@@ -231,13 +242,13 @@ def find_cancel(state_path, bundle, caller_user_id):
 
 def describe(state_path, rid, clock=time.time):
     """What a person may be told about request `rid`, or None: its kind, who made it, its state (pending, confirmed, void or
-    expired), the text that was shown and the job if there is one. Never the bundle. Terminal confirmations are not requests."""
+    expired), the text that was shown and the job if there is one. Never the bundle. Terminal confirmations are not requests: they hold their content too (keep-submissions), but the page never shows them."""
     con = store.open_readonly(state_path)
     if con is None or not isinstance(rid, str) or len(rid) > 64:
         return None
     try:
         row = con.execute("SELECT c.*, (SELECT j.id FROM jobs j WHERE j.confirmation_id = c.id) AS job_id FROM confirmations c "
-                          "WHERE c.id = ? AND c.bundle_json IS NOT NULL", (rid,)).fetchone()
+                          "WHERE c.id = ? AND c.bundle_json IS NOT NULL AND c.channel IS NOT 'TERMINAL'", (rid,)).fetchone()
     finally:
         con.close()
     if row is None:
@@ -248,3 +259,80 @@ def describe(state_path, rid, clock=time.time):
     return {"id": row["id"], "kind": row["kind"], "state": state, "caller_user_id": row["caller_user_id"], "channel": row["channel"],
             "summary": row["screen_text"], "job_id": row["job_id"], "void_reason": row["void_reason"],
             "expires_at": row["expires_at"], "created_at": row["created_at"]}
+
+
+# ---- forgetting: the owner deletes what was sent (keep-submissions) ---------------------------------------------------------------
+
+FORGOTTEN_JOB_KINDS = ("launch_nextflow", "cancel_run")
+
+
+def forgotten_args(run_name):
+    """What the job of a forgotten run keeps in args_json: the run name and a mark, so jobs._apply_handover (a late answer) still
+    reads the name. A reader that needs more must see `forgotten` and refuse: 「內容已被擁有者刪除 (content deleted by its owner)」."""
+    return {"forgotten": True, "bundle": {"run_name": run_name}}
+
+
+def _named(text, run_name):
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError):
+        return None
+    bundle = data.get("bundle", data) if isinstance(data, dict) else None
+    return data if isinstance(bundle, dict) and bundle.get("run_name") == run_name else None
+
+
+def _made_from(text, run_name):
+    """Whether a request's bundle is a resume or a relaunch made from `run_name` (F10): it names the new run, and this one in of_run."""
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError):
+        return False
+    bundle = data.get("bundle", data) if isinstance(data, dict) else None
+    return isinstance(bundle, dict) and any(isinstance(bundle.get(k), dict) and bundle[k].get("of_run") == run_name
+                                            for k in ("resume", "relaunch"))
+
+
+def forget_content(state_path, run_name, forgotten_by=None, only_user=None, clock=time.time, dry_run=False):
+    """Clear the content of every row behind one run: the bundle and screen of its confirmations (the launch's, its cancels', its
+    pending and void requests, which an open one is voided by) and the copy each of its jobs keeps (args_json). Audit columns stay;
+    every row cleared gets forgotten_at and forgotten_by. `only_user` (an HTTP caller) limits the confirmations to that user's own;
+    the terminal passes None. Returns how many rows were (or, with dry_run, would be) cleared.
+
+    JobRefused, nothing changed, when a job of the run is still queued or claimed. Rows of other runs are never touched."""
+    now = clock()
+    by = None if forgotten_by is None else str(forgotten_by)
+
+    def work(con):
+        like = "%" + run_name + "%"
+        jobs_of_run = [r for r in con.execute("SELECT id, state, args_json FROM jobs WHERE kind IN (?, ?) AND args_json LIKE ?",
+                                              FORGOTTEN_JOB_KINDS + (like,)) if _named(r["args_json"], run_name) is not None]
+        if any(r["state"] in ("queued", "claimed") for r in jobs_of_run):
+            raise jobs.JobRefused("這個 run 還有工作在排隊或進行中，不能刪除 (a job of this run is still queued or running)")
+        todo_jobs = [r["id"] for r in jobs_of_run if not _named(r["args_json"], run_name).get("forgotten")]
+        ids = {r[0] for r in con.execute("SELECT j.confirmation_id FROM launches l JOIN jobs j ON j.id = l.job_id "
+                                         "WHERE l.run_name = ? AND j.confirmation_id IS NOT NULL", (run_name,))}
+        for r in con.execute("SELECT id, bundle_json FROM confirmations WHERE bundle_json IS NOT NULL AND bundle_json LIKE ?", (like,)):
+            if _named(r["bundle_json"], run_name) is not None:
+                ids.add(r["id"])
+        for r in con.execute("SELECT id, bundle_json FROM confirmations WHERE state = 'pending' AND bundle_json LIKE ?", (like,)):
+            if _made_from(r["bundle_json"], run_name):         # F10: a waiting resume or relaunch of this run dies with it
+                ids.add(r["id"])
+        for lr in con.execute("SELECT * FROM launches WHERE run_name = ?", (run_name,)).fetchall():
+            c = jobs.launch_confirmation(con, lr)             # F7: the launch job may be gone; its confirmation is still found
+            if c is not None and c["kind"] == "launch" and c["bundle_json"] is not None and _named(c["bundle_json"], run_name) is not None:
+                ids.add(c["id"])
+        todo_conf = [r["id"] for r in con.execute("SELECT id, caller_user_id FROM confirmations WHERE bundle_json IS NOT NULL")
+                     if r["id"] in ids and (only_user is None or r["caller_user_id"] == only_user)]
+        if dry_run:
+            return len(todo_jobs) + len(todo_conf)
+        for cid in todo_conf:
+            con.execute("UPDATE confirmations SET bundle_json = NULL, screen_text = NULL, forgotten_at = ?, forgotten_by = ?, "
+                        "state = CASE WHEN state = 'pending' THEN 'void' ELSE state END, "
+                        "void_reason = CASE WHEN state = 'pending' THEN 'forgotten (已刪除)' ELSE void_reason END WHERE id = ?",
+                        (now, by, cid))
+        for jid in todo_jobs:
+            con.execute("UPDATE jobs SET args_json = ?, forgotten_at = ?, forgotten_by = ? WHERE id = ?",
+                        (json.dumps(forgotten_args(run_name)), now, by, jid))
+        return len(todo_jobs) + len(todo_conf)
+
+    return jobs.transaction(state_path, work)

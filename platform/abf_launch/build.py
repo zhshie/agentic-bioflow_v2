@@ -316,6 +316,8 @@ def _predecessor(state, run, verb, index_path, owner):
             row = None
         if row is None:
             raise Refusal(jobs.RUN_NOT_FOUND % run)
+        if jobs.run_forgotten(con, run):
+            raise Refusal(jobs.FORGOTTEN)      # keep-submissions (F2): the owner deleted what it was sent with; there is nothing to go on from
         if row["slurm_job_id"] is None:
             raise Refusal("%s 沒有 Slurm 工作編號：它尚未送出，或結果不明；請先查國網上的 %s (no Slurm job number recorded)" % (run, row["run_folder"]))
         view = status.find_run(index_path, run)
@@ -333,24 +335,18 @@ def _predecessor(state, run, verb, index_path, owner):
         if newer:
             raise Refusal("%s 已有較新的一次：%s（第 %d 次）；只能對最新的一次%s (a newer attempt exists: %s)"
                           % (run, newer[-1][1], newer[-1][0], word, newer[-1][1]))
-        source = None
+        content = None
         for r in con.execute("SELECT * FROM launches WHERE run_folder = ? ORDER BY id DESC", (row["run_folder"],)).fetchall():
             if jobs._col(r, "attempt_kind") == "resume":
                 continue
             kind, job = jobs.launch_job(con, r, now)
             if kind == "refused":
                 continue
-            source = job
+            content = jobs.launch_content(con, r, job)      # the confirmation first; the job's copy only for a row made before it kept the content
             break
-        if source is None:
+        if content is None:
             raise Refusal(TOO_OLD)
-        try:
-            args = json.loads(source["args_json"])
-            origin, sha = args["bundle"], args["bundle_sha256"]
-        except (ValueError, KeyError, TypeError):
-            raise Refusal(TOO_OLD)
-        if not isinstance(origin, dict) or not isinstance(sha, str):
-            raise Refusal(TOO_OLD)
+        origin, sha = content
         return row, origin, sha, view, jobs.next_attempt(con, run, now), jobs.analysis_root(con, run)
     finally:
         if con is not None:
@@ -464,6 +460,15 @@ def cancel_screen(bundle, row):
         lines.append(terminal.pair("提醒", "這個 run 的取消請求已經在 %s 送出過一次" % when(row["cancel_requested_at"])))
     return lines
 
+
+FORGET_WARNING = "刪除後無法復原；這個 run 之後不能再續跑或原樣重跑。紀錄（誰、何時送出）會保留。"
+
+
+def forget_screen(run_name):
+    """What the person is asked before the content of one run's submissions is deleted (keep-submissions)."""
+    return [terminal.PREFIX + "== 刪除確認：只會刪除這個 run 送出時留下的內容（bundle 與畫面文字）==",
+            terminal.pair("run 名稱", run_name),
+            terminal.PREFIX + FORGET_WARNING]
 
 def _attempt_lines(title, bundle, row, attempt, sentence, pipeline, revision, samples, script):
     lines = [terminal.PREFIX + title]

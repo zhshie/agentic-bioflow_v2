@@ -300,12 +300,12 @@ def test_tc010_the_mcp_tools_are_six_read_only_ones_and_two_that_ask_a_person_wi
 
     ts = asyncio.run(tools())
     # 009e: plus resume and relaunch, which are asked the same way and take the name of a run and nothing else
-    assert sorted(t.name for t in ts) == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
+    assert sorted(t.name for t in ts) == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
                                           "list_runs", "list_site_files", "relaunch", "resume"]
     banned = {"confirm", "confirmation", "yes", "y", "launch", "cancel", "kind", "command", "fetch", "run_name", "pipeline"}
     saying_yes = {"confirm", "confirmed", "confirmation", "confirmation_id", "yes", "y", "approve", "approved", "kind", "command"}
     for t in ts:
-        if t.name in ("launch", "cancel", "resume", "relaunch"):
+        if t.name in ("launch", "cancel", "forget", "resume", "relaunch"):
             assert t.annotations.read_only_hint is False
             assert not (set(t.input_schema.get("properties", {})) & saying_yes), t.name
             continue
