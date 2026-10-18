@@ -979,7 +979,7 @@ def test_tcs39_s40_s41_s42_settings(w):
     for word in ("AI 模型金鑰", "逐步模式", "開發模式"):
         assert word in mid
     assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", mid)
-    # TC-N14 / TC-K6 (R8): the second key is named nowhere; spelled by concatenation so tests/jev_test.sh TC-085 stays 0
+    # TC-N14 / TC-K6 (R8): the second key is named nowhere; spelled by concatenation so the platform-wide safety test stays at 0
     second = "J" + "ev"
     for url in ("/settings", "/settings?lang=en"):
         assert second.lower() not in c.get(url).text.lower()
