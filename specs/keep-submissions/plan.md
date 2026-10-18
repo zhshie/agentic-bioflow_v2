@@ -36,3 +36,28 @@ A row in `confirmations` that reached `state = 'confirmed'` keeps `bundle_json` 
 ## Out of scope
 
 Deleting results on the cluster, deleting runs from the run list, any web UI.
+
+## Rulings after contract round 1 (developer-agent, 2026-10-18)
+
+R1. Pins this plan moves, by name (maintainer decision 2026-10-18, "送出內容除非使用者刪除不然不刪"):
+   - `platform/tests/test_review_fixes.py` ~line 119 (test_f9_..., second review item 8) and
+     `platform/tests/test_review_fixes_2.py` ~line 282 (`test_r8_confirmed_rows_lose_their_content_after_seven_days_too`):
+     they asserted that a confirmed row loses its content after 7 days. Invert them: a confirmed row keeps its content at
+     any age; void and expired-pending rows still lose it after 7 days. Keep the void/pending half of each test as is.
+   - The fixed MCP tool lists in `test_human_channel.py` ~158, `test_guidance.py` ~397, `test_actions_layer.py` ~28 grow by
+     exactly one tool, `forget`. Nothing else in those lists changes.
+R2. `forget` over MCP: form channel only. When `_ask` would fall back to the page (no form: an HTTP client whose form is not
+   trusted, e.g. a connector token with form_ok false) or over stdio, refuse without writing anything and say:
+   「這個客戶端無法跳出確認視窗；請在終端機執行 abf-platform forget <run> (this client cannot show a confirmation form; use the
+   terminal command)」. No page support, so `confirm.approve` and `JOB_KIND` are not touched. `forget` queues no job: an
+   accepted form answer clears the content in the same transaction as the confirmation row (kind `forget`, audit kept).
+R3. "Queued or running" is read from existing sources only, never stored (constitution I.2): refuse if any `jobs` row for the
+   run is queued or running, or if the run's status as the owner sees it through `actions.get_run` is not final. Use the
+   final-status set the code already has; do not invent a new one.
+R4. "Deleted means deleted": `forget` also clears the content copy the `jobs` rows of that run keep (whatever column holds the
+   queued bundle), keeping their audit columns. Update the PLATFORM.md sentence "the job keeps its own copy of what was
+   queued" to say a forget clears that copy too.
+R5. Terminal `abf-platform forget RUN`: no owner check, same as `abf-platform cancel` (the terminal is the machine's owner).
+   The owner check (#116 rule, same "not found" for not-yours and missing) applies to MCP/HTTP callers.
+R6. A run with no confirmed content left (already forgotten): answer 「已經刪除過了 (already deleted)」, change nothing, no
+   error. `forget` also clears pending and void rows of that run, and voids any open pending request for it.
