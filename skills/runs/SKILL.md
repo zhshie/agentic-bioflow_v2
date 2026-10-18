@@ -162,7 +162,10 @@ joined the two (`scripts/task_health.sh`) is not available on v3 yet (owed: task
   the scheduler's own wording is site-specific), or any answer shaped like a
   floor being missed →
   NEVER.** 🤖 The resource contract has drifted from what the site actually
-  enforces; fix it with `scripts/ce_apply.sh` — never by waiting longer, since
+  enforces. Fixing it (`scripts/ce_apply.sh` rewrites the compute environment
+  through the old Seqera CLI) is not available on v3 yet (owed: ce-apply), so
+  do not run it: say plainly that the contract and the site disagree and that
+  the person has to change the compute environment. Never wait longer, since
   this request was never going to start.
 - **The time requested exceeds what is allowed → NEVER.** 🤖 Raising the time
   and relaunching is not available on v3 yet (owed: resize-relaunch): the

@@ -37,3 +37,8 @@ The "Reading a measurement" table and the walltime bullet still told the AI to "
 - S5: one step added to docs/TESTING.md (step 6 of the 009e section).
 - S6: tests/column_output_relay_rule.sh and tests/jev_test.sh were not edited and pass.
 - owed: task-folder-path  a task's work-folder path in `get_run` (a platform tool to add later); needed to read `.command.err` and to feed Jev triage.
+
+## Fix round (TC-030, ce_apply.sh)
+
+- owed: ce-apply  fixing a compute environment's resource contract (scripts/ce_apply.sh calls `tw compute-envs export/import/view`); the resource-floor NEVER branch now says it is not available on v3 yet and tells the AI to report the mismatch instead of running the script. Open question for the maintainer: is there a v3 way to change the compute environment, or should one be added as a platform tool?
+- `tests/skill_runs_uses_actions_test.sh`: the script-name list in TC-030 gained `ce_apply`, and a bullet-by-bullet TC-030 check was added (the old paragraph-level check could not see a bullet inside a list that elsewhere says "not available on v3 yet"). Added assertions only; none loosened.
