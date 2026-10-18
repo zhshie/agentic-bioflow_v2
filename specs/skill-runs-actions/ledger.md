@@ -42,3 +42,8 @@ The "Reading a measurement" table and the walltime bullet still told the AI to "
 
 - owed: ce-apply  fixing a compute environment's resource contract (scripts/ce_apply.sh calls `tw compute-envs export/import/view`); the resource-floor NEVER branch now says it is not available on v3 yet and tells the AI to report the mismatch instead of running the script. Open question for the maintainer: is there a v3 way to change the compute environment, or should one be added as a platform tool?
 - `tests/skill_runs_uses_actions_test.sh`: the script-name list in TC-030 gained `ce_apply`, and a bullet-by-bullet TC-030 check was added (the old paragraph-level check could not see a bullet inside a list that elsewhere says "not available on v3 yet"). Added assertions only; none loosened.
+
+## Fix round (TC-023, params)
+
+- `skills/runs/SKILL.md` `params` branch: "correct or remove that option, then relaunch" is now "a new analysis: ask through `launch` with the corrected parameters, the person confirms; `relaunch`/`resume` cannot change parameters" (relaunch keeps the first launch's samples and parameters). The cancel/resume sentence near the end was reworded in plain English ("can be continued by its name alone"), same meaning.
+- `tests/skill_runs_uses_actions_test.sh`: one added TC-023 check (no relaunch/resume line says parameters or options can be changed); it was red on the old line first. Nothing loosened.

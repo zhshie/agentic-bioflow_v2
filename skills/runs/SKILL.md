@@ -338,7 +338,7 @@ elsewhere. For Jev, `memory` is the "Out of memory" section below, `unknown` is 
 - **Look first:** the option the error names, against the params file this run
   was launched with. Reading a run's parameters back from the platform is not available on v3 yet (owed: run-params); use the params file the launch was
   built from.
-- **Usual fix:** correct or remove that option, then relaunch.
+- **Usual fix:** correct or remove that option. That is a new analysis: ask through `launch` with the corrected parameters, and the person confirms it. `relaunch` and `resume` cannot change parameters.
 - ⏸ **Ask the user** before changing any pipeline parameter: that is a call
   about the run that was requested, not about the site.
 
@@ -528,7 +528,7 @@ asking is a decision that was never this command's to make.
     You decide:      relaunch it, or leave it cancelled
     Next step:       say the word and it relaunches the same way any other run does
 
-To stop a run that is still going, call `cancel` with its name: it only asks, and the person confirms it on their own channel. A failed or cancelled run that the platform launched is gone on with by its name alone, after the person says yes each time. `resume` (or `abf-platform resume RUN`) takes up where Nextflow stopped, in the same folder, and finished tasks come back from the cache. `relaunch` (or `abf-platform relaunch RUN`) starts the run again from the start in a new folder. The samples and parameters are those of the first launch; changing them is a new `launch`.
+To stop a run that is still going, call `cancel` with its name: it only asks, and the person confirms it on their own channel. A failed or cancelled run that the platform launched can be continued by its name alone, after the person says yes each time. `resume` (or `abf-platform resume RUN`) takes up where Nextflow stopped, in the same folder, and finished tasks come back from the cache. `relaunch` (or `abf-platform relaunch RUN`) starts the run again from the start in a new folder. The samples and parameters are those of the first launch; changing them is a new `launch`.
 
 ## UNKNOWN
 
