@@ -48,8 +48,9 @@ exists.
   `test_tch09_*` of `test_human_channel.py` and `test_tch09_b_c_*` of `test_confirm_page.py`).
   The platform's run index is never a second truth: it MUST be rebuildable from Nextflow's own
   records alone, and where the index and the records disagree, the records win.
-  *Check:* `platform/tests/test_nextflow_e2e.py` (`test_tc030_rebuild_gives_back_every_field`,
-  `test_tc031_nextflows_records_win_over_a_damaged_index`), run by `tests/platform_test.sh`.
+  *Check:* run by `tests/platform_test.sh`: the platform tests
+  `test_tc030_rebuild_gives_back_every_field` and
+  `test_tc031_nextflows_records_win_over_a_damaged_index` of `test_nextflow_e2e.py`.
 
 *Rationale:* three features were rebuilt here before anyone checked, and each was written and
 then deleted (PITFALLS 14). A second copy of run state drifts from the real one. The platform of
@@ -184,13 +185,14 @@ plan, and change only by a MAJOR amendment of this constitution.
   (`hooks/confirm_launch.sh` in the Claude Code kit; on the platform, the gate in
   `platform/abf_platform/actions`, which takes a person's yes only from the terminal, the form
   of an MCP client or the confirmation page).
-- Every write tool of the platform (today `launch`, `cancel`, `resume` and `relaunch`) refuses
+- Every write tool of the platform (today `launch`, `cancel`, `resume`, `relaunch` and `forget`) refuses
   until a person has answered on one of those channels; a token, a pending request or the
   model's own answer is never that answer. A new write tool joins this rule with its own
   refusal test before it ships.
   *Check:* `platform/tests/test_actions_layer.py` (`test_tcb04_*` to `test_tcb08_*`),
   `platform/tests/test_human_channel.py` (`test_tch09_*`, `test_tca14_*`),
-  `platform/tests/test_resume_entrypoints.py` (`test_tc142_*`, `test_tc144_*`), run by
+  `platform/tests/test_resume_entrypoints.py` (`test_tc142_*`, `test_tc144_*`),
+  `platform/tests/test_keep_submissions.py` (`test_tc034_*`, `test_tc037_*`, `test_tc038_*`), run by
   `tests/platform_test.sh`.
 - Credentials and personal details live only in the deployment's own settings area, readable by
   the owner only; never printed, never in git, never in a params file. The plugin never fills in one
@@ -555,7 +557,8 @@ after, each is a rule here with the test that holds it.
 - Principle I.2 gains the rule that the platform's run index can be rebuilt from Nextflow's own
   records and loses to them when they disagree (feature 008's rebuild tests).
 - The Safety Net's launch rule is extended to every write tool the platform has today:
-  `launch` and `cancel` (as in 5.0.0), and now `resume` and `relaunch`. A write tool added
+  `launch` and `cancel` (as in 5.0.0), and now `resume`, `relaunch` and `forget` (the last
+  arrived with keep-submissions, PR #133, and its refusal tests came with it). A write tool added
   later must bring its own refusal test.
 - The Safety Net's credentials rule gains the platform's half: a credential that arrives inside
   a run's data or an OAuth exchange is never stored. The wider wording in the roadmap ("the API
