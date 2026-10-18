@@ -118,3 +118,11 @@ R16. Kept as is, recorded in the ledger as known limits (maintainer may revisit)
 - F4 (verifier question a) Forget is refused while a launch job has ended successfully (the sbatch went out) but the run is not yet in the run index: 「這個 run 還在準備中，不能刪除」, until the index sees the run or 24 hours after the job ended (then it is treated as never having reached the index, R15). A refused/failed/expired launch stays forgettable at once (R15 unchanged).
 - F5 (verifier question b) "kept until the owner deletes it" must hold for a terminal-confirmed launch too: the confirmed request row keeps its bundle and screen text whatever the channel (terminal, form, page), so the 7-day job prune cannot remove the only copy. 009e's resume/relaunch read the content from the request row first and fall back to the job only for rows made before this change; the 「太久了…」 answer remains only for that fallback.
 - F6 TC-084 and any case contradicted by F2–F5 are amended by the verifier in CONTRACT mode; the executor never edits test cases.
+
+## Rulings after follow-up acceptance (developer-agent, 2026-10-18)
+- F7 (verifier finding 1, a real gap): F4's "still preparing" refusal applies only while the launch job row exists. If the launch job row is gone (pruned) and the run is not in the index, the run is treated as never having reached the index: forget is allowed. Add a test for this old-data case (delete the job row, then forget succeeds).
+- F8 Add `forget` to the ask list in `extensions/claude-code-kit/settings.json` (a tightening of the second layer) and update the test that pins that list to the five names launch, cancel, resume, relaunch, forget.
+- F9 The two 009e "太久了" tests (resume and relaunch) may change ONLY their setup so the request row has the pre-F5 shape (no content in the confirmation record); their assertions stay word for word; list both in the ledger.
+- F10 When forget completes, every pending resume/relaunch request that names the forgotten run is made void at once (same as open pending requests under the original forget rule); the job-time queue check of F2 stays as the second guard.
+- F11 F5 applies to cancel too: a terminal-confirmed cancel keeps its bundle and screen text in the request row.
+- F12 Web parity for forget stays owed (ledger); order confirmed.
