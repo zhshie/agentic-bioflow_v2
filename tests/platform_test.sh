@@ -58,6 +58,7 @@ tests/test_launch_nextflow.py
 tests/test_launch_e2e.py tests/test_station_fakeplatform.py tests/test_station_channel.py
 tests/test_station_cancel.py tests/test_launch_cli.py
 tests/test_station_launch.py tests/test_relay_loopback.py tests/test_station_envs.py
+tests/test_oauth.py tests/test_oauth_consent.py tests/test_oauth_tokens.py tests/test_oauth_mcp.py
 "
     local listed f
     listed=" $(echo $SHARDS) $LAST "

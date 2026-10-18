@@ -69,7 +69,7 @@ def cmd_web(args):
         return 1
     base = public or "http://%s:%s" % (args.host, args.port)
     try:
-        app = web.create_app(index, tokens, state, public_url=public or None)
+        app = web.create_app(index, tokens, state, public_url=public or None, base_url=base)
     except ValueError as e:
         _err("rejected: %s" % e)
         return 1
@@ -180,6 +180,16 @@ def cmd_pat_revoke(args):
         return 0
     _err("rejected: no live personal access token with id %s" % args.id)
     return 1
+
+
+def cmd_oauth_revoke(args):
+    tokens = store.default_tokens_path()
+    if store.user_id_of(tokens, args.user) is None:
+        _err("no user named %s (沒有這個使用者)" % args.user)
+        return 1
+    n = store.revoke_oauth_tokens(tokens, args.user)
+    _say("revoked %d OAuth token(s) of %s; their personal access tokens are untouched (已撤銷 %d 個 OAuth 權杖)" % (n, args.user, n))
+    return 0
 
 
 def cmd_agent_token_revoke(args):
@@ -382,7 +392,15 @@ def cmd_mcp(args):
         if not store.has_users(store.default_tokens_path(index)):
             _say("There are no users yet, so every request will get 401 until you run: abf-platform user add <name> --lab <lab>, "
                  "then abf-platform pat new --user <name>.")
-        mcp_server.run_http(index, args.host, args.port)
+        public = (args.public_url or "").rstrip("/")
+        if public:
+            from urllib.parse import urlparse
+            u = urlparse(public)
+            if not u.hostname or u.path not in ("", "/") or not (u.scheme == "https" or (u.scheme == "http" and u.hostname in LOOPBACK)):
+                _err("rejected: --public-url must be https://host (or http://127.0.0.1:port on this machine), with no path "
+                     "(--public-url 要是 https://主機 的形式)")
+                return 1
+        mcp_server.run_http(index, args.host, args.port, public_url=public or None)
     else:
         mcp_server.run_stdio(index)
     return 0
@@ -519,6 +537,12 @@ def build_parser():
     pr.add_argument("id", type=int)
     pr.set_defaults(func=cmd_pat_revoke)
 
+    oa = sub.add_parser("oauth", help="the OAuth logins of Claude Desktop connectors")
+    osub = oa.add_subparsers(dest="oauth_command", required=True)
+    orv = osub.add_parser("revoke", help="end every OAuth login (access and refresh tokens) of one user; their personal access tokens stay")
+    orv.add_argument("user")
+    orv.set_defaults(func=cmd_oauth_revoke)
+
     c = sub.add_parser("ce", help="compute environments")
     csub = c.add_subparsers(dest="ce_command", required=True)
     cc = csub.add_parser("create", help="store a compute environment (Slurm is checked; the other types are only stored)")
@@ -549,6 +573,8 @@ def build_parser():
     m.add_argument("--http", action="store_true", help="Streamable HTTP instead of stdio")
     m.add_argument("--host", default="127.0.0.1")
     m.add_argument("--port", type=int, default=8788)
+    m.add_argument("--public-url", help="the address people reach this server at (https://host, no path); with it a 401 tells a Claude "
+                                        "Desktop connector where to log in (needs `abf-platform web --public-url` too)")
     m.set_defaults(func=cmd_mcp)
 
     r = sub.add_parser("rebuild", help="drop the index and build it again from Nextflow's records")
