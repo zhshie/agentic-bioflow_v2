@@ -128,3 +128,7 @@ TC-V02 to TC-V04, TC-V11 to TC-V18 (screenshots with Playwright, the detector, t
 ### Fix round 2: TC-D12 and TC-D13 manual steps
 
 `docs/TESTING.md` ("The web shell (011a)", Ledger review) now matches the confirmed rows. TC-D12: the empty-diff check covers `DESIGN.md` and `PRODUCT.md` only (plan.md is legitimately edited by the developer-agent after 637dc7c), plus the `git log` check that no subject starts with `RED:` or `GREEN:`. TC-D13: a new step reads this ledger's Jev decision, runs `git diff origin/v3...HEAD -- tests/jev_test.sh` and `grep -rli jev platform/`, and tells the reader to clear `platform/tests/__pycache__` first. Documentation only; no code changed.
+
+### Fix round 3: the OAuth consent page was not in TC-S45 and TC-H13d
+
+`test_tch13_csp_and_markup` and `test_tcs45_confirm_pages_share_the_style` in `platform/tests/test_web_board.py` now also read a real `/consent/<id>` page (made the way `test_oauth_consent.py` does, through `oauth_harness.Rig`). They check its CSP `style-src` sha256 against its one inline stylesheet, that it is the same stylesheet as `/`, and that it has no `style=`, `<script`, `on*=` or external address. The implementation already passed; both tests were seen to fail when the consent page's stylesheet was temporarily changed (the change was reverted, not committed). No code under `platform/abf_platform/` changed.

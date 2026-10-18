@@ -58,6 +58,17 @@ def login(w, name):
     return c
 
 
+def consent_page(w, name):
+    """A real OAuth consent page (the same way test_oauth_consent.py gets one), for `name` logged in."""
+    from oauth_harness import Rig
+    rig = Rig(w)
+    path, _verifier, _cid = rig.start()
+    rig.log_in(name)
+    r = rig.c.get(path)
+    assert r.status_code == 200 and "\u5141\u8a31" in r.text, r.text
+    return r
+
+
 def hrefs(text):
     return re.findall(r'href="([^"]*)"', text)
 
@@ -905,7 +916,7 @@ def test_tch13_csp_and_markup(w):
     rid = seed(w, "ok", "running", ann, counts=dict(succeeded=1, running=1))
     c = login(w, "ann")
     pages = [c.get("/"), c.get("/?lang=en"), c.get("/?run=" + rid), c.get("/settings"), c.get("/?run=nope"), w.web().get("/login"),
-             c.get("/c/" + "b" * 32)]
+             c.get("/c/" + "b" * 32), consent_page(w, "ann")]
     for r in pages:
         csp = r.headers["content-security-policy"]
         assert "script-src" not in csp and "'unsafe-inline'" not in csp
@@ -1034,6 +1045,11 @@ def test_tcs45_confirm_pages_share_the_style(w):
     digest = base64.b64encode(hashlib.sha256(style_of(r.text).encode("utf-8")).digest()).decode()
     assert "style-src 'sha256-%s'" % digest in r.headers["content-security-policy"] and style_of(r.text) == style_of(c.get("/").text)
     assert c.get("/c/%s?lang=en" % rid).text == r.text
+    k = consent_page(w, "ann")            # the OAuth consent page carries the same one stylesheet
+    kd = base64.b64encode(hashlib.sha256(style_of(k.text).encode("utf-8")).digest()).decode()
+    assert k.text.count("<style>") == 1 and style_of(k.text) == style_of(r.text)
+    assert "style-src 'sha256-%s'" % kd in k.headers["content-security-policy"]
+    assert not re.search(r"\sstyle=", k.text) and "<script" not in k.text.lower()
     assert w.web().get("/login?lang=en").text == w.web().get("/login").text
 
 
