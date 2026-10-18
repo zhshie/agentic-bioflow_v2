@@ -272,7 +272,7 @@ def test_tc108_the_tool_is_read_only_and_warns_that_the_text_goes_to_the_chosen_
 def test_tc109_it_uses_the_same_queue_and_the_same_poll_route_as_list_site_files(tmp_path):
     from abf_platform import agents, jobs, status
     w = World(tmp_path)
-    jid = jobs.enqueue_task_log(w.db, RUN, w.failed[0]["workdir"], ".command.err", status.now)
+    jid = jobs.enqueue_task_log(w.db, RUN, w.failed[0]["workdir"], ".command.err", w.clock)
     r = w.plat.client.post("/agent/poll", json={"name": "a1"}, headers=bearer(w.agent_token))
     job = r.json()["job"]
     assert job["id"] == jid and job["kind"] == "read_task_log" and "confirmation" not in job
@@ -315,8 +315,6 @@ def test_tc110_an_older_platform_db_keeps_its_rows_and_takes_the_new_kind(tmp_pa
     con.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at) "
                 "VALUES ('a1', 'lab-a', 'read_task_log', '{}', 'queued', 1, 2)")
     assert con.execute("SELECT MAX(id) FROM jobs").fetchone()[0] == 4
-    con.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at) "
-                "VALUES ('a1', 'lab-a', 'rm', '{}', 'queued', 1, 2)") if False else None
     for bad in ("rm", "launch", ""):
         with pytest.raises(sqlite3.IntegrityError):
             con.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at) "
@@ -423,7 +421,9 @@ def test_the_real_agent_reads_the_tail_of_each_file_within_the_cap(tmp_path, sit
         err = run_job(fake, read_job(site, d))
         out = run_job(fake, read_job(site, d, ".command.out"))
         log = run_job(fake, read_job(site, d, ".command.log"))
-        missing = run_job(fake, read_job(site, d, ".command.err").__class__(kind="read_task_log", args=read_job(site, site.work / "zz", ".command.err")["args"]))
+        gone = site.work / "zz"
+        gone.mkdir()
+        missing = run_job(fake, read_job(site, gone))
     assert err["state"] == "done" and err["result"]["text"] == lines(200, 301) and err["result"]["truncated"] is True
     assert out["state"] == "done" and out["result"]["text"] == "short\n" and not out["result"]["truncated"]
     assert log["state"] == "done" and len(log["result"]["text"].encode()) <= 64 * 1024 and log["result"]["truncated"] is True
@@ -508,7 +508,7 @@ def test_tc201_206_207_a_cancel_that_the_agent_sent_shows_the_time_and_changes_n
     when = sql(w.plat, "SELECT cancel_requested_at FROM launches WHERE run_name = ?", (RUN,))[0][0]
     assert when is not None and v["cancel_requested_at"] == common.epoch_iso_ms(when)       # TC-201, TC-206 (the fact the launches command prints)
     assert v["status"] == "failed" and v["status"] != "cancelled"                              # TC-207: Nextflow's word stays
-    assert not re.search(r"cancel(l)?ed", json.dumps({k: x for k, x in v.items() if k != "cancel_requested_at"}), re.I) or True
+    assert set(v) >= {"status", "cancel_requested_at"} and not re.search(r"cancel(l)?ed", v["status"], re.I)
 
 
 def test_tc202_a_run_never_asked_to_stop_has_no_such_field(tmp_path):
@@ -563,8 +563,8 @@ def test_tc301_the_tool_has_an_action_of_the_same_name_with_one_call_in_its_body
 def test_tc309_the_platform_document_lists_the_tool_and_the_two_facts():
     text = (REPO_ROOT / "docs" / "PLATFORM.md").read_text(encoding="utf-8")
     assert "read_task_log" in text
-    line = [l for l in text.splitlines() if "read_task_log" in l][0]
-    assert "200" in text[text.index("read_task_log"):text.index("read_task_log") + 1500] and "64" in text[text.index("read_task_log"):text.index("read_task_log") + 1500]
+    bullet = [l for l in text.splitlines() if l.startswith("- `read_task_log`")][0]
+    assert "read-only" in bullet and "200 lines" in bullet and "64 KB" in bullet
     assert "workdir" in text and "cancel_requested_at" in text
 
 
@@ -581,6 +581,12 @@ def test_tc308_the_ledger_lists_what_the_web_still_owes():
 
 
 def test_tc502_the_new_handler_only_reads():
-    src = (PLATFORM_DIR / "abf_station" / "readlog.py").read_text(encoding="utf-8")
-    for word in ("sbatch", "scancel", "rm ", "mv ", "cp ", "tee", " > ", ">>", "write", "chmod"):
-        assert word not in src, word
+    import ast
+    tree = ast.parse((PLATFORM_DIR / "abf_station" / "readlog.py").read_text(encoding="utf-8"))
+    docs = {id(n.body[0].value) for n in ast.walk(tree) if isinstance(n, (ast.Module, ast.FunctionDef))
+            and n.body and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+    code = " ".join(n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs)
+    for word in ("sbatch", "scancel", " rm ", " mv ", " cp ", "tee", " > ", ">>", "chmod", "touch", "mkdir", "sed -i"):
+        assert word not in code, word
+    commands = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.startswith("find -P")]
+    assert commands and all("-exec" not in c or "-exec tail " in c for c in commands)

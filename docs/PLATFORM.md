@@ -3,7 +3,7 @@
 `platform/` holds a small program, `abf-platform`, that does two things, and a second program, `abf-station` (the station agent, section 6), that lets it ask about a site without ever holding a credential:
 
 1. It **receives** what Nextflow reports about a run. Nextflow's own `nf-tower` plugin sends the start of a run, its progress, a heartbeat once a minute and its end to whatever address you set as `tower.endpoint`. The receiver accepts those messages and keeps a small index of the runs.
-2. It **answers questions** about that index to an AI client over MCP (Model Context Protocol), with six read-only tools: `list_runs` and `get_run` for runs, `list_compute_envs`, `get_compute_env`, `list_agents` and `list_site_files` for the compute environments and the agent (sections 6 to 8). Two more tools, `launch` and `cancel`, only ask: they start nothing until a person says yes (section 9, "The confirmation page").
+2. It **answers questions** about that index to an AI client over MCP (Model Context Protocol), with seven read-only tools: `list_runs` and `get_run` for runs, `read_task_log` for the end of a failed task's log, `list_compute_envs`, `get_compute_env`, `list_agents` and `list_site_files` for the compute environments and the agent (sections 6 to 8). Two more tools, `launch` and `cancel`, only ask: they start nothing until a person says yes (section 9, "The confirmation page").
 
 It does not delete anything, it starts or cancels a run only after a person's yes, its only web pages are the login and the confirmation page (`abf-platform web`), and it never contacts Seqera Platform (ADR 0004). Nextflow's own records stay the truth about a run; the index can be thrown away and rebuilt (see "Rebuild the index").
 
@@ -85,7 +85,7 @@ claude mcp add abf-platform -- abf-platform mcp
 }
 ```
 
-Use the full path of the command if Desktop cannot find it. Then ask, for example, "what is the state of my latest runs?"; the AI calls `list_runs` (newest first, with name, state, start time and task numbers) and, for one run, `get_run` (adds the per-process numbers, the failed tasks with exit code and error text, and for a failed run `failure_reason`: Nextflow's own `errorMessage`, else the first line of its `errorReport`, on one line and at most 1000 characters; absent when Nextflow gave none, and absent on a run rebuilt from the run folder, whose log does not hold it).
+Use the full path of the command if Desktop cannot find it. Then ask, for example, "what is the state of my latest runs?"; the AI calls `list_runs` (newest first, with name, state, start time and task numbers) and, for one run, `get_run` (adds the per-process numbers, the failed tasks with exit code and error text and, when Nextflow reported it, `workdir` (the task's folder on the site; absent when not reported, and always absent on a run rebuilt from the run folder), `cancel_requested_at` (present only when a confirmed cancel of the run was sent: the same fact `abf-platform launches` prints, never a status), and for a failed run `failure_reason`: Nextflow's own `errorMessage`, else the first line of its `errorReport`, on one line and at most 1000 characters; absent when Nextflow gave none, and absent on a run rebuilt from the run folder, whose log does not hold it).
 
 **Streamable HTTP**, for a client that wants a URL:
 
@@ -123,10 +123,11 @@ abf-platform rebuild /path/to/launch_folder_1 /path/to/launch_folder_2
 
 ## 6. The station agent
 
-`abf-station` is a small program that runs on **your** side: in WSL, or in a Linux bash on a machine you control (the lab's always-on computer, say). It connects **outward** to the platform and never accepts a connection (the platform never calls it). It does two read-only things, and nothing else:
+`abf-station` is a small program that runs on **your** side: in WSL, or in a Linux bash on a machine you control (the lab's always-on computer, say). It connects **outward** to the platform and never accepts a connection (the platform never calls it). It does three read-only things, and nothing else:
 
 - `preflight`: check that a compute environment's site can be used (the checks are listed in section 7);
-- `list_site_files`: list one folder on the site (names, sizes, modification times).
+- `list_site_files`: list one folder on the site (names, sizes, modification times);
+- `read_task_log`: read the end of one of `.command.err`, `.command.out`, `.command.log` in the task folder of one failed task (`workdir` of `get_run`): read-only, at most the last 200 lines and 64 KB, and a cut is said. The agent reads only inside the places it may read, takes no other file name, and refuses a link. The text goes to the model you chose, like a listing. The tool `read_task_log(run_name, task, which)` is refused, with the reason, when the task has no recorded workdir, the run was not launched from this platform, or the agent is offline.
 
 Every command it sends to the site goes through `scripts/on_site.sh`, the one sanctioned way to reach the site, and so through the shared connection **you** opened with your one-time code. The agent never opens a connection of its own and never asks for a password or code.
 
@@ -271,7 +272,7 @@ What goes back is the agent's own short wording (300 characters at most per chec
 
 ### The MCP tools
 
-Eleven tools. Six are read-only (`readOnlyHint`): `list_runs`, `get_run`, `list_compute_envs`, `get_compute_env`, `list_agents` and `list_site_files`. `list_site_files` puts one read-only question in the job queue and waits for the answer; it cannot name a command or a kind of job. The other five, `launch`, `cancel` (spec 009c), `resume`, `relaunch` (spec 009e, see "Resume and relaunch") and `forget` (keep-submissions, see "Forget"), are marked as writing (`cancel` also as destructive) but start and stop nothing by themselves: each builds what the terminal command builds, writes a pending request and asks the person (section 9, "The confirmation page"). They have no argument that could say yes. There is no tool that creates or changes an environment, a user or a password: that is the command line.
+Twelve tools. Seven are read-only (`readOnlyHint`): `list_runs`, `get_run`, `list_compute_envs`, `get_compute_env`, `list_agents`, `list_site_files` and `read_task_log`. `list_site_files` and `read_task_log` each put one read-only question in the job queue and wait for the answer; neither can name a command or a kind of job. The other five, `launch`, `cancel` (spec 009c), `resume`, `relaunch` (spec 009e, see "Resume and relaunch") and `forget` (keep-submissions, see "Forget"), are marked as writing (`cancel` also as destructive) but start and stop nothing by themselves: each builds what the terminal command builds, writes a pending request and asks the person (section 9, "The confirmation page"). They have no argument that could say yes. There is no tool that creates or changes an environment, a user or a password: that is the command line.
 
 ## 8. The types
 
@@ -463,7 +464,7 @@ The platform's actions live in one place, `platform/abf_platform/actions/`: one 
 
 A person who pastes the server's address into Claude gets the "how to use it" along with the tools, with nothing to install. It comes in three forms, all made from the one folder `skills/`:
 
-- **Instructions.** On connecting, the client hands the model the routing table of `skills/operational/SKILL.md` (which command to reach for: "I want to run RNA-seq" is a `launch`) and one fixed sentence: the six tools are read-only, `launch`, `cancel`, `resume`, `relaunch` and `forget` only ask (nothing happens until the person says yes), and the full steps are the prompts. The text is generated from the file, never typed a second time; if the table is gone the server refuses to start rather than send an empty text.
+- **Instructions.** On connecting, the client hands the model the routing table of `skills/operational/SKILL.md` (which command to reach for: "I want to run RNA-seq" is a `launch`) and one fixed sentence: the seven tools are read-only, `launch`, `cancel`, `resume`, `relaunch` and `forget` only ask (nothing happens until the person says yes), and the full steps are the prompts. The text is generated from the file, never typed a second time; if the table is gone the server refuses to start rather than send an empty text.
 - **Prompts.** One per flow skill (`setup`, `launch`, `runs`, `downstream`, `finish`), no arguments, holding the whole SKILL.md without its frontmatter. Clients list them as commands; how Claude Desktop shows them is checked by hand (docs/TESTING.md).
 - **Skills as resources.** The same six files (the five flows and `operational`) are also served as fixed resources, `skill://<name>/SKILL.md`, type `text/markdown`, one per file, with no path template, so no path can be passed in and anything else is refused. This is the fallback for a client that shows resources but not prompts. The pinned `mcp` SDK (2.3.0) has no Skills extension API, so the resources are plain ones; when the pin moves to an SDK that has one, only the registration changes.
 

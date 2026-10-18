@@ -22,7 +22,7 @@ import time
 
 from abf_launch import build
 
-from .. import agents, compute_envs, confirm, jobs, status, store
+from .. import agents, common, compute_envs, confirm, jobs, status, store
 
 NotApproved = confirm.NotApproved
 
@@ -76,14 +76,19 @@ def list_runs(index_path, *, caller=None, platform_path=None):
     return {"runs": status.list_runs(index_path, status.now(), names=names)}
 
 
+RUN_NOT_FOUND_TEXT = "Run not found: %s (找不到這個 run)"
+
+
 def get_run(index_path, run_id, *, caller=None, platform_path=None):
     view = status.get_run(index_path, run_id, status.now())
     if view is not None and caller is not None and view["name"] not in jobs.owned_run_names(
             platform_path_for(index_path, platform_path), caller.user_id):
         view = None
     if view is None:
-        return {"found": False, "id": run_id,
-                "message": "Run not found: %s (找不到這個 run)" % run_id}
+        return {"found": False, "id": run_id, "message": RUN_NOT_FOUND_TEXT % run_id}
+    asked = jobs.cancel_requested_at(platform_path_for(index_path, platform_path), view["name"])
+    if asked is not None:        # a fact about a request that was sent, never a state of the run (the status stays Nextflow's word)
+        view["cancel_requested_at"] = common.epoch_iso_ms(asked)
     return view
 
 
@@ -143,6 +148,52 @@ async def list_site_files(platform_path, compute_env, path, *, caller=None):
         answer["path"] = result.get("path", path)
         return answer
     answer.update(ok=False, message=out["message"])
+    if result and result.get("error"):
+        answer["error"] = result["error"]
+    return answer
+
+
+READ_WHICH = "which must be one of err, out, log (which 只能是 err、out、log)"
+NO_WORKDIR = "no recorded workdir for this task (沒有記錄到這個任務的工作資料夾)"
+LOG_NOT_FOUND = "file not found in the task folder (任務資料夾裡找不到這個檔案)"
+
+
+async def read_task_log(platform_path, index_path, run_name, task, which, *, caller=None):
+    """The end of one log file (.command.err, .command.out or .command.log) of one failed task of a run, read by the agent of
+    the run from the task folder the run reported. At most 200 lines and 64 KB, the last ones, and a cut is said. Reads only; the run is
+    the caller's own (anything else answers like a run that is not there)."""
+    answer = {"run_name": run_name, "task": task, "which": which}
+
+    def refused(message):
+        answer.update(ok=False, message=message)
+        return answer
+
+    if which not in jobs.LOG_FILES:
+        return refused(READ_WHICH)
+    run = status.find_run(index_path, run_name, status.now()) if isinstance(run_name, str) else None
+    if run is None or (caller is not None and run_name not in jobs.owned_run_names(platform_path, caller.user_id)):
+        return refused(RUN_NOT_FOUND_TEXT % run_name)
+    view = status.get_run(index_path, run["id"], status.now())
+    workdir = next((t.get("workdir") for t in view["failed_tasks"] if t["name"] == task), None) if view else None
+    if not workdir:
+        return refused(NO_WORKDIR)
+    filename = jobs.LOG_FILES[which]
+    try:
+        job_id = jobs.enqueue_task_log(platform_path, run_name, workdir, filename, status.now, caller_user_id=_caller_id(caller))
+    except jobs.JobRefused as e:
+        return refused(str(e))
+    out = await jobs.wait_for_result(platform_path, job_id, status.now)
+    result = out["result"]
+    if out["state"] == "done" and result and result.get("ok") and isinstance(result.get("text"), str):
+        answer.update(ok=True, file=filename, workdir=workdir, text=result["text"], lines=result.get("lines", 0),
+                      truncated=bool(result.get("truncated")))
+        if answer["truncated"]:
+            answer["note"] = ("truncated (截斷): the end of the file is shown, at most %d lines and %d KB"
+                              % (jobs.LOG_MAX_LINES, jobs.LOG_MAX_BYTES // 1024))
+        return answer
+    if result and result.get("error") == "not_found":
+        return refused(LOG_NOT_FOUND)
+    refused(out["message"])
     if result and result.get("error"):
         answer["error"] = result["error"]
     return answer

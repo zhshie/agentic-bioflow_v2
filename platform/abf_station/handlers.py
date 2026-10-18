@@ -1,6 +1,7 @@
 # Not Ansible modules or Celery tasks: they run whatever a controller sends; these are two built-in read-only handlers, and a job is only data for them, never a command.
 """What the agent does: check a site (preflight), list a folder (list_site_files), and, with a confirmation, start an analysis
-(launch_nextflow, launch.py) or stop one (cancel_run, cancel.py); fetch_run_records reads Nextflow's own logs back (fetch.py).
+(launch_nextflow, launch.py) or stop one (cancel_run, cancel.py); fetch_run_records reads Nextflow's own logs back (fetch.py);
+read_task_log reads the end of one log file of one task folder (readlog.py).
 
 A job is a dict with a kind and arguments. Only the exact kinds below exist; any other text is refused,
 and a refusal is an answer, not a crash. Every value that reaches the site is checked again here and
@@ -9,12 +10,12 @@ quoted. What goes back to the platform is the agent's own short wording, never t
 import re
 from datetime import datetime, timezone
 
-from . import cancel, fetch, launch, rules
+from . import cancel, fetch, launch, readlog, rules
 from .site import quote
 
-JOB_KINDS = ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records")
+JOB_KINDS = ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log")
 ARG_KEYS = {"preflight": {"ce"}, "list_site_files": {"ce", "path"}, "launch_nextflow": launch.LAUNCH_KEYS,
-            "cancel_run": launch.LAUNCH_KEYS, "fetch_run_records": fetch.ARGS}
+            "cancel_run": launch.LAUNCH_KEYS, "fetch_run_records": fetch.ARGS, "read_task_log": readlog.ARGS}
 LIST_LIMIT = 500
 # The check ids are written as one comma-split string, never as a quoted sbatch: the scan of
 # constitution principle 2 (tests/no_second_run_state_test.sh) treats a quote straight before
@@ -50,6 +51,8 @@ def handle(job, ctx):
             return cancel.run_cancel(job, ctx)
         if kind == "fetch_run_records":
             return fetch.run_fetch(job, ctx)
+        if kind == "read_task_log":
+            return readlog.run_read(job, ctx)
         env = rules.clean_environment(args.get("ce"))
         if kind == "preflight":
             return "done", preflight(env, ctx)

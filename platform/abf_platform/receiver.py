@@ -103,9 +103,12 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
                 code = _int(t.get("exit"), None)
                 if code is not None and code >= INT_UNSET:
                     code = None
-                con.execute("INSERT INTO failed_tasks (run_id, task_key, name, exit_code) VALUES (?, ?, ?, ?) "
-                            "ON CONFLICT(run_id, task_key) DO UPDATE SET name = excluded.name, exit_code = excluded.exit_code",
-                            (rid, key, name, code))
+                workdir = t.get("workdir")      # where Nextflow ran the task, when it said; never guessed, so a missing one stays NULL
+                workdir = workdir[:store.WORKDIR_MAX_CHARS] if isinstance(workdir, str) and workdir else None
+                con.execute("INSERT INTO failed_tasks (run_id, task_key, name, exit_code, workdir) VALUES (?, ?, ?, ?, ?) "
+                            "ON CONFLICT(run_id, task_key) DO UPDATE SET name = excluded.name, exit_code = excluded.exit_code, "
+                            "workdir = COALESCE(excluded.workdir, failed_tasks.workdir)",
+                            (rid, key, name, code, workdir))
             else:
                 con.execute("DELETE FROM failed_tasks WHERE run_id = ? AND task_key = ?", (rid, key))
 
