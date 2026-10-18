@@ -109,9 +109,13 @@ Unchanged and still passing: the confirmation page and consent tests (`test_conf
 | `test_confirm_page.py` TC-G04 | routes were the union of 009c, 009i and `GET /`; `/settings` in the must-be-404 loop | routes add `("/settings", ("GET", "HEAD"))`; `/settings` taken out of the 404 loop and `/cost` put in | R4: `GET /settings` is the seventh page route; the loop's point (nothing else exists) is kept |
 | `test_owner_binding.py` tc068 | route paths were the union plus `/` | adds `/settings` | same |
 
-### Open item: `tests/jev_test.sh` TC-085 against TC-S39 and TC-N14
+### Decided: no Jev item on the settings page (R8; TC-D13, TC-K6)
 
-TC-S39 and TC-N14 require the settings page to list "Jev 金鑰（選填）" (and "Jev key (optional)" in English) as a grey item. `tests/jev_test.sh` TC-085 says `grep -rli jev platform/` finds nothing, and the string must therefore not stand in `platform/abf_platform/web_board.py` or in the test that checks it. Both cannot hold. Nothing was changed in `jev_test.sh` (not named in the plan). The developer-agent has to decide: allow `web_board.py` and `test_web_board.py` in TC-085, or drop the Jev item from TC-S39 and TC-N14.
+`tests/jev_test.sh` TC-085 says nothing under `platform/` may mention jev (ADR 0007: Jev is optional and lives on the plugin side). So the settings page of 011a has no Jev item: the platform names no Jev anywhere, "密碼與金鑰" lists only 「AI 模型金鑰」. DESIGN.md's 「Jev 金鑰（選填）」 on screen 12 is dropped from 011a and left for the ADR 0009/0010 amendment. `tests/jev_test.sh` is not changed (no diff against v3); `grep -rli jev platform/` finds nothing; the test for TC-N14 builds the word by concatenation.
+
+### Red number and succeeded items (R9; TC-S50, TC-S51)
+
+The red number beside 「現在」 in the left pane is the count of failed plus lost runs, the same list the 「需要注意」 card is built from, computed on every request from `list_runs`; it is not shown when 0. TC-S51 already held after R6 (succeeded, lost and running items carry no time and no lone dash).
 
 ### Manual rows left to the verifier / developer-agent
 

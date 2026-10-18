@@ -23,7 +23,7 @@ TAIPEI = datetime.timedelta(hours=8)
 # status -> symbol; the symbol and the text label carry the meaning, the colour only helps
 SYMBOLS = {"running": "▶", "succeeded": "✓", "failed": "✗", "lost": "⏸"}
 COUNTS = ("succeeded", "cached", "failed", "aborted", "running", "pending", "submitted")
-SETTINGS = (("set_ce", ()), ("set_cred", ()), ("set_keys", ("set_ai_key", "set_second_key")), ("set_me", ("set_step", "set_dev")),
+SETTINGS = (("set_ce", ()), ("set_cred", ()), ("set_keys", ("set_ai_key",)), ("set_me", ("set_step", "set_dev")),
             ("set_ops", ()), ("set_roles", ()))
 
 STRINGS = {
@@ -40,7 +40,7 @@ STRINGS = {
         "started": "開始", "ended": "結束", "prev": "← 上一階段", "next": "下一階段 →", "not_reached": "這個 run 還沒到這個階段。",
         "no_reason": "原因未記錄", "not_found_title": "找不到這個 run", "not_found_body": "沒有這個 run，或它不是你的。",
         "back": "回到「現在」", "set_ce": "運算環境", "set_cred": "憑證", "set_keys": "密碼與金鑰", "set_ai_key": "AI 模型金鑰",
-        "set_second_key": "Jev 金鑰（選填）", "set_me": "個人", "set_step": "逐步模式", "set_dev": "開發模式", "set_ops": "營運者後台",
+        "set_me": "個人", "set_step": "逐步模式", "set_dev": "開發模式", "set_ops": "營運者後台",
         "set_roles": "角色（老師／學生）",
     },
     "en": {
@@ -58,7 +58,7 @@ STRINGS = {
         "not_reached": "This run has not reached this stage.",
         "no_reason": "reason not recorded", "not_found_title": "Run not found", "not_found_body": "There is no such run, or it is not yours.",
         "back": "Back to Now", "set_ce": "Compute environments", "set_cred": "Credentials", "set_keys": "Passwords and keys",
-        "set_ai_key": "AI model key", "set_second_key": "Jev key (optional)", "set_me": "Personal", "set_step": "Step-by-step mode",
+        "set_ai_key": "AI model key", "set_me": "Personal", "set_step": "Step-by-step mode",
         "set_dev": "Development mode", "set_ops": "Operator panel", "set_roles": "Roles (teacher / student)",
     },
 }
@@ -96,6 +96,7 @@ STYLE = (
     ".side{background:var(--raised);border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:12px}"
     ".nav,.tools,.rows,.foot{display:flex;flex-direction:column;gap:4px}"
     ".foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}"
+    ".nowline{display:flex;align-items:center;gap:8px}.nowline .nv{flex:1}.red{color:var(--failed);font-weight:600}"
     ".nv,.row{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:4px;color:var(--ink)}"
     "a.nv.here,a.row.here{background:var(--accent-weak);font-weight:600}"
     ".nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row .nm{flex:1}"
@@ -256,6 +257,9 @@ def _mast(t, name, lang, run, stage, path="/"):
 
 
 def _left(t, runs, selected_id, lang, csrf, here):
+    # TC-S50: the red number is the size of the attention card, computed from the same runs (no second stored state)
+    needs = len([1 for r in runs if r["status"] in ("failed", "lost")])
+    red = "<span class=\"red\">%d</span>" % needs if needs else ""
     rows = []
     for run in runs[:LIST_CAP]:
         mark = " here" if run["id"] == selected_id else ""
@@ -263,12 +267,12 @@ def _left(t, runs, selected_id, lang, csrf, here):
                     % (_css(run["status"]), mark, _url(lang, run["id"]), _sym(run["status"]), esc(run["name"]),
                        esc(t["stage_" + stage_of(run["status"])])))
     body = ('<div class="rows">%s</div>%s' % ("".join(rows), _more(t, len(runs)))) if runs else '<p class="muted">%s</p>' % esc(t["none_yet"])
-    return ('<aside class="side" data-pane="left"><nav class="nav"><a class="nv%s" href="%s">%s</a></nav><h2>%s</h2>'
+    return ('<aside class="side" data-pane="left"><nav class="nav"><div class="nowline"><a class="nv%s" href="%s">%s</a>%s</div></nav><h2>%s</h2>'
             '<div class="tools">%s%s%s</div>%s'
             '<div class="foot"><a class="nv%s" href="%s">%s</a>%s%s'
             '<form method="post" action="/logout"><input type="hidden" name="csrf" value="%s"><button type="submit">%s</button></form>'
             '</div></aside>'
-            % (" here" if here == "now" else "", _url(lang), esc(t["now"]), esc(t["mine"]), _grey(t, "new_project"), _grey(t, "search_projects"),
+            % (" here" if here == "now" else "", _url(lang), esc(t["now"]), red, esc(t["mine"]), _grey(t, "new_project"), _grey(t, "search_projects"),
                _grey(t, "upload"), body, " here" if here == "settings" else "", _url(lang, path="/settings"), esc(t["settings"]),
                _grey(t, "explorer"), _grey(t, "dashboard"), esc(csrf), esc(t["logout"])))
 
