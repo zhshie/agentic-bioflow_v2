@@ -142,6 +142,7 @@ STYLE = (
     ".item .t{display:flex;gap:8px;font-weight:600}.item .t .nm{flex:1;white-space:normal;overflow-wrap:anywhere}"
     ".item .s{display:block;font-size:12px;font-weight:600;color:var(--c)}.item .why{display:block;font-size:12px;overflow-wrap:anywhere}"
     ".item.here{outline:2px solid var(--focus);outline-offset:-2px}"
+    ".card,.item,.line,.why,.reason,.lines>li,.cards>*{min-width:0;overflow-wrap:anywhere}.line .nm{overflow-wrap:anywhere}"
     "@media (max-width:900px){.wb{grid-template-columns:1fr}.main{order:-2}.rail{order:-1}.costs{display:none}"
     ".counts{grid-template-columns:repeat(4,1fr)}}"
 )
@@ -225,7 +226,8 @@ def _numbered(runs):
 def _first_line(text, cap):
     for line in str(text).splitlines():
         if line.strip():
-            return line.strip()[:cap]
+            line = line.strip()
+            return line if len(line) <= cap else line[:cap - 1] + "…"
     return ""
 
 
@@ -265,7 +267,7 @@ def _left(t, runs, selected_id, lang, csrf, here):
         mark = " here" if run["id"] == selected_id else ""
         rows.append('<a class="row state-%s%s" href="%s"><span class="sym">%s</span><span class="nm">%s</span><span class="stg">%s</span></a>'
                     % (_css(run["status"]), mark, _url(lang, run["id"]), _sym(run["status"]), esc(run["name"]),
-                       esc(t["stage_" + stage_of(run["status"])])))
+                       esc(_state(t, run["status"]))))
     body = ('<div class="rows">%s</div>%s' % ("".join(rows), _more(t, len(runs)))) if runs else '<p class="muted">%s</p>' % esc(t["none_yet"])
     return ('<aside class="side" data-pane="left"><nav class="nav"><div class="nowline"><a class="nv%s" href="%s">%s</a>%s</div></nav><h2>%s</h2>'
             '<div class="tools">%s%s%s</div>%s'

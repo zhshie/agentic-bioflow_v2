@@ -132,3 +132,9 @@ TC-V02 to TC-V04, TC-V11 to TC-V18 (screenshots with Playwright, the detector, t
 ### Fix round 3: the OAuth consent page was not in TC-S45 and TC-H13d
 
 `test_tch13_csp_and_markup` and `test_tcs45_confirm_pages_share_the_style` in `platform/tests/test_web_board.py` now also read a real `/consent/<id>` page (made the way `test_oauth_consent.py` does, through `oauth_harness.Rig`). They check its CSP `style-src` sha256 against its one inline stylesheet, that it is the same stylesheet as `/`, and that it has no `style=`, `<script`, `on*=` or external address. The implementation already passed; both tests were seen to fail when the consent page's stylesheet was temporarily changed (the change was reverted, not committed). No code under `platform/abf_platform/` changed.
+
+### Fix round 4: R10 polish
+
+Code: `_first_line` (cut reason ends with 「…」, 79 + 1), `_left` (tag = `_state(...)` status text), one added CSS rule for wrapping, all in `platform/abf_platform/web_board.py`. New test `test_r10_reason_marker_left_tag_and_wrapping`. Pinned assertions changed (old / new / reason):
+- `test_tcs19_s20_left_column`: left tag 「執行中」 for failed, 「執行中」 for lost, 「結果」 for succeeded / 「失敗」, 「失聯/暫停」, 「成功」 / R10-2 (tag is status text, not stage).
+- `test_tcl25_l26_failed_key_fact`: reason ends with 80 `A` / ends with 79 `A` + 「…」 and no run of 80 `A`, for item and card line / R10-1 (cut marker).

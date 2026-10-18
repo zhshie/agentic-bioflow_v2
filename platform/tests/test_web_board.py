@@ -1353,10 +1353,12 @@ def test_r10_reason_marker_left_tag_and_wrapping(w):
                        ("?lang=en", {"r1": "Running", "r2": "Failed", "r3": "Succeeded", "r4": "Lost/paused"})):
         page = login(w, "bob").get("/" + lang).text
         for r in rows(page):
-            name = re.search(r"(r[1-4])", plain(r)).group(1)
+            name = re.search(r"\b(r[1-4])\b", plain(r)).group(1)
             assert re.search(r'<span class="stg">%s</span>' % re.escape(want[name]), r), (lang, name)
     # R10-3: the stylesheet lets long names and reasons wrap
     css = style_of(page)
     for cls in (".card", ".item", ".reason", ".line", ".why"):
-        assert re.search(r"%s\{[^}]*(overflow-wrap:\s*anywhere|min-width:\s*0)" % re.escape(cls), css), cls
+        rules = re.findall(r"([^{}]+)\{([^}]*)\}", css)
+        assert any(cls in [x.strip() for x in sel.split(",")] and re.search(r"overflow-wrap:\s*anywhere|min-width:\s*0", body)
+                   for sel, body in rules), cls
     assert re.search(r"\.line \.nm\{[^}]*overflow-wrap:\s*anywhere", css)
