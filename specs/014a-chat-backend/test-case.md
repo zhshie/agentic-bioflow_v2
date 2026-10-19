@@ -82,3 +82,14 @@ Written by the verifier (CONTRACT mode). Reader: the maintainer, who is not an e
 | TC-041 | 原則 I.1（每個程式檔開頭宣告 `# Not <工具>：<原因>` 或 `# Nothing existing：<原因>`） | 功能 | 新檔 `chat_tools.py` 與兩個新測試檔 | 跑 `platform/tests/test_scope.py::test_tc070_every_python_source_names_its_alternative` | 全過：新檔開頭 40 行內有合格的宣告行，原因不少於 15 字 | 自動：`platform/tests/test_scope.py` |
 | TC-042 | 安全網憑證規則；ADR 0010「平台不持有模型金鑰」 | 例外 | 一個放了模型金鑰的運算環境建立請求被拒絕之後 | 檢查資料庫列與平台資料夾所有檔案的位元組 | 拒絕後資料庫內容與拒絕前相同；整個平台資料夾裡（含資料庫與記錄）找不到那串金鑰（沿用 `test_tc036` 的 `ip.rows()` 與 `ip.all_bytes()` 寫法） | 自動：`platform/tests/test_model_key_refusal.py` |
 | TC-043 | 開發流程「每階段全綠」；「不得弱化既有測試」 | 功能 | 實作完成的分支 | 在 WSL 跑整套測試；並執行 `git diff main...HEAD -- platform/tests tests`，列出被動到的既有測試 | 全套全綠（或 CI 全綠）；在既有測試檔裡沒有任何斷言被刪除、放寬、改期望值或跳過（新增的兩個測試檔除外） | 手動：`docs/TESTING.md`（014a 一節，由實作者新增）；機器部分為整套 `tests/run_all.sh` |
+
+## 修訂 2026-10-19：確認視窗（計畫 Revision 2026-10-19）
+
+計畫把新案例叫 TC-030..033，與上面已有的編號撞名，故編為 TC-050..053（TC-005 的斷言改為含「確認送出嗎」與「按」；TC-003 收窄為只放過 `confirm_dialog` 這個函式名，其餘仍不得出現 approve／confirm）。
+
+| 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-050 | 修訂 Do1 | 功能 | 一個真的 launch 請求（無人在場），狀態 pending | 對它的結果呼叫 `confirm_dialog("launch", 結果)` | 回傳 `{question: 確認送出嗎？, tool, summary, confirmation_url, buttons: [確認, 取消]}`，摘要與網址同結果；工作佇列仍是空的、確認請求仍是 pending | 自動：`platform/tests/test_chat_tools.py` |
+| TC-051 | 修訂 Do1 | 例外 | 唯讀工具名稱；或 sent 為真、state 非 pending、沒有 confirmation_url、非請求形狀的結果 | 呼叫 `confirm_dialog` | 全部回傳 None | 自動：`platform/tests/test_chat_tools.py` |
+| TC-052 | 修訂 Do1、Do3 | 功能 | REQUEST_TOOLS 的每個名稱，配一個 pending 形狀的結果 | 呼叫 `confirm_dialog` | 每個都得到視窗；字典只有五個鍵，沒有 approve／yes／confirmed 之類的鍵 | 自動：`platform/tests/test_chat_tools.py` |
+| TC-053 | 修訂 Do3（原 TC-033） | 例外 | 有 `confirm_dialog` 的 `chat_tools.py` | 跑收窄後的 TC-003 原始碼掃描 | 仍通過：除 `confirm_dialog` 外沒有任何名稱含 approve／confirm，也沒有 TERMINAL／ELICITED／PAGE／api_key | 自動：`platform/tests/test_chat_tools.py` |
