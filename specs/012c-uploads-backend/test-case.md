@@ -101,9 +101,9 @@
 | TC-061 | 不在範圍：校驗碼（checksum） | 不在範圍 | 讀 `datasets.py` 原始碼 | 掃描 | 沒有 `hashlib`，也沒有 `md5`、`sha` 之類計算校驗碼的程式 | 自動 |
 | TC-062 | 不在範圍：校驗碼；設計 4（files=[{path,size_bytes?}]） | 不在範圍 | alice 登記的檔案帶有 `path` 與 `size_bytes` | 讀資料庫存的檔案清單 | 每個檔案項目的鍵只有 `path` 與（若有給的）`size_bytes`，沒有任何校驗碼欄位 | 自動 |
 | TC-063 | 不在範圍：刪除、分享、編輯 | 不在範圍 | 讀 `datasets.py` 對外公開（不以底線開頭）的函式名稱 | 檢查 | 沒有任何名稱含 delete、remove、share、update、edit、rename、unregister；對外函式就是計畫列的 `pair_fastq`、`draft_samplesheet`、`check_web_upload`、`register_dataset`、`list_datasets`、`get_dataset`（另有常數 `WEB_UPLOAD_LIMIT`） | 自動 |
-| TC-064 | 不在範圍：MCP 工具、網頁路由；別的 session 負責的檔案 | 不在範圍 | `platform/abf_platform/actions/__init__.py`、`mcp_server.py`、`web.py`、`web_board.py`、`store.py` | 比對這五個檔與基準分支 origin/v3 | 五個檔與 origin/v3 的內容完全相同（git 比對無差異）；而且這五個檔裡找不到 `register_dataset`、`list_datasets`、`get_dataset`、`draft_samplesheet`、`check_web_upload`、`pair_fastq`、`actions.datasets`（沒有新增工具或路由）。若環境沒有 origin/v3（淺層複製），差異比對改由驗收者用 `git diff` 做，不得以略過算通過 | 自動 |
+| TC-064 | 不在範圍：MCP 工具、網頁路由；別的 session 負責的檔案 | 不在範圍 | `platform/abf_platform/actions/__init__.py`、`mcp_server.py`、`web.py`、`web_board.py`、`store.py` | 檢查這五個檔的內容 | 這五個檔裡找不到 `register_dataset`、`list_datasets`、`get_dataset`、`draft_samplesheet`、`check_web_upload`、`pair_fastq`、`actions.datasets`（沒有新增工具或路由）。與基準分支的差異比對（git diff origin/v3）不是長期成立的性質，改由驗收者在審查時用 `git diff` 做（2026-10-19 修訂，CI 的淺層複製沒有 origin/v3） | 自動 |
 | TC-065 | 設計（模組可獨立載入）；計畫 TC-014 | 功能 | 不修改 `actions/__init__.py` | 執行 `from abf_platform.actions import datasets` | 匯入成功，且能取到上述 6 個函式與 `WEB_UPLOAD_LIMIT`，其值為 2000000000 | 自動 |
-| TC-066 | 不在範圍：docs/PLATFORM.md、CHANGELOG.md | 不在範圍 | `docs/PLATFORM.md`、`CHANGELOG.md` | 比對這兩個檔與基準分支 origin/v3 | 兩個檔都沒有差異；若環境沒有 origin/v3，改由驗收者用 `git diff` 核對，不得以略過算通過 | 自動 |
+| TC-066 | 不在範圍：docs/PLATFORM.md、CHANGELOG.md | 不在範圍 | `docs/PLATFORM.md`、`CHANGELOG.md` | 驗收者審查時比對這兩個檔與基準分支 origin/v3 | 兩個檔都沒有差異；若環境沒有 origin/v3，改由驗收者用 `git diff` 核對，不得以略過算通過。2026-10-19 修訂：此項只檢查「這個分支沒改過這兩個檔」，是審查當下的範圍檢查，合併後沒有長期意義，且 CI 的淺層複製沒有 origin/v3 會必然失敗，故移出自動測試，列入驗收者的審查清單（git diff origin/v3 -- docs/PLATFORM.md CHANGELOG.md 須無差異）。 | 已移出自動測試 |
 
 ## User Story 4 — 每個人只看得到自己的資料集（優先度 P2）
 
