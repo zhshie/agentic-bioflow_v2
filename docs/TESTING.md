@@ -324,6 +324,21 @@ Two more checks in the same review (TC-D12, TC-D13):
 - **Who changed the spec files (TC-D12).** Run `git log --format='%h %s' 637dc7c..HEAD -- DESIGN.md PRODUCT.md specs/011a-web-shell/plan.md specs/011a-web-shell/test-case.md specs/011a-web-shell/test-case-overview.md`. Pass: no subject starts with `RED:` or `GREEN:`, and none is a merge commit; only the developer-agent's `plan(011a):` commits and the verifier's `chore(011a-web-shell): test cases from verifier` commit appear. Then `git diff 637dc7c HEAD -- DESIGN.md PRODUCT.md` must print nothing.
 - **The Jev decision (TC-D13).** Read `specs/011a-web-shell/ledger.md`. Pass: it says the settings page has no Jev item in 011a (the platform never names Jev anywhere, ADR 0007 keeps Jev on the plugin side), that the "Jev key (optional)" field of DESIGN.md screen 12 is dropped in 011a and left for the ADR 0009/0010 revision, and that the earlier open item about `tests/jev_test.sh` TC-085 is now decided. Then `git diff origin/v3...HEAD -- tests/jev_test.sh` must print nothing, and `grep -rli jev platform/` must print no file, including `platform/tests/`. (If it lists a `__pycache__` file, delete the `platform/tests/__pycache__` folder and run again: a pytest run without `PYTHONDONTWRITEBYTECODE=1` leaves compiled files there; `tests/platform_test.sh` sets it.)
 
+## The running stage page (011b): screenshots and the ledger review
+
+Same set-up as the 011a section above (loopback `abf-platform web`, e2e runs of the four statuses, a user with a web password). The page needs no JavaScript.
+
+**Screenshots (TC-V01 to TC-V03, TC-D05).** Take these two pages, each at 1440 px wide and at 390 px wide, in Chinese and in English (8 screenshots): the Now page (`/`) with at least one failed and one lost run, and the running stage page of a failed run (`/?run=<id>`). Use Chrome DevTools Protocol device emulation, not a resized window: `Emulation.setDeviceMetricsOverride` with `width` 1440 or 390 (`mobile` true for 390), then `Page.captureScreenshot`; with Playwright, `browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True)`.
+
+1. Pass at 1440 px: the card 需要注意 holds formal notice boxes (level pill with `!`, run name in monospace, time at the right, one-line title, fields 問題／原因／可選動作, two grey buttons); the run page has the title row, four summary cards, the task bar with its seven counts, the notices of this run and the five tabs. The Chinese screenshots are all Chinese, the English ones all English (run names aside).
+2. Pass at 390 px: one column in the order middle, right, left; notices and cards are not cut off.
+3. At 390 px, on each of the four pages (Now and the failed run, zh and en), evaluate `document.documentElement.scrollWidth === document.documentElement.clientWidth`. Pass: true for all four; write the numbers in the PR.
+4. Press Tab through a failed run's page (TC-V04). Pass: the language switch, the tab links and the run name in the notice each show an outline; the grey buttons are never a stop.
+5. Save the Now page and a failed, a lost and a running run's page (all five tabs) as HTML and run `impeccable detect <file.html>` on each (TC-V05). Write every finding in the report; findings are for a person to read.
+6. The maintainer looks at the screenshots (TC-V06): are the notices formal rather than chatty, is the frame still the one he accepted, what could be better (goes to the next round).
+
+**Ledger review (TC-D01 to TC-D04, TC-D07).** Read `specs/011b-running-page/ledger.md` and `git diff v3...HEAD`. Pass: every changed old assertion has an old value, a new value and a reason; the three owed items (compute environment name, work directory column, launch facts) are named; `git diff v3...HEAD -- DESIGN.md PRODUCT.md specs/011b-running-page/test-case.md specs/011b-running-page/test-case-overview.md` prints nothing; `git diff v3...HEAD -- platform/abf_platform/store.py platform/abf_platform/actions platform/abf_platform/jobs.py platform/abf_platform/mcp_server.py hooks .claude` prints nothing and there is no new table, column or migration.
+
 ## Chrome login (web-chrome-origin)
 
 Needs a Python with Playwright and Google Chrome installed; CI has neither, so this is not in the automated suite (WCO-3 of `specs/web-chrome-origin`).

@@ -7,7 +7,7 @@ three-column board (left: my runs; middle: the Now page of running and needs-att
 runs by stage; English with ?lang=en), and GET /settings (every section still to come), read-only and for the logged-in user's own runs only.
 The only routes there are:
 
-  GET  /             the board (spec 011a): the Now page, or with ?run=<id> that run, ?stage=<name> its stage, ?lang=en the English page; needs the cookie
+  GET  /             the board (spec 011a): the Now page, or with ?run=<id> that run, ?stage=<name> its stage, ?tab=<name> a tab of its running stage page (011b), ?lang=en the English page; needs the cookie
   GET  /settings     the settings frame (spec 011a): read-only, every section greyed "coming later"; needs the cookie
   GET  /login        the login form (name + web password)
   POST /login        log in; the password is checked against its scrypt hash; a cookie of 12 hours
@@ -338,13 +338,17 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return None
         return None if view.get("found") is False else view
 
-    def read_reasons(ids, caller):
-        """The failure_reason of each failed run the right column shows (at most the cap), read with the caller's own rights."""
-        out = {}
+    def read_details(ids, caller):
+        """The failure_reason and the first failed task of each failed run the page shows (at most the cap), read with the caller's own rights."""
+        reasons, steps = {}, {}
         for rid in ids:
-            view = read_run(rid, caller)
-            out[rid] = (view or {}).get("failure_reason")
-        return out
+            view = read_run(rid, caller) or {}
+            reasons[rid] = view.get("failure_reason")
+            steps[rid] = web_board.first_failed(view)
+        return reasons, steps
+
+    def read_reasons(ids, caller):
+        return read_details(ids, caller)[0]
 
     async def board(request):
         sid, user = user_of(request)
@@ -359,8 +363,9 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if selected is None:        # another person's run and a missing id answer alike, and the page never repeats the id
                 return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
         runs = await run_in_threadpool(read_runs, caller)
-        reasons = await run_in_threadpool(read_reasons, web_board.failed_ids_shown(runs), caller)
-        doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, request.query_params.get("stage"), lang, reasons)
+        reasons, steps = await run_in_threadpool(read_details, web_board.failed_ids_shown(runs), caller)
+        doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, request.query_params.get("stage"), lang, reasons,
+                                     steps, request.query_params.get("tab"), clock())
         return HTMLResponse(doc, headers=_HEADERS)
 
     async def settings(request):
