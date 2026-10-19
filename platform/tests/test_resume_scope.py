@@ -65,7 +65,7 @@ def test_tc154_tc161_there_are_still_three_channels_two_kinds_of_confirmation_an
     assert len(re.findall(r"_Channel\(", text)) == 3          # the three singletons; nothing else is made
     assert confirm.JOB_KIND == {"launch": "launch_nextflow", "cancel": "cancel_run"}
     assert jobs.CONFIRMED == {"launch_nextflow": "launch", "cancel_run": "cancel"}
-    assert jobs.KINDS == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records")
+    assert jobs.KINDS == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log")      # run-diag-tools: plus read_task_log
     assert store.STATE_SCHEMA.count("kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel'))") == 1
 
 
@@ -133,7 +133,7 @@ def test_tc160_no_state_of_a_run_is_written_anywhere_after_a_round_of_resumes_an
 def test_tc152_the_clean_up_of_finished_jobs_was_not_made_longer():
     # TC-152 (the behaviour is in test_resume_platform)
     from abf_platform import confirm, jobs
-    assert jobs.PRUNE_AFTER_SECONDS == 7 * 86400 and confirm.KEEP_CONTENT_SECONDS == 7 * 86400
+    assert jobs.PRUNE_AFTER_SECONDS == 7 * 86400 and confirm.KEEP_UNSENT_SECONDS == 7 * 86400
 
 
 def test_tc155_the_token_of_a_run_is_still_for_one_run_name_and_has_no_attempt():

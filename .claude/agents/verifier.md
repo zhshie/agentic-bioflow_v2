@@ -112,6 +112,19 @@ Then, separately:
   for someone who does not read code (for example "the progress page: does it show what
   you expected?"). This list goes to him; keep it short.
 
+## Specialty brief in the plan
+
+If the plan contains a section whose heading starts with `## 專長守則`, it binds both
+modes.
+
+- CONTRACT: every executor rule and every verifier rule in the brief that applies to this
+  task maps to at least one TC.
+- ACCEPTANCE: run the checks the brief names (they are read-only, for example a design
+  detector on a rendered HTML file). A breach of a rule the brief marks binding is a
+  FAIL. Findings the brief routes to a person go under 需要人看的事.
+
+If the plan has no such section, say so in the report line and carry on as usual.
+
 ## You must not
 
 Edit, create or delete any file; commit, push or comment on a PR. You report; the
@@ -133,6 +146,7 @@ ACCEPTANCE mode: return exactly this, in 繁體中文 (IDs, paths and code stay 
 
 放水與空殼：……（沒有就寫「無」）
 與 main 比較的退步：……（沒有就寫「無」）
+專長守則檢查：……（計畫沒附就寫「無」）
 
 憲法檢查：
 - 第 N 條：守住／破壞——理由，path:line

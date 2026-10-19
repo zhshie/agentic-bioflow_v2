@@ -22,7 +22,7 @@ import time
 
 from abf_launch import build
 
-from .. import agents, compute_envs, confirm, jobs, status, store
+from .. import agents, common, compute_envs, confirm, jobs, status, store, su
 
 NotApproved = confirm.NotApproved
 
@@ -76,15 +76,36 @@ def list_runs(index_path, *, caller=None, platform_path=None):
     return {"runs": status.list_runs(index_path, status.now(), names=names)}
 
 
+RUN_NOT_FOUND_TEXT = "Run not found: %s (找不到這個 run)"
+
+
 def get_run(index_path, run_id, *, caller=None, platform_path=None):
     view = status.get_run(index_path, run_id, status.now())
     if view is not None and caller is not None and view["name"] not in jobs.owned_run_names(
             platform_path_for(index_path, platform_path), caller.user_id):
         view = None
     if view is None:
-        return {"found": False, "id": run_id,
-                "message": "Run not found: %s (找不到這個 run)" % run_id}
+        return {"found": False, "id": run_id, "message": RUN_NOT_FOUND_TEXT % run_id}
+    asked = jobs.cancel_requested_at(platform_path_for(index_path, platform_path), view["name"])
+    if asked is not None:        # a fact about a request that was sent, never a state of the run (the status stays Nextflow's word)
+        view["cancel_requested_at"] = common.epoch_iso_ms(asked)
     return view
+
+
+def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site=None, rates=None, tasks_of=None):
+    """The SU a run used, and what that costs, from its trace. The run must be the caller's own (else the same answer as get_run's
+    not found). Unknown (None, with the reasons) when the record lacks what the formula needs; never a guess."""
+    view = status.find_run(index_path, run_name, status.now())
+    if view is not None and caller is not None and view["name"] not in jobs.owned_run_names(
+            platform_path_for(index_path, platform_path), caller.user_id):
+        view = None
+    if view is None:
+        return {"found": False, "id": run_name,
+                "message": "Run not found: %s (找不到這個 run)" % run_name}
+    rates = rates if rates is not None else su.load_rates()
+    if site is None and isinstance(rates, dict):
+        site = rates.get("default_site")        # the one site the rates file names as the default
+    return su.run_su(index_path, run_name, site, rates, tasks_of)
 
 
 def list_compute_envs(platform_path, *, caller=None):
@@ -148,6 +169,52 @@ async def list_site_files(platform_path, compute_env, path, *, caller=None):
     return answer
 
 
+READ_WHICH = "which must be one of err, out, log (which 只能是 err、out、log)"
+NO_WORKDIR = "no recorded workdir for this task (沒有記錄到這個任務的工作資料夾)"
+LOG_NOT_FOUND = "file not found in the task folder (任務資料夾裡找不到這個檔案)"
+
+
+async def read_task_log(platform_path, index_path, run_name, task, which, *, caller=None):
+    """The end of one log file (.command.err, .command.out or .command.log) of one failed task of a run, read by the agent of
+    the run from the task folder the run reported. At most 200 lines and 64 KB, the last ones, and a cut is said. Reads only; the run is
+    the caller's own (anything else answers like a run that is not there)."""
+    answer = {"run_name": run_name, "task": task, "which": which}
+
+    def refused(message):
+        answer.update(ok=False, message=message)
+        return answer
+
+    if which not in jobs.LOG_FILES:
+        return refused(READ_WHICH)
+    run = status.find_run(index_path, run_name, status.now()) if isinstance(run_name, str) else None
+    if run is None or (caller is not None and run_name not in jobs.owned_run_names(platform_path, caller.user_id)):
+        return refused(RUN_NOT_FOUND_TEXT % run_name)
+    view = status.get_run(index_path, run["id"], status.now())
+    workdir = next((t.get("workdir") for t in view["failed_tasks"] if t["name"] == task), None) if view else None
+    if not workdir:
+        return refused(NO_WORKDIR)
+    filename = jobs.LOG_FILES[which]
+    try:
+        job_id = jobs.enqueue_task_log(platform_path, run_name, workdir, filename, status.now, caller_user_id=_caller_id(caller))
+    except jobs.JobRefused as e:
+        return refused(str(e))
+    out = await jobs.wait_for_result(platform_path, job_id, status.now)
+    result = out["result"]
+    if out["state"] == "done" and result and result.get("ok") and isinstance(result.get("text"), str):
+        answer.update(ok=True, file=filename, workdir=workdir, text=result["text"], lines=result.get("lines", 0),
+                      truncated=bool(result.get("truncated")))
+        if answer["truncated"]:
+            answer["note"] = ("truncated (截斷): the end of the file is shown, at most %d lines and %d KB"
+                              % (jobs.LOG_MAX_LINES, jobs.LOG_MAX_BYTES // 1024))
+        return answer
+    if result and result.get("error") == "not_found":
+        return refused(LOG_NOT_FOUND)
+    refused(out["message"])
+    if result and result.get("error"):
+        answer["error"] = result["error"]
+    return answer
+
+
 # ---- write: only after a human's yes -------------------------------------------------------------------------------------
 
 def _require_human(confirmed_by):
@@ -157,7 +224,8 @@ def _require_human(confirmed_by):
 
 def launch(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadline_seconds=None, offline_after=None,
            caller=None):
-    """Queue a launch of exactly `bundle`. Returns (confirmation id, job id)."""
+    """Queue a launch of exactly `bundle`. Returns (confirmation id, job id). The confirmation row keeps the bundle until the owner
+    forgets the run (keep-submissions); keep_screen adds the text the person was shown."""
     _require_human(confirmed_by)
     return confirm.confirm_launch(state_path, ce_name, bundle, clock=clock, deadline_seconds=deadline_seconds,
                                   offline_after=offline_after, caller_user_id=caller.user_id if caller else None,
@@ -171,6 +239,12 @@ def cancel(state_path, ce_name, bundle, *, confirmed_by, clock=time.time, deadli
     return confirm.confirm_cancel(state_path, ce_name, bundle, clock=clock, deadline_seconds=deadline_seconds,
                                   offline_after=offline_after, caller_user_id=caller.user_id if caller else None,
                                   channel=confirmed_by.name)
+
+
+def keep_screen(state_path, confirmation_id, screen_text):
+    """Keep, with the confirmation a person gave at the terminal, the text they were shown and said yes to (keep-submissions, F5). It
+    writes only that text, only on a confirmed row of the terminal that has none yet; it queues nothing and confirms nothing."""
+    return confirm.keep_screen(state_path, confirmation_id, screen_text)
 
 
 # ---- write, through a pending request: the MCP tools and the confirmation page ---------------------------------------------------------
@@ -385,3 +459,86 @@ def describe_request(platform_path, request_id, *, clock=time.time):
 def void_request(platform_path, request_id, reason):
     """Make a pending request void for good; whether it was pending."""
     return confirm.void(platform_path, request_id, reason)
+
+
+# ---- forget: the owner deletes what a run was sent with (keep-submissions) ---------------------------------------------------------
+
+FORGETTABLE = ("succeeded", "failed", "aborted")      # the stored final statuses; running and lost are not
+RUN_NOT_FOUND = "找不到這個 run (run not found)"       # the same words for a run that is not yours and one that is not there (#116)
+FORGET_NO_FORM = ("這個客戶端無法跳出確認視窗；請在終端機執行 abf-platform forget <run> "
+                  "(this client cannot show a confirmation form; use the terminal command)")
+FORGET_STARTING = "這個 run 還在準備中，不能刪除 (the run is still starting)"
+FORGET_ALREADY = "已經刪除過了 (already deleted)"
+
+
+def _forgot(ok, message, forgotten=False, **more):
+    return dict(more, ok=ok, forgotten=forgotten, message=message)
+
+
+FORGET_WAIT_SECONDS = 24 * 3600      # how long a launch that went out may take to show in the run index (F4); worked out from the job, never stored
+
+
+def _went_out_lately(job):
+    finished = job["finished_at"]
+    return finished is None or time.time() - finished < FORGET_WAIT_SECONDS
+
+
+def forget_check(platform_path, index_path, run_name, *, caller=None):
+    """(code, message) for forgetting one run: 'ok' (there is content to clear), 'nothing' (already deleted), 'refused' (not now)
+    or 'notfound'. Reads only. With a caller (HTTP, or stdio with an account) only that user's own runs are there."""
+    con = store.open_readonly(platform_path)
+    try:
+        launch = jobs.latest_launch(con, run_name) if con is not None and isinstance(run_name, str) else None
+        job = (con.execute("SELECT state, finished_at FROM jobs WHERE id = ?", (launch["job_id"],)).fetchone()
+               if launch is not None and "job_id" in launch.keys() and launch["job_id"] is not None else None)
+    finally:
+        if con is not None:
+            con.close()
+    if launch is None or (caller is not None and run_name not in jobs.owned_run_names(platform_path, caller.user_id)):
+        return "notfound", RUN_NOT_FOUND
+    seen = [v for v in status.list_runs(index_path, status.now()) if v["name"] == run_name]
+    if not seen and job is not None and (job["state"] in ("queued", "claimed") or (job["state"] == "done" and _went_out_lately(job))):
+        # R15: "starting" is a launch job still queued or claimed. A launch that ended without ever reaching the index (refused,
+        # failed, expired) may be forgotten. F4: so may one whose job went out (done) more than 24 hours ago and the index still does
+        # not know; before that the index may only be late. F7: with no job row to read (pruned) the run is treated as never having reached the index.
+        return "refused", FORGET_STARTING
+    if any(v["status"] == "running" for v in seen):
+        return "refused", "這個 run 還在跑，不能刪除 (the run is still running; it cannot be deleted)"
+    if any(v["status"] not in FORGETTABLE for v in seen):
+        return "refused", "這個 run 失聯了，可能還在叢集上跑，不能刪除 (the run is lost and may still be running; it cannot be deleted)"
+    try:
+        count = confirm.forget_content(platform_path, run_name, only_user=_caller_id(caller), dry_run=True)
+    except jobs.JobRefused as e:
+        return "refused", str(e)
+    return ("ok", "") if count else ("nothing", FORGET_ALREADY)
+
+
+def forget(platform_path, index_path, run_name, *, confirmed_by, caller=None, clock=time.time):
+    """Clear the content of one run (its confirmations' bundle and screen, and the copy its jobs keep), after a person's yes through
+    `confirmed_by`. The audit columns stay, and so do the run and its results. Nothing is queued and no confirmation row is written."""
+    _require_human(confirmed_by)
+    code, message = forget_check(platform_path, index_path, run_name, caller=caller)
+    if code != "ok":
+        return _forgot(code == "nothing", message, state=code)
+    try:
+        count = confirm.forget_content(platform_path, run_name, forgotten_by=_caller_id(caller), only_user=_caller_id(caller), clock=clock)
+    except jobs.JobRefused as e:
+        return _forgot(False, str(e), state="refused")
+    return _forgot(True, "已刪除 %s 送出的內容（%d 筆）；紀錄（誰、何時送出）保留 (deleted the submitted content of %s: %d rows; the record stays)"
+                   % (run_name, count, run_name, count), forgotten=True, state="forgotten", cleared=count)
+
+
+async def request_forget(platform_path, index_path, *, run_name, caller=None, person=None, clock=time.time):
+    """Ask the person, in their client's own form, to delete the content of one run. Only the form: a client with no form (or an HTTP
+    client whose form is not trusted) is sent to the terminal command, and nothing is written."""
+    code, message = forget_check(platform_path, index_path, run_name, caller=caller)
+    if code != "ok":
+        return _forgot(code == "nothing", message, state=code)
+    if not (person is not None and person.can_ask() and form_is_trusted(caller)):
+        return _forgot(False, FORGET_NO_FORM, state="no_form")
+    yes, why = await person.says_yes(build.as_text(build.forget_screen(run_name)))
+    if yes is None:
+        return _forgot(False, FORGET_NO_FORM, state="no_form")
+    if not yes:
+        return _forgot(False, "未刪除：%s (not deleted)" % why, state="declined")
+    return forget(platform_path, index_path, run_name, confirmed_by=ELICITED, caller=caller, clock=clock)

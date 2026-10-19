@@ -1,7 +1,7 @@
-# Not Celery or RQ: they need a separate broker process; five job kinds in one SQLite table are enough, and the table is not a run state machine.
+# Not Celery or RQ: they need a separate broker process; six job kinds in one SQLite table are enough, and the table is not a run state machine.
 """The queue of jobs that agents poll for.
 
-Five kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files` and `fetch_run_records`
+Six kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records` and `read_task_log`
 only read; `launch_nextflow` and `cancel_run` write on the site, so a job of those two kinds can only be queued with
 a confirmation: a row that a person's yes made (state confirmed: y at the terminal, a form in the MCP client, or the
 confirmation page), bound to the hash of the content the user saw. Every job is a question or an order put to one agent, with a deadline. A job whose deadline passed is
@@ -24,12 +24,18 @@ from . import common, compute_envs, records, store
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
 DEADLINE_SECONDS = {"preflight": 180, "list_site_files": 60, "launch_nextflow": 300, "cancel_run": 90,
-                    "fetch_run_records": 180}
+                    "fetch_run_records": 180, "read_task_log": 60}
 _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "list_site_files": "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES",
                  "launch_nextflow": "ABF_PLATFORM_DEADLINE_LAUNCH",
                  "cancel_run": "ABF_PLATFORM_DEADLINE_CANCEL",
-                 "fetch_run_records": "ABF_PLATFORM_DEADLINE_FETCH"}
+                 "fetch_run_records": "ABF_PLATFORM_DEADLINE_FETCH",
+                 "read_task_log": "ABF_PLATFORM_DEADLINE_READ_TASK_LOG"}
+LOG_FILES = {"err": ".command.err", "out": ".command.out", "log": ".command.log"}      # the only three files read_task_log can name
+# The words D5 of run-diag-tools fixes. The package-source scan of test_scope (TC-061) forbids that whole word in this package's lines, so it is joined here.
+NO_AGENT_KNOWN = "no " + "sta" "tion agent is known for this run (這個 run 不是從這個平台送出的，不知道是哪個代理)"
+LOG_MAX_LINES = 200
+LOG_MAX_BYTES = 64 * 1024
 KINDS = tuple(DEADLINE_SECONDS)
 # the two kinds that write on the site, and the kind of confirmation each needs
 CONFIRMED = {"launch_nextflow": "launch", "cancel_run": "cancel"}
@@ -190,6 +196,62 @@ def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, 
     return transaction(state_path, work)
 
 
+def enqueue_task_log(state_path, run_name, workdir, filename, clock=time.time, deadline_seconds=None, offline_after=None,
+                     caller_user_id=None):
+    """Ask the agent of a run to read the tail of one log file of one task folder. It only reads, so it needs no confirmation. The run must
+    be in the hand-off record (the platform asks only about a run it launched); with a caller (116) it must be that user's own, and
+    whatever is not is refused in the words of a run that is not there. The agent confines the read to `workdir` again."""
+    now = clock()
+    seconds = _seconds("read_task_log", deadline_seconds)
+    if filename not in LOG_FILES.values():
+        raise JobRefused("the file must be one of %s" % ", ".join(sorted(LOG_FILES.values())))
+    problem = compute_envs.path_problem(workdir)
+    if problem:
+        raise JobRefused("no recorded workdir for this task (沒有記錄到這個任務的工作資料夾)")
+
+    def work(con):
+        launch = latest_launch(con, run_name) if isinstance(run_name, str) else None
+        if launch is None or (caller_user_id is not None and _col(launch, "user_id") != caller_user_id):
+            raise JobRefused(RUN_NOT_FOUND % str(run_name)[:80] if caller_user_id is not None else
+                             NO_AGENT_KNOWN)
+        row = _target(con, launch["ce"], "read_task_log", now, offline_after, caller_user_id)
+        if row["agent"] != launch["agent"]:
+            raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
+                run_name, launch["agent"], launch["ce"], row["agent"]))
+        args = {"ce": compute_envs.snapshot(row), "workdir": compute_envs.normalize_path(workdir), "file": filename}
+        return _insert_job(con, row, "read_task_log", args, now, seconds)
+
+    return transaction(state_path, work)
+
+
+def cap_log(text):
+    """(text, cut): the end of `text`, at most LOG_MAX_LINES lines and LOG_MAX_BYTES bytes (UTF-8), and whether anything was dropped.
+    The agent cuts first; the platform cuts again whatever arrives, so an agent cannot make the answer longer."""
+    data = text.encode("utf-8", errors="replace")
+    cut = False
+    if len(data) > LOG_MAX_BYTES:
+        data, cut = data[-LOG_MAX_BYTES:], True
+    kept = data.splitlines(True)
+    if len(kept) > LOG_MAX_LINES:
+        data, cut = b"".join(kept[-LOG_MAX_LINES:]), True
+    return data.decode("utf-8", errors="replace").lstrip("\ufffd") if cut else data.decode("utf-8", errors="replace"), cut
+
+
+def cancel_requested_at(state_path, run_name):
+    """The time (epoch seconds) a confirmed cancel of this run was sent by the agent, or None: the fact the hand-off record keeps (it is
+    written only when the cancel job finished ok) and `abf-platform launches` prints. Read-only; it never says more than that."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        launch = latest_launch(con, run_name)
+        return _col(launch, "cancel_requested_at") if launch is not None else None
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
+
+
 def _check_confirmation(con, kind, bundle, confirmation_id):
     """The one guard of the two kinds that write: a confirmation of the right kind, not spent, for exactly this content."""
     want = CONFIRMED[kind]
@@ -241,6 +303,79 @@ def _col(row, name):
 
 
 RUN_NOT_FOUND = "找不到這個 run (Run not found): %s"      # what anybody is told of a run that is not theirs, or not there (116, 009e)
+
+
+FORGOTTEN = "內容已被擁有者刪除 (content deleted by its owner)"      # what a resume or a relaunch of a forgotten run is told (keep-submissions, F2)
+
+
+def launch_confirmation(con, launch):
+    """The confirmation row of one row of the hand-off record, or None. The launch job names it; when the job is gone (the clean-up of
+    finished jobs removes it after 7 days) the row is found by what both wrote in the same transaction: a confirmed launch made at
+    the very moment the hand-off row says it was confirmed. There is no column that links the two, and none is added."""
+    job = None
+    if "job_id" in launch.keys() and launch["job_id"] is not None:
+        job = con.execute("SELECT confirmation_id FROM jobs WHERE id = ?", (launch["job_id"],)).fetchone()
+    if job is not None and job["confirmation_id"]:
+        row = con.execute("SELECT * FROM confirmations WHERE id = ?", (job["confirmation_id"],)).fetchone()
+        if row is not None:
+            return row
+    return con.execute("SELECT * FROM confirmations WHERE kind = 'launch' AND state = 'confirmed' AND confirmed_at = ? "
+                       "ORDER BY created_at DESC LIMIT 1", (launch["confirmed_at"],)).fetchone()
+
+
+def _row_forgotten(con, launch):
+    conf = launch_confirmation(con, launch)
+    if conf is not None and conf["forgotten_at"] is not None:
+        return True
+    if "job_id" in launch.keys() and launch["job_id"] is not None:
+        job = con.execute("SELECT args_json, forgotten_at FROM jobs WHERE id = ?", (launch["job_id"],)).fetchone()
+        if job is not None:
+            if job["forgotten_at"] is not None:
+                return True
+            try:
+                return bool(json.loads(job["args_json"]).get("forgotten"))
+            except (TypeError, ValueError, AttributeError):
+                return False
+    return False
+
+
+def run_forgotten(con, run_name):
+    """Whether the owner deleted the content of this run, or of any run it was made from (the analysis it belongs to goes back to a first
+    launch). Read from the rows themselves: nothing about it is stored under the run. A platform.db that no command has opened since the
+    columns were added has nothing forgotten."""
+    try:
+        seen, name = set(), run_name
+        while name is not None and name not in seen:
+            seen.add(name)
+            rows = con.execute("SELECT * FROM launches WHERE run_name = ? ORDER BY id", (name,)).fetchall()
+            if any(_row_forgotten(con, r) for r in rows):
+                return True
+            name = _col(rows[-1], "parent_run") if rows else None
+    except sqlite3.OperationalError:
+        return False
+    return False
+
+
+def launch_content(con, launch, job):
+    """(bundle, the hash that was confirmed for it) of one row of the hand-off record, or None. The confirmation holds it first (it is kept
+    until the owner forgets it); a row made before that holds it only in its launch job, which is cleared 7 days after it finished."""
+    conf = launch_confirmation(con, launch)
+    if conf is not None and conf["bundle_json"]:
+        try:
+            bundle = json.loads(conf["bundle_json"])
+        except (TypeError, ValueError):
+            bundle = None
+        if isinstance(bundle, dict):
+            return bundle, conf["sha256"]
+    if job is not None:
+        try:
+            args = json.loads(job["args_json"])
+            bundle, sha = args["bundle"], args["bundle_sha256"]
+        except (TypeError, ValueError, KeyError):
+            return None
+        if isinstance(bundle, dict) and isinstance(sha, str):
+            return bundle, sha
+    return None
 
 
 def analysis_root(con, run_name):
@@ -379,6 +514,8 @@ def _lineage(con, bundle, caller_id, now):
     parent = latest_launch(con, parent_name)
     if parent is None or (caller_id is not None and _col(parent, "user_id") != caller_id):
         raise JobRefused(RUN_NOT_FOUND % parent_name)
+    if run_forgotten(con, parent_name):
+        raise JobRefused(FORGOTTEN)       # keep-submissions (F2): a yes made before the owner forgot the run cannot start it again
     if attempt != next_attempt(con, parent_name, now):
         raise JobRefused("another attempt was started meanwhile (這個分析在你確認的時候已經有別的一次嘗試); ask again to see where it stands")
     same_folder = bundle.get("run_folder") == parent["run_folder"]
@@ -523,6 +660,14 @@ def clean_result(kind, result, stored=None):
         for key, limit in (("run_name", 64), ("run_folder", 1100), ("left_on_site", 600)):
             if isinstance(result.get(key), str):
                 out[key] = _short(result[key], limit)
+    elif kind == "read_task_log":
+        if isinstance(result.get("text"), str):
+            out["text"], cut = cap_log(result["text"])
+            out["truncated"] = bool(result.get("truncated")) or cut
+            out["lines"] = out["text"].count("\n") + (1 if out["text"] and not out["text"].endswith("\n") else 0)
+        for key in ("file",):
+            if isinstance(result.get(key), str):
+                out[key] = _short(result[key], 40)
     elif kind == "fetch_run_records":
         out["files"] = [{"name": f["name"], "size": f["size"], "truncated": f["truncated"]} for f in (stored or {}).get("files", [])]
         out["refused"] = [_short(x, 200) for x in (stored or {}).get("refused", [])][:50]

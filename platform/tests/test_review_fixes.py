@@ -116,7 +116,8 @@ def test_f9_expired_and_void_rows_lose_their_content_after_seven_days(w):
         r = rows[rid]
         assert r["bundle_json"] is None and r["screen_text"] is None
         assert r["sha256"] and r["kind"] == "launch" and r["caller_user_id"] == ann.user_id and r["created_at"] and r["state"]
-    assert rows[ok["id"]]["bundle_json"] is None and rows[ok["id"]]["screen_text"] is None     # second review (item 8): confirmed rows lose it too
+    # keep-submissions (maintainer, 2026-10-18, TC-010): a confirmed row keeps its content at any age; only the unsent ones above lose it
+    assert rows[ok["id"]]["bundle_json"] is not None and rows[ok["id"]]["screen_text"] is not None
     assert rows[fresh]["bundle_json"] is not None
 
 

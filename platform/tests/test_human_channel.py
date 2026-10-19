@@ -151,12 +151,12 @@ def test_tca15_control_characters_are_refused_before_anything_is_made(w, tmp_pat
         assert "\x07" not in w.confirmations()[0]["screen_text"]
 
 
-def test_tca08_exactly_ten_tools_and_none_of_them_can_say_yes(w):
+def test_tca08_exactly_eleven_tools_and_none_of_them_can_say_yes(w):
     # TC-A08. 009e: was exactly eight; resume and relaunch are added, asked like launch and cancel (their fields are checked below too)
     tools, _ = w.mcp([])
     names = sorted(t.name for t in tools)
-    assert names == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
-                     "list_site_files", "relaunch", "resume"]
+    assert names == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
+                     "list_site_files", "read_task_log", "relaunch", "resume"]
     assert not [n for n in names if re.search(r"approve|confirm|passwd|login", n)]
     by = {t.name: t for t in tools}
     assert by["launch"].annotations.read_only_hint is False

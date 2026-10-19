@@ -41,7 +41,7 @@ def test_tce01_an_oauth_token_opens_the_mcp_as_the_person(w, rig):
     assert {k: a[k] for k in ("user_id", "name", "lab")} == {k: b[k] for k in ("user_id", "name", "lab")}
     with Served(w) as s:
         tools, (runs,) = http_calls(s.url, out["access_token"], [("list_runs", {})])
-        assert len(tools) == 10 and "runs" in tool_json(runs)
+        assert len(tools) == 12 and "runs" in tool_json(runs)
         args = w.in_area(ann, w.choices())
         _, (launch,) = http_calls(s.url, out["access_token"], [("launch", args)])
     j = tool_json(launch)
@@ -326,7 +326,7 @@ def test_tcf07_the_tools_are_the_same_ten_and_none_can_say_yes(w, rig):
     with Served(w) as s:
         tools, _ = http_calls(s.url, out["access_token"], [])
     names = sorted(t.name for t in tools)
-    assert names == ["cancel", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "relaunch", "resume"]
+    assert names == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "read_task_log", "relaunch", "resume"]
     assert not [n for n in names if re.search(r"approve|confirm|oauth|login|consent", n)]
     for t in tools:
         props = " ".join((t.input_schema or {}).get("properties", {}).keys())

@@ -1,13 +1,13 @@
 # Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers six read-only tools, and is built on the official Python mcp SDK.
-"""MCP server: six read-only tools, and the four tools that ask a person: list_runs, get_run, list_compute_envs, get_compute_env,
-list_agents, list_site_files, launch, cancel, resume, relaunch.
+"""MCP server: seven read-only tools, and the tools that ask a person: list_runs, get_run, list_compute_envs, get_compute_env,
+list_agents, list_site_files, read_task_log, launch, cancel, resume, relaunch.
 
-The six read tools carry readOnlyHint, which is only a hint; read-only here means two things:
+The seven read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
   - toward runs: this module never writes the run index (status.py opens it read-only);
   - toward the site: list_site_files may put one read-only question (list a folder) in the job queue of
-    platform.db and wait for the agent's answer. It cannot name a command or a job kind; the platform and
-    the agent each check the path again.
+    platform.db and wait for the agent's answer; read_task_log does the same to read the end of one of three log
+    files of a failed task. Neither can name a command or a job kind; the platform and the agent each check the path again.
 
 launch and cancel (spec 009c) start nothing by themselves. Each builds what the terminal command builds, writes a pending request
 and asks the person (the client's form, else a page they open). They carry no argument that could say yes, and the answer to a call
@@ -43,8 +43,10 @@ def build_server(index_path, platform_path=None):
 
     @server.tool(name="get_run", annotations=_READ_ONLY,
                  description="One run by its id: status, times, task numbers, task numbers per process, and the "
-                             "failed tasks with their exit code and error message; a failed run also has failure_reason, "
-                             "Nextflow's own words for why it failed, when it gave any.")
+                             "failed tasks with their exit code and error message (and workdir, the task's folder on the site, "
+                             "when Nextflow reported it); a failed run also has failure_reason, "
+                             "Nextflow's own words for why it failed, when it gave any. cancel_requested_at is there only when "
+                             "a confirmed cancel of the run was sent; it is a fact about the request, not a status.")
     def get_run(ctx: Context, run_id: str) -> dict:
         return actions.get_run(index_path, run_id, caller=_caller(ctx), platform_path=platform_path)
 
@@ -73,13 +75,23 @@ def build_server(index_path, platform_path=None):
     async def list_site_files(ctx: Context, compute_env: str, path: str) -> dict:
         return await actions.list_site_files(platform_path, compute_env, path, caller=_caller(ctx))
 
+    @server.tool(name="read_task_log", annotations=_READ_ONLY,
+                 description="Read the end of one log file of a failed task of a run you launched, through the run's agent: "
+                             "task is the name get_run shows in failed_tasks, which is err, out or log (.command.err, "
+                             ".command.out, .command.log in the task's folder). At most the last 200 lines and 64 KB, and a "
+                             "cut is said; the text goes to the model you chose. It is refused when the task has no recorded "
+                             "workdir or the agent is offline, and it says which. Nothing is written or run.")
+    async def read_task_log(ctx: Context, run_name: str, task: str, which: str) -> dict:
+        return await actions.read_task_log(platform_path, index_path, run_name, task, which, caller=_caller(ctx))
+
     _add_write_tools(server, platform_path, index_path)
     _add_guidance(server)
     return server
 
 
 def _add_write_tools(server, platform_path, index_path):
-    """launch, cancel, resume and relaunch: a pending request and a question to the person. Nothing here says yes for anybody."""
+    """launch, cancel, resume and relaunch: a pending request and a question to the person; forget: a question to the person.
+    Nothing here says yes for anybody."""
 
     @server.tool(name="launch", annotations=_WRITES,
                  description="Ask to launch a Nextflow pipeline on a compute environment. This does NOT start anything: it builds the "
@@ -104,6 +116,17 @@ def _add_write_tools(server, platform_path, index_path):
     async def cancel_tool(ctx: Context, run_name: str) -> dict:
         return await actions.request_cancel(platform_path, run_name=run_name, caller=_caller(ctx), person=actions.person_at(ctx),
                                             remote=_remote(ctx))
+
+    @server.tool(name="forget", annotations=_STOPS,
+                 description="Ask to delete what was kept of one run you launched: the bundle and the screen text of its requests and "
+                             "jobs. This does NOT delete anything by itself: the person is asked in their own client's form, and you "
+                             "cannot answer it for them. It cannot be undone, and the run can no longer be resumed or launched again "
+                             "as it was; the record of who sent it and when stays. Only for a run that has finished (not running, "
+                             "not lost). A client that cannot show a form is told to use the terminal command "
+                             "`abf-platform forget RUN`.")
+    async def forget_tool(ctx: Context, run_name: str) -> dict:
+        return await actions.request_forget(platform_path, index_path, run_name=run_name, caller=_caller(ctx),
+                                            person=actions.person_at(ctx))
 
 
     @server.tool(name="resume", annotations=_WRITES,

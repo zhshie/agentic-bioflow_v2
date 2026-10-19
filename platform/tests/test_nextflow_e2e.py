@@ -217,6 +217,10 @@ _COMPARED = ("id", "name", "session_id", "status", "tasks", "processes", "failed
 # Named on purpose (007b follow-up 3, TC-F3-11): get_run also has "failure_reason", Nextflow's own words from the complete
 # message. .nextflow.log does not hold workflow.errorMessage, so a rebuilt run has none; test_tcf3_11 checks both sides.
 _NOT_REBUILT = ("failure_reason",)
+# Named on purpose (run-diag-tools, D1(b)): a failed task of the live index has `workdir` (the folder in the nf-tower task event);
+# rebuild reads only the trace file, which has no full task folder, so a rebuilt failed task has none. Only this one field is let go
+# per failed task; every other field of every compared item is still compared one by one.
+_NOT_REBUILT_TASK_FIELDS = {"workdir"}
 
 
 # Allowed gap between live and rebuilt started_at / ended_at. It was 1 s; CI run 38598019862 (2026-10-14, commit cba254d,
@@ -227,6 +231,8 @@ _CLOCK_SLACK_SECONDS = 3
 
 def _compared(v):
     out = {k: v[k] for k in _COMPARED}
+    if isinstance(out["failed_tasks"], list):
+        out["failed_tasks"] = [{k: x for k, x in t.items() if k not in _NOT_REBUILT_TASK_FIELDS} for t in out["failed_tasks"]]
     return out
 
 
@@ -325,6 +331,7 @@ def test_tcf3_11_the_live_run_has_nextflows_reason_and_a_rebuilt_one_has_none(wo
     assert r.returncode == 0, r.stdout + r.stderr
     rebuilt = _runs_via_mcp(cli_env)
     assert all(k not in v for v in rebuilt.values() for k in _NOT_REBUILT)
+    assert all(k not in t for v in rebuilt.values() for t in v["failed_tasks"] for k in _NOT_REBUILT_TASK_FIELDS)
     _same_runs(live, rebuilt)
 
 

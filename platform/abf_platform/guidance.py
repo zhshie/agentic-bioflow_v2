@@ -13,10 +13,11 @@ HEADING = "## The five commands"
 PARAGRAPH_START = "**The user does not have to name a command.**"
 MAX_BYTES = 2048
 
-FIXED_SENTENCE = ("Six tools of this server are read-only. Each of the tools launch, cancel, resume and relaunch only asks: it "
+FIXED_SENTENCE = ("Seven tools of this server are read-only. Each of the tools launch, cancel, resume and relaunch only asks: it "
                   "does not start anything until the person says yes in their own client's form or on the page that the answer "
                   "names, and you cannot say it for them (in the terminal, abf-platform launch, cancel, resume and relaunch ask "
-                  "the same way). A failed run is resumed or relaunched with its name alone. The complete steps of each command "
+                  "the same way). A failed run is resumed or relaunched with its name alone. The tool forget only asks too: it "
+                  "deletes nothing until the person says yes in their own client's form. The complete steps of each command "
                   "are the MCP prompt of the same name (setup, launch, runs, downstream, finish).")
 
 SkillDoc = namedtuple("SkillDoc", "name description body_text")

@@ -23,7 +23,7 @@ PKG = PLATFORM_DIR / "abf_platform"
 SKILLS = REPO_ROOT / "skills"
 FLOWS = ["setup", "launch", "runs", "downstream", "finish"]
 ALL_SKILLS = FLOWS + ["operational"]
-SIX_TOOLS = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files"]
+READ_TOOLS = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "read_task_log"]
 
 
 def guidance():
@@ -395,8 +395,8 @@ def test_tc501_six_read_only_tools_remain(tmp_path):
     # 009c: the six are unchanged and read-only; `launch` and `cancel` are added (they write nothing without a person's yes);
     # 009e: and `resume` and `relaunch`, which are asked in the same way
     tools = asyncio.run(_server(tmp_path).list_tools())
-    assert sorted(t.name for t in tools) == sorted(SIX_TOOLS + ["launch", "cancel", "resume", "relaunch"])
-    reads = [t for t in tools if t.name in SIX_TOOLS]
+    assert sorted(t.name for t in tools) == sorted(READ_TOOLS + ["launch", "cancel", "forget", "resume", "relaunch"])  # keep-submissions (TC-040)
+    reads = [t for t in tools if t.name in READ_TOOLS]
     assert all(t.annotations.read_only_hint is True and t.annotations.destructive_hint is not True for t in reads)
 
 
