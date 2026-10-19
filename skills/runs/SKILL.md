@@ -238,7 +238,7 @@ when a refusal is the cause:
     - **The run was not launched from this platform.** The platform can only read logs of runs it launched; say so.
     - **The agent is offline.** The log cannot be read until the site's agent is back; say so and check again later.
     - **137, or killed.** 🤖 See "out of memory", below.
-    - **`read_task_log` finds no log at all (no err, out or log).** 🤖 The work directory is
+    - **No `.command.log` at all (`read_task_log` finds no err, out or log).** 🤖 The work directory is
       probably not visible from the compute side — report that; there is
       nothing further to diagnose from here.
     - **Jev triage, only if the user turned it on** (optional, off by default;
