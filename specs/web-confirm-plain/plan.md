@@ -19,3 +19,6 @@ Changing what is sent, the approve flow, CSRF, owner rules, or other pages.
 - At 390 px the page has no horizontal scroll (test the CSS rule exists on the pre).
 - English page labels are English.
 - Approve path unchanged: existing confirm-page tests still pass unchanged except string swaps listed in the ledger.
+
+## Named change to an existing test (added in the 2026-10-19 fix round)
+- `platform/tests/test_web_board.py::test_tcs45_confirm_pages_share_the_style` has one assertion narrowed on purpose: `c.get("/c/<id>?lang=en").text == r.text` (whole page) becomes `style_of(c.get("/c/<id>?lang=en").text) == style_of(r.text)` (the stylesheet). Why: C5 gives the English confirmation page English labels, so the whole page cannot equal the Chinese one; what the test protects (one shared stylesheet, one CSP hash) is kept, and the English page content is covered by `test_web_confirm_plain.py` (TC-021, TC-023). This is the only existing assertion changed. Maintainer or verifier to confirm.
