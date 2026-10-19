@@ -18,3 +18,10 @@
 - [x] E1 merged origin/v3 (plain merge, no conflicts; keep-submissions' `forget` tool is now in TC-029's expected tool list)
 - [x] E2 month_total: month is Asia/Taipei (UTC+8) by run start; any unknown run makes the month unknown; no runs is 0 (TC-034..TC-040)
 - [x] E3 rates stay 0.08 / 0.24 with source; factors stay null (owed above)
+
+## Ruling E4 (2026-10-19)
+
+- [x] E4 rates switched to the Taiwania 3 general (NRQ) rate (sources in su_rates.json): new site `taiwania3` with queues ctest, ct56, ct224, ct560, ct2k, ct8k factor 1; ct2k-amd stays null (price not found, owed). Site `nchc` (ngs queues of nchc.config) stays null. default_site is now taiwania3.
+- Test changes: TC-023 old: academic 0.24 and source lions.nchc.org.tw/ngs.jsp; new: academic 0.08, industry 0.16, source iservice.nchc.org.tw; reason: ruling E4. TC-024 still holds (ct56 etc. are named in this ledger). Added: ct56 4 cpus x 2 h = 8 SU and 0.64 TWD (nstc); ct2k-amd unknown.
+- Assumption (from NCHC lists, not stated by NCHC): 1 SU = 1 core-hour; verify with get_su_balance before/after a run.
+- Real runs stay unknown: the receiver still stores no per-task cpus/realtime (unchanged).

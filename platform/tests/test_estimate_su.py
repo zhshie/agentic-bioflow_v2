@@ -247,9 +247,21 @@ def test_month_total_is_unknown_when_a_run_is_unknown(tmp_path):
 def test_tc023_rates_file_money_and_source():
     # TC-023
     d = json.loads(RATES_FILE.read_text(encoding="utf-8"))
-    assert d["nstc_twd_per_su"] == 0.08 and d["academic_twd_per_su"] == 0.24
-    assert d["source"] == "https://lions.nchc.org.tw/ngs.jsp"
-    assert d["source"] in (REPO_ROOT / "docs" / "POSITIONING.md").read_text(encoding="utf-8")
+    # E4: T3 general (NRQ) rate; was academic 0.24 + lions.nchc.org.tw/ngs.jsp source (GP1 list, not used now)
+    assert d["nstc_twd_per_su"] == 0.08 and d["academic_twd_per_su"] == 0.08 and d["industry_twd_per_su"] == 0.16
+    assert d["source"] == "https://iservice.nchc.org.tw/nchc_service/nchc_service_qa.php?target=54"
+    assert "lions.nchc.org.tw/ngs.jsp" in d["not_used"] and "1 SU = 1 core-hour" in d["assumption"]
+
+
+def test_e4_ct56_task_4cpus_2h_is_8_su_and_064_twd():
+    # E4
+    out = su_mod().su_of_tasks([{"queue": "ct56", "cpus": 4, "realtime": 2 * H}], "taiwania3", su_mod().load_rates())
+    assert out["su"] == 8 and abs(out["twd_nstc"] - 0.64) < 1e-9 and out["unknown_reasons"] == []
+
+
+def test_e4_ct2k_amd_price_unknown():
+    # E4
+    _unknown(su_mod().su_of_tasks([{"queue": "ct2k-amd", "cpus": 1, "realtime": H}], "taiwania3", su_mod().load_rates()), "ct2k-amd")
 
 
 def test_tc024_every_factor_is_null_unless_the_ledger_cites_it():
