@@ -42,6 +42,11 @@ def login(rig, name):
     return c
 
 
+def launch_csrf(text):
+    """The token of the launch form (the first token in a page is the log-out form's)."""
+    return re.search(r'<form class="lform"[^>]*><input type="hidden" name="csrf" value="([^"]+)"', text).group(1)
+
+
 def act_form(text, verb, run_id=None):
     for m in re.finditer(r'<form class="act" method="post" action="/act/%s">(.*?)</form>' % verb, text, re.S):
         fields = {k: html.unescape(v) for k, v in re.findall(r'name="(\w+)" value="([^"]*)"', m.group(1))}
@@ -84,16 +89,16 @@ def test_tc001_tc003_each_button_asks_and_redirects_to_the_confirmation_page(rig
     # TC-001, TC-002, TC-003, TC-005
     ann = rig.user("ann")
     failed = run_of(rig, ann, "run-a")
+    again = run_of(rig, ann, "run-c")          # a resume and a re-run of the same run cannot both stand: the second is "a newer attempt exists"
     going = run_of(rig, ann, "run-b", status=None)
     c = login(rig, "ann")
-    t = c.get("/?run=" + failed).text
-    for verb, kind in (("resume", "launch"), ("relaunch", "launch")):
-        fields = act_form(t, verb, failed)
+    for verb, rid_, name in (("resume", failed, "run-a"), ("relaunch", again, "run-c")):
+        fields = act_form(c.get("/?run=" + rid_).text, verb, rid_)
         assert fields and fields["csrf"]
         rid = rid_of(c.post("/act/" + verb, data=fields))
         req = request_of(rig, rid)
-        assert req["state"] == "pending" and req["kind"] == kind and req["caller_user_id"] == ann.user_id
-        assert ("run-a" in req["summary"]) and (("續跑" if verb == "resume" else "重跑") in req["summary"] or "run-a-a2" in req["summary"])
+        assert req["state"] == "pending" and req["kind"] == "launch" and req["caller_user_id"] == ann.user_id
+        assert name in req["summary"] and (name + "-a2") in req["summary"]
     t = c.get("/?run=" + going).text
     fields = act_form(t, "cancel", going)
     assert fields
@@ -101,7 +106,7 @@ def test_tc001_tc003_each_button_asks_and_redirects_to_the_confirmation_page(rig
     req = request_of(rig, rid)
     assert req["state"] == "pending" and req["kind"] == "cancel" and req["caller_user_id"] == ann.user_id and "run-b" in req["summary"]
     for page in (c.get("/?run=" + failed).text, c.get("/?run=" + going).text, c.get("/").text):
-        assert "aria-disabled" not in page and "gbtn" not in page
+        assert "aria-disabled" not in page and 'class="gbtn"' not in page
 
 
 def test_tc004_notices_carry_real_forms(rig):
@@ -124,10 +129,11 @@ def test_tc006_tc058_nothing_is_confirmed_or_queued_before_the_person_presses_se
     # TC-006, TC-058
     ann = rig.user("ann")
     failed = run_of(rig, ann, "run-a")
+    again = run_of(rig, ann, "run-c")
     going = run_of(rig, ann, "run-b", status=None)
     c = login(rig, "ann")
     before = snapshot(rig)
-    for verb, rid in (("resume", failed), ("relaunch", failed), ("cancel", going)):
+    for verb, rid in (("resume", failed), ("relaunch", again), ("cancel", going)):
         t = c.get("/?run=" + rid).text
         rid_of(c.post("/act/" + verb, data=act_form(t, verb, rid)))
     assert snapshot(rig) == before
@@ -149,8 +155,9 @@ def test_tc007_tc009_the_page_press_makes_the_job(rig):
     jobs = rig.sql("SELECT * FROM jobs ORDER BY id DESC")
     assert len(jobs) == jobs_before + 1 and jobs[0]["kind"] == "launch_nextflow"
     assert "run-a-a2" in jobs[0]["args_json"] and rig.w.sql("SELECT user_id FROM launches ORDER BY id DESC")[0][0] == ann.user_id
-    t = c.get("/?run=" + failed).text
-    rid = rid_of(c.post("/act/relaunch", data=act_form(t, "relaunch", failed)))
+    again = run_of(rig, ann, "run-c")
+    t = c.get("/?run=" + again).text
+    rid = rid_of(c.post("/act/relaunch", data=act_form(t, "relaunch", again)))
     jobs_before = len(rig.sql("SELECT * FROM jobs"))
     assert c.post("/c/" + rid, data={"csrf": csrf_of(c.get("/c/" + rid).text)}).status_code == 200
     assert len(rig.sql("SELECT * FROM jobs")) == jobs_before + 1
@@ -258,7 +265,7 @@ def test_tc019_refusal_is_clean_and_escaped(rig):
 def form_values(rig, c, name, **over):
     """What a person fills in: an uploaded samplesheet of their own, an environment of their own."""
     t = c.get("/launch").text
-    csrf = csrf_of(t)
+    csrf = launch_csrf(t)
     sheet = re.search(r'<select name="samplesheet"[^>]*>.*?<option value="([^"]+)"', t, re.S).group(1)
     ce = re.search(r'<select name="ce_name"[^>]*>.*?<option value="([^"]+)"', t, re.S).group(1)
     data = {"csrf": csrf, "pipeline": "nf-core/ampliseq", "revision": "2.18.0", "run_name": "web-run", "samplesheet": html.unescape(sheet),
@@ -366,9 +373,8 @@ def test_tc029_tc033_validation_makes_no_request(rig):
     invalid(rig, c, "bad", params="bad: [1,2]")
     invalid(rig, c, "nested", params="nested: {a: b}")
     invalid(rig, c, "oops", params="oops")
-    ok = rid_of(c.post("/launch", data=form_values(rig, c, "ann", run_name="taken")))
-    assert c.post("/c/" + ok, data={"csrf": csrf_of(c.get("/c/" + ok).text)}).status_code == 200
-    invalid(rig, c, "taken", run_name="taken")
+    run_of(rig, ann, "run-a")
+    invalid(rig, c, "已用過", run_name="run-a")
 
 
 def test_tc034_tc036_login_csrf_origin_on_launch(rig):
@@ -411,7 +417,7 @@ def test_tc042_tc043_pending_pill_and_empty_lines(rig):
         t = c.get(url).text
         assert re.search(r'<span class="level state-failed">.*?%s' % word, t, re.S), url
         assert "需要" + "處理" not in t and "Action needed" not in t
-    ok = run_of(rig, ann, "run-ok", status="succeeded")
+    ok = run_of(rig, ann, "run-ok", status=None)
     t = c.get("/?run=" + ok).text
     assert "目前沒有待處理的事" in t and ("要你" + "處理") not in t
     assert "Nothing pending" in c.get("/?run=%s&lang=en" % ok).text
@@ -431,7 +437,7 @@ def test_tc044_tc045_status_is_a_square_plus_a_word_and_no_new_glyph(rig):
         assert m, (st, t[:300])
         assert not any(g in m.group(0) for g in GLYPHS + "?!")
     t = c.get("/?lang=en").text
-    pill = re.search(r'<span class="level state-failed">(.*?)</span></span>', t, re.S).group(0)
+    pill = re.search(r'<span class="level state-failed"><span class="sq"></span>[^<]*</span>', t).group(0)
     assert '<span class="sq"></span>' in pill and "Pending" in pill and not any(g in pill for g in GLYPHS + "?!")
     ledger = LEDGER.read_text(encoding="utf-8")
     for g in "▶✓✗⏸":
@@ -446,7 +452,7 @@ def test_tc046_tc048_new_pages_have_no_script_one_stylesheet_and_both_languages(
     c = login(rig, "ann")
     fields = act_form(c.get("/?run=" + failed).text, "resume", failed)
     urls = ["/launch", "/launch?lang=en", "/launch?from=" + failed, "/?run=" + failed, "/?run=%s&lang=en" % failed, "/"]
-    pages = [c.get(u) for u in urls] + [c.post("/launch", data={"csrf": csrf_of(c.get("/launch").text), "revision": ""}),
+    pages = [c.get(u) for u in urls] + [c.post("/launch", data={"csrf": launch_csrf(c.get("/launch").text), "revision": ""}),
                                          c.post("/act/resume", data=dict(fields, run="nope"))]
     for r in pages:
         t = r.text
@@ -459,7 +465,7 @@ def test_tc046_tc048_new_pages_have_no_script_one_stylesheet_and_both_languages(
     t = c.get("/?run=%s&lang=en" % failed).text
     for word in ("Resume", "Re-run", "Cancel"):
         assert re.search(r"<button[^>]*>%s</button>" % word, t), word
-    en = c.post("/launch", data={"csrf": csrf_of(c.get("/launch").text), "revision": "", "lang": "en"})
+    en = c.post("/launch", data={"csrf": launch_csrf(c.get("/launch").text), "revision": "", "lang": "en"})
     assert en.status_code != 403 and no_cjk(en.text) and re.search(r'<p class="bad"', en.text)
 
 
@@ -471,7 +477,7 @@ def test_tc046_english_refusal_has_no_chinese(rig):
     fields = act_form(c.get("/?run=%s&lang=en" % going).text, "resume", going)
     assert fields["lang"] == "en"
     r = c.post("/act/resume", data=fields)
-    assert r.status_code != 303 and no_cjk(r.text) and re.search(r'<p class="bad"[^>]*>[^<]*(running|Running)', r.text)
+    assert r.status_code != 303 and no_cjk(r.text) and re.search(r'<p class="bad"[^>]*>[A-Z][^<]*\. Nothing was sent\.</p>', r.text)
 
 
 def test_tc050_old_tests_changed_only_in_words_are_in_the_ledger():
@@ -562,7 +568,7 @@ def test_tc062_no_secret_is_in_any_response(rig, caplog):
     fields = act_form(c.get("/?run=" + failed).text, "resume", failed)
     responses = [c.get("/launch"), c.get("/?run=" + failed), c.post("/act/resume", data=fields), c.post("/act/resume", data={"run": failed}),
                  c.post("/act/resume", data=dict(fields), headers={"Origin": "https://evil.example"}),
-                 c.post("/launch", data={"csrf": csrf_of(c.get("/launch").text), "revision": ""})]
+                 c.post("/launch", data={"csrf": launch_csrf(c.get("/launch").text), "revision": ""})]
     from human_harness import PASSWORD
     for r in responses:
         blob = r.text + str(r.headers)

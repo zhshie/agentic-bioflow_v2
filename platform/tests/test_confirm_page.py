@@ -302,13 +302,15 @@ def test_tcg04_g05_g06_the_web_app_has_the_routes_of_009c_plus_the_board_and_the
     # TC-G04, TC-G05, TC-G06 (011a adds GET /; 009i: the five routes stay; the consent page and the SDK's authorization-server routes are the only additions)
     c = w.web()
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
-    assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")), ("/authorize", ("GET", "HEAD", "POST")),
+    assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")),
+                      ("/act/{verb}", ("POST",)), ("/authorize", ("GET", "HEAD", "POST")),
                       ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)),
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)),
+                      ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)),      # 012b: the launch form and the three buttons that only ask
                       ("/login", ("GET", "HEAD")), ("/login", ("POST",)), ("/logout", ("POST",)),
                       ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")),
                       ("/token", ("OPTIONS", "POST"))], routes
-    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/launch", "/submit",
+    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/submit",
                  "/upload", "/password", "/passwd", "/cost", "/api/launch"):
         assert c.get(path).status_code == 404, path
         assert c.post(path, data={"a": "b"}).status_code in (404, 405), path

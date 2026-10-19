@@ -80,15 +80,16 @@ def test_r01_r13_failed_and_lost_notice_fields(w):
     a, b = f1(w, ann), l1(w, ann)
     t = c.get("/?run=" + a).text
     [n] = notices(t)
-    assert "! 需要處理" in plain(n) and "分析失敗" in plain(n)
+    assert "待處理" in plain(n) and 'class="sq"' in n and "分析失敗" in plain(n)
     assert 'href="/?run=%s"' % a in n and "11-14 10:05" in plain(n) and "2023-11-14T" not in t
     assert fields(n) == [("問題", "FASTQC (sample2)"), ("原因", "samplesheet is missing the reverseReads column"),
-                         ("可選動作", "續跑／重跑（之後開放）")]
+                         ("可選動作", "續跑／重跑")]
     assert "TRIMGALORE" not in n and "second line" not in n
-    assert "續跑" in n and "重跑" in n and "<form" not in n and "<button" not in n
-    assert len(re.findall(r"<form\b", t)) == 1
+    assert "續跑" in n and "重跑" in n and "之後開放" not in n
+    assert len(re.findall(r"<button\b", n)) == 2 and len(re.findall(r"<form\b", n)) == 2          # 012b: real buttons that ask
+    assert len(re.findall(r"<form\b", t)) == 1 + 3 + 2          # the log-out form, the run page's three buttons, the notice's two
     [m] = notices(c.get("/?run=" + b).text)
-    assert fields(m) == [("問題", "失聯"), ("原因", "三次心跳沒有回應"), ("可選動作", "續跑／重跑（之後開放）")]
+    assert fields(m) == [("問題", "失聯"), ("原因", "三次心跳沒有回應"), ("可選動作", "續跑／重跑")]
     assert "與站台失去聯絡" in plain(m) and "11-14 11:00" in plain(m)
 
 
@@ -97,12 +98,12 @@ def test_r12_r14_english_and_missing_data(w):
     ann, c = world(w)
     a, b = f1(w, ann), l1(w, ann)
     [n] = notices(c.get("/?run=%s&lang=en" % a).text)
-    assert "! Action needed" in plain(n) and "Analysis failed" in plain(n) and no_cjk(n)
-    assert [x for x, _ in fields(n)] == ["Problem", "Cause", "Options"] and fields(n)[2][1] == "Resume / Re-run (coming later)"
+    assert "Pending" in plain(n) and 'class="sq"' in n and "Analysis failed" in plain(n) and no_cjk(n)
+    assert [x for x, _ in fields(n)] == ["Problem", "Cause", "Options"] and fields(n)[2][1] == "Resume / Re-run"
     assert "Resume" in plain(n) and "Re-run" in plain(n)
     [m] = notices(c.get("/?run=%s&lang=en" % b).text)
     assert "Lost contact with the site" in plain(m) and no_cjk(m)
-    assert fields(m) == [("Problem", "Lost"), ("Cause", "No heartbeat three times in a row"), ("Options", "Resume / Re-run (coming later)")]
+    assert fields(m) == [("Problem", "Lost"), ("Cause", "No heartbeat three times in a row"), ("Options", "Resume / Re-run")]
     f2 = seed(w, "f2", "failed", ann, started=T0, ended=NOW)
     [x] = notices(c.get("/?run=%s&lang=en" % f2).text)
     assert fields(x)[0] == ("Problem", "step not recorded") and fields(x)[1] == ("Cause", "reason not recorded")
@@ -150,7 +151,7 @@ def test_r30_r36_attention_card_uses_the_component(w):
     assert len(ns) == 2 and "<li" not in card
     assert plain(re.search(r'class="num"[^>]*>(.*?)</span>', card).group(1)) == "2"
     assert 'href="/?run=%s"' % a in card and "u1" not in card and "s1" not in card
-    assert dict(fields([n for n in ns if "f1" in n][0]))["問題"] == "FASTQC (sample2)"
+    assert dict(fields([n for n in ns if 'href="/?run=%s"' % a in n][0]))["問題"] == "FASTQC (sample2)"     # 012b: not "f1" in n: the buttons' hex tokens can hold it
     card_en = attention(c.get("/?lang=en").text)
     assert 'lang=en' in card_en and no_cjk(card_en)
 
@@ -186,11 +187,11 @@ def test_r40_r44_title_and_cards(w):
     mid = pane(c.get("/?run=" + a).text, "middle")
     assert "<h1>f1</h1>" in mid and "✗ 失敗" in plain(mid)
     head = re.search(r'<div class="head">(.*?)</div>', mid, re.S).group(1)
-    assert "續跑" in head and "重跑" in head and "之後開放" in head and "<a " not in head and "<form" not in head
+    assert "續跑" in head and "重跑" in head and "取消" in head and "之後開放" not in head and head.count("<form") == 3 and head.count("<button") == 3     # 012b: real buttons
     assert cards(c.get("/?run=" + a).text) == (["目前步驟", "耗時", "運算環境", "費用"], ["—", "2 小時 5 分", "—", "SU —"])
     en = c.get("/?run=%s&lang=en" % a).text
     assert cards(en) == (["Current step", "Duration", "Compute", "Cost"], ["—", "2h 5m", "—", "SU —"])
-    assert no_cjk(pane(en, "middle")) and "Coming later" in pane(en, "middle")
+    assert no_cjk(pane(en, "middle")) and ">Resume</button>" in pane(en, "middle")
 
 
 def test_r45_r52_current_step_and_duration(w):
@@ -208,8 +209,8 @@ def test_r45_r52_current_step_and_duration(w):
     assert val(u3, 0) == "—" and val(u1, 1) == "2 小時 5 分"
     short = seed(w, "short", "failed", ann, started=T0, ended=T0 + 40)
     assert val(short, 1) == "不到 1 分" and val(short, 1, "&lang=en") == "<1m"
-    assert "目前沒有需要你處理的事" in c.get("/?run=" + u1).text
-    assert "Nothing needs you right now" in c.get("/?run=%s&lang=en" % u1).text
+    assert "目前沒有待處理的事" in c.get("/?run=" + u1).text
+    assert "Nothing pending" in c.get("/?run=%s&lang=en" % u1).text
 
 
 def test_r55_r58_tasks_bar_and_legend(w):
@@ -315,7 +316,7 @@ def test_r103_r114_limits_and_readonly(w):
                 assert not re.search(r"\son\w+=", t) and not re.search(r"https?://|=\"//", t)
                 csp = r.headers["content-security-policy"]
                 assert "'unsafe-inline'" not in csp and "script-src" not in csp and web_board.style_source() in csp
-                assert len(re.findall(r"<form\b", t)) == 1
+                assert len(re.findall(r"<form\b", t)) == 1 + 3 + {a: 2, b: 3, u: 0}[rid]          # 012b: log-out, the run page's three buttons, the notice's
                 assert ("Seq" + "era") not in t and ("Je" + "v") not in t
                 assert 'http-equiv="refresh"' in t
                 for h in hrefs(t):
@@ -323,7 +324,7 @@ def test_r103_r114_limits_and_readonly(w):
                     if h.startswith("/"):
                         assert c.get(h).status_code in (200, 303), h
     assert c.post("/?run=" + a).status_code == 405
-    for p in ("/resume", "/rerun", "/relaunch", "/cancel", "/launch", "/forget", "/run/%s/resume" % a, "/cost"):
+    for p in ("/resume", "/rerun", "/relaunch", "/cancel", "/forget", "/run/%s/resume" % a, "/cost"):
         assert c.get(p).status_code == 404 and c.post(p).status_code in (404, 405), p
     assert 'http-equiv="refresh"' not in c.get("/settings").text
 
