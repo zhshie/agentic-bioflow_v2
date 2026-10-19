@@ -178,4 +178,4 @@ def test_tc008_facts_are_a_web_only_action_and_web_imports_no_confirm():
     from test_web_parity import WEB_ONLY
     assert "request_facts" in WEB_ONLY
     src = WEB.read_text(encoding="utf-8")
-    assert not re.search(r"^\s*(import|from)\s+(abf_platform\.)?confirm\b", src, re.M) and "re.search" not in src
+    assert not re.search(r"^\s*(import|from)\s+(abf_platform\.)?confirm\b", src, re.M)
