@@ -28,3 +28,11 @@ TC-001 4 files a_R1_001/a_R2_001/b_R1_001/b_R2_001.fastq.gz -> 2 pairs a,b, head
 
 ## Out of scope
 Byte transfer, relay, checksums, existence check of remote files, linking runs to dataset versions, delete/share/edit, MCP tools, web routes, docs/PLATFORM.md, CHANGELOG.md.
+
+## Revision 2026-10-19: make TC-064 / TC-066 CI-safe (re-land of PR #143)
+PR #143 was merged with red CI and reverted (#147). This branch re-applies it (commit "Revert \"Merge pull request #147\"") and fixes the only failure: `test_tc064_other_sessions_files_are_untouched` and `test_tc066_docs_and_changelog_are_untouched` run `git diff origin/v3`, but the CI checkout has no `origin/v3`, so both fail in CI, and after merge a diff against v3 is meaningless anyway.
+Do:
+1. TC-064: keep the part that checks a lasting property — the five named files (actions/__init__.py, mcp_server.py, web.py, web_board.py, store.py) do not contain any of the datasets function names / `actions.datasets`. Remove the `rev-parse origin/v3` assertion and the `git diff --stat origin/v3` assertion. Comment: "branch-scope diff is the verifier's job (git diff at review), not a lasting property".
+2. TC-066: remove the test (it only checks that this branch did not edit docs/PLATFORM.md and CHANGELOG.md, a review-time scope check with no lasting meaning). Record in test-case.md that TC-066 moved to the verifier's review checklist, and why.
+3. Remove the now-unused `git()` helper only if nothing else uses it.
+4. No product code changes. Full `bash tests/run_all.sh` green. Then also prove CI-likeness: run `platform` pytest for test_datasets.py inside a fresh `git clone --depth 1 --branch feat/012c-datasets-redo` of the local worktree path (a checkout with no origin/v3) and show it passes.
