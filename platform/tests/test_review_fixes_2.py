@@ -143,7 +143,7 @@ def test_r3_a_right_password_does_not_count_against_the_name(w):
     w.user("ann")
     c = w.web()
     for _ in range(web.FAIL_LIMIT * 2):
-        assert w.login(c, "ann").status_code == 200
+        assert w.login(c, "ann").status_code == 303        # 011a: a right password now redirects to the board
 
 
 # ---- R4: the default of confirmations.state is pending ---------------------------------------------------------------------------
