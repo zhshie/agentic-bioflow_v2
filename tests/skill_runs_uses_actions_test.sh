@@ -183,6 +183,11 @@ if [ -r "$LEDGER" ]; then
     grep -q 'Retired assertions' "$LEDGER" && grep -q 'TC-089' "$LEDGER" && grep -q 'TC-091' "$LEDGER"; chk "TC-111 the ledger accounts for the retired TC-089 and TC-091 assertions" $?
 fi
 
+# S13/S14/S15 (2026-10-19): never tell the AI to read `.exitcode` as a file; the over-allocated row proposes, not shrinks
+! grep -qF '.exitcode' "$SK"; chk "TC-120 SKILL.md has no instruction to read .exitcode as a file" $?
+grep -F 'badly over-allocated' "$SK" | grep -q 'new `launch`'; chk "TC-121 the over-allocated row says a smaller box is a new launch the person confirms" $?
+! grep -qF 'abf-platform launches' "$LEDGER"; chk "TC-122 the ledger no longer mentions abf-platform launches" $?
+
 # S5: one manual step in docs/TESTING.md under the 009e section
 step=$(awk '/^## Resume and relaunch \(009e\)/{g=1;next} g&&/^## /{exit} g' "$ROOT/docs/TESTING.md" | grep -E 'skills/runs/SKILL.md' | grep -E 'list_runs' | grep -E 'get_run' | grep -E '\btw\b' | grep -iE 'yes')
 [ -n "$step" ]; chk "TC-093 TESTING.md 009e has the runs-skill walkthrough step" $?
