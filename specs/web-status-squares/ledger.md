@@ -1,0 +1,2 @@
+# ledger web-status-squares
+
