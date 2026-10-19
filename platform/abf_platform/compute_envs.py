@@ -101,6 +101,8 @@ _VALUE_PATTERNS = [
     re.compile(r"abf_[A-Za-z0-9_-]{20,}"),
     re.compile(r"\bexport\s+[A-Za-z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|KEY)[A-Za-z0-9_]*\s*=", re.I),
     re.compile(r"\b(?:password|passwd|secret|api[_-]?key|access[_-]?key|secret[_-]?key|token)\w*\s*[=:]\s*\S", re.I),
+    re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}"),                # 014a: a model key typed into the wrong field is refused by name
+    re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}"),
 ]
 
 

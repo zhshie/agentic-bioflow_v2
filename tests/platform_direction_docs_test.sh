@@ -49,9 +49,9 @@ nin() {
 
 echo "== US1: the constitution (TC-001, TC-003..TC-009) =="
 LAST=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
-if [ "$LAST" = '**Version**: 5.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-17' ]; then
-  ok "TC-001: last line is exactly the 5.0.0 version line"
-else bad "TC-001: last line is exactly the 5.0.0 version line" "got: $LAST"; fi
+if [ "$LAST" = '**Version**: 6.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-18' ]; then
+  ok "TC-001: last line is exactly the 6.0.0 version line"
+else bad "TC-001: last line is exactly the 6.0.0 version line" "got: $LAST"; fi
 
 P1=$(awk '/^### I\. /{f=1} /^### II\. /{f=0} f' "$C")
 inn "TC-003: principle I is titled Build Only What Seqera Cannot or Will Not Do Here" "$P1" '### I. Build Only What Seqera Cannot or Will Not Do Here'
@@ -79,7 +79,10 @@ inn "TC-007: ...after the hand-off everything comes from Nextflow's records"    
 inn "TC-004: ...Seqera's nouns where the backend is Seqera"                       "$P1" "follows Seqera's nouns"
 inn "TC-008: I.2 Check is tests/no_second_run_state_test.sh, covering scripts/ and platform/" "$P1" '*Check:* `tests/no_second_run_state_test.sh` (its submission scan covers `scripts/` and `platform/`).'
 inn "TC-005: where Seqera's display and Nextflow's records disagree, Nextflow's win" "$P1" "where Platform's display and Nextflow's own records disagree, Nextflow's records win"
-if grep -qi 'run index' "$C"; then bad "TC-006: the constitution does not contain 'run index'" "$(grep -ni 'run index' "$C" | head -2)"; else ok "TC-006: the constitution does not contain 'run index'"; fi
+inn "TC-006: principle I.2 holds the run-index rule (moved in 6.0.0)" "$P1" "The platform's run index is never a second truth"
+inn "TC-006: ...with its rebuild check test_tc030_rebuild_gives_back_every_field" "$P1" 'test_tc030_rebuild_gives_back_every_field'
+SNSEC=$(awk '/^## Safety Net/{f=1;next} /^## /{f=0} f' "$C")
+if printf '%s\n' "$SNSEC" | grep -qi 'run index'; then bad "TC-006: 'run index' appears nowhere in the Safety Net section"; else ok "TC-006: 'run index' appears nowhere in the Safety Net section"; fi
 inn "TC-007: principle I rationale cites docs/adr/0004"                           "$P1" 'docs/adr/0004'
 nin "TC-007: ...and no longer attributes it to docs/adr/0001"                     "$P1" 'docs/adr/0001'
 
@@ -267,13 +270,15 @@ inn "TC-022: a 'Dropped' line names the old progress page and the Codex adapter"
 inn "TC-022: ...and the old Codex adapter stage"                  "$STG" 'the old "Codex adapter" stage'
 
 # TC-023: waiting list, five new rows plus re-staged old ones.
+PI2=$(awk '/^### I. /{f=1} /^### II. /{f=0} f' "$C")
 WL=$(sec "$RM" '^## Principles waiting for a check' '^## ')
-inn "TC-023: new row: run index rebuildable (stage 2)"            "$WL" "The platform's run index is never a second truth"
+nin "TC-023: run index row left the waiting list (constitution 6.0.0, I.2)" "$WL" "The platform's run index is never a second truth"
+inn "TC-023: ...the rule text is in principle I.2" "$PI2" "The platform's run index is never a second truth"
 inn "TC-023: new row: metadata only, no site credential"          "$WL" 'The platform stores metadata only and never holds a site credential'
 inn "TC-023: new row: write tools refuse without a confirmation step" "$WL" 'Every platform write tool (launch, delete, clear `work/`) refuses without the user'"'"'s confirmation step'
 inn "TC-023: new row: PI and member roles enforced"               "$WL" 'PI and member roles are enforced'
-inn "TC-023: row: gates live in the platform's action layer, a person answers on a human channel" "$WL" "Gates live in the platform's action layer, which the MCP tools and the web pages both call, and a person answers each gate on a human channel; the plugin's hooks become callers"
-inn "TC-023: ...check: refused through the MCP tool and through the web route" "$WL" "An unconfirmed launch is refused through the MCP tool and through the web route"
+nin "TC-023: gates row left the waiting list (5.0.0 holds it in I.2)" "$WL" "Gates live in the platform's action layer"
+inn "TC-023: ...check: refused through the MCP tool and through the web route, now in I.2" "$PI2" "refused through the MCP tool and through the web route"
 nin "TC-023: ...the old 'platform's tool layer' gate row is gone" "$WL" "Gates live in the platform's tool layer"
 inn "TC-024: new row: every entry reaches the same action"         "$WL" "Every entry (MCP client, web page, platform chat, shell) reaches the same action"
 inn "TC-024: ...check: parity test, mcp_server and web import only actions" "$WL" 'A parity test: every action has an MCP tool and a web route, and `mcp_server` and the web import only `actions`'
@@ -287,7 +292,7 @@ cnt=$(printf '%s\n' "$WL" | grep -cE '^\| ' || true)
 inn "TC-023: old row rewritten: host reaches launch/delete only through tools that carry their own gate" "$WL" 'A host reaches launch and delete only through tools that carry their own gate'
 nin "TC-023: ...the old 'may query but never launch or delete' wording is gone" "$WL" 'may query but never'
 cnt16=$(printf '%s\n' "$WL" | grep -cE '^[|]' || true)
-[ "${cnt16:-0}" = 17 ] && ok "TC-025: waiting list has 17 table lines (15 rows + header + separator)" || bad "TC-025: waiting list has 17 table lines" "$cnt16 lines"
+[ "${cnt16:-0}" = 15 ] && ok "TC-025: waiting list has 15 table lines (13 rows + header + separator)" || bad "TC-025: waiting list has 15 table lines" "$cnt16 lines"
 # old stage numbers are gone: nothing waits for a stage that no longer exists
 if printf '%s\n' "$WL" | grep -qE '\| (6|7) \|[[:space:]]*$'; then bad "TC-023: no row waits for stage 6 or 7"; else ok "TC-023: no row waits for stage 6 or 7"; fi
 
@@ -379,10 +384,10 @@ has "TC-038: ROADMAP: development and testing never go through Seqera's Services
 
 # TC-059: CLAUDE.md and README.md
 has "TC-059: CLAUDE.md: 2.17.0 uses Platform as the backend, Nextflow's records underneath" CLAUDE.md "Platform is the execution backend 2.17.0 uses; the truth about a run underneath it is Nextflow's own records"
-has "TC-059: CLAUDE.md points at constitution 5.0.0"                CLAUDE.md 'constitution 5.0.0'
+has "TC-059: CLAUDE.md points at constitution 6.0.0"                CLAUDE.md 'constitution 6.0.0'
 has "TC-059: CLAUDE.md still has 'Constitution 2.0.0'"             CLAUDE.md 'Constitution 2.0.0'
 has "TC-059: CLAUDE.md still has 'hooks/in_use.sh'"                CLAUDE.md 'hooks/in_use.sh'
-has "TC-059: README.md: Platform's runs rest on Nextflow's own records" README.md "Nextflow's own records, the truth under constitution 5.0.0"
+has "TC-059: README.md: Platform's runs rest on Nextflow's own records" README.md "Nextflow's own records, the truth under constitution 6.0.0"
 has "TC-059: README.md still has 'Constitution 2.0.0'"             README.md 'Constitution 2.0.0'
 
 # TC-060: the platform's own chat (maintainer, 2026-10-09: 「也做聊天介面 可接模型」)
@@ -579,8 +584,8 @@ inn "W0 TC-023: role row is re-staged postponed (ADR 0009)"      "$WL" "Role tes
 inn "W0 TC-024: new owed-parity row"                             "$WL" 'owed parity — every action has an MCP tool and a web route; the owed list only shrinks'
 inn "W0 TC-025: ...its check arrives with 011a's parity test"    "$WL" '011a'
 cntW=$(printf '%s\n' "$WL" | grep -cE '^[|]' || true)
-[ "${cntW:-0}" = 17 ] && ok "W0 TC-026: waiting list has 17 table lines" || bad "W0 TC-026: waiting list has 17 table lines" "$cntW"
-inn "W0 TC-027: other rows untouched (run index)"                "$WL" "The platform's run index is never a second truth"
+[ "${cntW:-0}" = 15 ] && ok "W0 TC-026: waiting list has 15 table lines" || bad "W0 TC-026: waiting list has 15 table lines" "$cntW"
+nin "W0 TC-027: other rows untouched: run index row moved to the constitution" "$WL" "The platform's run index is never a second truth"
 inn "W0 TC-027: ...(model-neutral command layer)"                "$WL" "Model-neutral command layer: no command depends on one model's behaviour"
 
 inn "W0 TC-028: ADR 0009 open-questions subsection"              "$(cat "$RM")" 'Open questions from ADR 0009 (answered before the slice that needs them)'
