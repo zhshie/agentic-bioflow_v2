@@ -12,17 +12,22 @@ WEB = PLATFORM_DIR / "abf_platform" / "web.py"
 BOARD = PLATFORM_DIR / "abf_platform" / "web_board.py"
 
 # The read actions a web route calls; each has a same-named MCP tool.
-WEB_ROUTES = {"list_runs": "GET /", "get_run": "GET /"}
+# 012b: launch and cancel are the tools whose web routes are POST /launch and POST /act/cancel; the routes call request_launch and request_cancel (INTERNAL below), never launch or cancel.
+WEB_ROUTES = {"list_runs": "GET /", "get_run": "GET /", "list_compute_envs": "GET /launch",
+              "launch": "POST /launch, through request_launch", "cancel": "POST /act/cancel, through request_cancel"}
+# 012b: the tools resume and relaunch have no action of that name (they are request_resume / request_relaunch); their web routes are POST /act/resume and POST /act/relaunch.
+WEB_VIA_REQUEST = {"launch": "request_launch", "cancel": "request_cancel", "resume": "request_resume", "relaunch": "request_relaunch"}
 # The PAGE confirmation channel is web-only by design: the MCP side uses the form channel and request_launch/request_cancel.
 WEB_ONLY = {
     "describe_request": "the confirmation page shows one pending request to the person it was made for",
     "approve": "the button of the confirmation page: the PAGE channel's yes",
     "platform_path_for": "the page finds platform.db from the index path, the way every entry does",
+    "launch_prefill": "the quick launch of the launch form: what the person's own earlier run was sent with, when it is still kept",
 }
 # Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).
-OWED = {"list_compute_envs": "012a", "get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d",
-        "launch": "terminal only, with request forms on /c/", "cancel": "terminal only, with request forms on /c/",
+OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d",
         "forget": "terminal only (v3 keep-submissions), with a request form on /c/"}
+OWED_BEFORE_012B = {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "launch", "cancel", "forget"}
 # Helpers, classes and constants that no web route or tool exposes by name. 009i: ConnectorCaller, form_is_trusted (MCP side only).
 # v3 (keep-submissions, resume/relaunch): request_forget, request_resume, request_relaunch are what the tools forget, resume, relaunch call; forget_check and keep_screen are helpers; the FORGET_* and RUN_NOT_FOUND words are constants.
 INTERNAL = {"request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
@@ -101,7 +106,7 @@ def mcp_called_actions():
 
 def test_tcs06_owed_follows_the_rule():
     # TC-S06 (replaces TC-H16d): R2, every public action a tool calls and no web route calls is in OWED or INTERNAL
-    assert {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files"} <= set(OWED)
+    assert {"get_compute_env", "list_agents", "list_site_files"} <= set(OWED)
     for name in mcp_called_actions():          # platform_path_for is the helper every entry uses to find platform.db
         assert name in set(WEB_ROUTES) | set(WEB_ONLY) | set(OWED) | INTERNAL, name
     assert not (set(OWED) & called_actions((WEB).read_text(encoding="utf-8")))
@@ -110,7 +115,8 @@ def test_tcs06_owed_follows_the_rule():
 
 def test_tcs07_owed_is_written_out():
     # TC-S07: the literal list, also in the ledger; it may only shrink
-    assert set(OWED) == {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "launch", "cancel", "forget"}
+    assert set(OWED) == {"get_compute_env", "list_agents", "list_site_files", "forget"}
+    assert set(OWED) < OWED_BEFORE_012B          # 012b: it only shrank (TC-038)
     ledger = (PLATFORM_DIR.parent / "specs" / "011a-web-shell" / "ledger.md").read_text(encoding="utf-8")
     for name in OWED:
         assert name in ledger
@@ -139,5 +145,20 @@ def test_tch16g_a_new_public_function_is_caught():
 
 def test_tch16h_an_owed_name_called_by_the_web_is_caught():
     # TC-H16h
-    assert owed_called("from . import actions\nactions.launch(1)\n") == {"launch"}
+    assert owed_called("from . import actions\nactions.forget(1)\n") == {"forget"}      # 012b: launch left OWED, forget did not
     assert owed_called("from .actions import list_agents\n") == {"list_agents"}
+
+
+def test_tc037_web_routes_call_the_request_actions():
+    # TC-037 (012b): the four write routes are in the web table, each through its request_* action, and none of them is owed any more
+    src = WEB.read_text(encoding="utf-8")
+    assert {"launch", "cancel", "list_compute_envs"} <= set(WEB_ROUTES) and not ({"launch", "cancel", "list_compute_envs"} & set(OWED))
+    assert set(WEB_VIA_REQUEST.values()) <= called_actions(src)
+    assert not ({"launch", "cancel"} & called_actions(src))          # TC-060: the web never confirms by itself
+
+
+def test_tc039_the_guards_are_not_loosened():
+    # TC-039: a new public name and an owed name called by the web are still caught
+    assert union_problems(public_names() | {"get_board"}, tables()) != []
+    assert owed_called("from . import actions\nactions.forget(1)\n") == {"forget"}
+    assert owed_called("from . import actions\nactions.launch(1)\n") == set()      # launch left OWED in 012b; test_web_actions bans the call
