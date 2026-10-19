@@ -1,6 +1,7 @@
 # Nothing existing: tests of the formal notice component and the running stage page of spec 011b (read-only); the pages are ours.
 """011b: formal notices and the running stage page. Test cases are named in the comments (TC-R01 ...). Runs are seeded straight into index.db."""
 import calendar
+import html
 import re
 
 import pytest
@@ -69,8 +70,8 @@ def attention(text):
 
 def cards(text):
     mid = pane(text, "middle")
-    return ([plain(x) for x in re.findall(r'<h2 class="ct">(.*?)</h2>', mid, re.S)],
-            [plain(x) for x in re.findall(r'<p class="cv">(.*?)</p>', mid, re.S)])
+    return ([html.unescape(plain(x)) for x in re.findall(r'<h2 class="ct">(.*?)</h2>', mid, re.S)],
+            [html.unescape(plain(x)) for x in re.findall(r'<p class="cv">(.*?)</p>', mid, re.S)])
 
 
 def test_r01_r13_failed_and_lost_notice_fields(w):
@@ -121,11 +122,12 @@ def test_r07_r19_cut_and_missing_time(w):
     with con:
         con.execute("UPDATE runs SET ended_at = NULL WHERE id = ?", (f3,))
     con.close()
-    l2 = seed(w, "l2", "lost", ann, started=T0)
-    for rid in (f3, l2):
-        t = c.get("/?run=" + rid).text
-        when = re.search(r'class="when"[^>]*>(.*?)</', notices(t)[0], re.S).group(1)
-        assert plain(when) == "—" and "None" not in t
+    t = c.get("/?run=" + f3).text
+    assert plain(re.search(r'class="when"[^>]*>(.*?)</', notices(t)[0], re.S).group(1)) == "—" and "None" not in t
+    # last_message_at is NOT NULL in index.db, so a lost run without it is fed to the component directly (L2)
+    from abf_platform import web_board
+    lost = web_board._notice(web_board.STRINGS["zh"], "zh", {"id": "x", "name": "l2", "status": "lost"}, None, None)
+    assert plain(re.search(r'class="when"[^>]*>(.*?)</', lost, re.S).group(1)) == "—" and "None" not in lost
 
 
 def test_r21_no_side_stripes(w):
@@ -247,7 +249,9 @@ def test_r60_r78_order_and_tabs(w):
         cur = re.findall(r"<a\b[^>]*aria-current[^>]*>(.*?)</a>", nav(m), re.S)
         assert [plain(x) for x in cur] == [plain(links[i][1])]
         t = c.get("/?run=%s&tab=%s&lang=en" % (a, tab)).text
-        assert all("lang=en" in h for h in hrefs(t) if h.startswith("/?") or h.startswith("/settings")), tab
+        # every link keeps lang=en except the 中 link of the language switch, which is the one that drops it
+        assert [h for h in hrefs(t) if (h.startswith("/?") or h.startswith("/settings")) and "lang=en" not in h] == \
+            ["/?run=%s&amp;tab=%s" % (a, tab)], tab
         assert "<script" not in t and not re.search(r"\son\w+=", t)
     t = c.get("/?run=%s&stage=running&tab=info" % a).text
     sw = re.search(r'class="switch">(.*?)</span>', t, re.S).group(1)

@@ -117,6 +117,17 @@ def card_lines(text, which):
     return re.findall(r"<li\b[^>]*>.*?</li>", card(text, which), re.S)
 
 
+def card_notices(text, which):
+    """011b: the attention card holds formal notices (`<article class="notice">`), not one-line items; {run name: notice html}."""
+    found = re.findall(r"<article\b.*?</article>", card(text, which), re.S)
+    return {plain(re.search(r'class="aname"[^>]*>(.*?)</a>', x, re.S).group(1)): x for x in found}
+
+
+def notice_cause(notice):
+    """The value of the 原因 / Cause field of a notice."""
+    return plain(re.search(r"<dt>(?:原因|Cause)</dt>\s*<dd>(.*?)</dd>", notice, re.S).group(1))
+
+
 def card_num(text, which):
     return plain(re.search(r'<span\b[^>]*class="num"[^>]*>(.*?)</span>', card(text, which), re.S).group(1))
 
@@ -496,9 +507,10 @@ def test_tcl25_l26_failed_key_fact(w):
     assert its["long"].endswith("A" * 79 + "…") and "A" * 80 not in its["long"] and "B" not in its["long"]  # R10: cut at 79 + ellipsis and "SECONDLINE" not in its["long"]
     assert its["short"].endswith("short reason")
     assert its["none"].endswith("原因未記錄") and its["empty"].endswith("原因未記錄")
-    lines = {re.search(r"(long|short|none|empty)", plain(x)).group(1): plain(x) for x in card_lines(t, "attention")}
-    assert lines["long"].endswith("A" * 79 + "…") and "A" * 80 not in lines["long"] and "B" not in lines["long"] and lines["short"].endswith("short reason")
-    assert lines["none"].endswith("原因未記錄") and lines["empty"].endswith("原因未記錄")
+    # 011b: the card's items are formal notices; the pin moves to the notice's 原因 field (ledger: TC-L25, TC-S34)
+    lines = {k: notice_cause(x) for k, x in card_notices(t, "attention").items()}
+    assert lines["long"] == "A" * 79 + "…" and lines["short"] == "short reason"
+    assert lines["none"] == "原因未記錄" and lines["empty"] == "原因未記錄"
 
 
 def test_tcl28_selected_item(w):
@@ -648,7 +660,8 @@ def test_tcl14_l15_l16_middle(w):
     mid = pane(c.get("/?run=" + f).text, "middle")
     head = re.search(r'<[^>]*class="[^"]*\bstate-failed\b[^"]*"[^>]*>[^<]*</', mid)
     assert head and "✗" in head.group(0) and "失敗" in head.group(0) and mid.index("bad-one") < mid.index(head.group(0))
-    cells = re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", mid, re.S)
+    # 011b: the page also has the notice's field list (問題／原因／可選動作); the task legend is the dl of class counts
+    cells = re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", re.search(r'<dl class="counts">(.*?)</dl>', mid, re.S).group(1), re.S)
     assert cells == [("成功", "11"), ("快取", "12"), ("失敗", "13"), ("中止", "14"), ("執行中", "15"), ("等待", "16"), ("已送出", "17")]
     run = pane(c.get("/?run=%s&stage=running" % f).text, "middle")
     prev = re.search(r'<a\b[^>]*rel="prev"[^>]*>(.*?)</a>', run, re.S)
@@ -704,7 +717,10 @@ def test_tch08_states_and_symbols(w):
         assert re.search(r'class="badge state-%s"[^>]*>\s*%s\s' % (st, sym), mid)
     for st, label in (("running", "執行中"), ("succeeded", "成功"), ("failed", "失敗"), ("lost", "失聯/暫停")):
         line = [x for x in card_lines(t, "running") + card_lines(t, "attention") if "n-" + st in plain(x)]
-        if st == "succeeded":
+        if st in ("failed", "lost"):        # 011b: these are notices now (level pill "! 需要處理" with the state class), not one-line items
+            notice = [x for x in card_notices(t, "attention").values() if "state-" + st in x]
+            assert len(notice) == 1 and "!" in plain(notice[0]) and "需要處理" in plain(notice[0]), st
+        elif st == "succeeded":
             assert line == []
         else:
             assert len(line) == 1 and label in plain(line[0]) and "state-" + st in line[0], st
@@ -730,11 +746,12 @@ def test_tcs32_s33_s34_now_page(w):
     assert len(lines) == 2
     for line in lines:
         assert "▶" in line and "執行中" in plain(line) and re.search(r'<a\b[^>]*href="/\?run=id-run\d"', line)
-    att = {re.search(r"(bad1|bad2|gone1)", plain(x)).group(1): x for x in card_lines(t, "attention")}
+    # 011b: formal notices replace the one-line items (ledger: TC-S32, TC-S33, TC-S34)
+    att = card_notices(t, "attention")
     assert len(att) == 3
-    assert "✗" in att["bad1"] and "失敗" in plain(att["bad1"]) and plain(att["bad1"]).endswith("Out of memory")
-    assert plain(att["bad2"]).endswith("原因未記錄")
-    assert "⏸" in att["gone1"] and "失聯/暫停" in plain(att["gone1"]) and "原因" not in plain(att["gone1"])
+    assert "state-failed" in att["bad1"] and "分析失敗" in plain(att["bad1"]) and notice_cause(att["bad1"]) == "Out of memory"
+    assert notice_cause(att["bad2"]) == "原因未記錄"
+    assert "state-lost" in att["gone1"] and "與站台失去聯絡" in plain(att["gone1"]) and notice_cause(att["gone1"]) == "三次心跳沒有回應"
     for line in att.values():
         assert re.search(r'<a\b[^>]*href="/\?run=id-[a-z0-9]+"', line)
     assert "fine" not in card(t, "running") and "fine" not in card(t, "attention")
@@ -759,8 +776,10 @@ def test_tcs36_cards_are_read_only(w):
     for h in hrefs(mid):
         u = urlsplit(htmllib.unescape(h))
         assert u.path == "/" and "run" in parse_qs(u.query), h
-    for word in ("重跑", "續跑", "上傳", "確認", "Resume", "Retry"):
+    for word in ("上傳", "確認", "Resume", "Retry"):
         assert word not in mid
+    # 011b: 續跑／重跑 now appear, only as greyed text in the notice (no form, link or button element: asserted above)
+    assert re.sub(r'<span class="gbtn" aria-disabled="true">(續跑|重跑)</span>', "", mid).count("續跑") == 1   # the options line
 
 
 def test_tcs37_attention_cap(w):
@@ -768,7 +787,7 @@ def test_tcs37_attention_cap(w):
     ann = w.user("ann")
     bulk(w, ann, 250, "failed", "bad")
     t = login(w, "ann").get("/").text
-    assert card_num(t, "attention") == "250" and len(card_lines(t, "attention")) == 100 and "還有 150 筆" in card(t, "attention")
+    assert card_num(t, "attention") == "250" and len(card_notices(t, "attention")) == 100 and "還有 150 筆" in card(t, "attention")
 
 
 # ---- empty and broken index -------------------------------------------------------------------------------------------------------
@@ -1090,7 +1109,8 @@ def test_tcl34_english_reason_not_recorded(w):
     ann = w.user("ann")
     seed(w, "nr", "failed", ann, reason=None)
     t = login(w, "ann").get("/?lang=en").text
-    assert plain(items(t, "running")[0]).endswith("reason not recorded") and plain(card_lines(t, "attention")[0]).endswith("reason not recorded")
+    assert plain(items(t, "running")[0]).endswith("reason not recorded")
+    assert notice_cause(card_notices(t, "attention")["nr"]) == "reason not recorded"     # 011b: the card's pin is the notice's Cause field
 
 
 def test_tcl35_l36_l37_switch_and_links(w):
@@ -1219,7 +1239,8 @@ def test_tn02_no_detail_logs_or_resume(w):
     rid = seed(w, "bad", "failed", ann, reason="boom")
     c = login(w, "ann")
     t = c.get("/?run=" + rid).text
-    assert not re.search(r"(?i)resume|restart|/logs|\blogs?\b", t) and "boom" in t
+    # 011b: the page has a Logs tab (a grey panel) whose link says tab=logs; links are not what this pin is about, so strip them first
+    assert not re.search(r"(?i)resume|restart|/logs|\blogs?\b", re.sub(r'href="[^"]*"', "", t)) and "boom" in t
     for p in ("/runs/" + rid, "/runs/%s/logs" % rid, "/resume", "/restart"):
         assert c.get(p).status_code == 404 and c.post(p).status_code in (404, 405), p
 
@@ -1274,8 +1295,8 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
         assert t.count("<details") == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):
             u = urlsplit(htmllib.unescape(h))
-            assert u.path in ("/", "/settings") and set(parse_qs(u.query)) <= {"run", "stage", "lang"}, h
-        for word in ("系統自動處理紀錄", "待你決定", "Awaiting you", "終端機", "Terminal", "目前步驟", "Current step", "拖放", "MultiQC", "Metrics"):
+            assert u.path in ("/", "/settings") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab"}, h      # 011b adds ?tab=
+        for word in ("系統自動處理紀錄", "待你決定", "Awaiting you", "終端機", "Terminal", "拖放", "MultiQC"):     # 011b: 目前步驟／Current step／Metrics now exist
             assert word not in t, (url, word)
     left = pane(c.get("/").text, "left")
     assert not re.search(r"project|analys|專案|分析", " ".join(hrefs(left)), re.I)
@@ -1342,9 +1363,9 @@ def test_r10_reason_marker_left_tag_and_wrapping(w):
     t = login(w, "ann").get("/").text
     its = {re.search(r"\d+: (cut|exact) ", plain(x)).group(1): plain(x) for x in items(t, "running")}
     assert its["cut"].endswith("A" * 79 + "…") and its["exact"].endswith("E" * 80) and "…" not in its["exact"]
-    lines = {re.search(r"(cut|exact)", plain(x)).group(1): plain(x) for x in card_lines(t, "attention")}
-    assert lines["cut"].endswith("A" * 79 + "…") and lines["exact"].endswith("E" * 80)
-    assert full in login(w, "ann").get("/?run=id-cut").text
+    lines = {k: notice_cause(x) for k, x in card_notices(t, "attention").items()}      # 011b: the pin moves to the notice's 原因 field
+    assert lines["cut"] == "A" * 79 + "…" and lines["exact"] == "E" * 80
+    assert full in login(w, "ann").get("/?run=id-cut&tab=info").text      # 011b: the whole reason moved to the Run info tab (TC-R11 keeps it off the default tab)
     # R10-2: left tag is the status text, both languages
     bob = w.user("bob")
     for n, st in (("r1", "running"), ("r2", "failed"), ("r3", "succeeded"), ("r4", "lost")):
