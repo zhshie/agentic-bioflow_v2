@@ -820,7 +820,8 @@ def test_tc068_no_new_way_to_log_in(w):
     client = w.web()
     # 009i: the login is still the one name + web password; 011a added the board; the other routes added are the OAuth ones, which log nobody in
     assert {r.path for r in client.app.routes} == {"/", "/settings", "/login", "/logout", "/c/{rid}", "/consent/{rid}", "/authorize", "/token",
-                                                   "/register", "/revoke", "/.well-known/oauth-authorization-server"}
+                                                   "/register", "/revoke", "/.well-known/oauth-authorization-server",
+                                                   "/launch", "/act/{verb}"}      # 012b: the launch form and the three asking buttons; none of them logs anybody in
     page = (PLATFORM_DIR / "abf_platform" / "web.py").read_text(encoding="utf-8")
     assert set(re.findall(r"store\.(\w+)", page)) == {"MAX_PASSWORD_CHARS", "MIN_PASSWORD_CHARS", "WEB_SESSION_SECONDS", "check_web_password",
                                                      "create_web_session", "default_tokens_path", "end_web_session", "set_meta",

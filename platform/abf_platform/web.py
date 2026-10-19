@@ -8,6 +8,9 @@ runs by stage; English with ?lang=en), and GET /settings (every section still to
 The only routes there are:
 
   GET  /             the board (spec 011a): the Now page, or with ?run=<id> that run, ?stage=<name> its stage, ?tab=<name> a tab of its running stage page (011b), ?lang=en the English page; needs the cookie
+  GET  /launch       the launch form (spec 012b), ?from=<run id> fills it from an earlier run of the same person; needs the cookie
+  POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
+  POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page
   GET  /settings     the settings frame (spec 011a): read-only, every section greyed "coming later"; needs the cookie
   GET  /login        the login form (name + web password)
   POST /login        log in; the password is checked against its scrypt hash; a cookie of 12 hours
@@ -350,13 +353,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     def read_reasons(ids, caller):
         return read_details(ids, caller)[0]
 
-    async def board(request):
-        sid, user = user_of(request)
-        if user is None:
-            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
-        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
-        lang = web_board.pick_lang(request.query_params.get("lang"))
-        run_id = request.query_params.get("run") or ""
+    async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200):
+        """The board for one logged-in user: the Now page, or one run's page with `flash` (one plain line of refusal) on it."""
         selected = None
         if run_id:
             selected = await run_in_threadpool(read_run, run_id, caller)
@@ -364,9 +362,138 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                 return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
         runs = await run_in_threadpool(read_runs, caller)
         reasons, steps = await run_in_threadpool(read_details, web_board.failed_ids_shown(runs), caller)
-        doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, request.query_params.get("stage"), lang, reasons,
-                                     steps, request.query_params.get("tab"), clock())
-        return HTMLResponse(doc, headers=_HEADERS)
+        doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, reasons, steps, tab, clock(),
+                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash)
+        return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+
+    async def board(request):
+        sid, user = user_of(request)
+        if user is None:
+            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        return await board_page(sid, user, caller, lang, request.query_params.get("run") or "", request.query_params.get("stage"),
+                                request.query_params.get("tab"))
+
+    # ---- spec 012b: write actions from the web. Every route here only ASKS: it calls a request_* action for the logged-in caller and sends
+    # the browser to the confirmation page /c/<id>, where the person presses 送出. Nothing is confirmed or queued from here.
+    ACT_VERBS = {"resume": actions.request_resume, "relaunch": actions.request_relaunch}
+
+    def to_confirmation(answer):
+        """303 to the confirmation page of a request the action layer made (or found already confirmed), else None."""
+        if answer.get("ok") and RID.match(str(answer.get("id") or "")):
+            return RedirectResponse("/c/" + answer["id"], status_code=303, headers=_HEADERS)
+        return None
+
+    async def act_post(request):
+        if not same_origin(request):
+            return foreign(request)
+        verb = request.path_params["verb"]
+        sid, user = user_of(request)
+        if user is None:
+            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        run_id = str(form.get("run", ""))[:200]
+        if verb not in ("resume", "relaunch", "cancel"):
+            return _page("找不到 (not found)", "<p>沒有這個網址。</p>", 404)
+        if not _same(form.get("csrf", ""), csrf(sid, "act:" + run_id)):
+            return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(web_board.STRINGS[lang]["r_form"]), 403)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        view = await run_in_threadpool(read_run, run_id, caller)
+        if view is None:
+            return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        if verb == "cancel":
+            answer = await actions.request_cancel(platform_path, run_name=view["name"], caller=caller, clock=clock)
+        else:
+            answer = await ACT_VERBS[verb](platform_path, run_name=view["name"], caller=caller, clock=clock, index_path=index_path)
+        done = to_confirmation(answer)
+        if done is not None:
+            return done
+        line = web_board.plain_reason(answer.get("message"), lang) + " " + web_board.STRINGS[lang]["r_none"]
+        return await board_page(sid, user, caller, lang, run_id, flash=line, code=409)
+
+    def launch_choices(caller):
+        sheets = actions.list_samplesheets(platform_path, caller=caller)
+        envs = [e["name"] for e in actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]]
+        return sheets, envs
+
+    async def launch_page(sid, user, caller, lang, values, errors, notes, source=None, code=200):
+        sheets, envs = await run_in_threadpool(launch_choices, caller)
+        values = dict(values)
+        values.setdefault("samplesheet", sheets[0] if sheets else None)
+        values.setdefault("ce_name", envs[0] if envs else None)
+        runs = await run_in_threadpool(read_runs, caller)
+        reasons = await run_in_threadpool(read_reasons, web_board.failed_ids_shown(runs), caller)
+        doc = web_board.render_launch(user["name"], csrf(sid, "logout"), runs, values, errors, notes, sheets, envs, csrf(sid, "launch"), lang, reasons,
+                                      source)
+        return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+
+    async def launch_get(request):
+        sid, user = user_of(request)
+        if user is None:
+            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        t = web_board.STRINGS[lang]
+        origin = request.query_params.get("from") or ""
+        values, notes, source = {}, [], None
+        if origin:       # quick launch: the boxes of an earlier run of this person, when its content is still kept
+            view = await run_in_threadpool(read_run, origin, caller)
+            if view is None:
+                return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+            earlier = await run_in_threadpool(actions.launch_prefill, platform_path, view["name"], caller=caller)
+            when = web_board.taipei_time(earlier.get("launched_at"))
+            source = (view["id"], view["name"], view["status"], when)
+            if earlier.get("kept"):
+                values = {"pipeline": earlier.get("pipeline") or "", "revision": earlier.get("revision") or "", "ce_name": earlier.get("ce_name"),
+                          "params": web_board.params_text(earlier.get("params"))}
+                notes.append(t["l_from"])
+            else:
+                notes.append(t["l_not_kept"])
+        return await launch_page(sid, user, caller, lang, values, [], notes, source)
+
+    async def launch_post(request):
+        if not same_origin(request):
+            return foreign(request)
+        sid, user = user_of(request)
+        if user is None:
+            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        t = web_board.STRINGS[lang]
+        if not _same(form.get("csrf", ""), csrf(sid, "launch")):
+            return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(t["r_form"]), 403)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        sheets, envs = await run_in_threadpool(launch_choices, caller)
+        pipeline = str(form.get("pipeline", "")).strip()
+        values = {"pipeline": pipeline, "revision": str(form.get("revision", "")).strip(), "run_name": str(form.get("run_name", "")).strip(),
+                  "samplesheet": str(form.get("samplesheet", "")), "ce_name": str(form.get("ce_name", "")), "params": str(form.get("params", ""))}
+        errors = []
+        if not pipeline or not re.match(r"^[A-Za-z0-9._/-]{1,100}\Z", pipeline):
+            errors.append(t["e_pipeline"])
+        if not values["revision"] or re.search(r"\s", values["revision"]):
+            errors.append(t["e_revision"])
+        if not values["run_name"]:
+            errors.append(t["e_run_name"])
+        if values["samplesheet"] not in sheets:
+            errors.append(t["e_sheet"])
+        if values["ce_name"] not in envs:
+            errors.append(t["e_ce"])
+        params, bad = web_board.parse_params(values["params"], t)
+        errors += bad
+        if not errors:
+            answer = await actions.request_launch(
+                platform_path, pipeline=pipeline if "/" in pipeline else "nf-core/" + pipeline, revision=values["revision"],
+                run_name=values["run_name"], samplesheet=values["samplesheet"], ce_name=values["ce_name"], params=params or None,
+                caller=caller, clock=clock)
+            done = to_confirmation(answer)
+            if done is not None:
+                return done
+            errors.append(web_board.plain_reason(answer.get("message"), lang) + " " + t["r_none"])
+        else:
+            errors.append(t["e_body"])
+        return await launch_page(sid, user, caller, lang, values, errors, [], code=400)
 
     async def settings(request):
         sid, user = user_of(request)
@@ -455,7 +582,9 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         gone = consent_gone(provider.consent_request(rid)) if status in ("decided", "expired") else None
         return gone or _page("未處理", "<p class=\"bad\">什麼都沒有改。請回到連接器重新開始。</p>", 403 if status == "user" else 404)
 
-    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
+    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
+                            Route("/launch", launch_get, methods=["GET"]), Route("/launch", launch_post, methods=["POST"]),
+                            Route("/act/{verb}", act_post, methods=["POST"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/c/{rid}", confirm_get, methods=["GET"]), Route("/c/{rid}", confirm_post, methods=["POST"]),
                             Route("/consent/{rid}", consent_get, methods=["GET"]), Route("/consent/{rid}", consent_post, methods=["POST"])]
