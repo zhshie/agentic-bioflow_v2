@@ -71,7 +71,7 @@ _HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Po
 _PLAIN = {      # the labels of the plain block at the top of the confirmation page
     "zh": {"kind": "種類", "launch": "送出新分析", "resume": "續跑", "relaunch": "重跑", "cancel": "取消", "run": "run 名稱", "pipeline": "管線",
            "version": "版本", "env": "環境", "samples": "樣本數", "folder": "新資料夾", "full": "完整內容（技術細節）"},
-    "en": {"kind": "Request", "launch": "New analysis", "resume": "Resume", "relaunch": "Re-run", "cancel": "Cancel", "run": "Run name",
+    "en": {"kind": "Request", "launch": "New analysis", "resume": "Continue the run", "relaunch": "Re-run", "cancel": "Cancel", "run": "Run name",
            "pipeline": "Pipeline", "version": "Version", "env": "Environment", "samples": "Samples", "folder": "New folder",
            "full": "Full content (technical)"}}
 HOME = "/"                  # where a login with no (or a refused) `next` goes: a constant, so there is no open redirect
