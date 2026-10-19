@@ -22,7 +22,7 @@ import time
 
 from abf_launch import build
 
-from .. import agents, compute_envs, confirm, jobs, status, store
+from .. import agents, compute_envs, confirm, jobs, status, store, su
 
 NotApproved = confirm.NotApproved
 
@@ -85,6 +85,22 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
         return {"found": False, "id": run_id,
                 "message": "Run not found: %s (找不到這個 run)" % run_id}
     return view
+
+
+def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site=None, rates=None, tasks_of=None):
+    """The SU a run used, and what that costs, from its trace. The run must be the caller's own (else the same answer as get_run's
+    not found). Unknown (None, with the reasons) when the record lacks what the formula needs; never a guess."""
+    view = status.find_run(index_path, run_name, status.now())
+    if view is not None and caller is not None and view["name"] not in jobs.owned_run_names(
+            platform_path_for(index_path, platform_path), caller.user_id):
+        view = None
+    if view is None:
+        return {"found": False, "id": run_name,
+                "message": "Run not found: %s (找不到這個 run)" % run_name}
+    rates = rates if rates is not None else su.load_rates()
+    if site is None and isinstance(rates, dict):
+        site = rates.get("default_site")        # the one site the rates file names as the default
+    return su.run_su(index_path, run_name, site, rates, tasks_of)
 
 
 def list_compute_envs(platform_path, *, caller=None):
