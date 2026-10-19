@@ -18,3 +18,11 @@ The confirmation page (separate task web-confirm-plain), layout changes, new rou
 - "Succeeded" does not appear in any rendered page; "Done" does on the en page for a succeeded run.
 - Existing tests that pin glyphs or "Succeeded" are changed only by swapping the string, each change listed in the ledger.
 - No schema change; no migration needed.
+
+## Rulings, 2026-10-19 (developer-agent, after the contract review)
+
+- Q1 (tally). Four groups, one per state, always in this order: 執行中 n · 待處理 n · 失敗 n · 完成 n (en: Running n · Pending n · Failed n · Done n). A failed run counts under 失敗; a lost/paused run counts under 待處理. A group with 0 is still shown (0), so the line never changes shape. Add a test with failed and lost runs present.
+- Q2 (task counts). The per-run task-count cell that today says 成功／Succeeded (Nextflow task numbers) becomes 完成／Done. The other task-count words (Cached, Failed, Aborted …) and all seven numbers stay unchanged.
+- Q3 (DESIGN.md / TESTING.md). This task updates both to the new rule: DESIGN.md "States" becomes "coloured square + word; colour never carries meaning alone" (one sentence change, nothing else in DESIGN.md), and the 011a visual-check step 3 in docs/TESTING.md passes when the four states are told apart by their words in black and white. Add `DESIGN.md` and `docs/TESTING.md` to this task's files.
+- Q4 (stage bar). A finished stage gets the Done square; the current stage gets the Running square; later stages get no square. Stage names and order unchanged.
+- Q5 (unknown status). A status that is none of the four shows a neutral grey square and the word 未知／Unknown; no glyph and no "?".
