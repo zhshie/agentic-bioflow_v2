@@ -73,3 +73,16 @@ Any write action from the web, upload, launch, results stage (011c), cost page (
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+## Rulings after contract round 1 (developer-agent, 2026-10-19)
+All strings below go in the STRINGS table with the same keys for zh / en.
+- Q1 Missing data: 問題 with no failed task → 「步驟未記錄」/"step not recorded"; 原因 empty → 「原因未記錄」/"reason not recorded" (same words 011a uses; TC-L34's pin moves to the component's 原因 field — log in ledger).
+- Q2 Time at the right of the notice: failed → ended_at; lost → last_message_at; shown `MM-DD HH:mm` Asia/Taipei; missing → "—".
+- Q3 Titles: failed → 「分析失敗」/"Analysis failed"; lost → 「與站台失去聯絡」/"Lost contact with the site". No error codes.
+- Q4 English: level 「! 需要處理」/"! Action needed"; fields 問題/"Problem", 原因/"Cause", 可選動作/"Options"; lost 問題 value 「失聯」/"Lost", 原因 「三次心跳沒有回應」/"No heartbeat three times in a row"; options text 「續跑／重跑（之後開放）」/"Resume / Re-run (coming later)" for both failed and lost; buttons 「續跑」「重跑」/"Resume" "Re-run" greyed, not forms or links.
+- Q5 Tabs: `?tab=` values `tasks`, `logs`, `info`, `config`, `metrics`; default `tasks`; unknown value → default; the 中｜EN links and stage links keep `run`, `stage` and `tab`. Names: 任務/Tasks, 日誌/Logs, 執行資訊/Run info, 設定檔/Configuration, 指標/Metrics. Summary cards: 目前步驟/Current step, 耗時/Duration, 運算環境/Compute, 費用/Cost.
+- Q6 Empty states: no notices for this run → 「目前沒有需要你處理的事」/"Nothing needs you right now"; Tasks tab with no failed task → 「沒有失敗的任務」/"No failed tasks"; total 0 → bar empty, counts all 0, cards "—" except duration.
+- Q7 Accepted: compute card, workdir column and launch facts show "—"/absent until the action layer exposes them (#138 adds workdir and cancel_requested_at; if it has landed in v3 when you build, use them; else leave absent). Log in ledger as owed.
+- Q8 Current step: if exactly one process is running show it; several → the first by name + 「等 N 項」/"+N more"; none → "—". Duration format: 「2 小時 5 分」/"2h 5m" (under a minute: 「不到 1 分」/"<1m").
+- Q9 Lost options same as failed. The analysis name in the notice is a link to that run's page (keeps lang).
+- Q10 Add docs/TESTING.md manual steps for N5 (screenshots + scrollWidth check).
