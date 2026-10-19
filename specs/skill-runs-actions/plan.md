@@ -25,3 +25,14 @@ Other skills (one PR each, later). platform/ code. hooks/. CHANGELOG.md is NOT e
 - S4 Agree with the verifier's reading: steps that call scripts which use `tw` internally (task_health.sh, tune_resources.sh, relaunch_with_override.sh, runs_board.sh, agent_ctl.sh) stay, each marked "v3 尚未提供" and listed as owed. The scripts are not changed here.
 - S5 Add one manual step to docs/TESTING.md under the runs/009e section: ask the AI, following the new skills/runs/SKILL.md, about one failed and one running run on a test platform; check it uses list_runs/get_run, never `tw`, and that every cancel/resume/relaunch waits for the person's yes.
 - S6 Keep tests/column_output_relay_rule.sh and tests/jev_test.sh anchors green; if a pinned name is removed, update that test per rule 4 and log it in the ledger.
+
+## Rulings, 2026-10-19 (after #138 merged into v3)
+
+The maintainer chose "platform tools first"; #138 is now in v3. It adds `read_task_log(run_name, task, which)` (end of `.command.err|out|log` of one failed task, read-only), a `workdir` per task in `get_run`, and `cancel_requested_at` on a run.
+
+- S7. Owed item **task-folder-path** is closed: the skill takes the task folder from `get_run`'s `workdir`. Remove the "v3 尚未提供 task 的資料夾路徑" wording at both places (around l.235 and l.242); the per-run check runs whenever `workdir` is present, and only falls back to asking the person when `get_run` has no `workdir` for that task (say so in one plain sentence).
+- S8. Owed item **log-download** is closed: the skill reads the failed task's log with `read_task_log` (`which` = err first, then out/log if err is empty), not with `scripts/fetch.sh`. Keep the refusals of `read_task_log` (no workdir, not launched from this platform, agent offline) as plain one-line fall-backs.
+- S9. Cancel: when a run has `cancel_requested_at`, the skill says a cancel was already asked for (with the time, Asia/Taipei) and does not offer another `cancel`.
+- S10. The `input` branch (around l.332): "correct the samplesheet row, then relaunch" contradicts S1 (relaunch reuses the same samplesheet and params). Reword: a corrected samplesheet means a **new launch** (the launch skill / `launch`), not `relaunch`; `relaunch` is only for re-running the same inputs.
+- S11. The ledger's owed list drops task-folder-path and log-download (6 items remain). The other "not available on v3 yet" items stay as they are.
+- S12. Re-grade the whole contract; TC-023 (params route) was fixed in 2d4bab2 and must be graded again.
