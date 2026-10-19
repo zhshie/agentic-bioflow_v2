@@ -4,6 +4,7 @@ import asyncio
 import base64
 import copy
 import datetime
+import fcntl
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -187,12 +189,37 @@ def own_runs(state_path, user_id, names):
         con.close()
 
 
-def free_port():
+_PORT_LOCK_DIR = Path(tempfile.gettempdir()) / "abf-test-ports"
+_held_port_locks = []  # kept open for the life of this process, so no other shard can take the port
+
+
+def _candidate_port():
+    """A port the OS says is free right now (not yet reserved)."""
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     port = s.getsockname()[1]
     s.close()
     return port
+
+
+def free_port():
+    """A free port that no other test process (parallel shard) holds.
+
+    The OS candidate is claimed with an exclusive flock on a per-port file in a
+    temp dir shared by all shards; a port another shard already claimed is skipped.
+    The lock lasts until this process exits.
+    """
+    _PORT_LOCK_DIR.mkdir(parents=True, exist_ok=True)
+    while True:
+        port = _candidate_port()
+        f = open(_PORT_LOCK_DIR / ("%d.lock" % port), "w")
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            f.close()
+            continue
+        _held_port_locks.append(f)
+        return port
 
 
 def pkg_env(**extra):

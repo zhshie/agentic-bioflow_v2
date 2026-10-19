@@ -20,6 +20,10 @@
 #   methods.md        scripts/methods_text.py. The pipeline's own methods
 #                     paragraph with the citation slot it leaves for the
 #                     author filled in.
+#   report.md         scripts/report_facts.py: run info, inputs, the methods,
+#                     a link to each MultiQC report, and an empty
+#                     Interpretation section. Files only, no AI. An edited
+#                     report.md is kept; the new one goes to report.facts.md.
 #   references.bib    scripts/cite.sh over every DOI those two turned up.
 #                     Resolved over the network, never recalled; anything
 #                     unresolved stays in the file as CITATION NEEDED.
@@ -119,6 +123,30 @@ CACHE_ROOT="$( . "$HERE/settings.sh" >/dev/null 2>&1; printf '%s' "${ABF_ROOT:-}
 [ -n "$CACHE_ROOT" ] && CACHE_ARGS=(--cache-dir "$CACHE_ROOT/cache/pipeline_files")
 "$HERE/methods_text.py" ${CACHE_ARGS[@]+"${CACHE_ARGS[@]}"} --out "$OUT/methods.md" "${RUNS[@]}" || exit 1
 echo "wrote     submission/methods.md"
+
+# --- the facts report --------------------------------------------------------
+# report.md is deterministic (scripts/report_facts.py), and its sha256 is kept
+# in .report.md.sha256. A report.md that no longer matches that hash - or has
+# no hash at all - was edited by the person, so it is never overwritten: the
+# fresh one goes to report.facts.md and stderr says so.
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+REPORT_TMP="$OUT/.report.md.new"
+"$HERE/report_facts.py" --provenance "$OUT/provenance.json" --methods "$OUT/methods.md" \
+    --out "$REPORT_TMP" || { rm -f "$REPORT_TMP"; exit 1; }
+REPORT_HASH="$OUT/.report.md.sha256"
+if [ -f "$OUT/report.md" ] && { [ ! -f "$REPORT_HASH" ] \
+        || [ "$(sha256_of "$OUT/report.md")" != "$(tr -d ' \n' < "$REPORT_HASH")" ]; }; then
+    mv -f "$REPORT_TMP" "$OUT/report.facts.md"
+    echo "report.md was edited, so it was kept as it is; the new facts report is in report.facts.md" >&2
+    echo "wrote     submission/report.facts.md"
+else
+    mv -f "$REPORT_TMP" "$OUT/report.md"
+    sha256_of "$OUT/report.md" > "$REPORT_HASH"
+    echo "wrote     submission/report.md"
+fi
 
 # --- the bibliography --------------------------------------------------------
 # Every DOI the runs recorded, plus every DOI the citation matching turned up.

@@ -46,6 +46,10 @@ if [ -n "$VTOOLS" ] && ! grep -qE 'Edit|Write|NotebookEdit|\*' <<<"$VTOOLS"; the
 has "verifier: defaults to UNVERIFIED, not PASS"    "$VF" "Default to UNVERIFIED, never to PASS"
 has "verifier: refuses unconfirmed test cases"      "$VF" "says neither \`合約已確認\` nor \`已核可\`"
 has "verifier: checks for weakened tests"           "$VF" "Weakened tests"
+# dev-profiles-hook: specialty brief (TC-008, TC-014)
+has "verifier: specialty brief section"             "$VF" "## Specialty brief in the plan"
+has "verifier: specialty brief check"               "$VF" "專長守則檢查"
+has "verifier: report line for specialty brief"     "$VF" "專長守則檢查：……（計畫沒附就寫「無」）"
 
 EX="$ROOT/.claude/agents/executor.md"
 EFM=$(sed -n '/^---$/,/^---$/p' "$EX" 2>/dev/null)
@@ -56,6 +60,10 @@ ETOOLS=$(grep '^tools:' <<<"$EFM")
 if [ -n "$ETOOLS" ] && ! grep -qE 'Agent|Task|\*' <<<"$ETOOLS"; then echo ok; else echo "FAIL: $ETOOLS"; fails=$((fails+1)); fi
 has "executor: never weakens a test"                "$EX" "Never weaken a test to make it pass"
 has "executor: works in the worktree the dispatcher names" "$EX" "worktree"  # TC-007/009
+# dev-profiles-hook: specialty brief (TC-001, TC-006)
+has "executor: specialty brief section"             "$EX" "## Specialty brief in the plan"
+has "executor: specialty brief term"                "$EX" "專長守則"
+has "executor: report line for specialty brief"     "$EX" "專長守則：照做／無（計畫沒附）／偏離（原因）"
 printf '%-70s ' "executor: gate holds on a repeated stop attempt"
 if ! grep -q 'stop_hook_active.*exit 0' <<<"$EFM"; then echo ok; else echo "FAIL: stop_hook_active lets the second attempt through"; fails=$((fails+1)); fi
 
