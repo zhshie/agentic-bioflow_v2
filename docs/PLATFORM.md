@@ -3,9 +3,9 @@
 `platform/` holds a small program, `abf-platform`, that does two things, and a second program, `abf-station` (the station agent, section 6), that lets it ask about a site without ever holding a credential:
 
 1. It **receives** what Nextflow reports about a run. Nextflow's own `nf-tower` plugin sends the start of a run, its progress, a heartbeat once a minute and its end to whatever address you set as `tower.endpoint`. The receiver accepts those messages and keeps a small index of the runs.
-2. It **answers questions** about that index to an AI client over MCP (Model Context Protocol), with six read-only tools: `list_runs` and `get_run` for runs, `list_compute_envs`, `get_compute_env`, `list_agents` and `list_site_files` for the compute environments and the agent (sections 6 to 8). Two more tools, `launch` and `cancel`, only ask: they start nothing until a person says yes (section 9, "The confirmation page").
+2. It **answers questions** about that index to an AI client over MCP (Model Context Protocol), with six read-only tools: `list_runs` and `get_run` for runs, `list_compute_envs`, `get_compute_env`, `list_agents` and `list_site_files` for the compute environments and the agent (sections 6 to 8). Five more tools, `launch`, `cancel`, `resume`, `relaunch` and `forget`, only ask: they start, stop or delete nothing until a person says yes (section 9, "The confirmation page").
 
-It does not delete anything, it starts or cancels a run only after a person's yes, its only web pages are the login and the confirmation page (`abf-platform web`), and it never contacts Seqera Platform (ADR 0004). Nextflow's own records stay the truth about a run; the index can be thrown away and rebuilt (see "Rebuild the index").
+It never deletes a run, a run folder or a result on the site (it only prunes finished job rows after 7 days, and the owner can delete a submission's kept content with `forget`), it starts or cancels a run only after a person's yes, its only web pages are the login and the confirmation page (`abf-platform web`), and it never contacts Seqera Platform (ADR 0004). Nextflow's own records stay the truth about a run; the index can be thrown away and rebuilt (see "Rebuild the index").
 
 ## What you need
 
@@ -457,7 +457,7 @@ Not here: roles or sharing inside a lab (010), per-user folders on a remote stat
 
 ## Action layer
 
-The platform's actions live in one place, `platform/abf_platform/actions/`: one function per action (list runs, get a run, list or get compute environments, list agents, list site files, launch, cancel). The MCP tools call these functions and nothing else, and so will the web pages and the chat. A launch or a cancel is confirmed through one of three channels, each one object (`TERMINAL`, `ELICITED`, `PAGE`) that `actions.launch` and `actions.cancel` accept as `confirmed_by`: the terminal (`abf-platform launch|cancel` after a `y`), the form of the person's MCP client, and the confirmation page as the same logged-in user. Anything else, a string or a copy of one of them included, is refused with "no human confirmation channel" before a database is opened. The MCP tools `launch` and `cancel` call `request_launch` and `request_cancel`, which only write a pending request and ask; `approve` flips it, for the form or the page, and queues the job in the same transaction.
+The platform's actions live in one place, `platform/abf_platform/actions/`: one function per action (list runs, get a run, list or get compute environments, list agents, list site files, launch, cancel, resume, relaunch, forget). The MCP tools call these functions and nothing else, and so will the web pages and the chat. A launch or a cancel (and the other writing actions, `resume`, `relaunch` and `forget`) is confirmed through one of three channels, each one object (`TERMINAL`, `ELICITED`, `PAGE`) that `actions.launch` and `actions.cancel` accept as `confirmed_by`: the terminal (`abf-platform launch|cancel` after a `y`), the form of the person's MCP client, and the confirmation page as the same logged-in user. Anything else, a string or a copy of one of them included, is refused with "no human confirmation channel" before a database is opened. The MCP tools `launch` and `cancel` call `request_launch` and `request_cancel`, which only write a pending request and ask; `approve` flips it, for the form or the page, and queues the job in the same transaction.
 
 ## Guidance over the URL
 
@@ -468,6 +468,23 @@ A person who pastes the server's address into Claude gets the "how to use it" al
 - **Skills as resources.** The same six files (the five flows and `operational`) are also served as fixed resources, `skill://<name>/SKILL.md`, type `text/markdown`, one per file, with no path template, so no path can be passed in and anything else is refused. This is the fallback for a client that shows resources but not prompts. The pinned `mcp` SDK (2.3.0) has no Skills extension API, so the resources are plain ones; when the pin moves to an SDK that has one, only the registration changes.
 
 The text exists once, in `skills/`. The build copies that folder into the package as `abf_platform/skills/` (`platform/setup.py`; the copy is not committed), and a test builds a wheel and compares the copy with the folder byte for byte. Nothing here adds a tool, a login or a way to launch.
+
+## What the platform stores
+
+One row per kind of data. Every period below is a constant in `platform/abf_platform/` or a rule stated elsewhere in this document; where the code has no rule, the row says `no automatic deletion`. Tokens and passwords are kept only as hashes; the cookie is signed.
+
+| What | Where | How long |
+|---|---|---|
+| Run index: the runs, their processes and failed tasks as Nextflow reported them | `index.db` (`runs`, `processes`, `failed_tasks`) | Rebuildable: `abf-platform rebuild` drops it and builds it again from Nextflow's records (section 5); no automatic deletion. |
+| Confirmed submissions: the bundle (what was run) and the screen text (what the person approved), with the audit record of who sent it and when | `platform.db` (`confirmations`) | Until the owner forgets them with `abf-platform forget`; no clock clears a confirmed request. A void or expired request keeps its content 7 days; its audit columns stay. |
+| Job rows: the queue between the platform and the agent, with a copy of what was queued | `platform.db` (`jobs`) | 7 days after the job ends. |
+| Tokens, users and OAuth: sha256 of access tokens, scrypt hashes of web passwords, the connectors that registered and their logins | `tokens.db` (`tokens`, `users`, `oauth_clients`, `oauth_requests`, `oauth_codes`) | A run token 14 days; an OAuth access token 1 hour and a refresh token 30 days; a connector not used for 30 days is forgotten. Personal access tokens and users: no automatic deletion. |
+| Web sessions: sha256 of a browser login's id | `tokens.db` (`web_sessions`) | 12 hours; expired rows are cleared at the next login. |
+| Cookie signing key | `web_signing.key` | no automatic deletion. |
+| Uploads: samplesheets uploaded for runs | `uploads` folder, one folder per user | no automatic deletion. |
+| Fetched records: Nextflow's records read back from the site | `records` folder, one folder per run name | no automatic deletion. |
+
+**First use.** The platform keeps the bundle and the screen text of every launch you confirm until you delete them, and you can forget a submission at any time with `abf-platform forget`. Showing this sentence to a person the first time, in the web page and in the clients, is not built yet; this document is the only place it is written.
 
 ## Where the files are
 
@@ -488,7 +505,7 @@ Settings that only the tests change: `ABF_PLATFORM_DEADLINE_LAUNCH` (default 300
 
 ## What it does not do
 
-No deleting of runs, no clean-up of `work/`, no web page but the login and the confirmation page, no roles, and nothing that resumes, retries or relaunches on its own (section 9: a resume or a relaunch is asked for by name and waits for a person's yes each time; the web page and the buttons for them are later, and so is the automatic resume). The agent writes only the new run folder of a confirmed launch, the `head-<N>.sh` and `tower.token` of a confirmed resume, and sends only a confirmed stop; it never removes or moves anything on the site. Compute environments of the thirteen other types are stored and never used. MCP tools that create or change environments, a way to submit from a web page, and TLS in the program itself are later features (009 and after).
+No deleting of runs, run folders or results on the site (finished job rows are pruned after 7 days, and the owner can `forget` a submission's kept content), no clean-up of `work/`, no web page but the login and the confirmation page, no roles, and nothing that resumes, retries or relaunches on its own (section 9: a resume or a relaunch is asked for by name and waits for a person's yes each time; the web page and the buttons for them are later, and so is the automatic resume). The agent writes only the new run folder of a confirmed launch, the `head-<N>.sh` and `tower.token` of a confirmed resume, and sends only a confirmed stop; it never removes or moves anything on the site. Compute environments of the thirteen other types are stored and never used. MCP tools that create or change environments, a way to submit from a web page, and TLS in the program itself are later features (009 and after).
 
 ## Tests
 

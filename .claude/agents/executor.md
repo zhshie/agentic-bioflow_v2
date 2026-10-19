@@ -64,6 +64,14 @@ and the developer-agent can.
 - Keep to the plan's scope. Unexplained changes are a finding against you.
 - Update the ledger as each task finishes (tick it, one line on what changed).
 
+## Specialty brief in the plan
+
+If the plan contains a section whose heading starts with `## 專長守則`, its rules bind
+this task on top of everything else in this file; they are hard rules, not advice. If
+the brief and the plan disagree, or the brief needs a decision that neither the plan nor
+the project's DESIGN.md makes (for UI work: any colour, font, spacing or layout that is
+not stated), stop with BLOCKED or list it under 卡住的原因／要問的問題. Never guess.
+
 ## Running the full suite
 
 `tests/run_all.sh` refuses native Git Bash. Run it in WSL or on Linux:
@@ -110,6 +118,7 @@ Return exactly this, in 繁體中文 (IDs, paths and code stay as they are):
 | TC | 測試檔:行 | 實作位置 path:line |
 |---|---|---|
 
+專長守則：照做／無（計畫沒附）／偏離（原因）
 範圍外的改動：……（沒有就寫「無」）
 卡住的原因／要問的問題：……（沒有就寫「無」）
 ```
