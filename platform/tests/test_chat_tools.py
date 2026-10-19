@@ -159,7 +159,9 @@ def test_tc003_the_module_names_no_yes_channel_and_no_key():
     src = CHAT_TOOLS.read_text(encoding="utf-8")
     ids = _identifiers(ast.parse(src))
     assert not ids & {"TERMINAL", "ELICITED", "PAGE"}, ids
-    assert not [i for i in ids if re.search(r"approve|confirm", i, re.I)], ids
+    # Narrowed 2026-10-19 (plan revision): the one helper `confirm_dialog` legitimately has "confirm" in its name; it only builds a dict.
+    # Everything else must still not name approve/confirm, which keeps any import or call of the human channel's functions out.
+    assert not [i for i in ids if re.search(r"approve|confirm", i, re.I) and i != "confirm_dialog"], ids
     assert "anthropic" not in ids
     assert "api_key" not in src
 
@@ -180,7 +182,7 @@ def test_tc005_tc022_tc023_tc024_the_system_prompt():
     # TC-005, TC-022, TC-023, TC-024
     p = chat_tools().CHAT_SYSTEM_PROMPT
     assert isinstance(p, str) and p.strip()
-    assert "送出" in p and "確認頁" in p
+    assert "送出" in p and "確認送出嗎" in p and "按" in p
     assert "資料" in p and "指令" in p
     assert "一句" in p and "工具" in p
     for n in ("list_runs", "get_run", "launch"):
@@ -200,6 +202,51 @@ def test_tc004_launch_without_a_person_leaves_one_pending_request_and_no_job(w):
     out = w.launch(caller=None, run="run-three")
     assert out["sent"] is False
     assert w.jobs() == []
+
+
+def _pending_shape(**over):
+    d = {"sent": False, "state": "pending", "confirmation_url": "/confirm/abc", "summary": "送出 run-x"}
+    d.update(over)
+    return d
+
+
+def test_tc050_confirm_dialog_on_a_real_pending_launch_result_and_the_queue_stays_empty(w):
+    # TC-050 (plan revision 2026-10-19, item 3 "TC-030")
+    ann = w.user("ann")
+    w.hand_over()
+    out = w.launch(caller=ann, run="run-two")
+    d = chat_tools().confirm_dialog("launch", out)
+    assert d == {"question": "確認送出嗎？", "tool": "launch", "summary": out["summary"],
+                 "confirmation_url": out["confirmation_url"], "buttons": ["確認", "取消"]}, d
+    assert w.jobs() == []
+    assert [r["state"] for r in w.confirmations()] == ["pending"]
+
+
+def test_tc051_confirm_dialog_is_none_for_read_only_tools_and_non_pending_results():
+    # TC-051 (plan "TC-031")
+    cd = chat_tools().confirm_dialog
+    for n in READ_ONLY:
+        assert cd(n, _pending_shape()) is None, n
+    assert cd("launch", _pending_shape(sent=True)) is None
+    assert cd("launch", _pending_shape(state="done")) is None
+    assert cd("launch", _pending_shape(confirmation_url="")) is None
+    assert cd("launch", {"ok": False}) is None
+
+
+def test_tc052_every_request_tool_gets_a_dialog_and_it_holds_no_yes_value():
+    # TC-052 (plan "TC-032")
+    cd = chat_tools().confirm_dialog
+    for n in chat_tools().REQUEST_TOOLS:
+        d = cd(n, _pending_shape())
+        assert d and d["tool"] == n and d["buttons"] == ["確認", "取消"], n
+        assert set(d) == {"question", "tool", "summary", "confirmation_url", "buttons"}
+        assert not [k for k in d if re.search(r"approve|yes|confirmed", k, re.I)], d
+
+
+def test_tc053_the_source_scan_still_passes_with_the_helper_in_place():
+    # TC-053 (plan "TC-033"): confirm_dialog exists and TC-003's narrowed scan accepts it
+    assert callable(chat_tools().confirm_dialog)
+    test_tc003_the_module_names_no_yes_channel_and_no_key()
 
 
 def launched(rig, caller, run, status):
