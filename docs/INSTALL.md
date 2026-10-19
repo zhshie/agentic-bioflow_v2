@@ -27,6 +27,12 @@ In your own terminal, with the address and PAT the operator gave you:
 claude mcp add --transport http abf-platform <platform-URL>/mcp --header "Authorization: Bearer <PAT>"
 ```
 
+Alternative: copy `extensions/claude-code-kit/mcp.json` to `.mcp.json` in your own project
+folder (not in this repository). In your own terminal set `ABF_PLATFORM_URL` (the address,
+without `/mcp`) and `ABF_PAT` (your PAT). The first time, Claude Code asks whether you approve
+this project's server. If `ABF_PAT` is not set, Claude Code sends the literal text
+`${ABF_PAT}` and the platform answers 401.
+
 The repository ships a Claude Code kit, `extensions/claude-code-kit/settings.json`. It puts
 an `ask` permission rule on `launch`, `cancel`, `resume` and `relaunch`, so Claude Code asks
 you before it calls them. That is a second layer, not the gate: the platform itself refuses
@@ -37,6 +43,8 @@ confirmation page). The PAT, the `ask` rule and a login click are never that con
 
 1. In Claude Desktop add a custom connector.
 2. Enter only the address `<platform-URL>/mcp`. No PAT, nothing to install.
+
+There is no file to install for Claude Desktop; the connector is added in the app.
 
 Claude Desktop connects from the cloud, so the platform needs a public https address (the
 operator starts it with `--public-url`). This path has not yet been tried end to end on a
@@ -55,8 +63,10 @@ own 送出. To end all your OAuth logins the operator runs `abf-platform oauth r
 
 ## 4. Codex
 
-Not built yet: the repository has no Codex kit, so there are no steps to give here. See
-section 6.
+1. Append `extensions/codex-kit/config.toml` to the file ~/.codex/config.toml.
+2. In what you appended, replace the URL with your platform's address, ending in /mcp.
+3. In your own terminal run `export ABF_PAT=<PAT>`. Codex reads the PAT from that variable
+   (the kit's bearer_token_env_var names it). Never put the PAT in a file kept in git.
 
 ## 5. Check it works
 
@@ -68,6 +78,5 @@ or login; ask the operator.
 
 ## 6. Not built yet
 
-- A root `.mcp.json` that would add the platform with no command.
-- A Codex kit (a root plugin.json and mcp.json).
-- A Claude Desktop connector kit.
+- A root `.mcp.json` is deliberately not shipped: the repository root is the plugin root, so
+  every plugin install would load it and add a placeholder server for everyone.
