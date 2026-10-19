@@ -230,5 +230,89 @@ if grep -qF "wrote     submission/manuscript.qmd" <<<"$out"; then
   echo "FAIL: printed 'wrote' after failing to parse the plan"; fails=$((fails+1))
 else echo ok; fi
 
+# ---------------------------------------------------------------------------
+# 013a: report.md, the facts report. Built from files only; a rebuild must not
+# overwrite one the person has edited (R2: sha256 kept in .report.md.sha256).
+P3="$TMP/proj_report"
+for r in demo_20260101 demo_20260102; do
+  mkdir -p "$P3/runs/$r/results/pipeline_info"
+  printf 'Workflow:\n  nf-core/demo: v1.0.0\n  Nextflow: 25.10.4\n' \
+    > "$P3/runs/$r/results/pipeline_info/software_versions.yml"
+done
+echo '{"input":"/data/lab/private/samples_v2.csv"}' \
+  > "$P3/runs/demo_20260101/results/pipeline_info/params_2026-01-01_00-00-00.json"
+echo '{}' > "$P3/runs/demo_20260102/results/pipeline_info/params_2026-01-02_00-00-00.json"
+mkdir -p "$P3/runs/demo_20260101/results/multiqc" "$P3/analysis"
+echo '<html></html>' > "$P3/runs/demo_20260101/results/multiqc/multiqc_report.html"
+printf -- '- **richness**\n  id: richness\n  question: Q?\n  status: accepted\n' > "$P3/analysis/analysis.md"
+SUB="$P3/submission"
+sha() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
+
+# TC-030
+out=$(CITE_CURL=false bash "$S" "$P3" 2>&1); rc=$?
+if [ "$rc" = 0 ] && [ -s "$SUB/report.md" ] && [ "$(grep -cE '^## (Runs|Inputs|Methods|Quality control|Interpretation)$' "$SUB/report.md")" = 5 ]
+then ok "TC-030 report.md is in the package"; else no "TC-030 report.md is in the package" "rc=$rc <<$out>>"; fi
+
+# TC-031
+[ "$(tr -d ' \n' < "$SUB/.report.md.sha256" 2>/dev/null | head -c 64)" = "$(sha "$SUB/report.md")" ] \
+  && ok "TC-031 .report.md.sha256 holds the hash of report.md" || no "TC-031 hash file" "missing or wrong"
+
+# TC-032
+cp "$SUB/report.md" "$TMP/report.first"
+err=$(CITE_CURL=false bash "$S" "$P3" 2>&1 >/dev/null)
+if cmp -s "$TMP/report.first" "$SUB/report.md" && [ ! -e "$SUB/report.facts.md" ] && ! grep -qF "report.facts.md" <<<"$err"
+then ok "TC-032 untouched report.md is rewritten in place, no report.facts.md"; else no "TC-032" "differs or report.facts.md present"; fi
+
+# TC-033
+echo '{"input":"/data/lab/private/samples_v3.csv"}' \
+  > "$P3/runs/demo_20260101/results/pipeline_info/params_2026-01-01_00-00-00.json"
+CITE_CURL=false bash "$S" "$P3" >/dev/null 2>&1
+if grep -q 'samples_v3.csv' "$SUB/report.md" && [ ! -e "$SUB/report.facts.md" ] \
+   && [ "$(tr -d ' \n' < "$SUB/.report.md.sha256" | head -c 64)" = "$(sha "$SUB/report.md")" ]
+then ok "TC-033 unedited report.md follows the data; hash refreshed"; else no "TC-033" "not updated"; fi
+
+# TC-034
+rm "$SUB/report.md"
+CITE_CURL=false bash "$S" "$P3" >/dev/null 2>&1
+[ -s "$SUB/report.md" ] && [ ! -e "$SUB/report.facts.md" ] \
+  && ok "TC-034 a missing report.md is written again" || no "TC-034" "not rewritten"
+
+# TC-035..037, TC-041: edited report.md
+printf 'Sample A has higher richness.\n' >> "$SUB/report.md"
+cp "$SUB/report.md" "$TMP/report.edited"
+echo '{"input":"/data/lab/private/samples_v4.csv"}' \
+  > "$P3/runs/demo_20260101/results/pipeline_info/params_2026-01-01_00-00-00.json"
+err=$(CITE_CURL=false bash "$S" "$P3" 2>&1 >/dev/null)
+cmp -s "$TMP/report.edited" "$SUB/report.md" && grep -q 'Sample A has higher richness' "$SUB/report.md" \
+  && ok "TC-035 an edited report.md is kept byte for byte" || no "TC-035" "edited report.md changed"
+if [ -s "$SUB/report.facts.md" ] && grep -q 'samples_v4.csv' "$SUB/report.facts.md" \
+   && ! grep -q 'Sample A has higher richness' "$SUB/report.facts.md"
+then ok "TC-036 the fresh report goes to report.facts.md"; else no "TC-036" "report.facts.md missing or stale"; fi
+lines=$(grep -F "report.facts.md" <<<"$err")
+if [ "$(wc -l <<<"$lines")" = 1 ] && grep -qF "report.md" <<<"$lines" && grep -qF "report.facts.md" <<<"$lines"
+then ok "TC-037 exactly one stderr line names both files"; else no "TC-037" "<<$err>>"; fi
+
+# TC-041: MultiQC is linked, never copied
+if [ -z "$(find "$SUB" -name 'multiqc_report.html' 2>/dev/null)" ] && grep -qF '(outside this package)' "$SUB/report.md"
+then ok "TC-041 MultiQC is not copied into the package"; else no "TC-041" "copied or not marked"; fi
+
+# TC-039: an old report.facts.md is replaced, not accumulated
+echo OLD > "$SUB/report.facts.md"
+CITE_CURL=false bash "$S" "$P3" >/dev/null 2>&1
+if ! grep -q OLD "$SUB/report.facts.md" && [ -z "$(ls "$SUB" | grep -E '^report\.facts\.md\.')" ]
+then ok "TC-039 old report.facts.md is overwritten"; else no "TC-039" "OLD kept or extras"; fi
+
+# TC-038: report.md with no hash file counts as edited
+rm -f "$SUB/.report.md.sha256" "$SUB/report.facts.md"
+echo "mine" > "$SUB/report.md"
+err=$(CITE_CURL=false bash "$S" "$P3" 2>&1 >/dev/null)
+if [ "$(cat "$SUB/report.md")" = "mine" ] && [ -s "$SUB/report.facts.md" ] \
+   && [ "$(grep -cF report.facts.md <<<"$err")" = 1 ]
+then ok "TC-038 report.md without a hash file is treated as edited"; else no "TC-038" "<<$err>>"; fi
+
+# TC-040
+sed -n '1,45p' "$S" | grep -E '^#   report\.md.*report_facts\.py' >/dev/null \
+  && ok "TC-040 header comment lists report.md" || no "TC-040" "header does not list report.md"
+
 echo
 [ "$fails" = 0 ] && echo "OK: build_package.sh" || { echo "$fails failed"; exit 1; }
