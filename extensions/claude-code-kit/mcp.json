@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "abf-platform": {
+      "type": "http",
+      "url": "${ABF_PLATFORM_URL}/mcp",
+      "headers": { "Authorization": "Bearer ${ABF_PAT}" }
+    }
+  }
+}

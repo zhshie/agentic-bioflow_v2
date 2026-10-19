@@ -1,0 +1,556 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>agentic-bioflow demo v4</title><style>:root{--surface:#f6f5f2;--surface-raised:#ffffff;--surface-sunken:#ecebe6;--ink:#1f2328;--ink-muted:#575e66;--line:#d6d3cc;--line-strong:#8f8b82;--accent:#1c5d8a;--accent-weak:#e2edf5;--focus:#1c5d8a;--status-running:#0b5aa8;--status-running-bg:#e3edf9;--status-succeeded:#1b6837;--status-succeeded-bg:#e2f0e6;--status-failed:#b0261d;--status-failed-bg:#fae6e3;--status-lost:#865700;--status-lost-bg:#f7edd6;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--radius-sm:4px;--radius-md:6px;--radius-pill:999px;--font-sans:system-ui, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif;--font-mono:ui-monospace, "Cascadia Mono", Consolas, "Noto Sans Mono", monospace}@media (prefers-color-scheme:dark){:root{--surface:#15171a;--surface-raised:#1e2125;--surface-sunken:#101214;--ink:#e9e7e2;--ink-muted:#a2a8b0;--line:#33373d;--line-strong:#646a73;--accent:#7db8e2;--accent-weak:#1a2c3a;--focus:#9cccf0;--status-running:#80b6f2;--status-running-bg:#15263a;--status-succeeded:#78c792;--status-succeeded-bg:#14291c;--status-failed:#f28b81;--status-failed-bg:#3a1916;--status-lost:#e2b35e;--status-lost-bg:#33270e}}/* abf Web Board — the one stylesheet. Stands in for web_board.STYLE: a single sheet (its sha256 goes in the CSP),
+   no style= attribute, no external address, no script. Widths come from classes or <progress>, never inline. */
+.abf{font-family:var(--font-sans);font-size:14px;line-height:21px;color:var(--ink);background:var(--surface);margin:0}
+.abf *{box-sizing:border-box}
+.abf a{color:var(--accent);text-decoration:none}
+.abf a:hover{text-decoration:underline}
+.abf a:focus-visible,.abf summary:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--radius-sm)}
+.abf h1{font-size:20px;line-height:28px;font-weight:600;margin:0}
+.abf h2{font-size:15px;line-height:22px;font-weight:600;margin:0}
+.abf h3{font-size:12px;line-height:18px;font-weight:600;margin:0;color:var(--ink-muted)}
+.abf p{margin:0}
+.abf .muted{color:var(--ink-muted)}
+.abf .small{font-size:12px;line-height:18px}
+.abf .mono{font-family:var(--font-mono);font-size:13px;line-height:19px}
+.abf .num{font-variant-numeric:tabular-nums}
+.abf .later{color:var(--ink-muted);font-size:12px}
+
+/* status badge: symbol + word + colour, never colour alone */
+.abf-badge{display:inline-flex;align-items:center;gap:var(--space-1);padding:0 var(--space-2);border-radius:var(--radius-pill);font-size:12px;line-height:20px;font-weight:600;white-space:nowrap}
+.abf-badge.is-running{color:var(--status-running);background:var(--status-running-bg)}
+.abf-badge.is-succeeded{color:var(--status-succeeded);background:var(--status-succeeded-bg)}
+.abf-badge.is-failed{color:var(--status-failed);background:var(--status-failed-bg)}
+.abf-badge.is-lost{color:var(--status-lost);background:var(--status-lost-bg)}
+
+/* progress: the native element, so the width needs no inline style */
+.abf-progress{-webkit-appearance:none;appearance:none;display:block;width:100%;height:6px;border:0;border-radius:var(--radius-pill);background:var(--surface-sunken);overflow:hidden}
+.abf-progress::-webkit-progress-bar{background:var(--surface-sunken);border-radius:var(--radius-pill)}
+.abf-progress::-webkit-progress-value{background:var(--accent);border-radius:var(--radius-pill)}
+.abf-progress::-moz-progress-bar{background:var(--accent);border-radius:var(--radius-pill)}
+.abf-progress.is-succeeded::-webkit-progress-value{background:var(--status-succeeded)}
+.abf-progress.is-succeeded::-moz-progress-bar{background:var(--status-succeeded)}
+.abf-progress.is-failed::-webkit-progress-value{background:var(--status-failed)}
+.abf-progress.is-failed::-moz-progress-bar{background:var(--status-failed)}
+.abf-progress.is-lost::-webkit-progress-value{background:var(--status-lost)}
+.abf-progress.is-lost::-moz-progress-bar{background:var(--status-lost)}
+.abf-meter{display:flex;flex-direction:column;gap:var(--space-1)}
+.abf-meter .row{display:flex;justify-content:space-between;font-size:12px;line-height:18px;color:var(--ink-muted)}
+
+/* stage stepper: launch → running → results → downstream → finished */
+.abf-steps{display:flex;gap:var(--space-2);list-style:none;margin:0;padding:0}
+.abf-steps li{flex:1;min-width:0}
+.abf-steps a,.abf-steps .step{display:block;padding:var(--space-2) 0 0;border-top:3px solid var(--line);color:var(--ink-muted);font-size:13px;line-height:19px}
+.abf-steps .k{display:block;font-size:12px;line-height:18px;font-weight:400}
+.abf-steps .is-done a{border-top-color:var(--status-succeeded);color:var(--ink)}
+.abf-steps .is-current a{border-top-color:var(--accent);color:var(--ink);font-weight:600}
+.abf-steps .is-later .step{border-top-style:dashed;border-top-color:var(--line-strong)}
+.abf-pager{display:flex;justify-content:space-between;font-size:13px}
+
+/* shared blocks */
+.abf-card{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-md)}
+.abf-card > .hd{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--line)}
+.abf-card > .bd{padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4)}
+.abf-counts{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--space-2);margin:0}
+.abf-counts div{background:var(--surface-sunken);border-radius:var(--radius-sm);padding:6px var(--space-2)}
+.abf-counts dt{font-size:12px;line-height:18px;color:var(--ink-muted)}
+.abf-counts dd{margin:0;font-size:15px;line-height:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.abf-kv{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--space-4);margin:0}
+.abf-kv dt{font-size:12px;line-height:18px;color:var(--ink-muted)}
+.abf-kv dd{margin:0;font-weight:600}
+.abf-pre{font-family:var(--font-mono);font-size:13px;line-height:19px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:var(--radius-sm);padding:var(--space-3);white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.abf-pre.is-failed{border-color:var(--status-failed)}
+.abf-cost{display:flex;justify-content:space-between;gap:var(--space-3);padding:var(--space-2) var(--space-3);background:var(--surface-sunken);border-radius:var(--radius-sm);font-size:13px}
+
+/* Draft A — Seqera: top bar, list page, detail page with tabs */
+.abf-top{display:flex;align-items:center;gap:var(--space-6);height:48px;padding:0 var(--space-6);background:var(--surface-raised);border-bottom:1px solid var(--line)}
+.abf-top .brand{font-weight:600;color:var(--ink)}
+.abf-top nav{display:flex;gap:var(--space-1)}
+.abf-top nav a,.abf-top nav .off{padding:var(--space-1) var(--space-3);border-radius:var(--radius-md);color:var(--ink-muted)}
+.abf-top nav a.here{background:var(--accent-weak);color:var(--accent);font-weight:600}
+.abf-top .end{margin-left:auto;display:flex;align-items:center;gap:var(--space-4);font-size:13px}
+.abf-page{padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-4)}
+.abf-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-4)}
+.abf-filters{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.abf-chip{padding:2px var(--space-3);border:1px solid var(--line-strong);border-radius:var(--radius-pill);background:var(--surface-raised);color:var(--ink);font-size:13px}
+.abf-chip.here{border-color:var(--accent);background:var(--accent-weak);color:var(--accent);font-weight:600}
+.abf-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden}
+.abf-table th{text-align:left;font-size:12px;line-height:18px;font-weight:600;color:var(--ink-muted);padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line);background:var(--surface-sunken)}
+.abf-table td{padding:10px var(--space-3);border-bottom:1px solid var(--line);vertical-align:middle}
+.abf-table tr:last-child td{border-bottom:0}
+.abf-table tr.here td{background:var(--accent-weak)}
+.abf-table .w-state{width:120px}.abf-table .w-prog{width:180px}.abf-table .w-time{width:120px}
+.abf-tabs{display:flex;padding:0 var(--space-4);border-bottom:1px solid var(--line)}
+.abf-tabs a,.abf-tabs .off{padding:10px var(--space-3);color:var(--ink-muted);border-bottom:2px solid var(--surface-raised);margin-bottom:-1px}
+.abf-tabs a.here{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.abf-crumb{font-size:13px}
+
+/* Draft B — Galaxy: three columns, colour-filled history on the right */
+.abf-mast{display:flex;align-items:center;gap:var(--space-4);height:40px;padding:0 var(--space-4);background:var(--ink);color:var(--surface)}
+.abf-mast .brand{font-weight:600}
+.abf-mast .end{margin-left:auto;font-size:13px}
+.abf-wb{display:grid;grid-template-columns:232px 1fr 272px;min-height:600px}
+.abf-wb > *{min-width:0}
+.abf-side{background:var(--surface-raised);border-right:1px solid var(--line);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4)}
+.abf-side .foot{margin-top:auto;border-top:1px solid var(--line);padding-top:var(--space-3);display:flex;flex-direction:column;gap:var(--space-1)}
+.abf-tree{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.abf-tree a,.abf-tree .off{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm);color:var(--ink)}
+.abf-tree .off{color:var(--ink-muted)}
+.abf-tree a.here{background:var(--accent-weak);color:var(--accent);font-weight:600}
+.abf-tree .sub a{padding-left:var(--space-6)}
+.abf-main{padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-4)}
+.abf-hist{background:var(--surface-raised);border-left:1px solid var(--line);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
+.abf-hist ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.abf-item{display:block;padding:6px 10px;border-radius:var(--radius-sm);color:var(--ink)}
+.abf-item:hover{text-decoration:none}
+.abf-item .t{display:flex;gap:6px;font-size:13px;line-height:19px;font-weight:600;color:var(--ink)}
+.abf-item .s{font-size:12px;line-height:18px;font-weight:600}
+.abf-item.is-running{background:var(--status-running-bg)}.abf-item.is-running .s{color:var(--status-running)}
+.abf-item.is-succeeded{background:var(--status-succeeded-bg)}.abf-item.is-succeeded .s{color:var(--status-succeeded)}
+.abf-item.is-failed{background:var(--status-failed-bg)}.abf-item.is-failed .s{color:var(--status-failed)}
+.abf-item.is-lost{background:var(--status-lost-bg)}.abf-item.is-lost .s{color:var(--status-lost)}
+.abf-item.here{outline:2px solid var(--focus);outline-offset:-2px}
+
+/* Draft C — one column: left rail, totals, collapsible rows (<details>, no script) */
+.abf-c{display:grid;grid-template-columns:200px 1fr;min-height:600px}
+.abf-c > *{min-width:0}
+.abf-rail{background:var(--surface-sunken);border-right:1px solid var(--line);padding:var(--space-4) var(--space-3);display:flex;flex-direction:column;gap:2px}
+.abf-rail .brand{font-weight:600;padding:0 10px var(--space-4)}
+.abf-rail a,.abf-rail .off{padding:6px 10px;border-radius:var(--radius-sm);color:var(--ink-muted)}
+.abf-rail a.here{background:var(--surface-raised);color:var(--ink);font-weight:600}
+.abf-rail .foot{margin-top:auto;display:flex;flex-direction:column;gap:2px}
+.abf-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:var(--space-3)}
+.abf-stat{display:block;padding:var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-raised);color:var(--ink)}
+.abf-stat:hover{text-decoration:none;border-color:var(--line-strong)}
+.abf-stat b{display:block;font-size:20px;line-height:28px;font-variant-numeric:tabular-nums}
+.abf-stat span{font-size:12px;line-height:18px;font-weight:600}
+.abf-stat.is-running span{color:var(--status-running)}.abf-stat.is-succeeded span{color:var(--status-succeeded)}
+.abf-stat.is-failed span{color:var(--status-failed)}.abf-stat.is-lost span{color:var(--status-lost)}
+.abf-group{display:flex;flex-direction:column;gap:6px}
+.abf-acc{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-raised)}
+.abf-acc summary{display:grid;grid-template-columns:16px 112px 1fr 180px 96px;gap:var(--space-3);align-items:center;padding:10px var(--space-3);cursor:pointer;list-style:none}
+.abf-acc summary::-webkit-details-marker{display:none}
+.abf-acc .chev::before{content:"▸";color:var(--ink-muted)}
+.abf-acc[open] .chev::before{content:"▾"}
+.abf-acc[open] summary{border-bottom:1px solid var(--line)}
+.abf-acc .bd{padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
+
+body{margin:0;background:var(--surface)}
+.lang,.rp > input,.tabs-wrap > input{position:absolute;opacity:0;pointer-events:none}
+.abf .en{display:none}
+#lang-en:checked ~ .abf .zh{display:none}
+#lang-en:checked ~ .abf .en{display:inline}
+#lang-en:checked ~ .abf input.en{display:block}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.js{display:inline-block;font-family:var(--font-mono);font-size:11px;line-height:16px;font-weight:600;padding:0 6px;border-radius:var(--radius-sm);border:1px dashed var(--status-lost);color:var(--status-lost);vertical-align:middle;white-space:nowrap}
+.abf a:focus-visible,.abf summary:focus-visible,.abf label:focus-visible,.abf input:focus-visible,.abf select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* masthead (Galaxy pattern): dark, quota meter right */
+.mh{display:flex;align-items:center;gap:16px;height:40px;padding:0 16px;background:var(--ink);color:var(--surface)}
+.mh .brand{font-weight:700;font-size:17px;letter-spacing:.01em}
+.mh .end{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:13px}
+.mh a{color:var(--surface)}
+.quota{display:flex;flex-direction:column;justify-content:center;width:250px;height:32px;border-radius:var(--radius-sm);background:var(--surface-sunken);color:var(--ink);font-size:12px;line-height:13px;padding:0 8px;gap:2px}
+.quota progress{height:3px}
+.switch{display:flex;border:1px solid var(--surface);border-radius:var(--radius-pill);overflow:hidden}
+.switch label{padding:2px 12px;font-size:12px;cursor:pointer}
+#lang-zh:checked ~ .abf label[for=lang-zh],#lang-en:checked ~ .abf label[for=lang-en]{background:var(--surface);color:var(--ink);font-weight:600}
+
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr) 320px;min-height:900px}
+.shell:has(#rp-chat:checked){grid-template-columns:272px minmax(0,1fr) 380px}
+
+/* left: projects -> upload + analyses (ADR 0009), settings bottom-left */
+.side{background:var(--surface-raised);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+.home{display:flex;align-items:center;gap:8px;margin:12px 8px 4px;padding:8px 12px;border-radius:var(--radius-md);font-weight:600;color:var(--ink)}
+.home .ct{margin-left:auto;min-width:20px;padding:0 6px;border-radius:10px;background:var(--status-failed);color:var(--surface-raised);font-size:12px;line-height:20px;text-align:center}
+.abf:not(:has(.screen:target)) .home,.abf:has(#now:target) .home{background:var(--accent-weak);color:var(--accent)}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 4px}
+.ph h2{font-size:13px;letter-spacing:.04em;color:var(--ink-muted)}
+.ph a{font-size:13px}
+.side .search,.hist .search{padding:8px 16px 4px}
+.side .search input,.hist .search input{width:100%}
+.sec{display:flex;align-items:center;gap:8px;margin:14px 16px 4px;font-size:13px;font-weight:700;color:var(--ink)}
+.sec::before,.sec::after{content:"";flex:1;border-top:1px solid var(--line)}
+.sec .num{font-weight:400;color:var(--ink-muted)}
+.plist{list-style:none;margin:0;padding:0 8px}
+.plist a{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius-sm);color:var(--ink);font-size:13px;min-width:0}
+.plist a .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plist a .stg{margin-left:auto;font-size:12px;color:var(--ink-muted);white-space:nowrap}
+.plist a:hover{background:var(--surface-sunken);text-decoration:none}
+.plist a.on{background:var(--accent-weak);color:var(--accent);font-weight:600}
+.plist .up{color:var(--accent)}
+.dot{width:8px;height:8px;border-radius:4px;flex:none}
+.dot.is-running{background:var(--status-running)}.dot.is-failed{background:var(--status-failed)}.dot.is-succeeded{background:var(--status-succeeded)}.dot.is-lost{background:var(--status-lost)}.dot.is-queued{background:var(--line-strong)}
+.foot{flex:none;justify-content:flex-start;margin-top:auto;padding:8px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.foot > a,.foot > span{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius-sm);font-size:13px;color:var(--ink)}
+.foot .off{color:var(--ink-muted)}
+.foot .off .later{margin-left:auto}
+.abf:has(#settings:target) .foot a[href="#settings"]{background:var(--accent-weak);color:var(--accent);font-weight:600}
+
+/* center */
+.center{min-width:0;padding:24px 28px;overflow:auto}
+.screen{display:none}
+.center:not(:has(.screen:target)) #now,.screen:target{display:flex;flex-direction:column;gap:16px}
+.ptitle{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ptitle h1{font-size:22px;line-height:30px}
+.ptitle .sp{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.crumb{font-size:13px;color:var(--ink-muted)}
+.abf-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--radius-md);border:1px solid var(--line-strong);background:var(--surface-raised);color:var(--ink);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.abf a.abf-btn:hover{text-decoration:none;border-color:var(--accent)}
+.abf-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface-raised)}
+.btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.abf input[type=text],.abf input[type=search],.abf input[type=number],.abf input[type=password],.abf select,.abf textarea{font:inherit;font-size:13px;color:var(--ink);background:var(--surface-raised);border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:6px 10px;width:100%}
+.abf input.en{display:none}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.toolbar input{max-width:320px}
+.toolbar select{width:auto}
+.abf-badge{padding:3px 10px}
+.abf-badge.is-queued{color:var(--ink-muted);background:var(--surface-sunken)}
+.tag{display:inline-block;font-size:12px;line-height:18px;font-weight:600;padding:3px 8px;border-radius:var(--radius-pill);color:var(--status-succeeded);background:var(--status-succeeded-bg);white-space:nowrap}
+.tag.grey{color:var(--ink-muted);background:var(--surface-sunken)}
+h2.h{font-size:16px;line-height:24px}
+.abf-table td.mono{white-space:nowrap}
+
+/* formal notices: level, analysis, time / problem / fields / actions */
+.notes{display:flex;flex-direction:column;gap:10px}
+.note{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-raised);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.note.is-dec{--lv:var(--accent);--lvbg:var(--accent-weak)}.note.is-act{--lv:var(--status-failed);--lvbg:var(--status-failed-bg);border-color:var(--status-failed)}.note.is-auto{--lv:var(--status-running);--lvbg:var(--status-running-bg)}.note.is-ok{--lv:var(--status-succeeded);--lvbg:var(--status-succeeded-bg)}
+.note .meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--ink-muted)}
+.note .lvl{font-weight:700;color:var(--lv);background:var(--lvbg);padding:3px 10px;border-radius:var(--radius-pill)}
+.note .meta time{margin-left:auto}
+.note h3{font-size:15px;line-height:22px;margin:0;color:var(--ink)}
+.note dl{margin:0;display:grid;grid-template-columns:104px 1fr;gap:4px 12px;font-size:13px}
+.note dt{color:var(--ink-muted)}.note dd{margin:0}
+
+/* guided launch: numbered steps as native disclosure (zero JS) */
+.walk{display:flex;flex-direction:column;gap:10px}
+.step{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-raised)}
+.step.cur{border:2px solid var(--focus)}
+.step > summary{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;list-style:none}
+.step > summary::-webkit-details-marker{display:none}
+.step[open] > summary{border-bottom:1px solid var(--line)}
+.step .n{flex:none;width:26px;height:26px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;background:var(--surface-sunken);color:var(--ink-muted)}
+.step.done .n{background:var(--status-succeeded-bg);color:var(--status-succeeded)}
+.step.cur .n{background:var(--accent);color:var(--surface-raised)}
+.step .st{font-weight:700;font-size:15px;line-height:22px;margin:0}
+.step .sum{margin-left:auto;font-size:13px;color:var(--ink-muted);text-align:right}
+.step .bd{padding:16px;display:flex;flex-direction:column;gap:12px}
+.checks{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px 16px;font-size:13px}
+.checks .ok{color:var(--status-succeeded);font-weight:700}.checks .warn{color:var(--status-lost);font-weight:700}
+.lp{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.pcard{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-raised);padding:14px;display:flex;flex-direction:column;gap:8px}
+.pcard.pick{border:2px solid var(--focus)}
+.pcard h3{font-size:14px;line-height:20px;margin:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pcard .meta{font-size:12px;color:var(--ink-muted)}
+.metro{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);padding:12px}
+.metro svg{display:block;width:100%;height:150px}
+.metro .ln{stroke:var(--accent);stroke-width:6;fill:none;stroke-linecap:round}
+.metro .ln2{stroke:var(--status-succeeded);stroke-width:6;fill:none;stroke-linecap:round}
+.metro .ln3{stroke:var(--line-strong);stroke-width:6;fill:none;stroke-linecap:round;stroke-dasharray:2 10}
+.metro circle{fill:var(--surface-raised);stroke:var(--ink);stroke-width:2.5}
+.metro text{font-size:12px;fill:var(--ink);font-family:var(--font-mono)}
+.metro figcaption{font-size:12px;color:var(--ink-muted);margin-top:6px}
+.stages{margin:0;padding-left:20px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+.stages .skip{color:var(--ink-muted);text-decoration:line-through}
+.routes{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.route{border:1px solid var(--line);border-radius:var(--radius-md);padding:12px;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.route.on{border:2px solid var(--focus);background:var(--accent-weak)}
+.route b{font-size:14px}
+.grp{border:1px solid var(--line);border-radius:var(--radius-sm)}
+.grp > summary{display:flex;gap:12px;align-items:baseline;padding:8px 12px;cursor:pointer;font-size:13px}
+.grp > summary b{min-width:160px}
+.grp .rep{color:var(--ink-muted);font-family:var(--font-mono);font-size:12px}
+.grp table{margin:0 12px 12px;width:calc(100% - 24px)}
+.req{padding:10px 12px;border-radius:var(--radius-sm);background:var(--status-lost-bg);font-size:13px}
+.form{display:grid;grid-template-columns:170px minmax(0,1fr);gap:10px 16px;align-items:center;margin:0}
+.form label{font-size:13px;color:var(--ink-muted)}
+.form .help{grid-column:2;font-size:12px;color:var(--ink-muted);margin-top:-6px}
+.ask{padding:16px;border:2px solid var(--focus);border-radius:var(--radius-md);background:var(--accent-weak);display:flex;flex-direction:column;gap:10px}
+.summary{margin:0;display:grid;grid-template-columns:170px 1fr;gap:8px 16px}
+.summary dt{color:var(--ink-muted);font-size:13px}.summary dd{margin:0}
+
+/* run detail (Seqera pattern inside the running/results stages) */
+.cards4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0}
+.mini{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-raised);padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.mini dt{font-size:12px;color:var(--ink-muted);font-weight:600}
+.mini dd{margin:0;font-size:15px;font-weight:600}
+.tbar{display:flex;height:10px;border-radius:var(--radius-pill);overflow:hidden;background:var(--surface-sunken)}
+.tbar i{display:block}
+.tbar .s1{background:var(--status-succeeded);flex:128}.tbar .s2{background:var(--accent);flex:14}.tbar .s3{background:var(--status-running);flex:6;opacity:.6}.tbar .s4{background:var(--line);flex:62}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--ink-muted)}
+.legend b{color:var(--ink)}
+.tabs-wrap .abf-tabs{overflow-x:auto;overflow-y:hidden}
+.tabs-wrap .abf-tabs label{padding:10px 14px;color:var(--ink-muted);border-bottom:2px solid var(--surface-raised);margin-bottom:-1px;cursor:pointer;white-space:nowrap;font-size:13px}
+.panel{display:none;padding:16px;flex-direction:column;gap:12px}
+.tabs-wrap > input:nth-of-type(1):checked ~ .abf-tabs label:nth-child(1),.tabs-wrap > input:nth-of-type(2):checked ~ .abf-tabs label:nth-child(2),.tabs-wrap > input:nth-of-type(3):checked ~ .abf-tabs label:nth-child(3),.tabs-wrap > input:nth-of-type(4):checked ~ .abf-tabs label:nth-child(4),.tabs-wrap > input:nth-of-type(5):checked ~ .abf-tabs label:nth-child(5),.tabs-wrap > input:nth-of-type(6):checked ~ .abf-tabs label:nth-child(6),.tabs-wrap > input:nth-of-type(7):checked ~ .abf-tabs label:nth-child(7){color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.tabs-wrap > input:nth-of-type(1):checked ~ .p1,.tabs-wrap > input:nth-of-type(2):checked ~ .p2,.tabs-wrap > input:nth-of-type(3):checked ~ .p3,.tabs-wrap > input:nth-of-type(4):checked ~ .p4,.tabs-wrap > input:nth-of-type(5):checked ~ .p5,.tabs-wrap > input:nth-of-type(6):checked ~ .p6,.tabs-wrap > input:nth-of-type(7):checked ~ .p7{display:flex}
+.drop{border:2px dashed var(--line-strong);border-radius:var(--radius-md);padding:32px;text-align:center;background:var(--surface-raised);display:flex;flex-direction:column;gap:6px;align-items:center}
+.studio{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-sunken);min-height:220px;display:flex;flex-direction:column}
+.studio .bar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line);font-size:12px}
+.studio .body{flex:1;display:flex;align-items:center;justify-content:center;color:var(--ink-muted);font-size:13px}
+.fig{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.fig figure{margin:0;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-raised);padding:12px}
+.fig svg{display:block;width:100%;height:110px}
+.fig .b1{fill:var(--accent)}.fig .b2{fill:var(--status-succeeded)}.fig .b3{fill:var(--status-lost)}.fig .ax{stroke:var(--line-strong)}
+.fig figcaption{font-size:12px;color:var(--ink-muted);margin-top:6px}
+.set{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.set li{padding:16px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-raised);display:flex;flex-direction:column;gap:8px}
+.set li.later-box{border-style:dashed;border-color:var(--line-strong)}
+.toggle{display:flex;justify-content:space-between;align-items:center;font-size:13px}
+.empty{align-items:center;text-align:center;padding:56px 0}
+.login{max-width:440px;margin:24px auto;width:100%}
+
+/* right: history (Galaxy pattern) | chat */
+.hist{background:var(--surface-raised);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+.rp-tabs{display:grid;grid-template-columns:1fr 1fr;margin:10px 16px 0;border:1px solid var(--line-strong);border-radius:var(--radius-md);overflow:hidden}
+.rp-tabs label{padding:8px 0;font-size:13px;font-weight:600;color:var(--ink-muted);cursor:pointer;display:flex;justify-content:center;gap:6px;align-items:center}
+#rp-prog:checked ~ .rp-tabs label[for=rp-prog],#rp-chat:checked ~ .rp-tabs label[for=rp-chat]{background:var(--accent);color:var(--surface-raised)}
+.dot-new{font-size:11px;line-height:16px;min-width:16px;padding:0 5px;border-radius:8px;background:var(--status-failed);color:var(--surface-raised);text-align:center}
+#rp-chat:checked ~ .rp-tabs .dot-new{display:none}
+.rp-chat,#rp-chat:checked ~ .rp-prog{display:none}
+.rp-prog{display:flex;flex-direction:column;flex:1}
+#rp-chat:checked ~ .rp-chat{display:flex;flex-direction:column;gap:12px;flex:1;padding:12px 16px}
+.rp-guide{display:none}
+.abf:has(#setup:target) .rp-prog,.abf:has(#setup:target) .rp-chat,.abf:has(#setup:target) .rp-tabs{display:none}
+.abf:has(#setup:target) .rp-guide{display:flex;flex-direction:column;gap:12px;flex:1;padding:12px 16px}
+.hname{display:flex;justify-content:space-between;align-items:center;padding:10px 16px 0}
+.hname b{font-size:17px;line-height:26px;font-weight:600}
+.hcount{display:flex;gap:12px;align-items:center;padding:6px 16px 8px;font-size:12px;color:var(--ink-muted);border-bottom:1px solid var(--line)}
+.hcount .sp{margin-left:auto}
+.hgrp > summary{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--ink-muted);padding:10px 16px 6px;cursor:pointer}
+.hlist{list-style:none;margin:0;padding:0 8px;display:flex;flex-direction:column;gap:4px}
+.hi{display:block;padding:8px 10px;border-radius:var(--radius-sm);color:var(--ink);border:1px solid var(--line)}
+.abf a.hi:hover{text-decoration:none;border-color:var(--line-strong)}
+.hi .t{display:flex;gap:6px;font-size:13px;line-height:19px;font-weight:600;color:var(--ink);min-width:0}
+.hi .t .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hi .t .st{margin-left:auto;font-weight:700}
+.hi .s{display:block;font-size:12px;line-height:18px;color:var(--ink-muted)}
+.hi .s b{color:var(--ink);font-weight:600}
+.hi progress{margin-top:4px;height:4px}
+.hi.is-running{background:var(--status-running-bg);border-color:var(--status-running-bg)}.hi.is-running .st{color:var(--status-running)}
+.hi.is-succeeded{background:var(--status-succeeded-bg);border-color:var(--status-succeeded-bg)}.hi.is-succeeded .st{color:var(--status-succeeded)}
+.hi.is-failed{background:var(--status-failed-bg);border-color:var(--status-failed-bg)}.hi.is-failed .st{color:var(--status-failed)}
+.hi.is-lost{background:var(--status-lost-bg);border-color:var(--status-lost-bg)}.hi.is-lost .st{color:var(--status-lost)}
+.hi.is-queued{background:var(--surface-sunken)}
+.hi.here{outline:2px solid var(--focus);outline-offset:-2px}
+.hempty{margin:0 8px;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface-sunken);font-size:12px;color:var(--ink-muted)}
+.msgs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;flex:1}
+.msgs .me{align-self:flex-end;background:var(--accent-weak);padding:8px 12px;border-radius:var(--radius-md);font-size:13px}
+.msgs .ai{background:var(--surface);border:1px solid var(--line);padding:12px;border-radius:var(--radius-md);display:flex;flex-direction:column;gap:8px;font-size:13px}
+.msgs .ai dl{margin:0;display:grid;grid-template-columns:72px 1fr;gap:4px 8px}
+.msgs .ai dt{color:var(--ink-muted)}.msgs .ai dd{margin:0}
+.tool{font-family:var(--font-mono);font-size:12px;color:var(--ink-muted)}
+.cite{font-size:12px}
+.chat-in{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.mh a.quota{color:var(--ink);text-decoration:none}
+a.quota:hover{text-decoration:none;outline:2px solid var(--surface)}
+.quota .ln{display:flex;justify-content:space-between;gap:8px}
+.abf .errtail{margin:0;font-family:var(--font-mono);font-size:12px;line-height:18px;background:var(--surface-sunken);padding:8px 10px;border-radius:var(--radius-sm);white-space:pre-wrap}
+.report textarea{min-height:180px;font-family:var(--font-body,inherit);line-height:22px}
+.ide{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-sunken);min-height:620px;display:flex;flex-direction:column}
+.ide .bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;background:var(--surface-raised)}
+.ide .body{flex:1;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;color:var(--ink-muted);font-size:14px}
+@media (max-width:1200px){.shell,.shell:has(#rp-chat:checked){grid-template-columns:232px minmax(0,1fr) 288px}.cards4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:900px){.shell,.shell:has(#rp-chat:checked){grid-template-columns:1fr}.center{order:1;padding:16px}.hist{order:2;border-left:0;border-top:1px solid var(--line)}.side{order:3;border-right:0;border-top:1px solid var(--line)}.mh .quota,.mh .end > a{display:none}.form,.summary{grid-template-columns:1fr}.form .help{grid-column:1}.note dl{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body>
+<input class="lang" type="radio" name="lang" id="lang-zh" checked><input class="lang" type="radio" name="lang" id="lang-en">
+<div class="abf">
+<header class="mh"><span class="brand">agentic-bioflow</span>
+ <span class="end"><a class="quota" href="#cost" title="cost detail"><span class="ln"><span><span class="zh">本月 國網</span><span class="en">This month NCHC</span></span><span>SU —</span></span><span class="ln"><span><span class="zh">雲端</span><span class="en">Cloud</span></span><span>NT$ 2,860 / 3,000</span></span><progress class="abf-progress" value="2860" max="3000">2860/3000</progress></a>
+ <a href="#login"><span class="zh">（demo）登入頁</span><span class="en">(demo) sign-in</span></a><a href="#setup"><span class="zh">（demo）第一次使用</span><span class="en">(demo) first use</span></a><span class="switch"><label for="lang-zh">中</label><label for="lang-en">EN</label></span><span>謝宗翰</span></span></header>
+<div class="shell">
+ <aside class="side" aria-label="Projects">
+  <a class="home" href="#now"><span class="zh">現在</span><span class="en">Now</span><span class="ct" role="status">4</span></a>
+  <div class="ph"><h2><span class="zh">專案</span><span class="en">PROJECTS</span></h2><a href="#setup">＋ <span class="zh">新專案</span><span class="en">New</span></a></div>
+  <label class="search"><span class="vh"><span class="zh">搜尋專案或分析</span><span class="en">Search projects or analyses</span></span><input class="zh" type="search" placeholder="搜尋專案或分析"><input class="en" type="search" placeholder="Search projects or analyses"></label>
+  <div class="sec"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span> <span class="num">4</span></div>
+  <ul class="plist">
+   <li><a class="up" href="#upload">↑ <span class="zh">上傳資料</span><span class="en">Upload data</span></a></li>
+   <li><a href="#launch"><span class="dot is-queued"></span><span class="nm">seedrot-16S-v4</span><span class="stg"><span class="zh">送出</span><span class="en">Launch</span></span></a></li>
+   <li><a class="on" href="#run"><span class="dot is-running"></span><span class="nm">seedrot-16S-v3</span><span class="stg"><span class="zh">執行中</span><span class="en">Running</span></span></a></li>
+   <li><a href="#run"><span class="dot is-running"></span><span class="nm">seedrot-16S-v2</span><span class="stg"><span class="zh">執行中</span><span class="en">Running</span></span></a></li>
+   <li><a href="#down"><span class="dot is-succeeded"></span><span class="nm">seedrot-16S-v1</span><span class="stg"><span class="zh">結果</span><span class="en">Results</span></span></a></li>
+  </ul>
+  <div class="sec"><span class="zh">Trinickia 引子</span><span class="en">Trinickia primers</span> <span class="num">3</span></div>
+  <ul class="plist">
+   <li><a class="up" href="#upload">↑ <span class="zh">上傳資料</span><span class="en">Upload data</span></a></li>
+   <li><a href="#launch"><span class="dot is-queued"></span><span class="nm">trinickia-ITS-v1</span><span class="stg"><span class="zh">送出</span><span class="en">Launch</span></span></a></li>
+   <li><a href="#run"><span class="dot is-running"></span><span class="nm">trinickia-rpoB</span><span class="stg"><span class="zh">執行中</span><span class="en">Running</span></span></a></li>
+   <li><a href="#now"><span class="dot is-failed"></span><span class="nm">trinickia-16S-pilot</span><span class="stg"><span class="zh">執行中</span><span class="en">Running</span></span></a></li>
+  </ul>
+  <div class="sec"><span class="zh">大豆根 RNA-seq</span><span class="en">Soybean root RNA-seq</span> <span class="num">2</span></div>
+  <ul class="plist">
+   <li><a class="up" href="#upload">↑ <span class="zh">上傳資料</span><span class="en">Upload data</span></a></li>
+   <li><a href="#now"><span class="dot is-failed"></span><span class="nm">soy-rnaseq-root</span><span class="stg"><span class="zh">執行中</span><span class="en">Running</span></span></a></li>
+   <li><a href="#down"><span class="dot is-running"></span><span class="nm">soy-16S-2025</span><span class="stg"><span class="zh">下游</span><span class="en">Downstream</span></span></a></li>
+  </ul>
+  <div class="sec"><span class="zh">測試</span><span class="en">Testing</span> <span class="num">1</span></div>
+  <ul class="plist"><li><a href="#fin"><span class="dot is-succeeded"></span><span class="nm">test-ampliseq</span><span class="stg"><span class="zh">完成</span><span class="en">Finished</span></span></a></li><li><a class="up" href="#empty-project">＋ <span class="zh">新分析</span><span class="en">New analysis</span></a></li></ul>
+  <div class="foot">
+   <a href="#settings"><span class="zh">設定</span><span class="en">Settings</span></a>
+   <span class="off"><span class="zh">資料瀏覽</span><span class="en">Data Explorer</span><span class="later"><span class="zh">之後開放</span><span class="en">later</span></span></span>
+   <span class="off"><span class="zh">儀表板</span><span class="en">Dashboard</span><span class="later"><span class="zh">之後開放</span><span class="en">later</span></span></span>
+   <a href="#login"><span class="zh">登出</span><span class="en">Log out</span></a>
+  </div>
+ </aside>
+ <main class="center"><section class="screen" id="now">
+<div class="ptitle"><h1><span class="zh">現在</span><span class="en">Now</span></h1><span class="sp"><span class="small muted"><span class="zh">10 個分析 · 每 15 秒更新</span><span class="en">10 analyses · updates every 15 s</span></span><span class="js" title="live updates">JS</span></span></div>
+<section class="abf-card"><div class="hd"><h2><span class="zh">待你決定</span><span class="en">Awaiting you</span> <span class="small muted num">4</span></h2><span class="small muted"><span class="zh">其餘狀況由系統自動處理</span><span class="en">Everything else is handled automatically</span></span></div><div class="bd"><div class="notes"><article class="note is-act"><div class="meta"><span class="lvl">! <span class="zh">需要你處理</span><span class="en">Action needed</span></span><span class="mono">trinickia-16S-pilot</span><time>10-18 09:40</time></div><h3><span class="zh">輸入資料不完整</span><span class="en">Input data incomplete</span></h3><dl><dt><span class="zh">問題</span><span class="en">Problem</span></dt><dd><span class="zh">12 個樣本缺少反向序列檔（R2）</span><span class="en">12 samples have no reverse-read file (R2)</span></dd><dt><span class="zh">原因</span><span class="en">Cause</span></dt><dd><span class="zh">原始資料只能由你提供，系統無法自動補上</span><span class="en">Raw data can only come from you; the system cannot supply it</span></dd><dt><span class="zh">可選動作</span><span class="en">Options</span></dt><dd><span class="zh">上傳 12 個 R2 檔，或改為單端分析</span><span class="en">Upload the 12 R2 files, or switch to single-end</span></dd></dl><div class="btns"><a class="abf-btn primary" href="#upload"><span class="zh">上傳 R2 檔</span><span class="en">Upload R2 files</span></a><a class="abf-btn" href="#launch"><span class="zh">改為單端分析</span><span class="en">Switch to single-end</span></a></div></article><article class="note is-act"><div class="meta"><span class="lvl">! <span class="zh">需要 AI 或你處理</span><span class="en">Needs AI or you</span></span><span class="mono">soy-rnaseq-root</span><time>10-18 08:20</time></div><h3><span class="zh">執行失敗，不在自動修正規則內</span><span class="en">Run failed; no automatic rule applies</span></h3><dl><dt><span class="zh">步驟</span><span class="en">Step</span></dt><dd class="mono">STAR_ALIGN</dd><dt><span class="zh">原因</span><span class="en">Cause</span></dt><dd><span class="zh">未設定 AI 金鑰，無法自動診斷</span><span class="en">No AI key set, so it cannot be diagnosed automatically</span></dd><dt><span class="zh">錯誤訊息（最後 4 行）</span><span class="en">Error (last 4 lines)</span></dt><dd><pre class="errtail">EXITING because of fatal ERROR in reads input:
+quality string length is not equal to sequence length
+@SRR1234.551 ...
+Command exit status: 1</pre></dd><dt><span class="zh">可選動作</span><span class="en">Options</span></dt><dd><span class="zh">設定 AI 金鑰後自動診斷；或修正輸入檔後續跑</span><span class="en">Add an AI key for automatic diagnosis; or fix the input file and resume</span></dd></dl><div class="btns"><a class="abf-btn primary" href="#settings"><span class="zh">設定 AI 金鑰</span><span class="en">Add AI key</span></a><a class="abf-btn" href="#confirm-resume">↻ <span class="zh">續跑</span><span class="en">Resume</span></a><a class="abf-btn" href="#confirm-rerun">⟲ <span class="zh">從頭重跑</span><span class="en">Start over</span></a></div></article><article class="note is-dec"><div class="meta"><span class="lvl">? <span class="zh">待你決定</span><span class="en">Decision needed</span></span><span class="mono">seedrot-16S-v4</span><time>10-18 10:05</time></div><h3><span class="zh">送出前確認</span><span class="en">Confirm before launch</span></h3><dl><dt><span class="zh">管線</span><span class="en">Pipeline</span></dt><dd>nf-core/ampliseq 2.11.0</dd><dt><span class="zh">變更</span><span class="en">Change</span></dt><dd>trunclenf 230 → 220（<span class="zh">新分析</span><span class="en">new analysis</span>）</dd><dt><span class="zh">運算環境</span><span class="en">Compute</span></dt><dd>NCHC Taiwania3</dd></dl><div class="btns"><a class="abf-btn primary" href="#confirm"><span class="zh">檢視摘要並確認</span><span class="en">Review and confirm</span></a></div></article><article class="note is-dec"><div class="meta"><span class="lvl">? <span class="zh">待你決定</span><span class="en">Decision needed</span></span><span class="mono">seedrot-16S-v1</span><time>10-18 09:30</time></div><h3><span class="zh">是否執行下游分析</span><span class="en">Run downstream analysis?</span></h3><dl><dt><span class="zh">建議項目</span><span class="en">Suggested</span></dt><dd><span class="zh">α 多樣性、β 多樣性 PCoA、差異菌屬（ANCOM-BC）</span><span class="en">Alpha diversity, beta-diversity PCoA, differential genera (ANCOM-BC)</span></dd><dt><span class="zh">預估</span><span class="en">Estimate</span></dt><dd><span class="zh">本機 RStudio，約 20 分鐘</span><span class="en">Local RStudio, about 20 min</span></dd></dl><div class="btns"><a class="abf-btn primary" href="#confirm-down"><span class="zh">執行建議的分析</span><span class="en">Run the suggested analysis</span></a><a class="abf-btn" href="#fin"><span class="zh">略過，直接完成</span><span class="en">Skip to finished</span></a></div></article></div></div></section>
+<section class="abf-card"><div class="hd"><h2><span class="zh">系統自動處理紀錄</span><span class="en">Automatic handling log</span></h2><span class="small muted"><span class="zh">不需要你動作</span><span class="en">No action needed</span></span></div><div class="bd">
+<table class="abf-table"><thead><tr><th class="w-time"><span class="zh">時間</span><span class="en">Time</span></th><th><span class="zh">分析</span><span class="en">Analysis</span></th><th><span class="zh">事件</span><span class="en">Event</span></th><th><span class="zh">處置</span><span class="en">Action</span></th><th class="w-state"><span class="zh">狀態</span><span class="en">Status</span></th></tr></thead><tbody>
+<tr><td class="small num">10-18 09:12</td><td class="mono small">seedrot-16S-v2</td><td class="small"><span class="zh">記憶體不足（DADA2_TAXONOMY）</span><span class="en">Out of memory (DADA2_TAXONOMY)</span></td><td class="small"><span class="zh">記憶體 12 → 36 GB，續跑第 2 次</span><span class="en">Memory 12 → 36 GB, attempt 2</span></td><td><span class="abf-badge is-running">⟳ <span class="zh">自動處理中</span><span class="en">Auto-handling</span></span></td></tr><tr><td class="small num">10-18 06:40</td><td class="mono small">trinickia-rpoB</td><td class="small"><span class="zh">叢集節點中斷</span><span class="en">Cluster node lost</span></td><td class="small"><span class="zh">自動續跑，沿用已完成的步驟</span><span class="en">Resumed, completed steps reused</span></td><td><span class="abf-badge is-running">▶ <span class="zh">執行中</span><span class="en">Running</span></span></td></tr>
+</tbody></table></div></section>
+</section><section class="screen" id="setup">
+<p class="crumb"><span class="zh">第一次使用 · 系統設定</span><span class="en">First use · setup</span></p><div class="ptitle"><h1><span class="zh">歡迎使用 agentic-bioflow</span><span class="en">Welcome to agentic-bioflow</span></h1></div>
+<p class="muted"><span class="zh">完成以下設定後即可建立專案。右側欄位會逐步說明。</span><span class="en">Complete these settings, then create a project. The right column explains each step.</span></p>
+<div class="walk">
+<details class="step done"><summary><span class="n">✓</span><h2 class="st"><span class="zh">帳號</span><span class="en">Account</span></h2><span class="sum">謝宗翰</span></summary></details>
+<details class="step done"><summary><span class="n">✓</span><h2 class="st"><span class="zh">個人存取權杖</span><span class="en">Access token</span></h2><span class="sum"><span class="zh">已建立 · 12 小時免重新登入</span><span class="en">Created · 12 h sign-in</span></span></summary></details>
+<details class="step cur" open><summary><span class="n">3</span><h2 class="st"><span class="zh">運算環境</span><span class="en">Compute environment</span></h2><span class="sum"><span class="zh">必填</span><span class="en">Required</span></span></summary><div class="bd">
+ <div class="form"><label><span class="zh">環境</span><span class="en">Environment</span></label><select><option>NCHC Taiwania3 · SU</option><option>雲端 · 每月上限 NT$ 3,000 / Cloud · cap NT$ 3,000/month</option></select>
+ <label><span class="zh">站台代理</span><span class="en">Site agent</span></label><span><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span> <span class="small muted"><span class="zh">已連線 · 10-18 10:02</span><span class="en">Connected · 10-18 10:02</span></span></span>
+ <label><span class="zh">叢集帳號</span><span class="en">Cluster account</span></label><input type="text" value="u9613010"></div>
+ <div class="btns"><span class="abf-btn primary"><span class="zh">儲存並繼續</span><span class="en">Save and continue</span></span></div></div></details>
+<details class="step"><summary><span class="n">4</span><h2 class="st"><span class="zh">AI 模型金鑰</span><span class="en">AI model key</span></h2><span class="sum"><span class="zh">選填 · 只存在你的瀏覽器</span><span class="en">Optional · kept in your browser</span></span></summary><div class="bd"><div class="form"><label for="s-ai"><span class="zh">AI 模型金鑰</span><span class="en">AI model key</span></label><input id="s-ai" type="password"><label for="s-jev"><span class="zh">Jev 金鑰（選填）</span><span class="en">Jev key (optional)</span></label><input id="s-jev" type="password"></div></div></details>
+<details class="step"><summary><span class="n">5</span><h2 class="st"><span class="zh">建立第一個專案</span><span class="en">Create the first project</span></h2><span class="sum"><span class="zh">專案＝一個實驗資料夾</span><span class="en">A project = one experiment folder</span></span></summary><div class="bd"><div class="form"><label for="np"><span class="zh">專案名稱</span><span class="en">Project name</span></label><input id="np" type="text" value="Testing"></div><div class="btns"><a class="abf-btn primary" href="#empty-project"><span class="zh">建立專案</span><span class="en">Create project</span></a></div></div></details>
+</div></section><section class="screen empty" id="empty-project"><h1><span class="zh">測試：尚無分析</span><span class="en">Testing: no analyses yet</span></h1><p class="muted"><span class="zh">下一步：上傳原始資料。上傳完成後會直接進入選擇管線。</span><span class="en">Next: upload raw data. Pipeline selection opens right after.</span></p><div class="btns"><a class="abf-btn primary" href="#upload">↑ <span class="zh">上傳原始資料</span><span class="en">Upload raw data</span></a></div></section><section class="screen" id="upload">
+<p class="crumb"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span></p><div class="ptitle"><h1><span class="zh">上傳資料</span><span class="en">Upload data</span></h1></div>
+<div class="drop"><b><span class="zh">把檔案拖到這裡</span><span class="en">Drop files here</span></b><span class="js" title="drag-and-drop + progress">JS</span><span class="small muted"><span class="zh">網頁只收單檔約 2 GB 以下的小檔；大型 FASTQ 請在你的電腦由 AI 以 push.sh 傳送。檔案經站台代理存到你的站台或雲端空間，平台不留副本。</span><span class="en">The web takes files up to about 2 GB; large FASTQ goes from your computer through the AI and push.sh. Files go through the site agent to your own site or cloud storage; the platform keeps no copy.</span></span><span class="abf-btn"><span class="zh">選擇檔案</span><span class="en">Choose files</span></span></div>
+<section class="abf-card"><div class="hd"><h2><span class="zh">建立樣本表</span><span class="en">Create a samplesheet</span></h2></div><div class="bd"><dl class="summary"><dt><span class="zh">來源</span><span class="en">Source</span></dt><dd class="mono small">raw_fastq/ · 96 <span class="zh">個檔案</span><span class="en">files</span></dd><dt><span class="zh">自動配對</span><span class="en">Auto-pairing</span></dt><dd><span class="zh">48 個樣本，R1／R2 配對 48/48</span><span class="en">48 samples, R1/R2 paired 48/48</span></dd><dt><span class="zh">欄位依據</span><span class="en">Columns from</span></dt><dd class="small"><span class="zh">所選管線的 schema_input.json</span><span class="en">the chosen pipeline's schema_input.json</span></dd></dl><div class="btns"><span class="abf-btn"><span class="zh">產生樣本表（新版本 v4）</span><span class="en">Build samplesheet (new version v4)</span></span></div></div></section>
+<section class="abf-card"><div class="hd"><h2><span class="zh">已上傳的資料（版本）</span><span class="en">Uploaded data (versions)</span></h2></div><div class="bd">
+<table class="abf-table"><thead><tr><th><span class="zh">名稱</span><span class="en">Name</span></th><th><span class="zh">版本</span><span class="en">Version</span></th><th><span class="zh">內容</span><span class="en">Contents</span></th><th><span class="zh">用於</span><span class="en">Used by</span></th><th><span class="zh">校驗碼</span><span class="en">Checksum</span></th><th class="w-time"><span class="zh">更新</span><span class="en">Updated</span></th></tr></thead><tbody>
+<tr><td class="mono small">samplesheet_seedrot.csv</td><td>v3</td><td class="small">48 <span class="zh">樣本</span><span class="en">samples</span></td><td class="small mono">v3, v4</td><td class="mono small">sha256:9f2c…a1</td><td class="small num">10-17</td></tr>
+<tr><td class="mono small">samplesheet_seedrot.csv</td><td class="muted">v2</td><td class="small">46 <span class="zh">樣本</span><span class="en">samples</span></td><td class="small mono">v1, v2</td><td class="mono small">sha256:41be…07</td><td class="small num">10-14</td></tr>
+<tr><td class="mono small">raw_fastq/</td><td>—</td><td class="small">96 <span class="zh">個檔案 · 叢集路徑</span><span class="en">files · cluster path</span></td><td class="small">—</td><td class="mono small"><span class="zh">逐檔 96 筆</span><span class="en">96, per file</span></td><td class="small num">10-12</td></tr></tbody></table>
+<div class="btns"><a class="abf-btn primary" href="#launch"><span class="zh">下一步：選擇管線</span><span class="en">Next: choose a pipeline</span> →</a></div></div></section></section><section class="screen" id="launch">
+<p class="crumb"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span> / <span class="zh">送出</span><span class="en">Launch</span></p><div class="ptitle"><h1>seedrot-16S-v4</h1><span class="sp"><span class="abf-badge is-queued">✎ <span class="zh">設定中</span><span class="en">Drafting</span></span></span></div><ol class="abf-steps"><li class="is-current"><a href="#launch" aria-current="step"><span class="k">1 · <span class="zh">目前</span><span class="en">now</span></span><span class="zh">送出</span><span class="en">Launch</span></a></li><li class=""><a href="#run"><span class="k">2</span><span class="zh">執行中</span><span class="en">Running</span></a></li><li class=""><a href="#results"><span class="k">3</span><span class="zh">結果</span><span class="en">Results</span></a></li><li class=""><a href="#down"><span class="k">4</span><span class="zh">下游分析</span><span class="en">Downstream</span></a></li><li class=""><a href="#fin"><span class="k">5</span><span class="zh">完成</span><span class="en">Finished</span></a></li></ol>
+<div class="walk">
+<details class="step done"><summary><span class="n">✓</span><h2 class="st"><span class="zh">預檢</span><span class="en">Pre-checks</span></h2><span class="sum"><span class="zh">6 項通過 · 1 項提醒</span><span class="en">6 passed · 1 notice</span></span></summary><div class="bd"><ul class="checks">
+ <li><span class="ok">✓</span> <span class="zh">管線版本已固定</span><span class="en">Revision pinned</span> 2.11.0</li><li><span class="ok">✓</span> <span class="zh">參數 schema 已讀取</span><span class="en">Parameter schema read</span></li><li><span class="ok">✓</span> <span class="zh">管線已登記</span><span class="en">Pipeline registered</span></li>
+ <li><span class="ok">✓</span> <span class="zh">樣本表草稿已產生</span><span class="en">Samplesheet draft built</span></li><li><span class="ok">✓</span> <span class="zh">叢集設定檢查</span><span class="en">Cluster directives</span></li><li><span class="ok">✓</span> <span class="zh">站台連線</span><span class="en">Site connection</span></li>
+ <li><span class="warn">!</span> <span class="zh">需要對外連線：ftp.ncbi.nlm.nih.gov（已在允許清單）</span><span class="en">Needs outbound host ftp.ncbi.nlm.nih.gov (already allowed)</span></li></ul></div></details>
+<details class="step done"><summary><span class="n">✓</span><h2 class="st"><span class="zh">選擇管線</span><span class="en">Pipeline</span></h2><span class="sum mono">nf-core/ampliseq 2.11.0 · <span class="zh">沿用 v3</span><span class="en">as in v3</span></span></summary><div class="bd">
+<div class="abf-card tabs-wrap"><input type="radio" name="tab-pick" id="pick-0" checked><input type="radio" name="tab-pick" id="pick-1"><nav class="abf-tabs"><label for="pick-0"><span class="zh">之前用過的</span><span class="en">Used before</span></label><label for="pick-1"><span class="zh">新的管線（全部 nf-core）</span><span class="en">New pipeline (all nf-core)</span></label></nav><div class="panel p1"><table class="abf-table"><thead><tr><th><span class="zh">管線</span><span class="en">Pipeline</span></th><th><span class="zh">版本</span><span class="en">Revision</span></th><th><span class="zh">上次用於</span><span class="en">Last used by</span></th><th class="w-time"><span class="zh">時間</span><span class="en">When</span></th><th></th></tr></thead><tbody>
+  <tr><td class="mono">nf-core/ampliseq <span class="tag">✓ <span class="zh">已驗證</span><span class="en">Verified</span></span></td><td class="mono small">2.11.0</td><td class="mono small">seedrot-16S-v3</td><td class="small num">10-18</td><td class="btns"><span class="abf-badge is-succeeded">✓ <span class="zh">已選</span><span class="en">Selected</span></span><a class="abf-btn" href="#confirm">⚡ <span class="zh">快速送出</span><span class="en">Quick launch</span></a></td></tr>
+  <tr><td class="mono">nf-core/rnaseq</td><td class="mono small">3.16.0</td><td class="mono small">soy-rnaseq-root</td><td class="small num">10-17</td><td><span class="abf-btn"><span class="zh">選這個</span><span class="en">Select</span></span></td></tr></tbody></table></div><div class="panel p2"><div class="toolbar"><label class="search"><span class="vh"><span class="zh">搜尋管線</span><span class="en">Search pipelines</span></span><input class="zh" type="search" placeholder="搜尋管線"><input class="en" type="search" placeholder="Search pipelines"></label><span class="js" title="client-side search filter">JS</span></div><div class="lp">
+  <div class="pcard pick"><h3>nf-core/ampliseq <span class="tag">✓ <span class="zh">已驗證</span><span class="en">Verified</span></span></h3><span class="meta"><span class="zh">16S/ITS 擴增子 · 參數已預填</span><span class="en">16S/ITS amplicon · prefilled</span></span><span class="meta mono">2.11.0</span></div>
+  <div class="pcard"><h3>nf-core/mag <span class="tag grey"><span class="zh">未驗證</span><span class="en">Not verified</span></span></h3><span class="meta"><span class="zh">宏基因體組裝與分箱</span><span class="en">Metagenome assembly &amp; binning</span></span><span class="meta mono">3.1.0</span></div>
+  <div class="pcard"><h3>nf-core/taxprofiler <span class="tag grey"><span class="zh">未驗證</span><span class="en">Not verified</span></span></h3><span class="meta"><span class="zh">宏基因體分類</span><span class="en">Taxonomic profiling</span></span><span class="meta mono">1.2.0</span></div></div></div></div>
+</div></details>
+<details class="step done"><summary><span class="n">✓</span><h2 class="st"><span class="zh">流程圖</span><span class="en">Workflow</span></h2><span class="sum"><span class="zh">9 個步驟 · 已檢視</span><span class="en">9 stages · reviewed</span></span></summary><div class="bd"><figure class="metro"><svg viewBox="0 0 640 150" role="img" aria-label="ampliseq workflow"><path class="ln" d="M30 50 H610"/><path class="ln2" d="M330 50 V110 H610"/><path class="ln3" d="M190 50 V110 H260"/>
+<circle cx="30" cy="50" r="9"/><text x="14" y="30">FastQC</text><circle cx="110" cy="50" r="9"/><text x="88" y="30">Cutadapt</text><circle cx="190" cy="50" r="9"/><text x="168" y="30">DADA2</text>
+<circle cx="260" cy="110" r="9"/><text x="240" y="136">QIIME2</text><circle cx="330" cy="50" r="9"/><text x="300" y="30">SILVA 138</text><circle cx="450" cy="50" r="9"/><text x="420" y="30">phyloseq</text>
+<circle cx="610" cy="50" r="9"/><text x="580" y="30">MultiQC</text><circle cx="470" cy="110" r="9"/><text x="440" y="136">ANCOM-BC</text><circle cx="610" cy="110" r="9"/><text x="560" y="136">[report]</text></svg>
+<figcaption><span class="zh">流程圖：取自 nf-core/ampliseq 2.11.0 的 docs/images/ampliseq_workflow.png</span><span class="en">Diagram: from nf-core/ampliseq 2.11.0 docs/images/ampliseq_workflow.png</span></figcaption></figure>
+ <ol class="stages"><li><span class="zh">品質檢查</span><span class="en">Quality control</span> (FastQC)</li><li><span class="zh">去除引子</span><span class="en">Primer trimming</span> (Cutadapt)</li><li><span class="zh">去噪並產生 ASV</span><span class="en">Denoising to ASVs</span> (DADA2)</li><li><span class="zh">分類</span><span class="en">Taxonomy</span> (SILVA 138)</li><li class="skip"><span class="zh">QIIME2 分析</span><span class="en">QIIME2 analysis</span>（<span class="zh">本次略過</span><span class="en">skipped this run</span>）</li><li><span class="zh">phyloseq 物件</span><span class="en">phyloseq object</span></li><li><span class="zh">差異豐度</span><span class="en">Differential abundance</span> (ANCOM-BC)</li><li><span class="zh">整合報告</span><span class="en">Summary report</span> (MultiQC)</li></ol>
+ <p class="small muted"><span class="zh">快速送出＝沿用上次的全部設定，直接進確認頁。</span><span class="en">Quick launch = reuse every setting of the last run and go straight to confirmation.</span></p><p class="small muted"><span class="zh">步驟清單取自管線 README 的 Pipeline summary 章節。</span><span class="en">Stage list from the pipeline README, Pipeline summary section.</span></p></div></details>
+<details class="step done"><summary><span class="n">✓</span><h2 class="st"><span class="zh">樣本表</span><span class="en">Samplesheet</span></h2><span class="sum">samplesheet_seedrot.csv v3 · <span class="zh">48 個樣本，配對 48/48</span><span class="en">48 samples, 48/48 paired</span></span></summary><div class="bd">
+ <dl class="summary"><dt>sampleID</dt><dd class="small"><span class="zh">取自檔名前綴</span><span class="en">From the file-name prefix</span></dd><dt>forwardReads</dt><dd class="small">*_R1.fastq.gz</dd><dt>reverseReads</dt><dd class="small">*_R2.fastq.gz</dd></dl>
+ <table class="abf-table"><thead><tr><th>sampleID</th><th>forwardReads</th><th>reverseReads</th></tr></thead><tbody><tr><td class="mono">SR01</td><td class="mono small">SR01_R1.fastq.gz</td><td class="mono small">SR01_R2.fastq.gz</td></tr><tr><td class="mono">SR02</td><td class="mono small">SR02_R1.fastq.gz</td><td class="mono small">SR02_R2.fastq.gz</td></tr><tr><td colspan="3" class="small muted"><span class="zh">另有 46 列</span><span class="en">46 more rows</span></td></tr></tbody></table></div></details>
+<details class="step cur" open><summary><span class="n">5</span><h2 class="st"><span class="zh">參數</span><span class="en">Parameters</span></h2><span class="sum"><span class="zh">選擇設定來源</span><span class="en">Choose where settings come from</span></span></summary><div class="bd">
+ <div class="routes">
+  <div class="route"><b>① <span class="zh">沿用之前的設定</span><span class="en">Reuse a previous run</span></b><span class="small">seedrot-16S-v3</span><span class="small muted"><span class="zh">調校檔依據：48 樣本、9.6 GB；本次 48 樣本、10.1 GB</span><span class="en">Tuned on 48 samples, 9.6 GB; this run 48 samples, 10.1 GB</span></span></div>
+  <div class="route"><b>② <span class="zh">管線預設值</span><span class="en">Pipeline defaults</span></b><span class="small muted"><span class="zh">schema 原值，不修改</span><span class="en">Schema values, unchanged</span></span></div>
+  <div class="route on"><b>③ <span class="zh">逐組調整</span><span class="en">Adjust by group</span></b><span class="small"><span class="abf-badge is-succeeded">✓ <span class="zh">已選</span><span class="en">Selected</span></span></span><span class="small muted"><span class="zh">列出 schema 全部分組</span><span class="en">Every group in the schema</span></span></div></div>
+ <p class="req">! <span class="zh">必填且無預設值：FW_primer、RV_primer（已由 v3 帶入）</span><span class="en">Required, no default: FW_primer, RV_primer (filled from v3)</span></p>
+ <details class="grp" open><summary><b><span class="zh">主要選項</span><span class="en">Main arguments</span></b><span class="small muted">8 <span class="zh">項</span><span class="en">params</span></span><span class="rep">input · FW_primer · RV_primer</span></summary><table class="abf-table"><thead><tr><th><span class="zh">參數</span><span class="en">Parameter</span></th><th><span class="zh">類型</span><span class="en">Type</span></th><th><span class="zh">預設</span><span class="en">Default</span></th><th><span class="zh">本次</span><span class="en">This run</span></th></tr></thead><tbody><tr><td class="mono small">FW_primer</td><td class="small">string</td><td class="small">—</td><td class="mono small">GTGYCAGCMGCCGCGGTAA</td></tr><tr><td class="mono small">RV_primer</td><td class="small">string</td><td class="small">—</td><td class="mono small">GGACTACNVGGGTWTCTAAT</td></tr></tbody></table></details>
+ <details class="grp" open><summary><b>DADA2</b><span class="small muted">9 <span class="zh">項</span><span class="en">params</span></span><span class="rep">trunclenf · trunclenr · max_ee</span></summary><table class="abf-table"><thead><tr><th><span class="zh">參數</span><span class="en">Parameter</span></th><th><span class="zh">類型</span><span class="en">Type</span></th><th><span class="zh">預設</span><span class="en">Default</span></th><th><span class="zh">本次</span><span class="en">This run</span></th></tr></thead><tbody><tr><td class="mono small">trunclenf</td><td class="small">integer</td><td class="small">230</td><td class="mono small"><b>220</b></td></tr><tr><td class="mono small">trunclenr</td><td class="small">integer</td><td class="small">180</td><td class="mono small">180</td></tr></tbody></table></details>
+ <details class="grp"><summary><b><span class="zh">分類</span><span class="en">Taxonomy</span></b><span class="small muted">7 <span class="zh">項</span><span class="en">params</span></span><span class="rep">dada_ref_taxonomy · skip_dada_taxonomy</span></summary></details>
+ <details class="grp"><summary><b><span class="zh">略過步驟</span><span class="en">Skipping options</span></b><span class="small muted">11 <span class="zh">項</span><span class="en">params</span></span><span class="rep">skip_qiime · skip_fastqc · skip_multiqc</span></summary></details>
+ <details class="grp"><summary><b><span class="zh">運算資源</span><span class="en">Resources</span></b><span class="small muted">4 <span class="zh">項</span><span class="en">params</span></span><span class="rep">max_cpus · max_memory · max_time</span></summary></details>
+ <section class="abf-card"><div class="hd"><h2><span class="zh">依目前選擇會執行的步驟</span><span class="en">Stages that will run with these choices</span></h2></div><div class="bd"><p class="small">FastQC → Cutadapt → DADA2 (trunclenf 220) → SILVA 138 → phyloseq → ANCOM-BC → MultiQC · <span class="muted"><span class="zh">略過 QIIME2</span><span class="en">QIIME2 skipped</span></span></p></div></section>
+ <div class="btns"><span class="abf-btn primary"><span class="zh">下一步：運算環境</span><span class="en">Next: compute</span></span></div></div></details>
+<details class="step"><summary><span class="n">6</span><h2 class="st"><span class="zh">運算環境</span><span class="en">Compute environment</span></h2><span class="sum">NCHC Taiwania3</span></summary><div class="bd"><div class="form"><label><span class="zh">環境</span><span class="en">Environment</span></label><select><option>NCHC Taiwania3 · SU</option><option>雲端 · 每月上限 NT$ 3,000 / Cloud · cap NT$ 3,000/month</option></select><label><span class="zh">設定檔</span><span class="en">Profile</span></label><select><option>singularity</option></select></div></div></details>
+<details class="step"><summary><span class="n">7</span><h2 class="st"><span class="zh">確認送出</span><span class="en">Confirm</span></h2><span class="sum"><span class="zh">需要你按確認</span><span class="en">Needs your confirmation</span></span></summary><div class="bd"><a class="abf-btn primary" href="#confirm"><span class="zh">檢視摘要</span><span class="en">Review summary</span></a></div></details>
+</div>
+<div class="abf-pager"><span></span><a href="#run"><span class="zh">執行中</span><span class="en">Running</span> →</a></div></section><section class="screen" id="confirm">
+<p class="crumb"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span> / seedrot-16S-v4</p><div class="ptitle"><h1><span class="zh">確認送出</span><span class="en">Confirm launch</span></h1></div>
+<section class="ask"><h2><span class="zh">送出摘要：seedrot-16S-v4</span><span class="en">Launch summary: seedrot-16S-v4</span></h2>
+<dl class="summary"><dt><span class="zh">管線</span><span class="en">Pipeline</span></dt><dd class="mono">nf-core/ampliseq 2.11.0 ✓</dd><dt><span class="zh">樣本表</span><span class="en">Samplesheet</span></dt><dd>samplesheet_seedrot.csv v3 · 48</dd><dt><span class="zh">變更的參數</span><span class="en">Changed parameters</span></dt><dd class="mono">trunclenf 230 → 220</dd><dt><span class="zh">略過的步驟</span><span class="en">Skipped stages</span></dt><dd>QIIME2</dd><dt><span class="zh">運算環境</span><span class="en">Compute</span></dt><dd>NCHC Taiwania3</dd><dt><span class="zh">叢集輸出位置</span><span class="en">Output on cluster</span></dt><dd class="mono small">/work/u9613010/projects/seedrot-16S/runs/v4</dd><dt><span class="zh">本機回傳位置</span><span class="en">Copied back to</span></dt><dd class="mono small">~/abf/projects/seedrot-16S/results/v4</dd><dt><span class="zh">預估費用</span><span class="en">Estimate</span></dt><dd>SU —</dd><dt><span class="zh">分類</span><span class="en">Type</span></dt><dd><span class="zh">參數變更 → 新分析</span><span class="en">Parameters changed → new analysis</span></dd></dl>
+<div class="btns"><a class="abf-btn primary" href="#run">✓ <span class="zh">確認送出</span><span class="en">Confirm</span></a><a class="abf-btn" href="#launch"><span class="zh">返回修改</span><span class="en">Back</span></a></div></section></section><section class="screen" id="run">
+<p class="crumb"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span> / <span class="zh">執行中</span><span class="en">Running</span></p><div class="ptitle"><h1>seedrot-16S-v3</h1><span class="sp"><span class="abf-badge is-running">▶ <span class="zh">執行中</span><span class="en">Running</span></span><a class="abf-btn" href="#confirm-resume">↻ <span class="zh">續跑</span><span class="en">Resume</span></a><a class="abf-btn" href="#confirm-rerun">⟲ <span class="zh">從頭重跑</span><span class="en">Re-run</span></a></span></div><ol class="abf-steps"><li class="is-done"><a href="#launch"><span class="k">1 · ✓</span><span class="zh">送出</span><span class="en">Launch</span></a></li><li class="is-current"><a href="#run" aria-current="step"><span class="k">2 · <span class="zh">目前</span><span class="en">now</span></span><span class="zh">執行中</span><span class="en">Running</span></a></li><li class=""><a href="#results"><span class="k">3</span><span class="zh">結果</span><span class="en">Results</span></a></li><li class=""><a href="#down"><span class="k">4</span><span class="zh">下游分析</span><span class="en">Downstream</span></a></li><li class=""><a href="#fin"><span class="k">5</span><span class="zh">完成</span><span class="en">Finished</span></a></li></ol>
+<dl class="cards4">
+ <div class="mini"><dt><span class="zh">目前步驟</span><span class="en">Current step</span></dt><dd class="mono">DADA2_TAXONOMY</dd></div>
+ <div class="mini"><dt><span class="zh">已執行</span><span class="en">Duration</span></dt><dd class="num">1h 48m</dd></div>
+ <div class="mini"><dt><span class="zh">運算環境</span><span class="en">Compute</span></dt><dd>NCHC Taiwania3</dd></div>
+ <div class="mini"><dt><span class="zh">費用</span><span class="en">Cost</span></dt><dd class="num">SU —</dd></div>
+</dl>
+<section class="abf-card"><div class="hd"><h2>Tasks <span class="small muted num">142 / 210</span></h2><span class="js" title="live progress">JS</span></div><div class="bd"><div class="tbar"><i class="s1"></i><i class="s2"></i><i class="s3"></i><i class="s4"></i></div>
+<div class="legend"><span><span class="zh">成功</span><span class="en">Succeeded</span> <b>128</b></span><span><span class="zh">快取</span><span class="en">Cached</span> <b>14</b></span><span><span class="zh">執行中</span><span class="en">Running</span> <b>6</b></span><span><span class="zh">等待</span><span class="en">Pending</span> <b>62</b></span><span><span class="zh">失敗</span><span class="en">Failed</span> <b>0</b></span></div></div></section>
+<section class="abf-card"><div class="hd"><h2><span class="zh">本分析的通知</span><span class="en">Notices for this analysis</span></h2></div><div class="bd"><div class="notes"><article class="note is-ok"><div class="meta"><span class="lvl">✓ <span class="zh">完成</span><span class="en">Completed</span></span><span class="mono">seedrot-16S-v3</span><time>10-18 09:41</time></div><h3><span class="zh">DADA2_DENOISING 完成</span><span class="en">DADA2_DENOISING completed</span></h3><dl><dt><span class="zh">結果</span><span class="en">Result</span></dt><dd>48/48</dd></dl></article></div></div></section>
+<div class="abf-card tabs-wrap"><input type="radio" name="tab-run" id="run-0" checked><input type="radio" name="tab-run" id="run-1"><input type="radio" name="tab-run" id="run-2"><input type="radio" name="tab-run" id="run-3"><input type="radio" name="tab-run" id="run-4"><nav class="abf-tabs"><label for="run-0">Tasks</label><label for="run-1"><span class="zh">日誌</span><span class="en">Logs</span></label><label for="run-2"><span class="zh">執行資訊</span><span class="en">Run info</span></label><label for="run-3"><span class="zh">設定</span><span class="en">Configuration</span></label><label for="run-4"><span class="zh">指標</span><span class="en">Metrics</span></label></nav><div class="panel p1"><table class="abf-table"><thead><tr><th>Process</th><th class="w-state"><span class="zh">狀態</span><span class="en">Status</span></th><th><span class="zh">完成</span><span class="en">Done</span></th></tr></thead><tbody><tr><td class="mono">FASTQC</td><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td class="num small">48/48</td></tr><tr><td class="mono">CUTADAPT</td><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td class="num small">48/48</td></tr><tr><td class="mono">DADA2_DENOISING</td><td><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></td><td class="num small">48/48</td></tr><tr><td class="mono">DADA2_TAXONOMY</td><td><span class="abf-badge is-running">▶ <span class="zh">執行中</span><span class="en">Running</span></span></td><td class="num small">0/1</td></tr></tbody></table></div><div class="panel p2"><pre class="abf-pre">[09:58] DADA2_TAXONOMY (1) running · 36 GB
+[09:41] DADA2_DENOISING ✓ 48/48
+[09:12] CUTADAPT ✓ 48/48</pre></div><div class="panel p3"><dl class="summary"><dt><span class="zh">管線</span><span class="en">Pipeline</span></dt><dd class="mono">nf-core/ampliseq 2.11.0</dd><dt><span class="zh">第幾次</span><span class="en">Attempt</span></dt><dd>1</dd><dt><span class="zh">工作目錄</span><span class="en">Work dir</span></dt><dd class="mono small">/work/u9613010/seedrot-16S-v3</dd><dt><span class="zh">指令</span><span class="en">Command</span></dt><dd class="mono small">nextflow run nf-core/ampliseq -r 2.11.0 -profile singularity</dd></dl></div><div class="panel p4"><pre class="abf-pre">process.memory = '12 GB'
+process.executor = 'slurm'</pre></div><div class="panel p5"><p class="small muted"><span class="zh">CPU 與記憶體用量（依步驟）</span><span class="en">CPU and memory by step</span></p></div></div>
+<div class="abf-pager"><a href="#launch">← <span class="zh">送出</span><span class="en">Launch</span></a><a href="#results"><span class="zh">結果</span><span class="en">Results</span> →</a></div></section><section class="screen" id="results">
+<p class="crumb"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span> / <span class="zh">結果</span><span class="en">Results</span></p><div class="ptitle"><h1>seedrot-16S-v1</h1><span class="sp"><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span><span class="abf-btn primary">⬇ <span class="zh">全部下載</span><span class="en">Download all</span></span></span></div><ol class="abf-steps"><li class="is-done"><a href="#launch"><span class="k">1 · ✓</span><span class="zh">送出</span><span class="en">Launch</span></a></li><li class="is-done"><a href="#run"><span class="k">2 · ✓</span><span class="zh">執行中</span><span class="en">Running</span></a></li><li class="is-current"><a href="#results" aria-current="step"><span class="k">3 · <span class="zh">目前</span><span class="en">now</span></span><span class="zh">結果</span><span class="en">Results</span></a></li><li class=""><a href="#down"><span class="k">4</span><span class="zh">下游分析</span><span class="en">Downstream</span></a></li><li class=""><a href="#fin"><span class="k">5</span><span class="zh">完成</span><span class="en">Finished</span></a></li></ol>
+<dl class="cards4"><div class="mini"><dt><span class="zh">耗時</span><span class="en">Duration</span></dt><dd>3h 12m</dd></div><div class="mini"><dt>Tasks</dt><dd class="num">210 / 210</dd></div><div class="mini"><dt><span class="zh">費用</span><span class="en">Cost</span></dt><dd>SU —</dd></div><div class="mini"><dt><span class="zh">樣本</span><span class="en">Samples</span></dt><dd>48</dd></div></dl>
+<div class="abf-card tabs-wrap"><input type="radio" name="tab-res" id="res-0" checked><input type="radio" name="tab-res" id="res-1"><input type="radio" name="tab-res" id="res-2"><input type="radio" name="tab-res" id="res-3"><input type="radio" name="tab-res" id="res-4"><input type="radio" name="tab-res" id="res-5"><input type="radio" name="tab-res" id="res-6"><nav class="abf-tabs"><label for="res-0"><span class="zh">分析報告</span><span class="en">Report</span></label><label for="res-1"><span class="zh">輸出</span><span class="en">Outputs</span></label><label for="res-2"><span class="zh">報告</span><span class="en">Reports</span></label><label for="res-3"><span class="zh">執行資訊</span><span class="en">Run info</span></label><label for="res-4">Tasks</label><label for="res-5"><span class="zh">日誌</span><span class="en">Logs</span></label><label for="res-6"><span class="zh">指標</span><span class="en">Metrics</span></label></nav><div class="panel p1"><div class="report"><p class="small muted"><span class="zh">系統依本次 run 自動產生，可編輯；「完成」階段會放進交付包。</span><span class="en">Generated from this run and editable; it goes into the package at Finished.</span></p><label><span class="vh"><span class="zh">報告內容</span><span class="en">Report text</span></span><textarea rows="8"><span class="zh">方法：以 nf-core/ampliseq 2.11.0（DADA2、SILVA 138）處理 48 個樣本……
+結果：共得 1,284 個 ASV；病株與健株的 Shannon 指數差異……</span><span class="en">Methods: 48 samples were processed with nf-core/ampliseq 2.11.0 (DADA2, SILVA 138)…
+Results: 1,284 ASVs; Shannon diversity differed between diseased and healthy plants…</span></textarea></label><div class="btns"><span class="abf-btn primary"><span class="zh">儲存報告</span><span class="en">Save report</span></span><span class="small muted"><span class="zh">上次儲存 10-15 14:02 · 已納入交付包</span><span class="en">Last saved 10-15 14:02 · included in package</span></span></div></div></div><div class="panel p2"><table class="abf-table"><thead><tr><th><span class="zh">檔案</span><span class="en">File</span></th><th class="w-time"><span class="zh">大小</span><span class="en">Size</span></th><th></th></tr></thead><tbody><tr><td class="mono">dada2/ASV_table.tsv</td><td class="small">2.1 MB</td><td><a href="#results"><span class="zh">下載</span><span class="en">Download</span></a></td></tr><tr><td class="mono">phyloseq/dada2_phyloseq.rds</td><td class="small">1.3 MB</td><td><a href="#results"><span class="zh">下載</span><span class="en">Download</span></a></td></tr></tbody></table></div><div class="panel p3"><div class="studio"><div class="bar"><span>MultiQC report</span><span class="js" title="embedded report">JS</span></div><div class="body"><span class="zh">MultiQC 報告嵌在這裡</span><span class="en">MultiQC report embedded here</span></div></div></div><div class="panel p4"><dl class="summary"><dt><span class="zh">管線</span><span class="en">Pipeline</span></dt><dd class="mono">ampliseq 2.11.0</dd><dt><span class="zh">第幾次</span><span class="en">Attempt</span></dt><dd>1</dd></dl></div><div class="panel p5"><dl class="abf-counts"><div><dt><span class="zh">成功</span><span class="en">Succeeded</span></dt><dd>196</dd></div><div><dt><span class="zh">快取</span><span class="en">Cached</span></dt><dd>14</dd></div><div><dt><span class="zh">失敗</span><span class="en">Failed</span></dt><dd>0</dd></div><div><dt><span class="zh">中止</span><span class="en">Aborted</span></dt><dd>0</dd></div><div><dt><span class="zh">執行中</span><span class="en">Running</span></dt><dd>0</dd></div><div><dt><span class="zh">等待</span><span class="en">Pending</span></dt><dd>0</dd></div><div><dt><span class="zh">已送出</span><span class="en">Submitted</span></dt><dd>0</dd></div></dl></div><div class="panel p6"><pre class="abf-pre">[10-15 13:14] Pipeline completed successfully</pre></div><div class="panel p7"><p class="small muted"><span class="zh">CPU 與記憶體用量</span><span class="en">CPU and memory usage</span></p></div></div>
+<div class="abf-pager"><a href="#run">← <span class="zh">執行中</span><span class="en">Running</span></a><a href="#down"><span class="zh">下游分析</span><span class="en">Downstream</span> →</a></div></section><section class="screen" id="down">
+<p class="crumb"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span> / <span class="zh">下游分析</span><span class="en">Downstream</span></p><div class="ptitle"><h1>seedrot-16S-v1</h1><span class="sp"><span class="abf-badge is-queued">? <span class="zh">待你決定</span><span class="en">Awaiting you</span></span></span></div><ol class="abf-steps"><li class="is-done"><a href="#launch"><span class="k">1 · ✓</span><span class="zh">送出</span><span class="en">Launch</span></a></li><li class="is-done"><a href="#run"><span class="k">2 · ✓</span><span class="zh">執行中</span><span class="en">Running</span></a></li><li class="is-done"><a href="#results"><span class="k">3 · ✓</span><span class="zh">結果</span><span class="en">Results</span></a></li><li class="is-current"><a href="#down" aria-current="step"><span class="k">4 · <span class="zh">目前</span><span class="en">now</span></span><span class="zh">下游分析</span><span class="en">Downstream</span></a></li><li class=""><a href="#fin"><span class="k">5</span><span class="zh">完成</span><span class="en">Finished</span></a></li></ol>
+<section class="abf-card"><div class="hd"><h2><span class="zh">待你決定</span><span class="en">Awaiting you</span></h2></div><div class="bd"><article class="note is-dec"><div class="meta"><span class="lvl">? <span class="zh">待你決定</span><span class="en">Decision needed</span></span><span class="mono">seedrot-16S-v1</span><time>10-18 09:30</time></div><h3><span class="zh">是否執行下游分析</span><span class="en">Run downstream analysis?</span></h3><dl><dt><span class="zh">建議項目</span><span class="en">Suggested</span></dt><dd><span class="zh">α 多樣性、β 多樣性 PCoA、差異菌屬（ANCOM-BC）</span><span class="en">Alpha diversity, beta-diversity PCoA, differential genera (ANCOM-BC)</span></dd><dt><span class="zh">預估</span><span class="en">Estimate</span></dt><dd><span class="zh">本機 RStudio，約 20 分鐘</span><span class="en">Local RStudio, about 20 min</span></dd></dl><div class="btns"><a class="abf-btn primary" href="#confirm-down"><span class="zh">執行建議的分析</span><span class="en">Run the suggested analysis</span></a><a class="abf-btn" href="#fin"><span class="zh">略過，直接完成</span><span class="en">Skip to finished</span></a></div></article></div></section>
+<div class="fig"><figure><svg viewBox="0 0 200 110" aria-hidden="true"><line class="ax" x1="10" y1="100" x2="195" y2="100"/><rect class="b1" x="20" y="25" width="30" height="75"/><rect class="b2" x="65" y="45" width="30" height="55"/><rect class="b3" x="110" y="65" width="30" height="35"/><rect class="b1" x="155" y="40" width="30" height="60"/></svg><figcaption><span class="zh">α 多樣性（Shannon）</span><span class="en">Alpha diversity (Shannon)</span></figcaption></figure><figure><svg viewBox="0 0 200 110" aria-hidden="true"><line class="ax" x1="10" y1="100" x2="195" y2="100"/><rect class="b1" x="20" y="25" width="30" height="75"/><rect class="b2" x="65" y="45" width="30" height="55"/><rect class="b3" x="110" y="65" width="30" height="35"/><rect class="b1" x="155" y="40" width="30" height="60"/></svg><figcaption><span class="zh">前 4 名菌屬</span><span class="en">Top-4 genera</span></figcaption></figure></div>
+<div class="abf-card tabs-wrap"><input type="radio" name="tab-ide" id="ide-0" checked><input type="radio" name="tab-ide" id="ide-1"><input type="radio" name="tab-ide" id="ide-2"><nav class="abf-tabs"><label for="ide-0">RStudio</label><label for="ide-1">Jupyter</label><label for="ide-2"><span class="zh">不在這台電腦時</span><span class="en">On another computer</span></label></nav><div class="panel p1"><div class="ide"><div class="bar"><span class="mono">RStudio · localhost:8787 · <span class="zh">已載入</span><span class="en">loaded</span> seedrot-16S-v1/phyloseq.rds</span><span class="btns"><span class="js" title="iframe of the agent's localhost">JS</span><span class="abf-btn">↗ <span class="zh">在新分頁開啟</span><span class="en">Open in new tab</span></span></span></div><div class="body"><b><span class="zh">整個 RStudio 介面嵌在這裡</span><span class="en">The full RStudio interface is embedded here</span></b><span class="small muted"><span class="zh">程式碼、Console、Environment、Plots 四個窗格</span><span class="en">Source, Console, Environment and Plots panes</span></span></div></div></div><div class="panel p2"><div class="ide"><div class="bar"><span class="mono">JupyterLab · localhost:8888</span><span class="btns"><span class="js" title="iframe of the agent's localhost">JS</span><span class="abf-btn">↗ <span class="zh">在新分頁開啟</span><span class="en">Open in new tab</span></span></span></div><div class="body"><b><span class="zh">整個 JupyterLab 介面嵌在這裡</span><span class="en">The full JupyterLab interface is embedded here</span></b></div></div></div><div class="panel p3"><article class="note is-act"><div class="meta"><span class="lvl">! <span class="zh">需要你處理</span><span class="en">Action needed</span></span><span class="mono">Studio</span><time>—</time></div><h3><span class="zh">Studio 無法顯示</span><span class="en">Studio cannot be shown</span></h3><dl><dt><span class="zh">原因</span><span class="en">Cause</span></dt><dd><span class="zh">Studio 執行於 LAB-PC-01，目前的瀏覽器不在該電腦上</span><span class="en">Studio runs on LAB-PC-01; this browser is on another computer</span></dd><dt><span class="zh">可選動作</span><span class="en">Options</span></dt><dd><span class="zh">在 LAB-PC-01 開啟本頁，或改用雲端運算環境</span><span class="en">Open this page on LAB-PC-01, or use a cloud compute environment</span></dd></dl></article></div></div>
+<div class="abf-pager"><a href="#results">← <span class="zh">結果</span><span class="en">Results</span></a><a href="#fin"><span class="zh">完成</span><span class="en">Finished</span> →</a></div></section><section class="screen" id="fin">
+<p class="crumb"><span class="zh">測試</span><span class="en">Testing</span> / <span class="zh">完成</span><span class="en">Finished</span></p><div class="ptitle"><h1>test-ampliseq</h1><span class="sp"><span class="abf-badge is-succeeded">✓ <span class="zh">成功</span><span class="en">Succeeded</span></span></span></div><ol class="abf-steps"><li class="is-done"><a href="#launch"><span class="k">1 · ✓</span><span class="zh">送出</span><span class="en">Launch</span></a></li><li class="is-done"><a href="#run"><span class="k">2 · ✓</span><span class="zh">執行中</span><span class="en">Running</span></a></li><li class="is-done"><a href="#results"><span class="k">3 · ✓</span><span class="zh">結果</span><span class="en">Results</span></a></li><li class="is-done"><a href="#down"><span class="k">4 · ✓</span><span class="zh">下游分析</span><span class="en">Downstream</span></a></li><li class="is-current"><a href="#fin" aria-current="step"><span class="k">5 · <span class="zh">目前</span><span class="en">now</span></span><span class="zh">完成</span><span class="en">Finished</span></a></li></ol>
+<section class="abf-card"><div class="hd"><h2><span class="zh">交付包</span><span class="en">Delivery package</span></h2><span class="small muted">38 MB</span></div><div class="bd"><dl class="summary"><dt><span class="zh">內容</span><span class="en">Contents</span></dt><dd><span class="zh">分析報告（你編輯過的版本）、ASV 表、分類、MultiQC、下游圖、方法段落（含版本）、樣本表</span><span class="en">Report (your edited version), ASV table, taxonomy, MultiQC, figures, methods paragraph (with versions), samplesheet</span></dd><dt><span class="zh">可回溯</span><span class="en">Provenance</span></dt><dd class="mono">ampliseq 2.11.0 · <span class="zh">第 1 次</span><span class="en">attempt 1</span></dd></dl><div class="btns"><span class="abf-btn primary">⬇ <span class="zh">下載交付包</span><span class="en">Download package</span></span></div></div></section>
+<div class="abf-pager"><a href="#down">← <span class="zh">下游分析</span><span class="en">Downstream</span></a><span></span></div></section><section class="screen" id="confirm-resume">
+<p class="crumb"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span> / seedrot-16S-v3</p><div class="ptitle"><h1><span class="zh">確認動作</span><span class="en">Confirm action</span></h1></div>
+<section class="ask"><h2><span class="zh">續跑 seedrot-16S-v3（第 2 次）</span><span class="en">Resume seedrot-16S-v3 (attempt 2)</span></h2><dl class="summary"><dt><span class="zh">動作</span><span class="en">Action</span></dt><dd><span class="zh">續跑：沿用已完成的 142 個 task</span><span class="en">Resume: reuse the 142 finished tasks</span></dd><dt><span class="zh">設定變更</span><span class="en">Changes</span></dt><dd><span class="zh">無</span><span class="en">None</span></dd><dt><span class="zh">運算環境</span><span class="en">Compute</span></dt><dd>NCHC Taiwania3</dd><dt><span class="zh">預估費用</span><span class="en">Estimate</span></dt><dd>SU —</dd><dt><span class="zh">分類</span><span class="en">Type</span></dt><dd><span class="zh">同一分析的第 2 次</span><span class="en">Attempt 2 of the same analysis</span></dd></dl>
+<div class="btns"><a class="abf-btn primary" href="#run">✓ <span class="zh">確認</span><span class="en">Confirm</span></a><a class="abf-btn" href="#run"><span class="zh">取消</span><span class="en">Cancel</span></a></div></section></section><section class="screen" id="confirm-rerun">
+<p class="crumb"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span> / seedrot-16S-v3</p><div class="ptitle"><h1><span class="zh">確認動作</span><span class="en">Confirm action</span></h1></div>
+<section class="ask"><h2><span class="zh">從頭重跑 seedrot-16S-v3（第 2 次）</span><span class="en">Start seedrot-16S-v3 over (attempt 2)</span></h2><dl class="summary"><dt><span class="zh">動作</span><span class="en">Action</span></dt><dd><span class="zh">從頭重跑：不沿用已完成的 task</span><span class="en">Start over: finished tasks are not reused</span></dd><dt><span class="zh">輸入與參數</span><span class="en">Inputs and parameters</span></dt><dd><span class="zh">與第 1 次相同</span><span class="en">Same as attempt 1</span></dd><dt><span class="zh">運算環境</span><span class="en">Compute</span></dt><dd>NCHC Taiwania3</dd><dt><span class="zh">預估費用</span><span class="en">Estimate</span></dt><dd>SU —</dd><dt><span class="zh">分類</span><span class="en">Type</span></dt><dd><span class="zh">同一分析的第 2 次</span><span class="en">Attempt 2 of the same analysis</span></dd></dl>
+<div class="btns"><a class="abf-btn primary" href="#run">✓ <span class="zh">確認</span><span class="en">Confirm</span></a><a class="abf-btn" href="#run"><span class="zh">取消</span><span class="en">Cancel</span></a></div></section></section><section class="screen" id="confirm-down">
+<p class="crumb"><span class="zh">大豆根腐 16S</span><span class="en">Soybean seed-rot 16S</span> / seedrot-16S-v1</p><div class="ptitle"><h1><span class="zh">確認動作</span><span class="en">Confirm action</span></h1></div>
+<section class="ask"><h2><span class="zh">執行下游分析：seedrot-16S-v1</span><span class="en">Run downstream analysis: seedrot-16S-v1</span></h2><dl class="summary"><dt><span class="zh">項目</span><span class="en">Analyses</span></dt><dd><span class="zh">α 多樣性、β 多樣性 PCoA、差異菌屬（ANCOM-BC）</span><span class="en">Alpha diversity, beta-diversity PCoA, differential genera (ANCOM-BC)</span></dd><dt><span class="zh">執行位置</span><span class="en">Runs on</span></dt><dd><span class="zh">本機 RStudio（LAB-PC-01）</span><span class="en">Local RStudio (LAB-PC-01)</span></dd><dt><span class="zh">輸入</span><span class="en">Input</span></dt><dd>seedrot-16S-v1/phyloseq.rds</dd><dt><span class="zh">預估時間</span><span class="en">Estimate</span></dt><dd><span class="zh">約 20 分鐘</span><span class="en">About 20 min</span></dd></dl>
+<div class="btns"><a class="abf-btn primary" href="#down">✓ <span class="zh">確認</span><span class="en">Confirm</span></a><a class="abf-btn" href="#down"><span class="zh">取消</span><span class="en">Cancel</span></a></div></section></section><section class="screen" id="cost">
+<p class="crumb"><span class="zh">10 月 · 只顯示你的</span><span class="en">October · yours only</span></p><div class="ptitle"><h1><span class="zh">本月費用</span><span class="en">This month's cost</span></h1></div>
+<dl class="cards4"><div class="mini"><dt><span class="zh">國網 NCHC</span><span class="en">NCHC</span></dt><dd>SU —</dd></div><div class="mini"><dt><span class="zh">雲端（已對帳＋預估）</span><span class="en">Cloud (billed + estimate)</span></dt><dd class="num">NT$ 2,860</dd></div><div class="mini"><dt><span class="zh">雲端每月上限</span><span class="en">Cloud monthly cap</span></dt><dd class="num">NT$ 3,000</dd></div><div class="mini"><dt><span class="zh">剩餘</span><span class="en">Remaining</span></dt><dd class="num">NT$ 140</dd></div></dl>
+<p class="small muted"><span class="zh">國網 SU 與雲端金額分開計算，不互相換算。</span><span class="en">NCHC SU and cloud money are counted separately and never converted.</span></p>
+<h2 class="h"><span class="zh">需要你處理</span><span class="en">Action needed</span></h2><article class="note is-act"><div class="meta"><span class="lvl">! <span class="zh">需要你處理</span><span class="en">Action needed</span></span><span class="mono">trinickia-ITS-v1</span><time>10-18 10:10</time></div><h3><span class="zh">雲端每月上限將超過，無法送出</span><span class="en">Cloud monthly cap would be exceeded; launch blocked</span></h3><dl><dt><span class="zh">本次預估</span><span class="en">This run's estimate</span></dt><dd>NT$ 420</dd><dt><span class="zh">剩餘額度</span><span class="en">Remaining</span></dt><dd>NT$ 140</dd><dt><span class="zh">可選動作</span><span class="en">Options</span></dt><dd><span class="zh">改用國網送出，或等下個月 1 日額度重置</span><span class="en">Launch on NCHC instead, or wait for the reset on the 1st</span></dd></dl><div class="btns"><a class="abf-btn primary" href="#launch"><span class="zh">改用國網</span><span class="en">Use NCHC</span></a></div></article>
+<h2 class="h"><span class="zh">各分析費用</span><span class="en">Cost by analysis</span></h2><table class="abf-table"><thead><tr><th><span class="zh">分析</span><span class="en">Analysis</span></th><th><span class="zh">運算環境</span><span class="en">Compute</span></th><th><span class="zh">金額</span><span class="en">Amount</span></th><th class="w-state"><span class="zh">狀態</span><span class="en">Status</span></th></tr></thead><tbody>
+<tr><td class="mono small">seedrot-16S-v3</td><td class="small">NCHC Taiwania3</td><td class="small num">SU —</td><td><span class="abf-badge is-queued">… <span class="zh">執行中</span><span class="en">Running</span></span></td></tr>
+<tr><td class="mono small">soy-16S-2025</td><td class="small"><span class="zh">雲端</span><span class="en">Cloud</span></td><td class="small num">NT$ 1,920</td><td><span class="abf-badge is-succeeded">✓ <span class="zh">已對帳</span><span class="en">Reconciled</span></span></td></tr>
+<tr><td class="mono small">soy-rnaseq-root</td><td class="small"><span class="zh">雲端</span><span class="en">Cloud</span></td><td class="small num">NT$ 940</td><td><span class="abf-badge is-queued">≈ <span class="zh">預估，帳單未到</span><span class="en">Estimate, bill pending</span></span></td></tr>
+</tbody></table></section><section class="screen" id="settings">
+<div class="ptitle"><h1><span class="zh">設定</span><span class="en">Settings</span></h1></div>
+<ul class="set">
+<li><h2 class="h"><span class="zh">運算環境</span><span class="en">Compute environments</span></h2><p class="small">NCHC Taiwania3 · <span class="zh">站台代理已連線</span><span class="en">site agent connected</span> ✓</p><p class="small"><span class="zh">雲端 · 每月上限 NT$ 3,000</span><span class="en">Cloud · monthly cap NT$ 3,000</span></p></li>
+<li><h2 class="h"><span class="zh">憑證</span><span class="en">Credentials</span></h2><p class="small"><span class="zh">個人存取權杖 · 12 小時免重新登入</span><span class="en">Personal access token · 12 h sign-in</span></p></li>
+<li><h2 class="h"><span class="zh">密碼與金鑰</span><span class="en">Secrets</span></h2><p class="small"><span class="zh">金鑰只存在你的瀏覽器</span><span class="en">Keys stay in your browser</span></p><div class="form"><label for="k-ai"><span class="zh">AI 模型金鑰</span><span class="en">AI model key</span></label><input id="k-ai" type="password" value="sk-ant-xxxxxxxx"><label for="k-jev"><span class="zh">Jev 金鑰（選填）</span><span class="en">Jev key (optional)</span></label><input id="k-jev" type="password" value=""></div></li>
+<li><h2 class="h"><span class="zh">個人</span><span class="en">Personal</span></h2><div class="toggle"><span><span class="zh">逐步模式（每個階段都停下）</span><span class="en">Step-by-step mode (stop at every stage)</span></span><input type="checkbox" aria-label="step-by-step"></div><div class="toggle"><span><span class="zh">開發模式</span><span class="en">Development mode</span></span><input type="checkbox" aria-label="development mode"></div></li>
+<li class="later-box"><h2 class="h"><span class="zh">營運者後台</span><span class="en">Operator panel</span></h2><p class="later"><span class="zh">之後開放</span><span class="en">coming later</span></p></li>
+<li class="later-box"><h2 class="h"><span class="zh">角色（老師／學生）</span><span class="en">Roles (teacher/student)</span></h2><p class="later"><span class="zh">之後開放</span><span class="en">coming later</span></p></li>
+</ul></section><section class="screen" id="login"><section class="abf-card login"><div class="hd"><h2><span class="zh">登入以確認送出</span><span class="en">Sign in to confirm</span></h2></div><div class="bd"><p class="small muted"><span class="zh">Claude Desktop 要求送出 seedrot-16S-v4，請先登入。</span><span class="en">Claude Desktop requests launch of seedrot-16S-v4. Sign in first.</span></p><div class="form"><label for="li-n"><span class="zh">名字</span><span class="en">Name</span></label><input id="li-n" type="text" value="謝宗翰"><label for="li-t"><span class="zh">個人存取權杖</span><span class="en">Access token</span></label><input id="li-t" type="password" value="abf_pat_xxxxxxxx"></div><div class="toggle"><span class="small"><span class="zh">記住 12 小時</span><span class="en">Remember 12 h</span></span><input type="checkbox" checked aria-label="remember"></div><div class="btns"><a class="abf-btn primary" href="#confirm"><span class="zh">登入並檢視摘要</span><span class="en">Sign in and review</span></a></div></div></section></section></main>
+ <aside class="hist rp" aria-label="History and chat">
+  <input type="radio" name="rp" id="rp-prog" checked><input type="radio" name="rp" id="rp-chat">
+  <div class="rp-tabs"><label for="rp-prog"><span class="zh">分析進度</span><span class="en">Progress</span></label><label for="rp-chat"><span class="zh">聊天</span><span class="en">Chat</span> <span class="dot-new">1</span></label></div>
+  <div class="rp-chat"><p class="small muted"><span class="zh">模型：你自己的金鑰 · 可讀取目前分析</span><span class="en">Your own model key · reads the current analysis</span></p>
+<ul class="msgs">
+<li class="me"><span class="zh">v2 為什麼重跑？</span><span class="en">Why was v2 resumed?</span></li>
+<li class="ai"><span class="tool">▸ get_run_log(seedrot-16S-v2) ✓</span><span class="tool">▸ nf-core docs "DADA2_TAXONOMY memory" ✓</span>
+<dl><dt><span class="zh">診斷</span><span class="en">Diagnosis</span></dt><dd><span class="zh">DADA2_TAXONOMY 記憶體不足</span><span class="en">DADA2_TAXONOMY out of memory</span></dd><dt><span class="zh">依據</span><span class="en">Basis</span></dt><dd><span class="zh">SILVA 138 分類約需 30 GB；原設定 12 GB</span><span class="en">SILVA 138 needs about 30 GB; set to 12 GB</span></dd><dt><span class="zh">處置</span><span class="en">Action</span></dt><dd><span class="zh">改為 36 GB，已續跑（第 2 次）</span><span class="en">Raised to 36 GB, resumed (attempt 2)</span></dd></dl>
+<p class="cite muted"><span class="zh">來源</span><span class="en">Sources</span>：<a href="#now">nf-core/ampliseq usage</a> · <a href="#now">PubMed 33704435</a></p></li></ul>
+<div class="chat-in"><label><span class="vh"><span class="zh">訊息</span><span class="en">Message</span></span><textarea rows="2"></textarea></label><div class="btns"><span class="abf-btn primary"><span class="zh">送出</span><span class="en">Send</span></span><span class="js" title="chat send + streaming">JS</span></div></div></div>
+  <div class="rp-guide"><h2 class="h"><span class="zh">設定說明</span><span class="en">Setup guide</span></h2>
+<ul class="msgs">
+<li class="ai"><dl><dt><span class="zh">步驟</span><span class="en">Step</span></dt><dd>3 / 5 · <span class="zh">運算環境</span><span class="en">Compute environment</span></dd><dt><span class="zh">用途</span><span class="en">Purpose</span></dt><dd><span class="zh">決定分析在哪裡執行、費用以哪種單位計算</span><span class="en">Where analyses run and which unit cost is counted in</span></dd><dt><span class="zh">建議</span><span class="en">Suggested</span></dt><dd><span class="zh">實驗室成員選 NCHC Taiwania3</span><span class="en">Lab members: NCHC Taiwania3</span></dd></dl></li>
+<li class="ai"><dl><dt><span class="zh">下一步</span><span class="en">Next</span></dt><dd><span class="zh">完成設定後建立專案、上傳原始資料，系統會依序引導選擇管線與參數</span><span class="en">After setup: create a project and upload raw data; pipeline and parameter choices follow in order</span></dd></dl></li></ul>
+<div class="chat-in"><label><span class="vh"><span class="zh">提問</span><span class="en">Ask</span></span><textarea rows="2"></textarea></label><div class="btns"><span class="abf-btn primary"><span class="zh">提問</span><span class="en">Ask</span></span><span class="js" title="chat send + streaming">JS</span></div></div></div>
+  <div class="rp-prog">
+   <label class="search"><span class="vh"><span class="zh">搜尋分析</span><span class="en">Search analyses</span></span><input class="zh" type="search" placeholder="搜尋分析"><input class="en" type="search" placeholder="Search analyses"></label>
+   <div class="hname"><b><span class="zh">全部分析</span><span class="en">All analyses</span></b><span class="small muted"><span class="zh">只顯示你的</span><span class="en">yours only</span></span></div>
+   <div class="hcount" role="status"><span>▶ 3</span><span>⟳ 1</span><span>! 2</span><span>? 2</span><span>✓ 2</span><span class="sp"><span class="js" title="live refresh">JS</span></span></div>
+   <details class="hgrp" open><summary><span class="zh">送出</span><span class="en">LAUNCH</span>（2）</summary><ul class="hlist"><li><a class="hi is-queued" href="#confirm"><span class="t"><span class="num">10:</span> <span class="nm">seedrot-16S-v4</span><span class="st">?</span></span><span class="s"><span class="zh">待你決定</span><span class="en">Awaiting you</span> · <span class="zh">等你確認送出</span><span class="en">awaiting your confirmation</span></span></a></li><li><a class="hi is-queued" href="#launch"><span class="t"><span class="num">9:</span> <span class="nm">trinickia-ITS-v1</span><span class="st">✎</span></span><span class="s"><span class="zh">設定中</span><span class="en">Drafting</span> · <span class="zh">參數設定中</span><span class="en">setting parameters</span></span></a></li></ul></details>
+   <details class="hgrp" open><summary><span class="zh">執行中</span><span class="en">RUNNING</span>（5）</summary><ul class="hlist"><li><a class="hi is-running here" href="#run"><span class="t"><span class="num">8:</span> <span class="nm">seedrot-16S-v3</span><span class="st">▶</span></span><span class="s"><span class="zh">執行中</span><span class="en">Running</span> · <b>DADA2_TAXONOMY</b> · 142/210</span><progress class="abf-progress" value="142" max="210">142/210</progress></a></li><li><a class="hi is-running" href="#run"><span class="t"><span class="num">7:</span> <span class="nm">trinickia-rpoB</span><span class="st">▶</span></span><span class="s"><span class="zh">執行中</span><span class="en">Running</span> · <b>CUTADAPT</b> · 31/120</span><progress class="abf-progress" value="31" max="120">31/120</progress></a></li><li><a class="hi is-running" href="#run"><span class="t"><span class="num">6:</span> <span class="nm">seedrot-16S-v2</span><span class="st">⟳</span></span><span class="s"><span class="zh">自動處理中</span><span class="en">Auto-handling</span> · <span class="zh">記憶體調整後續跑</span><span class="en">resumed with more memory</span> · 188/210</span><progress class="abf-progress" value="188" max="210">188/210</progress></a></li><li><a class="hi is-failed" href="#now"><span class="t"><span class="num">5:</span> <span class="nm">trinickia-16S-pilot</span><span class="st">!</span></span><span class="s"><span class="zh">需要你處理</span><span class="en">Action needed</span> · <span class="zh">輸入資料不完整</span><span class="en">input incomplete</span></span><progress class="abf-progress is-failed" value="3" max="120">3/120</progress></a></li><li><a class="hi is-failed" href="#now"><span class="t"><span class="num">4:</span> <span class="nm">soy-rnaseq-root</span><span class="st">!</span></span><span class="s"><span class="zh">需要你處理</span><span class="en">Action needed</span> · <span class="zh">需要 AI 或你處理</span><span class="en">needs AI or you</span></span><progress class="abf-progress is-failed" value="12" max="40">12/40</progress></a></li></ul></details>
+   <details class="hgrp" open><summary><span class="zh">結果</span><span class="en">RESULTS</span>（1）</summary><ul class="hlist"><li><a class="hi is-queued" href="#down"><span class="t"><span class="num">3:</span> <span class="nm">seedrot-16S-v1</span><span class="st">?</span></span><span class="s"><span class="zh">待你決定</span><span class="en">Awaiting you</span> · <span class="zh">是否做下游分析</span><span class="en">downstream?</span></span><progress class="abf-progress is-queued" value="210" max="210">210/210</progress></a></li></ul></details>
+   <details class="hgrp" open><summary><span class="zh">下游分析</span><span class="en">DOWNSTREAM</span>（1）</summary><ul class="hlist"><li><a class="hi is-running" href="#down"><span class="t"><span class="num">2:</span> <span class="nm">soy-16S-2025</span><span class="st">▶</span></span><span class="s"><span class="zh">執行中</span><span class="en">Running</span> · <b>ANCOM-BC</b> · 3/4</span><progress class="abf-progress" value="3" max="4">3/4</progress></a></li></ul></details>
+   <details class="hgrp" open><summary><span class="zh">完成</span><span class="en">FINISHED</span>（1）</summary><ul class="hlist"><li><a class="hi is-succeeded" href="#fin"><span class="t"><span class="num">1:</span> <span class="nm">test-ampliseq</span><span class="st">✓</span></span><span class="s"><span class="zh">成功</span><span class="en">Succeeded</span> · <span class="zh">已交付</span><span class="en">delivered</span></span><progress class="abf-progress is-succeeded" value="58" max="58">58/58</progress></a></li></ul></details>
+  </div>
+ </aside>
+</div></div></body></html>

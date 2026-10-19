@@ -116,7 +116,7 @@ def test_tc008_a_run_of_nobody_is_hidden_over_http_mcp_and_the_web(d, w, tmp_pat
     assert tool_json(outs[0])["runs"] == [] and tool_json(outs[1])["found"] is False
     assert [c["name"] for c in tool_json(outs[2])["compute_envs"]] == ["lab-a"]
     client = w.web()
-    assert w.login(client, "alice").status_code == 200
+    assert w.login(client, "alice").status_code == 303        # 011a: a login now lands on the board
     assert client.get("/runs").status_code == 404 and client.get("/c/" + "0" * 32).status_code == 404
     assert "r-null" not in client.get("/").text
 
@@ -151,9 +151,10 @@ def test_tc011_the_web_shows_no_list_and_never_somebody_elses_request(d, w):
     out = d.launch(d.a)
     rid = pending_id_of(out["confirmation_url"])
     client = w.web()
-    assert w.login(client, "bob").status_code == 200
-    for path in ("/", "/runs", "/ce", "/compute-envs", "/agents"):
+    assert w.login(client, "bob").status_code == 303        # 011a: a login now lands on the board
+    for path in ("/runs", "/ce", "/compute-envs", "/agents"):
         assert client.get(path).status_code == 404, path
+    assert client.get("/").status_code == 200 and rid not in client.get("/").text        # 011a: "/" is the board, which shows no request
     page = client.get("/c/" + rid)
     assert page.status_code == 403 and "run-one" not in page.text and "lab-a" not in page.text
 
@@ -468,7 +469,7 @@ def test_tc037_nobody_else_can_say_yes_for_me(d, w):
     out = d.launch(d.a)
     rid = pending_id_of(out["confirmation_url"])
     client = w.web()
-    assert w.login(client, "bob").status_code == 200
+    assert w.login(client, "bob").status_code == 303        # 011a
     page = client.get("/c/" + rid)
     assert page.status_code == 403
     posted = client.post("/c/" + rid, data={"csrf": csrf_of(page.text) or "x"})
@@ -493,7 +494,7 @@ def test_tc039_a_page_launch_records_the_user(d, w):
     out = d.launch(d.a)
     rid = pending_id_of(out["confirmation_url"])
     client = w.web()
-    assert w.login(client, "alice").status_code == 200
+    assert w.login(client, "alice").status_code == 303        # 011a
     page = client.get("/c/" + rid)
     done = client.post("/c/" + rid, data={"csrf": csrf_of(page.text)})
     assert done.status_code == 200 and "已送出" in done.text
@@ -811,15 +812,15 @@ def test_tc067_old_runs_are_for_the_terminal_only(d):
     rc, out = d.w.ip.run("launches")
     assert "r-old" in out and "(none: local only)" in out
     client = d.w.web()
-    assert d.w.login(client, "alice").status_code == 200 and "r-old" not in client.get("/").text
+    assert d.w.login(client, "alice").status_code == 303 and "r-old" not in client.get("/").text
 
 
 def test_tc068_no_new_way_to_log_in(w):
     # TC-068
     client = w.web()
-    # 009i: the login is still the one name + web password; the only routes added are the OAuth ones, which log nobody in
-    assert {r.path for r in client.app.routes} == {"/login", "/logout", "/c/{rid}", "/consent/{rid}", "/authorize", "/token", "/register",
-                                                   "/revoke", "/.well-known/oauth-authorization-server"}
+    # 009i: the login is still the one name + web password; 011a added the board; the other routes added are the OAuth ones, which log nobody in
+    assert {r.path for r in client.app.routes} == {"/", "/settings", "/login", "/logout", "/c/{rid}", "/consent/{rid}", "/authorize", "/token",
+                                                   "/register", "/revoke", "/.well-known/oauth-authorization-server"}
     page = (PLATFORM_DIR / "abf_platform" / "web.py").read_text(encoding="utf-8")
     assert set(re.findall(r"store\.(\w+)", page)) == {"MAX_PASSWORD_CHARS", "MIN_PASSWORD_CHARS", "WEB_SESSION_SECONDS", "check_web_password",
                                                      "create_web_session", "default_tokens_path", "end_web_session", "set_meta",

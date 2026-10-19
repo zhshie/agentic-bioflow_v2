@@ -1,0 +1,4 @@
+# Append to ~/.codex/config.toml. Replace the URL; export ABF_PAT in your shell.
+[mcp_servers.abf-platform]
+url = "https://YOUR-PLATFORM.example/mcp"
+bearer_token_env_var = "ABF_PAT"
