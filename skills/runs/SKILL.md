@@ -229,8 +229,8 @@ when a refusal is the cause:
       channel, relaunch. This adds the host to this deployment's own list
       only; adding it to the built-in list is the maintainer's change (a
       plugin edit and a release).
-- **No refusal lines up with the failure time.** Read `.command.err` and
-  `.exitcode` for the failing task (`get_run` finds it: it lists the failed
+- **No refusal lines up with the failure time.** Read the failing task's error log (`read_task_log`)
+  and take its exit code from `get_run` (it lists the failed
   tasks with their exit code and error message, and gives `failure_reason`
   when Nextflow said why). The task's folder is the `workdir` that `get_run` gives for it; never build a path yourself. When the task has a `workdir`, read the end of its log with `read_task_log` (`run_name` = the run, `task` = the name `get_run` shows in its failed tasks, `which` = `err` first; if `err` is empty, try `out`, then `log`). Only when `get_run` has no `workdir` for that task, say so in one plain sentence and ask the person for the folder if they know it.
   If `read_task_log` refuses, say which refusal it was in one line and go on with the error message and `failure_reason` from `get_run`:
@@ -238,7 +238,7 @@ when a refusal is the cause:
     - **The run was not launched from this platform.** The platform can only read logs of runs it launched; say so.
     - **The agent is offline.** The log cannot be read until the site's agent is back; say so and check again later.
     - **137, or killed.** 🤖 See "out of memory", below.
-    - **No `.command.log` and no `.exitcode` at all.** 🤖 The work directory is
+    - **`read_task_log` finds no log at all (no err, out or log).** 🤖 The work directory is
       probably not visible from the compute side — report that; there is
       nothing further to diagnose from here.
     - **Jev triage, only if the user turned it on** (optional, off by default;
@@ -300,7 +300,7 @@ usual fix, and when to stop and ask; none of them skips a ⏸ that exists
 elsewhere. For Jev, `memory` is the "Out of memory" section below, `unknown` is "Anything else".
 
 #### `walltime`
-- **Look first:** the task's `.command.log` and `.exitcode` for a time-limit
+- **Look first:** the task's log (`read_task_log`) and its exit code from `get_run` for a time-limit
   message, and how long the task ran against the time it asked for.
 - **Usual fix:** the task needed more time than it requested; a larger time
   request for that process is a changed request, so a new `launch` (through
@@ -406,7 +406,7 @@ carries `peak_rss` and `peak_vmem` per task. This is the measurement to use on v
 | 137 / killed, retry succeeded | recovered by itself | 🤖 report the box it needed |
 | 137 / killed, retry also died | one tier was not enough | 🤖 report the box the retry reached; a larger one is a new `launch` the person confirms |
 | ≥ 85% of the box, task failed | died against its own ceiling | 🤖 report it; a larger box is a new `launch` the person confirms |
-| ≤ 30% and waiting on resources | badly over-allocated | 🤖 down to the box fitting peak RSS × 1.5 |
+| ≤ 30% and waiting on resources | badly over-allocated | 🤖 propose the box fitting peak RSS × 1.5; on v3 a smaller box is a new `launch` the person confirms (as in RUNNING), so do not shrink by yourself |
 | 30–85% | reasonable | 🤖 leave it; the wait is a real queue, not a sizing problem |
 | no measurement at all | nothing to reason from | ⏸ propose and wait |
 

@@ -29,7 +29,7 @@ The "Reading a measurement" table and the walltime bullet still told the AI to "
 
 ## Rulings S1 to S6 round
 
-- S1: each of the six branch headings keeps one `Mapping:` line (SUBMITTED = launched but not in `list_runs`, max 3 checks, "已送出、還沒開始"; RUNNING/FAILED/SUCCEEDED = the platform status; CANCELLED = failed plus a cancel request sent; UNKNOWN = lost or any other). Open question for the maintainer: the "cancel request was sent" fact is in `abf-platform launches`, not in the ten MCP tools, so the skill names no tool for it.
+- S1: each of the six branch headings keeps one `Mapping:` line (SUBMITTED = launched but not in `list_runs`, max 3 checks, "已送出、還沒開始"; RUNNING/FAILED/SUCCEEDED = the platform status; CANCELLED = failed plus a cancel request sent; UNKNOWN = lost or any other). The "cancel request was sent" fact is `cancel_requested_at` from `get_run` (answered 2026-10-19).
 - S2: the RUNNING "reversible" sentence now says `resume` (same folder, cache); CANCELLED paragraph split so `relaunch` is only "new folder, from the start".
 - S2 fix round: the end of the RUNNING section still said a relaunch costs "one more spell in the queue, not the run over again" (a tw-era line from when relaunch used -resume). It now says a relaunch starts from the start in a new folder. `tests/skill_runs_uses_actions_test.sh` TC-088 gained a paragraph-level check for that wording (an added assertion, none loosened).
 - S3: the .command.err step and the Jev triage step say "v3 尚未提供 task 的資料夾路徑" and no path is built.
@@ -55,7 +55,6 @@ The "Reading a measurement" table and the walltime bullet still told the AI to "
 - S10: the `input` fix says a corrected samplesheet is a new launch, not `relaunch`.
 - S11: owed list is 6 items (task-health, resize-relaunch, run-params, measurements, tune-resources, ce-apply).
 - Retired tests (Rule 4, TC-111): in `tests/skill_runs_uses_actions_test.sh` the S3 assertions TC-089 (task folder path said missing in 2 places, in the .command.err step, in the Jev step) and TC-091 (task-folder-path ledgered and tagged), and the TC-090 ban on any backticked `workdir`, no longer apply because S7/S8 closed those owed items. Replaced by TC-100 (wording gone), TC-101, TC-102, TC-103, TC-104, TC-105, TC-106 (workdir, read_task_log, refusals), TC-110 (exactly 6 owed) and a reworded TC-090 (only `workdir`, no invented field or hashed path). The TC-012 name check also allows the field name `cancel_requested_at`.
-- Open question for the maintainer: the `.exitcode` file cannot be read by `read_task_log` (err, out, log only); the "no `.command.log` and no `.exitcode`" branch is unchanged.
 
 ## Fix round (TC-094, TESTING.md step 6)
 

@@ -36,3 +36,8 @@ The maintainer chose "platform tools first"; #138 is now in v3. It adds `read_ta
 - S10. The `input` branch (around l.332): "correct the samplesheet row, then relaunch" contradicts S1 (relaunch reuses the same samplesheet and params). Reword: a corrected samplesheet means a **new launch** (the launch skill / `launch`), not `relaunch`; `relaunch` is only for re-running the same inputs.
 - S11. The ledger's owed list drops task-folder-path and log-download (6 items remain). The other "not available on v3 yet" items stay as they are.
 - S12. Re-grade the whole contract; TC-023 (params route) was fixed in 2d4bab2 and must be graded again.
+
+## Rulings, 2026-10-19 (after acceptance)
+- S13. skills/runs/SKILL.md (FAILED section and the time-limit branch): the exit code comes from `get_run` (the failed task's fields); logs come from `read_task_log`. The AI is never told to read `.exitcode` as a file. The "no log at all" fall-back keeps its meaning (work folder gone / never started), phrased as what `read_task_log` returns.
+- S14. Measurement table, "≤ 30% and waiting on resources": on v3 a smaller box is a new launch the person confirms (same as the RUNNING section), so the AI proposes it and does not shrink by itself.
+- S15. The stale ledger "Open question" about the cancel fact (answered by `cancel_requested_at`) and the `abf-platform launches` wording are removed; the `.exitcode` open question is closed by S13.
