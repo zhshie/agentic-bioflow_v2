@@ -74,7 +74,7 @@ def test_tcf3_03_the_recorded_failed_runs_carry_the_reason_and_the_same_failed_t
     v = view(plat, wid)
     assert v["status"] == "failed" and v[REASON] == "FIXTURE_BOOM_7"
     assert v["failed_tasks"] and "FIXTURE_BOOM_7" in v["failed_tasks"][0]["error_message"]
-    assert set(v["failed_tasks"][0]) == {"name", "exit_code", "error_message"}
+    assert set(v["failed_tasks"][0]) == {"name", "exit_code", "error_message", "workdir"}      # run-diag-tools: the task folder is kept when the event has it
 
 
 @pytest.mark.parametrize("name", ["ok_run", "ok_resume", "heartbeat_run", "nf2510_ok", "slow_run", "nf2510_resume"])

@@ -64,10 +64,14 @@ def _view(con, row, at, detail):
     if detail:
         procs = con.execute("SELECT * FROM processes WHERE run_id = ? ORDER BY name", (row["id"],)).fetchall()
         view["processes"] = [dict(name=p["name"], **_counts(p)) for p in procs]
-        failed = con.execute("SELECT name, exit_code, error_message FROM failed_tasks WHERE run_id = ? "
+        failed = con.execute("SELECT * FROM failed_tasks WHERE run_id = ? "
                              "ORDER BY name, exit_code, task_key", (row["id"],)).fetchall()
-        view["failed_tasks"] = [{"name": f["name"], "exit_code": f["exit_code"], "error_message": f["error_message"]}
-                                for f in failed]
+        view["failed_tasks"] = []
+        for f in failed:
+            task = {"name": f["name"], "exit_code": f["exit_code"], "error_message": f["error_message"]}
+            if "workdir" in f.keys() and f["workdir"]:
+                task["workdir"] = f["workdir"]      # the task folder on the site, when the task event carried it; absent otherwise
+            view["failed_tasks"].append(task)
     return view
 
 

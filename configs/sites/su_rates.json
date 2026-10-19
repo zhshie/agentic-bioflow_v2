@@ -1,0 +1,36 @@
+{
+  "_about": "SU (the NCHC compute point) rates for estimate_su. 'factor' = SU per core-hour of one queue. Taiwania 3 general (NRQ) rate: fixed price per core-hour, no per-queue multiplier, so every listed T3 queue is 1. ct2k-amd's price was not found, so it stays null (unknown). The nchc site (the ngs queues of nchc.config) has no price list here and stays null. Do not guess a number here.",
+  "source": "https://iservice.nchc.org.tw/nchc_service/nchc_service_qa.php?target=54",
+  "source_quote": "NRQ採固定費率計價…非學研界使用費率…為上述對應各費率之2倍. 國科會計畫 and 學術計畫 0.08 元/核心小時; 政府法人 and 企業個人 0.16 元/核心小時",
+  "queue_list_source": "https://man.twcc.ai/@TWCC-III-manual/ryyo0tsuu (2025/05/08)",
+  "assumption": "1 SU = 1 core-hour is inferred (both lists price NSTC at 0.08); not stated by NCHC; verify with get_su_balance before/after a run",
+  "not_used": "https://lions.nchc.org.tw/ngs.jsp (GP1 genomics core-facility list, academic 0.24 TWD per SU): not used because the maintainer is unsure which list applies and the Taiwania 3 general (NRQ) rate is used instead",
+  "nstc_twd_per_su": 0.08,
+  "academic_twd_per_su": 0.08,
+  "industry_twd_per_su": 0.16,
+  "default_site": "taiwania3",
+  "sites": {
+    "taiwania3": {
+      "partitions": {
+        "ctest":    {"factor": 1},
+        "ct56":     {"factor": 1},
+        "ct224":    {"factor": 1},
+        "ct560":    {"factor": 1},
+        "ct2k":     {"factor": 1},
+        "ct8k":     {"factor": 1},
+        "ct2k-amd": {"factor": null}
+      }
+    },
+    "nchc": {
+      "partitions": {
+        "ngs7G":   {"factor": null},
+        "ngs13G":  {"factor": null},
+        "ngs26G":  {"factor": null},
+        "ngs53G":  {"factor": null},
+        "ngs92G":  {"factor": null},
+        "ngs186G": {"factor": null},
+        "ngs372G": {"factor": null}
+      }
+    }
+  }
+}

@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS failed_tasks (
     name TEXT NOT NULL,
     exit_code INTEGER,
     error_message TEXT,
+    workdir TEXT,
     PRIMARY KEY (run_id, task_key)
 );
 """
@@ -152,7 +153,7 @@ RUN_TOKEN_TTL = 14 * 86400
 # Compute environments, agents, jobs, confirmations and the hand-off record. Nothing here describes the state of a
 # run: a job is a question or an order put to one agent, a confirmation is the user's "yes" to one content, and a
 # launches row is a fact (who was told to launch what, and the number Slurm gave it), never a status.
-# The CHECK constraints let exactly five job kinds in, and the two that write (launch_nextflow, cancel_run) only with
+# The CHECK constraints let exactly six job kinds in, and the two that write (launch_nextflow, cancel_run) only with
 # a confirmation. The jobs table has the same columns in the same order whether it was made new or upgraded from 007's.
 STATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS compute_envs (
@@ -214,7 +215,7 @@ _JOBS_TABLE = """CREATE TABLE %(name)s (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent TEXT NOT NULL,
     compute_env TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('preflight', 'list_site_files', 'launch_nextflow', 'cancel_run', 'fetch_run_records')),
+    kind TEXT NOT NULL CHECK (kind IN ('preflight', 'list_site_files', 'launch_nextflow', 'cancel_run', 'fetch_run_records', 'read_task_log')),
     args_json TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('queued', 'claimed', 'done', 'refused', 'error', 'expired')),
     result_json TEXT,
@@ -297,11 +298,20 @@ def connect(path, schema):
     return con
 
 
+WORKDIR_MAX_CHARS = 1024   # the longest path the agent takes (rules.MAX_PATH of the agent); a longer one is cut and so never matches
 REASON_MAX_CHARS = 1000   # Nextflow cuts workflow.errorMessage at 255 itself; the bound only stops a hostile sender
 
 
 def _migrate_index(con):
-    """An index.db made before follow-up 3 has no failure_reason column: add it; every row stays, its reason is NULL."""
+    """An index.db made before follow-up 3 has no failure_reason column: add it; every row stays, its reason is NULL. One made before
+    run-diag-tools has no workdir on its failed tasks: add it the same way (old rows show no workdir)."""
+    if "workdir" not in {r[1] for r in con.execute("PRAGMA table_info(failed_tasks)")}:
+        try:
+            with con:
+                con.execute("ALTER TABLE failed_tasks ADD COLUMN workdir TEXT")
+        except sqlite3.OperationalError:
+            if "workdir" not in {r[1] for r in con.execute("PRAGMA table_info(failed_tasks)")}:
+                raise   # a second process may have added it first; anything else is a real error
     if "failure_reason" not in {r[1] for r in con.execute("PRAGMA table_info(runs)")}:
         try:
             with con:
@@ -346,6 +356,41 @@ def _migrate_jobs(con):
                     "kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel')), created_at REAL NOT NULL, used_at REAL)")
         con.execute(_JOBS_TABLE % {"name": "jobs_new"})
         con.execute("INSERT INTO jobs_new (%s) SELECT %s FROM jobs" % (_JOB_COLUMNS, _JOB_COLUMNS))
+        _migration_step("copied")
+        seq = con.execute("SELECT seq FROM sqlite_sequence WHERE name = 'jobs'").fetchone()
+        con.execute("DROP TABLE jobs")
+        con.execute("ALTER TABLE jobs_new RENAME TO jobs")
+        if seq is not None:
+            con.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'jobs'", (seq[0],))
+        con.execute("COMMIT")
+    except BaseException:
+        try:
+            con.execute("ROLLBACK")
+        except sqlite3.Error:
+            pass
+        raise
+    finally:
+        con.isolation_level = ""
+
+
+def _migrate_jobs_kinds(con):
+    """A platform.db made before run-diag-tools has a jobs table whose CHECK does not let `read_task_log` in. Same shape of work as
+    _migrate_jobs: one transaction, build the new table, copy every row by the column names both tables have (the ids and the
+    AUTOINCREMENT counter too), drop the old one, rename. A failure anywhere rolls it all back. Another process may have done it first."""
+    row = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'jobs'").fetchone()
+    if row is None or "read_task_log" in row[0]:
+        return
+    con.isolation_level = None
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        row = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'jobs'").fetchone()
+        if row is None or "read_task_log" in row[0]:
+            con.execute("COMMIT")
+            return
+        con.execute(_JOBS_TABLE % {"name": "jobs_new"})
+        old = {r[1] for r in con.execute("PRAGMA table_info(jobs)")}
+        shared = ", ".join(r[1] for r in con.execute("PRAGMA table_info(jobs_new)") if r[1] in old)
+        con.execute("INSERT INTO jobs_new (%s) SELECT %s FROM jobs" % (shared, shared))
         _migration_step("copied")
         seq = con.execute("SELECT seq FROM sqlite_sequence WHERE name = 'jobs'").fetchone()
         con.execute("DROP TABLE jobs")
@@ -518,6 +563,7 @@ def connect_state(path):
     try:
         _migrate_jobs(con)
         _migrate_launches(con)
+        _migrate_jobs_kinds(con)
         con.executescript(STATE_SCHEMA)
         _add_agent_columns(con)
         _add_owner_columns(con)
