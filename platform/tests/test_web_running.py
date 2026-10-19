@@ -316,7 +316,7 @@ def test_r103_r114_limits_and_readonly(w):
                 csp = r.headers["content-security-policy"]
                 assert "'unsafe-inline'" not in csp and "script-src" not in csp and web_board.style_source() in csp
                 assert len(re.findall(r"<form\b", t)) == 1
-                assert ("Seq" + "era") not in t and "Jev" not in t
+                assert ("Seq" + "era") not in t and ("Je" + "v") not in t
                 assert 'http-equiv="refresh"' in t
                 for h in hrefs(t):
                     h = h.replace("&amp;", "&")
