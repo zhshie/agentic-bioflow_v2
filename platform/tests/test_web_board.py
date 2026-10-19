@@ -1260,7 +1260,7 @@ def test_tn05_no_new_tool_or_action(w):
     from abf_platform import actions
     tools, _ = w.mcp([])
     assert sorted(t.name for t in tools) == sorted(["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents",
-                                                    "list_site_files", "launch", "cancel", "forget", "resume", "relaunch"])
+                                                    "list_site_files", "read_task_log", "launch", "cancel", "forget", "resume", "relaunch"])
     assert not [n for n in dir(actions) if "board" in n]
 
 

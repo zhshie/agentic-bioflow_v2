@@ -77,7 +77,7 @@ Fix round (verifier, TC-L44): `test_tcl44_no_external_url_script_or_style_attrib
 
 ### OWED written out (TC-S06, TC-S07; rule R2; the list may only shrink)
 
-OWED (an action with an MCP tool of the same name and no web route): `list_compute_envs`, `get_compute_env`, `list_agents`, `list_site_files`, `launch`, `cancel`, `forget`.
+OWED (an action with an MCP tool of the same name and no web route): `list_compute_envs`, `get_compute_env`, `list_agents`, `list_site_files`, `read_task_log` (011c), `launch`, `cancel`, `forget`.
 Since the v3 merge the MCP side also has the tools `resume` and `relaunch`; they call `request_resume` and `request_relaunch`, which with `request_forget` are in INTERNAL, as are `forget_check`, `keep_screen`, the `FORGET_*` words, `FORGETTABLE` and `RUN_NOT_FOUND`.
 
 ### JS spots of DESIGN.md that 011a does not build (TC-S09, G8)

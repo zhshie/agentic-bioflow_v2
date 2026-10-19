@@ -380,7 +380,7 @@ def test_tcb10_stdio_needs_no_token_and_no_user(tmp_path):
     plat, _ = _three_runs(tmp_path)
     assert not plat.tokens.exists() or _rows(plat.tokens, "SELECT COUNT(*) FROM tokens WHERE kind = 'pat'")[0][0] == 0
     tools, outs = mcp_call(pkg_env(ABF_PLATFORM_DB=plat.index), [("list_runs", {})])
-    assert len(tools) == 11 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch
+    assert len(tools) == 12 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch; run-diag-tools: plus read_task_log
 
 
 def test_tcb11_without_users_http_starts_says_so_and_answers_401(tmp_path):
@@ -748,7 +748,7 @@ def test_tcd14_tool_bodies_stay_one_call_with_caller_and_read_the_http_auth_cont
     tree = ast.parse((PKG / "mcp_server.py").read_text(encoding="utf-8"))
     build = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "build_server"][0]
     tools = [n for n in ast.walk(build) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not build]
-    assert len(tools) == 6
+    assert len(tools) == 7      # run-diag-tools: read_task_log is the seventh read tool
     for fn in tools:
         assert len(fn.body) == 1 and isinstance(fn.body[0], ast.Return), fn.name
         call = fn.body[0].value
