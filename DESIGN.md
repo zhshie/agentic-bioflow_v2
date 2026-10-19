@@ -14,6 +14,7 @@ Reference rendering: `abf-demo-v4.html` (generator `build-v4.js`, same folder). 
 8. 「版面我完全不滿意，請你直接參考 Seqera 以及 Galaxy 的網頁」 (011a rejection)
 9. 「不需要Jev "開關"，只要在設定讓使用者可以放金鑰。」
 10. CLI terminal in the page: cancelled by the maintainer.
+11. 「不需要建議分析，下面那兩張圖也完全不需要。只要讓使用者能操作裡面的R，或是透過AI agent及時修蓋程式碼，然後能看得到圖片產生，最後要能夠打包圖片往下一步」 (downstream)
 
 ## Skeleton (ADR 0009, amended 2026-10-18)
 - **Masthead** 40px, dark (`--ink` bg): product name left; right: cost meter (two lines: NCHC `SU —`, Cloud `NT$ used / cap`, plus a thin bar; links to the cost page), 中｜EN switch, user name.
@@ -51,7 +52,11 @@ Only Decision needed and Action needed notify (Now page + red counts). Automatic
 6. **Confirmation pages** (every write, ADR 0006): launch (pipeline, samplesheet+version, changed parameters, skipped stages, compute, output path on cluster, copy-back path, estimate, new analysis vs attempt), resume, start over, run downstream. Confirm / Back.
 7. **Running stage**: title with Resume / Re-run (both → confirmation), four summary cards (current step, duration, compute, cost), Tasks bar + legend, this analysis's notices, tabs Tasks / Logs / Run info / Configuration / Metrics.
 8. **Results stage**: summary cards; tabs Report (generated, editable, saved → goes into the package) / Outputs / Reports (MultiQC embedded, JS) / Run info / Tasks / Logs / Metrics; Download all.
-9. **Downstream stage**: decision notice (run suggested analysis → confirmation / skip to finished), figures, then the full IDE embedded in the middle column: tabs RStudio / Jupyter (iframe of the agent's localhost, "Open in new tab"); third state "On another computer" as an Action-needed notice. Positron is not embedded (no free web build; ELv2 hosting clause).
+9. **Downstream stage** (maintainer 10-18: 「不需要建議分析，下面那兩張圖也完全不需要。只要讓使用者能操作裡面的R，或是透過AI agent及時修蓋程式碼，然後能看得到圖片產生，最後要能夠打包圖片往下一步」): no AI-suggested analyses and no preset figures. Entry: decision notice "Do downstream analysis?" (open → confirmation page "start RStudio and load results", or skip to finished); title row also has "Skip to finished".
+   - The full IDE in the middle column: tabs RStudio / Jupyter (iframe of the agent's localhost, "Open in new tab"); third state "On another computer" as an Action-needed notice. The person works in R directly.
+   - AI edits: the person asks in the right-column Chat; the AI edits `analysis/downstream.R` and runs it in the IDE console; each change appears as a "Handled automatically" notice under "AI edits" (lines changed, what ran, file produced).
+   - "Figures produced": live list of `analysis/figures/` (JS), newest highlighted, each with an "Include in package" checkbox; button "Package the n selected figures, go to Finished"; the script goes into the package too.
+   - Positron is not embedded (no free web build; ELv2 hosting clause).
 10. **Finished stage**: delivery package (edited report, tables, MultiQC, figures, methods with versions, samplesheet), provenance, Download.
 11. **Cost** (`#cost`, from the masthead meter): cards NCHC SU / Cloud used / cap / remaining; "never converted" line; Action-needed notice when a launch would exceed the cloud cap (use NCHC / wait for reset); per-analysis table with status Running / Reconciled / Estimate, bill pending.
 12. **Settings**: compute environments, credentials (token, 12 h), Secrets (AI model key, Jev key optional; browser only), Personal (step-by-step mode, development mode); Operator panel and Roles as dashed "coming later".
