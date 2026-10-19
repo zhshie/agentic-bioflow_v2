@@ -119,7 +119,7 @@ scripts/on_site.sh --script scripts/why_pending.sh
 
 Mapping: RUNNING = the platform reports `running`.
 
-`get_run` for per-task progress: it returns the task numbers for each process and the failed tasks.
+`get_run` for per-task progress: it returns the task numbers for each process and the failed tasks. If the person wants this run stopped, call `cancel` with its name; it only asks, and the person confirms it on their own channel. When `get_run` shows `cancel_requested_at`, a cancel was already asked for: say so with that time in Asia/Taipei and do not offer another `cancel`.
 
 **A task sitting unstarted is the failure mode to watch for.** Platform keeps
 reporting the run as RUNNING and shows no error, so waiting longer looks like
@@ -232,14 +232,18 @@ when a refusal is the cause:
 - **No refusal lines up with the failure time.** Read `.command.err` and
   `.exitcode` for the failing task (`get_run` finds it: it lists the failed
   tasks with their exit code and error message, and gives `failure_reason`
-  when Nextflow said why). v3 尚未提供 task 的資料夾路徑 - not available on v3 yet (owed: task-folder-path): `get_run` gives no work folder for a failed task, so do not build one; use the error message and `failure_reason` it gives, and ask the person for the folder if they know it. Downloading the log through the platform is not available on v3 yet (owed: log-download); once the person gives the folder, read the file there with `scripts/fetch.sh`.
+  when Nextflow said why). The task's folder is the `workdir` that `get_run` gives for it; never build a path yourself. When the task has a `workdir`, read the end of its log with `read_task_log` (`run_name` = the run, `task` = the name `get_run` shows in its failed tasks, `which` = `err` first; if `err` is empty, try `out`, then `log`). Only when `get_run` has no `workdir` for that task, say so in one plain sentence and ask the person for the folder if they know it.
+  If `read_task_log` refuses, say which refusal it was in one line and go on with the error message and `failure_reason` from `get_run`:
+    - **The task has no recorded `workdir`.** The log cannot be read from here; ask the person for the folder if they know it.
+    - **The run was not launched from this platform.** The platform can only read logs of runs it launched; say so.
+    - **The agent is offline.** The log cannot be read until the site's agent is back; say so and check again later.
     - **137, or killed.** 🤖 See "out of memory", below.
     - **No `.command.log` and no `.exitcode` at all.** 🤖 The work directory is
       probably not visible from the compute side — report that; there is
       nothing further to diagnose from here.
     - **Jev triage, only if the user turned it on** (optional, off by default;
       `docs/adr/0007-jev-optional-triage.md`). 🤖 Call it for the first failing task
-      that `get_run` lists, once per run, never per task: v3 尚未提供 task 的資料夾路徑 - not available on v3 yet (owed: task-folder-path), so run it only when the person has given the task folder; otherwise skip to "Anything else".
+      that `get_run` lists, once per run, never per task, whenever that task has a `workdir`; when `get_run` has no `workdir` for that task, skip to "Anything else" unless the person gives the folder. Save the text `read_task_log` returned to a temporary file for the call below and delete it afterwards.
 
 
       ```bash
@@ -330,7 +334,7 @@ elsewhere. For Jev, `memory` is the "Out of memory" section below, `unknown` is 
   expects (`scripts/input_checksums.sh` compares it with what was recorded at
   launch).
 - **Usual fix:** regenerate or re-stage the input, or correct the samplesheet
-  row, then relaunch.
+  row. A corrected samplesheet is a new launch (the launch skill, `launch`, and the person confirms it), not `relaunch`; `relaunch` is only for re-running the same inputs.
 - **Ask the user** before replacing any input file: it is their data. 🤖
   Reading and comparing it is yours.
 
@@ -515,7 +519,7 @@ Mapping: SUCCEEDED = the platform reports `succeeded`.
 
 ## CANCELLED
 
-Mapping: CANCELLED = `failed` whose facts say a cancel request was sent (Nextflow reports a cancelled run as failed, `docs/PLATFORM.md`).
+Mapping: CANCELLED = `failed` whose facts say a cancel request was sent (`get_run` shows `cancel_requested_at`; Nextflow reports a cancelled run as failed, `docs/PLATFORM.md`).
 
 Platform did not do this on its own — someone asked to, from the platform or
 the site, and this command did not do it either unless it just relaunched something
@@ -528,7 +532,7 @@ asking is a decision that was never this command's to make.
     You decide:      relaunch it, or leave it cancelled
     Next step:       say the word and it relaunches the same way any other run does
 
-To stop a run that is still going, call `cancel` with its name: it only asks, and the person confirms it on their own channel. A failed or cancelled run that the platform launched can be continued by its name alone, after the person says yes each time. `resume` (or `abf-platform resume RUN`) takes up where Nextflow stopped, in the same folder, and finished tasks come back from the cache. `relaunch` (or `abf-platform relaunch RUN`) starts the run again from the start in a new folder. The samples and parameters are those of the first launch; changing them is a new `launch`.
+When `get_run` shows `cancel_requested_at`, tell the person a cancel was already asked for, with that time in Asia/Taipei, and do not offer another `cancel`. To stop a run that is still going and has no `cancel_requested_at`, call `cancel` with its name: it only asks, and the person confirms it on their own channel. A failed or cancelled run that the platform launched can be continued by its name alone, after the person says yes each time. `resume` (or `abf-platform resume RUN`) takes up where Nextflow stopped, in the same folder, and finished tasks come back from the cache. `relaunch` (or `abf-platform relaunch RUN`) starts the run again from the start in a new folder. The samples and parameters are those of the first launch; changing them is a new `launch`.
 
 ## UNKNOWN
 
