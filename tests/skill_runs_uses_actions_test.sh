@@ -64,7 +64,7 @@ tools=$(grep -oE 'name="[a-z_]+"' "$SERVER" | sed 's/name="//;s/"//' | sort -u)
 args="run_id run_name compute_env"
 badnames=""
 for t in $(grep -oE '`[a-z]+_[a-z_]+`' "$SK" | tr -d '`' | sort -u); do
-    case "$t" in tool_bug|failure_reason|peak_rss|peak_vmem|ssh_max_parallel) continue;; esac
+    case "$t" in tool_bug|failure_reason|peak_rss|peak_vmem|ssh_max_parallel|cancel_requested_at) continue;; esac
     grep -qxF "$t" <<<"$tools" && continue
     grep -qwF "$t" <<<"$args" && continue
     badnames="$badnames $t"
@@ -141,13 +141,46 @@ b88=$(paras | grep -E "relaunch" | grep -iE "not the run over again|not the whol
 run1=$(tr -s "[:space:]" " " <<<"$run")
 grep -qE "[Aa] .resume. counts as reversible" <<<"$run1" && ! grep -qE "relaunch counts as reversible" <<<"$run1"; chk "TC-087 RUNNING: the cache sentence is about resume" $?
 
-# S3: no task folder path on v3
-n=$(grep -c '尚未提供 task 的資料夾路徑' "$SK"); [ "$n" -ge 2 ]; chk "TC-089 task folder path said missing in at least 2 places (command.err and Jev)" $?
-grep -q '尚未提供 task 的資料夾路徑' <<<"$(grep -n 'No refusal lines up' -A5 "$SK")"; chk "TC-089 the .command.err step says it" $?
-grep -q '尚未提供 task 的資料夾路徑' <<<"$(grep -n 'Jev triage, only if' -A5 "$SK")"; chk "TC-089 the Jev triage step says it" $?
-! grep -qE '`(workdir|work_dir|path)`|work/[0-9a-f]{2}/' "$SK"; chk "TC-090 no invented work-folder field or hashed path" $?
+# S3 (retired by S7/S8, see the ledger): the "v3 尚未提供 task 的資料夾路徑" assertions (old TC-089, TC-091) are
+# replaced by TC-100 to TC-106 and TC-110 below. TC-090 stays, reworded: the folder comes from get_run's workdir only.
+! grep -qE '`(work_dir|path)`|work/[0-9a-f]{2}/' "$SK"; chk "TC-090 no invented work-folder field or hashed path" $?
+grep -qF '`workdir`' <<<"$failed" && grep -q 'workdir' "$SERVER"; chk "TC-090 the only folder field named is get_run's workdir" $?
+
+# ---- rulings S7 to S11 (TC-100 to TC-112) ----
+! grep -qE '尚未提供 task 的資料夾路徑|task-folder-path|gives no work folder' "$SK"; chk "TC-100 the task-folder-path wording is gone" $?
+nr=$(grep -n 'No refusal lines up' -A8 "$SK")
+grep -qF 'workdir' <<<"$nr" && grep -qF 'get_run' <<<"$nr"; chk "TC-101 the .command.err step takes the folder from get_run's workdir" $?
+jev=$(grep -n 'Jev triage, only if' -A4 "$SK")
+grep -qF 'workdir' <<<"$jev" && grep -qiE 'first failing task' <<<"$jev" && grep -qE 'once per run, never per task' <<<"$jev"; chk "TC-102 Jev triage runs for the first failing task with a workdir, once per run" $?
+! grep -qE 'only when the person has given the task folder' "$SK"; chk "TC-102 Jev no longer waits for the person to give the folder" $?
+grep -qiE 'has no .?workdir.? for (that|a|the) task' <<<"$failed"; chk "TC-103 one plain sentence: ask the person only when get_run has no workdir" $?
+! grep -E 'no .?workdir' "$SK" | grep -q "$UNAVAIL"; chk "TC-103 the no-workdir sentence does not say 'not available on v3 yet'" $?
+grep -qF '`read_task_log`' <<<"$nr" && grep -qF '`run_name`' <<<"$nr" && grep -qF '`task`' <<<"$nr" && grep -qF '`which`' <<<"$nr"; chk "TC-104 the log is read with read_task_log(run_name, task, which)" $?
+grep -qiE '`which`[^.]*`err`|`err`[^.]*first' <<<"$nr" && grep -qiE '`out`' <<<"$nr" && grep -qiE 'empty' <<<"$nr"; chk "TC-104 which = err first, out or log if err is empty" $?
+! grep -q 'fetch.sh' <<<"$failed"; chk "TC-105 the FAILED section no longer reads the log with fetch.sh" $?
+! grep -qE 'owed: log-download|Downloading the log through the platform' "$SK"; chk "TC-105 no log-download owed marker" $?
+grep -qF 'scripts/fetch.sh' "$SK"; chk "TC-105 fetch.sh stays where results are delivered" $?
+rf=$(grep -n 'read_task_log' -A12 "$SK" | grep -iE 'refus|no .?workdir|not launched|offline')
+grep -qiE 'no .?workdir|no recorded' <<<"$rf" && grep -qiE 'not launched (from|by|through) this platform' <<<"$rf" && grep -qiE 'offline' <<<"$rf"; chk "TC-106 the three refusals of read_task_log each have a fall-back line" $?
+! grep -n 'read_task_log' -A12 "$SK" | grep -iE 'refus|offline' | grep -qE 'fetch.sh'; chk "TC-106 no fall-back sends the AI to fetch.sh" $?
+# S9
+grep -qF '`cancel_requested_at`' <<<"$cancelled" && grep -qF 'Asia/Taipei' <<<"$cancelled" && grep -qiE 'already (asked|requested)' <<<"$cancelled"; chk "TC-107 CANCELLED: cancel_requested_at, already asked for, time in Asia/Taipei" $?
+grep -qF '`cancel_requested_at`' <<<"$(section CANCELLED | grep -E '^Mapping:')"; chk "TC-083/107 the CANCELLED mapping rests on cancel_requested_at" $?
+tail_c=$(section CANCELLED | grep -F 'To stop a run that is still going')
+grep -qE 'cancel_requested_at' <<<"$tail_c" && grep -qiE 'not offer|do not offer|no second|another' <<<"$tail_c" && grep -qiE 'person|user' <<<"$tail_c"; chk "TC-108 CANCELLED: no second cancel offered when cancel_requested_at is there; the person still confirms" $?
+grep -qF 'cancel_requested_at' <<<"$run" && grep -qiE 'not offer|do not offer|another `cancel`' <<<"$run"; chk "TC-108 RUNNING: no second cancel offered when cancel_requested_at is there" $?
+# S10
+inp=$(awk '/^#### `input`/{p=1;next} /^#### |^### |^## /{p=0} p' "$SK" | tr -s '[:space:]' ' ')
+grep -qE 'new `?launch`?' <<<"$inp" && grep -qiE 'not `?relaunch`?|`relaunch` is only' <<<"$inp"; chk "TC-109 input: a corrected samplesheet is a new launch, not relaunch" $?
+! grep -niE 'samplesheet|sample sheet|input file' "$SK" | grep -iE 'relaunch|resume' | grep -viE 'new `?launch|not `?relaunch|cannot|never' | grep -q .; chk "TC-109 no line says a changed samplesheet or input is re-run by relaunch/resume" $?
+# S11
 if [ -r "$LEDGER" ]; then
-    grep -qE '^- owed: task-folder-path' "$LEDGER" && grep -q 'task-folder-path' "$SK"; chk "TC-091 task folder path is ledgered and tagged" $?
+    [ "$(grep -cE '^- owed: ' "$LEDGER")" = 6 ]; chk "TC-110 the ledger owes exactly 6 things" $?
+    ! grep -qE '^- owed: (task-folder-path|log-download)' "$LEDGER"; chk "TC-110 task-folder-path and log-download are no longer owed" $?
+    for id in task-health resize-relaunch run-params measurements tune-resources ce-apply; do
+        grep -qE "^- owed: $id" "$LEDGER" && grep -qF "(owed: $id)" "$SK" || bad "TC-112 $id is owed in both the ledger and the skill"
+    done
+    grep -q 'Retired assertions' "$LEDGER" && grep -q 'TC-089' "$LEDGER" && grep -q 'TC-091' "$LEDGER"; chk "TC-111 the ledger accounts for the retired TC-089 and TC-091 assertions" $?
 fi
 
 # S5: one manual step in docs/TESTING.md under the 009e section
