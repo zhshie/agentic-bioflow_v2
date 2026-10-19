@@ -56,3 +56,8 @@ The "Reading a measurement" table and the walltime bullet still told the AI to "
 - S11: owed list is 6 items (task-health, resize-relaunch, run-params, measurements, tune-resources, ce-apply).
 - Retired tests (Rule 4, TC-111): in `tests/skill_runs_uses_actions_test.sh` the S3 assertions TC-089 (task folder path said missing in 2 places, in the .command.err step, in the Jev step) and TC-091 (task-folder-path ledgered and tagged), and the TC-090 ban on any backticked `workdir`, no longer apply because S7/S8 closed those owed items. Replaced by TC-100 (wording gone), TC-101, TC-102, TC-103, TC-104, TC-105, TC-106 (workdir, read_task_log, refusals), TC-110 (exactly 6 owed) and a reworded TC-090 (only `workdir`, no invented field or hashed path). The TC-012 name check also allows the field name `cancel_requested_at`.
 - Open question for the maintainer: the `.exitcode` file cannot be read by `read_task_log` (err, out, log only); the "no `.command.log` and no `.exitcode`" branch is unchanged.
+
+## Fix round (TC-094, TESTING.md step 6)
+
+- `docs/TESTING.md` step 6 (the one line this PR adds, still "1 0" for TC-097): it now says the AI reads a failed task's log with `read_task_log`, the task folder coming from `get_run`'s `workdir`; the "v3 尚未提供" example is now "the params a run was started with", no longer a task's folder path.
+- `tests/skill_runs_uses_actions_test.sh`: one added TC-094 check (step names `read_task_log`, no "task's folder path"); red first. Nothing loosened.
