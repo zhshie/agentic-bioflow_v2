@@ -8,7 +8,9 @@ fails=0
 ok()  { printf '%-78s ok\n' "$1"; }
 bad() { printf '%-78s FAIL%s\n' "$1" "${2:+: $2}"; fails=$((fails+1)); }
 has() { # label file extended-regex
-  if tr -d '\r' < "$2" | grep -qE -- "$3"; then ok "$1"; else bad "$1" "no /$3/ in $2"; fi
+  # read the file first: `grep -q` closing a pipe early makes `tr` fail under pipefail on big files
+  local txt; txt=$(tr -d '\r' < "$2")
+  if grep -qE -- "$3" <<<"$txt"; then ok "$1"; else bad "$1" "no /$3/ in $2"; fi
 }
 S=docs/SETTINGS.md; A=docs/SITE_ADAPTER.md; P=docs/PITFALLS.md; O=docs/OPERATIONS.md
 
