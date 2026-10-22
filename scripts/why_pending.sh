@@ -1,4 +1,5 @@
 #!/bin/bash
+# Taiwania-3 only (v2); nano4 uses $NFCORE_SITE_CONFIG — see docs/SITE_ADAPTER.md
 # Why has this task not started? (NCHC site adapter - see docs/SITE_ADAPTER.md)
 #
 # Nothing existing: SLURM's own reason code is cryptic and per-job; this
