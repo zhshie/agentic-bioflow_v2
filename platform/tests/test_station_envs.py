@@ -584,3 +584,178 @@ def test_tc040_the_new_files_follow_the_008_location_rule(tmp_path):
         assert list(home.iterdir()) == [] and list(cwd.iterdir()) == []
         if mode == "db":
             assert not (tmp_path / mode / "unused").exists()
+
+
+# ---- ce-nano4-keys (M1-01): modules / siteConfigVars / sitePipelines ---------------------------
+
+NANO4 = {
+    "modules": ["biology/Nextflow/26.10.0", "biology/nf-core-ampliseq/2.18.0"],
+    "siteConfigVars": ["NFCORE_SITE_CONFIG", "NFCORE_SITE_REFERENCES"],
+    "sitePipelines": [{"pipeline": "nf-core/ampliseq", "revision": "2.18.0",
+                       "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}],
+}
+NANO4_KEYS = {"modules", "siteConfigVars", "sitePipelines"}
+
+
+def nano4_create(ip, name="lab-n", **over):
+    cfg = json.loads(json.dumps(NANO4))
+    cfg.update(over)
+    return ip.create(name, head_queue="normal", config_json=json.dumps(cfg))
+
+
+def nano4_sp(**over):
+    sp = dict(NANO4["sitePipelines"][0])
+    sp.update(over)
+    return {"sitePipelines": [sp]}
+
+
+def test_tc024b_nano4_keys_are_stored_field_by_field(ip):
+    # TC-NK-01, TC-NK-02
+    rc, out = nano4_create(ip)
+    assert rc == 0, out
+    cfg = ip.show("lab-n")["config"]
+    for k, v in NANO4.items():
+        assert cfg[k] == v
+    assert cfg["workDir"] == "/data/work" and cfg["headQueue"] == "normal"
+    assert set(cfg["sitePipelines"][0]) == {"pipeline", "revision", "module", "home"}
+    assert ip.mcp_json("get_compute_env", {"name": "lab-n"})["config"]["sitePipelines"] == NANO4["sitePipelines"]
+    listed = ip.mcp_json("list_compute_envs")
+    listed = listed if isinstance(listed, list) else next(v for v in listed.values() if isinstance(v, list))
+    assert listed[0]["config"]["modules"] == NANO4["modules"]
+
+
+def test_nano4_order_is_kept_and_legal_edge_values_are_accepted(ip):
+    # TC-NK-03
+    over = {"modules": ["biology/nf-core-ampliseq/2.18.0", "biology/Nextflow/26.10.0"],
+            "siteConfigVars": ["NFCORE_SITE_REFERENCES", "NFCORE_SITE_CONFIG"],
+            "sitePipelines": [dict(NANO4["sitePipelines"][0], pipeline="nf-core/zeta"),
+                              dict(NANO4["sitePipelines"][0], pipeline="nf-core/alpha")]}
+    assert nano4_create(ip, **over)[0] == 0
+    cfg = ip.show("lab-n")["config"]
+    for k, v in over.items():
+        assert cfg[k] == v
+    # TC-NK-05
+    ok = {"modules": ["a+b-c_d.e/1"], "siteConfigVars": ["_X1"],
+          "sitePipelines": [dict(NANO4["sitePipelines"][0], revision="a" * 40),
+                            dict(NANO4["sitePipelines"][0], revision="v2.18.0")]}
+    rc, out = nano4_create(ip, "lab-m", **ok)
+    assert rc == 0, out
+    assert ip.show("lab-m")["config"]["sitePipelines"] == ok["sitePipelines"]
+
+
+def test_nano4_update_and_untouched_environments(ip):
+    # TC-NK-26, TC-NK-27, TC-NK-04
+    assert ip.create_slurm("lab-a")[0] == 0
+    cfg = ip.show("lab-a")["config"]
+    assert not NANO4_KEYS & set(cfg)
+    rc, out = ip.run("ce", "update", "lab-a", "--work-dir=/data/other")
+    assert rc == 0, out
+    cfg2 = ip.show("lab-a")["config"]
+    assert cfg2["workDir"] == "/data/other" and not NANO4_KEYS & set(cfg2)
+    rc, out = ip.run("ce", "update", "lab-a", "--config-json", json.dumps(dict(cfg2, **NANO4)))
+    assert rc == 0, out
+    cfg3 = ip.show("lab-a")["config"]
+    for k, v in NANO4.items():
+        assert cfg3[k] == v
+    assert cfg3["headQueue"] == cfg["headQueue"]
+
+
+@pytest.mark.parametrize("bad", ["a;b", "a b", "../x", "$(id)", "`id`", "a|b", "a&b", "a\nb", ""])
+def test_tc029b_modules_and_site_pipelines_refuse_shell_shapes(ip, bad):
+    # TC-NK-06..09, TC-NK-19
+    before = ip.all_bytes()
+    rc, out = nano4_create(ip, modules=[bad])
+    assert rc != 0 and "modules" in out, out
+    assert "Traceback" not in out
+    assert ip.all_bytes() == before
+    # TC-NK-11, TC-NK-12
+    rc, out = nano4_create(ip, **nano4_sp(home=bad))
+    assert rc != 0 and "sitePipelines[0].home" in out, out
+    # TC-NK-10
+    rc, out = nano4_create(ip, siteConfigVars=[bad])
+    assert rc != 0 and "siteConfigVars" in out, out
+    assert ip.all_bytes() == before
+
+
+@pytest.mark.parametrize("bad", ["nfcore_home", "1ABC", "${HOME}", "A B", "X; id"])
+def test_nano4_home_and_var_names(ip, bad):
+    # TC-NK-10, TC-NK-12
+    rc, out = nano4_create(ip, **nano4_sp(home=bad))
+    assert rc != 0 and "sitePipelines[0].home" in out, out
+    rc, out = nano4_create(ip, siteConfigVars=[bad])
+    assert rc != 0 and "siteConfigVars" in out, out
+
+
+def test_nano4_pipeline_revision_module_and_index(ip):
+    # TC-NK-13
+    rc, out = nano4_create(ip, **nano4_sp(module="a;b"))
+    assert rc != 0 and "sitePipelines[0].module" in out and "';'" in out, out
+    # TC-NK-14
+    for bad in ("nf-core", "nf-core/ampliseq/x", "nf-core/ampliseq;id", "a b/c"):
+        rc, out = nano4_create(ip, **nano4_sp(pipeline=bad))
+        assert rc != 0 and "sitePipelines[0].pipeline" in out, (bad, out)
+    # TC-NK-15
+    for bad in ("master", "dev", "2.18.0; id", ""):
+        rc, out = nano4_create(ip, **nano4_sp(revision=bad))
+        assert rc != 0 and "sitePipelines[0].revision" in out, (bad, out)
+    # TC-NK-16
+    two = {"sitePipelines": [NANO4["sitePipelines"][0], dict(NANO4["sitePipelines"][0], module="a;b")]}
+    rc, out = nano4_create(ip, **two)
+    assert rc != 0 and "sitePipelines[1].module" in out and "sitePipelines[0]" not in out, out
+    assert ip.rows()["compute_envs"] == []
+
+
+def test_nano4_types_and_all_errors_at_once(ip):
+    # TC-NK-17
+    for over, key in (({"modules": "biology/Nextflow/26.10.0"}, "modules"), ({"modules": [5]}, "modules"),
+                      ({"siteConfigVars": "NFCORE_SITE_CONFIG"}, "siteConfigVars"),
+                      ({"sitePipelines": ["nf-core/ampliseq"]}, "sitePipelines")):
+        rc, out = nano4_create(ip, **over)
+        assert rc != 0 and key in out and "Traceback" not in out, (over, out)
+    # TC-NK-18
+    rc, out = nano4_create(ip, modules=["a;b"], siteConfigVars=["bad name"], **nano4_sp(home="$(id)"))
+    assert rc != 0
+    for key in ("modules", "siteConfigVars", "sitePipelines[0].home"):
+        assert key in out, out
+    # TC-NK-21
+    rc, out = nano4_create(ip, modules=["a;b"])
+    assert re.search(r"letters|digits", out) and "Traceback" not in out and ".py" not in out
+    # TC-NK-25
+    for typo in ("sitePipeline", "siteConfigVar", "module"):
+        rc, out = ip.create("lab-t", head_queue="normal", config_json=json.dumps({typo: []}))
+        assert rc != 0 and typo in out and "unknown" in out
+        for good in ("modules", "siteConfigVars", "sitePipelines"):
+            assert good in out
+
+
+def test_nano4_credential_shapes_are_refused_and_not_echoed(ip):
+    # TC-NK-22..24
+    for over in ({"modules": ["abf_CANARYsecret9f2c71aa0123456789abcdefghij"]},
+                 {"siteConfigVars": ["AKIACANARYZZ99887766"]}, nano4_sp(home="AKIACANARYZZ99887766")):
+        rc, out = nano4_create(ip, **over)
+        assert rc != 0 and CRED.search(out) and "CANARY" not in out, out
+        assert b"CANARY" not in ip.all_bytes()
+
+
+def test_nano4_update_refusal_changes_nothing(ip):
+    # TC-NK-20
+    assert nano4_create(ip, "lab-a")[0] == 0
+    before = ip.run("ce", "show", "lab-a")[1]
+    cfg = ip.show("lab-a")["config"]
+    for bad in (dict(cfg, modules=["a;b"]), dict(cfg, **nano4_sp(home="$(id)"))):
+        rc, out = ip.run("ce", "update", "lab-a", "--config-json", json.dumps(bad))
+        assert rc != 0 and re.search(r"modules|sitePipelines\[0\]\.home", out), out
+    assert ip.run("ce", "show", "lab-a")[1] == before
+
+
+def test_nano4_keys_live_in_config_json_only(ip):
+    # TC-NK-28
+    assert nano4_create(ip)[0] == 0
+    con = sqlite3.connect(str(ip.state_db))
+    try:
+        cols = [r[1] for r in con.execute("PRAGMA table_info(compute_envs)")]
+        raw = con.execute("SELECT config_json FROM compute_envs").fetchone()[0]
+    finally:
+        con.close()
+    assert not NANO4_KEYS & set(cols)
+    assert json.loads(raw)["modules"] == NANO4["modules"]
