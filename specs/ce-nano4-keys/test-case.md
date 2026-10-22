@@ -64,8 +64,8 @@
 | TC-NK-20 | R4；`update` 沿用建立的規則 | 例外 | 已有帶三鍵（TC-NK-01 的值）的 CE `lab-a`，已記下 `ce show lab-a` 的輸出 | 對 `lab-a` 更新，分別把 modules 改成 `["a;b"]`、把 `sitePipelines[0].home` 改成 `$(id)` | 兩次都被拒，原因點名鍵名；再查看 `lab-a`，輸出與更新前一模一樣（含最後更新時間） | 自動：`platform/tests/test_station_envs.py` |
 | TC-NK-21 | R4；專長守則（錯誤訊息說原因與處理方式、不露堆疊與內部路徑） | 例外 | 空的平台 | 做 TC-NK-06、TC-NK-10、TC-NK-11、TC-NK-14 各一個被拒的建立，收集畫面輸出 | 每則訊息都說出「哪個鍵、哪個值有問題」並說出可以怎麼改（講出允許的字元或形式，例如英文字母、數字與哪些符號；或「必須是 擁有者/名稱」）；輸出裡沒有 `Traceback`、沒有程式檔路徑、沒有 SQL | 自動：`platform/tests/test_station_envs.py` |
 | TC-NK-22 | R6；專長守則（密鑰不得出現在回應與資料庫） | 例外 | 空的平台。下面的假憑證含有字樣 `CANARY` 方便搜尋 | 建立 CE，`modules=["abf_CANARYsecret9f2c71aa0123456789abcdefghij"]`（長得像平台自己的 token，但字元合乎 module 規則） | 被拒，原因說明「長得像憑證，平台只記名字，憑證要放代理那邊」（與既有 TC-036 的說法同類）；畫面輸出與資料庫位元組裡都找不到 `CANARY` | 自動：`platform/tests/test_station_envs.py` |
-| TC-NK-23 | R6 | 例外 | 空的平台 | 建立 CE，`siteConfigVars=["AKIACANARYZZ99887766"]`（長得像 AWS 金鑰編號，卻合乎環境變數名規則） | 被拒，原因是長得像憑證；畫面輸出與資料庫位元組裡都找不到 `CANARY` | 自動：`platform/tests/test_station_envs.py` |
-| TC-NK-24 | R6（計畫原話：避免有人把 token 塞在 `home`） | 例外 | 空的平台 | 建立 CE，`sitePipelines[0].home="AKIACANARYZZ99887766"`，其他欄位合法 | 被拒，原因是長得像憑證；畫面輸出與資料庫位元組裡都找不到 `CANARY` | 自動：`platform/tests/test_station_envs.py` |
+| TC-NK-23 | R6 | 例外 | 空的平台 | 建立 CE，`siteConfigVars=["<AKIA 接 CANARYZZ99887766，共 20 字，寫成一串>"]`（長得像 AWS 金鑰編號，卻合乎環境變數名規則） | 被拒，原因是長得像憑證；畫面輸出與資料庫位元組裡都找不到 `CANARY` | 自動：`platform/tests/test_station_envs.py` |
+| TC-NK-24 | R6（計畫原話：避免有人把 token 塞在 `home`） | 例外 | 空的平台 | 建立 CE，`sitePipelines[0].home="<AKIA 接 CANARYZZ99887766，共 20 字，寫成一串>"`，其他欄位合法 | 被拒，原因是長得像憑證；畫面輸出與資料庫位元組裡都找不到 `CANARY` | 自動：`platform/tests/test_station_envs.py` |
 | TC-NK-25 | R4；「鍵名已定案，不要改鍵名」 | 例外 | 空的平台 | 建立 CE，設定裡拼錯鍵名：`sitePipeline`（少一個 s）、`siteConfigVar`、`module` | 每一次都被拒，原因說這是未知的設定並點出壞鍵名（現有「unknown setting」行為），且已知設定清單裡含正確的 `modules`、`siteConfigVars`、`sitePipelines` | 自動：`platform/tests/test_station_envs.py` |
 
 ## User Story 3 — 既有的東西完全不變，也不需要 migration（優先度 P1）
