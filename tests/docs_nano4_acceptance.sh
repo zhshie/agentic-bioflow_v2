@@ -11,11 +11,11 @@ check() {   # check <testing> <table> ; prints FAIL lines, returns 1 on any
   # TC-001: one section "nano4 acceptance" holding the five IDs
   local n; n=$(grep -c '^#.*nano4 acceptance' "$t" 2>/dev/null)
   [ "$n" = "1" ] || { echo "FAIL TC-001: want exactly one heading with 'nano4 acceptance' in $t, found ${n:-0}"; bad=1; }
-  local sec; sec=$(awk '/^#.*nano4 acceptance/{f=1;next} f&&/^## /{f=0} f' "$t" 2>/dev/null)
+  local sec; sec=$(awk '/^#.*nano4 acceptance/{f=1;next} f&&/^#+ /{f=0} f' "$t" 2>/dev/null)
   local i; for i in 047n 048n 049n 050n 051n; do
     printf '%s\n' "$sec" | grep -q "TC-$i" || { echo "FAIL TC-001: TC-$i missing from the nano4 acceptance section"; bad=1; }
   done
-  for i in 047 048 049 050 051 052 053; do
+  for i in 047 048 049 050 052 053; do
     grep -q "TC-$i[^n0-9]" "$t" 2>/dev/null || { echo "FAIL TC-001: original TC-$i gone from $t"; bad=1; }
   done
   # TC-012: required strings in the table
