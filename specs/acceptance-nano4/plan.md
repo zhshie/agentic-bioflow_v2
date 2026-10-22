@@ -49,3 +49,12 @@ base: v3
 ## 專長守則（docs）
 
 （工作區沒有 `.claude/dev-profiles/docs.md`；本任務無專長守則。）
+
+## 裁決（2026-10-22，developer-agent，回應 verifier 出題退回）
+1. **launch 前先估 SU**：驗收表加欄「launch 前預估 SU」（用 `estimate_su`／`abf-platform` 的估算，寫指令與輸出），與「wallet 前後差額」並列；TC-048n 第一步就是估算。採 verifier 的 TC-B15。
+2. **`grep -c token` 的對象**：run 資料夾裡的 `head.sh` 與 Slurm 輸出（`slurm-<jobid>.out`）各做一次，兩者都要 0；`tower.token` 檔本身不在掃描範圍（它就是放 token 的地方）。指令完整寫進表格。
+3. **檔案範圍補 `tests/docs_nano4_acceptance.sh`**（新檔，docs 檢查：TESTING.md 有「nano4 acceptance」一節、acceptance-nano4.md 的表有必要欄位），run_all 自動收進去。
+4. **前置**：本任務不等 settings-nano4／程式合併；文件照計畫與 ce-nano4-keys、launch-site-pipeline、way-back-direct 三份計畫的字面寫，程式行為由實機驗收時對照。驗收表頂部註明「依 2026-10-22 計畫撰寫；實機跑時以當時 v3 為準」。
+5. **preflight 項目清單**：以 docs/PLATFORM.md 的 Preflight 表（8 項）為準，另加 preflight-nano4 合併後的 3 項（modules／site_pipeline／library），表中標「（preflight-nano4 合併後）」。
+6. **首次驗收只走 Claude Desktop**（裁示 7 的「或網頁」留給 M2 網頁全流程時再驗）；表中留一列「網頁路徑：M2」。
+7. **指令細節**：「relay 未啟動」用 `abf-platform launches` 顯示 `way_back: direct` 且站台 `ss -ltnp | grep -c <relay port>` 為 0；「從計算節點 curl」用 `srun -p ngstest -A mst109178 -N1 -c1 -t 00:05:00 curl -sS -o /dev/null -w '%{http_code}' <public_url>/health`（探測筆記用 ngstest）；trace 行數數 run 資料夾的 `trace.txt`（扣表頭）。
