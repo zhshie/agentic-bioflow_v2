@@ -39,3 +39,10 @@ base: v3
 ## 專長守則（docs）
 
 （工作區沒有 `.claude/dev-profiles/docs.md`；本任務無專長守則。）
+
+## 裁決（2026-10-22，developer-agent，回應 executor BLOCKED）
+- 授權修改既有測試 `tests/migration_doc_test.sh`，**只改兩處、每處寫進 ledger（old／new／理由）**：
+  1. TC-002 的 `## ` 標題數 6 → 7（因為本任務依計畫新增第 7 節「From the v2 `tw` flow to starting on the v3 platform」）。
+  2. TC-005 的「每個 `abf-platform <子命令>` 都要在 cli.py 有 `add_parser`」：來源檔從只看 `platform/abf_platform/cli.py` 擴成同時看 `platform/abf_platform/cli.py` 與 `platform/abf_launch/cli.py`（`launch` 子命令的實作在後者）。檢查本身不放寬：子命令仍必須在其中一個檔案真的有 `add_parser("…")`。
+- 其餘不動；不改 TC-016／017／019。範圍檔新增 `tests/migration_doc_test.sh`。
+- 合約（verifier）對「開頭」「英文節名」「不只 grep 一個字串」的四條非阻擋決定，照合約。
