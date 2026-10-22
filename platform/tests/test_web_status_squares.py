@@ -88,6 +88,8 @@ def test_tc001_to_008_tc030_to_034_each_state_place_is_square_plus_word(w, lang)
         assert badge and badge.group(1) == SQ + " " + word
         info = c.get("/?run=id-%s&tab=info%s" % (name, lq(lang))).text
         assert SQ + " " + word in pane(info, "middle")
+        # the square of the Info tab status row needs a state class around it, else it has no colour (--c is defined only by .state-*)
+        assert re.search(r'<dd><span class="state-%s">%s %s</span></dd>' % (st, re.escape(SQ), word), pane(info, "middle")), (name, lang)
     now = home(c, lang)
     assert re.search(r'state-running[^>]*>.*?%s %s' % (re.escape(SQ), WORDS[lang]["running"]), card(now, "running"), re.S)
     old = ("成功", "失聯", "暫停") if lang == "zh" else ("Succeeded", "Lost", "Paused")
