@@ -731,7 +731,7 @@ def test_nano4_types_and_all_errors_at_once(ip):
 def test_nano4_credential_shapes_are_refused_and_not_echoed(ip):
     # TC-NK-22..24
     for over in ({"modules": ["abf_CANARYsecret9f2c71aa0123456789abcdefghij"]},
-                 {"siteConfigVars": ["AKIACANARYZZ99887766"]}, nano4_sp(home="AKIACANARYZZ99887766")):
+                 {"siteConfigVars": [KEY_ID]}, nano4_sp(home=KEY_ID)):
         rc, out = nano4_create(ip, **over)
         assert rc != 0 and CRED.search(out) and "CANARY" not in out, out
         assert b"CANARY" not in ip.all_bytes()
