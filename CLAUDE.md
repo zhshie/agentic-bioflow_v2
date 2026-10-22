@@ -192,23 +192,23 @@ feature or bug workflow, with test cases written by the independent reviewer
 before any code, and merges follow the decision tiers in the constitution's
 Development Workflow (2.1.0). Shared vocabulary is `CONTEXT.md`.
 
-The roles and gates that are files: the read-only `verifier` agent
-(`.claude/agents/verifier.md`) writes `test-case.md` + `test-case-overview.md`
+The roles and gates: the read-only `verifier` agent (generic, in the developer-agent's
+workspace; see "For the executor and verifier") writes `test-case.md` + `test-case-overview.md`
 after the plan (CONTRACT mode, following `.claude/skills/test-cases/`) and marks
 them `合約已確認`; implementation does not start while the overview says
-`狀態：草稿`. The `executor` agent (`.claude/agents/executor.md`) implements one
+`狀態：草稿`. The `executor` agent (generic, same place) implements one
 task test-first and cannot stop until the full suite is green at HEAD or it
 reports BLOCKED. After implementing, acceptance is the `verifier` again
 (ACCEPTANCE mode), in a fresh context - never the author's own review.
-`tests/dev_workflow_test.sh` keeps these gates shaped like gates.
+`tests/dev_workflow_test.sh` keeps this repository's half (the facts below, no stale agent
+copy); the agents' own shape is checked in the workspace.
 
 ## For the executor and verifier
 
 Since 2026-10-22 the maintainer's developer-agent dispatches **generic** `executor` and
 `verifier` agents that live in its own workspace and serve every project; they read this
-section first, and its facts override their defaults. The `.claude/agents/` files in this repo
-stay until the constitution's Development Workflow is amended to point here (that amendment is
-the maintainer's to merge). The stop gate ("green at HEAD or BLOCKED") is enforced by a
+section first, and its facts override their defaults. This repository keeps no copy of either agent
+(constitution 6.0.1). The stop gate ("green at HEAD or BLOCKED") is enforced by a
 SubagentStop hook and by the verifier's gate check, not by agent frontmatter, which never fired.
 
 - **Rules document**: `.specify/memory/constitution.md` (invariants 1–13 with their checks, the
