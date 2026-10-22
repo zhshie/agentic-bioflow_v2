@@ -339,6 +339,25 @@ Same set-up as the 011a section above (loopback `abf-platform web`, e2e runs of 
 
 **Ledger review (TC-D01 to TC-D04, TC-D07).** Read `specs/011b-running-page/ledger.md` and `git diff v3...HEAD`. Pass: every changed old assertion has an old value, a new value and a reason; the three owed items (compute environment name, work directory column, launch facts) are named; `git diff v3...HEAD -- DESIGN.md PRODUCT.md specs/011b-running-page/test-case.md specs/011b-running-page/test-case-overview.md` prints nothing; `git diff v3...HEAD -- platform/abf_platform/store.py platform/abf_platform/actions platform/abf_platform/jobs.py platform/abf_platform/mcp_server.py hooks .claude` prints nothing and there is no new table, column or migration.
 
+## The confirmation page, plain words first (web-confirm-plain): the person looks, and the ledger review
+
+Needs `abf-platform web` on loopback, a user with a web password, and one real pending request (a launch or a relaunch a connected AI queued and nobody has pressed yet) whose folder path is long. The page needs no JavaScript.
+
+**First look (TC-007).**
+
+1. Open `/c/<id>` for the pending request. Do not scroll and do not click anything. Pass: the first thing on the page is a plain block of a few lines in your own language: the kind of request, its name, the pipeline and version, where it runs, how many samples. There is no samplesheet text, no settings file and no script on screen, and nothing that looks like code. Record: what you saw in the first screen, and whether it is "what I wanted".
+2. Click "完整內容（技術細節）". Pass: the whole content opens on the same page (samplesheet, params, head script), nothing is missing, and the page did not reload. Click it again: it folds.
+3. Read the sentence at the top of the page ("下面就是會被送出的全部內容…") now that the content is folded. Record: does it still read right? (Open item of the test-case overview; a "no" goes to the next round, it does not fail this step.)
+4. Open `?lang=en` on the same page. Pass: the plain block's labels and the fold title are English.
+
+**Phone width (TC-016).**
+
+5. Make the window 390 px wide with device emulation (Chrome DevTools, device toolbar), not by dragging the window edge, and open the pending request whose folder path is long. Expand the fold. Pass: the whole path is visible, wrapped over several lines; the plain block and the fold have no sideways scrollbar. Record the numbers of `document.documentElement.scrollWidth` and `document.documentElement.clientWidth` in the console: they must be equal.
+
+**Ledger review (TC-033).**
+
+6. Read `specs/web-confirm-plain/ledger.md` and `git diff origin/v3...HEAD -- platform/tests/`. Pass: every line removed or changed in an existing test is in the ledger with the old value, the new value and the reason; no existing test is deleted, skipped or loosened without being named there; `git diff origin/v3...HEAD -- specs/web-confirm-plain/plan.md specs/web-confirm-plain/test-case.md specs/web-confirm-plain/test-case-overview.md` shows only the verifier's and developer-agent's commits (no `RED:` or `GREEN:` commit touches them). A changed assertion that is more than a string swap (for example a whole-page equality narrowed to the stylesheet alone) is read by you and accepted or sent back; the ledger entry is the evidence, your reading is the verdict.
+
 ## Chrome login (web-chrome-origin)
 
 Needs a Python with Playwright and Google Chrome installed; CI has neither, so this is not in the automated suite (WCO-3 of `specs/web-chrome-origin`).
