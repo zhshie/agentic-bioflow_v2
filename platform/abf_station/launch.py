@@ -274,6 +274,12 @@ def _check_params(params):
 
 def _tower(facts, run_name):
     reach = facts.get("reach")
+    if reach not in (None, "local", "none") and facts.get("way_back") == "direct":  # the compute nodes reach the platform's public address
+        url = common.public_url(facts.get("platform_public_url"))
+        if not url:
+            raise BundleError("進度回報: 進度回報需要 https 公開網址或 loopback（本機測試用）；請把設定檔的 platform_public_url 改成 https 網址 "
+                              "(progress reporting needs an https public address or loopback)")
+        return {"mode": "direct", "endpoint": url}
     if reach not in (None, "local", "none"):  # the site is reached over a shared connection: the reverse forward is the way back
         if not facts.get("platform_local"):
             raise BundleError("反向通道: 這一片的反向通道要求平台與代理在同一台機器；這個代理連到的平台網址不是本機。請在同一台機器上"
@@ -484,10 +490,14 @@ def own_facts(ctx):
     else:
         storage = rules.normalize(storage)
     url = (ctx.platform_url or "").rstrip("/")
+    way_back = rules.read_setting(sf, "way_back")
+    if way_back not in ("forward", "direct"):
+        way_back = "forward" if reach not in ("local", "none") else None
     forward_file = storage + "/_relay/forward_port" if storage and reach not in ("local", "none") else None
     return common.clean_facts({"slurm_account": rules.read_setting(sf, "slurm_account") or None, "reach": reach,
                                "platform_local": (urlparse(url).hostname or "") in LOOPBACK, "endpoint": url or None,
-                               "forward_file": forward_file, "storage_root": storage})
+                               "forward_file": forward_file, "storage_root": storage, "way_back": way_back,
+                               "platform_public_url": rules.read_setting(sf, "platform_public_url") or None})
 
 
 def verify_confirmation(job, ctx, want):
