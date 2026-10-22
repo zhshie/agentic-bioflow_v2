@@ -202,6 +202,42 @@ reports BLOCKED. After implementing, acceptance is the `verifier` again
 (ACCEPTANCE mode), in a fresh context - never the author's own review.
 `tests/dev_workflow_test.sh` keeps these gates shaped like gates.
 
+## For the executor and verifier
+
+Since 2026-10-22 the maintainer's developer-agent dispatches **generic** `executor` and
+`verifier` agents that live in its own workspace and serve every project; they read this
+section first, and its facts override their defaults. The `.claude/agents/` files in this repo
+stay until the constitution's Development Workflow is amended to point here (that amendment is
+the maintainer's to merge). The stop gate ("green at HEAD or BLOCKED") is enforced by a
+SubagentStop hook and by the verifier's gate check, not by agent frontmatter, which never fired.
+
+- **Rules document**: `.specify/memory/constitution.md` (invariants 1–13 with their checks, the
+  Safety Net, the Development Workflow and decision tiers).
+- **Where things are**: features `specs/<###-feature>/` (`spec.md`, `plan.md`, `test-case.md`,
+  `test-case-overview.md`, `tasks.md`); bugs `.specify/bugs/<slug>/` (`assessment.md`, fix
+  record). Test-case templates `.specify/templates/test-case-template.md` and
+  `test-case-overview-template.md`; how a test case is written `.claude/skills/test-cases/SKILL.md`.
+  Manual steps `docs/TESTING.md`. Pitfalls `docs/PITFALLS.md`. Web design `DESIGN.md`, `PRODUCT.md`.
+- **One test file**: `bash tests/<name>.sh` (works in Git Bash for most files).
+- **Full suite**: `tests/run_all.sh` refuses native Git Bash; run it in WSL or Linux. From Git Bash
+  on Windows, from an ASCII working directory such as `$HOME` (calling `wsl.exe` from a non-ASCII
+  directory fails with "Failed to translate"; `--cd` was unreliable):
+  `cd ~ && wsl.exe -d Ubuntu -- bash -c 'cd /mnt/c/<path to the worktree> && bash tests/run_all.sh'`.
+  The repo and worktrees must be on a local disk, never a synced drive. Two runs on one checkout at
+  once corrupt each other's temporary copies.
+- **Never edit during implementation**: `spec.md`, `test-case*.md`, the constitution,
+  `docs/ROADMAP.md`, `.github/`, `.claude-plugin/plugin.json`.
+- **Never run**: anything that reaches the site or HPC, launches a pipeline, deletes user data, or
+  uses `~/.config/agentic-bioflow` against a real deployment.
+- **Calibration failures** (real regressions the reviewer caught here; compare with the base, not
+  only with the TCs):
+  1. A safety-gate fix narrowed what a gate matched, and three shapes the base stopped were let
+     through. Every TC passed; only re-running the old shapes against both branches showed it
+     (#29, 2026-09-30).
+  2. An exemption meant for one part of a compound command let the whole line through (#37).
+  3. A packaging fix dropped two figures the base produced and lost the run notes (#39).
+  For a change to `hooks/` or a gate, run that gate's test file on both branches and compare.
+
 ## Working conventions specific to this repo
 
 - Every `tw` call that is workspace-scoped needs `--workspace
