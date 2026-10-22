@@ -49,7 +49,7 @@ nin() {
 
 echo "== US1: the constitution (TC-001, TC-003..TC-009) =="
 LAST=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
-if [ "$LAST" = '**Version**: 6.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-18' ]; then
+if [ "$LAST" = '**Version**: 6.0.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-22' ]; then
   ok "TC-001: last line is exactly the 6.0.0 version line"
 else bad "TC-001: last line is exactly the 6.0.0 version line" "got: $LAST"; fi
 
