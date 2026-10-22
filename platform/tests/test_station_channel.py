@@ -529,7 +529,9 @@ def test_tc002_tc003_tc007_tc028_tc033_direct_launch_opens_no_forward_and_still_
         text = a.output()
     assert res["state"] == "done", res
     assert site.ssh_calls() and all(c for c in site.ssh_calls())
-    assert not [c for c in site.ssh_calls() if "-O forward" in c or "-O check" in c or "--forward" in c or "-R " in c]
+    assert not [c for c in site.ssh_calls() if "-O forward" in c or "--forward" in c or "-R " in c]
+    assert not [c for c in site.calls() if c.startswith("curl")], "no probe of the reverse forward or the relay"
+    assert not (personal(site) / "forward_port").exists()
     assert not (site.storage / "_relay" / "forward_port").exists()
     assert [c for c in site.calls() if c.startswith("sbatch")]
     assert hello_facts(fake)["reach"] == "ssh"
