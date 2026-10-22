@@ -1,4 +1,5 @@
 #!/bin/bash
+# Taiwania-3 only (v2); nano4 uses $NFCORE_SITE_CONFIG — see docs/SITE_ADAPTER.md
 # Compare the partition boxes hardcoded in configs/sites/nchc.config against what
 # SLURM currently reports, and complain about drift.
 #
