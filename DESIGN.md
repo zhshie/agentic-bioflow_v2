@@ -30,11 +30,11 @@ Reference rendering: `abf-demo-v4.html` (generator `build-v4.js`, same folder). 
 Colours (light/dark): surface #f6f5f2/#15171a · surface-raised #ffffff/#1e2125 · surface-sunken #ecebe6/#101214 · ink #1f2328/#e9e7e2 · ink-muted #575e66/#a2a8b0 · line #d6d3cc/#33373d · line-strong #8f8b82/#646a73 · accent #1c5d8a/#7db8e2 · accent-weak #e2edf5/#1a2c3a · focus #1c5d8a/#9cccf0 · status-{running #0b5aa8, succeeded #1b6837, failed #b0261d, lost #865700} each with a -bg tint (dark values in tokens.json).
 Type: system sans stack incl. Noto Sans TC / Microsoft JhengHei; mono ui-monospace stack. Sizes used: 22 (h1), 16–15 (h2/h3), 13 (body UI), 12 (meta). Spacing 4/8/12/16/24. Radius 4/6/pill. No external fonts, no CDN.
 
-## States (symbol + text + colour, always all three)
-▶ Running · ✓ Succeeded · ✗ Failed · ⏸ Paused · … Queued · ⟳ Auto-handling · ✎ Drafting · ? Awaiting you · ! Action needed.
+## States (coloured square + word; colour never carries meaning alone)
+A small coloured square (its own element, colour from the status tokens) followed by the word: Running · Pending · Failed · Done; a status outside these four shows a neutral grey square and the word Unknown. No symbol character stands for a state.
 
 ## Formal notices (one component everywhere)
-Box with: level pill (symbol + text: ? Decision needed / ! Action needed / ⟳ Handled automatically / ✓ Completed), analysis name (mono), time right; one-line title; a definition list of fields (問題／原因／可選動作, or 步驟／處置／你需要做的事); buttons. No chatty sentences, no error codes in titles. No coloured side stripes (Impeccable side-tab).
+Box with: level pill (coloured square + word: Decision needed / Action needed / Handled automatically / Completed), analysis name (mono), time right; one-line title; a definition list of fields (問題／原因／可選動作, or 步驟／處置／你需要做的事); buttons. No chatty sentences, no error codes in titles. No coloured side stripes (Impeccable side-tab).
 Only Decision needed and Action needed notify (Now page + red counts). Automatic handling goes to the "Automatic handling log" table on Now and to the analysis's own notices, never as a notification.
 
 ## Screens

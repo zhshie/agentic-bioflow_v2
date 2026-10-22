@@ -21,8 +21,8 @@ LIST_CAP = 100
 REASON_CAP = 80
 REFRESH_SECONDS = 15
 TAIPEI = datetime.timedelta(hours=8)
-# status -> symbol; the symbol and the text label carry the meaning, the colour only helps
-SYMBOLS = {"running": "▶", "succeeded": "✓", "failed": "✗", "lost": "⏸"}
+# the four states of a run; each is shown as a coloured square (its own element) plus a word, never a symbol character
+STATES = ("running", "succeeded", "failed", "lost")
 COUNTS = ("succeeded", "cached", "failed", "aborted", "running", "pending", "submitted")
 SETTINGS = (("set_ce", ()), ("set_cred", ()), ("set_keys", ("set_ai_key",)), ("set_me", ("set_step", "set_dev")),
             ("set_ops", ()), ("set_roles", ()))
@@ -35,8 +35,8 @@ STRINGS = {
         "search": "搜尋", "all_analyses": "全部分析", "yours_only": "只顯示你的", "more": "還有 %d 筆", "group": "%s（%d）",
         "card_running": "正在跑", "card_attention": "需要注意",
         "stage_launch": "送出", "stage_running": "執行中", "stage_results": "結果", "stage_downstream": "下游", "stage_finished": "完成",
-        "state_running": "執行中", "state_succeeded": "成功", "state_failed": "失敗", "state_lost": "失聯/暫停",
-        "count_succeeded": "成功", "count_cached": "快取", "count_failed": "失敗", "count_aborted": "中止", "count_running": "執行中",
+        "state_running": "執行中", "state_succeeded": "完成", "state_failed": "失敗", "state_lost": "待處理", "state_unknown": "未知",
+        "count_succeeded": "完成", "count_cached": "快取", "count_failed": "失敗", "count_aborted": "中止", "count_running": "執行中",
         "count_pending": "等待", "count_submitted": "已送出",
         "started": "開始", "ended": "結束", "prev": "← 上一階段", "next": "下一階段 →", "not_reached": "這個 run 還沒到這個階段。",
         "no_reason": "原因未記錄", "not_found_title": "找不到這個 run", "not_found_body": "沒有這個 run，或它不是你的。",
@@ -54,7 +54,7 @@ STRINGS = {
         "l_ce": "運算環境", "l_params": "參數（選填，一行一個「名稱: 值」）", "l_submit": "下一步，到確認頁",
         "l_no_sheet": "你還沒有上傳樣本表，所以還不能啟動。", "l_no_ce": "你還沒有可用的運算環境。",
         "l_from": "已用這個 run 的內容預填；樣本表和 run 名稱要重新選。", "l_not_kept": "這個 run 的內容沒有保留，請自己填。",
-        "chip_running": "執行中", "chip_succeeded": "成功", "chip_failed": "失敗", "chip_lost": "失聯",
+        "chip_unknown": "未知", "chip_running": "執行中", "chip_succeeded": "完成", "chip_failed": "失敗", "chip_lost": "待處理",
         "e_pipeline": "管線必填，只能寫 nf-core 的名稱，例如 ampliseq。", "e_revision": "版本必填，而且要寫死（例如 2.18.0），不能留空。",
         "e_run_name": "run 名稱必填。", "e_sheet": "樣本表必須從你上傳的檔案裡選。", "e_ce": "運算環境必須是你自己的環境。",
         "e_param_line": "參數「%s」看不懂；每行寫成「名稱: 值」。", "e_param_scalar": "參數 %s 不行：只能是文字、數字或 true/false。",
@@ -72,8 +72,8 @@ STRINGS = {
         "more": "%d more", "group": "%s (%d)", "card_running": "Running now", "card_attention": "Needs attention",
         "stage_launch": "Launch", "stage_running": "Running", "stage_results": "Results", "stage_downstream": "Downstream",
         "stage_finished": "Finished",
-        "state_running": "Running", "state_succeeded": "Succeeded", "state_failed": "Failed", "state_lost": "Lost/paused",
-        "count_succeeded": "Succeeded", "count_cached": "Cached", "count_failed": "Failed", "count_aborted": "Aborted",
+        "state_running": "Running", "state_succeeded": "Done", "state_failed": "Failed", "state_lost": "Pending", "state_unknown": "Unknown",
+        "count_succeeded": "Done", "count_cached": "Cached", "count_failed": "Failed", "count_aborted": "Aborted",
         "count_running": "Running", "count_pending": "Pending", "count_submitted": "Submitted",
         "started": "Started", "ended": "Ended", "prev": "← Previous stage", "next": "Next stage →",
         "not_reached": "This run has not reached this stage.",
@@ -95,7 +95,7 @@ STRINGS = {
         "l_params": "Parameters (optional, one \"name: value\" per line)", "l_submit": "Next, to the confirmation page",
         "l_no_sheet": "You have not uploaded a samplesheet yet, so nothing can be launched.", "l_no_ce": "You have no compute environment yet.",
         "l_from": "Filled in from that run; choose the samplesheet and the run name again.", "l_not_kept": "The content of that run is not kept; fill it in yourself.",
-        "chip_running": "Running", "chip_succeeded": "Done", "chip_failed": "Failed", "chip_lost": "Lost",
+        "chip_unknown": "Unknown", "chip_running": "Running", "chip_succeeded": "Done", "chip_failed": "Failed", "chip_lost": "Pending",
         "e_pipeline": "The pipeline is required; write an nf-core name such as ampliseq.", "e_revision": "The revision is required and must be pinned (for example 2.18.0).",
         "e_run_name": "The run name is required.", "e_sheet": "Choose the samplesheet from your own uploads.", "e_ce": "The compute environment must be one of your own.",
         "e_param_line": "Parameter \"%s\" is not understood; write each one as \"name: value\".", "e_param_scalar": "Parameter %s is not allowed: only text, numbers or true/false.",
@@ -131,7 +131,7 @@ STYLE = (
     ".lform{display:flex;flex-direction:column;gap:12px;max-width:640px}.lform label{display:flex;flex-direction:column;gap:4px}"
     ".lform input,.lform select,.lform textarea{width:100%;min-width:0}.lform button{align-self:flex-start}"
     ".acts form,form.act{margin:0;display:inline}"
-    ".sq{display:inline-block;width:8px;height:8px;background:var(--c);flex:none;align-self:center}"
+    ".sq{display:inline-block;width:8px;height:8px;background:var(--c);flex:none;align-self:center;vertical-align:middle}"
     ".chip{display:inline-flex;gap:4px;align-items:center;font-weight:600;color:var(--c)}"
     "pre{font-family:" + MONO + ";font-size:13px;background:var(--sunken);border-radius:4px;padding:12px;overflow-x:auto;white-space:pre-wrap;margin:0}"
     "code{font-family:" + MONO + "}small{font-size:12px;color:var(--muted)}"
@@ -155,7 +155,7 @@ STYLE = (
     ".off,.muted{color:var(--muted)}.off{padding:4px 8px}.later{font-size:12px;color:var(--muted)}.more{font-size:12px;color:var(--muted)}"
     ".state-running{--c:var(--running);--bg:var(--running-bg)}.state-succeeded{--c:var(--succeeded);--bg:var(--succeeded-bg)}"
     ".state-failed{--c:var(--failed);--bg:var(--failed-bg)}.state-lost{--c:var(--lost);--bg:var(--lost-bg)}"
-    ".sym{color:var(--c)}"
+    ".state-unknown{--c:var(--muted);--bg:var(--sunken)}"
     ".main{padding:24px;display:flex;flex-direction:column;gap:16px;overflow-wrap:anywhere}"
     ".head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}"
     ".badge{display:inline-flex;gap:4px;padding:0 8px;border-radius:999px;font-size:12px;line-height:20px;font-weight:600;"
@@ -263,15 +263,16 @@ def _url(lang, run=None, stage=None, path="/", tab=None):
 
 
 def _css(status):
-    return status if status in SYMBOLS else "unknown"
-
-
-def _sym(status):
-    return SYMBOLS.get(status, "?")
+    return status if status in STATES else "unknown"
 
 
 def _state(t, status):
-    return t.get("state_" + str(status), str(status))
+    return t["state_" + (status if status in STATES else "unknown")]
+
+
+def _sqw(t, status):
+    """The square (its own element, coloured by the style sheet through the state class of a parent) and the word of a status."""
+    return '<span class="sq"></span> %s' % esc(_state(t, status))
 
 
 def _time(iso):
@@ -353,9 +354,8 @@ def _left(t, runs, selected_id, lang, csrf, here):
     rows = []
     for run in runs[:LIST_CAP]:
         mark = " here" if run["id"] == selected_id else ""
-        rows.append('<a class="row state-%s%s" href="%s"><span class="sym">%s</span><span class="nm">%s</span><span class="stg">%s</span></a>'
-                    % (_css(run["status"]), mark, _url(lang, run["id"]), _sym(run["status"]), esc(run["name"]),
-                       esc(_state(t, run["status"]))))
+        rows.append('<a class="row state-%s%s" href="%s"><span class="nm">%s</span><span class="stg">%s</span></a>'
+                    % (_css(run["status"]), mark, _url(lang, run["id"]), esc(run["name"]), _sqw(t, run["status"])))
     body = ('<div class="rows">%s</div>%s' % ("".join(rows), _more(t, len(runs)))) if runs else '<p class="muted">%s</p>' % esc(t["none_yet"])
     return ('<aside class="side" data-pane="left"><nav class="nav"><div class="nowline"><a class="nv%s" href="%s">%s</a>%s</div></nav><h2>%s</h2>'
             '<div class="tools"><a class="nv%s" href="%s">%s</a>%s%s%s</div>%s'
@@ -416,6 +416,10 @@ def _current_step(t, run):
     return esc(running[0]) + (" " + esc(t["more_steps"] % (len(running) - 1)) if len(running) > 1 else "")
 
 
+class Raw(str):
+    """A value that is already HTML (made here from escaped parts), so the definition list does not escape it again."""
+
+
 class Acts:
     """What the pages need to draw the real buttons of spec 012b: the words, the language and a function that gives the CSRF token of
     one run's buttons. Without one (the pure tests of a single component) no button is drawn."""
@@ -433,7 +437,7 @@ class Acts:
 
 def _chip(t, status):
     """A status as a small coloured square (its own element, coloured by the style sheet) and the word."""
-    return '<span class="chip state-%s"><span class="sq"></span> %s</span>' % (_css(status), esc(t.get("chip_" + str(status), str(status))))
+    return '<span class="chip state-%s"><span class="sq"></span> %s</span>' % (_css(status), esc(t["chip_" + (status if status in STATES else "unknown")]))
 
 
 def _notice(t, lang, run, reason, step, acts=None):
@@ -487,12 +491,12 @@ def tab_body(t, lang, run, tab):
         return '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, body)
     if tab == "info":
         status = run["status"]
-        rows = [(t["i_id"], run["id"]), (t["i_name"], run["name"]), (t["i_status"], "%s %s" % (_sym(status), _state(t, status))),
+        rows = [(t["i_id"], run["id"]), (t["i_name"], run["name"]), (t["i_status"], Raw('<span class="state-%s">%s</span>' % (_css(status), _sqw(t, status)))),
                 (t["started"], _time(run.get("started_at"))), (t["ended"], _time(run.get("ended_at")))]
         if run.get("cancel_requested_at"):
             rows.append((t["i_cancel"], _time(run["cancel_requested_at"])))
         full = '<pre class="reason">%s</pre>' % esc(run["failure_reason"]) if run.get("failure_reason") else ""     # the whole text lives here, not on the Tasks tab
-        return '<dl class="fields">%s</dl>%s' % ("".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), esc(v)) for k, v in rows), full)
+        return '<dl class="fields">%s</dl>%s' % ("".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), v if isinstance(v, Raw) else esc(v)) for k, v in rows), full)
     return '<section class="soon"><p>%s</p></section>' % esc(t["later"])
 
 
@@ -516,14 +520,16 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     for n, s in enumerate(STAGES):
         kind = "is-done" if n < rank else ("is-current" if n == rank else "is-later")
         mark = ' aria-current="step"' if s == current else ""
-        label = ("✓ " if kind == "is-done" else "") + t["stage_" + s]
-        cells.append('<li class="%s" data-step="%s"><a href="%s"%s>%s</a></li>' % (kind, s, _url(lang, selected["id"], s, tab=tab_param), mark, esc(label)))
+        shown = "succeeded" if kind == "is-done" else (selected["status"] if kind == "is-current" else None)
+        square = '<span class="sq state-%s"></span> ' % _css(shown) if shown else ""
+        cells.append('<li class="%s" data-step="%s"><a href="%s"%s>%s%s</a></li>'
+                     % (kind, s, _url(lang, selected["id"], s, tab=tab_param), mark, square, esc(t["stage_" + s])))
     prev_ = ('<a rel="prev" href="%s">%s</a>' % (_url(lang, selected["id"], STAGES[index - 1], tab=tab_param), esc(t["prev"]))) \
         if index > 0 else "<span></span>"
     next_ = ('<a rel="next" href="%s">%s</a>' % (_url(lang, selected["id"], STAGES[index + 1], tab=tab_param), esc(t["next"]))) \
         if index < len(STAGES) - 1 else "<span></span>"
     status = selected["status"]
-    badge = '<span class="badge state-%s">%s %s</span>' % (_css(status), _sym(status), esc(_state(t, status)))
+    badge = '<span class="badge state-%s">%s</span>' % (_css(status), _sqw(t, status))
     running = current == "running"
     buttons = ("".join(acts.form(verb, selected["id"]) for verb in ("resume", "relaunch", "cancel")) if acts else "") if running else ""
     quick = '<a href="%s">%s</a>' % (esc("/launch?from=" + urllib.parse.quote(str(selected["id"]), safe="") + ("&lang=en" if lang == "en" else "")),
@@ -538,8 +544,8 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
 def _line(t, run, lang, reasons):
     status = run["status"]
     why = ' <span class="why">%s</span>' % esc(_reason(t, run, reasons)) if status == "failed" else ""
-    return ('<li><a class="line state-%s" href="%s"><span class="sym">%s</span> <span class="lb">%s</span> <span class="nm">%s</span>%s</a></li>'
-            % (_css(status), _url(lang, run["id"]), _sym(status), esc(_state(t, status)), esc(run["name"]), why))
+    return ('<li><a class="line state-%s" href="%s"><span class="lb">%s</span> <span class="nm">%s</span>%s</a></li>'
+            % (_css(status), _url(lang, run["id"]), _sqw(t, status), esc(run["name"]), why))
 
 
 def _card(t, which, runs, lang, reasons, key, steps=None, acts=None):
@@ -576,8 +582,8 @@ def _item(t, run, number, selected_id, lang, reasons):
     done, total = _done_total(run)
     why = '<span class="why">%s</span>' % esc(_reason(t, run, reasons)) if status == "failed" else ""
     return ('<a class="item state-%s%s" href="%s"><span class="t"><span class="n">%d:</span><span class="nm">%s</span>'
-            '<span class="sym">%s</span></span><span class="s">%s %s %d/%d</span>%s%s</a>'
-            % (_css(status), mark, _url(lang, run["id"]), number, esc(run["name"]), _sym(status), _sym(status), esc(_state(t, status)),
+            '</span><span class="s">%s %d/%d</span>%s%s</a>'
+            % (_css(status), mark, _url(lang, run["id"]), number, esc(run["name"]), _sqw(t, status),
                done, total, why, _progress(run)))
 
 
@@ -585,9 +591,9 @@ def _right(t, runs, selected_id, lang, reasons):
     numbered = _numbered(runs)
     count = lambda *statuses: sum(1 for r in runs if r["status"] in statuses)
     out = ['<aside class="rail" data-pane="right"><div class="tabs"><span class="tab is-on">%s</span>%s</div><h2>%s</h2><p class="muted">%s</p>%s'
-           '<p class="tally"><span>▶ %d</span><span>! %d</span><span>✓ %d</span></p>'
+           '<p class="tally">%s</p>'
            % (esc(t["tab_progress"]), _grey(t, "tab_chat"), esc(t["all_analyses"]), esc(t["yours_only"]), _grey(t, "search"),
-              count("running"), count("failed", "lost"), count("succeeded"))]
+              "".join('<span class="state-%s">%s %d</span>' % (st, _sqw(t, st), count(st)) for st in ("running", "lost", "failed", "succeeded")))]
     if not runs:
         out.append('<p class="muted">%s</p>' % esc(t["none_yet"]))
     for stage in ("running", "results"):

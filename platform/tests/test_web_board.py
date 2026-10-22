@@ -134,7 +134,7 @@ def card_num(text, which):
 
 def tally(text):
     row = re.search(r'<p\b[^>]*class="[^"]*\btally\b[^"]*"[^>]*>(.*?)</p>', pane(text, "right"), re.S).group(1)
-    return re.findall(r"[▶!✓⟳?…]\s*\d+", plain(row))
+    return re.findall(r"[^\s\d]+\s*\d+", plain(row))      # web-status-squares: four groups, "word n" each
 
 
 def cjk(text):
@@ -338,10 +338,10 @@ def test_tcs19_s20_left_column(w):
     for r in rows(t):
         name = re.search(r"\b(go|bad|gone|L{60})\b", plain(r)).group(1)
         got[name[:4]] = r
-    want = {"go": ("▶", "執行中", "running"), "bad": ("✗", "失敗", "failed"), "gone": ("⏸", "失聯/暫停", "lost"), "LLLL": ("✓", "成功", "succeeded")}  # R10: status text, not stage
+    want = {"go": ("SQ", "執行中", "running"), "bad": ("SQ", "失敗", "failed"), "gone": ("SQ", "待處理", "lost"), "LLLL": ("SQ", "完成", "succeeded")}  # R10: status text, not stage
     for key, (sym, stage, st) in want.items():
         r = got[key]
-        assert 'href="/?run=id-' in r and sym in r and stage in plain(r) and re.search(r'class="[^"]*\bstate-%s\b' % st, r), key
+        assert 'href="/?run=id-' in r and sym.replace("SQ", '<span class="sq"></span>') in r and stage in plain(r) and re.search(r'class="[^"]*\bstate-%s\b' % st, r), key
         assert re.search(r'<span\b[^>]*class="[^"]*\bnm\b[^"]*"[^>]*>', r)
     assert re.search(r"\.nm\{[^}]*text-overflow:\s*ellipsis", style_of(t))
 
@@ -402,7 +402,7 @@ def test_tcs26_counts_row(w):
     for i in range(4):
         seed(w, "s%d" % i, "succeeded", ann)
     t = login(w, "ann").get("/").text
-    assert tally(t) == ["▶ 3", "! 3", "✓ 4"]
+    assert tally(t) == ["執行中 3", "待處理 2", "失敗 1", "完成 4"]
 
 
 def test_tch22_l19_l20_groups(w):
@@ -440,7 +440,7 @@ def test_tcs01_ten_runs_at_once(w):
         assert n in pane(t, "left") and n in pane(t, "right"), n
     assert "還有" not in t
     assert plain(group_head(t, "running")) == "執行中（7）" and plain(group_head(t, "results")) == "結果（3）"
-    assert tally(t) == ["▶ 4", "! 3", "✓ 3"]
+    assert tally(t) == ["執行中 4", "待處理 1", "失敗 2", "完成 3"]
     assert (card_num(t, "running"), card_num(t, "attention")) == ("4", "3")
 
 
@@ -453,9 +453,9 @@ def test_tcl21_item_is_one_link(w):
     its = items(t)
     assert len(its) == 4
     classes = {}
-    for label, symbol, st in (("執行中", "▶", "running"), ("成功", "✓", "succeeded"), ("失敗", "✗", "failed"), ("失聯/暫停", "⏸", "lost")):
+    for label, symbol, st in (("執行中", "SQ", "running"), ("完成", "SQ", "succeeded"), ("失敗", "SQ", "failed"), ("待處理", "SQ", "lost")):
         hit = [x for x in its if re.search(r'class="[^"]*\bstate-%s\b' % st, x)]
-        assert len(hit) == 1 and symbol + " " + label in plain(hit[0]) and 'href="/?run=id-' in hit[0], (st, label)
+        assert len(hit) == 1 and '<span class="sq"></span> ' + label in hit[0] and 'href="/?run=id-' in hit[0], (st, label)
         classes[st] = re.search(r'class="([^"]*)"', hit[0]).group(1)
     assert len(set(classes.values())) == 4
 
@@ -471,7 +471,7 @@ def test_tcl22_l23_numbers_and_done(w):
     its = [plain(x) for x in items(t, "running")]
     assert [x.split()[0] for x in its] == ["3:", "2:", "1:"]
     assert [x.split()[1] for x in its] == ["third", "second", "first"]
-    assert "▶ 執行中 8/10" in its[2]
+    assert "執行中 8/10" in its[2] and '<span class="sq"></span> 執行中' in items(t, "running")[2]
 
 
 def test_tcs27_s28_item_lines(w):
@@ -484,9 +484,10 @@ def test_tcs27_s28_item_lines(w):
     seed(w, "e-zero", "running", ann)
     t = login(w, "ann").get("/").text
     got = {re.search(r"[a-e]-\w+", plain(x)).group(0): x for x in items(t)}
-    for key, text in (("a-run", "a-run ▶ ▶ 執行中 8/10"), ("b-fail", "b-fail ✗ ✗ 失敗 1/10"), ("c-lost", "c-lost ⏸ ⏸ 失聯/暫停 4/10"),
-                      ("d-ok", "d-ok ✓ ✓ 成功 10/10")):
+    for key, text in (("a-run", "a-run 執行中 8/10"), ("b-fail", "b-fail 失敗 1/10"), ("c-lost", "c-lost 待處理 4/10"),
+                      ("d-ok", "d-ok 完成 10/10")):
         p = plain(got[key])
+        assert '<span class="sq"></span>' in got[key], key
         assert re.search(r"\d+: ", p) and text in p, (key, p)
     assert "exit 137" in plain(got["b-fail"]) and "later" not in got["b-fail"]
     tag = re.search(r"<progress[^>]*>", got["a-run"]).group(0)
@@ -596,7 +597,7 @@ def test_tch21_stage_bodies(w):
         mid = plain(pane(c.get("/?run=" + a + lang).text, "middle"))
         assert "10-18 04:30" in mid and "10-18 09:12" in mid, lang
     mid = plain(pane(c.get("/?run=" + a).text, "middle"))
-    for label, n in (("成功", 11), ("快取", 12), ("失敗", 13), ("中止", 14), ("執行中", 15), ("等待", 16), ("已送出", 17)):
+    for label, n in (("完成", 11), ("快取", 12), ("失敗", 13), ("中止", 14), ("執行中", 15), ("等待", 16), ("已送出", 17)):
         assert re.search(r"%s\s*%d(?!\d)" % (label, n), mid), (label, n)
     assert "10-18 09:05" in plain(pane(c.get("/?run=" + b).text, "middle"))
     assert "Process terminated with an error exit status (137)" in c.get("/?run=" + a).text
@@ -630,7 +631,7 @@ def test_tcl07_to_l13_stage_strip(w):
         got = [[k for k in cells[s][0] if k.startswith("is-")] for s in STAGES]
         assert got == [[x] for x in want], (st, got)
     names = [plain(strip_cells(c.get("/?run=" + ids["running"]).text)[s][1]) for s in STAGES]
-    assert [n.replace("✓ ", "") for n in names] == ["送出", "執行中", "結果", "下游", "完成"]
+    assert names == ["送出", "執行中", "結果", "下游", "完成"]
     cells = strip_cells(c.get("/?run=%s&stage=results" % ids["running"]).text)
     assert [[k for k in cells[s][0] if k.startswith("is-")] for s in STAGES] == [[x] for x in expect["running"]]
     assert [s for s in STAGES if 'aria-current="step"' in cells[s][1]] == ["results"]
@@ -649,7 +650,7 @@ def test_tcs29_stage_strip_style(w):
     assert re.search(r"\.is-current[^{]*\{[^}]*border-top:3pxsolidvar\(--accent\)", css)
     assert re.search(r"\.is-later[^{]*\{[^}]*border-top:3pxdashed", css)
     cells = strip_cells(t)
-    assert all("✓" in plain(cells[s][1]) for s in ("launch", "running")) and "✓" not in plain(cells["results"][1])
+    assert all('class="sq state-succeeded"' in cells[s][1] for s in ("launch", "running", "results"))      # done stages, and the run\'s own state on its stage
 
 
 def test_tcl14_l15_l16_middle(w):
@@ -658,11 +659,11 @@ def test_tcl14_l15_l16_middle(w):
     f = seed(w, "bad-one", "failed", ann, counts=dict(succeeded=11, cached=12, failed=13, aborted=14, running=15, pending=16, submitted=17))
     c = login(w, "ann")
     mid = pane(c.get("/?run=" + f).text, "middle")
-    head = re.search(r'<[^>]*class="[^"]*\bstate-failed\b[^"]*"[^>]*>[^<]*</', mid)
-    assert head and "✗" in head.group(0) and "失敗" in head.group(0) and mid.index("bad-one") < mid.index(head.group(0))
+    head = re.search(r'<span class="badge state-failed">(<span class="sq"></span> [^<]*)</span>', mid)
+    assert head and 'class="sq"' in head.group(0) and "失敗" in head.group(0) and mid.index("bad-one") < mid.index(head.group(0))
     # 011b: the page also has the notice's field list (問題／原因／可選動作); the task legend is the dl of class counts
     cells = re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", re.search(r'<dl class="counts">(.*?)</dl>', mid, re.S).group(1), re.S)
-    assert cells == [("成功", "11"), ("快取", "12"), ("失敗", "13"), ("中止", "14"), ("執行中", "15"), ("等待", "16"), ("已送出", "17")]
+    assert cells == [("完成", "11"), ("快取", "12"), ("失敗", "13"), ("中止", "14"), ("執行中", "15"), ("等待", "16"), ("已送出", "17")]
     run = pane(c.get("/?run=%s&stage=running" % f).text, "middle")
     prev = re.search(r'<a\b[^>]*rel="prev"[^>]*>(.*?)</a>', run, re.S)
     nxt = re.search(r'<a\b[^>]*rel="next"[^>]*>(.*?)</a>', run, re.S)
@@ -710,12 +711,12 @@ def test_tch08_states_and_symbols(w):
     ids = four(w, ann)
     c = login(w, "ann")
     t = c.get("/").text
-    for st, sym in (("running", "▶"), ("succeeded", "✓"), ("failed", "✗"), ("lost", "⏸")):
+    for st, sym in (("running", "SQ"), ("succeeded", "SQ"), ("failed", "SQ"), ("lost", "SQ")):
         mine = [r for r in rows(t) if "n-" + st in plain(r)]
-        assert len(mine) == 1 and sym in plain(mine[0]) and "state-" + st in mine[0]
+        assert len(mine) == 1 and '<span class="sq"></span>' in mine[0] and "state-" + st in mine[0]
         mid = pane(c.get("/?run=" + ids[st]).text, "middle")
-        assert re.search(r'class="badge state-%s"[^>]*>\s*%s\s' % (st, sym), mid)
-    for st, label in (("running", "執行中"), ("succeeded", "成功"), ("failed", "失敗"), ("lost", "失聯/暫停")):
+        assert re.search(r'class="badge state-%s"[^>]*>\s*<span class="sq"></span>\s' % st, mid)
+    for st, label in (("running", "執行中"), ("succeeded", "完成"), ("failed", "失敗"), ("lost", "待處理")):
         line = [x for x in card_lines(t, "running") + card_lines(t, "attention") if "n-" + st in plain(x)]
         if st in ("failed", "lost"):        # 011b: these are notices now (level pill with the state class), not one-line items; 012b: the pill is a square plus 待處理
             notice = [x for x in card_notices(t, "attention").values() if "state-" + st in x]
@@ -745,7 +746,7 @@ def test_tcs32_s33_s34_now_page(w):
     lines = card_lines(t, "running")
     assert len(lines) == 2
     for line in lines:
-        assert "▶" in line and "執行中" in plain(line) and re.search(r'<a\b[^>]*href="/\?run=id-run\d"', line)
+        assert '<span class="sq"></span>' in line and "執行中" in plain(line) and re.search(r'<a\b[^>]*href="/\?run=id-run\d"', line)
     # 011b: formal notices replace the one-line items (ledger: TC-S32, TC-S33, TC-S34)
     att = card_notices(t, "attention")
     assert len(att) == 3
@@ -824,7 +825,7 @@ def test_tch03_only_own_runs(w):
         assert "bob-secret" not in c.get(url).text
     t = c.get("/").text
     assert "ann-run" in t and plain(group_head(t, "running")) == "執行中（1）"
-    assert tally(t) == ["▶ 1", "! 0", "✓ 0"] and (card_num(t, "running"), card_num(t, "attention")) == ("1", "0")
+    assert tally(t) == ["執行中 1", "待處理 0", "失敗 0", "完成 0"] and (card_num(t, "running"), card_num(t, "attention")) == ("1", "0")
 
 
 def test_tch04_hidden_submitter(w):
@@ -1106,7 +1107,7 @@ def test_tcl32_l33_english(w):
         assert 'lang="en"' in t
     mid = pane(c.get("/?run=%s&lang=en" % ids["running"]).text, "middle")
     cells = [(a.lower(), b) for a, b in re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", mid, re.S)]
-    assert cells == [("succeeded", "1"), ("cached", "2"), ("failed", "3"), ("aborted", "4"), ("running", "5"), ("pending", "6"),
+    assert cells == [("done", "1"), ("cached", "2"), ("failed", "3"), ("aborted", "4"), ("running", "5"), ("pending", "6"),
                      ("submitted", "7")]
 
 
@@ -1330,7 +1331,7 @@ def test_tcs50_red_number_matches_attention(w):
         c = login(w, name)
         home = c.get("/").text
         assert int(card_num(home, "attention")) == want
-        assert int(re.search(r"!\s*(\d+)", plain(pane(home, "right"))).group(1)) == want
+        assert sum(int(x.split()[-1]) for x in tally(home) if x.startswith(("待處理", "失敗"))) == want
         for url in ("/", "/settings", "/?lang=en"):
             assert _red_n(c.get(url).text) == want, (name, url)
     ann_c = login(w, "ann")
@@ -1356,7 +1357,7 @@ def test_tcs51_no_time_in_right_column(w):
             p = plain(it)
             assert not re.search(r"\d\d-\d\d \d\d:\d\d", p) and not re.search(r"(^|\s)—(\s|$)", p), p
         ok = [plain(x) for x in its if re.search(r"\bok\b", plain(x))]
-        assert len(ok) == 1 and "✓" in ok[0] and "成功" in ok[0] and "3/3" in ok[0], ok
+        assert len(ok) == 1 and "完成" in ok[0] and "3/3" in ok[0] and '<span class="sq"></span>' in [x for x in its if re.search(r"\bok\b", plain(x))][0], ok
     assert "10-18 09:12" in plain(pane(c.get("/?run=" + s).text, "middle"))
 
 
@@ -1376,12 +1377,12 @@ def test_r10_reason_marker_left_tag_and_wrapping(w):
     bob = w.user("bob")
     for n, st in (("r1", "running"), ("r2", "failed"), ("r3", "succeeded"), ("r4", "lost")):
         seed(w, n, st, bob)
-    for lang, want in (("", {"r1": "執行中", "r2": "失敗", "r3": "成功", "r4": "失聯/暫停"}),
-                       ("?lang=en", {"r1": "Running", "r2": "Failed", "r3": "Succeeded", "r4": "Lost/paused"})):
+    for lang, want in (("", {"r1": "執行中", "r2": "失敗", "r3": "完成", "r4": "待處理"}),
+                       ("?lang=en", {"r1": "Running", "r2": "Failed", "r3": "Done", "r4": "Pending"})):
         page = login(w, "bob").get("/" + lang).text
         for r in rows(page):
             name = re.search(r"\b(r[1-4])\b", plain(r)).group(1)
-            assert re.search(r'<span class="stg">%s</span>' % re.escape(want[name]), r), (lang, name)
+            assert re.search(r'<span class="stg"><span class="sq"></span> %s</span>' % re.escape(want[name]), r), (lang, name)
     # R10-3: the stylesheet lets long names and reasons wrap
     css = style_of(page)
     for cls in (".card", ".item", ".reason", ".line", ".why"):
