@@ -91,3 +91,18 @@ Your project folders and Seqera fields are as you left them.
 - The plugin's own skills still call `tw` and `scripts/` rather than the platform
   (ADR 0006 describes the move; Stage 2 and 3 of `docs/ROADMAP.md`).
 - Copying run history out of Seqera Platform: no tool does this; use `rebuild` on launch folders.
+
+## 7. From the v2 `tw` flow to starting on the v3 platform
+
+The plugin's launch and setup skills still describe the v2 flow, which uses `tw` (the Seqera
+command line); that flow is for v2 only. On v3 you start an analysis through the platform, with
+`abf-platform launch` or the MCP `launch` tool, and you need no Seqera account or access token
+for it.
+
+| v2 (`tw` flow) | v3 (platform) |
+|---|---|
+| `tw launch` | `abf-platform launch`, or ask the AI to call the MCP `launch` tool |
+| `tw runs list` | MCP `list_runs` (and `get_run` for one run) |
+| `tw runs cancel` | MCP `cancel`, confirmed by a person at the terminal |
+
+See `docs/PLATFORM.md` for the platform commands and the confirmation page.
