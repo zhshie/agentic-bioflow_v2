@@ -759,3 +759,98 @@ def test_nano4_keys_live_in_config_json_only(ip):
         con.close()
     assert not NANO4_KEYS & set(cols)
     assert json.loads(raw)["modules"] == NANO4["modules"]
+
+
+def test_nano4_keys_through_a_real_abf_platform_process(tmp_path):
+    # TC-NK-33: a real `abf-platform` process (not a call inside this one), data folder in tmp
+    env = pkg_env(HOME=tmp_path / "home", ABF_PLATFORM_DB=tmp_path / "data" / "index.db")
+    (tmp_path / "home").mkdir()
+
+    def ce_rows():
+        db = tmp_path / "data" / "platform.db"
+        if not db.exists():
+            return 0
+        con = sqlite3.connect(str(db))
+        try:
+            return con.execute("SELECT COUNT(*) FROM compute_envs").fetchone()[0]
+        finally:
+            con.close()
+
+    def create(name, cfg):
+        return run_cli(["ce", "create", "--name", name, "--platform", "slurm-platform", "--work-dir=/data/work",
+                        "--head-queue=normal", "--config-json", json.dumps(cfg)], env=env, cwd=tmp_path)
+
+    r = create("lab-n", NANO4)
+    assert r.returncode == 0, r.stdout + r.stderr
+    r = run_cli(["ce", "show", "lab-n"], env=env, cwd=tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    cfg = json.loads(r.stdout)["config"]
+    for k, v in NANO4.items():
+        assert cfg[k] == v
+    assert ce_rows() == 1
+    r = create("lab-bad", dict(NANO4, modules=["a;b"]))
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and "modules" in out and "Traceback" not in out, out
+    assert ce_rows() == 1
+
+
+# ---- ce-nano4-keys: who can see or change a CE that carries the three keys -----------------------------
+
+def _owned_nano4_env(d, owner, name="n1"):
+    from abf_platform import compute_envs
+    compute_envs.create(d.state, {"name": name, "platform": "slurm-platform", "agent": "agent-n", "owner_user_id": owner.user_id,
+                                  "config": dict({"workDir": "/data/w4", "headQueue": "normal"}, **NANO4)})
+
+
+def test_nano4_keys_of_one_person_are_not_visible_to_another(tmp_path, monkeypatch):
+    # TC-NK-40
+    from human_harness import World
+    from owner_harness import Duo
+    d = Duo(World(tmp_path, monkeypatch))
+    _owned_nano4_env(d, d.a)
+    mine = d.call("get_compute_env", {"name": "n1"}, caller=d.a)
+    assert mine.get("found") is not False and mine["config"]["modules"] == NANO4["modules"]
+    other = d.call("get_compute_env", {"name": "n1"}, caller=d.b)
+    missing = d.call("get_compute_env", {"name": "nonesuch"}, caller=d.b)
+    assert other["found"] is False and "config" not in other
+    assert re.sub("n1", "<n>", json.dumps(other, sort_keys=True)) == re.sub("nonesuch", "<n>", json.dumps(missing, sort_keys=True))
+    listed = d.call("list_compute_envs", caller=d.b)
+    assert "n1" not in [c["name"] for c in listed["compute_envs"]]
+    seen = json.dumps([other, listed])
+    for secret in ("NFCORE_SITE_CONFIG", "NFCORE_AMPLISEQ_HOME", "biology/Nextflow", "sitePipelines"):
+        assert secret not in seen, secret
+
+
+def test_nano4_keys_have_no_web_or_mcp_way_to_change_them(tmp_path, monkeypatch):
+    # TC-NK-41
+    from human_harness import World
+    from owner_harness import Duo
+    w = World(tmp_path, monkeypatch)
+    d = Duo(w)
+    _owned_nano4_env(d, d.a)
+    from abf_platform import store
+    pat = store.create_token(w.ip.tokens, kind="pat", user_id=d.b.user_id)
+    client = w.web()
+    assert w.login(client, "bob").status_code == 303
+    before = all_files_digest(w.ip.state_db)
+    body = {"name": "n1", "config": dict(NANO4, modules=["x"])}
+    for method in ("POST", "PUT", "PATCH", "DELETE"):
+        for path in ("/ce", "/compute-envs", "/compute-envs/n1", "/ce/n1", "/jobs"):
+            for headers in ({}, {"Authorization": "Bearer " + pat}):
+                r = client.request(method, path, json=body, headers=headers)
+                assert r.status_code in (401, 404, 405), (method, path, r.status_code)
+    assert all_files_digest(w.ip.state_db) == before
+    assert d.call("get_compute_env", {"name": "n1"}, caller=d.a)["config"]["modules"] == NANO4["modules"]
+
+
+def test_reading_a_nano4_environment_over_mcp_writes_nothing(ip):
+    # TC-NK-42
+    from abf_platform import store
+    run_token = store.create_token(ip.tokens)
+    assert nano4_create(ip)[0] == 0
+    digest = all_files_digest(ip.index, ip.tokens, ip.state_db)
+    _, outs = ip.mcp([("list_compute_envs", {}), ("get_compute_env", {"name": "lab-n"})])
+    assert all_files_digest(ip.index, ip.tokens, ip.state_db) == digest
+    for o in outs:
+        t = tool_text(o)
+        assert "NFCORE_SITE_CONFIG" in t and run_token not in t and "authorization" not in t.lower()
