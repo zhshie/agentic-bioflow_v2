@@ -174,6 +174,20 @@ old one fails in a way that looks like the network, not like configuration.
 
 ---
 
+## What NCHC nano4 supplies
+
+nano4 is NCHC's second cluster. It meets the same six contracts differently from Taiwania-3;
+the table puts the two side by side.
+
+| Site | Resource | Egress | Reports | Storage | Reach | Identity |
+|---|---|---|---|---|---|---|
+| Taiwania-3 | `configs/sites/nchc.config` | Compute nodes have no route out; relay on the login node | Tower Agent through the relay | POSIX under the run area | `ssh`, one-time code per connection | the user's own account |
+| nano4 | NCHC's own `$NFCORE_SITE_CONFIG` and `selectQueue`; fallback `configs/sites/nchc-nano4.config` | Compute nodes reach the internet directly; no relay | `-with-tower`, straight to `platform_public_url` | `/work/u9613010` | `ssh`; the user opens the ControlMaster connection and passes 2FA themself | same as T3 |
+
+Image cache: nano4's shared Singularity image cache is read-only. Look images up there with
+`NXF_SINGULARITY_LIBRARYDIR`, and point `NXF_SINGULARITY_CACHEDIR` at a directory you can
+write to (PITFALLS 52).
+
 ## What Platform offers that this site cannot use
 
 Two of Seqera's features are unavailable here, and neither is a configuration
