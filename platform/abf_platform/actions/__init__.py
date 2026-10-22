@@ -18,6 +18,7 @@ They write the same kind of confirmation (a launch) and queue the same kind of j
 """
 import dataclasses
 import os
+import sqlite3
 import time
 
 from abf_launch import build
@@ -122,6 +123,66 @@ def get_compute_env(platform_path, name, *, caller=None):
 
 def list_agents(platform_path, *, caller=None):
     return {"agents": agents.list_agents(platform_path, status.now(), owner=_caller_id(caller))}
+
+
+_SHEET_SUFFIXES = (".csv", ".tsv")
+_SHEET_LIMIT = 200
+_SHEET_DEPTH = 3
+
+
+def list_samplesheets(platform_path, *, caller):
+    """The samplesheets the caller may choose for a launch: the .csv and .tsv files below <uploads_root>/<caller name>/, as paths relative
+    to that folder (which request_launch reads as inside it). Only the caller's own folder is looked at; a link is not followed and
+    not listed. Nothing is created or read; an absent folder is an empty list."""
+    try:
+        area = caller_area(platform_path, caller)
+    except build.Refusal:
+        return []
+    found = []
+    for folder, dirs, files in os.walk(area, followlinks=False):
+        depth = 0 if folder == area else len(os.path.relpath(folder, area).split(os.sep))
+        dirs[:] = sorted(d for d in dirs if depth < _SHEET_DEPTH and not d.startswith(".") and not os.path.islink(os.path.join(folder, d)))
+        for name in sorted(files):
+            full = os.path.join(folder, name)
+            if name.lower().endswith(_SHEET_SUFFIXES) and not name.startswith(".") and os.path.isfile(full) and not os.path.islink(full):
+                found.append(os.path.relpath(full, area).replace(os.sep, "/"))
+    return sorted(found)[:_SHEET_LIMIT]
+
+
+def launch_prefill(platform_path, run_name, *, caller=None):
+    """What the caller's own earlier run was sent with, to fill the launch form from it (quick launch, spec 012b): the pipeline, the
+    revision, the environment name and the parameters of its first launch, and when it went out. {"found": False} for a run that is not
+    the caller's or is not there (the same answer for both); {"found": True, "kept": False} when the content is no longer kept (the owner
+    forgot it, or the clean-up took it). Reads only; the samples are never part of it."""
+    gone = {"found": False, "kept": False}
+    con = store.open_readonly(platform_path)
+    if con is None:
+        return gone
+    try:
+        row = jobs.latest_launch(con, run_name) if isinstance(run_name, str) else None
+        if row is None or (caller is not None and jobs._col(row, "user_id") != caller.user_id):
+            return gone
+        out = {"found": True, "kept": False, "launched_at": row["confirmed_at"]}
+        if jobs.run_forgotten(con, run_name):
+            return out
+        now = time.time()
+        for r in con.execute("SELECT * FROM launches WHERE run_folder = ? ORDER BY id DESC", (row["run_folder"],)).fetchall():
+            if jobs._col(r, "attempt_kind") == "resume":
+                continue
+            kind, job = jobs.launch_job(con, r, now)
+            if kind == "refused":
+                continue
+            content = jobs.launch_content(con, r, job)
+            if content is None:
+                return out
+            bundle = content[0]
+            return dict(out, kept=True, pipeline=bundle.get("pipeline"), revision=bundle.get("revision"), ce_name=row["ce"],
+                        params=dict(bundle["params"]) if isinstance(bundle.get("params"), dict) else {})
+        return out
+    except sqlite3.Error:
+        return {"found": True, "kept": False, "launched_at": None}
+    finally:
+        con.close()
 
 
 def _inside(path, root):

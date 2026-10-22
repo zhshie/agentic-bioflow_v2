@@ -12,6 +12,7 @@ import base64
 import datetime
 import hashlib
 import html
+import re
 import urllib.parse
 
 STAGES = ("launch", "running", "results", "downstream", "finished")
@@ -42,12 +43,23 @@ STRINGS = {
         "back": "回到「現在」", "set_ce": "運算環境", "set_cred": "憑證", "set_keys": "密碼與金鑰", "set_ai_key": "AI 模型金鑰",
         "set_me": "個人", "set_step": "逐步模式", "set_dev": "開發模式", "set_ops": "營運者後台",
         "set_roles": "角色（老師／學生）",
-        "no_step": "步驟未記錄", "level_action": "需要處理", "notice_failed": "分析失敗", "notice_lost": "與站台失去聯絡",
+        "no_step": "步驟未記錄", "level_action": "待處理", "notice_failed": "分析失敗", "notice_lost": "與站台失去聯絡",
         "f_problem": "問題", "f_cause": "原因", "f_options": "可選動作", "lost_word": "失聯", "lost_cause": "三次心跳沒有回應",
-        "options_text": "續跑／重跑（之後開放）", "resume": "續跑", "rerun": "重跑",
+        "options_text": "續跑／重跑", "resume": "續跑", "rerun": "重跑", "cancel": "取消", "quick": "用這個 run 的內容再啟動一次",
         "card_step": "目前步驟", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "more_steps": "等 %d 項",
         "dur_hm": "%d 小時 %d 分", "dur_m": "%d 分", "dur_short": "不到 1 分", "notices_here": "這個分析的通知",
-        "no_notices": "目前沒有需要你處理的事", "no_failed_tasks": "沒有失敗的任務",
+        "no_notices": "目前沒有待處理的事", "no_failed_tasks": "沒有失敗的任務",
+        "launch_nav": "啟動分析", "launch_title": "啟動分析", "launch_intro": "填好之後按「下一步」，會先帶你到確認頁；在確認頁按「送出」才會真的排進佇列。",
+        "l_pipeline": "管線（nf-core 名稱）", "l_revision": "版本（必填，要寫死）", "l_run_name": "run 名稱", "l_samplesheet": "樣本表（從你上傳的檔案選）",
+        "l_ce": "運算環境", "l_params": "參數（選填，一行一個「名稱: 值」）", "l_submit": "下一步，到確認頁",
+        "l_no_sheet": "你還沒有上傳樣本表，所以還不能啟動。", "l_no_ce": "你還沒有可用的運算環境。",
+        "l_from": "已用這個 run 的內容預填；樣本表和 run 名稱要重新選。", "l_not_kept": "這個 run 的內容沒有保留，請自己填。",
+        "chip_running": "執行中", "chip_succeeded": "成功", "chip_failed": "失敗", "chip_lost": "失聯",
+        "e_pipeline": "管線必填，只能寫 nf-core 的名稱，例如 ampliseq。", "e_revision": "版本必填，而且要寫死（例如 2.18.0），不能留空。",
+        "e_run_name": "run 名稱必填。", "e_sheet": "樣本表必須從你上傳的檔案裡選。", "e_ce": "運算環境必須是你自己的環境。",
+        "e_param_line": "參數「%s」看不懂；每行寫成「名稱: 值」。", "e_param_scalar": "參數 %s 不行：只能是文字、數字或 true/false。",
+        "e_param_dup": "參數 %s 寫了兩次。", "e_body": "沒有送出，請修正後再按一次。",
+        "r_none": "什麼都沒有送出。", "r_generic": "這件事現在做不了。", "r_form": "這個表單的記號不對或已失效，什麼都沒有送出。請重新整理頁面再按。",
         "tab_tasks": "任務", "tab_logs": "日誌", "tab_info": "執行資訊", "tab_config": "設定檔", "tab_metrics": "指標",
         "th_name": "名稱", "th_exit": "結束代碼", "th_message": "錯誤訊息（第一行）", "th_workdir": "工作目錄",
         "i_id": "編號", "i_name": "名稱", "i_status": "狀態", "i_cancel": "要求取消",
@@ -69,13 +81,26 @@ STRINGS = {
         "back": "Back to Now", "set_ce": "Compute environments", "set_cred": "Credentials", "set_keys": "Passwords and keys",
         "set_ai_key": "AI model key", "set_me": "Personal", "set_step": "Step-by-step mode",
         "set_dev": "Development mode", "set_ops": "Operator panel", "set_roles": "Roles (teacher / student)",
-        "no_step": "step not recorded", "level_action": "Action needed", "notice_failed": "Analysis failed",
+        "no_step": "step not recorded", "level_action": "Pending", "notice_failed": "Analysis failed",
         "notice_lost": "Lost contact with the site", "f_problem": "Problem", "f_cause": "Cause", "f_options": "Options",
-        "lost_word": "Lost", "lost_cause": "No heartbeat three times in a row", "options_text": "Resume / Re-run (coming later)",
-        "resume": "Resume", "rerun": "Re-run",
+        "lost_word": "Lost", "lost_cause": "No heartbeat three times in a row", "options_text": "Resume / Re-run",
+        "resume": "Resume", "rerun": "Re-run", "cancel": "Cancel", "quick": "Launch again from this run",
         "card_step": "Current step", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "more_steps": "+%d more",
         "dur_hm": "%dh %dm", "dur_m": "%dm", "dur_short": "<1m", "notices_here": "Notices for this analysis",
-        "no_notices": "Nothing needs you right now", "no_failed_tasks": "No failed tasks",
+        "no_notices": "Nothing pending", "no_failed_tasks": "No failed tasks",
+        "launch_nav": "Launch an analysis", "launch_title": "Launch an analysis",
+        "launch_intro": "Fill this in and press Next: you go to the confirmation page first, and only the Send button there puts it in the queue.",
+        "l_pipeline": "Pipeline (nf-core name)", "l_revision": "Revision (required, pinned)", "l_run_name": "Run name",
+        "l_samplesheet": "Samplesheet (choose from your uploads)", "l_ce": "Compute environment",
+        "l_params": "Parameters (optional, one \"name: value\" per line)", "l_submit": "Next, to the confirmation page",
+        "l_no_sheet": "You have not uploaded a samplesheet yet, so nothing can be launched.", "l_no_ce": "You have no compute environment yet.",
+        "l_from": "Filled in from that run; choose the samplesheet and the run name again.", "l_not_kept": "The content of that run is not kept; fill it in yourself.",
+        "chip_running": "Running", "chip_succeeded": "Done", "chip_failed": "Failed", "chip_lost": "Lost",
+        "e_pipeline": "The pipeline is required; write an nf-core name such as ampliseq.", "e_revision": "The revision is required and must be pinned (for example 2.18.0).",
+        "e_run_name": "The run name is required.", "e_sheet": "Choose the samplesheet from your own uploads.", "e_ce": "The compute environment must be one of your own.",
+        "e_param_line": "Parameter \"%s\" is not understood; write each one as \"name: value\".", "e_param_scalar": "Parameter %s is not allowed: only text, numbers or true/false.",
+        "e_param_dup": "Parameter %s is written twice.", "e_body": "Nothing was sent. Fix the form and press the button again.",
+        "r_none": "Nothing was sent.", "r_generic": "That cannot be done right now.", "r_form": "The form token is wrong or has expired; nothing was sent. Reload the page and press again.",
         "tab_tasks": "Tasks", "tab_logs": "Logs", "tab_info": "Run info", "tab_config": "Configuration", "tab_metrics": "Metrics",
         "th_name": "Name", "th_exit": "Exit code", "th_message": "Error message (first line)", "th_workdir": "Work directory",
         "i_id": "ID", "i_name": "Name", "i_status": "Status", "i_cancel": "Cancel requested",
@@ -100,7 +125,14 @@ STYLE = (
     "h1{font-size:22px;line-height:28px;margin:0}h2{font-size:15px;line-height:22px;margin:0}p{margin:0}"
     "button{font:inherit;padding:8px 16px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);"
     "color:var(--raised);cursor:pointer}"
-    "input{font:inherit;padding:8px;border:1px solid var(--line2);border-radius:4px;background:var(--raised);color:var(--ink)}"
+    "input,select,textarea{font:inherit;padding:8px;border:1px solid var(--line2);border-radius:4px;background:var(--raised);color:var(--ink)}"
+    "input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}"
+    "textarea{font-family:" + MONO + ";min-height:96px;resize:vertical}"
+    ".lform{display:flex;flex-direction:column;gap:12px;max-width:640px}.lform label{display:flex;flex-direction:column;gap:4px}"
+    ".lform input,.lform select,.lform textarea{width:100%;min-width:0}.lform button{align-self:flex-start}"
+    ".acts form,form.act{margin:0;display:inline}"
+    ".sq{display:inline-block;width:8px;height:8px;background:var(--c);flex:none;align-self:center}"
+    ".chip{display:inline-flex;gap:4px;align-items:center;font-weight:600;color:var(--c)}"
     "pre{font-family:" + MONO + ";font-size:13px;background:var(--sunken);border-radius:4px;padding:12px;overflow-x:auto;white-space:pre-wrap;margin:0}"
     "code{font-family:" + MONO + "}small{font-size:12px;color:var(--muted)}"
     ".bad{color:var(--failed)}.ok{color:var(--succeeded)}"
@@ -172,7 +204,6 @@ STYLE = (
     ".fields{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0}"
     ".fields dt{color:var(--muted)}.fields dd{margin:0;min-width:0;overflow-wrap:anywhere}"
     ".acts{display:flex;flex-wrap:wrap;gap:8px}"
-    ".gbtn{padding:4px 12px;border:1px dashed var(--line2);border-radius:4px;color:var(--muted)}"
     ".sumcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}"
     ".scard{background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:12px;min-width:0;overflow-wrap:anywhere}"
     ".ct{font-size:12px;line-height:20px;font-weight:400;color:var(--muted)}.cv{font-size:15px;font-weight:600}"
@@ -252,6 +283,14 @@ def _time(iso):
     return (moment + TAIPEI).strftime("%m-%d %H:%M")
 
 
+def taipei_time(epoch):
+    """`MM-DD HH:mm` in Asia/Taipei for an epoch (seconds), or None when there is none."""
+    try:
+        return (datetime.datetime.fromtimestamp(float(epoch), datetime.timezone.utc) + TAIPEI).strftime("%m-%d %H:%M")
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
 def _later(t):
     return '<span class="later">%s</span>' % esc(t["later"])
 
@@ -319,11 +358,12 @@ def _left(t, runs, selected_id, lang, csrf, here):
                        esc(_state(t, run["status"]))))
     body = ('<div class="rows">%s</div>%s' % ("".join(rows), _more(t, len(runs)))) if runs else '<p class="muted">%s</p>' % esc(t["none_yet"])
     return ('<aside class="side" data-pane="left"><nav class="nav"><div class="nowline"><a class="nv%s" href="%s">%s</a>%s</div></nav><h2>%s</h2>'
-            '<div class="tools">%s%s%s</div>%s'
+            '<div class="tools"><a class="nv%s" href="%s">%s</a>%s%s%s</div>%s'
             '<div class="foot"><a class="nv%s" href="%s">%s</a>%s%s'
             '<form method="post" action="/logout"><input type="hidden" name="csrf" value="%s"><button type="submit">%s</button></form>'
             '</div></aside>'
-            % (" here" if here == "now" else "", _url(lang), esc(t["now"]), red, esc(t["mine"]), _grey(t, "new_project"), _grey(t, "search_projects"),
+            % (" here" if here == "now" else "", _url(lang), esc(t["now"]), red, esc(t["mine"]),
+               " here" if here == "launch" else "", _url(lang, path="/launch"), esc(t["launch_nav"]), _grey(t, "new_project"), _grey(t, "search_projects"),
                _grey(t, "upload"), body, " here" if here == "settings" else "", _url(lang, path="/settings"), esc(t["settings"]),
                _grey(t, "explorer"), _grey(t, "dashboard"), esc(csrf), esc(t["logout"])))
 
@@ -376,21 +416,41 @@ def _current_step(t, run):
     return esc(running[0]) + (" " + esc(t["more_steps"] % (len(running) - 1)) if len(running) > 1 else "")
 
 
-def _notice(t, lang, run, reason, step):
+class Acts:
+    """What the pages need to draw the real buttons of spec 012b: the words, the language and a function that gives the CSRF token of
+    one run's buttons. Without one (the pure tests of a single component) no button is drawn."""
+
+    def __init__(self, t, lang, csrf_for):
+        self.t, self.lang, self.csrf_for = t, lang, csrf_for
+
+    def form(self, verb, run_id):
+        """One button as a small POST form; the person lands on the confirmation page, nothing is sent from here."""
+        keep = '<input type="hidden" name="lang" value="en">' if self.lang == "en" else ""
+        return ('<form class="act" method="post" action="/act/%s"><input type="hidden" name="run" value="%s">'
+                '<input type="hidden" name="csrf" value="%s">%s<button type="submit">%s</button></form>'
+                % (verb, esc(run_id), esc(self.csrf_for(run_id)), keep, esc(self.t[{"resume": "resume", "relaunch": "rerun", "cancel": "cancel"}[verb]])))
+
+
+def _chip(t, status):
+    """A status as a small coloured square (its own element, coloured by the style sheet) and the word."""
+    return '<span class="chip state-%s"><span class="sq"></span> %s</span>' % (_css(status), esc(t.get("chip_" + str(status), str(status))))
+
+
+def _notice(t, lang, run, reason, step, acts=None):
     """The formal notice of one failed or lost run (DESIGN.md "Formal notices"). One component on the Now page and on the run page;
-    it is worked out from the run's own record on every request, and its buttons are greyed text, never a form or a link."""
+    it is worked out from the run's own record on every request. Its buttons are real forms (spec 012b) when `acts` is given."""
     lost = run["status"] == "lost"
     cause = t["lost_cause"] if lost else (_first_line(reason or "", REASON_CAP) or t["no_reason"])
     problem = t["lost_word"] if lost else (step or t["no_step"])
     when = _time(run.get("last_message_at") if lost else run.get("ended_at"))
     rows = ((t["f_problem"], problem), (t["f_cause"], cause), (t["f_options"], t["options_text"]))
-    return ('<article class="notice state-%s"><div class="nhead"><span class="level state-%s"><span class="sym">!</span> %s</span>'
+    buttons = "".join(acts.form(verb, run["id"]) for verb in (("resume", "relaunch", "cancel") if lost else ("resume", "relaunch"))) if acts else ""
+    return ('<article class="notice state-%s"><div class="nhead"><span class="level state-%s"><span class="sq"></span> %s</span>'
             '<a class="aname" href="%s">%s</a><span class="when">%s</span></div><p class="ntitle">%s</p><dl class="fields">%s</dl>'
-            '<div class="acts"><span class="gbtn" aria-disabled="true">%s</span><span class="gbtn" aria-disabled="true">%s</span></div></article>'
+            '<div class="acts">%s</div></article>'
             % (_css(run["status"]), _css(run["status"]), esc(t["level_action"]), _url(lang, run["id"]), esc(run["name"]), esc(when),
                esc(t["notice_lost" if lost else "notice_failed"]),
-               "".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), esc(v)) for k, v in rows),
-               esc(t["resume"]), esc(t["rerun"])))
+               "".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), esc(v)) for k, v in rows), buttons))
 
 
 def first_failed(run):
@@ -436,18 +496,18 @@ def tab_body(t, lang, run, tab):
     return '<section class="soon"><p>%s</p></section>' % esc(t["later"])
 
 
-def _running_body(t, selected, lang, tab_param, stage_param, now):
+def _running_body(t, selected, lang, tab_param, stage_param, now, acts=None):
     tab = tab_param or "tasks"
     links = "".join('<a href="%s"%s>%s</a>' % (_url(lang, selected["id"], stage_param, tab=k), ' aria-current="page"' if k == tab else "",
                                                esc(t["tab_" + k])) for k in TABS)
     status = selected["status"]
-    notices = [_notice(t, lang, selected, selected.get("failure_reason"), first_failed(selected))] if status in ("failed", "lost") else []
+    notices = [_notice(t, lang, selected, selected.get("failure_reason"), first_failed(selected), acts)] if status in ("failed", "lost") else []
     inner = '<div class="notices">%s</div>' % "".join(notices) if notices else '<p class="muted">%s</p>' % esc(t["no_notices"])
     mine = '<section class="card"><h2>%s</h2>%s</section>' % (esc(t["notices_here"]), inner)
     return '%s%s%s<nav class="rtabs">%s</nav>%s' % (_sum_cards(t, selected, now), _tasks_bar(t, selected), mine, links, tab_body(t, lang, selected, tab))
 
 
-def _run_page(t, selected, stage_param, lang, tab_param=None, now=None):
+def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None):
     own = stage_of(selected["status"])
     current = pick_stage(stage_param, own)
     explicit = pick_stage(stage_param, None)
@@ -465,11 +525,14 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None):
     status = selected["status"]
     badge = '<span class="badge state-%s">%s %s</span>' % (_css(status), _sym(status), esc(_state(t, status)))
     running = current == "running"
-    grey = "".join('<span class="gbtn" aria-disabled="true">%s</span>' % esc(t[k]) for k in ("resume", "rerun")) + _later(t) if running else ""
-    inner = _running_body(t, selected, lang, tab_param, explicit, now) if running else _stage_card(t, selected, current)
-    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s</div>'
+    buttons = ("".join(acts.form(verb, selected["id"]) for verb in ("resume", "relaunch", "cancel")) if acts else "") if running else ""
+    quick = '<a href="%s">%s</a>' % (esc("/launch?from=" + urllib.parse.quote(str(selected["id"]), safe="") + ("&lang=en" if lang == "en" else "")),
+                                    esc(t["quick"])) if running else ""
+    inner = _running_body(t, selected, lang, tab_param, explicit, now, acts) if running else _stage_card(t, selected, current)
+    note = '<p class="bad" role="alert">%s</p>' % esc(flash) if flash else ""
+    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s%s</div>%s'
             '<ol class="steps" data-current="%s">%s</ol>%s<p class="pager">%s%s</p></main>'
-            % (esc(selected["name"]), badge, grey, current, "".join(cells), inner, prev_, next_))
+            % (esc(selected["name"]), badge, buttons, quick, note, current, "".join(cells), inner, prev_, next_))
 
 
 def _line(t, run, lang, reasons):
@@ -479,9 +542,9 @@ def _line(t, run, lang, reasons):
             % (_css(status), _url(lang, run["id"]), _sym(status), esc(_state(t, status)), esc(run["name"]), why))
 
 
-def _card(t, which, runs, lang, reasons, key, steps=None):
+def _card(t, which, runs, lang, reasons, key, steps=None, acts=None):
     if which == "attention":
-        shown = "".join(_notice(t, lang, r, (reasons or {}).get(r["id"]), (steps or {}).get(r["id"])) for r in runs[:LIST_CAP])
+        shown = "".join(_notice(t, lang, r, (reasons or {}).get(r["id"]), (steps or {}).get(r["id"]), acts) for r in runs[:LIST_CAP])
         body = ('<div class="notices">%s</div>%s' % (shown, _more(t, len(runs)))) if runs else '<p class="muted">—</p>'
     else:
         shown = "".join(_line(t, r, lang, reasons) for r in runs[:LIST_CAP])
@@ -489,14 +552,14 @@ def _card(t, which, runs, lang, reasons, key, steps=None):
     return '<section class="card" data-card="%s"><h2>%s<span class="num">%d</span></h2>%s</section>' % (which, esc(t[key]), len(runs), body)
 
 
-def _now_page(t, runs, lang, reasons, steps=None):
+def _now_page(t, runs, lang, reasons, steps=None, acts=None):
     numbered = _numbered(runs)
     running = [r for r, _ in numbered if r["status"] == "running"]
     attention = [r for r, _ in _attention(numbered)]
     empty = '<p class="muted">%s</p>' % esc(t["none_yet"]) if not runs else ""
     return ('<main class="main" data-pane="middle"><h1>%s</h1>%s<div class="cards">%s%s</div></main>'
             % (esc(t["now"]), empty, _card(t, "running", running, lang, reasons, "card_running"),
-               _card(t, "attention", attention, lang, reasons, "card_attention", steps)))
+               _card(t, "attention", attention, lang, reasons, "card_attention", steps, acts)))
 
 
 def _settings_page(t):
@@ -566,17 +629,132 @@ def _frame(name, csrf, runs, lang, reasons, here, middle, run=None, stage=None, 
     return document(t["title"], body, refresh=refresh, board=True, lang=lang)
 
 
-def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", reasons=None, steps=None, tab_param=None, now=None):
+def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", reasons=None, steps=None, tab_param=None, now=None,
+                 act_csrf=None, flash=None):
     """GET /: the page of a logged-in user. `runs` are newest first (as list_runs gives them); `selected` is the detail of one run, or
-    None for the Now page; `reasons` maps the id of a failed run to its failure_reason (read by the caller, with the caller's rights)."""
+    None for the Now page; `reasons` maps the id of a failed run to its failure_reason (read by the caller, with the caller's rights).
+    `act_csrf(run_id)` gives the CSRF token of that run's buttons (spec 012b); without it no button is drawn. `flash` is one plain line
+    of refusal shown at the top of the run page; a page with one does not reload itself, because it is the answer to a POST."""
     run_id = selected["id"] if selected is not None else None
     stage = pick_stage(stage_param, None) if selected is not None else None
     tab = None      # `tab` belongs to the running stage page only; on any other page it is ignored
     if selected is not None and pick_stage(stage_param, stage_of(selected["status"])) == "running":
         tab = pick_tab(tab_param)
-    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now)) if selected is not None \
-        else (lambda t, lang_: _now_page(t, runs, lang_, reasons, steps))
-    return _frame(name, csrf, runs, lang, reasons, "now" if selected is None else "run", middle, run_id, stage, refresh=True, tab=tab)
+    acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
+    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash)) if selected is not None \
+        else (lambda t, lang_: _now_page(t, runs, lang_, reasons, steps, acts(t, lang_)))
+    return _frame(name, csrf, runs, lang, reasons, "now" if selected is None else "run", middle, run_id, stage, refresh=not flash, tab=tab)
+
+
+# ---- spec 012b: the launch form -----------------------------------------------------------------------------------------------------------
+
+PARAM_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
+PARAM_INT = re.compile(r"^-?\d+\Z")
+PARAM_FLOAT = re.compile(r"^-?\d+\.\d+([eE][-+]?\d+)?\Z")
+PARAM_STARTS = "[{&*|>!%@"           # a value that begins with one of these is a list, a mapping or another YAML construct, not a plain value
+
+
+def parse_params(text, t):
+    """({name: value}, [error lines]) from the parameter box: one `name: value` per line, blank lines ignored. A value is plain text, a
+    number or true/false; a list, a mapping or an empty value is refused, naming the parameter."""
+    out, errors = {}, []
+    for raw in str(text or "").splitlines():
+        if not raw.strip():
+            continue
+        key, colon, value = raw.partition(":")
+        key, value = key.strip(), value.strip()
+        if not colon or raw[:1].isspace() or not PARAM_KEY.match(key):
+            errors.append(t["e_param_line"] % raw.strip()[:60])
+        elif key in out:
+            errors.append(t["e_param_dup"] % key)
+        elif not value or value[0] in PARAM_STARTS:
+            errors.append(t["e_param_scalar"] % key)
+        elif len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            out[key] = value[1:-1]
+        elif value.lower() in ("true", "false"):
+            out[key] = value.lower() == "true"
+        elif PARAM_INT.match(value):
+            out[key] = int(value)
+        elif PARAM_FLOAT.match(value):
+            out[key] = float(value)
+        else:
+            out[key] = value
+    return out, errors
+
+
+def params_text(params):
+    """The parameter box as parse_params reads it back: a text that looks like a number or true/false is quoted, so it stays text."""
+    lines = []
+    for key, value in (params or {}).items():
+        if isinstance(value, bool):
+            shown = "true" if value else "false"
+        elif isinstance(value, (int, float)):
+            shown = str(value)
+        else:
+            shown = " ".join(str(value).split())
+            if (not shown or PARAM_INT.match(shown) or PARAM_FLOAT.match(shown) or shown.lower() in ("true", "false")
+                    or shown[0] in PARAM_STARTS or shown[0] in "\"'"):
+                shown = '"%s"' % shown.replace('"', "'")
+        lines.append("%s: %s" % (key, shown))
+    return "\n".join(lines)
+
+
+CJK = re.compile(r"[⺀-鿿＀-￯]")
+LATIN_PAREN = re.compile(r"\(([^()]*)\)\s*$")
+PATH_LIKE = re.compile(r"(?<![\w.-])(/[^\s,;)）]+)")
+
+
+def plain_reason(message, lang):
+    """One plain line out of a refusal of the action layer. Those read `中文 (English)`: the page keeps the half of its own language. Anything
+    that looks like a path of the machine is cut (nothing here names a folder), and a message with no English half is replaced by a general
+    English line on the English page."""
+    t = STRINGS[pick_lang(lang)]
+    text = str(message or "").strip()
+    m = LATIN_PAREN.search(text)
+    if lang == "en":
+        body = re.sub(r"^未[^：:]{1,6}[：:]\s*", "", text)
+        text = m.group(1).strip() if m else ("" if CJK.search(body) else body)
+        text = (text[:1].upper() + text[1:]) if text else t["r_generic"]
+    elif m:
+        text = text[:m.start()].strip() or text
+    text = PATH_LIKE.sub("…", text)
+    text = re.sub(r"\s+", " ", text)
+    return text[:300] + ("" if text.endswith((".", "。")) else ("." if lang == "en" else "。"))
+
+
+def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, lang="zh", reasons=None, source=None):
+    """GET /launch (and the answer to a POST that did not pass): one plain form. `values` are what to put in the boxes; `errors` are lines
+    of what is wrong (each is its own line); `notes` are plain muted lines (where the boxes were filled from); `sheets` are the names the
+    person may choose from, `envs` the environments that are theirs; `token` is the form's CSRF token. `source` is
+    (run id, name, status, 'MM-DD HH:mm' or None) of the run a quick launch started from."""
+    lang = pick_lang(lang)
+    t = STRINGS[lang]
+
+    def box(label, name_, value, required):
+        return '<label>%s<input name="%s" value="%s"%s></label>' % (esc(label), name_, esc(value), " required" if required else "")
+
+    def choose(label, name_, options, chosen, empty):
+        opts = "".join('<option value="%s"%s>%s</option>' % (esc(o), " selected" if o == chosen else "", esc(o)) for o in options) \
+            or '<option value="" disabled selected>—</option>'
+        return '<label>%s<select name="%s" required>%s</select></label>%s' % (esc(label), name_, opts, "" if options else '<p class="muted">%s</p>' % esc(empty))
+    lines = "".join('<p class="bad" role="alert">%s</p>' % esc(e) for e in errors) + "".join('<p class="muted">%s</p>' % esc(n) for n in notes)
+    if source:
+        run_id, run_name, status, when = source
+        lines += ('<p class="from"><a href="%s">%s</a> %s %s</p>'
+                  % (_url(lang, run_id), esc(run_name), _chip(t, status), esc(when) if when else ""))
+    form = ('<form class="lform" method="post" action="/launch"><input type="hidden" name="csrf" value="%s">%s%s%s%s%s%s%s'
+            '<button type="submit">%s</button></form>'
+            % (esc(token), '<input type="hidden" name="lang" value="en">' if lang == "en" else "",
+               box(t["l_pipeline"], "pipeline", values.get("pipeline", ""), True),
+               box(t["l_revision"], "revision", values.get("revision", ""), True),
+               box(t["l_run_name"], "run_name", values.get("run_name", ""), True),
+               choose(t["l_samplesheet"], "samplesheet", sheets, values.get("samplesheet"), t["l_no_sheet"]),
+               choose(t["l_ce"], "ce_name", envs, values.get("ce_name"), t["l_no_ce"]),
+               '<label>%s<textarea name="params" rows="5">%s</textarea></label>' % (esc(t["l_params"]), esc(values.get("params", ""))),
+               esc(t["l_submit"])))
+    middle = lambda t_, lang_: ('<main class="main" data-pane="middle"><h1>%s</h1><p class="muted">%s</p>%s%s</main>'
+                                % (esc(t["launch_title"]), esc(t["launch_intro"]), lines, form))
+    return _frame(name, csrf, runs, lang, reasons, "launch", middle, path="/launch")
 
 
 def render_settings(name, csrf, runs, lang="zh", reasons=None):

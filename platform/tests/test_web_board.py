@@ -717,9 +717,9 @@ def test_tch08_states_and_symbols(w):
         assert re.search(r'class="badge state-%s"[^>]*>\s*%s\s' % (st, sym), mid)
     for st, label in (("running", "執行中"), ("succeeded", "成功"), ("failed", "失敗"), ("lost", "失聯/暫停")):
         line = [x for x in card_lines(t, "running") + card_lines(t, "attention") if "n-" + st in plain(x)]
-        if st in ("failed", "lost"):        # 011b: these are notices now (level pill "! 需要處理" with the state class), not one-line items
+        if st in ("failed", "lost"):        # 011b: these are notices now (level pill with the state class), not one-line items; 012b: the pill is a square plus 待處理
             notice = [x for x in card_notices(t, "attention").values() if "state-" + st in x]
-            assert len(notice) == 1 and "!" in plain(notice[0]) and "需要處理" in plain(notice[0]), st
+            assert len(notice) == 1 and 'class="sq"' in notice[0] and "待處理" in plain(notice[0]), st
         elif st == "succeeded":
             assert line == []
         else:
@@ -772,14 +772,16 @@ def test_tcs36_cards_are_read_only(w):
     seed(w, "go", "running", ann)
     t = login(w, "ann").get("/").text
     mid = pane(t, "middle")
-    assert "<button" not in mid and "<form" not in mid
+    forms = re.findall(r"<form\b[^>]*>", mid)          # 012b: the buttons of a notice are forms that only ask (POST /act/...)
+    assert forms and all(re.fullmatch(r'<form class="act" method="post" action="/act/(resume|relaunch|cancel)">', f) for f in forms)
+    assert mid.count("<button") == len(forms)
     for h in hrefs(mid):
         u = urlsplit(htmllib.unescape(h))
         assert u.path == "/" and "run" in parse_qs(u.query), h
     for word in ("上傳", "確認", "Resume", "Retry"):
         assert word not in mid
-    # 011b: 續跑／重跑 now appear, only as greyed text in the notice (no form, link or button element: asserted above)
-    assert re.sub(r'<span class="gbtn" aria-disabled="true">(續跑|重跑)</span>', "", mid).count("續跑") == 1   # the options line
+    # 011b: 續跑／重跑 appear in the notice; 012b: as real buttons (asserted above), plus the options line
+    assert re.sub(r"<button[^>]*>(續跑|重跑)</button>", "", mid).count("續跑") == 1   # the options line
 
 
 def test_tcs37_attention_cap(w):
@@ -876,14 +878,18 @@ def test_tch11_read_only(w):
     for url in ("/", "/?run=" + rid, "/settings"):
         t = c.get(url).text
         forms = re.findall(r"<form\b[^>]*>", t)
-        assert len(forms) == 1 and 'action="/logout"' in forms[0]
-        assert t.count("<button") == 1
+        assert 'action="/logout"' in forms[0]
+        assert all(re.fullmatch(r'<form class="act" method="post" action="/act/(resume|relaunch|cancel)">', f) for f in forms[1:])     # 012b
+        assert (len(forms) == 1) == (url == "/settings")          # the failed run is on the Now page and on its own page: both have the buttons that ask
+        assert t.count("<button") == len(forms)
         assert re.search(r'name="csrf" value="[^"]+"', t)
     assert c.post("/").status_code == 405 and c.post("/settings").status_code == 405
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
     assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")),
+                      ("/act/{verb}", ("POST",)),
                       ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)),
-                      ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/login", ("GET", "HEAD")),
+                      ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)),
+                      ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
                       ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/token", ("OPTIONS", "POST"))], routes
 
@@ -1240,7 +1246,7 @@ def test_tn02_no_detail_logs_or_resume(w):
     c = login(w, "ann")
     t = c.get("/?run=" + rid).text
     # 011b: the page has a Logs tab (a grey panel) whose link says tab=logs; links are not what this pin is about, so strip them first
-    assert not re.search(r"(?i)resume|restart|/logs|\blogs?\b", re.sub(r'href="[^"]*"', "", t)) and "boom" in t
+    assert not re.search(r"(?i)resume|restart|/logs|\blogs?\b", re.sub(r'(href|action)="[^"]*"', "", t)) and "boom" in t     # 012b: the buttons post to /act/resume
     for p in ("/runs/" + rid, "/runs/%s/logs" % rid, "/resume", "/restart"):
         assert c.get(p).status_code == 404 and c.post(p).status_code in (404, 405), p
 
@@ -1249,7 +1255,7 @@ def test_tn04_other_paths_stay_missing(w):
     # TC-N04
     w.user("ann")
     c = login(w, "ann")
-    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/launch", "/submit", "/upload",
+    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/submit", "/upload",
                  "/password", "/passwd", "/cost", "/setup", "/api/launch"):
         assert c.get(path).status_code == 404, path
         assert c.post(path, data={"a": "b"}).status_code in (404, 405), path
@@ -1291,11 +1297,11 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
         t = c.get(url).text
         for tag in ("<textarea", "<select", "<iframe", "<table", 'type="radio"', 'type="checkbox"'):
             assert tag not in t, (url, tag)
-        assert [m for m in re.findall(r"<input\b[^>]*>", t) if 'type="hidden"' not in m or 'name="csrf"' not in m] == []
+        assert [m for m in re.findall(r"<input\b[^>]*>", t) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m)] == []     # 012b: the buttons carry the run id (and the language)
         assert t.count("<details") == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):
             u = urlsplit(htmllib.unescape(h))
-            assert u.path in ("/", "/settings") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab"}, h      # 011b adds ?tab=
+            assert u.path in ("/", "/settings", "/launch") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab", "from"}, h      # 011b adds ?tab=; 012b the launch page and ?from=
         for word in ("系統自動處理紀錄", "待你決定", "Awaiting you", "終端機", "Terminal", "拖放", "MultiQC"):     # 011b: 目前步驟／Current step／Metrics now exist
             assert word not in t, (url, word)
     left = pane(c.get("/").text, "left")

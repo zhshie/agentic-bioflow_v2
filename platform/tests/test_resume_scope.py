@@ -28,9 +28,11 @@ def code_lines(p):
 
 
 def test_tc146_there_is_no_web_page_no_stage_board_no_button_and_no_list_attempts():
-    # TC-146 (011 does these)
+    # TC-146 (011 does these). 012b did the web buttons: web.py now asks through request_resume / request_relaunch, and only those; the
+    # module still has no name of its own for a resume, and list_attempts still does not exist.
     web = (PKG / "abf_platform" / "web.py").read_text(encoding="utf-8")
-    assert not re.search(r"resume|relaunch|list_attempts", web, re.I)
+    assert set(re.findall(r"\w*(?:resume|relaunch)\w*", web, re.I)) <= {"resume", "relaunch", "request_resume", "request_relaunch", "ACT_VERBS"}
+    assert not re.search(r"list_attempts|prepare_resume|prepare_relaunch|render_resume", web)
     for p in source_files():
         text = p.read_text(encoding="utf-8")
         assert "list_attempts" not in text, rel(p)
@@ -42,7 +44,7 @@ def test_tc150_nothing_calls_a_resume_or_a_relaunch_by_itself():
     # TC-150: the only callers are the two doors that ask a person (the MCP tools and the terminal commands), and the code that builds
     callers = {"request_resume", "request_relaunch", "prepare_resume", "prepare_relaunch", "render_resume", "render_resume_bundle"}
     allowed = {"abf_platform/actions/__init__.py", "abf_platform/mcp_server.py", "abf_launch/cli.py", "abf_launch/build.py",
-               "abf_station/launch.py"}
+               "abf_station/launch.py", "abf_platform/web.py"}      # 012b: the web button only ASKS (request_*) and sends the person to the confirmation page
     found = set()
     for p in source_files():
         names = {n.attr if isinstance(n, ast.Attribute) else n.id for n in ast.walk(ast.parse(p.read_text(encoding="utf-8")))
@@ -52,7 +54,7 @@ def test_tc150_nothing_calls_a_resume_or_a_relaunch_by_itself():
             found.add(rel(p))
     assert found <= allowed, found - allowed
     for quiet in ("abf_platform/receiver.py", "abf_platform/jobs.py", "abf_platform/agents.py", "abf_platform/status.py",
-                  "abf_platform/rebuild.py", "abf_platform/web.py", "abf_station/agent.py", "abf_station/handlers.py"):
+                  "abf_platform/rebuild.py", "abf_station/agent.py", "abf_station/handlers.py"):
         assert quiet not in found, quiet
 
 
