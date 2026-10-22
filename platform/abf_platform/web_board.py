@@ -491,7 +491,7 @@ def tab_body(t, lang, run, tab):
         return '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, body)
     if tab == "info":
         status = run["status"]
-        rows = [(t["i_id"], run["id"]), (t["i_name"], run["name"]), (t["i_status"], Raw(_sqw(t, status))),
+        rows = [(t["i_id"], run["id"]), (t["i_name"], run["name"]), (t["i_status"], Raw('<span class="state-%s">%s</span>' % (_css(status), _sqw(t, status)))),
                 (t["started"], _time(run.get("started_at"))), (t["ended"], _time(run.get("ended_at")))]
         if run.get("cancel_requested_at"):
             rows.append((t["i_cancel"], _time(run["cancel_requested_at"])))

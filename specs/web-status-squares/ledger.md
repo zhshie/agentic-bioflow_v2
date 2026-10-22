@@ -30,3 +30,5 @@ test_web_running.py
 - test_r79_r92_tab_contents: `"✗ 失敗" in info` -> square + 失敗 in the raw info HTML.
 
 test_web_actions.py: none changed (its GLYPHS check only forbids glyphs).
+
+- Fix round (verifier, TC-001..TC-008): the Info tab status row put the square in a `<dd>` with no `state-*` parent, so `--c` was undefined and the square had no colour. `tab_body` now wraps it in `<span class="state-X">`; the TC-001 test now checks that wrapper and opens the info tab with `stage=running` so the tab is really rendered for every state.
