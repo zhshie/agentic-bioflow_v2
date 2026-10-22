@@ -309,6 +309,8 @@ nano4 (see `SITE_ADAPTER.md`) writes these; every other deployment leaves them o
 | `platform_public_url` | https URL | none | The address a compute node can reach Platform at when `way_back` is `direct`. It must be https; a loopback address (127.0.0.1, localhost) is the one exception and is for tests only | `platform_public_url: https://abf.example.org` |
 | `site_profile` | `taiwania3` or `nano4` | none | Lets documents and defaults tell the two sites apart. **Reserved:** no code reads it today, so setting it changes nothing yet | `site_profile: nano4` |
 
+`way_back` defaults to `forward` when `reach` is `ssh`; set `direct` only together with `platform_public_url`.
+
 A consistent nano4 example, taken together:
 
 ```yaml
