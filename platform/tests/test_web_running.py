@@ -185,7 +185,7 @@ def test_r40_r44_title_and_cards(w):
     ann, c = world(w)
     a = f1(w, ann)
     mid = pane(c.get("/?run=" + a).text, "middle")
-    assert "<h1>f1</h1>" in mid and "✗ 失敗" in plain(mid)
+    assert "<h1>f1</h1>" in mid and '<span class="sq"></span> 失敗' in mid
     head = re.search(r'<div class="head">(.*?)</div>', mid, re.S).group(1)
     assert "續跑" in head and "重跑" in head and "取消" in head and "之後開放" not in head and head.count("<form") == 3 and head.count("<button") == 3     # 012b: real buttons
     assert cards(c.get("/?run=" + a).text) == (["目前步驟", "耗時", "運算環境", "費用"], ["—", "2 小時 5 分", "—", "SU —"])
@@ -218,8 +218,8 @@ def test_r55_r58_tasks_bar_and_legend(w):
     ann, c = world(w)
     a = f1(w, ann)
     z = seed(w, "u0", "running", ann, started=T0)
-    for q, labels in (("", ["成功", "快取", "失敗", "中止", "執行中", "等待", "已送出"]),
-                      ("&lang=en", ["Succeeded", "Cached", "Failed", "Aborted", "Running", "Pending", "Submitted"])):
+    for q, labels in (("", ["完成", "快取", "失敗", "中止", "執行中", "等待", "已送出"]),
+                      ("&lang=en", ["Done", "Cached", "Failed", "Aborted", "Running", "Pending", "Submitted"])):
         mid = pane(c.get("/?run=%s%s" % (a, q)).text, "middle")
         legend = re.search(r'<dl class="counts">(.*?)</dl>', mid, re.S).group(1)
         assert [(plain(x), plain(y)) for x, y in re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", legend, re.S)] == \
@@ -280,8 +280,9 @@ def test_r79_r92_tab_contents(w):
     text = c.get("/?run=%s&tab=tasks" % u).text
     assert "沒有失敗的任務" in text and "<table" not in text
     assert "No failed tasks" in c.get("/?run=%s&tab=tasks&lang=en" % u).text
-    info = plain(pane(c.get("/?run=%s&tab=info" % a).text, "middle"))
-    assert "11-14 08:00" in info and "11-14 10:05" in info and a in info and "✗ 失敗" in info
+    info_raw = pane(c.get("/?run=%s&tab=info" % a).text, "middle")
+    info = plain(info_raw)
+    assert "11-14 08:00" in info and "11-14 10:05" in info and a in info and '<span class="sq"></span> 失敗' in info_raw
     assert "—" in plain(pane(c.get("/?run=%s&tab=info" % u).text, "middle"))
     for tab in ("logs", "config", "metrics"):
         m = pane(c.get("/?run=%s&tab=%s" % (a, tab)).text, "middle")

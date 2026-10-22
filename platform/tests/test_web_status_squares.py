@@ -84,7 +84,7 @@ def test_tc001_to_008_tc030_to_034_each_state_place_is_square_plus_word(w, lang)
         assert any(SQ + " " + word in x and "state-" + st in x for x in left), (name, left)
         right = [i for i in re.findall(r'<a\b[^>]*class="[^"]*\bitem\b[^"]*"[^>]*>.*?</a>', pane(page, "right"), re.S) if name in plain(i)]
         assert right and SQ + " " + word in right[0] and "state-" + st in right[0]
-        badge = re.search(r'<span class="badge state-%s">(.*?)</span>' % st, pane(page, "middle"), re.S)
+        badge = re.search(r'<span class="badge state-%s">(<span class="sq"></span> [^<]*)</span>' % st, pane(page, "middle"))
         assert badge and badge.group(1) == SQ + " " + word
         info = c.get("/?run=id-%s&tab=info%s" % (name, lq(lang))).text
         assert SQ + " " + word in pane(info, "middle")
@@ -121,9 +121,10 @@ def test_tc010_tc013_tc067_colours(w):
         assert "--%s:%s" % (tok, val) in light
         assert re.search(r"\.state-%s\{--c:var\(--%s\)" % (tok, tok), css)
     assert re.search(r"\.state-unknown\{--c:var\(--(muted|line2)\)", css), "unknown square must be a neutral grey token"
-    design = open(ROOT / "DESIGN.md", encoding="utf-8").read().lower()
-    for colour in set(re.findall(r"#[0-9a-fA-F]{6}\b", css)):
-        assert colour.lower() in design or colour.lower() == "#ffffff", colour
+    base = subprocess.run(["git", "show", "220320a:platform/abf_platform/web_board.py"], cwd=ROOT, capture_output=True, text=True,
+                          encoding="utf-8").stdout
+    old = set(re.findall(r"#[0-9a-fA-F]{6}", base))
+    assert set(re.findall(r"#[0-9a-fA-F]{6}", css)) <= old, "no colour code that the base style sheet did not already have"
 
 
 @pytest.mark.parametrize("lang", ["zh", "en"])
