@@ -57,7 +57,7 @@ _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,99}\Z")
 _MODULE = re.compile(r"^[A-Za-z0-9_./+-]+\Z")
 _SITE_VAR = re.compile(r"^[A-Z_][A-Z0-9_]*\Z")
 _OWNER_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")                 # same rule as abf_launch.build.OWNER_NAME
-_REVISION = re.compile(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")             # same rule as abf_station.launch.REVISION
+_REVISION = re.compile(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")             # same rule as the launch module's REVISION
 _SITE_PIPELINE_KEYS = ("pipeline", "revision", "module", "home")
 MAX_PATH = 1024
 
