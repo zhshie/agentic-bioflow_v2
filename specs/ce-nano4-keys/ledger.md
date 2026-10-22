@@ -5,3 +5,5 @@
 - Decisions on the open questions of the overview: all three keys optional and absent when not given (no empty lists added); each sitePipelines item needs exactly pipeline/revision/module/home; empty lists are allowed; `..` path segments in a module are refused.
 
 - [x] 2026-10-22 developer-agent：test-case.md TC-NK-23／24 的假金鑰字面值改寫成「AKIA 接 CANARYZZ99887766」的描述（測試語意不變；原字面值會被護欄 tests/credentials_stay_in_settings_test.sh 掃到，該護欄本來就不該放行任何檔案裡的金鑰形狀）。executor 的測試檔已用既有 KEY_ID 常數組字串。
+
+- [x] Fix round (verifier): added the missing tests in `platform/tests/test_station_envs.py`: TC-NK-33 (real `abf-platform` process via `run_cli`: exit codes, `ce show`, no new row on a bad value), TC-NK-40 (another person cannot see a CE with the three keys), TC-NK-41 (no web or token way to change it; state db unchanged), TC-NK-42 (MCP read writes nothing). The behaviour already held, so they passed on first run. SPEC-EDIT (b0f7d84 edit of test-case.md TC-NK-23/24) is not undone by the executor: a hook stops the executor from writing contract files; left to the developer-agent.
