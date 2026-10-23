@@ -92,12 +92,12 @@ def deployment_problem(root, plugin_root):
     if not settings.is_file():
         return "the deployment folder %s has no settings file (config/env.yaml)" % root
     if not site.on_site_script(plugin_root).is_file():
-        return "the site script %s was not found; give the plugin folder with --plugin-root" % site.on_site_script(plugin_root)
+        return "the site script %s was not found: it is not in this install (安裝版裡沒有) and no --plugin-root was given (也沒給 --plugin-root); point --plugin-root at the plugin folder that holds scripts/on_site.sh" % site.on_site_script(plugin_root)
     return None
 
 
 def cmd_run(args):
-    plugin_root = Path(args.plugin_root).resolve() if args.plugin_root else Path(__file__).resolve().parents[2]
+    plugin_root = Path(args.plugin_root).resolve() if args.plugin_root else site.default_plugin_root()
     for problem in (windows_problem(), url_problem(args.platform), token_problem(args.token_file),
                     deployment_problem(args.deployment, plugin_root)):
         if problem:
@@ -111,7 +111,7 @@ def cmd_run(args):
 
 def cmd_unforward(args):
     """Cancel the reverse forward and remove its records on both sides. By hand only: nothing in the agent does it by itself."""
-    plugin_root = Path(args.plugin_root).resolve() if args.plugin_root else Path(__file__).resolve().parents[2]
+    plugin_root = Path(args.plugin_root).resolve() if args.plugin_root else site.default_plugin_root()
     problem = windows_problem() or deployment_problem(args.deployment, plugin_root)
     if problem:
         say("abf-station will not do this: %s" % problem)
@@ -119,8 +119,8 @@ def cmd_unforward(args):
     settings = Path(args.deployment) / "config" / "env.yaml"
     from .site import Site, quote
     from . import rules
-    site = Site(plugin_root, settings, log=lambda *_: None)
-    res = site.call(["--unforward"])
+    on_site = Site(plugin_root, settings, log=lambda *_: None)
+    res = on_site.call(["--unforward"])
     out = res.out.decode("utf-8", errors="replace").strip()
     if out:
         say(out)
@@ -132,7 +132,7 @@ def cmd_unforward(args):
     storage = rules.read_setting(str(settings), "storage_root")
     if storage and not rules.path_problem(storage):
         target = rules.normalize(storage) + "/_relay/forward_port"
-        gone = site.call(["rm -f -- %s %s" % (quote(target), quote(rules.normalize(storage) + "/_relay/forward_instance"))])
+        gone = on_site.call(["rm -f -- %s %s" % (quote(target), quote(rules.normalize(storage) + "/_relay/forward_instance"))])
         say("the copy on the site (%s) is removed" % target if gone.rc == 0 else "could not remove the copy on the site: %s" % gone.err.strip()[:200])
     return 0
 
