@@ -23,7 +23,7 @@ import time
 
 from abf_launch import build
 
-from .. import agents, common, compute_envs, confirm, jobs, status, store, su
+from .. import agents, common, compute_envs, confirm, failures, jobs, status, store, su
 
 NotApproved = confirm.NotApproved
 
@@ -74,7 +74,19 @@ def list_runs(index_path, *, caller=None, platform_path=None):
     names = None
     if caller is not None:      # the runs the caller launched: those whose newest launch record names the caller
         names = jobs.owned_run_names(platform_path_for(index_path, platform_path), caller.user_id)
-    return {"runs": status.list_runs(index_path, status.now(), names=names)}
+    path = platform_path_for(index_path, platform_path)
+    at = status.now()
+    rows = status.list_runs(index_path, at, names=names)
+    for row in rows:
+        row["failure"] = None
+        if row["status"] in ("failed", "lost"):     # the failed tasks live in the full view; the list row stays as it was
+            full = status.get_run(index_path, row["id"], at)
+            if full is not None:
+                asked = jobs.cancel_requested_at(path, row["name"])
+                if asked is not None:
+                    full["cancel_requested_at"] = common.epoch_iso_ms(asked)
+                row["failure"] = failures.summarize(full)
+    return {"runs": rows}
 
 
 RUN_NOT_FOUND_TEXT = "Run not found: %s (找不到這個 run)"
@@ -90,6 +102,7 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
     asked = jobs.cancel_requested_at(platform_path_for(index_path, platform_path), view["name"])
     if asked is not None:        # a fact about a request that was sent, never a state of the run (the status stays Nextflow's word)
         view["cancel_requested_at"] = common.epoch_iso_ms(asked)
+    view["failure"] = failures.summarize(view)
     return view
 
 

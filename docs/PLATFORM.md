@@ -472,6 +472,18 @@ Not here: roles or sharing inside a lab (010), per-user folders on a remote stat
 
 The platform's actions live in one place, `platform/abf_platform/actions/`: one function per action (list runs, get a run, list or get compute environments, list agents, list site files, launch, cancel, resume, relaunch, forget). The MCP tools call these functions and nothing else, and so will the web pages and the chat. A launch or a cancel (and the other writing actions, `resume`, `relaunch` and `forget`) is confirmed through one of three channels, each one object (`TERMINAL`, `ELICITED`, `PAGE`) that `actions.launch` and `actions.cancel` accept as `confirmed_by`: the terminal (`abf-platform launch|cancel` after a `y`), the form of the person's MCP client, and the confirmation page as the same logged-in user. Anything else, a string or a copy of one of them included, is refused with "no human confirmation channel" before a database is opened. The MCP tools `launch` and `cancel` call `request_launch` and `request_cancel`, which only write a pending request and ask; `approve` flips it, for the form or the page, and queues the job in the same transaction.
 
+## Failed runs
+
+`get_run` and each row of `list_runs` carry a `failure` field: `None` for a run that is not failed or lost, otherwise exactly five keys, taken the way Seqera Platform's run page shows a failed run. Nothing is sorted into causes and nothing is advised.
+
+- `status_seqera`: Seqera's word for the run. `failed` for a failed run; `unknown` for a `lost` run (the platform has had no news and does not know how it ended); `cancelled` when a confirmed cancel of the run was sent (`cancel_requested_at`).
+- `failed_tasks`: the failed tasks as the status view gives them (`name`, `exit_code`, `error_message`, `workdir` when reported), in the same order, none cut.
+- `failure_reason`: Nextflow's own words, as they are, or `None`.
+- `log`: the log reference the view already has, or `None`. This feature reads no log; to read one use `read_task_log`.
+- `actions`: `["resume", "relaunch"]`, or only `["relaunch"]` when no task succeeded or was cached (nothing to carry over). They are the Resume and Relaunch entries of Seqera's run menu; the platform names them and sends neither: each still waits for a person's yes (section 9).
+
+A resume here cannot yet change resources or parameters, as Seqera's Resume dialog can; the gap is `resume-edit-params`. No migration: the field is worked out when asked.
+
 ## Guidance over the URL
 
 A person who pastes the server's address into Claude gets the "how to use it" along with the tools, with nothing to install. It comes in three forms, all made from the one folder `skills/`:
