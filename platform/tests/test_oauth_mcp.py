@@ -475,3 +475,32 @@ def test_tci03_i04_no_secret_of_the_flow_is_kept_or_said(w, rig, capsys, caplog)
     for row in tokens_rows(w, "SELECT token_hash FROM tokens WHERE kind LIKE 'oauth_%'") + tokens_rows(w, "SELECT code_hash FROM oauth_codes"):
         assert re.fullmatch(r"[0-9a-f]{64}", row[0])
     assert not [t for t in tokens_rows(w, "SELECT * FROM oauth_requests") if f.code in str(tuple(t))]
+
+
+# ---- the public host behind a tunnel (incident 2026-10-23: 421 Invalid Host header after a good OAuth) -------------------------
+
+def test_mcphost01_a_public_url_host_is_let_through_the_dns_rebinding_check(w):
+    # TC-HOST01
+    w.user("ann")
+    pat = pat_of(w, "ann")
+    with Served(w, public_url="https://example.ts.net") as s:
+        assert s.post(pat, headers={"Host": "example.ts.net"}).status_code != 421
+        assert s.post(pat, headers={"Host": "example.ts.net", "Origin": "https://example.ts.net"}).status_code != 421
+
+
+def test_mcphost02_another_host_is_still_refused_with_a_public_url(w):
+    # TC-HOST02
+    w.user("ann")
+    pat = pat_of(w, "ann")
+    with Served(w, public_url="https://example.ts.net") as s:
+        assert s.post(pat, headers={"Host": "evil.com"}).status_code == 421
+        assert s.post(pat, headers={"Host": "example.ts.net", "Origin": "https://evil.com"}).status_code == 403
+
+
+def test_mcphost03_without_a_public_url_the_public_host_is_refused_as_before(w):
+    # TC-HOST03
+    w.user("ann")
+    pat = pat_of(w, "ann")
+    with Served(w) as s:
+        assert s.post(pat, headers={"Host": "example.ts.net"}).status_code == 421
+        assert s.post(pat).status_code != 421
