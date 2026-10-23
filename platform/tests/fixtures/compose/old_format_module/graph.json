@@ -1,0 +1,3 @@
+{"nodes": [{"id": "cm", "module": "custom_clustermetrics", "params": {"ext.prefix": "cm"}},
+           {"id": "sd", "module": "strdust"}],
+ "edges": [{"from": {"node": "sd", "output": "vcf"}, "to": {"node": "cm", "input": 0}}]}

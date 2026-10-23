@@ -503,6 +503,12 @@ The building blocks of the pipeline canvas are the nf-core modules. A snapshot o
 - Regenerate (maintainer only; needs PyYAML in a throwaway environment): `PYTHONPATH=platform python -m abf_platform.catalogue snapshot --modules <nf-core/modules checkout> --sha <sha> --out platform/abf_platform/data/nf-core-modules.json`. The same sha gives a byte-identical file.
 - A new snapshot is one tier A PR: the changed file, plus the new sha here and in the test.
 
+## Composed pipelines
+
+A composed pipeline is a graph the canvas will draw: each node is one nf-core module of the catalogue above, each edge joins an output channel of one node to an input channel number of another, and a node may carry the parameters `ext.args`, `ext.args2` to `ext.args9` and `ext.prefix` (one-line text, 1000 characters at most). There are no sub-workflows. `abf_platform/compose.py` has two pure functions: `normalize` checks the shape (known modules, real channels, no loop, no repeated edge, at most 200 nodes, 1000 edges and 256 KiB; every problem is written in Chinese and English) and puts the graph in one fixed order; `render` turns it into the text of three files, `main.nf`, `modules.json` and `nextflow.config`, byte for byte the same for the same graph, name and version. It copies no module and fetches nothing: it only says which module at which commit. An input that no edge reaches is rendered as an empty channel and listed in `open_inputs`; that is not an error here.
+
+`abf_platform/actions/pipelines.py` keeps them: `create_pipeline`, `update_pipeline`, `list_pipelines`, `get_pipeline` and `render_pipeline`. A pipeline belongs to the person who made it (the terminal sees all); what belongs to somebody else answers like what does not exist. Every save adds a numbered version; a version is never changed or removed (the database refuses it). Saving writes only the platform's own `platform.db`: it starts nothing and needs no confirmation. There is no MCP tool and no web page for this yet; they come with spec 017e.
+
 ## What the platform stores
 
 One row per kind of data. Every period below is a constant in `platform/abf_platform/` or a rule stated elsewhere in this document; where the code has no rule, the row says `no automatic deletion`. Tokens and passwords are kept only as hashes; the cookie is signed.
@@ -517,6 +523,7 @@ One row per kind of data. Every period below is a constant in `platform/abf_plat
 | Cookie signing key | `web_signing.key` | no automatic deletion. |
 | Uploads: samplesheets uploaded for runs | `uploads` folder, one folder per user | no automatic deletion. |
 | Fetched records: Nextflow's records read back from the site | `records` folder, one folder per run name | no automatic deletion. |
+| Composed pipelines: a name and numbered versions of a graph of nf-core modules, per owner | `platform.db` (`pipelines`, `pipeline_versions`) | no automatic deletion; versions are never changed or removed. |
 
 **First use.** The platform keeps the bundle and the screen text of every launch you confirm until you delete them, and you can forget a submission at any time with `abf-platform forget`. Showing this sentence to a person the first time, in the web page and in the clients, is not built yet; this document is the only place it is written.
 
