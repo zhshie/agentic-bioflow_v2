@@ -66,8 +66,8 @@ def test_rates_found_in_the_wheel_data(wheel_dir):
     assert nf.read_bytes() == (PKG / "data" / "nf-core-modules.json").read_bytes()   # TC-002
     # TC-003: nothing above the unpacked folder can supply a repository file
     assert not (wheel_dir.parent / "configs" / "sites" / "su_rates.json").exists()
-    done = _isolated("from abf_platform import su\nrates = su.load_rates()\n"
-                     "print(json.dumps({'path': str(su.RATES_PATH), 'rates': rates})) if (json := __import__('json')) else 0\n",
+    done = _isolated("import json\nfrom abf_platform import su\nrates = su.load_rates()\n"
+                     "print(json.dumps({'path': str(su.RATES_PATH), 'rates': rates}))\n",
                      [wheel_dir])
     assert done.returncode == 0, done.stderr
     out = json.loads(done.stdout.strip().splitlines()[-1])
