@@ -16,7 +16,7 @@ base: v3
 2. 補強 #171 閱卷指出的四條鬆測試（`platform/tests/test_su_in_get_run.py`）：
    - TC-014：真的經 MCP 的 `get_run` 工具呼叫一次（用 `test_mcp.py`／`test_actions_layer.py` 既有的 in-process MCP 呼叫方式），斷言回傳含 `su`。
    - TC-083：TC-020、022、025、027、030 每一種 `unknown_reasons` 都檢查不含路徑、SQL 字樣與 token。
-   - TC-073：走 `rebuild.py` 重建一個 run 後問 `get_run`，斷言 `su` 為 null 且原因是「沒有用量紀錄」。
+   - TC-073：走 `rebuild.py` 重建一個 run 後問 `get_run`，斷言 `su` 為 null 且原因是既有的 NOT_STORED 那句（與 estimate-su-mcp TC-020 同一句）。
    - TC-048：經 `actions.estimate_su` 走一次 `site_of_run` 的判斷。
 
 ## 維護者原話（verifier 出題用）
@@ -29,7 +29,7 @@ base: v3
 - `specs/su-followups/ledger.md`
 
 ## 失敗先行測試
-- `test_su_packaged.py::test_rates_found_from_the_packaged_plugin`：仿 `test_station_packaging.py` 的做法建 wheel 解開、`-I` 獨立 Python 匯入 `abf_platform.su`，讀得到費率（nano4 的 `twd_per_su` 存在）。
+- `test_su_packaged.py::test_rates_found_in_the_wheel_data`：建 wheel 解開，wheel 內有 `abf_platform/data/su_rates.json`，`-I` 獨立 Python 匯入 `abf_platform.su` 讀得到費率（nano4 的 `twd_per_su` 存在）。
 - `test_su_packaged.py::test_checkout_still_uses_repo_configs`。
 - 上述四條補強，各自先證明「把被測的那一段弄壞會紅」（在 ledger 記下怎麼證明的）。
 
@@ -48,6 +48,10 @@ base: v3
 4. 找不到來源檔時建置失敗（跟 scripts／configs 一樣）。測試：wheel 內 `abf_platform/data/su_rates.json` 與 repo 那份逐位元相同；`-I` 獨立 Python 讀得到費率；`su.py` 原始碼不含 `sta"` 之類拆字的痕跡（以 ast 讀所有字串常數，不得拼出 `station`）。
 5. 範圍檔加 `platform/setup.py`、`.gitignore`、`platform/tests/test_guidance.py`（只限 `_copy_for_build` 若需要）。
 6. 四條鬆測試的補強照原計畫做。
+
+## 裁決三（2026-10-24 04:20，回應 verifier）
+7. TC-073 斷言的是 NOT_STORED 那句（rebuild 後沒有任何 task_usage 列走的路），不是「有 N 個成功的 task 沒有用量紀錄」。
+8. `su.RATES_PATH` 保持為「實際要讀的那個路徑」的模組名稱：載入時若 `data/su_rates.json` 存在就指向它，否則指向 repo 路徑；`load_rates()` 只讀 `RATES_PATH`。既有用 monkeypatch 把 `RATES_PATH` 指到不存在檔案的測試（TC-030、TC-050、test_station_envs.py:899）一字不改仍要讀不到、仍綠。
 
 ## 專長守則（backend）
 
