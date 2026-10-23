@@ -572,7 +572,7 @@ The automatic tests use fakes for the program runner, the detached start and the
 5. **Search for the key.** In `platform.db`, `abf-platform ce show gcb1`, the launch screen, the logs and `head.sh`, search for any piece of the key file and for its path. Check: nothing is found.
 6. **Two facts to write down in `specs/gcb-launch/ledger.md`.** Whether `process.resourceLabels` shows up as labels on the Batch job, and whether a short `network` / `subnetwork` name (if you set one) was accepted.
 
-**The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with the list under "Scope: files" in `specs/gcb-launch/plan.md`: nothing else is changed; `records.py`, `web*.py`, `agent.py` and the `hello` facts are untouched; no Slurm test file is touched. Of the C-1 tests (`test_gcb_ce.py`) only four places changed: the job kinds that are refused, the first line and name of the "never auto picked" test, the two patterns dropped from the "later slices" test, and the documentation strings.
+**The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with the list under "Scope: files" in `specs/gcb-launch/plan.md`: nothing else is changed; `records.py`, `web*.py`, `agent.py` and the `hello` facts are untouched; no Slurm test file is touched. Of the C-1 tests (`test_gcb_ce.py`) only five places changed: the job kinds that are refused, the first line and name of the "never auto picked" test, the two patterns dropped from the "later slices" test, the documentation strings, and the one job kind that `test_refusals_are_plain_words` probes (`launch_nextflow` is allowed now, so it asks `list_site_files`, which is still refused; the plan's list did not name this one, see the ledger).
 
 ## When something is red
 

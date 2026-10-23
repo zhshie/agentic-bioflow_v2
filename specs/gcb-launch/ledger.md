@@ -15,7 +15,7 @@
 
 ## Deviations from the plan, for the reviewer
 
-1. `test_gcb_ce.py::test_refusals_are_plain_words` (TC-078 of C-1) also changed: it expected `check_target(..., "launch_nextflow")` on an available gcb environment to be refused; it now uses `list_site_files`, which is still refused. The plan's "four places" list did not name it; it cannot stay as it was once a launch is allowed.
+1. `test_gcb_ce.py::test_refusals_are_plain_words` (TC-078 of C-1) also changed: it expected `check_target(..., "launch_nextflow")` on an available gcb environment to be refused; it now uses `list_site_files`, which is still refused. The plan's "four places" list did not name it; it cannot stay as it was once a launch is allowed. The refusal wording it protects is kept, and `list_site_files` is also covered by TC-094. docs/TESTING.md now says "five places" to match the diff (fix round after the TC-117 finding); whether to add it to the plan is the developer-agent's call.
 2. `NO_BUCKET_PATH` in `launch.py` writes `gcloud storage` and `cp` as two string pieces: TC-053 wants the message to mention that command, and `test_nothing_of_the_later_slices_exists` (TC-107) forbids the three characters-run `storage cp` anywhere in the source.
 3. `handlers.py` was not touched: the dispatch is inside `launch.run_launch` and `cancel.run_cancel`, which `handlers.handle` already calls.
 4. `compute_envs.snapshot` was not changed: the launch bundle's environment comes from `launch.snapshot_ce`; the preflight job keeps its own fields.
