@@ -7,13 +7,29 @@ rates file) the answer is None with the reasons, never a guess and never 0. Noth
 at the moment someone asks.
 """
 import datetime
+import importlib.util
 import json
 import sqlite3
 from pathlib import Path
 
 from . import compute_envs, jobs, status, store
 
-RATES_PATH = Path(__file__).resolve().parents[2] / "configs" / "sites" / "su_rates.json"
+
+
+def _rates_path():
+    """The rates file the wheel carries (abf_station/plugin/configs/sites), else the repository checkout's configs/sites."""
+    try:
+        spec = importlib.util.find_spec("abf_station")
+    except (ImportError, ValueError):
+        spec = None
+    for base in (spec.submodule_search_locations or []) if spec else []:
+        packaged = Path(base) / "plugin" / "configs" / "sites" / "su_rates.json"
+        if packaged.is_file():
+            return packaged
+    return Path(__file__).resolve().parents[2] / "configs" / "sites" / "su_rates.json"
+
+
+RATES_PATH = _rates_path()
 TAIPEI = datetime.timezone(datetime.timedelta(hours=8))   # a month is a calendar month in Asia/Taipei (UTC+8)
 MS_PER_HOUR = 3600000.0       # Nextflow's trace holds realtime in milliseconds (platform/tests/fixtures/payloads)
 NOT_STORED = ("這個 run 的紀錄沒有保存每個 task 的 cpus、realtime 與分區 "

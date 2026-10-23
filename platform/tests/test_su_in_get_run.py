@@ -160,6 +160,12 @@ def test_mcp_get_run_is_the_same_action(tmp_path):
     db, plat = _world(tmp_path, usage=TWO, ce="n4", su_site="nano4")
     assert "get_run" in {t.name for t in asyncio.run(build_server(db, plat).list_tools())}
     assert _get(db, plat)["su"]["su"] == pytest.approx(2.0)
+    # TC-SF-10: the tool itself is called through the server, and what it says is what the action says
+    out = asyncio.run(build_server(db, plat).call_tool("get_run", {"run_id": "id-run-a"}))
+    via = out.structuredContent if getattr(out, "structuredContent", None) else json.loads(out.content[0].text)
+    assert "su" in via and via["su"]["su"] == pytest.approx(2.0) and via["su"]["site"] == "nano4"
+    assert via["su"]["twd_nstc"] == pytest.approx(0.2) and via["su"]["twd_academic"] == pytest.approx(0.4)
+    assert via["su"] == _get(db, plat)["su"]
 
 
 def test_estimate_su_uses_the_site_of_the_run(tmp_path):
@@ -170,6 +176,17 @@ def test_estimate_su_uses_the_site_of_the_run(tmp_path):
     assert out["su"] == pytest.approx(2.0) and out["twd"]["industry"] == pytest.approx(0.74)
 
 
+def _clean(reasons, tmp_path):
+    """TC-SF-11..15 (TC-083): there is at least one reason and none of them shows a path, SQL or a token."""
+    assert reasons
+    for text in reasons:
+        low = text.lower()
+        assert str(tmp_path) not in text and "/" not in text and "\\" not in text, text
+        assert ".db" not in low and ".json" not in low, text
+        for bad in ("select", "task_usage", "sqlite", "traceback", "token"):
+            assert bad not in low, text
+
+
 def test_get_run_su_is_null_with_reason_for_an_old_run(tmp_path):
     # TC-020, TC-083
     db, plat = _world(tmp_path, usage=(), launch=False)
@@ -178,8 +195,7 @@ def test_get_run_su_is_null_with_reason_for_an_old_run(tmp_path):
     assert su["su"] is None and su["twd_nstc"] is None and su["twd_academic"] is None
     assert su["unknown_reasons"][0].startswith("這個 run 的紀錄沒有保存每個 task 的 cpus、realtime 與分區")
     assert su["site"] == "taiwania3" and "twd" not in su
-    for text in su["unknown_reasons"]:
-        assert "SELECT" not in text and "Traceback" not in text and "token" not in text.lower()
+    _clean(su["unknown_reasons"], tmp_path)      # TC-SF-11
 
 
 def test_old_run_with_nano4_launch_reports_nano4(tmp_path):
@@ -199,6 +215,7 @@ def test_old_index_without_the_table_reads_as_unknown(tmp_path):
     before = db.read_bytes()
     su = _get(db, plat)["su"]
     assert su["su"] is None and su["unknown_reasons"]
+    _clean(su["unknown_reasons"], tmp_path)      # TC-SF-12
     assert db.read_bytes() == before
     con = sqlite3.connect(str(db))
     assert not con.execute("SELECT name FROM sqlite_master WHERE name = 'task_usage'").fetchall()
@@ -240,6 +257,7 @@ def test_running_run_has_no_su_number(tmp_path, status):
     su = out["su"]
     assert su["su"] is None and su["twd_nstc"] is None and su["twd_academic"] is None
     assert su["unknown_reasons"] == [RUN_ENDED]
+    _clean(su["unknown_reasons"], tmp_path)      # TC-SF-13
 
 
 def test_missing_usage_rows_make_su_unknown(tmp_path):
@@ -248,6 +266,7 @@ def test_missing_usage_rows_make_su_unknown(tmp_path):
     su = _get(db, plat)["su"]
     assert su["su"] is None
     assert su["unknown_reasons"] == ["有 1 個成功的 task 沒有用量紀錄 (1 succeeded tasks have no usage record)"]
+    _clean(su["unknown_reasons"], tmp_path)      # TC-SF-14
 
 
 def test_unknown_run_has_no_su_key(tmp_path):
@@ -272,6 +291,7 @@ def test_unreadable_rates_file_gives_null_site(tmp_path, monkeypatch):
     monkeypatch.setattr(su, "RATES_PATH", tmp_path / "missing.json")
     s = _get(db, plat)["su"]
     assert s["su"] is None and s["site"] is None and "費率檔讀不到" in " ".join(s["unknown_reasons"])
+    _clean(s["unknown_reasons"], tmp_path)       # TC-SF-15
 
 
 # ---- site ------------------------------------------------------------------------------------------------------
@@ -304,6 +324,15 @@ def test_site_of_run_without_a_platform_db_is_the_default(tmp_path):
     # TC-048
     from abf_platform import su
     assert su.site_of_run(tmp_path / "none.db", "x", su.load_rates()) == "taiwania3"
+    # TC-SF-17, TC-SF-18: the same judgement, reached through actions.estimate_su (no site given, no caller)
+    from abf_platform import actions
+    db2, _plat = _world(tmp_path, succeeded=1, usage=[("1:1", "A", "COMPLETED", 4, 2 * H, "ct56")], ce="plain")
+    gone = tmp_path / "gone.db"
+    broken = tmp_path / "bad2.db"
+    broken.write_bytes(b"not a database at all" * 50)
+    for missing in (gone, broken):
+        out = actions.estimate_su(db2, "run-a", platform_path=missing)
+        assert out["su"] == pytest.approx(8) and out["twd_nstc"] == pytest.approx(0.64) and "twd" not in out
     bad = tmp_path / "bad.db"
     bad.write_bytes(b"not a database at all" * 50)
     assert su.site_of_run(bad, "x", su.load_rates()) == "taiwania3"
@@ -374,6 +403,27 @@ def test_a_run_without_usage_rows_stays_unknown(tmp_path):
     # TC-073 (a run rebuilt from trace.txt has no usage rows, so it is unknown as before)
     db, plat = _world(tmp_path, usage=(), ce="n4", su_site="nano4")
     assert _get(db, plat)["su"]["su"] is None
+    # TC-SF-16: a run really rebuilt by rebuild.py from a launch folder
+    from abf_platform import actions, common, rebuild, store
+    folder = tmp_path / "launch"
+    (folder / ".nextflow").mkdir(parents=True)
+    (folder / ".nextflow" / "history").write_text("2026-10-01 10:00:00\t1m\tbig_run\tOK\tabc\tsess-1\tx\n", encoding="utf-8")
+    (folder / ".nextflow.log").write_text(
+        "Oct-01 10:00:00.100 [main] DEBUG nextflow.Session - Session UUID: sess-1\n"
+        "Oct-01 10:00:00.200 [main] DEBUG nextflow.Session - Run name: big_run\n"
+        "Oct-01 10:00:00.300 [main] DEBUG nextflow.Session - Workflow started -- trace file: trace.txt\n"
+        "Oct-01 10:01:00.000 [main] DEBUG nextflow.Session - Session await > all barriers passed\n", encoding="utf-8")
+    (folder / "trace.txt").write_text("task_id\tname\tstatus\texit\n1\tA (1)\tCOMPLETED\t0\n", encoding="utf-8")
+    index = tmp_path / "rebuilt.db"
+    assert rebuild.rebuild([str(folder)], index, out=lambda *_: None).runs == 1
+    plat2 = tmp_path / "plat2.db"
+    store.connect_state(plat2).close()
+    own_runs(plat2, 1, ["big_run"])
+    out = actions.get_run(index, common.run_id("sess-1", "big_run"), caller=_caller(), platform_path=plat2)
+    assert out.get("found") is not False and out["status"] == "succeeded"
+    s = out["su"]
+    assert s["su"] is None and s["twd_nstc"] is None and s["twd_academic"] is None
+    assert len(s["unknown_reasons"]) == 1 and s["unknown_reasons"][0].startswith("這個 run 的紀錄沒有保存每個 task 的 cpus、realtime 與分區")
 
 
 def test_su_follows_the_stored_realtime(tmp_path):
