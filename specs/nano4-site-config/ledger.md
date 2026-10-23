@@ -21,3 +21,4 @@ If the site's Nextflow module does not work on nano4, copy `nchc-nano4-ce.json` 
   - `configs/sites/nchc-nano4-ce.json` 改成範本：`/work/u9613010/…` → `/work/<site_user>/…`，映像庫路徑 → `<nano4 read-only image library>`（真實值在 docs/SETTINGS.md 與驗收表）。理由：憲法第 3 條／`tests/no_hardcoded_paths.sh` 不放個人路徑；操作者建 CE 時代入。
   - `platform/tests/test_estimate_su.py`：N4-16／N4-21 改成對「填入佔位後」的副本做 `_check_slurm` 驗證（新增 `_filled()`）；N4-17／19／22 的字面值改成佔位字串；N4-21 的自裝路徑改 `/tmp/abf-test/…`（避開 TC-072）。語意不變：範本每個鍵仍逐一斷言，驗證仍真的跑。
   - `tests/skill_runs_uses_actions_test.sh`：刪 TC-097（第 196–199 行）。old＝`[ "$dn" = "1 0" ]` 對 origin/v3 的 TESTING.md numstat；new＝刪除。理由：#136 的一次性合約檢查，合併後在 v3 本身 numstat 為空也會紅（已在 v3 worktree 驗證），對任何改 TESTING.md 的分支必紅；CI 沒有 origin/v3 所以沒被抓到。TC-080～096 不動。
+- [x] 2026-10-23 developer-agent: docs/SETTINGS.md 的 nano4 一節補「範本佔位要填什麼」表（含唯讀映像庫真路徑），回應 verifier「repo 內沒有記下映像庫真路徑」。docs 不在 no_hardcoded_paths.sh 掃描範圍。
