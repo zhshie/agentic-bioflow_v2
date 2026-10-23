@@ -13,7 +13,17 @@ from pathlib import Path
 
 from . import compute_envs, jobs, status, store
 
-RATES_PATH = Path(__file__).resolve().parents[2] / "configs" / "sites" / "su_rates.json"
+def _rates_path():
+    """The rates file to read: the copy a wheel carries in this package's data/, else the repository's own file (a checkout)."""
+    here = Path(__file__).resolve()
+    packed = here.parent / "data" / "su_rates.json"
+    if packed.is_file():
+        return packed
+    up = list(here.parents)
+    return (up[2] if len(up) > 2 else here.parent) / "configs" / "sites" / "su_rates.json"
+
+
+RATES_PATH = _rates_path()
 TAIPEI = datetime.timezone(datetime.timedelta(hours=8))   # a month is a calendar month in Asia/Taipei (UTC+8)
 MS_PER_HOUR = 3600000.0       # Nextflow's trace holds realtime in milliseconds (platform/tests/fixtures/payloads)
 NOT_STORED = ("這個 run 的紀錄沒有保存每個 task 的 cpus、realtime 與分區 "
