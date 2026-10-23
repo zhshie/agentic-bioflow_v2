@@ -27,7 +27,6 @@ CHECK_NAMES = ["credential_name", "credential_file", "credential_shape", "creden
                "batch_api", "bucket"]
 GCB = "googlebatch-platform"
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="permission bits")
-windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
 
 
 @pytest.fixture
@@ -450,10 +449,12 @@ def test_a_key_file_other_people_can_read_is_refused(ip, monkeypatch):
     assert by_name(direct(p))["credential_file"][0] == "pass"
 
 
-@windows_only
 def test_permission_bits_are_not_checked_on_windows(ip, monkeypatch):
-    # TC-047
-    st, detail = by_name(direct(key_file(ip, monkeypatch)))["credential_file"]
+    # TC-047. Runs on every OS (CI forbids skips): the platform check is switched to Windows, and on POSIX
+    # the key file is deliberately world-readable (0644), which must then not be looked at.
+    from abf_station import gcb_preflight
+    monkeypatch.setattr(gcb_preflight, "sys", SimpleNamespace(platform="win32"))
+    st, detail = by_name(direct(key_file(ip, monkeypatch, mode=0o644)))["credential_file"]
     assert st == "pass" and "Windows 不檢查權限位" in detail
 
 
