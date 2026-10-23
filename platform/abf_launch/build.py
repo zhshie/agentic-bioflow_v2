@@ -133,8 +133,8 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet=
     """(environment name, bundle) for these choices, or Refusal. Nothing is shown, asked or written.
 
     owner (a user id, 116): the environment is chosen among, and must be, that user's own; None is the local terminal without an
-    account. area (the real path of the caller's own upload folder): every path cell of the samplesheet must lie inside it, on top of
-    the environment's own roots; None keeps the old roots (the terminal and stdio).
+    account. area (the real path of the caller's own upload folder): a path cell of the samplesheet that lies in the upload area must lie inside
+    it (anywhere else it only has to lie in the environment's own roots, as a path in params), on top of those roots; None keeps the old roots (the terminal and stdio).
 
     param_items are `name=value` strings as typed on a command line (the value is read as a number or true/false when it looks
     like one); params is a mapping that already has its types (the MCP tool). Both are put over the params file.
@@ -223,14 +223,18 @@ def _confine(state, bundle, area, roots):
     The agent resolves them again at job time and refuses a job whose paths moved (116b)."""
     rules = bundle_mod.rules
     entries = []
-    for r, c, cell in bundle_mod.path_cells(bundle["samplesheet"], bundle["path_columns"]):
-        real = os.path.realpath(cell)
-        if not real.startswith(area + os.sep):
-            raise area_refusal(area)
-        entries.append({"where": "samplesheet 第 %d 列第 %d 欄" % (r, c), "given": cell, "real": real})
     root = store.uploads_root(state)
     uploads = os.path.realpath(str(root))
     spellings = {rules.normalize(os.path.abspath(str(root))), rules.normalize(uploads)}
+    for r, c, cell in bundle_mod.path_cells(bundle["samplesheet"], bundle["path_columns"]):
+        real = os.path.realpath(cell)
+        lexical = rules.normalize(cell) if rules.path_problem(cell) is None else None
+        if _below(real, uploads) or (lexical and rules.inside(lexical, spellings)):
+            # the same judgement as a path in params: inside the upload area it must be a file of the caller's own folder (the folder
+            # itself is not a file); a cell anywhere else only has to lie in the read roots, which was checked when the bundle was built
+            if real == area or not _below(real, area) or not lexical:
+                raise area_refusal(area)
+            entries.append({"where": "samplesheet 第 %d 列第 %d 欄" % (r, c), "given": cell, "real": real})
     for name, value in bundle["params"].items():
         judged = _param_path(value, area, roots) if isinstance(value, str) else None
         if judged is None:

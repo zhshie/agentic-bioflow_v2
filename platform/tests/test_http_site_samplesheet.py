@@ -9,7 +9,6 @@ import logging
 import os
 import re
 import sqlite3
-from pathlib import Path
 
 import pytest
 
@@ -147,13 +146,16 @@ def test_tc009_a_changed_cell_is_not_the_approved_one(d):
     first = by_text(d, d.a, site_cells(4), answer=form_answer())
     cells = site_cells(4)
     cells[2] = cells[2].replace("Day5_03", "Day5_99")
-    other = by_text(d, d.a, cells)
-    assert pending(other) and other["id"] != first["id"]
-    renamed = by_text(d, d.a, site_cells(4)).get("id")
-    assert renamed == first["id"]
-    changed_name = d.launch(d.a, text=csv_text(site_cells(4)).replace("s01", "z01"), raw_args={"path_columns": COLS})
-    assert pending(changed_name) and changed_name["id"] not in (first["id"], other["id"])
+    other = by_text(d, d.a, cells)                  # the name is taken by the approved launch: nothing is sent, and nothing is the approved job
+    assert other["sent"] is False and other.get("job_id") != first["job_id"] and "job_id" not in other
+    renamed = d.launch(d.a, text=csv_text(site_cells(4)).replace("s01", "z01"), raw_args={"path_columns": COLS})
+    assert renamed["sent"] is False and "job_id" not in renamed
     assert len(d.w.jobs("launch_nextflow")) == 1
+    # and where the first one was only asked for, a changed cell or sample name is a different request of its own
+    p1 = by_text(d, d.a, site_cells(4), run="run-two")
+    p2 = by_text(d, d.a, cells, run="run-two")
+    p3 = d.launch(d.a, run="run-two", text=csv_text(site_cells(4)).replace("s01", "z01"), raw_args={"path_columns": COLS})
+    assert pending(p1) and pending(p2) and pending(p3) and len({p1["id"], p2["id"], p3["id"]}) == 3
 
 
 def _fail_run(d, run, job_id, slurm):
@@ -303,8 +305,6 @@ def test_tc023_the_refusal_does_not_tell_about_bob(d):
 
 def test_tc024_the_samplesheet_file_itself_must_still_be_in_my_folder(d):
     # TC-024
-    (d.uploads / "x").mkdir(exist_ok=True)
-    shared_sheet = Path(SHARED)
     b_sheet = d.sheet(d.b, ["%s/x.fq" % SHARED])
     d.area(d.a).mkdir(parents=True, exist_ok=True)
     os.symlink(str(b_sheet), str(d.area(d.a) / "link.csv"))
@@ -489,9 +489,9 @@ def test_tc051_the_same_text_from_bob_is_bobs_own_new_request(d):
     # TC-051
     d.bobs_environment()
     a = by_text(d, d.a, site_cells(2), answer=form_answer())
-    b_on_hers = by_text(d, d.b, site_cells(2), ce_name="lab-a")
+    b_on_hers = by_text(d, d.b, site_cells(2), run="run-b", ce_name="lab-a")
     assert refused(b_on_hers)
-    b = by_text(d, d.b, site_cells(2), ce_name="b1")
+    b = by_text(d, d.b, site_cells(2), run="run-b", ce_name="b1")
     assert pending(b) and b["id"] != a["id"] and "job_id" not in b
     assert len(d.w.jobs("launch_nextflow")) == 1
 
@@ -561,9 +561,10 @@ def test_tc058_tc059_tc060_no_upload_tool_no_site_job_no_folder_job(d):
     assert {t.name for t in tools} == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
                                        "read_task_log", "launch", "cancel", "forget", "resume", "relaunch"}
     before = tree(d.uploads)
+    jobs_before = [r["id"] for r in sql_rows(d.state, "SELECT id FROM jobs")]
     assert pending(by_text(d, d.a, site_cells(3)))
     assert tree(d.uploads) == before
-    assert sql_rows(d.state, "SELECT * FROM jobs") == []         # not a read, a list or a mkdir for the site, before the person says yes
+    assert [r["id"] for r in sql_rows(d.state, "SELECT id FROM jobs")] == jobs_before      # not a read, a list or a mkdir for the site, before the person says yes
 
 
 def test_tc061_the_same_lab_shares_nothing_by_text(d):

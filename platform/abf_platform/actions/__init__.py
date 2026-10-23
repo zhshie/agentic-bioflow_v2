@@ -428,19 +428,51 @@ def read_confined_samplesheet(platform_path, caller, samplesheet):
         return f.read()
 
 
-async def request_launch(platform_path, *, pipeline, revision, run_name, samplesheet, ce_name=None, params=None, path_columns=None,
-                         caller=None, person=None, clock=time.time, remote=False):
+_MAX_SAMPLESHEET_TEXT = 1024 * 1024        # bytes of UTF-8
+
+
+def _samplesheet_text_problem(samplesheet, samplesheet_text):
+    """Why the way the samplesheet was given cannot be used (exactly one of the file path and the CSV text, the text a non-empty str of at
+    most 1 MiB without a NUL), else None. The words are said to the person as they are."""
+    if (samplesheet is None) == (samplesheet_text is None):
+        return "samplesheet 與 samplesheet_text 只能給一個 (give exactly one of samplesheet and samplesheet_text)"
+    if samplesheet_text is None:
+        return None
+    if not isinstance(samplesheet_text, str):
+        return "samplesheet_text 必須是 CSV 文字 (samplesheet_text must be the CSV text as a string)"
+    if not samplesheet_text.strip():
+        return "samplesheet_text 是空的；請給 CSV 的內容 (samplesheet_text is empty; give the CSV content)"
+    if chr(0) in samplesheet_text:
+        return "samplesheet_text 含有 NUL 字元，不是 CSV 文字；請檢查內容 (samplesheet_text contains a NUL character)"
+    try:
+        size = len(samplesheet_text.encode("utf-8"))
+    except UnicodeEncodeError:
+        return "samplesheet_text 不是有效的文字；請給 UTF-8 的 CSV (samplesheet_text is not valid text; give UTF-8 CSV)"
+    if size > _MAX_SAMPLESHEET_TEXT:
+        return "samplesheet_text 太大（上限 1 MiB）；請縮小，或改用上傳的檔案 (samplesheet_text is too large: at most 1 MiB)"
+    return None
+
+
+async def request_launch(platform_path, *, pipeline, revision, run_name, samplesheet=None, samplesheet_text=None, ce_name=None, params=None,
+                         path_columns=None, caller=None, person=None, clock=time.time, remote=False):
     """Ask for a launch the way the terminal command does: same choices, same bundle, same screen, same refusals. Writes a pending
-    request and asks the person; the answer says whether a job exists. Nothing is queued without a person's yes."""
+    request and asks the person; the answer says whether a job exists. Nothing is queued without a person's yes. The samplesheet is
+    given as a file (`samplesheet`) or as the CSV itself (`samplesheet_text`, read from memory, never written), exactly one of the two."""
+    problem = _samplesheet_text_problem(samplesheet, samplesheet_text)
+    if problem:
+        return _no("未送出：%s" % problem)
     if params is not None and not isinstance(params, dict):
         return _no("params 必須是名稱到值的對照 (params must be a mapping)")
     if path_columns is not None and (not isinstance(path_columns, list) or not all(isinstance(c, str) for c in path_columns)):
         return _no("path_columns 必須是文字清單 (path_columns must be a list of names)")
     try:
         raw = area = None
+        if samplesheet_text is not None:
+            raw = samplesheet_text.encode("utf-8")      # no file: the rows come from the text, and the cells are judged as for a file
         if caller is not None:         # over HTTP the file must be the caller's own, and is read once; stdio and the terminal read the path as given
-            raw = read_confined_samplesheet(platform_path, caller, samplesheet)
-            area = caller_area(platform_path, caller)      # and so must every path cell in it (116); the environment must be the caller's too
+            if raw is None:
+                raw = read_confined_samplesheet(platform_path, caller, samplesheet)
+            area = caller_area(platform_path, caller)      # a path cell in the upload area must be in it (116); the environment must be the caller's too
         ce, bundle = build.prepare_launch(platform_path, ce=ce_name, pipeline=pipeline, revision=revision, run_name=run_name,
                                           samplesheet=samplesheet, params=params, path_columns=path_columns, check_name=False,
                                           samplesheet_raw=raw, owner=_caller_id(caller), area=area)
