@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "findings": [
+    {"node": "b", "channel": 0, "code": "META_MISMATCH", "severity": "error",
+     "message": "邊 a.out → b.0：輸出是 [meta, ...] 的 tuple，輸入是沒有 meta 的單一值，兩端的 meta 對不上；中間需要一個轉換節點，或改接別的通道 (edge a.out -> b.0: the output is a [meta, ...] tuple but the input is a single value with no meta, so the meta does not match; add a conversion node or wire another channel)"},
+    {"node": "c", "channel": 0, "code": "TYPE_MISMATCH", "severity": "error",
+     "message": "邊 a.out → c.0：輸出的類型是 path，輸入的類型是 val，型別對不上；改接別的通道，或中間加一個轉換節點 (edge a.out -> c.0: the output carries path but the input expects val, so the types do not match; wire another channel or add a conversion node)"},
+    {"node": "d", "channel": 1, "code": "META_MISMATCH", "severity": "error",
+     "message": "邊 a.out → d.1：輸出是 [meta, ...] 的 tuple，輸入是沒有 meta 的單一值，兩端的 meta 對不上；中間需要一個轉換節點，或改接別的通道 (edge a.out -> d.1: the output is a [meta, ...] tuple but the input is a single value with no meta, so the meta does not match; add a conversion node or wire another channel)"},
+    {"node": "d", "channel": 1, "code": "MIXED_SOURCES", "severity": "error",
+     "message": "輸入 d.1 同時接了不相容的來源 a.out 與 e.out，混合後內容不一致；同一個輸入只接類型相同的來源，或拆成不同的輸入 (input d.1 receives the incompatible sources a.out and e.out, which cannot be mixed; wire only sources of the same kind to one input or use separate inputs)"},
+    {"node": "d", "channel": 0, "code": "OPEN_INPUT", "severity": "warning",
+     "message": "節點 d 少了一個輸入：輸入 0 沒有接線，輸入名：d0；確認它是否可以省略，不能省略就接上線 (node d is missing an input: input 0 is not wired, names: d0; check whether it may be left out, otherwise wire it)"},
+    {"node": "g", "channel": 0, "code": "PATTERN_MISMATCH", "severity": "warning",
+     "message": "邊 a.out → g.0：輸出的檔名樣式 *.{bam} 與輸入的 *.{vcf} 沒有共同的副檔名，可能接錯了；確認這兩個通道是否該相接 (edge a.out -> g.0: the output file pattern *.{bam} and the input pattern *.{vcf} share no extension, so the edge may be wrong; check that these two channels belong together)"}
+  ],
+  "open_inputs": [{"node": "d", "input": 0, "names": ["d0"]}]
+}

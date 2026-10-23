@@ -2,14 +2,16 @@
 """Composed pipelines (spec 017b): a graph of nf-core modules kept per owner, with numbered versions that are only ever added.
 Every function takes the platform path first and `caller=` (None = the terminal, which sees everything). What belongs to somebody
 else answers like what does not exist. This saves a description in the platform's own database and turns it into text; it starts
-nothing and touches no site. The two tables are made the first time they are used and are not part of `store.STATE_SCHEMA`, so a
+nothing and touches no site. The three tables are made the first time they are used and are not part of `store.STATE_SCHEMA`, so a
 reader must make them itself before it looks (`_table`)."""
+import hashlib
 import json
 import re
 import sqlite3
 import time
 
 from .. import compose, store
+from .. import validate as checks
 
 _NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
 
@@ -34,6 +36,16 @@ CREATE TRIGGER IF NOT EXISTS pipeline_versions_no_update BEFORE UPDATE ON pipeli
 CREATE TRIGGER IF NOT EXISTS pipeline_versions_no_delete BEFORE DELETE ON pipeline_versions
     BEGIN SELECT RAISE(ABORT, 'pipeline versions are append-only'); END;
 """
+_TABLES += """CREATE TABLE IF NOT EXISTS pipeline_validations (
+    pipeline_id INTEGER NOT NULL,
+    version INTEGER NOT NULL,
+    graph_sha256 TEXT NOT NULL,
+    %s TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    validated_at REAL NOT NULL,
+    PRIMARY KEY (pipeline_id, version)
+);
+""" % checks.SHA_FIELD
 
 _SAVE_FAILED = "存檔沒有成功，什麼都沒有寫入；請稍後再試一次 (the save did not work and nothing was written; try again in a moment)"
 
@@ -192,3 +204,48 @@ def render_pipeline(platform_path, pipeline_id, version=None, *, caller=None, da
         return _no("這個版本的圖現在轉不出專案檔；請存一個修正後的新版本 "
                    "(this version of the graph can no longer be turned into a project; save a corrected version)")
     return {"ok": True, "name": got["name"], "version": got["version"], "files": out["files"], "open_inputs": out["open_inputs"]}
+
+
+def validate_pipeline(platform_path, pipeline_id, version=None, *, caller=None, data=None, clock=time.time):
+    """Check one version of a pipeline (no version means the newest) and keep the result as the latest one of that version. The
+    outer `ok` says the call worked; `validation.ok` says the graph has no error. Only the platform's own database is written."""
+    got = get_pipeline(platform_path, pipeline_id, version, caller=caller)
+    if not got["ok"]:
+        return got
+    result = checks.validate(got["graph"], data)
+    now = clock()
+    con = store.connect_state(platform_path)
+    try:
+        _table(con)
+        con.execute("INSERT OR REPLACE INTO pipeline_validations (pipeline_id, version, graph_sha256, %s, result_json, "
+                    "validated_at) VALUES (?, ?, ?, ?, ?, ?)" % checks.SHA_FIELD,
+                    (got["id"], got["version"], hashlib.sha256(compose.graph_json(got["graph"]).encode("utf-8")).hexdigest(),
+                     result[checks.SHA_FIELD] or "", json.dumps(result, sort_keys=True, ensure_ascii=False), now))
+        con.commit()
+    except sqlite3.Error:
+        con.rollback()
+        return _no("驗證結果沒有存成功；請稍後再試一次 (the check result was not saved; try again in a moment)")
+    finally:
+        con.close()
+    return {"ok": True, "id": got["id"], "name": got["name"], "version": got["version"],
+            "validation": dict(result, validated_at=now, stale=False)}
+
+
+def get_validation(platform_path, pipeline_id, version=None, *, caller=None, data=None):
+    """The kept result of the latest check of one version, or `validation: None` when it was never checked. `stale` is True when
+    the module list of now is not the one the check was made against; nothing is checked again here."""
+    got = get_pipeline(platform_path, pipeline_id, version, caller=caller)
+    if not got["ok"]:
+        return got
+    con = store.connect_state(platform_path)
+    try:
+        _table(con)
+        row = con.execute("SELECT * FROM pipeline_validations WHERE pipeline_id = ? AND version = ?",
+                          (got["id"], got["version"])).fetchone()
+    finally:
+        con.close()
+    out = {"ok": True, "id": got["id"], "name": got["name"], "version": got["version"], "validation": None}
+    if row is not None:
+        out["validation"] = dict(json.loads(row["result_json"]), validated_at=row["validated_at"],
+                                 stale=checks.current_sha(data) != row[checks.SHA_FIELD])
+    return out
