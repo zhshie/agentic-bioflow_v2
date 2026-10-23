@@ -573,3 +573,51 @@ def test_abort_tc009_the_agent_rebuilds_the_same_bundle_with_the_block_and_write
         res = run_job(fake, job_of(b))
         assert res["state"] == "done", res
     assert (folder(site) / "nextflow.config").read_bytes() == b["files"]["nextflow.config"].encode("utf-8")
+
+
+# ---- launch-site-pipeline (M1-02): the agent rebuilds and writes the site-module head script ---------------------------------
+
+from test_launch_bundle import SITE_CE
+
+
+def test_tc_ls_43_44_45_47_a_site_launch_is_rebuilt_byte_for_byte_and_a_changed_source_is_refused(tmp_path, site, fake):
+    # TC-LS-43, TC-LS-47 (pipeline_source lives in the bundle only)
+    b = bundle_for(site, fake, ce=SITE_CE)
+    assert b["pipeline_source"]["kind"] == "site-module"
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+        assert res["state"] == "done", res
+    head = (folder(site) / "head.sh").read_text()
+    assert head == b["files"]["head.sh"] and 'module load biology/Nextflow/26.10.0' in head and " -r " not in head
+    assert len([c for c in site.calls() if c.startswith("sbatch")]) == 1
+
+
+@pytest.mark.parametrize("how", ["source", "modules"])
+def test_tc_ls_44_45_a_bundle_changed_after_the_yes_is_refused(tmp_path, site, fake, how):
+    b = bundle_for(site, fake, ce=SITE_CE)
+    if how == "source":
+        b["pipeline_source"] = {"kind": "remote"}
+    else:
+        b["ce"]["modules"] = b["ce"]["modules"] + ["evil/mod"]
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+    assert res["state"] != "done", res
+    assert not folder(site).exists()
+    assert not [c for c in site.calls() if c.startswith("sbatch")]
+
+
+def test_tc_ls_33_a_bad_module_in_a_confirmed_bundle_is_refused_naming_modules(tmp_path, site, fake):
+    b = bundle_for(site, fake, ce=SITE_CE)
+    b["ce"]["modules"] = ["a;b"]
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+    assert res["state"] != "done" and "modules" in json.dumps(res, ensure_ascii=False) and "內容不合規則" in json.dumps(res, ensure_ascii=False)
+    assert not folder(site).exists() and not [c for c in site.calls() if c.startswith("sbatch")]
+
+
+def test_tc_ls_47_launches_table_columns_are_unchanged():
+    # TC-LS-47: the source of a launch is kept in bundle_json, not in a column
+    import re as _re
+    src = Path(__file__).resolve().parents[1].joinpath("abf_platform").glob("*.py")
+    text = "\n".join(p.read_text(encoding="utf-8") for p in src)
+    assert not _re.search(r"pipeline_source\s+TEXT", text) and "ADD COLUMN pipeline_source" not in text
