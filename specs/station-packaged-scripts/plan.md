@@ -59,6 +59,12 @@ base: v3
 6. 找不到時的訊息照現在的寫法保留腳本路徑（使用者需要知道），補上「安裝版裡沒有，也沒給 --plugin-root」。
 7. `.gitignore` 忽略 `platform/abf_station/plugin/`；範圍檔清單加 `platform/abf_station/plugin/`（只限建置產物，不提交）。
 
+## 裁決三（2026-10-24 01:35，回應第二次出題退回）
+8. **找不到來源就報錯（選 a）**：建置 hook 找不到 repo 的 `scripts/` 或 `configs/` 時 SystemExit，跟 skills 一樣，不做出缺腳本的 wheel。允許 executor 修改 `platform/tests/test_guidance.py` 的 `_copy_for_build`，讓暫存 repo 也帶 `scripts/` 與 `configs/`；TC-404 的斷言不變。
+9. 訊息不鎖語言與逐字措辭，意思要到（安裝版裡沒有、也沒給 --plugin-root、請用 --plugin-root 指定），並含腳本路徑——這是使用者要知道的位置，例外於「不露出內部路徑」守則。
+10. TC-406 可放寬的範圍＝含 abf_platform 那一條，另含 abf_station 的 plugin 的 scripts／configs。
+11. 逐位元比對排除 `__pycache__` 與 `*.pyc`。
+
 ## 專長守則（backend）
 
 ### executor
