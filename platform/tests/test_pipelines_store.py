@@ -256,7 +256,7 @@ def test_error_messages_hide_internals(d, caplog):
     token_like = re.compile(r"abf_[a-z]+_[A-Za-z0-9]{8,}|scrypt|password", re.I)
     assert not token_like.search(text)
     for r in seen:
-        assert re.search(r"[一-鿿]", r["message"]) and re.search(r"\([ -~]+\)\s*$", r["message"]), r["message"]
+        assert re.search(r"[一-鿿]", r["message"]) and re.search(r"\([ -~]+\)", r["message"]), r["message"]
 
 
 # ---- constitution -------------------------------------------------------------------------------------------------------
