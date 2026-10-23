@@ -1,0 +1,26 @@
+{
+    "homePage": "",
+    "name": "old-format",
+    "repos": {
+        "https://github.com/nf-core/modules.git": {
+            "modules": {
+                "nf-core": {
+                    "custom/clustermetrics": {
+                        "branch": "master",
+                        "git_sha": "5ed90b42e78410e7411e9c6bdfeff33226d6c58e",
+                        "installed_by": [
+                            "modules"
+                        ]
+                    },
+                    "strdust": {
+                        "branch": "master",
+                        "git_sha": "5ed90b42e78410e7411e9c6bdfeff33226d6c58e",
+                        "installed_by": [
+                            "modules"
+                        ]
+                    }
+                }
+            }
+        }
+    }
+}
