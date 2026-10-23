@@ -266,6 +266,15 @@ t "a --user starting with '_' is refused - it would collide with the shared area
   "reserved" -- env LAB_RUNS_DIR="$TMP/x5" bash "$S" site --user _references
 t "site side with no run area known fails clearly, not silently"  2 \
   "no run area known" -- env -u LAB_RUNS_DIR bash "$S" site --user alice
+# A developer's own deployment: a home whose pointer leads to a root whose
+# env.yaml names a storage_root that cannot be created (even as root).
+DEVHOME="$TMP/devhome"; DEVROOT="$TMP/devroot"
+mkdir -p "$DEVHOME/.config/agentic-bioflow" "$DEVROOT/config"
+printf '%s\n' "$DEVROOT" > "$DEVHOME/.config/agentic-bioflow/root"
+printf 'storage_root: /proc/no-such-run-area/work\n' > "$DEVROOT/config/env.yaml"
+in_dev_home() { ( export HOME="$DEVHOME" XDG_CONFIG_HOME="$DEVHOME/.config"; "$@" ); }
+t "site side ignores the developer's own deployment when testing"  2 \
+  "no run area known" -- in_dev_home env -u LAB_RUNS_DIR bash "$S" site --user alice
 t "--run without --project is refused - a run belongs to one project" 2 \
   "needs --project" -- env LAB_RUNS_DIR="$TMP/x6" bash "$S" site --run some_run_20260908
 
