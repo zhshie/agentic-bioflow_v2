@@ -40,6 +40,12 @@ PR #176 讓模組目錄的每筆輸入記錄帶 `optional`（布林）。PR #178
 ## 裁決（2026-10-24，developer-agent）
 1. 不需要 migration（只改判定，存的結果是同一張表、同一形狀）。
 
+## 裁決二（2026-10-24 06:25，回應 verifier；取代「目標」裡的判定句）
+2. **必填的判定只看非 meta 記錄**：通道裡 type 為 `map` 的記錄（meta）不算。其餘記錄中**有任一筆 `optional` 明確為 `false`** → 通道必填；其餘記錄全是 `optional: true`、或**沒有 `optional` 欄位**、或通道只有 meta 記錄 → 不算必填（維持 warning）。例：samtools_sort 輸入 1（meta2 false、fasta true、fai true）→ 非 meta 都 true → warning；輸入 2（index_format false）→ 必填。
+3. 合成目錄沒有 optional 欄 ＝ 不算必填，所以 `bad_edges.expected.json` 預期不必改；若改了要在 ledger 手推說明。
+4. 允許更新既有 `test_validate.py::test_open_inputs_are_warnings_never_errors_and_entry_nodes_say_so`（約 282 行）：改名並改成新規則（非入口＋必填 → error；可省略／入口 → warning）；`mod()` 輔助函式可加 optional 參數，預設不帶欄位。其他既有斷言不動。
+5. 錯誤訊息沿用現有「少了一個輸入…」措辭（中英並列、節點、輸入號、輸入名），只改 severity。
+
 ## 專長守則（backend）
 
 ### executor
