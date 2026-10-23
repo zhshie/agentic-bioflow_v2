@@ -93,3 +93,7 @@ golden 腳本含兩行 `module load` 與上述 `exec` 行；未命中路徑逐�
 8. **站台端驗證**：`_check_ce` 直接重用 `compute_envs._module_problem`／`_var_problem`（import，不重抄），所以 `modules=["a;b"]` 在站台也被拒並點名 `modules`。裁決 0 的「只驗形狀」撤回。
 9. **假 CE 一律用裁決 1 的值**（modules 只有 Nextflow 一項）；test_station_envs 既有 NANO4 常數不動也不混用。
 10. **其餘細節**：`module load` 失敗要讓腳本停下（`module load X || exit 1`），位置在 `umask 077` 之後、任何 nextflow 指令之前；舊 bundle 沒有 `pipeline_source` → 視為 `{"kind":"remote"}`；`sitePipelines` 有重複 (pipeline, revision) 時取第一項（CE 驗證已在 ce-nano4-keys 拒絕重複則不會發生）；`-resume` 照現在的位置不動。
+
+## 裁決三（2026-10-23，回應第三次出題退回）
+11. **第 7 條刪除**：本任務的 exec 行**不加** `-profile singularity`，命中與未命中都不加。singularity 由站台 config 提供（`configs/sites/nchc-nano4.config` 設 `singularity{enabled=true; autoMounts=true}`，屬 nano4-site-config 任務），維護者原話的 `-profile singularity` 是他手動跑時的寫法，平台走 config。既有 golden 照舊沒有它。
+12. **module load 失敗＝停下、回報**，不自動退回遠端（developer-agent 決定：靜默退回會讓使用者以為跑的是站台版本；維護者原話的「缺 module 退回 owner/name -r rev」指的是 sitePipelines 沒命中）。TC-014 照「停下」出題。
