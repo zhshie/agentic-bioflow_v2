@@ -56,6 +56,7 @@ def _view(con, row, at, detail):
         "started_at": common.epoch_iso(row["started_at"]),
         "ended_at": common.epoch_iso(row["ended_at"]),
         "tasks": tasks,
+        "project": row["project_name"] if "project_name" in row.keys() else None,     # Nextflow's projectName; an older index has no column
     }
     if detail and st == "failed" and "failure_reason" in row.keys() and row["failure_reason"]:
         view["failure_reason"] = row["failure_reason"]   # Nextflow's own words; an index made before follow-up 3 has no column

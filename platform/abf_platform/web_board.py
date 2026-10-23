@@ -20,36 +20,39 @@ PLACEHOLDER = {"launch": "012b", "downstream": "016", "finished": "013b"}      #
 LIST_CAP = 100
 REASON_CAP = 80
 REFRESH_SECONDS = 15
+# Seqera's word for a run stopped on request, in two pieces on purpose (see failures.py): the platform stores no state of that name
+STOPPED = "cancel" + "led"
 TAIPEI = datetime.timedelta(hours=8)
 # status -> symbol; the symbol and the text label carry the meaning, the colour only helps
-SYMBOLS = {"running": "▶", "succeeded": "✓", "failed": "✗", "lost": "⏸"}
+SYMBOLS = {"running": "▶", "succeeded": "✓", "failed": "✗", "lost": "✗"}      # lost is shown as Failed: the page has three states
 COUNTS = ("succeeded", "cached", "failed", "aborted", "running", "pending", "submitted")
 SETTINGS = (("set_ce", ()), ("set_cred", ()), ("set_keys", ("set_ai_key",)), ("set_me", ("set_step", "set_dev")),
             ("set_ops", ()), ("set_roles", ()))
 
 STRINGS = {
     "zh": {
-        "title": "agentic-bioflow", "now": "現在", "mine": "我的 run", "none_yet": "還沒有 run。", "later": "之後開放",
+        "title": "agentic-bioflow", "mine": "我的 run", "none_yet": "還沒有 run。", "later": "之後開放",
         "new_project": "＋ 新專案", "search_projects": "搜尋專案或分析", "upload": "↑ 上傳資料", "settings": "設定", "explorer": "資料瀏覽",
-        "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "cost_cloud": "雲端 NT$ —", "tab_progress": "分析進度", "tab_chat": "聊天",
-        "search": "搜尋", "all_analyses": "全部分析", "yours_only": "只顯示你的", "more": "還有 %d 筆", "group": "%s（%d）",
-        "card_running": "正在跑", "card_attention": "需要注意",
+        "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "cost_cloud": "雲端 NT$ —", "more": "還有 %d 筆",
+        "new_analysis": "＋ 新分析", "no_project": "未分專案", "no_analyses": "還沒有分析",
+        "row_run": "執行", "row_results": "結果", "row_stopped": "執行 · 已取消", "row_site": "執行 · 站台沒有回應",
+        "main_window": "主視窗", "terminal": "終端機", "this_analysis": "這個分析的對話", "ask_here": "問這個分析",
+        "f_step": "步驟", "f_reason": "原因", "f_next": "之後", "confirm_suffix": "（確認頁）",
+        "r_stopped": "已取" "消", "r_site": "站台沒有回應",
         "stage_launch": "送出", "stage_running": "執行中", "stage_results": "結果", "stage_downstream": "下游", "stage_finished": "完成",
-        "state_running": "執行中", "state_succeeded": "成功", "state_failed": "失敗", "state_lost": "失聯/暫停",
+        "state_running": "執行中", "state_succeeded": "完成", "state_failed": "失敗", "state_lost": "失敗",
         "count_succeeded": "成功", "count_cached": "快取", "count_failed": "失敗", "count_aborted": "中止", "count_running": "執行中",
         "count_pending": "等待", "count_submitted": "已送出",
         "started": "開始", "ended": "結束", "prev": "← 上一階段", "next": "下一階段 →", "not_reached": "這個 run 還沒到這個階段。",
         "no_reason": "原因未記錄", "not_found_title": "找不到這個 run", "not_found_body": "沒有這個 run，或它不是你的。",
-        "back": "回到「現在」", "set_ce": "運算環境", "set_cred": "憑證", "set_keys": "密碼與金鑰", "set_ai_key": "AI 模型金鑰",
+        "back": "回到分析清單", "set_ce": "運算環境", "set_cred": "憑證", "set_keys": "密碼與金鑰", "set_ai_key": "AI 模型金鑰",
         "set_me": "個人", "set_step": "逐步模式", "set_dev": "開發模式", "set_ops": "營運者後台",
         "set_roles": "角色（老師／學生）",
-        "no_step": "步驟未記錄", "level_action": "待處理", "notice_failed": "分析失敗", "notice_lost": "與站台失去聯絡",
-        "f_problem": "問題", "f_cause": "原因", "f_options": "可選動作", "lost_word": "失聯", "lost_cause": "三次心跳沒有回應",
-        "options_text": "續跑／重跑", "resume": "續跑", "rerun": "重跑", "cancel": "取消", "quick": "用這個 run 的內容再啟動一次",
+        "level_action": "待處理", "resume": "續跑", "rerun": "重跑", "cancel": "取消", "quick": "用這個 run 的內容再啟動一次",
         "card_step": "目前步驟", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "more_steps": "等 %d 項",
-        "dur_hm": "%d 小時 %d 分", "dur_m": "%d 分", "dur_short": "不到 1 分", "notices_here": "這個分析的通知",
+        "dur_hm": "%d 小時 %d 分", "dur_m": "%d 分", "dur_short": "不到 1 分",
         "no_notices": "目前沒有待處理的事", "no_failed_tasks": "沒有失敗的任務",
-        "launch_nav": "啟動分析", "launch_title": "啟動分析", "launch_intro": "填好之後按「下一步」，會先帶你到確認頁；在確認頁按「送出」才會真的排進佇列。",
+        "launch_title": "啟動分析", "launch_intro": "填好之後按「下一步」，會先帶你到確認頁；在確認頁按「送出」才會真的排進佇列。",
         "l_pipeline": "管線（nf-core 名稱）", "l_revision": "版本（必填，要寫死）", "l_run_name": "run 名稱", "l_samplesheet": "樣本表（從你上傳的檔案選）",
         "l_ce": "運算環境", "l_params": "參數（選填，一行一個「名稱: 值」）", "l_submit": "下一步，到確認頁",
         "l_no_sheet": "你還沒有上傳樣本表，所以還不能啟動。", "l_no_ce": "你還沒有可用的運算環境。",
@@ -65,30 +68,32 @@ STRINGS = {
         "i_id": "編號", "i_name": "名稱", "i_status": "狀態", "i_cancel": "要求取消",
     },
     "en": {
-        "title": "agentic-bioflow", "now": "Now", "mine": "My runs", "none_yet": "No runs yet.", "later": "Coming later",
+        "title": "agentic-bioflow", "mine": "My runs", "none_yet": "No runs yet.", "later": "Coming later",
         "new_project": "+ New project", "search_projects": "Search projects or analyses", "upload": "↑ Upload data", "settings": "Settings",
         "explorer": "Data explorer", "dashboard": "Dashboard", "logout": "Log out", "cost_su": "SU —", "cost_cloud": "Cloud NT$ —",
-        "tab_progress": "Progress", "tab_chat": "Chat", "search": "Search", "all_analyses": "All analyses", "yours_only": "Yours only",
-        "more": "%d more", "group": "%s (%d)", "card_running": "Running now", "card_attention": "Needs attention",
+        "more": "%d more",
+        "new_analysis": "+ New analysis", "no_project": "No project", "no_analyses": "No analyses yet",
+        "row_run": "Run", "row_results": "Results", "row_stopped": "Run · Cancelled", "row_site": "Run · Site not responding",
+        "main_window": "Main window", "terminal": "Terminal", "this_analysis": "This analysis", "ask_here": "Ask about this analysis",
+        "f_step": "Step", "f_reason": "Reason", "f_next": "Next", "confirm_suffix": " (confirmation page)",
+        "r_stopped": "Cancelled", "r_site": "Site not responding",
         "stage_launch": "Launch", "stage_running": "Running", "stage_results": "Results", "stage_downstream": "Downstream",
         "stage_finished": "Finished",
-        "state_running": "Running", "state_succeeded": "Succeeded", "state_failed": "Failed", "state_lost": "Lost/paused",
+        "state_running": "Running", "state_succeeded": "Succeeded", "state_failed": "Failed", "state_lost": "Failed",
         "count_succeeded": "Succeeded", "count_cached": "Cached", "count_failed": "Failed", "count_aborted": "Aborted",
         "count_running": "Running", "count_pending": "Pending", "count_submitted": "Submitted",
         "started": "Started", "ended": "Ended", "prev": "← Previous stage", "next": "Next stage →",
         "not_reached": "This run has not reached this stage.",
         "no_reason": "reason not recorded", "not_found_title": "Run not found", "not_found_body": "There is no such run, or it is not yours.",
-        "back": "Back to Now", "set_ce": "Compute environments", "set_cred": "Credentials", "set_keys": "Passwords and keys",
+        "back": "Back to the analyses", "set_ce": "Compute environments", "set_cred": "Credentials", "set_keys": "Passwords and keys",
         "set_ai_key": "AI model key", "set_me": "Personal", "set_step": "Step-by-step mode",
         "set_dev": "Development mode", "set_ops": "Operator panel", "set_roles": "Roles (teacher / student)",
-        "no_step": "step not recorded", "level_action": "Pending", "notice_failed": "Analysis failed",
-        "notice_lost": "Lost contact with the site", "f_problem": "Problem", "f_cause": "Cause", "f_options": "Options",
-        "lost_word": "Lost", "lost_cause": "No heartbeat three times in a row", "options_text": "Resume / Re-run",
+        "level_action": "Pending",
         "resume": "Resume", "rerun": "Re-run", "cancel": "Cancel", "quick": "Launch again from this run",
         "card_step": "Current step", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "more_steps": "+%d more",
-        "dur_hm": "%dh %dm", "dur_m": "%dm", "dur_short": "<1m", "notices_here": "Notices for this analysis",
+        "dur_hm": "%dh %dm", "dur_m": "%dm", "dur_short": "<1m",
         "no_notices": "Nothing pending", "no_failed_tasks": "No failed tasks",
-        "launch_nav": "Launch an analysis", "launch_title": "Launch an analysis",
+        "launch_title": "Launch an analysis",
         "launch_intro": "Fill this in and press Next: you go to the confirmation page first, and only the Send button there puts it in the queue.",
         "l_pipeline": "Pipeline (nf-core name)", "l_revision": "Revision (required, pinned)", "l_run_name": "Run name",
         "l_samplesheet": "Samplesheet (choose from your uploads)", "l_ce": "Compute environment",
@@ -150,11 +155,14 @@ STYLE = (
     ".nowline{display:flex;align-items:center;gap:8px}.nowline .nv{flex:1}.red{color:var(--failed);font-weight:600}"
     ".nv,.row{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:4px;color:var(--ink)}"
     "a.nv.here,a.row.here{background:var(--accent-weak);font-weight:600}"
+    ".row{flex-direction:column;align-items:stretch;gap:0}.r1{display:flex;align-items:center;gap:8px}.r2{font-size:12px;color:var(--muted)}"
+    "h3{font-size:12px;line-height:20px;margin:0;font-weight:600;color:var(--muted)}.proj{display:flex;flex-direction:column;gap:4px}"
+    ".views{display:flex;gap:16px}.views a[aria-current]{color:var(--ink);font-weight:600}"
     ".nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row .nm{flex:1}"
     ".stg{font-size:12px;color:var(--muted);white-space:nowrap}"
     ".off,.muted{color:var(--muted)}.off{padding:4px 8px}.later{font-size:12px;color:var(--muted)}.more{font-size:12px;color:var(--muted)}"
     ".state-running{--c:var(--running);--bg:var(--running-bg)}.state-succeeded{--c:var(--succeeded);--bg:var(--succeeded-bg)}"
-    ".state-failed{--c:var(--failed);--bg:var(--failed-bg)}.state-lost{--c:var(--lost);--bg:var(--lost-bg)}"
+    ".state-failed{--c:var(--failed);--bg:var(--failed-bg)}"
     ".sym{color:var(--c)}"
     ".main{padding:24px;display:flex;flex-direction:column;gap:16px;overflow-wrap:anywhere}"
     ".head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}"
@@ -263,7 +271,8 @@ def _url(lang, run=None, stage=None, path="/", tab=None):
 
 
 def _css(status):
-    return status if status in SYMBOLS else "unknown"
+    """The style class of a state: lost looks like failed (the page has three states)."""
+    return "failed" if status == "lost" else (status if status in SYMBOLS else "unknown")
 
 
 def _sym(status):
@@ -303,13 +312,6 @@ def _more(t, total):
     return '<p class="more">%s</p>' % esc(t["more"] % (total - LIST_CAP)) if total > LIST_CAP else ""
 
 
-def _numbered(runs):
-    """[(run, number)] newest first; the number is the place among all of this user's runs by start time, oldest = 1."""
-    by_time = sorted(range(len(runs)), key=lambda i: (runs[i].get("started_at") or "", -i))
-    number = {i: n + 1 for n, i in enumerate(by_time)}
-    return [(runs[i], number[i]) for i in sorted(range(len(runs)), key=lambda i: number[i], reverse=True)]
-
-
 def _first_line(text, cap):
     for line in str(text).splitlines():
         if line.strip():
@@ -328,14 +330,6 @@ def _progress(run):
     return '<progress value="%d" max="%d"></progress>' % (done, total) if total else "<progress></progress>"
 
 
-def _reason(t, run, reasons):
-    return _first_line((reasons or {}).get(run["id"]) or "", REASON_CAP) or t["no_reason"]
-
-
-def _attention(numbered):
-    return [(r, n) for r, n in numbered if r["status"] in ("failed", "lost")]
-
-
 def _mast(t, name, lang, run, stage, path="/", tab=None):
     zh_here = "" if lang == "en" else ' class="here"'
     en_here = ' class="here"' if lang == "en" else ""
@@ -346,25 +340,59 @@ def _mast(t, name, lang, run, stage, path="/", tab=None):
                esc(name)))
 
 
-def _left(t, runs, selected_id, lang, csrf, here):
-    # TC-S50: the red number is the size of the attention card, computed from the same runs (no second stored state)
-    needs = len([1 for r in runs if r["status"] in ("failed", "lost")])
-    red = "<span class=\"red\">%d</span>" % needs if needs else ""
-    rows = []
+def _failure_of(run):
+    """The failure record of a failed or lost run as the actions give it (None for any other run)."""
+    return run.get("failure") or None
+
+
+def _detail(t, run):
+    """Line 2 of a list row: `stage · detail` (DESIGN.md v2), from the run's own record."""
+    status = run["status"]
+    if status == "running":
+        done, total = _done_total(run)
+        return "%s · %d / %d" % (t["row_run"], done, total)
+    if status == "succeeded":
+        return t["row_results"]
+    failure = _failure_of(run) or {}
+    seqera = failure.get("status_seqera") or ("unknown" if status == "lost" else "failed")
+    if seqera == STOPPED:
+        return t["row_stopped"]
+    if seqera == "unknown":
+        return t["row_site"]
+    return "%s · %s" % (t["row_run"], first_failed(failure) or "—")
+
+
+def _row(t, run, selected_id, lang):
+    mark = " here" if run["id"] == selected_id else ""
+    return ('<a class="row state-%s%s" href="%s"><span class="r1"><span class="sym">%s</span><span class="nm">%s</span>'
+            '<span class="stg">%s</span></span><span class="r2">%s</span></a>'
+            % (_css(run["status"]), mark, _url(lang, run["id"]), _sym(run["status"]), esc(run["name"]),
+               esc(_state(t, run["status"])), esc(_detail(t, run))))
+
+
+def _projects(runs):
+    """[(project name or None, [runs])] of the first LIST_CAP runs (newest first, as given): a group sits where its newest run is, and
+    the runs that have no project name are the last group."""
+    found = {}
     for run in runs[:LIST_CAP]:
-        mark = " here" if run["id"] == selected_id else ""
-        rows.append('<a class="row state-%s%s" href="%s"><span class="sym">%s</span><span class="nm">%s</span><span class="stg">%s</span></a>'
-                    % (_css(run["status"]), mark, _url(lang, run["id"]), _sym(run["status"]), esc(run["name"]),
-                       esc(_state(t, run["status"]))))
-    body = ('<div class="rows">%s</div>%s' % ("".join(rows), _more(t, len(runs)))) if runs else '<p class="muted">%s</p>' % esc(t["none_yet"])
-    return ('<aside class="side" data-pane="left"><nav class="nav"><div class="nowline"><a class="nv%s" href="%s">%s</a>%s</div></nav><h2>%s</h2>'
-            '<div class="tools"><a class="nv%s" href="%s">%s</a>%s%s%s</div>%s'
+        found.setdefault(run.get("project"), []).append(run)
+    order = [name for name in found if name is not None] + ([None] if None in found else [])
+    return [(name, found[name]) for name in order]
+
+
+def _left(t, runs, selected_id, lang, csrf, here):
+    groups = "".join('<section class="proj"><h3>%s</h3><div class="rows">%s</div></section>'
+                     % (esc(t["no_project"] if name is None else name), "".join(_row(t, r, selected_id, lang) for r in members))
+                     for name, members in _projects(runs))
+    body = ('%s%s' % (groups, _more(t, len(runs)))) if runs else '<p class="muted">%s</p>' % esc(t["none_yet"])
+    return ('<aside class="side" data-pane="left"><div class="tools"><a class="nv%s" href="%s">%s</a></div><h2>%s</h2>%s'
+            '<div class="tools">%s%s%s</div>'
             '<div class="foot"><a class="nv%s" href="%s">%s</a>%s%s'
             '<form method="post" action="/logout"><input type="hidden" name="csrf" value="%s"><button type="submit">%s</button></form>'
             '</div></aside>'
-            % (" here" if here == "now" else "", _url(lang), esc(t["now"]), red, esc(t["mine"]),
-               " here" if here == "launch" else "", _url(lang, path="/launch"), esc(t["launch_nav"]), _grey(t, "new_project"), _grey(t, "search_projects"),
-               _grey(t, "upload"), body, " here" if here == "settings" else "", _url(lang, path="/settings"), esc(t["settings"]),
+            % (" here" if here == "launch" else "", _url(lang, path="/launch"), esc(t["new_analysis"]), esc(t["mine"]), body,
+               _grey(t, "new_project"), _grey(t, "search_projects"), _grey(t, "upload"),
+               " here" if here == "settings" else "", _url(lang, path="/settings"), esc(t["settings"]),
                _grey(t, "explorer"), _grey(t, "dashboard"), esc(csrf), esc(t["logout"])))
 
 
@@ -436,24 +464,48 @@ def _chip(t, status):
     return '<span class="chip state-%s"><span class="sq"></span> %s</span>' % (_css(status), esc(t.get("chip_" + str(status), str(status))))
 
 
-def _notice(t, lang, run, reason, step, acts=None):
-    """The formal notice of one failed or lost run (DESIGN.md "Formal notices"). One component on the Now page and on the run page;
-    it is worked out from the run's own record on every request. Its buttons are real forms (spec 012b) when `acts` is given."""
+def _clock_hm(iso):
+    """`HH:mm` in Asia/Taipei from the UTC text of the run view, or a dash."""
+    shown = _time(iso)
+    return shown[-5:] if shown != "—" else shown
+
+
+def _reason_lines(t, failure):
+    """The Reason of a failure notice: the last three non-empty lines of Nextflow's own words, each cut to REASON_CAP; without them the
+    word for a stopped or silent run, else the first line of the first failed task's message. The page sorts nothing into causes."""
+    lines = [x.strip() for x in str(failure.get("failure_reason") or "").splitlines() if x.strip()][-3:]
+    if lines:
+        return [x if len(x) <= REASON_CAP else x[:REASON_CAP] + "…" for x in lines]
+    if failure.get("status_seqera") == STOPPED:
+        return [t["r_stopped"]]
+    if failure.get("status_seqera") == "unknown":
+        return [t["r_site"]]
+    tasks = failure.get("failed_tasks") or []
+    return [_first_line((tasks[0].get("error_message") if tasks else "") or "", REASON_CAP) or "—"]
+
+
+def _failure_notice(t, run, acts=None):
+    """The one formal notice of a failed or lost run (DESIGN.md v2, Seqera's fields): level and time, Step / Reason / Next, one button
+    (the first of the run's actions). It is worked out from the run's own record on every request; empty when the run did not fail."""
+    failure = _failure_of(run)
+    if failure is None:
+        return ""
     lost = run["status"] == "lost"
-    cause = t["lost_cause"] if lost else (_first_line(reason or "", REASON_CAP) or t["no_reason"])
-    problem = t["lost_word"] if lost else (step or t["no_step"])
-    when = _time(run.get("last_message_at") if lost else run.get("ended_at"))
-    rows = ((t["f_problem"], problem), (t["f_cause"], cause), (t["f_options"], t["options_text"]))
-    buttons = "".join(acts.form(verb, run["id"]) for verb in (("resume", "relaunch", "cancel") if lost else ("resume", "relaunch"))) if acts else ""
-    return ('<article class="notice state-%s"><div class="nhead"><span class="level state-%s"><span class="sq"></span> %s</span>'
-            '<a class="aname" href="%s">%s</a><span class="when">%s</span></div><p class="ntitle">%s</p><dl class="fields">%s</dl>'
-            '<div class="acts">%s</div></article>'
-            % (_css(run["status"]), _css(run["status"]), esc(t["level_action"]), _url(lang, run["id"]), esc(run["name"]), esc(when),
-               esc(t["notice_lost" if lost else "notice_failed"]),
-               "".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), esc(v)) for k, v in rows), buttons))
+    step = first_failed(failure)
+    verb = (failure.get("actions") or ["relaunch"])[0]
+    word = t["resume" if verb == "resume" else "rerun"]
+    when = _clock_hm(run.get("last_message_at") if lost else run.get("ended_at"))
+    rows = (("f_step", "<code>%s</code>" % esc(step) if step else "—"),
+            ("f_reason", "<br>".join(esc(x) for x in _reason_lines(t, failure))),
+            ("f_next", esc(word + t["confirm_suffix"])))
+    return ('<article class="notice state-failed"><div class="nhead"><span class="level state-failed"><span class="sq"></span> %s</span>'
+            '<span class="when">%s</span></div><dl class="fields">%s</dl><div class="acts">%s</div></article>'
+            % (esc(t["level_action"]), esc(when), "".join("<dt>%s</dt><dd>%s</dd>" % (esc(t[k]), v) for k, v in rows),
+               acts.form(verb, run["id"]) if acts else ""))
 
 
 def first_failed(run):
+    """The name of the first failed task of a run view or of its failure record, or None."""
     tasks = run.get("failed_tasks") or []
     return tasks[0]["name"] if tasks else None
 
@@ -500,11 +552,7 @@ def _running_body(t, selected, lang, tab_param, stage_param, now, acts=None):
     tab = tab_param or "tasks"
     links = "".join('<a href="%s"%s>%s</a>' % (_url(lang, selected["id"], stage_param, tab=k), ' aria-current="page"' if k == tab else "",
                                                esc(t["tab_" + k])) for k in TABS)
-    status = selected["status"]
-    notices = [_notice(t, lang, selected, selected.get("failure_reason"), first_failed(selected), acts)] if status in ("failed", "lost") else []
-    inner = '<div class="notices">%s</div>' % "".join(notices) if notices else '<p class="muted">%s</p>' % esc(t["no_notices"])
-    mine = '<section class="card"><h2>%s</h2>%s</section>' % (esc(t["notices_here"]), inner)
-    return '%s%s%s<nav class="rtabs">%s</nav>%s' % (_sum_cards(t, selected, now), _tasks_bar(t, selected), mine, links, tab_body(t, lang, selected, tab))
+    return '%s%s<nav class="rtabs">%s</nav>%s' % (_sum_cards(t, selected, now), _tasks_bar(t, selected), links, tab_body(t, lang, selected, tab))
 
 
 def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None):
@@ -530,36 +578,10 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
                                     esc(t["quick"])) if running else ""
     inner = _running_body(t, selected, lang, tab_param, explicit, now, acts) if running else _stage_card(t, selected, current)
     note = '<p class="bad" role="alert">%s</p>' % esc(flash) if flash else ""
-    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s%s</div>%s'
+    views = '<nav class="views"><a href="%s" aria-current="page">%s</a>%s</nav>' % (_url(lang, selected["id"]), esc(t["main_window"]), _grey(t, "terminal"))
+    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s%s</div>%s%s'
             '<ol class="steps" data-current="%s">%s</ol>%s<p class="pager">%s%s</p></main>'
-            % (esc(selected["name"]), badge, buttons, quick, note, current, "".join(cells), inner, prev_, next_))
-
-
-def _line(t, run, lang, reasons):
-    status = run["status"]
-    why = ' <span class="why">%s</span>' % esc(_reason(t, run, reasons)) if status == "failed" else ""
-    return ('<li><a class="line state-%s" href="%s"><span class="sym">%s</span> <span class="lb">%s</span> <span class="nm">%s</span>%s</a></li>'
-            % (_css(status), _url(lang, run["id"]), _sym(status), esc(_state(t, status)), esc(run["name"]), why))
-
-
-def _card(t, which, runs, lang, reasons, key, steps=None, acts=None):
-    if which == "attention":
-        shown = "".join(_notice(t, lang, r, (reasons or {}).get(r["id"]), (steps or {}).get(r["id"]), acts) for r in runs[:LIST_CAP])
-        body = ('<div class="notices">%s</div>%s' % (shown, _more(t, len(runs)))) if runs else '<p class="muted">—</p>'
-    else:
-        shown = "".join(_line(t, r, lang, reasons) for r in runs[:LIST_CAP])
-        body = ('<ul class="lines">%s</ul>%s' % (shown, _more(t, len(runs)))) if runs else '<p class="muted">—</p>'
-    return '<section class="card" data-card="%s"><h2>%s<span class="num">%d</span></h2>%s</section>' % (which, esc(t[key]), len(runs), body)
-
-
-def _now_page(t, runs, lang, reasons, steps=None, acts=None):
-    numbered = _numbered(runs)
-    running = [r for r, _ in numbered if r["status"] == "running"]
-    attention = [r for r, _ in _attention(numbered)]
-    empty = '<p class="muted">%s</p>' % esc(t["none_yet"]) if not runs else ""
-    return ('<main class="main" data-pane="middle"><h1>%s</h1>%s<div class="cards">%s%s</div></main>'
-            % (esc(t["now"]), empty, _card(t, "running", running, lang, reasons, "card_running"),
-               _card(t, "attention", attention, lang, reasons, "card_attention", steps, acts)))
+            % (esc(selected["name"]), badge, buttons, quick, views, note, current, "".join(cells), inner, prev_, next_))
 
 
 def _settings_page(t):
@@ -570,46 +592,14 @@ def _settings_page(t):
     return '<main class="main" data-pane="middle"><h1>%s</h1>%s</main>' % (esc(t["settings"]), "".join(secs))
 
 
-def _item(t, run, number, selected_id, lang, reasons):
-    status = run["status"]
-    mark = " here" if run["id"] == selected_id else ""
-    done, total = _done_total(run)
-    why = '<span class="why">%s</span>' % esc(_reason(t, run, reasons)) if status == "failed" else ""
-    return ('<a class="item state-%s%s" href="%s"><span class="t"><span class="n">%d:</span><span class="nm">%s</span>'
-            '<span class="sym">%s</span></span><span class="s">%s %s %d/%d</span>%s%s</a>'
-            % (_css(status), mark, _url(lang, run["id"]), number, esc(run["name"]), _sym(status), _sym(status), esc(_state(t, status)),
-               done, total, why, _progress(run)))
-
-
-def _right(t, runs, selected_id, lang, reasons):
-    numbered = _numbered(runs)
-    count = lambda *statuses: sum(1 for r in runs if r["status"] in statuses)
-    out = ['<aside class="rail" data-pane="right"><div class="tabs"><span class="tab is-on">%s</span>%s</div><h2>%s</h2><p class="muted">%s</p>%s'
-           '<p class="tally"><span>▶ %d</span><span>! %d</span><span>✓ %d</span></p>'
-           % (esc(t["tab_progress"]), _grey(t, "tab_chat"), esc(t["all_analyses"]), esc(t["yours_only"]), _grey(t, "search"),
-              count("running"), count("failed", "lost"), count("succeeded"))]
-    if not runs:
-        out.append('<p class="muted">%s</p>' % esc(t["none_yet"]))
-    for stage in ("running", "results"):
-        mine = [(r, n) for r, n in numbered if stage_of(r["status"]) == stage]
-        blocks = "".join(_item(t, r, n, selected_id, lang, reasons) for r, n in mine[:LIST_CAP])
-        out.append('<details open class="group" data-stage="%s"><summary>%s</summary><div class="items">%s%s</div></details>'
-                   % (stage, esc(t["group"] % (t["stage_" + stage], len(mine))), blocks if mine else '<p class="muted">—</p>', _more(t, len(mine))))
-    out.append('<section class="group" data-stage="later"><p class="later">%s</p></section></aside>' % esc(t["later"]))
-    return "".join(out)
-
-
-def failed_ids_shown(runs):
-    """The ids of the failed runs the page will show a reason for: the failed ones among the first LIST_CAP of the right column's
-    first group, and the first LIST_CAP of the attention card (both in their order)."""
-    numbered = _numbered(runs)
-    group = [r for r, _ in numbered if stage_of(r["status"]) == "running"][:LIST_CAP]
-    card = [r for r, _ in _attention(numbered)][:LIST_CAP]
-    out = []
-    for r in group + card:
-        if r["status"] == "failed" and r["id"] not in out:
-            out.append(r["id"])
-    return out
+def _right(t, selected, acts=None):
+    """The right column: the formal notices of the selected analysis only (this version: its failure), then the grey line for the chat."""
+    if selected is None:
+        return '<aside class="rail" data-pane="right"><p class="muted">%s</p><p class="muted">—</p></aside>' % esc(t["this_analysis"])
+    notice = _failure_notice(t, selected, acts)
+    inner = '<div class="notices">%s</div>' % notice if notice else '<p class="muted">%s</p>' % esc(t["no_notices"])
+    return ('<aside class="rail" data-pane="right"><p class="muted">%s</p><h2>%s</h2>%s<p>%s</p></aside>'
+            % (esc(t["this_analysis"]), esc(selected["name"]), inner, _grey(t, "ask_here")))
 
 
 def document(title, body, refresh=False, board=False, lang="zh"):
@@ -621,29 +611,42 @@ def document(title, body, refresh=False, board=False, lang="zh"):
             % ("en" if lang == "en" else "zh-Hant", head, esc(title), STYLE, wrapped))
 
 
-def _frame(name, csrf, runs, lang, reasons, here, middle, run=None, stage=None, path="/", refresh=False, tab=None):
+def default_run(runs):
+    """The id of the run `/` opens when no run is named: the newest failed or lost one (it needs the person), else the newest; None when
+    there is no run. `runs` are newest first, as list_runs gives them, and only the caller's own."""
+    for run in runs:
+        if run["status"] in ("failed", "lost"):
+            return run["id"]
+    return runs[0]["id"] if runs else None
+
+
+def _empty_page(t, lang):
+    return ('<main class="main" data-pane="middle"><p>%s</p><p><a class="nv" href="%s">%s</a></p></main>'
+            % (esc(t["no_analyses"]), _url(lang, path="/launch"), esc(t["new_analysis"])))
+
+
+def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, path="/", refresh=False, tab=None):
     lang = pick_lang(lang)
     t = STRINGS[lang]
     body = '%s<div class="wb">%s%s%s</div>' % (_mast(t, name, lang, run, stage, path, tab), _left(t, runs, run, lang, csrf, here), middle(t, lang),
-                                                _right(t, runs, run, lang, reasons))
+                                                right(t, lang))
     return document(t["title"], body, refresh=refresh, board=True, lang=lang)
 
 
-def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", reasons=None, steps=None, tab_param=None, now=None,
-                 act_csrf=None, flash=None):
-    """GET /: the page of a logged-in user. `runs` are newest first (as list_runs gives them); `selected` is the detail of one run, or
-    None for the Now page; `reasons` maps the id of a failed run to its failure_reason (read by the caller, with the caller's rights).
-    `act_csrf(run_id)` gives the CSRF token of that run's buttons (spec 012b); without it no button is drawn. `flash` is one plain line
-    of refusal shown at the top of the run page; a page with one does not reload itself, because it is the answer to a POST."""
+def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None):
+    """GET /: the page of a logged-in user. `runs` are newest first (as list_runs gives them, with their `failure`); `selected` is the
+    detail of one run (get_run, with its `failure`), or None for the empty page of a person with no run. `act_csrf(run_id)` gives the CSRF
+    token of that run's buttons (spec 012b); without it no button is drawn. `flash` is one plain line of refusal shown at the top of the
+    run page; a page with one does not reload itself, because it is the answer to a POST."""
     run_id = selected["id"] if selected is not None else None
     stage = pick_stage(stage_param, None) if selected is not None else None
     tab = None      # `tab` belongs to the running stage page only; on any other page it is ignored
     if selected is not None and pick_stage(stage_param, stage_of(selected["status"])) == "running":
         tab = pick_tab(tab_param)
     acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
-    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash)) if selected is not None \
-        else (lambda t, lang_: _now_page(t, runs, lang_, reasons, steps, acts(t, lang_)))
-    return _frame(name, csrf, runs, lang, reasons, "now" if selected is None else "run", middle, run_id, stage, refresh=not flash, tab=tab)
+    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
+    return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_)), run_id, stage,
+                  refresh=not flash, tab=tab)
 
 
 # ---- spec 012b: the launch form -----------------------------------------------------------------------------------------------------------
@@ -722,7 +725,7 @@ def plain_reason(message, lang):
     return text[:300] + ("" if text.endswith((".", "。")) else ("." if lang == "en" else "。"))
 
 
-def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, lang="zh", reasons=None, source=None):
+def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, lang="zh", source=None):
     """GET /launch (and the answer to a POST that did not pass): one plain form. `values` are what to put in the boxes; `errors` are lines
     of what is wrong (each is its own line); `notes` are plain muted lines (where the boxes were filled from); `sheets` are the names the
     person may choose from, `envs` the environments that are theirs; `token` is the form's CSRF token. `source` is
@@ -754,12 +757,12 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
                esc(t["l_submit"])))
     middle = lambda t_, lang_: ('<main class="main" data-pane="middle"><h1>%s</h1><p class="muted">%s</p>%s%s</main>'
                                 % (esc(t["launch_title"]), esc(t["launch_intro"]), lines, form))
-    return _frame(name, csrf, runs, lang, reasons, "launch", middle, path="/launch")
+    return _frame(name, csrf, runs, lang, "launch", middle, lambda t_, lang_: _right(t_, None), path="/launch")
 
 
-def render_settings(name, csrf, runs, lang="zh", reasons=None):
+def render_settings(name, csrf, runs, lang="zh"):
     """GET /settings: the same frame, and a middle column of sections that are all still to come."""
-    return _frame(name, csrf, runs, lang, reasons, "settings", lambda t, lang_: _settings_page(t), path="/settings")
+    return _frame(name, csrf, runs, lang, "settings", lambda t, lang_: _settings_page(t), lambda t_, lang_: _right(t_, None), path="/settings")
 
 
 def render_not_found(name, lang="zh"):

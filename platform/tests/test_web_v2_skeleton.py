@@ -67,7 +67,6 @@ def left_rows(text):
     """[(href, class, line 1 text, line 2 text)] of the left column rows, in page order."""
     out = []
     for m in re.finditer(r'<a class="(row[^"]*)" href="([^"]*)">(.*?)</a>', pane(text, "left"), re.S):
-        l1 = re.search(r'<span class="r1">(.*?)</span></span>|<span class="r1">(.*)', m.group(3), re.S)
         two = re.search(r'<span class="r2">(.*?)</span>', m.group(3), re.S)
         out.append((m.group(2), m.group(1), plain(m.group(3).split('<span class="r2">')[0]), plain(two.group(1)) if two else ""))
     return out
@@ -172,15 +171,16 @@ def test_v04_only_three_state_words(w):
         assert not any(b in t for b in bad), (url, [b for b in bad if b in t])
     t = c.get("/").text
     word = lambda name: [x for x in left_rows(t) if name in x[2]][0]
-    assert "▶ 執行中" in word("ann-running")[2] and "✓ 完成" in word("ann-done")[2]
-    for name in ("ann-failed-resume", "ann-lost", "ann-cancelled"):
-        assert "✗ 失敗" in word(name)[2], name
+    for name, symbol, state in (("ann-running", "▶", "執行中"), ("ann-done", "✓", "完成"), ("ann-failed-resume", "✗", "失敗"),
+                                ("ann-lost", "✗", "失敗"), ("ann-cancelled", "✗", "失敗")):
+        assert re.fullmatch(r"%s %s %s" % (symbol, name, state), word(name)[2]), (name, word(name)[2])
     assert "state-failed" in word("ann-lost")[1] and "state-running" in word("ann-running")[1] and "state-succeeded" in word("ann-done")[1]
     for key in ("lost", "stopped", "resume"):
         page = c.get("/?run=" + ids[key]).text
         assert re.search(r'<span class="badge state-failed">✗ 失敗</span>', page)
     en = c.get("/?lang=en").text
-    assert "▶ Running" in en and "✓ Succeeded" in en and "✗ Failed" in en
+    words = " ".join(x[2] for x in left_rows(en))
+    assert "▶ ann-running Running" in words and "✓ ann-done Succeeded" in words and "✗ ann-lost Failed" in words
     launch = c.get("/launch?from=%s&lang=en" % ids["done"]).text      # TC-019: the chips of the launch page are not touched
     assert re.search(r'<span class="chip state-succeeded"><span class="sq"></span> ?Done</span>', launch)
 
@@ -257,7 +257,7 @@ def test_v07_failure_notice_fields(w):
     assert dd(n, "步驟").strip() == "<code>%s</code>" % FAILED_STEP
     assert [plain(x) for x in dd(n, "原因").split("<br>")] == ["line three has 24 GB", "line four", "line five"]
     assert "line two" not in n and plain(dd(n, "之後")) == "續跑（確認頁）"
-    assert plain(re.search(r'class="level[^>]*>.*?</span></span>', n, re.S).group(0)) == "待處理"
+    assert plain(re.search(r'<span class="level.*?待處理</span>', n, re.S).group(0)) == "待處理"
     for old in ("問題", "可選動作", "Options", "三次心跳"):
         assert old not in n
     [m] = right_notices(c.get("/?run=" + ids["relaunch"]).text)
@@ -311,8 +311,7 @@ def test_v08_exactly_one_button_actions0(w):
         m = re.search(r'<form class="act" method="post" action="/act/(\w+)">(.*?)</form>', right, re.S)
         assert m.group(1) == verb
         fields = dict(re.findall(r'name="(\w+)" value="([^"]*)"', m.group(2)))
-        r = c.post("/act/" + verb, data=fields)
-        assert r.status_code == 303 and re.fullmatch(r"/c/[0-9a-f]{32}", r.headers["location"])
+        assert fields["run"] == ids[key] and fields["csrf"]
         right_en = pane(c.get("/?run=%s&lang=en" % ids[key]).text, "right")
         assert buttons(right_en) == [en] and 'name="lang" value="en"' in right_en
 
@@ -421,3 +420,22 @@ def test_v16_project_key(w):
     got = actions.get_run(w.ip.index, ids["running"], caller=ann, platform_path=w.ip.state_db)
     assert got["project"] == PROJECT_A
     assert actions.get_run(w.ip.index, ids["lost"], caller=ann, platform_path=w.ip.state_db)["project"] is None
+
+
+def test_v08b_the_button_only_asks(tmp_path, monkeypatch):
+    # TC-071, TC-099: a really launched run; the right-hand button leads to the confirmation page and nothing is queued
+    from resume_harness import Rig
+    from test_web_actions import act_form, area_sheet, rid_of
+    rig = Rig(tmp_path, monkeypatch)
+    ann = rig.user("ann")
+    rig.first("run-a", caller=ann, samplesheet=area_sheet(rig.w, ann), status="failed")
+    c = rig.w.web()
+    assert rig.w.login(c, "ann").status_code == 303
+    right = pane(c.get("/?run=id-run-a").text, "right")
+    fields = act_form(right, "relaunch", "id-run-a")
+    assert fields and len(re.findall(r"<form[ >]", right)) == 1
+    count = lambda: (len(rig.sql("SELECT * FROM jobs")), len(rig.sql("SELECT * FROM confirmations WHERE state = 'confirmed'")))
+    before = count()
+    rid = rid_of(c.post("/act/relaunch", data=fields))
+    assert count() == before
+    assert c.get("/c/" + rid).status_code == 200
