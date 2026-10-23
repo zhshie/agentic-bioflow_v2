@@ -40,3 +40,7 @@ Untouched: `test_confirm_page.py`, `test_web_confirm_plain.py`, `test_web_parity
 ## Not done (as planned)
 
 Terminal, automatic resume, OTP, the chat box, automatic and downstream notices: other lanes. Screenshots: developer-agent.
+
+## Known environment red (ruling 10)
+
+`tests/init_workspace_test.sh` "site side with no run area known fails clearly" returns rc 1 (expected 2) on the desktop WSL because `mkdir /work` is refused; base `1db9ad5` is red the same way and GitHub CI is green. Excluded from "full suite green"; the test is untouched. Full suite: 117/118, only this one red.
