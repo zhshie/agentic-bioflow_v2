@@ -10,7 +10,8 @@ from pathlib import Path
 from setuptools import setup
 from setuptools.command.build_py import build_py
 
-SKILLS = Path(__file__).resolve().parent.parent / "skills"
+REPO = Path(__file__).resolve().parent.parent
+SKILLS = REPO / "skills"
 
 
 class BuildPyWithSkills(build_py):
@@ -22,6 +23,15 @@ class BuildPyWithSkills(build_py):
         if target.exists():
             shutil.rmtree(target)
         shutil.copytree(SKILLS, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        # abf-station: scripts/ and configs/ go to abf_station/plugin/, shaped like the repo root, so a pip install needs no --plugin-root
+        for name in ("scripts", "configs"):
+            src = REPO / name
+            if not src.is_dir():
+                raise SystemExit("cannot find %s (the %s folder): build from a checkout of the repository" % (src, name))
+            dest = Path(self.build_lib) / "abf_station" / "plugin" / name
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
 
 setup(cmdclass={"build_py": BuildPyWithSkills})

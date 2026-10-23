@@ -38,6 +38,14 @@ def host_os():
     return p.stdout.strip()
 
 
+def default_plugin_root():
+    """The plugin folder of this install: the copy a wheel carries, else the repository checkout this file sits in."""
+    here = Path(__file__).parent
+    if (here / "plugin" / "scripts" / "on_site.sh").is_file():
+        return here / "plugin"
+    return Path(__file__).resolve().parents[2]
+
+
 def on_site_script(plugin_root):
     return Path(plugin_root) / "scripts" / "on_site.sh"
 

@@ -1069,7 +1069,7 @@ def test_tcs45_confirm_pages_share_the_style(w):
     r = c.get("/c/" + rid)
     digest = base64.b64encode(hashlib.sha256(style_of(r.text).encode("utf-8")).digest()).decode()
     assert "style-src 'sha256-%s'" % digest in r.headers["content-security-policy"] and style_of(r.text) == style_of(c.get("/").text)
-    assert c.get("/c/%s?lang=en" % rid).text == r.text
+    assert style_of(c.get("/c/%s?lang=en" % rid).text) == style_of(r.text)      # web-confirm-plain: the English page has its own labels; the stylesheet is the same
     k = consent_page(w, "ann")            # the OAuth consent page carries the same one stylesheet
     kd = base64.b64encode(hashlib.sha256(style_of(k.text).encode("utf-8")).digest()).decode()
     assert k.text.count("<style>") == 1 and style_of(k.text) == style_of(r.text)

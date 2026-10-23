@@ -300,6 +300,8 @@ def test_tc403_skills_dir_prefers_the_packaged_copy(tmp_path):
 def _copy_for_build(tmp_path):
     root = tmp_path / "repo"
     shutil.copytree(SKILLS, root / "skills")
+    shutil.copytree(REPO_ROOT / "scripts", root / "scripts", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(REPO_ROOT / "configs", root / "configs")
     shutil.copytree(PLATFORM_DIR, root / "platform",
                     ignore=shutil.ignore_patterns("tests", "__pycache__", "build", "*.egg-info", "skills"))
     return root

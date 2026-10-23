@@ -31,6 +31,13 @@
         "ngs186G": {"factor": null},
         "ngs372G": {"factor": null}
       }
+    },
+    "nano4": {
+      "twd_per_su": {"nstc": 0.1, "academic": 0.2, "industry": 0.37},
+      "partitions": {
+        "ngs*":     {"factor": 1},
+        "big-mem*": {"factor": 7}
+      }
     }
   }
 }

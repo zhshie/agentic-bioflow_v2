@@ -54,6 +54,11 @@ _HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{0,252}\Z")
 _USER = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\Z")
 _CRED_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,99}\Z")
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,99}\Z")
+_MODULE = re.compile(r"^[A-Za-z0-9_./+-]+\Z")
+_SITE_VAR = re.compile(r"^[A-Z_][A-Z0-9_]*\Z")
+_OWNER_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")                 # same rule as abf_launch.build.OWNER_NAME
+_REVISION = re.compile(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")             # same rule as the launch module's REVISION
+_SITE_PIPELINE_KEYS = ("pipeline", "revision", "module", "home")
 MAX_PATH = 1024
 
 
@@ -136,7 +141,8 @@ def credential_findings(obj, where):
 
 _COMMON_CONFIG = ("workDir", "preRunScript", "postRunScript", "environment", "nextflowConfig")
 _SLURM_CONFIG = _COMMON_CONFIG + ("launchDir", "headQueue", "computeQueue", "maxQueueSize", "headJobOptions",
-                                  "hostName", "userName", "port", "readRoots")
+                                  "hostName", "userName", "port", "readRoots",
+                                  "modules", "siteConfigVars", "sitePipelines")
 
 
 def _text(config, key, limit):
@@ -216,6 +222,67 @@ def _check_slurm(config):
     if config.get("userName") is not None and (not isinstance(config["userName"], str) or not _USER.match(config["userName"])):
         raise CEError("userName is not a valid user name")
     _text(config, "headJobOptions", 1000)
+    _check_site_keys(config)
+
+
+def _module_problem(value):
+    if not isinstance(value, str):
+        return "must be text"
+    if value == "":
+        return "is empty; use letters, digits and _ . / + - only"
+    if not _MODULE.match(value):
+        ch = next((c for c in value if not re.match(r"[A-Za-z0-9_./+-]", c)), "?")
+        return "不允許 %r (not allowed); use letters, digits and _ . / + - only" % ch
+    if ".." in value.split("/"):
+        return "不允許 '..' (not allowed); a module name is not a path"
+    return None
+
+
+def _var_problem(value):
+    if not isinstance(value, str) or not value or len(value) > 100 or not _SITE_VAR.match(value):
+        return ("must be an environment variable name: capital letters, digits and _ only, not starting with a digit "
+                "(大寫字母、數字、_)")
+    return None
+
+
+def _check_site_keys(config):
+    """modules, siteConfigVars and sitePipelines (ce-nano4-keys): every problem is listed at once, each naming its key.
+    A bad value is shown as one character at most, never whole."""
+    errors = []
+    for key, check in (("modules", _module_problem), ("siteConfigVars", _var_problem)):
+        v = config.get(key)
+        if v is None:
+            continue
+        if not isinstance(v, list) or len(v) > 100:
+            errors.append("%s must be a list of text (at most 100)" % key)
+            continue
+        for i, item in enumerate(v):
+            p = check(item)
+            if p:
+                errors.append("%s[%d]: %s" % (key, i, p))
+    sp = config.get("sitePipelines")
+    if sp is not None:
+        if not isinstance(sp, list) or len(sp) > 100:
+            errors.append("sitePipelines must be a list of {pipeline, revision, module, home}")
+        else:
+            for i, item in enumerate(sp):
+                here = "sitePipelines[%d]" % i
+                if not isinstance(item, dict) or set(item) != set(_SITE_PIPELINE_KEYS):
+                    errors.append("%s must be an object with exactly pipeline, revision, module and home" % here)
+                    continue
+                if not isinstance(item["pipeline"], str) or not _OWNER_NAME.match(item["pipeline"]):
+                    errors.append("%s.pipeline: must be owner/name, e.g. nf-core/ampliseq (letters, digits, _ . -)" % here)
+                if not isinstance(item["revision"], str) or not _REVISION.match(item["revision"]):
+                    errors.append("%s.revision: must be a release such as 2.18.0 or v2.18.0, or a 40-character commit id; "
+                                  "a branch name is not accepted" % here)
+                p = _module_problem(item["module"])
+                if p:
+                    errors.append("%s.module: %s" % (here, p))
+                p = _var_problem(item["home"])
+                if p:
+                    errors.append("%s.home: %s" % (here, p))
+    if errors:
+        raise CEError("; ".join(errors))
 
 
 def _check_other(config):
@@ -505,9 +572,14 @@ def snapshot(row_or_view):
     """What an agent is told about an environment: only what a job needs, never anything else."""
     v = row_or_view if "config" in row_or_view else view(row_or_view)
     c = v["config"]
+    library = next((e.get("value") for e in (c.get("environment") or []) if isinstance(e, dict)
+                    and e.get("name") == "NXF_SINGULARITY_LIBRARYDIR"), None)      # the one variable a preflight needs; no other is carried
     return {"name": v["name"], "platform": v["platform"], "workDir": c.get("workDir"), "launchDir": c.get("launchDir"),
             "headQueue": c.get("headQueue"), "computeQueue": c.get("computeQueue"),
-            "readRoots": list(c.get("readRoots") or [])}
+            "readRoots": list(c.get("readRoots") or []), "modules": list(c.get("modules") or []),
+            "siteConfigVars": list(c.get("siteConfigVars") or []),
+            "sitePipelines": [dict(p) for p in (c.get("sitePipelines") or [])],
+            "singularityLibraryDir": library if isinstance(library, str) and library else None}
 
 
 def verdict_message(ok, checks):

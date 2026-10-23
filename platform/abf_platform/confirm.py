@@ -261,6 +261,34 @@ def describe(state_path, rid, clock=time.time):
             "expires_at": row["expires_at"], "created_at": row["created_at"]}
 
 
+def facts(state_path, rid):
+    """The few plain facts of request `rid` for the confirmation page, from the structured bundle (never parsed out of the text): a dict with
+    `what` (launch, resume, relaunch or cancel) and, only for those it knows, run_name, pipeline, revision, ce, samples, folder; or None."""
+    con = store.open_readonly(state_path)
+    if con is None or not isinstance(rid, str) or len(rid) > 64:
+        return None
+    try:
+        row = con.execute("SELECT kind, ce_name, bundle_json FROM confirmations WHERE id = ? AND bundle_json IS NOT NULL "
+                          "AND channel IS NOT 'TERMINAL'", (rid,)).fetchone()
+    finally:
+        con.close()
+    if row is None:
+        return None
+    try:
+        bundle = json.loads(row["bundle_json"])
+        if row["kind"] == "cancel":
+            return {"what": "cancel", "run_name": bundle["run_name"]}
+        what = "resume" if "resume" in bundle else "relaunch" if "relaunch" in bundle else "launch"
+        source = bundle["resume"]["origin"] if what == "resume" else bundle
+        out = {"what": what, "run_name": bundle["run_name"], "pipeline": source["pipeline"], "revision": source["revision"],
+               "ce": row["ce_name"], "samples": len(source["samplesheet"]) - 1}
+        if what == "relaunch":
+            out["folder"] = bundle["run_folder"]
+        return {k: v for k, v in out.items() if v not in (None, "")}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 # ---- forgetting: the owner deletes what was sent (keep-submissions) ---------------------------------------------------------------
 
 FORGOTTEN_JOB_KINDS = ("launch_nextflow", "cancel_run")

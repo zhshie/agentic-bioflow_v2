@@ -1,4 +1,6 @@
 #!/bin/bash
+# v2 only: this script belongs to the `tw` (Seqera) flow. On v3 use `abf-platform launch`.
+#
 # Push the site's resource contract into the Seqera compute environment.
 #
 # Not `tw compute-envs update`: that command changes only the name and the

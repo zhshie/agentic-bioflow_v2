@@ -126,16 +126,128 @@ def _probe_command(env):
             "if command -v sinfo >/dev/null 2>&1; then echo has_sinfo=yes; else echo has_sinfo=no; fi") % (w, w)
 
 
+def _planned(env):
+    """The names this environment is checked for, in the order they are reported. CHECK_ORDER is the base; modules, site_pipeline and
+    image_library are conditional (preflight-nano4): they exist only when the environment names modules, site pipelines or a library."""
+    order = list(CHECK_ORDER)
+    if env.get("modules"):
+        order.insert(order.index("java"), "modules")
+    if env.get("sitePipelines"):
+        order.append("site_pipeline")
+    if env.get("singularityLibraryDir"):
+        order.append("image_library")
+    return order
+
+
+def _module_chain(modules):
+    return " && ".join("module load %s" % quote(m) for m in modules)
+
+
+def _blank_comments(text):
+    """The text of a Nextflow config with its comments taken out; text in quotes is left as it is."""
+    out, skip_to, in_quote = [], 0, None      # skip_to: characters before this index are already dealt with
+    for i, c in enumerate(text):
+        if i < skip_to:
+            continue
+        if in_quote:
+            out.append(c)
+            if c == "\\":
+                out.append(text[i + 1:i + 2])
+                skip_to = i + 2
+            elif c == in_quote or c == "\n":
+                in_quote = None
+        elif c in "'\"":
+            in_quote = c
+            out.append(c)
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            skip_to = len(text) if end < 0 else end
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            skip_to = len(text) if end < 0 else end + 2
+        else:
+            out.append(c)
+    return "".join(out)
+
+
+def _block_after(text, start):
+    """The text between the brace that opens at `start` and the brace that closes it, or None."""
+    depth, in_quote = 0, None
+    for i in range(start, len(text)):
+        c = text[i]
+        if in_quote:
+            if c == in_quote or c == "\n":
+                in_quote = None
+        elif c in "'\"":
+            in_quote = c
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1:i]
+    return None
+
+
+_VERSION_ASSIGN = r"(?<![\w.])%sversion\s*=\s*(['\"])([^'\"\n]{1,60})\1"
+
+
+def _manifest_version(config_text):
+    """The version a pipeline's own nextflow.config gives in its manifest block (never one from another block), or None."""
+    clean = _blank_comments(config_text)
+    for m in re.finditer(r"(?<![\w.])manifest\s*\{", clean):
+        block = _block_after(clean, m.end() - 1)
+        found = re.search(_VERSION_ASSIGN % "", block) if block is not None else None
+        if found:
+            return found.group(2).strip()
+    found = re.search(_VERSION_ASSIGN % r"manifest\.", clean)
+    return found.group(2).strip() if found else None
+
+
+def _site_pipeline_command(entry):
+    """Load the pipeline's module, then say whether its main.nf is there and print its nextflow.config. Reads only."""
+    home = entry["home"]      # judged by rules.clean_environment: capital letters, digits and _ only
+    return ('%s && { if [ -z "${%s:-}" ]; then echo abf_site=unset; elif [ -r "$%s/main.nf" ]; then echo abf_site=main; '
+            'head -c 200000 "$%s/nextflow.config" 2>/dev/null; else echo abf_site=nomain; fi; }'
+            % (_module_chain([entry["module"]]), home, home, home))
+
+
+_COMMIT = re.compile(r"[0-9a-fA-F]{40}\Z")
+
+
+def _judge_site_pipeline(entry, res):
+    """(passed, wording) for one site pipeline entry, from what the site answered."""
+    label = "%s %s" % (entry["pipeline"], entry["revision"])
+    lines = res.out.decode("utf-8", errors="replace").splitlines()
+    if "abf_site=unset" in lines:
+        return False, "%s: the site variable %s is not set (站台沒有設定 %s)" % (label, entry["home"], entry["home"])
+    if res.rc != 0 or "abf_site=main" not in lines:
+        return False, "%s: not installed where the module says (站台找不到這個版本)" % label
+    if _COMMIT.match(entry["revision"]):
+        return True, "%s (commit revision, version not compared)" % label
+    site_version = _manifest_version("\n".join(lines[lines.index("abf_site=main") + 1:]))
+    if site_version is None:
+        return False, "%s: cannot read the pipeline version (讀不出版本)" % entry["pipeline"]
+    want = entry["revision"]
+    if site_version.lstrip("v") != want.lstrip("v"):
+        return False, ("%s: the site has %s, the environment says %s (站台裝的是 %s，設定說 %s)"
+                       % (entry["pipeline"], site_version, want, site_version, want))
+    return True, label
+
+
 def preflight(env, ctx):
     """Run every check and report all of them. Nothing is created, changed or submitted on the site."""
     site = ctx.site
     checks = []
+    planned = _planned(env)
+    modules = env.get("modules") or []
+    prefix = "".join("module load %s && " % quote(m) for m in modules)
 
     def add(name, status, detail):
         checks.append({"name": name, "status": status, "detail": detail[:DETAIL_LIMIT]})
 
     def rest_unchecked(done):
-        for name in CHECK_ORDER:
+        for name in planned:
             if name not in done:
                 add(name, "unchecked", _NEEDS_CONNECTION)
 
@@ -182,7 +294,35 @@ def preflight(env, ctx):
         else:
             add(tool, "fail", "the site gave no answer")
 
-    res = site.call(["java -version"])
+    def lost(res):
+        """The reason the shared connection is gone when `res` is a failure that looks like it, else None."""
+        if res.rc != 0 and lost_connection(res):
+            return connection_lost()
+        return None
+
+    if modules:
+        res = site.call([_module_chain(modules)])
+        reason = lost(res)
+        if reason:
+            return abandon(reason)
+        if res.rc == 0:
+            add("modules", "pass", "loaded: " + ", ".join(modules))
+        else:
+            bad = modules[0]
+            if len(modules) > 1:      # the chain says only that one failed: ask for each in order, the first that fails is named
+                bad = ", ".join(modules)
+                for m in modules:
+                    one = site.call([_module_chain([m])])
+                    reason = lost(one)
+                    if reason:
+                        return abandon(reason)
+                    if one.rc != 0:
+                        bad = m
+                        break
+            add("modules", "fail", "cannot load module %s: check the environment's modules, or empty them and use a self-installed Nextflow "
+                "(載入不了模組 %s：請檢查計算環境的 modules，或清空它改用自裝 Nextflow)" % (bad, bad))
+
+    res = site.call([prefix + "java -version"])
     if res.rc != 0 and lost_connection(res):
         reason = connection_lost()
         if reason:
@@ -198,7 +338,7 @@ def preflight(env, ctx):
     else:
         add("java", "fail", "Java %d found, %d or newer is needed" % (major, JAVA_MIN))
 
-    res = site.call(["nextflow -version"])
+    res = site.call([prefix + "nextflow -version"])
     if res.rc != 0 and lost_connection(res):
         reason = connection_lost()
         if reason:
@@ -227,6 +367,31 @@ def preflight(env, ctx):
                 add("head_queue", "pass", "the head queue %s is listed by sinfo" % env["headQueue"])
             else:
                 add("head_queue", "fail", "the head queue %s is not listed by sinfo" % env["headQueue"])
+
+    entries = env.get("sitePipelines") or []
+    if entries:
+        verdicts = []
+        for entry in entries:
+            res = site.call([_site_pipeline_command(entry)])
+            reason = lost(res)
+            if reason:
+                return abandon(reason)
+            verdicts.append(_judge_site_pipeline(entry, res))
+        if all(ok for ok, _ in verdicts):
+            add("site_pipeline", "pass", ", ".join(words for _, words in verdicts))
+        else:
+            add("site_pipeline", "fail", "; ".join(words for ok, words in verdicts if not ok))
+
+    library = env.get("singularityLibraryDir")
+    if library:
+        res = site.call(['test -r "%s" && test -x "%s"' % (library, library)])      # the path was judged plain by rules.clean_root
+        reason = lost(res)
+        if reason:
+            return abandon(reason)
+        if res.rc == 0:
+            add("image_library", "pass", "the read-only image library can be read")
+        else:
+            add("image_library", "fail", "the read-only image library %s cannot be read (唯讀映像庫讀不到)" % library)
     return _verdict(checks)
 
 

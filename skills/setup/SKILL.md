@@ -3,6 +3,11 @@ name: setup
 description: Prepare this cluster to run pipelines through Seqera Platform, or repair it when something broke
 ---
 
+> **Which version are you on?** On v3, start an analysis with `abf-platform launch`
+> or the MCP `launch` tool; neither needs Seqera (`docs/PLATFORM.md`). Everything
+> below that uses `tw` (the Seqera command line) is the v2 flow and applies to v2
+> only. The v2 text is kept as it was for people still on v2 (`docs/MIGRATION.md`).
+
 Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under
 `${CLAUDE_PLUGIN_ROOT}`; read them straight from the repository otherwise.
