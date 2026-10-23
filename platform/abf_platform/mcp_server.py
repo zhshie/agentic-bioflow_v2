@@ -199,10 +199,30 @@ def _remote(ctx):
     return http_auth.current_remote()
 
 
+def _transport_security(public_url):
+    """The DNS-rebinding guard the mcp library would switch on for a loopback host, plus the public address when there is one
+    (otherwise a tunnel's host name is refused with 421). None without `public_url`: the library's own default stays."""
+    if not public_url:
+        return None
+    from urllib.parse import urlsplit
+
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    u = urlsplit(public_url)
+    hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+    if u.hostname:
+        netloc = u.netloc.rpartition("@")[2]
+        hosts += [u.hostname if ":" not in u.hostname else "[%s]" % u.hostname, netloc]
+        origins.append("%s://%s" % (u.scheme, netloc))
+    return TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=list(dict.fromkeys(hosts)),
+                                     allowed_origins=origins)
+
+
 def build_http_app(index_path, tokens_path=None, host="127.0.0.1", public_url=None):
     """The server's Streamable HTTP app behind the bearer check: no valid personal access token or OAuth access token, no answer.
     `public_url` is the address people reach this server at; with it the 401 points a connector to the resource metadata (009i)."""
-    app = build_server(index_path).streamable_http_app(host=host)
+    app = build_server(index_path).streamable_http_app(host=host, transport_security=_transport_security(public_url))
     return http_auth.BearerAuth(app, http_auth.tokens_path_for(index_path, tokens_path),
                                 platform_path=actions.platform_path_for(index_path), public_url=public_url)
 
