@@ -1,0 +1,97 @@
+{
+ "ok": true,
+ "findings": [
+  {
+   "node": "s1",
+   "channel": 0,
+   "code": "OPEN_INPUT",
+   "severity": "warning",
+   "message": "節點 s1 的輸入 0 沒有接線，輸入名：meta, bam；這個節點是入口，送出時要由樣本表或參數供應 (input 0 of node s1 is not wired, names: meta, bam; this node is an entry point, so the sample sheet or parameters must supply it at launch)"
+  },
+  {
+   "node": "s1",
+   "channel": 1,
+   "code": "OPEN_INPUT",
+   "severity": "warning",
+   "message": "節點 s1 的輸入 1 沒有接線，輸入名：meta2, fasta, fai；這個節點是入口，送出時要由樣本表或參數供應 (input 1 of node s1 is not wired, names: meta2, fasta, fai; this node is an entry point, so the sample sheet or parameters must supply it at launch)"
+  },
+  {
+   "node": "s1",
+   "channel": 2,
+   "code": "OPEN_INPUT",
+   "severity": "warning",
+   "message": "節點 s1 的輸入 2 沒有接線，輸入名：index_format；這個節點是入口，送出時要由樣本表或參數供應 (input 2 of node s1 is not wired, names: index_format; this node is an entry point, so the sample sheet or parameters must supply it at launch)"
+  },
+  {
+   "node": "s2",
+   "channel": 0,
+   "code": "OPEN_INPUT",
+   "severity": "warning",
+   "message": "節點 s2 的輸入 0 沒有接線，輸入名：meta, bam；這個節點是入口，送出時要由樣本表或參數供應 (input 0 of node s2 is not wired, names: meta, bam; this node is an entry point, so the sample sheet or parameters must supply it at launch)"
+  },
+  {
+   "node": "s2",
+   "channel": 1,
+   "code": "OPEN_INPUT",
+   "severity": "warning",
+   "message": "節點 s2 的輸入 1 沒有接線，輸入名：meta2, fasta, fai；這個節點是入口，送出時要由樣本表或參數供應 (input 1 of node s2 is not wired, names: meta2, fasta, fai; this node is an entry point, so the sample sheet or parameters must supply it at launch)"
+  },
+  {
+   "node": "s2",
+   "channel": 2,
+   "code": "OPEN_INPUT",
+   "severity": "warning",
+   "message": "節點 s2 的輸入 2 沒有接線，輸入名：index_format；這個節點是入口，送出時要由樣本表或參數供應 (input 2 of node s2 is not wired, names: index_format; this node is an entry point, so the sample sheet or parameters must supply it at launch)"
+  }
+ ],
+ "open_inputs": [
+  {
+   "node": "s1",
+   "input": 0,
+   "names": [
+    "meta",
+    "bam"
+   ]
+  },
+  {
+   "node": "s1",
+   "input": 1,
+   "names": [
+    "meta2",
+    "fasta",
+    "fai"
+   ]
+  },
+  {
+   "node": "s1",
+   "input": 2,
+   "names": [
+    "index_format"
+   ]
+  },
+  {
+   "node": "s2",
+   "input": 0,
+   "names": [
+    "meta",
+    "bam"
+   ]
+  },
+  {
+   "node": "s2",
+   "input": 1,
+   "names": [
+    "meta2",
+    "fasta",
+    "fai"
+   ]
+  },
+  {
+   "node": "s2",
+   "input": 2,
+   "names": [
+    "index_format"
+   ]
+  }
+ ]
+}

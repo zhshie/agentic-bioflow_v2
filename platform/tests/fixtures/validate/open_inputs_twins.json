@@ -1,0 +1,5 @@
+{"nodes": [{"id": "report", "module": "multiqc"},
+           {"id": "s2", "module": "samtools_sort", "params": {"ext.prefix": "s2_sorted", "ext.args": "-m 1G"}},
+           {"id": "s1", "module": "samtools_sort", "params": {"ext.prefix": "s1_sorted", "ext.args": "-T 'x' $TMPDIR"}}],
+ "edges": [{"from": {"node": "s2", "output": "bam"}, "to": {"node": "report", "input": 0}},
+           {"from": {"node": "s1", "output": "bam"}, "to": {"node": "report", "input": 0}}]}

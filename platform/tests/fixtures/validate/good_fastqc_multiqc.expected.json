@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "findings": [
+    {"node": "qc", "channel": 0, "code": "OPEN_INPUT", "severity": "warning",
+     "message": "節點 qc 的輸入 0 沒有接線，輸入名：meta, reads；這個節點是入口，送出時要由樣本表或參數供應 (input 0 of node qc is not wired, names: meta, reads; this node is an entry point, so the sample sheet or parameters must supply it at launch)"}
+  ],
+  "open_inputs": [{"node": "qc", "input": 0, "names": ["meta", "reads"]}]
+}

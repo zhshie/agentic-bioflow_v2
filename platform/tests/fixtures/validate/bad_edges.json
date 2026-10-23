@@ -1,0 +1,32 @@
+{
+  "catalogue": {
+    "source": "synthetic", "sha": "synthetic-sha-0001", "count": 6, "errors": [],
+    "modules": [
+      {"name": "a", "path": "a", "description": "", "keywords": [], "tools": [], "inputs": [],
+       "outputs": [{"channel": "out", "name": "meta", "type": "map", "pattern": null},
+                   {"channel": "out", "name": "out", "type": "file", "pattern": "*.{bam}"}]},
+      {"name": "b", "path": "b", "description": "", "keywords": [], "tools": [],
+       "inputs": [{"channel": 0, "name": "x", "type": "file", "pattern": null}], "outputs": []},
+      {"name": "c", "path": "c", "description": "", "keywords": [], "tools": [],
+       "inputs": [{"channel": 0, "name": "meta", "type": "map", "pattern": null},
+                  {"channel": 0, "name": "s", "type": "string", "pattern": null}], "outputs": []},
+      {"name": "d", "path": "d", "description": "", "keywords": [], "tools": [],
+       "inputs": [{"channel": 0, "name": "d0", "type": "file", "pattern": null},
+                  {"channel": 1, "name": "d1", "type": "file", "pattern": null}], "outputs": []},
+      {"name": "e", "path": "e", "description": "", "keywords": [], "tools": [], "inputs": [],
+       "outputs": [{"channel": "out", "name": "f", "type": "file", "pattern": null}]},
+      {"name": "g", "path": "g", "description": "", "keywords": [], "tools": [],
+       "inputs": [{"channel": 0, "name": "meta", "type": "map", "pattern": null},
+                  {"channel": 0, "name": "v", "type": "file", "pattern": "*.{vcf}"}], "outputs": []}
+    ]
+  },
+  "graph": {
+    "nodes": [{"id": "a", "module": "a"}, {"id": "b", "module": "b"}, {"id": "c", "module": "c"}, {"id": "d", "module": "d"},
+              {"id": "e", "module": "e"}, {"id": "g", "module": "g"}],
+    "edges": [{"from": {"node": "a", "output": "out"}, "to": {"node": "b", "input": 0}},
+              {"from": {"node": "a", "output": "out"}, "to": {"node": "c", "input": 0}},
+              {"from": {"node": "a", "output": "out"}, "to": {"node": "d", "input": 1}},
+              {"from": {"node": "e", "output": "out"}, "to": {"node": "d", "input": 1}},
+              {"from": {"node": "a", "output": "out"}, "to": {"node": "g", "input": 0}}]
+  }
+}
