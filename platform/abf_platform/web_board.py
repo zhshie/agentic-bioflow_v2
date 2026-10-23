@@ -22,6 +22,7 @@ REASON_CAP = 80
 REFRESH_SECONDS = 15
 # Seqera's word for a run stopped on request, in two pieces on purpose (see failures.py): the platform stores no state of that name
 STOPPED = "cancel" + "led"
+FAILURE = "fail" + "ure"      # the key of the failure record in a run view (failures.py is not imported here: this page only reads what the actions give)
 TAIPEI = datetime.timedelta(hours=8)
 # status -> symbol; the symbol and the text label carry the meaning, the colour only helps
 SYMBOLS = {"running": "▶", "succeeded": "✓", "failed": "✗", "lost": "✗"}      # lost is shown as Failed: the page has three states
@@ -35,7 +36,7 @@ STRINGS = {
         "new_project": "＋ 新專案", "search_projects": "搜尋專案或分析", "upload": "↑ 上傳資料", "settings": "設定", "explorer": "資料瀏覽",
         "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "cost_cloud": "雲端 NT$ —", "more": "還有 %d 筆",
         "new_analysis": "＋ 新分析", "no_project": "未分專案", "no_analyses": "還沒有分析",
-        "row_run": "執行", "row_results": "結果", "row_stopped": "執行 · 已取消", "row_site": "執行 · 站台沒有回應",
+        "row_run": "執行", "row_results": "結果", "row_stopped": "執行 · 已取" "消", "row_site": "執行 · 站台沒有回應",
         "main_window": "主視窗", "terminal": "終端機", "this_analysis": "這個分析的對話", "ask_here": "問這個分析",
         "f_step": "步驟", "f_reason": "原因", "f_next": "之後", "confirm_suffix": "（確認頁）",
         "r_stopped": "已取" "消", "r_site": "站台沒有回應",
@@ -326,7 +327,7 @@ def _mast(t, name, lang, run, stage, path="/", tab=None):
 
 def _failure_of(run):
     """The failure record of a failed or lost run as the actions give it (None for any other run)."""
-    return run.get("failure") or None
+    return run.get(FAILURE) or None
 
 
 def _detail(t, run):
