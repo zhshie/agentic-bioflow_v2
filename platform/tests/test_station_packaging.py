@@ -174,7 +174,7 @@ def test_sp09_the_ssh_bundle_command_works_on_the_packaged_root(wheel_dir):
     plugin = wheel_dir / "abf_station" / "plugin"
     made = subprocess.run(["tar", "-cz", "-C", str(plugin), "scripts", "configs"], capture_output=True)
     assert made.returncode == 0
-    listing = subprocess.run(["tar", "-tz"], input=made.stdout, capture_output=True, text=True).stdout
+    listing = subprocess.run(["tar", "-tz"], input=made.stdout, capture_output=True).stdout.decode()
     assert "scripts/on_site.sh" in listing and "configs/sites/su_rates.json" in listing
 
 
