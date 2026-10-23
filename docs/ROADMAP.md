@@ -100,6 +100,8 @@ test or tool already enforces. Each is added by amendment once its check exists.
 | A host reaches launch and delete only through tools that carry their own gate; a host that cannot show a confirmation cannot launch or delete | The tool-layer safety-net tests, run from more than one MCP client | 5 |
 | Data stays local: nothing leaves except what the Operator was told leaves. While Claude is the model, logs, samplesheets and error messages go to Anthropic, and the Prototype says so | A disclosure shown at first use, plus its test | 1 |
 | Any action that costs money needs the Operator's confirmation, and billable state is always visible and stoppable | A gate on billable cloud actions, plus its test | 4 |
+| A run lost with its site is resumed once without a new confirmation: only resume, only after a lost status, at most once per analysis, citing the original confirmation (ADR 0011) | Tests that the automatic resume fires for a lost run once, never for a failed or cancelled run, never as relaunch, and that the job cites the original confirmation | 2 |
+| Keystrokes the platform relays to a web terminal (passphrase, OTP) are never stored, logged or echoed; the AI reads the terminal and never types into it (ADR 0011) | Tests that relayed input reaches neither the database, the data folder nor a log, and that no AI-facing tool can write to a terminal | 2 |
 
 ## Open questions (not decisions)
 
