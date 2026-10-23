@@ -8,3 +8,4 @@
 - [x] mcp_server.py get_run 說明加一句；test_actions_layer BASELINE 同步（有意更新）
 - [x] 文件：PLATFORM.md、TESTING.md TC-048n、acceptance-nano4.md、estimate-su/ledger.md 第 11、12 行
 - [x] platform/tests/test_su_in_get_run.py（新）、test_station_envs.py（加 suSite 測試）
+- [x] platform/tests/test_failures.py:193（2026-10-24 裁決核可的一行）。以前：`if k != "failure"`；以後：`if k not in ("failure", "su")`；理由：get_run 多出動作層補的 su 欄，與 failure 同類。
