@@ -83,3 +83,8 @@ base: v3
 6. **既有 `test_tc024`**：把 `specs/estimate-su/ledger.md` 納入範圍，追加 nano4 兩個分區係數的出處（第 4 點的連結與倍率推導）；斷言不改。
 7. **回傳形狀**：`su_of_tasks`／`run_su`／`actions.estimate_su` 對每個站台仍回 `su`、`twd_nstc`、`twd_academic`、`unknown_reasons`（T3 不變）；站台有 `twd_per_su` 時**另加** `twd: {nstc, academic, industry}`（三鍵齊）；沒有的站台不加 `twd` 鍵。`actions.estimate_su` 不改簽名、不在範圍，只靠 `su.py` 的回傳多一鍵（parity 不受影響）。
 8. **手動核對項**（不改站台程式、不改 T3、不實建 CE）：`docs/TESTING.md` 加「nano4 site config」一節寫 `git diff --name-only origin/v3...HEAD` 的核對步驟；範圍檔新增 `docs/TESTING.md`。
+
+## 裁決二（2026-10-23，回應 executor BLOCKED：兩支守門測試）
+9. **CE 範本不得含個人路徑（憲法第 3 條，`tests/no_hardcoded_paths.sh`、TC-072 不放寬）**：`configs/sites/nchc-nano4-ce.json` 是**範本**，個人與站台路徑一律用角括號佔位：`workDir: "/work/<site_user>/runs"`、`readRoots: ["/work/<site_user>"]`、`NXF_SINGULARITY_CACHEDIR: "/work/<site_user>/.singularity"`、`NXF_SINGULARITY_LIBRARYDIR: "<nano4 read-only image library>"`（真實值 `/work/envstack/apps/application/biology/nf-core/singularity-cache` 只寫在 `docs/SETTINGS.md`／ledger／驗收表，docs 不在掃描範圍）。`nchc-nano4.config` 同樣不得出現 `/work/<名字>/` 形狀。N4-17／N4-19 改成斷言佔位字串；「通過 `_check_slurm` 驗證」那條 TC 改成「把佔位換成任意合法值（例如 `/tmp/abf-test`）後通過」——範本本來就要由操作者（developer-agent 用 CLI 建 CE 時）代入。測試檔裡的路徑用字串拼接或 `/tmp/...` 避開 TC-072。
+10. **`tests/skill_runs_uses_actions_test.sh` 的 TC-097 刪除**（範圍檔加這支）：它把「docs/TESTING.md 對 origin/v3 剛好 +1/−0」寫死，是 #136 當時的一次性合約檢查，#136 合併後這條對任何改 TESTING.md 的分支都必紅、在 v3 本身則是 0/0 也紅（CI 沒有 origin/v3 所以沒被發現）。刪掉第 196–199 行那個 `if` 區塊，ledger 記 old／new／理由；其餘 TC-080～096 不動。
+11. 「作法」段的舊寫法以裁決 2～4 為準（verifier 已指出）；`twd_nstc`／`twd_academic` 對 nano4 等於 `twd.nstc`／`twd.academic`（N4-05 的讀法正確）；ledger 寫明「不需要 migration：只改 JSON 設定檔與 su.py，不動資料庫」。
