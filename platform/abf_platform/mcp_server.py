@@ -46,7 +46,9 @@ def build_server(index_path, platform_path=None):
                              "failed tasks with their exit code and error message (and workdir, the task's folder on the site, "
                              "when Nextflow reported it); a failed run also has failure_reason, "
                              "Nextflow's own words for why it failed, when it gave any. cancel_requested_at is there only when "
-                             "a confirmed cancel of the run was sent; it is a fact about the request, not a status.")
+                             "a confirmed cancel of the run was sent; it is a fact about the request, not a status. "
+                             "It also has su: the SU the run's finished tasks used and what that costs (an estimate from "
+                             "Nextflow's task records; null with the reasons when a record lacks what the formula needs).")
     def get_run(ctx: Context, run_id: str) -> dict:
         return actions.get_run(index_path, run_id, caller=_caller(ctx), platform_path=platform_path)
 

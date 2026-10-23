@@ -97,6 +97,15 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
         for t in listed:
             key = "%s:%s" % (t.get("taskId"), t.get("attempt"))
             name = str(t["name"])
+            if t.get("status") in ("COMPLETED", "FAILED"):
+                # The usage of a finished task, for the SU a run used. One row per attempt, and a retry does not delete the attempt
+                # before it (that attempt also spent SU); failed_tasks below is the opposite on purpose: one row per task name.
+                queue = t.get("queue")
+                con.execute("INSERT INTO task_usage (run_id, task_key, name, status, cpus, realtime_ms, queue) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                            "ON CONFLICT(run_id, task_key) DO UPDATE SET name = excluded.name, status = excluded.status, "
+                            "cpus = excluded.cpus, realtime_ms = excluded.realtime_ms, queue = excluded.queue",
+                            (rid, key, name, t["status"], _int(t.get("cpus"), None), _int(t.get("realtime"), None),
+                             queue if isinstance(queue, str) else None))
             # one row per task name: a later attempt of the same task replaces the earlier one, whatever its outcome
             con.execute("DELETE FROM failed_tasks WHERE run_id = ? AND name = ? AND task_key != ?", (rid, name, key))
             if t.get("status") == "FAILED":

@@ -8,15 +8,17 @@ at the moment someone asks.
 """
 import datetime
 import json
+import sqlite3
 from pathlib import Path
 
-from . import jobs, status
+from . import compute_envs, jobs, status, store
 
 RATES_PATH = Path(__file__).resolve().parents[2] / "configs" / "sites" / "su_rates.json"
 TAIPEI = datetime.timezone(datetime.timedelta(hours=8))   # a month is a calendar month in Asia/Taipei (UTC+8)
 MS_PER_HOUR = 3600000.0       # Nextflow's trace holds realtime in milliseconds (platform/tests/fixtures/payloads)
 NOT_STORED = ("這個 run 的紀錄沒有保存每個 task 的 cpus、realtime 與分區 "
               "(the run record does not keep each task's cpus, realtime and partition)")
+RUN_NOT_ENDED = "run 還沒結束，SU 等它結束後再算 (the run has not ended)"
 
 
 def load_rates(path=None):
@@ -93,9 +95,45 @@ def su_of_tasks(tasks, site, rates):
 
 def run_tasks(index_path, run_name):
     """The per-task facts (cpus, realtime, queue) of a run, or None when the record does not keep them.
-    The receiver stores only counts and failed tasks (store.py), so for now this is always None; it is the one place to change
-    when the receiver starts keeping the trace."""
-    return None
+    From the task_usage table the receiver fills; a run (or an index made before the table) with no rows gives None. Each item also
+    carries status (COMPLETED or FAILED) so a caller can count the finished ones. Read-only: it never creates the table."""
+    view = status.find_run(index_path, run_name)
+    if view is None:
+        return None
+    con = status._open_readonly(index_path)
+    if con is None:
+        return None
+    try:
+        rows = con.execute("SELECT name, status, cpus, realtime_ms, queue FROM task_usage WHERE run_id = ? ORDER BY task_key",
+                           (view["id"],)).fetchall()
+    except sqlite3.OperationalError:
+        return None      # an index made before the table existed
+    finally:
+        con.close()
+    if not rows:
+        return None
+    return [{"name": r["name"], "status": r["status"], "cpus": r["cpus"], "realtime": r["realtime_ms"], "queue": r["queue"]}
+            for r in rows]
+
+
+def site_of_run(platform_path, run_name, rates):
+    """The rates site of a run: the suSite of the compute environment of its newest launch; else the rates file's default_site
+    (also when there is no launch, the environment is gone, it names no suSite, or platform.db cannot be read)."""
+    default = rates.get("default_site") if isinstance(rates, dict) else None
+    try:
+        con = store.open_readonly(platform_path)
+        if con is None:
+            return default
+        try:
+            row = jobs.latest_launch(con, run_name)
+            ce_name = row["ce"] if row is not None else None
+        finally:
+            con.close()
+        ce = compute_envs.get(platform_path, ce_name) if ce_name else None
+    except (sqlite3.Error, OSError):
+        return default
+    site = ce["config"].get("suSite") if ce else None
+    return site if isinstance(site, str) and site else default
 
 
 def run_su(index_path, run_name, site, rates, tasks_of=None):

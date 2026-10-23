@@ -6,6 +6,7 @@ import json
 import sqlite3
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -230,11 +231,10 @@ RUN_ENDED = "run 還沒結束，SU 等它結束後再算 (the run has not ended)
 def test_running_run_has_no_su_number(tmp_path, status):
     # TC-025, TC-026
     db, plat = _world(tmp_path, status=status, ce="n4", su_site="nano4", usage=TWO)
-    if status == "lost":
-        con = sqlite3.connect(str(db))
-        con.execute("UPDATE runs SET last_message_at = 1")
-        con.commit()
-        con.close()
+    con = sqlite3.connect(str(db))
+    con.execute("UPDATE runs SET last_message_at = ?", (1 if status == "lost" else time.time(),))
+    con.commit()
+    con.close()
     out = _get(db, plat)
     assert out["status"] == status
     su = out["su"]
@@ -337,9 +337,10 @@ def test_the_nano4_ce_file_validates_and_snapshot_has_no_suSite():
     from abf_platform import compute_envs
     cfg = json.loads((REPO_ROOT / "configs" / "sites" / "nchc-nano4-ce.json").read_text(encoding="utf-8"))
     assert cfg["suSite"] == "nano4"
+    cfg = json.loads(json.dumps(cfg).replace("<site_user>", "someone"))      # the placeholder is filled in on the machine that registers it
     rec = compute_envs.clean({"name": "n4", "platform": "slurm-platform", "config": cfg})
     assert rec["config"]["suSite"] == "nano4"
-    assert "suSite" not in json.dumps(compute_envs.snapshot({"config": rec["config"]}), default=str)
+    assert "suSite" not in json.dumps(compute_envs.snapshot({"name": "n4", "platform": "slurm-platform", "config": rec["config"]}), default=str)
 
 
 def test_su_and_compute_envs_import_in_either_order():

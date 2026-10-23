@@ -85,7 +85,7 @@ claude mcp add abf-platform -- abf-platform mcp
 }
 ```
 
-Use the full path of the command if Desktop cannot find it. Then ask, for example, "what is the state of my latest runs?"; the AI calls `list_runs` (newest first, with name, state, start time and task numbers) and, for one run, `get_run` (adds the per-process numbers, the failed tasks with exit code and error text and, when Nextflow reported it, `workdir` (the task's folder on the site; absent when not reported, and always absent on a run rebuilt from the run folder), `cancel_requested_at` (present only when a confirmed cancel of the run was sent: the same fact `abf-platform launches` prints, never a status), and for a failed run `failure_reason`: Nextflow's own `errorMessage`, else the first line of its `errorReport`, on one line and at most 1000 characters; absent when Nextflow gave none, and absent on a run rebuilt from the run folder, whose log does not hold it).
+Use the full path of the command if Desktop cannot find it. Then ask, for example, "what is the state of my latest runs?"; the AI calls `list_runs` (newest first, with name, state, start time and task numbers) and, for one run, `get_run` (adds the per-process numbers, the failed tasks with exit code and error text and, when Nextflow reported it, `workdir` (the task's folder on the site; absent when not reported, and always absent on a run rebuilt from the run folder), `cancel_requested_at` (present only when a confirmed cancel of the run was sent: the same fact `abf-platform launches` prints, never a status), and for a failed run `failure_reason`: Nextflow's own `errorMessage`, else the first line of its `errorReport`, on one line and at most 1000 characters; absent when Nextflow gave none, and absent on a run rebuilt from the run folder, whose log does not hold it; and `su`: the SU the run's finished tasks used and what it costs, an estimate from the task records the receiver keeps (`task_usage`): `su`, `twd_nstc`, `twd_academic`, `unknown_reasons`, `site`, and `twd` (nstc, academic, industry) when the site has money rates per SU. Every number is `null` with the reasons when the run has not ended, when a finished task has no usage record, or when a record lacks cpus, realtime or a partition factor; a run rebuilt from the run folder always is).
 
 **Streamable HTTP**, for a client that wants a URL:
 
@@ -238,6 +238,7 @@ For a long value that starts with `--`, use the `=` form (`--head-job-options=--
 | `environment` | list of `{name, value, head, compute}` |
 | `nextflowConfig` | optional Nextflow configuration text |
 | `readRoots` | optional extra absolute paths the agent may list (`--read-root`) |
+| `suSite` | optional name of a site in `configs/sites/su_rates.json` (for example `nano4`); `get_run` uses it to work out the SU of a run launched on this environment. Without it the rates file's `default_site` is used. A name the rates file does not have is refused |
 
 Outside the config an environment also has `name` (1 to 100 characters, unique), `description`, `platform` (the type), `credentialsId` (the **name** of a credential), `agent` (the agent that serves it; with no `--agent` the only agent that has a token is used), `status`, `message`, `primary`, and the dates `dateCreated`, `lastUpdated`, `lastUsed`. The field names follow Seqera's (`specs/007-station-agent/research.md`).
 

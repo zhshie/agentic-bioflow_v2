@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS failed_tasks (
     workdir TEXT,
     PRIMARY KEY (run_id, task_key)
 );
+CREATE TABLE IF NOT EXISTS task_usage (
+    run_id TEXT NOT NULL,
+    task_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT,
+    cpus INTEGER,
+    realtime_ms INTEGER,
+    queue TEXT,
+    PRIMARY KEY (run_id, task_key)
+);
 """
 
 # kind is 'run' (a Nextflow run writes with it), 'agent' (an agent polls with it) or 'pat' (a person's personal access
