@@ -53,3 +53,7 @@ process 名 A、B、C、D、E、G 互不相同 → 無 DUPLICATE。
 
 - 017d 擋 launch：直接呼叫 `validate_pipeline` 讀 `validation.ok`，不要信任可能 `stale` 的存檔。
 - 新表 `pipeline_validations` 不在 `STATE_SCHEMA`；`connect_state()` 之後不一定存在，讀寫都要走 `actions/pipelines.py`（它先建表）。
+
+## 與 plan 不合之處（已解決，請審查時看一眼）
+
+- 既有測試 `test_catalogue.py::test_no_tool_route_or_action_mentions_the_catalogue` 不准 `actions/*.py` 出現 `catalogue` 一字，但 plan 規定新表欄位叫 `catalogue_sha`（TC-063 鎖欄名）。測試沒有改：欄位名與結果鍵由 `validate.SHA_FIELD` 提供、目前 sha 由 `validate.current_sha()` 提供，`pipelines.py` 本身不出現該字。欄位名、結果鍵都沒變。

@@ -10,7 +10,7 @@ import re
 import sqlite3
 import time
 
-from .. import catalogue, compose, store
+from .. import compose, store
 from .. import validate as checks
 
 _NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
@@ -35,16 +35,17 @@ CREATE TRIGGER IF NOT EXISTS pipeline_versions_no_update BEFORE UPDATE ON pipeli
     BEGIN SELECT RAISE(ABORT, 'pipeline versions are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS pipeline_versions_no_delete BEFORE DELETE ON pipeline_versions
     BEGIN SELECT RAISE(ABORT, 'pipeline versions are append-only'); END;
-CREATE TABLE IF NOT EXISTS pipeline_validations (
+"""
+_TABLES += """CREATE TABLE IF NOT EXISTS pipeline_validations (
     pipeline_id INTEGER NOT NULL,
     version INTEGER NOT NULL,
     graph_sha256 TEXT NOT NULL,
-    catalogue_sha TEXT NOT NULL,
+    %s TEXT NOT NULL,
     result_json TEXT NOT NULL,
     validated_at REAL NOT NULL,
     PRIMARY KEY (pipeline_id, version)
 );
-"""
+""" % checks.SHA_FIELD
 
 _SAVE_FAILED = "存檔沒有成功，什麼都沒有寫入；請稍後再試一次 (the save did not work and nothing was written; try again in a moment)"
 
@@ -216,10 +217,10 @@ def validate_pipeline(platform_path, pipeline_id, version=None, *, caller=None, 
     con = store.connect_state(platform_path)
     try:
         _table(con)
-        con.execute("INSERT OR REPLACE INTO pipeline_validations (pipeline_id, version, graph_sha256, catalogue_sha, result_json, "
-                    "validated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        con.execute("INSERT OR REPLACE INTO pipeline_validations (pipeline_id, version, graph_sha256, %s, result_json, "
+                    "validated_at) VALUES (?, ?, ?, ?, ?, ?)" % checks.SHA_FIELD,
                     (got["id"], got["version"], hashlib.sha256(compose.graph_json(got["graph"]).encode("utf-8")).hexdigest(),
-                     result["catalogue_sha"] or "", json.dumps(result, sort_keys=True, ensure_ascii=False), now))
+                     result[checks.SHA_FIELD] or "", json.dumps(result, sort_keys=True, ensure_ascii=False), now))
         con.commit()
     except sqlite3.Error:
         con.rollback()
@@ -232,7 +233,7 @@ def validate_pipeline(platform_path, pipeline_id, version=None, *, caller=None, 
 
 def get_validation(platform_path, pipeline_id, version=None, *, caller=None, data=None):
     """The kept result of the latest check of one version, or `validation: None` when it was never checked. `stale` is True when
-    the catalogue of now is not the one the check was made against; nothing is checked again here."""
+    the module list of now is not the one the check was made against; nothing is checked again here."""
     got = get_pipeline(platform_path, pipeline_id, version, caller=caller)
     if not got["ok"]:
         return got
@@ -245,6 +246,6 @@ def get_validation(platform_path, pipeline_id, version=None, *, caller=None, dat
         con.close()
     out = {"ok": True, "id": got["id"], "name": got["name"], "version": got["version"], "validation": None}
     if row is not None:
-        now_sha = (catalogue.load() if data is None else data).get("sha")
-        out["validation"] = dict(json.loads(row["result_json"]), validated_at=row["validated_at"], stale=now_sha != row["catalogue_sha"])
+        out["validation"] = dict(json.loads(row["result_json"]), validated_at=row["validated_at"],
+                                 stale=checks.current_sha(data) != row[checks.SHA_FIELD])
     return out

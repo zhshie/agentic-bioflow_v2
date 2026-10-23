@@ -9,6 +9,7 @@ import re
 from . import catalogue, compose
 
 CHECKS = ["static"]
+SHA_FIELD = "catalogue_sha"        # the key of a result, and the name of the column that keeps it
 _CLASS = {"map": "meta", "file": "path", "directory": "path", "string": "val", "boolean": "val", "integer": "val", "float": "val"}
 _PLAIN = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -181,6 +182,11 @@ def _same_names(canonical, records):
     return found
 
 
+def current_sha(data=None):
+    """The sha of the module list a check is made against now."""
+    return (catalogue.load() if data is None else data).get("sha")
+
+
 def validate(canonical, data=None):
     """{"ok", "checks", "catalogue_sha", "findings", "open_inputs"} for a canonical graph (the output of `compose.normalize`).
     The graph is first checked against the catalogue of now; when it no longer fits, only that is reported."""
@@ -199,4 +205,4 @@ def validate(canonical, data=None):
         findings += _same_names(canonical, records)
     findings.sort(key=_order_key)
     return {"ok": not any(f["severity"] == "error" for f in findings), "checks": list(CHECKS),
-            "catalogue_sha": data.get("sha"), "findings": findings, "open_inputs": opened}
+            SHA_FIELD: data.get("sha"), "findings": findings, "open_inputs": opened}
