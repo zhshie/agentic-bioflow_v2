@@ -50,6 +50,31 @@ golden 腳本含兩行 `module load` 與上述 `exec` 行；未命中路徑逐�
 ## 不做
 - 不改 `_tower`／`own_facts`（M1-03）、不改 preflight（M1-04）、不改 `compute_envs.py`（L2）。
 
+> ⚠️ 2026-10-23：本檔「作法」「失敗先行測試」「不做」與下方裁決衝突時，一律以裁決為準（號碼大的蓋小的）。
+
+## 裁決（2026-10-22，回應 verifier 出題退回）
+0. **前置與範圍**：本任務在 `ce-nano4-keys` 合進 `v3` 之後開工。「不做」裡的「不改 compute_envs.py」撤回：本任務要在 `compute_envs.snapshot` 把三鍵帶給站台（缺則空清單），範圍檔加 `platform/abf_platform/compute_envs.py`、`platform/tests/test_station_envs.py`。結尾換行一律用 `\Z`。
+1. **CE 三鍵的形狀（與 ce-nano4-keys 相同）**：`modules: ["biology/Nextflow/26.10.0"]`；`siteConfigVars: ["NFCORE_SITE_CONFIG", "NFCORE_SITE_REFERENCES"]`；`sitePipelines: [{"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}]`。`rules.clean_environment` 放行這三鍵。測試用的假 CE 就用這組值。
+2. **`-c` 行只來自 `siteConfigVars`**：每一項依序一個 `-c "$VAR"`；清單空就沒有。順序：站台的 `-c` 在前、`-c nextflow.config` 最後。命中與未命中都套用。
+3. **modules 的載入與 golden**：`modules` 非空就在 `umask 077` 之後逐行 `module load`，命中與未命中都載；命中再多載命中項的 `module`。「未命中＝逐位元等於舊 golden」只對 `modules` 與 `siteConfigVars` 都空的 CE 成立。tc013c：同 nano4 CE、revision 2.17.0 → `pipeline_source.kind == "remote"`、exec 行 `nf-core/ampliseq -r 2.17.0`、仍有 Nextflow 的 module load、沒有 ampliseq 的 module load；golden 新增 `nano4-miss`。
+4. **`pipeline_source` 只放 bundle**，`launches` 表不加欄、不需 migration。
+5. **續跑**：`render_resume` 沿用原 bundle 的 `pipeline_source` 與 CE 三鍵（`ce_out` 白名單加三鍵）。
+6. **既有測試的合法更新**：列舉 bundle 鍵或 `ce_out` 鍵的斷言加 `pipeline_source` 與三鍵；其餘不動。
+
+## 裁決二（2026-10-23）
+7. （由裁決三第 11 條取代）
+8. **站台端驗證**：`_check_ce` 重用 `compute_envs` 的檢查（import，不重抄），`modules=["a;b"]` 在站台也被拒並點名 `modules`。
+9. **假 CE 一律用裁決 1 的值**；test_station_envs 既有 NANO4 常數不動也不混用。
+10. `module load X || exit 1`，位置在 `umask 077` 之後、nextflow 之前；舊 bundle 沒有 `pipeline_source` → 視為 remote；重複 (pipeline, revision) 取第一項；`-resume` 位置不動。
+
+## 裁決三（2026-10-23）
+11. exec 行**不加** `-profile singularity`（命中與未命中都不加）；singularity 由站台 config 提供（nano4-site-config）。
+12. **module load 失敗＝停下、回報**，不自動退回遠端（維護者原話的「缺 module 退回」指 sitePipelines 沒命中）。
+
+## 裁決四（2026-10-23，閱卷後）
+13. verifier 指出 TC-LS-44／45 沒斷言拒絕理由、TC-LS-35 沒斷言處理提示、TC-LS-29／30 少兩個輸入：行為已由程式碼確認正確，接受；之後補強測試列為 A 級小事。
+14. 本檔裁決曾在 10-23 12:48 被 `build-dev-plans.py` 清掉（裁決寫在「專長守則」之後），已從對話紀錄還原並移到專長守則之前。
+
 ## 專長守則（backend）
 
 ### executor
