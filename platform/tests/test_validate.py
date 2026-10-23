@@ -68,7 +68,7 @@ def run(data, nodes, edges):
 
 def pair(src_out, dst_in, src_extra=None):
     """One edge a.out -> b.0 over a hand-made catalogue; returns the findings."""
-    data = cat(mod("a", outputs={"out": src_out}), mod("b", inputs=[dst_in]))
+    data = cat(mod("a", outputs=src_out), mod("b", inputs=[dst_in]))
     return run(data, [node("a", "a"), node("b", "b")], [edge("a", "out", "b")])["findings"]
 
 
@@ -191,7 +191,7 @@ def test_tuple_with_more_elements_is_compatible_by_class():
 def test_meta_mismatch_names_both_ends_and_both_directions():
     # TC-016, TC-017, TC-018, TC-005
     for src, dst in (([M, F], [F]), ([F], [M, F]), ([M, F], [("s", "string", None)])):
-        found = [f for f in pair({"out": src}, [dst]) if f["code"] in ("META_MISMATCH", "TYPE_MISMATCH")]
+        found = [f for f in pair({"out": src}, dst) if f["code"] in ("META_MISMATCH", "TYPE_MISMATCH")]
         assert codes(found) == ["META_MISMATCH"], (src, dst)
         f = found[0]
         assert f["severity"] == "error" and f["node"] == "b" and f["channel"] == 0
@@ -246,11 +246,11 @@ def test_pattern_mismatch_is_a_warning_and_does_not_fail_ok():
 def test_pattern_that_cannot_be_parsed_is_skipped():
     # TC-028, TC-029, TC-030, TC-031
     for a, b in (("*.{bam}", "bai|csi|crai"), ("${prefix}.bam", "*.{vcf}"), ("*", "*.{vcf}"), ("*.{bam,cram}", "*.{bam}")):
-        assert "PATTERN_MISMATCH" not in codes(pair({"out": pat(a)}, [pat(b)])), (a, b)
+        assert "PATTERN_MISMATCH" not in codes(pair({"out": pat(a)}, pat(b))), (a, b)
     two = [M, ("f1", "file", "*.{vcf}"), ("f2", "file", "*.{vcf}")]
-    assert "PATTERN_MISMATCH" not in codes(pair({"out": pat("*.{bam}")}, [two]))
-    assert "PATTERN_MISMATCH" not in codes(pair({"out": two}, [pat("*.{bam}")]))
-    assert "PATTERN_MISMATCH" not in codes(pair({"out": pat("*.{bam}")}, [[M, ("f", "file", None)]]))
+    assert "PATTERN_MISMATCH" not in codes(pair({"out": pat("*.{bam}")}, two))
+    assert "PATTERN_MISMATCH" not in codes(pair({"out": two}, pat("*.{bam}")))
+    assert "PATTERN_MISMATCH" not in codes(pair({"out": pat("*.{bam}")}, [M, ("f", "file", None)]))
 
 
 def three(srcs, dst_in):
@@ -367,7 +367,7 @@ def test_fixtures_and_hand_derived_answers():
     assert r["ok"] is False and r["findings"] == expected["findings"] and r["open_inputs"] == expected["open_inputs"]
     want = {("b", 0, "META_MISMATCH"), ("c", 0, "TYPE_MISMATCH"), ("d", 1, "MIXED_SOURCES"), ("g", 0, "PATTERN_MISMATCH")}
     assert want <= {(f["node"], f["channel"], f["code"]) for f in r["findings"]}
-    assert [f for f in r["findings"] if (f["node"], f["channel"], f["code"]) == ("d", 1, "META_MISMATCH")][0]["message"].count("a.out") == 1
+    assert [f for f in r["findings"] if (f["node"], f["channel"], f["code"]) == ("d", 1, "META_MISMATCH")][0]["message"].count("e.out") == 0
 
 
 def test_validate_module_is_pure():

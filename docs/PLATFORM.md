@@ -509,6 +509,10 @@ A composed pipeline is a graph the canvas will draw: each node is one nf-core mo
 
 `abf_platform/actions/pipelines.py` keeps them: `create_pipeline`, `update_pipeline`, `list_pipelines`, `get_pipeline` and `render_pipeline`. A pipeline belongs to the person who made it (the terminal sees all); what belongs to somebody else answers like what does not exist. Every save adds a numbered version; a version is never changed or removed (the database refuses it). Saving writes only the platform's own `platform.db`: it starts nothing and needs no confirmation. There is no MCP tool and no web page for this yet; they come with spec 017e.
 
+### Validation
+
+`abf_platform/validate.py` checks a saved graph without running anything, and `validate_pipeline` / `get_validation` in `actions/pipelines.py` keep the latest result per version. A finding is `{node, channel, code, severity, message}`; the message is Chinese and English and says what to change. `severity` is `error` or `warning`: the result's `ok` is False when any finding is an error, and warnings are only shown. The codes are `GRAPH_STALE` (the graph no longer fits today's catalogue or its parameter rules; nothing else is checked then), `META_MISMATCH` and `TYPE_MISMATCH` (an edge joins channels that do not fit; the finding names both ends), `MIXED_SOURCES` (one input is fed by sources that cannot be mixed), `DUPLICATE_PROCESS` (two nodes would get one process name) as errors, and `OPEN_INPUT` (no edge reaches an input; the catalogue does not say which inputs are optional, so this is never an error) and `PATTERN_MISMATCH` (the file patterns of an edge share no extension) as warnings. Types are compared by class (file, value, meta), not by count of elements. The check is the same for the same graph and catalogue. `get_validation` marks a stored result `stale` when the catalogue has changed since; it never checks again by itself. Only static checks exist: there is no lint and no trial run yet, and no MCP tool or web page for validation until spec 017e. Nothing is confirmed or queued, and the check writes only `platform.db`. The table `pipeline_validations` is made at first use, like the other two, so a reader makes it before it looks.
+
 ## What the platform stores
 
 One row per kind of data. Every period below is a constant in `platform/abf_platform/` or a rule stated elsewhere in this document; where the code has no rule, the row says `no automatic deletion`. Tokens and passwords are kept only as hashes; the cookie is signed.
@@ -524,6 +528,7 @@ One row per kind of data. Every period below is a constant in `platform/abf_plat
 | Uploads: samplesheets uploaded for runs | `uploads` folder, one folder per user | no automatic deletion. |
 | Fetched records: Nextflow's records read back from the site | `records` folder, one folder per run name | no automatic deletion. |
 | Composed pipelines: a name and numbered versions of a graph of nf-core modules, per owner | `platform.db` (`pipelines`, `pipeline_versions`) | no automatic deletion; versions are never changed or removed. |
+| Pipeline validations: the latest check result for each saved pipeline version | `platform.db` (`pipeline_validations`) | no automatic deletion; replaced by the next check of the same version. |
 
 **First use.** The platform keeps the bundle and the screen text of every launch you confirm until you delete them, and you can forget a submission at any time with `abf-platform forget`. Showing this sentence to a person the first time, in the web page and in the clients, is not built yet; this document is the only place it is written.
 
