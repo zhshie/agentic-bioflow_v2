@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+from urllib.parse import urlparse
 
 # Nextflow 26.04.7 sends one message at least every minute while a run is alive
 # (research.md: TowerObserver.groovy:60). A run silent for three of them is lost.
@@ -184,6 +185,21 @@ FACT_TEXT = {"slurm_account": 64, "reach": 16, "endpoint": 300, "forward_file": 
 FACT_FLAGS = ("platform_local",)
 
 
+def public_url(value):
+    """The progress address the compute nodes can reach: https, or http only on this machine (local tests); else None."""
+    if not isinstance(value, str) or not 0 < len(value) <= 300 or "\\" in value or re.search(r"[\s\x00-\x1f\x7f]", value):
+        return None
+    try:
+        u = urlparse(value)
+        u.port
+    except ValueError:
+        return None
+    host = u.hostname or ""
+    if (u.scheme == "https" and host) or (u.scheme == "http" and host in ("127.0.0.1", "localhost")):
+        return value.rstrip("/")
+    return None
+
+
 def clean_facts(facts):
     """The facts of a hello, each as text/boolean/None within its bound; None when there were no facts at all."""
     if not isinstance(facts, dict):
@@ -195,4 +211,7 @@ def clean_facts(facts):
     for key in FACT_FLAGS:
         v = facts.get(key)
         out[key] = v if isinstance(v, bool) else None
+    v = facts.get("way_back")
+    out["way_back"] = v if isinstance(v, str) and v in ("forward", "direct") else None
+    out["platform_public_url"] = public_url(facts.get("platform_public_url"))
     return out
