@@ -74,3 +74,16 @@ golden 腳本含兩行 `module load` 與上述 `exec` 行；未命中路徑逐�
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+## 裁決（2026-10-22，developer-agent，回應 verifier 出題退回）
+0. **前置與範圍**：本任務在 `ce-nano4-keys` 合進 `v3` 之後開工（重跑 `reuseContract:false`）。「不做」裡的「不改 compute_envs.py」**撤回**：本任務要在 `compute_envs.snapshot` 把三鍵帶給站台（缺則空清單），範圍檔加 `platform/abf_platform/compute_envs.py`、`platform/tests/test_station_envs.py`（只加 snapshot 的測試）。CE 三鍵的驗證規則沿用 ce-nano4-keys 已合併的 `_check_site_keys`，站台端 `_check_ce` 只再驗形狀（清單／物件），不重抄正則；結尾換行一律用 `\Z`。
+1. **CE 三鍵的形狀（與 ce-nano4-keys 相同）**：
+   `modules: ["biology/Nextflow/26.10.0"]`（模組名清單）；
+   `siteConfigVars: ["NFCORE_SITE_CONFIG", "NFCORE_SITE_REFERENCES"]`（環境變數名清單）；
+   `sitePipelines: [{"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}]`。
+   `rules.clean_environment` 放行這三鍵（照上面形狀，其餘丟掉）。測試用的假 CE 就用這組值。
+2. **`-c` 行只來自 `siteConfigVars`**：作法裡寫死的 `-c "$NFCORE_SITE_CONFIG" -c "$NFCORE_SITE_REFERENCES"` 只是 nano4 那組值的結果，不是固定內容。規則＝`siteConfigVars` 每一項依序一個 `-c "$VAR"`；清單空就一個都沒有。順序：站台的 `-c` 在前、我們的 `-c nextflow.config` 最後。命中與未命中都套用這條（未命中也要吃站台 config）。
+3. **modules 的載入與 golden**：只要 `modules` 非空，head 腳本就在 `umask 077` 之後逐行 `module load`，**命中與未命中都載**；命中再多載命中項的 `module`。因此「未命中＝逐位元等於舊 golden」只對 `modules` 為空且 `siteConfigVars` 為空的 CE 成立（既有 golden 全部屬此，所以舊 golden 不變）。tc013c 改寫為：同 nano4 CE、revision 2.17.0 → `pipeline_source.kind == "remote"`、exec 行是 `nf-core/ampliseq -r 2.17.0`、仍有 `module load biology/Nextflow/26.10.0`、沒有 ampliseq 的 module load；golden 新增 `nano4-miss` 鍵記錄它。
+4. **`pipeline_source` 只放 bundle**（`bundle_json` 內），`launches` 表不加欄、不需 migration；ledger 寫明。
+5. **續跑（resume）**：`render_resume` 走同一個 `_head_script`，沿用原 bundle 的 `pipeline_source` 與 CE 三鍵（`ce_out` 白名單加這三鍵），所以本地路徑啟動的 run 續跑仍從本地路徑、仍先 module load。加一條 TC：命中的 run 續跑的 head 腳本同樣含 module load 與 `"$NFCORE_AMPLISEQ_HOME"`、不含 ` -r `。
+6. **既有測試的合法更新**（寫進 ledger）：`test_launch_bundle.py`／`test_station_launch.py` 若有列舉 bundle 鍵或 `ce_out` 鍵的斷言，加 `pipeline_source` 與三鍵是合法更新；其餘斷言不動。
