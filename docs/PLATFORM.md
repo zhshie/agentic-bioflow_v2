@@ -219,6 +219,7 @@ abf-platform ce preflight nchc
 abf-platform ce primary nchc
 abf-platform ce disable nchc
 abf-platform ce enable nchc
+abf-platform ce create --name=gcb1 --platform=googlebatch-platform --agent=host1 --project=lab-project-1 --location=europe-west2 --service-account-email=runner@lab-project-1.iam.gserviceaccount.com --boot-disk-size="50 GB" --spot --config-json='{"workDir":"gs://lab-bucket/work"}' --credentials=gcp-lab
 ```
 
 For a long value that starts with `--`, use the `=` form (`--head-job-options=--time=02:00:00`). `--env` is `NAME=VALUE` for the head job, `compute:NAME=VALUE` for the compute jobs or `both:NAME=VALUE` for both, the way Seqera's own command line writes it.
@@ -243,6 +244,40 @@ For a long value that starts with `--`, use the `=` form (`--head-job-options=--
 Outside the config an environment also has `name` (1 to 100 characters, unique), `description`, `platform` (the type), `credentialsId` (the **name** of a credential), `agent` (the agent that serves it; with no `--agent` the only agent that has a token is used), `status`, `message`, `primary`, and the dates `dateCreated`, `lastUpdated`, `lastUsed`. The field names follow Seqera's (`specs/007-station-agent/research.md`).
 
 **The platform refuses anything that looks like a credential**: a private key, an `AKIA` or `ASIA` key id, `aws_secret_access_key`, `export TOKEN=...`, one of this platform's own `abf_` tokens, a variable or field named like a secret (`password`, `token`, `secret`, `key`), in any text field or any depth. The refusal names the field, never repeats the value, and says that the credential belongs on the agent's side. Queue names and paths are checked for shell syntax too (a `;`, `$(`, a quote and so on is refused).
+
+### Google Cloud Batch
+
+A `googlebatch-platform` environment is served by **a station agent that runs on the platform host** (`abf-station run`, the one an operator already runs there), and `--agent` must name it. The people who use the cloud install nothing: the platform never starts a program itself (principle 2), so the preflight is a job for that agent, the same kind of job a Slurm environment gets. `ce create` and `ce update` queue it; `ce preflight <name>` queues it and waits for the answer. **Launching on it is not built yet** (尚未支援送出; next task C-2): such an environment can be `available` and even `primary`, but a launch, a listing or a cancel on it is refused in plain words, and the automatic choice of an environment never picks it.
+
+| Key | Rule |
+|---|---|
+| `project` | required; the GCP project **ID**, 6 to 30 characters, lower-case letters, digits and `-`, starting with a letter, not ending with `-` (`--project`) |
+| `location` | required; a region such as `europe-west2` (`--location`) |
+| `workDir` | required; `gs://<bucket>[/<folder>]`, the bucket 3 to 63 characters of lower-case letters, digits and `- _ .`; no `..`; a trailing slash is dropped |
+| `spot` | optional true or false (`--spot`, `--no-spot`) |
+| `bootDiskSize` | optional, `50 GB` or `50GB`, 1 to 2000 (`--boot-disk-size`) |
+| `bootDiskImage` | optional image name, at most 200 characters |
+| `serviceAccountEmail` | optional; an e-mail address like `runner@lab-project-1.iam.gserviceaccount.com`, never a key (`--service-account-email`) |
+| `network`, `subnetwork` | optional VPC and subnet names, or `projects/...` paths |
+| `usePrivateAddress` | optional true or false |
+| `labels` | optional object; keys and values at most 63 characters, at most 64 pairs |
+| `maxvCpus` | optional whole number 1 to 10000; it is only stored, and takes effect from C-2 |
+| `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
+
+Every problem is listed at once, each naming its key. There is no field for money or currency: cost is not part of this type. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`). The service-account key file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_GCP_CREDENTIALS`, or else at `_personal/gcp-sa.json` in its deployment folder (the folder that holds `config/env.yaml`); make it readable by that user only (`chmod 600`). The agent judges `project`, `location` and the bucket again before it builds a command.
+
+| Check | What the agent does |
+|---|---|
+| `credential_name` | the environment has a credential name |
+| `credential_file` | the key file exists, is a regular file and (not on Windows) is not readable by others; when it is missing the message says where to put it |
+| `credential_shape` | the file is a service-account key with `client_email` and `private_key` (a Workload Identity file is not supported); only missing key names are ever shown |
+| `credential_project` | the `project_id` in the file is the environment's `project` |
+| `service_account` | `serviceAccountEmail` has the shape of an address (it need not equal the file's `client_email`); without it the Compute Engine default account is used |
+| `gcloud` | `gcloud` is installed (`unchecked`, not `fail`, when it is not) |
+| `batch_api` | `gcloud batch jobs list --limit 1` answers |
+| `bucket` | `gcloud storage ls gs://<bucket>/` answers |
+
+**預檢不計費 (the preflight costs nothing):** it only reads. It lists Batch jobs and the top of a bucket and reads the key file; it creates no Batch job, writes nothing to a bucket, enables no API and creates no service account. Each `gcloud` call is limited to 30 seconds; a timeout fails that one check. The key file's path is handed to `gcloud` in its environment (`CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`), never in its arguments, and no `ABF_` variable is passed on. Without `gcloud` on that computer the two API checks are `unchecked` and the environment stays `invalid`, with a message that says so. A record made before this type was checked keeps its status `unsupported`; `ce update` and `ce preflight` apply today's rules to it and say which fields are missing, and a completed one becomes `creating` until its first preflight is answered.
 
 ### Status
 
@@ -287,7 +322,7 @@ Twelve tools. Seven are read-only (`readOnlyHint`): `list_runs`, `get_run`, `lis
 
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Only Slurm is supported in this slice**; the other thirteen are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Only Slurm can run; Google Cloud Batch can be created and checked** (by a station agent on the platform host, see "Google Cloud Batch" above; launching on it comes in the next task, C-2); the other twelve are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -300,7 +335,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `awscloud-platform` | AWS Cloud | modelled only |
 | `azbatch-platform` | Azure Batch | modelled only |
 | `azcloud-platform` | Azure Cloud | modelled only |
-| `googlebatch-platform` | Google Cloud Batch | modelled only |
+| `googlebatch-platform` | Google Cloud Batch | checked on the platform host (launch: not yet) |
 | `googlecloud-platform` | Google Cloud | modelled only |
 | `k8s-platform` | Kubernetes | modelled only |
 | `eks-platform` | Amazon EKS | modelled only |

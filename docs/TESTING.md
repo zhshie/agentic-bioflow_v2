@@ -553,6 +553,14 @@ This is the procedure for Stage 3 (web 011 to 013). The pages it walks are not a
 
 Keep the record with the release notes of the run. A step you could not do by clicking alone is a finding, not a skipped step.
 
+## Google Cloud Batch environment (gcb-ce-type): the maintainer and the reviewer check
+
+The automatic tests use a fake `gcloud` and touch no network. Three things are checked by a person.
+
+1. **The maintainer, once, after the Google account (C-0) is open. This costs nothing.** (a) On the computer where the platform host's station agent runs, put the service-account JSON at `<agent deployment>/_personal/gcp-sa.json` (or where `ABF_STATION_GCP_CREDENTIALS` points) and `chmod 600` it; install `gcloud`. (b) Run `abf-platform ce create --name gcb1 --platform googlebatch-platform --agent <that agent> --project <project ID> --location <region> --config-json '{"workDir":"gs://<bucket>/work"}' --credentials gcp-lab`, then wait for the agent's answer or run `abf-platform ce preflight gcb1`. Check: every check is printed, and when all pass `abf-platform ce show gcb1` says `available`. (c) Search the output of `ce show` and `platform.db` for any piece of the key file, for example the value of `private_key`. Check: nothing is found. (d) Open the Batch page of the Google Cloud console. Check: no new job and no new charge. (e) Make three failures on purpose: remove the key file, make `gcloud` unreachable, put a key file of another project. Check: each message says what happened and what to do, in words you understand.
+2. **The reviewer.** Run `git diff <base>...HEAD --name-only`. Check: no `cloud_cost.py`, no `configs/cloud/rates.json`, no `local_runner.py`, no `head.pid`, no `-with-tower` code, no money or currency field; the existing tests changed only in `UNSUPPORTED` and TC-030's name and TC-032's assertion in `test_station_envs.py`, and the parity-row assertions of TC-077 in `test_station_docs.py`; no assertion was deleted, loosened or skipped.
+3. **The sentence to find.** `docs/PLATFORM.md`, "Google Cloud Batch": 「預檢不計費」 says the preflight only reads, creates no Batch job and costs nothing.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in

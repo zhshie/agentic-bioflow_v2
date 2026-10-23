@@ -83,6 +83,9 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
         if owned is not None and owned["owner_user_id"] != caller_user_id:
             raise _not_found(ce_name)
     status = row["status"]
+    if row["platform"] in compute_envs.PLATFORM_HOST_TYPES and kind != "preflight":
+        raise JobRefused("%s is a Google Batch environment: its settings are checked by the agent on the platform host, but launching on it "
+                         "is not built yet (尚未支援送出；下一步 C-2)" % ce_name)
     if status == compute_envs.UNSUPPORTED:
         raise JobRefused("%s is a %s environment: %s" % (ce_name, compute_envs.KINDS.get(row["platform"], "?"),
                                                           compute_envs.NOT_SUPPORTED_MESSAGE))
