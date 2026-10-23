@@ -573,3 +573,178 @@ def test_abort_tc009_the_agent_rebuilds_the_same_bundle_with_the_block_and_write
         res = run_job(fake, job_of(b))
         assert res["state"] == "done", res
     assert (folder(site) / "nextflow.config").read_bytes() == b["files"]["nextflow.config"].encode("utf-8")
+
+
+# ---- launch-site-pipeline (M1-02): the agent rebuilds and writes the site-module head script ---------------------------------
+
+from test_launch_bundle import SITE_CE
+
+
+def test_tc_ls_43_44_45_47_a_site_launch_is_rebuilt_byte_for_byte_and_a_changed_source_is_refused(tmp_path, site, fake):
+    # TC-LS-43, TC-LS-47 (pipeline_source lives in the bundle only)
+    b = bundle_for(site, fake, ce=SITE_CE)
+    assert b["pipeline_source"]["kind"] == "site-module"
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+        assert res["state"] == "done", res
+    head = (folder(site) / "head.sh").read_text()
+    assert head == b["files"]["head.sh"] and 'module load biology/Nextflow/26.10.0' in head and " -r " not in head
+    assert len([c for c in site.calls() if c.startswith("sbatch")]) == 1
+
+
+@pytest.mark.parametrize("how", ["source", "modules"])
+def test_tc_ls_44_45_a_bundle_changed_after_the_yes_is_refused(tmp_path, site, fake, how):
+    b = bundle_for(site, fake, ce=SITE_CE)
+    if how == "source":
+        b["pipeline_source"] = {"kind": "remote"}
+    else:
+        b["ce"]["modules"] = b["ce"]["modules"] + ["evil/mod"]
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+    assert res["state"] != "done", res
+    assert not folder(site).exists()
+    assert not [c for c in site.calls() if c.startswith("sbatch")]
+
+
+def test_tc_ls_33_a_bad_module_in_a_confirmed_bundle_is_refused_naming_modules(tmp_path, site, fake):
+    b = bundle_for(site, fake, ce=SITE_CE)
+    b["ce"]["modules"] = ["a;b"]
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+    assert res["state"] != "done" and "modules" in json.dumps(res, ensure_ascii=False) and "內容不合規則" in json.dumps(res, ensure_ascii=False)
+    assert not folder(site).exists() and not [c for c in site.calls() if c.startswith("sbatch")]
+
+
+LAUNCHES_COLUMNS = ["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at", "submitted_at", "cancel_requested_at",
+                    "job_id", "user_id", "parent_run", "attempt", "attempt_kind"]      # store._LAUNCHES_TABLE, which this task does not touch
+
+
+def test_tc_ls_27_clean_environment_lets_the_three_keys_through_and_drops_what_it_does_not_know():
+    # TC-LS-27
+    from abf_station import rules
+    ce = {"platform": "slurm-platform", "workDir": "/data/w1", "launchDir": "/data/launch", "headQueue": "normal", "computeQueue": "dev",
+          "readRoots": ["/data/storage"], "evil": "rm -rf /", "preRunScript": "x"}
+    ce.update(copy.deepcopy(SITE_CE))
+    out = rules.clean_environment(ce)
+    for k, v in SITE_CE.items():
+        assert out[k] == v
+    assert "evil" not in out and "preRunScript" not in out
+    assert (out["workDir"], out["launchDir"], out["headQueue"], out["computeQueue"], out["readRoots"]) == \
+        ("/data/w1", "/data/launch", "normal", "dev", ["/data/storage"])
+    base = {k: v for k, v in ce.items() if k not in SITE_CE}      # a snapshot made before the keys: the same judgement as before
+    old = rules.clean_environment(base)
+    assert (old["workDir"], old["headQueue"], old["computeQueue"]) == ("/data/w1", "normal", "dev")
+    assert old["modules"] == [] and old["siteConfigVars"] == [] and old["sitePipelines"] == []
+    for bad in (dict(ce, workDir="/"), dict(ce, headQueue="a b"), dict(ce, modules="biology/Nextflow/26.10.0"),
+                dict(ce, sitePipelines=[{"pipeline": "x"}])):
+        with pytest.raises(rules.Refusal):
+            rules.clean_environment(bad)
+
+
+def test_tc_ls_12_47_a_terminal_launch_with_the_old_arguments_shows_the_site_start_and_keeps_it_in_the_bundle_only(tmp_path, monkeypatch):
+    # TC-LS-12 (same arguments as before; the screen the person says yes to has the module lines and the home variable, no -r),
+    # TC-LS-47 (the kept bundle_json has pipeline_source; the launches table has the columns it had)
+    import sqlite3
+    from launch_harness import QUESTION_LAUNCH, LaunchData, Pty, cli_argv
+    from station_harness import Inproc
+    from test_launch_cli import parts, section, unescape
+    data = LaunchData(Inproc(tmp_path / "ip", monkeypatch), config_json=json.dumps(SITE_CE))      # made by the normal `ce create`
+    args = data.launch_args(tmp_path)
+    assert {a.split("=")[0] for a in args if a.startswith("--")} == {"--ce", "--pipeline", "--revision", "--run-name", "--samplesheet",
+                                                                      "--param"}
+    assert args[args.index("--pipeline") + 1] == "nf-core/ampliseq" and args[args.index("--revision") + 1] == "2.18.0"
+    p = Pty(cli_argv(*args), data.env())
+    assert p.wait_for(QUESTION_LAUNCH, 30), p.text()
+    lines, _ = parts(p.text(), QUESTION_LAUNCH)
+    head = "\n".join(unescape(x) for x in section(lines, "head.sh"))
+    assert "module load biology/Nextflow/26.10.0 || exit 1" in head and "module load biology/nf-core-ampliseq/2.18.0 || exit 1" in head
+    assert 'exec nextflow run "$NFCORE_AMPLISEQ_HOME"' in head and " -r " not in head
+    assert data.snapshot() == (0, 0, 0, 0)      # nothing is made before the yes
+    p.send("y\n")
+    p.finish(60)
+    assert data.count("confirmations") == 1 and data.count("jobs") == 1 and data.count("launches") == 1
+    con = sqlite3.connect(str(data.ip.state_db))
+    try:
+        kept = json.loads(con.execute("SELECT bundle_json FROM confirmations").fetchone()[0])
+        cols = [r[1] for r in con.execute("PRAGMA table_info(launches)")]
+        sent = json.loads(con.execute("SELECT args_json FROM jobs WHERE kind = 'launch_nextflow'").fetchone()[0])["bundle"]
+    finally:
+        con.close()
+    want = {"kind": "site-module", "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}
+    assert kept["pipeline_source"] == want and sent["pipeline_source"] == want
+    assert kept["files"]["head.sh"].rstrip("\n") == head.rstrip("\n")      # what the person saw is what was kept
+    assert cols == LAUNCHES_COLUMNS, cols      # no pipeline_source column: it lives in bundle_json
+
+
+def test_tc_ls_41_a_resume_of_a_site_launch_reads_the_module_lines_and_the_home_variable_into_head_2(tmp_path, site, fake):
+    # TC-LS-41
+    from resume_harness import make_folder, resume_bundle
+    origin, b = resume_bundle(site, fake, ce=SITE_CE)
+    assert origin["pipeline_source"]["kind"] == "site-module"
+    f = make_folder(origin)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+    assert res["state"] == "done", res
+    assert len([c for c in site.calls() if c.startswith("sbatch")]) == 1
+    head2 = (f / "head-2.sh").read_text()
+    assert head2 == b["files"]["head-2.sh"] and site.scripts() == [head2]
+    assert "module load biology/Nextflow/26.10.0 || exit 1" in head2 and "module load biology/nf-core-ampliseq/2.18.0 || exit 1" in head2
+    assert 'exec nextflow run "$NFCORE_AMPLISEQ_HOME"' in head2 and " -resume " in head2 and " -r " not in head2
+    assert (f / "head.sh").read_bytes() == origin["files"]["head.sh"].encode("utf-8")
+
+
+def test_tc_ls_42_a_run_started_before_the_site_keys_existed_still_resumes_from_the_remote(tmp_path, site, fake):
+    # TC-LS-42: an origin and a resume bundle in the shape made before this change (no pipeline_source, no site keys in the environment)
+    from resume_harness import make_folder, resume_bundle
+    origin, b = resume_bundle(site, fake)
+    for doc in (origin, b["resume"]["origin"], b):
+        doc.pop("pipeline_source", None)
+        for k in ("modules", "siteConfigVars", "sitePipelines"):
+            doc["ce"].pop(k)
+    assert "pipeline_source" not in b["resume"]["origin"] and "modules" not in b["ce"]
+    f = make_folder(origin)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+    assert res["state"] == "done", res
+    head2 = (f / "head-2.sh").read_text()
+    assert " -r 2.18.0 " in head2 and "module load" not in head2 and "NFCORE" not in head2 and " -resume " in head2
+    assert len([c for c in site.calls() if c.startswith("sbatch")]) == 1
+
+
+def test_tc_ls_52_the_launch_tool_and_the_tool_list_are_those_of_the_base(tmp_path, monkeypatch):
+    # TC-LS-52: no tool appears or goes, and launch takes the same arguments as before (pipeline, revision, run_name, samplesheet are
+    # required; ce_name, params, path_columns are not)
+    import asyncio
+    from mcp import Client
+    from abf_platform import mcp_server
+    from station_harness import Inproc
+    ip = Inproc(tmp_path / "ip", monkeypatch)
+
+    async def listing():
+        async with Client(mcp_server.build_server(ip.index)) as c:
+            return (await c.list_tools()).tools
+
+    tools = {t.name: t for t in asyncio.run(listing())}
+    assert set(tools) == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
+                          "read_task_log", "launch", "cancel", "forget", "resume", "relaunch"}
+    schema = tools["launch"].input_schema
+    assert set(schema["properties"]) == {"pipeline", "revision", "run_name", "samplesheet", "ce_name", "params", "path_columns"}
+    assert sorted(schema["required"]) == ["pipeline", "revision", "run_name", "samplesheet"]
+
+
+def test_tc_ls_53_the_run_token_is_in_no_bundle_no_script_no_refusal_and_no_log(tmp_path, site, fake):
+    # TC-LS-53: the token is only in tower.token; the new module lines and -c lines carry no secret; a refusal and the agent's log do not either
+    b = bundle_for(site, fake, ce=SITE_CE)
+    assert TOKEN not in json.dumps(b) and TOKEN not in b["files"]["head.sh"]
+    bad = bundle_for(site, fake, run="run-bad", ce=SITE_CE)
+    bad["ce"]["modules"] = ["a;b"]
+    with agent_on(fake, site, tmp_path, name="agent-f") as a:
+        good = run_job(fake, job_of(b))
+        refused = run_job(fake, job_of(bad))
+        out = a.output()
+    assert good["state"] == "done" and refused["state"] != "done", (good, refused)
+    for text in (json.dumps(good), json.dumps(refused, ensure_ascii=False), out):
+        assert TOKEN not in text
+    assert "modules" in json.dumps(refused, ensure_ascii=False)
+    assert TOKEN not in site.scripts()[0] and not [c for c in site.calls() + site.ssh_calls() if TOKEN in c]
+    assert (folder(site) / "tower.token").read_text() == TOKEN

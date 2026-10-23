@@ -574,7 +574,9 @@ def snapshot(row_or_view):
     c = v["config"]
     return {"name": v["name"], "platform": v["platform"], "workDir": c.get("workDir"), "launchDir": c.get("launchDir"),
             "headQueue": c.get("headQueue"), "computeQueue": c.get("computeQueue"),
-            "readRoots": list(c.get("readRoots") or [])}
+            "readRoots": list(c.get("readRoots") or []), "modules": list(c.get("modules") or []),
+            "siteConfigVars": list(c.get("siteConfigVars") or []),
+            "sitePipelines": [dict(p) for p in (c.get("sitePipelines") or [])]}
 
 
 def verdict_message(ok, checks):

@@ -854,3 +854,22 @@ def test_reading_a_nano4_environment_over_mcp_writes_nothing(ip):
     for o in outs:
         t = tool_text(o)
         assert "NFCORE_SITE_CONFIG" in t and run_token not in t and "authorization" not in t.lower()
+
+
+# ---- launch-site-pipeline (M1-02): snapshot carries the three site keys to the agent -----------------------------------------
+
+def test_tc_ls_23_24_26_snapshot_carries_the_three_keys_and_nothing_more():
+    from abf_platform import compute_envs
+    keys = {"modules": ["biology/Nextflow/26.10.0"], "siteConfigVars": ["NFCORE_SITE_CONFIG", "NFCORE_SITE_REFERENCES"],
+            "sitePipelines": [{"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biology/nf-core-ampliseq/2.18.0",
+                               "home": "NFCORE_AMPLISEQ_HOME"}]}
+    view = {"name": "n", "platform": "slurm-platform",
+            "config": dict(keys, workDir="/w", headQueue="normal", environment=[{"name": "A", "value": "1"}], nextflowConfig="x",
+                           headJobOptions="-c 4")}
+    s = compute_envs.snapshot(view)
+    for k, v in keys.items():
+        assert s[k] == v
+    assert set(s) == {"name", "platform", "workDir", "launchDir", "headQueue", "computeQueue", "readRoots",
+                      "modules", "siteConfigVars", "sitePipelines"}
+    bare = compute_envs.snapshot({"name": "n", "platform": "slurm-platform", "config": {"workDir": "/w", "headQueue": "normal"}})
+    assert bare["modules"] == [] and bare["siteConfigVars"] == [] and bare["sitePipelines"] == []
