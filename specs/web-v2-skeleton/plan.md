@@ -34,6 +34,8 @@ supersedes: web-list-home（10-23 HOLD，清單首頁＋處置欄已被否決）
 - `platform/tests/test_web_running.py`
 - `platform/tests/test_web_actions.py`（只限裁決 5 的 TC-004）
 - `platform/tests/test_web_v2_skeleton.py`（新檔）
+- `platform/tests/test_failures.py`（只限裁決 11：TC-043 的模組清單）
+- `platform/tests/test_launch_nextflow.py`（只限裁決 11：TC-045 的「已取消」掃描範圍）
 
 ## 作法
 
@@ -125,6 +127,13 @@ supersedes: web-list-home（10-23 HOLD，清單首頁＋處置欄已被否決）
 7. **測試種子 helper**（寫在新檔 `test_web_v2_skeleton.py` 內，不改 `test_web_board.seed`）：`project_name` 用 `UPDATE runs SET project_name=? WHERE id=?`；failed task 沿用 `test_web_running.py` 的 `extra()` 寫法插 `failed_tasks`；cancelled 依 `jobs.cancel_requested_at` 讀的 state db launches 表做 UPDATE（先讀 `jobs.py` 確認欄名）。
 8. **不動 `docs/TESTING.md`**（L1 車道的 preflight-nano4 也在改它；車道檔案集合必須不相交）。截圖步驟由 developer-agent 自己做。
 9. `test_web_parity.py` 不受影響：網頁仍只呼叫 `list_runs`／`get_run` 與既有 request_*；拿掉 `read_details` 不新增呼叫。`test_resume_scope.py`：`web.py` 不准新增名字含 resume／relaunch 的識別字。
+
+10. **已知環境紅（第 2 趟加，10-24）**：`tests/init_workspace_test.sh` 的「site side with no run area known fails clearly」在桌機 WSL 因 `mkdir /work` 權限回 rc 1（預期 2）；base `1db9ad5` 同樣紅，GitHub CI 上 v3 是綠的。判定「全套綠」時**只排除這一條**，其餘必須全綠；ledger 記下這條與原因後寫 `GREEN <HEAD>`。不准改這支測試。
+11. **兩條舊守則測試要正式更新，不准繞（第 2 趟加，10-24）**：網頁讀 run 的 `failure` 欄位、顯示「已取消」正是本任務要的行為。
+    - `test_failures.py::test_untouched_modules_do_not_know_failure`（TC-043）：把 `web_board.py` 從模組清單拿掉（網頁現在合法讀 `failure`）；`web.py`、`receiver.py`、`status.py` 照舊禁止。加一行註解說明原因並指回本計畫。
+    - `test_launch_nextflow.py` 掃描整個 `abf_platform` 不准出現「已取消」那段（約第 186 行）：改成跳過 `web_board.py`，其他檔照舊禁止。
+    - 同時**撤回**第 1 趟為了躲這兩條而做的字串拼接（`FAILURE = "fail" + "ure"`、`"已取" "消"`），web_board.py 直接寫 `"failure"` 與 `已取消`。
+    - 這兩檔除上述兩處外一字不動；ledger 逐條列「舊斷言 → 新斷言」。
 
 ## 專長守則（ui）
 
