@@ -53,6 +53,12 @@ base: v3
 2. TC-406 釘死 package-data 的 regex：優先不動 package-data（建置 hook 複製進 build_lib 後，用 `[tool.setuptools.package-data]` 另一個表或 `include-package-data`/MANIFEST 的方式能被 wheel 收進就好）。若無法避免改 package-data，允許把 TC-406 改成「含 abf_platform 那一條且另含 abf_station 的 plugin/scripts」，並在 ledger 寫「以前／以後」。
 3. 不需要 migration。
 
+## 裁決二（2026-10-24 01:20，回應 verifier 出題退回）
+4. **configs/ 一起打包**：建置 hook 同時複製 repo 的 `scripts/` 與 `configs/` 到 `abf_station/plugin/`（結構 `plugin/scripts/…`、`plugin/configs/…`，與 repo 根相同），讓 on_site.sh 的 `ROOT`＝`plugin/`、ssh 模式的 `tar -C "$ROOT" scripts configs` 與遠端腳本讀 `$ROOT/configs/sites/*` 都成立。目標「不必再給 --plugin-root」包含 reach=ssh。加測試：wheel 內 `abf_station/plugin/configs/sites/` 與 repo `configs/sites/` 逐位元相同；以 packaged plugin root 執行 ssh 送出那行的 tar（可在測試裡對 plugin root 實跑 `tar -cz -C <root> scripts configs` 到 /dev/null）成功。
+5. 整個 scripts/ 資料夾（含子資料夾）都帶；TC-SP-02 照此。
+6. 找不到時的訊息照現在的寫法保留腳本路徑（使用者需要知道），補上「安裝版裡沒有，也沒給 --plugin-root」。
+7. `.gitignore` 忽略 `platform/abf_station/plugin/`；範圍檔清單加 `platform/abf_station/plugin/`（只限建置產物，不提交）。
+
 ## 專長守則（backend）
 
 ### executor
