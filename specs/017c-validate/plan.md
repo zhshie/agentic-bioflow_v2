@@ -188,6 +188,12 @@ CREATE TABLE IF NOT EXISTS pipeline_validations (
 10. **檔首標頭**（TC-070）：`validate.py`、`test_validate.py`、`test_pipelines_validation.py` 前 40 行要有 `# Nothing existing: …`。範例：`# Nothing existing: nf-core publishes module metadata but no checker for a canvas graph; nf-core/tools lint needs a checked-out project and starts programs, which the platform host must not do.`
 11. **待維護者確認：無。**（裁決 2 的「動態檢查延後並拆票」改變了總表 017c 的範圍與其「done」句的一半——「lint 失敗的版本不能 launch」要等 017c2；這是排程變動，不是方向變動，developer-agent 在派工單與 PLAN 上同步更新即可。）
 
+## 裁決二（2026-10-24 04:35，developer-agent，回應 verifier 出題退回；與上文衝突以本段為準）
+1. **選 (b)**：刪掉 `PARAM_KEY`／`PARAM_VALUE` 兩個 code。參數規則只有一套（`compose.normalize` 的 `_check_params`），參數壞掉一律是 `GRAPH_STALE`（訊息帶出 normalize 的 problem 原文，點名節點與參數名）。`test_param_rules_agree_with_normalize` 改成：壞參數 → `GRAPH_STALE` 且 finding 點名節點與參數名。
+2. **PATTERN_MISMATCH 的聚合規則**：只在「來源輸出通道恰好一筆檔案類記錄且有 pattern」**而且**「目的輸入通道恰好一筆檔案類記錄且有 pattern」時才比；任一端有多筆記錄、或任一筆 pattern 為 null，就整條邊不比 pattern。比的方法＝兩個 pattern 各自展開大括號後的副檔名集合有沒有交集，沒有交集才給 warning。照此規則，黃金例（fastqc zip → multiqc 輸入 0，multiqc 端 6 筆含 null）與 twins 都不出 PATTERN_MISMATCH。
+3. **標準答案檔**：`fixtures/validate/*.expected.json` 由 executor 依本計畫的規則**手推**寫出，推導過程逐項寫進 ledger（每條邊、每個 finding 為什麼出現），不得用 `validate` 的輸出回填；verifier 閱卷時獨立重推（同 017b 的做法）。bad_edges 的 `d` 輸入 1 兩條進邊：每條邊各自對 `d` 輸入 1 的記錄做型別比對，各自可能產生 META_MISMATCH／TYPE_MISMATCH，另外因多來源產生 MIXED_SOURCES（若規則成立）。
+4. DUPLICATE_PROCESS 的舉例改為可達情形：兩個不同模組的 path 轉大寫、`/` 換 `_` 後相同；或同模組多節點的別名 `<PROCESS>_<ID大寫>` 等於另一模組的 process 名（例：模組 `fastqc` 兩節點 id `x`、`y`，加上 path 為 `fastqc/x` 的模組）。原文 `s1`／`S1` 的例子作廢。
+
 ## 專長守則（backend）
 
 ### executor
