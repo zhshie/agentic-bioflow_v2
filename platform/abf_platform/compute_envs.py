@@ -32,7 +32,7 @@ KINDS = {
     "gke-platform": "Google GKE",
 }
 SUPPORTED = "slurm-platform"                                  # the type that runs through an agent on the cluster
-PLATFORM_HOST_TYPES = ("googlebatch-platform",)               # checked by the agent that runs on the platform host; launching on them is C-2
+PLATFORM_HOST_TYPES = ("googlebatch-platform",)               # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch)
 CHECKABLE = (SUPPORTED,) + PLATFORM_HOST_TYPES
 SEQERA_COMPUTE = ("seqera-compute", "seqeracompute-platform")
 

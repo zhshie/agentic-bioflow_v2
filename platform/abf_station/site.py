@@ -101,6 +101,18 @@ def run_fixed(argv, env, timeout):
     return p.returncode, out
 
 
+def wait_for_exit(proc, seconds):
+    """The exit code of a process started with start_detached when it ends within `seconds`, else None (it is still running)."""
+    wait = getattr(proc, "wait", None)
+    if seconds > 0 and callable(wait):
+        try:
+            return wait(timeout=seconds)
+        except subprocess.TimeoutExpired:
+            return None
+    poll = getattr(proc, "poll", None)
+    return poll() if callable(poll) else None
+
+
 def start_detached(argv, env, cwd, out_path):
     """The Popen of one program started with a fixed argument list, no shell, in a session of its own, with the output of both streams
     appended to `out_path` (private, 0600; a link there is never followed). Returns at once. This is the one other way (next to

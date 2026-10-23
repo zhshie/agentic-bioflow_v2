@@ -20,7 +20,6 @@ message; the program that starts the head process gets it in its environment and
 import os
 import re
 import signal
-import time
 
 from . import gcb_preflight, launch, rules
 from . import site as host
@@ -207,14 +206,7 @@ def run_launch(job, ctx, bundle):
         left = "資料夾 %s；主控程序（pid %d）已啟動但 head.pid 寫不進去，取消時需要它" % (folder, pid)
         return "error", {"ok": False, "message": "寫 head.pid 時出錯（%s）。%s" % (e.__class__.__name__, left), "left_on_site": left}
 
-    poll = getattr(proc, "poll", None)
-    deadline = time.monotonic() + _settle_seconds()
-    code = None
-    while True:
-        code = poll() if callable(poll) else None
-        if code is not None or time.monotonic() >= deadline:
-            break
-        time.sleep(0.1)
+    code = host.wait_for_exit(proc, _settle_seconds())      # a head process that is gone within a few seconds did not start
     if code is not None:
         tail = _tail(os.path.join(folder, "head.out"))
         left = "資料夾 %s（保留供檢查）" % folder

@@ -504,7 +504,7 @@ def launch_screen(bundle, ce_name):
 
 
 def cancel_screen(bundle, row):
-    if bundle["ce"].get("platform") == bundle_mod.GCB:
+    if (bundle.get("ce") or {}).get("platform") == bundle_mod.GCB:
         lines = [terminal.PREFIX + "== 取消確認：只會對下面這一個主控程序送出取消 =="]
         for label, value in (("run 名稱", bundle["run_name"]), ("主控程序編號（pid）", bundle["slurm_job_id"]),
                              ("專屬資料夾", bundle["run_folder"]), ("代理", bundle["agent"])):
