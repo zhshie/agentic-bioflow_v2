@@ -240,6 +240,16 @@ def test_other_user_cannot_update(d):
 def test_error_messages_hide_internals(d, caplog):
     # TC-114, TC-136
     caplog.set_level(logging.DEBUG)
+    from abf_platform import store
+    from human_harness import PASSWORD
+    # TC-136: values the caller's account really holds; none of them may appear in any reply or log line.
+    pat = store.create_token(d.w.ip.tokens, kind="pat", user_id=d.a.user_id, label="tc136")
+    secrets_known = [pat, store.token_hash(pat), PASSWORD]
+    for row in sql_rows(d.w.ip.tokens, "SELECT password_hash FROM users WHERE id = ?", (d.a.user_id,)):
+        secrets_known.append(row["password_hash"])
+    for row in sql_rows(d.w.ip.tokens, "SELECT token_hash FROM tokens"):
+        secrets_known.append(row["token_hash"])
+    assert all(secrets_known) and len(secrets_known) >= 4
     seen = []
     seen.append(make(d, d.a, graph={"nodes": [{"id": "a", "module": "nonesuch"}]}))
     pid = make(d, d.a)["pipeline"]["id"]
@@ -250,9 +260,13 @@ def test_error_messages_hide_internals(d, caplog):
     seen.append(pl().render_pipeline(d.state, pid, caller=d.b))
     sql_exec(d.state, "CREATE TRIGGER boom BEFORE INSERT ON pipeline_versions BEGIN SELECT RAISE(ABORT, 'injected'); END")
     seen.append(make(d, d.a, name="other"))
-    text = json.dumps(seen, ensure_ascii=False) + caplog.text
+    fine = [pl().list_pipelines(d.state, caller=d.a), pl().list_pipelines(d.state, caller=d.b),      # the five functions, answered too
+            pl().get_pipeline(d.state, pid, caller=d.a), pl().render_pipeline(d.state, pid, caller=d.a)]
+    text = json.dumps(seen + fine, ensure_ascii=False) + caplog.text
     for word in ("SELECT", "INSERT", "sqlite", "Traceback", "platform.db", str(d.state), "injected"):
         assert word not in text, word
+    for known in secrets_known:
+        assert known not in text, "a secret of the caller's account leaked"
     token_like = re.compile(r"abf_[a-z]+_[A-Za-z0-9]{8,}|scrypt|password", re.I)
     assert not token_like.search(text)
     for r in seen:
