@@ -31,9 +31,12 @@ def _single(item):
     return None
 
 
-def _entry(channel, key, val):
-    return {"channel": _mask(channel), "name": _mask(str(key)), "type": _mask(val.get("type")),
-            "pattern": _mask(val.get("pattern"))}
+def _entry(channel, key, val, with_optional=False):
+    rec = {"channel": _mask(channel), "name": _mask(str(key)), "type": _mask(val.get("type")),
+           "pattern": _mask(val.get("pattern"))}
+    if with_optional:  # input records only: meta.yml `optional: true`, anything else is false
+        rec["optional"] = val.get("optional") is True
+    return rec
 
 
 def _tools(meta):
@@ -62,7 +65,7 @@ def _inputs(meta):
         for sub in item if isinstance(item, list) else [item]:
             one = _single(sub)
             if one:
-                out.append(_entry(i, *one))
+                out.append(_entry(i, *one, with_optional=True))
     return out
 
 
