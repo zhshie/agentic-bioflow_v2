@@ -500,6 +500,7 @@ The text exists once, in `skills/`. The build copies that folder into the packag
 The building blocks of the pipeline canvas are the nf-core modules. A snapshot of all of them is committed at `platform/abf_platform/data/nf-core-modules.json`; `abf_platform/catalogue.py` loads it and offers `search` and `describe`. Nothing in the tool list or the web pages uses it yet.
 
 - Source: `nf-core/modules` at commit `5ed90b42e78410e7411e9c6bdfeff33226d6c58e`, every `modules/nf-core/**/meta.yml`, old and new format, flattened to name, path, description, keywords, tools, inputs and outputs (`versions` channels left out). A meta.yml that cannot be read is listed under `errors`, never fatal.
+- Each input record carries a boolean `optional`: `true` only where the meta.yml marks that input `optional: true`, `false` when it says nothing. Output records have no `optional`.
 - Regenerate (maintainer only; needs PyYAML in a throwaway environment): `PYTHONPATH=platform python -m abf_platform.catalogue snapshot --modules <nf-core/modules checkout> --sha <sha> --out platform/abf_platform/data/nf-core-modules.json`. The same sha gives a byte-identical file.
 - A new snapshot is one tier A PR: the changed file, plus the new sha here and in the test.
 
