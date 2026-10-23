@@ -73,3 +73,13 @@ base: v3
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+## 裁決（2026-10-22，developer-agent，回應 verifier 出題退回）
+1. **前置**：本任務在 `ce-nano4-keys` 併進 `v3` 之後才開工（同車道依序；developer-agent 會在合併後重跑，重跑用 `reuseContract:false`）。計畫裡「通過 _check_slurm」那條 TC 以含三鍵的 base 為準。
+2. **environment 格式**：照 `compute_envs._check_environment` 的物件清單，三個變數都 `head: true, compute: true`：`[{"name":"NXF_SINGULARITY_LIBRARYDIR","value":"/work/envstack/apps/application/biology/nf-core/singularity-cache","head":true,"compute":true},{"name":"NXF_SINGULARITY_CACHEDIR","value":"/work/u9613010/.singularity","head":true,"compute":true},{"name":"NXF_OPTS","value":"-Xms512m -Xmx4g","head":true,"compute":true}]`。
+3. **CE JSON 不放 `_comment`**（schema 拒絕未知鍵）。「自裝 Nextflow 時怎麼改」寫在 `specs/nano4-site-config/ledger.md`，L3 的 `docs/SETTINGS.md` 再抄。
+4. **費率鍵名與算法**：`sites.nano4.twd_per_su: {nstc: 0.1, academic: 0.2, industry: 0.37}`（不是 per_core_hour）；NT$ ＝ **SU × twd_per_su**。所以 1 核 × 10 小時：ngs → 10 SU → NT$ 1.0／2.0／3.7；big-mem → 70 SU → NT$ 7.0／14.0／25.9。出處：創進一號費率（國科會 0.1、學術／政府 0.2、企業 0.37，https://iservice.nchc.org.tw/nchc_service/nchc_service_qa.php?target=54）＋ GP1 大記憶體對一般的倍率 0.56／0.08＝7（lions.nchc.org.tw/ngs.jsp）；維護者 10-21 定「三種費率」。
+5. **分區萬用字元**：`partitions` 的鍵可帶尾端 `*`（`ngs*`、`big-mem*`）＝前綴比對。`su_of_tasks` 先精確比對，沒有再找「最長的、以 `*` 結尾且前綴相符」的鍵；T3 沒有 `*` 鍵，行為不變。測試用 `ngs`、`ngs7G`、`big-mem`。
+6. **既有 `test_tc024`**：把 `specs/estimate-su/ledger.md` 納入範圍，追加 nano4 兩個分區係數的出處（第 4 點的連結與倍率推導）；斷言不改。
+7. **回傳形狀**：`su_of_tasks`／`run_su`／`actions.estimate_su` 對每個站台仍回 `su`、`twd_nstc`、`twd_academic`、`unknown_reasons`（T3 不變）；站台有 `twd_per_su` 時**另加** `twd: {nstc, academic, industry}`（三鍵齊）；沒有的站台不加 `twd` 鍵。`actions.estimate_su` 不改簽名、不在範圍，只靠 `su.py` 的回傳多一鍵（parity 不受影響）。
+8. **手動核對項**（不改站台程式、不改 T3、不實建 CE）：`docs/TESTING.md` 加「nano4 site config」一節寫 `git diff --name-only origin/v3...HEAD` 的核對步驟；範圍檔新增 `docs/TESTING.md`。
