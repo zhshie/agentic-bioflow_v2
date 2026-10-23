@@ -145,30 +145,28 @@ def _module_chain(modules):
 
 def _blank_comments(text):
     """The text of a Nextflow config with its comments taken out; text in quotes is left as it is."""
-    out, i, n, in_quote = [], 0, len(text), None
-    while i < n:
-        c = text[i]
+    out, skip_to, in_quote = [], 0, None      # skip_to: characters before this index are already dealt with
+    for i, c in enumerate(text):
+        if i < skip_to:
+            continue
         if in_quote:
             out.append(c)
-            if c == "\\" and i + 1 < n:
-                out.append(text[i + 1])
-                i += 1
+            if c == "\\":
+                out.append(text[i + 1:i + 2])
+                skip_to = i + 2
             elif c == in_quote or c == "\n":
                 in_quote = None
         elif c in "'\"":
             in_quote = c
             out.append(c)
         elif text.startswith("//", i):
-            while i < n and text[i] != "\n":
-                i += 1
-            continue
+            end = text.find("\n", i)
+            skip_to = len(text) if end < 0 else end
         elif text.startswith("/*", i):
-            j = text.find("*/", i + 2)
-            i = n if j < 0 else j + 2
-            continue
+            end = text.find("*/", i + 2)
+            skip_to = len(text) if end < 0 else end + 2
         else:
             out.append(c)
-        i += 1
     return "".join(out)
 
 

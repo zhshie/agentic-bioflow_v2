@@ -1172,15 +1172,14 @@ def test_pf_image_library_unreadable_names_the_dir(pf):
     assert "唯讀映像庫讀不到" in c["detail"]
 
 
-@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root can enter any folder")
 def test_pf_image_library_without_execute_permission_fails(pf):
-    # TC-PF-31
-    pf.lib.chmod(0o444)
-    try:
-        c = check(pf.result(singularityLibraryDir=str(pf.lib)), "image_library")
-    finally:
-        pf.lib.chmod(0o755)
-    assert c["status"] == "fail" and "cannot be read" in c["detail"]
+    # TC-PF-31: readable but cannot be entered. A plain file with mode 644 is readable and has no x bit for anyone, root included
+    # (root passes `test -x` on every folder, so a folder would not show the case when the tests run as root)
+    odd = pf.fake.tmp / "lib-without-x"
+    odd.write_text("x")
+    odd.chmod(0o644)
+    c = check(pf.result(singularityLibraryDir=str(odd)), "image_library")
+    assert c["status"] == "fail" and "the read-only image library %s cannot be read" % odd in c["detail"]
 
 
 @pytest.mark.parametrize("bad", ["img/lib", "/", "/a/../b"])
