@@ -44,3 +44,11 @@ Terminal, automatic resume, OTP, the chat box, automatic and downstream notices:
 ## Known environment red (ruling 10)
 
 `tests/init_workspace_test.sh` "site side with no run area known fails clearly" returns rc 1 (expected 2) on the desktop WSL because `mkdir /work` is refused; base `1db9ad5` is red the same way and GitHub CI is green. Excluded from "full suite green"; the test is untouched. Full suite: 117/118, only this one red.
+
+## Ruling 11 (overrides contract TC-096 for two files)
+
+- `test_failures.py::test_untouched_modules_do_not_know_failure` (TC-043): module tuple `("web.py", "web_board.py", "receiver.py", "status.py")` -> `("web.py", "receiver.py", "status.py")`; `web_board.py` reads the run's failure field.
+- `test_launch_nextflow.py` (loop at the end of the TC-045 test): `"已取消"` absent from every `abf_platform/*.py` -> same for every file except `web_board.py`.
+- `web_board.py`: the concatenation dodges `"fail" + "ure"` and `"已取" "消"` became plain literals.
+- `test_launch_platform.py::test_tc045_the_platform_writes_no_run_state_called_cancelled_anywhere`: quoted `cancelled|canceled|已取消` absent from every `abf_platform/*.py` -> same for every file except `web_board.py` (display label only).
+- `test_resume_scope.py::test_tc160_...`: quoted `resumed|cancelled|canceled|已取消|已續跑` absent from every `source_files()` entry -> same except `web_board.py`.

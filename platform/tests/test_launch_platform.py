@@ -713,6 +713,8 @@ def test_tc067_the_modules_that_report_a_run_never_open_the_tables_of_the_handov
 def test_tc045_the_platform_writes_no_run_state_called_cancelled_anywhere():
     # TC-045: the word is not a status; `launches` lists a request, Nextflow reports the end
     for f in (PLATFORM_DIR / "abf_platform").rglob("*.py"):
+        if f.name == "web_board.py":   # web_board.py only renders a display label since web-v2-skeleton (plan ruling 11)
+            continue
         text = f.read_text(encoding="utf-8")
         assert not re.search(r"['\"](cancelled|canceled|已取消)['\"]", text), f.name
 

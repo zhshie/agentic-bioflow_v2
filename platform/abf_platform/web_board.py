@@ -22,7 +22,7 @@ REASON_CAP = 80
 REFRESH_SECONDS = 15
 # Seqera's word for a run stopped on request, in two pieces on purpose (see failures.py): the platform stores no state of that name
 STOPPED = "cancel" + "led"
-FAILURE = "fail" + "ure"      # the key of the failure record in a run view (failures.py is not imported here: this page only reads what the actions give)
+FAILURE = "failure"      # the key of the failure record in a run view (failures.py is not imported here: this page only reads what the actions give)
 TAIPEI = datetime.timedelta(hours=8)
 # status -> symbol; the symbol and the text label carry the meaning, the colour only helps
 SYMBOLS = {"running": "▶", "succeeded": "✓", "failed": "✗", "lost": "✗"}      # lost is shown as Failed: the page has three states
@@ -39,7 +39,7 @@ STRINGS = {
         "row_run": "執行", "row_results": "結果", "row_stopped": "執行 · 已取" "消", "row_site": "執行 · 站台沒有回應",
         "main_window": "主視窗", "terminal": "終端機", "this_analysis": "這個分析的對話", "ask_here": "問這個分析",
         "f_step": "步驟", "f_reason": "原因", "f_next": "之後", "confirm_suffix": "（確認頁）",
-        "r_stopped": "已取" "消", "r_site": "站台沒有回應",
+        "r_stopped": "已取消", "r_site": "站台沒有回應",
         "stage_launch": "送出", "stage_running": "執行中", "stage_results": "結果", "stage_downstream": "下游", "stage_finished": "完成",
         "state_running": "執行中", "state_succeeded": "完成", "state_failed": "失敗", "state_lost": "失敗",
         "count_succeeded": "成功", "count_cached": "快取", "count_failed": "失敗", "count_aborted": "中止", "count_running": "執行中",

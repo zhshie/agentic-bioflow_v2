@@ -272,7 +272,8 @@ def test_ff09_failures_is_read_only():
 
 def test_untouched_modules_do_not_know_failure():
     # TC-043
-    for f in ("web.py", "web_board.py", "receiver.py", "status.py"):
+    # web_board.py reads the run's failure field since web-v2-skeleton (plan ruling 11)
+    for f in ("web.py", "receiver.py", "status.py"):
         p = PKG / f
         if p.exists():
             s = p.read_text(encoding="utf-8")
