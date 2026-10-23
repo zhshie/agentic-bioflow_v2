@@ -5,4 +5,5 @@
 - [x] jobs._target: a Google Batch environment takes the preflight only; every other kind is refused in plain words (C-2); cli: first preflight queued for CHECKABLE types, five flags, legacy rows checked before `ce preflight`
 - [x] abf_station/gcb_preflight.py (8 checks, fake-able runner/which, agent-side key file location `ABF_STATION_GCP_CREDENTIALS`) + handlers.py branch; abf_platform has no subprocess and no key-file code
 - [x] docs/PLATFORM.md, SEQERA_PARITY.md, TESTING.md
+- [x] abf_station/site.py: `run_fixed` is the one place that starts gcloud (test_station_static TC-091 allows one module that starts programs); gcb_preflight imports no subprocess
 - [ ] full suite at HEAD

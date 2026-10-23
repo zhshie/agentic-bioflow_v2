@@ -13,14 +13,13 @@ import os
 import re
 import shutil
 import stat as stat_mod
-import subprocess
 import sys
 import time
 from pathlib import Path
 
 from abf_platform import compute_envs      # the same shapes of project, location and bucket as the platform applies when it stores them
 
-from . import rules
+from . import rules, site
 
 TYPE = "googlebatch-platform"
 CREDENTIALS_ENV = "ABF_STATION_GCP_CREDENTIALS"
@@ -72,15 +71,9 @@ def _scrub(text):
 
 
 def _run(argv, env, timeout):
-    """(return code, the first 300 characters of the output). Fixed argv, no shell. A timeout is raised to the caller."""
-    try:
-        done = subprocess.run(list(argv), env=env, timeout=timeout, shell=False, capture_output=True, text=True)
-    except OSError as e:
-        return 127, "could not start %s (%s)" % (argv[0], type(e).__name__)
-    out = (getattr(done, "stderr", None) or "") + (getattr(done, "stdout", None) or "")
-    if isinstance(out, bytes):
-        out = out.decode("utf-8", "replace")
-    return done.returncode, str(out)[:DETAIL_LIMIT]
+    """(return code, the first 300 characters of the output). Fixed argv, no shell (site.run_fixed). A timeout is raised to the caller."""
+    rc, out = site.run_fixed(argv, env, timeout)
+    return rc, str(out)[:DETAIL_LIMIT]
 
 
 def _check(name, status, detail):
@@ -194,7 +187,7 @@ def run_preflight(env, *, cred_path, now=time.time, runner=None, which=None, sta
         else:
             try:
                 rc, out = runner(argv, _gcloud_env(cred_path), TIMEOUT_SECONDS)
-            except (subprocess.TimeoutExpired, TimeoutError):
+            except TimeoutError:
                 checks.append(_check(name, "fail", "逾時 (timed out after %d seconds); check the network and try again" % TIMEOUT_SECONDS))
                 continue
             if rc == 0:

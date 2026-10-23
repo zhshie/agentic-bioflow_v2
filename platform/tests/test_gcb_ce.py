@@ -9,7 +9,6 @@ import asyncio
 import json
 import re
 import sqlite3
-import subprocess
 import sys
 import time
 from types import SimpleNamespace
@@ -568,7 +567,7 @@ def test_a_timeout_fails_that_check_only(ip, monkeypatch):
 
     def slow(argv, env, timeout):
         if argv[1] == "batch":
-            raise subprocess.TimeoutExpired(argv, timeout)
+            raise TimeoutError("slow")
         return 0, ""
     c = by_name(direct(p, runner=slow))
     assert c["batch_api"][0] == "fail" and "逾時" in c["batch_api"][1] and c["bucket"][0] == "pass"
@@ -595,7 +594,7 @@ def test_the_commands_are_read_only_and_carry_the_key_in_the_environment(ip, mon
 
 def test_the_default_runner_is_a_fixed_argv_without_a_shell(monkeypatch):
     # TC-067
-    from abf_station import gcb_preflight
+    from abf_station import gcb_preflight, site
     seen = {}
 
     class Done:
@@ -606,7 +605,7 @@ def test_the_default_runner_is_a_fixed_argv_without_a_shell(monkeypatch):
     def fake_run(argv, **kw):
         seen["argv"], seen["kw"] = argv, kw
         return Done()
-    monkeypatch.setattr(gcb_preflight.subprocess, "run", fake_run)
+    monkeypatch.setattr(site.subprocess, "run", fake_run)
     rc, out = gcb_preflight._run(["gcloud", "storage", "ls"], {"A": "1"}, 30)
     assert rc == 3 and len(out) <= 300
     assert isinstance(seen["argv"], list) and seen["kw"]["shell"] is False and seen["kw"]["timeout"] == 30

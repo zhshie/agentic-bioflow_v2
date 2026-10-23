@@ -86,3 +86,16 @@ class Site:
             for line in p.stdout.decode("utf-8", errors="replace").splitlines():
                 self.log("site-output: " + line)
         return SiteResult(p.returncode, p.stdout, p.stderr.decode("utf-8", errors="replace"))
+
+
+def run_fixed(argv, env, timeout):
+    """(return code, output text) of one program started with a fixed argument list and no shell: the one other way this package
+    starts a program (the Google Batch preflight uses it for gcloud). TimeoutError when it does not return in `timeout` seconds."""
+    try:
+        p = subprocess.run(list(argv), env=env, timeout=timeout, shell=False, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        raise TimeoutError("did not return in %s seconds" % timeout)
+    except OSError as e:
+        return 127, "could not start %s (%s)" % (argv[0], e.__class__.__name__)
+    out = (p.stderr or "") + (p.stdout or "")
+    return p.returncode, out
