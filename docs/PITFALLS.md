@@ -2029,3 +2029,10 @@ Proved offline with the pinned 26.04.7 (`test_nextflow_e2e.py`, `test_abort_tc01
 
 **51. The 011a web layout was rejected because the plan had no design spec (2026-10-18).**
 The maintainer rejected the whole 011a layout: 「版面我完全不滿意，請你直接參考 Seqera 以及 Galaxy 的網頁」. The plan described function only and the verifier only graded function, so nothing said what the screens should look like. Fix: a design gate in the developer-agent (PRODUCT.md / DESIGN.md) plus a `## 專長守則` section copied into the plan, which the executor and the verifier treat as binding (this PR).
+
+
+**52. nano4's shared image cache is read-only, so pulls into it fail (2026-10-22).**
+What was seen: the nano4 probe summarised in the `ce-nano4-keys` plan found that the site's Singularity image cache cannot be written to by a user. Fix: use `NXF_SINGULARITY_LIBRARYDIR` to point at the read-only cache, where Nextflow looks images up first, and set `NXF_SINGULARITY_CACHEDIR` to a directory you own, where it stores what it pulls. The two variables do different jobs; setting only the cache variable to the shared path is what fails. Not re-measured by this documentation task.
+
+**53. A local pipeline path must not be given `-r` (2026-10-22).**
+What was seen: the same nano4 probe: `nextflow run <local path> -r <revision>` is refused, because `-r` selects a revision of a pipeline fetched from a remote repository and a local directory has none. Fix: when the pipeline argument is a local path, leave `-r` out and pin the version by checking out the directory itself. Source: the nano4 probe in the `ce-nano4-keys` plan; not re-run here.

@@ -494,3 +494,259 @@ def test_security_f4_the_other_validators_too():
                compute_envs._CRED_NAME, compute_envs._ENV_NAME, agents._NAME):
         assert not rx.match("abc\n"), rx.pattern
     assert compute_envs.path_problem("/data/w1\n") is not None
+
+
+# ---- launch-site-pipeline (M1-02): module load first, a site pipeline started from its home --------------------------------
+
+SITE_CE = {"modules": ["biology/Nextflow/26.10.0"],
+           "siteConfigVars": ["NFCORE_SITE_CONFIG", "NFCORE_SITE_REFERENCES"],
+           "sitePipelines": [{"pipeline": "nf-core/ampliseq", "revision": "2.18.0",
+                              "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}]}
+GOLDEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "golden_head_scripts.json")
+
+
+def site_ce(**over):
+    d = copy.deepcopy(SITE_CE)
+    d.update(over)
+    return ce_snapshot(**d)
+
+
+def site_head(ce=None, **over):
+    return render(ce=ce or site_ce(), **over)["files"]["head.sh"]
+
+
+def last_line(script):
+    return script.splitlines()[-1]
+
+
+def test_tc_ls_01_03_a_site_pipeline_runs_from_its_home_without_r_and_after_module_load():
+    # TC-LS-01, TC-LS-03 (test_tc013b_a_site_pipeline_runs_from_its_home_without_r_and_after_module_load)
+    h = site_head()
+    assert "module load biology/Nextflow/26.10.0" in h and "module load biology/nf-core-ampliseq/2.18.0" in h
+    assert 'exec nextflow run "$NFCORE_AMPLISEQ_HOME"' in h and " -r " not in h
+    lines = h.splitlines()
+    mods = [i for i, ln in enumerate(lines) if ln.startswith("module ")]
+    assert [lines[i] for i in mods] == ["module load biology/Nextflow/26.10.0 || exit 1",
+                                        "module load biology/nf-core-ampliseq/2.18.0 || exit 1"]
+    assert lines.index("umask 077") < mods[0] < mods[1] < len(lines) - 1
+    assert h.count("nextflow run") == 1
+
+
+def test_tc_ls_02_15_golden_for_a_hit_and_a_miss():
+    # TC-LS-02, TC-LS-15, TC-LS-17
+    golden = json.load(open(GOLDEN_FILE, encoding="utf-8"))
+    assert site_head() == golden["nano4"]
+    assert site_head(ce=site_ce(), revision="2.17.0") == golden["nano4-miss"]
+    assert render()["files"]["head.sh"] == golden["local"]
+
+
+def test_tc_ls_04_05_the_last_line_in_full_local_and_forward():
+    # TC-LS-04, TC-LS-05
+    assert last_line(site_head()) == ('exec nextflow run "$NFCORE_AMPLISEQ_HOME" -name run-one -params-file params.yaml '
+                                      '-c "$NFCORE_SITE_CONFIG" -c "$NFCORE_SITE_REFERENCES" -c nextflow.config '
+                                      '-with-tower http://127.0.0.1:8787')
+    fwd = site_head(facts=facts(reach="ssh", forward_file="/data/storage/_relay/forward_port"))
+    assert last_line(fwd) == ('exec nextflow run "$NFCORE_AMPLISEQ_HOME" -name run-one -params-file params.yaml '
+                              '-c "$NFCORE_SITE_CONFIG" -c "$NFCORE_SITE_REFERENCES" -c nextflow.config '
+                              '-with-tower "http://127.0.0.1:${ABF_FORWARD_PORT}"')
+    assert "ABF_FORWARD_PORT=$(cat" in fwd
+
+
+def run_site_head(tmp_path, bundle, fail_on=None, env_over=None):
+    """head.sh with a stand-in `module` (logs its arguments, may fail) and a stand-in `nextflow`."""
+    folder = tmp_path / "run"
+    folder.mkdir()
+    (folder / "tower.token").write_text("TOKEN_CANARY_f33d")
+    text = bundle["files"]["head.sh"].replace(bundle["run_folder"], str(folder))
+    (tmp_path / "head.sh").write_text(text)
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "nextflow").write_text("#!/usr/bin/env python3\nimport json, os, sys\n"
+                                     "json.dump(sys.argv[1:], open(os.environ['ABF_NF_OUT'], 'w'))\n")
+    (bindir / "module").write_text('#!/bin/bash\necho "$@" >> "$ABF_MOD_LOG"\n'
+                                   '[ -n "$ABF_MOD_FAIL" ] && [ "$2" = "$ABF_MOD_FAIL" ] && exit 3\nexit 0\n')
+    for f in bindir.iterdir():
+        f.chmod(0o755)
+    env = {"PATH": str(bindir) + os.pathsep + os.environ["PATH"], "HOME": str(tmp_path), "ABF_NF_OUT": str(tmp_path / "nf.json"),
+           "ABF_MOD_LOG": str(tmp_path / "mod.log"), "ABF_MOD_FAIL": fail_on or "",
+           "NFCORE_AMPLISEQ_HOME": "/opt/x y/ampliseq", "NFCORE_SITE_CONFIG": "/s/site.config",
+           "NFCORE_SITE_REFERENCES": "/s/refs.config"}
+    env.update(env_over or {})
+    r = subprocess.run(["bash", str(tmp_path / "head.sh")], env=env, capture_output=True, text=True, timeout=60)
+    mods = (tmp_path / "mod.log").read_text().splitlines() if (tmp_path / "mod.log").exists() else []
+    nf = json.load(open(tmp_path / "nf.json")) if (tmp_path / "nf.json").exists() else None
+    return r, mods, nf
+
+
+def test_tc_ls_06_the_script_runs_modules_then_nextflow_with_the_homes_path(tmp_path):
+    # TC-LS-06
+    b = render(ce=site_ce())
+    r, mods, nf = run_site_head(tmp_path, b)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert nf == ["run", "/opt/x y/ampliseq", "-name", "run-one", "-params-file", "params.yaml", "-c", "/s/site.config", "-c",
+                  "/s/refs.config", "-c", "nextflow.config", "-with-tower", "http://127.0.0.1:8787"]
+    assert mods == ["load biology/Nextflow/26.10.0", "load biology/nf-core-ampliseq/2.18.0"]
+    assert subprocess.run(["bash", "-n", "-c", b["files"]["head.sh"]], capture_output=True).returncode == 0
+
+
+def test_tc_ls_21_22_61_a_module_that_will_not_load_stops_the_job_and_nextflow_never_runs(tmp_path):
+    # TC-LS-21, TC-LS-61
+    b = render(ce=site_ce())
+    r, mods, nf = run_site_head(tmp_path, b, fail_on="biology/nf-core-ampliseq/2.18.0")
+    assert r.returncode != 0 and nf is None and len(mods) == 2
+    # TC-LS-22
+    (tmp_path / "second").mkdir()
+    r, mods, nf = run_site_head(tmp_path / "second", b, fail_on="biology/Nextflow/26.10.0")
+    assert r.returncode != 0 and nf is None and mods == ["load biology/Nextflow/26.10.0"]
+
+
+def test_tc_ls_07_pipeline_source_of_a_hit_and_a_miss():
+    # TC-LS-07, TC-LS-14, TC-LS-18, TC-LS-19
+    assert render(ce=site_ce())["pipeline_source"] == {"kind": "site-module", "module": "biology/nf-core-ampliseq/2.18.0",
+                                                       "home": "NFCORE_AMPLISEQ_HOME"}
+    b = render(ce=site_ce(), revision="2.17.0")
+    assert b["pipeline_source"] == {"kind": "remote"}
+    assert last_line(b["files"]["head.sh"]) == ('exec nextflow run nf-core/ampliseq -r 2.17.0 -name run-one -params-file params.yaml '
+                                                '-c "$NFCORE_SITE_CONFIG" -c "$NFCORE_SITE_REFERENCES" -c nextflow.config '
+                                                '-with-tower http://127.0.0.1:8787')
+    assert "module load biology/Nextflow/26.10.0" in b["files"]["head.sh"]
+    assert "nf-core-ampliseq" not in b["files"]["head.sh"] and "NFCORE_AMPLISEQ_HOME" not in b["files"]["head.sh"]
+    other = render(ce=site_ce(), pipeline="nf-core/rnaseq")
+    assert other["pipeline_source"] == {"kind": "remote"} and "nf-core/rnaseq -r 2.18.0" in last_line(other["files"]["head.sh"])
+    for ce in (site_ce(sitePipelines=[]), {k: v for k, v in site_ce().items() if k != "sitePipelines"}):
+        h = render(ce=ce)["files"]["head.sh"]
+        assert "nf-core/ampliseq -r 2.18.0" in last_line(h) and "NFCORE_AMPLISEQ_HOME" not in h
+
+
+def test_tc_ls_08_09_config_flags_come_only_from_site_config_vars():
+    # TC-LS-08
+    ln = last_line(site_head(ce=site_ce(siteConfigVars=["B_CFG", "A_CFG", "C_CFG"])))
+    assert '-c "$B_CFG" -c "$A_CFG" -c "$C_CFG" -c nextflow.config' in ln and "NFCORE_SITE" not in ln
+    # TC-LS-09
+    h = site_head(ce=site_ce(siteConfigVars=[]))
+    assert last_line(h) == ('exec nextflow run "$NFCORE_AMPLISEQ_HOME" -name run-one -params-file params.yaml -c nextflow.config '
+                            '-with-tower http://127.0.0.1:8787') and "NFCORE_SITE" not in h
+
+
+def test_tc_ls_10_13_first_duplicate_wins_and_homes_come_from_the_ce():
+    # TC-LS-10
+    sp = [dict(SITE_CE["sitePipelines"][0], module="m/first", home="FIRST_HOME"),
+          dict(SITE_CE["sitePipelines"][0], module="m/second", home="SECOND_HOME")]
+    b = render(ce=site_ce(sitePipelines=sp))
+    assert b["pipeline_source"]["module"] == "m/first" and "module load m/first" in b["files"]["head.sh"]
+    assert "SECOND_HOME" not in b["files"]["head.sh"] and "m/second" not in b["files"]["head.sh"]
+    # TC-LS-13
+    rna = dict(pipeline="nf-core/rnaseq", revision="3.14.0", module="biology/nf-core-rnaseq/3.14.0", home="NFCORE_RNASEQ_HOME")
+    h = site_head(ce=site_ce(sitePipelines=SITE_CE["sitePipelines"] + [rna]), pipeline="nf-core/rnaseq", revision="3.14.0")
+    assert "module load biology/nf-core-rnaseq/3.14.0" in h and 'exec nextflow run "$NFCORE_RNASEQ_HOME"' in h
+    assert "NFCORE_AMPLISEQ_HOME" not in h and "nf-core-ampliseq" not in h
+
+
+def test_tc_ls_11_58_56_57_only_the_head_script_changes_and_no_queue_profile_or_nfcore_submit():
+    # TC-LS-11, TC-LS-58
+    plain, site_b = render(), render(ce=site_ce())
+    for name in ("samplesheet.csv", "params.yaml", "nextflow.config"):
+        assert plain["files"][name] == site_b["files"][name]
+    assert sbatch_lines(plain["files"]["head.sh"]) == sbatch_lines(site_b["files"]["head.sh"])
+    assert site_b["pipeline"] == "nf-core/ampliseq" and site_b["revision"] == "2.18.0"
+    # TC-LS-56, TC-LS-57
+    for b in (site_b, render(ce=site_ce(), revision="2.17.0")):
+        assert "-profile" not in b["files"]["head.sh"]
+        assert "nfcore-submit" not in json.dumps(b)
+
+
+def test_tc_ls_16_20_without_site_keys_the_script_is_the_old_one_with_modules_one_line_more():
+    # TC-LS-16
+    b = render()
+    assert b["pipeline_source"] == {"kind": "remote"} and "module" not in b["files"]["head.sh"]
+    # TC-LS-20
+    only = render(ce=ce_snapshot(modules=["biology/Nextflow/26.10.0"]))["files"]["head.sh"].splitlines()
+    base = b["files"]["head.sh"].splitlines()
+    i = base.index("umask 077")
+    assert only == base[:i + 1] + ["module load biology/Nextflow/26.10.0 || exit 1"] + base[i + 1:]
+
+
+def test_tc_ls_24_25_snapshot_ce_carries_the_three_keys():
+    from abf_station import launch
+    view = {"name": "n", "platform": "slurm-platform", "config": {"workDir": "/data/w1", "headQueue": "normal"}}
+    s = launch.snapshot_ce(view)
+    assert s["modules"] == [] and s["siteConfigVars"] == [] and s["sitePipelines"] == []
+    view["config"].update(copy.deepcopy(SITE_CE))
+    s = launch.snapshot_ce(view)
+    for k, v in SITE_CE.items():
+        assert s[k] == v
+    assert s["workDir"] == "/data/w1" and s["headQueue"] == "normal" and s["environment"] == []
+
+
+@pytest.mark.parametrize("key,bad", [("modules", ["a;b"]), ("modules", ["a b"]), ("modules", ["$(id)"]), ("modules", [""]),
+                                     ("modules", ["x/../y"]), ("modules", [5]), ("modules", "biology/Nextflow/26.10.0"),
+                                     ("modules", ["a\n"]), ("siteConfigVars", ["lower_case"]), ("siteConfigVars", ["A;B"]),
+                                     ("siteConfigVars", ["1ABC"]), ("siteConfigVars", [""]), ("siteConfigVars", "NFCORE_SITE_CONFIG"),
+                                     ("siteConfigVars", ["A\n"])])
+def test_tc_ls_28_29_30_32_35_bad_modules_and_variables_are_refused_naming_the_key(key, bad):
+    msg = refused(key, ce=site_ce(**{key: bad}))
+    assert "Traceback" not in msg and ".py" not in msg and "/home" not in msg
+
+
+@pytest.mark.parametrize("sp", [
+    [dict(SITE_CE["sitePipelines"][0], home="x;y")], [dict(SITE_CE["sitePipelines"][0], home="lower")],
+    [dict(SITE_CE["sitePipelines"][0], home='X"; touch /tmp/pwn; "')], [dict(SITE_CE["sitePipelines"][0], module="a;b")],
+    [dict(SITE_CE["sitePipelines"][0], module="a\n")], [dict(SITE_CE["sitePipelines"][0], home="A\n")],
+    [{"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "m"}],
+    [dict(SITE_CE["sitePipelines"][0], extra="x")], ["not an object"], "not a list"])
+def test_tc_ls_31_32_bad_site_pipelines_are_refused_naming_the_key(sp):
+    refused("sitePipelines", ce=site_ce(sitePipelines=sp))
+
+
+def test_tc_ls_34_scripts_are_still_refused_when_modules_exist():
+    refused("事前|腳本|script", ce=site_ce(preRunScript="module load evil"))
+
+
+def test_tc_ls_46_the_hash_covers_pipeline_source():
+    from abf_platform import common
+    hit, miss = render(ce=site_ce()), render(ce=site_ce(), revision="2.17.0")
+    assert common.bundle_sha256(hit) != common.bundle_sha256(miss)
+    alt = copy.deepcopy(hit)
+    alt["pipeline_source"] = {"kind": "remote"}
+    assert common.bundle_sha256(alt) != common.bundle_sha256(hit)
+
+
+def test_tc_ls_36_37_38_a_resume_of_a_site_run_starts_from_the_same_place():
+    from abf_station import launch
+    sid = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d"
+    origin = render(ce=site_ce())
+    h2 = launch.render_resume(origin=origin, run_name="run-one-a2", attempt=2, session_id=sid)["head-2.sh"]
+    assert "module load biology/Nextflow/26.10.0" in h2 and "module load biology/nf-core-ampliseq/2.18.0" in h2
+    assert '"$NFCORE_AMPLISEQ_HOME"' in h2 and " -r " not in h2
+    ln = last_line(h2)
+    assert "-resume %s" % sid in ln and "-name run-one-a2" in ln
+    assert ln.endswith('-c "$NFCORE_SITE_CONFIG" -c "$NFCORE_SITE_REFERENCES" -c nextflow.config -with-tower http://127.0.0.1:8787')
+    a, b = origin["files"]["head.sh"].splitlines(), h2.splitlines()
+    assert [i for i, (x, y) in enumerate(zip(a, b)) if x != y] == [2, len(a) - 1] and len(a) == len(b)
+    # TC-LS-38
+    miss = render(ce=site_ce(), revision="2.17.0")
+    m2 = launch.render_resume(origin=miss, run_name="run-one-a2", attempt=2, session_id=sid)["head-2.sh"]
+    assert "module load biology/Nextflow/26.10.0" in m2 and "nf-core-ampliseq" not in m2
+    assert last_line(m2).startswith("exec nextflow run nf-core/ampliseq -r 2.17.0 -resume %s -name " % sid)
+
+
+def test_tc_ls_40_an_origin_from_before_the_site_keys_resumes_from_the_remote():
+    from abf_station import launch
+    sid = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d"
+    origin = render()
+    for k in ("modules", "siteConfigVars", "sitePipelines"):
+        origin["ce"].pop(k)
+    origin.pop("pipeline_source")
+    h2 = launch.render_resume(origin=origin, run_name="run-one-a2", attempt=2, session_id=sid)["head-2.sh"]
+    assert "module" not in h2 and last_line(h2).startswith("exec nextflow run nf-core/ampliseq -r 2.18.0 -resume ")
+
+
+def test_tc_ls_53_55_no_secret_and_no_site_names_in_the_code(tmp_path):
+    # TC-LS-53
+    r, mods, nf = run_site_head(tmp_path, render(ce=site_ce()))
+    assert "TOKEN_CANARY_f33d" not in render(ce=site_ce())["files"]["head.sh"]
+    # TC-LS-55
+    src = open(os.path.join(PLATFORM_DIR, "abf_station", "launch.py"), encoding="utf-8").read()
+    src += open(os.path.join(PLATFORM_DIR, "abf_station", "rules.py"), encoding="utf-8").read()
+    for word in ("nano4", "NCHC", "NFCORE_", "biology/", "nfcore-submit"):
+        assert word not in src, word

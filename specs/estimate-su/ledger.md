@@ -19,6 +19,11 @@
 - [x] E2 month_total: month is Asia/Taipei (UTC+8) by run start; any unknown run makes the month unknown; no runs is 0 (TC-034..TC-040)
 - [x] E3 rates stay 0.08 / 0.24 with source; factors stay null (owed above)
 
+## nano4 factors (nano4-site-config, 2026-10-22)
+
+- Site `nano4` has two partition keys, `ngs*` (factor 1) and `big-mem*` (factor 7); a trailing `*` means a prefix match. Money rates per SU: nstc 0.1, academic 0.2, industry 0.37, from the Chuangjin-1 price list https://iservice.nchc.org.tw/nchc_service/nchc_service_qa.php?target=54 (NSTC 0.1, academic/government 0.2, enterprise 0.37).
+- The factor 7 of `big-mem*` is the GP1 big-memory price over the general price, 0.56 / 0.08 = 7 (lions.nchc.org.tw/ngs.jsp).
+
 ## Ruling E4 (2026-10-19)
 
 - [x] E4 rates switched to the Taiwania 3 general (NRQ) rate (sources in su_rates.json): new site `taiwania3` with queues ctest, ct56, ct224, ct560, ct2k, ct8k factor 1; ct2k-amd stays null (price not found, owed). Site `nchc` (ngs queues of nchc.config) stays null. default_site is now taiwania3.

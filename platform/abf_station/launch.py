@@ -23,8 +23,12 @@ import os
 import re
 import shlex
 
+from abf_platform import compute_envs
+
 from . import rules
 
+SITE_KEYS = ("modules", "siteConfigVars", "sitePipelines")
+REMOTE = {"kind": "remote"}
 BUNDLE_VERSION = 1
 RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
 SESSION_ID = re.compile(r"^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")      # a Nextflow session id is a UUID; it is put in a script, so nothing else gets in
@@ -93,7 +97,9 @@ def snapshot_ce(view):
             "launchDir": c.get("launchDir"), "headQueue": c.get("headQueue"), "computeQueue": c.get("computeQueue"),
             "readRoots": list(c.get("readRoots") or []), "headJobOptions": c.get("headJobOptions") or "",
             "environment": env, "nextflowConfig": c.get("nextflowConfig") or "",
-            "preRunScript": c.get("preRunScript") or "", "postRunScript": c.get("postRunScript") or ""}
+            "preRunScript": c.get("preRunScript") or "", "postRunScript": c.get("postRunScript") or "",
+            "modules": list(c.get("modules") or []), "siteConfigVars": list(c.get("siteConfigVars") or []),
+            "sitePipelines": [dict(p) if isinstance(p, dict) else p for p in (c.get("sitePipelines") or [])]}
 
 
 def read_roots(ce, storage_root):
@@ -140,7 +146,20 @@ def _check_ce(ce):
             raise BundleError("environment %s: 這個變數由送出本身設定，環境不能設 (set by the launch itself)" % name)
         if e.get("head", True):
             env.append((name, value))
-    return work, queue, config, env
+    site = {k: ce.get(k) if ce.get(k) is not None else [] for k in SITE_KEYS}
+    try:
+        compute_envs._check_site_keys(site)      # the one set of rules for the three keys, the platform's own
+    except compute_envs.CEError as e:
+        raise BundleError("環境: %s (the compute environment's modules, siteConfigVars or sitePipelines are not acceptable)" % e)
+    return work, queue, config, env, site
+
+
+def _pipeline_source(site, pipeline, revision):
+    """Where this (pipeline, revision) is started from: the site's own copy if the environment lists it (the first entry wins), else the remote."""
+    for p in site["sitePipelines"]:
+        if p["pipeline"] == pipeline and p["revision"] == revision:
+            return {"kind": "site-module", "module": p["module"], "home": p["home"]}
+    return dict(REMOTE)
 
 
 _OPTION_SHAPES = [
@@ -274,6 +293,12 @@ def _check_params(params):
 
 def _tower(facts, run_name):
     reach = facts.get("reach")
+    if reach not in (None, "local", "none") and facts.get("way_back") == "direct":  # the compute nodes reach the platform's public address
+        url = common.public_url(facts.get("platform_public_url"))
+        if not url:
+            raise BundleError("進度回報: 進度回報需要 https 公開網址或 loopback（本機測試用）；請把設定檔的 platform_public_url 改成 https 網址 "
+                              "(progress reporting needs an https public address or loopback)")
+        return {"mode": "direct", "endpoint": url}
     if reach not in (None, "local", "none"):  # the site is reached over a shared connection: the reverse forward is the way back
         if not facts.get("platform_local"):
             raise BundleError("反向通道: 這一片的反向通道要求平台與代理在同一台機器；這個代理連到的平台網址不是本機。請在同一台機器上"
@@ -332,15 +357,22 @@ def _csv_text(rows):
     return buf.getvalue()
 
 
-def _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower, resume_session=None):
+def _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower, resume_session=None, site=None,
+                 source=None):
     q = shlex.quote
+    site = site or {"modules": [], "siteConfigVars": []}
+    source = source or REMOTE
+    local = source["kind"] == "site-module"
     lines = ["#!/bin/bash",
              "#SBATCH -D %s" % run_folder,
              "#SBATCH -J nf-%s" % run_name,
              "#SBATCH --no-requeue",
              "#SBATCH -p %s" % queue]
     lines += ["#SBATCH %s" % o for o in options]
-    lines += ["umask 077", "cd %s || exit 1" % q(run_folder), "export SLURM_ACCOUNT=%s" % q(account)]
+    lines.append("umask 077")
+    loads = list(site["modules"]) + ([source["module"]] if local else [])
+    lines += ["module load %s || exit 1" % q(m) for m in loads]      # a module that will not load stops the job; it never falls back to the remote
+    lines += ["cd %s || exit 1" % q(run_folder), "export SLURM_ACCOUNT=%s" % q(account)]
     forward = tower["mode"] == "forward"
     had_opts = False
     for name, value in env:
@@ -366,8 +398,11 @@ def _head_script(run_name, run_folder, pipeline, revision, queue, options, accou
         endpoint = q(tower["endpoint"])
     lines.append('export TOWER_ACCESS_TOKEN="$(cat tower.token)"')
     resume = "" if resume_session is None else " -resume %s" % q(resume_session)      # 009e: the one thing a resume adds to the last line
-    lines.append("exec nextflow run %s -r %s%s -name %s -params-file params.yaml -c nextflow.config -with-tower %s"
-                 % (q(pipeline), q(revision), resume, q(run_name), endpoint))
+    # the site's own config files first, ours (nextflow.config, ending in OVERWRITE_BLOCK) last so that our overrides win
+    site_c = "".join(' -c "$%s"' % v for v in site["siteConfigVars"])
+    target = '"$%s"' % source["home"] if local else "%s -r %s" % (q(pipeline), q(revision))
+    lines.append("exec nextflow run %s%s -name %s -params-file params.yaml%s -c nextflow.config -with-tower %s"
+                 % (target, resume, q(run_name), site_c, endpoint))
     return "\n".join(lines) + "\n"
 
 
@@ -380,7 +415,8 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
         raise BundleError("run 名稱: %r 必須是小寫英文字母開頭，只含小寫字母、數字、_ 與 -，最長 64 字元 (run name)" % str(run_name)[:70])
     _check_pipeline(pipeline)
     _check_revision(revision)
-    work, queue, config, env = _check_ce(ce)
+    work, queue, config, env, site = _check_ce(ce)
+    source = _pipeline_source(site, pipeline, revision)
     account = facts.get("slurm_account")
     if not isinstance(account, str) or not account:
         raise BundleError("帳號未設定: 計費帳號沒有預設值，請在部署設定檔（config/env.yaml）設定 slurm_account 再重試 "
@@ -395,17 +431,21 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
     ce_out = {"name": ce.get("name"), "platform": ce.get("platform"), "workDir": work, "launchDir": ce.get("launchDir"),
               "headQueue": queue, "computeQueue": ce.get("computeQueue"), "readRoots": list(ce.get("readRoots") or []),
               "headJobOptions": ce.get("headJobOptions") or "", "environment": [dict(e) for e in (ce.get("environment") or [])],
-              "nextflowConfig": config, "preRunScript": "", "postRunScript": ""}
+              "nextflowConfig": config, "preRunScript": "", "postRunScript": "",
+              "modules": list(site["modules"]), "siteConfigVars": list(site["siteConfigVars"]),
+              "sitePipelines": copy.deepcopy(site["sitePipelines"])}
     files = {
         "samplesheet.csv": _csv_text(sheet),
         "params.yaml": _params_yaml(user_params, run_folder),
         "nextflow.config": ((config if config.endswith("\n") else config + "\n") if config.strip()
                             else "// the compute environment carries no Nextflow config\n") + OVERWRITE_BLOCK,
-        "head.sh": _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower),
+        "head.sh": _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower, site=site,
+                                source=source),
     }
     return {"version": BUNDLE_VERSION, "agent": agent, "ce": ce_out, "run_name": run_name, "run_folder": run_folder,
             "pipeline": pipeline, "revision": revision, "samplesheet": sheet, "params": user_params,
-            "path_columns": sorted(set(path_columns or [])), "account": account, "tower": tower, "files": files}
+            "path_columns": sorted(set(path_columns or [])), "account": account, "tower": tower, "files": files,
+            "pipeline_source": source}
 
 
 def render_resume(*, origin, run_name, attempt, session_id):
@@ -425,7 +465,8 @@ def render_resume(*, origin, run_name, attempt, session_id):
         raise BundleError("origin: 不是一份送出的內容包 (not a launch bundle)")
     _check_pipeline(pipeline)
     _check_revision(revision)
-    work, queue, config, env = _check_ce(ce)
+    work, queue, config, env, site = _check_ce(ce)
+    source = _pipeline_source(site, pipeline, revision)
     if not isinstance(account, str) or not ACCOUNT.match(account):
         raise BundleError("帳號: 不是合法的帳號 (account)")
     if not isinstance(run_folder, str) or rules.path_problem(run_folder) or not rules.inside(rules.normalize(run_folder), [work + "/runs"]):
@@ -434,7 +475,7 @@ def render_resume(*, origin, run_name, attempt, session_id):
         raise BundleError("tower: 不是合法的連線方式 (not a way back to the platform)")
     options = _parse_options(ce.get("headJobOptions") or "", account)
     return {"head-%d.sh" % attempt: _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower,
-                                                  resume_session=session_id)}
+                                                  resume_session=session_id, site=site, source=source)}
 
 
 def render_resume_bundle(*, origin, run_name, attempt, session_id, of_run, of_slurm_job_id):
@@ -484,10 +525,14 @@ def own_facts(ctx):
     else:
         storage = rules.normalize(storage)
     url = (ctx.platform_url or "").rstrip("/")
+    way_back = rules.read_setting(sf, "way_back")
+    if way_back not in ("forward", "direct"):
+        way_back = "forward" if reach not in ("local", "none") else None
     forward_file = storage + "/_relay/forward_port" if storage and reach not in ("local", "none") else None
     return common.clean_facts({"slurm_account": rules.read_setting(sf, "slurm_account") or None, "reach": reach,
                                "platform_local": (urlparse(url).hostname or "") in LOOPBACK, "endpoint": url or None,
-                               "forward_file": forward_file, "storage_root": storage})
+                               "forward_file": forward_file, "storage_root": storage, "way_back": way_back,
+                               "platform_public_url": rules.read_setting(sf, "platform_public_url") or None})
 
 
 def verify_confirmation(job, ctx, want):
@@ -792,6 +837,16 @@ def _check_folder(folder, answer, resume, origin, script):
     return None
 
 
+def _as_current(bundle):
+    """A bundle made before the site keys existed, read as the current shape: no modules, no site config, started from the remote."""
+    out = dict(bundle)
+    out["ce"] = dict(bundle.get("ce") or {})
+    for k in SITE_KEYS:
+        out["ce"].setdefault(k, [])
+    out.setdefault("pipeline_source", dict(REMOTE))
+    return out
+
+
 def run_resume(job, ctx, preflight, bundle):
     """(state, result) of a confirmed resume: the bundle is judged exactly as a launch is (rebuilt from this agent's own facts), then the
     folder is looked at on the site in one question, and only if all of it agrees are head-N.sh and a new tower.token written into it
@@ -817,7 +872,7 @@ def run_resume(job, ctx, preflight, bundle):
                                 samplesheet=origin["samplesheet"], params=origin["params"], path_columns=origin["path_columns"])
     except (BundleError, KeyError, TypeError) as e:
         raise rules.Refusal("內容不合規則：%s" % e)
-    if rebuilt != {k: v for k, v in origin.items() if k not in RECORDS}:
+    if rebuilt != {k: v for k, v in _as_current(origin).items() if k not in RECORDS}:
         why = "帳號與部署設定不符" if rebuilt.get("account") != origin.get("account") else "內容與代理依自己的設定重新產生的不一致"
         raise rules.Refusal("%s：不續跑 (the origin is not what this agent builds from its own settings)" % why)
     try:
@@ -826,7 +881,9 @@ def run_resume(job, ctx, preflight, bundle):
     except BundleError as e:
         raise rules.Refusal("內容不合規則：%s" % e)
     expected["resume"]["origin"] = origin      # the records the platform added to it (upload paths, relaunch) were taken out above; it is the same origin
-    if expected != {k: v for k, v in bundle.items() if k != "upload_paths"}:
+    shown = {k: v for k, v in bundle.items() if k != "upload_paths"}
+    shown["ce"] = _as_current(bundle)["ce"]
+    if expected != shown:
         raise rules.Refusal("內容與代理依自己的設定重新產生的不一致：不續跑 (the bundle is not what this agent builds from its own settings)")
     script = "head-%d.sh" % resume["attempt"]
     run = bundle["run_name"]

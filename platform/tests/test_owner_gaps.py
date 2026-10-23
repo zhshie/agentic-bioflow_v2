@@ -325,7 +325,7 @@ def test_tc050_nothing_new_is_made_on_the_site(d):
     assert bundle["run_folder"] == "/data/w1/runs/run-one" and "alice" not in json.dumps(bundle["ce"])
     assert "alice" not in bundle["files"]["head.sh"] + bundle["files"]["nextflow.config"] + bundle["run_folder"]
     assert set(bundle) - {"version", "agent", "ce", "run_name", "run_folder", "pipeline", "revision", "samplesheet", "params",
-                          "path_columns", "account", "tower", "files"} == {"upload_paths"}
+                          "path_columns", "account", "tower", "files", "pipeline_source"} == {"upload_paths"}
 
 
 # ---- US4: runs assign ----------------------------------------------------------------------------------------------------

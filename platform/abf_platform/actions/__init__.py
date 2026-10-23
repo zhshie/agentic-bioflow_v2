@@ -517,6 +517,11 @@ def describe_request(platform_path, request_id, *, clock=time.time):
     return confirm.describe(platform_path, request_id, clock)
 
 
+def request_facts(platform_path, request_id):
+    """The plain facts of one request for the top of the confirmation page (kind, run name, pipeline, version, environment, samples, new folder), or None."""
+    return confirm.facts(platform_path, request_id)
+
+
 def void_request(platform_path, request_id, reason):
     """Make a pending request void for good; whether it was pending."""
     return confirm.void(platform_path, request_id, reason)

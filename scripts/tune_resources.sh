@@ -1,4 +1,5 @@
 #!/bin/bash
+# Taiwania-3 only (v2); nano4 uses $NFCORE_SITE_CONFIG — see docs/SITE_ADAPTER.md
 # Suggest a smaller box for a process that never needed the one it got.
 #
 # Not Seqera Platform's own resource optimiser: this deployment must keep it

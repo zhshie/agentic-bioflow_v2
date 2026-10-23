@@ -831,3 +831,78 @@ def test_tc068_no_new_way_to_log_in(w):
     assert {m.lower() for m in re.findall(r"oauth\w*", cli_src, re.I)} <= {"oauth", "oauth_revoke", "oauth_command", "oauth_tokens"}      # 009i: only `oauth revoke`
     auth = (PLATFORM_DIR / "abf_platform" / "http_auth.py").read_text(encoding="utf-8")
     assert set(re.findall(r"store\.(\w+)", auth)) == {"lookup_pat", "lookup_oauth_access", "get_meta", "default_tokens_path"}      # 009i: the OAuth lookup
+
+
+# ---- launch-site-pipeline (M1-02): the three site keys and the site-module bundle are one person's, like the rest -------------------
+
+SITE_NAMES = ("biology/", "NFCORE_AMPLISEQ_HOME", "NFCORE_SITE_CONFIG", "NFCORE_SITE_REFERENCES", "site-module", "pipeline_source",
+              "sitePipelines", "siteConfigVars")
+
+
+def _alice_site_env(d):
+    """alice's environment lab-a carries the three keys (written the way `ce create --config-json` stores them)."""
+    from test_launch_bundle import SITE_CE
+    cfg = json.loads(sql_rows(d.state, "SELECT config_json FROM compute_envs WHERE name = 'lab-a'")[0][0])
+    cfg.update(json.loads(json.dumps(SITE_CE)))
+    sql_exec(d.state, "UPDATE compute_envs SET config_json = ? WHERE name = 'lab-a'", (json.dumps(cfg),))
+
+
+def test_tc_ls_50_somebody_elses_site_launch_is_not_readable_and_shows_none_of_its_site_names(d, w):
+    # TC-LS-50 (read): bob cannot read alice's launch (bundle, pipeline_source), her request page, her run, or the three keys of her environment
+    _alice_site_env(d)
+    d.w.hand_over("run-one", by=d.a)
+    kept = json.loads(sql_rows(d.state, "SELECT bundle_json FROM confirmations WHERE bundle_json IS NOT NULL")[0][0])
+    assert kept["pipeline_source"]["kind"] == "site-module" and "NFCORE_AMPLISEQ_HOME" in kept["files"]["head.sh"]      # there is something to hide
+    rid_run = d.add_run("run-one", d.a.user_id, launch_row=False)
+    pending = pending_id_of(d.launch(d.a, run="run-two")["confirmation_url"])
+    assert d.call("get_compute_env", {"name": "lab-a"}, caller=d.a)["config"]["sitePipelines"][0]["home"] == "NFCORE_AMPLISEQ_HOME"      # alice sees her own
+    seen = []
+    other = d.call("get_run", {"run_id": rid_run}, caller=d.b)
+    missing = d.call("get_run", {"run_id": "id-nonesuch"}, caller=d.b)
+    assert other["found"] is False and words(other, rid_run) == words(missing, "id-nonesuch")
+    seen.append(other)
+    env_other = d.call("get_compute_env", {"name": "lab-a"}, caller=d.b)
+    env_missing = d.call("get_compute_env", {"name": "nonesuch"}, caller=d.b)
+    assert env_other["found"] is False and "config" not in env_other and words(env_other, "lab-a") == words(env_missing, "nonesuch")
+    seen += [env_other, d.call("list_compute_envs", caller=d.b), d.call("list_runs", caller=d.b)]
+    for verb in ("resume", "relaunch"):      # these two copy alice's kept bundle: bob is told what he is told about a run that does not exist
+        theirs = d.call(verb, {"run_name": "run-one"}, caller=d.b, answer=form_answer())
+        none = d.call(verb, {"run_name": "run-none"}, caller=d.b, answer=form_answer())
+        assert theirs["ok"] is False and theirs["sent"] is False and "job_id" not in theirs, (verb, theirs)
+        assert words(theirs, "run-one") == words(none, "run-none"), (verb, theirs, none)
+        seen.append(theirs)
+    client = w.web()
+    assert w.login(client, "bob").status_code == 303
+    page = client.get("/c/" + pending)
+    assert page.status_code == 403
+    seen.append(page.text)
+    text = json.dumps(seen, ensure_ascii=False)
+    for name in SITE_NAMES + ("run-two",):
+        assert name not in text, name
+
+
+def test_tc_ls_51_somebody_elses_site_launch_cannot_be_confirmed_or_cancelled_and_nothing_changes(d, w):
+    # TC-LS-51 (write): bob cannot say yes to alice's waiting launch, cancel her launched run, or resume it; her records and the queue stay as they are
+    _alice_site_env(d)
+    d.w.hand_over("run-one", by=d.a)
+    pending = pending_id_of(d.launch(d.a, run="run-two")["confirmation_url"])
+    before = (sql_rows(d.state, "SELECT id, state, bundle_json, used_at FROM confirmations ORDER BY id"),
+              sql_rows(d.state, "SELECT id, kind, state, args_json FROM jobs ORDER BY id"),
+              sql_rows(d.state, "SELECT run_name, slurm_job_id, cancel_requested_at, user_id FROM launches ORDER BY id"))
+    client = w.web()
+    assert w.login(client, "bob").status_code == 303
+    page = client.get("/c/" + pending)
+    assert page.status_code == 403
+    posted = client.post("/c/" + pending, data={"csrf": csrf_of(page.text) or "x"})
+    assert posted.status_code == 403
+    cancelled = d.call("cancel", {"run_name": "run-one"}, caller=d.b, answer=form_answer())
+    missing = d.call("cancel", {"run_name": "run-none"}, caller=d.b, answer=form_answer())
+    assert cancelled["ok"] is False and cancelled["sent"] is False and "job_id" not in cancelled
+    assert words(cancelled, "run-one") == words(missing, "run-none")
+    resumed = d.call("resume", {"run_name": "run-one"}, caller=d.b, answer=form_answer())
+    assert resumed["sent"] is False and "job_id" not in resumed
+    after = (sql_rows(d.state, "SELECT id, state, bundle_json, used_at FROM confirmations ORDER BY id"),
+             sql_rows(d.state, "SELECT id, kind, state, args_json FROM jobs ORDER BY id"),
+             sql_rows(d.state, "SELECT run_name, slurm_job_id, cancel_requested_at, user_id FROM launches ORDER BY id"))
+    assert [[tuple(r) for r in t] for t in after] == [[tuple(r) for r in t] for t in before]
+    assert d.w.jobs("cancel_run") == []

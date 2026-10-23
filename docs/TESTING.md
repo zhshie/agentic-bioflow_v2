@@ -177,6 +177,51 @@ The machine part is `tests/platform_test.sh`. These cases need the real cluster 
 7. *Nothing else was touched (TC-076).* `git diff main...HEAD --stat -- hooks skills .claude-plugin .github scripts tests` lists no change under `hooks/`, `skills/`, `.claude-plugin/`, `.github/`; under `scripts/` only `on_site.sh` (the three forward options) and `nf_relay.py` (the loopback rule); under `tests/` only `no_second_run_state_test.sh` and `platform_test.sh` (the second pinned Nextflow).
 8. *The relay question and the constitution (TC-077).* `git diff main...HEAD -- .specify/memory/constitution.md` is empty. The pull request description asks the maintainer, as a separate question, whether the relay may reach one loopback destination, and attaches the comparison with main (the 30-request golden file `platform/tests/fixtures/relay_golden.json`).
 
+### nano4 acceptance (manual, feature acceptance-nano4)
+
+**When a release is tried on the new site nano4 for the first time, or a colleague tries it (milestone M1: the 16S pipeline nf-core/ampliseq 2.18.0 end to end: Claude Desktop, no Seqera, launch, result page).** These five cases need the real cluster, so only the maintainer or a colleague does them, in WSL, with the shared connection opened by hand as usual. Fill in one copy of `specs/007b-launch/acceptance-nano4.md` as you go. The first acceptance goes through Claude Desktop only; the web path waits for milestone M2.
+
+Words used below. *SU* is the cluster's unit of computing time, the thing that is billed. The *head job* is the one Slurm job that runs Nextflow itself and starts the other jobs; it waits in the partition (queue) called `ngsconsole`. The *child jobs* are the pipeline's own tasks, run in the `ngs` partition. `<rid>` is the run's id, shown on the confirmation page. These cases were written on 2026-10-22; when you run them, the then-current v3 is the truth, and a difference is worth writing in the table's notes cell.
+
+1. *nano4 preflight passes every item (TC-047n).*
+   Before you start: the platform and the agent are running (`docs/PLATFORM.md` section 6), the shared connection to nano4 is open, and an environment for nano4 exists (`abf-platform ce list` shows it).
+   1. Run `abf-platform ce preflight nano4` (use your environment's name if it is not `nano4`). It waits up to three minutes.
+   2. Expected output: one line per check, each ending in `pass`, and the environment's status `available`. Copy each line's result into the "preflight" cells of the table (`pass`, `fail` or `unchecked`).
+   3. The eight checks of `docs/PLATFORM.md` section 7, "Preflight": `connect` (the shared connection answers), `work_dir` (the work folder exists and you may write there), `sbatch`, `squeue`, `sinfo` (each command exists), `java` (version 17 or newer), `nextflow` (the version is printed), `head_queue` (the head partition `ngsconsole` is listed by `sinfo`).
+   4. Three more checks exist once feature preflight-nano4 is merged: `modules` (the site's module system answers) (preflight-nano4 合併後), `site_pipeline` (the site's own copy of the pipeline is found) (preflight-nano4 合併後), `library` (the pipeline's shared library is found) (preflight-nano4 合併後). If your build does not print them, write `unchecked` and note "preflight-nano4 not merged".
+   5. Pass: all checks you can see say `pass`. If any says `fail`, stop; the message names the item and what to do (for `connect`: log in once in a WSL terminal with the line it prints).
+2. *Launch from Claude Desktop (TC-048n).*
+   Before you start: TC-047n passed. Claude Desktop is connected to the platform (`docs/PLATFORM.md`, the Claude Desktop connector). Have a terminal on nano4 ready for steps 2, 5 and 6.
+   1. *Estimate the SU first.* `estimate_su` is a function inside the platform (`platform/abf_platform/actions/__init__.py`); it is not an MCP tool, so Claude Desktop cannot call it, and it has no `abf-platform` subcommand or web page. Call it from a terminal in WSL, with the Python of the environment where `abf-platform` is installed, and the same index database the platform uses (`ABF_PLATFORM_DB` if you set it). Copy this call exactly (the run is the 2026-09-20 run with the same settings; a run that has not started has no trace to count, so the earlier identical run is the estimate):
+      ```
+      python -c 'import json; from abf_platform import actions, store; print(json.dumps(actions.estimate_su(store.default_index_path(), "ampliseq-mt-0920-r2"), ensure_ascii=False, indent=2))'
+      ```
+      Expected output: a JSON object with the fields `su`, `twd_nstc`, `twd_academic` and `unknown_reasons` (a number or `null` in the first three; a list of reasons in the last). If the platform never received that run (it ran through Seqera), the answer is `found: false` with the message `Run not found`; if the record lacks cpus, realtime or partition per task, the three numbers are `null` and `unknown_reasons` says why. In both cases write "unknown" and the reason in the table, never a guess. Paste the command and its output into the table's "launch 前預估 SU" cell; if the value is a number, write it in the 差額 comparison of TC-050n step 4.
+   2. *Look at the balance.* On nano4 run `wallet`. Copy its full output into the "wallet 前" cell.
+   3. *Launch.* In Claude Desktop write exactly: `launch nf-core/ampliseq 2.18.0`. Give the inputs it asks for (the 10 fastq files of `microbiome_test`, primers 27F/1492R, PacBio, SILVA 138.2).
+   4. *Confirm.* Claude gives a link ending `/c/<rid>`. Open it in the browser, read every item on the page, and press the confirm button yourself. Nobody else can say yes for you. Pass: the page lists every item and after your click it says the launch was sent.
+   5. Save `head.sh` of the run folder: `cat <run folder>/head.sh` and paste the whole text into the table.
+   6. *Look at the queue.* On nano4 run `squeue -u $USER -o '%i %P %j %T'`. Expected: one line with partition `ngsconsole` (the head job, state `RUNNING`), and, after some minutes, further lines with partition `ngs` (the child jobs). Correct: the head job is in `ngsconsole` and the children are in `ngs`. Wrong: any pipeline job in another partition, or no `ngsconsole` line while the run is going (then the head did not start where it should; write what you see in the notes). Paste the output into the "squeue 輸出" cell.
+3. *The way back, with no relay (TC-049n).* This replaces the relay check of step 3 in the 007b list above for nano4: here the compute nodes call the platform directly.
+   Before you start: a run from TC-048n is going or has just finished, and the platform has a public address `<public>` (the address nano4 can reach).
+   1. *From a compute node.* On nano4 run: `srun -p ngstest -A mst109178 -N1 -c1 -t 00:05:00 curl -sS -i https://<public>/user-info | head -n 15`. The `-i` makes curl print the status line and the headers.
+   2. Expected: the first line says `HTTP/... 401`, and among the headers there is `X-ABF-Platform: ...`. 401 means the platform answered and refused you for lack of a token, which is the right answer. Anything else is wrong: a timeout or `Could not resolve host` means the compute node cannot reach the platform; a 200 means it is open without a token; a 401 without `X-ABF-Platform` means something else answered, not the platform. Paste the first lines into the notes cell.
+   3. *The relay is not used.* In WSL run `abf-platform launches`. Expected: the line of your run shows `way_back: direct`.
+   4. On the site (login node) run `ss -ltnp | grep -c <relay port>` where `<relay port>` is `relay_port` from your settings file (`docs/SETTINGS.md`). Expected output: `0`. A number above 0 means a relay is listening and the direct way back is not what is in use.
+4. *The platform got the trace and the result page shows it (TC-050n).*
+   Before you start: the run of TC-048n has finished (state succeeded) or is far enough along to have run tasks.
+   1. Count the finished tasks on the site: `tail -n +2 <run folder>/trace.txt | wc -l`. (`tail -n +2` leaves out the header line.) Write the number in the "trace 行數" cell.
+   2. In Claude Desktop write `get_run <run name>`. Expected: the run, its state, and task counts that change as the run goes (check twice a few minutes apart). When the run has ended, the task total equals the number from step 1. That is "the platform received the trace".
+   3. Open the run's result page in the browser (the link Claude gives, or the run list on the platform's web page). Expected: the page shows the run's state and its tasks. Take a screenshot, save it as `nano4-<date>-result.png`, and write the file name in the "結果頁截圖檔名" cell.
+   4. Look at the balance again: `wallet` on nano4. Copy the full output into "wallet 後"; work out the difference as "wallet 前" minus "wallet 後" and write it in "差額"; compare it with "launch 前預估 SU".
+   5. Tokens must not leak. In the run folder run `grep -c token head.sh` and `grep -c token slurm-<jobid>.out` (`<jobid>` is the head job's number from `squeue`). Both must print `0`. The file `tower.token` is not checked: it is where the token is meant to be.
+5. *Pipeline module absent: fall back to `owner/name -r rev` (TC-051n).*
+   Before you start: you know which pipeline revisions the site has as modules. They are the `sitePipelines` entries of the environment's config: run `abf-platform ce show nano4` and read the `sitePipelines` part.
+   1. Pick a revision that is not in that list, for example `nf-core/ampliseq` at `2.17.0` (if `2.17.0` is in your list, pick any other real release of the pipeline that is not).
+   2. In Claude Desktop write: `launch nf-core/ampliseq 2.17.0` and confirm on the `/c/<rid>` page as before (a small run is enough; you may cancel it once the head job is running).
+   3. Open the run's `head.sh`: `cat <run folder>/head.sh`. Expected: the Nextflow line has the form `nextflow run nf-core/ampliseq -r 2.17.0 ...`, that is the pipeline named by `owner/name` with `-r` and the revision, and not a path to a site module.
+   4. Wrong: the line points to a module or site copy (so the fallback did not happen), or the launch was refused with no reason. Write exactly what you saw in the notes cell.
+
 ### Jev triage, on and off (feature 015)
 
 Needs a run that failed with an ordinary error (not out of memory, nothing refused by the site). One
@@ -339,6 +384,25 @@ Same set-up as the 011a section above (loopback `abf-platform web`, e2e runs of 
 
 **Ledger review (TC-D01 to TC-D04, TC-D07).** Read `specs/011b-running-page/ledger.md` and `git diff v3...HEAD`. Pass: every changed old assertion has an old value, a new value and a reason; the three owed items (compute environment name, work directory column, launch facts) are named; `git diff v3...HEAD -- DESIGN.md PRODUCT.md specs/011b-running-page/test-case.md specs/011b-running-page/test-case-overview.md` prints nothing; `git diff v3...HEAD -- platform/abf_platform/store.py platform/abf_platform/actions platform/abf_platform/jobs.py platform/abf_platform/mcp_server.py hooks .claude` prints nothing and there is no new table, column or migration.
 
+## The confirmation page, plain words first (web-confirm-plain): the person looks, and the ledger review
+
+Needs `abf-platform web` on loopback, a user with a web password, and one real pending request (a launch or a relaunch a connected AI queued and nobody has pressed yet) whose folder path is long. The page needs no JavaScript.
+
+**First look (TC-007).**
+
+1. Open `/c/<id>` for the pending request. Do not scroll and do not click anything. Pass: the first thing on the page is a plain block of a few lines in your own language: the kind of request, its name, the pipeline and version, where it runs, how many samples. There is no samplesheet text, no settings file and no script on screen, and nothing that looks like code. Record: what you saw in the first screen, and whether it is "what I wanted".
+2. Click "完整內容（技術細節）". Pass: the whole content opens on the same page (samplesheet, params, head script), nothing is missing, and the page did not reload. Click it again: it folds.
+3. Read the sentence at the top of the page ("下面就是會被送出的全部內容…") now that the content is folded. Record: does it still read right? (Open item of the test-case overview; a "no" goes to the next round, it does not fail this step.)
+4. Open `?lang=en` on the same page. Pass: the plain block's labels and the fold title are English.
+
+**Phone width (TC-016).**
+
+5. Make the window 390 px wide with device emulation (Chrome DevTools, device toolbar), not by dragging the window edge, and open the pending request whose folder path is long. Expand the fold. Pass: the whole path is visible, wrapped over several lines; the plain block and the fold have no sideways scrollbar. Record the numbers of `document.documentElement.scrollWidth` and `document.documentElement.clientWidth` in the console: they must be equal.
+
+**Ledger review (TC-033).**
+
+6. Read `specs/web-confirm-plain/ledger.md` and `git diff origin/v3...HEAD -- platform/tests/`. Pass: every line removed or changed in an existing test is in the ledger with the old value, the new value and the reason; no existing test is deleted, skipped or loosened without being named there; `git diff origin/v3...HEAD -- specs/web-confirm-plain/plan.md specs/web-confirm-plain/test-case.md specs/web-confirm-plain/test-case-overview.md` shows only the verifier's and developer-agent's commits (no `RED:` or `GREEN:` commit touches them). A changed assertion that is more than a string swap (for example a whole-page equality narrowed to the stylesheet alone) is read by you and accepted or sent back; the ledger entry is the evidence, your reading is the verdict.
+
 ## Chrome login (web-chrome-origin)
 
 Needs a Python with Playwright and Google Chrome installed; CI has neither, so this is not in the automated suite (WCO-3 of `specs/web-chrome-origin`).
@@ -377,6 +441,7 @@ This one is read, not run. Open `specs/116b-owner-gaps/ledger.md` next to `git d
 3. **A real resume on Taiwania-3 (not yet done).** Take a run that really failed on the cluster (kill a task, or `abf-platform cancel` one). `abf-platform resume RUN` at your own terminal and answer y. Pass: Nextflow starts with `-resume <session id> -name <RUN>-a2` in the same folder and runs (this is what a fake site cannot say: that Nextflow accepts a new `-name` with the old session in one folder).
 4. **The cache is reused (not yet done).** After the resume starts, `get_run` of `<RUN>-a2`. Pass: it shows tasks as cached, the ones that finished before.
 5. **The pull request** says "not yet accepted on NCHC" until 3 and 4 are done.
+6. **The runs skill on a test platform (manual).** On a test platform with one failed run and one running run, ask the AI about each, following the new `skills/runs/SKILL.md`. Pass: it reads them with `list_runs` and `get_run`, reads a failed task's log with `read_task_log` (the task folder comes from the `workdir` that `get_run` gives), and never runs `tw`; it says plainly "v3 尚未提供" for what v3 lacks (such as the params a run was started with) instead of guessing; and every cancel, resume or relaunch only sends a request and waits for the person's yes before anything starts.
 
 ## Browser chat backend (014a): the reviewer checks three things
 
@@ -385,6 +450,15 @@ The automated tests are `platform/tests/test_chat_tools.py` and `platform/tests/
 1. **Only the allowed files changed (TC-032).** Run `git diff main...HEAD --stat`. Expected: only `platform/abf_platform/actions/chat_tools.py`, `platform/abf_platform/compute_envs.py`, the two test files above, `docs/TESTING.md` and files under `specs/014a-chat-backend/`. `platform/abf_platform/actions/__init__.py`, `mcp_server.py`, `web.py` and `web_board.py` are not in the list, and no `.js`, `.html` or style file was added.
 2. **No doc or release file was touched (TC-036).** Run `git diff main...HEAD --stat -- docs/PLATFORM.md docs/ROADMAP.md CHANGELOG.md`. Expected: empty output.
 3. **No existing test was weakened (TC-043).** Run `git diff main...HEAD -- platform/tests tests`. Expected: only the two new test files appear; no assertion in an existing test file was removed, loosened, re-valued or skipped. Then run the whole suite in WSL (`bash tests/run_all.sh`) and see it green.
+
+## nano4 site config (nano4-site-config): the reviewer checks four things
+
+The automated tests are the `N4-` tests at the end of `platform/tests/test_estimate_su.py`. Four checks are by hand, from the root of the branch.
+
+1. **Only the allowed files changed (N4-34).** Run `git diff --name-only origin/v3...HEAD`. Expected: only `configs/sites/nchc-nano4.config`, `configs/sites/nchc-nano4-ce.json`, `configs/sites/su_rates.json`, `platform/abf_platform/su.py`, `platform/tests/test_estimate_su.py`, `specs/estimate-su/ledger.md`, `specs/nano4-site-config/*`, `docs/TESTING.md`. No `compute_envs.py`, no `actions/`, no site script, and no record of a created compute environment.
+2. **Taiwania-3 untouched (N4-33).** Run `git diff origin/v3...HEAD -- configs/sites/nchc.config configs/sites/nchc-ce.json.in` (expected: empty) and `git diff origin/v3...HEAD -- configs/sites/su_rates.json` (expected: only added lines, a new `nano4` section; no changed `taiwania3`, `nchc` or top-level line).
+3. **No existing test was weakened (N4-15).** Run `git diff origin/v3...HEAD -- platform/tests/test_estimate_su.py`. Expected: only added lines; no assertion removed, loosened, re-valued or skipped.
+4. **No migration (N4-31).** Read `specs/nano4-site-config/ledger.md`: it says why no migration is needed.
 
 ## When a release moves the flow files (commands → skills)
 
