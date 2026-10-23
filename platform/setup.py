@@ -32,6 +32,13 @@ class BuildPyWithSkills(build_py):
             if dest.exists():
                 shutil.rmtree(dest)
             shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        # the SU rates: one file in the repository, copied next to the other package data so abf_platform.su finds it after a pip install
+        rates = REPO / "configs" / "sites" / "su_rates.json"
+        if not rates.is_file():
+            raise SystemExit("cannot find %s (the SU rates file): build from a checkout of the repository" % rates)
+        data = Path(self.build_lib) / "abf_platform" / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(rates, data / "su_rates.json")
 
 
 setup(cmdclass={"build_py": BuildPyWithSkills})

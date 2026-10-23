@@ -36,3 +36,6 @@ platform/abf_station/plugin/
 
 # TypeSafe key for the optional Jev triage (docs/SETTINGS.md)
 .typesafe_key
+
+# SU rates: copied from configs/sites/su_rates.json into the wheel at build time (platform/setup.py), never committed
+platform/abf_platform/data/su_rates.json
