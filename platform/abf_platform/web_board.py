@@ -44,7 +44,7 @@ STRINGS = {
         "count_succeeded": "成功", "count_cached": "快取", "count_failed": "失敗", "count_aborted": "中止", "count_running": "執行中",
         "count_pending": "等待", "count_submitted": "已送出",
         "started": "開始", "ended": "結束", "prev": "← 上一階段", "next": "下一階段 →", "not_reached": "這個 run 還沒到這個階段。",
-        "no_reason": "原因未記錄", "not_found_title": "找不到這個 run", "not_found_body": "沒有這個 run，或它不是你的。",
+        "not_found_title": "找不到這個 run", "not_found_body": "沒有這個 run，或它不是你的。",
         "back": "回到分析清單", "set_ce": "運算環境", "set_cred": "憑證", "set_keys": "密碼與金鑰", "set_ai_key": "AI 模型金鑰",
         "set_me": "個人", "set_step": "逐步模式", "set_dev": "開發模式", "set_ops": "營運者後台",
         "set_roles": "角色（老師／學生）",
@@ -84,7 +84,7 @@ STRINGS = {
         "count_running": "Running", "count_pending": "Pending", "count_submitted": "Submitted",
         "started": "Started", "ended": "Ended", "prev": "← Previous stage", "next": "Next stage →",
         "not_reached": "This run has not reached this stage.",
-        "no_reason": "reason not recorded", "not_found_title": "Run not found", "not_found_body": "There is no such run, or it is not yours.",
+        "not_found_title": "Run not found", "not_found_body": "There is no such run, or it is not yours.",
         "back": "Back to the analyses", "set_ce": "Compute environments", "set_cred": "Credentials", "set_keys": "Passwords and keys",
         "set_ai_key": "AI model key", "set_me": "Personal", "set_step": "Step-by-step mode",
         "set_dev": "Development mode", "set_ops": "Operator panel", "set_roles": "Roles (teacher / student)",
@@ -152,7 +152,6 @@ STYLE = (
     ".side{background:var(--raised);border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:12px}"
     ".nav,.tools,.rows,.foot{display:flex;flex-direction:column;gap:4px}"
     ".foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}"
-    ".nowline{display:flex;align-items:center;gap:8px}.nowline .nv{flex:1}.red{color:var(--failed);font-weight:600}"
     ".nv,.row{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:4px;color:var(--ink)}"
     "a.nv.here,a.row.here{background:var(--accent-weak);font-weight:600}"
     ".row{flex-direction:column;align-items:stretch;gap:0}.r1{display:flex;align-items:center;gap:8px}.r2{font-size:12px;color:var(--muted)}"
@@ -175,11 +174,6 @@ STYLE = (
     ".steps .is-later a{border-top:3px dashed var(--line2)}"
     ".steps a[aria-current]{outline:2px solid var(--focus);outline-offset:2px}"
     ".card{background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:12px}"
-    ".cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}"
-    ".num{font-weight:600;font-size:15px;margin-left:8px}"
-    ".lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}"
-    ".line{display:flex;flex-wrap:wrap;gap:8px;padding:4px 8px;border-radius:4px;background:var(--bg);color:var(--ink)}"
-    ".line .lb{color:var(--c);font-weight:600}.why{color:var(--muted)}"
     ".counts{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin:0}"
     ".counts div{background:var(--sunken);border-radius:4px;padding:4px 8px;min-width:0}"
     ".counts dt{font-size:12px;color:var(--muted)}.counts dd{margin:0;font-size:15px;font-weight:600}"
@@ -192,23 +186,13 @@ STYLE = (
     "padding:12px;white-space:pre-wrap;margin:0}"
     ".sec ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}"
     ".rail{background:var(--raised);border-left:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:12px}"
-    ".tabs{display:flex;gap:16px;border-bottom:1px solid var(--line);padding-bottom:4px}.tab.is-on{font-weight:600}"
-    ".tally{display:flex;gap:12px;font-weight:600}"
-    ".group{display:flex;flex-direction:column;gap:8px}.group>summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--muted)}"
-    ".items{display:flex;flex-direction:column;gap:8px;margin-top:8px}"
-    ".item{display:block;padding:8px 12px;border-radius:6px;color:var(--ink);background:var(--bg)}"
-    "a.item{color:var(--ink)}.item:hover{text-decoration:none}"
-    ".item .t{display:flex;gap:8px;font-weight:600}.item .t .nm{flex:1;white-space:normal;overflow-wrap:anywhere}"
-    ".item .s{display:block;font-size:12px;font-weight:600;color:var(--c)}.item .why{display:block;font-size:12px;overflow-wrap:anywhere}"
-    ".item.here{outline:2px solid var(--focus);outline-offset:-2px}"
-    ".card,.item,.line,.why,.reason,.lines>li,.cards>*{min-width:0;overflow-wrap:anywhere}.line .nm{overflow-wrap:anywhere}"
+    ".card,.reason{min-width:0;overflow-wrap:anywhere}"
     ".notices{display:flex;flex-direction:column;gap:12px}"
     ".notice{background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}"
     ".nhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
     ".level{display:inline-flex;gap:4px;padding:0 8px;border-radius:999px;font-size:12px;line-height:20px;font-weight:600;white-space:nowrap;"
     "color:var(--c);background:var(--bg)}"
-    ".aname{font-family:" + MONO + ";overflow-wrap:anywhere;min-width:0}.when{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}"
-    ".ntitle{font-size:15px;font-weight:600}"
+    ".when{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}"
     ".fields{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0}"
     ".fields dt{color:var(--muted)}.fields dd{margin:0;min-width:0;overflow-wrap:anywhere}"
     ".acts{display:flex;flex-wrap:wrap;gap:8px}"

@@ -110,19 +110,21 @@ def test_tc001_tc003_each_button_asks_and_redirects_to_the_confirmation_page(rig
 
 
 def test_tc004_notices_carry_real_forms(rig):
-    # TC-004
+    # TC-004 (web v2, ruling 5: the notice is on the right; it has exactly one form, the first of the run's actions)
+    from abf_platform import actions
     ann = rig.user("ann")
     failed = run_of(rig, ann)
     c = login(rig, "ann")
+    verb = actions.get_run(rig.w.ip.index, failed, caller=ann, platform_path=rig.w.ip.state_db)["failure"]["actions"][0]
     for url in ("/", "/?run=" + failed):
         t = c.get(url).text
-        mid = pane(t, "middle")
-        notice = re.search(r"<article\b.*?</article>", mid, re.S).group(0)
-        assert "之後開放" not in notice
-        for verb in ("resume", "relaunch"):
-            fields = act_form(notice, verb, failed)
-            assert fields, (url, verb)
-            assert rid_of(c.post("/act/" + verb, data=fields))
+        right = pane(t, "right")
+        notice = re.search(r"<article\b.*?</article>", right, re.S).group(0)
+        assert "之後開放" not in notice and len(re.findall(r"<form\b", notice)) == 1
+        assert "<article" not in pane(t, "middle")
+        fields = act_form(notice, verb, failed)
+        assert fields, (url, verb)
+        assert rid_of(c.post("/act/" + verb, data=fields))
 
 
 def test_tc006_tc058_nothing_is_confirmed_or_queued_before_the_person_presses_send(rig):

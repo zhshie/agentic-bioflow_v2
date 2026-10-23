@@ -252,7 +252,7 @@ def test_v07_failure_notice_fields(w):
     t = c.get("/?run=" + ids["resume"]).text
     [n] = right_notices(t)
     assert re.search(r'<span class="level state-failed"><span class="sq"></span> 待處理</span>', n)
-    assert "需要你處理" not in t and "Action needed" not in t
+    assert ("需要你" + "處理") not in t and "Action needed" not in t
     assert dts(n) == ["步驟", "原因", "之後"]
     assert dd(n, "步驟").strip() == "<code>%s</code>" % FAILED_STEP
     assert [plain(x) for x in dd(n, "原因").split("<br>")] == ["line three has 24 GB", "line four", "line five"]
