@@ -86,9 +86,16 @@ class Duo:
         return path
 
     # ---- what the AI asks for -------------------------------------------------------------------------------------------
-    def launch(self, caller, run="run-one", answer=None, cells=None, ce_name="lab-a", sheet=None, raw_args=None):
-        sheet = sheet or self.sheet(caller, cells)
-        args = self.w.choices(run=run, samplesheet=str(sheet), ce_name=ce_name)
+    def launch(self, caller, run="run-one", answer=None, cells=None, ce_name="lab-a", sheet=None, raw_args=None, text=None, nosheet=False):
+        """text: the CSV itself, sent as `samplesheet_text` and no file is made; nosheet: no `samplesheet` argument at all."""
+        if text is not None or nosheet:
+            args = self.w.choices(run=run, ce_name=ce_name)
+            del args["samplesheet"]
+            if text is not None:
+                args["samplesheet_text"] = text
+        else:
+            sheet = sheet or self.sheet(caller, cells)
+            args = self.w.choices(run=run, samplesheet=str(sheet), ce_name=ce_name)
         if ce_name is None:
             del args["ce_name"]
         args.update(raw_args or {})
