@@ -64,10 +64,6 @@ def fields(notice):
     return [(plain(a), plain(b)) for a, b in re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", dl, re.S)]
 
 
-def attention(text):
-    return re.search(r'data-card="attention"[^>]*>(.*?)</section>', pane(text, "middle"), re.S).group(1)
-
-
 def cards(text):
     mid = pane(text, "middle")
     return ([html.unescape(plain(x)) for x in re.findall(r'<h2 class="ct">(.*?)</h2>', mid, re.S)],
@@ -75,22 +71,22 @@ def cards(text):
 
 
 def test_r01_r13_failed_and_lost_notice_fields(w):
-    # TC-R01, TC-R02, TC-R03, TC-R04, TC-R05, TC-R06, TC-R08, TC-R09, TC-R10, TC-R13
+    # TC-R01, TC-R02, TC-R03, TC-R04, TC-R05, TC-R06, TC-R08, TC-R09, TC-R10, TC-R13 (web v2: Seqera's fields, on the right, one button)
     ann, c = world(w)
     a, b = f1(w, ann), l1(w, ann)
     t = c.get("/?run=" + a).text
     [n] = notices(t)
-    assert "待處理" in plain(n) and 'class="sq"' in n and "分析失敗" in plain(n)
-    assert 'href="/?run=%s"' % a in n and "11-14 10:05" in plain(n) and "2023-11-14T" not in t
-    assert fields(n) == [("問題", "FASTQC (sample2)"), ("原因", "samplesheet is missing the reverseReads column"),
-                         ("可選動作", "續跑／重跑")]
-    assert "TRIMGALORE" not in n and "second line" not in n
-    assert "續跑" in n and "重跑" in n and "之後開放" not in n
-    assert len(re.findall(r"<button\b", n)) == 2 and len(re.findall(r"<form\b", n)) == 2          # 012b: real buttons that ask
-    assert len(re.findall(r"<form\b", t)) == 1 + 3 + 2          # the log-out form, the run page's three buttons, the notice's two
+    assert "待處理" in plain(n) and 'class="sq"' in n and "分析失敗" not in plain(n)
+    assert "10:05" in plain(n) and "11-14" not in plain(n) and "2023-11-14T" not in t
+    assert fields(n) == [("步驟", "FASTQC (sample2)"), ("原因", "samplesheet is missing the reverseReads column second line"),
+                         ("之後", "續跑（確認頁）")]
+    assert "TRIMGALORE" not in n
+    assert "之後開放" not in n
+    assert len(re.findall(r"<button\b", n)) == 1 and len(re.findall(r"<form\b", n)) == 1          # 012b: a real button that asks
+    assert len(re.findall(r"<form\b", t)) == 1 + 3 + 1          # the log-out form, the run page's three buttons, the notice's one
     [m] = notices(c.get("/?run=" + b).text)
-    assert fields(m) == [("問題", "失聯"), ("原因", "三次心跳沒有回應"), ("可選動作", "續跑／重跑")]
-    assert "與站台失去聯絡" in plain(m) and "11-14 11:00" in plain(m)
+    assert fields(m) == [("步驟", "—"), ("原因", "站台沒有回應"), ("之後", "重跑（確認頁）")]
+    assert "11:00" in plain(m)
 
 
 def test_r12_r14_english_and_missing_data(w):
@@ -98,17 +94,16 @@ def test_r12_r14_english_and_missing_data(w):
     ann, c = world(w)
     a, b = f1(w, ann), l1(w, ann)
     [n] = notices(c.get("/?run=%s&lang=en" % a).text)
-    assert "Pending" in plain(n) and 'class="sq"' in n and "Analysis failed" in plain(n) and no_cjk(n)
-    assert [x for x, _ in fields(n)] == ["Problem", "Cause", "Options"] and fields(n)[2][1] == "Resume / Re-run"
-    assert "Resume" in plain(n) and "Re-run" in plain(n)
+    assert "Pending" in plain(n) and 'class="sq"' in n and no_cjk(n)
+    assert [x for x, _ in fields(n)] == ["Step", "Reason", "Next"] and fields(n)[2][1] == "Resume (confirmation page)"
     [m] = notices(c.get("/?run=%s&lang=en" % b).text)
-    assert "Lost contact with the site" in plain(m) and no_cjk(m)
-    assert fields(m) == [("Problem", "Lost"), ("Cause", "No heartbeat three times in a row"), ("Options", "Resume / Re-run")]
+    assert no_cjk(m)
+    assert fields(m) == [("Step", "—"), ("Reason", "Site not responding"), ("Next", "Re-run (confirmation page)")]
     f2 = seed(w, "f2", "failed", ann, started=T0, ended=NOW)
     [x] = notices(c.get("/?run=%s&lang=en" % f2).text)
-    assert fields(x)[0] == ("Problem", "step not recorded") and fields(x)[1] == ("Cause", "reason not recorded")
+    assert fields(x)[0] == ("Step", "—") and fields(x)[1] == ("Reason", "—")
     [y] = notices(c.get("/?run=%s" % f2).text)
-    assert fields(y)[0] == ("問題", "步驟未記錄") and fields(y)[1] == ("原因", "原因未記錄")
+    assert fields(y)[0] == ("步驟", "—") and fields(y)[1] == ("原因", "—")
 
 
 def test_r07_r19_cut_and_missing_time(w):
@@ -116,7 +111,7 @@ def test_r07_r19_cut_and_missing_time(w):
     ann, c = world(w)
     f4 = seed(w, "f4", "failed", ann, started=T0, ended=NOW, reason="A" * 120 + "\nmore")
     [n] = notices(c.get("/?run=" + f4).text)
-    assert fields(n)[1][1] == "A" * 79 + "…"
+    assert fields(n)[1][1] == "A" * 80 + "… more"
     f3 = seed(w, "f3", "failed", ann, started=T0)
     from abf_platform import store
     con = store.connect_index(w.ip.index)
@@ -127,7 +122,8 @@ def test_r07_r19_cut_and_missing_time(w):
     assert plain(re.search(r'class="when"[^>]*>(.*?)</', notices(t)[0], re.S).group(1)) == "—" and "None" not in t
     # last_message_at is NOT NULL in index.db, so a lost run without it is fed to the component directly (L2)
     from abf_platform import web_board
-    lost = web_board._notice(web_board.STRINGS["zh"], "zh", {"id": "x", "name": "l2", "status": "lost"}, None, None)
+    failure = {"status_seqera": "unknown", "failed_tasks": [], "failure_reason": None, "log": None, "actions": ["relaunch"]}
+    lost = web_board._failure_notice(web_board.STRINGS["zh"], {"id": "x", "name": "l2", "status": "lost", "failure": failure})
     assert plain(re.search(r'class="when"[^>]*>(.*?)</', lost, re.S).group(1)) == "—" and "None" not in lost
 
 
@@ -141,28 +137,29 @@ def test_r21_no_side_stripes(w):
 
 
 def test_r30_r36_attention_card_uses_the_component(w):
-    # TC-R30, TC-R31, TC-R32, TC-R33, TC-R36
+    # TC-R30, TC-R31, TC-R32, TC-R33, TC-R36 (web v2: there is no attention card; the one notice of the opened run is in the right column)
     ann, c = world(w)
     a, b = f1(w, ann), l1(w, ann)
     seed(w, "u1", "running", ann, started=T0)
     seed(w, "s1", "succeeded", ann, started=T0)
-    card = attention(c.get("/").text)
-    ns = notices(card)
-    assert len(ns) == 2 and "<li" not in card
-    assert plain(re.search(r'class="num"[^>]*>(.*?)</span>', card).group(1)) == "2"
-    assert 'href="/?run=%s"' % a in card and "u1" not in card and "s1" not in card
-    assert dict(fields([n for n in ns if 'href="/?run=%s"' % a in n][0]))["問題"] == "FASTQC (sample2)"     # 012b: not "f1" in n: the buttons' hex tokens can hold it
-    card_en = attention(c.get("/?lang=en").text)
-    assert 'lang=en' in card_en and no_cjk(card_en)
+    t = c.get("/?run=" + a).text
+    right = pane(t, "right")
+    ns = notices(right)
+    assert len(ns) == 1 and "<li" not in right and "data-card=" not in t
+    assert "l1" not in right and "u1" not in right and "s1" not in right
+    assert dict(fields(ns[0]))["步驟"] == "FASTQC (sample2)"     # 012b: not "f1" in n: the buttons' hex tokens can hold it
+    assert no_cjk(pane(c.get("/?run=%s&lang=en" % a).text, "right"))
+    assert len(notices(c.get("/?run=" + b).text)) == 1 and "f1" not in pane(c.get("/?run=" + b).text, "right")
 
 
 def test_r34_empty_attention(w):
-    # TC-R34
+    # TC-R34 (web v2: a run that did not fail has no notice)
     ann, c = world(w)
-    seed(w, "s1", "succeeded", ann, started=T0)
-    seed(w, "u1", "running", ann, started=T0)
-    card = attention(c.get("/").text)
-    assert notices(card) == [] and ">0<" in card
+    s1 = seed(w, "s1", "succeeded", ann, started=T0)
+    u1 = seed(w, "u1", "running", ann, started=T0)
+    for rid in (s1, u1):
+        right = pane(c.get("/?run=" + rid).text, "right")
+        assert notices(right) == [] and "目前沒有待處理的事" in right
 
 
 def test_r37_other_users_data_never_shown(w):
@@ -235,8 +232,8 @@ def test_r60_r78_order_and_tabs(w):
     ann, c = world(w)
     a = f1(w, ann)
     mid = pane(c.get("/?run=" + a).text, "middle")
-    marks = ["<h1>", 'class="sumcards"', "<progress", "<article", 'class="rtabs"']
-    assert [mid.index(m) for m in marks] == sorted(mid.index(m) for m in marks)
+    marks = ["<h1>", 'class="views"', 'class="sumcards"', "<progress", 'class="rtabs"']
+    assert [mid.index(m) for m in marks] == sorted(mid.index(m) for m in marks) and "<article" not in mid      # web v2: the notice is on the right
     nav = lambda m: re.search(r'<nav class="rtabs"[^>]*>(.*?)</nav>', m, re.S).group(1)
     links = re.findall(r"<a\b([^>]*)>(.*?)</a>", nav(mid), re.S)
     assert [plain(x) for _, x in links] == ["任務", "日誌", "執行資訊", "設定檔", "指標"]
@@ -316,7 +313,7 @@ def test_r103_r114_limits_and_readonly(w):
                 assert not re.search(r"\son\w+=", t) and not re.search(r"https?://|=\"//", t)
                 csp = r.headers["content-security-policy"]
                 assert "'unsafe-inline'" not in csp and "script-src" not in csp and web_board.style_source() in csp
-                assert len(re.findall(r"<form\b", t)) == 1 + 3 + {a: 2, b: 3, u: 0}[rid]          # 012b: log-out, the run page's three buttons, the notice's
+                assert len(re.findall(r"<form\b", t)) == 1 + 3 + {a: 1, b: 1, u: 0}[rid]          # 012b: log-out, the run page's three buttons, the notice's one
                 assert ("Seq" + "era") not in t and ("Je" + "v") not in t
                 assert 'http-equiv="refresh"' in t
                 for h in hrefs(t):

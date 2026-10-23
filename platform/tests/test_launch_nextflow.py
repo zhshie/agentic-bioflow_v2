@@ -184,6 +184,8 @@ def test_tc045_a_stopped_run_is_shown_as_nextflow_reports_it_and_a_run_that_just
     assert k["status"] == "running"
     assert status.get_run(chain.env.index, k["id"], time.time() + 181)["status"] == "lost"
     for f in (PLATFORM_DIR / "abf_platform").rglob("*.py"):
+        if f.name == "web_board.py":   # web_board.py's state strings use the word since web-v2-skeleton (plan ruling 11)
+            continue
         assert "已取消" not in f.read_text(encoding="utf-8"), f.name
 
 

@@ -128,6 +128,8 @@ def test_tc160_no_state_of_a_run_is_written_anywhere_after_a_round_of_resumes_an
         dump += " ".join(str(v) for v in tuple(row))
     assert not re.search(r"resumed|failed|cancelled|canceled|succeeded|已續跑|已取消", dump)
     for f in source_files():
+        if f.name == "web_board.py":   # web_board.py only renders a display label since web-v2-skeleton (plan ruling 11)
+            continue
         text = "\n".join(code_lines(f))
         assert not re.search(r"['\"](resumed|cancelled|canceled|已取消|已續跑)['\"]", text), rel(f)
 

@@ -3,11 +3,11 @@
 
 A separate small app (`abf-platform web`), not part of the MCP server's bearer check and not part of the receiver: a browser has no
 bearer token and must never be given one. Spec 011a added the first pages that show anything but a login or one request, after web design v1 (DESIGN.md): GET /, the
-three-column board (left: my runs; middle: the Now page of running and needs-attention cards, or the five-stage board of one run; right: all my
-runs by stage; English with ?lang=en), and GET /settings (every section still to come), read-only and for the logged-in user's own runs only.
+three-column board (web design v2: left: my runs grouped by project; middle: the five-stage board of one run; right: that run's formal
+notice; English with ?lang=en), and GET /settings (every section still to come), read-only and for the logged-in user's own runs only.
 The only routes there are:
 
-  GET  /             the board (spec 011a): the Now page, or with ?run=<id> that run, ?stage=<name> its stage, ?tab=<name> a tab of its running stage page (011b), ?lang=en the English page; needs the cookie
+  GET  /             the board (spec 011a): the run that needs the person most (else the newest), or with ?run=<id> that run, ?stage=<name> its stage, ?tab=<name> a tab of its running stage page (011b), ?lang=en the English page; needs the cookie
   GET  /launch       the launch form (spec 012b), ?from=<run id> fills it from an earlier run of the same person; needs the cookie
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
   POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page
@@ -363,28 +363,16 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return None
         return None if view.get("found") is False else view
 
-    def read_details(ids, caller):
-        """The failure_reason and the first failed task of each failed run the page shows (at most the cap), read with the caller's own rights."""
-        reasons, steps = {}, {}
-        for rid in ids:
-            view = read_run(rid, caller) or {}
-            reasons[rid] = view.get("failure_reason")
-            steps[rid] = web_board.first_failed(view)
-        return reasons, steps
-
-    def read_reasons(ids, caller):
-        return read_details(ids, caller)[0]
-
     async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200):
-        """The board for one logged-in user: the Now page, or one run's page with `flash` (one plain line of refusal) on it."""
+        """The board for one logged-in user: one run's page (the one named, else the one that needs the person most, else the newest;
+        an empty page for a person with no run), with `flash` (one plain line of refusal) on it after a refused button."""
+        runs = await run_in_threadpool(read_runs, caller)
         selected = None
-        if run_id:
-            selected = await run_in_threadpool(read_run, run_id, caller)
+        if run_id or runs:
+            selected = await run_in_threadpool(read_run, run_id or web_board.default_run(runs), caller)
             if selected is None:        # another person's run and a missing id answer alike, and the page never repeats the id
                 return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
-        runs = await run_in_threadpool(read_runs, caller)
-        reasons, steps = await run_in_threadpool(read_details, web_board.failed_ids_shown(runs), caller)
-        doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, reasons, steps, tab, clock(),
+        doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
                                      act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
@@ -446,9 +434,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         values.setdefault("samplesheet", sheets[0] if sheets else None)
         values.setdefault("ce_name", envs[0] if envs else None)
         runs = await run_in_threadpool(read_runs, caller)
-        reasons = await run_in_threadpool(read_reasons, web_board.failed_ids_shown(runs), caller)
-        doc = web_board.render_launch(user["name"], csrf(sid, "logout"), runs, values, errors, notes, sheets, envs, csrf(sid, "launch"), lang, reasons,
-                                      source)
+        doc = web_board.render_launch(user["name"], csrf(sid, "logout"), runs, values, errors, notes, sheets, envs, csrf(sid, "launch"), lang, source)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
     async def launch_get(request):
@@ -524,8 +510,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
         runs = await run_in_threadpool(read_runs, caller)
-        reasons = await run_in_threadpool(read_reasons, web_board.failed_ids_shown(runs), caller)
-        return HTMLResponse(web_board.render_settings(user["name"], csrf(sid, "logout"), runs, lang, reasons), headers=_HEADERS)
+        return HTMLResponse(web_board.render_settings(user["name"], csrf(sid, "logout"), runs, lang), headers=_HEADERS)
 
 
     # ---- the OAuth consent page (spec 009i) -------------------------------------------------------------------------
