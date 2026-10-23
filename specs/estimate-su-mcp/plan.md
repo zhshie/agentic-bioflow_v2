@@ -109,6 +109,10 @@ base: v3
 ## 裁決補充（2026-10-23）：新檔的檔首標頭
 新的 `.py` 檔（含測試檔）前 40 行內要有 `# Nothing existing: <理由，≥15 字>`（`platform/tests/test_scope.py:75-80` TC-070），否則全套會紅。
 
+## 裁決（2026-10-24 01:40，developer-agent，回應 executor BLOCKED）
+- 核可修改 `platform/tests/test_failures.py:193`（#166 合併進 v3 的既有斷言）一行：`if k != "failure"` 改成 `if k not in ("failure", "su")`。理由：本計畫 TC-010 讓 get_run 多一個 `su` 鍵，該斷言的本意是「get_run 只比 status.get_run 多出動作層補的欄位」，`su` 屬於同類。ledger 記「以前／以後／理由」。範圍檔清單加 `platform/tests/test_failures.py`（只限這一行）。
+- 全套只剩 `tests/init_workspace_test.sh` 的「site side with no run area known」一條紅且 base 同紅時，視同全綠（另案 init-workspace-hermetic 修）。
+
 ## 專長守則（backend）
 
 ### executor
