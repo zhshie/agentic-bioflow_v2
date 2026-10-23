@@ -42,12 +42,12 @@ GOLDEN = {"source": "nf-core/modules", "sha": "abc123", "count": 2,
  "modules": [
   {"name": "fastqc", "path": "fastqc", "description": "Run FastQC on sequenced reads", "keywords": ["quality control", "qc"],
    "tools": [{"name": "fastqc", "homepage": "https://www.bioinformatics.babraham.ac.uk/projects/fastqc/", "licence": ["GPL-2.0-only"]}],
-   "inputs": [{"channel": 0, "name": "meta", "type": "map", "pattern": None}, {"channel": 0, "name": "reads", "type": "file", "pattern": None}],
+   "inputs": [{"channel": 0, "name": "meta", "type": "map", "pattern": None, "optional": False}, {"channel": 0, "name": "reads", "type": "file", "pattern": None, "optional": False}],
    "outputs": [{"channel": "html", "name": "meta", "type": "map", "pattern": None}, {"channel": "html", "name": "*.html", "type": "file", "pattern": "*_{fastqc.html}"},
                {"channel": "zip", "name": "meta", "type": "map", "pattern": None}, {"channel": "zip", "name": "*.zip", "type": "file", "pattern": "*_{fastqc.zip}"}]},
   {"name": "samtools_sort", "path": "samtools/sort", "description": "Sort SAM/BAM/CRAM file", "keywords": ["sort", "bam"],
    "tools": [{"name": "samtools", "homepage": "http://www.htslib.org/", "licence": ["MIT"]}],
-   "inputs": [{"channel": 0, "name": "meta", "type": "map", "pattern": None}, {"channel": 1, "name": "bam", "type": "file", "pattern": "*.{bam,cram,sam}"}],
+   "inputs": [{"channel": 0, "name": "meta", "type": "map", "pattern": None, "optional": False}, {"channel": 1, "name": "bam", "type": "file", "pattern": "*.{bam,cram,sam}", "optional": False}],
    "outputs": [{"channel": "meta", "name": "meta", "type": "map", "pattern": None}, {"channel": "bam", "name": "bam", "type": "file", "pattern": "*.{bam}"}]}],
  "errors": [{"path": "bad/yaml", "reason": "while parsing a block mapping"}, {"path": "broken/one", "reason": "meta.yml has no name"}]}
 
@@ -114,7 +114,7 @@ def test_inputs_new_format_channels():
     meta = {"name": "a", "input": [[{"meta": {"type": "map"}}, {"reads": {"type": "file"}}], [{"index": {"type": "file"}}]]}
     got = catalogue.flatten("a", meta)["inputs"]
     assert [(i["channel"], i["name"]) for i in got] == [(0, "meta"), (0, "reads"), (1, "index")]
-    assert all(set(i) == {"channel", "name", "type", "pattern"} for i in got)
+    assert all(set(i) == {"channel", "name", "type", "pattern", "optional"} for i in got)
 
 
 def test_inputs_old_format_channels():
@@ -417,6 +417,8 @@ def test_platform_doc_has_the_catalogue_section():
     assert PINNED in sec and "nf-core-modules.json" in sec
     assert "python -m abf_platform.catalogue snapshot" in sec
     assert "PR" in sec and re.search(r"tier A|A-tier|A 級|A級", sec)
+    # TC-OP40
+    assert "optional" in sec and "optional: true" in sec and "false" in sec
 
 
 # ---- US4: out of scope ----------------------------------------------------------------
@@ -446,3 +448,86 @@ def test_yaml_is_not_a_dependency():
     # TC-075
     for f in ("pyproject.toml", "constraints.txt"):
         assert "yaml" not in (PLATFORM_DIR / f).read_text(encoding="utf-8").lower(), f
+
+
+# ---- catalogue-optional -----------------------------------------------------------------
+
+def _opt(meta):
+    return [i["optional"] for i in catalogue.flatten("a", meta)["inputs"]]
+
+
+def test_flatten_keeps_optional_true():
+    # TC-OP01
+    meta = {"name": "a", "input": [[{"meta": {"type": "map"}}, {"x": {"type": "file", "optional": True}}]]}
+    assert catalogue.flatten("a", meta)["inputs"][1]["optional"] is True
+
+
+def test_flatten_defaults_optional_false():
+    # TC-OP02, TC-OP05
+    for item in (FASTQC, SAMTOOLS_SORT):
+        got = catalogue.flatten(*item)["inputs"]
+        assert got and all(i["optional"] is False for i in got)
+
+
+def test_old_format_optional():
+    # TC-OP03
+    meta = {"name": "a", "input": [{"a": {"type": "file"}}, {"b": {"type": "file", "optional": True}}]}
+    assert _opt(meta) == [False, True]
+
+
+def test_optional_is_per_record():
+    # TC-OP04
+    meta = {"name": "a", "input": [{"a": {"type": "file"}}, {"b": {"optional": True}}, {"c": {"type": "file"}}]}
+    assert _opt(meta) == [False, True, False]
+
+
+def test_other_input_fields_unchanged():
+    # TC-OP06
+    got = catalogue.flatten(*FASTQC)["inputs"]
+    assert (got[1]["channel"], got[1]["name"], got[1]["type"], got[1]["pattern"]) == (0, "reads", "file", None)
+
+
+def test_outputs_never_get_optional():
+    # TC-OP08
+    new = {"name": "a", "output": {"o": [[{"x": {"type": "file", "optional": True}}]]}}
+    old = {"name": "a", "output": [{"x": {"type": "file", "optional": True}}]}
+    for meta in (new, old):
+        outs = catalogue.flatten("a", meta)["outputs"]
+        assert outs and all(set(o) == {"channel", "name", "type", "pattern"} for o in outs)
+
+
+def test_empty_input_record_is_not_optional():
+    # TC-OP12
+    f = catalogue.flatten("a", {"name": "a", "input": [{"x": {}}]})
+    assert f["inputs"][0]["type"] is None and f["inputs"][0]["optional"] is False
+
+
+def test_snapshot_has_optional_on_every_input_record():
+    # TC-OP20
+    n = 0
+    for m in catalogue.load()["modules"]:
+        for i in m["inputs"]:
+            n += 1
+            assert isinstance(i.get("optional"), bool), (m["name"], i)
+    assert n > 0
+
+
+def test_snapshot_marks_known_optional_input():
+    # TC-OP21: modules/nf-core/deeptools/bamcoverage/meta.yml at 5ed90b42 marks `blacklist` optional: true
+    d = catalogue.describe("deeptools_bamcoverage")
+    by = {i["name"]: i["optional"] for i in d["inputs"]}
+    assert by["blacklist"] is True and by["input"] is False
+
+
+def test_describe_inputs_carry_optional():
+    # TC-OP22
+    assert all(isinstance(i["optional"], bool) for i in catalogue.describe("fastqc")["inputs"])
+
+
+def test_snapshot_count_and_outputs_unchanged():
+    # TC-OP23, TC-OP29
+    d = catalogue.load()
+    assert d["count"] == 2116 and d["errors"] == []
+    for m in d["modules"]:
+        for o in m["outputs"]:
+            assert set(o) == {"channel", "name", "type", "pattern"}
