@@ -885,3 +885,18 @@ def test_snapshot_carries_singularity_library_dir_only():
     s = compute_envs.snapshot(view)
     assert s["singularityLibraryDir"] == "/opt/lib/img"
     assert not any(v == "1" for v in s.values())
+
+
+def test_suSite_is_checked_against_the_rates_file(ip, monkeypatch, tmp_path):
+    # estimate-su-mcp TC-049, TC-050, TC-051
+    from abf_platform import compute_envs, su
+    rec = compute_envs.clean({"name": "ok", "platform": "slurm-platform", "config": {"workDir": "/w", "headQueue": "q", "suSite": "nano4"}})
+    assert rec["config"]["suSite"] == "nano4"
+    bad = {"name": "bad", "platform": "slurm-platform", "config": {"workDir": "/w", "headQueue": "q", "suSite": "nowhere", "modules": "x"}}
+    with pytest.raises(compute_envs.CEError) as e:
+        compute_envs.clean(bad)
+    assert "suSite: 費率檔沒有站點 nowhere" in str(e.value) and "modules" in str(e.value)       # both errors at once
+    monkeypatch.setattr(su, "RATES_PATH", tmp_path / "none.json")
+    with pytest.raises(compute_envs.CEError) as e:
+        compute_envs.clean({"name": "ok", "platform": "slurm-platform", "config": {"workDir": "/w", "headQueue": "q", "suSite": "nano4"}})
+    assert "費率檔讀不到，無法確認站點 nano4 (the rates file cannot be read)" in str(e.value)

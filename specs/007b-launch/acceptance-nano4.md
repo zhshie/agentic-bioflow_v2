@@ -41,7 +41,7 @@ First acceptance: Claude Desktop only.
 
 | 欄位 | 填寫 |
 |---|---|
-| launch 前預估 SU（在 WSL 終端機呼叫 `actions.estimate_su`，指令全文見 `docs/TESTING.md` TC-048n 第 1 步；它不是 MCP 工具，Claude Desktop 打不了。貼上指令與輸出；查不到或算不出就寫「unknown」加原因） | |
+| launch 前預估 SU（Claude Desktop 問 get_run 前一次同設定 run 的 su；貼上 su 整段；是 null 就寫「unknown」加 unknown_reasons） | |
 | wallet 前（`wallet` 全文） | |
 | wallet 後（`wallet` 全文） | |
 | 差額（前 減 後） | |

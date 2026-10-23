@@ -142,7 +142,7 @@ def credential_findings(obj, where):
 _COMMON_CONFIG = ("workDir", "preRunScript", "postRunScript", "environment", "nextflowConfig")
 _SLURM_CONFIG = _COMMON_CONFIG + ("launchDir", "headQueue", "computeQueue", "maxQueueSize", "headJobOptions",
                                   "hostName", "userName", "port", "readRoots",
-                                  "modules", "siteConfigVars", "sitePipelines")
+                                  "modules", "siteConfigVars", "sitePipelines", "suSite")
 
 
 def _text(config, key, limit):
@@ -249,6 +249,18 @@ def _check_site_keys(config):
     """modules, siteConfigVars and sitePipelines (ce-nano4-keys): every problem is listed at once, each naming its key.
     A bad value is shown as one character at most, never whole."""
     errors = []
+    site = config.get("suSite")
+    if site is not None:
+        from . import su      # inside the function: su imports jobs, which imports this module
+        rates = su.load_rates()
+        sites = (rates or {}).get("sites")
+        if not isinstance(site, str) or not site:
+            errors.append("suSite must be the name of a site in configs/sites/su_rates.json (站點名稱)")
+        elif not isinstance(sites, dict):
+            errors.append("suSite: 費率檔讀不到，無法確認站點 %s (the rates file cannot be read)" % site[:60])
+        elif site not in sites:
+            errors.append("suSite: 費率檔沒有站點 %s；可用的有 %s (no such site in configs/sites/su_rates.json)"
+                          % (site[:60], ", ".join(sites)))
     for key, check in (("modules", _module_problem), ("siteConfigVars", _var_problem)):
         v = config.get(key)
         if v is None:

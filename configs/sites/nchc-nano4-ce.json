@@ -11,6 +11,7 @@
     {"name": "NXF_SINGULARITY_CACHEDIR", "value": "/work/<site_user>/.singularity", "head": true, "compute": true},
     {"name": "NXF_OPTS", "value": "-Xms512m -Xmx4g", "head": true, "compute": true}
   ],
+  "suSite": "nano4",
   "workDir": "/work/<site_user>/runs",
   "readRoots": ["/work/<site_user>"]
 }

@@ -190,7 +190,7 @@ def test_list_rows_and_non_failed(tmp_path):
     plain = status.get_run(r.plat.index, bad, status.now())
     assert "failure" not in plain
     got = r.get(bad)
-    assert {k: v for k, v in got.items() if k != "failure"} == plain
+    assert {k: v for k, v in got.items() if k not in ("failure", "su")} == plain
 
 
 def test_lost_and_cancelled(tmp_path, monkeypatch):

@@ -103,7 +103,30 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
     if asked is not None:        # a fact about a request that was sent, never a state of the run (the status stays Nextflow's word)
         view["cancel_requested_at"] = common.epoch_iso_ms(asked)
     view["failure"] = failures.summarize(view)
+    view["su"] = _su_of_run(index_path, view, platform_path_for(index_path, platform_path))
     return view
+
+
+def _su_of_run(index_path, view, platform_path):
+    """The `su` part of get_run: five fixed keys (and twd when the site has money rates per SU). Unknown, with the reason, when
+    the run has not ended or fewer succeeded tasks have a usage row than the run counts; never a partial sum."""
+    rates = su.load_rates()
+    site = su.site_of_run(platform_path, view["name"], rates)
+    if view["status"] in ("running", "lost"):
+        out = su._unknown([su.RUN_NOT_ENDED])
+    else:
+        tasks = su.run_tasks(index_path, view["name"])
+        done = sum(1 for t in tasks or () if t.get("status") == "COMPLETED")
+        if tasks is not None and done < view["tasks"]["succeeded"]:
+            gap = view["tasks"]["succeeded"] - done
+            out = su._unknown(["有 %d 個成功的 task 沒有用量紀錄 (%d succeeded tasks have no usage record)" % (gap, gap)])
+        else:
+            out = su.run_su(index_path, view["name"], site, rates, lambda *_: tasks)
+    shown = {k: out[k] for k in ("su", "twd_nstc", "twd_academic", "unknown_reasons")}
+    if "twd" in out:
+        shown["twd"] = out["twd"]
+    shown["site"] = site if isinstance(rates, dict) else None      # no rates file, no site (the reasons say so)
+    return shown
 
 
 def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site=None, rates=None, tasks_of=None):
@@ -117,8 +140,9 @@ def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site=N
         return {"found": False, "id": run_name,
                 "message": "Run not found: %s (找不到這個 run)" % run_name}
     rates = rates if rates is not None else su.load_rates()
-    if site is None and isinstance(rates, dict):
-        site = rates.get("default_site")        # the one site the rates file names as the default
+    if site is None:
+        # the site of the compute environment the run was launched on (its suSite), else the rates file's default_site
+        site = su.site_of_run(platform_path_for(index_path, platform_path), run_name, rates)
     return su.run_su(index_path, run_name, site, rates, tasks_of)
 
 
