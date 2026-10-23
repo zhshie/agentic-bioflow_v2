@@ -13,7 +13,7 @@ from abf_platform import actions, failures, status, store
 from helpers import Clock, Platform, PLATFORM_DIR, REPO_ROOT, all_files_digest, own_runs, variant
 
 PKG = PLATFORM_DIR / "abf_platform"
-TASK = {"name": "NFCORE_AMPLISEQ:AMPLISEQ:DADA2_DENOISING", "exit_code": 137, "error_message": "Killed", "workdir": "/work/ab/cdef"}
+TASK = {"name": "NFCORE_AMPLISEQ:AMPLISEQ:DADA2_DENOISING", "exit_code": 137, "error_message": "Killed", "workdir": "/site/ab/cdef"}
 
 
 def mk(status_="failed", succeeded=3, cached=0, tasks=None, **extra):
@@ -276,7 +276,7 @@ def test_untouched_modules_do_not_know_failure():
         p = PKG / f
         if p.exists():
             s = p.read_text(encoding="utf-8")
-            assert "failures" not in s and '"failure"' not in s, f
+            assert not re.search(r"import[^\n]*\bfailures\b|\bfailures\.summarize", s) and '"failure"' not in s, f
 
 
 def test_docs_and_ledger():

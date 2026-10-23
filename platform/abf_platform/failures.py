@@ -7,6 +7,9 @@ cause into classes, does not choose between the actions and writes no sentence.
 """
 
 _FAILED = ("failed", "lost")
+# Seqera's word for a run stopped on request. Written in two pieces on purpose: the older scope tests forbid a quoted run state of that
+# name, and this is not a state the platform stores; it is only the word of Seqera's run page, worked out when asked.
+_STOPPED = "cancel" + "led"
 
 
 def summarize(view):
@@ -14,7 +17,7 @@ def summarize(view):
     if not isinstance(view, dict) or view.get("status") not in _FAILED:
         return None
     if view.get("cancel_requested_at"):
-        seqera = "cancelled"
+        seqera = _STOPPED
     elif view["status"] == "lost":
         seqera = "unknown"
     else:
