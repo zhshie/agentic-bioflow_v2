@@ -115,17 +115,17 @@ def clean_environment(ce):
             and all(isinstance(x, str) for x in i.values()) for i in sp)):
         raise Refusal("sitePipelines must be a list of {pipeline, revision, module, home}")
     out["sitePipelines"] = [dict(i) for i in (sp or [])]
-    for i, name in enumerate(out["modules"]):      # these reach a shell command on the site in preflight: judged again here (preflight-nano4)
+    for i, name in enumerate(out["modules"]):      # these reach a shell command on the site in preflight: judged again here
         problem = compute_envs._module_problem(name)
         if problem:
-            raise Refusal("modules[%d] %s" % (i, problem))
+            raise Refusal("內容不合規則：modules[%d] %s" % (i, problem))
     for i, item in enumerate(out["sitePipelines"]):
         problem = compute_envs._module_problem(item["module"])
         if problem:
-            raise Refusal("sitePipelines[%d].module %s" % (i, problem))
+            raise Refusal("內容不合規則：sitePipelines[%d].module %s" % (i, problem))
         problem = compute_envs._var_problem(item["home"])
         if problem:
-            raise Refusal("sitePipelines[%d].home %s" % (i, problem))
+            raise Refusal("內容不合規則：sitePipelines[%d].home %s" % (i, problem))
     out["singularityLibraryDir"] = None
     if ce.get("singularityLibraryDir") is not None:
         out["singularityLibraryDir"] = clean_root(ce["singularityLibraryDir"], "singularityLibraryDir")

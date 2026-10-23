@@ -270,6 +270,16 @@ Exactly one environment can be `primary` (the default for a launch, later). `ce 
 
 What goes back is the agent's own short wording (300 characters at most per check), never the site's raw output.
 
+Three more checks are **conditional**: they appear in the answer only when the environment asks for them, so an environment that sets none of the keys below gets exactly the eight checks above, with the same wording as before.
+
+| Check | Appears when | What the agent does on the site | When it fails, the next step |
+|---|---|---|---|
+| `modules` (placed before `java`) | the environment's `modules` list is not empty | `module load <m1> && module load <m2> ...`; `java` and `nextflow` are then probed with the same `module load ... &&` in front | The message names the first module that would not load. Check the environment's `modules`, or empty the list and use a self-installed Nextflow (an empty list means no `module load` is run at all). |
+| `site_pipeline` (after `head_queue`; one result for all entries) | `sitePipelines` is not empty | For each entry: load its module, read `main.nf` under its home variable, and read the `version` of the `manifest { }` block of `nextflow.config`. A leading `v` is ignored. A commit revision (40 hex digits) only needs `main.nf` to be readable. | "not installed where the module says": the module or `main.nf` is not there. "the site variable ... is not set": the module did not define its home variable. "the site has X, the environment says Y": fix the `revision` in the environment, or ask the site to install that version. |
+| `image_library` (last) | the environment's `environment` holds `NXF_SINGULARITY_LIBRARYDIR` | `test -r` and `test -x` on that folder (its contents are not listed) | The message names the folder: it is missing or cannot be entered. The folder need not be inside a read root. |
+
+Everything is read-only. If the connection goes away during one of these probes, the preflight ends the usual way: `connect` fails and every other applicable check, these three included, is `unchecked`. These checks need no database change (a preflight answer already lives in the environment's JSON record).
+
 ### The MCP tools
 
 Twelve tools. Seven are read-only (`readOnlyHint`): `list_runs`, `get_run`, `list_compute_envs`, `get_compute_env`, `list_agents`, `list_site_files` and `read_task_log`. `list_site_files` and `read_task_log` each put one read-only question in the job queue and wait for the answer; neither can name a command or a kind of job. The other five, `launch`, `cancel` (spec 009c), `resume`, `relaunch` (spec 009e, see "Resume and relaunch") and `forget` (keep-submissions, see "Forget"), are marked as writing (`cancel` also as destructive) but start and stop nothing by themselves: each builds what the terminal command builds, writes a pending request and asks the person (section 9, "The confirmation page"). They have no argument that could say yes. There is no tool that creates or changes an environment, a user or a password: that is the command line.
