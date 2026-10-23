@@ -141,7 +141,13 @@ def _mixed(edges, records):
     return found
 
 
-def _unwired(open_inputs, edges):
+def _required(records, node, channel):
+    """True when a non-meta record of this input channel says `optional: false`. Meta records and records with no `optional` field
+    do not make a channel required."""
+    return any(r.get("optional") is False and r.get("type") != "map" for r in _records(records[node], "inputs", channel))
+
+
+def _unwired(open_inputs, edges, records):
     fed = {e["to"]["node"] for e in edges}
     found = []
     for o in open_inputs:
@@ -154,7 +160,8 @@ def _unwired(open_inputs, edges):
             msg = ("節點 %s 的輸入 %d 沒有接線，輸入名：%s；這個節點是入口，送出時要由樣本表或參數供應 "
                    "(input %d of node %s is not wired, names: %s; this node is an entry point, "
                    "so the sample sheet or parameters must supply it at launch)" % (n, k, names, k, n, names))
-        found.append(_finding(n, k, "OPEN_INPUT", "warning", msg))
+        severity = "error" if n in fed and _required(records, n, k) else "warning"
+        found.append(_finding(n, k, "OPEN_INPUT", severity, msg))
     return found
 
 
@@ -201,7 +208,7 @@ def validate(canonical, data=None):
             findings += _edge_findings(e, records)
         findings += _mixed(canonical["edges"], records)
         opened = compose.render(canonical, "check", 1, data)["open_inputs"]
-        findings += _unwired(opened, canonical["edges"])
+        findings += _unwired(opened, canonical["edges"], records)
         findings += _same_names(canonical, records)
     findings.sort(key=_order_key)
     return {"ok": not any(f["severity"] == "error" for f in findings), "checks": list(CHECKS),
