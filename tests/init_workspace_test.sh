@@ -253,6 +253,14 @@ grep -qF "$ONE_ROOT/projects/shared_study" <<<"$out" && echo ok \
   || { echo "FAIL: <<$out>>"; fails=$((fails+1)); }
 
 # ---------------------------------------------------------------------------
+# Run a command as on a machine with no deployment at all: nothing that tells
+# settings.sh where a run area is can come from the developer's own machine
+# (a LAB_SETTINGS_FILE export, a root pointer under HOME or XDG_CONFIG_HOME).
+no_deployment() {
+  env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE \
+      HOME="$TMP/emptyhome" XDG_CONFIG_HOME="$TMP/emptyhome/.config" "$@"
+}
+
 # Bad input, refused before anything is created.
 t "no side given is refused"                        2 "usage" -- \
   env LAB_RUNS_DIR="$TMP/x1" bash "$S"
@@ -265,7 +273,7 @@ t "a --user with a slash is refused, not turned into a path" 2 "" -- \
 t "a --user starting with '_' is refused - it would collide with the shared areas" 2 \
   "reserved" -- env LAB_RUNS_DIR="$TMP/x5" bash "$S" site --user _references
 t "site side with no run area known fails clearly, not silently"  2 \
-  "no run area known" -- env -u LAB_RUNS_DIR bash "$S" site --user alice
+  "no run area known" -- no_deployment bash "$S" site --user alice
 # A developer's own deployment: a home whose pointer leads to a root whose
 # env.yaml names a storage_root that cannot be created (even as root).
 DEVHOME="$TMP/devhome"; DEVROOT="$TMP/devroot"
@@ -274,7 +282,11 @@ printf '%s\n' "$DEVROOT" > "$DEVHOME/.config/agentic-bioflow/root"
 printf 'storage_root: /proc/no-such-run-area/work\n' > "$DEVROOT/config/env.yaml"
 in_dev_home() { ( export HOME="$DEVHOME" XDG_CONFIG_HOME="$DEVHOME/.config"; "$@" ); }
 t "site side ignores the developer's own deployment when testing"  2 \
-  "no run area known" -- in_dev_home env -u LAB_RUNS_DIR bash "$S" site --user alice
+  "no run area known" -- in_dev_home no_deployment bash "$S" site --user alice
+# Control: without the isolation the same fixture reaches the deployment and
+# fails differently (rc 1), so the case above can go red - it is not always green.
+t "control: the fixture really does lure an unisolated call (rc 1)"  1 \
+  "cannot create directory" -- in_dev_home env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE bash "$S" site --user alice
 t "--run without --project is refused - a run belongs to one project" 2 \
   "needs --project" -- env LAB_RUNS_DIR="$TMP/x6" bash "$S" site --run some_run_20260908
 
