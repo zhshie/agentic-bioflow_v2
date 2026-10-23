@@ -87,3 +87,9 @@ golden 腳本含兩行 `module load` 與上述 `exec` 行；未命中路徑逐�
 4. **`pipeline_source` 只放 bundle**（`bundle_json` 內），`launches` 表不加欄、不需 migration；ledger 寫明。
 5. **續跑（resume）**：`render_resume` 走同一個 `_head_script`，沿用原 bundle 的 `pipeline_source` 與 CE 三鍵（`ce_out` 白名單加這三鍵），所以本地路徑啟動的 run 續跑仍從本地路徑、仍先 module load。加一條 TC：命中的 run 續跑的 head 腳本同樣含 module load 與 `"$NFCORE_AMPLISEQ_HOME"`、不含 ` -r `。
 6. **既有測試的合法更新**（寫進 ledger）：`test_launch_bundle.py`／`test_station_launch.py` 若有列舉 bundle 鍵或 `ce_out` 鍵的斷言，加 `pipeline_source` 與三鍵是合法更新；其餘斷言不動。
+
+## 裁決二（2026-10-23，回應第二次出題退回）
+7. **`-profile singularity` 要在 exec 行**（維護者原話的啟動行有它；nano4 的映像快取就是 singularity）：exec 行固定 `nextflow run <來源> [-r <rev>] -name … -profile singularity -params-file params.yaml [-c "$VAR"…] -c nextflow.config -with-tower …`。T3 既有 golden 也含它（若沒有，表示 T3 的 profile 由 nextflow.config 給；那就只在 `site_profile`／站台 config 指定 singularity 的 CE 加——executor 以既有 golden 為準，二者擇一並在 ledger 寫明）。
+8. **站台端驗證**：`_check_ce` 直接重用 `compute_envs._module_problem`／`_var_problem`（import，不重抄），所以 `modules=["a;b"]` 在站台也被拒並點名 `modules`。裁決 0 的「只驗形狀」撤回。
+9. **假 CE 一律用裁決 1 的值**（modules 只有 Nextflow 一項）；test_station_envs 既有 NANO4 常數不動也不混用。
+10. **其餘細節**：`module load` 失敗要讓腳本停下（`module load X || exit 1`），位置在 `umask 077` 之後、任何 nextflow 指令之前；舊 bundle 沒有 `pipeline_source` → 視為 `{"kind":"remote"}`；`sitePipelines` 有重複 (pipeline, revision) 時取第一項（CE 驗證已在 ce-nano4-keys 拒絕重複則不會發生）；`-resume` 照現在的位置不動。
