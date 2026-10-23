@@ -193,10 +193,7 @@ step=$(awk '/^## Resume and relaunch \(009e\)/{g=1;next} g&&/^## /{exit} g' "$RO
 [ -n "$step" ]; chk "TC-093 TESTING.md 009e has the runs-skill walkthrough step" $?
 # TC-094: the manual step follows S7/S8 (failed task's log via read_task_log; the task folder is no longer a "v3 lacks" example)
 grep -q 'read_task_log' <<<"$step" && ! grep -qiE "task.s folder path" <<<"$step"; chk "TC-094 TESTING.md step names read_task_log and no longer lists the task folder as missing" $?
-if git -C "$ROOT" rev-parse --verify -q origin/v3 >/dev/null 2>&1; then
-    dn=$(git -C "$ROOT" diff origin/v3...HEAD --numstat -- docs/TESTING.md | awk '{print $1" "$2}')
-    [ "$dn" = "1 0" ]; chk "TC-097 TESTING.md gained exactly one line and lost none ($dn)" $?
-fi
+# TC-097 (TESTING.md numstat against origin/v3) removed 2026-10-23: a one-off contract check from #136 that fails on v3 itself once merged.
 
 # TC-014: the same checks must fail on the tw-era skill
 if [ -z "${ABF_RUNS_INNER:-}" ]; then

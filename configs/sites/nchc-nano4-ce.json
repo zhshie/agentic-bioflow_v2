@@ -7,10 +7,10 @@
     {"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}
   ],
   "environment": [
-    {"name": "NXF_SINGULARITY_LIBRARYDIR", "value": "/work/envstack/apps/application/biology/nf-core/singularity-cache", "head": true, "compute": true},
-    {"name": "NXF_SINGULARITY_CACHEDIR", "value": "/work/u9613010/.singularity", "head": true, "compute": true},
+    {"name": "NXF_SINGULARITY_LIBRARYDIR", "value": "<nano4 read-only image library>", "head": true, "compute": true},
+    {"name": "NXF_SINGULARITY_CACHEDIR", "value": "/work/<site_user>/.singularity", "head": true, "compute": true},
     {"name": "NXF_OPTS", "value": "-Xms512m -Xmx4g", "head": true, "compute": true}
   ],
-  "workDir": "/work/u9613010/runs",
-  "readRoots": ["/work/u9613010"]
+  "workDir": "/work/<site_user>/runs",
+  "readRoots": ["/work/<site_user>"]
 }

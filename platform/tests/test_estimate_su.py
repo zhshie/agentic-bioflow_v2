@@ -546,25 +546,31 @@ def _clean(cfg):
     return compute_envs.clean({"name": "nano4", "platform": "slurm-platform", "config": cfg})
 
 
+def _filled(cfg):
+    """The template with its placeholders replaced the way an operator does at `ce create` (10-23 ruling 9)."""
+    t = json.dumps(cfg).replace("<site_user>", "abf-test").replace("<nano4 read-only image library>", "/tmp/abf-test/library")
+    return json.loads(t)
+
+
 def test_n4_16_ce_passes_validation():
     # N4-16
     assert isinstance(_ce(), dict)
-    _clean(_ce())
+    _clean(_filled(_ce()))
 
 
 def test_n4_17_to_20_ce_fields():
     # N4-17, N4-18, N4-19, N4-20
     c = _ce()
     assert c["headQueue"] == "ngsconsole" and c["headJobOptions"] == "-A mst109178 -c 1 --mem=8G -t 2-00:00:00"
-    assert c["workDir"] == "/work/u9613010/runs" and c["readRoots"] == ["/work/u9613010"]
+    assert c["workDir"] == "/work/<site_user>/runs" and c["readRoots"] == ["/work/<site_user>"]
     assert c["modules"] == ["biology/Nextflow/26.10.0"]
     assert c["siteConfigVars"] == ["NFCORE_SITE_CONFIG", "NFCORE_SITE_REFERENCES"]
     assert c["sitePipelines"] == [{"pipeline": "nf-core/ampliseq", "revision": "2.18.0",
                                    "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}]
-    lib = "/work/envstack/apps/application/biology/nf-core/singularity-cache"
+    lib = "<nano4 read-only image library>"
     assert c["environment"] == [
         {"name": "NXF_SINGULARITY_LIBRARYDIR", "value": lib, "head": True, "compute": True},
-        {"name": "NXF_SINGULARITY_CACHEDIR", "value": "/work/u9613010/.singularity", "head": True, "compute": True},
+        {"name": "NXF_SINGULARITY_CACHEDIR", "value": "/work/<site_user>/.singularity", "head": True, "compute": True},
         {"name": "NXF_OPTS", "value": "-Xms512m -Xmx4g", "head": True, "compute": True}]
     from abf_platform import compute_envs
     assert "_comment" not in c and set(c) <= set(compute_envs._SLURM_CONFIG)
@@ -572,18 +578,18 @@ def test_n4_17_to_20_ce_fields():
 
 def test_n4_21_self_installed_nextflow_variant():
     # N4-21
-    c = _ce()
+    c = _filled(_ce())
     c["modules"] = []
     c["environment"] += [
-        {"name": "PATH", "value": "/work/u9613010/nextflow/bin:$PATH", "head": True, "compute": True},
-        {"name": "NXF_PLUGINS_DIR", "value": "/work/u9613010/.nextflow/plugins", "head": True, "compute": True}]
+        {"name": "PATH", "value": "/tmp/abf-test/nextflow/bin:$PATH", "head": True, "compute": True},
+        {"name": "NXF_PLUGINS_DIR", "value": "/tmp/abf-test/.nextflow/plugins", "head": True, "compute": True}]
     _clean(c)
 
 
 def test_n4_22_n4_31_ledger_notes():
     # N4-22, N4-31
     t = N4_LEDGER.read_text(encoding="utf-8")
-    for s in ("modules", "PATH=/work/u9613010/nextflow/bin:$PATH", "NXF_PLUGINS_DIR=/work/u9613010/.nextflow/plugins",
+    for s in ("modules", "PATH=/work/<site_user>/nextflow/bin:$PATH", "NXF_PLUGINS_DIR=/work/<site_user>/.nextflow/plugins",
               "docs/SETTINGS.md", "不需要 migration"):
         assert s in t, s
 
