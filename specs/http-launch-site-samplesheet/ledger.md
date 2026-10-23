@@ -20,4 +20,4 @@
 
 ## Notes
 
-- Test environment of this run: no Java on the WSL machine, so the end-to-end tests that need Nextflow are skipped as `tests/platform_test.sh` says; the Python tests ran in a venv built from `platform/constraints.txt`.
+- Test environment of this run: the WSL machine has no Java 17, so the end-to-end Nextflow tests are skipped and the 7 tests of `test_wrapper_nf2.py` (which refuse to skip the second Nextflow pair) error at setup, in `tests/platform_test.sh`; nothing in this change touches them. The full suite was run on a clone of this branch on the WSL disk (the worktree's `.git` file points at a Windows path that WSL git cannot read, which fails the scratch-clone checks), at the GREEN commit: 117 of 118 files ok, 967 platform tests passed; the one red file is `platform_test.sh` for the Java reason only. The Python tests ran in a venv built from `platform/constraints.txt`.
