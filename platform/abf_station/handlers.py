@@ -10,7 +10,7 @@ quoted. What goes back to the platform is the agent's own short wording, never t
 import re
 from datetime import datetime, timezone
 
-from . import cancel, fetch, launch, readlog, rules
+from . import cancel, fetch, gcb_preflight, launch, readlog, rules
 from .site import quote
 
 JOB_KINDS = ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log")
@@ -53,7 +53,13 @@ def handle(job, ctx):
             return fetch.run_fetch(job, ctx)
         if kind == "read_task_log":
             return readlog.run_read(job, ctx)
-        env = rules.clean_environment(args.get("ce"))
+        ce = args.get("ce")
+        if kind == "preflight" and isinstance(ce, dict) and ce.get("platform") == gcb_preflight.TYPE:
+            # a Google Batch environment is checked here, on the platform host: its own checks, read-only and free (預檢不計費)
+            res = gcb_preflight.run_preflight(gcb_preflight.clean_environment(ce),
+                                              cred_path=gcb_preflight.credentials_path(ctx.settings_file))
+            return "done", _verdict(res["checks"])
+        env = rules.clean_environment(ce)
         if kind == "preflight":
             return "done", preflight(env, ctx)
         return listing(env, args.get("path"), ctx)

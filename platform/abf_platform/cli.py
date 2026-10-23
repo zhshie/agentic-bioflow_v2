@@ -231,7 +231,9 @@ def _config_from_args(args):
             raise compute_envs.CEError("--config-json must be a JSON object")
     flags = {"work_dir": "workDir", "launch_dir": "launchDir", "head_queue": "headQueue", "compute_queue": "computeQueue",
              "head_job_options": "headJobOptions", "host_name": "hostName", "user_name": "userName",
-             "pre_run": "preRunScript", "post_run": "postRunScript", "nextflow_config": "nextflowConfig"}
+             "pre_run": "preRunScript", "post_run": "postRunScript", "nextflow_config": "nextflowConfig",
+             "project": "project", "location": "location", "service_account_email": "serviceAccountEmail",
+             "boot_disk_size": "bootDiskSize"}
     for attr, key in flags.items():
         if getattr(args, attr) is not None:
             config[key] = getattr(args, attr)
@@ -242,6 +244,8 @@ def _config_from_args(args):
                 config[key] = int(v)
             except ValueError:
                 raise compute_envs.CEError("%s must be a whole number" % key)
+    if args.spot is not None:
+        config["spot"] = args.spot
     if args.env:
         config["environment"] = _parse_env(args.env)
     if args.read_root:
@@ -281,7 +285,7 @@ def _owner_id(name):
 
 def _queue_first_preflight(state, ce):
     """Right after a create or update: queue a preflight when the environment's agent is online, else say why not."""
-    if ce["platform"] != compute_envs.SUPPORTED:
+    if ce["platform"] not in compute_envs.CHECKABLE:
         return ce["message"]
     try:
         jobs.enqueue_preflight(state, ce["name"])
@@ -328,7 +332,7 @@ def cmd_ce_update(args):
         _err("rejected: %s" % e)
         return 1
     _say("compute environment %s updated" % ce["name"])
-    if ce["platform"] == compute_envs.SUPPORTED and ce["status"] != compute_envs.DISABLED:
+    if ce["platform"] in compute_envs.CHECKABLE and ce["status"] != compute_envs.DISABLED:
         _say(_queue_first_preflight(state, ce))
     return 0
 
@@ -365,6 +369,14 @@ def _simple(fn):
 
 def cmd_ce_preflight(args):
     state = store.default_platform_path()
+    ce = compute_envs.get(state, args.name)
+    if ce is not None and ce["platform"] in compute_envs.PLATFORM_HOST_TYPES:
+        try:      # a record made before the type was checked must pass today's rules first, whatever its status
+            compute_envs.clean({"name": ce["name"], "description": ce["description"], "platform": ce["platform"],
+                                "credentialsId": ce["credentialsId"], "agent": ce["agent"], "config": ce["config"]})
+        except compute_envs.CEError as e:
+            _err("rejected: %s. Fix it with `abf-platform ce update %s ...` first (請先用 ce update 補齊)" % (e, args.name))
+            return 1
     try:
         job_id = jobs.enqueue_preflight(state, args.name)
     except jobs.JobRefused as e:
@@ -465,6 +477,12 @@ def _add_ce_fields(p):
     p.add_argument("--credentials", help="the NAME of a credential (the credential itself stays with the agent)")
     p.add_argument("--agent", help="the agent that serves this environment")
     p.add_argument("--work-dir")
+    p.add_argument("--project", help="Google Batch: the GCP project ID")
+    p.add_argument("--location", help="Google Batch: the region, e.g. europe-west2")
+    p.add_argument("--spot", dest="spot", action="store_const", const=True, default=None, help="Google Batch: use spot machines")
+    p.add_argument("--no-spot", dest="spot", action="store_const", const=False, help="Google Batch: do not use spot machines")
+    p.add_argument("--service-account-email", help="Google Batch: the service account the jobs run as (an e-mail address, not a key)")
+    p.add_argument("--boot-disk-size", help="Google Batch: boot disk size, e.g. '50 GB'")
     p.add_argument("--launch-dir")
     p.add_argument("--head-queue")
     p.add_argument("--compute-queue")
@@ -545,7 +563,7 @@ def build_parser():
 
     c = sub.add_parser("ce", help="compute environments")
     csub = c.add_subparsers(dest="ce_command", required=True)
-    cc = csub.add_parser("create", help="store a compute environment (Slurm is checked; the other types are only stored)")
+    cc = csub.add_parser("create", help="store a compute environment (Slurm and Google Batch are checked by their agent; the other types are only stored)")
     cc.add_argument("--name")
     cc.add_argument("--platform", help="the type, e.g. slurm-platform (see docs/PLATFORM.md)")
     _add_ce_fields(cc)
@@ -565,7 +583,7 @@ def build_parser():
         sp = csub.add_parser(word, help=text)
         sp.add_argument("name")
         sp.set_defaults(func=_simple(fn))
-    cp = csub.add_parser("preflight", help="ask the environment's agent to check the site, and wait for the answer")
+    cp = csub.add_parser("preflight", help="ask the environment's agent to check it (the site, or for Google Batch the cloud account), and wait for the answer")
     cp.add_argument("name")
     cp.set_defaults(func=cmd_ce_preflight)
 

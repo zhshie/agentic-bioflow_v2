@@ -1,7 +1,8 @@
 # Not Seqera Platform's compute environments: they live in Seqera's service; this keeps the same model (type, config, credential name) in a small local SQLite table.
 """Compute environments in the Seqera model: a type, a config, and the NAME of a credential.
 
-Slurm is the only type that can be checked and used. The other 13 types Seqera lists are stored
+Slurm is the only type that can run. Google Cloud Batch can be created and checked (by the agent on the platform
+host; launching comes later). The other 12 types Seqera lists are stored
 (their settings, nothing more) with the status `unsupported`: no code runs for them, no cloud
 library is imported, and the check and listing refuse them at once. Nothing here holds a
 credential: a value that looks like one is refused, and only the credential's name is kept.
@@ -30,7 +31,9 @@ KINDS = {
     "eks-platform": "Amazon EKS",
     "gke-platform": "Google GKE",
 }
-SUPPORTED = "slurm-platform"
+SUPPORTED = "slurm-platform"                                  # the type that runs through an agent on the cluster
+PLATFORM_HOST_TYPES = ("googlebatch-platform",)               # checked by the agent that runs on the platform host; launching on them is C-2
+CHECKABLE = (SUPPORTED,) + PLATFORM_HOST_TYPES
 SEQERA_COMPUTE = ("seqera-compute", "seqeracompute-platform")
 
 CREATING, AVAILABLE, INVALID, UNSUPPORTED, DISABLED = "creating", "available", "invalid", "unsupported", "disabled"
@@ -297,6 +300,101 @@ def _check_site_keys(config):
         raise CEError("; ".join(errors))
 
 
+_GCB_CONFIG = _COMMON_CONFIG + ("project", "location", "spot", "bootDiskSize", "bootDiskImage", "serviceAccountEmail",
+                                "network", "subnetwork", "usePrivateAddress", "labels", "maxvCpus")
+_GCB_PROJECT = re.compile(r"^[a-z][a-z0-9-]*[a-z0-9]\Z")
+_GCB_LOCATION = re.compile(r"^[a-z]+-[a-z]+[0-9]+\Z")
+_GCB_BUCKET = re.compile(r"^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]\Z")
+_GCB_DISK = re.compile(r"^([0-9]{1,5}) ?GB\Z")
+_GCB_IMAGE = re.compile(r"^[A-Za-z0-9_./:-]+\Z")
+_GCB_SA_EMAIL = re.compile(r"^[A-Za-z0-9._-]+@(?:[a-z][a-z0-9-]*\.iam|developer)\.gserviceaccount\.com\Z")
+_GCB_NET = re.compile(r"^(?:[a-z](?:[-a-z0-9]*[a-z0-9])?|projects/[a-z0-9-]+/(?:global/networks|regions/[a-z0-9-]+/subnetworks)/"
+                      r"[a-z](?:[-a-z0-9]*[a-z0-9])?)\Z")
+_GCB_LABEL_KEY = re.compile(r"^[a-z][a-z0-9_-]{0,62}\Z")
+_GCB_LABEL_VALUE = re.compile(r"^[a-z0-9_-]{0,63}\Z")
+
+
+def _shown(v):
+    return repr(str(v)[:60])
+
+
+def _check_gcb(config, agent):
+    """A Google Cloud Batch environment: every problem is listed at once, each naming its key; a bad value is shown 60 characters
+    at most. It needs an agent (the agent that runs on the platform host). No credential is held here: the key file
+    stays on the agent's side and only its name is kept."""
+    unknown = sorted(set(config) - set(_GCB_CONFIG))
+    if unknown:
+        raise CEError("unknown setting for a Google Batch environment: %s (known: %s)" % (unknown[0], ", ".join(_GCB_CONFIG)))
+    errors = []
+    if not agent:
+        errors.append("agent is required: a Google Batch environment is checked by the agent that runs on the platform host, "
+                      "so name it with --agent (需要指定一個站台代理，就是平台主機上的那個)")
+    for key in ("project", "location", "workDir"):
+        if config.get(key) is None or config.get(key) == "":
+            errors.append("%s is required for a Google Batch environment (缺 %s)" % (key, key))
+    v = config.get("project")
+    if v not in (None, "") and not (isinstance(v, str) and 6 <= len(v) <= 30 and _GCB_PROJECT.match(v)):
+        errors.append("project must be a GCP project ID: 6 to 30 characters, lower-case letters, digits and -, starting with a "
+                      "letter and not ending with - (got %s)" % _shown(v))
+    v = config.get("location")
+    if v not in (None, "") and not (isinstance(v, str) and _GCB_LOCATION.match(v)):
+        errors.append("location must be a region such as europe-west2 (got %s)" % _shown(v))
+    v = config.get("workDir")
+    if v not in (None, ""):
+        problem = None
+        if not isinstance(v, str) or not v.startswith("gs://"):
+            problem = "workDir must be a gs:// URL such as gs://lab-bucket/work (got %s)" % _shown(v)
+        else:
+            bucket, _, prefix = v[5:].partition("/")
+            if not _GCB_BUCKET.match(bucket):
+                problem = ("workDir: the bucket name must be 3 to 63 characters of lower-case letters, digits and - _ . "
+                           "(got %s)" % _shown(bucket))
+            elif ".." in prefix.split("/") or any(ord(c) < 32 or ord(c) == 127 for c in prefix) or len(v) > MAX_PATH:
+                problem = "workDir: the folder part must not contain '..' or control characters, or be longer than %d" % MAX_PATH
+            else:
+                prefix = prefix.rstrip("/")
+                config["workDir"] = "gs://" + bucket + ("/" + prefix if prefix else "")
+        if problem:
+            errors.append(problem)
+    for key in ("spot", "usePrivateAddress"):
+        if config.get(key) is not None and not isinstance(config[key], bool):
+            errors.append("%s must be true or false" % key)
+    v = config.get("bootDiskSize")
+    if v is not None:
+        m = _GCB_DISK.match(v) if isinstance(v, str) else None
+        if not m or not 1 <= int(m.group(1)) <= 2000:
+            errors.append("bootDiskSize must be a whole number of GB from 1 to 2000, such as 50 GB (got %s)" % _shown(v))
+    v = config.get("bootDiskImage")
+    if v is not None and not (isinstance(v, str) and 0 < len(v) <= 200 and _GCB_IMAGE.match(v)):
+        errors.append("bootDiskImage must be an image name of at most 200 characters (letters, digits and _ . / : -)")
+    v = config.get("serviceAccountEmail")
+    if v is not None and not (isinstance(v, str) and len(v) <= 200 and _GCB_SA_EMAIL.match(v)):
+        errors.append("serviceAccountEmail must be an e-mail address like name@lab-project-1.iam.gserviceaccount.com "
+                      "(an address, never a key) (got %s)" % _shown(v))
+    for key in ("network", "subnetwork"):
+        v = config.get(key)
+        if v is not None and not (isinstance(v, str) and len(v) <= 300 and _GCB_NET.match(v)):
+            errors.append("%s must be a VPC or subnet name (lower-case letters, digits, -) or a projects/... path (got %s)"
+                          % (key, _shown(v)))
+    v = config.get("labels")
+    if v is not None:
+        if not isinstance(v, dict):
+            errors.append("labels must be an object of text pairs")
+        elif len(v) > 64:
+            errors.append("labels may have at most 64 pairs")
+        else:
+            for lk, lv in v.items():
+                if not (isinstance(lk, str) and _GCB_LABEL_KEY.match(lk)) or not (isinstance(lv, str) and _GCB_LABEL_VALUE.match(lv)):
+                    errors.append("labels: a key is lower-case letters, digits, _ - starting with a letter, a value lower-case "
+                                  "letters, digits, _ -, each at most 63 characters (bad pair: %s)" % _shown(lk))
+                    break
+    v = config.get("maxvCpus")
+    if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
+        errors.append("maxvCpus must be a whole number from 1 to 10000")
+    if errors:
+        raise CEError("; ".join(errors))
+
+
 def _check_other(config):
     """A type that is only modelled: no field schema, only the common checks."""
     for key, value in config.items():
@@ -349,6 +447,8 @@ def clean(fields):
     _check_environment(config)
     if platform == SUPPORTED:
         _check_slurm(config)
+    elif platform in PLATFORM_HOST_TYPES:
+        _check_gcb(config, agent)
     else:
         _check_other(config)
     owner = fields.get("owner_user_id")
@@ -462,7 +562,7 @@ def _row(con, name):
 
 def create(state_path, fields, clock=time.time):
     rec = clean(fields)
-    supported = rec["platform"] == SUPPORTED
+    supported = rec["platform"] in CHECKABLE
     status = CREATING if supported else UNSUPPORTED
     message = ("waiting for the first preflight (等待第一次預檢)" if supported else NOT_SUPPORTED_MESSAGE)
     now = clock()
@@ -511,6 +611,10 @@ def update(state_path, name, fields, clock=time.time):
                         "WHERE name = ?",
                         (rec["description"], rec["credentials_id"], rec["agent"],
                          json.dumps(rec["config"], sort_keys=True), clock(), rec["owner_user_id"], rec["owner_user_id"], name))
+            if row["status"] == UNSUPPORTED and rec["platform"] in CHECKABLE:
+                # a record made before the type was checked, now complete under today's rules: it waits for its first preflight
+                con.execute("UPDATE compute_envs SET status = ?, message = ?, checked_ok = 0 WHERE name = ?",
+                            (CREATING, "waiting for the first preflight (等待第一次預檢)", name))
         return view(_row(con, name))
     finally:
         con.close()
@@ -584,6 +688,10 @@ def snapshot(row_or_view):
     """What an agent is told about an environment: only what a job needs, never anything else."""
     v = row_or_view if "config" in row_or_view else view(row_or_view)
     c = v["config"]
+    if v["platform"] in PLATFORM_HOST_TYPES:      # the agent on the platform host needs the settings of its checks, and the credential's name
+        return {"name": v["name"], "platform": v["platform"], "credentialsId": v["credentialsId"],
+                "project": c.get("project"), "location": c.get("location"), "workDir": c.get("workDir"),
+                "serviceAccountEmail": c.get("serviceAccountEmail")}
     library = next((e.get("value") for e in (c.get("environment") or []) if isinstance(e, dict)
                     and e.get("name") == "NXF_SINGULARITY_LIBRARYDIR"), None)      # the one variable a preflight needs; no other is carried
     return {"name": v["name"], "platform": v["platform"], "workDir": c.get("workDir"), "launchDir": c.get("launchDir"),

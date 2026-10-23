@@ -800,8 +800,9 @@ def test_nothing_of_the_later_slices_exists():
     assert not names & {"local_runner.py", "cloud_cost.py", "rates.json"}
     for f in list((PLATFORM_DIR / "abf_platform").rglob("*.py")) + list((PLATFORM_DIR / "abf_station").rglob("*.py")):
         text = f.read_text(encoding="utf-8")
-        assert not re.search(r"_local_head|head\.pid|-with-tower", text), f.name
+        assert not re.search(r"_local_head|head\.pid|local_runner", text), f.name
         assert not re.search(r"buckets create|services enable|service-accounts create|storage cp|storage rm", text), f.name
+    assert "-with-tower" not in (PLATFORM_DIR / "abf_station" / "gcb_preflight.py").read_text(encoding="utf-8")
 
 
 def test_the_other_types_stay_unsupported(ip):

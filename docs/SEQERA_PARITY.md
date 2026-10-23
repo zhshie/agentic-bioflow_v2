@@ -81,7 +81,7 @@ individually.
 One verdict per type (feature 007, slice 1; identifiers and sources in `specs/007-station-agent/research.md`,
 `docs/PLATFORM.md` section 8). **Modelled, needs a real account**: the type can be created and its settings
 are stored, its status is `unsupported`, nothing runs for it, and connecting it waits for someone with a real
-account (opening one and capping its cost is not done by a test). Pre-flight checks: Have, for Slurm; for Google Cloud Batch the platform host runs them (create + check, launch in C-2).
+account (opening one and capping its cost is not done by a test). Pre-flight checks: Have, for Slurm; for Google Cloud Batch the station agent on the platform host runs them (create + check, launch in C-2).
 The web page lists, creates and edits every type below, cloud types included (ADR 0008); a type
 turns supported only after a run on a real account the maintainer opened.
 
