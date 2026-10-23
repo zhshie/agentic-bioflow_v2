@@ -451,6 +451,15 @@ The automated tests are `platform/tests/test_chat_tools.py` and `platform/tests/
 2. **No doc or release file was touched (TC-036).** Run `git diff main...HEAD --stat -- docs/PLATFORM.md docs/ROADMAP.md CHANGELOG.md`. Expected: empty output.
 3. **No existing test was weakened (TC-043).** Run `git diff main...HEAD -- platform/tests tests`. Expected: only the two new test files appear; no assertion in an existing test file was removed, loosened, re-valued or skipped. Then run the whole suite in WSL (`bash tests/run_all.sh`) and see it green.
 
+## nano4 site config (nano4-site-config): the reviewer checks four things
+
+The automated tests are the `N4-` tests at the end of `platform/tests/test_estimate_su.py`. Four checks are by hand, from the root of the branch.
+
+1. **Only the allowed files changed (N4-34).** Run `git diff --name-only origin/v3...HEAD`. Expected: only `configs/sites/nchc-nano4.config`, `configs/sites/nchc-nano4-ce.json`, `configs/sites/su_rates.json`, `platform/abf_platform/su.py`, `platform/tests/test_estimate_su.py`, `specs/estimate-su/ledger.md`, `specs/nano4-site-config/*`, `docs/TESTING.md`. No `compute_envs.py`, no `actions/`, no site script, and no record of a created compute environment.
+2. **Taiwania-3 untouched (N4-33).** Run `git diff origin/v3...HEAD -- configs/sites/nchc.config configs/sites/nchc-ce.json.in` (expected: empty) and `git diff origin/v3...HEAD -- configs/sites/su_rates.json` (expected: only added lines, a new `nano4` section; no changed `taiwania3`, `nchc` or top-level line).
+3. **No existing test was weakened (N4-15).** Run `git diff origin/v3...HEAD -- platform/tests/test_estimate_su.py`. Expected: only added lines; no assertion removed, loosened, re-valued or skipped.
+4. **No migration (N4-31).** Read `specs/nano4-site-config/ledger.md`: it says why no migration is needed.
+
 ## When a release moves the flow files (commands → skills)
 
 Used by whoever reviews a change that moves or renames the five flow files

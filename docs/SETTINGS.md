@@ -325,6 +325,13 @@ pipeline), `siteConfigVars` (site variables the CE's config text refers to) and 
 (pipelines the site already holds locally, by name and path). A worked example is
 `configs/sites/nchc-nano4-ce.json`.
 
+That file is a template: replace its placeholders before `abf-platform ce create`.
+
+| Placeholder | Fill in |
+|---|---|
+| `<site_user>` | your nano4 account (the `/work/<account>` directory) |
+| `<nano4 read-only image library>` | `/work/envstack/apps/application/biology/nf-core/singularity-cache` (NCHC's shared, read-only Singularity images; measured 2026-10-20) |
+
 ## Keys this version does not read
 
 `nextflow_path`, `hpc_profile`, `driver_queue`. They belong to v1, which is

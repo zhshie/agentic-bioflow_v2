@@ -37,18 +37,31 @@ def _unknown(reasons):
     return {"su": None, "twd_nstc": None, "twd_academic": None, "unknown_reasons": reasons}
 
 
+def _factor_of(partitions, part):
+    """The factor of a partition: an exact key first, else the longest key ending in '*' whose prefix matches."""
+    if not isinstance(part, str):
+        return None
+    hit = partitions.get(part)
+    if not isinstance(hit, dict):
+        starred = [k for k in partitions if k.endswith("*") and part.startswith(k[:-1]) and isinstance(partitions[k], dict)]
+        hit = partitions[max(starred, key=len)] if starred else None
+    return hit.get("factor") if hit else None
+
+
 def su_of_tasks(tasks, site, rates):
-    """{su, twd_nstc, twd_academic, unknown_reasons} for these tasks (dicts with cpus, realtime in ms, queue)."""
+    """{su, twd_nstc, twd_academic, unknown_reasons} for these tasks (dicts with cpus, realtime in ms, queue).
+    A site that names twd_per_su also gets twd: {nstc, academic, industry}; its own rates win over the top-level ones."""
     if not isinstance(rates, dict):
         return _unknown(["費率檔讀不到 (the rates file cannot be read)"])
-    partitions = ((rates.get("sites") or {}).get(site) or {}).get("partitions")
+    site_rates = (rates.get("sites") or {}).get(site) or {}
+    partitions = site_rates.get("partitions")
     if not isinstance(partitions, dict):
         return _unknown(["找不到站點 %s 的費率 (no rates for site %s)" % (site, site)])
     total, reasons = 0.0, []
     for i, t in enumerate(tasks):
         label = "task %s" % (t.get("name") or t.get("taskId") or i + 1)
         part = t.get("queue")
-        factor = (partitions.get(part) or {}).get("factor") if isinstance(partitions.get(part), dict) else None
+        factor = _factor_of(partitions, part)
         missing = []
         if not _number(t.get("cpus")):
             missing.append("缺 cpus (no cpus)")
@@ -62,11 +75,20 @@ def su_of_tasks(tasks, site, rates):
             total += t["cpus"] * (t["realtime"] / MS_PER_HOUR) * factor
     if reasons:
         return _unknown(reasons)
-    nstc, academic = rates.get("nstc_twd_per_su"), rates.get("academic_twd_per_su")
-    return {"su": total,
-            "twd_nstc": total * nstc if _number(nstc) else None,
-            "twd_academic": total * academic if _number(academic) else None,
-            "unknown_reasons": []}
+    per_su = site_rates.get("twd_per_su")
+    if isinstance(per_su, dict):
+        nstc, academic = per_su.get("nstc"), per_su.get("academic")
+    else:
+        nstc, academic = rates.get("nstc_twd_per_su"), rates.get("academic_twd_per_su")
+    out = {"su": total,
+           "twd_nstc": total * nstc if _number(nstc) else None,
+           "twd_academic": total * academic if _number(academic) else None,
+           "unknown_reasons": []}
+    if isinstance(per_su, dict):
+        industry = per_su.get("industry")
+        out["twd"] = {"nstc": out["twd_nstc"], "academic": out["twd_academic"],
+                      "industry": total * industry if _number(industry) else None}
+    return out
 
 
 def run_tasks(index_path, run_name):
