@@ -46,9 +46,15 @@ def edge(src, out, dst, inp=0):
 
 
 def mod(name, inputs=(), outputs=None, path=None):
-    """inputs: one list of (name, type, pattern) per input channel; outputs: {channel name: [(name, type, pattern)]}."""
+    """inputs: one list of (name, type, pattern[, optional]) per input channel; outputs: {channel name: [(name, type, pattern)]}.
+    A record gets an `optional` field only when the fourth item is given."""
+    def rec(i, r):
+        d = {"channel": i, "name": r[0], "type": r[1], "pattern": r[2]}
+        if len(r) > 3:
+            d["optional"] = r[3]
+        return d
     return {"name": name, "path": path or name, "description": "", "keywords": [], "tools": [],
-            "inputs": [{"channel": i, "name": n, "type": t, "pattern": p} for i, ch in enumerate(inputs) for n, t, p in ch],
+            "inputs": [rec(i, r) for i, ch in enumerate(inputs) for r in ch],
             "outputs": [{"channel": c, "name": n, "type": t, "pattern": p} for c, ch in (outputs or {}).items() for n, t, p in ch]}
 
 
@@ -279,8 +285,8 @@ def test_compatible_sources_mix_without_a_finding():
     assert "MIXED_SOURCES" not in codes(r["findings"]) and "DUPLICATE_PROCESS" not in codes(r["findings"])     # TC-043
 
 
-def test_open_inputs_are_warnings_never_errors_and_entry_nodes_say_so():
-    # TC-036 .. TC-040
+def test_open_inputs_required_on_non_entry_are_errors_and_entry_nodes_say_so():
+    # TC-036 .. TC-040, TC-OI03, TC-OI11
     r = golden()
     assert r["ok"] is True and [f["severity"] for f in r["findings"]] == ["warning"]
     assert not [f for f in r["findings"] if f["node"] == "report"]
@@ -288,9 +294,75 @@ def test_open_inputs_are_warnings_never_errors_and_entry_nodes_say_so():
     r = validate_mod().validate(norm(graph))
     by = {(f["node"], f["channel"]): f for f in r["findings"] if f["code"] == "OPEN_INPUT"}
     assert "入口" in by[("qc", 0)]["message"] and "少了一個輸入" not in by[("qc", 0)]["message"]
+    assert by[("qc", 0)]["severity"] == "warning"
     one = by[("s", 1)]["message"]
     assert "少了一個輸入" in one and "入口" not in one and "meta2" in one and "fasta" in one and "fai" in one
-    assert ("s", 0) not in by and all(f["severity"] == "warning" for f in by.values())
+    assert by[("s", 1)]["severity"] == "warning"                       # TC-OI11: only meta2 is false
+    assert by[("s", 2)]["severity"] == "error" and r["ok"] is False    # TC-OI03: index_format is required
+    assert ("s", 0) not in by
+
+
+def open_run(b_inputs, a_inputs=(), wire=True):
+    """a -> b.0 (when wire) over a synthetic catalogue; returns the OPEN_INPUT findings by (node, channel) and the result."""
+    data = cat(mod("a", inputs=a_inputs, outputs={"out": [("o", "file", None)]}), mod("b", inputs=b_inputs))
+    r = run(data, [node("a", "a"), node("b", "b")], [edge("a", "out", "b")] if wire else [])
+    return {(f["node"], f["channel"]): f for f in r["findings"] if f["code"] == "OPEN_INPUT"}, r
+
+
+def test_required_open_input_on_a_non_entry_node_is_an_error():
+    # TC-OI01, TC-OI02, TC-OI06, TC-OI63
+    by, r = open_run([[("x", "file", None, False)], [("y", "file", None, False)]])
+    assert list(by) == [("b", 1)] and by[("b", 1)]["severity"] == "error" and r["ok"] is False
+    m = by[("b", 1)]["message"]
+    assert "少了一個輸入" in m and "b" in m and "1" in m and "y" in m and "入口" not in m and re.search(r"\([ -~]+\)", m)
+    assert "Traceback" not in m and "/" not in m
+
+
+def test_optional_open_input_stays_a_warning():
+    # TC-OI10
+    by, r = open_run([[("x", "file", None, False)], [("y", "file", None, True)]])
+    assert by[("b", 1)]["severity"] == "warning" and r["ok"] is True
+
+
+def test_entry_node_required_input_is_still_a_warning():
+    # TC-OI20, TC-OI21
+    data = cat(mod("a", inputs=[[("x", "file", None, False)]]))
+    r = run(data, [node("a", "a")], [])
+    f = [x for x in r["findings"] if x["code"] == "OPEN_INPUT"]
+    assert len(f) == 1 and f[0]["severity"] == "warning" and r["ok"] is True
+    assert "這個節點是入口，送出時要由樣本表或參數供應" in f[0]["message"] and "少了一個輸入" not in f[0]["message"]
+
+
+def test_required_means_any_non_meta_record_explicitly_false():
+    # TC-OI04, TC-OI05, TC-OI07, TC-OI12, TC-OI13, TC-OI14
+    ok = [("x", "file", None, False)]
+    by, _ = open_run([ok, [("p", "file", None, False), ("q", "file", None, True)]])
+    assert by[("b", 1)]["severity"] == "error"
+    by, _ = open_run([ok, [("p", "file", None, False), ("q", "file", None)]])
+    assert by[("b", 1)]["severity"] == "error"
+    by, r = open_run([ok, [("p", "file", None, False)], [("q", "file", None, False)]])
+    assert [by[k]["severity"] for k in sorted(by)] == ["error", "error"] and r["ok"] is False
+    by, _ = open_run([ok, [("m", "map", None, False)]])
+    assert by[("b", 1)]["severity"] == "warning"
+    by, r = open_run([[("x", "file", None)], [("y", "file", None)]])
+    assert by[("b", 1)]["severity"] == "warning" and r["ok"] is True
+    by, _ = open_run([ok, [("m", "map", None, False), ("q", "file", None, True)]])
+    assert by[("b", 1)]["severity"] == "warning"
+
+
+def test_entry_and_non_entry_are_judged_separately_in_one_graph():
+    # TC-OI24
+    by, r = open_run([[("x", "file", None, False)], [("y", "file", None, False)]], a_inputs=[[("z", "file", None, False)]])
+    assert by[("a", 0)]["severity"] == "warning" and "入口" in by[("a", 0)]["message"]
+    assert by[("b", 1)]["severity"] == "error" and "少了一個輸入" in by[("b", 1)]["message"] and r["ok"] is False
+
+
+def test_real_catalogue_golden_still_ok():
+    # TC-OI22
+    r = golden()
+    f = r["findings"]
+    assert r["ok"] is True and len(f) == 1
+    assert (f[0]["node"], f[0]["channel"], f[0]["code"], f[0]["severity"]) == ("qc", 0, "OPEN_INPUT", "warning") and "入口" in f[0]["message"]
 
 
 def test_duplicate_process_names_and_alias_collisions():
