@@ -340,7 +340,7 @@ def _pyproject():
 
 
 def test_tc406_package_data_covers_the_skills():
-    assert re.search(r'package-data\s*=\s*\{\s*"abf_platform"\s*=\s*\[\s*"skills/\*/SKILL\.md"\s*\]\s*\}', _pyproject())
+    assert 'package-data = {"abf_platform" = ["skills/*/SKILL.md", "data/*.json"]}' in _pyproject().splitlines()
 
 
 def test_tc407_packages_is_not_extended():

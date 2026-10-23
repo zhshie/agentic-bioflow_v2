@@ -472,6 +472,14 @@ A person who pastes the server's address into Claude gets the "how to use it" al
 
 The text exists once, in `skills/`. The build copies that folder into the package as `abf_platform/skills/` (`platform/setup.py`; the copy is not committed), and a test builds a wheel and compares the copy with the folder byte for byte. Nothing here adds a tool, a login or a way to launch.
 
+## nf-core module catalogue
+
+The building blocks of the pipeline canvas are the nf-core modules. A snapshot of all of them is committed at `platform/abf_platform/data/nf-core-modules.json`; `abf_platform/catalogue.py` loads it and offers `search` and `describe`. Nothing in the tool list or the web pages uses it yet.
+
+- Source: `nf-core/modules` at commit `5ed90b42e78410e7411e9c6bdfeff33226d6c58e`, every `modules/nf-core/**/meta.yml`, old and new format, flattened to name, path, description, keywords, tools, inputs and outputs (`versions` channels left out). A meta.yml that cannot be read is listed under `errors`, never fatal.
+- Regenerate (maintainer only; needs PyYAML in a throwaway environment): `PYTHONPATH=platform python -m abf_platform.catalogue snapshot --modules <nf-core/modules checkout> --sha <sha> --out platform/abf_platform/data/nf-core-modules.json`. The same sha gives a byte-identical file.
+- A new snapshot is one tier A PR: the changed file, plus the new sha here and in the test.
+
 ## What the platform stores
 
 One row per kind of data. Every period below is a constant in `platform/abf_platform/` or a rule stated elsewhere in this document; where the code has no rule, the row says `no automatic deletion`. Tokens and passwords are kept only as hashes; the cookie is signed.
