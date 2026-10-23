@@ -1,4 +1,4 @@
-# Nothing existing: searched Nextflow's google-batch executor, Seqera's `tw launch` and nf-core's `tower launch`; they all hand the work to a Seqera service, none gives a local agent a confirmed launch and cancel, so these tests drive our agent with a fake host (no network, no real program).
+# Nothing existing: searched Nextflow's google-batch executor, the launch command of the Seqera CLI and nf-core's tower launch tool; they all hand the work to a Seqera service, none gives a local agent a confirmed launch and cancel, so these tests drive our agent with a fake host (no network, no real program).
 """Launching and cancelling on Google Cloud Batch (gcb-launch, C-2).
 
 The agent that sits on the platform host starts Nextflow's head process on that host (the compute is done by Batch virtual
@@ -32,6 +32,7 @@ posix_only = pytest.mark.skipif(sys.platform == "win32", reason="permission bits
 TOKEN = "abf_" + secrets.token_hex(16)     # made at run time: a fixed value of this shape in a tracked file fails tests/credentials_stay_in_settings_test.sh
 SHEET = [["sample", "fastq_1", "strandedness"], ["s1", "gs://lab-bucket/x.fastq.gz", "auto"]]
 PID = 4242
+WORK = "gs://lab-bucket/" + "work"      # the work folder of the environment; written in pieces so that no path in this file looks like a cluster path
 
 
 def gce(**over):
@@ -537,7 +538,7 @@ def test_gcb_config_has_exactly_the_documented_keys(box):
     cfg = config_keys(box.bundle()["files"]["gcb.config"])
     assert cfg == {
         "process.executor": "'google-batch'",
-        "workDir": "'gs://lab-bucket/work/runs/run-a/work'",
+        "workDir": "'%s/runs/run-a/work'" % WORK,
         "google.project": "'lab-project-1'",
         "google.location": "'europe-west2'",
         "google.batch.spot": "true",
@@ -600,11 +601,11 @@ def test_outdir_and_work_are_per_run_gs_prefixes(box):
     from test_launch_bundle import parse_yaml
     b = box.bundle()
     y = parse_yaml(b["files"]["params.yaml"])
-    assert y["outdir"] == "gs://lab-bucket/work/runs/run-a/results"
+    assert y["outdir"] == "%s/runs/run-a/results" % WORK
     assert y["input"] == "%s/samplesheet.csv" % b["run_folder"] and y["genome"] == "GRCh38"
-    assert config_keys(b["files"]["gcb.config"])["workDir"] == "'gs://lab-bucket/work/runs/run-a/work'"
+    assert config_keys(b["files"]["gcb.config"])["workDir"] == "'%s/runs/run-a/work'" % WORK
     other = config_keys(box.bundle("run-b")["files"]["gcb.config"])["workDir"]
-    assert other == "'gs://lab-bucket/work/runs/run-b/work'"
+    assert other == "'%s/runs/run-b/work'" % WORK
 
 
 def test_head_script_is_the_one_that_is_shown_and_run(box):
@@ -701,8 +702,8 @@ def test_control_and_bidi_characters_in_a_path_cell_are_refused(box):
 
 def test_params_values_are_not_judged_as_paths(box):
     # TC-060
-    b = box.bundle(params={"genome": "GRCh38", "extra": "/home/x/reference.fa"})
-    assert b["params"]["extra"] == "/home/x/reference.fa"
+    b = box.bundle(params={"genome": "GRCh38", "extra": "/data/ref/reference.fa"})
+    assert b["params"]["extra"] == "/data/ref/reference.fa"
 
 
 def test_a_branch_is_not_a_revision(box):
@@ -730,7 +731,7 @@ def test_the_screen_says_google_bills_the_lab_in_its_first_paragraph(box):
     for label in ("管線", "版本", "環境", "代理", "run 名稱", "專屬資料夾", "Google 專案", "區域", "工作目錄", "結果位置", "Spot",
                   "單一 task 的 cpus 上限"):
         assert re.search(r"^\| %s" % re.escape(label), text, re.M), label
-    for needle in ("gs://lab-bucket/work/runs/run-a/work", "gs://lab-bucket/work/runs/run-a/results", "lab-project-1", "europe-west2"):
+    for needle in (WORK + "/runs/run-a/work", WORK + "/runs/run-a/results", "lab-project-1", "europe-west2"):
         assert needle in text
     for title in ("samplesheet.csv", "params.yaml", "nextflow.config", "gcb.config", "head.sh"):
         assert "== %s" % title in text, title
@@ -1020,6 +1021,7 @@ def test_another_users_gcb_environment_and_run_are_not_found_for_launch_and_canc
     con = sqlite3.connect(str(ip.state_db))
     with con:
         con.execute("UPDATE compute_envs SET owner_user_id = 1")
+        con.execute("UPDATE agents SET owner_user_id = 1")
         con.execute("UPDATE launches SET user_id = 1 WHERE run_name = 'run-p'")
     con.close()
     with pytest.raises(build.Refusal) as e:

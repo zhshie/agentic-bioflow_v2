@@ -723,22 +723,24 @@ def test_agent_jobs_other_than_the_preflight_are_refused_in_plain_words(ip):
     with pytest.raises(jobs.JobRefused) as e:
         jobs.enqueue_listing(ip.state_db, "gcb1", "/x")
     msgs = [str(e.value)]
-    for kind in ("list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log"):
+    for kind in ("list_site_files", "fetch_run_records", "read_task_log"):
         with pytest.raises(jobs.JobRefused) as e:
             jobs.check_target(ip.state_db, "gcb1", kind)
         msgs.append(str(e.value))
     for msg in msgs:
-        assert "尚未支援送出" in msg and "C-2" in msg and "set an agent" not in msg and "has no agent" not in msg
+        assert "尚未支援" in msg and "C-2" not in msg and "set an agent" not in msg and "has no agent" not in msg
+    for kind in ("launch_nextflow", "cancel_run"):      # gcb-launch (C-2): these two are let through now
+        jobs.check_target(ip.state_db, "gcb1", kind)
     assert jobs_count(ip) == before
     jobs.enqueue_preflight(ip.state_db, "gcb1")      # the preflight is the one job it takes
     assert jobs_count(ip) == before + 1
 
 
-def test_launch_is_refused_and_the_environment_is_never_auto_picked(ip):
+def test_launch_is_allowed_but_the_environment_is_never_auto_picked(ip):
     # TC-072, TC-073, TC-074
     from abf_launch import build
     _available_gcb(ip)
-    assert build.target_problem(ip.state_db, "gcb1", "launch_nextflow")
+    assert build.target_problem(ip.state_db, "gcb1", "launch_nextflow") is None
     assert build.primary_environment(ip.state_db) is None
     rc, out = ip.run("ce", "primary", "gcb1")
     assert rc == 0 and ip.show("gcb1")["primary"] is True
@@ -786,7 +788,7 @@ def test_refusals_are_plain_words(ip):
             refused(ip, good_config(foo=1))]
     _available_gcb(ip, "avail")
     with pytest.raises(jobs.JobRefused) as e:
-        jobs.check_target(ip.state_db, "avail", "launch_nextflow")
+        jobs.check_target(ip.state_db, "avail", "list_site_files")
     msgs.append(str(e.value))
     for m in msgs:
         assert not re.search(r"Traceback|SELECT |INSERT |sqlite", m) and str(ip.tmp) not in m, m
@@ -797,10 +799,9 @@ def test_refusals_are_plain_words(ip):
 def test_nothing_of_the_later_slices_exists():
     # TC-079, TC-080, TC-084
     names = {p.name for p in PLATFORM_DIR.rglob("*.py")} | {p.name for p in (REPO_ROOT / "configs").rglob("*")}
-    assert not names & {"local_runner.py", "cloud_cost.py", "rates.json"}
+    assert not names & {"cloud_cost.py", "rates.json"}
     for f in list((PLATFORM_DIR / "abf_platform").rglob("*.py")) + list((PLATFORM_DIR / "abf_station").rglob("*.py")):
         text = f.read_text(encoding="utf-8")
-        assert not re.search(r"_local_head|head\.pid|local_runner", text), f.name
         assert not re.search(r"buckets create|services enable|service-accounts create|storage cp|storage rm", text), f.name
     assert "-with-tower" not in (PLATFORM_DIR / "abf_station" / "gcb_preflight.py").read_text(encoding="utf-8")
 
@@ -853,8 +854,9 @@ def doc(name):
 def test_docs_list_every_gcb_key_and_check():
     # TC-096, TC-097, TC-098, TC-099, TC-100, TC-101
     d = doc("PLATFORM.md")
-    assert re.search(r"`googlebatch-platform` \| Google Cloud Batch \| checked on the platform host \(launch: not yet\)", d)
-    assert "Only Slurm can run; Google Cloud Batch can be created and checked" in d
+    assert re.search(r"`googlebatch-platform` \| Google Cloud Batch \| Slurm-like confirmed launch and cancel on the platform host "
+                     r"\(resume: not yet\)", d)
+    assert "Slurm and Google Cloud Batch can run; the other types can be modelled only" in d
     for key in ("project", "location", "workDir", "spot", "bootDiskSize", "bootDiskImage", "serviceAccountEmail", "network",
                 "subnetwork", "usePrivateAddress", "labels", "maxvCpus") + tuple(CHECK_NAMES):
         assert "`%s`" % key in d, key
@@ -862,7 +864,7 @@ def test_docs_list_every_gcb_key_and_check():
     assert "預檢不計費" in d and "creates no Batch job" in d
     par = doc("SEQERA_PARITY.md")
     row = [ln for ln in par.splitlines() if "`googlebatch-platform`" in ln][0]
-    assert "Have (create + check); launch in C-2" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel; resume not yet)" in row and row.rstrip().endswith("[ ] |")
     assert "a type turns supported only after a run on a real account" in par.replace("\n", " ")
     for text in (d, par, doc("TESTING.md")):
         assert not re.findall(r"[a-z0-9-]+@(?!lab-project-1)[a-z0-9-]+\.iam\.gserviceaccount\.com", text)

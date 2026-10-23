@@ -104,6 +104,10 @@ repeated here.
 To check it from the site, run `curl -i https://<public>/user-info` there. A working address answers
 401 (no token was sent) and the response carries the `X-ABF-Platform` header.
 
+## Google Batch on the platform host
+
+To let people launch on a `googlebatch-platform` environment, the host that runs `abf-station run` (next to `abf-platform serve`) needs: Java 17 or newer, Nextflow, `gcloud` (the Google Cloud CLI), a `storage_root` in `config/env.yaml` (the run folders go to `<storage_root>/_gcb_runs/`), and the service-account key file at `ABF_STATION_GCP_CREDENTIALS` (or `_personal/gcp-sa.json` in the deployment folder), readable by that user only. The host must be Linux or WSL. Everything else is in `docs/PLATFORM.md`, "Launching on Google Batch". Google bills the lab's Google Cloud account for what a launch starts; the platform has no cost estimate or cap yet.
+
 ## 6. Not built yet
 
 - The Tailscale Funnel and proxy configuration for the one host name (section 2). Nothing in

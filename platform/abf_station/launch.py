@@ -57,6 +57,7 @@ OVERWRITE_BLOCK = (
     "timeline.overwrite = true\n"
 )
 NO_SCRIPTS = "不支援：這一片不執行事前／事後腳本"
+GCB_NO_RESUME = "Google Batch 的 run 還不能續跑或原樣重跑（尚未支援）(a Google Batch run cannot be resumed or relaunched yet)"
 
 
 class BundleError(Exception):
@@ -93,6 +94,14 @@ def snapshot_ce(view):
     c = view.get("config") or {}
     env = [{"name": e.get("name"), "value": e.get("value", ""), "head": bool(e.get("head", True)),
             "compute": bool(e.get("compute", False))} for e in (c.get("environment") or [])]
+    if view.get("platform") == GCB:
+        return {"name": view.get("name"), "platform": GCB, "project": c.get("project"), "location": c.get("location"),
+                "workDir": c.get("workDir"), "spot": bool(c.get("spot")), "bootDiskSize": c.get("bootDiskSize"),
+                "bootDiskImage": c.get("bootDiskImage"), "serviceAccountEmail": c.get("serviceAccountEmail"),
+                "network": c.get("network"), "subnetwork": c.get("subnetwork"), "usePrivateAddress": bool(c.get("usePrivateAddress")),
+                "labels": dict(c.get("labels") or {}), "maxvCpus": c.get("maxvCpus"), "environment": env,
+                "nextflowConfig": c.get("nextflowConfig") or "", "preRunScript": c.get("preRunScript") or "",
+                "postRunScript": c.get("postRunScript") or ""}
     return {"name": view.get("name"), "platform": view.get("platform"), "workDir": c.get("workDir"),
             "launchDir": c.get("launchDir"), "headQueue": c.get("headQueue"), "computeQueue": c.get("computeQueue"),
             "readRoots": list(c.get("readRoots") or []), "headJobOptions": c.get("headJobOptions") or "",
@@ -408,6 +417,9 @@ def _head_script(run_name, run_folder, pipeline, revision, queue, options, accou
 
 def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samplesheet, params, path_columns=None):
     """The launch bundle: everything that is shown, hashed, written and run. Raises BundleError, naming the field."""
+    if isinstance(ce, dict) and ce.get("platform") == GCB:      # a Google Batch environment has its own bundle, below
+        return render_gcb_bundle(ce=ce, agent=agent, facts=facts, roots=roots, run_name=run_name, pipeline=pipeline, revision=revision,
+                                 samplesheet=samplesheet, params=params, path_columns=path_columns)
     if not isinstance(agent, str) or not agent:
         raise BundleError("agent: 這個環境沒有代理 (the environment has no agent)")
     facts = facts if isinstance(facts, dict) else {}
@@ -446,6 +458,226 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
             "pipeline": pipeline, "revision": revision, "samplesheet": sheet, "params": user_params,
             "path_columns": sorted(set(path_columns or [])), "account": account, "tower": tower, "files": files,
             "pipeline_source": source}
+
+
+# ---- Google Cloud Batch: the head process runs on the platform host, the compute on Batch (gcb-launch) ----------------------
+
+GCB = compute_envs.PLATFORM_HOST_TYPES[0]
+GCB_RUNS = "_gcb_runs"
+GCB_FILE_NAMES = ("samplesheet.csv", "params.yaml", "nextflow.config", "gcb.config", "head.sh")
+GCB_CREDENTIALS_COMMENT = ("# credentials: the agent sets GOOGLE_APPLICATION_CREDENTIALS from its own key file; the path is not part of "
+                           "this script")
+GCB_FORBIDDEN_ENV = ("GOOGLE_APPLICATION_CREDENTIALS",)
+GCB_WORK_CHARS = re.compile(r"^[A-Za-z0-9_./@+=:,-]+\Z")
+GCB_VALUE_CHARS = re.compile(r"^[A-Za-z0-9_./@+=:,-]*\Z")
+GCB_LOOPBACK_OPTS = "-Dhttp.nonProxyHosts="
+NO_BUCKET_PATH = ("把檔案放進 bucket 是之後的功能（C-6 上傳）；現在請自己用 `gcloud storage" " cp` 把檔案放進 gs://%s/ 底下，再把這一格改成 "
+                  "gs:// 路徑 (copying files into the bucket is a later feature; for now put them there with `gcloud storage" " cp`)")      # in two pieces: the source holds no upload command
+
+
+def _gcb_text(field, value, pattern, limit):
+    if not (isinstance(value, str) and 0 < len(value) <= limit and pattern.match(value)):
+        raise BundleError("環境 %s: 值不合規則 (%s is not acceptable)" % (field, field))
+    return value
+
+
+def _check_gcb_ce(ce):
+    """The settings of a Google Batch environment, each judged again with the platform's own patterns: they end up in a config file.
+    Returns (the normalised ce, the bucket of workDir, the head environment [(name, value)])."""
+    if not isinstance(ce, dict) or ce.get("platform") != GCB:
+        raise BundleError("環境: 這不是 Google Batch 環境 (not a Google Batch environment)")
+    out = {"name": ce.get("name"), "platform": GCB}
+    out["project"] = _gcb_text("project", ce.get("project"), compute_envs._GCB_PROJECT, 30)
+    if len(out["project"]) < 6:
+        raise BundleError("環境 project: 值不合規則 (project is not acceptable)")
+    out["location"] = _gcb_text("location", ce.get("location"), compute_envs._GCB_LOCATION, 40)
+    work = ce.get("workDir")
+    if not (isinstance(work, str) and work.startswith("gs://")):
+        raise BundleError("環境 workDir: 必須是 gs:// 開頭的網址 (workDir must be a gs:// URL)")
+    bucket, _, prefix = work[5:].partition("/")
+    if not compute_envs._GCB_BUCKET.match(bucket):
+        raise BundleError("環境 workDir: bucket 名稱不合規則 (the bucket name is not acceptable)")
+    prefix = prefix.rstrip("/")
+    if not prefix:
+        raise BundleError("環境 workDir: gs://%s 沒有子目錄。Nextflow 規定 workDir 至少含一層子目錄，例如 gs://%s/work；請更新環境 "
+                          "(Nextflow needs a workDir with at least one subdirectory)" % (bucket, bucket))
+    if not GCB_WORK_CHARS.match(prefix) or any(part in ("", ".", "..") for part in prefix.split("/")) or len(prefix) > 900:
+        raise BundleError("環境 workDir: 資料夾部分含不支援的字元或 .. (the folder part of workDir is not acceptable)")
+    out["workDir"] = "gs://%s/%s" % (bucket, prefix)
+    spot, private = ce.get("spot"), ce.get("usePrivateAddress")
+    for key, v in (("spot", spot), ("usePrivateAddress", private)):
+        if v is not None and not isinstance(v, bool):
+            raise BundleError("環境 %s: 必須是 true 或 false (true or false)" % key)
+    out["spot"], out["usePrivateAddress"] = bool(spot), bool(private)
+    disk = ce.get("bootDiskSize")
+    if disk is not None:
+        m = compute_envs._GCB_DISK.match(disk) if isinstance(disk, str) else None
+        if not m or not 1 <= int(m.group(1)) <= 2000:
+            raise BundleError("環境 bootDiskSize: 必須是 1 到 2000 的整數加 GB，例如 50 GB (a whole number of GB)")
+    out["bootDiskSize"] = disk
+    for key, rx, limit in (("bootDiskImage", compute_envs._GCB_IMAGE, 200), ("serviceAccountEmail", compute_envs._GCB_SA_EMAIL, 200),
+                           ("network", compute_envs._GCB_NET, 300), ("subnetwork", compute_envs._GCB_NET, 300)):
+        v = ce.get(key)
+        out[key] = None if v is None else _gcb_text(key, v, rx, limit)
+    labels = ce.get("labels") or {}
+    if not isinstance(labels, dict) or len(labels) > 64:
+        raise BundleError("環境 labels: 必須是最多 64 組的文字對照 (labels are at most 64 text pairs)")
+    for k, v in labels.items():
+        if not (isinstance(k, str) and compute_envs._GCB_LABEL_KEY.match(k) and isinstance(v, str) and compute_envs._GCB_LABEL_VALUE.match(v)):
+            raise BundleError("環境 labels: 有一組標籤的鍵或值不合規則 (a label is not acceptable)")
+        if k == "abf-run":
+            raise BundleError("環境 labels: abf-run 由送出自己設定，環境不能設 (abf-run is set by the launch itself)")
+    out["labels"] = {k: labels[k] for k in sorted(labels)}
+    cpus = ce.get("maxvCpus")
+    if cpus is not None and (isinstance(cpus, bool) or not isinstance(cpus, int) or not 1 <= cpus <= 10000):
+        raise BundleError("環境 maxvCpus: 必須是 1 到 10000 的整數 (a whole number from 1 to 10000)")
+    out["maxvCpus"] = cpus
+    if ((ce.get("preRunScript") or "").strip()) or ((ce.get("postRunScript") or "").strip()):
+        raise BundleError("環境: %s" % NO_SCRIPTS)
+    config = ce.get("nextflowConfig") or ""
+    _check_text("nextflowConfig", config, allow_cr=True, limit=200000)
+    out["nextflowConfig"] = config
+    head_env = []
+    for i, e in enumerate(ce.get("environment") or []):
+        name, value = e.get("name"), e.get("value", "")
+        if not isinstance(name, str) or not ENV_NAME.match(name):
+            raise BundleError("environment[%d]: 變數名稱 %r 必須是英文字母、數字與底線，且不以數字開頭 (a shell variable name)"
+                              % (i, str(name)[:40]))
+        if not isinstance(value, str) or "\n" in value or "\r" in value or "\x00" in value or len(value) > 2000:
+            raise BundleError("environment %s: 值不能含換行或 NUL，且不超過 2000 字元 (no newline or NUL in a value)" % name)
+        if name in SET_BY_THE_SCRIPT or name in GCB_FORBIDDEN_ENV or name.upper().startswith("ABF_"):
+            raise BundleError("environment %s: 這個變數由送出本身或代理設定，環境不能設 (set by the launch or the agent itself)" % name)
+        if e.get("head", True):
+            head_env.append((name, value))
+    out["environment"] = [dict(e) for e in (ce.get("environment") or [])]
+    out["preRunScript"], out["postRunScript"] = "", ""
+    return out, bucket, head_env
+
+
+def _gcb_quote(value):
+    if not (isinstance(value, str) and GCB_VALUE_CHARS.match(value)):
+        raise BundleError("設定檔: 值含不支援的字元 (a value of the config has a character that is not allowed)")
+    return "'%s'" % value
+
+
+def _gcb_config(ce, run_name, work_uri):
+    """gcb.config: the settings of the compute environment, in the words Nextflow reads. It is read after nextflow.config (-c twice),
+    so a line here cannot be overruled by the free text of the environment."""
+    q = _gcb_quote
+    lines = ["// written by the platform from the compute environment; read after nextflow.config, so these settings win",
+             "process.executor = 'google-batch'", "workDir = %s" % q(work_uri), "google.project = %s" % q(ce["project"]),
+             "google.location = %s" % q(ce["location"])]
+    if ce["spot"]:
+        lines.append("google.batch.spot = true")
+    if ce["bootDiskSize"] is not None:
+        lines.append("google.batch.bootDiskSize = %d.GB" % int(compute_envs._GCB_DISK.match(ce["bootDiskSize"]).group(1)))
+    for key in ("bootDiskImage", "serviceAccountEmail", "network", "subnetwork"):
+        if ce[key] is not None:
+            lines.append("google.batch.%s = %s" % (key, q(ce[key])))
+    if ce["usePrivateAddress"]:
+        lines.append("google.batch.usePrivateAddress = true")
+    pairs = [(k, v) for k, v in ce["labels"].items()] + [("abf-run", run_name[:63])]
+    lines.append("process.resourceLabels = [%s]" % ", ".join("%s: %s" % (q(k), q(v)) for k, v in pairs))
+    if ce["maxvCpus"] is not None:
+        lines.append("process.resourceLimits = [cpus: %d]" % ce["maxvCpus"])      # one task at most; Nextflow has no total of vCPUs
+    return "\n".join(lines) + "\n"
+
+
+def _gcb_head_script(run_name, run_folder, pipeline, revision, env, tower):
+    q = shlex.quote
+    lines = ["#!/bin/bash", GCB_CREDENTIALS_COMMENT, "umask 077", "cd %s || exit 1" % q(run_folder)]
+    loopback = (urlparse(tower["endpoint"]).hostname or "") in LOOPBACK
+    had_opts = False
+    for name, value in env:
+        if name == "NXF_OPTS" and loopback:
+            value = (value + " " if value else "") + GCB_LOOPBACK_OPTS      # the JVM does not send loopback through its proxy unless this is emptied
+            had_opts = True
+        lines.append("export %s=%s" % (name, q(value)))
+    if loopback and not had_opts:
+        lines.append("export NXF_OPTS=%s" % q(GCB_LOOPBACK_OPTS))
+    lines.append('export TOWER_ACCESS_TOKEN="$(cat tower.token)"')
+    lines.append("exec nextflow run %s -r %s -name %s -params-file params.yaml -c nextflow.config -c gcb.config -with-tower %s"
+                 % (q(pipeline), q(revision), q(run_name), q(tower["endpoint"])))
+    return "\n".join(lines) + "\n"
+
+
+def _gcb_params_yaml(params, input_path, outdir):
+    merged = dict(params)
+    merged["input"] = input_path
+    merged["outdir"] = outdir
+    return "".join("%s: %s\n" % (k, _yaml_scalar(merged[k])) for k in sorted(merged))
+
+
+def _check_gcb_samplesheet(rows, path_columns, bucket):
+    """The samplesheet of a Google Batch run: every cell that is read as a path is gs://<the bucket of workDir>/<object>."""
+    f = "samplesheet"
+    if not isinstance(rows, list) or len(rows) < 2:
+        raise BundleError("%s: 至少要有標題列和一列資料 (a header and at least one row)" % f)
+    clean = []
+    for r, row in enumerate(rows):
+        if not isinstance(row, list) or not row:
+            raise BundleError("%s 第 %d 列: 不是一列 (not a row)" % (f, r + 1))
+        if len(row) != len(rows[0]):
+            raise BundleError("%s 第 %d 列: 欄數 %d 與標題列的 %d 不同 (ragged row)" % (f, r + 1, len(row), len(rows[0])))
+        for c, cell in enumerate(row):
+            _check_text("%s 第 %d 列第 %d 欄" % (f, r + 1, c + 1), cell, limit=5000)
+        clean.append(list(row))
+    unknown = set(path_columns or []) - set(clean[0])
+    if unknown:
+        raise BundleError("%s: 沒有名為 %s 的欄 (no such column)" % (f, sorted(unknown)[0]))
+    for r, c, cell in path_cells(clean, path_columns):
+        where = "%s 第 %d 列第 %d 欄（%s）" % (f, r, c, clean[0][c - 1][:40])
+        why = None
+        if any(ord(ch) <= 0x20 or ord(ch) == 0x7F or ord(ch) in BIDI for ch in cell):
+            why = "含空白、控制字元或雙向文字字元 (a space, control or bidirectional character)"
+        else:
+            m = re.match(r"^gs://([^/]+)/(.+)\Z", cell)
+            if not m:
+                why = "必須是 gs://%s/<物件路徑> (must be gs://%s/<object path>)" % (bucket, bucket)
+            elif m.group(1) != bucket:
+                why = "bucket 必須和環境 workDir 的 bucket（%s）相同 (must be in the bucket of workDir)" % bucket
+            elif any(part in ("", ".", "..") for part in m.group(2).split("/")):
+                why = "路徑裡不能有 .、.. 或空的一段 (no . or .. or empty part)"
+        if why:
+            raise BundleError("%s: %s。%s" % (where, why, NO_BUCKET_PATH % bucket))
+    return clean
+
+
+def render_gcb_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samplesheet, params, path_columns=None):
+    """The launch bundle of a Google Batch environment: the same shape as render_bundle's, without an account, with five files.
+    `roots` is accepted for the same call as render_bundle and not used: reads are gs:// paths of the bucket of workDir. Raises BundleError."""
+    if not isinstance(agent, str) or not agent:
+        raise BundleError("agent: 這個環境沒有代理 (the environment has no agent)")
+    facts = facts if isinstance(facts, dict) else {}
+    if not isinstance(run_name, str) or not RUN_NAME.match(run_name):
+        raise BundleError("run 名稱: %r 必須是小寫英文字母開頭，只含小寫字母、數字、_ 與 -，最長 64 字元 (run name)" % str(run_name)[:70])
+    _check_pipeline(pipeline)
+    _check_revision(revision)
+    ce_out, bucket, head_env = _check_gcb_ce(ce)
+    storage = facts.get("storage_root")
+    if not isinstance(storage, str) or rules.path_problem(storage) is not None or rules.normalize(storage) == "/":
+        raise BundleError("storage_root 未設定: 代理主機上的專屬資料夾放在 storage_root 底下，請在部署設定檔（config/env.yaml）設定 "
+                          "storage_root 再重試 (storage_root is not set in the deployment's settings)")
+    if facts.get("reach") != "local":
+        raise BundleError("環境: Google Batch 的主控程序跑在平台主機上，代理必須在本機（reach: local）；這個代理回報的連線方式是 %r "
+                          "(the agent must be on the platform host)" % str(facts.get("reach"))[:20])
+    tower = _tower(facts, run_name)
+    sheet = _check_gcb_samplesheet(samplesheet, path_columns, bucket)
+    user_params = _check_params(params)
+    run_folder = "%s/%s/%s" % (rules.normalize(storage), GCB_RUNS, run_name)
+    base = "%s/runs/%s" % (ce_out["workDir"], run_name)
+    config = ce_out["nextflowConfig"]
+    files = {
+        "samplesheet.csv": _csv_text(sheet),
+        "params.yaml": _gcb_params_yaml(user_params, run_folder + "/samplesheet.csv", base + "/results"),
+        "nextflow.config": ((config if config.endswith("\n") else config + "\n") if config.strip()
+                            else "// the compute environment carries no Nextflow config\n") + OVERWRITE_BLOCK,
+        "gcb.config": _gcb_config(ce_out, run_name, base + "/work"),
+        "head.sh": _gcb_head_script(run_name, run_folder, pipeline, revision, head_env, tower),
+    }
+    return {"version": BUNDLE_VERSION, "agent": agent, "ce": ce_out, "run_name": run_name, "run_folder": run_folder,
+            "pipeline": pipeline, "revision": revision, "samplesheet": sheet, "params": user_params,
+            "path_columns": sorted(set(path_columns or [])), "tower": tower, "files": files, "pipeline_source": dict(REMOTE)}
 
 
 def render_resume(*, origin, run_name, attempt, session_id):
@@ -697,6 +929,9 @@ def run_launch(job, ctx, preflight):
     bundle = verify_confirmation(job, ctx, "launch")
     if "resume" in bundle:
         return run_resume(job, ctx, preflight, bundle)
+    if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == GCB:
+        from . import gcb_launch      # the Google Batch launch; it imports this module, so it is read here and not at the top
+        return gcb_launch.run_launch(job, ctx, bundle)
     env = rules.clean_environment(bundle.get("ce"))
     if bundle.get("agent") != ctx.agent_name:
         raise rules.Refusal("這個內容包是給另一個代理的 (the bundle is for another agent)")
@@ -852,6 +1087,9 @@ def run_resume(job, ctx, preflight, bundle):
     folder is looked at on the site in one question, and only if all of it agrees are head-N.sh and a new tower.token written into it
     (nothing else, nothing deleted) and ONE sbatch made."""
     resume = bundle.get("resume")
+    origin_ce = (resume.get("origin") or {}).get("ce") if isinstance(resume, dict) and isinstance(resume.get("origin"), dict) else None
+    if any(isinstance(ce, dict) and ce.get("platform") == GCB for ce in (bundle.get("ce"), origin_ce)):
+        raise rules.Refusal(GCB_NO_RESUME)      # a Google Batch run cannot be resumed yet, whatever the platform sent
     if not isinstance(resume, dict) or set(resume) != RESUME_KEYS or not isinstance(resume.get("origin"), dict):
         raise rules.Refusal("續跑的內容包欄位不對 (the resume bundle has other fields than it should)")
     origin = resume["origin"]

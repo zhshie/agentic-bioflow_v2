@@ -99,3 +99,17 @@ def run_fixed(argv, env, timeout):
         return 127, "could not start %s (%s)" % (argv[0], e.__class__.__name__)
     out = (p.stderr or "") + (p.stdout or "")
     return p.returncode, out
+
+
+def start_detached(argv, env, cwd, out_path):
+    """The Popen of one program started with a fixed argument list, no shell, in a session of its own, with the output of both streams
+    appended to `out_path` (private, 0600; a link there is never followed). Returns at once. This is the one other way (next to
+    run_fixed) this package starts a program: the head process of one analysis, which is the analysis itself and not a watcher over
+    it. It lives in a session of its own so that a restart of this agent does not end it."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(out_path), flags, 0o600)
+    try:
+        return subprocess.Popen(list(argv), env=env, cwd=str(cwd), shell=False, stdin=subprocess.DEVNULL, stdout=fd,
+                                stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
+    finally:
+        os.close(fd)
