@@ -292,7 +292,8 @@ cnt=$(printf '%s\n' "$WL" | grep -cE '^\| ' || true)
 inn "TC-023: old row rewritten: host reaches launch/delete only through tools that carry their own gate" "$WL" 'A host reaches launch and delete only through tools that carry their own gate'
 nin "TC-023: ...the old 'may query but never launch or delete' wording is gone" "$WL" 'may query but never'
 cnt16=$(printf '%s\n' "$WL" | grep -cE '^[|]' || true)
-[ "${cnt16:-0}" = 15 ] && ok "TC-025: waiting list has 15 table lines (13 rows + header + separator)" || bad "TC-025: waiting list has 15 table lines" "$cnt16 lines"
+# 2026-10-24 (ADR 0011): 15 -> 17 lines, two rows added for auto-resume and the web terminal
+[ "${cnt16:-0}" = 17 ] && ok "TC-025: waiting list has 17 table lines (15 rows + header + separator)" || bad "TC-025: waiting list has 17 table lines" "$cnt16 lines"
 # old stage numbers are gone: nothing waits for a stage that no longer exists
 if printf '%s\n' "$WL" | grep -qE '\| (6|7) \|[[:space:]]*$'; then bad "TC-023: no row waits for stage 6 or 7"; else ok "TC-023: no row waits for stage 6 or 7"; fi
 
@@ -584,7 +585,9 @@ inn "W0 TC-023: role row is re-staged postponed (ADR 0009)"      "$WL" "Role tes
 inn "W0 TC-024: new owed-parity row"                             "$WL" 'owed parity — every action has an MCP tool and a web route; the owed list only shrinks'
 inn "W0 TC-025: ...its check arrives with 011a's parity test"    "$WL" '011a'
 cntW=$(printf '%s\n' "$WL" | grep -cE '^[|]' || true)
-[ "${cntW:-0}" = 15 ] && ok "W0 TC-026: waiting list has 15 table lines" || bad "W0 TC-026: waiting list has 15 table lines" "$cntW"
+[ "${cntW:-0}" = 17 ] && ok "W0 TC-026: waiting list has 17 table lines (ADR 0011 added two)" || bad "W0 TC-026: waiting list has 17 table lines" "$cntW"
+inn "ADR 0011: waiting row for one automatic resume after a lost site" "$WL" 'A run lost with its site is resumed once without a new confirmation'
+inn "ADR 0011: waiting row for relayed keystrokes never stored and the AI never typing" "$WL" 'the AI reads the terminal and never types into it'
 nin "W0 TC-027: other rows untouched: run index row moved to the constitution" "$WL" "The platform's run index is never a second truth"
 inn "W0 TC-027: ...(model-neutral command layer)"                "$WL" "Model-neutral command layer: no command depends on one model's behaviour"
 
