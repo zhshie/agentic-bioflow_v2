@@ -426,3 +426,223 @@ def test_tc040_other_users_unknown_run_does_not_matter(tmp_path):
             return None
         return [{"queue": "p1", "cpus": 1, "realtime": H * 10 / 1.5}]
     assert su_mod().month_total(db, plat, 1, "2026-10", "testsite", rates(), tasks_of) == pytest.approx(10)
+
+
+# ---- nano4-site-config (N4-xx, specs/nano4-site-config/test-case.md) ---------------------------------------------------
+
+N4_CE = REPO_ROOT / "configs" / "sites" / "nchc-nano4-ce.json"
+N4_CONF = REPO_ROOT / "configs" / "sites" / "nchc-nano4.config"
+N4_LEDGER = REPO_ROOT / "specs" / "nano4-site-config" / "ledger.md"
+
+
+def _real():
+    return json.loads(RATES_FILE.read_text(encoding="utf-8"))
+
+
+def _t(queue, cpus=1, hours=10):
+    return {"name": "t", "queue": queue, "cpus": cpus, "realtime": int(hours * H)}
+
+
+def _close(out, nstc, academic, industry):
+    for k, v in (("nstc", nstc), ("academic", academic), ("industry", industry)):
+        assert abs(out["twd"][k] - v) < 1e-9, (k, out["twd"])
+
+
+def test_tc025b_nano4_rates_price_a_ngs_task_at_0_1_twd_per_core_hour():
+    # N4-01, N4-02
+    for q in ("ngs", "ngs7G"):
+        out = su_mod().su_of_tasks([_t(q)], "nano4", _real())
+        assert out["su"] == 10 and out["unknown_reasons"] == []
+        _close(out, 1.0, 2.0, 3.7)
+
+
+def test_tc025c_bigmem_factor_7():
+    # N4-03, N4-04
+    out = su_mod().su_of_tasks([_t("big-mem")], "nano4", _real())
+    assert out["su"] == 70
+    _close(out, 7.0, 14.0, 25.9)
+    out = su_mod().su_of_tasks([_t("ngs"), _t("big-mem")], "nano4", _real())
+    assert out["su"] == 80
+    _close(out, 8.0, 16.0, 29.6)
+
+
+def test_n4_05_return_shape():
+    # N4-05
+    out = su_mod().su_of_tasks([_t("ngs")], "nano4", _real())
+    assert set(out) == KEYS | {"twd"} and set(out["twd"]) == {"nstc", "academic", "industry"}
+    assert out["twd_nstc"] == out["twd"]["nstc"] and out["twd_academic"] == out["twd"]["academic"]
+
+
+def test_n4_06_run_su_and_action_agree(tmp_path):
+    # N4-06
+    from abf_platform import actions
+    db, plat = _index(tmp_path, [("run-a", 1, 1_790_000_000)])
+    tasks_of = lambda i, r: [_t("big-mem")]
+    a = su_mod().run_su(db, "run-a", "nano4", _real(), tasks_of)
+    b = actions.estimate_su(db, "run-a", caller=_caller(1), platform_path=plat, site="nano4", rates=_real(), tasks_of=tasks_of)
+    assert a == b and a["su"] == 70
+    _close(a, 7.0, 14.0, 25.9)
+
+
+def test_n4_07_nano4_rates_in_the_file():
+    # N4-07
+    s = _real()["sites"]["nano4"]
+    assert s["twd_per_su"] == {"nstc": 0.1, "academic": 0.2, "industry": 0.37}
+    assert s["partitions"]["ngs*"]["factor"] == 1 and s["partitions"]["big-mem*"]["factor"] == 7
+    assert "twd_per_core_hour" not in s
+
+
+def test_n4_08_unknown_partition():
+    # N4-08
+    out = su_mod().su_of_tasks([_t("gpu")], "nano4", _real())
+    assert out["su"] is None and "twd" not in out
+    assert any("gpu" in r for r in out["unknown_reasons"])
+    assert not any("/" in r or "Traceback" in r for r in out["unknown_reasons"])
+
+
+def _wild(parts):
+    return {"nstc_twd_per_su": 0.08, "academic_twd_per_su": 0.24,
+            "sites": {"testsite": {"partitions": {k: {"factor": v} for k, v in parts.items()}}}}
+
+
+def test_n4_09_exact_beats_wildcard():
+    # N4-09
+    assert calc([_t("ngs7G", hours=1)], _wild({"ngs*": 1, "ngs7G": 3}))["su"] == 3
+
+
+def test_n4_10_longest_wildcard_wins():
+    # N4-10
+    assert calc([_t("ngs7G", hours=1)], _wild({"ngs*": 1, "ngs7*": 2}))["su"] == 2
+
+
+def test_n4_11_t3_has_no_wildcard():
+    # N4-11
+    out = su_mod().su_of_tasks([_t("ct56x", hours=1)], "taiwania3", _real())
+    assert out["su"] is None and any("ct56x" in r for r in out["unknown_reasons"])
+
+
+def test_n4_12_no_twd_key_without_twd_per_su():
+    # N4-12
+    out = su_mod().su_of_tasks([_t("ct56", cpus=4, hours=2)], "taiwania3", _real())
+    assert set(out) == KEYS and out["su"] == 8 and abs(out["twd_nstc"] - 0.64) < 1e-9
+    assert set(calc([_t("p1", hours=1)], rates())) == KEYS
+
+
+def test_n4_13_default_site_unchanged(tmp_path):
+    # N4-13
+    from abf_platform import actions
+    db, plat = _index(tmp_path, [("run-a", 1, 1_790_000_000)])
+    out = actions.estimate_su(db, "run-a", caller=_caller(1), platform_path=plat, rates=_real(),
+                              tasks_of=lambda i, r: [_t("ct56", hours=1)])
+    assert out["su"] == 1 and "twd" not in out and _real()["default_site"] == "taiwania3"
+
+
+def _ce():
+    return json.loads(N4_CE.read_text(encoding="utf-8"))
+
+
+def _clean(cfg):
+    from abf_platform import compute_envs
+    return compute_envs.clean({"name": "nano4", "platform": "slurm-platform", "config": cfg})
+
+
+def test_n4_16_ce_passes_validation():
+    # N4-16
+    assert isinstance(_ce(), dict)
+    _clean(_ce())
+
+
+def test_n4_17_to_20_ce_fields():
+    # N4-17, N4-18, N4-19, N4-20
+    c = _ce()
+    assert c["headQueue"] == "ngsconsole" and c["headJobOptions"] == "-A mst109178 -c 1 --mem=8G -t 2-00:00:00"
+    assert c["workDir"] == "/work/u9613010/runs" and c["readRoots"] == ["/work/u9613010"]
+    assert c["modules"] == ["biology/Nextflow/26.10.0"]
+    assert c["siteConfigVars"] == ["NFCORE_SITE_CONFIG", "NFCORE_SITE_REFERENCES"]
+    assert c["sitePipelines"] == [{"pipeline": "nf-core/ampliseq", "revision": "2.18.0",
+                                   "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}]
+    lib = "/work/envstack/apps/application/biology/nf-core/singularity-cache"
+    assert c["environment"] == [
+        {"name": "NXF_SINGULARITY_LIBRARYDIR", "value": lib, "head": True, "compute": True},
+        {"name": "NXF_SINGULARITY_CACHEDIR", "value": "/work/u9613010/.singularity", "head": True, "compute": True},
+        {"name": "NXF_OPTS", "value": "-Xms512m -Xmx4g", "head": True, "compute": True}]
+    from abf_platform import compute_envs
+    assert "_comment" not in c and set(c) <= set(compute_envs._SLURM_CONFIG)
+
+
+def test_n4_21_self_installed_nextflow_variant():
+    # N4-21
+    c = _ce()
+    c["modules"] = []
+    c["environment"] += [
+        {"name": "PATH", "value": "/work/u9613010/nextflow/bin:$PATH", "head": True, "compute": True},
+        {"name": "NXF_PLUGINS_DIR", "value": "/work/u9613010/.nextflow/plugins", "head": True, "compute": True}]
+    _clean(c)
+
+
+def test_n4_22_n4_31_ledger_notes():
+    # N4-22, N4-31
+    t = N4_LEDGER.read_text(encoding="utf-8")
+    for s in ("modules", "PATH=/work/u9613010/nextflow/bin:$PATH", "NXF_PLUGINS_DIR=/work/u9613010/.nextflow/plugins",
+              "docs/SETTINGS.md", "不需要 migration"):
+        assert s in t, s
+
+
+def test_n4_23_to_28_fallback_config():
+    # N4-23 ... N4-28
+    t = N4_CONF.read_text(encoding="utf-8")
+    assert re.search(r"executor\s*=\s*'slurm'", t)
+    m = re.search(r"resourceLimits\s*=\s*\[([^\]]*)\]", t)
+    assert m and all(k in m.group(1) for k in ("cpus", "memory", "time"))
+    assert re.search(r"singularity\s*\{[^}]*enabled\s*=\s*true[^}]*autoMounts\s*=\s*true", t, re.S)
+    assert re.search(r"queue\s*=\s*System\.getenv\('SLURM_PARTITION'\)\s*\?:\s*'ngs", t)
+    assert 'clusterOptions = "-A ${SLURM_ACCOUNT}"' in t
+    assert not re.search(r"NCHC_BOXES|nchcBox|maxHours", t)
+
+
+def test_n4_29_ledger_cites_nano4_factors():
+    # N4-29
+    t = LEDGER.read_text(encoding="utf-8")
+    for s in ("ngs*", "big-mem*", "https://iservice.nchc.org.tw/nchc_service/nchc_service_qa.php?target=54",
+              "lions.nchc.org.tw/ngs.jsp", "0.56", "0.08"):
+        assert s in t, s
+
+
+def test_n4_32_t3_untouched():
+    # N4-32
+    d = _real()
+    assert d["default_site"] == "taiwania3"
+    assert (d["nstc_twd_per_su"], d["academic_twd_per_su"], d["industry_twd_per_su"]) == (0.08, 0.08, 0.16)
+    p = d["sites"]["taiwania3"]["partitions"]
+    assert all(p[k]["factor"] == 1 for k in ("ctest", "ct56", "ct224", "ct560", "ct2k", "ct8k")) and p["ct2k-amd"]["factor"] is None
+    n = d["sites"]["nchc"]["partitions"]
+    assert len(n) == 7 and all(v["factor"] is None for v in n.values())
+
+
+def test_n4_35_estimate_su_signature_unchanged():
+    # N4-35
+    import inspect
+    from abf_platform import actions
+    assert list(inspect.signature(actions.estimate_su).parameters) == [
+        "index_path", "run_name", "caller", "platform_path", "site", "rates", "tasks_of"]
+
+
+def test_n4_c1_c4_no_rates_in_code_and_no_credentials():
+    # N4-C1, N4-C4
+    from abf_platform import compute_envs
+    assert not re.search(r"0\.08|0\.24|0\.1\b|0\.2\b|0\.37|ngs\d|big-mem|taiwania|slurm|sbatch|squeue",
+                         SU_PY.read_text(encoding="utf-8"), re.I)
+    assert compute_envs.credential_findings(_ce(), "") == []
+
+
+def test_n4_c5_owner_rule_with_nano4(tmp_path):
+    # N4-C5
+    from abf_platform import actions
+    db, plat = _index(tmp_path, [("run-a", 1, 1_790_000_000)])
+    kw = dict(platform_path=plat, site="nano4", rates=_real(), tasks_of=lambda i, r: [_t("ngs")])
+    mine = actions.estimate_su(db, "run-a", caller=_caller(1), **kw)
+    assert mine["su"] == 10 and "twd" in mine
+    other = actions.estimate_su(db, "run-a", caller=_caller(2), **kw)
+    gone = actions.estimate_su(db, "run-zzz", caller=_caller(2), **kw)
+    assert other["found"] is False and "su" not in other and "twd" not in other
+    assert other["message"].replace("run-a", "X") == gone["message"].replace("run-zzz", "X")
