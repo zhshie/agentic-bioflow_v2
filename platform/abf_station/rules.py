@@ -102,6 +102,17 @@ def clean_environment(ce):
         if not isinstance(roots, list) or len(roots) > 50:
             raise Refusal("readRoots must be a list of paths")
         out["readRoots"] = [clean_root(r, "readRoots") for r in roots]
+    for key in ("modules", "siteConfigVars"):      # names only, never commands; launch.py judges them again when it builds the script
+        v = ce.get(key)
+        if v is not None and (not isinstance(v, list) or len(v) > 100 or not all(isinstance(i, str) for i in v)):
+            raise Refusal("%s must be a list of text" % key)
+        out[key] = list(v or [])
+    sp = ce.get("sitePipelines")
+    if sp is not None and (not isinstance(sp, list) or len(sp) > 100 or not all(
+            isinstance(i, dict) and set(i) == {"pipeline", "revision", "module", "home"}
+            and all(isinstance(x, str) for x in i.values()) for i in sp)):
+        raise Refusal("sitePipelines must be a list of {pipeline, revision, module, home}")
+    out["sitePipelines"] = [dict(i) for i in (sp or [])]
     return out
 
 
