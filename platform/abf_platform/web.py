@@ -68,6 +68,12 @@ _HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Po
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'none'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
             % web_board.style_source()}
+_PLAIN = {      # the labels of the plain block at the top of the confirmation page
+    "zh": {"kind": "種類", "launch": "送出新分析", "resume": "續跑", "relaunch": "重跑", "cancel": "取消", "run": "run 名稱", "pipeline": "管線",
+           "version": "版本", "env": "環境", "samples": "樣本數", "folder": "新資料夾", "full": "完整內容（技術細節）"},
+    "en": {"kind": "Request", "launch": "New analysis", "resume": "Continue the run", "relaunch": "Re-run", "cancel": "Cancel", "run": "Run name",
+           "pipeline": "Pipeline", "version": "Version", "env": "Environment", "samples": "Samples", "folder": "New folder",
+           "full": "Full content (technical)"}}
 HOME = "/"                  # where a login with no (or a refused) `next` goes: a constant, so there is no open redirect
 
 
@@ -279,9 +285,25 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return _page("不是你的申請 (not yours)", "<p class=\"bad\">這個申請不是你送出的，所以這裡不能看也不能按。</p>", 403), None
         return None, req
 
-    def state_page(req, sid, rid):
+    def plain_block(rid, lang):
+        """The few plain words at the top of the page: what kind of request, which run, pipeline, version, environment, samples, new folder.
+        What the action layer does not know is left out, never shown as a dash."""
+        facts = actions.request_facts(platform_path, rid)
+        if not facts:
+            return ""
+        t = _PLAIN[lang]
+        rows = [(t["kind"], t[facts["what"]])]
+        for key, label in (("run_name", "run"), ("pipeline", "pipeline"), ("revision", "version"), ("ce", "env"), ("samples", "samples"),
+                           ("folder", "folder")):
+            if key in facts:
+                rows.append((t[label], facts[key]))
+        return "<dl class=\"fields plain\">%s</dl>" % "".join("<dt>%s</dt><dd>%s</dd>" % (_esc(k), _esc(v)) for k, v in rows)
+
+    def state_page(req, sid, rid, lang="zh"):
         title = "送出確認" if req["kind"] == "launch" else "取消確認"
-        shown = "<pre>%s</pre>" % _esc(req["summary"] or "")
+        shown = "<details><summary>%s</summary><pre>%s</pre></details>" % (_PLAIN[lang]["full"], _esc(req["summary"] or ""))
+        if req["state"] in ("pending", "confirmed"):
+            shown = plain_block(rid, lang) + shown
         if req["state"] == "pending":
             return _page(title, "<p>下面就是會被%s的全部內容。確定了再按「送出」；按了才會排進佇列。</p>%s"
                          "<form method=\"post\" action=\"/c/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
@@ -301,7 +323,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if user is None:
             return _login_form("/c/" + rid)
         answer, req = view_of(rid, user)
-        return answer or state_page(req, sid, rid)
+        return answer or state_page(req, sid, rid, web_board.pick_lang(request.query_params.get("lang")))
 
     async def confirm_post(request):
         if not same_origin(request):

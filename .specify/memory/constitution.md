@@ -225,9 +225,10 @@ plan, and change only by a MAJOR amendment of this constitution.
   (`/speckit-bug-assess` → `/speckit-bug-fix` → `/speckit-bug-test`); the independent reviewer
   (below) reviews the assessment before any fix is made.
 - **Roles.** The development lead talks with the maintainer, writes specs and plans, and
-  dispatches work; it does not write the code. The executor (`.claude/agents/executor.md`)
-  implements one task at a time; the independent reviewer (`.claude/agents/verifier.md`) writes
-  the test cases and judges the result. The maintainer judges outcomes, not code: each spec quotes
+  dispatches work; it does not write the code. The executor implements one task at a time; the
+  independent reviewer writes the test cases and judges the result. Both are generic agents
+  defined in the development lead's workspace and shared by every project; this repository gives
+  them its facts in the root `CLAUDE.md` section "For the executor and verifier". The maintainer judges outcomes, not code: each spec quotes
   his own examples of what he wants, verbatim.
 - **Test cases before code.** For a feature, `test-case.md` and `test-case-overview.md` MUST be
   written by the independent reviewer from the spec, the maintainer's examples and the plan, and
@@ -581,6 +582,32 @@ changes behaviour; every check named here already passes on `v3`.
 **Version.** MAJOR, under Governance: Safety Net rules are redefined (made stricter).
 **Approval.** The maintainer approves and merges the pull request that carries this change.
 
+### 6.0.1 (2026-10-22): the executor and verifier are generic; this repository gives them facts
+
+**Rationale.** The maintainer runs more than one project, and the executor's and verifier's
+rules are the same in all of them; only a project's facts differ. A check on 2026-10-22 also
+found that the executor's stop gate, written as a hook in `.claude/agents/executor.md`, never
+fired: an executor told to stop without recording a green run stopped. The gate now lives where
+it is enforced (a SubagentStop hook in the development lead's workspace, tested to block, and
+the reviewer's gate check at acceptance). The maintainer approved this change, in his words:
+「憲法修正我同意，開 PR 把 Roles 那句改成新位置、刪掉 repo 裡兩個舊的 executor/verifier 檔」.
+
+**What changes.** The Roles rule no longer names `.claude/agents/executor.md` and
+`.claude/agents/verifier.md`; it says the two agents are generic and read this repository's
+facts in the root `CLAUDE.md`. The two files are removed. `tests/dev_workflow_test.sh` checks the
+facts section and that no repo copy is left; the agents' own shape is checked in the workspace.
+The roles, test cases before code, green at every stage and independent acceptance are unchanged.
+
+**Sync Impact Report.** Updated together: `CLAUDE.md` (the roles paragraph and the facts
+section), `tests/dev_workflow_test.sh`, and the tests that pin the version
+(`tests/constitution_scope_test.sh`, `tests/platform_direction_docs_test.sh`).
+
+**Impact on existing deployments.** None. The plugin never shipped or used these agents; they
+serve development only.
+
+**Version.** PATCH, under Governance: wording and file locations change; no rule changes meaning.
+**Approval.** The maintainer approves and merges the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -595,4 +622,4 @@ changes behaviour; every check named here already passes on `v3`.
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 6.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-18
+**Version**: 6.0.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-22

@@ -488,3 +488,122 @@ def test_tc_u2_51_a_failed_unforward_removes_nothing_and_a_good_one_removes_only
     new = site.destructive()[len(before):]
     assert len(new) == 1 and new[0].startswith("rm -f") and new[0].count("_relay/") == 2
     assert site.guards_intact() and (site.storage / "rawdata" / "s1.fq").exists() and (site.storage / "cache").is_dir()
+
+
+# ---- way_back: direct (M1-03) : the progress goes to a public address, no reverse forward ---------------------------------
+
+PUBLIC = "https://abf.example.ts.net"
+
+
+def set_settings(site, *lines):
+    site.settings.write_text(site.settings.read_text() + "\n".join(lines) + "\n")
+
+
+def direct_facts(url=PUBLIC, **over):
+    f = {"reach": "ssh", "platform_local": False, "forward_file": None, "way_back": "direct", "platform_public_url": url}
+    f.update(over)
+    return f
+
+
+def direct_bundle(site, fake, url=PUBLIC, run="run-a", **over):
+    env = [{"name": "NXF_SINGULARITY_CACHEDIR", "value": str(site.storage / "cache"), "head": True, "compute": False}]
+    return bundle_for(site, fake, run=run, ce={"environment": env}, facts=direct_facts(url, **over))
+
+
+def hello_facts(fake):
+    return [r[1]["facts"] for r in fake.requests if r[0] == "hello"][-1]
+
+
+def test_tc001_tc004_tc005_tc006_direct_names_the_public_endpoint_and_needs_no_platform_local(site, fake):
+    b = direct_bundle(site, fake)
+    assert b["tower"] == {"mode": "direct", "endpoint": PUBLIC}
+    for url in ("http://127.0.0.1:8787", "http://localhost:8787"):
+        assert direct_bundle(site, fake, url)["tower"] == {"mode": "direct", "endpoint": url}
+
+
+def test_tc002_tc003_tc007_tc028_tc033_direct_launch_opens_no_forward_and_still_goes_over_ssh(tmp_path, site, fake):
+    set_settings(site, "way_back: direct", "platform_public_url: " + PUBLIC)
+    with agent_on(fake, site, tmp_path, name="agent-f") as a:
+        wait_for(lambda: fake.count("hello"))
+        res = run_job(fake, job_of(direct_bundle(site, fake)))
+        text = a.output()
+    assert res["state"] == "done", res
+    assert site.ssh_calls() and all(c for c in site.ssh_calls())
+    assert not [c for c in site.ssh_calls() if "-O forward" in c or "--forward" in c or "-R " in c]
+    # TC-002: no --check-forward, asserted directly (a plain "-O check" of the ssh master is the reach check and is allowed)
+    assert not [c for c in site.ssh_calls() + site.calls() if "--check-forward" in c or "--unforward" in c]
+    assert not [c for c in site.calls() if c.startswith("curl")], "no probe of the reverse forward or the relay"
+    assert not (personal(site) / "forward_port").exists()
+    assert not (site.storage / "_relay" / "forward_port").exists()
+    assert [c for c in site.calls() if c.startswith("sbatch")]
+    assert hello_facts(fake)["reach"] == "ssh"
+    assert TOKEN not in text and not any(TOKEN in c for c in site.ssh_calls())
+    assert TOKEN not in str(hello_facts(fake))
+
+
+@pytest.mark.parametrize("url", ["http://abf.example.ts.net", "http://192.168.1.5:8787", "http://localhost.example.com:8787", "ftp://abf.example.ts.net", None])
+def test_tc008_tc009_tc010_tc011_tc012_direct_over_plain_http_is_refused_before_the_site_is_touched(tmp_path, site, fake, url):
+    from abf_station.launch import BundleError
+    with pytest.raises(BundleError) as e:
+        direct_bundle(site, fake, url)
+    msg = str(e.value)
+    assert "https" in msg and "loopback" in msg and "Traceback" not in msg and str(site.settings) not in msg
+    assert site.calls() == [] and site.ssh_calls() == []
+
+
+def test_tc013_tc014_tc015_tc018_forward_stays_the_default_and_the_public_address_is_ignored(site, fake):
+    forward = str(site.storage / "_relay" / "forward_port")
+    base = {"reach": "ssh", "platform_local": True, "forward_file": forward}
+    for extra in ({}, {"way_back": "forward"}, {"platform_public_url": PUBLIC}, {"way_back": None, "platform_public_url": PUBLIC}):
+        b = bundle_for(site, fake, facts=dict(base, **extra))
+        assert b["tower"] == {"mode": "forward", "forward_file": forward}
+
+
+def test_tc031_a_direct_launch_without_confirmation_is_refused(tmp_path, site, fake):
+    b = direct_bundle(site, fake)
+    good = job_of(b)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        wait_for(lambda: fake.count("hello"))
+        res = run_job(fake, dict(good, args={"bundle": b, "bundle_sha256": good["args"]["bundle_sha256"]}))
+    assert res["state"] == "refused", res
+    assert not (site.work / "runs").exists() and not [c for c in site.calls() if c.startswith("sbatch")]
+
+
+def test_tc032_the_public_address_is_part_of_what_was_confirmed(tmp_path, site, fake):
+    from abf_platform import common
+    a = direct_bundle(site, fake, "https://a.example.ts.net")
+    b = direct_bundle(site, fake, "https://b.example.ts.net")
+    assert common.bundle_sha256(a) != common.bundle_sha256(b)
+    swapped = dict(job_of(a), args={"bundle": b, "confirmation_id": "c" * 32, "bundle_sha256": common.bundle_sha256(a)})
+    swapped["confirmation"] = {"id": "c" * 32, "sha256": common.bundle_sha256(a), "kind": "launch"}
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        wait_for(lambda: fake.count("hello"))
+        res = run_job(fake, swapped)
+    assert res["state"] == "refused", res
+
+
+def test_tc020_tc021_tc028_the_agent_reports_both_settings_and_keeps_reach(tmp_path, site, fake):
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        wait_for(lambda: fake.count("hello"))
+    f = hello_facts(fake)
+    assert f["way_back"] == "forward" and f["platform_public_url"] is None and f["reach"] == "ssh"
+
+
+def test_tc020_a_configured_direct_is_reported(tmp_path, site, fake):
+    set_settings(site, "way_back: direct", "platform_public_url: " + PUBLIC)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        wait_for(lambda: fake.count("hello"))
+    f = hello_facts(fake)
+    assert f["way_back"] == "direct" and f["platform_public_url"] == PUBLIC and f["reach"] == "ssh"
+
+
+def test_tc022_tc023_clean_facts_keeps_only_the_literals_and_https_addresses():
+    from abf_platform import common
+    for ok in ("forward", "direct"):
+        assert common.clean_facts({"way_back": ok})["way_back"] == ok
+    for bad in ("sideways", ["direct"], 5, None):
+        assert common.clean_facts({"way_back": bad})["way_back"] is None
+    assert common.clean_facts({"platform_public_url": PUBLIC})["platform_public_url"] == PUBLIC
+    for bad in (5, ["https://x"], "javascript:alert(1)", "ftp://abf.example.ts.net", "http://abf.example.ts.net", "http://localhost.example.com"):
+        assert common.clean_facts({"platform_public_url": bad})["platform_public_url"] is None
+    assert common.clean_facts({"evil": "x"}).get("evil") is None

@@ -133,7 +133,7 @@ STYLE = (
     ".acts form,form.act{margin:0;display:inline}"
     ".sq{display:inline-block;width:8px;height:8px;background:var(--c);flex:none;align-self:center}"
     ".chip{display:inline-flex;gap:4px;align-items:center;font-weight:600;color:var(--c)}"
-    "pre{font-family:" + MONO + ";font-size:13px;background:var(--sunken);border-radius:4px;padding:12px;overflow-x:auto;white-space:pre-wrap;margin:0}"
+    "pre{font-family:" + MONO + ";font-size:13px;background:var(--sunken);border-radius:4px;padding:12px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}"
     "code{font-family:" + MONO + "}small{font-size:12px;color:var(--muted)}"
     ".bad{color:var(--failed)}.ok{color:var(--succeeded)}"
     ".narrow{max-width:640px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px}"

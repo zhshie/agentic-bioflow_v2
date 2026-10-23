@@ -298,6 +298,33 @@ choice; local is the default, and is small - a normalised count matrix is
 about 973 KB, a whole delivery directory about 25 MB - so "the site, because
 it might be large" is rarely the right call).
 
+## Keys for the nano4 site
+
+Three site keys and three compute-environment keys. A user setting a deployment up for NCHC
+nano4 (see `SITE_ADAPTER.md`) writes these; every other deployment leaves them out.
+
+| Key | Type / values | Default | What it is for | Example |
+|---|---|---|---|---|
+| `way_back` | `forward` or `direct` | `forward` when `reach` is `ssh` | How a run's progress reports reach Platform. `forward` carries them back over the ssh connection. `direct` has the compute node call Platform's public address, so it needs `platform_public_url` | `way_back: direct` |
+| `platform_public_url` | https URL | none | The address a compute node can reach Platform at when `way_back` is `direct`. It must be https; a loopback address (127.0.0.1, localhost) is the one exception and is for tests only | `platform_public_url: https://abf.example.org` |
+| `site_profile` | `taiwania3` or `nano4` | none | Lets documents and defaults tell the two sites apart. **Reserved:** no code reads it today, so setting it changes nothing yet | `site_profile: nano4` |
+
+`way_back` defaults to `forward` when `reach` is `ssh`; set `direct` only together with `platform_public_url`.
+
+A consistent nano4 example, taken together:
+
+```yaml
+reach: ssh
+way_back: direct
+platform_public_url: https://abf.example.org
+site_profile: nano4
+```
+
+The compute environment (CE) keys are `modules` (environment modules the CE loads before the
+pipeline), `siteConfigVars` (site variables the CE's config text refers to) and `sitePipelines`
+(pipelines the site already holds locally, by name and path). A worked example is
+`configs/sites/nchc-nano4-ce.json`.
+
 ## Keys this version does not read
 
 `nextflow_path`, `hpc_profile`, `driver_queue`. They belong to v1, which is

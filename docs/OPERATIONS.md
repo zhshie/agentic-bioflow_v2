@@ -92,6 +92,18 @@ All of these run as the operator on the platform host.
 | `abf-platform rebuild` | Drop the index and build it again from Nextflow's records. |
 | `abf-platform runs assign` | Give a run that nobody owns to a user (`--user`; changing an existing owner needs `--force`). |
 
+### Public URL (progress reports)
+
+When `way_back` is `direct` (see SETTINGS.md), a compute node posts its progress straight to
+Platform, so Platform needs an address the cluster can reach. That address must be https: the
+reports carry the run's token, and a plain http address would send it in the clear.
+Tailscale Funnel is one way to publish such an address; any host name with a certificate in front
+of Platform works too. The steps for Funnel are in the maintainer's own notes and are not
+repeated here.
+
+To check it from the site, run `curl -i https://<public>/user-info` there. A working address answers
+401 (no token was sent) and the response carries the `X-ABF-Platform` header.
+
 ## 6. Not built yet
 
 - The Tailscale Funnel and proxy configuration for the one host name (section 2). Nothing in

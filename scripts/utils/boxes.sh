@@ -1,3 +1,4 @@
+# Taiwania-3 only (v2); nano4 uses $NFCORE_SITE_CONFIG — see docs/SITE_ADAPTER.md
 # The partition box table, read from the one place it is written down.
 #
 # Nothing existing: this parses NCHC_BOXES, a literal specific to this site's
