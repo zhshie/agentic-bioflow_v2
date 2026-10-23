@@ -99,12 +99,16 @@ def _add_write_tools(server, platform_path, index_path):
                              "samples, where it runs, where the results go). The person says yes in their own client's form or on "
                              "a page whose address this returns; you cannot say it for them. When the answer says sent is false, "
                              "tell the person what to do and, after they have pressed send, call launch again with the same arguments "
-                             "to get the job number. samplesheet is the path of a CSV file; params is a flat mapping of pipeline "
-                             "parameters.")
-    async def launch_tool(ctx: Context, pipeline: str, revision: str, run_name: str, samplesheet: str, ce_name: str | None = None,
+                             "to get the job number. Give the samplesheet in exactly one of two ways: samplesheet is the path of a CSV "
+                             "file you uploaded to your own folder on this platform, or samplesheet_text is the CSV itself (at most "
+                             "1 MiB), which writes no file. A path cell in the CSV may name a file on the site if the environment may "
+                             "read it; params is a flat mapping of pipeline parameters.")
+    async def launch_tool(ctx: Context, pipeline: str, revision: str, run_name: str, samplesheet: str | None = None,
+                          samplesheet_text: str | None = None, ce_name: str | None = None,
                           params: dict[str, Any] | None = None, path_columns: list[str] | None = None) -> dict:
         return await actions.request_launch(platform_path, pipeline=pipeline, revision=revision, run_name=run_name,
-                                            samplesheet=samplesheet, ce_name=ce_name, params=params, path_columns=path_columns,
+                                            samplesheet=samplesheet, samplesheet_text=samplesheet_text, ce_name=ce_name, params=params,
+                                            path_columns=path_columns,
                                             caller=_caller(ctx), person=actions.person_at(ctx),
                                             remote=_remote(ctx))
 

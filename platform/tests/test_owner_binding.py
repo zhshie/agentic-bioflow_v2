@@ -595,11 +595,11 @@ def test_tc048_the_docs_say_the_honest_boundary():
 
 # ---- US4: files stay in my own folder -----------------------------------------------------------------------------------
 
-def test_tc049_a_cell_inside_the_read_roots_but_outside_my_folder_is_refused(d):
-    # TC-049
+def test_tc049_a_cell_inside_the_read_roots_but_outside_my_folder_passes(d):
+    # TC-049, rewritten by http-launch-site-samplesheet (maintainer ruling 2026-10-23): a cell inside the read roots and outside every upload
+    # folder is the environment's business, so it passes; the old test expected a refusal naming the caller's folder.
     out = d.launch(d.a, cells=["%s/x.fq" % SHARED, "%s/y.fq" % SHARED])
-    assert out["ok"] is False and out["sent"] is False and os.path.realpath(d.area(d.a)) in out["message"]
-    assert counts(d) == (0, 0, 0)
+    assert out["ok"] is True and out["state"] == "pending" and out["sent"] is False
 
 
 def test_tc050_a_cell_inside_my_folder_passes(d):
