@@ -99,12 +99,16 @@ def _add_write_tools(server, platform_path, index_path):
                              "samples, where it runs, where the results go). The person says yes in their own client's form or on "
                              "a page whose address this returns; you cannot say it for them. When the answer says sent is false, "
                              "tell the person what to do and, after they have pressed send, call launch again with the same arguments "
-                             "to get the job number. samplesheet is the path of a CSV file; params is a flat mapping of pipeline "
-                             "parameters.")
-    async def launch_tool(ctx: Context, pipeline: str, revision: str, run_name: str, samplesheet: str, ce_name: str | None = None,
+                             "to get the job number. Give the samplesheet in exactly one of two ways: samplesheet is the path of a CSV "
+                             "file you uploaded to your own folder on this platform, or samplesheet_text is the CSV itself (at most "
+                             "1 MiB), which writes no file. A path cell in the CSV may name a file on the site if the environment may "
+                             "read it; params is a flat mapping of pipeline parameters.")
+    async def launch_tool(ctx: Context, pipeline: str, revision: str, run_name: str, samplesheet: str | None = None,
+                          samplesheet_text: str | None = None, ce_name: str | None = None,
                           params: dict[str, Any] | None = None, path_columns: list[str] | None = None) -> dict:
         return await actions.request_launch(platform_path, pipeline=pipeline, revision=revision, run_name=run_name,
-                                            samplesheet=samplesheet, ce_name=ce_name, params=params, path_columns=path_columns,
+                                            samplesheet=samplesheet, samplesheet_text=samplesheet_text, ce_name=ce_name, params=params,
+                                            path_columns=path_columns,
                                             caller=_caller(ctx), person=actions.person_at(ctx),
                                             remote=_remote(ctx))
 
@@ -199,10 +203,30 @@ def _remote(ctx):
     return http_auth.current_remote()
 
 
+def _transport_security(public_url):
+    """The DNS-rebinding guard the mcp library would switch on for a loopback host, plus the public address when there is one
+    (otherwise a tunnel's host name is refused with 421). None without `public_url`: the library's own default stays."""
+    if not public_url:
+        return None
+    from urllib.parse import urlsplit
+
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    u = urlsplit(public_url)
+    hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+    if u.hostname:
+        netloc = u.netloc.rpartition("@")[2]
+        hosts += [u.hostname if ":" not in u.hostname else "[%s]" % u.hostname, netloc]
+        origins.append("%s://%s" % (u.scheme, netloc))
+    return TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=list(dict.fromkeys(hosts)),
+                                     allowed_origins=origins)
+
+
 def build_http_app(index_path, tokens_path=None, host="127.0.0.1", public_url=None):
     """The server's Streamable HTTP app behind the bearer check: no valid personal access token or OAuth access token, no answer.
     `public_url` is the address people reach this server at; with it the 401 points a connector to the resource metadata (009i)."""
-    app = build_server(index_path).streamable_http_app(host=host)
+    app = build_server(index_path).streamable_http_app(host=host, transport_security=_transport_security(public_url))
     return http_auth.BearerAuth(app, http_auth.tokens_path_for(index_path, tokens_path),
                                 platform_path=actions.platform_path_for(index_path), public_url=public_url)
 

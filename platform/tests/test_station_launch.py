@@ -712,8 +712,8 @@ def test_tc_ls_42_a_run_started_before_the_site_keys_existed_still_resumes_from_
 
 
 def test_tc_ls_52_the_launch_tool_and_the_tool_list_are_those_of_the_base(tmp_path, monkeypatch):
-    # TC-LS-52: no tool appears or goes, and launch takes the same arguments as before (pipeline, revision, run_name, samplesheet are
-    # required; ce_name, params, path_columns are not)
+    # TC-LS-52, rewritten by http-launch-site-samplesheet (maintainer ruling 2026-10-23, TC-036): no tool appears or goes, and launch takes the
+    # arguments of before plus the optional samplesheet_text; samplesheet becomes optional too (exactly one of the two is given)
     import asyncio
     from mcp import Client
     from abf_platform import mcp_server
@@ -728,8 +728,9 @@ def test_tc_ls_52_the_launch_tool_and_the_tool_list_are_those_of_the_base(tmp_pa
     assert set(tools) == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
                           "read_task_log", "launch", "cancel", "forget", "resume", "relaunch"}
     schema = tools["launch"].input_schema
-    assert set(schema["properties"]) == {"pipeline", "revision", "run_name", "samplesheet", "ce_name", "params", "path_columns"}
-    assert sorted(schema["required"]) == ["pipeline", "revision", "run_name", "samplesheet"]
+    assert set(schema["properties"]) == {"pipeline", "revision", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "path_columns"}
+    assert sorted(schema["required"]) == ["pipeline", "revision", "run_name"]
+    assert schema["properties"]["samplesheet"].get("default") is None and schema["properties"]["samplesheet_text"].get("default") is None
 
 
 def test_tc_ls_53_the_run_token_is_in_no_bundle_no_script_no_refusal_and_no_log(tmp_path, site, fake):
