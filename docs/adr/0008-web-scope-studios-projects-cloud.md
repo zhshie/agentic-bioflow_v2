@@ -1,6 +1,7 @@
 # The web pages after the Seqera page map: Studios, Projects and cloud compute environments
 
 > Point 1 (the page skeleton) is replaced by ADR 0009 (2026-10-17): three panes around a project's analyses.
+> Note (2026-10-21, `docs/ROADMAP.md`): cloud compute environments open in the order Google Batch, AWS Batch, Azure/Kubernetes; NCHC's nano4 is the main site; Taiwania 3 takes bug fixes only, until 2027. Nothing in the decision below is withdrawn.
 
 Decided by the maintainer on 2026-10-17, after reading the page-by-page list of what a Seqera
 Platform user sees (compiled for reference only; ADR 0004's terms note stands: no Seqera code or

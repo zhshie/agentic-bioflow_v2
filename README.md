@@ -1,4 +1,8 @@
-# agentic-bioflow v2
+# agentic-bioflow
+
+Run nf-core pipelines on your own HPC account or cloud, from Claude Desktop or a web page, through a platform you host yourself. Nothing goes through Seqera. The first site is NCHC's nano4; Google Batch, AWS Batch and Azure/Kubernetes follow. This is the `v3` branch.
+
+**v2 (the `main` branch)** is the Claude Code plugin that runs pipelines through Seqera Platform. It takes bug fixes until 2027. The rest of this file describes v2 until v3.0.0 is released.
 
 Run Nextflow/nf-core pipelines through **Seqera Platform**, from Claude Code.
 
