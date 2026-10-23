@@ -883,3 +883,459 @@ def test_tc070_the_agent_leaves_no_file_behind_and_does_not_read_the_private_key
     assert sorted(p.name for p in site.tmpdir.iterdir()) == []
     assert sorted(str(p.relative_to(site.home)) for p in site.home.rglob("*")) == [".ssh", ".ssh/id_test"]
     assert os.stat(site.key).st_atime_ns == site.key_atime, "the private key was read"
+
+
+# ---------------------------------------------------------------------------------------
+# preflight-nano4 (M1-04): module load first, the site's own pipeline version, the read-only image library.
+# These run the real handlers.preflight in this process against a FakeSite; no real site is ever reached.
+# ---------------------------------------------------------------------------------------
+
+AMPLI = {"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biology/nf-core-ampliseq/2.18.0",
+         "home": "NFCORE_AMPLISEQ_HOME"}
+RNASEQ = {"pipeline": "nf-core/rnaseq", "revision": "3.14.0", "module": "biology/nf-core-rnaseq/3.14.0", "home": "NFCORE_RNASEQ_HOME"}
+NF_MODULE = "biology/Nextflow/26.10.0"
+NANO4_ORDER = ["connect", "work_dir", "sbatch", "squeue", "sinfo", "modules", "java", "nextflow", "head_queue", "site_pipeline",
+               "image_library"]
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+SECRETS = ["CANARY_agent_connection_91ab", "CANARY_tw_token_77cd", "CANARYKEY_5c1e8b"]
+
+
+class PF:
+    """One FakeSite, the real handlers.preflight, and a record of every command sent to the site.
+    down_when: the first command that contains this text finds the shared connection gone."""
+
+    def __init__(self, tmp, monkeypatch, reach="local", down_when=None):
+        from abf_station.agent import Context
+        from abf_station.site import Site
+        self.fake = FakeSite(tmp, reach=reach)
+        self.lib = self.fake.tmp / "imglib"
+        self.lib.mkdir()
+        for k, v in self.fake.agent_env().items():
+            monkeypatch.setenv(k, v)
+        outer = self
+
+        class Rec(Site):
+            def call(self, args, **kw):
+                text = " ".join(args)
+                outer.commands.append(text)
+                if down_when and down_when in text and not outer.dropped:
+                    outer.dropped = True
+                    outer.fake.set("ssh_down", "1")
+                return super().call(args, **kw)
+        self.commands, self.dropped = [], False
+        self.site = Rec(REPO_ROOT, self.fake.settings, log=lambda *_: None)
+        self.ctx = Context(self.site, self.fake.settings, "", "agent-t")
+
+    def ce(self, **over):
+        from station_harness import ce_snapshot
+        return ce_snapshot(self.fake, **over)
+
+    def nano4(self, **over):
+        ce = dict(modules=[NF_MODULE], sitePipelines=[dict(AMPLI)], singularityLibraryDir=str(self.lib))
+        ce.update(over)
+        return ce
+
+    def run(self, **over):
+        """(state, result) of a preflight job, as handlers.handle answers it."""
+        from abf_station import handlers
+        self.commands.clear()
+        return handlers.handle({"kind": "preflight", "args": {"ce": self.ce(**over)}}, self.ctx)
+
+    def result(self, **over):
+        state, result = self.run(**over)
+        assert state == "done", (state, result)
+        return result
+
+
+@pytest.fixture
+def pf(tmp_path, monkeypatch):
+    return PF(tmp_path / "pf", monkeypatch)
+
+
+def names_of(result):
+    return [c["name"] for c in result["checks"]]
+
+
+def check(result, name):
+    return next(c for c in result["checks"] if c["name"] == name)
+
+
+def test_pf_modules_loaded_before_java_and_nextflow(pf):
+    # TC-PF-01, TC-PF-02
+    pf.fake.allow_modules(NF_MODULE)
+    r = pf.result(modules=[NF_MODULE])
+    c = check(r, "modules")
+    assert c["status"] == "pass" and c["detail"] == "loaded: " + NF_MODULE
+    assert check(r, "java")["status"] == "pass" and check(r, "nextflow")["status"] == "pass"
+    assert [x for x in pf.commands if "java -version" in x] == ["module load %s && java -version" % NF_MODULE]
+    assert [x for x in pf.commands if "nextflow -version" in x] == ["module load %s && nextflow -version" % NF_MODULE]
+    assert "module load " + NF_MODULE in pf.fake.calls()
+
+
+def test_pf_two_modules_chain_in_order(pf):
+    # TC-PF-03
+    pf.fake.allow_modules("m/one", "m/two")
+    r = pf.result(modules=["m/one", "m/two"])
+    assert check(r, "modules")["detail"] == "loaded: m/one, m/two"
+    assert "module load m/one && module load m/two" in pf.commands
+    assert [x for x in pf.commands if "java -version" in x] == ["module load m/one && module load m/two && java -version"]
+
+
+def test_pf_empty_modules_means_no_module_load(pf):
+    # TC-PF-04
+    r = pf.result(modules=[])
+    assert "modules" not in names_of(r)
+    assert not [x for x in pf.fake.calls() if x.startswith("module")]
+    assert not [x for x in pf.commands if "module" in x]
+    assert "java -version" in pf.commands and "nextflow -version" in pf.commands
+
+
+def test_pf_order_with_modules(pf):
+    # TC-PF-05
+    r = pf.result(modules=[NF_MODULE])
+    assert names_of(r) == ["connect", "work_dir", "sbatch", "squeue", "sinfo", "modules", "java", "nextflow", "head_queue"]
+
+
+def test_pf_missing_module_is_named_with_the_next_step(pf):
+    # TC-PF-06, TC-PF-54
+    pf.fake.allow_modules("something/else")
+    r = pf.result(modules=[NF_MODULE])
+    c = check(r, "modules")
+    assert c["status"] == "fail" and r["ok"] is False
+    assert NF_MODULE in c["detail"] and "self-installed Nextflow" in c["detail"]
+    assert "載入不了模組 %s：請檢查計算環境的 modules，或清空它改用自裝 Nextflow" % NF_MODULE in c["detail"]
+
+
+def test_pf_first_failing_module_is_the_one_named(pf):
+    # TC-PF-07
+    pf.fake.allow_modules("m/ok")
+    c = check(pf.result(modules=["m/ok", "m/bad1", "m/bad2"]), "modules")
+    assert c["status"] == "fail" and "m/bad1" in c["detail"] and "m/bad2" not in c["detail"]
+
+
+def test_pf_failed_modules_still_probes_java_and_nextflow(pf):
+    # TC-PF-08
+    pf.fake.allow_modules("something/else")
+    r = pf.result(modules=[NF_MODULE])
+    assert {"java", "nextflow"} <= set(names_of(r))
+    assert check(r, "java")["status"] == "fail" and check(r, "nextflow")["status"] == "fail"
+    assert check(r, "connect")["status"] == "pass"
+    assert any(x.startswith("module load %s && java" % NF_MODULE) for x in pf.commands)
+    assert any(x.startswith("module load %s && nextflow" % NF_MODULE) for x in pf.commands)
+
+
+def test_pf_module_with_shell_characters_is_refused(pf):
+    # TC-PF-09
+    state, result = pf.run(modules=["a;b"])
+    assert state == "refused" and "modules" in result["message"]
+    assert pf.commands == [] and not [x for x in pf.fake.calls() if "a;b" in x]
+
+
+@pytest.mark.parametrize("bad,word", [({"module": "x y"}, "module"), ({"home": "lower_case"}, "home")])
+def test_pf_bad_site_pipeline_module_or_home_is_refused(pf, bad, word):
+    # TC-PF-10
+    state, result = pf.run(sitePipelines=[dict(AMPLI, **bad)])
+    assert state == "refused" and "sitePipelines" in result["message"] and word in result["message"]
+    assert pf.commands == [] and pf.fake.calls() == []
+
+
+def one_pipeline(pf, version="2.18.0", revision="2.18.0", entry=None, **kw):
+    pf.fake.make_site_pipeline("NFCORE_AMPLISEQ_HOME", version, **kw)
+    return pf.result(sitePipelines=[dict(entry or AMPLI, revision=revision)])
+
+
+def test_pf_site_pipeline_version_matches(pf):
+    # TC-PF-11
+    c = check(one_pipeline(pf), "site_pipeline")
+    assert c["status"] == "pass" and "nf-core/ampliseq 2.18.0" in c["detail"]
+
+
+def test_pf_site_pipeline_v_prefix_is_ignored(pf):
+    # TC-PF-12
+    assert check(one_pipeline(pf, version="2.18.0", revision="v2.18.0"), "site_pipeline")["status"] == "pass"
+    assert check(one_pipeline(pf, version="v2.18.0", revision="2.18.0"), "site_pipeline")["status"] == "pass"
+
+
+def test_pf_site_pipeline_commit_revision_not_compared(pf):
+    # TC-PF-13
+    c = check(one_pipeline(pf, version="9.9.9", revision=COMMIT), "site_pipeline")
+    assert c["status"] == "pass" and "commit revision, version not compared" in c["detail"]
+
+
+def test_pf_version_comes_only_from_the_manifest_block(pf):
+    # TC-PF-14
+    cfg = "params {\n  version = '9.9'\n}\nmanifest {\n  version = '2.18.0'\n}\n"
+    assert check(one_pipeline(pf, config=cfg), "site_pipeline")["status"] == "pass"
+
+
+def test_pf_version_key_must_be_exactly_version(pf):
+    # TC-PF-15
+    cfg = "manifest { nextflowVersion = '!>=24.04.2'  version = \"2.18.0\" }\n"
+    assert check(one_pipeline(pf, config=cfg), "site_pipeline")["status"] == "pass"
+    cfg = "manifest { nextflowVersion = '2.18.0' }\n"
+    assert check(one_pipeline(pf, config=cfg), "site_pipeline")["status"] == "fail"
+
+
+def test_pf_site_pipeline_one_result_for_all_entries(pf):
+    # TC-PF-16
+    r = pf.result(sitePipelines=[dict(AMPLI), dict(RNASEQ)])
+    assert names_of(r).count("site_pipeline") == 1
+    c = check(r, "site_pipeline")
+    assert c["status"] == "pass" and "nf-core/ampliseq 2.18.0" in c["detail"] and "nf-core/rnaseq 3.14.0" in c["detail"]
+
+
+def test_pf_no_site_pipelines_means_no_site_pipeline_check(pf):
+    # TC-PF-17
+    r = pf.result(sitePipelines=[])
+    assert "site_pipeline" not in names_of(r)
+    assert not [x for x in pf.commands if "main.nf" in x or "nextflow.config" in x]
+
+
+def test_pf_site_pipeline_mismatch_names_both_versions(pf):
+    # TC-PF-18, TC-PF-54
+    c = check(one_pipeline(pf, version="2.17.0"), "site_pipeline")
+    assert c["status"] == "fail"
+    assert "nf-core/ampliseq: the site has 2.17.0, the environment says 2.18.0" in c["detail"]
+    assert "站台裝的是 2.17.0，設定說 2.18.0" in c["detail"]
+
+
+def test_pf_site_pipeline_missing_main_nf(pf):
+    # TC-PF-19, TC-PF-54
+    c = check(one_pipeline(pf, main=False), "site_pipeline")
+    assert c["status"] == "fail"
+    assert "nf-core/ampliseq 2.18.0: not installed where the module says" in c["detail"] and "站台找不到這個版本" in c["detail"]
+
+
+def test_pf_site_pipeline_module_load_failure(pf):
+    # TC-PF-20
+    pf.fake.allow_modules(NF_MODULE)
+    c = check(pf.result(sitePipelines=[dict(AMPLI)]), "site_pipeline")
+    assert c["status"] == "fail" and "not installed where the module says" in c["detail"] and "站台找不到這個版本" in c["detail"]
+
+
+def test_pf_site_variable_not_set_is_told_apart_from_not_installed(pf):
+    # TC-PF-21, TC-PF-54
+    entry = dict(AMPLI, home="NFCORE_NOT_SET_ANYWHERE_HOME")
+    c = check(pf.result(sitePipelines=[entry]), "site_pipeline")
+    assert c["status"] == "fail"
+    assert "the site variable NFCORE_NOT_SET_ANYWHERE_HOME is not set" in c["detail"]
+    assert "站台沒有設定 NFCORE_NOT_SET_ANYWHERE_HOME" in c["detail"] and "not installed" not in c["detail"]
+
+
+def test_pf_no_manifest_block_cannot_read_version(pf):
+    # TC-PF-22, TC-PF-54
+    c = check(one_pipeline(pf, config="params {\n  version = '9.9'\n}\n"), "site_pipeline")
+    assert c["status"] == "fail" and "cannot read the pipeline version" in c["detail"] and "讀不出版本" in c["detail"]
+    assert "9.9" not in c["detail"]
+
+
+def test_pf_commit_revision_still_needs_main_nf(pf):
+    # TC-PF-23
+    c = check(one_pipeline(pf, revision=COMMIT, main=False), "site_pipeline")
+    assert c["status"] == "fail" and "not installed where the module says" in c["detail"]
+
+
+def test_pf_one_bad_entry_fails_the_single_site_pipeline_result(pf):
+    # TC-PF-24
+    pf.fake.make_site_pipeline("NFCORE_RNASEQ_HOME", "3.13.0")
+    r = pf.result(sitePipelines=[dict(AMPLI), dict(RNASEQ)])
+    assert names_of(r).count("site_pipeline") == 1 and r["ok"] is False
+    c = check(r, "site_pipeline")
+    assert c["status"] == "fail" and "nf-core/rnaseq" in c["detail"] and "3.13.0" in c["detail"] and "3.14.0" in c["detail"]
+
+
+def test_pf_image_library_readable(pf):
+    # TC-PF-27
+    r = pf.result(singularityLibraryDir=str(pf.lib))
+    assert check(r, "image_library")["status"] == "pass"
+    assert 'test -r "%s" && test -x "%s"' % (pf.lib, pf.lib) in pf.commands
+
+
+def test_pf_image_library_need_not_be_inside_read_roots(pf):
+    # TC-PF-28
+    r = pf.result(singularityLibraryDir=str(pf.lib), readRoots=[str(pf.fake.storage)])
+    assert check(r, "image_library")["status"] == "pass"
+
+
+def test_pf_no_library_dir_means_no_image_library_check(pf):
+    # TC-PF-29
+    r = pf.result(singularityLibraryDir=None)
+    assert "image_library" not in names_of(r)
+    assert not [x for x in pf.commands if "test -r" in x]
+
+
+def test_pf_image_library_unreadable_names_the_dir(pf):
+    # TC-PF-30, TC-PF-54
+    gone = str(pf.fake.tmp / "no-such-lib")
+    c = check(pf.result(singularityLibraryDir=gone), "image_library")
+    assert c["status"] == "fail" and "the read-only image library %s cannot be read" % gone in c["detail"]
+    assert "唯讀映像庫讀不到" in c["detail"]
+
+
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root can enter any folder")
+def test_pf_image_library_without_execute_permission_fails(pf):
+    # TC-PF-31
+    pf.lib.chmod(0o444)
+    try:
+        c = check(pf.result(singularityLibraryDir=str(pf.lib)), "image_library")
+    finally:
+        pf.lib.chmod(0o755)
+    assert c["status"] == "fail" and "cannot be read" in c["detail"]
+
+
+@pytest.mark.parametrize("bad", ["img/lib", "/", "/a/../b"])
+def test_pf_unsafe_library_dir_is_refused(pf, bad):
+    # TC-PF-32
+    state, result = pf.run(singularityLibraryDir=bad)
+    assert state == "refused" and "singularityLibraryDir" in result["message"]
+    assert pf.commands == [] and pf.fake.calls() == []
+
+
+def test_pf_nano4_environment_reports_eleven_checks_in_order(pf):
+    # TC-PF-33
+    pf.fake.allow_modules(NF_MODULE, AMPLI["module"])
+    r = pf.result(**pf.nano4())
+    assert names_of(r) == NANO4_ORDER
+    assert {c["status"] for c in r["checks"]} == {"pass"} and r["ok"] is True and r["message"] == "all 11 checks passed"
+
+
+def test_pf_old_environment_unchanged(pf):
+    # TC-PF-34
+    from abf_station import handlers
+    r = pf.result()
+    assert set(names_of(r)) == CHECKS and names_of(r) == list(handlers.CHECK_ORDER)
+    assert {c["status"] for c in r["checks"]} == {"pass"}
+    work = str(pf.fake.work)
+    assert pf.commands == [
+        "--check-reach",
+        "if test -d %s; then echo work_dir=dir; else echo work_dir=missing; fi; "
+        "if test -w %s; then echo work_dir_writable=yes; else echo work_dir_writable=no; fi; "
+        "if command -v sbatch >/dev/null 2>&1; then echo has_sbatch=yes; else echo has_sbatch=no; fi; "
+        "if command -v squeue >/dev/null 2>&1; then echo has_squeue=yes; else echo has_squeue=no; fi; "
+        "if command -v sinfo >/dev/null 2>&1; then echo has_sinfo=yes; else echo has_sinfo=no; fi" % (work, work),
+        "java -version", "nextflow -version", "sinfo -h -o %P"]
+
+
+def test_pf_failed_conditional_check_fails_the_verdict(pf):
+    # TC-PF-36
+    pf.fake.allow_modules(NF_MODULE, AMPLI["module"])
+    r = pf.result(**pf.nano4(singularityLibraryDir=str(pf.fake.tmp / "no-such-lib")))
+    assert r["ok"] is False and r["message"] == "not passed: image_library"
+
+
+@pytest.mark.parametrize("when", ["module load", "main.nf", "test -x \""])
+def test_pf_connection_lost_during_module_probe(tmp_path, monkeypatch, when):
+    # TC-PF-38 (module), TC-PF-39 (site_pipeline), TC-PF-40 (image_library)
+    p = PF(tmp_path / "pf", monkeypatch, reach="ssh", down_when=when)
+    r = p.result(**p.nano4())
+    assert p.dropped
+    assert names_of(r) == NANO4_ORDER
+    assert [c["status"] for c in r["checks"]] == ["fail"] + ["unchecked"] * 10
+
+
+def test_pf_unreachable_site_lists_applicable_conditional_checks_unchecked(tmp_path, monkeypatch):
+    # TC-PF-41
+    p = PF(tmp_path / "pf", monkeypatch, reach="ssh")
+    p.fake.set("ssh_down", "1")
+    r = p.result(**p.nano4())
+    assert names_of(r) == NANO4_ORDER and [c["status"] for c in r["checks"]] == ["fail"] + ["unchecked"] * 10
+
+
+def test_pf_connection_lost_old_environment_has_only_eight_names(tmp_path, monkeypatch):
+    # TC-PF-42
+    p = PF(tmp_path / "pf", monkeypatch, reach="ssh")
+    p.fake.set("ssh_down", "1")
+    r = p.result()
+    assert set(names_of(r)) == CHECKS and [c["status"] for c in r["checks"]] == ["fail"] + ["unchecked"] * 7
+
+
+def test_pf_check_order_and_verdict_rule_unchanged():
+    # TC-PF-47
+    from abf_station import handlers
+    assert handlers.CHECK_ORDER == ("connect", "work_dir", "sbatch", "squeue", "sinfo", "java", "nextflow", "head_queue")
+    assert handlers._verdict([{"name": "x", "status": "unchecked", "detail": ""}])["ok"] is False
+    assert handlers._verdict([{"name": "x", "status": "pass", "detail": ""}])["ok"] is True
+
+
+def test_pf_launch_snapshot_ce_does_not_carry_library_dir():
+    # TC-PF-48
+    from abf_station import launch
+    view = {"name": "n", "platform": "slurm-platform",
+            "config": {"workDir": "/w", "headQueue": "normal",
+                       "environment": [{"name": "NXF_SINGULARITY_LIBRARYDIR", "value": "/opt/lib/img"}]}}
+    assert "singularityLibraryDir" not in launch.snapshot_ce(view)
+
+
+def test_pf_image_library_contents_are_not_inspected(pf):
+    # TC-PF-49
+    pf.result(singularityLibraryDir=str(pf.lib))
+    lib_cmds = [x for x in pf.commands if str(pf.lib) in x]
+    assert lib_cmds and all(re.match(r'^test -[rx] "', part.strip()) for x in lib_cmds for part in x.split("&&"))
+    assert not [x for x in pf.fake.calls() if x.split()[0] in ("ls", "find", "stat")]
+
+
+def test_pf_probes_do_not_source_lmod(pf):
+    # TC-PF-51
+    pf.fake.allow_modules(NF_MODULE, AMPLI["module"])
+    pf.result(**pf.nano4())
+    for x in pf.commands:
+        assert not re.search(r"lmod|profile\.d|bash -l|source ", x, re.I), x
+
+
+def test_pf_failure_details_leak_no_internals(pf):
+    # TC-PF-55
+    pf.fake.allow_modules("something/else")
+    details = [c["detail"] for c in pf.result(modules=[NF_MODULE])["checks"]]
+    details += [check(one_pipeline(pf, version="2.17.0"), "site_pipeline")["detail"]]
+    details += [check(one_pipeline(pf, main=False), "site_pipeline")["detail"]]
+    details += [check(pf.result(sitePipelines=[dict(AMPLI, home="NFCORE_NOT_SET_ANYWHERE_HOME")]), "site_pipeline")["detail"]]
+    details += [check(one_pipeline(pf, config="params { version = '9.9' }\n"), "site_pipeline")["detail"]]
+    for d in details:
+        assert "Traceback" not in d and str(pf.fake.tmp) not in d and "manifest" not in d and "params" not in d, d
+
+
+def test_pf_results_and_logs_carry_no_canary_secrets(pf):
+    # TC-PF-56
+    pf.fake.allow_modules(NF_MODULE, AMPLI["module"])
+    blob = repr(pf.result(**pf.nano4()))
+    blob += "\n".join(pf.commands)
+    pf.fake.allow_modules("nothing")
+    blob += repr(pf.result(**pf.nano4(singularityLibraryDir=str(pf.fake.tmp / "gone"))))
+    blob += "\n".join(pf.commands) + "\n".join(pf.fake.calls())
+    for s in SECRETS:
+        assert s not in blob
+
+
+def test_pf_new_probes_are_read_only(pf):
+    # TC-PF-57
+    from station_harness import snapshot as tree
+    dirs = [pf.fake.site, pf.fake.softdir, pf.lib]
+    before = [tree(d) for d in dirs]
+    for allow in (None, "nothing"):
+        if allow:
+            pf.fake.allow_modules(allow)
+        pf.result(**pf.nano4())
+        for x in pf.commands:
+            x = x.replace("2>/dev/null", "").replace("2>&1", "").replace(">/dev/null", "")
+            assert not re.search(r"\b(mkdir|touch|rm|mv|cp|sbatch|tee|chmod)\b|>", x), x
+    assert [tree(d) for d in dirs] == before and pf.fake.dangerous() == []
+
+
+def test_pf_job_and_launch_precheck_share_one_preflight(pf):
+    # TC-PF-58
+    import inspect
+    from abf_station import handlers, launch, rules
+    pf.fake.allow_modules(NF_MODULE, AMPLI["module"])
+    ce = pf.ce(**pf.nano4())
+    direct = pf.result(**pf.nano4())
+    seen = []
+
+    def spy(env, ctx):
+        seen.append(handlers.preflight(env, ctx))
+        return seen[-1]
+    env = rules.clean_environment(ce)
+    bundle = {"ce": ce, "tower": {"mode": "none"}}
+    launch._prechecks({"remaining": 600}, pf.ctx, spy, env, bundle, bundle)
+    assert [(c["name"], c["status"]) for c in seen[0]["checks"]] == [(c["name"], c["status"]) for c in direct["checks"]]
+    src = inspect.getsource(launch)
+    assert "site_pipeline" not in src and "image_library" not in src

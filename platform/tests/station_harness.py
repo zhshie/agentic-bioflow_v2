@@ -97,6 +97,10 @@ class FakeSite:
             real = shutil.which(t)
             if real:
                 (self.toolbin / t).symlink_to(real)
+        self.softdir = self.tmp / "sitesoft"      # the site's own pipeline copies (preflight-nano4); outside the work and storage trees
+        self.site_vars = {}      # home variable -> folder; handed to every command that runs on the site
+        self.make_site_pipeline("NFCORE_AMPLISEQ_HOME", "2.18.0")      # what the SITE_CE of the launch tests names
+        self.make_site_pipeline("NFCORE_RNASEQ_HOME", "3.14.0")
         self._fakes()
         self.ssh_bin = None
         self.control = self.tmp / "cm"
@@ -185,6 +189,14 @@ class FakeSite:
             "if [ -f '@ST@/java_text' ]; then cat '@ST@/java_text' >&2; else "
             "echo 'openjdk version \"17.0.9\" 2023-10-17' >&2; fi\n")
         write_exec(self.bin / "java", java.replace("@ST@", st))
+        # `module load X`: every module is known unless state/modules.allow exists, and then only the modules listed there are (one per line)
+        module = head + (
+            "[ \"$1\" = load ] || exit 0\n"
+            "[ -f '@ST@/modules.allow' ] || exit 0\n"
+            "shift\n"
+            "for m in \"$@\"; do grep -qxF -- \"$m\" '@ST@/modules.allow' || { echo \"Lmod has detected the following error: unknown module\" >&2; exit 1; }; done\n"
+            "exit 0\n")
+        write_exec(self.bin / "module", module.replace("@ST@", st))
         nf = head + (
             "if [ \"$1\" = run ]; then exit 0; fi\n"
             "if [ -f '@ST@/nextflow_text' ]; then cat '@ST@/nextflow_text'; else "
@@ -240,6 +252,20 @@ class FakeSite:
         path = self.tmp / "fake-ssh"
         write_exec(path, text)
         return path
+
+    def make_site_pipeline(self, var, version, config=None, main=True):
+        """The site's copy of a pipeline under the home variable `var`: main.nf and a nextflow.config with `manifest { version }`."""
+        d = self.softdir / var
+        shutil.rmtree(d, ignore_errors=True)
+        d.mkdir(parents=True)
+        if main:
+            (d / "main.nf").write_text("// fake pipeline\n")
+        (d / "nextflow.config").write_text(config if config is not None else "manifest {\n    name = 'x'\n    version = '%s'\n}\n" % version)
+        self.site_vars[var] = str(d)
+        return d
+
+    def allow_modules(self, *names):
+        self.set("modules.allow", "".join(n + "\n" for n in names))
 
     # --- changing the site -----------------------------------------------------------
     def set(self, name, text):
@@ -315,6 +341,7 @@ class FakeSite:
         env = {"PATH": str(self.bin) + os.pathsep + str(self.toolbin), "HOME": str(self.home),
                "TMPDIR": str(self.tmpdir), "LANG": "C.UTF-8",
                "PYTHONPATH": str(PLATFORM_DIR), "PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1"}
+        env.update(self.site_vars)
         if self.ssh_bin:
             env["ON_SITE_SSH_BIN"] = str(self.ssh_bin)
         elif self.destructive_log:

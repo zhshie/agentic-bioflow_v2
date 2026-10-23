@@ -870,6 +870,18 @@ def test_tc_ls_23_24_26_snapshot_carries_the_three_keys_and_nothing_more():
     for k, v in keys.items():
         assert s[k] == v
     assert set(s) == {"name", "platform", "workDir", "launchDir", "headQueue", "computeQueue", "readRoots",
-                      "modules", "siteConfigVars", "sitePipelines"}
+                      "modules", "siteConfigVars", "sitePipelines", "singularityLibraryDir"}      # preflight-nano4: the one added key (TC-PF-26)
+    assert s["singularityLibraryDir"] is None
     bare = compute_envs.snapshot({"name": "n", "platform": "slurm-platform", "config": {"workDir": "/w", "headQueue": "normal"}})
     assert bare["modules"] == [] and bare["siteConfigVars"] == [] and bare["sitePipelines"] == []
+
+
+def test_snapshot_carries_singularity_library_dir_only():
+    # TC-PF-25
+    from abf_platform import compute_envs
+    view = {"name": "n", "platform": "slurm-platform",
+            "config": {"workDir": "/w", "headQueue": "normal",
+                       "environment": [{"name": "A", "value": "1"}, {"name": "NXF_SINGULARITY_LIBRARYDIR", "value": "/opt/lib/img"}]}}
+    s = compute_envs.snapshot(view)
+    assert s["singularityLibraryDir"] == "/opt/lib/img"
+    assert not any(v == "1" for v in s.values())

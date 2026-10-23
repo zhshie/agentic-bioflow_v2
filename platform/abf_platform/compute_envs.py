@@ -572,11 +572,14 @@ def snapshot(row_or_view):
     """What an agent is told about an environment: only what a job needs, never anything else."""
     v = row_or_view if "config" in row_or_view else view(row_or_view)
     c = v["config"]
+    library = next((e.get("value") for e in (c.get("environment") or []) if isinstance(e, dict)
+                    and e.get("name") == "NXF_SINGULARITY_LIBRARYDIR"), None)      # the one variable a preflight needs; no other is carried
     return {"name": v["name"], "platform": v["platform"], "workDir": c.get("workDir"), "launchDir": c.get("launchDir"),
             "headQueue": c.get("headQueue"), "computeQueue": c.get("computeQueue"),
             "readRoots": list(c.get("readRoots") or []), "modules": list(c.get("modules") or []),
             "siteConfigVars": list(c.get("siteConfigVars") or []),
-            "sitePipelines": [dict(p) for p in (c.get("sitePipelines") or [])]}
+            "sitePipelines": [dict(p) for p in (c.get("sitePipelines") or [])],
+            "singularityLibraryDir": library if isinstance(library, str) and library else None}
 
 
 def verdict_message(ok, checks):
