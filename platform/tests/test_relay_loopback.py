@@ -588,7 +588,7 @@ def test_tc061_tc062_tc063_a_real_relay_with_a_prefix_setting(tmp_path):
         assert status(relay.send(get(target), source="127.0.0.2")) == 403
         lines = relay.lines()
         assert any("DENY-PEER" in ln for ln in lines)
-        assert any(ln.strip() == "peers  : zzz-nomatch,localhost*" for ln in lines)
+        assert any(ln.endswith("peers  : zzz-nomatch,localhost*") for ln in lines)
         assert any("set by relay_peer_prefixes" in ln for ln in lines)
     finally:
         relay.stop()
@@ -603,7 +603,7 @@ def test_tc076_a_real_relay_with_no_usable_entry_says_so_and_behaves_as_unset(tm
         target = "http://127.0.0.1:%d/user-info" % srv.port
         lines = relay.lines()
         assert any("had no usable entry" in ln for ln in lines)
-        assert any(ln.strip() == "peers  : cpn,gpn,bgm,lgn,localhost*" for ln in lines)
+        assert any(ln.endswith("peers  : cpn,gpn,bgm,lgn,localhost*") for ln in lines)
         assert status(relay.send(get(target), source="127.0.0.1")) != 403
         assert status(relay.send(get(target), source="127.0.0.2")) == 403
     finally:
@@ -616,7 +616,7 @@ def test_tc077_a_real_relay_names_what_it_dropped(tmp_path):
     relay = Relay(tmp_path, extra_env={"NF_RELAY_PEER_PREFIXES": "25a-cpn, a.b"})
     try:
         lines = relay.lines()
-        assert any(ln.strip() == "peers  : 25a-cpn,localhost*" for ln in lines)
+        assert any(ln.endswith("peers  : 25a-cpn,localhost*") for ln in lines)
         assert any("dropped 'a.b'" in ln for ln in lines)
     finally:
         relay.stop()

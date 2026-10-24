@@ -188,6 +188,10 @@ Image cache: nano4's shared Singularity image cache is read-only. Look images up
 `NXF_SINGULARITY_LIBRARYDIR`, and point `NXF_SINGULARITY_CACHEDIR` at a directory you can
 write to (PITFALLS 52). Some of the site's images are broken files (saved 404 pages), so the template points `NXF_SINGULARITY_LIBRARYDIR` at your own `singularity-lib` directory layered over the site library; see `SETTINGS.md`, "Before you create the nano4 environment".
 
+### Fallback: if nano4 is ever closed to the outside
+
+nano4's compute nodes reach the internet directly today, so nano4 uses no relay (the table above stays as it is). If NCHC closes that route one day, the relay can accept nano4's nodes without a code change: set `relay_peer_prefixes: 25a-cpn,25a-hgpn,25a-lgn` in the settings file, then run `egress_ctl.sh restart`. The names come from the 2026-10-20 probe (login node `25a-lgn01`, CPU nodes `25a-cpn*`, GPU nodes `25a-hgpn*`). The shorter `25a-` is not used, because it would admit every node of that machine room. This path has never been run on nano4: only the node names come from the probe. The setting is described in `SETTINGS.md`.
+
 ## What Platform offers that this site cannot use
 
 Two of Seqera's features are unavailable here, and neither is a configuration
