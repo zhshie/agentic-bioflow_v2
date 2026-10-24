@@ -43,7 +43,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$ROOT/scripts/utils/portable.sh" || { echo "cannot read scripts/utils/portable.sh"; exit 1; }
 
-PER_TEST_TIMEOUT=300   # no test measured above ~30s; this only catches a hang
+PER_TEST_TIMEOUT=300   # every entry, the four platform ones included, should finish well inside this; it only catches a hang
 ONLY=""
 VERBOSE=0
 
@@ -157,7 +157,7 @@ quarantine_check() { # fills QUAR; prints one stderr line per problem; returns 1
             echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' must look like tests/<name>.sh" >&2; bad=1; continue
         elif [ ! -f "$ROOT/$fpath" ]; then
             echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' does not exist (typo? an entry for a missing file protects nothing)" >&2; bad=1; continue
-        elif [ "$base" = "platform_test.sh" ] || [ "$base" = "platform_clock_test.sh" ]; then
+        elif case "$base" in platform_test.sh|platform_clock_test.sh|platform_shard_*_test.sh) true ;; *) false ;; esac; then
             echo "quarantine: tests/quarantine.txt:$lineno: $base may not be quarantined: it wraps the platform pytest suite, so quarantining it would let any platform test failure through" >&2; bad=1; continue
         elif [ "$base" = "run_all.sh" ]; then
             echo "quarantine: tests/quarantine.txt:$lineno: run_all.sh is not a test file" >&2; bad=1; continue

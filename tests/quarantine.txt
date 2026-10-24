@@ -9,5 +9,5 @@
 #   tests/<name>.sh <issue> <YYYY-MM-DD>
 # issue: #<number> or https://github.com/<owner>/<repo>/issues/<number>
 # A file that fails twice is a real failure and is never excused by this list.
-# tests/platform_test.sh may not be listed (it wraps the whole platform suite).
+# platform_test.sh, platform_shard_2_test.sh, platform_shard_3_test.sh and platform_clock_test.sh may not be listed (the four wrap the whole platform suite; no other file does).
 # Check the list without running any test: bash tests/run_all.sh --check-quarantine
