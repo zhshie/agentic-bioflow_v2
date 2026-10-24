@@ -246,7 +246,7 @@ has "TC-E2: constitution names tests/run_all.sh" "$C" 'tests/run_all.sh'
 for f in platform_test platform_shard_2_test platform_shard_3_test platform_clock_test; do
   has "TC-E2: constitution names tests/$f.sh" "$C" "tests/$f.sh"
   # TC-E3
-  if [ -x "tests/$f.sh" ]; then ok "TC-E3: tests/$f.sh exists and is executable"; else bad "TC-E3: tests/$f.sh exists and is executable"; fi
+  if [ -f "tests/$f.sh" ]; then ok "TC-E3: tests/$f.sh exists (run as bash tests/NAME.sh; git mode 100644, so not -x)"; else bad "TC-E3: tests/$f.sh exists (run as bash tests/NAME.sh; git mode 100644, so not -x)"; fi
 done
 # TC-E4
 E4=$(awk '/^### 6\.0\.2 \(2026-10-24\)/{f=1} /^## Governance/{f=0} f' "$C")
