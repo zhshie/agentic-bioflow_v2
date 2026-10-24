@@ -156,7 +156,7 @@ def test_tca08_exactly_eleven_tools_and_none_of_them_can_say_yes(w):
     tools, _ = w.mcp([])
     names = sorted(t.name for t in tools)
     assert names == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
-                     "list_site_files", "read_task_log", "relaunch", "resume"]
+                     "list_site_files", "read_task_log", "relaunch", "resume", "run_outputs"]
     assert not [n for n in names if re.search(r"approve|confirm|passwd|login", n)]
     by = {t.name: t for t in tools}
     assert by["launch"].annotations.read_only_hint is False

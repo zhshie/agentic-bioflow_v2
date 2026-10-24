@@ -23,7 +23,7 @@ PKG = PLATFORM_DIR / "abf_platform"
 SKILLS = REPO_ROOT / "skills"
 FLOWS = ["setup", "launch", "runs", "downstream", "finish"]
 ALL_SKILLS = FLOWS + ["operational"]
-READ_TOOLS = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "read_task_log"]
+READ_TOOLS = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "read_task_log", "run_outputs"]
 
 
 def guidance():
@@ -342,7 +342,7 @@ def _pyproject():
 
 
 def test_tc406_package_data_covers_the_skills():
-    assert 'package-data = {"abf_platform" = ["skills/*/SKILL.md", "data/*.json"]}' in _pyproject().splitlines()
+    assert 'package-data = {"abf_platform" = ["skills/*/SKILL.md", "data/*.json", "data/*.json.gz"]}' in _pyproject().splitlines()
 
 
 def test_tc407_packages_is_not_extended():

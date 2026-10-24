@@ -750,3 +750,184 @@ def test_tc_ls_53_55_no_secret_and_no_site_names_in_the_code(tmp_path):
     src += open(os.path.join(PLATFORM_DIR, "abf_station", "rules.py"), encoding="utf-8").read()
     for word in ("nano4", "NCHC", "NFCORE_", "biology/", "nfcore-submit"):
         assert word not in src, word
+
+
+# ---- 017d: a composed pipeline is started from the project the bundle carries (spec 017d, TC-085 ... TC-107) -----------------------
+
+COMPOSED_PROJECT = {"main.nf": "workflow {\n}\n", "nextflow.config": "manifest {\n}\n", "modules.json": "{}\n",
+                    "modules/nf-core/fastqc/main.nf": "process FASTQC {\n}\n"}
+
+
+def composed_over(project=None, **over):
+    d = dict(ce=site_ce(), pipeline="abf-composed/demo-qc", revision="0.1.0",
+             composed={"pipeline_id": 7, "version": 1, "project": copy.deepcopy(COMPOSED_PROJECT if project is None else project)})
+    d.update(over)
+    return d
+
+
+def render_composed(project=None, **over):
+    return render(**composed_over(project, **over))
+
+
+def test_tc085_without_composed_the_bundle_is_the_one_of_before():
+    # TC-085 (the existing goldens and hashes stay as they are; this one says it in a sentence)
+    assert render(composed=None) == render()
+    assert "project" not in render() and "project" not in render(ce=site_ce())
+
+
+def test_tc086_087_088_the_pipeline_and_revision_shapes_of_a_composed_launch():
+    # TC-086, TC-087, TC-088
+    for pipeline in ("nf-core/ampliseq", "abf-composed", "other/demo-qc"):
+        refused("pipeline", **composed_over(pipeline=pipeline))
+    for pipeline in ("abf-composed/", "abf-composed/-x", "abf-composed/a b", "abf-composed/a/b"):
+        refused(None, **composed_over(pipeline=pipeline))
+    for revision in ("1.0.0", "0.2.0", "0.1", "0.1.0 ", "v0.1.0", "main"):
+        refused(None, **composed_over(revision=revision))
+    ok = render_composed()
+    assert ok["pipeline"] == "abf-composed/demo-qc" and ok["revision"] == "0.1.0"
+    three = render_composed(revision="0.3.0", composed={"pipeline_id": 7, "version": 3, "project": copy.deepcopy(COMPOSED_PROJECT)})
+    assert three["revision"] == "0.3.0"
+
+
+def test_tc089_171_the_bundle_of_a_composed_launch_has_the_project_and_a_four_key_source():
+    # TC-089 (the keys), TC-171 (a mapping of text, no archive)
+    from abf_platform import common
+    import hashlib
+    b, plain = render_composed(), render()
+    assert set(b) - set(plain) == {"project"} and set(plain) - set(b) == set()
+    assert b["project"] == COMPOSED_PROJECT
+    assert b["pipeline_source"] == {"kind": "composed", "pipeline_id": 7, "version": 1,
+                                    "project_sha256": hashlib.sha256(common.canonical_json(COMPOSED_PROJECT)).hexdigest()}
+    assert not [k for k in b if "tar" in k] and all(isinstance(v, str) for v in b["project"].values())
+
+
+def test_tc091_107_the_records_and_the_bundle_version_are_those_of_before():
+    # TC-091, TC-107
+    from abf_station import launch
+    assert launch.RECORDS == ("upload_paths", "relaunch")
+    assert launch.LAUNCH_KEYS == {"bundle", "confirmation_id", "bundle_sha256"}
+    assert launch.BUNDLE_VERSION == 1 and render_composed()["version"] == 1
+
+
+COMPOSED_LAST = ('exec nextflow run /data/w1/runs/run-one/pipeline/main.nf -name run-one -params-file params.yaml '
+                 '-c "$NFCORE_SITE_CONFIG" -c "$NFCORE_SITE_REFERENCES" -c /data/w1/runs/run-one/pipeline/nextflow.config '
+                 '-c nextflow.config -with-tower http://127.0.0.1:8787')
+
+
+def test_tc092_to_095_the_head_script_of_a_composed_launch():
+    # TC-092 (the last line in full), TC-093 (module load), TC-094 (no -r), TC-095 (the order of -c)
+    h = render_composed()["files"]["head.sh"]
+    assert last_line(h) == COMPOSED_LAST
+    lines = h.splitlines()
+    assert [ln for ln in lines if ln.startswith("module ")] == ["module load biology/Nextflow/26.10.0 || exit 1"]
+    assert " -r " not in h and h.count("nextflow run") == 1
+    tail = last_line(h)
+    i = [tail.index(x) for x in ('-c "$NFCORE_SITE_CONFIG"', '-c "$NFCORE_SITE_REFERENCES"', "-c /data/w1/runs/run-one/pipeline/nextflow.config",
+                                  "-c nextflow.config", "-with-tower http://127.0.0.1:8787")]
+    assert i == sorted(i)
+    only_template_sbatch(h)
+
+
+def test_tc096_the_golden_file_has_the_composed_script_and_the_others_are_as_before():
+    # TC-096
+    golden = json.load(open(GOLDEN_FILE, encoding="utf-8"))
+    assert sorted(golden) == ["composed", "forward", "local", "nano4", "nano4-miss"]
+    assert render_composed()["files"]["head.sh"] == golden["composed"]
+    assert site_head() == golden["nano4"] and render()["files"]["head.sh"] == golden["local"]
+
+
+def test_tc097_a_site_pipeline_of_the_same_name_does_not_take_a_composed_launch():
+    # TC-097
+    hit = dict(SITE_CE["sitePipelines"][0], pipeline="abf-composed/ampliseq", revision="0.1.0", module="m/hijack", home="HIJACK_HOME")
+    b = render_composed(ce=site_ce(sitePipelines=SITE_CE["sitePipelines"] + [hit]), pipeline="abf-composed/ampliseq")
+    assert b["pipeline_source"]["kind"] == "composed"
+    h = b["files"]["head.sh"]
+    assert "m/hijack" not in h and "HIJACK_HOME" not in h and "/pipeline/main.nf" in last_line(h)
+
+
+BAD_KEYS = ["../x", "/abs/main.nf", "a\\b", "modules/nf-core/x/bin/run.sh", "other/main.nf", "modules/nf-core/a/../../b/main.nf",
+            "pipeline/../x", "modules/nf-core/a/meta.yml", "modules/nf-core/A/main.nf", "main.nf/", "modules.json.bak", ""]
+
+
+@pytest.mark.parametrize("key", BAD_KEYS)
+def test_tc098_a_project_key_of_a_bad_shape_is_refused_by_name(key):
+    # TC-098
+    project = dict(COMPOSED_PROJECT)
+    project[key] = "x\n"
+    msg = refused(None, **composed_over(project))
+    assert (key or "''") in msg or repr(key) in msg
+
+
+@pytest.mark.parametrize("bad", ["a\x00b", "a\x1bb", "a\rb", "a‮b"])
+def test_tc099_control_characters_in_a_project_file_are_refused_by_name(bad):
+    # TC-099
+    project = dict(COMPOSED_PROJECT, **{"modules/nf-core/fastqc/main.nf": bad})
+    assert "modules/nf-core/fastqc/main.nf" in refused(None, **composed_over(project))
+
+
+def test_tc100_one_file_is_at_most_200000_characters():
+    # TC-100
+    ok = dict(COMPOSED_PROJECT, **{"modules/nf-core/fastqc/main.nf": "y" * 200000})
+    assert render_composed(ok)["project"]["modules/nf-core/fastqc/main.nf"] == "y" * 200000
+    over = dict(COMPOSED_PROJECT, **{"modules/nf-core/fastqc/main.nf": "y" * 200001})
+    assert "modules/nf-core/fastqc/main.nf" in refused(None, **composed_over(over))
+
+
+def _sized(total):
+    base = {"main.nf": "m", "nextflow.config": "c", "modules.json": "j"}
+    left = total - 3
+    i = 0
+    while left > 0:
+        n = min(200000, left)
+        base["modules/nf-core/m%d/main.nf" % i] = "z" * n
+        left -= n
+        i += 1
+    return base
+
+
+def test_tc101_the_whole_project_is_at_most_2_mib():
+    # TC-101
+    limit = 2 * 1024 * 1024
+    ok = _sized(limit)
+    assert sum(len(v.encode("utf-8")) for v in ok.values()) == limit
+    assert render_composed(ok)["project"] == ok
+    over = _sized(limit + 1)
+    assert sum(len(v.encode("utf-8")) for v in over.values()) == limit + 1
+    refused(None, **composed_over(over))
+
+
+def test_tc102_a_project_has_at_most_2000_files():
+    # TC-102
+    def many(n):
+        p = {"main.nf": "m", "nextflow.config": "c", "modules.json": "j"}
+        p.update({"modules/nf-core/m%d/main.nf" % i: "x" for i in range(n - 3)})
+        return p
+    assert len(render_composed(many(2000))["project"]) == 2000
+    refused(None, **composed_over(many(2001)))
+
+
+@pytest.mark.parametrize("gone", ["main.nf", "nextflow.config"])
+def test_tc103_main_and_config_must_be_there(gone):
+    # TC-103
+    project = {k: v for k, v in COMPOSED_PROJECT.items() if k != gone}
+    assert gone in refused(None, **composed_over(project))
+
+
+@pytest.mark.parametrize("bad", [12, b"bytes", None, ["x"]])
+def test_tc104_a_project_value_must_be_text(bad):
+    # TC-104
+    project = dict(COMPOSED_PROJECT, **{"modules.json": bad})
+    assert "modules.json" in refused(None, **composed_over(project))
+    refused(None, **composed_over("not a mapping"))
+
+
+def test_tc106_a_composed_origin_is_not_resumed():
+    # TC-106
+    from abf_station import launch
+    origin = render_composed()
+    with pytest.raises(launch.BundleError) as e:
+        launch.render_resume(origin=origin, run_name="run-one-a2", attempt=2, session_id="12345678-1234-1234-1234-123456789abc")
+    assert "run" in str(e.value) and re.search(r"[一-鿿]", str(e.value))
+    with pytest.raises(launch.BundleError):
+        launch.render_resume_bundle(origin=origin, run_name="run-one-a2", attempt=2, session_id="12345678-1234-1234-1234-123456789abc",
+                                    of_run="run-one", of_slurm_job_id=5)

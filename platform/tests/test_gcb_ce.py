@@ -774,7 +774,7 @@ def test_tool_list_unchanged_and_no_new_web_route(tmp_path):
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
     assert names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "read_task_log",
-                     "launch", "cancel", "resume", "relaunch", "forget"}
+                     "run_outputs", "launch", "cancel", "resume", "relaunch", "forget"}
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if re.search(r"gcb|google|batch|gcp", getattr(r, "path", ""), re.I)]
     for f in ("agents.py", "common.py", "mcp_server.py", "web.py"):

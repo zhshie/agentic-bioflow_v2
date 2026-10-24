@@ -559,7 +559,7 @@ def test_tc058_tc059_tc060_no_upload_tool_no_site_job_no_folder_job(d):
     # TC-058, TC-059, TC-060
     tools, _ = d.w.mcp([])
     assert {t.name for t in tools} == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                                       "read_task_log", "launch", "cancel", "forget", "resume", "relaunch"}
+                                       "read_task_log", "run_outputs", "launch", "cancel", "forget", "resume", "relaunch"}
     before = tree(d.uploads)
     jobs_before = [r["id"] for r in sql_rows(d.state, "SELECT id FROM jobs")]
     assert pending(by_text(d, d.a, site_cells(3)))

@@ -8,6 +8,7 @@ A choice that cannot be made into a launch raises Refusal, whose text is said to
 """
 import copy
 import csv
+import hashlib
 import io
 import json
 import os
@@ -23,6 +24,9 @@ from . import terminal
 
 class Refusal(Exception):
     """A choice that cannot be made into a launch or a cancel; the text is the reason, in the person's words."""
+
+
+RESERVED = ("組合流程只能從畫布送出（畫布送出介面尚未開放）(a composed pipeline can only be sent from the canvas, which does not offer it yet)")
 
 
 # ---- reading what the person gave -------------------------------------------------------------------------------
@@ -129,8 +133,11 @@ def target_problem(state, ce_name, kind, owner=None):
 
 
 def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet=None, params_file=None, param_items=None, params=None,
-                   path_columns=None, check_name=True, samplesheet_raw=None, owner=None, area=None, samplesheet_rows=None):
+                   path_columns=None, check_name=True, samplesheet_raw=None, owner=None, area=None, samplesheet_rows=None, composed=None):
     """(environment name, bundle) for these choices, or Refusal. Nothing is shown, asked or written.
+
+    composed ({"pipeline_id", "version", "project"}): the launch of a composed pipeline, whose project the bundle then carries; only the
+    caller that built the project may give it, and the owner name of such a pipeline is not available to any other launch.
 
     owner (a user id, 116): the environment is chosen among, and must be, that user's own; None is the local terminal without an
     account. area (the real path of the caller's own upload folder): a path cell of the samplesheet that lies in the upload area must lie inside
@@ -141,6 +148,8 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet=
     check_name=False leaves the run-name check to the caller (the MCP tool looks for a yes that already exists first).
     samplesheet_raw (bytes) is the samplesheet already read; then `samplesheet` is not opened again. samplesheet_rows (a list of rows) is
     one that was read and checked before, a resume or a relaunch taking the rows of the first launch; then nothing is opened either."""
+    if composed is None and isinstance(pipeline, str) and pipeline.split("/")[0] == bundle_mod.COMPOSED:
+        raise Refusal(RESERVED)      # the name belongs to the platform's own composed pipelines; nothing is looked for on the network under it
     ce_name = ce or primary_environment(state, owner)
     if not ce_name:
         raise Refusal("沒有指定環境（--ce），也找不到唯一可用的環境 (no --ce, and no single available environment)")
@@ -165,6 +174,8 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet=
         merged.update(params or {})
         inputs = bundle_mod.inputs_from_environment(view, view["agent"], facts, run_name=run_name, pipeline=pipeline, revision=revision,
                                                     samplesheet=rows, params=merged, path_columns=path_columns)
+        if composed is not None:
+            inputs["composed"] = composed
         bundle = bundle_mod.render_bundle(**inputs)
     except bundle_mod.BundleError as e:
         raise Refusal(str(e))
@@ -362,6 +373,8 @@ def _predecessor(state, run, verb, index_path, owner):
         if content is None:
             raise Refusal(TOO_OLD)
         origin, sha = content
+        if (origin.get("pipeline_source") or {}).get("kind") == "composed":
+            raise Refusal(bundle_mod.COMPOSED_NO_RESUME)      # a resume would reuse the project folder, which is not looked at again
         return row, origin, sha, view, jobs.next_attempt(con, run, now), jobs.analysis_root(con, run)
     finally:
         if con is not None:
@@ -482,15 +495,55 @@ def gcb_launch_screen(bundle, ce_name):
     return lines
 
 
+def _project_of(bundle):
+    """The files of a composed launch's project, or None for any other launch."""
+    source = bundle.get("pipeline_source")
+    project = bundle.get("project")
+    if isinstance(source, dict) and source.get("kind") == "composed" and isinstance(project, dict):
+        return project
+    return None
+
+
+def _module_commit(project):
+    """The commit of the nf-core/modules files, as the project's own modules.json says it."""
+    try:
+        for repo in json.loads(project["modules.json"])["repos"].values():
+            for module in repo["modules"]["nf-core"].values():
+                return module["git_sha"]
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+    return None
+
+
+def _project_lines(bundle, project):
+    """What a person sees of the project before saying yes: the main script and the config in full, then every other file by its path,
+    its size and the start of its hash (the module files are nf-core's own and are not printed)."""
+    lines = terminal.block("pipeline/main.nf（組合的主程式，完整）", project["main.nf"])
+    lines += terminal.block("pipeline/nextflow.config（組合專案自己的設定，完整）", project["nextflow.config"])
+    lines.append(terminal.PREFIX + "== 其餘專案檔（路徑、位元組數、sha256 前 12 碼）==")
+    for key in sorted(k for k in project if k not in ("main.nf", "nextflow.config")):
+        data = project[key].encode("utf-8")
+        lines.append(terminal.PREFIX + terminal.esc("%s  %d bytes  %s" % (key, len(data), hashlib.sha256(data).hexdigest()[:12])))
+    commit = _module_commit(project)
+    lines.append(terminal.PREFIX + terminal.esc("這些是 nf-core/modules 在 commit %s 的原檔 (these are the original files of nf-core/modules at commit %s)"
+                                                % (commit or "（不明）", commit or "unknown")))
+    return lines
+
+
 def launch_screen(bundle, ce_name):
     ce = bundle["ce"]
     if ce.get("platform") == bundle_mod.GCB:
         return gcb_launch_screen(bundle, ce_name)
+    project = _project_of(bundle)
     lines = [terminal.PREFIX + "== 送出確認：下面就是會被送出的全部內容 =="]
-    for label, value in (("管線", bundle["pipeline"]), ("版本", bundle["revision"]), ("環境", ce_name),
-                         ("代理", bundle["agent"]), ("run 名稱", bundle["run_name"]), ("專屬資料夾", bundle["run_folder"]),
-                         ("計費帳號", bundle["account"]), ("主控佇列", ce["headQueue"]),
-                         ("主控送出選項", ce["headJobOptions"] or "(無)")):
+    fields = [("管線", bundle["pipeline"]), ("版本", bundle["revision"])]
+    if project is not None:
+        source = bundle["pipeline_source"]
+        fields += [("組合", "%s（版本 %d）" % (bundle["pipeline"].split("/", 1)[1], source["version"])), ("專案檔數", len(project)),
+                   ("專案雜湊（sha256）", source["project_sha256"])]
+    fields += [("環境", ce_name), ("代理", bundle["agent"]), ("run 名稱", bundle["run_name"]), ("專屬資料夾", bundle["run_folder"]),
+               ("計費帳號", bundle["account"]), ("主控佇列", ce["headQueue"]), ("主控送出選項", ce["headJobOptions"] or "(無)")]
+    for label, value in fields:
         lines.append(terminal.pair(label, value))
     rows = bundle["samplesheet"]
     lines.append(terminal.PREFIX + "== samplesheet.csv（%d 列資料）==" % (len(rows) - 1))
@@ -500,6 +553,8 @@ def launch_screen(bundle, ce_name):
         lines.append(terminal.PREFIX + terminal.esc(buf.getvalue()))
     for name in ("params.yaml", "nextflow.config", "head.sh"):
         lines += terminal.block(name, bundle["files"][name])
+    if project is not None:
+        lines += _project_lines(bundle, project)
     return lines
 
 
