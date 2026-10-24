@@ -314,5 +314,158 @@ then ok "TC-038 report.md without a hash file is treated as edited"; else no "TC
 sed -n '1,45p' "$S" | grep -E '^#   report\.md.*report_facts\.py' >/dev/null \
   && ok "TC-040 header comment lists report.md" || no "TC-040" "header does not list report.md"
 
+# ---------------------------------------------------------------------------
+# Issue #12 (finish-accept-gate): only entries the user accepted are packaged.
+# TC-G01..G28 in specs/finish-accept-gate/test-case.md.
+# gate_proj <name> : a minimal project with one run, no analysis.md yet.
+gate_proj() {
+    local d="$TMP/gate_$1"
+    mkdir -p "$d/runs/demo_20260101/results/pipeline_info" "$d/analysis"
+    cp "$P/runs/demo_20260101/results/pipeline_info/software_versions.yml" \
+       "$P/runs/demo_20260101/results/pipeline_info/params_2026-01-01_00-00-00.json" \
+       "$d/runs/demo_20260101/results/pipeline_info/"
+    echo "$d"
+}
+blk() { printf -- '- **%s**\n  id: %s\n  question: Q-%s?\n  status: %s\n' "$1" "$1" "$1" "$2"; }
+run_gate() { out=$(CITE_CURL=false bash "$S" "$@" 2>&1 >/dev/null); rc=$?; }
+
+# TC-G01a-e
+G=$(gate_proj g01); blk richness proposed > "$G/analysis/analysis.md"
+run_gate "$G"
+[ "$rc" = 2 ] && ok "TC-G01a proposed entry: exit 2" || no "TC-G01a" "rc=$rc <<$out>>"
+{ grep -qF "refusing to build" <<<"$out" && grep -qF "not accepted" <<<"$out" \
+  && grep -qF richness <<<"$out" && grep -qF "status: proposed" <<<"$out"; } \
+  && ok "TC-G01b fixed substrings" || no "TC-G01b" "<<$out>>"
+[ "$(sed -n 1p <<<"$out")" = "build_package.sh: refusing to build - 1 of 1 entries in $G/analysis/analysis.md are not accepted:" ] \
+  && [ "$(sed -n 2p <<<"$out")" = "  richness   status: proposed" ] \
+  && ok "TC-G01c first two lines verbatim" || no "TC-G01c" "<<$out>>"
+{ grep -qF "Moving on to" <<<"$out" && grep -qF "status: accepted" <<<"$out"; } \
+  && ok "TC-G01d says what to do" || no "TC-G01d" "<<$out>>"
+{ grep -qF "Nothing was written to" <<<"$out" && [ ! -e "$G/submission" ]; } \
+  && ok "TC-G01e nothing written, submission/ absent" || no "TC-G01e" "<<$out>>"
+
+# TC-G16: the issue's own scene - four entries, none accepted
+G=$(gate_proj g16); for i in richness evenness beta pcoa; do blk $i proposed; done > "$G/analysis/analysis.md"
+run_gate "$G"
+all4=1; for i in richness evenness beta pcoa; do grep -qF "$i" <<<"$out" || all4=0; done
+{ [ "$rc" = 2 ] && sed -n 1p <<<"$out" | grep -qF "4 of 4 entries" && [ ! -e "$G/submission" ] \
+  && [ "$(grep -cF 'status: proposed' <<<"$out")" -ge 4 ] && [ "$all4" = 1 ]; } \
+  && ok "TC-G16 four unaccepted entries all listed" || no "TC-G16" "rc=$rc <<$out>>"
+
+# TC-G02a-c
+G=$(gate_proj g02); { blk richness accepted; blk evenness revised; } > "$G/analysis/analysis.md"
+run_gate "$G"
+{ [ "$rc" = 2 ] && sed -n 1p <<<"$out" | grep -qF "1 of 2 entries" \
+  && grep -qF evenness <<<"$out" && grep -qF "status: revised" <<<"$out"; } \
+  && ok "TC-G02a one of two refused" || no "TC-G02a" "rc=$rc <<$out>>"
+! grep -qF richness <<<"$out" && ok "TC-G02b accepted entry not listed" || no "TC-G02b" "<<$out>>"
+[ ! -e "$G/submission" ] && ok "TC-G02c no submission/" || no "TC-G02c" "exists"
+
+# TC-G03: block with no status line
+G=$(gate_proj g03); printf -- '- **richness**\n  id: richness\n  question: Q?\n' > "$G/analysis/analysis.md"
+run_gate "$G"
+{ [ "$rc" = 2 ] && grep -qF "status: (none)" <<<"$out"; } && ok "TC-G03 missing status line" || no "TC-G03" "rc=$rc <<$out>>"
+
+# TC-G04: table without a status column
+G=$(gate_proj g04); printf '| id | question |\n|---|---|\n| fig1 | Q? |\n' > "$G/analysis/analysis.md"
+run_gate "$G"
+{ [ "$rc" = 2 ] && grep -qF fig1 <<<"$out" && grep -qF "status: (none)" <<<"$out"; } \
+  && ok "TC-G04 table without status column" || no "TC-G04" "rc=$rc <<$out>>"
+
+# TC-G05 / G08 / G17: values that are not exactly accepted/done
+for pair in "G05:approved" "G08:accepted-ish" "G17:not accepted"; do
+    tc=${pair%%:*}; val=${pair#*:}
+    G=$(gate_proj "g_$tc"); blk richness "$val" > "$G/analysis/analysis.md"
+    run_gate "$G"
+    { [ "$rc" = 2 ] && grep -qF "status: $val" <<<"$out" && [ ! -e "$G/submission" ]; } \
+      && ok "TC-$tc status '$val' is not accepted" || no "TC-$tc" "rc=$rc <<$out>>"
+done
+# TC-G18: empty status
+G=$(gate_proj g18); printf -- '- **richness**\n  id: richness\n  question: Q?\n  status:\n' > "$G/analysis/analysis.md"
+run_gate "$G"
+{ [ "$rc" = 2 ] && grep -qF richness <<<"$out" && grep -qF "not accepted" <<<"$out" && [ ! -e "$G/submission" ]; } \
+  && ok "TC-G18 empty status" || no "TC-G18" "rc=$rc <<$out>>"
+
+# TC-G11: row without an id
+G=$(gate_proj g11)
+printf '| id | question | status |\n|---|---|---|\n|  | Orphan question | proposed |\n| fig1 | Q? | accepted |\n' > "$G/analysis/analysis.md"
+run_gate "$G"
+{ [ "$rc" = 2 ] && grep -qF "(no id)" <<<"$out"; } && ok "TC-G11 row without id" || no "TC-G11" "rc=$rc <<$out>>"
+
+# TC-G06a/b: accepted + done build
+G=$(gate_proj g06); { blk richness accepted; blk evenness done; } > "$G/analysis/analysis.md"
+out=$(CITE_CURL=false bash "$S" "$G" 2>/dev/null); rc=$?
+{ [ "$rc" = 0 ] && grep -qF "wrote     submission/manuscript.qmd" <<<"$out" && [ -f "$G/submission/manuscript.qmd" ]; } \
+  && ok "TC-G06a accepted+done build" || no "TC-G06a" "rc=$rc"
+{ grep -qF "Q-richness?" "$G/submission/manuscript.qmd" && grep -qF "Q-evenness?" "$G/submission/manuscript.qmd"; } \
+  && ok "TC-G06b both questions in the qmd" || no "TC-G06b" "missing"
+# TC-G23: no 'ready vs assembled' wording (the issue's second suggestion is out of scope)
+grep -qE 'still need prose|not yet a finished document|placeholder\(s\)' <<<"$out" \
+  && no "TC-G23" "new wording appeared" || ok "TC-G23 success message unchanged"
+
+# TC-G07: case and whitespace
+G=$(gate_proj g07); printf -- '- **richness**\n  id: richness\n  question: Q?\n  status:  Accepted  \n' > "$G/analysis/analysis.md"
+run_gate "$G"
+{ [ "$rc" = 0 ] && [ -f "$G/submission/manuscript.qmd" ]; } && ok "TC-G07 'Accepted ' passes" || no "TC-G07" "rc=$rc <<$out>>"
+
+# TC-G09a-c: a refused rerun leaves the earlier package untouched
+G=$(gate_proj g09); { blk richness accepted; blk evenness accepted; } > "$G/analysis/analysis.md"
+CITE_CURL=false bash "$S" "$G" >/dev/null 2>&1
+mkdir -p "$TMP/g09_keep"; cp "$G/submission/manuscript.qmd" "$G/submission/report.md" "$G/submission/provenance.json" "$TMP/g09_keep/"
+rm -f "$G/submission/report.facts.md"
+{ blk richness accepted; blk evenness proposed; } > "$G/analysis/analysis.md"
+run_gate "$G"
+[ "$rc" = 2 ] && ok "TC-G09a rerun with a proposed entry: exit 2" || no "TC-G09a" "rc=$rc <<$out>>"
+{ cmp -s "$G/submission/manuscript.qmd" "$TMP/g09_keep/manuscript.qmd" \
+  && cmp -s "$G/submission/report.md" "$TMP/g09_keep/report.md" \
+  && cmp -s "$G/submission/provenance.json" "$TMP/g09_keep/provenance.json"; } \
+  && ok "TC-G09b earlier files byte-identical" || no "TC-G09b" "changed"
+[ ! -e "$G/submission/report.facts.md" ] && ok "TC-G09c no new report.facts.md" || no "TC-G09c" "appeared"
+
+# TC-G10a/b: --render passes the gate first
+G=$(gate_proj g10); blk richness proposed > "$G/analysis/analysis.md"
+run_gate --render "$G"
+[ "$rc" = 2 ] && ok "TC-G10a --render refused with 2, not 3" || no "TC-G10a" "rc=$rc"
+{ grep -qF "refusing to build" <<<"$out" && ! grep -qF Positron <<<"$out"; } \
+  && ok "TC-G10b refusal message, not the quarto one" || no "TC-G10b" "<<$out>>"
+
+# TC-G12: the existing runs check still comes first
+G="$TMP/gate_g12"; mkdir -p "$G/runs" "$G/analysis"; echo "-" > "$G/runs/x"; blk richness proposed > "$G/analysis/analysis.md"
+run_gate "$G"
+{ [ "$rc" = 2 ] && grep -qF "at least one run" <<<"$out" && ! grep -qF "refusing to build" <<<"$out"; } \
+  && ok "TC-G12 no runs wins over the gate" || no "TC-G12" "rc=$rc <<$out>>"
+
+# TC-G13: python lookup still reports itself the same way
+G=$(gate_proj g13); blk richness proposed > "$G/analysis/analysis.md"
+out=$(PATH="$NOPY:$PATH" CITE_CURL=false bash "$S" "$G" 2>&1); rc=$?
+{ [ "$rc" != 0 ] && grep -qF "no working Python on this machine" <<<"$out"; } \
+  && ok "TC-G13 no python message unchanged" || no "TC-G13" "rc=$rc <<$out>>"
+
+# TC-G14a/b: nothing parseable is still issue #5's exit 1, not a gate refusal
+G=$(gate_proj g14); echo "We looked at richness and it seemed fine." > "$G/analysis/analysis.md"
+run_gate "$G"
+{ [ "$rc" = 1 ] && grep -qF "matched 0 plan entries" <<<"$out"; } && ok "TC-G14a exit 1 for 0 entries" || no "TC-G14a" "rc=$rc <<$out>>"
+{ ! grep -qF "not accepted" <<<"$out" && ! grep -qF "0 of 0" <<<"$out"; } && ok "TC-G14b no gate wording" || no "TC-G14b" "<<$out>>"
+
+# TC-G25/G26: no bypass flag
+G=$(gate_proj g25); blk richness proposed > "$G/analysis/analysis.md"
+for f in --force --allow-unaccepted; do
+    run_gate "$f" "$G"
+    { [ "$rc" = 2 ] && grep -qF "unknown option" <<<"$out" && [ ! -e "$G/submission" ]; } \
+      && ok "TC-G25/26 $f is not a flag" || no "TC-G25/26 $f" "rc=$rc <<$out>>"
+done
+
+# TC-G27: a missing figure is the gap mechanism's business, not the gate's
+G=$(gate_proj g27); blk richness accepted > "$G/analysis/analysis.md"
+run_gate "$G"
+{ ! grep -qF "refusing to build" <<<"$out" && ! grep -qF "not accepted" <<<"$out"; } \
+  && ok "TC-G27 accepted entry without a figure is not gated" || no "TC-G27" "<<$out>>"
+
+# TC-G15a/b: the instructions say what to set
+grep -qF 'status: accepted' "$(dirname "$S")/../skills/finish/SKILL.md" \
+  && ok "TC-G15a finish SKILL.md names status: accepted" || no "TC-G15a" "missing"
+grep -qF 'status: accepted' "$(dirname "$S")/../docs/FINISH.md" \
+  && ok "TC-G15b docs/FINISH.md names status: accepted" || no "TC-G15b" "missing"
+
 echo
 [ "$fails" = 0 ] && echo "OK: build_package.sh" || { echo "$fails failed"; exit 1; }
