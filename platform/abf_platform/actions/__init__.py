@@ -25,6 +25,7 @@ import time
 from abf_launch import build
 
 from .. import agents, common, compute_envs, confirm, failures, jobs, pipeline_launch, status, store, su
+from .. import cloud_cost as _cost
 
 NotApproved = confirm.NotApproved
 
@@ -594,6 +595,17 @@ def _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller):
     return raw, area
 
 
+def _cloud_check(platform_path, ce, bundle, caller):
+    """(the sentence that refuses the launch or None, the estimate for the screen or None). Only a launch to Google Batch by a person with
+    an account is looked at; anything else answers (None, None) before the cap, the price list or any index is read."""
+    if caller is None or not build.is_gcb(platform_path, ce):
+        return None, None
+    problem = _cost.cap_problem(platform_path, ce, bundle, caller.user_id)
+    if problem:
+        return problem, None
+    return None, _cost.launch_estimate(platform_path, bundle, caller.user_id)
+
+
 async def _finish_launch(platform_path, ce, bundle, caller, person, clock, remote):
     """The back half of every launch request: the yes that already exists, the run name, the screen, the question. Both entries end here."""
     found = confirm.find_approved(platform_path, "launch", bundle, _caller_id(caller), clock, include_spent=True)
@@ -603,7 +615,10 @@ async def _finish_launch(platform_path, ce, bundle, caller, person, clock, remot
         jobs.check_run_name(platform_path, bundle["run_name"], clock, _caller_id(caller))
     except jobs.JobRefused as e:
         return _no("未送出：%s" % e)
-    text = build.as_text(build.launch_screen(bundle, ce))
+    problem, cost = _cloud_check(platform_path, ce, bundle, caller)
+    if problem:
+        return _no("未送出：%s" % problem)
+    text = build.as_text(build.launch_screen(bundle, ce, cost))
     return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote)
 
 

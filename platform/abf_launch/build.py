@@ -461,7 +461,7 @@ def when(epoch):
 
 
 GCB_COST = ("費用：按下 y 之後，這個 run 會在 Google Cloud 專案 %s 裡建立 Batch 工作與虛擬機，由 Google 向實驗室的 Google Cloud 帳號收費。"
-            "平台目前還沒有費用預估與上限；實際金額請看 Google 的帳單。主控程序跑在平台主機上，取消請用平台的取消指令。")
+            "主控程序跑在平台主機上，取消請用平台的取消指令。")
 GCB_CANCEL_NOTE = ("取消後請到 Google Cloud Console 的 Batch 頁確認沒有殘留的工作；沒取消乾淨的虛擬機仍會計費。"
                    "主控程序跑在平台主機上，取消只會對它送出一次 SIGTERM。")
 
@@ -476,11 +476,30 @@ def _samplesheet_lines(bundle):
     return lines
 
 
-def gcb_launch_screen(bundle, ce_name):
-    """What a person sees before saying yes to a launch on Google Batch: first who will bill, then everything that will be written."""
+COST_TAIL = "平台只擋下超過每月上限的新送出，不會自動停止已經在跑的工作；實際金額請看 Google 的帳單。"
+_REASON_CUT = 200
+
+
+def cost_line(cost):
+    """The one line (without the line prefix) that says what a launch is estimated to cost, or why that cannot be said. `cost` is what
+    cloud_cost.launch_estimate gives, or None for an entry that does not work one out."""
+    if cost is None:
+        return "費用預估：無法預估（%s）。%s" % ("這個送出入口沒有算預估 (this way of sending does not work out an estimate)", COST_TAIL)
+    if cost.get("usd") is not None:
+        return ("費用預估：約 US$%.2f（依你最近一次成功的同管線雲端 %s 的實際運算時間推算；只含虛擬機運算費用，不含磁碟與網路；價目讀於 %s）。%s"
+                % (cost["usd"], terminal.esc(cost.get("basis")), terminal.esc(cost.get("as_of") or "不明"), COST_TAIL))
+    reasons = cost.get("unknown_reasons") or []
+    reason = terminal.esc(reasons[0])[:_REASON_CUT] if reasons else "原因不明 (reason unknown)"
+    return "費用預估：無法預估（%s）。%s" % (reason, COST_TAIL)
+
+
+def gcb_launch_screen(bundle, ce_name, cost=None):
+    """What a person sees before saying yes to a launch on Google Batch: first who will bill, then what it is estimated to cost, then
+    everything that will be written."""
     ce = bundle["ce"]
     base = "%s/runs/%s" % (ce["workDir"], bundle["run_name"])
-    lines = [terminal.PREFIX + "== 送出確認：下面就是會被送出的全部內容 ==", terminal.PREFIX + terminal.esc(GCB_COST % ce["project"])]
+    lines = [terminal.PREFIX + "== 送出確認：下面就是會被送出的全部內容 ==", terminal.PREFIX + terminal.esc(GCB_COST % ce["project"]),
+             terminal.PREFIX + cost_line(cost)]
     fields = [("管線", bundle["pipeline"]), ("版本", bundle["revision"]), ("環境", ce_name), ("代理", bundle["agent"]),
               ("run 名稱", bundle["run_name"]), ("專屬資料夾（本機）", bundle["run_folder"]), ("Google 專案", ce["project"]),
               ("區域", ce["location"]), ("工作目錄", base + "/work"), ("結果位置", base + "/results"),
@@ -530,10 +549,10 @@ def _project_lines(bundle, project):
     return lines
 
 
-def launch_screen(bundle, ce_name):
+def launch_screen(bundle, ce_name, cost=None):
     ce = bundle["ce"]
     if ce.get("platform") == bundle_mod.GCB:
-        return gcb_launch_screen(bundle, ce_name)
+        return gcb_launch_screen(bundle, ce_name, cost)
     project = _project_of(bundle)
     lines = [terminal.PREFIX + "== 送出確認：下面就是會被送出的全部內容 =="]
     fields = [("管線", bundle["pipeline"]), ("版本", bundle["revision"])]
