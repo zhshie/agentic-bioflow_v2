@@ -85,6 +85,9 @@ source: developer-agent 讀碼查證（2026-10-25）；GitHub issue #23 的「Fo
 ## 裁決（2026-10-25 06:50，developer-agent）
 1. `~/.local/state` 底下設定前的佇列不搬：接受。
 
+## 裁決（2026-10-25 07:35，已知環境紅）
+- `platform/tests/test_onboarding_doc.py::test_tc047_tc051_other_docs_untouched` 在完整 clone 上本來就紅（釘舊提交 6061925），由 onboarding-test-pinned-base 修。本片把它當已知環境紅：全套只剩這一條紅時視同綠，寫 GREEN，ledger 記一行。
+
 ## 專長守則（backend）
 
 ### executor
