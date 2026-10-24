@@ -71,7 +71,7 @@ def test_tc125_tc126_a_platform_db_of_116_is_upgraded_in_place_and_every_row_rea
     after = con.execute("SELECT * FROM launches ORDER BY id").fetchall()
     con.close()
     assert [r[:len(OLD_COLUMNS)] for r in after] == before
-    assert all(r[len(OLD_COLUMNS):] == (None, None, None) for r in after)
+    assert all(r[len(OLD_COLUMNS):] == (None, None, None, None) for r in after)
     # a fresh file and an upgraded one have the same table
     fresh = tmp_path / "fresh" / "platform.db"
     store.connect_state(fresh).close()

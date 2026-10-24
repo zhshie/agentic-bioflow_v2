@@ -32,3 +32,4 @@
 - `test_pipeline_launch.py` `test_no_table_or_column_changed` (launches column list).
 - `test_web_actions.py` `SCHEMA` entry `platform.launches` (used by `test_tc063_no_schema_change`).
 - `test_resume_lineage.py` `NEW_COLUMNS` (used by TC-122 and TC-125/126 column-order checks) and `test_station_launch.py` `LAUNCHES_COLUMNS` (its comment says this task does not touch `_LAUNCHES_TABLE`; it now does): `"work_cleaned_at"` appended. Found by the second full-suite run.
+- `test_resume_lineage.py` TC-125/126: the tuple of "new columns are all NULL" after the old ones is now four long (`work_cleaned_at` is one more NULL).
