@@ -163,7 +163,7 @@ t "TC-025 still FAILED bad_test.sh" out_has "FAILED bad_test.sh"
 reset; mk_ok ok_test.sh; mk_slow slow_test.sh; run $F --timeout 1
 t "TC-026 timeout then pass = FLAKY, not listed" out_re '^FLAKY slow_test\.sh +NOT in tests/quarantine\.txt'
 t "TC-026 exit 1" rc_is 1
-setq 'tests/slow_test.sh #12 2026-11-01'; run $F --timeout 1
+reset; mk_ok ok_test.sh; mk_slow slow_test.sh; setq 'tests/slow_test.sh #12 2026-11-01'; run $F --timeout 1
 t "TC-027 quarantined slow flaky: exit 0" rc_is 0
 t "TC-027 FLAKY line with issue" out_re '^FLAKY slow_test\.sh +quarantined #12'
 
@@ -253,7 +253,7 @@ NOTODAY=
 
 # TC-056: no python3, and a date that fails when asked for a relative date.
 mkdir -p "$TMP/shim"
-printf '#!/bin/sh\necho called > "%s/python-called"\nexit 127\n' "$TMP" > "$TMP/shim/python3"
+printf '#!/bin/sh\ncase "$*" in *"print(1)"*) exit 127;; esac\necho called > "%s/python-called"\nexit 127\n' "$TMP" > "$TMP/shim/python3"
 REALDATE=$(command -v date)
 printf '#!/bin/sh\nfor a in "$@"; do case "$a" in -d|--date*) echo called > "%s/date-rel-called"; exit 1;; esac; done\nexec "%s" "$@"\n' "$TMP" "$REALDATE" > "$TMP/shim/date"
 chmod +x "$TMP/shim/python3" "$TMP/shim/date"

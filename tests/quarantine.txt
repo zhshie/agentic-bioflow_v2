@@ -1,0 +1,13 @@
+# Quarantine list for tests/run_all.sh --retry-failed-once (CI runs with it).
+#
+# A test file that fails the first run but passes the retry is reported as FLAKY.
+# CI stays red for a FLAKY file unless it is listed here. Listing is a loan, not
+# a fix: every line needs an issue and an expiry at most 14 days from the day it
+# is checked, and an expired line turns the run red by itself.
+#
+# One line per file, three columns separated by spaces:
+#   tests/<name>.sh <issue> <YYYY-MM-DD>
+# issue: #<number> or https://github.com/<owner>/<repo>/issues/<number>
+# A file that fails twice is a real failure and is never excused by this list.
+# tests/platform_test.sh may not be listed (it wraps the whole platform suite).
+# Check the list without running any test: bash tests/run_all.sh --check-quarantine
