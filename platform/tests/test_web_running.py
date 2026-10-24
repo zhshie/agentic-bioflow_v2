@@ -149,7 +149,37 @@ def test_r30_r36_attention_card_uses_the_component(w):
     assert "l1" not in right and "u1" not in right and "s1" not in right
     assert dict(fields(ns[0]))["步驟"] == "FASTQC (sample2)"     # 012b: not "f1" in n: the buttons' hex tokens can hold it
     assert no_cjk(pane(c.get("/?run=%s&lang=en" % a).text, "right"))
-    assert len(notices(c.get("/?run=" + b).text)) == 1 and "f1" not in pane(c.get("/?run=" + b).text, "right")
+    assert len(notices(c.get("/?run=" + b).text)) == 1
+    other = pane(c.get("/?run=" + b).text, "right")
+    assert not _f1_in(other), _f1_in(other)     # exact markers, not the bare substring "f1"
+
+
+# What only the f1 run owns: its run id, its failure reason and its two failed tasks (its run name counts as a word).
+# A bare "f1" substring is not one of them: the buttons' csrf tokens are hex digests and can hold "f1" by chance.
+_F1_MARKERS = ("id-f1", "samplesheet is missing the reverseReads column", "FASTQC (sample2)", "TRIMGALORE (sample3)")
+
+
+def _f1_in(right):
+    """The markers of the f1 run found in a right column (empty list: nothing of f1 is there)."""
+    found = ["f1 (as a word)"] if re.search(r"(?<![0-9A-Za-z])f1(?![0-9A-Za-z])", right) else []
+    return found + [m for m in _F1_MARKERS if m in right]
+
+
+def test_r30_r36_a_hex_token_holding_f1_cannot_trip_the_marker(w, monkeypatch):
+    # TC-R30, TC-R36: with every csrf token forced to hold "f1", the old two-character check is wrong and the exact one is right
+    from abf_platform import web
+    ann, c = world(w)
+    a, b = f1(w, ann), l1(w, ann)
+    real = web._mac
+    monkeypatch.setattr(web, "_mac", lambda key, *parts: "f1" * 32 if parts and parts[0] == "csrf" else real(key, *parts))
+    right = pane(c.get("/?run=" + b).text, "right")
+    assert "f1f1f1f1" in right                                  # the forced token really is in the right column
+    assert "f1" in right                                        # so the old check ("f1" not in right) is False on a clean page
+    assert _f1_in(right) == []                                  # the exact markers see nothing of the f1 run
+    assert len(notices(right)) == 1
+    # a real leak is still caught: the f1 run's own right column carries its markers
+    own = _f1_in(pane(c.get("/?run=" + a).text, "right"))
+    assert {"id-f1", "samplesheet is missing the reverseReads column", "FASTQC (sample2)"} <= set(own)   # the right column shows the first failed task only
 
 
 def test_r34_empty_attention(w):
@@ -358,6 +388,6 @@ def test_n03_n04_other_stages_unchanged(w):
     ann, c = world(w)
     a = f1(w, ann)
     s = seed(w, "s1", "succeeded", ann, started=T0)
-    for url in ("/?run=%s&stage=launch" % a, "/?run=%s&stage=results&tab=info" % s):
+    for url in ("/?run=%s&stage=launch" % a,):      # results-outputs: a succeeded run's results stage now has the cards, tabs and Outputs (specs/results-outputs)
         t = pane(c.get(url).text, "middle")
         assert 'class="rtabs"' not in t and 'class="sumcards"' not in t and "<article" not in t

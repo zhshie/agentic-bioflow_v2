@@ -295,7 +295,7 @@ def test_tc029_no_estimate_su_tool(tmp_path):
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
     assert names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "read_task_log",
-                     "launch", "cancel", "resume", "relaunch", "forget"}
+                     "run_outputs", "launch", "cancel", "resume", "relaunch", "forget"}
 
 
 def test_tc030_no_su_route_on_the_web(tmp_path):

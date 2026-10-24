@@ -774,7 +774,7 @@ def test_tool_list_unchanged_and_no_new_web_route(tmp_path):
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
     assert names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "read_task_log",
-                     "launch", "cancel", "resume", "relaunch", "forget"}
+                     "run_outputs", "launch", "cancel", "resume", "relaunch", "forget"}
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if re.search(r"gcb|google|batch|gcp", getattr(r, "path", ""), re.I)]
     for f in ("agents.py", "common.py", "mcp_server.py", "web.py"):
@@ -802,7 +802,7 @@ def test_nothing_of_the_later_slices_exists():
     assert not names & {"cloud_cost.py", "rates.json"}
     for f in list((PLATFORM_DIR / "abf_platform").rglob("*.py")) + list((PLATFORM_DIR / "abf_station").rglob("*.py")):
         text = f.read_text(encoding="utf-8")
-        assert not re.search(r"buckets create|services enable|service-accounts create|storage cp|storage rm", text), f.name
+        assert not re.search(r"buckets create|services enable|service-accounts create|storage rm", text), f.name
     assert "-with-tower" not in (PLATFORM_DIR / "abf_station" / "gcb_preflight.py").read_text(encoding="utf-8")
 
 
