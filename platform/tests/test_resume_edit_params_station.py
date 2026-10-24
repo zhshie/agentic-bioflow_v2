@@ -264,7 +264,7 @@ def test_extra_config_is_ascii_only_without_backslash_or_cr(text):
 
 def test_extra_config_too_long_is_refused():
     # TC-027
-    line = "// " + "x" * 77 + "\n"      # 80 characters
+    line = "// " + "x" * 76 + "\n"      # 80 characters with the newline
     ok = line * 249 + "// " + "x" * 77            # 249*80 + 80 = 20000
     assert len(ok) == 20000
     assert "extra-2.config" in extra(ok)
@@ -547,10 +547,16 @@ def test_station_origin_changed_consistently_is_refused(tmp_path, site, fake):
         res = run_job(fake, job_of(other))
     assert res["state"] == "refused" and str(f) in res["result"]["message"], res
     unchanged(site, f, before)
-    # and an origin changed on the bundle only (the agent rebuilds the first launch from its own facts)
+
+
+def test_station_origin_changed_on_the_bundle_only_is_refused(tmp_path, site, fake):
+    # TC-046: an origin changed on the bundle only (the agent rebuilds the first launch from its own facts)
+    origin, b = ov_bundle(site, fake)
+    f = make_folder(origin)
     t = copy.deepcopy(b)
     t["resume"]["origin"]["params"]["primer"] = "OTHER"
-    with agent_on(fake, site, tmp_path, name="agent-f2"):
+    before = snapshot(f)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
         res = run_job(fake, job_of(t))
     assert res["state"] == "refused", res
     unchanged(site, f, before)
