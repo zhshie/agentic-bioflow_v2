@@ -39,7 +39,7 @@ def run_fetch(job, ctx):
     args = job["args"]
     env = rules.clean_environment(args.get("ce"))
     run, folder = args.get("run_name"), args.get("run_folder")
-    if not isinstance(run, str) or not launch.RUN_NAME.match(run) or folder != "%s/runs/%s" % (env["workDir"], run):
+    if not isinstance(run, str) or not launch.RUN_NAME.match(run) or not launch.run_folder_ok(env["workDir"], run, folder):
         raise rules.Refusal("run 名稱或專屬資料夾不對：只讀平台自己送出的專屬資料夾 (not a folder this platform made)")
     site = ctx.site
     listing = site.call(["cd %s && find -P . -maxdepth 2 \\( -name '.nextflow.log*' -o -path ./.nextflow/history \\) "

@@ -31,6 +31,25 @@ SITE_KEYS = ("modules", "siteConfigVars", "sitePipelines")
 REMOTE = {"kind": "remote"}
 BUNDLE_VERSION = 1
 RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
+RESUME_NAME = re.compile(r"^(.+)-a([2-9]|[1-9][0-9]+)\Z")
+
+
+def run_folder_ok(work, run, folder):
+    """True if `folder` is the folder the platform gives run `run`: <work>/runs/<run>, or, for a resume attempt <root>-a<N>, the folder of <root>
+    (a resume keeps the first run's folder). Only a name that attempt_name(root, N) makes is taken; a pure string check."""
+    if not isinstance(work, str) or not isinstance(run, str) or not isinstance(folder, str):
+        return False
+    base = "%s/runs/" % work
+    if folder == base + run:
+        return True
+    m = RESUME_NAME.match(run)
+    if not m or not folder.startswith(base):
+        return False
+    root = folder[len(base):]
+    if not RUN_NAME.match(root):
+        return False
+    suffix = "-a" + m.group(2)
+    return run == root[:64 - len(suffix)] + suffix
 SESSION_ID = re.compile(r"^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")      # a Nextflow session id is a UUID; it is put in a script, so nothing else gets in
 REVISION = re.compile(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")
 PIPELINE_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
