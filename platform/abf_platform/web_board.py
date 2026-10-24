@@ -50,7 +50,7 @@ STRINGS = {
         "set_me": "個人", "set_step": "逐步模式", "set_dev": "開發模式", "set_ops": "營運者後台",
         "set_roles": "角色（老師／學生）",
         "level_action": "待處理", "resume": "續跑", "rerun": "重跑", "cancel": "取消", "quick": "用這個 run 的內容再啟動一次",
-        "card_step": "目前步驟", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "more_steps": "等 %d 項",
+        "card_step": "目前步驟", "card_stopped_at": "停在", "menu_more": "更多", "stage_running_failed": "執行", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "more_steps": "等 %d 項",
         "dur_hm": "%d 小時 %d 分", "dur_m": "%d 分", "dur_short": "不到 1 分",
         "no_notices": "目前沒有待處理的事", "no_failed_tasks": "沒有失敗的任務",
         "launch_title": "啟動分析", "launch_intro": "填好之後按「下一步」，會先帶你到確認頁；在確認頁按「送出」才會真的排進佇列。",
@@ -67,6 +67,10 @@ STRINGS = {
         "tab_tasks": "任務", "tab_logs": "日誌", "tab_info": "執行資訊", "tab_config": "設定檔", "tab_metrics": "指標",
         "th_name": "名稱", "th_exit": "結束代碼", "th_message": "錯誤訊息（第一行）", "th_workdir": "工作目錄",
         "i_id": "編號", "i_name": "名稱", "i_status": "狀態", "i_cancel": "要求取消",
+        "tab_outputs": "輸出", "card_done": "完成步驟", "ph_report": "報告", "ph_multiqc": "MultiQC 報告", "ph_metrics": "指標",
+        "ph_download": "全部下載", "o_loading": "讀取中", "o_auto": "每 15 秒自動更新", "o_failed": "讀不到", "o_none": "沒有輸出資料夾紀錄",
+        "o_empty": "這個資料夾是空的", "o_read_at": "讀取於", "o_relist": "重新讀取", "th_type": "類型", "th_size": "大小", "th_mod": "修改時間",
+        "ty_dir": "資料夾", "ty_file": "檔案", "ty_link": "捷徑", "ty_other": "其他",
     },
     "en": {
         "title": "agentic-bioflow", "mine": "My runs", "none_yet": "No runs yet.", "later": "Coming later",
@@ -91,7 +95,7 @@ STRINGS = {
         "set_dev": "Development mode", "set_ops": "Operator panel", "set_roles": "Roles (teacher / student)",
         "level_action": "Pending",
         "resume": "Resume", "rerun": "Re-run", "cancel": "Cancel", "quick": "Launch again from this run",
-        "card_step": "Current step", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "more_steps": "+%d more",
+        "card_step": "Current step", "card_stopped_at": "Stopped at", "menu_more": "More", "stage_running_failed": "Run", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "more_steps": "+%d more",
         "dur_hm": "%dh %dm", "dur_m": "%dm", "dur_short": "<1m",
         "no_notices": "Nothing pending", "no_failed_tasks": "No failed tasks",
         "launch_title": "Launch an analysis",
@@ -110,6 +114,10 @@ STRINGS = {
         "tab_tasks": "Tasks", "tab_logs": "Logs", "tab_info": "Run info", "tab_config": "Configuration", "tab_metrics": "Metrics",
         "th_name": "Name", "th_exit": "Exit code", "th_message": "Error message (first line)", "th_workdir": "Work directory",
         "i_id": "ID", "i_name": "Name", "i_status": "Status", "i_cancel": "Cancel requested",
+        "tab_outputs": "Outputs", "card_done": "Steps done", "ph_report": "Report", "ph_multiqc": "MultiQC report", "ph_metrics": "Metrics",
+        "ph_download": "Download all", "o_loading": "Reading", "o_auto": "Updates every 15 seconds", "o_failed": "Could not read",
+        "o_none": "No output folder on record", "o_empty": "This folder is empty", "o_read_at": "Read at", "o_relist": "Read again",
+        "th_type": "Type", "th_size": "Size", "th_mod": "Modified", "ty_dir": "Folder", "ty_file": "File", "ty_link": "Link", "ty_other": "Other",
     },
 }
 
@@ -155,7 +163,7 @@ STYLE = (
     ".foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}"
     ".nv,.row{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:4px;color:var(--ink)}"
     "a.nv.here,a.row.here{background:var(--accent-weak);font-weight:600}"
-    ".row{flex-direction:column;align-items:stretch;gap:0}.r1{display:flex;align-items:center;gap:8px}.r2{font-size:12px;color:var(--muted)}"
+    ".row{flex-direction:column;align-items:stretch;gap:0}.r1{display:flex;align-items:center;gap:8px}.r2{font-size:12px;color:var(--muted);overflow-wrap:anywhere}"
     "h3{font-size:12px;line-height:20px;margin:0;font-weight:600;color:var(--muted)}.proj{display:flex;flex-direction:column;gap:4px}"
     ".views{display:flex;gap:16px}.views a[aria-current]{color:var(--ink);font-weight:600}"
     ".nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row .nm{flex:1}"
@@ -173,6 +181,8 @@ STYLE = (
     ".steps .is-done a{border-top:3px solid var(--succeeded);color:var(--ink)}"
     ".steps .is-current a{border-top:3px solid var(--accent);color:var(--ink);font-weight:600}"
     ".steps .is-later a{border-top:3px dashed var(--line2)}"
+    ".steps .is-failed a{border-top-color:var(--failed);color:var(--failed)}"
+    ".menu>summary{display:flex;align-items:center;min-height:44px;cursor:pointer}"
     ".steps a[aria-current]{outline:2px solid var(--focus);outline-offset:2px}"
     ".card{background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:12px}"
     ".counts{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin:0}"
@@ -205,6 +215,7 @@ STYLE = (
     ".tbl{width:100%;table-layout:fixed;border-collapse:collapse}"
     ".tbl th,.tbl td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);vertical-align:top;min-width:0;overflow-wrap:anywhere}"
     ".soon{background:var(--sunken);color:var(--muted);border-radius:6px;padding:16px;min-width:0}"
+    ".otbl code{overflow-wrap:anywhere}.ostat{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
     "@media (max-width:900px){.wb{grid-template-columns:1fr}.main{order:-2}.rail{order:-1}.costs{display:none}"
     ".counts{grid-template-columns:repeat(4,1fr)}}"
 )
@@ -241,8 +252,17 @@ def pick_tab(raw):
     return raw if raw in TABS else None
 
 
-def _url(lang, run=None, stage=None, path="/", tab=None):
-    """A link to a board page: `/` or `/settings` with a query. `lang=en` is kept on every link of an English page."""
+RESULT_TABS = ("outputs", "info", "tasks", "logs")
+
+
+def pick_results_tab(raw):
+    """The tab of the results stage named exactly; anything else is the first one, Outputs."""
+    return raw if raw in RESULT_TABS else "outputs"
+
+
+def _url(lang, run=None, stage=None, path="/", tab=None, relist=False):
+    """A link to a board page: `/` or `/settings` with a query. `lang=en` is kept on every link of an English page. Only the
+    Read-again link of the Outputs tab carries `relist`; no other link, and never the page's own refresh, does."""
     query = []
     if run:
         query.append("run=" + urllib.parse.quote(str(run), safe=""))
@@ -250,6 +270,8 @@ def _url(lang, run=None, stage=None, path="/", tab=None):
         query.append("stage=" + stage)
     if tab:
         query.append("tab=" + tab)
+    if relist:
+        query.append("relist=1")
     if lang == "en":
         query.append("lang=en")
     return esc(path + ("?" + "&".join(query) if query else ""))
@@ -496,10 +518,64 @@ def first_failed(run):
 
 
 def _sum_cards(t, run, now):
-    cards = ((t["card_step"], _current_step(t, run)), (t["card_duration"], esc(_duration(t, run, now))),
+    stopped = run.get("status") in ("failed", "lost")
+    cards = (((t["card_stopped_at"], esc(first_failed(run) or "—")) if stopped else (t["card_step"], _current_step(t, run))), (t["card_duration"], esc(_duration(t, run, now))),
              (t["card_compute"], esc(run.get("compute_env") or "—")), (t["card_cost"], esc(t["cost_su"])))
+    return _cards(cards)
+
+
+def _cards(cards):
     return '<section class="sumcards">%s</section>' % "".join('<div class="scard"><h2 class="ct">%s</h2><p class="cv">%s</p></div>' % (esc(k), v)
                                                               for k, v in cards)
+
+
+def _results_cards(t, run, now, outputs):
+    """The four cards of the results stage, in the words and the way of the running stage's cards: steps done, time taken, where it ran
+    (from the output record, when there is one) and the cost, which is a dash until the site gives one."""
+    done, total = _done_total(run)
+    where = (outputs or {}).get("compute_env") or "—"
+    return _cards(((t["card_done"], "%d / %d" % (done, total)), (t["card_duration"], esc(_duration(t, run, now))),
+                   (t["card_compute"], esc(where)), (t["card_cost"], esc(t["cost_su"]))))
+
+
+def _size(value):
+    return esc(value if isinstance(value, int) else "—")
+
+
+def _outputs_body(t, lang, run_id, out):
+    """The Outputs tab, from the answer of the action `run_outputs`: loading, ready (a table, or a line when the folder is empty), error,
+    or unavailable. Each state has a symbol and words; the colour only helps. Names are plain text: nothing here downloads or changes a file."""
+    out = out or {}
+    state = out.get("state") if out.get("found") is not False else "unavailable"
+    again = '<a href="%s">%s</a>' % (_url(lang, run_id, "results", tab="outputs", relist=True), esc(t["o_relist"]))
+    reason = plain_reason(out.get("reason") or "", lang) if out.get("reason") else "—"
+    why = '<dl class="fields"><dt>%s</dt><dd>%s</dd></dl>' % (esc(t["f_reason"]), esc(reason))
+    if state == "loading":
+        return '<p class="ostat state-running"><span class="sym">⟳</span> %s <small>%s</small></p>' % (esc(t["o_loading"]), esc(t["o_auto"]))
+    if state == "error":
+        return '<p class="ostat state-failed"><span class="sym">✗</span> %s</p>%s<p>%s</p>' % (esc(t["o_failed"]), why, again)
+    if state != "ready":
+        return '<p class="ostat muted"><span>—</span> %s</p>%s' % (esc(t["o_none"]), why)
+    when = taipei_time(out.get("listed_at"))
+    head = '<p class="ostat"><span>%s %s</span> %s</p>' % (esc(t["o_read_at"]), esc(when[-5:] if when else "—"), again)
+    files = sorted(out.get("files") or [], key=lambda f: (f.get("type") != "dir", f.get("name") or ""))
+    if not files:
+        return head + '<p class="ostat muted"><span>—</span> %s</p>' % esc(t["o_empty"])
+    th = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_type", "th_size", "th_mod"))
+    rows = "".join("<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td></tr>"
+                   % (esc(f.get("name") or "—"), esc(t.get("ty_" + str(f.get("type")), t["ty_other"])), _size(f.get("size")),
+                      esc(_time(f.get("modified")))) for f in files)
+    return head + '<table class="tbl otbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (th, rows)
+
+
+def _results_body(t, lang, run, tab, now, outputs):
+    """The results stage of a succeeded run: four cards, four tabs (Outputs, Run info, Tasks, Logs; the last three are the running
+    stage's own bodies) and the things that come later as grey words, not links."""
+    later = '<p class="kv">%s</p>' % "".join(_grey(t, k) for k in ("ph_report", "ph_multiqc", "ph_metrics", "ph_download"))
+    links = "".join('<a href="%s"%s>%s</a>' % (_url(lang, run["id"], None, tab=k), ' aria-current="page"' if k == tab else "", esc(t["tab_" + k]))
+                    for k in RESULT_TABS)
+    body = _outputs_body(t, lang, run["id"], outputs) if tab == "outputs" else tab_body(t, lang, run, tab)
+    return '%s%s<nav class="rtabs">%s</nav>%s' % (_results_cards(t, run, now, outputs), later, links, body)
 
 
 def _tasks_bar(t, run):
@@ -540,7 +616,7 @@ def _running_body(t, selected, lang, tab_param, stage_param, now, acts=None):
     return '%s%s<nav class="rtabs">%s</nav>%s' % (_sum_cards(t, selected, now), _tasks_bar(t, selected), links, tab_body(t, lang, selected, tab))
 
 
-def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None):
+def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None, outputs=None):
     own = stage_of(selected["status"])
     current = pick_stage(stage_param, own)
     explicit = pick_stage(stage_param, None)
@@ -550,6 +626,8 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
         kind = "is-done" if n < rank else ("is-current" if n == rank else "is-later")
         mark = ' aria-current="step"' if s == current else ""
         label = ("✓ " if kind == "is-done" else "") + t["stage_" + s]
+        if s == "running" and selected["status"] in ("failed", "lost"):
+            kind, label = kind + " is-failed", "✗ " + t["stage_running_failed"]
         cells.append('<li class="%s" data-step="%s"><a href="%s"%s>%s</a></li>' % (kind, s, _url(lang, selected["id"], s, tab=tab_param), mark, esc(label)))
     prev_ = ('<a rel="prev" href="%s">%s</a>' % (_url(lang, selected["id"], STAGES[index - 1], tab=tab_param), esc(t["prev"]))) \
         if index > 0 else "<span></span>"
@@ -561,12 +639,18 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     buttons = ("".join(acts.form(verb, selected["id"]) for verb in ("resume", "relaunch", "cancel")) if acts else "") if running else ""
     quick = '<a href="%s">%s</a>' % (esc("/launch?from=" + urllib.parse.quote(str(selected["id"]), safe="") + ("&lang=en" if lang == "en" else "")),
                                     esc(t["quick"])) if running else ""
-    inner = _running_body(t, selected, lang, tab_param, explicit, now, acts) if running else _stage_card(t, selected, current)
+    menu = '<details class="menu"><summary>%s</summary>%s%s</details>' % (esc(t["menu_more"]), buttons, quick) if running else ""
+    if running:
+        inner = _running_body(t, selected, lang, tab_param, explicit, now, acts)
+    elif current == "results" and status == "succeeded":
+        inner = _results_body(t, lang, selected, pick_results_tab(tab_param), now, outputs)
+    else:
+        inner = _stage_card(t, selected, current)
     note = '<p class="bad" role="alert">%s</p>' % esc(flash) if flash else ""
     views = '<nav class="views"><a href="%s" aria-current="page">%s</a>%s</nav>' % (_url(lang, selected["id"]), esc(t["main_window"]), _grey(t, "terminal"))
-    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s%s</div>%s%s'
+    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s</div>%s%s'
             '<ol class="steps" data-current="%s">%s</ol>%s<p class="pager">%s%s</p></main>'
-            % (esc(selected["name"]), badge, buttons, quick, views, note, current, "".join(cells), inner, prev_, next_))
+            % (esc(selected["name"]), badge, menu, views, note, current, "".join(cells), inner, prev_, next_))
 
 
 def _settings_page(t):
@@ -587,9 +671,10 @@ def _right(t, selected, acts=None):
             % (esc(t["this_analysis"]), esc(selected["name"]), inner, _grey(t, "ask_here")))
 
 
-def document(title, body, refresh=False, board=False, lang="zh"):
-    """A whole page. Only the board asks for the meta refresh; a page that is not the board gets the narrow single column."""
-    head = "<meta http-equiv=\"refresh\" content=\"%d\">" % REFRESH_SECONDS if refresh else ""
+def document(title, body, refresh=False, board=False, lang="zh", refresh_url=None):
+    """A whole page. Only the board asks for the meta refresh; a page that is not the board gets the narrow single column.
+    `refresh_url` (already escaped) is the address the refresh goes to, when it must not be the address the page was asked for."""
+    head = ("<meta http-equiv=\"refresh\" content=\"%d%s\">" % (REFRESH_SECONDS, ";url=" + refresh_url if refresh_url else "")) if refresh else ""
     wrapped = body if board else '<main class="narrow">%s</main>' % body
     return ("<!doctype html><html lang=\"%s\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">%s"
             "<title>%s</title><style>%s</style></head><body>%s</body></html>"
@@ -610,15 +695,15 @@ def _empty_page(t, lang):
             % (esc(t["no_analyses"]), _url(lang, path="/launch"), esc(t["new_analysis"])))
 
 
-def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, path="/", refresh=False, tab=None):
+def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, path="/", refresh=False, tab=None, refresh_url=None):
     lang = pick_lang(lang)
     t = STRINGS[lang]
     body = '%s<div class="wb">%s%s%s</div>' % (_mast(t, name, lang, run, stage, path, tab), _left(t, runs, run, lang, csrf, here), middle(t, lang),
                                                 right(t, lang))
-    return document(t["title"], body, refresh=refresh, board=True, lang=lang)
+    return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url)
 
 
-def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None):
+def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None):
     """GET /: the page of a logged-in user. `runs` are newest first (as list_runs gives them, with their `failure`); `selected` is the
     detail of one run (get_run, with its `failure`), or None for the empty page of a person with no run. `act_csrf(run_id)` gives the CSRF
     token of that run's buttons (spec 012b); without it no button is drawn. `flash` is one plain line of refusal shown at the top of the
@@ -628,10 +713,15 @@ def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", t
     tab = None      # `tab` belongs to the running stage page only; on any other page it is ignored
     if selected is not None and pick_stage(stage_param, stage_of(selected["status"])) == "running":
         tab = pick_tab(tab_param)
+    refresh_url = None
+    if selected is not None and selected["status"] == "succeeded" and pick_stage(stage_param, "results") == "results":
+        tab = pick_results_tab(tab_param)      # the results stage has its own tabs
+        if tab == "outputs":      # the page reloads itself to the address without `relist`, so a Read-again click is not repeated every 15 seconds
+            refresh_url = _url(pick_lang(lang), run_id, stage, tab="outputs")
     acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
-    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
+    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
     return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_)), run_id, stage,
-                  refresh=not flash, tab=tab)
+                  refresh=not flash, tab=tab, refresh_url=refresh_url)
 
 
 # ---- spec 012b: the launch form -----------------------------------------------------------------------------------------------------------

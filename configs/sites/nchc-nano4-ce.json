@@ -2,14 +2,15 @@
   "headQueue": "ngsconsole",
   "headJobOptions": "-A mst109178 -c 1 --mem=8G -t 2-00:00:00",
   "modules": ["biology/Nextflow/26.10.0"],
-  "siteConfigVars": ["NFCORE_SITE_CONFIG", "NFCORE_SITE_REFERENCES"],
+  "siteConfigVars": ["NFCORE_SITE_CONFIG"],
   "sitePipelines": [
     {"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}
   ],
   "environment": [
-    {"name": "NXF_SINGULARITY_LIBRARYDIR", "value": "<nano4 read-only image library>", "head": true, "compute": true},
+    {"name": "NXF_SINGULARITY_LIBRARYDIR", "value": "/work/<site_user>/abf/singularity-lib", "head": true, "compute": true},
     {"name": "NXF_SINGULARITY_CACHEDIR", "value": "/work/<site_user>/.singularity", "head": true, "compute": true},
-    {"name": "NXF_OPTS", "value": "-Xms512m -Xmx4g", "head": true, "compute": true}
+    {"name": "NXF_OPTS", "value": "-Xms512m -Xmx4g", "head": true, "compute": true},
+    {"name": "NXF_PLUGINS_DIR", "value": "/work/<site_user>/abf/nxf-plugins", "head": true, "compute": true}
   ],
   "suSite": "nano4",
   "workDir": "/work/<site_user>/runs",

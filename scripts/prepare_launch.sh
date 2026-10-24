@@ -137,9 +137,113 @@ if [ -x "$TW" ] && { [ -n "${TOWER_ACCESS_TOKEN:-}" ] || [ -r "$(token_file)" ];
     fi
 fi
 
+# --- which compute environment is the registered entry bound to? -------------
+# A launchpad entry is pinned to one CE as well as one revision; launching it
+# by short name sends the run there whatever this deployment is set up to use
+# (issue #8). Only asked once the text check above said "registered", and only
+# ever read - nothing is changed on Platform. Field positions in tw's JSON are
+# not documented, so computeEnv.name, then launch.computeEnv.name, then a
+# `pipelines view` per entry (at most 5); anything unreadable is "unknown".
+BOUND_LINE=""
+case "$REGISTERED" in
+yes,*)
+    EXPECTED_CE="${SEQERA_COMPUTE_ENV:-$(setting compute_env)}"
+    BPY="$(pick_python)" || BPY=""
+    BJSON=""
+    if [ -n "$BPY" ]; then
+        BJSON=$(TOWER_ACCESS_TOKEN="$TOWER_ACCESS_TOKEN" "$TW" -o json pipelines list \
+                  ${WORKSPACE:+--workspace "$WORKSPACE"} 2>/dev/null || true)
+    fi
+    ENTRIES=""
+    if [ -n "$BJSON" ]; then
+        ENTRIES=$("$BPY" -c '
+import json, sys
+repo = sys.argv[1]
+try:
+    d = json.load(sys.stdin)
+    items = d.get("pipelines", []) if isinstance(d, dict) else d
+    for p in items:
+        if not isinstance(p, dict) or repo not in str(p.get("repository") or ""):
+            continue
+        launch = p.get("launch") if isinstance(p.get("launch"), dict) else {}
+        rev = p.get("revision") or launch.get("revision") or ""
+        ce = ((p.get("computeEnv") or launch.get("computeEnv") or {}) or {}).get("name") or ""
+        print("%s|%s|%s" % (p.get("name") or "", rev, ce))
+except Exception:
+    pass
+' "$REPO" <<<"$BJSON" 2>/dev/null | tr -d '\r')
+    fi
+    # keep the entries at the wanted revision when the JSON carries revisions
+    SEL=""; ANYREV=0
+    while IFS='|' read -r en er ec; do
+        [ -n "$en$er$ec" ] || continue
+        [ -n "$er" ] && ANYREV=1
+    done <<<"$ENTRIES"
+    while IFS='|' read -r en er ec; do
+        [ -n "$en$er$ec" ] || continue
+        if [ "$ANYREV" = 1 ] && [ "$er" != "$REVISION" ]; then continue; fi
+        SEL="${SEL}${SEL:+$'\n'}$en|$ec"
+    done <<<"$ENTRIES"
+    # fill the missing CE names from `pipelines view`
+    RESOLVED=""; VIEWS=0
+    while IFS='|' read -r en ec; do
+        [ -n "$en$ec" ] || continue
+        if [ -z "$ec" ] && [ -n "$en" ] && [ "$VIEWS" -lt 5 ]; then
+            VIEWS=$((VIEWS+1))
+            VJ=$(TOWER_ACCESS_TOKEN="$TOWER_ACCESS_TOKEN" "$TW" -o json pipelines view -n "$en" \
+                   ${WORKSPACE:+--workspace "$WORKSPACE"} 2>/dev/null || true)
+            if [ -n "$VJ" ]; then
+                ec=$("$BPY" -c '
+import json, sys
+try:
+    p = json.load(sys.stdin).get("pipeline") or {}
+    launch = p.get("launch") if isinstance(p.get("launch"), dict) else {}
+    print(((p.get("computeEnv") or launch.get("computeEnv") or {}) or {}).get("name") or "")
+except Exception:
+    pass
+' <<<"$VJ" 2>/dev/null | tr -d '\r')
+            fi
+        fi
+        RESOLVED="${RESOLVED}${RESOLVED:+$'\n'}$ec"
+    done <<<"$SEL"
+    KNOWN="$(grep -v '^$' <<<"$RESOLVED" | sort -u || true)"
+    NUNK="$(grep -c '^$' <<<"$RESOLVED" || true)"
+    [ -n "$SEL" ] || NUNK=1
+    LIST_CE="$(paste -sd, - <<<"$KNOWN" | sed 's/,/, /g')"
+    BAD="$(grep -vxF -- "$EXPECTED_CE" <<<"$KNOWN" | grep -v '^$' | paste -sd, - | sed 's/,/, /g' || true)"
+    if [ -z "$KNOWN" ]; then
+        BOUND_LINE="bound to: unknown"
+        add_warning "could not tell which compute environment the registered entry is bound to - treat it as NOT matching until checked"
+    elif [ -z "$EXPECTED_CE" ]; then
+        BOUND_LINE="bound to: $LIST_CE (no compute_env in the deployment settings, nothing to compare)"
+        add_warning "no compute_env is configured, so the bound compute environment cannot be checked."
+    elif [ "$ANYREV" = 1 ]; then
+        # revisions known: one entry at this revision bound to our CE is enough
+        if grep -qxF -- "$EXPECTED_CE" <<<"$KNOWN"; then
+            BOUND_LINE="bound to: $EXPECTED_CE (matches this deployment's compute_env)"
+        else
+            BOUND_LINE="bound to: $LIST_CE (this deployment's compute_env is $EXPECTED_CE)"
+            add_decision "registered entry is bound to $LIST_CE, not $EXPECTED_CE - do NOT launch it by short name; register a new entry with tw pipelines add --compute-env $EXPECTED_CE, or launch the GitHub URL with --compute-env $EXPECTED_CE"
+        fi
+    else
+        # no revisions in the JSON: any same-repo entry bound elsewhere is asked about
+        if [ -z "$BAD" ] && [ "$NUNK" = 0 ]; then
+            BOUND_LINE="bound to: $EXPECTED_CE (matches this deployment's compute_env)"
+        elif [ -z "$BAD" ]; then
+            BOUND_LINE="bound to: unknown"
+            add_warning "could not tell which compute environment every registered entry is bound to - treat it as NOT matching until checked"
+        else
+            BOUND_LINE="bound to: $LIST_CE (this deployment's compute_env is $EXPECTED_CE)"
+            add_decision "registered entry is bound to $BAD, not $EXPECTED_CE - do NOT launch it by short name; register a new entry with tw pipelines add --compute-env $EXPECTED_CE, or launch the GitHub URL with --compute-env $EXPECTED_CE"
+        fi
+    fi
+    ;;
+esac
+
 PIPELINE_BODY="repo: $REPO
 revision: $REVISION$([ "$AUTO_REVISION" = 1 ] && echo ' (no revision given - resolved automatically, newest tag)')
-registered: $REGISTERED"
+registered: $REGISTERED${BOUND_LINE:+
+$BOUND_LINE}"
 add_section pipeline "$PIPELINE_BODY"
 
 # --- paths -------------------------------------------------------------------

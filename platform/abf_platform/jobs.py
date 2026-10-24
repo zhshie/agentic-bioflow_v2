@@ -299,6 +299,30 @@ def latest_launch(con, run_name):
     return con.execute("SELECT * FROM launches WHERE run_name = ? ORDER BY id DESC LIMIT 1", (run_name,)).fetchone()
 
 
+def latest_listing(state_path, ce_name, path):
+    """The newest list_site_files job of this environment whose path is exactly `path`, as a dict (id, state, deadline_at, finished_at,
+    result), or None. It only reads: a page uses it to see what the site already answered, and never waits for the site."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        rows = con.execute("SELECT * FROM jobs WHERE kind = 'list_site_files' AND compute_env = ? ORDER BY id DESC LIMIT 200",
+                           (ce_name,)).fetchall()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
+    for row in rows:
+        try:
+            if json.loads(row["args_json"]).get("path") == path:
+                result = json.loads(row["result_json"]) if row["result_json"] else None
+                return {"id": row["id"], "state": row["state"], "deadline_at": row["deadline_at"], "finished_at": row["finished_at"],
+                        "result": result}
+        except (ValueError, AttributeError):
+            continue
+    return None
+
+
 def _col(row, name):
     """A column of a hand-off row, or None when the file is older than the column (a platform.db no command has opened since the upgrade)."""
     return row[name] if name in row.keys() else None

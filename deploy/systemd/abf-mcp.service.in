@@ -1,0 +1,17 @@
+# abf-platform mcp --http, one of the three processes of one lab's platform.
+# Install: see docs/OPERATIONS.md, "Hosting one lab". Replace <venv> with the folder (under
+# your home) of the virtual environment that has abf-platform installed. No token, password or
+# key goes into this file; the settings come from the env file named below.
+[Unit]
+Description=abf-platform mcp --http
+
+[Service]
+EnvironmentFile=%h/.config/abf-platform/env
+ExecStart=%h/<venv>/bin/abf-platform mcp --http --host 127.0.0.1 --port 8788 --public-url ${ABF_PUBLIC_URL}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

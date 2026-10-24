@@ -183,6 +183,8 @@ The machine part is `tests/platform_test.sh`. These cases need the real cluster 
 
 Words used below. *SU* is the cluster's unit of computing time, the thing that is billed. The *head job* is the one Slurm job that runs Nextflow itself and starts the other jobs; it waits in the partition (queue) called `ngsconsole`. The *child jobs* are the pipeline's own tasks, run in the `ngs` partition. `<rid>` is the run's id, shown on the confirmation page. These cases were written on 2026-10-22; when you run them, the then-current v3 is the truth, and a difference is worth writing in the table's notes cell.
 
+Before TC-047n, confirm that `abf-platform ce show nano4` lists `siteConfigVars` as only `NFCORE_SITE_CONFIG` and an `environment` that contains `NXF_PLUGINS_DIR`.
+
 1. *nano4 preflight passes every item (TC-047n).*
    Before you start: the platform and the agent are running (`docs/PLATFORM.md` section 6), the shared connection to nano4 is open, and an environment for nano4 exists (`abf-platform ce list` shows it).
    1. Run `abf-platform ce preflight nano4` (use your environment's name if it is not `nano4`). It waits up to three minutes.
@@ -451,7 +453,7 @@ The automated tests are `platform/tests/test_chat_tools.py` and `platform/tests/
 
 The automated tests are the `N4-` tests at the end of `platform/tests/test_estimate_su.py`. Four checks are by hand, from the root of the branch.
 
-1. **Only the allowed files changed (N4-34).** Run `git diff --name-only origin/v3...HEAD`. Expected: only `configs/sites/nchc-nano4.config`, `configs/sites/nchc-nano4-ce.json`, `configs/sites/su_rates.json`, `platform/abf_platform/su.py`, `platform/tests/test_estimate_su.py`, `specs/estimate-su/ledger.md`, `specs/nano4-site-config/*`, `docs/TESTING.md`. No `compute_envs.py`, no `actions/`, no site script, and no record of a created compute environment.
+1. **Only the allowed files changed (N4-34).** Run `git diff --name-only origin/v3...HEAD`. Expected: only `configs/sites/nchc-nano4.config`, `configs/sites/nchc-nano4-ce.json`, `configs/sites/su_rates.json`, `platform/abf_platform/su.py`, `platform/tests/test_estimate_su.py`, `specs/estimate-su/ledger.md`, `specs/nano4-site-config/*`, `docs/TESTING.md`; and for nano4-ce-fixes also `docs/SETTINGS.md`, `docs/SITE_ADAPTER.md`, `docs/PITFALLS.md`, `specs/nano4-ce-fixes/*`. No `compute_envs.py`, no `actions/`, no site script, and no record of a created compute environment.
 2. **Taiwania-3 untouched (N4-33).** Run `git diff origin/v3...HEAD -- configs/sites/nchc.config configs/sites/nchc-ce.json.in` (expected: empty) and `git diff origin/v3...HEAD -- configs/sites/su_rates.json` (expected: only added lines, a new `nano4` section; no changed `taiwania3`, `nchc` or top-level line).
 3. **No existing test was weakened (N4-15).** Run `git diff origin/v3...HEAD -- platform/tests/test_estimate_su.py`. Expected: only added lines; no assertion removed, loosened, re-valued or skipped.
 4. **No migration (N4-31).** Read `specs/nano4-site-config/ledger.md`: it says why no migration is needed.
@@ -589,6 +591,30 @@ This task delivers the platform half only: a Dataset can be registered at `gs://
 Then check the existing tests with `git diff <base>...HEAD -- platform/tests/`. Check: `test_datasets.py`, `test_gcb_launch.py`, `test_station_envs.py`, `test_guidance.py`, `test_scope.py` and `test_actions_layer.py` have no difference. `test_gcb_ce.py` is the one allowed exception, and only in one place: the regex in `test_nothing_of_the_later_slices_exists` loses `storage cp`; everything else in that file is unchanged, and no assertion is deleted, loosened or skipped.
 
 Last, look for split strings: run `grep -nE '"[^"]*" *\+ *"' platform/tests/test_cloud_upload.py` and read each hit. Check: no path or forbidden word is cut in two and joined again to dodge a scan (for example `/home` split); a path that is needed is made with `tmp_path`; the scans in `test_scope.py` and `test_datasets.py` still pass. A plain join that is not a dodge is fine.
+
+## Launching a composed pipeline (017d): the maintainer runs one on nano4, the reviewer checks the diff
+
+The automatic tests use a fake site and no real Nextflow (the CI has none), so what Nextflow does with the project is checked once by a person. The run costs a few core-hours on nano4.
+
+1. **Save and check.** Save the fastqc to multiqc graph as a composed pipeline (`actions.pipelines`), check it, and have two small FASTQ files ready under the storage root. Make a samplesheet with the columns `sample,reads` (one file per row).
+2. **Send it.** Call `request_pipeline_launch` for the saved pipeline (the terminal or a script; there is no tool yet). Check: the answer names a page `/c/<id>`; nothing is queued; the page shows the whole `main.nf`, the project's `nextflow.config` and the list of the other files with their hashes; the last line of `head.sh` starts `<run folder>/pipeline/main.nf`. Press 送出 as yourself.
+3. **On the site.** Check: `<run folder>/pipeline/` holds `main.nf`, `nextflow.config`, `modules.json` and `modules/nf-core/fastqc/main.nf` and `modules/nf-core/multiqc/main.nf`; the Slurm job runs; the run page shows progress (`-with-tower`).
+4. **What Nextflow did with it.** Check: the settings of the project's `nextflow.config` were read (`ext.args = '--quiet'` shows in the `.command.sh` of a FASTQC task), `<run folder>/results/fastqc` and `results/multiqc` hold the outputs (the `publishDir` block works), and the containers were pulled online by nano4 itself. Write what you saw in `specs/017d-launch-composed/ledger.md`; if the project's config was not read, tell the developer-agent (the head script then needs a change, not a workaround by hand).
+5. **A refused case.** Send the same pipeline with a samplesheet that has no `reads` column. Check: the refusal starts 未送出 and says which columns are needed. Then resume the failed or finished run. Check: the refusal says a composed run cannot be resumed yet.
+6. **The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with "Scope: files" of `specs/017d-launch-composed/plan.md`; `store.py`, `jobs.py`, `confirm.py`, `compose.py`, `catalogue.py`, `validate.py`, `actions/pipelines.py`, `mcp_server.py` and `web.py` are untouched; the existing tests changed only as the ledger says; the non-composed bundle, head script and screen are byte for byte what they were.
+
+## Hosted deploy (hosted-deploy): the maintainer and the reviewer check
+
+The automatic test, `tests/hosted_deploy_test.sh`, reads the files in `deploy/` and runs the backup script on a fake data folder; it starts no service and touches no network. The steps below start real services and are yours to run; nothing in the task ran them. Replace `<funnel-address>` with the address Funnel prints.
+
+1. **The always-on desktop (WSL).** Copy `deploy/systemd/abf-*.service.in` to `~/.config/systemd/user/` and drop the `.in` (for example `abf-serve.service`), replace `<venv>` as `docs/OPERATIONS.md` section 3 says, copy `deploy/env.example` to `~/.config/abf-platform/env` (mode 600) and fill it in, then `systemctl --user daemon-reload` and `systemctl --user enable --now abf-serve abf-mcp abf-web`. Check: `systemctl --user status abf-serve abf-mcp abf-web` shows `active (running)` for all three.
+2. **Caddy and Funnel.** Set `ABF_SITE_ADDRESS=http://127.0.0.1:8080` in the env file, start `caddy run --config deploy/Caddyfile.template --envfile ~/.config/abf-platform/env`, then `tailscale funnel --bg 8080`. Check: from a phone on mobile data, `https://<funnel-address>/` shows the login page, and `curl -i https://<funnel-address>/user-info` answers 401 with an `X-ABF-Platform` header.
+3. **Claude Desktop.** Point the connector at `https://<funnel-address>/mcp` and go through the OAuth login and the consent page. Check: the connector lists the platform's tools. Write the result where "Claude Desktop custom connector (#117)" asks for it.
+4. **A crash.** Find the process of one service (`systemctl --user show -p MainPID abf-web`) and kill it. Check: within 5 seconds `systemctl --user status abf-web` shows it running again with a new process number.
+5. **Backup and restore.** Run `deploy/backup.sh ~/backups`. Stop the three services, copy the files of the newest `abf-backup-...` folder into an empty folder, and run `ABF_PLATFORM_DB=<that folder>/index.db abf-platform pat list`. Check: the tokens you issued are listed (never their values).
+6. **A rented server.** On the VPS use the same files with `ABF_SITE_ADDRESS=<your-domain>` and follow "Hosting one lab" in `docs/OPERATIONS.md`. Check: Caddy gets the certificate by itself and `curl -i https://<your-domain>/user-info` answers 401 with `X-ABF-Platform`.
+
+**The reviewer.** Run `git diff --name-only <base>...HEAD`: only `deploy/`, `tests/hosted_deploy_test.sh`, the three docs and `specs/hosted-deploy/` appear; nothing under `platform/abf_platform/`, `platform/abf_station/` or `platform/abf_launch/`; no existing test file is changed.
 
 ## When something is red
 

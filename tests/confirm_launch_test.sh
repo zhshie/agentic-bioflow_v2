@@ -799,6 +799,58 @@ envp "#45 an env prefix on a relay start is named in the ask"  has   'NF_RELAY_E
 envp "#45 ...through env"                                      has   'env NF_RELAY_EXTRA_DOMAINS=evil.org bash scripts/egress_ctl.sh restart'
 envp "#45 ...through export"                                   has   'export NF_RELAY_EXTRA_DOMAINS=evil.org; bash scripts/egress_ctl.sh start'
 envp "#45 control: a plain relay start does not say it"        lacks 'bash scripts/egress_ctl.sh start'
+# relay-env-warning: an environment prefix NF_RELAY_PEER_PREFIXES= on a direct relay start
+envq() { # envq <label> <expect has|lacks> <command>: does the ask name the command's own peer-prefix list?
+  local j o got
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$3")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  got=lacks; grep -qF "THIS COMMAND ALSO SETS NF_RELAY_PEER_PREFIXES" <<<"$o" && got=has
+  printf '%-58s ' "$1"
+  [ "$got" = "$2" ] && echo ok || { echo "FAIL: expected $2, got $got <<${o:0:80}>>"; fails=$((fails+1)); }
+}
+envq_txt() { # envq_txt <label> <command> <fixed string the ask must contain>
+  local j o
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$2")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  printf '%-58s ' "$1"
+  grep -qF -- "$3" <<<"$o" && echo ok || { echo "FAIL: missing <<$3>> in <<${o:0:80}>>"; fails=$((fails+1)); }
+}
+envq_order() { # envq_order <label> <command> <first> <second>: <first> appears before <second> in the ask
+  local j o a b
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$2")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  a=${o%%"$3"*}; b=${o%%"$4"*}
+  printf '%-58s ' "$1"
+  if [[ $o == *"$3"* && $o == *"$4"* && ${#a} -lt ${#b} ]]; then echo ok; else echo "FAIL: order"; fails=$((fails+1)); fi
+}
+PW_SETS='THIS COMMAND ALSO SETS NF_RELAY_PEER_PREFIXES='
+envq "PEER-1 an env prefix on a relay start is named"      has   'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start'
+envq "PEER-2 ...through env"                               has   'env NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh restart'
+envq "PEER-3 ...through export"                            has   'export NF_RELAY_PEER_PREFIXES=25a-cpn; bash scripts/egress_ctl.sh start'
+envq_txt "PEER-3 value stops before the semicolon" 'export NF_RELAY_PEER_PREFIXES=25a-cpn; bash scripts/egress_ctl.sh start' "${PW_SETS}25a-cpn, which changes"
+envq "PEER-4 an empty value is still named"                has   'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start'
+envq_txt "PEER-4 empty value is shown as empty" 'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start' "${PW_SETS}, which changes"
+envq "PEER-5 a quoted script path still triggers"          has   'NF_RELAY_PEER_PREFIXES=zzz-aaa bash "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start'
+envq "PEER-6 both variables: peer warning present"         has   'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start'
+envp "PEER-6 both variables: extra warning present"        has   'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start'
+envq_order "PEER-6 extra warning comes before peer warning" 'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start' "overrides this deployment's list" "$PW_SETS"
+envq_txt "PEER-7 the value is shown in the warning" 'NF_RELAY_PEER_PREFIXES=25a-cpn,25a-lgn bash scripts/egress_ctl.sh start' "${PW_SETS}25a-cpn,25a-lgn, which changes"
+envq_txt "PEER-7 warning wording: which hosts" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "which changes which hosts may connect to the relay"
+envq_txt "PEER-7 warning wording: default list" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "instead of the deployment's setting (default cpn,gpn,bgm,lgn,localhost)"
+envq_txt "PEER-7 warning wording: show user" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "Show the user the prefixes it names."
+envp "PEER-7 peer-only does not use the extra wording"      lacks 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start'
+envq "PEER-8 a plain relay start does not say it"          lacks 'bash scripts/egress_ctl.sh start'
+envq "PEER-9 through on_site.sh it is not named"           lacks 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/on_site.sh egress_ctl.sh start'
+envq "PEER-10 the EXTRA-only case does not mention peers"  lacks 'NF_RELAY_EXTRA_DOMAINS=evil.org bash scripts/egress_ctl.sh start'
+envq "PEER-11 a stop does not say it"                      lacks 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh stop'
+idg "PEER-12 start still asks"                             ask   'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start'
+idg "PEER-12 env restart still asks"                       ask   'env NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh restart'
+idg "PEER-12 export start still asks"                      ask   'export NF_RELAY_PEER_PREFIXES=25a-cpn; bash scripts/egress_ctl.sh start'
+idg "PEER-12 empty value still asks"                       ask   'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start'
+idg "PEER-12 quoted path still asks"                       ask   'NF_RELAY_PEER_PREFIXES=zzz-aaa bash "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start'
+idg "PEER-12 both variables still ask"                     ask   'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start'
+idg "PEER-12 via on_site.sh still asks"                    ask   'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/on_site.sh egress_ctl.sh start'
+idg "PEER-12 plain start still asks"                       ask   'bash scripts/egress_ctl.sh start'
 # LOW: false alarms on reading the script, and sourcing it with no operation
 idg "#45 cat of the script does not ask"          allow 'cat scripts/egress_allow.sh'
 idg "#45 less of the script does not ask"                  allow 'less scripts/egress_allow.sh'

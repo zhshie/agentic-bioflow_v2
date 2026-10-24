@@ -536,7 +536,7 @@ def test_tch21_stage_bodies(w):
     mid = plain(pane(c.get("/?run=" + a).text, "middle"))
     for label, n in (("成功", 11), ("快取", 12), ("失敗", 13), ("中止", 14), ("執行中", 15), ("等待", 16), ("已送出", 17)):
         assert re.search(r"%s\s*%d(?!\d)" % (label, n), mid), (label, n)
-    assert "10-18 09:05" in plain(pane(c.get("/?run=" + b).text, "middle"))
+    assert "10-18 09:05" in plain(pane(c.get("/?run=" + b + "&tab=info").text, "middle"))
     assert "Process terminated with an error exit status (137)" in c.get("/?run=" + a).text
     for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "013b")):
         body = pane(c.get("/?run=%s&stage=%s" % (a, stage)).text, "middle")
@@ -559,14 +559,14 @@ def test_tcl07_to_l13_stage_strip(w):
     ids = {st: seed(w, "n-" + st, st, ann) for st in ("running", "succeeded", "failed", "lost")}
     c = login(w, "ann")
     expect = {"running": ["is-done", "is-current", "is-later", "is-later", "is-later"],
-              "failed": ["is-done", "is-current", "is-later", "is-later", "is-later"],
-              "lost": ["is-done", "is-current", "is-later", "is-later", "is-later"],
+              "failed": ["is-done", "is-current is-failed", "is-later", "is-later", "is-later"],
+              "lost": ["is-done", "is-current is-failed", "is-later", "is-later", "is-later"],
               "succeeded": ["is-done", "is-done", "is-current", "is-later", "is-later"]}
     for st, want in expect.items():
         cells = strip_cells(c.get("/?run=" + ids[st]).text)
         assert list(cells) == list(STAGES), st
         got = [[k for k in cells[s][0] if k.startswith("is-")] for s in STAGES]
-        assert got == [[x] for x in want], (st, got)
+        assert got == [x.split() for x in want], (st, got)
     names = [plain(strip_cells(c.get("/?run=" + ids["running"]).text)[s][1]) for s in STAGES]
     assert [n.replace("✓ ", "") for n in names] == ["送出", "執行中", "結果", "下游", "完成"]
     cells = strip_cells(c.get("/?run=%s&stage=results" % ids["running"]).text)
@@ -1189,7 +1189,7 @@ def test_tn05_no_new_tool_or_action(w):
     from abf_platform import actions
     tools, _ = w.mcp([])
     assert sorted(t.name for t in tools) == sorted(["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents",
-                                                    "list_site_files", "read_task_log", "launch", "cancel", "forget", "resume", "relaunch"])
+                                                    "list_site_files", "read_task_log", "run_outputs", "launch", "cancel", "forget", "resume", "relaunch"])
     assert not [n for n in dir(actions) if "board" in n]
 
 
@@ -1221,7 +1221,7 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
         for tag in ("<textarea", "<select", "<iframe", "<table", 'type="radio"', 'type="checkbox"'):
             assert tag not in t, (url, tag)
         assert [m for m in re.findall(r"<input\b[^>]*>", t) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m)] == []     # 012b: the buttons carry the run id (and the language)
-        assert t.count("<details") == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
+        assert t.count("<details") - t.count('<details class="menu">') == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):
             u = urlsplit(htmllib.unescape(h))
             assert u.path in ("/", "/settings", "/launch") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab", "from"}, h      # 011b adds ?tab=; 012b the launch page and ?from=
@@ -1262,7 +1262,7 @@ def test_tcs51_no_time_in_right_column(w):
     p = plain(pane(c.get("/?run=" + g).text, "right"))
     assert "09:12" in p and not re.search(r"\d\d-\d\d \d\d:\d\d", p)
     assert not re.search(r"\d\d:\d\d", plain(pane(c.get("/?run=" + s).text, "right")))
-    assert "10-18 09:12" in plain(pane(c.get("/?run=" + s).text, "middle"))
+    assert "10-18 09:12" in plain(pane(c.get("/?run=" + s + "&tab=info").text, "middle"))
 
 
 def test_r10_reason_marker_left_tag_and_wrapping(w):

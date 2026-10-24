@@ -99,7 +99,7 @@ class Counting:
 
 
 class Relay:
-    def __init__(self, tmp, forward=None, instance=INSTANCE):
+    def __init__(self, tmp, forward=None, instance=INSTANCE, extra_env=None):
         self.port = free_port()
         self.forward_file = Path(tmp) / "forward_port"
         self.instance_file = Path(tmp) / "forward_instance"
@@ -111,6 +111,7 @@ class Relay:
         env = dict(os.environ, NF_RELAY_FORWARD_FILE=str(self.forward_file), NF_RELAY_EXTRA_DOMAINS="abf-golden.example.org",
                    PYTHONDONTWRITEBYTECODE="1")
         env.pop("NF_RELAY_STATE_DIR", None)
+        env.update(extra_env or {})
         self.proc = subprocess.Popen([sys.executable, str(RELAY), str(self.port)], env=env, stdout=open(self.log, "w"),
                                      stderr=subprocess.STDOUT)
         wait_port(self.port, proc=self.proc)
@@ -377,3 +378,258 @@ def test_tc080_without_an_instance_file_or_with_a_broken_one_the_door_stays_shut
     relay.instance_file.write_text("another-platform-id\n")      # the file names another platform than the one that answers
     assert status(relay.send(get("http://127.0.0.1:%d/trace/create" % F, method="POST", body=b"{}"))) in (None, 403)
     assert len(srv.requests) == 1
+
+
+# ---------------------------------------------------------------------------
+# relay-prefix-nano4: the peer prefixes come from NF_RELAY_PEER_PREFIXES
+# ---------------------------------------------------------------------------
+import importlib.util
+
+NANO4 = "25a-cpn,25a-hgpn,25a-lgn"
+DEFAULT_PEERS = ("cpn", "gpn", "bgm", "lgn", "localhost")
+UNSET = object()
+
+
+def load_relay(monkeypatch, peers=UNSET, extra_domains=None):
+    """A fresh module instance of scripts/nf_relay.py (its _PEER_CACHE is module-global)."""
+    monkeypatch.delenv("NF_RELAY_PEER_PREFIXES", raising=False)
+    monkeypatch.delenv("NF_RELAY_EXTRA_DOMAINS", raising=False)
+    monkeypatch.delenv("NF_RELAY_EXTRA_NOTE", raising=False)
+    if peers is not UNSET:
+        monkeypatch.setenv("NF_RELAY_PEER_PREFIXES", peers)
+    if extra_domains is not None:
+        monkeypatch.setenv("NF_RELAY_EXTRA_DOMAINS", extra_domains)
+    monkeypatch.setattr(sys, "argv", ["nf_relay.py"])
+    spec = importlib.util.spec_from_file_location("nf_relay_under_test_%d" % time.monotonic_ns(), RELAY)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def peer_of(relay, monkeypatch, name):
+    """peer_ok() with the reverse lookup faked to return `name` (None = the lookup fails)."""
+    def fake(ip):
+        if name is None:
+            raise socket.herror("no reverse record")
+        return (name, [], [ip])
+    monkeypatch.setattr(relay.socket, "gethostbyaddr", fake)
+    relay._PEER_CACHE.clear()
+    return relay.peer_ok("172.16.0.9")
+
+
+def test_tc001_tc002_default_peer_prefixes_when_nothing_is_set(monkeypatch):
+    # TC-001, TC-002
+    relay = load_relay(monkeypatch)
+    assert relay.ALLOW_HOST_PREFIXES == DEFAULT_PEERS
+    assert isinstance(relay.ALLOW_HOST_PREFIXES, tuple)
+    assert relay.DEFAULT_HOST_PREFIXES == DEFAULT_PEERS
+
+
+@pytest.mark.parametrize("raw,loud", [("", False), ("  ", True), (",", True), ("a,b", True), ("*", True), (".", True)])
+def test_tc003_to_tc008_default_when_empty_blank_or_all_invalid(monkeypatch, raw, loud):
+    # TC-003 (""), TC-004 ("  "), TC-005 (","), TC-006 ("a,b"), TC-007 ("*"), TC-008 (".")
+    relay = load_relay(monkeypatch, raw)
+    assert relay.ALLOW_HOST_PREFIXES == DEFAULT_PEERS
+    text = "\n".join(relay.startup_lines())
+    if loud:
+        assert "had no usable entry" in text
+
+
+def test_tc009_to_tc012_startup_lines_unchanged_when_unset(monkeypatch):
+    # TC-009, TC-010, TC-011, TC-012
+    relay = load_relay(monkeypatch)
+    lines = relay.startup_lines()
+    assert lines[1] == "  peers  : cpn,gpn,bgm,lgn,localhost*"
+    text = "\n".join(lines)
+    assert "peers (this deployment)" not in text and "peers: dropped" not in text
+    assert "had no usable entry" not in text
+    assert lines[0] == "nf-relay on 0.0.0.0:18080"
+    assert lines[2].startswith("  domains (built in): ")
+    assert lines[3:] == ["  domains (this deployment): (none)"]
+
+
+@pytest.mark.parametrize("name,expect", [
+    ("cpn3857.nchc.org.tw", True), ("gpn0101", True), ("bgm01", True), ("lgn304", True), ("localhost", True),  # TC-013..017
+    ("25a-cpn03", False), ("25a-hgpn170", False), ("25a-lgn01", False), ("25a-xyz1", False),                   # TC-018
+    ("laptop.example", False), ("evilcpn3857.example", False), ("xcpn1", False),                               # TC-019..021
+    ("CPN3001.Example", True), (None, False),                                                                    # TC-022, TC-023
+])
+def test_tc013_to_tc023_default_allows_t3_nodes_and_refuses_others(monkeypatch, name, expect):
+    relay = load_relay(monkeypatch)
+    ok, shown = peer_of(relay, monkeypatch, name)
+    assert ok is expect
+    if name is None:
+        assert shown == "<no-rdns>"
+
+
+def test_tc029_and_tc072_an_extra_domain_does_not_become_a_peer(monkeypatch):
+    # TC-029 (default) and TC-072 (with a setting)
+    for peers in (UNSET, "25a-cpn"):
+        relay = load_relay(monkeypatch, peers, extra_domains="download.example.org")
+        assert peer_of(relay, monkeypatch, "download.example.org")[0] is False
+
+
+def test_tc030_setting_replaces_the_list_and_localhost_is_kept(monkeypatch):
+    # TC-030
+    relay = load_relay(monkeypatch, NANO4)
+    assert relay.ALLOW_HOST_PREFIXES == ("25a-cpn", "25a-hgpn", "25a-lgn", "localhost")
+
+
+@pytest.mark.parametrize("name,expect", [
+    ("25a-cpn03", True), ("25a-hgpn170", True), ("25a-lgn01", True),   # TC-031..033
+    ("localhost", True),                                                 # TC-034
+    ("cpn3857.nchc.org.tw", False), ("lgn304", False),                   # TC-035, TC-036
+    ("25a-gpu1", False), ("25a-xyz1", False),                            # TC-037
+    ("CPN3001.Example", False), ("laptop.example", False), (None, False),  # TC-038, TC-039
+    ("evilcpn3857", False),                                              # TC-040
+])
+def test_tc031_to_tc040_nano4_setting(monkeypatch, name, expect):
+    relay = load_relay(monkeypatch, NANO4)
+    assert peer_of(relay, monkeypatch, name)[0] is expect
+
+
+def test_tc041_embedded_newline_is_one_dropped_line(monkeypatch):
+    # TC-041
+    base = load_relay(monkeypatch, "25a-cpn").startup_lines()
+    relay = load_relay(monkeypatch, "25a-cpn,cp\nn")
+    lines = relay.startup_lines()
+    assert len(lines) == len(base) + 1
+    assert sum(1 for ln in lines if "peers: dropped" in ln) == 1
+    assert relay.ALLOW_HOST_PREFIXES == ("25a-cpn", "localhost")
+    assert all("\n" not in ln for ln in lines)
+
+
+def test_tc042_no_raw_control_characters_in_the_output(monkeypatch):
+    # TC-042
+    relay = load_relay(monkeypatch, "25a-cpn,\x1b[31m")
+    lines = relay.startup_lines()
+    assert not any(ord(c) < 32 or ord(c) == 127 for ln in lines for c in ln)
+    assert any("peers: dropped" in ln for ln in lines)
+    assert relay.ALLOW_HOST_PREFIXES == ("25a-cpn", "localhost")
+
+
+def test_tc043_tc044_nano4_startup_lines(monkeypatch):
+    # TC-043, TC-044
+    lines = load_relay(monkeypatch, NANO4).startup_lines()
+    assert "  peers  : 25a-cpn,25a-hgpn,25a-lgn,localhost*" in lines
+    assert "  peers (this deployment): set by relay_peer_prefixes" in lines
+
+
+def test_tc045_tc046_match_is_on_the_start_and_case_is_folded(monkeypatch):
+    # TC-045, TC-046
+    relay = load_relay(monkeypatch, "CPN, GPN")
+    assert relay.ALLOW_HOST_PREFIXES == ("cpn", "gpn", "localhost")
+    assert peer_of(relay, monkeypatch, "CPN3001.Example")[0] is True
+    assert peer_of(relay, monkeypatch, "mycpn3001")[0] is False
+
+
+@pytest.mark.parametrize("raw,expect", [("cpn,,lgn", ("cpn", "lgn", "localhost")), (",cpn", ("cpn", "localhost")),
+                                        ("cpn,", ("cpn", "localhost"))])
+def test_tc047_to_tc050_an_empty_string_never_becomes_a_prefix(monkeypatch, raw, expect):
+    # TC-047, TC-048, TC-049, TC-050
+    relay = load_relay(monkeypatch, raw)
+    assert relay.ALLOW_HOST_PREFIXES == expect
+    assert "" not in relay.ALLOW_HOST_PREFIXES
+    assert not any("dropped" in ln for ln in relay.startup_lines())
+    assert peer_of(relay, monkeypatch, "laptop.example")[0] is False
+
+
+def test_tc051_tc052_tc053_invalid_entries_dropped_and_named(monkeypatch):
+    # TC-051, TC-052, TC-053
+    relay = load_relay(monkeypatch, "25a-cpn, a.b, ab, UPPER_CASE, ça-cpn, ok-x")
+    assert relay.ALLOW_HOST_PREFIXES == ("25a-cpn", "ok-x", "localhost")
+    dropped = [ln for ln in relay.startup_lines() if "peers: dropped" in ln]
+    assert len(dropped) == 4
+    for item in ("a.b", "ab", "UPPER_CASE"):
+        assert any("dropped '%s' - " % item in ln and len(ln.split(" - ", 1)[1]) > 3 for ln in dropped), item
+    assert any("a-cpn" in ln for ln in dropped)   # the non-ASCII one, shown through _clean() (TC-053)
+
+
+def test_tc069_more_than_twenty_entries_are_cut(monkeypatch):
+    # TC-069
+    names = ["host-%02d" % i for i in range(21)]
+    relay = load_relay(monkeypatch, ",".join(names))
+    assert relay.ALLOW_HOST_PREFIXES == tuple(names[:20]) + ("localhost",)
+    assert any("dropped 'host-20'" in ln and "limit of 20" in ln for ln in relay.startup_lines())
+
+
+@pytest.mark.parametrize("raw,expect", [("localhost,cpn", ("localhost", "cpn")),     # TC-070
+                                        ("cpn,lgn,cpn", ("cpn", "lgn", "localhost"))])  # TC-071
+def test_tc070_tc071_localhost_is_not_added_twice_and_duplicates_go(monkeypatch, raw, expect):
+    assert load_relay(monkeypatch, raw).ALLOW_HOST_PREFIXES == expect
+
+
+def test_tc073_tc074_tc075_length_and_first_character(monkeypatch):
+    # TC-073 (32 ok), TC-074 (33 dropped), TC-075 ("-abc" dropped)
+    ok32, bad33 = "a" * 32, "b" * 33
+    relay = load_relay(monkeypatch, "%s,%s,-abc,good" % (ok32, bad33))
+    assert relay.ALLOW_HOST_PREFIXES == (ok32, "good", "localhost")
+    text = "\n".join(relay.startup_lines())
+    assert "dropped '%s'" % ok32 not in text
+    assert "dropped '-abc'" in text
+    assert "peers: dropped 'bbbbbbbb" in text
+
+
+def test_tc088_no_wildcards_and_no_dots(monkeypatch):
+    # TC-088
+    relay = load_relay(monkeypatch, "cpn*,cpn.nchc,fine")
+    assert relay.ALLOW_HOST_PREFIXES == ("fine", "localhost")
+    text = "\n".join(relay.startup_lines())
+    assert "dropped 'cpn*'" in text and "dropped 'cpn.nchc'" in text
+
+
+def test_tc061_tc062_tc063_a_real_relay_with_a_prefix_setting(tmp_path):
+    # TC-061, TC-062, TC-063
+    srv = Counting()
+    relay = Relay(tmp_path, forward=srv.port, extra_env={"NF_RELAY_PEER_PREFIXES": "zzz-nomatch"})
+    try:
+        target = "http://127.0.0.1:%d/user-info" % srv.port
+        assert status(relay.send(get(target), source="127.0.0.1")) != 403
+        assert status(relay.send(get(target), source="127.0.0.2")) == 403
+        lines = relay.lines()
+        assert any("DENY-PEER" in ln for ln in lines)
+        assert any(ln.endswith("peers  : zzz-nomatch,localhost*") for ln in lines)
+        assert any("set by relay_peer_prefixes" in ln for ln in lines)
+    finally:
+        relay.stop()
+        srv.stop()
+
+
+def test_tc076_a_real_relay_with_no_usable_entry_says_so_and_behaves_as_unset(tmp_path):
+    # TC-076
+    srv = Counting()
+    relay = Relay(tmp_path, forward=srv.port, extra_env={"NF_RELAY_PEER_PREFIXES": "ab"})
+    try:
+        target = "http://127.0.0.1:%d/user-info" % srv.port
+        lines = relay.lines()
+        assert any("had no usable entry" in ln for ln in lines)
+        assert any(ln.endswith("peers  : cpn,gpn,bgm,lgn,localhost*") for ln in lines)
+        assert status(relay.send(get(target), source="127.0.0.1")) != 403
+        assert status(relay.send(get(target), source="127.0.0.2")) == 403
+    finally:
+        relay.stop()
+        srv.stop()
+
+
+def test_tc077_a_real_relay_names_what_it_dropped(tmp_path):
+    # TC-077
+    relay = Relay(tmp_path, extra_env={"NF_RELAY_PEER_PREFIXES": "25a-cpn, a.b"})
+    try:
+        lines = relay.lines()
+        assert any(ln.endswith("peers  : 25a-cpn,localhost*") for ln in lines)
+        assert any("dropped 'a.b'" in ln for ln in lines)
+    finally:
+        relay.stop()
+
+
+def test_tc064_tc065_tc068_setting_is_documented():
+    # TC-064, TC-065, TC-068
+    settings = (REPO_ROOT / "docs" / "SETTINGS.md").read_text(encoding="utf-8")
+    adapter = (REPO_ROOT / "docs" / "SITE_ADAPTER.md").read_text(encoding="utf-8")
+    travels = next(ln for ln in settings.splitlines() if ln.startswith("| **Travels**"))
+    assert "relay_peer_prefixes" in travels
+    for needle in ("relay_peer_prefixes", "25a-cpn", "replaces", "egress_ctl.sh restart"):
+        assert needle in settings, needle
+    nano4_row = next(ln for ln in adapter.splitlines() if ln.startswith("| nano4 |"))
+    assert "no relay" in nano4_row
+    assert "never been run on nano4" in adapter

@@ -14,7 +14,8 @@ BOARD = PLATFORM_DIR / "abf_platform" / "web_board.py"
 # The read actions a web route calls; each has a same-named MCP tool.
 # 012b: launch and cancel are the tools whose web routes are POST /launch and POST /act/cancel; the routes call request_launch and request_cancel (INTERNAL below), never launch or cancel.
 WEB_ROUTES = {"list_runs": "GET /", "get_run": "GET /", "list_compute_envs": "GET /launch",
-              "launch": "POST /launch, through request_launch", "cancel": "POST /act/cancel, through request_cancel"}
+              "launch": "POST /launch, through request_launch", "cancel": "POST /act/cancel, through request_cancel",
+              "run_outputs": "GET /?run=<id>&stage=results (the Outputs tab; results-outputs)"}
 # 012b: the tools resume and relaunch have no action of that name (they are request_resume / request_relaunch); their web routes are POST /act/resume and POST /act/relaunch.
 WEB_VIA_REQUEST = {"launch": "request_launch", "cancel": "request_cancel", "resume": "request_resume", "relaunch": "request_relaunch"}
 # The PAGE confirmation channel is web-only by design: the MCP side uses the form channel and request_launch/request_cancel.
@@ -32,7 +33,7 @@ OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "01
 OWED_BEFORE_012B = {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "read_task_log", "launch", "cancel", "forget"}
 # Helpers, classes and constants that no web route or tool exposes by name. 009i: ConnectorCaller, form_is_trusted (MCP side only).
 # v3 (keep-submissions, resume/relaunch): request_forget, request_resume, request_relaunch are what the tools forget, resume, relaunch call; forget_check and keep_screen are helpers; the FORGET_* and RUN_NOT_FOUND words are constants.
-INTERNAL = {"request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
+INTERNAL = {"request_pipeline_launch", "request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
             "person_at", "caller_area", "confined_samplesheet", "read_confined_samplesheet", "forget_check", "keep_screen",
             "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE",
             "FORGETTABLE", "FORGET_ALREADY", "FORGET_NO_FORM", "FORGET_STARTING", "FORGET_WAIT_SECONDS", "RUN_NOT_FOUND",

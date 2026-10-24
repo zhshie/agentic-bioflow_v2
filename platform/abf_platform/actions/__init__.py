@@ -18,12 +18,13 @@ They write the same kind of confirmation (a launch) and queue the same kind of j
 """
 import dataclasses
 import os
+import re
 import sqlite3
 import time
 
 from abf_launch import build
 
-from .. import agents, common, compute_envs, confirm, failures, jobs, status, store, su
+from .. import agents, common, compute_envs, confirm, failures, jobs, pipeline_launch, status, store, su
 
 NotApproved = confirm.NotApproved
 
@@ -267,6 +268,74 @@ async def list_site_files(platform_path, compute_env, path, *, caller=None):
     return answer
 
 
+_OUTPUTS_NO_RUN = "Run not found (找不到這個 run)"      # the same words for a run that is not there and for somebody else's: no id, nothing to tell them apart
+_OUTPUTS_NO_LAUNCH = ("不是從平台送出的分析，沒有輸出資料夾紀錄 "
+                      "(this analysis was not launched from the platform, so there is no output folder on record)")
+_OUTPUTS_NO_ANSWER = "站台沒有回應 (the site did not answer)"
+_OUTPUTS_GENERIC = "站台讀不到這個資料夾 (the site could not read this folder)"
+_INTERNAL_WORDS = re.compile(r"Traceback|File \"|\bSELECT\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b|sqlite|args_json|deadline_at|result_json|"
+                             r"Exception|, line \d+")
+
+
+def _outputs_reason(message):
+    """The site's own sentence when it is one plain line; a stack, SQL or an internal field name is never passed on."""
+    line = next((x.strip() for x in str(message or "").splitlines() if x.strip()), "")
+    if not line or _INTERNAL_WORDS.search(str(message)) or compute_envs.looks_like_credential(str(message)):
+        return _OUTPUTS_GENERIC
+    return line[:300]
+
+
+def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False, enqueue=True):
+    """What `<run folder>/results` holds, for the run page: the answer of the newest list_site_files job for that folder. It never
+    waits for the site (`list_site_files` does, up to 60 seconds, and a page refreshes every 15): with no job for the folder it queues one
+    and says `loading`; with `relist` it queues a new one even if there is an answer. `enqueue=False` only looks.
+    Returns {state: loading|ready|error|unavailable, path, compute_env, files, listed_at, reason}; a run that is not the caller's or is
+    not there answers {found: False, message} and queues nothing."""
+    view = status.get_run(index_path, run_id, status.now()) if isinstance(run_id, str) else None
+    plat = platform_path_for(index_path, platform_path)
+    if view is None or (caller is not None and view["name"] not in jobs.owned_run_names(plat, caller.user_id)):
+        return {"found": False, "message": _OUTPUTS_NO_RUN}
+    answer = {"state": "unavailable", "path": None, "compute_env": None, "files": [], "listed_at": None, "reason": None}
+    con = store.open_readonly(plat)
+    launch = None
+    if con is not None:
+        try:
+            launch = jobs.latest_launch(con, view["name"])
+        except sqlite3.Error:
+            launch = None
+        finally:
+            con.close()
+    folder = launch["run_folder"] if launch is not None and launch["run_folder"] else None
+    if folder is None:
+        answer["reason"] = _OUTPUTS_NO_LAUNCH
+        return answer
+    path = folder.rstrip("/") + "/results"
+    ce = launch["ce"]
+    answer.update(path=path, compute_env=ce, state="loading")
+    job = None if relist else jobs.latest_listing(plat, ce, path)
+    if job is None:
+        if not enqueue:
+            return answer
+        try:
+            jobs.enqueue_listing(plat, ce, path, status.now, caller_user_id=_caller_id(caller))
+        except jobs.JobRefused as e:
+            answer.update(state="error", reason=str(e))
+        return answer
+    result = job["result"] or {}
+    if job["state"] in ("queued", "claimed"):
+        if status.now() > job["deadline_at"]:      # nobody marks it expired when nobody waits: the page says so, and queues nothing
+            answer.update(state="error", reason=_OUTPUTS_NO_ANSWER)
+        return answer
+    if job["state"] == "done" and result.get("ok"):
+        files = [{"name": e["name"], "type": e.get("type", "other"), "size": e.get("size", 0), "modified": e.get("modified", "")}
+                 for e in result.get("entries") or []]
+        answer.update(state="ready", files=files, listed_at=job["finished_at"])
+        return answer
+    answer.update(state="error", listed_at=job["finished_at"],
+                  reason=_OUTPUTS_NO_ANSWER if job["state"] == "expired" else _outputs_reason(result.get("message")))
+    return answer
+
+
 READ_WHICH = "which must be one of err, out, log (which 只能是 err、out、log)"
 NO_WORKDIR = "no recorded workdir for this task (沒有記錄到這個任務的工作資料夾)"
 LOG_NOT_FOUND = "file not found in the task folder (任務資料夾裡找不到這個檔案)"
@@ -503,18 +572,30 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
     if path_columns is not None and (not isinstance(path_columns, list) or not all(isinstance(c, str) for c in path_columns)):
         return _no("path_columns 必須是文字清單 (path_columns must be a list of names)")
     try:
-        raw = area = None
-        if samplesheet_text is not None:
-            raw = samplesheet_text.encode("utf-8")      # no file: the rows come from the text, and the cells are judged as for a file
-        if caller is not None:         # over HTTP the file must be the caller's own, and is read once; stdio and the terminal read the path as given
-            if raw is None:
-                raw = read_confined_samplesheet(platform_path, caller, samplesheet)
-            area = caller_area(platform_path, caller)      # a path cell in the upload area must be in it (116); the environment must be the caller's too
+        raw, area = _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller)
         ce, bundle = build.prepare_launch(platform_path, ce=ce_name, pipeline=pipeline, revision=revision, run_name=run_name,
                                           samplesheet=samplesheet, params=params, path_columns=path_columns, check_name=False,
                                           samplesheet_raw=raw, owner=_caller_id(caller), area=area)
     except build.Refusal as e:
         return _no("未送出：%s" % e)
+    return await _finish_launch(platform_path, ce, bundle, caller, person, clock, remote)
+
+
+def _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller):
+    """(the samplesheet as bytes or None, the caller's upload area or None) for a launch of either kind. build.Refusal when the file
+    is not the caller's own."""
+    raw = area = None
+    if samplesheet_text is not None:
+        raw = samplesheet_text.encode("utf-8")      # no file: the rows come from the text, and the cells are judged as for a file
+    if caller is not None:         # over HTTP the file must be the caller's own, and is read once; stdio and the terminal read the path as given
+        if raw is None:
+            raw = read_confined_samplesheet(platform_path, caller, samplesheet)
+        area = caller_area(platform_path, caller)      # a path cell in the upload area must be in it (116); the environment must be the caller's too
+    return raw, area
+
+
+async def _finish_launch(platform_path, ce, bundle, caller, person, clock, remote):
+    """The back half of every launch request: the yes that already exists, the run name, the screen, the question. Both entries end here."""
     found = confirm.find_approved(platform_path, "launch", bundle, _caller_id(caller), clock, include_spent=True)
     if found:
         return _queued(found["id"], found["job_id"], bundle["run_name"])
@@ -524,6 +605,25 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
         return _no("未送出：%s" % e)
     text = build.as_text(build.launch_screen(bundle, ce))
     return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote)
+
+
+async def request_pipeline_launch(platform_path, *, pipeline_id, version=None, run_name, samplesheet=None, samplesheet_text=None, ce_name=None,
+                                  params=None, caller=None, person=None, clock=time.time, remote=False, data=None):
+    """Ask for the launch of a saved pipeline of the caller's the way request_launch asks for an nf-core one: the same question, the same
+    page, the same hash. The pipeline is named by its number and version (the newest when none is given); the check of today must show
+    no error; what is not the caller's answers like what does not exist. `data` is a replacement of the module list, for tests."""
+    problem = _samplesheet_text_problem(samplesheet, samplesheet_text)
+    if problem:
+        return _no("未送出：%s" % problem)
+    if params is not None and not isinstance(params, dict):
+        return _no("params 必須是名稱到值的對照 (params must be a mapping)")
+    try:
+        raw, area = _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller)
+        ce, bundle = pipeline_launch.prepare(platform_path, pipeline_id=pipeline_id, version=version, run_name=run_name, samplesheet=samplesheet,
+                                             samplesheet_raw=raw, ce=ce_name, params=params, caller=caller, area=area, data=data)
+    except build.Refusal as e:
+        return _no("未送出：%s" % e)
+    return await _finish_launch(platform_path, ce, bundle, caller, person, clock, remote)
 
 
 async def request_cancel(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False):

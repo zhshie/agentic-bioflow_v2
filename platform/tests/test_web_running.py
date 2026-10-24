@@ -183,11 +183,11 @@ def test_r40_r44_title_and_cards(w):
     a = f1(w, ann)
     mid = pane(c.get("/?run=" + a).text, "middle")
     assert "<h1>f1</h1>" in mid and "✗ 失敗" in plain(mid)
-    head = re.search(r'<div class="head">(.*?)</div>', mid, re.S).group(1)
+    head = re.search(r'<details class="menu"><summary>更多</summary>(.*?)</details>', mid, re.S).group(1)
     assert "續跑" in head and "重跑" in head and "取消" in head and "之後開放" not in head and head.count("<form") == 3 and head.count("<button") == 3     # 012b: real buttons
-    assert cards(c.get("/?run=" + a).text) == (["目前步驟", "耗時", "運算環境", "費用"], ["—", "2 小時 5 分", "—", "SU —"])
+    assert cards(c.get("/?run=" + a).text) == (["停在", "耗時", "運算環境", "費用"], ["FASTQC (sample2)", "2 小時 5 分", "—", "SU —"])
     en = c.get("/?run=%s&lang=en" % a).text
-    assert cards(en) == (["Current step", "Duration", "Compute", "Cost"], ["—", "2h 5m", "—", "SU —"])
+    assert cards(en) == (["Stopped at", "Duration", "Compute", "Cost"], ["FASTQC (sample2)", "2h 5m", "—", "SU —"])
     assert no_cjk(pane(en, "middle")) and ">Resume</button>" in pane(en, "middle")
 
 
@@ -358,6 +358,6 @@ def test_n03_n04_other_stages_unchanged(w):
     ann, c = world(w)
     a = f1(w, ann)
     s = seed(w, "s1", "succeeded", ann, started=T0)
-    for url in ("/?run=%s&stage=launch" % a, "/?run=%s&stage=results&tab=info" % s):
+    for url in ("/?run=%s&stage=launch" % a,):      # results-outputs: a succeeded run's results stage now has the cards, tabs and Outputs (specs/results-outputs)
         t = pane(c.get(url).text, "middle")
         assert 'class="rtabs"' not in t and 'class="sumcards"' not in t and "<article" not in t

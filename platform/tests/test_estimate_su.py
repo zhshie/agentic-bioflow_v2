@@ -295,7 +295,7 @@ def test_tc029_no_estimate_su_tool(tmp_path):
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
     assert names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "read_task_log",
-                     "launch", "cancel", "resume", "relaunch", "forget"}
+                     "run_outputs", "launch", "cancel", "resume", "relaunch", "forget"}
 
 
 def test_tc030_no_su_route_on_the_web(tmp_path):
@@ -564,14 +564,15 @@ def test_n4_17_to_20_ce_fields():
     assert c["headQueue"] == "ngsconsole" and c["headJobOptions"] == "-A mst109178 -c 1 --mem=8G -t 2-00:00:00"
     assert c["workDir"] == "/work/<site_user>/runs" and c["readRoots"] == ["/work/<site_user>"]
     assert c["modules"] == ["biology/Nextflow/26.10.0"]
-    assert c["siteConfigVars"] == ["NFCORE_SITE_CONFIG", "NFCORE_SITE_REFERENCES"]
+    assert c["siteConfigVars"] == ["NFCORE_SITE_CONFIG"]
     assert c["sitePipelines"] == [{"pipeline": "nf-core/ampliseq", "revision": "2.18.0",
                                    "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}]
-    lib = "<nano4 read-only image library>"
+    lib = "/work/<site_user>/abf/singularity-lib"
     assert c["environment"] == [
         {"name": "NXF_SINGULARITY_LIBRARYDIR", "value": lib, "head": True, "compute": True},
         {"name": "NXF_SINGULARITY_CACHEDIR", "value": "/work/<site_user>/.singularity", "head": True, "compute": True},
-        {"name": "NXF_OPTS", "value": "-Xms512m -Xmx4g", "head": True, "compute": True}]
+        {"name": "NXF_OPTS", "value": "-Xms512m -Xmx4g", "head": True, "compute": True},
+        {"name": "NXF_PLUGINS_DIR", "value": "/work/<site_user>/abf/nxf-plugins", "head": True, "compute": True}]
     from abf_platform import compute_envs
     assert "_comment" not in c and set(c) <= set(compute_envs._SLURM_CONFIG)
 
@@ -580,10 +581,40 @@ def test_n4_21_self_installed_nextflow_variant():
     # N4-21
     c = _filled(_ce())
     c["modules"] = []
+    for e in c["environment"]:
+        if e["name"] == "NXF_PLUGINS_DIR":
+            e["value"] = "/tmp/abf-test/.nextflow/plugins"
     c["environment"] += [
-        {"name": "PATH", "value": "/tmp/abf-test/nextflow/bin:$PATH", "head": True, "compute": True},
-        {"name": "NXF_PLUGINS_DIR", "value": "/tmp/abf-test/.nextflow/plugins", "head": True, "compute": True}]
+        {"name": "PATH", "value": "/tmp/abf-test/nextflow/bin:$PATH", "head": True, "compute": True}]
+    assert [e["name"] for e in c["environment"]].count("NXF_PLUGINS_DIR") == 1
     _clean(c)
+
+
+def test_n4ce_template_drops_site_references_and_sets_plugins_dir():
+    # N4F-01, N4F-02, N4F-03, N4F-04, N4F-08, N4F-12
+    raw = N4_CE.read_text(encoding="utf-8")
+    c = json.loads(raw)
+    assert c["siteConfigVars"] == ["NFCORE_SITE_CONFIG"]
+    assert "NFCORE_SITE_REFERENCES" not in raw
+    env = c["environment"]
+    plug = [e for e in env if e["name"] == "NXF_PLUGINS_DIR"]
+    assert len(plug) == 1
+    assert plug[0]["value"] == "/work/<site_user>/abf/nxf-plugins" and plug[0]["head"] is True and plug[0]["compute"] is True
+    lib = [e for e in env if e["name"] == "NXF_SINGULARITY_LIBRARYDIR"]
+    assert len(lib) == 1 and lib[0]["value"] == "/work/<site_user>/abf/singularity-lib"
+    assert lib[0]["head"] is True and lib[0]["compute"] is True
+    for bad in ("u9613010", "/work/envstack", "<nano4 read-only image library>"):
+        assert bad not in raw, bad
+
+
+def test_n4ce_docs_carry_the_four_fixes():
+    # N4F-13, N4F-16, N4F-18, N4F-20, N4F-25
+    s = (REPO_ROOT / "docs" / "SETTINGS.md").read_text(encoding="utf-8")
+    for needle in ("nf-tower@1.28.2", "ref_taxonomy_storage", "/work/<site_user>/abf/singularity-lib"):
+        assert needle in s, needle
+    assert re.search(r"file .*HTML|HTML.*file ", s)
+    a = (REPO_ROOT / "docs" / "SITE_ADAPTER.md").read_text(encoding="utf-8")
+    assert "singularity-lib" in a
 
 
 def test_n4_22_n4_31_ledger_notes():

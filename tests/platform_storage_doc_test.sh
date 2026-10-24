@@ -137,9 +137,9 @@ if only in ("all", "lists"):
         if got != ask: bad("TC-016", "ask sentence names %s, settings.json asks %s; differ: %s" % (sorted(got), sorted(ask), sorted(got ^ ask)))
     if "Two more tools" in text: bad("TC-018", "'Two more tools' is still in the document")
     item2 = next((l for l in lines if l.startswith("2. It **answers questions**")), "")
-    if "seven read-only tools" not in item2: bad("TC-018", "item 2 does not say seven read-only tools")
+    if "eight read-only tools" not in item2: bad("TC-018", "item 2 does not say eight read-only tools")
     if not writes: bad("TC-020", "found no write tools in mcp_server.py")
-    for tc, anchor in (("TC-018", "2. It **answers questions**"), ("TC-020", "Twelve tools."), ("TC-020", "permission `ask` rule for"),
+    for tc, anchor in (("TC-018", "2. It **answers questions**"), ("TC-020", "Thirteen tools."), ("TC-020", "permission `ask` rule for"),
                        ("TC-019", "The platform's actions live in one place"), ("TC-020", "- **Instructions.**")):
         p = paragraph(anchor)
         if p is None: bad(tc, "no paragraph with %r" % anchor); continue
