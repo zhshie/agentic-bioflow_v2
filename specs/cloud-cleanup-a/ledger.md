@@ -27,3 +27,7 @@
      platform/tests/test_station_platform.py      |   5 +-
      specs/cloud-cleanup-a/ledger.md              |  15 +
      10 files changed, 653 insertions(+), 30 deletions(-)
+
+## Also not in the plan (the first full-suite run found them; same one-word change, `work_cleaned_at` appended to a pinned launches column list)
+- `test_pipeline_launch.py` `test_no_table_or_column_changed` (launches column list).
+- `test_web_actions.py` `SCHEMA` entry `platform.launches` (used by `test_tc063_no_schema_change`).
