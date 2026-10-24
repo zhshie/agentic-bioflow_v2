@@ -12,7 +12,7 @@ from test_launch_platform import make_confirmation
 
 OLD_COLUMNS = ["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at", "submitted_at", "cancel_requested_at",
                "job_id", "user_id"]
-NEW_COLUMNS = ["parent_run", "attempt", "attempt_kind"]
+NEW_COLUMNS = ["parent_run", "attempt", "attempt_kind", "work_cleaned_at"]
 # a launches table as it was before 009e (the DDL of 116)
 OLD_LAUNCHES = """CREATE TABLE launches (
     id INTEGER PRIMARY KEY AUTOINCREMENT, run_name TEXT NOT NULL, slurm_job_id INTEGER, run_folder TEXT NOT NULL, ce TEXT NOT NULL,
@@ -71,7 +71,7 @@ def test_tc125_tc126_a_platform_db_of_116_is_upgraded_in_place_and_every_row_rea
     after = con.execute("SELECT * FROM launches ORDER BY id").fetchall()
     con.close()
     assert [r[:len(OLD_COLUMNS)] for r in after] == before
-    assert all(r[len(OLD_COLUMNS):] == (None, None, None) for r in after)
+    assert all(r[len(OLD_COLUMNS):] == (None, None, None, None) for r in after)
     # a fresh file and an upgraded one have the same table
     fresh = tmp_path / "fresh" / "platform.db"
     store.connect_state(fresh).close()
