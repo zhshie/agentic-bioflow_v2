@@ -82,6 +82,7 @@ def cost_of_tasks(tasks, rates, default_region=None):
     date of the rate entries that were used. default_region is the region to use for a task that names none."""
     if not isinstance(rates, dict):
         return _unknown(["價目表讀不到 (the rates file cannot be read)"])
+    empty = not any(isinstance(ms, dict) and ms for ms in (rates.get("regions") or {}).values())
     total, reasons, dates = 0.0, [], []
     for i, t in enumerate(tasks):
         label = "task %s" % (t.get("name") or i + 1)
@@ -100,6 +101,8 @@ def cost_of_tasks(tasks, rates, default_region=None):
         region = _region_of(t) or default_region
         if not region:
             missing.append("缺區域 (no region or zone)")
+        if empty:
+            missing.append("尚未填入價目 (the rates list is empty: no prices have been filled in yet)")
         if not missing:
             if region not in (rates.get("regions") or {}):
                 missing.append("區域 %s 沒有價目 (no rates for region %s)" % (region, region))

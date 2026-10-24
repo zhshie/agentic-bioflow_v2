@@ -10,12 +10,16 @@
 - [x] 既有斷言（計畫列的兩處）：`test_gcb_ce.py` 的 `{"cloud_cost.py", "rates.json"}` 改成 `{"rates.json"}`；`test_web_actions.py` 的 `SCHEMA` 加 `tokens.cloud_caps` 一列與註解。
 - [ ] 手動驗收 1 至 4（TC-116 至 TC-119）：維護者做，這裡不做。手動第 3 步與帳單的差距：尚未量。
 
-## 價目表（TC-019 至 TC-023）
+## 價目表（裁決四 10、11；TC-019 至 023、134）
 
-- 來源只用 Google 官方頁 `https://cloud.google.com/spot-vms/pricing`，讀取日 2026-10-24。頁面上區域選單預設選 Iowa (us-central1)，表格列出 `n2-standard-2/4/8`、`e2-standard-2/4/8` 的「Current Spot pricing (USD)」每小時價；檔內數字逐字取自該頁。
-- **沒有 `standard`（on-demand）價**：Compute Engine 的 VM 價目頁（`vm-instance-pricing`、`all-pricing`）的價格表是用 JavaScript 載入的，用 curl 與無頭瀏覽器都讀不到數字；沒有憑記憶補。所以標 `standard` 的 task 目前會是「未知」，只有 spot 算得出。要補請 developer-agent 或維護者用瀏覽器開 `https://cloud.google.com/compute/vm-instance-pricing` 讀 `us-central1` 的值，加進同一筆。
-- 頁面裡另有 41 個區域的隱藏資料（頁面原始碼內嵌，沒有區域標籤與表格的對應證據），所以只放頁面預設顯示的 Iowa 那一組；其他區域沒有列。
-- TC-023（驗收者抽 3 筆打開網址核對）：同一個網址，核對時要看區域選單是 Iowa (us-central1)。
+- 出貨的 `data/cloud_rates.json` 先清空（`regions` 為空，保留格式與欄位說明）。原本的六筆 spot 價無法核對、也沒有一般價，已移除。空價目時 `cost_of_tasks` 回未知並附理由「尚未填入價目」。真實價目由之後的 `cloud-rates-fill` 填（Cloud Billing Catalog API）。
+- TC-023、TC-118：不適用／延後。手動驗收第 3 步（對帳單）未做，原因：目前沒有價目。TC-119 空價目下只驗得了上限 0／已用滿。
+- TC-137：PR 說明必須寫明「本次 merge 後上限不會擋任何送出（未接線，cloud-cost-wire 負責）」。
+
+## 自寫測試預期值調整（TC-130、裁決四 12）
+
+- 以前：`test_the_shipped_rates_file_is_complete_and_honest` 要求出貨檔至少一筆價目、日期不早於 2026-10-24。以後：`test_the_shipped_rates_file_is_valid_and_empty` 要求檔案合法、有條目時才檢查來源與日期、且條目為零。理由：裁決四 10。
+- 以前：TC-077、078 用 PAT 逐一呼叫。以後：`test_no_user_door_to_the_cap`、`test_the_cap_is_never_read_back_by_any_existing_door` 用靜態掃描原始碼。理由：裁決四 12 接受。
 
 ## 重建索引（裁決三 9）
 

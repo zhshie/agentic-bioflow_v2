@@ -51,7 +51,7 @@ abf-platform user cloud-cap <名字> 25                           # 之後補設
 3. **每一筆（每個區域的每個機器型號）都必須有 `source`（`https://` 開頭的網址）與 `read_on`（讀頁面那天，`YYYY-MM-DD`）。** 缺任何一個，這一筆就當作不存在；`standard` 或 `spot` 只缺一個，就只缺那一個。查不到的機器型號不要列，沒有價目就是未知，不是 0。
 4. 改完跑 `platform/tests/test_cloud_cost.py`：它會檢查每一筆的來源、日期、數字是否合理。
 
-目前這版只讀到 Spot 價（`us-central1` 的 n2、e2 系列 2／4／8 vCPU）；一般（on-demand）價目頁當時讀不到數字，所以沒有 `standard` 價，標成 standard 的 task 會顯示為未知，等有人讀到頁面再補。
+**目前出貨的價目表是空的**（`regions` 為空）：目前讀得到的 Spot 價無法核對、也沒有一般（on-demand）價，錯的價錢比沒有價錢更糟。所以在 `cloud-rates-fill`（之後用 Cloud Billing Catalog API 填入 us-central1、asia-east1 的 N2／E2 一般價與 Spot 價）完成前，所有雲端估費與「已用」都是未知（理由「尚未填入價目」）；上限只擋得住「沒設上限」「上限 0」「已用滿」這幾種。另外，這次 merge 後上限還沒接進送出流程（`cloud-cost-wire` 負責），不會擋任何送出。
 
 ## 資料從哪來
 
