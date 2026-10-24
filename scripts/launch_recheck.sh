@@ -9,6 +9,7 @@
 # no resource contract, no compute-env status, no token. Read-only; it never
 # starts anything and never caches - every call asks the site afresh.
 #
+# Output is single-spaced (no padded columns), so nothing collapses in a chat surface.
 # Exit 0 = both alive (or nothing to ask). Exit 1 = something listed as FAIL.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,7 +17,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REACH="$(setting reach local)"
 fail=0
-say() { printf "%-10s %-14s %s\n" "$1" "$2" "$3"; [ "$1" = FAIL ] && fail=1; return 0; }
+say() { printf '%s %s %s\n' "$1" "$2" "$3"; [ "$1" = FAIL ] && fail=1; return 0; }
 fix() { [ "$REACH" = ssh ] && echo "scripts/on_site.sh --script scripts/$1" || echo "scripts/$1"; }
 
 case "$REACH" in
