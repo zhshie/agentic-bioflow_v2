@@ -79,9 +79,9 @@ def build_server(index_path, platform_path=None):
         return await actions.list_site_files(platform_path, compute_env, path, caller=_caller(ctx))
 
     @server.tool(name="list_used_pipelines", annotations=_READ_ONLY,
-                 description="The pipelines you have launched before, newest first (at most 20): one entry per pipeline and revision, "
-                             "with the name of its latest run, when it was launched and on which compute environment. "
-                             "Only your own launches; a run whose content was forgotten is left out.")
+                 description="The pipelines you have run before, newest first (at most 20): one entry per pipeline and revision, "
+                             "with the name of its latest run, when it was started and on which compute environment. "
+                             "Only your own runs; a run whose content was forgotten is left out.")
     def list_used_pipelines(ctx: Context) -> dict:
         return actions.list_used_pipelines(platform_path, caller=_caller(ctx))
 

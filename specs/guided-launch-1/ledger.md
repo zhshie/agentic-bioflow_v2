@@ -35,5 +35,7 @@
 | `platform/tests/test_pat.py:383` | `len(tools) == 13` → `14` |
 | `platform/tests/test_pat.py:751` | `len(tools) == 8` → `9` |
 | `platform/tests/test_oauth_mcp.py:329` | 排序後的工具名單加一項 |
+| `platform/tests/test_oauth_mcp.py:44` | `len(tools) == 13` → `14` |
+| `platform/tests/test_su_in_get_run.py:412` | `len(names) == 13` → `14` |
 | `test_estimate_su.py:297`、`test_gcb_ce.py:776`、`test_gcb_launch.py:1068-1069`（另 `== 13` → `== 14`）、`test_http_site_samplesheet.py:562`、`test_station_launch.py:729`、`test_station_envs.py:381`、`test_human_channel.py:159`、`test_keep_submissions.py:705`、`test_launch_e2e.py:185`、`test_launch_platform.py:304`、`test_resume_edit_params_platform.py:431`、`test_resume_entrypoints.py:46`（皆在 `platform/tests/`） | 各一份工具名單加一項 |
 | `tests/platform_storage_doc_test.sh:140`、`:142` | 文件必須寫 "eight read-only tools" → "nine read-only tools"；"Thirteen tools." → "Fourteen tools."（對應 `docs/PLATFORM.md` 同步改） |
