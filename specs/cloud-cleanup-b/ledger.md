@@ -12,3 +12,6 @@
 - 卡住（全套 123/124 shard、994 passed、2 failed，HEAD 為 GREEN commit）：
   1. `test_cleanup_store.py::test_nothing_writes_clean_work_or_work_cleaned_at`（a 片 TC-030）斷言「`store.py` 以外的 `abf_platform/*.py` 都不含 `clean_work`」，與本片必改的 `confirm.py`／`jobs.py` 直接衝突；計畫沒把這條列為可更新的既有斷言，executor 不得自行改。需要 developer-agent 在計畫補上這條（把掃描改成排除 `confirm.py`／`jobs.py`，或改成「只有 store／confirm／jobs 含」）。
   2. `test_onboarding_doc.py::test_tc047_tc051_other_docs_untouched`：與本片無關，`docs/PLATFORM.md` 自 `BASE=6061925` 起就被別的片改過（`git diff 6061925 3278601 -- docs/PLATFORM.md` 非空），本分支沒碰 docs。
+
+- [x] 裁決二落實：`test_cleanup_store.py` TC-030 掃描排除 `confirm.py`／`jobs.py`（`confirm.py` 仍不得含 `work_cleaned_at`；`jobs.py` 需寫它，故一併放行）。
+- 全套 123/124：唯一紅為 `test_onboarding_doc.py::test_tc047_tc051_other_docs_untouched`，已知環境紅（裁決 8，onboarding-test-pinned-base 修），不擋 GREEN。
