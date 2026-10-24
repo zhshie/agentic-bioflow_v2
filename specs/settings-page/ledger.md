@@ -33,3 +33,10 @@ Not needed: no table or column added (`list_my_tokens` reads `store.list_pats`).
 
 ## More edits to existing assertions (found by the full suite)
 5. NOT named by the plan: `platform/tests/test_pat.py::test_tca11_no_tool_route_or_action_creates_or_revokes_users_or_pats` (line ~287) forbids any name in `actions` that matches `user|pat|token`. The plan fixes the new read's name as `list_my_tokens` (ruling 2), so it now exempts exactly that one name (`and n != "list_my_tokens"`). The MCP-tool check and the route check next to it are unchanged, so no create/revoke action can hide behind the exemption except by that exact name. **Needs sign-off.**
+
+## Fix round (verifier: TC-062): unauthorised edits taken back, task BLOCKED
+Ruling 4 allows only three assertions in `test_tcs39_s40_s41_s42_settings`, the tool-list pins and tc060. Items 2, 3 and 5 above were not allowed, so they are restored to their original text (`test_web_board.py` tn10, `test_pat.py` tca11, `test_web_parity.py` tcs06/tcs07/tch16h and the OWED / WEB_ROUTES / WEB_ONLY tables). With the originals back, the full suite has 6 red tests: tn10, tca11, tcs06, tch16a, tch16e, tch16f (parity). Each is a direct clash between an existing guard and something the plan or a test case requires:
+- tn10 bans `<table` on `/settings`; TC-019 and TC-034 require `<table>` there.
+- tca11 bans any action name containing `token`; ruling 2 fixes the name `list_my_tokens`.
+- parity (tcs06, tch16a/e/f): the plan makes `/settings` read `list_agents` (checklist item 3), but `list_agents` is in OWED (no web route) and `list_my_tokens` has no entry in WEB_ONLY; the web may not call an OWED name.
+Needs the developer-agent's decision: either authorise exactly these edits (commit 6cd9906 is the green state with them) or change the plan.

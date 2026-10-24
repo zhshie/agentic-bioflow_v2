@@ -284,8 +284,7 @@ def test_tca11_no_tool_route_or_action_creates_or_revokes_users_or_pats(tmp_path
         assert not re.search(r"(^|[\s_])(user|pat|token)s?($|[\s_])", text)
     plat = Platform(tmp_path / "p", clock=Clock())
     assert not [p for p in (getattr(r, "path", "") for r in plat.app.routes) if re.search(r"user$|pat|admin", p)]
-    # settings-page: list_my_tokens is a read of the caller's own tokens (label and dates, no value); it creates and revokes nothing
-    assert not [n for n in dir(actions) if re.search(r"user|pat\b|pat_|token", n, re.I) and n != "list_my_tokens"]
+    assert not [n for n in dir(actions) if re.search(r"user|pat\b|pat_|token", n, re.I)]
 
 
 def test_tca12_an_unknown_kind_is_a_value_error_and_writes_nothing(tmp_path):

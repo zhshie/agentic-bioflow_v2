@@ -1219,7 +1219,7 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
     for url in ["/", "/settings"] + ["/?run=%s&stage=%s" % (rid, s) for s in STAGES]:
         t = c.get(url).text
         for tag in ("<textarea", "<select", "<iframe", "<table", 'type="radio"', 'type="checkbox"'):
-            assert tag not in t or (tag == "<table" and url == "/settings"), (url, tag)      # settings-page: the settings page now has two tables (environments, tokens)
+            assert tag not in t, (url, tag)
         assert [m for m in re.findall(r"<input\b[^>]*>", t) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m)] == []     # 012b: the buttons carry the run id (and the language)
         assert t.count("<details") - t.count('<details class="menu">') == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):
