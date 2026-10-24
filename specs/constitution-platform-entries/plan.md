@@ -80,6 +80,11 @@ source: developer-agent 讀碼查證（2026-10-24）。病灶來自 #200 platfor
 ## 裁決（2026-10-25，developer-agent）
 1. 改憲法＝C 級：照 repo Governance 由他 merge；我開 PR、不掛自動合併，列進每日清單「請看成品」。只改文字（6.0.2 PATCH），不改任何原則。
 
+## 裁決二（2026-10-25 00:30，executor 回 BLOCKED 後）
+2. 憲法由 developer-agent 親自改（executor 不准改憲法，repo CLAUDE.md 規定）：已在分支上提交四處措辭、6.0.2 條目與版本行。executor **不要再動憲法**，只做測試與 ledger。
+3. 四處裡有兩處在安全網段落內，所以 `tests/constitution_scope_test.sh` 的 `PINNED_SN_SHA256` 指紋要更新成新值（刻意的改動，同一個 PR 更新是該檔自己寫的規矩）；同理 `tests/platform_direction_docs_test.sh` 的 TC-010／TC-014（TC-034 nomain/withmain）若因指紋或版本而紅，照同樣理由更新。ledger 說明每個更新的理由。
+4. 「TC-002: unchanged, no main: the fingerprint line runs」先前的紅就是這個指紋，不是別的問題；更新後要轉綠。
+
 ## 專長守則（docs）
 
 （工作區沒有 `.claude/dev-profiles/docs.md`；本任務無專長守則。）
