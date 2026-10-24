@@ -576,6 +576,19 @@ The automatic tests use fakes for the program runner, the detached start and the
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with the list under "Scope: files" in `specs/gcb-launch/plan.md`: nothing else is changed; `records.py`, `web*.py`, `agent.py` and the `hello` facts are untouched; no Slurm test file is touched. Of the C-1 tests (`test_gcb_ce.py`) only five places changed: the job kinds that are refused, the first line and name of the "never auto picked" test, the two patterns dropped from the "later slices" test, the documentation strings, and the one job kind that `test_refusals_are_plain_words` probes (`launch_nextflow` is allowed now, so it asks `list_site_files`, which is still refused; the plan's list did not name this one, see the ledger).
 
+## Hosted deploy (hosted-deploy): the maintainer and the reviewer check
+
+The automatic test, `tests/hosted_deploy_test.sh`, reads the files in `deploy/` and runs the backup script on a fake data folder; it starts no service and touches no network. The steps below start real services and are yours to run; nothing in the task ran them. Replace `<funnel-address>` with the address Funnel prints.
+
+1. **The always-on desktop (WSL).** Copy `deploy/systemd/abf-*.service.in` to `~/.config/systemd/user/` and drop the `.in` (for example `abf-serve.service`), replace `<venv>` as `docs/OPERATIONS.md` section 3 says, copy `deploy/env.example` to `~/.config/abf-platform/env` (mode 600) and fill it in, then `systemctl --user daemon-reload` and `systemctl --user enable --now abf-serve abf-mcp abf-web`. Check: `systemctl --user status abf-serve abf-mcp abf-web` shows `active (running)` for all three.
+2. **Caddy and Funnel.** Set `ABF_SITE_ADDRESS=http://127.0.0.1:8080` in the env file, start `caddy run --config deploy/Caddyfile.template --envfile ~/.config/abf-platform/env`, then `tailscale funnel --bg 8080`. Check: from a phone on mobile data, `https://<funnel-address>/` shows the login page, and `curl -i https://<funnel-address>/user-info` answers 401 with an `X-ABF-Platform` header.
+3. **Claude Desktop.** Point the connector at `https://<funnel-address>/mcp` and go through the OAuth login and the consent page. Check: the connector lists the platform's tools. Write the result where "Claude Desktop custom connector (#117)" asks for it.
+4. **A crash.** Find the process of one service (`systemctl --user show -p MainPID abf-web`) and kill it. Check: within 5 seconds `systemctl --user status abf-web` shows it running again with a new process number.
+5. **Backup and restore.** Run `deploy/backup.sh ~/backups`. Stop the three services, copy the files of the newest `abf-backup-...` folder into an empty folder, and run `ABF_PLATFORM_DB=<that folder>/index.db abf-platform pat list`. Check: the tokens you issued are listed (never their values).
+6. **A rented server.** On the VPS use the same files with `ABF_SITE_ADDRESS=<your-domain>` and follow "Hosting one lab" in `docs/OPERATIONS.md`. Check: Caddy gets the certificate by itself and `curl -i https://<your-domain>/user-info` answers 401 with `X-ABF-Platform`.
+
+**The reviewer.** Run `git diff --name-only <base>...HEAD`: only `deploy/`, `tests/hosted_deploy_test.sh`, the three docs and `specs/hosted-deploy/` appear; nothing under `platform/abf_platform/`, `platform/abf_station/` or `platform/abf_launch/`; no existing test file is changed.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in
