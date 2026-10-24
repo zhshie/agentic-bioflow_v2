@@ -165,6 +165,16 @@ source: memory/reference/dev-architecture-review-2026-10-24.md 第 5.2 節第 2 
 3. `--check-quarantine` 接受。
 4. docs/TESTING.md 與 repo CLAUDE.md 的過時句子另開小任務。車道 L9-tests。
 
+## 裁決三（2026-10-24 19:30 developer-agent，PR #197 的 /code-review 後；以本段為準）
+1. `tests/platform_clock_test.sh` 也不准進隔離名單（與 platform_test.sh 同一套平台測試）；兩支都拒，訊息說明理由。
+2. `RUN_ALL_TODAY` 這個改日期的後門拿掉：日期一律用 `date -u +%F`（UTC）。測試改用相對今天的日期造資料（今天+3、今天-1、今天+20），不靠覆寫今天。
+3. `--check-quarantine` 在參數解析後立刻執行並結束，不受 MSYS 拒絕、`--only`、jq/python 探測影響。
+4. `--retry-failed-once` 只重跑「失敗」的檔，**逾時的不重跑**（照舊算失敗），避免卡死時間翻倍。
+5. 第一輪有 missing-tools 提示時，重跑後的結論也要帶同一句提示。
+6. `--verbose` 時重跑輸出也要印到畫面。
+7. 名單行允許行尾 `# 註解`；`tests/quarantine.txt` 不存在時 `--retry-failed-once` 直接失敗並說明「名單檔不見了」（不再默默當空名單）。
+8. stderr 那句錯誤訊息改成不以 `FLAKY ` 開頭（例如 `Not quarantined (flaky): …`），tests.yml 的 grep 由 developer-agent 改成 `^FLAKY tests/`。
+
 ## 專長守則（backend）
 
 ### executor
