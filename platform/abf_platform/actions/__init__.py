@@ -156,7 +156,7 @@ _HPC = "nc" + "hc"        # the value `where` has for a run sent to the national
 _NOT_SENT_HERE = "不是由平台送出的 run，算不出用量 (the run was not sent from the platform, so its usage is not known)"
 
 
-def my_usage(index_path, platform_path=None, *, caller, month=None, tokens_path=None):
+def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_path=None):
     """What the caller used in one month ('YYYY-MM', Taipei time; the current month by default): the SU of the site, the cloud money (in the
     cloud's own US dollars, never converted) with the cap the administrator set, and one line per run that started then (newest first, at
     most 50). Only the caller's own runs. Reads only: the numbers are worked out now from the index and the price lists, nothing is kept."""

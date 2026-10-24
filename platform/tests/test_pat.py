@@ -380,7 +380,7 @@ def test_tcb10_stdio_needs_no_token_and_no_user(tmp_path):
     plat, _ = _three_runs(tmp_path)
     assert not plat.tokens.exists() or _rows(plat.tokens, "SELECT COUNT(*) FROM tokens WHERE kind = 'pat'")[0][0] == 0
     tools, outs = mcp_call(pkg_env(ABF_PLATFORM_DB=plat.index), [("list_runs", {})])
-    assert len(tools) == 13 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch; run-diag-tools: plus read_task_log; results-outputs: plus run_outputs
+    assert len(tools) == 14 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch; run-diag-tools: plus read_task_log; results-outputs: plus run_outputs
 
 
 def test_tcb11_without_users_http_starts_says_so_and_answers_401(tmp_path):
@@ -748,7 +748,7 @@ def test_tcd14_tool_bodies_stay_one_call_with_caller_and_read_the_http_auth_cont
     tree = ast.parse((PKG / "mcp_server.py").read_text(encoding="utf-8"))
     build = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "build_server"][0]
     tools = [n for n in ast.walk(build) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not build]
-    assert len(tools) == 8      # run-diag-tools: read_task_log is the seventh read tool; results-outputs: run_outputs the eighth
+    assert len(tools) == 9      # cost-page: my_usage is the ninth; run-diag-tools: read_task_log is the seventh read tool; results-outputs: run_outputs the eighth
     for fn in tools:
         assert len(fn.body) == 1 and isinstance(fn.body[0], ast.Return), fn.name
         call = fn.body[0].value
@@ -756,7 +756,7 @@ def test_tcd14_tool_bodies_stay_one_call_with_caller_and_read_the_http_auth_cont
         assert isinstance(call.func, ast.Attribute) and call.func.value.id == "actions" and call.func.attr == fn.name
         kw = {k.arg: k.value for k in call.keywords}
         # 116: the two run tools also say where the hand-off record is (a run is its launcher's), by the one name the server was built with
-        assert list(kw) == (["caller", "platform_path"] if fn.name in ("list_runs", "get_run") else ["caller"])
+        assert list(kw) == (["caller", "platform_path"] if fn.name in ("list_runs", "get_run") else ["caller", "month"] if fn.name == "my_usage" else ["caller"])      # cost-page: my_usage also passes the month it was asked for
         assert isinstance(kw["caller"], ast.Call) and kw["caller"].func.id == "_caller"
         assert "platform_path" not in kw or (isinstance(kw["platform_path"], ast.Name) and kw["platform_path"].id == "platform_path")
         assert not [n for n in ast.walk(fn) if isinstance(n, (ast.If, ast.Try, ast.For, ast.While))]

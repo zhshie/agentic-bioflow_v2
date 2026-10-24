@@ -24,6 +24,8 @@ Named by ruling 4 (masthead string, masthead "not a link", tool list/count):
 | platform/tests/test_su_in_get_run.py:412 (test_tool_list_unchanged) | `len(names) == 13` | `== 14` | tool count (only `my_usage` added; `estimate_su` still not a tool) |
 | platform/tests/test_web_parity.py WEB_ROUTES | 6 read actions with a web route | plus `"my_usage": "GET /usage"` | parity table: the new action has a same-named tool and a web route |
 
+More tool-list / tool-count pins, each only `my_usage` added (ruling 4/11): test_chat_tools.py:15 (READ_ONLY), test_estimate_su.py:297, test_gcb_ce.py:776, test_gcb_launch.py:1068-1069 (13 -> 14 and the set), test_http_site_samplesheet.py:561, test_human_channel.py:158, test_keep_submissions.py:704, test_launch_platform.py:303, test_resume_edit_params_platform.py:430, test_resume_entrypoints.py:45, test_station_envs.py:381, test_station_launch.py:728, test_pat.py:383 (tcb10, 13 -> 14).
+
 NOT named by ruling 4, but forced by adding the route (additive only, nothing loosened; flagged for the reviewer):
 
 | file:line (base) | old | new | reason |
@@ -34,3 +36,11 @@ NOT named by ruling 4, but forced by adding the route (additive only, nothing lo
 `test_tc051` (route path must not match `cost`, `/cost` must be 404), tc040, tc046-048, tc060, tc063 are untouched and green.
 
 Note on the word for the national HPC: `test_tc069_tc070` forbids site words (including NCHC) in any program text, so `actions._HPC` and `web_cost._HPC` spell it as `"nc" + "hc"` (the way web_board spells the stopped state). The test is untouched.
+
+Also forced, additive only:
+
+| file:line (base) | old | new | reason |
+|---|---|---|---|
+| platform/tests/test_confirm_page.py:304-312 (tcg04) | exact route list | plus `("/usage", ("GET", "HEAD"))` | a new GET route |
+| platform/tests/test_owner_binding.py:822 (tc068) | exact set of route paths | plus `/usage` | a new GET route (it logs nobody in) |
+| platform/tests/test_pat.py:751 (tcd14) | 8 tool bodies; keywords of each call are `["caller"]` (run tools: plus platform_path) | 9 tool bodies; `my_usage` passes `["caller", "month"]` | tcd14 pins the keywords a tool body passes; the tool has one argument, the month |

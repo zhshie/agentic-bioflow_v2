@@ -726,7 +726,7 @@ def test_tc_ls_52_the_launch_tool_and_the_tool_list_are_those_of_the_base(tmp_pa
 
     tools = {t.name: t for t in asyncio.run(listing())}
     assert set(tools) == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                          "read_task_log", "run_outputs", "launch", "cancel", "forget", "resume", "relaunch"}
+                          "read_task_log", "run_outputs", "my_usage", "launch", "cancel", "forget", "resume", "relaunch"}
     schema = tools["launch"].input_schema
     assert set(schema["properties"]) == {"pipeline", "revision", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "path_columns"}
     assert sorted(schema["required"]) == ["pipeline", "revision", "run_name"]
