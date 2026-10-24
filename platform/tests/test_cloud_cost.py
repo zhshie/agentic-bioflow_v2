@@ -147,26 +147,36 @@ def _shipped_entries():
     return data, [(r, m, e) for r, ms in data["regions"].items() for m, e in ms.items()]
 
 
-def test_the_shipped_rates_file_is_complete_and_honest():
-    # TC-019, TC-020, TC-021, TC-022 (T5)
+def test_the_shipped_rates_file_is_valid_and_empty():
+    # TC-019, TC-020, TC-021, TC-022 (T5, 裁決四 10: real prices go to cloud-rates-fill)
     data, entries = _shipped_entries()
-    assert data["currency"] == "USD" and entries
+    assert data["currency"] == "USD" and "_about" in data
+    assert _cc().load_rates(SHIPPED) is not None
     today = time.strftime("%Y-%m-%d")
-    for region, machine, e in entries:
+    for region, machine, e in entries:           # TC-020: whatever entry exists must be sourced and sane
         where = "%s/%s" % (region, machine)
         assert str(e.get("source", "")).startswith("https://"), where
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(e.get("read_on", ""))), where
-        time.strptime(e["read_on"], "%Y-%m-%d")
-        assert "2026-10-24" <= e["read_on"] <= today, where
+        assert e["read_on"] <= today, where
         for model in ("standard", "spot"):
             if model in e:
                 v = e[model]
                 assert isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0, where
         if "spot" in e and "standard" in e:
             assert e["spot"] < e["standard"], where
+    assert entries == []                         # TC-021: nothing is priced in this task
     text = SHIPPED.read_text(encoding="utf-8")
     for word in ("TWD", "NT$", "exchange", "匯率"):
         assert word not in text
+
+
+def test_empty_shipped_rates_make_every_estimate_unknown_with_the_reason():
+    # TC-134
+    cc = _cc()
+    rates = cc.load_rates(SHIPPED)
+    for model in ("standard", "spot"):
+        out = cc.cost_of_tasks([_task(price_model=model, realtime_ms=H)], rates)
+        assert out["usd"] is None and "尚未填入價目" in " ".join(out["unknown_reasons"])
 
 
 # ---- US2: estimate and what was used this month ----------------------------------------------------------------------
@@ -410,6 +420,17 @@ def test_no_cap_set_means_no_cloud_launch(w):
     _scene(w, w.alice, 0.2, 1.0, cap=None)
     text = w.ask(w.alice)
     assert text and "cloud-cap" in text and "管理者" in text
+
+
+def test_with_the_empty_shipped_rates_the_cap_still_works(w):
+    # TC-136 (裁決四 10, 13)
+    rates = _cc().load_rates(SHIPPED)
+    _scene(w, w.alice, 0.2, 1.0, cap=5.0)
+    assert w.ask(w.alice, rates=rates) is None
+    w.cap(w.alice, 0)
+    assert w.ask(w.alice, rates=rates)
+    text = w.ask(w.bob, rates=rates)
+    assert text and "cloud-cap" in text and "Traceback" not in text
 
 
 def test_unpriced_runs_make_the_used_figure_a_floor(w):
