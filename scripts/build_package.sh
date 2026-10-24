@@ -46,6 +46,10 @@
 # without --render this stops one step short and says which step and where -
 # the same shape as PITFALLS 20i, where a tool that could not reach the IDE
 # said so instead of blaming the user.
+#
+# Only entries the user accepted are packaged (issue #12): every entry in
+# analysis.md must have `status: accepted` (or `done`), else this refuses with
+# exit 2 before writing anything. There is no flag to skip it.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/utils/portable.sh"
@@ -80,7 +84,6 @@ RUNS=()
 while IFS= read -r d; do RUNS+=("$d"); done < <(find -L "$PROJECT/runs" -maxdepth 2 -type d -name results 2>/dev/null | sort)
 [ "${#RUNS[@]}" -gt 0 ] || { echo "no runs/*/results under $PROJECT - a package needs at least one run to describe." >&2; exit 2; }
 
-mkdir -p "$OUT/figures" "$OUT/scripts" || exit 1
 
 # pick_python(), checked here rather than left to fail wherever the first
 # inline `python3 -` block happens to run: this used to have no guard at all
@@ -107,6 +110,208 @@ PY="$(pick_python)" || {
       "names it and says which module to load." >&2
     exit 2
 }
+
+# The one parser of analysis.md, run twice: "check" (here, before anything is
+# written) refuses entries the user has not accepted (issue #12); "results"
+# (further down) writes the Results section. One parser, so the two cannot
+# see different files (the issue #5 failure).
+IFS= read -r -d '' PLAN_PY <<'PY'
+import os, re, sys
+
+mode, plan, figdir = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(plan, encoding="utf-8", errors="replace").read()
+figs = sorted(os.listdir(figdir)) if os.path.isdir(figdir) else []
+
+FIELDS = ("id", "question", "source", "method", "why", "status")
+COLUMN_ALIASES = {"問題": "question"}
+
+
+def parse_table(text):
+    """The shape skills/downstream/SKILL.md step 3b's own worked example uses: a
+    markdown table whose header names analysis.md's fields. One row is one
+    entry; a header cell is matched case-insensitively against FIELDS so
+    column order (and extra columns nobody asked for) does not matter.
+    """
+    lines = text.splitlines()
+    entries = []
+    i = 0
+    while i < len(lines) - 1:
+        line = lines[i].strip()
+        if not line.startswith("|"):
+            i += 1
+            continue
+        header = [COLUMN_ALIASES.get(c.strip().lower(), c.strip().lower())
+                   for c in line.strip("|").split("|")]
+        sep = lines[i + 1].strip().strip("|").split("|")
+        if (len(header) >= 2 and len(sep) == len(header)
+                and all(re.match(r"^:?-{2,}:?$", c.strip()) for c in sep)):
+            idx = {name: pos for pos, name in enumerate(header) if name in FIELDS}
+            j = i + 2
+            if "id" in idx:
+                while j < len(lines) and lines[j].strip().startswith("|"):
+                    cells = [c.strip() for c in lines[j].strip().strip("|").split("|")]
+                    row = {name: (cells[pos] if pos < len(cells) else "")
+                           for name, pos in idx.items()}
+                    # A row with content but no id is kept (id ""), so the
+                    # Results loop can say it exists; only an all-blank row is
+                    # skipped (#38 item 2 - it used to vanish without a trace).
+                    if row.get("id") or any(cells):
+                        entries.append(row)
+                    j += 1
+            i = j
+            continue
+        i += 1
+    return entries
+
+
+def parse_kv_blocks(text):
+    """The original shape, kept so a project's analysis.md written before the
+    table format existed still parses: one heading/bullet block per entry,
+    each holding `id: value` / `question: value` lines.
+    """
+    entries = []
+    blocks = re.split(r"\n(?=#{1,3}\s|\s*[-*]\s+\*\*)", text)
+    for block in blocks:
+        ident = re.search(r"(?:^|\n)\s*(?:id|ID)\s*[:=]\s*`?([A-Za-z0-9_.-]+)", block)
+        if not ident:
+            continue
+        q = re.search(r"(?:^|\n)\s*(?:question|問題)\s*[:=]\s*(.+)", block)
+        s = re.search(r"(?:^|\n)\s*status\s*[:=][ \t]*(.*)", block)
+        entries.append({"id": ident.group(1), "question": q.group(1).strip() if q else "",
+                        "status": s.group(1).strip() if s else ""})
+    return entries
+
+
+entries = parse_table(text) or parse_kv_blocks(text)
+if not entries:
+    nonblank = sum(1 for l in text.splitlines() if l.strip())
+    sys.stderr.write(
+        "build_package.sh: matched 0 plan entries in %s (%d line(s), %d non-blank)\n"
+        "  expected either a markdown table whose header names id/question/source/"
+        "method/why/status (skills/downstream/SKILL.md step 3b), or the older block "
+        "form - a heading or bullet followed by 'id: <value>' / 'question: <value>' "
+        "lines.\n"
+        "  Not writing a Results section that would look complete and say "
+        "nothing (issue #5) - fix analysis.md and re-run.\n"
+        % (plan, len(text.splitlines()), nonblank))
+    sys.exit(1)
+
+ACCEPTED = ("accepted", "done")
+if mode == "check":
+    # Issue #12: only entries the user accepted are packaged. The file's own
+    # status field is the one signal - moving on to /finish is not acceptance.
+    bad = [r for r in entries
+           if (r.get("status") or "").strip().lower() not in ACCEPTED]
+    if bad:
+        def label(r):
+            if r.get("id"):
+                return r["id"]
+            return "(no id) %s" % (r.get("question") or "")[:40]
+        labels = [label(r) for r in bad]
+        w = max(len(x) for x in labels)
+        sys.stderr.write(
+            "build_package.sh: refusing to build - %d of %d entries in %s are not accepted:\n"
+            % (len(bad), len(entries), plan))
+        for lab, r in zip(labels, bad):
+            sys.stderr.write("  %s   status: %s\n"
+                             % (lab.ljust(w), (r.get("status") or "").strip() or "(none)"))
+        sys.stderr.write(
+            "A package is built only from entries the user has accepted. Put each\n"
+            "figure in front of the user, and set that entry's `status: accepted` in\n"
+            "analysis.md when - and only when - they say so in words. Moving on to\n"
+            "/finish or asking a follow-up question is not acceptance (issue #12).\n"
+            "Nothing was written to %s.\n" % os.path.dirname(figdir))
+        sys.exit(2)
+    sys.exit(0)
+
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".svg", ".pdf", ".tif", ".tiff",
+              ".gif", ".webp")
+
+
+def fig_matches(fid, figs):
+    """(embeddable, claimed): the image files an id may embed, and every file
+    the id accounts for. Files match when their name starts with fid at a real
+    boundary - '.', '_' or the end of the name. A bare startswith() matched
+    'fig10.png' against the id 'fig1' (invisible-package-gaps item 3): no
+    boundary check means a shorter id is a prefix of a longer one's number,
+    not just its name.
+    """
+    boundary = re.compile(r"^" + re.escape(fid) + r"([._]|$)")
+    # A file a longer planned id claims is that id's, not this one's:
+    # with fig1 and fig1_b both planned, fig1_b.png is fig1_b's (acceptance
+    # review of #32 - the first fix called fig1 ambiguous and dropped it).
+    longer = [re.compile(r"^" + re.escape(o) + r"([._]|$)")
+              for o in all_ids if o != fid and o.startswith(fid)]
+    cands = [f for f in figs if boundary.match(f)
+             and not any(l.match(f) for l in longer)]
+    # Only an image can be embedded as one: fig1.csv is not a figure (#38
+    # item 5 - it used to come out as ![..](figures/fig1.csv)).
+    imgs = [f for f in cands if os.path.splitext(f)[1].lower() in IMAGE_EXTS]
+    # One figure saved in several formats (fig1.png + fig1.pdf) is one
+    # figure: prefer the file whose name is exactly the id, in the format a
+    # rendered manuscript embeds best.
+    exact_all = [f for f in cands if os.path.splitext(f)[0] == fid]
+    exact = [f for f in exact_all if f in imgs]
+    if exact:
+        exact.sort(key=lambda f: IMAGE_EXTS.index(os.path.splitext(f)[1].lower()))
+        return exact[:1], exact_all
+    return imgs, cands
+
+
+all_ids = [row["id"] for row in entries if row["id"]]
+emitted = set()
+for row in entries:
+    fid = row["id"]
+    qtext = row.get("question") or fid
+    if not fid:
+        # #38 item 2: a row with content but no id used to be skipped with no
+        # trace. It cannot be matched to a figure, so say that it exists.
+        print("### %s\n" % (row.get("question") or "(plan row without an id)"))
+        print("[GAP: a plan row has no id (question: '%s') - no figure can be "
+              "matched to it; add an id to analysis.md]\n" % (row.get("question") or ""))
+        continue
+    match, claimed = fig_matches(fid, figs)
+    print("### %s\n" % qtext)
+    if len(match) == 1:
+        emitted.update(claimed)
+        print("![%s](figures/%s){#fig-%s}\n" % (qtext, match[0], fid))
+        emitted.add(match[0])
+        # #38 item 4: the formats not embedded are still in figures/; say so.
+        extra = [f for f in claimed if f != match[0]]
+        if extra:
+            print("Also in figures/, not embedded: %s\n" % ", ".join(extra))
+    elif len(match) > 1:
+        # A wrong match is worse than a visible gap - see fig_matches above -
+        # so an ambiguous id is reported, never resolved by picking one.
+        # Every file in figures/ is named somewhere: non-images the id also
+        # matches are listed too, not dropped (#38 acceptance).
+        rest = [f for f in claimed if f not in match]
+        if rest:
+            print("[GAP: id '%s' matches %d image files in figures/: %s; also: %s]\n"
+                  % (fid, len(match), ", ".join(match), ", ".join(rest)))
+        else:
+            print("[GAP: id '%s' matches %d files in figures/: %s]\n"
+                  % (fid, len(match), ", ".join(match)))
+        emitted.update(match)
+        emitted.update(claimed)
+    elif claimed:
+        print("[GAP: id '%s' has no image file in figures/ - only: %s]\n"
+              % (fid, ", ".join(claimed)))
+        emitted.update(claimed)
+    else:
+        print("[GAP: no figure file starting with '%s' in figures/]\n" % fid)
+    # Visible, not an HTML comment (#32): step 4 of skills/finish/SKILL.md replaces
+    # it with prose; one it skips must still show in the rendered document.
+    print("[GAP: Results for '%s' not written yet - say what it shows, from the "
+          "data; every number must trace to a file or to a script in scripts/]\n"
+          % fid)
+for f in figs:
+    if f not in emitted:
+        print("[GAP: figures/%s is in the package but no plan entry claims it]" % f)
+PY
+"$PY" -c "$PLAN_PY" check "$PLAN" "$OUT/figures" || exit $?
+
+mkdir -p "$OUT/figures" "$OUT/scripts" || exit 1
 
 echo "project   $PROJECT"
 echo "runs      ${#RUNS[@]}"
@@ -201,170 +406,7 @@ echo "copied    $n_fig figure(s), $n_src script(s)"
 # section came out looking complete and was empty. Parsing entries as its own
 # step, before anything is written to $QMD, is what lets a zero-entry read
 # stop the build instead of producing a document that looks finished.
-RESULTS_SECTION=$("$PY" - "$PLAN" "$OUT/figures" <<'PY'
-import os, re, sys
-
-plan, figdir = sys.argv[1], sys.argv[2]
-text = open(plan, encoding="utf-8", errors="replace").read()
-figs = sorted(os.listdir(figdir)) if os.path.isdir(figdir) else []
-
-FIELDS = ("id", "question", "source", "method", "why", "status")
-COLUMN_ALIASES = {"問題": "question"}
-
-
-def parse_table(text):
-    """The shape skills/downstream/SKILL.md step 3b's own worked example uses: a
-    markdown table whose header names analysis.md's fields. One row is one
-    entry; a header cell is matched case-insensitively against FIELDS so
-    column order (and extra columns nobody asked for) does not matter.
-    """
-    lines = text.splitlines()
-    entries = []
-    i = 0
-    while i < len(lines) - 1:
-        line = lines[i].strip()
-        if not line.startswith("|"):
-            i += 1
-            continue
-        header = [COLUMN_ALIASES.get(c.strip().lower(), c.strip().lower())
-                   for c in line.strip("|").split("|")]
-        sep = lines[i + 1].strip().strip("|").split("|")
-        if (len(header) >= 2 and len(sep) == len(header)
-                and all(re.match(r"^:?-{2,}:?$", c.strip()) for c in sep)):
-            idx = {name: pos for pos, name in enumerate(header) if name in FIELDS}
-            j = i + 2
-            if "id" in idx:
-                while j < len(lines) and lines[j].strip().startswith("|"):
-                    cells = [c.strip() for c in lines[j].strip().strip("|").split("|")]
-                    row = {name: (cells[pos] if pos < len(cells) else "")
-                           for name, pos in idx.items()}
-                    # A row with content but no id is kept (id ""), so the
-                    # Results loop can say it exists; only an all-blank row is
-                    # skipped (#38 item 2 - it used to vanish without a trace).
-                    if row.get("id") or any(cells):
-                        entries.append(row)
-                    j += 1
-            i = j
-            continue
-        i += 1
-    return entries
-
-
-def parse_kv_blocks(text):
-    """The original shape, kept so a project's analysis.md written before the
-    table format existed still parses: one heading/bullet block per entry,
-    each holding `id: value` / `question: value` lines.
-    """
-    entries = []
-    blocks = re.split(r"\n(?=#{1,3}\s|\s*[-*]\s+\*\*)", text)
-    for block in blocks:
-        ident = re.search(r"(?:^|\n)\s*(?:id|ID)\s*[:=]\s*`?([A-Za-z0-9_.-]+)", block)
-        if not ident:
-            continue
-        q = re.search(r"(?:^|\n)\s*(?:question|問題)\s*[:=]\s*(.+)", block)
-        entries.append({"id": ident.group(1), "question": q.group(1).strip() if q else ""})
-    return entries
-
-
-entries = parse_table(text) or parse_kv_blocks(text)
-if not entries:
-    nonblank = sum(1 for l in text.splitlines() if l.strip())
-    sys.stderr.write(
-        "build_package.sh: matched 0 plan entries in %s (%d line(s), %d non-blank)\n"
-        "  expected either a markdown table whose header names id/question/source/"
-        "method/why/status (skills/downstream/SKILL.md step 3b), or the older block "
-        "form - a heading or bullet followed by 'id: <value>' / 'question: <value>' "
-        "lines.\n"
-        "  Not writing a Results section that would look complete and say "
-        "nothing (issue #5) - fix analysis.md and re-run.\n"
-        % (plan, len(text.splitlines()), nonblank))
-    sys.exit(1)
-
-IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".svg", ".pdf", ".tif", ".tiff",
-              ".gif", ".webp")
-
-
-def fig_matches(fid, figs):
-    """(embeddable, claimed): the image files an id may embed, and every file
-    the id accounts for. Files match when their name starts with fid at a real
-    boundary - '.', '_' or the end of the name. A bare startswith() matched
-    'fig10.png' against the id 'fig1' (invisible-package-gaps item 3): no
-    boundary check means a shorter id is a prefix of a longer one's number,
-    not just its name.
-    """
-    boundary = re.compile(r"^" + re.escape(fid) + r"([._]|$)")
-    # A file a longer planned id claims is that id's, not this one's:
-    # with fig1 and fig1_b both planned, fig1_b.png is fig1_b's (acceptance
-    # review of #32 - the first fix called fig1 ambiguous and dropped it).
-    longer = [re.compile(r"^" + re.escape(o) + r"([._]|$)")
-              for o in all_ids if o != fid and o.startswith(fid)]
-    cands = [f for f in figs if boundary.match(f)
-             and not any(l.match(f) for l in longer)]
-    # Only an image can be embedded as one: fig1.csv is not a figure (#38
-    # item 5 - it used to come out as ![..](figures/fig1.csv)).
-    imgs = [f for f in cands if os.path.splitext(f)[1].lower() in IMAGE_EXTS]
-    # One figure saved in several formats (fig1.png + fig1.pdf) is one
-    # figure: prefer the file whose name is exactly the id, in the format a
-    # rendered manuscript embeds best.
-    exact_all = [f for f in cands if os.path.splitext(f)[0] == fid]
-    exact = [f for f in exact_all if f in imgs]
-    if exact:
-        exact.sort(key=lambda f: IMAGE_EXTS.index(os.path.splitext(f)[1].lower()))
-        return exact[:1], exact_all
-    return imgs, cands
-
-
-all_ids = [row["id"] for row in entries if row["id"]]
-emitted = set()
-for row in entries:
-    fid = row["id"]
-    qtext = row.get("question") or fid
-    if not fid:
-        # #38 item 2: a row with content but no id used to be skipped with no
-        # trace. It cannot be matched to a figure, so say that it exists.
-        print("### %s\n" % (row.get("question") or "(plan row without an id)"))
-        print("[GAP: a plan row has no id (question: '%s') - no figure can be "
-              "matched to it; add an id to analysis.md]\n" % (row.get("question") or ""))
-        continue
-    match, claimed = fig_matches(fid, figs)
-    print("### %s\n" % qtext)
-    if len(match) == 1:
-        emitted.update(claimed)
-        print("![%s](figures/%s){#fig-%s}\n" % (qtext, match[0], fid))
-        emitted.add(match[0])
-        # #38 item 4: the formats not embedded are still in figures/; say so.
-        extra = [f for f in claimed if f != match[0]]
-        if extra:
-            print("Also in figures/, not embedded: %s\n" % ", ".join(extra))
-    elif len(match) > 1:
-        # A wrong match is worse than a visible gap - see fig_matches above -
-        # so an ambiguous id is reported, never resolved by picking one.
-        # Every file in figures/ is named somewhere: non-images the id also
-        # matches are listed too, not dropped (#38 acceptance).
-        rest = [f for f in claimed if f not in match]
-        if rest:
-            print("[GAP: id '%s' matches %d image files in figures/: %s; also: %s]\n"
-                  % (fid, len(match), ", ".join(match), ", ".join(rest)))
-        else:
-            print("[GAP: id '%s' matches %d files in figures/: %s]\n"
-                  % (fid, len(match), ", ".join(match)))
-        emitted.update(match)
-        emitted.update(claimed)
-    elif claimed:
-        print("[GAP: id '%s' has no image file in figures/ - only: %s]\n"
-              % (fid, ", ".join(claimed)))
-        emitted.update(claimed)
-    else:
-        print("[GAP: no figure file starting with '%s' in figures/]\n" % fid)
-    # Visible, not an HTML comment (#32): step 4 of skills/finish/SKILL.md replaces
-    # it with prose; one it skips must still show in the rendered document.
-    print("[GAP: Results for '%s' not written yet - say what it shows, from the "
-          "data; every number must trace to a file or to a script in scripts/]\n"
-          % fid)
-for f in figs:
-    if f not in emitted:
-        print("[GAP: figures/%s is in the package but no plan entry claims it]" % f)
-PY
+RESULTS_SECTION=$("$PY" -c "$PLAN_PY" results "$PLAN" "$OUT/figures"
 ) || exit 1
 
 QMD="$OUT/manuscript.qmd"

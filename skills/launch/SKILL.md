@@ -219,10 +219,16 @@ AVAILABLE - none of which the gate can see.
    ```
 
    **A registration pins a revision.** Step 0's `== pipeline ==` section
-   already said whether this one is registered at this revision, so
-   re-running the same pipeline at the same revision needs nothing here —
-   skip the step and say you skipped it. Wanting a *different* revision is a
-   different entry, not an edit to this one.
+   already said whether this one is registered at this revision, and which
+   compute environment the entry is **bound to**. Skip the step, and say you
+   skipped it, only when the section says `registered: yes` **and** its
+   `bound to:` line says it matches this deployment's compute_env. A
+   registration pins a compute environment as well as a revision (issue #8):
+   if `bound to:` names another environment, or says `unknown`, do not skip
+   and do not launch the short name - take the `== decisions ==` line to the
+   user (register a new entry with `--compute-env`, or launch the GitHub URL
+   with `--compute-env`). Wanting a *different* revision is a different entry,
+   not an edit to this one.
 
    **If `tw pipelines add` fails**, this has no branch below it — follow
    `skills/operational/SKILL.md`'s off-design procedure (T2), category
@@ -429,6 +435,11 @@ AVAILABLE - none of which the gate can see.
 
 7. **Show the complete command** — every parameter on its own line — and wait
    for an explicit 確認執行. Include `--disable-optimization`.
+
+   **Always pass `--compute-env "$(scripts/settings.sh compute_env)"`** on the
+   `tw launch`, whether the pipeline is launched by short name or by URL. Do
+   not rely on the compute environment a registered entry happens to carry:
+   it may be another deployment's (issue #8).
 
    **Say where the results will be, in the same message as the command.**
    Both paths, absolute, from the one place that builds them:

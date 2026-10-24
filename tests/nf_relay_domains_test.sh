@@ -143,6 +143,11 @@ t "TC-019 another host may not"                  "$(peer laptop.example "$E")" "
 # a host by that name connect.
 t "TC-019 an extra domain does not become a peer" \
   "$(peer download.example.org "$E")" "False download.example.org"
+# relay-prefix-nano4 (TC-060): NF_RELAY_PEER_PREFIXES replaces the list
+P="NF_RELAY_PEER_PREFIXES=25a-cpn,25a-lgn"
+t "TC-060 a node named in the setting may connect"     "$(peer 25a-cpn03 "$E" "$P")" "True 25a-cpn03"
+t "TC-060 the old default no longer may"               "$(peer cpn3001.example "$E" "$P")" "False cpn3001.example"
+t "TC-060 localhost always may"                        "$(peer localhost "$E" "$P")" "True localhost"
 
 
 # =============================================================================

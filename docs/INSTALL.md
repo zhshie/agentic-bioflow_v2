@@ -10,6 +10,7 @@ built, it says so.
 
 - **The platform's address**, from the operator (the person who runs the platform). Below it
   is written `<platform-URL>`; the MCP door is `<platform-URL>/mcp`.
+  If you are the operator, setting up a host for your lab is described in `docs/OPERATIONS.md`, "Hosting one lab".
 - **A way to prove who you are**, and it differs by app:
   - Claude Desktop uses an OAuth login in your browser (name and web password). You paste no
     token. The operator sets your web password with `abf-platform user passwd <name>`.
@@ -49,6 +50,7 @@ There is no file to install for Claude Desktop; the connector is added in the ap
 Claude Desktop connects from the cloud, so the platform needs a public https address (the
 operator starts it with `--public-url`). This path has not yet been tried end to end on a
 real Claude Desktop; `docs/TESTING.md` lists the manual check still to be recorded.
+How to give the platform such an address is in `docs/OPERATIONS.md`, "Hosting one lab".
 
 What you see the first time you use the connector:
 
