@@ -363,17 +363,28 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return None
         return None if view.get("found") is False else view
 
-    async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200):
+    def read_outputs(run_id, caller, outputs_tab, relist):
+        """The output folder of a succeeded run's results stage, from the action (it never waits for the site). Only the Outputs tab asks
+        the site; the other tabs only look, for the name of the environment on the card."""
+        try:
+            return actions.run_outputs(index_path, platform_path, run_id, caller=caller, relist=relist and outputs_tab, enqueue=outputs_tab)
+        except sqlite3.Error:
+            return None
+
+    async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200, relist=False):
         """The board for one logged-in user: one run's page (the one named, else the one that needs the person most, else the newest;
         an empty page for a person with no run), with `flash` (one plain line of refusal) on it after a refused button."""
         runs = await run_in_threadpool(read_runs, caller)
         selected = None
+        outputs = None
         if run_id or runs:
             selected = await run_in_threadpool(read_run, run_id or web_board.default_run(runs), caller)
             if selected is None:        # another person's run and a missing id answer alike, and the page never repeats the id
                 return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+            if selected["status"] == "succeeded" and web_board.pick_stage(stage, "results") == "results" and not flash:
+                outputs = await run_in_threadpool(read_outputs, selected["id"], caller, web_board.pick_results_tab(tab) == "outputs", relist)
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
-                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash)
+                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
     async def board(request):
@@ -383,7 +394,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
         return await board_page(sid, user, caller, lang, request.query_params.get("run") or "", request.query_params.get("stage"),
-                                request.query_params.get("tab"))
+                                request.query_params.get("tab"), relist=request.query_params.get("relist") == "1")
 
     # ---- spec 012b: write actions from the web. Every route here only ASKS: it calls a request_* action for the logged-in caller and sends
     # the browser to the confirmation page /c/<id>, where the person presses 送出. Nothing is confirmed or queued from here.

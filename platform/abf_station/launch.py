@@ -57,6 +57,14 @@ OVERWRITE_BLOCK = (
     "timeline.overwrite = true\n"
 )
 NO_SCRIPTS = "不支援：這一片不執行事前／事後腳本"
+COMPOSED = "abf-composed"      # the owner part of the pipeline name of a composed pipeline; nf-core launches may not use it
+COMPOSED_NO_RESUME = ("自訂組合的 run 目前不能續跑或原樣重跑；請回到組合頁，用同一個版本重新送出（會再問一次確認）(a run of a composed pipeline cannot be "
+                      "resumed or relaunched yet; send the same version again from the pipeline page, which asks for a new yes)")
+PROJECT_KEY = re.compile(r"^(main\.nf|nextflow\.config|modules\.json|modules/nf-core/[a-z0-9_]+(/[a-z0-9_]+)*/"
+                         r"(main\.nf|templates/[A-Za-z0-9_.-]+|resources/[A-Za-z0-9_.-]+))\Z")
+PROJECT_MAX_FILE = 200000          # characters of one file of a composed project
+PROJECT_MAX_BYTES = 2 * 1024 * 1024
+PROJECT_MAX_FILES = 2000
 GCB_NO_RESUME = "Google Batch 的 run 還不能續跑或原樣重跑（尚未支援）(a Google Batch run cannot be resumed or relaunched yet)"
 
 
@@ -85,6 +93,45 @@ def _check_text(field, value, allow_cr=False, limit=MAX_VALUE):
         value.encode("utf-8")
     except UnicodeEncodeError:
         raise BundleError("%s: 不是有效的文字 (not valid text)" % field)
+
+
+def _check_project(project):
+    """The files of a composed pipeline's project: {relative path: text}. Only the shapes the platform makes are accepted, so that every
+    key is a safe path below the run's `pipeline/` folder. Raises BundleError naming the file."""
+    f = "project"
+    if not isinstance(project, dict) or not project:
+        raise BundleError("%s: 必須是 相對路徑到文字 的對照 (a mapping of relative path to text)" % f)
+    if len(project) > PROJECT_MAX_FILES:
+        raise BundleError("%s: 檔案數 %d 超過上限 %d (more than %d files)" % (f, len(project), PROJECT_MAX_FILES, PROJECT_MAX_FILES))
+    total = 0
+    for key in sorted(project, key=str):
+        label = "%s 檔 %r" % (f, key if isinstance(key, str) else str(key)[:60])
+        if (not isinstance(key, str) or not PROJECT_KEY.match(key) or len(key) > 300
+                or any(part in (".", "..") for part in key.split("/"))):
+            raise BundleError("%s: 不是組合專案允許的檔案路徑 (not a path a composed project may have)" % label)
+        _check_text(label, project[key], limit=PROJECT_MAX_FILE)
+        total += len(project[key].encode("utf-8"))
+    if total > PROJECT_MAX_BYTES:
+        raise BundleError("%s: 全部檔案共 %d 位元組，超過上限 %d (the files are larger than %d bytes together)"
+                          % (f, total, PROJECT_MAX_BYTES, PROJECT_MAX_BYTES))
+    for need in ("main.nf", "nextflow.config"):
+        if need not in project:
+            raise BundleError("%s 檔 %r: 缺少這個檔案 (the project has no %s)" % (f, need, need))
+
+
+def _composed_source(pipeline, revision, composed):
+    """The pipeline_source of a composed launch (the checks first). `composed` is {"pipeline_id", "version", "project"}."""
+    if pipeline.split("/")[0] != COMPOSED:
+        raise BundleError("pipeline: 組合管線的名稱必須是 %s/名稱 (a composed pipeline is named %s/name)" % (COMPOSED, COMPOSED))
+    if (not isinstance(composed, dict) or set(composed) != {"pipeline_id", "version", "project"}
+            or any(isinstance(composed[k], bool) or not isinstance(composed[k], int) or composed[k] < 1 for k in ("pipeline_id", "version"))):
+        raise BundleError("composed: 必須有 pipeline_id、version（1 以上的整數）與 project (pipeline_id, version and project)")
+    if revision != "0.%d.0" % composed["version"]:
+        raise BundleError("revision: 組合管線的版本必須是 0.%d.0 (the revision of version %d is 0.%d.0)"
+                          % (composed["version"], composed["version"], composed["version"]))
+    _check_project(composed["project"])
+    return {"kind": "composed", "pipeline_id": composed["pipeline_id"], "version": composed["version"],
+            "project_sha256": hashlib.sha256(common.canonical_json(composed["project"])).hexdigest()}
 
 
 # ---- the compute environment ---------------------------------------------------------------------------------
@@ -372,6 +419,7 @@ def _head_script(run_name, run_folder, pipeline, revision, queue, options, accou
     site = site or {"modules": [], "siteConfigVars": []}
     source = source or REMOTE
     local = source["kind"] == "site-module"
+    composed = source["kind"] == "composed"
     lines = ["#!/bin/bash",
              "#SBATCH -D %s" % run_folder,
              "#SBATCH -J nf-%s" % run_name,
@@ -409,15 +457,23 @@ def _head_script(run_name, run_folder, pipeline, revision, queue, options, accou
     resume = "" if resume_session is None else " -resume %s" % q(resume_session)      # 009e: the one thing a resume adds to the last line
     # the site's own config files first, ours (nextflow.config, ending in OVERWRITE_BLOCK) last so that our overrides win
     site_c = "".join(' -c "$%s"' % v for v in site["siteConfigVars"])
+    if composed:      # the project the bundle carries, written below the run's own folder; its config is read before ours, which stays last
+        lines.append("exec nextflow run %s -name %s -params-file params.yaml%s -c %s -c nextflow.config -with-tower %s"
+                     % (q(run_folder + "/pipeline/main.nf"), q(run_name), site_c, q(run_folder + "/pipeline/nextflow.config"), endpoint))
+        return "\n".join(lines) + "\n"
     target = '"$%s"' % source["home"] if local else "%s -r %s" % (q(pipeline), q(revision))
     lines.append("exec nextflow run %s%s -name %s -params-file params.yaml%s -c nextflow.config -with-tower %s"
                  % (target, resume, q(run_name), site_c, endpoint))
     return "\n".join(lines) + "\n"
 
 
-def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samplesheet, params, path_columns=None):
-    """The launch bundle: everything that is shown, hashed, written and run. Raises BundleError, naming the field."""
+def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samplesheet, params, path_columns=None, composed=None):
+    """The launch bundle: everything that is shown, hashed, written and run. Raises BundleError, naming the field. `composed`
+    ({"pipeline_id", "version", "project"}) makes it the launch of a composed pipeline: the bundle then carries the project and starts it
+    from the run's own folder; with None the bundle is exactly what it always was."""
     if isinstance(ce, dict) and ce.get("platform") == GCB:      # a Google Batch environment has its own bundle, below
+        if composed is not None:
+            raise BundleError("環境: Google Batch 環境還不能送出自訂組合 (a composed pipeline cannot be sent to a Google Batch environment yet)")
         return render_gcb_bundle(ce=ce, agent=agent, facts=facts, roots=roots, run_name=run_name, pipeline=pipeline, revision=revision,
                                  samplesheet=samplesheet, params=params, path_columns=path_columns)
     if not isinstance(agent, str) or not agent:
@@ -428,7 +484,7 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
     _check_pipeline(pipeline)
     _check_revision(revision)
     work, queue, config, env, site = _check_ce(ce)
-    source = _pipeline_source(site, pipeline, revision)
+    source = _pipeline_source(site, pipeline, revision) if composed is None else _composed_source(pipeline, revision, composed)
     account = facts.get("slurm_account")
     if not isinstance(account, str) or not account:
         raise BundleError("帳號未設定: 計費帳號沒有預設值，請在部署設定檔（config/env.yaml）設定 slurm_account 再重試 "
@@ -457,7 +513,7 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
     return {"version": BUNDLE_VERSION, "agent": agent, "ce": ce_out, "run_name": run_name, "run_folder": run_folder,
             "pipeline": pipeline, "revision": revision, "samplesheet": sheet, "params": user_params,
             "path_columns": sorted(set(path_columns or [])), "account": account, "tower": tower, "files": files,
-            "pipeline_source": source}
+            "pipeline_source": source, **({"project": composed["project"]} if composed is not None else {})}
 
 
 # ---- Google Cloud Batch: the head process runs on the platform host, the compute on Batch (gcb-launch) ----------------------
@@ -695,6 +751,8 @@ def render_resume(*, origin, run_name, attempt, session_id):
         pipeline, revision, run_folder = origin["pipeline"], origin["revision"], origin["run_folder"]
     except (KeyError, TypeError):
         raise BundleError("origin: 不是一份送出的內容包 (not a launch bundle)")
+    if (origin.get("pipeline_source") or {}).get("kind") == "composed" or "project" in origin:
+        raise BundleError(COMPOSED_NO_RESUME)
     _check_pipeline(pipeline)
     _check_revision(revision)
     work, queue, config, env, site = _check_ce(ce)
@@ -939,10 +997,17 @@ def run_launch(job, ctx, preflight):
     token = job.get("run_token")
     if not isinstance(token, str) or not token or len(token) > 200:
         raise rules.Refusal("平台沒有給這次執行的 token (no run token was sent)")
+    source = bundle.get("pipeline_source")
+    is_composed = isinstance(source, dict) and source.get("kind") == "composed"
+    if is_composed != ("project" in bundle):
+        raise rules.Refusal("組合管線的內容包必須同時有 project 與 composed 來源，兩者缺一不可 "
+                            "(a composed bundle needs both its project and its composed source)")
+    composed = {"pipeline_id": source.get("pipeline_id"), "version": source.get("version"), "project": bundle["project"]} if is_composed else None
     try:
         rebuilt = render_bundle(ce=bundle["ce"], agent=bundle["agent"], facts=facts, roots=rules.allowed_roots(env, ctx.settings_file),
                                 run_name=bundle["run_name"], pipeline=bundle["pipeline"], revision=bundle["revision"],
-                                samplesheet=bundle["samplesheet"], params=bundle["params"], path_columns=bundle["path_columns"])
+                                samplesheet=bundle["samplesheet"], params=bundle["params"], path_columns=bundle["path_columns"],
+                                composed=composed)
     except (BundleError, KeyError, TypeError) as e:
         raise rules.Refusal("內容不合規則：%s" % e)
     if rebuilt != {k: v for k, v in bundle.items() if k not in RECORDS}:      # the records of the upload-area paths and of a relaunch are the platform's; the first is checked below
@@ -956,6 +1021,8 @@ def run_launch(job, ctx, preflight):
     if res.rc != 0:
         return "error", {"ok": False, "message": "站台上建不起 %s/runs（結束碼 %d）；沒有建立專屬資料夾 (nothing was made)" % (work, res.rc)}
     files = [(name, bundle["files"][name].encode("utf-8")) for name in FILE_NAMES] + [("tower.token", token.encode("utf-8"))]
+    if composed is not None:      # the project goes below the run's own folder, in the same unpack: no shared folder, nothing skipped for an equal copy
+        files += [("pipeline/" + rel, bundle["project"][rel].encode("utf-8")) for rel in sorted(bundle["project"])]
     res = site.call(["umask 077; mkdir %s && tar -x --no-same-owner -C %s" % (quote(folder), quote(folder))],
                     input=_tar(files), timeout=120)
     if res.rc != 0:
@@ -1093,6 +1160,8 @@ def run_resume(job, ctx, preflight, bundle):
     if not isinstance(resume, dict) or set(resume) != RESUME_KEYS or not isinstance(resume.get("origin"), dict):
         raise rules.Refusal("續跑的內容包欄位不對 (the resume bundle has other fields than it should)")
     origin = resume["origin"]
+    if (origin.get("pipeline_source") or {}).get("kind") == "composed" or "project" in origin:
+        raise rules.Refusal(COMPOSED_NO_RESUME)
     env = rules.clean_environment(origin.get("ce"))
     if bundle.get("agent") != ctx.agent_name or origin.get("agent") != ctx.agent_name:
         raise rules.Refusal("這個內容包是給另一個代理的 (the bundle is for another agent)")
