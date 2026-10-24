@@ -288,7 +288,7 @@ def test_tc020_the_form_has_the_fields(rig):
     assert re.search(r'<input [^>]*name="revision"[^>]*required', t)
     assert re.search(r'<select name="samplesheet"', t) and re.search(r'<select name="ce_name"', t) and re.search(r'<textarea [^>]*name="params"', t)
     assert 'type="file"' not in t and "multipart" not in t and "<ol" not in t and "<svg" not in t and "<canvas" not in t
-    assert not re.search(r"(?i)step ?\d|第\s*\d\s*步", mid)
+    assert len(re.findall(r'<details class="gstep ', mid)) == 7      # guided-launch-1: the page is seven numbered steps (was: no step numbering)
 
 
 def test_tc021_tc022_choices_are_the_callers_own(rig):
