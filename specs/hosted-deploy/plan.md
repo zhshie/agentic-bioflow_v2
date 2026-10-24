@@ -27,9 +27,9 @@ source: memory/PLAN-abf-v3-replan-2026-10.md Milestone 6 的 H-1（第 186 行�
 
 ## 範圍：檔案（只准改這些）
 新增（全部在 `deploy/` 與 `tests/`）：
-- `deploy/systemd/abf-serve.service`
-- `deploy/systemd/abf-mcp.service`
-- `deploy/systemd/abf-web.service`
+- `deploy/systemd/abf-serve.service.in`
+- `deploy/systemd/abf-mcp.service.in`
+- `deploy/systemd/abf-web.service.in`
 - `deploy/Caddyfile.template`
 - `deploy/backup.sh`
 - `deploy/env.example`
@@ -161,6 +161,12 @@ source: memory/PLAN-abf-v3-replan-2026-10.md Milestone 6 的 H-1（第 186 行�
 15. 備份腳本也認 `ABF_PLATFORM_TOKENS`／`ABF_PLATFORM_STATE`／`ABF_PLATFORM_UPLOADS` 覆蓋變數（有設就用），測試加一條覆蓋變數的案例。
 16. `web_signing.key` 不存在時備份照樣成功，只印一行「web 尚未啟動過，略過簽章金鑰」；其餘必備檔（tokens.db、platform.db）缺了仍非零結束。TC-035 依此改。
 17. 沒有 spec.md，以 plan.md 區段為需求來源，接受。
+
+## 裁決四（2026-10-24 developer-agent，回應 executor BLOCKED；以本段為準）
+18. 既有 `test_station_static.py::test_tc087` 禁止 repo 追蹤任何 `*.service`／`*.timer`。改那條測試屬「放寬安全網」（C 級），不做。改成單元檔以範本出貨：`deploy/systemd/abf-serve.service.in`、`abf-mcp.service.in`、`abf-web.service.in`（內容本來就有佔位字，名稱也更誠實）。文件的逐步清單寫「複製到 `~/.config/systemd/user/` 並去掉 `.in`」。所有 TC 的檔名跟著改；TC-087 必須維持綠。
+19. `uploads/`、`records/` 不存在時備份只印一行略過、不當錯誤（executor 的偏離接受）。
+20. env.example 裡的 `http://127.0.0.1:8080` 只能出現在註解行，照合約。
+21. 已在分支上的三個 commit 沿用，executor 在同一個 worktree 改名、補測試即可。
 
 ## 專長守則（backend）
 
