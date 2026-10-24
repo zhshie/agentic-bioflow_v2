@@ -117,14 +117,13 @@ def test_tc119_a_project_without_a_composed_source_is_refused(tmp_path, site, fa
     # TC-119
     b = composed_bundle(site, fake)
     b["pipeline_source"] = {"kind": "remote"}
-    with agent_on(fake, site, tmp_path, name="agent-f"):
-        res = run_job(fake, job_of(b))
-    assert res["state"] == "refused", res
-    written_nothing(site)
     plain = bundle_for(site, fake, run="run-p")
     plain["project"] = copy.deepcopy(PROJECT)
     with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+        assert res["state"] == "refused", res
         assert run_job(fake, job_of(plain))["state"] == "refused"
+    written_nothing(site)
     assert not (site.work / "runs" / "run-p").exists()
 
 
