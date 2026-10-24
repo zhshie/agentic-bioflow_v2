@@ -7,6 +7,7 @@ so the same rules run here.
 """
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from helpers import PLATFORM_DIR, REPO_ROOT
@@ -114,11 +115,20 @@ def test_tc071_no_submission_no_resident_loop_no_committed_database():
                 if re.search(pat, line):
                     hits.append("%s:%d %s: %s" % (f.name, n, why, line.strip()))
     assert hits == []
-    committed = subprocess.run(["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True).stdout.split()
-    dbs = [p for p in committed if re.search(r"\.(db|sqlite|sqlite3)$|-wal$|-shm$|-journal$", p)]
-    assert dbs == [], "database files are committed: %s" % dbs
-    on_disk = [p for p in _all_platform_files() if re.search(r"\.(sqlite|sqlite3)$|-wal$|-shm$|-journal$", p.name)]
-    assert on_disk == []
+    ls = subprocess.run(["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True)
+    assert ls.returncode == 0 and ls.stdout.split(), "git ls-files gave nothing (rc=%s): %s" % (ls.returncode, ls.stderr)
+    dbs = [p for p in ls.stdout.split() if re.search(r"\.(db|sqlite|sqlite3)$|-wal$|-shm$|-journal$", p)]
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_ROOT, capture_output=True, text=True).stdout.splitlines()[:20]
+    assert dbs == [], "database files are committed: %s\ngit status --porcelain (first 20 lines):\n%s" % (dbs, "\n".join(status))
+    # a SQLite side file lives only while a connection is open: look again until none is left, for at most 15 seconds
+    # (a file that stays is still a failure when the time is up)
+    deadline = time.time() + 15
+    while True:
+        on_disk = [p for p in _all_platform_files() if re.search(r"\.(sqlite|sqlite3)$|-wal$|-shm$|-journal$", p.name)]
+        if not on_disk or time.time() >= deadline:
+            break
+        time.sleep(0.3)
+    assert on_disk == [], "database files on disk in platform/: %s" % [p.relative_to(PLATFORM_DIR).as_posix() for p in on_disk]
 
 
 def test_gitignore_keeps_databases_and_the_venv_out_of_the_repo():

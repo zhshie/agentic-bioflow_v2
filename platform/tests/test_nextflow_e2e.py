@@ -59,7 +59,10 @@ def world(e2e_cfg, tmp_path_factory):
     w["ok"] = env.run_nf("ok", ok_dir)
     w["resume"] = env.run_nf("ok", ok_dir, args=["-resume"])
     w["fail"] = env.run_nf("fail", fail_dir)
-    time.sleep(1.5)  # the last messages are in before the receiver is asked
+    # the last messages are in before the receiver is asked: all three runs have reached their final state there
+    wait_until(lambda: len(_runs_via_mcp(env.cli_env())) == 3
+               and all(v["status"] in ("succeeded", "failed") for v in _runs_via_mcp(env.cli_env()).values()),
+               timeout=30, what="the three runs in their final state")
     yield w
     env.stop()
 
@@ -150,7 +153,8 @@ def test_tc002_a_run_in_flight_shows_the_last_progress_it_received(e2e_cfg, tmp_
             + before["cached"] + before["failed"] + before["aborted"]
         mid = dict(v["tasks"])
         proc.wait(timeout=120)
-        time.sleep(1.5)
+        wait_until(lambda: [v for v in _runs_via_mcp(env.cli_env()).values() if v["status"] == "succeeded"],
+                   timeout=30, what="the run recorded as succeeded")
         (final,) = _runs_via_mcp(env.cli_env()).values()
         assert final["status"] == "succeeded"
         assert final["tasks"]["succeeded"] == 4 and mid["succeeded"] != final["tasks"]["succeeded"]
@@ -186,7 +190,7 @@ def test_tc041_canaries_in_config_environment_and_params_are_not_stored(e2e_cfg,
         p = env.run_nf("ok", launch, args=["--access_token", "PARAM_CANARY_e41"],
                        extra_env={"MY_ENV_SECRET": "ENV_CANARY_e41"})
         assert p.returncode == 0, p.stdout + p.stderr
-        time.sleep(1.0)
+        wait_until(lambda: env.recorder.of_kind("begin"), timeout=30, what="the begin message at the receiver")
         begin = env.recorder.of_kind("begin")
         assert begin, "the receiver saw no begin"
         sent = begin[0][3].decode()
@@ -463,8 +467,7 @@ def _aborted_log(e2e_cfg, tmp_path, with_block):
         wait_until(lambda: [b for _, _, b, _ in env.recorder.of_kind("progress") if b["progress"]["running"] >= 1],
                    timeout=90, what="a running task")
         os.killpg(proc.pid, signal.SIGINT)   # the cancel: what scancel / Ctrl-C does to the head job
-        proc.wait(timeout=120)
-        time.sleep(1.0)
+        proc.wait(timeout=120)   # nextflow has exited: its log file is complete (the caller reads that file, not the receiver)
         return (launch / ".nextflow.log").read_text(errors="replace")
     finally:
         if proc.poll() is None:

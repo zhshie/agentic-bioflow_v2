@@ -82,8 +82,11 @@ def test_tc084_nothing_in_either_package_submits_a_job_or_starts_a_run():
 
 def test_tc087_nothing_keeps_a_process_alive_or_reopens_a_connection():
     # TC-087 (static half)
-    tracked = subprocess.run(["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True).stdout.split()
-    assert not [p for p in tracked if re.search(r"\.(service|timer)$|(^|/)crontab$", p)], tracked
+    ls = subprocess.run(["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True)
+    assert ls.returncode == 0 and ls.stdout.split(), "git ls-files gave nothing (rc=%s): %s" % (ls.returncode, ls.stderr)
+    found = [p for p in ls.stdout.split() if re.search(r"\.(service|timer)$|(^|/)crontab$", p)]
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_ROOT, capture_output=True, text=True).stdout.splitlines()[:20]
+    assert not found, "tracked files that keep a process alive: %s\ngit status --porcelain (first 20 lines):\n%s" % (found, "\n".join(status))
     assert hits(station_sources(), [r"ControlMaster", r"ControlPersist", r"ssh\s+-", r"ssh_control"]) == []
 
 

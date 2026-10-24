@@ -587,7 +587,13 @@ def scenario_life(tmp_path):
         a = AgentProc(plat.url, tf, site, "agent-life", tmp_path)
         plat.wait_agent_online("agent-life")
         time.sleep(0.5)
-        views = plat.mcp_json("list_agents")["agents"]
+
+        def at_last_contact():
+            """The clock offset that puts "now" at the platform's last contact with the agent, whatever the time a new process
+            takes to start: it may start up to 3 * H s late and the agent still counts as online."""
+            return plat.db_rows("SELECT last_seen_at FROM agents")[0][0] - time.time()
+
+        views = plat.mcp_json("list_agents", ABF_PLATFORM_CLOCK_OFFSET=at_last_contact())["agents"]
         t1 = time.time()
         version = subprocess.run([sys.executable, "-m", "abf_station", "--version"], env=pkg_env(), capture_output=True,
                                  text=True).stdout.strip()
@@ -599,17 +605,17 @@ def scenario_life(tmp_path):
         a.proc.wait()
         a.log.close()
         time.sleep(POLL + 1)  # a poll the platform still holds for the dead agent is not a contact
-        now_view = plat.mcp_json("list_agents")["agents"][0]
+        now_view = plat.mcp_json("list_agents", ABF_PLATFORM_CLOCK_OFFSET=at_last_contact())["agents"][0]
         late_view = plat.mcp_json("list_agents", ABF_PLATFORM_CLOCK_OFFSET=3 * H + 5)["agents"][0]
         assert now_view["status"] == "online", "offline is decided by the clock, not by a broken connection"
         assert late_view["status"] == "offline" and late_view["last_contact_at"] == now_view["last_contact_at"]
         first_contact = iso_epoch(late_view["last_contact_at"])
         b = AgentProc(plat.url, tf, site, "agent-life", tmp_path)
         try:
-            end = time.time() + 15
+            end = time.time() + 60
             while time.time() < end and not (plat.db_rows("SELECT last_seen_at FROM agents")[0][0] > first_contact + 0.5):
                 time.sleep(0.2)
-            again = plat.mcp_json("list_agents")["agents"]
+            again = plat.mcp_json("list_agents", ABF_PLATFORM_CLOCK_OFFSET=at_last_contact())["agents"]
             assert len(again) == 1 and again[0]["status"] == "online"
             assert iso_epoch(again[0]["last_contact_at"]) > first_contact
         finally:
