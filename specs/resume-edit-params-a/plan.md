@@ -81,7 +81,7 @@ source: resume-edit-params 的第 1 片（共 4 片：a 站台與內容包、b �
 - `test_params_overlay_replaces_keeps_and_adds_and_never_deletes`、`test_params_yaml_keeps_input_and_outdir_of_the_origin_folder`。
 - `test_params_overrides_are_refused_like_a_launch`（`input`、`outdir`、巢狀、list、None、nan、inf、壞名稱）：`BundleError` 點名鍵；與 `_check_params` 逐案一致。`test_params_overrides_refuse_control_characters_and_overlong_text`（NUL、CR、ESC、雙向、超長）。
 - `test_overrides_of_the_wrong_shape_are_refused`（未知鍵、`params` 不是字典、`extra_config` 不是字串）。
-- `test_extra_config_accepts_the_resource_lines`（`process.memory = '8 GB'`、`process.cpus = 4`、`process { withName: 'FASTQC' { cpus = 4 } }`、`withLabel`、`time = '1h 30m'`、`errorStrategy = 'retry'`、註解與空行）。
+- `test_extra_config_accepts_the_resource_lines`（`process.memory = '8 GB'`、`process.cpus = 4`、三行寫法 `process {` ／ `withName: 'FASTQC' {` ／ `cpus = 4` ／ `}` ／ `}`（同一行寫法被拒，見裁決二）、`withLabel`、`time = '1h 30m'`、`errorStrategy = 'retry'`、註解與空行）。
 - `test_extra_config_refuses_everything_else`（C 節末列的全部寫法；每個點名行號）、`test_extra_config_is_ascii_only_without_backslash_or_cr`、`test_extra_config_too_long_is_refused`。
 - `test_extra_config_cannot_undo_the_platforms_overwrite_block`：`report.overwrite = false`、`timeline.overwrite = false` 被拒。
 - `test_the_extra_file_has_the_header_comment_and_comes_after_nextflow_config`。
@@ -126,6 +126,13 @@ source: resume-edit-params 的第 1 片（共 4 片：a 站台與內容包、b �
 
 ## 裁決（2026-10-24 17:10 developer-agent，以本段為準）
 1. 前置已全部合併，開工以最新 v3 為準；若合約超過 60 條，照計畫在「render 與驗證」／「站台執行」切開。
+
+## 裁決二（2026-10-24 17:30 developer-agent，回應出題退回；以本段為準，正文已同步改寫）
+1. 同一行寫完整個區塊（`process { withName: 'X' { cpus = 4 } }`）拒絕，訊息要提示「請分行寫，每行一個 `{`、一個設定或一個 `}`」。失敗先行測試的「要接受」範例已改成分行寫法；另加一條「同一行寫法被拒且訊息含分行提示」。
+2. 每行允許行首縮排（空格或 tab）與行尾空白，比對前去掉；寫出的檔保留使用者原樣。
+3. 結尾換行正規化為剛好一個（原本有就不再補，有多個空行尾就收成一個）。
+4. 正規化後的 `resume.overrides` 省略空的項（空字串、空清單都不放鍵），寫進 ledger。
+5. TC-053／TC-054 以 ledger 與 diff 閱卷（README 通例）。
 
 ## 專長守則（backend）
 
