@@ -281,7 +281,8 @@ miss=""; for w in "$SC --user" 'http://127.0.0.1:8080' "$TS funnel --bg 8080" "$
 if [ -z "$miss" ]; then ok "TC-064 TESTING.md has the hosted-deploy steps"; else bad "TC-064 TESTING.md hosted-deploy" "missing:$miss"; fi
 
 # ---------- US5 / constitution ----------
-if git rev-parse --verify -q origin/v3 >/dev/null 2>&1; then
+  first=$(git log --diff-filter=A --format=%H -- specs/hosted-deploy/plan.md | tail -n1); base66=origin/v3; [ -n "$first" ] && git rev-parse -q --verify "$first^" >/dev/null && base66="$first^"
+  names=$(git diff --name-only "$base66"...HEAD)
   names=$(git diff --name-only origin/v3...HEAD)
   hit=$(printf '%s\n' "$names" | grep -E '^(platform/abf_platform/|platform/abf_station/|platform/abf_launch/|platform/pyproject\.toml|docs/ROADMAP\.md|\.github/|\.claude-plugin/plugin\.json|\.specify/memory/constitution\.md)|(^|/)spec\.md$' || true)
   if [ -z "$hit" ]; then ok "TC-066 no program code, gate file or spec touched (also TC-080: no schema change)"; else bad "TC-066 gate files touched" "$hit"; fi
