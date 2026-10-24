@@ -574,6 +574,18 @@ The automatic tests use fakes for the program runner, the detached start and the
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with the list under "Scope: files" in `specs/gcb-launch/plan.md`: nothing else is changed; `records.py`, `web*.py`, `agent.py` and the `hello` facts are untouched; no Slurm test file is touched. Of the C-1 tests (`test_gcb_ce.py`) only five places changed: the job kinds that are refused, the first line and name of the "never auto picked" test, the two patterns dropped from the "later slices" test, the documentation strings, and the one job kind that `test_refusals_are_plain_words` probes (`launch_nextflow` is allowed now, so it asks `list_site_files`, which is still refused; the plan's list did not name this one, see the ledger).
 
+## Datasets in a cloud bucket (cloud-upload): the maintainer and the reviewer check
+
+This task delivers the platform half only: a Dataset can be registered at `gs://` places, other people's places are refused, and a file over 2 GB gets a one-line command. **The end-to-end check (really sending a file into the bucket) has to wait for the byte-channel task; for now only registering and refusing can be checked.** The automatic tests use fakes and touch no network. The steps below call the functions in a Python shell on the platform host, with a Google Batch environment `gcb1` (workDir `gs://<bucket>/work`) that you own and a user name `<you>`.
+
+1. **Register a cloud Dataset.** Call `register_dataset(..., destination="gcb1", caller=<you>)` with two files `gs://<bucket>/uploads/<you>/a_R1.fastq.gz` and `.../a_R2.fastq.gz` and a samplesheet that names exactly those two. Check: the answer says `ok`, and `get_dataset` shows the same two `gs://` places and nothing else per file.
+2. **Somebody else's prefix.** Register a file at `gs://<bucket>/uploads/<another user>/a_R1.fastq.gz`. Check: it is refused, the sentence names only your own prefix `gs://<bucket>/uploads/<you>/`, and nothing is stored.
+3. **Another bucket.** Register a file in a bucket that is not the one of `workDir`. Check: it is refused and the sentence says the bucket must be the one of the environment's workDir.
+4. **Over 2 GB.** Call `check_web_upload(..., {"big_R1.fastq.gz": 2000000001}, destination="gcb1", caller=<you>)`. Check: it is refused, the answer holds one line that starts with `gcloud storage cp ` and ends at your prefix `.../uploads/<you>/rawdata/`, and the second sentence says to put files already in the bucket into the same prefix. Exactly 2000000000 bytes must be accepted.
+5. **Nothing else changed.** Without `destination` every call answers as before. Search the platform database, the logs and your terminal output for any piece of the key file (for example `private_key`). Check: nothing is found.
+
+**The reviewer.** Run `git diff --name-only <base>...HEAD`. Check: only `platform/abf_platform/actions/datasets.py`, `platform/abf_platform/cloud_store.py`, `platform/tests/test_cloud_upload.py`, `docs/TESTING.md` and `specs/cloud-upload/*`; `actions/__init__.py`, `pipeline_launch.py`, `abf_launch/build.py`, `pyproject.toml` and `constraints.txt` are identical to the base; no existing test file is changed.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in

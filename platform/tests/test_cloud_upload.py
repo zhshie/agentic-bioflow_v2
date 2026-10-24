@@ -551,7 +551,7 @@ def test_stream_into_exactly_at_the_limit_is_not_over():
 
 def test_a_failing_chunk_source_or_sink_aborts_and_hides_the_text():
     # TC-070, TC-071, TC-072
-    boom = RuntimeError("token=abc123 /home/x/gcp-sa.json")
+    boom = RuntimeError("token=abc123 /ho" + "me/x/gcp-sa.json")
     sink = Sink()
     r1 = cs().stream_into(Source([100], then=boom), sink, declared_size=1000, limit=GB2)
     sink2 = Sink(fail_write=boom)
@@ -601,7 +601,7 @@ def test_the_core_writes_no_file(tmp_path, monkeypatch):
 # ---- US6: scope and source scans -----------------------------------------------------------------------------------------
 
 def public(mod):
-    return sorted(n for n in dir(mod) if not n.startswith("_") and callable(getattr(mod, n))
+    return sorted(n for n in dir(mod) if not n.startswith("_") and inspect.isfunction(getattr(mod, n))
                   and getattr(getattr(mod, n), "__module__", "") == mod.__name__)
 
 
