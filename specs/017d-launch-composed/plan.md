@@ -253,6 +253,15 @@ C. 待決 1、3、5 採計畫預設（樣本表一格一檔、單端；publishDi
 D. 待決 4：組合流程的續跑另開 `017d2-resume-composed`，排在 017e 之後；本件白話拒絕續跑／重跑。
 E. 「專案 nextflow.config 會被 Nextflow 從腳本目錄自動讀到」必須用離線真 Nextflow 的測試鎖住；若 CI 沒有 Nextflow，該測試不得 skip（CI 禁止 skip），改為明確在 head.sh 加 `-c <run_folder>/pipeline/nextflow.config`，二擇一由 executor 依實測決定並記進 ledger。
 
+## 裁決二（2026-10-24 09:50，developer-agent，回應 verifier 出題退回；與上文衝突一律以本段為準）
+1. **`compose` 字樣禁令只針對 `actions/__init__.py`**（既有 test_pipelines_store 那條）。`actions/__init__.py` 只 `from .. import pipeline_launch` 並呼叫 `pipeline_launch.prepare(...)`，由它整包做完（呼叫 compose.render、組內容包、標 `pipeline_source.kind="composed"`）後回傳內容包與畫面；`actions/__init__.py` 內不出現 `compose`、`composed`、`abf-composed` 任何字樣。`pipeline_launch.py`、`build.py`、`abf_station/launch.py` 可以出現。對 nf-core 送出擋 `abf-composed/` 假名稱的檢查放在 `build.py`。
+2. **head.sh 最後一行固定一種**：一律明寫 `-c <run_folder>/pipeline/nextflow.config`，順序為站台的 `-c` 在前、`-c <run_folder>/pipeline/nextflow.config`、最後 `-c nextflow.config`，目標是 `<run_folder>/pipeline/main.nf`，沒有 `-r`。裁決 E 的二擇一作廢。golden 照此。
+3. **CI 沒有真的 Nextflow**（test_launch_nextflow 用 shim）。不寫「用真 Nextflow 證明 config 被讀到」的自動測試；改為斷言 head.sh 文字（第 2 點）與 tar 內容（`pipeline/main.nf`、`pipeline/nextflow.config`、`pipeline/modules/nf-core/<path>/main.nf` 都在）。實際在 nano4 跑一次列為手動驗收，寫進 `docs/TESTING.md`（範圍加這個檔）。TC-102 依此改寫。
+4. `request_pipeline_launch(..., *, data=None)`：`data` 是只給測試用的目錄替換縫，預設 `catalogue.load()`；送出閘門用它重算 validate。
+5. 對 `abf-composed/` 假名稱的拒絕訊息改為：「組合流程只能從畫布送出（畫布送出介面尚未開放）」（中英並列），不提不存在的工具名。
+6. **含子流程或 include 其他模組的模組**：模組原始碼（main.nf）裡有 `include {` 或 `workflow ` 宣告者，`build_project` 拒絕並點名該模組（finding code `UNSUPPORTED_MODULE`），可測。
+7. 計畫有寫但沒列測試名的行為，由 executor 補測試並註明 TC 編號（verifier 已在合約標出），不算擴大範圍。
+
 ## 專長守則（backend）
 
 ### executor
