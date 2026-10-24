@@ -561,7 +561,7 @@ The Outputs tab of a succeeded run's results stage lists `<run folder>/results`,
 - `log`: the log reference the view already has, or `None`. This feature reads no log; to read one use `read_task_log`.
 - `actions`: `["resume", "relaunch"]`, or only `["relaunch"]` when no task succeeded or was cached (nothing to carry over). They are the Resume and Relaunch entries of Seqera's run menu; the platform names them and sends neither: each still waits for a person's yes (section 9).
 
-A resume can now change some parameters and add resource settings (command line and MCP). The web form and the switch of compute environment are not built yet. The field itself (the `actions` list) does not change and needs no migration: it is worked out when asked.
+A resume can now change some parameters and add resource settings (command line and MCP; the work of `resume-edit-params`). The web form and the switch of compute environment are not built yet. The field itself (the `actions` list) does not change and needs no migration: it is worked out when asked.
 
 ## Guidance over the URL
 
