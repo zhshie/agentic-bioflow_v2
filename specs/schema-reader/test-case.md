@@ -79,7 +79,7 @@ Written by the verifier (CONTRACT mode) after the plan, before any code. 本功�
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
 | TC-049 | T15 | 功能 | `tests/fixtures/schema_input/` 下的五份檔（ampliseq-2.18.0、bacass-2.6.1、mag-5.5.0、rnaseq-3.27.0、taxprofiler-2.0.1），測試直接讀既有檔、不複製 | 對每一份呼叫 `samplesheet_columns`，取欄位名稱序列 | 五份都和各檔 `items.properties` 的鍵順序完全一致 | 自動 |
-| TC-050 | T15 | 功能 | ampliseq-2.18.0 | 同上 | 前三欄依序是 `fastq_1`、`control`、`fastq_2` | 自動 |
+| TC-050 | T15 | 功能 | ampliseq-2.18.0 | 同上 | 前三欄依序是 `sampleID`、`forwardReads`、`reverseReads`（2026-10-25 developer-agent 修正：原值取自無序字典，與真檔不符） | 自動 |
 | TC-051 | T16 | 功能 | rnaseq-3.27.0 | 看各欄 `required` | `sample`、`fastq_1`、`strandedness` 為 True | 自動 |
 | TC-052 | T16 | 功能 | 同上 | 同上 | 除了上面三欄以外，其餘欄位的 `required` 全部 False | 自動 |
 | TC-053 | T16 | 功能 | bacass-2.6.1 | 同上 | 只有 `ID` 的 `required` 為 True，其餘全部 False | 自動 |
