@@ -1,0 +1,5 @@
+{
+  "_about": "Google Compute Engine virtual machine prices in US dollars per machine-hour, as Google's own page shows them: nothing here is converted. Compute only (no disk, network or storage). Format: regions -> region name -> machine type -> {standard, spot, source, read_on}. Every entry must carry the page it was read from (source, https) and the day it was read (read_on, YYYY-MM-DD). Do not guess a number here (no entry, no price). The list is empty on purpose: the prices could not be verified, so the real ones are filled by the later task cloud-rates-fill (Cloud Billing Catalog API). Until then every estimate is unknown.",
+  "currency": "USD",
+  "regions": {}
+}
