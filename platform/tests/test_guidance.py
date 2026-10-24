@@ -342,7 +342,7 @@ def _pyproject():
 
 
 def test_tc406_package_data_covers_the_skills():
-    assert 'package-data = {"abf_platform" = ["skills/*/SKILL.md", "data/*.json"]}' in _pyproject().splitlines()
+    assert 'package-data = {"abf_platform" = ["skills/*/SKILL.md", "data/*.json", "data/*.json.gz"]}' in _pyproject().splitlines()
 
 
 def test_tc407_packages_is_not_extended():

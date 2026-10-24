@@ -472,6 +472,8 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
     ({"pipeline_id", "version", "project"}) makes it the launch of a composed pipeline: the bundle then carries the project and starts it
     from the run's own folder; with None the bundle is exactly what it always was."""
     if isinstance(ce, dict) and ce.get("platform") == GCB:      # a Google Batch environment has its own bundle, below
+        if composed is not None:
+            raise BundleError("環境: Google Batch 環境還不能送出自訂組合 (a composed pipeline cannot be sent to a Google Batch environment yet)")
         return render_gcb_bundle(ce=ce, agent=agent, facts=facts, roots=roots, run_name=run_name, pipeline=pipeline, revision=revision,
                                  samplesheet=samplesheet, params=params, path_columns=path_columns)
     if not isinstance(agent, str) or not agent:

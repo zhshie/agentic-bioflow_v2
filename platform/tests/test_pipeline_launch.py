@@ -397,7 +397,8 @@ def test_a_saved_graph_goes_to_the_confirmation_page_and_nothing_runs_until_the_
     # TC-001, TC-002, TC-003, TC-004
     pid = make(d)
     out = ask(d, d.a, pid)
-    assert out["ok"] and out["state"] == "pending" and "/c/%s" % out["id"] in out["confirmation_url"]
+    assert out["ok"], out
+    assert out["state"] == "pending" and "/c/%s" % out["id"] in out["confirmation_url"]
     assert count(d, "jobs", "WHERE kind = 'launch_nextflow'") == 0 and count(d, "confirmations") == 1
     rid, job_id = approve(d, out)
     jobs = sql_rows(d.state, "SELECT * FROM jobs WHERE kind = 'launch_nextflow'")
@@ -644,17 +645,30 @@ def test_a_project_error_is_said_as_not_sent_and_writes_nothing(d):
 
 # ---- build.py ------------------------------------------------------------------------------------------------------------------------
 
-def test_the_reserved_owner_cannot_be_launched_as_an_nf_core_pipeline(d, monkeypatch):
-    # TC-125, TC-126, TC-127, TC-128, TC-140 (no socket)
+def run_without_sockets(coro):
+    """Run a coroutine with socket.socket turned into a trap (the event loop's own pair of sockets is made before the trap is set)."""
     import socket
+
+    async def go():
+        real = socket.socket
+
+        def no_socket(*a, **k):
+            raise AssertionError("a socket was opened")
+        socket.socket = no_socket
+        try:
+            return await coro
+        finally:
+            socket.socket = real
+    return asyncio.run(go())
+
+
+def test_the_reserved_owner_cannot_be_launched_as_an_nf_core_pipeline(d):
+    # TC-125, TC-126, TC-127, TC-128, TC-140 (no socket)
     from abf_launch import build
     from abf_platform import actions
 
-    def no_socket(*a, **k):
-        raise AssertionError("a socket was opened")
-    monkeypatch.setattr(socket, "socket", no_socket)
     before = counts(d)
-    out = asyncio.run(actions.request_launch(d.state, pipeline="abf-composed/x", revision="0.1.0", run_name="run-one",
+    out = run_without_sockets(actions.request_launch(d.state, pipeline="abf-composed/x", revision="0.1.0", run_name="run-one",
                                              samplesheet_text="sample,fastq_1\ns1,%s/rawdata/s1.fq\n" % d.area(d.a), ce_name="lab-a", caller=d.a))
     assert out["ok"] is False and "組合流程只能從畫布送出（畫布送出介面尚未開放）" in out["message"] and "launch_pipeline" not in out["message"]
     assert re.search(r"\(.*canvas|canvas.*\)", out["message"], re.I) or "canvas" in out["message"].lower()
@@ -663,7 +677,10 @@ def test_the_reserved_owner_cannot_be_launched_as_an_nf_core_pipeline(d, monkeyp
         build.prepare_launch(d.state, ce="lab-a", pipeline="abf-composed/x", revision="0.1.0", run_name="run-one",
                              samplesheet_raw=b"sample,fastq_1\ns1,%s/rawdata/s1.fq\n" % str(d.area(d.a)).encode(), owner=d.a.user_id)
     # building a composed launch to the page opens no socket either
-    assert ask(d, d.a, make(d))["state"] == "pending"
+    pid = make(d)
+    again = run_without_sockets(actions.request_pipeline_launch(d.state, pipeline_id=pid, run_name="run-one", samplesheet_text=sheet(d, d.a),
+                                                               ce_name="lab-a", caller=d.a))
+    assert again["state"] == "pending"
 
 
 def test_a_prefilled_composed_name_is_refused_when_sent_as_nf_core(d):
@@ -789,11 +806,13 @@ def test_error_messages_hide_internals_and_secrets(d):
         assert not re.search(r"Traceback|SELECT |INSERT |platform\.db|sqlite|/home/|/work/", t), t
         assert re.search(r"[一-鿿]", t)
     ok = ask(d, d.a, pid)
-    stored = json.dumps(sql_rows(d.state, "SELECT bundle_json, screen_text FROM confirmations")[0][0])
+    row = sql_rows(d.state, "SELECT bundle_json, screen_text FROM confirmations")[0]
+    stored = row["bundle_json"] + row["screen_text"]
     from human_harness import PASSWORD
     for secret in (PASSWORD, "tower.token'"):
         assert secret not in stored and secret not in ok["message"] and secret not in ok["summary"]
-    assert "TOWER_ACCESS_TOKEN=\"$(cat tower.token)\"" in stored.replace("\\\"", "\"")      # the token is read from the file, never written into a script
+    head = json.loads(row["bundle_json"])["files"]["head.sh"]
+    assert 'export TOWER_ACCESS_TOKEN="$(cat tower.token)"' in head      # the token is read from the file, never written into a script
 
 
 def test_a_validation_does_not_send_anything(d):

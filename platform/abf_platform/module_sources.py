@@ -23,11 +23,13 @@ DEFAULT_PATH = Path(__file__).parent / "data" / "nf-core-module-sources.json.gz"
 MAX_FILE = 200000
 _FILE = re.compile(r"^(main\.nf|templates/[A-Za-z0-9_.-]+|resources/[A-Za-z0-9_.-]+)\Z")
 _KEEP = ("templates", "resources")
+_CONTROL = ("\r", "\x1b")      # what a launch bundle refuses in a project file (with NUL and the bidirectional controls)
+_BIDI = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A)) | {0x200E, 0x200F, 0x061C}
 
 
 def _gzip(data):
     buf = io.BytesIO()
-    with gzip.GzipFile(filename="", mode="wb", fileobj=buf, mtime=0, compresslevel=9) as g:
+    with gzip.GzipFile(filename="", mode="wb", fileobj=buf, mtime=0, compresslevel=8) as g:
         g.write(data)
     return buf.getvalue()
 
@@ -53,6 +55,8 @@ def _module(folder):
             text = raw.decode("utf-8")
         except ValueError:
             return {"files": {}, "unsupported": "%s 是二進位檔，目前無法帶到站台 (%s is a binary file)" % (rel, rel)}
+        if any(c in text for c in _CONTROL) or any(ord(c) in _BIDI for c in text):
+            return {"files": {}, "unsupported": "%s 含有不能誠實顯示的控制字元 (%s holds a control character that cannot be shown honestly)" % (rel, rel)}
         if len(text) > MAX_FILE:
             return {"files": {}, "unsupported": "%s 超過 %d 個字元 (%s is longer than %d characters)" % (rel, MAX_FILE, rel, MAX_FILE)}
         if catalogue._CLUSTER_PATH.search(text):

@@ -90,6 +90,7 @@ def test_snapshot_keeps_only_main_templates_and_resources(tmp_path):
     ("TC-069 bin", {"tool/main.nf": "x\n", "tool/bin/run.sh": "#!/bin/sh\n"}),
     ("TC-070 nul", {"tool/main.nf": "x\n", "tool/resources/blob.dat": b"ab\x00cd"}),
     ("TC-070 utf8", {"tool/main.nf": "x\n", "tool/resources/blob.dat": b"\xff\xfe\xfa"}),
+    ("TC-070 control", {"tool/main.nf": b"a\r\nb\n"}),
     ("TC-071 name", {"tool/main.nf": "x\n", "tool/resources/with space.txt": "a\n"}),
     ("TC-071 nested", {"tool/main.nf": "x\n", "tool/resources/deep/inner.txt": "a\n"}),
     ("TC-072 path", {"tool/main.nf": "x\n", "tool/templates/run.sh": "cd " + HOME_PATH + " && ls\n"}),
