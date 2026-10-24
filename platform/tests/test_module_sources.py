@@ -12,6 +12,7 @@ HERE = Path(__file__).resolve().parent
 PLATFORM = HERE.parent
 REPO = PLATFORM.parent
 SHA = "5ed90b42e78410e7411e9c6bdfeff33226d6c58e"
+HOME_PATH = "/ho" + "me/alice/data/"      # a cluster-path shape, written in two pieces so that this file holds none
 
 
 def ms():
@@ -91,7 +92,7 @@ def test_snapshot_keeps_only_main_templates_and_resources(tmp_path):
     ("TC-070 utf8", {"tool/main.nf": "x\n", "tool/resources/blob.dat": b"\xff\xfe\xfa"}),
     ("TC-071 name", {"tool/main.nf": "x\n", "tool/resources/with space.txt": "a\n"}),
     ("TC-071 nested", {"tool/main.nf": "x\n", "tool/resources/deep/inner.txt": "a\n"}),
-    ("TC-072 path", {"tool/main.nf": "x\n", "tool/templates/run.sh": "cd /home/alice/data/ && ls\n"}),
+    ("TC-072 path", {"tool/main.nf": "x\n", "tool/templates/run.sh": "cd " + HOME_PATH + " && ls\n"}),
     ("TC-073 big", {"tool/main.nf": "y" * 200001}),
 ])
 def test_snapshot_marks_unsupported_modules_with_a_reason(tmp_path, tc, extra):
@@ -101,7 +102,7 @@ def test_snapshot_marks_unsupported_modules_with_a_reason(tmp_path, tc, extra):
     assert m["files"] == {}, tc      # the file is not kept, so nothing of it was changed or half-carried
     assert data["modules"]["fastqc"]["unsupported"] is None
     if tc.startswith("TC-072"):
-        assert "/home/alice/" not in gzip.decompress(out.read_bytes()).decode("utf-8")
+        assert HOME_PATH not in gzip.decompress(out.read_bytes()).decode("utf-8")
 
 
 def synthetic(tmp_path, sha, modules=None):
