@@ -43,7 +43,7 @@ source: PR #177 截圖（developer-agent 自查三個瑕疵）＋維護者 10-24
 - failed／lost 時，卡片標題改成「停在／Stopped at」（新鍵 `card_stopped_at`），內容＝`first_failed(failure)`（第一個失敗 task 名）；沒有就 `—`。running 時不變。
 
 **4. 左欄長名稱換行**
-- 左欄每列第 2 行（`.r2`）與名稱（`.nm`）加 `overflow-wrap: anywhere`，讓 `NFCORE_AMPLISEQ:DADA2_DENOISING` 這種長字在欄內換行；1440 與 390 寬都不得超出左欄、頁面不得橫向捲動。
+- 左欄每列第 2 行（`.r2`）加 `overflow-wrap: anywhere`（`.nm` 維持省略號，見裁決 8），讓 `NFCORE_AMPLISEQ:DADA2_DENOISING` 這種長字在欄內換行；1440 與 390 寬都不得超出左欄、頁面不得橫向捲動。
 
 **不能放掉的限制**：零 JavaScript（`<details>` 是原生元素，不算 JS）、無 `style=`、單一樣式表且 CSP 雜湊相符、15 秒 refresh、每人只看自己的 run、英文頁無 CJK。
 
@@ -80,6 +80,13 @@ source: PR #177 截圖（developer-agent 自查三個瑕疵）＋維護者 10-24
 1. **已知環境紅**：`tests/init_workspace_test.sh` 的「site side with no run area known fails clearly」在桌機 WSL 因 `mkdir /work` 權限紅（base 同紅、CI 綠）。判定全套綠時只排除這一條；ledger 記下後寫 `GREEN <HEAD>`。
 2. 英文字：`More`、`✗ Run`、`Stopped at`。中文：`更多`、`✗ 執行`、`停在`。
 3. 守則測試若有掃描「已取消」「failure」等字，`web_board.py` 已有例外（PR #177 裁決 11），不需再改。
+
+4. **數按鈕的範圍＝中欄＋右欄**（`data-pane="middle"` 與 `data-pane="right"`）。左欄底部的「登出」按鈕不算、不動。f02：去掉 `<details>` 後中欄＋右欄 `<button>` 恰一顆（右欄）；f04：中欄＋右欄 0 顆。
+5. **44px**：允許 `.menu > summary` 新增 `min-height: 44px`（並用 flex／align-items 置中），這是本任務唯一新增的數值；其他不新增顏色、字型、間距數值。
+6. **CSS 允許範圍**＝`.menu`、`.menu > summary`、`.steps .is-failed`（顏色用既有 state-failed token）、`.r2` 的 `overflow-wrap: anywhere`。
+7. **階段條**：succeeded 的執行格維持現況（`✓ 執行中`、無 is-failed）。failed／lost 的執行格 class 可以是 `is-current is-failed`；`test_web_board.py:561-569` 對 failed／lost 種子斷言單一 is-* 的，在範圍內改寫為「含 is-current 與 is-failed」。數按鈕的 `test_web_board.py:703`、`:807`、`test_web_running.py:187` 也在範圍內改寫（改成在 `<details class="menu">` 內數）。全部列進 ledger。
+8. **左欄長名**：只要求 `.r2` 換行；`.nm` 維持單行省略號（不改）。f07 改成只檢查 `.r2`。1440／390 都不得超出左欄、不得橫向捲動。
+9. **沒有 acts 時**：選單照樣出現，裡面只有那條「再啟動一次」連結；不另出題。
 
 ## 專長守則（ui）
 
