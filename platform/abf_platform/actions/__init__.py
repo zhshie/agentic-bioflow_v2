@@ -164,14 +164,6 @@ def list_agents(platform_path, *, caller=None):
     return {"agents": agents.list_agents(platform_path, status.now(), owner=_caller_id(caller))}
 
 
-def list_my_tokens(tokens_path, *, caller):
-    """The caller's own personal access tokens, by id: id, label, created_at, revoked_at. Never a token's value or its hash, and never
-    somebody else's token. A missing token file is an empty list."""
-    mine = [p for p in store.list_pats(tokens_path) if p["user"] == caller.name]
-    return {"tokens": [{"id": p["id"], "label": p["label"], "created_at": p["created_at"], "revoked_at": p["revoked_at"]}
-                       for p in sorted(mine, key=lambda p: p["id"])]}
-
-
 _SHEET_SUFFIXES = (".csv", ".tsv")
 _SHEET_LIMIT = 200
 _SHEET_DEPTH = 3

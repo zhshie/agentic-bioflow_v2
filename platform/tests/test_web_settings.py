@@ -1,5 +1,5 @@
 # Nothing existing: tests of the first cut of the settings page (specs/settings-page); the page and its limits are ours.
-"""settings-page: the checklist, the compute environments and the access tokens on GET /settings, read only. Test cases are named in the comments."""
+"""settings-page: the checklist, the compute environments and the credentials note on GET /settings, read only. Test cases are named in the comments."""
 import ast
 import base64
 import hashlib
@@ -100,25 +100,21 @@ def test_st02_setup_all_missing(w):
     _, mid = page(w)
     _, items = setup_items(mid)
     assert "✓" in items[0] and "完成" in items[0]
-    assert "✗" in items[1] and "未完成" in items[1] and "abf-platform token new" in items[1]
+    assert "—" in items[1] and "請用指令確認" in items[1] and "abf-platform token new" in items[1] and "✓" not in items[1] and "✗" not in items[1]
     assert "✗" in items[2] and "未完成" in items[2] and "沒有運算環境。" in items[2]
     assert "—" in items[3] and "之後開放" in items[3] and "✓" not in items[3] and "✗" not in items[3]
-    for item, cls in zip((items[0], items[1], items[3]), ("state-succeeded", "state-failed", "muted")):
+    for item, cls in zip((items[0], items[1], items[3]), ("state-succeeded", "muted", "muted")):
         assert cls in item
 
 
-def test_st02b_token_rules(w):
-    # TC-005, TC-006, TC-007
-    ann, bob = w.user("ann"), w.user("bob")
-    pat(w, bob, "bobs")
+def test_st02b_token_item_ignores_tokens(w):
+    # TC-005, TC-006, TC-007 (ruling 9): the page no longer reads tokens, so a live token changes nothing
+    ann = w.user("ann")
     _, mid = page(w)
-    assert "未完成" in setup_items(mid)[1][1]
-    pat(w, ann, "gone", revoke=True)
-    _, mid = page(w)
-    assert "未完成" in setup_items(mid)[1][1]
+    before = setup_items(mid)[1][1]
     pat(w, ann, "live")
     _, mid = page(w)
-    assert "完成" in setup_items(mid)[1][1] and "未完成" not in setup_items(mid)[1][1]
+    assert setup_items(mid)[1][1] == before and "請用指令確認" in before
 
 
 def test_st03_setup_ce_reasons(w):
@@ -131,13 +127,28 @@ def test_st03_setup_ce_reasons(w):
     note = plain(setup_items(mid)[1][2])
     assert "未完成" in note and "主要運算環境無法使用：某段說明" in note and "<script" not in r.text.lower()
     assert "&lt;script&gt;" in setup_items(mid)[0]
+    # ruling 10: the agent's online state is not read; an available environment passes whatever the agent list says
     sql(w, "UPDATE compute_envs SET status = 'available', message = 'ok' WHERE name = 'lab-a'")
     sql(w, "UPDATE agents SET last_seen_at = 1000")
     _, mid = page(w)
-    assert "未完成" in setup_items(mid)[1][2] and "站台代理離線。" in setup_items(mid)[1][2]
-    sql(w, "UPDATE agents SET last_seen_at = ?, name = 'elsewhere'", (time.time(),))
+    assert "✓" in setup_items(mid)[1][2] and "未完成" not in setup_items(mid)[1][2]
+
+
+def test_st03e_primary_or_first(w):
+    # ruling 10: the primary environment decides; none flagged primary -> the first in the list
+    ann = w.user("ann")
+    make_agent(w, ann, "agent-2")
+    make_env(w, ann, "zz-bad", "agent-2", status="invalid", message="second broke", primary=False)
     _, mid = page(w)
-    assert "站台代理離線。" in setup_items(mid)[1][2]
+    assert "✓" in setup_items(mid)[1][2]          # lab-a is primary and available; the broken second one does not count
+    sql(w, "UPDATE compute_envs SET is_primary = 0")
+    sql(w, "UPDATE compute_envs SET status = 'invalid', message = 'first broke' WHERE name = 'lab-a'")
+    _, mid = page(w)
+    first = plain(setup_items(mid)[1][2])
+    assert "✗" in first and "主要運算環境無法使用：first broke" in first
+    sql(w, "UPDATE compute_envs SET is_primary = 1 WHERE name = 'zz-bad'")
+    _, mid = page(w)
+    assert "主要運算環境無法使用：second broke" in plain(setup_items(mid)[1][2])
 
 
 def test_st03b_other_users_do_not_count(w):
@@ -158,7 +169,7 @@ def test_st03c_english_and_no_project_step(w):
     _, mid = page(w, lang="en")
     block, items = setup_items(mid)
     assert "<h2>Before you start</h2>" in block
-    assert "Done" in items[0] and "Missing" in items[1] and "No compute environment." in items[2] and "Coming later" in items[3]
+    assert "Done" in items[0] and "Check with the command" in items[1] and "No compute environment." in items[2] and "Coming later" in items[3]
     assert not CJK.search(mid)
     _, zh = page(w)
     assert "建立專案" not in zh and "建立第一個專案" not in zh
@@ -192,9 +203,9 @@ def test_st04_ce_table(w):
     first, second = body if "lab-a" in body[0] else body[::-1]
     assert "主要" in first and "主要" not in second
     assert "✓" in first and "可用" in first and "state-succeeded" in first
-    assert "✓" in first and "在線" in first and "nf-core/ampliseq 2.18.0" in first and "nf-core/rnaseq 3.14.0" in first
+    assert "nf-core/ampliseq 2.18.0" in first and "nf-core/rnaseq 3.14.0" in first
     assert "✗" in second and "無法使用" in second and "broken thing" in second and "state-failed" in second
-    assert "✗" in second and "離線" in second and "agent-off" in second
+    assert "agent-off" in second and "在線" not in second and "離線" not in second
     assert re.search(r"\d\d-\d\d \d\d:\d\d", first.split("</td>")[-2])
     assert plain(second.split("</td>")[-2]) == "—"
     assert '<p class="off">新增或修改運算環境 <span class="later">之後開放</span></p>' in sec
@@ -241,54 +252,32 @@ def test_st05_ce_owner_rule(w):
 
 # ---- credentials -----------------------------------------------------------------------------------------------------------------
 
-def test_st06_tokens_table_and_secret_never_shown(w, caplog):
-    # TC-034, TC-035, TC-036, TC-038, TC-039, TC-040, TC-046, TC-077
+def test_st06_credentials_block_and_secret_never_shown(w, caplog):
+    # TC-034 (ruling 9): no table, no token read; grey "coming later" plus the command sentence; no token value or hash anywhere
     ann, bob = w.user("ann"), w.user("bob")
     caplog.set_level(logging.DEBUG)
     _, v1 = pat(w, ann, "laptop")
-    _, v2 = pat(w, ann, None, revoke=True)
     _, vb = pat(w, bob, "bobs-label-unique")
     c = login(w, "ann")
     texts = [c.get(u).text for u in ("/settings", "/settings?lang=en")]
-    mid = pane(texts[0], "middle")
-    sec, rows = rows_of(mid, "憑證")
-    body = [r for r in rows if "<td>" in r]
-    assert re.findall(r"<th>(.*?)</th>", sec) == ["標籤", "建立時間", "狀態"] and len(body) == 2
-    assert "laptop" in body[0] and "✓" in body[0] and "有效" in body[0]
-    assert "—" in plain(body[1].split("</td>")[0]) and "✗" in body[1] and "已撤銷" in body[1] and re.search(r"\d\d-\d\d \d\d:\d\d", body[1].split("</td>")[2])
-    assert '<p class="off">建立或撤銷權杖 <span class="later">之後開放</span></p>' in sec
+    sec = re.search(r"<h2>憑證</h2>(.*?)</section>", pane(texts[0], "middle"), re.S).group(1)
+    assert "<table" not in sec and "<tr>" not in sec
+    assert "abf-platform token new" in sec and '<p class="off">建立或撤銷權杖 <span class="later">之後開放</span></p>' in sec
     for text in texts:
-        for secret in (v1, v2, vb):
-            assert secret not in text and hashlib.sha256(secret.encode()).hexdigest() not in text and hashlib.sha256(secret.encode()).hexdigest().upper() not in text
-        assert "bobs-label-unique" not in text and "abf_" not in text.replace("abf_platform", "").replace("abf_web", "")
-    for secret in (v1, v2, vb):
+        for secret in (v1, vb):
+            assert secret not in text and hashlib.sha256(secret.encode()).hexdigest() not in text
+        assert "laptop" not in text and "bobs-label-unique" not in text
+    for secret in (v1, vb):
         assert secret not in caplog.text
-    assert not CJK.search(pane(texts[1], "middle")) and "Credentials" in texts[1] and "Valid" in texts[1] and "Revoked" in texts[1]
+    en = pane(texts[1], "middle")
+    assert not CJK.search(en) and "Credentials" in en and "abf-platform token new" in en
 
 
-def test_st06b_no_tokens(w):
-    # TC-037
-    w.user("ann")
-    _, mid = page(w)
-    sec = re.search(r"<h2>憑證</h2>(.*?)</section>", mid, re.S).group(1)
-    assert "沒有存取權杖。" in sec and "<tr>" not in sec
-
-
-def test_st07_list_my_tokens_action(w):
-    # TC-041, TC-042, TC-043
-    from abf_platform import actions, store
-    ann, bob = w.user("ann"), w.user("bob")
-    _, vb = pat(w, bob, "bobs-label-unique")
-    ia, va = pat(w, ann, "a1")
-    ib, vc = pat(w, ann, "a2", revoke=True)
-    mine = actions.list_my_tokens(w.ip.tokens, caller=ann)
-    assert list(mine) == ["tokens"] and [t["id"] for t in mine["tokens"]] == sorted([ia, ib])
-    assert all(set(t) == {"id", "label", "created_at", "revoked_at"} for t in mine["tokens"])
-    text = json.dumps(mine)
-    for bad in (va, vc, vb, hashlib.sha256(va.encode()).hexdigest(), "bobs-label-unique"):
-        assert bad not in text
-    assert [t["label"] for t in actions.list_my_tokens(w.ip.tokens, caller=bob)["tokens"]] == ["bobs-label-unique"]
-    assert actions.list_my_tokens(w.ip.tokens.parent / "nothing-here.db", caller=ann) == {"tokens": []}
+def test_st07_no_token_action_or_read(w):
+    # TC-041..043 (void, ruling 9): the action layer has no token read, so test_pat tca11 stays as on v3
+    from abf_platform import actions
+    assert not hasattr(actions, "list_my_tokens")
+    assert "list_my_tokens" not in (PLATFORM_DIR / "abf_platform" / "web.py").read_text(encoding="utf-8")
 
 
 # ---- the rest of the page --------------------------------------------------------------------------------------------------------
@@ -321,7 +310,7 @@ def test_st09_english(w):
     _, mid = page(w, lang="en")
     assert not CJK.search(mid), CJK.findall(mid)
     assert re.findall(r"<h2>(.*?)</h2>", mid)[:3] == ["Before you start", "Compute environments", "Credentials"]
-    for word in ("Available", "Unavailable", "Online", "Offline", "Primary", "Valid", "Revoked"):
+    for word in ("Available", "Unavailable", "Primary"):
         assert word in mid
 
 
@@ -357,9 +346,9 @@ def test_st11_web_settings_obeys_tc060():
     assert imports >= {"web_board"}
 
 
-def test_st03d_english_agent_offline_reason(w):
-    # TC-011 (English), and the source scan of test_scope (no "site agent" wording in platform source)
+def test_st03d_english_unavailable_reason(w):
+    # TC-011 (English): the environment's own message after the fixed English lead
     w.user("ann")
-    sql(w, "UPDATE agents SET last_seen_at = 1000")
+    sql(w, "UPDATE compute_envs SET status = 'invalid', message = 'broke' WHERE name = 'lab-a'")
     _, mid = page(w, lang="en")
-    assert "The agent on the site is offline." in setup_items(mid)[1][2] and not CJK.search(mid)
+    assert "The primary compute environment is unavailable: " in plain(setup_items(mid)[1][2]) and not CJK.search(mid)
