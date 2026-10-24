@@ -198,6 +198,12 @@ grep -E '===== pytest shard|=+ .* in [0-9.]+s' /tmp/before.out
 2. CI cache、abf-fast-suite 的 `--timeout 900` 不在本任務；fast-suite 的值由 developer-agent 之後一起調。
 3. 用 `PS-` 前綴編號接受；以 SHA 定位；docs/TESTING.md 衝突合併時兩邊都留。
 
+## 裁決三（2026-10-24 21:10 developer-agent，回應出題退回；以本段為準）
+1. PS-11 只掃「行首（可有空白）`export ABF_PLATFORM_PART=` 或 `ABF_PLATFORM_PART=` 開頭的賦值行」，且明確排除 `tests/run_all_retry_test.sh`（它的沙盒會造假檔）與 `tests/platform_test.sh` 本身（被包裝的那支）。註解行不算。
+2. 完成標準第 2 條改成：**三支分片（part 1、2、3）各自的牆鐘時間 ≤ 改前 platform_test.sh（main 部分）牆鐘時間的 45%；時鐘項目不變、不得比改前慢超過 10%**。CI 目標另寫：合併後每支 ≤150 秒（量測記進 ledger，由 developer-agent 看 CI 判定）。
+3. 憲法條文提到「由 tests/platform_test.sh 跑」的字面不精確，本任務不改憲法；PS-77 證明檔案沒掉，developer-agent 記一筆之後另案修條文。
+4. 手動驗證照通例（看 diff／ledger／自己在 WSL 重跑）。
+
 ## 專長守則（backend）
 
 ### executor
