@@ -20,3 +20,6 @@
 - Known/accepted: quoted `scripts/on_site.sh --script "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start` gets one extra warning (quote between on_site.sh and egress_ctl.sh); accepted per ruling 6.
 - Not done (other task): indirect assignments (`export $V=...`, `printf -v`, `env -S`) are not detected, same as before.
 - Design note: start points are checked per command segment (the last one in each segment decides, since a quote after on_site.sh before a later start also lies before the earlier one's tail); at most 8 segments, 20 assignments (last 20 read), past that it warns.
+
+## Full suite (rebased onto origin/v3 df60c72)
+- abf-fast-suite: 120/121; the one failure is `hosted_deploy_test.sh` (TC-066 "gate files touched": it diffs from the commit before specs/hosted-deploy/plan.md was added, so every platform change merged since shows up). The same test fails with origin/v3 checked out in the mirror (TC-059 and TC-066), so it is a failure of the base, not of this change, and the file is outside this task's scope. Everything else passes, including confirm_launch_test.sh.
