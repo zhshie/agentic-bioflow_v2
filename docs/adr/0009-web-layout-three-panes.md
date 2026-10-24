@@ -44,6 +44,7 @@ The maintainer's words (2026-10-17):
 2. **An analysis** is one piece of work from launch to download. It holds its chat and every run
    made for it: a resume or a relaunch with the same inputs is attempt 2, 3… of the same
    analysis; changing the samples or the parameters starts a new analysis.
+（Amended by the resume-edit-params task, 2026-10: a resume may change some parameters and add resource settings and stays the same analysis; changing the samples, pipeline, revision or compute environment still starts a new analysis.）
 3. **The board moves by itself** and stops in two places only: the launch confirmation (ADR 0006's
    gate) and whether to do downstream. Downstream may be skipped: results can go straight to
    finished. Step-by-step mode, in settings, stops at every stage instead.

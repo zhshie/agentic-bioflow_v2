@@ -15,8 +15,10 @@ import html
 import re
 import urllib.parse
 
+from . import web_finished
+
 STAGES = ("launch", "running", "results", "downstream", "finished")
-PLACEHOLDER = {"launch": "012b", "downstream": "016", "finished": "013b"}      # the feature that will provide the stage
+PLACEHOLDER = {"launch": "012b", "downstream": "016"}      # the feature that will provide the stage
 LIST_CAP = 100
 REASON_CAP = 80
 REFRESH_SECONDS = 15
@@ -198,6 +200,9 @@ STYLE = (
     ".sec ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}"
     ".rail{background:var(--raised);border-left:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:12px}"
     ".card,.reason{min-width:0;overflow-wrap:anywhere}"
+    ".prov{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 16px;margin:0;overflow-wrap:anywhere}"
+    ".prov dt{color:var(--muted)}.prov dd{margin:0;min-width:0;overflow-wrap:anywhere}.prov code{display:block}"
+    ".pack{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}.pack li{display:flex;gap:12px;flex-wrap:wrap}"
     ".notices{display:flex;flex-direction:column;gap:12px}"
     ".notice{background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}"
     ".nhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
@@ -425,8 +430,12 @@ def _task_card(t, run):
     return out
 
 
-def _stage_card(t, run, stage):
-    if stage in PLACEHOLDER:
+def _stage_card(t, run, stage, lang="zh", outputs=None, finished=None, user_name=""):
+    if stage == "finished" and run["status"] == "succeeded":
+        return web_finished.render_finished(lang, run, finished, outputs, user_name)
+    if stage == "finished":
+        inner = '<p>— <span class="muted">%s</span></p>' % esc(t["not_reached"])
+    elif stage in PLACEHOLDER:
         inner = '<p>— <span class="muted">%s</span></p>' % esc(PLACEHOLDER[stage])
     elif stage != "running" and stage_of(run["status"]) != stage:
         inner = '<p>— <span class="muted">%s</span></p>' % esc(t["not_reached"])
@@ -627,7 +636,7 @@ def _running_body(t, selected, lang, tab_param, stage_param, now, acts=None):
     return '%s%s<nav class="rtabs">%s</nav>%s' % (_sum_cards(t, selected, now), _tasks_bar(t, selected), links, tab_body(t, lang, selected, tab))
 
 
-def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None, outputs=None):
+def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None, outputs=None, finished=None, user_name=""):
     own = stage_of(selected["status"])
     current = pick_stage(stage_param, own)
     explicit = pick_stage(stage_param, None)
@@ -639,6 +648,9 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
         label = ("✓ " if kind == "is-done" else "") + t["stage_" + s]
         if s == "running" and selected["status"] in ("failed", "lost"):
             kind, label = kind + " is-failed", "✗ " + t["stage_running_failed"]
+        if s == "finished" and selected["status"] != "succeeded" and s != current:      # a run that has not succeeded has no finished stage to open
+            cells.append('<li class="%s" data-step="%s"><span>%s</span></li>' % (kind, s, esc(label)))
+            continue
         cells.append('<li class="%s" data-step="%s"><a href="%s"%s>%s</a></li>' % (kind, s, _url(lang, selected["id"], s, tab=tab_param), mark, esc(label)))
     prev_ = ('<a rel="prev" href="%s">%s</a>' % (_url(lang, selected["id"], STAGES[index - 1], tab=tab_param), esc(t["prev"]))) \
         if index > 0 else "<span></span>"
@@ -656,7 +668,7 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     elif current == "results" and status == "succeeded":
         inner = _results_body(t, lang, selected, pick_results_tab(tab_param), now, outputs)
     else:
-        inner = _stage_card(t, selected, current)
+        inner = _stage_card(t, selected, current, lang, outputs, finished, user_name)
     note = '<p class="bad" role="alert">%s</p>' % esc(flash) if flash else ""
     views = '<nav class="views"><a href="%s" aria-current="page">%s</a>%s</nav>' % (_url(lang, selected["id"]), esc(t["main_window"]), _grey(t, "terminal"))
     return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s</div>%s%s'
@@ -714,7 +726,7 @@ def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, pa
     return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url)
 
 
-def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None):
+def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None, finished=None):
     """GET /: the page of a logged-in user. `runs` are newest first (as list_runs gives them, with their `failure`); `selected` is the
     detail of one run (get_run, with its `failure`), or None for the empty page of a person with no run. `act_csrf(run_id)` gives the CSRF
     token of that run's buttons (spec 012b); without it no button is drawn. `flash` is one plain line of refusal shown at the top of the
@@ -730,7 +742,7 @@ def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", t
         if tab == "outputs":      # the page reloads itself to the address without `relist`, so a Read-again click is not repeated every 15 seconds
             refresh_url = _url(pick_lang(lang), run_id, stage, tab="outputs")
     acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
-    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
+    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
     return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_)), run_id, stage,
                   refresh=not flash, tab=tab, refresh_url=refresh_url)
 

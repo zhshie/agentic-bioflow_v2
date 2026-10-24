@@ -210,3 +210,98 @@ def test_tc035_a_folder_that_is_not_this_runs_launch_folder_is_refused(tmp_path,
     with agent_on(fake, site, tmp_path, name="agent-f"):
         res = run_job(fake, fetch_job(site, **over))
     assert res["state"] == "refused", res
+
+
+# ---- a resumed run keeps the folder of its first run (cancel-resume-folder) -----------------------------------------
+
+def resume_cancel(tmp_path, site, fake, run, run_folder, job_name=None, owner="tester", where=None, number=4243):
+    """Cancel a resumed run; the scheduler lists the head job the way a resume writes it: -J nf-<run>, -D <first run's folder>."""
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        site.set("jobs.tsv", "%d|%s|%s|%s\n" % (number, job_name or "nf-" + run, owner, where or run_folder))
+        res = run_job(fake, cancel_job(site, fake, number=number, over={"run_name": run, "run_folder": run_folder}))
+    return res
+
+
+def test_tc001_a_resumed_run_is_cancelled_although_its_folder_is_the_first_runs(tmp_path, site, fake):  # T1
+    res = resume_cancel(tmp_path, site, fake, "run-a-a2", str(folder(site, "run-a")))
+    assert res["state"] == "done" and res["result"]["ok"], res
+    assert scancels(site) == ["scancel 4243"]
+    assert len(squeues(site)) == 1
+
+
+def test_tc002_a_cut_resume_name_is_cancelled(tmp_path, site, fake):  # T2
+    root = "a" + "b" * 63
+    name = root[:60] + "-a10"
+    res = resume_cancel(tmp_path, site, fake, name, str(folder(site, root)))
+    assert res["state"] == "done", res
+    assert scancels(site) == ["scancel 4243"]
+
+
+def test_tc003_a_resumed_run_whose_job_has_the_first_runs_name_is_refused(tmp_path, site, fake):  # T8
+    res = resume_cancel(tmp_path, site, fake, "run-a-a2", str(folder(site, "run-a")), job_name="nf-run-a")
+    assert res["state"] == "refused", res
+    assert scancels(site) == []
+
+
+def test_tc004_a_resumed_run_of_another_owner_is_refused(tmp_path, site, fake):
+    res = resume_cancel(tmp_path, site, fake, "run-a-a2", str(folder(site, "run-a")), owner="mallory")
+    assert res["state"] == "refused", res
+    assert scancels(site) == []
+
+
+def test_tc005_a_resumed_run_whose_scheduler_folder_differs_is_refused(tmp_path, site, fake):
+    res = resume_cancel(tmp_path, site, fake, "run-a-a2", str(folder(site, "run-a")), where=str(folder(site, "run-b")))
+    assert res["state"] == "refused", res
+    assert scancels(site) == []
+
+
+@pytest.mark.parametrize("run,fol", [
+    ("run-a-a2", "run-b"), ("run-a-a1", "run-a"), ("run-a-a02", "run-a"), ("run-b", "run-a"),   # TC-007..010
+    ("run-a-a2", "run-a/.."), ("run-a-a2", "../x"),                                               # TC-011, 012
+])
+def test_tc007_a_resume_name_with_a_folder_that_is_not_its_own_is_refused(tmp_path, site, fake, run, fol):  # T3-T7
+    res = resume_cancel(tmp_path, site, fake, run, "%s/runs/%s" % (site.work, fol))
+    assert res["state"] == "refused", res
+    assert "run 名稱或專屬資料夾不對" in res["result"]["message"] or "專屬資料夾" in str(res)   # TC-029
+    assert scancels(site) == []
+
+
+def test_tc014_the_records_of_a_resumed_run_are_read(tmp_path, site, fake):  # T9
+    make_records(site)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, fetch_job(site, run="run-a-a2", run_folder=str(folder(site, "run-a"))))
+    assert res["state"] == "done", res
+    assert ".nextflow.log" in names(res)
+
+
+def test_tc015_the_records_of_a_resumed_run_in_another_folder_are_refused(tmp_path, site, fake):  # T10
+    make_records(site)
+    make_records(site, "run-b")
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, fetch_job(site, run="run-a-a2", run_folder=str(folder(site, "run-b"))))
+    assert res["state"] == "refused", res
+
+
+def test_tc017_run_folder_ok_by_the_rule():  # T11, TC-017..027
+    from abf_station import launch
+    ok = launch.run_folder_ok
+    w = "/w"
+    root = "a" + "b" * 63
+    assert ok(w, "run-a", w + "/runs/run-a") is True
+    assert ok(w, "run-a-a2", w + "/runs/run-a") is True
+    assert ok(w, "run-a-a10", w + "/runs/run-a") is True
+    assert ok(w, root[:60] + "-a10", w + "/runs/" + root) is True
+    assert ok(w, root[:61] + "-a2", w + "/runs/" + root) is True
+    assert ok(w, root[:60] + "-a2", w + "/runs/" + root) is False
+    for n in ("a0", "a1", "a02"):
+        assert ok(w, "run-" + n, w + "/runs/run-a") is False
+    assert ok(w, "x-a2", w + "/runs/xy") is False
+    assert ok(w, "run-b", w + "/runs/run-a") is False
+    assert ok(w, "run-a-a2", w + "/runs/run-a/..") is False
+    assert ok(w, "run-a-a2", w + "/runs/../x") is False
+    assert ok(w, "run-a-a2", "/etc") is False
+    assert ok(w, "run-a-a2", "/other-work/runs/run-a") is False
+    assert ok("/w/", "run-a", "/w/runs/run-a") is False
+    assert ok(w, "run-a-a2", "") is False and ok(w, "run-a", "") is False
+    for bad in (None, 5, ["x"]):
+        assert ok(w, "run-a-a2", bad) is False
