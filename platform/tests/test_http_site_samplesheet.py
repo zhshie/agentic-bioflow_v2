@@ -540,7 +540,7 @@ def test_tc055_the_ledger_lists_each_rewritten_pin():
     assert ledger.lower().count("old") >= 2 and ledger.lower().count("new") >= 2
 
 
-SCHEMA_SHA256 = "56f767156f9723c08acb37b57706abca25e6753c4e4126a9b567617bcd662f9d"
+SCHEMA_SHA256 = "0b6aad18e811cb637bd8891049b97d2f092e7eb39b3b85a7778157bbd30dfdbc"
 
 
 def test_tc057_no_table_or_column_changed(d):

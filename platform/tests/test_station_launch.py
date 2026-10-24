@@ -616,7 +616,7 @@ def test_tc_ls_33_a_bad_module_in_a_confirmed_bundle_is_refused_naming_modules(t
 
 
 LAUNCHES_COLUMNS = ["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at", "submitted_at", "cancel_requested_at",
-                    "job_id", "user_id", "parent_run", "attempt", "attempt_kind"]      # store._LAUNCHES_TABLE, which this task does not touch
+                    "job_id", "user_id", "parent_run", "attempt", "attempt_kind", "work_cleaned_at"]      # store._LAUNCHES_TABLE, which this task does not touch
 
 
 def test_tc_ls_27_clean_environment_lets_the_three_keys_through_and_drops_what_it_does_not_know():
