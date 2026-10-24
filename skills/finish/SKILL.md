@@ -83,7 +83,7 @@ is not itself the answer to "where does `submission/` belong". Ask first.
 ## Steps
 
 1. **Take stock before assembling anything.** Read the project's `analysis.md`
-   and list which entries the user accepted. Run
+   and list which entries the user accepted; `build_package.sh` refuses to build while any entry lacks `status: accepted` (or `done`) in that file. Run
    `scripts/collect_provenance.py --brief <each run's results directory>` and
    read what it found — pipeline and revision, the citable tools and their
    versions, and its notes. **Say the notes out loud**: they carry things a
