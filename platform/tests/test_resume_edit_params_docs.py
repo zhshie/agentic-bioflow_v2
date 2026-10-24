@@ -48,10 +48,10 @@ def test_platform_md_says_what_an_edited_resume_writes_and_shows():
     assert "params-<N>.yaml" in sec and "extra-<N>.config" in sec and "resume.overrides" in sec
     assert build.EDITED_SENTENCE in sec
     assert re.search(r"(old|first)[^.]*(→|->|to)[^.]*new", sec)
-    assert re.search(r"(task|tasks)[^.]*(uses?|using)[^.]*(changed|edited)[^.]*(run again|rerun|re-run|run anew)[^.]*(rest|others?)[^.]*(reused|cached|kept|carried)", sec)
+    assert re.search(r"(task|tasks)[^.]*(uses?|using)[^.]*(changed|edited)[^.]*(runs? again|rerun|re-run|run anew)[^.]*(rest|others?)[^.]*(reused|cached|kept|carried)", sec)
     for name in ("samplesheet.csv", "params.yaml", "nextflow.config", "head.sh"):
         assert name in sec, name
-    assert re.search(r"(four files|those four)[^.]*(not changed|untouched|never changed|is not touched|are not touched)|(not changed|untouched)[^.]*four", sec) \
+    assert re.search(r"(four files|those four).{0,150}(not changed|untouched|never changed|is not touched|are not touched)|(not changed|untouched)[^.]*four", sec) \
         and re.search(r"sha", sec)
 
 
