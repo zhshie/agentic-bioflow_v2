@@ -149,7 +149,9 @@ def test_r30_r36_attention_card_uses_the_component(w):
     assert "l1" not in right and "u1" not in right and "s1" not in right
     assert dict(fields(ns[0]))["步驟"] == "FASTQC (sample2)"     # 012b: not "f1" in n: the buttons' hex tokens can hold it
     assert no_cjk(pane(c.get("/?run=%s&lang=en" % a).text, "right"))
-    assert len(notices(c.get("/?run=" + b).text)) == 1 and "f1" not in pane(c.get("/?run=" + b).text, "right")
+    assert len(notices(c.get("/?run=" + b).text)) == 1
+    other = pane(c.get("/?run=" + b).text, "right")
+    assert not _f1_in(other), _f1_in(other)     # exact markers, not the bare substring "f1"
 
 
 # What only the f1 run owns: its run id, its failure reason and its two failed tasks (its run name counts as a word).
