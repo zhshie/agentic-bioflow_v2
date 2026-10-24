@@ -14,7 +14,7 @@ from test_web_board import cjk, no_cjk, pane, plain, seed
 
 NOW = time.time()
 HOUR = 3600
-FOLDER = "/data/work/runs/ann-done"
+FOLDER = "/data/wd/runs/ann-done"
 ENTRIES = [
     {"name": "zeta.txt", "type": "file", "size": 2048, "modified": "2026-10-20T08:00:00Z"},
     {"name": "multiqc", "type": "dir", "size": 4096, "modified": "2026-10-20T08:01:00Z"},
@@ -38,7 +38,7 @@ def launch_to(w, run_name, folder):
 def world(w, name="ann-done", counts=None, **kw):
     ann = w.user("ann")
     rid = seed(w, name, "succeeded", ann, started=NOW - 3 * HOUR, ended=NOW - 2 * HOUR, counts=counts or dict(succeeded=4), **kw)
-    launch_to(w, name, "/data/work/runs/" + name)
+    launch_to(w, name, "/data/wd/runs/" + name)
     c = w.web()
     assert w.login(c, "ann").status_code == 303
     return ann, c, rid
@@ -138,11 +138,11 @@ def test_ro02b_claimed_is_loading_and_latest_launch_wins(w):
     con = sqlite3.connect(str(w.ip.state_db))
     with con:
         con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES (?,?,?,?,?,?)",
-                    ("ann-done", "/data/work/runs/ann-done-2", "lab-a", "agent-t", time.time() + 5, ann.user_id))
+                    ("ann-done", "/data/wd/runs/ann-done-2", "lab-a", "agent-t", time.time() + 5, ann.user_id))
     con.close()
     c.get(url(rid))
     rows = listings(w)
-    assert json.loads(rows[0]["args_json"])["path"] == "/data/work/runs/ann-done-2/results"
+    assert json.loads(rows[0]["args_json"])["path"] == "/data/wd/runs/ann-done-2/results"
     con = sqlite3.connect(str(w.ip.state_db))
     with con:
         con.execute("UPDATE jobs SET state = 'claimed' WHERE id = ?", (rows[0]["id"],))
@@ -409,7 +409,7 @@ def test_ro12_nothing_else_is_written(w):
 def test_ro13_the_station_may_list_the_results_folder(w):
     # TC-044: the run folder is <workDir>/runs/<name>, the results folder below it; both are inside the read roots of the station
     from abf_station import rules
-    env = {"workDir": "/data/work", "launchDir": "/data/launch", "readRoots": []}
+    env = {"workDir": "/data/wd", "launchDir": "/data/launch", "readRoots": []}
     roots = rules.allowed_roots(env, "/nonexistent/settings")
     assert rules.inside(rules.normalize(FOLDER + "/results"), roots)
 
