@@ -152,6 +152,15 @@ source: PR #189（fix/relay-env-warning）上 /code-review 的六項發現（兩
 8. **審查 8 點全列**（每點至少一條「舊寫法紅、新寫法綠」的測試，舊寫法＝commit 0b104ad 的 hook）：①空分支 regex 編譯失敗（加測試：helper 用到的每個 regex 在 `bash --posix` 下 `[[ x =~ $re ]]` 回傳碼不是 2）②啟動點之後的誘餌改了標題 ③死碼括號 ④on_site.sh 只是參數也被豁免、同段兩個啟動點只看一個 ⑤沒有左邊字界／`"a"b` 顯示錯 ⑥回溯可能逾時 ⑦單引號值被誤標 ⑧沒有測試能抓到 regex 編譯失敗。
 9. 作法 2 的「賦值最多取 20 個」取消；「最多列 5 個」保留但加上第 5 點的首尾規則。測試數量不設上限；既有斷言除措辭外不改，env 前綴（envp #45、PEER-2）與 export（PEER-3）照舊警告並顯示值。
 
+## 裁決五（2026-10-24 20:00 developer-agent，第二輪 /code-review 後：改走簡單路線；以本段為準，**取代裁決三、裁決四與作法 2–4 的全部解析設計**）
+第二輪審查又找到 6 點（計數迴圈在 60 KB 指令仍是平方時間→可能逾時＝放行；`on_site.sh env V=evil egress_ctl.sh start` 繞過豁免；最後一個值不一定是生效的值；跳脫引號讓值吃掉整行；nohup／sudo 等包裝認不得）。結論：在 hook 裡手寫 shell 斷詞器會一直有新洞，不再走這條路。新規格：
+1. **刪掉 relay_env_* 斷詞器**，兩個變數共用一個很小的 helper。觸發條件不變：指令符合 RELAY_START_RE（有啟動轉送）且整條指令文字裡任何地方含 `<VAR>=`。
+2. **不再豁免 on_site.sh**：正常的 on_site.sh 路徑從設定檔帶值，指令文字裡不會出現 `<VAR>=`；只要文字裡出現就警告（寧可多警告）。
+3. **不宣稱哪個值生效**。標頭固定：`THIS COMMAND ALSO MENTIONS <VAR>= (it would change which hosts/domains the relay accepts). Read the whole command; the value that takes effect depends on the shell.` 之後列出文字裡每一處 `<VAR>=` 後面到下一個空白或 `;&|` 為止的原文（不去引號、不解析），最多列前 3 處與最後 1 處，每處截 120 字元，並寫 `N mentions in total`。PEER 另加一句真話說明（無效項目會被丟掉、全無效退回內建清單，看中繼啟動訊息的實際清單），不寫死預設清單。
+4. **成本 O(n)**：次數用 `${CMD//"$V="/}` 的長度差除以字串長算出，不用逐次剝前綴的迴圈；取前 3 處用 `${x#*"$V="}` 最多 3 次、最後 1 處用 `${CMD##*"$V="}` 一次。整條指令超過 64 KB 時不列原文，只印標頭與次數。加計時測試：60 KB、含 `<VAR>=` 在尾端與遍布全文兩種，必須 < 0.5 秒；1 MB < 1 秒。
+5. 既有斷言：#189 的 PEER 測試與 EXTRA 的 envp 測試照舊要警告；措辭改變的斷言逐條列在 ledger（以前／以後）。審查兩輪共 14 點逐條對應「新規格下不再適用的理由」或「對應測試」，寫進 ledger。
+6. 「不更弱」比對照舊：新舊 hook 對 ≥60 條指令，舊版會問的新版都要問；新版只會多警告、不會少。
+
 ## 專長守則（backend）
 
 ### executor
