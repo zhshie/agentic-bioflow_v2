@@ -34,7 +34,7 @@ site refused to send out. Both are reached through the site adapter
 person what would happen, and the person says yes on their own channel - a form
 in their client or a page whose address the tool returns. You cannot say it for
 them. After the person has pressed send, call the same tool again with the same
-`run_name` to get the job number. Wherever this file says "relaunch" or "resume",
+`run_name` to get the job number: the same changes after the yes give the same job number; different changes, or changes swapped with a plain resume, are refused because a resume is only for the latest one, and the message names the one that exists. Wherever this file says "relaunch" or "resume",
 it means asking this way.
 
 With a run named — an id, a run name, or a code from the board below —
@@ -342,7 +342,7 @@ elsewhere. For Jev, `memory` is the "Out of memory" section below, `unknown` is 
 - **Look first:** the option the error names, against the params file this run
   was launched with. Reading a run's parameters back from the platform is not available on v3 yet (owed: run-params); use the params file the launch was
   built from.
-- **Usual fix:** correct or remove that option. That is a new analysis: ask through `launch` with the corrected parameters, and the person confirms it. `relaunch` and `resume` cannot change parameters.
+- **Usual fix:** correct or remove that option. That is a new analysis: ask through `launch` with the corrected parameters, and the person confirms it. `relaunch` cannot change parameters; a `resume` may carry the corrected `params` (and extra_config), but a different sample sheet or pipeline is a new `launch`.
 - ⏸ **Ask the user** before changing any pipeline parameter: that is a call
   about the run that was requested, not about the site.
 
@@ -532,7 +532,7 @@ asking is a decision that was never this command's to make.
     You decide:      relaunch it, or leave it cancelled
     Next step:       say the word and it relaunches the same way any other run does
 
-When `get_run` shows `cancel_requested_at`, tell the person a cancel was already asked for, with that time in Asia/Taipei, and do not offer another `cancel`. To stop a run that is still going and has no `cancel_requested_at`, call `cancel` with its name: it only asks, and the person confirms it on their own channel. A failed or cancelled run that the platform launched can be continued by its name alone, after the person says yes each time. `resume` (or `abf-platform resume RUN`) takes up where Nextflow stopped, in the same folder, and finished tasks come back from the cache. `relaunch` (or `abf-platform relaunch RUN`) starts the run again from the start in a new folder. The samples and parameters are those of the first launch; changing them is a new `launch`.
+When `get_run` shows `cancel_requested_at`, tell the person a cancel was already asked for, with that time in Asia/Taipei, and do not offer another `cancel`. To stop a run that is still going and has no `cancel_requested_at`, call `cancel` with its name: it only asks, and the person confirms it on their own channel. A failed or cancelled run that the platform launched can be continued after the person says yes each time. `resume` (or `abf-platform resume RUN`) takes up where Nextflow stopped, in the same folder, and finished tasks come back from the cache. `relaunch` (or `abf-platform relaunch RUN`) starts the run again from the start in a new folder. `relaunch` takes only the name. `resume` may also carry `params` (only the keys to change, laid over those of the first launch; it cannot delete one) and extra_config (`cpus`, `memory`, `time`, `disk`, `maxRetries`, `errorStrategy` only; in the terminal `--param`, `--params-file`, `--config-file`); tasks that use a changed value run again, the others are reused. Changing the samples, the pipeline, the version or the compute environment is a new `launch`.
 
 ## UNKNOWN
 

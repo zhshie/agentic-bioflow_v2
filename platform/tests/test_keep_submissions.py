@@ -847,7 +847,7 @@ def test_tc107_the_instructions_name_all_five_tools_and_keep_the_009e_sentence_w
     text = guidance.routing_instructions()
     for name in ("launch", "cancel", "resume", "relaunch", "forget"):
         assert name in text, name
-    assert "A failed run is resumed or relaunched with its name alone." in text
+    assert "A failed run is relaunched with its name alone; a resume may also carry changed parameters and extra resource settings." in text
     assert "deletes nothing until the person says yes" in guidance.FIXED_SENTENCE
     assert len(text.encode("utf-8")) <= guidance.MAX_BYTES
 
