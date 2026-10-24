@@ -45,7 +45,7 @@ def test_both_skills_say_what_a_resume_may_change_and_what_it_may_not():
     assert tuple(EXTRA_KEYS) == KEYS
     for name, text in _skills().items():
         flat = _flat(text)
-        assert "`params`" in text and "`extra_config`" in text, name
+        assert "`params`" in text and "extra_config" in text, name  # the runs skill avoids backticks on it: skill_runs_uses_actions_test.sh TC-012
         for k in KEYS:
             assert k in text, (name, k)
         for f in FLAGS:
