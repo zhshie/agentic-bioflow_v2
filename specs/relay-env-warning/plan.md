@@ -106,6 +106,11 @@ source: memory/dev-plans/relay-prefix-nano4.md 裁決 5 與裁決二第 2 點（
 4. **`on_site.sh` 例外保留。** 理由：relay-prefix-nano4 作法 6 讓 `on_site.sh` 一律以設定檔值覆蓋呼叫者環境，這裡警告會是假警報；與 EXTRA_DOMAINS 一致。
 5. **等 #185 合併後再開工。** 理由：測試用的變數名稱與語意在 #185 才定案；若 #185 改名，本任務跟著改一處。
 
+## 裁決三（2026-10-24 developer-agent，回應 verifier 出題退回；以本段為準）
+3. 手動案例（git diff 範圍、兩分支逐行比對）不寫進 docs/TESTING.md：executor 把 `git diff --stat`、hook diff 只有新增行的證據、兩分支 confirm_launch_test.sh 輸出比對貼進 ledger.md，閱卷以 ledger 為依據並自己重跑核對。這是本專案所有「閱卷時看 diff」類手動案例的通例。
+4. PEER-7 照 verifier 的 TC-009：斷言比對警告句，不比對整條指令。
+5. 空值的說明改成「空值會被忽略，改用部署設定 relay_peer_prefixes」，與 egress_ctl.sh 的行為一致；仍然要警告（裁決二 1）。
+
 ## 專長守則（backend）
 
 ### executor
