@@ -13,8 +13,9 @@ launch and cancel (spec 009c) start nothing by themselves. Each builds what the 
 and asks the person (the client's form, else a page they open). They carry no argument that could say yes, and the answer to a call
 says plainly whether a job exists. Everything they do is in abf_platform.actions.
 
-resume and relaunch (spec 009e) are the same kind of tool, for a run that failed or was cancelled. Their one argument is the name of the
-run: the pipeline, the samples and the parameters are those of its first launch and cannot be said again.
+resume and relaunch (spec 009e) are the same kind of tool, for a run that failed or was cancelled. relaunch takes only the name of the
+run. resume may also carry params (only the keys to change) and extra_config (settings text); the pipeline, revision, samples and
+environment are those of the first launch and cannot be said again.
 """
 from typing import Any
 
@@ -145,14 +146,16 @@ def _add_write_tools(server, platform_path, index_path):
 
     @server.tool(name="resume", annotations=_WRITES,
                  description="Ask to resume one run of this platform that failed or was cancelled: the same folder, and Nextflow takes up where "
-                             "it stopped and reuses the tasks that finished; the pipeline, samples and parameters are those of the first launch "
-                             "and cannot be changed here (a different analysis is a new launch). This does NOT start anything: it writes a "
+                             "it stopped and reuses the tasks that finished. Optionally pass `params` (only the keys to change; they are laid over the "
+                             "parameters of the first launch) and `extra_config` (resource settings, for example `process.memory = '16 GB'`); "
+                             "the pipeline, version, samples and environment stay those of the first launch (to change them, make a new launch). "
+                             "This does NOT start anything: it writes a "
                              "request and shows the person what would run. The person says yes in their own client's form or on a page whose "
                              "address this returns; you cannot say it for them. It does not start anything until the person says yes. After "
                              "they pressed send, call resume again with the same run_name to get the job number.")
-    async def resume_tool(ctx: Context, run_name: str) -> dict:
-        return await actions.request_resume(platform_path, run_name=run_name, caller=_caller(ctx), person=actions.person_at(ctx),
-                                            remote=_remote(ctx), index_path=index_path)
+    async def resume_tool(ctx: Context, run_name: str, params: dict | None = None, extra_config: str | None = None) -> dict:
+        return await actions.request_resume(platform_path, run_name=run_name, params=params, extra_config=extra_config,
+                                            caller=_caller(ctx), person=actions.person_at(ctx), remote=_remote(ctx), index_path=index_path)
 
     @server.tool(name="relaunch", annotations=_WRITES,
                  description="Ask to start one run of this platform that failed or was cancelled again from the start, in a new folder: the same "

@@ -401,13 +401,65 @@ def _name(state, root, attempt, owner):
     return name
 
 
-def prepare_resume(state, run, *, index_path, owner=None, area=None):
+EDIT_BAD_PARAMS = "params 必須是名稱到值的對照 (params must be a mapping of names to values)"
+EDIT_BAD_CONFIG = "extra_config 必須是文字 (extra_config must be text)"
+CONFIG_LIMIT = 20000
+
+
+def edits_of(origin_params, params, extra_config):
+    """The edits of a resume as the bundle keeps them in resume.overrides ({} when there are none): the changed parameters (a value the first
+    launch already had, with the same type, is no change) and the settings text as the station normalises it. Refusal for a wrong type."""
+    if params is not None and not isinstance(params, dict):
+        raise Refusal(EDIT_BAD_PARAMS)
+    if extra_config is not None and not isinstance(extra_config, str):
+        raise Refusal(EDIT_BAD_CONFIG)
+    origin_params = origin_params if isinstance(origin_params, dict) else {}
+    out = {}
+    changed = {k: v for k, v in (params or {}).items()
+               if not (k in origin_params and type(origin_params[k]) is type(v) and origin_params[k] == v)}
+    if changed:
+        out["params"] = changed
+    if extra_config and extra_config.strip("\n"):
+        out["extra_config"] = extra_config.rstrip("\n") + "\n"
+    return out
+
+
+def read_edit_args(params_file, param_items, config_file):
+    """(params or None, extra_config or None) from the flags of `resume`: read like the flags of `launch`, and the settings file as UTF-8
+    text of at most 20000 characters. Refusal when a file cannot be read."""
+    params = None
+    if params_file or param_items:
+        try:
+            params = read_params_file(params_file) if params_file else {}
+            for item in param_items or []:
+                key, eq, value = item.partition("=")
+                if not eq:
+                    raise bundle_mod.BundleError("--param: %r 不是 名稱=值 (name=value)" % item[:40])
+                params[key] = infer(value)
+        except bundle_mod.BundleError as e:
+            raise Refusal(str(e))
+    extra = None
+    if config_file:
+        try:
+            extra = Path(config_file).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as e:
+            raise Refusal("config-file: 讀不到 %s，或不是 UTF-8 文字 (%s)" % (config_file, e.__class__.__name__))
+        if len(extra) > CONFIG_LIMIT:
+            raise Refusal("config-file: %s 超過 %d 個字元 (longer than %d characters)" % (config_file, CONFIG_LIMIT, CONFIG_LIMIT))
+    return params, extra
+
+
+def prepare_resume(state, run, *, index_path, owner=None, area=None, params=None, extra_config=None):
     """(environment name, bundle, the predecessor's row) for the resume of the failed run `run`, or Refusal. Nothing is shown, asked or
     written. The bundle has no samples and no parameters of its own: they are the first launch's bundle, kept verbatim, so that they cannot
     change. It is rebuilt from the platform's facts of today, as the agent will rebuild it, and must come out the same: a resume of
     another environment is a new analysis. owner and area are the 116 and 116b limits of a launch; with an area the real paths of the
-    samples are looked at again and recorded in the bundle, and a link that now leads out of the caller's folder is refused here."""
+    samples are looked at again and recorded in the bundle, and a link that now leads out of the caller's folder is refused here.
+    params (the parameters to change, laid over those of the first launch) and extra_config (settings text) are the edits of this attempt;
+    none, or only what the first launch had, is the plain resume."""
+    edits_of(None, params, extra_config)      # the types are looked at before anything is read
     row, origin, _sha, view, attempt, root = _predecessor(state, run, "resume", index_path, owner)
+    edits = edits_of(origin.get("params"), params, extra_config)
     ce_name = _same_environment(state, row)
     session = view.get("session_id")
     if not isinstance(session, str) or not bundle_mod.SESSION_ID.match(session):
@@ -424,10 +476,18 @@ def prepare_resume(state, run, *, index_path, owner=None, area=None):
         raise Refusal(CHANGED % "與第一次送出時各自重建的內容不一致")
     try:
         bundle = bundle_mod.render_resume_bundle(origin=rebuilt, run_name=new_name, attempt=attempt, session_id=session, of_run=run,
-                                                 of_slurm_job_id=row["slurm_job_id"])
+                                                 of_slurm_job_id=row["slurm_job_id"], overrides=edits or None)
     except bundle_mod.BundleError as e:
         raise Refusal(str(e))
     bundle["resume"]["origin"] = copy.deepcopy(origin)      # the bundle as it was confirmed, with the records the platform added to it
+    if edits.get("params") and area is not None:
+        try:      # 116b: a path in a changed parameter must lie in the caller's own folder too
+            _, laid = prepare_launch(state, ce=ce_name, pipeline=origin["pipeline"], revision=origin["revision"], run_name=origin["run_name"],
+                                     params={**origin["params"], **edits["params"]}, path_columns=origin["path_columns"], check_name=False,
+                                     owner=owner, area=area, samplesheet_rows=origin["samplesheet"])
+        except (KeyError, TypeError):
+            raise Refusal(TOO_OLD)
+        upload = laid.pop("upload_paths", None)
     if upload is not None:
         bundle["upload_paths"] = upload
     return ce_name, bundle, row
@@ -617,13 +677,34 @@ def _attempt_lines(title, bundle, row, attempt, sentence, pipeline, revision, sa
     return lines
 
 
+EDITED_SENTENCE = "這是續跑：同一個資料夾；下面的參數與設定有改，用到它們的 task 會重新跑，其餘已完成的 task 沿用"
+EDITED_NOTE = "這次的改動是疊在第一次送出的參數上，前一次續跑的改動不會帶過來"
+
+
+def _shown(value):
+    return value if isinstance(value, str) else json.dumps(value)
+
+
 def resume_screen(bundle, row):
-    """What a person sees before saying yes to a resume: whose it is, which attempt, what stays as it is, and the exact line that runs."""
+    """What a person sees before saying yes to a resume: whose it is, which attempt, what stays as it is, and the exact line that runs.
+    With edits it also lists each changed parameter (old -> new) and the settings text in full."""
     r = bundle["resume"]
     o = r["origin"]
-    script = next(iter(bundle["files"]))
+    script = "head-%d.sh" % r["attempt"]
+    edits = r.get("overrides")
     lines = _attempt_lines("== 續跑確認：同一個資料夾，Nextflow 接著上次做 ==", bundle, row, r["attempt"],
-                           "這是續跑：同一個資料夾，沿用已完成的 task；樣本和參數不變", o["pipeline"], o["revision"], len(o["samplesheet"]) - 1, script)
+                           EDITED_SENTENCE if edits else "這是續跑：同一個資料夾，沿用已完成的 task；樣本和參數不變",
+                           o["pipeline"], o["revision"], len(o["samplesheet"]) - 1, script)
+    if edits:
+        lines.append(terminal.PREFIX + EDITED_NOTE)
+        for name, new in (edits.get("params") or {}).items():
+            head = "參數 %s：" % terminal.esc(name)
+            if name in o["params"]:
+                lines.append(terminal.PREFIX + head + "%s → %s" % (terminal.esc(_shown(o["params"][name])), terminal.esc(_shown(new))))
+            else:
+                lines.append(terminal.PREFIX + head + "（新增）→ " + terminal.esc(_shown(new)))
+        if edits.get("extra_config"):
+            lines += terminal.block("extra-%d.config" % r["attempt"], edits["extra_config"])
     lines.append(terminal.pair("接續的 session", r["session_id"]))
     lines += terminal.block(script, bundle["files"][script])
     return lines
