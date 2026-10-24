@@ -401,6 +401,19 @@ Not loaded: ${RELAY_ERR}"
             RELAY_LIST="${RELAY_LIST}
 THIS COMMAND ALSO SETS NF_RELAY_EXTRA_DOMAINS=${RELAY_OVR}, which overrides this deployment's list: the relay would carry THAT list, not the one shown above. Show the user the domains it names."
         fi
+        # relay-env-warning: the same for the peer-prefix list, which decides which
+        # hosts may connect to the relay. Only a direct start is named (on_site.sh
+        # replaces the variable with the file's value). An empty value is named too.
+        if [[ $CMD == *NF_RELAY_PEER_PREFIXES=* ]] && [[ $CMD != *on_site.sh* ]]; then
+            RELAY_PEER_OVR=""; RELAY_PEER_OVR_RE='NF_RELAY_PEER_PREFIXES=([^[:space:];&|]*)'
+            [[ $CMD =~ $RELAY_PEER_OVR_RE ]] && RELAY_PEER_OVR="${BASH_REMATCH[1]}"
+            RELAY_LIST="${RELAY_LIST}
+THIS COMMAND ALSO SETS NF_RELAY_PEER_PREFIXES=${RELAY_PEER_OVR}, which changes which hosts may connect to the relay: it would accept hosts whose names start with THAT list instead of the deployment's setting (default cpn,gpn,bgm,lgn,localhost). Show the user the prefixes it names."
+            if [ -z "$RELAY_PEER_OVR" ]; then
+                RELAY_LIST="${RELAY_LIST}
+An empty value is ignored by the relay, which then uses the deployment's relay_peer_prefixes setting."
+            fi
+        fi
     fi
     ask "GATE: this starts, stops or restarts a resident process (the Tower Agent or the egress relay) on the site's SHARED login node. Before running it, tell the user which process, under which identity (agent_connection / credential) and why, and wait for their explicit yes. For the relay, also show the user this deployment's extra domains listed below - starting it is when they take effect. Never start one under an agent_connection that is not this member's own - docs/SETTINGS.md: two members sharing one are refused permanently.${RELAY_LIST}" \
         "$CMD
