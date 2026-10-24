@@ -122,6 +122,12 @@ base: v3
 7. **舊計畫的 `_apply_handover` 條件「`cleaned is True`」保留，並補上「內容被 forget 的工作不寫、不報錯」。**
 8. **切片理由**：舊計畫整份約 30 檔、需求超過 60 條測試；依 `dev-architecture-review-2026-10-24.md` §3 與 `dev-plans/README.md` 通例切成六片。本片 7 檔（含 ledger）。
 
+## 裁決二（2026-10-25 07:20，executor BLOCKED 後）
+7. 授權更新 `platform/tests/test_cleanup_store.py` 的 `test_nothing_writes_clean_work_or_work_cleaned_at`（a 片 TC-030，:491-496）：掃描排除 `confirm.py`、`jobs.py`（本片正當地寫入 clean_work）；`work_cleaned_at` 仍只准 store.py。這是 a 片「後續片才接線」的預留檢查，隨片放寬是預期的。
+8. `test_onboarding_doc.py::test_tc047_tc051_other_docs_untouched` 在完整 clone 上本來就紅（釘 6061925），由 onboarding-test-pinned-base 修；本片把它當已知環境紅，ledger 記一行即可，不擋 GREEN。
+9. `forget_content` 佔位符改成依長度產生：接受（「不改邏輯」的說法作廢，邏輯等價）。
+10. `clean_work` 答覆保留共用的 `error`／`note`（≤300）：接受。MAX_OPEN_CLEAN 邊界照 MAX_OPEN_PENDING（第 51 張拒）。MCP 工具數現為 13，TC-067 改寫：接受。
+
 ## 專長守則（backend）
 
 ### executor
