@@ -67,6 +67,28 @@ st=$(bash "$CTL" status 2>&1)
 has "#45 status says this deployment's list was not loaded" "list not loaded" "$st"
 has "#45 ...and why" "cannot be read" "$st"
 bash "$CTL" stop >/dev/null 2>&1
+
+# relay-prefix-nano4 (TC-028, TC-058, TC-059): the peer prefixes come from the
+# settings file, and an environment variable beats it.
+bash "$CTL" stop >/dev/null 2>&1
+unset NF_RELAY_PEER_PREFIXES
+export NF_RELAY_PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])')"
+: > "$TMP/state/relay.log"
+bash "$CTL" start >/dev/null 2>&1
+has "TC-028: no setting, no variable: the five Taiwania-3 prefixes" \
+    "peers  : cpn,gpn,bgm,lgn,localhost*" "$(cat "$TMP/state/relay.log" 2>/dev/null)"
+bash "$CTL" stop >/dev/null 2>&1
+printf 'reach: local\nrelay_peer_prefixes: 25a-cpn,25a-lgn\n' > "$LAB_SETTINGS_FILE"
+: > "$TMP/state/relay.log"
+bash "$CTL" start >/dev/null 2>&1
+has "TC-058: the settings file's relay_peer_prefixes reaches the relay" \
+    "peers  : 25a-cpn,25a-lgn,localhost*" "$(cat "$TMP/state/relay.log" 2>/dev/null)"
+: > "$TMP/state/relay.log"
+NF_RELAY_PEER_PREFIXES=zzz-aaa bash "$CTL" restart >/dev/null 2>&1
+has "TC-059: the environment variable wins on restart" \
+    "peers  : zzz-aaa,localhost*" "$(cat "$TMP/state/relay.log" 2>/dev/null)"
+bash "$CTL" stop >/dev/null 2>&1
+printf 'reach: local\n' > "$LAB_SETTINGS_FILE"
 NF_RELAY_EXTRA_DOMAINS=fine.example.org bash "$CTL" start >/dev/null 2>&1
 st=$(bash "$CTL" status 2>&1)
 has "#45 status shows the list the running relay loaded" "domains (this deployment): fine.example.org" "$st"
