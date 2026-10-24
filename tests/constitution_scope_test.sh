@@ -155,7 +155,7 @@ if [ -z "${DOC_TEST_INNER:-}" ]; then
   P1="git show ma""in:"; P2="rev-parse --verify -q ma""in"; P3="skip""ped"
   mkclone() { # mkclone <name> [withmain]: shallow clone, working-tree files overlaid
     local d="$SCR/$1"
-    git clone -q --depth 1 --no-local "file://$ROOT" "$d" >/dev/null 2>&1 || return 1
+    git clone -q --depth 1 --no-local "file://$ROOT" "$d" >/dev/null 2>"$SCR/clone.err" || return 1
     if [ "${2:-}" = withmain ]; then
       git -C "$d" show-ref --verify --quiet refs/heads/main || git -C "$d" branch main HEAD >/dev/null 2>&1
     else # scratch-clone-main: the clone inherits the source branch (main on push CI); detach and drop it
@@ -163,6 +163,9 @@ if [ -z "${DOC_TEST_INNER:-}" ]; then
       if git -C "$d" show-ref --verify --quiet refs/heads/main; then git -C "$d" branch -q -D main >/dev/null 2>&1; fi
     fi
     cp "$ROOT/$C" "$d/$C"; cp "$ROOT/CONTEXT.md" "$d/CONTEXT.md"
+    # the outer run read the working tree; so the inner run reads the same files, not the last commit's copy of them
+    for f in CLAUDE.md README.md; do cp "$ROOT/$f" "$d/$f"; done
+    for dir in docs hooks .specify; do rm -rf "${d:?}/$dir"; cp -R "$ROOT/$dir" "$d/$dir"; done
     cp "$HERE/$(basename "${BASH_SOURCE[0]}")" "$d/tests/"
     echo "$d"
   }
@@ -174,7 +177,7 @@ if [ -z "${DOC_TEST_INNER:-}" ]; then
 An extra sentence that is not in the pinned section.' "$1/$C"; }
 
   echo "== issue #71: the check runs and fails without a main ref =="
-  D=$(mkclone nomain) || { bad "scratch shallow clone"; D=; }
+  D=$(mkclone nomain) || { bad "scratch shallow clone" "$(head -c 400 "$SCR/clone.err" 2>/dev/null | tr '\n' ' ')"; D=; }
   if [ -n "$D" ]; then
     if git -C "$D" show-ref --verify --quiet refs/heads/main 2>&1; then bad "scratch clone really has no main ref"; else ok "scratch clone really has no main ref"; fi
     # scratch-clone-main TC-004: the no-main clone is detached, not parked on a branch
@@ -205,7 +208,7 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
     fi
   fi
   # TC-004: with a main ref present, the same change still fails the same way
-  D=$(mkclone withmain withmain) || { bad "scratch clone with main"; D=; }
+  D=$(mkclone withmain withmain) || { bad "scratch clone with main" "$(head -c 400 "$SCR/clone.err" 2>/dev/null | tr '\n' ' ')"; D=; }
   if [ -n "$D" ]; then
     # scratch-clone-main TC-005: a withmain clone keeps a main ref at its HEAD
     if [ "$(git -C "$D" rev-parse -q --verify refs/heads/main 2>/dev/null)" = "$(git -C "$D" rev-parse HEAD)" ]; then ok "withmain clone has main at HEAD (scratch-clone-main TC-005)"; else bad "withmain clone has main at HEAD (scratch-clone-main TC-005)"; fi
@@ -214,7 +217,7 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
     if [ "$RC" != 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep 'FAIL' >/dev/null; then ok "TC-004: Safety Net changed, main present: fails on the fingerprint"; else bad "TC-004: Safety Net changed, main present: fails on the fingerprint" "rc=$RC"; fi
   fi
   # TC-006: no hash tool: FAIL
-  D=$(mkclone nohash) || { bad "scratch clone for TC-006"; D=; }
+  D=$(mkclone nohash) || { bad "scratch clone for TC-006" "$(head -c 400 "$SCR/clone.err" 2>/dev/null | tr '\n' ' ')"; D=; }
   if [ -n "$D" ]; then
     BIN="$SCR/bin"; mkdir -p "$BIN"
     for t in awk gawk mawk tr grep egrep head tail sed ls dirname basename cat diff cut sort wc mkdir rm cp git printf sleep env; do
