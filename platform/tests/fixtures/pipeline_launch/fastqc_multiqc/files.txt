@@ -1,0 +1,5 @@
+main.nf
+modules.json
+modules/nf-core/fastqc/main.nf
+modules/nf-core/multiqc/main.nf
+nextflow.config

@@ -192,3 +192,24 @@ def test_tc124_a_read_only_cache_still_stops_a_composed_launch(tmp_path, site, f
         os.chmod(site.storage / "cache", 0o700)
     assert res["state"] == "refused" and re.search(r"NXF_SINGULARITY_CACHEDIR|快取", res["result"]["message"]), res
     assert not (site.work / "runs").exists() and not sbatches(site)
+
+
+def test_tc015_the_golden_project_lands_in_the_run_folder_and_the_script_starts_it(tmp_path, site, fake):
+    # TC-015: the project the platform builds for the fastqc -> multiqc graph, through the agent
+    from pathlib import Path
+    from abf_platform import compose, pipeline_launch
+    graph = json.loads((Path(__file__).resolve().parent / "fixtures" / "pipeline_launch" / "fastqc_multiqc" / "graph.json").read_text(encoding="utf-8"))
+    canonical, problems = compose.normalize(graph)
+    assert not problems
+    got = pipeline_launch.build_project(canonical, "demo-qc", 1, ["sample", "reads"])
+    sheet = [["sample", "reads"], ["s1", str(site.storage / "rawdata" / "s1.fq")]]
+    b = bundle_for(site, fake, pipeline="abf-composed/demo-qc", revision="0.1.0", samplesheet=sheet, params={}, path_columns=got["path_columns"],
+                   composed={"pipeline_id": 1, "version": 1, "project": got["project"]})
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, job_of(b))
+        assert res["state"] == "done", res
+    f = folder(site)
+    for rel in ("main.nf", "nextflow.config", "modules.json", "modules/nf-core/fastqc/main.nf", "modules/nf-core/multiqc/main.nf"):
+        assert (f / "pipeline" / rel).read_text(encoding="utf-8") == got["project"][rel], rel
+    assert (f / "head.sh").read_text().splitlines()[-1].split()[3] == str(f / "pipeline" / "main.nf")
+    assert (f / "samplesheet.csv").read_text().startswith("sample,reads\n")
