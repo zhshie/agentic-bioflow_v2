@@ -148,6 +148,15 @@ shell 層（放在既有 `tests/egress_ctl_restart_test.sh` 與 `tests/nf_relay_
 3. nano4 節點名稱來自 10-20 探測，文件標「探測所得、未在 nano4 實跑」接受。
 4. 車道 L-relay；因 `docs/SETTINGS.md`、`docs/SITE_ADAPTER.md` 與 nano4-ce-fixes 重疊，排在它合併之後，開工時以最新 v3 為準。
 
+## 裁決三（2026-10-24 developer-agent，回應 verifier 出題退回；以本段為準）
+5. `tests/on_site_test.sh` 加入範圍（只許新增段落），必做：新增 verifier 合約 TC-054～057 對應的四條斷言（ssh 路徑會帶 `NF_RELAY_PEER_PREFIXES`、REACH=local 時由設定 export、呼叫者環境不能偷渡）。計畫第 82 行的條件句作廢。
+6. `docs/SETTINGS.md` 的 Travels 列要把 `relay_peer_prefixes` 加進鍵名列舉（TC-064 照合約）。
+7. 環境變數有內容但一項都不剩（含 `","`、`"  "`）都印 `had no usable entry` 並用預設五個。
+8. TC-041 用內嵌換行 `"cp
+n"` 接受。
+9. 不需要 migration：只新增選填設定鍵與選填環境變數，未設時行為與現在逐位元相同。
+10. 手動 TC 以 git diff／讀檔閱卷，不另寫 TESTING.md 步驟。
+
 ## 專長守則（backend）
 
 ### executor
