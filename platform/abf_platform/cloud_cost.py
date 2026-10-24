@@ -208,13 +208,25 @@ def month_used(index_path, platform_path, user_id, month, rates):
 def estimate_launch(index_path, platform_path, user_id, pipeline, rates):
     """The cost of the user's latest successful Google Batch run of the same pipeline that can be priced, with basis ('run <name>'). No such
     run gives usd None and the reason; nothing is worked out from resource limits."""
+    unpriced = None
     for r, facts in _runs_of(index_path, platform_path, user_id):
         if r["status"] != "succeeded" or not _same_pipeline(facts["pipeline"], pipeline):
             continue
         out = run_tasks_cost(index_path, r["name"], rates, facts["location"])
         if out["usd"] is not None:
             return dict(out, basis="run %s" % r["name"])
+        if unpriced is None:
+            unpriced = out      # the newest run that counts but cannot be priced: its reason is the true one when nothing can be
+    if unpriced is not None:
+        return dict(unpriced, basis=None)
     return _unknown([NO_HISTORY], basis=None)
+
+
+def launch_estimate(platform_path, bundle, user_id, *, index_path=None, rates=None):
+    """estimate_launch for the pipeline a launch bundle names, on the platform's own index and price list unless others are given."""
+    pipeline = bundle.get("pipeline") if isinstance(bundle, dict) else None
+    return estimate_launch(index_path or store.default_index_path(), platform_path, user_id, pipeline,
+                           rates if rates is not None else load_rates())
 
 
 def _money(x):
