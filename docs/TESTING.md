@@ -639,6 +639,14 @@ The automatic test, `tests/hosted_deploy_test.sh`, reads the files in `deploy/` 
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD`: only `deploy/`, `tests/hosted_deploy_test.sh`, the three docs and `specs/hosted-deploy/` appear; nothing under `platform/abf_platform/`, `platform/abf_station/` or `platform/abf_launch/`; no existing test file is changed.
 
+## Finished stage (finished-stage): the maintainer and the reviewer check
+
+The automatic tests are in `platform/tests/test_web_finished.py`. The steps below need a browser and a succeeded run that was launched from the platform.
+
+1. **Open it by clicking.** From the run list click the run, then "完成" in the stage strip. Check: the page shows "來源紀錄" and "交付包" with no extra download step or input.
+2. **390 px.** Narrow the browser to 390 px wide (developer tools, device mode) and open the stage of a run with a long parameter value. Check: there is no horizontal scroll bar and the long value wraps inside its column.
+3. **Tab key.** On the finished stage press Tab repeatedly. Check: every link (stage strip, "查看輸出", previous stage) shows a visible focus outline in turn; the grey "之後開放" lines are never focused.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in

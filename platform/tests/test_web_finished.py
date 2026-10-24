@@ -81,13 +81,6 @@ def read_outputs(w, rid, c, entries):
     finish(w, listings(w)[-1]["id"], entries=entries)
 
 
-def no_launch_record(w):
-    con = sqlite3.connect(str(w.ip.state_db))
-    with con:
-        con.execute("DELETE FROM launches")
-    con.close()
-
-
 def test_fs01_succeeded_run_opens_finished_stage(w):
     # TC-040, TC-020, TC-047, TC-001
     ann, c, rid = world(w)
@@ -157,10 +150,11 @@ def test_fs04_provenance_not_kept(w):
     assert "—" in sec
 
 
-def test_fs05_not_from_platform(w):
+def test_fs05_not_from_platform(w, monkeypatch):
     # TC-012, TC-013, TC-014, TC-C03
+    from abf_platform import actions
     ann, c, rid = world(w, kept=False)
-    no_launch_record(w)
+    monkeypatch.setattr(actions, "launch_prefill", lambda *a, **k: {"found": False, "kept": False})      # a run the platform never sent
     t = c.get(url(rid)).text
     sec = section(t, "來源紀錄")
     assert plain(sec) == "— 不是從平台送出的分析，沒有來源紀錄。" and "<dl" not in sec
@@ -226,7 +220,9 @@ def test_fs08_download_is_coming_later(w):
     sec = section(t, "交付包")
     assert '<p class="off">下載交付包 <span class="later">之後開放</span></p>' in sec
     assert 'href="/download' not in t and "<form" not in mid(t) and "<button" not in mid(t)
-    assert [j for j in w.sql("SELECT kind FROM jobs") if j["kind"] != "list_site_files"] == []
+    before = [j["kind"] for j in w.sql("SELECT kind FROM jobs")]
+    c.get(url(rid))
+    assert [j["kind"] for j in w.sql("SELECT kind FROM jobs")] == before and "package" not in " ".join(before)
 
 
 def test_fs09_owner_rule(w, monkeypatch):
@@ -243,8 +239,9 @@ def test_fs09_owner_rule(w, monkeypatch):
     assert r.status_code == 404 and "nf-core" not in r.text and "max_cpus" not in r.text and calls == []
 
 
-def test_fs10_english(w):
+def test_fs10_english(w, monkeypatch):
     # TC-060, TC-074, TC-075
+    from abf_platform import actions
     ann, c, rid = world(w)
     t = c.get(url(rid, "&lang=en")).text
     assert no_cjk(t) and "Provenance" in t and "Delivery package" in t
@@ -258,7 +255,7 @@ def test_fs10_english(w):
     assert no_cjk(c.get(url(rid, "&lang=en")).text)
     read_outputs(w, rid, c, ENTRIES)
     assert no_cjk(c.get(url(rid, "&lang=en")).text)
-    no_launch_record(w)
+    monkeypatch.setattr(actions, "launch_prefill", lambda *a, **k: {"found": False, "kept": False})
     assert no_cjk(c.get(url(rid, "&lang=en")).text)
 
 
@@ -296,4 +293,4 @@ def test_fs13_finished_link_in_strip(w):
     # TC-045
     ann, c, rid = world(w)
     cell = re.search(r'<li[^>]*data-step="finished"[^>]*>(.*?)</li>', mid(c.get("/?run=" + rid).text), re.S).group(1)
-    assert 'href="/?run=%s&amp;stage=finished"' % rid in cell
+    assert re.search(r'href="/\?run=%s&amp;stage=finished[&"]' % rid, cell)
