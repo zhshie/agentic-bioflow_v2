@@ -891,8 +891,8 @@ for V in NF_RELAY_EXTRA_DOMAINS NF_RELAY_PEER_PREFIXES; do
   envw "TC-007 $S nohup env"                    $V has   "nohup env $V=evilval bash scripts/egress_ctl.sh start" "evilval"
   envw "TC-008 $S in an echo's quotes"          $V has   "echo '$V=zzval'; bash scripts/egress_ctl.sh start" "zzval" "1 mention"
   envw "TC-009 $S on the first line"            $V has   $'echo '"$V"$'=evilval\nbash scripts/egress_ctl.sh start' "evilval"
-  envw "TC-010 $S double-quoted value kept as written" $V has "$V=\"qq1 rr2\" bash scripts/egress_ctl.sh start" '"qq1' "!qq1 rr2"
-  envw "TC-010 $S single-quoted value kept as written" $V has "$V='qq1 rr2' bash scripts/egress_ctl.sh start" "'qq1" "!qq1 rr2"
+  envw "TC-010 $S double-quoted value kept as written" $V has "$V=\"qq1 rr2\" bash scripts/egress_ctl.sh start" '"qq1 rr2"' 
+  envw "TC-010 $S single-quoted value kept as written" $V has "$V='qq1 rr2' bash scripts/egress_ctl.sh start" "'qq1 rr2'" 
   envw "TC-010 $S escaped quote does not eat the line" $V has "$V=a\\\"b c bash scripts/egress_ctl.sh start" 'a\"b' '!a\"b c'
   envw "TC-011 $S unquoted \$( ) stops at the space" $V has "$V=\$(cat /tmp/p) bash scripts/egress_ctl.sh start" '$(cat' '!$(cat /tmp/p)' "!computed at run time"
   envw "TC-011 $S quoted \$( )"                 $V has   "$V=\"\$(cat /tmp/p)\" bash scripts/egress_ctl.sh start" '$(cat' "!computed at run time"
@@ -951,6 +951,11 @@ v,k=sys.argv[1],sys.argv[2]
 if k=="tail60": c="echo "+"y"*59900+"; "+v+"=tail1 bash scripts/egress_ctl.sh start"
 elif k=="spread60": c="echo "+(v+"=sc7 "+"y"*92+" ")*500+"; bash scripts/egress_ctl.sh start"
 elif k=="spread70": c="echo "+(v+"=sc7 "+"y"*112+" ")*500+"; bash scripts/egress_ctl.sh start"
+elif k=="empty70": c="echo "+(v+"=sc7 "+"y"*112+" ")*500+"; "+v+"= bash scripts/egress_ctl.sh start"
+elif k=="emptyreal70": c="echo "+(v+"=sc7 "+"y"*112+" ")*500+"; "+v+"=real1 bash scripts/egress_ctl.sh start"
+elif k=="lookalike1m": c="echo "+("MY_"+v+"=sc7 "+"y"*90+" ")*8000+"; "+v+"=tail1 bash scripts/egress_ctl.sh start"
+elif k=="lookalike25": c="echo "+("MY_"+v+"=x ")*25+"; "+v+"=real1 bash scripts/egress_ctl.sh start"
+elif k=="emptymy70": c="echo "+(v+"=sc7 "+"y"*112+" ")*500+"; MY_"+v+"= bash scripts/egress_ctl.sh start"
 elif k=="tail1m": c="echo "+"y"*1000000+"; "+v+"=tail1 bash scripts/egress_ctl.sh start"
 else: c="echo "+(v+"=sc7 "+"y"*97+" ")*8000+"; bash scripts/egress_ctl.sh start"
 print(json.dumps({"tool_name":"Bash","tool_input":{"command":c}}))' "$2" "$3" > "$TMP/big.json"
@@ -972,6 +977,50 @@ for V in NF_RELAY_EXTRA_DOMAINS NF_RELAY_PEER_PREFIXES; do
   envbig "TC-051 ${V#NF_RELAY_} 1 MB, mention at the end" $V tail1m 1000 "" "tail1"
   envbig "TC-051 ${V#NF_RELAY_} 1 MB, 8000 mentions" $V spread1m 1000 "8000 mentions in total" "sc7"
 done
+# relay-warning-polish (POL-n = the plan's numbers; TC ids are the test-case file's)
+S_EMPTY="An empty value is ignored by the relay, which then uses the deployment's relay_peer_prefixes setting."
+P=NF_RELAY_PEER_PREFIXES; E=NF_RELAY_EXTRA_DOMAINS
+for V in $E $P; do
+  X120=$(printf 'x%.0s' $(seq 1 120))
+  envw "POL-1 TC-001 ${V#NF_RELAY_} cut gets an ellipsis" $V has "$V=${X120}yy bash scripts/egress_ctl.sh start" "${X120}…]" "!${X120}y"
+  envw "POL-2 TC-004 ${V#NF_RELAY_} 5 mentions: 4th not listed" $V has "$V=m1x $V=m2x $V=m3x $V=m4x $V=m5x bash scripts/egress_ctl.sh start" "(mention 4 is not listed; read the whole command shown below)"
+  envw "POL-3 TC-011 ${V#NF_RELAY_} double-quoted value whole" $V has "$V=\"qq1 rr2\" bash scripts/egress_ctl.sh start" '["qq1 rr2"]' '!"qq1 rr2"…'
+  envbig "POL-4 TC-007 ${V#NF_RELAY_} 70 KB: says why not listed" $V spread70 1500 "The values are not listed because the command is over 64 KB; read the whole command shown below." "sc7"
+  envw "POL-5 TC-016 ${V#NF_RELAY_} MY_ prefix is a mention too" $V has "MY_$V=zzval bash scripts/egress_ctl.sh start" "[zzval]"
+  envw "POL-dash-e TC-052 ${V#NF_RELAY_} -e<VAR>= still warns" $V has "-e$V=evil bash scripts/egress_ctl.sh start" "[evil]" "1 mention in total"
+  idg "POL-dash-e TC-052 ${V#NF_RELAY_} -e<VAR>= still asks" ask "-e$V=evil bash scripts/egress_ctl.sh start"
+  envw "POL-bq TC-021 ${V#NF_RELAY_} backquote still warns" $V has "\`$V=x bash scripts/egress_ctl.sh start\`"
+  idg "POL-bq TC-021 ${V#NF_RELAY_} backquote still asks" ask "\`$V=x bash scripts/egress_ctl.sh start\`"
+done
+envw "POL-6 TC-002 unclosed quote cut at the space" $P has 'NF_RELAY_PEER_PREFIXES=a"b c d bash scripts/egress_ctl.sh start' '[a"b…]'
+envw "POL-7 TC-005 6 mentions" $P has "$P=m1x $P=m2x $P=m3x $P=m4x $P=m5x $P=m6x bash scripts/egress_ctl.sh start" "(mentions 4 to 5 are not listed; read the whole command shown below)"
+envw "POL-8 TC-006 4 mentions: nothing unlisted" $P has "$P=m1x $P=m2x $P=m3x $P=m4x bash scripts/egress_ctl.sh start" "!are not listed" "!is not listed"
+envw "POL-9 TC-012 single-quoted value whole" $P has "$P='qq1 rr2' bash scripts/egress_ctl.sh start" "['qq1 rr2']"
+X199=$(printf 'x%.0s' $(seq 1 199)); X119=$(printf 'x%.0s' $(seq 1 119))
+envw "POL-10 TC-013 long quoted value" $P has "$P=\"${X199}x\" bash scripts/egress_ctl.sh start" "[\"${X119}…]"
+envw "POL-11 TC-003 unclosed quote cut at ;" $P has "$P=\"a b; c bash scripts/egress_ctl.sh start" '["a…]'
+envw "POL-12 TC-014 text right after the closing quote" $P has "$P=\"a b\"c bash scripts/egress_ctl.sh start" '["a b"…]'
+envw "POL-13 TC-017 after ( counts" $P has "($P=a bash scripts/egress_ctl.sh start)"
+envw "POL-14 TC-018 after a quote counts" $P has "echo \"$P=a\"; bash scripts/egress_ctl.sh start"
+envw "POL-15 TC-019 look-alike and plain both listed" $P has "MY_$P=bad $P=good bash scripts/egress_ctl.sh start" "[bad]" "[good]" "2 mentions in total"
+envw "POL-cl1 TC-053 closing quote then )" $P has "(echo $P=\"a b\"); bash scripts/egress_ctl.sh start" '["a b"]' '!"a b"…'
+envw "POL-cl2 TC-054 closing quote then backquote" $P has "echo \`echo $P=\"a b\"\`; bash scripts/egress_ctl.sh start" '["a b"]' '!"a b"…'
+envw "POL-cl3 TC-055 closing quote then }" $P has "echo \${x:-$P=\"a b\"}; bash scripts/egress_ctl.sh start" '["a b"]' '!"a b"…'
+envw "POL-cl4 TC-056 empty quotes then )" $P has "(echo $P=\"\"); bash scripts/egress_ctl.sh start" "$S_EMPTY"
+envw "POL-lk-empty TC-057 MY_ last mention empty" $P has "MY_$P= bash scripts/egress_ctl.sh start" "$S_EMPTY"
+envw "POL-16a TC-024 empty last mention" $P has "$P=a $P= bash scripts/egress_ctl.sh start" "$S_EMPTY"
+envw "POL-16b TC-025 empty first, last not" $P has "$P= $P=a bash scripts/egress_ctl.sh start" "!$S_EMPTY"
+envw "POL-17 TC-026 empty quotes are empty" $P has "$P=\"\" bash scripts/egress_ctl.sh start" "$S_EMPTY"
+idg "POL-18 TC-020 look-alike still asks" ask "MY_$P=x bash scripts/egress_ctl.sh start"
+envbig "POL-19 TC-027 PEER 70 KB, last empty" $P empty70 1500 "$S_EMPTY"
+envbig "POL-20 TC-028 PEER 70 KB, last not empty" $P emptyreal70 1500 "501 mentions" "$S_EMPTY"
+envbig "POL-21 TC-029 EXTRA 70 KB: no empty sentence" $E empty70 1500 "501 mentions" "An empty value is ignored"
+envbig "POL-22 TC-032 1 MB of look-alikes" $P lookalike1m 1000 "8001 mentions in total" "sc7"
+envbig "POL-22b TC-032 ...says why" $P lookalike1m 1000 "The values are not listed because the command is over 64 KB"
+envbig "POL-19b TC-058 PEER 70 KB, last is MY_ and empty" $P emptymy70 1500 "$S_EMPTY"
+envbig "POL-lk25 TC-051 25 look-alikes: counted" $P lookalike25 500 "26 mentions in total" "too many names"
+envbig "POL-lk25b TC-051 ...last one listed" $P lookalike25 500 "[real1]" "too many names"
+envbig "POL-lk25c TC-051 ...unlisted line" $P lookalike25 500 "(mentions 4 to 25 are not listed; read the whole command shown below)" "too many names"
 # LOW: false alarms on reading the script, and sourcing it with no operation
 idg "#45 cat of the script does not ask"          allow 'cat scripts/egress_allow.sh'
 idg "#45 less of the script does not ask"                  allow 'less scripts/egress_allow.sh'
