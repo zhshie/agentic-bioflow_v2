@@ -549,16 +549,16 @@ def test_stream_into_exactly_at_the_limit_is_not_over():
     assert r["ok"] is True and r["received"] == 1000
 
 
-def test_a_failing_chunk_source_or_sink_aborts_and_hides_the_text():
-    # TC-070, TC-071, TC-072
-    boom = RuntimeError("token=abc123 /ho" + "me/x/gcp-sa.json")
+def test_a_failing_chunk_source_or_sink_aborts_and_hides_the_text(tmp_path):
+    # TC-070, TC-071, TC-072, TC-102
+    boom = RuntimeError("token=abc123 " + str(tmp_path / "gcp-sa.json"))
     sink = Sink()
     r1 = cs().stream_into(Source([100], then=boom), sink, declared_size=1000, limit=GB2)
     sink2 = Sink(fail_write=boom)
     r2 = cs().stream_into(Source([100]), sink2, declared_size=100, limit=GB2)
     for r, s in ((r1, sink), (r2, sink2)):
         assert r["ok"] is False and s.count("abort") == 1
-        assert not re.search(r"abc123|gcp-sa|/home", json.dumps(r))
+        assert not re.search(r"abc123|gcp-sa", json.dumps(r)) and str(tmp_path) not in json.dumps(r)
     assert "傳輸中斷" in r1["message"]
 
 
@@ -682,3 +682,92 @@ def test_no_function_takes_a_key_file_or_a_secret():
             names += list(inspect.signature(getattr(mod, n)).parameters)
     assert not [n for n in names if bad.search(n)]
     assert "destination" in names
+
+
+# ---- ruling three: the scope nail, one place for the command, no split strings --------------------------------------------
+
+import ast
+import tokenize
+
+SOURCE_DIRS = ("abf_platform", "abf_station", "abf_launch")
+GCB_CE_SRC = HERE / "test_gcb_ce.py"
+
+
+def _source_files():
+    out = []
+    for d in SOURCE_DIRS:
+        root = PLATFORM / d
+        if root.exists():
+            out += [p for p in sorted(root.rglob("*.py")) if "tests" not in p.parts]
+    return out
+
+
+def _joined_strings(path):
+    """Every string made by joining string pieces (side by side, or with +) in a file: a list of (line, [pieces])."""
+    with io.open(str(path), "rb") as fh:
+        toks = [t for t in tokenize.tokenize(fh.readline) if t.type not in (tokenize.NL, tokenize.COMMENT, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT)]
+    found, i = [], 0
+    while i < len(toks):
+        if toks[i].type == tokenize.STRING:
+            pieces, j = [toks[i].string], i + 1
+            while j < len(toks) and (toks[j].type == tokenize.STRING or (toks[j].string == "+" and j + 1 < len(toks) and toks[j + 1].type == tokenize.STRING)):
+                if toks[j].string == "+":
+                    j += 1
+                pieces.append(toks[j].string)
+                j += 1
+            if len(pieces) > 1:
+                found.append((toks[i].start[0], pieces))
+            i = j
+        else:
+            i += 1
+    return found
+
+
+def test_the_scope_nail_no_longer_lists_the_command_but_keeps_the_rest():
+    # TC-097, TC-098
+    text = GCB_CE_SRC.read_text(encoding="utf-8")
+    m = re.search(r're\.search\(r"([^"]*buckets create[^"]*)"', text)
+    assert m
+    options = m.group(1).split("|")
+    assert options == ["buckets create", "services enable", "service-accounts create", "storage rm"]
+    for f in _source_files():
+        assert not re.search(r"|".join(options), f.read_text(encoding="utf-8")), f.name
+
+
+def test_the_big_file_command_text_is_in_cloud_store_only():
+    # TC-099
+    holders = [f.name for f in _source_files() if "storage cp" in f.read_text(encoding="utf-8")]
+    assert holders == ["cloud_store.py"]
+
+
+def test_cloud_store_can_start_nothing():
+    # TC-100
+    tree = ast.parse(STORE_SRC.read_text(encoding="utf-8"))
+    banned = {"subprocess", "multiprocessing", "pty", "popen2", "commands", "ctypes", "pexpect", "sh", "shlex"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            assert not {a.name.split(".")[0] for a in node.names} & banned
+        elif isinstance(node, ast.ImportFrom):
+            assert (node.module or "").split(".")[0] not in banned
+            assert not {a.name for a in node.names} & {"system", "popen", "spawn", "fork", "startfile"}
+        elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "os":
+            assert not re.match(r"system|popen|exec|spawn|fork|startfile|posix_spawn", node.attr)
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            assert node.func.id not in ("exec", "eval", "compile", "__import__")
+
+
+def test_the_command_is_one_unsplit_literal():
+    # TC-101
+    assert '"gcloud storage cp ' in STORE_SRC.read_text(encoding="utf-8")
+    words = {"gcloud", "storage", "cp", "sto", "rage"}
+    for src in (STORE_SRC, DATASETS_SRC):
+        for line, pieces in _joined_strings(src):
+            bits = [p.strip("\"' ") for p in pieces]
+            assert not [b for b in bits if b in words] and "gcloud" not in "".join(bits), (src.name, line)
+
+
+def test_no_string_is_split_to_dodge_a_scan_in_this_file():
+    # TC-102
+    for line, pieces in _joined_strings(Path(__file__)):
+        joined = "".join(p.strip("\"'") for p in pieces)
+        assert not re.search(r"/home|/work|/scratch|gcp-sa|storage cp", joined), line
