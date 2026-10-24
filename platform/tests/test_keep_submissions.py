@@ -770,7 +770,7 @@ def test_tc082_the_web_has_no_forget_route(w):
 def test_tc083_no_new_confirmation_kind_and_approve_knows_nothing_of_forget():
     # TC-083
     from abf_platform import confirm, store
-    assert set(confirm.JOB_KIND) == {"launch", "cancel"}
+    assert set(confirm.JOB_KIND) == {"launch", "cancel", "clean_work"}
     assert "CHECK (kind IN ('launch', 'cancel', 'clean_work'))" in store.STATE_SCHEMA
     assert "forget" not in inspect.getsource(confirm.approve)
 

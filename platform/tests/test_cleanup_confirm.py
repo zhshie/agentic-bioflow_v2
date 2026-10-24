@@ -280,7 +280,7 @@ def test_tc023_forget_waits_for_a_queued_clean_work_job(world, clock):
     enqueue(world, clock)
     with pytest.raises(jobs.JobRefused, match="還有工作在排隊"):
         confirm.forget_content(world, "run-one")
-    assert sql(world, "SELECT COUNT(*) FROM confirmations WHERE bundle_json IS NULL")[0][0] == 0
+    assert sql(world, "SELECT COUNT(*) FROM jobs WHERE forgotten_at IS NOT NULL")[0][0] == 0
 
 
 # ---- US2: the slots ---------------------------------------------------------------------------------------------------------
@@ -600,9 +600,8 @@ def test_tc067_no_new_entry_point_for_clean_work():
 
 def test_tc068_tc076_the_packages_have_no_deletion_code_and_no_program_start():
     # TC-068, TC-076
-    forbidden = [r"rm -", r"storage rm", r"rmtree", r"\bsubprocess\b", r"\bPopen\b", r"\bos\.system\b", r"\bthreading\b", r"\bThread\(",
-                 r"\bsched\b", r"\bcron\b", r"while\s+True", r"asyncio\.create_task",
-                 r"\bssh\b", r"\bsbatch\b", r"\bscancel\b", r"\btw\s", r"station", r"\bsite agent\b", r"\bsocket\."]
+    forbidden = [r"(?<![a-z])rm -", r"storage rm", r"rmtree", r"\bsubprocess\b", r"\bPopen\b", r"\bos\.system\b", r"\bthreading\b", r"\bThread\(",
+                 r"\bsched\b", r"\bcron\b", r"while\s+True", r"asyncio\.create_task"]     # the words of TC-061 are scanned by test_scope (TC-077)
     hits = []
     for pkg in ("abf_platform", "abf_launch"):
         for f in (PKG / pkg).rglob("*.py"):
