@@ -4,3 +4,4 @@
 - [x] GREEN: platform/abf_platform/cloud_store.py (locations, prefix rule, one-line command, streaming core) and the keyword `destination=None` on the three functions in actions/datasets.py
 - [x] docs/TESTING.md: "Datasets in a cloud bucket (cloud-upload)" section; says the end-to-end check waits for the byte-channel task
 - Manual TCs (082, 083, 084, 085, 086, 093, 094) are for the verifier; no migration needed (datasets table untouched, cloud places live in the existing files_json path).
+- [x] ruling three: test_gcb_ce regex drops storage cp; cloud_store phrase is one literal; test_cloud_upload TC-097..102 added, split strings removed
