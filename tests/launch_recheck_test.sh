@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 fails=0
 
-mkdir "$TMP/scripts"; cp "$ROOT"/scripts/* "$TMP/scripts/" 2>/dev/null
+mkdir "$TMP/scripts"; cp -r "$ROOT"/scripts/. "$TMP/scripts/"
 P="$TMP/scripts/launch_recheck.sh"
 cat > "$TMP/scripts/agent_ctl.sh" <<STUB
 #!/bin/bash
@@ -113,7 +113,7 @@ else echo "FAIL: order"; fails=$((fails+1)); fi
 
 # T8 / TC-032,033
 head70=$(head -70 "$SK")
-tail400=$(grep -A40 're-checks the two things that can die while you work' <<<"$head70" | tr '\n' ' ' | sed 's/.*re-checks the two things that can die while you work//' | cut -c1-400)
+tail400=$(head -70 "$SK" | tr '\n' ' ' | sed 's/  */ /g; s/.*re-checks the two things that can die while you work//' | cut -c1-400)
 has "T8 gate sentence now says which reach it covers" 'reach' "$tail400"
 n=$(grep -o 'launch_recheck\.sh' "$SK" | wc -l)
 printf '%-62s ' "T8 launch_recheck.sh named at least twice"

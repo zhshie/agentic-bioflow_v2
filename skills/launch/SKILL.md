@@ -58,9 +58,12 @@ cannot carry it - which is how a dead outputs reader took out a launch once
 (`docs/PITFALLS.md`).
 
 The launch gate (`hooks/confirm_launch.sh`) re-checks the two things that can
-die while you work. Step 0 is the earlier and wider check: it also covers
-`LAB_RUNS_DIR`, the resource contract, and whether the compute environment is
-AVAILABLE - none of which the gate can see.
+die while you work, but only when `reach` is `local` or `LAB_RUNS_DIR` is set in
+the shell; on `ssh` and `none` deployments it stays silent on purpose (a hook
+has a 10-second limit). So the re-check just before submitting is step 8's
+`scripts/launch_recheck.sh`, not the gate. Step 0 is the earlier and wider
+check: it also covers `LAB_RUNS_DIR`, the resource contract, and whether the
+compute environment is AVAILABLE - none of which the gate can see.
 
 ## Steps
 
@@ -523,7 +526,25 @@ AVAILABLE - none of which the gate can see.
    run, and if not, that the user declined it — a silent default is exactly
    what the facts above exist to prevent.
 
-8. **Launch**, then report the run ID and the Platform URL.
+   Tell the user that the site is checked once more just before submitting
+   (step 8, `scripts/launch_recheck.sh`), because step 0 may be a long time ago.
+
+8. **Launch** (after one last site check), then report the run ID and the Platform
+   URL.
+
+   After the user says 確認執行 and in the same Bash turn, run
+   `. scripts/env.sh && scripts/launch_recheck.sh` before the `tw launch` call. It
+   asks the site again whether the egress channel and the outputs reader
+   (Tower Agent) are alive; step 0 may be many minutes old and the reader can
+   die in between (issue #7). If any line says `FAIL`, **do not submit**. Show
+   the user that line as printed, say that it went down after step 0, and
+   give the repair command it names (for the agent:
+   `scripts/on_site.sh --script scripts/agent_ctl.sh start`; the launch gate
+   asks the user to approve starting it). Never change `agent_connection` or
+   any other identity setting yourself to get past it. Once repaired, run the
+   check again; when every line is `OK`, submit the **same** command the user
+   already confirmed - it has not changed, so it needs no second confirmation.
+   Do not restart or resubmit anything on your own.
 
    **Do not assume this is the only run the user wants going.** Tell them
    plainly that this one is submitted and being watched, and that they can
