@@ -1,13 +1,14 @@
 # Quarantine list for tests/run_all.sh --retry-failed-once (CI runs with it).
 #
 # A test file that fails the first run but passes the retry is reported as FLAKY.
-# CI stays red for a FLAKY file unless it is listed here. Listing is a loan, not
-# a fix: every line needs an issue and an expiry at most 14 days from the day it
-# is checked, and an expired line turns the run red by itself.
+# CI stays red for a FLAKY file unless it is listed here. Listing is a loan, not a fix: every line needs an issue and two dates,
+# and an expired line turns the run red by itself. Each term is at most 14 days; from since the total is at most 28 days, so an entry can be renewed only once.
 #
-# One line per file, three columns separated by spaces:
-#   tests/<name>.sh <issue> <YYYY-MM-DD>
+# One line per file, four columns separated by spaces:
+#   tests/<name>.sh <issue> <expiry YYYY-MM-DD> <since YYYY-MM-DD>
 # issue: #<number> or https://github.com/<owner>/<repo>/issues/<number>
+# since: the date this file was first quarantined; do not change it when you renew the entry.
 # A file that fails twice is a real failure and is never excused by this list.
 # platform_test.sh, platform_shard_2_test.sh, platform_shard_3_test.sh and platform_clock_test.sh may not be listed (the four wrap the whole platform suite; no other file does).
 # Check the list without running any test: bash tests/run_all.sh --check-quarantine
+# since is typed by hand: nothing can prove it was not changed, and setting it to today is just another way to renew. It cannot be stopped here, but it shows up on the same line in the pull request diff, where a reviewer can see it. Checking git history would be the real guard, but it is not reliable in a shallow CI clone, so this is not done.
