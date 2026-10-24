@@ -1,7 +1,8 @@
 # Nothing existing: pairing FASTQ names into a samplesheet, the 2 GB web limit and the Datasets table are this platform's own rules (spec 012c, ADR 0009 point 5, ADR 0010); no library knows them, and this reads and writes no file content.
 """Datasets (spec 012c): pair FASTQ names into a samplesheet, say whether the web may take an upload, and keep a Dataset - a name, a
 version, a samplesheet and the places of its files. The platform records names and places only; it never reads, copies or
-stores a file (the bytes go straight to the person's own folder on the cluster, ADR 0010).
+stores a file (the bytes go straight to the person's own folder on the cluster, ADR 0010 - or, for a cloud destination, into the
+person's own prefix of the lab's bucket, written by the agent on the platform host and never by this module).
 
 A Dataset describes inputs. It has no status and no run: it starts nothing and is not a second copy of any run's state.
 Every function takes the platform path first and `caller=` (None = the terminal, which sees everything). Over HTTP a person
@@ -16,7 +17,7 @@ import time
 
 from abf_launch import build
 
-from .. import compute_envs, store
+from .. import cloud_store, compute_envs, store
 
 WEB_UPLOAD_LIMIT = 2_000_000_000        # bytes, per file, decimal: what the browser reports for one file
 SAMPLESHEET_LIMIT = 1_048_576           # 1 MiB
@@ -109,6 +110,38 @@ def pair_fastq(files):
     return {"pairs": pairs, "unpaired": unpaired, "csv": out.getvalue()}
 
 
+# ---- a cloud destination ---------------------------------------------------------------------------------------------------
+
+def _cloud_target(platform_path, caller, destination):
+    """((environment, prefix), None) for the Google Batch environment named `destination` that the caller may use, else (None, message).
+    An environment that is somebody else's answers like one that does not exist. The environment need not be available: this only
+    records a place."""
+    owner = caller.user_id if caller is not None else None
+    ce = compute_envs.get(platform_path, destination, owner=owner) if isinstance(destination, str) else None
+    if ce is None:
+        return None, "找不到計算環境：%s (compute environment not found: %s)" % (destination, destination)
+    try:
+        prefix = cloud_store.upload_prefix(ce, caller.name if caller is not None else None)
+    except cloud_store.CloudPathError as e:
+        return None, str(e)
+    return (ce, prefix), None
+
+
+def _cloud_place(url, target):
+    """None when `url` lies in the caller's own prefix of the environment's bucket, else a plain message that names only that prefix."""
+    ce, prefix = target
+    try:
+        bucket, _ = cloud_store.parse_gs(url)
+    except cloud_store.CloudPathError as e:
+        return str(e)
+    if bucket != cloud_store.workdir_bucket(ce):
+        return ("bucket 必須就是這個計算環境 workDir 所在的 bucket：%s (the bucket must be the one of the environment's workDir)"
+                % cloud_store.workdir_bucket(ce))
+    if not cloud_store.inside_prefix(url, prefix):
+        return "位置必須在你自己的前綴裡：%s (locations must lie inside your own prefix)" % prefix
+    return None
+
+
 # ---- the caller's own folder ---------------------------------------------------------------------------------------------
 
 def _within(platform_path, caller, name):
@@ -129,13 +162,31 @@ def _within(platform_path, caller, name):
     return real, None
 
 
-def draft_samplesheet(platform_path, files, *, caller=None):
+def draft_samplesheet(platform_path, files, *, caller=None, destination=None):
     """Pair the named files into a samplesheet draft. Every name must lie in the caller's own folder. Writes nothing: the draft
-    exists only in the answer, for the person to check before it is registered."""
+    exists only in the answer, for the person to check before it is registered. With `destination` (the name of a Google Batch
+    environment) a name is a gs:// location or a single file name, and must lie in the caller's own prefix of that bucket."""
     if not isinstance(files, list):
         return _no("files 必須是檔名清單 (files must be a list of names)")
+    target = None
+    if destination is not None:
+        target, problem = _cloud_target(platform_path, caller, destination)
+        if problem:
+            return _no(problem)
     real = []
     for name in files:
+        if target is not None:
+            if not isinstance(name, str) or not name:
+                return _no("檔名不正確 (not a usable file name)")
+            try:
+                path = name if name.startswith("gs://") else cloud_store.object_url(target[0], caller.name if caller is not None else None, name)
+            except cloud_store.CloudPathError as e:
+                return _no(str(e))
+            problem = _cloud_place(path, target)
+            if problem:
+                return _no(problem)
+            real.append(path)
+            continue
         path, problem = _within(platform_path, caller, name)
         if problem:
             return _no(problem)
@@ -146,16 +197,29 @@ def draft_samplesheet(platform_path, files, *, caller=None):
 
 # ---- the web limit -----------------------------------------------------------------------------------------------------------
 
-def check_web_upload(platform_path, sizes, *, caller=None):
+def check_web_upload(platform_path, sizes, *, caller=None, destination=None):
     """Say whether the web may take these files: `sizes` is {name: bytes} as the browser reports it. The limit is per file. A file
     over it is not taken; the answer lists it and gives one command to run on the person's own computer, plus the other way
-    (the file is already on the cluster: copy it into that same folder)."""
+    (the file is already on the cluster: copy it into that same folder). With `destination` the same rule holds for a cloud bucket:
+    the command is a copy into the caller's own prefix, and the other way is to put the files into that prefix."""
     if not isinstance(sizes, dict) or not all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v >= 0
                                               for k, v in sizes.items()):
         return _no("sizes 必須是 檔名 → 位元組數 (sizes must map a file name to a number of bytes)")
+    target = None
+    if destination is not None:
+        target, problem = _cloud_target(platform_path, caller, destination)
+        if problem:
+            return _no(problem)
     over = [name for name, size in sizes.items() if size > WEB_UPLOAD_LIMIT]
     if not over:
         return {"ok": True, "accepted": list(sizes), "over": []}
+    if target is not None:
+        command = cloud_store.big_file_command(target[0], caller.name if caller is not None else None)
+        message = ("網頁一個檔案最多收 2 GB，這些檔案太大：%s。請在你的電腦上跑這一行指令上傳：%s 。"
+                   "如果檔案已經在這個 bucket 裡，就把它們放進同一個前綴：%s "
+                   "(the web takes at most 2 GB per file; run the command on your computer, or, if the files are already in this bucket, "
+                   "put them into that same prefix)") % (", ".join(over), command, target[1])
+        return _no(message, over=over, command=command, accepted=[n for n in sizes if n not in over])
     if caller is None:
         dest = "<你的上傳資料夾>/rawdata"
     else:
@@ -190,11 +254,12 @@ def _cells(text):
     return [h.strip() for h in rows[0]], rows[1:]
 
 
-def register_dataset(platform_path, *, name, version, samplesheet, files, caller=None, clock=time.time):
+def register_dataset(platform_path, *, name, version, samplesheet, files, caller=None, clock=time.time, destination=None):
     """Keep a Dataset: `name` and `version` (letters, digits . _ -, 1 to 64), the samplesheet text and `files` = [{path, size_bytes?}].
     Every file must lie in the caller's own folder and every path in the samplesheet must be one of those files. No file is
     read, no URL and nothing that looks like a credential is kept, and a (owner, name, version) that exists is never changed. This saves
-    a description only; nothing is started."""
+    a description only; nothing is started. With `destination` (the name of a Google Batch environment) every file is a gs:// location
+    in the caller's own prefix of that bucket, none is a local path, and the samplesheet may name only those locations."""
     for label, value in (("名稱 name", name), ("版本 version", version)):
         if not isinstance(value, str) or not _NAME.match(value) or compute_envs.looks_like_credential(value):
             return _no("%s 只能用英數字、. _ -，長度 1 到 64，且不能像憑證 (%s may use letters, digits, . _ - only, 1 to 64 long, and must not look like a credential)"
@@ -205,12 +270,30 @@ def register_dataset(platform_path, *, name, version, samplesheet, files, caller
         return _no("樣本表太大，上限 1 MiB (the samplesheet is too large; the limit is 1 MiB)")
     if not isinstance(files, list) or not files:
         return _no("files 必須是檔案清單 [{path, size_bytes?}] (files must be a non-empty list)")
+    target = None
+    if destination is not None:
+        target, problem = _cloud_target(platform_path, caller, destination)
+        if problem:
+            return _no(problem)
     kept, known = [], set()
     for item in files:
         item = {"path": item} if isinstance(item, str) else item
         if not isinstance(item, dict) or "path" not in item:
             return _no("每個檔案都要有 path (every file needs a path)")
-        path, problem = _within(platform_path, caller, item["path"])
+        if target is not None:
+            path = item["path"]
+            if not isinstance(path, str) or not path:
+                return _no("檔名不正確 (not a usable file name)")
+            if compute_envs.looks_like_credential(path):
+                return _no("檔案路徑含像憑證的值，不收 (a file path holds something that looks like a credential)")
+            if not path.startswith("gs://"):
+                if _SCHEME.match(path):
+                    return _no("只收 gs:// 開頭的位置 (only gs:// locations are taken)")
+                return _no("一份資料集不能同時混本機路徑與雲端位置；選了雲端目的地，檔案都要是 gs:// 位置 "
+                           "(a dataset cannot mix local paths and cloud locations)")
+            problem = _cloud_place(path, target)
+        else:
+            path, problem = _within(platform_path, caller, item["path"])
         if problem:
             return _no(problem)
         if compute_envs.looks_like_credential(path):
@@ -231,6 +314,10 @@ def register_dataset(platform_path, *, name, version, samplesheet, files, caller
         return _no("樣本表缺少 %s 欄 (the samplesheet needs the column %s)" % (", ".join(missing), ", ".join(missing)))
     for row in rows:
         for cell in row:
+            if target is not None and cell.strip().startswith("gs://"):
+                if cell.strip() not in known:
+                    return _no("樣本表裡有檔案不在登記的檔案內 (the samplesheet names a file that is not among the registered files)")
+                continue
             if _SCHEME.match(cell.strip()):
                 return _no("樣本表含網址，不收；檔案要放進你的上傳資料夾 (the samplesheet holds a URL; put the files in your uploads folder)")
             if compute_envs.looks_like_credential(cell):
@@ -238,7 +325,11 @@ def register_dataset(platform_path, *, name, version, samplesheet, files, caller
     for row in rows:
         for column in ("fastq_1", "fastq_2"):
             if column in header and header.index(column) < len(row) and row[header.index(column)].strip():
-                path, problem = _within(platform_path, caller, row[header.index(column)].strip())
+                cell = row[header.index(column)].strip()
+                if target is not None:
+                    path, problem = cell, None
+                else:
+                    path, problem = _within(platform_path, caller, cell)
                 if problem or path not in known:
                     return _no("樣本表裡有檔案不在登記的檔案內 (the samplesheet names a file that is not among the registered files)")
     now = clock()

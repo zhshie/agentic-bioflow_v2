@@ -576,6 +576,22 @@ The automatic tests use fakes for the program runner, the detached start and the
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with the list under "Scope: files" in `specs/gcb-launch/plan.md`: nothing else is changed; `records.py`, `web*.py`, `agent.py` and the `hello` facts are untouched; no Slurm test file is touched. Of the C-1 tests (`test_gcb_ce.py`) only five places changed: the job kinds that are refused, the first line and name of the "never auto picked" test, the two patterns dropped from the "later slices" test, the documentation strings, and the one job kind that `test_refusals_are_plain_words` probes (`launch_nextflow` is allowed now, so it asks `list_site_files`, which is still refused; the plan's list did not name this one, see the ledger).
 
+## Datasets in a cloud bucket (cloud-upload): the maintainer and the reviewer check
+
+This task delivers the platform half only: a Dataset can be registered at `gs://` places, other people's places are refused, and a file over 2 GB gets a one-line command. **The end-to-end check (really sending a file into the bucket) has to wait for the byte-channel task; for now only registering and refusing can be checked.** The automatic tests use fakes and touch no network. The steps below call the functions in a Python shell on the platform host, with a Google Batch environment `gcb1` (workDir `gs://<bucket>/work`) that you own and a user name `<you>`.
+
+1. **Register a cloud Dataset.** Call `register_dataset(..., destination="gcb1", caller=<you>)` with two files `gs://<bucket>/uploads/<you>/a_R1.fastq.gz` and `.../a_R2.fastq.gz` and a samplesheet that names exactly those two. Check: the answer says `ok`, and `get_dataset` shows the same two `gs://` places and nothing else per file.
+2. **Somebody else's prefix.** Register a file at `gs://<bucket>/uploads/<another user>/a_R1.fastq.gz`. Check: it is refused, the sentence names only your own prefix `gs://<bucket>/uploads/<you>/`, and nothing is stored.
+3. **Another bucket.** Register a file in a bucket that is not the one of `workDir`. Check: it is refused and the sentence says the bucket must be the one of the environment's workDir.
+4. **Over 2 GB.** Call `check_web_upload(..., {"big_R1.fastq.gz": 2000000001}, destination="gcb1", caller=<you>)`. Check: it is refused, the answer holds one line that starts with `gcloud storage cp ` and ends at your prefix `.../uploads/<you>/rawdata/`, and the second sentence says to put files already in the bucket into the same prefix. Exactly 2000000000 bytes must be accepted.
+5. **Nothing else changed.** Without `destination` every call answers as before. Search the platform database, the logs and your terminal output for any piece of the key file (for example `private_key`). Check: nothing is found.
+
+**The reviewer.** Run `git diff --name-only <base>...HEAD`. Check: only `platform/abf_platform/actions/datasets.py`, `platform/abf_platform/cloud_store.py`, `platform/tests/test_cloud_upload.py`, `platform/tests/test_gcb_ce.py`, `docs/TESTING.md` and `specs/cloud-upload/*`; `actions/__init__.py`, `pipeline_launch.py`, `abf_launch/build.py`, `cli.py`, `store.py`, `deploy/`, `pyproject.toml` and `constraints.txt` are identical to the base.
+
+Then check the existing tests with `git diff <base>...HEAD -- platform/tests/`. Check: `test_datasets.py`, `test_gcb_launch.py`, `test_station_envs.py`, `test_guidance.py`, `test_scope.py` and `test_actions_layer.py` have no difference. `test_gcb_ce.py` is the one allowed exception, and only in one place: the regex in `test_nothing_of_the_later_slices_exists` loses `storage cp`; everything else in that file is unchanged, and no assertion is deleted, loosened or skipped.
+
+Last, look for split strings: run `grep -nE '"[^"]*" *\+ *"' platform/tests/test_cloud_upload.py` and read each hit. Check: no path or forbidden word is cut in two and joined again to dodge a scan (for example `/home` split); a path that is needed is made with `tmp_path`; the scans in `test_scope.py` and `test_datasets.py` still pass. A plain join that is not a dodge is fine.
+
 ## Launching a composed pipeline (017d): the maintainer runs one on nano4, the reviewer checks the diff
 
 The automatic tests use a fake site and no real Nextflow (the CI has none), so what Nextflow does with the project is checked once by a person. The run costs a few core-hours on nano4.
