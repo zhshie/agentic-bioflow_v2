@@ -60,6 +60,18 @@ def launched(rig, caller, run, pipeline="nf-core/ampliseq", **kw):
     return "id-" + run
 
 
+def launched_by_other(rig, caller, run, pipeline="nf-core/bobseq", params=None):
+    """A launch of a person who is not the owner of lab-a: on their own environment."""
+    from abf_launch import build
+    from abf_platform import actions
+    ce_name = rig.w.env_for(caller)
+    ce, bundle = build.prepare_launch(rig.state, ce=ce_name, pipeline=pipeline, revision="2.18.0", run_name=run,
+                                      samplesheet=str(area_sheet(rig.w, caller)), params=params or {}, owner=caller.user_id)
+    _, job_id = actions.launch(rig.state, ce, bundle, confirmed_by=actions.TERMINAL, caller=caller)
+    rig.hand_over(job_id, run)
+    rig.set_run(run, "failed")
+
+
 def ready(rig, name="ann"):
     user = rig.user(name)
     area_sheet(rig.w, user)
@@ -120,8 +132,7 @@ def test_gl02_used_before_lists_own_launches_newest_first(rig):
     launched(rig, ann, "run-r1")
     launched(rig, ann, "run-r2", pipeline="nf-core/rnaseq")
     launched(rig, ann, "run-r1b")
-    rig.w.env_for(bob)
-    rig.first("run-bob", caller=bob, samplesheet=area_sheet(rig.w, bob), status="failed", pipeline="nf-core/bobseq")
+    launched_by_other(rig, bob, "run-bob")
     c = login(rig, "ann")
     t = c.get("/launch?src=used").text
     rows = re.findall(r'<tr class="urow">(.*?)</tr>', t, re.S)
@@ -150,7 +161,7 @@ def test_gl02b_no_used_pipeline_opens_the_new_tab(rig):
     t = c.get("/launch").text
     assert 'data-tab="new" aria-current' in t
     new = steps(t)[2]["html"]
-    assert re.search(r'<form class="sform" method="get" action="/launch">', new)
+    assert re.search(r'<form class="lform" method="get" action="/launch">', new)
     assert re.search(r'<input [^>]*name="pipeline"', new) and re.search(r'<input [^>]*name="revision"[^>]*required', new)
     assert "搜尋全部 nf-core 之後開放" in new and 'type="search"' not in new
 
@@ -255,8 +266,7 @@ def test_gl07_param_routes(rig):
     launched(rig, ann, "run-a", params={"a": 1})
     launched(rig, ann, "run-b", params={"a": 2})
     launched(rig, ann, "run-o", pipeline="nf-core/rnaseq")
-    rig.w.env_for(bob)
-    rig.first("run-bob", caller=bob, samplesheet=area_sheet(rig.w, bob), status="failed", params={"secret": "zzz"})
+    launched_by_other(rig, bob, "run-bob", params={"secret": "zzz"})
     base = SEL + "&ce_name=lab-a&samplesheet=samples.csv"
     five = steps(c.get(base).text)[5]["html"]
     assert len(re.findall(r'<input type="radio" name="route"', five)) == 3
@@ -280,7 +290,6 @@ def test_gl07_param_routes(rig):
 def test_gl08_post_unchanged(rig):
     # TC-085, TC-050, TC-084, TC-051
     ann, c = ready(rig)
-    set_env(rig, "lab-a", status="invalid", message="down")
     t = c.get(SEL).text
     seven = steps(t)[7]["html"]
     assert re.search(r'<form class="lform" method="post" action="/launch"><input type="hidden" name="csrf"', seven)
@@ -292,8 +301,17 @@ def test_gl08_post_unchanged(rig):
     req = actions.describe_request(rig.state, rid)
     for word in ("nf-core/ampliseq", "2.18.0", "web-run", "min_reads", "100"):
         assert word in req["summary"], word
+
+
+def test_gl08b_a_failed_check_does_not_stop_the_page_only_the_action_decides(rig):
+    # TC-050, TC-051: the page lists the failed check in step 7 and still posts; the action (as before) is the one that refuses
+    _, c = ready(rig)
+    set_env(rig, "lab-a", config={"sitePipelines": [{"pipeline": "nf-core/ampliseq", "revision": "1.0.0", "module": "m", "home": "/h"}]})
     t7 = steps(c.get(SEL + "&samplesheet=samples.csv&ce_name=lab-a").text)[7]["html"]
-    assert "站台連線" in t7 and "✗" in t7
+    assert "管線已登記" in t7 and "✗" in t7 and 'action="/launch"' in t7
+    before = pending(rig)
+    r = c.post("/launch", data=form_values(rig, c, "ann"))
+    assert r.status_code == 400 and "未送出" in r.text and pending(rig) == before and current(r.text) == [7]
 
 
 def test_gl09_post_error_rerenders_at_the_failing_step(rig):

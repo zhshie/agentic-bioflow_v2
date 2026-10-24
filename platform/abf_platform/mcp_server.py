@@ -78,6 +78,13 @@ def build_server(index_path, platform_path=None):
     async def list_site_files(ctx: Context, compute_env: str, path: str) -> dict:
         return await actions.list_site_files(platform_path, compute_env, path, caller=_caller(ctx))
 
+    @server.tool(name="list_used_pipelines", annotations=_READ_ONLY,
+                 description="The pipelines you have launched before, newest first (at most 20): one entry per pipeline and revision, "
+                             "with the name of its latest run, when it was launched and on which compute environment. "
+                             "Only your own launches; a run whose content was forgotten is left out.")
+    def list_used_pipelines(ctx: Context) -> dict:
+        return actions.list_used_pipelines(platform_path, caller=_caller(ctx))
+
     @server.tool(name="run_outputs", annotations=_READ_ONLY,
                  description="What one run of yours produced: the files and folders in <run folder>/results on the site, by the run's id. "
                              "It never waits for the site: it answers state loading (a question was queued, ask again in a few seconds), "

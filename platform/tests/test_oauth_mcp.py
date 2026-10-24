@@ -326,7 +326,7 @@ def test_tcf07_the_tools_are_the_same_ten_and_none_can_say_yes(w, rig):
     with Served(w) as s:
         tools, _ = http_calls(s.url, out["access_token"], [])
     names = sorted(t.name for t in tools)
-    assert names == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "read_task_log", "relaunch", "resume", "run_outputs"]
+    assert names == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "list_used_pipelines", "read_task_log", "relaunch", "resume", "run_outputs"]
     assert not [n for n in names if re.search(r"approve|confirm|oauth|login|consent", n)]
     for t in tools:
         props = " ".join((t.input_schema or {}).get("properties", {}).keys())
