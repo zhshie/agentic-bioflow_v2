@@ -804,7 +804,7 @@ envq() { # envq <label> <expect has|lacks> <command>: does the ask name the comm
   local j o got
   j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$3")
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
-  got=lacks; grep -qF "THIS COMMAND ALSO SETS NF_RELAY_PEER_PREFIXES" <<<"$o" && got=has
+  got=lacks; grep -qF "THIS COMMAND ALSO MENTIONS NF_RELAY_PEER_PREFIXES=" <<<"$o" && got=has
   printf '%-58s ' "$1"
   [ "$got" = "$2" ] && echo ok || { echo "FAIL: expected $2, got $got <<${o:0:80}>>"; fails=$((fails+1)); }
 }
@@ -823,24 +823,24 @@ envq_order() { # envq_order <label> <command> <first> <second>: <first> appears 
   printf '%-58s ' "$1"
   if [[ $o == *"$3"* && $o == *"$4"* && ${#a} -lt ${#b} ]]; then echo ok; else echo "FAIL: order"; fails=$((fails+1)); fi
 }
-PW_SETS='THIS COMMAND ALSO SETS NF_RELAY_PEER_PREFIXES='
+PW_SETS='THIS COMMAND ALSO MENTIONS NF_RELAY_PEER_PREFIXES='
 envq "PEER-1 an env prefix on a relay start is named"      has   'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start'
 envq "PEER-2 ...through env"                               has   'env NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh restart'
 envq "PEER-3 ...through export"                            has   'export NF_RELAY_PEER_PREFIXES=25a-cpn; bash scripts/egress_ctl.sh start'
-envq_txt "PEER-3 value stops before the semicolon" 'export NF_RELAY_PEER_PREFIXES=25a-cpn; bash scripts/egress_ctl.sh start' "${PW_SETS}25a-cpn, which changes"
+envq_txt "PEER-3 value stops before the semicolon" 'export NF_RELAY_PEER_PREFIXES=25a-cpn; bash scripts/egress_ctl.sh start' "Text after each NF_RELAY_PEER_PREFIXES= as written (first 3 and last 1 of them): [25a-cpn]; 1 mention in total."
 envq "PEER-4 an empty value is still named"                has   'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start'
-envq_txt "PEER-4 empty value is shown as empty" 'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start' "${PW_SETS}, which changes"
+envq_txt "PEER-4 empty value is shown as empty" 'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start' "as written (first 3 and last 1 of them): []; 1 mention in total."
 envq "PEER-5 a quoted script path still triggers"          has   'NF_RELAY_PEER_PREFIXES=zzz-aaa bash "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start'
 envq "PEER-6 both variables: peer warning present"         has   'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start'
 envp "PEER-6 both variables: extra warning present"        has   'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start'
 envq_order "PEER-6 extra warning comes before peer warning" 'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start' "overrides this deployment's list" "$PW_SETS"
-envq_txt "PEER-7 the value is shown in the warning" 'NF_RELAY_PEER_PREFIXES=25a-cpn,25a-lgn bash scripts/egress_ctl.sh start' "${PW_SETS}25a-cpn,25a-lgn, which changes"
-envq_txt "PEER-7 warning wording: which hosts" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "which changes which hosts may connect to the relay"
-envq_txt "PEER-7 warning wording: default list" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "instead of the deployment's setting (default cpn,gpn,bgm,lgn,localhost)"
+envq_txt "PEER-7 the value is shown in the warning" 'NF_RELAY_PEER_PREFIXES=25a-cpn,25a-lgn bash scripts/egress_ctl.sh start' "as written (first 3 and last 1 of them): [25a-cpn,25a-lgn]; 1 mention in total."
+envq_txt "PEER-7 warning wording: which hosts" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "for the hosts that may connect, instead of the deployment's setting"
+envq_txt "PEER-7 warning wording: default list" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "falls back to the built-in one"
 envq_txt "PEER-7 warning wording: show user" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "Show the user the prefixes it names."
 envp "PEER-7 peer-only does not use the extra wording"      lacks 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start'
 envq "PEER-8 a plain relay start does not say it"          lacks 'bash scripts/egress_ctl.sh start'
-envq "PEER-9 through on_site.sh it is not named"           lacks 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/on_site.sh egress_ctl.sh start'
+envq "PEER-9 through on_site.sh it is named too"           has   'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/on_site.sh egress_ctl.sh start'
 envq "PEER-10 the EXTRA-only case does not mention peers"  lacks 'NF_RELAY_EXTRA_DOMAINS=evil.org bash scripts/egress_ctl.sh start'
 envq "PEER-11 a stop does not say it"                      lacks 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh stop'
 idg "PEER-12 start still asks"                             ask   'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start'
@@ -851,6 +851,127 @@ idg "PEER-12 quoted path still asks"                       ask   'NF_RELAY_PEER_
 idg "PEER-12 both variables still ask"                     ask   'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start'
 idg "PEER-12 via on_site.sh still asks"                    ask   'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/on_site.sh egress_ctl.sh start'
 idg "PEER-12 plain start still asks"                       ask   'bash scripts/egress_ctl.sh start'
+# relay-warning-hardening (ruling 5): if the command text mentions <VAR>= anywhere, the ask
+# warns, copies out the text after each <VAR>= as written, and does not say which one takes
+# effect; no special case for scripts/on_site.sh. TC numbers are those of the task's test-case file.
+# envw <label> <var> <has|lacks> <command> [checks...]: "has" = the warning area (the decoded
+# additionalContext, which does not carry the command) has this variable's own header
+# `THIS COMMAND ALSO MENTIONS <var>=` and the warning area contains each check; a check that
+# starts with ! must NOT be in the warning area. The closing sentence is always checked on a "has".
+envw() {
+  local j o got lbl=$1 v=$2 want=$3 cmd=$4 c bad=""
+  shift 4
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$cmd")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
+  got=lacks; grep -qF -- "THIS COMMAND ALSO MENTIONS $v=" <<<"$o" && got=has
+  if [ "$want" = has ]; then
+    grep -qF -- "Read the whole command; the value that takes effect depends on the shell." <<<"$o" || bad="missing the closing sentence"
+    ! grep -qF -- "THIS COMMAND ALSO SETS" <<<"$o" || bad="still says SETS"
+  fi
+  for c in "$@"; do
+    if [ "${c:0:1}" = '!' ]; then ! grep -qF -- "${c:1}" <<<"$o" || bad="has <<${c:1}>>"
+    else grep -qF -- "$c" <<<"$o" || bad="missing <<$c>>"; fi
+  done
+  printf '%-58s ' "$lbl"
+  if [ "$got" != "$want" ]; then echo "FAIL: expected $want, got $got <<${o:0:100}>>"; fails=$((fails+1))
+  elif [ -n "$bad" ]; then echo "FAIL: $bad in <<${o:0:400}>>"; fails=$((fails+1))
+  else echo ok; fi
+}
+for V in NF_RELAY_EXTRA_DOMAINS NF_RELAY_PEER_PREFIXES; do
+  S="${V#NF_RELAY_}"
+  envw "TC-001 $S one mention"                  $V has   "$V=aaaval bash scripts/egress_ctl.sh start" "aaaval"
+  envw "TC-002 $S decoy echo before"            $V has   "echo $V=okval; $V=evilval bash scripts/egress_ctl.sh start" "okval" "evilval" "2 mentions in total"
+  envw "TC-003 $S two in one segment"           $V has   "$V=okval $V=evilval bash scripts/egress_ctl.sh start" "okval" "evilval" "2 mentions in total"
+  envw "TC-004 $S decoy after"                  $V has   "$V=okval bash scripts/egress_ctl.sh start; echo $V=evilval" "okval" "evilval" "2 mentions in total"
+  envw "TC-005 $S in a comment"                 $V has   "bash scripts/egress_ctl.sh start # $V=evilval" "evilval"
+  envw "TC-006 $S export"                       $V has   "export $V=evilval; bash scripts/egress_ctl.sh start" "evilval"
+  envw "TC-007 $S env restart"                  $V has   "env $V=evilval bash scripts/egress_ctl.sh restart" "evilval"
+  envw "TC-007 $S nohup"                        $V has   "nohup $V=evilval bash scripts/egress_ctl.sh start" "evilval"
+  envw "TC-007 $S sudo"                         $V has   "sudo $V=evilval bash scripts/egress_ctl.sh start" "evilval"
+  envw "TC-007 $S nohup env"                    $V has   "nohup env $V=evilval bash scripts/egress_ctl.sh start" "evilval"
+  envw "TC-008 $S in an echo's quotes"          $V has   "echo '$V=zzval'; bash scripts/egress_ctl.sh start" "zzval" "1 mention"
+  envw "TC-009 $S on the first line"            $V has   $'echo '"$V"$'=evilval\nbash scripts/egress_ctl.sh start' "evilval"
+  envw "TC-010 $S double-quoted value kept as written" $V has "$V=\"qq1 rr2\" bash scripts/egress_ctl.sh start" '"qq1' "!qq1 rr2"
+  envw "TC-010 $S single-quoted value kept as written" $V has "$V='qq1 rr2' bash scripts/egress_ctl.sh start" "'qq1" "!qq1 rr2"
+  envw "TC-010 $S escaped quote does not eat the line" $V has "$V=a\\\"b c bash scripts/egress_ctl.sh start" 'a\"b' '!a\"b c'
+  envw "TC-011 $S unquoted \$( ) stops at the space" $V has "$V=\$(cat /tmp/p) bash scripts/egress_ctl.sh start" '$(cat' '!$(cat /tmp/p)' "!computed at run time"
+  envw "TC-011 $S quoted \$( )"                 $V has   "$V=\"\$(cat /tmp/p)\" bash scripts/egress_ctl.sh start" '$(cat' "!computed at run time"
+  envw "TC-012 $S \$P is copied, not expanded"  $V has   "$V=\$P bash scripts/egress_ctl.sh start" '$P'
+  envw "TC-013 $S stops at ;"                   $V has   "$V=aa1;bb2 bash scripts/egress_ctl.sh start" "aa1" "!bb2"
+  envw "TC-013 $S stops at &"                   $V has   "$V=cc3&dd4 bash scripts/egress_ctl.sh start" "cc3" "!dd4"
+  envw "TC-013 $S stops at |"                   $V has   "$V=ee5|ff6 bash scripts/egress_ctl.sh start" "ee5" "!ff6"
+  envw "TC-014 $S empty value"                  $V has   "$V= bash scripts/egress_ctl.sh start" "1 mention"
+  envw "TC-015 $S one mention is counted"       $V has   "$V=only1 bash scripts/egress_ctl.sh start" "only1" "1 mention"
+  envw "TC-016 $S 4 mentions: all shown"        $V has   "$V=m1x $V=m2x $V=m3x $V=m4x bash scripts/egress_ctl.sh start" "m1x" "m2x" "m3x" "m4x" "4 mentions in total"
+  envw "TC-017 $S 5 mentions: the 4th is not"   $V has   "$V=m1x $V=m2x $V=m3x $V=m4x $V=m5x bash scripts/egress_ctl.sh start" "m1x" "m2x" "m3x" "m5x" "5 mentions in total" "!m4x"
+  envw "TC-018 $S 6 mentions: 4th and 5th not"  $V has   "$V=m1x $V=m2x $V=m3x $V=m4x $V=m5x $V=m6x bash scripts/egress_ctl.sh start" "m1x" "m2x" "m3x" "m6x" "6 mentions in total" "!m4x" "!m5x"
+  X120=$(printf 'x%.0s' $(seq 1 120))
+  envw "TC-019 $S cut at 120 characters"        $V has   "$V=${X120}${X120}xx bash scripts/egress_ctl.sh start" "$X120" "!${X120}x"
+  envw "TC-020 $S MY_ prefix still warns"       $V has   "MY_$V=zzval bash scripts/egress_ctl.sh start" "zzval"
+  envw "TC-022 $S through on_site.sh"           $V has   "$V=okval bash scripts/on_site.sh egress_ctl.sh start" "okval"
+  envw "TC-023 $S on_site.sh --script"          $V has   "$V=okval scripts/on_site.sh --script scripts/egress_ctl.sh start" "okval"
+  envw "TC-024 $S on_site.sh env"               $V has   "scripts/on_site.sh env $V=evilval egress_ctl.sh start" "evilval"
+  envw "TC-024 $S env then on_site.sh"          $V has   "env $V=okval bash scripts/on_site.sh egress_ctl.sh start" "okval"
+  envw "TC-024 $S sh on_site.sh"                $V has   "$V=okval sh scripts/on_site.sh egress_ctl.sh start" "okval"
+  envw "TC-025 $S on_site.sh in another command" $V has  "bash scripts/on_site.sh status; $V=evilval bash scripts/egress_ctl.sh start" "evilval"
+  envw "TC-026 $S trailing on_site.sh comment"  $V has   "$V=evilval bash scripts/egress_ctl.sh start # on_site.sh" "evilval"
+  envw "TC-027 $S on_site.sh comment on a prior line" $V has $'# on_site.sh\n'"$V"$'=evilval bash scripts/egress_ctl.sh start' "evilval"
+  envw "TC-028 $S on_site.sh quoted payload"    $V has   "scripts/on_site.sh '$V=evilval bash scripts/egress_ctl.sh start'" "evilval"
+  envw "TC-029 $S two start points"             $V has   "scripts/on_site.sh egress_ctl.sh start; $V=evilval bash scripts/egress_ctl.sh start" "evilval"
+  envw "TC-030 $S no mention: not named"        $V lacks "scripts/on_site.sh egress_ctl.sh start"
+  idg "TC-030 $S ...and it still asks"          ask      "scripts/on_site.sh egress_ctl.sh start"
+  envw "TC-059 $S other variables are not named" $V lacks "NF_RELAY_PORT=1 bash scripts/egress_ctl.sh start"
+  envw "TC-059 $S NF_RELAY_EXTRA_NOTE is not named" $V lacks "NF_RELAY_EXTRA_NOTE=x bash scripts/egress_ctl.sh start"
+  idg "TC-038 $S decoy still asks"              ask      "echo $V=okval; $V=evilval bash scripts/egress_ctl.sh start"
+  idg "TC-039 $S on_site.sh elsewhere still asks" ask    "bash scripts/on_site.sh status; $V=evilval bash scripts/egress_ctl.sh start"
+  idg "TC-040 $S on_site.sh payload still asks" ask      "scripts/on_site.sh '$V=evilval bash scripts/egress_ctl.sh start'"
+done
+envq_order "TC-021 EXTRA block before PEER block" 'NF_RELAY_EXTRA_DOMAINS=e1v NF_RELAY_PEER_PREFIXES=p1v NF_RELAY_PEER_PREFIXES=p2v bash scripts/egress_ctl.sh start' "overrides this deployment's list" "$PW_SETS"
+envw "TC-021 both: EXTRA part"  NF_RELAY_EXTRA_DOMAINS has 'NF_RELAY_EXTRA_DOMAINS=e1v NF_RELAY_PEER_PREFIXES=p1v NF_RELAY_PEER_PREFIXES=p2v bash scripts/egress_ctl.sh start' "[e1v]; 1 mention in total" "[p1v] [p2v]; 2 mentions in total"
+envw "TC-021 both: PEER part"   NF_RELAY_PEER_PREFIXES has 'NF_RELAY_EXTRA_DOMAINS=e1v NF_RELAY_PEER_PREFIXES=p1v NF_RELAY_PEER_PREFIXES=p2v bash scripts/egress_ctl.sh start' "p1v" "p2v" "2 mentions in total"
+# TC-031/032/033/035/037: the PEER sentences; the default list is not written into the hook
+envq_txt "TC-031 invalid entries are dropped" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "Entries that are not valid are dropped"
+envq_txt "TC-032 falls back to the built-in list" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "falls back to the built-in one"
+envq_txt "TC-037 points at the relay's own startup line" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "the relay's startup line"
+for c in 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' 'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start'; do
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$c")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  printf '%-58s ' "TC-033 the default list is not hard-coded"
+  if [ -n "$o" ] && ! grep -qF -- 'cpn,gpn,bgm,lgn,localhost' <<<"$o"; then echo ok; else echo "FAIL"; fails=$((fails+1)); fi
+done
+envq_txt "TC-035 PEER empty-value sentence kept" 'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start' "An empty value is ignored by the relay, which then uses the deployment's relay_peer_prefixes setting."
+envw "TC-035 EXTRA has no such sentence" NF_RELAY_EXTRA_DOMAINS has 'NF_RELAY_EXTRA_DOMAINS= bash scripts/egress_ctl.sh start' "!An empty value is ignored by the relay"
+# TC-048..051: cost. A command is fed through a file (an argument is limited in size); the
+# hook must answer in time (its timeout lets a command through) and must still ask.
+envbig() { # envbig <label> <var> <kind> <limit ms> [must-contain] [must-not-contain]
+  local o ctx t0 t1 ms ok=1 why=""
+  python3 -c '
+import json,sys
+v,k=sys.argv[1],sys.argv[2]
+if k=="tail60": c="echo "+"y"*59900+"; "+v+"=tail1 bash scripts/egress_ctl.sh start"
+elif k=="spread60": c="echo "+(v+"=sc7 "+"y"*92+" ")*500+"; bash scripts/egress_ctl.sh start"
+elif k=="spread70": c="echo "+(v+"=sc7 "+"y"*112+" ")*500+"; bash scripts/egress_ctl.sh start"
+elif k=="tail1m": c="echo "+"y"*1000000+"; "+v+"=tail1 bash scripts/egress_ctl.sh start"
+else: c="echo "+(v+"=sc7 "+"y"*97+" ")*8000+"; bash scripts/egress_ctl.sh start"
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":c}}))' "$2" "$3" > "$TMP/big.json"
+  t0=$(date +%s%N); o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" < "$TMP/big.json" 2>/dev/null); t1=$(date +%s%N)
+  ms=$(( (t1 - t0) / 1000000 ))
+  ctx=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$o" 2>/dev/null)
+  grep -qF -- "THIS COMMAND ALSO MENTIONS $2=" <<<"$ctx" || { ok=0; why="no header"; }
+  grep -q '"permissionDecision": *"ask"' <<<"$o" || { ok=0; why="not ask"; }
+  [ "$ms" -lt "$4" ] || { ok=0; why="$why slow"; }
+  [ -z "${5:-}" ] || grep -qF -- "$5" <<<"$ctx" || { ok=0; why="$why missing $5"; }
+  [ -z "${6:-}" ] || ! grep -qF -- "$6" <<<"$ctx" || { ok=0; why="$why has $6"; }
+  printf '%-58s ' "$1"
+  [ "$ok" = 1 ] && echo "ok (${ms} ms)" || { echo "FAIL:$why (${ms} ms) <<${ctx:0:160}>>"; fails=$((fails+1)); }
+}
+for V in NF_RELAY_EXTRA_DOMAINS NF_RELAY_PEER_PREFIXES; do
+  envbig "TC-048 ${V#NF_RELAY_} 60 KB, mention at the end" $V tail60 500 "tail1"
+  envbig "TC-049 ${V#NF_RELAY_} 60 KB, 500 mentions" $V spread60 500 "500 mentions in total"
+  envbig "TC-050 ${V#NF_RELAY_} 70 KB: counted, not listed" $V spread70 1500 "500 mentions in total" "sc7"
+  envbig "TC-051 ${V#NF_RELAY_} 1 MB, mention at the end" $V tail1m 1000 "" "tail1"
+  envbig "TC-051 ${V#NF_RELAY_} 1 MB, 8000 mentions" $V spread1m 1000 "8000 mentions in total" "sc7"
+done
 # LOW: false alarms on reading the script, and sourcing it with no operation
 idg "#45 cat of the script does not ask"          allow 'cat scripts/egress_allow.sh'
 idg "#45 less of the script does not ask"                  allow 'less scripts/egress_allow.sh'
