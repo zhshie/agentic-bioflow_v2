@@ -34,6 +34,7 @@ source: DESIGN.md v2 畫面 5；總表 012b-2；維護者 10-24 回「好」（�
 - `platform/tests/test_web_actions.py`（只限裁決 4 點名的斷言）
 - `platform/tests/test_web_parity.py`、`platform/tests/test_actions_layer.py` 及其他「工具清單／工具數」釘死斷言（只加 `list_used_pipelines` 一項，ledger 逐條列）
 - `docs/PLATFORM.md`（一段：引導式送出的七步各自讀什麼）
+- `docs/TESTING.md`（新增一節「引導式送出」手動步驟：390 px 無橫捲、Tab 鍵焦點外框、走一次 1→7）
 
 ## 作法
 **頁面＝`GET /launch`，七個編號區塊**（`<details>`／`<summary>`，無 JS）。狀態三種，各有符號＋文字＋樣式：已完成 `✓`（收合）／目前（展開、外框）／之後（收合、灰）。步驟狀態完全由網址參數決定（`pipeline`、`revision`、`from`、`samplesheet`、`ce`），不新增 session 狀態或資料表。
@@ -71,7 +72,7 @@ source: DESIGN.md v2 畫面 5；總表 012b-2；維護者 10-24 回「好」（�
 - `test_gl03_select_marks_step2_done_and_runs_prechecks`：`?pipeline=nf-core/ampliseq&revision=2.18.0` → 第 2 步 ✓、第 1 步列出四項檢查＋一項之後開放。
 - `test_gl04_registered_check`：環境 `sitePipelines` 有／沒有該版本／沒有清單 三種 → ✓／✗／—。
 - `test_gl05_site_connection_check`：環境 status 正常／錯誤 → ✓／✗＋環境的 message。
-- `test_gl06_quick_launch_prefills_everything_and_stops_at_confirm`：`?from=<run>` → 所有步驟 ✓、第 7 步展開，摘要列出帶入的參數。
+- `test_gl06_quick_launch_prefills_and_goes_to_first_open_step`：`?from=<run>` → 第 1、2、5、6 步 ✓，第 3 步「之後」，目前步驟＝第 4 步（未選樣本表時）；再帶 `&samplesheet=…` → 目前步驟＝第 7 步，摘要列出帶入的參數（見裁決 7）。
 - `test_gl07_param_routes`：① 帶入上次參數 ② 空 ③ textarea 原樣。
 - `test_gl08_post_unchanged`：照引導送出 → 一筆 pending 確認、303 到 `/c/<id>`，bundle 與今天的表單送出相同欄位結果相同。
 - `test_gl09_post_error_rerenders_at_the_failing_step`：缺 run_name → 400、第 7 步展開、其他值保留、沒有新確認。
@@ -101,6 +102,10 @@ source: DESIGN.md v2 畫面 5；總表 012b-2；維護者 10-24 回「好」（�
 4. 可改寫的既有斷言：只限 `test_web_actions.py` 中斷言「/launch 表單的版面／欄位順序／欄位所在位置」的那幾條（tc020 一類）；欄位名稱、驗證、CSRF、確認流程的斷言不得改。executor 先列 file:line 寫進 ledger 再改。另允許「工具清單／工具數」斷言加一項 `list_used_pipelines`。其他既有斷言變紅 → BLOCKED。
 5. 可新增的 CSS 只限：步驟三種狀態（完成／目前外框／之後灰）與步驟編號；沿用既有顏色與間距 token，不得新增數值。
 6. 第 1 步的 ✗ 不擋送出。
+7. 快速送出（`?from=`）：第 1、2、5、6 步 ✓；第 3 步維持「之後」；樣本表與分析名稱不帶入（沿用既有 l_from 提示），所以目前步驟＝第 4 步；已帶 `samplesheet` 時目前步驟＝第 7 步。gl06 依此。
+8. `docs/TESTING.md` 加進範圍，新增一節手動步驟；手動 TC 指向該節。驗收另以 developer-agent 補的 PR 截圖為證。
+9. 參數路線 ① 用**另一個**網址參數 `params_from=<run 名>`：只帶入那次的參數，管線、版本、運算環境、樣本表維持網址上已選的值；`from` 只代表快速送出。`params_from` 的 run 必須是 caller 自己的、且管線＋版本相同，否則制式通知「這個分析的參數不能沿用。」並當作沒選。
+10. 「目前」步驟＝編號最小的未完成步驟（第 3 步不算，因為它固定是「之後」）。POST 有錯重繪時，目前步驟＝出錯欄位所在步驟中編號最小的；其他欄位值保留。
 
 ## 專長守則（ui）
 
