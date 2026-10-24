@@ -51,6 +51,7 @@ usage() {
     cat >&2 <<'U'
 usage: run_all.sh [--only <substring>] [--timeout <secs>] [--verbose] [--list]
                   [--allow-msys] [--allow-missing-tools]
+                  [--retry-failed-once] [--check-quarantine]
 
   --only <substring>   run only test files whose name contains this
   --timeout <secs>     per-test limit (default 300; 0 disables)
@@ -61,6 +62,12 @@ usage: run_all.sh [--only <substring>] [--timeout <secs>] [--verbose] [--list]
   --allow-missing-tools  run even though jq or python3 is missing or does not work
                        (the reds are then those tools, not a regression; also
                        skipped for python3 under --allow-msys, PITFALLS 20c)
+  --retry-failed-once  re-run each failed file once (a timed-out file is not
+                       re-run and stays a failure); a file that passes the retry
+                       is listed as FLAKY and must be registered in
+                       tests/quarantine.txt (issue, expiry at most 14 days out),
+                       otherwise the run fails. Still-red files fail either way.
+  --check-quarantine   only validate tests/quarantine.txt, run no test, then stop
 U
     exit 2
 }
@@ -68,6 +75,8 @@ U
 LIST=0
 ALLOW_MSYS=0
 ALLOW_MISSING=0
+RETRY=0
+CHECKQ=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --only)    ONLY="${2-}"; [ -n "$ONLY" ] || usage; shift 2 ;;
@@ -76,10 +85,200 @@ while [ $# -gt 0 ]; do
         --list)    LIST=1; shift ;;
         --allow-msys) ALLOW_MSYS=1; shift ;;
         --allow-missing-tools) ALLOW_MISSING=1; shift ;;
+        --retry-failed-once) RETRY=1; shift ;;
+        --check-quarantine) CHECKQ=1; shift ;;
         -h|--help) usage ;;
         *)         echo "unknown option: $1" >&2; usage ;;
     esac
 done
+
+# ---- quarantine list and retry (only used with --retry-failed-once or
+# --check-quarantine; without them nothing below is called) ------------------
+# tests/quarantine.txt: blank lines and whole-line # comments are ignored; every
+# other line is exactly three columns: tests/<name>.sh <issue> <YYYY-MM-DD>.
+# A line may end in a "# comment". The expiry is judged against the day of the
+# check only, today in UTC with no way to override it: earlier than today =
+# expired, later than today plus 14 days = too far out. Day arithmetic is pure
+# bash, no relative-date option of date, no python3. The list file must exist
+# (a missing file fails; an empty or comment-only one is fine).
+QFILE="$ROOT/tests/quarantine.txt"
+QUAR=""
+
+q_parse_date() { # q_parse_date <YYYY-MM-DD>: sets QD (days since 1970-01-01); 1 if not a real date
+    local re='^([0-9]{4})-([0-9]{2})-([0-9]{2})$' y m d dim era yoe doy doe
+    [[ "$1" =~ $re ]] || return 1
+    y=$((10#${BASH_REMATCH[1]})); m=$((10#${BASH_REMATCH[2]})); d=$((10#${BASH_REMATCH[3]}))
+    [ "$m" -ge 1 ] && [ "$m" -le 12 ] || return 1
+    case "$m" in
+        4|6|9|11) dim=30 ;;
+        2) if [ $((y % 4)) = 0 ] && { [ $((y % 100)) != 0 ] || [ $((y % 400)) = 0 ]; }; then dim=29; else dim=28; fi ;;
+        *) dim=31 ;;
+    esac
+    [ "$d" -ge 1 ] && [ "$d" -le "$dim" ] || return 1
+    [ "$m" -le 2 ] && y=$((y - 1))
+    era=$(( (y >= 0 ? y : y - 399) / 400 ))
+    yoe=$((y - era * 400))
+    doy=$(( (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1 ))
+    doe=$((yoe * 365 + yoe / 4 - yoe / 100 + doy))
+    QD=$((era * 146097 + doe - 719468))
+}
+
+quarantine_check() { # fills QUAR; prints one stderr line per problem; returns 1 if any
+    local today todayn lineno=0 bad=0 line nf fpath fissue fdate seen=" " base
+    local re_issue1='^#[0-9]+$' re_issue2='^https://github\.com/[^/]+/[^/]+/issues/[0-9]+$'
+    local re_path='^tests/[A-Za-z0-9._-]+\.sh$' re_skip='^[[:space:]]*(#|$)'
+    local -a f
+    QUAR=""
+    if [ ! -f "$QFILE" ]; then
+        echo "quarantine: tests/quarantine.txt is missing - restore it (an empty file or only comments is fine); a missing list would silently quarantine nothing" >&2
+        return 1
+    fi
+    today="$(date -u +%F)"
+    if ! q_parse_date "$today"; then
+        echo "quarantine: today's date '$today' is not YYYY-MM-DD" >&2
+        return 1
+    fi
+    todayn=$QD
+    while IFS= read -r line || [ -n "$line" ]; do
+        lineno=$((lineno + 1))
+        line="${line%$'\r'}"
+        [[ "$line" =~ $re_skip ]] && continue
+        read -r -a f <<<"$line"
+        nf=${#f[@]}
+        # a trailing "# comment" after the three columns is allowed
+        if [ "$nf" -gt 3 ] && [[ "${f[3]}" == \#* ]]; then nf=3; fi
+        if [ "$nf" != 3 ]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: expected 3 columns (tests/<name>.sh <issue> <YYYY-MM-DD>), found $nf" >&2
+            bad=1; continue
+        fi
+        fpath="${f[0]}"; fissue="${f[1]}"; fdate="${f[2]}"
+        base="${fpath#tests/}"
+        if ! [[ "$fpath" =~ $re_path ]]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' must look like tests/<name>.sh" >&2; bad=1; continue
+        elif [ ! -f "$ROOT/$fpath" ]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' does not exist (typo? an entry for a missing file protects nothing)" >&2; bad=1; continue
+        elif [ "$base" = "platform_test.sh" ] || [ "$base" = "platform_clock_test.sh" ]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: $base may not be quarantined: it wraps the platform pytest suite, so quarantining it would let any platform test failure through" >&2; bad=1; continue
+        elif [ "$base" = "run_all.sh" ]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: run_all.sh is not a test file" >&2; bad=1; continue
+        fi
+        case "$seen" in *" $fpath "*)
+            echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' is listed twice" >&2; bad=1; continue ;; esac
+        seen="$seen$fpath "
+        if ! [[ "$fissue" =~ $re_issue1 || "$fissue" =~ $re_issue2 ]]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: issue '$fissue' must be #<number> or https://github.com/<owner>/<repo>/issues/<number>" >&2; bad=1; continue
+        fi
+        if ! q_parse_date "$fdate"; then
+            echo "quarantine: tests/quarantine.txt:$lineno: expiry '$fdate' is not a real YYYY-MM-DD date" >&2; bad=1; continue
+        fi
+        if [ "$QD" -lt "$todayn" ]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' expired on $fdate (today is $today): fix the test or renew the entry with a new date" >&2; bad=1; continue
+        elif [ "$QD" -gt $((todayn + 14)) ]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: expiry $fdate is more than 14 days after today ($today); the limit is 14 days" >&2; bad=1; continue
+        fi
+        QUAR="$QUAR$fpath $fissue $fdate
+"
+    done < "$QFILE"
+    [ "$bad" = 0 ]
+}
+
+q_find() { # q_find <name>: sets QI to "<issue> <date>" if the file is on the list
+    local l
+    QI=""
+    while IFS= read -r l; do
+        case "$l" in "tests/$1 "*) QI="${l#* }"; return 0 ;; esac
+    done <<< "$QUAR"
+    return 1
+}
+
+# Replaces the final verdict when --retry-failed-once is given. Re-runs the files
+# that FAILED in the first round, once, in the first-round order; a file that
+# timed out is not re-run (a hang would double the wait) and stays a failure.
+# The first-round counts are not touched. Always exits.
+retry_and_conclude() {
+    local b rc n passed2="" failed2="" unq="" nflaky=0 issue date mnote=""
+    [ -n "$MISSING" ] && mnote=" - run with --allow-missing-tools, $MISSING missing"
+    # A round that did not run every file cannot be rescued by a retry.
+    [ "$total" = "$expected" ] || exit 1
+    [ -n "$FAILED_LIST" ] || { echo "all green"; exit 0; }
+    if [ -n "$RETRY_LIST" ]; then
+        n=$(grep -c . <<<"$RETRY_LIST")
+        echo
+        echo "== retry: re-running $n file(s) once =="
+        while IFS= read -r b; do
+            [ -n "$b" ] || continue
+            printf 'retry %s ... ' "$b"
+            if [ "$VERBOSE" = 1 ]; then
+                echo
+                clocked "$PER_TEST_TIMEOUT" bash "$ROOT/tests/$b" </dev/null 2>&1 | tee "$LOGDIR/$b.retry.log"
+                rc=${PIPESTATUS[0]}
+                printf 'retry %s ... ' "$b"
+            else
+                clocked "$PER_TEST_TIMEOUT" bash "$ROOT/tests/$b" </dev/null >"$LOGDIR/$b.retry.log" 2>&1
+                rc=$?
+            fi
+            case "$rc" in
+                0)   echo ok;      passed2="$passed2$b
+" ;;
+                124) echo TIMEOUT; failed2="$failed2$b
+" ;;
+                *)   echo FAIL;    failed2="$failed2$b
+" ;;
+            esac
+        done <<< "$RETRY_LIST"
+        echo
+    fi
+    if [ -n "$TIMEOUT_LIST" ]; then
+        echo "== TIMED OUT (not retried) =="
+        while IFS= read -r b; do
+            [ -n "$b" ] || continue
+            echo "TIMEOUT $b"
+        done <<< "$TIMEOUT_LIST"
+        echo
+    fi
+    if [ -n "$failed2" ]; then
+        echo "== FAILED twice =="
+        while IFS= read -r b; do
+            [ -n "$b" ] || continue
+            echo "FAILED $b"
+            tail -25 "$LOGDIR/$b.retry.log"
+            echo
+        done <<< "$failed2"
+    fi
+    if [ -n "$passed2" ]; then
+        echo "== FLAKY (failed the first run, passed the retry) =="
+        while IFS= read -r b; do
+            [ -n "$b" ] || continue
+            nflaky=$((nflaky + 1))
+            if q_find "$b"; then
+                issue="${QI% *}"; date="${QI##* }"
+                echo "FLAKY $b  quarantined $issue until $date"
+            else
+                echo "FLAKY $b  NOT in tests/quarantine.txt"
+                unq="$unq${unq:+ }$b"
+            fi
+        done <<< "$passed2"
+        echo
+    fi
+    if [ -n "$unq" ]; then
+        # Not a line that starts with FLAKY: CI picks the per-file FLAKY lines
+        # out of the combined output.
+        echo "Not quarantined (flaky): $unq. Fix the test, or add one line per file to tests/quarantine.txt: tests/<name>.sh <issue> <YYYY-MM-DD> (at most 14 days out)." >&2
+    fi
+    if [ -n "$failed2" ] || [ -n "$TIMEOUT_LIST" ] || [ -n "$unq" ]; then
+        echo "not green$mnote" >&2
+        exit 1
+    fi
+    echo "green after retry: $nflaky quarantined flaky file(s)$mnote"
+    exit 0
+}
+
+# --check-quarantine acts as soon as the arguments are read: it needs neither
+# the MSYS refusal, nor matching test files, nor jq/python3.
+if [ "$CHECKQ" = 1 ]; then
+    quarantine_check || exit 1
+    echo "tests/quarantine.txt ok"; exit 0
+fi
 
 ON_MSYS=0
 [ "$(plat_kind)" = msys ] && ON_MSYS=1
@@ -158,6 +357,12 @@ W
     exit 3
 fi
 
+# Before any test starts, so an expired entry turns the run red even when
+# nothing else failed.
+if [ "$RETRY" = 1 ]; then
+    quarantine_check || exit 1
+fi
+
 VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
     "$ROOT/.claude-plugin/plugin.json" 2>/dev/null | head -1)"
 LOGDIR="$(mktemp -d "${TMPDIR:-/tmp}/bioflow-tests.XXXXXX")" || exit 1
@@ -167,7 +372,7 @@ echo "version: ${VERSION:-unknown}"
 echo "logs:    $LOGDIR"
 echo
 
-passed=0; failed=0; timedout=0; FAILED_LIST=""
+passed=0; failed=0; timedout=0; FAILED_LIST=""; RETRY_LIST=""; TIMEOUT_LIST=""
 # </dev/null on every test below: this loop reads its file list from stdin,
 # and a test that reads stdin - or a child that does, as Windows' py.exe
 # launcher did under Git Bash in the 2.15.0 verification - swallowed the rest
@@ -190,8 +395,10 @@ while IFS= read -r b; do
     case "$rc" in
         0)   echo "ok       ${dur}s";      passed=$((passed + 1)) ;;
         124) echo "TIMEOUT  ${dur}s";      timedout=$((timedout + 1)); FAILED_LIST="$FAILED_LIST$b
+"; TIMEOUT_LIST="$TIMEOUT_LIST$b
 " ;;
         *)   echo "FAIL     ${dur}s  rc=$rc"; failed=$((failed + 1));  FAILED_LIST="$FAILED_LIST$b
+"; RETRY_LIST="$RETRY_LIST$b
 " ;;
     esac
 done <<< "$FILES"
@@ -224,5 +431,7 @@ if [ "$ON_MSYS" = 1 ]; then
     echo "note: run on Git Bash/MSYS with --allow-msys - failures here are the known"
     echo "      MSYS gap (docs/PITFALLS.md 20c), not a regression. Rerun on Linux/WSL for a verdict."
 fi
+if [ "$RETRY" = 0 ]; then
 [ "$failed" = 0 ] && [ "$timedout" = 0 ] && [ "$total" = "$expected" ] || exit 1
+else retry_and_conclude; fi
 echo "all green"
