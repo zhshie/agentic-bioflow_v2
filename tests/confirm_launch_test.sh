@@ -827,16 +827,16 @@ PW_SETS='THIS COMMAND ALSO SETS NF_RELAY_PEER_PREFIXES='
 envq "PEER-1 an env prefix on a relay start is named"      has   'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start'
 envq "PEER-2 ...through env"                               has   'env NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh restart'
 envq "PEER-3 ...through export"                            has   'export NF_RELAY_PEER_PREFIXES=25a-cpn; bash scripts/egress_ctl.sh start'
-envq_txt "PEER-3 value stops before the semicolon" 'export NF_RELAY_PEER_PREFIXES=25a-cpn; bash scripts/egress_ctl.sh start' "${PW_SETS}25a-cpn, which changes"
+envq_txt "PEER-3 value stops before the semicolon" 'export NF_RELAY_PEER_PREFIXES=25a-cpn; bash scripts/egress_ctl.sh start' "${PW_SETS}25a-cpn, which asks the relay to use this list of host-name prefixes"
 envq "PEER-4 an empty value is still named"                has   'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start'
-envq_txt "PEER-4 empty value is shown as empty" 'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start' "${PW_SETS}, which changes"
+envq_txt "PEER-4 empty value is shown as empty" 'NF_RELAY_PEER_PREFIXES= bash scripts/egress_ctl.sh start' "${PW_SETS}, which asks the relay to use this list of host-name prefixes"
 envq "PEER-5 a quoted script path still triggers"          has   'NF_RELAY_PEER_PREFIXES=zzz-aaa bash "${CLAUDE_PLUGIN_ROOT}/scripts/egress_ctl.sh" start'
 envq "PEER-6 both variables: peer warning present"         has   'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start'
 envp "PEER-6 both variables: extra warning present"        has   'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start'
 envq_order "PEER-6 extra warning comes before peer warning" 'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start' "overrides this deployment's list" "$PW_SETS"
-envq_txt "PEER-7 the value is shown in the warning" 'NF_RELAY_PEER_PREFIXES=25a-cpn,25a-lgn bash scripts/egress_ctl.sh start' "${PW_SETS}25a-cpn,25a-lgn, which changes"
-envq_txt "PEER-7 warning wording: which hosts" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "which changes which hosts may connect to the relay"
-envq_txt "PEER-7 warning wording: default list" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "instead of the deployment's setting (default cpn,gpn,bgm,lgn,localhost)"
+envq_txt "PEER-7 the value is shown in the warning" 'NF_RELAY_PEER_PREFIXES=25a-cpn,25a-lgn bash scripts/egress_ctl.sh start' "${PW_SETS}25a-cpn,25a-lgn, which asks the relay to use this list of host-name prefixes"
+envq_txt "PEER-7 warning wording: which hosts" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "for the hosts that may connect, instead of the deployment's setting"
+envq_txt "PEER-7 warning wording: default list" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "falls back to the built-in one"
 envq_txt "PEER-7 warning wording: show user" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "Show the user the prefixes it names."
 envp "PEER-7 peer-only does not use the extra wording"      lacks 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start'
 envq "PEER-8 a plain relay start does not say it"          lacks 'bash scripts/egress_ctl.sh start'
@@ -851,6 +851,60 @@ idg "PEER-12 quoted path still asks"                       ask   'NF_RELAY_PEER_
 idg "PEER-12 both variables still ask"                     ask   'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start'
 idg "PEER-12 via on_site.sh still asks"                    ask   'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/on_site.sh egress_ctl.sh start'
 idg "PEER-12 plain start still asks"                       ask   'bash scripts/egress_ctl.sh start'
+# relay-warning-hardening (RWH-1..26): last assignment wins, narrower on_site.sh exemption, clean values
+envw() { # envw <label> <var> <has|lacks> <command> [fixed string the ask must also contain]
+  local j o got
+  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$4")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  got=lacks; grep -qF -- "THIS COMMAND ALSO SETS $2" <<<"$o" && got=has
+  printf '%-58s ' "$1"
+  if [ "$got" != "$3" ]; then echo "FAIL: expected $3, got $got <<${o:0:80}>>"; fails=$((fails+1))
+  elif [ -n "${5:-}" ] && ! grep -qF -- "$5" <<<"$o"; then echo "FAIL: missing <<$5>> in <<${o:0:200}>>"; fails=$((fails+1))
+  else echo ok; fi
+}
+for V in NF_RELAY_EXTRA_DOMAINS NF_RELAY_PEER_PREFIXES; do
+  S="e/${V#NF_RELAY_}"
+  envw "RWH-1 $S decoy echo"            $V has   "echo $V=ok; $V=evil bash scripts/egress_ctl.sh start" "SETS $V=evil"
+  envw "RWH-2 $S multiple assignments"  $V has   "$V=ok $V=evil bash scripts/egress_ctl.sh start" "SETS $V=evil"
+  envw "RWH-2 $S ...lists them all"     $V has   "$V=ok $V=evil bash scripts/egress_ctl.sh start" "assigns $V 2 times: ok | evil"
+  envw "RWH-3 $S double quotes"         $V has   "$V=\"a,b\" bash scripts/egress_ctl.sh start" "SETS $V=a,b"
+  envw "RWH-4 $S space inside quotes"   $V has   "$V=\"a b\" bash scripts/egress_ctl.sh start" "SETS $V=a b"
+  envw "RWH-5 $S single quotes"         $V has   "$V='a,b' bash scripts/egress_ctl.sh start" "SETS $V=a,b"
+  envw "RWH-6 $S on_site.sh elsewhere"  $V has   "bash scripts/on_site.sh status; $V=evil bash scripts/egress_ctl.sh start"
+  envw "RWH-7 $S trailing comment"      $V has   "$V=evil bash scripts/egress_ctl.sh start # on_site.sh"
+  envw "RWH-8 $S comment on prior line" $V has   $'# on_site.sh\n'"$V=evil bash scripts/egress_ctl.sh start"
+  envw "RWH-9 $S quoted on_site payload" $V has  "scripts/on_site.sh '$V=evil bash scripts/egress_ctl.sh start'"
+  envw "RWH-10 $S two start points"     $V has   "scripts/on_site.sh egress_ctl.sh start; $V=evil bash scripts/egress_ctl.sh start"
+  envw "RWH-11 $S through on_site.sh"   $V lacks "$V=ok bash scripts/on_site.sh egress_ctl.sh start"
+  envw "RWH-12 $S on_site.sh --script"  $V lacks "$V=ok scripts/on_site.sh --script scripts/egress_ctl.sh start"
+  envw "RWH-13 $S unquoted \$(...)"     $V has   "$V=\$(cat /tmp/p) bash scripts/egress_ctl.sh start" 'value is computed at run time: $(cat'
+  envw "RWH-14 $S quoted \$(...)"       $V has   "$V=\"\$(cat /tmp/p)\" bash scripts/egress_ctl.sh start" 'value is computed at run time: $(cat /tmp/p)'
+  envw "RWH-15 $S variable expansion"   $V has   "$V=\$P bash scripts/egress_ctl.sh start" 'value is computed at run time: $P'
+done
+idg "RWH-16 decoy echo still asks"                         ask   'echo NF_RELAY_PEER_PREFIXES=ok; NF_RELAY_PEER_PREFIXES=evil bash scripts/egress_ctl.sh start'
+idg "RWH-17 on_site.sh elsewhere still asks"               ask   'bash scripts/on_site.sh status; NF_RELAY_PEER_PREFIXES=evil bash scripts/egress_ctl.sh start'
+idg "RWH-18 quoted on_site payload still asks"             ask   "scripts/on_site.sh 'NF_RELAY_PEER_PREFIXES=evil bash scripts/egress_ctl.sh start'"
+envq_txt "RWH-19 invalid entries are dropped" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "Entries that are not valid are dropped"
+envq_txt "RWH-20 falls back to the built-in list" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "falls back to the built-in one"
+{ j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start')
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  printf '%-58s ' "RWH-21 the default list is not hard-coded"
+  if [ -n "$o" ] && ! grep -qF -- 'cpn,gpn,bgm,lgn,localhost' <<<"$o"; then echo ok; else echo "FAIL"; fails=$((fails+1)); fi; }
+# RWH-22..26 (contract TC-003, -007, -009, -012, -019)
+PV=NF_RELAY_PEER_PREFIXES
+envw "RWH-22 only the last 5 are listed"   $PV has "$PV=a1 $PV=a2 $PV=a3 $PV=a4 $PV=a5 $PV=a6 $PV=a7 bash scripts/egress_ctl.sh start" "assigns $PV 7 times: a3 | a4 | a5 | a6 | a7"
+envw "RWH-22 ...and says how many are hidden" $PV has "$PV=a1 $PV=a2 $PV=a3 $PV=a4 $PV=a5 $PV=a6 $PV=a7 bash scripts/egress_ctl.sh start" "(2 earlier ones not shown)"
+X200=$(printf 'x%.0s' $(seq 1 200)); X250="$X200$(printf 'x%.0s' $(seq 1 50))"
+envw "RWH-23 value cut at 200 characters"  $PV has "$PV=$X250 bash scripts/egress_ctl.sh start" "SETS $PV=$X200…"
+{ j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$PV=$X250 bash scripts/egress_ctl.sh start")
+  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
+  printf '%-58s ' "RWH-23 ...and not one character more"
+  if grep -qF -- "${X200}x" <<<"$o"; then echo "FAIL"; fails=$((fails+1)); else echo ok; fi; }
+envw "RWH-24 unquoted \$(...) says it was cut" $PV has "$PV=\$(cat /tmp/p) bash scripts/egress_ctl.sh start" "cut at the first space; read the command"
+M21=""; for i in $(seq 1 21); do M21="$M21$PV=v$i "; done
+envw "RWH-25 more than 20 assignments warn"  $PV has "${M21}bash scripts/egress_ctl.sh start"
+M9="$PV=ok bash scripts/on_site.sh egress_ctl.sh start"; for i in $(seq 1 8); do M9="$M9; bash scripts/on_site.sh egress_ctl.sh start"; done
+envw "RWH-26 more than 8 start points warn" $PV has "$M9"
 # LOW: false alarms on reading the script, and sourcing it with no operation
 idg "#45 cat of the script does not ask"          allow 'cat scripts/egress_allow.sh'
 idg "#45 less of the script does not ask"                  allow 'less scripts/egress_allow.sh'
