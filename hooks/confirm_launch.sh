@@ -295,21 +295,35 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
 # <VAR>=" warnings (NF_RELAY_EXTRA_DOMAINS, NF_RELAY_PEER_PREFIXES). It does not try
 # to read the command the way a shell would (that always leaves a hole) and it does
 # not say which value takes effect: if the text has <VAR>= anywhere, it warns and
-# copies out what follows each <VAR>= up to the next space or ; & | (not unquoted,
-# not expanded), the first 3 and the last 1, 120 characters each, with the count.
+# copies out what follows each <VAR>= (not unquoted, not expanded), the first 3 and
+# the last 1, with the count. Whatever stands to the left of <VAR>= does not matter:
+# MY_<VAR>= and -e<VAR>= count as mentions too (a warning too many is fine, one too
+# few is not).
+# relay-warning-polish: a value that opens with a quote is shown up to the closing
+# quote (looked for in the next 119 characters only); any other value stops at the
+# next space or ; & |; at most 120 characters each. A trailing ... marks a value that
+# was cut, whose quote is not closed, or that goes on after the closing quote (a
+# closing quote followed by space ; & | ) ` } or the end of the text does not). A
+# backslash-escaped quote is not handled: it is a known display limit (the gate still
+# shows the whole command). When the command has more than 4 mentions a line says
+# which ones are not listed.
 # Builtins only and linear in the length of the command (the hook's timeout lets a
 # command through): ${x//p/} on 8 KB windows for the count, at most 3 ${x%%p*} for the first
 # three, one ${CMD%p*} for the last (suffix removals, which stop at the first
 # letter that cannot match; ${x#*p} would test every prefix and be quadratic).
-# Over 64 KB: the header and the count only.
-# relay_env_warn <VARIABLE NAME> <sentence that closes the warning>
-# Returns 0 = warn (RELAY_ENV_HEAD holds the whole warning, RELAY_ENV_EMPTY=1 when a
-# listed mention is empty), 1 = the command does not mention the variable.
+# Over 64 KB (measured in bytes: the length is taken under LC_ALL=C): the header and
+# the count only (and, when the caller asks, whether the last mention is empty).
+# relay_env_warn <VARIABLE NAME> <sentence that closes the warning> [empty]
+# Returns 0 = warn (RELAY_ENV_HEAD holds the whole warning; only with the third
+# argument `empty`, RELAY_ENV_EMPTY=1 when the last mention is empty), 1 = the
+# command does not mention the variable.
 relay_env_warn() {
     local V=$1 tl=$2 nl=$'\n'
     RELAY_ENV_HEAD=""; RELAY_ENV_EMPTY=0
     case $CMD in *"$V="*) ;; *) return 1 ;; esac
-    local gone n=0 i=0 k x t w list="" sep="" win=$(( ${#V} + 8192 ))
+    local gone n=0 i=0 k ks x t w s q rest pre v nxt dots a list="" sep="" qd
+    local win=$(( ${#V} + 8192 )) vl=${#V}
+    local dq='"' sq="'" snip1="" snip2="" snip3="" snipl="" big=0
     # The count: ${CMD//p/} on the whole command is quadratic in bash (3 s for 8000
     # matches in 1 MB), so it is done on windows of 8 KB. A window starts at i and
     # reaches ${#V} characters into the next one, so a match is counted by the
@@ -320,28 +334,69 @@ relay_env_warn() {
     LC_ALL=C
     while [ "$i" -lt "${#CMD}" ]; do
         x=${CMD:i:win}; gone=${x//"$V="/}
-        n=$(( n + (${#x} - ${#gone}) / (${#V} + 1) ))
+        n=$(( n + (${#x} - ${#gone}) / (vl + 1) ))
         i=$(( i + 8192 ))
     done
+    if [ "${#CMD}" -gt 65536 ]; then
+        big=1
+        if [ "${3-}" = empty ]; then
+            t=${CMD%"$V="*}
+            snipl=${CMD:$((${#t} + vl + 1)):122}
+        fi
+    fi
     if [ -n "$hadl" ]; then LC_ALL=$oldl; else unset LC_ALL; fi
     w="mentions"; [ "$n" -eq 1 ] && w="mention"
     RELAY_ENV_HEAD="THIS COMMAND ALSO MENTIONS ${V}= (it would change which hosts/domains the relay accepts). Read the whole command; the value that takes effect depends on the shell."
-    if [ "${#CMD}" -gt 65536 ]; then
-        RELAY_ENV_HEAD+="${nl}${n} ${w} in total (the command is over 64 KB, so the text after each is not listed)."
+    ks=""
+    if [ "$big" -eq 1 ]; then
+        RELAY_ENV_HEAD+="${nl}${n} ${w} in total."
+        RELAY_ENV_HEAD+="${nl}The values are not listed because the command is over 64 KB; read the whole command shown below."
+        [ "${3-}" = empty ] && ks=l
     else
+        # the first 3 mentions (x is what is left of the command after each one)
         x=$CMD
         for k in 1 2 3; do
             [ "$k" -le "$n" ] || break
-            t=${x%%"$V="*}; x=${x:$((${#t} + ${#V} + 1))}; t=${x%%[[:space:];&|]*}
-            [ -n "$t" ] || RELAY_ENV_EMPTY=1
-            list+="${sep}[${t:0:120}]"; sep=" "
+            t=${x%%"$V="*}; x=${x:$((${#t} + vl + 1))}
+            case $k in 1) snip1=${x:0:122} ;; 2) snip2=${x:0:122} ;; *) snip3=${x:0:122} ;; esac
+            ks+="$k "
         done
+        # the last one, when there are more than 3
         if [ "$n" -gt 3 ]; then
-            t=${CMD%"$V="*}; x=${CMD:$((${#t} + ${#V} + 1))}; t=${x%%[[:space:];&|]*}
-            [ -n "$t" ] || RELAY_ENV_EMPTY=1
-            list+="${sep}[${t:0:120}]"
+            t=${CMD%"$V="*}; snipl=${CMD:$((${#t} + vl + 1)):122}
+            ks+="l"
         fi
+    fi
+    # the text shown for each listed mention (also run for the last one alone over 64 KB)
+    for k in $ks; do
+        case $k in 1) s=$snip1 ;; 2) s=$snip2 ;; 3) s=$snip3 ;; *) s=$snipl ;; esac
+        dots=""; q=${s:0:1}; v=""; qd=""
+        if [ "$q" = "$dq" ] || [ "$q" = "$sq" ]; then
+            rest=${s:1:119}; pre=${rest%%"$q"*}
+            if [ ${#pre} -lt ${#rest} ]; then
+                v=${s:0:$((${#pre} + 2))}; nxt=${s:$((${#pre} + 2)):1}
+                case $nxt in ""|[[:space:]\;\&\|\)\`\}]) ;; *) dots="…" ;; esac
+                qd=1
+            fi
+        fi
+        if [ -z "$qd" ]; then
+            t=${s%%[[:space:];&|]*}; v=${t:0:120}
+            [ ${#t} -le 120 ] || dots="…"
+            a=${v//[!$dq]/}; [ $(( ${#a} % 2 )) -eq 0 ] || dots="…"
+            a=${v//[!$sq]/}; [ $(( ${#a} % 2 )) -eq 0 ] || dots="…"
+        fi
+        if [ "$k" = l ] || [ "$k" = "$n" ] || [ "$big" -eq 1 ]; then
+            if [ "${3-}" = empty ] && [ -z "$dots" ] && { [ -z "$v" ] || [ "$v" = "$dq$dq" ] || [ "$v" = "$sq$sq" ]; }; then RELAY_ENV_EMPTY=1; fi
+        fi
+        [ "$big" -eq 1 ] || { list+="${sep}[${v}${dots}]"; sep=" "; }
+    done
+    if [ "$big" -ne 1 ]; then
         RELAY_ENV_HEAD+="${nl}Text after each ${V}= as written (first 3 and last 1 of them): ${list}; ${n} ${w} in total."
+        if [ "$n" -eq 5 ]; then
+            RELAY_ENV_HEAD+="${nl}(mention 4 is not listed; read the whole command shown below)"
+        elif [ "$n" -gt 5 ]; then
+            RELAY_ENV_HEAD+="${nl}(mentions 4 to $((n - 1)) are not listed; read the whole command shown below)"
+        fi
     fi
     RELAY_ENV_HEAD+="${nl}${tl}"
     return 0
@@ -455,7 +510,7 @@ ${RELAY_ENV_HEAD}"
         fi
         # relay-env-warning: the same for the peer-prefix list, which decides which
         # hosts may connect to the relay. An empty value is named too.
-        if relay_env_warn NF_RELAY_PEER_PREFIXES "If it takes effect it asks the relay to use this list of host-name prefixes for the hosts that may connect, instead of the deployment's setting. Entries that are not valid are dropped, and a list with no valid entry falls back to the built-in one; the relay's startup line (\"peers :\") shows the list it really uses. Show the user the prefixes it names."; then
+        if relay_env_warn NF_RELAY_PEER_PREFIXES "If it takes effect it asks the relay to use this list of host-name prefixes for the hosts that may connect, instead of the deployment's setting. Entries that are not valid are dropped, and a list with no valid entry falls back to the built-in one; the relay's startup line (\"peers :\") shows the list it really uses. Show the user the prefixes it names." empty; then
             RELAY_LIST="${RELAY_LIST}
 ${RELAY_ENV_HEAD}"
             if [ "$RELAY_ENV_EMPTY" -eq 1 ]; then
