@@ -584,7 +584,7 @@ SCHEMA = {
     'platform.compute_envs': ('id', 'name', 'description', 'platform', 'credentials_id', 'agent', 'status', 'message', 'is_primary', 'checked_ok', 'config_json', 'created_at', 'updated_at', 'last_used_at', 'owner_user_id'),
     'platform.confirmations': ('id', 'sha256', 'kind', 'created_at', 'used_at', 'caller_user_id', 'state', 'channel', 'confirmed_at', 'expires_at', 'ce_name', 'bundle_json', 'screen_text', 'void_reason', 'forgotten_at', 'forgotten_by'),
     'platform.jobs': ('id', 'agent', 'compute_env', 'kind', 'args_json', 'state', 'result_json', 'late_result_json', 'created_at', 'deadline_at', 'claimed_at', 'finished_at', 'forgotten_at', 'forgotten_by', 'confirmation_id'),
-    'platform.launches': ('id', 'run_name', 'slurm_job_id', 'run_folder', 'ce', 'agent', 'confirmed_at', 'submitted_at', 'cancel_requested_at', 'job_id', 'user_id', 'parent_run', 'attempt', 'attempt_kind'),
+    'platform.launches': ('id', 'run_name', 'slurm_job_id', 'run_folder', 'ce', 'agent', 'confirmed_at', 'submitted_at', 'cancel_requested_at', 'job_id', 'user_id', 'parent_run', 'attempt', 'attempt_kind', 'work_cleaned_at'),
     'platform.meta': ('key', 'value'),
     'tokens.oauth_clients': ('client_id', 'info_json', 'created_at', 'last_used_at'),
     'tokens.oauth_codes': ('code_hash', 'grant_id', 'client_id', 'redirect_uri', 'redirect_explicit', 'code_challenge', 'resource', 'user_id', 'created_at', 'expires_at', 'used_at'),
