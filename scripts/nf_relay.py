@@ -253,7 +253,7 @@ if _PEERS:
     ALLOW_HOST_PREFIXES = _PEERS if "localhost" in _PEERS else _PEERS + ("localhost",)
 else:
     ALLOW_HOST_PREFIXES = DEFAULT_HOST_PREFIXES
-PEER_NOTE = "relay_peer_prefixes had no usable entry, using the built-in list" if (_PEER_RAW.strip() and not _PEERS) else ""
+PEER_NOTE = "relay_peer_prefixes had no usable entry, using the built-in list" if (_PEER_RAW and not _PEERS) else ""
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 18080
 _lock = threading.Lock()
