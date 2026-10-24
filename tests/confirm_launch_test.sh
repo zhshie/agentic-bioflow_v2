@@ -899,7 +899,7 @@ envw "RWH-23 value cut at 200 characters"  $PV has "$PV=$X250 bash scripts/egres
 { j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$PV=$X250 bash scripts/egress_ctl.sh start")
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
   printf '%-58s ' "RWH-23 ...and not one character more"
-  if grep -qF -- "${X200}x" <<<"$o"; then echo "FAIL"; fails=$((fails+1)); else echo ok; fi; }
+  if grep -qF -- "SETS $PV=${X200}x" <<<"$o"; then echo "FAIL"; fails=$((fails+1)); else echo ok; fi; }
 envw "RWH-24 unquoted \$(...) says it was cut" $PV has "$PV=\$(cat /tmp/p) bash scripts/egress_ctl.sh start" "cut at the first space; read the command"
 M21=""; for i in $(seq 1 21); do M21="$M21$PV=v$i "; done
 envw "RWH-25 more than 20 assignments warn"  $PV has "${M21}bash scripts/egress_ctl.sh start"

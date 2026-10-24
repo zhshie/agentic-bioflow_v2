@@ -291,6 +291,77 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
     exit 0
 }
 
+# relay-warning-hardening: one helper for the two "this command also sets <VAR>"
+# warnings. Bash builtins only (the hook's timeout lets a command through, so no
+# fork), bounded loops (at most 8 start points, 20 assignments; past a limit the
+# answer is "warn"), one regex plus one prefix strip per step (no ${x//p/}).
+# Returns 0 = warn (RELAY_ENV_HEAD / RELAY_ENV_MORE hold the text), 1 = no need.
+# The exemption: a start point counts as run through scripts/on_site.sh only when
+# its own command segment (back to the previous ; & | ` ( or newline) holds a
+# bare on_site.sh word with no quote between it and egress_ctl.sh. Only if every
+# start point is such does on_site.sh replace the variable with the file's value.
+relay_env_warn() { # relay_env_warn <VARIABLE NAME>
+    RELAY_ENV_HEAD=""; RELAY_ENV_MORE=""
+    [[ $CMD == *"$1="* ]] || return 1
+    local rest="$CMD" m pre seg tail bnd=$'[;&|`(\n]' site_re='(^|[/[:space:]])on_site\.sh[[:space:]]'
+    local starts=0 exempt=1
+    while [[ $rest =~ $RELAY_START_RE ]]; do
+        m="${BASH_REMATCH[0]}"
+        starts=$((starts + 1))
+        if [ "$starts" -gt 8 ]; then exempt=0; break; fi
+        pre="${rest%%"$m"*}"; rest="${rest#*"$m"}"
+        seg="${pre##*$bnd}"
+        if [[ $seg =~ $site_re ]]; then
+            tail="${seg##*on_site.sh}"
+            if [[ $tail == *[\"\']* ]]; then exempt=0; break; fi
+        else
+            exempt=0; break
+        fi
+    done
+    if [ "$starts" -eq 0 ]; then exempt=0; fi
+    if [ "$exempt" -eq 1 ]; then return 1; fi
+    local lastq=0 vre="$1=(\"[^\"]*\"|'[^']*'|[^[:space:];&|]*)" vals=() n=0 over=0 v
+    rest="$CMD"
+    while [[ $rest =~ $vre ]]; do
+        if [ "$n" -ge 20 ]; then over=1; break; fi
+        m="${BASH_REMATCH[0]}"; v="${BASH_REMATCH[1]}"
+        lastq=0
+        if [[ ${#v} -ge 2 && ( $v == \"*\" || $v == \'*\' ) ]]; then v="${v:1:${#v}-2}"; lastq=1; fi
+        vals+=("$v"); n=$((n + 1))
+        rest="${rest#*"$m"}"
+    done
+    if [ "$n" -eq 0 ]; then vals=(""); n=1; fi
+    local i first=0 list="" cut="" last shown
+    last="${vals[n-1]}"
+    if [ "$n" -gt 5 ]; then first=$((n - 5)); fi
+    for ((i = first; i < n; i++)); do
+        shown="${vals[i]}"
+        if [ "${#shown}" -gt 200 ]; then shown="${shown:0:200}…"; fi
+        if [ -n "$list" ]; then list="${list} | "; fi
+        list="${list}${shown}"
+    done
+    if [ "${#last}" -gt 200 ]; then last="${last:0:200}…"; fi
+    if [[ ${vals[n-1]} == *'$'* || ${vals[n-1]} == *'`'* || ${vals[n-1]} == *[\"\'\]* ]]; then
+        if [ "$lastq" -eq 0 ] && [[ ${vals[n-1]} == *'$('* || ${vals[n-1]} == *'${'* || ${vals[n-1]} == *'`'* ]]; then
+            cut=", cut at the first space; read the command"
+        fi
+        RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${1} (value is computed at run time: ${last}${cut})"
+    else
+        RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${1}=${last}"
+    fi
+    if [ "$n" -gt 1 ]; then
+        RELAY_ENV_MORE="
+It assigns ${1} ${n} times: ${list}"
+        if [ "$first" -gt 0 ]; then RELAY_ENV_MORE="${RELAY_ENV_MORE} (${first} earlier ones not shown)"; fi
+        RELAY_ENV_MORE="${RELAY_ENV_MORE} (the last one is normally the one that takes effect; read the command)."
+    fi
+    if [ "$over" -eq 1 ]; then
+        RELAY_ENV_MORE="${RELAY_ENV_MORE}
+It assigns ${1} more than 20 times; only the first 20 were read - read the command."
+    fi
+    return 0
+}
+
 # #45: a Write/Edit-type tool changing this deployment's own relay allowlist file
 # (egress_allow.tsv) directly, around scripts/egress_allow.sh and its checks.
 # Only the file name is read; no other Write is this hook's business (a launch
@@ -393,23 +464,16 @@ Not loaded: ${RELAY_ERR}"
         # relay a list the file does not hold, so the summary above would be
         # untrue. Through scripts/on_site.sh the variable is always replaced by the
         # file's list, so only a direct start is named.
-        if [[ $CMD == *NF_RELAY_EXTRA_DOMAINS=* ]] && [[ $CMD != *on_site.sh* ]]; then
-            # A regex, not ${CMD#*...}: bash tries every prefix for that, quadratic
-            # on a long command (#62).
-            RELAY_OVR=""; RELAY_OVR_RE='NF_RELAY_EXTRA_DOMAINS=([^[:space:];&|]*)'
-            [[ $CMD =~ $RELAY_OVR_RE ]] && RELAY_OVR="${BASH_REMATCH[1]}"
+        if relay_env_warn NF_RELAY_EXTRA_DOMAINS; then
             RELAY_LIST="${RELAY_LIST}
-THIS COMMAND ALSO SETS NF_RELAY_EXTRA_DOMAINS=${RELAY_OVR}, which overrides this deployment's list: the relay would carry THAT list, not the one shown above. Show the user the domains it names."
+${RELAY_ENV_HEAD}, which overrides this deployment's list: the relay would carry THAT list, not the one shown above. Show the user the domains it names.${RELAY_ENV_MORE}"
         fi
         # relay-env-warning: the same for the peer-prefix list, which decides which
-        # hosts may connect to the relay. Only a direct start is named (on_site.sh
-        # replaces the variable with the file's value). An empty value is named too.
-        if [[ $CMD == *NF_RELAY_PEER_PREFIXES=* ]] && [[ $CMD != *on_site.sh* ]]; then
-            RELAY_PEER_OVR=""; RELAY_PEER_OVR_RE='NF_RELAY_PEER_PREFIXES=([^[:space:];&|]*)'
-            [[ $CMD =~ $RELAY_PEER_OVR_RE ]] && RELAY_PEER_OVR="${BASH_REMATCH[1]}"
+        # hosts may connect to the relay. An empty value is named too.
+        if relay_env_warn NF_RELAY_PEER_PREFIXES; then
             RELAY_LIST="${RELAY_LIST}
-THIS COMMAND ALSO SETS NF_RELAY_PEER_PREFIXES=${RELAY_PEER_OVR}, which changes which hosts may connect to the relay: it would accept hosts whose names start with THAT list instead of the deployment's setting (default cpn,gpn,bgm,lgn,localhost). Show the user the prefixes it names."
-            if [ -z "$RELAY_PEER_OVR" ]; then
+${RELAY_ENV_HEAD}, which asks the relay to use this list of host-name prefixes for the hosts that may connect, instead of the deployment's setting. Entries that are not valid are dropped, and a list with no valid entry falls back to the built-in one; the relay's startup line (\"peers :\") shows the list it really uses. Show the user the prefixes it names.${RELAY_ENV_MORE}"
+            if [[ $RELAY_ENV_HEAD == "THIS COMMAND ALSO SETS NF_RELAY_PEER_PREFIXES=" ]]; then
                 RELAY_LIST="${RELAY_LIST}
 An empty value is ignored by the relay, which then uses the deployment's relay_peer_prefixes setting."
             fi
