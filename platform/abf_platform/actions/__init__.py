@@ -170,14 +170,20 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
     site = rates.get("default_site") if isinstance(rates, dict) else None
     cloud_rates = _cost.load_rates()
     mine = [r for r in status.list_runs(index_path, status.now(), names=owned) if su._taipei_month(r.get("started_at")) == month]
-    total = su.month_total(index_path, platform_path, caller.user_id, month, site, rates)
-    reasons = []
-    if total is None:
-        for r in mine:
-            out = su.run_su(index_path, r["name"], site, rates)
-            for reason in out["unknown_reasons"] if out["su"] is None else ():
+    # only the runs sent to the national HPC count in SU: a cloud run is neither added nor allowed to turn the total into unknown
+    total, reasons = 0.0, []
+    for r in mine:
+        facts = _cost._launch_facts(platform_path, r["name"])
+        if facts is None or facts["cloud"]:
+            continue
+        out = su.run_su(index_path, r["name"], site, rates)
+        if out["su"] is None:
+            total = None
+            for reason in out["unknown_reasons"]:
                 if reason not in reasons:
                     reasons.append(reason)
+        elif total is not None:
+            total += out["su"]
     runs = []
     for r in sorted(mine, key=lambda x: x["started_at"], reverse=True)[:_USAGE_RUNS_CAP]:
         facts = _cost._launch_facts(platform_path, r["name"])

@@ -191,6 +191,45 @@ def test_unknown_cloud_runs_are_not_added_as_zero(w):
     assert usage(w, ann)["cloud"]["unknown_runs"] == 2
 
 
+def test_ruling12_su_card_ignores_cloud_runs(w):
+    # ruling 12: one HPC run and one cloud run in the same month; the SU card shows the HPC run's number
+    ann = w.user("ann")
+    seed(w, "hpc-run", ann, hours=4.0)
+    seed(w, "cloud-run", ann, "cloud", hours=6)
+    assert usage(w, ann)["su"]["total"] == pytest.approx(4.0)
+    assert card(get(w, "ann").text, 0)[2] == "4.00"
+    seed(w, "hpc-open", ann, hours=None)        # an HPC run that cannot be priced still turns the card to a dash
+    assert card(get(w, "ann").text, 0)[2] == "—"
+
+
+def test_ruling13_english_plural(w):
+    # ruling 13
+    ann = w.user("ann")
+    seed(w, "cl-ok", ann, "cloud", hours=6)
+    seed(w, "cl-x1", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
+    one = card(get(w, "ann", "/usage?lang=en").text, 1)[3]
+    assert "1 more analysis could not be priced" in one and "analyses" not in one
+    seed(w, "cl-x2", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
+    two = card(get(w, "ann", "/usage?lang=en").text, 1)[3]
+    assert "2 more analyses could not be priced" in two
+    assert "另有 2 個分析算不出" in card(get(w, "ann").text, 1)[3]
+
+
+def test_ruling14_future_or_missing_month_is_an_empty_table(w):
+    # ruling 14
+    ann = w.user("ann")
+    seed(w, "run-a", ann)
+    for m in ("2099-01", "1999-12", "0001-01"):
+        r = get(w, "ann", "/usage?month=" + m)
+        assert r.status_code == 200, m
+        assert table_rows(r.text) == [], m
+    assert "這個月還沒有分析" in plain(pane(get(w, "ann", "/usage?month=2099-01").text, "middle"))
+    assert usage(w, ann, month="2099-01")["runs"] == []
+    # "2026-13" is not the form YYYY-MM (TC-046/TC-095): the standard notice and this month, still no error
+    bad = get(w, "ann", "/usage?month=2026-13")
+    assert bad.status_code == 200 and "月份格式不對，顯示本月。" in plain(pane(bad.text, "middle"))
+
+
 def test_co04_no_cap(w):
     # co04: TC-012, TC-013, TC-014, TC-077, TC-079
     ann = w.user("ann")
@@ -450,6 +489,10 @@ def test_co11_my_usage_action_and_mcp_match(w):
     b = usage(w, bob)
     assert [x["name"] for x in b["runs"]] == ["bob-run"] and b["cloud"]["cap_usd"] is None and b["cloud"]["used_usd"] == 0
     assert b["su"]["total"] == pytest.approx(3.0) and got["su"]["total"] != b["su"]["total"]
+    # ruling 12: ann has a cloud run too, yet her SU is the HPC run's alone, a number and not None
+    assert got["su"]["total"] is not None and got["su"]["total"] == pytest.approx(2.0)
+    assert got["su"]["unknown_reasons"] == []
+    assert card(get(w, "ann").text, 0)[2] == "2.00"
     assert "ann-run" not in get(w, "bob").text
     # the same through MCP
     out = tool_json(w.call("my_usage", {}, caller=ann))

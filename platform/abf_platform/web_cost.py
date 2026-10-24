@@ -30,7 +30,7 @@ STRINGS = {
     "en": {
         "title": "Cost", "card_su": _HPC + " SU (this month)", "card_used": "Cloud used (this month)", "card_cap": "Cloud cap",
         "card_left": "Cloud remaining", "unset": "Not set", "set_by_admin": "Set by the administrator",
-        "unknown_runs": "%d more analyses could not be priced",
+        "unknown_runs": "%d more analyses could not be priced", "unknown_run": "1 more analysis could not be priced",
         "action": "Action needed: this month's cloud cap is used up",
         "note": "Cloud costs are shown in US dollars and never converted to New Taiwan dollars; " + _HPC + " use is counted in SU. "
                 "Figures are estimates from the run records and a little below the actual bill.",
@@ -106,7 +106,7 @@ def _cards(t, lang, data):
     used_up = left is not None and left <= 0
     cards = [
         _card(t["card_su"], _num(su["total"]), _small(_reason(t, lang, su["unknown_reasons"]) if su["total"] is None else "")),
-        _card(t["card_used"], _usd(cloud["used_usd"]), _small(t["unknown_runs"] % unknown if unknown > 0 else "")),
+        _card(t["card_used"], _usd(cloud["used_usd"]), _small((t.get("unknown_run") if unknown == 1 and lang == "en" else t["unknown_runs"] % unknown) if unknown > 0 else "")),
         _card(t["card_cap"], t["unset"] if cap is None else _usd(cap), _small(t["set_by_admin"] if cap is None else "")),
         _card(t["card_left"], _usd(left), _small(t["action"] if used_up else "", "⚠"), " state-failed" if used_up else ""),
     ]

@@ -44,3 +44,9 @@ Also forced, additive only:
 | platform/tests/test_confirm_page.py:304-312 (tcg04) | exact route list | plus `("/usage", ("GET", "HEAD"))` | a new GET route |
 | platform/tests/test_owner_binding.py:822 (tc068) | exact set of route paths | plus `/usage` | a new GET route (it logs nobody in) |
 | platform/tests/test_pat.py:751 (tcd14) | 8 tool bodies; keywords of each call are `["caller"]` (run tools: plus platform_path) | 9 tool bodies; `my_usage` passes `["caller", "month"]` | tcd14 pins the keywords a tool body passes; the tool has one argument, the month |
+
+## Fix round: rulings 12, 13, 14
+
+- Ruling 12: the SU total in `actions.my_usage` (the only place `su.month_total` was called for this page; `web_cost.py` is a pure renderer and never saw the runs) now adds only runs whose hand-off record says they went to the national HPC. A cloud run is neither added nor turns the total into unknown; `su.py` is untouched. Test `test_ruling12_su_card_ignores_cloud_runs` (red first: card was a dash); `test_co11` strengthened: ann has an HPC and a cloud run and her total must be 2.0, not None.
+- Ruling 13: English "1 more analysis could not be priced" vs "N more analyses ..." (`web_cost.py`); test `test_ruling13_english_plural`.
+- Ruling 14: `?month=2099-01` / `1999-12` / `0001-01` show an empty table, status 200 (already so; pinned by `test_ruling14_future_or_missing_month_is_an_empty_table`). `2026-13` is not the form YYYY-MM, so it keeps the existing notice-and-this-month behaviour (TC-046/TC-047/TC-095, protected); the test pins that it is a 200 with the notice. No CSS change.
