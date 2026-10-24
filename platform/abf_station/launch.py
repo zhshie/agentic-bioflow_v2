@@ -414,7 +414,7 @@ def _csv_text(rows):
 
 
 def _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower, resume_session=None, site=None,
-                 source=None):
+                 source=None, params_file="params.yaml", extra_file=None):
     q = shlex.quote
     site = site or {"modules": [], "siteConfigVars": []}
     source = source or REMOTE
@@ -462,8 +462,9 @@ def _head_script(run_name, run_folder, pipeline, revision, queue, options, accou
                      % (q(run_folder + "/pipeline/main.nf"), q(run_name), site_c, q(run_folder + "/pipeline/nextflow.config"), endpoint))
         return "\n".join(lines) + "\n"
     target = '"$%s"' % source["home"] if local else "%s -r %s" % (q(pipeline), q(revision))
-    lines.append("exec nextflow run %s%s -name %s -params-file params.yaml%s -c nextflow.config -with-tower %s"
-                 % (target, resume, q(run_name), site_c, endpoint))
+    extra = "" if extra_file is None else " -c %s" % extra_file      # a resume with extra settings: read after nextflow.config, so it is the last word
+    lines.append("exec nextflow run %s%s -name %s -params-file %s%s -c nextflow.config%s -with-tower %s"
+                 % (target, resume, q(run_name), params_file, site_c, extra, endpoint))
     return "\n".join(lines) + "\n"
 
 
@@ -736,7 +737,118 @@ def render_gcb_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, 
             "path_columns": sorted(set(path_columns or [])), "tower": tower, "files": files, "pipeline_source": dict(REMOTE)}
 
 
-def render_resume(*, origin, run_name, attempt, session_id):
+MAX_EXTRA_CONFIG = 20000
+EXTRA_KEYS = ("cpus", "memory", "time", "disk", "maxRetries", "errorStrategy")
+_UNIT_TIME = r"[0-9]+(ms|s|m|h|d)"
+EXTRA_VALUE = {
+    "cpus": re.compile(r"^[0-9]{1,4}\Z"),
+    "maxRetries": re.compile(r"^[0-9]{1,4}\Z"),
+    "memory": re.compile(r"^'[0-9]+(\.[0-9]+)? ?(B|KB|MB|GB|TB)'\Z"),
+    "disk": re.compile(r"^'[0-9]+(\.[0-9]+)? ?(B|KB|MB|GB|TB)'\Z"),
+    "time": re.compile(r"^'%s( %s)*'\Z" % (_UNIT_TIME, _UNIT_TIME)),
+    "errorStrategy": re.compile(r"^'(retry|terminate|ignore|finish)'\Z"),
+}
+EXTRA_ASSIGN = re.compile(r"^(process\.)?([A-Za-z]+)[ \t]*=[ \t]*(.*)\Z")
+EXTRA_BLOCK = re.compile(r"^(process|(?:withName|withLabel)[ \t]*:[ \t]*'[A-Za-z0-9_:.*|-]{1,200}')[ \t]*\{\Z")
+RESUME_OPTIONAL = {"overrides"}
+
+
+def _extra_fail(n, why, line):
+    hint = ""
+    if "{" in line or "}" in line:
+        hint = "請分行寫，每行一個 `{`、一個設定或一個 `}` (one `{`, one setting or one `}` per line). "
+    shown = line if len(line) <= 60 else line[:60] + "..."
+    return BundleError("extra_config 第 %d 行: %s。%s只收資源設定（%s），可以改成這些行，或拿掉這一行 (line %d of extra_config is not allowed; "
+                       "only resource lines are accepted, change it or take it out): %s"
+                       % (n, why, hint, "、".join(EXTRA_KEYS), n, shown))
+
+
+def _check_extra_config(text):
+    """The extra Nextflow settings of a resume: only a closed set of resource lines (a comment, process.<key> = <value>, or the same inside
+    `process {` / `withName: 'x' {` / `withLabel: 'x' {`), nothing that can run code, read a file or undo the platform's own config.
+    Raises BundleError naming the line and the rule."""
+    _check_text("extra_config", text, allow_cr=False, limit=MAX_EXTRA_CONFIG)
+    lines = text.split("\n")
+    for n, line in enumerate(lines, 1):
+        for ch in line:
+            o = ord(ch)
+            if ch == "\\":
+                raise BundleError("extra_config 第 %d 行: 不准有反斜線，連註解裡也不行 (no backslash, not even in a comment: Groovy reads "
+                                  "unicode escapes before the code)。請拿掉它 (take it out)" % n)
+            if not (0x20 <= o <= 0x7E or ch == "\t"):
+                raise BundleError("extra_config 第 %d 行: 只准 ASCII 可列印字元、換行與 tab，這一行有 U+%04X (ASCII only)。請改成英文字元 "
+                                  "(use plain ASCII characters)" % (n, o))
+    stack = []      # the line numbers of the blocks that are open
+    for n, raw in enumerate(lines, 1):
+        line = raw.strip(" \t")
+        if not line:
+            continue
+        if line.startswith("//"):
+            if "//" in line[2:]:
+                raise _extra_fail(n, "註解行裡不能再接註解", line)
+            continue
+        if line == "}":
+            if not stack:
+                raise _extra_fail(n, "多出一個 `}`，沒有對應的 `{`", line)
+            stack.pop()
+            continue
+        m = EXTRA_BLOCK.match(line)
+        if m:
+            if m.group(1) == "process":
+                if stack:
+                    raise _extra_fail(n, "`process {` 只能在最外層", line)
+            elif len(stack) != 1:
+                raise _extra_fail(n, "`withName`／`withLabel` 只能直接放在 `process {` 裡面（巢狀最多兩層）", line)
+            stack.append(n)
+            continue
+        m = EXTRA_ASSIGN.match(line)
+        if m:
+            prefix, key, value = m.groups()
+            if key in EXTRA_VALUE:
+                if bool(prefix) != (not stack):
+                    raise _extra_fail(n, "最外層要寫 `process.%s = …`，區塊裡面只寫 `%s = …`" % (key, key), line)
+                if not EXTRA_VALUE[key].match(value.strip(" \t")):
+                    raise _extra_fail(n, "%s 的值格式不對" % key, line)
+                continue
+        raise _extra_fail(n, "不符合任何允許的行", line)
+    if stack:
+        raise _extra_fail(stack[-1], "這個 `{` 沒有對應的 `}`", lines[stack[-1] - 1].strip(" \t"))
+
+
+def _normalize_overrides(overrides, origin_params):
+    """(changes, merged params): `changes` is the overrides as they are kept in the bundle ({} when nothing changes; empty items have no
+    key), `merged` the first launch's parameters with the changed ones laid over them, checked like a launch's. Raises BundleError."""
+    if overrides is None:
+        return {}, None
+    if not isinstance(overrides, dict):
+        raise BundleError("overrides: 必須是 params 與 extra_config 的對照 (a mapping of params and extra_config)")
+    for k in overrides:
+        if k not in ("params", "extra_config"):
+            raise BundleError("overrides: 不認得的欄位 %r；續跑只能改 params 與 extra_config (only params and extra_config can change)"
+                              % str(k)[:40])
+    changes = {}
+    params, extra = overrides.get("params"), overrides.get("extra_config")
+    if params is not None and not isinstance(params, dict):
+        raise BundleError("overrides.params: 必須是名稱到值的對照 (a mapping)")
+    if extra is not None and not isinstance(extra, str):
+        raise BundleError("overrides.extra_config: 必須是文字 (must be text)")
+    if not isinstance(origin_params, dict):
+        raise BundleError("origin: 不是一份送出的內容包 (not a launch bundle)")
+    merged = None
+    if params:
+        merged = _check_params({**origin_params, **params})
+        changes["params"] = {k: merged[k] for k in params}
+    if extra and extra.strip("\n"):
+        _check_extra_config(extra)
+        changes["extra_config"] = extra.rstrip("\n") + "\n"
+    if not changes:
+        return {}, None
+    if merged is None:
+        merged = _check_params(dict(origin_params))
+    return changes, merged
+
+
+def render_resume(*, origin, run_name, attempt, session_id, overrides=None):
     """{ "head-<attempt>.sh": text }: the head script of a resume (spec 009e). `origin` is a launch bundle as render_bundle made it. The
     text is the first launch's head script but for the job name, the new -name and `-resume <session id>`; it runs in the same folder, so
     Nextflow finds its cache there. Raises BundleError, naming the field."""
@@ -764,22 +876,37 @@ def render_resume(*, origin, run_name, attempt, session_id):
     if not isinstance(tower, dict) or tower.get("mode") not in ("forward", "direct"):
         raise BundleError("tower: 不是合法的連線方式 (not a way back to the platform)")
     options = _parse_options(ce.get("headJobOptions") or "", account)
-    return {"head-%d.sh" % attempt: _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower,
-                                                  resume_session=session_id, site=site, source=source)}
+    changes, merged = _normalize_overrides(overrides, origin.get("params"))
+    if not changes:
+        return {"head-%d.sh" % attempt: _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower,
+                                                      resume_session=session_id, site=site, source=source)}
+    extra = changes.get("extra_config")
+    files = {"head-%d.sh" % attempt: _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower,
+                                                   resume_session=session_id, site=site, source=source,
+                                                   params_file="params-%d.yaml" % attempt,
+                                                   extra_file=None if extra is None else "extra-%d.config" % attempt),
+             "params-%d.yaml" % attempt: _params_yaml(merged, run_folder)}
+    if extra is not None:
+        files["extra-%d.config" % attempt] = "// added by the platform: extra settings of resume %d\n%s" % (attempt, extra)
+    return files
 
 
-def render_resume_bundle(*, origin, run_name, attempt, session_id, of_run, of_slurm_job_id):
+def render_resume_bundle(*, origin, run_name, attempt, session_id, of_run, of_slurm_job_id, overrides=None):
     """The bundle of a resume (spec 009e): the folder of `origin` and the one new file, head-<attempt>.sh. It has no samplesheet and no
     parameters of its own; they are the origin's, which is kept verbatim in `resume`, so they cannot change between the yes and the run."""
-    files = render_resume(origin=origin, run_name=run_name, attempt=attempt, session_id=session_id)
+    files = render_resume(origin=origin, run_name=run_name, attempt=attempt, session_id=session_id, overrides=overrides)
+    changes, _ = _normalize_overrides(overrides, origin.get("params"))
     if not isinstance(of_run, str) or not RUN_NAME.match(of_run):
         raise BundleError("of_run: 不是合法的 run 名稱 (run name)")
     if isinstance(of_slurm_job_id, bool) or not isinstance(of_slurm_job_id, int) or of_slurm_job_id < 1:
         raise BundleError("of_slurm_job_id: 必須是 Slurm 工作編號 (a Slurm job number)")
-    return {"version": BUNDLE_VERSION, "agent": origin["agent"], "ce": copy.deepcopy(origin["ce"]), "run_name": run_name,
-            "run_folder": origin["run_folder"], "files": files,
-            "resume": {"of_run": of_run, "of_slurm_job_id": of_slurm_job_id, "session_id": session_id, "attempt": attempt,
-                       "origin": copy.deepcopy(origin)}}
+    out = {"version": BUNDLE_VERSION, "agent": origin["agent"], "ce": copy.deepcopy(origin["ce"]), "run_name": run_name,
+           "run_folder": origin["run_folder"], "files": files,
+           "resume": {"of_run": of_run, "of_slurm_job_id": of_slurm_job_id, "session_id": session_id, "attempt": attempt,
+                      "origin": copy.deepcopy(origin)}}
+    if changes:      # no changes: no key, so the bundle and its hash are what they were before overrides existed
+        out["resume"]["overrides"] = copy.deepcopy(changes)
+    return out
 
 
 # ======================================================================================================================
@@ -1092,17 +1219,19 @@ def _site_user(settings_file):
     return user
 
 
-def _probe(folder, of_run, user, script):
+def _probe(folder, of_run, user, script, others=()):
     """ONE question to the site about the folder of a resume. Every line of the answer is `key=value`; nothing is written or run."""
     f, s = quote(folder), quote(script)
+    more = "".join('if [ -e "$f"/%s ] || [ -L "$f"/%s ]; then echo exists=%s; fi; ' % (quote(n), quote(n), n) for n in others)
     return ("f=%s; "
             'if [ -d "$f" ] && [ "$(realpath -- "$f")" = "$f" ]; then echo dir=ok; else echo dir=no; fi; '
             'if [ -e "$f"/%s ] || [ -L "$f"/%s ]; then echo head=exists; else echo head=free; fi; '
+            '%s'
             'if [ -L "$f"/tower.token ]; then echo token=link; else echo token=ok; fi; '
             'echo session=$(cut -f6 "$f"/.nextflow/history 2>/dev/null | grep -m1 -E %s); '
             '(cd "$f" 2>/dev/null && sha256sum -- %s 2>/dev/null | sed %s); '
             'q=$(squeue -h -n %s -u %s 2>&1); echo squeue_rc=$?; echo alive=$(printf "%%s\\n" "$q" | grep -c .)'
-            % (f, s, s, quote("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"), " ".join(FILE_NAMES), quote("s/^/sha=/"),
+            % (f, s, s, more, quote("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"), " ".join(FILE_NAMES), quote("s/^/sha=/"),
                quote("nf-" + of_run), quote(user)))
 
 
@@ -1120,6 +1249,8 @@ def _check_folder(folder, answer, resume, origin, script):
         return stop("不是一個一般的資料夾（不存在，或要經過捷徑才到得了）(not a plain folder: missing, or reached through a link)")
     if one("head") != "free":
         return stop("裡已經有 %s，不覆蓋 (%s exists already)" % (script, script))
+    for name in values.get("exists", []):
+        return stop("裡已經有 %s，不覆蓋 (%s exists already)" % (name.strip(), name.strip()))
     if one("token") != "ok":
         return stop("裡的 tower.token 是捷徑 (tower.token is a link)")
     if one("session").lower() != resume["session_id"].lower():
@@ -1157,7 +1288,7 @@ def run_resume(job, ctx, preflight, bundle):
     origin_ce = (resume.get("origin") or {}).get("ce") if isinstance(resume, dict) and isinstance(resume.get("origin"), dict) else None
     if any(isinstance(ce, dict) and ce.get("platform") == GCB for ce in (bundle.get("ce"), origin_ce)):
         raise rules.Refusal(GCB_NO_RESUME)      # a Google Batch run cannot be resumed yet, whatever the platform sent
-    if not isinstance(resume, dict) or set(resume) != RESUME_KEYS or not isinstance(resume.get("origin"), dict):
+    if not isinstance(resume, dict) or set(resume) - RESUME_OPTIONAL != RESUME_KEYS or not isinstance(resume.get("origin"), dict):
         raise rules.Refusal("續跑的內容包欄位不對 (the resume bundle has other fields than it should)")
     origin = resume["origin"]
     if (origin.get("pipeline_source") or {}).get("kind") == "composed" or "project" in origin:
@@ -1184,7 +1315,8 @@ def run_resume(job, ctx, preflight, bundle):
         raise rules.Refusal("%s：不續跑 (the origin is not what this agent builds from its own settings)" % why)
     try:
         expected = render_resume_bundle(origin=rebuilt, run_name=bundle.get("run_name"), attempt=resume["attempt"],
-                                        session_id=resume["session_id"], of_run=resume["of_run"], of_slurm_job_id=resume["of_slurm_job_id"])
+                                        session_id=resume["session_id"], of_run=resume["of_run"], of_slurm_job_id=resume["of_slurm_job_id"],
+                                        overrides=resume.get("overrides"))
     except BundleError as e:
         raise rules.Refusal("內容不合規則：%s" % e)
     expected["resume"]["origin"] = origin      # the records the platform added to it (upload paths, relaunch) were taken out above; it is the same origin
@@ -1193,19 +1325,20 @@ def run_resume(job, ctx, preflight, bundle):
     if expected != shown:
         raise rules.Refusal("內容與代理依自己的設定重新產生的不一致：不續跑 (the bundle is not what this agent builds from its own settings)")
     script = "head-%d.sh" % resume["attempt"]
+    new_files = list(expected["files"])      # head-N.sh, and with changes params-N.yaml and extra-N.config: the files this resume adds
     run = bundle["run_name"]
     user = _site_user(ctx.settings_file)
     _prechecks(job, ctx, preflight, env, bundle, rebuilt)
     site = ctx.site
-    res = site.call([_probe(folder, resume["of_run"], user, script)])
+    res = site.call([_probe(folder, resume["of_run"], user, script, new_files[1:])])
     if res.rc != 0:
         raise rules.Refusal("續跑的專屬資料夾 %s 查不了（結束碼 %d）；沒有改動任何東西 (the folder could not be looked at)" % (folder, res.rc))
     refusal = _check_folder(folder, res.out.decode("utf-8", errors="replace"), resume, origin, script)
     if refusal is not None:
         raise refusal
-    files = [(script, bundle["files"][script].encode("utf-8")), ("tower.token", token.encode("utf-8"))]
+    files = [(n, bundle["files"][n].encode("utf-8")) for n in new_files] + [("tower.token", token.encode("utf-8"))]
     res = site.call(["umask 077; tar -x --no-same-owner -C %s" % quote(folder)], input=_tar(files), timeout=120)
     if res.rc != 0:
-        left = "資料夾 %s 裡的 %s 與 tower.token 可能不完整，尚未送出" % (folder, script)
+        left = "資料夾 %s 裡的 %s 與 tower.token 可能不完整，尚未送出" % (folder, "、".join(new_files))
         return "error", {"ok": False, "message": "寫入專屬資料夾時出錯（結束碼 %d）。%s" % (res.rc, left), "left_on_site": left}
-    return _submit(job, ctx, folder, run, script, "資料夾 %s 裡的 %s 與 tower.token 已寫好，尚未送出（工作期限剩下的時間不足）" % (folder, script))
+    return _submit(job, ctx, folder, run, script, "資料夾 %s 裡的 %s 與 tower.token 已寫好，尚未送出（工作期限剩下的時間不足）" % (folder, "、".join(new_files)))
