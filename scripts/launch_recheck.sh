@@ -1,5 +1,6 @@
 #!/bin/bash
 # Just-in-time re-check, run right before `tw launch` (issue #7).
+# Nothing existing: preflight.sh asks these two questions only once, at step 0 of the launch skill, and no other script asks them again right before submitting.
 #
 # preflight.sh asks whether the site's two daemons are alive once, at step 0 of
 # the launch skill. A parameter walkthrough can take as long as the user needs,

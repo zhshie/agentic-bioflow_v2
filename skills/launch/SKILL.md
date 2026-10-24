@@ -59,7 +59,7 @@ cannot carry it - which is how a dead outputs reader took out a launch once
 
 The launch gate (`hooks/confirm_launch.sh`) re-checks the two things that can
 die while you work, but only when `reach` is `local` or `LAB_RUNS_DIR` is set in
-the shell; on `ssh` and `none` deployments it stays silent on purpose (a hook
+the shell; for the other `reach` values it stays silent on purpose (a hook
 has a 10-second limit). So the re-check just before submitting is step 8's
 `scripts/launch_recheck.sh`, not the gate. Step 0 is the earlier and wider
 check: it also covers `LAB_RUNS_DIR`, the resource contract, and whether the
