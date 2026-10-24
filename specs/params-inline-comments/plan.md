@@ -80,6 +80,9 @@ source: developer-agent 讀碼查證＋實測（2026-10-25，WSL python3 對 `ra
 ## 裁決（2026-10-25 06:50，developer-agent）
 1. 被註解掉的預設值行（`#   trim_front: 5`）本片不處理，只用測試鎖住現狀；之後若要分辨再另開。
 
+## 裁決（2026-10-25 07:35，已知環境紅）
+- `platform/tests/test_onboarding_doc.py::test_tc047_tc051_other_docs_untouched` 在完整 clone 上本來就紅（釘舊提交 6061925），由 onboarding-test-pinned-base 修。本片把它當已知環境紅：全套只剩這一條紅時視同綠，寫 GREEN，ledger 記一行。
+
 ## 專長守則（backend）
 
 ### executor
