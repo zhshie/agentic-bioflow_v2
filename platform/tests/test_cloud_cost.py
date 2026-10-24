@@ -595,7 +595,8 @@ def test_no_user_door_to_the_cap(tmp_path):
     from abf_platform import actions, web
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
-    assert len(names) == 12 and not [n for n in names if DOOR.search(n)]
+    # tool count is pinned elsewhere (test_oauth_mcp etc.); here only: no tool is a door to the cap
+    assert names and not [n for n in names if DOOR.search(n)]
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if DOOR.search(getattr(r, "path", ""))]
     assert not [n for n in dir(actions) if not n.startswith("_") and (DOOR.search(n) or "cloud" in n.lower())]
