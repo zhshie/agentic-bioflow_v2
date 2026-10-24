@@ -851,60 +851,123 @@ idg "PEER-12 quoted path still asks"                       ask   'NF_RELAY_PEER_
 idg "PEER-12 both variables still ask"                     ask   'NF_RELAY_EXTRA_DOMAINS=evil.org NF_RELAY_PEER_PREFIXES=zzz-aaa bash scripts/egress_ctl.sh start'
 idg "PEER-12 via on_site.sh still asks"                    ask   'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/on_site.sh egress_ctl.sh start'
 idg "PEER-12 plain start still asks"                       ask   'bash scripts/egress_ctl.sh start'
-# relay-warning-hardening (RWH-1..26): last assignment wins, narrower on_site.sh exemption, clean values
-envw() { # envw <label> <var> <has|lacks> <command> [fixed string the ask must also contain]
+# relay-warning-hardening: the warning reads only the command segment that starts the relay
+# (no backtracking regex), shows the value that takes effect, and exempts only a start run
+# through scripts/on_site.sh. TC numbers are those of specs/relay-warning-hardening/test-case.md.
+envw() { # envw <label> <var> <has|lacks> <command> [fixed string the ask must contain] [fixed string it must NOT contain]
   local j o got
   j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$4")
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
   got=lacks; grep -qF -- "THIS COMMAND ALSO SETS $2" <<<"$o" && got=has
   printf '%-58s ' "$1"
   if [ "$got" != "$3" ]; then echo "FAIL: expected $3, got $got <<${o:0:80}>>"; fails=$((fails+1))
-  elif [ -n "${5:-}" ] && ! grep -qF -- "$5" <<<"$o"; then echo "FAIL: missing <<$5>> in <<${o:0:200}>>"; fails=$((fails+1))
+  elif [ -n "${5:-}" ] && ! grep -qF -- "$5" <<<"$o"; then echo "FAIL: missing <<$5>> in <<${o:0:300}>>"; fails=$((fails+1))
+  elif [ -n "${6:-}" ] && grep -qF -- "$6" <<<"$o"; then echo "FAIL: has <<$6>> in <<${o:0:300}>>"; fails=$((fails+1))
   else echo ok; fi
 }
 for V in NF_RELAY_EXTRA_DOMAINS NF_RELAY_PEER_PREFIXES; do
-  S="e/${V#NF_RELAY_}"
-  envw "RWH-1 $S decoy echo"            $V has   "echo $V=ok; $V=evil bash scripts/egress_ctl.sh start" "SETS $V=evil"
-  envw "RWH-2 $S multiple assignments"  $V has   "$V=ok $V=evil bash scripts/egress_ctl.sh start" "SETS $V=evil"
-  envw "RWH-2 $S ...lists them all"     $V has   "$V=ok $V=evil bash scripts/egress_ctl.sh start" "assigns $V 2 times: ok | evil"
-  envw "RWH-3 $S double quotes"         $V has   "$V=\"a,b\" bash scripts/egress_ctl.sh start" "SETS $V=a,b"
-  envw "RWH-4 $S space inside quotes"   $V has   "$V=\"a b\" bash scripts/egress_ctl.sh start" "SETS $V=a b"
-  envw "RWH-5 $S single quotes"         $V has   "$V='a,b' bash scripts/egress_ctl.sh start" "SETS $V=a,b"
-  envw "RWH-6 $S on_site.sh elsewhere"  $V has   "bash scripts/on_site.sh status; $V=evil bash scripts/egress_ctl.sh start"
-  envw "RWH-7 $S trailing comment"      $V has   "$V=evil bash scripts/egress_ctl.sh start # on_site.sh"
-  envw "RWH-8 $S comment on prior line" $V has   $'# on_site.sh\n'"$V=evil bash scripts/egress_ctl.sh start"
-  envw "RWH-9 $S quoted on_site payload" $V has  "scripts/on_site.sh '$V=evil bash scripts/egress_ctl.sh start'"
-  envw "RWH-10 $S two start points"     $V has   "scripts/on_site.sh egress_ctl.sh start; $V=evil bash scripts/egress_ctl.sh start"
-  envw "RWH-11 $S through on_site.sh"   $V lacks "$V=ok bash scripts/on_site.sh egress_ctl.sh start"
-  envw "RWH-12 $S on_site.sh --script"  $V lacks "$V=ok scripts/on_site.sh --script scripts/egress_ctl.sh start"
-  envw "RWH-13 $S unquoted \$(...)"     $V has   "$V=\$(cat /tmp/p) bash scripts/egress_ctl.sh start" 'value is computed at run time: $(cat'
-  envw "RWH-14 $S quoted \$(...)"       $V has   "$V=\"\$(cat /tmp/p)\" bash scripts/egress_ctl.sh start" 'value is computed at run time: $(cat /tmp/p)'
-  envw "RWH-15 $S variable expansion"   $V has   "$V=\$P bash scripts/egress_ctl.sh start" 'value is computed at run time: $P'
+  S="${V#NF_RELAY_}"
+  NP="THIS COMMAND ALSO SETS $V (not parsed: the command is too long or has too many parts); read the whole command."
+  MEN="This command also mentions $V= elsewhere (not as the value the relay gets); read the whole command."
+  envw "TC-001 $S decoy echo before"      $V has   "echo $V=ok; $V=evil bash scripts/egress_ctl.sh start" "SETS $V=evil"
+  envw "TC-002 $S same-segment assignments" $V has  "$V=ok $V=evil bash scripts/egress_ctl.sh start" "SETS $V=evil"
+  envw "TC-002 $S ...all listed"           $V has   "$V=ok $V=evil bash scripts/egress_ctl.sh start" "assigns $V 2 times: ok | evil"
+  envw "TC-004 $S double quotes"           $V has   "$V=\"a,b\" bash scripts/egress_ctl.sh start" "SETS $V=a,b"
+  envw "TC-005 $S space inside quotes"     $V has   "$V=\"a b\" bash scripts/egress_ctl.sh start" "SETS $V=a b"
+  envw "TC-006 $S single quotes"           $V has   "$V='a,b' bash scripts/egress_ctl.sh start" "SETS $V=a,b"
+  envw "TC-008 $S unquoted \$(...)"        $V has   "$V=\$(cat /tmp/p) bash scripts/egress_ctl.sh start" 'value is computed at run time: $(cat'
+  envw "TC-010 $S quoted \$(...)"          $V has   "$V=\"\$(cat /tmp/p)\" bash scripts/egress_ctl.sh start" 'value is computed at run time: $(cat /tmp/p)'
+  envw "TC-011 $S variable expansion"      $V has   "$V=\$P bash scripts/egress_ctl.sh start" 'value is computed at run time: $P'
+  envw "TC-054 $S single-quoted \$ is literal" $V has "$V='\$P' bash scripts/egress_ctl.sh start" "SETS $V=\$P" "computed at run time"
+  envw "TC-055 $S single-quoted \$() literal"  $V has "$V='\$(cat /tmp/p)' bash scripts/egress_ctl.sh start" "SETS $V=\$(cat /tmp/p)" "computed at run time"
+  envw "TC-056 $S adjacent pieces joined"  $V has   "$V=\"a\"b bash scripts/egress_ctl.sh start" "SETS $V=ab"
+  envw "TC-057 $S single plus double pieces" $V has "$V='a b'\"c d\" bash scripts/egress_ctl.sh start" "SETS $V=a bc d"
+  envw "TC-058 $S backtick in double quotes" $V has "$V=\"\`id\`\" bash scripts/egress_ctl.sh start" 'value is computed at run time: `id`'
+  envw "TC-059 $S separators inside quotes" $V has  "$V=\"a;b|c&d\" bash scripts/egress_ctl.sh start" "SETS $V=a;b|c&d"
+  envw "TC-060 $S no left word boundary"   $V has   "MY_$V=zz bash scripts/egress_ctl.sh start" "" "SETS $V=zz"
+  envw "TC-061 $S decoy echo after"        $V has   "$V=ok bash scripts/egress_ctl.sh start; echo $V=evil" "SETS $V=ok" "SETS $V=evil"
+  envw "TC-062 $S export after the start"  $V has   "$V=ok bash scripts/egress_ctl.sh start; export $V=evil" "SETS $V=ok" "SETS $V=evil"
+  envw "TC-063 $S comment after the start" $V has   "$V=ok bash scripts/egress_ctl.sh start # $V=evil" "SETS $V=ok" "SETS $V=evil"
+  envw "TC-064 $S mentions elsewhere"      $V has   "echo $V=ok; $V=evil bash scripts/egress_ctl.sh start" "$MEN"
+  envw "TC-065 $S single assignment, no extra" $V has "$V=ok bash scripts/egress_ctl.sh start" "SETS $V=ok" "also mentions $V="
+  envw "TC-066 $S only in a quoted string" $V has   "echo '$V=zz'; bash scripts/egress_ctl.sh start" "$MEN"
+  envw "TC-067 $S through env"             $V has   "env $V=evil bash scripts/egress_ctl.sh restart" "SETS $V=evil"
+  envw "TC-068 $S export not adjacent"     $V has   "export $V=a; echo hi; bash scripts/egress_ctl.sh start" "SETS $V=a"
+  envw "TC-069 $S export then prefix"      $V has   "export $V=a; $V=b bash scripts/egress_ctl.sh start" "assigns $V 2 times: a | b"
+  envw "TC-069 $S ...last one is the lead" $V has   "export $V=a; $V=b bash scripts/egress_ctl.sh start" "SETS $V=b"
+  envw "TC-070 $S start inside \$( )"      $V has   "echo \$(true; $V=evil bash scripts/egress_ctl.sh start)" "$MEN"
+  envw "TC-014 $S on_site.sh in another command" $V has "bash scripts/on_site.sh status; $V=evil bash scripts/egress_ctl.sh start"
+  envw "TC-015 $S trailing comment"        $V has   "$V=evil bash scripts/egress_ctl.sh start # on_site.sh"
+  envw "TC-016 $S comment on prior line"   $V has   $'# on_site.sh\n'"$V=evil bash scripts/egress_ctl.sh start"
+  envw "TC-017 $S on_site.sh quoted payload" $V has "scripts/on_site.sh '$V=evil bash scripts/egress_ctl.sh start'"
+  envw "TC-018 $S two start segments"      $V has   "scripts/on_site.sh egress_ctl.sh start; $V=evil bash scripts/egress_ctl.sh start"
+  envw "TC-020 $S through on_site.sh"      $V lacks "$V=ok bash scripts/on_site.sh egress_ctl.sh start"
+  envw "TC-021 $S on_site.sh --script"     $V lacks "$V=ok scripts/on_site.sh --script scripts/egress_ctl.sh start"
+  envw "TC-071 $S on_site.sh only an argument" $V has "$V=evil cat scripts/on_site.sh scripts/egress_ctl.sh start" "SETS $V=evil"
+  envw "TC-072 $S a second start in quotes" $V has  "$V=evil scripts/on_site.sh egress_ctl.sh start \"bash scripts/egress_ctl.sh start\""
+  envw "TC-073 $S direct start first"      $V has   "$V=evil bash scripts/egress_ctl.sh start; scripts/on_site.sh egress_ctl.sh start" "SETS $V=evil"
+  envw "TC-074 $S env then bash then on_site" $V lacks "env $V=ok bash scripts/on_site.sh egress_ctl.sh start"
+  envw "TC-075 $S sh then on_site"         $V lacks "$V=ok sh scripts/on_site.sh egress_ctl.sh start"
+  # limits: 64 KB for the whole command, 50 segments (ruling 4 point 1)
+  envw "TC-080 $S 51 segments are not parsed" $V has "$(printf 'echo a;%.0s' $(seq 1 50))$V=ok bash scripts/egress_ctl.sh start" "$NP"
+  envw "TC-081 $S 50 segments are parsed"  $V has   "$(printf 'echo a;%.0s' $(seq 1 49))$V=ok bash scripts/egress_ctl.sh start" "SETS $V=ok" "not parsed"
+  L70=$(printf 'echo %01745d;' 0 | sed 's/0/x/g'); B70=""; for i in $(seq 1 40); do B70="$B70$L70"; done
+  envw "TC-082 $S over 64 KB is not parsed" $V has  "${B70}$V=ok bash scripts/egress_ctl.sh start" "$NP"
+  L60=$(printf 'echo %01450d;' 0 | sed 's/0/x/g'); B60=""; for i in $(seq 1 40); do B60="$B60$L60"; done
+  envw "TC-083 $S under 64 KB is parsed"   $V has   "${B60}$V=ok bash scripts/egress_ctl.sh start" "SETS $V=ok" "not parsed"
+  idg "TC-086 $S 51 segments still ask"    ask      "$(printf 'echo a;%.0s' $(seq 1 50))$V=ok bash scripts/egress_ctl.sh start"
+  idg "TC-086 $S over 64 KB still asks"    ask      "${B70}$V=ok bash scripts/egress_ctl.sh start"
 done
-idg "RWH-16 decoy echo still asks"                         ask   'echo NF_RELAY_PEER_PREFIXES=ok; NF_RELAY_PEER_PREFIXES=evil bash scripts/egress_ctl.sh start'
-idg "RWH-17 on_site.sh elsewhere still asks"               ask   'bash scripts/on_site.sh status; NF_RELAY_PEER_PREFIXES=evil bash scripts/egress_ctl.sh start'
-idg "RWH-18 quoted on_site payload still asks"             ask   "scripts/on_site.sh 'NF_RELAY_PEER_PREFIXES=evil bash scripts/egress_ctl.sh start'"
-envq_txt "RWH-19 invalid entries are dropped" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "Entries that are not valid are dropped"
-envq_txt "RWH-20 falls back to the built-in list" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "falls back to the built-in one"
+PV=NF_RELAY_PEER_PREFIXES
+envw "TC-003 first and last of 7 are shown"  $PV has "$PV=a1 $PV=a2 $PV=a3 $PV=a4 $PV=a5 $PV=a6 $PV=a7 bash scripts/egress_ctl.sh start" "SETS $PV=a7"
+envw "TC-003 ...with the count"              $PV has "$PV=a1 $PV=a2 $PV=a3 $PV=a4 $PV=a5 $PV=a6 $PV=a7 bash scripts/egress_ctl.sh start" "assigns $PV 7 times: a1 | "
+envw "TC-003 ...and the last one in the list" $PV has "$PV=a1 $PV=a2 $PV=a3 $PV=a4 $PV=a5 $PV=a6 $PV=a7 bash scripts/egress_ctl.sh start" " | a7 "
+envw "TC-003 ...and that some are hidden"    $PV has "$PV=a1 $PV=a2 $PV=a3 $PV=a4 $PV=a5 $PV=a6 $PV=a7 bash scripts/egress_ctl.sh start" "earlier ones not shown"
+X200=$(printf 'x%.0s' $(seq 1 200)); X250="$X200$(printf 'x%.0s' $(seq 1 50))"
+envw "TC-007 value cut at 200 characters"   $PV has "$PV=$X250 bash scripts/egress_ctl.sh start" "SETS $PV=$X200…"
+envw "TC-007 ...and not one character more" $PV has "$PV=$X250 bash scripts/egress_ctl.sh start" "" "SETS $PV=${X200}x"
+envw "TC-009 unquoted \$(...) says it was cut" $PV has "$PV=\$(cat /tmp/p) bash scripts/egress_ctl.sh start" "cut at the first space; read the command"
+idg "TC-029 decoy echo still asks"                         ask   'echo NF_RELAY_PEER_PREFIXES=ok; NF_RELAY_PEER_PREFIXES=evil bash scripts/egress_ctl.sh start'
+idg "TC-030 on_site.sh elsewhere still asks"               ask   'bash scripts/on_site.sh status; NF_RELAY_PEER_PREFIXES=evil bash scripts/egress_ctl.sh start'
+idg "TC-031 quoted on_site payload still asks"             ask   "scripts/on_site.sh 'NF_RELAY_PEER_PREFIXES=evil bash scripts/egress_ctl.sh start'"
+envq_txt "TC-023 invalid entries are dropped" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "Entries that are not valid are dropped"
+envq_txt "TC-024 falls back to the built-in list" 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start' "falls back to the built-in one"
 { j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' 'NF_RELAY_PEER_PREFIXES=25a-cpn bash scripts/egress_ctl.sh start')
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
-  printf '%-58s ' "RWH-21 the default list is not hard-coded"
+  printf '%-58s ' "TC-025 the default list is not hard-coded"
   if [ -n "$o" ] && ! grep -qF -- 'cpn,gpn,bgm,lgn,localhost' <<<"$o"; then echo ok; else echo "FAIL"; fails=$((fails+1)); fi; }
-# RWH-22..26 (contract TC-003, -007, -009, -012, -019)
-PV=NF_RELAY_PEER_PREFIXES
-envw "RWH-22 only the last 5 are listed"   $PV has "$PV=a1 $PV=a2 $PV=a3 $PV=a4 $PV=a5 $PV=a6 $PV=a7 bash scripts/egress_ctl.sh start" "assigns $PV 7 times: a3 | a4 | a5 | a6 | a7"
-envw "RWH-22 ...and says how many are hidden" $PV has "$PV=a1 $PV=a2 $PV=a3 $PV=a4 $PV=a5 $PV=a6 $PV=a7 bash scripts/egress_ctl.sh start" "(2 earlier ones not shown)"
-X200=$(printf 'x%.0s' $(seq 1 200)); X250="$X200$(printf 'x%.0s' $(seq 1 50))"
-envw "RWH-23 value cut at 200 characters"  $PV has "$PV=$X250 bash scripts/egress_ctl.sh start" "SETS $PV=$X200…"
-{ j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$PV=$X250 bash scripts/egress_ctl.sh start")
-  o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
-  printf '%-58s ' "RWH-23 ...and not one character more"
-  if grep -qF -- "SETS $PV=${X200}x" <<<"$o"; then echo "FAIL"; fails=$((fails+1)); else echo ok; fi; }
-envw "RWH-24 unquoted \$(...) says it was cut" $PV has "$PV=\$(cat /tmp/p) bash scripts/egress_ctl.sh start" "cut at the first space; read the command"
-M21=""; for i in $(seq 1 21); do M21="$M21$PV=v$i "; done
-envw "RWH-25 more than 20 assignments warn"  $PV has "${M21}bash scripts/egress_ctl.sh start"
-M9="$PV=ok bash scripts/on_site.sh egress_ctl.sh start"; for i in $(seq 1 8); do M9="$M9; bash scripts/on_site.sh egress_ctl.sh start"; done
-envw "RWH-26 more than 8 start points warn" $PV has "$M9"
+# TC-078 / TC-079 (with TC-086 for them): a command of about 1 MB is fed through stdin (an argument is
+# limited to 128 KB), must be answered in under 2 seconds, and must still ask.
+envbig() { # envbig <label> <var> <kind: long|many>
+  local o t0 t1 ms ok=1 np="THIS COMMAND ALSO SETS $2 (not parsed: the command is too long or has too many parts); read the whole command."
+  python3 -c '
+import json,sys
+v,k=sys.argv[1],sys.argv[2]
+if k=="long": c=v+"=ok bash scripts/egress_ctl.sh start --note "+"x"*1000000
+else: c="echo a;"*130000+v+"=ok bash scripts/egress_ctl.sh start"
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":c}}))' "$2" "$3" > "$TMP/big.json"
+  t0=$(date +%s%N); o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" < "$TMP/big.json" 2>/dev/null); t1=$(date +%s%N)
+  ms=$(( (t1 - t0) / 1000000 ))
+  printf '%-58s ' "$1"
+  grep -qF -- "$np" <<<"$o" || ok=0
+  grep -q '"permissionDecision": *"ask"' <<<"$o" || ok=0
+  [ "$ms" -lt 2000 ] || ok=0
+  [ "$ok" = 1 ] && echo "ok (${ms} ms)" || { echo "FAIL: ${ms} ms <<${o:0:120}>>"; fails=$((fails+1)); }
+}
+for V in NF_RELAY_EXTRA_DOMAINS NF_RELAY_PEER_PREFIXES; do
+  envbig "TC-078 ${V#NF_RELAY_} 1 MB single segment" $V long
+  envbig "TC-079 ${V#NF_RELAY_} 1 MB many short segments" $V many
+done
+# TC-085: every regex the warning helpers use compiles under bash --posix (return code 2 = does not compile)
+RE_DEFS=$(grep -E '^[[:space:]]*(RELAY_ENV_RE_[A-Z_]+|RELAY_START_RE)=' "$H")
+RE_NAMES=$(sed -E 's/^[[:space:]]*([A-Z_]+)=.*/\1/' <<<"$RE_DEFS" | paste -s -d' ' -)
+printf '%-58s ' "TC-085 helper regexes compile under bash --posix"
+RE_OUT=$(bash --posix -c "$RE_DEFS"$'\nn=0\nfor name in '"$RE_NAMES"$'; do re=${!name}; [[ x =~ $re ]]; rc=$?; n=$((n+1)); if [ "$rc" -eq 2 ]; then echo "BAD $name"; fi; done; echo "N $n"' 2>&1)
+if [[ $RE_OUT == *"N "* && $RE_OUT != *BAD* ]] && [ "${RE_OUT##*N }" -ge 9 ]; then echo ok; else echo "FAIL: <<${RE_OUT:0:200}>>"; fails=$((fails+1)); fi
+printf '%-58s ' "TC-085 every =~ in the helpers names one of them"
+RE_BODY=$(sed -n '/^relay_env_[a-z_]*() {/,/^}/p' "$H")
+RE_ALL=$(grep -c '=~' <<<"$RE_BODY"); RE_NAMED=$(grep -cE '=~ \$RELAY_(ENV_RE_[A-Z_]+|START_RE)([^A-Za-z_]|$)' <<<"$RE_BODY")
+if [ "$RE_ALL" -gt 10 ] && [ "$RE_ALL" = "$RE_NAMED" ]; then echo ok; else echo "FAIL: $RE_ALL =~, $RE_NAMED named"; fails=$((fails+1)); fi
 # LOW: false alarms on reading the script, and sourcing it with no operation
 idg "#45 cat of the script does not ask"          allow 'cat scripts/egress_allow.sh'
 idg "#45 less of the script does not ask"                  allow 'less scripts/egress_allow.sh'
