@@ -38,7 +38,7 @@ TC-029 step 7 explicit --compute-env
 ## GREEN
 - scripts/prepare_launch.sh: `bound to:` line, DECIDE on mismatch, WARNING on unknown/unset (view fallback max 5).
 - skills/launch/SKILL.md: step 3 skips only when registered + bound to matches; step 7 always passes `--compute-env`.
-- docs/PITFALLS.md: item 54 appended.
+- docs/PITFALLS.md: item 55 appended (renumbered from 54 when merging v3, which added its own 54).
 - tests/prepare_launch_ce_test.sh: all green.
 
 ## Manual steps (TC-030, 031, 032)
