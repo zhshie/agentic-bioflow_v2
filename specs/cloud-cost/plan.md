@@ -205,6 +205,12 @@ D. **預設的月上限與首位使用者**：建議他自己的帳號先設一�
 8. `cap_problem` 的 pipeline 名稱取 `bundle["pipeline"]`；T8 的拒絕情境、CLOUD.md 的台幣措辭照 verifier 合約的寫法接受。
 9. 重建索引若不經 receiver，executor 回報 BLOCKED 說明，不硬過 TC-098。T14 列為手動檢查接受。
 
+## 裁決四（2026-10-24 12:40 developer-agent，閱卷後；以本段為準，取代裁決三 6 與 T5 的「至少一筆」）
+10. 出貨的 `data/cloud_rates.json` 先清空價目（保留格式與欄位說明，`rates` 為空清單）。理由：目前的六筆 spot 價無法核對（官方價目頁是 JavaScript，agent 讀不到），verifier 懷疑整排是兩倍；而且完全沒有一般（on-demand）價。錯的價錢比沒有價錢更糟。T5 改為：檔案合法；若有條目，每筆必須有 https 來源與讀取日；空清單時所有估計為 unknown（附理由「尚未填入價目」）。
+11. 真實價目另開 `cloud-rates-fill`：在 GCP 帳號（C-0）開好後，用 Cloud Billing Catalog API（Compute Engine 服務的 SKU 清單）抓 us-central1 與 asia-east1 的 N2／E2 一般價與 spot 價，寫進資料檔並記 API 回應日期。
+12. verifier 已接受的兩處自寫測試預期值調整與 TC-077/078 的靜態檢查做法接受。run 在 task_usage 完全沒有列時費用＝unknown（與 su.py 一致）。
+13. 本次 merge 後上限不會擋任何送出（未接線，cloud-cost-wire 負責），PR 說明必須寫明。
+
 ## 專長守則（backend）
 
 ### executor
