@@ -2036,3 +2036,8 @@ What was seen: the nano4 probe summarised in the `ce-nano4-keys` plan found that
 
 **53. A local pipeline path must not be given `-r` (2026-10-22).**
 What was seen: the same nano4 probe: `nextflow run <local path> -r <revision>` is refused, because `-r` selects a revision of a pipeline fetched from a remote repository and a local directory has none. Fix: when the pipeline argument is a local path, leave `-r` out and pin the version by checking out the directory itself. Source: the nano4 probe in the `ce-nano4-keys` plan; not re-run here.
+
+**54. On nano4 an offline site, broken site images and the iGenomes config each break a run (2026-10-24).**
+What was seen (nf-core/ampliseq 2.18.0, three attempts): (a) the site module sets `NXF_OFFLINE=true` and its `NXF_PLUGINS_DIR` has no `nf-tower`, so Nextflow cannot load the plugin and cannot report to Platform; (b) some files in the site's Singularity library are saved 404 HTML pages instead of images (`bioconductor-biostrings-2.58.0`, `bambu`), so tasks using them fail at start; `file <img>` says `HTML document`; (c) `NFCORE_SITE_REFERENCES` (the human iGenomes config) loaded together with the site config makes ampliseq fail; and the read-only `ref_taxonomy_storage` has no DADA2 silva 138.2.
+Fix: the template `configs/sites/nchc-nano4-ce.json` sets `NXF_PLUGINS_DIR` to your own `/work/<site_user>/abf/nxf-plugins` and `NXF_SINGULARITY_LIBRARYDIR` to `/work/<site_user>/abf/singularity-lib`, and keeps only `NFCORE_SITE_CONFIG` in `siteConfigVars`; the build commands and the `ref_taxonomy_storage` run parameter are in `docs/SETTINGS.md`. Found in the 10-24 run; not re-run by this documentation task.
+

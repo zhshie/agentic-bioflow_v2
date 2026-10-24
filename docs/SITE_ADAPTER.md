@@ -186,7 +186,7 @@ the table puts the two side by side.
 
 Image cache: nano4's shared Singularity image cache is read-only. Look images up there with
 `NXF_SINGULARITY_LIBRARYDIR`, and point `NXF_SINGULARITY_CACHEDIR` at a directory you can
-write to (PITFALLS 52).
+write to (PITFALLS 52). Some of the site's images are broken files (saved 404 pages), so the template points `NXF_SINGULARITY_LIBRARYDIR` at your own `singularity-lib` directory layered over the site library; see `SETTINGS.md`, "Before you create the nano4 environment".
 
 ## What Platform offers that this site cannot use
 

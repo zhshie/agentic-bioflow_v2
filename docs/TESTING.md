@@ -183,6 +183,8 @@ The machine part is `tests/platform_test.sh`. These cases need the real cluster 
 
 Words used below. *SU* is the cluster's unit of computing time, the thing that is billed. The *head job* is the one Slurm job that runs Nextflow itself and starts the other jobs; it waits in the partition (queue) called `ngsconsole`. The *child jobs* are the pipeline's own tasks, run in the `ngs` partition. `<rid>` is the run's id, shown on the confirmation page. These cases were written on 2026-10-22; when you run them, the then-current v3 is the truth, and a difference is worth writing in the table's notes cell.
 
+Before TC-047n, confirm that `abf-platform ce show nano4` lists `siteConfigVars` as only `NFCORE_SITE_CONFIG` and an `environment` that contains `NXF_PLUGINS_DIR`.
+
 1. *nano4 preflight passes every item (TC-047n).*
    Before you start: the platform and the agent are running (`docs/PLATFORM.md` section 6), the shared connection to nano4 is open, and an environment for nano4 exists (`abf-platform ce list` shows it).
    1. Run `abf-platform ce preflight nano4` (use your environment's name if it is not `nano4`). It waits up to three minutes.
@@ -451,7 +453,7 @@ The automated tests are `platform/tests/test_chat_tools.py` and `platform/tests/
 
 The automated tests are the `N4-` tests at the end of `platform/tests/test_estimate_su.py`. Four checks are by hand, from the root of the branch.
 
-1. **Only the allowed files changed (N4-34).** Run `git diff --name-only origin/v3...HEAD`. Expected: only `configs/sites/nchc-nano4.config`, `configs/sites/nchc-nano4-ce.json`, `configs/sites/su_rates.json`, `platform/abf_platform/su.py`, `platform/tests/test_estimate_su.py`, `specs/estimate-su/ledger.md`, `specs/nano4-site-config/*`, `docs/TESTING.md`. No `compute_envs.py`, no `actions/`, no site script, and no record of a created compute environment.
+1. **Only the allowed files changed (N4-34).** Run `git diff --name-only origin/v3...HEAD`. Expected: only `configs/sites/nchc-nano4.config`, `configs/sites/nchc-nano4-ce.json`, `configs/sites/su_rates.json`, `platform/abf_platform/su.py`, `platform/tests/test_estimate_su.py`, `specs/estimate-su/ledger.md`, `specs/nano4-site-config/*`, `docs/TESTING.md`; and for nano4-ce-fixes also `docs/SETTINGS.md`, `docs/SITE_ADAPTER.md`, `docs/PITFALLS.md`, `specs/nano4-ce-fixes/*`. No `compute_envs.py`, no `actions/`, no site script, and no record of a created compute environment.
 2. **Taiwania-3 untouched (N4-33).** Run `git diff origin/v3...HEAD -- configs/sites/nchc.config configs/sites/nchc-ce.json.in` (expected: empty) and `git diff origin/v3...HEAD -- configs/sites/su_rates.json` (expected: only added lines, a new `nano4` section; no changed `taiwania3`, `nchc` or top-level line).
 3. **No existing test was weakened (N4-15).** Run `git diff origin/v3...HEAD -- platform/tests/test_estimate_su.py`. Expected: only added lines; no assertion removed, loosened, re-valued or skipped.
 4. **No migration (N4-31).** Read `specs/nano4-site-config/ledger.md`: it says why no migration is needed.

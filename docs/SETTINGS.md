@@ -330,7 +330,45 @@ That file is a template: replace its placeholders before `abf-platform ce create
 | Placeholder | Fill in |
 |---|---|
 | `<site_user>` | your nano4 account (the `/work/<account>` directory) |
-| `<nano4 read-only image library>` | `/work/envstack/apps/application/biology/nf-core/singularity-cache` (NCHC's shared, read-only Singularity images; measured 2026-10-20) |
+| `<nano4 read-only image library>` | `/work/envstack/apps/application/biology/nf-core/singularity-cache` (NCHC's shared, read-only Singularity images; measured 2026-10-20). The template no longer contains it; it is the source path used by the image-library command below |
+| `/work/<site_user>/abf/` | Your own abf directory (the template already spells it this way). You create its three subdirectories yourself: `nxf-plugins`, `singularity-lib` and `ref_taxonomy_storage` |
+
+### Before you create the nano4 environment
+
+Four things found in the 2026-10-24 nano4 16S run (nf-core/ampliseq 2.18.0, three attempts). The template points at the directories made in steps 1 and 2, so make them first.
+
+1. **Plugin directory (`nxf-plugins`).** The site module sets `NXF_OFFLINE=true` and points `NXF_PLUGINS_DIR` at a site directory that has no `nf-tower` plugin, so a run cannot report back. Build your own directory: link every item of the site's plugin directory, then install the plugin. Get the site's real path by loading the module and printing it:
+
+   ```bash
+   module load biology/Nextflow/26.10.0
+   SITE_PLUGINS="$NXF_PLUGINS_DIR"; echo "$SITE_PLUGINS"
+   mkdir -p /work/<site_user>/abf/nxf-plugins
+   for p in "$SITE_PLUGINS"/*; do ln -sfn "$p" /work/<site_user>/abf/nxf-plugins/; done
+   NXF_PLUGINS_DIR=/work/<site_user>/abf/nxf-plugins nextflow plugin install nf-tower@1.28.2
+   ```
+
+   `1.28.2` is the version installed and run on nano4 on 2026-10-24. Other pages write 1.28.3 (tested under Nextflow 26.04.7); 1.28.3 was not verified on nano4.
+
+2. **Image library (`singularity-lib`).** The template sets `NXF_SINGULARITY_LIBRARYDIR` to `/work/<site_user>/abf/singularity-lib`, a directory you own: symbolic links to the site's library, with the good downloaded images placed over the broken ones.
+
+   ```bash
+   mkdir -p /work/<site_user>/abf/singularity-lib
+   for f in <nano4 read-only image library>/*; do ln -sfn "$f" /work/<site_user>/abf/singularity-lib/; done   # replace the placeholder with the path in the table above
+   ```
+
+   Some files in the site library are not images: they are saved 404 HTML pages. Known so far: `bioconductor-biostrings-2.58.0` and `bambu`. Replace each one (remove the link first, then download the image) and put a copy under **every alias file name** the pipelines use for it, because Nextflow looks the image up by file name.
+
+3. **Telling a broken image.** Run `file <img>`: `HTML document` (or a file of a few KB) means broken; a good image shows `Singularity image` or `squashfs`. Scan the library:
+
+   ```bash
+   for f in /work/<site_user>/abf/singularity-lib/*; do file -L "$f"; done | grep -i html
+   ```
+
+4. **ampliseq reference parameter.** The site's read-only `ref_taxonomy_storage` has no DADA2 silva 138.2. Create `/work/<site_user>/abf/ref_taxonomy_storage` and give ampliseq `ref_taxonomy_storage: /work/<site_user>/abf/ref_taxonomy_storage`. This is a parameter of each run, not a compute-environment key, so it is not in the template.
+
+`NFCORE_SITE_REFERENCES` (the site's human iGenomes config) is left out of `siteConfigVars` because it breaks ampliseq; only `NFCORE_SITE_CONFIG` remains. A pipeline that really needs it (for example rnaseq) adds it in that run's own settings; it does not belong in this 16S template.
+
+Self-installed Nextflow variant: the template already sets `NXF_PLUGINS_DIR`, so when you self-install Nextflow you **override** that entry's value with `/work/<site_user>/.nextflow/plugins`; do not add a second one.
 
 ## Keys this version does not read
 
