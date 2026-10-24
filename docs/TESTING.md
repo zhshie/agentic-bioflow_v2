@@ -561,6 +561,19 @@ The automatic tests use a fake `gcloud` and touch no network. Three things are c
 2. **The reviewer.** Run `git diff <base>...HEAD --name-only`. Check: no `cloud_cost.py`, no `configs/cloud/rates.json`, no `local_runner.py`, no `head.pid`, no `-with-tower` code, no money or currency field; the existing tests changed only in `UNSUPPORTED` and TC-030's name and TC-032's assertion in `test_station_envs.py`, and the parity-row assertions of TC-077 in `test_station_docs.py`; no assertion was deleted, loosened or skipped.
 3. **The sentence to find.** `docs/PLATFORM.md`, "Google Cloud Batch": 「預檢不計費」 says the preflight only reads, creates no Batch job and costs nothing.
 
+## Launching on Google Batch (gcb-launch): the maintainer and the reviewer check
+
+The automatic tests use fakes for the program runner, the detached start and the signal; they start nothing and touch no network. The steps below start a real Nextflow head process and **cost a very small amount of money**: set the budget and alert of the Google Cloud project first.
+
+1. **The platform host (WSL).** Check: `java -version` says 17 or newer, `nextflow -version` and `gcloud --version` answer, `storage_root` is set in `config/env.yaml`, and the key file is where `ABF_STATION_GCP_CREDENTIALS` points, mode 600.
+2. **Send the smallest run.** Put two or three tiny files in the bucket of `workDir` with `gcloud storage cp`, then `abf-launch ... --ce gcb1` with `gs://` paths in the samplesheet. Check: the first paragraph of the screen says 由 Google 向實驗室的 Google Cloud 帳號收費; nothing starts until you answer y.
+3. **After y.** Check: `已啟動：主控程序編號（pid）...`; `ls <storage_root>/_gcb_runs/<run>` shows `head.pid` and `head.out`; the Batch page of the Google Cloud Console shows a job; the platform's run page shows progress (`-with-tower` works); when it ends, `gs://.../runs/<run>/results` has the output.
+4. **Cancel one.** Send another run and cancel it with `abf-launch cancel <run>` after answering y. Check: the Batch job is cancelled or deleted (this checks that SIGTERM makes Nextflow cancel its Batch jobs). If it is not cleaned up, write it in `specs/gcb-launch/ledger.md` and tell the developer-agent; do **not** add a `gcloud batch jobs delete` by hand into the code.
+5. **Search for the key.** In `platform.db`, `abf-platform ce show gcb1`, the launch screen, the logs and `head.sh`, search for any piece of the key file and for its path. Check: nothing is found.
+6. **Two facts to write down in `specs/gcb-launch/ledger.md`.** Whether `process.resourceLabels` shows up as labels on the Batch job, and whether a short `network` / `subnetwork` name (if you set one) was accepted.
+
+**The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with the list under "Scope: files" in `specs/gcb-launch/plan.md`: nothing else is changed; `records.py`, `web*.py`, `agent.py` and the `hello` facts are untouched; no Slurm test file is touched. Of the C-1 tests (`test_gcb_ce.py`) only five places changed: the job kinds that are refused, the first line and name of the "never auto picked" test, the two patterns dropped from the "later slices" test, the documentation strings, and the one job kind that `test_refusals_are_plain_words` probes (`launch_nextflow` is allowed now, so it asks `list_site_files`, which is still refused; the plan's list did not name this one, see the ledger).
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in

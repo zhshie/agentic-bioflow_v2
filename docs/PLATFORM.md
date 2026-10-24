@@ -247,7 +247,7 @@ Outside the config an environment also has `name` (1 to 100 characters, unique),
 
 ### Google Cloud Batch
 
-A `googlebatch-platform` environment is served by **a station agent that runs on the platform host** (`abf-station run`, the one an operator already runs there), and `--agent` must name it. The people who use the cloud install nothing: the platform never starts a program itself (principle 2), so the preflight is a job for that agent, the same kind of job a Slurm environment gets. `ce create` and `ce update` queue it; `ce preflight <name>` queues it and waits for the answer. **Launching on it is not built yet** (尚未支援送出; next task C-2): such an environment can be `available` and even `primary`, but a launch, a listing or a cancel on it is refused in plain words, and the automatic choice of an environment never picks it.
+A `googlebatch-platform` environment is served by **a station agent that runs on the platform host** (`abf-station run`, the one an operator already runs there), and `--agent` must name it. The people who use the cloud install nothing: the platform never starts a program itself (principle 2), so the preflight is a job for that agent, the same kind of job a Slurm environment gets. `ce create` and `ce update` queue it; `ce preflight <name>` queues it and waits for the answer. **It can launch and cancel** (see "Launching on Google Batch" below, with the same question and the same yes as for Slurm). A listing, a record fetch and a task log are refused in plain words (尚未支援), and the automatic choice of an environment never picks it: a launch on it needs its name (`--ce gcb1`), so nothing that costs money is chosen for you.
 
 | Key | Rule |
 |---|---|
@@ -261,7 +261,7 @@ A `googlebatch-platform` environment is served by **a station agent that runs on
 | `network`, `subnetwork` | optional VPC and subnet names, or `projects/...` paths |
 | `usePrivateAddress` | optional true or false |
 | `labels` | optional object; keys and values at most 63 characters, at most 64 pairs |
-| `maxvCpus` | optional whole number 1 to 10000; it is only stored, and takes effect from C-2 |
+| `maxvCpus` | optional whole number 1 to 10000; it takes effect from C-2 as a per-task cpus limit (`process.resourceLimits = [cpus: N]`, one task at most, **not** a total of vCPUs); a total cap belongs to C-3 |
 | `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
 
 Every problem is listed at once, each naming its key. There is no field for money or currency: cost is not part of this type. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`). The service-account key file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_GCP_CREDENTIALS`, or else at `_personal/gcp-sa.json` in its deployment folder (the folder that holds `config/env.yaml`); make it readable by that user only (`chmod 600`). The agent judges `project`, `location` and the bucket again before it builds a command.
@@ -278,6 +278,40 @@ Every problem is listed at once, each naming its key. There is no field for mone
 | `bucket` | `gcloud storage ls gs://<bucket>/` answers |
 
 **預檢不計費 (the preflight costs nothing):** it only reads. It lists Batch jobs and the top of a bucket and reads the key file; it creates no Batch job, writes nothing to a bucket, enables no API and creates no service account. Each `gcloud` call is limited to 30 seconds; a timeout fails that one check. The key file's path is handed to `gcloud` in its environment (`CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`), never in its arguments, and no `ABF_` variable is passed on. Without `gcloud` on that computer the two API checks are `unchecked` and the environment stays `invalid`, with a message that says so. A record made before this type was checked keeps its status `unsupported`; `ce update` and `ce preflight` apply today's rules to it and say which fields are missing, and a completed one becomes `creating` until its first preflight is answered.
+
+### Launching on Google Batch
+
+The question, the screen and the yes are the ones of a Slurm launch: `abf-launch ... --ce gcb1` (or the web page) builds everything, shows all of it, and sends it only after a person answers y. Nothing is started before that yes. The environment must be named: it is never chosen automatically.
+
+**Who runs what.** The Nextflow head process runs **on the platform host**, started by the station agent that serves the environment. The tasks are run by Batch virtual machines that the head process asks Google for (`process.executor = 'google-batch'`). Progress reaches the platform through `-with-tower` at the address the agent is connected to (normally loopback). The platform itself starts no program.
+
+**What the platform host needs.** Java 17 or newer, Nextflow, and `gcloud`; `storage_root` set in the deployment's settings (the run's own folder is `<storage_root>/_gcb_runs/<run>`); and the service-account key file where the agent looks for it (`ABF_STATION_GCP_CREDENTIALS`, mode 600). The host must be Linux or WSL: the cancel looks at `/proc`. The agent checks Java and Nextflow just before a launch (not in the preflight), and runs the preflight again.
+
+**Money.** 費用：按下 y 之後，這個 run 會在 Google Cloud 專案裡建立 Batch 工作與虛擬機，**由 Google 向實驗室的 Google Cloud 帳號收費**。The platform has no cost estimate and no cap yet (C-3); the actual amount is on Google's invoice. The launch screen says this in its first paragraph, without a number.
+
+**Input data.** Every path cell of the samplesheet must be `gs://<bucket>/<object>` in the **same bucket as `workDir`**. A local path, `http(s)://`, `s3://`, another bucket, or a `..` is refused with a plain sentence. Copying files into the bucket is a later feature (C-6); for now put them there yourself with `gcloud storage cp`. `workDir` must have at least one folder below the bucket (`gs://lab-bucket/work`, not `gs://lab-bucket`): that is Nextflow's rule.
+
+**The files.** Five files are shown and then written to the run's folder (mode 700), with `tower.token`, `head.pid` and `head.out`: `samplesheet.csv`, `params.yaml`, `nextflow.config` (the environment's own text, unchanged), `gcb.config` (made from the environment's fields, read after `nextflow.config` with `-c nextflow.config -c gcb.config`, so it wins) and `head.sh`. The work folder and the results are in the bucket, one prefix per run: `<workDir>/runs/<run>/work` and `<workDir>/runs/<run>/results`.
+
+| Line of `gcb.config` | From |
+|---|---|
+| `process.executor` | always `'google-batch'` |
+| `workDir` | `workDir` and the run name |
+| `google.project`, `google.location` | `project`, `location` |
+| `google.batch.spot` | `spot`, only when true |
+| `google.batch.bootDiskSize` | `bootDiskSize`, written as `50.GB` |
+| `google.batch.bootDiskImage` | `bootDiskImage` |
+| `google.batch.serviceAccountEmail` | `serviceAccountEmail` (the account the tasks run as) |
+| `google.batch.network`, `google.batch.subnetwork` | `network`, `subnetwork`, short names as given |
+| `google.batch.usePrivateAddress` | `usePrivateAddress`, only when true |
+| `process.resourceLabels` | `labels` and one more, `abf-run=<run name>` |
+| `process.resourceLimits` | `maxvCpus`: a per-task limit on cpus, not a total |
+
+**The key.** The key file's path is the agent's own setting. It is given to the head process in its environment (`GOOGLE_APPLICATION_CREDENTIALS`) and nowhere else: not in `head.sh`, not in an argument, not in the bundle, not in an answer or the database. `head.sh` carries a comment saying so.
+
+**Cancel.** After the same kind of yes, the agent checks that the number in `head.pid` is still the head process of this run (its owner, `-name <run>` in its command line, its working folder) and sends **one** `SIGTERM`. Nextflow is expected to cancel the Batch jobs it started when it ends; this is checked by hand once (docs/TESTING.md), so after a cancel look at the Batch page of the Google Cloud Console: a virtual machine that was not cancelled is still billed. The platform deletes nothing in Google Cloud.
+
+**Not yet.** Resume and relaunch of a Google Batch run, reading its Nextflow records back, listing files and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid) for a Google Batch run; the table has no other column for it, and no migration was needed.
 
 ### Status
 
@@ -322,7 +356,7 @@ Twelve tools. Seven are read-only (`readOnlyHint`): `list_runs`, `get_run`, `lis
 
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Only Slurm can run; Google Cloud Batch can be created and checked** (by a station agent on the platform host, see "Google Cloud Batch" above; launching on it comes in the next task, C-2); the other twelve are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm and Google Cloud Batch can run; the other types can be modelled only** (Google Cloud Batch is served by a station agent on the platform host, see "Google Cloud Batch" above); the other twelve are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -335,7 +369,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `awscloud-platform` | AWS Cloud | modelled only |
 | `azbatch-platform` | Azure Batch | modelled only |
 | `azcloud-platform` | Azure Cloud | modelled only |
-| `googlebatch-platform` | Google Cloud Batch | checked on the platform host (launch: not yet) |
+| `googlebatch-platform` | Google Cloud Batch | Slurm-like confirmed launch and cancel on the platform host (resume: not yet) |
 | `googlecloud-platform` | Google Cloud | modelled only |
 | `k8s-platform` | Kubernetes | modelled only |
 | `eks-platform` | Amazon EKS | modelled only |

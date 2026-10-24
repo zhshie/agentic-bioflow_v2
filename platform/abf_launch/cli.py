@@ -183,7 +183,15 @@ def _late_message(state, job_id):
     return None
 
 
-def _submitted_line(row):
+def _platform(bundle):
+    """The type of environment a bundle was made for (the small bundles some callers pass have no environment)."""
+    ce = bundle.get("ce") if isinstance(bundle, dict) else None
+    return ce.get("platform") if isinstance(ce, dict) else None
+
+
+def _submitted_line(row, platform=None):
+    if platform == bundle_mod.GCB:
+        return "已啟動：主控程序編號（pid）%s；run 名稱 %s；專屬資料夾 %s。" % (row["slurm_job_id"], row["run_name"], row["run_folder"])
     return "已送出：Slurm 工作編號 %s；run 名稱 %s；專屬資料夾 %s。" % (row["slurm_job_id"], row["run_name"], row["run_folder"])
 
 
@@ -192,7 +200,7 @@ def _report_launch(state, job_id, bundle):
     out = asyncio.run(jobs.wait_for_result(state, job_id))
     if out["state"] == "done" and out["ok"]:
         row = _row_of_job(state, job_id)
-        _say(_submitted_line(row) + "進度請用 `abf-platform launches` 看送出的事實，Nextflow 起來後用 get_run 看每個 process。")
+        _say(_submitted_line(row, _platform(bundle)) + "進度請用 `abf-platform launches` 看送出的事實，Nextflow 起來後用 get_run 看每個 process。")
         return 0
     if out["state"] in ("refused", "error"):
         res = out["result"] or {}
@@ -212,13 +220,16 @@ def _report_launch(state, job_id, bundle):
             time.sleep(0.25)
     row = _row_of_job(state, job_id)
     if row is not None and row["submitted_at"] is not None:
-        _say(_submitted_line(row) + "（代理在期限之後才回報；這個編號已記下。）")
+        _say(_submitted_line(row, _platform(bundle)) + "（代理在期限之後才回報；這個編號已記下。）")
         return 0
     if not out.get("claimed"):
         _err("代理沒有領走這個工作，國網上沒有任何改變 (the agent never took the job; nothing was done on the site)")
         return 1
     if late:
         _err("代理回報（已逾期）：%s" % late)
+    if _platform(bundle) == bundle_mod.GCB:
+        _err("結果不明：請查平台主機上的 %s 與名為 %s 的主控程序" % (bundle["run_folder"], run))
+        return 1
     _err("結果不明：請查國網上的 %s 與 Slurm 工作 nf-%s" % (bundle["run_folder"], run))
     return 1
 
@@ -246,6 +257,10 @@ def cmd_cancel(args):
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
     out = asyncio.run(jobs.wait_for_result(state, job_id))
     if out["state"] == "done" and out["ok"]:
+        if _platform(bundle) == bundle_mod.GCB:
+            _say("取消請求已送出（主控程序 pid %s）。Nextflow 收到訊號後會取消它送出的 Batch 工作；它回報的結局請用 get_run 看。"
+                 "請到 Google Cloud Console 的 Batch 頁確認沒有殘留的工作，沒取消乾淨的虛擬機仍會計費。" % bundle["slurm_job_id"])
+            return 0
         _say("取消請求已送出（Slurm 工作 %s）。Nextflow 收到訊號後會收掉它底下的 task；它回報的結局請用 get_run 看。"
              "國網上若還有殘留的 task，請自己查（squeue）。" % bundle["slurm_job_id"])
         return 0
