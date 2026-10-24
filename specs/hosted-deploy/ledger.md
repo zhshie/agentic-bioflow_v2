@@ -6,3 +6,4 @@
 - [x] deploy/backup.sh: SQLite .backup (python3 fallback), env overrides, signing key optional (US3). Note: a missing uploads/ or records/ folder is skipped with a line, not an error, because a fresh host has neither yet; tokens.db and platform.db missing still fail (decision 16 names only those two).
 - [x] docs/OPERATIONS.md sections 2, 3, 4, 6 and "Hosting one lab"; docs/INSTALL.md two pointer sentences; docs/TESTING.md hosted-deploy section (US4).
 - [x] Not touched: platform/ code, gate files, existing tests (US5).
+- [x] Revision 2026-10-24 (裁決四 18-20): units renamed to deploy/systemd/abf-*.service.in so the station static test (TC-087) stays green; docs say copy and drop .in; tests TC-083..086 added.

@@ -163,8 +163,8 @@ below is in this repository's `deploy/` folder; run the steps in a clone of the 
    Open `~/.config/abf-platform/env` and replace every `<...>`: `ABF_PUBLIC_URL=https://<your-domain>`,
    `ABF_SITE_ADDRESS=<your-domain>`, and `ABF_PLATFORM_DB=<data-folder>/index.db` (or delete that
    line to use the default folder from section 4).
-   ```sh
    Copy each template and drop the `.in` from its name (for example `abf-serve.service.in` becomes `abf-serve.service`), then replace `<venv>` with your virtualenv path:
+   ```sh
    for u in serve mcp web; do cp deploy/systemd/abf-$u.service.in ~/.config/systemd/user/abf-$u.service; done
    sed -i "s|<venv>|$VENV|" ~/.config/systemd/user/abf-*.service
    systemctl --user daemon-reload
