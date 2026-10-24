@@ -3,6 +3,7 @@
 <!--
 Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after the plan, before any code.
 這個功能沒有 spec.md；`specs/cloud-upload/plan.md` 同時是規格（其中「維護者原話」、「完成標準」、「失敗先行測試」、「不做」、「裁決」是依據）。
+修訂紀錄：2026-10-24 計畫新增「裁決三」（改動範圍多一個 test_gcb_ce.py、不准拆字串繞過掃描）。依 developer-agent 重新開啟合約：改寫 TC-083、TC-084，新增 TC-097～TC-102；其餘編號與內容不動。
 -->
 
 **規格**：`specs/cloud-upload/plan.md`（本功能以計畫代替 spec.md）　**總覽**：`test-case-overview.md`
@@ -12,6 +13,7 @@ Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after t
 - **workDir**：一個 Google Batch 計算環境（compute environment，平台上登記的一個「在哪裡跑分析」的設定）裡寫的工作位置，例如 `gs://lab-bucket/work`；它前面那一段 `lab-bucket` 就是該環境的 bucket。
 - **前綴**：位置的開頭部分。alice 的前綴是 `gs://lab-bucket/uploads/alice/`，她登記的檔案都必須在這個前綴底下。
 - **sink／chunk**：串流時，檔案被切成一塊一塊（chunk）送出，接收的那端叫 sink。本任務只測「平台這一側怎麼數、怎麼停」，接收端在測試裡是假的。
+- **拆字串繞過掃描**：測試或原始碼裡有些字被禁止出現（例如某個詞），有人把它切成兩段字串再接起來（像 `"sto" "rage"`），讓掃描找不到。計畫裁決三 明令不准這樣做。
 
 測試用的固定情境（來自計畫）：兩位使用者 alice、bob（計畫的 d.a、d.b）；環境 `gcb1` 屬於 alice，workDir 是 `gs://lab-bucket/work`；環境 `gcb2` 屬於 bob，workDir 是 `gs://other-bucket/work`。以下「登記」指 `register_dataset(…, destination="gcb1")`，「草稿」指 `draft_samplesheet`，「檢查上傳」指 `check_web_upload`。「驗證方式 自動」一律指 `platform/tests/test_cloud_upload.py`，除非另註。
 
@@ -134,14 +136,14 @@ Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after t
 |---|---|---|---|---|---|---|
 | TC-075 | 不做：位元組通道、新工作種類、上傳路由、MCP 接線；「必須更新的既有斷言」 | 不在範圍 | 改動完成 | 不改動地跑 `test_actions_layer.py`（唯讀工具基準與 `READ_TOOLS`）、`jobs.kind` 清單與 `launches`／`jobs`／`compute_envs` 欄位的既有斷言 | 全部通過；工具個數、`UNSUPPORTED` 長度（12）、`jobs.kind` 六種、各表欄位都沒變（沒有新工具、新路由、新工作種類） | 自動：`platform/tests/test_actions_layer.py`、`platform/tests/test_gcb_launch.py` |
 | TC-076 | 不做：MCP／動作層接線；待裁決第 2 項 | 不在範圍 | 改動完成 | 不改動地跑 `test_datasets.py` 的 TC-064（`actions/__init__.py`、`mcp_server.py`、`web.py`、`web_board.py`、`store.py` 找不到資料集函式名） | 通過（`destination` 沒有被接到任何對外入口） | 自動：`platform/tests/test_datasets.py` |
-| TC-077 | 測試 27；裁決 7（不新增公開函式） | 不在範圍 | 改動完成 | 取出 `datasets` 的公開函式清單 | 剛好是 `check_web_upload, draft_samplesheet, get_dataset, list_datasets, pair_fastq, register_dataset`，名稱不含 delete／remove／share／update／edit／rename／unregister | 自動 |
+| TC-077 | 測試 27；裁決 7（不新增公開函式）；裁決三 9（`public()` 輔助用 inspect.isfunction 視為接受） | 不在範圍 | 改動完成 | 取出 `datasets` 的公開函式清單 | 剛好是 `check_web_upload, draft_samplesheet, get_dataset, list_datasets, pair_fastq, register_dataset`，名稱不含 delete／remove／share／update／edit／rename／unregister | 自動 |
 | TC-078 | 不做：刪除 work、30 天提醒 | 不在範圍 | 改動完成 | 列出 `cloud_store.py` 的公開函式名並掃兩個來源檔 | 沒有任何刪除、到期、提醒類的函式或字眼（如 delete、remove、expire、remind）；沒有刪檔的程式 | 自動 |
 | TC-079 | 不做：校驗和；測試 23／TC-061 | 不在範圍 | 改動完成 | 掃 `cloud_store.py` 與 `datasets.py`；看 `stream_into` 的回覆欄位 | 原始碼沒有 `hashlib`、`md5`、`sha` 開頭的字；回覆只有 `ok`、`received`、`message`，沒有雜湊欄位 | 自動 |
 | TC-080 | 不做：AWS S3／Azure | 不在範圍 | alice 要登記的位置是 `s3://lab-bucket/uploads/alice/a_R1.fastq.gz` | alice 用 `destination="gcb1"` 登記 | 回覆失敗，說只收 `gs://`；沒有新列 | 自動 |
 | TC-081 | 不做：新增依賴、改 pyproject／constraints；測試 25 | 不在範圍 | 改動完成 | 讀 `platform/pyproject.toml` 與 `platform/constraints.txt` 的內容 | 兩個檔都不含 `google`；內容與基準分支相同 | 自動 |
 | TC-082 | 不做：把 gs:// 位置帶進送出流程 | 不在範圍 | 改動完成 | 驗收者比對 `platform/abf_platform/actions/__init__.py`、`pipeline_launch.py`、`platform/abf_launch/build.py` 與基準分支 | 三個檔沒有任何差異（本任務沒有改送出流程） | 手動：驗收者 `git diff <base>...HEAD`（`docs/TESTING.md` 的 cloud-upload 小節列出此步） |
-| TC-083 | 範圍：檔案（只准改四個）；完成標準第 2 條 | 不在範圍 | 改動完成 | 驗收者 `git diff --name-only <base>...HEAD` | 只有 `platform/abf_platform/actions/datasets.py`、`platform/abf_platform/cloud_store.py`、`platform/tests/test_cloud_upload.py`、`docs/TESTING.md`（另可有本功能的 `specs/cloud-upload/` 檔）；沒有 `cli.py`、`store.py`、`receiver.py`、`deploy/`、`configs/sites/*`、`docs/OPERATIONS.md`、`docs/INSTALL.md` | 手動：驗收者 `git diff`（同上） |
-| TC-084 | 不做：改任何現有測試的斷言 | 不在範圍 | 改動完成 | 驗收者逐一比對被改動的既有測試檔與基準分支 | 沒有任何斷言被刪除、放寬或略過；`test_datasets.py`、`test_gcb_ce.py`、`test_gcb_launch.py`、`test_station_envs.py`、`test_guidance.py` 沒有差異 | 手動：驗收者 `git diff`（同上） |
+| TC-083 | 範圍：檔案；完成標準第 2 條；裁決三 8（test_gcb_ce.py 加進範圍，只准動一處）。2026-10-24 因裁決三改寫 | 不在範圍 | 改動完成 | 驗收者 `git diff --name-only <base>...HEAD` | 只有 `platform/abf_platform/actions/datasets.py`、`platform/abf_platform/cloud_store.py`、`platform/tests/test_cloud_upload.py`、`platform/tests/test_gcb_ce.py`、`docs/TESTING.md`（另可有本功能的 `specs/cloud-upload/` 檔）；沒有 `cli.py`、`store.py`、`receiver.py`、`deploy/`、`configs/sites/*`、`docs/OPERATIONS.md`、`docs/INSTALL.md`、`pyproject.toml`、`constraints.txt` | 手動：驗收者 `git diff`（同上） |
+| TC-084 | 不做：改任何現有測試的斷言；裁決三 8（唯一例外）。2026-10-24 因裁決三改寫 | 不在範圍 | 改動完成 | 驗收者逐一比對被改動的既有測試檔與基準分支 | `test_datasets.py`、`test_gcb_launch.py`、`test_station_envs.py`、`test_guidance.py`、`test_scope.py`、`test_actions_layer.py` 沒有差異；`test_gcb_ce.py` 的差異只有一處：`test_nothing_of_the_later_slices_exists` 那條 regex 拿掉 `storage cp`，其餘（包括該測試的其他禁止項與同檔其他測試）一字不動；沒有任何斷言被刪除、放寬或略過 | 手動：驗收者 `git diff`（同上） |
 | TC-085 | 完成標準第 5 條 | 功能 | 改動完成 | 讀 `docs/TESTING.md` | 有「cloud-upload」小節，且明寫：端到端（真的把檔案傳進 bucket）要等位元組通道任務，目前只能驗到登記與拒絕 | 手動：`docs/TESTING.md` |
 | TC-086 | 完成標準第 5 條（手動驗收步驟具體可照做） | 功能 | 同 TC-085 | 驗收者照小節走一遍 | 每一步都說清楚要做什麼、看到什麼才算過（至少包含：登記一份雲端資料集看到成功、登記別人的前綴看到被拒、超過 2 GB 看到一行指令），不需要讀程式 | 手動：`docs/TESTING.md` |
 
@@ -156,6 +158,12 @@ Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after t
 | TC-091 | 測試 26；原話「憑證不進資料庫」 | 例外 | 改動完成 | 掃 `cloud_store.py` 與 `datasets.py` | 不含 `gcp-sa`、`GOOGLE_APPLICATION_CREDENTIALS`、`CLOUDSDK`、`.json` | 自動 |
 | TC-092 | 作法 A.8、目標第 3 點（沒有任何金鑰路徑的參數） | 例外 | 改動完成 | 讀 `cloud_store.py` 每個函式的參數名與 `datasets.py` 三個新增參數 | 沒有任何接收金鑰檔路徑或金鑰內容的參數；回覆裡也沒有這類欄位 | 自動 |
 | TC-093 | 完成標準第 6 條 | 例外 | 改動完成 | 驗收者在回報內容包、資料庫、日誌、測試輸出、PR 說明搜站台金鑰檔名與 `private_key` | 搜不到任何金鑰片段 | 手動：驗收者 `grep -r`（完成標準） |
-| TC-094 | 專長守則（資料結構沒變動要在計畫或 PR 寫「不需要 migration」的理由）；作法 B | 功能 | 改動完成 | 驗收者讀 PR 說明 | 明寫「不需要 migration」與理由（`datasets` 表欄位全不動，雲端位置存在既有 `files_json` 的 `path`），並逐條寫「沒動」的既有斷言 | 手動：驗收者讀 PR 說明 |
+| TC-094 | 專長守則（資料結構沒變動要在計畫或 PR 寫「不需要 migration」的理由）；作法 B；裁決三 10 | 功能 | 改動完成 | 驗收者讀 PR 說明 | 明寫「不需要 migration」與理由（`datasets` 表欄位全不動，雲端位置存在既有 `files_json` 的 `path`，沒有新表、新欄），並逐條寫「沒動」的既有斷言 | 手動：驗收者讀 PR 說明 |
 | TC-095 | 第 3 條與 012c 的既有規則；「必須更新的既有斷言」 | 功能 | 改動完成 | 不改動地跑 `test_datasets.py` 的 TC-059（無 `open(`／`os.stat`）、TC-061（無雜湊字）、TC-078（無 `subprocess`／`jobs`／`confirm`／`queue`／`submit` 等）、TC-081（無寫死路徑）、TC-085（無刪改檔案的字） | 全部通過：新增的程式碼同樣守住這些掃描 | 自動：`platform/tests/test_datasets.py` |
-| TC-096 | 完成標準第 1 條 | 功能 | 改動完成 | 跑 `platform/tests/` 全套與 `tests/platform_test.sh` | 全綠，包含 `test_cloud_upload.py` 全部、`test_scope.py` 全部；沒有被略過的案例 | 自動：`tests/platform_test.sh` |
+| TC-096 | 完成標準第 1 條 | 功能 | 改動完成 | 跑 `platform/tests/` 全套與 `tests/platform_test.sh` | 全綠，包含 `test_cloud_upload.py` 全部、`test_scope.py` 全部、`test_gcb_ce.py` 全部；沒有被略過的案例 | 自動：`tests/platform_test.sh` |
+| TC-097 | 裁決三 8（範圍釘子拿掉 `storage cp`）；第 2 條 | 功能 | `cloud_store.py` 的大檔指令含 `gcloud storage cp` | 跑 `test_gcb_ce.py::test_nothing_of_the_later_slices_exists` | 通過；該測試的 regex 不再含 `storage cp` 這個選項 | 自動：`platform/tests/test_gcb_ce.py` |
+| TC-098 | 裁決三 8（其餘四項照舊禁止） | 例外 | 改動完成 | 讀 `test_gcb_ce.py::test_nothing_of_the_later_slices_exists` 的 regex，並掃平台、站台、送出的來源檔 | regex 仍列 `buckets create`、`services enable`、`service-accounts create`、`storage rm` 四項；來源檔裡找不到這四項；regex 沒有被放寬成別的寫法 | 自動：`platform/tests/test_gcb_ce.py` |
+| TC-099 | 裁決三 8（更嚴的新測試：`storage cp` 只准出現在 `cloud_store.py`）；第 2 條 | 例外 | 改動完成 | 掃 `abf_platform/`、`abf_station/`、`abf_launch/` 所有來源檔（不含 `tests/`），找 `storage cp` | 只有 `cloud_store.py` 含 `storage cp`；`datasets.py` 與其他來源檔都沒有 | 自動 |
+| TC-100 | 裁決三 8（該檔不得 import 會啟動程式的東西）；第 2 條 | 例外 | 改動完成 | 讀 `cloud_store.py` 的 import 與呼叫：找 `subprocess`、`os.system`、`os.popen`、`os.exec*`、`os.spawn*`、`multiprocessing`、`pty` 等任何能啟動程式的東西 | 一個也沒有（指令只是字串，沒有被執行） | 自動 |
+| TC-101 | 裁決三 7（不准拆字串繞過掃描） | 例外 | 改動完成 | 讀 `cloud_store.py` 與 `datasets.py` 原始碼：找 `gcloud`、`storage`、`cp` 被切成相鄰字串、用加號或 join 接起來的寫法 | `gcloud storage cp` 在 `cloud_store.py` 裡是連續的一整段字面字串；兩個來源檔沒有任何靠拆字串避開掃描的寫法 | 自動 |
+| TC-102 | 裁決三 9（測試裡的路徑字串改回不拆，用 `tmp_path` 造路徑） | 例外 | 改動完成 | 驗收者讀 `test_cloud_upload.py`，找被切成兩段再接起來的路徑或禁字（例如把 `/home` 切開）；讀 TC-070～072 的例外文字怎麼組出 | 沒有為了避開掃描而拆開的字串；需要路徑時由 `tmp_path` 造出；`test_scope.py`、`test_datasets.py` 的掃描仍全部通過 | 手動：驗收者 `grep`／讀檔（`docs/TESTING.md` 的 cloud-upload 小節列出此步） |
