@@ -291,6 +291,62 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
     exit 0
 }
 
+# relay-warning-hardening: the shared helper for the two "this command also mentions
+# <VAR>=" warnings (NF_RELAY_EXTRA_DOMAINS, NF_RELAY_PEER_PREFIXES). It does not try
+# to read the command the way a shell would (that always leaves a hole) and it does
+# not say which value takes effect: if the text has <VAR>= anywhere, it warns and
+# copies out what follows each <VAR>= up to the next space or ; & | (not unquoted,
+# not expanded), the first 3 and the last 1, 120 characters each, with the count.
+# Builtins only and linear in the length of the command (the hook's timeout lets a
+# command through): ${x//p/} on 8 KB windows for the count, at most 3 ${x%%p*} for the first
+# three, one ${CMD%p*} for the last (suffix removals, which stop at the first
+# letter that cannot match; ${x#*p} would test every prefix and be quadratic).
+# Over 64 KB: the header and the count only.
+# relay_env_warn <VARIABLE NAME> <sentence that closes the warning>
+# Returns 0 = warn (RELAY_ENV_HEAD holds the whole warning, RELAY_ENV_EMPTY=1 when a
+# listed mention is empty), 1 = the command does not mention the variable.
+relay_env_warn() {
+    local V=$1 tl=$2 nl=$'\n'
+    RELAY_ENV_HEAD=""; RELAY_ENV_EMPTY=0
+    case $CMD in *"$V="*) ;; *) return 1 ;; esac
+    local gone n=0 i=0 k x t w list="" sep="" win=$(( ${#V} + 8192 ))
+    # The count: ${CMD//p/} on the whole command is quadratic in bash (3 s for 8000
+    # matches in 1 MB), so it is done on windows of 8 KB. A window starts at i and
+    # reaches ${#V} characters into the next one, so a match is counted by the
+    # window it starts in, and only that one (a match cannot overlap another).
+    # In a UTF-8 locale a substring at offset i costs i; byte-wise (LC_ALL=C) it is
+    # free, so the loop runs byte-wise and the locale is put back right after.
+    local hadl=${LC_ALL+x} oldl=${LC_ALL-}
+    LC_ALL=C
+    while [ "$i" -lt "${#CMD}" ]; do
+        x=${CMD:i:win}; gone=${x//"$V="/}
+        n=$(( n + (${#x} - ${#gone}) / (${#V} + 1) ))
+        i=$(( i + 8192 ))
+    done
+    if [ -n "$hadl" ]; then LC_ALL=$oldl; else unset LC_ALL; fi
+    w="mentions"; [ "$n" -eq 1 ] && w="mention"
+    RELAY_ENV_HEAD="THIS COMMAND ALSO MENTIONS ${V}= (it would change which hosts/domains the relay accepts). Read the whole command; the value that takes effect depends on the shell."
+    if [ "${#CMD}" -gt 65536 ]; then
+        RELAY_ENV_HEAD+="${nl}${n} ${w} in total (the command is over 64 KB, so the text after each is not listed)."
+    else
+        x=$CMD
+        for k in 1 2 3; do
+            [ "$k" -le "$n" ] || break
+            t=${x%%"$V="*}; x=${x:$((${#t} + ${#V} + 1))}; t=${x%%[[:space:];&|]*}
+            [ -n "$t" ] || RELAY_ENV_EMPTY=1
+            list+="${sep}[${t:0:120}]"; sep=" "
+        done
+        if [ "$n" -gt 3 ]; then
+            t=${CMD%"$V="*}; x=${CMD:$((${#t} + ${#V} + 1))}; t=${x%%[[:space:];&|]*}
+            [ -n "$t" ] || RELAY_ENV_EMPTY=1
+            list+="${sep}[${t:0:120}]"
+        fi
+        RELAY_ENV_HEAD+="${nl}Text after each ${V}= as written (first 3 and last 1 of them): ${list}; ${n} ${w} in total."
+    fi
+    RELAY_ENV_HEAD+="${nl}${tl}"
+    return 0
+}
+
 # #45: a Write/Edit-type tool changing this deployment's own relay allowlist file
 # (egress_allow.tsv) directly, around scripts/egress_allow.sh and its checks.
 # Only the file name is read; no other Write is this hook's business (a launch
@@ -391,25 +447,18 @@ Not loaded: ${RELAY_ERR}"
         # #45: an environment prefix on a direct start (`NF_RELAY_EXTRA_DOMAINS=x
         # bash scripts/egress_ctl.sh start`, `env ...`, `export ...;`) hands the
         # relay a list the file does not hold, so the summary above would be
-        # untrue. Through scripts/on_site.sh the variable is always replaced by the
-        # file's list, so only a direct start is named.
-        if [[ $CMD == *NF_RELAY_EXTRA_DOMAINS=* ]] && [[ $CMD != *on_site.sh* ]]; then
-            # A regex, not ${CMD#*...}: bash tries every prefix for that, quadratic
-            # on a long command (#62).
-            RELAY_OVR=""; RELAY_OVR_RE='NF_RELAY_EXTRA_DOMAINS=([^[:space:];&|]*)'
-            [[ $CMD =~ $RELAY_OVR_RE ]] && RELAY_OVR="${BASH_REMATCH[1]}"
+        # untrue. Any mention of the variable in the command text is named, however
+        # the start is run (relay-warning-hardening, ruling 5).
+        if relay_env_warn NF_RELAY_EXTRA_DOMAINS "If it takes effect it overrides this deployment's list: the relay would carry THAT list, not the one shown above. Show the user the domains it names."; then
             RELAY_LIST="${RELAY_LIST}
-THIS COMMAND ALSO SETS NF_RELAY_EXTRA_DOMAINS=${RELAY_OVR}, which overrides this deployment's list: the relay would carry THAT list, not the one shown above. Show the user the domains it names."
+${RELAY_ENV_HEAD}"
         fi
         # relay-env-warning: the same for the peer-prefix list, which decides which
-        # hosts may connect to the relay. Only a direct start is named (on_site.sh
-        # replaces the variable with the file's value). An empty value is named too.
-        if [[ $CMD == *NF_RELAY_PEER_PREFIXES=* ]] && [[ $CMD != *on_site.sh* ]]; then
-            RELAY_PEER_OVR=""; RELAY_PEER_OVR_RE='NF_RELAY_PEER_PREFIXES=([^[:space:];&|]*)'
-            [[ $CMD =~ $RELAY_PEER_OVR_RE ]] && RELAY_PEER_OVR="${BASH_REMATCH[1]}"
+        # hosts may connect to the relay. An empty value is named too.
+        if relay_env_warn NF_RELAY_PEER_PREFIXES "If it takes effect it asks the relay to use this list of host-name prefixes for the hosts that may connect, instead of the deployment's setting. Entries that are not valid are dropped, and a list with no valid entry falls back to the built-in one; the relay's startup line (\"peers :\") shows the list it really uses. Show the user the prefixes it names."; then
             RELAY_LIST="${RELAY_LIST}
-THIS COMMAND ALSO SETS NF_RELAY_PEER_PREFIXES=${RELAY_PEER_OVR}, which changes which hosts may connect to the relay: it would accept hosts whose names start with THAT list instead of the deployment's setting (default cpn,gpn,bgm,lgn,localhost). Show the user the prefixes it names."
-            if [ -z "$RELAY_PEER_OVR" ]; then
+${RELAY_ENV_HEAD}"
+            if [ "$RELAY_ENV_EMPTY" -eq 1 ]; then
                 RELAY_LIST="${RELAY_LIST}
 An empty value is ignored by the relay, which then uses the deployment's relay_peer_prefixes setting."
             fi
