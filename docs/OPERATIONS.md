@@ -65,8 +65,8 @@ nothing to a working address, is under "Hosting one lab" (section 5).
 ## 3. Keeping them running
 
 The three processes start at boot and come back after a crash under systemd. This repository
-ships one user unit per process in `deploy/systemd/`: `abf-serve.service`, `abf-mcp.service` and
-`abf-web.service`. They listen on 127.0.0.1 only, read their settings from
+ships one user unit per process in `deploy/systemd/`: `abf-serve.service.in`, `abf-mcp.service.in` and
+`abf-web.service.in` (templates: copy them and drop the `.in`). They listen on 127.0.0.1 only, read their settings from
 `~/.config/abf-platform/env`, restart five seconds after a failure, and have `<venv>` where the
 folder of your virtual environment goes. To install them:
 
@@ -164,7 +164,8 @@ below is in this repository's `deploy/` folder; run the steps in a clone of the 
    `ABF_SITE_ADDRESS=<your-domain>`, and `ABF_PLATFORM_DB=<data-folder>/index.db` (or delete that
    line to use the default folder from section 4).
    ```sh
-   cp deploy/systemd/*.service ~/.config/systemd/user/
+   Copy each template and drop the `.in` from its name (for example `abf-serve.service.in` becomes `abf-serve.service`), then replace `<venv>` with your virtualenv path:
+   for u in serve mcp web; do cp deploy/systemd/abf-$u.service.in ~/.config/systemd/user/abf-$u.service; done
    sed -i "s|<venv>|$VENV|" ~/.config/systemd/user/abf-*.service
    systemctl --user daemon-reload
    systemctl --user enable --now abf-serve abf-mcp abf-web

@@ -15,7 +15,7 @@ bad() { printf '%-92s FAIL%s\n' "$1" "${2:+: $2}"; fails=$((fails+1)); }
 skip() { printf '%-92s skip%s\n' "$1" "${2:+: $2}"; }
 
 D=deploy
-UNITS=("$D/systemd/abf-serve.service" "$D/systemd/abf-mcp.service" "$D/systemd/abf-web.service")
+UNITS=("$D/systemd/abf-serve.service.in" "$D/systemd/abf-mcp.service.in" "$D/systemd/abf-web.service.in")
 CADDY=$D/Caddyfile.template
 BACKUP=$D/backup.sh
 ENVEX=$D/env.example
@@ -33,7 +33,7 @@ if [ -x "$BACKUP" ] && [ "$(head -n1 "$BACKUP" 2>/dev/null)" = '#!/usr/bin/env b
 
 exec_line() { grep -E '^ExecStart=' "$1" 2>/dev/null | head -n1; }
 for pair in "serve:abf-serve:8787" "mcp:abf-mcp:8788" "web:abf-web:8789"; do
-  sub=${pair%%:*}; rest=${pair#*:}; unit=$D/systemd/${rest%%:*}.service; port=${rest##*:}
+  sub=${pair%%:*}; rest=${pair#*:}; unit=$D/systemd/${rest%%:*}.service.in; port=${rest##*:}
   el=$(exec_line "$unit")
   # TC-003 / TC-004: exactly its own subcommand, which exists in cli.py; <venv> placeholder
   nsub=$(printf '%s\n' "$el" | grep -oE ' (serve|mcp|web)( |$)' | wc -l)
@@ -57,9 +57,9 @@ for pair in "serve:abf-serve:8787" "mcp:abf-mcp:8788" "web:abf-web:8789"; do
   if [ -f "$unit" ] && ! grep -qE 'ProtectHome|ProtectSystem' "$unit"; then ok "TC-014 $unit has no ProtectHome/ProtectSystem"; else bad "TC-014 $unit has no ProtectHome/ProtectSystem"; fi
 done
 for u in abf-mcp abf-web; do
-  if exec_line "$D/systemd/$u.service" | grep -qF -- '--public-url ${ABF_PUBLIC_URL}'; then ok "TC-009 $u passes --public-url \${ABF_PUBLIC_URL}"; else bad "TC-009 $u passes --public-url"; fi
+  if exec_line "$D/systemd/$u.service.in" | grep -qF -- '--public-url ${ABF_PUBLIC_URL}'; then ok "TC-009 $u passes --public-url \${ABF_PUBLIC_URL}"; else bad "TC-009 $u passes --public-url"; fi
 done
-if exec_line "$D/systemd/abf-mcp.service" | grep -qE 'abf-platform mcp --http( |$)'; then ok "TC-003 mcp unit uses --http"; else bad "TC-003 mcp unit uses --http"; fi
+if exec_line "$D/systemd/abf-mcp.service.in" | grep -qE 'abf-platform mcp --http( |$)'; then ok "TC-003 mcp unit uses --http"; else bad "TC-003 mcp unit uses --http"; fi
 # TC-007: nothing binds outward
 if [ -f "$CADDY" ] && ! grep -nE '0\.0\.0\.0|\[::\]|--host +::' "${UNITS[@]}" "$CADDY" "$ENVEX" >/dev/null 2>&1; then ok "TC-007 no outward bind in units, Caddyfile, env example"; else bad "TC-007 no outward bind in units, Caddyfile, env example"; fi
 
@@ -290,8 +290,24 @@ if git rev-parse --verify -q origin/v3 >/dev/null 2>&1; then
   if [ -n "$base_tc" ] && git diff --quiet "$base_tc" HEAD -- specs/hosted-deploy/test-case.md specs/hosted-deploy/test-case-overview.md; then ok "TC-066 the test case files are unchanged since they were written"; else bad "TC-066 test case files changed"; fi
 else skip "TC-066 no-code-touched" "no git or no origin/v3"; fi
 extra=$(find "$D" -type f 2>/dev/null | sort | tr '\n' ' ')
-want_list="$(printf '%s\n' $D/Caddyfile.template $D/backup.sh $D/env.example $D/systemd/abf-mcp.service $D/systemd/abf-serve.service $D/systemd/abf-web.service | sort | tr '\n' ' ')"
+want_list="$(printf '%s\n' $D/Caddyfile.template $D/backup.sh $D/env.example $D/systemd/abf-mcp.service.in $D/systemd/abf-serve.service.in $D/systemd/abf-web.service.in | sort | tr '\n' ' ')"
 if [ "$extra" = "$want_list" ]; then ok "TC-069 deploy/ holds exactly the six planned files"; else bad "TC-069 deploy/ contents" "$extra"; fi
+# TC-083: no tracked *.service / *.timer; deploy/systemd holds exactly three *.service.in
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  if git ls-files | grep -E '\.(service|timer)$' >/dev/null; then bad "TC-083 a tracked *.service or *.timer exists"; else
+    sd=$(git ls-files "$D/systemd" | tr '\n' ' ')
+    [ "$(git ls-files "$D/systemd" | wc -l)" -eq 3 ] && [ -z "$(git ls-files "$D/systemd" | grep -v '\.service\.in$')" ] && ok "TC-083 units ship as three .service.in templates" || bad "TC-083 deploy/systemd contents" "$sd"
+  fi
+else skip "TC-083 templates" "no git"; fi
+# TC-084: 127.0.0.1:8080 only on comment lines of env.example
+if grep -F 'http://127.0.0.1:8080' "$ENVEX" | grep -vE '^[[:space:]]*#' >/dev/null; then bad "TC-084 8080 appears on a non-comment line"; else ok "TC-084 8080 only in comments"; fi
+# TC-085: no uploads/ or records/ -> rc 0, one skip line each, nothing empty backed up
+fake "$TMP/d8" index; rm -rf "$TMP/d8/uploads" "$TMP/d8/records"
+run "$TMP/o8" "ABF_PLATFORM_DB=$TMP/d8/index.db" -- "$TMP/out8"; rc=$?
+B8=$(newest "$TMP/out8")
+if [ "$rc" -eq 0 ] && [ -f "$B8/tokens.db" ] && [ -f "$B8/platform.db" ] && [ ! -e "$B8/uploads" ] && [ ! -e "$B8/records" ] && grep -q uploads "$TMP/o8" && grep -q records "$TMP/o8"; then ok "TC-085 missing uploads/records is a skip, not an error"; else bad "TC-085 missing uploads/records" "rc=$rc $(cat "$TMP/o8")"; fi
+# TC-086: install step says copy abf-*.service.in and drop the .in
+if grep -q 'abf-\$u.service.in' "$OPS" && grep -qiE 'drop the `?\.in`?' "$OPS"; then ok "TC-086 OPERATIONS install step copies .service.in and drops .in"; else bad "TC-086 install step"; fi
 # TC-072: this file starts nothing (no tool name in command position)
 if grep -nE '^[[:space:]]*(docker|caddy|systemctl|tailscale|curl|wget)([[:space:]]|$)' "$HERE/hosted_deploy_test.sh" >/dev/null; then bad "TC-072 this test calls no service tool"; else ok "TC-072 this test calls no service tool"; fi
 # TC-073: systemd-analyze is never relied on
