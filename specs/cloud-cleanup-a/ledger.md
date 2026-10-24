@@ -33,3 +33,30 @@
 - `test_web_actions.py` `SCHEMA` entry `platform.launches` (used by `test_tc063_no_schema_change`).
 - `test_resume_lineage.py` `NEW_COLUMNS` (used by TC-122 and TC-125/126 column-order checks) and `test_station_launch.py` `LAUNCHES_COLUMNS` (its comment says this task does not touch `_LAUNCHES_TABLE`; it now does): `"work_cleaned_at"` appended. Found by the second full-suite run.
 - `test_resume_lineage.py` TC-125/126: the tuple of "new columns are all NULL" after the old ones is now four long (`work_cleaned_at` is one more NULL).
+
+## Fix round (2026-10-25): scope and stat, stated plainly
+The stat above (10 files, "before this line was added") is OUT OF DATE; use this one. Base = 7f73157 (test cases commit). Actual `git diff 7f73157 HEAD --stat` excluding `specs/` (the ledger's own line count cannot include itself):
+
+     platform/abf_platform/store.py               | 107 +++++-
+     platform/tests/test_cleanup_store.py         | 538 +++++++++++++++++++++++++++
+     platform/tests/test_cloud_cost.py            |   4 +-
+     platform/tests/test_gcb_launch.py            |   4 +-
+     platform/tests/test_http_site_samplesheet.py |   2 +-
+     platform/tests/test_keep_submissions.py      |   4 +-
+     platform/tests/test_launch_platform.py       |   2 +-
+     platform/tests/test_pipeline_launch.py       |   2 +-
+     platform/tests/test_resume_lineage.py        |   4 +-
+     platform/tests/test_resume_scope.py          |   2 +-
+     platform/tests/test_station_launch.py        |   2 +-
+     platform/tests/test_station_platform.py      |   5 +-
+     platform/tests/test_web_actions.py           |   2 +-
+     13 files changed, 643 insertions(+), 35 deletions(-)
+
+Plus `specs/cloud-cleanup-a/ledger.md` = 14 files changed against 7f73157 (the plan, test-case and overview files are in earlier commits, not counted here). The plan lists 9; the 5 extra existing test files are `test_launch_platform.py`, `test_pipeline_launch.py`, `test_resume_lineage.py`, `test_station_launch.py`, `test_web_actions.py`.
+
+Why the extra 5 cannot be avoided: each pins the full `launches` column list (or its NULL tuple) as a literal, and the plan itself adds `launches.work_cleaned_at`. Without the one-word addition those tests fail for the right reason (the schema really did change). No assertion was deleted, loosened or skipped; every change is "append `work_cleaned_at`" (test_resume_lineage.py TC-125/126 also: the all-NULL tuple of new columns is 4 long instead of 3). Reverting them makes the full suite red, so the executor cannot bring the diff back to 9 files. TC-031/TC-042/TC-045 literally say 9 / six places; they need the developer-agent to accept these 5 as a plan amendment (the plan's claim that `test_launch_platform.py` is unaffected was wrong).
+
+PR description lines for the 5 extra (before / after / why):
+- test_launch_platform.py:197 launches column list: before ends `attempt_kind`; after adds `work_cleaned_at`; why: the column exists now.
+- test_pipeline_launch.py:792, test_station_launch.py:619, test_web_actions.py:587: same list, same change, same why.
+- test_resume_lineage.py:15 `NEW_COLUMNS` + :74 NULL tuple 3 -> 4: same why.
