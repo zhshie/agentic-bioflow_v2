@@ -101,6 +101,10 @@ source: developer-agent 讀碼查證（2026-10-25）；總表 012b-2 的「schem
 1. 同 release-tag-pick：解析器只吃文字，不連網；抓檔留給 `release-lookup-job`。
 2. fixture 的 sha256 不符就 BLOCKED。
 
+## 裁決二（2026-10-25 04:40，executor BLOCKED 後）
+3. 合約 TC-050 已由 developer-agent 改成真檔順序 `sampleID`、`forwardReads`、`reverseReads`（原值出題錯誤）。executor 把 test_schema.py 的 TC-050 期望值改成這個順序、重跑全套；其餘不動。
+4. 計畫裡「`$defs` 第一個鍵是 asv_post_processing」作廢，以 allOf 順序為準（TC-003／TC-004）。
+
 ## 專長守則（backend）
 
 ### executor
