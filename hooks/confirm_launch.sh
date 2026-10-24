@@ -291,78 +291,232 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
     exit 0
 }
 
-# relay-warning-hardening: one helper for the two "this command also sets <VAR>"
-# warnings. Bash builtins only (the hook's timeout lets a command through, so no
-# fork), bounded loops (at most 8 command segments holding a start point, 20
-# assignments; past a limit the answer is "warn"). Each step is one regex that
-# captures the text before its match, so nothing rescans the command (no
-# ${x//p/}, no repeated ${CMD#*...}, #62).
-# Returns 0 = warn (RELAY_ENV_HEAD / RELAY_ENV_MORE hold the text), 1 = no need.
-# The exemption: a start point counts as run through scripts/on_site.sh only when
-# its own command segment (back to the previous ; & | ` ( or newline) holds a
-# bare on_site.sh word with no quote between it and egress_ctl.sh. Only if every
-# start point is such does on_site.sh replace the variable with the file's value.
-relay_env_warn() { # relay_env_warn <VARIABLE NAME>
-    RELAY_ENV_HEAD=""; RELAY_ENV_MORE=""
-    [[ $CMD == *"$1="* ]] || return 1
-    local rest="$CMD" seg tail starts=0 exempt=1 nl=$'\n'
-    local site_re='(^|[/[:space:]])on_site\.sh[[:space:]]'
-    local sre="^(.*[;&|\`(${nl}]|)([^;&|\`(${nl}]*)${RELAY_START_RE}"
-    while [[ $rest =~ $sre ]]; do
-        starts=$((starts + 1))
-        if [ "$starts" -gt 8 ]; then exempt=0; break; fi
-        seg="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[1]}"
-        if [[ $seg =~ $site_re ]]; then
-            tail="${seg##*on_site.sh}"
-            if [[ $tail == *[\"\']* ]]; then exempt=0; break; fi
+# relay-warning-hardening: the shared helpers for the two "this command also sets
+# <VAR>" warnings (NF_RELAY_EXTRA_DOMAINS, NF_RELAY_PEER_PREFIXES).
+# Only builtins (the hook's timeout lets a command through, so nothing may fork or
+# run long). The command is cut into segments at ; & | ( ) and newline that sit
+# outside quotes and outside $( ) / backticks, by a loop that jumps from one
+# special character to the next with a plain (non-backtracking) regex. Only the
+# segment that starts the relay is read for the value. Over 64 KB, over 50
+# segments, over 4096 characters in one segment, or over 2000 jumps: not parsed,
+# which still warns. Every regex lives in a RELAY_ENV_RE_* variable so that
+# tests/confirm_launch_test.sh can check that each one compiles under bash --posix.
+RELAY_ENV_RE_WS='^[[:space:]]+'
+RELAY_ENV_RE_NONBLANK='[^[:space:]]'
+RELAY_ENV_RE_SPLIT_N=$'^([^\'"\\`$;&|()\n]*)([\'"\\`$;&|()\n])'
+RELAY_ENV_RE_SPLIT_D=$'^([^"\\`$]*)(["\\`$])'
+RELAY_ENV_RE_SQ=$'^([^\']*)\''
+RELAY_ENV_RE_SPECIAL=$'[\'"\\`$;&|()\n]'
+RELAY_ENV_RE_ASSIGN='^([A-Za-z_][A-Za-z0-9_]*)='
+RELAY_ENV_RE_W_SQ=$'^\'([^\']*)\''
+RELAY_ENV_RE_W_DQ=$'^"([^"\\]*)"'
+RELAY_ENV_RE_W_ESC=$'^\\\\(.)'
+RELAY_ENV_RE_W_RUN=$'^[^[:space:]\'"\\]+'
+
+# Reads one shell word from RW_REST (the caller has skipped any leading blanks).
+# Sets RW_VAL (quotes removed, pieces joined as the shell joins them), RW_COMP=1 when
+# the value is only known at run time (an unquoted or double-quoted $ or backtick),
+# RW_CUT=1 when an unquoted $( ${ or backtick was cut short by a blank.
+relay_env_word() {
+    local r=$RW_REST v len
+    RW_VAL=""; RW_COMP=0; RW_CUT=0
+    while [[ -n $r && ${r:0:1} != [[:space:]] ]]; do
+        if [[ $r =~ $RELAY_ENV_RE_W_SQ ]]; then
+            len=${#BASH_REMATCH[0]}; RW_VAL+=${BASH_REMATCH[1]}
+        elif [[ $r =~ $RELAY_ENV_RE_W_DQ ]]; then
+            len=${#BASH_REMATCH[0]}; v=${BASH_REMATCH[1]}; RW_VAL+=$v
+            if [[ $v == *['$`']* ]]; then RW_COMP=1; fi
+        elif [[ $r =~ $RELAY_ENV_RE_W_ESC ]]; then
+            len=${#BASH_REMATCH[0]}; RW_VAL+=${BASH_REMATCH[1]}
+        elif [[ $r =~ $RELAY_ENV_RE_W_RUN ]]; then
+            len=${#BASH_REMATCH[0]}; v=${BASH_REMATCH[0]}; RW_VAL+=$v
+            if [[ $v == *['$`']* ]]; then
+                RW_COMP=1
+                if [[ $v == *'$('* && $v != *')'* ]] || [[ $v == *'${'* && $v != *'}'* ]] || [[ $v == *'`'* && ${v#*'`'} != *'`'* ]]; then RW_CUT=1; fi
+            fi
         else
-            exempt=0; break
+            RW_VAL+=$r; RW_COMP=1; len=${#r}
+        fi
+        r=${r:len}
+    done
+    RW_REST=$r
+}
+
+# Reads the front of one segment: [VAR=value ...] [env [VAR=value ...]] [bash|sh [-opt ...]] command args.
+# Sets RS_CMD (the command word) and RS_ARGS (the text after it). mode: probe records
+# nothing; start records the assignments of <VAR> before the command; export records
+# them only when the segment is an `export` (an earlier segment of the same command).
+# Records go to the caller's RELAY_ENV_V / RELAY_ENV_C / RELAY_ENV_K.
+relay_env_seg() { # relay_env_seg <segment> <VAR> <probe|start|export>
+    local r=$1 want=$2 mode=$3 name w st=0 ex=0 envseen=0
+    RS_CMD=""; RS_ARGS=""
+    while :; do
+        if [[ $r =~ $RELAY_ENV_RE_WS ]]; then r=${r:${#BASH_REMATCH[0]}}; fi
+        [ -n "$r" ] || return 0
+        if [ "$st" -eq 0 ] && [[ $r =~ $RELAY_ENV_RE_ASSIGN ]]; then
+            name=${BASH_REMATCH[1]}; r=${r:${#BASH_REMATCH[0]}}
+            RW_REST=$r; relay_env_word; r=$RW_REST
+            if [ "$name" = "$want" ] && { [ "$mode" = start ] || [ "$ex" -eq 1 ]; }; then
+                RELAY_ENV_V+=("$RW_VAL"); RELAY_ENV_C+=("$RW_COMP"); RELAY_ENV_K+=("$RW_CUT")
+            fi
+            continue
+        fi
+        RW_REST=$r; relay_env_word; r=$RW_REST; w=$RW_VAL
+        if [ "$ex" -eq 1 ]; then continue; fi
+        if [ "$st" -eq 1 ]; then
+            if [[ $w == -* && $w != -c ]]; then continue; fi
+            RS_CMD=$w; RS_ARGS=$r; return 0
+        fi
+        if [ "$envseen" -eq 1 ] && [[ $w == -* ]]; then continue; fi
+        case $w in
+            export) ex=1 ;;
+            env) envseen=1 ;;
+            bash|sh|*/bash|*/sh) st=1 ;;
+            *) RS_CMD=$w; RS_ARGS=$r; return 0 ;;
+        esac
+    done
+}
+
+# 0 = this start segment runs egress_ctl.sh through scripts/on_site.sh, which replaces
+# both variables with the settings file's values: the command word (after the prefix,
+# env, bash/sh) is on_site.sh, and every egress_ctl.sh start in the text after it is an
+# unquoted word, with no quote, backslash, $, ; & | ( ) or newline before it.
+# Call relay_env_seg on the segment first (it sets RS_CMD and RS_ARGS).
+relay_env_exempt() { # relay_env_exempt <segment>
+    local seg=$1 head acc="" r m pre seen=0
+    [[ $RS_CMD == on_site.sh || $RS_CMD == */on_site.sh ]] || return 1
+    head=${seg:0:${#seg}-${#RS_ARGS}}
+    if [[ $head =~ $RELAY_START_RE ]]; then return 1; fi
+    r=$RS_ARGS
+    while [[ $r =~ $RELAY_START_RE ]]; do
+        m=${BASH_REMATCH[0]}; pre=${r%%"$m"*}; acc+=$pre
+        if [[ $acc =~ $RELAY_ENV_RE_SPECIAL ]]; then return 1; fi
+        acc+=$m; r=${r#*"$m"}; seen=1
+    done
+    [ "$seen" -eq 1 ]
+}
+
+# relay_env_warn <VARIABLE NAME> <sentence that follows the value>
+# Returns 0 = warn, 1 = no need. On 0: RELAY_ENV_HEAD is the whole warning sentence
+# (value, then the given sentence), RELAY_ENV_MORE holds extra lines (each starting
+# with a newline), RELAY_ENV_VAL is the value shown and RELAY_ENV_N how many values
+# were found in front of a start (0 = none, so the given sentence is left out).
+relay_env_warn() {
+    local V=$1 tail=$2
+    RELAY_ENV_HEAD=""; RELAY_ENV_MORE=""; RELAY_ENV_VAL=""; RELAY_ENV_N=0
+    [[ $CMD == *"$V="* ]] || return 1
+    local np="THIS COMMAND ALSO SETS ${V} (not parsed: the command is too long or has too many parts); read the whole command."
+    if [ "${#CMD}" -gt 65536 ]; then RELAY_ENV_HEAD=$np; return 0; fi
+    local -a segs=() ne=() RELAY_ENV_V=() RELAY_ENV_C=() RELAY_ENV_K=()
+    local rest=$CMD cur="" stk="" top ch len iter=0 sep=0 bad=0 nl=$'\n'
+    while [ -n "$rest" ]; do
+        iter=$((iter + 1))
+        if [ "$iter" -gt 2000 ]; then bad=1; break; fi
+        top=${stk: -1}
+        if [ "$top" = d ]; then
+            if [[ $rest =~ $RELAY_ENV_RE_SPLIT_D ]]; then :; else cur+=$rest; rest=""; break; fi
+        else
+            if [[ $rest =~ $RELAY_ENV_RE_SPLIT_N ]]; then :; else cur+=$rest; rest=""; break; fi
+        fi
+        len=${#BASH_REMATCH[0]}; ch=${BASH_REMATCH[2]}; cur+=${BASH_REMATCH[1]}; rest=${rest:len}
+        case $ch in
+            "'")
+                cur+="'"
+                if [[ $rest =~ $RELAY_ENV_RE_SQ ]]; then
+                    len=${#BASH_REMATCH[0]}; cur+=${BASH_REMATCH[0]}; rest=${rest:len}
+                else
+                    cur+=$rest; rest=""
+                fi ;;
+            '\')
+                cur+="\\${rest:0:1}"; rest=${rest:1} ;;
+            '"')
+                cur+='"'
+                if [ "$top" = d ]; then stk=${stk%?}; else stk+=d; fi ;;
+            '`')
+                cur+='`'
+                if [ "$top" = b ]; then stk=${stk%?}; else stk+=b; fi ;;
+            '$')
+                cur+='$'
+                if [[ $rest == '('* ]]; then cur+='('; rest=${rest:1}; stk+=c; fi ;;
+            ';'|'&'|'|'|"$nl")
+                if [ -z "$stk" ]; then sep=1; else cur+=$ch; fi ;;
+            '(')
+                if [ -z "$stk" ]; then sep=1; else cur+='('; stk+=p; fi ;;
+            ')')
+                if [ -z "$stk" ]; then
+                    sep=1
+                else
+                    cur+=')'
+                    case $top in c|p) stk=${stk%?} ;; esac
+                fi ;;
+        esac
+        if [ "$sep" -eq 1 ]; then
+            sep=0
+            if [[ $cur =~ $RELAY_ENV_RE_NONBLANK ]]; then
+                if [ "${#cur}" -gt 4096 ] || [ "${#segs[@]}" -ge 50 ]; then bad=1; break; fi
+                segs+=("$cur")
+            fi
+            cur=""
         fi
     done
-    if [ "$starts" -eq 0 ]; then exempt=0; fi
-    if [ "$exempt" -eq 1 ]; then return 1; fi
-    # The assignments, last one first: a greedy leading .* makes each match the
-    # last one left in the text before the previous match.
-    local vre="^(.*)$1=(\"[^\"]*\"|'[^']*'|[^[:space:];&|]*)" vals=() n=0 over=0 v lastq=0
-    rest="$CMD"
-    while [[ $rest =~ $vre ]]; do
-        if [ "$n" -ge 20 ]; then over=1; break; fi
-        v="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[1]}"
-        if [ "$n" -eq 0 ]; then lastq=0; fi
-        if [[ ${#v} -ge 2 && ( $v == \"*\" || $v == \'*\' ) ]]; then
-            v="${v:1:${#v}-2}"
-            if [ "$n" -eq 0 ]; then lastq=1; fi
-        fi
-        vals+=("$v"); n=$((n + 1))
-    done
-    if [ "$n" -eq 0 ]; then vals=(""); n=1; fi
-    local i shown last="${vals[0]}" list="" cut="" show=$n
-    if [ "$show" -gt 5 ]; then show=5; fi
-    for ((i = show - 1; i >= 0; i--)); do
-        shown="${vals[i]}"
-        if [ "${#shown}" -gt 200 ]; then shown="${shown:0:200}…"; fi
-        if [ -n "$list" ]; then list="${list} | "; fi
-        list="${list}${shown}"
-    done
-    if [ "${#last}" -gt 200 ]; then shown="${last:0:200}…"; else shown="$last"; fi
-    if [[ $last == *'$'* || $last == *'`'* || $last == *[\"\'\]* ]]; then
-        if [ "$lastq" -eq 0 ] && [[ $last == *'$('* || $last == *'${'* || $last == *'`'* ]]; then
-            cut=", cut at the first space; read the command"
-        fi
-        RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${1} (value is computed at run time: ${shown}${cut})"
-    else
-        RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${1}=${shown}"
+    if [ "$bad" -eq 0 ] && [[ $cur =~ $RELAY_ENV_RE_NONBLANK ]]; then
+        if [ "${#cur}" -gt 4096 ] || [ "${#segs[@]}" -ge 50 ]; then bad=1; else segs+=("$cur"); fi
     fi
-    if [ "$n" -gt 1 ]; then
-        if [ "$over" -eq 1 ]; then
-            RELAY_ENV_MORE="
-It assigns ${1} more than 20 times: ${list} (earlier ones not shown)"
-        else
-            RELAY_ENV_MORE="
-It assigns ${1} ${n} times: ${list}"
-            if [ "$n" -gt 5 ]; then RELAY_ENV_MORE="${RELAY_ENV_MORE} ($((n - 5)) earlier ones not shown)"; fi
+    if [ "$bad" -eq 1 ]; then RELAY_ENV_HEAD=$np; return 0; fi
+    # Which segments start the relay, and which of those do so through on_site.sh.
+    local i m=${#segs[@]} lastne=-1 sawstart=0
+    for ((i = 0; i < m; i++)); do
+        ne[i]=0
+        [[ ${segs[i]} =~ $RELAY_START_RE ]] || continue
+        sawstart=1
+        relay_env_seg "${segs[i]}" "$V" probe
+        if ! relay_env_exempt "${segs[i]}"; then ne[i]=1; lastne=$i; fi
+    done
+    if [ "$sawstart" -eq 0 ]; then RELAY_ENV_HEAD=$np; return 0; fi
+    if [ "$lastne" -lt 0 ]; then return 1; fi
+    # The values: the prefix of each direct start segment, and an `export` in any
+    # segment before the last of them.
+    for ((i = 0; i < m; i++)); do
+        if [ "${ne[i]}" -eq 1 ]; then
+            relay_env_seg "${segs[i]}" "$V" start
+        elif [ "$i" -lt "$lastne" ] && [[ ${segs[i]} == *"$V="* ]]; then
+            relay_env_seg "${segs[i]}" "$V" export
         fi
-        RELAY_ENV_MORE="${RELAY_ENV_MORE} (the last one is normally the one that takes effect; read the command)."
+    done
+    local n=${#RELAY_ENV_V[@]} t=0 r2=$CMD
+    RELAY_ENV_N=$n
+    while [[ $r2 == *"$V="* ]]; do
+        t=$((t + 1))
+        if [ "$t" -gt "$n" ]; then break; fi
+        r2=${r2#*"$V="}
+    done
+    if [ "$n" -eq 0 ]; then
+        RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${V} (no value found in front of the relay start: it may be inside quotes or a sub-command)"
+    else
+        local last=${RELAY_ENV_V[n-1]} shown cut="" list="" k
+        RELAY_ENV_VAL=$last
+        if [ "${#last}" -gt 200 ]; then shown="${last:0:200}…"; else shown=$last; fi
+        if [ "${RELAY_ENV_C[n-1]}" -eq 1 ]; then
+            if [ "${RELAY_ENV_K[n-1]}" -eq 1 ]; then cut=", cut at the first space; read the command"; fi
+            RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${V} (value is computed at run time: ${shown}${cut})${tail}"
+        else
+            RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${V}=${shown}${tail}"
+        fi
+        if [ "$n" -gt 1 ]; then
+            for ((k = 0; k < n; k++)); do
+                if [ "$n" -gt 5 ] && [ "$k" -gt 0 ] && [ "$k" -lt $((n - 4)) ]; then continue; fi
+                shown=${RELAY_ENV_V[k]}
+                if [ "${#shown}" -gt 200 ]; then shown="${shown:0:200}…"; fi
+                if [ -n "$list" ]; then list+=" | "; fi
+                list+=$shown
+            done
+            RELAY_ENV_MORE="${nl}It assigns ${V} ${n} times: ${list}"
+            if [ "$n" -gt 5 ]; then RELAY_ENV_MORE+=" ($((n - 5)) earlier ones not shown, other than the first)"; fi
+            RELAY_ENV_MORE+=" (the last one is normally the one that takes effect; read the command)."
+        fi
+    fi
+    if [ "$t" -gt "$n" ]; then
+        RELAY_ENV_MORE+="${nl}This command also mentions ${V}= elsewhere (not as the value the relay gets); read the whole command."
     fi
     return 0
 }
@@ -469,16 +623,16 @@ Not loaded: ${RELAY_ERR}"
         # relay a list the file does not hold, so the summary above would be
         # untrue. Through scripts/on_site.sh the variable is always replaced by the
         # file's list, so only a direct start is named.
-        if relay_env_warn NF_RELAY_EXTRA_DOMAINS; then
+        if relay_env_warn NF_RELAY_EXTRA_DOMAINS ", which overrides this deployment's list: the relay would carry THAT list, not the one shown above. Show the user the domains it names."; then
             RELAY_LIST="${RELAY_LIST}
-${RELAY_ENV_HEAD}, which overrides this deployment's list: the relay would carry THAT list, not the one shown above. Show the user the domains it names.${RELAY_ENV_MORE}"
+${RELAY_ENV_HEAD}${RELAY_ENV_MORE}"
         fi
         # relay-env-warning: the same for the peer-prefix list, which decides which
         # hosts may connect to the relay. An empty value is named too.
-        if relay_env_warn NF_RELAY_PEER_PREFIXES; then
+        if relay_env_warn NF_RELAY_PEER_PREFIXES ", which asks the relay to use this list of host-name prefixes for the hosts that may connect, instead of the deployment's setting. Entries that are not valid are dropped, and a list with no valid entry falls back to the built-in one; the relay's startup line (\"peers :\") shows the list it really uses. Show the user the prefixes it names."; then
             RELAY_LIST="${RELAY_LIST}
-${RELAY_ENV_HEAD}, which asks the relay to use this list of host-name prefixes for the hosts that may connect, instead of the deployment's setting. Entries that are not valid are dropped, and a list with no valid entry falls back to the built-in one; the relay's startup line (\"peers :\") shows the list it really uses. Show the user the prefixes it names.${RELAY_ENV_MORE}"
-            if [[ $RELAY_ENV_HEAD == "THIS COMMAND ALSO SETS NF_RELAY_PEER_PREFIXES=" ]]; then
+${RELAY_ENV_HEAD}${RELAY_ENV_MORE}"
+            if [ "$RELAY_ENV_N" -ge 1 ] && [ -z "$RELAY_ENV_VAL" ]; then
                 RELAY_LIST="${RELAY_LIST}
 An empty value is ignored by the relay, which then uses the deployment's relay_peer_prefixes setting."
             fi
