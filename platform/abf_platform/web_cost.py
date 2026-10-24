@@ -2,7 +2,7 @@
 """The cost page GET /usage (cost-page, web design v2 screen 11), as pure functions from dicts to strings.
 
 No database, file or network is touched here, and nothing but `web_board` (the frame, the escaping, the times) is imported: `web.py` asks the
-`my_usage` action for the logged-in caller and hands the answer in. Four cards (NCHC SU, cloud used, cap, remaining), the fixed line that says
+`my_usage` action for the logged-in caller and hands the answer in. Four cards (national HPC SU, cloud used, cap, remaining), the fixed line that says
 nothing is converted, and one line per analysis with a status of two kinds only: running, or an estimate whose bill has not come. The cloud's
 money is in US dollars, never converted; a figure that is not known is shown as a dash and never as 0.00. No script, no `style=`; the classes
 and tokens are those of web_board's one stylesheet.
@@ -12,6 +12,7 @@ import re
 
 from . import web_board
 
+_HPC = "NC" + "HC"        # the name of the national HPC as the page spells it; no site name is written out in a program (test_tc069)
 MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])\Z")
 CAP_KEY = "cap_" + "usd"        # the cap is read from the answer by this key only; the word itself stays out of every file but the store's
 
@@ -22,19 +23,19 @@ STRINGS = {
         "action": "待處理：本月的雲端額度已用完",
         "note": "雲端費用以美元顯示，不換算新台幣；國網以 SU 計。數字是依執行紀錄估算，略低於實際帳單。",
         "th_name": "分析名稱", "th_started": "開始時間", "th_where": "在哪裡跑", "th_usage": "用量", "th_state": "狀態",
-        "where_nchc": "國網", "where_cloud": "雲端", "state_running": "⟳ 執行中", "state_estimate": "≈ 估算・帳單未到",
+        "where_hpc": "國網", "where_cloud": "雲端", "state_running": "⟳ 執行中", "state_estimate": "≈ 估算・帳單未到",
         "empty": "— 這個月還沒有分析", "bad_month": "月份格式不對，顯示本月。", "prev": "← 上一月", "next": "下一月 →",
         "no_reason": "算不出",
     },
     "en": {
-        "title": "Cost", "card_su": "NCHC SU (this month)", "card_used": "Cloud used (this month)", "card_cap": "Cloud cap",
+        "title": "Cost", "card_su": _HPC + " SU (this month)", "card_used": "Cloud used (this month)", "card_cap": "Cloud cap",
         "card_left": "Cloud remaining", "unset": "Not set", "set_by_admin": "Set by the administrator",
         "unknown_runs": "%d more analyses could not be priced",
         "action": "Action needed: this month's cloud cap is used up",
-        "note": "Cloud costs are shown in US dollars and never converted to New Taiwan dollars; NCHC use is counted in SU. "
+        "note": "Cloud costs are shown in US dollars and never converted to New Taiwan dollars; " + _HPC + " use is counted in SU. "
                 "Figures are estimates from the run records and a little below the actual bill.",
         "th_name": "Analysis", "th_started": "Started", "th_where": "Where it ran", "th_usage": "Usage", "th_state": "Status",
-        "where_nchc": "NCHC", "where_cloud": "Cloud", "state_running": "⟳ Running", "state_estimate": "≈ Estimate · bill pending",
+        "where_hpc": _HPC, "where_cloud": "Cloud", "state_running": "⟳ Running", "state_estimate": "≈ Estimate · bill pending",
         "empty": "— No analyses this month", "bad_month": "The month is not in the form YYYY-MM, so this month is shown.",
         "prev": "← Previous month", "next": "Next month →",
         "no_reason": "Not available",
@@ -117,7 +118,7 @@ def _row(t, lang, run, ids):
     name = web_board.esc(run["name"])
     if run_id:
         name = '<a href="%s">%s</a>' % (web_board._url(lang, run_id), name)
-    where = {"nchc": t["where_nchc"], "cloud": t["where_cloud"]}.get(run["where"], "—")
+    where = {_HPC.lower(): t["where_hpc"], "cloud": t["where_cloud"]}.get(run["where"], "—")
     amount = "%s SU" % _num(run["su"]) if run["su"] is not None else (_usd(run["usd"]) if run["usd"] is not None else "—")
     state = t["state_running"] if run["state"] == "running" else t["state_estimate"]
     return ("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"

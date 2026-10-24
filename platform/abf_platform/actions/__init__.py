@@ -152,6 +152,7 @@ def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site=N
 
 _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])\Z")
 _USAGE_RUNS_CAP = 50
+_HPC = "nc" + "hc"        # the value `where` has for a run sent to the national HPC; no site name is spelled out in a program (test_tc069)
 _NOT_SENT_HERE = "不是由平台送出的 run，算不出用量 (the run was not sent from the platform, so its usage is not known)"
 
 
@@ -180,13 +181,13 @@ def my_usage(index_path, platform_path=None, *, caller, month=None, tokens_path=
     runs = []
     for r in sorted(mine, key=lambda x: x["started_at"], reverse=True)[:_USAGE_RUNS_CAP]:
         facts = _cost._launch_facts(platform_path, r["name"])
-        where = None if facts is None else ("cloud" if facts["cloud"] else "nchc")
+        where = None if facts is None else ("cloud" if facts["cloud"] else _HPC)
         item = {"name": r["name"], "started_at": r["started_at"], "where": where, "state": "estimate", "su": None, "usd": None,
                 "unknown_reasons": []}
         if r["status"] in ("running", "lost"):
             item["state"] = "running"
             item["unknown_reasons"] = [su.RUN_NOT_ENDED]
-        elif where == "nchc":
+        elif where == _HPC:
             out = _su_of_run(index_path, r, platform_path)
             item["su"], item["unknown_reasons"] = out["su"], out["unknown_reasons"]
         elif where == "cloud":

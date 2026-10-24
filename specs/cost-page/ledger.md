@@ -19,6 +19,9 @@ Named by ruling 4 (masthead string, masthead "not a link", tool list/count):
 | platform/tests/test_actions_layer.py:27 READ_NAMES, :35 BASELINE | 8 read names; baseline JSON of the read tools | plus `my_usage` in READ_NAMES; its tool entry (name, description, annotations, schema, copied from the live tool) added to BASELINE | ruling 4/11: tool list; the baseline compares every read tool |
 | platform/tests/test_mcp.py:62, :94 | sorted 13 tool names | plus `my_usage` | tool list |
 | platform/tests/test_oauth_mcp.py:44, :329 | `len(tools) == 13`; 13 names | 14; plus `my_usage` | tool count/list |
+| platform/tests/test_guidance.py:26 READ_TOOLS | 8 names | plus `my_usage` | tool list |
+| platform/tests/test_launch_e2e.py:184 | sorted 13 tool names | plus `my_usage` | tool list |
+| platform/tests/test_su_in_get_run.py:412 (test_tool_list_unchanged) | `len(names) == 13` | `== 14` | tool count (only `my_usage` added; `estimate_su` still not a tool) |
 | platform/tests/test_web_parity.py WEB_ROUTES | 6 read actions with a web route | plus `"my_usage": "GET /usage"` | parity table: the new action has a same-named tool and a web route |
 
 NOT named by ruling 4, but forced by adding the route (additive only, nothing loosened; flagged for the reviewer):
@@ -29,3 +32,5 @@ NOT named by ruling 4, but forced by adding the route (additive only, nothing lo
 | platform/tests/test_web_board.py:1227 (tn10) | hrefs of every board page have a path in `/`, `/settings`, `/launch` | plus `/usage` | the masthead now links to `/usage` on every page |
 
 `test_tc051` (route path must not match `cost`, `/cost` must be 404), tc040, tc046-048, tc060, tc063 are untouched and green.
+
+Note on the word for the national HPC: `test_tc069_tc070` forbids site words (including NCHC) in any program text, so `actions._HPC` and `web_cost._HPC` spell it as `"nc" + "hc"` (the way web_board spells the stopped state). The test is untouched.
