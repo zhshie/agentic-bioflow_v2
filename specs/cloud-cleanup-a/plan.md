@@ -106,6 +106,12 @@ base: v3
 4. **`work_cleaned_at` 的語意（供後面各片遵守）**：只有代理明說 `cleaned: true` 時才會被寫（「本來就沒有 work」也算）；逾時或錯誤不記為已清、不自動重試。本片只建欄位。
 5. **切片理由（舊計畫整份太大）**：舊計畫約 30 檔、需求超過 60 條測試；依 `dev-architecture-review-2026-10-24.md` §3 與 `dev-plans/README.md` 通例切成六片，每片 ≤10 檔、≤60 TC。本片 9 檔（含 ledger）。
 
+## 裁決二（2026-10-24，回應 verifier 出題退回）
+7. 採 (a)：`_migrate_jobs_kinds` 的跳過條件＝jobs 表 sql **同時含** `read_task_log` 與 `clean_work` 才跳過；其餘一律重建。`test_run_diag_tools.py` 不改。
+8. 新增 TC 以逐條列出的 21 條為準（「約 24」作廢）。
+9. 「結構相同」＝欄位名稱／順序／型別／NOT NULL／預設值／主鍵＋各 CHECK 接受與拒絕的集合相同，不比 `sqlite_master.sql` 逐字；測試名改成 `…have_the_same_structure…`。
+10. 真實舊庫複本檢查：executor 在 ledger 寫「拿不到維護者桌機的 platform.db，由 developer-agent 在桌機補跑」即可，不算 UNVERIFIED；developer-agent 合併前補跑並把輸出貼進 PR。
+
 ## 專長守則（backend）
 
 ### executor
