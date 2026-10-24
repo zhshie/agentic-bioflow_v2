@@ -194,7 +194,7 @@ def test_tc055_launches_holds_the_facts_of_the_handover_and_no_state(tmp_path):
     # refused keeps its row and its name can be used again (the plan names this change; the rest of the test is as it was)
     assert sorted(cols) == sorted(["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at",
                                    "submitted_at", "cancel_requested_at", "job_id", "user_id",      # 116: user_id, who sent it
-                                   "parent_run", "attempt", "attempt_kind"])      # 009e: what a resume or a relaunch is made from, which attempt, which kind (last)
+                                   "parent_run", "attempt", "attempt_kind", "work_cleaned_at"])      # cloud-cleanup-a: work_cleaned_at, last; 009e: what a resume or a relaunch is made from, which attempt, which kind (last)
     for c in cols:
         assert not re.search(r"status|state|phase|result|exit|progress|ended", c), c
     unique = [r for r in con.execute("PRAGMA index_list(launches)") if r[2]]

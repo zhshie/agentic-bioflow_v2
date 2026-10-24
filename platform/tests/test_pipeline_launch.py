@@ -789,7 +789,7 @@ def test_no_table_or_column_changed(d):
     from abf_platform import store
     cols = [c["name"] for c in sql_rows(d.state, "PRAGMA table_info(launches)")]
     assert cols == ["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at", "submitted_at", "cancel_requested_at",
-                    "job_id", "user_id", "parent_run", "attempt", "attempt_kind"]
+                    "job_id", "user_id", "parent_run", "attempt", "attempt_kind", "work_cleaned_at"]
     for word in ("project", "pipeline_source", "composed", "abf-composed"):
         assert word not in store.STATE_SCHEMA
     make(d)

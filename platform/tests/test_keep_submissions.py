@@ -771,7 +771,7 @@ def test_tc083_no_new_confirmation_kind_and_approve_knows_nothing_of_forget():
     # TC-083
     from abf_platform import confirm, store
     assert set(confirm.JOB_KIND) == {"launch", "cancel"}
-    assert "CHECK (kind IN ('launch', 'cancel'))" in store.STATE_SCHEMA
+    assert "CHECK (kind IN ('launch', 'cancel', 'clean_work'))" in store.STATE_SCHEMA
     assert "forget" not in inspect.getsource(confirm.approve)
 
 
@@ -869,7 +869,7 @@ def test_tc109_an_older_platform_db_gains_the_009e_and_the_forgotten_columns_and
     path = tmp_path / "old" / "platform.db"
     store.init_state(path)
     con = sqlite3.connect(str(path))
-    drops = {"launches": ("parent_run", "attempt", "attempt_kind"), "confirmations": ("forgotten_at", "forgotten_by"),
+    drops = {"launches": ("parent_run", "attempt", "attempt_kind", "work_cleaned_at"), "confirmations": ("forgotten_at", "forgotten_by"),
              "jobs": ("forgotten_at", "forgotten_by")}
     for table, cols in drops.items():
         for col in cols:

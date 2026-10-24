@@ -171,7 +171,7 @@ RUN_TOKEN_TTL = 14 * 86400
 # Compute environments, agents, jobs, confirmations and the hand-off record. Nothing here describes the state of a
 # run: a job is a question or an order put to one agent, a confirmation is the user's "yes" to one content, and a
 # launches row is a fact (who was told to launch what, and the number Slurm gave it), never a status.
-# The CHECK constraints let exactly six job kinds in, and the two that write (launch_nextflow, cancel_run) only with
+# The CHECK constraints let exactly seven job kinds in, and the three that write (launch_nextflow, cancel_run, clean_work) only with
 # a confirmation. The jobs table has the same columns in the same order whether it was made new or upgraded from 007's.
 STATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS compute_envs (
@@ -200,10 +200,22 @@ CREATE TABLE IF NOT EXISTS agents (
     facts_json TEXT,
     owner_user_id INTEGER
 );
-CREATE TABLE IF NOT EXISTS confirmations (
+%(confirmations)s;
+%(jobs)s
+%(launches)s;
+CREATE INDEX IF NOT EXISTS launches_run_name ON launches (run_name);
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"""
+
+# The confirmation kinds are launch, cancel and clean_work (the person's yes to deleting a run's work folder; kept apart so a
+# cancel confirmation cannot stand for it). A platform.db made before clean_work gets this table rebuilt by _migrate_confirmation_kinds.
+_CONFIRMATIONS_TABLE = """CREATE TABLE %(name)s (
     id TEXT PRIMARY KEY,
     sha256 TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel')),
+    kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel', 'clean_work')),
     created_at REAL NOT NULL,
     used_at REAL,
     caller_user_id INTEGER,
@@ -217,15 +229,7 @@ CREATE TABLE IF NOT EXISTS confirmations (
     void_reason TEXT,
     forgotten_at REAL,
     forgotten_by TEXT
-);
-%(jobs)s
-%(launches)s;
-CREATE INDEX IF NOT EXISTS launches_run_name ON launches (run_name);
-CREATE TABLE IF NOT EXISTS meta (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-"""
+)"""
 
 # forgotten_at / forgotten_by (keep-submissions) sit before confirmation_id, which has always been the last column; a platform.db made before
 # them gets them last through _add_forgotten_columns (every reader names its columns).
@@ -233,7 +237,7 @@ _JOBS_TABLE = """CREATE TABLE %(name)s (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent TEXT NOT NULL,
     compute_env TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('preflight', 'list_site_files', 'launch_nextflow', 'cancel_run', 'fetch_run_records', 'read_task_log')),
+    kind TEXT NOT NULL CHECK (kind IN ('preflight', 'list_site_files', 'launch_nextflow', 'cancel_run', 'fetch_run_records', 'read_task_log', 'clean_work')),
     args_json TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('queued', 'claimed', 'done', 'refused', 'error', 'expired')),
     result_json TEXT,
@@ -245,7 +249,7 @@ _JOBS_TABLE = """CREATE TABLE %(name)s (
     forgotten_at REAL,
     forgotten_by TEXT,
     confirmation_id TEXT UNIQUE REFERENCES confirmations(id),
-    CHECK (kind NOT IN ('launch_nextflow', 'cancel_run') OR confirmation_id IS NOT NULL)
+    CHECK (kind NOT IN ('launch_nextflow', 'cancel_run', 'clean_work') OR confirmation_id IS NOT NULL)
 )"""
 # One row per launch that was confirmed. A run name may have several rows (a launch the agent refused leaves its row, and
 # the name can be used again), so run_name is not unique; job_id is the launch job that this very row made, which is how
@@ -264,10 +268,12 @@ _LAUNCHES_TABLE = """CREATE TABLE %(name)s (
     user_id INTEGER,
     parent_run TEXT,
     attempt INTEGER,
-    attempt_kind TEXT CHECK (attempt_kind IN ('resume', 'relaunch'))
+    attempt_kind TEXT CHECK (attempt_kind IN ('resume', 'relaunch')),
+    work_cleaned_at REAL
 )"""
 _LAUNCH_COLUMNS = "id, run_name, slurm_job_id, run_folder, ce, agent, confirmed_at, submitted_at, cancel_requested_at"
-STATE_SCHEMA = STATE_SCHEMA % {"jobs": (_JOBS_TABLE % {"name": "IF NOT EXISTS jobs"}) + ";",
+STATE_SCHEMA = STATE_SCHEMA % {"confirmations": _CONFIRMATIONS_TABLE % {"name": "IF NOT EXISTS confirmations"},
+                               "jobs": (_JOBS_TABLE % {"name": "IF NOT EXISTS jobs"}) + ";",
                                "launches": _LAUNCHES_TABLE % {"name": "IF NOT EXISTS launches"}}
 _JOB_COLUMNS = ("id, agent, compute_env, kind, args_json, state, result_json, late_result_json, created_at, deadline_at, "
                 "claimed_at, finished_at")
@@ -399,18 +405,22 @@ def _migrate_jobs(con):
         con.isolation_level = ""
 
 
+def _jobs_kinds_current(sql_text):
+    return "read_task_log" in sql_text and "clean_work" in sql_text
+
+
 def _migrate_jobs_kinds(con):
-    """A platform.db made before run-diag-tools has a jobs table whose CHECK does not let `read_task_log` in. Same shape of work as
+    """A platform.db made before run-diag-tools or before clean_work has a jobs table whose CHECK does not let `read_task_log` or `clean_work` in. Same shape of work as
     _migrate_jobs: one transaction, build the new table, copy every row by the column names both tables have (the ids and the
     AUTOINCREMENT counter too), drop the old one, rename. A failure anywhere rolls it all back. Another process may have done it first."""
     row = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'jobs'").fetchone()
-    if row is None or "read_task_log" in row[0]:
+    if row is None or _jobs_kinds_current(row[0]):
         return
     con.isolation_level = None
     con.execute("BEGIN IMMEDIATE")
     try:
         row = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'jobs'").fetchone()
-        if row is None or "read_task_log" in row[0]:
+        if row is None or _jobs_kinds_current(row[0]):
             con.execute("COMMIT")
             return
         con.execute(_JOBS_TABLE % {"name": "jobs_new"})
@@ -580,6 +590,63 @@ def _add_confirmation_state(con):
             raise    # a second process may have added them first; anything else is a real error
 
 
+def _confirmations_current(con):
+    row = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'confirmations'").fetchone()
+    return row is None or "'clean_work'" in row[0]
+
+
+def _migrate_confirmation_kinds(con):
+    """A platform.db made before clean_work has a confirmations table whose CHECK lets only launch and cancel in. SQLite cannot change a
+    CHECK in place, and confirmations is the parent of jobs.confirmation_id, so this follows the steps of
+    https://sqlite.org/lang_altertable.html (Making Other Kinds Of Table Schema Changes): foreign keys off (outside any transaction),
+    one transaction that builds the new table, copies every row by the column names both tables have, drops the old one and renames,
+    a foreign key check that must come out empty, commit. Any failure rolls back and the old table and its rows are as they were;
+    the foreign keys and the isolation level are put back either way. A table that already lets clean_work in is not touched. Another
+    process may have done it first, which is checked again once this one holds the write lock.
+    Must run after _add_confirmation_state and _add_forgotten_columns, or the old rows would be copied without their state."""
+    if _confirmations_current(con):
+        return
+    con.execute("PRAGMA foreign_keys = OFF")
+    con.isolation_level = None
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        try:
+            if _confirmations_current(con):
+                con.execute("COMMIT")
+                return
+            con.execute(_CONFIRMATIONS_TABLE % {"name": "confirmations_new"})
+            old = {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}
+            shared = ", ".join(r[1] for r in con.execute("PRAGMA table_info(confirmations_new)") if r[1] in old)
+            con.execute("INSERT INTO confirmations_new (%s) SELECT %s FROM confirmations" % (shared, shared))
+            _migration_step("copied")
+            con.execute("DROP TABLE confirmations")
+            con.execute("ALTER TABLE confirmations_new RENAME TO confirmations")
+            if con.execute("PRAGMA foreign_key_check").fetchall():
+                raise sqlite3.IntegrityError("a job points at a confirmation that does not exist; the table was not changed")
+            con.execute("COMMIT")
+        except BaseException:
+            try:
+                con.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+            raise
+    finally:
+        con.isolation_level = ""
+        con.execute("PRAGMA foreign_keys = ON")
+
+
+def _add_cleanup_column(con):
+    """A platform.db made before clean_work has no work_cleaned_at on a launch (when the agent said the run's work folder is gone):
+    add it, every old row keeps NULL. In place, last, so the old order is kept. Nothing in the platform writes it yet."""
+    if "work_cleaned_at" not in {r[1] for r in con.execute("PRAGMA table_info(launches)")}:
+        try:
+            with con:
+                con.execute("ALTER TABLE launches ADD COLUMN work_cleaned_at REAL")
+        except sqlite3.OperationalError:
+            if "work_cleaned_at" not in {r[1] for r in con.execute("PRAGMA table_info(launches)")}:
+                raise    # a second process may have added it first; anything else is a real error
+
+
 def connect_state(path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -597,6 +664,8 @@ def connect_state(path):
         _add_confirmation_column(con)
         _add_confirmation_state(con)
         _add_forgotten_columns(con)
+        _migrate_confirmation_kinds(con)
+        _add_cleanup_column(con)
     except BaseException:
         con.close()
         raise

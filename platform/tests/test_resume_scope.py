@@ -68,7 +68,7 @@ def test_tc154_tc161_there_are_still_three_channels_two_kinds_of_confirmation_an
     assert confirm.JOB_KIND == {"launch": "launch_nextflow", "cancel": "cancel_run"}
     assert jobs.CONFIRMED == {"launch_nextflow": "launch", "cancel_run": "cancel"}
     assert jobs.KINDS == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log")      # run-diag-tools: plus read_task_log
-    assert store.STATE_SCHEMA.count("kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel'))") == 1
+    assert store.STATE_SCHEMA.count("kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel', 'clean_work'))") == 1
 
 
 def test_tc161_the_confirmation_table_of_a_new_file_takes_no_third_kind(tmp_path):

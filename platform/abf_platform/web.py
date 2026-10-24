@@ -372,20 +372,35 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         except sqlite3.Error:
             return None
 
+    def read_finished(view, caller):
+        """What the finished stage shows of how the run was sent: the action `launch_prefill` (reads only)."""
+        return actions.launch_prefill(platform_path, view["name"], caller=caller)
+
+    def read_outputs_look(run_id, caller):
+        """The output folder as it is now, for the delivery list of the finished stage: it only looks, it never queues a listing."""
+        try:
+            return actions.run_outputs(index_path, platform_path, run_id, caller=caller, enqueue=False)
+        except sqlite3.Error:
+            return None
+
     async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200, relist=False):
         """The board for one logged-in user: one run's page (the one named, else the one that needs the person most, else the newest;
         an empty page for a person with no run), with `flash` (one plain line of refusal) on it after a refused button."""
         runs = await run_in_threadpool(read_runs, caller)
         selected = None
         outputs = None
+        finished = None
         if run_id or runs:
             selected = await run_in_threadpool(read_run, run_id or web_board.default_run(runs), caller)
             if selected is None:        # another person's run and a missing id answer alike, and the page never repeats the id
                 return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, "results") == "results" and not flash:
                 outputs = await run_in_threadpool(read_outputs, selected["id"], caller, web_board.pick_results_tab(tab) == "outputs", relist)
+            if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "finished" and not flash:
+                finished = await run_in_threadpool(read_finished, selected, caller)
+                outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
-                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs)
+                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
     async def board(request):
