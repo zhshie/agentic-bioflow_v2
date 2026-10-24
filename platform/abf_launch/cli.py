@@ -6,7 +6,9 @@ launch   builds the bundle (abf_station.launch.render_bundle(), the same functio
          sends it only after y or Y on the terminal. cancel does the same for one run. Both refuse in the person's
          words, before any question, when a choice cannot be made into a launch.
 resume   goes on with a failed or cancelled run in its own folder (Nextflow takes up where it stopped); relaunch starts it again from the
-         start in a new folder. Both take only the name of the run: the samples and parameters are those of the first launch. Both show
+         start in a new folder. relaunch takes only the name of the run; resume may also take --param, --params-file (parameters to
+         change, laid over those of the first launch) and --config-file (extra settings text). The pipeline, revision, samples and
+         environment are those of the first launch. Both show
          everything, ask the same question and take the same y as launch; there is no flag that answers.
 launches lists the hand-off record: facts only (what was sent, the Slurm number, when a cancel was requested). It
          never says how a run is doing; that is Nextflow's to say (get_run).
@@ -113,7 +115,12 @@ def _attempt(args, verb):
     prepare, screen, question = ((build.prepare_resume, build.resume_screen, QUESTION_RESUME) if verb == "resume"
                                  else (build.prepare_relaunch, build.relaunch_screen, QUESTION_RELAUNCH))
     try:
-        ce_name, bundle, row = prepare(state, args.run, index_path=store.default_index_path(), owner=caller.user_id if caller else None)
+        edits = {}
+        if verb == "resume":
+            params, extra = build.read_edit_args(args.params_file, args.param, args.config_file)
+            edits = {"params": params, "extra_config": extra}
+        ce_name, bundle, row = prepare(state, args.run, index_path=store.default_index_path(), owner=caller.user_id if caller else None,
+                                       **edits)
     except build.Refusal as e:
         return _refuse(str(e))
     why = terminal.terminal_problem()
@@ -427,10 +434,18 @@ def add_commands(sub):
     for verb, fn, text in (("resume", cmd_resume, "go on with a failed run in its own folder; Nextflow takes up where it stopped"),
                            ("relaunch", cmd_relaunch, "start a failed run again from the start, in a new folder")):
         r = sub.add_parser(verb, allow_abbrev=False, help=text + ", after the same kind of question as for a first send",
-                           description="Show all of it, ask on this terminal and send it only after you answer y. Only the name of the run is "
-                                       "taken: the pipeline, revision, samples and parameters are those of its first send. Nothing can answer "
-                                       "for you.")
+                           description="Show all of it, ask on this terminal and send it only after you answer y. "
+                                       + ("Besides the name of the run it takes --param, --params-file and --config-file: the parameters to "
+                                          "change (laid over those of the first send) and extra settings. The pipeline, revision and samples "
+                                          "are those of its first send. " if verb == "resume" else
+                                          "Only the name of the run is taken: the pipeline, revision, samples and parameters are those of "
+                                          "its first send. ")
+                                       + "Nothing can answer for you.")
         r.add_argument("run", help="the run name")
+        if verb == "resume":
+            r.add_argument("--param", action="append", help="name=value, repeatable: a parameter to change")
+            r.add_argument("--params-file", help="a flat file of name: value lines to change")
+            r.add_argument("--config-file", help="a text file of extra Nextflow settings, e.g. process.memory = '16 GB'")
         r.add_argument("--user", help="the account this is sent as; required once the platform has users, and it must be the account that "
                                       "launched the run")
         r.set_defaults(func=fn)

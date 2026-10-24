@@ -656,26 +656,44 @@ async def request_cancel(platform_path, *, run_name, caller=None, person=None, c
     return await _ask(platform_path, "cancel", ce, bundle, text, run_name, caller, person, clock, remote)
 
 
-async def _request_attempt(verb, platform_path, run_name, caller, person, clock, remote, index_path):
+def _same_edits_as(params, extra_config):
+    """The test of find_attempt for a resume that carries edits: the confirmed bundle holds exactly these edits, taken against the
+    parameters of the first launch it was made from."""
+    def match(bundle):
+        resume = bundle["resume"]
+        return build.edits_of(resume["origin"].get("params"), params, extra_config) == (resume.get("overrides") or {})
+    return match
+
+
+async def _request_attempt(verb, platform_path, run_name, caller, person, clock, remote, index_path, params=None, extra_config=None):
     word = build.WORDS[verb]
     caller_id = _caller_id(caller)
-    found = confirm.find_attempt(platform_path, run_name, verb, caller_id, clock)
+    try:
+        edited = bool(build.edits_of(None, params, extra_config))      # a wrong type is refused below, by prepare
+    except build.Refusal:
+        edited = False
+    found = confirm.find_attempt(platform_path, run_name, verb, caller_id, clock, _same_edits_as(params, extra_config) if edited else None)
     if found:
         return _queued(found["id"], found["job_id"], found["run_name"])
     prepare, screen = (build.prepare_resume, build.resume_screen) if verb == "resume" else (build.prepare_relaunch, build.relaunch_screen)
     try:
         area = caller_area(platform_path, caller) if caller is not None else None      # over HTTP the samples must still be in the caller's folder (116b)
-        ce, bundle, row = prepare(platform_path, run_name, index_path=index_path or store.default_index_path(), owner=caller_id, area=area)
+        edits = {"params": params, "extra_config": extra_config} if verb == "resume" else {}
+        ce, bundle, row = prepare(platform_path, run_name, index_path=index_path or store.default_index_path(), owner=caller_id, area=area,
+                                  **edits)
     except build.Refusal as e:
         return _no("未%s：%s" % (word, e))
     text = build.as_text(screen(bundle, row))
     return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote, tool=verb)
 
 
-async def request_resume(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False, index_path=None):
+async def request_resume(platform_path, *, run_name, params=None, extra_config=None, caller=None, person=None, clock=time.time, remote=False,
+                         index_path=None):
     """Ask for the resume of a failed or cancelled run of this platform: the same folder, Nextflow goes on where it stopped, the samples and
-    parameters of the first launch. The only argument is the name of the run. Nothing is queued without a person's yes."""
-    return await _request_attempt("resume", platform_path, run_name, caller, person, clock, remote, index_path)
+    parameters of the first launch. params (only the keys to change, laid over the first launch's) and extra_config (settings text, e.g.
+    `process.memory = '16 GB'`) are optional; the pipeline, revision, samples and environment cannot be said again. The person is shown
+    each change and the last line that runs. Nothing is queued without a person's yes."""
+    return await _request_attempt("resume", platform_path, run_name, caller, person, clock, remote, index_path, params, extra_config)
 
 
 async def request_relaunch(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False, index_path=None):

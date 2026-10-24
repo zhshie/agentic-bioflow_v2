@@ -188,25 +188,42 @@ def find_approved(state_path, kind, bundle, caller_user_id, clock=time.time, inc
         con.close()
 
 
-def find_attempt(state_path, parent_run, kind, caller_user_id, clock=time.time):
+def find_attempt(state_path, parent_run, kind, caller_user_id, clock=time.time, edits_match=None):
     """{'id', 'job_id', 'run_name'} of an attempt of this kind ('resume' or 'relaunch') of the run `parent_run` that this caller got a
     person's yes for through a form or the page, whose job was not refused, and whose request is still alive; or None. The repeated
     tool call gets the job that exists (spec 009e); by then the attempt is a newer one of its analysis, so it is looked for by what it
-    is made from and not by building it again."""
+    is made from and not by building it again. A resume that carried edits is the same attempt only for the same edits: `edits_match`
+    (a function of the confirmed bundle) says so; without it only an attempt with no edits is found."""
     con = store.open_readonly(state_path)
     if con is None:
         return None
     try:
-        row = con.execute("SELECT c.id AS id, j.id AS job_id, l.run_name AS run_name FROM launches l JOIN jobs j ON j.id = l.job_id "
-                          "JOIN confirmations c ON c.id = j.confirmation_id WHERE l.parent_run = ? AND l.attempt_kind = ? "
-                          "AND c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE') AND c.kind = 'launch' AND c.caller_user_id IS ? "
-                          "AND c.expires_at > ? AND j.state NOT IN ('refused', 'expired') ORDER BY l.id DESC LIMIT 1",
-                          (parent_run, kind, caller_user_id, clock())).fetchone()
-        return dict(row) if row else None
+        rows = con.execute("SELECT c.id AS id, j.id AS job_id, l.run_name AS run_name, c.bundle_json AS bundle_json FROM launches l "
+                           "JOIN jobs j ON j.id = l.job_id JOIN confirmations c ON c.id = j.confirmation_id "
+                           "WHERE l.parent_run = ? AND l.attempt_kind = ? "
+                           "AND c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE') AND c.kind = 'launch' AND c.caller_user_id IS ? "
+                           "AND c.expires_at > ? AND j.state NOT IN ('refused', 'expired') ORDER BY l.id DESC",
+                           (parent_run, kind, caller_user_id, clock())).fetchall()
+        for row in rows:
+            if kind == "resume" and not _same_edits(row["bundle_json"], edits_match):
+                continue
+            return {k: row[k] for k in ("id", "job_id", "run_name")}
+        return None
     except sqlite3.OperationalError:
         return None       # a platform.db made before 009e that no command has opened since: it has no attempts
     finally:
         con.close()
+
+
+def _same_edits(bundle_json, edits_match):
+    """Whether the resume whose bundle this is carried the edits asked for now (none, when edits_match is None)."""
+    try:
+        bundle = json.loads(bundle_json) if bundle_json else {}
+        if edits_match is None:
+            return not (bundle.get("resume") or {}).get("overrides")
+        return bool(edits_match(bundle))
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return False
 
 
 def launched_by(state_path, run_name, caller_user_id):
