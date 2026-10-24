@@ -141,6 +141,17 @@ source: PR #189（fix/relay-env-warning）上 /code-review 的六項發現（兩
 5. **成本**：不准用 `^(.*)` 形式的 regex；段數上限 50、每段長度上限 4096 字元，超過就直接警告（不解析）。加一條 1 MB 指令的計時測試，必須 < 2 秒。加一條測試斷言 helper 用到的每個 regex 在 `bash --posix` 下能編譯（`[[ x =~ $re ]]` 回傳碼不是 2）。
 6. 審查的 8 點各加至少一條會在舊寫法紅、新寫法綠的測試；「不更弱」比對（舊版會問的新版都要問）照舊。
 
+## 裁決四（2026-10-24 19:10 developer-agent，回答出題退回的 8 點；以本段為準，取代裁決三中衝突的部分）
+1. **整條指令長度上限 64 KB、切出的段數上限 50**：超過就不解析，直接印標頭 `THIS COMMAND ALSO SETS <VAR> (not parsed: the command is too long or has too many parts); read the whole command.`（仍含 `THIS COMMAND ALSO SETS <VAR>`，envw 的 has 判斷照用）。所以 1 MB 測試必走這條快路，兩種形狀（單一超長段、大量短段）都要 < 2 秒。
+2. **切段要認得引號與 `$( )`／反引號**：用一個逐字元的 bash 迴圈（只在 ≤64 KB 時跑）追蹤單引號、雙引號、`$(` 深度與反引號；只有在引號外、`$( )` 外的 `; & | ( ) 換行` 才切段。不用任何 `^(.*)` 回溯 regex。
+3. **前導直譯器**：段內先跳過開頭的 `VAR=值` 指派；若下一個詞是 `env`，再跳過 `env` 和它後面的 `VAR=值`；若下一個詞是 `bash` 或 `sh`（可帶 `-c` 以外的選項），跳過它。剩下的第一個詞就是「命令」。
+4. **豁免**：只有「命令」以 `on_site.sh` 結尾，且 `egress_ctl.sh` 以**未加引號**的詞出現在它後面時才豁免。`egress_ctl.sh` 若出現在引號裡（例如 `scripts/on_site.sh 'V=evil bash scripts/egress_ctl.sh start'`）＝藏在字串裡的啟動，一律警告、不豁免（RWH-9 照舊 has）。`cat on_site.sh egress_ctl.sh start` 的命令是 `cat`，不豁免。
+5. **值的來源**：(a) 該段的前綴指派（含 `env` 後面的）；(b) 同一條指令裡、在啟動段**之前**的任一段 `export VAR=值`。兩者都算，以 shell 實際生效順序的最後一個為主角，全部列出；隱藏了項目時，第一個和最後一個一定都顯示。左邊要有字界（段首、空白或 `env `）。
+6. **其他地方提到 VAR=**（echo、註解、引號字串、啟動段之後）：不採用為值，另印一行 `This command also mentions <VAR>= elsewhere (not as the value the relay gets); read the whole command.`。
+7. **引號與顯示**：雙引號值去外層引號，若含 `$` 或反引號→`(value is computed at run time: <原文>)`；單引號值一律字面顯示；相鄰拼接（`"a"b`）照 shell 規則拼成 `ab`。修掉死碼括號樣式。
+8. **審查 8 點全列**（每點至少一條「舊寫法紅、新寫法綠」的測試，舊寫法＝commit 0b104ad 的 hook）：①空分支 regex 編譯失敗（加測試：helper 用到的每個 regex 在 `bash --posix` 下 `[[ x =~ $re ]]` 回傳碼不是 2）②啟動點之後的誘餌改了標題 ③死碼括號 ④on_site.sh 只是參數也被豁免、同段兩個啟動點只看一個 ⑤沒有左邊字界／`"a"b` 顯示錯 ⑥回溯可能逾時 ⑦單引號值被誤標 ⑧沒有測試能抓到 regex 編譯失敗。
+9. 作法 2 的「賦值最多取 20 個」取消；「最多列 5 個」保留但加上第 5 點的首尾規則。測試數量不設上限；既有斷言除措辭外不改，env 前綴（envp #45、PEER-2）與 export（PEER-3）照舊警告並顯示值。
+
 ## 專長守則（backend）
 
 ### executor
