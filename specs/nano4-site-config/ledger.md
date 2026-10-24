@@ -11,7 +11,7 @@
 
 If the site's Nextflow module does not work on nano4, copy `nchc-nano4-ce.json` and change two things: set `modules` to `[]`, and add two
 `environment` entries (head and compute both true): `PATH=/work/<site_user>/nextflow/bin:$PATH` and
-`NXF_PLUGINS_DIR=/work/<site_user>/.nextflow/plugins`. The `docs/SETTINGS.md` text is written in L3; it copies this section.
+`NXF_PLUGINS_DIR=/work/<site_user>/.nextflow/plugins`. The `docs/SETTINGS.md` text is written in L3; it copies this section. (Update 2026-10-24: the CE now sets `NXF_PLUGINS_DIR` by default, so when self-installing, override that entry's value instead of adding a second one.)
 
 ## Migration
 
