@@ -2,13 +2,14 @@
 
 <!--
 Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after the plan, before any code.
+Revised 2026-10-24 for 裁決四 (shipped price list is empty; real prices go to cloud-rates-fill).
 Reader: the maintainer, who is not an engineer. Every row can be judged without reading code.
 Language: 繁體中文; identifiers (TC-, T#, FR) and file paths stay as they are.
 -->
 
-**規格**：`specs/cloud-cost/plan.md`（本任務沒有獨立 spec.md；計畫含「維護者原話」與三段裁決，裁決與正文衝突時以裁決為準）　**總覽**：`test-case-overview.md`
+**規格**：`specs/cloud-cost/plan.md`（本任務沒有獨立 spec.md；計畫含「維護者原話」與裁決一至四，裁決與正文衝突時以裁決為準，後面的裁決取代前面的）　**總覽**：`test-case-overview.md`
 
-說明：「T#」是計畫「失敗先行測試」裡的編號，方便對照。所有測試用的價目表、帳號、run 都是 `tmp_path` 裡的假資料（假價目：區域 `us-central1`；`n2-standard-4` standard 0.20／spot 0.06；`e2-standard-2` 只有 standard 0.10；沒有 `c9-fake-8`），不連網、不啟動任何程式。「雲端」指計算環境類型 `googlebatch-platform`（Google Batch）。
+說明：「T#」是計畫「失敗先行測試」裡的編號，方便對照。所有測試用的價目表、帳號、run 都是 `tmp_path` 裡的假資料（假價目：區域 `us-central1`；`n2-standard-4` standard 0.20／spot 0.06；`e2-standard-2` 只有 standard 0.10；沒有 `c9-fake-8`），不連網、不啟動任何程式。「雲端」指計算環境類型 `googlebatch-platform`（Google Batch）。**隨程式出貨的 `data/cloud_rates.json` 價目是空的（裁決四 10）**，只有明講「出貨檔」的 TC 才用它，其餘 TC 一律用上面的假價目。
 
 類型只有三種：
 
@@ -40,11 +41,12 @@ Language: 繁體中文; identifiers (TC-, T#, FR) and file paths stay as they ar
 | TC-016 | T4 | 例外 | 這筆的 `source` 不是 `https://` 開頭 | 同上 | 同上，費用未知 | 自動：T4 |
 | TC-017 | T4 | 例外 | 這筆的 `read_on` 不是 `YYYY-MM-DD` 格式 | 同上 | 同上，費用未知 | 自動：T4 |
 | TC-018 | 作法 1（`load_rates`） | 例外 | 價目檔不存在，或內容是 JSON 陣列而不是物件 | 載入價目表 | 回傳 `None`，不丟堆疊 | 自動：test_cloud_cost.py（新） |
-| TC-019 | T5 | 功能 | 隨程式出貨的 `platform/abf_platform/data/cloud_rates.json` | 檢查檔案 | `currency` 是 `USD`；至少一個區域、一個機器型號；所有費率是大於 0 的有限數字；有 spot 的型號 spot 小於 standard | 自動：T5 |
-| TC-020 | T5；範圍 2 | 功能 | 同上 | 檢查每一筆 | 每筆都有 `https://` 開頭的 `source` 與合法日期的 `read_on`，日期不晚於今天 | 自動：T5 |
-| TC-021 | T5 | 功能 | 同上 | 檢查日期 | 所有 `read_on` 都不早於 2026-10-24（證明是這次讀頁面填的，不是舊記憶） | 自動：T5 |
+| TC-019 | T5（裁決四 10 改版） | 功能 | 隨程式出貨的 `platform/abf_platform/data/cloud_rates.json`（出貨檔） | 用 `load_rates` 載入並檢查 | 檔案是合法 JSON、`load_rates` 回傳不是 `None`（空價目不等於讀不到）；`currency` 是 `USD`；保留格式與欄位說明 | 自動：T5 |
+| TC-020 | T5（裁決四 10 改版）；範圍 2 | 功能 | 同上 | 檢查每一個條目（若有） | 若有任何條目：每筆都有 `https://` 開頭的 `source` 與合法 `YYYY-MM-DD` 的 `read_on`（日期不晚於今天）；費率是大於 0 的有限數字；有 spot 的型號 spot 小於 standard。條目為零時此項成立（沒有不合格的條目） | 自動：T5 |
+| TC-021 | 裁決四 10、11（價目先清空，真實價目另開 `cloud-rates-fill`） | 不在範圍 | 同上 | 數出貨檔的條目 | 條目為零（價目清空）；本任務沒有填入任何價錢，包括 spot 與一般（standard）價 | 自動：T5 |
 | TC-022 | T5；維護者原話「不換算」 | 不在範圍 | 同上 | 搜尋檔案內容 | 沒有 `TWD`、`NT$`、`exchange`、`匯率` | 自動：T5 |
-| TC-023 | 完成標準（價目表是真資料）；憲法第 9 條 | 功能 | 出貨價目檔 | 驗收者隨機抽 3 筆，打開該筆 `source` 網址核對頁面數字 | 3 筆的網址打得開且數字與檔內相符；打不開的標「未驗證」不算通過 | 手動：`docs/TESTING.md` cloud-cost 小節 |
+| TC-023 | 完成標準（價目表是真資料）；憲法第 9 條 | 功能 | 出貨價目檔 | 若有條目：驗收者隨機抽至多 3 筆，打開該筆 `source` 網址核對頁面數字。若條目為零（裁決四之後的預期狀態）：確認檔案確實為空 | 有條目時：網址打得開且數字與檔內相符，打不開的標「未驗證」不算通過。條目為零時：記為「不適用，價目由 `cloud-rates-fill` 填」，不當作價目已核對 | 手動：驗收者閱卷時做（`docs/TESTING.md` cloud-cost 小節） |
+| TC-134 | 裁決四 10（空清單時所有估計為未知，附理由「尚未填入價目」） | 例外 | 出貨檔（價目為空）；1 個 task：`n2-standard-4`、standard、跑 1 小時、區域 `us-central1-a`；另一個同機器但 spot 的 task | 用出貨檔算這兩個 task 的費用 | 兩者費用都是「未知」（不是 0）；原因含「尚未填入價目」 | 自動：test_cloud_cost.py（新） |
 
 ## User Story 2 — 預估這次約花多少、算出本月已用（優先度 P1）
 
@@ -69,6 +71,7 @@ Language: 繁體中文; identifiers (TC-, T#, FR) and file paths stay as they ar
 | TC-040 | 作法 1（最新一次送出的環境） | 例外 | 甲的某個 run 先送雲端、最新一次改送 Slurm | 算已用 | 不算（以最新一次送出的環境為準） | 自動：test_cloud_cost.py（新） |
 | TC-041 | T9、裁決 8 | 功能 | 甲的雲端 run 裡有狀態 FAILED 但有跑多久的 task | 算已用 | 失敗 task 的錢也算進已用 | 自動：T9 |
 | TC-042 | 作法 1（`month_used`） | 功能 | 甲本月兩個雲端 run：一個算得出（3.00 美元）、一個算不出 | 算已用 | 已用 = 3.00 美元（只加算得出的），`unknown_runs` = 1；整個月不會因此變成未知 | 自動：test_cloud_cost.py（新） |
+| TC-135 | 裁決四 12（run 在 task_usage 完全沒有列時費用＝未知，與 su.py 一致） | 例外 | 甲的雲端 run 在索引裡存在，但 `task_usage` 沒有屬於它的任何列 | 算這個 run 的費用，並算本月已用 | 這個 run 的費用是「未知」（不是 0）；`month_used` 把它計入 `unknown_runs`，不加進美元；預估時不採用它 | 自動：test_cloud_cost.py（新） |
 
 ## User Story 3 — 每人每月上限擋下新的雲端送出（優先度 P1）
 
@@ -94,6 +97,7 @@ Language: 繁體中文; identifiers (TC-, T#, FR) and file paths stay as they ar
 | TC-058 | 跨使用者 | 例外 | 甲有上限、乙沒有上限 | 乙問 `cap_problem` | 乙被拒絕（沒有設定），不會借用甲的上限 | 自動：test_cloud_cost.py（新） |
 | TC-059 | 確認管道（專長守則）；作法 1 | 功能 | 記下 `jobs`、`confirmations`、`task_usage`、`cloud_caps` 各表列數 | 對放行與拒絕各問一次 `cap_problem` | 各表列數與內容完全沒變（它只是問，不寫入） | 自動：test_cloud_cost.py（新） |
 | TC-060 | T17；專長守則（錯誤訊息） | 例外 | 任一拒絕情境（含 CLI 拒絕壞數字） | 檢查文字 | 不含 `Traceback`、`SELECT`、`.db`、測試暫存路徑字串、token | 自動：T17 |
+| TC-136 | 裁決四 10、13（價目先空；上限的用量與歸零規則照常） | 例外 | 用出貨檔（價目為空）；甲在雲端環境、有歷史成功 run | 甲上限 5 問 `cap_problem`；上限 0 再問；從沒設上限的乙再問 | 上限 5：放行（預估與已用都未知、未用滿）；上限 0：拒絕；乙沒設上限：拒絕且提到 `cloud-cap`；三次都沒有例外、沒有堆疊 | 自動：test_cloud_cost.py（新） |
 
 ## User Story 4 — 只有管理者能設上限（優先度 P1）
 
@@ -117,8 +121,8 @@ Language: 繁體中文; identifiers (TC-, T#, FR) and file paths stay as they ar
 | TC-074 | T11 ③、T14 | 功能 | 列舉 MCP 工具 | 對照名稱 | 仍是 12 個；名稱沒有 `cloud_cap`／`cloud-cap`／`cap_usd` | 自動：T11／T14 |
 | TC-075 | T11 ③ | 功能 | 列舉 `web.py`、`web_board.py` 的路由字串 | 對照 | 沒有任何含 `cloud_cap`／`cloud-cap`／`cap_usd`；沒有新增網頁路由 | 自動：T11／T14 |
 | TC-076 | T11 ③ | 功能 | 列舉 `actions` 公開名稱 | 對照 | 沒有任何含上述字樣，也沒有新增公開函式 | 自動：T11 |
-| TC-077 | T11 ④；跨使用者讀 | 例外 | 甲的上限設成特別的數字 777.77；乙與甲各有 PAT（個人存取憑證） | 乙、甲各用自己的 PAT 呼叫每一個現有工具／網頁讀取 | 任何回應都讀不到 777.77（別人的或自己的上限） | 自動：T11 |
-| TC-078 | 專長守則（跨使用者寫）；作法 6 | 例外 | 乙持有自己的 PAT | 對現有每個 MCP 工具與網頁路由，帶上名為 `cloud_cap_usd`／`cap_usd` 的欄位 | `cloud_caps` 表沒有任何變動（沒有任何入口能寫上限） | 自動：test_cloud_cost.py（新） |
+| TC-077 | T11 ④；跨使用者讀；裁決四 12（靜態檢查做法接受） | 例外 | 掃描所有現有 MCP 工具、網頁讀取處理函式與 `actions` 的原始碼 | 靜態檢查：有沒有任何一處讀取 `cloud_caps` 表、`cloud_cap`、`cap_usd` 並放進回應 | 沒有任何現有入口讀得到上限數字（別人的或自己的）；只有管理者終端機指令與 `cloud_cost` 內部讀它 | 自動：靜態檢查（裁決四 12 接受，不要求用 PAT 逐一呼叫） |
+| TC-078 | 專長守則（跨使用者寫）；作法 6；裁決四 12（靜態檢查做法接受） | 例外 | 掃描所有現有 MCP 工具、網頁路由處理函式與 `actions` 的原始碼 | 靜態檢查：有沒有任何一處能寫入 `cloud_caps`（`set_cloud_cap` 或對該表的 INSERT／UPDATE） | 只有 `cli.py` 的 `user add`／`user cloud-cap` 兩個管理者指令呼叫寫入函式；沒有任何 MCP 工具、網頁路由、聊天指令或 `actions` 函式能寫 | 自動：靜態檢查（裁決四 12 接受） |
 | TC-079 | 專長守則（對等性） | 功能 | 本任務沒有新增使用者動作 | 跑 `test_web_parity.py` | 通過，且 `INTERNAL`／`OWED` 清單沒被改動 | 自動：`test_web_parity.py` |
 
 ## User Story 5 — 記下每個 task 用了什麼機器；舊資料庫能升級（優先度 P1）
@@ -156,7 +160,7 @@ Language: 繁體中文; identifiers (TC-, T#, FR) and file paths stay as they ar
 | TC-103 | 作法 8 | 不在範圍 | 跑 `test_su_in_get_run.py` | 看 `get_run` 回傳 | 形狀不變、測試未修改；回傳裡沒有「已用美元」 | 自動：`test_su_in_get_run.py` |
 | TC-104 | 完成標準（Slurm 一個位元都不變） | 不在範圍 | 既有 Slurm 送出／內容包／畫面的測試 | 全部執行 | 全綠，且未被修改 | 自動：既有測試 |
 | TC-105 | T14（手動）、完成標準 | 不在範圍 | 本任務分支 | 驗收者看 `git diff --name-only origin/v3...HEAD` | 不含 `platform/abf_launch/build.py`、`platform/abf_station/launch.py`、`platform/abf_platform/actions/__init__.py`、`platform/abf_platform/pipeline_launch.py`、`pyproject.toml`、`setup.py`、`su.py`、`records.py`、`jobs.py`、`compute_envs.py`、`abf_launch/`、`abf_station/`；只含計畫「範圍：檔案」列的檔 | 手動：驗收者閱卷時做 |
-| TC-106 | 裁決二 1（不接線）、待裁決 A/B | 不在範圍 | `request_launch` 與 gcb 確認畫面 | 跑 `test_gcb_launch.py`（含 :726 附近的費用字樣） | 全綠；畫面仍寫「平台目前還沒有費用預估與上限」；`request_launch` 並未呼叫 `cap_problem` | 自動：`test_gcb_launch.py` |
+| TC-106 | 裁決二 1（不接線）、待裁決 A/B；裁決四 13 | 不在範圍 | `request_launch` 與 gcb 確認畫面 | 跑 `test_gcb_launch.py`（含 :726 附近的費用字樣）；搜尋 `request_launch` 是否呼叫 `cap_problem` | 全綠；畫面仍寫「平台目前還沒有費用預估與上限」；`request_launch` 並未呼叫 `cap_problem`（所以本次 merge 後上限不會擋任何送出） | 自動：`test_gcb_launch.py` |
 
 ## User Story 7 — 文件與維護者手動驗收（優先度 P2）
 
@@ -173,10 +177,11 @@ Language: 繁體中文; identifiers (TC-, T#, FR) and file paths stay as they ar
 | TC-115 | 完成標準（文件） | 功能 | `docs/TESTING.md` | 讀 | 有「cloud-cost」小節，含手動驗收 1 至 4 | 手動：`docs/TESTING.md` |
 | TC-116 | 手動 1 | 功能 | 維護者自己的帳號，GCP 帳單預算與警示已設 | 執行 `user add <名> --lab <lab> --cloud-cap-usd 5`（或 `user cloud-cap <名> 5`） | 帳號上限 5 美元 | 手動：`docs/TESTING.md` |
 | TC-117 | 手動 2 | 功能 | 在 `gcb1` 跑一次最小分析 | 看 `index.db` 的 `task_usage` | 有 `machine_type`、`price_model`（若是 NULL，代表 Nextflow 沒送，停下回報，不改成猜） | 手動：`docs/TESTING.md` |
-| TC-118 | 手動 3；原話「花費控制」 | 功能 | 同上 | 用 `cloud_cost` 算這個 run 的美元，與 Google Cloud Console 同時段 Compute Engine 費用比 | 差距寫進 ledger（預期略低；差太多回報，不自己調價） | 手動：`docs/TESTING.md` |
-| TC-119 | 手動 4 | 功能 | 把上限暫時設成低於「已用＋預估」 | 問 `cap_problem` | 回白話拒絕，數字正確 | 手動：`docs/TESTING.md` |
+| TC-118 | 手動 3；原話「花費控制」；裁決四 10、11 | 功能 | 同上；**需要價目有條目**（出貨價目為空，要等 `cloud-rates-fill`） | 用 `cloud_cost` 算這個 run 的美元，與 Google Cloud Console 同時段 Compute Engine 費用比 | 價目有條目時：差距寫進 ledger（預期略低；差太多回報，不自己調價）。價目仍為空時：此項延後到 `cloud-rates-fill`，不算本任務失敗，但要在 ledger 寫明「未做、原因」，不得假裝已比對 | 手動：`docs/TESTING.md` |
+| TC-119 | 手動 4 | 功能 | 把上限暫時設成低於「已用＋預估」（價目為空時，改設成 0 或不高於已用） | 問 `cap_problem` | 回白話拒絕，數字正確。價目為空時只驗得了「上限 0／已用滿」這一支，估費那一支延後到 `cloud-rates-fill` | 手動：`docs/TESTING.md` |
 | TC-120 | 裁決 3 | 功能 | `docs/CLOUD.md` | 讀 | 寫明缺口：第一次跑某 pipeline 沒有歷史，上限只擋得住「已用滿」、擋不住「這一次太貴」，並建議首位使用者上限設小（例如 5 美元） | 手動：驗收者閱卷時讀文件 |
 | TC-121 | 環境事實（週期） | 功能 | `docs/CLOUD.md` | 讀 | 有一句說明月份用台北時間，Google 帳單以太平洋時間切月，月初月末最多差約半天 | 手動：驗收者閱卷時讀文件 |
+| TC-137 | 裁決四 13 | 功能 | 本任務的 PR 說明（由呼叫者提供） | 驗收者讀 PR 說明 | 白話寫明：本次 merge 後上限不會擋任何送出（尚未接線，由 `cloud-cost-wire` 負責）。找不到 PR 說明或沒寫這句 → 標未驗證／不通過，不當通過 | 手動：驗收者閱卷時讀 PR 說明 |
 
 ## 憲法與安全網
 
@@ -190,7 +195,7 @@ Language: 繁體中文; identifiers (TC-, T#, FR) and file paths stay as they ar
 | TC-127 | 第 3 條（不寫死路徑） | 功能 | 價目檔路徑由 `__file__` 推出 | `bash tests/no_hardcoded_paths.sh` | 通過 | 自動：`tests/no_hardcoded_paths.sh` |
 | TC-128 | 第 6 條（`configs/` 只准 `sites`） | 功能 | 價目表放 `platform/abf_platform/data/cloud_rates.json` | `bash tests/no_per_pipeline_config.sh` | 通過；`configs/` 下沒有 `cloud/` | 自動：`tests/no_per_pipeline_config.sh` |
 | TC-129 | 安全網（憑證只在設定檔） | 功能 | 全部改動 | `bash tests/credentials_stay_in_settings_test.sh` | 通過 | 自動：該 sh |
-| TC-130 | 計畫「必須更新的既有斷言」 | 不在範圍 | `test_gcb_ce.py`、`test_web_actions.py` 的 diff | 驗收者逐行對照 base | `test_gcb_ce.py` 只改 `{"cloud_cost.py", "rates.json"}` 成 `{"rates.json"}` 一處；`test_web_actions.py` 只加 `tokens.cloud_caps` 一列與註解；其他既有測試一律未改（沒有放寬、刪除、跳過） | 手動：驗收者閱卷時做 |
+| TC-130 | 計畫「必須更新的既有斷言」；裁決四 12 | 不在範圍 | `test_gcb_ce.py`、`test_web_actions.py` 的 diff；以及計畫／ledger 逐條列出的「自寫測試預期值調整」 | 驗收者逐行對照 base | `test_gcb_ce.py` 只改 `{"cloud_cost.py", "rates.json"}` 成 `{"rates.json"}` 一處；`test_web_actions.py` 只加 `tokens.cloud_caps` 一列與註解；其他既有測試一律未改（沒有放寬、刪除、跳過）。裁決四 12 提到的兩處預期值調整，必須在計畫或 ledger 點名並寫出「以前／以後／理由」才算通過，找不到就標未驗證 | 手動：驗收者閱卷時做 |
 | TC-131 | 計畫「確認不會變紅」清單 | 功能 | 全部改動 | 跑 `test_su_in_get_run.py`、`test_estimate_su.py`、`test_su_packaged.py`、`test_pat.py`（:700 `users` 仍六欄、:383）、`test_human_channel.py`、`test_station_envs.py::test_tc086`、`test_web_parity.py`、`test_guidance.py`、`test_oauth_mcp.py`、`test_gcb_launch.py`、`test_scope.py` | 全綠 | 自動：上述各檔 |
 | TC-132 | 既有斷言更新理由 | 功能 | 本任務建了 `cloud_cost.py` 與 `cloud_rates.json` | 跑 `test_gcb_ce.py::test_nothing_of_the_later_slices_exists` | 通過；`cloud_cost.py` 不再被禁，名為 `rates.json` 的檔仍被禁（我們的檔叫 `cloud_rates.json`，不撞） | 自動：`test_gcb_ce.py` |
 | TC-133 | 完成標準 | 功能 | 全部改動，已提交 | 全套（含 `tests/platform_test.sh`）在 WSL 跑 `tests/run_all.sh` | 全綠 | 自動：`tests/run_all.sh` |
