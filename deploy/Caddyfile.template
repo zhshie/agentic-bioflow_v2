@@ -1,0 +1,36 @@
+# One front door for the three abf-platform processes (docs/OPERATIONS.md, section 2).
+#
+# The site address comes from ABF_SITE_ADDRESS, so one file serves both set-ups:
+#   rented server:  ABF_SITE_ADDRESS=<your-domain>
+#                   Caddy gets and renews the certificate itself.
+#   desktop behind Tailscale Funnel:  ABF_SITE_ADDRESS=http://127.0.0.1:8080
+#                   An address that starts with http:// gets no certificate; Funnel adds https.
+# Start it with: caddy run --config deploy/Caddyfile.template --envfile <env file>
+#
+# Where each path goes. The paths come from the platform code:
+#   8787 serve: Nextflow's progress reports and the site agents (receiver.py, agents.py)
+#   8788 mcp:   the MCP door and its protected-resource note (http_auth.py)
+#   8789 web:   the login and consent pages, the OAuth server's own routes (web.py), and
+#               everything else
+# A handle block that matches ends the search, so the bare handle must stay LAST.
+
+{$ABF_SITE_ADDRESS} {
+	@receiver path /trace/* /user-info /agent/hello /agent/poll /agent/result/*
+	handle @receiver {
+		reverse_proxy 127.0.0.1:8787
+	}
+
+	@mcp path /mcp* /.well-known/oauth-protected-resource*
+	handle @mcp {
+		reverse_proxy 127.0.0.1:8788
+	}
+
+	@oauth path /.well-known/oauth-authorization-server /register /authorize /token /revoke /consent/*
+	handle @oauth {
+		reverse_proxy 127.0.0.1:8789
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:8789
+	}
+}

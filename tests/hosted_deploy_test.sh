@@ -78,7 +78,7 @@ routes=$(awk '
   /^[ \t]*@[A-Za-z0-9_-]+[ \t]+path[ \t]/ { n=$1; sub(/^@/,"",n); $1=""; $2=""; paths[n]=$0; next }
   /^[ \t]*handle[ \t]+@[A-Za-z0-9_-]+[ \t]*\{/ { n=$2; sub(/^@/,"",n); cur=n; next }
   /^[ \t]*handle[ \t]*\{/ { cur="*"; next }
-  /^[ \t]*reverse_proxy[ \t]/ { t=$2; sub(/^.*:/,"",t);
+  /^[[:space:]]*reverse_proxy[[:space:]]/ { t=$2; sub(/^.*:/,"",t);
       if (cur=="*") print "*\t" t;
       else { m=split(paths[cur], a, /[ \t]+/); for (i=1;i<=m;i++) if (a[i]!="") print a[i] "\t" t }
       next }' "$CADDY" 2>/dev/null)
@@ -94,8 +94,8 @@ want TC-019 8787 '/agent/hello' '/agent/poll' '/agent/result/*'
 want TC-020 8788 '/mcp*' '/.well-known/oauth-protected-resource*'
 want TC-021 8789 '/.well-known/oauth-authorization-server' '/register' '/authorize' '/token' '/revoke' '/consent/*'
 last=$(printf '%s\n' "$routes" | tail -n1)
-lasth=$(grep -E '^[ \t]*handle[ \t]' "$CADDY" 2>/dev/null | tail -n1)
-if [ "$last" = "$(printf '*\t8789')" ] && printf '%s\n' "$lasth" | grep -qE '^[ \t]*handle[ \t]*\{'; then ok "TC-022 the last handle is the bare catch-all to 8789"; else bad "TC-022 last handle is the catch-all to 8789" "$lasth"; fi
+lasth=$(grep -E '^[[:space:]]*handle[[:space:]]' "$CADDY" 2>/dev/null | tail -n1)
+if [ "$last" = "$(printf '*\t8789')" ] && printf '%s\n' "$lasth" | grep -qE '^[[:space:]]*handle[[:space:]]*\{'; then ok "TC-022 the last handle is the bare catch-all to 8789"; else bad "TC-022 last handle is the catch-all to 8789" "$lasth"; fi
 if [ -f "$CADDY" ] && ! grep -qE '/\.well-known/\*' "$CADDY"; then ok "TC-023 no /.well-known/* wildcard"; else bad "TC-023 no /.well-known/* wildcard"; fi
 # TC-024: every prefix has a source in the platform code
 src_ok() { # literal in the code, or the SDK function that makes it
@@ -125,12 +125,12 @@ chk_routes platform/abf_platform/agents.py 8787
 chk_routes platform/abf_platform/web.py 8789
 for c in /mcp /.well-known/oauth-protected-resource/mcp; do if [ "$(backend_for "$c")" = 8788 ]; then ok "TC-025 $c -> 8788"; else bad "TC-025 $c -> 8788"; fi; done
 # TC-026
-targets=$(grep -E '^[ \t]*reverse_proxy[ \t]' "$CADDY" 2>/dev/null | awk '{print $2}')
+targets=$(grep -E '^[[:space:]]*reverse_proxy[[:space:]]' "$CADDY" 2>/dev/null | awk '{print $2}')
 if [ -n "$targets" ] && ! printf '%s\n' "$targets" | grep -vqE '^127\.0\.0\.1:(8787|8788|8789)$'; then ok "TC-026 every reverse_proxy target is loopback 8787/8788/8789"; else bad "TC-026 reverse_proxy targets" "$targets"; fi
 # TC-027 / 028
 if grep -vE '^\s*(#|$)' "$CADDY" 2>/dev/null | head -n1 | grep -qF '{$ABF_SITE_ADDRESS}'; then ok "TC-027 site address is {\$ABF_SITE_ADDRESS}"; else bad "TC-027 site address is {\$ABF_SITE_ADDRESS}"; fi
 if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -qE '\.ts\.net|[A-Za-z0-9-]+\.(com|org|net|io|tw)\b'; then ok "TC-027 no hard-coded domain in the Caddyfile"; else bad "TC-027 no hard-coded domain in the Caddyfile"; fi
-if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -qE 'tls[ \t]+internal|auto_https[ \t]+off'; then ok "TC-028 nothing that turns certificates off"; else bad "TC-028 nothing that turns certificates off"; fi
+if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -qE 'tls[[:space:]]+internal|auto_https[[:space:]]+off'; then ok "TC-028 nothing that turns certificates off"; else bad "TC-028 nothing that turns certificates off"; fi
 # TC-029: no prefix twice with different backends; no broad rule ahead of a narrower one it would eat
 dupe=$(printf '%s\n' "$routes" | awk -F'\t' 'seen[$1] && seen[$1]!=$2 {print $1} {seen[$1]=$2}')
 if [ -n "$routes" ] && [ -z "$dupe" ]; then ok "TC-029 no prefix is routed to two backends"; else bad "TC-029 prefix routed twice" "$dupe"; fi
@@ -143,7 +143,7 @@ for ((a=0; a<i; a++)); do for ((b=a+1; b<i; b++)); do
 done; done
 if [ "$i" -gt 0 ] && [ -z "$shadow" ]; then ok "TC-029 no broad rule eats a narrower one"; else bad "TC-029 shadowed rules" "$shadow"; fi
 # TC-030 / 031
-if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -qE '^[ \t]*log\b'; then ok "TC-030 no log directive"; else bad "TC-030 no log directive"; fi
+if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -qE '^[[:space:]]*log\b'; then ok "TC-030 no log directive"; else bad "TC-030 no log directive"; fi
 n=$(find "$D" -iname '*caddyfile*' 2>/dev/null | wc -l); if [ "$n" -eq 1 ]; then ok "TC-031 exactly one Caddyfile in deploy/"; else bad "TC-031 exactly one Caddyfile in deploy/" "$n"; fi
 
 # ---------- US3: backup script ----------
@@ -232,7 +232,7 @@ sub3() { # <file> <regex of a ## or ### heading>: until the next heading of two 
   awk -v pat="$2" '/^##+ /{on=($0 ~ pat)} on' "$1"; }
 ops=$(tr -d '\r' < "$OPS"); inst=$(tr -d '\r' < "$INST")
 host=$(sub3 "$OPS" '^### Hosting one lab')
-s2=$(sect "$OPS" '^## 2\.'); s3=$(sect "$OPS" '^## 3\.'); s4=$(sect "$OPS" '^## 4\.'); s5=$(sect "$OPS" '^## 5\.'); s6=$(sect "$OPS" 'Not built yet')
+s2=$(sect "$OPS" '^## 2[.]'); s3=$(sect "$OPS" '^## 3[.]'); s4=$(sect "$OPS" '^## 4[.]'); s5=$(sect "$OPS" '^## 5[.]'); s6=$(sect "$OPS" 'Not built yet')
 has() { printf '%s\n' "$1" | grep -qF -- "$2"; }
 # TC-043
 n=$(printf '%s\n' "$ops" | grep -cF -- '--envfile')
