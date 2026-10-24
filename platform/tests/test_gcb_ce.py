@@ -799,7 +799,7 @@ def test_refusals_are_plain_words(ip):
 def test_nothing_of_the_later_slices_exists():
     # TC-079, TC-080, TC-084
     names = {p.name for p in PLATFORM_DIR.rglob("*.py")} | {p.name for p in (REPO_ROOT / "configs").rglob("*")}
-    assert not names & {"cloud_cost.py", "rates.json"}
+    assert not names & {"rates.json"}      # cloud_cost.py is C-3's (cloud-cost); our price list is cloud_rates.json, a different name
     for f in list((PLATFORM_DIR / "abf_platform").rglob("*.py")) + list((PLATFORM_DIR / "abf_station").rglob("*.py")):
         text = f.read_text(encoding="utf-8")
         assert not re.search(r"buckets create|services enable|service-accounts create|storage rm", text), f.name

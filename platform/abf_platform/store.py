@@ -69,6 +69,9 @@ CREATE TABLE IF NOT EXISTS task_usage (
     cpus INTEGER,
     realtime_ms INTEGER,
     queue TEXT,
+    machine_type TEXT,
+    price_model TEXT,
+    cloud_zone TEXT,
     PRIMARY KEY (run_id, task_key)
 );
 """
@@ -139,6 +142,11 @@ CREATE TABLE IF NOT EXISTS oauth_codes (
     created_at REAL NOT NULL,
     expires_at REAL NOT NULL,
     used_at REAL
+);
+CREATE TABLE IF NOT EXISTS cloud_caps (
+    user_id INTEGER PRIMARY KEY,
+    cap_usd REAL NOT NULL,
+    set_at REAL NOT NULL
 );
 """
 
@@ -322,6 +330,14 @@ def _migrate_index(con):
         except sqlite3.OperationalError:
             if "workdir" not in {r[1] for r in con.execute("PRAGMA table_info(failed_tasks)")}:
                 raise   # a second process may have added it first; anything else is a real error
+    for col in ("machine_type", "price_model", "cloud_zone"):      # cloud-cost: what each finished task ran on; old rows keep NULL
+        if col not in {r[1] for r in con.execute("PRAGMA table_info(task_usage)")}:
+            try:
+                with con:
+                    con.execute("ALTER TABLE task_usage ADD COLUMN %s TEXT" % col)
+            except sqlite3.OperationalError:
+                if col not in {r[1] for r in con.execute("PRAGMA table_info(task_usage)")}:
+                    raise   # a second process may have added it first; anything else is a real error
     if "failure_reason" not in {r[1] for r in con.execute("PRAGMA table_info(runs)")}:
         try:
             with con:
@@ -709,6 +725,47 @@ def create_user(tokens_path, name, lab):
                                    (name, lab, time.time())).lastrowid
             except sqlite3.IntegrityError:
                 raise ValueError("a user named %s exists" % name)
+    finally:
+        con.close()
+
+
+CLOUD_CAP_MAX_USD = 1000000.0      # the biggest monthly cloud cap an administrator can set; a typo of many zeros is refused
+
+
+def parse_cloud_cap(text):
+    """The cap in US dollars from what an administrator typed, or ValueError with the plain sentence. 0 to CLOUD_CAP_MAX_USD, finite."""
+    try:
+        usd = float(str(text).strip())
+    except ValueError:
+        usd = None
+    if usd is None or usd != usd or usd < 0 or usd > CLOUD_CAP_MAX_USD:       # nan fails every comparison, inf is above the top
+        raise ValueError("the monthly cloud cap %r is not allowed: it must be a number of US dollars from 0 to 1,000,000 "
+                         "(每月雲端費用上限要是 0 到 1,000,000 之間的美元數字)" % str(text)[:40])
+    return usd
+
+
+def set_cloud_cap(tokens_path, user_id, usd):
+    """Set (or change) the monthly cloud cap in US dollars of one user. Only the administrator's command line calls it. ValueError for a number
+    that is not allowed."""
+    usd = parse_cloud_cap(usd)
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            con.execute("INSERT INTO cloud_caps (user_id, cap_usd, set_at) VALUES (?, ?, ?) "
+                        "ON CONFLICT(user_id) DO UPDATE SET cap_usd = excluded.cap_usd, set_at = excluded.set_at",
+                        (user_id, usd, time.time()))
+    finally:
+        con.close()
+
+
+def cloud_cap(tokens_path, user_id):
+    """The monthly cloud cap in US dollars of this user, or None when the administrator has not set one (there is no default)."""
+    if not Path(tokens_path).exists():
+        return None
+    con = connect_tokens(tokens_path)
+    try:
+        row = con.execute("SELECT cap_usd FROM cloud_caps WHERE user_id = ?", (user_id,)).fetchone()
+        return row[0] if row else None
     finally:
         con.close()
 

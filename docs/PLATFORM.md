@@ -99,6 +99,8 @@ The same warning as for the receiver applies to `--host`.
 
 ```bash
 abf-platform user add 王小明 --lab lab-x
+abf-platform user add 王小明 --lab lab-x --cloud-cap-usd 20   # optional: the most this person may spend on cloud runs per month, in US dollars (docs/CLOUD.md)
+abf-platform user cloud-cap 王小明 25                           # set or change it later; without a cap the person cannot send to the cloud
 abf-platform pat new --user 王小明 --label laptop   # prints abf_pat_... ONCE; only its hash is kept
 abf-platform pat list                               # id, user, label, created, revoked; never a value
 abf-platform pat revoke <id>                        # refused from the next request on
@@ -287,7 +289,7 @@ The question, the screen and the yes are the ones of a Slurm launch: `abf-launch
 
 **What the platform host needs.** Java 17 or newer, Nextflow, and `gcloud`; `storage_root` set in the deployment's settings (the run's own folder is `<storage_root>/_gcb_runs/<run>`); and the service-account key file where the agent looks for it (`ABF_STATION_GCP_CREDENTIALS`, mode 600). The host must be Linux or WSL: the cancel looks at `/proc`. The agent checks Java and Nextflow just before a launch (not in the preflight), and runs the preflight again.
 
-**Money.** 費用：按下 y 之後，這個 run 會在 Google Cloud 專案裡建立 Batch 工作與虛擬機，**由 Google 向實驗室的 Google Cloud 帳號收費**。The platform has no cost estimate and no cap yet (C-3); the actual amount is on Google's invoice. The launch screen says this in its first paragraph, without a number.
+**Money.** 費用：按下 y 之後，這個 run 會在 Google Cloud 專案裡建立 Batch 工作與虛擬機，**由 Google 向實驗室的 Google Cloud 帳號收費**。The platform can work out a compute-only estimate and check a monthly cap in US dollars (`docs/CLOUD.md`), but the launch screen does not use it yet; the actual amount is on Google's invoice. The launch screen says this in its first paragraph, without a number.
 
 **Input data.** Every path cell of the samplesheet must be `gs://<bucket>/<object>` in the **same bucket as `workDir`**. A local path, `http(s)://`, `s3://`, another bucket, or a `..` is refused with a plain sentence. Copying files into the bucket is a later feature (C-6); for now put them there yourself with `gcloud storage cp`. `workDir` must have at least one folder below the bucket (`gs://lab-bucket/work`, not `gs://lab-bucket`): that is Nextflow's rule.
 
@@ -605,9 +607,11 @@ One row per kind of data. Every period below is a constant in `platform/abf_plat
 | What | Where | How long |
 |---|---|---|
 | Run index: the runs, their processes and failed tasks as Nextflow reported them | `index.db` (`runs`, `processes`, `failed_tasks`) | Rebuildable: `abf-platform rebuild` drops it and builds it again from Nextflow's records (section 5); no automatic deletion. |
+| What each finished task used: cpus, realtime, queue and, for the cost (`docs/CLOUD.md`), the machine type, price model and zone Nextflow reported | `index.db` (`task_usage`) | Rebuildable with the run index; no automatic deletion. |
 | Confirmed submissions: the bundle (what was run) and the screen text (what the person approved), with the audit record of who sent it and when | `platform.db` (`confirmations`) | Until the owner forgets them with `abf-platform forget`; no clock clears a confirmed request. A void or expired request keeps its content 7 days; its audit columns stay. |
 | Job rows: the queue between the platform and the agent, with a copy of what was queued | `platform.db` (`jobs`) | 7 days after the job ends. |
 | Tokens, users and OAuth: sha256 of access tokens, scrypt hashes of web passwords, the connectors that registered and their logins | `tokens.db` (`tokens`, `users`, `oauth_clients`, `oauth_requests`, `oauth_codes`) | A run token 14 days; an OAuth access token 1 hour and a refresh token 30 days; a connector not used for 30 days is forgotten. Personal access tokens and users: no automatic deletion. |
+| The monthly cloud cap in US dollars of each person, set only by the administrator on the terminal (`abf-platform user add --cloud-cap-usd`, `abf-platform user cloud-cap`) | `tokens.db` (`cloud_caps`) | no automatic deletion; no door except the terminal changes or shows it. |
 | Web sessions: sha256 of a browser login's id | `tokens.db` (`web_sessions`) | 12 hours; expired rows are cleared at the next login. |
 | Cookie signing key | `web_signing.key` | no automatic deletion. |
 | Uploads: samplesheets uploaded for runs | `uploads` folder, one folder per user | no automatic deletion. |
