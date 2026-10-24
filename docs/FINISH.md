@@ -129,6 +129,12 @@ half a reader needs to judge the work. `methods_text.py` lifts these comments
 with their keys. Note the mixed languages: the rnaseq run's are in Traditional
 Chinese and need translating for an English manuscript.
 
+## Only accepted entries are packaged (issue #12)
+
+`scripts/build_package.sh` refuses (exit 2, before writing anything) unless every
+entry in `analysis.md` has `status: accepted` (or `done`). Moving on to `/finish`
+is not acceptance; set the status when the user says so in words.
+
 ## What is not installed here
 
 Measured on the login node, 2026-09-10:

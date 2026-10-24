@@ -209,7 +209,51 @@ def _addr_global(ip):
 
 # Hostname prefixes permitted to use the relay. From `sinfo -N`: compute nodes
 # are cpn*/cpna*/gpn*/gpna*/bgm*; lgn* is this node talking to itself.
-ALLOW_HOST_PREFIXES = ("cpn", "gpn", "bgm", "lgn", "localhost")
+DEFAULT_HOST_PREFIXES = ("cpn", "gpn", "bgm", "lgn", "localhost")
+
+# A deployment on another cluster (nano4 names its nodes 25a-cpn03) can replace
+# that list with NF_RELAY_PEER_PREFIXES, a comma-separated list the shell layer
+# reads from the setting relay_peer_prefixes. Same trust rule as the extra
+# domains: validated here, because anything that can set a variable can set it
+# to anything. An empty prefix would match every name (str.startswith("") is
+# always true), and a one- or two-letter one nearly every host.
+_PREFIX_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,31}$")
+PREFIX_LIMIT = 20
+
+
+def _parse_peer_prefixes(raw):
+    """-> (accepted prefixes, [why each other entry was dropped])"""
+    good, dropped = [], []
+    for item in raw.split(","):
+        entry = item.strip()
+        if not entry:
+            continue
+        shown = _clean(entry, 80)
+        if not entry.isascii():
+            # str.lower() folds U+212A (Kelvin sign) to an ASCII k.
+            dropped.append(f"dropped '{shown}' - not a host name prefix")
+            continue
+        p = entry.lower()
+        if not _PREFIX_RE.match(p):
+            dropped.append(f"dropped '{shown}' - not a host name prefix (3-32 characters: a-z, 0-9, '-')")
+        elif p in good:
+            continue
+        elif len(good) >= PREFIX_LIMIT:
+            dropped.append(f"dropped '{shown}' - over the limit of {PREFIX_LIMIT} entries")
+        else:
+            good.append(p)
+    return tuple(good), dropped
+
+
+_PEER_RAW = os.environ.get("NF_RELAY_PEER_PREFIXES", "")
+_PEERS, PEER_DROPPED = _parse_peer_prefixes(_PEER_RAW)
+if _PEERS:
+    # localhost is the relay talking to itself (the loopback forward): a setting
+    # that forgets it must not lock the relay out of its own door.
+    ALLOW_HOST_PREFIXES = _PEERS if "localhost" in _PEERS else _PEERS + ("localhost",)
+else:
+    ALLOW_HOST_PREFIXES = DEFAULT_HOST_PREFIXES
+PEER_NOTE = "relay_peer_prefixes had no usable entry, using the built-in list" if (_PEER_RAW and not _PEERS) else ""
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 18080
 _lock = threading.Lock()
@@ -246,6 +290,11 @@ def startup_lines():
     else:
         lines.append("  domains (this deployment): (none)")
     lines.extend(f"  this deployment's list: {why}" for why in EXTRA_DROPPED)
+    if _PEERS:
+        lines.append("  peers (this deployment): set by relay_peer_prefixes")
+    if PEER_NOTE:
+        lines.append(f"  peers: {PEER_NOTE}")
+    lines.extend(f"  peers: {why}" for why in PEER_DROPPED)
     return lines
 
 

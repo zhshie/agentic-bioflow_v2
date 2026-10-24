@@ -50,7 +50,7 @@ STRINGS = {
         "set_me": "個人", "set_step": "逐步模式", "set_dev": "開發模式", "set_ops": "營運者後台",
         "set_roles": "角色（老師／學生）",
         "level_action": "待處理", "resume": "續跑", "rerun": "重跑", "cancel": "取消", "quick": "用這個 run 的內容再啟動一次",
-        "card_step": "目前步驟", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "more_steps": "等 %d 項",
+        "card_step": "目前步驟", "card_stopped_at": "停在", "menu_more": "更多", "stage_running_failed": "執行", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "more_steps": "等 %d 項",
         "dur_hm": "%d 小時 %d 分", "dur_m": "%d 分", "dur_short": "不到 1 分",
         "no_notices": "目前沒有待處理的事", "no_failed_tasks": "沒有失敗的任務",
         "launch_title": "啟動分析", "launch_intro": "填好之後按「下一步」，會先帶你到確認頁；在確認頁按「送出」才會真的排進佇列。",
@@ -91,7 +91,7 @@ STRINGS = {
         "set_dev": "Development mode", "set_ops": "Operator panel", "set_roles": "Roles (teacher / student)",
         "level_action": "Pending",
         "resume": "Resume", "rerun": "Re-run", "cancel": "Cancel", "quick": "Launch again from this run",
-        "card_step": "Current step", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "more_steps": "+%d more",
+        "card_step": "Current step", "card_stopped_at": "Stopped at", "menu_more": "More", "stage_running_failed": "Run", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "more_steps": "+%d more",
         "dur_hm": "%dh %dm", "dur_m": "%dm", "dur_short": "<1m",
         "no_notices": "Nothing pending", "no_failed_tasks": "No failed tasks",
         "launch_title": "Launch an analysis",
@@ -155,7 +155,7 @@ STYLE = (
     ".foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}"
     ".nv,.row{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:4px;color:var(--ink)}"
     "a.nv.here,a.row.here{background:var(--accent-weak);font-weight:600}"
-    ".row{flex-direction:column;align-items:stretch;gap:0}.r1{display:flex;align-items:center;gap:8px}.r2{font-size:12px;color:var(--muted)}"
+    ".row{flex-direction:column;align-items:stretch;gap:0}.r1{display:flex;align-items:center;gap:8px}.r2{font-size:12px;color:var(--muted);overflow-wrap:anywhere}"
     "h3{font-size:12px;line-height:20px;margin:0;font-weight:600;color:var(--muted)}.proj{display:flex;flex-direction:column;gap:4px}"
     ".views{display:flex;gap:16px}.views a[aria-current]{color:var(--ink);font-weight:600}"
     ".nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row .nm{flex:1}"
@@ -173,6 +173,8 @@ STYLE = (
     ".steps .is-done a{border-top:3px solid var(--succeeded);color:var(--ink)}"
     ".steps .is-current a{border-top:3px solid var(--accent);color:var(--ink);font-weight:600}"
     ".steps .is-later a{border-top:3px dashed var(--line2)}"
+    ".steps .is-failed a{border-top-color:var(--failed);color:var(--failed)}"
+    ".menu>summary{display:flex;align-items:center;min-height:44px;cursor:pointer}"
     ".steps a[aria-current]{outline:2px solid var(--focus);outline-offset:2px}"
     ".card{background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:12px}"
     ".counts{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin:0}"
@@ -496,7 +498,8 @@ def first_failed(run):
 
 
 def _sum_cards(t, run, now):
-    cards = ((t["card_step"], _current_step(t, run)), (t["card_duration"], esc(_duration(t, run, now))),
+    stopped = run.get("status") in ("failed", "lost")
+    cards = (((t["card_stopped_at"], esc(first_failed(run) or "—")) if stopped else (t["card_step"], _current_step(t, run))), (t["card_duration"], esc(_duration(t, run, now))),
              (t["card_compute"], esc(run.get("compute_env") or "—")), (t["card_cost"], esc(t["cost_su"])))
     return '<section class="sumcards">%s</section>' % "".join('<div class="scard"><h2 class="ct">%s</h2><p class="cv">%s</p></div>' % (esc(k), v)
                                                               for k, v in cards)
@@ -550,6 +553,8 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
         kind = "is-done" if n < rank else ("is-current" if n == rank else "is-later")
         mark = ' aria-current="step"' if s == current else ""
         label = ("✓ " if kind == "is-done" else "") + t["stage_" + s]
+        if s == "running" and selected["status"] in ("failed", "lost"):
+            kind, label = kind + " is-failed", "✗ " + t["stage_running_failed"]
         cells.append('<li class="%s" data-step="%s"><a href="%s"%s>%s</a></li>' % (kind, s, _url(lang, selected["id"], s, tab=tab_param), mark, esc(label)))
     prev_ = ('<a rel="prev" href="%s">%s</a>' % (_url(lang, selected["id"], STAGES[index - 1], tab=tab_param), esc(t["prev"]))) \
         if index > 0 else "<span></span>"
@@ -561,12 +566,13 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     buttons = ("".join(acts.form(verb, selected["id"]) for verb in ("resume", "relaunch", "cancel")) if acts else "") if running else ""
     quick = '<a href="%s">%s</a>' % (esc("/launch?from=" + urllib.parse.quote(str(selected["id"]), safe="") + ("&lang=en" if lang == "en" else "")),
                                     esc(t["quick"])) if running else ""
+    menu = '<details class="menu"><summary>%s</summary>%s%s</details>' % (esc(t["menu_more"]), buttons, quick) if running else ""
     inner = _running_body(t, selected, lang, tab_param, explicit, now, acts) if running else _stage_card(t, selected, current)
     note = '<p class="bad" role="alert">%s</p>' % esc(flash) if flash else ""
     views = '<nav class="views"><a href="%s" aria-current="page">%s</a>%s</nav>' % (_url(lang, selected["id"]), esc(t["main_window"]), _grey(t, "terminal"))
-    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s%s</div>%s%s'
+    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s</div>%s%s'
             '<ol class="steps" data-current="%s">%s</ol>%s<p class="pager">%s%s</p></main>'
-            % (esc(selected["name"]), badge, buttons, quick, views, note, current, "".join(cells), inner, prev_, next_))
+            % (esc(selected["name"]), badge, menu, views, note, current, "".join(cells), inner, prev_, next_))
 
 
 def _settings_page(t):

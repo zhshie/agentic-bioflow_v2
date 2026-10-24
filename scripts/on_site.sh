@@ -494,6 +494,7 @@ if [ "$REACH" = local ]; then
   # re-verification, M-A).
   if [ "$NAME" = egress_ctl.sh ]; then
     export NF_RELAY_EXTRA_DOMAINS="$EXTRA_DOMAINS" NF_RELAY_EXTRA_NOTE="$EXTRA_NOTE"
+    export NF_RELAY_PEER_PREFIXES="$(setting relay_peer_prefixes)"
   fi
   exec bash "$HERE/$NAME" "$@"
 fi
@@ -505,6 +506,7 @@ envs=""
 carry() { [ -n "$2" ] && envs+="$1=$(printf '%q' "$2") "; return 0; }
 carry LAB_RUNS_DIR        "$(setting storage_root)"
 carry NF_RELAY_PORT       "$(setting relay_port)"
+carry NF_RELAY_PEER_PREFIXES "$(setting relay_peer_prefixes)"
 carry TW_AGENT_JAVA       "$(setting agent_java)"
 carry TW_AGENT_JAR        "$(setting agent_jar)"
 carry TW_AGENT_CONNECTION "$(setting agent_connection)"

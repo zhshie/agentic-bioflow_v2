@@ -79,6 +79,8 @@ case "${1:-status}" in
     # (a core dump has nowhere to go, `lsof`/`/proc` read as "(deleted)", and
     # any future relative path silently resolves nowhere).
     cd "$LAB_RUNS_DIR" 2>/dev/null || cd / || exit 1
+    # The peer prefixes are this deployment's too: variable first, then the setting.
+    export NF_RELAY_PEER_PREFIXES="${NF_RELAY_PEER_PREFIXES:-$(setting relay_peer_prefixes)}"
     nohup python3 "$HERE/nf_relay.py" "$PORT" >> "$LOG" 2>&1 &
     PID=$!
     python3 - "$PID" "$PORT" "$HOSTNAME_NOW" "$URL" "$STATE" <<'PY'

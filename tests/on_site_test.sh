@@ -453,6 +453,24 @@ out=$(NF_RELAY_EXTRA_DOMAINS=evil.example.org NF_RELAY_EXTRA_NOTE=forged \
 lacks2 "a caller's own extra list does not reach the relay" "evil.example.org" "$out"
 lacks2 "nor does a caller's own note" "forged" "$out"
 
+# --- relay-prefix-nano4: relay_peer_prefixes travels with the relay start ------
+# [TC-054, TC-055, TC-056, TC-057]
+mkdir -p "$TMP/dep-p"
+printf '%s\n' 'reach: ssh' 'site_host: me@example.org' 'relay_peer_prefixes: 25a-cpn,25a-lgn' > "$TMP/dep-p/env.yaml"
+out=$(relay_cmd "$TMP/dep-p/env.yaml")
+has2 "TC-054: the peer prefixes travel to the site" "NF_RELAY_PEER_PREFIXES=25a-cpn\,25a-lgn" "$out"
+out=$(relay_cmd "$TMP/dep-b/env.yaml")
+lacks2 "TC-055: with no setting, the command line carries nothing for it" "NF_RELAY_PEER_PREFIXES" "$out"
+
+printf '#!/bin/bash\nprintf "peers=%%s\n" "${NF_RELAY_PEER_PREFIXES:-}"\n' > "$COPY/scripts/egress_ctl.sh"
+mkdir -p "$TMP/dep-q"; printf '%s\n' 'reach: local' 'relay_peer_prefixes: 25a-cpn,25a-lgn' > "$TMP/dep-q/env.yaml"
+out=$(LAB_SETTINGS_FILE="$TMP/dep-q/env.yaml" bash "$COPY/scripts/on_site.sh" --script scripts/egress_ctl.sh start 2>&1)
+has2 "TC-056: reach local exports the setting's value" "peers=25a-cpn,25a-lgn" "$out"
+out=$(NF_RELAY_PEER_PREFIXES=evil-x LAB_SETTINGS_FILE="$TMP/dep-e/env.yaml" \
+      bash "$COPY/scripts/on_site.sh" --script scripts/egress_ctl.sh start 2>&1)
+lacks2 "TC-057: a caller's own prefixes do not reach the relay" "evil-x" "$out"
+has2 "TC-057: the value the relay sees is empty" "peers=" "$out"
+
 echo
 echo "See tests/on_site_parallel_test.sh for N9-2's concurrency, staleness," \
      "timeout and release-on-signal coverage."
