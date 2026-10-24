@@ -198,6 +198,13 @@ D. **預設的月上限與首位使用者**：建議他自己的帳號先設一�
 3. 真實費率由 executor 從 Google 官方價目頁填入，每筆附網址與讀取日期；讀不到就只放測試用費率，並在 ledger 寫明。
 4. `cap_problem` 預設 `store.default_index_path()` 接受。
 
+## 裁決三（2026-10-24 developer-agent，回應 verifier 出題退回；以本段為準）
+5. 區域：`task_usage` 新增第三欄 `cloud_zone`（receiver 從 task 的 `cloudZone` 存入）；區域＝zone 去掉最後的 `-<字母>`。zone 缺時退用該 run 計算環境設定的 `location`（compute_envs.py 已有）；兩者都沒有才是 unknown。T6、T9、T15、T16 依此造資料，T15 標題改為「three new columns」。
+6. 價目檔照 T5：每筆必須是真實價目、附 https 來源與讀取日；讀不到官方價目頁就回報 BLOCKED，不准放測試用費率進出貨檔（測試用費率只放在測試的 fixture）。取代裁決二第 3 點。
+7. `web_board.py` 的「雲端 NT$ —」占位字留給 012d，本任務不動。
+8. `cap_problem` 的 pipeline 名稱取 `bundle["pipeline"]`；T8 的拒絕情境、CLOUD.md 的台幣措辭照 verifier 合約的寫法接受。
+9. 重建索引若不經 receiver，executor 回報 BLOCKED 說明，不硬過 TC-098。T14 列為手動檢查接受。
+
 ## 專長守則（backend）
 
 ### executor
