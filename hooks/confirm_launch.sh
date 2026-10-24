@@ -293,8 +293,10 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
 
 # relay-warning-hardening: one helper for the two "this command also sets <VAR>"
 # warnings. Bash builtins only (the hook's timeout lets a command through, so no
-# fork), bounded loops (at most 8 start points, 20 assignments; past a limit the
-# answer is "warn"), one regex plus one prefix strip per step (no ${x//p/}).
+# fork), bounded loops (at most 8 command segments holding a start point, 20
+# assignments; past a limit the answer is "warn"). Each step is one regex that
+# captures the text before its match, so nothing rescans the command (no
+# ${x//p/}, no repeated ${CMD#*...}, #62).
 # Returns 0 = warn (RELAY_ENV_HEAD / RELAY_ENV_MORE hold the text), 1 = no need.
 # The exemption: a start point counts as run through scripts/on_site.sh only when
 # its own command segment (back to the previous ; & | ` ( or newline) holds a
@@ -303,14 +305,13 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
 relay_env_warn() { # relay_env_warn <VARIABLE NAME>
     RELAY_ENV_HEAD=""; RELAY_ENV_MORE=""
     [[ $CMD == *"$1="* ]] || return 1
-    local rest="$CMD" m pre seg tail bnd=$'[;&|`(\n]' site_re='(^|[/[:space:]])on_site\.sh[[:space:]]'
-    local starts=0 exempt=1
-    while [[ $rest =~ $RELAY_START_RE ]]; do
-        m="${BASH_REMATCH[0]}"
+    local rest="$CMD" seg tail starts=0 exempt=1 nl=$'\n'
+    local site_re='(^|[/[:space:]])on_site\.sh[[:space:]]'
+    local sre="^(.*[;&|\`(${nl}]|)([^;&|\`(${nl}]*)${RELAY_START_RE}"
+    while [[ $rest =~ $sre ]]; do
         starts=$((starts + 1))
         if [ "$starts" -gt 8 ]; then exempt=0; break; fi
-        pre="${rest%%"$m"*}"; rest="${rest#*"$m"}"
-        seg="${pre##*$bnd}"
+        seg="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[1]}"
         if [[ $seg =~ $site_re ]]; then
             tail="${seg##*on_site.sh}"
             if [[ $tail == *[\"\']* ]]; then exempt=0; break; fi
@@ -320,44 +321,48 @@ relay_env_warn() { # relay_env_warn <VARIABLE NAME>
     done
     if [ "$starts" -eq 0 ]; then exempt=0; fi
     if [ "$exempt" -eq 1 ]; then return 1; fi
-    local lastq=0 vre="$1=(\"[^\"]*\"|'[^']*'|[^[:space:];&|]*)" vals=() n=0 over=0 v
+    # The assignments, last one first: a greedy leading .* makes each match the
+    # last one left in the text before the previous match.
+    local vre="^(.*)$1=(\"[^\"]*\"|'[^']*'|[^[:space:];&|]*)" vals=() n=0 over=0 v lastq=0
     rest="$CMD"
     while [[ $rest =~ $vre ]]; do
         if [ "$n" -ge 20 ]; then over=1; break; fi
-        m="${BASH_REMATCH[0]}"; v="${BASH_REMATCH[1]}"
-        lastq=0
-        if [[ ${#v} -ge 2 && ( $v == \"*\" || $v == \'*\' ) ]]; then v="${v:1:${#v}-2}"; lastq=1; fi
+        v="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[1]}"
+        if [ "$n" -eq 0 ]; then lastq=0; fi
+        if [[ ${#v} -ge 2 && ( $v == \"*\" || $v == \'*\' ) ]]; then
+            v="${v:1:${#v}-2}"
+            if [ "$n" -eq 0 ]; then lastq=1; fi
+        fi
         vals+=("$v"); n=$((n + 1))
-        rest="${rest#*"$m"}"
     done
     if [ "$n" -eq 0 ]; then vals=(""); n=1; fi
-    local i first=0 list="" cut="" last shown
-    last="${vals[n-1]}"
-    if [ "$n" -gt 5 ]; then first=$((n - 5)); fi
-    for ((i = first; i < n; i++)); do
+    local i shown last="${vals[0]}" list="" cut="" show=$n
+    if [ "$show" -gt 5 ]; then show=5; fi
+    for ((i = show - 1; i >= 0; i--)); do
         shown="${vals[i]}"
         if [ "${#shown}" -gt 200 ]; then shown="${shown:0:200}…"; fi
         if [ -n "$list" ]; then list="${list} | "; fi
         list="${list}${shown}"
     done
-    if [ "${#last}" -gt 200 ]; then last="${last:0:200}…"; fi
-    if [[ ${vals[n-1]} == *'$'* || ${vals[n-1]} == *'`'* || ${vals[n-1]} == *[\"\'\]* ]]; then
-        if [ "$lastq" -eq 0 ] && [[ ${vals[n-1]} == *'$('* || ${vals[n-1]} == *'${'* || ${vals[n-1]} == *'`'* ]]; then
+    if [ "${#last}" -gt 200 ]; then shown="${last:0:200}…"; else shown="$last"; fi
+    if [[ $last == *'$'* || $last == *'`'* || $last == *[\"\'\]* ]]; then
+        if [ "$lastq" -eq 0 ] && [[ $last == *'$('* || $last == *'${'* || $last == *'`'* ]]; then
             cut=", cut at the first space; read the command"
         fi
-        RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${1} (value is computed at run time: ${last}${cut})"
+        RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${1} (value is computed at run time: ${shown}${cut})"
     else
-        RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${1}=${last}"
+        RELAY_ENV_HEAD="THIS COMMAND ALSO SETS ${1}=${shown}"
     fi
     if [ "$n" -gt 1 ]; then
-        RELAY_ENV_MORE="
+        if [ "$over" -eq 1 ]; then
+            RELAY_ENV_MORE="
+It assigns ${1} more than 20 times: ${list} (earlier ones not shown)"
+        else
+            RELAY_ENV_MORE="
 It assigns ${1} ${n} times: ${list}"
-        if [ "$first" -gt 0 ]; then RELAY_ENV_MORE="${RELAY_ENV_MORE} (${first} earlier ones not shown)"; fi
+            if [ "$n" -gt 5 ]; then RELAY_ENV_MORE="${RELAY_ENV_MORE} ($((n - 5)) earlier ones not shown)"; fi
+        fi
         RELAY_ENV_MORE="${RELAY_ENV_MORE} (the last one is normally the one that takes effect; read the command)."
-    fi
-    if [ "$over" -eq 1 ]; then
-        RELAY_ENV_MORE="${RELAY_ENV_MORE}
-It assigns ${1} more than 20 times; only the first 20 were read - read the command."
     fi
     return 0
 }
