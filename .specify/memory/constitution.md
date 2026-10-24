@@ -607,14 +607,15 @@ serve development only.
 **Version.** PATCH, under Governance: wording and file locations change; no rule changes meaning.
 **Approval.** The maintainer approves and merges the pull request that carries this change.
 
-### 6.0.2 (2026-10-24): checks are run by the whole suite, not by one platform file
+### 6.0.2 (2026-10-24): the platform checks run through four entries, not one
 
 **Rationale.** Since pull request #200 the platform tests run in four parts so each stays well
 inside the per-test time limit: `tests/platform_test.sh` runs part 1, `tests/platform_shard_2_test.sh`
 part 2, `tests/platform_shard_3_test.sh` part 3 and `tests/platform_clock_test.sh` the timing
 tests. Four places in this constitution still said one file ran checks that now live in other
-parts. Measured on 2026-10-24: `test_human_channel.py`, `test_keep_submissions.py` and
-`test_confirm_page.py` run in part 3, and `test_secrets.py` in part 2. A reader who ran only the
+parts. Measured on 2026-10-24: `test_actions_layer.py` runs in part 1;
+`test_resume_entrypoints.py` and `test_secrets.py` in part 2; `test_human_channel.py`,
+`test_keep_submissions.py` and `test_confirm_page.py` in part 3. A reader who ran only the
 named file would have skipped the check.
 
 **What changes.** Those four places now say the checks are run by `tests/run_all.sh`, which runs
