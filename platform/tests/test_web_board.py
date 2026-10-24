@@ -538,7 +538,7 @@ def test_tch21_stage_bodies(w):
         assert re.search(r"%s\s*%d(?!\d)" % (label, n), mid), (label, n)
     assert "10-18 09:05" in plain(pane(c.get("/?run=" + b + "&tab=info").text, "middle"))
     assert "Process terminated with an error exit status (137)" in c.get("/?run=" + a).text
-    for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "013b")):
+    for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "這個 run 還沒到這個階段。")):      # finished-stage: a run that has not succeeded has not reached it
         body = pane(c.get("/?run=%s&stage=%s" % (a, stage)).text, "middle")
         assert "—" in body and feature in body, stage
 

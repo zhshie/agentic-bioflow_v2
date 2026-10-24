@@ -30,7 +30,7 @@ When an item is built, tick it and name the feature that did it.
 | Labels | Not needed | |
 | Resource labels | Not needed (revisit at Stage 4) | |
 | Secrets | Have | |
-| Resume | Have | |
+| Resume | Have, with edit | parameters and a restricted resource config can be changed on resume (CLI, MCP); compute-environment switch and web form: not done |
 | Relaunch | Have | |
 | Advanced launch options | Partly have | |
 | Output directory | Have | |

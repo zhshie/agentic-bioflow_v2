@@ -65,8 +65,10 @@ usage: run_all.sh [--only <substring>] [--timeout <secs>] [--verbose] [--list]
   --retry-failed-once  re-run each failed file once (a timed-out file is not
                        re-run and stays a failure); a file that passes the retry
                        is listed as FLAKY and must be registered in
-                       tests/quarantine.txt (issue, expiry at most 14 days out),
-                       otherwise the run fails. Still-red files fail either way.
+                       tests/quarantine.txt (issue, expiry at most 14 days out,
+                       first-quarantined date; at most 28 days in all),
+                       otherwise the run fails. The retry gets its own empty
+                       TMPDIR. Still-red files fail either way.
   --check-quarantine   only validate tests/quarantine.txt, run no test, then stop
 U
     exit 2
@@ -95,10 +97,12 @@ done
 # ---- quarantine list and retry (only used with --retry-failed-once or
 # --check-quarantine; without them nothing below is called) ------------------
 # tests/quarantine.txt: blank lines and whole-line # comments are ignored; every
-# other line is exactly three columns: tests/<name>.sh <issue> <YYYY-MM-DD>.
-# A line may end in a "# comment". The expiry is judged against the day of the
-# check only, today in UTC with no way to override it: earlier than today =
-# expired, later than today plus 14 days = too far out. Day arithmetic is pure
+# other line is exactly four columns: tests/<name>.sh <issue> <expiry> <since>
+# (both dates YYYY-MM-DD; since = the day the file was first quarantined).
+# A line may end in a "# comment". Today is UTC, read once, with no way to
+# override it: an expiry earlier than today = expired, later than today plus 14
+# days = too far out, later than since plus 28 days = renewed too often, and a
+# since in the future is refused. Day arithmetic is pure
 # bash, no relative-date option of date, no python3. The list file must exist
 # (a missing file fails; an empty or comment-only one is fine).
 QFILE="$ROOT/tests/quarantine.txt"
@@ -124,7 +128,7 @@ q_parse_date() { # q_parse_date <YYYY-MM-DD>: sets QD (days since 1970-01-01); 1
 }
 
 quarantine_check() { # fills QUAR; prints one stderr line per problem; returns 1 if any
-    local today todayn lineno=0 bad=0 line nf fpath fissue fdate seen=" " base
+    local today todayn lineno=0 bad=0 line nf fpath fissue fdate fsince sincen expn seen=" " base
     local re_issue1='^#[0-9]+$' re_issue2='^https://github\.com/[^/]+/[^/]+/issues/[0-9]+$'
     local re_path='^tests/[A-Za-z0-9._-]+\.sh$' re_skip='^[[:space:]]*(#|$)'
     local -a f
@@ -145,13 +149,16 @@ quarantine_check() { # fills QUAR; prints one stderr line per problem; returns 1
         [[ "$line" =~ $re_skip ]] && continue
         read -r -a f <<<"$line"
         nf=${#f[@]}
-        # a trailing "# comment" after the three columns is allowed
-        if [ "$nf" -gt 3 ] && [[ "${f[3]}" == \#* ]]; then nf=3; fi
-        if [ "$nf" != 3 ]; then
-            echo "quarantine: tests/quarantine.txt:$lineno: expected 3 columns (tests/<name>.sh <issue> <YYYY-MM-DD>), found $nf" >&2
+        # a trailing "# comment" after the four columns is allowed
+        if [ "$nf" -gt 4 ] && [[ "${f[4]}" == \#* ]]; then nf=4; fi
+        if [ "$nf" = 3 ]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: expected 4 columns (tests/<name>.sh <issue> <expiry> <since>), found 3 - add the date this file was first quarantined" >&2
+            bad=1; continue
+        elif [ "$nf" != 4 ]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: expected 4 columns (tests/<name>.sh <issue> <expiry> <since>), found $nf" >&2
             bad=1; continue
         fi
-        fpath="${f[0]}"; fissue="${f[1]}"; fdate="${f[2]}"
+        fpath="${f[0]}"; fissue="${f[1]}"; fdate="${f[2]}"; fsince="${f[3]}"
         base="${fpath#tests/}"
         if ! [[ "$fpath" =~ $re_path ]]; then
             echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' must look like tests/<name>.sh" >&2; bad=1; continue
@@ -171,10 +178,20 @@ quarantine_check() { # fills QUAR; prints one stderr line per problem; returns 1
         if ! q_parse_date "$fdate"; then
             echo "quarantine: tests/quarantine.txt:$lineno: expiry '$fdate' is not a real YYYY-MM-DD date" >&2; bad=1; continue
         fi
-        if [ "$QD" -lt "$todayn" ]; then
+        expn=$QD
+        if ! q_parse_date "$fsince"; then
+            echo "quarantine: tests/quarantine.txt:$lineno: since '$fsince' is not a real YYYY-MM-DD date" >&2; bad=1; continue
+        fi
+        sincen=$QD
+        if [ "$sincen" -gt "$todayn" ]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: since $fsince is in the future (today is $today)" >&2; bad=1; continue
+        fi
+        if [ "$expn" -lt "$todayn" ]; then
             echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' expired on $fdate (today is $today): fix the test or renew the entry with a new date" >&2; bad=1; continue
-        elif [ "$QD" -gt $((todayn + 14)) ]; then
+        elif [ "$expn" -gt $((todayn + 14)) ]; then
             echo "quarantine: tests/quarantine.txt:$lineno: expiry $fdate is more than 14 days after today ($today); the limit is 14 days" >&2; bad=1; continue
+        elif [ "$expn" -gt $((sincen + 28)) ]; then
+            echo "quarantine: tests/quarantine.txt:$lineno: expiry $fdate is more than 28 days after since $fsince ($((todayn - sincen)) days ago); the limit is 28 days in all, so an entry can be renewed once - fix the test" >&2; bad=1; continue
         fi
         QUAR="$QUAR$fpath $fissue $fdate
 "
@@ -196,7 +213,7 @@ q_find() { # q_find <name>: sets QI to "<issue> <date>" if the file is on the li
 # timed out is not re-run (a hang would double the wait) and stays a failure.
 # The first-round counts are not touched. Always exits.
 retry_and_conclude() {
-    local b rc n passed2="" failed2="" unq="" nflaky=0 issue date mnote=""
+    local b rc n rtmp passed2="" failed2="" unq="" nflaky=0 issue date mnote=""
     [ -n "$MISSING" ] && mnote=" - run with --allow-missing-tools, $MISSING missing"
     # A round that did not run every file cannot be rescued by a retry.
     [ "$total" = "$expected" ] || exit 1
@@ -208,13 +225,20 @@ retry_and_conclude() {
         while IFS= read -r b; do
             [ -n "$b" ] || continue
             printf 'retry %s ... ' "$b"
-            if [ "$VERBOSE" = 1 ]; then
+            # The retry gets its own empty TMPDIR, so it cannot see what the first
+            # run left behind (that stays, as the failure scene). If it cannot be
+            # made the retry fails; it never falls back to the shared TMPDIR.
+            rtmp="$LOGDIR/tmp.$b.retry"
+            if ! mkdir -p "$rtmp"; then
+                echo "could not create $rtmp for the retry" >"$LOGDIR/$b.retry.log"
+                rc=1
+            elif [ "$VERBOSE" = 1 ]; then
                 echo
-                clocked "$PER_TEST_TIMEOUT" bash "$ROOT/tests/$b" </dev/null 2>&1 | tee "$LOGDIR/$b.retry.log"
+                clocked "$PER_TEST_TIMEOUT" env TMPDIR="$rtmp" bash "$ROOT/tests/$b" </dev/null 2>&1 | tee "$LOGDIR/$b.retry.log"
                 rc=${PIPESTATUS[0]}
                 printf 'retry %s ... ' "$b"
             else
-                clocked "$PER_TEST_TIMEOUT" bash "$ROOT/tests/$b" </dev/null >"$LOGDIR/$b.retry.log" 2>&1
+                clocked "$PER_TEST_TIMEOUT" env TMPDIR="$rtmp" bash "$ROOT/tests/$b" </dev/null >"$LOGDIR/$b.retry.log" 2>&1
                 rc=$?
             fi
             case "$rc" in
@@ -263,7 +287,7 @@ retry_and_conclude() {
     if [ -n "$unq" ]; then
         # Not a line that starts with FLAKY: CI picks the per-file FLAKY lines
         # out of the combined output.
-        echo "Not quarantined (flaky): $unq. Fix the test, or add one line per file to tests/quarantine.txt: tests/<name>.sh <issue> <YYYY-MM-DD> (at most 14 days out)." >&2
+        echo "Not quarantined (flaky): $unq. Fix the test, or add one line per file to tests/quarantine.txt: tests/<name>.sh <issue> <expiry YYYY-MM-DD> <since YYYY-MM-DD> (expiry at most 14 days out; since = today)." >&2
     fi
     if [ -n "$failed2" ] || [ -n "$TIMEOUT_LIST" ] || [ -n "$unq" ]; then
         echo "not green$mnote" >&2
