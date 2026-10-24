@@ -23,7 +23,7 @@ import time
 
 from abf_launch import build
 
-from .. import agents, common, compute_envs, confirm, failures, jobs, status, store, su
+from .. import agents, common, compute_envs, confirm, failures, jobs, pipeline_launch, status, store, su
 
 NotApproved = confirm.NotApproved
 
@@ -503,18 +503,30 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
     if path_columns is not None and (not isinstance(path_columns, list) or not all(isinstance(c, str) for c in path_columns)):
         return _no("path_columns 必須是文字清單 (path_columns must be a list of names)")
     try:
-        raw = area = None
-        if samplesheet_text is not None:
-            raw = samplesheet_text.encode("utf-8")      # no file: the rows come from the text, and the cells are judged as for a file
-        if caller is not None:         # over HTTP the file must be the caller's own, and is read once; stdio and the terminal read the path as given
-            if raw is None:
-                raw = read_confined_samplesheet(platform_path, caller, samplesheet)
-            area = caller_area(platform_path, caller)      # a path cell in the upload area must be in it (116); the environment must be the caller's too
+        raw, area = _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller)
         ce, bundle = build.prepare_launch(platform_path, ce=ce_name, pipeline=pipeline, revision=revision, run_name=run_name,
                                           samplesheet=samplesheet, params=params, path_columns=path_columns, check_name=False,
                                           samplesheet_raw=raw, owner=_caller_id(caller), area=area)
     except build.Refusal as e:
         return _no("未送出：%s" % e)
+    return await _finish_launch(platform_path, ce, bundle, caller, person, clock, remote)
+
+
+def _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller):
+    """(the samplesheet as bytes or None, the caller's upload area or None) for a launch of either kind. build.Refusal when the file
+    is not the caller's own."""
+    raw = area = None
+    if samplesheet_text is not None:
+        raw = samplesheet_text.encode("utf-8")      # no file: the rows come from the text, and the cells are judged as for a file
+    if caller is not None:         # over HTTP the file must be the caller's own, and is read once; stdio and the terminal read the path as given
+        if raw is None:
+            raw = read_confined_samplesheet(platform_path, caller, samplesheet)
+        area = caller_area(platform_path, caller)      # a path cell in the upload area must be in it (116); the environment must be the caller's too
+    return raw, area
+
+
+async def _finish_launch(platform_path, ce, bundle, caller, person, clock, remote):
+    """The back half of every launch request: the yes that already exists, the run name, the screen, the question. Both entries end here."""
     found = confirm.find_approved(platform_path, "launch", bundle, _caller_id(caller), clock, include_spent=True)
     if found:
         return _queued(found["id"], found["job_id"], bundle["run_name"])
@@ -524,6 +536,25 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
         return _no("未送出：%s" % e)
     text = build.as_text(build.launch_screen(bundle, ce))
     return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote)
+
+
+async def request_pipeline_launch(platform_path, *, pipeline_id, version=None, run_name, samplesheet=None, samplesheet_text=None, ce_name=None,
+                                  params=None, caller=None, person=None, clock=time.time, remote=False, data=None):
+    """Ask for the launch of a saved pipeline of the caller's the way request_launch asks for an nf-core one: the same question, the same
+    page, the same hash. The pipeline is named by its number and version (the newest when none is given); the check of today must show
+    no error; what is not the caller's answers like what does not exist. `data` is a replacement of the module list, for tests."""
+    problem = _samplesheet_text_problem(samplesheet, samplesheet_text)
+    if problem:
+        return _no("未送出：%s" % problem)
+    if params is not None and not isinstance(params, dict):
+        return _no("params 必須是名稱到值的對照 (params must be a mapping)")
+    try:
+        raw, area = _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller)
+        ce, bundle = pipeline_launch.prepare(platform_path, pipeline_id=pipeline_id, version=version, run_name=run_name, samplesheet=samplesheet,
+                                             samplesheet_raw=raw, ce=ce_name, params=params, caller=caller, area=area, data=data)
+    except build.Refusal as e:
+        return _no("未送出：%s" % e)
+    return await _finish_launch(platform_path, ce, bundle, caller, person, clock, remote)
 
 
 async def request_cancel(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False):

@@ -576,6 +576,17 @@ The automatic tests use fakes for the program runner, the detached start and the
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with the list under "Scope: files" in `specs/gcb-launch/plan.md`: nothing else is changed; `records.py`, `web*.py`, `agent.py` and the `hello` facts are untouched; no Slurm test file is touched. Of the C-1 tests (`test_gcb_ce.py`) only five places changed: the job kinds that are refused, the first line and name of the "never auto picked" test, the two patterns dropped from the "later slices" test, the documentation strings, and the one job kind that `test_refusals_are_plain_words` probes (`launch_nextflow` is allowed now, so it asks `list_site_files`, which is still refused; the plan's list did not name this one, see the ledger).
 
+## Launching a composed pipeline (017d): the maintainer runs one on nano4, the reviewer checks the diff
+
+The automatic tests use a fake site and no real Nextflow (the CI has none), so what Nextflow does with the project is checked once by a person. The run costs a few core-hours on nano4.
+
+1. **Save and check.** Save the fastqc to multiqc graph as a composed pipeline (`actions.pipelines`), check it, and have two small FASTQ files ready under the storage root. Make a samplesheet with the columns `sample,reads` (one file per row).
+2. **Send it.** Call `request_pipeline_launch` for the saved pipeline (the terminal or a script; there is no tool yet). Check: the answer names a page `/c/<id>`; nothing is queued; the page shows the whole `main.nf`, the project's `nextflow.config` and the list of the other files with their hashes; the last line of `head.sh` starts `<run folder>/pipeline/main.nf`. Press 送出 as yourself.
+3. **On the site.** Check: `<run folder>/pipeline/` holds `main.nf`, `nextflow.config`, `modules.json` and `modules/nf-core/fastqc/main.nf` and `modules/nf-core/multiqc/main.nf`; the Slurm job runs; the run page shows progress (`-with-tower`).
+4. **What Nextflow did with it.** Check: the settings of the project's `nextflow.config` were read (`ext.args = '--quiet'` shows in the `.command.sh` of a FASTQC task), `<run folder>/results/fastqc` and `results/multiqc` hold the outputs (the `publishDir` block works), and the containers were pulled online by nano4 itself. Write what you saw in `specs/017d-launch-composed/ledger.md`; if the project's config was not read, tell the developer-agent (the head script then needs a change, not a workaround by hand).
+5. **A refused case.** Send the same pipeline with a samplesheet that has no `reads` column. Check: the refusal starts 未送出 and says which columns are needed. Then resume the failed or finished run. Check: the refusal says a composed run cannot be resumed yet.
+6. **The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with "Scope: files" of `specs/017d-launch-composed/plan.md`; `store.py`, `jobs.py`, `confirm.py`, `compose.py`, `catalogue.py`, `validate.py`, `actions/pipelines.py`, `mcp_server.py` and `web.py` are untouched; the existing tests changed only as the ledger says; the non-composed bundle, head script and screen are byte for byte what they were.
+
 ## Hosted deploy (hosted-deploy): the maintainer and the reviewer check
 
 The automatic test, `tests/hosted_deploy_test.sh`, reads the files in `deploy/` and runs the backup script on a fake data folder; it starts no service and touches no network. The steps below start real services and are yours to run; nothing in the task ran them. Replace `<funnel-address>` with the address Funnel prints.

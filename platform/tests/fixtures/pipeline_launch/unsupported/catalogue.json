@@ -1,0 +1,14 @@
+{"source": "nf-core/modules", "sha": "5ed90b42e78410e7411e9c6bdfeff33226d6c58e", "count": 3, "errors": [], "modules": [
+ {"name": "binmod", "path": "binmod", "description": "needs a bin folder", "keywords": [], "tools": [],
+  "inputs": [{"channel": 0, "name": "meta", "type": "map", "pattern": null, "optional": false},
+             {"channel": 0, "name": "reads", "type": "file", "pattern": null, "optional": false}],
+  "outputs": [{"channel": "out", "name": "result", "type": "file", "pattern": null}]},
+ {"name": "listmod", "path": "listmod", "description": "takes a list", "keywords": [], "tools": [],
+  "inputs": [{"channel": 0, "name": "meta", "type": "map", "pattern": null, "optional": false},
+             {"channel": 0, "name": "items", "type": "list", "pattern": null, "optional": false}],
+  "outputs": [{"channel": "out", "name": "result", "type": "file", "pattern": null}]},
+ {"name": "plainmod", "path": "plainmod", "description": "takes a sample and a file", "keywords": [], "tools": [],
+  "inputs": [{"channel": 0, "name": "meta", "type": "map", "pattern": null, "optional": false},
+             {"channel": 0, "name": "reads", "type": "file", "pattern": null, "optional": false}],
+  "outputs": [{"channel": "out", "name": "result", "type": "file", "pattern": null}]}
+]}
