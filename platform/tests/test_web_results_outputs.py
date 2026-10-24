@@ -296,15 +296,23 @@ def test_ro08_owner_rule(w):
 
 
 def test_ro08b_mcp_tool_matches_the_action(w):
-    # TC-053, TC-054
+    # TC-053, TC-054: the same read, by the same name, through MCP; bob gets the answer of TC-050 / TC-051
+    from helpers import tool_json
     ann, c, rid = world(w)
     bob = w.user("bob")
-    # run_outputs is a web-only action for now (test_web_parity.WEB_ONLY): the tool list is pinned by many older tests, so no MCP tool
-    # is added; the web page and the action are the one path, and the page's 404 for somebody else's run is the owner rule at work.
-    from abf_platform import actions
     tools, _ = w.mcp([])
-    assert "run_outputs" not in [t.name for t in tools]
-    assert actions.run_outputs(w.ip.index, w.ip.state_db, rid, caller=bob)["found"] is False and listings(w) == []
+    tool = [t for t in tools if t.name == "run_outputs"]
+    assert len(tool) == 1 and tool[0].annotations.read_only_hint is True       # a read tool: nothing is written or run
+    theirs = tool_json(w.call("run_outputs", {"run_id": rid}, caller=bob))
+    ghost = tool_json(w.call("run_outputs", {"run_id": "nope"}, caller=bob))
+    assert theirs == ghost and theirs["found"] is False and "files" not in theirs and "path" not in theirs
+    assert listings(w) == []                                                   # nothing was queued for somebody else's run
+    mine = tool_json(w.call("run_outputs", {"run_id": rid}, caller=ann))
+    assert mine["state"] == "loading" and mine["path"] == FOLDER + "/results" and len(listings(w)) == 1
+    finish(w, listings(w)[0]["id"], entries=ENTRIES)
+    done = tool_json(w.call("run_outputs", {"run_id": rid}, caller=ann))
+    assert done["state"] == "ready" and sorted(f["name"] for f in done["files"]) == sorted(e["name"] for e in ENTRIES)
+    assert len(listings(w)) == 1                                               # asking again did not queue a second question
 
 
 def test_ro09_page_never_waits_for_the_site(w, monkeypatch):
@@ -414,10 +422,52 @@ def test_ro13_the_station_may_list_the_results_folder(w):
     assert rules.inside(rules.normalize(FOLDER + "/results"), roots)
 
 
-def test_ro14_nothing_internal_in_the_listing(w):
-    # TC-093
+FAKE = "abf_FAKECREDENTIAL0123456789abcdef"
+
+
+def test_ro14_nothing_internal_in_the_listing(w, caplog, capsys):
+    # TC-093: a fake credential in the environment's config and in the jobs (their args, their answer, the site's own message) is nowhere
+    # in the ready page, the error page, the MCP answers, the logs or what was printed
+    from helpers import tool_json
+    caplog.set_level(0)
     ann, c, rid = world(w)
-    c.get(url(rid))
-    finish(w, listings(w)[0]["id"], entries=ENTRIES)
+    con = sqlite3.connect(str(w.ip.state_db))
+    with con:
+        con.execute("UPDATE compute_envs SET config_json = ?, description = ? WHERE name = 'lab-a'",
+                    (json.dumps({"workDir": "/data/wd", "launchDir": "/data/launch", "secretNote": FAKE}), "note " + FAKE))
+    con.close()
+    seen = []
+
+    def look(mcp=True):
+        for lang in ("", "&lang=en"):
+            r = c.get(url(rid) + lang)
+            seen.append(r.text)
+            seen.append(str(r.headers))
+        if mcp:
+            seen.append(json.dumps(tool_json(w.call("run_outputs", {"run_id": rid}, caller=ann))))
+    look()
+    job = listings(w)[0]["id"]
+    con = sqlite3.connect(str(w.ip.state_db))
+    with con:
+        con.execute("UPDATE jobs SET args_json = ? WHERE id = ?", (json.dumps({"path": FOLDER + "/results", "token": FAKE}), job))
+    con.close()
+    finish(w, job, entries=ENTRIES)
+    con = sqlite3.connect(str(w.ip.state_db))
+    with con:
+        row = con.execute("SELECT result_json FROM jobs WHERE id = ?", (job,)).fetchone()
+        planted = json.loads(row[0])
+        planted["token"] = FAKE
+        planted["config"] = {"password": FAKE}
+        con.execute("UPDATE jobs SET result_json = ? WHERE id = ?", (json.dumps(planted), job))
+    con.close()
+    look()
     t = mid(c.get(url(rid)).text)
     assert "config" not in t and "token" not in t.lower()
+    finish(w, job, ok=False, message="cannot read the folder, token=%s was refused" % FAKE, state="error")
+    look()
+    finish(w, job, ok=False, message="no access", state="error", error="Traceback ... %s" % FAKE)
+    look()
+    assert any("no access" in x for x in seen), "the plain reason of the site should still be shown"
+    printed = capsys.readouterr()
+    for text in seen + [caplog.text, printed.out, printed.err]:
+        assert FAKE not in text and "FAKECREDENTIAL" not in text

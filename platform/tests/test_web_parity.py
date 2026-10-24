@@ -14,7 +14,8 @@ BOARD = PLATFORM_DIR / "abf_platform" / "web_board.py"
 # The read actions a web route calls; each has a same-named MCP tool.
 # 012b: launch and cancel are the tools whose web routes are POST /launch and POST /act/cancel; the routes call request_launch and request_cancel (INTERNAL below), never launch or cancel.
 WEB_ROUTES = {"list_runs": "GET /", "get_run": "GET /", "list_compute_envs": "GET /launch",
-              "launch": "POST /launch, through request_launch", "cancel": "POST /act/cancel, through request_cancel"}
+              "launch": "POST /launch, through request_launch", "cancel": "POST /act/cancel, through request_cancel",
+              "run_outputs": "GET /?run=<id>&stage=results (the Outputs tab; results-outputs)"}
 # 012b: the tools resume and relaunch have no action of that name (they are request_resume / request_relaunch); their web routes are POST /act/resume and POST /act/relaunch.
 WEB_VIA_REQUEST = {"launch": "request_launch", "cancel": "request_cancel", "resume": "request_resume", "relaunch": "request_relaunch"}
 # The PAGE confirmation channel is web-only by design: the MCP side uses the form channel and request_launch/request_cancel.
@@ -25,8 +26,6 @@ WEB_ONLY = {
     "list_samplesheets": "the launch form's choice of samplesheet: the files in the caller's own upload folder",
     "request_facts": "the top of the confirmation page: the few plain facts of one pending request, read from its structured content",
     "launch_prefill": "the quick launch of the launch form: what the person's own earlier run was sent with, when it is still kept",
-    "run_outputs": "the Outputs tab of the results stage (results-outputs): the last listing of <run folder>/results, never waiting for the site; "
-                   "no MCP tool yet, because many older tests pin the tool list (an intended, recorded choice)",
 }
 # Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).
 OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d", "read_task_log": "011c",
