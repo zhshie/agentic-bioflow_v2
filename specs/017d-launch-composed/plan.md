@@ -262,6 +262,14 @@ E. 「專案 nextflow.config 會被 Nextflow 從腳本目錄自動讀到」必�
 6. **含子流程或 include 其他模組的模組**：模組原始碼（main.nf）裡有 `include {` 或 `workflow ` 宣告者，`build_project` 拒絕並點名該模組（finding code `UNSUPPORTED_MODULE`），可測。
 7. 計畫有寫但沒列測試名的行為，由 executor 補測試並註明 TC 編號（verifier 已在合約標出），不算擴大範圍。
 
+## 裁決三（2026-10-24 12:00 developer-agent，閱卷 FAIL(no-progress) 後；以本段為準）
+1. 補核可兩處既有測試修改，加進「範圍：檔案」：`platform/tests/test_web_parity.py`（INTERNAL 集合只多 `request_pipeline_launch` 一個名字，因為動作層新公開函式必須登記，且不新增 MCP 工具或網頁路由）、`platform/tests/test_guidance.py`（package-data 期望字串多 `data/*.json.gz`，由本計畫要求的 pyproject 變更逼出）。除了這兩處字面值，兩檔不得再改。「必須確認仍綠、不准改」清單相應拿掉這兩檔，改列為「只准上述一處改動」。
+2. 資料檔 `nf-core-module-sources.json.gz`（約 0.72 MiB、2116 模組）接受進 repo。
+3. 沒有使用者自給的 `path_columns`；只檢查 build_project 回傳的欄。
+4. `UNSUPPORTED_MODULE` 可在錯誤物件屬性或訊息文字讀到，二擇一；ledger 記真資料中被字樣規則擋下的模組數。
+5. nano4 真機組合實跑、舊版站台代理的拒絕訊息：列為合併後的手動驗收（docs/TESTING.md），不擋本 PR；PR 說明必須寫「組合送出需要新版站台代理」。
+6. 夾具 `fixtures/pipeline_launch/` 必須在分支上；不在就補上（依計畫文字手算）。
+
 ## 專長守則（backend）
 
 ### executor
