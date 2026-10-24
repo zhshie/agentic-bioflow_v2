@@ -128,7 +128,7 @@ the board) warns before one more background watch gets close to
 `ssh_max_parallel` — PITFALLS 16e's session cap is a hang, not an error, so
 the only real defence is saying something before it happens.
 
-A run that the platform launched and that failed or was cancelled can be gone on with by its name alone: `resume` takes up where Nextflow stopped, in the same folder, and `relaunch` starts it again from the start in a new folder (the terminal commands `abf-platform resume RUN` and `abf-platform relaunch RUN`, or the MCP tools of the same names). The samples and parameters are those of the first launch; a different analysis is a `launch`. Each time asks the person and waits for their yes.
+A run that the platform launched and that failed or was cancelled can be gone on with: `resume` takes up where Nextflow stopped, in the same folder, and `relaunch` starts it again from the start in a new folder (the terminal commands `abf-platform resume RUN` and `abf-platform relaunch RUN`, or the MCP tools of the same names). `relaunch` still takes only the name. `resume` may also carry `params` (only the keys to change, laid over the parameters of the first launch; it cannot delete one) and `extra_config` (resource settings only: `cpus`, `memory`, `time`, `disk`, `maxRetries`, `errorStrategy`); in the terminal these are `--param`, `--params-file` and `--config-file`. The tasks that use a changed parameter or resource run again, the others are reused. Changing the samples, the pipeline, the version or the compute environment is a new `launch`. Each time asks the person and waits for their yes.
 
 ## Where the truth is
 

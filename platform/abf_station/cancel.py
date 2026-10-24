@@ -32,7 +32,7 @@ def run_cancel(job, ctx):
     run, number, folder = bundle["run_name"], bundle["slurm_job_id"], bundle["run_folder"]
     if bundle["agent"] != ctx.agent_name:
         raise rules.Refusal("這個取消是給另一個代理的 (for another agent)")
-    if not isinstance(run, str) or not launch.RUN_NAME.match(run) or folder != "%s/runs/%s" % (env["workDir"], run):
+    if not isinstance(run, str) or not launch.RUN_NAME.match(run) or not launch.run_folder_ok(env["workDir"], run, folder):
         raise rules.Refusal("run 名稱或專屬資料夾不對 (the run name or the run folder is not one this platform makes)")
     if isinstance(number, bool) or not isinstance(number, int) or not 1 <= number <= 2 ** 31 - 1:
         raise rules.Refusal("Slurm 工作編號必須是一個十進位數字 (the job number must be one decimal number)")
