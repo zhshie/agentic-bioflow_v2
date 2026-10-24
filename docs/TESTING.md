@@ -639,6 +639,16 @@ The automatic test, `tests/hosted_deploy_test.sh`, reads the files in `deploy/` 
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD`: only `deploy/`, `tests/hosted_deploy_test.sh`, the three docs and `specs/hosted-deploy/` appear; nothing under `platform/abf_platform/`, `platform/abf_station/` or `platform/abf_launch/`; no existing test file is changed.
 
+## The cost page (cost-page): the maintainer and the reviewer check three things
+
+The automatic tests (`platform/tests/test_web_cost.py`) check the numbers and the markup. What a person sees on a small screen and with the keyboard is checked once by hand. Start `abf-platform web`, log in as a person who has some runs, and open `/usage`.
+
+1. **A 390 px screen (TC-065).** Make the browser window 390 px wide (the developer tools' phone mode). Open `/usage` and `/usage?lang=en`, once with runs, once with more than 50 runs in the month (the page lists 50), once with none. Check: no horizontal scroll bar on the page, the four cards stack, the table text can be read.
+2. **The keyboard (TC-066).** Press Tab from the top of `/usage`. Check: each link it stops on (the masthead cost link, the language links, the previous and next month links, the analysis names in the table) shows a visible focus outline.
+3. **Both languages (TC-067).** Look at the whole of `/usage` and then of `/usage?lang=en`. Check: both are complete, the layout is the same, and the English page has no Chinese word except the language switch and your own run names; the month notice (`/usage?month=abc`) is also in English.
+
+**The reviewer.** Read the section "The cost page" of `docs/PLATFORM.md` (TC-069): it says where the SU, cloud used, cap, remaining and the per-analysis usage come from. Run `git diff --name-only <base>...HEAD`: `web.py` and `web_board.py` appear, and the diff of `web_board.py` is only the masthead and the two cost strings; `test_tc051` is unchanged.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in

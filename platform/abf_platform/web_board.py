@@ -34,7 +34,7 @@ STRINGS = {
     "zh": {
         "title": "agentic-bioflow", "mine": "我的 run", "none_yet": "還沒有 run。", "later": "之後開放",
         "new_project": "＋ 新專案", "search_projects": "搜尋專案或分析", "upload": "↑ 上傳資料", "settings": "設定", "explorer": "資料瀏覽",
-        "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "cost_cloud": "雲端 NT$ —", "more": "還有 %d 筆",
+        "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "cost_cloud": "雲端 US$ —", "more": "還有 %d 筆",
         "new_analysis": "＋ 新分析", "no_project": "未分專案", "no_analyses": "還沒有分析",
         "row_run": "執行", "row_results": "結果", "row_stopped": "執行 · 已取" "消", "row_site": "執行 · 站台沒有回應",
         "main_window": "主視窗", "terminal": "終端機", "this_analysis": "這個分析的對話", "ask_here": "問這個分析",
@@ -75,7 +75,7 @@ STRINGS = {
     "en": {
         "title": "agentic-bioflow", "mine": "My runs", "none_yet": "No runs yet.", "later": "Coming later",
         "new_project": "+ New project", "search_projects": "Search projects or analyses", "upload": "↑ Upload data", "settings": "Settings",
-        "explorer": "Data explorer", "dashboard": "Dashboard", "logout": "Log out", "cost_su": "SU —", "cost_cloud": "Cloud NT$ —",
+        "explorer": "Data explorer", "dashboard": "Dashboard", "logout": "Log out", "cost_su": "SU —", "cost_cloud": "Cloud US$ —",
         "more": "%d more",
         "new_analysis": "+ New analysis", "no_project": "No project", "no_analyses": "No analyses yet",
         "row_run": "Run", "row_results": "Results", "row_stopped": "Run · Cancelled", "row_site": "Run · Site not responding",
@@ -341,9 +341,9 @@ def _mast(t, name, lang, run, stage, path="/", tab=None):
     zh_here = "" if lang == "en" else ' class="here"'
     en_here = ' class="here"' if lang == "en" else ""
     return ('<header class="mast"><span class="brand">agentic-bioflow</span><span class="end">'
-            '<span class="costs"><span class="cost">%s</span><span class="cost">%s</span></span>'
+            '<a class="costs" href="%s"><span class="cost">%s</span><span class="cost">%s</span></a>'
             '<span class="switch"><a href="%s"%s>中</a><a href="%s"%s>EN</a></span><span class="who">%s</span></span></header>'
-            % (esc(t["cost_su"]), esc(t["cost_cloud"]), _url("zh", run, stage, path, tab), zh_here, _url("en", run, stage, path, tab), en_here,
+            % (_url(lang, path="/usage"), esc(t["cost_su"]), esc(t["cost_cloud"]), _url("zh", run, stage, path, tab), zh_here, _url("en", run, stage, path, tab), en_here,
                esc(name)))
 
 

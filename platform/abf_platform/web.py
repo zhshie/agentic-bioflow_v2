@@ -11,6 +11,7 @@ The only routes there are:
   GET  /launch       the launch form (spec 012b), ?from=<run id> fills it from an earlier run of the same person; needs the cookie
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
   POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page
+  GET  /usage        the cost page (cost-page): SU, cloud used / cap / remaining, one line per analysis; ?month=YYYY-MM, ?lang=en; needs the cookie
   GET  /settings     the settings frame (spec 011a): read-only, every section greyed "coming later"; needs the cookie
   GET  /login        the login form (name + web password)
   POST /login        log in; the password is checked against its scrypt hash; a cookie of 12 hours
@@ -50,7 +51,7 @@ from starlette.middleware import Middleware
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from . import actions, oauth, store, web_board
+from . import actions, oauth, store, web_board, web_cost
 
 COOKIE = "abf_web"
 KEY_FILE = "web_signing.key"
@@ -524,6 +525,21 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return HTMLResponse(web_board.render_settings(user["name"], csrf(sid, "logout"), runs, lang), headers=_HEADERS)
 
 
+    async def usage_page(request):
+        sid, user = user_of(request)
+        if user is None:
+            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        month, bad = web_cost.pick_month(request.query_params.get("month"))
+        runs = await run_in_threadpool(read_runs, caller)
+        try:
+            data = await run_in_threadpool(lambda: actions.my_usage(index_path, platform_path, caller=caller, month=month, tokens_path=tokens_path))
+        except sqlite3.Error:          # a damaged index answers like an empty month; a page is never a 500
+            data = web_cost.empty_usage(month or web_cost.current_month(clock()))
+        return HTMLResponse(web_cost.render_usage(user["name"], csrf(sid, "logout"), runs, data, lang, clock(), bad), headers=_HEADERS)
+
+
     # ---- the OAuth consent page (spec 009i) -------------------------------------------------------------------------
     issuer = (public_url or base_url or DEFAULT_BASE).rstrip("/")
     provider = oauth.PlatformOAuthProvider(tokens_path, issuer, clock=clock)
@@ -600,7 +616,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         gone = consent_gone(provider.consent_request(rid)) if status in ("decided", "expired") else None
         return gone or _page("未處理", "<p class=\"bad\">什麼都沒有改。請回到連接器重新開始。</p>", 403 if status == "user" else 404)
 
-    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
+    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]), Route("/usage", usage_page, methods=["GET"]),
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch", launch_post, methods=["POST"]),
                             Route("/act/{verb}", act_post, methods=["POST"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
