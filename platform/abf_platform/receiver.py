@@ -32,6 +32,11 @@ def _int(value, default=0):
         return default
 
 
+def _text64(value):
+    """A short text the task event named (the machine type, the price model, the zone), cut to 64 characters; NULL when it is not a string."""
+    return value[:64] if isinstance(value, str) else None
+
+
 def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
     store.init_index(index_path)
     platform_path = platform_path or store.default_platform_path(index_path)
@@ -101,11 +106,14 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
                 # The usage of a finished task, for the SU a run used. One row per attempt, and a retry does not delete the attempt
                 # before it (that attempt also spent SU); failed_tasks below is the opposite on purpose: one row per task name.
                 queue = t.get("queue")
-                con.execute("INSERT INTO task_usage (run_id, task_key, name, status, cpus, realtime_ms, queue) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                con.execute("INSERT INTO task_usage (run_id, task_key, name, status, cpus, realtime_ms, queue, machine_type, price_model, cloud_zone) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                             "ON CONFLICT(run_id, task_key) DO UPDATE SET name = excluded.name, status = excluded.status, "
-                            "cpus = excluded.cpus, realtime_ms = excluded.realtime_ms, queue = excluded.queue",
+                            "cpus = excluded.cpus, realtime_ms = excluded.realtime_ms, queue = excluded.queue, "
+                            "machine_type = excluded.machine_type, price_model = excluded.price_model, cloud_zone = excluded.cloud_zone",
                             (rid, key, name, t["status"], _int(t.get("cpus"), None), _int(t.get("realtime"), None),
-                             queue if isinstance(queue, str) else None))
+                             queue if isinstance(queue, str) else None, _text64(t.get("machineType")), _text64(t.get("priceModel")),
+                             _text64(t.get("cloudZone"))))
             # one row per task name: a later attempt of the same task replaces the earlier one, whatever its outcome
             con.execute("DELETE FROM failed_tasks WHERE run_id = ? AND name = ? AND task_key != ?", (rid, name, key))
             if t.get("status") == "FAILED":
