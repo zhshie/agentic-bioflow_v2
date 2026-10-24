@@ -155,6 +155,13 @@ source: memory/PLAN-abf-v3-replan-2026-10.md Milestone 6 的 H-1（第 186 行�
 11. 專長守則用 backend（沒有 infra 守則檔）。A 級：verifier 通過＋CI 綠由 developer-agent 自己合併。
 12. 裁決 5 的備份檔名校正接受。
 
+## 裁決三（2026-10-24 developer-agent，回應 verifier 出題退回；以本段為準，蓋過作法 4、TC caddy-routes、待裁決 3 的前提）
+13. 分流照原始碼：`/.well-known/oauth-protected-resource*` 與 `/mcp*` → 8788；OAuth 授權伺服器（`/.well-known/oauth-authorization-server`、`/register`、`/authorize`、`/token`、`/revoke`）與 `/consent/*` → 8789（web.py `auth_routes`）；`/agent/hello`、`/agent/poll`、`/agent/result/*`（agents.py）與 `/trace/*`、`/user-info` → 8787；其餘 → 8789。verifier 合約的 TC-018～TC-021、TC-024 照原始碼寫的版本接受。
+14. Caddy 拿 `ABF_SITE_ADDRESS`：文件寫明兩種用法——VPS 用 `caddy run --config deploy/Caddyfile.template --envfile <env 檔>`（或系統單元的 `EnvironmentFile=`），Funnel 用法同一個 envfile；逐步清單必須含這一步（TC-043 接受）。
+15. 備份腳本也認 `ABF_PLATFORM_TOKENS`／`ABF_PLATFORM_STATE`／`ABF_PLATFORM_UPLOADS` 覆蓋變數（有設就用），測試加一條覆蓋變數的案例。
+16. `web_signing.key` 不存在時備份照樣成功，只印一行「web 尚未啟動過，略過簽章金鑰」；其餘必備檔（tokens.db、platform.db）缺了仍非零結束。TC-035 依此改。
+17. 沒有 spec.md，以 plan.md 區段為需求來源，接受。
+
 ## 專長守則（backend）
 
 ### executor
