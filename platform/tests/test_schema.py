@@ -228,9 +228,8 @@ def test_tc049_050():
         d = json.loads(f.read_text(encoding="utf-8"))
         want = list((d.get("items", {}).get("properties") or d.get("properties")).keys())
         assert [c["name"] for c in S.samplesheet_columns(d)] == want, f.name
-    # TC-050 as written says fastq_1, control, fastq_2; the committed file's real key order (checked with Python 3,
-    # and enforced for all five files by TC-049 above) starts sampleID, forwardReads, reverseReads. Asserting the real order.
-    assert [c["name"] for c in S.samplesheet_columns(si("ampliseq-2.18.0.json"))][:3] == ["sampleID", "forwardReads", "reverseReads"]
+    # TC-050 (contract): first three columns are fastq_1, control, fastq_2.
+    assert [c["name"] for c in S.samplesheet_columns(si("ampliseq-2.18.0.json"))][:3] == ["fastq_1", "control", "fastq_2"]
 
 
 def test_tc051_052_053():
