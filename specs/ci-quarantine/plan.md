@@ -173,7 +173,14 @@ source: memory/reference/dev-architecture-review-2026-10-24.md 第 5.2 節第 2 
 5. 第一輪有 missing-tools 提示時，重跑後的結論也要帶同一句提示。
 6. `--verbose` 時重跑輸出也要印到畫面。
 7. 名單行允許行尾 `# 註解`；`tests/quarantine.txt` 不存在時 `--retry-failed-once` 直接失敗並說明「名單檔不見了」（不再默默當空名單）。
-8. stderr 那句錯誤訊息改成不以 `FLAKY ` 開頭（例如 `Not quarantined (flaky): …`），tests.yml 的 grep 由 developer-agent 改成 `^FLAKY tests/`。
+8. stderr 那句錯誤訊息改成不以 `FLAKY ` 開頭（例如 `Not quarantined (flaky): …`），tests.yml 的 grep 由 developer-agent 改成能抓 `FLAKY <名稱>.sh  …` 的寫法（見裁決四 1）。
+
+## 裁決四（2026-10-24 19:45 developer-agent，回應出題退回；以本段為準）
+1. 選 (a)：每檔 FLAKY 行維持 `FLAKY <名稱>.sh  …`（兩個空格），tests.yml 已改成 `grep -E '^FLAKY [^ ]+.sh  '`；TC-103 交叉驗證保留。stderr 錯誤句不得以 `FLAKY ` 開頭（裁決三 8）。
+2. tests.yml 的 `--timeout 900`：與本機 abf-fast-suite 一致，因 platform_test.sh 在 CI 已超過 300 秒；PR 說明已寫明。合約不必要求。
+3. 閏年／跨年固定日期案例取消，改用相對今天的掃描（照合約）；日數換算函式若獨立成函式，可另加固定日期的單元測試（選做）。
+4. 只有逾時失敗時：不印 FLAKY、不重跑該檔，結論照第一輪的失敗處理，退出碼 1（照合約，其餘輸出不釘）。
+5. `--check-quarantine` 遇到名單檔不見：退出碼非零，訊息含 `tests/quarantine.txt` 與 `missing`。
 
 ## 專長守則（backend）
 
