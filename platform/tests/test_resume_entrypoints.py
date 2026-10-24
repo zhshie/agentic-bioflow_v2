@@ -48,10 +48,11 @@ def test_tc132_the_tools_are_the_old_ones_and_exactly_resume_and_relaunch(rig):
 
 @pytest.mark.parametrize("name", ["resume", "relaunch"])
 def test_tc133_tc134_tc135_each_new_tool_takes_one_argument_the_run_name_and_none_of_them_can_say_yes(rig, name):
-    # TC-133, TC-134, TC-135
+    # TC-133, TC-134, TC-135 (resume-edit-params-b: resume also takes the two optional edits; relaunch still only the name)
     t = tools_of(rig)[name]
     props = t.input_schema.get("properties", {})
-    assert set(props) == {"run_name"} and t.input_schema.get("required") == ["run_name"]
+    assert set(props) == ({"run_name", "params", "extra_config"} if name == "resume" else {"run_name"})
+    assert t.input_schema.get("required") == ["run_name"]
     assert props["run_name"].get("type") == "string"
     assert not (set(props) & YES_FIELDS)
     assert t.annotations.read_only_hint is False and t.annotations.destructive_hint is False
@@ -72,8 +73,9 @@ def test_the_descriptions_say_what_resume_and_relaunch_are_and_that_nothing_but_
     tools = tools_of(rig)
     assert re.search(r"same folder|同一個資料夾", tools["resume"].description)
     assert re.search(r"new folder|全新的資料夾", tools["relaunch"].description)
-    for name in ("resume", "relaunch"):
-        assert re.search(r"samples|樣本", tools[name].description) and re.search(r"launch", tools[name].description)
+    assert "params" in tools["resume"].description and "extra_config" in tools["resume"].description      # resume-edit-params-b
+    assert re.search(r"samples|樣本", tools["resume"].description) and re.search(r"launch", tools["resume"].description)
+    assert re.search(r"samples|樣本", tools["relaunch"].description) and re.search(r"launch", tools["relaunch"].description)
 
 
 def test_tc080_tc136_the_tool_shows_the_person_the_form_and_queues_a_job_only_after_it_is_accepted(rig):
@@ -137,6 +139,8 @@ def test_tc148_an_argument_other_than_the_run_name_changes_nothing(rig):
     out = tool_json(outs[0])
     if out.get("sent"):
         b = rig.bundle_of_job(out["job_id"])
+        # resume-edit-params-b: params is now an edit that is kept, in resume.overrides; the rest is still dropped
+        assert b["resume"]["overrides"]["params"] == {"primer": "OTHER"}
         assert b["resume"]["origin"]["revision"] == "2.18.0" and b["resume"]["origin"]["params"] == first["params"]
         assert b["resume"]["session_id"] == SESSION and "samplesheet" not in b
     else:
@@ -175,10 +179,13 @@ def test_tc140_tc141_tc147_the_commands_take_a_run_name_and_a_user_and_nothing_t
         assert ns.run == "x" and ns.user is None and callable(ns.func)
         assert p.parse_args([verb, "x", "--user", "alice"]).user == "alice"
         for bad in (["--yes"], ["-y"], ["--force"], ["--assume-yes"], ["--no-confirm"], ["--y"], ["--params", "a.yaml"], ["--revision", "2.18.1"],
-                    ["--samplesheet", "s.csv"], ["--param", "a=b"], ["--ce", "other"], ["--pipeline", "nf-core/x"], ["--run-name", "n"],
+                    ["--samplesheet", "s.csv"], ["--ce", "other"], ["--pipeline", "nf-core/x"], ["--run-name", "n"],
                     ["--session", SESSION]):
             with pytest.raises(SystemExit):
                 p.parse_args([verb, "x"] + bad)
+        if verb == "relaunch":      # resume-edit-params-b: only resume takes --param (--params-file and --config-file are tested in the new file)
+            with pytest.raises(SystemExit):
+                p.parse_args([verb, "x", "--param", "a=b"])
         with pytest.raises(SystemExit):
             p.parse_args([verb])
         with pytest.raises(SystemExit):

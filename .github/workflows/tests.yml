@@ -25,8 +25,9 @@
 # not a file this can run unattended.
 # 2026-10-24 (ci-quarantine, maintainer-approved): --retry-failed-once re-runs only the files that
 # failed, once; a file that passes only on retry is printed as FLAKY and must be listed in
-# tests/quarantine.txt (issue + expiry <= 14 days) or the job still fails. --timeout 900 matches the
-# local runner (memory/scripts/abf-fast-suite.sh); platform_test.sh grew past 300 s on CI runners.
+# tests/quarantine.txt (issue + expiry <= 14 days) or the job still fails. Per-test limit is
+# run_all.sh's default 300 s again: since PR #200 split the platform suite, the slowest entry on CI is
+# about 166 s (2026-10-24: clock 166, part 1 151, part 2 107, part 3 66). The job is capped at 60 min.
 name: tests
 
 on:
@@ -47,7 +48,7 @@ jobs:
       - name: bash tests/run_all.sh --retry-failed-once
         # shell: bash makes GitHub run with -eo pipefail, so run_all's exit code survives the tee.
         shell: bash
-        run: bash tests/run_all.sh --retry-failed-once --timeout 900 2>&1 | tee "$RUNNER_TEMP/run_all.out"
+        run: bash tests/run_all.sh --retry-failed-once 2>&1 | tee "$RUNNER_TEMP/run_all.out"
 
       - name: List FLAKY tests in the job summary
         if: always()
