@@ -316,8 +316,7 @@ def test_tc026_to_tc029_the_clean_limit_is_fifty_each_unexpired_and_per_person(w
     with pytest.raises(jobs.JobRefused) as e:                           # TC-026
         pend(world, clock, bundle("c50"))
     msg = str(e.value)
-    assert "50" in msg and "清理提醒" in msg and "Traceback" not in msg and "SELECT" not in msg and "/" not in msg.replace("(", "")[:0]
-    pend(world, clock, bundle("c0"), caller=2)                          # TC-029
+    assert "50" in msg and "清理提醒" in msg and "Traceback" not in msg and "SELECT" not in msg    pend(world, clock, bundle("c0"), caller=2)                          # TC-029
     clock.t = T0 + 7 * DAY + 10                                         # TC-028
     pend(world, clock, bundle("fresh"))
 
@@ -348,8 +347,7 @@ def test_tc034_a_clean_work_job_is_refused_without_a_confirmation_at_the_queue_a
     from abf_platform import jobs
     for cid in (None, "", "no-such-id"):
         with pytest.raises(jobs.JobRefused):
-            enqueue(world, clock, cid=cid or "x") if cid == "no-such-id" else jobs.transaction(
-                world, lambda con, c=cid: jobs.enqueue_confirmed(con, "ce1", "clean_work", bundle(), c, clock(), 600, 1e9))
+            jobs.transaction(world, lambda con, c=cid: jobs.enqueue_confirmed(con, "ce1", "clean_work", bundle(), c, clock(), 600, 1e9))
     assert jobs_count(world) == 0
     with pytest.raises(sqlite3.IntegrityError):
         sql(world, "INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at) "
@@ -509,9 +507,10 @@ def test_tc054_the_texts_are_bounded():
 
 def test_tc055_tc064_only_the_row_of_the_jobs_own_run_and_number_is_written(world, clock):
     # TC-055, TC-064
+    sql(world, "DELETE FROM launches")
     add_launch(world, "run-one", "/data/u1/run-one", sid=1111)           # same name, older row, another number
     add_launch(world, "run-two", "/data/u1/run-two", sid=4242)           # another run, same number
-    sql(world, "UPDATE launches SET id = id")
+    add_launch(world)                                                     # the newest row of run-one: the one the job is about
     jid, status, body = job_answered(world, clock, "done", {"ok": True, "cleaned": True, "run_name": "run-two", "slurm_job_id": 1111})
     assert status == 200 and body["accepted"] is True
     rows = {(r["run_name"], r["slurm_job_id"]): r["work_cleaned_at"] for r in sql(world, "SELECT * FROM launches")}
