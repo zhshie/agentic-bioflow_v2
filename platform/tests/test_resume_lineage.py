@@ -12,7 +12,7 @@ from test_launch_platform import make_confirmation
 
 OLD_COLUMNS = ["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at", "submitted_at", "cancel_requested_at",
                "job_id", "user_id"]
-NEW_COLUMNS = ["parent_run", "attempt", "attempt_kind"]
+NEW_COLUMNS = ["parent_run", "attempt", "attempt_kind", "work_cleaned_at"]
 # a launches table as it was before 009e (the DDL of 116)
 OLD_LAUNCHES = """CREATE TABLE launches (
     id INTEGER PRIMARY KEY AUTOINCREMENT, run_name TEXT NOT NULL, slurm_job_id INTEGER, run_folder TEXT NOT NULL, ce TEXT NOT NULL,
