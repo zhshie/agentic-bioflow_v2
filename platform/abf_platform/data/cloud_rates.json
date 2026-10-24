@@ -1,0 +1,14 @@
+{
+  "_about": "Google Compute Engine virtual machine prices in US dollars per machine-hour, as Google's own page shows them: nothing here is converted. Compute only (no disk, network or storage). Every entry carries the page it was read from (source) and the day it was read (read_on). Do not guess a number here (no entry, no price). Only the Spot price was read on 2026-10-24; the on-demand (standard) price was not on a page that could be read, so no machine type has a standard price yet and a standard-priced task is shown as unknown.",
+  "currency": "USD",
+  "regions": {
+    "us-central1": {
+      "n2-standard-2": {"spot": 0.058256, "source": "https://cloud.google.com/spot-vms/pricing", "read_on": "2026-10-24"},
+      "n2-standard-4": {"spot": 0.116512, "source": "https://cloud.google.com/spot-vms/pricing", "read_on": "2026-10-24"},
+      "n2-standard-8": {"spot": 0.233024, "source": "https://cloud.google.com/spot-vms/pricing", "read_on": "2026-10-24"},
+      "e2-standard-2": {"spot": 0.040212, "source": "https://cloud.google.com/spot-vms/pricing", "read_on": "2026-10-24"},
+      "e2-standard-4": {"spot": 0.080424, "source": "https://cloud.google.com/spot-vms/pricing", "read_on": "2026-10-24"},
+      "e2-standard-8": {"spot": 0.160848, "source": "https://cloud.google.com/spot-vms/pricing", "read_on": "2026-10-24"}
+    }
+  }
+}

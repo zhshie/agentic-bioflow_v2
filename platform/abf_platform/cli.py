@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|revoke | user add|passwd | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | web | token new | agent-token new|revoke | user add|cloud-cap|passwd | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
@@ -109,12 +109,39 @@ def cmd_agent_token_new(args):
 
 
 def cmd_user_add(args):
+    cap = None
+    if args.cloud_cap_usd is not None:
+        try:
+            cap = store.parse_cloud_cap(args.cloud_cap_usd)       # judged before the account is made, so a bad number leaves no account
+        except ValueError as e:
+            _err("rejected: %s; no account was made (沒有建立帳號)" % e)
+            return 1
     try:
-        store.create_user(store.default_tokens_path(), args.name, args.lab)
+        uid = store.create_user(store.default_tokens_path(), args.name, args.lab)
     except ValueError:
         _err("rejected: a user named %s already exists (這個名字已存在)" % args.name)
         return 1
+    if cap is not None:
+        store.set_cloud_cap(store.default_tokens_path(), uid, cap)
+        _say("monthly cloud cap of %s: US$%.2f (每月雲端費用上限)" % (args.name, cap))
     _say("added user %s (lab %s); issue a token with: abf-platform pat new --user %s" % (args.name, args.lab, args.name))
+    return 0
+
+
+def cmd_user_cloud_cap(args):
+    """Set or change the monthly cloud cap (US dollars) of a user. The administrator's terminal is the only door to it."""
+    tokens = store.default_tokens_path()
+    try:
+        cap = store.parse_cloud_cap(args.usd)
+    except ValueError as e:
+        _err("rejected: %s; the cap was not changed (上限沒有改)" % e)
+        return 1
+    uid = store.user_id_of(tokens, args.name)
+    if uid is None:
+        _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name)
+        return 1
+    store.set_cloud_cap(tokens, uid, cap)
+    _say("monthly cloud cap of %s is now US$%.2f (每月雲端費用上限)" % (args.name, cap))
     return 0
 
 
@@ -537,7 +564,13 @@ def build_parser():
     ua = usub.add_parser("add", help="add a user (name and lab)")
     ua.add_argument("name")
     ua.add_argument("--lab", required=True)
+    ua.add_argument("--cloud-cap-usd", help="the most this person may spend on cloud runs in a month, in US dollars (0 to 1,000,000); "
+                                           "without it the person cannot send to the cloud until you run: user cloud-cap")
     ua.set_defaults(func=cmd_user_add)
+    uc = usub.add_parser("cloud-cap", help="set or change the monthly cloud cap of a user, in US dollars", allow_abbrev=False)
+    uc.add_argument("name")
+    uc.add_argument("usd")
+    uc.set_defaults(func=cmd_user_cloud_cap)
     up = usub.add_parser("passwd", help="set the password a person logs into the confirmation page with (typed at a terminal, 8 to 1000 characters)",
                          allow_abbrev=False)
     up.add_argument("name")

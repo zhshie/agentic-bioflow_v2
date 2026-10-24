@@ -592,11 +592,12 @@ SCHEMA = {
     'tokens.tokens': ('id', 'token_hash', 'created_at', 'kind', 'agent_name', 'revoked_at', 'run_name', 'expires_at', 'ended_at', 'user_id', 'label', 'grant_id'),
     'tokens.users': ('id', 'name', 'lab', 'created_at', 'disabled_at', 'password_hash'),
     'tokens.web_sessions': ('id_hash', 'user_id', 'created_at', 'expires_at'),
-}      # the schema as 011b left it
+    'tokens.cloud_caps': ('user_id', 'cap_usd', 'set_at'),      # this table is cloud-cost's: one monthly cap per person, set only on the administrator's terminal
+}      # the schema as 011b left it, plus the one table above
 
 
 def test_tc063_no_schema_change(rig):
-    # TC-063: no migration, no new table or column
+    # TC-063: no migration, no new table or column (except tokens.cloud_caps, added by cloud-cost; see SCHEMA)
     rig.user("ann")
     got = {}
     for label, path in (("platform", rig.state), ("tokens", rig.w.ip.tokens)):

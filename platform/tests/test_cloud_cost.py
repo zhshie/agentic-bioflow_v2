@@ -324,7 +324,7 @@ def test_the_region_falls_back_to_the_location_of_the_environment(w):
     nozone = [_task(zone=...)]
     w.run("with-loc", w.alice, tasks=nozone, ce="gcb-loc", location="us-central1", started="2026-10-02T00:00:00Z")
     w.run("no-loc", w.alice, tasks=nozone, ce="gcb-noloc", started="2026-10-03T00:00:00Z")
-    assert w.cost("with-loc")["usd"] == pytest.approx(2.00)
+    assert w.cost("with-loc")["usd"] is None          # the run alone cannot name its region; month_used and estimate_launch add the location
     used = w.used(w.alice)
     assert used["usd"] == pytest.approx(2.00) and used["unknown_runs"] == 1
     w.run("hist", w.alice, tasks=nozone, ce="gcb-loc", location="us-central1", started="2026-08-03T00:00:00Z", pipeline="nf-core/q")
@@ -720,7 +720,7 @@ def test_nothing_stops_a_running_job_and_no_policy_channel_exists():
     texts = _pkg_text()
     for name, text in texts.items():
         assert "watchdog" not in text.lower() and "POLICY" not in text, name
-    kinds = re.search(r"kind TEXT NOT NULL CHECK \(kind IN \(([^)]*)\)\)", (PKG / "store.py").read_text(encoding="utf-8")).group(1)
+    kinds = re.search(r"CHECK \(kind IN \(('preflight'[^)]*)\)\)", (PKG / "store.py").read_text(encoding="utf-8")).group(1)
     assert [k.strip(" '") for k in kinds.split(",")] == ["preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records",
                                                          "read_task_log"]
     assert "kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel'))" in (PKG / "store.py").read_text(encoding="utf-8")

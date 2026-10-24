@@ -574,6 +574,17 @@ The automatic tests use fakes for the program runner, the detached start and the
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with the list under "Scope: files" in `specs/gcb-launch/plan.md`: nothing else is changed; `records.py`, `web*.py`, `agent.py` and the `hello` facts are untouched; no Slurm test file is touched. Of the C-1 tests (`test_gcb_ce.py`) only five places changed: the job kinds that are refused, the first line and name of the "never auto picked" test, the two patterns dropped from the "later slices" test, the documentation strings, and the one job kind that `test_refusals_are_plain_words` probes (`launch_nextflow` is allowed now, so it asks `list_site_files`, which is still refused; the plan's list did not name this one, see the ledger).
 
+## Cloud cost (cloud-cost): the maintainer and the reviewer check
+
+The automatic tests use a made-up price list and databases in a temporary folder; they touch no network. The steps below run a real Google Batch job and **cost a very small amount of money**: set the budget and the alert of the Google Cloud project first (the budget is Google's own reminder, not the platform's cap; see `docs/CLOUD.md`).
+
+1. **Set a small cap.** `abf-platform user add <name> --lab <lab> --cloud-cap-usd 5` (or `abf-platform user cloud-cap <name> 5` for an account that exists). Check: the command prints the cap; a wrong value (`-1`, `abc`, `nan`, `1e9`) is refused in words and leaves the cap as it was.
+2. **Run the smallest analysis on `gcb1`** the way the gcb-launch section says, then open `index.db` and look at `task_usage`. Check: `machine_type`, `price_model` and `cloud_zone` are filled. If they are NULL, Nextflow's `google-batch` executor did not send them: stop and tell the developer-agent; do not change the code to guess.
+3. **Compare with the bill.** Work out the run with `cloud_cost.run_tasks_cost` (it gives the US dollars, or `None` with the reasons) and compare it with the Compute Engine cost of the same hours in the Google Cloud Console. Check: write the difference in `specs/cloud-cost/ledger.md`. It should be a little under the bill (start-up time and disks are not counted); if it is far off, tell the developer-agent; do not change a price by hand.
+4. **Make the cap bite.** Set the cap below "used + estimate" (for example 0) and call `cloud_cost.cap_problem` for the same environment and pipeline. Check: the answer is a plain refusal with the cap, the used amount, what is left and the estimate in `US$` with two decimals. (The call is not yet in the launch screen; see `docs/CLOUD.md`.)
+
+**The reviewer.** Run `git diff --name-only origin/v3...HEAD`: only the files under "Scope: files" in `specs/cloud-cost/plan.md`; none of `abf_launch/build.py`, `abf_station/launch.py`, `actions/__init__.py`, `pipeline_launch.py`, `pyproject.toml`, `setup.py`, `su.py`, `records.py`, `jobs.py`, `compute_envs.py`. In `test_gcb_ce.py` one assertion changed (`cloud_cost.py` may exist now) and in `test_web_actions.py` one line (the new table `tokens.cloud_caps`) plus its comment; nothing else was loosened, deleted or skipped. Open three `source` addresses of `platform/abf_platform/data/cloud_rates.json` at random and compare the number on the page with the file; mark an address that does not open as unverified.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in
