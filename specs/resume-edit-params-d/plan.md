@@ -92,6 +92,13 @@ source: resume-edit-params 的第 4 片（共 4 片）；維護者 10-23 常設�
 ## 裁決（2026-10-24 17:10 developer-agent，以本段為準）
 1. after 寫 resume-edit-params-c；另外等 cloud-cost（#188）合併後才開工，由 developer-agent 把關。
 
+## 裁決三（2026-10-24 23:58，回應 verifier 第二次出題退回）
+1. 「Asking again」以已合併 b 片的行為為準：同一份改動在 yes 之後再呼叫＝回同一個工作編號（不開第二個 job、不是拒絕）；**不同內容**的呼叫才被「只能對最新的一次」擋下並點名已存在的那一次（`test_resume_edit_params_platform.py` 約 343-360）。第 3 個測試改名為 `…a_repeated_same_call_gets_the_same_job_and_a_different_one_is_refused…`。刪掉「工作編號用 get_run 看」這句。
+2. 前置：本片只改 PLATFORM.md／TESTING.md，與 c 片（#205，CI 中）檔案不相交、測試不依賴 c；**不等 c 合併，照常開工**。
+3. `tests/test_launch_docs.py` 不檢查 resume：由新測試自己用真的 parser 涵蓋 resume 與 relaunch 的範例行（TC-003 照此）。
+4. 行號以標題定位；`Thirteen tools` 那段若沒有「one argument」字樣就不改，只要求全文沒有「resume 只有一個參數」的說法。
+5. 文件**逐字引用** `abf_launch/build.py` 的 EDITED_SENTENCE，測試對照程式裡的常數。TESTING.md 第 5 點不改。
+
 ## 專長守則（backend）
 
 ### executor
