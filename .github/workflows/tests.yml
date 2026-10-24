@@ -23,6 +23,10 @@
 # relay_connect_test.py is excluded the same way run_all.sh already excludes
 # it from itself - a manual probe needing a live relay and a host argument,
 # not a file this can run unattended.
+# 2026-10-24: --timeout 900 because platform_test.sh (the whole platform pytest suite in one file)
+# grew past run_all.sh's 300 s default on CI runners; the per-test limit only catches hangs. The job
+# itself is capped at 60 minutes. Splitting platform_test.sh and finding its slowest tests is a
+# separate task, after which this can go back to the default.
 name: tests
 
 on:
@@ -33,6 +37,7 @@ on:
 jobs:
   run_all:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -40,4 +45,4 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: bash tests/run_all.sh
-        run: bash tests/run_all.sh
+        run: bash tests/run_all.sh --timeout 900
