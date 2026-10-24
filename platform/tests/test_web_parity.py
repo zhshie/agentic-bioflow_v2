@@ -25,6 +25,8 @@ WEB_ONLY = {
     "list_samplesheets": "the launch form's choice of samplesheet: the files in the caller's own upload folder",
     "request_facts": "the top of the confirmation page: the few plain facts of one pending request, read from its structured content",
     "launch_prefill": "the quick launch of the launch form: what the person's own earlier run was sent with, when it is still kept",
+    "run_outputs": "the Outputs tab of the results stage (results-outputs): the last listing of <run folder>/results, never waiting for the site; "
+                   "no MCP tool yet, because many older tests pin the tool list (an intended, recorded choice)",
 }
 # Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).
 OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d", "read_task_log": "011c",

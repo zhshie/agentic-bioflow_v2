@@ -18,6 +18,7 @@ They write the same kind of confirmation (a launch) and queue the same kind of j
 """
 import dataclasses
 import os
+import re
 import sqlite3
 import time
 
@@ -264,6 +265,74 @@ async def list_site_files(platform_path, compute_env, path, *, caller=None):
     answer.update(ok=False, message=out["message"])
     if result and result.get("error"):
         answer["error"] = result["error"]
+    return answer
+
+
+_OUTPUTS_NO_RUN = "Run not found (找不到這個 run)"      # the same words for a run that is not there and for somebody else's: no id, nothing to tell them apart
+_OUTPUTS_NO_LAUNCH = ("不是從平台送出的分析，沒有輸出資料夾紀錄 "
+                      "(this analysis was not launched from the platform, so there is no output folder on record)")
+_OUTPUTS_NO_ANSWER = "站台沒有回應 (the site did not answer)"
+_OUTPUTS_GENERIC = "站台讀不到這個資料夾 (the site could not read this folder)"
+_INTERNAL_WORDS = re.compile(r"Traceback|File \"|\bSELECT\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b|sqlite|args_json|deadline_at|result_json|"
+                             r"Exception|, line \d+")
+
+
+def _outputs_reason(message):
+    """The site's own sentence when it is one plain line; a stack, SQL or an internal field name is never passed on."""
+    line = next((x.strip() for x in str(message or "").splitlines() if x.strip()), "")
+    if not line or _INTERNAL_WORDS.search(str(message)):
+        return _OUTPUTS_GENERIC
+    return line[:300]
+
+
+def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False, enqueue=True):
+    """What `<run folder>/results` holds, for the run page: the answer of the newest list_site_files job for that folder. It never
+    waits for the site (`list_site_files` does, up to 60 seconds, and a page refreshes every 15): with no job for the folder it queues one
+    and says `loading`; with `relist` it queues a new one even if there is an answer. `enqueue=False` only looks.
+    Returns {state: loading|ready|error|unavailable, path, compute_env, files, listed_at, reason}; a run that is not the caller's or is
+    not there answers {found: False, message} and queues nothing."""
+    view = status.get_run(index_path, run_id, status.now()) if isinstance(run_id, str) else None
+    plat = platform_path_for(index_path, platform_path)
+    if view is None or (caller is not None and view["name"] not in jobs.owned_run_names(plat, caller.user_id)):
+        return {"found": False, "message": _OUTPUTS_NO_RUN}
+    answer = {"state": "unavailable", "path": None, "compute_env": None, "files": [], "listed_at": None, "reason": None}
+    con = store.open_readonly(plat)
+    launch = None
+    if con is not None:
+        try:
+            launch = jobs.latest_launch(con, view["name"])
+        except sqlite3.Error:
+            launch = None
+        finally:
+            con.close()
+    folder = launch["run_folder"] if launch is not None and launch["run_folder"] else None
+    if folder is None:
+        answer["reason"] = _OUTPUTS_NO_LAUNCH
+        return answer
+    path = folder.rstrip("/") + "/results"
+    ce = launch["ce"]
+    answer.update(path=path, compute_env=ce, state="loading")
+    job = None if relist else jobs.latest_listing(plat, ce, path)
+    if job is None:
+        if not enqueue:
+            return answer
+        try:
+            jobs.enqueue_listing(plat, ce, path, status.now, caller_user_id=_caller_id(caller))
+        except jobs.JobRefused as e:
+            answer.update(state="error", reason=str(e))
+        return answer
+    result = job["result"] or {}
+    if job["state"] in ("queued", "claimed"):
+        if status.now() > job["deadline_at"]:      # nobody marks it expired when nobody waits: the page says so, and queues nothing
+            answer.update(state="error", reason=_OUTPUTS_NO_ANSWER)
+        return answer
+    if job["state"] == "done" and result.get("ok"):
+        files = [{"name": e["name"], "type": e.get("type", "other"), "size": e.get("size", 0), "modified": e.get("modified", "")}
+                 for e in result.get("entries") or []]
+        answer.update(state="ready", files=files, listed_at=job["finished_at"])
+        return answer
+    answer.update(state="error", listed_at=job["finished_at"],
+                  reason=_OUTPUTS_NO_ANSWER if job["state"] == "expired" else _outputs_reason(result.get("message")))
     return answer
 
 

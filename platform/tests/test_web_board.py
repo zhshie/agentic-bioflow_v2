@@ -536,7 +536,7 @@ def test_tch21_stage_bodies(w):
     mid = plain(pane(c.get("/?run=" + a).text, "middle"))
     for label, n in (("成功", 11), ("快取", 12), ("失敗", 13), ("中止", 14), ("執行中", 15), ("等待", 16), ("已送出", 17)):
         assert re.search(r"%s\s*%d(?!\d)" % (label, n), mid), (label, n)
-    assert "10-18 09:05" in plain(pane(c.get("/?run=" + b).text, "middle"))
+    assert "10-18 09:05" in plain(pane(c.get("/?run=" + b + "&tab=info").text, "middle"))
     assert "Process terminated with an error exit status (137)" in c.get("/?run=" + a).text
     for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "013b")):
         body = pane(c.get("/?run=%s&stage=%s" % (a, stage)).text, "middle")
@@ -1262,7 +1262,7 @@ def test_tcs51_no_time_in_right_column(w):
     p = plain(pane(c.get("/?run=" + g).text, "right"))
     assert "09:12" in p and not re.search(r"\d\d-\d\d \d\d:\d\d", p)
     assert not re.search(r"\d\d:\d\d", plain(pane(c.get("/?run=" + s).text, "right")))
-    assert "10-18 09:12" in plain(pane(c.get("/?run=" + s).text, "middle"))
+    assert "10-18 09:12" in plain(pane(c.get("/?run=" + s + "&tab=info").text, "middle"))
 
 
 def test_r10_reason_marker_left_tag_and_wrapping(w):

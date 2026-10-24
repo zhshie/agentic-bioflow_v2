@@ -358,6 +358,6 @@ def test_n03_n04_other_stages_unchanged(w):
     ann, c = world(w)
     a = f1(w, ann)
     s = seed(w, "s1", "succeeded", ann, started=T0)
-    for url in ("/?run=%s&stage=launch" % a, "/?run=%s&stage=results&tab=info" % s):
+    for url in ("/?run=%s&stage=launch" % a,):      # results-outputs: a succeeded run's results stage now has the cards, tabs and Outputs (specs/results-outputs)
         t = pane(c.get(url).text, "middle")
         assert 'class="rtabs"' not in t and 'class="sumcards"' not in t and "<article" not in t
