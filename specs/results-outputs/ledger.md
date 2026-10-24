@@ -26,3 +26,8 @@
 
 - `docs/TESTING.md` 沒有對應 TC-075／078／084／086 的手動步驟（不在計畫檔案範圍內），驗收時這幾條會是 UNVERIFIED。
 - 費用卡：與執行階段相同寫法（`SU —`），沒有自創數字。
+
+## 修正輪補記：文件檢查與另一支釘死的清單
+
+- `platform/tests/test_launch_e2e.py:185`（`test_tc010_tc061_*`）：期望的工具清單加 `run_outputs`。
+- `tests/platform_storage_doc_test.sh:140,142`（文件寫「幾個唯讀工具／幾個工具」的檢查）：`seven read-only tools`→`eight read-only tools`、`Twelve tools.`→`Thirteen tools.`，與 `docs/PLATFORM.md` 同步改（文件說的工具數必須和程式一致，這支測試就是在守這件事）。
