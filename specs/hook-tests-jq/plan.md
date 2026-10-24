@@ -74,6 +74,13 @@ source: developer-agent 實測（2026-10-25，WSL Ubuntu、16 核、v3 的 `git 
 1. 兩支都做（不只 cleanup）。
 2. 合併前 developer-agent 跑 /code-review（安全網的測試）。
 
+## 裁決二（2026-10-25 07:00，回應 verifier 出題退回）
+3. T5 改成：「計畫列出的那些行所屬的 helper 不再含 `python3 -c`；其餘行與 base 逐字相同」。`bj()`（:167）等不在清單的 python3 -c 不動。
+4. 突變驗證的做法：把 `tests/` 與 `hooks/` 整份複製到暫存目錄，替換副本裡的 hook 再跑副本的測試（H= 是寫死的，不能用環境變數覆寫）。
+5. T6（中文、``、`\"`、反斜線）只當閱卷時的一次性檢查，不新增永久案例；「不增減案例」維持。
+6. 接受 verifier 加的 TC-011（對 confirm_launch_test.sh 做同樣的突變驗證）。
+7. `permissionDecisionReason` 的解碼不去 ``，只有 decision 欄位去。
+
 ## 專長守則（backend）
 
 ### executor
