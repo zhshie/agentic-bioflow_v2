@@ -296,26 +296,23 @@ ask() { # ask <additionalContext message> <permissionDecisionReason>
 # to read the command the way a shell would (that always leaves a hole) and it does
 # not say which value takes effect: if the text has <VAR>= anywhere, it warns and
 # copies out what follows each <VAR>= (not unquoted, not expanded), the first 3 and
-# the last 1, with the count. relay-warning-polish: a value that opens with a quote
-# is shown up to the closing quote (looked for in the next 119 characters only);
-# any other value stops at the next space or ; & |; at most 120 characters each, and
-# a trailing ... marks a value that was cut or whose quote is not closed. When the
-# command has more than 4 mentions a line says which ones are not listed.
-# A mention whose left neighbour is a letter, digit or _ (MY_<VAR>=) is another
-# variable that only ends in the same name: it is not counted and not listed. Every
-# other left neighbour (or none) is a mention, so the warning only ever gets shorter
-# for those look-alikes. Done with the same linear trick as the count: on each 8 KB
-# window (taken one character further left) ${y//[word char]<VAR>=/} is removed once
-# more and the look-alikes are the length difference over ${#V}+2. No loop over
-# characters, no stripping of prefixes, no subshell. Listing the values looks at
-# most 20 mentions forward and 20 backward for good ones; past that it lists
-# nothing (and says so) rather than list a wrong one.
+# the last 1, with the count. Whatever stands to the left of <VAR>= does not matter:
+# MY_<VAR>= and -e<VAR>= count as mentions too (a warning too many is fine, one too
+# few is not).
+# relay-warning-polish: a value that opens with a quote is shown up to the closing
+# quote (looked for in the next 119 characters only); any other value stops at the
+# next space or ; & |; at most 120 characters each. A trailing ... marks a value that
+# was cut, whose quote is not closed, or that goes on after the closing quote (a
+# closing quote followed by space ; & | ) ` } or the end of the text does not). A
+# backslash-escaped quote is not handled: it is a known display limit (the gate still
+# shows the whole command). When the command has more than 4 mentions a line says
+# which ones are not listed.
 # Builtins only and linear in the length of the command (the hook's timeout lets a
-# command through): ${x//p/} on 8 KB windows for the count, at most 20 ${x%%p*} for the first
-# three, at most 20 ${CMD%p*} for the last (suffix removals, which stop at the first
+# command through): ${x//p/} on 8 KB windows for the count, at most 3 ${x%%p*} for the first
+# three, one ${CMD%p*} for the last (suffix removals, which stop at the first
 # letter that cannot match; ${x#*p} would test every prefix and be quadratic).
-# Over 64 KB: the header and the count only (and, when the caller asks, whether the
-# last mention is empty).
+# Over 64 KB (measured in bytes: the length is taken under LC_ALL=C): the header and
+# the count only (and, when the caller asks, whether the last mention is empty).
 # relay_env_warn <VARIABLE NAME> <sentence that closes the warning> [empty]
 # Returns 0 = warn (RELAY_ENV_HEAD holds the whole warning; only with the third
 # argument `empty`, RELAY_ENV_EMPTY=1 when the last mention is empty), 1 = the
@@ -324,8 +321,8 @@ relay_env_warn() {
     local V=$1 tl=$2 nl=$'\n'
     RELAY_ENV_HEAD=""; RELAY_ENV_EMPTY=0
     case $CMD in *"$V="*) ;; *) return 1 ;; esac
-    local gone n=0 nbad=0 i=0 k ks x y t w s q rest pre v nxt dots a list="" sep="" over="" steps good=0 prev qd
-    local win=$(( ${#V} + 8192 )) vl=${#V} wc='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
+    local gone n=0 i=0 k ks x t w s q rest pre v nxt dots a list="" sep="" qd
+    local win=$(( ${#V} + 8192 )) vl=${#V}
     local dq='"' sq="'" snip1="" snip2="" snip3="" snipl="" big=0
     # The count: ${CMD//p/} on the whole command is quadratic in bash (3 s for 8000
     # matches in 1 MB), so it is done on windows of 8 KB. A window starts at i and
@@ -337,63 +334,37 @@ relay_env_warn() {
     LC_ALL=C
     while [ "$i" -lt "${#CMD}" ]; do
         x=${CMD:i:win}; gone=${x//"$V="/}
-        if [ ${#gone} -lt ${#x} ]; then
-            n=$(( n + (${#x} - ${#gone}) / (vl + 1) ))
-            if [ "$i" -gt 0 ]; then y=${CMD:i-1:win+1}; else y=$x; fi
-            gone=${y//[a-zA-Z0-9_]"$V="/}
-            nbad=$(( nbad + (${#y} - ${#gone}) / (vl + 2) ))
-        fi
+        n=$(( n + (${#x} - ${#gone}) / (vl + 1) ))
         i=$(( i + 8192 ))
     done
-    n=$(( n - nbad ))
-    if [ "$n" -ge 1 ] && [ "${#CMD}" -gt 65536 ]; then
+    if [ "${#CMD}" -gt 65536 ]; then
         big=1
         if [ "${3-}" = empty ]; then
             t=${CMD%"$V="*}
-            case ${t: -1} in [$wc]) ;; *) snipl=${CMD:$((${#t} + vl + 1)):122} ;; esac
+            snipl=${CMD:$((${#t} + vl + 1)):122}
         fi
     fi
     if [ -n "$hadl" ]; then LC_ALL=$oldl; else unset LC_ALL; fi
-    [ "$n" -ge 1 ] || return 1
     w="mentions"; [ "$n" -eq 1 ] && w="mention"
     RELAY_ENV_HEAD="THIS COMMAND ALSO MENTIONS ${V}= (it would change which hosts/domains the relay accepts). Read the whole command; the value that takes effect depends on the shell."
     ks=""
     if [ "$big" -eq 1 ]; then
         RELAY_ENV_HEAD+="${nl}${n} ${w} in total."
         RELAY_ENV_HEAD+="${nl}The values are not listed because the command is over 64 KB; read the whole command shown below."
-        [ -z "$snipl" ] || ks=l
+        [ "${3-}" = empty ] && ks=l
     else
-        # the first 3 good mentions (x is what is left of the command after each one)
-        x=$CMD; prev=""; steps=0
-        while [ "$good" -lt 3 ] && [ "$good" -lt "$n" ]; do
-            steps=$((steps + 1))
-            if [ "$steps" -gt 20 ]; then over=1; break; fi
-            t=${x%%"$V="*}
-            [ ${#t} -lt ${#x} ] || { over=1; break; }
-            [ -z "$t" ] || prev=${t: -1}
-            x=${x:$((${#t} + vl + 1))}
-            case $prev in [$wc]) prev="="; continue ;; esac
-            good=$((good + 1)); prev="="
-            case $good in 1) snip1=${x:0:122} ;; 2) snip2=${x:0:122} ;; *) snip3=${x:0:122} ;; esac
+        # the first 3 mentions (x is what is left of the command after each one)
+        x=$CMD
+        for k in 1 2 3; do
+            [ "$k" -le "$n" ] || break
+            t=${x%%"$V="*}; x=${x:$((${#t} + vl + 1))}
+            case $k in 1) snip1=${x:0:122} ;; 2) snip2=${x:0:122} ;; *) snip3=${x:0:122} ;; esac
+            ks+="$k "
         done
-        # the last good mention, when there are more than 3
-        if [ -z "$over" ] && [ "$n" -gt 3 ]; then
-            t=${CMD%"$V="*}; steps=0
-            while :; do
-                case ${t: -1} in
-                    [$wc])
-                        steps=$((steps + 1))
-                        if [ "$steps" -gt 20 ]; then over=1; break; fi
-                        case $t in *"$V="*) t=${t%"$V="*} ;; *) over=1; break ;; esac ;;
-                    *) snipl=${CMD:$((${#t} + vl + 1)):122}; break ;;
-                esac
-            done
-        fi
-        if [ -n "$over" ]; then
-            RELAY_ENV_HEAD+="${nl}${n} ${w} in total."
-            RELAY_ENV_HEAD+="${nl}The values are not listed because the command has too many names that only end in ${V}; read the whole command shown below."
-        else
-            case $n in 1) ks="1" ;; 2) ks="1 2" ;; 3) ks="1 2 3" ;; *) ks="1 2 3 l" ;; esac
+        # the last one, when there are more than 3
+        if [ "$n" -gt 3 ]; then
+            t=${CMD%"$V="*}; snipl=${CMD:$((${#t} + vl + 1)):122}
+            ks+="l"
         fi
     fi
     # the text shown for each listed mention (also run for the last one alone over 64 KB)
@@ -404,7 +375,7 @@ relay_env_warn() {
             rest=${s:1:119}; pre=${rest%%"$q"*}
             if [ ${#pre} -lt ${#rest} ]; then
                 v=${s:0:$((${#pre} + 2))}; nxt=${s:$((${#pre} + 2)):1}
-                case $nxt in ""|[[:space:]\;\&\|]) ;; *) dots="…" ;; esac
+                case $nxt in ""|[[:space:]\;\&\|\)\`\}]) ;; *) dots="…" ;; esac
                 qd=1
             fi
         fi
@@ -419,7 +390,7 @@ relay_env_warn() {
         fi
         [ "$big" -eq 1 ] || { list+="${sep}[${v}${dots}]"; sep=" "; }
     done
-    if [ "$big" -ne 1 ] && [ -z "$over" ]; then
+    if [ "$big" -ne 1 ]; then
         RELAY_ENV_HEAD+="${nl}Text after each ${V}= as written (first 3 and last 1 of them): ${list}; ${n} ${w} in total."
         if [ "$n" -eq 5 ]; then
             RELAY_ENV_HEAD+="${nl}(mention 4 is not listed; read the whole command shown below)"
