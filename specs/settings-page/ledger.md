@@ -30,3 +30,6 @@ No change: `list_my_tokens` has no MCP tool (the plan: "only when parity require
 
 ## Migration
 Not needed: no table or column added (`list_my_tokens` reads `store.list_pats`).
+
+## More edits to existing assertions (found by the full suite)
+5. NOT named by the plan: `platform/tests/test_pat.py::test_tca11_no_tool_route_or_action_creates_or_revokes_users_or_pats` (line ~287) forbids any name in `actions` that matches `user|pat|token`. The plan fixes the new read's name as `list_my_tokens` (ruling 2), so it now exempts exactly that one name (`and n != "list_my_tokens"`). The MCP-tool check and the route check next to it are unchanged, so no create/revoke action can hide behind the exemption except by that exact name. **Needs sign-off.**
