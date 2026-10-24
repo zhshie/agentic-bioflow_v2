@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "title": "old style schema",
+  "type": "object",
+  "definitions": {
+    "main_options": {
+      "title": "Main options",
+      "type": "object",
+      "description": "Main parameters.",
+      "required": ["outdir", "mode"],
+      "properties": {
+        "outdir": {"type": "string", "description": "Where results go."},
+        "mode": {"type": "string", "default": "fast", "description": "Run mode."},
+        "verbose": {"type": "boolean", "default": false, "hidden": true, "description": "Chatty output."}
+      }
+    }
+  },
+  "allOf": [{"$ref": "#/definitions/main_options"}]
+}
