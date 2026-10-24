@@ -119,6 +119,12 @@ issue #8 內文逐字（含標題）：
 3. tw 輸出形狀照計畫：兩處讀、`view` 備援、讀不到就 WARNING；手動驗收時用真的 tw 0.40 輸出核對，結果記進 ledger。
 4. `docs/PITFALLS.md` 只在檔尾新增一條（nano4-ce-fixes 也會加，合併時兩條都留）。車道 L3-plugin-tw。
 
+## 裁決三（2026-10-24 developer-agent，回應 verifier 出題退回；以本段為準）
+5. 比對範圍：先挑 repository 符合、且 revision 等於這次要用的 revision 的項目（JSON 有 revision 欄位時）。沒有 revision 欄位時，退回「任一同 repo 項目綁的 CE 不是期望 CE 就列出全部不符項目並出 DECIDE」——寧可多問，不靜默。補多項目案例：同管線兩個版本、CE 不同，要用的版本綁錯 → DECIDE；要用的版本綁對、舊版綁錯 → 相符（有 revision 欄位時）／DECIDE（沒有時）。
+6. 手動驗收步驟寫在 ledger 即可，TC-032 判 UNVERIFIED 不擋合併。
+7. 沒有 compute_env 設定時的 WARNING 措辭：`WARNING: no compute_env is configured, so the bound compute environment cannot be checked.`
+8. 「最多查 5 個項目」＝`view` 備援最多呼叫 5 次。沒有 python、tw 逾時不出 TC。verifier 額外加的 TC-004/007/008/012/015/016/017/024 保留。
+
 ## 專長守則（backend）
 
 ### executor
