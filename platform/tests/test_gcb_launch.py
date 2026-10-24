@@ -1071,14 +1071,14 @@ def test_tool_list_unchanged_and_no_new_web_route(tmp_path):
     assert not [r.path for r in app.routes if re.search(r"gcb|google|batch|gcp", getattr(r, "path", ""), re.I)]
 
 
-def test_no_migration_is_needed_and_the_columns_are_unchanged(ip):
+def test_no_gcb_migration_is_needed_and_launches_only_gained_work_cleaned_at(ip):
     # TC-113
     create(ip)
     con = sqlite3.connect(str(ip.state_db))
     cols = {t: [r[1] for r in con.execute("PRAGMA table_info(%s)" % t)] for t in ("launches", "jobs", "compute_envs")}
     con.close()
     assert cols["launches"] == ["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at", "submitted_at",
-                                "cancel_requested_at", "job_id", "user_id", "parent_run", "attempt", "attempt_kind"]
+                                "cancel_requested_at", "job_id", "user_id", "parent_run", "attempt", "attempt_kind", "work_cleaned_at"]
     assert cols["jobs"] == ["id", "agent", "compute_env", "kind", "args_json", "state", "result_json", "late_result_json", "created_at",
                             "deadline_at", "claimed_at", "finished_at", "forgotten_at", "forgotten_by", "confirmation_id"]
     assert cols["compute_envs"] == ["id", "name", "description", "platform", "credentials_id", "agent", "status", "message", "is_primary",
