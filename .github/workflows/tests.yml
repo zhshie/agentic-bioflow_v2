@@ -23,6 +23,10 @@
 # relay_connect_test.py is excluded the same way run_all.sh already excludes
 # it from itself - a manual probe needing a live relay and a host argument,
 # not a file this can run unattended.
+# 2026-10-24 (ci-quarantine, maintainer-approved): --retry-failed-once re-runs only the files that
+# failed, once; a file that passes only on retry is printed as FLAKY and must be listed in
+# tests/quarantine.txt (issue + expiry <= 14 days) or the job still fails. --timeout 900 matches the
+# local runner (memory/scripts/abf-fast-suite.sh); platform_test.sh grew past 300 s on CI runners.
 name: tests
 
 on:
@@ -39,5 +43,14 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: bash tests/run_all.sh
-        run: bash tests/run_all.sh
+      - name: bash tests/run_all.sh --retry-failed-once
+        shell: bash
+        run: bash tests/run_all.sh --retry-failed-once --timeout 900 2>&1 | tee "$RUNNER_TEMP/run_all.out"
+
+      - name: List FLAKY tests in the job summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/run_all.out" ] && grep -q '^FLAKY ' "$RUNNER_TEMP/run_all.out"; then
+            { echo '### FLAKY tests'; grep '^FLAKY ' "$RUNNER_TEMP/run_all.out" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
