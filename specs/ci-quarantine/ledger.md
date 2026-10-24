@@ -34,3 +34,9 @@ boom
 - Git Bash 沒有 jq，沙盒測試的摘要行會多出 ` - run with --allow-missing-tools, ... missing`，`run_all_retry_test.sh` 在比對前把這段去掉（TC-056 的 python3 假指令也放行 `print(1)` 探測，因為既有的工具檢查會呼叫它）。
 - TC-033（INCOMPLETE 重跑不能補救）沙盒難製造：`retry_and_conclude` 第一行 `[ "$total" = "$expected" ] || exit 1`，閱卷讀碼。
 - 沒有跑「真實 repo 帶 `--retry-failed-once` 全套」；全套只跑了不帶旗標那次。
+
+## 審查後修訂（裁決三、裁決四）
+
+- [x] RED `8b3c63e`：`tests/run_all_retry_test.sh` 依修訂合約重寫（相對日期、無 RUN_ALL_TODAY、逾時不重跑、名單檔不見、TC-078～TC-091 新案例）；未改 run_all.sh 時 42 條斷言紅。
+- [x] GREEN `1c003e3`：`tests/run_all.sh` 日期只用 `date -u +%F`、逾時不重跑、名單檔不見即失敗、`--check-quarantine` 在參數解析後立刻執行、`platform_clock_test.sh` 也拒收、`--verbose` 印重跑輸出、缺工具提示帶進結論、名單行尾 `# 註解`、stderr 句改為 `Not quarantined (flaky): …`。`run_all_retry_test.sh` 全綠；WSL 全套（不帶旗標）`122/122 passed`、`all green`。
+- 沒動 `.github/`（留給 developer-agent）。此 ledger 提交之後 HEAD 多一個只改文件的 commit，測試與程式碼同 `1c003e3`。
