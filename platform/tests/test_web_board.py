@@ -559,14 +559,14 @@ def test_tcl07_to_l13_stage_strip(w):
     ids = {st: seed(w, "n-" + st, st, ann) for st in ("running", "succeeded", "failed", "lost")}
     c = login(w, "ann")
     expect = {"running": ["is-done", "is-current", "is-later", "is-later", "is-later"],
-              "failed": ["is-done", "is-current", "is-later", "is-later", "is-later"],
-              "lost": ["is-done", "is-current", "is-later", "is-later", "is-later"],
+              "failed": ["is-done", "is-current is-failed", "is-later", "is-later", "is-later"],
+              "lost": ["is-done", "is-current is-failed", "is-later", "is-later", "is-later"],
               "succeeded": ["is-done", "is-done", "is-current", "is-later", "is-later"]}
     for st, want in expect.items():
         cells = strip_cells(c.get("/?run=" + ids[st]).text)
         assert list(cells) == list(STAGES), st
         got = [[k for k in cells[s][0] if k.startswith("is-")] for s in STAGES]
-        assert got == [[x] for x in want], (st, got)
+        assert got == [x.split() for x in want], (st, got)
     names = [plain(strip_cells(c.get("/?run=" + ids["running"]).text)[s][1]) for s in STAGES]
     assert [n.replace("✓ ", "") for n in names] == ["送出", "執行中", "結果", "下游", "完成"]
     cells = strip_cells(c.get("/?run=%s&stage=results" % ids["running"]).text)
@@ -1221,7 +1221,7 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
         for tag in ("<textarea", "<select", "<iframe", "<table", 'type="radio"', 'type="checkbox"'):
             assert tag not in t, (url, tag)
         assert [m for m in re.findall(r"<input\b[^>]*>", t) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m)] == []     # 012b: the buttons carry the run id (and the language)
-        assert t.count("<details") == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
+        assert t.count("<details") - t.count('<details class="menu">') == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):
             u = urlsplit(htmllib.unescape(h))
             assert u.path in ("/", "/settings", "/launch") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab", "from"}, h      # 011b adds ?tab=; 012b the launch page and ?from=

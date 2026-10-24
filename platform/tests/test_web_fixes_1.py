@@ -77,10 +77,21 @@ def test_f03_menu_forms_unchanged(w):
     en = menu_of(page(c, ids, "resume", "en")).group(1)
     assert buttons(en) == ["Resume", "Re-run", "Cancel"]
     assert en.count('name="lang" value="en"') == 3 and "Launch again from this run" in plain(en)
-    for verb in ("resume", "relaunch", "cancel"):
-        f = re.search(r'<form class="act" method="post" action="/act/%s">(.*?)</form>' % verb, m, re.S).group(1)
-        r = c.post("/act/" + verb, data=dict(re.findall(r'name="(\w+)" value="([^"]*)"', f)))
-        assert r.status_code == 200 and "<form" in r.text
+
+
+def test_f03b_menu_post_still_asks_first(tmp_path, monkeypatch):
+    # TC-012, TC-057: the menu forms of a really launched run land on the confirmation page and send nothing
+    from resume_harness import Rig
+    from test_web_actions import act_form, login, rid_of, run_of
+    rig = Rig(tmp_path, monkeypatch)
+    ann = rig.user("ann")
+    failed, again = run_of(rig, ann, "run-a"), run_of(rig, ann, "run-c")
+    c = login(rig, "ann")
+    for verb, rid in (("resume", failed), ("relaunch", again)):
+        t = c.get("/?run=" + rid).text
+        menu = menu_of(t).group(1)
+        assert act_form(menu, verb, rid) == act_form(t, verb, rid)
+        assert rid_of(c.post("/act/" + verb, data=act_form(menu, verb, rid)))
 
 
 def test_f04_running_page_menu_and_no_visible_button(w):
