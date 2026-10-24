@@ -163,6 +163,12 @@ source: memory/PLAN-abf-v3-replan-2026-10.md Milestone 3 的 C-6（拷問 10-21 
 6. **刪除 `work`、30 天提醒**（拷問五第 16 點後半）不在 C-6；是否已有任務？（C-3 的 cap／watchdog 附近？）
 7. **維護者原話寫 `gsutil`**——裁決 3 偏離它；是否要他親自點頭，由 developer-agent 判斷（我建議不用，列進每日清單即可）。
 
+## 裁決三（2026-10-24 developer-agent，閱卷 UNVERIFIED 後；以本段為準）
+7. 不准拆字串繞過掃描（與 su-followups TC-061 同一條規矩）。`cloud_store.py` 的大檔指令直接寫 `gcloud storage cp`。
+8. `platform/tests/test_gcb_ce.py::test_nothing_of_the_later_slices_exists` 是「後面的切片還不存在」的範圍釘子，C-6 正是那個後面的切片，所以本任務把 `storage cp` 從那條 regex 拿掉，同時新增一條更嚴的測試：`storage cp` 只准出現在 `cloud_store.py`，且該檔不得 import subprocess／os.system／任何會啟動程式的東西（憲法第 2 條）。`buckets create|services enable|service-accounts create|storage rm` 照舊禁止。test_gcb_ce.py 加進範圍，只准動這一處。
+9. 測試輔助 `public()` 改用 inspect.isfunction、TC-070 的路徑字串拆分：後者同樣改回不拆（用 `tmp_path` 造路徑，避開掃描的正當做法），前者接受。
+10. gcloud storage cp 取代 gsutil 照裁決二 3。PR 說明寫「不需要 migration」與理由（沒有新表、新欄），並列出沒動的既有斷言（TC-094）。
+
 ## 專長守則（backend）
 
 ### executor
