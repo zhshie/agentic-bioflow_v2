@@ -584,7 +584,11 @@ This task delivers the platform half only: a Dataset can be registered at `gs://
 4. **Over 2 GB.** Call `check_web_upload(..., {"big_R1.fastq.gz": 2000000001}, destination="gcb1", caller=<you>)`. Check: it is refused, the answer holds one line that starts with `gcloud storage cp ` and ends at your prefix `.../uploads/<you>/rawdata/`, and the second sentence says to put files already in the bucket into the same prefix. Exactly 2000000000 bytes must be accepted.
 5. **Nothing else changed.** Without `destination` every call answers as before. Search the platform database, the logs and your terminal output for any piece of the key file (for example `private_key`). Check: nothing is found.
 
-**The reviewer.** Run `git diff --name-only <base>...HEAD`. Check: only `platform/abf_platform/actions/datasets.py`, `platform/abf_platform/cloud_store.py`, `platform/tests/test_cloud_upload.py`, `docs/TESTING.md` and `specs/cloud-upload/*`; `actions/__init__.py`, `pipeline_launch.py`, `abf_launch/build.py`, `pyproject.toml` and `constraints.txt` are identical to the base; no existing test file is changed.
+**The reviewer.** Run `git diff --name-only <base>...HEAD`. Check: only `platform/abf_platform/actions/datasets.py`, `platform/abf_platform/cloud_store.py`, `platform/tests/test_cloud_upload.py`, `platform/tests/test_gcb_ce.py`, `docs/TESTING.md` and `specs/cloud-upload/*`; `actions/__init__.py`, `pipeline_launch.py`, `abf_launch/build.py`, `cli.py`, `store.py`, `deploy/`, `pyproject.toml` and `constraints.txt` are identical to the base.
+
+Then check the existing tests with `git diff <base>...HEAD -- platform/tests/`. Check: `test_datasets.py`, `test_gcb_launch.py`, `test_station_envs.py`, `test_guidance.py`, `test_scope.py` and `test_actions_layer.py` have no difference. `test_gcb_ce.py` is the one allowed exception, and only in one place: the regex in `test_nothing_of_the_later_slices_exists` loses `storage cp`; everything else in that file is unchanged, and no assertion is deleted, loosened or skipped.
+
+Last, look for split strings: run `grep -nE '"[^"]*" *\+ *"' platform/tests/test_cloud_upload.py` and read each hit. Check: no path or forbidden word is cut in two and joined again to dodge a scan (for example `/home` split); a path that is needed is made with `tmp_path`; the scans in `test_scope.py` and `test_datasets.py` still pass. A plain join that is not a dodge is fine.
 
 ## When something is red
 

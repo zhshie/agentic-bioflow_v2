@@ -243,7 +243,7 @@ def test_dots_are_refused(cloud):
 
 def test_local_and_cloud_paths_cannot_be_mixed(cloud):
     # TC-018
-    local = "/data/x_R2" + ".fq"
+    local = "/data/x_R2.fq"
     msg = refused(register(cloud, cloud.a, text=sheet([("a", A + "a_R1.fastq.gz", local)]), files=[A + "a_R1.fastq.gz", local]), cloud)
     assert "不能同時混本機路徑與雲端位置" in msg
 
