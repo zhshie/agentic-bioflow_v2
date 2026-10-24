@@ -224,6 +224,51 @@ def launch_prefill(platform_path, run_name, *, caller=None):
         con.close()
 
 
+_USED_PIPELINES_LIMIT = 20
+
+
+def list_used_pipelines(platform_path, *, caller=None, pipeline=None, revision=None):
+    """The pipelines the caller has launched before (guided launch, step 2 "Used before"): one entry per (pipeline, revision), the newest
+    launch of each, newest first, at most 20. An entry is {"pipeline", "revision", "run_name", "launched_at" (epoch seconds), "ce_name"}.
+    Only the caller's own launches count; a run whose content the owner forgot is left out. The pipeline and the revision are read from
+    the confirmation the launch was made from (the same content `launch_prefill` reads), so the 7-day clean-up of job arguments does not
+    touch them. With `pipeline` and `revision` given, every kept launch of that pair is listed instead of one per pair (the runs whose
+    parameters can be reused). Reads only; nothing is stored under this name."""
+    con = store.open_readonly(platform_path)
+    if con is None:
+        return {"pipelines": []}
+    owner = _caller_id(caller)
+    one_pair = pipeline is not None and revision is not None
+    out, seen = [], set()
+    try:
+        rows = con.execute("SELECT * FROM launches ORDER BY confirmed_at DESC, id DESC").fetchall()
+        now = time.time()
+        for r in rows:
+            if owner is not None and jobs._col(r, "user_id") != owner:
+                continue
+            if jobs._col(r, "attempt_kind") == "resume":
+                continue
+            kind, job = jobs.launch_job(con, r, now)
+            if kind == "refused" or jobs.run_forgotten(con, r["run_name"]):
+                continue
+            content = jobs.launch_content(con, r, job)
+            if content is None:
+                continue
+            bundle = content[0]
+            key = (bundle.get("pipeline"), bundle.get("revision"))
+            if not key[0] or (one_pair and key != (pipeline, revision)) or (not one_pair and key in seen):
+                continue
+            seen.add(key)
+            out.append({"pipeline": key[0], "revision": key[1], "run_name": r["run_name"], "launched_at": r["confirmed_at"], "ce_name": r["ce"]})
+            if len(out) >= _USED_PIPELINES_LIMIT:
+                break
+        return {"pipelines": out}
+    except sqlite3.Error:
+        return {"pipelines": []}
+    finally:
+        con.close()
+
+
 def _inside(path, root):
     """True when path is root or lies below it, compared by whole path components (never by prefix text)."""
     want, base = [p for p in path.split("/") if p], [p for p in root.split("/") if p]
