@@ -316,7 +316,8 @@ def test_tc026_to_tc029_the_clean_limit_is_fifty_each_unexpired_and_per_person(w
     with pytest.raises(jobs.JobRefused) as e:                           # TC-026
         pend(world, clock, bundle("c50"))
     msg = str(e.value)
-    assert "50" in msg and "清理提醒" in msg and "Traceback" not in msg and "SELECT" not in msg    pend(world, clock, bundle("c0"), caller=2)                          # TC-029
+    assert "50" in msg and "清理提醒" in msg and "Traceback" not in msg and "SELECT" not in msg
+    pend(world, clock, bundle("c0"), caller=2)                        # TC-029
     clock.t = T0 + 7 * DAY + 10                                         # TC-028
     pend(world, clock, bundle("fresh"))
 
