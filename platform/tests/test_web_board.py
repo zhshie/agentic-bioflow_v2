@@ -948,7 +948,7 @@ def test_tcs39_s40_s41_s42_settings(w):
     assert r.status_code == 200
     mid = pane(r.text, "middle")
     assert "<h1>設定</h1>" in mid
-    assert re.findall(r"<h2>(.*?)</h2>", mid) == ["運算環境", "憑證", "密碼與金鑰", "個人", "營運者後台", "角色（老師／學生）"]
+    assert re.findall(r"<h2>(.*?)</h2>", mid) == ["使用前檢查", "運算環境", "憑證", "密碼與金鑰", "個人", "營運者後台", "角色（老師／學生）"]      # settings-page: the checklist is the first section
     for word in ("AI 模型金鑰", "逐步模式", "開發模式"):
         assert word in mid
     assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", mid)
@@ -1219,7 +1219,7 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
     for url in ["/", "/settings"] + ["/?run=%s&stage=%s" % (rid, s) for s in STAGES]:
         t = c.get(url).text
         for tag in ("<textarea", "<select", "<iframe", "<table", 'type="radio"', 'type="checkbox"'):
-            assert tag not in t, (url, tag)
+            assert tag not in t or (tag == "<table" and url == "/settings"), (url, tag)      # settings-page: the settings page now has two tables (environments, tokens)
         assert [m for m in re.findall(r"<input\b[^>]*>", t) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m)] == []     # 012b: the buttons carry the run id (and the language)
         assert t.count("<details") - t.count('<details class="menu">') == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):

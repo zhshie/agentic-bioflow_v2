@@ -22,7 +22,10 @@ SECOND = "J" + "ev"      # spelled apart so the platform-wide safety test stays 
 
 @pytest.fixture
 def w(tmp_path, monkeypatch):
-    return World(tmp_path, monkeypatch)
+    from abf_platform import compute_envs
+    world = World(tmp_path, monkeypatch)
+    world.base_env = compute_envs.get(world.ip.state_db, "lab-a")      # the shape of a working environment, kept before a test deletes it
+    return world
 
 
 def sql(w, text, args=()):
@@ -62,9 +65,9 @@ def plain(text):
 
 def make_env(w, caller, name, agent, status="available", message="ok", primary=False, config=None, platform=None):
     from abf_platform import compute_envs
-    base = compute_envs.get(w.ip.state_db, "lab-a")
+    base = w.base_env
     compute_envs.create(w.ip.state_db, {"name": name, "platform": platform or base["platform"], "agent": agent, "owner_user_id": caller.user_id,
-                                        "config": config if config is not None else base["config"]})
+                                        "config": dict(base["config"], **(config or {}))})
     sql(w, "UPDATE compute_envs SET status = ?, message = ?, is_primary = ? WHERE name = ?", (status, message, 1 if primary else 0, name))
 
 
@@ -169,7 +172,7 @@ def two_envs(w, ann):
                                        {"pipeline": "nf-core/rnaseq", "revision": "3.14.0", "module": "m", "home": "/h"}]}),))
     make_agent(w, ann, "agent-off", online=False)
     make_env(w, ann, "second-env", "agent-off", status="invalid", message="broken thing", primary=False)
-    sql(w, "UPDATE compute_envs SET last_used_at = ? WHERE name = 'lab-a'", (time.time(),))
+    sql(w, "UPDATE compute_envs SET last_used_at = ?, is_primary = 1 WHERE name = 'lab-a'", (time.time(),))
 
 
 def rows_of(mid, h2):
@@ -191,7 +194,7 @@ def test_st04_ce_table(w):
     assert "✓" in first and "可用" in first and "state-succeeded" in first
     assert "✓" in first and "在線" in first and "nf-core/ampliseq 2.18.0" in first and "nf-core/rnaseq 3.14.0" in first
     assert "✗" in second and "無法使用" in second and "broken thing" in second and "state-failed" in second
-    assert "✗" in second and "離線" in second and "agent-off" in second and "<td>—</td>" in second.split("</td><td>")[-2].join(["<td>", "</td>"]) or "—" in second
+    assert "✗" in second and "離線" in second and "agent-off" in second
     assert re.search(r"\d\d-\d\d \d\d:\d\d", first.split("</td>")[-2])
     assert plain(second.split("</td>")[-2]) == "—"
     assert '<p class="off">新增或修改運算環境 <span class="later">之後開放</span></p>' in sec
@@ -230,7 +233,7 @@ def test_st05_ce_owner_rule(w):
     ann = w.user("ann")
     bob = w.user("bob")
     make_agent(w, bob, "bobs-secret-agent")
-    make_env(w, bob, "bobs-secret-env", "bobs-secret-agent", config={"sitePipelines": [{"pipeline": "x/bobs-pipe", "revision": "9", "module": "m", "home": "/h"}]})
+    make_env(w, bob, "bobs-secret-env", "bobs-secret-agent", config={"sitePipelines": [{"pipeline": "x/bobs-pipe", "revision": "2.9.0", "module": "m", "home": "BOBS_HOME"}]})
     r, _ = page(w, "ann")
     for word in ("bobs-secret-env", "bobs-secret-agent", "bobs-pipe"):
         assert word not in r.text
@@ -274,9 +277,7 @@ def test_st06b_no_tokens(w):
 def test_st07_list_my_tokens_action(w):
     # TC-041, TC-042, TC-043
     from abf_platform import actions, store
-    import os
     ann, bob = w.user("ann"), w.user("bob")
-    os.remove(w.ip.tokens) if False else None
     _, vb = pat(w, bob, "bobs-label-unique")
     ia, va = pat(w, ann, "a1")
     ib, vc = pat(w, ann, "a2", revoke=True)
