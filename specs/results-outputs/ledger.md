@@ -9,7 +9,11 @@
 
 ## 有意的改動（PR 要寫明）
 
-- `tests/test_web_parity.py`：`WEB_ONLY` 新增 `run_outputs`（網頁專用的動作，暫無 MCP 工具）。**偏離 TC-053／TC-054 的「MCP 同名 read tool」**：加 MCP 工具會讓約 20 支計畫範圍外的測試變紅（`test_mcp`、`test_human_channel`、`test_web_board::test_tn05` 等都釘死了工具清單），計畫只允許在「parity 測試要求時」登記，而 parity 測試接受 `WEB_ONLY`。要不要補 MCP 工具由維護者決定。
+- **修正輪（verifier 退回 TC-053／054／093）**：`mcp_server.py` 登記同名唯讀工具 `run_outputs(run_id)`，本體只是一次 `actions.run_outputs(...)` 呼叫（和其他讀工具同形）。擁有者規則仍在動作層。上一輪「網頁專用、暫無 MCP 工具」的偏離撤回。
+- `tests/test_web_parity.py`：`run_outputs` 從 `WEB_ONLY` 移到 `WEB_ROUTES`（網頁走 `GET /?run=<id>&stage=results`，同名 MCP 工具）；`tests/test_actions_layer.py`：`READ_NAMES` 加 `run_outputs`，`BASELINE` 的 tools 加一筆新工具（其餘六筆逐字不變）。
+- **連動更新的既有「工具清單釘死」斷言（只在期望清單／數量加入 `run_outputs`，沒有放寬任何比對；計畫範圍只點名 parity 與 actions_layer，其餘是新工具的必然連動，PR 要寫明）**：`test_chat_tools.py:15`（READ_ONLY）、`test_estimate_su.py:297`、`test_gcb_ce.py:776`、`test_gcb_launch.py:1068-1069`（12→13）、`test_guidance.py:26`（READ_TOOLS）、`test_http_site_samplesheet.py:562`、`test_human_channel.py:159`、`test_keep_submissions.py:705`、`test_launch_platform.py:304`、`test_mcp.py:63,95`、`test_oauth_mcp.py:44,329`（12→13、清單）、`test_pat.py:383,751`（12→13、7→8）、`test_resume_entrypoints.py:46`、`test_station_envs.py:381`、`test_station_launch.py:729`、`test_su_in_get_run.py:412`（12→13）、`test_web_board.py:1192`（tn05）。
+- 瀏覽器聊天的工具清單是從 MCP 伺服器推出來的，所以 `run_outputs` 也會出現在聊天可用的唯讀工具裡（`chat_tools.py` 沒改；它是唯讀，過 `classify_check`）。
+- TC-093：`actions._outputs_reason` 多一道 `compute_envs.looks_like_credential`——站台回的訊息長得像憑證時，不原樣顯示，改顯示「站台讀不到這個資料夾」。`test_ro14` 改成植入假憑證（運算環境設定與說明、工作的參數與結果、站台訊息），檢查 ready／error 頁面（中英）、MCP 回覆、日誌、標準輸出都沒有它；拿掉過濾時此測試會紅。
 - 外觀：新增 CSS 只有 `.otbl code{overflow-wrap:anywhere}` 與 `.ostat{…}`（沿用既有間距 8px），沒有新色碼。
 
 ## 改寫的既有斷言（裁決 4：舊→新＋理由）

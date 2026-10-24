@@ -280,7 +280,7 @@ _INTERNAL_WORDS = re.compile(r"Traceback|File \"|\bSELECT\b|\bINSERT\b|\bUPDATE\
 def _outputs_reason(message):
     """The site's own sentence when it is one plain line; a stack, SQL or an internal field name is never passed on."""
     line = next((x.strip() for x in str(message or "").splitlines() if x.strip()), "")
-    if not line or _INTERNAL_WORDS.search(str(message)):
+    if not line or _INTERNAL_WORDS.search(str(message)) or compute_envs.looks_like_credential(str(message)):
         return _OUTPUTS_GENERIC
     return line[:300]
 

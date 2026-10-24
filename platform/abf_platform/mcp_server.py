@@ -77,6 +77,14 @@ def build_server(index_path, platform_path=None):
     async def list_site_files(ctx: Context, compute_env: str, path: str) -> dict:
         return await actions.list_site_files(platform_path, compute_env, path, caller=_caller(ctx))
 
+    @server.tool(name="run_outputs", annotations=_READ_ONLY,
+                 description="What one run of yours produced: the files and folders in <run folder>/results on the site, by the run's id. "
+                             "It never waits for the site: it answers state loading (a question was queued, ask again in a few seconds), "
+                             "ready (files: name, type, size, modified, and listed_at), error (reason) or unavailable (the run was not "
+                             "launched from the platform, so there is no output folder on record). Nothing is written or run.")
+    def run_outputs(ctx: Context, run_id: str) -> dict:
+        return actions.run_outputs(index_path, platform_path, run_id, caller=_caller(ctx))
+
     @server.tool(name="read_task_log", annotations=_READ_ONLY,
                  description="Read the end of one log file of a failed task of a run you launched, through the run's agent: "
                              "task is the name get_run shows in failed_tasks, which is err, out or log (.command.err, "
