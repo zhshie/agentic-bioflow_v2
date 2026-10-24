@@ -355,3 +355,11 @@ def test_st11_web_settings_obeys_tc060():
             imports |= {p for a in n.names for p in a.name.split(".")}
     assert not (imports & {"confirm", "jobs", "compute_envs", "agents", "status", "actions", "store", "sqlite3", "urllib", "http", "requests", "socket"}), imports
     assert imports >= {"web_board"}
+
+
+def test_st03d_english_agent_offline_reason(w):
+    # TC-011 (English), and the source scan of test_scope (no "site agent" wording in platform source)
+    w.user("ann")
+    sql(w, "UPDATE agents SET last_seen_at = 1000")
+    _, mid = page(w, lang="en")
+    assert "The agent on the site is offline." in setup_items(mid)[1][2] and not CJK.search(mid)

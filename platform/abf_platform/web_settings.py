@@ -30,7 +30,7 @@ STRINGS = {
         "setup": "Before you start", "s_done": "Done", "s_missing": "Missing", "s_later": "Coming later",
         "st_account": "Account", "st_token": "Access token", "st_ce": "Compute environment", "st_ai": "AI key",
         "token_hint": "Create one in a terminal with abf-platform token new.",
-        "ce_none": "No compute environment.", "ce_down": "The primary compute environment is unavailable: ", "agent_down": "The site agent is offline.",
+        "ce_none": "No compute environment.", "ce_down": "The primary compute environment is unavailable: ", "agent_down": "The agent on the site is offline.",
         "th_name": "Name", "th_platform": "Platform", "th_status": "Status", "th_agent": "Site agent", "th_pipes": "Registered pipelines",
         "th_used": "Last used",
         "primary": "Primary", "ce_ok": "Available", "ce_bad": "Unavailable", "ce_unk": "Not checked", "online": "Online", "offline": "Offline",
