@@ -723,7 +723,7 @@ def test_the_screen_says_google_bills_the_lab_in_its_first_paragraph(box):
     lines = build.launch_screen(box.bundle(), "gcb1")
     assert lines[0].endswith("送出確認：下面就是會被送出的全部內容 ==")
     sentence = ("| 費用：按下 y 之後，這個 run 會在 Google Cloud 專案 lab-project-1 裡建立 Batch 工作與虛擬機，由 Google 向實驗室的 Google Cloud "
-                "帳號收費。平台目前還沒有費用預估與上限；實際金額請看 Google 的帳單。主控程序跑在平台主機上，取消請用平台的取消指令。")
+                "帳號收費。主控程序跑在平台主機上，取消請用平台的取消指令。")
     assert lines[1] == sentence
     text = "\n".join(lines)
     assert "由 Google 向實驗室的 Google Cloud 帳號收費" in text
