@@ -14,3 +14,16 @@
 - `test_resume_scope.py`: the STATE_SCHEMA count string includes `'clean_work'`.
 - `test_gcb_launch.py`: launches columns + `work_cleaned_at`; test renamed from "...columns_are_unchanged".
 - NOT IN THE PLAN, found by the full-suite run: `test_launch_platform.py` `test_tc055_launches_holds_the_facts_of_the_handover_and_no_state` lists the launches columns; `"work_cleaned_at"` added to that list (same kind of change as the gcb one; the plan said this file was unaffected).
+
+## git diff --stat (base 7f73157, before this line was added)
+     platform/abf_platform/store.py               | 107 +++++-
+     platform/tests/test_cleanup_store.py         | 538 +++++++++++++++++++++++++++
+     platform/tests/test_cloud_cost.py            |   4 +-
+     platform/tests/test_gcb_launch.py            |   4 +-
+     platform/tests/test_http_site_samplesheet.py |   2 +-
+     platform/tests/test_keep_submissions.py      |   4 +-
+     platform/tests/test_launch_platform.py       |   2 +-
+     platform/tests/test_resume_scope.py          |   2 +-
+     platform/tests/test_station_platform.py      |   5 +-
+     specs/cloud-cleanup-a/ledger.md              |  15 +
+     10 files changed, 653 insertions(+), 30 deletions(-)
