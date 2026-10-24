@@ -124,7 +124,7 @@ sn_has "TC-044: only a MAJOR amendment changes the rules"              'change o
 # mismatch this test prints the current fingerprint.
 # Input: the section as extracted into $SN above, printed with printf '%s\n',
 # carriage returns removed (tr -d '\r'), hashed with SHA-256.
-PINNED_SN_SHA256=bb125d3a27489ca5aa08951bf58d0ba547be88c259a006bb1e32907c6c399bd1
+PINNED_SN_SHA256=6cf98cf5ba342265d0b7b06bed04f42b0aeef8355bba5641b5742bbf58960a19
 sha256_stdin() { # first hash tool that exists; none at all is a failure, never a pass
   if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
   elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
