@@ -395,6 +395,32 @@ t "TC-089 platform_clock_test.sh: exit 1" rc_is 1
 t "TC-089 message names line" err_has "quarantine: tests/quarantine.txt:1:"
 t "TC-089 message says platform_clock_test.sh" err_has "platform_clock_test.sh"
 
+# PS-18 to PS-25 (platform-test-shards): every entry that wraps the platform pytest suite is refused, by its name.
+reset; mk_ok platform_shard_2_test.sh; setq "tests/platform_shard_2_test.sh #12 $D3"; run $F
+t "PS-18 platform_shard_2_test.sh may not be quarantined (exit 1)" rc_is 1
+t "PS-18 message names line" err_has "quarantine: tests/quarantine.txt:1:"
+t "PS-18 message says platform_shard_2_test.sh" err_has "platform_shard_2_test.sh"
+t "PS-44 message keeps the sentence" err_has "platform_shard_2_test.sh may not be quarantined: it wraps the platform pytest suite, so quarantining it would let any platform test failure through"
+reset; mk_ok platform_shard_3_test.sh; setq "tests/platform_shard_3_test.sh #12 $D3"; run $F
+t "PS-19 platform_shard_3_test.sh: exit 1" rc_is 1
+t "PS-19 message names line" err_has "quarantine: tests/quarantine.txt:1:"
+t "PS-19 message says platform_shard_3_test.sh" err_has "platform_shard_3_test.sh"
+reset; mk_ok platform_shard_9_test.sh; setq "tests/platform_shard_9_test.sh #12 $D3"; run $F
+t "PS-20 a made-up platform_shard_9_test.sh: exit 1 (a pattern, not two names)" rc_is 1
+t "PS-20 message names line" err_has "quarantine: tests/quarantine.txt:1:"
+t "PS-20 message says platform_shard_9_test.sh" err_has "platform_shard_9_test.sh"
+reset; mk_ok platform_storage_doc_test.sh; mk_ok platform_direction_docs_test.sh
+setq "tests/platform_storage_doc_test.sh #12 $D3" "tests/platform_direction_docs_test.sh #12 $D3"; run $F
+t "PS-21 the two document checks can still be quarantined (exit 0)" rc_is 0
+reset; mk_ok platform_test.sh; mk_ok platform_clock_test.sh; setq "tests/platform_test.sh #12 $D3" "tests/platform_clock_test.sh #12 $D3"; run $F
+t "PS-22 platform_test.sh and platform_clock_test.sh still refused (exit 1)" rc_is 1
+t "PS-22 both lines named" bash -c 'grep -qF "quarantine.txt:1:" <<<"$0" && grep -qF "quarantine.txt:2:" <<<"$0"' "$ERR"
+OUT=$(env PATH="$UNAME_DIR:$PATH" bash "$HERE/run_all.sh" --allow-missing-tools --check-quarantine 2>&1); RC=$?
+t "PS-23 real tree: --check-quarantine exit 0" rc_is 0
+t "PS-24 quarantine.txt line 12 names the four entries" bash -c 'l=$(sed -n 12p "$0/quarantine.txt"); for n in platform_test.sh platform_shard_2_test.sh platform_shard_3_test.sh platform_clock_test.sh; do grep -qF "$n" <<<"$l" || exit 1; done' "$HERE"
+reset; mk_ok platform_x_test.sh; echo '# ABF_PLATFORM_PART=2' >> "$SR/tests/platform_x_test.sh"; setq "tests/platform_x_test.sh #12 $D3"; run $F
+t "PS-25 the rule is the name, not the content (exit 0)" rc_is 0
+
 # TC-090: RUN_ALL_TODAY is not a back door any more.
 reset; mk_ok ok_test.sh; setq "tests/ok_test.sh #12 $D3"; ENVX="RUN_ALL_TODAY=2000-01-01" run $F
 t "TC-090a RUN_ALL_TODAY=2000-01-01, expiry today+3: valid" rc_is 0
