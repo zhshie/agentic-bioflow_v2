@@ -262,13 +262,13 @@ def login_temp(w, name="ann"):
     return c, r, out
 
 
-def test_tc025_a_temporary_login_sees_the_login_page_not_the_board(w):
-    # TC-025
+def test_tc025_a_temporary_login_is_sent_to_the_password_page_not_the_board(w):
+    # TC-025 (web-change-password TC-018: the temporary login is sent to /welcome, the one page that changes the password, constitution 6.1.0)
     w.user("ann")
     c, r, _ = login_temp(w)
     assert r.status_code == 303
     page = c.get("/")
-    assert page.status_code == 303 and page.headers["location"] == "/login"
+    assert page.status_code == 303 and page.headers["location"] == "/welcome"
 
 
 def test_tc026_a_temporary_login_cannot_press_send(w):
@@ -286,27 +286,35 @@ def test_tc026_a_temporary_login_cannot_press_send(w):
     assert w.sql("SELECT state FROM confirmations")[0]["state"] == "pending"
 
 
-def test_tc027_every_login_route_treats_a_temporary_session_as_no_login(w):
-    # TC-027
+def test_tc027_every_login_route_sends_a_temporary_session_to_the_password_page(w):
+    # TC-027 (web-change-password TC-012: every route but the skipped ones answers 303 to /welcome; /authorize still answers like nobody)
     ann = w.user("ann")
     rid = w.launch(caller=ann)["id"]
+    from oauth_harness import Rig
+    consent_path = Rig(w).start()[0]          # a real consent request: /consent/<id> answers 404 before it looks at the login for an id that is not one
     c, r, _ = login_temp(w)
     anon = w.web()
     seen = 0
     for route in c.app.routes:
         path = getattr(route, "path", "")
-        if path in ("/login", "/logout") or path.startswith("/.well-known") or path in ("/register", "/token", "/revoke"):
+        if (path in ("/login", "/logout", "/welcome", "/authorize") or path.startswith("/.well-known")
+                or path in ("/register", "/token", "/revoke")):
             continue
-        path = path.replace("{rid}", rid).replace("{verb}", "resume")
+        path = consent_path if path.startswith("/consent/") else path.replace("{rid}", rid).replace("{verb}", "resume")
         for method in sorted((getattr(route, "methods", None) or {"GET"}) - {"HEAD", "OPTIONS"}):
             kw = {"data": {"csrf": "x"}} if method == "POST" else {}
             a = c.request(method, path, headers={"origin": "http://testserver"}, **kw)
-            b = anon.request(method, path, headers={"origin": "http://testserver"}, **kw)
-            assert (a.status_code, a.headers.get("location")) == (b.status_code, b.headers.get("location")), (method, path)
-            assert "ann" not in a.text or a.status_code >= 300
+            assert (a.status_code, a.headers.get("location")) == (303, "/welcome"), (method, path)
+            assert "ann" not in a.text and "run-one" not in a.text
             seen += 1
     assert seen >= 8
+    for method in ("GET", "POST"):
+        kw = {"data": {"client_id": "x"}} if method == "POST" else {"params": {"client_id": "x"}}
+        a = c.request(method, "/authorize", headers={"origin": "http://testserver"}, **kw)
+        b = anon.request(method, "/authorize", headers={"origin": "http://testserver"}, **kw)
+        assert (a.status_code, a.headers.get("location")) == (b.status_code, b.headers.get("location")), method
     assert w.jobs() == []
+    assert w.sql("SELECT state FROM confirmations")[0]["state"] == "pending"
 
 
 def test_tc028_a_temporary_session_can_log_out(w):
