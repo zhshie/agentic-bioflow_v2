@@ -698,7 +698,7 @@ def test_tcf03_f04_the_users_table_has_no_role_and_both_labs_see_the_same(tmp_pa
     p1 = st.create_token(t, kind="pat", user_id=st.create_user(t, "alice", "lab-a"))
     p2 = st.create_token(t, kind="pat", user_id=st.create_user(t, "bob", "lab-b"))
     assert [r[1] for r in _rows(t, "PRAGMA table_info(users)")] == ["id", "name", "lab", "created_at", "disabled_at",
-                                                                  "password_hash"]    # 009c: the one new column, the web password hash; still no role
+                                                                  "password_hash", "temp_until"]    # 009c: the web password hash; temp-password: when a temporary password ends; still no role
     plat, _ = _three_runs(tmp_path / "x")
     t2 = plat.tokens
     ua, ub = st.create_user(t2, "alice", "lab-a"), st.create_user(t2, "bob", "lab-b")

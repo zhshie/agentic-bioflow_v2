@@ -94,7 +94,7 @@ judge_file() {
         return
     fi
     # (b) opens with an in-repo concept
-    if printf '%s' "$x" | grep -qiE "$IN_REPO_PHRASES"; then
+    if printf '%s' "$x" | grep -iE "$IN_REPO_PHRASES" >/dev/null; then
         echo "IN-REPO  $rel:$ln 'Not $x' names a concept of this repo, not a maintained tool; name the external tool, or write '# Nothing existing: <why>'"
         return
     fi

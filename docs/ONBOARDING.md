@@ -40,7 +40,15 @@ abf-platform user cloud-cap <name> <N>
 abf-platform user passwd <name>
 ```
 
-   Expected: it asks for the password twice. The person types it themselves in a real terminal; there is no flag and no file that can fill it in for them. If the person has no shell on the platform host, set it together at that host's terminal. (How a remote colleague should set it is still to be decided by the maintainer.)
+   Expected: it asks for the password twice, because no flag can type the person's own password: they type it twice at a real terminal, and `--temporary` makes a one-time one instead (below). If the person is next to you, set it together at that host's terminal.
+
+   For a remote colleague (no shell on the platform host), make a one-time temporary password instead, at the platform host's real terminal:
+
+```bash
+abf-platform user passwd <name> --temporary
+```
+
+   Expected: it prints a random password, once, and keeps it nowhere (a pipe or a script is refused, so an AI cannot run it for you). Send it to the person privately, not in a chat with an AI. It works for 72 hours, and the first time the person logs in to the web page they must change it; until then it can do nothing else. You never learn the password they choose. If it is lost or has run out, run the same command again: the new one replaces the old.
 
 3. Pick the way the person logs in. Claude Desktop needs only the web password from step 2 (OAuth, a login in the browser). Claude Code needs a PAT:
 
@@ -86,7 +94,7 @@ Your account on the platform is ready (lab: <lab>).
 Address: <platform-URL>
 
 How you log in
-- Claude Desktop: use your web password (set with me).
+- Claude Desktop: use your web password. Either we set it together at the platform host's terminal, or I send you a temporary password separately; the first time you log in to the web page you must change it.
 - Claude Code: I give you a PAT (a personal access token) separately. Paste it only in your own terminal, never into a chat.
 
 Next steps

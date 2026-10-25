@@ -1,7 +1,7 @@
-# Not Celery or RQ: they need a separate broker process; eight job kinds in one SQLite table are enough, and the table is not a run state machine.
+# Not Celery or RQ: they need a separate broker process; nine job kinds in one SQLite table are enough, and the table is not a run state machine.
 """The queue of jobs that agents poll for.
 
-Eight kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records` and `read_task_log`
+Nine kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records`, `read_task_log` and `pipeline_files`
 only read; `put_upload` asks the agent to write one file the user put in the uploads folder into the user's own cloud prefix, and needs no
 confirmation (the person pressing Upload is the yes; it is queued only by enqueue_put_upload); `launch_nextflow` and `cancel_run` write on the site, so a job of those two kinds can only be queued with
 a confirmation: a row that a person's yes made (state confirmed: y at the terminal, a form in the MCP client, or the
@@ -22,12 +22,12 @@ import stat as stat_mod
 import time
 from pathlib import Path
 
-from . import cloud_store, common, compute_envs, records, store
+from . import cloud_store, common, compute_envs, records, releases, store
 
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
 DEADLINE_SECONDS = {"preflight": 180, "list_site_files": 60, "launch_nextflow": 300, "cancel_run": 90,
-                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600}
+                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600, "pipeline_files": 90}
 _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "list_site_files": "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES",
                  "launch_nextflow": "ABF_PLATFORM_DEADLINE_LAUNCH",
@@ -35,13 +35,25 @@ _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "fetch_run_records": "ABF_PLATFORM_DEADLINE_FETCH",
                  "read_task_log": "ABF_PLATFORM_DEADLINE_READ_TASK_LOG",
                  "clean_work": "ABF_PLATFORM_DEADLINE_CLEAN",
-                 "put_upload": "ABF_PLATFORM_DEADLINE_PUT_UPLOAD"}
+                 "put_upload": "ABF_PLATFORM_DEADLINE_PUT_UPLOAD",
+                 "pipeline_files": "ABF_PLATFORM_DEADLINE_PIPELINE_FILES"}
 LOG_FILES = {"err": ".command.err", "out": ".command.out", "log": ".command.log"}      # the only three files read_task_log can name
 # The words D5 of run-diag-tools fixes. The package-source scan of test_scope (TC-061) forbids that whole word in this package's lines, so it is joined here.
 NO_AGENT_KNOWN = "no " + "sta" "tion agent is known for this run (這個 run 不是從這個平台送出的，不知道是哪個代理)"
 LOG_MAX_LINES = 200
 LOG_MAX_BYTES = 64 * 1024
 KINDS = tuple(DEADLINE_SECONDS)
+# pipeline_files (release-lookup-job): the agent reads public GitHub files for the platform; the platform only queues the job and keeps the text
+PF_PARTS = ("schema", "schema_input", "diagram", "image", "tags")      # the standard order of the parts of one job
+PF_STATUSES = ("ok", "not_found", "too_large", "bad_response", "rate_limited", "none")
+PF_RETRY_SECONDS = 60
+TAGS_CACHE_SECONDS = 24 * 3600
+TAGS_CACHE_FILE = "release-tags.json"
+PF_REVISION = re.compile(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")
+PF_IMAGE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(png|svg)\Z")
+PF_TEXT_LIMIT = 1000000
+PF_IMAGE_B64_LIMIT = 2800000
+_B64 = re.compile(r"^[A-Za-z0-9+/]*={0,2}\Z")
 # the two kinds that write on the site, and the kind of confirmation each needs
 CONFIRMED = {"launch_nextflow": "launch", "cancel_run": "cancel", "clean_work": "clean_work"}
 _RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
@@ -88,7 +100,7 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
         if owned is not None and owned["owner_user_id"] != caller_user_id:
             raise _not_found(ce_name)
     status = row["status"]
-    if row["platform"] in compute_envs.PLATFORM_HOST_TYPES and kind not in ("preflight", "launch_nextflow", "cancel_run", "clean_work", "put_upload"):
+    if row["platform"] in compute_envs.PLATFORM_HOST_TYPES and kind not in ("preflight", "launch_nextflow", "cancel_run", "clean_work", "put_upload", "pipeline_files"):
         raise JobRefused("%s is a Google Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
     if kind == "put_upload" and row["platform"] not in compute_envs.PLATFORM_HOST_TYPES:
         raise JobRefused("%s cannot hold cloud data: only a Google Batch environment can (只有 Google Batch 環境能放雲端資料)" % ce_name)
@@ -162,6 +174,8 @@ def _enqueue(state_path, ce_name, kind, listing_path, clock, deadline, offline_a
     """The kinds that need no confirmation and no run: preflight and list_site_files."""
     if kind == "put_upload":
         raise JobRefused("a file upload is queued only through enqueue_put_upload (上傳只能走專用入口)")
+    if kind == "pipeline_files":
+        raise JobRefused("reading public files is queued only through enqueue_pipeline_files (讀公開檔只能走專用入口)")
     if kind == "list_site_files":
         listing_path = check_listing_path(listing_path)
     now = clock()
@@ -230,6 +244,64 @@ def enqueue_put_upload(state_path, tokens_path, ce_name, owner_name, filename, u
         size = _uploaded_file(uploads_dir, owner_name, filename, stat, view)
         args = {"ce": compute_envs.snapshot(row), "owner": owner_name, "name": filename, "size": size, "dest": dest}
         return _insert_job(con, row, "put_upload", args, now, seconds)
+
+    return transaction(state_path, work)
+
+
+def pf_arguments(repo, revision, parts):
+    """(repo, revision, parts in the standard order) of a pipeline_files job, or JobRefused. Judged here again whatever the caller judged:
+    owner/name with no segment made only of dots, an exact tag or a 40-character commit (never a branch), and a revision of None
+    only when the one part asked for is the tag list."""
+    try:
+        ok = isinstance(repo, str) and "/" in repo and releases.repo_of(repo) == repo
+    except ValueError:
+        ok = False
+    if ok and any(set(seg) <= {"."} for seg in repo.split("/")):
+        ok = False
+    if not ok:
+        raise JobRefused("the repository name is not valid; write owner/name, for example nf-core/ampliseq (名稱不合格，要寫 owner/name)")
+    if (not isinstance(parts, (list, tuple)) or not parts or any(not isinstance(p, str) or p not in PF_PARTS for p in parts)
+            or len(set(parts)) != len(parts)):
+        raise JobRefused("the parts asked for are not valid (要讀的項目不合格)")
+    ordered = [p for p in PF_PARTS if p in parts]
+    if ordered == ["tags"]:
+        if revision is not None:
+            raise JobRefused("the release tags need no revision (查 tag 清單不給版本)")
+    elif not isinstance(revision, str) or PF_REVISION.match(revision) is None:
+        raise JobRefused("the revision must be an exact tag or a 40-character commit, never a branch name (版本要寫死，不收分支名)")
+    return repo, revision, ordered
+
+
+def pick_environment(con, caller_user_id, compute_env, now, offline_after):
+    """The compute environment row whose agent will read the files. This job never touches the cluster, so it only needs an
+    agent that is online: an environment that was just made and not checked yet is as good as an available one. With a name, only that
+    one; without, the caller's own environments by name, the first that passes. None for caller_user_id is the local terminal."""
+    if compute_env is not None:
+        return _target(con, compute_env, "pipeline_files", now, offline_after, caller_user_id)
+    if caller_user_id is None:
+        names = con.execute("SELECT name FROM compute_envs ORDER BY name").fetchall()
+    else:
+        names = con.execute("SELECT name FROM compute_envs WHERE owner_user_id = ? ORDER BY name", (caller_user_id,)).fetchall()
+    for entry in names:
+        try:
+            return _target(con, entry["name"], "pipeline_files", now, offline_after, caller_user_id)
+        except JobRefused:
+            continue
+    raise JobRefused("no online agent of yours (沒有在線的代理): start your agent and add a compute environment for it first "
+                     "(請先啟動你的代理並建立計算環境)")
+
+
+def enqueue_pipeline_files(state_path, repo, revision, parts, *, compute_env=None, clock=time.time, deadline_seconds=None,
+                           offline_after=None, caller_user_id=None):
+    """Ask an agent of the caller to read public GitHub files (the agent's pipeline_files module). The only way to queue this
+    kind. It reads only, so it needs no confirmation; the job holds a public repository name and a revision, nothing of the user's."""
+    repo, revision, parts = pf_arguments(repo, revision, parts)
+    now = clock()
+    seconds = _seconds("pipeline_files", deadline_seconds)
+
+    def work(con):
+        row = pick_environment(con, caller_user_id, compute_env, now, offline_after)
+        return _insert_job(con, row, "pipeline_files", {"repo": repo, "revision": revision, "parts": parts}, now, seconds)
 
     return transaction(state_path, work)
 
@@ -372,6 +444,36 @@ def latest_listing(state_path, ce_name, path):
     for row in rows:
         try:
             if json.loads(row["args_json"]).get("path") == path:
+                result = json.loads(row["result_json"]) if row["result_json"] else None
+                return {"id": row["id"], "state": row["state"], "deadline_at": row["deadline_at"], "finished_at": row["finished_at"],
+                        "result": result}
+        except (ValueError, AttributeError):
+            continue
+    return None
+
+
+def latest_pipeline_files(state_path, repo, revision, parts, caller_user_id):
+    """The newest pipeline_files job on an environment of the caller whose repo, revision and parts are exactly these, as a dict
+    (id, state, deadline_at, finished_at, result), or None. It only reads and never waits. A job on somebody else's environment is never
+    seen; None as the caller is the local terminal, which sees all."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        query = "SELECT j.* FROM jobs j JOIN compute_envs c ON c.name = j.compute_env WHERE j.kind = 'pipeline_files'"
+        params = ()
+        if caller_user_id is not None:
+            query += " AND c.owner_user_id = ?"
+            params = (caller_user_id,)
+        rows = con.execute(query + " ORDER BY j.id DESC LIMIT 200", params).fetchall()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
+    for row in rows:
+        try:
+            args = json.loads(row["args_json"])
+            if args.get("repo") == repo and args.get("revision") == revision and args.get("parts") == list(parts):
                 result = json.loads(row["result_json"]) if row["result_json"] else None
                 return {"id": row["id"], "state": row["state"], "deadline_at": row["deadline_at"], "finished_at": row["finished_at"],
                         "result": result}
@@ -736,6 +838,40 @@ def _int(value, low=0, high=2 ** 31 - 1):
     return value if isinstance(value, int) and not isinstance(value, bool) and low <= value <= high else None
 
 
+def _clean_pf_part(name, part):
+    """One part of a pipeline_files answer, cut down to what the platform expects, or None to drop the whole part."""
+    if not isinstance(part, dict):
+        return {"status": "bad_response"}
+    status = part.get("status")
+    if status not in PF_STATUSES:
+        return {"status": "bad_response"}
+    out = {"status": status}
+    if isinstance(part.get("message"), str):
+        out["message"] = _short(part["message"], 300)
+    if status != "ok":
+        return out
+    if name in ("schema", "schema_input", "tags"):
+        text = part.get("text")
+        if not isinstance(text, str):
+            return {"status": "bad_response"}
+        if len(text) > PF_TEXT_LIMIT:
+            return {"status": "too_large"}
+        out["text"] = text
+        return out
+    picture = part.get("name")
+    if not isinstance(picture, str) or PF_IMAGE_NAME.match(picture) is None:
+        return {"status": "bad_response"}
+    if part.get("type") not in ("image/png", "image/svg+xml"):
+        return None
+    out.update(name=picture, type=part["type"], size=_int(part.get("size")))
+    if name == "image":
+        data = part.get("data_b64")
+        if not isinstance(data, str) or len(data) > PF_IMAGE_B64_LIMIT or _B64.match(data) is None:
+            return {"status": "bad_response"}
+        out["data_b64"] = data
+    return out
+
+
 def clean_result(kind, result, stored=None):
     """Only what the platform expects, with every text bounded; an agent cannot make the platform store more."""
     if not isinstance(result, dict):
@@ -753,6 +889,18 @@ def clean_result(kind, result, stored=None):
         out["checks"] = checks
         if any(c["status"] != "pass" for c in checks) or not checks:
             out["ok"] = False
+    elif kind == "pipeline_files":
+        if isinstance(result.get("repo"), str):
+            out["repo"] = _short(result["repo"], 140)
+        if result.get("revision") is None or isinstance(result.get("revision"), str):
+            out["revision"] = None if result.get("revision") is None else _short(result["revision"], 40)
+        parts = {}
+        for name in PF_PARTS:
+            if isinstance(result.get("parts"), dict) and name in result["parts"]:
+                cleaned = _clean_pf_part(name, result["parts"][name])
+                if cleaned is not None:
+                    parts[name] = cleaned
+        out["parts"] = parts
     elif kind == "put_upload":
         written = _int(result.get("bytes"), 0, cloud_store.UPLOAD_LIMIT)
         if written is not None:

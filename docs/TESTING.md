@@ -695,6 +695,16 @@ The automatic tests are in `platform/tests/test_web_status_squares_3.py`. The st
 4. **Tab key.** Press Tab repeatedly on the failed analysis page. Check: each link and button shows a visible focus outline in turn.
 5. **Detector.** Save the rendered HTML of `/` and of the failed analysis page to files and run `sh .claude/skills/impeccable/scripts/impeccable detect <file.html>` on each. Check: it runs; copy its findings into the review (contrast and fonts are for a person to judge, not a failure).
 
+## release-lookup-job：真的連 GitHub 讀一次 (release-lookup-job: read GitHub for real, once)
+
+The automatic tests never reach the internet (a guard fails any test that tries). This is the one time a person checks it for real: the maintainer or developer-agent does it, on a machine with a network. It only sends read requests for public files. Nothing is written and no credential is sent.
+
+1. **Start the platform and an agent** as in sections 1 and 6 of `docs/PLATFORM.md`, and add a compute environment that names that agent (it does not need to be checked first: this job never touches the site).
+2. **Pipeline files.** In one line of Python call `actions.pipeline_files(<path of platform.db>, "nf-core/ampliseq", "2.18.0")` and call it again every 5 seconds until `state` is no longer `loading` (about a minute at most: the agent asks for work every 25 seconds). Check: `state` is `ready`; `schema.groups` has 16 groups holding 170 parameters in all; `schema.required_without_default == ["outdir"]`; the first column of `schema_input.columns` is `sampleID`; `diagram.name == "ampliseq_workflow.png"` and `diagram.size == 753702`. Then call it with `parts=("image",)`. Check: `len(base64.b64decode(image["data_b64"])) == 753702` and the bytes begin with the PNG signature `\x89PNG`.
+3. **Newest release.** Call `actions.latest_release(<path>, "nf-core/ampliseq")` the same way. Check: it ends as the newest plain numbered tag (on 2026-10-25 that was `3.0.0`; go by GitHub on the day), `source` is `fetched`, and `release-tags.json` has appeared beside `platform.db`. Call it again at once. Check: `source` is `cache` and the `jobs` table has no new `pipeline_files` row.
+4. **No network.** Switch the agent machine's network off (or stop its access to the internet) and call `actions.pipeline_files(<path>, "nf-core/rnaseq", "3.27.0")`, a pair not asked before. Check: within about a minute `state` is `error`, `error` is `network`, and `reason` is a plain sentence that tells you to check the machine's network.
+5. **Write down** the output of each step in `specs/release-lookup-job/ledger.md`.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in

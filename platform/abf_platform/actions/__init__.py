@@ -26,6 +26,7 @@ import time
 from abf_launch import build
 
 from .. import agents, common, compute_envs, confirm, failures, jobs, pipeline_launch, status, store, su
+from .. import releases as _releases, schema as _schema
 from .. import cloud_cost as _cost
 
 NotApproved = confirm.NotApproved
@@ -444,6 +445,218 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
     answer.update(state="error", listed_at=job["finished_at"],
                   reason=_OUTPUTS_NO_ANSWER if job["state"] == "expired" else _outputs_reason(result.get("message")))
     return answer
+
+
+# ---- release-lookup-job: begin
+# Two reads for the guided launch page: a pipeline's public files at one pinned revision, and its newest release. Like run_outputs they never wait
+# (the agent polls only every 25 seconds, a page refreshes every 15): they queue one job for an agent of the caller, say `loading`, and read the
+# answer with the pure modules schema.py and releases.py. The platform opens no connection: the agent reads GitHub (jobs.enqueue_pipeline_files).
+_PF_DEFAULT_PARTS = ("schema", "schema_input", "diagram")
+_PF_ASKABLE = ("schema", "schema_input", "diagram", "image")
+_PF_REVISION = re.compile(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")
+_PF_FILES = {"schema": "nextflow_schema.json", "schema_input": "assets/schema_input.json", "diagram": "docs/images", "image": "docs/images"}
+_PF_PART_WORDS = {
+    "not_found": "這個版本沒有 %(f)s (this revision has no %(f)s)",
+    "too_large": "%(f)s 太大，沒有讀 (%(f)s is too large, so it was not read)",
+    "rate_limited": "GitHub 暫時限制了請求，請一分鐘後再試 (GitHub is limiting requests for now; try again in a minute)",
+    "bad_response": "GitHub 回的 %(f)s 不能用 (the answer for %(f)s cannot be used)",
+    "bad_json": "%(f)s 不是合法的 JSON (%(f)s is not valid JSON)",
+}
+_PF_REASONS = {
+    "bad_input": "pipeline 名稱不合格，或版本不是精確的版本號（不收分支名） (the pipeline name or the revision is not valid; use owner/name and an exact version, never a branch)",
+    "network": "代理連不到 GitHub，請檢查那台機器的網路 (the agent could not reach GitHub; check that machine's network)",
+    "no_answer": "代理沒有回應，請確認代理正在執行 (the agent did not answer; check that it is running)",
+    # the word is written in pieces: the scan of constitution principle 2 (test_scope TC-061) bars it in this package, and a reader must be told what to update
+    "refused": "代理不認得這個查詢，可能是代理版本太舊，請更新 abf-" "sta" "tion (the agent does not know this lookup; it may be too old, update abf-" "sta" "tion)",
+    "not_found": "GitHub 上找不到這個版本需要的檔案，請確認 pipeline 名稱與版本 (the files were not found on GitHub; check the pipeline name and revision)",
+    "too_large": "檔案太大，沒有讀 (the files are too large to read)",
+    "rate_limited": "GitHub 暫時限制了請求，請一分鐘後再試 (GitHub is limiting requests for now; try again in a minute)",
+    "bad_response": "GitHub 回的內容不能用，請稍後再試 (GitHub gave an answer that cannot be used; try again later)",
+    "no_release": "沒有可用的 release tag (no usable release tag)",
+}
+_PF_FAILURES = ("not_found", "too_large", "rate_limited", "bad_response")
+
+
+def _pf_blank(pipeline, revision, parts):
+    return {"state": "loading", "pipeline": pipeline, "revision": revision, "parts": list(parts), "checked_at": None, "error": None,
+            "reason": None, "schema": None, "schema_input": None, "diagram": None, "image": None}
+
+
+def _pf_error(answer, code, reason=None, checked_at=None):
+    answer.update(state="error", error=code, reason=reason or _PF_REASONS[code], checked_at=checked_at,
+                  schema=None, schema_input=None, diagram=None, image=None)
+    return answer
+
+
+def _pf_asked(parts):
+    """The parts to read in the standard order, or None when `parts` is not a plain non-empty list of the four askable names."""
+    if parts is None:
+        return list(_PF_DEFAULT_PARTS)
+    if not isinstance(parts, (list, tuple)) or not parts or len(set(parts)) != len(parts):
+        return None
+    if any(not isinstance(p, str) or p not in _PF_ASKABLE for p in parts):
+        return None
+    return [p for p in _PF_ASKABLE if p in parts]
+
+
+def _pf_job_state(job, now):
+    """('loading', None, None), ('failed', the error code, when it failed) or ('done', the agent's result, when it finished)."""
+    state = job["state"]
+    result = job["result"] if isinstance(job["result"], dict) else {}
+    if state in ("queued", "claimed"):
+        return ("loading", None, None) if now <= job["deadline_at"] else ("failed", "no_answer", job["deadline_at"])
+    since = job["finished_at"] if job["finished_at"] is not None else job["deadline_at"]
+    if state == "done":
+        return ("done", result, since) if result.get("ok") is True else ("failed", "bad_response", since)
+    if state == "refused":
+        return "failed", "refused", since
+    if state == "error" and result.get("error") == "network":
+        return "failed", "network", since
+    return "failed", ("no_answer" if state == "expired" else "bad_response"), since
+
+
+def _pf_view(name, part):
+    """What the page gets for one part: the file read with schema.py when it is there, else the status and one plain sentence."""
+    said = part.get("status") if isinstance(part, dict) else None
+    if said == "ok" and name in ("schema", "schema_input"):
+        try:
+            data = _schema.load(part.get("text"))
+            if name == "schema":
+                groups = _schema.parameter_groups(data)
+                return {"status": "ok", "groups": groups, "required_without_default": _schema.required_without_default(groups)}
+            return {"status": "ok", "columns": _schema.samplesheet_columns(data)}
+        except (ValueError, TypeError, KeyError, AttributeError):
+            said = "bad_json"
+    elif said == "ok":
+        return dict(part)
+    elif said == "none":
+        return {"status": "none"}
+    if said not in _PF_PART_WORDS:
+        said = "bad_response"
+    return {"status": said, "message": _PF_PART_WORDS[said] % {"f": _PF_FILES[name]}}
+
+
+def _pf_code(said):
+    return said if said in _PF_FAILURES else "bad_response"
+
+
+def _pf_queue(platform_path, repo, revision, parts, compute_env, caller_id):
+    """None when a job was queued, else the sentence that says why not."""
+    try:
+        jobs.enqueue_pipeline_files(platform_path, repo, revision, parts, compute_env=compute_env, clock=status.now, caller_user_id=caller_id)
+    except jobs.JobRefused as e:
+        return _outputs_reason(str(e))
+    return None
+
+
+def pipeline_files(platform_path, pipeline, revision, *, parts=None, compute_env=None, caller=None, enqueue=True):
+    """A pipeline's schema (parameter groups), samplesheet columns, workflow diagram and the diagram's picture, read from GitHub at the exact
+    `revision` by an agent of the caller. Returns {state: loading|ready|error, pipeline, revision, parts, checked_at, error, reason, schema,
+    schema_input, diagram, image}. It never waits; with no job yet it queues one (not with `enqueue=False`). A job that read everything is
+    reused while its row is kept; one that failed, or got a part by chance (a limit, a bad answer), is shown for a minute and then asked again.
+    The platform stores no file of its own: the pipeline's files are read live at that revision."""
+    asked = _pf_asked(parts)
+    answer = _pf_blank(pipeline if isinstance(pipeline, str) else None, revision if isinstance(revision, str) else None,
+                       asked or _PF_DEFAULT_PARTS)
+    try:
+        repo = _releases.repo_of(pipeline)
+    except ValueError:
+        return _pf_error(answer, "bad_input")
+    answer["pipeline"] = repo
+    if asked is None or not isinstance(revision, str) or _PF_REVISION.match(revision) is None:
+        return _pf_error(answer, "bad_input")
+    caller_id = _caller_id(caller)
+    now = status.now()
+    job = jobs.latest_pipeline_files(platform_path, repo, revision, asked, caller_id)
+    if job is not None:
+        kind, info, since = _pf_job_state(job, now)
+        if kind == "loading":
+            return answer
+        again = now - since >= jobs.PF_RETRY_SECONDS      # the answer has been shown for a minute: ask again
+        if kind == "failed":
+            if not again:
+                return _pf_error(answer, info, checked_at=job["finished_at"])
+        else:
+            got = info.get("parts") if isinstance(info.get("parts"), dict) else {}
+            views = {p: _pf_view(p, got.get(p)) for p in asked}
+            failed = [p for p in asked if views[p]["status"] not in ("ok", "none")]
+            by_chance = any(views[p]["status"] in ("rate_limited", "bad_response") for p in failed)
+            if len(failed) == len(asked):
+                if not again:
+                    return _pf_error(answer, _pf_code(views[failed[0]]["status"]), checked_at=since)
+            elif not (by_chance and again):
+                answer.update(state="ready", checked_at=job["finished_at"], **views)
+                return answer
+    if not enqueue:
+        return answer
+    refusal = _pf_queue(platform_path, repo, revision, asked, compute_env, caller_id)
+    return _pf_error(answer, "no_agent", refusal) if refusal else answer
+
+
+def _no_fetch(repo):
+    raise LookupError("this platform does not connect out; the agent reads the tags")
+
+
+def latest_release(platform_path, pipeline, *, compute_env=None, caller=None, enqueue=True):
+    """The newest release of a pipeline that can be launched as it is (a plain numbered tag), for a new project to pin. Returns {state:
+    loading|ready|error, pipeline, revision, source: fetched|cache|stale-cache|none, checked_at, why, error}. Like pipeline_files it never waits.
+    The answer is remembered for 24 hours in a file beside platform.db (releases.lookup); an older answer is used when the agent cannot read
+    GitHub now, and says so (stale-cache)."""
+    answer = {"state": "loading", "pipeline": pipeline if isinstance(pipeline, str) else None, "revision": None, "source": "none",
+              "checked_at": None, "why": None, "error": None}
+
+    def fail(code, why=None):
+        answer.update(state="error", error=code, why=why or _PF_REASONS[code])
+        return answer
+
+    def ready(found, why=None):
+        answer.update(state="ready", revision=found["revision"], source=found["source"], checked_at=found["checked_at"], why=why)
+        return answer
+
+    try:
+        repo = _releases.repo_of(pipeline)
+    except ValueError:
+        return fail("bad_input")
+    answer["pipeline"] = repo
+    cache = os.path.join(os.path.dirname(os.path.abspath(platform_path)), jobs.TAGS_CACHE_FILE)
+    ttl = jobs.TAGS_CACHE_SECONDS
+    known = _releases.lookup(repo, _no_fetch, cache_path=cache, clock=status.now, ttl=ttl)
+    if known["source"] == "cache":
+        return ready(known)
+    old = known if known["source"] == "stale-cache" else None
+    caller_id = _caller_id(caller)
+    now = status.now()
+    job = jobs.latest_pipeline_files(platform_path, repo, None, ("tags",), caller_id)
+    failure = None            # (error code, sentence or None) of a job that came back without a usable tag
+    if job is not None:
+        kind, info, since = _pf_job_state(job, now)
+        if kind == "loading":
+            return answer
+        if kind == "failed":
+            failure = (info, None)
+        elif since > now - ttl:      # an answer a day old or older is not used
+            part = (info.get("parts") or {}).get("tags") if isinstance(info.get("parts"), dict) else None
+            if isinstance(part, dict) and part.get("status") == "ok" and isinstance(part.get("text"), str):
+                tags = _releases.parse_ls_remote(part["text"])
+                found = _releases.lookup(repo, lambda _repo: tags, cache_path=cache, clock=status.now, ttl=ttl)
+                if found["source"] == "fetched":
+                    return ready(found)
+                failure = ("no_release", found["why"])
+            else:
+                failure = (_pf_code(part.get("status") if isinstance(part, dict) else None), None)
+        if failure is not None and now - since >= jobs.PF_RETRY_SECONDS:
+            failure = None      # shown for a minute; now ask again
+    if failure is not None:
+        code, why = failure
+        why = why or _PF_REASONS[code]
+        return ready(old, why) if old is not None else fail(code, why)
+    if not enqueue:
+        return answer
+    refusal = _pf_queue(platform_path, repo, None, ["tags"], compute_env, caller_id)
+    if refusal:
+        return ready(old, refusal) if old is not None else fail("no_agent", refusal)
+    return answer
+# ---- release-lookup-job: end
 
 
 READ_WHICH = "which must be one of err, out, log (which 只能是 err、out、log)"

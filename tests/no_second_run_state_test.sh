@@ -235,7 +235,7 @@ if [ -z "${NO_RUN_STATE_ROOT:-}" ]; then
     case_ "sbatch inside single quotes (ssh) fails"   1 scripts/a.sh 'ssh "$HOST" '"'"'sbatch job.sh'"'"
     case_ "sbatch in a python string fails"       1 scripts/a.py 'subprocess.run("sbatch job.sh", shell=True)'
     case_ "nextflow run in a quoted string fails"  1 scripts/a.sh 'ssh "$HOST" "nextflow run nf-core/rnaseq"'
-    case_ "an until/sleep polling loop fails"      1 scripts/a.sh 'until tw runs view x | grep -q OK; do sleep 30; done'
+    case_ "an until/sleep polling loop fails"      1 scripts/a.sh 'until tw runs view x | grep OK >/dev/null; do sleep 30; done'
     case_ "a while/sleep polling loop fails"       1 scripts/a.sh 'while ! check_it; do sleep 5; done'
     case_ "an until loop with no sleep, line-leading, fails" 1 scripts/a.sh 'until check_it
 do :; done'
