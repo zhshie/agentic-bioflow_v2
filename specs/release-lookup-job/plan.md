@@ -4,7 +4,7 @@ title: 站台代理新增唯讀工作 pipeline_files：替平台去 GitHub 讀�
 tier: B
 kinds: backend
 lane: L-release
-after: cloud-cleanup-c
+after: cloud-cleanup-c,byte-channel-a
 base: v3 在 cloud-cleanup-c 合併之後（我讀的是 worktree `C:/Users/marvi/Desktop/agentic-bioflow/wt/cloud-cleanup-c`，分支 feat/cloud-cleanup-c @ ab4d4e8，它已含 origin/v3 @ 6dc879a；行號都是該版本，動手前以函式名重新 grep）
 source: developer-agent 讀碼查證（2026-10-25）；維護者 10-25 經前端 session 的提問選「好，放寬」；release-tag-pick 裁決 1（走 (a)）；schema-reader（#214）、release-tag-pick（#207）已建好的純模組；guided-launch-2 被擋（BLOCKED(contract)）要等這片
 ---
@@ -299,6 +299,13 @@ source: developer-agent 讀碼查證（2026-10-25）；維護者 10-25 經前端
 8. **部分失敗與重用**：7 天內重用已完成工作，只限「這次要的每個 part 都成功（或是確定性的 not_found／too_large／bad_json）」的工作；只要有任何 part 是暫時性失敗（`network`、`rate_limited`、`bad_response`），那筆工作**不重用**，60 秒後可重排一筆新的。全部 part 都失敗＝整體 `error`，同樣 60 秒後可重排。A-08 依此出題。
 9. 交叉參照更正：回傳形狀在「作法 6」，文件在「作法 8」。`after` 以 `cloud-cleanup-c,byte-channel-a` 為準（都已合併）。
 10. S-14 改為可量測子集（≤300 字、中英並陳、無 Traceback）：接受。
+
+## 裁決四（2026-10-25，回應 verifier 第二次退回；號碼大的蓋小的）
+11. **基底已是八種工作**（put_upload 在最後）。所有「七種」「恰以 clean_work, pipeline_files 結尾」「JOB_KINDS[6:]」的寫法一律改成通則：`pipeline_files` 恰出現一次、排在最後（在 `put_upload` 之後）、其餘種類相對順序不變、不寫死總數。「會改斷言的既有測試」表以現況（含 put_upload）的斷言為「舊」，各尾端加 `pipeline_files` 為「新」。
+12. **准改的既有測試再加兩檔**：`platform/tests/test_http_site_samplesheet.py`（只換 :543 `SCHEMA_SHA256` 為重算值，ledger 記新舊值與算法）；`platform/tests/test_byte_channel_a.py`（:112-115 TC-003 的 CHECK 清單尾端加 `pipeline_files`；:212 TC-012/013 與 :228-232 TC-015 改成「`put_upload` 在 `pipeline_files` 之前、`pipeline_files` 最後」，其餘逐字比對不變）。除這兩檔與原表外，其他既有測試零改動。
+13. **作法 5 第 7 點併入裁決三第 8 條**；補一句：一筆已完成但含暫時性失敗 part 的工作，完成後 60 秒內再問 → 回同一筆的結果（state 照該筆，含各 part 的錯誤），不排新工作；超過 60 秒 → 排一筆新的、回 loading。
+14. 「不做」那條改成「代理不解析 schema／schema_input 的內容（原樣回傳）」；解析 GitHub 目錄清單 JSON 來挑流程圖是允許的。
+15. 編號以計畫內實際的 S／Q／A 編號為準；ledger 標題去掉「nf-core 清單」；frontmatter `after` 以 `cloud-cleanup-c,byte-channel-a` 為準。文件句子由閱卷者讀 diff 核對：接受。
 
 ## 專長守則（backend）
 
