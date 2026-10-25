@@ -279,7 +279,7 @@ for f in "$ROOT"/scripts/*.sh "$ROOT"/scripts/utils/*.sh "$ROOT"/hooks/*.sh; do
   # probe so the member knows what was tried is the REPORT of the one
   # derivation, not a second one.
   if sed 's/^[[:space:]]*#.*$//' "$f" | grep -v 'message=' \
-     | grep -qE "wsl\.exe -e true|setting site_bridge"; then
+     | grep -E "wsl\.exe -e true|setting site_bridge" >/dev/null; then
     stray="$stray $f"
   fi
 done

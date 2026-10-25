@@ -134,7 +134,7 @@ t "prints Platform's own percentage"         "16%"              "$out"
 # PICARD peaked at 19 GB in a 34 GB allocation. 19 x 1.5 is 28.5, which lands in
 # the same box, so there is nothing to move and nothing to say.
 printf '%-62s ' "a process already in the right box gets no suggestion"
-if grep -E '^\s*PICARD_MARKDUPLICATES' <<<"$out" | grep -q '→\|->'; then
+if grep -E '^\s*PICARD_MARKDUPLICATES' <<<"$out" | grep '→\|->' >/dev/null; then
     echo "FAIL: it proposed a move for a process that is already right-sized"
     fails=$((fails+1))
 else echo ok; fi
@@ -146,7 +146,7 @@ t "and says so in a word"                                      "unchanged"      
 # A process at 88% of its allocation is not over-allocated; proposing a smaller
 # box for it is proposing an OOM.
 printf '%-62s ' "a process near its ceiling is never sent down"
-if grep -E '^\s*STAR_ALIGN' <<<"$out" | grep -q 'tiers\? down'; then
+if grep -E '^\s*STAR_ALIGN' <<<"$out" | grep 'tiers\? down' >/dev/null; then
     echo "FAIL: it proposed shrinking a process running at 88%"; fails=$((fails+1))
 else echo ok; fi
 

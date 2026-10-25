@@ -255,7 +255,7 @@ fi
 
 printf '%-72s ' "no jq, root set - stderr names the fix, per platform"
 err=$(cat "$TMP2/err1" 2>/dev/null)
-if echo "$err" | grep -qF "brew install jq" && echo "$err" | grep -qF "apt install jq"; then
+if echo "$err" | grep -F "brew install jq" >/dev/null && echo "$err" | grep -F "apt install jq" >/dev/null; then
     echo ok
 else
     echo "FAIL: stderr did not name both install commands: <<$err>>"; fails=$((fails + 1))

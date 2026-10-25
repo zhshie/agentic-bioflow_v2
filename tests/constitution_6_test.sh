@@ -21,8 +21,8 @@ fails=0
 ok() { printf '%-92s ok\n' "$1"; }
 bad() { printf '%-92s FAIL%s\n' "$1" "${2:+: $2}"; fails=$((fails+1)); }
 flat() { tr -d '\r' | tr '\n' ' ' | tr -s ' '; }
-inn() { if printf '%s\n' "$2" | flat | grep -qF -- "$3"; then ok "$1"; else bad "$1" "no '$3'"; fi; }
-nin() { if printf '%s\n' "$2" | flat | grep -qF -- "$3"; then bad "$1" "found '$3'"; else ok "$1"; fi; }
+inn() { if printf '%s\n' "$2" | flat | grep -F -- "$3" >/dev/null; then ok "$1"; else bad "$1" "no '$3'"; fi; }
+nin() { if printf '%s\n' "$2" | flat | grep -F -- "$3" >/dev/null; then bad "$1" "found '$3'"; else ok "$1"; fi; }
 
 [ -r "$C" ] || { echo "FAIL: cannot read $C"; exit 1; }
 [ -r "$MCP" ] || { echo "FAIL: cannot read $MCP"; exit 1; }
@@ -102,7 +102,7 @@ if [ -z "${CONSTITUTION_6_INNER:-}" ]; then
   printf '\n    @server.tool(name="purge", annotations=_STOPS,\n        description="x")\n    def purge(): pass\n' >> "$tmp/mcp_server.py"
   if out=$(CONSTITUTION_6_INNER=1 MCP_SERVER_FILE="$tmp/mcp_server.py" bash "$0" 2>&1); then
     bad "TC-046 self-test: an unlisted write tool turns the check red" "stayed green"
-  elif printf '%s\n' "$out" | grep -q 'registered .*purge'; then
+  elif printf '%s\n' "$out" | grep 'registered .*purge' >/dev/null; then
     ok "TC-046 self-test: an unlisted write tool turns the check red and is named"
   else bad "TC-046 self-test: red, but did not name the extra tool"; fi
 fi
