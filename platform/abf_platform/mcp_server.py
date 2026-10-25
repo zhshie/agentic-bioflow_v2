@@ -84,6 +84,13 @@ def build_server(index_path, platform_path=None):
                              "Only your own runs; a run whose content was forgotten is left out.")
     def list_used_pipelines(ctx: Context) -> dict:
         return actions.list_used_pipelines(platform_path, caller=_caller(ctx))
+    @server.tool(name="my_usage", annotations=_READ_ONLY,
+                 description="What you used in one month (month is YYYY-MM in Taipei time; this month by default): the SU of the "
+                             "national HPC, the cloud money in US dollars (never converted) with the monthly cap the administrator "
+                             "set and what is left of it, and one line per run you started that month. A figure that cannot be "
+                             "worked out is null, never 0.")
+    def my_usage(ctx: Context, month: str | None = None) -> dict:
+        return actions.my_usage(index_path, platform_path, caller=_caller(ctx), month=month)
 
     @server.tool(name="run_outputs", annotations=_READ_ONLY,
                  description="What one run of yours produced: the files and folders in <run folder>/results on the site, by the run's id. "

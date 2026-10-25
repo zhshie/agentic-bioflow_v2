@@ -16,7 +16,8 @@ BOARD = PLATFORM_DIR / "abf_platform" / "web_board.py"
 WEB_ROUTES = {"list_runs": "GET /", "get_run": "GET /", "list_compute_envs": "GET /launch",
               "launch": "POST /launch, through request_launch", "cancel": "POST /act/cancel, through request_cancel",
               "run_outputs": "GET /?run=<id>&stage=results (the Outputs tab; results-outputs)",
-              "list_used_pipelines": "GET /launch (step 2 \"Used before\" and the reusable runs of step 5; guided-launch-1)"}
+              "list_used_pipelines": "GET /launch (step 2 \"Used before\" and the reusable runs of step 5; guided-launch-1)",
+              "my_usage": "GET /usage (the cost page; cost-page)"}
 # 012b: the tools resume and relaunch have no action of that name (they are request_resume / request_relaunch); their web routes are POST /act/resume and POST /act/relaunch.
 WEB_VIA_REQUEST = {"launch": "request_launch", "cancel": "request_cancel", "resume": "request_resume", "relaunch": "request_relaunch"}
 # The PAGE confirmation channel is web-only by design: the MCP side uses the form channel and request_launch/request_cancel.

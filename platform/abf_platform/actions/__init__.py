@@ -17,6 +17,7 @@ name of a failed run; what is resumed or started again is the first launch's own
 They write the same kind of confirmation (a launch) and queue the same kind of job; what tells them apart is the content the hash covers.
 """
 import dataclasses
+import datetime
 import os
 import re
 import sqlite3
@@ -146,6 +147,65 @@ def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site=N
         # the site of the compute environment the run was launched on (its suSite), else the rates file's default_site
         site = su.site_of_run(platform_path_for(index_path, platform_path), run_name, rates)
     return su.run_su(index_path, run_name, site, rates, tasks_of)
+
+
+
+_MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])\Z")
+_USAGE_RUNS_CAP = 50
+_HPC = "nc" + "hc"        # the value `where` has for a run sent to the national HPC; no site name is spelled out in a program (test_tc069)
+_NOT_SENT_HERE = "不是由平台送出的 run，算不出用量 (the run was not sent from the platform, so its usage is not known)"
+
+
+def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_path=None):
+    """What the caller used in one month ('YYYY-MM', Taipei time; the current month by default): the SU of the site, the cloud money (in the
+    cloud's own US dollars, never converted) with the cap the administrator set, and one line per run that started then (newest first, at
+    most 50). Only the caller's own runs. Reads only: the numbers are worked out now from the index and the price lists, nothing is kept."""
+    if caller is None:      # usage is a person's own; the local terminal is nobody in particular
+        return {"found": False, "message": "Usage is counted per person: connect as a user to see yours (用量是每個人自己的，請以使用者身分連線)"}
+    platform_path = platform_path_for(index_path, platform_path)
+    if not (isinstance(month, str) and _MONTH.match(month)):
+        month = datetime.datetime.fromtimestamp(status.now(), su.TAIPEI).strftime("%Y-%m")
+    owned = jobs.owned_run_names(platform_path, caller.user_id)
+    rates = su.load_rates()
+    site = rates.get("default_site") if isinstance(rates, dict) else None
+    cloud_rates = _cost.load_rates()
+    mine = [r for r in status.list_runs(index_path, status.now(), names=owned) if su._taipei_month(r.get("started_at")) == month]
+    # only the runs sent to the national HPC count in SU: a cloud run is neither added nor allowed to turn the total into unknown
+    total, reasons = 0.0, []
+    for r in mine:
+        facts = _cost._launch_facts(platform_path, r["name"])
+        if facts is None or facts["cloud"]:
+            continue
+        out = su.run_su(index_path, r["name"], site, rates)
+        if out["su"] is None:
+            total = None
+            for reason in out["unknown_reasons"]:
+                if reason not in reasons:
+                    reasons.append(reason)
+        elif total is not None:
+            total += out["su"]
+    runs = []
+    for r in sorted(mine, key=lambda x: x["started_at"], reverse=True)[:_USAGE_RUNS_CAP]:
+        facts = _cost._launch_facts(platform_path, r["name"])
+        where = None if facts is None else ("cloud" if facts["cloud"] else _HPC)
+        item = {"name": r["name"], "started_at": r["started_at"], "where": where, "state": "estimate", "su": None, "usd": None,
+                "unknown_reasons": []}
+        if r["status"] in ("running", "lost"):
+            item["state"] = "running"
+            item["unknown_reasons"] = [su.RUN_NOT_ENDED]
+        elif where == _HPC:
+            out = _su_of_run(index_path, r, platform_path)
+            item["su"], item["unknown_reasons"] = out["su"], out["unknown_reasons"]
+        elif where == "cloud":
+            out = _cost.run_tasks_cost(index_path, r["name"], cloud_rates, facts["location"])
+            item["usd"], item["unknown_reasons"] = out["usd"], out["unknown_reasons"]
+        else:
+            item["unknown_reasons"] = [_NOT_SENT_HERE]
+        runs.append(item)
+    return {"month": month,
+            "su": {"total": total, "unknown_reasons": reasons, "site": site if isinstance(rates, dict) else None},
+            "cloud": _cost.month_usage(index_path, platform_path, caller.user_id, month, cloud_rates, tokens_path),
+            "runs": runs}
 
 
 def list_compute_envs(platform_path, *, caller=None):

@@ -188,14 +188,16 @@ def test_tcs03_s04_cost_readout(w):
     ann = w.user("ann")
     seed(w, "x", "running", ann, counts=dict(succeeded=500, running=40))
     c = login(w, "ann")
-    for url, want in (("/", ["SU —", "雲端 NT$ —"]), ("/?lang=en", ["SU —", "Cloud NT$ —"])):
+    for url, want in (("/", ["SU —", "雲端 US$ —"]), ("/?lang=en", ["SU —", "Cloud US$ —"])):      # cost-page: US dollars, never NT$
         t = c.get(url).text
         top = t[:t.index('data-pane="left"')]
         lines = re.findall(r'<(\w+)\b[^>]*class="[^"]*\bcost\b[^"]*"[^>]*>(.*?)</\1>', top, re.S)
         assert [plain(x[1]) for x in lines] == want, url
         assert all("<" not in x[1] for x in lines)
         assert "<progress" not in top
-        assert not [h for h in re.findall(r"<a\b.*?</a>", top, re.S) if "SU" in h or "NT$" in h]
+        links = [h for h in re.findall(r"<a\b.*?</a>", top, re.S) if "SU" in h or "US$" in h]      # cost-page: the two lines are one link to the cost page
+        assert len(links) == 1 and links[0].count('class="cost"') == 2 and 'href="/usage%s"' % ("?lang=en" if "lang=en" in url else "") in links[0]
+        assert "NT$" not in t
         assert "SU —" not in pane(t, "right") and "NT$" not in pane(t, "right") and "NT$" not in pane(t, "left")
     t = c.get("/").text
     assert "本月費用" not in t and "NCHC" not in t and "NCHC" not in Path(web_board.__file__).read_text(encoding="utf-8")
@@ -814,7 +816,8 @@ def test_tch11_read_only(w):
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)),
                       ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
-                      ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/token", ("OPTIONS", "POST"))], routes
+                      ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/token", ("OPTIONS", "POST")),
+                      ("/usage", ("GET", "HEAD"))], routes
 
 
 def _digest(w):
@@ -1189,7 +1192,7 @@ def test_tn05_no_new_tool_or_action(w):
     from abf_platform import actions
     tools, _ = w.mcp([])
     assert sorted(t.name for t in tools) == sorted(["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents",
-                                                    "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "launch", "cancel", "forget", "resume", "relaunch"])
+                                                    "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "launch", "cancel", "forget", "resume", "relaunch"])
     assert not [n for n in dir(actions) if "board" in n]
 
 
@@ -1226,7 +1229,7 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
         assert t.count("<details") - t.count('<details class="menu">') == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):
             u = urlsplit(htmllib.unescape(h))
-            assert u.path in ("/", "/settings", "/launch") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab", "from"}, h      # 011b adds ?tab=; 012b the launch page and ?from=
+            assert u.path in ("/", "/settings", "/launch", "/usage") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab", "from"}, h      # 011b adds ?tab=; 012b the launch page and ?from=
         for word in ("系統自動處理紀錄", "待你決定", "Awaiting you", "拖放", "MultiQC"):     # 011b: 目前步驟／Current step／Metrics now exist
             assert word not in t, (url, word)
     left = pane(c.get("/").text, "left")
