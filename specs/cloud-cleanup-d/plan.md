@@ -123,6 +123,13 @@ Google Batch 環境的 run 成功後，使用者按了「確認刪除」，平�
 4. `ps` 回超過一行 → 拒絕「無法確認主控程序已結束（ps 回了不只一行），保守起見不刪」，比照 `gcb_launch.run_cancel` :255。
 5. 行號以函式名為準（`GCB_RUNS` 現 :542、`run_folder` :743、`GCB` :541、`test_gcb_ce.py` 掃描 :803-805）。
 
+## 裁決三（2026-10-25，閱卷後；號碼大的蓋小的）
+6. **金鑰環境變數改用 gcloud 自己認的那個**：`_gcloud_env` 設 `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=<金鑰路徑>`（與 `gcb_preflight.py:84-85` 同做法），並從繼承的環境**拿掉** `GOOGLE_APPLICATION_CREDENTIALS`；`CLOUDSDK_CORE_DISABLE_PROMPTS=1` 保留。理由：`GOOGLE_APPLICATION_CREDENTIALS` 是給函式庫與 Nextflow 用的（`gcb_launch.py:83`），gcloud 命令列不用它，刪除就可能用到機器上已登入的別的帳號。作法第 5 步的「再加 GOOGLE_APPLICATION_CREDENTIALS」作廢。測試：假 gcloud 斷言收到的環境有 `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`＝金鑰路徑、沒有 `GOOGLE_APPLICATION_CREDENTIALS`（即使代理自己的環境有設）。
+7. `rm --recursive` 隱含 `--all-versions`：接受（work/ 是暫存，連舊版本一起刪是對的），寫進 ledger 與 f 片說明。
+8. 結尾斜線是否波及 `work2/`：接受現狀（先列、每行都必須在 `work/` 底下才刪），f 片真桶實測。
+9. 軟刪除：記進 ledger，f 片畫面不得寫「立刻停止計費」或「無法還原」。
+10. 「三處」改為「四處」既有斷言更新；只能讀 diff／ledger 的 7 條標「手動：閱卷者讀 diff／ledger」，不加 TESTING.md：接受。
+
 ## 專長守則（backend）
 
 ### executor
