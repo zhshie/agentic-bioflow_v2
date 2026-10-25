@@ -116,6 +116,13 @@ Google Batch 環境的 run 成功後，使用者按了「確認刪除」，平�
 6. **憑證**：金鑰路徑只在環境變數，沿用 `gcb_launch` 的檢查與環境組法；不使用 `_head_env`。
 7. **切片理由**：舊計畫約 30 檔、需求超過 60 條測試；依 `dev-architecture-review-2026-10-24.md` §3 與 `dev-plans/README.md` 通例切成六片。本片 6 檔（含 ledger）。
 
+## 裁決二（2026-10-25，回應 verifier 出題退回）
+1. **c 片 TC-073 那條斷言改寫**（`platform/tests/test_station_clean.py:575` 附近，本片准改這一條）：改成——`clean.py` 不得含 `import subprocess`、`os.system`、`os.popen`、`start_detached`；`run_fixed` 只准出現在 `_clean_gcb` 與 `_head_gone` 兩個函式內（用 `ast` 找函式範圍，不用行號）；`ctx.site.call(` 仍恰出現一次。除此條與「Google Batch 被拒」那條外，`test_station_clean.py` 其他一律不准動。
+2. 「Google Batch 被拒」那條的實際名稱是 `test_tc013_a_google_batch_bundle_is_refused_in_plain_words`（:190），以它為準。
+3. `gcloud storage ls` 逾時（`TimeoutError`）→ `("refused", {"ok": False, "cleaned": False, "message": "列出雲端暫存檔逾時，沒有刪任何東西；稍後可以再申請"})`，不呼叫 `rm`。
+4. `ps` 回超過一行 → 拒絕「無法確認主控程序已結束（ps 回了不只一行），保守起見不刪」，比照 `gcb_launch.run_cancel` :255。
+5. 行號以函式名為準（`GCB_RUNS` 現 :542、`run_folder` :743、`GCB` :541、`test_gcb_ce.py` 掃描 :803-805）。
+
 ## 專長守則（backend）
 
 ### executor
