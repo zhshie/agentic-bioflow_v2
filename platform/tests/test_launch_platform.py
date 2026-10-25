@@ -301,7 +301,7 @@ def test_tc010_the_mcp_tools_are_six_read_only_ones_and_two_that_ask_a_person_wi
     ts = asyncio.run(tools())
     # 009e: plus resume and relaunch, which are asked the same way and take the name of a run and nothing else
     assert sorted(t.name for t in ts) == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs",
-                                          "list_runs", "list_site_files", "read_task_log", "relaunch", "resume", "run_outputs"]
+                                          "list_runs", "list_site_files", "list_used_pipelines", "read_task_log", "relaunch", "resume", "run_outputs"]
     banned = {"confirm", "confirmation", "yes", "y", "launch", "cancel", "kind", "command", "fetch", "run_name", "pipeline"}
     saying_yes = {"confirm", "confirmed", "confirmation", "confirmation_id", "yes", "y", "approve", "approved", "kind", "command"}
     for t in ts:
@@ -603,7 +603,7 @@ def test_the_deadlines_are_300_seconds_for_a_launch_and_can_be_shortened(tmp_pat
     assert jobs.deadline_seconds("launch_nextflow") == 300
     monkeypatch.setenv("ABF_PLATFORM_DEADLINE_LAUNCH", "7")
     assert jobs.deadline_seconds("launch_nextflow") == 7
-    assert set(jobs.KINDS) == {"preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log"}   # run-diag-tools: plus read_task_log
+    assert set(jobs.KINDS) == {"preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work"}   # run-diag-tools: plus read_task_log; cloud-cleanup-b: plus clean_work
 
 
 # ---- TC-036: `abf-platform launches` -----------------------------------------------------------------------------

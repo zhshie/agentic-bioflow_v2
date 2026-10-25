@@ -491,9 +491,13 @@ def test_read_only_open_of_an_old_database_does_not_upgrade_it(tmp_path):
 def test_nothing_writes_clean_work_or_work_cleaned_at(tmp_path):
     # TC-030
     for p in sorted(PKG.rglob("*.py")):
-        if p.name != "store.py":
+        # cloud-cleanup-b (ruling 2): confirm.py and jobs.py now legitimately handle clean_work;
+        # jobs.py also records work_cleaned_at. Nothing else may.
+        if p.name not in ("store.py", "confirm.py", "jobs.py"):
             text = p.read_text(encoding="utf-8")
             assert "work_cleaned_at" not in text and "clean_work" not in text, p.name
+        elif p.name == "confirm.py":
+            assert "work_cleaned_at" not in p.read_text(encoding="utf-8"), p.name
     store_text = (PKG / "store.py").read_text(encoding="utf-8")
     for m in re.finditer(r".*work_cleaned_at.*", store_text):
         assert not re.search(r"\b(INSERT|UPDATE|SELECT|DELETE)\b", m.group(0)), m.group(0)

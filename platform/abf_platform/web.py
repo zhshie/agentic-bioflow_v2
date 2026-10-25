@@ -451,16 +451,33 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     def launch_choices(caller):
         sheets = actions.list_samplesheets(platform_path, caller=caller)
-        envs = [e["name"] for e in actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]]
+        envs = actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
         return sheets, envs
 
-    async def launch_page(sid, user, caller, lang, values, errors, notes, source=None, code=200):
+    def launch_reads(caller, pipeline, revision):
+        """The two lists of the guided page: the pipelines used before, and (once a pipeline and revision are chosen) the runs of that pair."""
+        used = actions.list_used_pipelines(platform_path, caller=caller)["pipelines"]
+        reuse = []
+        if pipeline and revision:
+            reuse = actions.list_used_pipelines(platform_path, caller=caller, pipeline=pipeline, revision=revision)["pipelines"]
+        return used, reuse
+
+    async def launch_page(sid, user, caller, lang, values, errors, notes, source=None, code=200, guide=None):
         sheets, envs = await run_in_threadpool(launch_choices, caller)
+        names = [e["name"] for e in envs]
         values = dict(values)
         values.setdefault("samplesheet", sheets[0] if sheets else None)
-        values.setdefault("ce_name", envs[0] if envs else None)
+        values.setdefault("ce_name", names[0] if names else None)
+        guide = dict(guide or {})
+        pipeline = (values.get("pipeline") or "").strip()
+        full = pipeline if "/" in pipeline else ("nf-core/" + pipeline if pipeline else "")
+        used, reuse = await run_in_threadpool(launch_reads, caller, full, (values.get("revision") or "").strip())
+        guide["used"], guide["reuse"] = used, reuse
+        if guide.get("src") not in ("used", "new"):
+            guide["src"] = "used" if used else "new"
         runs = await run_in_threadpool(read_runs, caller)
-        doc = web_board.render_launch(user["name"], csrf(sid, "logout"), runs, values, errors, notes, sheets, envs, csrf(sid, "launch"), lang, source)
+        doc = web_board.render_launch(user["name"], csrf(sid, "logout"), runs, values, errors, notes, sheets, envs, csrf(sid, "launch"), lang, source,
+                                      guide)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
     async def launch_get(request):
@@ -470,22 +487,77 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
         t = web_board.STRINGS[lang]
-        origin = request.query_params.get("from") or ""
-        values, notes, source = {}, [], None
+        q = request.query_params
+        sheets, envs = await run_in_threadpool(launch_choices, caller)
+        names = [e["name"] for e in envs]
+        runs = await run_in_threadpool(read_runs, caller)
+        given = {k: q.get(k).strip() for k in ("pipeline", "revision", "route", "params_from", "from") if q.get(k, "").strip()}
+        if "params" in q:
+            given["params"] = q.get("params")
+        if q.get("samplesheet") in sheets:
+            given["samplesheet"] = q.get("samplesheet")
+        if (q.get("ce_name") or q.get("ce")) in names:
+            given["ce_name"] = q.get("ce_name") or q.get("ce")
+        if q.get("src") in ("used", "new"):
+            given["src"] = q.get("src")
+        values = {k: given[k] for k in ("pipeline", "revision", "samplesheet", "ce_name") if k in given}
+        notes, source, done, earlier_params = [], None, set(), None
+
+        def run_name_of(origin):      # the page is asked for a run by its id or by its name
+            return next((r["name"] for r in runs if r["id"] == origin), origin)
+        origin = given.get("from", "")
         if origin:       # quick launch: the boxes of an earlier run of this person, when its content is still kept
-            view = await run_in_threadpool(read_run, origin, caller)
-            if view is None:
+            name = run_name_of(origin)
+            match = next((r for r in runs if r["id"] == origin or r["name"] == origin), None)
+            earlier = await run_in_threadpool(actions.launch_prefill, platform_path, name, caller=caller)
+            if match is None and not earlier.get("found"):
                 return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
-            earlier = await run_in_threadpool(actions.launch_prefill, platform_path, view["name"], caller=caller)
             when = web_board.taipei_time(earlier.get("launched_at"))
-            source = (view["id"], view["name"], view["status"], when)
+            if match is not None:
+                source = (match["id"], match["name"], match["status"], when)
             if earlier.get("kept"):
-                values = {"pipeline": earlier.get("pipeline") or "", "revision": earlier.get("revision") or "", "ce_name": earlier.get("ce_name"),
-                          "params": web_board.params_text(earlier.get("params"))}
+                for key, value in (("pipeline", earlier.get("pipeline") or ""), ("revision", earlier.get("revision") or ""),
+                                   ("ce_name", earlier.get("ce_name") if earlier.get("ce_name") in names else None)):
+                    if key not in values and value:
+                        values[key] = value
+                earlier_params = web_board.params_text(earlier.get("params"))
+                done |= {5} | ({6} if values.get("ce_name") else set())
                 notes.append(t["l_from"])
             else:
                 notes.append(t["l_not_kept"])
-        return await launch_page(sid, user, caller, lang, values, [], notes, source)
+        pipeline, revision = values.get("pipeline", ""), values.get("revision", "")
+        if pipeline and revision:
+            done.add(2)
+        if "samplesheet" in given:
+            done.add(4)
+        if "ce_name" in given:
+            done.add(6)
+        if "route" in given or "params" in given:
+            done.add(5)
+        cannot, reused = False, None
+        if given.get("params_from"):
+            full = pipeline if "/" in pipeline else "nf-core/" + pipeline
+            earlier = await run_in_threadpool(actions.launch_prefill, platform_path, run_name_of(given["params_from"]), caller=caller)
+            if pipeline and revision and earlier.get("found") and earlier.get("kept") and earlier.get("pipeline") == full \
+                    and earlier.get("revision") == revision:
+                reused = web_board.params_text(earlier.get("params"))
+                done.add(5)
+            else:
+                cannot = True
+                given.pop("params_from")
+        route = given.get("route") if given.get("route") in ("reuse", "defaults", "custom") else None
+        if route == "defaults":
+            params = ""
+        elif route == "custom":
+            params = given.get("params", "")
+        elif reused is not None:
+            params = reused
+        else:
+            params = given["params"] if "params" in given else (earlier_params or "")
+        values["params"] = params
+        route = route or ("reuse" if reused is not None else ("custom" if params else "defaults"))
+        guide = {"given": dict(given), "done": done, "route": route, "cannot_reuse": cannot, "src": given.get("src")}
+        return await launch_page(sid, user, caller, lang, values, [], notes, source, guide=guide)
 
     async def launch_post(request):
         if not same_origin(request):
@@ -500,22 +572,30 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(t["r_form"]), 403)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         sheets, envs = await run_in_threadpool(launch_choices, caller)
+        envs = [e["name"] for e in envs]
         pipeline = str(form.get("pipeline", "")).strip()
         values = {"pipeline": pipeline, "revision": str(form.get("revision", "")).strip(), "run_name": str(form.get("run_name", "")).strip(),
                   "samplesheet": str(form.get("samplesheet", "")), "ce_name": str(form.get("ce_name", "")), "params": str(form.get("params", ""))}
-        errors = []
+        errors, bad = [], set()
         if not pipeline or not re.match(r"^[A-Za-z0-9._/-]{1,100}\Z", pipeline):
             errors.append(t["e_pipeline"])
+            bad.add(2)
         if not values["revision"] or re.search(r"\s", values["revision"]):
             errors.append(t["e_revision"])
+            bad.add(2)
         if not values["run_name"]:
             errors.append(t["e_run_name"])
+            bad.add(7)
         if values["samplesheet"] not in sheets:
             errors.append(t["e_sheet"])
+            bad.add(4)
         if values["ce_name"] not in envs:
             errors.append(t["e_ce"])
-        params, bad = web_board.parse_params(values["params"], t)
-        errors += bad
+            bad.add(6)
+        params, problems = web_board.parse_params(values["params"], t)
+        errors += problems
+        if problems:
+            bad.add(5)
         if not errors:
             answer = await actions.request_launch(
                 platform_path, pipeline=pipeline if "/" in pipeline else "nf-core/" + pipeline, revision=values["revision"],
@@ -525,9 +605,11 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if done is not None:
                 return done
             errors.append(web_board.plain_reason(answer.get("message"), lang) + " " + t["r_none"])
+            bad.add(7)
         else:
             errors.append(t["e_body"])
-        return await launch_page(sid, user, caller, lang, values, errors, [], code=400)
+        guide = {"done": {2, 4, 5, 6}, "bad": bad, "route": "custom" if values["params"].strip() else "defaults"}
+        return await launch_page(sid, user, caller, lang, values, errors, [], code=400, guide=guide)
 
     async def settings(request):
         sid, user = user_of(request)

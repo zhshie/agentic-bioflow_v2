@@ -515,6 +515,32 @@ def template_body(path):
     return "\n".join(body) if body else None
 
 
+def _split_inline(line):
+    """Split one params.yaml line into (code, trailing comment or None).
+
+    A `#` starts a comment only outside quotes and only at the start of the
+    value or after whitespace, so `http://x/y#frag` and `"a # b"` stay values.
+    """
+    if ":" not in line:
+        return line, None
+    head, value = line.split(":", 1)
+    quote, i = None, 0
+    while i < len(value):
+        ch = value[i]
+        if quote == '"' and ch == "\\":
+            i += 2
+            continue
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "#" and (i == 0 or value[i - 1].isspace()):
+            return head + ":" + value[:i], value[i + 1:].strip()
+        i += 1
+    return line, None
+
+
 def rationale(path):
     """The comment blocks from the run's own params.yaml, kept with their key.
 
@@ -528,10 +554,12 @@ def rationale(path):
             st = line.strip()
             if st.startswith("#"):
                 pending.append(st.lstrip("#").strip())
-            elif st and ":" in st:
-                key = st.split(":", 1)[0].strip()
-                if pending:
-                    out.append((key, " ".join(pending)))
+            elif st and ":" in _split_inline(st)[0]:
+                code, tail = _split_inline(st)
+                key = code.split(":", 1)[0].strip()
+                text = " ".join(pending + ([tail] if tail else []))
+                if text:
+                    out.append((key, text))
                 pending = []
             elif not st:
                 pending = []
