@@ -296,7 +296,7 @@ def test_tcs19_s20_left_column(w):
     for r in rows(t):
         name = re.search(r"\b(go|bad|gone|L{60})\b", plain(r)).group(1)
         got[name[:4]] = r
-    want = {"go": ("▶", "執行中", "running"), "bad": ("✗", "失敗", "failed"), "gone": ("✗", "失敗", "failed"), "LLLL": ("✓", "完成", "succeeded")}  # R10: status text, not stage
+    want = {"go": ('class="sq"', "執行中", "running"), "bad": ('class="sq"', "失敗", "failed"), "gone": ('class="sq"', "失敗", "failed"), "LLLL": ('class="sq"', "完成", "succeeded")}  # R10: status text, not stage
     for key, (sym, stage, st) in want.items():
         r = got[key]
         assert 'href="/?run=id-' in r and sym in r and stage in plain(r) and re.search(r'class="[^"]*\bstate-%s\b' % st, r), key
@@ -343,7 +343,7 @@ def test_tcs24_s25_right_head(w):
     ann = w.user("ann")
     seed(w, "r", "running", ann)
     right = pane(login(w, "ann").get("/").text, "right")
-    assert "這個分析的對話 r 目前沒有待處理的事 問這個分析 之後開放" in plain(right)
+    assert "這個分析的對話 r 目前沒有通知 問這個分析 之後開放" in plain(right)
     assert re.search(r'<span class="off">問這個分析 <span class="later">之後開放</span></span>', right)
     assert not re.search(r"<(a|button|input|form)\b", right)
     for gone in ("分析進度", "聊天", "全部分析", "只顯示你的", "搜尋"):
@@ -400,7 +400,7 @@ def test_tcl21_item_is_one_link(w):
     t = login(w, "ann").get("/").text
     its = rows(t)
     assert len(its) == 4
-    for label, symbol, st, names in (("執行中", "▶", "running", "a"), ("完成", "✓", "succeeded", "b"), ("失敗", "✗", "failed", "cd")):
+    for label, symbol, st, names in (("執行中", 'class="sq"', "running", "a"), ("完成", 'class="sq"', "succeeded", "b"), ("失敗", 'class="sq"', "failed", "cd")):
         hit = [x for x in its if re.search(r'class="[^"]*\bstate-%s\b' % st, x)]
         assert len(hit) == len(names) and all(symbol in x and label in plain(x) and 'href="/?run=id-' in x for x in hit), st
     assert "state-lost" not in t
@@ -415,7 +415,7 @@ def test_tcl22_l23_numbers_and_done(w):
     seed(w, "third", "running", ann, started=now - 1000)
     t = login(w, "ann").get("/").text
     its = [plain(x) for x in rows(t)]
-    assert [x.split()[1] for x in its] == ["third", "second", "first"]
+    assert [x.split()[0] for x in its] == ["third", "second", "first"]
     assert its[2].endswith("執行 · 8 / 10")
 
 
@@ -534,7 +534,7 @@ def test_tch21_stage_bodies(w):
         mid = plain(pane(c.get("/?run=" + a + lang).text, "middle"))
         assert "10-18 04:30" in mid and "10-18 09:12" in mid, lang
     mid = plain(pane(c.get("/?run=" + a).text, "middle"))
-    for label, n in (("成功", 11), ("快取", 12), ("失敗", 13), ("中止", 14), ("執行中", 15), ("等待", 16), ("已送出", 17)):
+    for label, n in (("完成", 11), ("快取", 12), ("失敗", 13), ("中止", 14), ("執行中", 15), ("等待", 16), ("已送出", 17)):
         assert re.search(r"%s\s*%d(?!\d)" % (label, n), mid), (label, n)
     assert "10-18 09:05" in plain(pane(c.get("/?run=" + b + "&tab=info").text, "middle"))
     assert "Process terminated with an error exit status (137)" in c.get("/?run=" + a).text
@@ -568,7 +568,7 @@ def test_tcl07_to_l13_stage_strip(w):
         got = [[k for k in cells[s][0] if k.startswith("is-")] for s in STAGES]
         assert got == [x.split() for x in want], (st, got)
     names = [plain(strip_cells(c.get("/?run=" + ids["running"]).text)[s][1]) for s in STAGES]
-    assert [n.replace("✓ ", "") for n in names] == ["送出", "執行中", "結果", "下游", "完成"]
+    assert names == ["送出", "執行中", "結果", "下游", "完成"]
     cells = strip_cells(c.get("/?run=%s&stage=results" % ids["running"]).text)
     assert [[k for k in cells[s][0] if k.startswith("is-")] for s in STAGES] == [[x] for x in expect["running"]]
     assert [s for s in STAGES if 'aria-current="step"' in cells[s][1]] == ["results"]
@@ -587,7 +587,7 @@ def test_tcs29_stage_strip_style(w):
     assert re.search(r"\.is-current[^{]*\{[^}]*border-top:3pxsolidvar\(--accent\)", css)
     assert re.search(r"\.is-later[^{]*\{[^}]*border-top:3pxdashed", css)
     cells = strip_cells(t)
-    assert all("✓" in plain(cells[s][1]) for s in ("launch", "running")) and "✓" not in plain(cells["results"][1])
+    assert all('class="sq"' in cells[s][1] for s in ("launch", "running")) and 'class="sq"' not in cells["results"][1]
 
 
 def test_tcl14_l15_l16_middle(w):
@@ -596,11 +596,11 @@ def test_tcl14_l15_l16_middle(w):
     f = seed(w, "bad-one", "failed", ann, counts=dict(succeeded=11, cached=12, failed=13, aborted=14, running=15, pending=16, submitted=17))
     c = login(w, "ann")
     mid = pane(c.get("/?run=" + f).text, "middle")
-    head = re.search(r'<[^>]*class="[^"]*\bstate-failed\b[^"]*"[^>]*>[^<]*</', mid)
-    assert head and "✗" in head.group(0) and "失敗" in head.group(0) and mid.index("bad-one") < mid.index(head.group(0))
+    head = re.search(r'<[^>]*class="[^"]*\bstate-failed\b[^"]*"[^>]*><span class="sq"></span>[^<]*</', mid)
+    assert head and 'class="sq"' in head.group(0) and "失敗" in head.group(0) and mid.index("bad-one") < mid.index(head.group(0))
     # 011b: the page also has the notice's field list (問題／原因／可選動作); the task legend is the dl of class counts
     cells = re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", re.search(r'<dl class="counts">(.*?)</dl>', mid, re.S).group(1), re.S)
-    assert cells == [("成功", "11"), ("快取", "12"), ("失敗", "13"), ("中止", "14"), ("執行中", "15"), ("等待", "16"), ("已送出", "17")]
+    assert cells == [("完成", "11"), ("快取", "12"), ("失敗", "13"), ("中止", "14"), ("執行中", "15"), ("等待", "16"), ("已送出", "17")]
     run = pane(c.get("/?run=%s&stage=running" % f).text, "middle")
     prev = re.search(r'<a\b[^>]*rel="prev"[^>]*>(.*?)</a>', run, re.S)
     nxt = re.search(r'<a\b[^>]*rel="next"[^>]*>(.*?)</a>', run, re.S)
@@ -650,14 +650,14 @@ def test_tch08_states_and_symbols(w):
     t = c.get("/").text
     css = {"running": "running", "succeeded": "succeeded", "failed": "failed", "lost": "failed"}
     labels = {"running": "執行中", "succeeded": "完成", "failed": "失敗", "lost": "失敗"}
-    for st, sym in (("running", "▶"), ("succeeded", "✓"), ("failed", "✗"), ("lost", "✗")):
+    for st, sym in (("running", 'class="sq"'), ("succeeded", 'class="sq"'), ("failed", 'class="sq"'), ("lost", 'class="sq"')):
         mine = [r for r in rows(t) if "n-" + st in plain(r)]
-        assert len(mine) == 1 and plain(mine[0]).startswith(sym) and labels[st] in plain(mine[0]) and "state-" + css[st] in mine[0]
+        assert len(mine) == 1 and sym in mine[0] and labels[st] in plain(mine[0]) and "state-" + css[st] in mine[0]
         mid = pane(c.get("/?run=" + ids[st]).text, "middle")
-        assert re.search(r'class="badge state-%s"[^>]*>\s*%s\s' % (css[st], sym), mid)
-    for st in ("failed", "lost"):          # 011b/web v2: the formal notice is on the right: the level pill is a square plus 待處理
+        assert re.search(r'class="badge state-%s"[^>]*>\s*<span class="sq"></span>\s*%s\s*<' % (css[st], labels[st]), mid)
+    for st in ("failed", "lost"):          # 011b/web v2: the formal notice is on the right: the level pill is a square plus the state word
         right = pane(c.get("/?run=" + ids[st]).text, "right")
-        assert 'class="sq"' in right and "待處理" in plain(right) and "state-failed" in right
+        assert 'class="sq"' in right and labels[st] in plain(right) and "待處理" not in plain(right) and "state-failed" in right
 
 
 # ---- the Now page -----------------------------------------------------------------------------------------------------------------
@@ -688,7 +688,7 @@ def test_tcs35_nothing_to_notify(w):
     seed(w, "fine", "succeeded", ann)
     t = login(w, "ann").get("/").text
     right = pane(t, "right")
-    assert "<article" not in right and "目前沒有待處理的事" in right
+    assert "<article" not in right and "目前沒有通知" in right
 
 
 def test_tcs36_cards_are_read_only(w):
@@ -1029,7 +1029,7 @@ def test_tcl32_l33_english(w):
         assert 'lang="en"' in t
     mid = pane(c.get("/?run=%s&lang=en" % ids["running"]).text, "middle")
     cells = [(a.lower(), b) for a, b in re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", mid, re.S)]
-    assert cells == [("succeeded", "1"), ("cached", "2"), ("failed", "3"), ("aborted", "4"), ("running", "5"), ("pending", "6"),
+    assert cells == [("done", "1"), ("cached", "2"), ("failed", "3"), ("aborted", "4"), ("running", "5"), ("pending", "6"),
                      ("submitted", "7")]
 
 
@@ -1280,7 +1280,7 @@ def test_r10_reason_marker_left_tag_and_wrapping(w):
     for n, st in (("r1", "running"), ("r2", "failed"), ("r3", "succeeded"), ("r4", "lost")):
         seed(w, n, st, bob)
     for lang, want in (("", {"r1": "執行中", "r2": "失敗", "r3": "完成", "r4": "失敗"}),
-                       ("?lang=en", {"r1": "Running", "r2": "Failed", "r3": "Succeeded", "r4": "Failed"})):
+                       ("?lang=en", {"r1": "Running", "r2": "Failed", "r3": "Done", "r4": "Failed"})):
         page = login(w, "bob").get("/" + lang).text
         for r in rows(page):
             name = re.search(r"\b(r[1-4])\b", plain(r)).group(1)

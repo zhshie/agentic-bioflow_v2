@@ -415,14 +415,14 @@ def test_tc042_tc043_pending_pill_and_empty_lines(rig):
     ann = rig.user("ann")
     failed = run_of(rig, ann)
     c = login(rig, "ann")
-    for url, word in (("/", "待處理"), ("/?run=" + failed, "待處理"), ("/?lang=en", "Pending"), ("/?run=%s&lang=en" % failed, "Pending")):
+    for url, word in (("/", "失敗"), ("/?run=" + failed, "失敗"), ("/?lang=en", "Failed"), ("/?run=%s&lang=en" % failed, "Failed")):
         t = c.get(url).text
         assert re.search(r'<span class="level state-failed">.*?%s' % word, t, re.S), url
         assert "需要" + "處理" not in t and "Action needed" not in t
     ok = run_of(rig, ann, "run-ok", status=None)
     t = c.get("/?run=" + ok).text
-    assert "目前沒有待處理的事" in t and ("要你" + "處理") not in t
-    assert "Nothing pending" in c.get("/?run=%s&lang=en" % ok).text
+    assert "目前沒有通知" in t and ("要你" + "處理") not in t
+    assert "No notices" in c.get("/?run=%s&lang=en" % ok).text
     assert "—" in c.get("/").text
 
 
@@ -440,7 +440,7 @@ def test_tc044_tc045_status_is_a_square_plus_a_word_and_no_new_glyph(rig):
         assert not any(g in m.group(0) for g in GLYPHS + "?!")
     t = c.get("/?lang=en").text
     pill = re.search(r'<span class="level state-failed"><span class="sq"></span>[^<]*</span>', t).group(0)
-    assert '<span class="sq"></span>' in pill and "Pending" in pill and not any(g in pill for g in GLYPHS + "?!")
+    assert '<span class="sq"></span>' in pill and "Failed" in pill and not any(g in pill for g in GLYPHS + "?!")
     ledger = LEDGER.read_text(encoding="utf-8")
     for g in "▶✓✗⏸":
         assert g in ledger

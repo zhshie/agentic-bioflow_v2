@@ -160,7 +160,7 @@ def test_ss04_notice_level_is_state_square(w):
     for lang in ("zh", "en"):
         for st in ("failed", "lost"):
             t = c.get("/?run=%s%s" % (ids[st], q(lang))).text
-            assert re.search(r'<span class="level chip state-failed"><span class="sq"></span> ?%s</span>' % WORDS[lang][st], pane(t, "right"))
+            assert re.search(r'<span class="level state-failed"><span class="sq"></span> ?%s</span>' % WORDS[lang][st], pane(t, "right"))
             bad = ("失聯", "待處理") if lang == "zh" else ("Lost", "Pending")
             rest = re.sub(r"<dt>Pending</dt>", "", t)
             assert not any(b in rest for b in bad), (lang, st)
