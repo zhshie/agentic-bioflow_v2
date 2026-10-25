@@ -31,7 +31,8 @@ Usage:
         [--roles sample=X,read1=Y,read2=Z] [--single-end]
 
 Exit codes: 0 ok, 1 nothing found / validation failed, 2 bad usage (including
-no schema and no --roles), 3 needs a decision from the operator.
+no schema and no --roles, or an output path that cannot be written), 3 needs a
+decision from the operator.
 """
 
 import argparse
@@ -213,7 +214,15 @@ def main():
             print(f"WARNING: column '{c}' is empty for every sample - "
                   f"fill it via --defaults or ask the user", file=sys.stderr)
 
-    out = open(args.output, "w", newline="") if args.output else sys.stdout
+    if args.output:
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+            out = open(args.output, "w", newline="")
+        except OSError as e:
+            print(f"ERROR: cannot write {args.output}: {e.strerror}", file=sys.stderr)
+            return 2
+    else:
+        out = sys.stdout
     try:
         w = csv.DictWriter(out, fieldnames=columns, delimiter=args.delimiter,
                            lineterminator="\n")
