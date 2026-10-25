@@ -26,3 +26,8 @@ platform/tests/test_byte_channel_b.py
 - A gcloud that hangs without reading its input while a file larger than the pipe buffer is being fed would block the write; the timeout (3600 s, `ABF_STATION_PUT_TIMEOUT` for tests) only covers the wait after the input is closed. The agent has no thread for a watchdog by rule (TC-090 scan), so this was left; flagged for the verifier.
 - `Fed.close_input` is an alias of `close_stdin`: the existing scan `input\(` in `test_station_static.py` matches the text `close_input(` in a `def`, so the contract name (TC-067) is given by assignment and `put_upload.py` calls `close_stdin`.
 - Web, MCP, HTTP routes and placing the file in `uploads/` are not in this task (cloud-upload-wire).
+
+## 裁決三的處理
+- 裁決三 10：`platform/tests/test_station_clean.py` 的 TC-028 改了兩行（不是一行）：`JOB_KINDS[6:]` 加 `"put_upload"`；下一行 `ARG_KEYS` 的排除集合也要加 `put_upload`，否則同一個斷言仍因新增的 `put_upload` 鍵而失敗。第二行超出裁決字面，請 verifier 確認。
+- 裁決三 12：gcloud 掛住不讀 stdin 時餵檔寫入會卡住（禁 thread），本片接受；f 片真桶驗收時另測。
+- 裁決三 11：測試裡私鑰標頭用拼接字串組出（`grep "BEGIN PRIVATE" platform/tests/test_byte_channel_b.py` 無全文）。
