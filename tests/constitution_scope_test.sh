@@ -246,6 +246,12 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
   SELF="$HERE/$(basename "${BASH_SOURCE[0]}")"
   if grep -qF -e "$P1" -e "$P2" "$SELF"; then bad "TC-009: no comparison against the main ref left in this file"; else ok "TC-009: no comparison against the main ref left in this file"; fi
   if grep -v "^[[:space:]]*#" "$SELF" | grep -F "$P3" >/dev/null; then bad "TC-009: no skip branch left in this file"; else ok "TC-009: no skip branch left in this file"; fi
+  # flake root cause: a pipe into `grep -q` (grep quits at the first match, the writer gets
+  # "Broken pipe", pipefail turns that into a failure although the text was found). The
+  # pattern is built from parts so this line does not match itself; comment lines are skipped.
+  PQ='\|[[:space:]]*grep[[:space:]]+-[a-zA-Z]*'"q"
+  qhit=$(grep -v "^[[:space:]]*#" "$SELF" | grep -E "$PQ" | cut -c1-90 | head -3 | tr '\n' '|')
+  if [ -z "$qhit" ]; then ok "flake TC-014: no check pipes text into an early-exit grep (pipefail race)"; else bad "flake TC-014: no check pipes text into an early-exit grep (pipefail race)" "found: $qhit"; fi
 fi
 
 # TC-047: the earlier scope assertions above run unchanged; only the version
