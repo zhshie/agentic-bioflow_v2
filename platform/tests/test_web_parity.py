@@ -27,6 +27,7 @@ WEB_ONLY = {
     "platform_path_for": "the page finds platform.db from the index path, the way every entry does",
     "list_samplesheets": "the launch form's choice of samplesheet: the files in the caller's own upload folder",
     "request_facts": "the top of the confirmation page: the few plain facts of one pending request, read from its structured content",
+    "clean_requests": "read-only (cloud-cleanup-e): the board notice lists the caller's own open clean_work requests; it creates nothing",
     "launch_prefill": "the quick launch of the launch form: what the person's own earlier run was sent with, when it is still kept",
 }
 # Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).

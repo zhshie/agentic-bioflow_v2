@@ -493,11 +493,17 @@ def test_nothing_writes_clean_work_or_work_cleaned_at(tmp_path):
     for p in sorted(PKG.rglob("*.py")):
         # cloud-cleanup-b (ruling 2): confirm.py and jobs.py now legitimately handle clean_work;
         # jobs.py also records work_cleaned_at. Nothing else may.
-        if p.name not in ("store.py", "confirm.py", "jobs.py"):
+        # cloud-cleanup-e (ruling 2): web.py, web_board.py and actions/__init__.py may read and show clean_work (checked below).
+        if p.name in ("web.py", "web_board.py") or p.parent.name == "actions":
+            assert "work_cleaned_at" not in p.read_text(encoding="utf-8"), p.name
+        elif p.name not in ("store.py", "confirm.py", "jobs.py"):
             text = p.read_text(encoding="utf-8")
             assert "work_cleaned_at" not in text and "clean_work" not in text, p.name
         elif p.name == "confirm.py":
             assert "work_cleaned_at" not in p.read_text(encoding="utf-8"), p.name
+    shown = [PKG / "web.py", PKG / "web_board.py", PKG / "actions" / "__init__.py"]
+    from test_cleanup_confirm import _clean_work_read_only_problems
+    assert _clean_work_read_only_problems(shown) == []
     store_text = (PKG / "store.py").read_text(encoding="utf-8")
     for m in re.finditer(r".*work_cleaned_at.*", store_text):
         assert not re.search(r"\b(INSERT|UPDATE|SELECT|DELETE)\b", m.group(0)), m.group(0)
