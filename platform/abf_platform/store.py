@@ -171,8 +171,8 @@ RUN_TOKEN_TTL = 14 * 86400
 # Compute environments, agents, jobs, confirmations and the hand-off record. Nothing here describes the state of a
 # run: a job is a question or an order put to one agent, a confirmation is the user's "yes" to one content, and a
 # launches row is a fact (who was told to launch what, and the number Slurm gave it), never a status.
-# The CHECK constraints let exactly seven job kinds in, and the three that write (launch_nextflow, cancel_run, clean_work) only with
-# a confirmation. The jobs table has the same columns in the same order whether it was made new or upgraded from 007's.
+# The CHECK constraints let exactly eight job kinds in, and the three that write (launch_nextflow, cancel_run, clean_work) only with
+# a confirmation; the eighth, put_upload, writes to the user's own cloud prefix and needs none (the person's press of Upload is the yes). The jobs table has the same columns in the same order whether it was made new or upgraded from 007's.
 STATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS compute_envs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -237,7 +237,7 @@ _JOBS_TABLE = """CREATE TABLE %(name)s (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent TEXT NOT NULL,
     compute_env TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('preflight', 'list_site_files', 'launch_nextflow', 'cancel_run', 'fetch_run_records', 'read_task_log', 'clean_work')),
+    kind TEXT NOT NULL CHECK (kind IN ('preflight', 'list_site_files', 'launch_nextflow', 'cancel_run', 'fetch_run_records', 'read_task_log', 'clean_work', 'put_upload')),
     args_json TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('queued', 'claimed', 'done', 'refused', 'error', 'expired')),
     result_json TEXT,
@@ -406,11 +406,11 @@ def _migrate_jobs(con):
 
 
 def _jobs_kinds_current(sql_text):
-    return "read_task_log" in sql_text and "clean_work" in sql_text
+    return "read_task_log" in sql_text and "clean_work" in sql_text and "put_upload" in sql_text
 
 
 def _migrate_jobs_kinds(con):
-    """A platform.db made before run-diag-tools or before clean_work has a jobs table whose CHECK does not let `read_task_log` or `clean_work` in. Same shape of work as
+    """A platform.db made before run-diag-tools or before clean_work or put_upload has a jobs table whose CHECK does not let `read_task_log`, `clean_work` or `put_upload` in. Same shape of work as
     _migrate_jobs: one transaction, build the new table, copy every row by the column names both tables have (the ids and the
     AUTOINCREMENT counter too), drop the old one, rename. A failure anywhere rolls it all back. Another process may have done it first."""
     row = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'jobs'").fetchone()
