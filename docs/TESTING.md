@@ -660,6 +660,15 @@ The automatic tests (`platform/tests/test_web_cost.py`) check the numbers and th
 
 **The reviewer.** Read the section "The cost page" of `docs/PLATFORM.md` (TC-069): it says where the SU, cloud used, cap, remaining and the per-analysis usage come from. Run `git diff --name-only <base>...HEAD`: `web.py` and `web_board.py` appear, and the diff of `web_board.py` is only the masthead and the two cost strings; `test_tc051` is unchanged.
 
+## 設定頁（settings-page）: the maintainer and the reviewer check
+
+Automatic tests: `platform/tests/test_web_settings.py`. These steps are what no script can see. Open `/settings` logged in, once in Chinese and once with `?lang=en`.
+
+1. **390 px**: narrow the window (or the browser's phone view) to 390 px. The page must not scroll sideways; the two tables wrap their text instead of being cut off.
+2. **Tab**: press Tab through the page. Every thing that takes focus (the logout button, the language links) shows a visible outline. The middle column has nothing to focus, by design: it is read-only.
+3. **Read both languages**: every status shows a symbol, a word and a colour (✓ / ✗ / —). No Chinese on the English page, no error code, no internal name. Each ✗ in 使用前檢查 says what is missing.
+4. **Nothing to press**: no button, box or link in the middle column; the only form on the page is the logout one.
+
 ## Finished stage (finished-stage): the maintainer and the reviewer check
 
 The automatic tests are in `platform/tests/test_web_finished.py`. The steps below need a browser and a succeeded run that was launched from the platform.

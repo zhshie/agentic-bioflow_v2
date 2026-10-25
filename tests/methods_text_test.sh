@@ -232,5 +232,43 @@ if [ "$rc5" = 0 ] && grep -qF "Tools used within the workflow:" <<<"$out5"; then
   ok "collect_provenance.py needs no execute bit - invoked via sys.executable"
 else no "collect_provenance.py needs no execute bit - invoked via sys.executable" "rc=$rc5 <<$out5>>"; fi
 
+# ---------------------------------------------------------------------------
+# params-inline-comments (issue #23): a reason written at the end of the key's
+# own line counts as the reason, same as a block above it. TC-001..TC-013.
+why() { # stdin = params.yaml; prints only the "- `key` - text" entries
+  cat > "$RUN/params.yaml"
+  "$S" --assets "$TMP/assets" "$RUN/results" 2>&1 \
+    | awk '/^### Why these parameters/{f=1;next} f&&/^#/{f=0} f&&/^- `/'
+}
+chk() { # name, got, want ("" = no entry at all)
+  if [ "$2" = "$3" ]; then ok "$1"; else no "$1" "got <<$2>> want <<$3>>"; fi
+}
+D='—'
+chk "TC-001 a trailing comment alone is the reason" \
+  "$(why <<<'filter: true   # drop low quality on purpose')" \
+  "- \`filter\` $D drop low quality on purpose"
+chk "TC-002 block above + trailing merge into one entry" \
+  "$(why <<<$'# reads are long\npacbio: true  # per the kit sheet')" \
+  "- \`pacbio\` $D reads are long per the kit sheet"
+chk "TC-003 consecutive trailing comments do not bleed" \
+  "$(why <<<$'a: 1  # first\nb: 2  # second')" \
+  "$(printf '%s\n%s' "- \`a\` $D first" "- \`b\` $D second")"
+chk "TC-004 a trailing comment does not leak to the next key" \
+  "$(why <<<$'a: 1 # one\nb: 2')" "- \`a\` $D one"
+chk "TC-005 escaped quote inside a double-quoted value" \
+  "$(why <<<'q: "say \"hi\" # not a comment"  # real')" "- \`q\` $D real"
+chk "TC-006 # inside a URL is not a comment" "$(why <<<'url: http://x/y#frag')" ""
+chk "TC-007 # inside double quotes is not a comment" "$(why <<<'msg: "a # b"')" ""
+chk "TC-008 # inside single quotes is not a comment" "$(why <<<"msg2: 'c # d'")" ""
+chk "TC-009 an empty trailing comment is no reason" "$(why <<<'x: 1 #')" ""
+chk "TC-010 a blank trailing comment is no reason" "$(why <<<'y: 2 #   ')" ""
+chk "TC-011 a list item comment is dropped and does not leak" \
+  "$(why <<<$'  - item  # nested\nb: 2')" ""
+chk "TC-012 block-above-only is unchanged" \
+  "$(why <<<$'# Full-length reads, so the error model differs from the paired default.\npacbio: true')" \
+  "- \`pacbio\` $D Full-length reads, so the error model differs from the paired default."
+chk "TC-013 a commented-out default is still merged (known, locked)" \
+  "$(why <<<$'#   trim_front: 5\noutdir: results')" "- \`outdir\` $D trim_front: 5"
+
 echo
 [ "$fails" = 0 ] && echo "OK: methods_text.py" || { echo "$fails failed"; exit 1; }
