@@ -117,6 +117,11 @@ base: v3
 4. `jev_test.sh` 那 1 項失敗：executor 先在 base（origin/v3）跑同一支，若 base 也紅，ledger 附輸出、視同已知環境紅；若 base 綠，要查清是不是本片造成。
 5. 手動截圖（TC-078～081）：照 ui 守則用 Playwright 截 1440／390 px × zh／en 四張，放進 PR。
 
+## 裁決三（2026-10-25 20:40，回應全套因負載紅）
+6. 鏡像的舊 `__pycache__` 已由 developer-agent 修掉（abf-fast-suite 改成 `git clean -qfdx`），jev_test 的 TC-085 不會再被舊 pyc 誤觸。
+7. **計時類偶發紅的判定**：全套只剩計時／逾時類（`confirm_launch_test.sh` 的 slow 門檻、`platform_clock_test.sh`、`test_station_e2e.py`、`test_relay_loopback.py`）紅，且每支單跑都綠 → ledger 貼「全套輸出＋每支單跑輸出」，視同綠寫 GREEN；任何非計時類的紅照常算紅。
+8. 截圖（TC-078～081）這輪一定要做：Playwright 截 1440／390 px × zh／en 四張，存進 `specs/cloud-cleanup-e/shots/`。
+
 ## 專長守則（ui）
 
 ### executor
