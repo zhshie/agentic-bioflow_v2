@@ -17,7 +17,7 @@
 | test_web_cost.py test_co11 | line keys (7) | plus usd_approx | key added |
 | test_web_cost.py test_co06 | row `"5.10 SU"` | `"5.10 SU（約 US$0.01）"` | new display |
 | test_web_cost.py test_where_and_amount_per_row | row `"5.10 SU"` | `"5.10 SU（約 US$0.01）"` | new display |
-| test_web_cost.py test_no_other_currency... | forbidden word list had `匯率` | `即時匯率` | the plan's own footnote says "依 <as_of> 匯率約略換算"; the test still forbids live-rate wording |
+| test_web_cost.py test_no_other_currency... | forbidden word list had `匯率` | `匯率` kept in the list unchanged (fix round); the one footnote sentence `SU 換美元依 <as_of> 匯率約略換算，不是帳單。` (and its English twin) is cut out of the page text first, then every forbidden word is checked | footnote exempted by removing that exact sentence, no word loosened |
 | test_su_in_get_run.py SU_KEYS | five keys | plus usd_approx | key added |
 | test_actions_layer.py BASELINE | get_run and my_usage descriptions | one sentence about usd_approx appended, old text whole | sentence added |
 

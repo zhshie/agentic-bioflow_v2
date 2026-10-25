@@ -461,7 +461,9 @@ def test_no_other_currency_no_reconciled_no_advice(w):
     for url in ("/usage", "/usage?lang=en"):
         t = get(w, "ann", url).text
         mid = plain(pane(t, "middle"))
-        for word in ("已對帳", "Reconciled", "TWD", "即時匯率", "exchange rate", "改用國網", "等重置", "use NCHC", "taiwania3"):
+        # su-usd footnote: the one sentence that says "rate" (as of a date) is taken out first; the rest must stay free of the word
+        mid = re.sub(r"SU 換美元依 \S+ 匯率約略換算，不是帳單。|SU figures are converted to US dollars at the \S+ rate, roughly; this is not a bill\.", "", mid)
+        for word in ("已對帳", "Reconciled", "TWD", "匯率", "exchange rate", "改用國網", "等重置", "use NCHC", "taiwania3"):
             assert word not in mid, (url, word)
         assert "<form" not in pane(t, "middle") and "<input" not in pane(t, "middle")
     got = json.dumps(usage(w, ann))
