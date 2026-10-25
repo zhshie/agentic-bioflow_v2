@@ -15,7 +15,11 @@ fails=0
 C=.specify/memory/constitution.md
 
 ok() { printf '%-78s ok\n' "$1"; }
-bad() { printf '%-78s FAIL%s\n' "$1" "${2:+: $2}"; fails=$((fails+1)); }
+bad() { # a failure goes to stdout in the usual shape and, with its name and reason, to stderr too
+  printf '%-78s FAIL%s\n' "$1" "${2:+: $2}"
+  printf 'constitution_scope_test FAIL: %s%s\n' "$1" "${2:+: $2}" >&2
+  fails=$((fails+1))
+}
 has() { # has <label> <file> <fixed string>
   if grep -qF -- "$3" "$2" 2>/dev/null; then ok "$1"; else bad "$1" "no '$3' in $2"; fi
 }
@@ -184,7 +188,7 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
     if [ -z "$(git -C "$D" symbolic-ref -q HEAD 2>/dev/null)" ]; then ok "scratch clone is detached (scratch-clone-main TC-004)"; else bad "scratch clone is detached (scratch-clone-main TC-004)"; fi
     # TC-002
     inner "$D"
-    if [ "$RC" = 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep ' ok$' >/dev/null; then ok "TC-002: unchanged, no main: the fingerprint line runs and is ok"; else bad "TC-002: unchanged, no main: the fingerprint line runs and is ok" "rc=$RC"; fi
+    if [ "$RC" = 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep ' ok$' >/dev/null; then ok "TC-002: unchanged, no main: the fingerprint line runs and is ok"; else bad "TC-002: unchanged, no main: the fingerprint line runs and is ok" "rc=$RC; inner failures: $(printf '%s\n' "$OUT" | grep -E 'FAIL|^[0-9]+ failed' | head -5 | tr '\n' '|')"; fi
     if printf '%s\n' "$OUT" | grep -i "$P3" >/dev/null; then bad "TC-002: no skip note in the output"; else ok "TC-002: no skip note in the output"; fi
     # TC-007: a change outside the Safety Net does not trip it
     printf '\n### 9.9.9 (2099-01-01)\n\nA test amendment outside the Safety Net.\n' >> "$D/$C"
@@ -227,6 +231,17 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
     if [ "$RC" != 0 ] && printf '%s\n' "$OUT" | grep -i 'no SHA-256 tool' >/dev/null; then ok "TC-006: no hash tool on PATH: fails and says so"; else bad "TC-006: no hash tool on PATH: fails and says so" "rc=$RC"; fi
     if printf '%s\n' "$OUT" | grep -i "$P3" >/dev/null; then bad "TC-006: ...and is not a skip note"; else ok "TC-006: ...and is not a skip note"; fi
   fi
+  # flake TC-011/012/013: a failure is named on stderr and kept on stdout; a green run prints nothing there
+  D=$(mkclone stderrcase) || { bad "scratch clone for flake TC-011" "$(head -c 400 "$SCR/clone.err" 2>/dev/null | tr '\n' ' ')"; D=; }
+  if [ -n "$D" ]; then
+    selfn=$(basename "${BASH_SOURCE[0]}")
+    (cd "$D" && DOC_TEST_INNER=1 "$BASH" "tests/$selfn" >"$SCR/g.out" 2>"$SCR/g.err"); grc=$?
+    if [ "$grc" = 0 ] && [ ! -s "$SCR/g.err" ]; then ok "flake TC-013: a green run prints nothing on stderr"; else bad "flake TC-013: a green run prints nothing on stderr" "rc=$grc stderr: $(head -c 300 "$SCR/g.err" | tr '\n' ' ')"; fi
+    addsn "$D"
+    (cd "$D" && DOC_TEST_INNER=1 "$BASH" "tests/$selfn" >"$SCR/r.out" 2>"$SCR/r.err"); rrc=$?
+    if [ "$rrc" != 0 ] && grep -F "$FPL" "$SCR/r.err" | grep -q 'FAIL' && grep -qE 'current fingerprint: [0-9a-f]{64}' "$SCR/r.err"; then ok "flake TC-011: a failure is named, with its reason, on stderr"; else bad "flake TC-011: a failure is named, with its reason, on stderr" "rc=$rrc"; fi
+    if grep -F "$FPL" "$SCR/r.out" | grep -q ' FAIL: '; then ok "flake TC-012: the failure line is still on stdout in the usual shape"; else bad "flake TC-012: the failure line is still on stdout in the usual shape"; fi
+  fi
   # TC-009: this file has no comparison against main and no skip branch left
   SELF="$HERE/$(basename "${BASH_SOURCE[0]}")"
   if grep -qF -e "$P1" -e "$P2" "$SELF"; then bad "TC-009: no comparison against the main ref left in this file"; else ok "TC-009: no comparison against the main ref left in this file"; fi
@@ -263,8 +278,9 @@ fi
 LASTV=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
 if [ "$LASTV" = '**Version**: 6.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-25' ]; then ok "TC-E5: version line is last and exact"; else bad "TC-E5: version line is last and exact" "got: $LASTV"; fi
 # TC-E6
-bash tests/constitution_6_test.sh >/dev/null 2>&1 && ok "TC-E6: constitution_6_test.sh passes" || bad "TC-E6: constitution_6_test.sh passes"
-bash tests/constitution_checks_exist_test.sh >/dev/null 2>&1 && ok "TC-E6: constitution_checks_exist_test.sh passes" || bad "TC-E6: constitution_checks_exist_test.sh passes"
+for t in constitution_6_test constitution_checks_exist_test; do
+  E6OUT=$(bash "tests/$t.sh" 2>&1) && ok "TC-E6: $t.sh passes" || bad "TC-E6: $t.sh passes" "$(printf '%s\n' "$E6OUT" | grep -E 'FAIL|NO CHECK|DANGLING|SENTENCE' | head -3 | tr '\n' '|')"
+done
 # TC-E7
 if printf '%s' "$E4" | tr '\n' ' ' | tr -s ' ' | grep -qF 'no rule changes meaning'; then ok "TC-E7: 6.0.2 says no rule changes meaning"; else bad "TC-E7: 6.0.2 says no rule changes meaning"; fi
 
