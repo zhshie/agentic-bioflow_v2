@@ -549,6 +549,8 @@ scripts/settings.sh --migrate <root>
 It creates the root, copies every key across (splitting the machine keys into
 `config/machines/<machine>.yaml`), copies the token, and points this machine
 at the result. `local_root` is reported and dropped - the root supersedes it.
+Any unsent off-design reports queued beside the old settings (`reports/*.report`)
+are copied to `<root>/config/reports/`, so the session-start reminder still counts them.
 
 **It copies; it never moves.** The old files are left exactly where they were,
 and the command says where they are. A migration that deletes the only copy of
