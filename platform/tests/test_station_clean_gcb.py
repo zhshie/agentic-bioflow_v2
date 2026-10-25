@@ -415,7 +415,8 @@ def test_tc047_tc048_the_key_path_is_in_the_environment_only(w):
     state, res = w.go()
     key = str(w.box.key)
     for argv, env, _ in w.of("ls") + w.of("rm"):
-        assert env["GOOGLE_APPLICATION_CREDENTIALS"] == key and env["CLOUDSDK_CORE_DISABLE_PROMPTS"] == "1"
+        assert env["CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE"] == key and env["CLOUDSDK_CORE_DISABLE_PROMPTS"] == "1"
+        assert "GOOGLE_APPLICATION_CREDENTIALS" not in env  # ruling three
     assert not any(key in " ".join(c[0]) for c in w.calls)
     assert key not in json.dumps(res)
 
@@ -448,10 +449,12 @@ def test_tc052_the_environment_is_the_clean_one_plus_two_variables(w, monkeypatc
     from abf_station import gcb_launch
     monkeypatch.setenv("ABF_SOMETHING_SECRET", "s")
     monkeypatch.setenv("TOWER_ACCESS_TOKEN", "t")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/agent/own.json")  # ruling three: must be dropped
     ce = w.ce(environment=[{"name": "MY_OWN_VAR", "value": "mine", "head": True}])
     w.go(w.job(w.bundle(ce=ce)))
     want = dict(gcb_launch._plain_env())
-    want["GOOGLE_APPLICATION_CREDENTIALS"] = str(w.box.key)
+    want.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+    want["CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE"] = str(w.box.key)
     want["CLOUDSDK_CORE_DISABLE_PROMPTS"] = "1"
     runs = w.of("ls") + w.of("rm")
     assert len(runs) == 2
