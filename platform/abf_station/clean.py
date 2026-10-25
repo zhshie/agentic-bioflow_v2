@@ -33,7 +33,7 @@ TEMPLATE = (
     "test ! -L work || exit 14",
     'test "$(realpath -- work)" = {W} || exit 15',
     'test "$(stat -c %U work)" = {U} || exit 16',
-    "if [ -d results ] && find results -type l -lname '*/work/*' | grep -q . ; then exit 17; fi",
+    "if [ -d results ]; then l=$(find results -type l -lname '*/work/*' -print) || exit 17; [ -n \"$l\" ] && exit 17; fi",
     "rm -rf --one-file-system -- work",
 )
 

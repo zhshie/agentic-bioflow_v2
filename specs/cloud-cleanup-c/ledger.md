@@ -29,7 +29,7 @@
 
 ## 觀察與要問維護者的事
 
-- 樣板第 9 行 `find results … | grep -q .`：`find` 自己出錯會被當成「沒有連結」而繼續刪（`squeue` 失敗則會停在碼 18）。依計畫實作，沒有改。
+- 裁決二已改：樣板第 9 行 `find` 出錯回碼 17、不刪（TC-087，假 find 用 `find_fail` 旗標）。
 - `-lname '*/work/*'` 偏保守：任何指向含 `/work/` 的路徑的連結都算。依計畫實作。
 - 本片沒有碰 `cancel.py`；計畫旁註提到取消續跑那一次會被 `cancel.py` 拒絕，我沒有實測也沒有修。
 - `ATTEMPT` 公式：`run == leaf[:64 - len(sfx)] + sfx`，且數字不含前導零、N 至少 2；與 `launch.run_folder_ok` 一致，但在 `clean.py` 內自己重算（`launch.py` 禁碰）。
@@ -45,3 +45,8 @@
  platform/tests/test_station_clean.py | 610 +++++++++++++++++++++++++++++++++++
  4 files changed, 748 insertions(+), 5 deletions(-)
 ```
+
+## 裁決二補記
+
+- `-lname '*/work/*'` 會把指向含 `/work/` 路徑（例如 workDir 本身在 /work 底下，連到 rawdata 的連結）也當成指向 work：偏保守、不會誤刪，本片接受，留給之後。
+- 測試檔數量：130 條（多了 TC-087）；harness 多了 `find_fail` 旗標（只影響假 find，預設不變）。

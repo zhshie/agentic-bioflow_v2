@@ -186,6 +186,7 @@ class FakeSite:
         write_exec(self.bin / "ssh", head + "exit 1\n")  # the ssh on PATH must never be called
         real_find = shutil.which("find")
         write_exec(self.bin / "find", ("#!/bin/bash\n[ -f '@ST@/find_sleep' ] && sleep \"$(cat '@ST@/find_sleep')\"\n"
+                                       "[ -f '@ST@/find_fail' ] && exit 1\n"
                                        "exec '" + str(real_find) + "' \"$@\"\n").replace("@ST@", st))
         java = head + (
             "if [ -f '@ST@/java_dump_env' ]; then env >&2; echo 'java failed' >&2; exit 1; fi\n"
