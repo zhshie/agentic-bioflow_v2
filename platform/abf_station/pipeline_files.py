@@ -255,31 +255,39 @@ def _image(fetcher, repo, revision, diagram):
 
 # ---- the release tags ------------------------------------------------------------------------------------------
 
-def _tags_text(body):
-    """`git ls-remote --tags --refs` text from the advertisement of git's smart HTTP protocol, or None when it is malformed."""
-    pos, lines, flushed, first = 0, [], False, True
-    while pos < len(body):
-        head = body[pos:pos + 4]
+def _packets(body):
+    """The pkt-lines of a git advertisement as a list (a flush packet is None), or None when the lengths are malformed or run past the end.
+    Every packet is at least 4 bytes long, so a loop of len(body) // 4 + 1 rounds always reaches the end."""
+    out, pos = [], 0
+    for _ in range(len(body) // 4 + 1):
+        if pos >= len(body):
+            return out
         try:
-            head_text = head.decode("ascii")
+            head = body[pos:pos + 4].decode("ascii")
         except UnicodeDecodeError:
             return None
-        if _HEX4.match(head_text) is None:
+        if _HEX4.match(head) is None:
             return None
-        size = int(head_text, 16)
+        size = int(head, 16)
         if size == 0:
+            out.append(None)
             pos += 4
-            flushed = True
             continue
         if size < 4 or pos + size > len(body):
             return None
-        flushed = False
-        line = body[pos + 4:pos + size]
+        out.append(body[pos + 4:pos + size])
         pos += size
-        if first:
-            first = False
-            if not line.startswith(b"# service=git-upload-pack"):
-                return None
+    return None
+
+
+def _tags_text(body):
+    """`git ls-remote --tags --refs` text from the advertisement of git's smart HTTP protocol, or None when it is malformed."""
+    packets = _packets(body)
+    if not packets or packets[-1] is not None or packets[0] is None or not packets[0].startswith(b"# service=git-upload-pack"):
+        return None
+    lines = []
+    for line in packets[1:]:
+        if line is None:
             continue
         line = line.split(b"\0", 1)[0].rstrip(b"\n")
         try:
@@ -291,8 +299,6 @@ def _tags_text(body):
         if _TAG_NAME.match(ref[len("refs/tags/"):]) is None:
             continue
         lines.append("%s\t%s\n" % (sha, ref))
-    if first or not flushed:
-        return None
     return "".join(lines)
 
 

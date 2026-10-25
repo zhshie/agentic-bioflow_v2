@@ -30,6 +30,8 @@ Rule: only `"pipeline_files"` added at the tail; no assertion removed, loosened 
 | `test_byte_channel_a.py` TC-015 | `KINDS[-1]=="put_upload"` and `KINDS[:-1]==(...)` | `KINDS[-2:]==("put_upload","pipeline_files")` and `KINDS[:-2]==(...)` | ruling 12 |
 | `test_http_site_samplesheet.py` TC-057 | `SCHEMA_SHA256 = bb8b185e8eeff90fc5f457c3326f8d3e65876d5571952a994b76685fbc7706c2` | `d39c4e436fb4c9250331453cf454d52b25c60528cf67079ce362d22432939f33` | ruling 12. Algorithm unchanged: `sha256(json.dumps(rows))` over `SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name` of a new `platform.db`; the only text that changed is the `jobs` CHECK list. |
 
+| `test_byte_channel_b.py` TC-001 (NOT in the plan table) | `JOB_KINDS[-1] == "put_upload"` and `JOB_KINDS[:-1] == (...)` | `JOB_KINDS[-2:] == ("put_upload","pipeline_files")` and `JOB_KINDS[:-2] == (...)` | The full suite turned it red; it is the same tail-only change of the plan's general rule (a whole-list equality gets `pipeline_files` last), in the same form as the byte-channel-a edits. Flagged here because no table row names it. |
+
 Not edited although the plan allowed it: `test_cleanup_store.py:137` (the `KINDS` probe table), `test_cleanup_confirm.py:343` (the `CONFIRMED` assertion).
 
 ## Where a TC lives that the cases name in another file
@@ -40,6 +42,7 @@ TC-135 (no MCP tool of these names) and TC-159 (no `nfcore_catalogue`, no `catal
 
 - `OPEN(url, headers, timeout, limit)` returns at most `limit + 1` bytes and the caller judges `len(body) > limit` (TC-040 pins the `limit` values 1,000,000 / 1,000,000 / 2,000,000 / 4,000,000).
 - The 60-second rule is `now - finished_at >= PF_RETRY_SECONDS` (exactly 60 asks again; 59 still shows the old answer).
+- The tag advertisement is split into packets with a `for` loop of `len//4+1` rounds, not a `while`: `test_station_static` TC-090 allows a `while` only in `agent.py`.
 - The "update abf-station" sentence in `actions` is written in string pieces: the platform scan (TC-061) bars the whole word in `abf_platform/`.
 - `jobs._enqueue` refuses the kind `pipeline_files` (as it does `put_upload`): the one door is `enqueue_pipeline_files`.
 
