@@ -24,4 +24,13 @@
 - 計畫與 TC-047／TC-052 規定的環境變數是 `GOOGLE_APPLICATION_CREDENTIALS`（與 `gcb_launch._head_env` 相同）。但預檢（`gcb_preflight._gcloud_env`）用的是 `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`，那才是 gcloud CLI 認的金鑰檔變數；`GOOGLE_APPLICATION_CREDENTIALS` 主要給函式庫用。若真桶驗收時 `gcloud storage ls/rm` 沒用到這把金鑰（改用機器上已登入的帳號），要在 f 片改環境變數（需同時改 TC-047／TC-052）。我照合約做，沒有擅自多加變數。
 
 ## git diff --stat（對基底 `git merge-base HEAD origin/v3`）
-見最後一次 commit 後貼上（下方）。
+本片改的檔（其餘 specs/ 檔是 developer-agent／verifier 先前的 commit）：
+```
+ platform/abf_station/clean.py            | 121 ++++++-
+ platform/tests/test_cloud_upload.py      |   3 +
+ platform/tests/test_gcb_ce.py            |   3 +
+ platform/tests/test_station_clean.py     |  20 +-
+ platform/tests/test_station_clean_gcb.py | 510 +++
+ specs/cloud-cleanup-d/ledger.md
+```
+`launch.py`、`gcb_launch.py`、`cancel.py`、`gcb_preflight.py`、`site.py`、`rules.py`、`handlers.py`、`test_gcb_launch.py` 與 `abf_platform/*`、`abf_launch/*` 未動。不需要 migration（沒碰資料結構）。
