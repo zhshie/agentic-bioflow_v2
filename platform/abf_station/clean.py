@@ -1,5 +1,10 @@
-# Nothing existing: what must go is one directory at one fixed place, and this agent must check every path itself after the owner confirmed; the Nextflow clean command starts Nextflow and trusts its cache, rclone purge checks no path, and Seqera Platform's delete belongs to its own cloud service, so none of them fit.
-"""The clean_work job (feature cloud-cleanup-c): delete the `work` folder of one finished Slurm run, after the owner confirmed it.
+# Nothing existing: what must go is one directory at one fixed place, and this agent must check every path itself after the owner confirmed; the Nextflow clean command starts Nextflow and trusts its cache, rclone purge checks no path, gcloud storage rm deletes whatever its URL matches and checks no path or prefix (a prefix such as work also matches work2 unless the URL is listed and checked first), and Seqera Platform's delete belongs to its own cloud service, so none of them fit.
+"""The clean_work job (features cloud-cleanup-c and cloud-cleanup-d): delete the `work` folder of one finished run, after the owner confirmed it.
+
+Two kinds of run. Google Batch (d): see _clean_gcb; the same confirmation and bundle checks, the path worked out again from the
+environment's workDir, the head process of the run must be gone, the key file and the read-only preflight must pass, then the
+prefix <workDir>/runs/<run>/work/ is LISTED (read-only) and every line must lie under it, and only then ONE
+`gcloud storage rm --recursive <that one URL>` is run: no shell, no second try, no loop. Slurm (c), described next:
 
 Order, each step stops at the first failure and nothing is retried: the confirmation and its hash (launch.verify_confirmation),
 the shape of the bundle, the path worked out again by this agent and compared character by character with the bundle, the
@@ -14,7 +19,8 @@ passes on what the site printed.
 import os
 import re
 
-from . import cancel, launch, rules
+from . import cancel, gcb_launch, gcb_preflight, launch, rules
+from . import site as host
 from .site import quote
 
 KEYS = {"version", "run_name", "slurm_job_id", "run_folder", "agent", "ce", "work"}
@@ -100,7 +106,7 @@ def run_clean(job, ctx):
         raise rules.Refusal("這個清理是給另一個代理的 (for another agent)")
     ce = bundle["ce"]
     if isinstance(ce, dict) and ce.get("platform") == launch.GCB:
-        raise rules.Refusal("Google Batch 的清理尚未支援（cloud-cleanup-d）(not supported yet)")
+        return _clean_gcb(job, ctx, bundle)
     env = rules.clean_environment(ce)
     run, folder = _check_path(bundle, env)
     return _clean_slurm(job, ctx, run, folder)
@@ -124,3 +130,110 @@ def _clean_slurm(job, ctx, run, folder):
     if res.rc in REFUSED:
         raise rules.Refusal("%s，沒有改動任何東西 (nothing was changed)" % REFUSED[res.rc])
     return "error", {"ok": False, "message": "清理沒有成功（結束碼 %d），%s" % (res.rc, TAIL)}
+
+
+# ---- Google Batch (cloud-cleanup-d) ---------------------------------------------------------------------------------------------
+
+NOTHING_MATCHED = re.compile(r"matched no objects|no urls matched", re.I)
+SHOWN = 300
+
+
+def _gcloud_env(key_path):
+    """The environment of the listing and the removal: the plain one, the key file named here only, and no prompts."""
+    env = dict(gcb_launch._plain_env())
+    env["GOOGLE_APPLICATION_CREDENTIALS"] = str(key_path)
+    env["CLOUDSDK_CORE_DISABLE_PROMPTS"] = "1"
+    return env
+
+
+def _said(text, key_path):
+    """What gcloud printed, shortened, with the key file's path and anything shaped like a credential hidden."""
+    return gcb_preflight._scrub(str(text).replace(str(key_path), gcb_launch.KEY_SHOWN))[:SHOWN].strip()
+
+
+def _gcb_work(bundle, run, ce_out, bucket):
+    """The only prefix this agent will clear: workDir + /runs/<run>/work, worked out here and equal to the bundle's, character by character."""
+    expected = "%s/runs/%s/work" % (ce_out["workDir"], run)
+    bad = "路徑不是這個平台給這個 run 的，沒有動任何東西 (the path is not the one this platform gives this run)"
+    if not isinstance(bundle["work"], str) or bundle["work"] != expected:
+        raise rules.Refusal(bad)
+    parts = expected[len("gs://"):].split("/")
+    if parts[0] != bucket or any(p == "" or p in BARRED for p in parts) or parts[-1] != "work":
+        raise rules.Refusal("路徑含 rawdata、results、analysis、空段或 ..，或最後一段不是 work，一律不刪 (never rawdata, results or analysis)")
+    return expected
+
+
+def _head_gone(folder, run, number):
+    """None when the head process of this run is not running; a result tuple when the question timed out; a Refusal when it is
+    still running or cannot be told."""
+    recorded = gcb_launch._read_small(os.path.join(folder, "head.pid"))
+    if recorded is None or not re.match(rb"^[0-9]{1,10}\s*\Z", recorded):
+        raise rules.Refusal("找不到 head.pid，無法確認主控程序已結束，保守起見不刪 (head.pid is missing or not a number)")
+    if int(recorded) != number:
+        raise rules.Refusal("head.pid 記的編號和內容包的不同，無法確認主控程序已結束，不刪 (head.pid holds another number)")
+    try:
+        rc, out = host.run_fixed(["ps", "-o", "user=", "-o", "args=", "-p", str(number)], gcb_launch._plain_env(), 20)
+    except TimeoutError:
+        return "error", {"ok": False, "message": "查詢逾時，沒有刪任何東西，也不重試"}
+    lines = [ln for ln in str(out).splitlines() if ln.strip()]
+    if rc != 0 or not lines:
+        return None
+    if len(lines) != 1:
+        raise rules.Refusal("無法確認主控程序已結束（ps 回了不只一行），保守起見不刪 (not exactly one process)")
+    if re.search(r"(?:^|\s)-name\s+%s(?:\s|\Z)" % re.escape(run), lines[0].strip()):
+        raise rules.Refusal("這個 run 的主控程序還在跑，先等它結束或取消它，再申請清理；沒有刪任何東西 (the head process is still running)")
+    return None         # a number that another program has taken over since
+
+
+def _clean_gcb(job, ctx, bundle):
+    run = bundle["run_name"]
+    if bundle["agent"] != ctx.agent_name:
+        raise rules.Refusal("這個清理是給另一個代理的 (for another agent)")
+    if not isinstance(run, str) or not launch.RUN_NAME.match(run):
+        raise rules.Refusal("run 名稱不對 (the run name is not one this platform makes)")
+    number = bundle["slurm_job_id"]
+    if isinstance(number, bool) or not isinstance(number, int) or not 1 <= number <= 2 ** 31 - 1:
+        raise rules.Refusal("主控程序編號必須是一個十進位數字 (the process number must be one decimal number)")
+    storage = launch.own_facts(ctx).get("storage_root")
+    if not storage:
+        raise rules.Refusal("部署設定沒有 storage_root，無法找到這個 run 的專屬資料夾 (storage_root is not set)")
+    folder = bundle["run_folder"]
+    if folder != "%s/%s/%s" % (storage, launch.GCB_RUNS, run):
+        raise rules.Refusal("專屬資料夾不是這台主機上這個 run 的那一個，沒有動任何東西 (the run folder is not the one this host makes)")
+    try:
+        ce_out, bucket, _ = launch._check_gcb_ce(bundle["ce"])
+    except launch.BundleError as e:
+        raise rules.Refusal("環境設定不合規則，沒有動任何東西：%s" % e)
+    expected = _gcb_work(bundle, run, ce_out, bucket)
+    waiting = _head_gone(folder, run, number)
+    if waiting is not None:
+        return waiting
+    key_path = gcb_preflight.credentials_path(ctx.settings_file)
+    gcb_launch._check_environment(bundle["ce"], key_path)
+    env, url, project = _gcloud_env(key_path), expected + "/", ce_out["project"]
+
+    try:
+        rc, out = host.run_fixed(["gcloud", "storage", "ls", "--recursive", "--project", project, url], env, 120)
+    except TimeoutError:
+        return "refused", {"ok": False, "cleaned": False, "message": "列出雲端暫存檔逾時，沒有刪任何東西；稍後可以再申請"}
+    gone = {"ok": True, "cleaned": True, "run_name": run, "message": "%s 底下已經沒有東西，沒有刪任何東西；results 沒有動" % expected}
+    if rc != 0:
+        if NOTHING_MATCHED.search(str(out)):
+            return "done", gone
+        return "error", {"ok": False, "message": "列出雲端暫存檔失敗，沒有刪任何東西，可以再申請（%s）" % _said(out, key_path)}
+    objects = 0
+    for line in (ln.strip() for ln in str(out).splitlines() if ln.strip()):
+        heading = line.endswith(":")
+        if not (line[:-1] if heading else line).startswith(url):
+            raise rules.Refusal("列出的物件不全在 work 底下（前綴撞名），不刪 (the listing holds objects outside work)")
+        objects += 0 if heading else 1
+    if objects == 0:
+        return "done", gone
+
+    try:
+        rc, out = host.run_fixed(["gcloud", "storage", "rm", "--recursive", "--project", project, url], env, 300)
+    except TimeoutError:
+        return "error", {"ok": False, "message": "刪除逾時，%s" % TAIL}
+    if rc != 0:
+        return "error", {"ok": False, "message": "刪除沒有成功（結束碼 %s：%s），%s" % (rc, _said(out, key_path), TAIL)}
+    return "done", {"ok": True, "cleaned": True, "run_name": run, "message": "已刪除 bucket 裡 %s 底下的物件；results 沒有動" % expected}

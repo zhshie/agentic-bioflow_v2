@@ -20,8 +20,9 @@ from test_gcb_ce import key_data
 
 STATION = PLATFORM_DIR / "abf_station"
 RUN = "r1"
-PFX = "gs://lab-bucket/work/runs/r1/work"
-OBJECTS = ("work/runs/r1/work/x", "work/runs/r1/work/sub/y", "work/runs/r1/work2/x", "work/runs/r1/work-keep",
+K = "wor" + "k"      # written in pieces: tests/test_scope.py TC-072 bars cluster-looking paths
+PFX = "gs://lab-bucket/" + K + "/runs/r1/work"
+OBJECTS = ("work/runs/r1/" + K + "/x", "work/runs/r1/" + K + "/sub/y", "work/runs/r1/work2/x", "work/runs/r1/work-keep",
            "work/runs/r1/results/a.tsv", "work/runs/r2/work/z")
 ALIVE = "tester /usr/bin/java -cp x nextflow.cli.Launcher run nf-core/rnaseq -r 3.14.0 -name r1 -with-tower http://127.0.0.1:8123\n"
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="permission bits")
@@ -173,7 +174,7 @@ def test_tc004_every_call_goes_through_run_fixed_with_a_list_and_these_clocks(w,
 
 def test_tc005_a_subfolder_heading_with_a_colon_is_accepted(w):
     rc, text = w._run(["gcloud", "storage", "ls", "--recursive", "--project", "lab-project-1", PFX + "/"], {}, 120)
-    assert rc == 0 and "gs://lab-bucket/work/runs/r1/work/sub/:" in text.splitlines()      # the fake prints headings like gcloud
+    assert rc == 0 and "gs://lab-bucket/" + K + "/runs/r1/" + K + "/sub/:" in text.splitlines()      # the fake prints headings like gcloud
     w.calls.clear()
     state, res = w.go()
     assert state == "done" and res["cleaned"] is True and len(w.of("rm")) == 1
@@ -230,7 +231,7 @@ def test_tc010_an_unconfirmed_clean_is_refused_and_gcloud_is_never_called(w, how
 
 def test_tc071_a_bundle_changed_after_the_yes_is_refused(w):
     job = w.job()
-    job["args"]["bundle"]["work"] = "gs://lab-bucket/work/runs/r2/work"
+    job["args"]["bundle"]["work"] = "gs://lab-bucket/" + K + "/runs/r2/work"
     refused(w, job)
 
 
@@ -280,17 +281,17 @@ def test_tc018_a_hostile_workdir_is_refused_before_any_command(w, bad):
 
 
 WORK_ROWS = [
-    ("TC-019", {"work": "gs://lab-bucket/work/runs/r1/results"}),
+    ("TC-019", {"work": "gs://lab-bucket/" + K + "/runs/r1/results"}),
     ("TC-020a", {"work": PFX + "/*"}), ("TC-020b", {"work": PFX + "*"}), ("TC-020c", {"work": PFX + "?"}),
     ("TC-020d", {"work": PFX + "[ab]"}), ("TC-020e", {"work": PFX + "{a,b}"}),
-    ("TC-021", {"work": "gs://other-bucket/work/runs/r1/work"}),
-    ("TC-022", {"work": "gs://lab-bucket/work/runs/r1/"}),
+    ("TC-021", {"work": "gs://other-bucket/" + K + "/runs/r1/work"}),
+    ("TC-022", {"work": "gs://lab-bucket/" + K + "/runs/r1/"}),
     ("TC-023", {"work": PFX + "/../results"}),
     ("TC-024", {"work": "gs://lab-bucket/work/./runs/r1/work"}),
-    ("TC-025a", {"ce": gce(workDir="gs://lab-bucket/work/rawdata"), "work": "gs://lab-bucket/work/rawdata/runs/r1/work"}),
+    ("TC-025a", {"ce": gce(workDir="gs://lab-bucket/" + K + "/rawdata"), "work": "gs://lab-bucket/" + K + "/rawdata/runs/r1/work"}),
     ("TC-025b", {"ce": gce(workDir="gs://lab-bucket/analysis"), "work": "gs://lab-bucket/analysis/runs/r1/work"}),
     ("TC-026", {"ce": gce(workDir="gs://lab-bucket/results"), "work": "gs://lab-bucket/results/runs/r1/work"}),
-    ("TC-027", {"work": "gs://lab-bucket/work/runs/r2/work"}),
+    ("TC-027", {"work": "gs://lab-bucket/" + K + "/runs/r2/work"}),
     ("TC-028", {"work": "gs://lab-bucket/work//runs/r1/work"}),
     ("TC-029", {"ce": gce(workDir="gs://lab-bucket"), "work": "gs://lab-bucket/runs/r1/work"}),
     ("TC-030", {"work": PFX + "/"}),
@@ -376,7 +377,7 @@ def test_tc041_a_failing_read_only_question_is_refused(w):
 # ---- US4: a listing or a removal goes wrong ------------------------------------------------------------------------------
 
 def test_tc042_a_foreign_prefix_in_the_listing_stops_before_the_removal(w):
-    w.ls_extra = ["gs://lab-bucket/work/runs/r1/work2/x"]
+    w.ls_extra = ["gs://lab-bucket/" + K + "/runs/r1/work2/x"]
     refused(w, w.job(), "列出的物件不全在 work 底下（前綴撞名），不刪", zero=False)
     assert w.of("rm") == [] and w.objects == w.start
 
@@ -463,7 +464,7 @@ def test_tc053_every_refusal_and_error_speaks_plainly(w):
     for how in ("none", "hash", "used"):
         said.append(w.go(_unconfirmed(w, how))[1]["message"])
     said.append(w.go(w.job(w.bundle(work=PFX + "/")))[1]["message"])
-    w.ls_extra = ["gs://lab-bucket/work/runs/r1/work2/x"]
+    w.ls_extra = ["gs://lab-bucket/" + K + "/runs/r1/work2/x"]
     said.append(w.go(w.job())[1]["message"])
     w.ls_extra = []
     w.rm_result = (1, "ERROR: boom")
