@@ -23,6 +23,7 @@ source: 維護者 2026-10-25「照你建議」（遠端同事拿管理者發的�
 ## 範圍：檔案
 - `platform/abf_platform/web.py`（新路由 `/welcome` GET／POST、登入導向、未登入導向；登入頁說明句；檔頭路由清單 docstring）
 - `platform/tests/test_web_welcome.py`（新）
+- `platform/tests/test_temp_password.py`：只限 `test_tc025`、`test_tc027`，見裁決 1
 - `platform/tests/test_owner_binding.py`：`test_tc068_no_new_way_to_log_in` 的路由集合加 `"/welcome"`、`store.*` 名稱集合加 `"change_web_password"`（只准加這兩項，ledger 寫明理由）
 - 其他把登入頁說明句或路由集合逐字釘住的既有測試：只准跟著改那一句／那一項，ledger 逐條列
 - `docs/TESTING.md`（手動驗收一節：發臨時密碼 → 登入 → 改密碼 → 進看板；見完成標準）
@@ -75,7 +76,18 @@ source: 維護者 2026-10-25「照你建議」（遠端同事拿管理者發的�
 - 不改 `store.py` 與 CLI。
 
 ## 裁決
-（尚無）
+（2026-10-25，developer-agent，回應 verifier 出題退回；與上文衝突時以本節為準）
+1. **兩個既有測試要改，正式列入範圍**（`platform/tests/test_temp_password.py`，ledger 逐條記）：
+   - `test_tc025`：臨時密碼 session 打 `/` 的期望由 303 `/login` 改成 **303 `/welcome`**（理由：本任務就是讓它去設定密碼頁；憲法 6.1.0「reaches only the page that changes the password」）。
+   - `test_tc027`：保留原本的略過清單（`/login`、`/logout`、`/.well-known*`、`/register`、`/token`、`/revoke`），再加略過 `/welcome` 與 `/authorize`；其餘每條路由、每個方法，臨時 session 的回應一律是 **303 且 Location＝`/welcome`**，且狀態沒有改變（`w.jobs() == []`、確認單仍 pending）、回應不含 run 名稱。另加一條：`/authorize` 對臨時 session 與沒登入的回應（狀態碼＋Location）逐項相同（行為不變）。`seen >= 8` 保留。
+   - 其他保護「臨時 session 不能看 run、不能送出」的斷言（如 tc026）一字不改、必須照舊通過。
+2. **`/c/{rid}`、`/consent/{rid}` 的事實更正**：沒登入時它們回的是登入頁本身（GET 200、POST 401，帶 next），不是導向——**沒登入的行為維持原樣，一字不改**。改的只有：臨時密碼 session 打這兩條（GET 與 POST）→ **303 `/welcome`**，不改任何狀態。作法 3 與 W2 中「沒 cookie → 303 `/login`」只適用於 `/`、`/settings`、`/usage`、`/launch`（GET／POST）、`/act/{verb}`；對 `/c`、`/consent` 改讀為「與改動前逐項相同」。
+3. **畫面＝沿用登入頁外框 `_page` 與既有樣式表，算 DESIGN.md 已決定**；不新增視覺元素，`web_board.py` 與樣式表不變。
+4. **英文說明句定案**：「You are using a one-time temporary password from your administrator. It works for 72 hours and only lets you set your own password. After that, log in with your new password.」標題英文「set your own password」、按鈕「set password」照作法 4。
+5. **錯誤訊息不加符號**：與登入頁相同（`class="bad"` 的完整句子）；不要求符號。
+6. **怎麼認出「目前的密碼不對」**：store 若有對應常數就用常數；沒有就以 `ValueError` 訊息是否包含「目前的密碼不對」判斷。不改 store。「剛被改過」分支可用替身讓 store 丟出該訊息來測。
+7. **PLATFORM.md**：在那段路由說明散文中補一句 `/welcome`（臨時密碼登入後唯一可到的頁面，設定自己的密碼）。
+8. 計畫內作法 1–7 已包含前端合約的全部內容；worktree 外的 `temp-password.md` 不必讀。
 
 ## 專長守則（ui）
 
