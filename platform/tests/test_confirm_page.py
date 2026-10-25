@@ -309,7 +309,7 @@ def test_tcg04_g05_g06_the_web_app_has_the_routes_of_009c_plus_the_board_and_the
                       ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)),      # 012b: the launch form and the three buttons that only ask
                       ("/login", ("GET", "HEAD")), ("/login", ("POST",)), ("/logout", ("POST",)),
                       ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")),
-                      ("/token", ("OPTIONS", "POST"))], routes
+                      ("/token", ("OPTIONS", "POST")), ("/usage", ("GET", "HEAD"))], routes
     for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/submit",
                  "/upload", "/password", "/passwd", "/cost", "/api/launch"):
         assert c.get(path).status_code == 404, path

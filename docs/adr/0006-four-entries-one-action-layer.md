@@ -105,7 +105,9 @@ are three objects of the action layer (`TERMINAL`, `ELICITED`, `PAGE`); the MCP 
 `cancel` write a pending request and ask the person, and a pending request is no confirmation (the
 queue requires `state = confirmed`). The page is `abf-platform web`, a program of its own, not part of
 the MCP server's bearer check. Its login is a name and a **web password** that only
-`abf-platform user passwd` can set, typed at a real terminal and kept as a scrypt hash: a first
+`abf-platform user passwd` can set, typed at a real terminal and kept as a scrypt hash (since
+constitution 6.1.0 the operator may instead issue a one-time temporary password there, which the
+first login must change): a first
 version that logged in with the personal access token was refused at review, because an AI that holds
 the token could then log in and press for the person. The honest boundary is in the constitution and in
 `docs/PLATFORM.md`: an AI that can run commands on the person's own machine can do what the person

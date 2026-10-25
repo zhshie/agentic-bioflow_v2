@@ -53,7 +53,8 @@ hands the decision to the model, which can decide the user agreed and repeat the
 So the yes must come through a channel a person operates: the terminal, the form of the
 person's MCP client (the client shows it, the person answers it), or the platform's
 confirmation page, where the person logs in with a web password that only a terminal can
-set (a token must not log in, or an AI holding it could press for the person). A request
+set (the person's own, or a one-time temporary one the operator issues there, which the first
+login must change; a token must not log in, or an AI holding it could press for the person). A request
 that is only pending is never a yes, and the queue itself checks that. The gate stays in
 the platform's action layer, not in a client's permission rule: a rule protects only the
 host that holds it. What it cannot do is written in the amendment and in
