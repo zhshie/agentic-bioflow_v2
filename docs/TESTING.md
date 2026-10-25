@@ -556,6 +556,16 @@ This is the procedure for Stage 3 (web 011 to 013). The pages it walks are not a
 
 Keep the record with the release notes of the run. A step you could not do by clicking alone is a finding, not a skipped step.
 
+## Guided launch (guided-launch-1): the maintainer and the reviewer check
+
+The seven-step `/launch` page is tested by `platform/tests/test_web_guided_launch.py`; what only a person can see is below. Use a browser with scripts allowed (the page has none), on an account that has uploaded a samplesheet and has launched at least once. Record the date, the browser and the width for each step.
+
+1. **No sideways scrolling at 390 px.** Open `/launch`, then `/launch?pipeline=nf-core/ampliseq&revision=2.18.0`, then the page after pressing a Quick launch link, in Chinese and in English (`&lang=en`). Make the window 390 px wide (the browser's device mode). Check: no horizontal scroll bar at any of them, and the "Used before" table, a long pipeline name and a long run name wrap inside the page.
+2. **Focus outline with the Tab key.** On each of those pages press Tab from the top until you reach the Submit button. Check: every step title, link, field and button gets a visible outline in turn, and the order follows steps 1 to 7.
+3. **Walk 1 to 7 once.** From `/launch`: (1) read that step 1 says "Checked once a pipeline is chosen". (2) In "Used before" press Select on a row; check that step 2 shows `✓`, step 1 lists four checks and one grey "later" line, and the current step is 4. (4) Choose a samplesheet and press its button; check step 4 shows `✓`. (5) Choose a route and press Apply parameters; check step 5 shows `✓` with the route named. (6) Choose an environment and press its button; check step 6 shows `✓` and the current step is 7. (7) Read the summary, type an analysis name and press Submit; check that you land on the confirmation page `/c/<id>` and that nothing is queued until you press Send there.
+4. **Quick launch.** Press Quick launch on a row. Check: steps 1, 2, 5 and 6 are `✓`, step 3 stays "later", the current step is 4, and the parameters of that earlier run are in the summary once a samplesheet is chosen.
+5. **A failed check.** Pick an environment that is not available, or a revision that the environment does not list. Check: step 1 shows `✗` with a sentence, step 7 lists the same item again, and the form still opens the confirmation page or says plainly what was refused.
+
 ## Google Cloud Batch environment (gcb-ce-type): the maintainer and the reviewer check
 
 The automatic tests use a fake `gcloud` and touch no network. Three things are checked by a person.
@@ -639,6 +649,14 @@ The automatic test, `tests/hosted_deploy_test.sh`, reads the files in `deploy/` 
 6. **A rented server.** On the VPS use the same files with `ABF_SITE_ADDRESS=<your-domain>` and follow "Hosting one lab" in `docs/OPERATIONS.md`. Check: Caddy gets the certificate by itself and `curl -i https://<your-domain>/user-info` answers 401 with `X-ABF-Platform`.
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD`: only `deploy/`, `tests/hosted_deploy_test.sh`, the three docs and `specs/hosted-deploy/` appear; nothing under `platform/abf_platform/`, `platform/abf_station/` or `platform/abf_launch/`; no existing test file is changed.
+
+## Finished stage (finished-stage): the maintainer and the reviewer check
+
+The automatic tests are in `platform/tests/test_web_finished.py`. The steps below need a browser and a succeeded run that was launched from the platform.
+
+1. **Open it by clicking.** From the run list click the run, then "完成" in the stage strip. Check: the page shows "來源紀錄" and "交付包" with no extra download step or input.
+2. **390 px.** Narrow the browser to 390 px wide (developer tools, device mode) and open the stage of a run with a long parameter value. Check: there is no horizontal scroll bar and the long value wraps inside its column.
+3. **Tab key.** On the finished stage press Tab repeatedly. Check: every link (stage strip, "查看輸出", previous stage) shows a visible focus outline in turn; the grey "之後開放" lines are never focused.
 
 ## When something is red
 

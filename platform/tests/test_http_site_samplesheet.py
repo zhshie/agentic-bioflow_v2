@@ -540,7 +540,7 @@ def test_tc055_the_ledger_lists_each_rewritten_pin():
     assert ledger.lower().count("old") >= 2 and ledger.lower().count("new") >= 2
 
 
-SCHEMA_SHA256 = "56f767156f9723c08acb37b57706abca25e6753c4e4126a9b567617bcd662f9d"
+SCHEMA_SHA256 = "0b6aad18e811cb637bd8891049b97d2f092e7eb39b3b85a7778157bbd30dfdbc"
 
 
 def test_tc057_no_table_or_column_changed(d):
@@ -559,7 +559,7 @@ def test_tc058_tc059_tc060_no_upload_tool_no_site_job_no_folder_job(d):
     # TC-058, TC-059, TC-060
     tools, _ = d.w.mcp([])
     assert {t.name for t in tools} == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                                       "read_task_log", "run_outputs", "launch", "cancel", "forget", "resume", "relaunch"}
+                                       "list_used_pipelines", "read_task_log", "run_outputs", "launch", "cancel", "forget", "resume", "relaunch"}
     before = tree(d.uploads)
     jobs_before = [r["id"] for r in sql_rows(d.state, "SELECT id FROM jobs")]
     assert pending(by_text(d, d.a, site_cells(3)))

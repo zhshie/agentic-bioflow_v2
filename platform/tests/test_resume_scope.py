@@ -58,17 +58,17 @@ def test_tc150_nothing_calls_a_resume_or_a_relaunch_by_itself():
         assert quiet not in found, quiet
 
 
-def test_tc154_tc161_there_are_still_three_channels_two_kinds_of_confirmation_and_two_kinds_of_job():
+def test_tc154_tc161_there_are_still_three_channels_three_kinds_of_confirmation_and_three_kinds_of_job():
     # TC-154, TC-161
     from abf_platform import actions, confirm, jobs, store
     channels = [n for n, v in vars(actions).items() if isinstance(v, actions._Channel)]
     assert sorted(channels) == ["ELICITED", "PAGE", "TERMINAL"]
     text = (PKG / "abf_platform" / "actions" / "__init__.py").read_text(encoding="utf-8")
     assert len(re.findall(r"_Channel\(", text)) == 3          # the three singletons; nothing else is made
-    assert confirm.JOB_KIND == {"launch": "launch_nextflow", "cancel": "cancel_run"}
-    assert jobs.CONFIRMED == {"launch_nextflow": "launch", "cancel_run": "cancel"}
-    assert jobs.KINDS == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log")      # run-diag-tools: plus read_task_log
-    assert store.STATE_SCHEMA.count("kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel'))") == 1
+    assert confirm.JOB_KIND == {"launch": "launch_nextflow", "cancel": "cancel_run", "clean_work": "clean_work"}
+    assert jobs.CONFIRMED == {"launch_nextflow": "launch", "cancel_run": "cancel", "clean_work": "clean_work"}
+    assert jobs.KINDS == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work")      # run-diag-tools: plus read_task_log; cloud-cleanup-b: plus clean_work
+    assert store.STATE_SCHEMA.count("kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel', 'clean_work'))") == 1
 
 
 def test_tc161_the_confirmation_table_of_a_new_file_takes_no_third_kind(tmp_path):

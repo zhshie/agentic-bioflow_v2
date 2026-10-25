@@ -24,13 +24,14 @@ from . import common, compute_envs, records, store
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
 DEADLINE_SECONDS = {"preflight": 180, "list_site_files": 60, "launch_nextflow": 300, "cancel_run": 90,
-                    "fetch_run_records": 180, "read_task_log": 60}
+                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600}
 _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "list_site_files": "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES",
                  "launch_nextflow": "ABF_PLATFORM_DEADLINE_LAUNCH",
                  "cancel_run": "ABF_PLATFORM_DEADLINE_CANCEL",
                  "fetch_run_records": "ABF_PLATFORM_DEADLINE_FETCH",
-                 "read_task_log": "ABF_PLATFORM_DEADLINE_READ_TASK_LOG"}
+                 "read_task_log": "ABF_PLATFORM_DEADLINE_READ_TASK_LOG",
+                 "clean_work": "ABF_PLATFORM_DEADLINE_CLEAN"}
 LOG_FILES = {"err": ".command.err", "out": ".command.out", "log": ".command.log"}      # the only three files read_task_log can name
 # The words D5 of run-diag-tools fixes. The package-source scan of test_scope (TC-061) forbids that whole word in this package's lines, so it is joined here.
 NO_AGENT_KNOWN = "no " + "sta" "tion agent is known for this run (這個 run 不是從這個平台送出的，不知道是哪個代理)"
@@ -38,7 +39,7 @@ LOG_MAX_LINES = 200
 LOG_MAX_BYTES = 64 * 1024
 KINDS = tuple(DEADLINE_SECONDS)
 # the two kinds that write on the site, and the kind of confirmation each needs
-CONFIRMED = {"launch_nextflow": "launch", "cancel_run": "cancel"}
+CONFIRMED = {"launch_nextflow": "launch", "cancel_run": "cancel", "clean_work": "clean_work"}
 _RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
 
 
@@ -83,7 +84,7 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
         if owned is not None and owned["owner_user_id"] != caller_user_id:
             raise _not_found(ce_name)
     status = row["status"]
-    if row["platform"] in compute_envs.PLATFORM_HOST_TYPES and kind not in ("preflight", "launch_nextflow", "cancel_run"):
+    if row["platform"] in compute_envs.PLATFORM_HOST_TYPES and kind not in ("preflight", "launch_nextflow", "cancel_run", "clean_work"):
         raise JobRefused("%s is a Google Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
     if status == compute_envs.UNSUPPORTED:
         raise JobRefused("%s is a %s environment: %s" % (ce_name, compute_envs.KINDS.get(row["platform"], "?"),
@@ -550,6 +551,21 @@ def _lineage(con, bundle, caller_id, now):
     return parent_name, attempt, akind, caller_id if caller_id is not None else _col(parent, "user_id")
 
 
+CLEAN_KEYS = {"version", "run_name", "slurm_job_id", "run_folder", "agent", "ce", "work"}
+
+
+def _check_clean(bundle, launch, run_name):
+    """What a clean_work content must agree with in the hand-off record, or JobRefused: no other keys than the seven (one folder, no list),
+    the same folder and the same job number as the record, and a work folder not cleaned yet."""
+    if set(bundle) != CLEAN_KEYS:
+        raise JobRefused("the clean-up request holds more or less than one work folder of one run (清理申請的內容不對，一次只清一個 run 的 work 目錄)")
+    if bundle["run_folder"] != launch["run_folder"] or bundle["slurm_job_id"] != launch["slurm_job_id"]:
+        raise JobRefused("the folder or the job number in the request is not what the hand-off record holds for run %s "
+                         "(申請裡的資料夾或工作編號和紀錄不一致，請重新申請)" % run_name)
+    if _col(launch, "work_cleaned_at") is not None:
+        raise JobRefused("the work folder of run %s was cleaned already (這個 run 的 work 目錄已經清過了)" % run_name)
+
+
 def enqueue_confirmed(con, ce_name, kind, bundle, confirmation_id, now, seconds, offline_after=None):
     """Inside the caller's transaction. enqueue_launch and enqueue_cancel call it, and so does confirm.py, which writes
     the confirmation in the same transaction. A launch also writes its row of the hand-off record here."""
@@ -586,6 +602,8 @@ def enqueue_confirmed(con, ce_name, kind, bundle, confirmation_id, now, seconds,
         launch = None      # the run was launched by somebody else (or by nobody): to this caller it is a run that is not there
     if launch is None or launch["slurm_job_id"] is None:
         raise JobRefused("run %s has no Slurm job number in the hand-off record (不是平台自己送出的，或尚未送出)" % run_name)
+    if kind == "clean_work":
+        _check_clean(bundle, launch, run_name)
     args = {"bundle": bundle, "confirmation_id": confirmation_id, "bundle_sha256": sha}
     return _insert_job(con, row, kind, args, now, seconds, confirmation_id)
 
@@ -679,6 +697,10 @@ def clean_result(kind, result, stored=None):
         out["checks"] = checks
         if any(c["status"] != "pass" for c in checks) or not checks:
             out["ok"] = False
+    elif kind == "clean_work":
+        out["cleaned"] = result.get("cleaned") is True
+        if isinstance(result.get("run_name"), str):
+            out["run_name"] = _short(result["run_name"], 64)
     elif kind in ("launch_nextflow", "cancel_run"):
         sid = _int(result.get("slurm_job_id"), 1)
         if sid is not None:
@@ -737,6 +759,10 @@ def _apply_handover(con, job, state, cleaned, now):
         bundle = json.loads(job["args_json"])["bundle"]
         con.execute("UPDATE launches SET cancel_requested_at = ? WHERE run_name = ? AND slurm_job_id = ?",
                     (now, bundle["run_name"], bundle.get("slurm_job_id")))
+    if job["kind"] == "clean_work" and state == "done" and cleaned.get("ok") and cleaned.get("cleaned") is True:
+        bundle = json.loads(job["args_json"])["bundle"]          # the run and the number come from the job's own content, not from the answer
+        con.execute("UPDATE launches SET work_cleaned_at = ? WHERE run_name = ? AND slurm_job_id = ?",
+                    (now, bundle.get("run_name"), bundle.get("slurm_job_id")))
     return None
 
 
