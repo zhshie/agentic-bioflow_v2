@@ -25,3 +25,6 @@ confirm.create_pending(state_db, "clean_work", "<環境名>", {"version":1,"run_
 ## 裁決二執行（2026-10-25）
 - 已改四條既有測試（test_cleanup_confirm.py::tc067、test_cleanup_store.py::TC-030、test_web_parity.py 兩條），並加唯讀檢查 `_clean_work_read_only_problems`（ast 逐函式，排除巢狀函式）。四檔相關測試 129 條綠。
 - 全套四次都不是全綠，每次紅的不同，且單獨重跑多半綠：機器負載造成逾時／計時門檻（confirm_launch_test.sh 的「slow 1.2s」、platform_clock、test_relay_loopback 單跑 123 綠、test_station_e2e）。jev_test.sh 第一次紅是因為鏡像裡舊 pyc 含 "Jev" 位元組（清掉 __pycache__ 後綠）。
+
+## 裁決三執行（2026-10-25）
+- 截圖已放 `specs/cloud-cleanup-e/shots/`：confirm／board × zh／en × 1440／390 共八張 png（`shots/html/` 是渲染來源）。用測試世界渲染 HTML 後以 Playwright 截圖。
