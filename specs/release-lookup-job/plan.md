@@ -293,6 +293,13 @@ source: developer-agent 讀碼查證（2026-10-25）；維護者 10-25 經前端
 4. `repo_of` 放行 `./x` 另開 A 級小任務 `repo-of-dot-segment`；本片照計畫在代理端與 enqueue 端各補檢查。
 5. 匿名 info/refs 被限速時回 `rate_limited`，頁面 60 秒後重試：接受。
 
+## 裁決三（2026-10-25，回應 verifier 出題退回；號碼大的蓋小的）
+6. **裁決二第 1 條作廢**：本片照維護者核可的四類公開檔做（nextflow_schema.json、assets/schema_input.json、docs/images、release tag），**不加** nf-co.re、不加 `catalogue`、不加 `nfcore_catalogue`。S-02「nf-co.re 被拒」與「不做」第一條照本文。nf-core 全管線搜尋另問維護者，核可後另開一件。
+7. **快取邊界**：`latest_release` 重用已完成工作的條件改為 `finished_at > now - TAGS_CACHE_SECONDS`（嚴格大於），與 `releases.lookup` 的 `now - checked_at < ttl` 一致；剛好 86400 秒＝過期（A-18 照原意）。
+8. **部分失敗與重用**：7 天內重用已完成工作，只限「這次要的每個 part 都成功（或是確定性的 not_found／too_large／bad_json）」的工作；只要有任何 part 是暫時性失敗（`network`、`rate_limited`、`bad_response`），那筆工作**不重用**，60 秒後可重排一筆新的。全部 part 都失敗＝整體 `error`，同樣 60 秒後可重排。A-08 依此出題。
+9. 交叉參照更正：回傳形狀在「作法 6」，文件在「作法 8」。`after` 以 `cloud-cleanup-c,byte-channel-a` 為準（都已合併）。
+10. S-14 改為可量測子集（≤300 字、中英並陳、無 Traceback）：接受。
+
 ## 專長守則（backend）
 
 ### executor
