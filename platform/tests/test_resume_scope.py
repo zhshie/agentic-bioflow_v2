@@ -67,7 +67,7 @@ def test_tc154_tc161_there_are_still_three_channels_three_kinds_of_confirmation_
     assert len(re.findall(r"_Channel\(", text)) == 3          # the three singletons; nothing else is made
     assert confirm.JOB_KIND == {"launch": "launch_nextflow", "cancel": "cancel_run", "clean_work": "clean_work"}
     assert jobs.CONFIRMED == {"launch_nextflow": "launch", "cancel_run": "cancel", "clean_work": "clean_work"}
-    assert jobs.KINDS == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload")      # run-diag-tools: plus read_task_log; cloud-cleanup-b: plus clean_work; byte-channel-a: plus put_upload
+    assert jobs.KINDS == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files")      # run-diag-tools: plus read_task_log; cloud-cleanup-b: plus clean_work; byte-channel-a: plus put_upload; release-lookup-job: plus pipeline_files
     assert store.STATE_SCHEMA.count("kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel', 'clean_work'))") == 1
 
 

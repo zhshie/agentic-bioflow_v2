@@ -239,7 +239,7 @@ _JOBS_TABLE = """CREATE TABLE %(name)s (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent TEXT NOT NULL,
     compute_env TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('preflight', 'list_site_files', 'launch_nextflow', 'cancel_run', 'fetch_run_records', 'read_task_log', 'clean_work', 'put_upload')),
+    kind TEXT NOT NULL CHECK (kind IN ('preflight', 'list_site_files', 'launch_nextflow', 'cancel_run', 'fetch_run_records', 'read_task_log', 'clean_work', 'put_upload', 'pipeline_files')),
     args_json TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('queued', 'claimed', 'done', 'refused', 'error', 'expired')),
     result_json TEXT,
@@ -408,11 +408,11 @@ def _migrate_jobs(con):
 
 
 def _jobs_kinds_current(sql_text):
-    return "read_task_log" in sql_text and "clean_work" in sql_text and "put_upload" in sql_text
+    return all(kind in sql_text for kind in ("read_task_log", "clean_work", "put_upload", "pipeline_files"))
 
 
 def _migrate_jobs_kinds(con):
-    """A platform.db made before run-diag-tools or before clean_work or put_upload has a jobs table whose CHECK does not let `read_task_log`, `clean_work` or `put_upload` in. Same shape of work as
+    """A platform.db made before run-diag-tools, clean_work, put_upload or pipeline_files has a jobs table whose CHECK does not let `read_task_log`, `clean_work`, `put_upload` or `pipeline_files` in. Same shape of work as
     _migrate_jobs: one transaction, build the new table, copy every row by the column names both tables have (the ids and the
     AUTOINCREMENT counter too), drop the old one, rename. A failure anywhere rolls it all back. Another process may have done it first."""
     row = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'jobs'").fetchone()

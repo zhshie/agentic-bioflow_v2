@@ -582,6 +582,7 @@ def test_tc092_an_old_finished_row_is_pruned_when_the_next_job_is_queued(db, clo
     old = jobs.enqueue_pipeline_files(db, "nf-core/ampliseq", "2.18.0", PARTS3, clock=clock, caller_user_id=1)
     sql(db, "UPDATE jobs SET state = 'done', finished_at = ? WHERE id = ?", (T0, old))
     clock.t = T0 + 7 * 86400 + 1
+    add_agent(db, "a1", 1, seen=clock.t)      # the agent is still online at the new time
     jobs.enqueue_pipeline_files(db, "nf-core/ampliseq", "2.17.0", PARTS3, clock=clock, caller_user_id=1)
     assert sql(db, "SELECT COUNT(*) FROM jobs WHERE id = ?", (old,))[0][0] == 0
 
