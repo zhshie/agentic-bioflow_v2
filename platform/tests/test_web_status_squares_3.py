@@ -66,6 +66,10 @@ def test_ss01_no_state_glyphs(w):
             for area in status_areas(text):
                 assert not any(g in area for g in GLYPHS), (lang, [g for g in GLYPHS if g in area])
     assert not hasattr(web_board, "SYMBOLS") and not hasattr(web_board, "_sym")
+    for lang in ("zh", "en"):                                  # the cost page: its status column (running = square + word)
+        usage = pane(c.get("/usage?" + q(lang).lstrip("&")).text, "middle")
+        assert "s-running" in usage and not any(g in usage for g in GLYPHS), lang
+        assert '<span class="state-running"><span class="sq"></span> %s</span>' % WORDS[lang]["running"] in usage, lang
     t = c.get("/launch?from=s-lost").text
     assert not any(g in re.search(r'<p class="from">.*?</p>', t, re.S).group(0) for g in GLYPHS)
 

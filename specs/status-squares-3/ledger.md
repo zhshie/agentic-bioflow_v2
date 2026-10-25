@@ -3,7 +3,7 @@
 - [x] 實作：`platform/abf_platform/web_board.py`——刪 `SYMBOLS`／`_sym`，所有分析狀態改色塊＋詞（左欄、標題徽章、資訊表、階段列、通知等級、送出頁來源 run）；三詞 執行中／完成／失敗（lost→失敗，未知→灰色塊＋未知）；`state-unknown` 用既有 `--muted`／`--sunken`；任務計數「成功→完成」「Succeeded→Done」；通知等級徽章改用分析狀態詞；無通知句改「目前沒有通知／No notices」。
 - [x] 新測試 `platform/tests/test_web_status_squares_3.py`（ss01–ss05 與 TC-001..047 自動項）。
 - [x] `DESIGN.md` States 一句、`docs/TESTING.md` 新增一節手動步驟。
-- 沒動：`/usage`（#215 未合）、引導式送出 ✓ ● ○、設定頁運算環境 ✓ ✗ —、輸出分頁 ⟳ ✗ 與打包清單 ✓（裁決 4、6）。
+- 沒動：引導式送出 ✓ ● ○、設定頁運算環境 ✓ ✗ —、輸出分頁 ⟳ ✗ 與打包清單 ✓（裁決 4、6）。
 
 ## 改寫的既有斷言（只換字串，舊→新＋理由）
 
@@ -38,3 +38,12 @@
 - `test_web_v2_skeleton.py::test_v06_right_is_this_analysis_only`：「目前沒有待處理的事」→「目前沒有通知」。
 - `test_web_v2_skeleton.py::test_v07_failure_notice_fields`：等級徽章 待處理→失敗（兩處）。
 - `test_web_v2_skeleton.py::test_v14_english`：等級徽章 Pending→Failed。
+
+## 合併 origin/v3 後：費用頁（#215）
+
+- `platform/abf_platform/web_cost.py`：每分析表狀態欄，執行中的列改為 `<span class="state-running"><span class="sq"></span> 執行中／Running</span>`（原「⟳ 執行中／⟳ Running」）；「≈ 估算・帳單未到」是帳單狀態，照舊。
+- `test_web_status_squares_3.py::test_ss01_no_state_glyphs`：加掃 `/usage`（zh、en）：無 ▶✓✗⏸⟳，且有色塊＋詞。
+- 改寫的既有斷言（只換字串，去掉「⟳ 」）：
+  - `test_web_cost.py` co06：`rows["run-live"][4]`、`rows["run-lost"][4]` 的 `"⟳ 執行中"`→`"執行中"`。
+  - `test_web_cost.py` 英文頁：`rows["run-live"][4] == "⟳ Running"`→`"Running"`。
+  - `test_web_cost.py::test_status_cells_have_symbol_and_word`（TC-037）：regex `^(⟳ 執行中|≈ 估算・帳單未到)$`→`^(執行中|≈ 估算・帳單未到)$`。
