@@ -632,6 +632,38 @@ four places name the whole suite, and the version pin) and `tests/platform_direc
 **Version.** PATCH, under Governance: wording changes and no rule changes meaning.
 **Approval.** The maintainer approves and merges the pull request that carries this change.
 
+### 6.1.0 (2026-10-25): a colleague far from the platform host can get a first web password
+
+**Rationale.** The 5.0.0 amendment recorded the maintainer's choice that the web password of the
+confirmation page is "set only at a terminal by the person" (`abf-platform user passwd`). A
+colleague who works from another building cannot sit at the platform host, so that colleague
+could never log in. On 2026-10-25 the maintainer accepted this recommendation (「照你建議」): the
+operator issues a one-time temporary password at the platform host's terminal, sends it to the
+person privately, and the person's first web login with it can do nothing but change it to a
+password of their own.
+
+**What changes.** The web password is still set only at a real terminal of the platform host,
+and is still kept only as a scrypt hash. Besides the person's own password typed there, the
+operator may issue a one-time temporary password (`abf-platform user passwd <name> --temporary`).
+It expires after 72 hours, it is printed once and never logged, and a session that logged in with
+it reaches only the page that changes the password; it cannot see runs or press send. A personal
+access token and an `Authorization: Bearer` header still never log into the web. Principle I.2
+(which channels count as a person's yes) and every Safety Net rule are unchanged: the yes still
+comes from the logged-in person on the confirmation page.
+
+**Sync Impact Report.** Updated together: `docs/PRINCIPLES.md` (the confirmation-page sentence),
+`docs/adr/0006-four-entries-one-action-layer.md` (the web password paragraph),
+`tests/constitution_scope_test.sh` and `tests/platform_direction_docs_test.sh` (the version
+pins and a check that this entry exists). The commands and pages themselves come in the task
+`temp-password` and the web task after it; neither merges before this amendment.
+
+**Impact on existing deployments.** None until an operator uses `--temporary`. Existing
+passwords and logins are unchanged.
+
+**Version.** MINOR, under Governance: a rule is materially expanded (a second way to get a first
+web password); no principle or Safety Net rule is removed or redefined.
+**Approval.** The maintainer approves and merges the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -646,4 +678,4 @@ four places name the whole suite, and the version pin) and `tests/platform_direc
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 6.0.2 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-24
+**Version**: 6.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-25
