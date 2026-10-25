@@ -338,7 +338,7 @@ def test_tc027_tc028_no_credential_and_a_user_agent(net, ctx):
     # TC-027, TC-028
     all_ok(net)
     run(ctx, job(["schema", "schema_input", "diagram", "image", "tags"]))
-    assert len(net.calls) == 6
+    assert len(net.calls) == 5
     for call in net.calls:
         names = {k.lower() for k in call["headers"]}
         assert not ({"authorization", "cookie"} & names) and not [n for n in names if n.startswith("x-")]
@@ -381,13 +381,13 @@ def test_tc027_the_real_connection_uses_get_sends_no_credential_and_does_not_fol
     try:
         base = "http://127.0.0.1:%d" % server.server_address[1]
         headers = {"User-Agent": "abf-station/test", "Accept": "*/*"}
-        status, _, body = pipeline_files._real_open(base + "/ok", headers, 5, 20)
+        status, _, body = pipeline_files._fetch_once(base + "/ok", headers, 5, 20)
         assert status == 200 and len(body) == 21                    # limit + 1 bytes
-        status, _, body = pipeline_files._real_open(base + "/redirect", headers, 5, 20)
+        status, _, body = pipeline_files._fetch_once(base + "/redirect", headers, 5, 20)
         assert status == 301 and body == b""
-        assert pipeline_files._real_open(base + "/missing", headers, 5, 20)[0] == 404
+        assert pipeline_files._fetch_once(base + "/missing", headers, 5, 20)[0] == 404
         with pytest.raises(OSError):
-            pipeline_files._real_open("http://127.0.0.1:1/x", headers, 2, 20)
+            pipeline_files._fetch_once("http://127.0.0.1:1/x", headers, 2, 20)
     finally:
         server.shutdown()
         server.server_close()
