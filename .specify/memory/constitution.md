@@ -43,12 +43,12 @@ exists.
   datasets → launch, then runs).
   *Check:* `tests/no_second_run_state_test.sh` (its submission scan covers `scripts/` and
   `platform/`).
-  The channel rule has its own check, run by `tests/platform_test.sh`: an unconfirmed launch
+  The channel rule has its own check, run by `tests/run_all.sh`, which runs the platform tests in four parts (`tests/platform_test.sh`, `tests/platform_shard_2_test.sh`, `tests/platform_shard_3_test.sh`, `tests/platform_clock_test.sh`): an unconfirmed launch
   is refused through the MCP tool and through the web route (the platform tests
   `test_tch09_*` of `test_human_channel.py` and `test_tch09_b_c_*` of `test_confirm_page.py`).
   The platform's run index is never a second truth: it MUST be rebuildable from Nextflow's own
   records alone, and where the index and the records disagree, the records win.
-  *Check:* run by `tests/platform_test.sh`: the platform tests
+  *Check:* run by `tests/run_all.sh` (through its four platform parts): the platform tests
   `test_tc030_rebuild_gives_back_every_field` and
   `test_tc031_nextflows_records_win_over_a_damaged_index` of `test_nextflow_e2e.py`.
 
@@ -192,8 +192,7 @@ plan, and change only by a MAJOR amendment of this constitution.
   *Check:* `platform/tests/test_actions_layer.py` (`test_tcb04_*` to `test_tcb08_*`),
   `platform/tests/test_human_channel.py` (`test_tch09_*`, `test_tca14_*`),
   `platform/tests/test_resume_entrypoints.py` (`test_tc142_*`, `test_tc144_*`),
-  `platform/tests/test_keep_submissions.py` (`test_tc034_*`, `test_tc037_*`, `test_tc038_*`), run by
-  `tests/platform_test.sh`.
+  `platform/tests/test_keep_submissions.py` (`test_tc034_*`, `test_tc037_*`, `test_tc038_*`), run by `tests/run_all.sh` (through its four platform parts).
 - Credentials and personal details live only in the deployment's own settings area, readable by
   the owner only; never printed, never in git, never in a params file. The plugin never fills in one
   member's credential from another member's settings: it asks the user for the value.
@@ -211,7 +210,7 @@ plan, and change only by a MAJOR amendment of this constitution.
   written to its database or its data folder.
   *Check:* `platform/tests/test_secrets.py` (`test_tc040_*`, `test_tc042_*`, `test_tc_i03_*`),
   `platform/tests/test_nextflow_e2e.py` (`test_tc041_*`), `platform/tests/test_human_channel.py`
-  (`test_tcf10_f11_*`), run by `tests/platform_test.sh`.
+  (`test_tcf10_f11_*`), run by `tests/run_all.sh` (through its four platform parts).
 
 ## Development Workflow
 
@@ -608,6 +607,31 @@ serve development only.
 **Version.** PATCH, under Governance: wording and file locations change; no rule changes meaning.
 **Approval.** The maintainer approves and merges the pull request that carries this change.
 
+### 6.0.2 (2026-10-24): the platform checks run through four entries, not one
+
+**Rationale.** Since pull request #200 the platform tests run in four parts so each stays well
+inside the per-test time limit: `tests/platform_test.sh` runs part 1, `tests/platform_shard_2_test.sh`
+part 2, `tests/platform_shard_3_test.sh` part 3 and `tests/platform_clock_test.sh` the timing
+tests. Four places in this constitution still said one file ran checks that now live in other
+parts. Measured on 2026-10-24: `test_actions_layer.py` runs in part 1;
+`test_resume_entrypoints.py` and `test_secrets.py` in part 2; `test_human_channel.py`,
+`test_keep_submissions.py` and `test_confirm_page.py` in part 3. A reader who ran only the
+named file would have skipped the check.
+
+**What changes.** Those four places now say the checks are run by `tests/run_all.sh`, which runs
+all four parts. They do not say which part holds which test, so moving a test between parts does
+not make this file wrong again. The named tests, what each check proves, and every rule are
+unchanged.
+
+**Sync Impact Report.** Updated together: `tests/constitution_scope_test.sh` (new checks that the
+four places name the whole suite, and the version pin) and `tests/platform_direction_docs_test.sh`
+(the version pin). No other document restates these four sentences.
+
+**Impact on existing deployments.** None. Only the wording of where checks run changes.
+
+**Version.** PATCH, under Governance: wording changes and no rule changes meaning.
+**Approval.** The maintainer approves and merges the pull request that carries this change.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -622,4 +646,4 @@ serve development only.
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 6.0.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-22
+**Version**: 6.0.2 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-24
