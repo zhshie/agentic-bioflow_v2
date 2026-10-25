@@ -111,7 +111,7 @@ def test_v01_root_opens_newest_failed_run(w):
     assert 'data-card=' not in r.text and 'class="red"' not in r.text
     assert "現在" not in r.text and "Now" not in r.text and "正在跑" not in r.text and "需要注意" not in r.text
     rows = left_rows(r.text)
-    assert len(rows) == 6 and all("✓" in x[2] or "▶" in x[2] or "✗" in x[2] for x in rows)
+    assert len(rows) == 6 and all(x[2].endswith(("執行中", "完成", "失敗")) for x in rows)
     assert [x[0] for x in rows if "here" in x[1].split()] == ["/?run=" + ids["resume"]]
     assert [x for x in rows if "ann-running" in x[2]][0][3] == "執行 · 2 / 5"
     page = c.get("/?run=" + ids["done"]).text
@@ -173,14 +173,14 @@ def test_v04_only_three_state_words(w):
     word = lambda name: [x for x in left_rows(t) if name in x[2]][0]
     for name, symbol, state in (("ann-running", "▶", "執行中"), ("ann-done", "✓", "完成"), ("ann-failed-resume", "✗", "失敗"),
                                 ("ann-lost", "✗", "失敗"), ("ann-cancelled", "✗", "失敗")):
-        assert re.fullmatch(r"%s %s %s" % (symbol, name, state), word(name)[2]), (name, word(name)[2])
+        assert re.fullmatch(r"%s %s" % (name, state), word(name)[2]), (name, word(name)[2])
     assert "state-failed" in word("ann-lost")[1] and "state-running" in word("ann-running")[1] and "state-succeeded" in word("ann-done")[1]
     for key in ("lost", "stopped", "resume"):
         page = c.get("/?run=" + ids[key]).text
-        assert re.search(r'<span class="badge state-failed">✗ 失敗</span>', page)
+        assert re.search(r'<span class="badge state-failed"><span class="sq"></span> 失敗</span>', page)
     en = c.get("/?lang=en").text
     words = " ".join(x[2] for x in left_rows(en))
-    assert "▶ ann-running Running" in words and "✓ ann-done Succeeded" in words and "✗ ann-lost Failed" in words
+    assert "ann-running Running" in words and "ann-done Done" in words and "ann-lost Failed" in words
     launch = c.get("/launch?from=%s&lang=en" % ids["done"]).text      # TC-019: the chips of the launch page are not touched
     assert re.search(r'<span class="chip state-succeeded"><span class="sq"></span> ?Done</span>', launch)
 
@@ -234,7 +234,7 @@ def test_v06_right_is_this_analysis_only(w):
     _, c, ids = std(w)
     t = c.get("/?run=" + ids["running"]).text
     right = pane(t, "right")
-    assert "這個分析的對話" in plain(right) and "ann-running" in plain(right) and "目前沒有待處理的事" in plain(right)
+    assert "這個分析的對話" in plain(right) and "ann-running" in plain(right) and "目前沒有通知" in plain(right)
     assert "<article" not in right and "<form" not in right
     for other in ("ann-done", "ann-lost", "ann-failed", "ann-cancelled", "bob"):
         assert other not in right
@@ -251,13 +251,13 @@ def test_v07_failure_notice_fields(w):
     ann, c, ids = std(w)
     t = c.get("/?run=" + ids["resume"]).text
     [n] = right_notices(t)
-    assert re.search(r'<span class="level state-failed"><span class="sq"></span> 待處理</span>', n)
+    assert re.search(r'<span class="level state-failed"><span class="sq"></span> 失敗</span>', n)
     assert ("需要你" + "處理") not in t and "Action needed" not in t
     assert dts(n) == ["步驟", "原因", "之後"]
     assert dd(n, "步驟").strip() == "<code>%s</code>" % FAILED_STEP
     assert [plain(x) for x in dd(n, "原因").split("<br>")] == ["line three has 24 GB", "line four", "line five"]
     assert "line two" not in n and plain(dd(n, "之後")) == "續跑（確認頁）"
-    assert plain(re.search(r'<span class="level.*?待處理</span>', n, re.S).group(0)) == "待處理"
+    assert plain(re.search(r'<span class="level.*?失敗</span>', n, re.S).group(0)) == "失敗"
     for old in ("問題", "可選動作", "Options", "三次心跳"):
         assert old not in n
     [m] = right_notices(c.get("/?run=" + ids["relaunch"]).text)
@@ -386,7 +386,7 @@ def test_v14_english(w):
     right = pane(t, "right")
     assert "This analysis" in right and dts(right_notices(t)[0]) == ["Step", "Reason", "Next"]
     assert plain(dd(right_notices(t)[0], "Next")) == "Resume (confirmation page)"
-    assert re.search(r'<span class="level state-failed"><span class="sq"></span> Pending</span>', right)
+    assert re.search(r'<span class="level state-failed"><span class="sq"></span> Failed</span>', right)
     assert plain(dd(right_notices(t)[0], "Reason")) == "line three has 24 GB line four line five"
 
 
