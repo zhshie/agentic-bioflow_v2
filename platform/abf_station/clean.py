@@ -141,7 +141,8 @@ SHOWN = 300
 def _gcloud_env(key_path):
     """The environment of the listing and the removal: the plain one, the key file named here only, and no prompts."""
     env = dict(gcb_launch._plain_env())
-    env["GOOGLE_APPLICATION_CREDENTIALS"] = str(key_path)
+    env.pop("GOOGLE_APPLICATION_CREDENTIALS", None)  # that one is for libraries; gcloud reads the next
+    env["CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE"] = str(key_path)
     env["CLOUDSDK_CORE_DISABLE_PROMPTS"] = "1"
     return env
 
