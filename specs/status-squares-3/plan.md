@@ -52,6 +52,13 @@ source: 維護者 2026-10-25 對 #158 的裁示
 2. 主開發的 cloud-cleanup-e 也會改 `web_board.py`（通知區）；合併衝突由 developer-agent 解，executor 不預先處理。
 3. 測試請用 `abf-fast-suite <wt> --pytest tests/<file>.py` 跑單檔，不要直接在 /mnt/c 跑 pytest。
 
+4. （10-25，解 BLOCKED）`/usage` 費用頁還沒合併（#215），本任務**不碰它**：ss01 只掃既有畫面（`/`、`/?run=<id>` 各階段與分頁、`/launch?from=…`、`/settings`）。費用表裡的「⟳ 執行中」由 developer-agent 在兩支合併時處理。範圍裡的 `web_cost.py`、`web_results.py`、`web_launch.py` 若 base 不存在就忽略。
+5. 任務計數字樣：中文「成功」→「完成」、英文 `count_succeeded`「Succeeded」→「Done」，其他計數字樣不變。ss02 的「不含 Succeeded／成功」掃描整頁成立。
+6. 輸出分頁的「⟳ 讀取中」「✗ 讀不到」與完成階段打包清單的「✓ 已在資料夾」不是分析狀態，**照舊**；ss01 不掃它們。
+7. 右欄通知：關於某個分析失敗的通知，等級徽章改用該分析的狀態色塊＋詞（紅色塊＋「失敗／Failed」），不再顯示「待處理／Pending」字樣（維護者原話「少掉待處理」）。散文句「目前沒有待處理的事」改成「目前沒有通知 / No notices」。其他通知等級不變。測試要釘：失敗分析的頁面不出現「待處理」「Pending」。
+8. 階段列：已完成的階段＝綠色塊（state-succeeded）、失敗的階段＝紅色塊（state-failed）、目前執行中的階段＝執行中色塊、之後的階段無色塊；階段名稱不變。
+9. 左欄每列維持現在的排法：色塊在名稱前、狀態詞在右側；這一處色塊與詞不必緊鄰（色塊與詞同屬一列即可）。其他地方色塊緊接詞。
+
 ## 專長守則（ui）
 
 ### executor
