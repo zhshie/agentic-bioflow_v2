@@ -181,6 +181,15 @@ B. **暫存**：允許檔案先放在平台主機 `uploads/` 再傳；**傳完�
 C. **ADR 0010 同步**：在本系列的 -b 片修改 `docs/adr/0010-chat-keys-byte-channel-studio-embedding.md`，加一段「2026-10-25 修正」：①按上傳即為確認；②允許在平台主機暫存，傳完核對大小後刪除。附維護者原話。
 D. 前置：本系列動 `store.py`／`jobs.py` 的 CHECK 清單，與 cloud-cleanup-a/b 重疊，排在 cloud-cleanup-b 之後；開工前依當時 v3 的 CHECK 清單重算（不釘「剛好七個」）。
 
+## 裁決二（2026-10-25 09:00，回應 verifier 出題退回；以本段為準，蓋過上文的數字）
+1. **一律用相對基準**：現有工作種類照原順序，末尾加 `put_upload`（目前 v3 是七種含 `clean_work`，加完八種）；`CONFIRMED` 與基準相同、**不含** `put_upload`；遷移的「已是最新」判斷要同時看 `read_task_log`、`clean_work`、`put_upload` 三者。BA-02「剛好七個」、BA-07「剛好兩項」、A-2「六改七」、A-3 一律作廢，改照本條。
+2. **範圍加兩個測試檔**：`platform/tests/test_cleanup_confirm.py`（:342 `jobs.KINDS` 清單）與 `platform/tests/test_cleanup_store.py`（:173 宣告種類、:137 探測清單）只在種類清單末尾補 `put_upload`。「必須更新的既有斷言」表依 v3 現況重寫（test_launch_platform:606、test_resume_scope:70–71、test_station_platform:319–330、test_cloud_cost:746–748、test_keep_submissions:774：確認憑證仍是三種 launch/cancel/clean_work，不加）。執行前先 `grep -rn "clean_work" platform/tests` 列全所有釘種類清單的地方，全部只在末尾補一項。
+3. jobs.py 模組說明與 store.py:173 註解改成「八種；第八種 `put_upload` 不需要確認」。
+4. `_enqueue` 加一道檢查：種類是 `put_upload` 就拒絕（只能走 `enqueue_put_upload`）。
+5. `enqueue_put_upload` 檢查順序：先檢查環境存在且屬於呼叫者，再檢查檔案；別人的或不存在的環境一律回同一句，不透露檔案是否存在。
+6. 接受 verifier 的其餘解讀（讀方向與對等性 TC 留給 cloud-upload-wire；不加確認憑證，閱卷不得因專長守則判 FAIL）。
+7. 已知環境紅：`test_onboarding_doc.py::test_tc047_tc051_other_docs_untouched` 若 #218 尚未合併，只剩它紅視同綠。
+
 ## 專長守則（backend）
 
 ### executor
