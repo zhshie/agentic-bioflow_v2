@@ -307,6 +307,11 @@ source: developer-agent 讀碼查證（2026-10-25）；維護者 10-25 經前端
 14. 「不做」那條改成「代理不解析 schema／schema_input 的內容（原樣回傳）」；解析 GitHub 目錄清單 JSON 來挑流程圖是允許的。
 15. 編號以計畫內實際的 S／Q／A 編號為準；ledger 標題去掉「nf-core 清單」；frontmatter `after` 以 `cloud-cleanup-c,byte-channel-a` 為準。文件句子由閱卷者讀 diff 核對：接受。
 
+## 裁決五（2026-10-25 21:50，回應 executor：程式做完、只剩計時紅）
+16. **追認** `platform/tests/test_byte_channel_b.py::test_tc001_put_upload_is_the_last_kind` 的尾端加法（最後兩個是 `put_upload`、`pipeline_files`），與表內其他檔同一種改法；`jobs._enqueue` 拒絕直接排 `pipeline_files`（唯一入口是 `enqueue_pipeline_files`）：接受，比照 put_upload。TC-152 已同步。
+17. **計時類偶發紅的判定**（同 cloud-cleanup-e 裁決三第 7 條）：全套只剩計時／逾時類（`confirm_launch_test.sh` 的 1000 ms 預算、`platform_clock_test.sh`、`test_station_e2e.py`、`test_relay_loopback.py`、分片 900 秒逾時）紅，且每支單跑都綠，或在 base 上同樣紅 → ledger 貼全套輸出＋單跑輸出（或 base 輸出），視同綠寫 GREEN。其他種類的紅照常算紅。
+18. 手動 TC-169～172（連真 GitHub）由 developer-agent 合併後在桌機做，不擋本片。
+
 ## 專長守則（backend）
 
 ### executor

@@ -195,7 +195,7 @@
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-152 | 完成標準；範圍：檔案 | 例外 | 實作完成 | 閱卷者讀 `git diff <base>...HEAD --name-only` | 只有「範圍：檔案」所列的檔案，加上裁決四第 12 條准改的 `test_http_site_samplesheet.py`、`test_byte_channel_a.py` | 手動：閱卷者讀 diff |
+| TC-152 | 完成標準；範圍：檔案 | 例外 | 實作完成 | 閱卷者讀 `git diff <base>...HEAD --name-only` | 只有「範圍：檔案」所列的檔案，加上裁決五追認的 `platform/tests/test_byte_channel_b.py`（只限 TC-001 的 JOB_KINDS 尾端加 `pipeline_files`），以及裁決四第 12 條准改的 `test_http_site_samplesheet.py`、`test_byte_channel_a.py` | 手動：閱卷者讀 diff |
 | TC-153 | 完成標準；「會改斷言的既有測試」 | 例外 | 同上 | 比對每個被動到的既有測試檔 | 只有計畫表列的那些斷言被改；表外的既有測試零改動 | 手動：閱卷者讀 diff |
 | TC-154 | 閱卷規則（不得放水）；「會改斷言」通則 | 例外 | 同上 | 看每條被改的斷言 | 都只是在尾端加 `pipeline_files`；沒有任何斷言被刪除、放寬成不檢查順序、跳過，或把預期值改成配合新輸出 | 手動：閱卷者讀 diff |
 | TC-155 | 裁決四第 12 條 | 例外 | 同上 | 看 `test_http_site_samplesheet.py` 與 `test_byte_channel_a.py` | 前者只換 `SCHEMA_SHA256` 一個值（ledger 記新舊值與算法）；後者只改 `put_upload` 在 `pipeline_files` 之前、`pipeline_files` 最後的相關斷言，其餘逐字比對不變 | 手動：閱卷者讀 diff |
