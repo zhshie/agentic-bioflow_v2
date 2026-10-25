@@ -16,16 +16,16 @@ for n in launch setup; do
     [ -n "$hdr" ] || { fail "$rel: no '## Before anything else' heading"; continue; }
     # fork section: text after the frontmatter, before the first '## ' heading
     sec=$(awk -v h="$hdr" 'NR<h' "$f" | awk 'BEGIN{c=0} /^---$/{c++; next} c>=2')
-    printf '%s' "$sec" | grep -qF 'abf-platform launch' || fail "$rel: fork section lacks 'abf-platform launch'"
-    printf '%s' "$sec" | grep -qF 'MCP' || fail "$rel: fork section lacks MCP"
-    printf '%s' "$sec" | grep -qF 'launch' || fail "$rel: fork section lacks MCP launch"
-    printf '%s' "$sec" | grep -qF 'v2' || fail "$rel: fork section lacks v2"
-    printf '%s' "$sec" | grep -qF 'tw' || fail "$rel: fork section lacks tw"
-    printf '%s' "$sec" | grep -qF 'docs/PLATFORM.md' || fail "$rel: fork section lacks docs/PLATFORM.md"
+    printf '%s' "$sec" | grep -F 'abf-platform launch' >/dev/null || fail "$rel: fork section lacks 'abf-platform launch'"
+    printf '%s' "$sec" | grep -F 'MCP' >/dev/null || fail "$rel: fork section lacks MCP"
+    printf '%s' "$sec" | grep -F 'launch' >/dev/null || fail "$rel: fork section lacks MCP launch"
+    printf '%s' "$sec" | grep -F 'v2' >/dev/null || fail "$rel: fork section lacks v2"
+    printf '%s' "$sec" | grep -F 'tw' >/dev/null || fail "$rel: fork section lacks tw"
+    printf '%s' "$sec" | grep -F 'docs/PLATFORM.md' >/dev/null || fail "$rel: fork section lacks docs/PLATFORM.md"
     a=$(printf '%s\n' "$sec" | grep -nF 'abf-platform launch' | head -1 | cut -d: -f1)
     t=$(printf '%s\n' "$sec" | grep -n '`tw`' | head -1 | cut -d: -f1)
     if [ -n "$a" ] && [ -n "$t" ] && [ "$a" -gt "$t" ]; then fail "$rel: tw appears before abf-platform launch"; fi
-    if printf '%s' "$sec" | grep -oE '20[0-9]{2}' | grep -qvx 2027; then fail "$rel: fork section names a year other than 2027"; fi
+    if printf '%s' "$sec" | grep -oE '20[0-9]{2}' | grep -vx 2027 >/dev/null; then fail "$rel: fork section names a year other than 2027"; fi
 done
 [ -f "$ROOT/docs/PLATFORM.md" ] || fail "docs/PLATFORM.md missing"
 
@@ -34,7 +34,7 @@ f="$ROOT/scripts/ce_apply.sh"
 if [ ! -r "$f" ]; then fail "scripts/ce_apply.sh unreadable"; else
     [ "$(head -1 "$f")" = '#!/bin/bash' ] || fail "ce_apply.sh line 1 changed"
     top=$(awk 'NR>1 && /^#/{print; next} NR>1{exit}' "$f")
-    if ! { printf '%s\n' "$top" | grep -qF 'abf-platform launch' && printf '%s\n' "$top" | grep -qF 'v2'; }; then
+    if ! { printf '%s\n' "$top" | grep -F 'abf-platform launch' >/dev/null && printf '%s\n' "$top" | grep -F 'v2' >/dev/null; }; then
         fail "ce_apply.sh top comment lacks v2 / abf-platform launch"
     fi
     bash -n "$f" || fail "ce_apply.sh syntax error"
@@ -45,16 +45,16 @@ f="$ROOT/docs/MIGRATION.md"
 if [ ! -r "$f" ]; then fail "docs/MIGRATION.md unreadable"; else
     sec=$(awk '/^## /{p=($0 ~ /tw/ && $0 ~ /v3/ && $0 ~ /v2/)} p' "$f")
     if [ -z "$sec" ]; then fail "MIGRATION.md: no section heading naming the v2 tw flow and v3"; else
-        printf '%s' "$sec" | grep -qF 'abf-platform launch' || fail "MIGRATION.md section lacks 'abf-platform launch'"
-        printf '%s' "$sec" | grep -qF 'MCP' || fail "MIGRATION.md section lacks MCP launch"
+        printf '%s' "$sec" | grep -F 'abf-platform launch' >/dev/null || fail "MIGRATION.md section lacks 'abf-platform launch'"
+        printf '%s' "$sec" | grep -F 'MCP' >/dev/null || fail "MIGRATION.md section lacks MCP launch"
         rows=$(printf '%s\n' "$sec" | grep -c '^|')
         [ "$rows" -ge 3 ] || fail "MIGRATION.md section has no table with a data row"
-        printf '%s\n' "$sec" | grep '^|' | grep -F 'tw launch' | grep -qF 'abf-platform launch' \
+        printf '%s\n' "$sec" | grep '^|' | grep -F 'tw launch' | grep -F 'abf-platform launch' >/dev/null \
             || fail "MIGRATION.md table lacks the tw launch -> abf-platform launch row"
-        if printf '%s\n' "$sec" | grep '^|' | tail -n +3 | awk -F'|' '{print $(NF-1)}' | grep -qE '`tw |token|account'; then
+        if printf '%s\n' "$sec" | grep '^|' | tail -n +3 | awk -F'|' '{print $(NF-1)}' | grep -E '`tw |token|account' >/dev/null; then
             fail "MIGRATION.md v3 column mentions tw/token/account"
         fi
-        if printf '%s' "$sec" | grep -oE '20[0-9]{2}' | grep -qvx 2027; then fail "MIGRATION.md section names a year other than 2027"; fi
+        if printf '%s' "$sec" | grep -oE '20[0-9]{2}' | grep -vx 2027 >/dev/null; then fail "MIGRATION.md section names a year other than 2027"; fi
     fi
 fi
 
