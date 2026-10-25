@@ -11,7 +11,7 @@ No CSS added. The page reuses existing classes (`.tbl` already wraps with `overf
 ## 裁決 8: compute env status -> display (from `compute_envs.py:39`: creating, available, invalid, unsupported, disabled)
 | status | table | checklist item 3 |
 |---|---|---|
-| available | ✓ 可用 | ✓ if its agent is online, else ✗ 站台代理離線。 |
+| available | ✓ 可用 | ✓（ruling 10：只看主要環境的 status，不看代理在線與否） |
 | invalid | ✗ 無法使用 + message | ✗ 主要運算環境無法使用：message |
 | unsupported | ✗ 無法使用 + message | same |
 | disabled | ✗ 無法使用 + message | same |
