@@ -168,6 +168,13 @@ CLI（用 `launch_harness.Pty` 與 `cli_argv`，同 `test_web_login.py:24-31`）
 10. 合併時機：本任務的 PR 等憲法修正（`constitution-temp-password`）合併後才合；文件寫入的就是修正後的規則，不會互相矛盾。
 11. 憲法檢查補跑 `tests/no_per_pipeline_config.sh`、`tests/command_layer_is_site_neutral.sh`（本任務不碰 configs/ 與指令層，預期不受影響），結果貼 ledger。
 
+## 裁決三（2026-10-25，回應 verifier 出題退回；號碼大的蓋小的）
+12. **同時改密碼的情境定案**：`change_web_password` 在同一個交易內 `SELECT id, password_hash, temp_until`、用 `password_matches` 驗舊密碼（失敗＝「目前的密碼不對」），再 `UPDATE ... WHERE id=? AND password_hash=<剛讀到的值>`；**更新 0 列＝驗證後被別人改過 → `ValueError`「密碼剛被改過，請重新登入 (changed meanwhile)」**。作法 7、T13 照這句；裁決二第 6 條的「回『目前的密碼不對』」作廢。
+13. **文件句子定案**：照裁決二第 9 條改寫，不保留原句；改寫後 ONBOARDING §2 仍須含 `twice`、`real terminal`、`no flag`（test_tc010 用），例：「no flag can type the person's own password: they type it twice at a real terminal; `--temporary` makes a one-time one instead」。作法 9「保留原句」作廢。
+14. **T20 兩半都要**：非終端機被拒（作法 8）＋外洩檢查。外洩檢查對子行程的做法：從 Pty 執行的 stdout 第 2 行取出密碼，斷言它不在 stdout 其他行、stderr、`tokens.db` 任何文字欄位、以及測試資料夾底下任何檔案（`rglob` 讀每個檔的位元組）；`caplog` 只用於同程序呼叫 store 函式的那幾條。
+15. 裁決二第 7 條的「init」＝平台開 `tokens.db` 的正常入口（`store` 裡現有的連線／建表函式，executor 在測試註明用哪個名字）。
+16. 範圍以 8 個檔為準（cli.py 已在清單內）。
+
 ## 專長守則（backend）
 
 ### executor
