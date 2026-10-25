@@ -378,7 +378,7 @@ def test_tc071_exactly_six_read_only_tools_over_stdio_and_http(tmp_path):
         tools_http, via_http = mcp_http_call("http://127.0.0.1:%d/mcp" % port, calls, token=pat)
     finally:
         stop_proc(proc)
-    want = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "read_task_log", "run_outputs", "my_usage"]
+    want = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "my_usage"]
     for ts in (tools, tools_http):
         assert sorted(t.name for t in ts) == sorted(want + ["launch", "cancel", "forget", "resume", "relaunch"])    # 009e: plus resume and relaunch
         for t in [t for t in ts if t.name in want]:
