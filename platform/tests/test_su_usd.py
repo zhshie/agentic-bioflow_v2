@@ -350,7 +350,7 @@ def test_tc052_status_words(w):
     seed(w, "run-live", ann, status="running")
     seed(w, "run-done", ann, hours=5.10)
     rows = rows_by_name(get(w, "ann").text)
-    assert rows["run-live"][4] == "⟳ 執行中" and rows["run-done"][4] == "≈ 估算・帳單未到"
+    assert rows["run-live"][4] == "執行中" and rows["run-done"][4] == "≈ 估算・帳單未到"
 
 
 def test_tc053_used_up_still_shows_usd(w):
