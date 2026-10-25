@@ -1065,20 +1065,20 @@ def test_tool_list_unchanged_and_no_new_web_route(tmp_path):
     from abf_platform import web
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
-    assert len(names) == 13 and names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                                          "read_task_log", "run_outputs", "launch", "cancel", "resume", "relaunch", "forget"}
+    assert len(names) == 14 and names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
+                                          "list_used_pipelines", "read_task_log", "run_outputs", "launch", "cancel", "resume", "relaunch", "forget"}
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if re.search(r"gcb|google|batch|gcp", getattr(r, "path", ""), re.I)]
 
 
-def test_no_migration_is_needed_and_the_columns_are_unchanged(ip):
+def test_no_gcb_migration_is_needed_and_launches_only_gained_work_cleaned_at(ip):
     # TC-113
     create(ip)
     con = sqlite3.connect(str(ip.state_db))
     cols = {t: [r[1] for r in con.execute("PRAGMA table_info(%s)" % t)] for t in ("launches", "jobs", "compute_envs")}
     con.close()
     assert cols["launches"] == ["id", "run_name", "slurm_job_id", "run_folder", "ce", "agent", "confirmed_at", "submitted_at",
-                                "cancel_requested_at", "job_id", "user_id", "parent_run", "attempt", "attempt_kind"]
+                                "cancel_requested_at", "job_id", "user_id", "parent_run", "attempt", "attempt_kind", "work_cleaned_at"]
     assert cols["jobs"] == ["id", "agent", "compute_env", "kind", "args_json", "state", "result_json", "late_result_json", "created_at",
                             "deadline_at", "claimed_at", "finished_at", "forgotten_at", "forgotten_by", "confirmation_id"]
     assert cols["compute_envs"] == ["id", "name", "description", "platform", "credentials_id", "agent", "status", "message", "is_primary",

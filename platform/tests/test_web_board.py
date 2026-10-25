@@ -538,7 +538,7 @@ def test_tch21_stage_bodies(w):
         assert re.search(r"%s\s*%d(?!\d)" % (label, n), mid), (label, n)
     assert "10-18 09:05" in plain(pane(c.get("/?run=" + b + "&tab=info").text, "middle"))
     assert "Process terminated with an error exit status (137)" in c.get("/?run=" + a).text
-    for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "013b")):
+    for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "這個 run 還沒到這個階段。")):      # finished-stage: a run that has not succeeded has not reached it
         body = pane(c.get("/?run=%s&stage=%s" % (a, stage)).text, "middle")
         assert "—" in body and feature in body, stage
 
@@ -1189,7 +1189,7 @@ def test_tn05_no_new_tool_or_action(w):
     from abf_platform import actions
     tools, _ = w.mcp([])
     assert sorted(t.name for t in tools) == sorted(["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents",
-                                                    "list_site_files", "read_task_log", "run_outputs", "launch", "cancel", "forget", "resume", "relaunch"])
+                                                    "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "launch", "cancel", "forget", "resume", "relaunch"])
     assert not [n for n in dir(actions) if "board" in n]
 
 

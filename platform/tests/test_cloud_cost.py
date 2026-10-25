@@ -744,8 +744,8 @@ def test_nothing_stops_a_running_job_and_no_policy_channel_exists():
         assert "watchdog" not in text.lower() and "POLICY" not in text, name
     kinds = re.search(r"CHECK \(kind IN \(('preflight'[^)]*)\)\)", (PKG / "store.py").read_text(encoding="utf-8")).group(1)
     assert [k.strip(" '") for k in kinds.split(",")] == ["preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records",
-                                                         "read_task_log"]
-    assert "kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel'))" in (PKG / "store.py").read_text(encoding="utf-8")
+                                                         "read_task_log", "clean_work"]
+    assert "kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel', 'clean_work'))" in (PKG / "store.py").read_text(encoding="utf-8")
     for word in ("enqueue_cancel", "cancel_run"):
         assert word not in texts["cloud_cost.py"]
 

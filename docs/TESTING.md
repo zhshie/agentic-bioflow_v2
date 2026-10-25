@@ -435,11 +435,12 @@ This one is read, not run. Open `specs/116b-owner-gaps/ledger.md` next to `git d
 ## Resume and relaunch (009e): the reviewer checks, and one run on the cluster
 
 1. **The rewritten pins (read, not run).** Open `specs/009e-resume-relaunch/ledger.md` next to `git diff <base> -- platform/tests`. Pass: every existing test that was changed is listed with the old expectation, the new one and the reason (the CLI pin TC-061, the tool lists of `test_mcp.py` tc024/tc025 and the other tool lists, the `launches` column pins, the action-layer pins), and no assertion was deleted, skipped or loosened. The kit's settings had no test; `test_resume_entrypoints.py` adds one.
-2. **The words.** `docs/PLATFORM.md` section 9 ("Resume and relaunch" and the owner paragraph), `skills/operational/SKILL.md`, `skills/runs/SKILL.md` and `CHANGELOG.md` say what a resume and a relaunch are, that each asks for a yes, and that the samples and parameters cannot change.
+2. **The words.** `docs/PLATFORM.md` section 9 ("Resume and relaunch" and the owner paragraph), `skills/operational/SKILL.md`, `skills/runs/SKILL.md` and `CHANGELOG.md` say what a resume and a relaunch are, that each asks for a yes, and that a resume may carry changed parameters and extra resource settings; the samples, pipeline, revision and environment cannot change.
 3. **A real resume on Taiwania-3 (not yet done).** Take a run that really failed on the cluster (kill a task, or `abf-platform cancel` one). `abf-platform resume RUN` at your own terminal and answer y. Pass: Nextflow starts with `-resume <session id> -name <RUN>-a2` in the same folder and runs (this is what a fake site cannot say: that Nextflow accepts a new `-name` with the old session in one folder).
 4. **The cache is reused (not yet done).** After the resume starts, `get_run` of `<RUN>-a2`. Pass: it shows tasks as cached, the ones that finished before.
-5. **The pull request** says "not yet accepted on NCHC" until 3 and 4 are done.
-6. **The runs skill on a test platform (manual).** On a test platform with one failed run and one running run, ask the AI about each, following the new `skills/runs/SKILL.md`. Pass: it reads them with `list_runs` and `get_run`, reads a failed task's log with `read_task_log` (the task folder comes from the `workdir` that `get_run` gives), and never runs `tw`; it says plainly "v3 尚未提供" for what v3 lacks (such as the params a run was started with) instead of guessing; and every cancel, resume or relaunch only sends a request and waits for the person's yes before anything starts.
+5. **A resume with changed parameters reuses the cache (not yet done).** Take a run that really failed on the cluster. `abf-platform resume RUN --param <a parameter that a downstream process uses>=<new value> --config-file <a file with process.memory>` at your own terminal and answer y. Pass: Nextflow starts with `-resume <session id> -params-file params-2.yaml ... -c extra-2.config`; `get_run` shows the tasks the change does not touch as cached and the touched ones run again; and `params.yaml`, `nextflow.config`, `head.sh` and `samplesheet.csv` in the original folder are not changed.
+6. **The pull request** says "not yet accepted on NCHC" until 3 and 4 are done.
+7. **The runs skill on a test platform (manual).** On a test platform with one failed run and one running run, ask the AI about each, following the new `skills/runs/SKILL.md`. Pass: it reads them with `list_runs` and `get_run`, reads a failed task's log with `read_task_log` (the task folder comes from the `workdir` that `get_run` gives), and never runs `tw`; it says plainly "v3 尚未提供" for what v3 lacks (such as the params a run was started with) instead of guessing; and every cancel, resume or relaunch only sends a request and waits for the person's yes before anything starts.
 
 ## Browser chat backend (014a): the reviewer checks three things
 
@@ -555,6 +556,16 @@ This is the procedure for Stage 3 (web 011 to 013). The pages it walks are not a
 
 Keep the record with the release notes of the run. A step you could not do by clicking alone is a finding, not a skipped step.
 
+## Guided launch (guided-launch-1): the maintainer and the reviewer check
+
+The seven-step `/launch` page is tested by `platform/tests/test_web_guided_launch.py`; what only a person can see is below. Use a browser with scripts allowed (the page has none), on an account that has uploaded a samplesheet and has launched at least once. Record the date, the browser and the width for each step.
+
+1. **No sideways scrolling at 390 px.** Open `/launch`, then `/launch?pipeline=nf-core/ampliseq&revision=2.18.0`, then the page after pressing a Quick launch link, in Chinese and in English (`&lang=en`). Make the window 390 px wide (the browser's device mode). Check: no horizontal scroll bar at any of them, and the "Used before" table, a long pipeline name and a long run name wrap inside the page.
+2. **Focus outline with the Tab key.** On each of those pages press Tab from the top until you reach the Submit button. Check: every step title, link, field and button gets a visible outline in turn, and the order follows steps 1 to 7.
+3. **Walk 1 to 7 once.** From `/launch`: (1) read that step 1 says "Checked once a pipeline is chosen". (2) In "Used before" press Select on a row; check that step 2 shows `✓`, step 1 lists four checks and one grey "later" line, and the current step is 4. (4) Choose a samplesheet and press its button; check step 4 shows `✓`. (5) Choose a route and press Apply parameters; check step 5 shows `✓` with the route named. (6) Choose an environment and press its button; check step 6 shows `✓` and the current step is 7. (7) Read the summary, type an analysis name and press Submit; check that you land on the confirmation page `/c/<id>` and that nothing is queued until you press Send there.
+4. **Quick launch.** Press Quick launch on a row. Check: steps 1, 2, 5 and 6 are `✓`, step 3 stays "later", the current step is 4, and the parameters of that earlier run are in the summary once a samplesheet is chosen.
+5. **A failed check.** Pick an environment that is not available, or a revision that the environment does not list. Check: step 1 shows `✗` with a sentence, step 7 lists the same item again, and the form still opens the confirmation page or says plainly what was refused.
+
 ## Google Cloud Batch environment (gcb-ce-type): the maintainer and the reviewer check
 
 The automatic tests use a fake `gcloud` and touch no network. Three things are checked by a person.
@@ -647,6 +658,14 @@ Automatic tests: `platform/tests/test_web_settings.py`. These steps are what no 
 2. **Tab**: press Tab through the page. Every thing that takes focus (the logout button, the language links) shows a visible outline. The middle column has nothing to focus, by design: it is read-only.
 3. **Read both languages**: every status shows a symbol, a word and a colour (✓ / ✗ / —). No Chinese on the English page, no error code, no internal name. Each ✗ in 使用前檢查 says what is missing.
 4. **Nothing to press**: no button, box or link in the middle column; the only form on the page is the logout one.
+
+## Finished stage (finished-stage): the maintainer and the reviewer check
+
+The automatic tests are in `platform/tests/test_web_finished.py`. The steps below need a browser and a succeeded run that was launched from the platform.
+
+1. **Open it by clicking.** From the run list click the run, then "完成" in the stage strip. Check: the page shows "來源紀錄" and "交付包" with no extra download step or input.
+2. **390 px.** Narrow the browser to 390 px wide (developer tools, device mode) and open the stage of a run with a long parameter value. Check: there is no horizontal scroll bar and the long value wraps inside its column.
+3. **Tab key.** On the finished stage press Tab repeatedly. Check: every link (stage strip, "查看輸出", previous stage) shows a visible focus outline in turn; the grey "之後開放" lines are never focused.
 
 ## When something is red
 

@@ -44,6 +44,8 @@ CONNECT proxy on the login node, restricted by reverse-DNS peer check and a
 domain allowlist. Its log is the only place a blocked request is visible; the
 errors that reach Platform point elsewhere.
 
+**`docs/ONBOARDING.md`** — opening an account for a colleague, the welcome message, and a colleague's first connection.
+
 **`docs/PITFALLS.md`** — everything that cost a failed run.
 
 **`docs/SETTINGS.md`** — the one file holding anything personal, and what

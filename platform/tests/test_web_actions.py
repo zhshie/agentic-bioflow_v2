@@ -289,7 +289,7 @@ def test_tc020_the_form_has_the_fields(rig):
     assert re.search(r'<input [^>]*name="revision"[^>]*required', t)
     assert re.search(r'<select name="samplesheet"', t) and re.search(r'<select name="ce_name"', t) and re.search(r'<textarea [^>]*name="params"', t)
     assert 'type="file"' not in t and "multipart" not in t and "<ol" not in t and "<svg" not in t and "<canvas" not in t
-    assert not re.search(r"(?i)step ?\d|第\s*\d\s*步", mid)
+    assert len(re.findall(r'<details class="gstep ', mid)) == 7      # guided-launch-1: the page is seven numbered steps (was: no step numbering)
 
 
 def test_tc021_tc022_choices_are_the_callers_own(rig):
@@ -585,7 +585,7 @@ SCHEMA = {
     'platform.compute_envs': ('id', 'name', 'description', 'platform', 'credentials_id', 'agent', 'status', 'message', 'is_primary', 'checked_ok', 'config_json', 'created_at', 'updated_at', 'last_used_at', 'owner_user_id'),
     'platform.confirmations': ('id', 'sha256', 'kind', 'created_at', 'used_at', 'caller_user_id', 'state', 'channel', 'confirmed_at', 'expires_at', 'ce_name', 'bundle_json', 'screen_text', 'void_reason', 'forgotten_at', 'forgotten_by'),
     'platform.jobs': ('id', 'agent', 'compute_env', 'kind', 'args_json', 'state', 'result_json', 'late_result_json', 'created_at', 'deadline_at', 'claimed_at', 'finished_at', 'forgotten_at', 'forgotten_by', 'confirmation_id'),
-    'platform.launches': ('id', 'run_name', 'slurm_job_id', 'run_folder', 'ce', 'agent', 'confirmed_at', 'submitted_at', 'cancel_requested_at', 'job_id', 'user_id', 'parent_run', 'attempt', 'attempt_kind'),
+    'platform.launches': ('id', 'run_name', 'slurm_job_id', 'run_folder', 'ce', 'agent', 'confirmed_at', 'submitted_at', 'cancel_requested_at', 'job_id', 'user_id', 'parent_run', 'attempt', 'attempt_kind', 'work_cleaned_at'),
     'platform.meta': ('key', 'value'),
     'tokens.oauth_clients': ('client_id', 'info_json', 'created_at', 'last_used_at'),
     'tokens.oauth_codes': ('code_hash', 'grant_id', 'client_id', 'redirect_uri', 'redirect_explicit', 'code_challenge', 'resource', 'user_id', 'created_at', 'expires_at', 'used_at'),
