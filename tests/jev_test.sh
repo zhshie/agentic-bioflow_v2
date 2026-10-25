@@ -422,7 +422,7 @@ if [ -n "$badrm" ]; then echo "FAIL: $badrm"; fails=$((fails+1)); else echo ok; 
 # TC-068 headers
 for f in "$J" "$REPLAY"; do
     printf '%-72s ' "TC-068 $(basename "$f") names its alternative"
-    if sed -n 1,40p "$f" | grep -qE '^#[[:space:]]*(Not[[:space:]]+.+:|Nothing existing:)'; then echo ok; else echo FAIL; fails=$((fails+1)); fi
+    if sed -n 1,40p "$f" | grep -E '^#[[:space:]]*(Not[[:space:]]+.+:|Nothing existing:)' >/dev/null; then echo ok; else echo FAIL; fails=$((fails+1)); fi
 done
 t "TC-071 no personal paths in jev.sh" "$(grep -cE '/(home|work|scratch|lustre)/[A-Za-z]' "$J")" 0
 
