@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|revoke | user add|cloud-cap|passwd | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | web | token new | agent-token new|revoke | user add|cloud-cap|passwd [--temporary] | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
@@ -146,11 +146,17 @@ def cmd_user_cloud_cap(args):
 
 
 def cmd_user_passwd(args):
-    """Set a user's web password. The person types it, twice, on a real terminal: there is no flag, no file and no variable for it."""
+    """Set a user's web password. The person types it, twice, on a real terminal: no flag can type the person's own password, and no
+    file or variable can. `--temporary` makes a one-time one instead: a random password shown once, at a real terminal, for the
+    administrator to hand over privately; the person must change it at the first web login."""
     import getpass
     from abf_launch import terminal
 
+    temporary = getattr(args, "temporary", False)
     why = terminal.terminal_problem()
+    if why and temporary:
+        _err("rejected: 臨時密碼只能顯示在真正的終端機上，這裡不行（%s）(a temporary password is shown only at a real terminal, never to a pipe or a script)" % why)
+        return 1
     if why:
         _err("rejected: 密碼只能在真正的終端機上由本人輸入，這裡不行（%s）(the password is typed at a real terminal, nothing else can give it)" % why)
         return 1
@@ -158,6 +164,19 @@ def cmd_user_passwd(args):
     if store.user_id_of(tokens, args.name) is None:
         _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name)
         return 1
+    if temporary:
+        try:
+            issued = store.issue_temporary_password(tokens, args.name)
+        except ValueError as e:
+            _err("rejected: %s" % e)
+            return 1
+        hours = int(store.TEMP_PASSWORD_SECONDS // 3600)
+        _say("temporary web password of %s (一次性臨時密碼，只顯示這一次):" % args.name)
+        _say(issued["password"])
+        _say("Send it to %s privately, not in a chat with an AI. It works for %d hours, and %s must change it at the first login "
+             "(請私下交給本人；%d 小時內有效，第一次登入必須改掉)." % (args.name, hours, args.name, hours))
+        _say("Shown once and kept nowhere: if it is lost, run this command again (只顯示這一次、不留任何紀錄，弄丟就重新執行這個指令).")
+        return 0
     try:
         first = getpass.getpass("New web password for %s: " % args.name)
         second = getpass.getpass("Type it again: ")
@@ -574,6 +593,9 @@ def build_parser():
     up = usub.add_parser("passwd", help="set the password a person logs into the confirmation page with (typed at a terminal, 8 to 1000 characters)",
                          allow_abbrev=False)
     up.add_argument("name")
+    up.add_argument("--temporary", action="store_true",
+                    help="instead of asking the person, make a one-time random password, show it once at this terminal (never to a pipe), "
+                         "valid for 72 hours; the person must change it at the first web login")
     up.set_defaults(func=cmd_user_passwd)
 
     pt = sub.add_parser("pat", help="personal access tokens for the MCP server over HTTP")
