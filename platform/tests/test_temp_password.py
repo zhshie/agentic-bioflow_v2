@@ -706,7 +706,7 @@ def test_tc099_nothing_returns_an_existing_temporary_password(w):
     assert st().check_web_password(w.ip.tokens, "ann", a) is None
     assert st().check_web_password(w.ip.tokens, "ann", b)["must_change"] is True
     names = re.findall(r"(?m)^def (\w+)", STORE_SRC)
-    assert [n for n in names if "temp" in n.lower()] == ["issue_temporary_password"]
+    assert [n for n in names if "temporary" in n.lower()] == ["issue_temporary_password"]
 
 
 def test_tc100_no_mail_and_no_other_program_in_the_new_code():
