@@ -7,6 +7,7 @@
 
 ## Evidence
 - Opening the tokens.db of the platform: the test uses `store.connect_tokens` (TC-056).
+- OUT OF PLAN (the plan said no existing assertion would go red; two did): the full suite showed that `test_pat.py::test_tcf03_f04_*` and `test_web_actions.py::test_tc063_no_schema_change` pin the column list of `tokens.users`. Each got the one new name `temp_until` appended to its expected list, nothing else changed. The developer-agent should confirm this is wanted.
 - Python used by the quick runs: 3.10.6, sqlite 3.37.2 (WSL Ubuntu). The Windows `python` here is 2.7, not used for tests.
 - `git diff --stat -- platform/abf_platform/web.py` is empty (web.py untouched); `actions/`, `guidance.py`, `mcp_server.py`, the constitution, ADR 0006, INSTALL.md and TESTING.md untouched.
 - The path of `cmd_user_passwd` without `--temporary`: the terminal check, the user check, the two `getpass` calls, the differ/exception messages and the success message are the original lines (only the docstring and the added `--temporary` branches differ).
