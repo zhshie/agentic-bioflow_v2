@@ -174,6 +174,22 @@ B. **暫存**：允許檔案先放在平台主機 `uploads/` 再傳；**傳完�
 C. **ADR 0010 同步**：在本系列的 -b 片修改 `docs/adr/0010-chat-keys-byte-channel-studio-embedding.md`，加一段「2026-10-25 修正」：①按上傳即為確認；②允許在平台主機暫存，傳完核對大小後刪除。附維護者原話。
 D. 前置：本系列動 `store.py`／`jobs.py` 的 CHECK 清單，與 cloud-cleanup-a/b 重疊，排在 cloud-cleanup-b 之後；開工前依當時 v3 的 CHECK 清單重算（不釘「剛好七個」）。
 
+## 裁決二（2026-10-25，developer-agent，回應 verifier 出題退回；與上文衝突時以本段為準）
+1. **範圍改成 5 個檔**：上列 4 個＋`docs/adr/0010-chat-keys-byte-channel-studio-embedding.md`（只新增一段「## 2026-10-25 修正」，內容照上段裁決 C，附維護者原話「1.會慢半天就不用 2.照你建議」）。完成標準改為「`git diff --name-only <base>` 只含這 5 個檔」。
+2. **「不做」的兩條作廢**：「傳完後刪除本機 uploads/ 的檔」與「讀回 bucket 驗證大小」改成要做（裁決 B），做法如下第 3、4 條。「刪 bucket 上的殘缺物件、--no-clobber、續傳、校驗和、多檔批次」仍不做。
+3. **取得雲端物件大小**：`cp` 成功後跑 `host.run_fixed(["gcloud","storage","objects","describe",dest,"--project",ce["project"],"--format=value(size)"], env, 60)`（同一個 `_gcloud_env`）。輸出去頭尾空白後必須是純十進位數字才算取得；非零結束碼、逾時、輸出不是數字＝**取不到**。假 gcloud 在測試裡依 argv 第 3 個元素分辨 `cp`／`objects describe`，describe 回一行數字。executor 先對 `gcloud storage objects describe --help` 核對 `--format=value(size)` 拼法並寫進 ledger，核對不過就停手回報。
+4. **刪本機暫存檔**：只有「取得大小且等於開檔時 `os.fstat` 的 `st_size`、也等於串流寫出的位元組數」才刪。刪法：開檔時用 `os.open(path, os.O_RDONLY | os.O_NOFOLLOW)` 並記下 `(st_dev, st_ino)`；刪之前 `os.lstat(path)`，若是捷徑或 `(st_dev, st_ino)` 不同 → 不刪（保留）；相同才 `os.unlink(path)`。
+5. **結果**（平台 `clean_result` 只收 ok、message、note、bytes、path，所以「已刪／已保留」放在 message 文字）：
+   - 大小相符且刪成功 → `ok: True`，message「已上傳 <dest>（N 位元組）；平台主機上的暫存檔已刪除」。
+   - 大小相符但刪除失敗或檔被換過 → `ok: True`，message「已上傳 <dest>（N 位元組）；暫存檔沒刪掉，請管理者清理」。
+   - 取不到雲端大小 → `ok: True`，message「已上傳 <dest>（N 位元組），但沒能核對雲端大小；暫存檔保留」。
+   - 大小不符 → `ok: False`，message「雲端物件大小與本機不符，暫存檔保留，請重新上傳」。
+   - 傳輸失敗 → 照原計畫，暫存檔保留。
+6. **BB-03 不釘個數**：改成「訊息列出 `JOB_KINDS` 的每一個、含 `put_upload`」。
+7. **裁決 D 只是排序條件**：本片**不動** `store.py`／`jobs.py`（CHECK 清單已在 -a #224 加好）；`abf_platform/` 仍整個不准動。
+8. **憲法 Safety Net**：不違反，理由寫進 ledger 與 PR 說明——①憲法 I.2 承認的人工通道包含「平台確認頁、以同一個已登入的使用者」；網頁上傳由已登入本人在頁面上按下，就是那個通道的 yes（裁決 A）；`put_upload` 只能經 -a 的 `enqueue_put_upload` 排入、`_enqueue` 拒絕直接排，MCP 與 PAT 都沒有上傳工具（本片加一條測試：MCP 工具清單沒有任何名稱含 `upload`）。②「Never delete a user's source data」：`uploads/` 裡的是平台為了傳輸暫存的副本，不是使用者的來源資料（來源在使用者自己的電腦，且只有在雲端那份核對大小相符後才刪副本）。
+9. 本片沒有 spec.md，以 plan.md 與兩段裁決為唯一來源：接受。
+
 ## 專長守則（backend）
 
 ### executor
