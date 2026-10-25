@@ -34,3 +34,7 @@
  specs/cloud-cleanup-d/ledger.md
 ```
 `launch.py`、`gcb_launch.py`、`cancel.py`、`gcb_preflight.py`、`site.py`、`rules.py`、`handlers.py`、`test_gcb_launch.py` 與 `abf_platform/*`、`abf_launch/*` 未動。不需要 migration（沒碰資料結構）。
+
+## 裁決三（2026-10-25）已做
+- `_gcloud_env` 改設 `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE`，並拿掉繼承的 `GOOGLE_APPLICATION_CREDENTIALS`；TC-047／TC-052 的斷言依裁決三更新（以前＝要 `GOOGLE_APPLICATION_CREDENTIALS`；以後＝要新變數且不得有舊變數；理由＝gcloud 命令列不認舊變數）。上面「疑慮」一節已由此解決。
+- `rm --recursive` 隱含 `--all-versions`、軟刪除、結尾斜線三點見上方核對，f 片文案照辦。
