@@ -482,7 +482,11 @@ def test_tc075_tc076_run_page_no_rate_or_zero(w, tmp_path, monkeypatch):
 def test_tc077_other_user_sees_not_found(w):
     ann, bob = w.user("ann"), w.user("bob")
     rid = seed(w, "ann-run", ann, hours=5)
-    r = login_get(w, "bob", "/?run=" + rid)
+    r = login_get(w, "bob", "/?run=" + rid)                                   # somebody else's run
+    gone = login_get(w, "bob", "/?run=deadbeefdeadbeef")                      # a run that is not there at all
+    assert r.status_code == gone.status_code == 404, (r.status_code, gone.status_code)
+    assert r.text == gone.text                                                # the very same 404 page, nothing to tell them apart
+    assert "找不到這個 run" in r.text
     assert "5.00 SU" not in r.text and "約 US$" not in r.text.split("</style>")[1]
 
 

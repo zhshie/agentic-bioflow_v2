@@ -22,3 +22,7 @@
 | test_actions_layer.py BASELINE | get_run and my_usage descriptions | one sentence about usd_approx appended, old text whole | sentence added |
 
 No `SU —` assertion was touched (test_web_running, test_web_results_outputs, test_web_board, masthead lines in test_web_cost).
+
+## Fix round 2 (TC-077)
+
+- [x] TC-077 test strengthened (test_su_usd.py test_tc077_other_user_sees_not_found): bob opening ann's run now must give status 404, the exact same page text as bob opening a run id that does not exist, and no ann SU or US$. Code was already right; only the test was weak.
