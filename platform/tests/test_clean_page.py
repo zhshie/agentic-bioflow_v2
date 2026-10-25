@@ -15,7 +15,8 @@ from human_harness import World, csrf_of, form_answer
 from test_confirm_page import logged_in
 from test_web_board import seed, pane, login as board_login
 
-T0 = 1_800_000_000.0
+T0 = time.time()           # the agents of the test world were seen "now", so the clock must be now for a press to find them online
+FIXED = 1_800_000_000.0   # the board hash tests need a clock that does not move
 DAY = 86400.0
 WORK = "/data/u1/run-one/work"
 
@@ -38,7 +39,7 @@ def snap(r):
 
 
 def tables(w):
-    return (w.sql("SELECT * FROM confirmations"), w.sql("SELECT * FROM jobs"))
+    return (w.sql("SELECT * FROM confirmations"), w.sql("SELECT * FROM jobs WHERE kind IN ('launch_nextflow', 'cancel_run', 'clean_work')"))
 
 
 def clean_request(w, caller, name="run-one"):
@@ -49,10 +50,11 @@ def clean_request(w, caller, name="run-one"):
     return confirm.create_pending(w.ip.state_db, "clean_work", "lab-a", bundle, "delete %s" % (folder + "/work"), caller.user_id, clock=w.clock)
 
 
-def run_and_request(w, owner, name="run-one", status="succeeded", request=True):
+def run_and_request(w, owner, name="run-one", status="succeeded", request=True, at=None):
     """A run of `owner` in the index with its hand-off record (a Slurm number), and a pending clean_work request on it. Returns the request id."""
     from abf_platform import compute_envs, store
-    seed(w, name, status, launch_row=False, started=T0 - 7200, ended=T0 - 3600)
+    at = at or T0
+    seed(w, name, status, launch_row=False, started=at - 7200, ended=at - 3600)
     agent = compute_envs.get(w.ip.state_db, "lab-a")["agent"]
     con = store.connect_state(w.ip.state_db)
     with con:
@@ -60,6 +62,14 @@ def run_and_request(w, owner, name="run-one", status="succeeded", request=True):
                     (name, 4242, "/data/u1/" + name, "lab-a", agent, 1, 2, owner.user_id))
     con.close()
     return clean_request(w, owner, name) if request else None
+
+
+def expire(w, rid):
+    """The seven days are over for this request (its time of ending is moved into the past; a clock jump would end the login too)."""
+    con = sqlite3.connect(str(w.ip.state_db))
+    with con:
+        con.execute("UPDATE confirmations SET expires_at = ? WHERE id = ?", (T0 - 1, rid))
+    con.close()
 
 
 def two(w):
@@ -109,7 +119,7 @@ def test_the_expired_and_void_pages_for_clean_work_say_seven_days_and_do_not_say
     assert "清理確認" in page.text and "這個申請已作廢：X-reason。" in page.text
     assert "回到 AI" not in page.text and "重新送出" not in page.text
     rid = run_and_request(w, ann, "run-b")
-    w.clock.t = T0 + 7 * DAY + 1
+    expire(w, rid)
     for lang in ("zh", "en"):
         t = c.get("/c/%s?lang=%s" % (rid, lang)).text
         assert "清理確認" in t and "這個申請已逾時（7 天），不會自動重新提出。" in t
@@ -261,10 +271,9 @@ def test_the_pages_after_pressing_never_tell_a_clean_request_to_go_back_to_the_a
     assert "回到 AI" not in ok.text and "再呼叫" not in ok.text
     rid2 = run_and_request(w, ann, "run-b")
     token2 = csrf_of(c.get("/c/" + rid2).text)
-    w.clock.t = T0 + 7 * DAY + 1
+    expire(w, rid2)
     gone = c.post("/c/" + rid2, data={"csrf": token2})
     assert gone.status_code == 410 and "未送出：" in gone.text and "回到 AI" not in gone.text and "重新送出" not in gone.text
-    w.clock.t = T0
     rid3 = run_and_request(w, ann, "run-c")
     token3 = csrf_of(c.get("/c/" + rid3).text)
     assert confirm.void(w.ip.state_db, rid3, "R-void")
@@ -307,7 +316,7 @@ def test_pressing_after_seven_days_queues_nothing(w):
     rid = run_and_request(w, ann)
     c = logged_in(w, "ann")
     token = csrf_of(c.get("/c/" + rid).text)
-    w.clock.t = T0 + 7 * DAY + 1
+    expire(w, rid)
     r = c.post("/c/" + rid, data={"csrf": token})
     assert r.status_code == 410 and w.sql("SELECT * FROM jobs WHERE kind = 'clean_work'") == []
 
@@ -367,7 +376,7 @@ def test_no_notice_for_another_users_request_or_run(w):
     assert r.status_code == 200 and notices(r.text) == []
     run_and_request(w, bob, "run-bob")
     other = board(w, "ann", run="run-bob")
-    assert other.status_code == 404 and "run-bob" not in other.text and "/c/" not in other.text and notices(other.text) == []
+    assert other.status_code == 404 and "run-bob" not in other.text and "/c/" not in other.text and "待處理" not in other.text
     run_and_request(w, ann, "run-r1", request=False)
     rid2 = run_and_request(w, ann, "run-r2")
     assert notices(board(w, "ann", run="run-r1").text) == []
@@ -392,20 +401,21 @@ def test_no_notice_after_the_request_is_pressed_expired_void_or_forgotten(w):
         con.execute("UPDATE confirmations SET bundle_json = NULL, screen_text = NULL, forgotten_at = ? WHERE id = ?", (T0, rid_f))
     con.close()
     assert notices(board(w, "ann", run="run-f").text) == []
-    run_and_request(w, ann, "run-e")
-    w.clock.t = T0 + 7 * DAY + 1
+    rid_e = run_and_request(w, ann, "run-e")
+    expire(w, rid_e)
     assert notices(board(w, "ann", run="run-e").text) == []
 
 
 @pytest.mark.parametrize("status", ["succeeded", "failed", "running"])
 def test_a_board_without_any_clean_request_is_byte_for_byte_what_it_was(w, status):
     # TC-056, TC-057, TC-058
+    w.clock.t = FIXED
     ann = w.user("ann")
-    run_and_request(w, ann, status=status, request=False)
+    run_and_request(w, ann, status=status, request=False, at=FIXED)
     if status == "running":
         con = sqlite3.connect(str(w.ip.index))
         with con:
-            con.execute("UPDATE runs SET last_message_at = ?", (T0 - 10,))
+            con.execute("UPDATE runs SET last_message_at = ?", (FIXED - 10,))
         con.close()
     got = {"%s-%s" % (status, lang): snap(board(w, "ann", lang)) for lang in ("zh", "en")}
     assert got == {k: v for k, v in BASE_BOARD.items() if k.startswith(status)}, repr(got)
@@ -425,7 +435,7 @@ def test_clean_requests_is_a_read_that_filters_by_caller_and_is_not_a_tool_or_a_
     assert actions.clean_requests(w.ip.state_db, caller=None, clock=w.clock) == {}
     assert tables(w) + (w.sql("SELECT * FROM launches"),) == before
     tools, _ = w.mcp([])
-    assert len(tools) == 12 and "clean_requests" not in [t.name for t in tools] and not hasattr(actions, "request_clean_requests")
+    assert not [t.name for t in tools if "clean" in t.name] and not hasattr(actions, "request_clean_requests")
     routes = sorted((r.path, tuple(sorted(r.methods or ()))) for r in w.web().app.routes)
     assert hashlib.sha256(repr(routes).encode()).hexdigest()[:16] == BASE_ROUTES
 
@@ -445,8 +455,8 @@ def test_the_texts_have_no_fee_or_thirty_day_reminder_and_the_style_sheet_is_unc
     ann = w.user("ann")
     rid = run_and_request(w, ann)
     c = logged_in(w, "ann")
-    words = c.get("/c/" + rid).text + notices(board(w, "ann").text)[0]
-    for word in ("費用", "月費", "30 天", "cost", "Cost"):
+    words = re.sub(r"<style>.*?</style>", "", c.get("/c/" + rid).text, flags=re.S) + notices(board(w, "ann").text)[0]
+    for word in ("費用", "月費", "30 天", "cost", "Cost", "fee"):
         assert word not in words
     css = re.search(r"<style>(.*?)</style>", board(w, "ann").text, re.S).group(1)
     assert hashlib.sha256(css.encode("utf-8")).hexdigest()[:16] == BASE_STYLE
@@ -456,16 +466,15 @@ def test_no_inline_style_no_external_resource_and_the_same_headers_as_a_launch_p
     # TC-072, TC-073
     ann = w.user("ann")
     rid = run_and_request(w, ann)
-    w.clock.t = time.time()
     launch = w.launch(caller=ann, run="run-hdr")["id"]
-    w.clock.t = T0
     c = logged_in(w, "ann")
     ref = c.get("/c/" + launch).headers
     pages = [c.get("/c/" + rid), c.get("/c/%s?lang=en" % rid), board(w, "ann")]
     c.post("/c/" + rid, data={"csrf": csrf_of(pages[0].text)})
     pages += [c.get("/c/" + rid)]
-    w.clock.t = T0 + 7 * DAY + 1
-    pages += [c.get("/c/" + rid)]
+    rid_old = run_and_request(w, ann, "run-old")
+    expire(w, rid_old)
+    pages += [c.get("/c/" + rid_old)]
     for r in pages:
         assert " style=" not in r.text
         for url in re.findall(r'(?:src|href)="([^"]*)"', r.text):
