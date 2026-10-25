@@ -21,3 +21,7 @@ confirm.create_pending(state_db, "clean_work", "<環境名>", {"version":1,"run_
 - 英文確認頁的標題、引言、逾時／作廢句沿用中文（計畫只定了英文的種類、欄位、按鈕）；英文通知卡片的內容與下一步文字是我照中文意思寫的，等維護者看截圖。
 - 計畫寫 MCP 工具 12 個，實際 list_tools 現在是 15 個（本片沒動）；測試改成「沒有名稱含 clean 的工具」。
 - 截圖（維護者回好／不好才合併）尚未附，需在本機看板操作。
+
+## 裁決二執行（2026-10-25）
+- 已改四條既有測試（test_cleanup_confirm.py::tc067、test_cleanup_store.py::TC-030、test_web_parity.py 兩條），並加唯讀檢查 `_clean_work_read_only_problems`（ast 逐函式，排除巢狀函式）。四檔相關測試 129 條綠。
+- 全套四次都不是全綠，每次紅的不同，且單獨重跑多半綠：機器負載造成逾時／計時門檻（confirm_launch_test.sh 的「slow 1.2s」、platform_clock、test_relay_loopback 單跑 123 綠、test_station_e2e）。jev_test.sh 第一次紅是因為鏡像裡舊 pyc 含 "Jev" 位元組（清掉 __pycache__ 後綠）。
