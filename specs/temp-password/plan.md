@@ -175,6 +175,10 @@ CLI（用 `launch_harness.Pty` 與 `cli_argv`，同 `test_web_login.py:24-31`）
 15. 裁決二第 7 條的「init」＝平台開 `tokens.db` 的正常入口（`store` 裡現有的連線／建表函式，executor 在測試註明用哪個名字）。
 16. 範圍以 8 個檔為準（cli.py 已在清單內）。
 
+## 裁決四（2026-10-25，閱卷後）
+17. **追認兩個檔**：`platform/tests/test_pat.py`（test_tcf03_f04 的 users 欄位清單加 `temp_until`）與 `platform/tests/test_web_actions.py`（`SCHEMA['tokens.users']` 加 `temp_until`）。加欄位必然要同步，仍是精確釘死欄位清單，不算放水。範圍改為 10 個檔；TC-102 已由 developer-agent 同步。
+18. TC-069：真終端機下 stdout 與 stderr 同一螢幕，改為「除第 2 行外不含密碼」：接受，executor 在 ledger 補一句說明。
+
 ## 專長守則（backend）
 
 ### executor
