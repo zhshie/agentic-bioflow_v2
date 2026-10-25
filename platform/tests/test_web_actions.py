@@ -16,6 +16,7 @@ from test_web_board import no_cjk, pane, plain, seed, style_of
 
 WEB = PLATFORM_DIR / "abf_platform" / "web.py"
 BOARD = PLATFORM_DIR / "abf_platform" / "web_board.py"
+SETTINGS_PAGE = PLATFORM_DIR / "abf_platform" / "web_settings.py"
 LEDGER = REPO_ROOT / "specs" / "012b-web-actions" / "ledger.md"
 GLYPHS = "▶✓✗⏸⟳✎"
 
@@ -535,7 +536,7 @@ def test_tc059_another_user_cannot_press_send_for_a_web_made_request(rig):
 def test_tc060_routes_call_only_the_request_actions():
     # TC-060
     forbidden_imports = {"confirm", "jobs", "compute_envs", "agents", "status"}
-    for p in (WEB, BOARD):
+    for p in (WEB, BOARD, SETTINGS_PAGE):      # settings-page: web_settings.py is held to the same rule
         tree = ast.parse(p.read_text(encoding="utf-8"))
         called = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "actions"}
         assert not (called & {"launch", "cancel", "forget", "request_forget", "void_request", "find_approved"}), (p.name, called)

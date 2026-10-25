@@ -30,9 +30,9 @@ PFX=""
 if [ -n "${CLEANUP_TEST_PREFIX_FILE:-}" ]; then PFX=$(cat "$CLEANUP_TEST_PREFIX_FILE"; echo x); PFX=${PFX%x}; fi
 t() { # t <command> <expect pass|warn|deny> <label>
   printf '%-58s ' "$3"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
+  out=$(jq -cn --arg c "$PFX$1" '{tool_input:{command:$c}}' | bash "$H")
   if [ -z "$out" ]; then got=pass; else
-    got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out")
+    got=$(jq -er 'if .hookSpecificOutput then (.hookSpecificOutput.permissionDecision // "warn") else error("no hookSpecificOutput") end' <<<"$out" 2>/dev/null | tr -d '\r')
   fi
   if [ "$got" = "$2" ]; then echo "ok ($got)"; else
     echo "FAIL: expected $2, got $got"; fails=$((fails+1))
@@ -90,7 +90,7 @@ TMP2=$(mktemp -d); trap 'rm -rf "$TMP2"' EXIT
 NOJQ_PATH=$(nojq_path "$TMP2") || { echo "cannot build a PATH without jq"; exit 1; }
 
 nojq() { # nojq <command-string>
-    python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" \
+    jq -cn --arg c "$1" '{tool_input:{command:$c}}' \
         | PATH="$NOJQ_PATH" bash "$H"
 }
 
@@ -229,22 +229,22 @@ echo "== R2: Claude Code itself asks, for the work/ + cache branch only =="
 # every decision-carrying case (PITFALLS 28 appendix-2 fact 3).
 askcheck() { # askcheck <command> <label>
   printf '%-58s ' "$2"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
+  out=$(jq -cn --arg c "$PFX$1" '{tool_input:{command:$c}}' | bash "$H")
   first="${out:0:1}"
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
   fi
-  decision=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
+  decision=$(jq -r '.hookSpecificOutput.permissionDecision // ""' <<<"$out" 2>/dev/null | tr -d '\r')
   [ "$decision" = ask ] && echo ok || { echo "FAIL: expected permissionDecision=ask, got '$decision'"; fails=$((fails+1)); }
 }
 denycheck() { # denycheck <command> <label>
   printf '%-58s ' "$2"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
+  out=$(jq -cn --arg c "$PFX$1" '{tool_input:{command:$c}}' | bash "$H")
   first="${out:0:1}"
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
   fi
-  decision=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
+  decision=$(jq -r '.hookSpecificOutput.permissionDecision // ""' <<<"$out" 2>/dev/null | tr -d '\r')
   [ "$decision" = deny ] && echo ok || { echo "FAIL: expected permissionDecision=deny, got '$decision'"; fails=$((fails+1)); }
 }
 
@@ -293,9 +293,9 @@ t "grep -rn 'shutil.rmtree' scripts/"             pass "#29 searching for rmtree
 
 tps() { # tps <powershell command> <expect> <label> - through the PowerShell tool
   printf '%-58s ' "$3"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':'PowerShell','tool_input':{'command':sys.argv[1]}}))" "$PFX$1" | bash "$H")
+  out=$(jq -cn --arg c "$PFX$1" '{tool_name:"PowerShell",tool_input:{command:$c}}' | bash "$H")
   if [ -z "$out" ]; then got=pass; else
-    got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out" 2>/dev/null)
+    got=$(jq -er 'if .hookSpecificOutput then (.hookSpecificOutput.permissionDecision // "warn") else error("no hookSpecificOutput") end' <<<"$out" 2>/dev/null | tr -d '\r')
   fi
   [ "$got" = "$2" ] && echo "ok ($got)" || { echo "FAIL: expected $2, got $got"; fails=$((fails+1)); }
 }
@@ -420,9 +420,9 @@ echo
 echo "== #35: medium/low shapes left after #29 (each with a control) =="
 tc() { # tc <cwd> <command> <expect pass|warn|deny|ask> <label> - the hook input also carries the session's cwd
   printf '%-58s ' "$4"
-  out=$(python3 -c "import json,sys;print(json.dumps({'cwd':sys.argv[1],'tool_input':{'command':sys.argv[2]}}))" "$1" "$PFX$2" | bash "$H")
+  out=$(jq -cn --arg w "$1" --arg c "$PFX$2" '{cwd:$w,tool_input:{command:$c}}' | bash "$H")
   if [ -z "$out" ]; then got=pass; else
-    got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out")
+    got=$(jq -er 'if .hookSpecificOutput then (.hookSpecificOutput.permissionDecision // "warn") else error("no hookSpecificOutput") end' <<<"$out" 2>/dev/null | tr -d '\r')
   fi
   if [ "$got" = "$3" ]; then echo "ok ($got)"; else
     echo "FAIL: expected $3, got $got"; fails=$((fails+1))
@@ -779,9 +779,9 @@ tc "$P" "mv C:/lab/proj/raw\\data x"                       ask  "#66 r3 mv C:/la
 # tcp <tool> <cwd> <command> <expect> <label>: the hook input carries the tool name and the cwd.
 tcp() {
   printf '%-58s ' "$5"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_name':sys.argv[1],'cwd':sys.argv[2],'tool_input':{'command':sys.argv[3]}}))" "$1" "$2" "$PFX$3" | bash "$H")
+  out=$(jq -cn --arg n "$1" --arg w "$2" --arg c "$PFX$3" '{tool_name:$n,cwd:$w,tool_input:{command:$c}}' | bash "$H")
   if [ -z "$out" ]; then got=pass; else
-    got=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$out" 2>/dev/null)
+    got=$(jq -er 'if .hookSpecificOutput then (.hookSpecificOutput.permissionDecision // "warn") else error("no hookSpecificOutput") end' <<<"$out" 2>/dev/null | tr -d '\r')
   fi
   [ "$got" = "$4" ] && echo "ok ($got)" || { echo "FAIL: expected $4, got $got"; fails=$((fails+1)); }
 }
@@ -886,10 +886,10 @@ echo "== #62: a guard that cannot finish in time asks, instead of being cancelle
 # Past its own deadline (20 s; ABF_CLEANUP_DEADLINE_S can only lower it, for
 # this test) the guard stops judging and asks, saying why (invariant 13).
 dl() { # dl <deadline> <command> -> OUT, GOT
-  OUT=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$PFX$2" \
+  OUT=$(jq -cn --arg c "$PFX$2" '{tool_input:{command:$c}}' \
         | ABF_CLEANUP_DEADLINE_S="$1" bash "$H")
   if [ -z "$OUT" ]; then GOT=pass; else
-    GOT=$(PYTHONIOENCODING=utf-8 python3 -c "import json,sys;o=json.load(sys.stdin)['hookSpecificOutput'];print(o.get('permissionDecision','warn'))" <<<"$OUT")
+    GOT=$(jq -er 'if .hookSpecificOutput then (.hookSpecificOutput.permissionDecision // "warn") else error("no hookSpecificOutput") end' <<<"$OUT" 2>/dev/null | tr -d '\r')
   fi
 }
 printf '%-58s ' "#62 deadline reached: asks, even for an ordinary delete"
