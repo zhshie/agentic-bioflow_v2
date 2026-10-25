@@ -134,7 +134,7 @@ JOB_SQL = ("INSERT INTO jobs (agent, compute_env, kind, args_json, state, create
 CONF_SQL = "INSERT INTO confirmations (id, sha256, kind, created_at, state) VALUES ('pr', 'x', ?, 1, ?)"
 LAUNCH_SQL = "INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, attempt_kind) VALUES ('r', '/f', 'c', 'a', 1, ?)"
 
-KINDS = ["preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work",
+KINDS = ["preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload",
          "rm", "delete", "clean", "clean_work ", "CLEAN_WORK", ""]
 
 
@@ -170,7 +170,7 @@ def test_fresh_jobs_take_clean_work_only_with_a_confirmation(tmp_path):
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c1', 'x', 'launch', 1)")
     con.execute(JOB_SQL, ("clean_work", "queued", "c3"))
     assert declared_kinds(check_of(con, "jobs")) == ["preflight", "list_site_files", "launch_nextflow", "cancel_run",
-                                                      "fetch_run_records", "read_task_log", "clean_work"]
+                                                      "fetch_run_records", "read_task_log", "clean_work", "put_upload"]
     n = con.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
     for kind in ("clean_work", "launch_nextflow", "cancel_run"):
         with pytest.raises(sqlite3.IntegrityError):

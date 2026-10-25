@@ -1,8 +1,9 @@
-# Not Celery or RQ: they need a separate broker process; six job kinds in one SQLite table are enough, and the table is not a run state machine.
+# Not Celery or RQ: they need a separate broker process; eight job kinds in one SQLite table are enough, and the table is not a run state machine.
 """The queue of jobs that agents poll for.
 
-Six kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records` and `read_task_log`
-only read; `launch_nextflow` and `cancel_run` write on the site, so a job of those two kinds can only be queued with
+Eight kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records` and `read_task_log`
+only read; `put_upload` asks the agent to write one file the user put in the uploads folder into the user's own cloud prefix, and needs no
+confirmation (the person pressing Upload is the yes; it is queued only by enqueue_put_upload); `launch_nextflow` and `cancel_run` write on the site, so a job of those two kinds can only be queued with
 a confirmation: a row that a person's yes made (state confirmed: y at the terminal, a form in the MCP client, or the
 confirmation page), bound to the hash of the content the user saw. Every job is a question or an order put to one agent, with a deadline. A job whose deadline passed is
 `expired` and is never handed out; an answer that arrives late is kept apart, and for a launch or a cancel the one
@@ -17,21 +18,24 @@ import json
 import os
 import re
 import sqlite3
+import stat as stat_mod
 import time
+from pathlib import Path
 
-from . import common, compute_envs, records, store
+from . import cloud_store, common, compute_envs, records, store
 
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
 DEADLINE_SECONDS = {"preflight": 180, "list_site_files": 60, "launch_nextflow": 300, "cancel_run": 90,
-                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600}
+                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600}
 _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "list_site_files": "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES",
                  "launch_nextflow": "ABF_PLATFORM_DEADLINE_LAUNCH",
                  "cancel_run": "ABF_PLATFORM_DEADLINE_CANCEL",
                  "fetch_run_records": "ABF_PLATFORM_DEADLINE_FETCH",
                  "read_task_log": "ABF_PLATFORM_DEADLINE_READ_TASK_LOG",
-                 "clean_work": "ABF_PLATFORM_DEADLINE_CLEAN"}
+                 "clean_work": "ABF_PLATFORM_DEADLINE_CLEAN",
+                 "put_upload": "ABF_PLATFORM_DEADLINE_PUT_UPLOAD"}
 LOG_FILES = {"err": ".command.err", "out": ".command.out", "log": ".command.log"}      # the only three files read_task_log can name
 # The words D5 of run-diag-tools fixes. The package-source scan of test_scope (TC-061) forbids that whole word in this package's lines, so it is joined here.
 NO_AGENT_KNOWN = "no " + "sta" "tion agent is known for this run (這個 run 不是從這個平台送出的，不知道是哪個代理)"
@@ -84,8 +88,10 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
         if owned is not None and owned["owner_user_id"] != caller_user_id:
             raise _not_found(ce_name)
     status = row["status"]
-    if row["platform"] in compute_envs.PLATFORM_HOST_TYPES and kind not in ("preflight", "launch_nextflow", "cancel_run", "clean_work"):
+    if row["platform"] in compute_envs.PLATFORM_HOST_TYPES and kind not in ("preflight", "launch_nextflow", "cancel_run", "clean_work", "put_upload"):
         raise JobRefused("%s is a Google Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
+    if kind == "put_upload" and row["platform"] not in compute_envs.PLATFORM_HOST_TYPES:
+        raise JobRefused("%s cannot hold cloud data: only a Google Batch environment can (只有 Google Batch 環境能放雲端資料)" % ce_name)
     if status == compute_envs.UNSUPPORTED:
         raise JobRefused("%s is a %s environment: %s" % (ce_name, compute_envs.KINDS.get(row["platform"], "?"),
                                                           compute_envs.NOT_SUPPORTED_MESSAGE))
@@ -98,10 +104,10 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
     limit = common.offline_after_seconds() if offline_after is None else offline_after
     if seen is None or now - seen["last_seen_at"] > limit:
         raise JobRefused("agent %s is offline (代理離線); nothing was queued" % agent)
-    if kind in ("list_site_files", "launch_nextflow") and status != compute_envs.AVAILABLE:
+    if kind in ("list_site_files", "launch_nextflow", "put_upload") and status != compute_envs.AVAILABLE:
         raise JobRefused("%s has the status %s, and only an available environment can %s (目前的狀態不能執行工作). "
                          "Run `abf-platform ce preflight %s` first." % (
-                             ce_name, status, "list files" if kind == "list_site_files" else "run an analysis", ce_name))
+                             ce_name, status, {"list_site_files": "list files", "put_upload": "store a file"}.get(kind, "run an analysis"), ce_name))
     return row
 
 
@@ -154,6 +160,8 @@ def _seconds(kind, deadline):
 
 def _enqueue(state_path, ce_name, kind, listing_path, clock, deadline, offline_after=None, caller_user_id=None):
     """The kinds that need no confirmation and no run: preflight and list_site_files."""
+    if kind == "put_upload":
+        raise JobRefused("a file upload is queued only through enqueue_put_upload (上傳只能走專用入口)")
     if kind == "list_site_files":
         listing_path = check_listing_path(listing_path)
     now = clock()
@@ -176,6 +184,54 @@ def enqueue_preflight(state_path, ce_name, clock=time.time, deadline_seconds=Non
 def enqueue_listing(state_path, ce_name, listing_path, clock=time.time, deadline_seconds=None, offline_after=None,
                     caller_user_id=None):
     return _enqueue(state_path, ce_name, "list_site_files", listing_path, clock, deadline_seconds, offline_after, caller_user_id)
+
+
+def _uploaded_file(uploads_dir, owner_name, filename, stat, ce_view):
+    """The size of the file the user put in uploads/<owner>/<filename>, or JobRefused. Only lstat: the file is never opened or read."""
+    folder = Path(uploads_dir) / owner_name
+    path = folder / filename
+    try:
+        info = stat(path)
+    except OSError:
+        raise JobRefused("找不到這個上傳的檔案，請先把檔案上傳到你的資料夾 (the uploaded file is not there; upload it first)")
+    if not stat_mod.S_ISREG(info.st_mode):
+        raise JobRefused("這不是一般檔案（資料夾或捷徑不收） (this is not a plain file; folders and shortcuts are not taken)")
+    if os.path.dirname(os.path.realpath(path)) != os.path.realpath(folder):
+        raise JobRefused("這個檔案不在你的上傳資料夾裡 (the file is not inside your upload folder)")
+    size = info.st_size
+    if size < 1:
+        raise JobRefused("這是空檔案，沒有東西可存 (the file is empty; there is nothing to store)")
+    if size > cloud_store.UPLOAD_LIMIT:
+        raise JobRefused("網頁一個檔案最多收 2 GB，這個檔案太大。請在你的電腦上跑這一行指令上傳：%s "
+                         "(the web takes at most 2 GB per file; run this command on your computer)"
+                         % cloud_store.big_file_command(ce_view, owner_name))
+    return size
+
+
+def enqueue_put_upload(state_path, tokens_path, ce_name, owner_name, filename, uploads_dir, caller_user_id, clock=time.time,
+                       deadline_seconds=None, offline_after=None, stat=os.lstat):
+    """Ask the agent on the platform host to write one uploaded file into the caller's own cloud prefix. The only way to queue a
+    put_upload. The job holds a reference (owner, name, size, destination), never bytes, a local path or a key. Else JobRefused
+    and nothing is queued. The environment is judged before the file, so nothing is told about a file in somebody else's folder."""
+    if isinstance(caller_user_id, bool) or not isinstance(caller_user_id, int):
+        raise JobRefused("要先登入才能上傳 (sign in first: an upload belongs to a user)")
+    if not isinstance(ce_name, str) or not isinstance(owner_name, str) or store.user_id_of(tokens_path, owner_name) != caller_user_id:
+        raise _not_found(str(ce_name))
+    now = clock()
+    seconds = _seconds("put_upload", deadline_seconds)
+
+    def work(con):
+        row = _target(con, ce_name, "put_upload", now, offline_after, caller_user_id)
+        view = compute_envs.view(row)
+        try:
+            dest = cloud_store.object_url(view, owner_name, filename)
+        except cloud_store.CloudPathError as e:
+            raise JobRefused(str(e))
+        size = _uploaded_file(uploads_dir, owner_name, filename, stat, view)
+        args = {"ce": compute_envs.snapshot(row), "owner": owner_name, "name": filename, "size": size, "dest": dest}
+        return _insert_job(con, row, "put_upload", args, now, seconds)
+
+    return transaction(state_path, work)
 
 
 def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, offline_after=None):
@@ -697,6 +753,14 @@ def clean_result(kind, result, stored=None):
         out["checks"] = checks
         if any(c["status"] != "pass" for c in checks) or not checks:
             out["ok"] = False
+    elif kind == "put_upload":
+        written = _int(result.get("bytes"), 0, cloud_store.UPLOAD_LIMIT)
+        if written is not None:
+            out["bytes"] = written
+        if isinstance(result.get("path"), str):
+            out["path"] = _short(result["path"], 1100)
+        if out["ok"] and (written is None or "path" not in out):
+            out["ok"] = False      # a success must say how many bytes and where
     elif kind == "clean_work":
         out["cleaned"] = result.get("cleaned") is True
         if isinstance(result.get("run_name"), str):
