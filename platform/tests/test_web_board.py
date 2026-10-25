@@ -817,7 +817,7 @@ def test_tch11_read_only(w):
                       ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
                       ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/token", ("OPTIONS", "POST")),
-                      ("/usage", ("GET", "HEAD"))], routes
+                      ("/usage", ("GET", "HEAD")), ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: /welcome
 
 
 def _digest(w):

@@ -13,6 +13,6 @@
 1. `platform/tests/test_temp_password.py::test_tc025`：臨時 session 打 `/` 的期望由 303 `/login` 改成 303 `/welcome`（裁決 1；憲法 6.1.0）。
 2. `platform/tests/test_temp_password.py::test_tc027`：略過清單保留原本的，加略過 `/welcome` 與 `/authorize`；其餘每條路由每個方法，臨時 session 回應一律 303 且 Location＝`/welcome`，並確認 `w.jobs() == []`、確認單仍 pending、回應不含 run 名稱；另加 `/authorize` 對臨時 session 與沒登入逐項相同；`/consent/{rid}` 改用一筆真的 OAuth 同意請求的網址（原本用確認單 id，兩邊都 404，到不了登入判斷）；`seen >= 8` 保留（裁決 1）。
 3. `platform/tests/test_owner_binding.py::test_tc068_no_new_way_to_log_in`：路由集合加 `"/welcome"`、`store.*` 名稱集合加 `"change_web_password"`，只這兩項（`/welcome` 路由與它用到的 `store.change_web_password` 是本任務新增；計畫範圍明載）。
-4. 其他把登入頁說明句或路由集合逐字釘住的既有測試：無（全套測試沒有因此紅的）。
+4. `platform/tests/test_confirm_page.py::test_tcg04_g05_g06_…` 與 `platform/tests/test_web_board.py::test_tch11_read_only`：各把整份路由表逐字釘住，只在期望清單加 `("/welcome", ("GET", "HEAD"))`、`("/welcome", ("POST",))` 兩項（全套測試跑出來紅的，別無他改）。登入頁說明句：沒有既有測試釘住舊句。
 
 沒有刪除、略過、放寬任何既有斷言；`test_tch05` 與 `web.py` 字詞檢查一字未改；`store.py`、`web_board.py`、`web_settings.py` 未改。
