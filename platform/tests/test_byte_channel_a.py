@@ -112,7 +112,7 @@ def test_tc001_tc002_put_upload_needs_no_confirmation_and_odd_kinds_stay_refused
 def test_tc003_check_list_is_the_base_list_with_put_upload_last(tmp_path):
     # TC-003
     assert jobs_check(new_db(tmp_path)) == ["preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records",
-                                            "read_task_log", "clean_work", "put_upload"]
+                                            "read_task_log", "clean_work", "put_upload", "pipeline_files"]      # release-lookup-job: pipeline_files comes after put_upload
 
 
 def test_tc004_the_kinds_that_write_still_need_a_confirmation(tmp_path):
@@ -209,7 +209,7 @@ def test_tc012_tc013_tables_missing_older_kinds_are_also_rebuilt_to_the_newest(t
         db = old_db(d, cut)
         before = sql(db, COLS)
         store.connect_state(db).close()
-        assert sql(db, COLS) == before and jobs_check(db)[-1] == "put_upload" and "clean_work" in jobs_check(db)
+        assert sql(db, COLS) == before and jobs_check(db)[-2:] == ["put_upload", "pipeline_files"] and "clean_work" in jobs_check(db)      # release-lookup-job: put_upload before pipeline_files, which is last
 
 
 def test_tc014_only_the_jobs_table_is_rebuilt(tmp_path):
@@ -228,7 +228,7 @@ def test_tc014_only_the_jobs_table_is_rebuilt(tmp_path):
 def test_tc015_tc016_kinds_end_with_put_upload_and_confirmed_is_unchanged():
     # TC-015, TC-016
     from abf_platform import jobs
-    assert jobs.KINDS[-1] == "put_upload" and jobs.KINDS[:-1] == ("preflight", "list_site_files", "launch_nextflow", "cancel_run",
+    assert jobs.KINDS[-2:] == ("put_upload", "pipeline_files") and jobs.KINDS[:-2] == ("preflight", "list_site_files", "launch_nextflow", "cancel_run",      # release-lookup-job: put_upload before pipeline_files, which is last
                                                                   "fetch_run_records", "read_task_log", "clean_work")
     assert jobs.CONFIRMED == {"launch_nextflow": "launch", "cancel_run": "cancel", "clean_work": "clean_work"}
 

@@ -125,13 +125,16 @@ abf-platform rebuild /path/to/launch_folder_1 /path/to/launch_folder_2
 
 ## 6. The station agent
 
-`abf-station` is a small program that runs on **your** side: in WSL, or in a Linux bash on a machine you control (the lab's always-on computer, say). It connects **outward** to the platform and never accepts a connection (the platform never calls it). It does three read-only things, and nothing else:
+`abf-station` is a small program that runs on **your** side: in WSL, or in a Linux bash on a machine you control (the lab's always-on computer, say). It connects **outward** to the platform and never accepts a connection (the platform never calls it). It does these read-only things (the first three for the site, the fourth for public GitHub files), and nothing else:
 
 - `preflight`: check that a compute environment's site can be used (the checks are listed in section 7);
 - `list_site_files`: list one folder on the site (names, sizes, modification times);
+- `pipeline_files`: read four kinds of public file from GitHub for the platform, which never connects out itself: `nextflow_schema.json` and `assets/schema_input.json` of one pipeline at one pinned revision (an exact tag or a 40-character commit, never a branch), the list of `docs/images` with one workflow diagram from it, and the list of release tags. The platform reads the text with `schema.py` and `releases.py`; nothing is stored beside the job row (kept 7 days) except the newest release of a pipeline, remembered 24 hours in `release-tags.json`. It is queued by `actions.pipeline_files` and `actions.latest_release` with no confirmation (it reads only, and sends nothing of yours).
 - `read_task_log`: read the end of one of `.command.err`, `.command.out`, `.command.log` in the task folder of one failed task (`workdir` of `get_run`): read-only, at most the last 200 lines and 64 KB, and a cut is said. The agent reads only inside the places it may read, takes no other file name, and refuses a link. The text goes to the model you chose, like a listing. The tool `read_task_log(run_name, task, which)` is refused, with the reason, when the task has no recorded workdir, the run was not launched from this platform, or the agent is offline.
 
-Every command it sends to the site goes through `scripts/on_site.sh`, the one sanctioned way to reach the site, and so through the shared connection **you** opened with your one-time code. The agent never opens a connection of its own and never asks for a password or code.
+Every command it sends to the site goes through `scripts/on_site.sh`, the one sanctioned way to reach the site, and so through the shared connection **you** opened with your one-time code. The agent never opens a connection of its own toward the site and never asks for a password or code.
+
+`pipeline_files` is the one job that reaches the internet, and it never touches the site: it asks only `github.com`, `raw.githubusercontent.com` and `api.github.com`, over https, with GET, and sends no credential of any kind. It writes nothing, follows no redirect, and checks the size and shape of what it reads. The address and the arguments are checked when the job is queued and again by the agent, which accepts only a repository named owner/name and an exact version.
 
 It does **not** launch, cancel, delete, move or write anything, and it has no job kind for any of them. The agent is a new path that passes through none of the plugin's hooks, so its only guard is its own allow-list, enforced twice: the platform checks a request when it is queued, and the agent checks it again before it runs anything. A job it does not know is refused with a reason, never guessed at.
 
@@ -548,6 +551,7 @@ Not here: roles or sharing inside a lab (010), per-user folders on a remote stat
 ## Action layer
 
 The platform's actions live in one place, `platform/abf_platform/actions/`: one function per action (list runs, get a run, list or get compute environments, list agents, list site files, launch, cancel, resume, relaunch, forget). The MCP tools call these functions and nothing else, and so will the web pages and the chat. A launch or a cancel (and the other writing actions, `resume`, `relaunch` and `forget`) is confirmed through one of three channels, each one object (`TERMINAL`, `ELICITED`, `PAGE`) that `actions.launch` and `actions.cancel` accept as `confirmed_by`: the terminal (`abf-platform launch|cancel` after a `y`), the form of the person's MCP client, and the confirmation page as the same logged-in user. Anything else, a string or a copy of one of them included, is refused with "no human confirmation channel" before a database is opened. The MCP tools `launch` and `cancel` call `request_launch` and `request_cancel`, which only write a pending request and ask; `approve` flips it, for the form or the page, and queues the job in the same transaction.
+Two actions read public GitHub files through an agent and never wait for it (the guided launch page asks again every 15 seconds): `actions.pipeline_files(platform_path, pipeline, revision, *, parts, compute_env, caller, enqueue)` returns the parameter groups, the samplesheet columns, the workflow diagram (and, when asked, its picture) of a pipeline at an exact revision, and `actions.latest_release(platform_path, pipeline, *, compute_env, caller, enqueue)` returns the newest launchable release as a concrete version number. Both answer `state` `loading`, `ready` or `error`, queue one `pipeline_files` job for an agent of the caller when there is none yet, and have no MCP tool and no web route yet.
 
 ## The cost page
 
@@ -643,6 +647,7 @@ One row per kind of data. Every period below is a constant in `platform/abf_plat
 | What each finished task used: cpus, realtime, queue and, for the cost (`docs/CLOUD.md`), the machine type, price model and zone Nextflow reported | `index.db` (`task_usage`) | Rebuildable with the run index; no automatic deletion. |
 | Confirmed submissions: the bundle (what was run) and the screen text (what the person approved), with the audit record of who sent it and when | `platform.db` (`confirmations`) | Until the owner forgets them with `abf-platform forget`; no clock clears a confirmed request. A void or expired request keeps its content 7 days; its audit columns stay. |
 | Job rows: the queue between the platform and the agent, with a copy of what was queued | `platform.db` (`jobs`) | 7 days after the job ends. |
+| Newest release of a pipeline | `release-tags.json` (next to `platform.db`) | 24 hours |
 | Tokens, users and OAuth: sha256 of access tokens, scrypt hashes of web passwords, the connectors that registered and their logins | `tokens.db` (`tokens`, `users`, `oauth_clients`, `oauth_requests`, `oauth_codes`) | A run token 14 days; an OAuth access token 1 hour and a refresh token 30 days; a connector not used for 30 days is forgotten. Personal access tokens and users: no automatic deletion. |
 | The monthly cloud cap in US dollars of each person, set only by the administrator on the terminal (`abf-platform user add --cloud-cap-usd`, `abf-platform user cloud-cap`) | `tokens.db` (`cloud_caps`) | no automatic deletion; no door except the terminal changes or shows it. |
 | Web sessions: sha256 of a browser login's id | `tokens.db` (`web_sessions`) | 12 hours; expired rows are cleared at the next login. |
@@ -669,7 +674,7 @@ The folders are created on first use. The `.gitignore` of this repository keeps 
 
 `ABF_PLATFORM_CLOCK_OFFSET` (seconds, default 0) shifts the clock the query side uses. It exists so the tests can look at a run "three minutes later"; leave it unset. It also moves the clock by which a run token expires.
 
-Settings that only the tests change: `ABF_PLATFORM_DEADLINE_LAUNCH` (default 300), `ABF_PLATFORM_DEADLINE_CANCEL` (90) and `ABF_PLATFORM_DEADLINE_FETCH` (180) are the deadlines in seconds of the three new job kinds, `ABF_PLATFORM_LAUNCH_GRACE` (120) is how long `abf-platform launch` waits for a late answer, and `ABF_STATION_MIN_REMAINING` (60) is how much of a launch's deadline the agent needs left before it submits.
+Settings that only the tests change: `ABF_PLATFORM_DEADLINE_PIPELINE_FILES` (default 90) is the deadline in seconds of the `pipeline_files` job, `ABF_PLATFORM_DEADLINE_LAUNCH` (default 300), `ABF_PLATFORM_DEADLINE_CANCEL` (90) and `ABF_PLATFORM_DEADLINE_FETCH` (180) are the deadlines in seconds of the three new job kinds, `ABF_PLATFORM_LAUNCH_GRACE` (120) is how long `abf-platform launch` waits for a late answer, and `ABF_STATION_MIN_REMAINING` (60) is how much of a launch's deadline the agent needs left before it submits.
 
 ## What it does not do
 
