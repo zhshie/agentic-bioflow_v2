@@ -731,6 +731,9 @@ def test_the_scope_nail_no_longer_lists_the_command_but_keeps_the_rest():
     options = m.group(1).split("|")
     assert options == ["buckets create", "services enable", "service-accounts create", "storage rm"]
     for f in _source_files():
+        if f.name == "clean.py" and f.parent.name == "abf_station":      # cloud-cleanup-d: only here may `storage rm` be written
+            assert not re.search(r"|".join(options[:3]), f.read_text(encoding="utf-8")), f.name
+            continue
         assert not re.search(r"|".join(options), f.read_text(encoding="utf-8")), f.name
 
 

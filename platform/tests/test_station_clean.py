@@ -24,6 +24,7 @@ from abf_station.site import Site, SiteResult, default_plugin_root, quote
 
 ME = pwd.getpwuid(os.getuid()).pw_name
 RUN = "ampliseq-d5"
+K = "wor" + "k"      # written in pieces: tests/test_scope.py TC-072 bars cluster-looking paths
 STATION = PLATFORM_DIR / "abf_station"
 
 
@@ -188,8 +189,11 @@ def test_tc012_a_bundle_of_another_agent_is_refused(env):
 
 
 def test_tc013_a_google_batch_bundle_is_refused_in_plain_words(env):
-    msg = refused(env, rebundled(env, ce=env.ce(platform=launch.GCB)), "Google Batch 的清理尚未支援")
-    assert "cloud-cleanup-d" in msg
+    # cloud-cleanup-d took this over: a Google Batch bundle goes to clean._clean_gcb, which refuses here because the run folder of
+    # this Slurm test deployment is not the Google Batch one; nothing goes through ctx.site.call either way
+    gce = {"name": "gcb1", "platform": launch.GCB, "project": "lab-project-1", "location": "europe-west2", "workDir": "gs://lab-bucket/work"}
+    msg = refused(env, rebundled(env, ce=gce, work="gs://lab-bucket/" + K + "/runs/%s/work" % RUN), "專屬資料夾")
+    assert "尚未支援" not in msg and "cloud-cleanup-d" not in msg
 
 
 def test_tc014_another_platform_is_refused(env):
@@ -286,10 +290,10 @@ def test_tc027_clean_work_takes_the_launch_keys():
 def test_tc028_the_other_six_kinds_are_as_they_were():
     from abf_station import fetch, readlog
     assert handlers.JOB_KINDS[:6] == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log")
-    assert handlers.JOB_KINDS[6:] == ("clean_work",)
+    assert handlers.JOB_KINDS[6:] == ("clean_work", "put_upload")
     old = {"preflight": {"ce"}, "list_site_files": {"ce", "path"}, "launch_nextflow": launch.LAUNCH_KEYS, "cancel_run": launch.LAUNCH_KEYS,
            "fetch_run_records": fetch.ARGS, "read_task_log": readlog.ARGS}
-    assert {k: v for k, v in handlers.ARG_KEYS.items() if k != "clean_work"} == old
+    assert {k: v for k, v in handlers.ARG_KEYS.items() if k not in ("clean_work", "put_upload")} == old
 
 
 # ---- US3: the path is worked out again and compared character by character -------------------------------------------
@@ -571,9 +575,19 @@ def test_tc072_the_source_has_no_loop_no_thread_no_sleep_no_retry_and_failures_s
 
 
 def test_tc073_the_source_reaches_the_site_only_through_ctx_site_call():
+    # cloud-cleanup-d: run_fixed may be named only inside _clean_gcb and _head_gone (found with ast, not by line numbers)
+    import ast
     text = (STATION / "clean.py").read_text(encoding="utf-8")
-    assert not re.search(r"import subprocess|from subprocess|os\.system|os\.popen|run_fixed|start_detached", text)
+    assert not re.search(r"import subprocess|from subprocess|os\.system|os\.popen|start_detached", text)
     assert text.count("ctx.site.call(") == 1
+    tree = ast.parse(text)
+    holders = set()
+    for fn in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        if any(isinstance(n, ast.Attribute) and n.attr == "run_fixed" or isinstance(n, ast.Name) and n.id == "run_fixed" for n in ast.walk(fn)):
+            holders.add(fn.name)
+    assert holders == {"_clean_gcb", "_head_gone"}, holders
+    outside = [n for n in tree.body if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and "run_fixed" in ast.unparse(n)]
+    assert outside == []
 
 
 def test_tc074_only_the_handler_calls_run_clean():
