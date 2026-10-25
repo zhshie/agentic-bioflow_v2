@@ -357,7 +357,7 @@ out=$(bash "$HERE/scripts_name_their_alternative.sh" 2>&1); rc=$?
 t "TC-018 every script still names the tool it is not (incl. schema_roles.py)" "$rc" "0"
 for f in "$TOOL" "$ROLES"; do
     printf '%-76s ' "TC-018 $(basename "$f") names its alternative in the first 40 lines"
-    if [ -f "$f" ] && sed -n '1,40p' "$f" | grep -qE '^#[[:space:]]*(Not[[:space:]]+.+:|Nothing existing:)'; then echo ok
+    if [ -f "$f" ] && sed -n '1,40p' "$f" | grep -E '^#[[:space:]]*(Not[[:space:]]+.+:|Nothing existing:)' >/dev/null; then echo ok
     else echo "FAIL: missing or no header line"; fails=$((fails+1)); fi
 done
 

@@ -37,10 +37,10 @@ for pair in "serve:abf-serve:8787" "mcp:abf-mcp:8788" "web:abf-web:8789"; do
   el=$(exec_line "$unit")
   # TC-003 / TC-004: exactly its own subcommand, which exists in cli.py; <venv> placeholder
   nsub=$(printf '%s\n' "$el" | grep -oE ' (serve|mcp|web)( |$)' | wc -l)
-  if printf '%s\n' "$el" | grep -qE "^ExecStart=%h/<venv>/bin/abf-platform $sub( |\$)" && [ "$nsub" -eq 1 ]; then ok "TC-003 $unit runs abf-platform $sub only"; else bad "TC-003 $unit runs abf-platform $sub only" "$el"; fi
+  if printf '%s\n' "$el" | grep -E "^ExecStart=%h/<venv>/bin/abf-platform $sub( |\$)" >/dev/null && [ "$nsub" -eq 1 ]; then ok "TC-003 $unit runs abf-platform $sub only"; else bad "TC-003 $unit runs abf-platform $sub only" "$el"; fi
   if grep -qE "sub\.add_parser\(\"$sub\"" "$CLI"; then ok "TC-004 '$sub' is a cli.py subcommand"; else bad "TC-004 '$sub' is a cli.py subcommand"; fi
   # TC-005 / TC-008: loopback host, the right port
-  if printf '%s\n' "$el" | grep -qE -- "--host 127\.0\.0\.1( |\$)" && printf '%s\n' "$el" | grep -qE -- "--port $port( |\$)"; then ok "TC-005 $unit --host 127.0.0.1 --port $port"; else bad "TC-005 $unit --host 127.0.0.1 --port $port" "$el"; fi
+  if printf '%s\n' "$el" | grep -E -- "--host 127\.0\.0\.1( |\$)" >/dev/null && printf '%s\n' "$el" | grep -E -- "--port $port( |\$)" >/dev/null; then ok "TC-005 $unit --host 127.0.0.1 --port $port"; else bad "TC-005 $unit --host 127.0.0.1 --port $port" "$el"; fi
   badhost=$(printf '%s\n' "$el" | grep -oE -- '--host +[^ ]+' | awk '{print $2}' | grep -vx '127.0.0.1' || true)
   if [ -z "$badhost" ]; then ok "TC-008 $unit has no non-loopback --host"; else bad "TC-008 $unit has no non-loopback --host" "$badhost"; fi
   # TC-006: the port is the default= of that subcommand in cli.py
@@ -57,9 +57,9 @@ for pair in "serve:abf-serve:8787" "mcp:abf-mcp:8788" "web:abf-web:8789"; do
   if [ -f "$unit" ] && ! grep -qE 'ProtectHome|ProtectSystem' "$unit"; then ok "TC-014 $unit has no ProtectHome/ProtectSystem"; else bad "TC-014 $unit has no ProtectHome/ProtectSystem"; fi
 done
 for u in abf-mcp abf-web; do
-  if exec_line "$D/systemd/$u.service.in" | grep -qF -- '--public-url ${ABF_PUBLIC_URL}'; then ok "TC-009 $u passes --public-url \${ABF_PUBLIC_URL}"; else bad "TC-009 $u passes --public-url"; fi
+  if exec_line "$D/systemd/$u.service.in" | grep -F -- '--public-url ${ABF_PUBLIC_URL}' >/dev/null; then ok "TC-009 $u passes --public-url \${ABF_PUBLIC_URL}"; else bad "TC-009 $u passes --public-url"; fi
 done
-if exec_line "$D/systemd/abf-mcp.service.in" | grep -qE 'abf-platform mcp --http( |$)'; then ok "TC-003 mcp unit uses --http"; else bad "TC-003 mcp unit uses --http"; fi
+if exec_line "$D/systemd/abf-mcp.service.in" | grep -E 'abf-platform mcp --http( |$)' >/dev/null; then ok "TC-003 mcp unit uses --http"; else bad "TC-003 mcp unit uses --http"; fi
 # TC-007: nothing binds outward
 if [ -f "$CADDY" ] && ! grep -nE '0\.0\.0\.0|\[::\]|--host +::' "${UNITS[@]}" "$CADDY" "$ENVEX" >/dev/null 2>&1; then ok "TC-007 no outward bind in units, Caddyfile, env example"; else bad "TC-007 no outward bind in units, Caddyfile, env example"; fi
 
@@ -95,7 +95,7 @@ want TC-020 8788 '/mcp*' '/.well-known/oauth-protected-resource*'
 want TC-021 8789 '/.well-known/oauth-authorization-server' '/register' '/authorize' '/token' '/revoke' '/consent/*'
 last=$(printf '%s\n' "$routes" | tail -n1)
 lasth=$(grep -E '^[[:space:]]*handle[[:space:]]' "$CADDY" 2>/dev/null | tail -n1)
-if [ "$last" = "$(printf '*\t8789')" ] && printf '%s\n' "$lasth" | grep -qE '^[[:space:]]*handle[[:space:]]*\{'; then ok "TC-022 the last handle is the bare catch-all to 8789"; else bad "TC-022 last handle is the catch-all to 8789" "$lasth"; fi
+if [ "$last" = "$(printf '*\t8789')" ] && printf '%s\n' "$lasth" | grep -E '^[[:space:]]*handle[[:space:]]*\{' >/dev/null; then ok "TC-022 the last handle is the bare catch-all to 8789"; else bad "TC-022 last handle is the catch-all to 8789" "$lasth"; fi
 if [ -f "$CADDY" ] && ! grep -qE '/\.well-known/\*' "$CADDY"; then ok "TC-023 no /.well-known/* wildcard"; else bad "TC-023 no /.well-known/* wildcard"; fi
 # TC-024: every prefix has a source in the platform code
 src_ok() { # literal in the code, or the SDK function that makes it
@@ -126,11 +126,11 @@ chk_routes platform/abf_platform/web.py 8789
 for c in /mcp /.well-known/oauth-protected-resource/mcp; do if [ "$(backend_for "$c")" = 8788 ]; then ok "TC-025 $c -> 8788"; else bad "TC-025 $c -> 8788"; fi; done
 # TC-026
 targets=$(grep -E '^[[:space:]]*reverse_proxy[[:space:]]' "$CADDY" 2>/dev/null | awk '{print $2}')
-if [ -n "$targets" ] && ! printf '%s\n' "$targets" | grep -vqE '^127\.0\.0\.1:(8787|8788|8789)$'; then ok "TC-026 every reverse_proxy target is loopback 8787/8788/8789"; else bad "TC-026 reverse_proxy targets" "$targets"; fi
+if [ -n "$targets" ] && ! printf '%s\n' "$targets" | grep -vE '^127\.0\.0\.1:(8787|8788|8789)$' >/dev/null; then ok "TC-026 every reverse_proxy target is loopback 8787/8788/8789"; else bad "TC-026 reverse_proxy targets" "$targets"; fi
 # TC-027 / 028
-if grep -vE '^\s*(#|$)' "$CADDY" 2>/dev/null | head -n1 | grep -qF '{$ABF_SITE_ADDRESS}'; then ok "TC-027 site address is {\$ABF_SITE_ADDRESS}"; else bad "TC-027 site address is {\$ABF_SITE_ADDRESS}"; fi
-if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -qE '\.ts\.net|[A-Za-z0-9-]+\.(com|org|net|io|tw)\b'; then ok "TC-027 no hard-coded domain in the Caddyfile"; else bad "TC-027 no hard-coded domain in the Caddyfile"; fi
-if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -qE 'tls[[:space:]]+internal|auto_https[[:space:]]+off'; then ok "TC-028 nothing that turns certificates off"; else bad "TC-028 nothing that turns certificates off"; fi
+if grep -vE '^\s*(#|$)' "$CADDY" 2>/dev/null | head -n1 | grep -F '{$ABF_SITE_ADDRESS}' >/dev/null; then ok "TC-027 site address is {\$ABF_SITE_ADDRESS}"; else bad "TC-027 site address is {\$ABF_SITE_ADDRESS}"; fi
+if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -E '\.ts\.net|[A-Za-z0-9-]+\.(com|org|net|io|tw)\b' >/dev/null; then ok "TC-027 no hard-coded domain in the Caddyfile"; else bad "TC-027 no hard-coded domain in the Caddyfile"; fi
+if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -E 'tls[[:space:]]+internal|auto_https[[:space:]]+off' >/dev/null; then ok "TC-028 nothing that turns certificates off"; else bad "TC-028 nothing that turns certificates off"; fi
 # TC-029: no prefix twice with different backends; no broad rule ahead of a narrower one it would eat
 dupe=$(printf '%s\n' "$routes" | awk -F'\t' 'seen[$1] && seen[$1]!=$2 {print $1} {seen[$1]=$2}')
 if [ -n "$routes" ] && [ -z "$dupe" ]; then ok "TC-029 no prefix is routed to two backends"; else bad "TC-029 prefix routed twice" "$dupe"; fi
@@ -143,15 +143,15 @@ for ((a=0; a<i; a++)); do for ((b=a+1; b<i; b++)); do
 done; done
 if [ "$i" -gt 0 ] && [ -z "$shadow" ]; then ok "TC-029 no broad rule eats a narrower one"; else bad "TC-029 shadowed rules" "$shadow"; fi
 # TC-030 / 031
-if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -qE '^[[:space:]]*log\b'; then ok "TC-030 no log directive"; else bad "TC-030 no log directive"; fi
+if [ -f "$CADDY" ] && ! grep -vE '^\s*#' "$CADDY" | grep -E '^[[:space:]]*log\b' >/dev/null; then ok "TC-030 no log directive"; else bad "TC-030 no log directive"; fi
 n=$(find "$D" -iname '*caddyfile*' 2>/dev/null | wc -l); if [ "$n" -eq 1 ]; then ok "TC-031 exactly one Caddyfile in deploy/"; else bad "TC-031 exactly one Caddyfile in deploy/" "$n"; fi
 
 # ---------- US3: backup script ----------
 if bash -n "$BACKUP" 2>/dev/null && grep -q '^set -euo pipefail' "$BACKUP"; then ok "TC-032 backup.sh parses and has set -euo pipefail"; else bad "TC-032 backup.sh syntax + set -euo pipefail"; fi
 miss=""; for w in tokens.db platform.db web_signing.key uploads records; do grep -qF "$w" "$BACKUP" 2>/dev/null || miss="$miss $w"; done
 if [ -z "$miss" ]; then ok "TC-033 backup.sh names the five things it backs up"; else bad "TC-033 backup.sh names" "missing:$miss"; fi
-if grep -qE '\.backup' "$BACKUP" 2>/dev/null && ! grep -vE '^\s*#' "$BACKUP" | grep -E '(^|[ ;|&])cp[ ]' | grep -qE 'tokens|platform\.db|\$state[^_]'; then ok "TC-033 databases are copied with .backup, not cp"; else bad "TC-033 databases copied with .backup, not cp"; fi
-if [ -f "$BACKUP" ] && ! grep -vE '^\s*#' "$BACKUP" | grep -qF 'index.db'; then ok "TC-037 backup.sh does not copy index.db"; else bad "TC-037 backup.sh does not copy index.db"; fi
+if grep -qE '\.backup' "$BACKUP" 2>/dev/null && ! grep -vE '^\s*#' "$BACKUP" | grep -E '(^|[ ;|&])cp[ ]' | grep -E 'tokens|platform\.db|\$state[^_]' >/dev/null; then ok "TC-033 databases are copied with .backup, not cp"; else bad "TC-033 databases copied with .backup, not cp"; fi
+if [ -f "$BACKUP" ] && ! grep -vE '^\s*#' "$BACKUP" | grep -F 'index.db' >/dev/null; then ok "TC-037 backup.sh does not copy index.db"; else bad "TC-037 backup.sh does not copy index.db"; fi
 if [ -f "$BACKUP" ] && ! grep -qE 'curl|wget|scp|rsync|ssh|rm ' "$BACKUP"; then ok "TC-071 backup.sh has no network tool and no rm"; else bad "TC-071 backup.sh has no network tool and no rm"; fi
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
@@ -233,12 +233,12 @@ sub3() { # <file> <regex of a ## or ### heading>: until the next heading of two 
 ops=$(tr -d '\r' < "$OPS"); inst=$(tr -d '\r' < "$INST")
 host=$(sub3 "$OPS" '^### Hosting one lab')
 s2=$(sect "$OPS" '^## 2[.]'); s3=$(sect "$OPS" '^## 3[.]'); s4=$(sect "$OPS" '^## 4[.]'); s5=$(sect "$OPS" '^## 5[.]'); s6=$(sect "$OPS" 'Not built yet')
-has() { printf '%s\n' "$1" | grep -qF -- "$2"; }
+has() { printf '%s\n' "$1" | grep -F -- "$2" >/dev/null; }
 # TC-043
 n=$(printf '%s\n' "$ops" | grep -cF -- '--envfile')
 if has "$ops" 'caddy run --config deploy/Caddyfile.template' && [ "$n" -ge 2 ] && has "$ops" 'ABF_SITE_ADDRESS=http://127.0.0.1:8080'; then ok "TC-043 both step lists feed ABF_SITE_ADDRESS to Caddy with --envfile"; else bad "TC-043 --envfile step in both lists" "envfile mentions: $n"; fi
 # TC-044
-if printf '%s\n' "$ops" | grep -qE '^### Hosting one lab'; then ok "TC-044 '### Hosting one lab' exists"; else bad "TC-044 '### Hosting one lab' exists"; fi
+if printf '%s\n' "$ops" | grep -E '^### Hosting one lab' >/dev/null; then ok "TC-044 '### Hosting one lab' exists"; else bad "TC-044 '### Hosting one lab' exists"; fi
 first=$(printf '%s\n' "$host" | sed -n 2,4p | tr '\n' ' ')
 if has "$first" '託管一間實驗室'; then ok "TC-044 the section opens with 託管一間實驗室"; else bad "TC-044 section opens with 託管一間實驗室"; fi
 if has "$s5" '### Hosting one lab' && has "$s5" '### Public URL'; then ok "TC-044 sits in section 5 beside Public URL"; else bad "TC-044 sits in section 5"; fi
@@ -252,7 +252,7 @@ miss=""; for w in 'deploy/systemd/' '~/.config/systemd/user/' "$SC --user daemon
 if [ -z "$miss" ]; then ok "TC-047 section 3: units dir and install steps"; else bad "TC-047 section 3" "missing:$miss"; fi
 if has "$s3" 'Bearer tokens never go into a unit file'; then ok "TC-048 'tokens never go into a unit file' is kept"; else bad "TC-048 token sentence kept"; fi
 # TC-049
-if has "$s4" 'deploy/backup.sh' && printf '%s\n' "$s4" | grep -qiE 'restor' && printf '%s\n' "$s4" | grep -qiE 'stop .*three'; then ok "TC-049 section 4: backup.sh usage and restore"; else bad "TC-049 section 4"; fi
+if has "$s4" 'deploy/backup.sh' && printf '%s\n' "$s4" | grep -iE 'restor' >/dev/null && printf '%s\n' "$s4" | grep -iE 'stop .*three' >/dev/null; then ok "TC-049 section 4: backup.sh usage and restore"; else bad "TC-049 section 4"; fi
 # TC-050
 if has "$s6" 'Service-manager unit files'; then bad "TC-050 Not built yet: unit-files line removed"; else ok "TC-050 Not built yet: unit-files line removed"; fi
 if has "$s6" 'Tailscale Funnel and proxy configuration'; then bad "TC-050 Not built yet: Funnel line removed"; else ok "TC-050 Not built yet: Funnel line removed"; fi
@@ -260,8 +260,8 @@ if has "$s6" 'Tailscale Funnel and proxy configuration'; then bad "TC-050 Not bu
 miss=""; for w in 'one lab' 'Python 3.10' '80' '443' 'systemd' 'enable-linger'; do has "$host" "$w" || miss="$miss [$w]"; done
 if [ -z "$miss" ]; then ok "TC-051 Hosting section: one lab per host, VPS needs, dedicated user + linger"; else bad "TC-051 Hosting section" "missing:$miss"; fi
 if has "$host" "$CU -i https://<your-domain>/user-info" && has "$host" '401' && has "$host" 'X-ABF-Platform'; then ok "TC-052 Hosting section ends in the /user-info check"; else bad "TC-052 /user-info check"; fi
-if printf '%s\n' "$host" | grep -qiE 'cron|timer'; then ok "TC-053 backup schedule example"; else bad "TC-053 backup schedule example"; fi
-if printf '%s\n' "$host" | grep -qiE 'upgrad'; then ok "TC-054 upgrade steps"; else bad "TC-054 upgrade steps"; fi
+if printf '%s\n' "$host" | grep -iE 'cron|timer' >/dev/null; then ok "TC-053 backup schedule example"; else bad "TC-053 backup schedule example"; fi
+if printf '%s\n' "$host" | grep -iE 'upgrad' >/dev/null; then ok "TC-054 upgrade steps"; else bad "TC-054 upgrade steps"; fi
 # TC-056
 oth=$(printf '%s\n%s\n' "$s2" "$host" | grep -oE 'https?://[^ )`"]+' | grep -vE '^https?://(<[a-z-]+>|127\.0\.0\.1|localhost)' || true)
 if [ -z "$oth" ]; then ok "TC-056 new doc text uses only the placeholder hosts"; else bad "TC-056 placeholders only" "$oth"; fi
@@ -269,7 +269,7 @@ if [ -z "$oth" ]; then ok "TC-056 new doc text uses only the placeholder hosts";
 pointer=$(grep -F 'Hosting one lab' "$INST" || true)
 npt=$(printf '%s\n' "$pointer" | grep -c . || true)
 snake=$(printf '%s\n' "$pointer" | grep -oE '`[^`]*`' | grep -E '[a-z]+_[a-z_]+' || true)
-if [ "$npt" -ge 1 ] && [ "$npt" -le 6 ] && ! printf '%s\n' "$pointer" | grep -qE '^#' && [ -z "$snake" ]; then ok "TC-059 INSTALL.md: a short pointer, no new ##, no snake_case terms"; else bad "TC-059 INSTALL.md pointer" "$npt lines $snake"; fi
+if [ "$npt" -ge 1 ] && [ "$npt" -le 6 ] && ! printf '%s\n' "$pointer" | grep -E '^#' >/dev/null && [ -z "$snake" ]; then ok "TC-059 INSTALL.md: a short pointer, no new ##, no snake_case terms"; else bad "TC-059 INSTALL.md pointer" "$npt lines $snake"; fi
 if [ "$(printf '%s\n' "$inst" | grep -cE '^## ')" -eq 6 ]; then ok "TC-059 INSTALL.md still has six ## headings"; else bad "TC-059 INSTALL.md six headings"; fi
 # TC-062
 while IFS= read -r p; do [ -z "$p" ] && continue; if [ -e "$p" ]; then ok "TC-062 doc path $p exists"; else bad "TC-062 doc path $p exists"; fi; done < <(printf '%s\n%s\n' "$ops" "$inst" | grep -oE '`(deploy/[^` ]+|tests/hosted_deploy_test\.sh)`' | tr -d '`' | sed 's/[.,;:]*$//' | sort -u)

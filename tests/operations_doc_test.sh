@@ -24,7 +24,7 @@ for i in 1 2 3 4 5 6; do
     1) pat='[Pp]rocess' ;; 2) pat='[Hh]ost|TLS' ;; 3) pat='[Rr]unning' ;;
     4) pat='[Bb]ack' ;; 5) pat='[Aa]dmin' ;; 6) pat='Not built yet' ;;
   esac
-  if printf '%s\n' "${heads[$((i-1))]:-}" | grep -qE -- "$pat"; then ok "TC-001/020 heading $i matches /$pat/"; else bad "TC-001/020 heading $i matches /$pat/" "got '${heads[$((i-1))]:-}'"; fi
+  if printf '%s\n' "${heads[$((i-1))]:-}" | grep -E -- "$pat" >/dev/null; then ok "TC-001/020 heading $i matches /$pat/"; else bad "TC-001/020 heading $i matches /$pat/" "got '${heads[$((i-1))]:-}'"; fi
 done
 
 # TC-021/TC-022: every `abf-platform <word>` names a real top-level subcommand of cli.py
@@ -33,7 +33,7 @@ n=0
 while IFS= read -r w; do
   [ -z "$w" ] && continue
   n=$((n+1))
-  if printf '%s\n' "$subs" | grep -qx -- "$w"; then ok "TC-021 abf-platform $w exists"; else bad "TC-021 abf-platform $w exists" "no such subcommand in $CLI"; fi
+  if printf '%s\n' "$subs" | grep -x -- "$w" >/dev/null; then ok "TC-021 abf-platform $w exists"; else bad "TC-021 abf-platform $w exists" "no such subcommand in $CLI"; fi
 done < <(printf '%s\n' "$doc" | grep -oE 'abf-platform +[a-z][a-z-]*' | awk '{print $2}' | sort -u)
 [ "$n" -gt 0 ] || bad "TC-022 doc names at least one abf-platform subcommand"
 

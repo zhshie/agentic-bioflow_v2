@@ -31,7 +31,7 @@ settings() { printf '%s\n' "$@" > "$TMP/env.yaml"; }
 settings 'reach: ssh' 'site_host: me@example.org' "ssh_control_path: $TMP/cm"
 SLOTS="$TMP/cm.slots"
 
-slots_held() { [ -d "$SLOTS" ] && find "$SLOTS" -mindepth 1 -maxdepth 1 2>/dev/null | grep -q .; }
+slots_held() { [ -d "$SLOTS" ] && find "$SLOTS" -mindepth 1 -maxdepth 1 2>/dev/null | grep . >/dev/null; }
 
 # ---------------------------------------------------------------------------
 # At most ON_SITE_MAX_PARALLEL sessions run at once, and a caller past the cap

@@ -147,7 +147,7 @@ for t in bash cat mkdir tr sed grep find date rm; do p=$(command -v $t) && ln -s
 printf '%-60s ' "no jq, plugin-relevant prompt: warns (not silent), exit 0"
 out=$(printf '{"session_id":"s9","prompt":"/agentic-bioflow:setup"}' \
       | env PATH="$NOJQ" AGENTIC_BIOFLOW_STATE_DIR="$STATE" bash "$P/hooks/plugin_intro.sh"); rc=$?
-[ "$rc" = 0 ] && echo "$out" | grep -qF "jq is missing" && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
+[ "$rc" = 0 ] && echo "$out" | grep -F "jq is missing" >/dev/null && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
 
 printf '%-60s ' "no jq, same session again: only warns once"
 out=$(printf '{"session_id":"s9","prompt":"/agentic-bioflow:runs"}' \
@@ -157,7 +157,7 @@ out=$(printf '{"session_id":"s9","prompt":"/agentic-bioflow:runs"}' \
 printf '%-60s ' "no jq, a DIFFERENT session: warns again"
 out=$(printf '{"session_id":"s10","prompt":"/agentic-bioflow:setup"}' \
       | env PATH="$NOJQ" AGENTIC_BIOFLOW_STATE_DIR="$STATE" bash "$P/hooks/plugin_intro.sh"); rc=$?
-[ "$rc" = 0 ] && echo "$out" | grep -qF "jq is missing" && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
+[ "$rc" = 0 ] && echo "$out" | grep -F "jq is missing" >/dev/null && echo ok || { echo "FAIL rc=$rc <<$out>>"; fails=$((fails+1)); }
 
 printf '%-60s ' "no jq, a prompt with nothing to do with this plugin: still silent"
 out=$(printf '{"session_id":"s11","prompt":"fix my python script"}' \
@@ -274,7 +274,7 @@ printf '%-60s ' "and on PostToolUse for Skill"
 jq -e '.hooks.PostToolUse[]? | select(.matcher=="Skill") | .hooks[] | select(.command|test("plugin_intro.sh"))' "$HJ" >/dev/null \
   && echo ok || { echo FAIL; fails=$((fails+1)); }
 printf '%-60s ' "SessionStart no longer shows the overview"
-grep -v '^[[:space:]]*#' "$ROOT/hooks/session_start.sh" | grep -q 'scripts/intro\.sh' && { echo "FAIL: session_start.sh still calls intro.sh"; fails=$((fails+1)); } || echo ok
+grep -v '^[[:space:]]*#' "$ROOT/hooks/session_start.sh" | grep 'scripts/intro\.sh' >/dev/null && { echo "FAIL: session_start.sh still calls intro.sh"; fails=$((fails+1)); } || echo ok
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
