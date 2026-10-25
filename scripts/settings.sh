@@ -950,10 +950,25 @@ migrate_legacy() {   # migrate_legacy <path>
         echo "  no token found beside the old settings - setup step 3 saves one"
     fi
 
+    # Unsent off-design reports queue beside the old settings file (report.sh
+    # reports_dir()). Copy *.report only, never overwrite, never delete.
+    local oldq="$(dirname "$old")/reports" newq="$ABF_ROOT/config/reports" q c=0 k=0
+    if [ -d "$oldq" ] && compgen -G "$oldq/*.report" >/dev/null; then
+        mkdir -p "$newq" && chmod 700 "$newq" 2>/dev/null
+        for q in "$oldq"/*.report; do
+            [ -f "$q" ] || continue
+            if [ -e "$newq/$(basename "$q")" ]; then k=$((k+1)); continue; fi
+            cp -p "$q" "$newq/" && chmod 600 "$newq/$(basename "$q")" 2>/dev/null && c=$((c+1))
+        done
+        echo "  $c queued report(s) copied to $newq"
+        [ "$k" -eq 0 ] || echo "  $k already there - left alone"
+    fi
+
     echo
     echo "Done. The old files are untouched and can be deleted once this is proven:"
     printf '  %s\n' "$old"
     [ -r "$oldtok" ] && printf '  %s\n' "$oldtok"
+    if [ -d "$oldq" ] && compgen -G "$oldq/*.report" >/dev/null; then printf '  %s\n' "$oldq"; fi
     echo "Run 'scripts/preflight.sh' first; delete them only after it passes."
 }
 
