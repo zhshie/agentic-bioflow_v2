@@ -190,6 +190,12 @@ D. 前置：本系列動 `store.py`／`jobs.py` 的 CHECK 清單，與 cloud-cle
 6. 接受 verifier 的其餘解讀（讀方向與對等性 TC 留給 cloud-upload-wire；不加確認憑證，閱卷不得因專長守則判 FAIL）。
 7. 已知環境紅：`test_onboarding_doc.py::test_tc047_tc051_other_docs_untouched` 若 #218 尚未合併，只剩它紅視同綠。
 
+## 裁決三（2026-10-25，回應 TC-097 卡住）
+1. **追認第 11 個檔**：`platform/tests/test_http_site_samplesheet.py` 只准改第 543 行 `SCHEMA_SHA256` 一個常數（jobs CHECK 加 `put_upload` 必然改變結構雜湊；與 cloud-cleanup-b 加 clean_work 時同一做法）。TC-097 的檔案清單加這一檔、限這一行；ledger 記新舊雜湊與重算方法。
+2. **TC-059 要收齊**：拒絕訊息的白話與不露路徑檢查，要涵蓋 TC-037～057 的每一種拒絕（含離線代理、Slurm 環境、各種環境狀態），不只 8 種。
+3. TC-051 對 `""`、`"."`、`".."` 不要求「訊息含檔名原文」：接受（這三個字串必然出現在任何訊息裡，改斷言訊息說明「檔名無效」）。
+4. `test_guidance.py::test_tc404` 在 base 與本分支都紅（WSL 環境）：若全套只剩它紅，executor 在 ledger 附 base 上同樣紅的輸出，視同綠；developer-agent 另查。
+
 ## 專長守則（backend）
 
 ### executor
