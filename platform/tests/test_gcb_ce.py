@@ -802,6 +802,9 @@ def test_nothing_of_the_later_slices_exists():
     assert not names & {"rates.json"}      # cloud_cost.py is C-3's (cloud-cost); our price list is cloud_rates.json, a different name
     for f in list((PLATFORM_DIR / "abf_platform").rglob("*.py")) + list((PLATFORM_DIR / "abf_station").rglob("*.py")):
         text = f.read_text(encoding="utf-8")
+        if f.name == "clean.py" and f.parent.name == "abf_station":      # cloud-cleanup-d: the one place that may hold the removing words
+            assert not any(word in text for word in ("buckets create", "services enable", "service-accounts create")), f.name
+            continue
         assert not re.search(r"buckets create|services enable|service-accounts create|storage rm", text), f.name
     assert "-with-tower" not in (PLATFORM_DIR / "abf_station" / "gcb_preflight.py").read_text(encoding="utf-8")
 

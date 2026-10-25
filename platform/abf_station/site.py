@@ -5,10 +5,15 @@ Every command for the site goes through scripts/on_site.sh of the plugin this ag
 (never found from the current folder), with the deployment's settings file named in LAB_SETTINGS_FILE.
 The command is one string made of fixed words and quoted values; on_site.sh joins its arguments with
 spaces, so each value is quoted with shlex.quote before it gets there.
+
+Besides that script there are three other ways, all with a fixed argument list and no shell: run_fixed (waits for the answer),
+start_detached (a head process in a session of its own) and start_fed (a program whose standard input the caller feeds, used to
+stream one uploaded file into the copy command of gcloud; the bytes are handed on and never kept, logged or written anywhere here).
 """
 import os
 import shlex
 import subprocess
+import tempfile
 from pathlib import Path
 
 DEFAULT_SITE_TIMEOUT = "20"   # seconds, ON_SITE_TIMEOUT of one call unless the environment already sets it
@@ -125,3 +130,68 @@ def start_detached(argv, env, cwd, out_path):
                                 stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
     finally:
         os.close(fd)
+
+
+class Fed:
+    """One program started by start_fed: bytes go in through write, the answer comes back through wait. Nothing written here is kept,
+    printed or logged. Its error output goes to an unnamed temporary file, not a pipe, so that a chatty program can never stall
+    during the time we are still feeding its standard input."""
+
+    def __init__(self, proc, err):
+        self._proc = proc
+        self._err = err
+
+    def write(self, data):
+        """Hand `data` to the program. BrokenPipeError and other OSError are raised as they are."""
+        self._proc.stdin.write(data)
+
+    def close_stdin(self):
+        """Tell the program the input is over. Safe to call again; a pipe that is already broken is not an error here (wait says why)."""
+        try:
+            self._proc.stdin.close()
+        except OSError:
+            pass
+
+    close_input = close_stdin
+
+    def wait(self, timeout):
+        """(return code, the first 2000 characters of the error output) once the program has ended; TimeoutError when it has not
+        ended within `timeout` seconds (it is left running; the caller kills it)."""
+        try:
+            rc = self._proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise TimeoutError("did not return in %s seconds" % timeout)
+        text = ""
+        try:
+            self._err.seek(0)
+            text = self._err.read(2000).decode("utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+        return rc, text[:2000]
+
+    def kill(self):
+        """End the program and collect it. Safe to call again; the temporary file is closed too."""
+        try:
+            if self._proc.poll() is None:
+                self._proc.kill()
+            self._proc.wait()
+        except OSError:
+            pass
+        self.close_stdin()
+        try:
+            self._err.close()
+        except OSError:
+            pass
+
+
+def start_fed(argv, env):
+    """A Fed over one program started with a fixed argument list and no shell, with a pipe on its standard input. OSError when it
+    cannot be started (the caller turns that into a plain sentence)."""
+    err = tempfile.TemporaryFile()
+    try:
+        proc = subprocess.Popen(list(argv), env=env, shell=False, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=err,
+                                close_fds=True)
+    except BaseException:
+        err.close()
+        raise
+    return Fed(proc, err)

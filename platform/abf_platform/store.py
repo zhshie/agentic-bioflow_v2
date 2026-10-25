@@ -103,7 +103,8 @@ CREATE TABLE IF NOT EXISTS users (
     lab TEXT NOT NULL,
     created_at REAL NOT NULL,
     disabled_at REAL,
-    password_hash TEXT
+    password_hash TEXT,
+    temp_until REAL
 );
 CREATE TABLE IF NOT EXISTS web_sessions (
     id_hash TEXT PRIMARY KEY,
@@ -155,6 +156,7 @@ CREATE TABLE IF NOT EXISTS cloud_caps (
 # WEB_SESSION_SECONDS. The password never opens the MCP server, and a personal access token never opens the web.
 WEB_SESSION_SECONDS = 12 * 3600
 MIN_PASSWORD_CHARS = 8
+TEMP_PASSWORD_SECONDS = 72 * 3600      # a temporary web password (issue_temporary_password) stops working after this long
 MAX_PASSWORD_CHARS = 1000      # `user passwd` and the login page both stop here; nothing is cut down silently
 SCRYPT = (2 ** 14, 8, 1)
 
@@ -743,6 +745,13 @@ def _migrate_tokens(con):
         except sqlite3.OperationalError:
             if "password_hash" not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
                 raise
+    if "temp_until" not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
+        try:
+            with con:
+                con.execute("ALTER TABLE users ADD COLUMN temp_until REAL")
+        except sqlite3.OperationalError:
+            if "temp_until" not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
+                raise
 
 
 def connect_tokens(path):
@@ -1089,6 +1098,9 @@ def _scrypt(password, salt, n, r, p):
     return hashlib.scrypt(password.encode("utf-8"), salt=salt, n=n, r=r, p=p, dklen=32, maxmem=128 * n * r * 2 + 4 * 1024 * 1024)
 
 
+_DUMMY_HASH = "scrypt$%d$%d$%d$%s$%s" % (SCRYPT[0], SCRYPT[1], SCRYPT[2], _b64(b"\0" * 16), _b64(b"\0" * 32))     # what a refusal hashes against when there is no real hash
+
+
 def hash_password(password):
     """scrypt$N$r$p$salt$hash: a slow hash with a salt of its own; the password itself is kept nowhere."""
     n, r, p = SCRYPT
@@ -1106,13 +1118,18 @@ def password_matches(stored, password):
         return False
 
 
-def set_web_password(tokens_path, name, password):
-    """Set (or replace) a user's web password; every browser login of that user ends in the same transaction.
-    ValueError for an unknown user or a password that is too short. The caller is the terminal command: nothing else may call it."""
+def _check_password_length(password):
     if not isinstance(password, str) or len(password) < MIN_PASSWORD_CHARS:
         raise ValueError("the password must be at least %d characters (密碼至少 %d 個字元)" % (MIN_PASSWORD_CHARS, MIN_PASSWORD_CHARS))
     if len(password) > MAX_PASSWORD_CHARS:
         raise ValueError("the password must be at most %d characters (密碼最多 %d 個字元)" % (MAX_PASSWORD_CHARS, MAX_PASSWORD_CHARS))
+
+
+def set_web_password(tokens_path, name, password):
+    """Set (or replace) a user's web password; every browser login of that user ends in the same transaction. The password is an
+    ordinary one afterwards (a temporary one is replaced for good).
+    ValueError for an unknown user or a password that is too short. The caller is the terminal command: nothing else may call it."""
+    _check_password_length(password)
     stored = hash_password(password)
     con = connect_tokens(tokens_path)
     try:
@@ -1120,28 +1137,92 @@ def set_web_password(tokens_path, name, password):
             row = con.execute("SELECT id FROM users WHERE name = ?", (name,)).fetchone()
             if row is None:
                 raise ValueError("no such user: %s (沒有這個使用者)" % name)
-            con.execute("UPDATE users SET password_hash = ? WHERE id = ?", (stored, row["id"]))
+            con.execute("UPDATE users SET password_hash = ?, temp_until = NULL WHERE id = ?", (stored, row["id"]))
             con.execute("DELETE FROM web_sessions WHERE user_id = ?", (row["id"],))
     finally:
         con.close()
 
 
-def check_web_password(tokens_path, name, password):
-    """{'user_id', 'name', 'lab'} when the name and the web password are right and the user is not disabled, else None. A user who
-    has no web password never passes, and every refusal costs the same hashing time."""
-    dummy = "scrypt$%d$%d$%d$%s$%s" % (SCRYPT[0], SCRYPT[1], SCRYPT[2], _b64(b"\0" * 16), _b64(b"\0" * 32))
+def issue_temporary_password(tokens_path, name, now=None):
+    """A one-time password for `name`: {'password', 'expires_at'}. Only its hash is stored; the password lives in the return value
+    alone (the terminal command shows it once). It replaces the user's password, ends every browser login of that user, and stops
+    working at `expires_at`. ValueError for an unknown user, and then nothing changes."""
+    now = time.time() if now is None else now
+    password = secrets.token_urlsafe(12)
+    expires_at = now + TEMP_PASSWORD_SECONDS
+    stored = hash_password(password)
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            row = con.execute("SELECT id FROM users WHERE name = ?", (name,)).fetchone()
+            if row is None:
+                raise ValueError("no such user: %s (沒有這個使用者)" % name)
+            con.execute("UPDATE users SET password_hash = ?, temp_until = ? WHERE id = ?", (stored, expires_at, row["id"]))
+            con.execute("DELETE FROM web_sessions WHERE user_id = ?", (row["id"],))
+    finally:
+        con.close()
+    return {"password": password, "expires_at": expires_at}
+
+
+def change_web_password(tokens_path, name, old, new, keep_sid=None, now=None):
+    """The person changes their own web password (a temporary one, or an ordinary one): {'user_id', 'name', 'lab'}.
+    ValueError with one bilingual line, never containing a password. The checks run in this order: the length of `new`, `new` differing
+    from `old`, then `old` itself (a wrong password, an unknown or disabled user and an ended temporary password all give the same
+    sentence). Every browser login of the user ends except `keep_sid`."""
+    _check_password_length(new)
+    if new == old:
+        raise ValueError("the new password must differ from the current one (新密碼不能跟目前的一樣)")
+    wrong = ValueError("the current password is wrong (目前的密碼不對)")
+    if not isinstance(old, str) or len(old) > MAX_PASSWORD_CHARS:
+        raise wrong                          # too long (or not text): not hashed
+    now = time.time() if now is None else now
+    row = None
+    if isinstance(name, str) and name and Path(tokens_path).exists():
+        con = connect_tokens(tokens_path)
+        try:
+            row = con.execute("SELECT id, name, lab, disabled_at, password_hash, temp_until FROM users WHERE name = ?", (name,)).fetchone()
+        finally:
+            con.close()
+    ok = password_matches(row["password_hash"] if row is not None and row["password_hash"] else _DUMMY_HASH, old)
+    if (row is None or not row["password_hash"] or not ok or row["disabled_at"] is not None
+            or (row["temp_until"] is not None and now > row["temp_until"])):
+        raise wrong
+    stored = hash_password(new)
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            changed = con.execute("UPDATE users SET password_hash = ?, temp_until = NULL WHERE id = ? AND password_hash = ?",
+                                  (stored, row["id"], row["password_hash"])).rowcount
+            if changed == 0:
+                raise ValueError("the password was changed meanwhile, log in again (密碼剛被改過，請重新登入)")
+            if keep_sid:
+                con.execute("DELETE FROM web_sessions WHERE user_id = ? AND id_hash != ?", (row["id"], _hash(keep_sid)))
+            else:
+                con.execute("DELETE FROM web_sessions WHERE user_id = ?", (row["id"],))
+    finally:
+        con.close()
+    return {"user_id": row["id"], "name": row["name"], "lab": row["lab"]}
+
+
+def check_web_password(tokens_path, name, password, now=None):
+    """{'user_id', 'name', 'lab', 'must_change'} when the name and the web password are right and the user is not disabled, else None.
+    `must_change` is True while the password is a temporary one; a temporary password past its time never passes. A user who has no
+    web password never passes, and every refusal costs the same hashing time."""
+    now = time.time() if now is None else now
     row = None
     if isinstance(name, str) and isinstance(password, str) and name and Path(tokens_path).exists():
         con = connect_tokens(tokens_path)
         try:
-            row = con.execute("SELECT id, name, lab, disabled_at, password_hash FROM users WHERE name = ?", (name,)).fetchone()
+            row = con.execute("SELECT id, name, lab, disabled_at, password_hash, temp_until FROM users WHERE name = ?", (name,)).fetchone()
         finally:
             con.close()
-    stored = row["password_hash"] if row is not None and row["password_hash"] else dummy
+    stored = row["password_hash"] if row is not None and row["password_hash"] else _DUMMY_HASH
     ok = password_matches(stored, password if isinstance(password, str) else "")
     if row is None or not row["password_hash"] or not ok or row["disabled_at"] is not None:
         return None
-    return {"user_id": row["id"], "name": row["name"], "lab": row["lab"]}
+    if row["temp_until"] is not None and now > row["temp_until"]:
+        return None
+    return {"user_id": row["id"], "name": row["name"], "lab": row["lab"], "must_change": row["temp_until"] is not None}
 
 
 def create_web_session(tokens_path, user_id, now):
@@ -1158,17 +1239,24 @@ def create_web_session(tokens_path, user_id, now):
     return sid, now + WEB_SESSION_SECONDS
 
 
-def web_session_user(tokens_path, sid, now):
-    """{'user_id', 'name', 'lab'} of a live browser login of a user who is not disabled, else None."""
+def web_session_user(tokens_path, sid, now, allow_must_change=False):
+    """{'user_id', 'name', 'lab', 'must_change'} of a live browser login of a user who is not disabled, else None. A login made with a
+    temporary password is no login (None) unless the caller says `allow_must_change` (only the password-change page does), and never
+    once the temporary password has ended."""
     if not sid or not isinstance(sid, str) or not Path(tokens_path).exists():
         return None
     con = connect_tokens(tokens_path)
     try:
-        row = con.execute("SELECT u.id AS user_id, u.name AS name, u.lab AS lab FROM web_sessions s JOIN users u ON u.id = s.user_id "
-                          "WHERE s.id_hash = ? AND s.expires_at > ? AND u.disabled_at IS NULL", (_hash(sid), now)).fetchone()
-        return dict(row) if row else None
+        row = con.execute("SELECT u.id AS user_id, u.name AS name, u.lab AS lab, u.temp_until AS temp_until FROM web_sessions s "
+                          "JOIN users u ON u.id = s.user_id WHERE s.id_hash = ? AND s.expires_at > ? AND u.disabled_at IS NULL",
+                          (_hash(sid), now)).fetchone()
     finally:
         con.close()
+    if row is None:
+        return None
+    if row["temp_until"] is not None and (not allow_must_change or now > row["temp_until"]):
+        return None
+    return {"user_id": row["user_id"], "name": row["name"], "lab": row["lab"], "must_change": row["temp_until"] is not None}
 
 
 def end_web_session(tokens_path, sid):
