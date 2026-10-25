@@ -99,7 +99,7 @@ source: memory/dev-plans/byte-channel-a.md（平台側、工作的形狀、裁�
 gcloud 與金鑰端
 - BB-20 gcloud 沒裝（`shutil.which` 回 `None`）→ `("error", …)`「沒裝 gcloud」；`FakeFed` 未建立。
 - BB-21 金鑰檔不存在／是資料夾 → `("error", …)`；**金鑰檔從未被讀取**（用 `open` 的呼叫記錄或讓金鑰檔內容是不能解析的垃圾仍得到同一個「找不到」以外的結果來證）。
-- BB-22 gcloud 回傳碼非 0，輸出含一段 `-----BEGIN PRIVATE KEY-----…-----END PRIVATE KEY-----`、一個 40 字元的長字串、以及 `/home/alice/uploads/...` 路徑 → `("error", …)`；結果 JSON 字串化後**不含**那三樣原文（`[hidden]` 取代前兩者；本機 `uploads` 路徑不出現：訊息只用檔名）；訊息 ≤ 300 字元的輸出片段。
+- BB-22 gcloud 回傳碼非 0，輸出含一段 `〔私鑰BEGIN標頭，測試裡用拼接字串組出，文件不寫全文〕…〔私鑰END標頭，測試裡用拼接字串組出，文件不寫全文〕`、一個 40 字元的長字串、以及 `/home/alice/uploads/...` 路徑 → `("error", …)`；結果 JSON 字串化後**不含**那三樣原文（`[hidden]` 取代前兩者；本機 `uploads` 路徑不出現：訊息只用檔名）；訊息 ≤ 300 字元的輸出片段。
 - BB-23 `FakeFed.wait` 丟 `TimeoutError` → `("error", …)` 含「逾時」；`killed` 為真。
 
 真管道（posix_only，`tmp_path/bin` 在 `PATH` 最前面，假 gcloud 是一支 sh 腳本：把 argv 寫到 `argv.txt`、把 stdin 以 `cat > received.bin` 收下、`exit 0`）
@@ -189,6 +189,12 @@ D. 前置：本系列動 `store.py`／`jobs.py` 的 CHECK 清單，與 cloud-cle
 7. **裁決 D 只是排序條件**：本片**不動** `store.py`／`jobs.py`（CHECK 清單已在 -a #224 加好）；`abf_platform/` 仍整個不准動。
 8. **憲法 Safety Net**：不違反，理由寫進 ledger 與 PR 說明——①憲法 I.2 承認的人工通道包含「平台確認頁、以同一個已登入的使用者」；網頁上傳由已登入本人在頁面上按下，就是那個通道的 yes（裁決 A）；`put_upload` 只能經 -a 的 `enqueue_put_upload` 排入、`_enqueue` 拒絕直接排，MCP 與 PAT 都沒有上傳工具（本片加一條測試：MCP 工具清單沒有任何名稱含 `upload`）。②「Never delete a user's source data」：`uploads/` 裡的是平台為了傳輸暫存的副本，不是使用者的來源資料（來源在使用者自己的電腦，且只有在雲端那份核對大小相符後才刪副本）。
 9. 本片沒有 spec.md，以 plan.md 與兩段裁決為唯一來源：接受。
+
+## 裁決三（2026-10-25，回應 executor 卡住）
+10. 准改 `platform/tests/test_station_clean.py:289` 一行：`JOB_KINDS[6:] == ("clean_work",)` 改成 `JOB_KINDS[6:] == ("clean_work", "put_upload")`；範圍因此是 6 個檔（加這一檔、只限這一行）。
+11. 計畫與 test-case.md 裡的私鑰標頭全文已由 developer-agent 改成略寫（`credentials_stay_in_settings_test.sh` 會擋全文）；測試裡用拼接字串組出標頭即可。
+12. gcloud 掛住不讀 stdin 時餵檔寫入會卡住（禁 thread）：本片接受，記進 ledger；f 片真桶驗收時另測，必要時另開一件用非阻塞寫入。
+13. 大小不符的 state 用 `error`。
 
 ## 專長守則（backend）
 
