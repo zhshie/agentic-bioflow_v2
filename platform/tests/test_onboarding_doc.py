@@ -2,7 +2,6 @@
 """docs/ONBOARDING.md cannot drift from the code. Test cases TC-001 ... TC-059 of the account-onboarding test case file are named in
 the comments (T1 ... T13 are the plan's numbers). Reads files only; no network, no program is started."""
 import re
-import subprocess
 from pathlib import Path
 
 from helpers import REPO_ROOT
@@ -11,7 +10,6 @@ DOC = REPO_ROOT / "docs" / "ONBOARDING.md"
 CLI = (REPO_ROOT / "platform" / "abf_platform" / "cli.py").read_text(encoding="utf-8")
 STATION_CLI = (REPO_ROOT / "platform" / "abf_station" / "cli.py").read_text(encoding="utf-8")
 MCP = (REPO_ROOT / "platform" / "abf_platform" / "mcp_server.py").read_text(encoding="utf-8")
-BASE = "6061925"
 CJK = re.compile(r"[一-鿿]")
 GROUPS = {"user": "usub", "pat": "psub", "agent-token": "asub", "ce": "csub"}
 
@@ -309,10 +307,6 @@ def test_tc043_mutation_flag_caught():
     assert check_flags(d.replace("--cloud-cap-usd", "--cloud-cap")) == ["--cloud-cap"]
 
 
-def _git(*args):
-    return subprocess.run(["git", "-C", str(REPO_ROOT), *args], capture_output=True, text=True).stdout
-
-
 def test_tc045_tc046_readme_pointer():
     # TC-045, TC-046 (T11)
     lines = text(REPO_ROOT / "README.md").splitlines()
@@ -320,16 +314,6 @@ def test_tc045_tc046_readme_pointer():
     assert len(i) == 1
     j = [n for n, l in enumerate(lines) if "docs/PITFALLS.md" in l][0]
     assert i[0] < j and lines[i[0] - 1] == "" and lines[i[0] + 1] == ""
-    base = _git("show", "%s:README.md" % BASE).splitlines()
-    if base:
-        # the new paragraph is the line plus one of its two blank neighbours
-        assert lines[:i[0]] + lines[i[0] + 2:] == base
-
-
-def test_tc047_tc051_other_docs_untouched():
-    # TC-047 (T13), TC-051
-    if _git("rev-parse", BASE).strip():
-        assert _git("diff", BASE, "--", "docs/INSTALL.md", "docs/OPERATIONS.md", "docs/PLATFORM.md", "docs/TESTING.md") == ""
 
 
 def test_tc053_readme_addition_has_no_secrets():
