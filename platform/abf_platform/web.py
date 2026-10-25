@@ -50,7 +50,7 @@ from starlette.middleware import Middleware
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from . import actions, oauth, store, web_board
+from . import actions, oauth, store, web_board, web_settings
 
 COOKIE = "abf_web"
 KEY_FILE = "web_signing.key"
@@ -618,7 +618,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
         runs = await run_in_threadpool(read_runs, caller)
-        return HTMLResponse(web_board.render_settings(user["name"], csrf(sid, "logout"), runs, lang), headers=_HEADERS)
+        envs = actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
+        return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs), headers=_HEADERS)
 
 
     # ---- the OAuth consent page (spec 009i) -------------------------------------------------------------------------

@@ -650,6 +650,15 @@ The automatic test, `tests/hosted_deploy_test.sh`, reads the files in `deploy/` 
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD`: only `deploy/`, `tests/hosted_deploy_test.sh`, the three docs and `specs/hosted-deploy/` appear; nothing under `platform/abf_platform/`, `platform/abf_station/` or `platform/abf_launch/`; no existing test file is changed.
 
+## 設定頁（settings-page）: the maintainer and the reviewer check
+
+Automatic tests: `platform/tests/test_web_settings.py`. These steps are what no script can see. Open `/settings` logged in, once in Chinese and once with `?lang=en`.
+
+1. **390 px**: narrow the window (or the browser's phone view) to 390 px. The page must not scroll sideways; the two tables wrap their text instead of being cut off.
+2. **Tab**: press Tab through the page. Every thing that takes focus (the logout button, the language links) shows a visible outline. The middle column has nothing to focus, by design: it is read-only.
+3. **Read both languages**: every status shows a symbol, a word and a colour (✓ / ✗ / —). No Chinese on the English page, no error code, no internal name. Each ✗ in 使用前檢查 says what is missing.
+4. **Nothing to press**: no button, box or link in the middle column; the only form on the page is the logout one.
+
 ## Finished stage (finished-stage): the maintainer and the reviewer check
 
 The automatic tests are in `platform/tests/test_web_finished.py`. The steps below need a browser and a succeeded run that was launched from the platform.
