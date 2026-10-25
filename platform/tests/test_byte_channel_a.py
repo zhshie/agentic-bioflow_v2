@@ -400,13 +400,42 @@ def test_tc056_tc057_tc058_the_size_limits_and_the_command(w):
     assert "gcloud storage cp <你電腦上的資料夾>/* gs://lab-bucket/uploads/alice/rawdata/" in msg
 
 
-def test_tc059_no_refusal_shows_the_upload_folder_sql_or_a_trace(w):
-    # TC-059
-    msgs = [w.refused(uid=None), w.refused(owner="bob"), w.refused(ce="bobenv"), w.refused(stat=fake_stat(missing=True)),
-            w.refused(stat=fake_stat(0)), w.refused(stat=fake_stat(UPLOAD_LIMIT + 1)), w.refused(name="a/b"),
-            w.refused(stat=fake_stat(mode=st.S_IFDIR))]
-    for m in msgs:
-        assert m and str(w.uploads) not in m and "SELECT" not in m and "Traceback" not in m
+def test_tc059_no_refusal_shows_the_upload_folder_sql_or_a_trace(w, monkeypatch):
+    # TC-059: every refusal of TC-037..057 is collected, and each one says what happened without leaking
+    import os
+    msgs = {}
+    for uid in (None, "1", True):                                                    # TC-037, TC-038
+        msgs["uid=%r" % (uid,)] = w.refused(uid=uid)
+    msgs["owner"] = w.refused(owner="bob")                                          # TC-039
+    msgs["other env"] = w.refused(ce="bobenv")                                      # TC-040
+    msgs["no env"] = w.refused(ce="nothing")                                        # TC-041
+    msgs["other env, no file"] = w.refused(ce="bobenv", stat=fake_stat(missing=True))      # TC-042
+    for status in ("unsupported", "disabled", "unchecked", "unavailable"):          # TC-044..047
+        set_status(w.ip, "gcb1", status)
+        msgs["status " + status] = w.refused()
+    set_status(w.ip, "gcb1", "available")
+    msgs["offline agent"] = w.refused(clock=lambda: T + 10_000)                      # TC-049
+    for name in BAD_NAMES:                                                          # TC-050
+        msgs["name %r" % name] = w.refused(name=name)
+    msgs["missing file"] = w.refused(stat=fake_stat(missing=True))                  # TC-052
+    msgs["folder"] = w.refused(stat=fake_stat(mode=st.S_IFDIR | 0o755))              # TC-053
+    msgs["symlink"] = w.refused(stat=fake_stat(mode=st.S_IFLNK | 0o777))             # TC-054
+    real = os.path.realpath
+    with monkeypatch.context() as m:                                                # TC-055
+        m.setattr(os.path, "realpath", lambda p, *a, **k: real(str(w.uploads / "elsewhere" / "x"))
+                  if str(p).endswith(NAME) else real(p, *a, **k))
+        msgs["outside the folder"] = w.refused()
+    msgs["empty"] = w.refused(stat=fake_stat(0))                                    # TC-056
+    msgs["too big"] = w.refused(stat=fake_stat(UPLOAD_LIMIT + 1))                   # TC-057
+    sql(w.ip.state_db, "UPDATE compute_envs SET platform = 'slurm-platform' WHERE name = 'gcb1'")
+    msgs["slurm"] = w.refused()                                                     # TC-043
+    assert len(msgs) >= 24
+    for why, m in msgs.items():
+        assert len(m.strip()) >= 12, why                                            # it says something
+        assert re.search(r"[一-鿿]|\(.*[a-z]{4}.*\)", m), why                  # in words a person reads
+        assert str(w.uploads) not in m and str(w.uploads.parent) not in m, why
+        for bad in ("SELECT", "INSERT", "UPDATE", "sqlite", "Traceback", "File \"", "Error(", "\n"):
+            assert bad not in m, (why, bad)
 
 
 # ---- US5: the answer ---------------------------------------------------------------------------------------------------
@@ -481,6 +510,9 @@ def test_tc076_tc077_the_old_available_messages_keep_their_words(w):
     with pytest.raises(jobs.JobRefused) as a:
         jobs.enqueue_listing(w.ip.state_db, "gcb1", "/x", clock=lambda: T, caller_user_id=w.ids["alice"])
     assert "list files" in str(a.value)
+    with pytest.raises(jobs.JobRefused) as b:                                       # TC-076: the launch keeps "run an analysis"
+        jobs.check_target(w.ip.state_db, "gcb1", "launch_nextflow", caller_user_id=w.ids["alice"])
+    assert "run an analysis" in str(b.value)
 
 
 def test_tc080_tc083_the_platform_sources_start_no_program_and_the_new_lines_avoid_the_forbidden_word():

@@ -28,3 +28,8 @@ specs/byte-channel-a/*（計畫、測試案例、本檔）
 - TC-083：jobs.py 新增（`+`）行含小寫 `station` 的行數＝0。
 - TC-086：jobs.py／store.py／cloud_store.py 中 `private_key` 出現次數＝0。
 - TC-096：`pyproject.toml`、`constraints.txt` 無差異。
+
+## 修正回合（verifier 退回 TC-059、TC-076）
+- TC-059：`test_tc059_*` 改為收齊 TC-037～057 的每一種拒絕（使用者編號三種、他人的名字／環境／不存在的環境、四種環境狀態、離線代理、八種壞檔名、檔案不存在／資料夾／符號連結／realpath 跑出資料夾／空檔案／超過上限、Slurm 環境，共 24 則以上），逐則斷言：有內容、有白話（中文或括號英文說明）、不含上傳資料夾路徑、SQL、堆疊追蹤。
+- TC-076：`test_tc076_tc077_*` 補一段：Slurm 環境、狀態 unavailable，對 `launch_nextflow` 做 `check_target`，斷言拒絕訊息含 "run an analysis"。已手動把 jobs.py 的該字改掉確認此測試會紅，之後還原。
+- 只改測試檔，程式碼未動。
