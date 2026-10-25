@@ -146,6 +146,13 @@ base: v3
 7. **`rm -rf` 在 Lustre 上的耗時未實測**：遠端指令逾時上限 300 秒、平台端工作期限 600 秒（b 片）；逾時回「可能只刪了一部分」，使用者可再申請。若手動驗收發現常常不夠，再調，不在程式裡加重試迴圈。
 8. **切片理由**：舊計畫約 30 檔、需求超過 60 條測試；依 `dev-architecture-review-2026-10-24.md` §3 與 `dev-plans/README.md` 通例切成六片。本片 5 檔（含 ledger）。
 
+## 裁決二（2026-10-25，回應第一趟 BLOCKED）
+1. test_onboarding_doc 的紅已由 #218 修掉：developer-agent 已把 origin/v3 合進本分支，重跑即可，不必碰該測試。
+2. **樣板第 9 行改成「find 失敗就停」**（刪除動作的安全網不准在檢查出錯時放行）：`if [ -d results ]; then l=$(find results -type l -lname '*/work/*' -print) || exit 17; [ -n "$l" ] && exit 17; fi`。find 自己出錯與找到連結一樣回碼 17（保守，不新增碼）。合約要有一條：假 find 失敗（例如 results 內有不可讀子目錄）→ 碼 17、work 沒有被刪。
+3. `*/work/*` 誤判指向 rawdata 的連結（workDir 本身在 /work 底下）偏保守、不會誤刪，本片接受、不改；寫進 ledger 留給之後。
+4. MCP 工具數以既有測試為準（14），計畫寫 12 是筆誤，平台端不動。
+5. 「路徑重算失敗」與碼 20 的訊息用詞照 verifier 合約現行斷言（非空、白話、未送遠端指令／done 且未刪任何東西）即可。
+
 ## 專長守則（backend）
 
 ### executor
