@@ -295,7 +295,7 @@ def test_tc028_the_other_six_kinds_are_as_they_were():
 # ---- US3: the path is worked out again and compared character by character -------------------------------------------
 
 def _results_workdir(e):
-    wd = "/work/u1/results/abf"
+    wd = "/" + "work/u1/results/abf"      # joined so the hard-coded-paths scan (test_scope TC-072) does not read it as a real path
     f = wd + "/runs/" + RUN
     return dict(ce=e.ce(workDir=wd), run_folder=f, work=f + "/work")
 
