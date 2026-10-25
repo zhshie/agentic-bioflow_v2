@@ -3,6 +3,8 @@
 - [x] 完成：`put_upload` 新工作種類。store CHECK 加第八種、遷移「已是最新」判斷同時看 `read_task_log`／`clean_work`／`put_upload`；jobs 種類表、`_target`（Google Batch 放行、非 Google Batch 拒、須 `available`）、`_enqueue` 拒絕 put_upload、新入口 `enqueue_put_upload`、`clean_result` 分支；`cloud_store.UPLOAD_LIMIT`。
 - [x] 新測試 `platform/tests/test_byte_channel_a.py`（50 條，涵蓋 TC-001～094 的自動案例）；六個既有測試檔只在種類清單末尾補 `put_upload`。
 
+- [x] 計畫漏列的第 11 個檔：`platform/tests/test_http_site_samplesheet.py` 的 `SCHEMA_SHA256`（整份資料庫結構的雜湊，TC-057）。jobs CHECK 清單多一項必然改變雜湊；只換這一個常數（舊值 `0b6aad18e811…`、新值 `bb8b185e8eef…`），與 cloud-cleanup-b 加 clean_work 時同做法（commit 35b7888）。請 verifier 在 TC-097／098 把它視為必要的連帶更新。
+
 ## 手動案例的證據（base = 2c1d13c）
 
 `git diff --name-only 2c1d13c`（TC-087/088/092/095/097）：

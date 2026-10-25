@@ -540,7 +540,7 @@ def test_tc055_the_ledger_lists_each_rewritten_pin():
     assert ledger.lower().count("old") >= 2 and ledger.lower().count("new") >= 2
 
 
-SCHEMA_SHA256 = "0b6aad18e811cb637bd8891049b97d2f092e7eb39b3b85a7778157bbd30dfdbc"
+SCHEMA_SHA256 = "bb8b185e8eeff90fc5f457c3326f8d3e65876d5571952a994b76685fbc7706c2"      # byte-channel-a: the jobs CHECK list gained put_upload (was 0b6aad18e811...)
 
 
 def test_tc057_no_table_or_column_changed(d):
