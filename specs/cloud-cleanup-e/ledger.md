@@ -31,3 +31,5 @@ confirm.create_pending(state_db, "clean_work", "<環境名>", {"version":1,"run_
 - 全套在 25e19e4 跑：123/125，紅的只有兩支且都是負載造成（機器 load average 約 29–37）：`confirm_launch_test.sh`（「slow 1.5s」超過 1.2s 門檻，只有 TC-051／POL-22 的 1 MB 計時案例）與 `platform_test.sh`（TIMEOUT 900s）。
 - 單跑：`--only platform_test --timeout 1500` → 1/1 passed, all green；`--only confirm_launch` 負載降到 8.8 後 → 1/1 passed, all green（負載高時單跑同樣 slow 1.1–1.5s 紅，與本片無關：本片沒動 hook／shell）。依裁決三第 7 點視同綠。
 - 本次之後只多了這份 ledger 的文字，沒有程式變動。
+- ruling four: route hash pin replaced by 'no route contains clean' because #234 added /welcome; intent of TC-061 unchanged.
+- ruling four 後全套 126/126 all green（無計時紅）。
