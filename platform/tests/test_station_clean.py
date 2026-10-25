@@ -426,6 +426,8 @@ CLUSTER = [
     ("TC-055", 16, _other_owner, "擁有者"),
     ("TC-053", 17, _results_links_into_work, "results"),
     ("TC-056", 18, lambda e: e.site.set("squeue_fail", "1"), "Slurm 佇列"),
+    # ruling two: a find that fails stops the delete (exit 17), the same as a link found
+    ("TC-087", 17, lambda e: e.site.set("find_fail", "1"), "results"),
 ]
 
 
@@ -488,7 +490,7 @@ def test_tc061_the_command_is_one_fixed_template_and_only_three_values_vary(tmp_
         "test ! -L work || exit 14",
         'test "$(realpath -- work)" = <W> || exit 15',
         'test "$(stat -c %U work)" = <U> || exit 16',
-        "if [ -d results ] && find results -type l -lname '*/work/*' | grep -q . ; then exit 17; fi",
+        "if [ -d results ]; then l=$(find results -type l -lname '*/work/*' -print) || exit 17; [ -n \"$l\" ] && exit 17; fi",
         "rm -rf --one-file-system -- work",
     ]
 
