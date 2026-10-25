@@ -103,3 +103,12 @@ Answered in the same round (recorded here so the feature plans can cite one plac
 - The cloud cap per person per month is set when the account opens. Until then the page shows "—".
 - Operator administration is the `abf-platform` command line in v3.0.0. A small admin page waits for a second lab.
 - The demo the maintainer asked for is the real page built in slice 011a, not a mock-up.
+
+## 2026-10-25 修正
+
+Two corrections to Decided 2 (byte channel), made by the maintainer on 2026-10-25 when the web upload to a cloud bucket was planned. Nothing above this heading is changed.
+
+1. **The press of "upload" is the confirmation.** A person who picks a file, picks an environment and presses upload on the signed-in page has confirmed that one write; no further confirmation is asked for, and no new kind of confirmation is added. Maintainer's words: 「1.會慢半天就不用 2.照你建議」.
+2. **A staged copy on the platform host is allowed.** The file may rest in the upload folder of the platform host first; once it has been copied to the person's own bucket and the size of the cloud object equals the size of the local file, that one staged copy is deleted. A size that differs, or a failed copy, keeps the staged copy and says so. The staged copy is a transfer copy, not the person's source data (that stays on the person's own computer).
+
+The only way to queue such a write is the dedicated `enqueue_put_upload`; the chat tools and personal access tokens have no upload tool.
