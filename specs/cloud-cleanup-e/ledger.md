@@ -1,1 +1,23 @@
 # 確認頁與看板提示的文字（刪除不再顯示成「取消」） progress ledger
+
+- [x] 確認頁（web.py）：clean_work 顯示「清理確認」、「確認刪除」、7 天逾時、白話區塊三列；按下後成功／失敗頁不叫人回到 AI。launch／cancel 輸出以雜湊逐字比對未變。
+- [x] 看板通知（web_board.py）：succeeded run 且本人有未逾時清理申請時，右欄多一張「待處理」卡片（只有連結）。
+- [x] actions.clean_requests（唯讀，不是工具、不是路由）。
+- [x] 測試 platform/tests/test_clean_page.py：28 條綠。
+
+## 手工建一張清理申請（只用來看畫面，不要按「確認刪除」）
+在 platform 目錄，對一個已有 Slurm 工作編號的 run（launches 表有 slurm_job_id）執行：
+confirm.create_pending(state_db, "clean_work", "<環境名>", {"version":1,"run_name":..,"slurm_job_id":..,"run_folder":..,"agent":..,"ce":..,"work":<run_folder>/work}, "<摘要>", <使用者 id>)
+回傳的申請編號開 /c/<編號>（加 ?lang=en 看英文）；該 run 的看板頁右欄會有卡片。
+
+## git diff --stat（相對 5aa345c）
+ platform/abf_platform/actions/__init__.py |   7 +
+ platform/abf_platform/web.py              |  37 ++-
+ platform/abf_platform/web_board.py        |  25 +-
+ platform/tests/test_clean_page.py         | 492 ++++++++++++++++++++++++++++++
+ 4 files changed, 548 insertions(+), 13 deletions(-)
+
+## 要問的問題
+- 英文確認頁的標題、引言、逾時／作廢句沿用中文（計畫只定了英文的種類、欄位、按鈕）；英文通知卡片的內容與下一步文字是我照中文意思寫的，等維護者看截圖。
+- 計畫寫 MCP 工具 12 個，實際 list_tools 現在是 15 個（本片沒動）；測試改成「沒有名稱含 clean 的工具」。
+- 截圖（維護者回好／不好才合併）尚未附，需在本機看板操作。
