@@ -108,17 +108,17 @@ def test_f05_failed_stage_cell(w):
     _, c, ids = std(w)
     for key in ("resume", "lost"):
         cells = strip_cells(page(c, ids, key))
-        assert plain(cells["running"][1]) == "✗ 執行" and {"is-current", "is-failed"} <= set(cells["running"][0])
+        assert plain(cells["running"][1]) == "執行" and 'state-failed"><span class="sq">' in cells["running"][1] and {"is-current", "is-failed"} <= set(cells["running"][0])
     cells = strip_cells(page(c, ids, "resume"))
     order = ("launch", "running", "results", "downstream", "finished")
-    assert [plain(cells[s][1]) for s in order] == ["✓ 送出", "✗ 執行", "結果", "下游", "完成"]
+    assert [plain(cells[s][1]) for s in order] == ["送出", "執行", "結果", "下游", "完成"]
     assert [sorted(cells[s][0]) for s in order] == [["is-done"], ["is-current", "is-failed"], ["is-later"], ["is-later"], ["is-later"]]
     en = strip_cells(page(c, ids, "resume", "en"))
-    assert plain(en["running"][1]) == "✗ Run" and "is-failed" in en["running"][0]
+    assert plain(en["running"][1]) == "Run" and "is-failed" in en["running"][0]
     run = strip_cells(page(c, ids, "running"))
     assert plain(run["running"][1]) == "執行中" and "is-failed" not in run["running"][0]
     done = strip_cells(page(c, ids, "done"))
-    assert plain(done["running"][1]) == "✓ 執行中" and done["running"][0] == ["is-done"]
+    assert plain(done["running"][1]) == "執行中" and 'state-succeeded"><span class="sq">' in done["running"][1] and done["running"][0] == ["is-done"]
     assert re.search(r"\.steps \.is-failed[^}]*var\(--(failed|c)\)", style_of(page(c, ids, "resume")))
 
 

@@ -277,8 +277,8 @@ def test_co06_rows_states(w):
     r = get(w, "ann")
     rows = {row[0]: row for row in table_rows(r.text)}
     assert set(rows) == {"run-live", "run-done", "run-lost"}
-    assert rows["run-live"][3] == "—" and rows["run-live"][4] == "⟳ 執行中"
-    assert rows["run-lost"][3] == "—" and rows["run-lost"][4] == "⟳ 執行中"
+    assert rows["run-live"][3] == "—" and rows["run-live"][4] == "執行中"
+    assert rows["run-lost"][3] == "—" and rows["run-lost"][4] == "執行中"
     assert rows["run-done"][2] == "國網" and rows["run-done"][3] == "5.10 SU" and rows["run-done"][4] == "≈ 估算・帳單未到"
     assert "bob-run" not in r.text and "run-old" not in pane(r.text, "middle")
     assert "run-done" not in get(w, "bob").text and "bob-run" in get(w, "bob").text
@@ -426,7 +426,7 @@ def test_co09_english(w):
     assert note and "SU" in note[0]
     assert card(r.text, 0)[3] and cjk(card(r.text, 0)[3]) == []
     rows = {row[0]: row for row in table_rows(r.text)}
-    assert rows["run-live"][4] == "⟳ Running" and rows["run-done"][4] == "≈ Estimate · bill pending"
+    assert rows["run-live"][4] == "Running" and rows["run-done"][4] == "≈ Estimate · bill pending"
     flash = get(w, "ann", "/usage?month=abc&lang=en").text
     assert "The month is not in the form YYYY-MM, so this month is shown." in flash
     assert no_cjk(re.sub(r"run-[a-z]+", "", pane(flash, "middle")))
@@ -530,7 +530,7 @@ def test_status_cells_have_symbol_and_word(w):
     seed(w, "run-live", ann, status="running")
     seed(w, "run-done", ann)
     for row in table_rows(get(w, "ann").text):
-        assert re.match(r"^(⟳ 執行中|≈ 估算・帳單未到)$", row[4])
+        assert re.match(r"^(執行中|≈ 估算・帳單未到)$", row[4])
 
 
 # ---- code shape: one door, no network ---------------------------------------------------------------------------------

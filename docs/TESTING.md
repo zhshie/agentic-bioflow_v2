@@ -677,6 +677,16 @@ The automatic tests are in `platform/tests/test_web_finished.py`. The steps belo
 2. **390 px.** Narrow the browser to 390 px wide (developer tools, device mode) and open the stage of a run with a long parameter value. Check: there is no horizontal scroll bar and the long value wraps inside its column.
 3. **Tab key.** On the finished stage press Tab repeatedly. Check: every link (stage strip, "查看輸出", previous stage) shows a visible focus outline in turn; the grey "之後開放" lines are never focused.
 
+## Analysis state squares (status-squares-3): the maintainer and the reviewer check
+
+The automatic tests are in `platform/tests/test_web_status_squares_3.py`. The steps below need a browser and four analyses: one running, one succeeded, one failed and one that lost contact with the platform.
+
+1. **Screenshots.** Take `/` and the failed analysis page at 1440 px and at 390 px, each in 中文 and in English (4 sets). Check: every analysis state is a small coloured square followed by a word (執行中 / 完成 / 失敗, or Running / Done / Failed); there is no ▶ ✓ ✗ on any of them; the lost analysis shows 失敗 / Failed. Show the pictures to the maintainer; he must say "好" before the merge.
+2. **Black and white.** Turn the pictures grey (or the screen's colour filter on). Check: the three states can still be told apart by the word alone.
+3. **390 px.** In developer tools (device mode, 390 px wide) open `/` and each of the four analyses, in both languages, and run `document.documentElement.scrollWidth === document.documentElement.clientWidth` in the console. Check: it is `true` (no horizontal scroll bar); no square or word is cut off or overlaps. Write the numbers in the PR.
+4. **Tab key.** Press Tab repeatedly on the failed analysis page. Check: each link and button shows a visible focus outline in turn.
+5. **Detector.** Save the rendered HTML of `/` and of the failed analysis page to files and run `sh .claude/skills/impeccable/scripts/impeccable detect <file.html>` on each. Check: it runs; copy its findings into the review (contrast and fonts are for a person to judge, not a failure).
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in
