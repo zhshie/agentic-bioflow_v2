@@ -419,11 +419,11 @@ def test_tc066_to_070_run_page_cost_card(w):
     as_nano4(w, "run-n")
     assert cost_value(login_get(w, "ann", "/?run=" + rid).text) == "51.50 SU（約 US$0.16）"       # TC-066
     en = login_get(w, "ann", "/?run=%s&lang=en" % rid)
-    assert cost_value(en.text) == "51.50 SU (≈ US$0.16)" and no_cjk(en.text)                       # TC-069
-    small = seed(w, "run-s", ann, hours=3.0)
+    assert cost_value(en.text) == "51.50 SU (≈ US$0.16)" and no_cjk(en.text.replace("找不到", ""))   # 找不到: a reason the outputs tab already shows                       # TC-069
+    small = seed(w, "run-s", ann, hours=3.0, ce="nchc2")
     assert cost_value(login_get(w, "ann", "/?run=" + small).text) == "3.00 SU（約 US$0.01 以下）"   # TC-068
     assert cost_value(login_get(w, "ann", "/?run=%s&lang=en" % small).text) == "3.00 SU (≈ under US$0.01)"   # TC-070
-    failed = seed(w, "run-f", ann, status="failed", hours=5.10)                                    # TC-067
+    failed = seed(w, "run-f", ann, status="failed", hours=5.10, ce="nchc2")                                    # TC-067
     view = get_run(w, ann, failed)
     from abf_platform import web_board
     want = "%.2f SU（約 US$%.2f）" % (view["su"]["su"], view["su"]["usd_approx"])
@@ -434,12 +434,11 @@ def test_tc071_run_page_uses_get_run_only(w, monkeypatch):
     ann = w.user("ann")
     rid = seed(w, "run-a", ann, hours=5)
     from abf_platform import actions, su
-    real = actions.get_run
+    canned = actions.get_run(w.ip.index, rid, caller=ann, platform_path=w.ip.state_db)
+    canned["su"] = dict(canned["su"], su=7.0, usd_approx=7.77)
 
     def stub(*a, **k):
-        v = real(*a, **k)
-        v["su"] = dict(v["su"], su=7.0, usd_approx=7.77)
-        return v
+        return dict(canned)
     monkeypatch.setattr(actions, "get_run", stub)
     calls = []
     monkeypatch.setattr(actions, "my_usage", lambda *a, **k: calls.append("my_usage"))
