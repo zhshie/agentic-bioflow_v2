@@ -205,6 +205,15 @@ def month_used(index_path, platform_path, user_id, month, rates):
     return {"usd": total, "currency": CURRENCY, "unknown_runs": unknown}
 
 
+def month_usage(index_path, platform_path, user_id, month, rates, tokens_path=None):
+    """The cloud part of the usage page: month_used, plus this user's monthly cap and what is left of it (max(0, cap - used); None when no
+    cap is set). Money is in US dollars, never rounded here and never converted."""
+    used = month_used(index_path, platform_path, user_id, month, rates)
+    cap = store.cloud_cap(tokens_path or store.default_tokens_path(index_path), user_id)
+    left = None if cap is None else max(0.0, cap - used["usd"])
+    return {"used_usd": used["usd"], "unknown_runs": used["unknown_runs"], "cap_usd": cap, "remaining_usd": left, "currency": CURRENCY}
+
+
 def estimate_launch(index_path, platform_path, user_id, pipeline, rates):
     """The cost of the user's latest successful Google Batch run of the same pipeline that can be priced, with basis ('run <name>'). No such
     run gives usd None and the reason; nothing is worked out from resource limits."""
