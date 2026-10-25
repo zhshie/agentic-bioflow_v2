@@ -64,8 +64,20 @@ def send(w, c, old, new=NEW, confirm=None, csrf=None, headers=None, **extra):
     return c.post("/welcome", data=data, headers=headers or HDR)
 
 
-def login_status(w, name, password):
-    return w.login(w.web(), name, password).status_code
+def login_status(w, name, password, like=None):
+    """The status of a login from a fresh browser; `like` is a client whose app (and so whose failure counters) the browser shares."""
+    return w.login(browser(w, like), name, password).status_code
+
+
+def browser(w, like=None):
+    """Another browser (no cookie) on the same app as `like`: the failure counters live in the app."""
+    from starlette.testclient import TestClient
+    return TestClient(like.app, follow_redirects=False) if like is not None else w.web()
+
+
+def seed_run(w, owner, name="very-special-run-name"):
+    from test_web_board import seed
+    return seed(w, name, status="succeeded", owner=owner)
 
 
 def pw_hash(w, name):
@@ -107,11 +119,12 @@ def test_tc005_to_tc010_a_temporary_session_is_sent_to_welcome_everywhere(w):
     # TC-005, TC-006, TC-007, TC-008, TC-009, TC-010
     ann = w.user("ann")
     rid = w.launch(caller=ann, run="very-special-run-name")["id"]
+    seed_run(w, ann, "another-special-run")
     c, t, r = temp_login(w)
     for path in ("/", "/settings", "/usage", "/launch"):
         a = c.get(path)
         assert (a.status_code, a.headers["location"]) == (303, "/welcome"), path
-        assert "very-special-run-name" not in a.text
+        assert "very-special-run-name" not in a.text and "another-special-run" not in a.text
     a = c.post("/launch", data={"csrf": "x"}, headers=HDR)
     assert (a.status_code, a.headers["location"]) == (303, "/welcome")
     for verb in ("resume", "relaunch", "cancel"):
@@ -135,7 +148,7 @@ def test_tc011_a_temporary_session_cannot_decide_a_consent_request(w):
     assert rig.c.post("/login", data={"name": "ann", "password": t}).status_code == 303
     a = rig.c.get(path)
     assert (a.status_code, a.headers["location"]) == (303, "/welcome")
-    a = rig.c.post(path, data={"decision": "allow", "csrf": "x"}, headers=HDR)
+    a = rig.c.post(path, data={"decision": "allow", "csrf": "x"})
     assert (a.status_code, a.headers["location"]) == (303, "/welcome")
     assert tokens_rows(w, "SELECT decision FROM oauth_requests")[0]["decision"] is None
     assert tokens_rows(w, "SELECT COUNT(*) AS n FROM oauth_codes")[0]["n"] == 0
@@ -163,11 +176,11 @@ def test_tc014_no_cookie_on_confirm_and_consent_pages_is_as_before(w):
     anon = rig.another()
     a = anon.get("/c/" + rid)
     assert a.status_code == 200 and 'name="password"' in a.text
-    a = anon.post("/c/" + rid, data={"csrf": "x"}, headers=HDR)
+    a = anon.post("/c/" + rid, data={"csrf": "x"})
     assert a.status_code == 401 and 'name="password"' in a.text
     a = anon.get(path)
     assert a.status_code == 200 and 'name="password"' in a.text
-    a = anon.post(path, data={"decision": "allow", "csrf": "x"}, headers=HDR)
+    a = anon.post(path, data={"decision": "allow", "csrf": "x"})
     assert a.status_code == 401 and 'name="password"' in a.text
 
 
@@ -188,10 +201,11 @@ def test_tc015_tc016_an_expired_or_forged_cookie_goes_to_login(w):
 def test_tc017_an_ordinary_session_still_sees_the_board(w):
     # TC-017
     ann = w.user("ann")
-    w.launch(caller=ann, run="very-special-run-name")
+    seed_run(w, ann)
     c = w.web()
     assert w.login(c, "ann").status_code == 303
-    assert c.get("/").status_code == 200
+    a = c.get("/")
+    assert a.status_code == 200 and "very-special-run-name" in a.text
 
 
 def test_tc019_authorize_answers_a_temporary_session_like_nobody(w):
@@ -220,7 +234,7 @@ def test_tc019_authorize_answers_a_temporary_session_like_nobody(w):
 def test_tc021_to_tc026_tc028_tc068_tc069_tc070_tc072_the_page(w):
     # TC-021 .. TC-026, TC-028, TC-068 (initial page), TC-069, TC-070, TC-072
     ann = w.user("ann")
-    w.launch(caller=ann, run="very-special-run-name")
+    seed_run(w, ann)
     c, t, r = temp_login(w)
     a = c.get("/welcome")
     assert a.status_code == 200
@@ -300,7 +314,7 @@ def test_tc032_tc033_tc082_post_without_a_temporary_session(w):
 def test_tc034_to_tc037_a_good_change_keeps_the_same_login(w):
     # TC-034, TC-035, TC-036, TC-037
     ann = w.user("ann")
-    w.launch(caller=ann, run="very-special-run-name")
+    seed_run(w, ann)
     c, t, r = temp_login(w)
     a = send(w, c, t)
     assert (a.status_code, a.headers["location"]) == (303, "/")
@@ -318,19 +332,19 @@ def test_tc034_to_tc037_a_good_change_keeps_the_same_login(w):
 def test_tc038_the_good_change_is_not_counted_as_a_failure(w):
     # TC-038
     w.user("ann")
-    c0 = w.web()
+    c = w.web()
     for _ in range(4):
-        assert w.login(c0, "ann", "nope nope nope").status_code == 401
-    c, t, r = temp_login(w)
+        assert w.login(browser(w, c), "ann", "nope nope nope").status_code == 401
+    c, t, r = temp_login(w, client=c)
     assert send(w, c, t).status_code == 303
     c.post("/logout", data={"csrf": token(w, c, "logout")}, headers=HDR)
-    assert w.login(w.web(), "ann", "nope nope nope").status_code == 401
+    assert login_status(w, "ann", "nope nope nope", like=c) == 401
 
 
 def test_tc039_the_whole_story(w):
     # TC-039
     ann = w.user("ann", password=None)
-    w.launch(caller=ann, run="very-special-run-name")
+    seed_run(w, ann)
     c, t, r = temp_login(w)
     assert r.headers["location"] == "/welcome"
     assert send(w, c, t).status_code == 303
@@ -455,14 +469,14 @@ def test_tc054_tc055_tc057_the_limit_is_shared_with_the_login_page(w):
     for _ in range(5):
         assert send(w, c, OLDV).status_code == 401
     a = send(w, c, t)
-    assert a.status_code == 429 and TOO_MANY in a.text and 'name="old"' in a.text and login_status(w, "ann", t) == 429
+    assert a.status_code == 429 and TOO_MANY in a.text and 'name="old"' in a.text and login_status(w, "ann", t, like=c) == 429
     w.clock.t += 61
     assert send(w, c, t).status_code == 303
     w.user("bob")
-    c0 = w.web()
+    cb = w.web()
     for _ in range(4):
-        assert w.login(c0, "bob", "nope nope nope").status_code == 401
-    cb, tb, _ = temp_login(w, "bob")
+        assert w.login(browser(w, cb), "bob", "nope nope nope").status_code == 401
+    cb, tb, _ = temp_login(w, "bob", client=cb)
     assert send(w, cb, OLDV).status_code == 401
     assert send(w, cb, OLDV).status_code == 429
 
@@ -472,9 +486,9 @@ def test_tc056_the_address_limit_is_shared(w):
     w.user("ann")
     c, t, _ = temp_login(w)
     for i in range(20):
-        assert w.login(w.web(), "who%d" % i, "nope nope nope").status_code == 401
+        assert w.login(browser(w, c), "who%d" % i, "nope nope nope").status_code == 401
     a = send(w, c, t)
-    assert a.status_code == 429 and login_status(w, "ann", t) == 429
+    assert a.status_code == 429 and login_status(w, "ann", t, like=c) == 429
 
 
 def test_tc058_tc059_tc060_the_order_of_the_checks(w):

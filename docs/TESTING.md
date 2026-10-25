@@ -669,6 +669,16 @@ Automatic tests: `platform/tests/test_web_settings.py`. These steps are what no 
 3. **Read both languages**: every status shows a symbol, a word and a colour (✓ / ✗ / —). No Chinese on the English page, no error code, no internal name. Each ✗ in 使用前檢查 says what is missing.
 4. **Nothing to press**: no button, box or link in the middle column; the only form on the page is the logout one.
 
+## A temporary password, then your own (web-change-password): the maintainer and the reviewer check
+
+Automatic tests: `platform/tests/test_web_welcome.py`. These steps need a real browser and the platform host's terminal. Use a test user, never a real colleague's name.
+
+1. On the platform host's terminal run `abf-platform user passwd <name> --temporary` and write down the 16-character password it prints once. It works for 72 hours.
+2. In a browser open the login page, log in as `<name>` with that password. Pass: you land on `/welcome` ("設定你自己的密碼 (set your own password)"), not on the board.
+3. Type `/` in the address bar. Pass: you are brought back to `/welcome`; no run, no cost, no 送出 button is shown anywhere.
+4. On `/welcome` fill the three boxes (the temporary password, a new password of 8 or more characters, the same new password again) and press 設定密碼. Pass: you go straight to the board without logging in again. Try once with two different new passwords first: the page says so and nothing changes.
+5. Press 登出, then log in with the new password. Pass: it works and you land on the board. Log in with the old temporary password. Pass: it is refused.
+
 ## Finished stage (finished-stage): the maintainer and the reviewer check
 
 The automatic tests are in `platform/tests/test_web_finished.py`. The steps below need a browser and a succeeded run that was launched from the platform.
