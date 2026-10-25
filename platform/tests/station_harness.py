@@ -146,7 +146,10 @@ class FakeSite:
         squeue = head + (
             "[ -f '@ST@/squeue_fail' ] && exit 1\n"
             # -j <id>: that job. 009e: -n <name> (with no -j): the jobs of that name, which is how a resume asks "is the predecessor alive"
-            "id=''; name=''; while [ $# -gt 0 ]; do case \"$1\" in -j) id=\"$2\"; shift ;; -n) name=\"$2\"; shift ;; esac; shift; done\n"
+            "id=''; name=''; user=''; while [ $# -gt 0 ]; do case \"$1\" in -j) id=\"$2\"; shift ;; -n) name=\"$2\"; shift ;; -u) user=\"$2\"; shift ;; esac; shift; done\n"
+            # cloud-cleanup-c: -u <user> (with -o %Z, and no -j or -n): the working folder of each job of that user, one per line
+            "if [ -n \"$user\" ] && [ -z \"$id\" ] && [ -z \"$name\" ]; then "
+            "[ -f '@ST@/jobs.tsv' ] && awk -F'|' -v u=\"$user\" '$3 == u {print $4}' '@ST@/jobs.tsv'; exit 0; fi\n"
             "[ -f '@ST@/jobs.tsv' ] && awk -F'|' -v id=\"$id\" -v name=\"$name\" "
             "'(id != \"\" && $1 == id) || (id == \"\" && name != \"\" && $2 == name) {print $2 \"|\" $3 \"|\" $4}' '@ST@/jobs.tsv'\n"
             "exit 0\n")
