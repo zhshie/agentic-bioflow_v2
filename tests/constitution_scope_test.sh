@@ -26,9 +26,9 @@ hasnt() { # hasnt <label> <file> <extended regex>
 }
 
 echo "== TC-021: the constitution =="
-has "version is 6.0.2 (2.0.0 made this change; 2.0.1, 2.1.0, 3.0.0, 4.0.0, 4.1.0, 5.0.0, 6.0.0, 6.0.1 and 6.0.2 came after)" "$C" '**Version**: 6.0.2'
+has "version is 6.1.0 (2.0.0 made this change; 2.0.1, 2.1.0, 3.0.0, 4.0.0, 4.1.0, 5.0.0, 6.0.0, 6.0.1, 6.0.2 and 6.1.0 came after)" "$C" '**Version**: 6.1.0'
 has "the 2.0.0 amendment entry is still there"        "$C" '### 2.0.0 (2026-10-02)'
-has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-10-24'
+has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-10-25'
 has "Ratified date is untouched"               "$C" '**Ratified**: 2026-09-28'
 # The Safety Net section opens with its scope. Read the section on its own so a
 # mention elsewhere in the file cannot satisfy these.
@@ -261,12 +261,17 @@ if [ -z "$E4" ]; then bad "TC-E4: 6.0.2 entry exists"; else
 fi
 # TC-E5
 LASTV=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
-if [ "$LASTV" = '**Version**: 6.0.2 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-24' ]; then ok "TC-E5: version line is last and exact"; else bad "TC-E5: version line is last and exact" "got: $LASTV"; fi
+if [ "$LASTV" = '**Version**: 6.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-25' ]; then ok "TC-E5: version line is last and exact"; else bad "TC-E5: version line is last and exact" "got: $LASTV"; fi
 # TC-E6
 bash tests/constitution_6_test.sh >/dev/null 2>&1 && ok "TC-E6: constitution_6_test.sh passes" || bad "TC-E6: constitution_6_test.sh passes"
 bash tests/constitution_checks_exist_test.sh >/dev/null 2>&1 && ok "TC-E6: constitution_checks_exist_test.sh passes" || bad "TC-E6: constitution_checks_exist_test.sh passes"
 # TC-E7
 if printf '%s' "$E4" | tr '\n' ' ' | tr -s ' ' | grep -qF 'no rule changes meaning'; then ok "TC-E7: 6.0.2 says no rule changes meaning"; else bad "TC-E7: 6.0.2 says no rule changes meaning"; fi
+
+# TC-E8 (6.1.0)
+E8=$(awk '/^### 6\.1\.0 /{p=1} /^## Governance/{p=0} p' "$C")
+if [ -n "$E8" ] && printf '%s' "$E8" | tr '
+' ' ' | tr -s ' ' | grep -qF 'still never log into the web'; then ok "TC-E8: 6.1.0 entry exists and keeps tokens out of the web"; else bad "TC-E8: 6.1.0 entry exists and keeps tokens out of the web"; fi
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
