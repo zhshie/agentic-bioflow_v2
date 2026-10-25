@@ -24,7 +24,9 @@ PENDING_SECONDS = 600
 MAX_OPEN_PENDING = 10             # open requests one caller may have at a time
 REUSE_MIN_SECONDS = 60             # a repeated call reuses an open request only while more than this is left of it
 KEEP_UNSENT_SECONDS = 7 * 86400    # a void request, or a pending one past its time, keeps its content (bundle, screen) this long; its audit columns stay. A confirmed request keeps it until its owner forgets it (forget_content)
-JOB_KIND = {"launch": "launch_nextflow", "cancel": "cancel_run"}
+CLEAN_PENDING_SECONDS = 7 * 86400  # a clean_work request is a reminder, not a question to answer now: it lives a week
+MAX_OPEN_CLEAN = 50               # open clean_work requests one caller may have; they do not use up MAX_OPEN_PENDING
+JOB_KIND = {"launch": "launch_nextflow", "cancel": "cancel_run", "clean_work": "clean_work"}
 
 
 class NotApproved(jobs.JobRefused):
@@ -82,15 +84,22 @@ def create_pending(state_path, kind, ce_name, bundle, screen_text, caller_user_i
                           (kind, sha, caller_user_id, now + REUSE_MIN_SECONDS)).fetchone()
         if old is not None:
             return old["id"]
-        open_now = con.execute("SELECT COUNT(*) FROM confirmations WHERE state = 'pending' AND caller_user_id IS ? AND expires_at > ?",
-                               (caller_user_id, now)).fetchone()[0]
-        if open_now >= MAX_OPEN_PENDING:
+        if kind == "clean_work":
+            open_clean = con.execute("SELECT COUNT(*) FROM confirmations WHERE state = 'pending' AND kind = 'clean_work' "
+                                     "AND caller_user_id IS ? AND expires_at > ?", (caller_user_id, now)).fetchone()[0]
+            if open_clean >= MAX_OPEN_CLEAN:
+                raise jobs.JobRefused("已經有 %d 個等待中的清理提醒，請先處理或等它們逾時 (at most %d open clean-up reminders per person; "
+                                      "finish or wait for the open ones)" % (open_clean, MAX_OPEN_CLEAN))
+        open_now = con.execute("SELECT COUNT(*) FROM confirmations WHERE state = 'pending' AND kind <> 'clean_work' "
+                               "AND caller_user_id IS ? AND expires_at > ?", (caller_user_id, now)).fetchone()[0]
+        if kind != "clean_work" and open_now >= MAX_OPEN_PENDING:
             raise jobs.JobRefused("已經有 %d 個等待中的申請，請先處理（按送出或等它逾時）再申請新的 (at most %d open requests per person; "
                                   "finish or wait for the open ones)" % (open_now, MAX_OPEN_PENDING))
         rid = secrets.token_hex(16)
         con.execute("INSERT INTO confirmations (id, sha256, kind, created_at, caller_user_id, state, expires_at, ce_name, bundle_json, "
                     "screen_text) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)",
-                    (rid, sha, kind, now, caller_user_id, now + PENDING_SECONDS, ce_name, json.dumps(bundle), screen_text))
+                    (rid, sha, kind, now, caller_user_id, now + (CLEAN_PENDING_SECONDS if kind == "clean_work" else PENDING_SECONDS), ce_name,
+                     json.dumps(bundle), screen_text))
         return rid
 
     return jobs.transaction(state_path, work)
@@ -257,6 +266,29 @@ def find_cancel(state_path, bundle, caller_user_id):
         con.close()
 
 
+def open_clean_requests(state_path, caller_user_id, clock=time.time):
+    """{run_name: request id} of this caller's own clean_work requests that wait for a yes: pending, not past their time, content still there.
+    Only reads."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return {}
+    try:
+        rows = con.execute("SELECT id, bundle_json FROM confirmations WHERE kind = 'clean_work' AND state = 'pending' AND caller_user_id IS ? "
+                           "AND expires_at > ? AND bundle_json IS NOT NULL AND forgotten_at IS NULL ORDER BY created_at",
+                           (caller_user_id, clock())).fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    finally:
+        con.close()
+    out = {}
+    for r in rows:
+        try:
+            out[json.loads(r["bundle_json"])["run_name"]] = r["id"]
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
 def describe(state_path, rid, clock=time.time):
     """What a person may be told about request `rid`, or None: its kind, who made it, its state (pending, confirmed, void or
     expired), the text that was shown and the job if there is one. Never the bundle. Terminal confirmations are not requests: they hold their content too (keep-submissions), but the page never shows them."""
@@ -295,6 +327,8 @@ def facts(state_path, rid):
         bundle = json.loads(row["bundle_json"])
         if row["kind"] == "cancel":
             return {"what": "cancel", "run_name": bundle["run_name"]}
+        if row["kind"] == "clean_work":
+            return {"what": "clean_work", "run_name": bundle["run_name"], "work": bundle["work"]}
         what = "resume" if "resume" in bundle else "relaunch" if "relaunch" in bundle else "launch"
         source = bundle["resume"]["origin"] if what == "resume" else bundle
         out = {"what": what, "run_name": bundle["run_name"], "pipeline": source["pipeline"], "revision": source["revision"],
@@ -308,7 +342,7 @@ def facts(state_path, rid):
 
 # ---- forgetting: the owner deletes what was sent (keep-submissions) ---------------------------------------------------------------
 
-FORGOTTEN_JOB_KINDS = ("launch_nextflow", "cancel_run")
+FORGOTTEN_JOB_KINDS = ("launch_nextflow", "cancel_run", "clean_work")
 
 
 def forgotten_args(run_name):
@@ -349,7 +383,8 @@ def forget_content(state_path, run_name, forgotten_by=None, only_user=None, cloc
 
     def work(con):
         like = "%" + run_name + "%"
-        jobs_of_run = [r for r in con.execute("SELECT id, state, args_json FROM jobs WHERE kind IN (?, ?) AND args_json LIKE ?",
+        marks = ", ".join("?" * len(FORGOTTEN_JOB_KINDS))
+        jobs_of_run = [r for r in con.execute("SELECT id, state, args_json FROM jobs WHERE kind IN (%s) AND args_json LIKE ?" % marks,
                                               FORGOTTEN_JOB_KINDS + (like,)) if _named(r["args_json"], run_name) is not None]
         if any(r["state"] in ("queued", "claimed") for r in jobs_of_run):
             raise jobs.JobRefused("這個 run 還有工作在排隊或進行中，不能刪除 (a job of this run is still queued or running)")
