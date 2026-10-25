@@ -36,15 +36,17 @@
 - 計畫「完成標準」寫 MCP 工具數仍 12，但倉庫現況既有測試（`test_pat.py`、`test_oauth_mcp.py`）斷言的是 14；本片沒碰平台，數量與 base 相同。
 - worktree 上一層多出一個空目錄 `wt/_hold`（我一個指令打錯建的，在 git 之外）；我的環境不准我刪，請維護者自行刪除。
 
-## diff 統計（`git diff --stat 8b560fa..HEAD`，8b560fa＝測試案例 commit；不含本檔）
+## diff 統計（`git diff --stat 8b560fa..HEAD -- <本片四個程式檔>`，8b560fa＝測試案例 commit；於裁決二最後一個 commit ab4d4e8 之後重跑）
 
 ```
  platform/abf_station/clean.py        | 126 ++++++++
  platform/abf_station/handlers.py     |  12 +-
- platform/tests/station_harness.py    |   5 +-
- platform/tests/test_station_clean.py | 610 +++++++++++++++++++++++++++++++++++
- 4 files changed, 748 insertions(+), 5 deletions(-)
+ platform/tests/station_harness.py    |   6 +-
+ platform/tests/test_station_clean.py | 612 +++++++++++++++++++++++++++++++++++
+ 4 files changed, 751 insertions(+), 5 deletions(-)
 ```
+
+不帶路徑跑整個 `git diff --stat 8b560fa..HEAD` 還會多出併入 origin/v3 帶來的檔案（`docs/SETTINGS.md`、`scripts/settings.sh`、`test_onboarding_doc.py`、`specs/migrate-reports-queue/` 等），那些不是本片的改動；另有本檔與 plan.md。
 
 ## 裁決二補記
 
