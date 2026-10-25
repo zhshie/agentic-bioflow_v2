@@ -44,15 +44,20 @@ def test_t1_repo_of_accepts():
     assert repo_of("ampliseq") == "nf-core/ampliseq"
     assert repo_of("nf-core/ampliseq") == "nf-core/ampliseq"
     assert repo_of("lab/own-flow") == "lab/own-flow"
+    assert repo_of("a.b/c.d") == "a.b/c.d"  # TC-007
 
 
-@pytest.mark.parametrize("bad", ["", "../x", "a/b/c", "nf core/x", None])
+@pytest.mark.parametrize("bad", ["", "../x", "a/b/c", "nf core/x", None,
+                                 "./x", "x/.", "./.", ".", "nf-core/ampliseq\n", "ampliseq\n"])
 def test_t2_repo_of_rejects(bad):
-    # T2 / TC-004 ... TC-008
+    # T2 / TC-004 ... TC-008; dot-segment TC-001..TC-006, TC-010, TC-011
     with pytest.raises(ValueError) as e:
         repo_of(bad)
     msg = str(e.value)
     assert re.search(r"[一-鿿]", msg) and re.search(r"[A-Za-z]{3}", msg)
+    if bad == "./x":  # TC-011: message text unchanged
+        assert msg == ("pipeline 名稱不合格（要寫 owner/name，例如 nf-core/ampliseq）"
+                       " / invalid pipeline name './x', expected owner/name")
 
 
 @pytest.mark.parametrize("tag", ["3.0.0", "v2.1", "1.2.3.4", "1.0"])
