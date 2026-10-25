@@ -64,7 +64,7 @@ T_CMD=(); T_EXP=(); T_LBL=()
 t() { # t <command> <expect gate|pass> <label>
   T_CMD+=("$1"); T_EXP+=("$2"); T_LBL+=("$3")
   printf '%-56s ' "$3"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(jq -cn --arg c "$1" '{tool_input:{command:$c}}' | bash "$H")
   got=pass; [ -n "$out" ] && got=gate
   if [ "$got" = "$2" ]; then echo "ok ($got)"; else
     echo "FAIL: expected $2, got $got"; fails=$((fails+1))
@@ -363,13 +363,13 @@ echo "== R2: Claude Code itself asks (permissionDecision: ask) =="
 # gate no differently than a missing jq.
 askcheck() { # askcheck <command> <label>
   printf '%-58s ' "$2"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(jq -cn --arg c "$1" '{tool_input:{command:$c}}' | bash "$H")
   first="${out:0:1}"
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
   fi
-  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
-  reason=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecisionReason',''))" <<<"$out")
+  decision=$(jq -r '.hookSpecificOutput.permissionDecision // ""' <<<"$out" 2>/dev/null | tr -d '\r')
+  reason=$(jq -r '.hookSpecificOutput.permissionDecisionReason // ""' <<<"$out" 2>/dev/null)
   if [ "$decision" != ask ]; then
     echo "FAIL: expected permissionDecision=ask, got '$decision'"; fails=$((fails+1)); return
   fi
@@ -380,13 +380,13 @@ askcheck() { # askcheck <command> <label>
 }
 nodecisioncheck() { # nodecisioncheck <command> <label>
   printf '%-58s ' "$2"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" | bash "$H")
+  out=$(jq -cn --arg c "$1" '{tool_input:{command:$c}}' | bash "$H")
   if [ -z "$out" ]; then echo "ok (no output at all)"; return; fi
   first="${out:0:1}"
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
   fi
-  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision','') or '')" <<<"$out")
+  decision=$(jq -r '.hookSpecificOutput.permissionDecision // ""' <<<"$out" 2>/dev/null | tr -d '\r')
   if [ -z "$decision" ]; then echo "ok (no decision field)"; else
     echo "FAIL: unexpected permissionDecision '$decision' on a non-launch command"; fails=$((fails+1))
   fi
@@ -420,14 +420,14 @@ MS_CMD=(); MS_EXP=(); MS_LBL=()
 msys_ask() { # msys_ask <command> <label>
   MS_CMD+=("$1"); MS_EXP+=(ask); MS_LBL+=("$2")
   printf '%-58s ' "$2"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" \
+  out=$(jq -cn --arg c "$1" '{tool_input:{command:$c}}' \
         | PATH="$MSYSBIN:$PATH" bash "$H")
   first="${out:0:1}"
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
   fi
-  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision',''))" <<<"$out")
-  reason=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecisionReason',''))" <<<"$out")
+  decision=$(jq -r '.hookSpecificOutput.permissionDecision // ""' <<<"$out" 2>/dev/null | tr -d '\r')
+  reason=$(jq -r '.hookSpecificOutput.permissionDecisionReason // ""' <<<"$out" 2>/dev/null)
   if [ "$decision" != ask ]; then
     echo "FAIL: expected permissionDecision=ask, got '$decision'"; fails=$((fails+1)); return
   fi
@@ -439,14 +439,14 @@ msys_ask() { # msys_ask <command> <label>
 msys_pass() { # msys_pass <command> <label>
   MS_CMD+=("$1"); MS_EXP+=(pass); MS_LBL+=("$2")
   printf '%-58s ' "$2"
-  out=$(python3 -c "import json,sys;print(json.dumps({'tool_input':{'command':sys.argv[1]}}))" "$1" \
+  out=$(jq -cn --arg c "$1" '{tool_input:{command:$c}}' \
         | PATH="$MSYSBIN:$PATH" bash "$H")
   if [ -z "$out" ]; then echo "ok (no output at all)"; return; fi
   first="${out:0:1}"
   if [ "$first" != "{" ]; then
     echo "FAIL: stdout did not start with '{': <<${out:0:60}>>"; fails=$((fails+1)); return
   fi
-  decision=$(python3 -c "import json,sys;print(json.load(sys.stdin).get('hookSpecificOutput',{}).get('permissionDecision','') or '')" <<<"$out")
+  decision=$(jq -r '.hookSpecificOutput.permissionDecision // ""' <<<"$out" 2>/dev/null | tr -d '\r')
   if [ -z "$decision" ]; then echo "ok (no decision field)"; else
     echo "FAIL: unexpected permissionDecision '$decision' on a command that should not be flagged"; fails=$((fails+1))
   fi
@@ -621,7 +621,7 @@ ID_CMD=(); ID_EXP=(); ID_LBL=()
 idg() { # idg <label> <expect ask|allow> <command>
   ID_CMD+=("$3"); ID_EXP+=("$2"); ID_LBL+=("$1")
   local j o got
-  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$3")
+  j=$(jq -cn --arg c "$3" '{tool_name:"Bash",tool_input:{command:$c}}')
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
   got=allow; grep -q '"permissionDecision": *"ask"' <<<"$o" && got=ask
   printf '%-58s ' "$1"
@@ -789,7 +789,7 @@ jq -en --arg m "$CL_MATCHER" '"Read" | test("^(" + $m + ")$")' 2>/dev/null | gre
 # M3: an environment prefix on a direct relay start
 envp() { # envp <label> <expect has|lacks> <command>: does the ask say the command overrides the list?
   local j o got
-  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$3")
+  j=$(jq -cn --arg c "$3" '{tool_name:"Bash",tool_input:{command:$c}}')
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
   got=lacks; grep -qF "overrides this deployment's list" <<<"$o" && got=has
   printf '%-58s ' "$1"
@@ -802,7 +802,7 @@ envp "#45 control: a plain relay start does not say it"        lacks 'bash scrip
 # relay-env-warning: an environment prefix NF_RELAY_PEER_PREFIXES= on a direct relay start
 envq() { # envq <label> <expect has|lacks> <command>: does the ask name the command's own peer-prefix list?
   local j o got
-  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$3")
+  j=$(jq -cn --arg c "$3" '{tool_name:"Bash",tool_input:{command:$c}}')
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
   got=lacks; grep -qF "THIS COMMAND ALSO MENTIONS NF_RELAY_PEER_PREFIXES=" <<<"$o" && got=has
   printf '%-58s ' "$1"
@@ -810,14 +810,14 @@ envq() { # envq <label> <expect has|lacks> <command>: does the ask name the comm
 }
 envq_txt() { # envq_txt <label> <command> <fixed string the ask must contain>
   local j o
-  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$2")
+  j=$(jq -cn --arg c "$2" '{tool_name:"Bash",tool_input:{command:$c}}')
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
   printf '%-58s ' "$1"
   grep -qF -- "$3" <<<"$o" && echo ok || { echo "FAIL: missing <<$3>> in <<${o:0:80}>>"; fails=$((fails+1)); }
 }
 envq_order() { # envq_order <label> <command> <first> <second>: <first> appears before <second> in the ask
   local j o a b
-  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$2")
+  j=$(jq -cn --arg c "$2" '{tool_name:"Bash",tool_input:{command:$c}}')
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null)
   a=${o%%"$3"*}; b=${o%%"$4"*}
   printf '%-58s ' "$1"
@@ -861,7 +861,7 @@ idg "PEER-12 plain start still asks"                       ask   'bash scripts/e
 envw() {
   local j o got lbl=$1 v=$2 want=$3 cmd=$4 c bad=""
   shift 4
-  j=$(python3 -c 'import json,sys;print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]}}))' "$cmd")
+  j=$(jq -cn --arg c "$cmd" '{tool_name:"Bash",tool_input:{command:$c}}')
   o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" <<<"$j" 2>/dev/null | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)
   got=lacks; grep -qF -- "THIS COMMAND ALSO MENTIONS $v=" <<<"$o" && got=has
   if [ "$want" = has ]; then
