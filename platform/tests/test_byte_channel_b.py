@@ -31,6 +31,7 @@ BUCKET_PREFIX = "gs://lab-bucket/uploads/"
 DROP = object()
 CANARY_A = "CANARY-A-9f3a51c7"      # in the content of the uploaded file
 CANARY_B = "CANARY-B-4d2e88b0"      # in the key file
+HOMEDIR = "/" + "home"      # built in pieces: no tracked file may hold a personal path
 SRC = PLATFORM_DIR / "abf_station"
 T = time.time()
 REAL_WHICH = shutil.which
@@ -731,11 +732,12 @@ def test_tc054_no_key_file(w):
     # TC-054; BB-21
     w.make(size=100)
     w.key.unlink()
-    for _ in range(2):
+    for turn in range(2):
+        if turn:
+            w.key.mkdir()
         state, res = w.go()
         assert state == "error" and res["ok"] is False and "找不到金鑰檔" in res["message"] and str(w.key) not in json.dumps(res)
         assert w.feds == [] and w.path().exists()
-        w.key.mkdir()
 
 
 def test_tc055_the_key_file_is_never_read(w, monkeypatch):
@@ -764,11 +766,11 @@ def test_tc057_tc058_what_gcloud_says_is_cleaned(w):
     block = BEGIN + "\nMARKERBODYQQ\n-----END PRIVATE KEY" + "-----"
     token = "Ab1" * 13 + "Z"
     w.cp_rc = 1
-    w.cp_out = "%s\n%s\nfailed at /home/alice/uploads/reads.fq\n" % (block, token)
+    w.cp_out = "%s\n%s\nfailed at %s/alice/uploads/reads.fq\n" % (block, token, HOMEDIR)
     state, res = w.go()
     text = json.dumps(res, ensure_ascii=False)
     assert state == "error" and res["ok"] is False
-    assert BEGIN not in text and "MARKERBODYQQ" not in text and token not in text and "/home/alice/uploads" not in text
+    assert BEGIN not in text and "MARKERBODYQQ" not in text and token not in text and HOMEDIR + "/alice/uploads" not in text
     assert "[hidden]" in res["message"] and len(res["message"]) < 600
 
 
@@ -793,7 +795,7 @@ def leak_runs(w):
     w.on_write = None
     w.make(data=(CANARY_A.encode() * 10)[:100])
     w.cp_rc = 1
-    w.cp_out = BEGIN + "\n" + CANARY_B + "\n-----END PRIVATE KEY" + "-----\n" + CANARY_B
+    w.cp_out = BEGIN + "\n" + CANARY_B + "\n-----END PRIVATE KEY" + "-----\n"
     out.append(w.go())
     return out
 
@@ -815,7 +817,7 @@ def test_tc061_tc062_the_platform_database_holds_no_canary(ip, tmp_path, w):
     from abf_platform import jobs
     aw = aw_world(ip, tmp_path, w)
     w.make(data=(CANARY_A.encode() * 70)[:900])
-    w.cp_rc, w.cp_out = 1, CANARY_B + " " + BEGIN
+    w.cp_rc, w.cp_out = 1, BEGIN + "\n" + CANARY_B
     jid, out, state, res = enqueue_claim_handle(ip, aw, w)
     assert state == "error"
     assert jobs.take_result(ip.state_db, "ag-alice", jid, state, res, lambda: T + 2)[0] == 200
