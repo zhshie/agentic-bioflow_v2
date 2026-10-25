@@ -107,6 +107,16 @@ base: v3
 5. **新文字（確認頁、通知）等維護者回好／不好**，verifier 依本檔出題，合併前附 zh、en 截圖列進每日清單。
 6. **切片理由**：舊計畫約 30 檔、需求超過 60 條測試；依 `dev-architecture-review-2026-10-24.md` §3 與 `dev-plans/README.md` 通例切成六片。本片 5 檔（含 ledger）。
 
+## 裁決二（2026-10-25，回應 executor 卡住；與上文衝突時以本段為準）
+1. **准改四條既有測試，但守住原意**（原意＝除了 store／confirm／jobs，沒有任何程式能「寫」或「排入」clean_work）：
+   - `test_cleanup_confirm.py::test_tc067_no_new_entry_point_for_clean_work` 與 `test_cleanup_store.py::test_nothing_writes_clean_work_or_work_cleaned_at`：允許清單加 `web.py`、`web_board.py`、`actions/__init__.py`，**同時**對這三個檔加一條更嚴的檢查——檔內不得出現 `enqueue`、`create_confirmation`、`INSERT`、`UPDATE`、`work_cleaned_at =` 與 `clean_work` 同一行或同一函式（用 `ast` 找函式範圍）；也就是只准「讀」與「顯示」。
+   - `test_web_parity.py` 兩條：把 `clean_requests` 登記為 `WEB_ONLY`（唯讀、只給網頁用）。
+   - 其餘既有測試一律不准動；範圍加這三個測試檔，只限上述改動。
+2. MCP 工具數以現況為準（不寫死 12）；TC-062 改成「沒有名稱含 clean 的工具」：接受。
+3. 英文確認頁只翻種類名、欄位名、按鈕，其他沿用中文：接受，截圖時一併給維護者看。
+4. `jev_test.sh` 那 1 項失敗：executor 先在 base（origin/v3）跑同一支，若 base 也紅，ledger 附輸出、視同已知環境紅；若 base 綠，要查清是不是本片造成。
+5. 手動截圖（TC-078～081）：照 ui 守則用 Playwright 截 1440／390 px × zh／en 四張，放進 PR。
+
 ## 專長守則（ui）
 
 ### executor
