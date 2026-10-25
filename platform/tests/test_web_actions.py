@@ -591,7 +591,7 @@ SCHEMA = {
     'tokens.oauth_codes': ('code_hash', 'grant_id', 'client_id', 'redirect_uri', 'redirect_explicit', 'code_challenge', 'resource', 'user_id', 'created_at', 'expires_at', 'used_at'),
     'tokens.oauth_requests': ('id', 'client_id', 'redirect_uri', 'redirect_explicit', 'code_challenge', 'state', 'resource', 'created_at', 'expires_at', 'decision', 'decided_at'),
     'tokens.tokens': ('id', 'token_hash', 'created_at', 'kind', 'agent_name', 'revoked_at', 'run_name', 'expires_at', 'ended_at', 'user_id', 'label', 'grant_id'),
-    'tokens.users': ('id', 'name', 'lab', 'created_at', 'disabled_at', 'password_hash'),
+    'tokens.users': ('id', 'name', 'lab', 'created_at', 'disabled_at', 'password_hash', 'temp_until'),     # temp-password: one new column
     'tokens.web_sessions': ('id_hash', 'user_id', 'created_at', 'expires_at'),
     'tokens.cloud_caps': ('user_id', 'cap_usd', 'set_at'),      # this table is cloud-cost's: one monthly cap per person, set only on the administrator's terminal
 }      # the schema as 011b left it, plus the one table above

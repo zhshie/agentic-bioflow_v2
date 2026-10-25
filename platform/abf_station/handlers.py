@@ -4,6 +4,7 @@
 read_task_log reads the end of one log file of one task folder (readlog.py); clean_work, with a confirmation, removes the
 work folder of one finished Slurm run (clean.py); put_upload streams one uploaded file from the
 upload folder into the person's own cloud prefix and, once the cloud size matches, removes the staged copy (put_upload.py).
+pipeline_files reads four kinds of public GitHub file for the platform, which never connects out itself (pipeline_files.py).
 
 A job is a dict with a kind and arguments. Only the exact kinds below exist; any other text is refused,
 and a refusal is an answer, not a crash. Every value that reaches the site is checked again here and
@@ -12,13 +13,13 @@ quoted. What goes back to the platform is the agent's own short wording, never t
 import re
 from datetime import datetime, timezone
 
-from . import cancel, clean, fetch, gcb_preflight, launch, put_upload, readlog, rules
+from . import cancel, clean, fetch, gcb_preflight, launch, pipeline_files, put_upload, readlog, rules
 from .site import quote
 
-JOB_KINDS = ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload")
+JOB_KINDS = ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files")
 ARG_KEYS = {"preflight": {"ce"}, "list_site_files": {"ce", "path"}, "launch_nextflow": launch.LAUNCH_KEYS,
             "cancel_run": launch.LAUNCH_KEYS, "fetch_run_records": fetch.ARGS, "read_task_log": readlog.ARGS,
-            "clean_work": launch.LAUNCH_KEYS, "put_upload": put_upload.ARGS}
+            "clean_work": launch.LAUNCH_KEYS, "put_upload": put_upload.ARGS, "pipeline_files": pipeline_files.ARGS}
 LIST_LIMIT = 500
 # The check ids are written as one comma-split string, never as a quoted sbatch: the scan of
 # constitution principle 2 (tests/no_second_run_state_test.sh) treats a quote straight before
@@ -60,6 +61,8 @@ def handle(job, ctx):
             return readlog.run_read(job, ctx)
         if kind == "put_upload":
             return put_upload.run_put(job, ctx)
+        if kind == "pipeline_files":
+            return pipeline_files.run_fetch(job, ctx)
         ce = args.get("ce")
         if kind == "preflight" and isinstance(ce, dict) and ce.get("platform") == gcb_preflight.TYPE:
             # a Google Batch environment is checked here, on the platform host: its own checks, read-only and free (預檢不計費)

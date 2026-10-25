@@ -15,7 +15,18 @@ fails=0
 C=.specify/memory/constitution.md
 
 ok() { printf '%-78s ok\n' "$1"; }
-bad() { printf '%-78s FAIL%s\n' "$1" "${2:+: $2}"; fails=$((fails+1)); }
+bad() { # a failure goes to stdout in the usual shape and, with its name and reason, to stderr too
+  printf '%-78s FAIL%s\n' "$1" "${2:+: $2}"
+  printf 'constitution_scope_test FAIL: %s%s\n' "$1" "${2:+: $2}" >&2
+  fails=$((fails+1))
+}
+# A check that feeds text into grep through a pipe must let grep read ALL of it. The
+# old form `printf ... | grep -qF` let grep quit at the first match; printf then got
+# "Broken pipe" on its next write, and with `set -o pipefail` the pipeline failed
+# although the text WAS found. Whether that happened depended on timing (the text
+# leaves printf in more than one write), so a check went red about once in 20-60 runs and
+# was green on rerun (the CI "first run red, rerun green"). So: no -q and no early
+# exit on a pipe; the result goes to /dev/null and only grep's own status counts.
 has() { # has <label> <file> <fixed string>
   if grep -qF -- "$3" "$2" 2>/dev/null; then ok "$1"; else bad "$1" "no '$3' in $2"; fi
 }
@@ -34,7 +45,7 @@ has "Ratified date is untouched"               "$C" '**Ratified**: 2026-09-28'
 # mention elsewhere in the file cannot satisfy these.
 SN=$(awk '/^## Safety Net/{f=1;next} /^## /{f=0} f' "$C")
 sn_has() { # sn_has <label> <fixed string>
-  if printf '%s\n' "$SN" | grep -qF -- "$2"; then ok "$1"; else bad "$1" "no '$2' in the Safety Net section"; fi
+  if printf '%s\n' "$SN" | grep -F -- "$2" >/dev/null; then ok "$1"; else bad "$1" "no '$2' in the Safety Net section"; fi
 }
 sn_has "Safety Net says it governs sessions in which the plugin is in use" 'in use'
 sn_has "...condition 1: the session's own marker"                           'marker'
@@ -43,12 +54,12 @@ sn_has "...condition 3: the call itself (plugin script, tw, Seqera MCP)"     'Se
 sn_has "...unsure counts as in use"                                          'unsure'
 sn_has "...and says what happens outside: the plugin stays silent"           'silent'
 # The old wording said these rules hold everywhere, with no scope.
-if printf '%s\n' "$SN" | grep -qF 'These rules are not subject to the principles above, MUST NOT be relaxed by any feature spec or'; then
+if printf '%s\n' "$SN" | grep -F 'These rules are not subject to the principles above, MUST NOT be relaxed by any feature spec or' >/dev/null; then
   ok "the Safety Net still cannot be relaxed by a feature spec or plan"
 else bad "the Safety Net still cannot be relaxed by a feature spec or plan"; fi
 # An amendment record: rationale, impact on existing deployments, version.
 AM=$(awk '/^## Amendment/{f=1;next} /^## /{f=0} f' "$C")
-am_has() { if printf '%s\n' "$AM" | grep -qF -- "$2"; then ok "$1"; else bad "$1" "no '$2' in the Amendments section"; fi; }
+am_has() { if printf '%s\n' "$AM" | grep -F -- "$2" >/dev/null; then ok "$1"; else bad "$1" "no '$2' in the Amendments section"; fi; }
 am_has "amendment record exists and names 2.0.0"                    '2.0.0'
 am_has "...names the issue (#48)"                                   '#48'
 am_has "...names the 2026-10-02 subagent case"                      '2026-10-02'
@@ -79,7 +90,7 @@ echo
 echo "== 3.0.0 amendment (platform direction): TC-002, TC-019, TC-040..TC-044, TC-047 =="
 # TC-002: the 3.0.0 amendment record, and the three before it still there.
 AM3=$(awk '/^### 3\.0\.0 \(2026-10-08\)/{f=1;next} /^##+ /{f=0} f' "$C")
-am3_has() { if printf '%s\n' "$AM3" | tr '\n' ' ' | tr -s ' ' | grep -qF -- "$2"; then ok "$1"; else bad "$1" "no '$2' in the 3.0.0 amendment record"; fi; }
+am3_has() { if printf '%s\n' "$AM3" | tr '\n' ' ' | tr -s ' ' | grep -F -- "$2" >/dev/null; then ok "$1"; else bad "$1" "no '$2' in the 3.0.0 amendment record"; fi; }
 has "TC-002: the 3.0.0 (2026-10-08) amendment heading exists"          "$C" '### 3.0.0 (2026-10-08)'
 has "TC-002: 2.0.0 amendment still there"                              "$C" '### 2.0.0 (2026-10-02)'
 has "TC-002: 2.0.1 amendment still there"                              "$C" '### 2.0.1 (2026-10-05)'
@@ -93,7 +104,7 @@ am3_has "TC-002: approval is the maintainer's"                         '**Approv
 
 # TC-019: PRINCIPLES.md invariants 1 and 2 follow 3.0.0 and keep the scope pointer.
 PA=$(awk '/^## A\. /{f=1;next} /^## /{f=0} f' docs/PRINCIPLES.md | tr '\n' ' ' | tr -s ' ')
-pa_has() { if printf '%s\n' "$PA" | grep -qF -- "$2"; then ok "$1"; else bad "$1" "no '$2' in PRINCIPLES.md section A"; fi; }
+pa_has() { if printf '%s\n' "$PA" | grep -F -- "$2" >/dev/null; then ok "$1"; else bad "$1" "no '$2' in PRINCIPLES.md section A"; fi; }
 pa_has "TC-019: invariant 1 restated: build only what Seqera cannot or will not do here" 'Build only what Seqera cannot or will not do here'
 pa_has "TC-019: invariant 1 cites constitution 3.0.0"                  'constitution 3.0.0'
 pa_has "TC-019: invariant 2 restated: Nextflow's own records are the truth" "Nextflow's own records are the truth about a run"
@@ -184,7 +195,7 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
     if [ -z "$(git -C "$D" symbolic-ref -q HEAD 2>/dev/null)" ]; then ok "scratch clone is detached (scratch-clone-main TC-004)"; else bad "scratch clone is detached (scratch-clone-main TC-004)"; fi
     # TC-002
     inner "$D"
-    if [ "$RC" = 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep ' ok$' >/dev/null; then ok "TC-002: unchanged, no main: the fingerprint line runs and is ok"; else bad "TC-002: unchanged, no main: the fingerprint line runs and is ok" "rc=$RC"; fi
+    if [ "$RC" = 0 ] && printf '%s\n' "$OUT" | grep -F "$FPL" | grep ' ok$' >/dev/null; then ok "TC-002: unchanged, no main: the fingerprint line runs and is ok"; else bad "TC-002: unchanged, no main: the fingerprint line runs and is ok" "rc=$RC; inner failures: $(printf '%s\n' "$OUT" | grep -E 'FAIL|^[0-9]+ failed' | head -5 | tr '\n' '|')"; fi
     if printf '%s\n' "$OUT" | grep -i "$P3" >/dev/null; then bad "TC-002: no skip note in the output"; else ok "TC-002: no skip note in the output"; fi
     # TC-007: a change outside the Safety Net does not trip it
     printf '\n### 9.9.9 (2099-01-01)\n\nA test amendment outside the Safety Net.\n' >> "$D/$C"
@@ -227,10 +238,27 @@ An extra sentence that is not in the pinned section.' "$1/$C"; }
     if [ "$RC" != 0 ] && printf '%s\n' "$OUT" | grep -i 'no SHA-256 tool' >/dev/null; then ok "TC-006: no hash tool on PATH: fails and says so"; else bad "TC-006: no hash tool on PATH: fails and says so" "rc=$RC"; fi
     if printf '%s\n' "$OUT" | grep -i "$P3" >/dev/null; then bad "TC-006: ...and is not a skip note"; else ok "TC-006: ...and is not a skip note"; fi
   fi
+  # flake TC-011/012/013: a failure is named on stderr and kept on stdout; a green run prints nothing there
+  D=$(mkclone stderrcase) || { bad "scratch clone for flake TC-011" "$(head -c 400 "$SCR/clone.err" 2>/dev/null | tr '\n' ' ')"; D=; }
+  if [ -n "$D" ]; then
+    selfn=$(basename "${BASH_SOURCE[0]}")
+    (cd "$D" && DOC_TEST_INNER=1 "$BASH" "tests/$selfn" >"$SCR/g.out" 2>"$SCR/g.err"); grc=$?
+    if [ "$grc" = 0 ] && [ ! -s "$SCR/g.err" ]; then ok "flake TC-013: a green run prints nothing on stderr"; else bad "flake TC-013: a green run prints nothing on stderr" "rc=$grc stderr: $(head -c 300 "$SCR/g.err" | tr '\n' ' ')"; fi
+    addsn "$D"
+    (cd "$D" && DOC_TEST_INNER=1 "$BASH" "tests/$selfn" >"$SCR/r.out" 2>"$SCR/r.err"); rrc=$?
+    if [ "$rrc" != 0 ] && grep -F "$FPL" "$SCR/r.err" | grep 'FAIL' >/dev/null && grep -qE 'current fingerprint: [0-9a-f]{64}' "$SCR/r.err"; then ok "flake TC-011: a failure is named, with its reason, on stderr"; else bad "flake TC-011: a failure is named, with its reason, on stderr" "rc=$rrc"; fi
+    if grep -F "$FPL" "$SCR/r.out" | grep ' FAIL: ' >/dev/null; then ok "flake TC-012: the failure line is still on stdout in the usual shape"; else bad "flake TC-012: the failure line is still on stdout in the usual shape"; fi
+  fi
   # TC-009: this file has no comparison against main and no skip branch left
   SELF="$HERE/$(basename "${BASH_SOURCE[0]}")"
   if grep -qF -e "$P1" -e "$P2" "$SELF"; then bad "TC-009: no comparison against the main ref left in this file"; else ok "TC-009: no comparison against the main ref left in this file"; fi
   if grep -v "^[[:space:]]*#" "$SELF" | grep -F "$P3" >/dev/null; then bad "TC-009: no skip branch left in this file"; else ok "TC-009: no skip branch left in this file"; fi
+  # flake root cause: a pipe into `grep -q` (grep quits at the first match, the writer gets
+  # "Broken pipe", pipefail turns that into a failure although the text was found). The
+  # pattern is built from parts so this line does not match itself; comment lines are skipped.
+  PQ='\|[[:space:]]*grep[[:space:]]+-[a-zA-Z]*'"q"
+  qhit=$(grep -v "^[[:space:]]*#" "$SELF" | grep -E "$PQ" | cut -c1-90 | head -3 | tr '\n' '|')
+  if [ -z "$qhit" ]; then ok "flake TC-014: no check pipes text into an early-exit grep (pipefail race)"; else bad "flake TC-014: no check pipes text into an early-exit grep (pipefail race)" "found: $qhit"; fi
 fi
 
 # TC-047: the earlier scope assertions above run unchanged; only the version
@@ -239,7 +267,7 @@ fi
 echo "== 6.0.2: the platform checks run through four entries =="
 FLAT=$(tr '\n' ' ' < "$C" | tr -s ' ')
 # TC-E1
-if printf '%s' "$FLAT" | grep -qF 'run by `tests/platform_test.sh`'; then
+if printf '%s' "$FLAT" | grep -F 'run by `tests/platform_test.sh`' >/dev/null; then
   bad "TC-E1: no 'run by tests/platform_test.sh' left (lines folded)"; else ok "TC-E1: no 'run by tests/platform_test.sh' left (lines folded)"; fi
 # TC-E2
 has "TC-E2: constitution names tests/run_all.sh" "$C" 'tests/run_all.sh'
@@ -263,15 +291,16 @@ fi
 LASTV=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
 if [ "$LASTV" = '**Version**: 6.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-25' ]; then ok "TC-E5: version line is last and exact"; else bad "TC-E5: version line is last and exact" "got: $LASTV"; fi
 # TC-E6
-bash tests/constitution_6_test.sh >/dev/null 2>&1 && ok "TC-E6: constitution_6_test.sh passes" || bad "TC-E6: constitution_6_test.sh passes"
-bash tests/constitution_checks_exist_test.sh >/dev/null 2>&1 && ok "TC-E6: constitution_checks_exist_test.sh passes" || bad "TC-E6: constitution_checks_exist_test.sh passes"
+for t in constitution_6_test constitution_checks_exist_test; do
+  E6OUT=$(bash "tests/$t.sh" 2>&1) && ok "TC-E6: $t.sh passes" || bad "TC-E6: $t.sh passes" "$(printf '%s\n' "$E6OUT" | grep -E 'FAIL|NO CHECK|DANGLING|SENTENCE' | head -3 | tr '\n' '|')"
+done
 # TC-E7
-if printf '%s' "$E4" | tr '\n' ' ' | tr -s ' ' | grep -qF 'no rule changes meaning'; then ok "TC-E7: 6.0.2 says no rule changes meaning"; else bad "TC-E7: 6.0.2 says no rule changes meaning"; fi
+if printf '%s' "$E4" | tr '\n' ' ' | tr -s ' ' | grep -F 'no rule changes meaning' >/dev/null; then ok "TC-E7: 6.0.2 says no rule changes meaning"; else bad "TC-E7: 6.0.2 says no rule changes meaning"; fi
 
 # TC-E8 (6.1.0)
 E8=$(awk '/^### 6\.1\.0 /{p=1} /^## Governance/{p=0} p' "$C")
 if [ -n "$E8" ] && printf '%s' "$E8" | tr '
-' ' ' | tr -s ' ' | grep -qF 'still never log into the web'; then ok "TC-E8: 6.1.0 entry exists and keeps tokens out of the web"; else bad "TC-E8: 6.1.0 entry exists and keeps tokens out of the web"; fi
+' ' ' | tr -s ' ' | grep -F 'still never log into the web' >/dev/null; then ok "TC-E8: 6.1.0 entry exists and keeps tokens out of the web"; else bad "TC-E8: 6.1.0 entry exists and keeps tokens out of the web"; fi
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

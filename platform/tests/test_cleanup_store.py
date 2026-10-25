@@ -41,7 +41,7 @@ CONF_ROWS = [  # id, sha256, kind, created_at, used_at, caller, state, channel, 
 
 def old_jobs(read_task_log=True):
     from abf_platform import store
-    ddl = (store._JOBS_TABLE % {"name": "jobs"}).replace(", 'clean_work'", "")
+    ddl = (store._JOBS_TABLE % {"name": "jobs"}).replace(", 'pipeline_files'", "").replace(", 'clean_work'", "")      # release-lookup-job: the older table has no pipeline_files either
     return ddl if read_task_log else ddl.replace(", 'read_task_log'", "")
 
 
@@ -170,7 +170,7 @@ def test_fresh_jobs_take_clean_work_only_with_a_confirmation(tmp_path):
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c1', 'x', 'launch', 1)")
     con.execute(JOB_SQL, ("clean_work", "queued", "c3"))
     assert declared_kinds(check_of(con, "jobs")) == ["preflight", "list_site_files", "launch_nextflow", "cancel_run",
-                                                      "fetch_run_records", "read_task_log", "clean_work", "put_upload"]
+                                                      "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files"]
     n = con.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
     for kind in ("clean_work", "launch_nextflow", "cancel_run"):
         with pytest.raises(sqlite3.IntegrityError):

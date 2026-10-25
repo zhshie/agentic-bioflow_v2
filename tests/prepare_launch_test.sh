@@ -39,7 +39,7 @@ fake_preflight() {   # fake_preflight <line>...
     { printf '#!/bin/bash\n'
       for l in "$@"; do printf 'echo %q\n' "$l"; done
       # preflight.sh's own exit convention: nonzero iff a FAIL line was printed
-      if printf '%s\n' "$@" | grep -q '^FAIL'; then printf 'exit 1\n'; else printf 'exit 0\n'; fi
+      if printf '%s\n' "$@" | grep '^FAIL' >/dev/null; then printf 'exit 1\n'; else printf 'exit 0\n'; fi
     } > "$SDIR/preflight.sh"
     chmod +x "$SDIR/preflight.sh"
 }

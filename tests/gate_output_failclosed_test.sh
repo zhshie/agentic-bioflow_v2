@@ -124,7 +124,7 @@ run confirm_launch "$TMP/biglaunch.json"
 check "launch gate: a 70 KB command line still asks" "$([ "$(decision)" = ask ] && echo 1 || echo 0)" "got '$(decision)' rc=$RC"
 LEN=${#OUT}
 check "launch gate: ...with a bounded message that says what was left out" \
-  "$([ "$LEN" -lt 40000 ] && printf '%s' "$OUT" | grep -q 'left out of this display' && echo 1 || echo 0)" "length $LEN"
+  "$([ "$LEN" -lt 40000 ] && printf '%s' "$OUT" | grep 'left out of this display' >/dev/null && echo 1 || echo 0)" "length $LEN"
 
 mk "$TMP/bigrm.json" Bash "$BIG; $D -rf /work/u/lab_runs/x/results"
 run confirm_cleanup "$TMP/bigrm.json"
