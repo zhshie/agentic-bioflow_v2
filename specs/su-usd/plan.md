@@ -55,6 +55,14 @@ source: 維護者 2026-10-25「SU能否直接換成美元?」→ 選「做成『
 2. 測試請用 `wsl.exe -d Ubuntu -- bash -lc '~/.local/bin/abf-fast-suite <wt 的 /mnt 路徑> --pytest tests/<file>.py'`；不要直接在 /mnt/c 跑 pytest。
 3. `test_su_packaged` 會檢查 `su_rates.json` 有沒有被包進 wheel；新增的鍵不影響。
 
+4. （10-25，解 BLOCKED）run 頁「費用」卡**這次開始顯示真實 SU**：讀 web 已拿到的 `get_run` 結果的 `su`（不得另開讀取路徑）。有數字 → `<SU> SU（約 US$x.xx）`；SU 未知（None）→ 保持既有的「SU —」原字，既有斷言不動。種子 run 因此有了真實 SU 而讓既有斷言變紅的，只准把期望字串換成新顯示，ledger 逐條列。
+5. SU 為 0 → 只顯示「0.00 SU」，不加「約 US$」（美元 0 視同不顯示）。0 < 美元 < 0.01 → 「約 US$0.01 以下」。
+6. 設定檔缺 `usd_twd` 或 `rate`／`as_of` → `usd_approx` 與 `usd_rate_as_of` 都是 None，頁面不出現「約 US$」，註腳那句也不出現。
+7. 不動資料表、不存任何新資料，所以不需要 migration（PR 說明寫明）。
+8. `docs/TESTING.md` 加入範圍：新增一節「SU 約 US$」手動步驟（390 px、中英、註腳日期）。
+9. 「雲端列不重複」＝雲端卡片與雲端列沿用原本 US$ 顯示，不加「約 US$」。
+10. 範例 `0.16`／`US$0.16` 等只是示意，測試以公式計算值為準。
+
 ## 專長守則（ui）
 
 ### executor
