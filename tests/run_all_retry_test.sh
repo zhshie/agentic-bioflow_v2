@@ -151,8 +151,8 @@ run $F --no-such-flag
 t "TC-006 unknown flag with retry flag: exit 2" rc_is 2
 t "TC-006 nothing was run" no_cnt
 
-t "TC-007 header has no hard-coded number >= 10" bash -c '! head -20 "$0" | grep -qE "(^|[^[:alnum:]])[0-9]{2,}([^[:alnum:]]|\$)"' "$HERE/run_all.sh"
-t "TC-007 header still says run time" bash -c 'head -20 "$0" | grep -qiE "run ?time"' "$HERE/run_all.sh"
+t "TC-007 header has no hard-coded number >= 10" bash -c '! head -20 "$0" | grep -E "(^|[^[:alnum:]])[0-9]{2,}([^[:alnum:]]|\$)" >/dev/null' "$HERE/run_all.sh"
+t "TC-007 header still says run time" bash -c 'head -20 "$0" | grep -iE "run ?time" >/dev/null' "$HERE/run_all.sh"
 
 listed=$(bash "$HERE/run_all.sh" --list); n_list=$(printf '%s\n' "$listed" | grep -c .)
 n_real=$(ls "$HERE"/*.sh | grep -vc '/run_all\.sh$')
@@ -184,7 +184,7 @@ t "TC-077 unquarantined flaky never green" out_no "green after retry"
 reset; mk_ok ok_test.sh; mk_ok ok_two_test.sh; mk_flaky flaky_test.sh; setq '# c' "$(qline flaky_test.sh '#12' $D3)"; run $F
 t "TC-016 quarantined flaky: exit 0" rc_is 0
 t "TC-016 FLAKY line with issue and date" out_re "^FLAKY flaky_test\\.sh +quarantined #12 until $D3"
-t "TC-017 last line says green after retry: 1" bash -c 'tail -1 <<<"$0" | grep -qF "green after retry: 1"' "$OUT"
+t "TC-017 last line says green after retry: 1" bash -c 'tail -1 <<<"$0" | grep -F "green after retry: 1" >/dev/null' "$OUT"
 t "TC-017 never says all green" out_no "all green"
 t "TC-018 summary stays first-round: 2/3 passed, 1 failed" out_has "2/3 passed, 1 failed"
 sumln=$(grep -n 'passed' <<<"$OUT" | head -1 | cut -d: -f1)
@@ -278,7 +278,7 @@ reset; mk_flaky flaky_test.sh; setq "$(qline flaky_test.sh '#12' $D3)"; EXTRAPAT
 t "TC-082 registered flaky: exit 0" rc_is 0
 t "TC-082 green after retry present" out_has "green after retry"
 t "TC-082 note appears at least twice" note_count
-t "TC-082 note is on the green-after-retry line" bash -c 'grep "green after retry" <<<"$0" | grep -qF "run with --allow-missing-tools"' "$OUT"
+t "TC-082 note is on the green-after-retry line" bash -c 'grep "green after retry" <<<"$0" | grep -F "run with --allow-missing-tools" >/dev/null' "$OUT"
 reset; mk_flaky flaky_test.sh; EXTRAPATH="$TMP/nojq" RAW=1 run $F
 t "TC-083 unregistered flaky: exit 1" rc_is 1
 t "TC-083 note appears at least twice" note_count
@@ -364,7 +364,7 @@ sweep "TC-056 shimmed"
 t "TC-056 neither python3 nor a relative date was used" bash -c '[ ! -e "$0/python-called" ] && [ ! -e "$0/date-rel-called" ]' "$TMP"
 EXTRAPATH=""
 
-t "TC-057 real quarantine.txt exists, no valid entries" bash -c '[ -f "$0/quarantine.txt" ] && ! grep -vE "^[[:space:]]*(#|\$)" "$0/quarantine.txt" | grep -q .' "$HERE"
+t "TC-057 real quarantine.txt exists, no valid entries" bash -c '[ -f "$0/quarantine.txt" ] && ! grep -vE "^[[:space:]]*(#|\$)" "$0/quarantine.txt" | grep . >/dev/null' "$HERE"
 
 # TC-084: trailing # comment, with and without CRLF.
 reset; mk_ok ok_test.sh; mk_ok ok_two_test.sh
@@ -494,7 +494,7 @@ t "TC-112b ran no test" no_cnt
 QH=$(grep '^#' "$HERE/quarantine.txt")
 t "TC-113 real header has the four-column line" grep -qF 'tests/<name>.sh <issue> <expiry YYYY-MM-DD> <since YYYY-MM-DD>' <<<"$QH"
 t "TC-113 real header mentions since" grep -qi 'since' <<<"$QH"
-t "TC-113 real list still has no valid entry" bash -c '! grep -vE "^[[:space:]]*(#|\$)" "$0/quarantine.txt" | grep -q .' "$HERE"
+t "TC-113 real list still has no valid entry" bash -c '! grep -vE "^[[:space:]]*(#|\$)" "$0/quarantine.txt" | grep . >/dev/null' "$HERE"
 t "TC-113b since defined: first quarantined, do not change on renewal" bash -c 'grep -qi "first quarantined" <<<"$0" && grep -qi "do not change" <<<"$0"' "$QH"
 t "TC-113c rule: 14 days per term, 28 days total, renew once" bash -c 'grep -qF "14 days" <<<"$0" && grep -qF "28 days" <<<"$0" && grep -qi "once" <<<"$0"' "$QH"
 t "TC-113d old per-day sentence is gone" bash -c '! grep -qF "expiry at most 14 days from the day it is checked" <<<"$0"' "$QH"

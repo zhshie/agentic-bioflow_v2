@@ -16,6 +16,8 @@ The only routes there are:
   GET  /login        the login form (name + web password)
   POST /login        log in; the password is checked against its scrypt hash; a cookie of 12 hours
   POST /logout       end this browser login
+  GET  /welcome      the only page a temporary-password login reaches: set your own password (a 303 to / for an ordinary login, to /login for none)
+  POST /welcome      set it (old = the temporary password, new, confirm; its own CSRF token; counted in the same failure windows as /login), then 303 to / on the same login
   GET  /c/{rid}      the summary of one pending request, for the user who made it; never changes anything
   POST /c/{rid}      the button: needs the cookie, the same user as the request, and the CSRF token of this login and this request
 
@@ -139,8 +141,8 @@ def _login_form(next_path="", message="", status=200):
     nxt = "<input type=\"hidden\" name=\"next\" value=\"%s\">" % _esc(next_path) if next_path else ""
     limit = "（%d 到 %d 個字元 / %d to %d characters）" % (store.MIN_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS,
                                                      store.MIN_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS)
-    return _page("登入 (log in)", note + "<p>請用你的姓名與<strong>網頁密碼</strong>登入（網頁密碼不是 AI 用的權杖；它只能在終端機用 "
-                 "<code>abf-platform user passwd</code> 設定）。</p><form method=\"post\" action=\"/login\">"
+    return _page("登入 (log in)", note + "<p>請用你的姓名與<strong>網頁密碼</strong>登入（網頁密碼不是 AI 用的權杖；它在平台主機的終端機用 "
+                 "<code>abf-platform user passwd</code> 設定，或用管理者給你的一次性臨時密碼）。</p><form method=\"post\" action=\"/login\">"
                  "<p><label>姓名 <input name=\"name\" autocomplete=\"username\" required></label></p>"
                  "<p><label>密碼 <input name=\"password\" type=\"password\" autocomplete=\"current-password\" required></label> "
                  "<small>" + _esc(limit) + "</small></p>"
@@ -184,6 +186,20 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     def csrf_token(cookie, rid):
         return csrf(cookie.split(".")[0], rid)
+
+    def temp_user_of(request):
+        """(sid, user) of a login made with a temporary password that is still good; user is None for any other cookie (or none)."""
+        sid = session_id(request)
+        who = store.web_session_user(tokens_path, sid, clock(), allow_must_change=True) if sid else None
+        return sid, (who if who is not None and who["must_change"] else None)
+
+    def to_welcome(request):
+        """303 to /welcome for a login made with a temporary password, else None."""
+        return RedirectResponse("/welcome", status_code=303, headers=_HEADERS) if temp_user_of(request)[1] is not None else None
+
+    def unauth(request):
+        """Where a page that needs a login sends a browser that has none: /welcome for a temporary-password login, else /login."""
+        return to_welcome(request) or RedirectResponse("/login", status_code=303, headers=_HEADERS)
 
     def recent(table, key, now):
         live = [t for t in table.get(key, ()) if now - t < FAIL_WINDOW]
@@ -255,16 +271,84 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                     % (store.MAX_PASSWORD_CHARS, MAX_NAME_CHARS, store.MAX_PASSWORD_CHARS, MAX_NAME_CHARS)
                     if too_long else "姓名或密碼不對 (wrong name or password)")
             return _login_form(nxt, note, 401)
+        give_back(name, ip, now)
+        sid, _ = store.create_web_session(tokens_path, who["user_id"], now)
+        response = RedirectResponse("/welcome" if who["must_change"] else (nxt or HOME), status_code=303, headers=_HEADERS)
+        response.set_cookie(COOKIE, cookie_value(sid), max_age=int(store.WEB_SESSION_SECONDS), httponly=True, samesite="Strict",
+                            secure=secure, path="/")
+        return response
+
+    def give_back(name, ip, now):
+        """Take back the failure entry this request counted (a right password, or a refusal that is not a wrong guess)."""
         for table, k in ((by_name, name), (by_ip, ip)):
             if now in table.get(k, ()):
                 table[k].remove(now)
             if not table.get(k, True):
                 table.pop(k, None)
-        sid, _ = store.create_web_session(tokens_path, who["user_id"], now)
-        response = RedirectResponse(nxt or HOME, status_code=303, headers=_HEADERS)
-        response.set_cookie(COOKIE, cookie_value(sid), max_age=int(store.WEB_SESSION_SECONDS), httponly=True, samesite="Strict",
-                            secure=secure, path="/")
-        return response
+
+    def welcome_form(sid, message="", status=200):
+        note = "<p class=\"bad\">%s</p>" % _esc(message) if message else ""
+        limit = "（%d 到 %d 個字元 / %d to %d characters）" % (store.MIN_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS,
+                                                         store.MIN_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS)
+        return _page("設定你自己的密碼 (set your own password)",
+                     note + "<p>你用的是管理者給的臨時密碼，它 72 小時內有效、只能用來設定你自己的密碼。設好之後就用新密碼登入。</p>"
+                     "<p>You are using a one-time temporary password from your administrator. It works for 72 hours and only lets you set "
+                     "your own password. After that, log in with your new password.</p>"
+                     "<form method=\"post\" action=\"/welcome\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
+                     "<p><label>目前的臨時密碼 (current temporary password) <input name=\"old\" type=\"password\" "
+                     "autocomplete=\"current-password\" required></label></p>"
+                     "<p><label>新密碼 (new password) <input name=\"new\" type=\"password\" autocomplete=\"new-password\" required></label> "
+                     "<small>%s</small></p>"
+                     "<p><label>再輸入一次新密碼 (new password again) <input name=\"confirm\" type=\"password\" "
+                     "autocomplete=\"new-password\" required></label></p>"
+                     "<p><button type=\"submit\">設定密碼 (set password)</button></p></form>"
+                     "<form method=\"post\" action=\"/logout\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
+                     "<p><button type=\"submit\">登出 (log out)</button></p></form>"
+                     % (_esc(csrf(sid, "welcome")), _esc(limit), _esc(csrf(sid, "logout"))), status)
+
+    def not_temporary(request):
+        """Where /welcome sends a browser that is not in a temporary-password login: home for an ordinary login, else /login."""
+        sid = session_id(request)
+        who = store.web_session_user(tokens_path, sid, clock()) if sid else None
+        return RedirectResponse(HOME if who is not None else "/login", status_code=303, headers=_HEADERS)
+
+    async def welcome_get(request):
+        sid, user = temp_user_of(request)
+        return welcome_form(sid) if user is not None else not_temporary(request)
+
+    async def welcome_post(request):
+        if not same_origin(request):
+            return foreign(request)
+        sid, user = temp_user_of(request)
+        if user is None:
+            return not_temporary(request)
+        form = await body_of(request)
+        if not _same(form.get("csrf", ""), csrf(sid, "welcome")):
+            return _page("表單已失效", "<p class=\"bad\">這個表單的記號不對或已失效，什麼都沒有改。請重新整理頁面再按。</p>", 403)
+        name = user["name"][:MAX_NAME_CHARS]
+        ip = request.client.host if request.client else ""
+        now = clock()
+        if (len(recent(by_name, name, now)) >= FAIL_LIMIT or len(recent(by_ip, ip, now)) >= IP_FAIL_LIMIT
+                or no_room(by_name, name, now) or no_room(by_ip, ip, now)):
+            return welcome_form(sid, "登入失敗太頻繁，請一分鐘後再試 (too many tries, wait a minute)", 429)
+        old, new, again = str(form.get("old", "")), str(form.get("new", "")), str(form.get("confirm", ""))
+        if new != again:
+            return welcome_form(sid, "兩次輸入的新密碼不一樣 (the two new passwords differ)", 400)
+        # Counted before the slow check, in the same step as the limit check (no await between them), as the login page does.
+        by_name.setdefault(name, []).append(now)
+        by_ip.setdefault(ip, []).append(now)
+        if len(old) > store.MAX_PASSWORD_CHARS:
+            return welcome_form(sid, "密碼最長 %d 個字元 (password at most %d characters)" % (store.MAX_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS), 400)
+        try:
+            await run_in_threadpool(store.change_web_password, tokens_path, user["name"], old, new, keep_sid=sid)
+        except ValueError as e:
+            message = str(e)
+            if "目前的密碼不對" in message:
+                return welcome_form(sid, message, 401)
+            give_back(name, ip, now)
+            return welcome_form(sid, message, 400)
+        give_back(name, ip, now)
+        return RedirectResponse(HOME, status_code=303, headers=_HEADERS)
 
     async def logout_post(request):
         if not same_origin(request):
@@ -322,7 +406,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return _page("找不到 (not found)", "<p>沒有這個網址。</p>", 404)
         sid, user = user_of(request)
         if user is None:
-            return _login_form("/c/" + rid)
+            return to_welcome(request) or _login_form("/c/" + rid)
         answer, req = view_of(rid, user)
         return answer or state_page(req, sid, rid, web_board.pick_lang(request.query_params.get("lang")))
 
@@ -334,7 +418,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return _page("找不到 (not found)", "<p>沒有這個網址。</p>", 404)
         sid, user = user_of(request)
         if user is None:
-            return _login_form("/c/" + rid, "請先登入 (log in first)", 401)
+            return to_welcome(request) or _login_form("/c/" + rid, "請先登入 (log in first)", 401)
         answer, req = view_of(rid, user)
         if answer is not None:
             return answer
@@ -406,7 +490,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     async def board(request):
         sid, user = user_of(request)
         if user is None:
-            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+            return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
         return await board_page(sid, user, caller, lang, request.query_params.get("run") or "", request.query_params.get("stage"),
@@ -428,7 +512,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         verb = request.path_params["verb"]
         sid, user = user_of(request)
         if user is None:
-            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+            return unauth(request)
         form = await body_of(request)
         lang = web_board.pick_lang(form.get("lang"))
         run_id = str(form.get("run", ""))[:200]
@@ -484,7 +568,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     async def launch_get(request):
         sid, user = user_of(request)
         if user is None:
-            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+            return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
         t = web_board.STRINGS[lang]
@@ -565,7 +649,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return foreign(request)
         sid, user = user_of(request)
         if user is None:
-            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+            return unauth(request)
         form = await body_of(request)
         lang = web_board.pick_lang(form.get("lang"))
         t = web_board.STRINGS[lang]
@@ -615,7 +699,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     async def settings(request):
         sid, user = user_of(request)
         if user is None:
-            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+            return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
         runs = await run_in_threadpool(read_runs, caller)
@@ -626,7 +710,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     async def usage_page(request):
         sid, user = user_of(request)
         if user is None:
-            return RedirectResponse("/login", status_code=303, headers=_HEADERS)
+            return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
         month, bad = web_cost.pick_month(request.query_params.get("month"))
@@ -689,7 +773,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return gone
         sid, user = user_of(request)
         if user is None:
-            return _login_form("/consent/" + rid)
+            return to_welcome(request) or _login_form("/consent/" + rid)
         return consent_page(info, sid)
 
     async def consent_post(request):
@@ -701,7 +785,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return _page("找不到 (not found)", "<p>沒有這個申請。</p>", 404)
         sid, user = user_of(request)
         if user is None:
-            return _login_form("/consent/" + rid, "請先登入 (log in first)", 401)
+            return to_welcome(request) or _login_form("/consent/" + rid, "請先登入 (log in first)", 401)
         form = await body_of(request)
         if not _same(form.get("csrf", ""), consent_csrf(sid, rid)):
             return _page("表單已失效", "<p class=\"bad\">這個表單的記號不對或已失效，什麼都沒有改。請重新整理頁面再按。</p>", 403)
@@ -718,6 +802,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch", launch_post, methods=["POST"]),
                             Route("/act/{verb}", act_post, methods=["POST"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
+                            Route("/welcome", welcome_get, methods=["GET"]), Route("/welcome", welcome_post, methods=["POST"]),
                             Route("/c/{rid}", confirm_get, methods=["GET"]), Route("/c/{rid}", confirm_post, methods=["POST"]),
                             Route("/consent/{rid}", consent_get, methods=["GET"]), Route("/consent/{rid}", consent_post, methods=["POST"])]
                     + auth_routes, middleware=[Middleware(oauth.RegisterBodyCap), Middleware(oauth.RegisterRateCap, clock=clock)])

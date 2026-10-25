@@ -321,13 +321,13 @@ def test_tc090_the_new_tables_have_no_run_state_and_the_job_kinds_are_locked_in_
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c3', 'x', 'clean_work', 1)")
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c2', 'x', 'cancel', 1)")
     for kind, cid in (("preflight", None), ("list_site_files", None), ("launch_nextflow", "c1"), ("cancel_run", "c2"),
-                      ("fetch_run_records", None), ("read_task_log", None), ("clean_work", "c3"), ("put_upload", None)):
+                      ("fetch_run_records", None), ("read_task_log", None), ("clean_work", "c3"), ("put_upload", None), ("pipeline_files", None)):
         con.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, confirmation_id) "
                     "VALUES ('a1', 'x', ?, '{}', 'queued', 1, 2, ?)", (kind, cid))
     declared = re.search(r"kind TEXT NOT NULL CHECK \(kind IN \(([^)]*)\)\)",
                          con.execute("SELECT sql FROM sqlite_master WHERE name = 'jobs'").fetchone()[0]).group(1)
     assert set(re.findall(r"'([a-z_]+)'", declared)) == {"preflight", "list_site_files", "launch_nextflow", "cancel_run",
-                                                         "fetch_run_records", "read_task_log", "clean_work", "put_upload"}
+                                                         "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files"}
     con.close()
 
 

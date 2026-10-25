@@ -98,13 +98,13 @@ t "its header comes from the last '#' line"      "pct_complete"      "$out"
 t "and its first column is not '#sample'"        "sample"            "$out"
 nt "the '#' is stripped from that header"        "#sample"           "$out"
 printf '%-58s ' "preamble lines are not counted as rows"
-if grep -E 'with_preamble\.tsv' -A3 <<<"$out" | grep -qE '\b4 rows\b'; then echo ok
+if grep -E 'with_preamble\.tsv' -A3 <<<"$out" | grep -E '\b4 rows\b' >/dev/null; then echo ok
 else echo "FAIL: 4 data rows not reported <<$(grep -E 'with_preamble' -A3 <<<"$out")>>"; fails=$((fails+1)); fi
 
 t "a csv reports its own columns"                "sample_id"         "$out"
 t "and its quoted comma does not become a column" "condition"        "$out"
 printf '%-58s ' "the quoted field stays one column"
-if grep -E 'plain\.csv' -A3 <<<"$out" | grep -qF 'with a comma'; then
+if grep -E 'plain\.csv' -A3 <<<"$out" | grep -F 'with a comma' >/dev/null; then
   echo "FAIL: split inside quotes"; fails=$((fails+1)); else echo ok; fi
 
 t "a .txt that is really a tsv is detected as one" "task_id"          "$out"
@@ -115,12 +115,12 @@ t "a json array reports its length"              "3"                 "$out"
 t "and the keys of its first element"            "reads"             "$out"
 t "a yaml lists its top-level keys"              "BETA_STEP"         "$out"
 printf '%-58s ' "nested yaml keys are not promoted to top level"
-if grep -E 'versions\.yml' -A3 <<<"$out" | grep -qE '\bbeta\b'; then
+if grep -E 'versions\.yml' -A3 <<<"$out" | grep -E '\bbeta\b' >/dev/null; then
   echo "FAIL: nested key reported as top-level"; fails=$((fails+1)); else echo ok; fi
 
 t "html is listed"                               "report.html"       "$out"
 printf '%-58s ' "html is not parsed for columns"
-if grep -E 'report\.html' -A2 <<<"$out" | grep -qiE 'column|rows'; then
+if grep -E 'report\.html' -A2 <<<"$out" | grep -iE 'column|rows' >/dev/null; then
   echo "FAIL: parsed an html file"; fails=$((fails+1)); else echo ok; fi
 t "pdf is listed"                                "report.pdf"        "$out"
 
@@ -129,7 +129,7 @@ t "a binary blob is named as skipped"            "archive.txt"       "$out"
 t "and the reason says binary"                   "binary"            "$out"
 t "an oversized file is named as skipped"        "oversized.tsv"     "$out"
 printf '%-58s ' "and is not parsed despite parsing cleanly"
-if grep -E 'oversized\.tsv' -A2 <<<"$out" | grep -qE '\brows\b'; then
+if grep -E 'oversized\.tsv' -A2 <<<"$out" | grep -E '\brows\b' >/dev/null; then
   echo "FAIL: parsed past the size threshold"; fails=$((fails+1)); else echo ok; fi
 t "the size threshold is stated"                 "--max-mb"          "$out"
 

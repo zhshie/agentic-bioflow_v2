@@ -677,6 +677,16 @@ The automatic tests (`platform/tests/test_su_usd.py`) check the numbers and the 
 2. **Both languages (TC-064).** Open the same pages with `?lang=en`. Check: Chinese shows `（約 US$…）`, English shows `(≈ US$…)`, and the English page has no Chinese word except the language switch and your own names.
 3. **The date under the cards (TC-065).** Read the sentence after the cost note on `/usage`. Check: the date in it is the same as `usd_twd.as_of` in `configs/sites/su_rates.json`.
 
+## A temporary password, then your own (web-change-password): the maintainer and the reviewer check
+
+Automatic tests: `platform/tests/test_web_welcome.py`. These steps need a real browser and the platform host's terminal. Use a test user, never a real colleague's name.
+
+1. On the platform host's terminal run `abf-platform user passwd <name> --temporary` and write down the 16-character password it prints once. It works for 72 hours.
+2. In a browser open the login page, log in as `<name>` with that password. Pass: you land on `/welcome` ("設定你自己的密碼 (set your own password)"), not on the board.
+3. Type `/` in the address bar. Pass: you are brought back to `/welcome`; no run, no cost, no 送出 button is shown anywhere.
+4. On `/welcome` fill the three boxes (the temporary password, a new password of 8 or more characters, the same new password again) and press 設定密碼. Pass: you go straight to the board without logging in again. Try once with two different new passwords first: the page says so and nothing changes.
+5. Press 登出, then log in with the new password. Pass: it works and you land on the board. Log in with the old temporary password. Pass: it is refused.
+
 ## Finished stage (finished-stage): the maintainer and the reviewer check
 
 The automatic tests are in `platform/tests/test_web_finished.py`. The steps below need a browser and a succeeded run that was launched from the platform.
@@ -694,6 +704,16 @@ The automatic tests are in `platform/tests/test_web_status_squares_3.py`. The st
 3. **390 px.** In developer tools (device mode, 390 px wide) open `/` and each of the four analyses, in both languages, and run `document.documentElement.scrollWidth === document.documentElement.clientWidth` in the console. Check: it is `true` (no horizontal scroll bar); no square or word is cut off or overlaps. Write the numbers in the PR.
 4. **Tab key.** Press Tab repeatedly on the failed analysis page. Check: each link and button shows a visible focus outline in turn.
 5. **Detector.** Save the rendered HTML of `/` and of the failed analysis page to files and run `sh .claude/skills/impeccable/scripts/impeccable detect <file.html>` on each. Check: it runs; copy its findings into the review (contrast and fonts are for a person to judge, not a failure).
+
+## release-lookup-job：真的連 GitHub 讀一次 (release-lookup-job: read GitHub for real, once)
+
+The automatic tests never reach the internet (a guard fails any test that tries). This is the one time a person checks it for real: the maintainer or developer-agent does it, on a machine with a network. It only sends read requests for public files. Nothing is written and no credential is sent.
+
+1. **Start the platform and an agent** as in sections 1 and 6 of `docs/PLATFORM.md`, and add a compute environment that names that agent (it does not need to be checked first: this job never touches the site).
+2. **Pipeline files.** In one line of Python call `actions.pipeline_files(<path of platform.db>, "nf-core/ampliseq", "2.18.0")` and call it again every 5 seconds until `state` is no longer `loading` (about a minute at most: the agent asks for work every 25 seconds). Check: `state` is `ready`; `schema.groups` has 16 groups holding 170 parameters in all; `schema.required_without_default == ["outdir"]`; the first column of `schema_input.columns` is `sampleID`; `diagram.name == "ampliseq_workflow.png"` and `diagram.size == 753702`. Then call it with `parts=("image",)`. Check: `len(base64.b64decode(image["data_b64"])) == 753702` and the bytes begin with the PNG signature `\x89PNG`.
+3. **Newest release.** Call `actions.latest_release(<path>, "nf-core/ampliseq")` the same way. Check: it ends as the newest plain numbered tag (on 2026-10-25 that was `3.0.0`; go by GitHub on the day), `source` is `fetched`, and `release-tags.json` has appeared beside `platform.db`. Call it again at once. Check: `source` is `cache` and the `jobs` table has no new `pipeline_files` row.
+4. **No network.** Switch the agent machine's network off (or stop its access to the internet) and call `actions.pipeline_files(<path>, "nf-core/rnaseq", "3.27.0")`, a pair not asked before. Check: within about a minute `state` is `error`, `error` is `network`, and `reason` is a plain sentence that tells you to check the machine's network.
+5. **Write down** the output of each step in `specs/release-lookup-job/ledger.md`.
 
 ## When something is red
 

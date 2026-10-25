@@ -603,7 +603,7 @@ def test_the_deadlines_are_300_seconds_for_a_launch_and_can_be_shortened(tmp_pat
     assert jobs.deadline_seconds("launch_nextflow") == 300
     monkeypatch.setenv("ABF_PLATFORM_DEADLINE_LAUNCH", "7")
     assert jobs.deadline_seconds("launch_nextflow") == 7
-    assert set(jobs.KINDS) == {"preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload"}   # run-diag-tools: plus read_task_log; cloud-cleanup-b: plus clean_work; byte-channel-a: plus put_upload
+    assert set(jobs.KINDS) == {"preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files"}   # run-diag-tools: plus read_task_log; cloud-cleanup-b: plus clean_work; byte-channel-a: plus put_upload; release-lookup-job: plus pipeline_files
 
 
 # ---- TC-036: `abf-platform launches` -----------------------------------------------------------------------------

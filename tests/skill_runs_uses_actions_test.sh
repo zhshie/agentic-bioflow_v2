@@ -128,7 +128,7 @@ m=$(maps CANCELLED)
 grep -qF '`failed`' <<<"$m" && grep -qiE 'cancel' <<<"$m" && grep -qiE 'Nextflow reports a cancelled run as failed' <<<"$m"; chk "TC-083 CANCELLED = failed with a cancel request sent" $?
 m=$(maps UNKNOWN)
 grep -qF '`lost`' <<<"$m" && grep -qiE 'three heartbeats' <<<"$m" && grep -qiE 'any other' <<<"$m"; chk "TC-084 UNKNOWN = lost (three heartbeats) or any other value" $?
-! paras | grep -vE '^Mapping:' | grep -E '(list_runs|get_run|[Pp]latform)[^.]*report[a-z]* [^.]*(SUBMITTED|CANCELLED)' | grep -q .; chk "TC-086 no sentence says the platform reports SUBMITTED or CANCELLED" $?
+! paras | grep -vE '^Mapping:' | grep -E '(list_runs|get_run|[Pp]latform)[^.]*report[a-z]* [^.]*(SUBMITTED|CANCELLED)' | grep . >/dev/null; chk "TC-086 no sentence says the platform reports SUBMITTED or CANCELLED" $?
 
 # S2: resume = same folder, cache; relaunch = new folder, from the start (checked sentence by sentence)
 sent() { paras | sed 's/\([.!?]\) /\1\n/g'; }
@@ -154,7 +154,7 @@ jev=$(grep -n 'Jev triage, only if' -A4 "$SK")
 grep -qF 'workdir' <<<"$jev" && grep -qiE 'first failing task' <<<"$jev" && grep -qE 'once per run, never per task' <<<"$jev"; chk "TC-102 Jev triage runs for the first failing task with a workdir, once per run" $?
 ! grep -qE 'only when the person has given the task folder' "$SK"; chk "TC-102 Jev no longer waits for the person to give the folder" $?
 grep -qiE 'has no .?workdir.? for (that|a|the) task' <<<"$failed"; chk "TC-103 one plain sentence: ask the person only when get_run has no workdir" $?
-! grep -E 'no .?workdir' "$SK" | grep -q "$UNAVAIL"; chk "TC-103 the no-workdir sentence does not say 'not available on v3 yet'" $?
+! grep -E 'no .?workdir' "$SK" | grep "$UNAVAIL" >/dev/null; chk "TC-103 the no-workdir sentence does not say 'not available on v3 yet'" $?
 grep -qF '`read_task_log`' <<<"$nr" && grep -qF '`run_name`' <<<"$nr" && grep -qF '`task`' <<<"$nr" && grep -qF '`which`' <<<"$nr"; chk "TC-104 the log is read with read_task_log(run_name, task, which)" $?
 grep -qiE '`which`[^.]*`err`|`err`[^.]*first' <<<"$nr" && grep -qiE '`out`' <<<"$nr" && grep -qiE 'empty' <<<"$nr"; chk "TC-104 which = err first, out or log if err is empty" $?
 ! grep -q 'fetch.sh' <<<"$failed"; chk "TC-105 the FAILED section no longer reads the log with fetch.sh" $?
@@ -162,7 +162,7 @@ grep -qiE '`which`[^.]*`err`|`err`[^.]*first' <<<"$nr" && grep -qiE '`out`' <<<"
 grep -qF 'scripts/fetch.sh' "$SK"; chk "TC-105 fetch.sh stays where results are delivered" $?
 rf=$(grep -n 'read_task_log' -A12 "$SK" | grep -iE 'refus|no .?workdir|not launched|offline')
 grep -qiE 'no .?workdir|no recorded' <<<"$rf" && grep -qiE 'not launched (from|by|through) this platform' <<<"$rf" && grep -qiE 'offline' <<<"$rf"; chk "TC-106 the three refusals of read_task_log each have a fall-back line" $?
-! grep -n 'read_task_log' -A12 "$SK" | grep -iE 'refus|offline' | grep -qE 'fetch.sh'; chk "TC-106 no fall-back sends the AI to fetch.sh" $?
+! grep -n 'read_task_log' -A12 "$SK" | grep -iE 'refus|offline' | grep -E 'fetch.sh' >/dev/null; chk "TC-106 no fall-back sends the AI to fetch.sh" $?
 # S9
 grep -qF '`cancel_requested_at`' <<<"$cancelled" && grep -qF 'Asia/Taipei' <<<"$cancelled" && grep -qiE 'already (asked|requested)' <<<"$cancelled"; chk "TC-107 CANCELLED: cancel_requested_at, already asked for, time in Asia/Taipei" $?
 grep -qF '`cancel_requested_at`' <<<"$(section CANCELLED | grep -E '^Mapping:')"; chk "TC-083/107 the CANCELLED mapping rests on cancel_requested_at" $?
@@ -172,7 +172,7 @@ grep -qF 'cancel_requested_at' <<<"$run" && grep -qiE 'not offer|do not offer|an
 # S10
 inp=$(awk '/^#### `input`/{p=1;next} /^#### |^### |^## /{p=0} p' "$SK" | tr -s '[:space:]' ' ')
 grep -qE 'new `?launch`?' <<<"$inp" && grep -qiE 'not `?relaunch`?|`relaunch` is only' <<<"$inp"; chk "TC-109 input: a corrected samplesheet is a new launch, not relaunch" $?
-! grep -niE 'samplesheet|sample sheet|input file' "$SK" | grep -iE 'relaunch|resume' | grep -viE 'new `?launch|not `?relaunch|cannot|never' | grep -q .; chk "TC-109 no line says a changed samplesheet or input is re-run by relaunch/resume" $?
+! grep -niE 'samplesheet|sample sheet|input file' "$SK" | grep -iE 'relaunch|resume' | grep -viE 'new `?launch|not `?relaunch|cannot|never' | grep . >/dev/null; chk "TC-109 no line says a changed samplesheet or input is re-run by relaunch/resume" $?
 # S11
 if [ -r "$LEDGER" ]; then
     [ "$(grep -cE '^- owed: ' "$LEDGER")" = 6 ]; chk "TC-110 the ledger owes exactly 6 things" $?
@@ -185,7 +185,7 @@ fi
 
 # S13/S14/S15 (2026-10-19): never tell the AI to read `.exitcode` as a file; the over-allocated row proposes, not shrinks
 ! grep -qF '.exitcode' "$SK"; chk "TC-120 SKILL.md has no instruction to read .exitcode as a file" $?
-grep -F 'badly over-allocated' "$SK" | grep -q 'new `launch`'; chk "TC-121 the over-allocated row says a smaller box is a new launch the person confirms" $?
+grep -F 'badly over-allocated' "$SK" | grep 'new `launch`' >/dev/null; chk "TC-121 the over-allocated row says a smaller box is a new launch the person confirms" $?
 ! grep -qF 'abf-platform launches' "$LEDGER"; chk "TC-122 the ledger no longer mentions abf-platform launches" $?
 
 # S5: one manual step in docs/TESTING.md under the 009e section
