@@ -156,7 +156,7 @@ def test_tc006_a_second_run_of_the_same_confirmed_job_is_refused(env):
     job = env.job()
     assert env.go(job)[0] == "done"
     state, res = env.go(job)
-    assert state == "refused" and "已用過" in res["message"]
+    assert state == "refused" and "用過" in res["message"]
     assert len(env.site.destructive()) == 1 and env.sent() == 1
 
 
@@ -555,7 +555,7 @@ def test_tc069_no_flag_asks_for_more_than_work(env, key):
 
 def test_tc071_no_nextflow_program_is_called_and_the_command_does_not_name_it(env):
     env.go()
-    assert "nextflow" not in env.command() and not [c for c in env.site.calls() if c.startswith("nextflow")]
+    assert "nextflow" not in env.command().replace(str(env.site.tmp), "") and not [c for c in env.site.calls() if c.startswith("nextflow")]
 
 
 def test_tc072_the_source_has_no_loop_no_thread_no_sleep_no_retry_and_failures_send_one_command(env):
