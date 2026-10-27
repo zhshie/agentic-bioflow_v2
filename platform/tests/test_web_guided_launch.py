@@ -92,7 +92,7 @@ def test_gl01_seven_numbered_steps(rig):
     assert len(titles) == 7 and len(set(titles)) == 7
     assert current(t) == [2] and s[2]["open"] and [n for n in s if s[n]["open"]] == [2]
     assert "選好管線後檢查" in s[1]["html"] and s[1]["state"] != "current"
-    assert s[3]["state"] == "later" and "之後開放" in s[3]["html"]
+    assert s[3]["state"] == "later" and "選好管線與版本後顯示" in s[3]["html"]      # guided-launch-2: was 之後開放
     assert all(s[n]["state"] == "later" and not s[n]["open"] for n in (4, 5, 6, 7))
 
 
@@ -191,10 +191,10 @@ def test_gl03_select_marks_step2_done_and_runs_prechecks(rig):
     s = steps(t)
     assert s[2]["state"] == "done" and not s[2]["open"] and "nf-core/ampliseq" in s[2]["html"] and "2.18.0" in s[2]["html"]
     assert s[3]["state"] == "later" and current(t) == [4]
-    assert len(re.findall(r'<li class="chk (\w+)">', s[1]["html"])) == 4
+    assert len(re.findall(r'<li class="chk (\w+)">', s[1]["html"])) == 5      # guided-launch-2: was 4, the parameter-table row is a real row now
     for word in ("版本已指定", "站台連線", "管線已登記", "有可用樣本表", "讀取管線參數表"):
         assert word in s[1]["html"]
-    assert "之後開放" in s[1]["html"]
+    assert "讀取中" in s[1]["html"]      # guided-launch-2: was 之後開放, the row reads while the agent has not answered
     assert not re.search(r'<li class="chk', steps(c.get("/launch").text)[1]["html"])
 
 
@@ -277,7 +277,7 @@ def test_gl07_param_routes(rig):
     assert "已用這個 run 的內容預填" not in t
     assert box_of(c.get(base + "&route=defaults&params_from=run-a").text) == ""
     assert box_of(c.get(base + "&route=custom&params=x%3A+1%0Ay%3A+2").text) == "x: 1\ny: 2"
-    assert "之後開放" in steps(c.get(base).text)[5]["html"]
+    assert "讀取中" in steps(c.get(base).text)[5]["html"] and "之後開放" not in steps(c.get(base).text)[5]["html"]      # guided-launch-2: was 之後開放
     for bad in ("run-bob", "nope"):
         t = c.get(base + "&params_from=" + bad).text
         assert "這個分析的參數不能沿用。" in t and box_of(t) == "" and "zzz" not in t

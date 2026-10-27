@@ -10,11 +10,11 @@ import socket
 
 import pytest
 
-from helpers import PLATFORM_DIR, REPO_ROOT
+from helpers import REPO_ROOT
 from test_pipeline_files_action import DIAGRAM, INPUT_TEXT, PNG, SCHEMA_TEXT
 from test_web_actions import area_sheet, form_values, login, pending
 from test_web_board import no_cjk
-from test_web_guided_launch import SEL, ready, rig, steps  # noqa: F401  (rig is a fixture)
+from test_web_guided_launch import SEL, ready, rig  # noqa: F401  (rig is a fixture)
 
 NETWORK = "代理連不到 GitHub，請檢查那台機器的網路 (the agent could not reach GitHub; check that machine's network)"
 NOT_FOUND = "GitHub 上找不到這個版本需要的檔案，請確認 pipeline 名稱與版本 (the files were not found on GitHub; check the pipeline name and revision)"
@@ -177,7 +177,7 @@ def test_g01_no_revision(rig, fk):
     t = c.get("/launch?pipeline=nf-core/ampliseq&src=used").text
     assert row(t, "讀取管線參數表") == "○ 讀取管線參數表 選好版本後檢查"
     assert "　選好版本後檢查" in step(t, 1)
-    assert "前置檢查未通過" not in step(t, 7) and fk.main_calls() == []
+    assert "讀取管線參數表" not in step(t, 7) and fk.main_calls() == []      # the missing revision is a problem of its own; this row is not one
 
 
 def test_g01_failed_row_does_not_stop_the_send(rig, fk):
@@ -423,10 +423,10 @@ def test_g06_rows_and_widgets(rig, fk):
     assert m and 'placeholder="%s"' % html.escape(plain["default"]) in m.group(0) and "<input " in m.group(0)
     assert 'name="p.%s"' % plain["name"] in m.group(0) and html.escape(plain["description"][:20]) in m.group(0) and "string" in m.group(0)
     enum = next(p for p in allp.values() if p["enum"] and not p["hidden"])
-    sel = re.search(r'<select name="p\.%s">(.*?)</select>' % re.escape(enum["name"]), five, re.S).group(1)
+    sel = re.search(r'<select name="p\.%s"[^>]*>(.*?)</select>' % re.escape(enum["name"]), five, re.S).group(1)
     assert re.findall(r'<option value="([^"]*)"', sel) == [""] + [html.escape(str(x)) for x in enum["enum"]]
     boo = next(p for p in allp.values() if p["types"] == ["boolean"] and not p["hidden"])
-    sel = re.search(r'<select name="p\.%s">(.*?)</select>' % re.escape(boo["name"]), five, re.S).group(1)
+    sel = re.search(r'<select name="p\.%s"[^>]*>(.*?)</select>' % re.escape(boo["name"]), five, re.S).group(1)
     assert re.findall(r'<option value="([^"]*)"', sel) == ["", "true", "false"]
     num = next(p for p in allp.values() if p["types"][:1] in (["integer"], ["number"]) and not p["hidden"] and not p["enum"])
     assert re.search(r'<input [^>]*name="p\.%s"' % re.escape(num["name"]), five)
@@ -565,6 +565,7 @@ def test_g08_english_every_state(rig, fk):
     fk.latest = latest()
     t = c.get(NEW + "&lang=en").text
     assert "Latest version: 2.18.0" in t and "Use this version" in t
+    fk.files, fk.image = good_files(), good_image()
     t = get(c, lang="en").text
     assert "Advanced (parameters the pipeline hides by default)" in t and "Open the workflow diagram" in t and ">Required<" in t
 
@@ -623,3 +624,22 @@ def test_g12_no_path_in_a_reason(rig, fk):
     _, c = ready(rig)
     t = get(c).text
     assert "/home/x/y" not in t and "…" in row(t, "讀取管線參數表")
+
+
+def test_g13_missing_agent_sentence(rig):
+    # TC-087, TC-110 (the real action, no fake): the refusal of a missing agent reads English first, Chinese in parentheses
+    rig.user("ann")      # the first person to exist owns what the setup made; zed owns nothing
+    rig.user("zed")
+    c = login(rig, "zed")
+    en = c.get(SEL + "&lang=en").text
+    assert no_cjk(en) and "No online agent of yours" in en
+    zh = c.get(SEL).text
+    assert "沒有在線的代理，請先啟動你的代理並建立計算環境。" in zh and "start your agent" not in zh
+
+
+def test_g14_a_refused_form_queues_no_job(rig, fk):
+    # TC-080 (a form that is refused makes no request): the page it comes back with only looks, it queues nothing
+    _, c = ready(rig)
+    fk.pf.clear()
+    r = c.post("/launch", data=form_values(rig, c, "ann", run_name=""))
+    assert r.status_code == 400 and fk.pf and all(x["enqueue"] is False for x in fk.pf) and "http-equiv" not in r.text

@@ -9,6 +9,7 @@ The only routes there are:
 
   GET  /             the board (spec 011a): the run that needs the person most (else the newest), or with ?run=<id> that run, ?stage=<name> its stage, ?tab=<name> a tab of its running stage page (011b), ?lang=en the English page; needs the cookie
   GET  /launch       the launch form (spec 012b), ?from=<run id> fills it from an earlier run of the same person; needs the cookie
+  GET  /launch/diagram  the workflow diagram of ?pipeline=&revision= as the image the caller's site agent read from GitHub (guided-launch-2); needs the cookie, 404 as one plain line when it is not there
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
   POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page
   GET  /usage        the cost page (cost-page): SU, cloud used / cap / remaining, one line per analysis; ?month=YYYY-MM, ?lang=en; needs the cookie
@@ -32,6 +33,8 @@ cannot press the button. The cookie is `<random id>.<signature>`; only the sha25
 Everything the page shows is escaped, and a content-security-policy forbids scripts anyway; its style-src is the sha256 of the one
 stylesheet (web_board.STYLE). Rendering is in web_board.py; this file keeps the routes and the login.
 """
+import base64
+import binascii
 import hashlib
 import hmac
 import html
@@ -50,10 +53,10 @@ from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
-from starlette.responses import HTMLResponse, RedirectResponse
+from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from . import actions, oauth, store, web_board, web_cost, web_settings
+from . import actions, oauth, store, web_board, web_cost, web_launch, web_settings
 
 COOKIE = "abf_web"
 KEY_FILE = "web_signing.key"
@@ -564,6 +567,20 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             reuse = actions.list_used_pipelines(platform_path, caller=caller, pipeline=pipeline, revision=revision)["pipelines"]
         return used, reuse
 
+    def launch_files(caller, full, revision, ce_name, src, enqueue=True):
+        """The pipeline's own files for the guided page (guided-launch-2): what pipeline_files answers for the pair, then (only when a diagram is
+        there) the picture, and when no revision is chosen yet on the new-pipeline tab the newest release. Each call only reads or queues one job;
+        the answer to a POST that did not pass (`enqueue=False`) only looks: a form that was refused makes no request, not even this one."""
+        files = image = latest = None
+        if full and revision:
+            files = actions.pipeline_files(platform_path, full, revision, caller=caller, compute_env=ce_name, enqueue=enqueue)
+            diagram = files.get("diagram") if files.get("state") == "ready" else None
+            if isinstance(diagram, dict) and diagram.get("status") == "ok":
+                image = actions.pipeline_files(platform_path, full, revision, parts=["image"], caller=caller, compute_env=ce_name, enqueue=enqueue)
+        elif full and src == "new":
+            latest = actions.latest_release(platform_path, full, caller=caller, compute_env=ce_name, enqueue=enqueue)
+        return files, image, latest
+
     async def launch_page(sid, user, caller, lang, values, errors, notes, source=None, code=200, guide=None):
         sheets, envs = await run_in_threadpool(launch_choices, caller)
         names = [e["name"] for e in envs]
@@ -577,9 +594,15 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         guide["used"], guide["reuse"] = used, reuse
         if guide.get("src") not in ("used", "new"):
             guide["src"] = "used" if used else "new"
+        ce = values.get("ce_name") if values.get("ce_name") in names else None
+        files, image, latest = await run_in_threadpool(launch_files, caller, full, (values.get("revision") or "").strip(), ce, guide["src"],
+                                                        not guide.get("post"))
+        if guide.get("pvals"):      # the filled boxes of the parameter table join the parameter box, typed by the pipeline's own schema
+            values["params"] = web_launch.merge_params(values.get("params", ""), guide["pvals"], web_launch.types_of(files))
+            guide["given"] = dict(guide.get("given") or {}, params=values["params"])
         runs = await run_in_threadpool(read_runs, caller)
         doc = web_board.render_launch(user["name"], csrf(sid, "logout"), runs, values, errors, notes, sheets, envs, csrf(sid, "launch"), lang, source,
-                                      guide)
+                                      guide, files, image, latest)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
     async def launch_get(request):
@@ -604,6 +627,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             given["src"] = q.get("src")
         values = {k: given[k] for k in ("pipeline", "revision", "samplesheet", "ce_name") if k in given}
         notes, source, done, earlier_params = [], None, set(), None
+        pvals = {k: v for k, v in web_launch.fields_of(dict(q.items())).items() if v.strip()}      # the filled boxes of the parameter table
 
         def run_name_of(origin):      # the page is asked for a run by its id or by its name
             return next((r["name"] for r in runs if r["id"] == origin), origin)
@@ -648,18 +672,49 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                 cannot = True
                 given.pop("params_from")
         route = given.get("route") if given.get("route") in ("reuse", "defaults", "custom") else None
-        if route == "defaults":
+        if route == "defaults" and not pvals:
             params = ""
-        elif route == "custom":
+        elif route in ("custom", "defaults"):
             params = given.get("params", "")
         elif reused is not None:
             params = reused
         else:
             params = given["params"] if "params" in given else (earlier_params or "")
         values["params"] = params
-        route = route or ("reuse" if reused is not None else ("custom" if params else "defaults"))
-        guide = {"given": dict(given), "done": done, "route": route, "cannot_reuse": cannot, "src": given.get("src")}
+        route = "custom" if pvals else (route or ("reuse" if reused is not None else ("custom" if params else "defaults")))
+        if pvals:
+            done.add(5)
+        guide = {"given": dict(given), "done": done, "route": route, "cannot_reuse": cannot, "src": given.get("src"), "pvals": pvals}
         return await launch_page(sid, user, caller, lang, values, [], notes, source, guide=guide)
+
+    DIAGRAM_TYPES = ("image/png", "image/svg+xml", "image/jpeg", "image/gif")
+
+    async def launch_diagram(request):
+        """The picture of the workflow diagram, read by the caller's site agent: only what pipeline_files already holds for this person (no job is
+        queued here; GET /launch queued it). Anything else is one plain line with a 404."""
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        pipeline, revision = request.query_params.get("pipeline", "").strip(), request.query_params.get("revision", "").strip()
+
+        def missing():
+            return PlainTextResponse(web_board.STRINGS["zh"]["g2_dia_404"], status_code=404, headers=_HEADERS)
+        if not pipeline or not revision:
+            return missing()
+        full = pipeline if "/" in pipeline else "nf-core/" + pipeline
+        answer = await run_in_threadpool(lambda: actions.pipeline_files(platform_path, full, revision, parts=["image"], caller=caller, enqueue=False))
+        picture = answer.get("image") if answer.get("state") == "ready" else None
+        if not isinstance(picture, dict) or picture.get("status") != "ok" or picture.get("type") not in DIAGRAM_TYPES:
+            return missing()
+        try:
+            data = base64.b64decode(str(picture.get("data_b64") or ""), validate=True)
+        except (binascii.Error, ValueError):
+            return missing()
+        headers = dict(_HEADERS, **{"Cache-Control": "private, max-age=3600"})
+        if picture["type"] == "image/svg+xml":      # a picture that can carry a script is shown with no script allowed
+            headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'"
+        return Response(data, media_type=picture["type"], headers=headers)
 
     async def launch_post(request):
         if not same_origin(request):
@@ -694,6 +749,13 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if values["ce_name"] not in envs:
             errors.append(t["e_ce"])
             bad.add(6)
+        pvals = {k: v for k, v in web_launch.fields_of(form).items() if v.strip()}
+        if pvals:      # the filled boxes of the parameter table: typed by the pipeline's own schema when it is there (a read that queues nothing)
+            def schema_types():
+                full = pipeline if "/" in pipeline else "nf-core/" + pipeline
+                return web_launch.types_of(actions.pipeline_files(platform_path, full, values["revision"], caller=caller, enqueue=False))
+            kinds = await run_in_threadpool(schema_types) if pipeline and values["revision"] else {}
+            values["params"] = web_launch.merge_params(values["params"], pvals, kinds)
         params, problems = web_board.parse_params(values["params"], t)
         errors += problems
         if problems:
@@ -710,7 +772,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             bad.add(7)
         else:
             errors.append(t["e_body"])
-        guide = {"done": {2, 4, 5, 6}, "bad": bad, "route": "custom" if values["params"].strip() else "defaults"}
+        guide = {"done": {2, 4, 5, 6}, "bad": bad, "route": "custom" if values["params"].strip() else "defaults", "post": True}
         return await launch_page(sid, user, caller, lang, values, errors, [], code=400, guide=guide)
 
     async def settings(request):
@@ -816,7 +878,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return gone or _page("未處理", "<p class=\"bad\">什麼都沒有改。請回到連接器重新開始。</p>", 403 if status == "user" else 404)
 
     app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]), Route("/usage", usage_page, methods=["GET"]),
-                            Route("/launch", launch_get, methods=["GET"]), Route("/launch", launch_post, methods=["POST"]),
+                            Route("/launch", launch_get, methods=["GET"]), Route("/launch/diagram", launch_diagram, methods=["GET"]),
+                            Route("/launch", launch_post, methods=["POST"]),
                             Route("/act/{verb}", act_post, methods=["POST"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/welcome", welcome_get, methods=["GET"]), Route("/welcome", welcome_post, methods=["POST"]),

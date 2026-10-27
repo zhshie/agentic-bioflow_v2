@@ -566,6 +566,17 @@ The seven-step `/launch` page is tested by `platform/tests/test_web_guided_launc
 4. **Quick launch.** Press Quick launch on a row. Check: steps 1, 2, 5 and 6 are `✓`, step 3 stays "later", the current step is 4, and the parameters of that earlier run are in the summary once a samplesheet is chosen.
 5. **A failed check.** Pick an environment that is not available, or a revision that the environment does not list. Check: step 1 shows `✗` with a sentence, step 7 lists the same item again, and the form still opens the confirmation page or says plainly what was refused.
 
+## Guided launch, second cut (guided-launch-2): the maintainer and the reviewer check
+
+`platform/tests/test_web_guided_launch_2.py` fakes the two read actions; what only a person with a running site agent can see is below. The site agent must be running, on an account with an uploaded samplesheet.
+
+1. **Latest version.** Open `/launch?pipeline=nf-core/ampliseq&src=new`. Check: under the two boxes a line "Latest version: ..." with a "Use this version" link appears (it may say "Reading" for up to a minute and the page refreshes itself every 15 seconds); press the link.
+2. **The files.** Wait 15 to 60 seconds. Check: step 1 shows `✓ Read the pipeline parameter table` with the number of groups and parameters; step 3 shows the diagram file name, its size and "Open the workflow diagram" (press it: the picture opens in the same tab; the browser's Back button returns); step 4 lists the samplesheet columns in the file's order with the required ones marked; step 5 shows the parameter groups, the first one open, "Advanced" last.
+3. **Fill one parameter.** In step 5 type a value into one box (for example `FW_primer`), press Apply parameters. Check: the value is in the parameter box and in the step 7 summary; fill an integer parameter and check it is shown without quotes.
+4. **Send.** Type an analysis name and press Submit. Check: you reach the confirmation page `/c/<id>`; do not press Send there.
+5. **The failure shapes.** Stop the site agent and open the page with a revision that was never read. Check: every new block says what happened in one sentence with `✗` or `…`, nothing else on the page breaks, and the form still goes to the confirmation page.
+6. **Narrow and keyboard.** At 390 px wide, in Chinese and English: no horizontal scroll bar, the parameter rows stack one under another; Tab reaches every link, box, group heading and button with a visible outline. Take the four screenshots (1440 and 390 wide, Chinese and English) for the pull request.
+
 ## Google Cloud Batch environment (gcb-ce-type): the maintainer and the reviewer check
 
 The automatic tests use a fake `gcloud` and touch no network. Three things are checked by a person.
