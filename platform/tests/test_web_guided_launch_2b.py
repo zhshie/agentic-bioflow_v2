@@ -710,3 +710,16 @@ def test_j06_wording_guard_still_green(rig, fk):
     form = defaults_form()
     form["run_name"] = ""
     assert banned_in(post(rig, c, **form).text) == []
+
+
+def test_j07_phone_cells_full_width():
+    # J07: under the phone rule the table and its body are blocks and each stacked cell spans the row; the desktop percentages stay outside it
+    from abf_platform import web_board
+    css = web_board.STYLE
+    m = re.search(r"@media \(max-width:600px\)\{(.*?)\}\}", css, re.S)
+    assert m
+    block = m.group(1)
+    assert re.search(r"\.ptbl,\.ptbl tbody\{display:block\}", block)
+    assert re.search(r"\.ptbl td\{[^}]*width:auto", block)
+    assert "%" not in block
+    assert re.search(r"\.ptbl \.cdesc\{width:50%\}", css[:m.start()])
