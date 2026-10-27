@@ -15,6 +15,7 @@ from helpers import db_bytes, pkg_env
 from launch_harness import ACCOUNT, QUESTION_CANCEL, QUESTION_LAUNCH, Pty, cli_argv
 from station_harness import FakeSite, RealPlatform, snapshot, start_agent, tool_json
 
+HTTP_TIMEOUT = 60  # seconds; httpx defaults to 5 s, which a loaded runner exceeded (CI run 40099957808)
 NAME = "agent-e"
 FAST = {"ABF_AGENT_HEARTBEAT_SECONDS": 2, "ABF_AGENT_POLL_SECONDS": 2, "ABF_PLATFORM_DEADLINE_PREFLIGHT": 40,
         "ABF_PLATFORM_DEADLINE_LAUNCH": 30, "ABF_PLATFORM_DEADLINE_CANCEL": 30, "ABF_PLATFORM_LAUNCH_GRACE": 1}
@@ -115,16 +116,16 @@ def test_tc020_the_run_token_is_for_its_run_and_ends_with_the_run(world):
     token = (f / "tower.token").read_text()
     base = "http://127.0.0.1:%d" % world.plat.port
     h = {"Authorization": "Bearer " + token}
-    r = httpx.post(base + "/trace/create", json={"sessionId": "s1", "runName": "someone-else"}, headers=h)
+    r = httpx.post(base + "/trace/create", timeout=HTTP_TIMEOUT, json={"sessionId": "s1", "runName": "someone-else"}, headers=h)
     assert r.status_code in (401, 403)
-    r = httpx.post(base + "/trace/create", json={"sessionId": "s1", "runName": "run-a"}, headers=h)
+    r = httpx.post(base + "/trace/create", timeout=HTTP_TIMEOUT, json={"sessionId": "s1", "runName": "run-a"}, headers=h)
     assert r.status_code == 200
     wid = r.json()["workflowId"]
     rc, listing = world.run_cli("launches")
     assert rc == 0 and "run-a" in listing and "已收到 Nextflow 的事件" in listing
-    r = httpx.put(base + "/trace/%s/complete" % wid, json={"workflow": {"success": True, "exitStatus": 0}, "progress": {}}, headers=h)
+    r = httpx.put(base + "/trace/%s/complete" % wid, timeout=HTTP_TIMEOUT, json={"workflow": {"success": True, "exitStatus": 0}, "progress": {}}, headers=h)
     assert r.status_code == 200
-    r = httpx.post(base + "/trace/create", json={"sessionId": "s2", "runName": "run-a"}, headers=h)
+    r = httpx.post(base + "/trace/create", timeout=HTTP_TIMEOUT, json={"sessionId": "s2", "runName": "run-a"}, headers=h)
     assert r.status_code == 401
 
 
@@ -176,7 +177,7 @@ def test_tc010_tc061_no_web_page_and_no_mcp_tool_can_launch_or_cancel(world):
     base = "http://127.0.0.1:%d" % world.plat.port
     for path in ("/", "/login", "/confirm", "/confirmation", "/launch", "/cancel"):
         for method in ("GET", "POST"):
-            assert httpx.request(method, base + path, json={}).status_code in (401, 404, 405), path
+            assert httpx.request(method, base + path, timeout=HTTP_TIMEOUT, json={}).status_code in (401, 404, 405), path
     _, outs = world.plat.mcp([("list_agents", {})])
     tools, _ = world.plat.mcp([])
     # 009c: the six read tools plus launch and cancel, which only make a pending request (no job without a person's yes);

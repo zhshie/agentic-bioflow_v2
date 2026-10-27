@@ -943,7 +943,11 @@ envq_txt "TC-035 PEER empty-value sentence kept" 'NF_RELAY_PEER_PREFIXES= bash s
 envw "TC-035 EXTRA has no such sentence" NF_RELAY_EXTRA_DOMAINS has 'NF_RELAY_EXTRA_DOMAINS= bash scripts/egress_ctl.sh start' "!An empty value is ignored by the relay"
 # TC-048..051: cost. A command is fed through a file (an argument is limited in size); the
 # hook must answer in time (its timeout lets a command through) and must still ask.
-envbig() { # envbig <label> <var> <kind> <limit ms> [must-contain] [must-not-contain]
+# Absolute ceiling = one third of the 30 s hook-timeout floor pinned at the "#29 every ... timeout >= 30s"
+# check (lines 604-608). The cost-ratio checks after the envbig cases are what catch a slow algorithm;
+# a wall-clock budget of 1 s only measured how busy the machine was.
+BIG_CEIL_MS=10000
+envbig() { # envbig <label> <var> <kind> [must-contain] [must-not-contain]
   local o ctx t0 t1 ms ok=1 why=""
   python3 -c '
 import json,sys
@@ -961,21 +965,22 @@ else: c="echo "+(v+"=sc7 "+"y"*97+" ")*8000+"; bash scripts/egress_ctl.sh start"
 print(json.dumps({"tool_name":"Bash","tool_input":{"command":c}}))' "$2" "$3" > "$TMP/big.json"
   t0=$(date +%s%N); o=$(LAB_SETTINGS_FILE="$TMP/id_env.yaml" bash "$H" < "$TMP/big.json" 2>/dev/null); t1=$(date +%s%N)
   ms=$(( (t1 - t0) / 1000000 ))
+  eval "MS_${3}_${2}=$ms"
   ctx=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$o" 2>/dev/null)
   grep -qF -- "THIS COMMAND ALSO MENTIONS $2=" <<<"$ctx" || { ok=0; why="no header"; }
   grep -q '"permissionDecision": *"ask"' <<<"$o" || { ok=0; why="not ask"; }
-  [ "$ms" -lt "$4" ] || { ok=0; why="$why slow"; }
-  [ -z "${5:-}" ] || grep -qF -- "$5" <<<"$ctx" || { ok=0; why="$why missing $5"; }
-  [ -z "${6:-}" ] || ! grep -qF -- "$6" <<<"$ctx" || { ok=0; why="$why has $6"; }
+  [ "$ms" -lt "$BIG_CEIL_MS" ] || { ok=0; why="$why slow"; }
+  [ -z "${4:-}" ] || grep -qF -- "$4" <<<"$ctx" || { ok=0; why="$why missing $4"; }
+  [ -z "${5:-}" ] || ! grep -qF -- "$5" <<<"$ctx" || { ok=0; why="$why has $5"; }
   printf '%-58s ' "$1"
   [ "$ok" = 1 ] && echo "ok (${ms} ms)" || { echo "FAIL:$why (${ms} ms) <<${ctx:0:160}>>"; fails=$((fails+1)); }
 }
 for V in NF_RELAY_EXTRA_DOMAINS NF_RELAY_PEER_PREFIXES; do
-  envbig "TC-048 ${V#NF_RELAY_} 60 KB, mention at the end" $V tail60 500 "tail1"
-  envbig "TC-049 ${V#NF_RELAY_} 60 KB, 500 mentions" $V spread60 500 "500 mentions in total"
-  envbig "TC-050 ${V#NF_RELAY_} 70 KB: counted, not listed" $V spread70 1500 "500 mentions in total" "sc7"
-  envbig "TC-051 ${V#NF_RELAY_} 1 MB, mention at the end" $V tail1m 1000 "" "tail1"
-  envbig "TC-051 ${V#NF_RELAY_} 1 MB, 8000 mentions" $V spread1m 1000 "8000 mentions in total" "sc7"
+  envbig "TC-048 ${V#NF_RELAY_} 60 KB, mention at the end" $V tail60 "tail1"
+  envbig "TC-049 ${V#NF_RELAY_} 60 KB, 500 mentions" $V spread60 "500 mentions in total"
+  envbig "TC-050 ${V#NF_RELAY_} 70 KB: counted, not listed" $V spread70 "500 mentions in total" "sc7"
+  envbig "TC-051 ${V#NF_RELAY_} 1 MB, mention at the end" $V tail1m "" "tail1"
+  envbig "TC-051 ${V#NF_RELAY_} 1 MB, 8000 mentions" $V spread1m "8000 mentions in total" "sc7"
 done
 # relay-warning-polish (POL-n = the plan's numbers; TC ids are the test-case file's)
 S_EMPTY="An empty value is ignored by the relay, which then uses the deployment's relay_peer_prefixes setting."
@@ -985,7 +990,7 @@ for V in $E $P; do
   envw "POL-1 TC-001 ${V#NF_RELAY_} cut gets an ellipsis" $V has "$V=${X120}yy bash scripts/egress_ctl.sh start" "${X120}…]" "!${X120}y"
   envw "POL-2 TC-004 ${V#NF_RELAY_} 5 mentions: 4th not listed" $V has "$V=m1x $V=m2x $V=m3x $V=m4x $V=m5x bash scripts/egress_ctl.sh start" "(mention 4 is not listed; read the whole command shown below)"
   envw "POL-3 TC-011 ${V#NF_RELAY_} double-quoted value whole" $V has "$V=\"qq1 rr2\" bash scripts/egress_ctl.sh start" '["qq1 rr2"]' '!"qq1 rr2"…'
-  envbig "POL-4 TC-007 ${V#NF_RELAY_} 70 KB: says why not listed" $V spread70 1500 "The values are not listed because the command is over 64 KB; read the whole command shown below." "sc7"
+  envbig "POL-4 TC-007 ${V#NF_RELAY_} 70 KB: says why not listed" $V spread70 "The values are not listed because the command is over 64 KB; read the whole command shown below." "sc7"
   envw "POL-5 TC-016 ${V#NF_RELAY_} MY_ prefix is a mention too" $V has "MY_$V=zzval bash scripts/egress_ctl.sh start" "[zzval]"
   envw "POL-dash-e TC-052 ${V#NF_RELAY_} -e<VAR>= still warns" $V has "-e$V=evil bash scripts/egress_ctl.sh start" "[evil]" "1 mention in total"
   idg "POL-dash-e TC-052 ${V#NF_RELAY_} -e<VAR>= still asks" ask "-e$V=evil bash scripts/egress_ctl.sh start"
@@ -1012,15 +1017,32 @@ envw "POL-16a TC-024 empty last mention" $P has "$P=a $P= bash scripts/egress_ct
 envw "POL-16b TC-025 empty first, last not" $P has "$P= $P=a bash scripts/egress_ctl.sh start" "!$S_EMPTY"
 envw "POL-17 TC-026 empty quotes are empty" $P has "$P=\"\" bash scripts/egress_ctl.sh start" "$S_EMPTY"
 idg "POL-18 TC-020 look-alike still asks" ask "MY_$P=x bash scripts/egress_ctl.sh start"
-envbig "POL-19 TC-027 PEER 70 KB, last empty" $P empty70 1500 "$S_EMPTY"
-envbig "POL-20 TC-028 PEER 70 KB, last not empty" $P emptyreal70 1500 "501 mentions" "$S_EMPTY"
-envbig "POL-21 TC-029 EXTRA 70 KB: no empty sentence" $E empty70 1500 "501 mentions" "An empty value is ignored"
-envbig "POL-22 TC-032 1 MB of look-alikes" $P lookalike1m 1000 "8001 mentions in total" "sc7"
-envbig "POL-22b TC-032 ...says why" $P lookalike1m 1000 "The values are not listed because the command is over 64 KB"
-envbig "POL-19b TC-058 PEER 70 KB, last is MY_ and empty" $P emptymy70 1500 "$S_EMPTY"
-envbig "POL-lk25 TC-051 25 look-alikes: counted" $P lookalike25 500 "26 mentions in total" "too many names"
-envbig "POL-lk25b TC-051 ...last one listed" $P lookalike25 500 "[real1]" "too many names"
-envbig "POL-lk25c TC-051 ...unlisted line" $P lookalike25 500 "(mentions 4 to 25 are not listed; read the whole command shown below)" "too many names"
+envbig "POL-19 TC-027 PEER 70 KB, last empty" $P empty70 "$S_EMPTY"
+envbig "POL-20 TC-028 PEER 70 KB, last not empty" $P emptyreal70 "501 mentions" "$S_EMPTY"
+envbig "POL-21 TC-029 EXTRA 70 KB: no empty sentence" $E empty70 "501 mentions" "An empty value is ignored"
+envbig "POL-22 TC-032 1 MB of look-alikes" $P lookalike1m "8001 mentions in total" "sc7"
+envbig "POL-22b TC-032 ...says why" $P lookalike1m "The values are not listed because the command is over 64 KB"
+envbig "POL-19b TC-058 PEER 70 KB, last is MY_ and empty" $P emptymy70 "$S_EMPTY"
+envbig "POL-lk25 TC-051 25 look-alikes: counted" $P lookalike25 "26 mentions in total" "too many names"
+envbig "POL-lk25b TC-051 ...last one listed" $P lookalike25 "[real1]" "too many names"
+envbig "POL-lk25c TC-051 ...unlisted line" $P lookalike25 "(mentions 4 to 25 are not listed; read the whole command shown below)" "too many names"
+# Linear cost (relay-warning-hardening ruling 5 point 4): same machine, same moment, so load cancels
+# out of the ratio. Observed 3.4-16; a quadratic hook would be 50+ for a 16.7x bigger input.
+# This replaces the old absolute "< 1 s" budgets (flaky-three ruling 5, item 1).
+ratio() { # ratio <label> <big ms> <small ms>
+  local d=$3
+  [ "$d" -ge 1 ] || d=1
+  printf '%-58s ' "$1"
+  if [ "$(( $2 / d ))" -le 40 ]; then echo "ok ($2 / $3 ms)"; else echo "FAIL: ratio $(( $2 / d )) > 40 ($2 ms / $3 ms)"; fails=$((fails+1)); fi
+}
+E=NF_RELAY_EXTRA_DOMAINS; P=NF_RELAY_PEER_PREFIXES
+eval "ra=\$MS_tail60_$E; rb=\$MS_tail1m_$E; rc=\$MS_spread60_$E; rd=\$MS_spread1m_$E"
+ratio "TC-051 EXTRA_DOMAINS O(n): 1 MB tail / 60 KB tail <= 40" "$rb" "$ra"
+ratio "TC-051 EXTRA_DOMAINS O(n): 1 MB spread / 60 KB spread <= 40" "$rd" "$rc"
+eval "ra=\$MS_tail60_$P; rb=\$MS_tail1m_$P; rc=\$MS_spread60_$P; rd=\$MS_spread1m_$P"
+ratio "TC-051 PEER_PREFIXES O(n): 1 MB tail / 60 KB tail <= 40" "$rb" "$ra"
+ratio "TC-051 PEER_PREFIXES O(n): 1 MB spread / 60 KB spread <= 40" "$rd" "$rc"
+ratio "TC-032 O(n): 1 MB look-alikes / 60 KB tail <= 40" "$MS_lookalike1m_NF_RELAY_PEER_PREFIXES" "$MS_tail60_NF_RELAY_PEER_PREFIXES"
 # LOW: false alarms on reading the script, and sourcing it with no operation
 idg "#45 cat of the script does not ask"          allow 'cat scripts/egress_allow.sh'
 idg "#45 less of the script does not ask"                  allow 'less scripts/egress_allow.sh'
