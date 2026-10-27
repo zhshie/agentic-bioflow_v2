@@ -19,3 +19,4 @@
 6. `test_pipeline_files_action.py` TC-159：`nothing_for_the_whole_nf_core_catalogue` → `the_catalogue_is_its_own_action`；`assert not hasattr(...)` 翻成 `callable(actions.nfcore_catalogue)`；`pipeline_files` 簽章仍無 `catalogue`；加 `pf(world, parts=["catalogue"])["error"] == "bad_input"`（加 `world` fixture）；維護者 10-26 放行，清單走獨立動作。
 7. 同檔 TC-135：`no_mcp_tool_for_the_two_actions` → `..._three_actions`，集合加 `"nfcore_catalogue"`；第三個無 MCP 工具的動作。
 8. `test_web_parity.py` `WEB_ONLY`：加 `"nfcore_catalogue"` 一列；動作層多一個公開名稱。
+9. `test_catalogue.py::test_no_tool_route_or_action_mentions_the_catalogue`（TC-070/071，裁決 6）：舊＝所有檔含 `actions/__init__.py` 都不得含 `catalogue`；新＝只對 `actions/__init__.py` 先刪 `# ---- nfcore-catalogue: begin`…`end` 區塊與識別字 `nfcore_catalogue` 再檢查，其他檔不變。理由：兩個 catalogue 是不同東西（官網管線清單 vs 模組目錄），舊測試本意不變。
