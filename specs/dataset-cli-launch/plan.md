@@ -115,6 +115,8 @@ source: developer-agent 讀碼查證（2026-10-24）。cloud-upload.md「待 dev
 
 6. **（2026-10-27 21:50 補）`platform/tests/test_pipeline_launch.py` 第 490 行把 `request_launch` 的參數清單逐字釘死**：准許、且只准把該清單在 `path_columns` 之後加入 `"dataset", "dataset_version"`，其他元素與順序不動；列入「必須更新的既有斷言」，PR 說明寫以前／以後／理由。這是本任務第二處（也是最後一處）准改的既有測試。
 
+7. **（2026-10-27 22:20 補）頂層指令清單有兩處逐字釘住，新增 `dataset` 群一定會撞**：`platform/tests/test_cleanup_offer.py` 的 `COMMANDS`（約 818 行，排序清單，`'dataset'` 放在 `'ce'` 與 `'fetch-records'` 之間）與 `platform/tests/test_station_envs.py` 的 `top_level` 集合（約 432 行，加入 `"dataset"`，行尾註解補「dataset-cli-launch: plus `dataset`」）。准許、且只准各加這一個字；兩個檔其餘內容不動。developer-agent 已 grep 過其他頂層指令釘（`test_launch_platform.py:742` 是子集合檢查、`test_onboarding_doc.py` 只檢查文件），不需要改。本任務准改的既有測試至此共四處：TC-064、test_pipeline_launch.py:490、這兩處。
+
 ## 專長守則（backend）
 
 ### executor
