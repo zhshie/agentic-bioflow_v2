@@ -67,10 +67,14 @@ def three(d):
     add(d, "r-c", d.a.user_id, status="failed")
 
 
-def test_all_apply_offers_for_each_succeeded_run(d):
-    # TC-001, TC-002, TC-003, TC-004, TC-006, TC-024, TC-025, TC-028, TC-061
+def test_all_apply_offers_for_each_succeeded_run(d, monkeypatch):
+    # TC-001, TC-002, TC-003, TC-004, TC-006, TC-024, TC-025, TC-026, TC-028, TC-061
+    from station_harness import FakeSite
     three(d)
     jobs_before = len(sql_rows(d.state, "SELECT * FROM jobs"))
+    site = FakeSite(d.w.tmp / "site", destructive_log=True)      # the agent's side: its rm/rmdir/mv/tar write destructive.log when called from there
+    for k, v in site.agent_env().items():
+        monkeypatch.setenv(k, v)
     rc, out = run(d, "--all", "--apply")
     assert rc == 0, out
     rows = cleans(d)
@@ -86,6 +90,7 @@ def test_all_apply_offers_for_each_succeeded_run(d):
     assert len(sql_rows(d.state, "SELECT * FROM jobs")) == jobs_before
     assert not sql_rows(d.state, "SELECT * FROM jobs WHERE kind = 'clean_work'")
     assert not sql_rows(d.state, "SELECT * FROM launches WHERE work_cleaned_at IS NOT NULL")
+    assert site.destructive() == [] and site.ssh_calls() == [] and site.slurm_jobs() == []      # TC-026, TC-061: nothing reached the agent's side
 
 
 def test_named_run_only(d):
