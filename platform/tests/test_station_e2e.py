@@ -21,6 +21,7 @@ from helpers import PLATFORM_DIR, REPO_ROOT, db_bytes, pkg_env, tool_json
 from station_harness import (AgentProc, CANARY_TOKEN, FakePlatform, FakeSite, RealPlatform, mcp_inproc_json,
                              snapshot, start_agent)
 
+HTTP_TIMEOUT = 60  # seconds; httpx defaults to 5 s, which a loaded runner exceeded (CI run 40099957808)
 H = 2          # heartbeat seconds the platform and the agent are started with (documented setting)
 POLL = 2       # long-poll seconds
 FAST = {"ABF_AGENT_HEARTBEAT_SECONDS": H, "ABF_AGENT_POLL_SECONDS": POLL,
@@ -414,8 +415,11 @@ def agents_rows(world):
 def test_tc014_idle_polls_end_quietly_and_keep_the_last_contact_moving(world):
     # TC-014
     seen = set()
-    end = time.time() + 4.5
-    while time.time() < end:
+    # The 4.5 s is the minimum observation; the wait for 3 distinct values may run to 30 s
+    # (a late poll must not fail the test; the assertion below is unchanged).
+    start = time.time()
+    deadline = start + 30
+    while time.time() < deadline and (time.time() < start + 4.5 or len(seen) < 3):
         seen.update(r[1] for r in agents_rows(world) if r[0] == "agent-a")
         time.sleep(0.25)
     assert len(seen) >= 3, "the last contact did not move with each poll: %r" % sorted(seen)
@@ -471,7 +475,7 @@ def test_tc013_the_platform_only_accepts_connections_and_never_dials_out(world):
     # TC-013
     from abf_platform import compute_envs
     tok = world.plat.agent_token("never-polls")
-    r = httpx.post(world.plat.url + "/agent/hello", json={"name": "never-polls", "version": "0.1.0"},
+    r = httpx.post(world.plat.url + "/agent/hello", timeout=HTTP_TIMEOUT, json={"name": "never-polls", "version": "0.1.0"},
                    headers={"Authorization": "Bearer " + tok})
     assert r.status_code == 200
     compute_envs.create(world.state_db, {"name": "waiting", "platform": "slurm-platform", "agent": "never-polls",
@@ -509,7 +513,7 @@ def test_tc006_a_revoked_token_stops_the_agent_with_the_reason(world):
         assert rc != 0 and re.search(r"revoked|rejected|撤銷|拒絕", out), out
         assert out.count("\n") <= 4
         for path in ("/agent/hello", "/agent/poll", "/agent/result/1"):
-            assert httpx.post(world.plat.url + path, json={"name": "agent-rev"},
+            assert httpx.post(world.plat.url + path, timeout=HTTP_TIMEOUT, json={"name": "agent-rev"},
                               headers={"Authorization": "Bearer " + a.token}).status_code == 401
         views = {v["name"]: v for v in agents.list_agents(world.state_db, time.time() + 3 * H + 5)}
         assert views["agent-rev"]["status"] == "offline"
@@ -663,15 +667,15 @@ def scenario_held(tmp_path):
         run_tok = re.search(r"abf_[A-Za-z0-9_-]{20,}", r.stdout).group(0)
         body = load_scenario("ok_run")["requests"][0]["body"]
         t = time.time()
-        c = httpx.post(plat.url + "/trace/create", json=body, headers={"Authorization": basic_header(run_tok)})
+        c = httpx.post(plat.url + "/trace/create", timeout=HTTP_TIMEOUT, json=body, headers={"Authorization": basic_header(run_tok)})
         assert c.status_code < 300 and time.time() - t < 2
         wid = c.json()["workflowId"]
         t = time.time()
-        p = httpx.put(plat.url + "/trace/%s/progress" % wid, json={"progress": {"succeeded": 1}},
+        p = httpx.put(plat.url + "/trace/%s/progress" % wid, timeout=HTTP_TIMEOUT, json={"progress": {"succeeded": 1}},
                       headers={"Authorization": basic_header(run_tok)})
         assert p.status_code < 300 and time.time() - t < 2
         t = time.time()
-        assert httpx.get(plat.url + "/user-info", headers={"Authorization": basic_header(run_tok)}).status_code == 200
+        assert httpx.get(plat.url + "/user-info", timeout=HTTP_TIMEOUT, headers={"Authorization": basic_header(run_tok)}).status_code == 200
         assert time.time() - t < 2
         t = time.time()
         runs = mcp_inproc_json(plat.index, "list_runs")
@@ -874,7 +878,7 @@ def test_tc065_no_secret_of_the_site_or_the_agent_is_anywhere_on_the_platform(wo
     shown.append(repr(mcp_inproc_json(plat.index, "list_agents")))
     shown.append(repr(mcp_inproc_json(plat.index, "get_compute_env", {"name": "lab-a"})))
     for path in ("/", "/user-info", "/agent/hello", "/agent/poll", "/trace/create", "/nothing"):
-        r = httpx.get(plat.url + path)
+        r = httpx.get(plat.url + path, timeout=HTTP_TIMEOUT)
         shown.append(r.text)
     blob = db_bytes(plat.index, plat.tokens, plat.state_db) + plat.log.read_bytes() + "\n".join(shown).encode()
     for c in canaries + tokens + [b"CANARYCE_00aa"]:
