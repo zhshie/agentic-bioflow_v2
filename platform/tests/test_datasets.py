@@ -442,16 +442,27 @@ def test_tc063_no_delete_share_or_edit():
 
 
 def test_tc064_other_sessions_files_are_untouched():
-    # Lasting property: the five files owned by other work never mention the datasets module.
-    # Branch-scope diff is the verifier's job (git diff at review), not a lasting property.
+    # Lasting property: the files owned by other work never mention the datasets module, except that dataset-cli-launch (ruling 3,
+    # 2026-10-27) opens exactly one call point: `get_dataset` once inside request_launch of actions/__init__.py and nowhere else in that file.
+    # Was: no file named any of the words. Now: the one call in request_launch; every other word, and every other file, as before.
+    import ast
+    words = ("register_dataset", "list_datasets", "get_dataset", "draft_samplesheet", "check_web_upload", "pair_fastq", "actions.datasets")
     files = ["platform/abf_platform/actions/__init__.py", "platform/abf_platform/mcp_server.py", "platform/abf_platform/web.py",
              "platform/abf_platform/web_board.py", "platform/abf_platform/store.py"]
     for f in files:
         if not (REPO / f).exists():
             continue                                    # web_board.py is another session's file and may not exist yet
         text = (REPO / f).read_text(encoding="utf-8")
-        for word in ("register_dataset", "list_datasets", "get_dataset", "draft_samplesheet", "check_web_upload", "pair_fastq", "actions.datasets"):
+        for word in words:
+            if f.endswith("actions/__init__.py") and word == "get_dataset":
+                continue
             assert word not in text, (f, word)
+    text = (REPO / files[0]).read_text(encoding="utf-8")
+    inside = 0
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "request_launch":
+            inside = sum(1 for n in ast.walk(node) if isinstance(n, ast.Attribute) and n.attr == "get_dataset")
+    assert inside == 1 and text.count("get_dataset") == 1
 
 
 def test_tc065_the_module_loads_alone():
