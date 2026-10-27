@@ -26,6 +26,7 @@ STRINGS = {
         "where_hpc": "國網", "where_cloud": "雲端", "state_running": "執行中", "state_estimate": "≈ 估算・帳單未到",
         "empty": "— 這個月還沒有分析", "bad_month": "月份格式不對，顯示本月。", "prev": "← 上一月", "next": "下一月 →",
         "no_reason": "算不出",
+        "usd_note": "SU 換美元依 %s 匯率約略換算，不是帳單。",
     },
     "en": {
         "title": "Cost", "card_su": _HPC + " SU (this month)", "card_used": "Cloud used (this month)", "card_cap": "Cloud cap",
@@ -39,8 +40,11 @@ STRINGS = {
         "empty": "— No analyses this month", "bad_month": "The month is not in the form YYYY-MM, so this month is shown.",
         "prev": "← Previous month", "next": "Next month →",
         "no_reason": "Not available",
+        "usd_note": "SU figures are converted to US dollars at the %s rate, roughly; this is not a bill.",
     },
 }
+for _lang in STRINGS:        # the side-note dollar words are the board's (the run page shows them too): one wording, in web_board
+    STRINGS[_lang].update({w: web_board.STRINGS[_lang][w] for w in ("usd_about", "usd_under")})
 _ENGLISH_TAIL = re.compile(r"\(([^()]*)\)\s*$")
 _CJK = re.compile(r"[　-鿿＀-￯]")
 
@@ -105,7 +109,7 @@ def _cards(t, lang, data):
     left = cloud["remaining_usd"]
     used_up = left is not None and left <= 0
     cards = [
-        _card(t["card_su"], _num(su["total"]), _small(_reason(t, lang, su["unknown_reasons"]) if su["total"] is None else "")),
+        _card(t["card_su"], web_board.su_text(t, su["total"], su.get("usd_approx")) if su.get("usd_approx") else _num(su["total"]), _small(_reason(t, lang, su["unknown_reasons"]) if su["total"] is None else "")),
         _card(t["card_used"], _usd(cloud["used_usd"]), _small((t.get("unknown_run") if unknown == 1 and lang == "en" else t["unknown_runs"] % unknown) if unknown > 0 else "")),
         _card(t["card_cap"], t["unset"] if cap is None else _usd(cap), _small(t["set_by_admin"] if cap is None else "")),
         _card(t["card_left"], _usd(left), _small(t["action"] if used_up else "", "⚠"), " state-failed" if used_up else ""),
@@ -119,7 +123,7 @@ def _row(t, lang, run, ids):
     if run_id:
         name = '<a href="%s">%s</a>' % (web_board._url(lang, run_id), name)
     where = {_HPC.lower(): t["where_hpc"], "cloud": t["where_cloud"]}.get(run["where"], "—")
-    amount = "%s SU" % _num(run["su"]) if run["su"] is not None else (_usd(run["usd"]) if run["usd"] is not None else "—")
+    amount = web_board.su_text(t, run["su"], run.get("usd_approx")) if run["su"] is not None else (_usd(run["usd"]) if run["usd"] is not None else "—")
     state = ('<span class="state-running"><span class="sq"></span> %s</span>' % web_board.esc(t["state_running"])
              if run["state"] == "running" else web_board.esc(t["state_estimate"]))
     return ("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
@@ -144,8 +148,10 @@ def _middle(t, lang, data, ids, this_month, bad_month):
     if month < this_month:        # never a link to a month that has not begun
         nav.append(_month_link(lang, shift(month, 1), t["next"]))
     notice = '<div class="notice" role="alert"><p>%s</p></div>' % web_board.esc(t["bad_month"]) if bad_month else ""
+    as_of = data["su"].get("usd_rate_as_of")
+    note = t["note"] + ("" if lang == "zh" else " ") + t["usd_note"] % as_of if as_of else t["note"]
     return ('<main class="main" data-pane="middle"><h1>%s <small>%s</small></h1><p class="views">%s</p>%s%s<p class="muted">%s</p>%s</main>'
-            % (web_board.esc(t["title"]), web_board.esc(month), "".join(nav), notice, _cards(t, lang, data), web_board.esc(t["note"]),
+            % (web_board.esc(t["title"]), web_board.esc(month), "".join(nav), notice, _cards(t, lang, data), web_board.esc(note),
                _table(t, lang, data["runs"], ids)))
 
 

@@ -36,7 +36,7 @@ STRINGS = {
     "zh": {
         "title": "agentic-bioflow", "mine": "我的 run", "none_yet": "還沒有 run。", "later": "之後開放",
         "new_project": "＋ 新專案", "search_projects": "搜尋專案或分析", "upload": "↑ 上傳資料", "settings": "設定", "explorer": "資料瀏覽",
-        "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "cost_cloud": "雲端 US$ —", "more": "還有 %d 筆",
+        "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "usd_about": "（約 US$%s）", "usd_under": "（約 US$0.01 以下）", "cost_cloud": "雲端 US$ —", "more": "還有 %d 筆",
         "new_analysis": "＋ 新分析", "no_project": "未分專案", "no_analyses": "還沒有分析",
         "row_run": "執行", "row_results": "結果", "row_stopped": "執行 · 已取" "消", "row_site": "執行 · 站台沒有回應",
         "main_window": "主視窗", "terminal": "終端機", "this_analysis": "這個分析的對話", "ask_here": "問這個分析",
@@ -79,7 +79,7 @@ STRINGS = {
     "en": {
         "title": "agentic-bioflow", "mine": "My runs", "none_yet": "No runs yet.", "later": "Coming later",
         "new_project": "+ New project", "search_projects": "Search projects or analyses", "upload": "↑ Upload data", "settings": "Settings",
-        "explorer": "Data explorer", "dashboard": "Dashboard", "logout": "Log out", "cost_su": "SU —", "cost_cloud": "Cloud US$ —",
+        "explorer": "Data explorer", "dashboard": "Dashboard", "logout": "Log out", "cost_su": "SU —", "usd_about": " (≈ US$%s)", "usd_under": " (≈ under US$0.01)", "cost_cloud": "Cloud US$ —",
         "more": "%d more",
         "new_analysis": "+ New analysis", "no_project": "No project", "no_analyses": "No analyses yet",
         "row_run": "Run", "row_results": "Results", "row_stopped": "Run · Cancelled", "row_site": "Run · Site not responding",
@@ -553,10 +553,29 @@ def first_failed(run):
     return tasks[0]["name"] if tasks else None
 
 
+def su_text(t, su, usd):
+    """`51.50 SU（約 US$0.16）` (English `51.50 SU (≈ US$0.16)`): the SU stays the main figure and the dollars are a side note, shown only when
+    they are known and above nothing; below one cent it says so instead of showing 0.00. No SU gives None (the caller keeps its own dash)."""
+    if not isinstance(su, (int, float)) or isinstance(su, bool):
+        return None
+    text = "%.2f SU" % su
+    if isinstance(usd, (int, float)) and not isinstance(usd, bool) and usd > 0:
+        shown = "%.2f" % usd
+        text += t["usd_under"] if usd < 0.01 or shown == "0.00" else t["usd_about"] % shown
+    return text
+
+
+def _cost_value(t, run):
+    """The value of the cost card: the SU of the run with its side-note dollars when get_run knows them, else the dash `SU —`."""
+    shown = run.get("su") if isinstance(run, dict) else None
+    shown = shown if isinstance(shown, dict) else {}
+    return su_text(t, shown.get("su"), shown.get("usd_approx")) or t["cost_su"]
+
+
 def _sum_cards(t, run, now):
     stopped = run.get("status") in ("failed", "lost")
     cards = (((t["card_stopped_at"], esc(first_failed(run) or "—")) if stopped else (t["card_step"], _current_step(t, run))), (t["card_duration"], esc(_duration(t, run, now))),
-             (t["card_compute"], esc(run.get("compute_env") or "—")), (t["card_cost"], esc(t["cost_su"])))
+             (t["card_compute"], esc(run.get("compute_env") or "—")), (t["card_cost"], esc(_cost_value(t, run))))
     return _cards(cards)
 
 
@@ -571,7 +590,7 @@ def _results_cards(t, run, now, outputs):
     done, total = _done_total(run)
     where = (outputs or {}).get("compute_env") or "—"
     return _cards(((t["card_done"], "%d / %d" % (done, total)), (t["card_duration"], esc(_duration(t, run, now))),
-                   (t["card_compute"], esc(where)), (t["card_cost"], esc(t["cost_su"]))))
+                   (t["card_compute"], esc(where)), (t["card_cost"], esc(_cost_value(t, run)))))
 
 
 def _size(value):

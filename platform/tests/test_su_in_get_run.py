@@ -14,7 +14,7 @@ import pytest
 from helpers import PLATFORM_DIR, REPO_ROOT, own_runs
 
 H = 3600000
-SU_KEYS = {"su", "twd_nstc", "twd_academic", "unknown_reasons", "site"}
+SU_KEYS = {"su", "twd_nstc", "twd_academic", "unknown_reasons", "site", "usd_approx"}
 
 
 def _ce(plat_db, name, su_site=None):
