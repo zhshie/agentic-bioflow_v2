@@ -669,6 +669,14 @@ Automatic tests: `platform/tests/test_web_settings.py`. These steps are what no 
 3. **Read both languages**: every status shows a symbol, a word and a colour (✓ / ✗ / —). No Chinese on the English page, no error code, no internal name. Each ✗ in 使用前檢查 says what is missing.
 4. **Nothing to press**: no button, box or link in the middle column; the only form on the page is the logout one.
 
+## SU 約 US$ (su-usd): the maintainer checks three things by hand
+
+The automatic tests (`platform/tests/test_su_usd.py`) check the numbers and the markup. Start `abf-platform web`, log in as a person who has finished national HPC runs, and open `/usage` and one run's page (`/?run=<id>`).
+
+1. **A 390 px screen (TC-063).** Make the browser window 390 px wide. Open `/usage` and the run page. Check: no horizontal scroll bar, and `51.50 SU（約 US$0.16）` style text can be read whole in its cell or card.
+2. **Both languages (TC-064).** Open the same pages with `?lang=en`. Check: Chinese shows `（約 US$…）`, English shows `(≈ US$…)`, and the English page has no Chinese word except the language switch and your own names.
+3. **The date under the cards (TC-065).** Read the sentence after the cost note on `/usage`. Check: the date in it is the same as `usd_twd.as_of` in `configs/sites/su_rates.json`.
+
 ## A temporary password, then your own (web-change-password): the maintainer and the reviewer check
 
 Automatic tests: `platform/tests/test_web_welcome.py`. These steps need a real browser and the platform host's terminal. Use a test user, never a real colleague's name.

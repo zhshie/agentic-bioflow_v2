@@ -103,6 +103,31 @@ def su_of_tasks(tasks, site, rates):
     return out
 
 
+def usd_rate(rates):
+    """(rate, as_of) of the NT dollars per US dollar from the rates file; each None when it is missing or not usable (a rate must be above 0)."""
+    u = rates.get("usd_twd") if isinstance(rates, dict) else None
+    u = u if isinstance(u, dict) else {}
+    rate, as_of = u.get("rate"), u.get("as_of")
+    return (rate if _number(rate) and rate > 0 else None), (as_of if isinstance(as_of, str) and as_of else None)
+
+
+def usd_of(su_value, site, rates):
+    """About how many US dollars `su_value` SU cost: SU x the NT$ price of one SU (the site's own twd_per_su for the plan type in
+    su_plan_type, else the top-level <plan>_twd_per_su) / the rate of usd_twd. None when any of them is missing (never 0, never a guess).
+    The inside value is not rounded."""
+    if not _number(su_value) or not isinstance(rates, dict):
+        return None
+    plan = rates.get("su_plan_type")
+    if plan not in ("nstc", "academic", "industry"):
+        return None
+    per_su = ((rates.get("sites") or {}).get(site) or {}).get("twd_per_su")
+    price = per_su.get(plan) if isinstance(per_su, dict) else rates.get(plan + "_twd_per_su")
+    rate = usd_rate(rates)[0]
+    if not _number(price) or rate is None:
+        return None
+    return su_value * price / rate
+
+
 def run_tasks(index_path, run_name):
     """The per-task facts (cpus, realtime, queue) of a run, or None when the record does not keep them.
     From the task_usage table the receiver fills; a run (or an index made before the table) with no rows gives None. Each item also

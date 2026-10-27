@@ -130,6 +130,7 @@ def _su_of_run(index_path, view, platform_path):
     if "twd" in out:
         shown["twd"] = out["twd"]
     shown["site"] = site if isinstance(rates, dict) else None      # no rates file, no site (the reasons say so)
+    shown["usd_approx"] = su.usd_of(out["su"], site, rates)        # about US$ at the rate in the config; None when anything is missing
     return shown
 
 
@@ -169,6 +170,7 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
     owned = jobs.owned_run_names(platform_path, caller.user_id)
     rates = su.load_rates()
     site = rates.get("default_site") if isinstance(rates, dict) else None
+    as_of = su.usd_rate(rates)[1] if su.usd_rate(rates)[0] is not None else None      # a dollar figure needs both the rate and its date
     cloud_rates = _cost.load_rates()
     mine = [r for r in status.list_runs(index_path, status.now(), names=owned) if su._taipei_month(r.get("started_at")) == month]
     # only the runs sent to the national HPC count in SU: a cloud run is neither added nor allowed to turn the total into unknown
@@ -190,13 +192,14 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
         facts = _cost._launch_facts(platform_path, r["name"])
         where = None if facts is None else ("cloud" if facts["cloud"] else _HPC)
         item = {"name": r["name"], "started_at": r["started_at"], "where": where, "state": "estimate", "su": None, "usd": None,
-                "unknown_reasons": []}
+                "unknown_reasons": [], "usd_approx": None}
         if r["status"] in ("running", "lost"):
             item["state"] = "running"
             item["unknown_reasons"] = [su.RUN_NOT_ENDED]
         elif where == _HPC:
             out = _su_of_run(index_path, r, platform_path)
             item["su"], item["unknown_reasons"] = out["su"], out["unknown_reasons"]
+            item["usd_approx"] = out["usd_approx"] if as_of else None
         elif where == "cloud":
             out = _cost.run_tasks_cost(index_path, r["name"], cloud_rates, facts["location"])
             item["usd"], item["unknown_reasons"] = out["usd"], out["unknown_reasons"]
@@ -204,7 +207,8 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
             item["unknown_reasons"] = [_NOT_SENT_HERE]
         runs.append(item)
     return {"month": month,
-            "su": {"total": total, "unknown_reasons": reasons, "site": site if isinstance(rates, dict) else None},
+            "su": {"total": total, "unknown_reasons": reasons, "site": site if isinstance(rates, dict) else None,
+                   "usd_approx": su.usd_of(total, site, rates) if as_of else None, "usd_rate_as_of": as_of},
             "cloud": _cost.month_usage(index_path, platform_path, caller.user_id, month, cloud_rates, tokens_path),
             "runs": runs}
 
@@ -1112,6 +1116,13 @@ def describe_request(platform_path, request_id, *, clock=time.time):
 def request_facts(platform_path, request_id):
     """The plain facts of one request for the top of the confirmation page (kind, run name, pipeline, version, environment, samples, new folder), or None."""
     return confirm.facts(platform_path, request_id)
+
+
+def clean_requests(platform_path, *, caller, clock=time.time):
+    """{run name: request id} of this caller's own clean-up requests that still wait for a yes (the board shows a notice for each). Only reads."""
+    if caller is None or caller.user_id is None:
+        return {}
+    return confirm.open_clean_requests(platform_path, caller.user_id, clock=clock)
 
 
 def void_request(platform_path, request_id, reason):

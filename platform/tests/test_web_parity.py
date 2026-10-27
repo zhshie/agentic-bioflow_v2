@@ -27,6 +27,7 @@ WEB_ONLY = {
     "platform_path_for": "the page finds platform.db from the index path, the way every entry does",
     "list_samplesheets": "the launch form's choice of samplesheet: the files in the caller's own upload folder",
     "request_facts": "the top of the confirmation page: the few plain facts of one pending request, read from its structured content",
+    "clean_requests": "read-only (cloud-cleanup-e): the board notice lists the caller's own open clean_work requests; it creates nothing",
     "launch_prefill": "the quick launch of the launch form: what the person's own earlier run was sent with, when it is still kept",
     "pipeline_files": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "latest_release": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
