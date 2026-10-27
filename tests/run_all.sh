@@ -45,15 +45,21 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PER_TEST_TIMEOUT=300   # every entry, the four platform ones included, should finish well inside this; it only catches a hang
 ONLY=""
+SHARD=""
 VERBOSE=0
 
 usage() {
     cat >&2 <<'U'
-usage: run_all.sh [--only <substring>] [--timeout <secs>] [--verbose] [--list]
+usage: run_all.sh [--only <substring>] [--shard <I>/<N>] [--timeout <secs>] [--verbose] [--list]
                   [--allow-msys] [--allow-missing-tools]
                   [--retry-failed-once] [--check-quarantine]
 
   --only <substring>   run only test files whose name contains this
+  --shard <I>/<N>      run only part I of N (1 <= I <= N) of the files that --only
+                       left: a fixed, deterministic split (see the SHARD block
+                       below); the N parts together cover every file exactly once.
+                       CI runs it as a matrix. Counts, retry and --list apply to
+                       the part only.
   --timeout <secs>     per-test limit (default 300; 0 disables)
   --verbose            print each test's own output as it runs
   --list               list the test files that would run, then stop
@@ -82,6 +88,7 @@ CHECKQ=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --only)    ONLY="${2-}"; [ -n "$ONLY" ] || usage; shift 2 ;;
+        --shard)   SHARD="${2-}"; case "$SHARD" in [1-9]*/[1-9]*) ;; *) usage ;; esac; case "${SHARD%/*}${SHARD#*/}" in *[!0-9]*) usage ;; esac; [ "${SHARD%/*}" -le "${SHARD#*/}" ] || usage; shift 2 ;;
         --timeout) PER_TEST_TIMEOUT="${2-}"; case "$PER_TEST_TIMEOUT" in ''|*[!0-9]*) usage ;; esac; shift 2 ;;
         --verbose) VERBOSE=1; shift ;;
         --list)    LIST=1; shift ;;
@@ -339,6 +346,36 @@ for f in "$ROOT"/tests/*.sh; do
 "
 done
 FILES="${FILES%$'\n'}"
+
+# ---- SHARD: --shard I/N ------------------------------------------------------
+# Splits the file list so CI can run N jobs in parallel. Deterministic: the same
+# tree and the same N always give the same parts, and the N parts are disjoint
+# and together cover every file (tests/run_all_shard_test.sh checks it: a file lost
+# or doubled would be a test that silently never runs). Greedy balancing by
+# weight: the four platform_*_test.sh wrappers go first, then the other files,
+# each in name order (LC_ALL=C), and each goes to the part with the least weight so
+# far (ties: the lowest number). A platform wrapper weighs 40 (about 110-200 s on
+# CI), any other file 1 (about 4 s), so with N=4 each part gets one platform
+# wrapper plus about 30 other files. The weights are only a balance hint: change
+# them freely, nothing else depends on them.
+if [ -n "$SHARD" ]; then
+    SH_I="${SHARD%/*}"; SH_N="${SHARD#*/}"
+    SH_ORDER="$(printf '%s\n' "$FILES" | LC_ALL=C sort | awk '/^platform_(test|clock_test|shard_[0-9]+_test).sh$/ {print "40 " $0}'
+               printf '%s\n' "$FILES" | LC_ALL=C sort | awk '!/^platform_(test|clock_test|shard_[0-9]+_test).sh$/ {print "1 " $0}')"
+    FILES="$(printf '%s\n' "$SH_ORDER" | awk -v n="$SH_N" -v i="$SH_I" '
+        NF { w[NR]=$1; f[NR]=$2 }
+        END {
+            for (k = 1; k <= n; k++) load[k] = 0
+            for (r = 1; r <= NR; r++) {
+                if (!(r in f)) continue
+                b = 1
+                for (k = 2; k <= n; k++) if (load[k] < load[b]) b = k
+                load[b] += w[r]
+                if (b == i) print f[r]
+            }
+        }' | LC_ALL=C sort)"
+    [ -n "$FILES" ] || { echo "shard $SHARD has no test files (more shards than files?)" >&2; exit 2; }
+fi
 [ -n "$FILES" ] || { echo "no test files matched${ONLY:+ --only $ONLY}" >&2; exit 2; }
 
 if [ "$LIST" = 1 ]; then printf '%s\n' "$FILES"; exit 0; fi
