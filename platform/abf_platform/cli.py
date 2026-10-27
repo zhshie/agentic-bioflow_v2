@@ -495,6 +495,76 @@ def cmd_runs_offer_cleanup(args):
     return 0
 
 
+def _dataset_caller(args):
+    """(Caller or None, exit code or None) for a dataset command: the account rule of `abf-platform launch` (--user once users exist)."""
+    from abf_launch import cli as launch_cli
+    caller, why = launch_cli._account(args.user)
+    if why:
+        _err(why)
+        return None, 1
+    return caller, None
+
+
+def _read_sheet_text(path):
+    """(text, None) of a samplesheet file, else (None, a plain sentence). Nothing but this file is read."""
+    try:
+        with open(path, "rb") as f:
+            raw = f.read(1024 * 1024 + 1)
+    except OSError:
+        return None, "讀不到樣本表檔案，請檢查 --samplesheet 的路徑 (cannot read the samplesheet file; check the --samplesheet path); nothing was registered"
+    if len(raw) > 1024 * 1024:
+        return None, "樣本表太大，上限 1 MiB (the samplesheet is too large; the limit is 1 MiB); nothing was registered"
+    if bytes([0]) in raw:
+        return None, "樣本表含有 NUL 字元，不是文字檔 (the samplesheet holds a NUL character); nothing was registered"
+    try:
+        return raw.decode("utf-8"), None
+    except UnicodeDecodeError:
+        return None, "樣本表不是 UTF-8 文字 (the samplesheet is not UTF-8 text); nothing was registered"
+
+
+def cmd_dataset_register(args):
+    """Keep a dataset (a name, a version, a samplesheet and the places of its files) for a user. All the judging is done by
+    datasets.register_dataset; no file named by --file is read or looked at."""
+    from .actions import datasets
+    caller, code = _dataset_caller(args)
+    if code:
+        return code
+    text, why = _read_sheet_text(args.samplesheet)
+    if why:
+        _err(why)
+        return 1
+    out = datasets.register_dataset(store.default_platform_path(), name=args.name, version=args.version, samplesheet=text,
+                                    files=[{"path": p} for p in args.file], caller=caller, destination=args.destination)
+    if not out.get("ok"):
+        _err(out["message"])
+        return 1
+    _say("已登記資料集 %s 版本 %s（%d 個檔案）(registered)" % (args.name, args.version, len(args.file)))
+    return 0
+
+
+def cmd_dataset_list(args):
+    from .actions import datasets
+    caller, code = _dataset_caller(args)
+    if code:
+        return code
+    for r in datasets.list_datasets(store.default_platform_path(), caller=caller)["datasets"]:
+        _say("%s %s %d %s" % (r["name"], r["version"], r["n_files"], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r["created_at"]))))
+    return 0
+
+
+def cmd_dataset_show(args):
+    from .actions import datasets
+    caller, code = _dataset_caller(args)
+    if code:
+        return code
+    got = datasets.get_dataset(store.default_platform_path(), args.name, args.version, caller=caller)
+    if not got.get("found"):
+        _err(got["message"])
+        return 1
+    _say(json.dumps(got, indent=2, sort_keys=True, ensure_ascii=False))
+    return 0
+
+
 def cmd_runs_assign(args):
     """Give a run that nobody owns to a user (116b). Terminal only: it writes launches.user_id of the newest row of the run and nothing else."""
     user = store.user_by_name(store.default_tokens_path(), args.user)
@@ -700,6 +770,25 @@ def build_parser():
     ro.add_argument("--list", action="store_true", help="only list what would be offered (the default)")
     ro.add_argument("--apply", action="store_true", help="write the requests; without it nothing is written")
     ro.set_defaults(func=cmd_runs_offer_cleanup)
+
+    da = sub.add_parser("dataset", help="datasets: a name, a version, a samplesheet and the places of its files (the platform keeps names and places only)")
+    dsub = da.add_subparsers(dest="dataset_command", required=True)
+    dr = dsub.add_parser("register", help="keep a dataset for a user; a local path in their uploads folder, or gs:// locations with --destination", allow_abbrev=False)
+    dr.add_argument("--name", required=True)
+    dr.add_argument("--version", required=True)
+    dr.add_argument("--samplesheet", required=True, help="the CSV file (UTF-8, at most 1 MiB)")
+    dr.add_argument("--file", action="append", required=True, help="the place of one file (repeat for each); it is not opened")
+    dr.add_argument("--user", help="the user it is for (needed once the platform has users)")
+    dr.add_argument("--destination", help="a Google Batch environment: the files are gs:// locations of the user's own prefix of its bucket")
+    dr.set_defaults(func=cmd_dataset_register)
+    dl = dsub.add_parser("list", help="list the datasets", allow_abbrev=False)
+    dl.add_argument("--user")
+    dl.set_defaults(func=cmd_dataset_list)
+    dw = dsub.add_parser("show", help="show one dataset as JSON (the newest version unless --version)", allow_abbrev=False)
+    dw.add_argument("name")
+    dw.add_argument("--version")
+    dw.add_argument("--user")
+    dw.set_defaults(func=cmd_dataset_show)
 
     from abf_launch import cli as launch_cli
     launch_cli.add_commands(sub)

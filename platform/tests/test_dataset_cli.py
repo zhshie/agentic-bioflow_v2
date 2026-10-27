@@ -180,4 +180,4 @@ def test_the_group_adds_only_its_three_commands_and_options_and_no_other_door(w)
     assert cli.ADOPTING == ("serve", "web", "mcp", "ce")
     assert not [o for o in seen[("launch",)] if "dataset" in o]
     routes = sorted(set(re.findall(r'Route\("([^"]*)"', (PKG / "web.py").read_text(encoding="utf-8"))))
-    assert routes == ["/", "/act/{verb}", "/c/{rid}", "/consent/{rid}", "/launch", "/login", "/logout", "/settings", "/usage", "/welcome"]
+    assert routes == ["/", "/.well-known/oauth-authorization-server", "/act/{verb}", "/c/{rid}", "/consent/{rid}", "/launch", "/login", "/logout", "/settings", "/usage", "/welcome"]

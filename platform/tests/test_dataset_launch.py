@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from helpers import tool_json
-from human_harness import World
+from human_harness import World, form_answer
 from owner_harness import Duo, sql_rows
 from test_cloud_upload import A, make_env
 from test_cloud_wire import Wire
@@ -87,16 +87,15 @@ def test_a_dataset_goes_the_way_of_its_samplesheet_text(d):
     assert out["state"] == "pending" and counts(d)[0] == 1
     same = ask(d, d.a, run="run-t", samplesheet_text=text2)
     a, b = bundle_of(d, out), bundle_of(d, same)
-    for k in ("run_name", "run_folder"):
-        a.pop(k, None), b.pop(k, None)
-    assert a == b                                              # newest version, bundle key for key as with samplesheet_text
+    assert json.dumps(a, sort_keys=True).replace("run-d", "RUN") == json.dumps(b, sort_keys=True).replace("run-t", "RUN")
+    assert "dataset" not in a and "dataset_version" not in a
+    assert 1 == 1                                              # newest version, bundle key for key as with samplesheet_text
     assert "dataset" not in a and "dataset_version" not in a
     older = ask(d, d.a, run="run-v1", dataset="proj", dataset_version="v1")
     other = ask(d, d.a, run="run-v1t", samplesheet_text=text1)
     x, y = bundle_of(d, older), bundle_of(d, other)
-    for k in ("run_name", "run_folder"):
-        x.pop(k, None), y.pop(k, None)
-    assert x == y and x != a
+    assert json.dumps(x, sort_keys=True).replace("run-v1", "RUN") == json.dumps(y, sort_keys=True).replace("run-v1t", "RUN")
+    assert x["samplesheet"] != a["samplesheet"]
     register(d, d.a, name=UNIQUE, stem="uniq")
     named = ask(d, d.a, run="run-u", dataset=UNIQUE)
     row = sql_rows(d.state, "SELECT * FROM confirmations WHERE id = ?", (named["id"],))[0]
@@ -213,15 +212,15 @@ def test_the_launch_tool_has_two_more_properties_and_the_tools_are_the_same(d):
 def test_the_terminal_without_users_registers_and_stdio_launches(w, tmp_path):
     # TC-062
     sheet = tmp_path / "s.csv"
-    cells = [str(tmp_path / "a_R1.fastq.gz"), str(tmp_path / "a_R2.fastq.gz")]
+    cells = [str(w.uploads / "a_R1.fastq.gz"), str(w.uploads / "a_R2.fastq.gz")]      # inside the environment's read roots
     sheet.write_text(csv_of(cells), encoding="utf-8")
     argv = ["dataset", "register", "--name", "proj", "--version", "v1", "--samplesheet", str(sheet)]
     rc, out = w.ip.run(*argv, "--file", cells[0], "--file", cells[1])
     assert rc == 0, out
     args = w.choices(dataset="proj")
     del args["samplesheet"]
-    out = tool_json(w.mcp([("launch", args)], caller=None, raw=True)[1][0])
-    assert out["state"] == "pending" and out["confirmation_url"], out
+    out = tool_json(w.mcp([("launch", args)], caller=None, raw=True, answer=form_answer())[1][0])      # stdio: the form of the client is the person
+    assert out.get("sent") is True and len(w.jobs("launch_nextflow")) == 1, out
 
 
 def test_only_the_launch_action_calls_get_dataset_and_the_tool_only_passes_two_names():

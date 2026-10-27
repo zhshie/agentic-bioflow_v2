@@ -128,13 +128,15 @@ def _add_write_tools(server, platform_path, index_path):
                              "to get the job number. Give the samplesheet in exactly one of two ways: samplesheet is the path of a CSV "
                              "file you uploaded to your own folder on this platform, or samplesheet_text is the CSV itself (at most "
                              "1 MiB), which writes no file. A path cell in the CSV may name a file on the site if the environment may "
-                             "read it; params is a flat mapping of pipeline parameters.")
+                             "read it; params is a flat mapping of pipeline parameters. "
+                             "Or name a dataset of yours (dataset, optionally dataset_version): its samplesheet is used.")
     async def launch_tool(ctx: Context, pipeline: str, revision: str, run_name: str, samplesheet: str | None = None,
                           samplesheet_text: str | None = None, ce_name: str | None = None,
-                          params: dict[str, Any] | None = None, path_columns: list[str] | None = None) -> dict:
+                          params: dict[str, Any] | None = None, path_columns: list[str] | None = None,
+                          dataset: str | None = None, dataset_version: str | None = None) -> dict:
         return await actions.request_launch(platform_path, pipeline=pipeline, revision=revision, run_name=run_name,
                                             samplesheet=samplesheet, samplesheet_text=samplesheet_text, ce_name=ce_name, params=params,
-                                            path_columns=path_columns,
+                                            path_columns=path_columns, dataset=dataset, dataset_version=dataset_version,
                                             caller=_caller(ctx), person=actions.person_at(ctx),
                                             remote=_remote(ctx))
 
