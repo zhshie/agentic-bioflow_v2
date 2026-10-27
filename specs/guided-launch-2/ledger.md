@@ -16,6 +16,7 @@
 | `test_web_guided_launch.py` `test_gl07_param_routes` | 第 5 步含「之後開放」 | 第 5 步含「讀取中」且不含「之後開放」 | 計畫作法 8、裁決 9：分組表位置換成讀取中／分組表 |
 | `test_owner_binding.py` `test_tc068` | 路由集合不含 `/launch/diagram` | 加 `"/launch/diagram"` | 計畫範圍：新路由 |
 | `test_confirm_page.py` `test_tcg04_g05_g06_...` | 路由清單不含 `/launch/diagram` | 加 `("/launch/diagram", ("GET", "HEAD"))` | 同 tc068：新路由（計畫沒點名這支，機械式跟著新路由） |
+| `test_web_board.py` `test_tch11_read_only` | 路由清單不含 `/launch/diagram` | 加 `("/launch/diagram", ("GET", "HEAD"))` | 同上：新路由 |
 | `test_clean_page.py` 的 `BASE_CONFIRM`／`BASE_EXPIRED`／`BASE_POST`／`BASE_BOARD`／`BASE_STYLE` | 頁面雜湊（含整份樣式表）舊值 | 重新釘住的新值 | 計畫作法允許「樣式表加必要的 class」（分組表 390 px 上下排要 media query）；每頁都內嵌那一份樣式表，所以雜湊必變。只有樣式表不同（沒有改任何頁面文字）；先前 cloud-cleanup-e 的 GREEN 也是這樣重新釘住 |
 
 沒動：第 2 步「搜尋全部 nf-core 之後開放」與第 4 步「預覽 之後開放」的斷言。
