@@ -625,3 +625,87 @@ def test_scope_other_schema_gives_other_cells(rig, fk):
     _, c = ready(rig)
     five = step(c.get(SEL).text, 5)
     assert 'value="42"' in cell(five, "zeta") and cell(five, "orf_start") is None
+
+
+# ---- guided-launch-2c: small fixes after the screenshots ------------------------------------------------------------------------------
+
+def test_j01_star_on_the_name_line(rig, fk):
+    # J01: the red star is in the same inline element as the field name, so it is not a line of its own in the flex column
+    ann, c = ready(rig)
+    launched(rig, ann, "run-a")
+    t = c.get(SEL + "&src=new").text
+    f = form_of(t)
+    for name in ("管線（nf-core 名稱）", "版本", "樣本表（從已上傳的檔案中選擇）", "運算環境", "分析名稱"):
+        assert re.search(r'<label><span class="lbl">%s %s</span><(?:input|select)' % (re.escape(name), re.escape(STAR)), f), name
+    # every star that sits in a label sits in a lbl span that also holds the name
+    for m in re.finditer(r"<label>(.*?)</label>", f, re.S):
+        if 'class="req"' in m.group(1):
+            assert re.match(r'<span class="lbl">[^<]+ <span class="req"[^>]*>\*</span></span>', m.group(1)), m.group(1)
+    assert re.search(r'<span class="lbl">分析名稱 <span class="req"', f)
+
+
+def test_j02_four_columns(rig, fk):
+    # J02: name, description, type, value; no default column
+    _, c = ready(rig)
+    t = c.get(SEL).text
+    five = step(t, 5)
+    for table in re.findall(r'<table class="tbl ptbl">.*?</table>', five, re.S):
+        assert re.findall(r"<th>([^<]*)</th>", table) == ["名稱", "說明", "型別", "填寫"]
+        assert len(re.findall(r"<col ", table)) == 4
+        assert all(len(re.findall(r"<td", r)) == 4 for r in re.findall(r'<tr class="prow">.*?</tr>', table, re.S))
+    assert "<th>預設值</th>" not in t and "cdef" not in t
+    from abf_platform import web_board
+    css = web_board.STYLE
+    cols = re.findall(r'<col class="(\w+)">', five)[:4]
+    assert cols == ["cname", "cdesc", "ctype", "cval"]
+    pct = [int(re.search(r"\.ptbl \.%s\{width:(\d+)%%" % k, css).group(1)) for k in cols]
+    assert sum(pct) == 100
+    for got, want in zip(pct, (22, 50, 10, 18)):
+        assert abs(got - want) <= 2
+    en = c.get(SEL + "&lang=en").text
+    assert "<th>Default</th>" not in en and re.findall(r"<th>([^<]*)</th>", step(en, 5))[:4] == ["Name", "Description", "Type", "Value"]
+
+
+def test_j03_cell_holds_the_default(rig, fk):
+    # J03
+    _, c = ready(rig)
+    five = step(c.get(SEL).text, 5)
+    assert 'value="1"' in cell(five, "orf_start") and 'value="TAA,TAG"' in cell(five, "stop_codons")
+    assert 'value=""' in cell(five, "max_len_asv")
+
+
+def test_j04_style():
+    # J04
+    from abf_platform import web_board
+    css = web_board.STYLE
+    assert not re.search(r"\.gsteps\{[^}]*max-width", css)
+    m = re.search(r"\.lform input,\.lform select,\.lform textarea\{([^}]*)\}", css)
+    assert m and "max-width:640px" in m.group(1)
+    assert re.search(r"\.req\{[^}]*font-size:inherit", css) and not re.search(r"\.req\{[^}]*font-size:12px", css)
+    assert re.search(r"\.req\{[^}]*color:var\(--failed\)", css)
+    assert "@media (max-width:600px){.ptbl thead{display:none}" in css
+
+
+def test_j05_refused_send_keeps_the_values(rig, fk, spy):
+    # J05: a 400 (analysis name missing) brings back what was typed, a cleared box stays empty, the advanced box is kept
+    _, c = ready(rig)
+    form = defaults_form()
+    form.update({"run_name": "", "p.orf_start": "7", "p.stop_codons": "", "p.FW_primer": "AAA", "params": "my_extra: 1\nzzz: 2"})
+    r = post(rig, c, **form)
+    assert r.status_code == 400 and spy.calls == []
+    five = step(r.text, 5)
+    assert 'value="7"' in cell(five, "orf_start") and 'value="1"' not in cell(five, "orf_start")
+    assert 'value=""' in cell(five, "stop_codons") and "TAA" not in cell(five, "stop_codons")
+    assert 'value="AAA"' in cell(five, "FW_primer")
+    assert re.search(r"<textarea [^>]*name=\"params\"[^>]*>my_extra: 1\nzzz: 2</textarea>", five)
+
+
+def test_j06_wording_guard_still_green(rig, fk):
+    # J06
+    ann, c = ready(rig)
+    launched(rig, ann, "run-a")
+    for url in (SEL, SEL + "&src=new", SEL + "&src=used", "/launch"):
+        assert banned_in(c.get(url).text) == [], url
+    form = defaults_form()
+    form["run_name"] = ""
+    assert banned_in(post(rig, c, **form).text) == []
