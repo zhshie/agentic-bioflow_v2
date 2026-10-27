@@ -151,19 +151,20 @@ def test_get_changes_nothing_for_a_clean_request(w):
 
 # What the pages of launch and cancel printed before this task (hash of the page with ids and tokens masked).
 # guided-launch-2 added rules to the one stylesheet (the parameter group table), so every page's hash and BASE_STYLE were pinned again; only the stylesheet differs.
-BASE_CONFIRM = {'pending-launch-zh': (200, 'df1d4e01562214ad'), 'pending-cancel-zh': (200, '83166a7f9a7195e5'),
-                'pending-launch-en': (200, '49a971e34d6fcb69'), 'pending-cancel-en': (200, '5d4cef460a05bf43'),
-                'void-zh': (409, '72319e9b63c5c442'), 'void-en': (409, '72319e9b63c5c442'),
-                'confirmed-launch-zh': (200, '974eda3ec3738d91'), 'confirmed-launch-en': (200, '888f5c8e51a9462c'),
-                'confirmed-cancel-zh': (200, 'c59602a6eb4858e3'), 'confirmed-cancel-en': (200, '8f79bb7b8ec15eef')}
-BASE_EXPIRED = {'expired-launch-zh': (200, 'ce047ff2bd10fdfd'), 'expired-cancel-zh': (200, '9d3c1ed03e3600bb'),
-                'expired-launch-en': (200, 'ce047ff2bd10fdfd'), 'expired-cancel-en': (200, '9d3c1ed03e3600bb')}
-BASE_POST = {'pressed-launch': (200, '1873ac0eb40c02d2'), 'pressed-cancel': (200, '06d6abac3bdcd360'),
-             'late-launch': (410, 'f6e6c3334f33dab0'), 'late-cancel': (410, 'f6e6c3334f33dab0')}
-BASE_BOARD = {'succeeded-zh': (200, '4848c38bc81b7d83'), 'succeeded-en': (200, '0374f124f2f46a9b'),
-              'failed-zh': (200, '140584e13e7a9878'), 'failed-en': (200, 'b4f7be1ed9cc4e2a'),
-              'running-zh': (200, '37e0259f990c9daa'), 'running-en': (200, '853c87fbd273dc7a')}
-BASE_STYLE = '9c06f5b1a03dc215'
+# guided-launch-2b added rules to the same stylesheet (column widths of that table, the advanced box) and took one out (the radio rows), so they were pinned once more; again only the stylesheet differs.
+BASE_CONFIRM = {'pending-launch-zh': (200, '2bc7b1f6a6827b73'), 'pending-cancel-zh': (200, 'f8f51b698844cd06'),
+                'pending-launch-en': (200, 'f664ab017d880851'), 'pending-cancel-en': (200, '1295dd2080eca2ce'),
+                'void-zh': (409, '73fc745ceec694d7'), 'void-en': (409, '73fc745ceec694d7'),
+                'confirmed-launch-zh': (200, 'e567896e7a444177'), 'confirmed-launch-en': (200, 'abcd1e07f00d8c21'),
+                'confirmed-cancel-zh': (200, '6674304593525a1b'), 'confirmed-cancel-en': (200, '3451b424aea2806c')}
+BASE_EXPIRED = {'expired-launch-zh': (200, 'afe5b4b8880055f6'), 'expired-cancel-zh': (200, '9b88c14ea6dfba56'),
+                'expired-launch-en': (200, 'afe5b4b8880055f6'), 'expired-cancel-en': (200, '9b88c14ea6dfba56')}
+BASE_POST = {'pressed-launch': (200, '4983efa90c25560e'), 'pressed-cancel': (200, '53975a8b8f22c6d1'),
+             'late-launch': (410, '0a191eb09859e68e'), 'late-cancel': (410, '0a191eb09859e68e')}
+BASE_BOARD = {'succeeded-zh': (200, '4f76b3f3eb176858'), 'succeeded-en': (200, '28ddd6488827f559'),
+              'failed-zh': (200, '29adf62423b059fc'), 'failed-en': (200, 'b6e3afdf2d3b0f91'),
+              'running-zh': (200, '966e98c2879654f2'), 'running-en': (200, '0d380a2f0301b261')}
+BASE_STYLE = '7b3e0b474b01c1ab'
 
 
 def launch_and_cancel(w, ann):
