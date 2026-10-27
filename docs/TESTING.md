@@ -727,6 +727,18 @@ The machine part is `platform/tests/test_cleanup_offer.py` (a fake site, a fake 
 
 Then keep the screenshots (the confirmation page with the text of `clean_screen`, and the board card, in Chinese and in English) for the daily list; the maintainer answers 好 or 不好.
 
+## Offering a clean-up for an old run (cloud-cleanup-backfill): the maintainer checks it on nano4
+
+The machine part is `platform/tests/test_cleanup_backfill.py`. The command only asks; the owner of the run still presses the button. Do not use an AI session to delete anything.
+
+1. Find a run that succeeded **before** the clean-up offer existed (the board shows it as finished, and its owner has no "可以清掉中間檔" notice).
+2. On the platform host run `abf-platform runs offer-cleanup <run>` without any other flag. It must print `<run>: 會提出申請 (would offer)` and the owner's board must show nothing new.
+3. Run the same line with `--apply`. It prints `已提出申請，請 <owner> 登入網頁在確認頁按送出`.
+4. Sign in on the web as the owner: the right column "待處理" has the notice and the confirmation page shows the clean-up request.
+5. **Do not press.** List `<run folder>/work` on nano4 (`list_site_files`): it is still there.
+
+Write 好 or 不好 for the daily list.
+
 ## nfcore-catalogue：真的讀一次 nf-co.re (read nf-co.re for real, once)
 
 The automatic tests never reach the internet. This is the one time a person checks it for real: the maintainer or developer-agent does it after the merge, on a machine with a network. It only sends one read request for a public file.

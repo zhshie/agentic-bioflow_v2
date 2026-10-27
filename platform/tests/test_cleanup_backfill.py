@@ -30,10 +30,11 @@ def d(w):
 
 
 def add(d, name, user, status="succeeded", sid=4242):
+    ce = "lab-a" if user != d.b.user_id else "b1"
     """A run in the index, its row in the hand-off record and the confirmation of the launch that holds what was sent."""
     from abf_station import launch as bundle_mod
     from abf_platform import common, compute_envs, store
-    view = compute_envs.get(d.state, "lab-a")
+    view = compute_envs.get(d.state, ce)
     folder = view["config"]["workDir"] + "/runs/" + name
     at = time.time() - 100
     con = store.connect_index(d.w.ip.index)
@@ -44,7 +45,7 @@ def add(d, name, user, status="succeeded", sid=4242):
     finally:
         con.close()
     sql_exec(d.state, "INSERT INTO launches (run_name, slurm_job_id, run_folder, ce, agent, confirmed_at, submitted_at, user_id) "
-                      "VALUES (?, ?, ?, 'lab-a', ?, ?, ?, ?)", (name, sid, folder, view["agent"], at, at + 1, user))
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (name, sid, folder, ce, view["agent"], at, at + 1, user))
     body = {"run_name": name, "run_folder": folder, "ce": bundle_mod.snapshot_ce(view)}
     sql_exec(d.state, "INSERT INTO confirmations (id, sha256, kind, created_at, caller_user_id, state, confirmed_at, bundle_json) "
                       "VALUES (?, ?, 'launch', ?, ?, 'confirmed', ?, ?)",
@@ -60,6 +61,7 @@ def run(d, *args):
 
 
 def three(d):
+    d.bobs_environment()
     add(d, "r-a", d.a.user_id)
     add(d, "r-b", d.b.user_id)
     add(d, "r-c", d.a.user_id, status="failed")
@@ -262,8 +264,9 @@ def test_the_shape_of_offer_cleanups(d):
     assert set(by["r-a"]) == {"run_name", "offered", "reason", "owner"} and by["r-a"]["owner"] == "alice"
     assert by["r-b"]["reason"] == "not that user's run" and by["nope"]["reason"] == "no such run" and by["nope"]["owner"] is None
     assert len(cleans(d)) == 1
-    names = [r["run_name"] for r in actions.offer_cleanups(d.state, d.w.ip.index, dry_run=True)["results"]]
-    assert sorted(names) == ["r-a", "r-b"]
+    every = actions.offer_cleanups(d.state, d.w.ip.index, dry_run=True)["results"]
+    assert sorted(r["run_name"] for r in every if r["would_offer"]) == ["r-a", "r-b"]
+    assert not [r for r in every if r["run_name"] in ("r-c", "r-run") and r["offered"]]
 
 
 def test_no_new_names_but_the_command_and_its_options():
