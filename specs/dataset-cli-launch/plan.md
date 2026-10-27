@@ -113,6 +113,8 @@ source: developer-agent 讀碼查證（2026-10-24）。cloud-upload.md「待 dev
 4. `mcp_server.py` 只加兩個參數並原樣傳遞，不得 import datasets 模組、不得出現上述禁字。
 5. 本任務在 cloud-cleanup-backfill 合併後才開（兩者都改 `cli.py` 與 `actions/__init__.py`）；開工先核對合併後的 `runs` 群、`offer_cleanups` 與 `ADOPTING`。
 
+6. **（2026-10-27 21:50 補）`platform/tests/test_pipeline_launch.py` 第 490 行把 `request_launch` 的參數清單逐字釘死**：准許、且只准把該清單在 `path_columns` 之後加入 `"dataset", "dataset_version"`，其他元素與順序不動；列入「必須更新的既有斷言」，PR 說明寫以前／以後／理由。這是本任務第二處（也是最後一處）准改的既有測試。
+
 ## 專長守則（backend）
 
 ### executor
