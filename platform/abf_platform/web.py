@@ -69,6 +69,7 @@ FAIL_WINDOW = 60.0
 MAX_TRACKED = 10000         # names (and addresses) with a live failure window; past this, new ones are refused, no live counter is dropped
 MAX_NAME_CHARS = 100
 MAX_BODY = 16384
+LAUNCH_BODY = 262144      # the launch form (guided-launch-2b): one box for each parameter of the pipeline
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 _HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
             "X-Content-Type-Options": "nosniff",
@@ -582,6 +583,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return files, image, latest
 
     async def launch_page(sid, user, caller, lang, values, errors, notes, source=None, code=200, guide=None):
+        t = web_board.STRINGS[lang]
         sheets, envs = await run_in_threadpool(launch_choices, caller)
         names = [e["name"] for e in envs]
         values = dict(values)
@@ -589,17 +591,27 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         values.setdefault("ce_name", names[0] if names else None)
         guide = dict(guide or {})
         pipeline = (values.get("pipeline") or "").strip()
+        revision = (values.get("revision") or "").strip()
         full = pipeline if "/" in pipeline else ("nf-core/" + pipeline if pipeline else "")
-        used, reuse = await run_in_threadpool(launch_reads, caller, full, (values.get("revision") or "").strip())
+        used, reuse = await run_in_threadpool(launch_reads, caller, full, revision)
         guide["used"], guide["reuse"] = used, reuse
         if guide.get("src") not in ("used", "new"):
             guide["src"] = "used" if used else "new"
         ce = values.get("ce_name") if values.get("ce_name") in names else None
-        files, image, latest = await run_in_threadpool(launch_files, caller, full, (values.get("revision") or "").strip(), ce, guide["src"],
-                                                        not guide.get("post"))
-        if guide.get("pvals"):      # the filled boxes of the parameter table join the parameter box, typed by the pipeline's own schema
-            values["params"] = web_launch.merge_params(values.get("params", ""), guide["pvals"], web_launch.types_of(files))
-            guide["given"] = dict(guide.get("given") or {}, params=values["params"])
+        files, image, latest = await run_in_threadpool(launch_files, caller, full, revision, ce, guide["src"], not guide.get("post"))
+        # the boxes of the parameter table hold the default, or what was filled in, or the value of the earlier analysis; the parameters of that
+        # analysis that the schema does not know go to the advanced box (guided-launch-2b)
+        cells, box = dict(guide.get("cells") or {}), values.get("params", "")
+        if guide.get("prefill"):
+            known, rest = web_launch.split_prefill(guide["prefill"], files)
+            cells = dict(known, **cells)
+            if rest and not box.strip():
+                box = web_board.params_text(rest)
+        values["params"] = box
+        guide["cells"] = cells
+        guide["sets"] = web_launch.merge_params(box, web_launch.changed_fields(web_launch.cell_values(files, cells), files), web_launch.types_of(files))
+        if guide.get("hint") and web_launch.types_of(files):
+            notes = list(notes) + [t["g_loaded"] % (full, revision)]
         runs = await run_in_threadpool(read_runs, caller)
         doc = web_board.render_launch(user["name"], csrf(sid, "logout"), runs, values, errors, notes, sheets, envs, csrf(sid, "launch"), lang, source,
                                       guide, files, image, latest)
@@ -616,7 +628,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         sheets, envs = await run_in_threadpool(launch_choices, caller)
         names = [e["name"] for e in envs]
         runs = await run_in_threadpool(read_runs, caller)
-        given = {k: q.get(k).strip() for k in ("pipeline", "revision", "route", "params_from", "from") if q.get(k, "").strip()}
+        given = {k: q.get(k).strip() for k in ("pipeline", "revision", "params_from", "from") if q.get(k, "").strip()}      # `route` of the first cut is ignored
         if "params" in q:
             given["params"] = q.get("params")
         if q.get("samplesheet") in sheets:
@@ -626,13 +638,15 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if q.get("src") in ("used", "new"):
             given["src"] = q.get("src")
         values = {k: given[k] for k in ("pipeline", "revision", "samplesheet", "ce_name") if k in given}
-        notes, source, done, earlier_params = [], None, set(), None
-        pvals = {k: v for k, v in web_launch.fields_of(dict(q.items())).items() if v.strip()}      # the filled boxes of the parameter table
+        if q.get("run_name", "").strip():
+            values["run_name"] = q.get("run_name").strip()
+        notes, source, done, prefill = [], None, set(), None
+        pvals = web_launch.fields_of(dict(q.items()))      # the boxes of the parameter table, when the address carries any
 
         def run_name_of(origin):      # the page is asked for a run by its id or by its name
             return next((r["name"] for r in runs if r["id"] == origin), origin)
         origin = given.get("from", "")
-        if origin:       # quick launch: the boxes of an earlier run of this person, when its content is still kept
+        if origin:       # re-run with the same settings: the boxes of an earlier run of this person, when its content is still kept
             name = run_name_of(origin)
             match = next((r for r in runs if r["id"] == origin or r["name"] == origin), None)
             earlier = await run_in_threadpool(actions.launch_prefill, platform_path, name, caller=caller)
@@ -646,7 +660,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                                    ("ce_name", earlier.get("ce_name") if earlier.get("ce_name") in names else None)):
                     if key not in values and value:
                         values[key] = value
-                earlier_params = web_board.params_text(earlier.get("params"))
+                prefill = earlier.get("params") or {}
                 done |= {5} | ({6} if values.get("ce_name") else set())
                 notes.append(t["l_from"])
             else:
@@ -658,33 +672,22 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             done.add(4)
         if "ce_name" in given:
             done.add(6)
-        if "route" in given or "params" in given:
+        if "params" in given:
             done.add(5)
-        cannot, reused = False, None
+        cannot = False
         if given.get("params_from"):
             full = pipeline if "/" in pipeline else "nf-core/" + pipeline
             earlier = await run_in_threadpool(actions.launch_prefill, platform_path, run_name_of(given["params_from"]), caller=caller)
             if pipeline and revision and earlier.get("found") and earlier.get("kept") and earlier.get("pipeline") == full \
                     and earlier.get("revision") == revision:
-                reused = web_board.params_text(earlier.get("params"))
+                prefill = earlier.get("params") or {}
                 done.add(5)
             else:
                 cannot = True
                 given.pop("params_from")
-        route = given.get("route") if given.get("route") in ("reuse", "defaults", "custom") else None
-        if route == "defaults" and not pvals:
-            params = ""
-        elif route in ("custom", "defaults"):
-            params = given.get("params", "")
-        elif reused is not None:
-            params = reused
-        else:
-            params = given["params"] if "params" in given else (earlier_params or "")
-        values["params"] = params
-        route = "custom" if pvals else (route or ("reuse" if reused is not None else ("custom" if params else "defaults")))
-        if pvals:
-            done.add(5)
-        guide = {"given": dict(given), "done": done, "route": route, "cannot_reuse": cannot, "src": given.get("src"), "pvals": pvals}
+        values["params"] = given.get("params", "")
+        guide = {"given": dict(given), "done": done, "cannot_reuse": cannot, "src": given.get("src"), "cells": pvals or None, "prefill": prefill,
+                 "hint": bool(pipeline and revision)}
         return await launch_page(sid, user, caller, lang, values, [], notes, source, guide=guide)
 
     DIAGRAM_TYPES = ("image/png", "image/svg+xml", "image/jpeg", "image/gif")
@@ -716,13 +719,24 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'"
         return Response(data, media_type=picture["type"], headers=headers)
 
+    async def launch_body(request):
+        """The body of the launch form. Every box of the parameter table comes back (it holds its default), so this form carries far more fields and
+        bytes than the other forms of the site; the same read with a larger cap (guided-launch-2b)."""
+        raw = b""
+        async for chunk in request.stream():
+            raw += chunk
+            if len(raw) > LAUNCH_BODY:
+                break
+        out = urllib.parse.parse_qs(raw[:LAUNCH_BODY].decode("utf-8", errors="replace"), keep_blank_values=True, max_num_fields=1000)
+        return {k: v[0] for k, v in out.items()}
+
     async def launch_post(request):
         if not same_origin(request):
             return foreign(request)
         sid, user = user_of(request)
         if user is None:
             return unauth(request)
-        form = await body_of(request)
+        form = await launch_body(request)
         lang = web_board.pick_lang(form.get("lang"))
         t = web_board.STRINGS[lang]
         if not _same(form.get("csrf", ""), csrf(sid, "launch")):
@@ -731,6 +745,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         sheets, envs = await run_in_threadpool(launch_choices, caller)
         envs = [e["name"] for e in envs]
         pipeline = str(form.get("pipeline", "")).strip()
+        chosen = str(form.get("params_from", "")).strip()
+        src = str(form.get("src", "")) if form.get("src") in ("used", "new") else None
         values = {"pipeline": pipeline, "revision": str(form.get("revision", "")).strip(), "run_name": str(form.get("run_name", "")).strip(),
                   "samplesheet": str(form.get("samplesheet", "")), "ce_name": str(form.get("ce_name", "")), "params": str(form.get("params", ""))}
         errors, bad = [], set()
@@ -740,6 +756,13 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if not values["revision"] or re.search(r"\s", values["revision"]):
             errors.append(t["e_revision"])
             bad.add(2)
+        if not errors and (pipeline != str(form.get("shown_pipeline", "")).strip() or values["revision"] != str(form.get("shown_revision", "")).strip()
+                           or chosen != str(form.get("shown_params_from", "")).strip()):
+            # the page was drawn for another pipeline, version or earlier analysis: this press only loads that table (nothing is sent; the
+            # confirmation page stays the only place that queues anything)
+            pairs = [("pipeline", pipeline), ("revision", values["revision"]), ("samplesheet", values["samplesheet"]), ("ce_name", values["ce_name"]),
+                     ("run_name", values["run_name"]), ("params_from", chosen), ("src", src), ("lang", "en" if lang == "en" else "")]
+            return RedirectResponse("/launch?" + urllib.parse.urlencode([(k, v) for k, v in pairs if v], safe="/"), status_code=303, headers=_HEADERS)
         if not values["run_name"]:
             errors.append(t["e_run_name"])
             bad.add(7)
@@ -749,14 +772,16 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if values["ce_name"] not in envs:
             errors.append(t["e_ce"])
             bad.add(6)
-        pvals = {k: v for k, v in web_launch.fields_of(form).items() if v.strip()}
-        if pvals:      # the filled boxes of the parameter table: typed by the pipeline's own schema when it is there (a read that queues nothing)
-            def schema_types():
+        cells = web_launch.fields_of(form)      # every box of the parameter table as it came back
+        pvals = {k: v for k, v in cells.items() if v.strip()}
+        merged = values["params"]
+        if pvals:      # only the boxes that differ from the pipeline's own default are sent (a read that queues nothing)
+            def schema_files():
                 full = pipeline if "/" in pipeline else "nf-core/" + pipeline
-                return web_launch.types_of(actions.pipeline_files(platform_path, full, values["revision"], caller=caller, enqueue=False))
-            kinds = await run_in_threadpool(schema_types) if pipeline and values["revision"] else {}
-            values["params"] = web_launch.merge_params(values["params"], pvals, kinds)
-        params, problems = web_board.parse_params(values["params"], t)
+                return actions.pipeline_files(platform_path, full, values["revision"], caller=caller, enqueue=False)
+            files = await run_in_threadpool(schema_files) if pipeline and values["revision"] else None
+            merged = web_launch.merge_params(merged, web_launch.changed_fields(pvals, files), web_launch.types_of(files))
+        params, problems = web_board.parse_params(merged, t)
         errors += problems
         if problems:
             bad.add(5)
@@ -772,7 +797,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             bad.add(7)
         else:
             errors.append(t["e_body"])
-        guide = {"done": {2, 4, 5, 6}, "bad": bad, "route": "custom" if values["params"].strip() else "defaults", "post": True}
+        guide = {"done": {2, 4, 5, 6}, "bad": bad, "post": True, "cells": cells, "src": src, "given": {"params_from": chosen} if chosen else {}}
         return await launch_page(sid, user, caller, lang, values, errors, [], code=400, guide=guide)
 
     async def settings(request):

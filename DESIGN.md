@@ -75,6 +75,16 @@ Buttons are fixed verbs only (上傳, 續跑, 重跑, 設定, 日誌, 打包, �
 12. **Settings**: compute environments, credentials (token, 12 h), Secrets (AI model key, Jev key optional; browser only), Personal (step-by-step mode, development mode); Operator panel and Roles as dashed "coming later".
 13. **Sign-in to confirm** (from an MCP client): name, token, remember 12 h → launch summary.
 
+## 用字 (wording of the Chinese interface; guided-launch-2b)
+
+The maintainer, 2026-10-27: 「一樣要注意中文的顯示不能口語(e.g. "選用這個樣本", "用過的")」. Every Chinese sentence of the interface is written language (正式書面語): a statement of fact or a plain request, with no spoken particles, no "you did not yet" phrasing and no pointing words that stand for nothing. The English text is the equivalent formal sentence.
+
+Rules: (1) say what the state is ("尚無使用紀錄。", "尚未上傳樣本表，無法啟動分析。"), not what the person has or has not done; (2) name the thing instead of pointing at it ("此管線", "該次分析", "已上傳的檔案"); (3) one verb for one act: 選用 (take a row of a table), 套用 (apply a version), 送出 (submit), 載入 (load); (4) a required field is marked with the red `*` (`<span class="req" title="必填">*</span>`, English title "Required") and the legend "* 必填" above the table; the word 必填 is not repeated as a label.
+
+Banned strings in the Chinese text of a page (a test reads the main column of `/launch` in every state and fails on any of them; the pipeline's own English descriptions are not checked): 用過、選好、寫死、自己填、自己調整、你還沒、還沒有、還不能、這個、這份、這條、這一版、一下、弄、搞、東西、喔、啦、吧、囉、蠻、超.
+
+Other screens (board, run page, settings, /welcome, the left column) are not yet swept; that is the backlog item `web-wording-sweep`. A new page uses this section from the start.
+
 ## Constraints
 Single stylesheet, no inline style, no external resources, 15-second refresh. JS only where marked: the terminal page (ttyd), the studio iframe, MultiQC embed, chat send, drag-and-drop upload, client-side pipeline search. Language by `?lang=en` server-side; every screen exists in English. Owner rule: each person sees only their own analyses and terminals. No Galaxy/Seqera logos, names, brand colours or code (ADR 0004).
 

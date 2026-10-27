@@ -59,12 +59,85 @@ def merge_params(text, fields, types):
     return (text.rstrip("\n") + "\n" if text.strip() else "") + "\n".join(lines)
 
 
-def types_of(files):
-    """{parameter name: [json types]} from the read of the schema, {} when it is not there."""
+def _params_of(files):
+    """The parameters of the read of the schema, in the schema's order; [] when it is not there."""
     schema = (files or {}).get("schema") if (files or {}).get("state") == "ready" else None
     if not isinstance(schema, dict) or schema.get("status") != "ok":
-        return {}
-    return {p["name"]: p.get("types") or [] for g in schema.get("groups") or [] for p in g.get("params") or []}
+        return []
+    return [p for g in schema.get("groups") or [] for p in g.get("params") or []]
+
+
+def types_of(files):
+    """{parameter name: [json types]} from the read of the schema, {} when it is not there."""
+    return {p["name"]: p.get("types") or [] for p in _params_of(files)}
+
+
+def defaults_of(files):
+    """{parameter name: default} of the parameters that have one in the pipeline's own schema (guided-launch-2b)."""
+    return {p["name"]: p.get("default") for p in _params_of(files) if p.get("has_default")}
+
+
+def _same(value, default):
+    """Whether the typed value is the schema's default (a bool is never equal to a number)."""
+    if isinstance(value, bool) or isinstance(default, bool):
+        return isinstance(value, bool) and isinstance(default, bool) and value == default
+    if isinstance(value, (int, float)) and isinstance(default, (int, float)):
+        return value == default
+    return type(value) is type(default) and value == default
+
+
+def changed_fields(fields, files):
+    """{name: text} of the filled `p.<name>` fields that are not what the pipeline does by itself. An empty field is not sent; a field whose typed
+    value is the schema's default is not sent either (guided-launch-2b). Without the schema (reading or failed) every filled field stays, as typed."""
+    types, defaults = types_of(files), defaults_of(files)
+    out = {}
+    for name, raw in (fields or {}).items():
+        value = " ".join(str(raw).split())
+        if not value:
+            continue
+        if name in defaults and (_shown(defaults[name]) == value or _same(_typed(value, types.get(name) or []), defaults[name])):
+            continue
+        out[name] = raw
+    return out
+
+
+def cell_value(p, cells):
+    """What the box of this parameter holds: what was filled in (or the earlier analysis's value) when there is such a value, else the default."""
+    if p["name"] in (cells or {}):
+        return str(cells[p["name"]])
+    return _shown(p.get("default")) if p.get("has_default") else ""
+
+
+def cell_values(files, cells):
+    """{name: text} of every box of the parameter table as the page shows it."""
+    return {p["name"]: cell_value(p, cells) for p in _params_of(files)}
+
+
+def split_prefill(params, files):
+    """(cells, rest) of the parameters of an earlier analysis: those the schema knows go to the boxes of the table, the others stay as they were."""
+    known = types_of(files)
+    cells, rest = {}, {}
+    for key, value in (params or {}).items():
+        if key in known:
+            cells[key] = _shown(value)
+        else:
+            rest[key] = value
+    return cells, rest
+
+
+def size_text(size):
+    """A file size as the page writes it: B under 1 KB, whole KB under 1 MB, else MB with one decimal."""
+    if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+        return "—"
+    if size < 1024:
+        return "%d B" % size
+    if size < 1048576:
+        return "%d KB" % int(size / 1024.0 + 0.5)
+    return "%.1f MB" % (size / 1048576.0)
+
+
+def star(t):
+    return '<span class="req" title="%s">*</span>' % esc(t["g2_req"])
 
 
 # ---- small pieces -----------------------------------------------------------------------------------------------------------------------
@@ -183,7 +256,7 @@ def diagram_block(t, lang, pipeline, revision, files, image, quiet=False):
         return "later", _bad(lang, im.get("message"))
     href = esc("/launch/diagram?" + urllib.parse.urlencode([("pipeline", pipeline), ("revision", revision)], safe="/"))
     return "done", ('<p>%s</p><p><a class="dlink" href="%s">%s</a></p>'
-                    % (esc(t["g2_dia_file"] % (d.get("name") or "—", d.get("size") if isinstance(d.get("size"), int) else "—")), href, esc(t["g2_dia_open"])))
+                    % (esc(t["g2_dia_file"] % (d.get("name") or "—", size_text(d.get("size")))), href, esc(t["g2_dia_open"])))
 
 
 # ---- step 4 -----------------------------------------------------------------------------------------------------------------------------
@@ -199,10 +272,11 @@ def samplesheet_block(t, lang, files, quiet=False):
         return _failure(lang, files)
     if si.get("status") != "ok":
         return _bad(lang, si.get("message"))
-    rows = "".join('<tr class="scol"><td>%s</td><td>%s</td><td>%s</td></tr>'
-                   % (esc(c.get("name")), "✓" if c.get("required") else "—", esc(c.get("description") or "")) for c in si.get("columns") or [])
-    heads = "".join("<th>%s</th>" % esc(t[k]) for k in ("g2_th_col", "g2_th_req", "g2_th_desc"))
-    return '<table class="tbl scols"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (heads, rows)
+    rows = "".join('<tr class="scol"><td>%s%s</td><td>%s</td></tr>'
+                   % (esc(c.get("name")), star(t) if c.get("required") else "", esc(c.get("description") or "")) for c in si.get("columns") or [])
+    heads = "".join("<th>%s</th>" % esc(t[k]) for k in ("g2_th_col", "g2_th_desc"))
+    return ('<p class="muted">%s</p><table class="tbl scols"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>'
+            % (esc(t["g_legend"]), heads, rows))
 
 
 # ---- step 5 -----------------------------------------------------------------------------------------------------------------------------
@@ -213,25 +287,32 @@ def _shown(value):
     return "" if value is None else str(value)
 
 
-def _row(t, p):
+def _row(t, p, cells):
     name = p["name"]
-    required = ' <span class="req">%s</span>' % esc(t["g2_req"]) if p.get("required") and not p.get("has_default") else ""
+    required = star(t) if p.get("required") and not p.get("has_default") else ""
     default = _shown(p.get("default")) if p.get("has_default") else ""
+    value = cell_value(p, cells)
     label = ' aria-label="%s"' % esc(name)
+
+    def options(choices):
+        shown = list(choices) + ([value] if value and value not in choices else [])
+        return "".join('<option value="%s"%s>%s</option>' % (esc(x), " selected" if x == value else "", esc(x)) for x in [""] + shown)
     if p.get("enum"):
-        opts = '<option value=""></option>' + "".join('<option value="%s">%s</option>' % (esc(x), esc(x)) for x in p["enum"])
-        control = '<select name="p.%s"%s>%s</select>' % (esc(name), label, opts)
+        control = '<select name="p.%s"%s>%s</select>' % (esc(name), label, options([str(x) for x in p["enum"]]))
     elif "boolean" in (p.get("types") or []):
-        control = ('<select name="p.%s"%s><option value=""></option><option value="true">true</option><option value="false">false</option></select>'
-                   % (esc(name), label))
+        control = '<select name="p.%s"%s>%s</select>' % (esc(name), label, options(["true", "false"]))
     else:
-        control = '<input name="p.%s"%s placeholder="%s">' % (esc(name), label, esc(default))
+        control = '<input name="p.%s"%s value="%s">' % (esc(name), label, esc(value))
     return ('<tr class="prow"><td>%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
             % (esc(name), required, esc(p.get("description") or ""), esc(", ".join(p.get("types") or [])), esc(default) if p.get("has_default") else "—", control))
 
 
-def groups_block(t, lang, files, quiet=False):
-    """The parameter table of route ③: the pipeline's own groups, hidden parameters last, each with a box that comes back as `p.<name>`."""
+COLS = ("cname", "cdesc", "ctype", "cdef", "cval")      # the widths are in the style sheet (web_board), one rule for each
+
+
+def groups_block(t, lang, files, quiet=False, cells=None):
+    """The parameter table: the pipeline's own groups, hidden parameters last, each with a box that comes back as `p.<name>` and holds the
+    default (or the value of the earlier analysis, or what was filled in before the page was drawn again)."""
     kind, schema = _part(files, "schema")
     if kind == "none":
         return '<p class="muted">%s</p>' % esc(t["g2_groups_wait"])
@@ -242,9 +323,11 @@ def groups_block(t, lang, files, quiet=False):
     if schema.get("status") != "ok":
         return _bad(lang, schema.get("message"))
     heads = "".join("<th>%s</th>" % esc(t[k]) for k in ("g2_th_name", "g2_th_desc", "g2_th_type", "g2_th_default", "g2_th_value"))
+    colgroup = "<colgroup>%s</colgroup>" % "".join('<col class="%s">' % c for c in COLS)
 
     def table(params):
-        return '<table class="tbl ptbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (heads, "".join(_row(t, p) for p in params))
+        return ('<table class="tbl ptbl">%s<thead><tr>%s</tr></thead><tbody>%s</tbody></table>'
+                % (colgroup, heads, "".join(_row(t, p, cells) for p in params)))
     out, opened = [], False
     hidden = []
     for g in schema.get("groups") or []:
@@ -256,7 +339,7 @@ def groups_block(t, lang, files, quiet=False):
         opened = True
     if hidden:
         out.append('<details class="pgroup pgroup-adv"><summary>%s</summary>%s</details>' % (esc(t["g2_adv"]), table(hidden)))
-    return '<div class="pgroups">%s</div>' % "".join(out)
+    return '<p class="muted">%s</p><div class="pgroups">%s</div>' % (esc(t["g_legend"]), "".join(out))
 
 
 def fill_hint(t, loading):

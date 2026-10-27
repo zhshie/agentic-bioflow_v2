@@ -8,7 +8,7 @@ import urllib.parse
 
 import pytest
 
-from test_web_actions import form_values, login, pending, rid_of
+from test_web_actions import area_sheet, form_values, login, pending, rid_of
 from test_web_board import no_cjk
 from test_web_guided_launch import SEL, launched, ready, rig  # noqa: F401  (rig is a fixture)
 from test_web_guided_launch_2 import (NETWORK, error_files, fk, good_files, groups, input_cols, latest, loading_files,  # noqa: F401  (fk is a fixture)
@@ -117,9 +117,9 @@ def test_h01_kept_links(rig, fk):
     two = step(c.get(SEL + "&src=used").text, 2)
     assert re.search(r'<a href="/launch\?pipeline=nf-core/ampliseq&amp;revision=2.18.0">選用</a>', two)
     assert re.search(r'<a href="/launch\?from=run-a">沿用設定重新分析</a>', two)
-    t = c.get(SEL + "&src=new").text
+    t = c.get("/launch?pipeline=nf-core/ampliseq&src=new").text
     assert re.search(r'<a href="[^"]*pipeline=nf-core/ampliseq[^"]*revision=2.18.0[^"]*">套用此版本</a>', step(t, 2))
-    assert 'data-tab="used"' in t and 'data-tab="new"' in t and "開啟流程圖" in step(t, 3)
+    assert 'data-tab="used"' in t and 'data-tab="new"' in t and "開啟流程圖" in step(c.get(SEL).text, 3)
 
 
 def test_h01_used_tab_hidden_fields(rig, fk, spy):
@@ -141,13 +141,14 @@ def test_h01_no_sheet_no_env_keep_the_button(rig, fk, spy):
     c = login(rig, "ann")
     t = c.get(SEL).text
     assert "送出（前往確認頁）" in main_of(t) and "disabled" not in form_of(t)
-    r = c.post("/launch", data=dict(hidden_of(t), run_name="x", samplesheet="", ce_name="lab-a"))
+    r = c.post("/launch", data=dict(hidden_of(t), pipeline="nf-core/ampliseq", revision="2.18.0", run_name="x", samplesheet="", ce_name="lab-a"))
     assert r.status_code == 400 and "樣本表必須從已上傳的檔案中選擇。" in r.text and spy.calls == []
-    ann, c = ready(rig, "bob")
-    rig.sql("DELETE FROM compute_envs")
+    bob = rig.user("bob")      # the first user owns the only environment
+    area_sheet(rig.w, bob)
+    c = login(rig, "bob")
     t = c.get(SEL).text
     assert "送出（前往確認頁）" in main_of(t) and "尚無可用的運算環境。" in t
-    r = c.post("/launch", data=dict(hidden_of(t), run_name="x", samplesheet="samples.csv", ce_name=""))
+    r = c.post("/launch", data=dict(hidden_of(t), pipeline="nf-core/ampliseq", revision="2.18.0", run_name="x", samplesheet="samples.csv", ce_name=""))
     assert r.status_code == 400 and "運算環境必須是" in r.text and spy.calls == []
 
 
@@ -235,7 +236,7 @@ def test_h04_400_page_then_send(rig, fk, spy):
     assert r.status_code == 400
     h = hidden_of(r.text)
     assert (h["shown_pipeline"], h["shown_revision"]) == ("nf-core/ampliseq", "2.18.0")
-    rid_of(c.post("/launch", data=dict(h, run_name="web-run", samplesheet="samples.csv", ce_name="lab-a")))
+    rid_of(c.post("/launch", data=dict(h, pipeline="nf-core/ampliseq", revision="2.18.0", run_name="web-run", samplesheet="samples.csv", ce_name="lab-a")))
 
 
 def test_h04_one_press_from_a_link(rig, fk, spy):
@@ -443,7 +444,7 @@ def test_h09_style():
     # TC-077, TC-078
     import subprocess
     from abf_platform import web_board
-    css = web_board.style_source()
+    css = web_board.STYLE
     assert re.search(r"\.req\{[^}]*color:var\(--failed\)", css)
     base = subprocess.run(["git", "show", "956e7d2:platform/abf_platform/web_board.py"], cwd=str(REPO), capture_output=True, text=True, encoding="utf-8")
     assert base.returncode == 0
@@ -456,7 +457,7 @@ def test_h12_columns(rig, fk):
     _, c = ready(rig)
     t = c.get(SEL).text
     assert "<colgroup>" in step(t, 5) and "style=" not in t
-    css = web_board.style_source()
+    css = web_board.STYLE
     assert "table-layout:fixed" in css.replace(" ", "") and "@media (max-width:600px){.ptbl thead{display:none}" in css
     cols = re.findall(r'<col class="(\w+)">', step(t, 5))[:5]
     pct = [int(re.search(r"\.ptbl \.%s\{width:(\d+)%%" % k, css).group(1)) for k in cols]
@@ -526,9 +527,9 @@ def test_h11_no_banned_word(rig, fk):
 def test_h11_no_banned_word_without_env(rig, fk):
     # TC-107
     rig.user("ann")
-    c = login(rig, "ann")
-    rig.sql("DELETE FROM compute_envs")
-    t = c.get(SEL).text
+    bob = rig.user("bob")
+    area_sheet(rig.w, bob)
+    t = login(rig, "bob").get(SEL).text
     assert banned_in(t) == [] and "尚無可用的運算環境。" in t
 
 
@@ -572,7 +573,8 @@ def test_h11_old_strings_are_gone(rig, fk):
     news = {"used": ["曾使用的管線", "其他 nf-core 管線", "選用", "沿用設定重新分析", "請依序完成步驟 1 至 7。按下「送出」後將進入確認頁，於確認頁再次送出才會排入佇列。"],
             "no pipeline": ["選定管線後檢查", "尚未選擇", "預覽與欄位角色（尚未開放）", "選定管線與版本後顯示", "分析名稱", "送出（前往確認頁）"],
             "no version": ["選定版本後檢查"], "stale": ["套用此版本", "目前無法連線至 GitHub，以下為"],
-            "no diagram": ["此管線未提供流程圖。"], "no sheet": ["尚未上傳樣本表，無法啟動分析。", "樣本表（從已上傳的檔案中選擇）"],
+            "no diagram": ["此管線未提供流程圖。"], "no sheet": ["尚未上傳樣本表，無法啟動分析。", "尚無可用的運算環境。"],
+            "ready": ["樣本表（從已上傳的檔案中選擇）"],
             "from": ["已帶入該次分析的設定；樣本表與分析名稱需重新選擇。"], "loading": ["讀取中，頁面將自動更新；請於讀取完成後再填寫參數。"]}
     for state, words in news.items():
         for w in words:

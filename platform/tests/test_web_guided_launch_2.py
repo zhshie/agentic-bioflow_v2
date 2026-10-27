@@ -142,7 +142,7 @@ def test_g01_loading_row_and_refresh(rig, fk):
     t = get(c).text
     assert row(t, "讀取管線參數表") == "… 讀取管線參數表 讀取中"
     assert REFRESH in t and "讀取中，頁面每 15 秒自動更新。" in step(t, 1)
-    assert "讀取中頁面會自動更新，請等讀完再填參數。" in step(t, 5) and "<textarea" in step(t, 5)
+    assert "讀取中，頁面將自動更新；請於讀取完成後再填寫參數。" in step(t, 5) and "<textarea" in step(t, 5)      # guided-launch-2b: formal wording
 
 
 @pytest.mark.parametrize("code,reason,half", [("network", NETWORK, "代理連不到 GitHub，請檢查那台機器的網路"),
@@ -175,8 +175,8 @@ def test_g01_no_revision(rig, fk):
     # TC-007
     _, c = ready(rig)
     t = c.get("/launch?pipeline=nf-core/ampliseq&src=used").text
-    assert row(t, "讀取管線參數表") == "○ 讀取管線參數表 選好版本後檢查"
-    assert "　選好版本後檢查" in step(t, 1)
+    assert row(t, "讀取管線參數表") == "○ 讀取管線參數表 選定版本後檢查"      # guided-launch-2b: formal wording
+    assert "　選定版本後檢查" in step(t, 1)
     assert "讀取管線參數表" not in step(t, 7) and fk.main_calls() == []      # the missing revision is a problem of its own; this row is not one
 
 
@@ -205,15 +205,15 @@ def test_g02_latest_called_once_for_the_caller(rig, fk):
     assert len(fk.lr) == 1 and fk.lr[0]["caller"].name == "ann" and fk.lr[0]["pipeline"] == "nf-core/ampliseq" and fk.pf == []
     two = step(t, 2)
     assert re.search(r'<input [^>]*name="pipeline"', two) and re.search(r'<input [^>]*name="revision"', two)
-    assert "搜尋全部 nf-core 之後開放" in plain_text(two)
+    assert "搜尋全部 nf-core（尚未開放）" in plain_text(two)      # guided-launch-2b: formal wording
 
 
 def test_g02_latest_ready_and_link(rig, fk):
     # TC-015, TC-016, TC-017
     _, c = ready(rig)
     two = step(c.get(NEW).text, 2)
-    assert "最新版本：2.18.0" in plain_text(two) and "目前連不到 GitHub" not in two
-    href = re.search(r'<a href="([^"]+)">使用這一版</a>', two).group(1)
+    assert "最新版本：2.18.0" in plain_text(two) and "目前無法連線至 GitHub" not in two
+    href = re.search(r'<a href="([^"]+)">套用此版本</a>', two).group(1)
     assert "pipeline=nf-core/ampliseq" in href and "revision=2.18.0" in href
     nxt = c.get(html.unescape(href)).text
     assert re.search(r'name="revision" value="2.18.0"', nxt) or 'value="2.18.0"' in step(nxt, 2)
@@ -225,7 +225,7 @@ def test_g02_stale_cache(rig, fk):
     _, c = ready(rig)
     from abf_platform import web_board
     when = web_board.taipei_time(1_800_000_000.0)
-    assert "目前連不到 GitHub，這是 %s 查到的。" % when in plain_text(step(c.get(NEW).text, 2))
+    assert "目前無法連線至 GitHub，以下為 %s 的查詢結果。" % when in plain_text(step(c.get(NEW).text, 2))      # guided-launch-2b: formal wording
 
 
 def test_g02_latest_loading_and_error(rig, fk):
@@ -254,7 +254,8 @@ def test_g03_link_with_name_and_size(rig, fk):
     _, c = ready(rig)
     t = get(c).text
     three = step(t, 3)
-    assert 'href="%s">開啟流程圖</a>' % DIAGRAM_URL in three and "ampliseq_workflow.png" in three and "753702" in three
+    assert 'href="%s">開啟流程圖</a>' % DIAGRAM_URL in three and "ampliseq_workflow.png" in three and "736 KB" in three      # guided-launch-2b: KB, not bytes
+   
     assert 'data-state="done"' in three[:200] and "<img" not in t and "<figure" not in t
     for gone in ("本次值", "將執行的階段", "README"):
         assert gone not in t
@@ -265,7 +266,7 @@ def test_g03_none_loading_failed(rig, fk):
     _, c = ready(rig)
     fk.files = good_files(diagram={"status": "none"})
     three = step(get(c).text, 3)
-    assert "這條管線沒有提供流程圖。" in three and 'data-state="done"' in three[:200] and "開啟流程圖" not in three
+    assert "此管線未提供流程圖。" in three and 'data-state="done"' in three[:200] and "開啟流程圖" not in three
     fk.files = loading_files()
     t = get(c).text
     assert 'data-state="later"' in step(t, 3)[:200] and "… 讀取中" in plain_text(step(t, 3)) and REFRESH in t
@@ -290,7 +291,7 @@ def test_g03_not_chosen(rig, fk):
     _, c = ready(rig)
     for url in ("/launch", "/launch?pipeline=nf-core/ampliseq&src=used"):
         three = step(c.get(url).text, 3)
-        assert "選好管線與版本後顯示" in three and "之後開放" not in three
+        assert "選定管線與版本後顯示" in three and "之後開放" not in three
 
 
 def test_g03_calls(rig, fk):
@@ -371,10 +372,10 @@ def test_g05_table(rig, fk):
     t = get(c).text
     four = step(t, 4)
     cols = input_cols()
-    assert re.findall(r"<th>([^<]*)</th>", re.search(r'<table class="tbl scols">.*?</table>', four, re.S).group(0)) == ["欄名", "必填", "說明"]
-    rows = re.findall(r'<tr class="scol"><td>([^<]*)</td><td>([^<]*)</td><td>([^<]*)</td></tr>', four)
+    assert re.findall(r"<th>([^<]*)</th>", re.search(r'<table class="tbl scols">.*?</table>', four, re.S).group(0)) == ["欄名", "說明"]      # guided-launch-2b: no 必填 column
+    rows = re.findall(r'<tr class="scol"><td>([^<]*)(<span class="req" title="必填">\*</span>)?</td><td>([^<]*)</td></tr>', four)
     assert [r[0] for r in rows] == [x["name"] for x in cols]
-    assert [r[1] for r in rows] == ["✓" if x["required"] else "—" for x in cols]
+    assert [bool(r[1]) for r in rows] == [bool(x["required"]) for x in cols]      # guided-launch-2b: the red star replaces the ✓ and the —
     assert [html.unescape(r[2]) for r in rows] == [x["description"] for x in cols]
     assert four.index("</select>") < four.index('class="tbl scols"')
     for x in cols:
@@ -391,7 +392,7 @@ def test_g05_loading_failed_and_preview(rig, fk):
     fk.files = good_files(schema_input={"status": "bad_json", "message": "樣本表欄位檔不是合法的 JSON (not valid JSON)"})
     four = step(get(c).text, 4)
     assert "✗ 樣本表欄位檔不是合法的 JSON。" in plain_text(four) and "scols" not in four
-    assert "預覽與欄位角色 之後開放" in plain_text(four)
+    assert "預覽與欄位角色（尚未開放）" in plain_text(four)
 
 
 # ---- US5: step 5 groups ---------------------------------------------------------------------------------------------------------------
@@ -408,8 +409,8 @@ def test_g06_groups_order_and_open(rig, fk):
     want = [g["title"] for g in groups() if any(not p["hidden"] for p in g["params"])]
     assert [html.unescape(x) for x in titles[:-1]] == want and "進階" in titles[-1]
     assert len(re.findall(r'<details class="pgroup[^"]*" open>', five)) == 1 and re.search(r'<details class="pgroup" open><summary>%s' % re.escape(want[0]), five)
-    assert five.index('class="pgroups"') < five.index("<textarea") and five.index("<form") < five.index('class="pgroups"')
-    assert len(re.findall(r'<input type="radio" name="route"', five)) == 3 and five.index('value="custom"') < five.index('class="pgroups"')
+    assert five.index('class="pgroups"') < five.index("<textarea") and five.index('name="params_from"') < five.index('class="pgroups"')
+    assert 'name="route"' not in five      # guided-launch-2b: the three routes are gone
 
 
 def test_g06_rows_and_widgets(rig, fk):
@@ -420,7 +421,7 @@ def test_g06_rows_and_widgets(rig, fk):
     plain = next(p for p in allp.values() if p["types"] == ["string"] and p["has_default"] and not p["enum"] and not p["hidden"]
                  and isinstance(p["default"], str) and p["default"] and "&" not in p["default"] and "<" not in p["default"])
     m = re.search(r'<tr class="prow">(?:(?!</tr>).)*?<td>%s(?:(?!</tr>).)*</tr>' % re.escape(plain["name"]), five, re.S)
-    assert m and 'placeholder="%s"' % html.escape(plain["default"]) in m.group(0) and "<input " in m.group(0)
+    assert m and 'value="%s"' % html.escape(plain["default"]) in m.group(0) and "<input " in m.group(0)      # guided-launch-2b: the default is the value, not a placeholder
     assert 'name="p.%s"' % plain["name"] in m.group(0) and html.escape(plain["description"][:20]) in m.group(0) and "string" in m.group(0)
     enum = next(p for p in allp.values() if p["enum"] and not p["hidden"])
     sel = re.search(r'<select name="p\.%s"[^>]*>(.*?)</select>' % re.escape(enum["name"]), five, re.S).group(1)
@@ -430,11 +431,11 @@ def test_g06_rows_and_widgets(rig, fk):
     assert re.findall(r'<option value="([^"]*)"', sel) == ["", "true", "false"]
     num = next(p for p in allp.values() if p["types"][:1] in (["integer"], ["number"]) and not p["hidden"] and not p["enum"])
     assert re.search(r'<input [^>]*name="p\.%s"' % re.escape(num["name"]), five)
-    mark = five.index("進階（管線預設隱藏的參數）")
+    mark = five.index("進階參數（管線預設隱藏）")
     hidden = [p["name"] for p in allp.values() if p["hidden"]]
     assert hidden and all('name="p.%s"' % h in five[mark:] for h in hidden) and not any('name="p.%s"' % h in five[:mark] for h in hidden)
     req = [p["name"] for p in allp.values() if p["required"] and not p["has_default"]]
-    marked = re.findall(r'<td>([^<]*)<span class="req">必填</span>', five)
+    marked = re.findall(r'<td>([^<]*)<span class="req" title="必填">\*</span>', five)
     assert req and [html.unescape(x).strip() for x in marked] == req
 
 
@@ -482,12 +483,12 @@ def box(t):
 def test_g07_get_merges(rig, fk):
     # TC-074, TC-077, TC-078, TC-079
     _, c = ready(rig)
-    t = get(c, **{"p.FW_primer": "AAA"}).text
-    assert "FW_primer: AAA" in plain_text(step(t, 7)) and box(t) == "FW_primer: AAA"
-    t = get(c, route="defaults", **{"p.FW_primer": "AAA"}).text                       # TC-077: a filled field makes it route 3
-    assert box(t) == "FW_primer: AAA" and re.search(r'value="custom" checked', t) and "FW_primer: AAA" in plain_text(step(t, 7))
-    t = get(c, route="defaults", params="x%3A+1").text                                # TC-078: nothing filled, defaults clears
-    assert box(t) == ""
+    t = get(c, **{"p.FW_primer": "AAA"}).text      # guided-launch-2b: a filled box of the table stays in its box and is listed in the summary
+    assert "FW_primer: AAA" in plain_text(step(t, 7)) and re.search(r'name="p.FW_primer"[^>]*value="AAA"', t) and box(t) == ""
+    t = get(c, route="defaults", **{"p.FW_primer": "AAA"}).text                       # TC-077: `route` is ignored now
+    assert re.search(r'name="p.FW_primer"[^>]*value="AAA"', t) and "FW_primer: AAA" in plain_text(step(t, 7))
+    t = get(c, route="defaults", params="x%3A+1").text                                # TC-078: `route` is ignored now, the typed box stays
+    assert box(t) == "x: 1"
     t = get(c, **{"p.FW_primer": "", "p.outdir": ""}).text                           # TC-079
     assert box(t) == ""
     t = get(c, params="FW_primer%3A+BBB", route="custom", **{"p.FW_primer": "AAA"}).text
@@ -499,7 +500,7 @@ def test_g07_typed_from_the_schema(rig, fk):
     _, c = ready(rig)
     allp = {p["name"]: p for g in groups() for p in g["params"]}
     num = next(n for n, p in allp.items() if p["types"][:1] == ["integer"] and not p["enum"])
-    assert box(get(c, **{"p." + num: "7"}).text) == "%s: 7" % num
+    assert "%s: 7" % num in plain_text(step(get(c, **{"p." + num: "7"}).text, 7))      # guided-launch-2b: the summary, not the box
 
 
 class Spy:
@@ -564,10 +565,10 @@ def test_g08_english_every_state(rig, fk):
     assert "No usable release tag" in c.get(NEW + "&lang=en").text
     fk.latest = latest()
     t = c.get(NEW + "&lang=en").text
-    assert "Latest version: 2.18.0" in t and "Use this version" in t
+    assert "Latest version: 2.18.0" in t and "Apply this version" in t
     fk.files, fk.image = good_files(), good_image()
     t = get(c, lang="en").text
-    assert "Advanced (parameters the pipeline hides by default)" in t and "Open the workflow diagram" in t and ">Required<" in t
+    assert "Advanced parameters (hidden by default in the pipeline)" in t and "Open the workflow diagram" in t and 'title="Required"' in t
 
 
 def test_g09_limits(rig, fk):
@@ -615,7 +616,7 @@ def test_g11_other_pipeline(rig, fk):
     _, c = ready(rig)
     four = step(get(c).text, 4)
     names = [x["name"] for x in schema.samplesheet_columns(schema.load(other))]
-    assert re.findall(r'<tr class="scol"><td>([^<]*)</td>', four) == names and names != [x["name"] for x in input_cols()]
+    assert re.findall(r'<tr class="scol"><td>([^<]*)(?:<span class="req" title="必填">\*</span>)?</td>', four) == names and names != [x["name"] for x in input_cols()]
 
 
 def test_g12_no_path_in_a_reason(rig, fk):

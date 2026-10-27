@@ -348,7 +348,7 @@ def test_tc026_tc028_quick_launch(rig):
     from abf_platform import actions
     assert actions.forget(rig.state, rig.index, "run-a", confirmed_by=actions.TERMINAL, caller=ann)["forgotten"] is True
     r = c.get("/launch?from=" + failed)
-    assert r.status_code == 200 and "沒有保留" in r.text and "AGRG" not in r.text and "nf-core/ampliseq" not in re.sub(r"<[^>]+>", "", r.text).replace("管線", "")
+    assert r.status_code == 200 and "未保存" in r.text and "AGRG" not in r.text and "nf-core/ampliseq" not in re.sub(r"<[^>]+>", "", r.text).replace("管線", "")
     assert not re.search(r'name="revision"[^>]*value="[^"]', r.text)
 
 
