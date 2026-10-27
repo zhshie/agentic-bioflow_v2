@@ -33,3 +33,8 @@
  platform/tests/test_cleanup_offer.py      | (新檔)
 ```
 Slurm 的內容包、畫面、`head.sh` 與 golden 沒有動（`prepare_cancel`、`cancel_screen`、`launch_screen`、golden 檔都未修改）。不需要 migration（沒碰資料結構，TC-114 有測試）。
+
+## 第二輪：裁決 11 的既有測試更正（舊到新與理由）
+- `platform/tests/test_cleanup_confirm.py` TC-065/066：舊＝整個 `abf_platform` 原始碼不得有 `create_pending(...clean_work`；新＝掃描時只排除 `actions/__init__.py` 裡 `offer_cleanup` 函式本體（ast 取範圍），其他檔與函式仍不得出現。理由：b 片「還沒有東西會建申請」的守衛，f 片本來就要建。
+- `platform/tests/test_web_parity.py` TC-H16a/b：`INTERNAL` 表加 `"offer_cleanup"`（系統內部呼叫、不對使用者開放）。
+- `platform/abf_platform/actions/__init__.py`：拿掉 `offer_cleanup` 自己對 `work_cleaned_at` 的檢查（`test_cleanup_store.py` TC-030 禁止 actions 出現這個字；`prepare_clean` 本來就會拒絕已清過的，TC-011/045 仍成立）。沒有改 `test_cleanup_store.py`。

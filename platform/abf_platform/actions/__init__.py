@@ -759,8 +759,6 @@ def offer_cleanup(platform_path, index_path, run_name, *, clock=time.time):
             return _skipped("%s 沒有擁有者（不是從網頁帳號送出的），確認頁沒有人可以按，所以不提出清理申請" % run_name)
         if row["slurm_job_id"] is None:
             return _skipped("%s 沒有工作編號，沒有提出清理申請" % run_name)
-        if "work_cleaned_at" in keys and row["work_cleaned_at"] is not None:
-            return _skipped("%s 的 work 目錄已經清過了，沒有提出清理申請" % run_name)
         found = status.find_run(index_path, run_name)
         if found is None:
             return _skipped("run 索引裡找不到 %s，沒有提出清理申請" % run_name)
