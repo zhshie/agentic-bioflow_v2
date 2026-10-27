@@ -449,7 +449,7 @@ def test_tc084_no_launch_door_anywhere(tmp_path):
     # feature 007b (TC-060): the words launch and cancel may stand only as the names of the two new subcommands, and only in
     # these three places: the one list of subcommand names (exactly this list), their two lines in the table of subcommands,
     # and the usage line of each of the two
-    names = "{serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,launch,resume,relaunch,cancel,forget,launches,fetch-records}"    # 009c: plus `web`; 009i: plus `oauth`; 116b: plus `runs`; 009e: plus `resume`, `relaunch` in registration order
+    names = "{serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records}"    # 009c: plus `web`; 009i: plus `oauth`; 116b: plus `runs`; 009e: plus `resume`, `relaunch` in registration order
     assert helptext.count(names) >= 1, "the list of subcommands is exactly the old ones plus the four new ones (and runs, oauth)"
     helptext = helptext.replace(names, names.replace(",launch,resume,relaunch,cancel,forget,", ","))
     rows = re.findall(r"(?m)^ {4}(launch|cancel) {2,}\S", helptext)
