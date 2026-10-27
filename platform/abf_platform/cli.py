@@ -491,7 +491,13 @@ def cmd_runs_offer_cleanup(args):
             _say("%s: 會提出申請 (would offer)" % r["run_name"])
         else:
             _say("%s: 略過：%s" % (r["run_name"], r["reason"]))
-    _say("已提出 %d 張、略過 %d 個 (offered %d, skipped %d)" % (out["offered"], out["skipped"], out["offered"], out["skipped"]))
+    if preview:
+        would = sum(1 for r in out["results"] if r.get("would_offer"))
+        skipped = len(out["results"]) - would
+        _say("預覽：會提出 %d 張、略過 %d 個；要真的提出請加 --apply (preview: would offer %d, skip %d; add --apply to offer)"
+             % (would, skipped, would, skipped))
+    else:
+        _say("已提出 %d 張、略過 %d 個 (offered %d, skipped %d)" % (out["offered"], out["skipped"], out["offered"], out["skipped"]))
     return 0
 
 
