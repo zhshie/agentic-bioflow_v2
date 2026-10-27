@@ -438,19 +438,20 @@ def test_tc133_the_new_action_code_touches_neither_network_nor_files():
         assert word not in body, word
 
 
-def test_tc135_no_mcp_tool_for_the_two_actions(tmp_path):
+def test_tc135_no_mcp_tool_for_the_three_actions(tmp_path):
     # TC-135: the tool count is pinned by the older tests (test_actions_layer, test_pat, test_oauth_mcp), which are not changed; here only the two names
     import asyncio
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
-    assert names and not ({"pipeline_files", "latest_release"} & names)
+    assert names and not ({"pipeline_files", "latest_release", "nfcore_catalogue"} & names)
 
 
-def test_tc159_nothing_for_the_whole_nf_core_catalogue():
-    # TC-159
+def test_tc159_the_catalogue_is_its_own_action(world):
+    # TC-159 (flipped by nfcore-catalogue: the maintainer allowed reading nf-co.re on 2026-10-26)
     from abf_platform import actions
-    assert not hasattr(actions, "nfcore_catalogue")
+    assert callable(actions.nfcore_catalogue)
     assert "catalogue" not in inspect.signature(actions.pipeline_files).parameters
+    assert pf(world, parts=["catalogue"])["error"] == "bad_input"
 
 
 # ---- latest_release ----------------------------------------------------------------------------------------------------------------
