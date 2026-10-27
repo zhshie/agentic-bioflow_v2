@@ -78,6 +78,19 @@ source: DESIGN.md v2 畫面 5；guided-launch-1（#210）的「之後開放」�
 1. 已知只在本機環境紅、可接受：`tests/init_workspace_test.sh` 的「site side with no run area known fails clearly」；`test_port_race.py`、`jev_test.sh`、`confirm_launch_test.sh` 在本機 WSL 時好時壞（以 CI 為準）。
 2. 15 秒自動更新會清掉使用者正在 textarea 打、還沒送出的字：可接受（只在讀取中、通常 1 分鐘內結束）；讀取中時第 5 步 textarea 上方加一句「讀取中頁面會自動更新，請等讀完再填參數。」
 3. 流程圖若是 `.svg`：照作法 6 的標頭從同源路由送出，以免 svg 內的 script 執行。
+4. （10-27，回應 verifier 出題退回；與上文衝突時以本節為準）**流程圖不內嵌、改用連結，CSP 一字不改**：現行 CSP `default-src 'none'` 沒有 `img-src`，同源 `<img>` 也會被擋；加 `img-src` 屬放寬安全標頭，本刀不做（之後另問維護者）。第 3 步 diagram ok 時顯示：圖檔名（`diagram.name`）＋大小＋連結「開啟流程圖」（`<a href="/launch/diagram?…">`，在同一分頁開圖，那是整頁導覽、不受本頁 CSP 限制）。作法 5 的 `<figure><img>`、G03 的 `<img src>` 作廢，改測連結與檔名；G09「CSP 標頭不變」維持。
+5. **雙語原句**：`reason`／`message`／`why` 一律用 `web_board.plain_reason(text, lang)` 取該語言那一半（中文頁取中文、英文頁取英文）；作法 3「原句不改寫」改讀為「不改寫字句，只取該語言的半句」。G08 照舊。
+6. **`p.*` 的型別**：依該參數在 schema 的 `types`：含 `integer` → 能轉整數就轉成整數；含 `number` → 能轉就轉成數字；含 `boolean` → `true`／`false` 轉成布林；轉不了或其他型別 → 字串。轉好的值再交給 `params_text` 的既有格式輸出（所以數字不加引號、字串照既有規則）。測試要有整數、數字、布林、字串各一。
+7. **路線**：任何非空 `p.*` 存在時，路線一律視為 ③（custom），不論 radio 勾哪個；`route=defaults` 只在沒有任何非空 `p.*` 時才把 params 清空。G07 要有「勾 ②、填 p.*」的例子，結果是 ③ 且值保留。
+8. **前置**：worktree 已由 developer-agent 合入 origin/v3（含 #234、#236）。
+9. **未寫明的狀態**：
+   - 沒有 revision 時，第 1 步那一列是 `○ 讀取管線參數表　選好版本後檢查`（不是 ✗，不進第 7 步「問題」）。
+   - 第 3 步的步驟標記：diagram ok 或 none → done；loading → later（顯示讀取中）；失敗 → later＋✗ message。
+   - 第 5 步 schema 失敗或尚未讀：分組表位置顯示一行灰字「參數分組表：讀到參數表後顯示」（取代「之後開放」），loading 時改「讀取中」、失敗時 ✗＋message；textarea 照常可用。
+   - `parts=["image"]` 回 error 或 image 非 ok：「開啟流程圖」連結不出現，改顯示 ✗＋message（loading 時「圖檔讀取中」）。
+10. **DESIGN.md 畫面 5 其餘項目**（README 階段清單、劃線的跳過階段、「將執行的階段」、組別「本次值」欄與數量加代表名稱）：**本刀不做**，留給下一刀；圖說只做檔名（裁決 4）。
+11. **`latest_release` 只在顯示「新管線」分頁時呼叫**（`src` 不是 `used`）；「用過的」分頁不呼叫。
+12. **既有斷言**：`platform/tests/test_web_guided_launch.py` 約 195–197 行 `len(chk) == 4` 與 `'之後開放' in s[1]` 一類，會因第 1 步新列而變，准許改（ledger 逐條列）；第 2 步「搜尋全部 nf-core 之後開放」與第 4 步「預覽 之後開放」的斷言不改。
 
 ## 專長守則（ui）
 
