@@ -1,5 +1,5 @@
 # Nothing existing: tests of the agent's pipeline_files job against a stand-in for the internet; no earlier test reads public GitHub files.
-"""release-lookup-job, the agent side (S-01 to S-19): the agent reads four kinds of public GitHub file and nothing else.
+"""release-lookup-job, the agent side (S-01 to S-19): the agent reads five kinds of public file (the fifth is nf-core's own pipeline list, test_nfcore_catalogue.py) and nothing else.
 
 The one place that connects is `pipeline_files.OPEN`; every test here replaces it, and an autouse guard makes any test that
 forgets to do so fail instead of reaching the real GitHub (TC-043). Test cases are named in the comments (TC-001 ...).
@@ -142,14 +142,16 @@ def test_tc003_an_unknown_kind_is_refused_and_names_the_supported_ones(ctx):
 
 # ---- hosts ----------------------------------------------------------------------------------------
 
-def test_tc004_the_three_hosts_are_allowed():
+def test_tc004_the_four_hosts_are_allowed():
     # TC-004
-    for url in ("https://github.com/nf-core/ampliseq.git/info/refs?service=git-upload-pack", RAW + "nextflow_schema.json", API_URL):
+    for url in ("https://github.com/nf-core/ampliseq.git/info/refs?service=git-upload-pack", RAW + "nextflow_schema.json", API_URL,
+                "https://nf-co.re/pipelines.json"):
         assert pipeline_files.allowed(url) is True
 
 
 BAD_URLS = ["http://github.com/x", "https://github.com.evil.com/x", "https://evil.com/github.com", "https://raw.githubusercontent.com@evil.com/x",
-            "https://raw.githubusercontent.com:8443/x", "ftp://github.com/x", "https://nf-co.re/pipelines.json", "",
+            "https://raw.githubusercontent.com:8443/x", "ftp://github.com/x", "http://nf-co.re/pipelines.json", "https://nf-co.re.evil.com/pipelines.json",
+            "https://www.nf-co.re/pipelines.json", "",
             "https://user:pw@github.com/x", "https://github.com:443/x", " https://github.com/x", None, 5]
 
 
@@ -559,7 +561,8 @@ def test_tc046_the_agent_does_not_parse_what_it_reads(net, ctx):
 def test_tc047_there_is_no_way_to_read_other_files(net, ctx):
     # TC-047
     refused(ctx, net, job(["readme"]))
-    refused(ctx, net, job(["catalogue"]))
+    refused(ctx, net, job(["catalogue"]))      # catalogue takes no repo／revision (CS-08)
+    refused(ctx, net, job(["schema", "catalogue"], repo=None, revision=None))
     refused(ctx, net, job(["schema", "readme"]))
 
 

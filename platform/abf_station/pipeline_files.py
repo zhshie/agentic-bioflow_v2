@@ -1,10 +1,10 @@
-# Nothing existing: git and the GitHub CLI are not installed on every agent machine, and nothing else reads just these four kinds of public file with a host allow-list and no credential; so this is a small urllib reader.
+# Nothing existing: git and the GitHub CLI are not installed on every agent machine, and nothing else reads just these five kinds of public file with a host allow-list and no credential; so this is a small urllib reader.
 """The pipeline_files job (feature release-lookup-job): read-only, public files only.
 
 The agent is the one process on the user's side that can reach the internet, so it fetches for the platform, which never
-connects out. It reads four kinds of public GitHub file and nothing else: `nextflow_schema.json` and `assets/schema_input.json`
-of one pipeline at one pinned revision, the list of `docs/images` and one diagram from it, and the list of release tags.
-Only three hosts are asked, over https, with GET, with no credential of any kind, and a redirect is never followed. The agent does
+connects out. It reads five kinds of public file and nothing else: `nextflow_schema.json` and `assets/schema_input.json`
+of one pipeline at one pinned revision, the list of `docs/images` and one diagram from it, the list of release tags, and (feature nfcore-catalogue) nf-core's own list of all its pipelines, one fixed address on nf-co.re.
+Only four hosts are asked, over https, with GET, with no credential of any kind, and a redirect is never followed. The agent does
 not parse what it reads (the platform does, in schema.py); it checks size and shape, and answers with its own short wording,
 never with GitHub's headers or error pages. Nothing is written on this machine.
 
@@ -24,8 +24,9 @@ from abf_platform import releases
 from . import __version__, launch, rules
 
 ARGS = {"repo", "revision", "parts"}
-PARTS = ("schema", "schema_input", "diagram", "image", "tags")
-HOSTS = ("github.com", "raw.githubusercontent.com", "api.github.com")
+PARTS = ("schema", "schema_input", "diagram", "image", "tags", "catalogue")
+HOSTS = ("github.com", "raw.githubusercontent.com", "api.github.com", "nf-co.re")
+CATALOGUE_URL = "https://nf-co.re/pipelines.json"
 REQUEST_SECONDS = 10.0
 TOTAL_SECONDS = 45.0
 SCHEMA_LIMIT = 1000000
@@ -33,9 +34,13 @@ LISTING_LIMIT = 1000000
 IMAGE_LIMIT = 2000000
 TAGS_LIMIT = 4000000
 TAGS_TEXT_LIMIT = 1000000
+CATALOGUE_LIMIT = 8000000
+CATALOGUE_ENTRIES_LIMIT = 1000
+DESCRIPTION_LIMIT = 400
 MESSAGE_LIMIT = 300
 _IMAGE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(png|svg)\Z")
 _TAG_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,200}\Z")
+_PIPELINE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,60}\Z")
 _SHA = re.compile(r"^[0-9a-f]{40}\Z")
 _HEX4 = re.compile(r"^[0-9a-fA-F]{4}\Z")
 _PNG = b"\x89PNG\r\n\x1a\n"
@@ -54,7 +59,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def allowed(url):
-    """True only for an https address on one of the three hosts, with no user, no password and no port."""
+    """True only for an https address on one of the four hosts, with no user, no password and no port."""
     if not isinstance(url, str) or not url or url != url.strip():
         return False
     try:
@@ -99,6 +104,18 @@ def _network_result():
 def _problem(args):
     """None when the arguments are good, else a short reason. Judged here again whatever the platform judged."""
     repo, revision, parts = args.get("repo"), args.get("revision"), args.get("parts")
+    if not isinstance(parts, list) or not parts:
+        return "parts must be a list that is not empty (parts 要是非空的清單)"
+    if any(not isinstance(p, str) or p not in PARTS for p in parts):
+        return "parts names something this agent does not read (不支援的項目)"
+    if len(set(parts)) != len(parts):
+        return "parts names one thing twice (項目重複)"
+    if "catalogue" in parts:
+        if len(parts) > 1:
+            return "the pipeline list is read on its own (全部管線清單要單獨查)"
+        if repo is not None or revision is not None:
+            return "the pipeline list takes no repository and no revision (查全部管線清單不給 repo 與版本)"
+        return None
     if not isinstance(repo, str) or "/" not in repo:
         return "the repo must be owner/name (repo 要寫 owner/name)"
     try:
@@ -107,12 +124,6 @@ def _problem(args):
         return "the repo is not a plain owner/name (repo 名稱不合格)"
     if any(set(seg) <= {"."} for seg in repo.split("/")):
         return "the repo is not a plain owner/name (repo 名稱不合格)"
-    if not isinstance(parts, list) or not parts:
-        return "parts must be a list that is not empty (parts 要是非空的清單)"
-    if any(not isinstance(p, str) or p not in PARTS for p in parts):
-        return "parts names something this agent does not read (不支援的項目)"
-    if len(set(parts)) != len(parts):
-        return "parts names one thing twice (項目重複)"
     if set(parts) == {"tags"}:
         if revision is not None:
             return "the release tags need no revision (查 tag 清單不給版本)"
@@ -320,6 +331,48 @@ def _tags(fetcher, repo):
     return {"status": "ok", "text": text}
 
 
+# ---- the list of all pipelines ----------------------------------------------------------------------------------
+
+def _catalogue_entries(data):
+    """The cleaned list (name, description, archived, tags; sorted by name, the first of a name kept), or None when the whole is unusable."""
+    if not isinstance(data, dict) or not isinstance(data.get("remote_workflows"), list):
+        return None
+    found = {}
+    for item in data["remote_workflows"]:
+        name = item.get("name") if isinstance(item, dict) else None
+        if not isinstance(name, str) or _PIPELINE_NAME.match(name) is None or name in found:
+            continue
+        description = item.get("description")
+        listed = item.get("releases")
+        tags = []
+        for r in listed if isinstance(listed, list) else []:
+            tag = r.get("tag_name") if isinstance(r, dict) else None
+            if isinstance(tag, str) and _TAG_NAME.match(tag) is not None:
+                tags.append(tag)
+        found[name] = {"name": name, "description": description[:DESCRIPTION_LIMIT] if isinstance(description, str) else "",
+                       "archived": item.get("archived") is True, "tags": tags}
+    return [found[n] for n in sorted(found)]
+
+
+def _catalogue(fetcher):
+    status, headers, body = fetcher.get(CATALOGUE_URL, "application/json", CATALOGUE_LIMIT)
+    bad = _judge(status, headers)
+    if bad:
+        return _fail(bad)
+    if len(body) > CATALOGUE_LIMIT:
+        return _fail("too_large")
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except ValueError:        # a UnicodeDecodeError is a ValueError too
+        return _fail("bad_response")
+    entries = _catalogue_entries(data)
+    if not entries:
+        return _fail("bad_response")
+    if len(entries) > CATALOGUE_ENTRIES_LIMIT:
+        return _fail("too_large")
+    return {"status": "ok", "pipelines": entries}
+
+
 # ---- the job ---------------------------------------------------------------------------------------------------
 
 def run_fetch(job, ctx):
@@ -328,7 +381,7 @@ def run_fetch(job, ctx):
     problem = _problem(args if isinstance(args, dict) else {})
     if problem:
         raise rules.Refusal(problem)
-    repo, revision = args["repo"], args["revision"]
+    repo, revision = args.get("repo"), args.get("revision")
     wanted = [p for p in PARTS if p in args["parts"]]
     fetcher = _Fetcher()
     parts, picked = {}, None
@@ -349,6 +402,8 @@ def run_fetch(job, ctx):
                         parts["image"] = _fail("not_found")
                     else:
                         parts["image"] = dict(diagram)
+            elif name == "catalogue":
+                parts[name] = _catalogue(fetcher)
             else:
                 parts[name] = _tags(fetcher, repo)
     except _Network:

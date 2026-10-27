@@ -44,11 +44,18 @@ LOG_MAX_LINES = 200
 LOG_MAX_BYTES = 64 * 1024
 KINDS = tuple(DEADLINE_SECONDS)
 # pipeline_files (release-lookup-job): the agent reads public GitHub files for the platform; the platform only queues the job and keeps the text
-PF_PARTS = ("schema", "schema_input", "diagram", "image", "tags")      # the standard order of the parts of one job
+PF_PARTS = ("schema", "schema_input", "diagram", "image", "tags", "catalogue")      # the standard order of the parts of one job
 PF_STATUSES = ("ok", "not_found", "too_large", "bad_response", "rate_limited", "none")
 PF_RETRY_SECONDS = 60
 TAGS_CACHE_SECONDS = 24 * 3600
 TAGS_CACHE_FILE = "release-tags.json"
+# nfcore-catalogue: nf-core's list of all pipelines is one more part of the same job; an answer is reused for a day from the job row
+CATALOGUE_CACHE_SECONDS = 24 * 3600
+PF_PIPELINE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,60}\Z")
+PF_TAG_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,200}\Z")
+PF_CATALOGUE_ENTRIES = 1000
+PF_CATALOGUE_TAGS = 500
+PF_DESCRIPTION_LIMIT = 400
 PF_REVISION = re.compile(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")
 PF_IMAGE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(png|svg)\Z")
 PF_TEXT_LIMIT = 1000000
@@ -251,7 +258,17 @@ def enqueue_put_upload(state_path, tokens_path, ce_name, owner_name, filename, u
 def pf_arguments(repo, revision, parts):
     """(repo, revision, parts in the standard order) of a pipeline_files job, or JobRefused. Judged here again whatever the caller judged:
     owner/name with no segment made only of dots, an exact tag or a 40-character commit (never a branch), and a revision of None
-    only when the one part asked for is the tag list."""
+    only when the one part asked for is the tag list; the pipeline list (catalogue) is asked on its own, with no repository and no revision."""
+    if (not isinstance(parts, (list, tuple)) or not parts or any(not isinstance(p, str) or p not in PF_PARTS for p in parts)
+            or len(set(parts)) != len(parts)):
+        raise JobRefused("the parts asked for are not valid (要讀的項目不合格)")
+    ordered = [p for p in PF_PARTS if p in parts]
+    if "catalogue" in ordered and len(ordered) > 1:
+        raise JobRefused("the pipeline list is read on its own (全部管線清單要單獨查)")
+    if ordered == ["catalogue"]:
+        if repo is not None or revision is not None:
+            raise JobRefused("the pipeline list takes no repository and no revision (查全部管線清單不給 repo 與版本)")
+        return None, None, ordered
     try:
         ok = isinstance(repo, str) and "/" in repo and releases.repo_of(repo) == repo
     except ValueError:
@@ -260,10 +277,6 @@ def pf_arguments(repo, revision, parts):
         ok = False
     if not ok:
         raise JobRefused("the repository name is not valid; write owner/name, for example nf-core/ampliseq (名稱不合格，要寫 owner/name)")
-    if (not isinstance(parts, (list, tuple)) or not parts or any(not isinstance(p, str) or p not in PF_PARTS for p in parts)
-            or len(set(parts)) != len(parts)):
-        raise JobRefused("the parts asked for are not valid (要讀的項目不合格)")
-    ordered = [p for p in PF_PARTS if p in parts]
     if ordered == ["tags"]:
         if revision is not None:
             raise JobRefused("the release tags need no revision (查 tag 清單不給版本)")
@@ -838,6 +851,27 @@ def _int(value, low=0, high=2 ** 31 - 1):
     return value if isinstance(value, int) and not isinstance(value, bool) and low <= value <= high else None
 
 
+def _clean_catalogue(out, part):
+    """The ok catalogue part cut down to name, description, archived and tags of at most PF_CATALOGUE_ENTRIES entries, or bad_response."""
+    listed = part.get("pipelines")
+    if not isinstance(listed, list):
+        return {"status": "bad_response"}
+    entries = []
+    for e in listed[:PF_CATALOGUE_ENTRIES]:
+        name = e.get("name") if isinstance(e, dict) else None
+        if not isinstance(name, str) or PF_PIPELINE_NAME.match(name) is None:
+            continue
+        description = e.get("description")
+        tags = e.get("tags") if isinstance(e.get("tags"), list) else []
+        entries.append({"name": name, "description": description[:PF_DESCRIPTION_LIMIT] if isinstance(description, str) else "",
+                        "archived": e.get("archived") is True,
+                        "tags": [t for t in tags if isinstance(t, str) and PF_TAG_NAME.match(t)][:PF_CATALOGUE_TAGS]})
+    if not entries:
+        return {"status": "bad_response"}
+    out["pipelines"] = entries
+    return out
+
+
 def _clean_pf_part(name, part):
     """One part of a pipeline_files answer, cut down to what the platform expects, or None to drop the whole part."""
     if not isinstance(part, dict):
@@ -850,6 +884,8 @@ def _clean_pf_part(name, part):
         out["message"] = _short(part["message"], 300)
     if status != "ok":
         return out
+    if name == "catalogue":
+        return _clean_catalogue(out, part)
     if name in ("schema", "schema_input", "tags"):
         text = part.get("text")
         if not isinstance(text, str):
