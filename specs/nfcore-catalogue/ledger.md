@@ -20,3 +20,39 @@
 7. 同檔 TC-135：`no_mcp_tool_for_the_two_actions` → `..._three_actions`，集合加 `"nfcore_catalogue"`；第三個無 MCP 工具的動作。
 8. `test_web_parity.py` `WEB_ONLY`：加 `"nfcore_catalogue"` 一列；動作層多一個公開名稱。
 9. `test_catalogue.py::test_no_tool_route_or_action_mentions_the_catalogue`（TC-070/071，裁決 6）：舊＝所有檔含 `actions/__init__.py` 都不得含 `catalogue`；新＝只對 `actions/__init__.py` 先刪 `# ---- nfcore-catalogue: begin`…`end` 區塊與識別字 `nfcore_catalogue` 再檢查，其他檔不變。理由：兩個 catalogue 是不同東西（官網管線清單 vs 模組目錄），舊測試本意不變。
+
+## git diff --stat（TC-099）
+
+被動到的既有測試檔，指令 `git diff --stat c544bf2..085d23b -- <五個既有測試檔>`（c544bf2＝本任務分出去前的 base；較早的 ad1ee18 會把另一條分支 web-change-password 的檔案混進來，所以不用）：
+
+```
+ platform/tests/test_catalogue.py              |  7 ++++++-
+ platform/tests/test_pipeline_files_action.py  | 11 ++++++-----
+ platform/tests/test_pipeline_files_queue.py   |  1 +
+ platform/tests/test_station_pipeline_files.py | 13 ++++++++-----
+ platform/tests/test_web_parity.py             |  1 +
+ 5 files changed, 22 insertions(+), 11 deletions(-)
+```
+
+整個任務，指令 `git diff --stat c544bf2..085d23b`（未含本段 ledger 補寫本身）：
+
+```
+ docs/PLATFORM.md                                   |   6 +-
+ docs/TESTING.md                                    |  10 +
+ platform/abf_platform/actions/__init__.py          |  72 ++
+ platform/abf_platform/jobs.py                      |  48 +-
+ platform/abf_station/handlers.py                   |   2 +-
+ platform/abf_station/pipeline_files.py             |  83 ++-
+ .../tests/fixtures/catalogue/pipelines-small.json  | 276 ++++++++
+ platform/tests/test_catalogue.py                   |   7 +-
+ platform/tests/test_nfcore_catalogue.py            | 778 +++++++++++++++++++++
+ platform/tests/test_pipeline_files_action.py       |  11 +-
+ platform/tests/test_pipeline_files_queue.py        |   1 +
+ platform/tests/test_station_pipeline_files.py      |  13 +-
+ platform/tests/test_web_parity.py                  |   1 +
+ specs/nfcore-catalogue/ledger.md                   |  22 +
+ specs/nfcore-catalogue/plan.md                     | 269 +++++++
+ specs/nfcore-catalogue/test-case-overview.md       |  60 ++
+ specs/nfcore-catalogue/test-case.md                | 169 +++++
+ 17 files changed, 1793 insertions(+), 35 deletions(-)
+```
