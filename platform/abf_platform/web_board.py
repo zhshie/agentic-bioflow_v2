@@ -40,6 +40,9 @@ STRINGS = {
         "new_analysis": "＋ 新分析", "no_project": "未分專案", "no_analyses": "還沒有分析",
         "row_run": "執行", "row_results": "結果", "row_stopped": "執行 · 已取" "消", "row_site": "執行 · 站台沒有回應",
         "main_window": "主視窗", "terminal": "終端機", "this_analysis": "這個分析的對話", "ask_here": "問這個分析",
+        "level_action": "待處理", "c_content": "內容", "c_next": "下一步", "c_open": "打開確認頁",
+        "c_content_text": "這個 run 已成功；它的中間檔（work）可以清掉，結果不會被動。",
+        "c_next_text": "打開確認頁，看清楚要刪的資料夾再決定。",
         "f_step": "步驟", "f_reason": "原因", "f_next": "之後", "confirm_suffix": "（確認頁）",
         "r_stopped": "已取消", "r_site": "站台沒有回應",
         "stage_launch": "送出", "stage_running": "執行中", "stage_results": "結果", "stage_downstream": "下游", "stage_finished": "完成",
@@ -81,6 +84,9 @@ STRINGS = {
         "new_analysis": "+ New analysis", "no_project": "No project", "no_analyses": "No analyses yet",
         "row_run": "Run", "row_results": "Results", "row_stopped": "Run · Cancelled", "row_site": "Run · Site not responding",
         "main_window": "Main window", "terminal": "Terminal", "this_analysis": "This analysis", "ask_here": "Ask about this analysis",
+        "level_action": "Needs action", "c_content": "Content", "c_next": "Next", "c_open": "Open the confirmation page",
+        "c_content_text": "This run has succeeded; its intermediate files (work) can be cleared, and the results are not touched.",
+        "c_next_text": "Open the confirmation page, check which folder will be deleted, then decide.",
         "f_step": "Step", "f_reason": "Reason", "f_next": "Next", "confirm_suffix": " (confirmation page)",
         "r_stopped": "Cancelled", "r_site": "Site not responding",
         "stage_launch": "Launch", "stage_running": "Running", "stage_results": "Results", "stage_downstream": "Downstream",
@@ -528,6 +534,19 @@ def _failure_notice(t, run, acts=None):
                acts.form(verb, run["id"]) if acts else ""))
 
 
+def _clean_notice(t, run, lang="zh"):
+    """The notice of a succeeded run that has an open clean-up request of its owner: only a link to the confirmation page (no form, no button).
+    Empty unless the run view carries `clean_request`."""
+    rid = run.get("clean_request")
+    if not rid or run.get("status") != "succeeded":
+        return ""
+    href = "/c/%s%s" % (esc(rid), "?lang=en" if lang == "en" else "")
+    rows = (("c_content", esc(t["c_content_text"])), ("c_next", esc(t["c_next_text"])))
+    return ('<article class="notice state-succeeded"><div class="nhead"><span class="level state-succeeded"><span class="sq"></span> %s</span></div>'
+            '<dl class="fields">%s</dl><div class="acts"><a href="%s">%s</a></div></article>'
+            % (esc(t["level_action"]), "".join("<dt>%s</dt><dd>%s</dd>" % (esc(t[k]), v) for k, v in rows), href, esc(t["c_open"])))
+
+
 def first_failed(run):
     """The name of the first failed task of a run view or of its failure record, or None."""
     tasks = run.get("failed_tasks") or []
@@ -701,11 +720,11 @@ def _settings_page(t):
     return '<main class="main" data-pane="middle"><h1>%s</h1>%s</main>' % (esc(t["settings"]), "".join(secs))
 
 
-def _right(t, selected, acts=None):
+def _right(t, selected, acts=None, lang="zh"):
     """The right column: the formal notices of the selected analysis only (this version: its failure), then the grey line for the chat."""
     if selected is None:
         return '<aside class="rail" data-pane="right"><p class="muted">%s</p><p class="muted">—</p></aside>' % esc(t["this_analysis"])
-    notice = _failure_notice(t, selected, acts)
+    notice = _failure_notice(t, selected, acts) + _clean_notice(t, selected, lang)
     inner = '<div class="notices">%s</div>' % notice if notice else '<p class="muted">%s</p>' % esc(t["no_notices"])
     return ('<aside class="rail" data-pane="right"><p class="muted">%s</p><h2>%s</h2>%s<p>%s</p></aside>'
             % (esc(t["this_analysis"]), esc(selected["name"]), inner, _grey(t, "ask_here")))
@@ -760,7 +779,7 @@ def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", t
             refresh_url = _url(pick_lang(lang), run_id, stage, tab="outputs")
     acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
     middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
-    return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_)), run_id, stage,
+    return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_), lang_), run_id, stage,
                   refresh=not flash, tab=tab, refresh_url=refresh_url)
 
 

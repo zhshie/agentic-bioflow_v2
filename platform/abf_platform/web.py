@@ -72,10 +72,10 @@ _HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Po
             "Content-Security-Policy": "default-src 'none'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
             % web_board.style_source()}
 _PLAIN = {      # the labels of the plain block at the top of the confirmation page
-    "zh": {"kind": "種類", "launch": "送出新分析", "resume": "續跑", "relaunch": "重跑", "cancel": "取消", "run": "run 名稱", "pipeline": "管線",
-           "version": "版本", "env": "環境", "samples": "樣本數", "folder": "新資料夾", "full": "完整內容（技術細節）"},
-    "en": {"kind": "Request", "launch": "New analysis", "resume": "Continue the run", "relaunch": "Re-run", "cancel": "Cancel", "run": "Run name",
-           "pipeline": "Pipeline", "version": "Version", "env": "Environment", "samples": "Samples", "folder": "New folder",
+    "zh": {"kind": "種類", "launch": "送出新分析", "resume": "續跑", "relaunch": "重跑", "cancel": "取消", "clean_work": "清理中間檔", "run": "run 名稱", "pipeline": "管線",
+           "version": "版本", "env": "環境", "samples": "樣本數", "folder": "新資料夾", "work": "要刪除的資料夾", "full": "完整內容（技術細節）"},
+    "en": {"kind": "Request", "launch": "New analysis", "resume": "Continue the run", "relaunch": "Re-run", "cancel": "Cancel", "clean_work": "Clean up intermediate files", "run": "Run name",
+           "pipeline": "Pipeline", "version": "Version", "env": "Environment", "samples": "Samples", "folder": "New folder", "work": "Folder to delete",
            "full": "Full content (technical)"}}
 HOME = "/"                  # where a login with no (or a refused) `next` goes: a constant, so there is no open redirect
 
@@ -379,25 +379,34 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         t = _PLAIN[lang]
         rows = [(t["kind"], t[facts["what"]])]
         for key, label in (("run_name", "run"), ("pipeline", "pipeline"), ("revision", "version"), ("ce", "env"), ("samples", "samples"),
-                           ("folder", "folder")):
+                           ("folder", "folder"), ("work", "work")):
             if key in facts:
                 rows.append((t[label], facts[key]))
         return "<dl class=\"fields plain\">%s</dl>" % "".join("<dt>%s</dt><dd>%s</dd>" % (_esc(k), _esc(v)) for k, v in rows)
 
     def state_page(req, sid, rid, lang="zh"):
-        title = "送出確認" if req["kind"] == "launch" else "取消確認"
+        clean = req["kind"] == "clean_work"
+        title = "清理確認" if clean else ("送出確認" if req["kind"] == "launch" else "取消確認")
         shown = "<details><summary>%s</summary><pre>%s</pre></details>" % (_PLAIN[lang]["full"], _esc(req["summary"] or ""))
         if req["state"] in ("pending", "confirmed"):
             shown = plain_block(rid, lang) + shown
         if req["state"] == "pending":
-            return _page(title, "<p>下面就是會被%s的全部內容。確定了再按「送出」；按了才會排進佇列。</p>%s"
-                         "<form method=\"post\" action=\"/c/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
-                         "<button type=\"submit\">送出</button></form>"
-                         % ("送出" if req["kind"] == "launch" else "取消", shown, rid, _esc(csrf(sid, rid))))
+            if clean:
+                intro = "<p>下面就是會被刪除的全部內容。確定了再按「確認刪除」；按了才會排進佇列。</p>"
+                button = "Confirm delete" if lang == "en" else "確認刪除"
+            else:
+                intro = "<p>下面就是會被%s的全部內容。確定了再按「送出」；按了才會排進佇列。</p>" % ("送出" if req["kind"] == "launch" else "取消")
+                button = "送出"
+            return _page(title, "%s%s<form method=\"post\" action=\"/c/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
+                         "<button type=\"submit\">%s</button></form>" % (intro, shown, rid, _esc(csrf(sid, rid)), button))
         if req["state"] == "confirmed":
             return _page(title, "<p class=\"ok\">已送出。工作編號 %s。</p>%s" % (_esc(req["job_id"]), shown))
         if req["state"] == "expired":
+            if clean:
+                return _page(title, "<p class=\"bad\">這個申請已逾時（7 天），不會自動重新提出。</p>")
             return _page(title, "<p class=\"bad\">這個申請已逾時（10 分鐘）。請回到 AI 重新送出。</p>")
+        if clean:
+            return _page(title, "<p class=\"bad\">這個申請已作廢：%s。</p>" % _esc(req["void_reason"] or "-"), 409)
         return _page(title, "<p class=\"bad\">這個申請已作廢：%s。請回到 AI 重新送出。</p>" % _esc(req["void_reason"] or "-"), 409)
 
     async def confirm_get(request):
@@ -432,7 +441,11 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if e.status == "already":
                 return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。</p>" % _esc(e.job_id))
             code = {"not_found": 404, "not_yours": 403, "expired": 410}.get(e.status, 409)
+            if req["kind"] == "clean_work":
+                return _page("未送出", "<p class=\"bad\">未送出：%s。</p>" % _esc(e), code)
             return _page("未送出", "<p class=\"bad\">未送出：%s。請回到 AI 重新送出。</p>" % _esc(e), code)
+        if req["kind"] == "clean_work":
+            return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。代理會開始清理這個 run 的中間檔；結果不會被動。</p>" % _esc(job_id))
         return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。你可以回到 AI，用同樣的參數再呼叫一次，它會告訴你工作編號。</p>" % _esc(job_id))
 
     def read_runs(caller):
@@ -483,6 +496,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "finished" and not flash:
                 finished = await run_in_threadpool(read_finished, selected, caller)
                 outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
+            if selected["status"] == "succeeded":
+                asked = (await run_in_threadpool(actions.clean_requests, platform_path, caller=caller, clock=clock)).get(selected["name"])
+                if asked:
+                    selected["clean_request"] = asked
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
                                      act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)

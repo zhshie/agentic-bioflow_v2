@@ -589,13 +589,41 @@ def test_tc065_tc066_nothing_builds_a_clean_work_request_and_nothing_acts_by_its
     assert len(re.findall(r"create_pending\([^)]*clean_work", src)) == 0 and "request_clean" not in src
 
 
+def _clean_work_read_only_problems(paths):
+    """cloud-cleanup-e ruling 2: web.py, web_board.py and actions/__init__.py may only READ and SHOW clean_work.
+    A line or a function that mentions clean_work must not also enqueue, create a confirmation, INSERT, UPDATE or set work_cleaned_at."""
+    import ast
+    bad = re.compile(r"enqueue|create_confirmation|INSERT|UPDATE|work_cleaned_at\s*=")
+    out = []
+    for p in paths:
+        src = p.read_text(encoding="utf-8")
+        lines = src.splitlines()
+        for n, line in enumerate(lines, 1):
+            if "clean_work" in line and bad.search(line):
+                out.append("%s:%d %s" % (p.name, n, line.strip()))
+        funcs = [n for n in ast.walk(ast.parse(src)) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        for node in funcs:
+            # a function's own lines, not the lines of the functions nested inside it
+            nested = set()
+            for inner in funcs:
+                if inner is not node and node.lineno <= inner.lineno and inner.end_lineno <= node.end_lineno:
+                    nested.update(range(inner.lineno, inner.end_lineno + 1))
+            body = chr(10).join(lines[i - 1] for i in range(node.lineno, node.end_lineno + 1) if i not in nested)
+            if "clean_work" in body and bad.search(body):
+                out.append("%s:%s mentions clean_work and writes" % (p.name, node.name))
+    return out
+
+
 def test_tc067_no_new_entry_point_for_clean_work():
     # TC-067
     from abf_platform import jobs
     assert not hasattr(jobs, "enqueue_clean")
     places = [PKG / "abf_platform" / "mcp_server.py", PKG / "abf_platform" / "cli.py", PKG / "abf_launch" / "cli.py"]
     places += list((PKG / "abf_platform" / "actions").glob("*.py")) + list((PKG / "abf_platform").glob("web*.py"))
-    assert places and [p.name for p in places if "clean_work" in p.read_text(encoding="utf-8")] == []
+    # cloud-cleanup-e (ruling 2): web.py, web_board.py and actions/__init__.py may read and show clean_work, never write or enqueue it.
+    shown = {"web.py", "web_board.py", "__init__.py"}
+    assert places and [p.name for p in places if p.name not in shown and "clean_work" in p.read_text(encoding="utf-8")] == []
+    assert _clean_work_read_only_problems([p for p in places if p.name in shown]) == []
 
 
 def test_tc068_tc076_the_packages_have_no_deletion_code_and_no_program_start():

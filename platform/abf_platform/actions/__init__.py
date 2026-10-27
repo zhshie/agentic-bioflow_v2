@@ -1046,6 +1046,13 @@ def request_facts(platform_path, request_id):
     return confirm.facts(platform_path, request_id)
 
 
+def clean_requests(platform_path, *, caller, clock=time.time):
+    """{run name: request id} of this caller's own clean-up requests that still wait for a yes (the board shows a notice for each). Only reads."""
+    if caller is None or caller.user_id is None:
+        return {}
+    return confirm.open_clean_requests(platform_path, caller.user_id, clock=clock)
+
+
 def void_request(platform_path, request_id, reason):
     """Make a pending request void for good; whether it was pending."""
     return confirm.void(platform_path, request_id, reason)
