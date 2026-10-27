@@ -135,6 +135,14 @@ base: v3
 9. **畫面第 ③ 句與舊計畫不同**：成功的 run 本來就不能續跑／重跑，改寫成如實的說法（見作法 5）。
 10. **切片理由**：舊計畫約 30 檔、需求超過 60 條測試；依 `dev-architecture-review-2026-10-24.md` §3 與 `dev-plans/README.md` 通例切成六片。本片 7 檔（含 ledger）。
 
+## 裁決（2026-10-27，developer-agent，executor 第一輪 BLOCKED 後）
+11. **准改兩條過時的既有測試，各只改一處，舊到新與理由寫進 ledger：**
+    - `platform/tests/test_cleanup_confirm.py`（b 片 TC-065/066，約第 589 行）「整個 abf_platform 原始碼沒有 `create_pending(...clean_work`」：那是 b 片「還沒有東西會建申請」的守衛，f 片本來就要建。改成**只排除 `actions/__init__.py` 裡 `offer_cleanup` 這一個函式的本體**（用 ast 取出該函式範圍後再掃，或等效寫法），其他檔與其他函式仍不得出現；`request_clean` 那半句不變。
+    - `platform/tests/test_web_parity.py`（TC-H16a/b）：把 `"offer_cleanup"` 加進 `INTERNAL` 表（e 片加 clean_requests 時同樣是改表）。
+12. **TC-108 的「兩邊清單都不出現」指使用者看得到的清單**（MCP 工具、網頁路由、CLI 子指令、WEB_ONLY）。`INTERNAL` 是記錄「系統內部呼叫、不對使用者開放」的帳本，放進去正符合 TC-108 的本意，不算違反。
+13. **TC-113 的檔案清單加上這兩個測試檔**（共 9 個）；`docs/PLATFORM.md` 「What it does not do」段的兩處更正也准，因為不改會跟新小節互相矛盾。
+14. 合約其餘不變（沿用已確認的 test-case.md），不重出題。
+
 ## 專長守則（backend）
 
 ### executor
