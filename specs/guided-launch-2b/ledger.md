@@ -106,3 +106,4 @@ Existing assertions changed (old to new, reason)
 
 Green run record
 - Focused: test_web_guided_launch*.py and test_web_actions.py green after the change; `test_clean_page.py` 28 passed after the repin.
+- Full suite at 996a03c from WSL: `bash tests/run_all.sh --timeout 900`: 127/127 passed, all green (platform shards: 1285 + pytest tests, shard 2 alone ran 1121 passed in 361 s). With the default 300 s limit platform_shard_2_test.sh timed out on this machine (361 s alone, no failing test); with the limit raised it passes. Running pytest inside the worktree leaves `__pycache__` folders under `platform/`, and `jev_test.sh` TC-085 (grep -rli jev platform) then fails on a `.pyc`; they were cleared before the green run.
