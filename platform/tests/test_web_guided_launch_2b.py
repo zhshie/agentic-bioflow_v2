@@ -581,6 +581,16 @@ def test_h11_old_strings_are_gone(rig, fk):
             assert w in plain_text(main_of(got[state])), (state, w)
 
 
+def test_h11_used_tab_empty_sentence(rig, fk):
+    # TC-093: with no usage records the used tab says the new sentence, and not the old one
+    ann, c = ready(rig)
+    t = plain_text(main_of(c.get(SEL + "&src=used").text))
+    assert "尚無使用紀錄。" in t
+    assert "還沒有用過的管線。" not in t
+    en = plain_text(main_of(c.get(SEL + "&src=used&lang=en").text))
+    assert "No usage history." in en
+
+
 def test_h11_design_has_the_word_list():
     # TC-115, TC-116
     text = (REPO / "DESIGN.md").read_text(encoding="utf-8")

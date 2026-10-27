@@ -85,3 +85,7 @@ developer-agent 已搜過：搜過 sysprog21/zhtw-mcp（依教育部標準檢查
 `test_clean_page.py`: `BASE_CONFIRM`, `BASE_EXPIRED`, `BASE_POST`, `BASE_BOARD` and `BASE_STYLE` pinned again, as guided-launch-2 did. The one stylesheet changed (column-width rules and the advanced box added, the radio rows removed), so every page's hash changes; no page text changed.
 
 `test_cleanup_offer.py`: the route list gets `/launch/diagram` (the route guided-launch-2 added; the test arrived with the merge of origin/v3 and had not been told).
+
+## Fix round (verifier: TC-093)
+
+- Added `test_h11_used_tab_empty_sentence` in `test_web_guided_launch_2b.py`: with no usage records the used tab shows 「尚無使用紀錄。」 (and not the old 「還沒有用過的管線。」); English shows "No usage history.". No product code changed; the behavior was already right.
