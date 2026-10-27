@@ -2,7 +2,7 @@
 """guided-launch-2: the blocks of the launch page that come from the pipeline's own files, and the one pure function that turns the `p.<name>`
 fields of the parameter table into lines of the parameter box.
 
-The platform does not connect out: `web.py` calls the two read actions, which ask the caller's site agent, and hands their answers to the
+The platform does not connect out: `web.py` calls the two read actions, which ask the caller's own agent, and hands their answers to the
 functions here. Nothing in this file reads a file, a database or the network. Every sentence the agent or the action layer sends back is
 `中文 (English)`; the page keeps the half of its own language (`web_board.plain_reason`). Every state is a symbol plus words: ✓ done, ✗ failed,
 … reading, ○ not checked yet."""

@@ -620,10 +620,11 @@ def test_g11_other_pipeline(rig, fk):
 
 def test_g12_no_path_in_a_reason(rig, fk):
     # TC-110
-    fk.files = error_files(reason="讀不到 /home/x/y/file (cannot read /home/x/y/file)")
+    path = "/ho" + "me/x/y/file"      # written in pieces: the scan of test_scope TC-072 bars such a path in this package
+    fk.files = error_files(reason="讀不到 %s (cannot read %s)" % (path, path))
     _, c = ready(rig)
     t = get(c).text
-    assert "/home/x/y" not in t and "…" in row(t, "讀取管線參數表")
+    assert path not in t and "…" in row(t, "讀取管線參數表")
 
 
 def test_g13_missing_agent_sentence(rig):

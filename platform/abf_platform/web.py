@@ -9,7 +9,7 @@ The only routes there are:
 
   GET  /             the board (spec 011a): the run that needs the person most (else the newest), or with ?run=<id> that run, ?stage=<name> its stage, ?tab=<name> a tab of its running stage page (011b), ?lang=en the English page; needs the cookie
   GET  /launch       the launch form (spec 012b), ?from=<run id> fills it from an earlier run of the same person; needs the cookie
-  GET  /launch/diagram  the workflow diagram of ?pipeline=&revision= as the image the caller's site agent read from GitHub (guided-launch-2); needs the cookie, 404 as one plain line when it is not there
+  GET  /launch/diagram  the workflow diagram of ?pipeline=&revision= as the image the caller's own agent read from the public repository (guided-launch-2); needs the cookie, 404 as one plain line when it is not there
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
   POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page
   GET  /usage        the cost page (cost-page): SU, cloud used / cap / remaining, one line per analysis; ?month=YYYY-MM, ?lang=en; needs the cookie
@@ -690,7 +690,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     DIAGRAM_TYPES = ("image/png", "image/svg+xml", "image/jpeg", "image/gif")
 
     async def launch_diagram(request):
-        """The picture of the workflow diagram, read by the caller's site agent: only what pipeline_files already holds for this person (no job is
+        """The picture of the workflow diagram, read by the caller's own agent: only what pipeline_files already holds for this person (no job is
         queued here; GET /launch queued it). Anything else is one plain line with a 404."""
         sid, user = user_of(request)
         if user is None:
