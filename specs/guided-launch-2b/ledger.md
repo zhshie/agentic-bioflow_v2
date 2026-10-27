@@ -114,3 +114,4 @@ Green run record
 - `test_j04_style` also asserts that `.lform{` has no max-width (red first: commit `RED: .lform must not cap the width`).
 - `test_clean_page.py`: page hashes and `BASE_STYLE` pinned a fourth time (only the style sheet changed).
 - Green run: see the last line of this ledger.
+- Full suite at a6aa830 from WSL, __pycache__ cleared first: `bash tests/run_all.sh --timeout 900`: 127/127 passed, all green.
