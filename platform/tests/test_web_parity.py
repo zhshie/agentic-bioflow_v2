@@ -39,7 +39,7 @@ OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "01
 OWED_BEFORE_012B = {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "read_task_log", "launch", "cancel", "forget"}
 # Helpers, classes and constants that no web route or tool exposes by name. 009i: ConnectorCaller, form_is_trusted (MCP side only).
 # v3 (keep-submissions, resume/relaunch): request_forget, request_resume, request_relaunch are what the tools forget, resume, relaunch call; forget_check and keep_screen are helpers; the FORGET_* and RUN_NOT_FOUND words are constants.
-INTERNAL = {"offer_cleanup", "request_pipeline_launch", "request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
+INTERNAL = {"offer_cleanup", "offer_cleanups", "request_pipeline_launch", "request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
             "person_at", "caller_area", "confined_samplesheet", "read_confined_samplesheet", "forget_check", "keep_screen",
             "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE",
             "FORGETTABLE", "FORGET_ALREADY", "FORGET_NO_FORM", "FORGET_STARTING", "FORGET_WAIT_SECONDS", "RUN_NOT_FOUND",

@@ -464,6 +464,37 @@ def cmd_mcp(args):
     return 0
 
 
+def cmd_runs_offer_cleanup(args):
+    """Offer a clean-up request, for the owner of each run that succeeded, on the platform's own terminal. It only previews unless --apply
+    is given, and with --apply it only writes pending requests: the owner still presses send on the confirmation page. All the judging is
+    done by actions.offer_cleanups; this prints what it answers."""
+    from . import actions
+    if bool(args.run_names) == bool(args.all):
+        _err("rejected: give run names or --all, one of the two (請給 run 名稱，或加 --all，兩者擇一); nothing was changed")
+        return 1
+    user_id = None
+    if args.user:
+        user = store.user_by_name(store.default_tokens_path(), args.user)
+        if user is None:
+            _err("rejected: no such user: %s (沒有這個使用者); nothing was changed" % args.user)
+            return 1
+        user_id = user["user_id"]
+    preview = args.list or not args.apply
+    index = store.default_index_path()
+    out = actions.offer_cleanups(store.default_platform_path(index), index, run_names=None if args.all else args.run_names,
+                                 user_id=user_id, dry_run=preview)
+    for r in out["results"]:
+        if r["offered"]:
+            who = r["owner"] or "?"
+            _say("%s: 已提出申請，請 %s 登入網頁在確認頁按送出 (offered; %s presses send on the confirmation page)" % (r["run_name"], who, who))
+        elif r.get("would_offer"):
+            _say("%s: 會提出申請 (would offer)" % r["run_name"])
+        else:
+            _say("%s: 略過：%s" % (r["run_name"], r["reason"]))
+    _say("已提出 %d 張、略過 %d 個 (offered %d, skipped %d)" % (out["offered"], out["skipped"], out["offered"], out["skipped"]))
+    return 0
+
+
 def cmd_runs_assign(args):
     """Give a run that nobody owns to a user (116b). Terminal only: it writes launches.user_id of the newest row of the run and nothing else."""
     user = store.user_by_name(store.default_tokens_path(), args.user)
@@ -662,6 +693,13 @@ def build_parser():
     ra.add_argument("--user", required=True, help="the user who launched it")
     ra.add_argument("--force", action="store_true", help="change the owner of a run that already has one")      # 116b-owner: not a confirmation switch
     ra.set_defaults(func=cmd_runs_assign)
+    ro = rsub.add_parser("offer-cleanup", help="offer a clean-up request to the owner of each run that succeeded (previews unless --apply; the owner still presses send)", allow_abbrev=False)
+    ro.add_argument("run_names", nargs="*", metavar="RUN", help="the runs to offer for (or --all)")
+    ro.add_argument("--all", action="store_true", help="every run that succeeded")
+    ro.add_argument("--user", help="only the runs this user launched")
+    ro.add_argument("--list", action="store_true", help="only list what would be offered (the default)")
+    ro.add_argument("--apply", action="store_true", help="write the requests; without it nothing is written")
+    ro.set_defaults(func=cmd_runs_offer_cleanup)
 
     from abf_launch import cli as launch_cli
     launch_cli.add_commands(sub)
