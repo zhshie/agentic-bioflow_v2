@@ -115,3 +115,10 @@ Green run record
 - `test_clean_page.py`: page hashes and `BASE_STYLE` pinned a fourth time (only the style sheet changed).
 - Green run: see the last line of this ledger.
 - Full suite at a6aa830 from WSL, __pycache__ cleared first: `bash tests/run_all.sh --timeout 900`: 127/127 passed, all green.
+
+### 2c fix round 2 (phone widths, 390 px screenshot)
+
+- Under `@media (max-width:600px)` the table stayed `display:table`, so the desktop column widths still shaped the stacked cells (about 69 px each). The block now also has `.ptbl,.ptbl tbody{display:block}` and `.ptbl td{width:auto}`; the desktop percentages stay outside it. Placed after `.ptbl thead{display:none}` so the string the older test `test_h12_columns` looks for is unchanged.
+- Samplesheet column table (step 4, `.scols`): it has no phone stacking rule (it stays an ordinary two-column table, no `display:block`, no widths of its own), so it does not have this problem; not changed.
+- `test_j07_phone_cells_full_width` added (red first, commit `RED: phone cells must span the row`).
+- `test_clean_page.py`: hashes and `BASE_STYLE` pinned a fifth time (only the style sheet changed).

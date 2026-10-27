@@ -152,20 +152,20 @@ def test_get_changes_nothing_for_a_clean_request(w):
 # What the pages of launch and cancel printed before this task (hash of the page with ids and tokens masked).
 # guided-launch-2 added rules to the one stylesheet (the parameter group table), so every page's hash and BASE_STYLE were pinned again; only the stylesheet differs.
 # guided-launch-2b added rules to the same stylesheet (column widths of that table, the advanced box) and took one out (the radio rows), so they were pinned once more; again only the stylesheet differs.
-# guided-launch-2c changed four rules (the red star, the step area width, the form width, the field width) and the column widths of the table, so they were pinned a third time; again only the stylesheet differs.
-BASE_CONFIRM = {'pending-launch-zh': (200, '1c8fb37271d4b66d'), 'pending-cancel-zh': (200, 'db98fa958f28c58c'),
-                'pending-launch-en': (200, '051abaed939e9a02'), 'pending-cancel-en': (200, 'b7bd15bd3a2264d4'),
-                'void-zh': (409, '0dc673021f94d8cf'), 'void-en': (409, '0dc673021f94d8cf'),
-                'confirmed-launch-zh': (200, 'af9aeb4117b4dedd'), 'confirmed-launch-en': (200, 'ec19ab39eb056e53'),
-                'confirmed-cancel-zh': (200, 'c569a7e51635a715'), 'confirmed-cancel-en': (200, '884f185afd503779')}
-BASE_EXPIRED = {'expired-launch-zh': (200, 'a59d5aa6d80855ab'), 'expired-cancel-zh': (200, 'ed781224c07f93b7'),
-                'expired-launch-en': (200, 'a59d5aa6d80855ab'), 'expired-cancel-en': (200, 'ed781224c07f93b7')}
-BASE_POST = {'pressed-launch': (200, '341bf85f24b92d54'), 'pressed-cancel': (200, '825960aaac8f88cc'),
-             'late-launch': (410, '11508e27239c4c6b'), 'late-cancel': (410, '11508e27239c4c6b')}
-BASE_BOARD = {'succeeded-zh': (200, '30553968fd644805'), 'succeeded-en': (200, 'aef016cefae870bc'),
-              'failed-zh': (200, '52d83937ab023505'), 'failed-en': (200, '407b7e3befce5d82'),
-              'running-zh': (200, 'aa4d4744533fc152'), 'running-en': (200, 'dd85badea6c866c5')}
-BASE_STYLE = '9256cf1707f8f79a'
+# guided-launch-2c changed five rules (the red star, the step area width, the form width, the field width, the phone cells) and the column widths of the table, so they were pinned a third time; again only the stylesheet differs.
+BASE_CONFIRM = {'pending-launch-zh': (200, 'f5a2a5b28cf7e416'), 'pending-cancel-zh': (200, '9378f14e6e561bc7'),
+                'pending-launch-en': (200, 'f382c366db6b0adc'), 'pending-cancel-en': (200, 'e3ce26ab96c881aa'),
+                'void-zh': (409, 'e93599fecd3dd1ea'), 'void-en': (409, 'e93599fecd3dd1ea'),
+                'confirmed-launch-zh': (200, '26e3479ccf2edee9'), 'confirmed-launch-en': (200, '4432dd8f1fa3d11b'),
+                'confirmed-cancel-zh': (200, '10e09a60ff71bd6e'), 'confirmed-cancel-en': (200, '2b80a7b46e8b6cda')}
+BASE_EXPIRED = {'expired-launch-zh': (200, '1f17920fae1613c7'), 'expired-cancel-zh': (200, 'd5d4fdeb22b227c9'),
+                'expired-launch-en': (200, '1f17920fae1613c7'), 'expired-cancel-en': (200, 'd5d4fdeb22b227c9')}
+BASE_POST = {'pressed-launch': (200, '30ca68fd06d3fe55'), 'pressed-cancel': (200, '4eb4acead90e41fd'),
+             'late-launch': (410, '7a881b2f71554aa9'), 'late-cancel': (410, '7a881b2f71554aa9')}
+BASE_BOARD = {'succeeded-zh': (200, 'e93c36aea58a688b'), 'succeeded-en': (200, '3c07d7edfee2c508'),
+              'failed-zh': (200, '67f8a195b77e7e58'), 'failed-en': (200, 'c7c51fb8330ac87f'),
+              'running-zh': (200, '38cd131ed1c80670'), 'running-en': (200, 'c76ea86a4d67aca9')}
+BASE_STYLE = '2587fc8a8ad087ed'
 
 
 def launch_and_cancel(w, ann):

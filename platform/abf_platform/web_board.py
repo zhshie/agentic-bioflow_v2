@@ -242,8 +242,8 @@ STYLE = (
     ".ptbl .cname{width:22%}.ptbl .cdesc{width:50%}.ptbl .ctype{width:10%}.ptbl .cval{width:18%}"
     ".padv>label{padding:0 12px 12px}"
     ".dlink{display:inline-block;min-height:44px;line-height:44px}"
-    "@media (max-width:600px){.ptbl thead{display:none}.ptbl tr,.ptbl td{display:block}.ptbl tr{border-bottom:1px solid var(--line);padding:4px 0}"
-    ".ptbl td{border-bottom:0}}"
+    "@media (max-width:600px){.ptbl thead{display:none}.ptbl,.ptbl tbody{display:block}.ptbl tr,.ptbl td{display:block}.ptbl tr{border-bottom:1px solid var(--line);padding:4px 0}"
+    ".ptbl td{border-bottom:0;width:auto}}"
     "@media (max-width:900px){.wb{grid-template-columns:1fr}.main{order:-2}.rail{order:-1}.costs{display:none}"
     ".counts{grid-template-columns:repeat(4,1fr)}}"
 )
