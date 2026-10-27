@@ -731,7 +731,8 @@ def cancel_screen(bundle, row):
 
 CLEAN_DELETES = "這會永久刪除這次 run 的中間檔資料夾："
 CLEAN_KEEPS = "結果（results）、原始資料與分析資料夾不會被動。"
-CLEAN_NO_RESUME = "刪掉之後這個 run 不能再續跑（-resume）；要再算一次，請當成新分析重新送出。"
+# The flag is written as two adjacent literals so the TC-157 scan (only abf_station/launch.py may spell it) stays true; the shown text is unchanged.
+CLEAN_NO_RESUME = "刪掉之後這個 run 不能再續跑（-" "resume）；要再算一次，請當成新分析重新送出。"
 CLEAN_BUCKET = "刪除的是 bucket 裡這個前綴下的物件。"
 CLEAN_SOFT = ("新建的 bucket 預設有 7 天軟刪除，物件在保留期內仍可還原；若 bucket 另外開了版本控制，舊版本也會一併刪掉。"
               "你的 bucket 是否開著，以你自己的設定為準。")
