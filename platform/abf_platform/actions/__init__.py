@@ -659,6 +659,78 @@ def latest_release(platform_path, pipeline, *, compute_env=None, caller=None, en
 # ---- release-lookup-job: end
 
 
+# ---- nfcore-catalogue: begin
+# Every nf-core pipeline for the guided launch page's search. Like pipeline_files it never waits: it queues one job (the part `catalogue` of
+# pipeline_files) for an agent of the caller, says `loading`, and reads the answer; the agent reads nf-core's public list, the platform opens
+# no connection. The answer is the finished job row itself, reused for a day (no file of its own, no stale list after that). The page filters.
+_CAT_KEYS = ("state", "checked_at", "count", "error", "reason", "pipelines")
+_CAT_REASONS = {
+    "no_answer": _PF_REASONS["no_answer"],
+    "refused": _PF_REASONS["refused"],
+    "network": "代理連不到 nf-co.re，請檢查那台機器的網路 (the agent could not reach nf-co.re; check that machine's network)",
+    "not_found": "nf-co.re 上找不到管線清單 (nf-co.re has no pipeline list at the known address)",
+    "too_large": "nf-co.re 的管線清單太大，沒有讀 (the pipeline list on nf-co.re is too large to read)",
+    "rate_limited": "nf-co.re 暫時限制了請求，請一分鐘後再試 (nf-co.re is limiting requests for now; try again in a minute)",
+    "bad_response": "nf-co.re 回的清單不能用，請稍後再試 (nf-co.re gave a list that cannot be used; try again later)",
+}
+
+
+def _cat_blank():
+    return {"state": "loading", "checked_at": None, "count": None, "error": None, "reason": None, "pipelines": None}
+
+
+def _cat_error(answer, code, reason=None, checked_at=None):
+    answer.update(state="error", error=code, reason=reason or _CAT_REASONS[code], checked_at=checked_at, count=None, pipelines=None)
+    return answer
+
+
+def _cat_entries(listed):
+    """The search list: each pipeline with its repo and newest launchable release, by name; one whose repo cannot be made is left out."""
+    out = []
+    for e in listed:
+        try:
+            repo = _releases.repo_of(e["name"])
+        except ValueError:
+            continue
+        out.append({"name": e["name"], "repo": repo, "description": e["description"], "archived": e["archived"],
+                    "latest": _releases.pick_latest(e["tags"])})
+    return sorted(out, key=lambda e: e["name"])
+
+
+def nfcore_catalogue(platform_path, *, compute_env=None, caller=None, enqueue=True):
+    """Every nf-core pipeline, read from nf-core's public list by an agent of the caller. Returns {state: loading|ready|error, checked_at, count,
+    error, reason, pipelines}; `pipelines` (ready only) is sorted by name, each {name, repo, description, archived, latest}, where `latest` is the
+    newest release that can be launched as it is (or None). It never waits and takes no query: the page filters. With no job yet it queues one
+    (not with `enqueue=False`). An answer is reused for 24 hours from the job row; a failure is shown for a minute and then asked again."""
+    answer = _cat_blank()
+    caller_id = _caller_id(caller)
+    now = status.now()
+    job = jobs.latest_pipeline_files(platform_path, None, None, ["catalogue"], caller_id)
+    if job is not None:
+        kind, info, since = _pf_job_state(job, now)
+        if kind == "loading":
+            return answer
+        if kind == "failed":
+            if now - since < jobs.PF_RETRY_SECONDS:
+                return _cat_error(answer, info, checked_at=job["finished_at"])
+        elif since > now - jobs.CATALOGUE_CACHE_SECONDS:      # an answer a day old or older is not used
+            got = info.get("parts") if isinstance(info.get("parts"), dict) else {}
+            part = got.get("catalogue") if isinstance(got.get("catalogue"), dict) else {}
+            if part.get("status") == "ok" and isinstance(part.get("pipelines"), list):
+                listed = _cat_entries(part["pipelines"])
+                if not listed:
+                    return _cat_error(answer, "bad_response", checked_at=since)
+                answer.update(state="ready", checked_at=job["finished_at"], count=len(listed), pipelines=listed)
+                return answer
+            if now - since < jobs.PF_RETRY_SECONDS:
+                return _cat_error(answer, _pf_code(part.get("status")), checked_at=since)
+    if not enqueue:
+        return answer
+    refusal = _pf_queue(platform_path, None, None, ["catalogue"], compute_env, caller_id)
+    return _cat_error(answer, "no_agent", refusal) if refusal else answer
+# ---- nfcore-catalogue: end
+
+
 READ_WHICH = "which must be one of err, out, log (which 只能是 err、out、log)"
 NO_WORKDIR = "no recorded workdir for this task (沒有記錄到這個任務的工作資料夾)"
 LOG_NOT_FOUND = "file not found in the task folder (任務資料夾裡找不到這個檔案)"
@@ -735,6 +807,47 @@ def keep_screen(state_path, confirmation_id, screen_text):
     """Keep, with the confirmation a person gave at the terminal, the text they were shown and said yes to (keep-submissions, F5). It
     writes only that text, only on a confirmed row of the terminal that has none yet; it queues nothing and confirms nothing."""
     return confirm.keep_screen(state_path, confirmation_id, screen_text)
+
+
+# ---- the platform's own offer: clean the work folder of a run that succeeded (cloud-cleanup-f) -----------------------------------------
+
+def _skipped(reason):
+    return {"offered": False, "reason": reason}
+
+
+def offer_cleanup(platform_path, index_path, run_name, *, clock=time.time):
+    """When a run has just succeeded, write a pending request to clean its work folder, for the person who launched it. It is only a
+    request: no job, nothing is deleted until that person presses the button on the confirmation page. It is not a tool and not a
+    `request_*`: the receiver calls it once, when the run reports that it is complete. Whatever is not fit (no owner, not succeeded, cleaned
+    already, a full list) is skipped quietly; this never raises. Returns {"offered": True, "id": ...} or {"offered": False, "reason": ...}."""
+    try:
+        con = store.open_readonly(platform_path)
+        if con is None:
+            return _skipped("平台資料庫還不存在，沒有提出清理申請")
+        try:
+            row = jobs.latest_launch(con, run_name)
+        finally:
+            con.close()
+        if row is None:
+            return _skipped("%s 不是平台自己送出的，沒有提出清理申請" % run_name)
+        keys = row.keys()
+        if "user_id" not in keys or row["user_id"] is None:
+            return _skipped("%s 沒有擁有者（不是從網頁帳號送出的），確認頁沒有人可以按，所以不提出清理申請" % run_name)
+        if row["slurm_job_id"] is None:
+            return _skipped("%s 沒有工作編號，沒有提出清理申請" % run_name)
+        found = status.find_run(index_path, run_name)
+        if found is None:
+            return _skipped("run 索引裡找不到 %s，沒有提出清理申請" % run_name)
+        if found.get("status") != "succeeded":
+            return _skipped("%s 沒有成功跑完（只有成功的 run 才提出清理申請）" % run_name)
+        ce_name, bundle, hand_off = build.prepare_clean(platform_path, run_name, owner=row["user_id"])
+        rid = confirm.create_pending(platform_path, "clean_work", ce_name, bundle, build.as_text(build.clean_screen(bundle, hand_off)),
+                                     row["user_id"], clock)
+        return {"offered": True, "id": rid}
+    except (build.Refusal, jobs.JobRefused) as e:
+        return _skipped(str(e))
+    except Exception:
+        return _skipped("提出清理申請時出了狀況，已略過；run 的紀錄沒有受影響")
 
 
 # ---- write, through a pending request: the MCP tools and the confirmation page ---------------------------------------------------------

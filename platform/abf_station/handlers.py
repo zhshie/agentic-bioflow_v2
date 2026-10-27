@@ -4,7 +4,7 @@
 read_task_log reads the end of one log file of one task folder (readlog.py); clean_work, with a confirmation, removes the
 work folder of one finished Slurm run (clean.py); put_upload streams one uploaded file from the
 upload folder into the person's own cloud prefix and, once the cloud size matches, removes the staged copy (put_upload.py).
-pipeline_files reads four kinds of public GitHub file for the platform, which never connects out itself (pipeline_files.py).
+pipeline_files reads five kinds of public file for the platform, the fifth being nf-core's own list of pipelines, which never connects out itself (pipeline_files.py).
 
 A job is a dict with a kind and arguments. Only the exact kinds below exist; any other text is refused,
 and a refusal is an answer, not a crash. Every value that reaches the site is checked again here and

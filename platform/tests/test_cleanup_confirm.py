@@ -585,7 +585,18 @@ def test_tc065_tc066_nothing_builds_a_clean_work_request_and_nothing_acts_by_its
     jobs.claim(world, "a1", clock)
     assert sql(world, "SELECT state FROM confirmations WHERE id = ?", (rid,))[0][0] == "pending"
     assert jobs_count(world, "clean_work") == 0
-    src = "".join(p.read_text(encoding="utf-8") for p in (PKG / "abf_platform").rglob("*.py"))
+    # cloud-cleanup-f (ruling 11): actions.offer_cleanup is now the one place that creates a clean_work request; scan everything else.
+    import ast
+    parts = []
+    for p in (PKG / "abf_platform").rglob("*.py"):
+        text = p.read_text(encoding="utf-8")
+        if p.name == "__init__.py" and p.parent.name == "actions":
+            lines = text.splitlines()
+            fn = [n for n in ast.walk(ast.parse(text)) if isinstance(n, ast.FunctionDef) and n.name == "offer_cleanup"]
+            assert len(fn) == 1
+            text = chr(10).join(l for i, l in enumerate(lines, 1) if not fn[0].lineno <= i <= fn[0].end_lineno)
+        parts.append(text)
+    src = "".join(parts)
     assert len(re.findall(r"create_pending\([^)]*clean_work", src)) == 0 and "request_clean" not in src
 
 

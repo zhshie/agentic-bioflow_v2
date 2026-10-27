@@ -31,6 +31,7 @@ WEB_ONLY = {
     "launch_prefill": "the quick launch of the launch form: what the person's own earlier run was sent with, when it is still kept",
     "pipeline_files": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "latest_release": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
+    "nfcore_catalogue": "guided launch searches every nf-core pipeline through the agent (nfcore-catalogue); the page filters; no MCP tool yet",
 }
 # Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).
 OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d", "read_task_log": "011c",
@@ -38,7 +39,7 @@ OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "01
 OWED_BEFORE_012B = {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "read_task_log", "launch", "cancel", "forget"}
 # Helpers, classes and constants that no web route or tool exposes by name. 009i: ConnectorCaller, form_is_trusted (MCP side only).
 # v3 (keep-submissions, resume/relaunch): request_forget, request_resume, request_relaunch are what the tools forget, resume, relaunch call; forget_check and keep_screen are helpers; the FORGET_* and RUN_NOT_FOUND words are constants.
-INTERNAL = {"request_pipeline_launch", "request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
+INTERNAL = {"offer_cleanup", "request_pipeline_launch", "request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
             "person_at", "caller_area", "confined_samplesheet", "read_confined_samplesheet", "forget_check", "keep_screen",
             "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE",
             "FORGETTABLE", "FORGET_ALREADY", "FORGET_NO_FORM", "FORGET_STARTING", "FORGET_WAIT_SECONDS", "RUN_NOT_FOUND",

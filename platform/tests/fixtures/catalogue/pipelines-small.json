@@ -1,0 +1,276 @@
+{
+ "remote_workflows": [
+  {
+   "archived": false, 
+   "stargazers_count": 3, 
+   "releases": [
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3", 
+     "tag_name": "dev", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-01T00:00:00Z"
+    }
+   ], 
+   "name": "abotyper", 
+   "full_name": "nf-core/abotyper", 
+   "topics": [
+    "nextflow", 
+    "workflow", 
+    "pipeline"
+   ], 
+   "html_url": null, 
+   "description": "A pipeline for ABO blood group typing from sequencing data"
+  }, 
+  {
+   "archived": false, 
+   "stargazers_count": 60, 
+   "releases": [
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5", 
+     "tag_name": "5.1.2", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-01T00:00:00Z"
+    }, 
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5", 
+     "tag_name": "5.1.1", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-02T00:00:00Z"
+    }, 
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3", 
+     "tag_name": "dev", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-03T00:00:00Z"
+    }
+   ], 
+   "name": "airrflow", 
+   "full_name": "nf-core/airrflow", 
+   "topics": [
+    "nextflow", 
+    "workflow", 
+    "pipeline"
+   ], 
+   "html_url": null, 
+   "description": "Nextflow pipeline to assemble and annotate AIRR repertoire sequencing data"
+  }, 
+  {
+   "archived": false, 
+   "stargazers_count": 250, 
+   "releases": [
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5", 
+     "tag_name": "3.0.0", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-01T00:00:00Z"
+    }, 
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa6", 
+     "tag_name": "2.18.0", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-02T00:00:00Z"
+    }, 
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3", 
+     "tag_name": "dev", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-03T00:00:00Z"
+    }
+   ], 
+   "name": "ampliseq", 
+   "full_name": "nf-core/ampliseq", 
+   "topics": [
+    "nextflow", 
+    "workflow", 
+    "pipeline"
+   ], 
+   "html_url": null, 
+   "description": "Amplicon sequencing analysis workflow using DADA2 and QIIME2"
+  }, 
+  {
+   "archived": false, 
+   "stargazers_count": 5, 
+   "releases": [
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3", 
+     "tag_name": "dev", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-01T00:00:00Z"
+    }
+   ], 
+   "name": "cellpainting", 
+   "full_name": "nf-core/cellpainting", 
+   "topics": [
+    "nextflow", 
+    "workflow", 
+    "pipeline"
+   ], 
+   "html_url": null, 
+   "description": null
+  }, 
+  {
+   "archived": true, 
+   "stargazers_count": 20, 
+   "releases": [
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5", 
+     "tag_name": "1.0.0", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-01T00:00:00Z"
+    }, 
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3", 
+     "tag_name": "dev", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-02T00:00:00Z"
+    }
+   ], 
+   "name": "exoseq", 
+   "full_name": "nf-core/exoseq", 
+   "topics": [
+    "nextflow", 
+    "workflow", 
+    "pipeline"
+   ], 
+   "html_url": null, 
+   "description": "Exome-seq analysis pipeline"
+  }, 
+  {
+   "archived": false, 
+   "stargazers_count": 1000, 
+   "releases": [
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa6", 
+     "tag_name": "3.27.0", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-01T00:00:00Z"
+    }, 
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa6", 
+     "tag_name": "3.26.0", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-02T00:00:00Z"
+    }, 
+    {
+     "tag_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3", 
+     "tag_name": "dev", 
+     "co2footprint_files": [], 
+     "nextflow_version": "!>=24.04.2", 
+     "components": [], 
+     "doc_files": [
+      "README.md"
+     ], 
+     "has_schema": true, 
+     "nf_core_version": "3.3.2", 
+     "plugins": [], 
+     "published_at": "2026-01-03T00:00:00Z"
+    }
+   ], 
+   "name": "rnaseq", 
+   "full_name": "nf-core/rnaseq", 
+   "topics": [
+    "nextflow", 
+    "workflow", 
+    "pipeline"
+   ], 
+   "html_url": null, 
+   "description": "RNA sequencing analysis pipeline using STAR, RSEM, HISAT2 or Salmon"
+  }
+ ]
+}

@@ -274,6 +274,7 @@ BAD_ARGS = [
     ("nf-core/ampliseq", None, ["schema"]), ("nf-core/ampliseq", "", ["schema"]), ("nf-core/ampliseq", "A" * 40, ["schema"]),
     ("nf-core/ampliseq", "2.18.0", []), ("nf-core/ampliseq", "2.18.0", ["x"]), ("nf-core/ampliseq", "2.18.0", ["schema", "schema"]),
     ("nf-core/ampliseq", "2.18.0", "schema"), ("nf-core/ampliseq", "2.18.0", None),
+    (None, None, ["schema"]), ("nf-core/ampliseq", None, ["catalogue"]), (None, "2.18.0", ["catalogue"]), (None, None, ["catalogue", "schema"]),
 ]
 
 

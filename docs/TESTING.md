@@ -155,7 +155,7 @@ The machine part is the four platform entries (`tests/platform_test.sh`, `tests/
    time.sleep(1)
    ```
 
-   Then list the same `results` folder again with `list_site_files`: nothing may have changed. (`rm` is not a job kind, and no job kind writes.)
+   Then list the same `results` folder again with `list_site_files`: nothing may have changed. (Only a finished run's work folder can be deleted, and only after its owner's yes; see cloud-cleanup.)
 4. *Both suites are green where it matters (TC-081).* In WSL run `bash tests/run_all.sh` (`cd ~ && wsl.exe -d Ubuntu -- bash -c 'cd /mnt/c/<path to the repo> && bash tests/run_all.sh'` from Git Bash); the output must show `platform_test.sh` passed and no `E2E SKIPPED`. Then read the CI result of the pull request: the same, nothing skipped.
 5. *The constitution was not touched (TC-088).* `git diff main...HEAD -- .specify/memory/constitution.md` is empty and its version line still reads 3.0.0. In `docs/ROADMAP.md` the rows of "Principles waiting for a check" are all still in that table (a note that a check exists is the most that may be added).
 6. *The existing checks and the plugin were not touched (TC-093).* `git diff main...HEAD --stat -- tests/no_hardcoded_paths.sh tests/scripts_name_their_alternative.sh tests/no_second_run_state_test.sh tests/command_layer_is_site_neutral.sh tests/credentials_stay_in_settings_test.sh tests/run_all.sh hooks/ scripts/ skills/ .claude-plugin/` lists nothing, and `bash tests/run_all.sh --list` includes `platform_test.sh`.
@@ -725,6 +725,28 @@ The automatic tests never reach the internet (a guard fails any test that tries)
 3. **Newest release.** Call `actions.latest_release(<path>, "nf-core/ampliseq")` the same way. Check: it ends as the newest plain numbered tag (on 2026-10-25 that was `3.0.0`; go by GitHub on the day), `source` is `fetched`, and `release-tags.json` has appeared beside `platform.db`. Call it again at once. Check: `source` is `cache` and the `jobs` table has no new `pipeline_files` row.
 4. **No network.** Switch the agent machine's network off (or stop its access to the internet) and call `actions.pipeline_files(<path>, "nf-core/rnaseq", "3.27.0")`, a pair not asked before. Check: within about a minute `state` is `error`, `error` is `network`, and `reason` is a plain sentence that tells you to check the machine's network.
 5. **Write down** the output of each step in `specs/release-lookup-job/ledger.md`.
+
+## Cleaning a finished run's work folder (cloud-cleanup): the maintainer checks five things
+
+The machine part is `platform/tests/test_cleanup_offer.py` (a fake site, a fake bucket, the real agents). Only you can do the following, each on **your own test run**, and each by the **product itself** (the confirmation page): do not use an AI session to run a delete command on the cluster or in the bucket.
+
+1. *nano4: the notice, the page, the button.* Run something very small on nano4 (for example `ampliseq-d5` with the smallest samplesheet) until it succeeds. The board's right column shows the notice "可以清掉中間檔"; open it (`/c/<id>`). The screen has the three sentences (the folder that will be deleted for good, results and raw data untouched, the run cannot be resumed). **Do not press yet.** After a while list `<run folder>/work` with `list_site_files`: it is still there. Then press 確認刪除: only `work` is gone, `results/` is complete.
+2. *nano4: is `work` where the formula says?* Open the head of the Nextflow log (or `.nextflow.log`) of that run and read `work-dir`. It must be `<run folder>/work`. If it is not, **stop and report**: the site's settings or the `nextflowConfig` changed `workDir`, and the formula has to change.
+3. *Google Batch (your own account).* The same run on Google Batch. Before you press, put two objects beside it by hand: `<workDir>/runs/<run>/work2/x` and `<workDir>/runs/<run>/work-keep`. After 確認刪除 the prefix `<workDir>/runs/<run>/work/` is gone and the two others are still there (this is the first real test of how `gcloud storage rm --recursive` treats the trailing slash; cloud-cleanup-d trusted the documentation only). Write down whether the bucket has soft delete or object versioning and whether the deleted objects can still be listed, put the answer into `specs/cloud-cleanup-d/ledger.md`, and check that the fourth sentence of the screen says the same.
+4. *nano4: a resumed attempt.* Make a run fail, resume it (`-a2`) and let it succeed. The notice is on the `-a2` run. Press 確認刪除: the `work` folder of the **first** run's folder is gone and the rest of that folder is still there.
+5. *A request that lapsed is not offered again.* In your own test database move one request's `expires_at` into the past. The confirmation page says 已逾時（7 天）, the board has no notice for it, and no new request for that run appears later.
+
+Then keep the screenshots (the confirmation page with the text of `clean_screen`, and the board card, in Chinese and in English) for the daily list; the maintainer answers 好 or 不好.
+
+## nfcore-catalogue：真的讀一次 nf-co.re (read nf-co.re for real, once)
+
+The automatic tests never reach the internet. This is the one time a person checks it for real: the maintainer or developer-agent does it after the merge, on a machine with a network. It only sends one read request for a public file.
+
+1. **Start the platform and an agent** and add a compute environment that names that agent (same as step 1 of the release-lookup-job section).
+2. **The list.** In one line of Python call `actions.nfcore_catalogue(<path of platform.db>)` and call it again every 5 seconds until `state` is no longer `loading` (about a minute at most). Check: `state` is `ready` and `count` is at least 150 (159 on 2026-10-26); the entry with `name` `ampliseq` has `repo` `nf-core/ampliseq`, `archived` `False` and `latest` the newest plain numbered tag (on 2026-10-26 that was `3.0.0`; go by nf-co.re on the day); `exoseq` has `archived` `True`; `abotyper` has `latest` `None` (it only has `dev`); the list is sorted by `name`; no new file appeared beside `platform.db`.
+3. **Reuse.** Call it again at once. Check: the same `checked_at` and no new `pipeline_files` row in the `jobs` table (the agent prints one line per job, not per request, so the jobs table is the check).
+4. **No network.** Switch the agent machine's network off, delete that job row (or wait 24 hours) and call it again. Check: within about a minute `state` is `error`, `error` is `network`, and `reason` names nf-co.re and says to check the network.
+5. **Write down** the output of each step in `specs/nfcore-catalogue/ledger.md`.
 
 ## When something is red
 
