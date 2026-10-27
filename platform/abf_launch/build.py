@@ -12,6 +12,7 @@ import hashlib
 import io
 import json
 import os
+import posixpath
 import re
 import time
 from pathlib import Path
@@ -302,6 +303,78 @@ def prepare_cancel(state, run, owner=None):
         raise Refusal(problem)
     bundle = {"version": 1, "run_name": row["run_name"], "slurm_job_id": row["slurm_job_id"], "run_folder": row["run_folder"],
               "agent": row["agent"], "ce": bundle_mod.snapshot_ce(view)}
+    return row["ce"], bundle, row
+
+
+# ---- cleaning the work folder of a finished run (cloud-cleanup-f) -----------------------------------------------------------
+
+def clean_work_path(view_snapshot, row):
+    """The one folder that is cleaned for this run: `<run folder>/work` on a Slurm site (a resume goes on in the first launch's
+    folder, so the folder of the hand-off record is the one), `<workDir>/runs/<run>/work` in a Google Batch bucket."""
+    if view_snapshot.get("platform") == bundle_mod.GCB:
+        return "%s/runs/%s/work" % (view_snapshot["workDir"], row["run_name"])
+    return row["run_folder"] + "/work"
+
+
+def _launched_workdir(state, row):
+    """(the workDir of the environment as it was when the run was sent or None, whether the owner forgot the run)."""
+    con = _open(state)
+    if con is None:
+        return None, False
+    try:
+        if jobs.run_forgotten(con, row["run_name"]):
+            return None, True
+        job = None
+        if "job_id" in row.keys() and row["job_id"] is not None:
+            job = con.execute("SELECT * FROM jobs WHERE id = ?", (row["job_id"],)).fetchone()
+        content = jobs.launch_content(con, row, job)
+    finally:
+        con.close()
+    if content is None or not isinstance(content[0].get("ce"), dict):
+        return None, False
+    return content[0]["ce"].get("workDir"), False
+
+
+def prepare_clean(state, run, owner=None):
+    """(environment name, bundle, hand-off row) for cleaning the work folder of one run of this platform, or Refusal. Same shape as
+    prepare_cancel; the bundle holds exactly one folder. With `owner` only a run that user launched is there."""
+    con = _open(state)
+    try:
+        row = jobs.latest_launch(con, run) if con is not None else None
+    finally:
+        if con is not None:
+            con.close()
+    if row is not None and owner is not None and ("user_id" not in row.keys() or row["user_id"] != owner):
+        row = None
+    if row is None:
+        raise Refusal("%s 不是平台自己送出的（hand-off 紀錄裡沒有它）(not launched from this platform)" % run)
+    if row["slurm_job_id"] is None:
+        raise Refusal("%s 沒有工作編號：它尚未啟動，或結果不明，所以不清理 (no job number recorded)" % run)
+    if "work_cleaned_at" in row.keys() and row["work_cleaned_at"] is not None:
+        raise Refusal("%s 的 work 目錄已經清過了 (already cleaned)" % run)
+    view = compute_envs.get(state, row["ce"])
+    if view is None:
+        raise Refusal("環境 %s 找不到 (not found)" % row["ce"])
+    if view["agent"] != row["agent"]:
+        raise Refusal("%s 是經由代理 %s 送出的，環境 %s 現在的代理是 %s；不清理別的代理送出的 run (a different agent)"
+                      % (run, row["agent"], row["ce"], view["agent"]))
+    problem = target_problem(state, row["ce"], "clean_work", owner)
+    if problem:
+        raise Refusal(problem)
+    launched, forgotten = _launched_workdir(state, row)
+    if forgotten:
+        raise Refusal("%s 送出時留下的內容已經被刪除，無法確認路徑，所以不提出清理 (the content of the launch was deleted)" % run)
+    if launched is None:
+        raise Refusal("找不到 %s 當初送出的內容，無法確認環境沒有改過，所以不提出清理 (the content of the launch is not there)" % run)
+    ce = bundle_mod.snapshot_ce(view)
+    changed = ("環境 %s 在 %s 送出之後改過工作資料夾，無法確認路徑是這個 run 的，所以不提出清理 "
+               "(the environment changed after the run was sent)" % (row["ce"], run))
+    if launched != ce.get("workDir"):
+        raise Refusal(changed)
+    if ce.get("platform") != bundle_mod.GCB and posixpath.dirname(row["run_folder"]) != ce["workDir"] + "/runs":
+        raise Refusal(changed)
+    bundle = {"version": 1, "run_name": row["run_name"], "slurm_job_id": row["slurm_job_id"], "run_folder": row["run_folder"],
+              "agent": row["agent"], "ce": ce, "work": clean_work_path(ce, row)}
     return row["ce"], bundle, row
 
 
@@ -653,6 +726,27 @@ def cancel_screen(bundle, row):
         lines.append(terminal.pair(label, value))
     if row["cancel_requested_at"] is not None:
         lines.append(terminal.pair("提醒", "這個 run 的取消請求已經在 %s 送出過一次" % when(row["cancel_requested_at"])))
+    return lines
+
+
+CLEAN_DELETES = "這會永久刪除這次 run 的中間檔資料夾："
+CLEAN_KEEPS = "結果（results）、原始資料與分析資料夾不會被動。"
+CLEAN_NO_RESUME = "刪掉之後這個 run 不能再續跑（-resume）；要再算一次，請當成新分析重新送出。"
+CLEAN_BUCKET = "刪除的是 bucket 裡這個前綴下的物件。"
+CLEAN_SOFT = ("新建的 bucket 預設有 7 天軟刪除，物件在保留期內仍可還原；若 bucket 另外開了版本控制，舊版本也會一併刪掉。"
+              "你的 bucket 是否開著，以你自己的設定為準。")
+
+
+def clean_screen(bundle, row):
+    """What the person is asked before the work folder of one finished run is deleted: which folder, what is not touched, and that
+    the run cannot be resumed afterwards. A bucket gets two more sentences. No money, no inner words."""
+    lines = [terminal.PREFIX + "== 清理確認：只會刪除下面這一個 run 的中間檔資料夾 ==",
+             terminal.pair("run 名稱", bundle["run_name"]),
+             terminal.PREFIX + terminal.esc(CLEAN_DELETES) + terminal.esc(bundle["work"]),
+             terminal.PREFIX + terminal.esc(CLEAN_KEEPS),
+             terminal.PREFIX + terminal.esc(CLEAN_NO_RESUME)]
+    if (bundle.get("ce") or {}).get("platform") == bundle_mod.GCB:
+        lines += [terminal.PREFIX + terminal.esc(CLEAN_BUCKET), terminal.PREFIX + terminal.esc(CLEAN_SOFT)]
     return lines
 
 
