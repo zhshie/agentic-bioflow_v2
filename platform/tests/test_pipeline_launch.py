@@ -487,7 +487,7 @@ def test_the_two_requests_share_one_back_half_and_the_signatures_are_those_named
     for fn in (actions.request_launch, actions.request_pipeline_launch):
         assert "_ask(" not in inspect.getsource(fn) and "find_approved" not in inspect.getsource(fn)
     old = list(inspect.signature(actions.request_launch).parameters)
-    assert old == ["platform_path", "pipeline", "revision", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "path_columns",
+    assert old == ["platform_path", "pipeline", "revision", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "path_columns", "dataset", "dataset_version",
                    "caller", "person", "clock", "remote"]
     new = list(inspect.signature(actions.request_pipeline_launch).parameters)
     assert new == ["platform_path", "pipeline_id", "version", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "caller",
