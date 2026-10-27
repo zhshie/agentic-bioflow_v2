@@ -122,3 +122,4 @@ Green run record
 - Samplesheet column table (step 4, `.scols`): it has no phone stacking rule (it stays an ordinary two-column table, no `display:block`, no widths of its own), so it does not have this problem; not changed.
 - `test_j07_phone_cells_full_width` added (red first, commit `RED: phone cells must span the row`).
 - `test_clean_page.py`: hashes and `BASE_STYLE` pinned a fifth time (only the style sheet changed).
+- Full suite at 55a618e from WSL, __pycache__ cleared first: `bash tests/run_all.sh --timeout 900`: 127/127 passed, all green.
