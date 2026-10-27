@@ -117,6 +117,8 @@ source: developer-agent 讀碼查證（2026-10-24）。cloud-upload.md「待 dev
 
 7. **（2026-10-27 22:20 補）頂層指令清單有兩處逐字釘住，新增 `dataset` 群一定會撞**：`platform/tests/test_cleanup_offer.py` 的 `COMMANDS`（約 818 行，排序清單，`'dataset'` 放在 `'ce'` 與 `'fetch-records'` 之間）與 `platform/tests/test_station_envs.py` 的 `top_level` 集合（約 432 行，加入 `"dataset"`，行尾註解補「dataset-cli-launch: plus `dataset`」）。准許、且只准各加這一個字；兩個檔其餘內容不動。developer-agent 已 grep 過其他頂層指令釘（`test_launch_platform.py:742` 是子集合檢查、`test_onboarding_doc.py` 只檢查文件），不需要改。本任務准改的既有測試至此共四處：TC-064、test_pipeline_launch.py:490、這兩處。
 
+8. **（2026-10-28 00:10 補，追認）同類釘住的另兩處**：`platform/tests/test_station_launch.py` `tc_ls_52` 的 launch 屬性集合在 `path_columns` 之後加 `dataset`、`dataset_version`（TC-054 要求 launch 多這兩個參數）；`platform/tests/test_station_envs.py` `tc084` 的指令名字串加 `dataset`（與裁決 7 同檔同因）。都只是把新名字加進逐字釘住的集合，沒有刪或放寬任何斷言；developer-agent 追認，verifier 指出的 TC-088 以此為準。另更正：base 的 MCP 工具是 15 個（不是 13 個），本任務不新增工具。
+
 ## 專長守則（backend）
 
 ### executor
