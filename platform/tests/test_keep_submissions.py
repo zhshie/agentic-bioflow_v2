@@ -702,7 +702,7 @@ def test_tc094_tc095_tc104_eleven_tools_and_the_column_names_scan_still_catches_
     tools, _ = w.mcp([])
     names = sorted(t.name for t in tools)
     assert names == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
-                     "list_site_files", "list_used_pipelines", "read_task_log", "relaunch", "resume", "run_outputs"]
+                     "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs"]
     saying_yes = {"yes", "y", "confirm", "confirmed", "confirmation", "confirmation_id", "approve", "approved", "kind", "command"}
     for t in tools:
         if t.name in ("launch", "cancel", "resume", "relaunch", "forget"):
@@ -770,7 +770,7 @@ def test_tc082_the_web_has_no_forget_route(w):
 def test_tc083_no_new_confirmation_kind_and_approve_knows_nothing_of_forget():
     # TC-083
     from abf_platform import confirm, store
-    assert set(confirm.JOB_KIND) == {"launch", "cancel"}
+    assert set(confirm.JOB_KIND) == {"launch", "cancel", "clean_work"}
     assert "CHECK (kind IN ('launch', 'cancel', 'clean_work'))" in store.STATE_SCHEMA
     assert "forget" not in inspect.getsource(confirm.approve)
 

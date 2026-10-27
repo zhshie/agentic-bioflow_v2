@@ -29,7 +29,7 @@ bad() { printf '%-86s FAIL%s\n' "$1" "${2:+: $2}"; fails=$((fails+1)); }
 flat() { tr -d '\r' | tr '\n' ' ' | tr -s ' '; }
 # has <label> <file> <fixed string>: in the flattened file
 has() {
-  if [ -f "$2" ] && flat < "$2" | grep -qF -- "$3"; then ok "$1"; else bad "$1" "no '$3' in $2"; fi
+  if [ -f "$2" ] && flat < "$2" | grep -F -- "$3" >/dev/null; then ok "$1"; else bad "$1" "no '$3' in $2"; fi
 }
 # hasnt <label> <file> <ERE>: absent from the flattened file (case-insensitive)
 hasnt() {
@@ -41,17 +41,17 @@ hasnt() {
 sec() { awk -v s="$2" -v e="$3" '$0 ~ s {f=1;next} f && $0 ~ e {f=0} f' "$1"; }
 # in <label> <section text> <fixed string>
 inn() {
-  if printf '%s\n' "$2" | flat | grep -qF -- "$3"; then ok "$1"; else bad "$1" "no '$3' in the section"; fi
+  if printf '%s\n' "$2" | flat | grep -F -- "$3" >/dev/null; then ok "$1"; else bad "$1" "no '$3' in the section"; fi
 }
 nin() {
-  if printf '%s\n' "$2" | flat | grep -qiE -- "$3"; then bad "$1" "found /$3/ in the section"; else ok "$1"; fi
+  if printf '%s\n' "$2" | flat | grep -iE -- "$3" >/dev/null; then bad "$1" "found /$3/ in the section"; else ok "$1"; fi
 }
 
 echo "== US1: the constitution (TC-001, TC-003..TC-009) =="
 LAST=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
-if [ "$LAST" = '**Version**: 6.0.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-22' ]; then
-  ok "TC-001: last line is exactly the 6.0.0 version line"
-else bad "TC-001: last line is exactly the 6.0.0 version line" "got: $LAST"; fi
+if [ "$LAST" = '**Version**: 6.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-25' ]; then
+  ok "TC-001: last line is exactly the 6.1.0 version line"
+else bad "TC-001: last line is exactly the 6.1.0 version line" "got: $LAST"; fi
 
 P1=$(awk '/^### I\. /{f=1} /^### II\. /{f=0} f' "$C")
 inn "TC-003: principle I is titled Build Only What Seqera Cannot or Will Not Do Here" "$P1" '### I. Build Only What Seqera Cannot or Will Not Do Here'
@@ -82,7 +82,7 @@ inn "TC-005: where Seqera's display and Nextflow's records disagree, Nextflow's 
 inn "TC-006: principle I.2 holds the run-index rule (moved in 6.0.0)" "$P1" "The platform's run index is never a second truth"
 inn "TC-006: ...with its rebuild check test_tc030_rebuild_gives_back_every_field" "$P1" 'test_tc030_rebuild_gives_back_every_field'
 SNSEC=$(awk '/^## Safety Net/{f=1;next} /^## /{f=0} f' "$C")
-if printf '%s\n' "$SNSEC" | grep -qi 'run index'; then bad "TC-006: 'run index' appears nowhere in the Safety Net section"; else ok "TC-006: 'run index' appears nowhere in the Safety Net section"; fi
+if printf '%s\n' "$SNSEC" | grep -i 'run index' >/dev/null; then bad "TC-006: 'run index' appears nowhere in the Safety Net section"; else ok "TC-006: 'run index' appears nowhere in the Safety Net section"; fi
 inn "TC-007: principle I rationale cites docs/adr/0004"                           "$P1" 'docs/adr/0004'
 nin "TC-007: ...and no longer attributes it to docs/adr/0001"                     "$P1" 'docs/adr/0001'
 
@@ -183,8 +183,8 @@ inn "TC-013: ...ADR 0003 is revised"                              "$Q4" 'ADR 000
 inn "TC-013: ...ADR 0001's Terms-of-Use reason still holds"       "$Q4" "ADR 0001's Terms-of-Use reason still holds"
 inn "TC-013: ...ADR 0002 stands, revenue gains a hosted service"  "$Q4" 'ADR 0002 stands for the code; the revenue gains a hosted service'
 inn "TC-013: ...Seqera Platform is the reference, narrowed to what a lab here uses" "$Q4" 'Seqera Platform is the reference: features follow its public documentation, narrowed to what a lab here uses'
-if flat < "$ADR4" | grep -qiF "rebuilding part of a company"; then bad "TC-013: ADR 0004 has no 'rebuilding part of a company'"; else ok "TC-013: ADR 0004 has no 'rebuilding part of a company'"; fi
-if flat < "$ADR4" | grep -qF "重做"; then bad "TC-013: ADR 0004 has no 重做"; else ok "TC-013: ADR 0004 has no 重做"; fi
+if flat < "$ADR4" | grep -iF "rebuilding part of a company" >/dev/null; then bad "TC-013: ADR 0004 has no 'rebuilding part of a company'"; else ok "TC-013: ADR 0004 has no 'rebuilding part of a company'"; fi
+if flat < "$ADR4" | grep -F "重做" >/dev/null; then bad "TC-013: ADR 0004 has no 重做"; else ok "TC-013: ADR 0004 has no 重做"; fi
 
 [ -f "$ADR5" ] && ok "TC-014: $ADR5 exists" || bad "TC-014: $ADR5 exists"
 has "TC-014: role member"                                         "$ADR5" 'A **member** runs their own analyses'
@@ -199,7 +199,7 @@ inn "TC-014: ...SSO"                                              "$O5" 'SSO'
 inn "TC-014: ...rejected"                                         "$O5" 'rejected as more to learn than a lab needs'
 
 if [ -n "$ADR1" ]; then
-  if head -5 "$ADR1" | flat | grep -qF 'Superseded by ADR 0004 (2026-10-08)'; then ok "TC-015: ADR 0001 opens with 'Superseded by ADR 0004 (2026-10-08)'"
+  if head -5 "$ADR1" | flat | grep -F 'Superseded by ADR 0004 (2026-10-08)' >/dev/null; then ok "TC-015: ADR 0001 opens with 'Superseded by ADR 0004 (2026-10-08)'"
   else bad "TC-015: ADR 0001 opens with 'Superseded by ADR 0004 (2026-10-08)'"; fi
   has "TC-018: ADR 0001 body kept: Terms of Use reason" "$ADR1" 'Terms of Use also forbid accessing its Services'
   has "TC-018: ADR 0001 body kept: the decision text"  "$ADR1" 'The Prototype uses Seqera Platform as its execution backend and interface'
@@ -236,14 +236,14 @@ inn "TC-020: the platform is an MCP server because any harness must be able to c
 inn "TC-020: ...any harness"                                      "$WP" 'whatever harness the user brings'
 inn "TC-020: judgment stays in skills, MCP tools only act"        "$WP" 'judgment and procedure stay in skills and `docs/`, MCP tools only act'
 inn "TC-020: the 'a tool cannot carry judgment' reason is kept as the reason for the split" "$WP" 'cannot carry procedure or judgment'
-if grep -rIl --include='*.md' -iE 'not an MCP server' . 2>/dev/null | grep -v -e '^./.git/' -e '^./.specify/amendments/' -e '^./docs/LAB_AGENTS.md$' | grep -q .; then
+if grep -rIl --include='*.md' -iE 'not an MCP server' . 2>/dev/null | grep -v -e '^./.git/' -e '^./.specify/amendments/' -e '^./docs/LAB_AGENTS.md$' | grep . >/dev/null; then
   bad "TC-020: no document states 'Not an MCP server' as a current rule (LAB_AGENTS history aside)" "$(grep -rIl --include='*.md' -iE 'not an MCP server' . | grep -v -e '^./.git/' -e '^./.specify/amendments/' -e '^./docs/LAB_AGENTS.md$' | head -3)"
 else ok "TC-020: no document states 'Not an MCP server' as a current rule (LAB_AGENTS history aside)"; fi
 hasnt "TC-020: PRINCIPLES.md 'Where each piece belongs' no longer says the plugin is not an MCP server" "$PR" 'this plugin is not, and does not wrap itself in, an MCP server'
 
 # TC-021: LAB_AGENTS R7 and section 8; TC-033: H3 trigger paragraph kept.
 R7=$(grep -F '| R7 |' "$LA")
-if printf '%s' "$R7" | grep -qF 'Reversed by ADR 0004'; then ok "TC-021: R7 verdict is 'Reversed by ADR 0004'"; else bad "TC-021: R7 verdict is 'Reversed by ADR 0004'" "$R7"; fi
+if printf '%s' "$R7" | grep -F 'Reversed by ADR 0004' >/dev/null; then ok "TC-021: R7 verdict is 'Reversed by ADR 0004'"; else bad "TC-021: R7 verdict is 'Reversed by ADR 0004'" "$R7"; fi
 S8=$(sec "$LA" '^## 8[.] ' '^## ')
 inn "TC-021: section 8 title says reversed by ADR 0004"           "$(grep -F '## 8. ' "$LA")" 'reversed by ADR 0004'
 inn "TC-021: section 8 states the same conclusion (self-hosted platform, MCP the only AI entry)" "$S8" 'only AI entry point is an MCP server (ADR 0004)'
@@ -295,7 +295,7 @@ cnt16=$(printf '%s\n' "$WL" | grep -cE '^[|]' || true)
 # 2026-10-24 (ADR 0011): 15 -> 17 lines, two rows added for auto-resume and the web terminal
 [ "${cnt16:-0}" = 17 ] && ok "TC-025: waiting list has 17 table lines (15 rows + header + separator)" || bad "TC-025: waiting list has 17 table lines" "$cnt16 lines"
 # old stage numbers are gone: nothing waits for a stage that no longer exists
-if printf '%s\n' "$WL" | grep -qE '\| (6|7) \|[[:space:]]*$'; then bad "TC-023: no row waits for stage 6 or 7"; else ok "TC-023: no row waits for stage 6 or 7"; fi
+if printf '%s\n' "$WL" | grep -E '\| (6|7) \|[[:space:]]*$' >/dev/null; then bad "TC-023: no row waits for stage 6 or 7"; else ok "TC-023: no row waits for stage 6 or 7"; fi
 
 OQ=$(sec "$RM" '^## Open questions' '^## ')
 inn "TC-024: open questions gain NCHC M6"                         "$OQ" 'NCHC (M6'
@@ -348,10 +348,10 @@ done < <(grep -E '^## [A-K]\. ' "$PAR")
 stars=$(grep -F '★' "$PAR" | grep -vF 'marked ★' | wc -l | tr -d ' ')
 [ "$stars" = 4 ] && ok "TC-028: exactly 4 items marked ★ (legend excluded)" || bad "TC-028: exactly 4 items marked ★" "found $stars"
 for item in 'Dashboard' 'Parameter form from the pipeline schema' 'Reports' 'two-role lab'; do
-  if grep -F '★' "$PAR" | grep -vF 'marked ★' | grep -qF -- "$item"; then ok "TC-028: ★ item: $item"; else bad "TC-028: ★ item: $item"; fi
+  if grep -F '★' "$PAR" | grep -vF 'marked ★' | grep -F -- "$item" >/dev/null; then ok "TC-028: ★ item: $item"; else bad "TC-028: ★ item: $item"; fi
 done
 
-if grep -F 'Co-Scientist' "$PAR" | grep -F 'Build' | grep -qvF '★'; then ok "TC-028: Co-Scientist row gains Build and carries no ★"; else bad "TC-028: Co-Scientist row gains Build and carries no ★"; fi
+if grep -F 'Co-Scientist' "$PAR" | grep -F 'Build' | grep -vF '★' >/dev/null; then ok "TC-028: Co-Scientist row gains Build and carries no ★"; else bad "TC-028: Co-Scientist row gains Build and carries no ★"; fi
 has "TC-028: Co-Scientist Build is the platform's own chat (Stage 3, feature 014)" "$PAR" "Build: the platform's own chat with the model the user chooses (Stage 3, feature 014)"
 
 # TC-029 / TC-034: CONTEXT.md
@@ -414,8 +414,8 @@ has "TC-060e: ADR 0003: Claude Desktop first is still a host"      "$ADR3" 'Clau
 inn "TC-060f: constitution 3.0.0 record has 「也做聊天介面 可接模型」"  "$CHATC" '「也做聊天介面 可接模型」'
 inn "TC-060f: ...and says it calls the same MCP tools"              "$CHATC" 'it calls the same MCP tools'
 # (g) ADR 0004: no 重做 / rebuilding part of a company's product; Seqera Platform is the reference
-if flat < "$ADR4" | grep -qF "重做"; then bad "TC-060g: ADR 0004 has no 重做"; else ok "TC-060g: ADR 0004 has no 重做"; fi
-if flat < "$ADR4" | grep -qiF "rebuilding part of a company"; then bad "TC-060g: ADR 0004 has no 'rebuilding part of a company'"; else ok "TC-060g: ADR 0004 has no 'rebuilding part of a company'"; fi
+if flat < "$ADR4" | grep -F "重做" >/dev/null; then bad "TC-060g: ADR 0004 has no 重做"; else ok "TC-060g: ADR 0004 has no 重做"; fi
+if flat < "$ADR4" | grep -iF "rebuilding part of a company" >/dev/null; then bad "TC-060g: ADR 0004 has no 'rebuilding part of a company'"; else ok "TC-060g: ADR 0004 has no 'rebuilding part of a company'"; fi
 has "TC-060g: ADR 0004: Seqera Platform is the reference"          "$ADR4" 'Seqera Platform is the reference'
 
 # TC-038/TC-039 (continued): the other planning documents.
@@ -578,7 +578,7 @@ inn "W0 TC-019: Stage 3 done-when: setup → launch → running → results → 
 inn "W0 TC-020: Stage 3 done-when second half kept verbatim"     "$W3" 'Two members of the trial lab use it for two weeks with fewer than 10 new PITFALLS; the hosted service goes live (charging waits on the open questions below)'
 nin "W0 TC-021: no Stage 3 sentence gives figures to the web"    "$W3" 'web pages? (make|draw|plot)'
 for n in 0 1 4 5; do
-  if printf '%s\n' "$STG" | grep -qE "^\| $n \| \*\*"; then ok "W0 TC-022: stage $n row still present"; else bad "W0 TC-022: stage $n row still present"; fi
+  if printf '%s\n' "$STG" | grep -E "^\| $n \| \*\*" >/dev/null; then ok "W0 TC-022: stage $n row still present"; else bad "W0 TC-022: stage $n row still present"; fi
 done
 
 inn "W0 TC-023: role row is re-staged postponed (ADR 0009)"      "$WL" "Role tests against the platform's API | postponed (ADR 0009) |"

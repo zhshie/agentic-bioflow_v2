@@ -11,6 +11,9 @@ from . import compute_envs
 _BUCKET = re.compile(r"^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$")
 _OBJECT_BYTES = 1024
 _NAME_CHARS = 255
+# Bytes, per file, decimal: the same number as WEB_UPLOAD_LIMIT in actions/datasets.py. Kept twice because datasets.py imports abf_launch.build
+# and the queue should not pull that in for one number; a test makes sure the two are equal.
+UPLOAD_LIMIT = 2_000_000_000
 
 
 class CloudPathError(ValueError):

@@ -41,7 +41,7 @@ CONF_ROWS = [  # id, sha256, kind, created_at, used_at, caller, state, channel, 
 
 def old_jobs(read_task_log=True):
     from abf_platform import store
-    ddl = (store._JOBS_TABLE % {"name": "jobs"}).replace(", 'clean_work'", "")
+    ddl = (store._JOBS_TABLE % {"name": "jobs"}).replace(", 'pipeline_files'", "").replace(", 'clean_work'", "")      # release-lookup-job: the older table has no pipeline_files either
     return ddl if read_task_log else ddl.replace(", 'read_task_log'", "")
 
 
@@ -134,7 +134,7 @@ JOB_SQL = ("INSERT INTO jobs (agent, compute_env, kind, args_json, state, create
 CONF_SQL = "INSERT INTO confirmations (id, sha256, kind, created_at, state) VALUES ('pr', 'x', ?, 1, ?)"
 LAUNCH_SQL = "INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, attempt_kind) VALUES ('r', '/f', 'c', 'a', 1, ?)"
 
-KINDS = ["preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work",
+KINDS = ["preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload",
          "rm", "delete", "clean", "clean_work ", "CLEAN_WORK", ""]
 
 
@@ -170,7 +170,7 @@ def test_fresh_jobs_take_clean_work_only_with_a_confirmation(tmp_path):
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c1', 'x', 'launch', 1)")
     con.execute(JOB_SQL, ("clean_work", "queued", "c3"))
     assert declared_kinds(check_of(con, "jobs")) == ["preflight", "list_site_files", "launch_nextflow", "cancel_run",
-                                                      "fetch_run_records", "read_task_log", "clean_work"]
+                                                      "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files"]
     n = con.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
     for kind in ("clean_work", "launch_nextflow", "cancel_run"):
         with pytest.raises(sqlite3.IntegrityError):
@@ -491,9 +491,19 @@ def test_read_only_open_of_an_old_database_does_not_upgrade_it(tmp_path):
 def test_nothing_writes_clean_work_or_work_cleaned_at(tmp_path):
     # TC-030
     for p in sorted(PKG.rglob("*.py")):
-        if p.name != "store.py":
+        # cloud-cleanup-b (ruling 2): confirm.py and jobs.py now legitimately handle clean_work;
+        # jobs.py also records work_cleaned_at. Nothing else may.
+        # cloud-cleanup-e (ruling 2): web.py, web_board.py and actions/__init__.py may read and show clean_work (checked below).
+        if p.name in ("web.py", "web_board.py") or p.parent.name == "actions":
+            assert "work_cleaned_at" not in p.read_text(encoding="utf-8"), p.name
+        elif p.name not in ("store.py", "confirm.py", "jobs.py"):
             text = p.read_text(encoding="utf-8")
             assert "work_cleaned_at" not in text and "clean_work" not in text, p.name
+        elif p.name == "confirm.py":
+            assert "work_cleaned_at" not in p.read_text(encoding="utf-8"), p.name
+    shown = [PKG / "web.py", PKG / "web_board.py", PKG / "actions" / "__init__.py"]
+    from test_cleanup_confirm import _clean_work_read_only_problems
+    assert _clean_work_read_only_problems(shown) == []
     store_text = (PKG / "store.py").read_text(encoding="utf-8")
     for m in re.finditer(r".*work_cleaned_at.*", store_text):
         assert not re.search(r"\b(INSERT|UPDATE|SELECT|DELETE)\b", m.group(0)), m.group(0)

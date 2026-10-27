@@ -26,8 +26,8 @@ REFRESH_SECONDS = 15
 STOPPED = "cancel" + "led"
 FAILURE = "failure"      # the key of the failure record in a run view (failures.py is not imported here: this page only reads what the actions give)
 TAIPEI = datetime.timedelta(hours=8)
-# status -> symbol; the symbol and the text label carry the meaning, the colour only helps
-SYMBOLS = {"running": "▶", "succeeded": "✓", "failed": "✗", "lost": "✗"}      # lost is shown as Failed: the page has three states
+# the analysis states the page knows; each is shown as a small coloured square and a word, never a symbol (lost is shown as Failed: three states)
+KNOWN = ("running", "succeeded", "failed", "lost")
 COUNTS = ("succeeded", "cached", "failed", "aborted", "running", "pending", "submitted")
 SETTINGS = (("set_ce", ()), ("set_cred", ()), ("set_keys", ("set_ai_key",)), ("set_me", ("set_step", "set_dev")),
             ("set_ops", ()), ("set_roles", ()))
@@ -36,31 +36,33 @@ STRINGS = {
     "zh": {
         "title": "agentic-bioflow", "mine": "我的 run", "none_yet": "還沒有 run。", "later": "之後開放",
         "new_project": "＋ 新專案", "search_projects": "搜尋專案或分析", "upload": "↑ 上傳資料", "settings": "設定", "explorer": "資料瀏覽",
-        "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "cost_cloud": "雲端 NT$ —", "more": "還有 %d 筆",
+        "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "usd_about": "（約 US$%s）", "usd_under": "（約 US$0.01 以下）", "cost_cloud": "雲端 US$ —", "more": "還有 %d 筆",
         "new_analysis": "＋ 新分析", "no_project": "未分專案", "no_analyses": "還沒有分析",
         "row_run": "執行", "row_results": "結果", "row_stopped": "執行 · 已取" "消", "row_site": "執行 · 站台沒有回應",
         "main_window": "主視窗", "terminal": "終端機", "this_analysis": "這個分析的對話", "ask_here": "問這個分析",
+        "level_action": "待處理", "c_content": "內容", "c_next": "下一步", "c_open": "打開確認頁",
+        "c_content_text": "這個 run 已成功；它的中間檔（work）可以清掉，結果不會被動。",
+        "c_next_text": "打開確認頁，看清楚要刪的資料夾再決定。",
         "f_step": "步驟", "f_reason": "原因", "f_next": "之後", "confirm_suffix": "（確認頁）",
         "r_stopped": "已取消", "r_site": "站台沒有回應",
         "stage_launch": "送出", "stage_running": "執行中", "stage_results": "結果", "stage_downstream": "下游", "stage_finished": "完成",
-        "state_running": "執行中", "state_succeeded": "完成", "state_failed": "失敗", "state_lost": "失敗",
-        "count_succeeded": "成功", "count_cached": "快取", "count_failed": "失敗", "count_aborted": "中止", "count_running": "執行中",
+        "state_running": "執行中", "state_succeeded": "完成", "state_failed": "失敗", "state_lost": "失敗", "state_unknown": "未知",
+        "count_succeeded": "完成", "count_cached": "快取", "count_failed": "失敗", "count_aborted": "中止", "count_running": "執行中",
         "count_pending": "等待", "count_submitted": "已送出",
         "started": "開始", "ended": "結束", "prev": "← 上一階段", "next": "下一階段 →", "not_reached": "這個 run 還沒到這個階段。",
         "not_found_title": "找不到這個 run", "not_found_body": "沒有這個 run，或它不是你的。",
         "back": "回到分析清單", "set_ce": "運算環境", "set_cred": "憑證", "set_keys": "密碼與金鑰", "set_ai_key": "AI 模型金鑰",
         "set_me": "個人", "set_step": "逐步模式", "set_dev": "開發模式", "set_ops": "營運者後台",
         "set_roles": "角色（老師／學生）",
-        "level_action": "待處理", "resume": "續跑", "rerun": "重跑", "cancel": "取消", "quick": "用這個 run 的內容再啟動一次",
+        "resume": "續跑", "rerun": "重跑", "cancel": "取消", "quick": "用這個 run 的內容再啟動一次",
         "card_step": "目前步驟", "card_stopped_at": "停在", "menu_more": "更多", "stage_running_failed": "執行", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "more_steps": "等 %d 項",
         "dur_hm": "%d 小時 %d 分", "dur_m": "%d 分", "dur_short": "不到 1 分",
-        "no_notices": "目前沒有待處理的事", "no_failed_tasks": "沒有失敗的任務",
+        "no_notices": "目前沒有通知", "no_failed_tasks": "沒有失敗的任務",
         "launch_title": "啟動分析", "launch_intro": "填好之後按「下一步」，會先帶你到確認頁；在確認頁按「送出」才會真的排進佇列。",
         "l_pipeline": "管線（nf-core 名稱）", "l_revision": "版本（必填，要寫死）", "l_run_name": "run 名稱", "l_samplesheet": "樣本表（從你上傳的檔案選）",
         "l_ce": "運算環境", "l_params": "參數（選填，一行一個「名稱: 值」）", "l_submit": "下一步，到確認頁",
         "l_no_sheet": "你還沒有上傳樣本表，所以還不能啟動。", "l_no_ce": "你還沒有可用的運算環境。",
         "l_from": "已用這個 run 的內容預填；樣本表和 run 名稱要重新選。", "l_not_kept": "這個 run 的內容沒有保留，請自己填。",
-        "chip_running": "執行中", "chip_succeeded": "成功", "chip_failed": "失敗", "chip_lost": "失聯",
         "e_pipeline": "管線必填，只能寫 nf-core 的名稱，例如 ampliseq。", "e_revision": "版本必填，而且要寫死（例如 2.18.0），不能留空。",
         "e_run_name": "run 名稱必填。", "e_sheet": "樣本表必須從你上傳的檔案裡選。", "e_ce": "運算環境必須是你自己的環境。",
         "e_param_line": "參數「%s」看不懂；每行寫成「名稱: 值」。", "e_param_scalar": "參數 %s 不行：只能是文字、數字或 true/false。",
@@ -77,17 +79,20 @@ STRINGS = {
     "en": {
         "title": "agentic-bioflow", "mine": "My runs", "none_yet": "No runs yet.", "later": "Coming later",
         "new_project": "+ New project", "search_projects": "Search projects or analyses", "upload": "↑ Upload data", "settings": "Settings",
-        "explorer": "Data explorer", "dashboard": "Dashboard", "logout": "Log out", "cost_su": "SU —", "cost_cloud": "Cloud NT$ —",
+        "explorer": "Data explorer", "dashboard": "Dashboard", "logout": "Log out", "cost_su": "SU —", "usd_about": " (≈ US$%s)", "usd_under": " (≈ under US$0.01)", "cost_cloud": "Cloud US$ —",
         "more": "%d more",
         "new_analysis": "+ New analysis", "no_project": "No project", "no_analyses": "No analyses yet",
         "row_run": "Run", "row_results": "Results", "row_stopped": "Run · Cancelled", "row_site": "Run · Site not responding",
         "main_window": "Main window", "terminal": "Terminal", "this_analysis": "This analysis", "ask_here": "Ask about this analysis",
+        "level_action": "Needs action", "c_content": "Content", "c_next": "Next", "c_open": "Open the confirmation page",
+        "c_content_text": "This run has succeeded; its intermediate files (work) can be cleared, and the results are not touched.",
+        "c_next_text": "Open the confirmation page, check which folder will be deleted, then decide.",
         "f_step": "Step", "f_reason": "Reason", "f_next": "Next", "confirm_suffix": " (confirmation page)",
         "r_stopped": "Cancelled", "r_site": "Site not responding",
         "stage_launch": "Launch", "stage_running": "Running", "stage_results": "Results", "stage_downstream": "Downstream",
         "stage_finished": "Finished",
-        "state_running": "Running", "state_succeeded": "Succeeded", "state_failed": "Failed", "state_lost": "Failed",
-        "count_succeeded": "Succeeded", "count_cached": "Cached", "count_failed": "Failed", "count_aborted": "Aborted",
+        "state_running": "Running", "state_succeeded": "Done", "state_failed": "Failed", "state_lost": "Failed", "state_unknown": "Unknown",
+        "count_succeeded": "Done", "count_cached": "Cached", "count_failed": "Failed", "count_aborted": "Aborted",
         "count_running": "Running", "count_pending": "Pending", "count_submitted": "Submitted",
         "started": "Started", "ended": "Ended", "prev": "← Previous stage", "next": "Next stage →",
         "not_reached": "This run has not reached this stage.",
@@ -95,11 +100,10 @@ STRINGS = {
         "back": "Back to the analyses", "set_ce": "Compute environments", "set_cred": "Credentials", "set_keys": "Passwords and keys",
         "set_ai_key": "AI model key", "set_me": "Personal", "set_step": "Step-by-step mode",
         "set_dev": "Development mode", "set_ops": "Operator panel", "set_roles": "Roles (teacher / student)",
-        "level_action": "Pending",
         "resume": "Resume", "rerun": "Re-run", "cancel": "Cancel", "quick": "Launch again from this run",
         "card_step": "Current step", "card_stopped_at": "Stopped at", "menu_more": "More", "stage_running_failed": "Run", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "more_steps": "+%d more",
         "dur_hm": "%dh %dm", "dur_m": "%dm", "dur_short": "<1m",
-        "no_notices": "Nothing pending", "no_failed_tasks": "No failed tasks",
+        "no_notices": "No notices", "no_failed_tasks": "No failed tasks",
         "launch_title": "Launch an analysis",
         "launch_intro": "Fill this in and press Next: you go to the confirmation page first, and only the Send button there puts it in the queue.",
         "l_pipeline": "Pipeline (nf-core name)", "l_revision": "Revision (required, pinned)", "l_run_name": "Run name",
@@ -107,7 +111,6 @@ STRINGS = {
         "l_params": "Parameters (optional, one \"name: value\" per line)", "l_submit": "Next, to the confirmation page",
         "l_no_sheet": "You have not uploaded a samplesheet yet, so nothing can be launched.", "l_no_ce": "You have no compute environment yet.",
         "l_from": "Filled in from that run; choose the samplesheet and the run name again.", "l_not_kept": "The content of that run is not kept; fill it in yourself.",
-        "chip_running": "Running", "chip_succeeded": "Done", "chip_failed": "Failed", "chip_lost": "Lost",
         "e_pipeline": "The pipeline is required; write an nf-core name such as ampliseq.", "e_revision": "The revision is required and must be pinned (for example 2.18.0).",
         "e_run_name": "The run name is required.", "e_sheet": "Choose the samplesheet from your own uploads.", "e_ce": "The compute environment must be one of your own.",
         "e_param_line": "Parameter \"%s\" is not understood; write each one as \"name: value\".", "e_param_scalar": "Parameter %s is not allowed: only text, numbers or true/false.",
@@ -172,7 +175,7 @@ STYLE = (
     ".stg{font-size:12px;color:var(--muted);white-space:nowrap}"
     ".off,.muted{color:var(--muted)}.off{padding:4px 8px}.later{font-size:12px;color:var(--muted)}.more{font-size:12px;color:var(--muted)}"
     ".state-running{--c:var(--running);--bg:var(--running-bg)}.state-succeeded{--c:var(--succeeded);--bg:var(--succeeded-bg)}"
-    ".state-failed{--c:var(--failed);--bg:var(--failed-bg)}"
+    ".state-failed{--c:var(--failed);--bg:var(--failed-bg)}.state-unknown{--c:var(--muted);--bg:var(--sunken)}"
     ".sym{color:var(--c)}"
     ".main{padding:24px;display:flex;flex-direction:column;gap:16px;overflow-wrap:anywhere}"
     ".head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}"
@@ -295,15 +298,15 @@ def _url(lang, run=None, stage=None, path="/", tab=None, relist=False):
 
 def _css(status):
     """The style class of a state: lost looks like failed (the page has three states)."""
-    return "failed" if status == "lost" else (status if status in SYMBOLS else "unknown")
+    return "failed" if status == "lost" else (status if status in KNOWN else "unknown")
 
 
-def _sym(status):
-    return SYMBOLS.get(status, "?")
+class _Html(str):
+    """Text that is already HTML (escaped where it needs to be): the one kind of value a table row does not escape again."""
 
 
 def _state(t, status):
-    return t.get("state_" + str(status), str(status))
+    return t["state_" + (status if status in KNOWN else "unknown")]
 
 
 def _time(iso):
@@ -357,9 +360,9 @@ def _mast(t, name, lang, run, stage, path="/", tab=None):
     zh_here = "" if lang == "en" else ' class="here"'
     en_here = ' class="here"' if lang == "en" else ""
     return ('<header class="mast"><span class="brand">agentic-bioflow</span><span class="end">'
-            '<span class="costs"><span class="cost">%s</span><span class="cost">%s</span></span>'
+            '<a class="costs" href="%s"><span class="cost">%s</span><span class="cost">%s</span></a>'
             '<span class="switch"><a href="%s"%s>中</a><a href="%s"%s>EN</a></span><span class="who">%s</span></span></header>'
-            % (esc(t["cost_su"]), esc(t["cost_cloud"]), _url("zh", run, stage, path, tab), zh_here, _url("en", run, stage, path, tab), en_here,
+            % (_url(lang, path="/usage"), esc(t["cost_su"]), esc(t["cost_cloud"]), _url("zh", run, stage, path, tab), zh_here, _url("en", run, stage, path, tab), en_here,
                esc(name)))
 
 
@@ -387,9 +390,9 @@ def _detail(t, run):
 
 def _row(t, run, selected_id, lang):
     mark = " here" if run["id"] == selected_id else ""
-    return ('<a class="row state-%s%s" href="%s"><span class="r1"><span class="sym">%s</span><span class="nm">%s</span>'
+    return ('<a class="row state-%s%s" href="%s"><span class="r1"><span class="sq"></span><span class="nm">%s</span>'
             '<span class="stg">%s</span></span><span class="r2">%s</span></a>'
-            % (_css(run["status"]), mark, _url(lang, run["id"]), _sym(run["status"]), esc(run["name"]),
+            % (_css(run["status"]), mark, _url(lang, run["id"]), esc(run["name"]),
                esc(_state(t, run["status"])), esc(_detail(t, run))))
 
 
@@ -488,7 +491,7 @@ class Acts:
 
 def _chip(t, status):
     """A status as a small coloured square (its own element, coloured by the style sheet) and the word."""
-    return '<span class="chip state-%s"><span class="sq"></span> %s</span>' % (_css(status), esc(t.get("chip_" + str(status), str(status))))
+    return '<span class="chip state-%s"><span class="sq"></span> %s</span>' % (_css(status), esc(_state(t, status)))
 
 
 def _clock_hm(iso):
@@ -525,10 +528,23 @@ def _failure_notice(t, run, acts=None):
     rows = (("f_step", "<code>%s</code>" % esc(step) if step else "—"),
             ("f_reason", "<br>".join(esc(x) for x in _reason_lines(t, failure))),
             ("f_next", esc(word + t["confirm_suffix"])))
-    return ('<article class="notice state-failed"><div class="nhead"><span class="level state-failed"><span class="sq"></span> %s</span>'
+    return ('<article class="notice state-failed"><div class="nhead"><span class="level state-%s"><span class="sq"></span> %s</span>'
             '<span class="when">%s</span></div><dl class="fields">%s</dl><div class="acts">%s</div></article>'
-            % (esc(t["level_action"]), esc(when), "".join("<dt>%s</dt><dd>%s</dd>" % (esc(t[k]), v) for k, v in rows),
+            % (_css(run["status"]), esc(_state(t, run["status"])), esc(when), "".join("<dt>%s</dt><dd>%s</dd>" % (esc(t[k]), v) for k, v in rows),
                acts.form(verb, run["id"]) if acts else ""))
+
+
+def _clean_notice(t, run, lang="zh"):
+    """The notice of a succeeded run that has an open clean-up request of its owner: only a link to the confirmation page (no form, no button).
+    Empty unless the run view carries `clean_request`."""
+    rid = run.get("clean_request")
+    if not rid or run.get("status") != "succeeded":
+        return ""
+    href = "/c/%s%s" % (esc(rid), "?lang=en" if lang == "en" else "")
+    rows = (("c_content", esc(t["c_content_text"])), ("c_next", esc(t["c_next_text"])))
+    return ('<article class="notice state-succeeded"><div class="nhead"><span class="level state-succeeded"><span class="sq"></span> %s</span></div>'
+            '<dl class="fields">%s</dl><div class="acts"><a href="%s">%s</a></div></article>'
+            % (esc(t["level_action"]), "".join("<dt>%s</dt><dd>%s</dd>" % (esc(t[k]), v) for k, v in rows), href, esc(t["c_open"])))
 
 
 def first_failed(run):
@@ -537,10 +553,29 @@ def first_failed(run):
     return tasks[0]["name"] if tasks else None
 
 
+def su_text(t, su, usd):
+    """`51.50 SU（約 US$0.16）` (English `51.50 SU (≈ US$0.16)`): the SU stays the main figure and the dollars are a side note, shown only when
+    they are known and above nothing; below one cent it says so instead of showing 0.00. No SU gives None (the caller keeps its own dash)."""
+    if not isinstance(su, (int, float)) or isinstance(su, bool):
+        return None
+    text = "%.2f SU" % su
+    if isinstance(usd, (int, float)) and not isinstance(usd, bool) and usd > 0:
+        shown = "%.2f" % usd
+        text += t["usd_under"] if usd < 0.01 or shown == "0.00" else t["usd_about"] % shown
+    return text
+
+
+def _cost_value(t, run):
+    """The value of the cost card: the SU of the run with its side-note dollars when get_run knows them, else the dash `SU —`."""
+    shown = run.get("su") if isinstance(run, dict) else None
+    shown = shown if isinstance(shown, dict) else {}
+    return su_text(t, shown.get("su"), shown.get("usd_approx")) or t["cost_su"]
+
+
 def _sum_cards(t, run, now):
     stopped = run.get("status") in ("failed", "lost")
     cards = (((t["card_stopped_at"], esc(first_failed(run) or "—")) if stopped else (t["card_step"], _current_step(t, run))), (t["card_duration"], esc(_duration(t, run, now))),
-             (t["card_compute"], esc(run.get("compute_env") or "—")), (t["card_cost"], esc(t["cost_su"])))
+             (t["card_compute"], esc(run.get("compute_env") or "—")), (t["card_cost"], esc(_cost_value(t, run))))
     return _cards(cards)
 
 
@@ -555,7 +590,7 @@ def _results_cards(t, run, now, outputs):
     done, total = _done_total(run)
     where = (outputs or {}).get("compute_env") or "—"
     return _cards(((t["card_done"], "%d / %d" % (done, total)), (t["card_duration"], esc(_duration(t, run, now))),
-                   (t["card_compute"], esc(where)), (t["card_cost"], esc(t["cost_su"]))))
+                   (t["card_compute"], esc(where)), (t["card_cost"], esc(_cost_value(t, run)))))
 
 
 def _size(value):
@@ -620,12 +655,12 @@ def tab_body(t, lang, run, tab):
         return '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, body)
     if tab == "info":
         status = run["status"]
-        rows = [(t["i_id"], run["id"]), (t["i_name"], run["name"]), (t["i_status"], "%s %s" % (_sym(status), _state(t, status))),
+        rows = [(t["i_id"], run["id"]), (t["i_name"], run["name"]), (t["i_status"], _Html(_chip(t, status))),
                 (t["started"], _time(run.get("started_at"))), (t["ended"], _time(run.get("ended_at")))]
         if run.get("cancel_requested_at"):
             rows.append((t["i_cancel"], _time(run["cancel_requested_at"])))
         full = '<pre class="reason">%s</pre>' % esc(run["failure_reason"]) if run.get("failure_reason") else ""     # the whole text lives here, not on the Tasks tab
-        return '<dl class="fields">%s</dl>%s' % ("".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), esc(v)) for k, v in rows), full)
+        return '<dl class="fields">%s</dl>%s' % ("".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), v if isinstance(v, _Html) else esc(v)) for k, v in rows), full)
     return '<section class="soon"><p>%s</p></section>' % esc(t["later"])
 
 
@@ -645,19 +680,20 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     for n, s in enumerate(STAGES):
         kind = "is-done" if n < rank else ("is-current" if n == rank else "is-later")
         mark = ' aria-current="step"' if s == current else ""
-        label = ("✓ " if kind == "is-done" else "") + t["stage_" + s]
+        label, sq = t["stage_" + s], ("succeeded" if kind == "is-done" else ("running" if kind == "is-current" and selected["status"] == "running" else None))
         if s == "running" and selected["status"] in ("failed", "lost"):
-            kind, label = kind + " is-failed", "✗ " + t["stage_running_failed"]
+            kind, label, sq = kind + " is-failed", t["stage_running_failed"], "failed"
+        label = ('<span class="state-%s"><span class="sq"></span></span> ' % sq if sq else "") + esc(label)
         if s == "finished" and selected["status"] != "succeeded" and s != current:      # a run that has not succeeded has no finished stage to open
-            cells.append('<li class="%s" data-step="%s"><span>%s</span></li>' % (kind, s, esc(label)))
+            cells.append('<li class="%s" data-step="%s"><span>%s</span></li>' % (kind, s, label))
             continue
-        cells.append('<li class="%s" data-step="%s"><a href="%s"%s>%s</a></li>' % (kind, s, _url(lang, selected["id"], s, tab=tab_param), mark, esc(label)))
+        cells.append('<li class="%s" data-step="%s"><a href="%s"%s>%s</a></li>' % (kind, s, _url(lang, selected["id"], s, tab=tab_param), mark, label))
     prev_ = ('<a rel="prev" href="%s">%s</a>' % (_url(lang, selected["id"], STAGES[index - 1], tab=tab_param), esc(t["prev"]))) \
         if index > 0 else "<span></span>"
     next_ = ('<a rel="next" href="%s">%s</a>' % (_url(lang, selected["id"], STAGES[index + 1], tab=tab_param), esc(t["next"]))) \
         if index < len(STAGES) - 1 else "<span></span>"
     status = selected["status"]
-    badge = '<span class="badge state-%s">%s %s</span>' % (_css(status), _sym(status), esc(_state(t, status)))
+    badge = '<span class="badge state-%s"><span class="sq"></span> %s</span>' % (_css(status), esc(_state(t, status)))
     running = current == "running"
     buttons = ("".join(acts.form(verb, selected["id"]) for verb in ("resume", "relaunch", "cancel")) if acts else "") if running else ""
     quick = '<a href="%s">%s</a>' % (esc("/launch?from=" + urllib.parse.quote(str(selected["id"]), safe="") + ("&lang=en" if lang == "en" else "")),
@@ -684,11 +720,11 @@ def _settings_page(t):
     return '<main class="main" data-pane="middle"><h1>%s</h1>%s</main>' % (esc(t["settings"]), "".join(secs))
 
 
-def _right(t, selected, acts=None):
+def _right(t, selected, acts=None, lang="zh"):
     """The right column: the formal notices of the selected analysis only (this version: its failure), then the grey line for the chat."""
     if selected is None:
         return '<aside class="rail" data-pane="right"><p class="muted">%s</p><p class="muted">—</p></aside>' % esc(t["this_analysis"])
-    notice = _failure_notice(t, selected, acts)
+    notice = _failure_notice(t, selected, acts) + _clean_notice(t, selected, lang)
     inner = '<div class="notices">%s</div>' % notice if notice else '<p class="muted">%s</p>' % esc(t["no_notices"])
     return ('<aside class="rail" data-pane="right"><p class="muted">%s</p><h2>%s</h2>%s<p>%s</p></aside>'
             % (esc(t["this_analysis"]), esc(selected["name"]), inner, _grey(t, "ask_here")))
@@ -743,7 +779,7 @@ def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", t
             refresh_url = _url(pick_lang(lang), run_id, stage, tab="outputs")
     acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
     middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
-    return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_)), run_id, stage,
+    return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_), lang_), run_id, stage,
                   refresh=not flash, tab=tab, refresh_url=refresh_url)
 
 

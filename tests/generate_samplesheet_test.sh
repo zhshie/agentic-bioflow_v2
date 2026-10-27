@@ -357,9 +357,58 @@ out=$(bash "$HERE/scripts_name_their_alternative.sh" 2>&1); rc=$?
 t "TC-018 every script still names the tool it is not (incl. schema_roles.py)" "$rc" "0"
 for f in "$TOOL" "$ROLES"; do
     printf '%-76s ' "TC-018 $(basename "$f") names its alternative in the first 40 lines"
-    if [ -f "$f" ] && sed -n '1,40p' "$f" | grep -qE '^#[[:space:]]*(Not[[:space:]]+.+:|Nothing existing:)'; then echo ok
+    if [ -f "$f" ] && sed -n '1,40p' "$f" | grep -E '^#[[:space:]]*(Not[[:space:]]+.+:|Nothing existing:)' >/dev/null; then echo ok
     else echo "FAIL: missing or no header line"; fails=$((fails+1)); fi
 done
+
+# ---------------------------------------------------------------- samplesheet-output-dir
+# -o into a folder that does not exist yet (specs/samplesheet-output-dir TC-001..TC-022).
+SC="--columns sample,fastq_1,fastq_2 --roles sample=sample,read1=fastq_1,read2=fastq_2"
+o="$TMP/new/sub/sheet.csv"
+run "$PAIRS" $SC -o "$o"
+t "TC-001 -o into a missing two-level folder exits 0" "$RC" "0"
+t "TC-001 the file exists" "$([ -f "$o" ] && echo yes || echo no)" "yes"
+t "TC-002 header line" "$(sed -n 1p "$o" 2>/dev/null)" "sample,fastq_1,fastq_2"
+t "TC-003 three data rows" "$(sed 1d "$o" 2>/dev/null | wc -l | tr -d ' ')" "3"
+t "TC-022 last stderr line names the path" "$(tail -n 1 "$TMP/stderr")" "wrote 3 samples (3 paired, 0 single) -> $o"
+cwd0=$PWD; rel=$(mktemp -d "$TMP/rel.XXXXXX"); cd "$rel"
+run "$PAIRS" $SC -o metadata/samplesheet.csv
+cd "$cwd0"
+t "TC-004 relative metadata/samplesheet.csv exits 0" "$RC" "0"
+t "TC-004 relative file exists" "$([ -f "$rel/metadata/samplesheet.csv" ] && echo yes || echo no)" "yes"
+
+printf 'keep\n' > "$TMP/afile"
+run "$PAIRS" $SC -o "$TMP/afile/sheet.csv"
+t "TC-005 -o under a regular file exits 2" "$RC" "2"
+has "TC-006 says ERROR: cannot write" "ERROR: cannot write" "$ERR"
+lacks "TC-007 no Traceback" "Traceback" "$ERR"
+t "TC-008 exactly one stderr line" "$(wc -l <<<"$ERR" | tr -d ' ')" "1"
+t "TC-008 line starts with ERROR: cannot write" "$(grep -c '^ERROR: cannot write' <<<"$ERR")" "1"
+has "TC-009 line carries the -o path" "$TMP/afile/sheet.csv" "$ERR"
+t "TC-013 nothing left behind, regular file intact" \
+  "$([ -f "$TMP/afile" ] && [ ! -e "$TMP/afile/sheet.csv" ] && cat "$TMP/afile")" "keep"
+
+run "$PAIRS" $SC -o "$TMP"
+t "TC-010 -o is an existing folder: exit 2" "$RC" "2"
+has "TC-011 says ERROR: cannot write" "ERROR: cannot write" "$ERR"
+lacks "TC-012 no Traceback" "Traceback" "$ERR"
+
+run "$PAIRS" --schema "$FX/ampliseq-2.18.0.json" --columns sampleID,forwardReads,reverseReads -o "$TMP/never/x.csv"
+t "TC-014 needs-decision still exits 3" "$RC" "3"
+t "TC-015 no folder created before the stop" "$([ -e "$TMP/never" ] && echo yes || echo no)" "no"
+mkdir -p "$TMP/solo" && : > "$TMP/solo/S1_R1_001.fastq.gz"
+run "$TMP/solo" $SC -o "$TMP/never2/x.csv"
+t "TC-016 no samples still exits 1" "$RC" "1"
+t "TC-017 no folder created for no samples" "$([ -e "$TMP/never2" ] && echo yes || echo no)" "no"
+
+run "$PAIRS" $SC
+t "TC-019 stdout mode exits 0" "$RC" "0"
+t "TC-019 CSV on stdout" "$(sed -n 1p <<<"$OUT")" "sample,fastq_1,fastq_2"
+emp=$(mktemp -d "$TMP/emp.XXXXXX"); cd "$emp"; run "$PAIRS" $SC; cd "$cwd0"
+t "TC-020 stdout mode creates nothing" "$(ls -A "$emp" | wc -l | tr -d ' ')" "0"
+o=$(newout); echo old > "$o"
+run "$PAIRS" $SC -o "$o"
+t "TC-021 existing file is overwritten" "$RC $(grep -c old "$o")" "0 0"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "all passed"; else echo "$fails failed"; exit 1; fi

@@ -8,6 +8,8 @@
   "nstc_twd_per_su": 0.08,
   "academic_twd_per_su": 0.08,
   "industry_twd_per_su": 0.16,
+  "su_plan_type": "nstc",
+  "usd_twd": {"rate": 32.0, "as_of": "2026-10-13", "source": "https://moneyexchangerate.org/currencyexchange/twd/usd/40400", "note": "1 USD = rate TWD；每月手動更新一次"},
   "default_site": "taiwania3",
   "sites": {
     "taiwania3": {

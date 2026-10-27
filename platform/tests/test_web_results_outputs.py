@@ -94,7 +94,7 @@ def test_ro01_results_stage_has_cards_and_tabs(w):
     for word in ("報告", "MultiQC 報告", "指標", "全部下載"):
         assert re.search(r'<span class="off">%s <span class="later">之後開放</span></span>' % word, m), word
     assert "<progress" not in m and '<dl class="counts">' not in m
-    assert "✓" in plain(m) and "完成" in plain(m)       # the state of the run is on the same screen (TC-015)
+    assert 'class="sq"' in m and "完成" in plain(m)       # the state of the run is on the same screen (TC-015)
     assert tabs(c.get("/?run=" + rid).text)[0] == ("outputs", "輸出", True)       # TC-007 / TC-016: the default stage is the results
 
 
@@ -102,7 +102,7 @@ def test_ro01b_other_tabs_reuse_the_running_stage_bodies(w):
     # TC-008, TC-009, TC-010
     ann, c, rid = world(w)
     info = mid(c.get(url(rid, tab="info")).text)
-    assert "ann-done" in info and rid in info and "✓" in info
+    assert "ann-done" in info and rid in info and 'class="sq"' in info
     assert "沒有失敗的任務" in mid(c.get(url(rid, tab="tasks")).text)
     assert '<section class="soon">' in mid(c.get(url(rid, tab="logs")).text)
     assert listings(w) == []        # only the Outputs tab asks the site

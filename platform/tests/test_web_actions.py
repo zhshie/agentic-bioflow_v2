@@ -16,6 +16,7 @@ from test_web_board import no_cjk, pane, plain, seed, style_of
 
 WEB = PLATFORM_DIR / "abf_platform" / "web.py"
 BOARD = PLATFORM_DIR / "abf_platform" / "web_board.py"
+SETTINGS_PAGE = PLATFORM_DIR / "abf_platform" / "web_settings.py"
 LEDGER = REPO_ROOT / "specs" / "012b-web-actions" / "ledger.md"
 GLYPHS = "▶✓✗⏸⟳✎"
 
@@ -415,14 +416,14 @@ def test_tc042_tc043_pending_pill_and_empty_lines(rig):
     ann = rig.user("ann")
     failed = run_of(rig, ann)
     c = login(rig, "ann")
-    for url, word in (("/", "待處理"), ("/?run=" + failed, "待處理"), ("/?lang=en", "Pending"), ("/?run=%s&lang=en" % failed, "Pending")):
+    for url, word in (("/", "失敗"), ("/?run=" + failed, "失敗"), ("/?lang=en", "Failed"), ("/?run=%s&lang=en" % failed, "Failed")):
         t = c.get(url).text
         assert re.search(r'<span class="level state-failed">.*?%s' % word, t, re.S), url
         assert "需要" + "處理" not in t and "Action needed" not in t
     ok = run_of(rig, ann, "run-ok", status=None)
     t = c.get("/?run=" + ok).text
-    assert "目前沒有待處理的事" in t and ("要你" + "處理") not in t
-    assert "Nothing pending" in c.get("/?run=%s&lang=en" % ok).text
+    assert "目前沒有通知" in t and ("要你" + "處理") not in t
+    assert "No notices" in c.get("/?run=%s&lang=en" % ok).text
     assert "—" in c.get("/").text
 
 
@@ -440,7 +441,7 @@ def test_tc044_tc045_status_is_a_square_plus_a_word_and_no_new_glyph(rig):
         assert not any(g in m.group(0) for g in GLYPHS + "?!")
     t = c.get("/?lang=en").text
     pill = re.search(r'<span class="level state-failed"><span class="sq"></span>[^<]*</span>', t).group(0)
-    assert '<span class="sq"></span>' in pill and "Pending" in pill and not any(g in pill for g in GLYPHS + "?!")
+    assert '<span class="sq"></span>' in pill and "Failed" in pill and not any(g in pill for g in GLYPHS + "?!")
     ledger = LEDGER.read_text(encoding="utf-8")
     for g in "▶✓✗⏸":
         assert g in ledger
@@ -535,7 +536,7 @@ def test_tc059_another_user_cannot_press_send_for_a_web_made_request(rig):
 def test_tc060_routes_call_only_the_request_actions():
     # TC-060
     forbidden_imports = {"confirm", "jobs", "compute_envs", "agents", "status"}
-    for p in (WEB, BOARD):
+    for p in (WEB, BOARD, SETTINGS_PAGE):      # settings-page: web_settings.py is held to the same rule
         tree = ast.parse(p.read_text(encoding="utf-8"))
         called = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "actions"}
         assert not (called & {"launch", "cancel", "forget", "request_forget", "void_request", "find_approved"}), (p.name, called)
@@ -590,7 +591,7 @@ SCHEMA = {
     'tokens.oauth_codes': ('code_hash', 'grant_id', 'client_id', 'redirect_uri', 'redirect_explicit', 'code_challenge', 'resource', 'user_id', 'created_at', 'expires_at', 'used_at'),
     'tokens.oauth_requests': ('id', 'client_id', 'redirect_uri', 'redirect_explicit', 'code_challenge', 'state', 'resource', 'created_at', 'expires_at', 'decision', 'decided_at'),
     'tokens.tokens': ('id', 'token_hash', 'created_at', 'kind', 'agent_name', 'revoked_at', 'run_name', 'expires_at', 'ended_at', 'user_id', 'label', 'grant_id'),
-    'tokens.users': ('id', 'name', 'lab', 'created_at', 'disabled_at', 'password_hash'),
+    'tokens.users': ('id', 'name', 'lab', 'created_at', 'disabled_at', 'password_hash', 'temp_until'),     # temp-password: one new column
     'tokens.web_sessions': ('id_hash', 'user_id', 'created_at', 'expires_at'),
     'tokens.cloud_caps': ('user_id', 'cap_usd', 'set_at'),      # this table is cloud-cost's: one monthly cap per person, set only on the administrator's terminal
 }      # the schema as 011b left it, plus the one table above

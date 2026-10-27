@@ -2,7 +2,6 @@
 """docs/ONBOARDING.md cannot drift from the code. Test cases TC-001 ... TC-059 of the account-onboarding test case file are named in
 the comments (T1 ... T13 are the plan's numbers). Reads files only; no network, no program is started."""
 import re
-import subprocess
 from pathlib import Path
 
 from helpers import REPO_ROOT
@@ -11,7 +10,6 @@ DOC = REPO_ROOT / "docs" / "ONBOARDING.md"
 CLI = (REPO_ROOT / "platform" / "abf_platform" / "cli.py").read_text(encoding="utf-8")
 STATION_CLI = (REPO_ROOT / "platform" / "abf_station" / "cli.py").read_text(encoding="utf-8")
 MCP = (REPO_ROOT / "platform" / "abf_platform" / "mcp_server.py").read_text(encoding="utf-8")
-BASE = "6061925"
 CJK = re.compile(r"[一-鿿]")
 GROUPS = {"user": "usub", "pat": "psub", "agent-token": "asub", "ce": "csub"}
 
@@ -41,10 +39,10 @@ def check_subcommands(doc):
     return bad
 
 
-def check_flags(doc):
-    """T3: the flags of the doc that are not an add_argument of cli.py (whole words only)."""
-    known = set(re.findall(r'add_argument\("(--[a-z-]+)"', CLI))
-    used = set(re.findall(r"--(?:lab|user|owner|agent|cloud-cap[a-z-]*)(?![A-Za-z0-9-])", doc))
+def check_flags(doc, cli=CLI):
+    """T3: the flags of the doc that are not an add_argument of cli.py (whole words only). temp-password: `temporary` joined the list (T26)."""
+    known = set(re.findall(r'add_argument\("(--[a-z-]+)"', cli))
+    used = set(re.findall(r"--(?:lab|user|owner|agent|temporary|cloud-cap[a-z-]*)(?![A-Za-z0-9-])", doc))
     return sorted(f for f in used if f not in known)
 
 
@@ -309,10 +307,6 @@ def test_tc043_mutation_flag_caught():
     assert check_flags(d.replace("--cloud-cap-usd", "--cloud-cap")) == ["--cloud-cap"]
 
 
-def _git(*args):
-    return subprocess.run(["git", "-C", str(REPO_ROOT), *args], capture_output=True, text=True).stdout
-
-
 def test_tc045_tc046_readme_pointer():
     # TC-045, TC-046 (T11)
     lines = text(REPO_ROOT / "README.md").splitlines()
@@ -320,19 +314,82 @@ def test_tc045_tc046_readme_pointer():
     assert len(i) == 1
     j = [n for n, l in enumerate(lines) if "docs/PITFALLS.md" in l][0]
     assert i[0] < j and lines[i[0] - 1] == "" and lines[i[0] + 1] == ""
-    base = _git("show", "%s:README.md" % BASE).splitlines()
-    if base:
-        # the new paragraph is the line plus one of its two blank neighbours
-        assert lines[:i[0]] + lines[i[0] + 2:] == base
-
-
-def test_tc047_tc051_other_docs_untouched():
-    # TC-047 (T13), TC-051
-    if _git("rev-parse", BASE).strip():
-        assert _git("diff", BASE, "--", "docs/INSTALL.md", "docs/OPERATIONS.md", "docs/PLATFORM.md", "docs/TESTING.md") == ""
 
 
 def test_tc053_readme_addition_has_no_secrets():
     # TC-053
     line = [l for l in text(REPO_ROOT / "README.md").splitlines() if "docs/ONBOARDING.md" in l][0]
     assert not re.search(r"abf_pat_|mst1\d{5}|u9\d{7}", line)
+
+
+# ---- temp-password (TC-079 ... TC-096 of specs/temp-password/test-case.md) --------------------------------------------
+
+PLATFORM_DOC = REPO_ROOT / "docs" / "PLATFORM.md"
+OPERATIONS_DOC = REPO_ROOT / "docs" / "OPERATIONS.md"
+OLD_SENTENCE = "no flag, no file, no variable can stand in for the keyboard"
+NEW_SENTENCE = "no flag can type the person's own password"
+
+
+def login_paragraph():
+    return [l for l in text(PLATFORM_DOC).splitlines() if l.startswith("- **Login is a name and a web password")][0]
+
+
+def test_tc079_tc080_tc081_section_two_has_the_temporary_command():
+    # TC-079, TC-080, TC-081
+    s = section(text(), 2)
+    assert re.search(r"(?m)^abf-platform user passwd <name> --temporary\s*$", s)
+    assert "72 hours" in s and "privately" in s and "change" in s
+    assert "still to be decided" not in text()
+
+
+def test_tc082_the_old_passwd_checks_still_hold():
+    # TC-082: test_tc006, test_tc010 and test_tc018 run unchanged; this pins the facts they read
+    s = section(text(), 2)
+    assert re.search(r"(?m)^abf-platform user passwd <name>\s*$", s)
+    assert "twice" in s and "real terminal" in s and re.search(r"no (flag|option)", s)
+    assert s.find("user passwd") < s.find("pat new")
+
+
+def test_tc083_the_old_sentence_is_gone_from_both_documents():
+    # TC-083
+    assert OLD_SENTENCE not in text() and OLD_SENTENCE not in text(PLATFORM_DOC)
+    assert NEW_SENTENCE in text() and NEW_SENTENCE in text(PLATFORM_DOC)
+
+
+def test_tc084_tc085_the_flag_check_knows_temporary():
+    # TC-084, TC-085
+    assert re.search(r'add_argument\("--temporary"', CLI)
+    d = text()
+    assert "--temporary" in d and check_flags(d) == []
+    assert check_flags(d, CLI.replace('"--temporary"', '"--temporarily"')) == ["--temporary"]
+
+
+def test_tc086_tc087_tc088_the_welcome_letter():
+    # TC-086, TC-087, TC-088
+    f = fences(section(text(), 3))
+    assert len(f) == 1
+    b = f[0]
+    for k in ("temporary", "PAT", "password", "NCHC", "separately", "must change"):
+        assert k in b, k
+    assert not re.search(r"(?m)^\s*[A-Za-z0-9_-]{16}\s*$", b)
+    assert not re.search(r"(?<![A-Za-z0-9_-])(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Z])[A-Za-z0-9_-]{16}(?![A-Za-z0-9_-])", b)
+
+
+def test_tc089_tc090_the_operations_table():
+    # TC-089, TC-090
+    row = [l for l in text(OPERATIONS_DOC).splitlines() if "abf-platform user passwd <name> [--temporary]" in l]
+    assert len(row) == 1
+    assert "--temporary" in row[0].split("|")[2] and "72" in row[0] and "once" in row[0]
+
+
+def test_tc091_tc092_tc093_the_login_paragraph():
+    # TC-091, TC-092, TC-093
+    p = login_paragraph()
+    assert "temporary" in p and "72 hours" in p and "web_session_user" in p
+    assert "password-change page" in p and "ordinary account" in p
+    assert "a new password or a disabled user ends it at once" in p
+
+
+def test_tc096_the_subcommand_and_flag_checks_still_hold():
+    # TC-096
+    assert check_subcommands(text()) == [] and check_flags(text()) == []

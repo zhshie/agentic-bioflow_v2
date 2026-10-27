@@ -9,7 +9,7 @@ import os
 import re
 import time
 
-_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 _TAG = re.compile(r"^v?[0-9]+(\.[0-9]+){1,3}\Z")
 
 
@@ -19,7 +19,7 @@ def repo_of(pipeline):
     if isinstance(p, str) and p and "/" not in p:
         p = "nf-core/" + p
     ok = isinstance(p, str) and _REPO.match(p) is not None
-    if ok and ".." in p.split("/"):
+    if ok and any(seg in (".", "..") for seg in p.split("/")):
         ok = False
     if not ok:
         raise ValueError("pipeline 名稱不合格（要寫 owner/name，例如 nf-core/ampliseq）"

@@ -14,7 +14,7 @@ import pytest
 from helpers import PLATFORM_DIR, REPO_ROOT, own_runs
 
 H = 3600000
-SU_KEYS = {"su", "twd_nstc", "twd_academic", "unknown_reasons", "site"}
+SU_KEYS = {"su", "twd_nstc", "twd_academic", "unknown_reasons", "site", "usd_approx"}
 
 
 def _ce(plat_db, name, su_site=None):
@@ -409,7 +409,7 @@ def test_tool_list_unchanged(tmp_path):
     from abf_platform.mcp_server import build_server
     db, plat = _world(tmp_path, usage=TWO, ce="n4", su_site="nano4")
     names = {t.name for t in asyncio.run(build_server(db, plat).list_tools())}
-    assert len(names) == 14 and "estimate_su" not in names
+    assert len(names) == 15 and "estimate_su" not in names
 
 
 def test_list_runs_has_no_su(tmp_path):

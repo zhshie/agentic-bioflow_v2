@@ -49,7 +49,8 @@ def build_server(index_path, platform_path=None):
                              "Nextflow's own words for why it failed, when it gave any. cancel_requested_at is there only when "
                              "a confirmed cancel of the run was sent; it is a fact about the request, not a status. "
                              "It also has su: the SU the run's finished tasks used and what that costs (an estimate from "
-                             "Nextflow's task records; null with the reasons when a record lacks what the formula needs).")
+                             "Nextflow's task records; null with the reasons when a record lacks what the formula needs). "
+                             "usd_approx in su is a rough conversion at the rate in the settings file.")
     def get_run(ctx: Context, run_id: str) -> dict:
         return actions.get_run(index_path, run_id, caller=_caller(ctx), platform_path=platform_path)
 
@@ -84,6 +85,13 @@ def build_server(index_path, platform_path=None):
                              "Only your own runs; a run whose content was forgotten is left out.")
     def list_used_pipelines(ctx: Context) -> dict:
         return actions.list_used_pipelines(platform_path, caller=_caller(ctx))
+    @server.tool(name="my_usage", annotations=_READ_ONLY,
+                 description="What you used in one month (month is YYYY-MM in Taipei time; this month by default): the SU of the "
+                             "national HPC, the cloud money in US dollars (never converted) with the monthly cap the administrator "
+                             "set and what is left of it, and one line per run you started that month. A figure that cannot be "
+                             "worked out is null, never 0. usd_approx is a rough conversion of the SU at the rate in the settings file.")
+    def my_usage(ctx: Context, month: str | None = None) -> dict:
+        return actions.my_usage(index_path, platform_path, caller=_caller(ctx), month=month)
 
     @server.tool(name="run_outputs", annotations=_READ_ONLY,
                  description="What one run of yours produced: the files and folders in <run folder>/results on the site, by the run's id. "

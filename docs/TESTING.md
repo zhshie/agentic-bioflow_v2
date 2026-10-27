@@ -650,6 +650,43 @@ The automatic test, `tests/hosted_deploy_test.sh`, reads the files in `deploy/` 
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD`: only `deploy/`, `tests/hosted_deploy_test.sh`, the three docs and `specs/hosted-deploy/` appear; nothing under `platform/abf_platform/`, `platform/abf_station/` or `platform/abf_launch/`; no existing test file is changed.
 
+## The cost page (cost-page): the maintainer and the reviewer check three things
+
+The automatic tests (`platform/tests/test_web_cost.py`) check the numbers and the markup. What a person sees on a small screen and with the keyboard is checked once by hand. Start `abf-platform web`, log in as a person who has some runs, and open `/usage`.
+
+1. **A 390 px screen (TC-065).** Make the browser window 390 px wide (the developer tools' phone mode). Open `/usage` and `/usage?lang=en`, once with runs, once with more than 50 runs in the month (the page lists 50), once with none. Check: no horizontal scroll bar on the page, the four cards stack, the table text can be read.
+2. **The keyboard (TC-066).** Press Tab from the top of `/usage`. Check: each link it stops on (the masthead cost link, the language links, the previous and next month links, the analysis names in the table) shows a visible focus outline.
+3. **Both languages (TC-067).** Look at the whole of `/usage` and then of `/usage?lang=en`. Check: both are complete, the layout is the same, and the English page has no Chinese word except the language switch and your own run names; the month notice (`/usage?month=abc`) is also in English.
+
+**The reviewer.** Read the section "The cost page" of `docs/PLATFORM.md` (TC-069): it says where the SU, cloud used, cap, remaining and the per-analysis usage come from. Run `git diff --name-only <base>...HEAD`: `web.py` and `web_board.py` appear, and the diff of `web_board.py` is only the masthead and the two cost strings; `test_tc051` is unchanged.
+
+## 設定頁（settings-page）: the maintainer and the reviewer check
+
+Automatic tests: `platform/tests/test_web_settings.py`. These steps are what no script can see. Open `/settings` logged in, once in Chinese and once with `?lang=en`.
+
+1. **390 px**: narrow the window (or the browser's phone view) to 390 px. The page must not scroll sideways; the two tables wrap their text instead of being cut off.
+2. **Tab**: press Tab through the page. Every thing that takes focus (the logout button, the language links) shows a visible outline. The middle column has nothing to focus, by design: it is read-only.
+3. **Read both languages**: every status shows a symbol, a word and a colour (✓ / ✗ / —). No Chinese on the English page, no error code, no internal name. Each ✗ in 使用前檢查 says what is missing.
+4. **Nothing to press**: no button, box or link in the middle column; the only form on the page is the logout one.
+
+## SU 約 US$ (su-usd): the maintainer checks three things by hand
+
+The automatic tests (`platform/tests/test_su_usd.py`) check the numbers and the markup. Start `abf-platform web`, log in as a person who has finished national HPC runs, and open `/usage` and one run's page (`/?run=<id>`).
+
+1. **A 390 px screen (TC-063).** Make the browser window 390 px wide. Open `/usage` and the run page. Check: no horizontal scroll bar, and `51.50 SU（約 US$0.16）` style text can be read whole in its cell or card.
+2. **Both languages (TC-064).** Open the same pages with `?lang=en`. Check: Chinese shows `（約 US$…）`, English shows `(≈ US$…)`, and the English page has no Chinese word except the language switch and your own names.
+3. **The date under the cards (TC-065).** Read the sentence after the cost note on `/usage`. Check: the date in it is the same as `usd_twd.as_of` in `configs/sites/su_rates.json`.
+
+## A temporary password, then your own (web-change-password): the maintainer and the reviewer check
+
+Automatic tests: `platform/tests/test_web_welcome.py`. These steps need a real browser and the platform host's terminal. Use a test user, never a real colleague's name.
+
+1. On the platform host's terminal run `abf-platform user passwd <name> --temporary` and write down the 16-character password it prints once. It works for 72 hours.
+2. In a browser open the login page, log in as `<name>` with that password. Pass: you land on `/welcome` ("設定你自己的密碼 (set your own password)"), not on the board.
+3. Type `/` in the address bar. Pass: you are brought back to `/welcome`; no run, no cost, no 送出 button is shown anywhere.
+4. On `/welcome` fill the three boxes (the temporary password, a new password of 8 or more characters, the same new password again) and press 設定密碼. Pass: you go straight to the board without logging in again. Try once with two different new passwords first: the page says so and nothing changes.
+5. Press 登出, then log in with the new password. Pass: it works and you land on the board. Log in with the old temporary password. Pass: it is refused.
+
 ## Finished stage (finished-stage): the maintainer and the reviewer check
 
 The automatic tests are in `platform/tests/test_web_finished.py`. The steps below need a browser and a succeeded run that was launched from the platform.
@@ -657,6 +694,26 @@ The automatic tests are in `platform/tests/test_web_finished.py`. The steps belo
 1. **Open it by clicking.** From the run list click the run, then "完成" in the stage strip. Check: the page shows "來源紀錄" and "交付包" with no extra download step or input.
 2. **390 px.** Narrow the browser to 390 px wide (developer tools, device mode) and open the stage of a run with a long parameter value. Check: there is no horizontal scroll bar and the long value wraps inside its column.
 3. **Tab key.** On the finished stage press Tab repeatedly. Check: every link (stage strip, "查看輸出", previous stage) shows a visible focus outline in turn; the grey "之後開放" lines are never focused.
+
+## Analysis state squares (status-squares-3): the maintainer and the reviewer check
+
+The automatic tests are in `platform/tests/test_web_status_squares_3.py`. The steps below need a browser and four analyses: one running, one succeeded, one failed and one that lost contact with the platform.
+
+1. **Screenshots.** Take `/` and the failed analysis page at 1440 px and at 390 px, each in 中文 and in English (4 sets). Check: every analysis state is a small coloured square followed by a word (執行中 / 完成 / 失敗, or Running / Done / Failed); there is no ▶ ✓ ✗ on any of them; the lost analysis shows 失敗 / Failed. Show the pictures to the maintainer; he must say "好" before the merge.
+2. **Black and white.** Turn the pictures grey (or the screen's colour filter on). Check: the three states can still be told apart by the word alone.
+3. **390 px.** In developer tools (device mode, 390 px wide) open `/` and each of the four analyses, in both languages, and run `document.documentElement.scrollWidth === document.documentElement.clientWidth` in the console. Check: it is `true` (no horizontal scroll bar); no square or word is cut off or overlaps. Write the numbers in the PR.
+4. **Tab key.** Press Tab repeatedly on the failed analysis page. Check: each link and button shows a visible focus outline in turn.
+5. **Detector.** Save the rendered HTML of `/` and of the failed analysis page to files and run `sh .claude/skills/impeccable/scripts/impeccable detect <file.html>` on each. Check: it runs; copy its findings into the review (contrast and fonts are for a person to judge, not a failure).
+
+## release-lookup-job：真的連 GitHub 讀一次 (release-lookup-job: read GitHub for real, once)
+
+The automatic tests never reach the internet (a guard fails any test that tries). This is the one time a person checks it for real: the maintainer or developer-agent does it, on a machine with a network. It only sends read requests for public files. Nothing is written and no credential is sent.
+
+1. **Start the platform and an agent** as in sections 1 and 6 of `docs/PLATFORM.md`, and add a compute environment that names that agent (it does not need to be checked first: this job never touches the site).
+2. **Pipeline files.** In one line of Python call `actions.pipeline_files(<path of platform.db>, "nf-core/ampliseq", "2.18.0")` and call it again every 5 seconds until `state` is no longer `loading` (about a minute at most: the agent asks for work every 25 seconds). Check: `state` is `ready`; `schema.groups` has 16 groups holding 170 parameters in all; `schema.required_without_default == ["outdir"]`; the first column of `schema_input.columns` is `sampleID`; `diagram.name == "ampliseq_workflow.png"` and `diagram.size == 753702`. Then call it with `parts=("image",)`. Check: `len(base64.b64decode(image["data_b64"])) == 753702` and the bytes begin with the PNG signature `\x89PNG`.
+3. **Newest release.** Call `actions.latest_release(<path>, "nf-core/ampliseq")` the same way. Check: it ends as the newest plain numbered tag (on 2026-10-25 that was `3.0.0`; go by GitHub on the day), `source` is `fetched`, and `release-tags.json` has appeared beside `platform.db`. Call it again at once. Check: `source` is `cache` and the `jobs` table has no new `pipeline_files` row.
+4. **No network.** Switch the agent machine's network off (or stop its access to the internet) and call `actions.pipeline_files(<path>, "nf-core/rnaseq", "3.27.0")`, a pair not asked before. Check: within about a minute `state` is `error`, `error` is `network`, and `reason` is a plain sentence that tells you to check the machine's network.
+5. **Write down** the output of each step in `specs/release-lookup-job/ledger.md`.
 
 ## When something is red
 

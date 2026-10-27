@@ -121,7 +121,7 @@ check "TC-021 jq answering with a trailing CR is accepted"    "$(! grep -qi 'mis
 # TC-022/023: --allow-missing-tools runs anyway and the verdict names the tool
 out=$(RUNPATH="$NOJQ_PATH" run Linux --allow-missing-tools --only intro_languages_test); rc=$?
 check "TC-022 --allow-missing-tools runs the file"            "$(grep -q 'intro_languages_test.sh' <<<"$out" && grep -qE '[0-9]+/[0-9]+ passed' <<<"$out"; echo $?)"
-check "TC-023 verdict names jq"                               "$(tail -4 <<<"$out" | grep -q jq; echo $?)"
+check "TC-023 verdict names jq"                               "$(tail -4 <<<"$out" | grep jq >/dev/null; echo $?)"
 
 # TC-024: --list needs no tools
 out=$(RUNPATH="$NOJQ_PATH" run Linux --list); rc=$?

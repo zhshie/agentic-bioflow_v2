@@ -33,7 +33,7 @@ for n in $FLOW_SKILLS; do
     t="$n: frontmatter name equals directory name"
     [ "$(printf '%s\n' "$fm" | sed -n 's/^name:[[:space:]]*//p' | head -1)" = "$n" ] && ok "$t" || bad "$t" "name: mismatch"
     t="$n: frontmatter has description"
-    printf '%s\n' "$fm" | grep -q '^description:[[:space:]]*[^[:space:]]' && ok "$t" || bad "$t" "no description"
+    printf '%s\n' "$fm" | grep '^description:[[:space:]]*[^[:space:]]' >/dev/null && ok "$t" || bad "$t" "no description"
 done
 
 # --- (d)

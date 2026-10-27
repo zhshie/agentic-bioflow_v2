@@ -76,7 +76,7 @@ def test_r01_r13_failed_and_lost_notice_fields(w):
     a, b = f1(w, ann), l1(w, ann)
     t = c.get("/?run=" + a).text
     [n] = notices(t)
-    assert "待處理" in plain(n) and 'class="sq"' in n and "分析失敗" not in plain(n)
+    assert "失敗" in plain(n) and "待處理" not in plain(n) and 'class="sq"' in n and "分析失敗" not in plain(n)
     assert "10:05" in plain(n) and "11-14" not in plain(n) and "2023-11-14T" not in t
     assert fields(n) == [("步驟", "FASTQC (sample2)"), ("原因", "samplesheet is missing the reverseReads column second line"),
                          ("之後", "續跑（確認頁）")]
@@ -94,7 +94,7 @@ def test_r12_r14_english_and_missing_data(w):
     ann, c = world(w)
     a, b = f1(w, ann), l1(w, ann)
     [n] = notices(c.get("/?run=%s&lang=en" % a).text)
-    assert "Pending" in plain(n) and 'class="sq"' in n and no_cjk(n)
+    assert "Failed" in plain(n) and "Pending" not in plain(n) and 'class="sq"' in n and no_cjk(n)
     assert [x for x, _ in fields(n)] == ["Step", "Reason", "Next"] and fields(n)[2][1] == "Resume (confirmation page)"
     [m] = notices(c.get("/?run=%s&lang=en" % b).text)
     assert no_cjk(m)
@@ -189,7 +189,7 @@ def test_r34_empty_attention(w):
     u1 = seed(w, "u1", "running", ann, started=T0)
     for rid in (s1, u1):
         right = pane(c.get("/?run=" + rid).text, "right")
-        assert notices(right) == [] and "目前沒有待處理的事" in right
+        assert notices(right) == [] and "目前沒有通知" in right
 
 
 def test_r37_other_users_data_never_shown(w):
@@ -212,7 +212,7 @@ def test_r40_r44_title_and_cards(w):
     ann, c = world(w)
     a = f1(w, ann)
     mid = pane(c.get("/?run=" + a).text, "middle")
-    assert "<h1>f1</h1>" in mid and "✗ 失敗" in plain(mid)
+    assert "<h1>f1</h1>" in mid and '<span class="sq"></span> 失敗</span>' in mid
     head = re.search(r'<details class="menu"><summary>更多</summary>(.*?)</details>', mid, re.S).group(1)
     assert "續跑" in head and "重跑" in head and "取消" in head and "之後開放" not in head and head.count("<form") == 3 and head.count("<button") == 3     # 012b: real buttons
     assert cards(c.get("/?run=" + a).text) == (["停在", "耗時", "運算環境", "費用"], ["FASTQC (sample2)", "2 小時 5 分", "—", "SU —"])
@@ -236,8 +236,8 @@ def test_r45_r52_current_step_and_duration(w):
     assert val(u3, 0) == "—" and val(u1, 1) == "2 小時 5 分"
     short = seed(w, "short", "failed", ann, started=T0, ended=T0 + 40)
     assert val(short, 1) == "不到 1 分" and val(short, 1, "&lang=en") == "<1m"
-    assert "目前沒有待處理的事" in c.get("/?run=" + u1).text
-    assert "Nothing pending" in c.get("/?run=%s&lang=en" % u1).text
+    assert "目前沒有通知" in c.get("/?run=" + u1).text
+    assert "No notices" in c.get("/?run=%s&lang=en" % u1).text
 
 
 def test_r55_r58_tasks_bar_and_legend(w):
@@ -245,8 +245,8 @@ def test_r55_r58_tasks_bar_and_legend(w):
     ann, c = world(w)
     a = f1(w, ann)
     z = seed(w, "u0", "running", ann, started=T0)
-    for q, labels in (("", ["成功", "快取", "失敗", "中止", "執行中", "等待", "已送出"]),
-                      ("&lang=en", ["Succeeded", "Cached", "Failed", "Aborted", "Running", "Pending", "Submitted"])):
+    for q, labels in (("", ["完成", "快取", "失敗", "中止", "執行中", "等待", "已送出"]),
+                      ("&lang=en", ["Done", "Cached", "Failed", "Aborted", "Running", "Pending", "Submitted"])):
         mid = pane(c.get("/?run=%s%s" % (a, q)).text, "middle")
         legend = re.search(r'<dl class="counts">(.*?)</dl>', mid, re.S).group(1)
         assert [(plain(x), plain(y)) for x, y in re.findall(r"<dt>(.*?)</dt>\s*<dd>(.*?)</dd>", legend, re.S)] == \
@@ -308,7 +308,7 @@ def test_r79_r92_tab_contents(w):
     assert "沒有失敗的任務" in text and "<table" not in text
     assert "No failed tasks" in c.get("/?run=%s&tab=tasks&lang=en" % u).text
     info = plain(pane(c.get("/?run=%s&tab=info" % a).text, "middle"))
-    assert "11-14 08:00" in info and "11-14 10:05" in info and a in info and "✗ 失敗" in info
+    assert "11-14 08:00" in info and "11-14 10:05" in info and a in info and '<span class="sq"></span> 失敗</span>' in pane(c.get("/?run=%s&tab=info" % a).text, "middle")
     assert "—" in plain(pane(c.get("/?run=%s&tab=info" % u).text, "middle"))
     for tab in ("logs", "config", "metrics"):
         m = pane(c.get("/?run=%s&tab=%s" % (a, tab)).text, "middle")

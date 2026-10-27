@@ -38,8 +38,8 @@ Reference rendering: the Artifact canvas 3B2pu4Fo1GfLPYNqjBRAES, version 16, boa
 Colours (light/dark): surface #f6f5f2/#15171a · surface-raised #ffffff/#1e2125 · surface-sunken #ecebe6/#101214 · ink #1f2328/#e9e7e2 · ink-muted #575e66/#a2a8b0 · line #d6d3cc/#33373d · line-strong #8f8b82/#646a73 · accent #1c5d8a/#7db8e2 · accent-weak #e2edf5/#1a2c3a · focus #1c5d8a/#9cccf0 · status-{running #0b5aa8, succeeded #1b6837, failed #b0261d, lost #865700} each with a -bg tint (dark values in tokens.json).
 Type: system sans stack incl. Noto Sans TC / Microsoft JhengHei; mono ui-monospace stack. Sizes used: 22 (h1), 16–15 (h2/h3), 13 (body UI), 12 (meta). Spacing 4/8/12/16/24. Radius 4/6/pill. No external fonts, no CDN.
 
-## States (symbol + text + colour, always all three)
-▶ 執行中 Running · ✓ 完成 Succeeded · ✗ 失敗 Failed. Nothing else. A lost run is Failed until resumed; a cancelled run is Failed with reason "cancelled".
+## States
+分析狀態＝色塊＋詞，三種；顏色從不單獨表意 (a small coloured square, then the word: 執行中 Running · 完成 Done · 失敗 Failed). Nothing else. A lost run is Failed until resumed; a cancelled run is Failed with reason "cancelled".
 
 ## Formal notices (one component, right column only)
 Level line (symbol + text, time right): `! 需要你處理` (notifies) · `⟳ 已自動處理` · `✓ 已完成` (never notify). Then a definition list of fixed fields, then at most one button.
