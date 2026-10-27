@@ -2,6 +2,7 @@
 """dataset-cli-launch, the terminal half: `abf-platform dataset register|list|show`. Test cases (TC-0xx) are those of
 the test cases of the task. Everything runs in process on databases under tmp_path: no network, no program is started,
 and no file named by --file is opened."""
+import ast
 import json
 import os
 import re
@@ -10,13 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from human_harness import World
+from human_harness import PASSWORD, World
 from owner_harness import Duo, sql_rows
 from test_cloud_upload import A, B, make_env
 
 HERE = Path(__file__).resolve().parent
 PKG = HERE.parent / "abf_platform"
-TOKEN = "abf_" + "pat_" + "a1B2c3D4e5" * 3
 
 
 @pytest.fixture
@@ -51,8 +51,8 @@ def datasets_in(ip):
 
 
 def clean(out, tmp):
-    # TC-091: no stack, no SQL, no internal path, no secret in what the person is told
-    assert "Traceback" not in out and "SELECT" not in out and "sqlite" not in out.lower() and TOKEN not in out
+    # TC-091: no stack, no SQL, no internal path, no secret (the web password the users of the Duo really hold) in what the person is told
+    assert "Traceback" not in out and "SELECT" not in out and "sqlite" not in out.lower() and PASSWORD not in out
     assert str(tmp) not in out
 
 
@@ -181,3 +181,31 @@ def test_the_group_adds_only_its_three_commands_and_options_and_no_other_door(w)
     assert not [o for o in seen[("launch",)] if "dataset" in o]
     routes = sorted(set(re.findall(r'Route\("([^"]*)"', (PKG / "web.py").read_text(encoding="utf-8"))))
     assert routes == ["/", "/.well-known/oauth-authorization-server", "/act/{verb}", "/c/{rid}", "/consent/{rid}", "/launch", "/login", "/logout", "/settings", "/usage", "/welcome"]
+
+
+def test_every_dataset_command_is_handled_by_one_action_function_and_by_nothing_else():
+    # TC-090: both sides listed. The terminal's side is read from the parser (which handler each sub-command really runs) and from the
+    # source of that handler; the action layer's side is read from the module. A handler that did its own work would not match.
+    from abf_platform import cli
+    from abf_platform.actions import datasets
+    pairs = {"register": ("cmd_dataset_register", "register_dataset", ["--name", "n", "--version", "v", "--samplesheet", "s.csv", "--file", "f"]),
+             "list": ("cmd_dataset_list", "list_datasets", []),
+             "show": ("cmd_dataset_show", "get_dataset", ["n"])}
+    parser = cli.build_parser()
+    for sub, (handler, action, rest) in pairs.items():
+        assert getattr(cli, handler) is parser.parse_args(["dataset", sub] + rest).func, sub
+        assert callable(getattr(datasets, action)), action
+    src = (PKG / "cli.py").read_text(encoding="utf-8")
+    funcs = {n.name: n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef)}
+    for sub, (handler, action, _) in pairs.items():
+        calls = [n for n in ast.walk(funcs[handler]) if isinstance(n, ast.Call)]
+        via = [c for c in calls if isinstance(c.func, ast.Attribute) and isinstance(c.func.value, ast.Name) and c.func.value.id == "datasets"]
+        assert [c.func.attr for c in via] == [action], (sub, [c.func.attr for c in via])
+        names = {n.id for n in ast.walk(funcs[handler]) if isinstance(n, ast.Name)}
+        assert not names & {"sqlite3", "sql_rows", "json_loads", "csv"}, (handler, names)
+        assert "execute" not in {n.attr for n in ast.walk(funcs[handler]) if isinstance(n, ast.Attribute)}, handler
+    # the MCP side: the `launch` tool hands `dataset` on to the one launch action and does nothing else with it
+    mcp = ast.parse((PKG / "mcp_server.py").read_text(encoding="utf-8"))
+    passed = [kw.arg for n in ast.walk(mcp) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "request_launch"
+              for kw in n.keywords]
+    assert "dataset" in passed and "dataset_version" in passed, passed

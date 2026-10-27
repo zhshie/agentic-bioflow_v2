@@ -89,8 +89,6 @@ def test_a_dataset_goes_the_way_of_its_samplesheet_text(d):
     a, b = bundle_of(d, out), bundle_of(d, same)
     assert json.dumps(a, sort_keys=True).replace("run-d", "RUN") == json.dumps(b, sort_keys=True).replace("run-t", "RUN")
     assert "dataset" not in a and "dataset_version" not in a
-    assert 1 == 1                                              # newest version, bundle key for key as with samplesheet_text
-    assert "dataset" not in a and "dataset_version" not in a
     older = ask(d, d.a, run="run-v1", dataset="proj", dataset_version="v1")
     other = ask(d, d.a, run="run-v1t", samplesheet_text=text1)
     x, y = bundle_of(d, older), bundle_of(d, other)
@@ -190,8 +188,16 @@ def test_the_mcp_launch_tool_asks_a_person_and_a_yes_makes_one_job(d):
     assert len(d.w.jobs("launch_nextflow")) == 1
     twin = d.sent(d.a, run="run-t", text=text2)
     assert len(d.w.jobs("launch_nextflow")) == 2 and set(sent) == set(twin)
-    rows = [sorted(r.keys()) for r in sql_rows(d.state, "SELECT * FROM launches")]
-    assert len(rows) == 2 and rows[0] == rows[1]
+    # the form of the two rows: same columns, and in every column the same kind of value (set or empty, same type); the columns that
+    # differ by nature (the run's own name, row id, clock) are left out of the value comparison, and the run name is blanked in the rest
+    rows = sql_rows(d.state, "SELECT * FROM launches ORDER BY id")
+    assert len(rows) == 2 and sorted(dict(rows[0])) == sorted(dict(rows[1]))
+    own = {"id", "run_name", "confirmed_at", "job_id"}
+
+    def shape(r, run):
+        return {k: (type(v).__name__, str(v).replace(run, "RUN")) for k, v in dict(r).items() if k not in own}
+    assert shape(rows[0], "run-s") == shape(rows[1], "run-t")
+    assert {k: type(v).__name__ for k, v in dict(rows[0]).items()} == {k: type(v).__name__ for k, v in dict(rows[1]).items()}
 
 
 def test_the_launch_tool_has_two_more_properties_and_the_tools_are_the_same(d):
