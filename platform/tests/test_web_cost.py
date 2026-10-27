@@ -156,7 +156,7 @@ def test_co02_su_total_and_unknown(w):
     ann = w.user("ann")
     seed(w, "run-a", ann, hours=5.10)
     seed(w, "run-b", ann, hours=7.20)
-    assert card(get(w, "ann").text, 0)[2] == "12.30"
+    assert card(get(w, "ann").text, 0)[2] == "12.30 SU（約 US$0.03）"
     assert usage(w, ann)["su"]["total"] == pytest.approx(12.30)
     seed(w, "run-c", ann, hours=None)        # no usage rows: its SU cannot be worked out
     r = get(w, "ann")
@@ -197,7 +197,7 @@ def test_ruling12_su_card_ignores_cloud_runs(w):
     seed(w, "hpc-run", ann, hours=4.0)
     seed(w, "cloud-run", ann, "cloud", hours=6)
     assert usage(w, ann)["su"]["total"] == pytest.approx(4.0)
-    assert card(get(w, "ann").text, 0)[2] == "4.00"
+    assert card(get(w, "ann").text, 0)[2] == "4.00 SU（約 US$0.01）"
     seed(w, "hpc-open", ann, hours=None)        # an HPC run that cannot be priced still turns the card to a dash
     assert card(get(w, "ann").text, 0)[2] == "—"
 
@@ -279,7 +279,7 @@ def test_co06_rows_states(w):
     assert set(rows) == {"run-live", "run-done", "run-lost"}
     assert rows["run-live"][3] == "—" and rows["run-live"][4] == "執行中"
     assert rows["run-lost"][3] == "—" and rows["run-lost"][4] == "執行中"
-    assert rows["run-done"][2] == "國網" and rows["run-done"][3] == "5.10 SU" and rows["run-done"][4] == "≈ 估算・帳單未到"
+    assert rows["run-done"][2] == "國網" and rows["run-done"][3] == "5.10 SU（約 US$0.01）" and rows["run-done"][4] == "≈ 估算・帳單未到"
     assert "bob-run" not in r.text and "run-old" not in pane(r.text, "middle")
     assert "run-done" not in get(w, "bob").text and "bob-run" in get(w, "bob").text
     by_name = {x["name"]: x for x in usage(w, ann)["runs"]}
@@ -300,7 +300,7 @@ def test_where_and_amount_per_row(w, monkeypatch):
     seed(w, "run-cx", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
     r = get(w, "ann")
     rows = {row[0]: row for row in table_rows(r.text)}
-    assert rows["run-n"][2:4] == ["國網", "5.10 SU"]
+    assert rows["run-n"][2:4] == ["國網", "5.10 SU（約 US$0.01）"]
     assert rows["run-c"][2:4] == ["雲端", "US$ 1.20"]
     assert rows["run-x"][2:4] == ["—", "—"]
     assert rows["run-cx"][2:4] == ["雲端", "—"] and rows["run-cx"][4] == "≈ 估算・帳單未到"
@@ -461,6 +461,8 @@ def test_no_other_currency_no_reconciled_no_advice(w):
     for url in ("/usage", "/usage?lang=en"):
         t = get(w, "ann", url).text
         mid = plain(pane(t, "middle"))
+        # su-usd footnote: the one sentence that says "rate" (as of a date) is taken out first; the rest must stay free of the word
+        mid = re.sub(r"SU 換美元依 \S+ 匯率約略換算，不是帳單。|SU figures are converted to US dollars at the \S+ rate, roughly; this is not a bill\.", "", mid)
         for word in ("已對帳", "Reconciled", "TWD", "匯率", "exchange rate", "改用國網", "等重置", "use NCHC", "taiwania3"):
             assert word not in mid, (url, word)
         assert "<form" not in pane(t, "middle") and "<input" not in pane(t, "middle")
@@ -480,11 +482,11 @@ def test_co11_my_usage_action_and_mcp_match(w):
     cap(w, ann, 50)
     got = usage(w, ann)
     assert set(got) == {"month", "su", "cloud", "runs"}
-    assert set(got["su"]) == {"total", "unknown_reasons", "site"} and got["su"]["site"] == "taiwania3"
+    assert set(got["su"]) == {"total", "unknown_reasons", "site", "usd_approx", "usd_rate_as_of"} and got["su"]["site"] == "taiwania3"
     assert set(got["cloud"]) == {"used_usd", "unknown_runs", "cap_usd", "remaining_usd", "currency"}
     assert got["month"] == this_month()
     for item in got["runs"]:
-        assert set(item) == {"name", "started_at", "where", "state", "su", "usd", "unknown_reasons"}
+        assert set(item) == {"name", "started_at", "where", "state", "su", "usd", "unknown_reasons", "usd_approx"}
     assert sorted(x["name"] for x in got["runs"]) == ["ann-cl", "ann-run"]
     b = usage(w, bob)
     assert [x["name"] for x in b["runs"]] == ["bob-run"] and b["cloud"]["cap_usd"] is None and b["cloud"]["used_usd"] == 0
@@ -492,7 +494,7 @@ def test_co11_my_usage_action_and_mcp_match(w):
     # ruling 12: ann has a cloud run too, yet her SU is the HPC run's alone, a number and not None
     assert got["su"]["total"] is not None and got["su"]["total"] == pytest.approx(2.0)
     assert got["su"]["unknown_reasons"] == []
-    assert card(get(w, "ann").text, 0)[2] == "2.00"
+    assert card(get(w, "ann").text, 0)[2] == "2.00 SU（約 US$0.01 以下）"
     assert "ann-run" not in get(w, "bob").text
     # the same through MCP
     out = tool_json(w.call("my_usage", {}, caller=ann))
