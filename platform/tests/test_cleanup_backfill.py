@@ -289,3 +289,48 @@ def test_the_first_line_of_this_file_says_why():
     # TC-049
     first = open(__file__, encoding="utf-8").readline()
     assert first.startswith("# Nothing existing: ") and len(first[len("# Nothing existing: "):].strip()) >= 15
+
+
+def _preview_line(n, m):
+    return "預覽：會提出 %d 張、略過 %d 個；要真的提出請加 --apply (preview: would offer %d, skip %d; add --apply to offer)" % (n, m, n, m)
+
+
+def test_preview_summary_line(d):
+    # TC-001, TC-002, TC-003, TC-004, TC-006, TC-007
+    three(d)
+    rc, out = run(d, "--all")
+    assert rc == 0 and out.splitlines()[-1] == _preview_line(2, 1)
+    assert "已提出" not in out
+    last = out.splitlines()[-1]
+    assert "--yes" not in last and "--force" not in last
+    rc, out = run(d, "--all", "--list", "--apply")
+    assert rc == 0 and out.splitlines()[-1] == _preview_line(2, 1)
+    assert not cleans(d)
+    rc, out = run(d, "r-a")
+    assert rc == 0 and out.splitlines()[-1] == _preview_line(1, 0)
+    rc, out = run(d, "--all", "--user", "alice")
+    assert rc == 0 and out.splitlines()[-1] == _preview_line(1, 2)
+
+
+def test_preview_summary_when_nothing_can_be_offered(d):
+    # TC-005
+    add(d, "r-c", d.a.user_id, status="failed")
+    rc, out = run(d, "--all")
+    assert rc == 0 and out.splitlines()[-1] == _preview_line(0, 1) and "已提出" not in out
+
+
+def test_summary_follows_the_dry_run_flag_the_action_got(d, monkeypatch):
+    # TC-012
+    from abf_platform import actions
+    seen = []
+
+    def fake(platform_path, index_path, run_names=None, user_id=None, dry_run=False, **kw):
+        seen.append(dry_run)
+        return {"ok": True, "results": [{"run_name": "zz", "offered": not dry_run, "would_offer": dry_run, "reason": None, "owner": "alice"}],
+                "offered": 0 if dry_run else 1, "skipped": 1 if dry_run else 0}
+    monkeypatch.setattr(actions, "offer_cleanups", fake)
+    for flags, want_preview in (((), True), (("--list",), True), (("--apply",), False), (("--list", "--apply"), True)):
+        rc, out = run(d, "--all", *flags)
+        last = out.splitlines()[-1]
+        assert rc == 0 and seen[-1] is want_preview, flags
+        assert last.startswith("預覽：") == want_preview and (want_preview or last.startswith("已提出")), flags
