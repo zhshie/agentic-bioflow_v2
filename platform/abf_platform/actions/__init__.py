@@ -1048,10 +1048,24 @@ def _samplesheet_text_problem(samplesheet, samplesheet_text):
 
 
 async def request_launch(platform_path, *, pipeline, revision, run_name, samplesheet=None, samplesheet_text=None, ce_name=None, params=None,
-                         path_columns=None, caller=None, person=None, clock=time.time, remote=False):
+                         path_columns=None, dataset=None, dataset_version=None, caller=None, person=None, clock=time.time, remote=False):
     """Ask for a launch the way the terminal command does: same choices, same bundle, same screen, same refusals. Writes a pending
     request and asks the person; the answer says whether a job exists. Nothing is queued without a person's yes. The samplesheet is
-    given as a file (`samplesheet`) or as the CSV itself (`samplesheet_text`, read from memory, never written), exactly one of the two."""
+    given as a file (`samplesheet`) or as the CSV itself (`samplesheet_text`, read from memory, never written), exactly one of the two - or
+    as the name (and optionally the version) of a dataset of the caller's, whose samplesheet then goes the same way as `samplesheet_text`."""
+    if dataset is not None or dataset_version is not None:
+        if dataset is None:
+            return _no("未送出：dataset_version 要和 dataset 一起給 (dataset_version needs dataset)")
+        if not isinstance(dataset, str) or not dataset or (dataset_version is not None and (not isinstance(dataset_version, str) or not dataset_version)):
+            return _no("未送出：dataset 必須是資料集的名稱，dataset_version 必須是版本名稱（都是不空的文字）"
+                       " (dataset must be the name of a dataset, and dataset_version a version name, both non-empty text)")
+        if samplesheet is not None or samplesheet_text is not None:
+            return _no("未送出：dataset 與 samplesheet／samplesheet_text 只能給一個 (give dataset, or a samplesheet, not both)")
+        from . import datasets
+        got = datasets.get_dataset(platform_path, dataset, dataset_version, caller=caller)
+        if not got.get("found"):
+            return _no("未送出：%s" % got["message"])
+        samplesheet_text = got["samplesheet"]
     problem = _samplesheet_text_problem(samplesheet, samplesheet_text)
     if problem:
         return _no("未送出：%s" % problem)
