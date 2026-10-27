@@ -707,6 +707,16 @@ The automatic tests never reach the internet (a guard fails any test that tries)
 4. **No network.** Switch the agent machine's network off (or stop its access to the internet) and call `actions.pipeline_files(<path>, "nf-core/rnaseq", "3.27.0")`, a pair not asked before. Check: within about a minute `state` is `error`, `error` is `network`, and `reason` is a plain sentence that tells you to check the machine's network.
 5. **Write down** the output of each step in `specs/release-lookup-job/ledger.md`.
 
+## nfcore-catalogue：真的讀一次 nf-co.re (read nf-co.re for real, once)
+
+The automatic tests never reach the internet. This is the one time a person checks it for real: the maintainer or developer-agent does it after the merge, on a machine with a network. It only sends one read request for a public file.
+
+1. **Start the platform and an agent** and add a compute environment that names that agent (same as step 1 of the release-lookup-job section).
+2. **The list.** In one line of Python call `actions.nfcore_catalogue(<path of platform.db>)` and call it again every 5 seconds until `state` is no longer `loading` (about a minute at most). Check: `state` is `ready` and `count` is at least 150 (159 on 2026-10-26); the entry with `name` `ampliseq` has `repo` `nf-core/ampliseq`, `archived` `False` and `latest` the newest plain numbered tag (on 2026-10-26 that was `3.0.0`; go by nf-co.re on the day); `exoseq` has `archived` `True`; `abotyper` has `latest` `None` (it only has `dev`); the list is sorted by `name`; no new file appeared beside `platform.db`.
+3. **Reuse.** Call it again at once. Check: the same `checked_at`, no new `pipeline_files` row in the `jobs` table, and the agent's log shows only one request to `nf-co.re`.
+4. **No network.** Switch the agent machine's network off, delete that job row (or wait 24 hours) and call it again. Check: within about a minute `state` is `error`, `error` is `network`, and `reason` names nf-co.re and says to check the network.
+5. **Write down** the output of each step in `specs/nfcore-catalogue/ledger.md`.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in

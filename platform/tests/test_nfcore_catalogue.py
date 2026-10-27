@@ -688,7 +688,7 @@ def test_tc073_tc074_tc075_each_user_has_their_own(world, clock):
     assert cat(world, caller=bob())["error"] == "no_agent"
     again = cat(world, caller=bob(), compute_env="ce1")
     missing = cat(world, caller=bob(), compute_env="nope")
-    assert again["state"] == "error" and again["reason"] == missing["reason"]
+    assert again["state"] == "error" and again["reason"].replace("ce1", "X") == missing["reason"].replace("nope", "X")
 
 
 def test_tc076_no_file_is_kept(world, clock):
@@ -717,6 +717,7 @@ def test_tc079_tc080_every_answer_has_the_same_keys_and_clean_reasons(world, clo
     network_down(world, clock)
     seen_shape(cat(world))
     seen_shape(cat(world, caller=bob(), compute_env="nope"))
+    tick(world, clock, T0 + 61)
     ready(world, clock)
 
 
