@@ -272,7 +272,8 @@ def form_values(rig, c, name, **over):
     sheet = re.search(r'<select name="samplesheet"[^>]*>.*?<option value="([^"]+)"', t, re.S).group(1)
     ce = re.search(r'<select name="ce_name"[^>]*>.*?<option value="([^"]+)"', t, re.S).group(1)
     data = {"csrf": csrf, "pipeline": "nf-core/ampliseq", "revision": "2.18.0", "run_name": "web-run", "samplesheet": html.unescape(sheet),
-            "ce_name": html.unescape(ce), "params": ""}
+            "ce_name": html.unescape(ce), "params": "",
+            "shown_pipeline": "nf-core/ampliseq", "shown_revision": "2.18.0"}      # guided-launch-2b: the page was drawn for this pair, so the button sends
     data.update(over)
     return data
 
