@@ -147,7 +147,7 @@ STYLE = (
     "input,select,textarea{font:inherit;padding:8px;border:1px solid var(--line2);border-radius:4px;background:var(--raised);color:var(--ink)}"
     "input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}"
     "textarea{font-family:" + MONO + ";min-height:96px;resize:vertical}"
-    ".lform{display:flex;flex-direction:column;gap:12px;max-width:640px}.lform label{display:flex;flex-direction:column;gap:4px}"
+    ".lform{display:flex;flex-direction:column;gap:12px}.lform label{display:flex;flex-direction:column;gap:4px}"
     ".lform input,.lform select,.lform textarea{width:100%;min-width:0;max-width:640px}.lform button{align-self:flex-start}"
     ".acts form,form.act{margin:0;display:inline}"
     ".sq{display:inline-block;width:8px;height:8px;background:var(--c);flex:none;align-self:center}"

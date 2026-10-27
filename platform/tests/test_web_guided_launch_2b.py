@@ -679,7 +679,7 @@ def test_j04_style():
     from abf_platform import web_board
     css = web_board.STYLE
     assert not re.search(r"\.gsteps\{[^}]*max-width", css)
-    assert not re.search(r".lform{[^}]*max-width", css)
+    assert not re.search(r"\.lform\{[^}]*max-width", css)
     m = re.search(r"\.lform input,\.lform select,\.lform textarea\{([^}]*)\}", css)
     assert m and "max-width:640px" in m.group(1)
     assert re.search(r"\.req\{[^}]*font-size:inherit", css) and not re.search(r"\.req\{[^}]*font-size:12px", css)
