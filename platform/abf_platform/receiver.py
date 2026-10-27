@@ -274,6 +274,12 @@ def create_app(index_path, tokens_path, clock=time.time, platform_path=None):
         if trow["run_name"] is not None:
             # a token the platform made for one launch ends with that run; a token of `token new` is not for one run
             store.end_token(tokens_path, trow["id"])
+        if succeeded and trow["run_name"] is not None:
+            try:
+                from . import actions       # here and not at the top: actions imports a great deal that the receiver does not need
+                actions.offer_cleanup(platform_path, index_path, trow["run_name"], clock=clock)
+            except Exception:
+                pass                        # an offer that fails changes nothing about the answer or the record of the run
         return JSONResponse({"status": "OK"})
 
     async def user_info(request):

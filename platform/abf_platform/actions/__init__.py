@@ -809,6 +809,47 @@ def keep_screen(state_path, confirmation_id, screen_text):
     return confirm.keep_screen(state_path, confirmation_id, screen_text)
 
 
+# ---- the platform's own offer: clean the work folder of a run that succeeded (cloud-cleanup-f) -----------------------------------------
+
+def _skipped(reason):
+    return {"offered": False, "reason": reason}
+
+
+def offer_cleanup(platform_path, index_path, run_name, *, clock=time.time):
+    """When a run has just succeeded, write a pending request to clean its work folder, for the person who launched it. It is only a
+    request: no job, nothing is deleted until that person presses the button on the confirmation page. It is not a tool and not a
+    `request_*`: the receiver calls it once, when the run reports that it is complete. Whatever is not fit (no owner, not succeeded, cleaned
+    already, a full list) is skipped quietly; this never raises. Returns {"offered": True, "id": ...} or {"offered": False, "reason": ...}."""
+    try:
+        con = store.open_readonly(platform_path)
+        if con is None:
+            return _skipped("平台資料庫還不存在，沒有提出清理申請")
+        try:
+            row = jobs.latest_launch(con, run_name)
+        finally:
+            con.close()
+        if row is None:
+            return _skipped("%s 不是平台自己送出的，沒有提出清理申請" % run_name)
+        keys = row.keys()
+        if "user_id" not in keys or row["user_id"] is None:
+            return _skipped("%s 沒有擁有者（不是從網頁帳號送出的），確認頁沒有人可以按，所以不提出清理申請" % run_name)
+        if row["slurm_job_id"] is None:
+            return _skipped("%s 沒有工作編號，沒有提出清理申請" % run_name)
+        found = status.find_run(index_path, run_name)
+        if found is None:
+            return _skipped("run 索引裡找不到 %s，沒有提出清理申請" % run_name)
+        if found.get("status") != "succeeded":
+            return _skipped("%s 沒有成功跑完（只有成功的 run 才提出清理申請）" % run_name)
+        ce_name, bundle, hand_off = build.prepare_clean(platform_path, run_name, owner=row["user_id"])
+        rid = confirm.create_pending(platform_path, "clean_work", ce_name, bundle, build.as_text(build.clean_screen(bundle, hand_off)),
+                                     row["user_id"], clock)
+        return {"offered": True, "id": rid}
+    except (build.Refusal, jobs.JobRefused) as e:
+        return _skipped(str(e))
+    except Exception:
+        return _skipped("提出清理申請時出了狀況，已略過；run 的紀錄沒有受影響")
+
+
 # ---- write, through a pending request: the MCP tools and the confirmation page ---------------------------------------------------------
 
 DEFAULT_WEB_BASE = "http://127.0.0.1:8789"
