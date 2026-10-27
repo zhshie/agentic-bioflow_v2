@@ -28,32 +28,91 @@
 # tests/quarantine.txt (issue + expiry <= 14 days) or the job still fails. Per-test limit is
 # run_all.sh's default 300 s again: since PR #200 split the platform suite, the slowest entry on CI is
 # about 166 s (2026-10-24: clock 166, part 1 151, part 2 107, part 3 66). The job is capped at 60 min.
+# 2026-10-27 (ci-cache-matrix, maintainer-approved CI-settings change): the suite runs as four parallel
+# jobs ("shard 1/4" .. "4/4"), and a last job named exactly `run_all` gathers them. The branch ruleset
+# requires a status check whose context is `run_all`; that name is now the aggregate job's, so the
+# ruleset needs no change, and the aggregate fails unless every shard succeeded (also when a shard was
+# cancelled or skipped). Do not rename the aggregate job and do not give a shard job that name.
+#   - Split: `bash tests/run_all.sh --shard I/4` (see the SHARD block in tests/run_all.sh). The four
+#     platform wrappers (clock ~196 s, shard_3 ~176, test ~163, shard_2 ~111) go one to each part, the
+#     other ~122 files fill the parts up evenly; before, one job ran everything in series (~17-19 min).
+#     Each part keeps --retry-failed-once, the quarantine check and the expired-quarantine check.
+#   - Cache: what every run used to rebuild - the platform test venv (~/.cache/abf-platform-venv: pip
+#     install of platform/constraints.txt) and the pinned Nextflow launcher, dist jar and nf-tower
+#     plugin (~/.cache/abf-platform: downloads + unpacked NXF_HOME) - is restored from actions/cache.
+#     tests/platform_test.sh still checks every sha256 and the venv stamp, so a stale or wrong cache
+#     is rebuilt, never trusted. Key: OS + CPU + Python version + hash of platform/constraints.txt,
+#     platform/tests/pins.env and tests/platform_test.sh.
+#   - merge_group: so GitHub's merge queue can run the same check on a queued commit.
 name: tests
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main, v3]
 
 jobs:
-  run_all:
+  shard:
+    name: shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
+    strategy:
+      # All four parts always finish, so one red part does not hide what the others found.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: bash tests/run_all.sh --retry-failed-once
+      - name: Python version (cache key)
+        id: py
+        shell: bash
+        run: echo "v=$(python3 -c 'import platform; print(platform.python_version())')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache platform test venv and pinned Nextflow
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/abf-platform-venv
+            ~/.cache/abf-platform
+          key: abf-platform-${{ runner.os }}-${{ runner.arch }}-py${{ steps.py.outputs.v }}-${{ hashFiles('platform/constraints.txt', 'platform/tests/pins.env', 'tests/platform_test.sh') }}
+          restore-keys: |
+            abf-platform-${{ runner.os }}-${{ runner.arch }}-py${{ steps.py.outputs.v }}-
+
+      - name: bash tests/run_all.sh --retry-failed-once --shard ${{ matrix.shard }}/4
         # shell: bash makes GitHub run with -eo pipefail, so run_all's exit code survives the tee.
         shell: bash
-        run: bash tests/run_all.sh --retry-failed-once 2>&1 | tee "$RUNNER_TEMP/run_all.out"
+        run: bash tests/run_all.sh --retry-failed-once --shard ${{ matrix.shard }}/4 2>&1 | tee "$RUNNER_TEMP/run_all.out"
 
       - name: List FLAKY tests in the job summary
         if: always()
         shell: bash
         run: |
           if [ -f "$RUNNER_TEMP/run_all.out" ] && grep -qE '^FLAKY [^ ]+.sh  ' "$RUNNER_TEMP/run_all.out"; then
-            { echo '### FLAKY tests'; grep -E '^FLAKY [^ ]+.sh  ' "$RUNNER_TEMP/run_all.out" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
+            { echo '### FLAKY tests (shard ${{ matrix.shard }}/4)'; grep -E '^FLAKY [^ ]+.sh  ' "$RUNNER_TEMP/run_all.out" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # The required check. Its name is the ruleset's status-check context: keep it `run_all`.
+  run_all:
+    name: run_all
+    needs: shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Every shard must have succeeded
+        shell: bash
+        run: |
+          echo "shards: ${{ needs.shard.result }}"
+          [ "${{ needs.shard.result }}" = "success" ] || { echo "not every shard succeeded" >&2; exit 1; }
+
+      # Once per run (the shards also check it, but only as a side effect of --retry-failed-once).
+      - name: bash tests/run_all.sh --check-quarantine
+        shell: bash
+        run: bash tests/run_all.sh --check-quarantine
