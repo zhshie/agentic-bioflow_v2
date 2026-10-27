@@ -241,6 +241,8 @@ source: 維護者 2026-10-26「都ok」（答「要不要放行讀 nf-core 官�
 10. **站台不新增狀態字樣**：壞 JSON／壞形狀一律 `bad_response`（與 `_listing` 一致），`PF_STATUSES` 不變；動作層不需要 `bad_json`（沒有平台端再解析的文字）。
 11. **`archived` 與 `repo` 一併回傳**：14 條封存管線不該被搜尋到就送去啟動，前端需要這個欄位才能灰掉或排除；`repo` 讓前端不必自己拼 `nf-core/`。這是在 release-lookup-job 裁決二 `{name, description, latest}` 之上加兩個鍵，形狀仍固定。
 
+6. **（10-27）既有測試 `platform/tests/test_catalogue.py::test_no_tool_route_or_action_mentions_the_catalogue`（TC-070/071，管 nf-core「模組」目錄 `catalogue.py` 不准接進工具／路由／動作層）准許最小修改**：只對 `actions/__init__.py` 先刪掉 `# ---- nfcore-catalogue: begin` 到 `# ---- nfcore-catalogue: end` 的整個區塊、再去掉識別字 `nfcore_catalogue`，剩下的文字照舊不得含 `catalogue`；其他檔（mcp_server.py、web.py、web_board.py、其餘 actions/*.py）完全不放寬。理由：兩個 catalogue 是不同的東西（本任務讀官網「管線」清單，舊測試管的是「模組」目錄），舊測試的本意不變；這一處列為第 9 處既有斷言更新，舊到新寫進 ledger。另外：完成標準的「7 處」以「會改斷言」表的實際列數為準（8 列＋本條＝9 處）；手動步驟 3 的「代理日誌只看到一次請求」做不到（站台沒有這種日誌），改成只驗同一個 checked_at、jobs 表沒有新的 pipeline_files 列。
+
 ## 專長守則（backend）
 
 ### executor
