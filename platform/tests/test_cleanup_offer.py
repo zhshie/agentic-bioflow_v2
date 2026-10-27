@@ -815,7 +815,7 @@ def test_no_new_mcp_tool_no_new_route_no_new_cli_command(tmp_path):
     assert ROUTES == paths, paths
 
 
-COMMANDS = ['agent-token', 'cancel', 'ce', 'fetch-records', 'forget', 'launch', 'launches', 'mcp', 'oauth', 'pat', 'rebuild', 'relaunch', 'resume',
+COMMANDS = ['agent-token', 'cancel', 'ce', 'dataset', 'fetch-records', 'forget', 'launch', 'launches', 'mcp', 'oauth', 'pat', 'rebuild', 'relaunch', 'resume',
             'runs', 'serve', 'token', 'user', 'web']      # as they were before this task
 ROUTES = ['/', '/.well-known/oauth-authorization-server', '/act/{verb}', '/authorize', '/c/{rid}', '/consent/{rid}', '/launch', '/login',
           '/logout', '/register', '/revoke', '/settings', '/token', '/usage', '/welcome']

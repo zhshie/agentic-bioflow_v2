@@ -429,8 +429,8 @@ def test_tc063_no_door_takes_a_job_kind_or_a_command(tmp_path, monkeypatch):
     # launch and cancel appear nowhere else
     assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "submit", "enqueue"}), words
     top_level = set(next(a for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)).choices)
-    assert top_level == {"serve", "token", "agent-token", "ce", "mcp", "rebuild", "launch", "cancel", "fetch-records",
-                         "launches", "user", "pat", "web", "runs", "oauth", "resume", "relaunch", "forget"}, top_level     # 009c: plus `web`, the confirmation page; 116b: plus `runs` (assign); 009i: plus `oauth`; 009e: plus `resume`, `relaunch`
+    assert top_level == {"serve", "token", "agent-token", "ce", "dataset", "mcp", "rebuild", "launch", "cancel", "fetch-records",
+                         "launches", "user", "pat", "web", "runs", "oauth", "resume", "relaunch", "forget"}, top_level     # 009c: plus `web`, the confirmation page; 116b: plus `runs` (assign); 009i: plus `oauth`; 009e: plus `resume`, `relaunch`  # dataset-cli-launch: plus `dataset`
     assert [(trail, w) for trail, w in seen if w in ("launch", "cancel")] == [([], "launch"), ([], "cancel")]
     assert {"ce", "agent-token", "serve", "token", "mcp", "rebuild"} <= words
 
