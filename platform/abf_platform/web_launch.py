@@ -140,6 +140,11 @@ def star(t):
     return '<span class="req" title="%s">*</span>' % esc(t["g2_req"])
 
 
+def lbl(t, text):
+    """A field name with its red star on the same line (one inline element, so the flex column of the label does not put the star on a line of its own)."""
+    return '<span class="lbl">%s %s</span>' % (esc(text), star(t))
+
+
 # ---- small pieces -----------------------------------------------------------------------------------------------------------------------
 
 CJK_PAREN = re.compile(r"\(([^()]*[⺀-鿿＀-￯][^()]*)\)")
@@ -290,7 +295,6 @@ def _shown(value):
 def _row(t, p, cells):
     name = p["name"]
     required = star(t) if p.get("required") and not p.get("has_default") else ""
-    default = _shown(p.get("default")) if p.get("has_default") else ""
     value = cell_value(p, cells)
     label = ' aria-label="%s"' % esc(name)
 
@@ -303,11 +307,11 @@ def _row(t, p, cells):
         control = '<select name="p.%s"%s>%s</select>' % (esc(name), label, options(["true", "false"]))
     else:
         control = '<input name="p.%s"%s value="%s">' % (esc(name), label, esc(value))
-    return ('<tr class="prow"><td>%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
-            % (esc(name), required, esc(p.get("description") or ""), esc(", ".join(p.get("types") or [])), esc(default) if p.get("has_default") else "—", control))
+    return ('<tr class="prow"><td>%s%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+            % (esc(name), required, esc(p.get("description") or ""), esc(", ".join(p.get("types") or [])), control))
 
 
-COLS = ("cname", "cdesc", "ctype", "cdef", "cval")      # the widths are in the style sheet (web_board), one rule for each
+COLS = ("cname", "cdesc", "ctype", "cval")      # the widths are in the style sheet (web_board), one rule for each
 
 
 def groups_block(t, lang, files, quiet=False, cells=None):
@@ -322,7 +326,7 @@ def groups_block(t, lang, files, quiet=False, cells=None):
         return _failure(lang, files)
     if schema.get("status") != "ok":
         return _bad(lang, schema.get("message"))
-    heads = "".join("<th>%s</th>" % esc(t[k]) for k in ("g2_th_name", "g2_th_desc", "g2_th_type", "g2_th_default", "g2_th_value"))
+    heads = "".join("<th>%s</th>" % esc(t[k]) for k in ("g2_th_name", "g2_th_desc", "g2_th_type", "g2_th_value"))
     colgroup = "<colgroup>%s</colgroup>" % "".join('<col class="%s">' % c for c in COLS)
 
     def table(params):

@@ -152,19 +152,20 @@ def test_get_changes_nothing_for_a_clean_request(w):
 # What the pages of launch and cancel printed before this task (hash of the page with ids and tokens masked).
 # guided-launch-2 added rules to the one stylesheet (the parameter group table), so every page's hash and BASE_STYLE were pinned again; only the stylesheet differs.
 # guided-launch-2b added rules to the same stylesheet (column widths of that table, the advanced box) and took one out (the radio rows), so they were pinned once more; again only the stylesheet differs.
-BASE_CONFIRM = {'pending-launch-zh': (200, '2bc7b1f6a6827b73'), 'pending-cancel-zh': (200, 'f8f51b698844cd06'),
-                'pending-launch-en': (200, 'f664ab017d880851'), 'pending-cancel-en': (200, '1295dd2080eca2ce'),
-                'void-zh': (409, '73fc745ceec694d7'), 'void-en': (409, '73fc745ceec694d7'),
-                'confirmed-launch-zh': (200, 'e567896e7a444177'), 'confirmed-launch-en': (200, 'abcd1e07f00d8c21'),
-                'confirmed-cancel-zh': (200, '6674304593525a1b'), 'confirmed-cancel-en': (200, '3451b424aea2806c')}
-BASE_EXPIRED = {'expired-launch-zh': (200, 'afe5b4b8880055f6'), 'expired-cancel-zh': (200, '9b88c14ea6dfba56'),
-                'expired-launch-en': (200, 'afe5b4b8880055f6'), 'expired-cancel-en': (200, '9b88c14ea6dfba56')}
-BASE_POST = {'pressed-launch': (200, '4983efa90c25560e'), 'pressed-cancel': (200, '53975a8b8f22c6d1'),
-             'late-launch': (410, '0a191eb09859e68e'), 'late-cancel': (410, '0a191eb09859e68e')}
-BASE_BOARD = {'succeeded-zh': (200, '4f76b3f3eb176858'), 'succeeded-en': (200, '28ddd6488827f559'),
-              'failed-zh': (200, '29adf62423b059fc'), 'failed-en': (200, 'b6e3afdf2d3b0f91'),
-              'running-zh': (200, '966e98c2879654f2'), 'running-en': (200, '0d380a2f0301b261')}
-BASE_STYLE = '7b3e0b474b01c1ab'
+# guided-launch-2c changed three rules (the red star, the step area width, the field width) and the column widths of the table, so they were pinned a third time; again only the stylesheet differs.
+BASE_CONFIRM = {'pending-launch-zh': (200, '8cc544531f0c8aa0'), 'pending-cancel-zh': (200, '2ec1fae8b465817c'),
+                'pending-launch-en': (200, '8da04240025de553'), 'pending-cancel-en': (200, '0325b91833aeff44'),
+                'void-zh': (409, 'b9bfe02f7bd76559'), 'void-en': (409, 'b9bfe02f7bd76559'),
+                'confirmed-launch-zh': (200, '6bb1caf4bce1bf18'), 'confirmed-launch-en': (200, 'a87bdd24b0cbe0ab'),
+                'confirmed-cancel-zh': (200, '80413d1bded72b76'), 'confirmed-cancel-en': (200, 'ddd8b845210ff488')}
+BASE_EXPIRED = {'expired-launch-zh': (200, '3672f334e3789ef6'), 'expired-cancel-zh': (200, '265fe2f7a5ffb64c'),
+                'expired-launch-en': (200, '3672f334e3789ef6'), 'expired-cancel-en': (200, '265fe2f7a5ffb64c')}
+BASE_POST = {'pressed-launch': (200, '43b2681d89cd314a'), 'pressed-cancel': (200, 'c09ea95a9e6485f7'),
+             'late-launch': (410, '9edb7fdbcad01a49'), 'late-cancel': (410, '9edb7fdbcad01a49')}
+BASE_BOARD = {'succeeded-zh': (200, 'a643556a63579b1d'), 'succeeded-en': (200, 'd877d5515c8725c4'),
+              'failed-zh': (200, '24d0d540addd2fbf'), 'failed-en': (200, '3dc52faa6181c52b'),
+              'running-zh': (200, '166bca9b81a1b126'), 'running-en': (200, '96514357bf097ea8')}
+BASE_STYLE = 'e45bcabcd3e16aec'
 
 
 def launch_and_cancel(w, ann):

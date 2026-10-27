@@ -431,11 +431,11 @@ def test_h09_stars(rig, fk):
     assert five.index("* 必填") < five.index("<table")
     assert not re.search(r'<tr class="prow">[^\n]*?>必填<', five)
     two = step(t, 2)
-    assert re.search(r"<label>版本 %s<input" % re.escape(STAR), two) and "請填寫確切版本號，例如 2.18.0" in two
-    assert re.search(r"<label>管線（nf-core 名稱） %s<input" % re.escape(STAR), two)
-    assert re.search(r"<label>樣本表（從已上傳的檔案中選擇） %s<select" % re.escape(STAR), four)
-    assert re.search(r"<label>運算環境 %s<select" % re.escape(STAR), step(t, 6))
-    assert re.search(r"<label>分析名稱 %s<input" % re.escape(STAR), step(t, 7))
+    assert re.search(r"<label><span class=\"lbl\">版本 %s</span><input" % re.escape(STAR), two) and "請填寫確切版本號，例如 2.18.0" in two
+    assert re.search(r"<label><span class=\"lbl\">管線（nf-core 名稱） %s</span><input" % re.escape(STAR), two)
+    assert re.search(r"<label><span class=\"lbl\">樣本表（從已上傳的檔案中選擇） %s</span><select" % re.escape(STAR), four)
+    assert re.search(r"<label><span class=\"lbl\">運算環境 %s</span><select" % re.escape(STAR), step(t, 6))
+    assert re.search(r"<label><span class=\"lbl\">分析名稱 %s</span><input" % re.escape(STAR), step(t, 7))
     assert "沿用先前分析的參數" in five and "req" not in re.search(r"<label>沿用先前分析的參數.*?<select", five, re.S).group(0)
     assert "req" not in re.search(r'<details class="padv"[^>]*>.*?<textarea', five, re.S).group(0)
 
@@ -459,10 +459,10 @@ def test_h12_columns(rig, fk):
     assert "<colgroup>" in step(t, 5) and "style=" not in t
     css = web_board.STYLE
     assert "table-layout:fixed" in css.replace(" ", "") and "@media (max-width:600px){.ptbl thead{display:none}" in css
-    cols = re.findall(r'<col class="(\w+)">', step(t, 5))[:5]
+    cols = re.findall(r'<col class="(\w+)">', step(t, 5))[:4]
     pct = [int(re.search(r"\.ptbl \.%s\{width:(\d+)%%" % k, css).group(1)) for k in cols]
-    assert len(pct) == 5 and sum(pct) == 100
-    for got, want in zip(pct, (20, 42, 9, 12, 17)):
+    assert len(pct) == 4 and sum(pct) == 100
+    for got, want in zip(pct, (22, 50, 10, 18)):
         assert abs(got - want) <= 2
 
 

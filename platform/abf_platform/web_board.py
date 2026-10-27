@@ -148,7 +148,7 @@ STYLE = (
     "input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}"
     "textarea{font-family:" + MONO + ";min-height:96px;resize:vertical}"
     ".lform{display:flex;flex-direction:column;gap:12px;max-width:640px}.lform label{display:flex;flex-direction:column;gap:4px}"
-    ".lform input,.lform select,.lform textarea{width:100%;min-width:0}.lform button{align-self:flex-start}"
+    ".lform input,.lform select,.lform textarea{width:100%;min-width:0;max-width:640px}.lform button{align-self:flex-start}"
     ".acts form,form.act{margin:0;display:inline}"
     ".sq{display:inline-block;width:8px;height:8px;background:var(--c);flex:none;align-self:center}"
     ".chip{display:inline-flex;gap:4px;align-items:center;font-weight:600;color:var(--c)}"
@@ -224,7 +224,7 @@ STYLE = (
     ".tbl th,.tbl td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);vertical-align:top;min-width:0;overflow-wrap:anywhere}"
     ".soon{background:var(--sunken);color:var(--muted);border-radius:6px;padding:16px;min-width:0}"
     ".otbl code{overflow-wrap:anywhere}.ostat{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
-    ".gsteps{display:flex;flex-direction:column;gap:12px;max-width:640px}"
+    ".gsteps{display:flex;flex-direction:column;gap:12px}"
     ".gstep{background:var(--raised);border:1px solid var(--line);border-radius:6px;min-width:0}"
     ".gstep>summary{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px;min-height:44px;cursor:pointer}"
     ".gno{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid var(--line2);border-radius:999px;font-weight:600}"
@@ -238,8 +238,8 @@ STYLE = (
     ".chk.wait{color:var(--running)}.chk.later{color:var(--muted)}.csym{font-weight:600}"
     ".pgroups{display:flex;flex-direction:column;gap:8px;min-width:0}.pgroup,.padv{border:1px solid var(--line);border-radius:6px;min-width:0}"
     ".pgroup>summary,.padv>summary{padding:8px 12px;min-height:44px;cursor:pointer;font-weight:600}"
-    ".ptbl{margin:0 0 8px}.ptbl input,.ptbl select{width:100%;min-width:0}.req{color:var(--failed);font-size:12px;font-weight:600}"
-    ".ptbl .cname{width:20%}.ptbl .cdesc{width:42%}.ptbl .ctype{width:9%}.ptbl .cdef{width:12%}.ptbl .cval{width:17%}"
+    ".ptbl{margin:0 0 8px}.ptbl input,.ptbl select{width:100%;min-width:0}.req{color:var(--failed);font-size:inherit;font-weight:600}"
+    ".ptbl .cname{width:22%}.ptbl .cdesc{width:50%}.ptbl .ctype{width:10%}.ptbl .cval{width:18%}"
     ".padv>label{padding:0 12px 12px}"
     ".dlink{display:inline-block;min-height:44px;line-height:44px}"
     "@media (max-width:600px){.ptbl thead{display:none}.ptbl tr,.ptbl td{display:block}.ptbl tr{border-bottom:1px solid var(--line);padding:4px 0}"
@@ -904,7 +904,7 @@ GUIDED = {
         "g2_dia_wait": "選定管線與版本後顯示", "g2_img_wait": "圖檔讀取中",
         "g2_th_col": "欄名", "g2_th_desc": "說明",
         "g2_groups_wait": "參數分組表：讀到參數表後顯示", "g2_adv": "進階參數（管線預設隱藏）", "g2_req": "必填",
-        "g2_th_name": "名稱", "g2_th_type": "型別", "g2_th_default": "預設值", "g2_th_value": "填寫",
+        "g2_th_name": "名稱", "g2_th_type": "型別", "g2_th_value": "填寫",
         "g2_dia_404": "找不到流程圖。 (The workflow diagram was not found.)",
     },
     "en": {
@@ -944,7 +944,7 @@ GUIDED = {
         "g2_dia_wait": "Shown once a pipeline and revision are selected", "g2_img_wait": "Reading the diagram file",
         "g2_th_col": "Column", "g2_th_desc": "Description",
         "g2_groups_wait": "Parameter groups: shown once the parameter table is read", "g2_adv": "Advanced parameters (hidden by default in the pipeline)",
-        "g2_req": "Required", "g2_th_name": "Name", "g2_th_type": "Type", "g2_th_default": "Default", "g2_th_value": "Value",
+        "g2_req": "Required", "g2_th_name": "Name", "g2_th_type": "Type", "g2_th_value": "Value",
         "g2_dia_404": "The workflow diagram was not found.",
     },
 }
@@ -1052,9 +1052,9 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
             pick = '<p class="muted">%s</p>' % esc(t["g_no_used"])
         pick += ('<input type="hidden" name="pipeline" value="%s"><input type="hidden" name="revision" value="%s">' % (esc(pipeline), esc(revision)))
     else:
-        pick = ('<label>%s %s<input name="pipeline" value="%s" required></label><label>%s %s<input name="revision" value="%s" required></label>'
+        pick = ('<label>%s<input name="pipeline" value="%s" required></label><label>%s<input name="revision" value="%s" required></label>'
                 '<p class="muted">%s</p><p class="off">%s</p>'
-                % (esc(t["l_pipeline"]), web_launch.star(t), esc(pipeline), esc(t["l_revision"]), web_launch.star(t), esc(revision),
+                % (web_launch.lbl(t, t["l_pipeline"]), esc(pipeline), web_launch.lbl(t, t["l_revision"]), esc(revision),
                    esc(t["g_ver_hint"]), esc(t["g_search"])))
         if pipeline and not revision:
             pick = pick.replace('<p class="off">', web_launch.latest_block(t, lang, full_name, latest, quiet) + '<p class="off">', 1)
@@ -1066,7 +1066,7 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
     # 4 samplesheet
     if sheets:
         opts = "".join('<option value="%s"%s>%s</option>' % (esc(s), " selected" if s == values.get("samplesheet") else "", esc(s)) for s in sheets)
-        four = '<label>%s %s<select name="samplesheet">%s</select></label>' % (esc(t["l_samplesheet"]), web_launch.star(t), opts)
+        four = '<label>%s<select name="samplesheet">%s</select></label>' % (web_launch.lbl(t, t["l_samplesheet"]), opts)
     else:
         four = '<p class="bad">%s</p><p class="muted">%s</p>' % (esc(t["g_no_sheet"]), esc(t["l_no_sheet"]))
     four += web_launch.samplesheet_block(t, lang, files if (pipeline and revision) else None, quiet)
@@ -1089,7 +1089,7 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
             return "%s  %s %s" % (e["name"], sym, t[key])
         opts = "".join('<option value="%s"%s>%s</option>' % (esc(e["name"]), " selected" if e["name"] == values.get("ce_name") else "", esc(env_label(e)))
                        for e in envs)
-        six = '<label>%s %s<select name="ce_name">%s</select></label>' % (esc(t["l_ce"]), web_launch.star(t), opts)
+        six = '<label>%s<select name="ce_name">%s</select></label>' % (web_launch.lbl(t, t["l_ce"]), opts)
     else:
         six = '<p class="bad">%s</p>' % esc(t["l_no_ce"])
     # 7 confirm
@@ -1105,8 +1105,8 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
     if failed:
         summary.append((t["g_s_problems"], "<ul>%s</ul>" % "".join("<li>✗ %s %s</li>" % (esc(c[2]), esc(c[3])) for c in failed)))
     dl = '<dl class="fields">%s</dl>' % "".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), v) for k, v in summary)
-    seven = (dl + '<label>%s %s<input name="run_name" value="%s"></label><button type="submit">%s</button>'
-             % (esc(t["l_run_name"]), web_launch.star(t), esc(values.get("run_name", "")), esc(t["g_submit"])))
+    seven = (dl + '<label>%s<input name="run_name" value="%s"></label><button type="submit">%s</button>'
+             % (web_launch.lbl(t, t["l_run_name"]), esc(values.get("run_name", "")), esc(t["g_submit"])))
 
     sums = {2: ("%s %s" % (pipeline, revision)) if states[2] == "done" else "", 4: values.get("samplesheet") if states[4] == "done" else "",
             5: (t["g_route_reuse"] % given.get("params_from")) if states[5] == "done" and given.get("params_from") else "",

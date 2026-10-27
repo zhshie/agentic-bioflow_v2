@@ -89,3 +89,20 @@ developer-agent 已搜過：搜過 sysprog21/zhtw-mcp（依教育部標準檢查
 ## Fix round (verifier: TC-093)
 
 - Added `test_h11_used_tab_empty_sentence` in `test_web_guided_launch_2b.py`: with no usage records the used tab shows 「尚無使用紀錄。」 (and not the old 「還沒有用過的管線。」); English shows "No usage history.". No product code changed; the behavior was already right.
+
+## 2c (small fixes after the screenshots of c794c84; plan `guided-launch-2c`)
+
+What changed
+- Red star on the name line: new `web_launch.lbl(t, text)` writes `<span class="lbl">name <span class="req" title="必填">*</span></span>`; the pipeline, version, samplesheet, environment and analysis-name labels use it (`web_board.render_launch`). `.req` is now `font-size:inherit` (colour unchanged).
+- The parameter table has four columns (name, description, type, value): the default column, the `cdef` col and the string `g2_th_default` (zh and en) are gone. Widths 22 / 50 / 10 / 18. The default only shows as the value of the box.
+- Desktop width: `.gsteps` has no `max-width`; `.lform input,select,textarea` have `max-width:640px`. The mobile rules are untouched.
+- Refused send (400): no product change was needed; `launch_post` already passes every `p.*` box back (`guide["cells"]`) and `launch_page` shows them, a cleared box stays empty, and the advanced box keeps its text. J05 pins this; J03 and J06 also passed before the change.
+- Tests J01-J06 added in `test_web_guided_launch_2b.py` (J01, J02, J04 were red first, commit `RED:`).
+
+Existing assertions changed (old to new, reason)
+- `test_web_guided_launch_2b.py::test_h12_columns`: five columns `[:5]`, widths 20/42/9/12/17 to four columns `[:4]`, widths 22/50/10/18 (allowed: the five-column colgroup and the 42 percent column).
+- `test_web_guided_launch_2b.py::test_h09_stars`: five regexes `<label>NAME STAR<input|select` to `<label><span class="lbl">NAME STAR</span><input|select`. Not on the plan's list of allowed assertions: the star moved into the new inline element (plan step 1), so the same five labels are checked, with the same star, in the new shape; nothing is weaker.
+- `test_clean_page.py`: all page hashes and `BASE_STYLE` pinned a third time (only the stylesheet differs).
+
+Green run record
+- Focused: test_web_guided_launch*.py and test_web_actions.py green after the change; `test_clean_page.py` 28 passed after the repin.
