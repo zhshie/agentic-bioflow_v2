@@ -222,3 +222,6 @@ B. 本任務不准動、但要確認不會被新程式碼誤傷（跑全套前�
 16. **拆字範圍**：裁決 8 只管 platform 的 cloud_store.py、datasets.py；abf_station 沿用 azure_preflight 既有的 `"Az" "ure"` 寫法。
 17. **憑證檔必填鍵**：上傳沿用 `_read_shape` 原樣，沒有 `batch_account_key` 就拒絕（一個環境一份憑證檔，跟送出 run 同一份）。不另開放寬。
 18. **人工確認**：沿用 AWS／Google 上傳的既有做法（檔案主人在網頁按上傳即排入），不加二次確認；不是規格變更，不必問維護者。
+19. （10-29 02:0x，取代裁決 14 的 SAS 那半句）**只有 SAS 時**：argv 不帶 `--sas-token`、也不帶 `--auth-mode`；SAS 只經環境變數 `AZURE_STORAGE_SAS_TOKEN` 交給 az。有帳號金鑰時帶 `--auth-mode key`，金鑰經 `AZURE_STORAGE_KEY` 環境變數。旗標順序不釘，只釘動詞開頭、旗標配對齊全、沒有多餘旗標（照合約）。
+20. **大小寫**：`test_cloud_upload.py:649`（TC-088）不改；所以 cloud_store.py 原文不得出現小寫 `azure`，只能用 `AZURE`／`Azure`。datasets.py 同樣照做。
+21. **失敗訊息**：照專長守則，不露出內部路徑（含憑證檔路徑）；AZU-AGT-06 的「可含路徑」作廢。只說錯在哪、該怎麼辦，不含金鑰值、不含堆疊。
