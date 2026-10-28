@@ -24,16 +24,18 @@ def _control(text):
     return any(ord(c) < 32 or ord(c) == 127 for c in text)
 
 
-def parse_gs(url):
-    """(bucket, object_name) of a gs://<bucket>/<object> location, or CloudPathError. No URL decoding: %2e%2e stays as written."""
+def _parse(url, scheme):
+    """(bucket, object_name) of a <scheme>://<bucket>/<object> location, or CloudPathError. No URL decoding: %2e%2e stays as written."""
     if not isinstance(url, str) or not url:
         raise CloudPathError("位置必須是文字 (a location must be text)")
     if _control(url):
         raise CloudPathError("位置裡有不能用的控制字元 (the location holds a control character)")
-    if not url.startswith("gs://"):
-        raise CloudPathError("只收 gs:// 開頭的位置 (only gs:// locations are taken)")
-    bucket, _, name = url[5:].partition("/")
-    if not _BUCKET.match(bucket):
+    head = scheme + "://"
+    if not url.startswith(head):
+        raise CloudPathError("只收 %s 開頭的位置 (only %s locations are taken)" % (head, head))
+    bucket, _, name = url[len(head):].partition("/")
+    pattern = _BUCKET if scheme == "gs" else compute_envs._AWS_BUCKET
+    if not pattern.match(bucket):
         raise CloudPathError("bucket 名稱不正確：要 3 到 63 個字元，小寫英數與 - _ .，頭尾是英數 "
                              "(the bucket name must be 3 to 63 characters, lower-case letters, digits and - _ ., starting and ending with a letter or digit)")
     if not name:
@@ -47,16 +49,37 @@ def parse_gs(url):
     return bucket, name
 
 
+def parse_gs(url):
+    """(bucket, object_name) of a gs:// location, or CloudPathError."""
+    return _parse(url, "gs")
+
+
+def parse_s3(url):
+    """(bucket, object_name) of an s3:// location, or CloudPathError."""
+    return _parse(url, "s3")
+
+
+def workdir_scheme(ce):
+    """'gs' for a Google Batch environment, 's3' for an AWS Batch one; anything else is CloudPathError."""
+    platform = ce.get("platform") if isinstance(ce, dict) else None
+    if platform == compute_envs.GOOGLE_BATCH:
+        return "gs"
+    if platform == compute_envs.AWS:
+        return "s3"
+    raise CloudPathError("這個計算環境不能放雲端資料，只有 Google Batch 或 AWS Batch 環境可以 "
+                         "(only a Google Batch or AWS Batch environment can hold cloud data)")
+
+
 def workdir_bucket(ce):
-    """The bucket of a Google Batch environment's workDir, or CloudPathError. A workDir with no folder part still has its bucket."""
-    if not isinstance(ce, dict) or ce.get("platform") != compute_envs.GOOGLE_BATCH:
-        raise CloudPathError("這個計算環境不能放雲端資料，只有 Google Batch 環境可以 (only a Google Batch environment can hold cloud data)")
+    """The bucket of a cloud environment's workDir, or CloudPathError. A workDir with no folder part still has its bucket."""
+    scheme = workdir_scheme(ce)
     config = ce.get("config")
     work = config.get("workDir") if isinstance(config, dict) else None
-    if not isinstance(work, str) or not work.startswith("gs://"):
-        raise CloudPathError("這個計算環境沒有 gs:// 的 workDir，不能放雲端資料 (this environment has no gs:// workDir)")
-    bucket = work[5:].partition("/")[0]
-    if not _BUCKET.match(bucket):
+    head = scheme + "://"
+    if not isinstance(work, str) or not work.startswith(head):
+        raise CloudPathError("這個計算環境沒有 %s 的 workDir，不能放雲端資料 (this environment has no %s workDir)" % (head, head))
+    bucket = work[len(head):].partition("/")[0]
+    if not (_BUCKET if scheme == "gs" else compute_envs._AWS_BUCKET).match(bucket):
         raise CloudPathError("這個計算環境的 workDir 不是正確的 bucket 位置 (the workDir of this environment is not a usable bucket location)")
     return bucket
 
@@ -67,24 +90,24 @@ def _single(text, what, limit):
     return text
 
 
-def upload_prefix(ce, owner_name):
-    """gs://<bucket>/uploads/<owner>/ ; without an owner (the terminal) gs://<bucket>/uploads/."""
+def upload_prefix(ce, owner_name, scheme="gs"):
+    """<scheme>://<bucket>/uploads/<owner>/ ; without an owner (the terminal) <scheme>://<bucket>/uploads/."""
     bucket = workdir_bucket(ce)
     if owner_name is None:
-        return "gs://%s/uploads/" % bucket
-    return "gs://%s/uploads/%s/" % (bucket, _single(owner_name, "使用者名 name", _NAME_CHARS))
+        return "%s://%s/uploads/" % (scheme, bucket)
+    return "%s://%s/uploads/%s/" % (scheme, bucket, _single(owner_name, "使用者名 name", _NAME_CHARS))
 
 
-def object_url(ce, owner_name, filename):
+def object_url(ce, owner_name, filename, scheme="gs"):
     """The location of a single-level file name inside the owner's prefix."""
-    return upload_prefix(ce, owner_name) + _single(filename, "檔名 file name", _NAME_CHARS)
+    return upload_prefix(ce, owner_name, scheme) + _single(filename, "檔名 file name", _NAME_CHARS)
 
 
-def inside_prefix(url, prefix):
+def inside_prefix(url, prefix, scheme="gs"):
     """True when url lies in prefix: the same bucket, a name that begins with the prefix and has at least one more character."""
     try:
-        bucket, name = parse_gs(url)
-        pbucket, pname = parse_gs(prefix)
+        bucket, name = _parse(url, scheme)
+        pbucket, pname = _parse(prefix, scheme)
     except CloudPathError:
         return False
     if not pname.endswith("/"):
@@ -92,9 +115,11 @@ def inside_prefix(url, prefix):
     return bucket == pbucket and name.startswith(pname) and len(name) > len(pname)
 
 
-def big_file_command(ce, owner_name):
+def big_file_command(ce, owner_name, scheme="gs"):
     """One line to run on the person's own computer for files over the web limit; only the bucket prefix is in it."""
     # this phrase may appear only in this file (test_cloud_upload checks it); the file starts no program, the line is only text
+    if scheme == "s3":
+        return "aws s3 cp <你電腦上的資料夾> %srawdata/ --recursive" % upload_prefix(ce, owner_name, scheme)
     return "gcloud storage cp <你電腦上的資料夾>/* %srawdata/" % upload_prefix(ce, owner_name)
 
 

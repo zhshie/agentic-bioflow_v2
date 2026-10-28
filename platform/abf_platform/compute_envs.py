@@ -38,7 +38,7 @@ PLATFORM_HOST_TYPES = (GOOGLE_BATCH, AWS)                     # served by the ag
 CHECK_ONLY_TYPES = ()                                         # 新雲端類型先放這裡，只開預檢
 CLOUD_JOB_KINDS = {                                           # the job kinds each platform-host type takes; the rest is refused in plain words (the clean kind is split in two pieces: test_cleanup_store allows that word in no other file of this package)
     GOOGLE_BATCH: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
-    AWS: ("preflight", "launch_nextflow", "cancel_run", "pipeline_files"),
+    AWS: ("preflight", "launch_nextflow", "cancel_run", "put_upload", "pipeline_files"),
 }
 CHECKABLE = (SUPPORTED,) + PLATFORM_HOST_TYPES + CHECK_ONLY_TYPES
 SEQERA_COMPUTE = ("seqera-compute", "seqeracompute-platform")

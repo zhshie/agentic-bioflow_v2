@@ -789,3 +789,12 @@ The automatic tests use fakes for the program runner, the aws runner, the detach
 7. **`process.resourceLimits`.** Launch with `maxvCpus` set and check that Nextflow accepts the line in `aws.config`.
 
 **The reviewer.** Run `git diff --name-only` against the base: no `cloud_cost.py`, no `local_runner.py`, no migration, no `boto3`; the existing tests changed only where `specs/aws-launch/plan.md` lists them.
+
+## Uploading to AWS Batch (aws-upload): the maintainer checks by hand
+
+The automatic tests use fakes for the `aws` program and never touch the network. A real upload writes to a real S3 bucket and **costs a small amount of money**: do not start it before the maintainer says go, and only with an AWS Budgets alarm set.
+
+1. **Environment.** An available AWS Batch environment (`aws1`), the credential file at `ABF_STATION_AWS_CREDENTIALS` (mode 600), and `aws --version` answering on the platform host.
+2. **File.** Stage one small file (about 10 MB) in your uploads folder and queue the upload for `aws1`.
+3. **Expected.** The object appears at `s3://<workDir bucket>/uploads/<you>/<name>` with the same size, the answer says the staged copy was removed, and no key id or credential path appears in the answer or in the agent log.
+4. **Over the limit.** Try a file over 2 GB: the answer gives the `aws s3 cp ... --recursive` line and nothing is uploaded.
