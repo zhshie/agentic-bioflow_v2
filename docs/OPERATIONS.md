@@ -215,7 +215,18 @@ in steps 3 and 4 and run `systemctl --user daemon-reload` (and restart Caddy) be
 
 ### Google Batch on the platform host
 
-To let people launch on a `googlebatch-platform` environment, the host that runs `abf-station run` (next to `abf-platform serve`) needs: Java 17 or newer, Nextflow, `gcloud` (the Google Cloud CLI), a `storage_root` in `config/env.yaml` (the run folders go to `<storage_root>/_gcb_runs/`), and the service-account key file at `ABF_STATION_GCP_CREDENTIALS` (or `_personal/gcp-sa.json` in the deployment folder), readable by that user only. The host must be Linux or WSL. Everything else is in `docs/PLATFORM.md`, "Launching on Google Batch". Google bills the lab's Google Cloud account for what a launch starts; the platform has no cost estimate or cap yet.
+To let people launch on a `googlebatch-platform` environment, the host that runs `abf-station run` (next to `abf-platform serve`) needs: Java 17 or newer, Nextflow, `gcloud` (the Google Cloud CLI), a `storage_root` in `config/env.yaml` (the run folders go to `<storage_root>/_gcb_runs/`), and the service-account key file at `ABF_STATION_GCP_CREDENTIALS` (or `_personal/gcp-sa.json` in the deployment folder), readable by that user only. The host must be Linux or WSL. Everything else is in `docs/PLATFORM.md`, "Launching on Google Batch". Google bills the lab's Google Cloud account for what a launch starts; before a launch the platform checks each person's monthly cloud cap and shows an estimate, or says why it cannot work one out (`docs/CLOUD.md`); it does not stop a run that is already going.
+
+### Datasets in the lab's bucket
+
+For a `googlebatch-platform` environment the input files live in the lab's Google Cloud bucket. The steps, one sentence each:
+
+1. Each person's files go under their own place in the bucket, `gs://<bucket>/uploads/<user>/` (the folder-like part of the bucket address after `gs://<bucket>/`). The bucket is the one in the environment's `workDir`; another bucket is refused.
+2. A person puts files there from their own computer with `gcloud storage cp <folder>/* gs://<bucket>/uploads/<user>/rawdata/`. For a single file over 2 GB the platform gives only this same line.
+3. Then the person keeps them as a named Dataset: `abf-platform dataset register --name <name> --version <version> --samplesheet <sheet.csv> --file gs://<bucket>/uploads/<user>/rawdata/<file> --user <user> --destination <environment>` (`abf-platform dataset list` and `abf-platform dataset show` read them back). The platform keeps names and places only; it does not open the files.
+4. An AI client uses the `launch` tool with its `dataset` argument (and `dataset_version`) instead of a samplesheet.
+5. The platform does not grant, and does not check, who may write to the bucket. That is the Google Cloud project owner's job, done on Google's side.
+6. Not built yet: a web page or an AI tool that sends a file into the bucket. The platform and the station agent can already write one file into the user's own place (#224, #229), but nothing in the web or the AI calls it, so today use the `gcloud storage cp` line of point 2. When a launch is sent, Google Batch still checks every path cell is in the `workDir` bucket.
 
 ## 6. Not built yet
 
