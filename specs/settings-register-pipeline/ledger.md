@@ -6,6 +6,7 @@
 - [x] 畫面與字串：每個運算環境一塊 `#ce-<名>`（通知、已登記清單＋移除、登記表單、空清單提示）、確認頁、`✓ ○ ✕` 通知 — `web_settings.py`；`g_reg_bad` 改句 — `web_board.py`
 - [x] 測試：`platform/tests/test_web_settings_register.py`（新檔，TC 編號寫在註解）
 - [x] 文件：`docs/PLATFORM.md`（設定頁一段）、`docs/SETTINGS.md`（從網頁登記）、`docs/TESTING.md`（新增手動一節）
+- [x] 修正：確認頁摘要改用既有的 `<dl class="fields">`（原 `.kv` 是 flex 籌碼列，六組擠成一行）；不動 CSS（D13）；測試 `test_b01a_confirm_summary_is_the_fields_list`
 
 ## 被改動的既有釘死測試（只加、只放寬計畫明寫的部分）
 

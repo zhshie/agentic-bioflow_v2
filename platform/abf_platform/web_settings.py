@@ -286,7 +286,7 @@ def render_confirm(name, csrf, runs, lang, f, token, first_or_last):
     adding = f["op"] == "add"
     rows = [(t["pf_c_action"], t["pf_op_add"] if adding else t["pf_op_remove"]), (t["pf_c_env"], f["ce"]), (t["pf_s_pipeline"], f["pipeline"]),
             (t["pf_s_revision"], f["revision"]), (t["pf_s_module"], f["module"] or "—"), (t["pf_s_home"], f["home"] or "—")]
-    dl = '<dl class="kv">%s</dl>' % "".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), esc(v)) for k, v in rows)
+    dl = '<dl class="fields">%s</dl>' % "".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), esc(v)) for k, v in rows)
     hint = '<p class="muted">%s</p>' % esc(t["pf_empty"]) if first_or_last else ""
     pairs = [(k, f[k]) for k in ("op", "ce", "pipeline", "revision", "module", "home")] + [("csrf", token)] + _lang_field(lang)
     back = "/settings" + ("?lang=en" if lang == "en" else "")
