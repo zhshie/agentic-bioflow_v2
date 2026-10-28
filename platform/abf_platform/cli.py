@@ -333,7 +333,8 @@ def _config_from_args(args):
     flags = {"work_dir": "workDir", "launch_dir": "launchDir", "head_queue": "headQueue", "compute_queue": "computeQueue",
              "head_job_options": "headJobOptions", "host_name": "hostName", "user_name": "userName",
              "pre_run": "preRunScript", "post_run": "postRunScript", "nextflow_config": "nextflowConfig",
-             "project": "project", "location": "location", "service_account_email": "serviceAccountEmail",
+             "project": "project", "location": "location", "batch_account": "batchAccountName",
+             "storage_account": "storageAccountName", "pool": "pool", "service_account_email": "serviceAccountEmail",
              "boot_disk_size": "bootDiskSize", "region": "region", "job_queue": "jobQueue"}
     for attr, key in flags.items():
         if getattr(args, attr) is not None:
@@ -689,11 +690,14 @@ def _add_ce_fields(p):
     p.add_argument("--agent", help="the agent that serves this environment")
     p.add_argument("--work-dir")
     p.add_argument("--project", help="Google Batch: the GCP project ID")
-    p.add_argument("--location", help="Google Batch: the region, e.g. europe-west2")
+    p.add_argument("--location", help="Google Batch/Azure Batch: the region, e.g. europe-west2 or westeurope")
+    p.add_argument("--batch-account", help="Azure Batch: the Batch account name, e.g. labbatch")
+    p.add_argument("--storage-account", help="Azure Batch: the storage account name, e.g. labstore")
+    p.add_argument("--pool", help="Azure Batch: the id of a pool that already exists, e.g. lab-pool")
     p.add_argument("--region", help="AWS Batch: the region, e.g. eu-west-1")
     p.add_argument("--job-queue", help="AWS Batch: the name of the job queue (a name, not an ARN)")
-    p.add_argument("--spot", dest="spot", action="store_const", const=True, default=None, help="Google Batch/AWS Batch: use spot machines")
-    p.add_argument("--no-spot", dest="spot", action="store_const", const=False, help="Google Batch/AWS Batch: do not use spot machines")
+    p.add_argument("--spot", dest="spot", action="store_const", const=True, default=None, help="Google Batch/AWS Batch/Azure Batch: use spot machines (Azure: stored only)")
+    p.add_argument("--no-spot", dest="spot", action="store_const", const=False, help="Google Batch/AWS Batch/Azure Batch: do not use spot machines")
     p.add_argument("--service-account-email", help="Google Batch: the service account the jobs run as (an e-mail address, not a key)")
     p.add_argument("--boot-disk-size", help="Google Batch: boot disk size, e.g. '50 GB'")
     p.add_argument("--launch-dir")

@@ -767,11 +767,11 @@ def test_another_users_azure_environment_is_not_found(ip):
     assert compute_envs.get(ip.state_db, "az1", owner=2) is None
     missing = None
     try:
-        jobs.enqueue_preflight(ip.state_db, "nothing-here", caller_user_id=2)
+        jobs.enqueue_listing(ip.state_db, "nothing-here", "/x", caller_user_id=2)
     except jobs.JobRefused as e:
         missing = str(e)
     with pytest.raises(jobs.JobRefused) as e:
-        jobs.enqueue_preflight(ip.state_db, "az1", caller_user_id=2)
+        jobs.enqueue_listing(ip.state_db, "az1", "/x", caller_user_id=2)
     assert missing is not None and str(e.value).replace("az1", "X") == missing.replace("nothing-here", "X")
     assert "not found" in str(e.value) and "Azure" not in str(e.value)
     with pytest.raises(jobs.JobRefused) as e:

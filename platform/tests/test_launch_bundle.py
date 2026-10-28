@@ -447,7 +447,7 @@ def test_tc062_there_is_no_resume_and_no_retry_in_the_script():
 
 
 def test_tc063_a_compute_environment_of_another_type_is_refused():
-    refused(ce=ce_snapshot(platform="azbatch-platform"))      # aws-launch: AWS Batch can be launched now, so another type is the example
+    refused(ce=ce_snapshot(platform="azcloud-platform"))      # aws-launch: AWS Batch can be launched now, so another type is the example
 
 
 def test_tc013_the_script_is_a_single_template_in_one_module():

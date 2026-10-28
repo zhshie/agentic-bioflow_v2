@@ -303,8 +303,8 @@ def test_tc063_an_environment_of_another_type_is_refused_and_no_cloud_program_is
     bindir = tmp_path / "cloudbin"
     for t in ("aws", "kubectl", "gcloud", "az", "ssh"):
         write_exec(bindir / t, "#!/bin/bash\necho \"$0 $*\" >> '%s'\n" % log)
-    rc, out = ip.run("ce", "create", "--name", "cloud", "--platform", "azbatch-platform",
-                     "--config-json", json.dumps({"workDir": "az://bucket/work", "region": "westeurope"}))
+    rc, out = ip.run("ce", "create", "--name", "cloud", "--platform", "azcloud-platform",
+                     "--config-json", json.dumps({"workDir": "az://bucket/work", "instanceType": "Standard_D4s_v3"}))
     assert rc == 0, out
     args = d.launch_args(tmp_path)
     args[args.index("--ce") + 1] = "cloud"
