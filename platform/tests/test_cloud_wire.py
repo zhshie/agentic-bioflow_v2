@@ -422,6 +422,9 @@ def test_no_file_still_says_there_is_no_estimate_and_cap():
                 text = p.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
                 continue
+            # aws-launch: the fixed AWS billing sentence (specs/aws-launch/plan.md, ruling 10) says, for AWS only, "平台(目前)還沒有費用預估與上限"
+            for allowed in ("平台目前還沒有費用預估與上限", "平台還沒有費用預估與上限"):
+                text = text.replace(allowed, "")
             if any(n in text for n in needles):
                 hits.append(str(p))
     assert hits == []
