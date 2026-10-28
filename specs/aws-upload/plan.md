@@ -110,12 +110,27 @@ source: memory/dev-plans/cloud-upload.md（Google 版，已合併）；memory/de
 1. AWS CLI 語意：executor 開工前必讀 AWS CLI 官方參考（s3 cp／ls／rm、s3api head-object／list-objects-v2），把頁面網址與用到的旗標寫進進度帳本；計畫的指令形狀與官方不符時以官方為準，帳本記一行。測試一律用假的 run_fixed／start_fed，不連真的 AWS。
 2. 接力順序：aws-upload 先、aws-clean 後；各自在前一件合進 v3 後才開工，開工時用 `git show origin/v3:` 重查 aws-launch 合併後的實際名字與行號。
 3. 串流上傳上限沿用 Google 版數值；官方文件寫明更低限制才調低，帳本註明出處。
-4. 列舉必須讀完所有分頁才判斷「全部以 runs/<run>/work/ 開頭」；要有一條測試「第二頁出現鄰居前綴 → 整個拒絕」。
-5. bucket 版本控管：不處理舊版本；只在 docs/PLATFORM.md 補一句「bucket 若開了版本控管，清理後舊版本仍佔空間、仍收費」。清理畫面文字不改。
-6. big_file_command 的 AWS 版、使用者端 AWS 登入說明：不在範圍，既有行為不變。
-7. clean_work 提出時機沿用 Google 版（只在 run 成功時）。
+4. （作廢：原第 4、5、7 條誤貼自 aws-clean，對本任務不適用，verifier 不必出題。）
+5. bucket 版本控管：本任務只在 docs/PLATFORM.md 的 AWS 上傳段補一句「bucket 若開了版本控管，覆寫同名檔會留下舊版本、仍收費」。
+6. **big_file_command 的 AWS 版在範圍內**，以本文作法 7 與測試 15 為準（取代原裁決 6）。目的地用 `s3://<bucket>/uploads/<owner>/rawdata/`；文字只寫「在你自己的電腦上、用你自己的 AWS 登入執行」，不教怎麼登入 AWS（登入說明另案）。verifier 的 TC-082～085 有效。
+7. 交付範圍：本任務交付的是動作層＋站台代理＋文件，**沒有可按的網頁按鈕**——目前 Google 版也沒有網頁或 MCP 呼叫 `enqueue_put_upload`，網頁入口屬前端 session 的車道，另案。PR 說明與 PLATFORM.md 照實寫「網頁入口尚未接上」。目標段「使用者在網頁按上傳」改讀為「網頁接上後」。
 8. B 級：verifier 通過＋CI 綠由 developer-agent 自合。
-（留空，由 developer-agent 與維護者填。）
+
+（developer-agent 2026-10-28 14:55 補裁決 A1–A6，回應 verifier 合約階段的阻擋）
+- **A1 路徑更正**：範圍清單的 `platform/abf_platform/datasets.py` 是筆誤，實際是 `platform/abf_platform/actions/datasets.py`（`_cloud_target`）。規則照舊：不准新增公開函式與參數名。
+- **A2 `workdir_scheme` 的形狀**：簽名是 `workdir_scheme(ce)`，吃已取得的環境 dict，與 `workdir_bucket(ce)` 對稱，不開資料庫、不連線。回 `"gs"` 或 `"s3"`；其他平台丟 `CloudPathError`。測試 4 照此寫。`workdir_bucket(ce)` 對 AWS 認 `s3://` 開頭的 `workDir`；Google 的回傳與錯誤訊息逐字不變。錯誤訊息裡「只有 Google Batch 環境可以」要改成同時提到 AWS Batch，這是對既有斷言的有意更新，也列進下面的 A3。
+- **A3 必須更新的既有斷言再加這幾條**（PR 說明逐條寫以前／以後／理由，其餘照舊不准動）：
+  - (a) `test_aws_launch.py` 的 `test_aws_environment_accepts_exactly_preflight_launch_cancel_and_pipeline_files`：以前，AWS 可排的種類是 preflight／launch／cancel／pipeline_files，put_upload 被拒。以後多一個 put_upload；clean_work 仍被拒，訊息仍含 `aws-clean`。理由是本任務本來就要打開 put_upload。
+  - (b) `test_aws_ce.py` 的 `test_jobs_other_than_the_preflight_are_refused_in_plain_words`：從迴圈中移除 `put_upload`，其餘種類照舊。
+  - (c) `test_aws_ce.py` 的 `test_no_new_write_path_for_aws`：put_upload 改為允許，但其他寫入路徑照舊禁止。允許的唯一出口是 `site.start_fed`／`site.run_fixed`，由新測試 7、16 把關。
+  - (d) SEQERA_PARITY.md 的 AWS 列改成 `Have (create + check + launch + cancel + upload); clean in aws-clean`。`test_aws_ce.py:927` 與 `test_aws_launch.py:1228` 的逐字比對跟著換成這句。
+  - (e) `test_workdir_bucket_needs_a_google_batch_environment` 的錯誤訊息比對（若有逐字比對）跟著 A2 的新訊息換。
+  - 行號以開工時 `git show origin/v3:` 為準；名字找不到就在帳本記一行，不自己猜著改別的測試。
+- **A4 head-object 失敗**：跟 Google 版的 `_cloud_size` 失敗處理一致。executor 先讀 `put_upload.py` 的 Google 分支，照它的語意做（若 Google 是「成功但沒核對、暫存檔保留」，AWS 也一樣），並在帳本寫一行「Google 版的行為是 X，AWS 照做」。不變的底線：大小沒核對相符，就不刪暫存檔（TC-061）。
+- **A5 平台主機沒裝 aws、或 aws 無法啟動**：結果是失敗，訊息用白話寫「平台主機上找不到 aws 指令，請管理者安裝 AWS CLI」，暫存檔保留，不露出堆疊。要加一條測試：假的 `start_fed` 丟 `FileNotFoundError`，就得到這個結果。
+- **A6 環境變數**：沿用 `aws_preflight._aws_env`（含 `AWS_PAGER`、`AWS_EC2_METADATA_DISABLED`、保留 `AWS_CA_BUNDLE`）。不另做一份，也不要求剛好四個變數；TC-043 的「金鑰類 AWS_*、ABF_* 不出現」照舊。
+- **A7 jobs.py 的 AWS 拒絕訊息**：clean_work 的訊息改成只提 `aws-clean`（例「clean comes later in aws-clean」），仍要含「尚未支援」。
+- verifier 補寫的禁字 TC（TC-114、TC-090），照收。
 
 ## 專長守則（backend）
 
