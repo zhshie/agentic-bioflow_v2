@@ -402,7 +402,6 @@ def test_suffix_path_column_inside_roots_passes():
     # TC-006
     b = render(samplesheet=[["id", "bam_path"], ["s1", "/data/storage/rawdata/s1.bam"]])
     assert "s1,/data/storage/rawdata/s1.bam" in b["files"]["samplesheet.csv"]
-    assert "s1,/data/storage/rawdata/s1.bam" in files["samplesheet.csv"]
 
 
 @pytest.mark.parametrize("col", ["profile", "filepath_note", "genome"])
