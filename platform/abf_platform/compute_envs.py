@@ -2,7 +2,7 @@
 """Compute environments in the Seqera model: a type, a config, and the NAME of a credential.
 
 Slurm is the only type that can run. Google Cloud Batch can be created and checked (by the agent on the platform
-host; launching comes later). AWS Batch can be created and checked the same way (launching: aws-launch). The other 11 types Seqera lists are stored
+host; launching comes later). AWS Batch can be created and checked the same way (launching: aws-launch). Azure Batch can be created and checked as well (launching: azure-launch). The other 10 types Seqera lists are stored
 (their settings, nothing more) with the status `unsupported`: no code runs for them, no cloud
 library is imported, and the check and listing refuse them at once. Nothing here holds a
 credential: a value that looks like one is refused, and only the credential's name is kept.
@@ -34,8 +34,9 @@ KINDS = {
 SUPPORTED = "slurm-platform"                                  # the type that runs through an agent on the cluster
 GOOGLE_BATCH = "googlebatch-platform"
 AWS = "awsbatch-platform"
+AZURE = "azbatch-platform"
 PLATFORM_HOST_TYPES = (GOOGLE_BATCH, AWS)                     # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch, aws-launch)
-CHECK_ONLY_TYPES = ()                                         # 新雲端類型先放這裡，只開預檢
+CHECK_ONLY_TYPES = (AZURE,)                                      # 新雲端類型先放這裡，只開預檢
 CLOUD_JOB_KINDS = {                                           # the job kinds each platform-host type takes; the rest is refused in plain words (the clean kind is split in two pieces: test_cleanup_store allows that word in no other file of this package)
     GOOGLE_BATCH: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
     AWS: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
@@ -118,6 +119,9 @@ _VALUE_PATTERNS = [
     re.compile(r"\b(?:password|passwd|secret|api[_-]?key|access[_-]?key|secret[_-]?key|token)\w*\s*[=:]\s*\S", re.I),
     re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}"),                # 014a: a model key typed into the wrong field is refused by name
     re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}"),
+    re.compile(r"AccountKey\s*=", re.I),                       # an Azure connection string or SAS typed into the wrong field
+    re.compile(r"SharedAccessSignature\s*=", re.I),
+    re.compile(r"[?&]sig=[A-Za-z0-9%+/=]{16,}"),
 ]
 
 
@@ -458,6 +462,68 @@ def _check_aws(config, agent):
         raise CEError("; ".join(errors))
 
 
+_AZURE_CONFIG = _COMMON_CONFIG + ("location", "batchAccountName", "storageAccountName", "workDir", "pool", "spot", "maxvCpus")
+_AZURE_LOCATION = re.compile(r"^[a-z][a-z0-9]{2,39}\Z")
+_AZURE_ACCOUNT = re.compile(r"^[a-z0-9]{3,24}\Z")
+_AZURE_CONTAINER = re.compile(r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]\Z")
+_AZURE_POOL = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")
+_AZURE_OLD_KEYS = ("region", "vmType")
+
+
+def _check_azure(config, agent):
+    """An Azure Batch environment: every problem is listed at once, each naming its key; a bad value is shown 60 characters at most.
+    It needs an agent (the one on the platform host). No credential is held here: the credential file stays on the agent's side
+    and only its name is kept. The pool must already exist (the preflight only reads; nothing here creates one)."""
+    unknown = sorted(set(config) - set(_AZURE_CONFIG))
+    if unknown:
+        msg = "unknown setting for an Azure Batch environment: %s (known: %s)" % (", ".join(str(k)[:60] for k in unknown), ", ".join(_AZURE_CONFIG))
+        if any(k in _AZURE_OLD_KEYS for k in unknown):
+            msg += ". 這是舊版的設定，請刪除後重建這個計算環境 (delete this environment and create it again)"
+        raise CEError(msg)
+    errors = []
+    if not agent:
+        errors.append("agent is required: an Azure Batch environment is checked by the agent that runs on the platform host, "
+                      "so name it with --agent (需要指定一個站台代理，就是平台主機上的那個)")
+    for key in ("location", "batchAccountName", "storageAccountName", "workDir", "pool"):
+        if config.get(key) is None or config.get(key) == "":
+            errors.append("%s is required for an Azure Batch environment (缺 %s)%s" % (key, key, ", such as westeurope" if key == "location" else ""))
+    v = config.get("location")
+    if v not in (None, "") and not (isinstance(v, str) and _AZURE_LOCATION.match(v)):
+        errors.append("location must be an Azure region name in lower case without spaces, such as westeurope (got %s)" % _shown(v))
+    for key in ("batchAccountName", "storageAccountName"):
+        v = config.get(key)
+        if v not in (None, "") and not (isinstance(v, str) and _AZURE_ACCOUNT.match(v)):
+            errors.append("%s must be 3 to 24 lower-case letters and digits (got %s)" % (key, _shown(v)))
+    v = config.get("workDir")
+    if v not in (None, ""):
+        problem = None
+        if not isinstance(v, str) or not v.startswith("az://"):
+            problem = "workDir must be an az:// URL with a folder, such as az://lab-container/work (got %s)" % _shown(v)
+        else:
+            container, _, sub = v[5:].partition("/")
+            if not _AZURE_CONTAINER.match(container) or "--" in container:
+                problem = ("workDir: the container name must be 3 to 63 characters of lower-case letters, digits and -, "
+                           "starting and ending with a letter or digit (got %s)" % _shown(container))
+            elif not sub.strip("/"):
+                problem = "workDir needs a folder after the container, such as az://lab-container/work (got %s)" % _shown(v)
+            elif ".." in sub.split("/") or any(ord(c) < 32 or ord(c) == 127 for c in sub) or len(v) > MAX_PATH:
+                problem = "workDir: the folder part must not contain '..' or control characters, or be longer than %d" % MAX_PATH
+            else:
+                config["workDir"] = "az://" + container + "/" + sub.rstrip("/")
+        if problem:
+            errors.append(problem)
+    v = config.get("pool")
+    if v not in (None, "") and not (isinstance(v, str) and _AZURE_POOL.match(v)):
+        errors.append("pool must be the pool's id (letters, digits, - and _, at most 64; the pool must already exist) (got %s)" % _shown(v))
+    if config.get("spot") is not None and not isinstance(config["spot"], bool):
+        errors.append("spot must be true or false")
+    v = config.get("maxvCpus")
+    if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
+        errors.append("maxvCpus must be a whole number from 1 to 10000")
+    if errors:
+        raise CEError("; ".join(errors))
+
+
 def _check_other(config):
     """A type that is only modelled: no field schema, only the common checks."""
     for key, value in config.items():
@@ -514,6 +580,8 @@ def clean(fields):
         _check_gcb(config, agent)
     elif platform == AWS:
         _check_aws(config, agent)
+    elif platform == AZURE:
+        _check_azure(config, agent)
     else:
         _check_other(config)
     owner = fields.get("owner_user_id")
@@ -772,6 +840,10 @@ def snapshot(row_or_view):
         return {"name": v["name"], "platform": v["platform"], "credentialsId": v["credentialsId"],
                 "region": c.get("region"), "workDir": c.get("workDir"), "jobQueue": c.get("jobQueue"),
                 "spot": c.get("spot"), "maxvCpus": c.get("maxvCpus")}
+    if v["platform"] == AZURE:
+        return {"name": v["name"], "platform": v["platform"], "credentialsId": v["credentialsId"],
+                "location": c.get("location"), "batchAccountName": c.get("batchAccountName"),
+                "storageAccountName": c.get("storageAccountName"), "workDir": c.get("workDir"), "pool": c.get("pool")}
     library = next((e.get("value") for e in (c.get("environment") or []) if isinstance(e, dict)
                     and e.get("name") == "NXF_SINGULARITY_LIBRARYDIR"), None)      # the one variable a preflight needs; no other is carried
     return {"name": v["name"], "platform": v["platform"], "workDir": c.get("workDir"), "launchDir": c.get("launchDir"),

@@ -813,7 +813,7 @@ def test_the_other_types_stay_unsupported(ip):
     # TC-082
     from abf_platform import compute_envs
     from test_station_envs import UNSUPPORTED
-    assert len(UNSUPPORTED) == 11
+    assert len(UNSUPPORTED) == 10
     for pid, cfg in UNSUPPORTED.items():
         ce = compute_envs.create(ip.state_db, {"name": "x-" + pid, "platform": pid, "config": cfg})
         assert ce["status"] == "unsupported", pid
@@ -849,8 +849,9 @@ def test_the_type_constants():
     # aws-launch changed this on purpose: before, PLATFORM_HOST_TYPES == (GCB,) and CHECK_ONLY_TYPES == ("awsbatch-platform",);
     # now AWS can be launched too, so it is a platform-host type and nothing is check-only any more.
     assert compute_envs.PLATFORM_HOST_TYPES == (GCB, "awsbatch-platform")
-    assert compute_envs.CHECK_ONLY_TYPES == ()
-    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, "awsbatch-platform")
+    # azure-ce-type changed this on purpose: Azure Batch is created and checked but not launched, so it is the one check-only type.
+    assert compute_envs.CHECK_ONLY_TYPES == ("azbatch-platform",)
+    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, "awsbatch-platform", "azbatch-platform")
 
 
 def doc(name):
@@ -863,7 +864,7 @@ def test_docs_list_every_gcb_key_and_check():
     assert re.search(r"`googlebatch-platform` \| Google Cloud Batch \| Slurm-like confirmed launch and cancel on the platform host "
                      r"\(resume: not yet\)", d)
     # aws-launch changed this sentence on purpose (plan A9 d): AWS Batch can run now
-    assert "Slurm, Google Cloud Batch and AWS Batch can run; the other eleven types can be modelled only" in d
+    assert "Slurm, Google Cloud Batch and AWS Batch can run; Azure Batch can be created and checked; the other ten types can be modelled only" in d
     for key in ("project", "location", "workDir", "spot", "bootDiskSize", "bootDiskImage", "serviceAccountEmail", "network",
                 "subnetwork", "usePrivateAddress", "labels", "maxvCpus") + tuple(CHECK_NAMES):
         assert "`%s`" % key in d, key

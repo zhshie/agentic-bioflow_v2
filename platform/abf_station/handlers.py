@@ -13,7 +13,7 @@ quoted. What goes back to the platform is the agent's own short wording, never t
 import re
 from datetime import datetime, timezone
 
-from . import aws_preflight, cancel, clean, fetch, gcb_preflight, launch, pipeline_files, put_upload, readlog, rules
+from . import aws_preflight, azure_preflight, cancel, clean, fetch, gcb_preflight, launch, pipeline_files, put_upload, readlog, rules
 from .site import quote
 
 JOB_KINDS = ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files")
@@ -73,6 +73,11 @@ def handle(job, ctx):
             # an AWS Batch environment is checked here too: read-only and free (預檢不計費), it creates no Batch job
             res = aws_preflight.run_preflight(aws_preflight.clean_environment(ce),
                                               cred_path=aws_preflight.credentials_path(ctx.settings_file))
+            return "done", _verdict(res["checks"])
+        if kind == "preflight" and isinstance(ce, dict) and ce.get("platform") == azure_preflight.TYPE:
+            # an Azure Batch environment is checked here too: read-only and free (預檢不計費), it creates no pool and no job
+            res = azure_preflight.run_preflight(azure_preflight.clean_environment(ce),
+                                                cred_path=azure_preflight.credentials_path(ctx.settings_file))
             return "done", _verdict(res["checks"])
         env = rules.clean_environment(ce)
         if kind == "preflight":

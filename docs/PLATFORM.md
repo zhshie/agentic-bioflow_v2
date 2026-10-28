@@ -422,9 +422,47 @@ Everything is read-only. If the connection goes away during one of these probes,
 
 Fourteen tools. Nine are read-only (`readOnlyHint`): `list_runs`, `get_run`, `list_compute_envs`, `get_compute_env`, `list_agents`, `list_site_files`, `read_task_log`, `run_outputs` and `list_used_pipelines`. `list_used_pipelines` (guided-launch-1) lists the caller's own earlier launches, one per pipeline and revision, newest first, from the confirmations; it never waits for the site. `list_site_files` and `read_task_log` each put one read-only question in the job queue and wait for the answer; neither can name a command or a kind of job. `run_outputs` (results-outputs) never waits: it shows the newest answer to the question "what is in `<run folder>/results`", or queues that question and says `loading`. The other five, `launch`, `cancel` (spec 009c), `resume`, `relaunch` (spec 009e, see "Resume and relaunch") and `forget` (keep-submissions, see "Forget"), are marked as writing (`cancel` also as destructive) but start and stop nothing by themselves: each builds what the terminal command builds, writes a pending request and asks the person (section 9, "The confirmation page"). They have no argument that could say yes. There is no tool that creates or changes an environment, a user or a password: that is the command line.
 
+### Azure Batch
+
+An `azbatch-platform` environment (azure-ce-type) is served the way an AWS Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused). The people who use Azure install nothing. It can be **created and checked** only; a launch, a listing, a record fetch, a task log, a clean and an upload are all refused in plain words (尚未支援送出；下一步 azure-launch), and the automatic choice of an environment never picks it.
+
+| Key | Rule |
+|---|---|
+| `location` | required; an Azure region name in lower case, such as `westeurope` (`--location`, shared with Google Batch) |
+| `batchAccountName` | required; the Batch account, 3 to 24 lower-case letters and digits, such as `labbatch` (`--batch-account`) |
+| `storageAccountName` | required; the storage account, 3 to 24 lower-case letters and digits, such as `labstore` (`--storage-account`) |
+| `workDir` | required; `az://<container>/<folder>` with a folder, such as `az://lab-container/work`; the container 3 to 63 characters of lower-case letters, digits and `-`; no `..`; a trailing slash is dropped |
+| `pool` | required; the id of a pool that **already exists**, such as `lab-pool` (`--pool`). The operator creates it beforehand; this slice creates no pool |
+| `spot` | optional true or false (`--spot`, `--no-spot`); stored only, it maps to Nextflow `lowPriority` when a launch is built later |
+| `maxvCpus` | optional whole number 1 to 10000 |
+| `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
+
+Every problem is listed at once, each naming its key; a key not in this table is refused. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`); it is only a label, and it may be left out when the environment is created (the preflight then reports `credential_name` as failed). The credential file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. Account keys are used; Microsoft Entra sign-in and a Batch account in user subscription mode are not supported in this slice (user subscription 模式的 Batch 帳號本片不支援). The agent looks for the file at `ABF_STATION_AZURE_CREDENTIALS`, else `<deployment>/_personal/azure-credentials`, an INI file of which only the `[default]` section is used (mode 600 on Linux and WSL):
+
+```
+[default]
+batch_account_key = <the Batch account key>
+storage_account_key = <the storage account key>
+```
+
+`storage_sas_token` may stand in for `storage_account_key`. The `az` command line must be installed on the platform host.
+
+| Check | What the agent does |
+|---|---|
+| `credential_name` | the environment has a credential name |
+| `credential_file` | the file exists, is a regular file and (not on Windows) is not readable by others; when it is missing the message says where to put it and `chmod 600` |
+| `credential_shape` | the file has a `[default]` section with `batch_account_key` and one of `storage_account_key` or `storage_sas_token`; only missing key names are ever shown |
+| `az` | `az` is installed (`unchecked`, not `fail`, when it is not) |
+| `pool` | `az batch pool show` finds the pool and its state is `active` |
+| `storage` | `az storage container exists` says the container of `workDir` exists |
+
+**預檢不計費 (the preflight costs nothing):** it only reads. It asks for one pool's state and one container's existence; it creates no pool (creates no pool, no job, writes no blob). Each `az` call is limited to 30 seconds; a timeout fails that one check. The keys are handed to `az` in the environment of that one call, with an empty config folder of its own that is deleted afterwards, never in the command line; the agent's own `AZURE_*` and `ABF_*` variables are not passed on.
+
+A record made before this type was checked (status `unsupported`, with the old keys `region` and `vmType`) is still listed and shown, but it cannot be checked or updated: the message says `請刪除後重建這個計算環境`. Delete it and create it again.
+
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch and AWS Batch can run; the other eleven types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch and AWS Batch can run; the other eleven types can be modelled only. The other eleven are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch and AWS Batch can run; Azure Batch can be created and checked; the other ten types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch and AWS Batch can run; Azure Batch can be created and checked; the other ten types can be modelled only. The other ten are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -435,7 +473,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `moab-platform` | Moab | modelled only |
 | `awsbatch-platform` | AWS Batch | checked and launched on the platform host (upload, clean, resume: not yet) |
 | `awscloud-platform` | AWS Cloud | modelled only |
-| `azbatch-platform` | Azure Batch | modelled only |
+| `azbatch-platform` | Azure Batch | checked on the platform host (launch: not yet) |
 | `azcloud-platform` | Azure Cloud | modelled only |
 | `googlebatch-platform` | Google Cloud Batch | Slurm-like confirmed launch and cancel on the platform host (resume: not yet) |
 | `googlecloud-platform` | Google Cloud | modelled only |
@@ -445,7 +483,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 
 Seqera Compute is not a type here: it is Seqera's own hosted service and has no counterpart outside Seqera.
 
-For a modelled type, give the settings as JSON: `abf-platform ce create --name=az1 --platform=azbatch-platform --config-json=@settings.json`. Only the shared checks apply (name, credential name, the credential scan); there is no field list.
+For a modelled type, give the settings as JSON: `abf-platform ce create --name=az1 --platform=azcloud-platform --config-json=@settings.json`. Only the shared checks apply (name, credential name, the credential scan); there is no field list.
 
 ## 9. Launch and cancel
 

@@ -782,6 +782,16 @@ For the administrator of a platform that has two users, alice and bob, and an ol
 3. **Give the environments their owners.** `abf-platform ce update <env> --owner <U>` for each environment that has none; this claims its unowned agent too. Restarting the platform does the same for an agent whose environments all belong to one user.
 4. **Check the walls.** With alice's personal access token call `list_agents` and `get_compute_env`: only her own show. With bob's token ask `get_compute_env` for alice's environment and for a name that does not exist: the two answers are the same words ("not found").
 
+## Azure Batch environment (azure-ce-type): the maintainer and the reviewer check
+
+The automatic tests use a fake `az` runner and a fake `which`; they call no network and no real Azure. The steps below read a real Azure account once. 預檢不計費 (the preflight costs nothing): it creates no pool and no job, so the Azure bill must show no new item afterwards.
+
+1. **TC-089: the maintainer prepares by hand, once.** Create a Batch account, a storage account, a blob container and one pool (the pool must already exist). Install the Azure CLI on the platform host. Put `[default]` with `batch_account_key` and `storage_account_key` in `<agent deployment>/_personal/azure-credentials` (mode 600), or point `ABF_STATION_AZURE_CREDENTIALS` at it.
+2. **TC-089: create the environment.** `abf-platform ce create --name az1 --platform azbatch-platform --agent <agent> --credentials azure-lab --location <region> --batch-account <name> --storage-account <name> --work-dir az://<container>/work --pool <pool>`. Check: every check is shown; when all pass, `ce show az1` says `available`; neither `ce show` nor `platform.db` holds any piece of a key; the Azure bill shows no new item.
+3. **TC-090: the key-only call.** Check that `az batch pool show` really works with only the key variables and without `az batch account login`. If it does not, the `pool` check fails: report it to the developer-agent, do not change the check by hand.
+4. **TC-131: the reviewer, scope.** Run `git diff --name-only` against the base: only the files in the plan's file list, the existing tests that the rulings list, and the tests recorded in the ledger. No web file, nothing in `abf_launch/`, no `gcb_preflight.py`, `aws_preflight.py`, `launch.py`, `cloud_store.py` or `clean.py`.
+5. **TC-132: the reviewer, existing assertions.** Run `git diff` on each existing test file: the only changes are Azure added to a set, a count or a document line, Azure moved out of the unsupported list, `eleven` turned `ten`, and `azbatch-platform` swapped for a type that is still unsupported. No assertion is deleted or loosened, and nothing about AWS, Google or Slurm changed.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in
