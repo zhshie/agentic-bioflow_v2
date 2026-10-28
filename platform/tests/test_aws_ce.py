@@ -652,7 +652,7 @@ def test_jobs_other_than_the_preflight_are_refused_in_plain_words(ip):
     # aws-launch: launch_nextflow, cancel_run and pipeline_files are taken now; the rest stays refused
     for kind in ("launch_nextflow", "cancel_run", "pipeline_files"):
         jobs.check_target(ip.state_db, "aws1", kind)
-    for kind in ("clean_work", "list_site_files"):      # aws-upload: put_upload is taken now
+    for kind in ("list_site_files",):      # aws-upload: put_upload is taken now; aws-clean: clean_work too
         with pytest.raises(jobs.JobRefused) as e:
             jobs.check_target(ip.state_db, "aws1", kind)
         msgs.append(str(e.value))
@@ -660,7 +660,7 @@ def test_jobs_other_than_the_preflight_are_refused_in_plain_words(ip):
         jobs.enqueue_listing(ip.state_db, "aws1", "/x")
     msgs.append(str(e.value))
     for msg in msgs:
-        assert "尚未支援" in msg and ("aws-upload" in msg or "aws-clean" in msg) and "set one with" not in msg, msg
+        assert "尚未支援" in msg and "aws-upload" not in msg and "aws-clean" not in msg and "set one with" not in msg, msg
     assert jobs_count(ip) == before
     jobs.enqueue_preflight(ip.state_db, "aws1")      # the preflight is the one job it takes
     assert jobs_count(ip) == before + 1
@@ -825,8 +825,9 @@ def test_no_new_write_path_for_aws(ip):
     for kind in ("launch_nextflow", "cancel_run"):      # aws-launch: the two writes that are built, each behind a confirmation
         jobs.check_target(ip.state_db, "aws1", kind)
     jobs.check_target(ip.state_db, "aws1", "put_upload")      # aws-upload: allowed; its only exit is site.start_fed / site.run_fixed
+    jobs.check_target(ip.state_db, "aws1", "clean_work")      # aws-clean: allowed; its only exit is site.run_fixed in the agent
     with pytest.raises(jobs.JobRefused):
-        jobs.check_target(ip.state_db, "aws1", "clean_work")
+        jobs.check_target(ip.state_db, "aws1", "list_site_files")
 
 
 # ---- the safety net: words, secrets, data shape ----------------------------------------------------------------------
@@ -839,9 +840,9 @@ def test_every_refusal_says_what_to_do_and_hides_internals(ip, monkeypatch):
     msgs["agent"] = refused(ip, agent=None)
     assert "--agent" in msgs["agent"]
     with pytest.raises(jobs.JobRefused) as e:
-        jobs.check_target(ip.state_db, "avail", "clean_work")
+        jobs.check_target(ip.state_db, "avail", "list_site_files")
     msgs["launch"] = str(e.value)
-    assert "aws-clean" in msgs["launch"]
+    assert "尚未支援" in msgs["launch"] and "aws-clean" not in msgs["launch"]
     _old_row(ip)
     rc, out = ip.run("ce", "preflight", "old")
     msgs["old"] = out
@@ -924,7 +925,7 @@ def test_docs_list_every_aws_key_and_check():
     assert "headQueue" in d and "computeQueue" in d and "請刪除後重建" in d
     par = doc("SEQERA_PARITY.md")
     row = [ln for ln in par.splitlines() if "`awsbatch-platform`" in ln][0]
-    assert "Have (create + check + launch + cancel + upload); clean in aws-clean" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel + upload + clean)" in row and row.rstrip().endswith("[ ] |")
     t = doc("TESTING.md")
     assert "aws-ce-type" in t and "預檢不計費" in t and "git diff" in t
     for text in (d, par, t):

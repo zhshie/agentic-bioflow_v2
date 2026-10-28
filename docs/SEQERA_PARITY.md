@@ -92,7 +92,7 @@ turns supported only after a run on a real account the maintainer opened.
 | IBM Spectrum LSF (`lsf-platform`) | Modelled, needs a real account | [ ] |
 | Grid Engine (`uge-platform`) | Modelled, needs a real account | [ ] |
 | Moab (`moab-platform`) | Modelled, needs a real account | [ ] |
-| AWS Batch (`awsbatch-platform`) | Have (create + check + launch + cancel + upload); clean in aws-clean | [ ] |
+| AWS Batch (`awsbatch-platform`) | Have (create + check + launch + cancel + upload + clean) | [ ] |
 | AWS Cloud, one VM (`awscloud-platform`) | Modelled, needs a real account | [ ] |
 | Azure Batch (`azbatch-platform`) | Modelled, needs a real account | [ ] |
 | Azure Cloud, one VM (`azcloud-platform`) | Modelled, needs a real account | [ ] |

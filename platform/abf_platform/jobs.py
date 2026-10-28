@@ -109,8 +109,7 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
     status = row["status"]
     if row["platform"] in compute_envs.CLOUD_JOB_KINDS and kind not in compute_envs.CLOUD_JOB_KINDS[row["platform"]]:
         if row["platform"] == compute_envs.AWS:
-            raise JobRefused("%s is an AWS Batch environment: this job kind is not built for it yet (尚未支援); "
-                             "clean comes later in aws-clean (清理在之後的 aws-clean)" % ce_name)
+            raise JobRefused("%s is an AWS Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
         raise JobRefused("%s is a Google Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
     if row["platform"] in compute_envs.CHECK_ONLY_TYPES and kind != "preflight":
         raise JobRefused("%s is a %s environment: it can be created and checked, but sending a run to it is not built yet "
