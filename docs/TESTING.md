@@ -814,3 +814,13 @@ The automatic tests use fakes for the `aws` program and never touch the network.
 2. **File.** Stage one small file (about 10 MB) in your uploads folder and queue the upload for `aws1`.
 3. **Expected.** The object appears at `s3://<workDir bucket>/uploads/<you>/<name>` with the same size, the answer says the staged copy was removed, and no key id or credential path appears in the answer or in the agent log.
 4. **Over the limit.** Try a file over 2 GB: the answer gives the `aws s3 cp ... --recursive` line and nothing is uploaded.
+
+## Cleaning an AWS Batch work folder (aws-clean): the maintainer checks by hand
+
+The automatic tests use fakes for the `aws` program and never touch the network. A real clean deletes real objects from a real S3 bucket: do not start it before the maintainer says go, and only on a test bucket and a prefix that holds nothing you need. The real output format of `aws s3 ls --recursive` and `aws s3 rm --recursive` has not been seen by the tests (UNVERIFIED), so this step is also where it is checked.
+
+1. **Environment.** An available AWS Batch environment (`aws1`), the credential file at `ABF_STATION_AWS_CREDENTIALS` (mode 600), a finished run `r1` whose head process is gone, and a test prefix `s3://<test bucket>/runs/r1/work/` holding a few small files, plus a neighbour such as `runs/r1/work2/` and `runs/r1/results/`.
+2. **Ask and answer.** Open the clean request, read the screen (it names the prefix with a trailing slash, says results are untouched, shows no amount of money) and confirm.
+3. **Expected.** Only the objects under `runs/r1/work/` are gone; `work2/` and `results/` are still there; the answer says 已刪除 and `work_cleaned_at` is recorded. List the prefix with the aws CLI yourself to see the real line format, and tell the developer if a line does not look like `date time size key`.
+4. **Run it again.** The prefix is empty: the answer says there was nothing to delete and nothing is removed.
+5. **Versioning.** If the test bucket has versioning on, check in the console that old versions are still there after the clean (the documents say they are, and they are still billed).

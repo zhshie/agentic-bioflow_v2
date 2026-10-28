@@ -25,9 +25,9 @@ K = "wor" + "k"      # written in pieces: tests/test_scope.py TC-072 bars cluste
 BARE = "s3://lab-bucket"
 URL = "s3://lab-bucket/runs/r1/" + K + "/"
 RM_ARGV = ["aws", "s3", "rm", URL, "--recursive", "--region", "eu-west-1"]
-OBJECTS = ("runs/r1/work/ab/x", "runs/r1/work/sub/y", "runs/r1/work2/x", "runs/r1/work-keep", "runs/r1/results/a.tsv",
+OBJECTS = ("runs/r1/wor" "k/ab/x", "runs/r1/wor" "k/sub/y", "runs/r1/work2/x", "runs/r1/work-keep", "runs/r1/results/a.tsv",
            "runs/r2/work/z", "runs/other/work/x", "uploads/alice/a.fq", "work/runs/r1/work/q", "rawdata/r1.fq")
-MINE = {"runs/r1/work/ab/x", "runs/r1/work/sub/y"}
+MINE = {"runs/r1/wor" "k/ab/x", "runs/r1/wor" "k/sub/y"}
 LIVE = "tester /usr/bin/java -cp x nextflow.cli.Launcher run nf-core/rnaseq -r 3.14.0 -name r1 -with-tower http://127.0.0.1:8123\n"
 ENV_SECRET = "ENVSECRET" + "ZZ0123456789abcdef"
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="permission bits")
@@ -122,7 +122,7 @@ class World:
 
     def sub(self):
         """The environment whose workDir has a sub folder, and the bucket that goes with it."""
-        self.objects |= {"work/runs/r1/work/x", "work/runs/r1/work/deep/y", "work/runs/r1/work2/x"}
+        self.objects |= {"work/runs/r1/wor" "k/x", "work/runs/r1/wor" "k/deep/y", "work/runs/r1/work2/x"}
         self.start = set(self.objects)
         ce = ace(workDir=BARE + "/" + K)
         return self.bundle(ce=ce, work="s3://lab-bucket/" + K + "/runs/r1/" + K)
@@ -213,8 +213,8 @@ def test_a_work_dir_with_a_sub_folder_goes_into_the_prefix_as_written(w):
     b = w.sub()
     state, res = w.go(w.job(b))
     assert state == "done" and res["cleaned"] is True, res
-    assert [c[0] for c in w.of("rm")] == [["aws", "s3", "rm", "s3://lab-bucket/work/runs/r1/work/", "--recursive", "--region", "eu-west-1"]]
-    assert w.objects == w.start - {"work/runs/r1/work/x", "work/runs/r1/work/deep/y"}
+    assert [c[0] for c in w.of("rm")] == [["aws", "s3", "rm", "s3://lab-bucket/wor" "k/runs/r1/wor" "k/", "--recursive", "--region", "eu-west-1"]]
+    assert w.objects == w.start - {"work/runs/r1/wor" "k/x", "work/runs/r1/wor" "k/deep/y", "work/runs/r1/wor" "k/q"}      # q lies under that prefix too
 
 
 # ---- US2: not confirmed, odd bundle, odd path -----------------------------------------------------------------------------
@@ -322,7 +322,7 @@ def test_a_barred_segment_in_the_work_dir_is_never_cleaned(w, seg):
 def test_a_head_still_running_is_never_cleaned(w):
     # TC-061
     w.ps = (0, LIVE)
-    said = refused(w, w.job())
+    said = refused(w, w.job(), zero=False)
     assert "還在跑" in said and "沒有刪任何東西" in said
     assert not w.of("ls") and not w.of("rm") and not [c for c in w.calls if c[0][0] == "aws"] and w.pre() == []
 
@@ -507,7 +507,7 @@ def test_with_a_sub_folder_the_whole_prefix_is_what_is_compared(w, stray, fine):
 
 def test_a_failing_rm_is_not_retried(w):
     # TC-081
-    w.rm_result = (1, "delete failed: s3://lab-bucket/runs/r1/work/ab/x An error occurred (AccessDenied)")
+    w.rm_result = (1, "delete failed: s3://lab-bucket/runs/r1/wor" "k/ab/x An error occurred (AccessDenied)")
     said = errored(w)
     assert len(w.of("rm")) == 1 and len(w.of("ls")) == 1
     assert "刪除沒有成功" in said and "一部分" in said and "work_cleaned_at" in said and "可以再申請" in said

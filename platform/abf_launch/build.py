@@ -316,8 +316,8 @@ def prepare_cancel(state, run, owner=None):
 
 def clean_work_path(view_snapshot, row):
     """The one folder that is cleaned for this run: `<run folder>/work` on a Slurm site (a resume goes on in the first launch's
-    folder, so the folder of the hand-off record is the one), `<workDir>/runs/<run>/work` in a Google Batch bucket."""
-    if view_snapshot.get("platform") == bundle_mod.GCB:
+    folder, so the folder of the hand-off record is the one), `<workDir>/runs/<run>/work` in a Google Batch or AWS Batch bucket."""
+    if view_snapshot.get("platform") in (bundle_mod.GCB, bundle_mod.AWS):
         return "%s/runs/%s/work" % (view_snapshot["workDir"], row["run_name"])
     return row["run_folder"] + "/work"
 
@@ -377,7 +377,7 @@ def prepare_clean(state, run, owner=None):
                "(the environment changed after the run was sent)" % (row["ce"], run))
     if launched != ce.get("workDir"):
         raise Refusal(changed)
-    if ce.get("platform") != bundle_mod.GCB and posixpath.dirname(row["run_folder"]) != ce["workDir"] + "/runs":
+    if ce.get("platform") not in (bundle_mod.GCB, bundle_mod.AWS) and posixpath.dirname(row["run_folder"]) != ce["workDir"] + "/runs":
         raise Refusal(changed)
     bundle = {"version": 1, "run_name": row["run_name"], "slurm_job_id": row["slurm_job_id"], "run_folder": row["run_folder"],
               "agent": row["agent"], "ce": ce, "work": clean_work_path(ce, row)}
@@ -773,6 +773,7 @@ CLEAN_KEEPS = "結果（results）、原始資料與分析資料夾不會被動�
 # The flag is written as two adjacent literals so the TC-157 scan (only abf_station/launch.py may spell it) stays true; the shown text is unchanged.
 CLEAN_NO_RESUME = "刪掉之後這個 run 不能再續跑（-" "resume）；要再算一次，請當成新分析重新送出。"
 CLEAN_BUCKET = "刪除的是 bucket 裡這個前綴下的物件。"
+CLEAN_S3 = "刪除的是 S3 bucket 裡這個前綴下的物件，只有這一個前綴；bucket 裡其他的資料夾與檔案不會被動。"
 CLEAN_SOFT = ("新建的 bucket 預設有 7 天軟刪除，物件在保留期內仍可還原；若 bucket 另外開了版本控制，舊版本也會一併刪掉。"
               "你的 bucket 是否開著，以你自己的設定為準。")
 
@@ -780,13 +781,16 @@ CLEAN_SOFT = ("新建的 bucket 預設有 7 天軟刪除，物件在保留期內
 def clean_screen(bundle, row):
     """What the person is asked before the work folder of one finished run is deleted: which folder, what is not touched, and that
     the run cannot be resumed afterwards. A bucket gets two more sentences. No money, no inner words."""
+    platform = (bundle.get("ce") or {}).get("platform")
     lines = [terminal.PREFIX + "== 清理確認：只會刪除下面這一個 run 的中間檔資料夾 ==",
              terminal.pair("run 名稱", bundle["run_name"]),
-             terminal.PREFIX + terminal.esc(CLEAN_DELETES) + terminal.esc(bundle["work"]),
+             terminal.PREFIX + terminal.esc(CLEAN_DELETES) + terminal.esc(bundle["work"] + ("/" if platform == bundle_mod.AWS else "")),
              terminal.PREFIX + terminal.esc(CLEAN_KEEPS),
              terminal.PREFIX + terminal.esc(CLEAN_NO_RESUME)]
-    if (bundle.get("ce") or {}).get("platform") == bundle_mod.GCB:
+    if platform == bundle_mod.GCB:
         lines += [terminal.PREFIX + terminal.esc(CLEAN_BUCKET), terminal.PREFIX + terminal.esc(CLEAN_SOFT)]
+    elif platform == bundle_mod.AWS:
+        lines += [terminal.PREFIX + terminal.esc(CLEAN_S3)]
     return lines
 
 
