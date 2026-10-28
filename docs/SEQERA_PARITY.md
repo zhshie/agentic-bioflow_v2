@@ -94,7 +94,7 @@ turns supported only after a run on a real account the maintainer opened.
 | Moab (`moab-platform`) | Modelled, needs a real account | [ ] |
 | AWS Batch (`awsbatch-platform`) | Have (create + check + launch + cancel + upload + clean) | [ ] |
 | AWS Cloud, one VM (`awscloud-platform`) | Modelled, needs a real account | [ ] |
-| Azure Batch (`azbatch-platform`) | Have (create + check + launch + cancel + upload); clean in azure-clean | [ ] |
+| Azure Batch (`azbatch-platform`) | Have (create + check + launch + cancel + upload + clean) | [ ] |
 | Azure Cloud, one VM (`azcloud-platform`) | Modelled, needs a real account | [ ] |
 | Google Cloud Batch (`googlebatch-platform`) | Have (create + check + launch + cancel; resume not yet) | [ ] |
 | Google Cloud, one VM (`googlecloud-platform`) | Modelled, needs a real account | [ ] |

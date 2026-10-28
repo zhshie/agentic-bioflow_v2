@@ -133,8 +133,8 @@ def test_put_upload_gate_is_a_per_type_table_not_a_shared_tuple(pw, monkeypatch)
     # TC-003, TC-004, TC-005, TC-006 (AZU-GATE-02)
     from abf_platform import compute_envs, jobs
     kinds = compute_envs.CLOUD_JOB_KINDS
-    assert set(kinds[compute_envs.AZURE]) == {"preflight", "launch_nextflow", "cancel_run", "pipeline_files", "put_upload"}
-    assert len(kinds[compute_envs.AZURE]) == 5 and "clean_" "work" not in kinds[compute_envs.AZURE]
+    assert set(kinds[compute_envs.AZURE]) == {"preflight", "launch_nextflow", "cancel_run", "pipeline_files", "put_upload", "clean_" "work"}      # azure-clean added clean_work
+    assert len(kinds[compute_envs.AZURE]) == 6
     six = {"preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"}
     assert set(kinds[compute_envs.GOOGLE_BATCH]) == six and len(kinds[compute_envs.GOOGLE_BATCH]) == 6
     assert set(kinds[compute_envs.AWS]) == six and len(kinds[compute_envs.AWS]) == 6
@@ -151,10 +151,7 @@ def test_clean_work_and_resume_still_refused_for_azure(pw):
     from abf_platform import jobs
     from abf_launch import build
     before = jobs_count(pw.ip)
-    with pytest.raises(jobs.JobRefused) as e:
-        jobs.check_target(pw.ip.state_db, "azure-lab", "clean_" "work")
-    m = str(e.value)
-    assert "尚未支援" in m and "azure-clean" in m and "azure-launch" not in m and "azure-upload" not in m
+    jobs.check_target(pw.ip.state_db, "azure-lab", "clean_" "work")      # azure-clean: it can be queued now
     assert jobs_count(pw.ip) == before
     for fn in (build.prepare_resume, build.prepare_relaunch):
         with pytest.raises(build.Refusal):
@@ -854,12 +851,12 @@ def _doc(name):
 def test_the_documents_say_what_the_feature_is():
     # TC-113, TC-114, TC-115, TC-116, TC-117 (AZU-DOC-01 .. 03)
     d = _doc("PLATFORM.md")
-    assert re.search(r"`azbatch-platform` \| Azure Batch \| checked and launched on the platform host \(clean, resume: not yet\)", d)
+    assert re.search(r"`azbatch-platform` \| Azure Batch \| checked, launched and cleaned on the platform host \(resume: not yet\)", d)
     assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only" in d
     section = d[d.index("### Uploading to Azure Batch"):d.index("### Launching on Azure Batch")]
     assert "az://" in section and "網頁入口尚未接上" in section and "版本控制或軟刪除開著時，覆寫同名檔會留下舊版本、仍收費" in section
     row = next(ln for ln in _doc("SEQERA_PARITY.md").splitlines() if "`azbatch-platform`" in ln)
-    assert "Have (create + check + launch + cancel + upload); clean in azure-clean" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel + upload + clean)" in row and row.rstrip().endswith("[ ] |")
     t = _doc("TESTING.md")
     assert "Uploading to Azure Batch (azure-upload): the maintainer checks by hand" in t
     section = t[t.index("Uploading to Azure Batch (azure-upload)"):]

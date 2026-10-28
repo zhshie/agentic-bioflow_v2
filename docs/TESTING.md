@@ -857,3 +857,15 @@ The automatic tests use fakes for the `aws` program and never touch the network.
 3. **Expected.** Only the objects under `runs/r1/work/` are gone; `work2/` and `results/` are still there; the answer says 已刪除 and `work_cleaned_at` is recorded. List the prefix with the aws CLI yourself to see the real line format, and tell the developer if a line does not look like `date time size key`.
 4. **Run it again.** The prefix is empty: the answer says there was nothing to delete and nothing is removed.
 5. **Versioning.** If the test bucket has versioning on, check in the console that old versions are still there after the clean (the documents say they are, and they are still billed).
+
+## Cleaning an Azure Batch work folder (azure-clean): the maintainer checks by hand
+
+The automatic tests use fakes for the `az` program and never touch the network. A real clean deletes real blobs from a real storage account: do not start it before the maintainer says go, and only in a 測試用 container and a prefix that holds nothing you need. The real output of `az storage blob list --query "[].name" --output tsv` and of `az storage blob delete-batch` has not been seen by the tests (UNVERIFIED), so this step is also where it is checked.
+
+1. **Environment.** An available Azure Batch environment (`az1`), the credential file at `ABF_STATION_AZURE_CREDENTIALS` (mode 600), a finished run `r1` whose head process is gone, and a test prefix `az://<test container>/<sub>/runs/r1/work/` holding a few small blobs, plus a neighbour such as `runs/r1/work2/` and `runs/r1/results/`.
+2. **Ask and answer.** Open the clean request, read the screen (it names the prefix with a trailing slash, says results are untouched, mentions 軟刪除 and version control, shows no amount of money) and confirm.
+3. **Expected.** Only the blobs under `runs/r1/work/` are gone; `work2/` and `results/` are still there; the answer says 已刪除 and `work_cleaned_at` is recorded. List the prefix with the az CLI yourself (`az storage blob list --container-name <c> --prefix <sub>/runs/r1/work/ --num-results "*" --query "[].name" --output tsv --auth-mode key`) to see the real line format, and tell the developer if a line is not a plain blob name. Check that `--num-results "*"` returned every blob and not the first 5000 only.
+4. **Run it again.** The prefix is empty: the answer says there was nothing to delete and nothing is removed.
+5. **Soft delete and versions.** If the storage account has blob soft delete or versioning on, check in the portal that deleted blobs and old versions are still there after the clean (the documents say they are).
+6. **Wildcard.** Check that `delete-batch --pattern "<prefix>*"` really matches across `/` on your account (blobs two folders deep must go), and that it did not touch `work2/`.
+

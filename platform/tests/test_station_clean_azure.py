@@ -150,7 +150,9 @@ def refused(w, job, said=None, zero=True):
     plain(res["message"], w)
     if said:
         assert said in res["message"], res["message"]
-    if zero:
+    if zero == "del":
+        assert w.of("del") == [] and w.objects == w.start
+    elif zero:
         w.zero_calls()
     else:
         w.no_ls_no_del()
@@ -233,30 +235,30 @@ def test_workdir_subfolder_is_kept_in_the_prefix(w):
     for extra in (SUBF + "/runs/r1/work2/x", "runs/r1/" + K + "/x"):
         w2 = World(w.box.tmp / ("again-" + str(abs(hash(extra)))), w.mp)
         w2.ls_extra = [extra]
-        refused(w2, None, "前綴撞名", zero=False)
+        refused(w2, None, "前綴撞名", zero="del")
 
 
 # ---- US3: the gate before anything is asked of Azure ------------------------------------------------------------------------
 
-def test_unconfirmed_clean_is_refused_and_az_is_never_called(w):
+@pytest.mark.parametrize("how", ["none", "used"])
+def test_unconfirmed_clean_is_refused_and_az_is_never_called(w, how):
     # TC-038, TC-122 (AZC-STN-02)
     job = w.job()
-    job["confirmation"] = None
+    if how == "none":
+        job["confirmation"] = None
+        job["args"].pop("confirmation_id")
+    else:
+        w.box.ctx.used_confirmations.add(job["args"]["confirmation_id"])
     refused(w, job)
-    job2 = w.job()
-    del job2["confirmation"]
-    refused(w, job2)
 
 
-def test_expired_or_wrong_type_confirmation_is_refused(w):
+@pytest.mark.parametrize("how", ["launch", "cancel", "spent"])
+def test_expired_or_wrong_type_confirmation_is_refused(w, how):
     # TC-039, TC-040 (AZC-STN-03)
-    refused(w, w.job(conf_kind="launch"))
-    refused(w, w.job(conf_kind="cancel"))
-    job = w.job()
-    job["remaining"] = 0
-    state, res = w.go(job)
-    assert state in ("refused", "error") and not res.get("cleaned")
-    assert w.of("ls") == [] and w.of("del") == []
+    job = w.job(conf_kind=how) if how != "spent" else w.job()
+    if how == "spent":
+        job["confirmation"]["used_at"] = 1.0
+    refused(w, job)
 
 
 def test_a_bundle_changed_after_the_confirmation_is_refused(w):
@@ -466,7 +468,7 @@ def test_the_config_folder_of_the_call_is_gone_afterwards(w):
 def test_listing_with_a_neighbour_prefix_aborts_before_delete(w, extra):
     # TC-078 .. TC-082 (AZC-STN-05)
     w.ls_extra = [extra]
-    refused(w, w.job(), "前綴撞名", zero=False)
+    refused(w, w.job(), "前綴撞名", zero="del")
     assert len(w.of("ls")) == 1 and w.of("del") == []
 
 
@@ -475,7 +477,7 @@ def test_a_neighbour_that_appears_late_in_a_long_listing_aborts(w):
     w.objects |= {PREFIX + "f%05d" % i for i in range(1500)}
     w.start = set(w.objects)
     w.ls_extra = [SUBF + "/runs/r1/work2/late"]
-    refused(w, w.job(), "前綴撞名", zero=False)
+    refused(w, w.job(), "前綴撞名", zero="del")
     assert w.of("del") == []
 
 
@@ -595,7 +597,7 @@ def test_the_azure_clean_makes_no_google_or_aws_call(w):
 
 def _azure_segment():
     text = (STATION / "clean.py").read_text(encoding="utf-8")
-    a, b = "# ---- Azure Batch (azure-clean)", "# ---- AWS Batch (aws-clean)"
+    a, b = "# ---- Azure Batch (Azure-clean)", "# ---- AWS Batch (aws-clean)"
     assert a in text and b in text
     return text, text.split(a, 1)[1].split(b, 1)[0]
 
@@ -624,6 +626,6 @@ def test_the_station_package_has_no_bare_lower_case_azure_word():
 def test_the_azure_section_stands_before_the_aws_section():
     # TC-100
     text = (STATION / "clean.py").read_text(encoding="utf-8")
-    a, b = text.index("# ---- Azure Batch (azure-clean)"), text.index("# ---- AWS Batch (aws-clean)")
+    a, b = text.index("# ---- Azure Batch (Azure-clean)"), text.index("# ---- AWS Batch (aws-clean)")
     assert a < b
     assert "_clean_azure" not in text[b:] and "az://" not in text[b:] and "Azure" not in text[b:]

@@ -20,7 +20,7 @@ passes on what the site printed.
 import os
 import re
 
-from . import aws_launch, aws_preflight, cancel, gcb_launch, gcb_preflight, launch, rules
+from . import aws_launch, aws_preflight, azure_launch, azure_preflight, cancel, gcb_launch, gcb_preflight, launch, rules
 from . import site as host
 from .site import quote
 
@@ -110,6 +110,8 @@ def run_clean(job, ctx):
         return _clean_gcb(job, ctx, bundle)
     if isinstance(ce, dict) and ce.get("platform") == launch.AWS:
         return _clean_aws(job, ctx, bundle)
+    if isinstance(ce, dict) and ce.get("platform") == launch.AZURE:
+        return _clean_azure(job, ctx, bundle)
     env = rules.clean_environment(ce)
     run, folder = _check_path(bundle, env)
     return _clean_slurm(job, ctx, run, folder)
@@ -241,6 +243,103 @@ def _clean_gcb(job, ctx, bundle):
     if rc != 0:
         return "error", {"ok": False, "message": "刪除沒有成功（結束碼 %s：%s），%s" % (rc, _said(out, key_path), TAIL)}
     return "done", {"ok": True, "cleaned": True, "run_name": run, "message": "已刪除 bucket 裡 %s 底下的物件；results 沒有動" % expected}
+
+
+# ---- Azure Batch (Azure-clean) ----------------------------------------------------------------------------------------------------
+
+GLOBS = "*?[]"
+
+
+def _said_az(text, key_path, creds, *hidden):
+    """What az printed, shortened, with the credential file's path, the credential values, the paths of this host and anything shaped like a key hidden."""
+    out = str(text).replace(str(key_path), azure_launch.KEY_SHOWN)
+    for value in list((creds or {}).values()):
+        if value:
+            out = out.replace(str(value), "[hidden]")
+    for name, value in os.environ.items():      # the agent's own key-type variables are never passed on, whatever az printed
+        if len(value) >= 8 and (name.upper().startswith("AZURE_") or name.upper().startswith("ABF_")):
+            out = out.replace(value, "[hidden]")
+    for path in hidden:
+        out = out.replace(str(path), "[path]")
+    return azure_preflight._scrub(out)[:SHOWN].strip()
+
+
+def _storage_only(env):
+    """The environment of a call that lists or deletes blobs: the Batch key and endpoint are not needed to list or delete blobs, so they are left out."""
+    return {k: v for k, v in env.items() if not k.startswith("AZURE_BATCH_")}
+
+
+def _azure_work(bundle, run, ce_out):
+    """The only prefix this agent will clear: workDir + /runs/<run>/work, worked out here and equal to the bundle's, character by character."""
+    expected = "%s/runs/%s/work" % (ce_out["workDir"], run)
+    bad = "路徑不是這個平台給這個 run 的，沒有動任何東西 (the path is not the one this platform gives this run)"
+    if not isinstance(bundle["work"], str) or bundle["work"] != expected:
+        raise rules.Refusal(bad)
+    parts = expected[len("az://"):].split("/")
+    container = ce_out["workDir"][len("az://"):].partition("/")[0]
+    if parts[0] != container or any(p == "" or p in BARRED for p in parts) or parts[-1] != "work":
+        raise rules.Refusal("路徑含 rawdata、results、analysis、空段或 ..，或最後一段不是 work，一律不刪 (never rawdata, results or analysis)")
+    if any(c in GLOBS for c in "".join(parts[1:])):
+        raise rules.Refusal("路徑含萬用字元，刪除的比對會超出這個 run，不刪，沒有動任何東西 (a wildcard in the path)")
+    return expected
+
+
+def _clean_azure(job, ctx, bundle):
+    run = bundle["run_name"]
+    if bundle["agent"] != ctx.agent_name:
+        raise rules.Refusal("這個清理是給另一個代理的 (for another agent)")
+    if not isinstance(run, str) or not launch.RUN_NAME.match(run):
+        raise rules.Refusal("run 名稱不對 (the run name is not one this platform makes)")
+    number = bundle["slurm_job_id"]
+    if isinstance(number, bool) or not isinstance(number, int) or not 1 <= number <= 2 ** 31 - 1:
+        raise rules.Refusal("主控程序編號必須是一個十進位數字，這個內容包不符，沒有動任何東西 (the process number must be one decimal number)")
+    storage = launch.own_facts(ctx).get("storage_root")
+    if not storage:
+        raise rules.Refusal("部署設定沒有 storage_root，無法找到這個 run 的專屬資料夾 (storage_root is not set)")
+    folder = bundle["run_folder"]
+    if folder != "%s/%s/%s" % (storage, launch.AZURE_RUNS, run):
+        raise rules.Refusal("專屬資料夾不是這台主機上這個 run 的那一個，沒有動任何東西 (the run folder is not the one this host makes)")
+    try:
+        ce_out = azure_preflight.clean_environment(bundle["ce"])
+    except rules.Refusal as e:
+        raise rules.Refusal("環境設定不合規則，沒有動任何東西：%s" % e)
+    expected = _azure_work(bundle, run, ce_out)
+    waiting = _head_gone(folder, run, number)
+    if waiting is not None:
+        return waiting
+    key_path = azure_preflight.credentials_path(ctx.settings_file)
+    azure_launch._check_environment(bundle["ce"], key_path)
+    creds, problem = azure_preflight._read_shape(key_path)
+    if creds is None:
+        raise rules.Refusal("憑證檔讀不了或格式不對，沒有動任何東西")
+    container = ce_out["workDir"][len("az://"):].partition("/")[0]
+    inside = expected[len("az://"):].partition("/")[2] + "/"      # the same prefix as the listing prints it: without the container
+    auth = ["--auth-mode", "key"] if creds.get("storage_account_key") else []
+
+    listing = ["az", "storage", "blob", "list", "--container-name", container, "--prefix", inside, "--query", "[].name", "--output", "tsv"]
+    try:
+        rc, out = azure_preflight._call(lambda a, e, t: host.run_fixed(a, _storage_only(e), 120), listing + auth + ["--num-results", "*"], creds, ce_out)
+    except TimeoutError:
+        return "refused", {"ok": False, "cleaned": False, "message": "列出容器裡的暫存檔逾時，沒有刪任何東西；稍後可以再申請"}
+    text = str(out)
+    if rc != 0:
+        return "error", {"ok": False, "message": "列出容器裡的暫存檔失敗，沒有刪任何東西，可以再申請（%s）" % _said_az(text, key_path, creds, folder, storage)}
+    names = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not names:
+        return "done", {"ok": True, "cleaned": True, "run_name": run,
+                        "message": "%s 底下已經沒有東西（本來就沒有東西），沒有刪任何東西；results 沒有動" % expected}
+    for name in names:
+        if not name.startswith(inside):
+            raise rules.Refusal("列出的物件不全在 work 底下（前綴撞名），不刪，沒有刪任何東西 (the listing holds objects outside work)")
+
+    removal = ["az", "storage", "blob", "delete-batch", "--source", container, "--pattern", inside + "*"]
+    try:
+        rc, out = azure_preflight._call(lambda a, e, t: host.run_fixed(a, _storage_only(e), 300), removal + auth, creds, ce_out)
+    except TimeoutError:
+        return "error", {"ok": False, "message": "刪除逾時，%s" % TAIL}
+    if rc != 0:
+        return "error", {"ok": False, "message": "刪除沒有成功（結束碼 %s：%s），%s" % (rc, _said_az(out, key_path, creds, folder, storage), TAIL)}
+    return "done", {"ok": True, "cleaned": True, "run_name": run, "message": "已刪除容器裡 %s 底下的物件；results 沒有動" % expected}
 
 
 # ---- AWS Batch (aws-clean) ------------------------------------------------------------------------------------------------------

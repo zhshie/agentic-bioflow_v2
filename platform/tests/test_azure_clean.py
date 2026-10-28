@@ -392,7 +392,7 @@ def test_docs_say_azure_can_clean_now():
     assert "az storage blob delete-batch" in text
     azure = text.split("### Azure Batch", 1)[1].split("### Uploading to Azure Batch", 1)[0]
     assert "a clean and an upload are refused" not in azure and "azure-clean" not in text
-    tail = text.split("**Not yet.**", 1)[1].split("\n", 1)[0]
+    tail = text.split("### Azure Batch", 1)[1].split("**Not yet.**", 1)[1].split("\n", 1)[0]
     assert "clean," not in tail and "resume or a relaunch" in tail
     # the Google and AWS sentences stay
     assert "bucket 若開了版本控管，清理後舊版本仍佔空間、仍收費" in text
