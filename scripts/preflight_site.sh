@@ -1,5 +1,6 @@
 #!/bin/bash
 # The three questions preflight.sh asks only the site, answered in ONE call.
+# Nothing existing: Seqera and nf-core have no notion of this site's relay, outputs reader or resource contract, so only the three scripts this plugin ships can answer; this just frames their answers so one ssh session carries all three.
 #
 # Under reach: ssh every on_site.sh --script is one ssh session, and a site that
 # has run out of sessions hangs rather than fails (docs/PITFALLS.md 16e), so
