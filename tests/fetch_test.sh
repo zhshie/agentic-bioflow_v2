@@ -106,5 +106,99 @@ printf '%-58s ' "no rsync on PATH: falls back instead of hard-failing"
 printf '%-58s ' "and the tar|ssh fallback actually ran"
 [ -e "$TMP/tar_fallback_invoked" ] && echo ok || { echo "FAIL: fallback never invoked"; fails=$((fails+1)); }
 
+# --- drive-letter local paths are never handed to rsync as-is ----------------
+# A local path written C:/x or C:\x has the shape rsync reads as host:path, i.e.
+# a remote end. fetch.sh converts it to the MSYS form (/c/x) for rsync only.
+# (The cause is inferred from rsync's host:path rule; not reproduced on Windows.)
+# The assertions use relative folders literally named "C:" and so run on
+# Linux/WSL only.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    echo "note: drive-letter assertions run on Linux/WSL only" ;;
+  *)
+    settings 'reach: ssh' 'site_host: me@example.org'
+    mkssh 26000
+    ARGS="$TMP/rsync.args"
+    printf '#!/bin/bash\nprintf "%%s\\n" "$@" > "%s"\nexit "${REC_RC:-0}"\n' "$ARGS" > "$TMP/rsync_rec"
+    chmod +x "$TMP/rsync_rec"
+    rrun() { # rrun <args...>: run in $TMP with the recording rsync; sets OUT, RC
+      rm -f "$ARGS"
+      OUT=$(cd "$TMP" && PATH="${STUBPATH:+$STUBPATH:}$PATH" LAB_SETTINGS_FILE="$TMP/env.yaml" \
+            ON_SITE_SSH_BIN="$TMP/ssh" FETCH_ROOT="$TMP/stage" FETCH_RSYNC_BIN="$TMP/rsync_rec" \
+            bash "$F" "$@" 2>&1); RC=$?
+    }
+    # Absolute destinations that cannot be created here (/c/..., //server/...):
+    # a stub mkdir that does nothing lets fetch.sh get as far as rsync.
+    mkdir -p "$TMP/nomk"; printf '#!/bin/bash\nexit 0\n' > "$TMP/nomk/mkdir"; chmod +x "$TMP/nomk/mkdir"
+    lastarg() { tail -n 1 "$ARGS" 2>/dev/null; }
+    chk() { # chk <label> <rc of the condition> [detail]
+      printf '%-58s ' "$1"
+      if [ "$2" = 0 ]; then echo ok; else echo "FAIL: ${3:-}"; fails=$((fails+1)); fi
+    }
+    dest_is() { # dest_is <TC> <local-dest> <expected last rsync arg>
+      rrun "$R" "$2"
+      [ "$RC" = 0 ] && [ "$(lastarg)" = "$3" ]
+      chk "$1 $2 -> rsync gets $3" $? "rc=$RC last=<<$(lastarg)>> out=<<$OUT>>"
+    }
+    dest_is "TC-001" 'C:/Users/me/out/results' '/c/Users/me/out/'
+    dest_is "TC-002" 'D:\data\out\results'     '/d/data/out/'
+    STUBPATH="$TMP/nomk" dest_is "TC-003" '/tmp/x/results'        '/tmp/x/'
+    dest_is "TC-004" 'rel/results'             'rel/'
+    dest_is "TC-005" 'C:/results'              '/c/'
+    dest_is "TC-006" 'C:\results'              '/c/'
+    dest_is "TC-007" 'c:/Users/me/out/results' '/c/Users/me/out/'
+    STUBPATH="$TMP/nomk" dest_is "TC-008" '/c/Users/me/out/results' '/c/Users/me/out/'
+    dest_is "TC-009" './C:foo/results'         './C:foo/'
+    STUBPATH="$TMP/nomk" dest_is "TC-030" '//server/share/out/results' "$(dirname '//server/share/out/results')/"
+
+    # TC-010: the user sees their own path, not the converted one.
+    rrun "$R" 'C:/Users/me/out/results'
+    [ "$RC" = 0 ] && [ "$(tail -n 1 <<<"$OUT")" = 'C:/Users/me/out/results' ]
+    chk "TC-010 stdout is the user's own path" $? "<<$OUT>>"
+
+    # TC-011: --dry-run output unchanged, rsync not called.
+    rrun --dry-run "$R" 'C:/Users/me/out/results'
+    [ "$RC" = 0 ] && grep -qF 'C:/Users/me/out/results' <<<"$OUT" \
+      && ! grep -qF '/c/Users' <<<"$OUT" && grep -qF 'ssh me@example.org' <<<"$OUT" \
+      && grep -qF '(26 MB)' <<<"$OUT" && [ ! -s "$ARGS" ]
+    chk "TC-011 --dry-run shows the original path" $? "rc=$RC <<$OUT>>"
+
+    # TC-012: the remote end is never rewritten.
+    rrun "$R" 'C:/Users/me/out/results'
+    grep -qxF "me@example.org:$R" "$ARGS" 2>/dev/null
+    chk "TC-012 remote end untouched" $? "<<$(cat "$ARGS" 2>/dev/null)>>"
+
+    # TC-013: mkdir -p used the original path (a relative folder named C:).
+    rrun "$R" 'C:/Users/me/out/results'
+    [ "$RC" = 0 ] && [ -d "$TMP/C:/Users/me/out" ]
+    chk "TC-013 mkdir used the user's own path" $? "rc=$RC <<$OUT>>"
+
+    # TC-014: failure message and exit code unchanged.
+    REC_RC=1 rrun "$R" 'C:/Users/me/out/results'
+    [ "$RC" = 2 ] && grep -qF "the transfer of '$R' failed." <<<"$OUT"
+    chk "TC-014 failed transfer: rc 2, same message" $? "rc=$RC <<$OUT>>"
+
+    # TC-028: never the WSL /mnt/ form.
+    rrun "$R" 'C:/Users/me/out/results'
+    ! grep -qF '/mnt/' "$ARGS"
+    chk "TC-028 no /mnt/ form is produced" $? "<<$(cat "$ARGS" 2>/dev/null)>>"
+
+    # TC-026: the tar|ssh fallback is untouched and uses the original path.
+    mktar_fallback_ssh 26000
+    rm -f "$TMP/tar_fallback_invoked"
+    OUT=$(cd "$TMP" && LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/ssh" \
+          FETCH_ROOT="$TMP/stage" FETCH_RSYNC_BIN="$TMP/no-such-rsync" \
+          bash "$F" "$R" 'C:/Users/me/out/results' 2>&1); RC=$?
+    [ "$RC" = 0 ] && [ -e "$TMP/tar_fallback_invoked" ] \
+      && [ "$(tail -n 1 <<<"$OUT")" = 'C:/Users/me/out/results' ]
+    chk "TC-026 tar fallback keeps the original path" $? "rc=$RC <<$OUT>>" ;;
+esac
+
+# TC-025: both scripts carry the same conversion function (and both have one).
+fa=$(sed -n '/^rsync_local_path()/,/^}/p' "$(dirname "$F")/fetch.sh")
+pa=$(sed -n '/^rsync_local_path()/,/^}/p' "$(dirname "$F")/push.sh")
+printf '%-58s ' "TC-025 fetch.sh and push.sh convert the same way"
+if [ -n "$fa" ] && [ "$fa" = "$pa" ]; then echo ok; else echo "FAIL: functions differ or are missing"; fails=$((fails+1)); fi
+
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

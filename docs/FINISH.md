@@ -135,6 +135,14 @@ Chinese and need translating for an English manuscript.
 entry in `analysis.md` has `status: accepted` (or `done`). Moving on to `/finish`
 is not acceptance; set the status when the user says so in words.
 
+## The success message says assembled, not ready (issue #12)
+
+After `wrote     submission/manuscript.qmd`, `scripts/build_package.sh` prints one
+`note` line: `manuscript.qmd is assembled, not finished: K Results placeholder(s)
+still need prose, and the Discussion is not drafted - not yet a finished document`.
+`K` is the number of `[GAP: Results for '...` lines in the `manuscript.qmd` it just
+wrote. On a re-assembly the number reflects what `manuscript.qmd` contains at that moment.
+
 ## What is not installed here
 
 Measured on the login node, 2026-09-10:
