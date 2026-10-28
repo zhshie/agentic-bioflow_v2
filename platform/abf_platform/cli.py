@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import re
+import sqlite3
 import sys
 import time
 
@@ -89,6 +90,20 @@ def cmd_token_new(args):
     return 0
 
 
+def _agent_owner(name):
+    """The user id that owns the agent of that name, or None (no such agent yet, or nobody owns it)."""
+    con = store.open_readonly(store.default_platform_path())
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT owner_user_id FROM agents WHERE name = ?", (name,)).fetchone()
+        return row["owner_user_id"] if row else None
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+
+
 def cmd_agent_token_new(args):
     if not _AGENT_NAME.match(args.name):
         _err("rejected: an agent name is letters, digits, _ . - (1 to 64 characters)")
@@ -99,6 +114,15 @@ def cmd_agent_token_new(args):
         uid = store.user_id_of(tokens, args.user)
         if uid is None:
             _err("rejected: no such user: %s (沒有這個使用者); add one with: abf-platform user add" % args.user)
+            return 1
+    if uid is None and store.has_users(tokens):
+        _err("rejected: say whose agent this is with --user NAME (請用 --user 名字 指定這個代理是誰的)")
+        return 1
+    if uid is not None:
+        owner = _agent_owner(args.name)
+        if owner is not None and owner != uid:
+            _err("rejected: this agent belongs to another user, so a token for it cannot be made for this one; "
+                 "use --user with the user it belongs to (這個代理屬於另一位使用者)")
             return 1
     token = store.create_token(tokens, kind="agent", agent_name=args.name, user_id=uid)
     _say("New agent token for %s%s (it is shown once and cannot be shown again; only its hash is kept):" % (
@@ -684,7 +708,7 @@ def build_parser():
     asub = a.add_subparsers(dest="agent_token_command", required=True)
     an = asub.add_parser("new", help="issue a token for one agent name and show it once")
     an.add_argument("name")
-    an.add_argument("--user", help="the user this agent belongs to; the agent then belongs to that user, and nobody else's token can take it")
+    an.add_argument("--user", help="the user this agent belongs to (required once the platform has users); the agent then belongs to that user, and nobody else's token can take it")
     an.set_defaults(func=cmd_agent_token_new)
     ar = asub.add_parser("revoke", help="revoke every token of an agent name")
     ar.add_argument("name")
