@@ -107,7 +107,60 @@ fi
 # Skipped entirely, not failed, when there is no site to ask. A Platform-managed
 # compute environment has no relay, no outputs reader and no scheduler of its
 # own; reporting those as FAIL would make a healthy cloud site look broken.
-if [ "$SITE" = 1 ]; then
+if [ "$SITE" = 1 ] && [ "$REACH" = ssh ]; then
+  # One session for the three questions, not three (docs/PITFALLS.md 57).
+  # preflight_site.sh frames each answer; the judgements below are the same
+  # ones the reach:local branch makes on its own three calls.
+  eg_rc="" ag_rc="" rs_rc="" eg_out="" ag_out="" rs_out=""
+  bundle=$(bash "$HERE/on_site.sh" --script "$HERE/preflight_site.sh" 2>&1)
+  cur="" buf="" nbuf=0
+  while IFS= read -r line; do
+    case "$line" in
+      "@@preflight-begin "*) if [ -z "$cur" ]; then cur="${line#@@preflight-begin }"; buf=""; nbuf=0; fi ;;
+      "@@preflight-end "*)
+        if [ -n "$cur" ] && [ "${line#@@preflight-end $cur rc=}" != "$line" ]; then
+          rc="${line#@@preflight-end $cur rc=}"
+          case "$cur" in
+            egress)    eg_rc="$rc"; eg_out="$buf" ;;
+            agent)     ag_rc="$rc"; ag_out="$buf" ;;
+            resources) rs_rc="$rc"; rs_out="$buf" ;;
+          esac
+          cur=""
+        fi ;;
+      *)
+        if [ -n "$cur" ]; then
+          # preflight_site.sh wrote a content line that began "@@" with one more "@".
+          case "$line" in "@@@"*) line="${line#@}" ;; esac
+          if [ "$nbuf" = 0 ]; then buf="$line"; else buf="$buf"$'\n'"$line"; fi
+          nbuf=$((nbuf+1))
+        fi ;;
+    esac
+  done <<<"$bundle"
+  # Any section that never came back (no end marker, or a non-numeric rc) means
+  # the transport failed (timeout, exit 255): a half-delivered bundle is not an
+  # answer, so all three count as failed, each with its own fixed text. Not
+  # retried - retrying a stuck master is exactly what PITFALLS 16e warns against.
+  case "$eg_rc,$ag_rc,$rs_rc" in
+    [0-9]*,[0-9]*,[0-9]*) ;;
+    *) eg_rc=1; ag_rc=1; rs_rc=1; eg_out=""; ag_out=""; rs_out="$bundle" ;;
+  esac
+
+  out="$eg_out"
+  [ "$eg_rc" = 0 ] \
+    && say OK "egress" "$out" \
+    || say FAIL "egress" "the site's egress channel is down ($(fix egress_ctl.sh) start)"
+  grep -q WARNING <<<"$out" && say FAIL "egress-host" "started somewhere else; the compute environment now points at the wrong address"
+
+  out="$ag_out"
+  [ "$ag_rc" = 0 ] \
+    && say OK "agent" "$out" \
+    || say FAIL "agent" "not running - Platform will show no outputs ($(fix agent_ctl.sh) start)"
+
+  out="$rs_out"
+  [ "$rs_rc" = 0 ] \
+    && say OK "resources" "the resource contract matches this site" \
+    || say FAIL "resources" "$(head -1 <<<"$out")"
+elif [ "$SITE" = 1 ]; then
   out=$(bash "$HERE/on_site.sh" --script "$HERE/egress_ctl.sh" status 2>&1) \
     && say OK "egress" "$out" \
     || say FAIL "egress" "the site's egress channel is down ($(fix egress_ctl.sh) start)"

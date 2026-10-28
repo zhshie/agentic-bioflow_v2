@@ -144,7 +144,7 @@ It runs in **WSL or Linux bash only**. Started on native Windows or in Git Bash 
 
 ```bash
 abf-platform serve                                   # 1. the platform, as before
-abf-platform agent-token new my-laptop               # 2. a token for one agent name, shown once
+abf-platform agent-token new my-laptop --user alice  # 2. a token for one agent name, shown once
 ```
 
 3. Put the token in a file that only you can read, **inside WSL's own home** (not on a Windows drive such as `/mnt/c`):
@@ -318,6 +318,41 @@ The question, the screen and the yes are the ones of a Slurm launch: `abf-launch
 
 **Not yet.** Resume and relaunch of a Google Batch run, reading its Nextflow records back, listing files and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid) for a Google Batch run; the table has no other column for it, and no migration was needed.
 
+### AWS Batch
+
+An `awsbatch-platform` environment (aws-ce-type) is served the way a Google Cloud Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused, even when only one agent is online). The people who use AWS install nothing. It can be **created and checked, not launched yet**: any job other than the preflight (a launch, a cancel, a listing, a clean, an upload) is refused in plain words (尚未支援送出; the launch comes in `aws-launch`), and the automatic choice of an environment never picks it, so nothing that costs money is chosen for you. `ce primary aws1` still works once it is `available`, but the automatic choice skips it.
+
+| Key | Rule |
+|---|---|
+| `region` | required; an AWS region such as `eu-west-1` (`--region`) |
+| `workDir` | required; `s3://<bucket>[/<folder>]`, the bucket 3 to 63 characters of lower-case letters, digits, `-` and `.`; no `..`; a trailing slash is dropped |
+| `jobQueue` | required; the queue's **name**, letters, digits, `-` and `_`, at most 128; an ARN is refused (`--job-queue`) |
+| `spot` | optional true or false (`--spot`, `--no-spot`) |
+| `maxvCpus` | optional whole number 1 to 10000 |
+| `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
+
+Every problem is listed at once, each naming its key; a key not in this table is refused. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`); it is only a label. The credential file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_AWS_CREDENTIALS`, else `<deployment>/_personal/aws-credentials`, an INI file of which only the `[default]` section is used (mode 600 on Linux and WSL):
+
+```
+[default]
+aws_access_key_id = <your key id>
+aws_secret_access_key = <your secret key>
+```
+
+| Check | What the agent does |
+|---|---|
+| `credential_name` | the environment has a credential name |
+| `credential_file` | the file exists, is a regular file and (not on Windows) is not readable by others; when it is missing the message says where to put it and `chmod 600` |
+| `credential_shape` | the file has a `[default]` section with `aws_access_key_id` and `aws_secret_access_key` and no `credential_process`; only missing key names are ever shown |
+| `aws` | `aws` is installed (`unchecked`, not `fail`, when it is not) |
+| `identity` | `aws sts get-caller-identity` answers (the account number is not shown) |
+| `job_queue` | `aws batch describe-job-queues` finds the queue and it is `ENABLED` |
+| `bucket` | `aws s3api head-bucket` answers for the bucket of `workDir` |
+
+**預檢不計費 (the preflight costs nothing):** it only reads. It asks who the key is, describes one job queue and heads one bucket; it creates no Batch job (creates no Batch job, writes no bucket, creates no role). Each `aws` call is limited to 30 seconds; a timeout fails that one check. The credential file's path is handed to `aws` in its environment (`AWS_SHARED_CREDENTIALS_FILE`, `AWS_PROFILE=default`), never in the command line, and the agent's own `AWS_*` and `ABF_*` variables are not passed on.
+
+A record made before this type was checked (status `unsupported`, with the old keys `headQueue` and `computeQueue`) is still listed and shown, but it cannot be checked or updated: the message says `請刪除後重建這個計算環境`. Delete it and create it again.
+
 ### Status
 
 | Status | Meaning |
@@ -361,7 +396,7 @@ Fourteen tools. Nine are read-only (`readOnlyHint`): `list_runs`, `get_run`, `li
 
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm and Google Cloud Batch can run; the other types can be modelled only** (Google Cloud Batch is served by a station agent on the platform host, see "Google Cloud Batch" above); the other twelve are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm and Google Cloud Batch can run; the other types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm and Google Cloud Batch can run; AWS Batch can be created and checked; the other eleven types can be modelled only. The other eleven are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -370,7 +405,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `lsf-platform` | IBM Spectrum LSF | modelled only |
 | `uge-platform` | Grid Engine | modelled only |
 | `moab-platform` | Moab | modelled only |
-| `awsbatch-platform` | AWS Batch | modelled only |
+| `awsbatch-platform` | AWS Batch | checked on the platform host (launch: not yet) |
 | `awscloud-platform` | AWS Cloud | modelled only |
 | `azbatch-platform` | Azure Batch | modelled only |
 | `azcloud-platform` | Azure Cloud | modelled only |
@@ -382,7 +417,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 
 Seqera Compute is not a type here: it is Seqera's own hosted service and has no counterpart outside Seqera.
 
-For a modelled type, give the settings as JSON: `abf-platform ce create --name=aws1 --platform=awsbatch-platform --config-json=@settings.json`. Only the shared checks apply (name, credential name, the credential scan); there is no field list.
+For a modelled type, give the settings as JSON: `abf-platform ce create --name=az1 --platform=azbatch-platform --config-json=@settings.json`. Only the shared checks apply (name, credential name, the credential scan); there is no field list.
 
 ## 9. Launch and cancel
 
@@ -527,7 +562,7 @@ The question is a human gate only as far as a human sits at the terminal. A proc
 
 Every environment, agent, launch and upload folder has an owner, and a caller sees and uses only their own. Over MCP/HTTP and the page that caller is the user of the token or the login; the local terminal and stdio have no caller and see everything, as before.
 
-- **Environments and agents.** `compute_envs.owner_user_id`, `agents.owner_user_id`. `ce create --owner NAME` names the owner; without it the only user is the owner, with no user there is none, with two or more users the flag is required. `ce update --owner NAME` hands one over, and the agent bound to it goes along when it was the old owner's (refused while another environment of the old owner still uses that agent; the agent's token must then be remade with `agent-token new NAME --user NEW`). An agent token made with `agent-token new NAME --user USER` makes the agent that user's: its first hello fills an empty owner, and a token of another user is refused (403) for that name. `ce create|update` refuse an agent that has a different owner. `primary` is per owner.
+- **Environments and agents.** `compute_envs.owner_user_id`, `agents.owner_user_id`. `ce create --owner NAME` names the owner; without it the only user is the owner, with no user there is none, with two or more users the flag is required. `ce update --owner NAME` hands one over, and the agent bound to it goes along when it was the old owner's (refused while another environment of the old owner still uses that agent; the agent's token must then be remade with `agent-token new NAME --user NEW`). An agent token made with `agent-token new NAME --user USER` makes the agent that user's: its first hello fills an empty owner, and a token of another user is refused (403) for that name. `ce create|update` refuse an agent that has a different owner. `primary` is per owner. On a platform that has users, `agent-token new` requires `--user`, and refuses a name whose agent belongs to another user. A token made without a user (an old one) can serve only an agent nobody owns; for an agent that has an owner its hello, poll and result are refused (403). `ce create|update --owner` also claims the environment's agent for that owner, in the same transaction, when the agent has said hello and nobody owns it (owner-binding).
 - **Resume and relaunch.** Only the owner of a run may resume or relaunch it; the same words as a missing run for everybody else; the new attempt keeps the owner (see "Resume and relaunch" above).
 - **Launches.** `launches.user_id` is the user whose yes made the launch, written in the same transaction as the job. A run is its owner's when the newest launch record of its name names that user. A run with no launch record, or whose record names nobody, is hidden over HTTP and the page and shown at the terminal and over stdio.
 - **The same words.** What belongs to somebody else, or to nobody, answers exactly like what is missing ("not found"), for a read, a launch, a listing and a cancel. Launching or listing through an environment is refused at the queue too, when the confirmation's user is not the owner of the environment and of its agent, so a confirmation made for one cannot be turned on another's. A confirmed cancel is never reused for another user.

@@ -111,7 +111,7 @@ All of these run as the operator on the platform host.
 | Command | What it does |
 |---|---|
 | `abf-platform token new` | Issue a token and show it once. |
-| `abf-platform agent-token new <name> [--user U]` | Issue a token for one agent name and show it once; `--user` makes the agent belong to that user. |
+| `abf-platform agent-token new <name> --user U` | Issue a token for one agent name and show it once; `--user` makes the agent belong to that user (required once the platform has a user). |
 | `abf-platform agent-token revoke <name>` | Revoke every token of an agent name. |
 | `abf-platform user add <name> --lab L` | Add a user (name and lab). |
 | `abf-platform user passwd <name> [--temporary]` | Set the password a person logs into the confirmation page with (typed at a terminal, 8 to 1000 characters). `--temporary` instead makes a one-time temporary password, shown once at a real terminal and valid for 72 hours; the person must change it at the first web login. |

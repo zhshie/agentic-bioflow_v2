@@ -574,6 +574,14 @@ The automatic tests use a fake `gcloud` and touch no network. Three things are c
 2. **The reviewer.** Run `git diff <base>...HEAD --name-only`. Check: no `cloud_cost.py`, no `configs/cloud/rates.json`, no `local_runner.py`, no `head.pid`, no `-with-tower` code, no money or currency field; the existing tests changed only in `UNSUPPORTED` and TC-030's name and TC-032's assertion in `test_station_envs.py`, and the parity-row assertions of TC-077 in `test_station_docs.py`; no assertion was deleted, loosened or skipped.
 3. **The sentence to find.** `docs/PLATFORM.md`, "Google Cloud Batch": 「預檢不計費」 says the preflight only reads, creates no Batch job and costs nothing.
 
+## AWS Batch environment (aws-ce-type): the maintainer and the reviewer check
+
+The automatic tests use a fake `aws` and touch no network. Three things are checked by a person.
+
+1. **The maintainer, once, when an AWS account is open. This costs nothing.** (a) On the computer where the platform host's station agent runs, put the `[default]` credentials at `<agent deployment>/_personal/aws-credentials` (or where `ABF_STATION_AWS_CREDENTIALS` points) and run `chmod 600` on it. (b) Run `abf-platform ce create --name=aws1 --platform=awsbatch-platform --agent=host1 --region=eu-west-1 --work-dir=s3://lab-bucket/work --job-queue=lab-queue --credentials=aws-lab`, then `abf-platform ce preflight aws1`. Check: the seven checks `credential_name`, `credential_file`, `credential_shape`, `aws`, `identity`, `job_queue` and `bucket` all say pass and the status is `available`; no Batch job appears in the AWS console and the bill shows nothing new (預檢不計費).
+2. **The reviewer.** Run `git diff <base>...HEAD --name-only`. Check: no `cloud_cost.py`, no `configs/cloud/rates.json`, no `local_runner.py`, no `-with-tower` code, no migration, no `boto3`; the existing tests changed only where `specs/aws-ce-type/plan.md` lists them.
+3. **The sentence to find.** `docs/PLATFORM.md`, "AWS Batch": 「預檢不計費」 says the preflight only reads, creates no Batch job and costs nothing.
+
 ## Launching on Google Batch (gcb-launch): the maintainer and the reviewer check
 
 The automatic tests use fakes for the program runner, the detached start and the signal; they start nothing and touch no network. The steps below start a real Nextflow head process and **cost a very small amount of money**: set the budget and alert of the Google Cloud project first.
@@ -748,6 +756,15 @@ The automatic tests never reach the internet. This is the one time a person chec
 3. **Reuse.** Call it again at once. Check: the same `checked_at` and no new `pipeline_files` row in the `jobs` table (the agent prints one line per job, not per request, so the jobs table is the check).
 4. **No network.** Switch the agent machine's network off, delete that job row (or wait 24 hours) and call it again. Check: within about a minute `state` is `error`, `error` is `network`, and `reason` names nf-co.re and says to check the network.
 5. **Write down** the output of each step in `specs/nfcore-catalogue/ledger.md`.
+
+## Owner binding follow-up (owner-binding)
+
+For the administrator of a platform that has two users, alice and bob, and an old agent token that names no user. This is a data move: nothing in the schema changed.
+
+1. **Find what has no owner.** Run `abf-platform ce list` and `abf-platform launches`. Note every agent or environment whose owner reads `(none: local only)`.
+2. **Reissue the old tokens.** For each agent whose old token names no user: check that its hello is now refused (403), then `abf-platform agent-token revoke <name>` and `abf-platform agent-token new <name> --user <U>`; put the new token in the agent's token file and restart the agent. Check: the new token's hello is accepted and the agent keeps its owner.
+3. **Give the environments their owners.** `abf-platform ce update <env> --owner <U>` for each environment that has none; this claims its unowned agent too. Restarting the platform does the same for an agent whose environments all belong to one user.
+4. **Check the walls.** With alice's personal access token call `list_agents` and `get_compute_env`: only her own show. With bob's token ask `get_compute_env` for alice's environment and for a name that does not exist: the two answers are the same words ("not found").
 
 ## When something is red
 

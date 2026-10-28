@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 import re
+import sqlite3
 import sys
 import time
 
@@ -90,6 +91,20 @@ def cmd_token_new(args):
     return 0
 
 
+def _agent_owner(name):
+    """The user id that owns the agent of that name, or None (no such agent yet, or nobody owns it)."""
+    con = store.open_readonly(store.default_platform_path())
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT owner_user_id FROM agents WHERE name = ?", (name,)).fetchone()
+        return row["owner_user_id"] if row else None
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+
+
 def cmd_agent_token_new(args):
     if not _AGENT_NAME.match(args.name):
         _err("rejected: an agent name is letters, digits, _ . - (1 to 64 characters)")
@@ -100,6 +115,15 @@ def cmd_agent_token_new(args):
         uid = store.user_id_of(tokens, args.user)
         if uid is None:
             _err("rejected: no such user: %s (沒有這個使用者); add one with: abf-platform user add" % args.user)
+            return 1
+    if uid is None and store.has_users(tokens):
+        _err("rejected: say whose agent this is with --user NAME (請用 --user 名字 指定這個代理是誰的)")
+        return 1
+    if uid is not None:
+        owner = _agent_owner(args.name)
+        if owner is not None and owner != uid:
+            _err("rejected: this agent belongs to another user, so a token for it cannot be made for this one; "
+                 "use --user with the user it belongs to (這個代理屬於另一位使用者)")
             return 1
     token = store.create_token(tokens, kind="agent", agent_name=args.name, user_id=uid)
     _say("New agent token for %s%s (it is shown once and cannot be shown again; only its hash is kept):" % (
@@ -310,7 +334,7 @@ def _config_from_args(args):
              "head_job_options": "headJobOptions", "host_name": "hostName", "user_name": "userName",
              "pre_run": "preRunScript", "post_run": "postRunScript", "nextflow_config": "nextflowConfig",
              "project": "project", "location": "location", "service_account_email": "serviceAccountEmail",
-             "boot_disk_size": "bootDiskSize"}
+             "boot_disk_size": "bootDiskSize", "region": "region", "job_queue": "jobQueue"}
     for attr, key in flags.items():
         if getattr(args, attr) is not None:
             config[key] = getattr(args, attr)
@@ -447,12 +471,15 @@ def _simple(fn):
 def cmd_ce_preflight(args):
     state = store.default_platform_path()
     ce = compute_envs.get(state, args.name)
-    if ce is not None and ce["platform"] in compute_envs.PLATFORM_HOST_TYPES:
+    if ce is not None and ce["platform"] in compute_envs.PLATFORM_HOST_TYPES + compute_envs.CHECK_ONLY_TYPES:
         try:      # a record made before the type was checked must pass today's rules first, whatever its status
             compute_envs.clean({"name": ce["name"], "description": ce["description"], "platform": ce["platform"],
                                 "credentialsId": ce["credentialsId"], "agent": ce["agent"], "config": ce["config"]})
         except compute_envs.CEError as e:
-            _err("rejected: %s. Fix it with `abf-platform ce update %s ...` first (請先用 ce update 補齊)" % (e, args.name))
+            if "請刪除後重建" in str(e):      # an old record: updating cannot fix it
+                _err("rejected: %s" % e)
+            else:
+                _err("rejected: %s. Fix it with `abf-platform ce update %s ...` first (請先用 ce update 補齊)" % (e, args.name))
             return 1
     try:
         job_id = jobs.enqueue_preflight(state, args.name)
@@ -663,8 +690,10 @@ def _add_ce_fields(p):
     p.add_argument("--work-dir")
     p.add_argument("--project", help="Google Batch: the GCP project ID")
     p.add_argument("--location", help="Google Batch: the region, e.g. europe-west2")
-    p.add_argument("--spot", dest="spot", action="store_const", const=True, default=None, help="Google Batch: use spot machines")
-    p.add_argument("--no-spot", dest="spot", action="store_const", const=False, help="Google Batch: do not use spot machines")
+    p.add_argument("--region", help="AWS Batch: the region, e.g. eu-west-1")
+    p.add_argument("--job-queue", help="AWS Batch: the name of the job queue (a name, not an ARN)")
+    p.add_argument("--spot", dest="spot", action="store_const", const=True, default=None, help="Google Batch/AWS Batch: use spot machines")
+    p.add_argument("--no-spot", dest="spot", action="store_const", const=False, help="Google Batch/AWS Batch: do not use spot machines")
     p.add_argument("--service-account-email", help="Google Batch: the service account the jobs run as (an e-mail address, not a key)")
     p.add_argument("--boot-disk-size", help="Google Batch: boot disk size, e.g. '50 GB'")
     p.add_argument("--launch-dir")
@@ -710,7 +739,7 @@ def build_parser():
     asub = a.add_subparsers(dest="agent_token_command", required=True)
     an = asub.add_parser("new", help="issue a token for one agent name and show it once")
     an.add_argument("name")
-    an.add_argument("--user", help="the user this agent belongs to; the agent then belongs to that user, and nobody else's token can take it")
+    an.add_argument("--user", help="the user this agent belongs to (required once the platform has users); the agent then belongs to that user, and nobody else's token can take it")
     an.set_defaults(func=cmd_agent_token_new)
     ar = asub.add_parser("revoke", help="revoke every token of an agent name")
     ar.add_argument("name")
@@ -764,7 +793,7 @@ def build_parser():
 
     c = sub.add_parser("ce", help="compute environments")
     csub = c.add_subparsers(dest="ce_command", required=True)
-    cc = csub.add_parser("create", help="store a compute environment (Slurm and Google Batch are checked by their agent; the other types are only stored)")
+    cc = csub.add_parser("create", help="store a compute environment (Slurm, Google Batch and AWS Batch are checked by their agent; the other types are only stored)")
     cc.add_argument("--name")
     cc.add_argument("--platform", help="the type, e.g. slurm-platform (see docs/PLATFORM.md)")
     _add_ce_fields(cc)

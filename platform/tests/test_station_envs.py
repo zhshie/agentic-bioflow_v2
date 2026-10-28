@@ -15,9 +15,8 @@ from station_harness import Inproc
 CRED = re.compile(r"credential|憑證")
 AGENT_SIDE = re.compile(r"agent|代理")
 
-# the 12 types that are modelled and not supported, with fields from specs/007-station-agent/research.md
+# the 11 types that are modelled and not supported, with fields from specs/007-station-agent/research.md
 UNSUPPORTED = {
-    "awsbatch-platform": {"workDir": "s3://lab-bucket/work", "region": "eu-west-1", "headQueue": "head-q", "computeQueue": "comp-q"},
     "azbatch-platform": {"workDir": "az://lab-container/work", "region": "westeurope", "vmType": "Standard_D4s_v3"},
     "awscloud-platform": {"workDir": "s3://lab-bucket/work", "instanceType": "m5.xlarge"},
     "azcloud-platform": {"workDir": "az://lab-container/work", "instanceType": "Standard_D4s_v3"},
@@ -142,7 +141,7 @@ def test_tc029_good_queue_names_and_absolute_paths_are_accepted(ip):
 
 
 @pytest.mark.parametrize("platform_id", sorted(UNSUPPORTED))
-def test_tc030_the_twelve_modelled_types_are_stored_as_not_supported(ip, platform_id):
+def test_tc030_the_eleven_modelled_types_are_stored_as_not_supported(ip, platform_id):
     # TC-030
     rc, out = ip.run("ce", "create", "--name", "ce-" + platform_id, "--platform", platform_id,
                      "--config-json", json.dumps(UNSUPPORTED[platform_id]))
@@ -160,7 +159,7 @@ def test_tc032_only_fourteen_types_exist_and_seqera_compute_is_refused_with_its_
     # TC-032
     from abf_platform import compute_envs
     assert len(compute_envs.KINDS) == 14 and "slurm-platform" in compute_envs.KINDS
-    assert sorted(set(UNSUPPORTED) | {"slurm-platform", "googlebatch-platform"}) == sorted(compute_envs.KINDS)
+    assert sorted(set(UNSUPPORTED) | {"slurm-platform", "googlebatch-platform", "awsbatch-platform"}) == sorted(compute_envs.KINDS)
     for bad in ("nonsense", "seqera-compute", "seqeracompute-platform", "local-platform"):
         rc, out = ip.run("ce", "create", "--name", "x-" + bad, "--platform", bad, "--work-dir", "/data/work")
         assert rc != 0, bad
@@ -284,8 +283,8 @@ def test_tc096_only_a_usable_environment_can_be_primary(ip):
     # TC-096
     assert ip.create_slurm("S", agent="a1")[0] == 0
     assert ip.create_slurm("D", agent="a1")[0] == 0
-    assert ip.run("ce", "create", "--name", "U", "--platform", "awsbatch-platform",
-                  "--config-json", json.dumps(UNSUPPORTED["awsbatch-platform"]))[0] == 0
+    assert ip.run("ce", "create", "--name", "U", "--platform", "azbatch-platform",
+                  "--config-json", json.dumps(UNSUPPORTED["azbatch-platform"]))[0] == 0
     make_available(ip, "S")
     assert ip.run("ce", "primary", "S")[0] == 0
     make_available(ip, "D")
