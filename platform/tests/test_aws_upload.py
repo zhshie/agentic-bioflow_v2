@@ -702,7 +702,7 @@ def test_no_cloud_library_and_no_station_word_in_platform_sources():
     for name in ("cloud_store.py", "datasets.py"):
         text = next(p for p in _platform_files() if p.name == name).read_text(encoding="utf-8").lower()
         assert "station" not in text and "station" not in re.sub(r"[\"'+\s]", "", text)
-        for word in ("open(", "hashlib", "subprocess", "os.system", "socket", "urllib", "httpx", "requests", "import google", "boto3", "azure"):
+        for word in ("open(", "hashlib", "subprocess", "os.system", "socket", "urllib", "httpx", "requests", "import google", "boto3", "import azure", "from azure"):
             assert word not in text, (name, word)
 
 

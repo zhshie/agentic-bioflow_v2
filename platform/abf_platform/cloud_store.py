@@ -24,6 +24,14 @@ def _control(text):
     return any(ord(c) < 32 or ord(c) == 127 for c in text)
 
 
+def _container_ok(scheme, name):
+    if scheme == "gs":
+        return bool(_BUCKET.match(name))
+    if scheme == "az":
+        return bool(compute_envs._AZURE_CONTAINER.match(name)) and "--" not in name
+    return bool(compute_envs._AWS_BUCKET.match(name))
+
+
 def _parse(url, scheme):
     """(bucket, object_name) of a <scheme>://<bucket>/<object> location, or CloudPathError. No URL decoding: %2e%2e stays as written."""
     if not isinstance(url, str) or not url:
@@ -34,8 +42,7 @@ def _parse(url, scheme):
     if not url.startswith(head):
         raise CloudPathError("只收 %s 開頭的位置 (only %s locations are taken)" % (head, head))
     bucket, _, name = url[len(head):].partition("/")
-    pattern = _BUCKET if scheme == "gs" else compute_envs._AWS_BUCKET
-    if not pattern.match(bucket):
+    if not _container_ok(scheme, bucket):
         raise CloudPathError("bucket 名稱不正確：要 3 到 63 個字元，小寫英數與 - _ .，頭尾是英數 "
                              "(the bucket name must be 3 to 63 characters, lower-case letters, digits and - _ ., starting and ending with a letter or digit)")
     if not name:
@@ -59,15 +66,22 @@ def parse_s3(url):
     return _parse(url, "s3")
 
 
+def parse_az(url):
+    """(container, blob_name) of an az:// location, or CloudPathError."""
+    return _parse(url, "az")
+
+
 def workdir_scheme(ce):
-    """'gs' for a Google Batch environment, 's3' for an AWS Batch one; anything else is CloudPathError."""
+    """'gs' for a Google Batch environment, 's3' for an AWS Batch one, 'az' for an Azure Batch one; anything else is CloudPathError."""
     platform = ce.get("platform") if isinstance(ce, dict) else None
     if platform == compute_envs.GOOGLE_BATCH:
         return "gs"
     if platform == compute_envs.AWS:
         return "s3"
-    raise CloudPathError("這個計算環境不能放雲端資料，只有 Google Batch 或 AWS Batch 環境可以 "
-                         "(only a Google Batch or AWS Batch environment can hold cloud data)")
+    if platform == compute_envs.AZURE:
+        return "az"
+    raise CloudPathError("這個計算環境不能放雲端資料，只有 Google Batch、AWS Batch 或 Azure Batch 環境可以 "
+                         "(only a Google Batch, AWS Batch or Azure Batch environment can hold cloud data)")
 
 
 def workdir_bucket(ce):
@@ -78,8 +92,10 @@ def workdir_bucket(ce):
     head = scheme + "://"
     if not isinstance(work, str) or not work.startswith(head):
         raise CloudPathError("這個計算環境沒有 %s 的 workDir，不能放雲端資料 (this environment has no %s workDir)" % (head, head))
-    bucket = work[len(head):].partition("/")[0]
-    if not (_BUCKET if scheme == "gs" else compute_envs._AWS_BUCKET).match(bucket):
+    bucket, _, sub = work[len(head):].partition("/")
+    if scheme == "az" and not sub.strip("/"):
+        raise CloudPathError("這個計算環境的 workDir 要有容器和資料夾 (the workDir of this environment needs a container and a folder)")
+    if not _container_ok(scheme, bucket):
         raise CloudPathError("這個計算環境的 workDir 不是正確的 bucket 位置 (the workDir of this environment is not a usable bucket location)")
     return bucket
 
@@ -120,6 +136,9 @@ def big_file_command(ce, owner_name, scheme="gs"):
     # this phrase may appear only in this file (test_cloud_upload checks it); the file starts no program, the line is only text
     if scheme == "s3":
         return "aws s3 " "cp <你電腦上的資料夾> %srawdata/ --recursive" % upload_prefix(ce, owner_name, scheme)
+    if scheme == "az":
+        return "az storage blob upload-batch --destination %s --destination-path uploads/%s/rawdata/ --source <你電腦上的資料夾>" % (
+            workdir_bucket(ce), _single(owner_name, "使用者名 name", _NAME_CHARS))
     return "gcloud storage cp <你電腦上的資料夾>/* %srawdata/" % upload_prefix(ce, owner_name)
 
 

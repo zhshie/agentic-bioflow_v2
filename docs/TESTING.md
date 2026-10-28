@@ -839,6 +839,15 @@ The automatic tests use fakes for the `aws` program and never touch the network.
 3. **Expected.** The object appears at `s3://<workDir bucket>/uploads/<you>/<name>` with the same size, the answer says the staged copy was removed, and no key id or credential path appears in the answer or in the agent log.
 4. **Over the limit.** Try a file over 2 GB: the answer gives the `aws s3 cp ... --recursive` line and nothing is uploaded.
 
+## Uploading to Azure Batch (azure-upload): the maintainer checks by hand
+
+The automatic tests use fakes for the `az` program and never touch the network. A real upload writes to a real Blob container and **會花一點錢、先設好成本警示** (an Azure Cost Management budget alert); do not start it before the maintainer says go.
+
+1. **Environment.** An available Azure Batch environment (`azure1`), the credential file at `ABF_STATION_AZURE_CREDENTIALS` (mode 600), and `az --version` answering on the platform host.
+2. **File.** Stage one small file (about 10 MB) in your uploads folder and queue the upload for `azure1`.
+3. **Expected.** The blob appears at `az://<container of the workDir>/uploads/<you>/<name>`; check its size with `az storage blob show --account-name <account> --container-name <container> --name uploads/<you>/<name> --query properties.contentLength --output tsv --auth-mode key`, which equals the file; the answer says the staged copy was removed, and no key or credential path appears in the answer or in the agent log.
+4. **Over the limit.** Try a file over 2 GB: the answer gives the `az storage blob upload-batch` line and nothing is uploaded.
+
 ## Cleaning an AWS Batch work folder (aws-clean): the maintainer checks by hand
 
 The automatic tests use fakes for the `aws` program and never touch the network. A real clean deletes real objects from a real S3 bucket: do not start it before the maintainer says go, and only on a test bucket and a prefix that holds nothing you need. The real output format of `aws s3 ls --recursive` and `aws s3 rm --recursive` has not been seen by the tests (UNVERIFIED), so this step is also where it is checked.
