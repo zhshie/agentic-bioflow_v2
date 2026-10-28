@@ -99,6 +99,7 @@ verifier 出題時以此為底再補；至少包含：
 6. （10-28，回應合約）③ 顯示流程圖時，③ 的 `<details>` 一律帶 `open`，不論目前是哪一步（TC-040）。
 7. （10-28，回應合約）版本下拉出現時，「套用此版本」連結拿掉（TC-032）；「曾使用」分頁只用隱藏欄帶版本（TC-023）。
 8. 合約：`specs/guided-launch-2d/test-case.md`＋`test-case-overview.md`（verifier 10-28 確認；S2 句子依裁決 4 改）。測試檔 `platform/tests/test_web_guided_launch_2d.py`。
+9. CI 修正（10-28，合進 v3 後才出現）：①`test_web_guided_launch_2b.py::test_h09_style` 原用 `git show 956e7d2` 讀基準色，CI 淺層 checkout 沒有這個 commit；改成把 956e7d2 的 35 個色碼寫成測試內常數集合，斷言「現行色碼 ⊆ 該集合」不變。②v3 的 `test_dataset_cli.py::test_the_group_adds_only_its_three_commands_and_options_and_no_other_door` 逐字釘住 web.py 路由清單（#243 加的，當時還沒有本 PR）；本 PR 新增的 `/launch/diagram` 是已核可的路由（10-28 他同意安全設定），把它加進該清單、其餘斷言不動。
 
 ## 專長守則（ui）
 
