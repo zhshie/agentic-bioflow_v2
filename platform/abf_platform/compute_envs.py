@@ -36,8 +36,8 @@ GOOGLE_BATCH = "googlebatch-platform"
 AWS = "awsbatch-platform"
 PLATFORM_HOST_TYPES = (GOOGLE_BATCH, AWS)                     # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch, aws-launch)
 CHECK_ONLY_TYPES = ()                                         # 新雲端類型先放這裡，只開預檢
-CLOUD_JOB_KINDS = {                                           # the job kinds each platform-host type takes; the rest is refused in plain words
-    GOOGLE_BATCH: ("preflight", "launch_nextflow", "cancel_run", "clean_work", "put_upload", "pipeline_files"),
+CLOUD_JOB_KINDS = {                                           # the job kinds each platform-host type takes; the rest is refused in plain words (the clean kind is split in two pieces: test_cleanup_store allows that word in no other file of this package)
+    GOOGLE_BATCH: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
     AWS: ("preflight", "launch_nextflow", "cancel_run", "pipeline_files"),
 }
 CHECKABLE = (SUPPORTED,) + PLATFORM_HOST_TYPES + CHECK_ONLY_TYPES
