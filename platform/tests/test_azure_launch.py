@@ -269,7 +269,7 @@ def test_launch_writes_head_pid_and_reports_it_as_the_job_number(box):
     names = ("samplesheet.csv", "params.yaml", "nextflow.config", CONFIG_FILE, "head.sh", "tower.token", "head.pid")
     for name in names:
         assert (folder / name).is_file(), name
-    assert (folder / "head.out").exists() or True
+    # head.out is made by the detached start (faked here); its path is asserted below as the out_path argument
     assert not list(folder.glob("results*"))
     if sys.platform != "win32":
         assert stat.S_IMODE(folder.stat().st_mode) == 0o700
@@ -1118,10 +1118,9 @@ def test_tool_list_is_still_twelve_and_no_new_web_route(tmp_path):
     # TC-126 (AZL-CONF-05)
     from abf_platform import mcp_server, web
     names = {t.name for t in asyncio.run(mcp_server.build_server(str(tmp_path / "index.db")).list_tools())}
-    assert len(names) == 15 or len(names) == 12
     from_aws = {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines",
                 "read_task_log", "run_outputs", "my_usage", "launch", "cancel", "resume", "relaunch", "forget"}
-    assert names == from_aws or names <= from_aws
+    assert len(names) == 15 and names == from_aws
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if re.search(r"azure|batch", getattr(r, "path", ""), re.I)]
 
