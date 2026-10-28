@@ -150,19 +150,23 @@ def test_get_changes_nothing_for_a_clean_request(w):
 
 
 # What the pages of launch and cancel printed before this task (hash of the page with ids and tokens masked).
-BASE_CONFIRM = {'pending-launch-zh': (200, '152d5f6c2595ea82'), 'pending-cancel-zh': (200, '7dcbb29336e22336'),
-                'pending-launch-en': (200, '187c123bf2793c84'), 'pending-cancel-en': (200, '2b53ed20704b79f5'),
-                'void-zh': (409, '5d17dd9b2af40a8c'), 'void-en': (409, '5d17dd9b2af40a8c'),
-                'confirmed-launch-zh': (200, '6eea5d85608d1979'), 'confirmed-launch-en': (200, 'ebc6cd60fbbb941f'),
-                'confirmed-cancel-zh': (200, '0bc1acd8f7ae0111'), 'confirmed-cancel-en': (200, '91f9c250130fac9e')}
-BASE_EXPIRED = {'expired-launch-zh': (200, '14a4d10f45707e39'), 'expired-cancel-zh': (200, 'd4afff2cc32faa31'),
-                'expired-launch-en': (200, '14a4d10f45707e39'), 'expired-cancel-en': (200, 'd4afff2cc32faa31')}
-BASE_POST = {'pressed-launch': (200, '45d736b4f5f766ed'), 'pressed-cancel': (200, 'c60d7b7c5cb2124b'),
-             'late-launch': (410, 'f6c0dbf1d6720780'), 'late-cancel': (410, 'f6c0dbf1d6720780')}
-BASE_BOARD = {'succeeded-zh': (200, 'f7883d586e8688cc'), 'succeeded-en': (200, 'e5ffce9d196dd604'),
-              'failed-zh': (200, 'b054d5da06161e78'), 'failed-en': (200, '16c23b1485b21c1c'),
-              'running-zh': (200, 'c271fc3542a80e5e'), 'running-en': (200, '8b762a48efc85e26')}
-BASE_STYLE = '7f8fece0c8a59672'
+# guided-launch-2 added rules to the one stylesheet (the parameter group table), so every page's hash and BASE_STYLE were pinned again; only the stylesheet differs.
+# guided-launch-2b added rules to the same stylesheet (column widths of that table, the advanced box) and took one out (the radio rows), so they were pinned once more; again only the stylesheet differs.
+# guided-launch-2c changed five rules (the red star, the step area width, the form width, the field width, the phone cells) and the column widths of the table, so they were pinned a third time; again only the stylesheet differs.
+# guided-launch-2d replaced one rule of the same stylesheet (.dlink, the link that opened the diagram, became .gdia, the picture), so they were pinned a sixth time; again only the stylesheet differs.
+BASE_CONFIRM = {'pending-launch-zh': (200, '31e3c878f10406bb'), 'pending-cancel-zh': (200, 'ccfbd045712deb75'),
+                'pending-launch-en': (200, 'f85ab8a479514dc6'), 'pending-cancel-en': (200, '3729a5e7e7b8d038'),
+                'void-zh': (409, '8dc1fd751ab5aeca'), 'void-en': (409, '8dc1fd751ab5aeca'),
+                'confirmed-launch-zh': (200, '61b9296c89757668'), 'confirmed-launch-en': (200, 'db938458df97b8ec'),
+                'confirmed-cancel-zh': (200, '2e42e9c4668be907'), 'confirmed-cancel-en': (200, '4b024e4e06e261d4')}
+BASE_EXPIRED = {'expired-launch-zh': (200, 'c35c165714b5f908'), 'expired-cancel-zh': (200, '8451aff28a884534'),
+                'expired-launch-en': (200, 'c35c165714b5f908'), 'expired-cancel-en': (200, '8451aff28a884534')}
+BASE_POST = {'pressed-launch': (200, 'ef1083638be3de88'), 'pressed-cancel': (200, '9c76dd8bc4a4c249'),
+             'late-launch': (410, 'd2df3540d123bd63'), 'late-cancel': (410, 'd2df3540d123bd63')}
+BASE_BOARD = {'succeeded-zh': (200, 'd82849f963ffdcba'), 'succeeded-en': (200, 'db1a825c42eccccd'),
+              'failed-zh': (200, '6736cef89dbca3e7'), 'failed-en': (200, 'dc8af6b16e244499'),
+              'running-zh': (200, 'e206db91167a051a'), 'running-en': (200, '8ea9e9d26628a544')}
+BASE_STYLE = '66b9a8e1a9c6f7d2'
 
 
 def launch_and_cancel(w, ann):
