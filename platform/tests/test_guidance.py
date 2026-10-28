@@ -457,5 +457,6 @@ def test_tc705_dev_variables_change_nothing(tmp_path, monkeypatch):
 
 
 def test_tc707_the_mcp_pin_is_unchanged():
-    assert 'dependencies = ["mcp>=2.3,<3"]' in _pyproject()
+    # TC-105: the mcp pin itself is unchanged; python-multipart is the one added line
+    assert 'dependencies = ["mcp>=2.3,<3", "python-multipart"]' in _pyproject()
     assert re.search(r"^mcp==2\.3\.0\s*$", (PLATFORM_DIR / "constraints.txt").read_text(encoding="utf-8"), re.M)

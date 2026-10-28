@@ -30,6 +30,7 @@ Every change only adds an item or states the new truth the plan names; nothing w
 | test_datasets.py:441 (`test_tc063...`) | six names | seven | TC-110 (the plan names `:441`) |
 | test_cloud_upload.py:611 (`test_no_public_function_was_added_to_datasets`) | six names | seven | the same list lives here too; not named in the plan, found by the run |
 | test_cloud_upload_docs.py:42 | OPERATIONS point 6 holds `Not built yet` and `nothing in the web or the AI calls it` | holds `The web page /upload sends files up to 2 GB into the bucket` and no `Not built yet` | ruling 13, TC-102 |
+| test_guidance.py:460 (`test_tc707_the_mcp_pin_is_unchanged`) | `dependencies = ["mcp>=2.3,<3"]` | `dependencies = ["mcp>=2.3,<3", "python-multipart"]` | ruling 24 / TC-105 adds the one dependency line; the mcp pin and the constraints.txt check are unchanged. Not named in the plan, found by the full run; flagged for the reviewer. |
 
 Not changed although the plan lists them: `test_temp_password.py:290` (the loop over all routes already holds for the new routes: a temporary login gets 303 /welcome on `/upload` GET and POST and on `/upload/{batch}`), `test_aws_upload.py:660` (no table, no migration), `test_datasets.py:470` (`test_tc064`, untouched and green).
 
