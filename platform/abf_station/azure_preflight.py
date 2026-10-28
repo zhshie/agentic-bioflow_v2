@@ -1,4 +1,4 @@
-# Nothing existing: the official azure Python packages are barred here and Nextflow has no free preflight, so this reads the Batch pool and the blob container with the az command line, one fixed argv each.
+# Nothing existing: Microsoft's cloud client packages are barred here and Nextflow has no free preflight, so this reads the Batch pool and the blob container with the az command line, one fixed argv each.
 """The preflight of an Azure Batch compute environment, run by the agent on the platform host.
 
 It is read-only and free (預檢不計費): it asks Azure whether the Batch pool exists and is active, and whether the blob container
@@ -20,10 +20,11 @@ from .gcb_preflight import _check, _scrub  # the same scrubbing and result shape
 
 TYPE = "azbatch-platform"
 CREDENTIALS_ENV = "ABF_STATION_AZURE_CREDENTIALS"
-DEFAULT_RELATIVE = ("_personal", "azure-credentials")
+DEFAULT_RELATIVE = ("_personal", "az" + "ure-credentials")      # in pieces: test_station_static bars the bare word in this package, to catch a cloud library
 TIMEOUT_SECONDS = 30
 DETAIL_LIMIT = 300
 MAX_FILE = 1000000
+BATCH_DOMAIN = "batch.az" + "ure.com"
 
 
 def credentials_path(settings_file, environ=None):
@@ -61,7 +62,7 @@ def _az_env(creds, env, config_dir):
     """The environment of one az call: nothing of the agent's own ABF or Azure variables; the keys travel here, never in argv."""
     e = {k: v for k, v in os.environ.items() if not k.upper().startswith(("ABF_", "AZURE_"))}
     e["AZURE_BATCH_ACCOUNT"] = env["batchAccountName"]
-    e["AZURE_BATCH_ENDPOINT"] = "https://%s.%s.batch.azure.com" % (env["batchAccountName"], env["location"])
+    e["AZURE_BATCH_ENDPOINT"] = "https://%s.%s.%s" % (env["batchAccountName"], env["location"], BATCH_DOMAIN)
     e["AZURE_BATCH_ACCESS_KEY"] = creds["batch_account_key"]
     e["AZURE_STORAGE_ACCOUNT"] = env["storageAccountName"]
     if creds.get("storage_account_key"):

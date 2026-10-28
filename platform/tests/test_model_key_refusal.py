@@ -78,4 +78,6 @@ def test_tc015_the_six_existing_patterns_are_unchanged_and_the_new_ones_come_aft
     ]
     got = [p.pattern for p in compute_envs._VALUE_PATTERNS]
     assert got[:6] == old
-    assert got[6:] == [r"\bsk-ant-[A-Za-z0-9_-]{20,}", r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}"]
+    # azure-ce-type appended three Azure patterns at the end; the first eight are unchanged
+    assert got[6:] == [r"\bsk-ant-[A-Za-z0-9_-]{20,}", r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}",
+                       r"AccountKey\s*=", r"SharedAccessSignature\s*=", r"[?&]sig=[A-Za-z0-9%+/=]{16,}"]
