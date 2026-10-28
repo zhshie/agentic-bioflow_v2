@@ -14,3 +14,4 @@
 - 我自己新測試的兩處期望值更正（不是既有測試）：子資料夾 workDir 時 `work/runs/r1/work/q` 也在該前綴下所以會被刪；head 還在跑時 ps 那一次呼叫是允許的（zero=False）。
 - 手動差異檢查：既有測試只動 E2 清單內的斷言（test_aws_upload／launch／ce）；`rm` 字樣只在 clean.py；沒碰 test_station_clean_gcb、test_cleanup_confirm、test_byte_channel_b、web 系列、DESIGN.md、handlers.py。
 - 卡住：既有 `test_station_clean.py::test_tc073_the_source_reaches_the_site_only_through_ctx_site_call` 釘死「run_fixed 只能出現在 `_clean_gcb` 與 `_head_gone`」；`_clean_aws` 照計畫要呼叫 `host.run_fixed`，所以它變紅。這個測試不在 E2 清單，依規則不改，需要裁決（把集合加上 `_clean_aws`，一行）。
+- E13 裁決後：TC-073 集合加上 `_clean_aws`（只此一字），卡住項解除；全套重跑。
