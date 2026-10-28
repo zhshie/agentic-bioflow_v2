@@ -92,3 +92,10 @@ source: developer-agent 讀碼查證（2026-10-24）。cloud-upload.md「待 dev
 ## 專長守則（docs）
 
 （工作區沒有 `.claude/dev-profiles/docs.md`；本任務無專長守則。）
+
+## 裁決三（2026-10-28 developer-agent，回應 verifier 合約退回）
+1. byte-channel 現況（已查證：`git grep "enqueue_put_upload("` 在 `platform/` 非測試碼零呼叫者）：文件寫成「平台與站台代理已能把一個檔案寫進使用者自己的前綴（#224、#229），但網頁與 AI 都還沒有按鈕或工具呼叫它，所以今天仍請自己用 `gcloud storage cp` 放進前綴」。T3、OPERATIONS 第 6 點、PLATFORM 新句一律照這個意思寫；「not built yet」改成「no web or AI entry yet」一類的準確說法。
+2. 行號以 worktree 現況為準：`docs/OPERATIONS.md:218`、`docs/PLATFORM.md:297`、`docs/TESTING.md:613` 起（步驟約 617–625）。計畫裡的舊行號只當定位提示。
+3. 範圍擴大：`docs/TESTING.md:615` 那段說明一併改寫（「要等 byte-channel」改成第 1 點的現況：端到端要等網頁／AI 入口）。T7 只查步驟段不再出現「Python shell」，不查該說明段。
+4. 費用句改成「shows an estimate, or says why it cannot work one out」（價目表目前空的）。
+5. 「只改 5 個檔（含本裁決後仍是同 5 檔）、沒動程式碼」用閱卷者跑 `git diff --stat origin/v3...HEAD` 驗，接受標「手動：閱卷者跑」。
