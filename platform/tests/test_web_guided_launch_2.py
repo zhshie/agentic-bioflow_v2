@@ -102,7 +102,8 @@ def step(text, n):
 
 
 def row(text, label):
-    for m in re.finditer(r'<li class="chk[^"]*">(.*?)</li>', step(text, 1), re.S):
+    # guided-launch-2d: the parameter read is the first line of step 5 (was a row of the pre-check list in step 1)
+    for m in re.finditer(r'<p class="chk[^"]*">(.*?)</p>', step(text, 5), re.S):
         if label in m.group(1):
             return plain_text(m.group(1))
     return None
@@ -141,7 +142,7 @@ def test_g01_loading_row_and_refresh(rig, fk):
     _, c = ready(rig)
     t = get(c).text
     assert row(t, "讀取管線參數表") == "… 讀取管線參數表 讀取中"
-    assert REFRESH in t and "讀取中，頁面每 15 秒自動更新。" in step(t, 1)
+    assert REFRESH in t and "讀取中，頁面每 15 秒自動更新。" in step(t, 5)      # guided-launch-2d: step 5 (was step 1)
     assert "讀取中，頁面將自動更新；請於讀取完成後再填寫參數。" in step(t, 5) and "<textarea" in step(t, 5)      # guided-launch-2b: formal wording
 
 
@@ -154,7 +155,7 @@ def test_g01_error_rows(rig, fk, code, reason, half):
     t = get(c).text
     line = row(t, "讀取管線參數表")
     assert line.startswith("✗ 讀取管線參數表") and half in line and "the agent" not in line and "were not found" not in line
-    assert "前置檢查未通過" in step(t, 7) and "✗ 讀取管線參數表" in plain_text(step(t, 7))
+    assert "前置檢查" not in t      # guided-launch-2d: the summary no longer lists failed checks (the failure is the line in step 5)
 
 
 def test_g01_schema_not_ok_row(rig, fk):
@@ -176,8 +177,8 @@ def test_g01_no_revision(rig, fk):
     _, c = ready(rig)
     t = c.get("/launch?pipeline=nf-core/ampliseq&src=used").text
     assert row(t, "讀取管線參數表") == "○ 讀取管線參數表 選定版本後檢查"      # guided-launch-2b: formal wording
-    assert "　選定版本後檢查" in step(t, 1)
-    assert "讀取管線參數表" not in step(t, 7) and fk.main_calls() == []      # the missing revision is a problem of its own; this row is not one
+    assert "　選定版本後檢查" in step(t, 5)      # guided-launch-2d: step 5 (was step 1)
+    assert "讀取管線參數表" not in step(t, 6) and fk.main_calls() == []      # the missing revision is a problem of its own; this row is not one
 
 
 def test_g01_failed_row_does_not_stop_the_send(rig, fk):
@@ -202,21 +203,20 @@ def test_g02_latest_called_once_for_the_caller(rig, fk):
     # TC-014, TC-021, TC-022
     _, c = ready(rig)
     t = c.get(NEW).text
-    assert len(fk.lr) == 1 and fk.lr[0]["caller"].name == "ann" and fk.lr[0]["pipeline"] == "nf-core/ampliseq" and fk.pf == []
-    two = step(t, 2)
-    assert re.search(r'<input [^>]*name="pipeline"', two) and re.search(r'<input [^>]*name="revision"', two)
-    assert "搜尋全部 nf-core（尚未開放）" in plain_text(two)      # guided-launch-2b: formal wording
+    assert len(fk.lr) == 1 and fk.lr[0]["caller"].name == "ann" and fk.lr[0]["pipeline"] == "nf-core/ampliseq"
+    assert [x["revision"] for x in fk.main_calls()] == ["2.18.0"]      # guided-launch-2d: the newest release is the version, so its files are read (was: fk.pf == [])
+    three = step(t, 3)      # guided-launch-2d: step 3 (was 2); the version is a drop-down (was a text box)
+    assert re.search(r'<input [^>]*name="pipeline"', three) and re.search(r'<select name="revision"', three)
+    assert "搜尋全部 nf-core（尚未開放）" in plain_text(three)      # guided-launch-2b: formal wording
 
 
 def test_g02_latest_ready_and_link(rig, fk):
     # TC-015, TC-016, TC-017
+    # guided-launch-2d: the "最新版本：" line with its "套用此版本" link is gone; the newest version is the selected item of the one version drop-down
     _, c = ready(rig)
-    two = step(c.get(NEW).text, 2)
-    assert "最新版本：2.18.0" in plain_text(two) and "目前無法連線至 GitHub" not in two
-    href = re.search(r'<a href="([^"]+)">套用此版本</a>', two).group(1)
-    assert "pipeline=nf-core/ampliseq" in href and "revision=2.18.0" in href
-    nxt = c.get(html.unescape(href)).text
-    assert re.search(r'name="revision" value="2.18.0"', nxt) or 'value="2.18.0"' in step(nxt, 2)
+    three = step(c.get(NEW).text, 3)
+    assert '<option value="2.18.0" selected>2.18.0</option>' in three and "最新版本" not in three and "套用此版本" not in three
+    assert "目前無法連線至 GitHub" not in three
 
 
 def test_g02_stale_cache(rig, fk):
@@ -225,7 +225,7 @@ def test_g02_stale_cache(rig, fk):
     _, c = ready(rig)
     from abf_platform import web_board
     when = web_board.taipei_time(1_800_000_000.0)
-    assert "目前無法連線至 GitHub，以下為 %s 的查詢結果。" % when in plain_text(step(c.get(NEW).text, 2))      # guided-launch-2b: formal wording
+    assert "目前無法連線至 GitHub，以下為 %s 的查詢結果。" % when in plain_text(step(c.get(NEW).text, 3))      # guided-launch-2d: step 3 (was 2)      # guided-launch-2b: formal wording
 
 
 def test_g02_latest_loading_and_error(rig, fk):
@@ -233,30 +233,32 @@ def test_g02_latest_loading_and_error(rig, fk):
     fk.latest = latest(state="loading")
     _, c = ready(rig)
     t = c.get(NEW).text
-    assert "… 讀取中" in plain_text(step(t, 2)) and REFRESH in t
+    assert "… 正在讀取版本清單…" in plain_text(step(t, 3)) and REFRESH in t      # guided-launch-2d: step 3, the sentence of the version list (was "… 讀取中" in step 2)
     fk.latest = latest(state="error", why="沒有可用的 release tag (no usable release tag)", error="no_release")
     t = c.get(NEW).text
-    assert "✗ 沒有可用的 release tag。" in plain_text(step(t, 2)) and "no usable" not in t
+    assert "✗ 沒有可用的 release tag。" in plain_text(step(t, 3)) and "no usable" not in t
 
 
 def test_g02_not_for_the_used_tab_or_with_a_revision(rig, fk):
     # TC-023, TC-024
+    # guided-launch-2d: the list of versions is asked on the new-pipeline tab also when a version is given (the drop-down needs it); still never on the used tab
     _, c = ready(rig)
     c.get("/launch?pipeline=nf-core/ampliseq&src=used")
-    c.get(SEL + "&src=new")
     assert fk.lr == []
+    c.get(SEL + "&src=new")
+    assert len(fk.lr) == 1
 
 
 # ---- US3: step 3 ----------------------------------------------------------------------------------------------------------------------
 
 def test_g03_link_with_name_and_size(rig, fk):
     # TC-025, TC-026, TC-027, TC-043
+    # guided-launch-2d: the picture itself is under the pipeline; the link "開啟流程圖" and the line with the file name and size are gone
     _, c = ready(rig)
     t = get(c).text
     three = step(t, 3)
-    assert 'href="%s">開啟流程圖</a>' % DIAGRAM_URL in three and "ampliseq_workflow.png" in three and "736 KB" in three      # guided-launch-2b: KB, not bytes
-   
-    assert 'data-state="done"' in three[:200] and "<img" not in t and "<figure" not in t
+    assert '<img class="gdia" src="%s"' % DIAGRAM_URL in three and "開啟流程圖" not in t and "ampliseq_workflow.png" not in three and "736 KB" not in three
+    assert 'data-state="done"' in three[:200] and "<figure" not in t
     for gone in ("本次值", "將執行的階段", "README"):
         assert gone not in t
 
@@ -269,10 +271,10 @@ def test_g03_none_loading_failed(rig, fk):
     assert "此管線未提供流程圖。" in three and 'data-state="done"' in three[:200] and "開啟流程圖" not in three
     fk.files = loading_files()
     t = get(c).text
-    assert 'data-state="later"' in step(t, 3)[:200] and "… 讀取中" in plain_text(step(t, 3)) and REFRESH in t
+    assert 'data-state="done"' in step(t, 3)[:200] and "… 正在讀取流程圖…" in plain_text(step(t, 3)) and REFRESH in t      # guided-launch-2d: the pair is chosen, so the step is done; the reading sentence is the diagram's
     fk.files = good_files(diagram={"status": "not_found", "message": "GitHub 上找不到流程圖 (the diagram was not found)"})
     three = step(get(c).text, 3)
-    assert 'data-state="later"' in three[:200] and "✗ GitHub 上找不到流程圖。" in plain_text(three)
+    assert 'data-state="done"' in three[:200] and "✗ GitHub 上找不到流程圖。" in plain_text(three)      # guided-launch-2d: done (the pair is chosen), was later
 
 
 def test_g03_image_loading_and_failed(rig, fk):
@@ -280,7 +282,7 @@ def test_g03_image_loading_and_failed(rig, fk):
     _, c = ready(rig)
     fk.image = good_image(state="loading", image=None)
     t = get(c).text
-    assert "開啟流程圖" not in step(t, 3) and "圖檔讀取中" in step(t, 3) and REFRESH in t
+    assert "開啟流程圖" not in step(t, 3) and "正在讀取流程圖…" in step(t, 3) and REFRESH in t      # guided-launch-2d: was 圖檔讀取中
     fk.image = good_image(image={"status": "too_large", "message": "檔案太大，沒有讀 (the files are too large to read)"})
     three = step(get(c).text, 3)
     assert "開啟流程圖" not in three and "✗ 檔案太大，沒有讀。" in plain_text(three)
@@ -288,17 +290,18 @@ def test_g03_image_loading_and_failed(rig, fk):
 
 def test_g03_not_chosen(rig, fk):
     # TC-033
+    # guided-launch-2d: nothing at all until a pipeline and a version are decided (the hint 選定管線與版本後顯示 is gone)
     _, c = ready(rig)
     for url in ("/launch", "/launch?pipeline=nf-core/ampliseq&src=used"):
         three = step(c.get(url).text, 3)
-        assert "選定管線與版本後顯示" in three and "之後開放" not in three
+        assert "選定管線與版本後顯示" not in three and "之後開放" not in three and "<img" not in three and "/launch/diagram" not in three
 
 
 def test_g03_calls(rig, fk):
     # TC-034, TC-093, TC-095
     _, c = ready(rig)
     get(c)
-    assert [(x["parts"], x["enqueue"], x["caller"].name) for x in fk.pf] == [(None, True, "ann"), (["image"], True, "ann")] and fk.lr == []
+    assert [(x["parts"], x["enqueue"], x["caller"].name) for x in fk.pf] == [(None, True, "ann"), (["image"], True, "ann")] and len(fk.lr) == 1      # guided-launch-2d: the version list is asked too (was fk.lr == [])
     fk.pf.clear()
     fk.files = good_files(diagram={"status": "none"})
     get(c)
@@ -484,9 +487,9 @@ def test_g07_get_merges(rig, fk):
     # TC-074, TC-077, TC-078, TC-079
     _, c = ready(rig)
     t = get(c, **{"p.FW_primer": "AAA"}).text      # guided-launch-2b: a filled box of the table stays in its box and is listed in the summary
-    assert "FW_primer: AAA" in plain_text(step(t, 7)) and re.search(r'name="p.FW_primer"[^>]*value="AAA"', t) and box(t) == ""
+    assert "FW_primer: AAA" in plain_text(step(t, 6)) and re.search(r'name="p.FW_primer"[^>]*value="AAA"', t) and box(t) == ""      # guided-launch-2d: the summary is step 6 (was 7)
     t = get(c, route="defaults", **{"p.FW_primer": "AAA"}).text                       # TC-077: `route` is ignored now
-    assert re.search(r'name="p.FW_primer"[^>]*value="AAA"', t) and "FW_primer: AAA" in plain_text(step(t, 7))
+    assert re.search(r'name="p.FW_primer"[^>]*value="AAA"', t) and "FW_primer: AAA" in plain_text(step(t, 6))
     t = get(c, route="defaults", params="x%3A+1").text                                # TC-078: `route` is ignored now, the typed box stays
     assert box(t) == "x: 1"
     t = get(c, **{"p.FW_primer": "", "p.outdir": ""}).text                           # TC-079
@@ -500,7 +503,7 @@ def test_g07_typed_from_the_schema(rig, fk):
     _, c = ready(rig)
     allp = {p["name"]: p for g in groups() for p in g["params"]}
     num = next(n for n, p in allp.items() if p["types"][:1] == ["integer"] and not p["enum"])
-    assert "%s: 7" % num in plain_text(step(get(c, **{"p." + num: "7"}).text, 7))      # guided-launch-2b: the summary, not the box
+    assert "%s: 7" % num in plain_text(step(get(c, **{"p." + num: "7"}).text, 6))      # guided-launch-2b: the summary, not the box
 
 
 class Spy:
@@ -565,10 +568,10 @@ def test_g08_english_every_state(rig, fk):
     assert "No usable release tag" in c.get(NEW + "&lang=en").text
     fk.latest = latest()
     t = c.get(NEW + "&lang=en").text
-    assert "Latest version: 2.18.0" in t and "Apply this version" in t
+    assert '<option value="2.18.0" selected>2.18.0</option>' in t and "Apply this version" not in t and "Latest version" not in t      # guided-launch-2d: the drop-down replaces the line and the link
     fk.files, fk.image = good_files(), good_image()
     t = get(c, lang="en").text
-    assert "Advanced parameters (hidden by default in the pipeline)" in t and "Open the workflow diagram" in t and 'title="Required"' in t
+    assert "Advanced parameters (hidden by default in the pipeline)" in t and "<img" in t and "Open the workflow diagram" not in t and 'title="Required"' in t      # guided-launch-2d: the picture, not the link
 
 
 def test_g09_limits(rig, fk):
@@ -582,7 +585,7 @@ def test_g09_limits(rig, fk):
             t = r.text
             assert "<script" not in t and "style=" not in t and len(re.findall(r"<style\b", t)) == 1 and "<link" not in t
             csp = r.headers["content-security-policy"]
-            assert csp == "default-src 'none'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" % web_board.style_source()
+            assert csp == "default-src 'none'; img-src 'self'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" % web_board.style_source()      # guided-launch-2d: /launch alone gains img-src 'self' (the picture of the diagram)
     for sel in (".pgroup", ".ptbl", ".scols", ".req"):
         for _, body in re.findall(r"([^{}]*%s[^{}]*)\{([^}]*)\}" % re.escape(sel), web_board.STYLE):
             assert "#" not in body and "rgb" not in body, body
@@ -604,8 +607,8 @@ def test_g10_one_get_shows_everything(rig, fk):
     # TC-093, TC-098
     _, c = ready(rig)
     t = get(c).text
-    assert len(fk.pf) <= 2 and len(fk.lr) == 0
-    assert "讀到" in step(t, 1) and "開啟流程圖" in step(t, 3) and "scols" in step(t, 4) and "pgroups" in step(t, 5)
+    assert len(fk.pf) <= 2 and len(fk.lr) == 1      # guided-launch-2d: the version list is asked too (was 0)
+    assert "讀到" in step(t, 5) and "<img" in step(t, 3) and "scols" in step(t, 4) and "pgroups" in step(t, 5)      # guided-launch-2d: the read is in step 5, the picture in step 3
 
 
 def test_g11_other_pipeline(rig, fk):

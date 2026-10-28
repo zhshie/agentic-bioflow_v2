@@ -28,7 +28,7 @@ def Caller(*args):
 
 
 PF_KEYS = {"state", "pipeline", "revision", "parts", "checked_at", "error", "reason", "schema", "schema_input", "diagram", "image"}
-LR_KEYS = {"state", "pipeline", "revision", "source", "checked_at", "why", "error"}
+LR_KEYS = {"state", "pipeline", "revision", "source", "checked_at", "why", "error", "releases"}      # guided-launch-2d: every usable release, newest first
 PF_ERRORS = {None, "bad_input", "no_agent", "no_answer", "network", "rate_limited", "not_found", "too_large", "bad_response", "refused"}
 LR_ERRORS = {None, "bad_input", "no_agent", "no_answer", "network", "rate_limited", "not_found", "no_release", "refused"}
 NOT_FOR_USERS = re.compile(r"Traceback|sqlite|args_json|deadline_at|result_json|SELECT")
@@ -485,7 +485,7 @@ def test_tc138_tc139_tc140_the_newest_plain_version_is_found_and_remembered(worl
     out = lr(world)
     assert out["state"] == "ready" and out["revision"] == "3.0.0" and out["source"] == "fetched" and out["checked_at"] == T0 + 7
     assert out["error"] is None and out["why"] is None
-    assert json.loads(cache_file(world).read_text(encoding="utf-8")) == {"nf-core/ampliseq": {"revision": "3.0.0", "checked_at": T0 + 7}}
+    assert json.loads(cache_file(world).read_text(encoding="utf-8")) == {"nf-core/ampliseq": {"revision": "3.0.0", "checked_at": T0 + 7, "releases": ["3.0.0", "2.18.0"]}}      # guided-launch-2d: the entry keeps the list
     assert re.match(r"^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z", out["revision"])
 
 

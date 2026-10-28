@@ -125,17 +125,6 @@ def split_prefill(params, files):
     return cells, rest
 
 
-def size_text(size):
-    """A file size as the page writes it: B under 1 KB, whole KB under 1 MB, else MB with one decimal."""
-    if not isinstance(size, int) or isinstance(size, bool) or size < 0:
-        return "—"
-    if size < 1024:
-        return "%d B" % size
-    if size < 1048576:
-        return "%d KB" % int(size / 1024.0 + 0.5)
-    return "%.1f MB" % (size / 1048576.0)
-
-
 def star(t):
     return '<span class="req" title="%s">*</span>' % esc(t["g2_req"])
 

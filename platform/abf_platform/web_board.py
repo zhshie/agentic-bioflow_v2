@@ -869,7 +869,7 @@ def plain_reason(message, lang):
     return text[:300] + ("" if text.endswith((".", "。")) else ("." if lang == "en" else "。"))
 
 
-# ---- guided-launch-1: the launch page as seven numbered steps -----------------------------------------------------------------------------
+# ---- the launch page as numbered steps (guided-launch-1; six since guided-launch-2d) ------------------------------------------------------
 
 GUIDED = {
     "zh": {

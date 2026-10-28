@@ -10,7 +10,7 @@ import pytest
 
 from test_web_actions import area_sheet, form_values, login, pending, rid_of
 from test_web_board import no_cjk
-from test_web_guided_launch import SEL, launched, ready, rig  # noqa: F401  (rig is a fixture)
+from test_web_guided_launch import SEL, launched, ready, rig, set_env  # noqa: F401  (rig is a fixture)
 from test_web_guided_launch_2 import (NETWORK, error_files, fk, good_files, groups, input_cols, latest, loading_files,  # noqa: F401  (fk is a fixture)
                                       plain_text, step)
 
@@ -107,19 +107,19 @@ def test_h01_one_submit_button(rig, fk):
             assert re.search(r'<select [^>]*name="%s"' % name, f), name
         assert re.search(r'<textarea [^>]*name="params"', f) and 'name="p.orf_start"' in f
     f = form_of(c.get(SEL + "&src=new").text)
-    assert re.search(r'<input [^>]*name="pipeline"', f) and re.search(r'<input [^>]*name="revision"', f)
+    assert re.search(r'<input [^>]*name="pipeline"', f) and re.search(r'<select name="revision"', f) and not re.search(r'<input [^>]*name="revision"', f)      # guided-launch-2d: the version is a drop-down (was a text box)
 
 
 def test_h01_kept_links(rig, fk):
     # TC-005, TC-006, TC-007
     ann, c = ready(rig)
     launched(rig, ann, "run-a")
-    two = step(c.get(SEL + "&src=used").text, 2)
-    assert re.search(r'<a href="/launch\?pipeline=nf-core/ampliseq&amp;revision=2.18.0">選用</a>', two)
-    assert re.search(r'<a href="/launch\?from=run-a">沿用設定重新分析</a>', two)
+    three = step(c.get(SEL + "&src=used").text, 3)      # guided-launch-2d: the pipeline is step 3 (was 2)
+    assert re.search(r'<a href="/launch\?pipeline=nf-core/ampliseq&amp;revision=2.18.0">選用</a>', three)
+    assert re.search(r'<a href="/launch\?from=run-a">沿用設定重新分析</a>', three)
     t = c.get("/launch?pipeline=nf-core/ampliseq&src=new").text
-    assert re.search(r'<a href="[^"]*pipeline=nf-core/ampliseq[^"]*revision=2.18.0[^"]*">套用此版本</a>', step(t, 2))
-    assert 'data-tab="used"' in t and 'data-tab="new"' in t and "開啟流程圖" in step(c.get(SEL).text, 3)
+    assert "套用此版本" not in t and '<option value="2.18.0" selected>2.18.0</option>' in step(t, 3)      # guided-launch-2d: the "套用此版本" link is gone, the drop-down holds the newest version
+    assert 'data-tab="used"' in t and 'data-tab="new"' in t and "<img" in step(c.get(SEL).text, 3) and "開啟流程圖" not in c.get(SEL).text      # guided-launch-2d: the picture, not the link
 
 
 def test_h01_used_tab_hidden_fields(rig, fk, spy):
@@ -138,6 +138,7 @@ def test_h01_used_tab_hidden_fields(rig, fk, spy):
 def test_h01_no_sheet_no_env_keep_the_button(rig, fk, spy):
     # TC-009, TC-010
     rig.user("ann")
+    set_env(rig, "lab-a", status="available")      # guided-launch-2d: only an available environment is offered
     c = login(rig, "ann")
     t = c.get(SEL).text
     assert "送出（前往確認頁）" in main_of(t) and "disabled" not in form_of(t)
@@ -147,7 +148,7 @@ def test_h01_no_sheet_no_env_keep_the_button(rig, fk, spy):
     area_sheet(rig.w, bob)
     c = login(rig, "bob")
     t = c.get(SEL).text
-    assert "送出（前往確認頁）" in main_of(t) and "尚無可用的運算環境。" in t
+    assert "送出（前往確認頁）" not in main_of(t) and "尚無可用的運算環境，請先至設定頁完成設定。" in t      # guided-launch-2d: with no environment there is no button (was: the button stayed)
     r = c.post("/launch", data=dict(hidden_of(t), pipeline="nf-core/ampliseq", revision="2.18.0", run_name="x", samplesheet="samples.csv", ce_name=""))
     assert r.status_code == 400 and "運算環境必須是" in r.text and spy.calls == []
 
@@ -318,8 +319,8 @@ def test_h08_prefill_cells_and_unknown(rig, fk):
     assert 'value="5"' in cell(five, "orf_start") and 'name="p.custom_unknown"' not in five
     box = html.unescape(re.search(r"<textarea[^>]*>(.*?)</textarea>", five, re.S).group(1))
     assert '<details class="padv" open>' in five and "custom_unknown: 3" in box
-    seven = plain_text(step(t, 7))
-    assert "orf_start: 5" in seven and "stop_codons" not in seven
+    six = plain_text(step(t, 6))      # guided-launch-2d: the summary is step 6 (was 7)
+    assert "orf_start: 5" in six and "stop_codons" not in six
 
 
 def test_h08_cannot_reuse(rig, fk):
@@ -369,7 +370,7 @@ def defaults_form():
 def test_h06_all_defaults_send_no_params(rig, fk, spy):
     # TC-049, TC-061
     _, c = ready(rig)
-    assert "全部使用預設值" in plain_text(step(c.get(SEL).text, 7))
+    assert "全部使用預設值" in plain_text(step(c.get(SEL).text, 6))      # guided-launch-2d: step 6 (was 7)
     rid_of(post(rig, c, **defaults_form()))
     assert not sent(spy)
 
@@ -430,12 +431,12 @@ def test_h09_stars(rig, fk):
         assert (STAR in m.group(1)) == bool(col["required"]), col["name"]
     assert five.index("* 必填") < five.index("<table")
     assert not re.search(r'<tr class="prow">[^\n]*?>必填<', five)
-    two = step(t, 2)
-    assert re.search(r"<label><span class=\"lbl\">版本 %s</span><input" % re.escape(STAR), two) and "請填寫確切版本號，例如 2.18.0" in two
-    assert re.search(r"<label><span class=\"lbl\">管線（nf-core 名稱） %s</span><input" % re.escape(STAR), two)
+    three = step(t, 3)      # guided-launch-2d: pipeline and version are step 3; the version is a drop-down and has no hint line
+    assert re.search(r"<label><span class=\"lbl\">版本 %s</span><select" % re.escape(STAR), three) and "請填寫確切版本號" not in t
+    assert re.search(r"<label><span class=\"lbl\">管線（nf-core 名稱） %s</span><input" % re.escape(STAR), three)
     assert re.search(r"<label><span class=\"lbl\">樣本表（從已上傳的檔案中選擇） %s</span><select" % re.escape(STAR), four)
-    assert re.search(r"<label><span class=\"lbl\">運算環境 %s</span><select" % re.escape(STAR), step(t, 6))
-    assert re.search(r"<label><span class=\"lbl\">分析名稱 %s</span><input" % re.escape(STAR), step(t, 7))
+    assert re.search(r"<label><span class=\"lbl\">運算環境 %s</span><select" % re.escape(STAR), step(t, 2))      # guided-launch-2d: step 2 (was 6)
+    assert re.search(r"<label><span class=\"lbl\">分析名稱 %s</span><input" % re.escape(STAR), step(t, 1))      # guided-launch-2d: step 1 (was 7)
     assert "沿用先前分析的參數" in five and "req" not in re.search(r"<label>沿用先前分析的參數.*?<select", five, re.S).group(0)
     assert "req" not in re.search(r'<details class="padv"[^>]*>.*?<textarea', five, re.S).group(0)
 
@@ -480,18 +481,23 @@ def test_h09_english(rig, fk):
                                        (1048576, "1.0 MB")])
 def test_h10_size(rig, fk, size, want):
     # TC-080 .. TC-085
+    # guided-launch-2d: the line with the file name and its size is gone (the picture is shown instead), so no size is written whatever the size is
     from test_pipeline_files_action import DIAGRAM
     fk.files = good_files(diagram=dict(DIAGRAM, size=size))
     _, c = ready(rig)
     t = c.get(SEL).text
-    assert "流程圖檔：ampliseq_workflow.png（%s）" % want in plain_text(step(t, 3)) and "位元組" not in t
+    three = plain_text(step(t, 3))
+    assert want not in three and "ampliseq_workflow.png" not in three and "流程圖檔" not in three and "位元組" not in t and "<img" in step(t, 3)
 
 
 def test_h10_english(rig, fk):
     # TC-086
+    # guided-launch-2d: the picture has an English alt text; no size line
     _, c = ready(rig)
-    three = plain_text(step(c.get(SEL + "&lang=en").text, 3))
-    assert "(736 KB)" in three and "bytes" not in three and no_cjk(three)
+    t = c.get(SEL + "&lang=en").text
+    three = step(t, 3)
+    assert "(736 KB)" not in three and "bytes" not in three and "Diagram file" not in three and no_cjk(three)
+    assert 'alt="nf-core/ampliseq 2.18.0 workflow diagram"' in three
 
 
 # ---- US7: wording ---------------------------------------------------------------------------------------------------------------------
@@ -530,7 +536,7 @@ def test_h11_no_banned_word_without_env(rig, fk):
     bob = rig.user("bob")
     area_sheet(rig.w, bob)
     t = login(rig, "bob").get(SEL).text
-    assert banned_in(t) == [] and "尚無可用的運算環境。" in t
+    assert banned_in(t) == [] and "尚無可用的運算環境，請先至設定頁完成設定。" in t      # guided-launch-2d: the sentence names the settings page
 
 
 def test_h11_english_has_no_cjk(rig, fk):
@@ -565,15 +571,17 @@ def test_h11_old_strings_are_gone(rig, fk):
     # TC-091 .. TC-100
     olds = ["用過的", "新管線（全部 nf-core）", "快速送出", "還沒有用過的管線。", "選好管線後檢查", "選好版本後檢查", "選好管線與版本後顯示", "版本（必填，要寫死）",
             "你還沒有上傳樣本表", "你還沒有可用的運算環境。", "run 名稱", "已用這個 run 的內容預填", "沿用哪一次分析", "使用這一版", "位元組", "這條管線沒有提供流程圖。",
-            "讀取中頁面會自動更新，請等讀完再填參數。", "送出，到確認頁", "之後開放", "自己調整", "目前連不到 GitHub", "站台已登記這個"]
+            "讀取中頁面會自動更新，請等讀完再填參數。", "送出，到確認頁", "之後開放", "自己調整", "目前連不到 GitHub", "站台已登記這個", "選定管線後檢查", "選定管線與版本後顯示", "尚未上傳樣本表，無法啟動分析。", "請依序完成步驟 1 至 7"]
     got = pages(rig, fk)
     for state, page in got.items():
         for old in olds:
             assert old not in main_of(page), (state, old)
-    news = {"used": ["曾使用的管線", "其他 nf-core 管線", "選用", "沿用設定重新分析", "請依序完成步驟 1 至 7。按下「送出」後將進入確認頁，於確認頁再次送出才會排入佇列。"],
-            "no pipeline": ["選定管線後檢查", "尚未選擇", "預覽與欄位角色（尚未開放）", "選定管線與版本後顯示", "分析名稱", "送出（前往確認頁）"],
-            "no version": ["選定版本後檢查"], "stale": ["套用此版本", "目前無法連線至 GitHub，以下為"],
-            "no diagram": ["此管線未提供流程圖。"], "no sheet": ["尚未上傳樣本表，無法啟動分析。", "尚無可用的運算環境。"],
+    # guided-launch-2d: step count 6; the pre-check hint, the diagram hint and the 套用此版本 link are gone; the no-sheet and no-environment sentences are the new ones
+    news = {"used": ["曾使用的管線", "其他 nf-core 管線", "選用", "沿用設定重新分析", "請依序完成步驟 1 至 6。按下「送出」後將進入確認頁，於確認頁再次送出才會排入佇列。"],
+            "no pipeline": ["尚未選擇", "預覽與欄位角色（尚未開放）", "分析名稱", "送出（前往確認頁）"],
+            "no version": ["管線（nf-core 名稱）", "版本 *"],      # guided-launch-2d: the newest version is chosen by itself, so 選定版本後檢查 is no longer shown here (it still shows with no version decided, see test_g01_no_revision)
+            "stale": ["目前無法連線至 GitHub，以下為"],
+            "no diagram": ["此管線未提供流程圖。"], "no sheet": ["尚無已上傳的樣本表，請先上傳。", "尚無可用的運算環境，請先至設定頁完成設定。"],
             "ready": ["樣本表（從已上傳的檔案中選擇）"],
             "from": ["已帶入該次分析的設定；樣本表與分析名稱需重新選擇。"], "loading": ["讀取中，頁面將自動更新；請於讀取完成後再填寫參數。"]}
     for state, words in news.items():
@@ -608,12 +616,13 @@ def test_scope_page_limits(rig, fk):
     launched(rig, ann, "run-a")
     for url in (SEL, SEL + "&src=used", "/launch"):
         t = c.get(url).text
-        assert "我的 run" in t and "<script" not in t and "<img" not in t and "<figure" not in t and "style=" not in t
+        assert "我的 run" in t and "<script" not in t and "<figure" not in t and "style=" not in t
+        assert all(x.startswith('<img class="gdia" src="/launch/diagram?') for x in re.findall(r"<img\b[^>]*>", t))      # guided-launch-2d: the only picture is the workflow diagram, our own address
         assert len(re.findall(r"<style", t)) + len(re.findall(r'rel="stylesheet"', t)) == 1
-    two = step(c.get(SEL + "&src=new").text, 2)
-    assert "搜尋全部 nf-core（尚未開放）" in plain_text(two)
-    assert not re.search(r'<input [^>]*name="(?!pipeline|revision)\w+"', re.sub(r'<input type="hidden"[^>]*>', "", two))
-    assert re.search(r"✓|✗|…|○", plain_text(step(c.get(SEL).text, 1)))
+    three = step(c.get(SEL + "&src=new").text, 3)      # guided-launch-2d: the pipeline is step 3 (was 2)
+    assert "搜尋全部 nf-core（尚未開放）" in plain_text(three)
+    assert not re.search(r'<input [^>]*name="(?!pipeline|revision)\w+"', re.sub(r'<input type="hidden"[^>]*>', "", three))
+    assert re.search(r"✓|✗|…|○", plain_text(step(c.get(SEL).text, 5)))      # the parameter read is the first line of step 5 (was a row of step 1)
 
 
 def test_scope_other_schema_gives_other_cells(rig, fk):
