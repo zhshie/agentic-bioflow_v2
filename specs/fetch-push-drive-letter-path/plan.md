@@ -94,6 +94,7 @@ source: GitHub issue #23（表列第 5 項 `fetch-sh-rsync-remote-remote`，退�
   - (c) 測試 2 的目的地是**單反斜線**的 `D:\data\out\results`。在 bash 單引號裡逐字寫成 `'D:\data\out\results'`，計畫原文的雙反斜線是筆誤。
   - (d) 新斷言只在 Linux／WSL 跑。偵測到 MSYS／Cygwin（`uname -s` 開頭是 `MINGW`、`MSYS` 或 `CYGWIN`）時，直接略過整段新斷言並印一行 `note: drive-letter assertions run on Linux/WSL only`，不算失敗。這是 bash 測試，不是 pytest，CI 跑在 Linux 上，所以不會有 skip 計數問題。有 cygpath 的那條分支，在 CI 上不測。
   - (e) verifier 補寫的「不做」各項 TC（tar 後備、UNC、錯誤訊息／exit code、`--dry-run`、push 反斜線來源）照收，由 executor 在兩個測試檔新增斷言。TC-031、TC-033 由閱卷者直接檢查。
+- **E1（10-28 16:30 developer-agent，本機逾時）**：桌機上 `platform_test.sh` 在乾淨的 v3 本身也要約 7 分鐘（16:19→16:26 實測），超過 run_all 預設 300 秒，與本任務無關。這台機器跑全套一律用 `bash tests/run_all.sh --timeout 900`；斷言不變、CI 仍用 300 秒，合併仍須 CI 全綠。用 900 秒全綠即可寫 GREEN。
 
 ## 專長守則（backend）
 
