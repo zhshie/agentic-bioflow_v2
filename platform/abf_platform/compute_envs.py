@@ -32,9 +32,14 @@ KINDS = {
     "gke-platform": "Google GKE",
 }
 SUPPORTED = "slurm-platform"                                  # the type that runs through an agent on the cluster
-PLATFORM_HOST_TYPES = ("googlebatch-platform",)               # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch)
+GOOGLE_BATCH = "googlebatch-platform"
 AWS = "awsbatch-platform"
-CHECK_ONLY_TYPES = (AWS,)                                     # checked by the agent on the platform host, but nothing is launched yet (aws-launch)
+PLATFORM_HOST_TYPES = (GOOGLE_BATCH, AWS)                     # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch, aws-launch)
+CHECK_ONLY_TYPES = ()                                         # 新雲端類型先放這裡，只開預檢
+CLOUD_JOB_KINDS = {                                           # the job kinds each platform-host type takes; the rest is refused in plain words (the clean kind is split in two pieces: test_cleanup_store allows that word in no other file of this package)
+    GOOGLE_BATCH: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
+    AWS: ("preflight", "launch_nextflow", "cancel_run", "put_upload", "pipeline_files"),
+}
 CHECKABLE = (SUPPORTED,) + PLATFORM_HOST_TYPES + CHECK_ONLY_TYPES
 SEQERA_COMPUTE = ("seqera-compute", "seqeracompute-platform")
 
@@ -505,7 +510,7 @@ def clean(fields):
     _check_environment(config)
     if platform == SUPPORTED:
         _check_slurm(config)
-    elif platform in PLATFORM_HOST_TYPES:
+    elif platform == GOOGLE_BATCH:
         _check_gcb(config, agent)
     elif platform == AWS:
         _check_aws(config, agent)
@@ -759,13 +764,14 @@ def snapshot(row_or_view):
     """What an agent is told about an environment: only what a job needs, never anything else."""
     v = row_or_view if "config" in row_or_view else view(row_or_view)
     c = v["config"]
-    if v["platform"] in PLATFORM_HOST_TYPES:      # the agent on the platform host needs the settings of its checks, and the credential's name
+    if v["platform"] == GOOGLE_BATCH:             # the agent on the platform host needs the settings of its checks, and the credential's name
         return {"name": v["name"], "platform": v["platform"], "credentialsId": v["credentialsId"],
                 "project": c.get("project"), "location": c.get("location"), "workDir": c.get("workDir"),
                 "serviceAccountEmail": c.get("serviceAccountEmail")}
     if v["platform"] == AWS:
         return {"name": v["name"], "platform": v["platform"], "credentialsId": v["credentialsId"],
-                "region": c.get("region"), "workDir": c.get("workDir"), "jobQueue": c.get("jobQueue")}
+                "region": c.get("region"), "workDir": c.get("workDir"), "jobQueue": c.get("jobQueue"),
+                "spot": c.get("spot"), "maxvCpus": c.get("maxvCpus")}
     library = next((e.get("value") for e in (c.get("environment") or []) if isinstance(e, dict)
                     and e.get("name") == "NXF_SINGULARITY_LIBRARYDIR"), None)      # the one variable a preflight needs; no other is carried
     return {"name": v["name"], "platform": v["platform"], "workDir": c.get("workDir"), "launchDir": c.get("launchDir"),

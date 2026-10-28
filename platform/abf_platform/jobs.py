@@ -107,13 +107,16 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
         if owned is not None and owned["owner_user_id"] != caller_user_id:
             raise _not_found(ce_name)
     status = row["status"]
-    if row["platform"] in compute_envs.PLATFORM_HOST_TYPES and kind not in ("preflight", "launch_nextflow", "cancel_run", "clean_work", "put_upload", "pipeline_files"):
+    if row["platform"] in compute_envs.CLOUD_JOB_KINDS and kind not in compute_envs.CLOUD_JOB_KINDS[row["platform"]]:
+        if row["platform"] == compute_envs.AWS:
+            raise JobRefused("%s is an AWS Batch environment: this job kind is not built for it yet (尚未支援); "
+                             "clean comes later in aws-clean (清理在之後的 aws-clean)" % ce_name)
         raise JobRefused("%s is a Google Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
     if row["platform"] in compute_envs.CHECK_ONLY_TYPES and kind != "preflight":
-        raise JobRefused("%s is an AWS Batch environment: it can be created and checked, but sending a run to it is not built yet "
-                         "(尚未支援送出; coming in aws-launch)" % ce_name)
-    if kind == "put_upload" and row["platform"] not in compute_envs.PLATFORM_HOST_TYPES:
-        raise JobRefused("%s cannot hold cloud data: only a Google Batch environment can (只有 Google Batch 環境能放雲端資料)" % ce_name)
+        raise JobRefused("%s is a %s environment: it can be created and checked, but sending a run to it is not built yet "
+                         "(尚未支援送出)" % (ce_name, compute_envs.KINDS[row["platform"]]))
+    if kind == "put_upload" and row["platform"] not in compute_envs.CLOUD_JOB_KINDS:
+        raise JobRefused("%s cannot hold cloud data: only a Google Batch or AWS Batch environment can (只有 Google Batch 或 AWS Batch 環境能放雲端資料)" % ce_name)
     if status == compute_envs.UNSUPPORTED:
         raise JobRefused("%s is a %s environment: %s" % (ce_name, compute_envs.KINDS.get(row["platform"], "?"),
                                                           compute_envs.NOT_SUPPORTED_MESSAGE))
@@ -225,6 +228,10 @@ def _uploaded_file(uploads_dir, owner_name, filename, stat, ce_view):
     size = info.st_size
     if size < 1:
         raise JobRefused("這是空檔案，沒有東西可存 (the file is empty; there is nothing to store)")
+    if size > cloud_store.UPLOAD_LIMIT and cloud_store.workdir_scheme(ce_view) == "s3":
+        raise JobRefused("網頁一個檔案最多收 2 GB，這個檔案太大。請在你自己的電腦上、用你自己的 AWS 登入，跑這一行指令上傳：%s ；平台不會代你上傳 "
+                         "(the web takes at most 2 GB per file; run this command on your own computer with your own AWS login; the platform does not upload it for you)"
+                         % cloud_store.big_file_command(ce_view, owner_name, "s3"))
     if size > cloud_store.UPLOAD_LIMIT:
         raise JobRefused("網頁一個檔案最多收 2 GB，這個檔案太大。請在你的電腦上跑這一行指令上傳：%s "
                          "(the web takes at most 2 GB per file; run this command on your computer)"
@@ -248,7 +255,7 @@ def enqueue_put_upload(state_path, tokens_path, ce_name, owner_name, filename, u
         row = _target(con, ce_name, "put_upload", now, offline_after, caller_user_id)
         view = compute_envs.view(row)
         try:
-            dest = cloud_store.object_url(view, owner_name, filename)
+            dest = cloud_store.object_url(view, owner_name, filename, cloud_store.workdir_scheme(view))
         except cloud_store.CloudPathError as e:
             raise JobRefused(str(e))
         size = _uploaded_file(uploads_dir, owner_name, filename, stat, view)

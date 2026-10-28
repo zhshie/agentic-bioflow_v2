@@ -121,23 +121,33 @@ def _cloud_target(platform_path, caller, destination):
     if ce is None:
         return None, "找不到計算環境：%s (compute environment not found: %s)" % (destination, destination)
     try:
-        prefix = cloud_store.upload_prefix(ce, caller.name if caller is not None else None)
+        prefix = cloud_store.upload_prefix(ce, caller.name if caller is not None else None, cloud_store.workdir_scheme(ce))
     except cloud_store.CloudPathError as e:
         return None, str(e)
     return (ce, prefix), None
+
+
+def _scheme(target):
+    """'gs' or 's3': read from the prefix of the target."""
+    return target[1].partition("://")[0]
+
+
+def _wrong_scheme(target):
+    head = _scheme(target) + "://"
+    return "只收 %s 開頭的位置；一份資料集的檔案要全是同一種 (only %s locations are taken, and a dataset holds one kind only)" % (head, head)
 
 
 def _cloud_place(url, target):
     """None when `url` lies in the caller's own prefix of the environment's bucket, else a plain message that names only that prefix."""
     ce, prefix = target
     try:
-        bucket, _ = cloud_store.parse_gs(url)
+        bucket, _ = (cloud_store.parse_s3 if _scheme(target) == "s3" else cloud_store.parse_gs)(url)
     except cloud_store.CloudPathError as e:
         return str(e)
     if bucket != cloud_store.workdir_bucket(ce):
         return ("bucket 必須就是這個計算環境 workDir 所在的 bucket：%s (the bucket must be the one of the environment's workDir)"
                 % cloud_store.workdir_bucket(ce))
-    if not cloud_store.inside_prefix(url, prefix):
+    if not cloud_store.inside_prefix(url, prefix, _scheme(target)):
         return "位置必須在你自己的前綴裡：%s (locations must lie inside your own prefix)" % prefix
     return None
 
@@ -179,7 +189,12 @@ def draft_samplesheet(platform_path, files, *, caller=None, destination=None):
             if not isinstance(name, str) or not name:
                 return _no("檔名不正確 (not a usable file name)")
             try:
-                path = name if name.startswith("gs://") else cloud_store.object_url(target[0], caller.name if caller is not None else None, name)
+                if name.startswith(_scheme(target) + "://"):
+                    path = name
+                elif _SCHEME.match(name):
+                    return _no(_wrong_scheme(target))
+                else:
+                    path = cloud_store.object_url(target[0], caller.name if caller is not None else None, name, _scheme(target))
             except cloud_store.CloudPathError as e:
                 return _no(str(e))
             problem = _cloud_place(path, target)
@@ -214,7 +229,13 @@ def check_web_upload(platform_path, sizes, *, caller=None, destination=None):
     if not over:
         return {"ok": True, "accepted": list(sizes), "over": []}
     if target is not None:
-        command = cloud_store.big_file_command(target[0], caller.name if caller is not None else None)
+        command = cloud_store.big_file_command(target[0], caller.name if caller is not None else None, _scheme(target))
+        if _scheme(target) == "s3":
+            message = ("網頁一個檔案最多收 2 GB，這些檔案太大：%s。請在你自己的電腦上、用你自己的 AWS 登入，跑這一行指令上傳：%s ；平台不會代你上傳。"
+                       "如果檔案已經在這個 bucket 裡，就把它們放進同一個前綴：%s "
+                       "(the web takes at most 2 GB per file; run the command on your own computer with your own AWS login; the platform does not upload it for you)"
+                       ) % (", ".join(over), command, target[1])
+            return _no(message, over=over, command=command, accepted=[n for n in sizes if n not in over])
         message = ("網頁一個檔案最多收 2 GB，這些檔案太大：%s。請在你的電腦上跑這一行指令上傳：%s 。"
                    "如果檔案已經在這個 bucket 裡，就把它們放進同一個前綴：%s "
                    "(the web takes at most 2 GB per file; run the command on your computer, or, if the files are already in this bucket, "
@@ -286,11 +307,11 @@ def register_dataset(platform_path, *, name, version, samplesheet, files, caller
                 return _no("檔名不正確 (not a usable file name)")
             if compute_envs.looks_like_credential(path):
                 return _no("檔案路徑含像憑證的值，不收 (a file path holds something that looks like a credential)")
-            if not path.startswith("gs://"):
+            if not path.startswith(_scheme(target) + "://"):
                 if _SCHEME.match(path):
-                    return _no("只收 gs:// 開頭的位置 (only gs:// locations are taken)")
-                return _no("一份資料集不能同時混本機路徑與雲端位置；選了雲端目的地，檔案都要是 gs:// 位置 "
-                           "(a dataset cannot mix local paths and cloud locations)")
+                    return _no(_wrong_scheme(target))
+                return _no("一份資料集不能同時混本機路徑與雲端位置；選了雲端目的地，檔案都要是 %s:// 位置 "
+                           "(a dataset cannot mix local paths and cloud locations)" % _scheme(target))
             problem = _cloud_place(path, target)
         else:
             path, problem = _within(platform_path, caller, item["path"])
@@ -314,7 +335,7 @@ def register_dataset(platform_path, *, name, version, samplesheet, files, caller
         return _no("樣本表缺少 %s 欄 (the samplesheet needs the column %s)" % (", ".join(missing), ", ".join(missing)))
     for row in rows:
         for cell in row:
-            if target is not None and cell.strip().startswith("gs://"):
+            if target is not None and cell.strip().startswith(_scheme(target) + "://"):
                 if cell.strip() not in known:
                     return _no("樣本表裡有檔案不在登記的檔案內 (the samplesheet names a file that is not among the registered files)")
                 continue

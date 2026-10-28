@@ -408,6 +408,16 @@ def test_a_slurm_screen_does_not_look_at_the_cost():
     assert b.launch_screen(bundle(), "lab-a", {"usd": 1.0}) == b.launch_screen(bundle(), "lab-a")
 
 
+AWS_SCREEN_FILES = ((REPO_ROOT / "platform" / "abf_launch" / "build.py").resolve(), (REPO_ROOT / "platform" / "tests" / "test_aws_launch.py").resolve())
+AWS_DOC_FILE = (REPO_ROOT / "docs" / "PLATFORM.md").resolve()
+
+
+def _without_aws_billing_sentence(text):
+    for allowed in ("平台目前還沒有費用預估與上限", "平台還沒有費用預估與上限"):
+        text = text.replace(allowed, "")
+    return text
+
+
 def test_no_file_still_says_there_is_no_estimate_and_cap():
     # TC-050 (B8): this file is left out by its path
     needles = ("還沒有費用預估與上限", "接線之前確認畫面仍寫")
@@ -422,6 +432,15 @@ def test_no_file_still_says_there_is_no_estimate_and_cap():
                 text = p.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
                 continue
+            # aws-launch: the fixed AWS billing sentence (specs/aws-launch/plan.md, ruling 10) says, for AWS only, "平台(目前)還沒有費用預估與上限"
+            # the allowance is limited to the AWS screen text (build.py) and its own test file and the "Launching on AWS Batch" section of PLATFORM.md; every other file or section still fails
+            if p.resolve() in AWS_SCREEN_FILES:
+                text = _without_aws_billing_sentence(text)
+            elif p.resolve() == AWS_DOC_FILE and "Launching on AWS Batch" in text:
+                start = text.index("Launching on AWS Batch")
+                end = text.find("\n## ", start + 5)
+                end = len(text) if end < 0 else end
+                text = text[:start] + _without_aws_billing_sentence(text[start:end]) + text[end:]
             if any(n in text for n in needles):
                 hits.append(str(p))
     assert hits == []

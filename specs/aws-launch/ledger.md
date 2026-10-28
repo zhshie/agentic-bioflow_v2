@@ -1,0 +1,14 @@
+# AWS Batch：從平台送出、追蹤、取消一個 run（自動測試；真實試跑等他點頭） progress ledger
+
+- [x] Gate table per environment type (`compute_envs.CLOUD_JOB_KINDS`), `PLATFORM_HOST_TYPES=(GCB, AWS)`, `CHECK_ONLY_TYPES=()`; cloud_store stays Google-only.
+- [x] AWS bundle (`launch.render_aws_bundle`: five files, `aws.config`, `head.sh`), shared with the agent's rebuild check.
+- [x] Station agent `abf_station/aws_launch.py` (launch after the yes; cancel through the shared `gcb_launch._cancel_head`).
+- [x] Screens and terminal wording (billing sentence first, no amounts; cancel note about the AWS Console); resume/relaunch refused.
+- [x] Tests `platform/tests/test_aws_launch.py` (69); existing tests updated only as plan A9 lists (test_gcb_ce, test_aws_ce, test_launch_bundle).
+- [x] Docs: PLATFORM.md, SEQERA_PARITY.md, OPERATIONS.md, TESTING.md (manual steps 1-7 = TC-171..178, not run).
+- [ ] Manual real trial run (TC-171..178): waits for the maintainer's go-ahead.
+
+## Fix round (verifier: TC-167, TC-154)
+- [x] TC-167: `test_docs_describe_the_launch_the_billing_sentence_and_the_requirements` now also asserts the SEQERA_PARITY.md line-84 bracket `(create + check + launch + cancel; resume not yet)` (checked: reverting that line makes the test fail).
+- [x] TC-154: the `test_cloud_wire.py::test_no_file_still_says_there_is_no_estimate_and_cap` allowance is narrowed to `abf_launch/build.py`, `tests/test_aws_launch.py`, and only the "Launching on AWS Batch" section of `docs/PLATFORM.md`; every other file or section still fails.
+- [ ] Open for developer-agent: `test_gcb_launch.py` one-line doc assertion follows A9(d)'s required PLATFORM.md wording; plan line 146 / TC-154 say the file must not change. The two cannot both hold, kept the edit (needs ratification).
