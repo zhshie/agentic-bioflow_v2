@@ -441,15 +441,52 @@ def test_h09_stars(rig, fk):
     assert "req" not in re.search(r'<details class="padv"[^>]*>.*?<textarea', five, re.S).group(0)
 
 
+# Frozen from 956e7d2's web_board.py (35 colours): CI checkouts are shallow, so `git show 956e7d2` is unavailable.
+BASELINE_COLOURS = {
+    "#0b5aa8",
+    "#101214",
+    "#14291c",
+    "#15171a",
+    "#15263a",
+    "#1a2c3a",
+    "#1b6837",
+    "#1c5d8a",
+    "#1e2125",
+    "#1f2328",
+    "#33270e",
+    "#33373d",
+    "#3a1916",
+    "#575e66",
+    "#646a73",
+    "#78c792",
+    "#7db8e2",
+    "#80b6f2",
+    "#865700",
+    "#8f8b82",
+    "#9cccf0",
+    "#a2a8b0",
+    "#b0261d",
+    "#d6d3cc",
+    "#e2b35e",
+    "#e2edf5",
+    "#e2f0e6",
+    "#e3edf9",
+    "#e9e7e2",
+    "#ecebe6",
+    "#f28b81",
+    "#f6f5f2",
+    "#f7edd6",
+    "#fae6e3",
+    "#ffffff",
+}
+
+
 def test_h09_style():
     # TC-077, TC-078
-    import subprocess
     from abf_platform import web_board
     css = web_board.STYLE
     assert re.search(r"\.req\{[^}]*color:var\(--failed\)", css)
-    base = subprocess.run(["git", "show", "956e7d2:platform/abf_platform/web_board.py"], cwd=str(REPO), capture_output=True, text=True, encoding="utf-8")
-    assert base.returncode == 0
-    assert set(re.findall(r"#[0-9a-fA-F]{3,8}\b", css)) <= set(re.findall(r"#[0-9a-fA-F]{3,8}\b", base.stdout))
+    assert set(re.findall(r"#[0-9a-fA-F]{3,8}\b", css)) <= BASELINE_COLOURS
 
 
 def test_h12_columns(rig, fk):
