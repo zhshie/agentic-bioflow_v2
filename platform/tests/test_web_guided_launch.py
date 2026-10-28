@@ -75,6 +75,8 @@ def launched_by_other(rig, caller, run, pipeline="nf-core/bobseq", params=None):
 def ready(rig, name="ann"):
     user = rig.user(name)
     area_sheet(rig.w, user)
+    if name == "ann":      # guided-launch-2d: only an available environment is listed, and the rig's lab-a starts as `invalid` (set up by hand in the tests that want another status)
+        set_env(rig, "lab-a", status="available")
     return user, login(rig, name)
 
 
