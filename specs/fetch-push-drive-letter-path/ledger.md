@@ -2,7 +2,7 @@
 
 - [x] `scripts/fetch.sh`、`scripts/push.sh` 各加 `rsync_local_path()`，rsync 的本機端引數經它轉換（fetch：先轉整條 `$DEST` 再 dirname；push：轉 `$from`）。tar 後備、`--dry-run`、錯誤訊息、exit code 不動。
 - [x] `tests/fetch_test.sh`、`tests/push_test.sh` 新增斷言（TC-001..030，只新增不改既有）；MSYS／Cygwin 上整段略過並印 note。
-- [ ] 全套測試（WSL）在 HEAD 綠。
+- [x] 全套測試（WSL）在 HEAD 綠（128/128，--timeout 900；預設 300s 下 platform_test 等重測試因機器負載逾時，與本改動無關）。
 
 ## 已知限制
 - 根因是從 rsync 的 `host:path` 規則推論出來的，**未在 Windows 重現**（issue #23 只有簽名）。
