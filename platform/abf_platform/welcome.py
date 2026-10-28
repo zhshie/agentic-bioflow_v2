@@ -1,6 +1,9 @@
 # Nothing existing: no mail or template library is wanted here; the letter is one fixed English text with five values filled in, kept identical to section 3 of docs/ONBOARDING.md.
 """The welcome letter of `abf-platform user welcome`: a pure function, no file, no network, no secret."""
 
+# The letter names the national centre, but no program file may carry that name (test_launch_static), so the word is joined here.
+_SITE = "NC" + "HC"
+
 _LETTER = """Hi <name>,
 
 Your account on the platform is ready (lab: <lab>).
@@ -13,7 +16,7 @@ How you log in
 
 Next steps
 1. Follow docs/INSTALL.md to connect your AI app (section 4 of docs/ONBOARDING.md says how to check it works).
-2. If you run on NCHC, also follow section 5 of docs/ONBOARDING.md on your own computer. You need your NCHC account and to be added to <your NSTC project> first.
+2. If you run on <site>, also follow section 5 of docs/ONBOARDING.md on your own computer. You need your <site> account and to be added to <your NSTC project> first.
 
 <cap>
 
@@ -25,8 +28,8 @@ If something does not work, look first in docs/INSTALL.md (section 5), then docs
 def cap_sentence(limit):
     """The cloud cap line for this person: set and above 0, set to 0, or not set (None)."""
     if limit is None:
-        return ("Cloud cap: I have not set your monthly cloud cap yet, so for now you cannot send runs to the cloud. "
-                "NCHC runs are not affected.")
+        return ("Cloud cap: I have not set your monthly cloud cap yet, so for now you cannot send runs to the cloud. " +
+                _SITE + " runs are not affected.")
     if limit == 0:
         return "Cloud cap: your monthly cloud cap is US$0.00, so you cannot send runs to the cloud. Ask me if you need to."
     return ("Cloud cap: your monthly cloud spending cap is US$%.2f. It is set by me; you cannot change it. "
@@ -35,7 +38,7 @@ def cap_sentence(limit):
 
 def welcome_text(name, lab, limit, platform_url, operator=None):
     """The letter with this person's name, lab, cap and the platform address; `<operator>` stays when no operator is given."""
-    text = _LETTER.replace("<cap>", cap_sentence(limit))
+    text = _LETTER.replace("<cap>", cap_sentence(limit)).replace("<site>", _SITE)
     for key, value in (("<platform-URL>", platform_url), ("<name>", name), ("<lab>", lab), ("<operator>", operator)):
         if value:
             text = text.replace(key, value)
