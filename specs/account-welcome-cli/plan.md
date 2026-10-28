@@ -166,3 +166,8 @@ H-2 原文三件事，逐項現況：
 ## 專長守則（docs）
 
 （工作區沒有 `.claude/dev-profiles/docs.md`；本任務無專長守則。）
+
+
+## 裁決（2026-10-28 13:10，BLOCKED(executor) 之後）
+A1. 完整套件逾時是環境負載，不是斷言失敗：developer-agent 13:02 在 df7f53b 單獨重跑 `tests/platform_shard_3_test.sh`（417 秒，exit 0）與 `tests/platform_test.sh`（370 秒，exit 0），兩支都超過預設 300 秒上限。本任務的完整套件一律用 `bash tests/run_all.sh --timeout 900`（或 abf-fast-suite 加同樣的 900 秒上限）判定全綠；仍逾時才算 BLOCKED。程式不用改。
+A2. `--lang` 旗標不做（照「不做」段）；手動驗收只留 ledger。
