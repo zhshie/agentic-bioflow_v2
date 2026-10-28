@@ -935,7 +935,7 @@ def test_no_new_write_path_for_azure(ip):
     # TC-148
     from abf_platform import jobs
     _available_az(ip)
-    for kind in ("launch_nextflow", "cancel_run", "clean_work", "put_upload", "pipeline_files", "list_site_files"):
+    for kind in ("clean_work", "put_upload", "list_site_files"):      # the three kinds that azure-launch opens are not refused any more
         with pytest.raises(jobs.JobRefused):
             jobs.check_target(ip.state_db, "az1", kind)
 

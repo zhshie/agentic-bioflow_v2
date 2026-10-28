@@ -1,4 +1,4 @@
-# Nothing existing: searched Nextflow's azurebatch executor, Seqera's tw launch and nf-core's tower launch tool; they all hand the work to a Seqera service, none is a local agent that starts the head process with azurebatch after a person's yes and can stop that one process after a second yes, so these tests drive our agent with a fake host (no network, no real program).
+# Nothing existing: searched Nextflow's azurebatch executor, the launch command of the Seqera CLI and nf-core's tower launch tool; they all hand the work to a Seqera service, none is a local agent that starts the head process with azurebatch after a person's yes and can stop that one process after a second yes, so these tests drive our agent with a fake host (no network, no real program).
 """Launching and cancelling on Azure Batch (azure-launch).
 
 The agent that sits on the platform host starts Nextflow's head process on that host (the compute is done by tasks in an Azure Batch pool
