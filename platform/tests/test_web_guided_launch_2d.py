@@ -42,11 +42,13 @@ def _releases_on_the_fake(request):
 
 def patch_envs(monkeypatch, change):
     """The environments the page sees: what the platform lists, changed by `change(list of dicts) -> list of dicts`."""
-    real = A().list_compute_envs
+    current = A().list_compute_envs
+    real = getattr(current, "real", current)      # a second patch in one test starts from the platform's list again
 
     def fake(*a, **kw):
         envs = [dict(e, config=dict(e.get("config") or {})) for e in real(*a, **kw)["compute_envs"]]
         return {"compute_envs": change(envs)}
+    fake.real = real
     monkeypatch.setattr(A(), "list_compute_envs", fake)
 
 
@@ -882,7 +884,7 @@ def test_tc062_only_the_confirmation_queues(rig, fk, spy):
     # TC-062
     _, c = ready(rig)
     before = pending(rig)
-    assert c.post("/launch", data=raw_form(c, revision="", shown_revision="", shown_pipeline="")).status_code == 303
+    assert c.post("/launch", data=raw_form(c, revision="", shown_revision="", shown_pipeline="", src="new")).status_code == 303
     assert c.post("/launch", data=raw_form(c, run_name="")).status_code == 400
     assert spy.calls == [] and pending(rig) == before
     bad = raw_form(c)

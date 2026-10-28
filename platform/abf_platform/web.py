@@ -81,6 +81,9 @@ _PLAIN = {      # the labels of the plain block at the top of the confirmation p
     "en": {"kind": "Request", "launch": "New analysis", "resume": "Continue the run", "relaunch": "Re-run", "cancel": "Cancel", "clean_work": "Clean up intermediate files", "run": "Run name",
            "pipeline": "Pipeline", "version": "Version", "env": "Environment", "samples": "Samples", "folder": "New folder", "work": "Folder to delete",
            "full": "Full content (technical)"}}
+LAUNCH_HEADERS = dict(_HEADERS, **{      # /launch alone may show pictures, and only our own (guided-launch-2d: the workflow diagram under the pipeline)
+    "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+    % web_board.style_source()})
 HOME = "/"                  # where a login with no (or a refused) `next` goes: a constant, so there is no open redirect
 
 
@@ -556,8 +559,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return await board_page(sid, user, caller, lang, run_id, flash=line, code=409)
 
     def launch_choices(caller):
+        """The samplesheets and the compute environments the person may choose from: only an environment that is set up (`available`) is offered
+        (guided-launch-2d); the settings page is where the others are dealt with."""
         sheets = actions.list_samplesheets(platform_path, caller=caller)
-        envs = actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
+        envs = [e for e in actions.list_compute_envs(platform_path, caller=caller)["compute_envs"] if e.get("status") == "available"]
         return sheets, envs
 
     def launch_reads(caller, pipeline, revision):
@@ -569,18 +574,21 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return used, reuse
 
     def launch_files(caller, full, revision, ce_name, src, enqueue=True):
-        """The pipeline's own files for the guided page (guided-launch-2): what pipeline_files answers for the pair, then (only when a diagram is
-        there) the picture, and when no revision is chosen yet on the new-pipeline tab the newest release. Each call only reads or queues one job;
-        the answer to a POST that did not pass (`enqueue=False`) only looks: a form that was refused makes no request, not even this one."""
+        """The pipeline's own files for the guided page (guided-launch-2): on the new-pipeline tab the list of releases (the version drop-down; when
+        no revision is chosen yet its newest one is the revision, guided-launch-2d), then what pipeline_files answers for the pair, then (only when
+        a diagram is there) the picture. Each call only reads or queues one job; the answer to a POST that did not pass (`enqueue=False`) only
+        looks: a form that was refused makes no request, not even this one. Returns (files, image, latest, revision)."""
         files = image = latest = None
+        if full and src == "new":
+            latest = actions.latest_release(platform_path, full, caller=caller, compute_env=ce_name, enqueue=enqueue)
+            if not revision and latest.get("state") == "ready" and latest.get("revision"):
+                revision = latest["revision"]
         if full and revision:
             files = actions.pipeline_files(platform_path, full, revision, caller=caller, compute_env=ce_name, enqueue=enqueue)
             diagram = files.get("diagram") if files.get("state") == "ready" else None
             if isinstance(diagram, dict) and diagram.get("status") == "ok":
                 image = actions.pipeline_files(platform_path, full, revision, parts=["image"], caller=caller, compute_env=ce_name, enqueue=enqueue)
-        elif full and src == "new":
-            latest = actions.latest_release(platform_path, full, caller=caller, compute_env=ce_name, enqueue=enqueue)
-        return files, image, latest
+        return files, image, latest, revision
 
     async def launch_page(sid, user, caller, lang, values, errors, notes, source=None, code=200, guide=None):
         t = web_board.STRINGS[lang]
@@ -593,12 +601,18 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         pipeline = (values.get("pipeline") or "").strip()
         revision = (values.get("revision") or "").strip()
         full = pipeline if "/" in pipeline else ("nf-core/" + pipeline if pipeline else "")
-        used, reuse = await run_in_threadpool(launch_reads, caller, full, revision)
-        guide["used"], guide["reuse"] = used, reuse
+        used, _none = await run_in_threadpool(launch_reads, caller, "", "")
+        guide["used"] = used
         if guide.get("src") not in ("used", "new"):
             guide["src"] = "used" if used else "new"
         ce = values.get("ce_name") if values.get("ce_name") in names else None
-        files, image, latest = await run_in_threadpool(launch_files, caller, full, revision, ce, guide["src"], not guide.get("post"))
+        files, image, latest, chosen = await run_in_threadpool(launch_files, caller, full, revision, ce, guide["src"], not guide.get("post"))
+        if chosen != revision:      # the pair was a pipeline alone on the new-pipeline tab: its newest release is the version (guided-launch-2d)
+            revision = values["revision"] = chosen
+            guide["hint"] = True
+        _used, guide["reuse"] = await run_in_threadpool(launch_reads, caller, full, revision)
+        if full and revision:
+            guide["done"] = set(guide.get("done") or ()) | {3}
         # the boxes of the parameter table hold the default, or what was filled in, or the value of the earlier analysis; the parameters of that
         # analysis that the schema does not know go to the advanced box (guided-launch-2b)
         cells, box = dict(guide.get("cells") or {}), values.get("params", "")
@@ -615,7 +629,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         runs = await run_in_threadpool(read_runs, caller)
         doc = web_board.render_launch(user["name"], csrf(sid, "logout"), runs, values, errors, notes, sheets, envs, csrf(sid, "launch"), lang, source,
                                       guide, files, image, latest)
-        return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+        return HTMLResponse(doc, status_code=code, headers=LAUNCH_HEADERS)
 
     async def launch_get(request):
         sid, user = user_of(request)
@@ -634,7 +648,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if q.get("samplesheet") in sheets:
             given["samplesheet"] = q.get("samplesheet")
         if (q.get("ce_name") or q.get("ce")) in names:
-            given["ce_name"] = q.get("ce_name") or q.get("ce")
+            given["ce_name"] = q.get("ce_name") or q.get("ce")      # `names` holds the available environments only
         if q.get("src") in ("used", "new"):
             given["src"] = q.get("src")
         values = {k: given[k] for k in ("pipeline", "revision", "samplesheet", "ce_name") if k in given}
@@ -661,17 +675,19 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                     if key not in values and value:
                         values[key] = value
                 prefill = earlier.get("params") or {}
-                done |= {5} | ({6} if values.get("ce_name") else set())
+                done |= {5} | ({2} if values.get("ce_name") else set())
                 notes.append(t["l_from"])
             else:
                 notes.append(t["l_not_kept"])
         pipeline, revision = values.get("pipeline", ""), values.get("revision", "")
-        if pipeline and revision:
+        if values.get("run_name"):
+            done.add(1)
+        if "ce_name" in given:
             done.add(2)
+        if pipeline and revision:
+            done.add(3)
         if "samplesheet" in given:
             done.add(4)
-        if "ce_name" in given:
-            done.add(6)
         if "params" in given:
             done.add(5)
         cannot = False
@@ -742,36 +758,42 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if not _same(form.get("csrf", ""), csrf(sid, "launch")):
             return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(t["r_form"]), 403)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
-        sheets, envs = await run_in_threadpool(launch_choices, caller)
-        envs = [e["name"] for e in envs]
+        sheets, env_list = await run_in_threadpool(launch_choices, caller)
+        envs = [e["name"] for e in env_list]
         pipeline = str(form.get("pipeline", "")).strip()
         chosen = str(form.get("params_from", "")).strip()
         src = str(form.get("src", "")) if form.get("src") in ("used", "new") else None
         values = {"pipeline": pipeline, "revision": str(form.get("revision", "")).strip(), "run_name": str(form.get("run_name", "")).strip(),
                   "samplesheet": str(form.get("samplesheet", "")), "ce_name": str(form.get("ce_name", "")), "params": str(form.get("params", ""))}
         errors, bad = [], set()
+        fresh = pipeline != str(form.get("shown_pipeline", "")).strip()      # a pipeline the page was not drawn for: its version is the newest (guided-launch-2d)
         if not pipeline or not re.match(r"^[A-Za-z0-9._/-]{1,100}\Z", pipeline):
             errors.append(t["e_pipeline"])
-            bad.add(2)
-        if not values["revision"] or re.search(r"\s", values["revision"]):
+            bad.add(3)
+        if (not values["revision"] and not (fresh and src == "new")) or re.search(r"\s", values["revision"]):
             errors.append(t["e_revision"])
-            bad.add(2)
-        if not errors and (pipeline != str(form.get("shown_pipeline", "")).strip() or values["revision"] != str(form.get("shown_revision", "")).strip()
+            bad.add(3)
+        if not errors and (fresh or values["revision"] != str(form.get("shown_revision", "")).strip()
                            or chosen != str(form.get("shown_params_from", "")).strip()):
             # the page was drawn for another pipeline, version or earlier analysis: this press only loads that table (nothing is sent; the
             # confirmation page stays the only place that queues anything)
-            pairs = [("pipeline", pipeline), ("revision", values["revision"]), ("samplesheet", values["samplesheet"]), ("ce_name", values["ce_name"]),
-                     ("run_name", values["run_name"]), ("params_from", chosen), ("src", src), ("lang", "en" if lang == "en" else "")]
+            pairs = [("pipeline", pipeline), ("revision", "" if fresh and src == "new" else values["revision"]), ("samplesheet", values["samplesheet"]),
+                     ("ce_name", values["ce_name"]), ("run_name", values["run_name"]), ("params_from", chosen), ("src", src),
+                     ("lang", "en" if lang == "en" else "")]
             return RedirectResponse("/launch?" + urllib.parse.urlencode([(k, v) for k, v in pairs if v], safe="/"), status_code=303, headers=_HEADERS)
         if not values["run_name"]:
             errors.append(t["e_run_name"])
-            bad.add(7)
+            bad.add(1)
+        if values["ce_name"] not in envs:
+            errors.append(t["e_ce"])
+            bad.add(2)
+        elif 3 not in bad and web_board.is_unregistered(next(e for e in env_list if e["name"] == values["ce_name"]),
+                                                      pipeline if "/" in pipeline else "nf-core/" + pipeline, values["revision"]):
+            errors.append(t["e_reg"])
+            bad.add(3)
         if values["samplesheet"] not in sheets:
             errors.append(t["e_sheet"])
             bad.add(4)
-        if values["ce_name"] not in envs:
-            errors.append(t["e_ce"])
-            bad.add(6)
         cells = web_launch.fields_of(form)      # every box of the parameter table as it came back
         pvals = {k: v for k, v in cells.items() if v.strip()}
         merged = values["params"]
@@ -794,10 +816,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if done is not None:
                 return done
             errors.append(web_board.plain_reason(answer.get("message"), lang) + " " + t["r_none"])
-            bad.add(7)
+            bad.add(6)
         else:
             errors.append(t["e_body"])
-        guide = {"done": {2, 4, 5, 6}, "bad": bad, "post": True, "cells": cells, "src": src, "given": {"params_from": chosen} if chosen else {}}
+        guide = {"done": {1, 2, 3, 4, 5}, "bad": bad, "post": True, "cells": cells, "src": src, "given": {"params_from": chosen} if chosen else {}}
         return await launch_page(sid, user, caller, lang, values, errors, [], code=400, guide=guide)
 
     async def settings(request):

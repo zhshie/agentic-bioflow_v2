@@ -196,10 +196,10 @@ def _part(files, name):
     return "part", files.get(name) if isinstance(files.get(name), dict) else {}
 
 
-# ---- step 1 -----------------------------------------------------------------------------------------------------------------------------
+# ---- the parameter read, first line of the parameter step -----------------------------------------------------------------------------------------------------------------------------
 
 def params_check(t, lang, revision, files):
-    """The row of step 1 for the parameter table: (key, symbol, label, sentence)."""
+    """The read of the parameter table as (key, symbol, label, sentence)."""
     label = t["g_c_params"]
     if not revision or files is None:
         return ("params", "○", label, t["g2_params_wait"])
@@ -214,57 +214,70 @@ def params_check(t, lang, revision, files):
     return ("params", "✗", label, why(lang, schema.get("message")))
 
 
-def step1_note(t, files, quiet):
-    return '<p class="muted">%s</p>' % esc(t["g2_note"]) if is_loading(files) and not quiet else ""
+PARAM_CSS = {"✓": "ok", "✗": "bad", "…": "wait", "○": "later"}
 
 
-# ---- step 2 -----------------------------------------------------------------------------------------------------------------------------
-
-def latest_block(t, lang, pipeline, latest, quiet=False):
-    """Under the two boxes of the new-pipeline tab: the newest release, ready to be used."""
-    if not isinstance(latest, dict):
-        return ""
-    if latest.get("state") == "loading":
-        return reading(t, quiet)
-    revision = latest.get("revision")
-    if latest.get("state") != "ready" or not revision:
-        return _bad(lang, latest.get("why"))
-    link = esc("/launch?" + urllib.parse.urlencode([("pipeline", pipeline), ("revision", revision)] + ([("lang", "en")] if lang == "en" else []), safe="/"))
-    out = ('<p class="ok"><span class="csym">✓</span> %s <a href="%s">%s</a></p>'
-           % (esc(t["g2_latest"] % revision), link, esc(t["g2_use_ver"])))
-    if latest.get("source") == "stale-cache":
-        out += '<p class="muted">%s</p>' % esc(t["g2_stale"] % (taipei_time(latest.get("checked_at")) or "—"))
-    return out
+def params_status(t, lang, revision, files):
+    """The first line of the parameter step: whether the pipeline's parameter table was read (a symbol, the label and the sentence)."""
+    _key, sym, label, sentence = params_check(t, lang, revision, files)
+    return ('<p class="chk %s"><span class="csym">%s</span> <span class="clabel">%s</span> %s</p>'
+            % (PARAM_CSS[sym], sym, esc(label), esc(sentence)))
 
 
-# ---- step 3 -----------------------------------------------------------------------------------------------------------------------------
+# ---- the version, in the pipeline step -----------------------------------------------------------------------------------------------------------------------------
+
+def versions_block(t, lang, revision, latest, quiet=False):
+    """The one place the version is chosen (guided-launch-2d), on the tab of the other nf-core pipelines: a drop-down of every release the site
+    agent read, newest first, with `revision` selected. A revision that is not in the list (it came with the address) stays in it, selected.
+    While the list is read, or when it could not be read and there is no revision at all, a line says so and there is no drop-down."""
+    ready = isinstance(latest, dict) and latest.get("state") == "ready"
+    listed = [x for x in (latest.get("releases") or ([latest.get("revision")] if latest.get("revision") else [])) if isinstance(x, str)] if ready else []
+    note = ""
+    if isinstance(latest, dict) and latest.get("state") == "loading":
+        note = _line("…", "wait", t["g_ver_wait"]) + ("" if quiet else '<p class="muted">%s</p>' % esc(t["g2_note"]))
+    elif isinstance(latest, dict) and not ready:
+        note = _bad(lang, latest.get("why"))
+    elif ready and not listed:
+        note = _bad(lang, latest.get("why"))
+    if ready and latest.get("source") == "stale-cache":
+        note += '<p class="muted">%s</p>' % esc(t["g2_stale"] % (taipei_time(latest.get("checked_at")) or "—"))
+    if not revision and not listed:
+        return note
+    shown = listed + ([revision] if revision and revision not in listed else [])
+    chosen = revision or shown[0]
+    opts = "".join('<option value="%s"%s>%s</option>' % (esc(x), " selected" if x == chosen else "", esc(x)) for x in shown)
+    return '<label>%s<select name="revision">%s</select></label>%s' % (lbl(t, t["l_revision"]), opts, note)
+
+
+# ---- the diagram, under the pipeline -------------------------------------------------------------------------------------------------------
 
 def diagram_block(t, lang, pipeline, revision, files, image, quiet=False):
-    """(state of the step, html): the workflow diagram as its file name, its size and a link that opens it in the same tab."""
+    """(shown, html): the workflow diagram as the picture itself, right under the pipeline (guided-launch-2d); `shown` is True when the picture
+    is on the page. Nothing at all until a pipeline and a version are decided."""
     if files is None:
-        return "later", '<p class="muted">%s</p>' % esc(t["g2_dia_wait"])
+        return False, ""
+    wait = _line("…", "wait", t["g2_img_wait"]) + ("" if quiet else '<p class="muted">%s</p>' % esc(t["g2_note"]))
     kind, d = _part(files, "diagram")
     if kind == "loading":
-        return "later", reading(t, quiet)
+        return False, wait
     if kind == "error":
-        return "later", _failure(lang, files)
+        return False, _failure(lang, files)
     if d.get("status") == "none":
-        return "done", '<p class="muted">%s</p>' % esc(t["g2_dia_none"])
+        return False, _line("—", "muted", t["g2_dia_none"])
     if d.get("status") != "ok":
-        return "later", _bad(lang, d.get("message"))
+        return False, _bad(lang, d.get("message"))
     ikind, im = _part(image, "image")
     if ikind in ("none", "loading"):
-        return "later", _line("…", "wait", t["g2_img_wait"]) + ("" if quiet else '<p class="muted">%s</p>' % esc(t["g2_note"]))
+        return False, wait
     if ikind == "error":
-        return "later", _failure(lang, image)
+        return False, _failure(lang, image)
     if im.get("status") != "ok":
-        return "later", _bad(lang, im.get("message"))
-    href = esc("/launch/diagram?" + urllib.parse.urlencode([("pipeline", pipeline), ("revision", revision)], safe="/"))
-    return "done", ('<p>%s</p><p><a class="dlink" href="%s">%s</a></p>'
-                    % (esc(t["g2_dia_file"] % (d.get("name") or "—", size_text(d.get("size")))), href, esc(t["g2_dia_open"])))
+        return False, _bad(lang, im.get("message"))
+    src = esc("/launch/diagram?" + urllib.parse.urlencode([("pipeline", pipeline), ("revision", revision)], safe="/"))
+    return True, '<img class="gdia" src="%s" alt="%s">' % (src, esc(t["g2_dia_alt"] % (pipeline, revision)))
 
 
-# ---- step 4 -----------------------------------------------------------------------------------------------------------------------------
+# ---- samplesheet step -----------------------------------------------------------------------------------------------------------------------------
 
 def samplesheet_block(t, lang, files, quiet=False):
     """Under the samplesheet chooser: the columns the pipeline's own schema_input asks for, in the file's order."""
@@ -284,7 +297,7 @@ def samplesheet_block(t, lang, files, quiet=False):
             % (esc(t["g_legend"]), heads, rows))
 
 
-# ---- step 5 -----------------------------------------------------------------------------------------------------------------------------
+# ---- parameter step -----------------------------------------------------------------------------------------------------------------------------
 
 def _shown(value):
     if isinstance(value, bool):

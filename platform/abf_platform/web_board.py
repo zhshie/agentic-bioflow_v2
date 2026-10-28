@@ -61,10 +61,10 @@ STRINGS = {
         "launch_title": "啟動分析", "launch_intro": "填寫完成後按「送出」，將先前往確認頁；於確認頁按「送出」才會排入佇列。",
         "l_pipeline": "管線（nf-core 名稱）", "l_revision": "版本", "l_run_name": "分析名稱", "l_samplesheet": "樣本表（從已上傳的檔案中選擇）",
         "l_ce": "運算環境", "l_params": "其他參數（選填）", "l_submit": "送出（前往確認頁）",
-        "l_no_sheet": "尚未上傳樣本表，無法啟動分析。", "l_no_ce": "尚無可用的運算環境。",
+        "l_no_ce": "尚無可用的運算環境，請先至設定頁完成設定。",
         "l_from": "已帶入該次分析的設定；樣本表與分析名稱需重新選擇。", "l_not_kept": "該次分析的設定未保存，請自行填寫。",
         "e_pipeline": "管線為必填，只能填寫 nf-core 的名稱，例如 ampliseq。", "e_revision": "版本為必填，請填寫確切版本號（例如 2.18.0），不可留空。",
-        "e_run_name": "分析名稱為必填。", "e_sheet": "樣本表必須從已上傳的檔案中選擇。", "e_ce": "運算環境必須是您名下可用的環境。",
+        "e_run_name": "分析名稱為必填。", "e_sheet": "樣本表必須從已上傳的檔案中選擇。", "e_ce": "運算環境必須是您名下可用的環境。", "e_reg": "所選運算環境尚未登記此管線版本，無法送出。",
         "e_param_line": "參數「%s」無法辨識；每行須寫成「名稱: 值」。", "e_param_scalar": "參數 %s 不符規定：只能是文字、數字或 true/false。",
         "e_param_dup": "參數 %s 重複出現。", "e_body": "尚未送出，請修正後再按一次。",
         "r_none": "什麼都沒有送出。", "r_generic": "這件事現在做不了。", "r_form": "這個表單的記號不對或已失效，什麼都沒有送出。請重新整理頁面再按。",
@@ -109,10 +109,11 @@ STRINGS = {
         "l_pipeline": "Pipeline (nf-core name)", "l_revision": "Revision", "l_run_name": "Analysis name",
         "l_samplesheet": "Samplesheet (choose from the uploaded files)", "l_ce": "Compute environment",
         "l_params": "Other parameters (optional)", "l_submit": "Submit (go to the confirmation page)",
-        "l_no_sheet": "No samplesheet has been uploaded; the analysis cannot be started.", "l_no_ce": "No compute environment is available.",
+        "l_no_ce": "No compute environment is available. Set one up on the settings page first.",
         "l_from": "The settings of that analysis are filled in; choose the samplesheet and the analysis name again.", "l_not_kept": "The settings of that analysis were not kept; fill them in manually.",
         "e_pipeline": "The pipeline is required; enter an nf-core name such as ampliseq.", "e_revision": "The revision is required; enter the exact version number (for example 2.18.0).",
         "e_run_name": "The analysis name is required.", "e_sheet": "The samplesheet must be chosen from the uploaded files.", "e_ce": "The compute environment must be one of your own.",
+        "e_reg": "The selected compute environment has not registered this pipeline version; nothing was sent.",
         "e_param_line": "Parameter \"%s\" is not understood; write each one as \"name: value\".", "e_param_scalar": "Parameter %s is not allowed: only text, numbers or true/false.",
         "e_param_dup": "Parameter %s is written twice.", "e_body": "Nothing was sent. Fix the form and press the button again.",
         "r_none": "Nothing was sent.", "r_generic": "That cannot be done right now.", "r_form": "The form token is wrong or has expired; nothing was sent. Reload the page and press again.",
@@ -241,7 +242,7 @@ STYLE = (
     ".ptbl{margin:0 0 8px}.ptbl input,.ptbl select{width:100%;min-width:0}.req{color:var(--failed);font-size:inherit;font-weight:600}"
     ".ptbl .cname{width:22%}.ptbl .cdesc{width:50%}.ptbl .ctype{width:10%}.ptbl .cval{width:18%}"
     ".padv>label{padding:0 12px 12px}"
-    ".dlink{display:inline-block;min-height:44px;line-height:44px}"
+    ".gdia{display:block;max-width:100%;height:auto}"
     "@media (max-width:600px){.ptbl thead{display:none}.ptbl,.ptbl tbody{display:block}.ptbl tr,.ptbl td{display:block}.ptbl tr{border-bottom:1px solid var(--line);padding:4px 0}"
     ".ptbl td{border-bottom:0;width:auto}}"
     "@media (max-width:900px){.wb{grid-template-columns:1fr}.main{order:-2}.rail{order:-1}.costs{display:none}"
@@ -872,59 +873,50 @@ def plain_reason(message, lang):
 
 GUIDED = {
     "zh": {
-        "g_intro": "請依序完成步驟 1 至 7。按下「送出」後將進入確認頁，於確認頁再次送出才會排入佇列。",
-        "g_t1": "前置檢查", "g_t2": "選管線", "g_t3": "流程圖", "g_t4": "樣本表", "g_t5": "參數", "g_t6": "運算環境", "g_t7": "確認",
+        "g_intro": "請依序完成步驟 1 至 6。按下「送出」後將進入確認頁，於確認頁再次送出才會排入佇列。",
+        "g_t1": "分析名稱", "g_t2": "運算環境", "g_t3": "管線", "g_t4": "樣本表", "g_t5": "參數", "g_t6": "確認",
         "g_done": "已完成", "g_current": "目前", "g_later": "之後",
-        "g_pre_wait": "選定管線後檢查",
-        "g_c_ver": "版本已指定", "g_c_ver_ok": "版本 %s。", "g_c_ver_bad": "尚未指定版本。",
-        "g_c_conn": "站台連線", "g_c_conn_ok": "運算環境 %s 狀態正常。", "g_c_conn_bad": "運算環境 %s 有問題：%s",
-        "g_c_conn_none": "沒有可用的運算環境。", "g_c_conn_nomsg": "狀態不是可用。",
-        "g_c_reg": "管線已登記", "g_c_reg_ok": "站台已登記此管線與版本。", "g_c_reg_bad": "站台尚未登記此管線與版本。",
-        "g_c_reg_na": "（此環境不需登記）",
-        "g_c_sheet": "有可用樣本表", "g_c_sheet_ok": "有 %d 份樣本表可選。", "g_c_sheet_bad": "沒有可用的樣本表。",
         "g_c_params": "讀取管線參數表",
         "g_tab_used": "曾使用的管線", "g_tab_new": "其他 nf-core 管線",
         "g_th_pipeline": "管線", "g_th_revision": "版本", "g_th_run": "上次分析名稱", "g_th_at": "上次送出時間", "g_th_ce": "運算環境",
         "g_select": "選用", "g_quick": "沿用設定重新分析", "g_no_used": "尚無使用紀錄。",
         "g_search": "搜尋全部 nf-core（尚未開放）",
-        "g_preview": "預覽與欄位角色（尚未開放）", "g_no_sheet": "沒有可用的樣本表。",
+        "g_preview": "預覽與欄位角色（尚未開放）",
+        "g_no_sheet": "尚無已上傳的樣本表，請先上傳。", "g_go_board": "前往看板", "g_go_settings": "前往設定頁",
+        "g_reg_bad": "此管線版本尚未在所選運算環境登記，請洽管理者登記；已登記的管線列於設定頁。",
+        "g_ver_wait": "正在讀取版本清單…",
         "g_reuse_pick": "沿用先前分析的參數", "g_reuse_off": "不沿用", "g_reuse_none": "此管線版本尚無可沿用的分析。", "g_groups": "參數分組表",
         "g_cannot_reuse": "此分析的參數無法沿用。", "g_route_reuse": "沿用 %s",
         "g_adv_box": "進階：直接輸入參數（一行一個「名稱: 值」）",
         "g_es_available": "可用", "g_es_creating": "建立中", "g_es_invalid": "有問題", "g_es_unsupported": "不支援",
         "g_es_disabled": "已停用",
         "g_s_pipeline": "管線與版本", "g_s_run": "分析名稱", "g_s_sheet": "樣本表", "g_s_params": "改過的參數", "g_s_ce": "運算環境",
-        "g_s_problems": "前置檢查未通過", "g_s_unset": "尚未選擇", "g_s_defaults": "全部使用預設值",
+        "g_s_unset": "尚未選擇", "g_s_defaults": "全部使用預設值",
         "g_submit": "送出（前往確認頁）",
-        "g_loaded": "已載入 %s 版本 %s 的參數表，請檢查後再按送出。", "g_legend": "* 必填", "g_ver_hint": "請填寫確切版本號，例如 2.18.0",
+        "g_loaded": "已載入 %s 版本 %s 的參數表，請檢查後再按送出。", "g_legend": "* 必填",
         "g2_params_ok": "讀到 %d 組、%d 個參數", "g2_params_wait": "　選定版本後檢查", "g2_reading": "讀取中",
         "g2_note": "讀取中，頁面每 15 秒自動更新。", "g2_fill": "讀取中，頁面將自動更新；請於讀取完成後再填寫參數。",
-        "g2_latest": "最新版本：%s", "g2_use_ver": "套用此版本", "g2_stale": "目前無法連線至 GitHub，以下為 %s 的查詢結果。",
-        "g2_dia_file": "流程圖檔：%s（%s）", "g2_dia_open": "開啟流程圖", "g2_dia_none": "此管線未提供流程圖。",
-        "g2_dia_wait": "選定管線與版本後顯示", "g2_img_wait": "圖檔讀取中",
+        "g2_stale": "目前無法連線至 GitHub，以下為 %s 的查詢結果。",
+        "g2_dia_none": "此管線未提供流程圖。", "g2_img_wait": "正在讀取流程圖…", "g2_dia_alt": "%s %s 流程圖",
         "g2_th_col": "欄名", "g2_th_desc": "說明",
         "g2_groups_wait": "參數分組表：讀到參數表後顯示", "g2_adv": "進階參數（管線預設隱藏）", "g2_req": "必填",
         "g2_th_name": "名稱", "g2_th_type": "型別", "g2_th_value": "填寫",
         "g2_dia_404": "找不到流程圖。 (The workflow diagram was not found.)",
     },
     "en": {
-        "g_intro": "Complete steps 1 to 7 in order. Pressing Submit takes you to the confirmation page; only the Send button there puts the run in the queue.",
-        "g_t1": "Pre-checks", "g_t2": "Pipeline", "g_t3": "Workflow diagram", "g_t4": "Samplesheet", "g_t5": "Parameters", "g_t6": "Compute environment",
-        "g_t7": "Confirm",
+        "g_intro": "Complete steps 1 to 6 in order. Pressing Submit takes you to the confirmation page; only the Send button there puts the run in the queue.",
+        "g_t1": "Analysis name", "g_t2": "Compute environment", "g_t3": "Pipeline", "g_t4": "Samplesheet", "g_t5": "Parameters", "g_t6": "Confirm",
         "g_done": "Done", "g_current": "Current", "g_later": "Later",
-        "g_pre_wait": "Checked once a pipeline is selected",
-        "g_c_ver": "Revision pinned", "g_c_ver_ok": "Revision %s.", "g_c_ver_bad": "No revision is set.",
-        "g_c_conn": "Site connection", "g_c_conn_ok": "Compute environment %s is available.", "g_c_conn_bad": "Compute environment %s has a problem: %s",
-        "g_c_conn_none": "No compute environment is available.", "g_c_conn_nomsg": "The status is not available.",
-        "g_c_reg": "Pipeline registered", "g_c_reg_ok": "The site has this pipeline and revision registered.",
-        "g_c_reg_bad": "The site has not registered this pipeline and revision.", "g_c_reg_na": "(this environment needs no registration)",
-        "g_c_sheet": "Samplesheet available", "g_c_sheet_ok": "%d samplesheet(s) to choose from.", "g_c_sheet_bad": "No samplesheet is available.",
         "g_c_params": "Read the pipeline parameter table",
         "g_tab_used": "Previously used pipelines", "g_tab_new": "Other nf-core pipelines",
         "g_th_pipeline": "Pipeline", "g_th_revision": "Revision", "g_th_run": "Last analysis", "g_th_at": "Last launched", "g_th_ce": "Compute environment",
         "g_select": "Select", "g_quick": "Re-run with the same settings", "g_no_used": "No usage history.",
         "g_search": "Search all of nf-core (not yet available)",
-        "g_preview": "Preview and column roles (not yet available)", "g_no_sheet": "No samplesheet is available.",
+        "g_preview": "Preview and column roles (not yet available)",
+        "g_no_sheet": "No samplesheet has been uploaded. Please upload one first.", "g_go_board": "Go to the board", "g_go_settings": "Go to the settings page",
+        "g_reg_bad": "This pipeline version is not registered in the selected compute environment; ask your administrator to register it. "
+                     "The registered pipelines are listed on the settings page.",
+        "g_ver_wait": "Reading the version list…",
         "g_reuse_pick": "Reuse the parameters of an earlier analysis", "g_reuse_off": "Do not reuse",
         "g_reuse_none": "No earlier analysis of this pipeline version can be reused.", "g_groups": "Parameter groups",
         "g_cannot_reuse": "The parameters of this analysis cannot be reused.", "g_route_reuse": "Reuse %s",
@@ -932,16 +924,14 @@ GUIDED = {
         "g_es_available": "Available", "g_es_creating": "Creating", "g_es_invalid": "Problem",
         "g_es_unsupported": "Unsupported", "g_es_disabled": "Disabled",
         "g_s_pipeline": "Pipeline and revision", "g_s_run": "Analysis name", "g_s_sheet": "Samplesheet", "g_s_params": "Changed parameters",
-        "g_s_ce": "Compute environment", "g_s_problems": "Pre-checks not passed", "g_s_unset": "Not selected", "g_s_defaults": "All defaults",
+        "g_s_ce": "Compute environment", "g_s_unset": "Not selected", "g_s_defaults": "All defaults",
         "g_submit": "Submit (go to the confirmation page)",
         "g_loaded": "The parameter table of %s version %s is loaded; check it, then press Submit.", "g_legend": "* Required",
-        "g_ver_hint": "Enter the exact version number, for example 2.18.0",
         "g2_params_ok": "Read %d groups, %d parameters", "g2_params_wait": "Checked once a revision is selected", "g2_reading": "Reading",
         "g2_note": "Reading; this page refreshes every 15 seconds.",
         "g2_fill": "Reading; this page refreshes automatically. Fill in the parameters once reading has finished.",
-        "g2_latest": "Latest version: %s", "g2_use_ver": "Apply this version", "g2_stale": "GitHub cannot be reached at present; this is the result found at %s.",
-        "g2_dia_file": "Diagram file: %s (%s)", "g2_dia_open": "Open the workflow diagram", "g2_dia_none": "This pipeline provides no workflow diagram.",
-        "g2_dia_wait": "Shown once a pipeline and revision are selected", "g2_img_wait": "Reading the diagram file",
+        "g2_stale": "GitHub cannot be reached at present; this is the result found at %s.",
+        "g2_dia_none": "This pipeline provides no workflow diagram.", "g2_img_wait": "Reading the workflow diagram…", "g2_dia_alt": "%s %s workflow diagram",
         "g2_th_col": "Column", "g2_th_desc": "Description",
         "g2_groups_wait": "Parameter groups: shown once the parameter table is read", "g2_adv": "Advanced parameters (hidden by default in the pipeline)",
         "g2_req": "Required", "g2_th_name": "Name", "g2_th_type": "Type", "g2_th_value": "Value",
@@ -966,42 +956,23 @@ def _qs(lang, pairs):
     return esc("/launch" + ("?" + "&".join("%s=%s" % (k, urllib.parse.quote(str(v), safe="/")) for k, v in query) if query else ""))
 
 
-def launch_checks(t, lang, values, envs, sheets, files=None):
-    """The pre-checks of step 1 as [(key, symbol, label, sentence)]; [] while no pipeline is chosen. A symbol is ✓, ✗, —, … or ○.
-    The last one is the read of the pipeline's parameter table (`files` is what pipeline_files answered, None before a revision is chosen)."""
-    pipeline = (values.get("pipeline") or "").strip()
-    if not pipeline:
-        return []
-    revision = (values.get("revision") or "").strip()
-    full = pipeline if "/" in pipeline else "nf-core/" + pipeline
-    env = next((e for e in envs if e.get("name") == values.get("ce_name")), envs[0] if envs else None)
-    out = [("ver", "✓" if revision else "✗", t["g_c_ver"], (t["g_c_ver_ok"] % revision) if revision else t["g_c_ver_bad"])]
-    if env is None:
-        out.append(("conn", "✗", t["g_c_conn"], t["g_c_conn_none"]))
-    elif env.get("status") == "available":
-        out.append(("conn", "✓", t["g_c_conn"], t["g_c_conn_ok"] % env["name"]))
-    else:
-        why = plain_reason(env.get("message"), lang) if env.get("message") else t["g_c_conn_nomsg"]
-        out.append(("conn", "✗", t["g_c_conn"], t["g_c_conn_bad"] % (env["name"], why)))
-    listed = (env.get("config") or {}).get("sitePipelines") if env else None
-    if isinstance(listed, list) and listed:
-        found = any(isinstance(p, dict) and p.get("pipeline") == full and p.get("revision") == revision for p in listed)
-        out.append(("reg", "✓" if found else "✗", t["g_c_reg"], t["g_c_reg_ok"] if found else t["g_c_reg_bad"]))
-    else:
-        out.append(("reg", "—", t["g_c_reg"], t["g_c_reg_na"]))
-    out.append(("sheet", "✓" if sheets else "✗", t["g_c_sheet"], (t["g_c_sheet_ok"] % len(sheets)) if sheets else t["g_c_sheet_bad"]))
-    from . import web_launch
-    out.append(web_launch.params_check(t, lang, revision, files))
-    return out
+def is_unregistered(env, full_name, revision):
+    """Whether the environment lists the pipelines the site has registered and the chosen pair is not among them. A missing, empty or odd list
+    means the environment needs no registration (guided-launch-2d keeps the old reading of `config.sitePipelines`)."""
+    listed = (env.get("config") or {}).get("sitePipelines") if isinstance(env, dict) else None
+    if not (full_name and revision and isinstance(listed, list) and listed):
+        return False
+    return not any(isinstance(p, dict) and p.get("pipeline") == full_name and p.get("revision") == revision for p in listed)
 
 
 def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, lang="zh", source=None, guide=None, files=None, image=None, latest=None):
-    """GET /launch (and the answer to a POST that did not pass): the seven numbered steps. `values` are what the boxes hold; `errors` are
-    lines of what is wrong; `notes` are plain muted lines; `sheets` are the names the person may choose from and `envs` the environments
-    (as list_compute_envs gives them) that are theirs; `token` is the form's CSRF token. `source` is (run id, name, status, 'MM-DD HH:mm'
-    or None) of the run a quick launch started from. `guide` is what the address decided: given (the explicit choices, carried by the
-    form), done (the steps 2, 4, 5, 6 that count as finished), bad (steps with an error), src, used, reuse, cannot_reuse, cells (what the boxes of the
-    parameter table hold, by name), sets (the changed parameters as the summary lists them).
+    """GET /launch (and the answer to a POST that did not pass): the six numbered steps (analysis name, compute environment, pipeline, samplesheet,
+    parameters, confirm). `values` are what the boxes hold; `errors` are lines of what is wrong; `notes` are plain muted lines; `sheets` are the
+    names the person may choose from and `envs` the environments (as list_compute_envs gives them) that are theirs AND available: an environment
+    that is not set up is not offered at all. `token` is the form's CSRF token. `source` is (run id, name, status, 'MM-DD HH:mm' or None) of the
+    run a quick launch started from. `guide` is what the address decided: given (the explicit choices, carried by the form), done (the steps 1-5
+    that count as finished), bad (steps with an error), src, used, reuse, cannot_reuse, cells (what the boxes of the parameter table hold, by
+    name), sets (the changed parameters as the summary lists them).
     Nothing is stored for the steps: their state is worked out from these each time. `files`, `image` and `latest` are what the actions
     pipeline_files (default parts), pipeline_files (parts image) and latest_release answered (None when they were not asked); any of them
     still `loading` makes the page ask for itself again every 15 seconds (guide["post"]: not on the answer to a POST, which has no address to ask)."""
@@ -1011,34 +982,44 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
     g = dict(given={}, done=set(), bad=set(), src="new", used=[], reuse=[], cannot_reuse=False)
     g.update(guide or {})
     given, bad = g["given"], g["bad"]
-    checks = launch_checks(t, lang, values, envs, sheets, files)
     quiet = bool(g.get("post"))
     loading = web_launch.is_loading(files, image, latest)
     pipeline, revision = (values.get("pipeline") or "").strip(), (values.get("revision") or "").strip()
     full_name = pipeline if "/" in pipeline else ("nf-core/" + pipeline if pipeline else "")
+    env = next((e for e in envs if e.get("name") == values.get("ce_name")), None)
+    unregistered = is_unregistered(env, full_name, revision)
+    pair = files if (pipeline and revision) else None
+    shown, diagram = web_launch.diagram_block(t, lang, full_name, revision, pair, image, quiet)
 
-    states = {n: ("done" if n in g["done"] and n not in bad else "later") for n in (2, 4, 5, 6)}
-    three_state, three = web_launch.diagram_block(t, lang, full_name, revision, files if (pipeline and revision) else None, image, quiet)
-    states.update({1: "done" if pipeline else "later", 3: three_state, 7: "later"})
-    waiting = [n for n in (2, 4, 5, 6, 7) if states[n] != "done"]
-    states[min(bad) if bad else (waiting[0] if waiting else 7)] = "current"
+    states = {n: ("done" if n in g["done"] and n not in bad else "later") for n in (1, 2, 3, 4, 5)}
+    if unregistered:
+        states[3] = "later"
+    states[6] = "later"
+    waiting = [n for n in (1, 2, 3, 4, 5, 6) if states[n] != "done"]
+    states[min(bad) if bad else waiting[0]] = "current"
 
-    def block(n, summary, body):
+    def block(n, summary, body, keep_open=False):
         mark, word = STEP_MARK[states[n]]
         return ('<details class="gstep is-%s" data-step="%d" data-state="%s"%s><summary><span class="gno">%d</span> <span class="gttl">%s</span> '
                 '<span class="gstate">%s %s</span>%s</summary><div class="gbody">%s</div></details>'
-                % (states[n], n, states[n], " open" if states[n] == "current" else "", n, esc(t["g_t%d" % n]), mark, esc(t[word]),
+                % (states[n], n, states[n], " open" if states[n] == "current" or keep_open else "", n, esc(t["g_t%d" % n]), mark, esc(t[word]),
                    (' <span class="gsum">%s</span>' % esc(summary)) if summary else "", body))
 
-    # 1 pre-checks
-    if checks:
-        rows = "".join('<li class="chk %s"><span class="csym">%s</span> <span class="clabel">%s</span> %s</li>'
-                       % ({"✓": "ok", "✗": "bad", "—": "na", "…": "wait", "○": "later"}[sym], sym, esc(label), esc(sentence))
-                       for _key, sym, label, sentence in checks)
-        one = '<ul class="checks">%s</ul>%s' % (rows, web_launch.step1_note(t, files, quiet))
+    # 1 analysis name: the one required box of this step
+    one = '<label>%s<input name="run_name" value="%s"></label>' % (web_launch.lbl(t, t["l_run_name"]), esc(values.get("run_name", "")))
+    # 2 compute environment: only the ones that are set up are offered; with none, the way to the settings page and no way to send
+    if envs:
+        def env_label(e):
+            sym, key = ENV_MARK.get(e.get("status"), ("✗", "g_es_invalid"))
+            return "%s  %s %s" % (e["name"], sym, t[key])
+        opts = "".join('<option value="%s"%s>%s</option>' % (esc(e["name"]), " selected" if e["name"] == values.get("ce_name") else "", esc(env_label(e)))
+                       for e in envs)
+        two = '<label>%s<select name="ce_name">%s</select></label>' % (web_launch.lbl(t, t["l_ce"]), opts)
     else:
-        one = '<p class="muted">%s</p>' % esc(t["g_pre_wait"])
-    # 2 pipeline: a table of the pipelines used before, or the two boxes; the pair always travels in the one form (as hidden fields on the first tab)
+        two = ('<p class="bad"><span class="csym">✗</span> %s</p><p><a href="%s">%s</a></p>'
+               % (esc(t["l_no_ce"]), _url(lang, path="/settings"), esc(t["g_go_settings"])))
+    # 3 pipeline: a table of the pipelines used before, or the box and the version drop-down; the pair always travels in the one form (as
+    # hidden fields on the first tab); the diagram is under it
     if g["src"] == "used":
         if g["used"]:
             trs = "".join(
@@ -1052,66 +1033,55 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
             pick = '<p class="muted">%s</p>' % esc(t["g_no_used"])
         pick += ('<input type="hidden" name="pipeline" value="%s"><input type="hidden" name="revision" value="%s">' % (esc(pipeline), esc(revision)))
     else:
-        pick = ('<label>%s<input name="pipeline" value="%s" required></label><label>%s<input name="revision" value="%s" required></label>'
-                '<p class="muted">%s</p><p class="off">%s</p>'
-                % (web_launch.lbl(t, t["l_pipeline"]), esc(pipeline), web_launch.lbl(t, t["l_revision"]), esc(revision),
-                   esc(t["g_ver_hint"]), esc(t["g_search"])))
-        if pipeline and not revision:
-            pick = pick.replace('<p class="off">', web_launch.latest_block(t, lang, full_name, latest, quiet) + '<p class="off">', 1)
+        pick = '<label>%s<input name="pipeline" value="%s" required></label>' % (web_launch.lbl(t, t["l_pipeline"]), esc(pipeline))
+        if pipeline:
+            pick += web_launch.versions_block(t, lang, revision, latest, quiet)
+        pick += '<p class="off">%s</p>' % esc(t["g_search"])
 
     def tab(key, label):
         return '<a data-tab="%s"%s href="%s">%s</a>' % (key, ' aria-current="page"' if g["src"] == key else "", _qs(lang, [("src", key)]), esc(label))
-    two = '<div class="rtabs">%s%s</div>%s' % (tab("used", t["g_tab_used"]), tab("new", t["g_tab_new"]), pick)
-    # 3 diagram: drawn above, its state decides the step
+    three = '<div class="rtabs">%s%s</div>%s' % (tab("used", t["g_tab_used"]), tab("new", t["g_tab_new"]), pick)
+    if unregistered:
+        three += ('<p class="bad"><span class="csym">✗</span> %s <a href="%s">%s</a></p>'
+                  % (esc(t["g_reg_bad"]), _url(lang, path="/settings"), esc(t["g_go_settings"])))
+    three += diagram
     # 4 samplesheet
     if sheets:
         opts = "".join('<option value="%s"%s>%s</option>' % (esc(s), " selected" if s == values.get("samplesheet") else "", esc(s)) for s in sheets)
         four = '<label>%s<select name="samplesheet">%s</select></label>' % (web_launch.lbl(t, t["l_samplesheet"]), opts)
     else:
-        four = '<p class="bad">%s</p><p class="muted">%s</p>' % (esc(t["g_no_sheet"]), esc(t["l_no_sheet"]))
-    four += web_launch.samplesheet_block(t, lang, files if (pipeline and revision) else None, quiet)
+        four = ('<p class="bad"><span class="csym">✗</span> %s</p><p><a href="%s">%s</a></p>'
+                % (esc(t["g_no_sheet"]), _url(lang), esc(t["g_go_board"])))
+    four += web_launch.samplesheet_block(t, lang, pair, quiet)
     four += '<p class="off">%s</p>' % esc(t["g_preview"])
-    # 5 parameters: the earlier analysis to follow, the table (every box holds its default), the box for what the table does not have
+    # 5 parameters: whether the table was read, the earlier analysis to follow, the table (every box holds its default), the box for the rest
     reuse_opts = '<option value="">%s</option>' % esc(t["g_reuse_off"]) + "".join(
         '<option value="%s"%s>%s</option>' % (esc(r["run_name"]), " selected" if r["run_name"] == given.get("params_from") else "",
                                               esc("%s · %s" % (r["run_name"], taipei_time(r.get("launched_at")) or "—"))) for r in g["reuse"])
     notice = '<p class="bad" role="alert">%s</p>' % esc(t["g_cannot_reuse"]) if g["cannot_reuse"] else ""
-    groups_html = web_launch.groups_block(t, lang, files if (pipeline and revision) else None, quiet, g.get("cells"))
+    groups_html = web_launch.groups_block(t, lang, pair, quiet, g.get("cells"))
     box = values.get("params", "")
-    five = ('%s<label>%s<select name="params_from">%s</select></label>%s%s%s'
+    five = ('%s%s<label>%s<select name="params_from">%s</select></label>%s%s%s'
             '<details class="padv"%s><summary>%s</summary><label>%s<textarea name="params" rows="5">%s</textarea></label></details>'
-            % (notice, esc(t["g_reuse_pick"]), reuse_opts, "" if g["reuse"] else '<p class="muted">%s</p>' % esc(t["g_reuse_none"]), groups_html,
+            % (web_launch.params_status(t, lang, revision, pair), notice, esc(t["g_reuse_pick"]), reuse_opts,
+               "" if g["reuse"] else '<p class="muted">%s</p>' % esc(t["g_reuse_none"]), groups_html,
                web_launch.fill_hint(t, loading and not quiet), " open" if box.strip() else "", esc(t["g_adv_box"]), esc(t["l_params"]), esc(box)))
-    # 6 compute environment
-    if envs:
-        def env_label(e):
-            sym, key = ENV_MARK.get(e.get("status"), ("✗", "g_es_invalid"))
-            return "%s  %s %s" % (e["name"], sym, t[key])
-        opts = "".join('<option value="%s"%s>%s</option>' % (esc(e["name"]), " selected" if e["name"] == values.get("ce_name") else "", esc(env_label(e)))
-                       for e in envs)
-        six = '<label>%s<select name="ce_name">%s</select></label>' % (web_launch.lbl(t, t["l_ce"]), opts)
-    else:
-        six = '<p class="bad">%s</p>' % esc(t["l_no_ce"])
-    # 7 confirm
-    failed = [c for c in checks if c[1] == "✗"]
+    # 6 confirm: only what was chosen, and the one button (none while there is no environment to send to)
     sets = (g["sets"] if g.get("sets") is not None else (values.get("params") or "")).strip()
     unset = esc(t["g_s_unset"])
-    summary = [(t["g_s_pipeline"], esc("%s %s" % (pipeline, revision)) if pipeline else unset)]
-    if values.get("run_name"):
-        summary.append((t["g_s_run"], esc(values["run_name"])))
-    summary += [(t["g_s_sheet"], esc(values.get("samplesheet")) if values.get("samplesheet") else unset),
-                (t["g_s_params"], "<pre>%s</pre>" % esc(sets) if sets else esc(t["g_s_defaults"])),
-                (t["g_s_ce"], esc(values.get("ce_name")) if values.get("ce_name") else unset)]
-    if failed:
-        summary.append((t["g_s_problems"], "<ul>%s</ul>" % "".join("<li>✗ %s %s</li>" % (esc(c[2]), esc(c[3])) for c in failed)))
+    summary = [(t["g_s_run"], esc(values["run_name"]) if values.get("run_name") else unset),
+               (t["g_s_ce"], esc(values.get("ce_name")) if values.get("ce_name") and envs else unset),
+               (t["g_s_pipeline"], esc("%s %s" % (pipeline, revision)) if pipeline else unset),
+               (t["g_s_sheet"], esc(values.get("samplesheet")) if values.get("samplesheet") else unset),
+               (t["g_s_params"], "<pre>%s</pre>" % esc(sets) if sets else esc(t["g_s_defaults"]))]
     dl = '<dl class="fields">%s</dl>' % "".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), v) for k, v in summary)
-    seven = (dl + '<label>%s<input name="run_name" value="%s"></label><button type="submit">%s</button>'
-             % (web_launch.lbl(t, t["l_run_name"]), esc(values.get("run_name", "")), esc(t["g_submit"])))
+    six = dl + ('<button type="submit">%s</button>' % esc(t["g_submit"]) if envs else "")
 
-    sums = {2: ("%s %s" % (pipeline, revision)) if states[2] == "done" else "", 4: values.get("samplesheet") if states[4] == "done" else "",
-            5: (t["g_route_reuse"] % given.get("params_from")) if states[5] == "done" and given.get("params_from") else "",
-            6: values.get("ce_name") if states[6] == "done" else ""}
-    body = "".join(block(n, sums.get(n, ""), html_) for n, html_ in ((1, one), (2, two), (3, three), (4, four), (5, five), (6, six), (7, seven)))
+    sums = {1: values.get("run_name") if states[1] == "done" else "", 2: values.get("ce_name") if states[2] == "done" else "",
+            3: ("%s %s" % (pipeline, revision)) if states[3] == "done" else "", 4: values.get("samplesheet") if states[4] == "done" else "",
+            5: (t["g_route_reuse"] % given.get("params_from")) if states[5] == "done" and given.get("params_from") else ""}
+    body = "".join(block(n, sums.get(n, ""), html_, keep_open=(n == 3 and shown))
+                   for n, html_ in ((1, one), (2, two), (3, three), (4, four), (5, five), (6, six)))
 
     lines = "".join('<p class="bad" role="alert">%s</p>' % esc(e) for e in errors) + "".join('<p class="muted">%s</p>' % esc(n) for n in notes)
     if source:

@@ -599,18 +599,20 @@ def _no_fetch(repo):
 
 def latest_release(platform_path, pipeline, *, compute_env=None, caller=None, enqueue=True):
     """The newest release of a pipeline that can be launched as it is (a plain numbered tag), for a new project to pin. Returns {state:
-    loading|ready|error, pipeline, revision, source: fetched|cache|stale-cache|none, checked_at, why, error}. Like pipeline_files it never waits.
+    loading|ready|error, pipeline, revision, source: fetched|cache|stale-cache|none, checked_at, why, error, releases}; `releases` is every
+    usable tag, newest first (`revision` is its first item; [] while loading or after an error; an older cache entry holds only [revision]). Like pipeline_files it never waits.
     The answer is remembered for 24 hours in a file beside platform.db (releases.lookup); an older answer is used when the agent cannot read
     GitHub now, and says so (stale-cache)."""
     answer = {"state": "loading", "pipeline": pipeline if isinstance(pipeline, str) else None, "revision": None, "source": "none",
-              "checked_at": None, "why": None, "error": None}
+              "checked_at": None, "why": None, "error": None, "releases": []}
 
     def fail(code, why=None):
         answer.update(state="error", error=code, why=why or _PF_REASONS[code])
         return answer
 
     def ready(found, why=None):
-        answer.update(state="ready", revision=found["revision"], source=found["source"], checked_at=found["checked_at"], why=why)
+        answer.update(state="ready", revision=found["revision"], source=found["source"], checked_at=found["checked_at"], why=why,
+                      releases=list(found.get("releases") or [found["revision"]]))
         return answer
 
     try:
