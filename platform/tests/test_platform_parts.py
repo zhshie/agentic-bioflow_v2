@@ -361,7 +361,8 @@ def test_sc18_the_two_clock_wrappers():
     assert wrappers == ["platform_clock_2_test.sh", "platform_clock_test.sh"]
     for path, part in ((CLOCK, "clock"), (CLOCK2, "clock2")):
         text = path.read_text()
-        assert re.findall(r"ABF_PLATFORM_PART=(\w+)", text) == [part], path.name
+        code = "\n".join(ln for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#"))
+        assert re.findall(r"ABF_PLATFORM_PART=(\w+)", code) == [part], path.name
         assert 'exec bash "$HERE/platform_test.sh" "$@"' in text
 
 

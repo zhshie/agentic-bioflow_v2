@@ -43,23 +43,27 @@ VENV="${ABF_PLATFORM_VENV:-$CACHE_BASE/abf-platform-venv}"
 CI_MODE=0
 [ "${CI:-}" = "true" ] && CI_MODE=1
 
-# Which part of the platform tests this run is (see the shards below): 1 (the default) to PLATFORM_PARTS, clock, or all. run_all.sh has
-# one entry for each: this file runs part 1, tests/platform_shard_<n>_test.sh selects part n (n = 2 to 8), and
-# tests/platform_clock_test.sh selects the clock part. "all" runs the numbered parts and then the clock part in one go.
+# Which part of the platform tests this run is (see the shards below): 1 (the default) to PLATFORM_PARTS, clock, clock2, or all. run_all.sh has
+# one entry for each: this file runs part 1, tests/platform_shard_<n>_test.sh selects part n (n = 2 to 8), tests/platform_clock_test.sh
+# selects the clock part (one clock file) and tests/platform_clock_2_test.sh the clock2 part (the other one). "all" runs the numbered
+# parts and then clock and clock2, in that order, in one go.
 PLATFORM_PARTS=8
 PART="${ABF_PLATFORM_PART:-1}"
 valid_part=0
-case "$PART" in clock|all) valid_part=1 ;; *[!0-9]*|"") ;; *) [ "$((10#$PART))" -ge 1 ] && [ "$((10#$PART))" -le "$PLATFORM_PARTS" ] && [ "$PART" = "$((10#$PART))" ] && valid_part=1 ;; esac
-[ "$valid_part" = 1 ] || { echo "FAIL: ABF_PLATFORM_PART must be 1 to $PLATFORM_PARTS, clock or all, not '$PART'"; exit 1; }
+case "$PART" in clock|clock2|all) valid_part=1 ;; *[!0-9]*|"") ;; *) [ "$((10#$PART))" -ge 1 ] && [ "$((10#$PART))" -le "$PLATFORM_PARTS" ] && [ "$PART" = "$((10#$PART))" ] && valid_part=1 ;; esac
+[ "$valid_part" = 1 ] || { echo "FAIL: ABF_PLATFORM_PART must be 1 to $PLATFORM_PARTS, clock, clock2 or all, not '$PART'"; exit 1; }
 
 # The fixed lists. Some of the slowest files (measured; see specs/suite-speed/ledger.md for which and why) are named here, one line for each, so that each
 # is a pytest process of its own; the lines are dealt out to the parts longest first, each to the part that has the least so far
 # (the REST shards counted in). Every other test file goes into the REST shard of one of the parts, in turn (sorted by name, the
 # first to part 1, the second to part 2, and so on), so a new test file has a part without anyone editing this list. LAST are the
-# files that check the clock closely. Sets SHARDS_1 to SHARDS_8 (one shard per line), LAST and REST_1 to REST_8.
+# files that check the clock closely: LAST_1 is the clock part, LAST_2 the clock2 part, and LAST is both of them together (the list
+# of files that are already named). Sets SHARDS_1 to SHARDS_8 (one shard per line), LAST_1, LAST_2, LAST and REST_1 to REST_8.
 # tests/test_launch_nextflow.py is alone in its line on purpose: its setup is one real Nextflow run and cannot be split.
 set_platform_parts() {
-    LAST="tests/test_station_e2e.py tests/test_nextflow_e2e.py"
+    LAST_1="tests/test_station_e2e.py"
+    LAST_2="tests/test_nextflow_e2e.py"
+    LAST="$LAST_1 $LAST_2"
     SHARDS_1="
 tests/test_owner_binding.py
 tests/test_oauth_mcp.py
@@ -112,10 +116,10 @@ tests/test_web_board.py
     done
 }
 
-# The shards of the selected part or parts, one line each (no line for an empty REST). Nothing for the clock part.
+# The shards of the selected part or parts, one line each (no line for an empty REST). Nothing for the clock parts.
 selected_shards() {
     local n files rest line
-    case "$PART" in clock) set -- ;; all) set -- $(seq 1 "$PLATFORM_PARTS") ;; *) set -- "$PART" ;; esac
+    case "$PART" in clock|clock2) set -- ;; all) set -- $(seq 1 "$PLATFORM_PARTS") ;; *) set -- "$PART" ;; esac
     for n in "$@"; do
         eval "files=\$SHARDS_$n rest=\$REST_$n"
         while IFS= read -r line; do [ -n "$line" ] && echo "$line"; done <<< "$files"
@@ -130,9 +134,8 @@ if [ "${ABF_PLATFORM_LIST:-}" = "1" ]; then
     cd "$PLATFORM_DIR" || exit 1
     set_platform_parts
     while IFS= read -r files; do [ -n "$files" ] && echo "shard: $files"; done <<< "$(selected_shards)"
-    if [ "$PART" = "clock" ] || [ "$PART" = "all" ]; then
-        for f in $LAST; do echo "alone: $f"; done
-    fi
+    case "$PART" in clock|all) echo "alone: $LAST_1" ;; esac
+    case "$PART" in clock2|all) echo "alone: $LAST_2" ;; esac
     exit 0
 fi
 
@@ -384,9 +387,10 @@ else
     #
     # Several run_all.sh entries share this file, so that none of them comes near the per-test limit of run_all.sh (the limit only
     # catches a hang, and one entry for the whole suite was too long for it): this one (ABF_PLATFORM_PART=1, the default) runs part 1,
-    # tests/platform_shard_<n>_test.sh (parts 2 to 8) run the others, and tests/platform_clock_test.sh (ABF_PLATFORM_PART=clock)
-    # runs the two clock-sensitive files, one after the other. run_all.sh runs one entry at a time, so those two still run alone.
-    # ABF_PLATFORM_PART=all runs all the parts, as this file once did.
+    # tests/platform_shard_<n>_test.sh (parts 2 to 8) run the others, and tests/platform_clock_test.sh (ABF_PLATFORM_PART=clock) and
+    # tests/platform_clock_2_test.sh (ABF_PLATFORM_PART=clock2) run one clock-sensitive file each. run_all.sh runs one entry at a time,
+    # so those files still run alone. ABF_PLATFORM_PART=all runs all the parts, as this file once did: the shards, then the clock
+    # files one after the other.
     # Every test file is in exactly one part: the files named here, and everything else in a REST shard, turn by turn.
     set_platform_parts
     rc=0
@@ -401,19 +405,20 @@ else
         pids="$pids $!"
     }
     shard_rc=""
-    if [ "$PART" != "clock" ]; then
+    if [ "$PART" != "clock" ] && [ "$PART" != "clock2" ]; then
         while IFS= read -r files; do
             [ -n "$files" ] && start_shard "$files"
         done < <(selected_shards)
         for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
     fi
-    if [ "$PART" = "clock" ] || [ "$PART" = "all" ]; then
-        for f in $LAST; do
-            pids=""
-            start_shard "$f"
-            for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
-        done
-    fi
+    clock_files=""
+    case "$PART" in clock|all) clock_files="$LAST_1" ;; esac
+    case "$PART" in clock2|all) clock_files="$clock_files $LAST_2" ;; esac
+    for f in $clock_files; do
+        pids=""
+        start_shard "$f"
+        for pid in $pids; do wait "$pid"; k=$?; shard_rc="$shard_rc $k"; [ "$k" = 0 ] || rc=1; done
+    done
     : > "$LOG"
     for i in $(seq 1 "$n"); do
         echo "===== pytest shard $i ====="
