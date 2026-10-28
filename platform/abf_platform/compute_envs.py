@@ -2,7 +2,7 @@
 """Compute environments in the Seqera model: a type, a config, and the NAME of a credential.
 
 Slurm is the only type that can run. Google Cloud Batch can be created and checked (by the agent on the platform
-host; launching comes later). The other 12 types Seqera lists are stored
+host; launching comes later). AWS Batch can be created and checked the same way (launching: aws-launch). The other 11 types Seqera lists are stored
 (their settings, nothing more) with the status `unsupported`: no code runs for them, no cloud
 library is imported, and the check and listing refuse them at once. Nothing here holds a
 credential: a value that looks like one is refused, and only the credential's name is kept.
@@ -33,7 +33,9 @@ KINDS = {
 }
 SUPPORTED = "slurm-platform"                                  # the type that runs through an agent on the cluster
 PLATFORM_HOST_TYPES = ("googlebatch-platform",)               # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch)
-CHECKABLE = (SUPPORTED,) + PLATFORM_HOST_TYPES
+AWS = "awsbatch-platform"
+CHECK_ONLY_TYPES = (AWS,)                                     # checked by the agent on the platform host, but nothing is launched yet (aws-launch)
+CHECKABLE = (SUPPORTED,) + PLATFORM_HOST_TYPES + CHECK_ONLY_TYPES
 SEQERA_COMPUTE = ("seqera-compute", "seqeracompute-platform")
 
 CREATING, AVAILABLE, INVALID, UNSUPPORTED, DISABLED = "creating", "available", "invalid", "unsupported", "disabled"
@@ -395,6 +397,62 @@ def _check_gcb(config, agent):
         raise CEError("; ".join(errors))
 
 
+_AWS_CONFIG = _COMMON_CONFIG + ("region", "jobQueue", "spot", "maxvCpus")
+_AWS_REGION = re.compile(r"^[a-z]{2}(-[a-z]+)+-[0-9]\Z")
+_AWS_BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\Z")
+_AWS_QUEUE = re.compile(r"^[A-Za-z0-9_-]{1,128}\Z")
+_AWS_OLD_KEYS = ("headQueue", "computeQueue")
+
+
+def _check_aws(config, agent):
+    """An AWS Batch environment: every problem is listed at once, each naming its key; a bad value is shown 60 characters at most.
+    It needs an agent (the one on the platform host). No credential is held here: the credential file stays on the agent's side
+    and only its name is kept."""
+    unknown = sorted(set(config) - set(_AWS_CONFIG))
+    if unknown:
+        msg = "unknown setting for an AWS Batch environment: %s (known: %s)" % (", ".join(str(k)[:60] for k in unknown), ", ".join(_AWS_CONFIG))
+        if any(k in _AWS_OLD_KEYS for k in unknown):
+            msg += ". 這是舊版的設定，請刪除後重建這個計算環境 (delete this environment and create it again)"
+        raise CEError(msg)
+    errors = []
+    if not agent:
+        errors.append("agent is required: an AWS Batch environment is checked by the agent that runs on the platform host, "
+                      "so name it with --agent (需要指定一個站台代理，就是平台主機上的那個)")
+    for key in ("region", "workDir", "jobQueue"):
+        if config.get(key) is None or config.get(key) == "":
+            errors.append("%s is required for an AWS Batch environment (缺 %s)%s" % (key, key, ", such as eu-west-1" if key == "region" else ""))
+    v = config.get("region")
+    if v not in (None, "") and not (isinstance(v, str) and _AWS_REGION.match(v)):
+        errors.append("region must be an AWS region such as eu-west-1 (got %s)" % _shown(v))
+    v = config.get("workDir")
+    if v not in (None, ""):
+        problem = None
+        if not isinstance(v, str) or not v.startswith("s3://"):
+            problem = "workDir must be an s3:// URL such as s3://lab-bucket/work (got %s)" % _shown(v)
+        else:
+            bucket, _, prefix = v[5:].partition("/")
+            if not _AWS_BUCKET.match(bucket) or ".." in bucket:
+                problem = ("workDir: the bucket name must be 3 to 63 characters of lower-case letters, digits, - and . "
+                           "(got %s)" % _shown(bucket))
+            elif ".." in prefix.split("/") or any(ord(c) < 32 or ord(c) == 127 for c in prefix) or len(v) > MAX_PATH:
+                problem = "workDir: the folder part must not contain '..' or control characters, or be longer than %d" % MAX_PATH
+            else:
+                prefix = prefix.rstrip("/")
+                config["workDir"] = "s3://" + bucket + ("/" + prefix if prefix else "")
+        if problem:
+            errors.append(problem)
+    v = config.get("jobQueue")
+    if v not in (None, "") and not (isinstance(v, str) and _AWS_QUEUE.match(v)):
+        errors.append("jobQueue must be the queue's name (letters, digits, - and _, at most 128), not an ARN (got %s)" % _shown(v))
+    if config.get("spot") is not None and not isinstance(config["spot"], bool):
+        errors.append("spot must be true or false")
+    v = config.get("maxvCpus")
+    if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
+        errors.append("maxvCpus must be a whole number from 1 to 10000")
+    if errors:
+        raise CEError("; ".join(errors))
+
+
 def _check_other(config):
     """A type that is only modelled: no field schema, only the common checks."""
     for key, value in config.items():
@@ -449,6 +507,8 @@ def clean(fields):
         _check_slurm(config)
     elif platform in PLATFORM_HOST_TYPES:
         _check_gcb(config, agent)
+    elif platform == AWS:
+        _check_aws(config, agent)
     else:
         _check_other(config)
     owner = fields.get("owner_user_id")
@@ -692,6 +752,9 @@ def snapshot(row_or_view):
         return {"name": v["name"], "platform": v["platform"], "credentialsId": v["credentialsId"],
                 "project": c.get("project"), "location": c.get("location"), "workDir": c.get("workDir"),
                 "serviceAccountEmail": c.get("serviceAccountEmail")}
+    if v["platform"] == AWS:
+        return {"name": v["name"], "platform": v["platform"], "credentialsId": v["credentialsId"],
+                "region": c.get("region"), "workDir": c.get("workDir"), "jobQueue": c.get("jobQueue")}
     library = next((e.get("value") for e in (c.get("environment") or []) if isinstance(e, dict)
                     and e.get("name") == "NXF_SINGULARITY_LIBRARYDIR"), None)      # the one variable a preflight needs; no other is carried
     return {"name": v["name"], "platform": v["platform"], "workDir": c.get("workDir"), "launchDir": c.get("launchDir"),

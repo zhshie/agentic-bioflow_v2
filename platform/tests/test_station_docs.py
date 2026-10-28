@@ -75,11 +75,11 @@ def test_tc077_the_parity_table_has_one_row_per_type_and_the_heading_count_is_un
     assert re.search(r"Seqera Compute.*Not needed", body)
     assert re.search(r"Slurm.*\bHave\b", body)
     for pid, label in compute_envs.KINDS.items():
-        if pid in ("slurm-platform", "googlebatch-platform"):      # gcb-ce-type: its row says "Have (create + check); launch in C-2"
+        if pid in ("slurm-platform", "googlebatch-platform", "awsbatch-platform"):      # gcb-ce-type: its row says "Have (create + check); launch in C-2"
             continue
         row = [r for r in rows if "`%s`" % pid in r]
         assert row and re.search(r"Modelled, needs a real account", row[0]), (pid, row)
-    assert len([r for r in rows if "Modelled, needs a real account" in r]) == 12
+    assert len([r for r in rows if "Modelled, needs a real account" in r]) == 11
 
 
 def test_tc077_the_roadmap_keeps_stage_one_open_and_marks_stage_four_as_merged():

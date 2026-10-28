@@ -813,7 +813,7 @@ def test_the_other_types_stay_unsupported(ip):
     # TC-082
     from abf_platform import compute_envs
     from test_station_envs import UNSUPPORTED
-    assert len(UNSUPPORTED) == 12
+    assert len(UNSUPPORTED) == 11
     for pid, cfg in UNSUPPORTED.items():
         ce = compute_envs.create(ip.state_db, {"name": "x-" + pid, "platform": pid, "config": cfg})
         assert ce["status"] == "unsupported", pid
@@ -847,7 +847,8 @@ def test_the_type_constants():
     from abf_platform import compute_envs
     assert compute_envs.SUPPORTED == "slurm-platform"
     assert compute_envs.PLATFORM_HOST_TYPES == (GCB,)
-    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB)
+    assert compute_envs.CHECK_ONLY_TYPES == ("awsbatch-platform",)
+    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, "awsbatch-platform")
 
 
 def doc(name):
