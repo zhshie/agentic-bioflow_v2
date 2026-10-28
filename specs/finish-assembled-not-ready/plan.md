@@ -86,6 +86,7 @@ source: GitHub issue #12（OPEN）建議的第二點。第一點（拒絕未 acc
 - **D0（2026-10-28 14:55，developer-agent）**：級別改 **B（網頁外）**——成功訊息多一行 `note`，是使用者看得到的行為改變；verifier 通過＋CI 綠由 developer-agent 自合，事後在每日清單寫「以前／以後」。
 - **D1**：三項照預設——①訊息用英文；②反轉 TC-G23（兩條斷言互斥，不能並存），PR 說明逐條寫以前／以後／理由；③只做 v3，v2（main）不動。
 - **D2**：K 必須從實際寫出的 manuscript 算（`grep -c "^\[GAP: Results for '"`），不准另外推算；K=0 時也要印出且語意正確（不得說「0 處」卻仍稱未完成的佔位）——訊息仍須說 Discussion 未寫。
+- **E1（10-28 16:30 developer-agent，本機逾時）**：桌機上 `platform_test.sh` 在乾淨的 v3 本身也要約 7 分鐘（16:19→16:26 實測），超過 run_all 預設 300 秒，與本任務無關。這台機器跑全套一律用 `bash tests/run_all.sh --timeout 900`；斷言不變、CI 仍用 300 秒，合併仍須 CI 全綠。用 900 秒全綠即可寫 GREEN。
 
 ## 專長守則（backend）
 
