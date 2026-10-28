@@ -558,13 +558,29 @@ Keep the record with the release notes of the run. A step you could not do by cl
 
 ## Guided launch (guided-launch-1): the maintainer and the reviewer check
 
-The seven-step `/launch` page is tested by `platform/tests/test_web_guided_launch.py`; what only a person can see is below. Use a browser with scripts allowed (the page has none), on an account that has uploaded a samplesheet and has launched at least once. Record the date, the browser and the width for each step.
+The first cut of the `/launch` page (seven steps; since guided-launch-2d it has six, see the next section, and its manual steps replace these) is tested by `platform/tests/test_web_guided_launch.py`; what only a person can see is below. Use a browser with scripts allowed (the page has none), on an account that has uploaded a samplesheet and has launched at least once. Record the date, the browser and the width for each step.
 
 1. **No sideways scrolling at 390 px.** Open `/launch`, then `/launch?pipeline=nf-core/ampliseq&revision=2.18.0`, then the page after pressing a Quick launch link, in Chinese and in English (`&lang=en`). Make the window 390 px wide (the browser's device mode). Check: no horizontal scroll bar at any of them, and the "Used before" table, a long pipeline name and a long run name wrap inside the page.
 2. **Focus outline with the Tab key.** On each of those pages press Tab from the top until you reach the Submit button. Check: every step title, link, field and button gets a visible outline in turn, and the order follows steps 1 to 7.
 3. **Walk 1 to 7 once.** From `/launch`: (1) read that step 1 says "Checked once a pipeline is chosen". (2) In "Used before" press Select on a row; check that step 2 shows `✓`, step 1 lists four checks and one grey "later" line, and the current step is 4. (4) Choose a samplesheet and press its button; check step 4 shows `✓`. (5) Choose a route and press Apply parameters; check step 5 shows `✓` with the route named. (6) Choose an environment and press its button; check step 6 shows `✓` and the current step is 7. (7) Read the summary, type an analysis name and press Submit; check that you land on the confirmation page `/c/<id>` and that nothing is queued until you press Send there.
 4. **Quick launch.** Press Quick launch on a row. Check: steps 1, 2, 5 and 6 are `✓`, step 3 stays "later", the current step is 4, and the parameters of that earlier run are in the summary once a samplesheet is chosen.
 5. **A failed check.** Pick an environment that is not available, or a revision that the environment does not list. Check: step 1 shows `✗` with a sentence, step 7 lists the same item again, and the form still opens the confirmation page or says plainly what was refused.
+
+## Guided launch, six steps (guided-launch-2, 2b, 2d): the maintainer and the reviewer check
+
+`platform/tests/test_web_guided_launch_2.py`, `test_web_guided_launch_2b.py` and `test_web_guided_launch_2d.py` fake the two read actions; what only a person with a running site agent can see is below. The site agent must be running, on an account with an uploaded samplesheet and a compute environment that is `available`. The page has one button; fill everything in and press it once. The steps are, in order: 1 Analysis name, 2 Compute environment, 3 Pipeline, 4 Samplesheet, 5 Parameters, 6 Confirm. (The first-cut pre-check step and the seven-step walk of guided-launch-1 no longer exist.)
+
+1. **Order and what is offered.** Open `/launch`. Check: six steps in that order, step 1 current and open with the analysis name box; step 2 lists only the environments whose status is available (set one to another status on the settings side and reload: it disappears; with none, the step says to go to the settings page, links there, and the page has no send button).
+2. **One version, one place.** Type `ampliseq` in the pipeline box of "Other nf-core pipelines" and press the button. Check: nothing is sent; the page opens again with a version drop-down next to the pipeline (it may say "Reading the version list…" for up to a minute and refreshes itself every 15 seconds), the newest version selected; there is no other box or link on the page that changes the version. Choose an older version and press the button: the page reloads with that version and its parameter table.
+3. **The diagram under the pipeline.** Wait 15 to 60 seconds. Check: the workflow diagram is shown as a picture right under the pipeline, with no link to open and no file name line, and it shrinks to the page width; step 3 stays open. A pipeline without a diagram says so in one line.
+4. **The files.** Check: step 4 lists the samplesheet columns in the file's order with a red `*` after the required ones and the line "* Required"; step 5 starts with `✓ Read the pipeline parameter table` and the number of groups and parameters, then shows the parameter groups, the first one open, "Advanced parameters" last, every box already holding its default. With no uploaded samplesheet, step 4 says to upload one first and links to the board.
+5. **Change one parameter.** In step 5 delete the value of one box and type another (for example an integer), leave every other box alone. Check: the step 6 summary lists only that parameter ("Changed parameters"); with nothing changed it says "All defaults". Open "Advanced: enter parameters directly" and type a parameter the table does not have.
+6. **Send, once.** From a "Select" link: type an analysis name in step 1, choose the samplesheet and the environment, and press the one button. Check: you reach the confirmation page `/c/<id>` at once; its parameters are only the ones you changed; do not press Send there.
+7. **A pair the environment does not list.** On an environment whose settings list registered pipelines, pick a pipeline and version that are not in the list. Check: step 3 says it is not registered and links to the settings page, and pressing the button shows the page again with a sentence instead of the confirmation page.
+8. **Required fields.** Leave the analysis name empty and press the button. Check: the page comes back with the sentence of what is missing, step 1 is the current step, the boxes keep what you typed, and the analysis name, pipeline, version, samplesheet and environment have a red `*` in their labels.
+9. **The failure shapes.** Stop the site agent and open the page with a version that was never read. Check: every new block says what happened in one sentence with `✗` or `…`, nothing else on the page breaks.
+10. **Narrow and keyboard.** At 390 px wide, in Chinese and English: no horizontal scroll bar, the diagram scales down, the parameter rows stack one under another; Tab reaches every link, box, group heading and button with a visible outline. At 1440 px the description column is about 42 percent wide. Take the four screenshots (1440 and 390 wide, Chinese and English) for the pull request.
+11. **Wording.** Read the Chinese page once: written language only, no sentence of the kind the list in `DESIGN.md` "用字" bans (the automatic test reads the main column in every state).
 
 ## Google Cloud Batch environment (gcb-ce-type): the maintainer and the reviewer check
 
@@ -775,3 +791,36 @@ test second, so the reason survives.
 New assertions get a mutation test: remove the thing being checked and confirm
 the test turns red. An assertion that has never failed has never been shown to
 assert anything.
+
+## Launching on AWS Batch (aws-launch): the maintainer and the reviewer check
+
+The automatic tests use fakes for the program runner, the aws runner, the detached start and the signal; they start nothing and touch no network. The steps below start a real Nextflow head process and **cost a small amount of money** once the real trial run is approved: do not start them before the maintainer says go.
+
+1. **The platform host (WSL), once.** Check: `java -version` says 17 or newer, `nextflow -version` and `aws --version` answer, `storage_root` is set in `config/env.yaml`, the credential file is where `ABF_STATION_AWS_CREDENTIALS` points (mode 600), and a budget alert is set in AWS Budgets.
+2. **The compute image.** Check that the AMI of the compute environment behind the job queue has the aws CLI.
+3. **Send the smallest run.** Put two or three tiny files in the bucket of `workDir` with the aws CLI, then `abf-launch ... --ce aws1` with `s3://` paths in the samplesheet. Check: the first paragraph of the screen says 由 AWS 向實驗室的 AWS 帳號收費; nothing starts until you answer y.
+4. **Check that the credentials work.** If Nextflow does not honour `AWS_SHARED_CREDENTIALS_FILE`, the run fails at once: report it, do not work around it by putting a key in a file.
+5. **After the run starts.** Check: the run folder under `<storage_root>/_aws_runs/` has `head.pid`, a Batch job appears in the AWS Console, and results arrive under `<workDir>/runs/<run>/results`.
+6. **Cancel.** Cancel a second small run; check on the Batch page that every job ended (whether one SIGTERM stops them is what this step finds out), and search the run folder, `head.out` and the database for the key id and the credential path: neither must be found.
+7. **`process.resourceLimits`.** Launch with `maxvCpus` set and check that Nextflow accepts the line in `aws.config`.
+
+**The reviewer.** Run `git diff --name-only` against the base: no `cloud_cost.py`, no `local_runner.py`, no migration, no `boto3`; the existing tests changed only where `specs/aws-launch/plan.md` lists them.
+
+## Uploading to AWS Batch (aws-upload): the maintainer checks by hand
+
+The automatic tests use fakes for the `aws` program and never touch the network. A real upload writes to a real S3 bucket and **costs a small amount of money**: do not start it before the maintainer says go, and only with an AWS Budgets alarm set.
+
+1. **Environment.** An available AWS Batch environment (`aws1`), the credential file at `ABF_STATION_AWS_CREDENTIALS` (mode 600), and `aws --version` answering on the platform host.
+2. **File.** Stage one small file (about 10 MB) in your uploads folder and queue the upload for `aws1`.
+3. **Expected.** The object appears at `s3://<workDir bucket>/uploads/<you>/<name>` with the same size, the answer says the staged copy was removed, and no key id or credential path appears in the answer or in the agent log.
+4. **Over the limit.** Try a file over 2 GB: the answer gives the `aws s3 cp ... --recursive` line and nothing is uploaded.
+
+## Cleaning an AWS Batch work folder (aws-clean): the maintainer checks by hand
+
+The automatic tests use fakes for the `aws` program and never touch the network. A real clean deletes real objects from a real S3 bucket: do not start it before the maintainer says go, and only on a test bucket and a prefix that holds nothing you need. The real output format of `aws s3 ls --recursive` and `aws s3 rm --recursive` has not been seen by the tests (UNVERIFIED), so this step is also where it is checked.
+
+1. **Environment.** An available AWS Batch environment (`aws1`), the credential file at `ABF_STATION_AWS_CREDENTIALS` (mode 600), a finished run `r1` whose head process is gone, and a test prefix `s3://<test bucket>/runs/r1/work/` holding a few small files, plus a neighbour such as `runs/r1/work2/` and `runs/r1/results/`.
+2. **Ask and answer.** Open the clean request, read the screen (it names the prefix with a trailing slash, says results are untouched, shows no amount of money) and confirm.
+3. **Expected.** Only the objects under `runs/r1/work/` are gone; `work2/` and `results/` are still there; the answer says 已刪除 and `work_cleaned_at` is recorded. List the prefix with the aws CLI yourself to see the real line format, and tell the developer if a line does not look like `date time size key`.
+4. **Run it again.** The prefix is empty: the answer says there was nothing to delete and nothing is removed.
+5. **Versioning.** If the test bucket has versioning on, check in the console that old versions are still there after the clean (the documents say they are, and they are still billed).

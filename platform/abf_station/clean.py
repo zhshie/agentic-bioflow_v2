@@ -4,7 +4,8 @@
 Two kinds of run. Google Batch (d): see _clean_gcb; the same confirmation and bundle checks, the path worked out again from the
 environment's workDir, the head process of the run must be gone, the key file and the read-only preflight must pass, then the
 prefix <workDir>/runs/<run>/work/ is LISTED (read-only) and every line must lie under it, and only then ONE
-`gcloud storage rm --recursive <that one URL>` is run: no shell, no second try, no loop. Slurm (c), described next:
+`gcloud storage rm --recursive <that one URL>` is run: no shell, no second try, no loop. AWS Batch (aws-clean): see _clean_aws, the
+same walk with one recursive listing of the one prefix and then ONE recursive removal of it. Slurm (c), described next:
 
 Order, each step stops at the first failure and nothing is retried: the confirmation and its hash (launch.verify_confirmation),
 the shape of the bundle, the path worked out again by this agent and compared character by character with the bundle, the
@@ -19,7 +20,7 @@ passes on what the site printed.
 import os
 import re
 
-from . import cancel, gcb_launch, gcb_preflight, launch, rules
+from . import aws_launch, aws_preflight, cancel, gcb_launch, gcb_preflight, launch, rules
 from . import site as host
 from .site import quote
 
@@ -107,6 +108,8 @@ def run_clean(job, ctx):
     ce = bundle["ce"]
     if isinstance(ce, dict) and ce.get("platform") == launch.GCB:
         return _clean_gcb(job, ctx, bundle)
+    if isinstance(ce, dict) and ce.get("platform") == launch.AWS:
+        return _clean_aws(job, ctx, bundle)
     env = rules.clean_environment(ce)
     run, folder = _check_path(bundle, env)
     return _clean_slurm(job, ctx, run, folder)
@@ -238,3 +241,87 @@ def _clean_gcb(job, ctx, bundle):
     if rc != 0:
         return "error", {"ok": False, "message": "刪除沒有成功（結束碼 %s：%s），%s" % (rc, _said(out, key_path), TAIL)}
     return "done", {"ok": True, "cleaned": True, "run_name": run, "message": "已刪除 bucket 裡 %s 底下的物件；results 沒有動" % expected}
+
+
+# ---- AWS Batch (aws-clean) ------------------------------------------------------------------------------------------------------
+
+LISTED = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\s+\d+ (.+)\Z")
+
+
+def _said_aws(text, key_path, *hidden):
+    """What aws printed, shortened, with the credential file's path, the paths of this host and anything shaped like a key hidden."""
+    out = str(text).replace(str(key_path), aws_launch.KEY_SHOWN)
+    for name, value in os.environ.items():      # the agent's own key-type variables are never passed on, whatever aws printed
+        if len(value) >= 8 and (name.upper().startswith("AWS_") or name.upper().startswith("ABF_")):
+            out = out.replace(value, "[hidden]")
+    for path in hidden:
+        out = out.replace(str(path), "[path]")
+    return aws_preflight._scrub(out)[:SHOWN].strip()
+
+
+def _aws_work(bundle, run, ce_out):
+    """The only prefix this agent will clear: workDir + /runs/<run>/work, worked out here and equal to the bundle's, character by character."""
+    expected = "%s/runs/%s/work" % (ce_out["workDir"], run)
+    bad = "路徑不是這個平台給這個 run 的，沒有動任何東西 (the path is not the one this platform gives this run)"
+    if not isinstance(bundle["work"], str) or bundle["work"] != expected:
+        raise rules.Refusal(bad)
+    parts = expected[len("s3://"):].split("/")
+    bucket = ce_out["workDir"][len("s3://"):].partition("/")[0]
+    if parts[0] != bucket or any(p == "" or p in BARRED for p in parts) or parts[-1] != "work":
+        raise rules.Refusal("路徑含 rawdata、results、analysis、空段或 ..，或最後一段不是 work，一律不刪 (never rawdata, results or analysis)")
+    return expected
+
+
+def _clean_aws(job, ctx, bundle):
+    run = bundle["run_name"]
+    if bundle["agent"] != ctx.agent_name:
+        raise rules.Refusal("這個清理是給另一個代理的 (for another agent)")
+    if not isinstance(run, str) or not launch.RUN_NAME.match(run):
+        raise rules.Refusal("run 名稱不對 (the run name is not one this platform makes)")
+    number = bundle["slurm_job_id"]
+    if isinstance(number, bool) or not isinstance(number, int) or not 1 <= number <= 2 ** 31 - 1:
+        raise rules.Refusal("主控程序編號必須是一個十進位數字，這個內容包不符，沒有動任何東西 (the process number must be one decimal number)")
+    storage = launch.own_facts(ctx).get("storage_root")
+    if not storage:
+        raise rules.Refusal("部署設定沒有 storage_root，無法找到這個 run 的專屬資料夾 (storage_root is not set)")
+    folder = bundle["run_folder"]
+    if folder != "%s/%s/%s" % (storage, launch.AWS_RUNS, run):
+        raise rules.Refusal("專屬資料夾不是這台主機上這個 run 的那一個，沒有動任何東西 (the run folder is not the one this host makes)")
+    try:
+        ce_out = aws_preflight.clean_environment(bundle["ce"])
+    except rules.Refusal as e:
+        raise rules.Refusal("環境設定不合規則，沒有動任何東西：%s" % e)
+    expected = _aws_work(bundle, run, ce_out)
+    waiting = _head_gone(folder, run, number)
+    if waiting is not None:
+        return waiting
+    key_path = aws_preflight.credentials_path(ctx.settings_file)
+    aws_launch._check_environment(bundle["ce"], key_path)
+    region = ce_out["region"]
+    env, url = aws_preflight._aws_env(key_path, region), expected + "/"
+    inside = expected[len("s3://"):].partition("/")[2] + "/"      # the same prefix as the listing prints it: without the bucket
+
+    try:
+        rc, out = host.run_fixed(["aws", "s3", "ls", url, "--recursive", "--region", region], env, 120)
+    except TimeoutError:
+        return "refused", {"ok": False, "cleaned": False, "message": "列出 S3 上的暫存檔逾時，沒有刪任何東西；稍後可以再申請"}
+    text = str(out)
+    if not text.strip():
+        if rc in (0, 1):
+            return "done", {"ok": True, "cleaned": True, "run_name": run,
+                            "message": "%s 底下已經沒有東西（本來就沒有東西），沒有刪任何東西；results 沒有動" % expected}
+        return "error", {"ok": False, "message": "列出 S3 上的暫存檔失敗（結束碼 %s），沒有刪任何東西，可以再申請" % rc}
+    if rc != 0:
+        return "error", {"ok": False, "message": "列出 S3 上的暫存檔失敗，沒有刪任何東西，可以再申請（%s）" % _said_aws(text, key_path, folder, storage)}
+    for line in (ln.strip() for ln in text.splitlines() if ln.strip()):
+        found = LISTED.match(line)
+        if found is None or not found.group(1).startswith(inside):
+            raise rules.Refusal("列出的物件不全在 work 底下（前綴撞名），不刪，沒有刪任何東西 (the listing holds objects outside work)")
+
+    try:
+        rc, out = host.run_fixed(["aws", "s3", "rm", url, "--recursive", "--region", region], env, 300)
+    except TimeoutError:
+        return "error", {"ok": False, "message": "刪除逾時，%s" % TAIL}
+    if rc != 0:
+        return "error", {"ok": False, "message": "刪除沒有成功（結束碼 %s：%s），%s" % (rc, _said_aws(out, key_path, folder, storage), TAIL)}
+    return "done", {"ok": True, "cleaned": True, "run_name": run, "message": "已刪除 S3 上 %s 底下的物件；results 沒有動" % expected}

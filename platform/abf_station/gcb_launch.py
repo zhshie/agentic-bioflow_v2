@@ -222,8 +222,16 @@ def _same_user(owner):
     return bool(me) and (owner == me or (len(me) > 8 and owner in (me[:8], me[:7] + "+")))
 
 
+GCB_CANCEL_REMINDER = "取消請求已送出（主控程序 pid %d）；請到 Google Cloud Console 的 Batch 頁確認沒有殘留的工作，沒取消乾淨的虛擬機仍會計費"
+
+
 def run_cancel(job, ctx, bundle):
-    """(state, result) of a confirmed cancel: ONE stop signal to the one process that is still the head process of this run."""
+    return _cancel_head(ctx, bundle, launch.GCB_RUNS, GCB_CANCEL_REMINDER)
+
+
+def _cancel_head(ctx, bundle, runs_dir, reminder):
+    """(state, result) of a confirmed cancel: ONE stop signal to the one process that is still the head process of this run.
+    The Google Batch and the AWS Batch runs share it; they differ in the folder they live in and in the reminder."""
     run, number, folder = bundle["run_name"], bundle["slurm_job_id"], bundle["run_folder"]
     if bundle["agent"] != ctx.agent_name:
         raise rules.Refusal("這個取消是給另一個代理的 (for another agent)")
@@ -234,7 +242,7 @@ def run_cancel(job, ctx, bundle):
     storage = launch.own_facts(ctx).get("storage_root")
     if not storage:
         raise rules.Refusal("部署設定沒有 storage_root，無法找到專屬資料夾 (storage_root is not set)")
-    if folder != "%s/%s/%s" % (storage, launch.GCB_RUNS, run):
+    if folder != "%s/%s/%s" % (storage, runs_dir, run):
         raise rules.Refusal("專屬資料夾不是這台主機上這個 run 的那一個（資料夾不符），不取消 (the run folder is not the one this host makes)")
     recorded = _read_small(os.path.join(folder, "head.pid"))
     if recorded is None or not re.match(rb"^[0-9]{1,10}\s*\Z", recorded) or int(recorded) != number:
@@ -261,4 +269,4 @@ def run_cancel(job, ctx, bundle):
     except OSError as e:
         return "error", {"ok": False, "message": "送不出取消的訊號（%s），不重試" % e.__class__.__name__}
     return "done", {"ok": True, "slurm_job_id": number, "run_name": run,
-                    "message": "取消請求已送出（主控程序 pid %d）；請到 Google Cloud Console 的 Batch 頁確認沒有殘留的工作，沒取消乾淨的虛擬機仍會計費" % number}
+                    "message": reminder % number}

@@ -1,14 +1,15 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|revoke | user add|cloud-cap|passwd [--temporary] | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | web | token new | agent-token new|revoke | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
+import os
 import re
 import sqlite3
 import sys
 import time
 
-from . import agents, common, compute_envs, jobs, rebuild as rebuild_mod, records, store
+from . import agents, common, compute_envs, jobs, rebuild as rebuild_mod, records, store, welcome
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 _AGENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
@@ -166,6 +167,36 @@ def cmd_user_cloud_cap(args):
         return 1
     store.set_cloud_cap(tokens, uid, cap)
     _say("monthly cloud cap of %s is now US$%.2f (每月雲端費用上限)" % (args.name, cap))
+    return 0
+
+
+def cmd_user_welcome(args):
+    """Print the welcome letter of a user (name, lab, cloud cap filled in), or save it with --out. Reads only; sends nothing."""
+    tokens = store.default_tokens_path()
+    url = common.public_url(args.platform_url)
+    if url is None:
+        _err("rejected: the platform address must be https://host (http only for localhost or 127.0.0.1); nothing was printed "
+             "(網址要 https://主機，或 http 只限本機)")
+        return 1
+    user = store.user_by_name(tokens, args.name)
+    if user is None:
+        _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name)
+        return 1
+    text = welcome.welcome_text(user["name"], user["lab"], store.cloud_cap(tokens, user["user_id"]), url, args.operator)
+    if not args.out:
+        _say(text)
+        return 0
+    try:
+        fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        _err("rejected: %s already exists, so it was not overwritten; choose another name or delete it (檔案已存在，沒有覆蓋)" % args.out)
+        return 1
+    except OSError:
+        _err("rejected: cannot create %s; check that the folder exists and you may write there (無法建立檔案)" % args.out)
+        return 1
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text + "\n")
+    _say("saved to %s (已存到)" % args.out)
     return 0
 
 
@@ -726,6 +757,14 @@ def build_parser():
     uc.add_argument("name")
     uc.add_argument("usd")
     uc.set_defaults(func=cmd_user_cloud_cap)
+    uw = usub.add_parser("welcome", help="print the welcome letter of a user with name, lab and cloud cap filled in; prints only, sends nothing",
+                         allow_abbrev=False)
+    uw.add_argument("name")
+    uw.add_argument("--platform-url", required=True, help="the address the person opens, https://host (http only for localhost)")
+    uw.add_argument("--operator", help="the name to sign the letter with (without it <operator> stays for you to fill in)")
+    uw.add_argument("--out", help="save the letter to this new file instead of printing it (an existing file is never overwritten); "
+                                  "prints only, sends nothing")
+    uw.set_defaults(func=cmd_user_welcome)
     up = usub.add_parser("passwd", help="set the password a person logs into the confirmation page with (typed at a terminal, 8 to 1000 characters)",
                          allow_abbrev=False)
     up.add_argument("name")

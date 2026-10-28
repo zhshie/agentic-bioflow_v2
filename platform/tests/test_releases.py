@@ -13,7 +13,7 @@ from abf_platform import releases
 from abf_platform.releases import lookup, parse_ls_remote, pick_latest, repo_of, usable
 
 NOW = 1760000000.0
-KEYS = {"pipeline", "revision", "source", "checked_at", "why"}
+KEYS = {"pipeline", "revision", "source", "checked_at", "why", "releases"}      # guided-launch-2d: the list of usable releases, newest first
 
 
 class Fetch:
@@ -113,7 +113,7 @@ def test_t10_first_lookup_fetches_and_caches(tmp_path):
     assert (r["revision"], r["source"], r["pipeline"]) == ("3.0.0", "fetched", "nf-core/ampliseq")
     assert r["checked_at"] == NOW
     assert len(f.calls) == 1
-    assert json.loads(cp.read_text())["nf-core/ampliseq"] == {"revision": "3.0.0", "checked_at": NOW}
+    assert json.loads(cp.read_text())["nf-core/ampliseq"] == {"revision": "3.0.0", "checked_at": NOW, "releases": ["3.0.0", "2.18.0"]}      # guided-launch-2d: the entry keeps the list
 
 
 def test_t11_fresh_cache_skips_fetch(tmp_path):
@@ -202,8 +202,8 @@ def test_t19_two_pipelines_one_file(tmp_path):
     r = lookup("lab/own-flow", fb, cache_path=cp, clock=Clock(NOW + 10))
     assert r["revision"] == "1.4.0"
     data = json.loads(cp.read_text())
-    assert data["nf-core/ampliseq"] == {"revision": "3.0.0", "checked_at": NOW}
-    assert data["lab/own-flow"] == {"revision": "1.4.0", "checked_at": NOW + 10}
+    assert data["nf-core/ampliseq"] == {"revision": "3.0.0", "checked_at": NOW, "releases": ["3.0.0"]}      # guided-launch-2d: the entry keeps the list
+    assert data["lab/own-flow"] == {"revision": "1.4.0", "checked_at": NOW + 10, "releases": ["1.4.0"]}
     r = lookup("nf-core/ampliseq", fa, cache_path=cp, clock=Clock(NOW + 20))
     assert (r["source"], r["revision"]) == ("cache", "3.0.0")
 

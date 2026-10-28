@@ -15,7 +15,7 @@ import stat as stat_mod
 
 from abf_platform import cloud_store
 
-from . import gcb_preflight, rules, site
+from . import aws_preflight, gcb_preflight, rules, site
 
 ARGS = {"ce", "owner", "name", "size", "dest"}
 UPLOADS_ENV = "ABF_STATION_UPLOADS"         # this agent's own setting: the folder the platform writes uploads to
@@ -55,8 +55,8 @@ def _cleaned(text):
 class _Sink:
     """What cloud_store.stream_into writes into: the standard input of the gcloud program."""
 
-    def __init__(self, fed, seconds):
-        self.fed, self.seconds, self.reason = fed, seconds, None
+    def __init__(self, fed, seconds, program="gcloud"):
+        self.fed, self.seconds, self.reason, self.program = fed, seconds, None, program
 
     def write(self, data):
         self.fed.write(data)
@@ -66,10 +66,10 @@ class _Sink:
         try:
             rc, out = self.fed.wait(self.seconds)
         except TimeoutError:
-            self.reason = "gcloud 逾時（超過 %d 秒） (gcloud did not finish in time)" % self.seconds
+            self.reason = "%s 逾時（超過 %d 秒） (%s did not finish in time)" % (self.program, self.seconds, self.program)
             raise
         if rc != 0:
-            self.reason = "gcloud 沒有成功（回傳碼 %s）：%s" % (rc, _cleaned(out))
+            self.reason = "%s 沒有成功（回傳碼 %s）：%s" % (self.program, rc, _cleaned(out))
             raise RuntimeError("the copy did not succeed")
 
     def abort(self):
@@ -146,20 +146,30 @@ def run_put(job, ctx):
     args = job.get("args")
     if not isinstance(args, dict) or set(args) != ARGS:
         _no("這張上傳工作缺少需要的欄位 (the upload job lacks a field it needs)")
-    ce = gcb_preflight.clean_environment(args["ce"])
-    view = {"platform": gcb_preflight.TYPE, "config": {"workDir": ce["workDir"]}}
+    given = args["ce"]
+    platform = given.get("platform") if isinstance(given, dict) else None
+    if platform == aws_preflight.TYPE:
+        ce, scheme = aws_preflight.clean_environment(given), "s3"
+        view = {"platform": aws_preflight.TYPE, "config": {"workDir": ce["workDir"]}}
+    elif platform == gcb_preflight.TYPE:
+        ce, scheme = gcb_preflight.clean_environment(given), "gs"
+        view = {"platform": gcb_preflight.TYPE, "config": {"workDir": ce["workDir"]}}
+    else:
+        _no("這種計算環境不能放雲端資料 (this kind of environment cannot hold cloud data)")
     owner, name, dest, size = args["owner"], args["name"], args["dest"], args["size"]
     try:
-        expected = cloud_store.object_url(view, owner, name)
-        prefix = cloud_store.upload_prefix(view, owner)
+        expected = cloud_store.object_url(view, owner, name, scheme)
+        prefix = cloud_store.upload_prefix(view, owner, scheme)
     except cloud_store.CloudPathError:
         raise rules.Refusal("使用者名或檔名不能用 (the user name or the file name cannot be used)") from None
-    if not (isinstance(dest, str) and dest == expected and cloud_store.inside_prefix(dest, prefix)):
+    if not (isinstance(dest, str) and dest == expected and cloud_store.inside_prefix(dest, prefix, scheme)):
         _no("目的地不在你自己的上傳前綴裡 (the destination is not inside your own upload prefix)")
     if isinstance(size, bool) or not isinstance(size, int) or not 1 <= size <= cloud_store.UPLOAD_LIMIT:
         _no("檔案大小要在 1 位元組到 2 GB 之間 (the file size must be between 1 byte and 2 GB)")
     fd, info, path = _open(_area(owner), name, size)
     try:
+        if scheme == "s3":
+            return _transfer_aws(ctx, ce, dest, size, fd, info, path)
         return _transfer(ctx, ce, dest, size, fd, info, path)
     finally:
         os.close(fd)
@@ -186,6 +196,51 @@ def _transfer(ctx, ce, dest, size, fd, info, path):
     if not answer["ok"]:
         return _fail((sink.reason or answer["message"]) + _CHECK % dest, received)
     cloud = _cloud_size(ce, dest, env)
+    if cloud is None:
+        return "done", {"ok": True, "bytes": received, "path": dest,
+                        "message": "已上傳 %s（%d 位元組），但沒能核對雲端大小；暫存檔保留" % (dest, received)}
+    if not cloud == info.st_size == received:
+        return _fail("雲端物件大小與本機不符，暫存檔保留，請重新上傳", received)
+    tail = "平台主機上的暫存檔已刪除" if _remove(path, info) else "暫存檔沒刪掉，請管理者清理"
+    return "done", {"ok": True, "bytes": received, "path": dest, "message": "已上傳 %s（%d 位元組）；%s" % (dest, received, tail)}
+
+
+def _aws_cloud_size(ce, dest, env):
+    """The size the S3 object has (head-object), or None when it could not be asked or the answer is not a plain number."""
+    bucket, key = cloud_store.parse_s3(dest)
+    argv = ["aws", "s3api", "head-object", "--bucket", bucket, "--key", key, "--query", "ContentLength", "--output", "text",
+            "--region", ce["region"]]
+    try:
+        rc, out = site.run_fixed(argv, env, DESCRIBE_SECONDS)
+    except (TimeoutError, OSError):
+        return None
+    text = str(out).strip()
+    if rc != 0 or not _PLAIN_NUMBER.fullmatch(text):
+        return None
+    return int(text)
+
+
+def _transfer_aws(ctx, ce, dest, size, fd, info, path):
+    cred = aws_preflight.credentials_path(ctx.settings_file)
+    try:
+        has_key = stat_mod.S_ISREG(os.stat(str(cred)).st_mode)
+    except OSError:
+        has_key = False
+    if not has_key:
+        return _fail("找不到憑證檔 %s，請管理者檢查 ABF_STATION_AWS_CREDENTIALS (the credentials file is missing)" % cred, 0)
+    env = aws_preflight._aws_env(cred, ce["region"])
+    try:
+        fed = site.start_fed(["aws", "s3", "cp", "-", dest, "--region", ce["region"]], env)
+    except FileNotFoundError:
+        return _fail("平台主機上找不到 aws 指令，請管理者安裝 AWS CLI (the aws command is not installed on this host)", 0)
+    except OSError:
+        return _fail("沒能啟動 aws，請管理者檢查安裝 (aws could not be started)", 0)
+    sink = _Sink(fed, _seconds(), "aws")
+    answer = cloud_store.stream_into(iter(lambda: READ(fd, CHUNK), b""), sink, declared_size=size, limit=cloud_store.UPLOAD_LIMIT)
+    received = answer["received"]
+    if not answer["ok"]:
+        return _fail((sink.reason or answer["message"]) + _CHECK % dest, received)
+    cloud = _aws_cloud_size(ce, dest, env)
     if cloud is None:
         return "done", {"ok": True, "bytes": received, "path": dest,
                         "message": "已上傳 %s（%d 位元組），但沒能核對雲端大小；暫存檔保留" % (dest, received)}

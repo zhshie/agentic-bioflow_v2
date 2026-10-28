@@ -75,25 +75,27 @@ def launched_by_other(rig, caller, run, pipeline="nf-core/bobseq", params=None):
 def ready(rig, name="ann"):
     user = rig.user(name)
     area_sheet(rig.w, user)
+    if name == "ann":      # guided-launch-2d: only an available environment is listed, and the rig's lab-a starts as `invalid` (set up by hand in the tests that want another status)
+        set_env(rig, "lab-a", status="available")
     return user, login(rig, name)
 
 
 SEL = "/launch?pipeline=nf-core/ampliseq&revision=2.18.0"
 
 
-def test_gl01_seven_numbered_steps(rig):
+def test_gl01_six_numbered_steps(rig):
     # TC-001, TC-002, TC-003, TC-009
+    # guided-launch-2d: six steps, the first is the analysis name and is the current one (was seven: pre-checks first, the pipeline current; the pre-check hint and the diagram hint are gone)
     _, c = ready(rig)
     t = c.get("/launch").text
     s = steps(t)
-    assert sorted(s) == [1, 2, 3, 4, 5, 6, 7]
-    assert re.findall(r'<summary><span class="gno">(\d)</span>', t) == list("1234567")
+    assert sorted(s) == [1, 2, 3, 4, 5, 6]
+    assert re.findall(r'<summary><span class="gno">(\d)</span>', t) == list("123456")
     titles = re.findall(r'<span class="gttl">([^<]+)</span>', t)
-    assert len(titles) == 7 and len(set(titles)) == 7
-    assert current(t) == [2] and s[2]["open"] and [n for n in s if s[n]["open"]] == [2]
-    assert "選好管線後檢查" in s[1]["html"] and s[1]["state"] != "current"
-    assert s[3]["state"] == "later" and "之後開放" in s[3]["html"]
-    assert all(s[n]["state"] == "later" and not s[n]["open"] for n in (4, 5, 6, 7))
+    assert len(titles) == 6 and len(set(titles)) == 6
+    assert current(t) == [1] and s[1]["open"] and [n for n in s if s[n]["open"]] == [1]
+    assert "前置檢查" not in t
+    assert all(s[n]["state"] == "later" and not s[n]["open"] for n in (2, 3, 4, 5, 6))
 
 
 def test_gl01b_one_current_step_and_symbols(rig):
@@ -105,10 +107,10 @@ def test_gl01b_one_current_step_and_symbols(rig):
         s = steps(t)
         assert len(current(t)) == 1 and [n for n in s if s[n]["open"]] == current(t), url
     s = steps(c.get(SEL).text)
-    for n, state, sym, word in ((2, "done", "✓", "已完成"), (4, "current", "●", "目前"), (5, "later", "○", "之後")):
+    for n, state, sym, word in ((3, "done", "✓", "已完成"), (1, "current", "●", "目前"), (4, "later", "○", "之後")):      # guided-launch-2d: the pair is step 3, the name (step 1) is the current one
         assert s[n]["state"] == state
     t = c.get(SEL).text
-    for n, sym, word in ((2, "✓", "已完成"), (4, "●", "目前"), (5, "○", "之後")):
+    for n, sym, word in ((3, "✓", "已完成"), (1, "●", "目前"), (4, "○", "之後")):
         head = re.search(r'<details class="gstep[^>]*data-step="%d"[^>]*>\s*<summary>.*?<span class="gstate">([^<]*)</span>' % n, t, re.S).group(1)
         assert sym in head and word in head
 
@@ -145,7 +147,7 @@ def test_gl02_used_before_lists_own_launches_newest_first(rig):
     assert len(first) == 5 and all(first)
     links = [html.unescape(h) for h in re.findall(r'href="([^"]+)"', rows[0])]
     assert "/launch?pipeline=nf-core/ampliseq&revision=2.18.0" in links and "/launch?from=run-r1b" in links
-    assert "⚡" in rows[0]
+    assert "沿用設定重新分析" in rows[0]      # guided-launch-2b: was the lightning-bolt label
     bt = login(rig, "bob").get("/launch?src=used").text
     assert "bobseq" in bt and "run-r1" not in bt
     assert 'data-tab="used" aria-current' in c.get("/launch").text
@@ -160,10 +162,10 @@ def test_gl02b_no_used_pipeline_opens_the_new_tab(rig):
     _, c = ready(rig)
     t = c.get("/launch").text
     assert 'data-tab="new" aria-current' in t
-    new = steps(t)[2]["html"]
-    assert re.search(r'<form class="lform" method="get" action="/launch">', new)
-    assert re.search(r'<input [^>]*name="pipeline"', new) and re.search(r'<input [^>]*name="revision"[^>]*required', new)
-    assert "搜尋全部 nf-core 之後開放" in new and 'type="search"' not in new
+    new = steps(t)[3]["html"]
+    assert 'method="get"' not in t and re.search(r'<form class="lform" method="post" action="/launch">.*name="pipeline"', t, re.S)      # guided-launch-2b: the two boxes are in the one form
+    assert re.search(r'<input [^>]*name="pipeline"', new) and 'name="revision"' not in new      # guided-launch-2d: the version box is gone; a drop-down appears once the pipeline is loaded
+    assert "搜尋全部 nf-core（尚未開放）" in new and 'type="search"' not in new
 
 
 def test_gl02c_values_are_escaped(rig):
@@ -184,48 +186,47 @@ def test_gl02d_table_comes_from_the_action(rig, monkeypatch):
     assert len(re.findall(r'<tr class="urow">', t)) == 2 and "fake-run-1" in t and "ce-y" in t
 
 
-def test_gl03_select_marks_step2_done_and_runs_prechecks(rig):
+def test_gl03_select_marks_step3_done(rig):
     # TC-006, TC-030, TC-040, TC-041
+    # guided-launch-2d: the pair is step 3, the name (step 1) is the current one, and the five pre-check rows are gone (the parameter read is the first line of step 5)
     _, c = ready(rig)
     t = c.get(SEL).text
     s = steps(t)
-    assert s[2]["state"] == "done" and not s[2]["open"] and "nf-core/ampliseq" in s[2]["html"] and "2.18.0" in s[2]["html"]
-    assert s[3]["state"] == "later" and current(t) == [4]
-    assert len(re.findall(r'<li class="chk (\w+)">', s[1]["html"])) == 4
-    for word in ("版本已指定", "站台連線", "管線已登記", "有可用樣本表", "讀取管線參數表"):
-        assert word in s[1]["html"]
-    assert "之後開放" in s[1]["html"]
-    assert not re.search(r'<li class="chk', steps(c.get("/launch").text)[1]["html"])
-
-
-def check_of(text, label):
-    m = re.search(r'<li class="chk (\w+)"><span class="csym">([^<]*)</span> <span class="clabel">%s</span>(.*?)</li>' % label, steps(text)[1]["html"], re.S)
-    return m.group(2), m.group(3)
+    assert s[3]["state"] == "done" and not s[3]["open"] and "nf-core/ampliseq" in s[3]["html"] and "2.18.0" in s[3]["html"]
+    assert s[4]["state"] == "later" and current(t) == [1]
+    assert "前置檢查" not in t and not re.search(r'<li class="chk', t)
+    for word in ("版本已指定", "站台連線", "管線已登記", "有可用樣本表"):
+        assert word not in t
+    assert "讀取管線參數表" in s[5]["html"] and "讀取中" in s[5]["html"]      # the agent has not answered yet
 
 
 def test_gl04_registered_check(rig):
     # TC-042, TC-043, TC-044
+    # guided-launch-2d: the 管線已登記 row became a sentence under the pipeline (shown only when the environment lists pipelines and the pair is not among them)
     _, c = ready(rig)
+    sentence = "此管線版本尚未在所選運算環境登記"
     set_env(rig, "lab-a", config={"sitePipelines": [{"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "m", "home": "/h"}]})
-    assert check_of(c.get(SEL + "&ce_name=lab-a").text, "管線已登記")[0] == "✓"
-    assert check_of(c.get("/launch?pipeline=nf-core/ampliseq&revision=9.9.9&ce_name=lab-a").text, "管線已登記")[0] == "✗"
+    assert sentence not in steps(c.get(SEL + "&ce_name=lab-a").text)[3]["html"]
+    assert sentence in steps(c.get("/launch?pipeline=nf-core/ampliseq&revision=9.9.9&ce_name=lab-a").text)[3]["html"]
     drop_key(rig, "lab-a", "sitePipelines")
-    sym, rest = check_of(c.get(SEL + "&ce_name=lab-a").text, "管線已登記")
-    assert sym == "—" and "這個環境不需登記" in rest
+    t = c.get("/launch?pipeline=nf-core/ampliseq&revision=9.9.9&ce_name=lab-a").text
+    assert sentence not in t and "此環境不需登記" not in t
 
 
 def test_gl05_site_connection_check(rig):
     # TC-045, TC-046, TC-047, TC-048, TC-049
+    # guided-launch-2d: the 站台連線 row is gone; an environment that is not available is not offered, with none the step says so; the 版本已指定 row is gone;
+    # the 有可用樣本表 row became the sentence of step 4
     _, c = ready(rig)
     set_env(rig, "lab-a", status="available")
-    assert check_of(c.get(SEL + "&ce_name=lab-a").text, "站台連線")[0] == "✓"
+    assert '<option value="lab-a"' in steps(c.get(SEL + "&ce_name=lab-a").text)[2]["html"]
     set_env(rig, "lab-a", status="invalid", message="agent offline since noon")
-    sym, rest = check_of(c.get(SEL + "&ce_name=lab-a").text, "站台連線")
-    assert sym == "✗" and "agent offline since noon" in rest
-    assert check_of(c.get(SEL).text, "版本已指定")[0] == "✓" and check_of(c.get("/launch?pipeline=nf-core/ampliseq").text, "版本已指定")[0] == "✗"
-    assert check_of(c.get(SEL).text, "有可用樣本表")[0] == "✓"
+    two = steps(c.get(SEL + "&ce_name=lab-a").text)[2]["html"]
+    assert '<option value="lab-a"' not in two and "尚無可用的運算環境，請先至設定頁完成設定。" in two
+    set_env(rig, "lab-a", status="available")
+    assert "尚無已上傳的樣本表" not in steps(c.get(SEL).text)[4]["html"]
     rig.user("carl")
-    assert check_of(login(rig, "carl").get(SEL).text, "有可用樣本表")[0] == "✗"
+    assert "尚無已上傳的樣本表，請先上傳。" in steps(login(rig, "carl").get(SEL).text)[4]["html"]
 
 
 def test_gl05b_other_peoples_environment_is_not_used(rig):
@@ -243,13 +244,13 @@ def test_gl06_quick_launch_prefills_and_goes_to_first_open_step(rig):
     rid = launched(rig, ann, "run-a")
     t = c.get("/launch?from=" + rid).text
     s = steps(t)
-    assert [s[n]["state"] for n in (1, 2, 5, 6)] == ["done"] * 4 and s[3]["state"] == "later" and current(t) == [4]
-    assert "已用這個 run 的內容預填" in t
+    assert [s[n]["state"] for n in (2, 3, 5)] == ["done"] * 3 and s[4]["state"] == "later" and current(t) == [1]      # guided-launch-2d: the name comes first, so the current step is 1 (was 4)
+    assert "已帶入該次分析的設定" in t
     assert not re.search(r'<input [^>]*name="run_name"[^>]*value="[^"]', t)
     t2 = c.get("/launch?from=%s&samplesheet=samples.csv" % rid).text
-    assert current(t2) == [7] and "primer: AGRG" in html.unescape(steps(t2)[7]["html"])
+    assert current(t2) == [1] and "primer: AGRG" in html.unescape(steps(t2)[6]["html"])      # guided-launch-2d: the summary is step 6 (was 7); the name is still to fill
     by_name = c.get("/launch?from=run-a")
-    assert by_name.status_code == 200 and current(by_name.text) == [4]
+    assert by_name.status_code == 200 and current(by_name.text) == [1]
     theirs = login(rig, "bob")
     a, b = theirs.get("/launch?from=" + rid), theirs.get("/launch?from=nope")
     assert a.status_code == 404 and (a.status_code, a.content) == (b.status_code, b.content)
@@ -269,31 +270,31 @@ def test_gl07_param_routes(rig):
     launched_by_other(rig, bob, "run-bob", params={"secret": "zzz"})
     base = SEL + "&ce_name=lab-a&samplesheet=samples.csv"
     five = steps(c.get(base).text)[5]["html"]
-    assert len(re.findall(r'<input type="radio" name="route"', five)) == 3
+    assert 'name="route"' not in five and '<option value="">不沿用</option>' in five      # guided-launch-2b: no radio, the first option is "do not reuse"
     reuse = re.findall(r'<option value="([^"]*)"', re.search(r'<select name="params_from">.*?</select>', five, re.S).group(0))
     assert sorted(x for x in reuse if x) == ["run-a", "run-b"]
     t = c.get(base + "&params_from=run-a").text
-    assert "a: 1" in box_of(t) and 'value="nf-core/ampliseq"' in steps(t)[7]["html"] and 'value="samples.csv"' in steps(t)[7]["html"]
-    assert "已用這個 run 的內容預填" not in t
-    assert box_of(c.get(base + "&route=defaults&params_from=run-a").text) == ""
+    assert "a: 1" in box_of(t) and 'value="nf-core/ampliseq"' in steps(t)[3]["html"] and '<option value="samples.csv" selected>' in steps(t)[4]["html"]      # guided-launch-2b: the choices are in the boxes of steps 3 and 4 (2d numbering; was: hidden fields of step 7)
+    assert "已帶入該次分析的設定" not in t
+    assert box_of(c.get(base + "&route=defaults&params_from=run-a").text) == box_of(c.get(base + "&params_from=run-a").text)      # guided-launch-2b: `route` is ignored
     assert box_of(c.get(base + "&route=custom&params=x%3A+1%0Ay%3A+2").text) == "x: 1\ny: 2"
-    assert "之後開放" in steps(c.get(base).text)[5]["html"]
+    assert "讀取中" in steps(c.get(base).text)[5]["html"] and "尚未開放" not in steps(c.get(base).text)[5]["html"]      # guided-launch-2: was 之後開放
     for bad in ("run-bob", "nope"):
         t = c.get(base + "&params_from=" + bad).text
-        assert "這個分析的參數不能沿用。" in t and box_of(t) == "" and "zzz" not in t
-    assert "這個分析的參數不能沿用。" in c.get("/launch?pipeline=nf-core/ampliseq&revision=9.9.9&params_from=run-a").text
-    assert "這個分析的參數不能沿用。" in c.get(SEL + "&params_from=run-o").text
+        assert "此分析的參數無法沿用。" in t and box_of(t) == "" and "zzz" not in t
+    assert "此分析的參數無法沿用。" in c.get("/launch?pipeline=nf-core/ampliseq&revision=9.9.9&params_from=run-a").text
+    assert "此分析的參數無法沿用。" in c.get(SEL + "&params_from=run-o").text
     en = c.get(base + "&params_from=run-bob&lang=en").text
-    assert "These parameters cannot be reused." in en and no_cjk(en)
+    assert "The parameters of this analysis cannot be reused." in en and no_cjk(en)
 
 
 def test_gl08_post_unchanged(rig):
     # TC-085, TC-050, TC-084, TC-051
     ann, c = ready(rig)
     t = c.get(SEL).text
-    seven = steps(t)[7]["html"]
-    assert re.search(r'<form class="lform" method="post" action="/launch"><input type="hidden" name="csrf"', seven)
-    assert 'name="run_name"' in seven and all('name="run_name"' not in steps(t)[n]["html"] for n in range(1, 7))
+    six = steps(t)[6]["html"]
+    assert re.search(r'<form class="lform" method="post" action="/launch"><input type="hidden" name="csrf"', t)      # guided-launch-2b: the one form holds all the steps
+    assert 'name="run_name"' in steps(t)[1]["html"] and all('name="run_name"' not in steps(t)[n]["html"] for n in range(2, 7)) and "<button" in six      # guided-launch-2d: the name is step 1, the button step 6
     before = pending(rig)
     rid = rid_of(c.post("/launch", data=form_values(rig, c, "ann", params="min_reads: 100")))
     assert pending(rig) == before + 1
@@ -303,15 +304,16 @@ def test_gl08_post_unchanged(rig):
         assert word in req["summary"], word
 
 
-def test_gl08b_a_failed_check_does_not_stop_the_page_only_the_action_decides(rig):
-    # TC-050, TC-051: the page lists the failed check in step 7 and still posts; the action (as before) is the one that refuses
+def test_gl08b_an_unregistered_pair_is_refused_by_the_page(rig):
+    # TC-050, TC-051
+    # guided-launch-2d: was "a failed check does not stop the page, only the action decides": a pair the environment does not list is now refused by the page itself (400 at step 3)
     _, c = ready(rig)
     set_env(rig, "lab-a", config={"sitePipelines": [{"pipeline": "nf-core/ampliseq", "revision": "1.0.0", "module": "m", "home": "/h"}]})
-    t7 = steps(c.get(SEL + "&samplesheet=samples.csv&ce_name=lab-a").text)[7]["html"]
-    assert "管線已登記" in t7 and "✗" in t7 and 'action="/launch"' in t7
+    t3 = steps(c.get(SEL + "&samplesheet=samples.csv&ce_name=lab-a").text)[3]["html"]
+    assert "尚未在所選運算環境登記" in t3 and 'method="post" action="/launch"' in c.get(SEL).text
     before = pending(rig)
     r = c.post("/launch", data=form_values(rig, c, "ann"))
-    assert r.status_code == 400 and "未送出" in r.text and pending(rig) == before and current(r.text) == [7]
+    assert r.status_code == 400 and "未送出" in r.text and pending(rig) == before and current(r.text) == [3]
 
 
 def test_gl09_post_error_rerenders_at_the_failing_step(rig):
@@ -321,11 +323,13 @@ def test_gl09_post_error_rerenders_at_the_failing_step(rig):
     r = c.post("/launch", data=form_values(rig, c, "ann", run_name="", params="min_reads: 100"))
     assert r.status_code == 400
     s = steps(r.text)
-    assert current(r.text) == [7] and s[7]["open"] and "min_reads: 100" in html.unescape(s[7]["html"])
-    assert 'value="nf-core/ampliseq"' in s[7]["html"]
+    assert current(r.text) == [1] and s[1]["open"] and "min_reads: 100" in html.unescape(s[6]["html"])      # guided-launch-2d: the name is step 1 (was 7), the summary step 6
+    assert 'value="nf-core/ampliseq"' in s[3]["html"]      # guided-launch-2b: the pair is in the boxes of step 3 (2d numbering; was: hidden fields of step 7)
     assert (pending(rig), snapshot(rig)) == before
+    r = c.post("/launch", data=form_values(rig, c, "ann", samplesheet="nope.csv", params="oops"))
+    assert r.status_code == 400 and current(r.text) == [4]      # guided-launch-2d: the name is given here; with it missing too the first step is the current one (was: the name was step 7, so 4 won)
     r = c.post("/launch", data=form_values(rig, c, "ann", run_name="", samplesheet="nope.csv", params="oops"))
-    assert r.status_code == 400 and current(r.text) == [4]
+    assert r.status_code == 400 and current(r.text) == [1]
     assert "Traceback" not in r.text and "args_json" not in r.text
     r = c.post("/launch", data=form_values(rig, c, "ann", params="oops"))
     assert r.status_code == 400 and current(r.text) == [5]
@@ -347,16 +351,17 @@ def test_gl09b_cross_user_post_is_refused(rig):
 def test_gl10_no_samplesheet_notice(rig):
     # TC-080, TC-081, TC-082
     ann = rig.user("ann")
+    set_env(rig, "lab-a", status="available")      # guided-launch-2d: only an available environment is listed
     c = login(rig, "ann")
     s = steps(c.get(SEL).text)
-    assert "沒有可用的樣本表。" in s[4]["html"] and "你還沒有上傳樣本表" in s[4]["html"] and "<option" not in s[4]["html"]
+    assert "尚無已上傳的樣本表，請先上傳。" in s[4]["html"] and "<option" not in s[4]["html"]      # guided-launch-2d: was 沒有可用的樣本表。 and 尚未上傳樣本表...
     bob = rig.user("bob")
     area_sheet(rig.w, ann, "ann-sheet.csv")
     area_sheet(rig.w, bob, "bob-sheet.csv")
     rig.w.env_for(bob)
     s = steps(c.get(SEL).text)
-    assert "ann-sheet.csv" in s[4]["html"] and "bob-sheet.csv" not in s[4]["html"] and "之後開放" in s[4]["html"]
-    assert re.search(r'<option value="lab-a"[^>]*>[^<]*✓', s[6]["html"]) and "lab-bob" not in s[6]["html"]
+    assert "ann-sheet.csv" in s[4]["html"] and "bob-sheet.csv" not in s[4]["html"] and "尚未開放" in s[4]["html"]
+    assert re.search(r'<option value="lab-a"[^>]*>[^<]*✓', s[2]["html"]) and "lab-bob" not in s[2]["html"]      # guided-launch-2d: the environment is step 2 (was 6)
 
 
 def test_gl11_english(rig):
@@ -365,10 +370,10 @@ def test_gl11_english(rig):
     rid = launched(rig, ann, "run-a")
     t = c.get("/launch?lang=en").text
     assert re.findall(r'<span class="gttl">([^<]+)</span>', t) == [
-        "Pre-checks", "Pipeline", "Workflow diagram", "Samplesheet", "Parameters", "Compute environment", "Confirm"]
-    assert "Used before" in t and "New pipeline" in t and "⚡" in t and "Quick launch" in t
+        "Analysis name", "Compute environment", "Pipeline", "Samplesheet", "Parameters", "Confirm"]      # guided-launch-2d: six steps
+    assert "Previously used pipelines" in t and "Other nf-core pipelines" in t and "Re-run with the same settings" in t
     five = steps(c.get(SEL + "&lang=en").text)[5]["html"]
-    assert all(x in five for x in ("①", "②", "③"))
+    assert 'name="route"' not in five and not any(x in five for x in ("①", "②", "③"))      # guided-launch-2b: the three routes are gone
     for url in ("/launch?lang=en", SEL + "&lang=en", "/launch?from=%s&lang=en" % rid, SEL + "&params_from=nope&lang=en"):
         assert no_cjk(c.get(url).text), url
     r = c.post("/launch", data=form_values(rig, c, "ann", run_name="", lang="en"))
@@ -407,7 +412,8 @@ def test_gl12b_fields_are_the_known_ones(rig):
     # TC-010
     ann, c = ready(rig)
     launched(rig, ann, "run-a")
-    known = {"csrf", "lang", "pipeline", "revision", "run_name", "samplesheet", "ce_name", "params", "route", "src", "from", "params_from", "ce"}
+    known = {"csrf", "lang", "pipeline", "revision", "run_name", "samplesheet", "ce_name", "params", "src", "from", "params_from", "ce",
+             "shown_pipeline", "shown_revision", "shown_params_from"}      # guided-launch-2b: `route` is gone, the three `shown_*` are new
     for r in (c.get("/launch"), c.get(SEL), c.post("/launch", data=form_values(rig, c, "ann", run_name=""))):
         assert set(re.findall(r'<(?:input|select|textarea) [^>]*name="(\w+)"', r.text)) <= known
 
