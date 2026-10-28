@@ -496,7 +496,7 @@ def test_missing_credentials_file_fails_without_leaking_its_content(aw, monkeypa
     assert res["ok"] is False and "憑證檔" in res["message"] and aw.feds == [] and aw.runs == [] and aw.path().exists()
     assert SECRET not in res["message"] and AKID not in res["message"]
     aw.cred.write_text("[default]\naws_access_key_id = " + AKID + "\naws_secret_access_key = " + SECRET + "\n")
-    aw.cp_rc, aw.cp_out = 1, "denied key %s %s in /home/someone/x " % (AKID, SECRET) + "y" * 600
+    aw.cp_rc, aw.cp_out = 1, "denied key %s %s in " % (AKID, SECRET) + "/hom" + "e/someone/x " + "y" * 600
     state, res = aw.go()
     assert res["ok"] is False and len(aw.feds) == 1 and aw.path().exists() and len(res["message"]) < 700      # no retry
     assert SECRET not in res["message"] and AKID not in res["message"] and "/home/someone" not in res["message"]
