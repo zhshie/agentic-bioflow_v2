@@ -88,6 +88,12 @@ source: GitHub issue #23（表列第 5 項 `fetch-sh-rsync-remote-remote`，退�
 ## 裁決
 - **D1（2026-10-28 14:55，developer-agent）**：三項都照預設——①只轉成 MSYS 的 `/c/…`，WSL 的 `/mnt/c/…` 不做，ledger 標「未量測」；②不要求先在 Windows 重現，測試鎖的是「磁碟機寫法不得交給 rsync」這個不變式；③兩支腳本各自一份轉換函式，用測試 9 鎖住兩邊輸出一致，不抽到 `scripts/utils/`。
 - **D2**：根因是從程式推論的（#23 只有簽名），PR 說明要照實寫「推論、未在 Windows 重現」。
+- **D3（2026-10-28 14:25，回應 verifier 合約階段的阻擋）**：
+  - (a) 作法 2 改為**先轉換整條 `$DEST`，再取上一層**：`"$(dirname "$(rsync_local_path "$DEST")")/"`。轉換後只剩正斜線，Linux 的 dirname 才算得對。測試 2 的預期 `/d/data/out/` 不變。
+  - (b) 磁碟機根目錄：`rsync_local_path` 也要處理只有 `C:` 的情況（regex 放寬為 `^[A-Za-z]:([\\/]|$)`），`C:` → `/c`；`C:/results`、`C:\results` 的目的地因此交給 rsync 的是 `/c/`。verifier 寫的 TC-005 照收，是必過條件。不變式維持：交給 rsync 的本機端引數絕不以「代號＋冒號」開頭。
+  - (c) 測試 2 的目的地是**單反斜線**的 `D:\data\out\results`。在 bash 單引號裡逐字寫成 `'D:\data\out\results'`，計畫原文的雙反斜線是筆誤。
+  - (d) 新斷言只在 Linux／WSL 跑。偵測到 MSYS／Cygwin（`uname -s` 開頭是 `MINGW`、`MSYS` 或 `CYGWIN`）時，直接略過整段新斷言並印一行 `note: drive-letter assertions run on Linux/WSL only`，不算失敗。這是 bash 測試，不是 pytest，CI 跑在 Linux 上，所以不會有 skip 計數問題。有 cygpath 的那條分支，在 CI 上不測。
+  - (e) verifier 補寫的「不做」各項 TC（tar 後備、UNC、錯誤訊息／exit code、`--dry-run`、push 反斜線來源）照收，由 executor 在兩個測試檔新增斷言。TC-031、TC-033 由閱卷者直接檢查。
 
 ## 專長守則（backend）
 
