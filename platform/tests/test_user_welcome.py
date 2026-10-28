@@ -21,12 +21,13 @@ def _env(tmp_path):
 
 
 def _add(env, name, lab="lab-x", cap=None):
-    args = ["user", "add", name, "--lab", lab]
+    # set-up through the store (same file the command line reads); the command line's own `user add` is tested in TC-058/TC-059
+    from abf_platform import store
+    tokens = os.path.join(os.path.dirname(env["ABF_PLATFORM_DB"]), "tokens.db")
+    os.makedirs(os.path.dirname(tokens), exist_ok=True)
+    uid = store.create_user(tokens, name, lab)
     if cap is not None:
-        args += ["--cloud-cap-usd", str(cap)]
-    r = run_cli(args, env=env)
-    assert r.returncode == 0, r.stderr
-    return r
+        store.set_cloud_cap(tokens, uid, float(cap))
 
 
 def _welcome(env, name, *extra, url=URL):
