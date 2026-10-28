@@ -322,7 +322,7 @@ def path_cells(rows, path_columns):
     """(row number, column number, cell) of every cell of a checked samplesheet that is read as a path: a cell of a path column
     (named, or one of the usual names) or any cell that starts with /. Empty cells are not paths. Numbers count from 1 and the header is row 1."""
     explicit = set(path_columns or [])
-    path_cols = {i for i, h in enumerate(rows[0]) if h in explicit or DEFAULT_PATH_COLUMN.match(h)}
+    path_cols = {i for i, h in enumerate(rows[0]) if h in explicit or DEFAULT_PATH_COLUMN.search(h)}
     return [(r, c + 1, cell) for r, row in enumerate(rows[1:], 2) for c, cell in enumerate(row)
             if cell != "" and (c in path_cols or cell.startswith("/"))]
 
