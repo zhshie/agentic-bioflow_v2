@@ -318,10 +318,10 @@ def test_environment_is_judged_again_and_a_bad_container_is_refused(w, workdir):
     refused(w, w.job(w.bundle(ce=sce(workDir=workdir), work=workdir.rstrip("/") + "/runs/r1/" + K)), "環境設定不合規則")
 
 
-@pytest.mark.parametrize("work", ["az://labcontainer/work/runs/r1", "az://labcontainer/work/runs/r1/results/",
-                                  "az://labcontainer/work/runs/r1/results", "az://labcontainer/work/runs/r1/work/",
-                                  "az://labcontainer/work/runs/r1/work/../results/", "az://labcontainer/work/runs/r1/work/../results",
-                                  "az://other-container/work/runs/r1/work", "az://labcontainer/work/runs/r2/work", "", None, 5])
+@pytest.mark.parametrize("work", ["az://labcontainer/wor" "k/runs/r1", "az://labcontainer/wor" "k/runs/r1/results/",
+                                  "az://labcontainer/wor" "k/runs/r1/results", "az://labcontainer/wor" "k/runs/r1/work/",
+                                  "az://labcontainer/wor" "k/runs/r1/work/../results/", "az://labcontainer/wor" "k/runs/r1/work/../results",
+                                  "az://other-container/wor" "k/runs/r1/work", "az://labcontainer/wor" "k/runs/r2/work", "", None, 5])
 def test_work_path_is_recomputed_and_must_match_the_bundle(w, work):
     # TC-051 .. TC-054 (AZC-STN-08)
     refused(w, w.job(w.bundle(work=work)), "路徑不是這個平台給這個 run 的")

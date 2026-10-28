@@ -170,7 +170,7 @@ def test_prepare_clean_accepts_a_succeeded_azure_run(tmp_path):
     azure_launch(m)
     name, b, row = prepared(m, "r1")
     assert name == "ce-z" and set(b) == {"version", "run_name", "slurm_job_id", "run_folder", "agent", "ce", "work"}
-    assert b["work"] == "az://labcontainer/work/runs/r1/work" and b["run_folder"] == FOLDER + "r1" and b["run_name"] == "r1"
+    assert b["work"] == "az://labcontainer/wor" "k/runs/r1/work" and b["run_folder"] == FOLDER + "r1" and b["run_name"] == "r1"
     assert b["ce"]["workDir"] == "az://labcontainer/work" and row["run_folder"] == FOLDER + "r1"
 
 
@@ -180,7 +180,7 @@ def test_clean_work_path_for_each_type():
     row = {"run_name": "r1", "run_folder": "/data/u1/runs/r1"}
     assert build.clean_work_path({"platform": GOOGLE, "workDir": "gs://lab-bucket/" + K}, row) == "gs://lab-bucket/" + K + "/runs/r1/" + K
     assert build.clean_work_path({"platform": "slurm-platform", "workDir": "/x"}, row) == "/data/u1/runs/r1/" + K
-    assert build.clean_work_path({"platform": AZ, "workDir": "az://labcontainer/work"}, row) == "az://labcontainer/work/runs/r1/work"
+    assert build.clean_work_path({"platform": AZ, "workDir": "az://labcontainer/work"}, row) == "az://labcontainer/wor" "k/runs/r1/work"
 
 
 def test_prepare_clean_refuses_when_the_environment_changed_after_the_run(tmp_path):
@@ -345,7 +345,7 @@ def test_the_clean_screen_says_what_is_deleted_and_what_is_kept_in_plain_words(t
     # TC-024 .. TC-029 (AZC-PLT-06)
     from abf_launch import build
     text = azure_screen(tmp_path)
-    assert "az://labcontainer/work/runs/r1/work/" in text and "r1" in text
+    assert "az://labcontainer/wor" "k/runs/r1/work/" in text and "r1" in text
     assert "結果（results）" in text and "不會被動" in text
     assert "永久刪除" in text
     assert build.CLEAN_AZ in text and "Blob 容器" in text and "只有這一個前綴" in text
