@@ -940,18 +940,15 @@ def test_azure_environment_accepts_exactly_preflight_launch_cancel_and_pipeline_
     from abf_platform import jobs
     available_az(ip)
     before = jobs_count(ip)
-    for kind in ("preflight", "launch_nextflow", "cancel_run", "pipeline_files", "put_upload"):      # azure-upload: put_upload is taken now
+    for kind in ("preflight", "launch_nextflow", "cancel_run", "pipeline_files", "put_upload", "clean_work"):      # azure-upload: put_upload; azure-clean: clean_work
         jobs.check_target(ip.state_db, "azure1", kind)
-    for kind in ("clean_work", "list_site_files", "fetch_run_records", "read_task_log"):
+    for kind in ("list_site_files", "fetch_run_records", "read_task_log"):
         with pytest.raises(jobs.JobRefused) as e:
             jobs.check_target(ip.state_db, "azure1", kind)
         m = str(e.value)
         assert "尚未支援" in m and "Azure Batch" in m, (kind, m)
         assert "AWS" not in m and "Google Batch" not in m, (kind, m)
-        if kind == "clean_work":
-            assert "azure-clean" in m
-        if kind == "put_upload":
-            assert "azure-upload" in m
+        assert "azure-clean" not in m and "azure-upload" not in m      # azure-clean: no feature name is said any more
     assert jobs_count(ip) == before
 
 
@@ -985,7 +982,7 @@ def test_type_constants_are_as_planned_and_nothing_indexes_them_by_position():
     assert compute_envs.PLATFORM_HOST_TYPES == (compute_envs.GOOGLE_BATCH, compute_envs.AWS, compute_envs.AZURE)
     assert compute_envs.CHECK_ONLY_TYPES == ()
     assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, compute_envs.GOOGLE_BATCH, compute_envs.AWS, compute_envs.AZURE)
-    assert set(compute_envs.CLOUD_JOB_KINDS[compute_envs.AZURE]) == {"preflight", "launch_nextflow", "cancel_run", "pipeline_files", "put_upload"}
+    assert set(compute_envs.CLOUD_JOB_KINDS[compute_envs.AZURE]) == {"preflight", "launch_nextflow", "cancel_run", "pipeline_files", "put_upload", "clean_work"}
     for folder in ("abf_platform", "abf_station", "abf_launch"):
         for f in (PLATFORM_DIR / folder).rglob("*.py"):
             assert "PLATFORM_HOST_TYPES[" not in f.read_text(encoding="utf-8"), f.name
@@ -1015,14 +1012,8 @@ def test_clean_work_is_refused_for_azure_and_slurm_cannot_upload_and_nothing_sta
     from abf_station import clean, put_upload, rules
     available_az(ip)
     n = jobs_count(ip)
-    for kind in ("clean_work",):      # azure-upload: put_upload is taken now
-        with pytest.raises(jobs.JobRefused):
-            jobs.check_target(ip.state_db, "azure1", kind)
+    jobs.check_target(ip.state_db, "azure1", "clean_work")      # azure-clean: it can be queued now (test_azure_clean.py, test_station_clean_azure.py)
     assert jobs_count(ip) == n
-    cb = {"version": 1, "run_name": "run-a", "slurm_job_id": PID, "run_folder": str(box.folder()), "agent": "a1", "ce": zce(),
-          "work": WORK + "/runs/run-a/work"}
-    with pytest.raises(rules.Refusal):
-        clean.run_clean(job_of(cb, kind="clean_work", conf_kind="clean_work"), box.ctx)
     # azure-upload: run_put takes an Azure environment now (test_azure_upload.py); a Slurm environment is still refused
     args = {"ce": {"name": "s1", "platform": "slurm-platform", "workDir": "/x"}, "owner": "u1", "name": "x.fastq.gz",
             "dest": WORK + "/uploads/u1/x.fastq.gz", "size": 10}
@@ -1149,7 +1140,7 @@ def test_every_azure_refusal_says_what_to_do_and_leaks_nothing(ip, box):
     from abf_platform import jobs
     available_az(ip)
     messages = []
-    for kind in ("clean_work", "read_task_log"):      # azure-upload: put_upload is taken now
+    for kind in ("list_site_files", "read_task_log"):      # azure-upload: put_upload is taken now; azure-clean: clean_work is taken now
         with pytest.raises(jobs.JobRefused) as e:
             jobs.check_target(ip.state_db, "azure1", kind)
         messages.append(str(e.value))
@@ -1240,7 +1231,7 @@ def test_seqera_parity_azure_row():
     assert "for Azure Batch the same agent runs them (create + check + launch + cancel; resume not yet)" in par
     assert "launch in " + "azure-launch" not in par
     row = [ln for ln in par.splitlines() if "`azbatch-platform`" in ln][0]
-    assert "Have (create + check + launch + cancel + upload); clean in azure-clean" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel + upload + clean)" in row and row.rstrip().endswith("[ ] |")
 
 
 def test_testing_md_has_azure_launch_section_with_manual_steps():
