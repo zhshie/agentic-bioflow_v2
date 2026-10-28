@@ -251,6 +251,8 @@ source: memory/PLAN-abf-v3-replan-2026-10.md Milestone 3 的 C-5（Azure Batch�
 11. （10-28 20:2x，回應 verifier 合約審查的阻擋）範圍列擴充：除上面「範圍：檔案」外，**准改**以下既有測試，且每檔只准「加入 Azure／把 Azure 移出 unsupported／對應的計數與 'eleven'→'ten' 字樣」，不得刪改其他類型的斷言：`platform/tests/test_aws_launch.py`（約 :985 `CHECK_ONLY_TYPES == ()`、`CHECKABLE`；約 :992 那行註解「新雲端類型先放這裡，只開預檢」維持存在）、`platform/tests/test_gcb_launch.py`（約 :1151 PLATFORM.md 句子 'the other eleven types…'）、`platform/tests/test_launch_bundle.py`（約 :450 把 `azbatch-platform` 換成仍 unsupported 的類型，例如 `azcloud-platform`）、`platform/tests/test_aws_ce.py`（約 :788、:906、:923）、`platform/tests/test_gcb_ce.py`（約 :852、:866；第 163 行寫的舊值 `('awsbatch-platform',)` 作廢，以 v3 實際值 `()` 為準再加 Azure）。行號一律語意重定位。完成標準改為：`git diff --name-only` ⊆ 範圍列 ＋ 本條所列檔 ＋ ledger 依裁決 10 列出、且符合同一限制的既有測試檔；不含網頁檔。
 12. `ce create --platform azbatch-platform` 不給 `--credentials`：**允許建立**，由第一次預檢報 `credential_name` fail（與 v3 現行 AWS 行為一致：`compute_envs.py` 建立時 `credentialsId` 可為空）。作法 3 的「必填」指預檢必過項，不是建立時拒絕。合約補一條測這一格。
 
+13. （10-28 20:3x，回應合約審查第二次阻擋）`test_credentials_id_is_a_name_only` 的輸入用 `BKEY + "=="`（真實 Azure 帳號金鑰是 base64、通常以 `==` 結尾；含 `=` 即被既有 `_CRED_NAME` 擋），不新增「像金鑰的 credentialsId」門檻規則。其他非阻擋項：作法 3 的「credentialsId 必填」一律以裁決 12 為準（建立允許空、預檢報 fail）；pool 失敗的 detail 要帶 pool 名（如「pool lab-pool 不存在於這個 Batch 帳號」），照 TC-052；手動 TC（094–097、102、104、105、111）的步驟寫進 `docs/TESTING.md` 的 Azure 小節。
+
 ## 專長守則（backend）
 
 ### executor
