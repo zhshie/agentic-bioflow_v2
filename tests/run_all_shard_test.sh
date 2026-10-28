@@ -49,8 +49,11 @@ done
 listed_names="$(bash "$R" --list --allow-msys)"
 missing=""
 for n in platform_test.sh platform_shard_2_test.sh platform_shard_3_test.sh platform_shard_4_test.sh platform_shard_5_test.sh platform_shard_6_test.sh platform_shard_7_test.sh platform_shard_8_test.sh platform_clock_test.sh; do
-    printf '%s
-' "$listed_names" | grep -qx "$n" || missing="$missing $n"
+    case "
+$listed_names
+" in *"
+$n
+"*) ;; *) missing="$missing $n" ;; esac
 done
 [ -z "$missing" ] && [ "$wrappers_on_disk" = 9 ] && ok "SS-11 the list has the nine platform wrappers" || bad "SS-11 nine platform wrappers (missing:$missing, on disk: $wrappers_on_disk)"
 platform_spread "$plat" "$wrappers_on_disk" && ok "TC-002 platform wrappers spread over the parts (N=4)" || bad "TC-002 platform wrappers per part: $plat"
