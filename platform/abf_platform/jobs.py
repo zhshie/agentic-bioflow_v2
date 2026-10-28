@@ -107,9 +107,15 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
         if owned is not None and owned["owner_user_id"] != caller_user_id:
             raise _not_found(ce_name)
     status = row["status"]
-    if row["platform"] in compute_envs.PLATFORM_HOST_TYPES and kind not in ("preflight", "launch_nextflow", "cancel_run", "clean_work", "put_upload", "pipeline_files"):
+    if row["platform"] in compute_envs.CLOUD_JOB_KINDS and kind not in compute_envs.CLOUD_JOB_KINDS[row["platform"]]:
+        if row["platform"] == compute_envs.AWS:
+            raise JobRefused("%s is an AWS Batch environment: this job kind is not built for it yet (尚未支援); "
+                             "upload and clean come later in aws-upload and aws-clean (上傳與清理在之後的 aws-upload、aws-clean)" % ce_name)
         raise JobRefused("%s is a Google Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
-    if kind == "put_upload" and row["platform"] not in compute_envs.PLATFORM_HOST_TYPES:
+    if row["platform"] in compute_envs.CHECK_ONLY_TYPES and kind != "preflight":
+        raise JobRefused("%s is a %s environment: it can be created and checked, but sending a run to it is not built yet "
+                         "(尚未支援送出)" % (ce_name, compute_envs.KINDS[row["platform"]]))
+    if kind == "put_upload" and row["platform"] != compute_envs.GOOGLE_BATCH:
         raise JobRefused("%s cannot hold cloud data: only a Google Batch environment can (只有 Google Batch 環境能放雲端資料)" % ce_name)
     if status == compute_envs.UNSUPPORTED:
         raise JobRefused("%s is a %s environment: %s" % (ce_name, compute_envs.KINDS.get(row["platform"], "?"),

@@ -484,8 +484,8 @@ t "TC-060 no other item is 137 or a refusal" "$(jq -r '[.[]|select(.id!="T01" an
 echo "== scope: who may mention jev.sh (TC-020/021/024/075/085)"
 refs=$(cd "$ROOT" && git ls-files 2>/dev/null | grep -vE '^(specs/|tests/|docs/|CHANGELOG\.md|\.gitignore)' | xargs grep -lI 'jev' 2>/dev/null | sort | tr '\n' ' ')
 t "TC-020 only these non-doc files mention jev" "$refs" "scripts/dev/jev_replay.sh scripts/jev.sh scripts/settings.sh skills/operational/SKILL.md skills/runs/SKILL.md "
-t "TC-085 nothing under platform/ mentions jev" "$(grep -rli jev "$ROOT/platform" 2>/dev/null | wc -l | tr -d ' ')" 0
-t "TC-075 hooks/ do not mention jev" "$(grep -rli jev "$ROOT/hooks" 2>/dev/null | wc -l | tr -d ' ')" 0
+t "TC-085 nothing under platform/ mentions jev" "$(cd "$ROOT" && git ls-files -co --exclude-standard -- platform | xargs grep -lIi jev 2>/dev/null | sort | tr '\n' ' ')" ""
+t "TC-075 hooks/ do not mention jev" "$(cd "$ROOT" && git ls-files -co --exclude-standard -- hooks | xargs grep -lIi jev 2>/dev/null | sort | tr '\n' ' ')" ""
 t "TC-021 task_health.sh and report.sh do not mention jev" "$(grep -li jev "$ROOT/scripts/task_health.sh" "$ROOT/scripts/report.sh" 2>/dev/null | wc -l | tr -d ' ')" 0
 t "TC-027 the FAILED-flow scripts do not mention jev" "$(grep -li jev "$ROOT/scripts/egress_ctl.sh" "$ROOT/scripts/on_site.sh" "$ROOT/scripts/task_health.sh" "$ROOT/scripts/report.sh" 2>/dev/null | wc -l | tr -d ' ')" 0
 has "TC-085 Constitution Check says it is not an action-layer tool" "not an MCP tool" "$(cat "$SPEC/plan.md")"

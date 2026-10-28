@@ -197,7 +197,7 @@ def _platform(bundle):
 
 
 def _submitted_line(row, platform=None):
-    if platform == bundle_mod.GCB:
+    if platform in (bundle_mod.GCB, bundle_mod.AWS):
         return "已啟動：主控程序編號（pid）%s；run 名稱 %s；專屬資料夾 %s。" % (row["slurm_job_id"], row["run_name"], row["run_folder"])
     return "已送出：Slurm 工作編號 %s；run 名稱 %s；專屬資料夾 %s。" % (row["slurm_job_id"], row["run_name"], row["run_folder"])
 
@@ -234,7 +234,7 @@ def _report_launch(state, job_id, bundle):
         return 1
     if late:
         _err("代理回報（已逾期）：%s" % late)
-    if _platform(bundle) == bundle_mod.GCB:
+    if _platform(bundle) in (bundle_mod.GCB, bundle_mod.AWS):
         _err("結果不明：請查平台主機上的 %s 與名為 %s 的主控程序" % (bundle["run_folder"], run))
         return 1
     _err("結果不明：請查國網上的 %s 與 Slurm 工作 nf-%s" % (bundle["run_folder"], run))
@@ -264,6 +264,10 @@ def cmd_cancel(args):
     _say("已交給代理 %s（確認編號 %s）。等代理回報…" % (bundle["agent"], cid[:8]))
     out = asyncio.run(jobs.wait_for_result(state, job_id))
     if out["state"] == "done" and out["ok"]:
+        if _platform(bundle) == bundle_mod.AWS:
+            _say("取消請求已送出（主控程序 pid %s）。Nextflow 收到訊號後會取消它送出的 Batch 工作；它回報的結局請用 get_run 看。"
+                 "請到 AWS Console 的 Batch 頁確認 job 都已結束，沒取消乾淨的工作仍會計費。" % bundle["slurm_job_id"])
+            return 0
         if _platform(bundle) == bundle_mod.GCB:
             _say("取消請求已送出（主控程序 pid %s）。Nextflow 收到訊號後會取消它送出的 Batch 工作；它回報的結局請用 get_run 看。"
                  "請到 Google Cloud Console 的 Batch 頁確認沒有殘留的工作，沒取消乾淨的虛擬機仍會計費。" % bundle["slurm_job_id"])

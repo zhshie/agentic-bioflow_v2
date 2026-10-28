@@ -390,7 +390,7 @@ def test_another_users_run_is_not_offered_to_the_caller(m):
     assert m.offer()["offered"] is True
     assert [r["caller_user_id"] for r in m.requests()] == [1]
     assert not [r for r in m.sql("SELECT * FROM confirmations WHERE caller_user_id = 2")]
-    assert list(inspect.signature(actions.offer_cleanup).parameters) == ["platform_path", "index_path", "run_name", "clock"]
+    assert list(inspect.signature(actions.offer_cleanup).parameters) == ["platform_path", "index_path", "run_name", "clock", "dry_run"]
     assert "offer_cleanup" not in actions.__doc__ and not hasattr(actions, "request_cleanup")
 
 
@@ -815,7 +815,7 @@ def test_no_new_mcp_tool_no_new_route_no_new_cli_command(tmp_path):
     assert ROUTES == paths, paths
 
 
-COMMANDS = ['agent-token', 'cancel', 'ce', 'fetch-records', 'forget', 'launch', 'launches', 'mcp', 'oauth', 'pat', 'rebuild', 'relaunch', 'resume',
+COMMANDS = ['agent-token', 'cancel', 'ce', 'dataset', 'fetch-records', 'forget', 'launch', 'launches', 'mcp', 'oauth', 'pat', 'rebuild', 'relaunch', 'resume',
             'runs', 'serve', 'token', 'user', 'web']      # as they were before this task
 ROUTES = ['/', '/.well-known/oauth-authorization-server', '/act/{verb}', '/authorize', '/c/{rid}', '/consent/{rid}', '/launch', '/launch/diagram',
           '/login', '/logout', '/register', '/revoke', '/settings', '/token', '/usage', '/welcome']

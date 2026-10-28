@@ -70,15 +70,15 @@ def register(state_path, name, version, clock=time.time, facts=None, owner_user_
     a call without facts (a beat of an older agent, a poll) leaves them as they were.
 
     owner_user_id is the user of the agent token (116). An agent without an owner takes the first one that comes; an agent that has
-    another owner is not touched and OwnerMismatch is raised. A token without a user (None) neither takes nor refuses."""
+    another owner is not touched and OwnerMismatch is raised. A token without a user (None) may serve an agent
+    nobody owns (an old deployment) but never one that has an owner: an unknown owner is refused (owner-binding)."""
     now = clock()
     facts = clean_facts(facts)
     con = store.connect_state(state_path)
     try:
         with con:
             row = con.execute("SELECT owner_user_id FROM agents WHERE name = ?", (name,)).fetchone()
-            if (row is not None and owner_user_id is not None and row["owner_user_id"] is not None
-                    and row["owner_user_id"] != owner_user_id):
+            if row is not None and row["owner_user_id"] is not None and row["owner_user_id"] != owner_user_id:
                 raise OwnerMismatch(name)
             con.execute("INSERT INTO agents (name, version, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?) "
                         "ON CONFLICT(name) DO UPDATE SET version = COALESCE(excluded.version, agents.version), "

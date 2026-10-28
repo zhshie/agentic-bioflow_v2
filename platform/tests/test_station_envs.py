@@ -15,9 +15,8 @@ from station_harness import Inproc
 CRED = re.compile(r"credential|憑證")
 AGENT_SIDE = re.compile(r"agent|代理")
 
-# the 12 types that are modelled and not supported, with fields from specs/007-station-agent/research.md
+# the 11 types that are modelled and not supported, with fields from specs/007-station-agent/research.md
 UNSUPPORTED = {
-    "awsbatch-platform": {"workDir": "s3://lab-bucket/work", "region": "eu-west-1", "headQueue": "head-q", "computeQueue": "comp-q"},
     "azbatch-platform": {"workDir": "az://lab-container/work", "region": "westeurope", "vmType": "Standard_D4s_v3"},
     "awscloud-platform": {"workDir": "s3://lab-bucket/work", "instanceType": "m5.xlarge"},
     "azcloud-platform": {"workDir": "az://lab-container/work", "instanceType": "Standard_D4s_v3"},
@@ -142,7 +141,7 @@ def test_tc029_good_queue_names_and_absolute_paths_are_accepted(ip):
 
 
 @pytest.mark.parametrize("platform_id", sorted(UNSUPPORTED))
-def test_tc030_the_twelve_modelled_types_are_stored_as_not_supported(ip, platform_id):
+def test_tc030_the_eleven_modelled_types_are_stored_as_not_supported(ip, platform_id):
     # TC-030
     rc, out = ip.run("ce", "create", "--name", "ce-" + platform_id, "--platform", platform_id,
                      "--config-json", json.dumps(UNSUPPORTED[platform_id]))
@@ -160,7 +159,7 @@ def test_tc032_only_fourteen_types_exist_and_seqera_compute_is_refused_with_its_
     # TC-032
     from abf_platform import compute_envs
     assert len(compute_envs.KINDS) == 14 and "slurm-platform" in compute_envs.KINDS
-    assert sorted(set(UNSUPPORTED) | {"slurm-platform", "googlebatch-platform"}) == sorted(compute_envs.KINDS)
+    assert sorted(set(UNSUPPORTED) | {"slurm-platform", "googlebatch-platform", "awsbatch-platform"}) == sorted(compute_envs.KINDS)
     for bad in ("nonsense", "seqera-compute", "seqeracompute-platform", "local-platform"):
         rc, out = ip.run("ce", "create", "--name", "x-" + bad, "--platform", bad, "--work-dir", "/data/work")
         assert rc != 0, bad
@@ -284,8 +283,8 @@ def test_tc096_only_a_usable_environment_can_be_primary(ip):
     # TC-096
     assert ip.create_slurm("S", agent="a1")[0] == 0
     assert ip.create_slurm("D", agent="a1")[0] == 0
-    assert ip.run("ce", "create", "--name", "U", "--platform", "awsbatch-platform",
-                  "--config-json", json.dumps(UNSUPPORTED["awsbatch-platform"]))[0] == 0
+    assert ip.run("ce", "create", "--name", "U", "--platform", "azbatch-platform",
+                  "--config-json", json.dumps(UNSUPPORTED["azbatch-platform"]))[0] == 0
     make_available(ip, "S")
     assert ip.run("ce", "primary", "S")[0] == 0
     make_available(ip, "D")
@@ -429,8 +428,8 @@ def test_tc063_no_door_takes_a_job_kind_or_a_command(tmp_path, monkeypatch):
     # launch and cancel appear nowhere else
     assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "submit", "enqueue"}), words
     top_level = set(next(a for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)).choices)
-    assert top_level == {"serve", "token", "agent-token", "ce", "mcp", "rebuild", "launch", "cancel", "fetch-records",
-                         "launches", "user", "pat", "web", "runs", "oauth", "resume", "relaunch", "forget"}, top_level     # 009c: plus `web`, the confirmation page; 116b: plus `runs` (assign); 009i: plus `oauth`; 009e: plus `resume`, `relaunch`
+    assert top_level == {"serve", "token", "agent-token", "ce", "dataset", "mcp", "rebuild", "launch", "cancel", "fetch-records",
+                         "launches", "user", "pat", "web", "runs", "oauth", "resume", "relaunch", "forget"}, top_level     # 009c: plus `web`, the confirmation page; 116b: plus `runs` (assign); 009i: plus `oauth`; 009e: plus `resume`, `relaunch`  # dataset-cli-launch: plus `dataset`
     assert [(trail, w) for trail, w in seen if w in ("launch", "cancel")] == [([], "launch"), ([], "cancel")]
     assert {"ce", "agent-token", "serve", "token", "mcp", "rebuild"} <= words
 
@@ -449,7 +448,7 @@ def test_tc084_no_launch_door_anywhere(tmp_path):
     # feature 007b (TC-060): the words launch and cancel may stand only as the names of the two new subcommands, and only in
     # these three places: the one list of subcommand names (exactly this list), their two lines in the table of subcommands,
     # and the usage line of each of the two
-    names = "{serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,launch,resume,relaunch,cancel,forget,launches,fetch-records}"    # 009c: plus `web`; 009i: plus `oauth`; 116b: plus `runs`; 009e: plus `resume`, `relaunch` in registration order
+    names = "{serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records}"    # 009c: plus `web`; 009i: plus `oauth`; 116b: plus `runs`; 009e: plus `resume`, `relaunch` in registration order
     assert helptext.count(names) >= 1, "the list of subcommands is exactly the old ones plus the four new ones (and runs, oauth)"
     helptext = helptext.replace(names, names.replace(",launch,resume,relaunch,cancel,forget,", ","))
     rows = re.findall(r"(?m)^ {4}(launch|cancel) {2,}\S", helptext)

@@ -1,13 +1,15 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|revoke | user add|cloud-cap|passwd [--temporary] | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | web | token new | agent-token new|revoke | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
+import os
 import re
+import sqlite3
 import sys
 import time
 
-from . import agents, common, compute_envs, jobs, rebuild as rebuild_mod, records, store
+from . import agents, common, compute_envs, jobs, rebuild as rebuild_mod, records, store, welcome
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 _AGENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
@@ -89,6 +91,20 @@ def cmd_token_new(args):
     return 0
 
 
+def _agent_owner(name):
+    """The user id that owns the agent of that name, or None (no such agent yet, or nobody owns it)."""
+    con = store.open_readonly(store.default_platform_path())
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT owner_user_id FROM agents WHERE name = ?", (name,)).fetchone()
+        return row["owner_user_id"] if row else None
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+
+
 def cmd_agent_token_new(args):
     if not _AGENT_NAME.match(args.name):
         _err("rejected: an agent name is letters, digits, _ . - (1 to 64 characters)")
@@ -99,6 +115,15 @@ def cmd_agent_token_new(args):
         uid = store.user_id_of(tokens, args.user)
         if uid is None:
             _err("rejected: no such user: %s (沒有這個使用者); add one with: abf-platform user add" % args.user)
+            return 1
+    if uid is None and store.has_users(tokens):
+        _err("rejected: say whose agent this is with --user NAME (請用 --user 名字 指定這個代理是誰的)")
+        return 1
+    if uid is not None:
+        owner = _agent_owner(args.name)
+        if owner is not None and owner != uid:
+            _err("rejected: this agent belongs to another user, so a token for it cannot be made for this one; "
+                 "use --user with the user it belongs to (這個代理屬於另一位使用者)")
             return 1
     token = store.create_token(tokens, kind="agent", agent_name=args.name, user_id=uid)
     _say("New agent token for %s%s (it is shown once and cannot be shown again; only its hash is kept):" % (
@@ -142,6 +167,36 @@ def cmd_user_cloud_cap(args):
         return 1
     store.set_cloud_cap(tokens, uid, cap)
     _say("monthly cloud cap of %s is now US$%.2f (每月雲端費用上限)" % (args.name, cap))
+    return 0
+
+
+def cmd_user_welcome(args):
+    """Print the welcome letter of a user (name, lab, cloud cap filled in), or save it with --out. Reads only; sends nothing."""
+    tokens = store.default_tokens_path()
+    url = common.public_url(args.platform_url)
+    if url is None:
+        _err("rejected: the platform address must be https://host (http only for localhost or 127.0.0.1); nothing was printed "
+             "(網址要 https://主機，或 http 只限本機)")
+        return 1
+    user = store.user_by_name(tokens, args.name)
+    if user is None:
+        _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name)
+        return 1
+    text = welcome.welcome_text(user["name"], user["lab"], store.cloud_cap(tokens, user["user_id"]), url, args.operator)
+    if not args.out:
+        _say(text)
+        return 0
+    try:
+        fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        _err("rejected: %s already exists, so it was not overwritten; choose another name or delete it (檔案已存在，沒有覆蓋)" % args.out)
+        return 1
+    except OSError:
+        _err("rejected: cannot create %s; check that the folder exists and you may write there (無法建立檔案)" % args.out)
+        return 1
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text + "\n")
+    _say("saved to %s (已存到)" % args.out)
     return 0
 
 
@@ -279,7 +334,7 @@ def _config_from_args(args):
              "head_job_options": "headJobOptions", "host_name": "hostName", "user_name": "userName",
              "pre_run": "preRunScript", "post_run": "postRunScript", "nextflow_config": "nextflowConfig",
              "project": "project", "location": "location", "service_account_email": "serviceAccountEmail",
-             "boot_disk_size": "bootDiskSize"}
+             "boot_disk_size": "bootDiskSize", "region": "region", "job_queue": "jobQueue"}
     for attr, key in flags.items():
         if getattr(args, attr) is not None:
             config[key] = getattr(args, attr)
@@ -416,12 +471,15 @@ def _simple(fn):
 def cmd_ce_preflight(args):
     state = store.default_platform_path()
     ce = compute_envs.get(state, args.name)
-    if ce is not None and ce["platform"] in compute_envs.PLATFORM_HOST_TYPES:
+    if ce is not None and ce["platform"] in compute_envs.PLATFORM_HOST_TYPES + compute_envs.CHECK_ONLY_TYPES:
         try:      # a record made before the type was checked must pass today's rules first, whatever its status
             compute_envs.clean({"name": ce["name"], "description": ce["description"], "platform": ce["platform"],
                                 "credentialsId": ce["credentialsId"], "agent": ce["agent"], "config": ce["config"]})
         except compute_envs.CEError as e:
-            _err("rejected: %s. Fix it with `abf-platform ce update %s ...` first (請先用 ce update 補齊)" % (e, args.name))
+            if "請刪除後重建" in str(e):      # an old record: updating cannot fix it
+                _err("rejected: %s" % e)
+            else:
+                _err("rejected: %s. Fix it with `abf-platform ce update %s ...` first (請先用 ce update 補齊)" % (e, args.name))
             return 1
     try:
         job_id = jobs.enqueue_preflight(state, args.name)
@@ -461,6 +519,113 @@ def cmd_mcp(args):
         mcp_server.run_http(index, args.host, args.port, public_url=public or None)
     else:
         mcp_server.run_stdio(index)
+    return 0
+
+
+def cmd_runs_offer_cleanup(args):
+    """Offer a clean-up request, for the owner of each run that succeeded, on the platform's own terminal. It only previews unless --apply
+    is given, and with --apply it only writes pending requests: the owner still presses send on the confirmation page. All the judging is
+    done by actions.offer_cleanups; this prints what it answers."""
+    from . import actions
+    if bool(args.run_names) == bool(args.all):
+        _err("rejected: give run names or --all, one of the two (請給 run 名稱，或加 --all，兩者擇一); nothing was changed")
+        return 1
+    user_id = None
+    if args.user:
+        user = store.user_by_name(store.default_tokens_path(), args.user)
+        if user is None:
+            _err("rejected: no such user: %s (沒有這個使用者); nothing was changed" % args.user)
+            return 1
+        user_id = user["user_id"]
+    preview = args.list or not args.apply
+    index = store.default_index_path()
+    out = actions.offer_cleanups(store.default_platform_path(index), index, run_names=None if args.all else args.run_names,
+                                 user_id=user_id, dry_run=preview)
+    for r in out["results"]:
+        if r["offered"]:
+            who = r["owner"] or "?"
+            _say("%s: 已提出申請，請 %s 登入網頁在確認頁按送出 (offered; %s presses send on the confirmation page)" % (r["run_name"], who, who))
+        elif r.get("would_offer"):
+            _say("%s: 會提出申請 (would offer)" % r["run_name"])
+        else:
+            _say("%s: 略過：%s" % (r["run_name"], r["reason"]))
+    if preview:
+        would = sum(1 for r in out["results"] if r.get("would_offer"))
+        skipped = len(out["results"]) - would
+        _say("預覽：會提出 %d 張、略過 %d 個；要真的提出請加 --apply (preview: would offer %d, skip %d; add --apply to offer)"
+             % (would, skipped, would, skipped))
+    else:
+        _say("已提出 %d 張、略過 %d 個 (offered %d, skipped %d)" % (out["offered"], out["skipped"], out["offered"], out["skipped"]))
+    return 0
+
+
+def _dataset_caller(args):
+    """(Caller or None, exit code or None) for a dataset command: the account rule of `abf-platform launch` (--user once users exist)."""
+    from abf_launch import cli as launch_cli
+    caller, why = launch_cli._account(args.user)
+    if why:
+        _err(why)
+        return None, 1
+    return caller, None
+
+
+def _read_sheet_text(path):
+    """(text, None) of a samplesheet file, else (None, a plain sentence). Nothing but this file is read."""
+    try:
+        with open(path, "rb") as f:
+            raw = f.read(1024 * 1024 + 1)
+    except OSError:
+        return None, "讀不到樣本表檔案，請檢查 --samplesheet 的路徑 (cannot read the samplesheet file; check the --samplesheet path); nothing was registered"
+    if len(raw) > 1024 * 1024:
+        return None, "樣本表太大，上限 1 MiB (the samplesheet is too large; the limit is 1 MiB); nothing was registered"
+    if bytes([0]) in raw:
+        return None, "樣本表含有 NUL 字元，不是文字檔 (the samplesheet holds a NUL character); nothing was registered"
+    try:
+        return raw.decode("utf-8"), None
+    except UnicodeDecodeError:
+        return None, "樣本表不是 UTF-8 文字 (the samplesheet is not UTF-8 text); nothing was registered"
+
+
+def cmd_dataset_register(args):
+    """Keep a dataset (a name, a version, a samplesheet and the places of its files) for a user. All the judging is done by
+    datasets.register_dataset; no file named by --file is read or looked at."""
+    from .actions import datasets
+    caller, code = _dataset_caller(args)
+    if code:
+        return code
+    text, why = _read_sheet_text(args.samplesheet)
+    if why:
+        _err(why)
+        return 1
+    out = datasets.register_dataset(store.default_platform_path(), name=args.name, version=args.version, samplesheet=text,
+                                    files=[{"path": p} for p in args.file], caller=caller, destination=args.destination)
+    if not out.get("ok"):
+        _err(out["message"])
+        return 1
+    _say("已登記資料集 %s 版本 %s（%d 個檔案）(registered)" % (args.name, args.version, len(args.file)))
+    return 0
+
+
+def cmd_dataset_list(args):
+    from .actions import datasets
+    caller, code = _dataset_caller(args)
+    if code:
+        return code
+    for r in datasets.list_datasets(store.default_platform_path(), caller=caller)["datasets"]:
+        _say("%s %s %d %s" % (r["name"], r["version"], r["n_files"], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r["created_at"]))))
+    return 0
+
+
+def cmd_dataset_show(args):
+    from .actions import datasets
+    caller, code = _dataset_caller(args)
+    if code:
+        return code
+    got = datasets.get_dataset(store.default_platform_path(), args.name, args.version, caller=caller)
+    if not got.get("found"):
+        _err(got["message"])
+        return 1
+    _say(json.dumps(got, indent=2, sort_keys=True, ensure_ascii=False))
     return 0
 
 
@@ -525,8 +690,10 @@ def _add_ce_fields(p):
     p.add_argument("--work-dir")
     p.add_argument("--project", help="Google Batch: the GCP project ID")
     p.add_argument("--location", help="Google Batch: the region, e.g. europe-west2")
-    p.add_argument("--spot", dest="spot", action="store_const", const=True, default=None, help="Google Batch: use spot machines")
-    p.add_argument("--no-spot", dest="spot", action="store_const", const=False, help="Google Batch: do not use spot machines")
+    p.add_argument("--region", help="AWS Batch: the region, e.g. eu-west-1")
+    p.add_argument("--job-queue", help="AWS Batch: the name of the job queue (a name, not an ARN)")
+    p.add_argument("--spot", dest="spot", action="store_const", const=True, default=None, help="Google Batch/AWS Batch: use spot machines")
+    p.add_argument("--no-spot", dest="spot", action="store_const", const=False, help="Google Batch/AWS Batch: do not use spot machines")
     p.add_argument("--service-account-email", help="Google Batch: the service account the jobs run as (an e-mail address, not a key)")
     p.add_argument("--boot-disk-size", help="Google Batch: boot disk size, e.g. '50 GB'")
     p.add_argument("--launch-dir")
@@ -572,7 +739,7 @@ def build_parser():
     asub = a.add_subparsers(dest="agent_token_command", required=True)
     an = asub.add_parser("new", help="issue a token for one agent name and show it once")
     an.add_argument("name")
-    an.add_argument("--user", help="the user this agent belongs to; the agent then belongs to that user, and nobody else's token can take it")
+    an.add_argument("--user", help="the user this agent belongs to (required once the platform has users); the agent then belongs to that user, and nobody else's token can take it")
     an.set_defaults(func=cmd_agent_token_new)
     ar = asub.add_parser("revoke", help="revoke every token of an agent name")
     ar.add_argument("name")
@@ -590,6 +757,14 @@ def build_parser():
     uc.add_argument("name")
     uc.add_argument("usd")
     uc.set_defaults(func=cmd_user_cloud_cap)
+    uw = usub.add_parser("welcome", help="print the welcome letter of a user with name, lab and cloud cap filled in; prints only, sends nothing",
+                         allow_abbrev=False)
+    uw.add_argument("name")
+    uw.add_argument("--platform-url", required=True, help="the address the person opens, https://host (http only for localhost)")
+    uw.add_argument("--operator", help="the name to sign the letter with (without it <operator> stays for you to fill in)")
+    uw.add_argument("--out", help="save the letter to this new file instead of printing it (an existing file is never overwritten); "
+                                  "prints only, sends nothing")
+    uw.set_defaults(func=cmd_user_welcome)
     up = usub.add_parser("passwd", help="set the password a person logs into the confirmation page with (typed at a terminal, 8 to 1000 characters)",
                          allow_abbrev=False)
     up.add_argument("name")
@@ -618,7 +793,7 @@ def build_parser():
 
     c = sub.add_parser("ce", help="compute environments")
     csub = c.add_subparsers(dest="ce_command", required=True)
-    cc = csub.add_parser("create", help="store a compute environment (Slurm and Google Batch are checked by their agent; the other types are only stored)")
+    cc = csub.add_parser("create", help="store a compute environment (Slurm, Google Batch and AWS Batch are checked by their agent; the other types are only stored)")
     cc.add_argument("--name")
     cc.add_argument("--platform", help="the type, e.g. slurm-platform (see docs/PLATFORM.md)")
     _add_ce_fields(cc)
@@ -662,6 +837,32 @@ def build_parser():
     ra.add_argument("--user", required=True, help="the user who launched it")
     ra.add_argument("--force", action="store_true", help="change the owner of a run that already has one")      # 116b-owner: not a confirmation switch
     ra.set_defaults(func=cmd_runs_assign)
+    ro = rsub.add_parser("offer-cleanup", help="offer a clean-up request to the owner of each run that succeeded (previews unless --apply; the owner still presses send)", allow_abbrev=False)
+    ro.add_argument("run_names", nargs="*", metavar="RUN", help="the runs to offer for (or --all)")
+    ro.add_argument("--all", action="store_true", help="every run that succeeded")
+    ro.add_argument("--user", help="only the runs this user launched")
+    ro.add_argument("--list", action="store_true", help="only list what would be offered (the default)")
+    ro.add_argument("--apply", action="store_true", help="write the requests; without it nothing is written")
+    ro.set_defaults(func=cmd_runs_offer_cleanup)
+
+    da = sub.add_parser("dataset", help="datasets: a name, a version, a samplesheet and the places of its files (the platform keeps names and places only)")
+    dsub = da.add_subparsers(dest="dataset_command", required=True)
+    dr = dsub.add_parser("register", help="keep a dataset for a user; a local path in their uploads folder, or gs:// locations with --destination", allow_abbrev=False)
+    dr.add_argument("--name", required=True)
+    dr.add_argument("--version", required=True)
+    dr.add_argument("--samplesheet", required=True, help="the CSV file (UTF-8, at most 1 MiB)")
+    dr.add_argument("--file", action="append", required=True, help="the place of one file (repeat for each); it is not opened")
+    dr.add_argument("--user", help="the user it is for (needed once the platform has users)")
+    dr.add_argument("--destination", help="a Google Batch environment: the files are gs:// locations of the user's own prefix of its bucket")
+    dr.set_defaults(func=cmd_dataset_register)
+    dl = dsub.add_parser("list", help="list the datasets", allow_abbrev=False)
+    dl.add_argument("--user")
+    dl.set_defaults(func=cmd_dataset_list)
+    dw = dsub.add_parser("show", help="show one dataset as JSON (the newest version unless --version)", allow_abbrev=False)
+    dw.add_argument("name")
+    dw.add_argument("--version")
+    dw.add_argument("--user")
+    dw.set_defaults(func=cmd_dataset_show)
 
     from abf_launch import cli as launch_cli
     launch_cli.add_commands(sub)

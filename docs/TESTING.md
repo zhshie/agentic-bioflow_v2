@@ -590,6 +590,14 @@ The automatic tests use a fake `gcloud` and touch no network. Three things are c
 2. **The reviewer.** Run `git diff <base>...HEAD --name-only`. Check: no `cloud_cost.py`, no `configs/cloud/rates.json`, no `local_runner.py`, no `head.pid`, no `-with-tower` code, no money or currency field; the existing tests changed only in `UNSUPPORTED` and TC-030's name and TC-032's assertion in `test_station_envs.py`, and the parity-row assertions of TC-077 in `test_station_docs.py`; no assertion was deleted, loosened or skipped.
 3. **The sentence to find.** `docs/PLATFORM.md`, "Google Cloud Batch": 「預檢不計費」 says the preflight only reads, creates no Batch job and costs nothing.
 
+## AWS Batch environment (aws-ce-type): the maintainer and the reviewer check
+
+The automatic tests use a fake `aws` and touch no network. Three things are checked by a person.
+
+1. **The maintainer, once, when an AWS account is open. This costs nothing.** (a) On the computer where the platform host's station agent runs, put the `[default]` credentials at `<agent deployment>/_personal/aws-credentials` (or where `ABF_STATION_AWS_CREDENTIALS` points) and run `chmod 600` on it. (b) Run `abf-platform ce create --name=aws1 --platform=awsbatch-platform --agent=host1 --region=eu-west-1 --work-dir=s3://lab-bucket/work --job-queue=lab-queue --credentials=aws-lab`, then `abf-platform ce preflight aws1`. Check: the seven checks `credential_name`, `credential_file`, `credential_shape`, `aws`, `identity`, `job_queue` and `bucket` all say pass and the status is `available`; no Batch job appears in the AWS console and the bill shows nothing new (預檢不計費).
+2. **The reviewer.** Run `git diff <base>...HEAD --name-only`. Check: no `cloud_cost.py`, no `configs/cloud/rates.json`, no `local_runner.py`, no `-with-tower` code, no migration, no `boto3`; the existing tests changed only where `specs/aws-ce-type/plan.md` lists them.
+3. **The sentence to find.** `docs/PLATFORM.md`, "AWS Batch": 「預檢不計費」 says the preflight only reads, creates no Batch job and costs nothing.
+
 ## Launching on Google Batch (gcb-launch): the maintainer and the reviewer check
 
 The automatic tests use fakes for the program runner, the detached start and the signal; they start nothing and touch no network. The steps below start a real Nextflow head process and **cost a very small amount of money**: set the budget and alert of the Google Cloud project first.
@@ -628,12 +636,12 @@ The cap is looked at before a launch to Google Batch from the web or the AI crea
 
 ## Datasets in a cloud bucket (cloud-upload): the maintainer and the reviewer check
 
-This task delivers the platform half only: a Dataset can be registered at `gs://` places, other people's places are refused, and a file over 2 GB gets a one-line command. **The end-to-end check (really sending a file into the bucket) has to wait for the byte-channel task; for now only registering and refusing can be checked.** The automatic tests use fakes and touch no network. The steps below call the functions in a Python shell on the platform host, with a Google Batch environment `gcb1` (workDir `gs://<bucket>/work`) that you own and a user name `<you>`.
+This task delivers the platform half only: a Dataset can be registered at `gs://` places, other people's places are refused, and a file over 2 GB gets a one-line command. **The end-to-end check (really sending a file into the bucket from the web or the AI) has to wait for a web or AI entry; for now only registering and refusing can be checked.** The automatic tests use fakes and touch no network. The steps below use `abf-platform dataset` on the platform host, with a Google Batch environment `gcb1` (workDir `gs://<bucket>/work`) that you own and a user name `<you>`.
 
-1. **Register a cloud Dataset.** Call `register_dataset(..., destination="gcb1", caller=<you>)` with two files `gs://<bucket>/uploads/<you>/a_R1.fastq.gz` and `.../a_R2.fastq.gz` and a samplesheet that names exactly those two. Check: the answer says `ok`, and `get_dataset` shows the same two `gs://` places and nothing else per file.
+1. **Register a cloud Dataset.** Run `abf-platform dataset register --destination gcb1 --user <you> ...` with two `--file` places `gs://<bucket>/uploads/<you>/a_R1.fastq.gz` and `.../a_R2.fastq.gz` and a samplesheet that names exactly those two. Check: the answer says `ok`, and `abf-platform dataset show` shows the same two `gs://` places and nothing else per file.
 2. **Somebody else's prefix.** Register a file at `gs://<bucket>/uploads/<another user>/a_R1.fastq.gz`. Check: it is refused, the sentence names only your own prefix `gs://<bucket>/uploads/<you>/`, and nothing is stored.
 3. **Another bucket.** Register a file in a bucket that is not the one of `workDir`. Check: it is refused and the sentence says the bucket must be the one of the environment's workDir.
-4. **Over 2 GB.** Call `check_web_upload(..., {"big_R1.fastq.gz": 2000000001}, destination="gcb1", caller=<you>)`. Check: it is refused, the answer holds one line that starts with `gcloud storage cp ` and ends at your prefix `.../uploads/<you>/rawdata/`, and the second sentence says to put files already in the bucket into the same prefix. Exactly 2000000000 bytes must be accepted.
+4. **Over 2 GB.** There is no command for the size check, so read the line in `docs/OPERATIONS.md` ("Datasets in the lab's bucket", point 2). Check: it starts with `gcloud storage cp ` and ends at your prefix `.../uploads/<you>/rawdata/`, the same as `cloud_store.big_file_command` builds, and the limit it names is 2 GB (2000000000 bytes, decimal).
 5. **Nothing else changed.** Without `destination` every call answers as before. Search the platform database, the logs and your terminal output for any piece of the key file (for example `private_key`). Check: nothing is found.
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD`. Check: only `platform/abf_platform/actions/datasets.py`, `platform/abf_platform/cloud_store.py`, `platform/tests/test_cloud_upload.py`, `platform/tests/test_gcb_ce.py`, `docs/TESTING.md` and `specs/cloud-upload/*`; `actions/__init__.py`, `pipeline_launch.py`, `abf_launch/build.py`, `cli.py`, `store.py`, `deploy/`, `pyproject.toml` and `constraints.txt` are identical to the base.
@@ -743,6 +751,18 @@ The machine part is `platform/tests/test_cleanup_offer.py` (a fake site, a fake 
 
 Then keep the screenshots (the confirmation page with the text of `clean_screen`, and the board card, in Chinese and in English) for the daily list; the maintainer answers 好 or 不好.
 
+## Offering a clean-up for an old run (cloud-cleanup-backfill): the maintainer checks it on nano4
+
+The machine part is `platform/tests/test_cleanup_backfill.py`. The command only asks; the owner of the run still presses the button. Do not use an AI session to delete anything.
+
+1. Find a run that succeeded **before** the clean-up offer existed (the board shows it as finished, and its owner has no "可以清掉中間檔" notice).
+2. On the platform host run `abf-platform runs offer-cleanup <run>` without any other flag. It must print `<run>: 會提出申請 (would offer)` and the owner's board must show nothing new. The last line starts with `預覽：`.
+3. Run the same line with `--apply`. It prints `已提出申請，請 <owner> 登入網頁在確認頁按送出`.
+4. Sign in on the web as the owner: the right column "待處理" has the notice and the confirmation page shows the clean-up request.
+5. **Do not press.** List `<run folder>/work` on nano4 (`list_site_files`): it is still there.
+
+Write 好 or 不好 for the daily list.
+
 ## nfcore-catalogue：真的讀一次 nf-co.re (read nf-co.re for real, once)
 
 The automatic tests never reach the internet. This is the one time a person checks it for real: the maintainer or developer-agent does it after the merge, on a machine with a network. It only sends one read request for a public file.
@@ -753,6 +773,15 @@ The automatic tests never reach the internet. This is the one time a person chec
 4. **No network.** Switch the agent machine's network off, delete that job row (or wait 24 hours) and call it again. Check: within about a minute `state` is `error`, `error` is `network`, and `reason` names nf-co.re and says to check the network.
 5. **Write down** the output of each step in `specs/nfcore-catalogue/ledger.md`.
 
+## Owner binding follow-up (owner-binding)
+
+For the administrator of a platform that has two users, alice and bob, and an old agent token that names no user. This is a data move: nothing in the schema changed.
+
+1. **Find what has no owner.** Run `abf-platform ce list` and `abf-platform launches`. Note every agent or environment whose owner reads `(none: local only)`.
+2. **Reissue the old tokens.** For each agent whose old token names no user: check that its hello is now refused (403), then `abf-platform agent-token revoke <name>` and `abf-platform agent-token new <name> --user <U>`; put the new token in the agent's token file and restart the agent. Check: the new token's hello is accepted and the agent keeps its owner.
+3. **Give the environments their owners.** `abf-platform ce update <env> --owner <U>` for each environment that has none; this claims its unowned agent too. Restarting the platform does the same for an agent whose environments all belong to one user.
+4. **Check the walls.** With alice's personal access token call `list_agents` and `get_compute_env`: only her own show. With bob's token ask `get_compute_env` for alice's environment and for a name that does not exist: the two answers are the same words ("not found").
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in
@@ -762,3 +791,17 @@ test second, so the reason survives.
 New assertions get a mutation test: remove the thing being checked and confirm
 the test turns red. An assertion that has never failed has never been shown to
 assert anything.
+
+## Launching on AWS Batch (aws-launch): the maintainer and the reviewer check
+
+The automatic tests use fakes for the program runner, the aws runner, the detached start and the signal; they start nothing and touch no network. The steps below start a real Nextflow head process and **cost a small amount of money** once the real trial run is approved: do not start them before the maintainer says go.
+
+1. **The platform host (WSL), once.** Check: `java -version` says 17 or newer, `nextflow -version` and `aws --version` answer, `storage_root` is set in `config/env.yaml`, the credential file is where `ABF_STATION_AWS_CREDENTIALS` points (mode 600), and a budget alert is set in AWS Budgets.
+2. **The compute image.** Check that the AMI of the compute environment behind the job queue has the aws CLI.
+3. **Send the smallest run.** Put two or three tiny files in the bucket of `workDir` with the aws CLI, then `abf-launch ... --ce aws1` with `s3://` paths in the samplesheet. Check: the first paragraph of the screen says 由 AWS 向實驗室的 AWS 帳號收費; nothing starts until you answer y.
+4. **Check that the credentials work.** If Nextflow does not honour `AWS_SHARED_CREDENTIALS_FILE`, the run fails at once: report it, do not work around it by putting a key in a file.
+5. **After the run starts.** Check: the run folder under `<storage_root>/_aws_runs/` has `head.pid`, a Batch job appears in the AWS Console, and results arrive under `<workDir>/runs/<run>/results`.
+6. **Cancel.** Cancel a second small run; check on the Batch page that every job ended (whether one SIGTERM stops them is what this step finds out), and search the run folder, `head.out` and the database for the key id and the credential path: neither must be found.
+7. **`process.resourceLimits`.** Launch with `maxvCpus` set and check that Nextflow accepts the line in `aws.config`.
+
+**The reviewer.** Run `git diff --name-only` against the base: no `cloud_cost.py`, no `local_runner.py`, no migration, no `boto3`; the existing tests changed only where `specs/aws-launch/plan.md` lists them.

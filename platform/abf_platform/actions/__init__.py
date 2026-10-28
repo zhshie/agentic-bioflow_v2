@@ -813,43 +813,95 @@ def keep_screen(state_path, confirmation_id, screen_text):
 
 # ---- the platform's own offer: clean the work folder of a run that succeeded (cloud-cleanup-f) -----------------------------------------
 
-def _skipped(reason):
-    return {"offered": False, "reason": reason}
+def _skipped_for(reason, dry_run=False):
+    out = {"offered": False, "reason": reason}
+    if dry_run:
+        out["would_offer"] = False
+    return out
 
 
-def offer_cleanup(platform_path, index_path, run_name, *, clock=time.time):
+def offer_cleanup(platform_path, index_path, run_name, *, clock=time.time, dry_run=False):
     """When a run has just succeeded, write a pending request to clean its work folder, for the person who launched it. It is only a
     request: no job, nothing is deleted until that person presses the button on the confirmation page. It is not a tool and not a
     `request_*`: the receiver calls it once, when the run reports that it is complete. Whatever is not fit (no owner, not succeeded, cleaned
-    already, a full list) is skipped quietly; this never raises. Returns {"offered": True, "id": ...} or {"offered": False, "reason": ...}."""
+    already, a full list) is skipped quietly; this never raises. Returns {"offered": True, "id": ...} or {"offered": False, "reason": ...}.
+    With dry_run=True the same checks are made but nothing is written; the answer is {"offered": False, "would_offer": bool, "reason": ...}."""
     try:
         con = store.open_readonly(platform_path)
         if con is None:
-            return _skipped("平台資料庫還不存在，沒有提出清理申請")
+            return _skipped_for("平台資料庫還不存在，沒有提出清理申請", dry_run)
         try:
             row = jobs.latest_launch(con, run_name)
         finally:
             con.close()
         if row is None:
-            return _skipped("%s 不是平台自己送出的，沒有提出清理申請" % run_name)
+            return _skipped_for("%s 不是平台自己送出的，沒有提出清理申請" % run_name, dry_run)
         keys = row.keys()
         if "user_id" not in keys or row["user_id"] is None:
-            return _skipped("%s 沒有擁有者（不是從網頁帳號送出的），確認頁沒有人可以按，所以不提出清理申請" % run_name)
+            return _skipped_for("%s 沒有擁有者（不是從網頁帳號送出的），確認頁沒有人可以按，所以不提出清理申請" % run_name, dry_run)
         if row["slurm_job_id"] is None:
-            return _skipped("%s 沒有工作編號，沒有提出清理申請" % run_name)
+            return _skipped_for("%s 沒有工作編號，沒有提出清理申請" % run_name, dry_run)
         found = status.find_run(index_path, run_name)
         if found is None:
-            return _skipped("run 索引裡找不到 %s，沒有提出清理申請" % run_name)
+            return _skipped_for("run 索引裡找不到 %s，沒有提出清理申請" % run_name, dry_run)
         if found.get("status") != "succeeded":
-            return _skipped("%s 沒有成功跑完（只有成功的 run 才提出清理申請）" % run_name)
+            return _skipped_for("%s 沒有成功跑完（只有成功的 run 才提出清理申請）" % run_name, dry_run)
         ce_name, bundle, hand_off = build.prepare_clean(platform_path, run_name, owner=row["user_id"])
+        if dry_run:
+            return {"offered": False, "would_offer": True, "reason": None}
         rid = confirm.create_pending(platform_path, "clean_work", ce_name, bundle, build.as_text(build.clean_screen(bundle, hand_off)),
                                      row["user_id"], clock)
         return {"offered": True, "id": rid}
     except (build.Refusal, jobs.JobRefused) as e:
-        return _skipped(str(e))
+        return _skipped_for(str(e), dry_run)
     except Exception:
-        return _skipped("提出清理申請時出了狀況，已略過；run 的紀錄沒有受影響")
+        return _skipped_for("提出清理申請時出了狀況，已略過；run 的紀錄沒有受影響", dry_run)
+
+
+def offer_cleanups(platform_path, index_path, *, run_names=None, user_id=None, dry_run=False, clock=time.time):
+    """Ask offer_cleanup about many runs, for the terminal command that backfills runs that succeeded before the offer existed. It only
+    asks: every request it makes is the one offer_cleanup makes, for the owner in the hand-off record; nothing is confirmed or deleted.
+    run_names None means every run of the index (offer_cleanup itself skips, with its reason, the ones that did not succeed); otherwise the given names (no repeats, in order). user_id keeps to the
+    runs of one user. Never raises: a run that goes wrong only fails its own row. Returns {"ok": True, "results": [{"run_name", "offered",
+    "reason", "owner"}], "offered": N, "skipped": M}; with dry_run each row also says "would_offer"."""
+    try:
+        names = store.user_names(store.default_tokens_path())
+    except Exception:
+        names = {}
+    if run_names is None:
+        try:
+            run_names = [v["name"] for v in status.list_runs(index_path)]
+        except Exception:
+            run_names = []
+    seen, results = set(), []
+    for name in run_names:
+        if name in seen:
+            continue
+        seen.add(name)
+        owner_id = None
+        try:
+            con = store.open_readonly(platform_path)
+            if con is not None:
+                try:
+                    row = jobs.latest_launch(con, name)
+                    owner_id = row["user_id"] if row is not None and "user_id" in row.keys() else None
+                finally:
+                    con.close()
+            if status.find_run(index_path, name) is None and owner_id is None:
+                out = _skipped_for("no such run", dry_run)
+            elif user_id is not None and owner_id != user_id:
+                out = _skipped_for("not that user's run", dry_run)
+            else:
+                out = offer_cleanup(platform_path, index_path, name, clock=clock, dry_run=dry_run)
+        except Exception:
+            out = _skipped_for("提出清理申請時出了狀況，已略過 (skipped after a problem)", dry_run)
+        item = {"run_name": name, "offered": bool(out.get("offered")), "reason": out.get("reason"),
+                "owner": names.get(owner_id) if owner_id is not None else None}
+        if dry_run:
+            item["would_offer"] = bool(out.get("would_offer"))
+        results.append(item)
+    offered = sum(1 for r in results if r["offered"])
+    return {"ok": True, "results": results, "offered": offered, "skipped": len(results) - offered}
 
 
 # ---- write, through a pending request: the MCP tools and the confirmation page ---------------------------------------------------------
@@ -998,10 +1050,24 @@ def _samplesheet_text_problem(samplesheet, samplesheet_text):
 
 
 async def request_launch(platform_path, *, pipeline, revision, run_name, samplesheet=None, samplesheet_text=None, ce_name=None, params=None,
-                         path_columns=None, caller=None, person=None, clock=time.time, remote=False):
+                         path_columns=None, dataset=None, dataset_version=None, caller=None, person=None, clock=time.time, remote=False):
     """Ask for a launch the way the terminal command does: same choices, same bundle, same screen, same refusals. Writes a pending
     request and asks the person; the answer says whether a job exists. Nothing is queued without a person's yes. The samplesheet is
-    given as a file (`samplesheet`) or as the CSV itself (`samplesheet_text`, read from memory, never written), exactly one of the two."""
+    given as a file (`samplesheet`) or as the CSV itself (`samplesheet_text`, read from memory, never written), exactly one of the two - or
+    as the name (and optionally the version) of a dataset of the caller's, whose samplesheet then goes the same way as `samplesheet_text`."""
+    if dataset is not None or dataset_version is not None:
+        if dataset is None:
+            return _no("未送出：dataset_version 要和 dataset 一起給 (dataset_version needs dataset)")
+        if not isinstance(dataset, str) or not dataset or (dataset_version is not None and (not isinstance(dataset_version, str) or not dataset_version)):
+            return _no("未送出：dataset 必須是資料集的名稱，dataset_version 必須是版本名稱（都是不空的文字）"
+                       " (dataset must be the name of a dataset, and dataset_version a version name, both non-empty text)")
+        if samplesheet is not None or samplesheet_text is not None:
+            return _no("未送出：dataset 與 samplesheet／samplesheet_text 只能給一個 (give dataset, or a samplesheet, not both)")
+        from . import datasets
+        got = datasets.get_dataset(platform_path, dataset, dataset_version, caller=caller)
+        if not got.get("found"):
+            return _no("未送出：%s" % got["message"])
+        samplesheet_text = got["samplesheet"]
     problem = _samplesheet_text_problem(samplesheet, samplesheet_text)
     if problem:
         return _no("未送出：%s" % problem)

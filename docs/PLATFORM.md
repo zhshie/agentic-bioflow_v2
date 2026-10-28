@@ -144,7 +144,7 @@ It runs in **WSL or Linux bash only**. Started on native Windows or in Git Bash 
 
 ```bash
 abf-platform serve                                   # 1. the platform, as before
-abf-platform agent-token new my-laptop               # 2. a token for one agent name, shown once
+abf-platform agent-token new my-laptop --user alice  # 2. a token for one agent name, shown once
 ```
 
 3. Put the token in a file that only you can read, **inside WSL's own home** (not on a Windows drive such as `/mnt/c`):
@@ -294,7 +294,7 @@ The question, the screen and the yes are the ones of a Slurm launch: `abf-launch
 
 **Money.** 費用：按下 y 之後，這個 run 會在 Google Cloud 專案裡建立 Batch 工作與虛擬機，**由 Google 向實驗室的 Google Cloud 帳號收費**。The platform can work out a compute-only estimate and check a monthly cap in US dollars (`docs/CLOUD.md`), and checks the monthly cap before a launch to Google Batch from the web or the AI makes anything. The second line of the launch screen gives this launch's estimate, or says it cannot be worked out and why; the first paragraph still has no number. The actual amount is on Google's invoice. The platform does not stop a run that is already going.
 
-**Input data.** Every path cell of the samplesheet must be `gs://<bucket>/<object>` in the **same bucket as `workDir`**. A local path, `http(s)://`, `s3://`, another bucket, or a `..` is refused with a plain sentence. Copying files into the bucket is a later feature (C-6); for now put them there yourself with `gcloud storage cp`. `workDir` must have at least one folder below the bucket (`gs://lab-bucket/work`, not `gs://lab-bucket`): that is Nextflow's rule.
+**Input data.** Every path cell of the samplesheet must be `gs://<bucket>/<object>` in the **same bucket as `workDir`**. A local path, `http(s)://`, `s3://`, another bucket, or a `..` is refused with a plain sentence. The platform does not copy files into the bucket (no web page or AI tool calls the code that can do it yet); put them there with `gcloud storage cp`, then you may keep them as a Dataset (`docs/OPERATIONS.md`, "Datasets in the lab's bucket"). `workDir` must have at least one folder below the bucket (`gs://lab-bucket/work`, not `gs://lab-bucket`): that is Nextflow's rule.
 
 **The files.** Five files are shown and then written to the run's folder (mode 700), with `tower.token`, `head.pid` and `head.out`: `samplesheet.csv`, `params.yaml`, `nextflow.config` (the environment's own text, unchanged), `gcb.config` (made from the environment's fields, read after `nextflow.config` with `-c nextflow.config -c gcb.config`, so it wins) and `head.sh`. The work folder and the results are in the bucket, one prefix per run: `<workDir>/runs/<run>/work` and `<workDir>/runs/<run>/results`.
 
@@ -317,6 +317,67 @@ The question, the screen and the yes are the ones of a Slurm launch: `abf-launch
 **Cancel.** After the same kind of yes, the agent checks that the number in `head.pid` is still the head process of this run (its owner, `-name <run>` in its command line, its working folder) and sends **one** `SIGTERM`. Nextflow is expected to cancel the Batch jobs it started when it ends; this is checked by hand once (docs/TESTING.md), so after a cancel look at the Batch page of the Google Cloud Console: a virtual machine that was not cancelled is still billed. The platform deletes nothing in Google Cloud.
 
 **Not yet.** Resume and relaunch of a Google Batch run, reading its Nextflow records back, listing files and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid) for a Google Batch run; the table has no other column for it, and no migration was needed.
+
+### AWS Batch
+
+An `awsbatch-platform` environment (aws-ce-type) is served the way a Google Cloud Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused, even when only one agent is online). The people who use AWS install nothing. It can be **created, checked, launched and cancelled** (see "Launching on AWS Batch" below); a listing, a record fetch, a task log, a clean and an upload are refused in plain words (尚未支援), and the automatic choice of an environment never picks it: a launch on it needs its name (`--ce aws1`), so nothing that costs money is chosen for you. `ce primary aws1` still works once it is `available`, but the automatic choice skips it.
+
+| Key | Rule |
+|---|---|
+| `region` | required; an AWS region such as `eu-west-1` (`--region`) |
+| `workDir` | required; `s3://<bucket>[/<folder>]`, the bucket 3 to 63 characters of lower-case letters, digits, `-` and `.`; no `..`; a trailing slash is dropped |
+| `jobQueue` | required; the queue's **name**, letters, digits, `-` and `_`, at most 128; an ARN is refused (`--job-queue`) |
+| `spot` | optional true or false (`--spot`, `--no-spot`) |
+| `maxvCpus` | optional whole number 1 to 10000 |
+| `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
+
+Every problem is listed at once, each naming its key; a key not in this table is refused. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`); it is only a label. The credential file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_AWS_CREDENTIALS`, else `<deployment>/_personal/aws-credentials`, an INI file of which only the `[default]` section is used (mode 600 on Linux and WSL):
+
+```
+[default]
+aws_access_key_id = <your key id>
+aws_secret_access_key = <your secret key>
+```
+
+| Check | What the agent does |
+|---|---|
+| `credential_name` | the environment has a credential name |
+| `credential_file` | the file exists, is a regular file and (not on Windows) is not readable by others; when it is missing the message says where to put it and `chmod 600` |
+| `credential_shape` | the file has a `[default]` section with `aws_access_key_id` and `aws_secret_access_key` and no `credential_process`; only missing key names are ever shown |
+| `aws` | `aws` is installed (`unchecked`, not `fail`, when it is not) |
+| `identity` | `aws sts get-caller-identity` answers (the account number is not shown) |
+| `job_queue` | `aws batch describe-job-queues` finds the queue and it is `ENABLED` |
+| `bucket` | `aws s3api head-bucket` answers for the bucket of `workDir` |
+
+**預檢不計費 (the preflight costs nothing):** it only reads. It asks who the key is, describes one job queue and heads one bucket; it creates no Batch job (creates no Batch job, writes no bucket, creates no role). Each `aws` call is limited to 30 seconds; a timeout fails that one check. The credential file's path is handed to `aws` in its environment (`AWS_SHARED_CREDENTIALS_FILE`, `AWS_PROFILE=default`), never in the command line, and the agent's own `AWS_*` and `ABF_*` variables are not passed on.
+
+A record made before this type was checked (status `unsupported`, with the old keys `headQueue` and `computeQueue`) is still listed and shown, but it cannot be checked or updated: the message says `請刪除後重建這個計算環境`. Delete it and create it again.
+
+### Launching on AWS Batch
+
+**Who runs what.** The head process of Nextflow runs on the platform host, started by the station agent that runs there; the compute is done by AWS Batch jobs that the head process asks for (`process.executor = 'awsbatch'`). Nothing runs on the cluster you use for Slurm and nothing is installed by the people who launch. As for Google Batch, nothing is written or started before the person who launched says y, and the agent builds the same files again from its own settings and refuses a bundle that is not identical.
+
+**What the platform host needs.** Java 17 or newer, Nextflow, the aws CLI (the AWS command line), a `storage_root` in `config/env.yaml` (the run folders go to `<storage_root>/_aws_runs/<run>`), and the credential file described above (the agent's own setting, mode 600; its path is only in the head process's environment, never in a file, an argument, an answer or the database). The host must be Linux or WSL. The compute AMI that the job queue uses needs the aws CLI too, because Nextflow's tasks call it to stage files.
+
+**The samplesheet.** Every path cell must be an `s3://` URL in the same bucket as `workDir` (for example `s3://lab-bucket/x.fastq.gz`). Putting files there is a later feature (aws-upload): for now put them in the bucket yourself with the aws CLI. A cell that is anything else is refused with that advice.
+
+**The files.** The bundle has five files: `samplesheet.csv`, `params.yaml`, `nextflow.config` (your own text, with the same overwrite block as the other types), `aws.config` and `head.sh`. `aws.config` has exactly these lines, built from the environment:
+
+| Key | Value |
+|---|---|
+| `process.executor` | `'awsbatch'` |
+| `process.queue` | the environment's `jobQueue` |
+| `aws.region` | the environment's `region` |
+| `workDir` | `<workDir>/runs/<run>/work` |
+| `process.resourceLimits` | `[cpus: N]`, only when `maxvCpus` is set; this is a **per-task** cap, one task asks for at most N cpus, it is not a limit on the total vCPU of the queue |
+
+The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: whether Batch uses Spot is decided by the job queue, and the screen says so. No key, profile or role is written into any file.
+
+**Billing.** The first paragraph of the screen before the y says, in one fixed sentence, that AWS bills the lab's AWS account (由 AWS 向實驗室的 AWS 帳號收費) for the Batch jobs this run creates, and that the platform has no estimate and no limit for AWS yet (平台目前還沒有費用預估與上限); read the amount in AWS's own bill and set a budget alert in AWS.
+
+**Cancel.** The agent finds the head process by the number in `head.pid`, checks that it is still the same program, owned by the same user, with the same `-name`, started in that run's folder, and sends it exactly one SIGTERM. Whether Batch jobs that were already started end by themselves is not promised: after a cancel open the AWS Console, the Batch page, and check that every job has ended; jobs that did not end still cost money.
+
+**Not yet.** Resume and relaunch of an AWS Batch run, cleaning its work folder (aws-clean), uploading files (aws-upload), cost estimates, listing files, reading Nextflow's records back and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid); no migration was needed.
 
 ### Status
 
@@ -361,7 +422,7 @@ Fourteen tools. Nine are read-only (`readOnlyHint`): `list_runs`, `get_run`, `li
 
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm and Google Cloud Batch can run; the other types can be modelled only** (Google Cloud Batch is served by a station agent on the platform host, see "Google Cloud Batch" above); the other twelve are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch and AWS Batch can run; the other eleven types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch and AWS Batch can run; the other eleven types can be modelled only. The other eleven are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -370,7 +431,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `lsf-platform` | IBM Spectrum LSF | modelled only |
 | `uge-platform` | Grid Engine | modelled only |
 | `moab-platform` | Moab | modelled only |
-| `awsbatch-platform` | AWS Batch | modelled only |
+| `awsbatch-platform` | AWS Batch | checked and launched on the platform host (upload, clean, resume: not yet) |
 | `awscloud-platform` | AWS Cloud | modelled only |
 | `azbatch-platform` | Azure Batch | modelled only |
 | `azcloud-platform` | Azure Cloud | modelled only |
@@ -382,7 +443,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 
 Seqera Compute is not a type here: it is Seqera's own hosted service and has no counterpart outside Seqera.
 
-For a modelled type, give the settings as JSON: `abf-platform ce create --name=aws1 --platform=awsbatch-platform --config-json=@settings.json`. Only the shared checks apply (name, credential name, the credential scan); there is no field list.
+For a modelled type, give the settings as JSON: `abf-platform ce create --name=az1 --platform=azbatch-platform --config-json=@settings.json`. Only the shared checks apply (name, credential name, the credential scan); there is no field list.
 
 ## 9. Launch and cancel
 
@@ -527,7 +588,7 @@ The question is a human gate only as far as a human sits at the terminal. A proc
 
 Every environment, agent, launch and upload folder has an owner, and a caller sees and uses only their own. Over MCP/HTTP and the page that caller is the user of the token or the login; the local terminal and stdio have no caller and see everything, as before.
 
-- **Environments and agents.** `compute_envs.owner_user_id`, `agents.owner_user_id`. `ce create --owner NAME` names the owner; without it the only user is the owner, with no user there is none, with two or more users the flag is required. `ce update --owner NAME` hands one over, and the agent bound to it goes along when it was the old owner's (refused while another environment of the old owner still uses that agent; the agent's token must then be remade with `agent-token new NAME --user NEW`). An agent token made with `agent-token new NAME --user USER` makes the agent that user's: its first hello fills an empty owner, and a token of another user is refused (403) for that name. `ce create|update` refuse an agent that has a different owner. `primary` is per owner.
+- **Environments and agents.** `compute_envs.owner_user_id`, `agents.owner_user_id`. `ce create --owner NAME` names the owner; without it the only user is the owner, with no user there is none, with two or more users the flag is required. `ce update --owner NAME` hands one over, and the agent bound to it goes along when it was the old owner's (refused while another environment of the old owner still uses that agent; the agent's token must then be remade with `agent-token new NAME --user NEW`). An agent token made with `agent-token new NAME --user USER` makes the agent that user's: its first hello fills an empty owner, and a token of another user is refused (403) for that name. `ce create|update` refuse an agent that has a different owner. `primary` is per owner. On a platform that has users, `agent-token new` requires `--user`, and refuses a name whose agent belongs to another user. A token made without a user (an old one) can serve only an agent nobody owns; for an agent that has an owner its hello, poll and result are refused (403). `ce create|update --owner` also claims the environment's agent for that owner, in the same transaction, when the agent has said hello and nobody owns it (owner-binding).
 - **Resume and relaunch.** Only the owner of a run may resume or relaunch it; the same words as a missing run for everybody else; the new attempt keeps the owner (see "Resume and relaunch" above).
 - **Launches.** `launches.user_id` is the user whose yes made the launch, written in the same transaction as the job. A run is its owner's when the newest launch record of its name names that user. A run with no launch record, or whose record names nobody, is hidden over HTTP and the page and shown at the terminal and over stdio.
 - **The same words.** What belongs to somebody else, or to nobody, answers exactly like what is missing ("not found"), for a read, a launch, a listing and a cancel. Launching or listing through an environment is refused at the queue too, when the confirmation's user is not the owner of the environment and of its agent, so a confirmation made for one cannot be turned on another's. A confirmed cancel is never reused for another user.
