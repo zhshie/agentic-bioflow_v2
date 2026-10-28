@@ -41,7 +41,7 @@ source: 維護者 10-28「加速進行，這禮拜做完」＋10-27 清單「網
 1. **上傳頁 `GET /upload`**：只列 `status == available`、型別允許上傳（GOOGLE_BATCH／AWS，沿用 `jobs.py` 的判斷，不重寫）、屬於自己的環境。一個都沒有 → 一句話＋連到 `/settings`，不顯示表單。表單：運算環境、資料集名稱、版本（規則同 `register_dataset`：`^[A-Za-z0-9._-]{1,64}$`）、FASTQ 檔（`<input type=file multiple>`）、樣本表（選填）。不用 JS（拖放區留給之後）。說明一句：每檔上限 2 GB，更大的檔請改用指令（顯示 `check_web_upload` 給的指令）。國網／Slurm 環境不列，並在頁面說明「國網環境的資料目前請用指令上傳」。
 2. **`POST /upload`**：`same_origin` → `user_of` → CSRF（purpose `upload`）。用 `request.stream()` 配 python-multipart 串流解析，邊收邊寫到 `<uploads>/<user>/.incoming-<batch>/`；任何一檔超過 2,000,000,000 位元組立刻中止、刪掉這批暫存、回 413 頁（帶指令）。檔名含 `/`、`\`、`..` 或控制字元一律拒收（不截斷）；重名拒收（見裁決 6）。收完後把檔案移到 `<uploads>/<user>/<名>`（`enqueue_put_upload` 要求的位置），每檔呼叫一次 `enqueue_put_upload`，303 到 `/upload/<batch>`。樣本表 ≤1 MiB（`SAMPLESHEET_LIMIT`），沒給就用 `draft_samplesheet`（`pair_fastq`）產生；配不成對 → 400 頁列出哪些檔配不到，並清掉這批暫存、不排工作。
 3. **批次紀錄**：每批存 `{batch, owner, ce, name, version, files:[{name, job_id, dest}], samplesheet}`（存成 `<uploads>/<user>/.batches/<batch>.json`，見裁決 13）。批次只有本人看得到；他人的 batch ＝ 404。
-4. **進度頁 `GET /upload/{batch}`**：每檔一列（檔名、大小、狀態：排隊中／傳送中／完成／失敗＋原因），15 秒自動重新整理（沿用既有 meta refresh，不加 JS）。全部完成 → 呼叫 `register_dataset(..., destination=<ce>)`，檔案路徑用工作回報的 `gs://`／`s3://` 位置，樣本表儲存格換成同一組位置；登記成功顯示「已登記，前往送出」連到 `/launch`。已登記過（同 owner、name、version）＝直接顯示已登記，不重複登記。有任一失敗 → 不登記，顯示失敗原因與「重新上傳」連結。
+4. **進度頁 `GET /upload/{batch}`**：每檔一列（檔名、大小、狀態：排隊中／傳送中／完成／失敗＋原因），15 秒自動重新整理（沿用既有 meta refresh，不加 JS）。全部完成 → 呼叫 `register_dataset(..., destination=<ce>)`，檔案路徑用工作回報的 `gs://`／`s3://` 位置，樣本表儲存格換成同一組位置；登記成功顯示「已登記，前往送出」連到 `/launch`。本批已登記（批次旗標）＝直接顯示已登記，不重複登記。有任一失敗 → 不登記，顯示失敗原因與「重新上傳」連結。
 5. **網頁總看板**：灰色「上傳資料」按鈕變成真的連結；`/launch` 第 4 步無樣本表時連到 `/upload`。
 6. 平台本身不開任何對外連線（憲法原則 2）：位元組只寫本機暫存夾，送雲端由既有站台代理工作完成。CSP 不變。
 
@@ -90,6 +90,13 @@ source: 維護者 10-28「加速進行，這禮拜做完」＋10-27 清單「網
 14. 進度頁每檔狀態的符號＋文字：`○ 排隊中`／"○ Queued"、`◐ 傳送中`／"◐ Sending"、`✓ 完成`／"✓ Done"、`✕ 失敗`／"✕ Failed"；不只靠顏色。維護者看截圖時可改。
 15. 空欄位：沒選任何 FASTQ＝400「請選擇至少一個 FASTQ 檔。」／"Choose at least one FASTQ file."；名稱或版本空白＝400 該欄「此欄為必填。」／"This field is required."；皆不寫檔、不排工作。
 16. DESIGN.md 用字禁用清單只檢查本任務頁面自己寫的句子；引用 `jobs.py`／站台回傳的訊息原文照登。
+
+17. （10-28 第四次合約退回後）**「/upload 必須不存在」的既有斷言**：`test_confirm_page.py:315`、`test_web_board.py:1184`（`test_tn04_other_paths_stay_missing`）把 `/upload` 從「必須 404」清單拿掉，改成斷言它存在（未登入時與 `/launch` 同樣轉到登入）；`test_web_actions.py:505-506`（`test_tc051_tc056_nothing_out_of_scope_exists`）正規表達式移除 `upload|`，另加一行斷言含 upload 的路由恰為 `/upload` 與 `/upload/{batch}`。理由：路由現在依維護者 10-28 要求存在；其餘清單與字詞不動。ledger 逐條列。
+18. **重新上傳**：uploads 夾已有同名檔時，若該檔屬於本人一個「已失敗」的批次，允許覆蓋（先刪舊暫存、舊批次紀錄標記 superseded）；屬於進行中或已登記的批次＝拒收「此檔名正在上傳或已使用，請改檔名。」／"This file name is in use by another upload; rename the file."
+19. 未登入者 `POST /upload`＝與 `POST /launch` 未登入時的反應相同。
+20. 國網說明句只在使用者有 Slurm 類環境時顯示。
+21. 大檔指令：表單下方對每個列出的雲端環境各顯示一行該環境的大檔指令（內容同 `cloud_store.big_file_command`，以 `<檔名>` 佔位）。
+22. **合約規則**：計畫範圍內未明寫的細節由 verifier 依專長守則與既有畫面慣例自行決定預期值並寫進 TC，不再以「計畫未寫」退回；只有「照計畫字面無法實作」或「與憲法／ADR 衝突」才算阻擋。
 
 ## 專長守則（ui）
 
