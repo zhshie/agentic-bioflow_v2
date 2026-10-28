@@ -652,7 +652,7 @@ def test_jobs_other_than_the_preflight_are_refused_in_plain_words(ip):
     # aws-launch: launch_nextflow, cancel_run and pipeline_files are taken now; the rest stays refused
     for kind in ("launch_nextflow", "cancel_run", "pipeline_files"):
         jobs.check_target(ip.state_db, "aws1", kind)
-    for kind in ("clean_work", "put_upload", "list_site_files"):
+    for kind in ("clean_work", "list_site_files"):      # aws-upload: put_upload is taken now
         with pytest.raises(jobs.JobRefused) as e:
             jobs.check_target(ip.state_db, "aws1", kind)
         msgs.append(str(e.value))
@@ -824,9 +824,9 @@ def test_no_new_write_path_for_aws(ip):
     _available_aws(ip)
     for kind in ("launch_nextflow", "cancel_run"):      # aws-launch: the two writes that are built, each behind a confirmation
         jobs.check_target(ip.state_db, "aws1", kind)
-    for kind in ("clean_work", "put_upload"):
-        with pytest.raises(jobs.JobRefused):
-            jobs.check_target(ip.state_db, "aws1", kind)
+    jobs.check_target(ip.state_db, "aws1", "put_upload")      # aws-upload: allowed; its only exit is site.start_fed / site.run_fixed
+    with pytest.raises(jobs.JobRefused):
+        jobs.check_target(ip.state_db, "aws1", "clean_work")
 
 
 # ---- the safety net: words, secrets, data shape ----------------------------------------------------------------------
@@ -924,7 +924,7 @@ def test_docs_list_every_aws_key_and_check():
     assert "headQueue" in d and "computeQueue" in d and "請刪除後重建" in d
     par = doc("SEQERA_PARITY.md")
     row = [ln for ln in par.splitlines() if "`awsbatch-platform`" in ln][0]
-    assert "Have (create + check + launch + cancel); upload and clean in aws-upload / aws-clean" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel + upload); clean in aws-clean" in row and row.rstrip().endswith("[ ] |")
     t = doc("TESTING.md")
     assert "aws-ce-type" in t and "預檢不計費" in t and "git diff" in t
     for text in (d, par, t):

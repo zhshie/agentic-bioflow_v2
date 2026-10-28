@@ -359,7 +359,7 @@ A record made before this type was checked (status `unsupported`, with the old k
 
 **What the platform host needs.** Java 17 or newer, Nextflow, the aws CLI (the AWS command line), a `storage_root` in `config/env.yaml` (the run folders go to `<storage_root>/_aws_runs/<run>`), and the credential file described above (the agent's own setting, mode 600; its path is only in the head process's environment, never in a file, an argument, an answer or the database). The host must be Linux or WSL. The compute AMI that the job queue uses needs the aws CLI too, because Nextflow's tasks call it to stage files.
 
-**The samplesheet.** Every path cell must be an `s3://` URL in the same bucket as `workDir` (for example `s3://lab-bucket/x.fastq.gz`). Putting files there is a later feature (aws-upload): for now put them in the bucket yourself with the aws CLI. A cell that is anything else is refused with that advice.
+**The samplesheet.** Every path cell must be an `s3://` URL in the same bucket as `workDir` (for example `s3://lab-bucket/x.fastq.gz`). The platform can now put a staged upload there (see **Uploading to AWS** below), or you put the files in the bucket yourself with the aws CLI. A cell that is anything else is refused with that advice.
 
 **The files.** The bundle has five files: `samplesheet.csv`, `params.yaml`, `nextflow.config` (your own text, with the same overwrite block as the other types), `aws.config` and `head.sh`. `aws.config` has exactly these lines, built from the environment:
 
@@ -377,7 +377,9 @@ The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: whether
 
 **Cancel.** The agent finds the head process by the number in `head.pid`, checks that it is still the same program, owned by the same user, with the same `-name`, started in that run's folder, and sends it exactly one SIGTERM. Whether Batch jobs that were already started end by themselves is not promised: after a cancel open the AWS Console, the Batch page, and check that every job has ended; jobs that did not end still cost money.
 
-**Not yet.** Resume and relaunch of an AWS Batch run, cleaning its work folder (aws-clean), uploading files (aws-upload), cost estimates, listing files, reading Nextflow's records back and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid); no migration was needed.
+**Not yet.** Resume and relaunch of an AWS Batch run, cleaning its work folder (aws-clean), cost estimates, listing files, reading Nextflow's records back and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid); no migration was needed.
+
+**Uploading to AWS.** A `put_upload` job for an AWS Batch environment is queued the same way as for Google Batch (`enqueue_put_upload`); the Upload press is the yes, so no confirmation is asked. The agent on the platform host judges the job again, streams the staged file into `s3://<workDir bucket>/uploads/<owner>/<name>` with `aws s3 cp -`, asks the size with `aws s3api head-object`, and removes the staged copy only when the sizes agree. The scheme is read from the `path` prefix, so no migration was needed. A file over 2 GB is not taken: the answer gives `aws s3 cp <folder> s3://<bucket>/uploads/<owner>/rawdata/ --recursive` to run on your own computer with your own AWS login; the platform does not upload it for you. 網頁入口尚未接上 (the web page does not call it yet). bucket 若開了版本控管，覆寫同名檔會留下舊版本、仍然收費 (with versioning on, overwriting a file of the same name keeps the old version, which is still billed). Cleaning the work folder (aws-clean), listing files and reading records back remain 尚未支援.
 
 ### Status
 
