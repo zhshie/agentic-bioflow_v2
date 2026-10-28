@@ -171,7 +171,7 @@ quarantine_check() { # fills QUAR; prints one stderr line per problem; returns 1
             echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' must look like tests/<name>.sh" >&2; bad=1; continue
         elif [ ! -f "$ROOT/$fpath" ]; then
             echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' does not exist (typo? an entry for a missing file protects nothing)" >&2; bad=1; continue
-        elif case "$base" in platform_test.sh|platform_clock_test.sh|platform_shard_*_test.sh) true ;; *) false ;; esac; then
+        elif case "$base" in platform_test.sh|platform_clock_test.sh|platform_clock_2_test.sh|platform_shard_*_test.sh) true ;; *) false ;; esac; then
             echo "quarantine: tests/quarantine.txt:$lineno: $base may not be quarantined: it wraps the platform pytest suite, so quarantining it would let any platform test failure through" >&2; bad=1; continue
         elif [ "$base" = "run_all.sh" ]; then
             echo "quarantine: tests/quarantine.txt:$lineno: run_all.sh is not a test file" >&2; bad=1; continue
@@ -360,8 +360,8 @@ FILES="${FILES%$'\n'}"
 # depends on them.
 if [ -n "$SHARD" ]; then
     SH_I="${SHARD%/*}"; SH_N="${SHARD#*/}"
-    SH_ORDER="$(printf '%s\n' "$FILES" | LC_ALL=C sort | awk '/^platform_(test|clock_test|shard_[0-9]+_test).sh$/ {print "40 " $0}'
-               printf '%s\n' "$FILES" | LC_ALL=C sort | awk '!/^platform_(test|clock_test|shard_[0-9]+_test).sh$/ {print "1 " $0}')"
+    SH_ORDER="$(printf '%s\n' "$FILES" | LC_ALL=C sort | awk '/^platform_(test|clock_test|clock_2_test|shard_[0-9]+_test).sh$/ {print "40 " $0}'
+               printf '%s\n' "$FILES" | LC_ALL=C sort | awk '!/^platform_(test|clock_test|clock_2_test|shard_[0-9]+_test).sh$/ {print "1 " $0}')"
     FILES="$(printf '%s\n' "$SH_ORDER" | awk -v n="$SH_N" -v i="$SH_I" '
         NF { w[NR]=$1; f[NR]=$2 }
         END {

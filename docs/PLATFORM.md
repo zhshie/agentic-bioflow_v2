@@ -763,7 +763,8 @@ No deleting of runs, run folders or results on the site (finished job rows are p
 ```bash
 bash tests/platform_test.sh          # part 1 of the platform tests, one of the entries of tests/run_all.sh
 bash tests/platform_shard_<n>_test.sh  # part n, for n = 2 to 8 (the same wrapper, only the part differs)
-bash tests/platform_clock_test.sh    # the clock part: the two files that check the clock run alone, one after the other
+bash tests/platform_clock_test.sh    # the clock part: test_station_e2e.py, which checks the clock, runs alone
+bash tests/platform_clock_2_test.sh  # the clock2 part: test_nextflow_e2e.py, the other file that checks the clock, runs alone in its own entry
 ```
 
 It builds a venv in `${XDG_CACHE_HOME:-$HOME/.cache}/abf-platform-venv`, downloads the pinned Nextflow and its `nf-tower` plugin into `${XDG_CACHE_HOME:-$HOME/.cache}/abf-platform` (every file checked against a pinned sha256), and runs `pytest` in `platform/`. The end-to-end tests run the real Nextflow, against a receiver on `127.0.0.1`, with small pipelines from `platform/tests/fixtures/flows/` that need no container. `ABF_PLATFORM_PART=all` runs all the parts in one entry.
