@@ -1062,3 +1062,13 @@ def test_k05_k06_failures_say_what_and_leak_nothing(w, ann, caplog):
         for bad in ("Traceback", 'File "', "SELECT", "sqlite", str(PLATFORM_DIR), cookie):
             assert bad not in text and bad not in caplog.text, bad
         assert len(re.findall(r'name="csrf"', text)) == len(re.findall(r'name="csrf" value="[0-9a-f]{64}"', text))
+
+
+def test_b01a_confirm_summary_is_the_fields_list(w, ann):
+    # B01 (readability): one label/value pair per line, like the /launch summary; the flex `kv` chips ran all six together.
+    c = login(w, "ann")
+    r = step1(c)
+    m = re.search(r'<dl class="fields">(.*?)</dl>', mid_of(r.text), re.S)
+    assert m, mid_of(r.text)[:400]
+    assert len(re.findall(r"<dt>", m.group(1))) == 6
+    assert 'class="kv"' not in r.text
