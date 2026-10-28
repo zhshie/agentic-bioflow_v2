@@ -25,7 +25,7 @@ QUEUE = "lab-queue"
 CRED = "aws-lab"
 AWS = "awsbatch-platform"
 AKID = "AK" + "IA" + "ABCDEFGHIJKLMNOP"      # built in pieces so that no tracked file holds a key-shaped string
-CRED_FILE = "[default]\naws_access_key_id = " + AKID + "\naws_secret_access_key = MARKERSECRET0123456789abcdefghij\n"
+CRED_FILE = "[default]\naws_access_key_id = " + AKID + "\naws_secret_access_key = MARKER" + "SECRET0123456789abcdefghij\n"
 ACCOUNT = "1234" + "5678" + "9012"
 CHECK_NAMES = ["credential_name", "credential_file", "credential_shape", "aws", "identity", "job_queue", "bucket"]
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="permission bits")
@@ -400,7 +400,7 @@ def test_the_shape_of_the_file_is_judged_without_printing_it(ip, monkeypatch):
     assert st == "fail" and "aws_secret_access_key" in detail
     results.append(res)
     # (b) no [default] section, only another one
-    p = cred_file(ip, monkeypatch, "[other]\naws_access_key_id = " + AKID + "\naws_secret_access_key = MARKERSECRET0123456789abcdefghij\n")
+    p = cred_file(ip, monkeypatch, "[other]\naws_access_key_id = " + AKID + "\naws_secret_access_key = MARKER" + "SECRET0123456789abcdefghij\n")
     res = direct(p)
     st, detail = by_name(res)["credential_shape"]
     assert st == "fail" and "憑證檔沒有 [default] 區段" in detail and "other" not in detail

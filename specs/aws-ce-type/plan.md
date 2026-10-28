@@ -87,7 +87,7 @@ source: memory/PLAN-abf-v3-replan-2026-10.md Milestone 3 的 C-4（前半：計�
 13. **不需要 migration**：同一張 `compute_envs` 表的新 `config_json` 鍵，`status` 沿用既有五種值；舊紀錄不受影響。
 
 ## 失敗先行測試（`platform/tests/test_aws_ce.py`，現在都會紅；全部用假 `runner`、假 `which`，不碰網路；仿 `platform/tests/test_gcb_ce.py` 的 `Inproc` 夾具與 `Fake` runner）
-工具常數：`REGION="eu-west-1"`、`BUCKET_URL="s3://lab-bucket/work/"`、`QUEUE="lab-queue"`、`CRED="aws-lab"`；`good_config()` ＝ `{"region":REGION,"workDir":BUCKET_URL,"jobQueue":QUEUE}`；`fields()` 帶 `agent="a1"`。金鑰字串一律用拼接組出（裁決 J，`tests/credentials_stay_in_settings_test.sh` 會掃）：`AKID = "AK" + "IA" + "ABCDEFGHIJKLMNOP"`，`CRED_FILE = "[aws-lab]\naws_access_key_id = " + AKID + "\naws_secret_access_key = MARKERSECRET0123456789abcdefghij\n"`。
+工具常數：`REGION="eu-west-1"`、`BUCKET_URL="s3://lab-bucket/work/"`、`QUEUE="lab-queue"`、`CRED="aws-lab"`；`good_config()` ＝ `{"region":REGION,"workDir":BUCKET_URL,"jobQueue":QUEUE}`；`fields()` 帶 `agent="a1"`。金鑰字串一律用拼接組出（裁決 J，`tests/credentials_stay_in_settings_test.sh` 會掃）：`AKID = "AK" + "IA" + "ABCDEFGHIJKLMNOP"`，`CRED_FILE = "[aws-lab]\naws_access_key_id = " + AKID + "\naws_secret_access_key = MARKER" + "SECRET0123456789abcdefghij\n"`。
 
 建立與驗證：
 - `test_a_valid_aws_batch_environment_is_created_as_creating`：`good_config()` ＋ `spot:true, maxvCpus:256` → `create` 成功、`status=="creating"`、`config["workDir"]=="s3://lab-bucket/work"`（結尾斜線去掉）、`message` 含「waiting for the first preflight」。
