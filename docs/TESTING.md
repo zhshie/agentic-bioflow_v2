@@ -757,6 +757,15 @@ The automatic tests never reach the internet. This is the one time a person chec
 4. **No network.** Switch the agent machine's network off, delete that job row (or wait 24 hours) and call it again. Check: within about a minute `state` is `error`, `error` is `network`, and `reason` names nf-co.re and says to check the network.
 5. **Write down** the output of each step in `specs/nfcore-catalogue/ledger.md`.
 
+## Owner binding follow-up (owner-binding)
+
+For the administrator of a platform that has two users, alice and bob, and an old agent token that names no user. This is a data move: nothing in the schema changed.
+
+1. **Find what has no owner.** Run `abf-platform ce list` and `abf-platform launches`. Note every agent or environment whose owner reads `(none: local only)`.
+2. **Reissue the old tokens.** For each agent whose old token names no user: check that its hello is now refused (403), then `abf-platform agent-token revoke <name>` and `abf-platform agent-token new <name> --user <U>`; put the new token in the agent's token file and restart the agent. Check: the new token's hello is accepted and the agent keeps its owner.
+3. **Give the environments their owners.** `abf-platform ce update <env> --owner <U>` for each environment that has none; this claims its unowned agent too. Restarting the platform does the same for an agent whose environments all belong to one user.
+4. **Check the walls.** With alice's personal access token call `list_agents` and `get_compute_env`: only her own show. With bob's token ask `get_compute_env` for alice's environment and for a name that does not exist: the two answers are the same words ("not found").
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in
