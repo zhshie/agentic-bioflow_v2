@@ -846,8 +846,10 @@ def test_the_type_constants():
     # TC-089
     from abf_platform import compute_envs
     assert compute_envs.SUPPORTED == "slurm-platform"
-    assert compute_envs.PLATFORM_HOST_TYPES == (GCB,)
-    assert compute_envs.CHECK_ONLY_TYPES == ("awsbatch-platform",)
+    # aws-launch changed this on purpose: before, PLATFORM_HOST_TYPES == (GCB,) and CHECK_ONLY_TYPES == ("awsbatch-platform",);
+    # now AWS can be launched too, so it is a platform-host type and nothing is check-only any more.
+    assert compute_envs.PLATFORM_HOST_TYPES == (GCB, "awsbatch-platform")
+    assert compute_envs.CHECK_ONLY_TYPES == ()
     assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, "awsbatch-platform")
 
 
@@ -860,7 +862,8 @@ def test_docs_list_every_gcb_key_and_check():
     d = doc("PLATFORM.md")
     assert re.search(r"`googlebatch-platform` \| Google Cloud Batch \| Slurm-like confirmed launch and cancel on the platform host "
                      r"\(resume: not yet\)", d)
-    assert "Slurm and Google Cloud Batch can run; the other types can be modelled only" in d
+    # aws-launch changed this sentence on purpose (plan A9 d): AWS Batch can run now
+    assert "Slurm, Google Cloud Batch and AWS Batch can run; the other eleven types can be modelled only" in d
     for key in ("project", "location", "workDir", "spot", "bootDiskSize", "bootDiskImage", "serviceAccountEmail", "network",
                 "subnetwork", "usePrivateAddress", "labels", "maxvCpus") + tuple(CHECK_NAMES):
         assert "`%s`" % key in d, key

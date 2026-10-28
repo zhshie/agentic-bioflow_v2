@@ -306,7 +306,7 @@ def test_tcg04_g05_g06_the_web_app_has_the_routes_of_009c_plus_the_board_and_the
                       ("/act/{verb}", ("POST",)), ("/authorize", ("GET", "HEAD", "POST")),
                       ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)),
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)),
-                      ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)),      # 012b: the launch form and the three buttons that only ask
+                      ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),      # 012b: the launch form and the three buttons that only ask; guided-launch-2: the diagram picture
                       ("/login", ("GET", "HEAD")), ("/login", ("POST",)), ("/logout", ("POST",)),
                       ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")),
                       ("/token", ("OPTIONS", "POST")), ("/usage", ("GET", "HEAD")),

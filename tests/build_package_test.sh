@@ -399,9 +399,11 @@ out=$(CITE_CURL=false bash "$S" "$G" 2>/dev/null); rc=$?
   && ok "TC-G06a accepted+done build" || no "TC-G06a" "rc=$rc"
 { grep -qF "Q-richness?" "$G/submission/manuscript.qmd" && grep -qF "Q-evenness?" "$G/submission/manuscript.qmd"; } \
   && ok "TC-G06b both questions in the qmd" || no "TC-G06b" "missing"
-# TC-G23: no 'ready vs assembled' wording (the issue's second suggestion is out of scope)
-grep -qE 'still need prose|not yet a finished document|placeholder\(s\)' <<<"$out" \
-  && no "TC-G23" "new wording appeared" || ok "TC-G23 success message unchanged"
+# TC-G23 (reversed by specs/finish-assembled-not-ready, TC-N13): the success message now
+# says assembled, not ready (issue #12's second suggestion)
+{ grep -qF 'placeholder(s)' <<<"$out" && grep -qF 'still need prose' <<<"$out" \
+  && grep -qF 'not yet a finished document' <<<"$out"; } \
+  && ok "TC-G23 success message says assembled, not finished" || no "TC-G23" "wording missing"
 
 # TC-G07: case and whitespace
 G=$(gate_proj g07); printf -- '- **richness**\n  id: richness\n  question: Q?\n  status:  Accepted  \n' > "$G/analysis/analysis.md"
@@ -466,6 +468,72 @@ grep -qF 'status: accepted' "$(dirname "$S")/../skills/finish/SKILL.md" \
   && ok "TC-G15a finish SKILL.md names status: accepted" || no "TC-G15a" "missing"
 grep -qF 'status: accepted' "$(dirname "$S")/../docs/FINISH.md" \
   && ok "TC-G15b docs/FINISH.md names status: accepted" || no "TC-G15b" "missing"
+
+# ---------------------------------------------------------------------------
+# specs/finish-assembled-not-ready: the success output says assembled, not finished.
+NOTE_RE='^note      manuscript.qmd is assembled, not finished: '
+G=$(gate_proj n01); { blk richness accepted; blk evenness accepted; } > "$G/analysis/analysis.md"
+nout=$(CITE_CURL=false bash "$S" "$G" 2>/dev/null); nrc=$?
+nerr=$(CITE_CURL=false bash "$S" "$G" 2>&1 >/dev/null)
+# TC-N01
+{ grep -qF 'placeholder(s)' <<<"$nout" && grep -qF 'still need prose' <<<"$nout" \
+  && grep -qF 'not yet a finished document' <<<"$nout"; } \
+  && ok "TC-N01 success output says assembled, not finished" || no "TC-N01" "<<$nout>>"
+# TC-N02
+[ "$(grep -E "$NOTE_RE" <<<"$nout")" = "note      manuscript.qmd is assembled, not finished: 2 Results placeholder(s) still need prose, and the Discussion is not drafted - not yet a finished document" ] \
+  && ok "TC-N02 note line verbatim" || no "TC-N02" "<<$nout>>"
+# TC-N04 / N05 / N07 (no figures in this project, so extra GAP lines exist)
+K=$(grep -E "$NOTE_RE" <<<"$nout" | sed -E 's/.*: ([0-9]+) Results.*/\1/')
+[ "$K" = "$(grep -c "^\[GAP: Results for '" "$G/submission/manuscript.qmd")" ] \
+  && ok "TC-N04 K equals the placeholders in the file" || no "TC-N04" "K=$K"
+[ "$K" = 2 ] && ok "TC-N05 K is 2 for two entries" || no "TC-N05" "K=$K"
+[ "$(grep -c '^\[GAP:' "$G/submission/manuscript.qmd")" -gt 2 ] && [ "$K" = 2 ] \
+  && ok "TC-N07 only Results placeholders are counted" || no "TC-N07" "K=$K"
+# TC-N08 / N09
+[ "$(grep -cxF 'wrote     submission/manuscript.qmd' <<<"$nout")" = 1 ] \
+  && ok "TC-N08 wrote line unchanged and on its own line" || no "TC-N08" "<<$nout>>"
+ln=$(grep -nxF 'wrote     submission/manuscript.qmd' <<<"$nout" | cut -d: -f1)
+{ sed -n "$((ln+1))p" <<<"$nout" | grep -qE "$NOTE_RE"; } \
+  && ok "TC-N09 note directly follows the wrote line" || no "TC-N09" "<<$nout>>"
+# TC-N10 / N11
+grep -qE "$NOTE_RE" <<<"$nout" && ok "TC-N10 note on stdout" || no "TC-N10" "missing"
+! grep -qF 'not yet a finished document' <<<"$nerr" && ok "TC-N11 note not on stderr" || no "TC-N11" "<<$nerr>>"
+# TC-N19 / N20
+[ "$nrc" = 0 ] && ok "TC-N19 exit 0 with placeholders" || no "TC-N19" "rc=$nrc"
+! grep -qE 'not yet a finished document|assembled, not finished' "$G/submission/manuscript.qmd" \
+  && grep -qF '*[GAP: not drafted' "$G/submission/manuscript.qmd" \
+  && ok "TC-N20 manuscript.qmd does not carry the note" || no "TC-N20" "note leaked into qmd"
+# TC-N06 / N03: one entry
+G1=$(gate_proj n06); blk richness accepted > "$G1/analysis/analysis.md"
+o1=$(CITE_CURL=false bash "$S" "$G1" 2>/dev/null)
+K1=$(grep -E "$NOTE_RE" <<<"$o1" | sed -E 's/.*: ([0-9]+) Results.*/\1/')
+[ "$K1" = 1 ] && ok "TC-N06 K is 1 for one entry" || no "TC-N06" "K=$K1"
+grep -qF 'the Discussion is not drafted' <<<"$o1" && ok "TC-N03 Discussion sentence present" || no "TC-N03" "<<$o1>>"
+# TC-N12: K counts the file's content
+cp "$G/submission/manuscript.qmd" "$TMP/n12.qmd"
+sed -i "0,/^\[GAP: Results for 'richness'.*/s//Richness was high./" "$TMP/n12.qmd"
+[ "$(grep -c "^\[GAP: Results for '" "$TMP/n12.qmd")" = 1 ] \
+  && ok "TC-N12 count follows the file" || no "TC-N12" "count wrong"
+# TC-N16: refused build prints no note
+GR=$(gate_proj n16); blk richness proposed > "$GR/analysis/analysis.md"
+ro=$(CITE_CURL=false bash "$S" "$GR" 2>"$TMP/n16.err"); rrc=$?
+{ [ "$rrc" = 2 ] && ! grep -qF 'not yet a finished document' <<<"$ro" \
+  && ! grep -qF 'not yet a finished document' "$TMP/n16.err" && ! grep -qE '^note ' <<<"$ro"; } \
+  && ok "TC-N16 refused build prints no note" || no "TC-N16" "rc=$rrc"
+# TC-N17: K=0 via a grep shim that reports 0 for the Results-placeholder count
+mkdir -p "$TMP/n17bin"; REALGREP=$(command -v grep)
+cat > "$TMP/n17bin/grep" <<SHIM
+#!/bin/bash
+for a in "\$@"; do case "\$a" in "^\[GAP: Results for '"*) echo 0; exit 1;; esac; done
+exec "$REALGREP" "\$@"
+SHIM
+chmod +x "$TMP/n17bin/grep"
+G0=$(gate_proj n17); blk richness accepted > "$G0/analysis/analysis.md"
+o0=$(PATH="$TMP/n17bin:$PATH" CITE_CURL=false bash "$S" "$G0" 2>/dev/null)
+{ [ "$(grep -cE "$NOTE_RE" <<<"$o0")" = 1 ] \
+  && [ "$(grep -E "$NOTE_RE" <<<"$o0")" = "note      manuscript.qmd is assembled, not finished: the Discussion is not drafted - not yet a finished document" ] \
+  && ! grep -qF '0 Results' <<<"$o0" && ! grep -qx '0' <<<"$o0"; } \
+  && ok "TC-N17 K=0 prints the Discussion-only note once" || no "TC-N17" "<<$o0>>"
 
 echo
 [ "$fails" = 0 ] && echo "OK: build_package.sh" || { echo "$fails failed"; exit 1; }

@@ -53,13 +53,13 @@ Buttons are fixed verbs only (上傳, 續跑, 重跑, 設定, 日誌, 打包, �
 2. **First use / Setup** (`#setup`): numbered disclosure steps: account ✓, access token ✓, compute environment (required: environment, site agent status, cluster account), AI key + Jev key (optional, browser only), create first project. Right column becomes a step guide (formal fields).
 3. **Project with no analysis**: one next step, "Upload raw data"; after upload the launch stage opens.
 4. **Upload data**: drop zone (≤ ~2 GB per file; large FASTQ via the AI and `push.sh`; files go through the site agent to the person's own site or cloud storage, platform keeps no copy); Create samplesheet (auto-pair R1/R2, columns from the chosen pipeline's `schema_input.json`, makes a new version); Uploaded data table with version, used by, checksum, updated.
-5. **Launch stage**: guided walk of v2's launch skill, numbered disclosures (done ✓ / current outlined / later):
-   1 Pre-checks (revision pinned, schema read, registered, samplesheet draft, directives, site connection; notices such as egress host) ·
-   2 Pipeline: tabs "Used before" (pipeline, revision, last used by, when; Select; ⚡ Quick launch = all previous settings → confirmation) and "New pipeline (all nf-core)" (search, cards, Verified tag, 16S prefilled) ·
-   3 Workflow diagram (from the pipeline's `docs/images/` at that revision, caption names the file) + stage list from the README, skipped stages struck through ·
-   4 Samplesheet (column roles, preview, n/n paired) ·
-   5 Parameters: three routes ① reuse a previous run (show tuned-on sample count and size vs this run) ② defaults ③ adjust by group; required-without-default warning; every schema group as a disclosure (count + representative names; table name/type/default/this run); "Stages that will run" ·
-   6 Compute environment · 7 Confirm.
+5. **Launch stage**: guided walk, six numbered disclosures (done ✓ / current outlined / later); the order is the maintainer's (guided-launch-2d, 10-28): nothing that is not set up is offered, so there is no pre-check step:
+   1 Analysis name (the one required box of the step) ·
+   2 Compute environment (only environments whose status is `available`, site or cloud alike; with none: "No compute environment is available. Set one up on the settings page first." and a link to `/settings`, and no send button) ·
+   3 Pipeline: tabs "Used before" (pipeline, revision, last used by, when; Select; ⚡ Quick launch = all previous settings → confirmation) and "Other nf-core pipelines" (one pipeline box; once the pipeline is loaded a version drop-down appears beside it, newest first, the newest selected; this is the only place the version can be changed); under the pipeline the workflow diagram itself, shown as an image (no link to open, no file line); a pair the chosen environment does not list as registered says so with a link to `/settings` ·
+   4 Samplesheet (column roles, preview, n/n paired; with none uploaded: "No samplesheet has been uploaded. Please upload one first." and a link) ·
+   5 Parameters: the first line says whether the parameter table was read (✓ / … / ✗ / ○); then ① reuse a previous run ② every schema group as a disclosure (box holds the default) ③ advanced box ·
+   6 Confirm (the summary and the one send button).
 6. **Confirmation pages** (every write, ADR 0006): launch (pipeline, samplesheet+version, changed parameters, skipped stages, compute, output path on cluster, copy-back path, estimate, new analysis vs attempt), resume, start over, run downstream. Confirm / Back.
 7. **Running stage**: four summary cards (current step, done/total with bar, duration, cost); tabs 步驟 / 日誌 / 執行資訊 / 設定檔; the steps table (state, step name + process in mono, attempt). Resume / Re-run in the run's menu (→ confirmation). Notices go to the right column.
    - **Terminal** (switch in the title area): a shell on the station agent's machine reaching the site through the ssh master (ADR 0011). Header: `user@site · path`, "共用：你＋abf", "abf：僅查看". Lines: time, who (`abf $` look-only commands tagged 查看; `你 $` the person), output; Nextflow or platform happenings as yellow "事件" lines (e.g. nf-core retry, a confirmed resume typed in by the station agent). When the master is gone the shell asks for passphrase and OTP; the person types them there.
@@ -74,6 +74,16 @@ Buttons are fixed verbs only (上傳, 續跑, 重跑, 設定, 日誌, 打包, �
 11. **Cost** (`#cost`, from the masthead meter): cards NCHC SU / Cloud used / cap / remaining; "never converted" line; Action-needed notice when a launch would exceed the cloud cap (use NCHC / wait for reset); per-analysis table with status Running / Reconciled / Estimate, bill pending.
 12. **Settings**: compute environments, credentials (token, 12 h), Secrets (AI model key, Jev key optional; browser only), Personal (step-by-step mode, development mode); Operator panel and Roles as dashed "coming later".
 13. **Sign-in to confirm** (from an MCP client): name, token, remember 12 h → launch summary.
+
+## 用字 (wording of the Chinese interface; guided-launch-2b)
+
+The maintainer, 2026-10-27: 「一樣要注意中文的顯示不能口語(e.g. "選用這個樣本", "用過的")」. Every Chinese sentence of the interface is written language (正式書面語): a statement of fact or a plain request, with no spoken particles, no "you did not yet" phrasing and no pointing words that stand for nothing. The English text is the equivalent formal sentence.
+
+Rules: (1) say what the state is ("尚無使用紀錄。", "尚未上傳樣本表，無法啟動分析。"), not what the person has or has not done; (2) name the thing instead of pointing at it ("此管線", "該次分析", "已上傳的檔案"); (3) one verb for one act: 選用 (take a row of a table), 套用 (apply a version), 送出 (submit), 載入 (load); (4) a required field is marked with the red `*` (`<span class="req" title="必填">*</span>`, English title "Required") and the legend "* 必填" above the table; the word 必填 is not repeated as a label.
+
+Banned strings in the Chinese text of a page (a test reads the main column of `/launch` in every state and fails on any of them; the pipeline's own English descriptions are not checked): 用過、選好、寫死、自己填、自己調整、你還沒、還沒有、還不能、這個、這份、這條、這一版、一下、弄、搞、東西、喔、啦、吧、囉、蠻、超.
+
+Other screens (board, run page, settings, /welcome, the left column) are not yet swept; that is the backlog item `web-wording-sweep`. A new page uses this section from the start.
 
 ## Constraints
 Single stylesheet, no inline style, no external resources, 15-second refresh. JS only where marked: the terminal page (ttyd), the studio iframe, MultiQC embed, chat send, drag-and-drop upload, client-side pipeline search. Language by `?lang=en` server-side; every screen exists in English. Owner rule: each person sees only their own analyses and terminals. No Galaxy/Seqera logos, names, brand colours or code (ADR 0004).

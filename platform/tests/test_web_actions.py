@@ -272,7 +272,8 @@ def form_values(rig, c, name, **over):
     sheet = re.search(r'<select name="samplesheet"[^>]*>.*?<option value="([^"]+)"', t, re.S).group(1)
     ce = re.search(r'<select name="ce_name"[^>]*>.*?<option value="([^"]+)"', t, re.S).group(1)
     data = {"csrf": csrf, "pipeline": "nf-core/ampliseq", "revision": "2.18.0", "run_name": "web-run", "samplesheet": html.unescape(sheet),
-            "ce_name": html.unescape(ce), "params": ""}
+            "ce_name": html.unescape(ce), "params": "",
+            "shown_pipeline": "nf-core/ampliseq", "shown_revision": "2.18.0"}      # guided-launch-2b: the page was drawn for this pair, so the button sends
     data.update(over)
     return data
 
@@ -281,15 +282,19 @@ def test_tc020_the_form_has_the_fields(rig):
     # TC-020, TC-051, TC-052
     ann = rig.user("ann")
     area_sheet(rig.w, ann)
+    con = sqlite3.connect(str(rig.state))      # guided-launch-2d: only an available environment is offered, and the rig's lab-a starts as `invalid`
+    with con:
+        con.execute("UPDATE compute_envs SET status = 'available' WHERE name = 'lab-a'")
+    con.close()
     c = login(rig, "ann")
-    t = c.get("/launch").text
+    t = c.get("/launch?pipeline=nf-core/ampliseq&revision=2.18.0&src=new").text      # guided-launch-2d: the version box shows once a pipeline is in the address (a drop-down, was a required text box)
     mid = pane(t, "middle") if "data-pane" in t else t
-    for name in ("pipeline", "revision", "run_name"):
+    for name in ("pipeline", "run_name"):
         assert re.search(r'<input [^>]*name="%s"' % name, t)
-    assert re.search(r'<input [^>]*name="revision"[^>]*required', t)
+    assert re.search(r'<select name="revision"', t) and not re.search(r'<input [^>]*name="revision"', t)
     assert re.search(r'<select name="samplesheet"', t) and re.search(r'<select name="ce_name"', t) and re.search(r'<textarea [^>]*name="params"', t)
     assert 'type="file"' not in t and "multipart" not in t and "<ol" not in t and "<svg" not in t and "<canvas" not in t
-    assert len(re.findall(r'<details class="gstep ', mid)) == 7      # guided-launch-1: the page is seven numbered steps (was: no step numbering)
+    assert len(re.findall(r'<details class="gstep ', mid)) == 6      # guided-launch-2d: six numbered steps (guided-launch-1: seven; was: no step numbering)
 
 
 def test_tc021_tc022_choices_are_the_callers_own(rig):
@@ -347,7 +352,7 @@ def test_tc026_tc028_quick_launch(rig):
     from abf_platform import actions
     assert actions.forget(rig.state, rig.index, "run-a", confirmed_by=actions.TERMINAL, caller=ann)["forgotten"] is True
     r = c.get("/launch?from=" + failed)
-    assert r.status_code == 200 and "沒有保留" in r.text and "AGRG" not in r.text and "nf-core/ampliseq" not in re.sub(r"<[^>]+>", "", r.text).replace("管線", "")
+    assert r.status_code == 200 and "未保存" in r.text and "AGRG" not in r.text and "nf-core/ampliseq" not in re.sub(r"<[^>]+>", "", r.text).replace("管線", "")
     assert not re.search(r'name="revision"[^>]*value="[^"]', r.text)
 
 

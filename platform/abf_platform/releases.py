@@ -54,6 +54,14 @@ def pick_latest(tags):
     return best
 
 
+def usable_sorted(tags):
+    """Every usable tag from the list, newest first, as the original strings (guided-launch-2d: the version list of the launch page). Of two
+    spellings of one version the one without the leading v comes first, as in pick_latest, so the first item is always pick_latest's answer."""
+    if not isinstance(tags, (list, tuple)):
+        return []
+    return sorted((t for t in tags if usable(t)), key=lambda t: (_key(t), not t.startswith("v")), reverse=True)
+
+
 def parse_ls_remote(text):
     """Tag names from `git ls-remote --tags --refs` output; bad lines are skipped."""
     out = []
@@ -88,6 +96,14 @@ def _entry(data, repo):
     return None
 
 
+def _listed(entry):
+    """The version list of a cache entry; an entry from before the list was kept holds only its newest version."""
+    listed = entry.get("releases")
+    if isinstance(listed, list) and listed and all(isinstance(x, str) for x in listed):
+        return list(listed)
+    return [entry["revision"]]
+
+
 def _write_cache(path, data):
     tmp = str(path) + ".tmp"
     try:
@@ -103,8 +119,8 @@ def _write_cache(path, data):
     return True
 
 
-def _result(pipeline, revision, source, checked_at, why):
-    return {"pipeline": pipeline, "revision": revision, "source": source, "checked_at": checked_at, "why": why}
+def _result(pipeline, revision, source, checked_at, why, releases=None):
+    return {"pipeline": pipeline, "revision": revision, "source": source, "checked_at": checked_at, "why": why, "releases": releases or []}
 
 
 def lookup(pipeline, fetch, *, cache_path=None, clock=time.time, ttl=86400.0):
@@ -117,21 +133,23 @@ def lookup(pipeline, fetch, *, cache_path=None, clock=time.time, ttl=86400.0):
     data = _read_cache(cache_path)
     old = _entry(data, repo)
     if old is not None and 0 <= now - old["checked_at"] < ttl:
-        return _result(repo, old["revision"], "cache", old["checked_at"], None)
+        return _result(repo, old["revision"], "cache", old["checked_at"], None, _listed(old))
     why = None
     try:
         tags = fetch(repo)
         rev = pick_latest(tags)
+        listed = usable_sorted(tags)
         if rev is None:
             why = "沒有可用的 release tag / no usable release tag for %s" % repo
     except Exception as e:  # any failure of the caller's source counts as a failed lookup
         rev = None
+        listed = []
         why = "查詢最新版失敗 / lookup failed: %s: %s" % (type(e).__name__, e)
     if rev is not None:
         if cache_path is not None:
-            data[repo] = {"revision": rev, "checked_at": now}
+            data[repo] = {"revision": rev, "checked_at": now, "releases": listed}
             _write_cache(cache_path, data)
-        return _result(repo, rev, "fetched", now, None)
+        return _result(repo, rev, "fetched", now, None, listed)
     if old is not None:
-        return _result(repo, old["revision"], "stale-cache", old["checked_at"], why)
+        return _result(repo, old["revision"], "stale-cache", old["checked_at"], why, _listed(old))
     return _result(repo, None, "none", None, why)

@@ -596,7 +596,8 @@ def test_cs02_the_web_form_asks_first_and_takes_site_cells(d, w):
     import html
     sheet = html.unescape(re.search(r'<select name="samplesheet"[^>]*>.*?<option value="([^"]+)"', page, re.S).group(1))
     r = client.post("/launch", data={"csrf": csrf, "pipeline": "nf-core/ampliseq", "revision": "2.18.0", "run_name": "web-run",
-                                     "samplesheet": sheet, "ce_name": "lab-a", "params": ""})
+                                     "samplesheet": sheet, "ce_name": "lab-a", "params": "",
+                                     "shown_pipeline": "nf-core/ampliseq", "shown_revision": "2.18.0"})      # guided-launch-2b
     assert r.status_code == 303 and re.fullmatch(r"/c/[0-9a-f]{32}", r.headers["location"]), r.text
     assert d.w.jobs() == [] and len(d.w.confirmations()) == 1
 

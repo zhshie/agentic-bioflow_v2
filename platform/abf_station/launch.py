@@ -84,6 +84,7 @@ PROJECT_KEY = re.compile(r"^(main\.nf|nextflow\.config|modules\.json|modules/nf-
 PROJECT_MAX_FILE = 200000          # characters of one file of a composed project
 PROJECT_MAX_BYTES = 2 * 1024 * 1024
 PROJECT_MAX_FILES = 2000
+AWS_NO_RESUME = "AWS Batch 的 run 還不能續跑或原樣重跑（尚未支援）(an AWS Batch run cannot be resumed or relaunched yet)"
 GCB_NO_RESUME = "Google Batch 的 run 還不能續跑或原樣重跑（尚未支援）(a Google Batch run cannot be resumed or relaunched yet)"
 
 
@@ -166,6 +167,11 @@ def snapshot_ce(view):
                 "bootDiskImage": c.get("bootDiskImage"), "serviceAccountEmail": c.get("serviceAccountEmail"),
                 "network": c.get("network"), "subnetwork": c.get("subnetwork"), "usePrivateAddress": bool(c.get("usePrivateAddress")),
                 "labels": dict(c.get("labels") or {}), "maxvCpus": c.get("maxvCpus"), "environment": env,
+                "nextflowConfig": c.get("nextflowConfig") or "", "preRunScript": c.get("preRunScript") or "",
+                "postRunScript": c.get("postRunScript") or ""}
+    if view.get("platform") == AWS:
+        return {"name": view.get("name"), "platform": AWS, "region": c.get("region"), "workDir": c.get("workDir"),
+                "jobQueue": c.get("jobQueue"), "spot": bool(c.get("spot")), "maxvCpus": c.get("maxvCpus"), "environment": env,
                 "nextflowConfig": c.get("nextflowConfig") or "", "preRunScript": c.get("preRunScript") or "",
                 "postRunScript": c.get("postRunScript") or ""}
     return {"name": view.get("name"), "platform": view.get("platform"), "workDir": c.get("workDir"),
@@ -496,6 +502,11 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
             raise BundleError("環境: Google Batch 環境還不能送出自訂組合 (a composed pipeline cannot be sent to a Google Batch environment yet)")
         return render_gcb_bundle(ce=ce, agent=agent, facts=facts, roots=roots, run_name=run_name, pipeline=pipeline, revision=revision,
                                  samplesheet=samplesheet, params=params, path_columns=path_columns)
+    if isinstance(ce, dict) and ce.get("platform") == AWS:      # an AWS Batch environment has its own bundle, below
+        if composed is not None:
+            raise BundleError("環境: AWS Batch 環境還不能送出自訂組合 (a composed pipeline cannot be sent to an AWS Batch environment yet)")
+        return render_aws_bundle(ce=ce, agent=agent, facts=facts, roots=roots, run_name=run_name, pipeline=pipeline, revision=revision,
+                                 samplesheet=samplesheet, params=params, path_columns=path_columns)
     if not isinstance(agent, str) or not agent:
         raise BundleError("agent: 這個環境沒有代理 (the environment has no agent)")
     facts = facts if isinstance(facts, dict) else {}
@@ -538,7 +549,7 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
 
 # ---- Google Cloud Batch: the head process runs on the platform host, the compute on Batch (gcb-launch) ----------------------
 
-GCB = compute_envs.PLATFORM_HOST_TYPES[0]
+GCB = compute_envs.GOOGLE_BATCH
 GCB_RUNS = "_gcb_runs"
 GCB_FILE_NAMES = ("samplesheet.csv", "params.yaml", "nextflow.config", "gcb.config", "head.sh")
 GCB_CREDENTIALS_COMMENT = ("# credentials: the agent sets GOOGLE_APPLICATION_CREDENTIALS from its own key file; the path is not part of "
@@ -750,6 +761,178 @@ def render_gcb_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, 
                             else "// the compute environment carries no Nextflow config\n") + OVERWRITE_BLOCK,
         "gcb.config": _gcb_config(ce_out, run_name, base + "/work"),
         "head.sh": _gcb_head_script(run_name, run_folder, pipeline, revision, head_env, tower),
+    }
+    return {"version": BUNDLE_VERSION, "agent": agent, "ce": ce_out, "run_name": run_name, "run_folder": run_folder,
+            "pipeline": pipeline, "revision": revision, "samplesheet": sheet, "params": user_params,
+            "path_columns": sorted(set(path_columns or [])), "tower": tower, "files": files, "pipeline_source": dict(REMOTE)}
+
+
+# ---- AWS Batch: the head process runs on the platform host, the compute on Batch (aws-launch) ----------------------------------
+
+AWS = compute_envs.AWS
+AWS_RUNS = "_aws_runs"
+AWS_FILE_NAMES = ("samplesheet.csv", "params.yaml", "nextflow.config", "aws.config", "head.sh")
+AWS_CREDENTIALS_COMMENT = ("# credentials: the agent sets AWS_SHARED_CREDENTIALS_FILE from its own credentials file; the path is not part of "
+                           "this script")
+AWS_FORBIDDEN_ENV = ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE", "AWS_DEFAULT_PROFILE",
+                     "AWS_SHARED_CREDENTIALS_FILE", "AWS_CONFIG_FILE", "AWS_DEFAULT_REGION")
+NO_AWS_PATH = ("把檔案放進 bucket 是之後的功能（aws-upload），現在請自己放進去：用 `aws s" "3 cp` 把檔案放進 s3://%s/ 底下，再把這一格改成 "
+               "s3:// 路徑 (copying files into the bucket is a later feature; for now put them there with `aws s" "3 cp`)")      # in two pieces: the source holds no upload command
+
+
+def _check_aws_ce(ce):
+    """The settings of an AWS Batch environment, each judged again with the platform's own patterns: they end up in a config file.
+    Returns (the normalised ce, the bucket of workDir, the head environment [(name, value)])."""
+    if not isinstance(ce, dict) or ce.get("platform") != AWS:
+        raise BundleError("環境: 這不是 AWS Batch 環境 (not an AWS Batch environment)")
+    out = {"name": ce.get("name"), "platform": AWS}
+    region = ce.get("region")
+    if not (isinstance(region, str) and compute_envs._AWS_REGION.match(region)):
+        raise BundleError("環境 region: 值不合規則 (region is not acceptable)")
+    out["region"] = region
+    queue = ce.get("jobQueue")
+    if not (isinstance(queue, str) and compute_envs._AWS_QUEUE.match(queue)):
+        raise BundleError("環境 jobQueue: 值不合規則 (jobQueue is not acceptable)")
+    out["jobQueue"] = queue
+    work = ce.get("workDir")
+    if not (isinstance(work, str) and work.startswith("s3://")):
+        raise BundleError("環境 workDir: 必須是 s3:// 開頭的網址 (workDir must be an s3:// URL)")
+    bucket, _, prefix = work[5:].partition("/")
+    if not compute_envs._AWS_BUCKET.match(bucket) or ".." in bucket:
+        raise BundleError("環境 workDir: bucket 名稱不合規則 (the bucket name is not acceptable)")
+    prefix = prefix.rstrip("/")
+    if not prefix:
+        raise BundleError("環境 workDir: s3://%s 沒有子目錄。Nextflow 規定 workDir 至少含一層子目錄，例如 s3://%s/work；請更新環境 "
+                          "(Nextflow needs a workDir with at least one subdirectory)" % (bucket, bucket))
+    if not GCB_WORK_CHARS.match(prefix) or any(part in ("", ".", "..") for part in prefix.split("/")) or len(prefix) > 900:
+        raise BundleError("環境 workDir: 資料夾部分含不支援的字元或 .. (the folder part of workDir is not acceptable)")
+    out["workDir"] = "s3://%s/%s" % (bucket, prefix)
+    spot = ce.get("spot")
+    if spot is not None and not isinstance(spot, bool):
+        raise BundleError("環境 spot: 必須是 true 或 false (true or false)")
+    out["spot"] = bool(spot)
+    cpus = ce.get("maxvCpus")
+    if cpus is not None and (isinstance(cpus, bool) or not isinstance(cpus, int) or not 1 <= cpus <= 10000):
+        raise BundleError("環境 maxvCpus: 必須是 1 到 10000 的整數 (a whole number from 1 to 10000)")
+    out["maxvCpus"] = cpus
+    if ((ce.get("preRunScript") or "").strip()) or ((ce.get("postRunScript") or "").strip()):
+        raise BundleError("環境: %s" % NO_SCRIPTS)
+    config = ce.get("nextflowConfig") or ""
+    _check_text("nextflowConfig", config, allow_cr=True, limit=200000)
+    out["nextflowConfig"] = config
+    head_env = []
+    for i, e in enumerate(ce.get("environment") or []):
+        name, value = e.get("name"), e.get("value", "")
+        if not isinstance(name, str) or not ENV_NAME.match(name):
+            raise BundleError("environment[%d]: 變數名稱 %r 必須是英文字母、數字與底線，且不以數字開頭 (a shell variable name)"
+                              % (i, str(name)[:40]))
+        if not isinstance(value, str) or "\n" in value or "\r" in value or "\x00" in value or len(value) > 2000:
+            raise BundleError("environment %s: 值不能含換行或 NUL，且不超過 2000 字元 (no newline or NUL in a value)" % name)
+        if name in SET_BY_THE_SCRIPT or name in AWS_FORBIDDEN_ENV or name.upper().startswith("ABF_"):
+            raise BundleError("environment %s: 這個變數由送出本身或代理設定，環境不能設 (set by the launch or the agent itself)" % name)
+        if e.get("head", True):
+            head_env.append((name, value))
+    out["environment"] = [dict(e) for e in (ce.get("environment") or [])]
+    # no preRunScript/postRunScript in the bundle: a non-empty one was refused above, an empty one says nothing
+    return out, bucket, head_env
+
+
+def _aws_config(ce, work_uri):
+    """aws.config: the settings of the compute environment, in the words Nextflow reads. It is read after nextflow.config (-c twice),
+    so a line here cannot be overruled by the free text of the environment. `spot` is a note and writes nothing: AWS's job queue decides."""
+    q = _gcb_quote
+    lines = ["// written by the platform from the compute environment; read after nextflow.config, so these settings win",
+             "process.executor = 'awsbatch'", "process.queue = %s" % q(ce["jobQueue"]), "aws.region = %s" % q(ce["region"]),
+             "workDir = %s" % q(work_uri)]
+    if ce["maxvCpus"] is not None:
+        lines.append("process.resourceLimits = [cpus: %d]" % ce["maxvCpus"])      # one task at most; Nextflow has no total of vCPUs
+    return "\n".join(lines) + "\n"
+
+
+def _aws_head_script(run_name, run_folder, pipeline, revision, env, tower):
+    q = shlex.quote
+    lines = ["#!/bin/bash", AWS_CREDENTIALS_COMMENT, "umask 077", "cd %s || exit 1" % q(run_folder)]
+    loopback = (urlparse(tower["endpoint"]).hostname or "") in LOOPBACK
+    had_opts = False
+    for name, value in env:
+        if name == "NXF_OPTS" and loopback:
+            value = (value + " " if value else "") + GCB_LOOPBACK_OPTS
+            had_opts = True
+        lines.append("export %s=%s" % (name, q(value)))
+    if loopback and not had_opts:
+        lines.append("export NXF_OPTS=%s" % q(GCB_LOOPBACK_OPTS))
+    lines.append('export TOWER_ACCESS_TOKEN="$(cat tower.token)"')
+    lines.append("exec nextflow run %s -r %s -name %s -params-file params.yaml -c nextflow.config -c aws.config -with-tower %s"
+                 % (q(pipeline), q(revision), q(run_name), q(tower["endpoint"])))
+    return "\n".join(lines) + "\n"
+
+
+def _check_aws_samplesheet(rows, path_columns, bucket):
+    """The samplesheet of an AWS Batch run: every cell that is read as a path is s3://<the bucket of workDir>/<object>."""
+    f = "samplesheet"
+    if not isinstance(rows, list) or len(rows) < 2:
+        raise BundleError("%s: 至少要有標題列和一列資料 (a header and at least one row)" % f)
+    clean = []
+    for r, row in enumerate(rows):
+        if not isinstance(row, list) or not row:
+            raise BundleError("%s 第 %d 列: 不是一列 (not a row)" % (f, r + 1))
+        if len(row) != len(rows[0]):
+            raise BundleError("%s 第 %d 列: 欄數 %d 與標題列的 %d 不同 (ragged row)" % (f, r + 1, len(row), len(rows[0])))
+        for c, cell in enumerate(row):
+            _check_text("%s 第 %d 列第 %d 欄" % (f, r + 1, c + 1), cell, limit=5000)
+        clean.append(list(row))
+    unknown = set(path_columns or []) - set(clean[0])
+    if unknown:
+        raise BundleError("%s: 沒有名為 %s 的欄 (no such column)" % (f, sorted(unknown)[0]))
+    for r, c, cell in path_cells(clean, path_columns):
+        where = "%s 第 %d 列第 %d 欄（%s）" % (f, r, c, clean[0][c - 1][:40])
+        why = None
+        if any(ord(ch) <= 0x20 or ord(ch) == 0x7F or ord(ch) in BIDI for ch in cell):
+            why = "含空白、控制字元或雙向文字字元 (a space, control or bidirectional character)"
+        else:
+            m = re.match(r"^s3://([^/]+)/(.+)\Z", cell)
+            if not m:
+                why = "必須是 s3://%s/<物件路徑> (must be s3://%s/<object path>)" % (bucket, bucket)
+            elif m.group(1) != bucket:
+                why = "bucket 必須和環境 workDir 的 bucket（%s）相同 (must be in the bucket of workDir)" % bucket
+            elif any(part in ("", ".", "..") for part in m.group(2).split("/")):
+                why = "路徑裡不能有 .、.. 或空的一段 (no . or .. or empty part)"
+        if why:
+            raise BundleError("%s: %s。%s" % (where, why, NO_AWS_PATH % bucket))
+    return clean
+
+
+def render_aws_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samplesheet, params, path_columns=None):
+    """The launch bundle of an AWS Batch environment: the same shape as render_gcb_bundle's, with five files and no account.
+    `roots` is accepted for the same call as render_bundle and not used: reads are s3:// paths of the bucket of workDir. Raises BundleError."""
+    if not isinstance(agent, str) or not agent:
+        raise BundleError("agent: 這個環境沒有代理 (the environment has no agent)")
+    facts = facts if isinstance(facts, dict) else {}
+    if not isinstance(run_name, str) or not RUN_NAME.match(run_name):
+        raise BundleError("run 名稱: %r 必須是小寫英文字母開頭，只含小寫字母、數字、_ 與 -，最長 64 字元 (run name)" % str(run_name)[:70])
+    _check_pipeline(pipeline)
+    _check_revision(revision)
+    ce_out, bucket, head_env = _check_aws_ce(ce)
+    storage = facts.get("storage_root")
+    if not isinstance(storage, str) or rules.path_problem(storage) is not None or rules.normalize(storage) == "/":
+        raise BundleError("storage_root 未設定: 代理主機上的專屬資料夾放在 storage_root 底下，請在部署設定檔（config/env.yaml）設定 "
+                          "storage_root 再重試 (storage_root is not set in the deployment's settings)")
+    if facts.get("reach") != "local":
+        raise BundleError("環境: AWS Batch 的主控程序跑在平台主機上，代理必須在本機（reach: local）；這個代理回報的連線方式是 %r "
+                          "(the agent must be on the platform host)" % str(facts.get("reach"))[:20])
+    tower = _tower(facts, run_name)
+    sheet = _check_aws_samplesheet(samplesheet, path_columns, bucket)
+    user_params = _check_params(params)
+    run_folder = "%s/%s/%s" % (rules.normalize(storage), AWS_RUNS, run_name)
+    base = "%s/runs/%s" % (ce_out["workDir"], run_name)
+    config = ce_out["nextflowConfig"]
+    files = {
+        "samplesheet.csv": _csv_text(sheet),
+        "params.yaml": _gcb_params_yaml(user_params, run_folder + "/samplesheet.csv", base + "/results"),
+        "nextflow.config": ((config if config.endswith("\n") else config + "\n") if config.strip()
+                            else "// the compute environment carries no Nextflow config\n") + OVERWRITE_BLOCK,
+        "aws.config": _aws_config(ce_out, base + "/work"),
+        "head.sh": _aws_head_script(run_name, run_folder, pipeline, revision, head_env, tower),
     }
     return {"version": BUNDLE_VERSION, "agent": agent, "ce": ce_out, "run_name": run_name, "run_folder": run_folder,
             "pipeline": pipeline, "revision": revision, "samplesheet": sheet, "params": user_params,
@@ -1136,6 +1319,9 @@ def run_launch(job, ctx, preflight):
     if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == GCB:
         from . import gcb_launch      # the Google Batch launch; it imports this module, so it is read here and not at the top
         return gcb_launch.run_launch(job, ctx, bundle)
+    if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == AWS:
+        from . import aws_launch      # the AWS Batch launch; it imports this module, so it is read here and not at the top
+        return aws_launch.run_launch(job, ctx, bundle)
     env = rules.clean_environment(bundle.get("ce"))
     if bundle.get("agent") != ctx.agent_name:
         raise rules.Refusal("這個內容包是給另一個代理的 (the bundle is for another agent)")
@@ -1307,6 +1493,8 @@ def run_resume(job, ctx, preflight, bundle):
     origin_ce = (resume.get("origin") or {}).get("ce") if isinstance(resume, dict) and isinstance(resume.get("origin"), dict) else None
     if any(isinstance(ce, dict) and ce.get("platform") == GCB for ce in (bundle.get("ce"), origin_ce)):
         raise rules.Refusal(GCB_NO_RESUME)      # a Google Batch run cannot be resumed yet, whatever the platform sent
+    if any(isinstance(ce, dict) and ce.get("platform") == AWS for ce in (bundle.get("ce"), origin_ce)):
+        raise rules.Refusal(AWS_NO_RESUME)      # nor an AWS Batch run
     if not isinstance(resume, dict) or set(resume) - RESUME_OPTIONAL != RESUME_KEYS or not isinstance(resume.get("origin"), dict):
         raise rules.Refusal("續跑的內容包欄位不對 (the resume bundle has other fields than it should)")
     origin = resume["origin"]
