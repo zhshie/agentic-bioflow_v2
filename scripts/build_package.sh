@@ -432,6 +432,14 @@ QMD="$OUT/manuscript.qmd"
     echo "judgement, and this program has no basis for any of it.]*"
 } > "$QMD"
 echo "wrote     submission/manuscript.qmd"
+# Say plainly that this is a scaffold (issue #12). K is counted from the file
+# just written, so it can never disagree with what the reader will open.
+RESULTS_GAPS=$(grep -c "^\[GAP: Results for '" "$QMD" || true)
+if [ "${RESULTS_GAPS:-0}" -gt 0 ] 2>/dev/null; then
+    echo "note      manuscript.qmd is assembled, not finished: $RESULTS_GAPS Results placeholder(s) still need prose, and the Discussion is not drafted - not yet a finished document"
+else
+    echo "note      manuscript.qmd is assembled, not finished: the Discussion is not drafted - not yet a finished document"
+fi
 
 # --- README: the reproducible reference --------------------------------------
 {
