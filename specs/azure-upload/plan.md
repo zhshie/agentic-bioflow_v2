@@ -214,3 +214,11 @@ B. 本任務不准動、但要確認不會被新程式碼誤傷（跑全套前�
 10. `ABF_STATION_UPLOADS` 跨 scheme 共用。
 11. azure-launch 合併後由 developer-agent 重 grep 行號與名稱再派；清單以外的既有斷言要改 → BLOCKED。
 12. （10-29 01:1x，azure-launch #258 合併後重 grep）行號已位移：`test_no_launch_cost_or_upload_code_for_azure` 現在在 886 行（正則在 890 行）、`test_no_new_write_path_for_azure` 在 934 行（迴圈 938）、`test_jobs_other_than_the_preflight_are_refused_in_plain_words` 在 733 行（迴圈 740）、`test_docs_list_every_azure_key_and_check` 在 851 行、`test_the_commands_are_read_only` 在 560 行。本計畫所有 `test_*.py:<行號>` 一律以**函式名稱**為準，行號只當提示。
+
+## 裁決（10-29 01:4x，回應 verifier 合約審查的 6 點）
+13. **禁字 "azure"（`test_aws_upload.py` 約 705 行的字表）**：這個字表的用意是「不准在這兩個檔用 Azure SDK」，而同一個測試 693 行已用 `_imports()` 禁 `azure` 匯入。准許把 705 行字表裡的 `"azure"` 換成 `"import azure"` 與 `"from azure"`（跟既有的 `"import google"` 同一種寫法），693、713 行的匯入禁令一字不動。這樣 cloud_store.py、datasets.py 可以直接寫 Azure 字句與用 `compute_envs.AZURE`／`_AZURE_CONTAINER`，**不准拆字**（裁決 8 仍有效）。PR 說明寫「以前／以後／理由」。這是清單外第 6 處准改的既有斷言，其他仍照裁決 11。
+14. **`--auth-mode`**：有 `storage_account_key` 時，upload 與 blob show 的 argv 都帶 `--auth-mode key`（與預檢、azure-clean 一致）；只有 `storage_sas_token` 時改帶 `--sas-token`（值從環境變數傳，不進 argv 明文——若 az 不吃環境變數就用 `AZURE_STORAGE_SAS_TOKEN`），不帶 `--auth-mode`。作法 4／5 與 AZU-AGT-01 的「恰為」形狀依此補上。
+15. **超限指令**：訊息用 `az storage blob upload-batch`；若查不到 `--destination-path`，退路是 `--destination <container>/uploads/<owner>/rawdata`，**不改成逐檔 upload**（逐檔只適用於代理端真正上傳的路徑，裁決 6）。
+16. **拆字範圍**：裁決 8 只管 platform 的 cloud_store.py、datasets.py；abf_station 沿用 azure_preflight 既有的 `"Az" "ure"` 寫法。
+17. **憑證檔必填鍵**：上傳沿用 `_read_shape` 原樣，沒有 `batch_account_key` 就拒絕（一個環境一份憑證檔，跟送出 run 同一份）。不另開放寬。
+18. **人工確認**：沿用 AWS／Google 上傳的既有做法（檔案主人在網頁按上傳即排入），不加二次確認；不是規格變更，不必問維護者。
