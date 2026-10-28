@@ -240,6 +240,18 @@ source: memory/dev-plans/aws-launch.md（同型的 AWS 版，已合併）；memo
 9. 採預設：`azure-upload`、`azure-clean`。
 10. 採預設：清單外既有斷言要動 → BLOCKED。
 
+11. **補列必須更新的既有斷言（verifier 出題時抓到，10-28 23:0x）**，這些一律准動，但只做「Azure 從只能預檢改成能跑」的最小改動，PR 說明逐條寫以前／以後／理由：
+    - `platform/tests/test_azure_ce.py:756`（`target_problem(..., "launch_nextflow")` 對 Azure 不再有問題 → 改成斷言放行；另加一條斷言 `clean_work` 仍被拒）
+    - `test_azure_ce.py:857`、`:859`（PLATFORM.md 型別表 Azure 列與「can be created and checked」→ 改成新的 Azure 字句）
+    - `test_aws_ce.py:924`、`test_gcb_ce.py:867`、`test_gcb_launch.py:1151`（整句改成 `Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only`）
+    - 行號以 `git show origin/v3:` 實際 grep 為準；同一句在別處被釘住也照此句改，但只限這句。
+12. **範圍補 `docs/PLATFORM.md` 那句「Slurm, Google Cloud Batch and AWS Batch can run; Azure Batch can be created and checked; …」（出現兩次）**，兩處都改成裁決 11 的新句；AZL-DOC-01 涵蓋它（合約 TC-136）。
+13. 不阻擋的四點：
+    - `cloud_store.py` 錯誤句不改；Slurm 的 `put_upload` 拒絕訊息維持原樣（只要求仍是白話拒絕）。
+    - `jobs._target` 只把寫死的雲端名換成型別名，非雲端型別的訊息不改。
+    - 環境的 preRunScript／postRunScript 非空時，Azure 照 AWS 版一樣拒絕送出。
+    - `abf_launch/cli.py` 與 SEQERA_PARITY 的用詞照 AWS 版逐字換成 Azure；輸出參數照 AWS 版寫法（`outdir` 指 `az://` 下的 `results/<run>`）。「run token」與「upload_paths 檢查」語意同 AWS 版，照 aws_launch.py 現有程式做。
+
 ## 專長守則（backend）
 
 ### executor
