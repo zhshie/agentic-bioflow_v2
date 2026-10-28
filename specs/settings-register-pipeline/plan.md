@@ -22,58 +22,63 @@ source: 維護者 2026-10-28「登記管線要做，畢竟是裝在使用者自�
 
 ## 範圍：檔案
 - `platform/abf_platform/actions/__init__.py`（新增兩個寫入動作，見作法 1）
-- `platform/abf_platform/compute_envs.py`（只准加一個小 helper；驗證規則 :263-300 不准放寬）
-- `platform/abf_platform/web.py`（兩條新 POST 路由與註冊行，見作法 2）
-- `platform/abf_platform/web_settings.py`（環境列加表單與移除按鈕）
-- `platform/abf_platform/web_board.py`（只限 STRINGS 新字串，以及 `/launch` 未登記訊息改句）
+- `platform/abf_platform/compute_envs.py`（只准加小 helper；驗證規則 :263-300 不准放寬）
+- `platform/abf_platform/cli.py`（只限把 `_queue_first_preflight` 搬成共用 helper 時的呼叫點；CLI 輸出逐字不變）
+- `platform/abf_platform/web.py`（新增路由與註冊行，見作法 2）
+- `platform/abf_platform/web_settings.py`（環境列的表單、移除按鈕、確認頁渲染）
+- `platform/abf_platform/web_board.py`（只限 STRINGS 新字串，以及 `g_reg_bad` 改句）
 - `platform/tests/test_web_settings_register.py`（新檔）
-- 被逐字釘住、必須更新的既有測試（只加新項，不刪既有斷言；ledger 逐條列）：`test_dataset_cli.py:183`、`test_cleanup_offer.py:815`、`test_confirm_page.py:313`、`test_web_board.py:820`、`test_owner_binding.py:824`、`test_temp_password.py:290`、`test_web_parity.py:16`、`test_actions_layer.py`（工具清單）、`test_web_settings.py::test_st08_still_read_only`（見裁決 1）、`/launch` 未登記句相關測試
-- `docs/PLATFORM.md`（:608「設定頁唯讀」一段改寫）、`docs/SETTINGS.md`（:325 附近加「從網頁登記」一句）、`docs/TESTING.md`（新增手動一節）
+- 被逐字釘住、必須加項的既有測試（只加不刪，ledger 逐條列）：`test_dataset_cli.py:183`、`test_cleanup_offer.py:815`、`test_confirm_page.py:313`、`test_web_board.py:820`、`test_owner_binding.py:824`、`test_temp_password.py:290`、`test_web_parity.py:16`、`test_actions_layer.py`、`test_web_settings.py::test_st08_still_read_only`（見裁決 1）、`g_reg_bad` 相關斷言
+- `docs/PLATFORM.md`（:608「設定頁唯讀」一段改寫）、`docs/SETTINGS.md`（:325 附近加「從網頁登記」）、`docs/TESTING.md`（新增手動一節：390 px 無橫捲、Tab 焦點外框、中英各看一次、真站台登記一次看使用前檢查結果）
 
 ## 作法
-1. **動作層**：`register_site_pipeline(platform_path, *, ce, pipeline, revision, module, home, caller)` 與 `remove_site_pipeline(platform_path, *, ce, pipeline, revision, caller)`。
-   - 先 `compute_envs.get(..., owner=caller.user_id)`；不是自己的環境＝「找不到」（與既有讀取一致，不洩漏他人環境存在）。
-   - 讀出現有 `sitePipelines` 清單 → 新增（同一 pipeline＋revision 已存在＝取代該筆）或移除 → `compute_envs.update(state, ce, {"config": {"sitePipelines": 新清單}})`，驗證照舊由 `clean()` 做；驗證錯誤原樣回給使用者（說哪一欄錯）。
-   - 成功後排一次使用前檢查（重用 `cli.py` 的 `_queue_first_preflight` 同一路徑，把它搬成可共用 helper 亦可，但 CLI 行為不變）。
-   - pipeline 只收 `nf-core/<名>` 形式（與 `/launch` 同一判斷）；revision 規則沿用（release 或 40 位 commit，拒分支名）。
-2. **網頁**：`POST /settings/pipelines`（新增）與 `POST /settings/pipelines/remove`。照 `launch_post` 的順序：`same_origin` → `user_of` → CSRF（purpose `settings-pipeline`）。成功 303 回 `/settings#ce-<名>`；錯誤 400 重畫設定頁並保留已填的值、在該環境列上方顯示錯誤句。臨時密碼登入者照既有規則被導到 `/welcome`。CSP 不變（`form-action 'self'` 已夠）。
-3. **畫面**（設定頁每個運算環境列，在現有「已登記管線」清單下方）：
-   - 每筆已登記管線旁一個「移除」按鈕（小表單，按了直接送出，不另開確認頁）。
-   - 「登記管線」表單四欄，標籤正式用語：「管線（例 nf-core/ampliseq）」「版本（例 2.18.0）」「模組名稱（站台 `module load` 用的名字，例 biology/nf-core-ampliseq/2.18.0）」「管線資料夾變數（模組設定的環境變數名，例 NFCORE_AMPLISEQ_HOME）」；四欄皆必填，紅色 `*`；一個按鈕「登記」。
-   - 登記成功後該列顯示「已排入使用前檢查」，檢查結果沿用既有狀態顯示。
-   - 只用現有 class 與 DESIGN.md token；中英字串都要有。
-4. **MCP**：登記同名兩個工具（寫入），讓 Claude Desktop 使用者也能用；parity 表加兩項。
-5. **`/launch` 未登記句**改成「此管線版本尚未在所選運算環境登記，請先至設定頁登記。」（設定頁連結保留），撤掉 2d 裁決 4 的暫用句。
+（10-28 第三版，取代前兩版。）
+1. **動作層**（寫入，只在人確認後）：
+   - `register_site_pipeline(platform_path, *, ce, pipeline, revision, module, home, confirmed_by, caller)` 與 `remove_site_pipeline(platform_path, *, ce, pipeline, revision, confirmed_by, caller)`。
+   - 第一行 `_require_human(confirmed_by)`（與 `launch`／`cancel` 同一個檢查；不是 TERMINAL／ELICITED／PAGE 就拒絕，資料庫完全不碰）。
+   - 再 `compute_envs.get(..., owner=caller.user_id)`；不是自己的環境＝「找不到」。
+   - 讀現有 `sitePipelines` → 新增（同 pipeline＋revision 已存在＝取代該筆）或移除 → `compute_envs.update(state, ce, {"config": {"sitePipelines": 新清單}})`；驗證照舊由 `clean()` 做，錯誤原樣回傳（說哪一欄錯）。
+   - 移除清單裡沒有的一筆＝不改資料，回 `{"ok": True, "changed": False}`。
+   - 新增成功後排一次使用前檢查（把 `cli.py:388-402` 的 `_queue_first_preflight` 搬成共用 helper 或直接呼叫；CLI 輸出逐字不變），回傳值帶 `preflight: "queued" | "no_agent" | "not_checkable"`（依 helper 的實際分支對應）。移除不排檢查。
+   - pipeline 名稱判斷 `^nf-core/[a-z0-9][a-z0-9-]{0,63}\Z`。
+2. **網頁兩步驟（不用資料庫存待確認請求，所以不需要 migration）**：
+   - 第一步 `POST /settings/pipelines`（欄位：`op`＝add｜remove、ce、pipeline、revision、module、home）：`same_origin` → `user_of` → CSRF（purpose `settings-pipeline`）→ 先做「不寫入」的檢查（環境是自己的、欄位格式；移除時那筆是否還在）。不通過＝400 重畫設定頁，保留已填值、在該環境列上方顯示錯誤句；移除已不存在的一筆＝303 回 `/settings?notice=gone#ce-<名>`，顯示「此管線版本已不在清單中。」。通過＝回 200 **確認頁**（不寫任何東西）。
+   - 確認頁列出：動作（新增／移除）、環境、管線、版本、模組名稱、管線資料夾變數；「登記第一筆」或「移除最後一筆」時加裁決 5 那句。表單把同樣欄位放 hidden，另帶確認用 CSRF：purpose ＝ `settings-pipeline-confirm:` ＋ 這組欄位（op、ce、pipeline、revision、module、home 依序以 `
+` 串接）的 sha256。按鈕「確認」與「返回」（返回＝連回 `/settings`，不送出）。
+   - 第二步 `POST /settings/pipelines/confirm`：`same_origin` → `user_of` → 用收到的欄位重算 purpose 驗 CSRF（欄位被改＝403、不寫）→ 呼叫動作層並帶 `confirmed_by=actions.PAGE`、`caller=<登入者>` → 303 回 `/settings?notice=<結果>#ce-<名>`。
+   - `notice` 只接受白名單值（`added_queued`、`added_no_agent`、`added_not_checkable`、`removed`、`gone`），其他值忽略；設定頁在該環境列上方顯示對應句。
+   - 臨時密碼登入者照既有規則被導到 `/welcome`。CSP 不變。
+3. **畫面**（設定頁每個運算環境列，在「已登記管線」清單下方）：每筆旁一個「移除」小表單（送到第一步、op=remove）；「登記管線」表單四欄必填、紅色 `*`、按鈕「登記」。只用現有 class 與 DESIGN.md token。
+4. **字串**（中／英，皆為正式書面語，新增字串不得含 DESIGN.md「用字」禁用字）：
+   - 標籤：「管線（例 nf-core/ampliseq）」／"Pipeline (e.g. nf-core/ampliseq)"；「版本（例 2.18.0）」／"Version (e.g. 2.18.0)"；「模組名稱（站台 module load 使用的名稱，例 biology/nf-core-ampliseq/2.18.0）」／"Module name (the name used by module load on the site, e.g. biology/nf-core-ampliseq/2.18.0)"；「管線資料夾變數（模組設定的環境變數名稱，例 NFCORE_AMPLISEQ_HOME）」／"Pipeline folder variable (the environment variable the module sets, e.g. NFCORE_AMPLISEQ_HOME)"；按鈕「登記」／"Register"、「移除」／"Remove"、「確認」／"Confirm"、「返回」／"Back"。
+   - notice：`added_queued`「已登記，並已排入使用前檢查。」／"Registered. A pre-use check has been queued."；`added_no_agent`「已登記。站台代理目前離線，使用前檢查將於代理上線後執行。」／"Registered. The site agent is offline; the pre-use check will run when it connects."；`added_not_checkable`「已登記。此運算環境類型不執行使用前檢查。」／"Registered. This type of compute environment has no pre-use check."；`removed`「已移除。」／"Removed."；`gone`「此管線版本已不在清單中。」／"This pipeline version is no longer registered."
+   - `g_reg_bad`（`/launch` 第 3 步提示）改為「此管線版本尚未在所選運算環境登記，請先至設定頁登記。」／"This pipeline version is not registered on the selected compute environment. Register it on the Settings page first."（設定頁連結保留）。`e_reg`（POST 被拒的錯誤句）不動。
+5. **不新增 MCP 工具**；parity 表把兩個動作列為 WEB_ONLY，理由「寫入需在網頁確認頁確認」。
 
 ## 失敗先行測試
-`test_web_settings_register.py`：新增成功（資料庫清單多一筆、303、排了一次檢查）；同 pipeline＋revision 再登記＝取代不重複；移除成功；他人環境＝找不到且資料庫不變；缺 CSRF／跨來源＝403 且不變；module 含 `..`、home 小寫、revision 是分支名＝400 帶欄位錯誤句且已填值保留；非 nf-core 名稱＝400；登記後 `/launch?pipeline=…&revision=…` 不再出現未登記句；GET /settings 不改資料庫；390 px 不橫捲（字串層檢查表單沒有固定寬度）。
+`test_web_settings_register.py`：
+- 動作層：`confirmed_by` 缺少或不是三個管道之一＝拒絕且資料庫不變；新增成功（清單多一筆、排了一次檢查、回傳 preflight 值）；同 pipeline＋revision 再登記＝取代；移除成功且不排檢查；移除不存在＝changed False；他人環境＝找不到且不變。
+- 網頁：第一步不寫資料庫、回確認頁且列出六項；確認後才寫、303 帶正確 notice；hidden 欄位被改＝403 不寫；缺 CSRF／跨來源＝403；欄位錯（module 含 `..`、home 小寫、revision 是分支名、`acme/rnaseq`、`NF-CORE/x`）＝400 帶欄位錯誤句且保留已填值；`gone` 情況；未知 notice 值不顯示；代理離線時顯示 `added_no_agent` 句。
+- 空清單語意：空清單環境登記第一筆後，同環境另一個未登記版本在 `/launch` 出現 `g_reg_bad`；有一筆的環境登記第二筆後那筆不再出現 `g_reg_bad`；移除最後一筆後回到不需登記；設定頁與確認頁在這兩種時機顯示裁決 5 的句子。
+- GET /settings 不改資料庫；用 base 版建出的舊資料庫可完整登記（無 migration）；新增中文字串不含禁用字；英文字串齊全。
 
 ## 完成標準（done when）
-上列測試全綠；整套 `tests/run_all.sh --timeout 900` 綠；既有釘死測試只「加項」；ledger 列出每條被改的釘死斷言與理由。
+上列全綠；整套 `tests/run_all.sh --timeout 900` 綠；既有釘死測試只加項；ledger 列出每條被改的釘死斷言與理由。
 
 ## 環境事實
-- `sitePipelines` 每筆鍵＝`{pipeline, revision, module, home}`，驗證在 `compute_envs.py:263-300`、站台端重驗在 `abf_station/rules.py:112-128`；使用前檢查 `site_pipeline` 在 `abf_station/handlers.py:233`（載模組、看 `$HOME_VAR/main.nf`、比對 manifest 版本）。
-- 範例：`configs/sites/nchc-nano4-ce.json:6`。
-- 平台本身不得開網路連線（憲法原則 2）；本任務不需要任何連線。
+- `sitePipelines` 每筆 `{pipeline, revision, module, home}`，驗證 `compute_envs.py:263-300`、站台端重驗 `abf_station/rules.py:112-128`；使用前檢查 `site_pipeline` 在 `abf_station/handlers.py:233`。範例 `configs/sites/nchc-nano4-ce.json:6`。
+- 寫入必經人工管道：`actions/__init__.py` 的 `_require_human`、`TERMINAL／ELICITED／PAGE`。
+- 平台不開對外連線（`docs/PLATFORM.md` :323、:382）；本任務不需要任何連線。
 
 ## 不做
-- 不做新增／刪除運算環境本身（另案）。
-- 不幫使用者在站台安裝模組；不從網路查模組清單。
-- 不改驗證規則、不放寬任何安全標頭。
+- 不新增／刪除運算環境本身；不幫使用者裝模組；不從網路查模組清單；不改驗證規則、不放寬安全標頭；不做 MCP 工具；不動 `e_reg`。
 
 ## 裁決
-1. `test_st08_still_read_only` 原本釘「設定頁中欄沒有任何表單」。本任務是維護者 10-28 明確要求的寫入功能，改成：中欄只允許本任務的兩種表單（purpose `settings-pipeline`），其餘斷言（沒有權杖清單 action、GET 不改資料庫）不動。
-2. （已由裁決 4 取代）移除也走確認頁。
-
-3. （10-28 合約退回後）**不新增 MCP 工具**：作法 4 撤銷，`mcp_server.py` 不在範圍內、parity 表把兩個新動作列為 WEB_ONLY（附理由「寫入需確認頁」）。stdio 因此不涉及。
-4. **網頁寫入走既有確認頁**（ADR 0006、憲法 Safety Net，不放寬）：`POST /settings/pipelines` 與 `/settings/pipelines/remove` 不直接改資料，而是照 `/act/{verb}` 的同一套機制建一筆待確認請求、303 到 `/c/{rid}` 確認頁；確認頁列出「環境、管線、版本、模組名稱、管線資料夾變數」與「新增／移除」；按「確認」才寫入，按「返回」不寫。裁決 2 改為：移除也走這一頁（不另做第二種確認）。拒絕測試：未確認＝資料庫不變；他人的 rid＝404；rid 只能用一次。若 `/act/{verb}` 的機制不能直接重用，executor 可在 `web.py` 新增最小的同款函式，ledger 說明。
-5. **空清單的意思是預期行為，要對使用者講明**：`sitePipelines` 為空＝此環境送出時直接取用 nf-core 官方版本、不需登記；登記第一筆後，此環境只能送出已登記的管線版本；移除最後一筆又回到不需登記。設定頁在空清單環境的表單上方顯示：「此環境目前未登記管線：送出時直接取用 nf-core 官方版本。登記第一筆後，只能送出已登記的管線版本。」（en: "No pipelines are registered here: runs use the nf-core release directly. Once you register one, only registered pipeline versions can be run here."）確認頁在「登記第一筆」與「移除最後一筆」時也加這句。`web_board.py:959-965` 的判斷不改。TC 兩種前置條件都出（空清單、已有一筆）。
-6. 移除**不**排使用前檢查；只有新增排。
-7. 排檢查後的畫面句一律顯示 `_queue_first_preflight`（或搬出後的共用 helper）回傳的那一句，代理離線或環境不可檢查時就顯示它回的那句，不另造字。
-8. 移除清單中已不存在的一筆：不改資料，303 回設定頁並顯示「此管線版本已不在清單中。」（en: "This pipeline version is no longer registered."）
-9. 不需要 migration：資料寫在既有 `config_json` 的 `sitePipelines` 鍵，結構不變。
-10. pipeline 名稱新增判斷 `^nf-core/[a-z0-9][a-z0-9-]{0,63}\Z`（小寫、無空白）；作法 1 的「與 /launch 同一判斷」作廢。
-11. 英文字串：未登記句 "This pipeline version is not registered on the selected compute environment. Register it on the Settings page first."；表單標籤 "Pipeline (e.g. nf-core/ampliseq)"、"Version (e.g. 2.18.0)"、"Module name (the name used by `module load` on the site, e.g. biology/nf-core-ampliseq/2.18.0)"、"Pipeline folder variable (the environment variable the module sets, e.g. NFCORE_AMPLISEQ_HOME)"；按鈕 "Register"、"Remove"。
+1. `test_st08_still_read_only` 原釘「中欄沒有任何表單」。本任務是維護者 10-28 明確要求的寫入功能：改成中欄只允許本任務的表單（purpose `settings-pipeline`），其餘斷言（沒有權杖清單 action、GET 不改資料庫）不動。
+2. 確認頁用「欄位雜湊綁進 CSRF」的無狀態做法，因為既有 `confirmations` 表的 `kind` 有 CHECK 限制且 `approve` 會排 job，套用需要 migration；登記是改設定、可逆、可重做（取代／移除不存在皆無副作用），不需要「只能用一次」。
+3. 不做 MCP 工具：避免新增 AI 可呼叫的寫入工具（憲法要求每個寫入工具附拒絕測試與確認管道），網頁先行。
+4. 確認頁沿用 ADR 0006「每個寫入都經人確認」。
+5. 空清單＝送出時直接取用 nf-core 官方版本是既有行為（`web_board.py:959-965`），不改；設定頁在空清單環境表單上方顯示：「此環境目前未登記管線：送出時直接取用 nf-core 官方版本。登記第一筆後，只能送出已登記的管線版本。」（en: "No pipelines are registered here: runs use the nf-core release directly. Once you register one, only registered pipeline versions can be run here."）
 
 ## 專長守則（ui）
 
