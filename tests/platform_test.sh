@@ -52,7 +52,7 @@ valid_part=0
 case "$PART" in clock|all) valid_part=1 ;; *[!0-9]*|"") ;; *) [ "$((10#$PART))" -ge 1 ] && [ "$((10#$PART))" -le "$PLATFORM_PARTS" ] && [ "$PART" = "$((10#$PART))" ] && valid_part=1 ;; esac
 [ "$valid_part" = 1 ] || { echo "FAIL: ABF_PLATFORM_PART must be 1 to $PLATFORM_PARTS, clock or all, not '$PART'"; exit 1; }
 
-# The fixed lists. The slowest files (measured; see specs/suite-speed/ledger.md) are named here, one line for each, so that each
+# The fixed lists. Some of the slowest files (measured; see specs/suite-speed/ledger.md for which and why) are named here, one line for each, so that each
 # is a pytest process of its own; the lines are dealt out to the parts longest first, each to the part that has the least so far
 # (the REST shards counted in). Every other test file goes into the REST shard of one of the parts, in turn (sorted by name, the
 # first to part 1, the second to part 2, and so on), so a new test file has a part without anyone editing this list. LAST are the
@@ -61,44 +61,44 @@ case "$PART" in clock|all) valid_part=1 ;; *[!0-9]*|"") ;; *) [ "$((10#$PART))" 
 set_platform_parts() {
     LAST="tests/test_station_e2e.py tests/test_nextflow_e2e.py"
     SHARDS_1="
-tests/test_launch_e2e.py
-tests/test_resume_entrypoints.py
-tests/test_actions_layer.py
+tests/test_owner_binding.py
+tests/test_oauth_mcp.py
+tests/test_resume_edit_params_station.py
 "
     SHARDS_2="
-tests/test_launch_cli.py
-tests/test_station_channel.py
-tests/test_oauth_review.py
+tests/test_keep_submissions.py
+tests/test_confirm_page.py
+tests/test_clean_page.py
 "
     SHARDS_3="
-tests/test_keep_submissions.py
-tests/test_oauth.py
-tests/test_aws_ce.py
+tests/test_station_channel.py
+tests/test_pat.py
+tests/test_web_login.py
 "
     SHARDS_4="
-tests/test_resume_platform.py
-tests/test_owner_gaps.py
+tests/test_platform_parts.py
+tests/test_http_site_samplesheet.py
 tests/test_launch_nextflow.py
 "
     SHARDS_5="
-tests/test_station_cancel.py
-tests/test_pat.py
-tests/test_clean_page.py
+tests/test_resume_platform.py
+tests/test_launch_e2e.py
+tests/test_launch_followup.py
 "
     SHARDS_6="
-tests/test_station_resume.py
-tests/test_confirm_page.py
-tests/test_http_site_samplesheet.py
+tests/test_station_launch.py
+tests/test_resume_entrypoints.py
+tests/test_cleanup_offer.py
 "
     SHARDS_7="
-tests/test_owner_binding.py
-tests/test_byte_channel_a.py
-tests/test_cleanup_backfill.py
+tests/test_station_resume.py
+tests/test_owner_gaps.py
+tests/test_relay_loopback.py
 "
     SHARDS_8="
-tests/test_station_launch.py
-tests/test_oauth_mcp.py
-tests/test_datasets.py
+tests/test_launch_cli.py
+tests/test_oauth.py
+tests/test_web_board.py
 "
     local listed f k=0 n
     listed=" $(echo $SHARDS_1 $SHARDS_2 $SHARDS_3 $SHARDS_4 $SHARDS_5 $SHARDS_6 $SHARDS_7 $SHARDS_8) $LAST "

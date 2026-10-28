@@ -14,7 +14,7 @@ Run stamp 20261028-1420-suitespeed3. Base 0d44c197d013c8045c848735f8d628bcbe1e3e
 
 
 ## Fix round 2 (verifier findings SS-24, SS-52, SS-56, SS-66)
-
+ A second deal of the named files followed the full suite run (see the assignment section): the lists in tests/platform_test.sh are the second deal.
 The first per file list was lost when `/tmp/per-file.txt` was overwritten by other lanes (only its top 31 lines had been copied into this ledger). It is measured again below, twice: on the base copy (SS-52) and on HEAD (SS-24). SS-66: `tests/platform_clock_test.sh` line 2 is back to its base text; only lines 5, 7 and 8 differ now.
 
 ## Measurements
@@ -161,7 +161,7 @@ Per file seconds, base copy, whole list (120 files, `seconds file`, longest firs
 0.0 tests/test_common.py
 ```
 
-### Same list on HEAD (nine entries), SS-24
+### Same list on HEAD at f9f9a72 (nine entries, first deal), SS-24
 
 Command: the same with `ABF_PLATFORM_PART=all` in the worktree. Load before `16:55:12 load average: 6.02, 13.07, 11.09`, after `17:05:32 load average: 6.29, 11.60, 13.05`; real 10m20s; 34 pytest processes, all exit 0. 120 files, sum 4894.0 s (every named file runs in its own process at the same time, so this is more contended than the base run). The names that take 20 s or more and are not named are listed in the section on the assignment below, with the conflict in the plan.
 
@@ -288,60 +288,54 @@ Command: the same with `ABF_PLATFORM_PART=all` in the worktree. Load before `16:
 0.0 tests/test_common.py
 ```
 
-## Assignment (decision D4, D7)
+## Assignment (decision D4, D7), second deal after the full suite run at f9f9a72 / 1301c74
 
-Named files (24, three per part, longest processing time first, using the base seconds above), rest of the files round robin by sorted name modulo 8. The REST of a part is ONE pytest process (12 files each); every named file is its own process; the processes of a part run side by side, so the wall of a part is about its largest process:
+The first deal (the table of the first round: launch_e2e, resume_entrypoints, actions_layer / launch_cli, station_channel, oauth_review / and so on) was measured alone and gave, at load 1.5 to 4.6: 96, 99, 131, 204, 156, 86, 85, 149 s for the parts 1 to 8 (REST processes 94, 97, 130, 202, 154, 85, 84, 147 s), largest over smallest 2.4, and in the full run of `bash tests/run_all.sh` at 1301c74 `platform_shard_5_test.sh` ran into the 300 s limit (TIMEOUT, the other lane was running a suite at the same time). The reason is plain in the numbers: the REST process (12 files one after the other) is the longest process of every part and the old deal left the REST of part 4 at 202 s and of part 7 at 84 s. The deal was redone with the per file seconds of the two runs above (the average of the base run and of the HEAD run, the HEAD run scaled by 3249.2 / 4894.0 to the same total), searching which 24 files to name so that the REST shards come out about equal; the named lines were then dealt out longest first, each to the part that had the least so far (REST counted in), at most three per part, ties to the lower number. The REST rule did not change (sorted by name, modulo 8). `tests/platform_test.sh` is the only code file changed.
 
-| Part | Named files (own process, base seconds) | Named sum | REST (one process, 12 files) | Largest process | Solo wall measured |
+Why not simply the 24 longest files: tested on the same numbers, naming the 24 longest leaves REST estimates of 103 to 208 s (parts 3 and 4 above 190 s), while the chosen 24 give 159 to 178 s. station_cancel (100 s) stays in a REST process for that reason.
 
+| Part | Named files (seconds: average of the two runs) | Named sum | REST est. (12 or 13 files, one process) | Measured: named processes / REST process | Entry alone |
 |---|---|---|---|---|---|
+| 1 | owner_binding 117, oauth_mcp 68, resume_edit_params_station 39 | 223 | 160 (12 files) | 56.4 / 38.7 / 46.0 / 111 s | 112 s |
+| 2 | keep_submissions 112, confirm_page 51, clean_page 47 | 210 | 166 (12 files) | 58.4 / 19.1 / 19.1 / 98 s | 100 s |
+| 3 | station_channel 89, pat 88, web_login 28 | 205 | 176 (12 files) | 58.6 / 50.0 / 22.7 / 86 s | 87 s |
+| 4 | platform_parts 95, http_site_samplesheet 74, launch_nextflow 39 | 208 | 174 (12 files) | 115.7 / 52.6 / 32.9 / 135 s | 137 s |
+| 5 | resume_platform 88, launch_e2e 83, launch_followup 32 | 202 | 178 (12 files) | 42.7 / 55.0 / 26.6 / 138 s | 139 s |
+| 6 | station_launch 99, resume_entrypoints 79, cleanup_offer 38 | 216 | 168 (12 files) | 59.5 / 38.8 / 15.2 / 100 s | 102 s |
+| 7 | station_resume 109, owner_gaps 70, relay_loopback 36 | 216 | 167 (12 files) | 71.6 / 25.0 / 43.5 / 97 s | 99 s |
+| 8 | launch_cli 126, oauth 49, web_board 42 | 216 | 159 (12 files) | 72.9 / 19.0 / 38.6 / 98 s | 99 s |
 
-| 1 | launch_e2e 89.3, resume_entrypoints 77.2, actions_layer 24.4 | 190.9 | 168.8 | 168.8 | 135 s |
+The measured columns are the pytest processes of the part in the order of the lines (three named, then REST), seconds, from the run of the entry alone below. Largest over smallest REST process measured: 138 / 86 = 1.6; entries alone 139 / 87 = 1.6 (earlier deal 204 / 84 = 2.4). The estimate columns (average seconds) are within 10 percent for the parts 1, 2, 4, 5 and not for part 3 (est. 176 s, measured 86 s); the per file seconds are noisy because other lanes use the machine, which is why the walls, not the estimates, are the evidence.
 
-| 2 | launch_cli 131.7, station_channel 87.6, oauth_review 44.1 | 263.4 | 142.8 | 142.8 | 126 s |
+Conflict in the plan, decided by the executor and flagged for the developer-agent: "at most three named files per part" (SS-19, SS-20, SS-25: at most 24 named files) cannot hold together with "every file of 20 s or more on its own line" (SS-24). In the base list 48 files take 20 s or more; 2 of them are the clock part, 24 are named (all 24 named files are 20 s or more in the base list), and 22 stay in the REST processes (name, seconds in the base list): station_cancel 105.5, station_fakeplatform 50.6, station_envs 47.7, datasets 47.3, cloud_upload 46.3, oauth_review 44.1, human_channel 41.3, owner_tokens 39.6, wrapper 35.6, resume_lineage 33.7, cloud_cost 32.1, wrapper_nf2 25.1, actions_layer 24.4, resume_edit_params_platform 23.8, guidance 23.5, temp_password 23.4, su_usd 23.4, pipeline_launch_station 23.0, review_fixes 22.4, cli 22.3, byte_channel_a 21.0, web_welcome 20.6. The old combined lines (`test_launch_e2e.py`, `test_station_fakeplatform.py`, `test_station_channel.py` together) are split: launch_e2e and station_channel are named, station_fakeplatform is a REST file. If the developer-agent wants every 20 s file alone, the number of processes goes to about 46 plus the REST of each part and the limit of 3 named lines per part (SS-19, SS-20) must go; that is a ruling on the plan, not for the executor.
 
-| 3 | keep_submissions 103.6, oauth 46.9, aws_ce 18.2 | 168.7 | 189.9 | 189.9 | 186 s |
-
-| 4 | resume_platform 85.7, owner_gaps 66.9, launch_nextflow 43.8 | 196.4 | 188.4 | 188.4 | 232 s |
-
-| 5 | station_cancel 105.5, pat 84.2, clean_page 39.8 | 229.5 | 175.3 | 175.3 | 182 s |
-
-| 6 | station_resume 125.4, confirm_page 50.7, http_site_samplesheet 52.8 | 228.9 | 140.6 | 140.6 | 115 s |
-
-| 7 | owner_binding 130.5, byte_channel_a 21.0, cleanup_backfill 19.8 | 171.3 | 142.4 | 142.4 | 104 s |
-
-| 8 | station_launch 111.8, oauth_mcp 67.9, datasets 47.3 | 227.0 | 178.6 | 178.6 | 156 s |
-
-| clock | station_e2e 94.8, nextflow_e2e 151.3 | 246.1 | 0.0 | 151.3 | 250 s |
-
-
-Largest over smallest process: 189.9 / 140.6 = 1.35 (estimate, base seconds); sum based, 406.2 / 313.7 = 1.29. This is under the 1.4 bound of SS-25. Nothing was split, no line was moved more than once, the round robin rule is unchanged.
-
-Conflict in the plan, decided by the executor and flagged for the developer-agent: "at most three named files per part" (SS-19, SS-20, SS-25: at most 24 named files) cannot hold together with "every file of 20 s or more on its own line" (SS-24). In the base list 48 files take 20 s or more; 2 of them are the clock part, 22 are named, and 24 stay in the REST processes (name, seconds: test_platform_parts 73.8, test_station_fakeplatform 50.6, test_station_envs 47.7, test_cloud_upload 46.3, test_resume_edit_params_station 44.5, test_relay_loopback 43.8, test_human_channel 41.3, test_owner_tokens 39.6, test_web_board 37.4, test_web_login 36.8, test_launch_followup 35.8, test_wrapper 35.6, test_resume_lineage 33.7, test_cleanup_offer 32.9, test_cloud_cost 32.1, test_wrapper_nf2 25.1, test_resume_edit_params_platform 23.8, test_guidance 23.5, test_su_usd 23.4, test_temp_password 23.4, test_pipeline_launch_station 23.0, test_review_fixes 22.4, test_cli 22.3, test_web_welcome 20.6). Two of the 24 named files are under 20 s (test_cleanup_backfill 19.8, test_aws_ce 18.2) and six REST files are longer than some named ones; the named list was dealt out in the first round from a per file list that no longer exists, and the repeat measurement above differs from it in the order of the middle files. The old combined lines (`test_launch_e2e.py`, `test_station_fakeplatform.py`, `test_station_channel.py` together) are split: launch_e2e and station_channel are named, station_fakeplatform is a REST file. I tried a re-deal of the 24 names by the repeat data (longest 24 first, each to the lightest part, REST counted in): sum ratio 1.11 but largest over smallest process 1.44, which is worse than the 1.35 of the current lists, so it was not applied. If the developer-agent wants every 20 s file alone, the number of processes goes to about 46 plus the REST of each part and the limit of 3 named lines per part (SS-19, SS-20) must go; that is a ruling on the plan, not for the executor.
-
-The first attempt named only 18 files and the rest of part 6 dominated (measured walls 132, 141, 131, 72, 73, 139, 77, 107 s, clock 179 s, all ok, ratio about 1.96); one adjustment added 6 named files. test_launch_nextflow.py has a process of its own (SS-23).
+The first attempt named only 18 files and the rest of part 6 dominated (measured walls 132, 141, 131, 72, 73, 139, 77, 107 s, clock 179 s, all ok, ratio about 1.96); that was the first deal. test_launch_nextflow.py has a process of its own (SS-23).
 
 ### Single item walls on this machine, SS-55 and SS-56
 
-Each of the nine entries run alone, one after the other, `bash tests/<entry>`, load read from `/proc/loadavg` before and after (not a quiet machine: other lanes were running, the 1 minute load never dropped under 3.3):
+Each of the nine entries run alone, one after the other, `bash tests/<entry>`, load read from `/proc/loadavg` before and after. The machine is shared with other lanes, so the load is only sometimes under 3.
+
+Second deal (the lists now on the branch):
 
 | Entry | Wall | Load before / after |
 |---|---|---|
-| platform_test.sh (part 1) | 135 s | 3.34 / 6.01 |
-| platform_shard_2_test.sh | 126 s | 6.01 / 5.66 |
-| platform_shard_3_test.sh | 186 s | 5.66 / 9.50 |
-| platform_shard_4_test.sh | 232 s | 9.50 / 5.74 |
-| platform_shard_5_test.sh | 182 s | 5.74 / 8.18 |
-| platform_shard_6_test.sh | 115 s | 8.18 / 5.70 |
-| platform_shard_7_test.sh | 104 s | 5.70 / 4.15 |
-| platform_shard_8_test.sh | 156 s | 4.15 / 8.33 |
-| platform_clock_test.sh | 250 s | 8.33 / 8.13 |
+| platform_test.sh (part 1) | 112 s | 8.98 / 4.46 |
+| platform_shard_2_test.sh | 100 s | 4.46 / 3.39 |
+| platform_shard_3_test.sh | 87 s | 3.39 / 3.46 |
+| platform_shard_4_test.sh | 137 s | 3.46 / 6.45 |
+| platform_shard_5_test.sh | 139 s | 6.45 / 3.13 |
+| platform_shard_6_test.sh | 102 s | 3.13 / 2.09 |
+| platform_shard_7_test.sh | 99 s | 2.09 / 2.45 |
+| platform_shard_8_test.sh | 99 s | 2.45 / 2.55 |
+| platform_clock_test.sh | 213 s | 2.55 / 3.48 |
 
-Largest over smallest of the eight numbered parts: 232 / 104 = 2.2 in this run (earlier runs 160 / 97 = 1.65 and 141 / 72 = 1.96). Not under 1.5, and the machine never reached load 2, so D5 applies: the numbers are recorded, not judged on seconds. The reason it is uneven is visible in the table above: the REST process of a part is its largest process, the REST is fixed by the round robin rule (by sorted name, modulo 8, which the contract does not allow to change), and the REST of parts 3 (189.9 s) and 4 (188.4 s) are 1.35 times those of parts 6 (140.6 s) and 7 (142.4 s) before any load; the walls follow the same order: parts 3, 4, 5, 8 are the slow ones (186, 232, 182, 156 s), parts 6, 7, 2, 1 the fast ones (115, 104, 126, 135 s). Part 4 is the slowest because its three heavy processes (resume_platform, owner_gaps, launch_nextflow, 196.4 s) run beside a 188.4 s REST: four heavy processes compete for the cores at load 9.5. Each part also pays a fixed start (virtual environment check, Java check, cached downloads), the same for all parts, which compresses the small ones less than the heavy ones. If a ratio under 1.5 is wanted, the lever is the choice of the 24 named files (put a heavy REST file of part 3 or 4 on a named line of its own, and give a light file to parts 6 and 7), measured again on a quiet machine; that changes the lists in `tests/platform_test.sh` only.
+Largest over smallest of the eight numbered parts: 139 / 87 = 1.6. Not under 1.5, and the load never stayed under 2 for a whole run, so D5 applies (numbers recorded, not judged on seconds). What is left: the REST process of a part (12 files in a row, fixed by the round robin rule that the contract does not allow to change) is its longest process, and the REST estimates of the parts differ by up to 12 percent before any noise. Parts 4 and 5 are the longest (137, 139 s): part 4 has test_platform_parts.py as a named process (116 s, it runs the part lists many times) beside a 135 s REST. The lever left is the choice of the 24 names, tuned with quiet numbers; the lists are in `tests/platform_test.sh`. The clock entry is 213 s alone at load about 3 and stays as D1 says (not split in this slice; it was TIMEOUT 300 s before).
+
+First deal, for the record (alone, load 1.5 to 4.6): 96, 99, 131, 204, 156, 86, 85, 149 s and clock 214 s. First deal at load 4 to 9 (the earlier run): 135, 126, 186, 232, 182, 115, 104, 156 s, clock 250 s.
 
 ## Before and after (SS-52..SS-61), `run_all.sh --only platform_`
 
-AFTER (this branch, nine entries), load at start `14:37:47 load average: 3.84, 4.16, 4.04`, at end `14:58:03 load average: 8.76, 8.08, 6.74`:
+AFTER (first deal, nine entries), load at start `14:37:47 load average: 3.84, 4.16, 4.04`, at end `14:58:03 load average: 8.76, 8.08, 6.74`:
 
 ```
 platform_clock_test.sh                         ok       209s
