@@ -275,6 +275,41 @@ def _cells(text):
     return [h.strip() for h in rows[0]], rows[1:]
 
 
+def check_samplesheet(samplesheet, known, *, cloud_scheme=None, resolve=None):
+    """Judge a samplesheet and write nothing: no database, no file. `known` is the set of places the dataset holds. The sheet needs the
+    columns sample and fastq_1; no cell is a URL (except, for a cloud destination, a location of `cloud_scheme` that is among `known`) or
+    looks like a credential; every non-empty cell of fastq_1 and fastq_2 must be one of `known` (after `resolve(cell)`, which gives the
+    place a local name stands for, or None when it stands for none; without it the cell itself). {ok: True} or {ok: False, message}."""
+    if not isinstance(samplesheet, str):
+        return _no("樣本表必須是文字 (the samplesheet must be text)")
+    if len(samplesheet.encode("utf-8")) > SAMPLESHEET_LIMIT:
+        return _no("樣本表太大，上限 1 MiB (the samplesheet is too large; the limit is 1 MiB)")
+    header, rows = _cells(samplesheet)
+    if header is None:
+        return _no(rows)
+    missing = [c for c in ("sample", "fastq_1") if c not in header]
+    if missing:
+        return _no("樣本表缺少 %s 欄 (the samplesheet needs the column %s)" % (", ".join(missing), ", ".join(missing)))
+    for row in rows:
+        for cell in row:
+            if cloud_scheme is not None and cell.strip().startswith(cloud_scheme + "://"):
+                if cell.strip() not in known:
+                    return _no("樣本表裡有檔案不在登記的檔案內 (the samplesheet names a file that is not among the registered files)")
+                continue
+            if _SCHEME.match(cell.strip()):
+                return _no("樣本表含網址，不收；檔案要放進你的上傳資料夾 (the samplesheet holds a URL; put the files in your uploads folder)")
+            if compute_envs.looks_like_credential(cell):
+                return _no("樣本表含像憑證的值，不收 (the samplesheet holds something that looks like a credential)")
+    for row in rows:
+        for column in ("fastq_1", "fastq_2"):
+            if column in header and header.index(column) < len(row) and row[header.index(column)].strip():
+                cell = row[header.index(column)].strip()
+                path = cell if resolve is None else resolve(cell)
+                if path is None or path not in known:
+                    return _no("樣本表裡有檔案不在登記的檔案內 (the samplesheet names a file that is not among the registered files)")
+    return {"ok": True}
+
+
 def register_dataset(platform_path, *, name, version, samplesheet, files, caller=None, clock=time.time, destination=None):
     """Keep a Dataset: `name` and `version` (letters, digits . _ -, 1 to 64), the samplesheet text and `files` = [{path, size_bytes?}].
     Every file must lie in the caller's own folder and every path in the samplesheet must be one of those files. No file is
@@ -327,32 +362,10 @@ def register_dataset(platform_path, *, name, version, samplesheet, files, caller
             entry["size_bytes"] = size
         kept.append(entry)
         known.add(path)
-    header, rows = _cells(samplesheet)
-    if header is None:
-        return _no(rows)
-    missing = [c for c in ("sample", "fastq_1") if c not in header]
-    if missing:
-        return _no("樣本表缺少 %s 欄 (the samplesheet needs the column %s)" % (", ".join(missing), ", ".join(missing)))
-    for row in rows:
-        for cell in row:
-            if target is not None and cell.strip().startswith(_scheme(target) + "://"):
-                if cell.strip() not in known:
-                    return _no("樣本表裡有檔案不在登記的檔案內 (the samplesheet names a file that is not among the registered files)")
-                continue
-            if _SCHEME.match(cell.strip()):
-                return _no("樣本表含網址，不收；檔案要放進你的上傳資料夾 (the samplesheet holds a URL; put the files in your uploads folder)")
-            if compute_envs.looks_like_credential(cell):
-                return _no("樣本表含像憑證的值，不收 (the samplesheet holds something that looks like a credential)")
-    for row in rows:
-        for column in ("fastq_1", "fastq_2"):
-            if column in header and header.index(column) < len(row) and row[header.index(column)].strip():
-                cell = row[header.index(column)].strip()
-                if target is not None:
-                    path, problem = cell, None
-                else:
-                    path, problem = _within(platform_path, caller, cell)
-                if problem or path not in known:
-                    return _no("樣本表裡有檔案不在登記的檔案內 (the samplesheet names a file that is not among the registered files)")
+    checked = check_samplesheet(samplesheet, known, cloud_scheme=_scheme(target) if target is not None else None,
+                                resolve=None if target is not None else (lambda cell: _within(platform_path, caller, cell)[0]))
+    if not checked["ok"]:
+        return _no(checked["message"])
     now = clock()
     con = store.connect_state(platform_path)
     try:

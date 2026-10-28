@@ -12,6 +12,9 @@ The only routes there are:
   GET  /launch/diagram  the workflow diagram of ?pipeline=&revision= as the image the caller's own agent read from the public repository (guided-launch-2); needs the cookie, 404 as one plain line when it is not there
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
   POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page
+  GET  /upload       the upload form (web-upload-page): choose a cloud compute environment, name and version the dataset, choose FASTQ files and an optional samplesheet; needs the cookie
+  POST /upload       receive the files into a staging folder of the platform host (streamed, 2 GB per file), queue one upload job for each, then 303 to /upload/<batch>; the CSRF token of this login. The person's press of Upload is the yes: no confirmation page
+  GET  /upload/{batch}  the progress of one batch of the person's own uploads; when every file is in the bucket it registers the dataset (once)
   GET  /usage        the cost page (cost-page): SU, cloud used / cap / remaining, one line per analysis; ?month=YYYY-MM, ?lang=en; needs the cookie
   GET  /settings     the settings frame (spec 011a): read-only, every section greyed "coming later"; needs the cookie
   GET  /login        the login form (name + web password)
@@ -40,6 +43,7 @@ import hmac
 import html
 import os
 import re
+import secrets
 import sqlite3
 import tempfile
 import time
@@ -53,10 +57,12 @@ from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
+from starlette.requests import ClientDisconnect
 from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from . import actions, oauth, store, web_board, web_cost, web_launch, web_settings
+from . import uploads_web, web_upload
 
 COOKIE = "abf_web"
 KEY_FILE = "web_signing.key"
@@ -822,6 +828,79 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         guide = {"done": {1, 2, 3, 4, 5}, "bad": bad, "post": True, "cells": cells, "src": src, "given": {"params_from": chosen} if chosen else {}}
         return await launch_page(sid, user, caller, lang, values, errors, [], code=400, guide=guide)
 
+    # ---- web-upload-page: the form, the receiving of the files, the progress of a batch. The bytes are only written to a folder of the platform host here
+    # (uploads_web); judging, queueing and registering are the two actions start_upload_batch and upload_batch_status. The person's press of Upload is the yes.
+    def upload_envs(caller):
+        return actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
+
+    async def upload_page(sid, user, caller, lang, values=None, problem=None, code=200):
+        runs = await run_in_threadpool(read_runs, caller)
+        envs = await run_in_threadpool(upload_envs, caller)
+        return HTMLResponse(web_upload.render_form(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "upload"), values, problem),
+                            status_code=code, headers=LAUNCH_HEADERS)
+
+    async def upload_get(request):
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        return await upload_page(sid, user, caller, web_board.pick_lang(request.query_params.get("lang")))
+
+    async def upload_post(request):
+        if not same_origin(request):
+            return foreign(request)
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        t = web_board.STRINGS[lang]
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        batch = secrets.token_hex(16)
+        try:
+            area = actions.caller_area(platform_path, caller)
+        except Exception:
+            return await upload_page(sid, user, caller, lang, problem={"error": "disk"}, code=500)
+        incoming = uploads_web.incoming_for(area, batch)
+
+        def gate(fields):
+            if not _same(fields.get("csrf", ""), csrf(sid, "upload")):
+                raise uploads_web.Rejected(403, "forbidden")
+
+        await run_in_threadpool(uploads_web.sweep, area)
+        try:
+            got = await uploads_web.receive(request.stream(), request.headers.get("content-type"), incoming, limit=uploads_web.FILE_LIMIT, before_file=gate)
+        except uploads_web.Rejected as r:
+            if r.kind == "forbidden":
+                return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(t["r_form"]), 403)
+            return await upload_page(sid, user, caller, lang, problem=dict(r.info, error=r.kind), code=r.code)
+        except ClientDisconnect:
+            return Response(status_code=400, headers=_HEADERS)
+        except OSError:
+            return await upload_page(sid, user, caller, lang, problem={"error": "disk"}, code=500)
+        form = got["fields"]
+        if not _same(form.get("csrf", ""), csrf(sid, "upload")):
+            uploads_web.discard(incoming)
+            return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(t["r_form"]), 403)
+        values = {"ce": form.get("ce", ""), "name": form.get("name", ""), "version": form.get("version", "")}
+        answer = await run_in_threadpool(lambda: actions.start_upload_batch(
+            platform_path, tokens_path, caller, batch=batch, ce_name=values["ce"], name=values["name"], version=values["version"],
+            files=got["files"], samplesheet=got["samplesheet"], incoming=incoming, clock=clock))
+        if answer.get("ok"):
+            return RedirectResponse("/upload/" + batch + ("?lang=en" if lang == "en" else ""), status_code=303, headers=_HEADERS)
+        return await upload_page(sid, user, caller, lang, values, answer, 413 if answer.get("error") == "too_big" else 400)
+
+    async def upload_batch_get(request):
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        view = await run_in_threadpool(lambda: actions.upload_batch_status(platform_path, caller, request.path_params["batch"], clock=clock))
+        if not view.get("found"):
+            return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        runs = await run_in_threadpool(read_runs, caller)
+        return HTMLResponse(web_upload.render_progress(user["name"], csrf(sid, "logout"), runs, lang, view), headers=LAUNCH_HEADERS)
+
     async def settings(request):
         sid, user = user_of(request)
         if user is None:
@@ -927,6 +1006,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]), Route("/usage", usage_page, methods=["GET"]),
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch/diagram", launch_diagram, methods=["GET"]),
                             Route("/launch", launch_post, methods=["POST"]),
+                            Route("/upload", upload_get, methods=["GET"]), Route("/upload", upload_post, methods=["POST"]),
+                            Route("/upload/{batch}", upload_batch_get, methods=["GET"]),
                             Route("/act/{verb}", act_post, methods=["POST"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/welcome", welcome_get, methods=["GET"]), Route("/welcome", welcome_post, methods=["POST"]),

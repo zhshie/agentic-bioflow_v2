@@ -358,9 +358,9 @@ def test_tc019_no_samplesheet(rig, fk, spy):
     assert r.status_code == 400 and "樣本表必須從已上傳的檔案中選擇。" in r.text and spy.calls == [] and steps(r.text)[4]["state"] == "current"
 
 
-@pytest.mark.parametrize("lang,want", [("", "/"), ("&lang=en", "/?lang=en")])
+@pytest.mark.parametrize("lang,want", [("", "/upload"), ("&lang=en", "/upload?lang=en")])
 def test_tc020_upload_link_is_the_board(rig, fk, lang, want):
-    # TC-020
+    # TC-020 (web-upload-page ruling 13: the link of step 4 with no samplesheet now goes to the upload page, not to the board)
     rig.user("ann")
     c = login(rig, "ann")
     four = step(c.get(SEL + lang).text, 4)

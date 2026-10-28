@@ -32,6 +32,8 @@ WEB_ONLY = {
     "pipeline_files": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "latest_release": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "nfcore_catalogue": "guided launch searches every nf-core pipeline through the agent (nfcore-catalogue); the page filters; no MCP tool yet",
+    "start_upload_batch": "POST /upload (web-upload-page): the files the page received are judged and queued, one upload job each; the person's press of Upload is the yes; no MCP tool",
+    "upload_batch_status": "GET /upload/{batch} (web-upload-page): where one batch of the person's own uploads stands, and the dataset is kept once every file is in; no MCP tool",
 }
 # Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).
 OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d", "read_task_log": "011c",

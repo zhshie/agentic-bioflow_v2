@@ -783,4 +783,399 @@ def test_tc070_a_disk_error_is_a_plain_page(up, monkeypatch):
     assert up.jobs() == [] and only_files(up) == [] and nothing_left(up)
 
 
+# =============================================================================================================================
+# User story 3 - GET /upload/{batch} and the registering
+# =============================================================================================================================
+def rows_of(text):
+    """{file name: (size text, state cell html)} from the progress table."""
+    return {n: (s, st) for n, s, st in re.findall(r"<tr><td>([^<]*)</td><td>([^<]*)</td><td>(.*?)</td></tr>", pane(text, "middle"), re.S)}
+
+
+def four_files(up, c=None):
+    names = ["s%d.fastq.gz" % i for i in range(1, 5)]
+    sheet = "sample,fastq_1\n" + "".join("s%d,%s\n" % (i, n) for i, n in enumerate(names, 1))
+    batch = up.ok(c, files=tuple((n, b"AAAA") for n in names), sheet=sheet)
+    return batch, names
+
+
+def test_tc071_one_row_per_file(up):
+    # TC-071
+    c = up.client()
+    batch = up.ok(c, files=((R1, b"A" * 1500), (R2, b"CCCC")))
+    rows = rows_of(c.get("/upload/" + batch).text)
+    assert list(rows) == [R1, R2] and rows[R1][0] == "1.5 KB" and rows[R2][0] == "4 B"
+
+
+def test_tc072_to_tc077_each_state_is_a_symbol_and_a_word(up):
+    # TC-072 queued, TC-073 sending, TC-074 done, TC-075 failed with the message, TC-076 expired, TC-077 English
+    c = up.client()
+    batch, names = four_files(up, c)
+    ids = [j["id"] for j in up.jobs()]
+    up.claim(ids[1])
+    up.finish(ids[2])
+    up.finish(ids[3], ok=False, message="cloud size differs")
+    zh = rows_of(c.get("/upload/" + batch).text)
+    assert "○ 排隊中" in zh[names[0]][1] and "◐ 傳送中" in zh[names[1]][1] and "✓ 完成" in zh[names[2]][1]
+    assert "✕ 失敗" in zh[names[3]][1] and "cloud size differs" in zh[names[3]][1]
+    en = rows_of(c.get("/upload/%s?lang=en" % batch).text)
+    assert "○ Queued" in en[names[0]][1] and "◐ Sending" in en[names[1]][1] and "✓ Done" in en[names[2]][1] and "✕ Failed" in en[names[3]][1]
+    up.expire(ids[0])
+    again = rows_of(c.get("/upload/" + batch).text)
+    assert "✕ 失敗" in again[names[0]][1] and "逾時" in again[names[0]][1]
+    for cell, klass in ((zh[names[0]][1], "state-unknown"), (zh[names[1]][1], "state-running"), (zh[names[2]][1], "state-succeeded"), (zh[names[3]][1], "state-failed")):
+        assert klass in cell
+
+
+def test_tc078_it_reloads_itself_while_files_are_on_the_way(up):
+    # TC-078
+    c = up.client()
+    batch = up.ok(c)
+    page = c.get("/upload/" + batch).text
+    assert '<meta http-equiv="refresh" content="15">' in page and "<script" not in page
+    for j in up.jobs():
+        up.finish(j["id"])
+    assert "refresh" not in c.get("/upload/" + batch).text
+
+
+def finish_all(up):
+    for j in up.jobs():
+        up.finish(j["id"])
+
+
+def test_tc079_tc080_when_everything_is_in_the_dataset_is_kept(up):
+    # TC-079, TC-080
+    from abf_platform.actions import datasets
+    c = up.client()
+    batch = up.ok(c)
+    assert up.datasets() == []
+    finish_all(up)
+    c.get("/upload/" + batch)
+    assert [(d["name"], d["version"], d["n_files"]) for d in up.datasets()] == [("ds1", "v1", 2)]
+    got = datasets.get_dataset(up.state, "ds1", "v1", caller=up.a)
+    places = ["gs://lab-bucket/uploads/alice/" + n for n in (R1, R2)]
+    assert [f["path"] for f in got["files"]] == places
+    assert got["samplesheet"].strip().splitlines() == ["sample,fastq_1,fastq_2", "sampleA,%s,%s" % tuple(places)]
+    assert up.record(batch)["registered"] is True
+
+
+def test_tc081_an_aws_dataset_is_in_s3_places(up):
+    # TC-081
+    from abf_platform.actions import datasets
+    up.env("aws1", "aws-bucket", up.a, platform=AWS)
+    c = up.client()
+    batch = up.ok(c, ce="aws1")
+    finish_all(up)
+    c.get("/upload/" + batch)
+    got = datasets.get_dataset(up.state, "ds1", "v1", caller=up.a)
+    assert [f["path"] for f in got["files"]] == ["s3://aws-bucket/uploads/alice/" + n for n in (R1, R2)] and "s3://aws-bucket/uploads/alice/" + R1 in got["samplesheet"]
+
+
+def test_tc082_registered_go_to_launch(up):
+    # TC-082
+    c = up.client()
+    batch = up.ok(c)
+    finish_all(up)
+    zh = c.get("/upload/" + batch).text
+    assert "已登記，前往送出" in zh and re.search(r'<a href="/launch">已登記，前往送出</a>', zh)
+    en = c.get("/upload/%s?lang=en" % batch).text
+    assert "Registered" in en and re.search(r'<a href="/launch\?lang=en">Registered, go to launch</a>', en)
+
+
+def test_tc083_the_new_dataset_is_a_choice_at_step_four(up):
+    # TC-083
+    c = up.client()
+    batch = up.ok(c)
+    assert "datasets/ds1/v1.csv" not in c.get("/launch").text
+    finish_all(up)
+    c.get("/upload/" + batch)
+    step4 = c.get("/launch").text
+    assert '<option value="datasets/ds1/v1.csv"' in step4
+    assert (up.area() / "datasets" / "ds1" / "v1.csv").read_text(encoding="utf-8").count("gs://lab-bucket/uploads/alice/") == 2
+
+
+def test_tc084_reloading_registers_once(up):
+    # TC-084
+    c = up.client()
+    batch = up.ok(c)
+    finish_all(up)
+    pages = [c.get("/upload/" + batch) for _ in range(3)]
+    assert [d["name"] for d in up.datasets()] == ["ds1"]
+    assert all(p.status_code == 200 and "已登記，前往送出" in p.text and "已存在" not in p.text for p in pages)
+
+
+def test_tc085_a_file_still_on_the_way_registers_nothing(up):
+    # TC-085
+    c = up.client()
+    batch = up.ok(c)
+    ids = [j["id"] for j in up.jobs()]
+    up.finish(ids[0])
+    up.claim(ids[1])
+    page = c.get("/upload/" + batch).text
+    assert up.datasets() == [] and "已登記，前往送出" not in page and "refresh" in page
+
+
+def test_tc086_tc087_one_failure_registers_nothing_and_the_names_can_be_used_again(up):
+    # TC-086, TC-087
+    c = up.client()
+    old = up.ok(c)
+    ids = [j["id"] for j in up.jobs()]
+    up.finish(ids[0])
+    up.finish(ids[1], ok=False, message="cloud size differs")
+    page = c.get("/upload/" + old).text
+    assert up.datasets() == [] and "cloud size differs" in page and re.search(r'<a href="/upload">重新上傳</a>', page)
+    new = up.ok(c, version="v2")
+    assert up.record(old)["superseded"] is True
+    for j in up.jobs()[2:]:
+        up.finish(j["id"])
+    c.get("/upload/" + new)
+    assert [(d["name"], d["version"]) for d in up.datasets()] == [("ds1", "v2")]
+
+
+def test_tc088_to_tc090_a_refused_registering_keeps_the_places_and_deletes_nothing(up):
+    # TC-088, TC-089, TC-090
+    c = up.client()
+    batch = up.ok(c)
+    finish_all(up)
+    up.register_dataset("ds1", "v1")
+    jobs_before = sql_rows(up.state, "SELECT count(*) AS n FROM jobs")[0]["n"]
+    page = c.get("/upload/" + batch)
+    text = plain(pane(page.text, "middle"))
+    assert "已存在" in text and "檔案仍在你的雲端資料夾，可換一個版本重新上傳" in text
+    assert "gs://lab-bucket/uploads/alice/" + R1 in text and "gs://lab-bucket/uploads/alice/" + R2 in text and "已登記，前往送出" not in page.text
+    en = plain(pane(c.get("/upload/%s?lang=en" % batch).text, "middle"))
+    assert "The files are still in your cloud folder" in en
+    assert up.record(batch)["registered"] is False
+    assert sql_rows(up.state, "SELECT count(*) AS n FROM jobs")[0]["n"] == jobs_before and {j["kind"] for j in sql_rows(up.state, "SELECT kind FROM jobs")} <= {"put_upload", "preflight"}
+    assert [f["dest"] for f in up.record(batch)["files"]] == ["gs://lab-bucket/uploads/alice/" + n for n in (R1, R2)]
+
+
+def test_tc091_tc092_tc093_a_batch_of_somebody_else_is_not_there(up):
+    # TC-091, TC-092, TC-093
+    batch = up.ok()
+    finish_all(up)
+    bob = up.client("bob")
+    mine = bob.get("/upload/" + batch)
+    assert mine.status_code == 404 and R1 not in mine.text and "ds1" not in mine.text and "gcb1" not in mine.text
+    assert up.datasets() == [] and up.record(batch)["registered"] is False
+    missing = bob.get("/upload/" + "0" * 32)
+    assert missing.status_code == 404 and missing.text == mine.text
+    for odd in ("nope", "..%2F..%2Fetc", "%2e%2e", "x" * 300):
+        r = up.client().get("/upload/" + odd)
+        assert r.status_code == 404 and str(up.uploads) not in r.text and "Traceback" not in r.text
+    assert up.client().get("/upload/nope").text == mine.text.replace("bob", "alice")
+    up.client().get("/upload/" + batch)
+    assert len(up.datasets()) == 1
+
+
+def test_tc094_the_progress_page_needs_a_login(up):
+    # TC-094
+    c = up.anon()
+    a, b = c.get("/upload/" + "0" * 32), c.get("/launch")
+    assert (a.status_code, a.headers["location"]) == (b.status_code, b.headers["location"]) == (303, "/login")
+    from test_temp_password import login_temp
+    up.w.user("ann")
+    t, _, _ = login_temp(up.w)
+    r = t.get("/upload/" + "0" * 32)
+    assert (r.status_code, r.headers["location"]) == (303, "/welcome")
+
+
+def test_tc095_the_platform_does_not_touch_the_staged_files(up):
+    # TC-095
+    c = up.client()
+    batch = up.ok(c)
+    finish_all(up)
+    before = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in up.area().iterdir() if p.is_file()}
+    for _ in range(3):
+        c.get("/upload/" + batch)
+    after = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in up.area().iterdir() if p.is_file()}
+    assert before == after and set(before) == {R1, R2}
+
+
+# =============================================================================================================================
+# User story 4 - the way in
+# =============================================================================================================================
+def test_tc097_tc098_the_upload_button_is_a_link(up):
+    # TC-097, TC-098
+    c = up.client()
+    left = pane(c.get("/").text, "left")
+    assert '<a class="nv" href="/upload">↑ 上傳資料</a>' in left
+    en = pane(c.get("/?lang=en").text, "left")
+    assert '<a class="nv" href="/upload?lang=en">↑ Upload data</a>' in en
+    assert not re.search(r'<span class="off">↑', left + en)
+
+
+def test_tc099_the_rest_of_the_left_column_is_as_before(up):
+    # TC-099
+    left = pane(up.client().get("/").text, "left")
+    assert '<a class="nv" href="/settings">設定</a>' in left
+    for word in ("＋ 新專案", "搜尋專案或分析", "資料瀏覽", "儀表板"):
+        assert re.search(r'<span class="off">%s <span class="later">之後開放</span></span>' % word, left), word
+
+
+def test_tc100_step_four_with_no_sheet_points_to_the_upload_page(up):
+    # TC-100
+    c = up.client()
+    for q, sentence in (("", "尚無已上傳的樣本表，請先上傳。"), ("?lang=en", "No samplesheet has been uploaded. Please upload one first.")):
+        text = c.get("/launch" + q).text
+        i = text.index(sentence)
+        assert re.search(r'<a href="/upload%s">' % re.escape("?lang=en" if q else ""), text[i:i + 400])
+
+
+# =============================================================================================================================
+# User story 5 - layers, documents, the pinned tests
+# =============================================================================================================================
+def source(name):
+    return (PKG / name).read_text(encoding="utf-8")
+
+
+def function_source(path, names):
+    src = (PKG / path).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    out = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names:
+            out.append(ast.get_source_segment(src, node))
+    assert len(out) == len(names), names
+    return "\n".join(out)
+
+
+LAYER_WORDS = ("register_dataset", "draft_samplesheet", "check_web_upload", "pair_fastq", "actions.datasets", "get_dataset")
+
+
+def test_tc106_the_web_files_do_not_speak_of_datasets():
+    # TC-106
+    for name in ("web.py", "web_board.py", "web_upload.py", "uploads_web.py"):
+        for word in LAYER_WORDS:
+            assert word not in source(name), (name, word)
+    mine = function_source("actions/__init__.py", {"start_upload_batch", "upload_batch_status"})
+    for word in LAYER_WORDS:
+        assert word not in mine, word
+
+
+def test_tc107_the_routes_only_call_the_two_actions():
+    # TC-107
+    from test_web_parity import called_actions
+    handlers = function_source("web.py", {"upload_get", "upload_post", "upload_batch_get", "upload_page", "upload_envs"})
+    assert called_actions(handlers) <= {"Caller", "list_compute_envs", "caller_area", "start_upload_batch", "upload_batch_status"}
+    assert {"start_upload_batch", "upload_batch_status"} <= called_actions(handlers)
+    for fn in ("start_upload_batch", "upload_batch_status"):
+        body = function_source("actions/__init__.py", {fn})
+        assert body.count("_uploads.") == 1 and "return _uploads." in body
+    callers = sorted(str(p.relative_to(PKG)).replace("\\", "/") for p in PKG.rglob("*.py") if "enqueue_put_upload" in p.read_text(encoding="utf-8"))
+    assert callers == ["actions/uploads.py", "jobs.py"]
+    assert [str(p.relative_to(PKG)).replace("\\", "/") for p in PKG.rglob("*.py")
+            if "register_dataset(" in p.read_text(encoding="utf-8") and p.name in ("uploads.py", "web.py", "web_upload.py", "uploads_web.py")] == ["actions/uploads.py"]
+
+
+def test_tc120_check_samplesheet_writes_and_opens_nothing(up, monkeypatch):
+    # TC-120
+    from abf_platform import store
+    from abf_platform.actions import datasets
+    before = len(up.datasets())
+
+    def boom(*a, **k):
+        raise AssertionError("the database was touched")
+
+    monkeypatch.setattr(store, "connect_state", boom)
+    monkeypatch.setattr(store, "open_readonly", boom)
+    good = datasets.check_samplesheet("sample,fastq_1\nA,x.fastq.gz\n", {"x.fastq.gz"})
+    bad = datasets.check_samplesheet("sample,reads\nA,x.fastq.gz\n", {"x.fastq.gz"})
+    other = datasets.check_samplesheet("sample,fastq_1\nA,y.fastq.gz\n", {"x.fastq.gz"})
+    assert good == {"ok": True} and bad["ok"] is False and "fastq_1" in bad["message"] and other["ok"] is False
+    monkeypatch.undo()
+    assert len(up.datasets()) == before
+
+
+def test_tc124_to_tc126_nothing_of_the_later_work_is_there(up):
+    # TC-124, TC-125, TC-126
+    up.register_dataset()
+    c = up.client()
+    batch = up.ok(c, version="v9")
+    for url in ("/upload", "/upload?lang=en", "/upload/" + batch):
+        text = c.get(url).text
+        assert "<script" not in text.lower() and "drop" not in text.lower() and "dragover" not in text.lower()
+        assert "schema" not in text.lower() and "checksum" not in text.lower()
+        assert not re.search(r"<th>(版本|Version)</th>", text) and "已上傳資料" not in text and "Uploaded data" not in text
+    assert len(re.findall(r'type="file"', c.get("/upload").text)) == 2
+
+
+def test_tc127_a_slurm_environment_cannot_take_a_web_upload(up):
+    # TC-127
+    up.slurm_for_alice()
+    r = up.post(ce="nchc1")
+    assert 400 <= r.status_code < 500 and up.jobs() == [] and only_files(up) == [] and nothing_left(up)
+
+
+def test_tc128_the_routes_with_upload_in_them(up):
+    # TC-128
+    routes = sorted((r.path, tuple(sorted(r.methods))) for r in up.client().app.routes if "upload" in r.path)
+    assert routes == [("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD"))]
+
+
+def test_tc129_no_tool_uploads_a_file(up):
+    # TC-129
+    tools, _ = up.w.mcp([])
+    assert not [t.name for t in tools if "upload" in t.name.lower() or t.name.lower().startswith("put")]
+    from abf_platform.actions import chat_tools
+    names = [getattr(t, "name", None) or (t.get("name") if isinstance(t, dict) else str(t)) for t in getattr(chat_tools, "TOOLS", [])]
+    assert not [n for n in names if "upload" in str(n).lower()]
+
+
+def test_tc133_no_secret_is_in_a_page_a_record_or_the_log(up, caplog):
+    # TC-133: the session cookie and the password never appear; the form token only as a hidden field of the form
+    import logging
+    caplog.set_level(logging.DEBUG)
+    c = up.client()
+    cookie = c.cookies.get("abf_web")
+    token = up.token(c)
+    ok_batch = up.ok(c)
+    pages = [c.get("/upload"), c.get("/upload/" + ok_batch)]
+    finish_all(up)
+    pages.append(c.get("/upload/" + ok_batch))
+    pages.append(up.post(c, files=((R1, b""),)))
+    pages.append(up.post(c, name="", version="v2"))
+    from human_harness import PASSWORD
+    for r in pages:
+        assert cookie not in r.text and PASSWORD not in r.text and cookie not in str(r.headers) and token not in r.headers.get("location", "")
+        for m in re.finditer(re.escape(token), r.text):
+            assert r.text[max(0, m.start() - 40):m.start()].endswith('name="csrf" value="')
+    record = json.dumps(up.record(ok_batch))
+    assert cookie not in record and token not in record and PASSWORD not in record
+    assert cookie not in caplog.text and token not in caplog.text and PASSWORD not in caplog.text
+
+
+def test_tc134_the_platform_opens_no_outside_connection(up, monkeypatch):
+    # TC-134
+    import socket
+    seen = []
+
+    def refuse(self, *a, **k):
+        seen.append(a)
+        raise AssertionError("a connection was opened")
+
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket.socket, "connect_ex", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    c = up.client()
+    batch = up.ok(c)
+    finish_all(up)
+    assert "已登記" in c.get("/upload/" + batch).text and seen == []
+
+
+def test_tc135_the_new_files_import_no_network_or_cloud_client():
+    # TC-135
+    banned = {"socket", "urllib", "http", "requests", "boto3", "botocore", "httpx", "google", "ssl", "subprocess", "aiohttp"}
+    for name in ("web_upload.py", "uploads_web.py", "actions/uploads.py"):
+        tree = ast.parse(source(name))
+        found = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                found |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                found.add((node.module or "").split(".")[0])
+        assert not found & banned, (name, found & banned)
+    web = source("web.py")
+    assert "default-src 'none'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" in web
+
+
 # --- END ---

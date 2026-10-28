@@ -409,6 +409,16 @@ def test_no_notice_after_the_request_is_pressed_expired_void_or_forgotten(w):
     assert notices(board(w, "ann", run="run-e").text) == []
 
 
+def old_upload_item(r, lang):
+    """web-upload-page ruling 13: the upload item of the left column is a link now. Put the grey item back as it was, so that the digests below
+    still say that nothing else on the board changed."""
+    from abf_platform import web_board
+    t = web_board.STRINGS[lang]
+    link = '<a class="nv" href="/upload%s">%s</a>' % ("?lang=en" if lang == "en" else "", t["upload"])
+    assert r.text.count(link) == 1
+    return type("Same", (), {"status_code": r.status_code, "text": r.text.replace(link, web_board._grey(t, "upload"))})()
+
+
 @pytest.mark.parametrize("status", ["succeeded", "failed", "running"])
 def test_a_board_without_any_clean_request_is_byte_for_byte_what_it_was(w, status):
     # TC-056, TC-057, TC-058
@@ -420,7 +430,7 @@ def test_a_board_without_any_clean_request_is_byte_for_byte_what_it_was(w, statu
         with con:
             con.execute("UPDATE runs SET last_message_at = ?", (FIXED - 10,))
         con.close()
-    got = {"%s-%s" % (status, lang): snap(board(w, "ann", lang)) for lang in ("zh", "en")}
+    got = {"%s-%s" % (status, lang): snap(old_upload_item(board(w, "ann", lang), lang)) for lang in ("zh", "en")}
     assert got == {k: v for k, v in BASE_BOARD.items() if k.startswith(status)}, repr(got)
 
 

@@ -264,6 +264,35 @@ def enqueue_put_upload(state_path, tokens_path, ce_name, owner_name, filename, u
     return transaction(state_path, work)
 
 
+def upload_jobs(state_path, job_ids, now):
+    """{job id: {state, result}} of the put_upload jobs named, read only (the web page of a batch of uploads). `state` is the state of the row; a
+    job that nobody marked but whose deadline has passed reads `expired`; an id with no such row (pruned, or not an upload) reads `gone`.
+    `result` is the stored answer (a dict) or None."""
+    out = {}
+    con = store.open_readonly(state_path)
+    if con is None:
+        return {i: {"state": "gone", "result": None} for i in job_ids}
+    try:
+        for job_id in job_ids:
+            row = con.execute("SELECT state, result_json, deadline_at FROM jobs WHERE id = ? AND kind = 'put_upload'", (job_id,)).fetchone()
+            if row is None:
+                out[job_id] = {"state": "gone", "result": None}
+                continue
+            state = row["state"]
+            if state in ("queued", "claimed") and now > row["deadline_at"]:
+                state = "expired"
+            try:
+                result = json.loads(row["result_json"]) if row["result_json"] else None
+            except ValueError:
+                result = None
+            out[job_id] = {"state": state, "result": result if isinstance(result, dict) else None}
+    except sqlite3.OperationalError:
+        return {i: {"state": "gone", "result": None} for i in job_ids}
+    finally:
+        con.close()
+    return out
+
+
 def pf_arguments(repo, revision, parts):
     """(repo, revision, parts in the standard order) of a pipeline_files job, or JobRefused. Judged here again whatever the caller judged:
     owner/name with no segment made only of dots, an exact tag or a 40-character commit (never a branch), and a revision of None

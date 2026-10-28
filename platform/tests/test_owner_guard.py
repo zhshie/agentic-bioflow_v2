@@ -146,6 +146,8 @@ NO_TOOL = {
     "pipeline_files": "web launch page",
     "read_confined_samplesheet": "helper of the launch page",
     "request_pipeline_launch": "web launch page",
+    "start_upload_batch": "web upload page: the press of Upload is the yes (web-upload-page)",
+    "upload_batch_status": "web upload page: the progress of one batch (web-upload-page)",
 }
 
 
