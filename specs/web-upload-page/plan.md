@@ -18,7 +18,7 @@ source: 維護者 10-28「加速進行，這禮拜做完」＋10-27 清單「網
 
 ## 維護者原話（verifier 出題用）
 1. 「加速進行，這禮拜做完"還沒做，要讓同事不問人就能自己用完的部分"」（10-28）
-2. DESIGN.md 第 54-60 行「Upload data」一段（英文原文照抄進測試案例：每檔約 2 GB 上限，更大的檔走 AI／push.sh）
+2. DESIGN.md 第 55 行「Upload data」一段（英文原文照抄進測試案例：每檔約 2 GB 上限，更大的檔走 AI／push.sh）
 3. ADR 0010 10-25 更正（第 109-114 行）：「按上傳就是確認」，不再另開確認頁；平台主機暫存一份，雲端尺寸核對相符後刪除。
 4. 「先把功能做起來吧，以後再改美觀」（10-23）
 
@@ -27,7 +27,9 @@ source: 維護者 10-28「加速進行，這禮拜做完」＋10-27 清單「網
 - `platform/abf_platform/uploads_web.py`（**新檔**：串流接收 multipart、寫入 `<uploads>/<user>/`、尺寸上限、暫存檔命名與清理）
 - `platform/abf_platform/web.py`（只新增：`GET /upload`、`POST /upload`、`GET /upload/{batch}` 三條與註冊行；`MAX_BODY` 不准改，上傳路由用自己的上限）
 - `platform/abf_platform/web_board.py`（只限：把灰色「上傳資料」按鈕改成連到 `/upload`；`/launch` 第 4 步無樣本表時的連結改指向 `/upload`；新增 STRINGS）
-- `platform/abf_platform/actions/__init__.py`、`platform/abf_platform/actions/datasets.py`（只新增一個「這批上傳完成就登記」的動作；`register_dataset` 本身不改）
+- `platform/abf_platform/actions/uploads.py`（**新檔**：批次上傳的動作邏輯，見裁決 13）
+- `platform/abf_platform/actions/__init__.py`（只新增兩個轉呼叫 `actions/uploads.py` 的函式，見裁決 13）
+- `platform/abf_platform/actions/datasets.py`（只新增一個不寫入的檢查函式 `check_samplesheet`，`register_dataset` 改成共用它但行為不變）
 - `platform/abf_platform/jobs.py`（只准加讀取「某批上傳工作狀態」的小函式）
 - `platform/pyproject.toml`（只限把已在 constraints.txt 釘住的 `python-multipart` 明列為直接依賴；不得新增其他套件）
 - `platform/tests/test_web_upload.py`（新檔）
@@ -37,8 +39,8 @@ source: 維護者 10-28「加速進行，這禮拜做完」＋10-27 清單「網
 
 ## 作法
 1. **上傳頁 `GET /upload`**：只列 `status == available`、型別允許上傳（GOOGLE_BATCH／AWS，沿用 `jobs.py` 的判斷，不重寫）、屬於自己的環境。一個都沒有 → 一句話＋連到 `/settings`，不顯示表單。表單：運算環境、資料集名稱、版本（規則同 `register_dataset`：`^[A-Za-z0-9._-]{1,64}$`）、FASTQ 檔（`<input type=file multiple>`）、樣本表（選填）。不用 JS（拖放區留給之後）。說明一句：每檔上限 2 GB，更大的檔請改用指令（顯示 `check_web_upload` 給的指令）。國網／Slurm 環境不列，並在頁面說明「國網環境的資料目前請用指令上傳」。
-2. **`POST /upload`**：`same_origin` → `user_of` → CSRF（purpose `upload`）。用 `request.stream()` 配 python-multipart 串流解析，邊收邊寫到 `<uploads>/<user>/.incoming-<batch>/`；任何一檔超過 2,000,000,000 位元組立刻中止、刪掉這批暫存、回 413 頁（帶指令）。檔名只留 basename、拒 `..`／路徑分隔符／控制字元；重名拒收。收完後把檔案移到 `<uploads>/<user>/<名>`（`enqueue_put_upload` 要求的位置），每檔呼叫一次 `enqueue_put_upload`，303 到 `/upload/<batch>`。樣本表 ≤1 MiB（`SAMPLESHEET_LIMIT`），沒給就用 `draft_samplesheet`（`pair_fastq`）產生；配不成對 → 400 頁列出哪些檔配不到，並清掉這批暫存、不排工作。
-3. **批次紀錄**：每批存 `{batch, owner, ce, name, version, files:[{name, job_id, dest}], samplesheet}`（存在平台資料庫或 uploads 夾內 0600 的 JSON，executor 擇一並寫進 ledger）。批次只有本人看得到；他人的 batch ＝ 404。
+2. **`POST /upload`**：`same_origin` → `user_of` → CSRF（purpose `upload`）。用 `request.stream()` 配 python-multipart 串流解析，邊收邊寫到 `<uploads>/<user>/.incoming-<batch>/`；任何一檔超過 2,000,000,000 位元組立刻中止、刪掉這批暫存、回 413 頁（帶指令）。檔名含 `/`、`\`、`..` 或控制字元一律拒收（不截斷）；重名拒收（見裁決 6）。收完後把檔案移到 `<uploads>/<user>/<名>`（`enqueue_put_upload` 要求的位置），每檔呼叫一次 `enqueue_put_upload`，303 到 `/upload/<batch>`。樣本表 ≤1 MiB（`SAMPLESHEET_LIMIT`），沒給就用 `draft_samplesheet`（`pair_fastq`）產生；配不成對 → 400 頁列出哪些檔配不到，並清掉這批暫存、不排工作。
+3. **批次紀錄**：每批存 `{batch, owner, ce, name, version, files:[{name, job_id, dest}], samplesheet}`（存成 `<uploads>/<user>/.batches/<batch>.json`，見裁決 13）。批次只有本人看得到；他人的 batch ＝ 404。
 4. **進度頁 `GET /upload/{batch}`**：每檔一列（檔名、大小、狀態：排隊中／傳送中／完成／失敗＋原因），15 秒自動重新整理（沿用既有 meta refresh，不加 JS）。全部完成 → 呼叫 `register_dataset(..., destination=<ce>)`，檔案路徑用工作回報的 `gs://`／`s3://` 位置，樣本表儲存格換成同一組位置；登記成功顯示「已登記，前往送出」連到 `/launch`。已登記過（同 owner、name、version）＝直接顯示已登記，不重複登記。有任一失敗 → 不登記，顯示失敗原因與「重新上傳」連結。
 5. **網頁總看板**：灰色「上傳資料」按鈕變成真的連結；`/launch` 第 4 步無樣本表時連到 `/upload`。
 6. 平台本身不開任何對外連線（憲法原則 2）：位元組只寫本機暫存夾，送雲端由既有站台代理工作完成。CSP 不變。
@@ -76,6 +78,18 @@ source: 維護者 10-28「加速進行，這禮拜做完」＋10-27 清單「網
 10. 進度頁 GET 在「本人、本批全部成功、尚未登記」時登記資料集，是刻意選擇（沒有另一個按鈕要按）。
 11. 「平台不開對外連線」的出處改為 `docs/PLATFORM.md`（:323、:382）與 `actions/datasets.py` 模組說明，不是憲法原則 2。
 12. `docs/TESTING.md` 新節同時寫：≥100 MB 真檔經 Tailscale Funnel 上傳一次、390 px 寬無橫捲、鍵盤 Tab 焦點外框、中英各看一次。
+
+13. （10-28 第三次合約退回後）**分層與釘死測試逐條處理**：
+   - 網頁只呼叫 `actions/__init__.py` 新增的 `start_upload_batch(...)` 與 `upload_batch_status(...)`（再加 `register_upload_batch` 若需要），三者只轉呼叫新檔 `actions/uploads.py`。`web.py`、`web_board.py`、`web_upload.py`、`uploads_web.py`、`actions/__init__.py` 都不得出現 `register_dataset`／`draft_samplesheet`／`check_web_upload`／`pair_fastq`／`actions.datasets`／`get_dataset` 新字樣——`test_datasets.py:470` 附近的 `test_tc064` 因此**不改**（若 executor 發現仍須改，停下回報，不得自改）。`actions/uploads.py` 才可呼叫 datasets 與 `jobs.enqueue_put_upload`。
+   - `test_aws_upload.py:727`（只有 jobs.py 呼叫 `enqueue_put_upload`）：期望清單改為 `["actions/uploads.py", "jobs.py"]`，其餘不動。
+   - `test_aws_upload.py:751`（PLATFORM.md 含「網頁入口尚未接上」）：改成斷言 PLATFORM.md 該處含新句「網頁上傳頁（/upload）會把檔案暫存於平台主機後排入此工作」，且不再含舊句。
+   - `test_cloud_upload_docs.py:42`（OPERATIONS.md 第 6 點含 "Not built yet"…）：改成斷言第 6 點含 "The web page /upload sends files up to 2 GB into the bucket" 且不再含 "Not built yet"。
+   - `test_aws_upload.py:665` 與 `test_datasets.py:441`（datasets.py 函式清單恰六個）：清單加上 `check_samplesheet`，成為七個。
+   - `test_aws_upload.py:660`（資料表雜湊與 `_migrate` 清單）：**不改**——批次紀錄不進資料庫，存成 `<uploads>/<user>/.batches/<batch>.json`（0600，寫入用暫存檔＋rename），所以不需要 migration。
+   - `test_web_board.py:316`（`test_tcs21_s22_left_grey_and_settings`）：「↑ 上傳資料」改為連到 `/upload` 的連結（中英皆然），其餘斷言（設定連結等）不動。
+14. 進度頁每檔狀態的符號＋文字：`○ 排隊中`／"○ Queued"、`◐ 傳送中`／"◐ Sending"、`✓ 完成`／"✓ Done"、`✕ 失敗`／"✕ Failed"；不只靠顏色。維護者看截圖時可改。
+15. 空欄位：沒選任何 FASTQ＝400「請選擇至少一個 FASTQ 檔。」／"Choose at least one FASTQ file."；名稱或版本空白＝400 該欄「此欄為必填。」／"This field is required."；皆不寫檔、不排工作。
+16. DESIGN.md 用字禁用清單只檢查本任務頁面自己寫的句子；引用 `jobs.py`／站台回傳的訊息原文照登。
 
 ## 專長守則（ui）
 
