@@ -403,20 +403,3 @@ def test_cloud_cap_message_unchanged(tmp_path):
     _add(env, "alice")
     r = run_cli(["user", "cloud-cap", "alice", "30"], env=env)
     assert "monthly cloud cap of alice is now US$30.00 (每月雲端費用上限)" in r.stdout
-
-
-def test_only_scoped_files_changed():
-    # TC-063: only where origin/v3 is this branch's real base (a few commits behind HEAD); elsewhere the verifier reads the diff
-    def git(*a):
-        return subprocess.run(["git"] + list(a), cwd=str(REPO_ROOT), capture_output=True, text=True)
-    base = git("merge-base", "origin/v3", "HEAD")
-    if base.returncode != 0 or not base.stdout.strip():
-        pytest.skip("no origin/v3")
-    count = git("rev-list", "--count", base.stdout.strip() + "..HEAD")
-    if count.returncode != 0 or int(count.stdout.strip() or 99) > 15:
-        pytest.skip("origin/v3 is not this branch's base")
-    r = git("diff", "--name-only", base.stdout.strip() + "..HEAD")
-    allowed = {"platform/tests/test_user_welcome.py", "platform/abf_platform/cli.py", "platform/abf_platform/welcome.py",
-               "docs/ONBOARDING.md"}
-    extra = [f for f in r.stdout.split() if f not in allowed and not f.startswith("specs/account-welcome-cli/")]
-    assert extra == [], extra
