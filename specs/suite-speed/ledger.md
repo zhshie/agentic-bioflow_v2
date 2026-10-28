@@ -10,7 +10,7 @@ Run stamp 20261028-1420-suitespeed3. Base 0d44c197d013c8045c848735f8d628bcbe1e3e
 - [x] Comments only in tests/run_all.sh, tests/platform_clock_test.sh, tests/quarantine.txt line 12 (keeps platform_shard_2_test.sh and platform_shard_3_test.sh literals plus platform_shard_<n>_test.sh, ruling D8).
 - [x] docs/TESTING.md and docs/PLATFORM.md name the nine entries.
 - [x] Measurements below (SS-52..SS-61).
-- [x] Full suite at HEAD (see end of file).
+- [x] Full suite at 0f9af82 (see the last section; the commit after it changes only this file).
 
 
 ## Fix round 2 (verifier findings SS-24, SS-52, SS-56, SS-66)
@@ -381,3 +381,152 @@ docs/PLATFORM.md, docs/TESTING.md, platform/tests/test_platform_parts.py, tests/
 ## Left for the developer-agent
 
 D2 and D3 items of the plan (not part of this executor task).
+
+## Full suite at 0f9af82 (SS-53, SS-54, SS-59)
+
+`bash tests/run_all.sh` through `abf-fast-suite ... --retry-failed-once` (no `--timeout`, so the default 300 s), nproc=16, 1 minute load 0.16 at the end of the run (load at the start was not recorded; the runs of the earlier commit 1301c74 had a TIMEOUT in `platform_shard_5_test.sh` while another lane was running a suite, which led to the second deal above). Result 133/133, no TIMEOUT line, the nine platform entries 205 s (clock), 9 s (direction docs), 85, 70, 104, 126, 101, 81, 77 s (parts 2 to 8), 90 s (part 1). Slowest entry is the clock one: two files that were not split on purpose (D1). The only change after this run is this ledger section.
+
+```
+abf-fast-suite: worktree /mnt/c/Users/marvi/Desktop/agentic-bioflow/wt/suite-speed at 0f9af828fc039836415a2c7c9869da64a91fb37e, mirror /home/ycmarvinlin/abf-mirror/suite-speed
+abf-fast-suite: running in slot 2 of 2
+root:    /home/ycmarvinlin/abf-mirror/suite-speed
+version: 3.0.0-dev
+logs:    /tmp/bioflow-tests.ih8K8X
+
+agent_ctl_connection_id_test.sh                ok       1s
+bash32_arrays_test.sh                          ok       0s
+bsd_userland_test.sh                           ok       1s
+build_package_test.sh                          ok       6s
+cite_test.sh                                   ok       0s
+collect_provenance_test.sh                     ok       2s
+column_output_relay_rule.sh                    ok       0s
+command_layer_is_record_neutral.sh             ok       0s
+command_layer_is_site_neutral.sh               ok       0s
+commands_resolve_their_own_paths.sh            ok       0s
+commands_scope_tw_to_the_workspace.sh          ok       0s
+conditions_matrix_test.sh                      ok       5s
+confirm_cleanup_behind_heredoc_test.sh         ok       73s
+confirm_cleanup_candidates_timing_test.sh      ok       14s
+confirm_cleanup_test.sh                        ok       24s
+confirm_launch_test.sh                         ok       40s
+confirm_walkthrough_test.sh                    ok       10s
+constitution_6_test.sh                         ok       0s
+constitution_checks_exist_test.sh              ok       1s
+constitution_scope_test.sh                     ok       6s
+credentials_stay_in_settings_test.sh           ok       2s
+daemon_cwd_test.sh                             ok       0s
+dev_workflow_test.sh                           ok       0s
+docs_nano4_acceptance.sh                       ok       0s
+docs_nano4_keys.sh                             ok       0s
+duplicate_run_check_test.sh                    ok       1s
+egress_allow_test.sh                           ok       1s
+egress_ctl_restart_test.sh                     ok       8s
+env_sh_test.sh                                 ok       1s
+fetch_test.sh                                  ok       0s
+flow_skills_layout_test.sh                     ok       1s
+gate_big_input_test.sh                         ok       11s
+gate_exit_contract_test.sh                     ok       9s
+gate_output_failclosed_test.sh                 ok       2s
+gate_process_count_test.sh                     ok       0s
+gates_without_jq_test.sh                       ok       9s
+generate_samplesheet_test.sh                   ok       3s
+guard_plugin_files_test.sh                     ok       8s
+harness_kits_test.sh                           ok       0s
+hooks_fail_closed_test.sh                      ok       0s
+hosted_deploy_test.sh                          ok       1s
+in_use_speed_test.sh                           ok       0s
+in_use_test.sh                                 ok       3s
+init_workspace_test.sh                         ok       1s
+input_checksums_test.sh                        ok       1s
+inspect_sides_test.sh                          ok       3s
+install_deps_test.sh                           ok       0s
+install_doc_test.sh                            ok       0s
+intro_languages_test.sh                        ok       0s
+intro_test.sh                                  ok       1s
+inventory_outputs_test.sh                      ok       0s
+jev_test.sh                                    ok       19s
+launch_provenance_test.sh                      ok       0s
+launch_recheck_test.sh                         ok       1s
+machine_identity_test.sh                       ok       2s
+methods_text_fetch_test.sh                     ok       6s
+methods_text_test.sh                           ok       2s
+migration_doc_test.sh                          ok       0s
+next_step_test.sh                              ok       2s
+nf_relay_domains_test.sh                       ok       1s
+no_hardcoded_paths.sh                          ok       1s
+no_per_pipeline_config.sh                      ok       0s
+no_pipefail_grep_q_test.sh                     ok       0s
+no_second_run_state_test.sh                    ok       2s
+off_design_single_path.sh                      ok       1s
+on_site_parallel_test.sh                       ok       30s
+on_site_test.sh                                ok       11s
+operations_doc_test.sh                         ok       0s
+package_crate_test.sh                          ok       0s
+package_gaps_test.sh                           ok       2s
+parallel_watch_check_test.sh                   ok       0s
+path_shapes_test.sh                            ok       1s
+pitfalls_supervise_test.sh                     ok       0s
+platform_clock_test.sh                         ok       205s
+platform_direction_docs_test.sh                ok       9s
+platform_shard_2_test.sh                       ok       85s
+platform_shard_3_test.sh                       ok       70s
+platform_shard_4_test.sh                       ok       104s
+platform_shard_5_test.sh                       ok       126s
+platform_shard_6_test.sh                       ok       101s
+platform_shard_7_test.sh                       ok       81s
+platform_shard_8_test.sh                       ok       77s
+platform_storage_doc_test.sh                   ok       0s
+platform_test.sh                               ok       90s
+plugin_intro_test.sh                           ok       18s
+portable_userland.sh                           ok       2s
+positron_bridge_test.sh                        ok       0s
+positron_run_test.sh                           ok       5s
+preflight_reach_test.sh                        ok       1s
+preflight_ssh_fold_test.sh                     ok       7s
+prepare_launch_ce_test.sh                      ok       2s
+prepare_launch_test.sh                         ok       1s
+principle_12_test.sh                           ok       0s
+principle_13_test.sh                           ok       0s
+principle_9_test.sh                            ok       0s
+push_test.sh                                   ok       1s
+record_adapter_test.sh                         ok       0s
+relaunch_override_test.sh                      ok       1s
+report_facts_test.sh                           ok       0s
+report_test.sh                                 ok       1s
+require_python_test.sh                         ok       0s
+reset_master_test.sh                           ok       1s
+run_all_count_test.sh                          ok       0s
+run_all_retry_test.sh                          ok       10s
+run_all_shard_test.sh                          ok       4s
+run_all_test.sh                                ok       12s
+runs_board_test.sh                             ok       1s
+runs_report_format_test.sh                     ok       0s
+scripts_name_their_alternative.sh              ok       0s
+session_start_test.sh                          ok       3s
+settings_migrate_reports_test.sh               ok       1s
+settings_test.sh                               ok       2s
+setup_doc_test.sh                              ok       0s
+setup_proof_test.sh                            ok       1s
+setup_verify_only_test.sh                      ok       0s
+site_report_test.sh                            ok       0s
+site_scripts_via_on_site.sh                    ok       0s
+skill_names_command_file_test.sh               ok       0s
+skill_portability_test.sh                      ok       0s
+skill_requires_intro_test.sh                   ok       0s
+skill_runs_uses_actions_test.sh                ok       1s
+skills_name_the_v3_launch_path.sh              ok       0s
+status_test.sh                                 ok       1s
+t3_scripts_are_tagged.sh                       ok       0s
+task_health_test.sh                            ok       1s
+testing_web_doc_test.sh                        ok       0s
+tune_resources_test.sh                         ok       1s
+turn_timing_test.sh                            ok       0s
+where_test.sh                                  ok       1s
+why_pending_test.sh                            ok       0s
+windows_privacy_test.sh                        ok       1s
+works_without_host_test.sh                     ok       4s
+wsl_bridge_test.sh                             ok       2s
+
+133/133 passed
+all green
+```
