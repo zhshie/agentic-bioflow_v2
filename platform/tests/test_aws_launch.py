@@ -910,15 +910,14 @@ def test_aws_environment_accepts_exactly_preflight_launch_cancel_and_pipeline_fi
     from abf_platform import jobs
     available_aws(ip)
     before = jobs_count(ip)
-    for kind in ("launch_nextflow", "cancel_run", "preflight", "pipeline_files", "put_upload"):      # aws-upload: put_upload is taken now
+    for kind in ("launch_nextflow", "cancel_run", "preflight", "pipeline_files", "put_upload", "clean_work"):      # aws-upload: put_upload; aws-clean: clean_work
         jobs.check_target(ip.state_db, "aws1", kind)
-    for kind in ("clean_work", "list_site_files", "fetch_run_records", "read_task_log"):
+    for kind in ("list_site_files", "fetch_run_records", "read_task_log"):
         with pytest.raises(jobs.JobRefused) as e:
             jobs.check_target(ip.state_db, "aws1", kind)
         m = str(e.value)
         assert "尚未支援" in m and "AWS Batch" in m and "Google Batch" not in m and "set an agent" not in m, (kind, m)
-        if kind == "clean_work":
-            assert "aws-clean" in m          # TC-108
+        assert "aws-clean" not in m and "aws-upload" not in m          # TC-108 (aws-clean: the generic sentence, same shape as Google's)
     assert jobs_count(ip) == before
 
 
@@ -960,15 +959,14 @@ def test_a_dataset_destination_cannot_be_an_aws_environment(ip):
     assert build.target_problem(ip.state_db, "aws1", "put_upload") is None
 
 
-def test_put_upload_and_clean_work_jobs_cannot_be_queued_for_aws(ip, box):
+def test_put_upload_and_clean_work_are_taken_and_the_agent_no_longer_says_unsupported(ip, box):
     # TC-114, TC-115, TC-147
     from abf_platform import jobs
     from abf_station import clean, rules
     available_aws(ip)
     n = jobs_count(ip)
-    for kind in ("clean_work",):      # changed by aws-upload: put_upload is taken now, clean_work stays refused
-        with pytest.raises(jobs.JobRefused):
-            jobs.check_target(ip.state_db, "aws1", kind)
+    for kind in ("put_upload", "clean_work"):      # changed by aws-upload (put_upload) and aws-clean (clean_work): both are taken now
+        jobs.check_target(ip.state_db, "aws1", kind)
     with pytest.raises(jobs.JobRefused):
         jobs.enqueue_listing(ip.state_db, "aws1", "/x")
     assert jobs_count(ip) == n
@@ -976,7 +974,7 @@ def test_put_upload_and_clean_work_jobs_cannot_be_queued_for_aws(ip, box):
         cb = {"version": 1, "run_name": "run-a", "slurm_job_id": PID, "run_folder": str(box.folder()), "agent": "a1", "ce": ace(),
               "work": WORK + "/runs/run-a/work"}
         clean.run_clean(job_of(cb, kind="clean_work", conf_kind="clean_work"), box.ctx)
-    assert "尚未支援" in str(e.value)
+    assert "尚未支援" not in str(e.value)      # aws-clean: it is built; this bundle stops at the missing head.pid, before any program
     assert box.runs == []      # TC-147: no program (and so no aws or S3 command) was run
 
 
@@ -1222,7 +1220,7 @@ def test_docs_describe_the_launch_the_billing_sentence_and_the_requirements():
     # TC-167: the AWS bracket near line 84 of SEQERA_PARITY.md
     assert "for AWS Batch the same agent runs them (create + check + launch + cancel; resume not yet)" in par
     row = [ln for ln in par.splitlines() if "`awsbatch-platform`" in ln][0]
-    assert "Have (create + check + launch + cancel + upload); clean in aws-clean" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel + upload + clean)" in row and row.rstrip().endswith("[ ] |")
     install = doc("INSTALL.md") + doc("OPERATIONS.md")
     assert "Java 17" in install and "Nextflow" in install and "aws CLI" in install
     t = doc("TESTING.md")

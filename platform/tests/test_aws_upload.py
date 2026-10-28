@@ -126,8 +126,8 @@ def test_put_upload_gate_is_a_per_type_table_not_a_shared_tuple(pw, monkeypatch)
     # TC-004, TC-005, TC-006, TC-007
     from abf_platform import compute_envs, jobs
     kinds = compute_envs.CLOUD_JOB_KINDS
-    assert set(kinds[compute_envs.AWS]) == {"preflight", "launch_nextflow", "cancel_run", "pipeline_files", "put_upload"}
-    assert "clean_work" not in "".join(kinds[compute_envs.AWS]) and "clean_" "work" not in kinds[compute_envs.AWS]
+    assert set(kinds[compute_envs.AWS]) == {"preflight", "launch_nextflow", "cancel_run", "pipeline_files", "put_upload", "clean_" "work"}      # aws-clean adds clean_work
+    assert "clean_" "work" in kinds[compute_envs.AWS] and len(kinds[compute_envs.AWS]) == 6
     assert set(kinds[compute_envs.GOOGLE_BATCH]) == {"preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"}
     assert len(kinds[compute_envs.GOOGLE_BATCH]) == 6
     pw.put()      # AWS passes while the table has the word
@@ -146,14 +146,15 @@ def test_put_upload_gate_is_a_per_type_table_not_a_shared_tuple(pw, monkeypatch)
     assert "cloud data" in str(e.value) and jobs_count(pw.ip) == before
 
 
-def test_clean_work_still_refused_for_aws(pw):
-    # TC-008, TC-009
+def test_clean_work_is_taken_for_aws_since_aws_clean(pw):
+    # TC-008, TC-009 (aws-clean: the type table now lets clean_work through, and the other kinds are still decided by the table)
     from abf_platform import jobs
     before = jobs_count(pw.ip)
+    jobs.check_target(pw.ip.state_db, "aws-lab", "clean_" "work")
     with pytest.raises(jobs.JobRefused) as e:
-        jobs.check_target(pw.ip.state_db, "aws-lab", "clean_" "work")
+        jobs.check_target(pw.ip.state_db, "aws-lab", "list_site_files")
     m = str(e.value)
-    assert "尚未支援" in m and "aws-clean" in m and "aws-upload" not in m
+    assert "尚未支援" in m and "aws-clean" not in m and "aws-upload" not in m
     assert jobs_count(pw.ip) == before
 
 
@@ -547,12 +548,12 @@ def test_the_put_upload_arguments_are_unchanged():
     assert put_upload.ARGS == {"ce", "owner", "name", "size", "dest"} == handlers.ARG_KEYS["put_upload"]
 
 
-def test_clean_work_of_an_aws_run_is_refused_by_the_agent_and_starts_nothing(aw):
-    # TC-010
+def test_clean_work_of_an_aws_run_is_no_longer_refused_as_unsupported_by_the_agent(aw):
+    # TC-010 (aws-clean builds it: the stub sentence is gone from clean.py)
     from abf_station import clean, rules
     assert hasattr(clean, "run_clean") and issubclass(rules.Refusal, Exception)
     src = (SRC_STATION / "clean.py").read_text(encoding="utf-8")
-    assert "AWS Batch 的清理尚未支援" in src and aw.runs == [] and aw.feds == []
+    assert "AWS Batch 的清理尚未支援" not in src and aw.runs == [] and aw.feds == []
 
 
 # =============================================================================================================================
@@ -751,9 +752,9 @@ def test_the_documents_say_what_the_feature_is():
     para = next(p for p in text.split("\n\n") if "網頁入口尚未接上" in p)
     assert "s3://" in para and "版本控管" in para and "仍" in para
     assert not [ln for ln in text.splitlines() if "aws-upload" in ln and re.search(r"later|Not yet|尚未支援|for now", ln)]
-    assert "aws-clean" in text
+    assert "(aws-clean)" not in text      # aws-clean is built: the "later" mentions are gone
     row = next(ln for ln in _doc("SEQERA_PARITY.md").splitlines() if "awsbatch-platform" in ln)
-    assert "Have (create + check + launch + cancel + upload); clean in aws-clean" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel + upload + clean)" in row and row.rstrip().endswith("[ ] |")
     assert "aws-upload" in _doc("TESTING.md") or "AWS Budgets" in _doc("TESTING.md")
 
 
