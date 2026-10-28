@@ -26,7 +26,6 @@ source: 維護者 2026-10-28「登記管線要做，畢竟是裝在使用者自�
 - `platform/abf_platform/web.py`（兩條新 POST 路由與註冊行，見作法 2）
 - `platform/abf_platform/web_settings.py`（環境列加表單與移除按鈕）
 - `platform/abf_platform/web_board.py`（只限 STRINGS 新字串，以及 `/launch` 未登記訊息改句）
-- `platform/abf_platform/mcp_server.py`（登記同名兩個工具，見作法 4）
 - `platform/tests/test_web_settings_register.py`（新檔）
 - 被逐字釘住、必須更新的既有測試（只加新項，不刪既有斷言；ledger 逐條列）：`test_dataset_cli.py:183`、`test_cleanup_offer.py:815`、`test_confirm_page.py:313`、`test_web_board.py:820`、`test_owner_binding.py:824`、`test_temp_password.py:290`、`test_web_parity.py:16`、`test_actions_layer.py`（工具清單）、`test_web_settings.py::test_st08_still_read_only`（見裁決 1）、`/launch` 未登記句相關測試
 - `docs/PLATFORM.md`（:608「設定頁唯讀」一段改寫）、`docs/SETTINGS.md`（:325 附近加「從網頁登記」一句）、`docs/TESTING.md`（新增手動一節）
@@ -64,7 +63,17 @@ source: 維護者 2026-10-28「登記管線要做，畢竟是裝在使用者自�
 
 ## 裁決
 1. `test_st08_still_read_only` 原本釘「設定頁中欄沒有任何表單」。本任務是維護者 10-28 明確要求的寫入功能，改成：中欄只允許本任務的兩種表單（purpose `settings-pipeline`），其餘斷言（沒有權杖清單 action、GET 不改資料庫）不動。
-2. 移除不另開確認頁：只影響使用者自己的登記資料、可以立刻再登記回來（可逆），照「先把功能做起來」。
+2. （已由裁決 4 取代）移除也走確認頁。
+
+3. （10-28 合約退回後）**不新增 MCP 工具**：作法 4 撤銷，`mcp_server.py` 不在範圍內、parity 表把兩個新動作列為 WEB_ONLY（附理由「寫入需確認頁」）。stdio 因此不涉及。
+4. **網頁寫入走既有確認頁**（ADR 0006、憲法 Safety Net，不放寬）：`POST /settings/pipelines` 與 `/settings/pipelines/remove` 不直接改資料，而是照 `/act/{verb}` 的同一套機制建一筆待確認請求、303 到 `/c/{rid}` 確認頁；確認頁列出「環境、管線、版本、模組名稱、管線資料夾變數」與「新增／移除」；按「確認」才寫入，按「返回」不寫。裁決 2 改為：移除也走這一頁（不另做第二種確認）。拒絕測試：未確認＝資料庫不變；他人的 rid＝404；rid 只能用一次。若 `/act/{verb}` 的機制不能直接重用，executor 可在 `web.py` 新增最小的同款函式，ledger 說明。
+5. **空清單的意思是預期行為，要對使用者講明**：`sitePipelines` 為空＝此環境送出時直接取用 nf-core 官方版本、不需登記；登記第一筆後，此環境只能送出已登記的管線版本；移除最後一筆又回到不需登記。設定頁在空清單環境的表單上方顯示：「此環境目前未登記管線：送出時直接取用 nf-core 官方版本。登記第一筆後，只能送出已登記的管線版本。」（en: "No pipelines are registered here: runs use the nf-core release directly. Once you register one, only registered pipeline versions can be run here."）確認頁在「登記第一筆」與「移除最後一筆」時也加這句。`web_board.py:959-965` 的判斷不改。TC 兩種前置條件都出（空清單、已有一筆）。
+6. 移除**不**排使用前檢查；只有新增排。
+7. 排檢查後的畫面句一律顯示 `_queue_first_preflight`（或搬出後的共用 helper）回傳的那一句，代理離線或環境不可檢查時就顯示它回的那句，不另造字。
+8. 移除清單中已不存在的一筆：不改資料，303 回設定頁並顯示「此管線版本已不在清單中。」（en: "This pipeline version is no longer registered."）
+9. 不需要 migration：資料寫在既有 `config_json` 的 `sitePipelines` 鍵，結構不變。
+10. pipeline 名稱新增判斷 `^nf-core/[a-z0-9][a-z0-9-]{0,63}\Z`（小寫、無空白）；作法 1 的「與 /launch 同一判斷」作廢。
+11. 英文字串：未登記句 "This pipeline version is not registered on the selected compute environment. Register it on the Settings page first."；表單標籤 "Pipeline (e.g. nf-core/ampliseq)"、"Version (e.g. 2.18.0)"、"Module name (the name used by `module load` on the site, e.g. biology/nf-core-ampliseq/2.18.0)"、"Pipeline folder variable (the environment variable the module sets, e.g. NFCORE_AMPLISEQ_HOME)"；按鈕 "Register"、"Remove"。
 
 ## 專長守則（ui）
 
