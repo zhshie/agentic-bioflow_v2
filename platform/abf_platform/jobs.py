@@ -110,6 +110,9 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
     if row["platform"] in compute_envs.CLOUD_JOB_KINDS and kind not in compute_envs.CLOUD_JOB_KINDS[row["platform"]]:
         if row["platform"] == compute_envs.AWS:
             raise JobRefused("%s is an AWS Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
+        if row["platform"] == compute_envs.AZURE:
+            hint = {"clean_" "work": "（清理要等 azure-clean）", "put_upload": "（上傳要等 azure-upload）"}.get(kind, "")
+            raise JobRefused("%s is an Azure Batch environment: this job kind is not built for it yet (尚未支援)%s" % (ce_name, hint))
         raise JobRefused("%s is a Google Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
     if row["platform"] in compute_envs.CHECK_ONLY_TYPES and kind != "preflight":
         raise JobRefused("%s is an Azure Batch environment: it is checked on the platform host, and launching on it is not built yet "

@@ -424,7 +424,7 @@ Fourteen tools. Nine are read-only (`readOnlyHint`): `list_runs`, `get_run`, `li
 
 ### Azure Batch
 
-An `azbatch-platform` environment (azure-ce-type) is served the way an AWS Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused). The people who use Azure install nothing. It can be **created and checked** only; a launch, a listing, a record fetch, a task log, a clean and an upload are all refused in plain words (尚未支援送出；下一步 azure-launch), and the automatic choice of an environment never picks it.
+An `azbatch-platform` environment (azure-ce-type) is served the way an AWS Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused). The people who use Azure install nothing. It can be **created, checked, launched and cancelled** (see "Launching on Azure Batch" below); a listing, a record fetch, a task log, a clean and an upload are refused in plain words (尚未支援), and the automatic choice of an environment never picks it: a launch on it needs its name (`--ce azure1`), so nothing that costs money is chosen for you.
 
 | Key | Rule |
 |---|---|
@@ -433,7 +433,7 @@ An `azbatch-platform` environment (azure-ce-type) is served the way an AWS Batch
 | `storageAccountName` | required; the storage account, 3 to 24 lower-case letters and digits, such as `labstore` (`--storage-account`) |
 | `workDir` | required; `az://<container>/<folder>` with a folder, such as `az://lab-container/work`; the container 3 to 63 characters of lower-case letters, digits and `-`; no `..`; a trailing slash is dropped |
 | `pool` | required; the id of a pool that **already exists**, such as `lab-pool` (`--pool`). The operator creates it beforehand; this slice creates no pool |
-| `spot` | optional true or false (`--spot`, `--no-spot`); stored only, it maps to Nextflow `lowPriority` when a launch is built later |
+| `spot` | optional true or false (`--spot`, `--no-spot`); stored only, as a note: a launch writes nothing for it, because low-priority nodes are decided when the pool is created (`lowPriority`) |
 | `maxvCpus` | optional whole number 1 to 10000 |
 | `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
 
@@ -458,11 +458,50 @@ storage_account_key = <the storage account key>
 
 **預檢不計費 (the preflight costs nothing):** it only reads. It asks for one pool's state and one container's existence; it creates no pool (creates no pool, no job, writes no blob). Each `az` call is limited to 30 seconds; a timeout fails that one check. The keys are handed to `az` in the environment of that one call, with an empty config folder of its own that is deleted afterwards, never in the command line; the agent's own `AZURE_*` and `ABF_*` variables are not passed on.
 
+### Launching on Azure Batch
+
+**Who runs what.** The head process of Nextflow runs on the platform host, started by the station agent that runs there; the compute is done by tasks of an Azure Batch **pool that already exists** (`process.executor = 'azurebatch'`). Nothing runs on the cluster you use for Slurm and nothing is installed by the people who launch. As for AWS Batch, nothing is written or started before the person who launched says y, and the agent builds the same files again from its own settings and refuses a bundle that is not identical.
+
+**What the platform host needs.** Java 17 or newer, Nextflow, the az CLI (the Azure command line, used by the preflight), a `storage_root` in `config/env.yaml` (the run folders go to `<storage_root>/_azure_runs/<run>`), and the credential file described above (the agent's own setting, found at `ABF_STATION_AZURE_CREDENTIALS`, mode 600). The host must be Linux or WSL. The two keys of that file are put into the environment of the head process only (`AZURE_BATCH_ACCOUNT_KEY` and `AZURE_STORAGE_ACCOUNT_KEY`, or `AZURE_STORAGE_SAS_TOKEN` when the file holds a sas token; a leading `?` is dropped). They are never in a file, an argument, an answer, a log or the database.
+
+**What the pool must be, before the first launch.** The operator creates the pool; the platform never does. Check these on the Azure Portal (the pool's page of the Batch account):
+
+| Needed | If it is not so |
+|---|---|
+| a pool with `dockerCompatible` (a container-capable image, such as a Batch container image) | tasks fail at once because the container cannot start |
+| task slots per node equal to the cores of the node | too few tasks run at the same time, or a node is over-booked |
+| the storage account in the same region as the Batch account | slow staging and cross-region transfer charges |
+| every process of the pipeline has a `container` | a task without one cannot run on the pool |
+
+**The samplesheet.** Every path cell must be an `az://` URL in the same container as `workDir` (for example `az://lab-container/x.fastq.gz`). Putting files there from the platform is a later feature: put them in the container yourself, with the az CLI or azcopy. A cell that is anything else is refused with that advice.
+
+**The files.** The bundle has five files: `samplesheet.csv`, `params.yaml`, `nextflow.config` (your own text, with the same overwrite block as the other types), the Azure config file and `head.sh`. The Azure config file has exactly these lines, built from the environment:
+
+| Key | Value |
+|---|---|
+| `process.executor` | `'azurebatch'` |
+| `process.queue` | the environment's `pool` |
+| `workDir` | `<workDir>/runs/<run>/work` |
+| `azure.batch.accountName` | the environment's `batchAccountName` |
+| `azure.batch.location` | the environment's `location` |
+| `azure.storage.accountName` | the environment's `storageAccountName` |
+| `azure.batch.allowPoolCreation` | `false`, always: the platform never lets Nextflow create a pool |
+| `azure.batch.autoPoolMode` | `false`, always |
+| `process.resourceLimits` | `[cpus: N]`, only when `maxvCpus` is set; this is a **per-task** cap, one task asks for at most N cpus, it is not a limit on the total of the pool |
+
+The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: low-priority nodes are decided when the pool is created, and the screen says so. No key is written into any file; the first line of the Azure config file says they come from environment variables.
+
+**Billing.** The first paragraph of the screen before the y says, in one fixed sentence, 由 Azure 向實驗室的 Azure 帳號收費；本系統目前沒有費用預估與上限. Read the amount in Azure's own bill and set a budget alert in Azure; the platform shows no amount.
+
+**Cancel.** The agent finds the head process by the number in `head.pid`, checks that it is still the same program, owned by the same user, with the same `-name`, started in that run's folder, and sends it exactly one SIGTERM. Nothing more is promised: after a cancel open the Azure Portal, the Batch account page, and check the jobs and the pool; anything that did not stop you clean up yourself, and the billing runs from the start of the task to its real stop.
+
+**Not yet.** A resume or a relaunch of an Azure Batch run, upload, clean, cost estimates, listing files, reading Nextflow's records back and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid); no migration was needed.
+
 A record made before this type was checked (status `unsupported`, with the old keys `region` and `vmType`) is still listed and shown, but it cannot be checked or updated: the message says `請刪除後重建這個計算環境`. Delete it and create it again.
 
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch and AWS Batch can run; Azure Batch can be created and checked; the other ten types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch and AWS Batch can run; Azure Batch can be created and checked; the other ten types can be modelled only. The other ten are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only. The other ten are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -473,7 +512,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `moab-platform` | Moab | modelled only |
 | `awsbatch-platform` | AWS Batch | checked and launched on the platform host (upload, clean, resume: not yet) |
 | `awscloud-platform` | AWS Cloud | modelled only |
-| `azbatch-platform` | Azure Batch | checked on the platform host (launch: not yet) |
+| `azbatch-platform` | Azure Batch | checked and launched on the platform host (upload, clean, resume: not yet) |
 | `azcloud-platform` | Azure Cloud | modelled only |
 | `googlebatch-platform` | Google Cloud Batch | Slurm-like confirmed launch and cancel on the platform host (resume: not yet) |
 | `googlecloud-platform` | Google Cloud | modelled only |

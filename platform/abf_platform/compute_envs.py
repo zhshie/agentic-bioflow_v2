@@ -2,7 +2,7 @@
 """Compute environments in the Seqera model: a type, a config, and the NAME of a credential.
 
 Slurm is the only type that can run. Google Cloud Batch can be created and checked (by the agent on the platform
-host; launching comes later). AWS Batch can be created and checked the same way (launching: aws-launch). Azure Batch can be created and checked as well (launching: azure-launch). The other 10 types Seqera lists are stored
+host; launching comes later). AWS Batch and Azure Batch are served the same way (create, check, launch and cancel on the platform host). The other 10 types Seqera lists are stored
 (their settings, nothing more) with the status `unsupported`: no code runs for them, no cloud
 library is imported, and the check and listing refuse them at once. Nothing here holds a
 credential: a value that looks like one is refused, and only the credential's name is kept.
@@ -35,11 +35,12 @@ SUPPORTED = "slurm-platform"                                  # the type that ru
 GOOGLE_BATCH = "googlebatch-platform"
 AWS = "awsbatch-platform"
 AZURE = "azbatch-platform"
-PLATFORM_HOST_TYPES = (GOOGLE_BATCH, AWS)                     # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch, aws-launch)
-CHECK_ONLY_TYPES = (AZURE,)                                      # 新雲端類型先放這裡，只開預檢
+PLATFORM_HOST_TYPES = (GOOGLE_BATCH, AWS, AZURE)                   # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch, aws-launch, azure-launch)
+CHECK_ONLY_TYPES = ()                                            # 新雲端類型先放這裡，只開預檢
 CLOUD_JOB_KINDS = {                                           # the job kinds each platform-host type takes; the rest is refused in plain words (the clean kind is split in two pieces: test_cleanup_store allows that word in no other file of this package)
     GOOGLE_BATCH: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
     AWS: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
+    AZURE: ("preflight", "launch_nextflow", "cancel_run", "pipeline_files"),
 }
 CHECKABLE = (SUPPORTED,) + PLATFORM_HOST_TYPES + CHECK_ONLY_TYPES
 SEQERA_COMPUTE = ("seqera-compute", "seqeracompute-platform")

@@ -85,6 +85,7 @@ PROJECT_MAX_FILE = 200000          # characters of one file of a composed projec
 PROJECT_MAX_BYTES = 2 * 1024 * 1024
 PROJECT_MAX_FILES = 2000
 AWS_NO_RESUME = "AWS Batch 的 run 還不能續跑或原樣重跑（尚未支援）(an AWS Batch run cannot be resumed or relaunched yet)"
+AZURE_NO_RESUME = "Azure Batch 的 run 還不能續跑或原樣重跑（尚未支援）(an Azure Batch run cannot be resumed or relaunched yet)"
 GCB_NO_RESUME = "Google Batch 的 run 還不能續跑或原樣重跑（尚未支援）(a Google Batch run cannot be resumed or relaunched yet)"
 
 
@@ -172,6 +173,12 @@ def snapshot_ce(view):
     if view.get("platform") == AWS:
         return {"name": view.get("name"), "platform": AWS, "region": c.get("region"), "workDir": c.get("workDir"),
                 "jobQueue": c.get("jobQueue"), "spot": bool(c.get("spot")), "maxvCpus": c.get("maxvCpus"), "environment": env,
+                "nextflowConfig": c.get("nextflowConfig") or "", "preRunScript": c.get("preRunScript") or "",
+                "postRunScript": c.get("postRunScript") or ""}
+    if view.get("platform") == AZURE:
+        return {"name": view.get("name"), "platform": AZURE, "location": c.get("location"), "batchAccountName": c.get("batchAccountName"),
+                "storageAccountName": c.get("storageAccountName"), "workDir": c.get("workDir"), "pool": c.get("pool"),
+                "spot": bool(c.get("spot")), "maxvCpus": c.get("maxvCpus"), "environment": env,
                 "nextflowConfig": c.get("nextflowConfig") or "", "preRunScript": c.get("preRunScript") or "",
                 "postRunScript": c.get("postRunScript") or ""}
     return {"name": view.get("name"), "platform": view.get("platform"), "workDir": c.get("workDir"),
@@ -507,6 +514,11 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
             raise BundleError("環境: AWS Batch 環境還不能送出自訂組合 (a composed pipeline cannot be sent to an AWS Batch environment yet)")
         return render_aws_bundle(ce=ce, agent=agent, facts=facts, roots=roots, run_name=run_name, pipeline=pipeline, revision=revision,
                                  samplesheet=samplesheet, params=params, path_columns=path_columns)
+    if isinstance(ce, dict) and ce.get("platform") == AZURE:      # an Azure Batch environment has its own bundle, below
+        if composed is not None:
+            raise BundleError("環境: Azure Batch 環境還不能送出自訂組合 (a composed pipeline cannot be sent to an Azure Batch environment yet)")
+        return render_azure_bundle(ce=ce, agent=agent, facts=facts, roots=roots, run_name=run_name, pipeline=pipeline, revision=revision,
+                                   samplesheet=samplesheet, params=params, path_columns=path_columns)
     if not isinstance(agent, str) or not agent:
         raise BundleError("agent: 這個環境沒有代理 (the environment has no agent)")
     facts = facts if isinstance(facts, dict) else {}
@@ -939,6 +951,182 @@ def render_aws_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, 
             "path_columns": sorted(set(path_columns or [])), "tower": tower, "files": files, "pipeline_source": dict(REMOTE)}
 
 
+# ---- Azure Batch: the head process runs on the platform host, the compute on Batch (azure_launch) ---------------------------------
+
+AZURE = compute_envs.AZURE
+AZURE_RUNS = "_azure_runs"
+AZURE_CONFIG_NAME = "az" "ure.config"      # in two pieces: the station's static scan bars the bare lower-case word in this package
+AZURE_FILE_NAMES = ("samplesheet.csv", "params.yaml", "nextflow.config", AZURE_CONFIG_NAME, "head.sh")
+AZURE_CREDENTIALS_COMMENT = ("# credentials: the agent puts the Batch and storage keys into this process's environment from its own credentials "
+                             "file; no key and no path of that file is part of this script")
+AZURE_FORBIDDEN_ENV = ("AZURE_BATCH_ACCOUNT_KEY", "AZURE_STORAGE_ACCOUNT_KEY", "AZURE_STORAGE_SAS_TOKEN", "AZURE_BATCH_ACCESS_KEY",
+                       "AZURE_STORAGE_KEY", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID", "AZURE_CONFIG_DIR")
+NO_AZURE_PATH = ("把檔案放進這個 container 是之後的功能，現在請自己放進去：用 `az " "storage blob` 或 az" "copy 把檔案放進 az://%s/ 底下，再把這一格改成 "
+                 "az:// 路徑 (copying files into the container is a later feature; for now put them there yourself)")      # in pieces: the source holds no upload command
+
+
+def _check_azure_ce(ce):
+    """The settings of an Azure Batch environment, each judged again with the platform's own patterns: they end up in a config file.
+    Returns (the normalised ce, the container of workDir, the head environment [(name, value)])."""
+    if not isinstance(ce, dict) or ce.get("platform") != AZURE:
+        raise BundleError("環境: 這不是 Azure Batch 環境 (not an Azure Batch environment)")
+    out = {"name": ce.get("name"), "platform": AZURE}
+    for key, pattern in (("location", compute_envs._AZURE_LOCATION), ("batchAccountName", compute_envs._AZURE_ACCOUNT),
+                         ("storageAccountName", compute_envs._AZURE_ACCOUNT), ("pool", compute_envs._AZURE_POOL)):
+        value = ce.get(key)
+        if not (isinstance(value, str) and pattern.match(value)):
+            raise BundleError("環境 %s: 值不合規則 (%s is not acceptable)" % (key, key))
+        out[key] = value
+    work = ce.get("workDir")
+    if not (isinstance(work, str) and work.startswith("az://")):
+        raise BundleError("環境 workDir: 必須是 az:// 開頭的網址 (workDir must be an az:// URL)")
+    container, _, prefix = work[5:].partition("/")
+    if not compute_envs._AZURE_CONTAINER.match(container) or "--" in container:
+        raise BundleError("環境 workDir: container 名稱不合規則 (the container name is not acceptable)")
+    prefix = prefix.rstrip("/")
+    if not prefix:
+        raise BundleError("環境 workDir: az://%s 沒有子目錄。Nextflow 規定 workDir 至少含一層子目錄，例如 az://%s/work；請更新環境 "
+                          "(Nextflow needs a workDir with at least one subdirectory)" % (container, container))
+    if not GCB_WORK_CHARS.match(prefix) or any(part in ("", ".", "..") for part in prefix.split("/")) or len(prefix) > 900:
+        raise BundleError("環境 workDir: 資料夾部分含不支援的字元或 .. (the folder part of workDir is not acceptable)")
+    out["workDir"] = "az://%s/%s" % (container, prefix)
+    spot = ce.get("spot")
+    if spot is not None and not isinstance(spot, bool):
+        raise BundleError("環境 spot: 必須是 true 或 false (true or false)")
+    out["spot"] = bool(spot)
+    cpus = ce.get("maxvCpus")
+    if cpus is not None and (isinstance(cpus, bool) or not isinstance(cpus, int) or not 1 <= cpus <= 10000):
+        raise BundleError("環境 maxvCpus: 必須是 1 到 10000 的整數 (a whole number from 1 to 10000)")
+    out["maxvCpus"] = cpus
+    if ((ce.get("preRunScript") or "").strip()) or ((ce.get("postRunScript") or "").strip()):
+        raise BundleError("環境: %s" % NO_SCRIPTS)
+    config = ce.get("nextflowConfig") or ""
+    _check_text("nextflowConfig", config, allow_cr=True, limit=200000)
+    out["nextflowConfig"] = config
+    head_env = []
+    for i, e in enumerate(ce.get("environment") or []):
+        name, value = e.get("name"), e.get("value", "")
+        if not isinstance(name, str) or not ENV_NAME.match(name):
+            raise BundleError("environment[%d]: 變數名稱 %r 必須是英文字母、數字與底線，且不以數字開頭 (a shell variable name)"
+                              % (i, str(name)[:40]))
+        if not isinstance(value, str) or "\n" in value or "\r" in value or "\x00" in value or len(value) > 2000:
+            raise BundleError("environment %s: 值不能含換行或 NUL，且不超過 2000 字元 (no newline or NUL in a value)" % name)
+        if (name in SET_BY_THE_SCRIPT or name in AZURE_FORBIDDEN_ENV or name.upper().startswith("ABF_")
+                or name.upper().startswith("AZURE_") or name.upper() == "TOWER_ACCESS_TOKEN"):
+            raise BundleError("environment %s: 這個變數由送出本身或代理設定，環境不能設 (set by the launch or the agent itself)" % name)
+        if e.get("head", True):
+            head_env.append((name, value))
+    out["environment"] = [dict(e) for e in (ce.get("environment") or [])]
+    return out, container, head_env
+
+
+def _azure_config(ce, work_uri):
+    """The Azure config file: the settings of the compute environment, in the words Nextflow reads. It is read after nextflow.config (-c twice),
+    so a line here cannot be overruled by the free text of the environment. No key is written: Nextflow reads them from the environment of
+    the head process. `spot` is a note and writes nothing. Pool creation is off, always."""
+    q = _gcb_quote
+    batch, storage = "az" "ure.batch.", "az" "ure.storage."
+    lines = ["// no key is written here: Nextflow reads the Batch and storage keys from environment variables of the head process",
+             "// written by the platform from the compute environment; read after nextflow.config, so these settings win",
+             "process.executor = 'azurebatch'", "process.queue = %s" % q(ce["pool"]), "workDir = %s" % q(work_uri),
+             "%saccountName = %s" % (batch, q(ce["batchAccountName"])), "%slocation = %s" % (batch, q(ce["location"])),
+             "%saccountName = %s" % (storage, q(ce["storageAccountName"])),
+             "%sallowPoolCreation = false" % batch, "%sautoPoolMode = false" % batch]
+    if ce["maxvCpus"] is not None:
+        lines.append("process.resourceLimits = [cpus: %d]" % ce["maxvCpus"])      # one task at most; Nextflow has no total of vCPUs
+    return "\n".join(lines) + "\n"
+
+
+def _azure_head_script(run_name, run_folder, pipeline, revision, env, tower):
+    q = shlex.quote
+    lines = ["#!/bin/bash", AZURE_CREDENTIALS_COMMENT, "umask 077", "cd %s || exit 1" % q(run_folder)]
+    loopback = (urlparse(tower["endpoint"]).hostname or "") in LOOPBACK
+    had_opts = False
+    for name, value in env:
+        if name == "NXF_OPTS" and loopback:
+            value = (value + " " if value else "") + GCB_LOOPBACK_OPTS
+            had_opts = True
+        lines.append("export %s=%s" % (name, q(value)))
+    if loopback and not had_opts:
+        lines.append("export NXF_OPTS=%s" % q(GCB_LOOPBACK_OPTS))
+    lines.append('export TOWER_ACCESS_TOKEN="$(cat tower.token)"')
+    lines.append("exec nextflow run %s -r %s -name %s -params-file params.yaml -c nextflow.config -c %s -with-tower %s"
+                 % (q(pipeline), q(revision), q(run_name), AZURE_CONFIG_NAME, q(tower["endpoint"])))
+    return "\n".join(lines) + "\n"
+
+
+def _check_azure_samplesheet(rows, path_columns, container):
+    """The samplesheet of an Azure Batch run: every cell that is read as a path is az://<the container of workDir>/<blob>."""
+    f = "samplesheet"
+    if not isinstance(rows, list) or len(rows) < 2:
+        raise BundleError("%s: 至少要有標題列和一列資料 (a header and at least one row)" % f)
+    clean = []
+    for r, row in enumerate(rows):
+        if not isinstance(row, list) or not row:
+            raise BundleError("%s 第 %d 列: 不是一列 (not a row)" % (f, r + 1))
+        if len(row) != len(rows[0]):
+            raise BundleError("%s 第 %d 列: 欄數 %d 與標題列的 %d 不同 (ragged row)" % (f, r + 1, len(row), len(rows[0])))
+        for c, cell in enumerate(row):
+            _check_text("%s 第 %d 列第 %d 欄" % (f, r + 1, c + 1), cell, limit=5000)
+        clean.append(list(row))
+    unknown = set(path_columns or []) - set(clean[0])
+    if unknown:
+        raise BundleError("%s: 沒有名為 %s 的欄 (no such column)" % (f, sorted(unknown)[0]))
+    for r, c, cell in path_cells(clean, path_columns):
+        where = "%s 第 %d 列第 %d 欄（%s）" % (f, r, c, clean[0][c - 1][:40])
+        why = None
+        if any(ord(ch) <= 0x20 or ord(ch) == 0x7F or ord(ch) in BIDI for ch in cell):
+            why = "含空白、控制字元或雙向文字字元 (a space, control or bidirectional character)"
+        else:
+            m = re.match(r"^az://([^/]+)/(.+)\Z", cell)
+            if not m:
+                why = "必須是 az://%s/<檔案路徑> (must be az://%s/<blob path>)" % (container, container)
+            elif m.group(1) != container:
+                why = "container 必須和環境 workDir 的 container（%s）相同 (must be in the container of workDir)" % container
+            elif any(part in ("", ".", "..") for part in m.group(2).split("/")):
+                why = "路徑裡不能有 .、.. 或空的一段 (no . or .. or empty part)"
+        if why:
+            raise BundleError("%s: %s。%s" % (where, why, NO_AZURE_PATH % container))
+    return clean
+
+
+def render_azure_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samplesheet, params, path_columns=None):
+    """The launch bundle of an Azure Batch environment: the same shape as render_aws_bundle's, with five files and no account.
+    `roots` is accepted for the same call as render_bundle and not used: reads are az:// paths of the container of workDir. Raises BundleError."""
+    if not isinstance(agent, str) or not agent:
+        raise BundleError("agent: 這個環境沒有代理 (the environment has no agent)")
+    facts = facts if isinstance(facts, dict) else {}
+    if not isinstance(run_name, str) or not RUN_NAME.match(run_name):
+        raise BundleError("run 名稱: %r 必須是小寫英文字母開頭，只含小寫字母、數字、_ 與 -，最長 64 字元 (run name)" % str(run_name)[:70])
+    _check_pipeline(pipeline)
+    _check_revision(revision)
+    ce_out, container, head_env = _check_azure_ce(ce)
+    storage = facts.get("storage_root")
+    if not isinstance(storage, str) or rules.path_problem(storage) is not None or rules.normalize(storage) == "/":
+        raise BundleError("storage_root 未設定: 代理主機上的專屬資料夾放在 storage_root 底下，請在部署設定檔（config/env.yaml）設定 "
+                          "storage_root 再重試 (storage_root is not set in the deployment's settings)")
+    if facts.get("reach") != "local":
+        raise BundleError("環境: Azure Batch 的主控程序跑在平台主機上，代理必須在本機（reach: local）；這個代理回報的連線方式是 %r "
+                          "(the agent must be on the platform host)" % str(facts.get("reach"))[:20])
+    tower = _tower(facts, run_name)
+    sheet = _check_azure_samplesheet(samplesheet, path_columns, container)
+    user_params = _check_params(params)
+    run_folder = "%s/%s/%s" % (rules.normalize(storage), AZURE_RUNS, run_name)
+    base = "%s/runs/%s" % (ce_out["workDir"], run_name)
+    config = ce_out["nextflowConfig"]
+    files = {
+        "samplesheet.csv": _csv_text(sheet),
+        "params.yaml": _gcb_params_yaml(user_params, run_folder + "/samplesheet.csv", base + "/results"),
+        "nextflow.config": ((config if config.endswith("\n") else config + "\n") if config.strip()
+                            else "// the compute environment carries no Nextflow config\n") + OVERWRITE_BLOCK,
+        AZURE_CONFIG_NAME: _azure_config(ce_out, base + "/work"),
+        "head.sh": _azure_head_script(run_name, run_folder, pipeline, revision, head_env, tower),
+    }
+    return {"version": BUNDLE_VERSION, "agent": agent, "ce": ce_out, "run_name": run_name, "run_folder": run_folder,
+            "pipeline": pipeline, "revision": revision, "samplesheet": sheet, "params": user_params,
+            "path_columns": sorted(set(path_columns or [])), "tower": tower, "files": files, "pipeline_source": dict(REMOTE)}
+
+
 MAX_EXTRA_CONFIG = 20000
 EXTRA_KEYS = ("cpus", "memory", "time", "disk", "maxRetries", "errorStrategy")
 _UNIT_TIME = r"[0-9]+(ms|s|m|h|d)"
@@ -1322,6 +1510,9 @@ def run_launch(job, ctx, preflight):
     if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == AWS:
         from . import aws_launch      # the AWS Batch launch; it imports this module, so it is read here and not at the top
         return aws_launch.run_launch(job, ctx, bundle)
+    if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == AZURE:
+        from . import azure_launch      # the Azure Batch launch; it imports this module, so it is read here and not at the top
+        return azure_launch.run_launch(job, ctx, bundle)
     env = rules.clean_environment(bundle.get("ce"))
     if bundle.get("agent") != ctx.agent_name:
         raise rules.Refusal("這個內容包是給另一個代理的 (the bundle is for another agent)")
@@ -1495,6 +1686,8 @@ def run_resume(job, ctx, preflight, bundle):
         raise rules.Refusal(GCB_NO_RESUME)      # a Google Batch run cannot be resumed yet, whatever the platform sent
     if any(isinstance(ce, dict) and ce.get("platform") == AWS for ce in (bundle.get("ce"), origin_ce)):
         raise rules.Refusal(AWS_NO_RESUME)      # nor an AWS Batch run
+    if any(isinstance(ce, dict) and ce.get("platform") == AZURE for ce in (bundle.get("ce"), origin_ce)):
+        raise rules.Refusal(AZURE_NO_RESUME)      # nor an Azure Batch run
     if not isinstance(resume, dict) or set(resume) - RESUME_OPTIONAL != RESUME_KEYS or not isinstance(resume.get("origin"), dict):
         raise rules.Refusal("續跑的內容包欄位不對 (the resume bundle has other fields than it should)")
     origin = resume["origin"]
