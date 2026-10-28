@@ -716,8 +716,9 @@ def test_the_type_constants():
     # TC-102 (the same constants are asserted in test_gcb_ce.py)
     from abf_platform import compute_envs
     assert compute_envs.SUPPORTED == "slurm-platform"
-    assert compute_envs.PLATFORM_HOST_TYPES == ("googlebatch-platform", "awsbatch-platform")
-    assert compute_envs.CHECK_ONLY_TYPES == (AZ,)
+    # azure-launch changed this on purpose: Azure Batch can be launched now, so nothing is check-only any more.
+    assert compute_envs.PLATFORM_HOST_TYPES == ("googlebatch-platform", "awsbatch-platform", AZ)
+    assert compute_envs.CHECK_ONLY_TYPES == ()
     assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, "googlebatch-platform", "awsbatch-platform", AZ)
 
 
@@ -735,7 +736,8 @@ def test_jobs_other_than_the_preflight_are_refused_in_plain_words(ip):
     _available_az(ip)
     before = jobs_count(ip)
     msgs = []
-    for kind in ("launch_nextflow", "cancel_run", "clean_work", "put_upload", "list_site_files", "pipeline_files"):
+    # azure-launch changed this on purpose: launch_nextflow, cancel_run and pipeline_files are taken now.
+    for kind in ("clean_work", "put_upload", "list_site_files"):
         with pytest.raises(jobs.JobRefused) as e:
             jobs.check_target(ip.state_db, "az1", kind)
         msgs.append(str(e.value))
@@ -743,7 +745,7 @@ def test_jobs_other_than_the_preflight_are_refused_in_plain_words(ip):
         jobs.enqueue_listing(ip.state_db, "az1", "/x")
     msgs.append(str(e.value))
     for msg in msgs:
-        assert "尚未支援送出" in msg and "azure-launch" in msg and "AWS" not in msg, msg
+        assert "尚未支援" in msg and "Azure Batch" in msg and "AWS" not in msg, msg
     assert jobs_count(ip) == before
     jobs.enqueue_preflight(ip.state_db, "az1")      # the preflight is the one job it takes
     assert jobs_count(ip) == before + 1
@@ -753,7 +755,8 @@ def test_launch_is_refused_and_the_environment_is_never_auto_picked(ip):
     # TC-105, TC-106, TC-107
     from abf_launch import build
     _available_az(ip)
-    assert build.target_problem(ip.state_db, "az1", "launch_nextflow")
+    assert build.target_problem(ip.state_db, "az1", "launch_nextflow") is None      # azure-launch: launch is taken now
+    assert build.target_problem(ip.state_db, "az1", "clean_work")
     assert build.primary_environment(ip.state_db) is None
     assert ip.create_slurm("s1")[0] == 0
     set_status(ip, "s1", "available")
@@ -854,14 +857,13 @@ def test_docs_list_every_azure_key_and_check():
     for word in ("ABF_STATION_AZURE_CREDENTIALS", "_personal/azure-credentials", "[default]", "batch_account_key",
                  "storage_account_key", "storage_sas_token", "預檢不計費", "creates no pool"):
         assert word in d, word
-    assert re.search(r"`azbatch-platform` \| Azure Batch \| checked on the platform host \(launch: not yet\)", d)
-    assert "the other ten types can be modelled only" in d and "the other eleven" not in d
-    assert re.search(r"Azure Batch can be created and checked", d)
+    assert re.search(r"`azbatch-platform` \| Azure Batch \| checked and launched on the platform host \(upload, clean, resume: not yet\)", d)
+    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only" in d and "the other eleven" not in d
     assert re.search(r"user subscription[^\n]*(not supported|本片不支援)", section, re.I) or "user subscription 模式的 Batch 帳號本片不支援" in section
     assert "lowPriority" in section and "az" in section and re.search(r"operator|營運者", section)
     par = doc("SEQERA_PARITY.md")
     row = [ln for ln in par.splitlines() if "`azbatch-platform`" in ln][0]
-    assert "Have (create + check); launch in azure-launch" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel)" in row and row.rstrip().endswith("[ ] |")
     assert "Azure Batch" in par[par.index("## F. Compute environments"):][:1500]
     t = doc("TESTING.md")
     assert "Azure Batch environment (azure-ce-type)" in t
@@ -946,9 +948,9 @@ def test_every_refusal_says_what_to_do_and_hides_internals(ip, monkeypatch):
     msgs["agent"] = refused(ip, agent=None)
     assert "--agent" in msgs["agent"]
     with pytest.raises(jobs.JobRefused) as e:
-        jobs.check_target(ip.state_db, "avail", "launch_nextflow")
+        jobs.check_target(ip.state_db, "avail", "clean_work")
     msgs["launch"] = str(e.value)
-    assert "azure-launch" in msgs["launch"]
+    assert "azure-clean" in msgs["launch"]
     _old_row(ip)
     rc, out = ip.run("ce", "preflight", "old")
     msgs["old"] = out
