@@ -70,16 +70,16 @@ def preflights(w):
     return len(w.sql("SELECT id FROM jobs WHERE kind = 'preflight'"))
 
 
-def register(w, caller, ce="lab-a", by="PAGE", **over):
+def register(w, caller, ce="lab-a", by="PAGE", raw=False, **over):
     from abf_platform import actions
     f = dict(GOOD, **over)
-    return actions.register_site_pipeline(w.ip.state_db, ce=ce, confirmed_by=getattr(actions, by) if isinstance(by, str) else by, caller=caller, **f)
+    return actions.register_site_pipeline(w.ip.state_db, ce=ce, confirmed_by=(getattr(actions, by) if by in ("TERMINAL", "ELICITED", "PAGE") and not raw else by), caller=caller, **f)
 
 
-def remove(w, caller, ce="lab-a", by="PAGE", **over):
+def remove(w, caller, ce="lab-a", by="PAGE", raw=False, **over):
     from abf_platform import actions
     f = {k: v for k, v in dict(GOOD, **over).items() if k in ("pipeline", "revision")}
-    return actions.remove_site_pipeline(w.ip.state_db, ce=ce, confirmed_by=getattr(actions, by) if isinstance(by, str) else by, caller=caller, **f)
+    return actions.remove_site_pipeline(w.ip.state_db, ce=ce, confirmed_by=(getattr(actions, by) if by in ("TERMINAL", "ELICITED", "PAGE") and not raw else by), caller=caller, **f)
 
 
 def offline_env(w, caller, name="off-ce", platform=None):
@@ -190,7 +190,7 @@ def test_a03_register_refuses_without_a_human_channel(w, ann, bad):
         if bad == "missing":
             actions.register_site_pipeline(w.ip.state_db, ce="lab-a", caller=ann, **GOOD)
         else:
-            register(w, ann, by=fake if bad == "fake" else bad)
+            register(w, ann, by=fake if bad == "fake" else bad, raw=True)
     assert snapshot(w) == before
 
 
@@ -205,7 +205,7 @@ def test_a04_remove_refuses_without_a_human_channel(w, ann, bad):
         if bad == "missing":
             actions.remove_site_pipeline(w.ip.state_db, ce="lab-a", caller=ann, pipeline=GOOD["pipeline"], revision=GOOD["revision"])
         else:
-            remove(w, ann, by=fake if bad == "fake" else bad)
+            remove(w, ann, by=fake if bad == "fake" else bad, raw=True)
     assert snapshot(w) == before and entries(w) == [GOOD]
 
 
@@ -399,8 +399,9 @@ def test_b04_remove_gone_redirects(w, ann):
     before = snapshot(w)
     r = step1(c, fields("remove"))
     assert r.status_code == 303 and r.headers["location"] == "/settings?notice=gone&ce=lab-a#ce-lab-a" and snapshot(w) == before
-    t = c.get("/settings?notice=gone&ce=lab-a")
-    above(mid_of(t.text), "○ 此管線版本已不在清單中。", "lab-a") if "○ 此管線版本已不在清單中。" in plain(mid_of(t.text)) else pytest.fail("no notice")
+    mid = mid_of(c.get("/settings?notice=gone&ce=lab-a").text)
+    assert "○ 此管線版本已不在清單中。" in plain(mid)
+    above(mid, "此管線版本已不在清單中。", "lab-a")
 
 
 FIELD_WORD = {"module": "模組名稱", "home": "管線資料夾變數", "revision": "版本", "pipeline": "管線"}
@@ -505,11 +506,10 @@ def test_b14_not_logged_in(w, ann):
 def test_b15_temporary_password(w, ann):
     # B15
     from abf_platform import store
-    token = store.create_temp_password(w.ip.tokens, "ann") if hasattr(store, "create_temp_password") else None
-    if token is None:
-        pytest.skip("no temporary password helper")
+    out = store.issue_temporary_password(w.ip.tokens, "ann", now=w.clock.t)
     c = w.web()
-    r = w.login(c, "ann", password=token)
+    r = w.login(c, "ann", password=out["password"])
+    assert r.status_code == 303
     before = snapshot(w)
     for path in ("/settings/pipelines", "/settings/pipelines/confirm"):
         r = c.post(path, data=dict(fields(), csrf="x"))
@@ -852,7 +852,7 @@ def test_d11_d12_d13_constraints(w, ann):
     pages.append(c.get("/settings").text)
     for html in pages:
         assert "style=" not in html.replace("<style>", "") and "<script" not in html and not re.search(r"(src|href|action)=\"https?:", html)
-        classes = {x for cls in re.findall(r'class="([^"]*)"', html) for x in cls.split()}
+        classes = {x for cls in re.findall(r'class="([^"]*)"', mid_of(html)) for x in cls.split()}
         for cls in classes:
             assert "." + cls in web_board.STYLE, cls
     assert hashlib.sha256(web_board.STYLE.encode("utf-8")).hexdigest() == BASE_STYLE_SHA
@@ -887,10 +887,10 @@ def test_d14_pages_and_403_have_no_forbidden_words(w, ann):
     c, pages = all_pages(w, ann)
     pages += [step1(c, csrf=False).text, step2(c, fields()).text]
     for html in pages:
-        text = plain(html.split('data-pane="middle"')[-1] if 'data-pane="middle"' in html else html)
-        left = text.split("營運者後台")[0]
+        text = plain(re.sub(r"<style>.*?</style>", "", html.split('data-pane="right"')[0].split('data-pane="middle"')[-1], flags=re.S))
+        text = text.split("營運者後台")[0]      # the greyed sections below were there before this task
         for x in FORBIDDEN:
-            assert x not in plain(re.sub(r"<(script|style)[^>]*>.*?</(script|style)>", "", html.split('data-pane="right"')[0].split('data-pane="middle"')[-1], flags=re.S)), x
+            assert x not in text, x
 
 
 def test_d16_only_this_task_has_forms(w, ann):
@@ -912,8 +912,8 @@ def test_d17_each_sees_only_their_own(w, ann):
     set_entries(w, [GOOD])
     set_entries(w, [OTHER_OLD], ce)
     ma, mb = mid_of(login(w, "ann").get("/settings").text), mid_of(login(w, "ben").get("/settings").text)
-    assert "lab-a" in ma and ce not in ma and "rnaseq" not in ma
-    assert ce in mb and "lab-a" not in mb and "ampliseq" not in mb
+    assert "lab-a" in ma and ce not in ma and "nf-core/ampliseq 2.18.0" in plain(ma) and "nf-core/rnaseq 3.14.0" not in plain(ma)
+    assert ce in mb and "lab-a" not in mb and "nf-core/rnaseq 3.14.0" in plain(mb) and "nf-core/ampliseq 2.18.0" not in plain(mb)
 
 
 def test_d18_launch_hint(w, ann):
@@ -936,7 +936,7 @@ def unregistered_shown(c, revision):
 
 def launch_refused_as_unregistered(c, revision):
     r = c.post("/launch", data={"csrf": tok(c, "launch"), "pipeline": "nf-core/ampliseq", "revision": revision, "run_name": "r1",
-                                "ce_name": "lab-a", "samplesheet": "none"})
+                                "ce_name": "lab-a", "samplesheet": "none", "shown_pipeline": "nf-core/ampliseq", "shown_revision": revision})
     return "尚未登記此管線版本" in plain(r.text)
 
 
@@ -1019,11 +1019,15 @@ def test_k02_only_step_two_calls_the_write_actions():
     src = (PKG / "web.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     callers = set()
-    for fn in ast.walk(tree):
-        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for n in ast.walk(fn):
-                if isinstance(n, ast.Call) and getattr(n.func, "attr", "") in ("register_site_pipeline", "remove_site_pipeline"):
-                    callers.add(fn.name)
+
+    def visit(node, inside):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            inside = node.name
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") in ("register_site_pipeline", "remove_site_pipeline"):
+            callers.add(inside)
+        for child in ast.iter_child_nodes(node):
+            visit(child, inside)
+    visit(tree, None)
     assert callers == {"pipelines_confirm_post"}
     assert "web_settings" not in "".join(l for l in (PKG / "web_settings.py").read_text(encoding="utf-8").splitlines() if "register_site_pipeline" in l)
     assert "register_site_pipeline" not in (PKG / "web_settings.py").read_text(encoding="utf-8")

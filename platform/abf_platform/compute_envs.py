@@ -764,6 +764,33 @@ def update(state_path, name, fields, clock=time.time):
         con.close()
 
 
+def check_config_change(cur, config_changes):
+    """Whether the environment `cur` (a view) would still pass every rule with these config keys replaced; raises CEError as update() would.
+    It opens nothing and writes nothing: the read-only half of update() for a page that must tell a person what is wrong before it asks."""
+    merged = {"name": cur["name"], "description": cur["description"], "platform": cur["platform"], "credentialsId": cur["credentialsId"],
+              "agent": cur["agent"], "config": dict(cur["config"])}
+    merged["config"].update(config_changes)
+    clean(merged)
+
+
+def queue_first_preflight(state, ce):
+    """Right after a create or update: queue a preflight when the environment's agent is online, else say why not.
+    Returns (code, note): code is "queued", "no_agent", "not_checkable" or "refused"; note is the line the terminal prints."""
+    from . import jobs      # inside the function: jobs imports this module
+    if ce["platform"] not in CHECKABLE:
+        return "not_checkable", ce["message"]
+    try:
+        jobs.enqueue_preflight(state, ce["name"])
+        code, note = "queued", "preflight queued (預檢已排入); the status changes when the agent has answered"
+    except jobs.JobRefused as e:
+        if "offline" in str(e) or "no agent" in str(e) or "has no agent" in str(e):
+            code, note = "no_agent", "沒有代理在線，尚未預檢 (no agent online, not checked yet): %s" % e
+        else:
+            code, note = "refused", str(e)
+    set_message(state, ce["name"], note, only_status=CREATING)
+    return code, note
+
+
 def set_primary(state_path, name, clock=time.time):
     con = store.connect_state(state_path)
     try:
