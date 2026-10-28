@@ -221,6 +221,15 @@ A6. 手動驗收（真的在 AWS 跑、會花錢）不屬於 executor／verifier
 A7. 接受：SIGTERM 能不能取消 Batch job、resourceLimits，都留在手動驗收判定。
 A8. 計畫引用的測試行號（test_launch_bundle.py:450、test_launch_cli.py:306-312），executor 開工前要用 `git show origin/v3:` 重查；行號不對就以實際內容為準。aws-ce-type 新增的東西，要等它合進 v3 後才能派本件。
 
+
+**A9（10-28 developer-agent，回應 verifier 合約階段 BLOCKED）以下既有斷言准許更新，是本任務的有意改變，閱卷不得判放水；PR 說明逐條寫以前／以後／理由。test_gcb_ce.py「只准加」規則對 (a) 例外：**
+- (a) `platform/tests/test_gcb_ce.py` 釘型別常數的那幾行（v3 約 849–851）：以前 `PLATFORM_HOST_TYPES == (GCB,)`、`CHECK_ONLY_TYPES == ("awsbatch-platform",)`；以後 `PLATFORM_HOST_TYPES == (GCB, AWS)`、`CHECK_ONLY_TYPES == ()`，CHECKABLE 跟著改成兩者之和。理由：AWS 可以送出了。
+- (b) `platform/tests/test_aws_ce.py::test_the_type_constants`：同 (a) 的以後值。
+- (c) `test_aws_ce.py::test_jobs_other_than_the_preflight_are_refused_in_plain_words` 與 `::test_every_refusal_says_what_to_do_and_hides_internals`：launch_nextflow／cancel_run 改成「被放行」；仍被拒的工作（上傳、清理、resume）保留原斷言，訊息裡的任務名改成 `aws-upload`／`aws-clean`。理由：本任務只放行送出與取消。
+- (d) `test_aws_ce.py::test_docs_list_every_aws_key_and_check`：以後的逐字值＝PLATFORM.md 表格 `checked and launched on the platform host (upload, clean, resume: not yet)`；399 行那句改成 `Slurm, Google Cloud Batch and AWS Batch can run; the other eleven types can be modelled only.`（前一句粗體同步改成 `Slurm, Google Cloud Batch and AWS Batch can run`）；SEQERA_PARITY 表格 `Have (create + check + launch + cancel); upload and clean in aws-upload / aws-clean`，第 84 行括號改 `(create + check + launch + cancel; resume not yet)`。
+- 測試名 `test_platform_host_types_has_two_entries` 裡的字串以 `compute_envs.AWS` 的實值（`"awsbatch-platform"`）為準，計畫上文寫的 `"awsbatch"` 作廢。
+- 行號一律用語意重新定位（函式名＋斷言內容），不靠行號。
+
 ## 專長守則（backend）
 
 ### executor
