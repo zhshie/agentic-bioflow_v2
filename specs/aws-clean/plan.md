@@ -131,6 +131,23 @@ source: memory/dev-plans/cloud-cleanup.md 與 cloud-cleanup-d.md（Google 版，
 7. clean_work 提出時機沿用 Google 版（只在 run 成功時）。
 8. B 級：verifier 通過＋CI 綠由 developer-agent 自合。
 - （2026-10-28 14:57 補）上面第 3、6 條是 aws-upload 的事，誤貼進這份，對本任務不適用，verifier 不必為它們出題。aws-upload 的最終裁決見 `aws-upload.md`：大檔指令的 AWS 版已在範圍內，SEQERA_PARITY 的 AWS 列會改成 `Have (create + check + launch + cancel + upload); clean in aws-clean`。本任務開工時以合併後的 v3 為準，把那句改成含 clean。
+- **E 段（10-28 18:20 developer-agent，回應 verifier 合約退回；與上文衝突時以 E 段為準）**
+  - E1 路徑：上文「`platform/abf_platform/build.py`」一律讀作 **`platform/abf_launch/build.py`**（`prepare_clean`、`clean_work_path`、`clean_screen`、`is_gcb`／`is_aws` 都在那裡）。准改的只有這一個 `abf_launch/` 檔；`abf_launch/` 其他檔不准動。
+  - E2 必須更新的既有斷言（完整清單，取代上文那節；以下以外的既有斷言一律不准動，PR 逐條寫以前／以後／理由）：
+    (a) `test_aws_upload.py`：130（AWS 元組不含 clean_work → 改為含）、149-157 `test_clean_work_still_refused_for_aws`（改成 AWS 的 clean_work 可排隊，或移除並由新測試取代）、550 `test_clean_work_of_an_aws_run_is_refused_by_the_agent_and_starts_nothing`（同上）、754-756（`aws-clean` 字樣與 SEQERA 舊句 → 新句）。
+    (b) `test_aws_launch.py`：915-921（從「必須被拒」清單拿掉 clean_work，連同 TC-108 那行）、932 附近若把 clean_work 當拒絕對象也一併改、963-978（clean_work 改成可排隊、`run_clean` 對 AWS 不再拒）、1225（SEQERA 新句）。
+    (c) `test_aws_ce.py`：655-663（清單只剩 list_site_files；訊息斷言改成「尚未支援」且不得含 aws-upload／aws-clean 字樣）、829-844（clean_work 不再因類型被拒；`msgs["launch"]` 的 `aws-clean` 斷言改成新訊息該有的字）、927（SEQERA 新句）。
+    開工時用 `git show origin/v3:` 確認行號；行號漂移但內容相同照改，冒出清單外會紅的斷言 → 回報 BLOCKED，不自行改。
+  - E3 SEQERA_PARITY 的 AWS 列確切新字串：`| AWS Batch (`awsbatch-platform`) | Have (create + check + launch + cancel + upload + clean) | [ ] |`（第 84 行附近那句 Pre-flight 說明不動）。
+  - E4 `jobs.py:111-113` AWS 拒絕訊息拿掉「clean comes later in aws-clean (清理在之後的 aws-clean)」，改成只說「this job kind is not built for it yet (尚未支援)」，與 Google 句同形。
+  - E5 呼叫數：接受 verifier 解讀——步驟 1–6 就停的案例總呼叫數 0；步驟 7 以後才停的案例「沒有任何列舉／刪除呼叫」，head 還活著時沒有任何 aws 呼叫。
+  - E6 列舉：用會自動分頁的單一列舉呼叫（`aws s3 ls --recursive` 或 `s3api list-objects-v2` 不帶 `--max-items`，由 CLI 自動分頁），一次列舉＋一次 rm。裁決 4 的「第二頁出現鄰居前綴」測試改寫成「列舉輸出很長、鄰居鍵出現在後段（第 1001 行以後）→ 整個拒絕、不呼叫 rm」。
+  - E7 環境變數：沿用 aws-upload TC-043 判法（允許 `AWS_PAGER`、`AWS_EC2_METADATA_DISABLED`、`AWS_CA_BUNDLE`；禁止金鑰類 `AWS_*` 與所有 `ABF_*`）。
+  - E8 rm 旗標恰為 `--recursive` 與 `--region <區域>`，其他旗標一個都不准。
+  - E9 畫面：AWS 畫面印帶結尾斜線的前綴 `s3://…/work/`；「永久刪除」即算說明無法復原，不必逐字「刪除無法復原」；Google 畫面一字不變。
+  - E10 workDir：與 Google 同一公式 `<workDir>/runs/<run>/work`；workDir 帶子目錄（如 `s3://lab-bucket/work`）就照字面接上（→ `s3://lab-bucket/work/runs/r1/work`），要一條測試釘住這個情況，前綴核對以 bucket＋整段前綴為準。
+  - E11 測試條數以合約 TC 為準，「22 條」只是下限。
+  - E12 真實輸出格式：假 bucket 照官方文件的輸出格式寫（帳本附網址）；真實解析屬 C 級實跑，驗收列 UNVERIFIED(needs human)。
 
 ## 專長守則（backend）
 
