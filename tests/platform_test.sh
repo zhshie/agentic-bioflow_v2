@@ -43,45 +43,70 @@ VENV="${ABF_PLATFORM_VENV:-$CACHE_BASE/abf-platform-venv}"
 CI_MODE=0
 [ "${CI:-}" = "true" ] && CI_MODE=1
 
-# Which part of the platform tests this run is (see the shards below): 1 (the default), 2, 3, clock, or all. run_all.sh has
-# four entries: this file runs part 1, tests/platform_shard_2_test.sh and tests/platform_shard_3_test.sh select parts 2 and 3,
-# and tests/platform_clock_test.sh selects the clock part. "all" runs the three parts and then the clock part in one go.
+# Which part of the platform tests this run is (see the shards below): 1 (the default) to PLATFORM_PARTS, clock, or all. run_all.sh has
+# one entry for each: this file runs part 1, tests/platform_shard_<n>_test.sh selects part n (n = 2 to 8), and
+# tests/platform_clock_test.sh selects the clock part. "all" runs the numbered parts and then the clock part in one go.
+PLATFORM_PARTS=8
 PART="${ABF_PLATFORM_PART:-1}"
-case "$PART" in 1|2|3|clock|all) ;; *) echo "FAIL: ABF_PLATFORM_PART must be 1, 2, 3, clock or all, not '$PART'"; exit 1 ;; esac
+valid_part=0
+case "$PART" in clock|all) valid_part=1 ;; *[!0-9]*|"") ;; *) [ "$((10#$PART))" -ge 1 ] && [ "$((10#$PART))" -le "$PLATFORM_PARTS" ] && [ "$PART" = "$((10#$PART))" ] && valid_part=1 ;; esac
+[ "$valid_part" = 1 ] || { echo "FAIL: ABF_PLATFORM_PART must be 1 to $PLATFORM_PARTS, clock or all, not '$PART'"; exit 1; }
 
-# The fixed lists. The shards are balanced by the time each file took when they were made and are grouped into three parts,
-# one part for each of the first three run_all.sh entries. Every other test file goes into a REST shard of one of the three
-# parts, in turn (sorted by name, the first to part 1, the second to part 2, and so on), so a new test file has a part without
-# anyone editing this list. LAST are the files that check the clock closely. Sets SHARDS_1, SHARDS_2, SHARDS_3 (one shard per
-# line), LAST and REST_1, REST_2, REST_3.
+# The fixed lists. The slowest files (measured; see specs/suite-speed/ledger.md) are named here, one line for each, so that each
+# is a pytest process of its own; the lines are dealt out to the parts longest first, each to the part that has the least so far
+# (the REST shards counted in). Every other test file goes into the REST shard of one of the parts, in turn (sorted by name, the
+# first to part 1, the second to part 2, and so on), so a new test file has a part without anyone editing this list. LAST are the
+# files that check the clock closely. Sets SHARDS_1 to SHARDS_8 (one shard per line), LAST and REST_1 to REST_8.
+# tests/test_launch_nextflow.py is alone in its line on purpose: its setup is one real Nextflow run and cannot be split.
 set_platform_parts() {
     LAST="tests/test_station_e2e.py tests/test_nextflow_e2e.py"
     SHARDS_1="
-tests/test_wrapper_nf2.py
-tests/test_wrapper.py
-tests/test_launch_nextflow.py
-tests/test_launch_e2e.py tests/test_station_fakeplatform.py tests/test_station_channel.py
+tests/test_launch_e2e.py
+tests/test_resume_entrypoints.py
+tests/test_actions_layer.py
 "
     SHARDS_2="
-tests/test_station_cancel.py tests/test_launch_cli.py
-tests/test_station_launch.py tests/test_relay_loopback.py tests/test_station_envs.py
-tests/test_station_resume.py
-tests/test_resume_platform.py tests/test_resume_entrypoints.py tests/test_resume_lineage.py tests/test_resume_scope.py tests/test_resume_render.py
+tests/test_launch_cli.py
+tests/test_station_channel.py
+tests/test_oauth_review.py
 "
     SHARDS_3="
-tests/test_owner_binding.py tests/test_pat.py tests/test_human_channel.py
-tests/test_confirm_page.py tests/test_owner_gaps.py tests/test_launch_followup.py tests/test_web_login.py
-tests/test_oauth.py tests/test_oauth_consent.py tests/test_oauth_tokens.py tests/test_oauth_mcp.py tests/test_keep_submissions.py
+tests/test_keep_submissions.py
+tests/test_oauth.py
+tests/test_aws_ce.py
 "
-    local listed f k=0
-    listed=" $(echo $SHARDS_1 $SHARDS_2 $SHARDS_3) $LAST "
-    REST_1=""
-    REST_2=""
-    REST_3=""
+    SHARDS_4="
+tests/test_resume_platform.py
+tests/test_owner_gaps.py
+tests/test_launch_nextflow.py
+"
+    SHARDS_5="
+tests/test_station_cancel.py
+tests/test_pat.py
+tests/test_clean_page.py
+"
+    SHARDS_6="
+tests/test_station_resume.py
+tests/test_confirm_page.py
+tests/test_http_site_samplesheet.py
+"
+    SHARDS_7="
+tests/test_owner_binding.py
+tests/test_byte_channel_a.py
+tests/test_cleanup_backfill.py
+"
+    SHARDS_8="
+tests/test_station_launch.py
+tests/test_oauth_mcp.py
+tests/test_datasets.py
+"
+    local listed f k=0 n
+    listed=" $(echo $SHARDS_1 $SHARDS_2 $SHARDS_3 $SHARDS_4 $SHARDS_5 $SHARDS_6 $SHARDS_7 $SHARDS_8) $LAST "
+    for n in $(seq 1 "$PLATFORM_PARTS"); do eval "REST_$n="; done
     for f in $(ls tests/test_*.py | LC_ALL=C sort); do
         case "$listed" in
             *" $f "*) ;;
-            *) case $((k % 3)) in 0) REST_1="$REST_1 $f" ;; 1) REST_2="$REST_2 $f" ;; 2) REST_3="$REST_3 $f" ;; esac
+            *) n=$((k % PLATFORM_PARTS + 1)); eval "REST_$n=\"\$REST_$n $f\""
                k=$((k + 1)) ;;
         esac
     done
@@ -90,7 +115,7 @@ tests/test_oauth.py tests/test_oauth_consent.py tests/test_oauth_tokens.py tests
 # The shards of the selected part or parts, one line each (no line for an empty REST). Nothing for the clock part.
 selected_shards() {
     local n files rest line
-    case "$PART" in 1|2|3) set -- "$PART" ;; all) set -- 1 2 3 ;; *) set -- ;; esac
+    case "$PART" in clock) set -- ;; all) set -- $(seq 1 "$PLATFORM_PARTS") ;; *) set -- "$PART" ;; esac
     for n in "$@"; do
         eval "files=\$SHARDS_$n rest=\$REST_$n"
         while IFS= read -r line; do [ -n "$line" ] && echo "$line"; done <<< "$files"
@@ -357,11 +382,11 @@ else
     # one) and failed on a runner with two cores when other shards were busy, so they run one after the other, alone, once the
     # shards have finished. Output is printed shard by shard at the end.
     #
-    # Four run_all.sh entries share this file, so that none of them comes near the per-test limit of run_all.sh (the whole suite
-    # took 298 s of 300 on a CI runner in one entry): this one (ABF_PLATFORM_PART=1, the default) runs part 1,
-    # tests/platform_shard_2_test.sh and tests/platform_shard_3_test.sh (parts 2 and 3) run the others, and
-    # tests/platform_clock_test.sh (ABF_PLATFORM_PART=clock) runs the two clock-sensitive files, one after the other. run_all.sh
-    # runs one entry at a time, so those two still run alone. ABF_PLATFORM_PART=all runs all four parts, as this file once did.
+    # Several run_all.sh entries share this file, so that none of them comes near the per-test limit of run_all.sh (the limit only
+    # catches a hang, and one entry for the whole suite was too long for it): this one (ABF_PLATFORM_PART=1, the default) runs part 1,
+    # tests/platform_shard_<n>_test.sh (parts 2 to 8) run the others, and tests/platform_clock_test.sh (ABF_PLATFORM_PART=clock)
+    # runs the two clock-sensitive files, one after the other. run_all.sh runs one entry at a time, so those two still run alone.
+    # ABF_PLATFORM_PART=all runs all the parts, as this file once did.
     # Every test file is in exactly one part: the files named here, and everything else in a REST shard, turn by turn.
     set_platform_parts
     rc=0

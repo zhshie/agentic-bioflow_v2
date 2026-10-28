@@ -9,6 +9,6 @@
 # issue: #<number> or https://github.com/<owner>/<repo>/issues/<number>
 # since: the date this file was first quarantined; do not change it when you renew the entry.
 # A file that fails twice is a real failure and is never excused by this list.
-# platform_test.sh, platform_shard_2_test.sh, platform_shard_3_test.sh and platform_clock_test.sh may not be listed (the four wrap the whole platform suite; no other file does).
+# platform_test.sh, platform_shard_2_test.sh, platform_shard_3_test.sh, every platform_shard_<n>_test.sh and platform_clock_test.sh may not be listed (they wrap the whole platform suite; no other file does).
 # Check the list without running any test: bash tests/run_all.sh --check-quarantine
 # since is typed by hand: nothing can prove it was not changed, and setting it to today is just another way to renew. It cannot be stopped here, but it shows up on the same line in the pull request diff, where a reviewer can see it. Checking git history would be the real guard, but it is not reliable in a shallow CI clone, so this is not done.
