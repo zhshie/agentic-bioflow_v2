@@ -320,7 +320,7 @@ The question, the screen and the yes are the ones of a Slurm launch: `abf-launch
 
 ### AWS Batch
 
-An `awsbatch-platform` environment (aws-ce-type) is served the way a Google Cloud Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused, even when only one agent is online). The people who use AWS install nothing. It can be **created and checked, not launched yet**: any job other than the preflight (a launch, a cancel, a listing, a clean, an upload) is refused in plain words (尚未支援送出; the launch comes in `aws-launch`), and the automatic choice of an environment never picks it, so nothing that costs money is chosen for you. `ce primary aws1` still works once it is `available`, but the automatic choice skips it.
+An `awsbatch-platform` environment (aws-ce-type) is served the way a Google Cloud Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused, even when only one agent is online). The people who use AWS install nothing. It can be **created, checked, launched and cancelled** (see "Launching on AWS Batch" below); a listing, a record fetch, a task log, a clean and an upload are refused in plain words (尚未支援), and the automatic choice of an environment never picks it: a launch on it needs its name (`--ce aws1`), so nothing that costs money is chosen for you. `ce primary aws1` still works once it is `available`, but the automatic choice skips it.
 
 | Key | Rule |
 |---|---|
@@ -352,6 +352,32 @@ aws_secret_access_key = <your secret key>
 **預檢不計費 (the preflight costs nothing):** it only reads. It asks who the key is, describes one job queue and heads one bucket; it creates no Batch job (creates no Batch job, writes no bucket, creates no role). Each `aws` call is limited to 30 seconds; a timeout fails that one check. The credential file's path is handed to `aws` in its environment (`AWS_SHARED_CREDENTIALS_FILE`, `AWS_PROFILE=default`), never in the command line, and the agent's own `AWS_*` and `ABF_*` variables are not passed on.
 
 A record made before this type was checked (status `unsupported`, with the old keys `headQueue` and `computeQueue`) is still listed and shown, but it cannot be checked or updated: the message says `請刪除後重建這個計算環境`. Delete it and create it again.
+
+### Launching on AWS Batch
+
+**Who runs what.** The head process of Nextflow runs on the platform host, started by the station agent that runs there; the compute is done by AWS Batch jobs that the head process asks for (`process.executor = 'awsbatch'`). Nothing runs on the cluster you use for Slurm and nothing is installed by the people who launch. As for Google Batch, nothing is written or started before the person who launched says y, and the agent builds the same files again from its own settings and refuses a bundle that is not identical.
+
+**What the platform host needs.** Java 17 or newer, Nextflow, the aws CLI (the AWS command line), a `storage_root` in `config/env.yaml` (the run folders go to `<storage_root>/_aws_runs/<run>`), and the credential file described above (the agent's own setting, mode 600; its path is only in the head process's environment, never in a file, an argument, an answer or the database). The host must be Linux or WSL. The compute AMI that the job queue uses needs the aws CLI too, because Nextflow's tasks call it to stage files.
+
+**The samplesheet.** Every path cell must be an `s3://` URL in the same bucket as `workDir` (for example `s3://lab-bucket/x.fastq.gz`). Putting files there is a later feature (aws-upload): for now put them in the bucket yourself with the aws CLI. A cell that is anything else is refused with that advice.
+
+**The files.** The bundle has five files: `samplesheet.csv`, `params.yaml`, `nextflow.config` (your own text, with the same overwrite block as the other types), `aws.config` and `head.sh`. `aws.config` has exactly these lines, built from the environment:
+
+| Key | Value |
+|---|---|
+| `process.executor` | `'awsbatch'` |
+| `process.queue` | the environment's `jobQueue` |
+| `aws.region` | the environment's `region` |
+| `workDir` | `<workDir>/runs/<run>/work` |
+| `process.resourceLimits` | `[cpus: N]`, only when `maxvCpus` is set; this is a **per-task** cap, one task asks for at most N cpus, it is not a limit on the total vCPU of the queue |
+
+The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: whether Batch uses Spot is decided by the job queue, and the screen says so. No key, profile or role is written into any file.
+
+**Billing.** The first paragraph of the screen before the y says, in one fixed sentence, that AWS bills the lab's AWS account (由 AWS 向實驗室的 AWS 帳號收費) for the Batch jobs this run creates, and that the platform has no estimate and no limit for AWS yet (平台目前還沒有費用預估與上限); read the amount in AWS's own bill and set a budget alert in AWS.
+
+**Cancel.** The agent finds the head process by the number in `head.pid`, checks that it is still the same program, owned by the same user, with the same `-name`, started in that run's folder, and sends it exactly one SIGTERM. Whether Batch jobs that were already started end by themselves is not promised: after a cancel open the AWS Console, the Batch page, and check that every job has ended; jobs that did not end still cost money.
+
+**Not yet.** Resume and relaunch of an AWS Batch run, cleaning its work folder (aws-clean), uploading files (aws-upload), cost estimates, listing files, reading Nextflow's records back and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid); no migration was needed.
 
 ### Status
 
@@ -396,7 +422,7 @@ Fourteen tools. Nine are read-only (`readOnlyHint`): `list_runs`, `get_run`, `li
 
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm and Google Cloud Batch can run; the other types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm and Google Cloud Batch can run; AWS Batch can be created and checked; the other eleven types can be modelled only. The other eleven are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch and AWS Batch can run; the other eleven types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch and AWS Batch can run; the other eleven types can be modelled only. The other eleven are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -405,7 +431,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `lsf-platform` | IBM Spectrum LSF | modelled only |
 | `uge-platform` | Grid Engine | modelled only |
 | `moab-platform` | Moab | modelled only |
-| `awsbatch-platform` | AWS Batch | checked on the platform host (launch: not yet) |
+| `awsbatch-platform` | AWS Batch | checked and launched on the platform host (upload, clean, resume: not yet) |
 | `awscloud-platform` | AWS Cloud | modelled only |
 | `azbatch-platform` | Azure Batch | modelled only |
 | `azcloud-platform` | Azure Cloud | modelled only |

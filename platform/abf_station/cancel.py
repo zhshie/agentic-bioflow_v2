@@ -28,6 +28,9 @@ def run_cancel(job, ctx):
     if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == launch.GCB:
         from . import gcb_launch      # a Google Batch run is stopped by its own module; it imports launch.py, so it is read here
         return gcb_launch.run_cancel(job, ctx, bundle)
+    if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == launch.AWS:
+        from . import aws_launch      # an AWS Batch run is stopped by its own module
+        return aws_launch.run_cancel(job, ctx, bundle)
     env = rules.clean_environment(bundle["ce"])
     run, number, folder = bundle["run_name"], bundle["slurm_job_id"], bundle["run_folder"]
     if bundle["agent"] != ctx.agent_name:

@@ -775,3 +775,17 @@ test second, so the reason survives.
 New assertions get a mutation test: remove the thing being checked and confirm
 the test turns red. An assertion that has never failed has never been shown to
 assert anything.
+
+## Launching on AWS Batch (aws-launch): the maintainer and the reviewer check
+
+The automatic tests use fakes for the program runner, the aws runner, the detached start and the signal; they start nothing and touch no network. The steps below start a real Nextflow head process and **cost a small amount of money** once the real trial run is approved: do not start them before the maintainer says go.
+
+1. **The platform host (WSL), once.** Check: `java -version` says 17 or newer, `nextflow -version` and `aws --version` answer, `storage_root` is set in `config/env.yaml`, the credential file is where `ABF_STATION_AWS_CREDENTIALS` points (mode 600), and a budget alert is set in AWS Budgets.
+2. **The compute image.** Check that the AMI of the compute environment behind the job queue has the aws CLI.
+3. **Send the smallest run.** Put two or three tiny files in the bucket of `workDir` with the aws CLI, then `abf-launch ... --ce aws1` with `s3://` paths in the samplesheet. Check: the first paragraph of the screen says 由 AWS 向實驗室的 AWS 帳號收費; nothing starts until you answer y.
+4. **Check that the credentials work.** If Nextflow does not honour `AWS_SHARED_CREDENTIALS_FILE`, the run fails at once: report it, do not work around it by putting a key in a file.
+5. **After the run starts.** Check: the run folder under `<storage_root>/_aws_runs/` has `head.pid`, a Batch job appears in the AWS Console, and results arrive under `<workDir>/runs/<run>/results`.
+6. **Cancel.** Cancel a second small run; check on the Batch page that every job ended (whether one SIGTERM stops them is what this step finds out), and search the run folder, `head.out` and the database for the key id and the credential path: neither must be found.
+7. **`process.resourceLimits`.** Launch with `maxvCpus` set and check that Nextflow accepts the line in `aws.config`.
+
+**The reviewer.** Run `git diff --name-only` against the base: no `cloud_cost.py`, no `local_runner.py`, no migration, no `boto3`; the existing tests changed only where `specs/aws-launch/plan.md` lists them.

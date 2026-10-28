@@ -49,7 +49,7 @@ def parse_gs(url):
 
 def workdir_bucket(ce):
     """The bucket of a Google Batch environment's workDir, or CloudPathError. A workDir with no folder part still has its bucket."""
-    if not isinstance(ce, dict) or ce.get("platform") not in compute_envs.PLATFORM_HOST_TYPES:
+    if not isinstance(ce, dict) or ce.get("platform") != compute_envs.GOOGLE_BATCH:
         raise CloudPathError("這個計算環境不能放雲端資料，只有 Google Batch 環境可以 (only a Google Batch environment can hold cloud data)")
     config = ce.get("config")
     work = config.get("workDir") if isinstance(config, dict) else None

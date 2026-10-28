@@ -580,7 +580,8 @@ def test_create_queues_the_first_preflight_for_the_agent(ip):
     kind, args = con.execute("SELECT kind, args_json FROM jobs WHERE compute_env = 'aws1'").fetchone()
     con.close()
     assert kind == "preflight"
-    assert set(json.loads(args)["ce"]) == {"name", "platform", "credentialsId", "region", "workDir", "jobQueue"}
+    # aws-launch added spot and maxvCpus to what an agent is told (the launch needs them)
+    assert set(json.loads(args)["ce"]) == {"name", "platform", "credentialsId", "region", "workDir", "jobQueue", "spot", "maxvCpus"}
 
 
 def test_create_with_the_agent_offline_says_so_and_does_not_pretend(ip):
@@ -648,7 +649,10 @@ def test_jobs_other_than_the_preflight_are_refused_in_plain_words(ip):
     _available_aws(ip)
     before = jobs_count(ip)
     msgs = []
-    for kind in ("launch_nextflow", "cancel_run", "clean_work", "put_upload", "list_site_files", "pipeline_files"):
+    # aws-launch: launch_nextflow, cancel_run and pipeline_files are taken now; the rest stays refused
+    for kind in ("launch_nextflow", "cancel_run", "pipeline_files"):
+        jobs.check_target(ip.state_db, "aws1", kind)
+    for kind in ("clean_work", "put_upload", "list_site_files"):
         with pytest.raises(jobs.JobRefused) as e:
             jobs.check_target(ip.state_db, "aws1", kind)
         msgs.append(str(e.value))
@@ -656,7 +660,7 @@ def test_jobs_other_than_the_preflight_are_refused_in_plain_words(ip):
         jobs.enqueue_listing(ip.state_db, "aws1", "/x")
     msgs.append(str(e.value))
     for msg in msgs:
-        assert "尚未支援送出" in msg and "aws-launch" in msg and "set one with" not in msg, msg
+        assert "尚未支援" in msg and ("aws-upload" in msg or "aws-clean" in msg) and "set one with" not in msg, msg
     assert jobs_count(ip) == before
     jobs.enqueue_preflight(ip.state_db, "aws1")      # the preflight is the one job it takes
     assert jobs_count(ip) == before + 1
@@ -666,7 +670,7 @@ def test_launch_is_refused_and_the_environment_is_never_auto_picked(ip):
     # TC-074, TC-075, TC-076, TC-077
     from abf_launch import build
     _available_aws(ip)
-    assert build.target_problem(ip.state_db, "aws1", "launch_nextflow")
+    assert build.target_problem(ip.state_db, "aws1", "launch_nextflow") is None      # aws-launch: it can be launched now
     assert build.primary_environment(ip.state_db) is None
     rc, out = ip.run("ce", "primary", "aws1")
     assert rc == 0 and ip.show("aws1")["primary"] is True
@@ -818,7 +822,9 @@ def test_no_new_write_path_for_aws(ip):
     # TC-110
     from abf_platform import jobs
     _available_aws(ip)
-    for kind in ("launch_nextflow", "cancel_run", "clean_work", "put_upload"):
+    for kind in ("launch_nextflow", "cancel_run"):      # aws-launch: the two writes that are built, each behind a confirmation
+        jobs.check_target(ip.state_db, "aws1", kind)
+    for kind in ("clean_work", "put_upload"):
         with pytest.raises(jobs.JobRefused):
             jobs.check_target(ip.state_db, "aws1", kind)
 
@@ -833,9 +839,9 @@ def test_every_refusal_says_what_to_do_and_hides_internals(ip, monkeypatch):
     msgs["agent"] = refused(ip, agent=None)
     assert "--agent" in msgs["agent"]
     with pytest.raises(jobs.JobRefused) as e:
-        jobs.check_target(ip.state_db, "avail", "launch_nextflow")
+        jobs.check_target(ip.state_db, "avail", "clean_work")
     msgs["launch"] = str(e.value)
-    assert "aws-launch" in msgs["launch"]
+    assert "aws-clean" in msgs["launch"]
     _old_row(ip)
     rc, out = ip.run("ce", "preflight", "old")
     msgs["old"] = out
@@ -894,8 +900,9 @@ def test_the_type_constants():
     # TC-071 (the same constants are asserted in test_gcb_ce.py)
     from abf_platform import compute_envs
     assert compute_envs.SUPPORTED == "slurm-platform"
-    assert compute_envs.PLATFORM_HOST_TYPES == ("googlebatch-platform",)
-    assert compute_envs.CHECK_ONLY_TYPES == (AWS,)
+    # aws-launch changed this on purpose: before, PLATFORM_HOST_TYPES == ("googlebatch-platform",) and CHECK_ONLY_TYPES == (AWS,)
+    assert compute_envs.PLATFORM_HOST_TYPES == ("googlebatch-platform", AWS)
+    assert compute_envs.CHECK_ONLY_TYPES == ()
     assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, "googlebatch-platform", AWS)
 
 
@@ -910,13 +917,14 @@ def test_docs_list_every_aws_key_and_check():
         assert "`%s`" % key in d, key
     assert "ABF_STATION_AWS_CREDENTIALS" in d and "_personal/aws-credentials" in d
     assert "預檢不計費" in d and "creates no Batch job" in d
-    assert re.search(r"`awsbatch-platform` \| AWS Batch \| checked on the platform host \(launch: not yet\)", d)
-    assert "Slurm and Google Cloud Batch can run; AWS Batch can be created and checked; the other eleven types can be modelled only" in d
+    # aws-launch changed these statements on purpose (plan A9 d): AWS Batch can be launched now
+    assert re.search(r"`awsbatch-platform` \| AWS Batch \| checked and launched on the platform host \(upload, clean, resume: not yet\)", d)
+    assert "Slurm, Google Cloud Batch and AWS Batch can run; the other eleven types can be modelled only" in d
     assert "[default]" in d and not re.search(r"credentialsId[^.\n]*profile (name|名)", d)
     assert "headQueue" in d and "computeQueue" in d and "請刪除後重建" in d
     par = doc("SEQERA_PARITY.md")
     row = [ln for ln in par.splitlines() if "`awsbatch-platform`" in ln][0]
-    assert "Have (create + check); launch in aws-launch" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel); upload and clean in aws-upload / aws-clean" in row and row.rstrip().endswith("[ ] |")
     t = doc("TESTING.md")
     assert "aws-ce-type" in t and "預檢不計費" in t and "git diff" in t
     for text in (d, par, t):
