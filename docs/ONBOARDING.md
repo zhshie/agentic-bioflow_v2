@@ -34,6 +34,8 @@ abf-platform user cloud-cap <name> <N>
 
    Expected: the new cap is shown. The person cannot change their own cap. NCHC runs have no cap.
 
+   After the account exists, `abf-platform user welcome <name> --platform-url <platform-URL>` prints the letter of section 3 with this person's name, lab and cap filled in. It only prints; it sends nothing.
+
 2. Set the password the person logs into the confirmation page with:
 
 ```bash
@@ -84,7 +86,7 @@ abf-platform pat list
 
 中文要點：下面這一段可以原樣複製寄出，只要換掉四個佔位符。信裡沒有任何真實的 token、密碼、帳號或計畫號。
 
-Copy this, replace `<platform-URL>`, `<name>`, `<lab>` and `<operator>`, and send it.
+Copy this, replace `<platform-URL>`, `<name>`, `<lab>` and `<operator>`, and send it. Or let the program fill the values in: `abf-platform user welcome <name> --platform-url <platform-URL>` prints this letter with the name, lab and the person's real cloud cap (see `--help` for the other options). You still send it yourself.
 
 ```text
 Hi <name>,
