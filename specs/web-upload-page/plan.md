@@ -32,6 +32,7 @@ source: 維護者 10-28「加速進行，這禮拜做完」＋10-27 清單「網
 - `platform/pyproject.toml`（只限把已在 constraints.txt 釘住的 `python-multipart` 明列為直接依賴；不得新增其他套件）
 - `platform/tests/test_web_upload.py`（新檔）
 - 被逐字釘住、必須加項的既有測試（只加不刪，ledger 逐條列）：`test_dataset_cli.py:183`、`test_cleanup_offer.py:815`、`test_confirm_page.py:313`、`test_web_board.py:820`、`test_owner_binding.py:824`、`test_temp_password.py:290`、`test_web_parity.py:16`、灰色按鈕與第 4 步連結相關斷言
+- `DESIGN.md`（只限裁決 9 的兩句）
 - `docs/OPERATIONS.md`（第 6 點改寫）、`docs/PLATFORM.md`（:382「網頁入口尚未接上」改寫）、`docs/TESTING.md`（新增手動一節：真檔經 Tailscale Funnel 上傳 ≥100 MB 一次）
 
 ## 作法
@@ -64,6 +65,17 @@ source: 維護者 10-28「加速進行，這禮拜做完」＋10-27 清單「網
 ## 裁決
 1. 不另開確認頁：ADR 0010 10-25 更正已定「按上傳就是確認」。
 2. 與 L8 同時跑造成的合併衝突（路由清單、STRINGS、釘死測試清單）一律取兩邊聯集，不算越界。
+
+3. （10-28 合約退回後）**名稱＋版本已存在就在上傳時拒收**：`POST /upload` 先查 `get_dataset(owner, name, version)`，存在＝400「此名稱與版本已登記，請換一個版本。」（en: "This name and version are already registered. Use another version."），不寫檔、不排工作。批次紀錄自帶 `registered` 旗標；進度頁只依本批的旗標顯示「已登記」，不依名稱判斷。
+4. **排工作前先把能驗的都驗完**：樣本表欄位（`sample`、`fastq_1`）、每個路徑儲存格都對得上本批檔名、不含網址或像憑證的值——照 `register_dataset` 的同一套規則（可抽出共用的檢查函式，`register_dataset` 行為不變）。驗不過＝400 列出原因，清暫存、不排工作。全部上傳成功後 `register_dataset` 若仍回 `ok:false`：進度頁顯示它回的原因，列出已在雲端的檔案位置（`gs://…`），說明「檔案仍在你的雲端資料夾，可換一個版本重新上傳」，不自動刪雲端檔。
+5. **排工作全有或全無（盡力）**：排任何一個工作前，先對每個檔做 `enqueue_put_upload` 會做的前置檢查（環境可用、型別、大小 1 位元組～2 GB）。若仍在排到一半時被拒：已排的工作照傳，批次標為失敗，未排的暫存檔刪除，進度頁標出哪個檔被拒及原因，不登記。
+6. 檔名含 `/` 或 `\` 一律拒收（不做 basename 截斷）；同批重名與 uploads 夾已有同名檔都拒收。
+7. 進度頁狀態對應：queued＝排隊中、claimed＝傳送中、done 且 ok＝完成、done 且非 ok 或 expired＝失敗（附工作回的 message）。
+8. 任何在排工作之前的拒收（大小、檔名、樣本表過大、配不成對、名稱已存在、樣本表驗不過）都清掉這批暫存。
+9. **範圍確認**：DESIGN.md「Upload data」的拖放區、依 `schema_input.json` 建樣本表、「已上傳資料」表格本次不做；`DESIGN.md` 加入範圍，只在該段末加一行「10-28 第一刀：表單上傳＋進度頁；拖放、依 schema 建表、已上傳資料表格留待後續」。「平台不留副本」依 ADR 0010 10-25 更正改為「暫存於平台主機、雲端尺寸核對後刪除」，同段改一句。
+10. 進度頁 GET 在「本人、本批全部成功、尚未登記」時登記資料集，是刻意選擇（沒有另一個按鈕要按）。
+11. 「平台不開對外連線」的出處改為 `docs/PLATFORM.md`（:323、:382）與 `actions/datasets.py` 模組說明，不是憲法原則 2。
+12. `docs/TESTING.md` 新節同時寫：≥100 MB 真檔經 Tailscale Funnel 上傳一次、390 px 寬無橫捲、鍵盤 Tab 焦點外框、中英各看一次。
 
 ## 專長守則（ui）
 
