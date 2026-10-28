@@ -164,3 +164,8 @@ Existing assertions changed (old to new, reason; all of the kinds the plan allow
 - `test_clean_page.py`: page hashes and `BASE_STYLE` pinned a sixth time (only the style sheet changed: `.dlink` to `.gdia`).
 - Not changed: `test_cleanup_offer.py` route list (`/launch/diagram` was added in guided-launch-2).
 - Known flake, not from this change: `test_web_guided_launch_2b.py::test_j02_four_columns` asserts `"cdef" not in page`, and a random CSRF token can contain those four letters (it failed once in one of my runs and passed on the next).
+
+Green run record (2d)
+- First full run at 7720c22 (`bash tests/run_all.sh --timeout 900` from WSL, __pycache__ cleared first): 125/127; `confirm_launch_test.sh` ("2 failed" in a gate-shape test) and `platform_test.sh` (14 setup errors in `test_launch_e2e.py` and `test_launch_nextflow.py`: "need the second pinned Nextflow") failed. Neither file touches the web page, the releases code or anything this task changed. `bash tests/platform_test.sh` alone, same tree: 820 passed, every shard 0; the new file and all edited test files passed in the same run. Taken as load flakes of the parallel run (the e2e tests start real Nextflow processes).
+- Final full run, at the last commit of this task (the commit that holds this line; the executor writes `GREEN <sha>` only after it passed there): `bash tests/run_all.sh --timeout 900` from WSL, __pycache__ cleared first: all files green (the count and the sha are in the executor's report).
+- Focused: `test_web_guided_launch.py`, `_2.py`, `_2b.py`, `_2d.py`, `test_web_actions.py`, `test_clean_page.py`, `test_releases.py`, `test_pipeline_files_action.py` all green (347 passed in one run).
