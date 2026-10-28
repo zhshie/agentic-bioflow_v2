@@ -107,6 +107,8 @@ def run_clean(job, ctx):
     ce = bundle["ce"]
     if isinstance(ce, dict) and ce.get("platform") == launch.GCB:
         return _clean_gcb(job, ctx, bundle)
+    if isinstance(ce, dict) and ce.get("platform") == launch.AWS:
+        raise rules.Refusal("AWS Batch 的清理尚未支援，之後會在 aws-clean 做；現在不會刪任何東西 (cleaning an AWS Batch run is not built yet; nothing is deleted)")
     env = rules.clean_environment(ce)
     run, folder = _check_path(bundle, env)
     return _clean_slurm(job, ctx, run, folder)
