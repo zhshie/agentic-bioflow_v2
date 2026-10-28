@@ -1222,6 +1222,8 @@ def test_docs_describe_the_launch_the_billing_sentence_and_the_requirements():
     assert "平台還沒有費用預估與上限" in section or "平台目前還沒有費用預估與上限" in section
     assert re.search(r"not a (total|limit on the total)|not the total|per-task", section)
     par = doc("SEQERA_PARITY.md")
+    # TC-167: the AWS bracket near line 84 of SEQERA_PARITY.md
+    assert "for AWS Batch the same agent runs them (create + check + launch + cancel; resume not yet)" in par
     row = [ln for ln in par.splitlines() if "`awsbatch-platform`" in ln][0]
     assert "Have (create + check + launch + cancel); upload and clean in aws-upload / aws-clean" in row and row.rstrip().endswith("[ ] |")
     install = doc("INSTALL.md") + doc("OPERATIONS.md")
