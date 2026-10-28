@@ -12,10 +12,11 @@ import os
 import re
 import shutil
 import stat as stat_mod
+import tempfile
 
 from abf_platform import cloud_store
 
-from . import aws_preflight, gcb_preflight, rules, site
+from . import aws_preflight, azure_preflight, gcb_preflight, rules, site
 
 ARGS = {"ce", "owner", "name", "size", "dest"}
 UPLOADS_ENV = "ABF_STATION_UPLOADS"         # this agent's own setting: the folder the platform writes uploads to
@@ -154,6 +155,9 @@ def run_put(job, ctx):
     elif platform == gcb_preflight.TYPE:
         ce, scheme = gcb_preflight.clean_environment(given), "gs"
         view = {"platform": gcb_preflight.TYPE, "config": {"workDir": ce["workDir"]}}
+    elif platform == azure_preflight.TYPE:
+        ce, scheme = azure_preflight.clean_environment(given), "az"
+        view = {"platform": azure_preflight.TYPE, "config": {"workDir": ce["workDir"]}}
     else:
         _no("這種計算環境不能放雲端資料 (this kind of environment cannot hold cloud data)")
     owner, name, dest, size = args["owner"], args["name"], args["dest"], args["size"]
@@ -168,6 +172,8 @@ def run_put(job, ctx):
         _no("檔案大小要在 1 位元組到 2 GB 之間 (the file size must be between 1 byte and 2 GB)")
     fd, info, path = _open(_area(owner), name, size)
     try:
+        if scheme == "az":
+            return _transfer_az(ce, dest, size, fd, info, path, ctx)
         if scheme == "s3":
             return _transfer_aws(ctx, ce, dest, size, fd, info, path)
         return _transfer(ctx, ce, dest, size, fd, info, path)
@@ -248,3 +254,85 @@ def _transfer_aws(ctx, ce, dest, size, fd, info, path):
         return _fail("雲端物件大小與本機不符，暫存檔保留，請重新上傳", received)
     tail = "平台主機上的暫存檔已刪除" if _remove(path, info) else "暫存檔沒刪掉，請管理者清理"
     return "done", {"ok": True, "bytes": received, "path": dest, "message": "已上傳 %s（%d 位元組）；%s" % (dest, received, tail)}
+
+
+# ---- the Blob store of the cloud: the file is written by `az storage blob upload --file`, the key travels in the environment only ----------------
+
+def _az_call_env(creds, ce, folder):
+    """The environment of one az call: no ABF_ or AZURE_ variable of the agent's own, no batch variable at all (a blob call needs none)."""
+    env = azure_preflight._az_env(creds, ce, folder)
+    for key in [k for k in env if k.startswith("AZURE_BATCH_")]:
+        del env[key]
+    return env
+
+
+def _az_key_flags(creds):
+    return ["--auth-mode", "key"] if creds.get("storage_account_key") else []
+
+
+def _az_hide(text, creds):
+    out = _cleaned(text)
+    for value in creds.values():
+        if value:
+            out = out.replace(value, "[hidden]")
+    return out
+
+
+def _az_size(ce, blob, creds, env):
+    """The size the blob has (blob show), or None when it could not be asked or the answer is not a plain number."""
+    argv = (["az", "storage", "blob", "show", "--account-name", ce["storageAccountName"], "--container-name", blob[0], "--name", blob[1],
+             "--query", "properties.contentLength", "--output", "tsv"] + _az_key_flags(creds))
+    try:
+        rc, out = site.run_fixed(argv, env, DESCRIBE_SECONDS)
+    except (TimeoutError, OSError):
+        return None
+    text = str(out).strip()
+    if rc != 0 or not _PLAIN_NUMBER.fullmatch(text):
+        return None
+    return int(text)
+
+
+def _az_unchanged(path, info, size):
+    """True when the name still leads to the very plain file that was opened, with the size it had when it was queued."""
+    try:
+        now = os.lstat(path)
+    except OSError:
+        return False
+    return (stat_mod.S_ISREG(now.st_mode) and not stat_mod.S_ISLNK(now.st_mode) and now.st_size == size
+            and (now.st_dev, now.st_ino) == (info.st_dev, info.st_ino))
+
+
+def _transfer_az(ce, dest, size, fd, info, path, ctx):
+    creds, problem = azure_preflight._read_shape(azure_preflight.credentials_path(ctx.settings_file))
+    if creds is None or not (creds.get("storage_account_key") or creds.get("storage_sas_token")):
+        return _fail("找不到可用的 Azure 憑證，請向管理者確認平台主機上的憑證設定 (the credentials are missing or unusable; ask the administrator)", 0)
+    blob = cloud_store.parse_az(dest)
+    if not _az_unchanged(path, info, size):
+        return _fail("檔案在上傳前被換掉了，請重新上傳 (the file changed before the upload; upload it again)", 0)
+    folder = tempfile.mkdtemp(prefix="abf-az-")
+    try:
+        env = _az_call_env(creds, ce, folder)
+        argv = (["az", "storage", "blob", "upload", "--account-name", ce["storageAccountName"], "--container-name", blob[0], "--name", blob[1],
+                 "--file", path, "--overwrite", "true", "--no-progress", "--output", "none"] + _az_key_flags(creds))
+        try:
+            rc, out = site.run_fixed(argv, env, _seconds())
+        except FileNotFoundError:
+            return _fail("平台主機上找不到 az 指令，請管理者安裝 Azure CLI (the az command is not installed on this host)", 0)
+        except TimeoutError:
+            return _fail("az 逾時（超過 %d 秒），暫存檔保留 (az did not finish in time)" % _seconds() + _CHECK % dest, 0)
+        except OSError:
+            return _fail("沒能啟動 az，請管理者檢查安裝 (az could not be started)", 0)
+        if rc != 0:
+            return _fail("az 沒有成功（回傳碼 %s）：%s" % (rc, _az_hide(out, creds)) + _CHECK % dest, 0)
+        if not _az_unchanged(path, info, size):
+            return _fail("上傳時檔案被換掉或改動了，暫存檔保留，請重新上傳 (the file changed during the upload; it is kept)", size)
+        cloud = _az_size(ce, blob, creds, env)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    if cloud is None:
+        return "done", {"ok": True, "bytes": size, "path": dest,
+                        "message": "已上傳 %s（%d 位元組），但沒能核對雲端大小；暫存檔保留" % (dest, size)}
+    if cloud != size:
+        return _fail("雲端物件大小與本機不符，暫存檔保留，請重新上傳", size)
+    tail = "平台主機上的暫存檔已刪除" if _remove(path, info) else "暫存檔沒刪掉，請管理者清理"
+    return "done", {"ok": True, "bytes": size, "path": dest, "message": "已上傳 %s（%d 位元組）；%s" % (dest, size, tail)}

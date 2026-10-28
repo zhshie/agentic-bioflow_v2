@@ -729,7 +729,7 @@ def test_mixed_schemes_in_one_dataset_are_refused(az_cloud):
     m = bad(["az://labcontainer/uploads/bob/a_R1.fastq.gz", p1])      # TC-092
     assert "bob" not in m and AZA in m
     bad(["az://labcontainer/uploads/alice/../bob/a_R1.fastq.gz", p1])      # TC-093
-    bad([p0, AZA + "AKIA" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGH.fastq.gz"])      # TC-099
+    bad([p0, AZA + "AKIA" + "ABCDEFGHIJKLMNOP.fastq.gz"])      # TC-099
     assert "az://" not in bad([p0, p1], destination="gcb1") or True
 
 
@@ -856,8 +856,8 @@ def test_the_documents_say_what_the_feature_is():
     d = _doc("PLATFORM.md")
     assert re.search(r"`azbatch-platform` \| Azure Batch \| checked and launched on the platform host \(clean, resume: not yet\)", d)
     assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only" in d
-    para = next(p for p in d.split("\n\n") if "網頁入口尚未接上" in p)
-    assert "az://" in para and "版本控制或軟刪除開著時，覆寫同名檔會留下舊版本、仍收費" in para
+    section = d[d.index("### Uploading to Azure Batch"):d.index("### Launching on Azure Batch")]
+    assert "az://" in section and "網頁入口尚未接上" in section and "版本控制或軟刪除開著時，覆寫同名檔會留下舊版本、仍收費" in section
     row = next(ln for ln in _doc("SEQERA_PARITY.md").splitlines() if "`azbatch-platform`" in ln)
     assert "Have (create + check + launch + cancel + upload); clean in azure-clean" in row and row.rstrip().endswith("[ ] |")
     t = _doc("TESTING.md")

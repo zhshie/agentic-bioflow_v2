@@ -320,7 +320,7 @@ The question, the screen and the yes are the ones of a Slurm launch: `abf-launch
 
 ### AWS Batch
 
-An `awsbatch-platform` environment (aws-ce-type) is served the way a Google Cloud Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused, even when only one agent is online). The people who use AWS install nothing. It can be **created, checked, launched and cancelled** (see "Launching on AWS Batch" below); a listing, a record fetch, a task log, a clean and an upload are refused in plain words (尚未支援), and the automatic choice of an environment never picks it: a launch on it needs its name (`--ce aws1`), so nothing that costs money is chosen for you. `ce primary aws1` still works once it is `available`, but the automatic choice skips it.
+An `awsbatch-platform` environment (aws-ce-type) is served the way a Google Cloud Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused, even when only one agent is online). The people who use AWS install nothing. It can be **created, checked, launched and cancelled** (see "Launching on AWS Batch" below); a listing, a record fetch, a task log and a clean are refused in plain words (尚未支援); an upload is queued for it (see "Uploading to Azure Batch" below), and the automatic choice of an environment never picks it: a launch on it needs its name (`--ce aws1`), so nothing that costs money is chosen for you. `ce primary aws1` still works once it is `available`, but the automatic choice skips it.
 
 | Key | Rule |
 |---|---|
@@ -458,6 +458,12 @@ storage_account_key = <the storage account key>
 
 **預檢不計費 (the preflight costs nothing):** it only reads. It asks for one pool's state and one container's existence; it creates no pool (creates no pool, no job, writes no blob). Each `az` call is limited to 30 seconds; a timeout fails that one check. The keys are handed to `az` in the environment of that one call, with an empty config folder of its own that is deleted afterwards, never in the command line; the agent's own `AZURE_*` and `ABF_*` variables are not passed on.
 
+### Uploading to Azure Batch
+
+An Azure Batch environment takes the same file upload as the other two cloud types, as a `put_upload` job for the agent on the platform host. The file lands at `az://<container of the workDir>/uploads/<you>/<name>`, always inside your own prefix, never inside the workDir folder. The agent judges the destination, the owner, the size (1 byte to 2 GB) and the staged file again, writes it with `az storage blob upload --file` (the key goes through the environment of that one call, never through an argument, a file or a log), asks the blob for its size with `az storage blob show`, and removes the staged copy only when the two sizes are equal. A size it could not read leaves the copy in place and says so. A file over 2 GB is not taken: the answer gives an `az storage blob upload-batch` line to run on your own computer with your own Azure login; the platform never uploads it for you. A dataset registered with this environment as its destination holds `az://` locations only.
+
+網頁入口尚未接上：目前只有動作層與站台代理備好，沒有網頁按鈕、MCP 工具或指令可以按。版本控制或軟刪除開著時，覆寫同名檔會留下舊版本、仍收費；平台不會刪除 Blob，也不會替容器設規則。No migration was needed.
+
 ### Launching on Azure Batch
 
 **Who runs what.** The head process of Nextflow runs on the platform host, started by the station agent that runs there; the compute is done by tasks of an Azure Batch **pool that already exists** (`process.executor = 'azurebatch'`). Nothing runs on the cluster you use for Slurm and nothing is installed by the people who launch. As for AWS Batch, nothing is written or started before the person who launched says y, and the agent builds the same files again from its own settings and refuses a bundle that is not identical.
@@ -495,7 +501,7 @@ The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: low-pri
 
 **Cancel.** The agent finds the head process by the number in `head.pid`, checks that it is still the same program, owned by the same user, with the same `-name`, started in that run's folder, and sends it exactly one SIGTERM. Nothing more is promised: after a cancel open the Azure Portal, the Batch account page, and check the jobs and the pool; anything that did not stop you clean up yourself, and the billing runs from the start of the task to its real stop.
 
-**Not yet.** A resume or a relaunch of an Azure Batch run, upload, clean, cost estimates, listing files, reading Nextflow's records back and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid); no migration was needed.
+**Not yet.** A resume or a relaunch of an Azure Batch run, clean, cost estimates, listing files, reading Nextflow's records back and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid); no migration was needed.
 
 A record made before this type was checked (status `unsupported`, with the old keys `region` and `vmType`) is still listed and shown, but it cannot be checked or updated: the message says `請刪除後重建這個計算環境`. Delete it and create it again.
 
@@ -512,7 +518,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `moab-platform` | Moab | modelled only |
 | `awsbatch-platform` | AWS Batch | checked and launched on the platform host (upload, clean, resume: not yet) |
 | `awscloud-platform` | AWS Cloud | modelled only |
-| `azbatch-platform` | Azure Batch | checked and launched on the platform host (upload, clean, resume: not yet) |
+| `azbatch-platform` | Azure Batch | checked and launched on the platform host (clean, resume: not yet) |
 | `azcloud-platform` | Azure Cloud | modelled only |
 | `googlebatch-platform` | Google Cloud Batch | Slurm-like confirmed launch and cancel on the platform host (resume: not yet) |
 | `googlecloud-platform` | Google Cloud | modelled only |
