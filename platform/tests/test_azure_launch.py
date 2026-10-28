@@ -997,12 +997,28 @@ def test_type_constants_are_as_planned_and_nothing_indexes_them_by_position():
 def test_cloud_store_stays_closed_for_azure_and_a_dataset_cannot_go_there(ip):
     # TC-099, TC-100 (AZL-GATE-04)
     from abf_platform import cloud_store
+    from abf_platform.actions import datasets
     ce = {"platform": AZ, "config": {"workDir": WORK}}
-    for fn in (cloud_store.workdir_bucket, lambda c: cloud_store.upload_prefix(c, "run-a")):
+    # TC-099: all four functions refuse an Azure environment
+    for fn in (cloud_store.workdir_bucket,
+               lambda c: cloud_store.upload_prefix(c, "run-a"),
+               lambda c: cloud_store.upload_prefix(c, "run-a", "az"),
+               lambda c: cloud_store.object_url(c, "run-a", "x.fastq.gz"),
+               lambda c: cloud_store.object_url(c, "run-a", "x.fastq.gz", "az"),
+               lambda c: cloud_store.big_file_command(c, "run-a"),
+               lambda c: cloud_store.big_file_command(c, "run-a", "az")):
         with pytest.raises(cloud_store.CloudPathError):
             fn(ce)
-    with pytest.raises(cloud_store.CloudPathError):
-        cloud_store.upload_prefix(ce, "run-a", "az")
+    # TC-100: a dataset whose --destination is an Azure environment is refused in plain words and nothing is registered
+    available_az(ip)
+    place = WORK + "/uploads/x.fastq.gz"
+    got = datasets.register_dataset(ip.state_db, name="proj", version="v1", samplesheet="sample,fastq_1\ns1,%s\n" % place,
+                                    files=[{"path": place}], destination="azure1")
+    assert got["ok"] is False and got["message"]
+    assert "Google Batch" in got["message"] and "AWS Batch" in got["message"]
+    assert datasets.list_datasets(ip.state_db)["datasets"] == []
+    drafted = datasets.draft_samplesheet(ip.state_db, [place], destination="azure1")
+    assert drafted.get("ok") is False
 
 
 def test_put_upload_and_clean_work_are_refused_for_azure_and_start_nothing(ip, box):
