@@ -3,7 +3,8 @@
 # depends on: if the parts overlap or miss a file, a test either runs twice or - worse -
 # never runs and CI stays green. Uses --list only, so no test is run from in here.
 # TC-001 for N in 1..6 the parts are disjoint and together equal the full list
-# TC-002 with N=4 each of the four platform wrappers is in a different part
+# TC-002 with N=4 the platform wrappers are spread: the parts differ by at most one, and together they are all of them (SS-36, SS-37)
+# SS-11 the list has the nine platform wrappers
 # TC-003 the split is deterministic (twice the same)
 # TC-004 --shard combined with --only splits only the matching files
 # TC-005 bad values (0/4, 5/4, 1/0, x, 2) are refused with exit 2
@@ -29,12 +30,34 @@ for n in 1 2 3 4 5 6; do
     if [ "$got" = "$all" ]; then ok "TC-001 N=$n covers every file exactly once"; else bad "TC-001 N=$n covers every file exactly once"; fi
 done
 
+# platform_spread "<count> <count> ..." <expected total>: true when the counts differ by at most 1 and add up to the total
+platform_spread() {
+    local min=999 max=0 sum=0 c
+    for c in $1; do
+        [ "$c" -lt "$min" ] && min=$c
+        [ "$c" -gt "$max" ] && max=$c
+        sum=$((sum + c))
+    done
+    [ $((max - min)) -le 1 ] && [ "$sum" -eq "$2" ]
+}
+wrappers_on_disk="$(ls "$ROOT"/tests/ | grep -cE '^platform_(test|clock_test|shard_[0-9]+_test)\.sh$')"
 plat=""
 for i in 1 2 3 4; do
     c="$(bash "$R" --shard "$i/4" --list | grep -cE '^platform_(test|clock_test|shard_[0-9]+_test)\.sh$')"
     plat="$plat$c "
 done
-[ "$plat" = "1 1 1 1 " ] && ok "TC-002 one platform wrapper per part (N=4)" || bad "TC-002 platform wrappers per part: $plat"
+listed_names="$(bash "$R" --list --allow-msys)"
+missing=""
+for n in platform_test.sh platform_shard_2_test.sh platform_shard_3_test.sh platform_shard_4_test.sh platform_shard_5_test.sh platform_shard_6_test.sh platform_shard_7_test.sh platform_shard_8_test.sh platform_clock_test.sh; do
+    printf '%s
+' "$listed_names" | grep -qx "$n" || missing="$missing $n"
+done
+[ -z "$missing" ] && [ "$wrappers_on_disk" = 9 ] && ok "SS-11 the list has the nine platform wrappers" || bad "SS-11 nine platform wrappers (missing:$missing, on disk: $wrappers_on_disk)"
+platform_spread "$plat" "$wrappers_on_disk" && ok "TC-002 platform wrappers spread over the parts (N=4)" || bad "TC-002 platform wrappers per part: $plat"
+platform_spread "$plat" 9 && ok "SS-36 the four parts hold 9 platform wrappers, differing by at most one" || bad "SS-36 platform wrappers per part: $plat"
+# SS-37: the check must be able to fail. All wrappers in one part, and a lost wrapper, are both red.
+platform_spread "9 0 0 0" 9 && bad "SS-37 all wrappers in one part is judged green" || ok "SS-37 all wrappers in one part is judged red"
+platform_spread "2 2 2 2" 9 && bad "SS-37 a lost wrapper is judged green" || ok "SS-37 counts that do not add up are judged red"
 
 [ "$(bash "$R" --shard 2/4 --list)" = "$(bash "$R" --shard 2/4 --list)" ] && ok "TC-003 deterministic" || bad "TC-003 deterministic"
 
