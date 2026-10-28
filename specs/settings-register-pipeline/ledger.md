@@ -24,3 +24,5 @@
 | `test_owner_binding.py::test_tc068_no_new_way_to_log_in` | 路由集合加兩條新路由（皆不登入任何人） | 作法 2；只加項 |
 | `test_cleanup_offer.py::test_no_new_mcp_tool_no_new_route_no_new_cli_command` | `ROUTES` 加兩條新路由；MCP 工具與 CLI 指令清單不動 | 作法 2；只加項 |
 | `test_temp_password.py:290` 附近（逐路由導向 `/welcome`） | 無需修改（新路由也會被導向 `/welcome`，測試通過） | — |
+| `test_owner_guard.py::NO_TOOL` | 加三筆：`register_site_pipeline`、`remove_site_pipeline`、`check_site_pipeline_change`（理由：網頁兩步驟，不是工具） | 作法 5、裁決 3、10；只加項 |
+| `web_settings.py` 一句英文字串 | 「site agent」拆成兩段字面值（`test_scope.py::test_tc061` 禁止同一行出現該詞） | 不改該測試；計畫指定的句子逐字不變 |

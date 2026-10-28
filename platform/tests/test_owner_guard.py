@@ -146,6 +146,9 @@ NO_TOOL = {
     "pipeline_files": "web launch page",
     "read_confined_samplesheet": "helper of the launch page",
     "request_pipeline_launch": "web launch page",
+    "register_site_pipeline": "the confirmed path (confirmed_by), not a tool: the settings page's second step",
+    "remove_site_pipeline": "the confirmed path (confirmed_by), not a tool: the settings page's second step",
+    "check_site_pipeline_change": "web settings page: step one of the two steps, reads only",
 }
 
 

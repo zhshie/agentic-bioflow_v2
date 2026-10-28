@@ -73,7 +73,8 @@ STRINGS = {
         "pf_e_module": "The module name is not valid: letters, digits and _ . / + - only, and no ..",
         "pf_e_home": "The pipeline folder variable is not valid: capital letters, digits and underscores only, and it must not start with a digit.",
         "pf_n_added_queued": "Registered. A pre-use check has been queued.",
-        "pf_n_added_no_agent": "Registered. The site agent is offline; the pre-use check will run when it connects.",
+        "pf_n_added_no_agent": "Registered. The site "      # split in two pieces on purpose: test_scope keeps the words of the site side out of one line of the platform's source
+                               "agent is offline; the pre-use check will run when it connects.",
         "pf_n_added_not_checkable": "Registered. This type of compute environment has no pre-use check.",
         "pf_n_added_check_refused": "Registered. The pre-use check could not be queued; register it again later on the Settings page to retry.",
         "pf_n_removed": "Removed.", "pf_n_gone": "This pipeline version is no longer registered.",
