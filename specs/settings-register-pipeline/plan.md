@@ -80,6 +80,16 @@ source: 維護者 2026-10-28「登記管線要做，畢竟是裝在使用者自�
 4. 確認頁沿用 ADR 0006「每個寫入都經人確認」。
 5. 空清單＝送出時直接取用 nf-core 官方版本是既有行為（`web_board.py:959-965`），不改；設定頁在空清單環境表單上方顯示：「此環境目前未登記管線：送出時直接取用 nf-core 官方版本。登記第一筆後，只能送出已登記的管線版本。」（en: "No pipelines are registered here: runs use the nf-core release directly. Once you register one, only registered pipeline versions can be run here."）
 
+6. （10-28 第三次合約退回後）**notice 帶環境名**：303 改為 `/settings?notice=<值>&ce=<名>#ce-<名>`；`ce` 只在是登入者自己的環境時採用，否則 notice 顯示在頁面頂端。
+7. **第二步失敗**：動作層回錯誤（環境已不是自己的或已不存在、`clean()` 退回、其他拒絕）＝回 400 重畫設定頁，在該環境列上方（不是自己的環境則頁首）顯示「✕ 未能完成：<動作層回的原因>」（en: "✕ Not completed: <reason>"）；不寫入。
+8. 第二步移除回 `changed: False`＝notice `gone`。
+9. 使用前檢查的對應：helper 回傳改成結構化值（CLI 仍印原句，輸出逐字不變）——成功排入＝`added_queued`；代理離線／沒有代理＝`added_no_agent`；環境類型不檢查＝`added_not_checkable`；其他拒絕＝新增 notice `added_check_refused`，句子「✓ 已登記。使用前檢查未能排入，請稍後於設定頁重新登記以再次檢查。」（en: "✓ Registered. The pre-use check could not be queued; register it again later on the Settings page to retry."）。notice 白名單加入此值。
+10. 第一步的不寫入檢查放在動作層第三個公開函式 `check_site_pipeline_change(...)`（只讀），parity 表列在 INTERNAL（或該表既有的「網頁專用的唯讀輔助」類），理由「網頁兩步驟的第一步」。
+11. 表單上方放圖例「* 必填」／"* Required"，照 DESIGN.md「用字」第 4 條。
+12. 每個 notice 與錯誤句前加符號：成功 `✓`、已不在 `○`、失敗 `✕`（沿用設定頁既有 `_chip` 寫法）。
+13. 同時兩個登記互相覆蓋：不處理（單人單頁，風險低）。
+14. **合約規則**：本計畫已涵蓋的範圍外，未明寫的細節由 verifier 依專長守則與既有畫面慣例自行決定預期值並寫進 TC，不再以「計畫未寫」退回；只有「照計畫字面無法實作」或「與憲法／ADR 衝突」才算阻擋。
+
 ## 專長守則（ui）
 
 ### executor
