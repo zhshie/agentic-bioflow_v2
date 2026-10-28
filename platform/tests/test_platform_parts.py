@@ -1,5 +1,5 @@
-# Nothing existing: tests that the platform tests are run in nine run_all.sh entries with nothing left out and nothing run twice; it only reads the wrapper's lists.
-"""The split of tests/platform_test.sh into nine run_all.sh entries (parts 1 to 8 and the clock): TC-F3-02 to TC-F3-06, PS-01 to PS-61 and SS-01 to SS-71 (suite-speed)."""
+# Nothing existing: tests that the platform tests are run in ten run_all.sh entries with nothing left out and nothing run twice; it only reads the wrapper's lists.
+"""The split of tests/platform_test.sh into ten run_all.sh entries (parts 1 to 8, clock and clock2): TC-F3-02 to TC-F3-06, PS-01 to PS-61 and SS-01 to SS-71 (suite-speed)."""
 import math
 import os
 import re
@@ -11,13 +11,14 @@ from test_wrapper import _bin_without_java, _clean_env, warm  # noqa: F401  (war
 
 MAIN = REPO_ROOT / "tests" / "platform_test.sh"
 CLOCK = REPO_ROOT / "tests" / "platform_clock_test.sh"
+CLOCK2 = REPO_ROOT / "tests" / "platform_clock_2_test.sh"
 PLATFORM_PARTS = 8
 NUMBERS = [str(i) for i in range(1, PLATFORM_PARTS + 1)]
 SHARD_SCRIPTS = {n: REPO_ROOT / "tests" / f"platform_shard_{n}_test.sh" for n in NUMBERS[1:]}
 SHARD2 = SHARD_SCRIPTS["2"]
-ENTRIES = [MAIN, *SHARD_SCRIPTS.values(), CLOCK]
+ENTRIES = [MAIN, *SHARD_SCRIPTS.values(), CLOCK, CLOCK2]
 CLOCK_FILES = ["tests/test_station_e2e.py", "tests/test_nextflow_e2e.py"]
-PARTS = [*NUMBERS, "clock"]
+PARTS = [*NUMBERS, "clock", "clock2"]
 
 
 def listed(script, **extra):
@@ -41,13 +42,13 @@ def _files(entries):
 
 
 def test_tcf3_02_every_test_file_is_in_exactly_one_entry():
-    # TC-F3-02, PS-01, PS-02, SS-01: the union of the nine entries is every platform/tests/test_*.py, each once
+    # TC-F3-02, PS-01, PS-02, SS-01: the union of the ten entries is every platform/tests/test_*.py, each once
     got = [f for part in PARTS for f in _files(listed(MAIN, ABF_PLATFORM_PART=part))]
     assert sorted(got) == _all_files()
     assert len(set(got)) == len(got)
 
 
-def test_ps03_all_is_the_union_of_the_nine_parts():
+def test_ps03_all_is_the_union_of_the_ten_parts():
     # PS-03, SS-02
     allf = _files(listed(MAIN, ABF_PLATFORM_PART="all"))
     assert sorted(allf) == _all_files()
@@ -59,8 +60,11 @@ def test_tcf3_05_the_two_clock_sensitive_files_run_alone_one_after_the_other():
     main = listed(MAIN)
     assert all(kind == "shard" for kind, _ in main)
     assert not [f for _, fs in main for f in fs if f in CLOCK_FILES]
-    assert listed(CLOCK) == [("alone", [CLOCK_FILES[0]]), ("alone", [CLOCK_FILES[1]])]
-    assert listed(MAIN, ABF_PLATFORM_PART="clock") == [("alone", [CLOCK_FILES[0]]), ("alone", [CLOCK_FILES[1]])]
+    # SC-02, SC-04: the clock is two entries, one file each, in the old order
+    assert listed(CLOCK) == [("alone", [CLOCK_FILES[0]])]
+    assert listed(MAIN, ABF_PLATFORM_PART="clock") == [("alone", [CLOCK_FILES[0]])]
+    assert listed(CLOCK2) == [("alone", [CLOCK_FILES[1]])]
+    assert listed(MAIN, ABF_PLATFORM_PART="clock2") == [("alone", [CLOCK_FILES[1]])]
     for part in NUMBERS:
         assert not [f for f in _files(listed(MAIN, ABF_PLATFORM_PART=part)) if f in CLOCK_FILES]
 
@@ -86,9 +90,11 @@ def test_ps07_the_default_part_is_1():
 
 def test_ps08_the_old_value_main_and_a_ninth_part_are_refused():
     # PS-08, SS-04
-    for bad in ("main", "9", "0"):
+    # SC-05: also clock3 and clock_2
+    for bad in ("main", "9", "0", "clock3", "clock_2"):
         r = subprocess.run(["bash", str(MAIN)], env=_clean_env(ABF_PLATFORM_PART=bad), capture_output=True, text=True, timeout=60)
-        assert r.returncode == 1 and "must be 1 to 8, clock or all" in r.stdout, (bad, r.stdout)
+        assert r.returncode == 1 and "must be 1 to 8, clock, clock2 or all" in r.stdout, (bad, r.stdout)
+        assert f"not '{bad}'" in r.stdout, (bad, r.stdout)
 
 
 def _named(script_text):
@@ -185,7 +191,7 @@ def test_ps33_empty_rest_shards_are_not_printed(tmp_path):
     assert found == 1
 
 
-def test_ps34_ps35_the_nine_entries_list_in_the_same_format():
+def test_ps34_ps35_the_ten_entries_list_in_the_same_format():
     # PS-34, PS-35, SS-29
     for e in ENTRIES:
         got = listed(e)
@@ -217,11 +223,11 @@ def test_ps11_every_script_that_selects_a_part_is_covered_by_the_quarantine_rule
         if p.name in ("run_all_retry_test.sh", "platform_test.sh"):
             continue
         if pat.search(p.read_text()):
-            assert p.name == "platform_clock_test.sh" or re.fullmatch(r"platform_shard_\d+_test\.sh", p.name), p.name
+            assert p.name in ("platform_clock_test.sh", "platform_clock_2_test.sh") or re.fullmatch(r"platform_shard_\d+_test\.sh", p.name), p.name
     assert "platform_shard_*_test.sh" in (REPO_ROOT / "tests" / "run_all.sh").read_text()
 
 
-def test_tcf3_06_run_all_lists_the_nine_entries_and_each_ends_in_test_sh():
+def test_tcf3_06_run_all_lists_the_ten_entries_and_each_ends_in_test_sh():
     # TC-F3-06, PS-12, SS-11
     r = subprocess.run(["bash", str(REPO_ROOT / "tests" / "run_all.sh"), "--list", "--allow-msys"], capture_output=True, text=True,
                        timeout=60, env=_clean_env())
@@ -261,6 +267,7 @@ def test_ps27_to_ps30_ps41_ps43_docs_name_the_entries():
     assert "default 300" in (REPO_ROOT / "tests" / "run_all.sh").read_text()
     for doc in (testing, platform):
         assert "platform_shard_" in doc and "platform_test.sh" in doc and "platform_clock_test.sh" in doc
+        assert "platform_clock_2_test.sh" in doc  # SC-14
         for old in ("four platform entries", "one of four entries", "The machine part is the four"):
             assert old not in doc, old
     assert "The machine part is `tests/platform_test.sh`" not in testing
@@ -315,3 +322,56 @@ def test_tcf3_03_nothing_may_be_skipped_on_ci_in_any_entry(tmp_path, warm):  # n
     for script in ENTRIES:
         ci = subprocess.run(["bash", str(script)], env=_clean_env(PATH=path, CI="true"), capture_output=True, text=True, timeout=300)
         assert ci.returncode != 0 and "FAIL (CI=true)" in ci.stdout, (script.name, ci.stdout[-400:])
+
+
+def _ids(text):
+    return [m.group(0) for m in re.finditer(r"^tests/test_\w+\.py::\S.*$", text, re.M)]
+
+
+def test_sc01_the_ten_entries_collect_what_the_whole_directory_collects(warm):  # noqa: F811
+    # SC-01 (a), (b), (c): no test id in two entries; the union is what one collection of all of platform/tests gives
+    whole = subprocess.run(["bash", str(MAIN)], env=_clean_env(ABF_PYTEST_TARGETS="tests", ABF_PYTEST_ARGS="--collect-only -q"),
+                           capture_output=True, text=True, timeout=600)
+    assert whole.returncode == 0, whole.stdout[-400:]
+    seen = {}
+    for e in ENTRIES:
+        r = subprocess.run(["bash", str(e)], env=_clean_env(ABF_PYTEST_ARGS="--collect-only -q"), capture_output=True, text=True, timeout=600)
+        assert r.returncode == 0, (e.name, r.stdout[-400:])
+        ids = _ids(r.stdout)
+        assert ids, e.name
+        assert {i.split("::")[0] for i in ids} == set(_files(listed(e))), e.name
+        for i in ids:
+            assert i not in seen, (i, seen.get(i), e.name)
+            seen[i] = e.name
+    assert set(seen) == set(_ids(whole.stdout))
+
+
+def test_sc17_all_lists_the_shards_and_then_the_two_clock_files_alone():
+    # SC-17
+    got = listed(MAIN, ABF_PLATFORM_PART="all")
+    kinds = [k for k, _ in got]
+    assert kinds == ["shard"] * (len(kinds) - 2) + ["alone", "alone"], kinds
+    assert got[-2:] == [("alone", [CLOCK_FILES[0]]), ("alone", [CLOCK_FILES[1]])]
+    assert not [f for k, fs in got if k == "shard" for f in fs if f in CLOCK_FILES]
+
+
+def test_sc18_the_two_clock_wrappers():
+    # SC-18
+    wrappers = sorted(p.name for p in (REPO_ROOT / "tests").glob("platform_clock*_test.sh"))
+    assert wrappers == ["platform_clock_2_test.sh", "platform_clock_test.sh"]
+    for path, part in ((CLOCK, "clock"), (CLOCK2, "clock2")):
+        text = path.read_text()
+        assert re.findall(r"ABF_PLATFORM_PART=(\w+)", text) == [part], path.name
+        assert 'exec bash "$HERE/platform_test.sh" "$@"' in text
+
+
+def test_sc29_the_tests_the_constitution_names_are_collected_in_some_entry(warm):  # noqa: F811
+    # SC-29: test_human_channel test_tch09_*, test_confirm_page test_tch09_b_c_*, test_tc030_rebuild_gives_back_every_field
+    out = ""
+    for e in ENTRIES:
+        r = subprocess.run(["bash", str(e)], env=_clean_env(ABF_PYTEST_ARGS="--collect-only -q"), capture_output=True, text=True, timeout=600)
+        assert r.returncode == 0, e.name
+        out += r.stdout
+    assert re.search(r"^tests/test_human_channel\.py::test_tch09_", out, re.M)
+    assert re.search(r"^tests/test_confirm_page\.py::test_tch09_b_c_", out, re.M)
+    assert re.search(r"::test_tc030_rebuild_gives_back_every_field", out)
