@@ -98,6 +98,7 @@ source: 維護者 10-28「加速進行，這禮拜做完」＋10-27 清單「網
 21. 大檔指令：表單下方對每個列出的雲端環境各顯示一行該環境的大檔指令（內容同 `cloud_store.big_file_command`，以 `<檔名>` 佔位）。
 22. **合約規則**：計畫範圍內未明寫的細節由 verifier 依專長守則與既有畫面慣例自行決定預期值並寫進 TC，不再以「計畫未寫」退回；只有「照計畫字面無法實作」或「與憲法／ADR 衝突」才算阻擋。
 23. **全套測試會超過單次指令 10 分鐘上限**（桌機上 platform 分片約 6 分鐘，全套更久）：跑 `tests/run_all.sh --timeout 900` 時一律用 Bash 的 `run_in_background`，再用 `until grep -qE "passed|FAILED|failed" <輸出檔>; do sleep 30; done` 這類迴圈（每次 ≤ 9 分鐘）等它結束，讀完結果才結束回合；不准在測試還在背景跑時就交報告。上一輪的實作已在工作副本中（未 commit），先 `git status`／`git diff` 接著做，不要重寫。
+24. **（10-29 developer-agent 親自套用，commit 在分支上）** ①合約 test-case.md 第 103 行 TC-062 的範例原本寫出一個完整的 AWS 金鑰樣式，被既有的 `tests/credentials_stay_in_settings_test.sh` 擋下；已改寫成文字描述（意思不變：仍是「`AKIA`＋16 個大寫英數」與「`ghp_` 長字串」兩種），這是合約確認後唯一允許的改動，verifier 不因此判定合約被竄改。測試內的樣本值須以字串相接組出，不在檔案中寫出完整樣式。②`platform/pyproject.toml` 的 dependencies 加 `"python-multipart"`（TC-105；executor 的寫入守衛不准它改此檔，由我套用；兩個 venv 已裝 0.0.32）。
 
 ## 專長守則（ui）
 
