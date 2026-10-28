@@ -149,6 +149,8 @@ source: memory/dev-plans/cloud-cleanup.md 與 cloud-cleanup-d.md（Google 版，
   - E11 測試條數以合約 TC 為準，「22 條」只是下限。
   - E12 真實輸出格式：假 bucket 照官方文件的輸出格式寫（帳本附網址）；真實解析屬 C 級實跑，驗收列 UNVERIFIED(needs human)。
 
+  - E13（10-28 19:00，回應 executor BLOCKED）：既有 `platform/tests/test_station_clean.py` TC-073（約 577-590 行）的 `holders == {"_clean_gcb", "_head_gone"}` 准改成 `{"_clean_gcb", "_clean_aws", "_head_gone"}`，只加這一個名字、其他斷言不動；PR 列進「有意更新的既有斷言」。另追認 verifier 非阻擋解讀：compute_envs.py 的 AWS 格照 Google 寫成 `"clean_" "work"` 兩段字面；TC-032 的「列舉一次、rm 一次且 rm 是最後一個 aws 呼叫，其餘為唯讀檢查」；裸 bucket workDir 不在本任務範圍。
+
 ## 專長守則（backend）
 
 ### executor
