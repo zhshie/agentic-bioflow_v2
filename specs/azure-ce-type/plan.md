@@ -248,6 +248,9 @@ source: memory/PLAN-abf-v3-replan-2026-10.md Milestone 3 的 C-5（Azure Batch�
 
 10. （10-28 20:1x，aws-launch／upload／clean 都已合進 v3 @ #254 後補）上面「必須更新的既有斷言」的行號與部分內容是 aws 三件合併前寫的。開工先用 `git grep -n 'awsbatch-platform\|CHECK_ONLY_TYPES\|not built for it yet\|UNSUPPORTED' origin/v3 -- platform/tests docs` 列出所有把「哪些類型支援／只檢查／被拒」逐字釘住的既有斷言（含集合、計數、拒絕句、SEQERA_PARITY 那一列），寫進帳本。准改的只限：在這類集合／計數／文件列**加入 Azure**或把 Azure 從 unsupported 名單移出；每一條在 PR 說明寫「以前／以後／理由」。凡要刪斷言、放寬判斷、或改到 AWS／Google／Slurm 的語意，一律 BLOCKED 回報，不要自己改。（病例：aws-clean 因漏列 test_station_clean.py TC-073 被退一次。）
 
+11. （10-28 20:2x，回應 verifier 合約審查的阻擋）範圍列擴充：除上面「範圍：檔案」外，**准改**以下既有測試，且每檔只准「加入 Azure／把 Azure 移出 unsupported／對應的計數與 'eleven'→'ten' 字樣」，不得刪改其他類型的斷言：`platform/tests/test_aws_launch.py`（約 :985 `CHECK_ONLY_TYPES == ()`、`CHECKABLE`；約 :992 那行註解「新雲端類型先放這裡，只開預檢」維持存在）、`platform/tests/test_gcb_launch.py`（約 :1151 PLATFORM.md 句子 'the other eleven types…'）、`platform/tests/test_launch_bundle.py`（約 :450 把 `azbatch-platform` 換成仍 unsupported 的類型，例如 `azcloud-platform`）、`platform/tests/test_aws_ce.py`（約 :788、:906、:923）、`platform/tests/test_gcb_ce.py`（約 :852、:866；第 163 行寫的舊值 `('awsbatch-platform',)` 作廢，以 v3 實際值 `()` 為準再加 Azure）。行號一律語意重定位。完成標準改為：`git diff --name-only` ⊆ 範圍列 ＋ 本條所列檔 ＋ ledger 依裁決 10 列出、且符合同一限制的既有測試檔；不含網頁檔。
+12. `ce create --platform azbatch-platform` 不給 `--credentials`：**允許建立**，由第一次預檢報 `credential_name` fail（與 v3 現行 AWS 行為一致：`compute_envs.py` 建立時 `credentialsId` 可為空）。作法 3 的「必填」指預檢必過項，不是建立時拒絕。合約補一條測這一格。
+
 ## 專長守則（backend）
 
 ### executor
