@@ -123,13 +123,32 @@ fi
 
 mkdir -p "$(dirname "$DEST")" || die 2 "cannot create $(dirname "$DEST")"
 
+# Local paths in Windows drive-letter form (C:/x, C:\x) look like host:path to
+# rsync and would be taken for a remote end. Hand rsync the MSYS form (/c/x)
+# instead; every other path passes through untouched, trailing slash included.
+# (Cause inferred from rsync's host:path rule, not reproduced on Windows; WSL's
+# /mnt/c form is not handled.)
+rsync_local_path() {
+  local p="$1" re='^[A-Za-z]:([\\/]|$)' drive rest
+  if [[ "$p" =~ $re ]]; then
+    if command -v cygpath >/dev/null 2>&1 && cygpath -u -- "$p" 2>/dev/null; then
+      return 0
+    fi
+    drive="$(printf '%s' "${p:0:1}" | tr 'A-Z' 'a-z')"
+    rest="${p:2}"
+    printf '/%s%s\n' "$drive" "${rest//\\//}"
+  else
+    printf '%s\n' "$p"
+  fi
+}
+
 # Git Bash ships no rsync by default (issue #6), and that used to be a hard
 # stop: `downstream`/`finish` both call this, so no fallback meant the whole
 # local-analysis workflow was unusable on the shell this plugin otherwise
 # treats as first-class. tar over the same ssh connection this already
 # established needs nothing rsync itself would have needed beyond that.
 if command -v "$RSYNC" >/dev/null 2>&1; then
-  "$RSYNC" -a -e "$SSH -o ControlPath=$CP" "$HOST:$SRC" "$(dirname "$DEST")/" \
+  "$RSYNC" -a -e "$SSH -o ControlPath=$CP" "$HOST:$SRC" "$(dirname "$(rsync_local_path "$DEST")")/" \
     || die 2 "the transfer of '$SRC' failed."
 else
   "$SSH" -o ControlPath="$CP" "$HOST" \
