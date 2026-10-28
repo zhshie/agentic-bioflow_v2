@@ -574,6 +574,14 @@ The automatic tests use a fake `gcloud` and touch no network. Three things are c
 2. **The reviewer.** Run `git diff <base>...HEAD --name-only`. Check: no `cloud_cost.py`, no `configs/cloud/rates.json`, no `local_runner.py`, no `head.pid`, no `-with-tower` code, no money or currency field; the existing tests changed only in `UNSUPPORTED` and TC-030's name and TC-032's assertion in `test_station_envs.py`, and the parity-row assertions of TC-077 in `test_station_docs.py`; no assertion was deleted, loosened or skipped.
 3. **The sentence to find.** `docs/PLATFORM.md`, "Google Cloud Batch": 「預檢不計費」 says the preflight only reads, creates no Batch job and costs nothing.
 
+## AWS Batch environment (aws-ce-type): the maintainer and the reviewer check
+
+The automatic tests use a fake `aws` and touch no network. Three things are checked by a person.
+
+1. **The maintainer, once, when an AWS account is open. This costs nothing.** (a) On the computer where the platform host's station agent runs, put the `[default]` credentials at `<agent deployment>/_personal/aws-credentials` (or where `ABF_STATION_AWS_CREDENTIALS` points) and run `chmod 600` on it. (b) Run `abf-platform ce create --name=aws1 --platform=awsbatch-platform --agent=host1 --region=eu-west-1 --work-dir=s3://lab-bucket/work --job-queue=lab-queue --credentials=aws-lab`, then `abf-platform ce preflight aws1`. Check: the seven checks `credential_name`, `credential_file`, `credential_shape`, `aws`, `identity`, `job_queue` and `bucket` all say pass and the status is `available`; no Batch job appears in the AWS console and the bill shows nothing new (預檢不計費).
+2. **The reviewer.** Run `git diff <base>...HEAD --name-only`. Check: no `cloud_cost.py`, no `configs/cloud/rates.json`, no `local_runner.py`, no `-with-tower` code, no migration, no `boto3`; the existing tests changed only where `specs/aws-ce-type/plan.md` lists them.
+3. **The sentence to find.** `docs/PLATFORM.md`, "AWS Batch": 「預檢不計費」 says the preflight only reads, creates no Batch job and costs nothing.
+
 ## Launching on Google Batch (gcb-launch): the maintainer and the reviewer check
 
 The automatic tests use fakes for the program runner, the detached start and the signal; they start nothing and touch no network. The steps below start a real Nextflow head process and **cost a very small amount of money**: set the budget and alert of the Google Cloud project first.

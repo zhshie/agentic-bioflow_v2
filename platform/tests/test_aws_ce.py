@@ -688,10 +688,10 @@ def test_another_users_aws_environment_is_not_found(ip):
     assert compute_envs.get(ip.state_db, "aws1", owner=2) is None
     missing = None
     try:
-        jobs.enqueue_preflight(ip.state_db, "nothing-here", caller_user_id=2)
+        jobs.enqueue_listing(ip.state_db, "nothing-here", "/x", caller_user_id=2)
     except jobs.JobRefused as e:
         missing = str(e)
-    for call in (lambda: jobs.enqueue_preflight(ip.state_db, "aws1", caller_user_id=2),
+    for call in (lambda: jobs.enqueue_listing(ip.state_db, "aws1", "/x", caller_user_id=2),
                  lambda: jobs.check_target(ip.state_db, "aws1", "launch_nextflow", caller_user_id=2)):
         with pytest.raises(jobs.JobRefused) as e:
             call()
