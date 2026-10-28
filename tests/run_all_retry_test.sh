@@ -442,6 +442,47 @@ t "PS-24 quarantine.txt line 12 names the four entries" bash -c 'l=$(sed -n 12p 
 reset; mk_ok platform_x_test.sh; echo '# ABF_PLATFORM_PART=2' >> "$SR/tests/platform_x_test.sh"; setq "$(qline platform_x_test.sh '#12' $D3)"; run $F
 t "PS-25 the rule is the name, not the content (exit 0)" rc_is 0
 
+# SS-10, SS-32, SS-33, SS-35, SS-71 (suite-speed): the rule is a name pattern, so every platform_shard_<n>_test.sh is refused.
+reset; mk_ok platform_shard_8_test.sh; setq "$(qline platform_shard_8_test.sh '#12' $D3)"; run $F
+t "SS-10 platform_shard_8_test.sh may not be quarantined (exit 1)" rc_is 1
+t "SS-10 message says may not be quarantined" err_has "may not be quarantined"
+reset; mk_ok platform_shard_12_test.sh; setq "$(qline platform_shard_12_test.sh '#12' $D3)"; run $F
+t "SS-32 a made-up platform_shard_12_test.sh: exit 1 (a pattern, not eight names)" rc_is 1
+t "SS-32 message says may not be quarantined" err_has "may not be quarantined"
+reset; mk_ok platform_storage_doc_test.sh
+setq "$(qline platform_storage_doc_test.sh '#12' $D3)"; run $F
+t "SS-33 platform_storage_doc_test.sh can still be quarantined (exit 0)" rc_is 0
+reset; mk_ok platform_direction_docs_test.sh
+setq "$(qline platform_direction_docs_test.sh '#12' $D3)"; run $F
+t "SS-33 platform_direction_docs_test.sh can still be quarantined (exit 0)" rc_is 0
+t "SS-35 quarantine.txt line 12 covers every platform_shard_<n>_test.sh and no longer says four" bash -c 'l=$(sed -n 12p "$0/quarantine.txt"); grep -qF "platform_shard_<n>_test.sh" <<<"$l" && ! grep -qiE "four|四個" <<<"$l"' "$HERE"
+for n in platform_test.sh platform_shard_2_test.sh platform_shard_3_test.sh platform_shard_4_test.sh platform_shard_5_test.sh platform_shard_6_test.sh platform_shard_7_test.sh platform_shard_8_test.sh platform_clock_test.sh platform_clock_2_test.sh; do
+    reset; mk_ok "$n"; setq "$(qline "$n" '#12' $D3)"; run $F
+    t "SS-71 $n may not be quarantined (exit 1)" rc_is 1
+    t "SS-71 $n message says may not be quarantined" err_has "may not be quarantined"
+done
+
+# SC-06 (suite-clock-split): the second clock entry may not be quarantined either.
+reset; mk_ok platform_clock_2_test.sh; setq "$(qline platform_clock_2_test.sh '#12' $D3)"; run $F
+t "SC-06 platform_clock_2_test.sh: exit 1" rc_is 1
+t "SC-06 message names line" err_has "quarantine: tests/quarantine.txt:1:"
+t "SC-06 message says may not be quarantined" err_has "platform_clock_2_test.sh may not be quarantined"
+# SC-19: line 12 of the real quarantine.txt keeps the old literals and names the new entry
+t "SC-19 quarantine.txt line 12 names the new entry and keeps the old literals" bash -c 'l=$(sed -n 12p "$0/quarantine.txt"); for n in platform_clock_2_test.sh platform_test.sh platform_shard_2_test.sh platform_shard_3_test.sh platform_clock_test.sh "platform_shard_<n>_test.sh"; do grep -qF "$n" <<<"$l" || exit 1; done' "$HERE"
+# SC-20: in a sandbox of ten platform wrappers and four plain files, no plain file is dealt out before platform_clock_2_test.sh
+reset
+for n in platform_test.sh platform_shard_2_test.sh platform_shard_3_test.sh platform_shard_4_test.sh platform_shard_5_test.sh platform_shard_6_test.sh platform_shard_7_test.sh platform_shard_8_test.sh platform_clock_test.sh platform_clock_2_test.sh a_test.sh b_test.sh c_test.sh d_test.sh; do mk_ok "$n"; done
+sc20_ok=1; sc20_with=0
+for i in 1 2 3 4; do
+    run --shard "$i/4" --list
+    w=$(grep -cE '^platform_' <<<"$OUT"); p=$(grep -cE '^[a-d]_test.sh$' <<<"$OUT")
+    [ "$w" -ge 2 ] && [ "$w" -le 3 ] || sc20_ok=0
+    grep -qx 'platform_clock_2_test.sh' <<<"$OUT" && sc20_with=$((sc20_with + 1))
+    # a part with 3 wrappers (weight 120) takes no plain file before the others have 3 as well: plain files go to the lightest parts
+    [ "$w" = 3 ] && [ "$p" -gt 1 ] && sc20_ok=0
+done
+t "SC-20 platform_clock_2_test.sh weighs as a platform wrapper (wrappers 2-3 per part, plain files fill the light parts)" test "$sc20_ok" = 1 -a "$sc20_with" = 1
+
 # TC-090: RUN_ALL_TODAY is not a back door any more.
 reset; mk_ok ok_test.sh; setq "$(qline ok_test.sh '#12' $D3)"; ENVX="RUN_ALL_TODAY=2000-01-01" run $F
 t "TC-090a RUN_ALL_TODAY=2000-01-01, expiry today+3: valid" rc_is 0

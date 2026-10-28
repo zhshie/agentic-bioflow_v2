@@ -43,7 +43,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$ROOT/scripts/utils/portable.sh" || { echo "cannot read scripts/utils/portable.sh"; exit 1; }
 
-PER_TEST_TIMEOUT=300   # every entry, the four platform ones included, should finish well inside this; it only catches a hang
+PER_TEST_TIMEOUT=300   # every entry, the platform ones included, should finish well inside this; it only catches a hang
 ONLY=""
 SHARD=""
 VERBOSE=0
@@ -171,7 +171,7 @@ quarantine_check() { # fills QUAR; prints one stderr line per problem; returns 1
             echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' must look like tests/<name>.sh" >&2; bad=1; continue
         elif [ ! -f "$ROOT/$fpath" ]; then
             echo "quarantine: tests/quarantine.txt:$lineno: '$fpath' does not exist (typo? an entry for a missing file protects nothing)" >&2; bad=1; continue
-        elif case "$base" in platform_test.sh|platform_clock_test.sh|platform_shard_*_test.sh) true ;; *) false ;; esac; then
+        elif case "$base" in platform_test.sh|platform_clock_test.sh|platform_clock_2_test.sh|platform_shard_*_test.sh) true ;; *) false ;; esac; then
             echo "quarantine: tests/quarantine.txt:$lineno: $base may not be quarantined: it wraps the platform pytest suite, so quarantining it would let any platform test failure through" >&2; bad=1; continue
         elif [ "$base" = "run_all.sh" ]; then
             echo "quarantine: tests/quarantine.txt:$lineno: run_all.sh is not a test file" >&2; bad=1; continue
@@ -352,16 +352,16 @@ FILES="${FILES%$'\n'}"
 # tree and the same N always give the same parts, and the N parts are disjoint
 # and together cover every file (tests/run_all_shard_test.sh checks it: a file lost
 # or doubled would be a test that silently never runs). Greedy balancing by
-# weight: the four platform_*_test.sh wrappers go first, then the other files,
+# weight: the platform_*_test.sh wrappers go first, then the other files,
 # each in name order (LC_ALL=C), and each goes to the part with the least weight so
-# far (ties: the lowest number). A platform wrapper weighs 40 (about 110-200 s on
-# CI), any other file 1 (about 4 s), so with N=4 each part gets one platform
-# wrapper plus about 30 other files. The weights are only a balance hint: change
-# them freely, nothing else depends on them.
+# far (ties: the lowest number). A platform wrapper weighs 40, any other file 1,
+# so the platform wrappers are spread over the parts first and the other files
+# fill in. The weights are only a balance hint: change them freely, nothing else
+# depends on them.
 if [ -n "$SHARD" ]; then
     SH_I="${SHARD%/*}"; SH_N="${SHARD#*/}"
-    SH_ORDER="$(printf '%s\n' "$FILES" | LC_ALL=C sort | awk '/^platform_(test|clock_test|shard_[0-9]+_test).sh$/ {print "40 " $0}'
-               printf '%s\n' "$FILES" | LC_ALL=C sort | awk '!/^platform_(test|clock_test|shard_[0-9]+_test).sh$/ {print "1 " $0}')"
+    SH_ORDER="$(printf '%s\n' "$FILES" | LC_ALL=C sort | awk '/^platform_(test|clock_test|clock_2_test|shard_[0-9]+_test).sh$/ {print "40 " $0}'
+               printf '%s\n' "$FILES" | LC_ALL=C sort | awk '!/^platform_(test|clock_test|clock_2_test|shard_[0-9]+_test).sh$/ {print "1 " $0}')"
     FILES="$(printf '%s\n' "$SH_ORDER" | awk -v n="$SH_N" -v i="$SH_I" '
         NF { w[NR]=$1; f[NR]=$2 }
         END {
