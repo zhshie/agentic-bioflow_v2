@@ -204,6 +204,15 @@ source: memory/PLAN-abf-v3-replan-2026-10.md Milestone 3 的 C-4（前半：計�
 6. 直接 import `gcb_preflight` 的私有輔助函式，不抽共用模組（不碰 gcb 檔）。
 7. Nextflow awsbatch 設定鍵名不在本任務驗證，留給 aws-launch，且 aws-launch 計畫必須先查 Nextflow 官方文件。
 
+
+### 裁決補充（2026-10-28 10:10，回應 verifier 合約審查的阻擋；本文、測試清單、完成標準與裁決衝突處一律以本段為準）
+8. 憑證 profile：(a) 一律讀 `[default]`，執行 Nextflow／aws 指令時明設 `AWS_PROFILE=default`（不留空，避免主機環境殘留別的 profile）；(b) 沒有 `[default]` 區段時 detail＝「憑證檔沒有 [default] 區段」＋檔案路徑，不列出檔內其他 profile 名；(c) `credentialsId` 仍是必填標籤（沒設就 fail，`credential_name` 檢查保留），只是不當 profile 名；(d) 測試常數 `CRED_FILE`、完成標準、PLATFORM.md 範例的區段名一律改成 `[default]`，測試裡的 `AWS_PROFILE=="aws-lab"` 改成 `=="default"`。
+9. `spot`／`maxvCpus`：「只存不驗」＝不對 AWS 做核對（不呼叫任何 AWS API 比對）；本地型別與範圍檢查照作法 2 表格與 `test_spot_and_maxvcpus_rules` 保留（`spot` 只收布林；`maxvCpus` 只收 1～10000 的整數，布林與字串拒收）。
+10. 舊 `headQueue`／`computeQueue` 記錄：錯誤訊息只需含該鍵名與「請刪除後重建這個計算環境」；刪掉作法 11 與舊測試裡的「ce update」與「整列重建前先確認…」字樣要求。
+11. `primary_environment`：verifier 的解讀正確——AWS 設為主要後 `primary_environment` 仍不回傳 AWS（它是 CHECK_ONLY）；同時有 available 的 Slurm 時選 Slurm。
+12. 缺憑證檔時 detail 含實際路徑：接受，是刻意例外（路徑不是祕密，使用者需要知道檔案放哪）。其他錯誤訊息仍不露內部路徑。
+13. `ce create`／`update`／`disable` 沒有另外的人工確認要求，沿用既有管理者 CLI 行為即可。
+
 ## 專長守則（backend）
 
 ### executor
