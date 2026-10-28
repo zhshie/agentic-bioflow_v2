@@ -594,6 +594,15 @@ def _agent_owner_problem(con, agent, owner):
     return None
 
 
+def _claim_agent(con, agent, owner):
+    """An environment that has an owner takes the agent it uses when that agent has said hello and nobody owns it, so the owner can use
+    what they were given (owner-binding). An agent that never said hello is left for its first token with a user. Runs inside the
+    caller's transaction."""
+    if owner is None or not agent:
+        return
+    con.execute("UPDATE agents SET owner_user_id = ? WHERE name = ? AND owner_user_id IS NULL", (owner, agent))
+
+
 def _hand_agent_along(con, name, old_agent, new_agent, old_owner, new_owner):
     """`ce update --owner` on an environment whose agent (unchanged) belongs to the old owner gives that agent to the new owner too,
     so the new owner can use what they were given (116). An agent has one owner: if another environment of the old owner still
@@ -632,6 +641,7 @@ def create(state_path, fields, clock=time.time):
             problem = _agent_owner_problem(con, rec["agent"], rec["owner_user_id"])
             if problem:
                 raise CEError(problem)
+            _claim_agent(con, rec["agent"], rec["owner_user_id"])
             try:
                 con.execute(
                     "INSERT INTO compute_envs (name, description, platform, credentials_id, agent, status, message, "
@@ -665,6 +675,7 @@ def update(state_path, name, fields, clock=time.time):
             problem = _agent_owner_problem(con, rec["agent"], rec["owner_user_id"])
             if problem:
                 raise CEError(problem)
+            _claim_agent(con, rec["agent"], rec["owner_user_id"])
             # an environment that changes hands stops being the primary one of its old owner
             con.execute("UPDATE compute_envs SET description = ?, credentials_id = ?, agent = ?, config_json = ?, "
                         "updated_at = ?, is_primary = CASE WHEN owner_user_id IS ? THEN is_primary ELSE 0 END, owner_user_id = ? "

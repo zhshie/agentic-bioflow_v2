@@ -1302,6 +1302,11 @@ def assign_orphans(state_path, tokens_path):
             if len(users) == 1:
                 for table, col in (("compute_envs", "owner_user_id"), ("agents", "owner_user_id"), ("launches", "user_id")):
                     con.execute("UPDATE %s SET %s = ? WHERE %s IS NULL" % (table, col, col), (users[0],))
+            # an agent nobody owns goes to the one owner of every environment that uses it (owner-binding); shared or unused ones stay
+            con.execute("UPDATE agents SET owner_user_id = (SELECT MIN(e.owner_user_id) FROM compute_envs e WHERE e.agent = agents.name) "
+                        "WHERE owner_user_id IS NULL AND EXISTS (SELECT 1 FROM compute_envs e WHERE e.agent = agents.name) "
+                        "AND NOT EXISTS (SELECT 1 FROM compute_envs e WHERE e.agent = agents.name AND e.owner_user_id IS NULL) "
+                        "AND (SELECT COUNT(DISTINCT e.owner_user_id) FROM compute_envs e WHERE e.agent = agents.name) = 1")
             con.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('owners_assigned', ?)", (str(int(time.time())),))
     finally:
         con.close()
