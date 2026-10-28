@@ -332,7 +332,8 @@ def test_an_account_key_or_sas_pasted_anywhere_is_refused_and_not_repeated(ip):
 def test_a_key_named_field_is_refused(ip):
     # TC-038
     for key in ("batchAccountKey", "accountKey", "sasToken", "servicePrincipalSecret"):
-        assert key in refused(ip, good_config(**{key: "x"})) or "credential" in refused(ip, good_config(**{key: "x"})), key
+        msg = refused(ip, good_config(**{key: "x"}))
+        assert key in msg and "像憑證" in msg and "unknown setting" not in msg, (key, msg)
 
 
 def test_normal_values_are_not_mistaken_for_secrets(ip):
