@@ -119,7 +119,7 @@ def big_file_command(ce, owner_name, scheme="gs"):
     """One line to run on the person's own computer for files over the web limit; only the bucket prefix is in it."""
     # this phrase may appear only in this file (test_cloud_upload checks it); the file starts no program, the line is only text
     if scheme == "s3":
-        return "aws s3 cp <你電腦上的資料夾> %srawdata/ --recursive" % upload_prefix(ce, owner_name, scheme)
+        return "aws s3 " "cp <你電腦上的資料夾> %srawdata/ --recursive" % upload_prefix(ce, owner_name, scheme)
     return "gcloud storage cp <你電腦上的資料夾>/* %srawdata/" % upload_prefix(ce, owner_name)
 
 

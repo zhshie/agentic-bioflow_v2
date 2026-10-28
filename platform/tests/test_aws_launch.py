@@ -910,17 +910,15 @@ def test_aws_environment_accepts_exactly_preflight_launch_cancel_and_pipeline_fi
     from abf_platform import jobs
     available_aws(ip)
     before = jobs_count(ip)
-    for kind in ("launch_nextflow", "cancel_run", "preflight", "pipeline_files"):
+    for kind in ("launch_nextflow", "cancel_run", "preflight", "pipeline_files", "put_upload"):      # aws-upload: put_upload is taken now
         jobs.check_target(ip.state_db, "aws1", kind)
-    for kind in ("clean_work", "put_upload", "list_site_files", "fetch_run_records", "read_task_log"):
+    for kind in ("clean_work", "list_site_files", "fetch_run_records", "read_task_log"):
         with pytest.raises(jobs.JobRefused) as e:
             jobs.check_target(ip.state_db, "aws1", kind)
         m = str(e.value)
         assert "尚未支援" in m and "AWS Batch" in m and "Google Batch" not in m and "set an agent" not in m, (kind, m)
         if kind == "clean_work":
             assert "aws-clean" in m          # TC-108
-        if kind == "put_upload":
-            assert "aws-upload" in m
     assert jobs_count(ip) == before
 
 
@@ -940,16 +938,15 @@ def test_google_batch_still_accepts_its_six_kinds_and_nothing_else(ip):
 
 
 def test_cloud_store_stays_google_only():
-    # TC-111, TC-112
+    # TC-111, TC-112 (changed by aws-upload: Google is unchanged, AWS now knows s3://; the name is kept so the history stays findable)
     from abf_platform import cloud_store
     ce = {"platform": AWS, "config": {"workDir": "s3://lab-bucket/work"}}
-    with pytest.raises(cloud_store.CloudPathError) as e:
-        cloud_store.workdir_bucket(ce)
-    assert str(e.value)
-    for fn, args in ((cloud_store.upload_prefix, (ce, "run-a")), (cloud_store.object_url, (ce, "run-a", "f.fastq.gz")),
-                     (cloud_store.big_file_command, (ce, "run-a", "f.fastq.gz"))):
-        with pytest.raises(Exception):
-            fn(*args)
+    assert cloud_store.workdir_bucket(ce) == "lab-bucket"
+    assert cloud_store.upload_prefix(ce, "run-a", "s3") == "s3://lab-bucket/uploads/run-a/"
+    with pytest.raises(cloud_store.CloudPathError):
+        cloud_store.workdir_bucket({"platform": "slurm-platform", "config": {"workDir": "s3://lab-bucket/work"}})
+    gce = {"platform": "googlebatch-platform", "config": {"workDir": "gs://lab-bucket/work"}}
+    assert cloud_store.upload_prefix(gce, "run-a") == "gs://lab-bucket/uploads/run-a/"
 
 
 def test_a_dataset_destination_cannot_be_an_aws_environment(ip):
@@ -959,8 +956,8 @@ def test_a_dataset_destination_cannot_be_an_aws_environment(ip):
     available_aws(ip)
     for name in ("workdir_bucket", "upload_prefix"):
         assert hasattr(cloud_store, name)
-    msg = build.target_problem(ip.state_db, "aws1", "put_upload")
-    assert msg and "尚未支援" in msg and "Google Batch" not in msg
+    # changed by aws-upload: an AWS environment may now be a dataset destination, so put_upload is no longer a refused kind
+    assert build.target_problem(ip.state_db, "aws1", "put_upload") is None
 
 
 def test_put_upload_and_clean_work_jobs_cannot_be_queued_for_aws(ip, box):
@@ -969,7 +966,7 @@ def test_put_upload_and_clean_work_jobs_cannot_be_queued_for_aws(ip, box):
     from abf_station import clean, rules
     available_aws(ip)
     n = jobs_count(ip)
-    for kind in ("put_upload", "clean_work"):
+    for kind in ("clean_work",):      # changed by aws-upload: put_upload is taken now, clean_work stays refused
         with pytest.raises(jobs.JobRefused):
             jobs.check_target(ip.state_db, "aws1", kind)
     with pytest.raises(jobs.JobRefused):
@@ -1225,7 +1222,7 @@ def test_docs_describe_the_launch_the_billing_sentence_and_the_requirements():
     # TC-167: the AWS bracket near line 84 of SEQERA_PARITY.md
     assert "for AWS Batch the same agent runs them (create + check + launch + cancel; resume not yet)" in par
     row = [ln for ln in par.splitlines() if "`awsbatch-platform`" in ln][0]
-    assert "Have (create + check + launch + cancel); upload and clean in aws-upload / aws-clean" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel + upload); clean in aws-clean" in row and row.rstrip().endswith("[ ] |")
     install = doc("INSTALL.md") + doc("OPERATIONS.md")
     assert "Java 17" in install and "Nextflow" in install and "aws CLI" in install
     t = doc("TESTING.md")
