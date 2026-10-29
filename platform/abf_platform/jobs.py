@@ -3,14 +3,14 @@
 
 Nine kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records`, `read_task_log` and `pipeline_files`
 only read; `put_upload` asks the agent to write one file the user put in the uploads folder into the user's own cloud prefix, and needs no
-confirmation (the person pressing Upload is the yes; it is queued only by enqueue_put_upload); `launch_nextflow` and `cancel_run` write on the site, so a job of those two kinds can only be queued with
+confirmation (the person pressing Upload is the yes; it is queued only by enqueue_put_upload); `launch_nextflow`, `cancel_run` and `clean_work` write on the site, so a job of those three kinds can only be queued with
 a confirmation: a row that a person's yes made (state confirmed: y at the terminal, a form in the MCP client, or the
 confirmation page), bound to the hash of the content the user saw. Every job is a question or an order put to one agent, with a deadline. A job whose deadline passed is
 `expired` and is never handed out; an answer that arrives late is kept apart, and for a launch or a cancel the one
 fact in it (the Slurm number, the time of the request) is still written to the hand-off record, because losing it
 would leave a head job on the site that nobody knows about.
 
-Who writes: the command line (through confirm.py for the two that need a confirmation) and the MCP server queue
+Who writes: the command line (through confirm.py for the three that need a confirmation) and the MCP server queue
 jobs; the receiver hands them out and takes the answers. Nobody else writes platform.db, and `rebuild` never opens it.
 """
 import asyncio
@@ -61,7 +61,7 @@ PF_IMAGE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(png|svg)\Z")
 PF_TEXT_LIMIT = 1000000
 PF_IMAGE_B64_LIMIT = 2800000
 _B64 = re.compile(r"^[A-Za-z0-9+/]*={0,2}\Z")
-# the two kinds that write on the site, and the kind of confirmation each needs
+# the three kinds that write on the site, and the kind of confirmation each needs
 CONFIRMED = {"launch_nextflow": "launch", "cancel_run": "cancel", "clean_work": "clean_work"}
 _RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
 
@@ -441,7 +441,7 @@ def cancel_requested_at(state_path, run_name):
 
 
 def _check_confirmation(con, kind, bundle, confirmation_id):
-    """The one guard of the two kinds that write: a confirmation of the right kind, not spent, for exactly this content."""
+    """The one guard of the three kinds that write: a confirmation of the right kind, not spent, for exactly this content."""
     want = CONFIRMED[kind]
     if not isinstance(confirmation_id, str) or not confirmation_id or len(confirmation_id) > 64:
         raise JobRefused("no confirmation: a %s is queued only after the user answered y on the terminal "
