@@ -247,8 +247,8 @@ STYLE = (
     ".ptbl td{border-bottom:0;width:auto}}"
     "@media (max-width:640px){.tbl.ce,.tbl.ce tbody{display:block}.tbl.ce thead{display:none}"
     ".tbl.ce tr{display:block;background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin:0 0 12px}"
-    ".tbl.ce td{display:flow-root;border-bottom:0;padding:4px 0 4px 96px}"
-    ".tbl.ce td::before{content:attr(data-label);float:left;width:88px;margin-left:-96px;color:var(--muted);font-size:12px}}"
+    ".tbl.ce td{display:flow-root;border-bottom:0;padding:4px 0 4px 6rem}"
+    ".tbl.ce td::before{content:attr(data-label);float:left;width:5.5rem;margin-left:-6rem;color:var(--muted);font-size:12px}}"
     "@media (max-width:900px){.wb{grid-template-columns:1fr}.main{order:-2}.rail{order:-1}.costs{display:none}"
     ".counts{grid-template-columns:repeat(4,1fr)}}"
 )
