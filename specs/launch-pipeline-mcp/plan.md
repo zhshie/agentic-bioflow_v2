@@ -104,3 +104,7 @@ source: PLAN-abf-v3-replan-2026-10.md 017e「MCP 鏡像：… `launch_pipeline`�
 5. **TC-161 與 test_mcp_canvas_read 的放寬**：追認。理由：本片目的就是在 mcp_server.py 新增 launch_pipeline，舊斷言的禁令與本計畫正面衝突；web.py、web_board.py、handlers.py 的檢查必須原樣保留。
 6. 欄位名用 `ce_name`、`run_name` 必填，照 `request_pipeline_launch` 簽名；不需要 migration（沒有資料結構變動）。
 7. 完成條件不變：最終 HEAD 上完整跑一次 `tests/run_all.sh`，全綠才寫 GREEN；背景跑時必須等它結束。
+
+### 補充裁決（2026-10-30 04:5x，developer-agent）
+- 裁決 4 已由 developer-agent 親手完成：branch commit ee6711c1 改 constitution Safety Net 清單（加 `launch_pipeline`）並重釘 `tests/constitution_scope_test.sh` 的 `PINNED_SN_SHA256`。executor **不要再碰**這兩個檔。
+- executor 剩下的事：在最終 HEAD 跑全套 `tests/run_all.sh`（背景跑、等到結束），更新 ledger，寫 GREEN。已知環境紅（`test_tc404_the_wheel_copy_equals_the_repo_skills` 在 base 也紅）照 README 通例記錄。
