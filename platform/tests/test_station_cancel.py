@@ -212,6 +212,47 @@ def test_tc035_a_folder_that_is_not_this_runs_launch_folder_is_refused(tmp_path,
     assert res["state"] == "refused", res
 
 
+def _fetch_with_trace_name(tmp_path, site, fake, name, content="SECRET_RESUME_VALUE"):
+    f = make_records(site)
+    (f / name).write_text(content)
+    (f / ".nextflow.log").write_text("Workflow started -- trace file: %s\n" % name)
+    before = snapshot(f)
+    with agent_on(fake, site, tmp_path, name="agent-f"):
+        res = run_job(fake, fetch_job(site))
+    assert snapshot(f) == before and not site.destructive() and not site.dangerous()   # TC-007
+    return f, res
+
+
+@pytest.mark.parametrize("name", ["params-2.yaml", "extra-2.config", "head-2.sh",
+                                  "params-10.yaml", "extra-10.config", "head-10.sh"])
+def test_tc036_a_trace_name_that_is_a_file_the_platform_wrote_for_a_resume_is_refused(tmp_path, site, fake, name):
+    # TC-001..TC-007, TC-009, TC-022
+    f, res = _fetch_with_trace_name(tmp_path, site, fake, name)
+    assert res["state"] == "done", res
+    assert name not in names(res)
+    assert "SECRET_RESUME_VALUE" not in str(res)
+    assert "trace 檔 %r 不在專屬資料夾內或名稱不合，已拒絕" % name in res["result"]["refused"]   # TC-004, TC-006
+    assert ".nextflow.log" in names(res) and ".nextflow/history" in names(res)   # TC-009
+
+
+@pytest.mark.parametrize("name", ["trace-1.txt", "trace-2026-10-29_1.txt", "trace.txt", "trace-3.txt", "params.txt", "head.log"])
+def test_tc036_ordinary_trace_names_are_still_read(tmp_path, site, fake, name):
+    # TC-008, TC-016, TC-017
+    f, res = _fetch_with_trace_name(tmp_path, site, fake, name, "task_id\tname\n1\tA\n")
+    assert res["state"] == "done", res
+    got = {x["name"]: base64.b64decode(x["data"]) for x in res["result"]["files"]}
+    assert got[name] == (f / name).read_bytes()
+
+
+@pytest.mark.parametrize("name", ["tower.token", "params.yaml", "head.sh", "nextflow.config", "samplesheet.csv",
+                                  "gcb.config", "aws.config", "slurm-123.out", ".nextflow.config"])
+def test_tc036_the_old_refused_names_stay_refused(tmp_path, site, fake, name):
+    # TC-011, TC-012
+    f, res = _fetch_with_trace_name(tmp_path, site, fake, name)
+    assert res["state"] == "done", res
+    assert name not in names(res) and "SECRET_RESUME_VALUE" not in str(res)
+
+
 # ---- a resumed run keeps the folder of its first run (cancel-resume-folder) -----------------------------------------
 
 def resume_cancel(tmp_path, site, fake, run, run_folder, job_name=None, owner="tester", where=None, number=4243):

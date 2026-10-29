@@ -12,6 +12,9 @@ The only routes there are:
   GET  /launch/diagram  the workflow diagram of ?pipeline=&revision= as the image the caller's own agent read from the public repository (guided-launch-2); needs the cookie, 404 as one plain line when it is not there
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
   POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page
+  GET  /upload       the upload form (web-upload-page): choose a cloud compute environment, name and version the dataset, choose FASTQ files and an optional samplesheet; needs the cookie
+  POST /upload       receive the files into a staging folder of the platform host (streamed, 2 GB per file), queue one upload job for each, then 303 to /upload/<batch>; the CSRF token of this login. The person's press of Upload is the yes: no confirmation page
+  GET  /upload/{batch}  the progress of one batch of the person's own uploads; when every file is in the bucket it registers the dataset (once)
   GET  /usage        the cost page (cost-page): SU, cloud used / cap / remaining, one line per analysis; ?month=YYYY-MM, ?lang=en; needs the cookie
   GET  /settings     the settings frame (spec 011a): read-only, every section greyed "coming later"; needs the cookie
   GET  /login        the login form (name + web password)
@@ -40,6 +43,7 @@ import hmac
 import html
 import os
 import re
+import secrets
 import sqlite3
 import tempfile
 import time
@@ -53,10 +57,12 @@ from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
+from starlette.requests import ClientDisconnect
 from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from . import actions, oauth, store, web_board, web_cost, web_launch, web_settings
+from . import uploads_web, web_upload
 
 COOKIE = "abf_web"
 KEY_FILE = "web_signing.key"
@@ -822,15 +828,169 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         guide = {"done": {1, 2, 3, 4, 5}, "bad": bad, "post": True, "cells": cells, "src": src, "given": {"params_from": chosen} if chosen else {}}
         return await launch_page(sid, user, caller, lang, values, errors, [], code=400, guide=guide)
 
+    # ---- web-upload-page: the form, the receiving of the files, the progress of a batch. The bytes are only written to a folder of the platform host here
+    # (uploads_web); judging, queueing and registering are the two actions start_upload_batch and upload_batch_status. The person's press of Upload is the yes.
+    def upload_envs(caller):
+        return actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
+
+    async def upload_page(sid, user, caller, lang, values=None, problem=None, code=200):
+        runs = await run_in_threadpool(read_runs, caller)
+        envs = await run_in_threadpool(upload_envs, caller)
+        return HTMLResponse(web_upload.render_form(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "upload"), values, problem),
+                            status_code=code, headers=LAUNCH_HEADERS)
+
+    async def upload_get(request):
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        return await upload_page(sid, user, caller, web_board.pick_lang(request.query_params.get("lang")))
+
+    async def upload_post(request):
+        if not same_origin(request):
+            return foreign(request)
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        t = web_board.STRINGS[lang]
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        batch = secrets.token_hex(16)
+        try:
+            area = actions.caller_area(platform_path, caller)
+        except Exception:
+            return await upload_page(sid, user, caller, lang, problem={"error": "disk"}, code=500)
+        incoming = uploads_web.incoming_for(area, batch)
+
+        def gate(fields):
+            if not _same(fields.get("csrf", ""), csrf(sid, "upload")):
+                raise uploads_web.Rejected(403, "forbidden")
+
+        await run_in_threadpool(uploads_web.sweep, area)
+        try:
+            got = await uploads_web.receive(request.stream(), request.headers.get("content-type"), incoming, limit=uploads_web.FILE_LIMIT, before_file=gate)
+        except uploads_web.Rejected as r:
+            if r.kind == "forbidden":
+                return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(t["r_form"]), 403)
+            return await upload_page(sid, user, caller, lang, problem=dict(r.info, error=r.kind), code=r.code)
+        except ClientDisconnect:
+            return Response(status_code=400, headers=_HEADERS)
+        except OSError:
+            return await upload_page(sid, user, caller, lang, problem={"error": "disk"}, code=500)
+        form = got["fields"]
+        if not _same(form.get("csrf", ""), csrf(sid, "upload")):
+            uploads_web.discard(incoming)
+            return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(t["r_form"]), 403)
+        values = {"ce": form.get("ce", ""), "name": form.get("name", ""), "version": form.get("version", "")}
+        answer = await run_in_threadpool(lambda: actions.start_upload_batch(
+            platform_path, tokens_path, caller, batch=batch, ce_name=values["ce"], name=values["name"], version=values["version"],
+            files=got["files"], samplesheet=got["samplesheet"], incoming=incoming, clock=clock))
+        if answer.get("ok"):
+            return RedirectResponse("/upload/" + batch + ("?lang=en" if lang == "en" else ""), status_code=303, headers=_HEADERS)
+        return await upload_page(sid, user, caller, lang, values, answer, 413 if answer.get("error") == "too_big" else 400)
+
+    async def upload_batch_get(request):
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        view = await run_in_threadpool(lambda: actions.upload_batch_status(platform_path, caller, request.path_params["batch"], clock=clock))
+        if not view.get("found"):
+            return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        runs = await run_in_threadpool(read_runs, caller)
+        return HTMLResponse(web_upload.render_progress(user["name"], csrf(sid, "logout"), runs, lang, view), headers=LAUNCH_HEADERS)
+
+    async def settings_page(sid, user, caller, lang, flash_of=None, given=None, code=200):
+        """The settings page for one logged-in user. `flash_of(envs)` says a notice or a failure; `given` is what a refused form held."""
+        runs = await run_in_threadpool(read_runs, caller)
+        envs = actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
+        flash = flash_of(envs) if flash_of else None
+        return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "settings-pipeline"), flash, given),
+                            status_code=code, headers=_HEADERS)
+
     async def settings(request):
         sid, user = user_of(request)
         if user is None:
             return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
+        key, ce = request.query_params.get("notice"), request.query_params.get("ce")
+        return await settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "notice", key=key, ce=ce))
+
+    # ---- settings-register-pipeline: register or remove a pipeline version on the person's own compute environment, in two steps.
+    # Step one only checks (check_site_pipeline_change reads) and shows what will change; step two, after the person presses the button, is the
+    # only place that calls a write action, with the PAGE channel. Nothing is stored between the steps: the token of step two is bound to the boxes.
+    PF_BOXES = ("op", "ce", "pipeline", "revision", "module", "home")
+
+    def pf_refused(lang, which):
+        t = web_settings.words(lang)
+        return _page(t["pf_" + which + "_title"], '<p class="bad">%s</p>' % _esc(t["pf_" + which]), 403)
+
+    def pf_where(ce, lang, notice):
+        return "/settings?notice=%s&ce=%s%s#ce-%s" % (notice, urllib.parse.quote(ce, safe=""), "&lang=en" if lang == "en" else "", urllib.parse.quote(ce, safe=""))
+
+    def pf_failed(sid, user, caller, lang, ce, text, given=None):
+        return settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "fail", text=text, ce=ce), given, 400)
+
+    async def pipelines_post(request):
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        if not same_origin(request):
+            return pf_refused(lang, "foreign")
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        if not _same(form.get("csrf", ""), csrf(sid, "settings-pipeline")):
+            return pf_refused(lang, "expired")
+        f = {k: str(form.get(k, "")).strip()[:300] for k in PF_BOXES}
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        t = web_settings.words(lang)
+        seen = await run_in_threadpool(lambda: actions.check_site_pipeline_change(
+            platform_path, op=f["op"], ce=f["ce"], pipeline=f["pipeline"], revision=f["revision"], module=f["module"], home=f["home"], caller=caller))
+        if not seen["ok"]:
+            line = web_settings.field_error(lang, seen.get("field"), f.get(seen.get("field") or ""))
+            return await pf_failed(sid, user, caller, lang, f["ce"], line or t["pf_fail"] + web_board.plain_reason(seen.get("message"), lang),
+                                   {f["ce"]: f})
+        if seen["gone"]:
+            return RedirectResponse(pf_where(f["ce"], lang, "gone"), status_code=303, headers=_HEADERS)
         runs = await run_in_threadpool(read_runs, caller)
-        envs = actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
-        return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs), headers=_HEADERS)
+        token = csrf(sid, web_settings.purpose_of(f))
+        edge = seen["count"] == 0 if f["op"] == "add" else seen["count"] == 1
+        return HTMLResponse(web_settings.render_confirm(user["name"], csrf(sid, "logout"), runs, lang, f, token, edge), headers=_HEADERS)
+
+    async def pipelines_confirm_post(request):
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        if not same_origin(request):
+            return pf_refused(lang, "foreign")
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        f = {k: str(form.get(k, "")) for k in PF_BOXES}
+        if not _same(form.get("csrf", ""), csrf(sid, web_settings.purpose_of(f))):
+            return pf_refused(lang, "expired")
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        t = web_settings.words(lang)
+        if f["op"] == "add":
+            answer = await run_in_threadpool(lambda: actions.register_site_pipeline(
+                platform_path, ce=f["ce"], pipeline=f["pipeline"], revision=f["revision"], module=f["module"], home=f["home"],
+                confirmed_by=actions.PAGE, caller=caller))
+        elif f["op"] == "remove":
+            answer = await run_in_threadpool(lambda: actions.remove_site_pipeline(
+                platform_path, ce=f["ce"], pipeline=f["pipeline"], revision=f["revision"], confirmed_by=actions.PAGE, caller=caller))
+        else:
+            answer = {"ok": False, "message": "動作只能是新增或移除 (the action must be add or remove)"}
+        if not answer["ok"]:
+            return await pf_failed(sid, user, caller, lang, f["ce"], t["pf_fail"] + web_board.plain_reason(answer.get("message"), lang))
+        if f["op"] == "remove":
+            notice = "removed" if answer["changed"] else "gone"
+        else:
+            notice = {"queued": "added_queued", "no_agent": "added_no_agent", "not_checkable": "added_not_checkable"}.get(answer["preflight"],
+                                                                                                                         "added_check_refused")
+        return RedirectResponse(pf_where(f["ce"], lang, notice), status_code=303, headers=_HEADERS)
 
 
     async def usage_page(request):
@@ -924,9 +1084,13 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         gone = consent_gone(provider.consent_request(rid)) if status in ("decided", "expired") else None
         return gone or _page("未處理", "<p class=\"bad\">什麼都沒有改。請回到連接器重新開始。</p>", 403 if status == "user" else 404)
 
-    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]), Route("/usage", usage_page, methods=["GET"]),
+    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
+                            Route("/settings/pipelines", pipelines_post, methods=["POST"]),
+                            Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch/diagram", launch_diagram, methods=["GET"]),
                             Route("/launch", launch_post, methods=["POST"]),
+                            Route("/upload", upload_get, methods=["GET"]), Route("/upload", upload_post, methods=["POST"]),
+                            Route("/upload/{batch}", upload_batch_get, methods=["GET"]),
                             Route("/act/{verb}", act_post, methods=["POST"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/welcome", welcome_get, methods=["GET"]), Route("/welcome", welcome_post, methods=["POST"]),

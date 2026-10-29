@@ -309,12 +309,16 @@ def test_tcg04_g05_g06_the_web_app_has_the_routes_of_009c_plus_the_board_and_the
                       ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),      # 012b: the launch form and the three buttons that only ask; guided-launch-2: the diagram picture
                       ("/login", ("GET", "HEAD")), ("/login", ("POST",)), ("/logout", ("POST",)),
                       ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")),
-                      ("/token", ("OPTIONS", "POST")), ("/usage", ("GET", "HEAD")),
-                      ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: the page a temporary-password login sets its own password on
+                      ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline: the two steps of registering a pipeline version
+                      ("/token", ("OPTIONS", "POST")), ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),
+                      ("/usage", ("GET", "HEAD")),
+                      ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: the page a temporary-password login sets its own password on; web-upload-page: the upload form, its POST and the progress page
     for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/submit",
-                 "/upload", "/password", "/passwd", "/cost", "/api/launch"):
+                 "/password", "/passwd", "/cost", "/api/launch"):
         assert c.get(path).status_code == 404, path
         assert c.post(path, data={"a": "b"}).status_code in (404, 405), path
+    # web-upload-page ruling 17: /upload now exists; without a login it goes to the login page like /launch does
+    assert (c.get("/upload").status_code, c.get("/upload").headers["location"]) == (c.get("/launch").status_code, c.get("/launch").headers["location"]) == (303, "/login")
 
 
 def test_tcg02_no_switch_turns_the_confirmation_off():

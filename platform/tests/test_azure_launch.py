@@ -1106,7 +1106,7 @@ def test_no_azure_command_that_changes_anything():
     for folder in ("abf_station", "abf_platform", "abf_launch"):
         for f in (PLATFORM_DIR / folder).rglob("*.py"):
             code = code_of(f).replace("\\\n", "")
-            assert not re.search(r"batch job (terminate|delete)|batch pool (create|delete|resize)|blob delete|az storage (?!blob (upload|show)\b)", code)      # azure-upload: blob upload and blob show are allowed, f.name
+            assert not re.search(r"batch job (terminate|delete)|batch pool (create|delete|resize)|blob delete|az storage (?!blob (upload|show)\b)", code), f.name      # azure-upload: blob upload and blob show are allowed
     code = code_of(PLATFORM_DIR / "abf_station" / "azure_launch.py")
     assert re.findall(r'\["az", "[^"]+"', code) == ['["az", "--version"']
 
@@ -1119,7 +1119,7 @@ def test_tool_list_is_still_twelve_and_no_new_web_route(tmp_path):
                 "read_task_log", "run_outputs", "my_usage", "launch", "cancel", "resume", "relaunch", "forget"}
     assert len(names) == 15 and names == from_aws
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
-    assert not [r.path for r in app.routes if re.search(r"azure|batch", getattr(r, "path", ""), re.I)]
+    assert not [r.path for r in app.routes if re.search(r"azure|batch", getattr(r, "path", ""), re.I) and r.path not in {"/upload", "/upload/{batch}"}]      # web-upload-page: only the two routes this task registered are exempt (ruling 25)
 
 
 def test_no_migration_is_needed_for_azure_launch(ip):

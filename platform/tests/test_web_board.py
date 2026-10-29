@@ -313,9 +313,13 @@ def test_tcs21_s22_left_grey_and_settings(w):
     t = login(w, "ann").get("/").text
     left = pane(t, "left")
     anchors = re.findall(r"<a\b.*?</a>", left, re.S)
-    for word in ("＋ 新專案", "搜尋專案或分析", "↑ 上傳資料", "資料瀏覽", "儀表板"):
+    for word in ("＋ 新專案", "搜尋專案或分析", "資料瀏覽", "儀表板"):
         assert re.search(r'<span class="off">%s <span class="later">之後開放</span></span>' % re.escape(word), left), word
         assert not [a for a in anchors if word in a], word
+    # web-upload-page ruling 13: the upload entry is a link to /upload (Chinese and English), no longer a grey item
+    assert '<a class="nv" href="/upload">↑ 上傳資料</a>' in left and "↑ 上傳資料 <span" not in left
+    en_left = pane(login(w, "ann").get("/?lang=en").text, "left")
+    assert '<a class="nv" href="/upload?lang=en">↑ Upload data</a>' in en_left and "↑ Upload data <span" not in en_left
     assert re.search(r'<a\b[^>]*href="/settings"[^>]*>\s*設定\s*</a>', left)
     forms = re.findall(r"<form\b[^>]*>", left)          # the left column has the log-out form only (the run page's buttons are in the middle)
     assert len(forms) == 1 and 'action="/logout"' in forms[0] and len(re.findall(r"<input\b", left)) == 1
@@ -804,8 +808,10 @@ def test_tch11_read_only(w):
         t = c.get(url).text
         forms = re.findall(r"<form\b[^>]*>", t)
         assert 'action="/logout"' in forms[0]
-        assert all(re.fullmatch(r'<form class="act" method="post" action="/act/(resume|relaunch|cancel)">', f) for f in forms[1:])     # 012b
-        assert (len(forms) == 1) == (url == "/settings")          # the failed run is on the Now page and on its own page: both have the buttons that ask
+        # settings-register-pipeline: /settings now also holds the register and remove forms of that task (action /settings/pipelines)
+        own = r'<form class="act" method="post" action="/act/(resume|relaunch|cancel)">' if url != "/settings" else r'<form class="(act|lform)" method="post" action="/settings/pipelines">'
+        assert all(re.fullmatch(own, f) for f in forms[1:])     # 012b
+        assert len(forms) > 1          # the failed run is on the Now page and on its own page: both have the buttons that ask
         assert t.count("<button") == len(forms)
         assert re.search(r'name="csrf" value="[^"]+"', t)
     assert c.post("/").status_code == 405 and c.post("/settings").status_code == 405
@@ -816,7 +822,9 @@ def test_tch11_read_only(w):
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),
                       ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
-                      ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/token", ("OPTIONS", "POST")),
+                      ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline
+                      ("/token", ("OPTIONS", "POST")),
+                      ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),      # web-upload-page
                       ("/usage", ("GET", "HEAD")), ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: /welcome
 
 
@@ -954,7 +962,8 @@ def test_tcs39_s40_s41_s42_settings(w):
     assert re.findall(r"<h2>(.*?)</h2>", mid) == ["使用前檢查", "運算環境", "憑證", "密碼與金鑰", "個人", "營運者後台", "角色（老師／學生）"]      # settings-page: the checklist is the first section
     for word in ("AI 模型金鑰", "逐步模式", "開發模式"):
         assert word in mid
-    assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", mid)
+    # settings-register-pipeline ruling 1: apart from the register and remove forms of that task, the middle column still has nothing to press
+    assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", re.sub(r'<form[^>]*action="/settings/pipelines".*?</form>', "", mid, flags=re.S))
     # TC-N14 / TC-K6 (R8): the second key is named nowhere; spelled by concatenation so the platform-wide safety test stays at 0
     second = "J" + "ev"
     for url in ("/settings", "/settings?lang=en"):
@@ -1181,10 +1190,13 @@ def test_tn04_other_paths_stay_missing(w):
     # TC-N04
     w.user("ann")
     c = login(w, "ann")
-    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/submit", "/upload",
+    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/submit",
                  "/password", "/passwd", "/cost", "/setup", "/api/launch"):
         assert c.get(path).status_code == 404, path
         assert c.post(path, data={"a": "b"}).status_code in (404, 405), path
+    # web-upload-page ruling 17: /upload now exists; without a login it goes to the login page like /launch does
+    anon = w.web()
+    assert (anon.get("/upload").status_code, anon.get("/upload").headers["location"]) == (anon.get("/launch").status_code, anon.get("/launch").headers["location"]) == (303, "/login")
 
 
 def test_tn05_no_new_tool_or_action(w):
@@ -1225,11 +1237,12 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
             if tag == "<table" and url == "/settings":      # settings-page ruling 11: only /settings may carry a table (the compute environments)
                 continue
             assert tag not in t, (url, tag)
-        assert [m for m in re.findall(r"<input\b[^>]*>", t) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m)] == []     # 012b: the buttons carry the run id (and the language)
+        settings_free = re.sub(r'<form[^>]*action="/settings/pipelines".*?</form>', "", t, flags=re.S) if url == "/settings" else t      # settings-register-pipeline: its own forms are checked in test_web_settings_register.py
+        assert [m for m in re.findall(r"<input\b[^>]*>", settings_free) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m)] == []     # 012b: the buttons carry the run id (and the language)
         assert t.count("<details") - t.count('<details class="menu">') == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):
             u = urlsplit(htmllib.unescape(h))
-            assert u.path in ("/", "/settings", "/launch", "/usage") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab", "from"}, h      # 011b adds ?tab=; 012b the launch page and ?from=
+            assert u.path in ("/", "/settings", "/launch", "/usage", "/upload") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab", "from"}, h      # 011b adds ?tab=; 012b the launch page and ?from=
         for word in ("系統自動處理紀錄", "待你決定", "Awaiting you", "拖放", "MultiQC"):     # 011b: 目前步驟／Current step／Metrics now exist
             assert word not in t, (url, word)
     left = pane(c.get("/").text, "left")

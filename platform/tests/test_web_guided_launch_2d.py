@@ -25,7 +25,7 @@ NEW = "/launch?pipeline=nf-core/ampliseq&src=new"
 REL = ["2.18.0", "2.17.0", "2.16.1"]
 TITLES_ZH = ["分析名稱", "運算環境", "管線", "樣本表", "參數", "確認"]
 S1 = "尚無可用的運算環境，請先至設定頁完成設定。"
-S2 = "此管線版本尚未在所選運算環境登記，請洽管理者登記；已登記的管線列於設定頁。"
+S2 = "此管線版本尚未在所選運算環境登記，請先至設定頁登記。"
 S3 = "尚無已上傳的樣本表，請先上傳。"
 S4 = "正在讀取版本清單…"
 S5 = "正在讀取流程圖…"
@@ -358,9 +358,9 @@ def test_tc019_no_samplesheet(rig, fk, spy):
     assert r.status_code == 400 and "樣本表必須從已上傳的檔案中選擇。" in r.text and spy.calls == [] and steps(r.text)[4]["state"] == "current"
 
 
-@pytest.mark.parametrize("lang,want", [("", "/"), ("&lang=en", "/?lang=en")])
+@pytest.mark.parametrize("lang,want", [("", "/upload"), ("&lang=en", "/upload?lang=en")])
 def test_tc020_upload_link_is_the_board(rig, fk, lang, want):
-    # TC-020
+    # TC-020 (web-upload-page ruling 13: the link of step 4 with no samplesheet now goes to the upload page, not to the board)
     rig.user("ann")
     c = login(rig, "ann")
     four = step(c.get(SEL + lang).text, 4)

@@ -693,6 +693,15 @@ Automatic tests: `platform/tests/test_web_settings.py`. These steps are what no 
 3. **Read both languages**: every status shows a symbol, a word and a colour (✓ / ✗ / —). No Chinese on the English page, no error code, no internal name. Each ✗ in 使用前檢查 says what is missing.
 4. **Nothing to press**: no button, box or link in the middle column; the only form on the page is the logout one.
 
+## 設定頁登記管線 (settings-register-pipeline): the maintainer and the reviewer check
+
+Automatic tests: `platform/tests/test_web_settings_register.py`. These steps are what no script can see. Use a compute environment of your own; step 4 needs a real site.
+
+1. **390 px**: narrow the window (or the browser's phone view) to 390 px, open `/settings`, then press 登記 with filled boxes so the confirmation page shows. Neither page may scroll sideways; the four boxes, 登記, 移除, 確認 and 返回 are fully visible and large enough to press with a thumb.
+2. **Tab**: press Tab through the register form, each 移除 button, and the confirmation page (確認, 返回). Every one that takes focus shows a visible outline, and the order follows the page from top to bottom.
+3. **Both languages**: do the register steps once in Chinese and once with `?lang=en` (the language stays English through the confirmation page and the notice). Each notice and each error shows a symbol, a word and a colour (✓ / ○ / ✕). No Chinese on the English page, no error code, no internal name, nothing left in the other language.
+4. **A real site**: on a server or the national HPC where you have installed a pipeline version with `module`, register it from the page (the real module name and folder variable), press 確認, wait for the agent to answer, and reload `/settings`: the version is listed, the environment's status shows the result of the pre-use check, and on `/launch` step 3 choosing that version no longer shows "尚未在所選運算環境登記". Then press 移除 for it and confirm that the list loses it.
+
 ## SU 約 US$ (su-usd): the maintainer checks three things by hand
 
 The automatic tests (`platform/tests/test_su_usd.py`) check the numbers and the markup. Start `abf-platform web`, log in as a person who has finished national HPC runs, and open `/usage` and one run's page (`/?run=<id>`).
@@ -870,6 +879,17 @@ The automatic tests use fakes for the `aws` program and never touch the network.
 3. **Expected.** Only the objects under `runs/r1/work/` are gone; `work2/` and `results/` are still there; the answer says 已刪除 and `work_cleaned_at` is recorded. List the prefix with the aws CLI yourself to see the real line format, and tell the developer if a line does not look like `date time size key`.
 4. **Run it again.** The prefix is empty: the answer says there was nothing to delete and nothing is removed.
 5. **Versioning.** If the test bucket has versioning on, check in the console that old versions are still there after the clean (the documents say they are, and they are still billed).
+
+## Uploading from the web page (web-upload-page): the maintainer and the reviewer check
+
+The automatic tests use fake environments and fake jobs: no real bucket, no network. These steps need a platform that people reach through Tailscale Funnel, one colleague account and a Google Batch (or AWS Batch) environment that is `available`. A real upload writes to a real bucket and costs a small amount of money.
+
+1. **A big real file, once.** Log in as the colleague, open the upload page, choose the environment, type a name and a version, choose a real pair of FASTQ files of at least 100 MB in total, and press Upload. Check: the progress page lists every file, each ends as "✓ 完成", the page then says "已登記，前往送出", and step 4 of the launch page lists `datasets/<name>/<version>.csv`. Nobody opened a terminal or asked anyone.
+2. **A narrow screen.** Open the upload page and a progress page at 390 px wide: nothing scrolls sideways and the buttons are easy to hit.
+3. **The keyboard.** Press Tab through the upload form: the focus outline is visible on every box and on the button.
+4. **Both languages.** Look at the upload page, a failed upload and a registered one once in Chinese and once with `?lang=en`.
+5. **Over the limit.** Choose one file over 2 GB: the page says no file was taken and shows the command for large files.
+6. **The reviewer.** Against the base: `platform/pyproject.toml` gained only the direct dependency `python-multipart` (0.0.32 stays pinned in `constraints.txt`, which is not touched); the existing tests changed only where `specs/web-upload-page/ledger.md` lists them, and every change there only adds an item; `web_board.STYLE` is unchanged; `jobs.py` gained only the read-only `upload_jobs`; `abf_station/` has no difference; `web.py` gained the three routes and their handlers, and `MAX_BODY` is still 16384.
 
 ## Cleaning an Azure Batch work folder (azure-clean): the maintainer checks by hand
 

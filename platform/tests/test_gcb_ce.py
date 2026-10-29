@@ -776,7 +776,7 @@ def test_tool_list_unchanged_and_no_new_web_route(tmp_path):
     assert names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log",
                      "run_outputs", "my_usage", "launch", "cancel", "resume", "relaunch", "forget"}
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
-    assert not [r.path for r in app.routes if re.search(r"gcb|google|batch|gcp", getattr(r, "path", ""), re.I)]
+    assert not [r.path for r in app.routes if re.search(r"gcb|google|batch|gcp", getattr(r, "path", ""), re.I) and r.path not in {"/upload", "/upload/{batch}"}]      # web-upload-page: only the two routes this task registered are exempt (ruling 25)
     for f in ("agents.py", "common.py", "mcp_server.py", "web.py"):
         assert not re.search(r"gcp|google", (PLATFORM_DIR / "abf_platform" / f).read_text(encoding="utf-8"), re.I)
 
