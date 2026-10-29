@@ -258,6 +258,27 @@ def test_parse_s3_has_the_shape_of_parse_gs():
     assert str(e.value) == "只收 gs:// 開頭的位置 (only gs:// locations are taken)"
 
 
+def test_parse_s3_refuses_a_double_dot_in_the_bucket():
+    # TC-001, TC-002, TC-003, TC-004, TC-005, TC-008
+    for bad in ("s3://lab..bucket/uploads/a.fq.gz", "s3://a..b/x", "s3://lab-bucket..x/x"):
+        with pytest.raises(cs().CloudPathError):
+            cs().parse_s3(bad)
+    assert cs().parse_s3("s3://lab.bucket/uploads/a.fq.gz") == ("lab.bucket", "uploads/a.fq.gz")
+    assert cs().parse_s3("s3://lab-bucket/uploads/a.fq.gz") == ("lab-bucket", "uploads/a.fq.gz")
+    with pytest.raises(cs().CloudPathError) as old:
+        cs().parse_s3("s3://AB/x")
+    with pytest.raises(cs().CloudPathError) as new:
+        cs().parse_s3("s3://lab..bucket/x")
+    assert str(new.value) == str(old.value)      # no new message text
+
+
+def test_workdir_bucket_refuses_a_double_dot_in_an_s3_workdir():
+    # TC-006, TC-007
+    with pytest.raises(cs().CloudPathError):
+        cs().workdir_bucket({"platform": AWS, "config": {"workDir": "s3://lab..bucket/work"}})
+    assert cs().workdir_bucket({"platform": AWS, "config": {"workDir": "s3://lab.bucket/work"}}) == "lab.bucket"
+
+
 def test_s3_object_url_is_inside_the_owners_prefix():
     # TC-030, TC-031, TC-032, TC-034, TC-035, TC-036, TC-037, TC-038
     ce = aws_ce()

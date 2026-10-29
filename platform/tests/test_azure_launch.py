@@ -1106,7 +1106,7 @@ def test_no_azure_command_that_changes_anything():
     for folder in ("abf_station", "abf_platform", "abf_launch"):
         for f in (PLATFORM_DIR / folder).rglob("*.py"):
             code = code_of(f).replace("\\\n", "")
-            assert not re.search(r"batch job (terminate|delete)|batch pool (create|delete|resize)|blob delete|az storage (?!blob (upload|show)\b)", code)      # azure-upload: blob upload and blob show are allowed, f.name
+            assert not re.search(r"batch job (terminate|delete)|batch pool (create|delete|resize)|blob delete|az storage (?!blob (upload|show)\b)", code), f.name      # azure-upload: blob upload and blob show are allowed
     code = code_of(PLATFORM_DIR / "abf_station" / "azure_launch.py")
     assert re.findall(r'\["az", "[^"]+"', code) == ['["az", "--version"']
 
