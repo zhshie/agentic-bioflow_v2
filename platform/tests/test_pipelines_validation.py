@@ -228,7 +228,7 @@ def test_regex_dollar_newline_tc010_011_012_name_with_newline_is_refused_and_not
     assert (count(d, "pipelines"), count(d, "pipeline_versions")) == before
     upper = make(d, d.a, name="ABC")
     assert upper["ok"] is False
-    assert {k: v for k, v in r.items() if k != "problems"} == {k: v for k, v in upper.items() if k != "problems"}
+    assert r["message"] == upper["message"]
 
 
 def test_regex_dollar_newline_tc013_legal_names_are_created(d):

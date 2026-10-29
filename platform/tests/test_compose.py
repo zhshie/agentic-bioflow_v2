@@ -455,7 +455,9 @@ def test_the_fixture_answers_are_not_just_the_program_output():
 # ---- regex-dollar-newline: name checks end with \Z, a trailing newline is not part of a name ------------------------------
 
 def _hand_canonical(output="html"):
-    return {"nodes": [node("qc", "fastqc"), node("report", "multiqc")], "edges": [edge("qc", output, "report")]}
+    canonical = norm({"nodes": [node("qc", "fastqc"), node("report", "multiqc")], "edges": [edge("qc", "html", "report")]})
+    canonical["edges"][0]["from"]["output"] = output
+    return canonical
 
 
 def test_regex_dollar_newline_tc001_pipeline_name_with_newline_is_refused():

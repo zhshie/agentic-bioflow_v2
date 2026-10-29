@@ -571,7 +571,7 @@ def test_regex_dollar_newline_tc020_021_024_025_names(d):
     assert nl["ok"] is False
     assert register(d, d.a, name="a b")["ok"] is False
     assert register(d, d.a, name="a" * 65)["ok"] is False
-    assert nl.get("error", nl.get("message")) == register(d, d.a, name="a b").get("error", register(d, d.a, name="a b").get("message")) or True
+    assert nl["message"] == register(d, d.a, name="a b")["message"]
     assert register(d, d.a, name="a" * 64)["ok"] is True
     assert register(d, d.a, name="run-1.v2_a")["ok"] is True
 

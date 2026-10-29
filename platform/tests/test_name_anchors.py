@@ -21,7 +21,7 @@ def d(w):
 def _confine(d, params):
     from abf_launch import build
     area = os.path.realpath(d.area(d.a))
-    bundle = {"samplesheet": "", "path_columns": [], "params": params}
+    bundle = {"samplesheet": [["sample"]], "path_columns": [], "params": params}
     return build._confine(d.state, bundle, area, [])
 
 
