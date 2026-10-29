@@ -212,25 +212,10 @@ source: memory/PLAN-abf-v3-replan-2026-10.md 第 169 行（C-5「Azure Batch／K
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
 
-### 補充裁決 12-1…12-10（2026-10-29 22:5x，回應第二次 CONTRACT 阻擋；與上文衝突時以本段為準）
-- **12-1 文件句與七個測試**：`docs/PLATFORM.md` 兩處同句（:541 粗體句與 In full 句）改成「Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only」；型別表 K8s 列改成「checked and launched on the platform host (upload, clean, resume: not yet)」；:513 起小節把「launching on it is not built yet…」改寫成可送出（拒絕清單只剩 upload／clean／resume）。准許更新逐字釘這句的七個測試（`test_aws_ce.py:924`、`test_azure_ce.py:863`、`test_azure_launch.py:1213`、`test_azure_upload.py:855`、`test_gcb_ce.py:867`、`test_gcb_launch.py:1151`、`test_k8s_ce.py:843` NEW_SENTENCE），只准換成新句子，不准刪斷言或改成模糊比對（比照 azure-launch TC-136）。
-- **12-2**：`test_k8s_ce.py:732-733` 准許改成新值（PLATFORM_HOST_TYPES 四元含 K8S；K8S 在 CLOUD_JOB_KINDS、長度 4）；:734 CHECK_ONLY_TYPES 依實作改（可變成空 tuple 或移除該常數，二擇一要有斷言）。允許清單以 executor 實跑 `pytest` 紅的行為準，但每一行都要在 ledger 列出「舊斷言→新斷言」，verifier 逐行核對只是換值、沒放寬。
-- **12-3 snapshot**：base 已有 K8s 分支，不改；TC-077 釘「不變」正確。
-- **12-4 Secret 不落地**：不用 `--from-file`、不寫本機暫存檔。改成組 Secret manifest（data 欄 base64）由 stdin 餵 `kubectl create -f -`，與 Pod manifest 同一做法。要有 TC：執行過程本機沒有新增含 token 的檔案、kubectl 參數列不含 token。
-- **12-5 PVC 路徑**：`<storageMountPath>/_k8s_runs/<run>/`（基準點＝storageMountPath；workDir 若在 storageMountPath 底下，此路徑仍不得落在 workDir 內）。
-- **12-6 同名檢查**：create secret 前先 `kubectl get secret <name> -n <ns>`；回 NotFound 才繼續，存在就拒絕、不寫入任何東西。讀取類呼叫不限次數（同 TC-002）。
-- **12-7 拒絕訊息**：未開的動作（upload／clean／resume）訊息＝「Kubernetes 尚未支援<動作中文名>」，例：clean→「尚未支援清理」；不再出現「尚未支援送出」與 `k8s-launch` 字樣。:758 依此改。
-- **12-8 未規定行為定案**：①取消時 Pod 已 NotFound → 視為已停止，標 cancelled，訊息「Pod 已不存在，視為已停止」；②`kubectl delete` 失敗 → 回錯誤（含 kubectl stderr 前 200 字、去掉 token），狀態不變，不重試；③`get pod` stderr 含 `NotFound` → 不存在；其他非零 → 「連不上叢集」錯誤，狀態不變；④取 phase 失敗 → 狀態維持上次值，回「無法取得 Pod 狀態」。每條一個 TC。
-- **12-9 送出畫面**：確認，顯示 params.yaml、nextflow.config、k8s.config、啟動命令的內容；不顯示 token 與映像（TC-102～104 對）。
-- **12-10 刪除例外**：確認 TC-026（只刪本次剛建、同名那一個 Secret，且只在 create pod 失敗時）與 TC-031（Pod 變 Failed 後不刪任何東西）的解讀；這是「不做」第二條刪除路徑的唯一例外。
-
-### 補充裁決 12-11（2026-10-29 23:2x，回應 executor BLOCKED）
-- `test_settings_pick_installed.py:844` `test_the_pinned_cloud_types`：**選 (a)**。斷言改成 `tuple(web_settings.CLOUD_TYPES) == tuple(t for t in compute_envs.PLATFORM_HOST_TYPES if t != "K8S") == CLOUD_PLATFORMS`（K8S 的實際鍵名照程式），算 12-2 的值替換，ledger 列舊→新。`web_settings.py` 仍不准改：設定頁的雲端 Batch 分支不該收 Kubernetes。
-- 範圍外改動事後追認：`abf_station/site.py` 的 `run_fixed` 可選 stdin 參數（12-4 要求 stdin manifest 的必要條件）、`launch._snapshot_ce` 的 K8s 分支、`cli.py` 只改「已啟動」一行。
-- 交件前必須在 HEAD 重跑一次完整套件並貼結果；聚焦測試不能代替。
-
-### 補充裁決 12-12（2026-10-30 01:5x，回應閱卷 UNVERIFIED）
-- **TC-126 改字面**：代理端只拿得到內容包，沒有第二個命名空間來源，原字面做不到。定案＝代理端擋格式不合法的命名空間（現有 `Bad_NS` 測試即可）；命名空間一致性由兩點保障：①平台組取消內容包時，命名空間取自該次送出時存下的紀錄，不取使用者輸入；②送出前確認畫面顯示命名空間。executor 要在 ledger 指出①的程式位置（檔:行）；若①目前不成立，補一條測試讓它成立（只動取消內容包的組法）。verifier 依本條判 TC-126，不再要求字面的「與環境不一致」比對。
-- **TC-160**：executor 在 ledger 補貼「其他四種型別（Slurm／GCB／AWS／Azure）在 v3 與本分支的輸出比對」，用同一支測試指令在兩個 commit 各跑一次，貼摘要行；不准只引用 verifier 的 diff 核對。
-- TC-171～TC-180（真叢集實跑）照原計畫不在完成標準內，閱卷記 UNVERIFIED(manual) 不算失敗；由 developer-agent 列進每日清單請維護者決定（C 級，花錢）。
-- 裁決 1「head 以 Pod 在叢集內跑」維持；已列每日清單告知維護者。
+### 補充裁決 13（2026-10-30 05:4x，developer-agent）——閱卷 0 FAIL／29 UNVERIFIED 之後
+閱卷結果沒有 FAIL，但有 19 條自動 TC 缺專屬測試，被判 UNVERIFIED；修正輪因 Failures 清單是空的而沒有動作。**這 19 條視同 FAIL，executor 這一輪要補測試**（只補測試，產品碼有缺才改）：
+- TC-006、TC-015、TC-046～048、TC-055、TC-059、TC-075（驗內容包雜湊相等，不只驗映像字串）、TC-079、TC-108～111（Slurm／GCB／AWS／Azure 送出畫面與 base 逐字相同、放行與拒絕訊息不變）、TC-141、TC-145、TC-150（斷言沒有新增資料表或欄位）、TC-170（釘 OPERATIONS.md 的 K8s 段落）、TC-184、TC-185。
+- 每個新測試在函式上方標 `# TC-nnn`；順手幫已 PASS 但沒標的 TC-072、074、076、093、098、140 補註解。
+- **TC-184 合約數字更正**：合約寫「MCP 工具仍 12 個」是錯的，現況是 15（`test_mcp_server_doc.py:40`、`test_oauth_mcp.py:44`）。測試改成「工具清單與路由清單和 base 完全一樣、數量不變」，不寫死 12。
+- TC-171～180（真叢集實跑）維持手動、不算失敗（裁決 12-12）。
+- 完成後在最終 HEAD 跑全套、更新 ledger、寫 GREEN。
