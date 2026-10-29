@@ -480,7 +480,7 @@ def test_b12_csrf_failures(w, ann):
         r = step1(c, csrf=token)
         assert r.status_code == 403 and snapshot(w) == before and "/settings/pipelines/confirm" not in r.text
         text = plain(r.text)
-        assert "什麼都沒有改" in text and "重新整理" in text
+        assert "未變更任何內容" in text and "重新整理" in text
 
 
 def test_b13_foreign_origin(w, ann):
@@ -825,7 +825,7 @@ def test_d09_no_environment(w, ann):
     # D09
     sql(w, "DELETE FROM compute_envs")
     r = login(w, "ann").get("/settings")
-    assert r.status_code == 200 and "沒有運算環境。" in mid_of(r.text) and "/settings/pipelines" not in r.text
+    assert r.status_code == 200 and "尚無運算環境。" in mid_of(r.text) and "/settings/pipelines" not in r.text
 
 
 def all_pages(w, ann):

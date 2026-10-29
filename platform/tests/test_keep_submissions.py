@@ -476,7 +476,7 @@ def test_tc040_forget_is_a_registered_tool_and_the_fixed_lists_grew_by_it(w):
     by = {t.name: t for t in tools}
     assert {"forget", "resume", "relaunch"} <= set(by) and by["forget"].annotations.destructive_hint is True
     assert not (set(by["forget"].input_schema.get("properties", {})) - {"run_name"})
-    for fname, needle in (("test_human_channel.py", '"cancel", "forget", "get_compute_env"'),
+    for fname, needle in (("test_human_channel.py", '"cancel", "describe_module", "find_module", "forget", "get_compute_env"'),
                           ("test_guidance.py", '["launch", "cancel", "forget", "resume", "relaunch"]'),
                           ("test_actions_layer.py", 'WRITE_NAMES = ["launch", "cancel", "forget", "resume", "relaunch"]')):
         assert needle in (REPO_ROOT / "platform" / "tests" / fname).read_text(encoding="utf-8"), fname
@@ -701,7 +701,7 @@ def test_tc094_tc095_tc104_eleven_tools_and_the_column_names_scan_still_catches_
     # acceptor), TC-104 (the registered tools: six read, five that only ask, no field that says yes)
     tools, _ = w.mcp([])
     names = sorted(t.name for t in tools)
-    assert names == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
+    assert names == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "list_agents", "list_compute_envs", "list_pipelines", "list_runs",
                      "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs"]
     saying_yes = {"yes", "y", "confirm", "confirmed", "confirmation", "confirmation_id", "approve", "approved", "kind", "command"}
     for t in tools:

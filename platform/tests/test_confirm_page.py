@@ -84,7 +84,7 @@ def test_tcd05_d22_another_person_sees_nothing_and_cannot_press(w):
     own = pending(w, bob, revision="2.17.0")
     c = logged_in(w, "bob")
     page = c.get("/c/" + rid)
-    assert "不是你的申請" in page.text and 'name="csrf"' not in page.text
+    assert "非您的申請" in page.text and 'name="csrf"' not in page.text
     assert "nf-core/ampliseq" not in page.text and "run-one" not in page.text
     token_of_bob = csrf_of(c.get("/c/" + own).text)
     cookie = cookie_value(c.post("/login", data={"name": "bob", "password": PASSWORD}))
