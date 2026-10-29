@@ -813,7 +813,7 @@ def test_the_other_types_stay_unsupported(ip):
     # TC-082
     from abf_platform import compute_envs
     from test_station_envs import UNSUPPORTED
-    assert len(UNSUPPORTED) == 10
+    assert len(UNSUPPORTED) == 9
     for pid, cfg in UNSUPPORTED.items():
         ce = compute_envs.create(ip.state_db, {"name": "x-" + pid, "platform": pid, "config": cfg})
         assert ce["status"] == "unsupported", pid
@@ -850,8 +850,8 @@ def test_the_type_constants():
     # now AWS can be launched too, so it is a platform-host type and nothing is check-only any more.
     assert compute_envs.PLATFORM_HOST_TYPES == (GCB, "awsbatch-platform", "azbatch-platform")      # azure-launch
     # azure-ce-type changed this on purpose: Azure Batch is created and checked but not launched, so it is the one check-only type.
-    assert compute_envs.CHECK_ONLY_TYPES == ()      # azure-launch
-    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, "awsbatch-platform", "azbatch-platform")
+    assert compute_envs.CHECK_ONLY_TYPES == ("k8s-platform",)      # k8s-ce
+    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, "awsbatch-platform", "azbatch-platform", "k8s-platform")
 
 
 def doc(name):
@@ -864,7 +864,7 @@ def test_docs_list_every_gcb_key_and_check():
     assert re.search(r"`googlebatch-platform` \| Google Cloud Batch \| Slurm-like confirmed launch and cancel on the platform host "
                      r"\(resume: not yet\)", d)
     # aws-launch changed this sentence on purpose (plan A9 d): AWS Batch can run now
-    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only" in d
+    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only" in d
     for key in ("project", "location", "workDir", "spot", "bootDiskSize", "bootDiskImage", "serviceAccountEmail", "network",
                 "subnetwork", "usePrivateAddress", "labels", "maxvCpus") + tuple(CHECK_NAMES):
         assert "`%s`" % key in d, key

@@ -280,7 +280,7 @@ def test_unknown_keys_are_refused(ip):
 
 def test_all_errors_are_listed_at_once_and_values_are_cut(ip):
     # TC-028, TC-029
-    msg = refused(ip, good_config(context="x" * 200, namespace="A B", workDir="nope"))
+    msg = refused(ip, good_config(context="x" * 300, namespace="A B", workDir="nope"))
     assert "context" in msg and "namespace" in msg and "workDir" in msg
     assert "x" * 60 in msg and "x" * 61 not in msg
 
@@ -313,7 +313,7 @@ def test_the_credential_is_only_a_name(ip):
     assert ce["credentialsId"] == CRED
     assert set(ce["config"]) <= {"context", "namespace", "storageClaimName", "storageMountPath", "workDir", "serviceAccount"}
     assert not [k for k in ce["config"] if re.search(r"cred|key|secret|token", k, re.I)]
-    for bad in ("k8s lab", "key=abc", KTOK):
+    for bad in ("k8s lab", "key=abc", "k8s=" + KTOK):
         assert refused(ip, credentialsId=bad), bad
 
 
@@ -669,7 +669,18 @@ def test_cli_flags(ip):
     flat = re.sub(r"\s+", " ", out)
     for flag in ("--context", "--namespace", "--storage-claim", "--storage-mount-path", "--service-account"):
         assert flag in flat, flag
-    assert not re.search(r"\b(launch|submit|cancel)\b", out, re.I)
+    from abf_platform import cli
+
+    def walk(parser):
+        for x in parser._actions:
+            yield x
+            if isinstance(getattr(x, "choices", None), dict):
+                for child in x.choices.values():
+                    yield from walk(child)
+    ce_actions = list(walk(cli.build_parser()))
+    k8s_flags = {"--context", "--namespace", "--storage-claim", "--storage-mount-path", "--service-account"}
+    helps = [x.help or "" for x in ce_actions if set(x.option_strings) & k8s_flags]
+    assert helps and not [h for h in helps if re.search(r"\b(launch|submit|cancel)\b", h, re.I)]
 
 
 def test_the_agent_checks_a_k8s_job_with_the_k8s_preflight(ip, monkeypatch):

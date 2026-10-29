@@ -335,7 +335,9 @@ def _config_from_args(args):
              "pre_run": "preRunScript", "post_run": "postRunScript", "nextflow_config": "nextflowConfig",
              "project": "project", "location": "location", "batch_account": "batchAccountName",
              "storage_account": "storageAccountName", "pool": "pool", "service_account_email": "serviceAccountEmail",
-             "boot_disk_size": "bootDiskSize", "region": "region", "job_queue": "jobQueue"}
+             "boot_disk_size": "bootDiskSize", "region": "region", "job_queue": "jobQueue",
+             "context": "context", "namespace": "namespace", "storage_claim": "storageClaimName",
+             "storage_mount_path": "storageMountPath", "service_account": "serviceAccount"}
     for attr, key in flags.items():
         if getattr(args, attr) is not None:
             config[key] = getattr(args, attr)
@@ -694,6 +696,11 @@ def _add_ce_fields(p):
     p.add_argument("--batch-account", help="Azure Batch: the Batch account name, e.g. labbatch")
     p.add_argument("--storage-account", help="Azure Batch: the storage account name, e.g. labstore")
     p.add_argument("--pool", help="Azure Batch: the id of a pool that already exists, e.g. lab-pool")
+    p.add_argument("--context", help="Kubernetes: the context name in the kubeconfig, e.g. lab-context")
+    p.add_argument("--namespace", help="Kubernetes: the namespace, e.g. lab-ns")
+    p.add_argument("--storage-claim", help="Kubernetes: the name of a storage claim that already exists, e.g. lab-pvc")
+    p.add_argument("--storage-mount-path", help="Kubernetes: where the claim is mounted (default /workspace)")
+    p.add_argument("--service-account", help="Kubernetes: the service account the pods run as (default: the namespace's own)")
     p.add_argument("--region", help="AWS Batch: the region, e.g. eu-west-1")
     p.add_argument("--job-queue", help="AWS Batch: the name of the job queue (a name, not an ARN)")
     p.add_argument("--spot", dest="spot", action="store_const", const=True, default=None, help="Google Batch/AWS Batch/Azure Batch: use spot machines (Azure: stored only)")

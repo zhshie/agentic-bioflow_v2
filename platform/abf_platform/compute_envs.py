@@ -35,8 +35,9 @@ SUPPORTED = "slurm-platform"                                  # the type that ru
 GOOGLE_BATCH = "googlebatch-platform"
 AWS = "awsbatch-platform"
 AZURE = "azbatch-platform"
+K8S = "k8s-platform"
 PLATFORM_HOST_TYPES = (GOOGLE_BATCH, AWS, AZURE)                   # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch, aws-launch, azure-launch)
-CHECK_ONLY_TYPES = ()                                            # 新雲端類型先放這裡，只開預檢
+CHECK_ONLY_TYPES = (K8S,)                                        # 新雲端類型先放這裡，只開預檢
 CLOUD_JOB_KINDS = {                                           # the job kinds each platform-host type takes; the rest is refused in plain words (the clean kind is split in two pieces: test_cleanup_store allows that word in no other file of this package)
     GOOGLE_BATCH: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
     AWS: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
@@ -525,6 +526,64 @@ def _check_azure(config, agent):
         raise CEError("; ".join(errors))
 
 
+_K8S_CONFIG = _COMMON_CONFIG + ("context", "namespace", "storageClaimName", "storageMountPath", "serviceAccount")
+_K8S_CONTEXT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,252}\Z")
+_K8S_LABEL = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\Z")
+_K8S_SUBDOMAIN = re.compile(r"^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?\Z")
+K8S_DEFAULT_MOUNT = "/workspace"
+
+
+def _check_k8s(config, agent):
+    """A Kubernetes environment: every problem is listed at once, each naming its key; a bad value is shown 60 characters at most.
+    It needs an agent (the one on the platform host). Only names are kept here: the kubeconfig file stays on the agent's side.
+    The claim must already exist (the preflight only reads; nothing here creates one)."""
+    unknown = sorted(set(config) - set(_K8S_CONFIG))
+    if unknown:
+        raise CEError("unknown setting for a Kubernetes environment: %s (known: %s)" % (", ".join(str(k)[:60] for k in unknown), ", ".join(_K8S_CONFIG)))
+    errors = []
+    if not agent:
+        errors.append("agent is required: a Kubernetes environment is checked by the agent that runs on the platform host, "
+                      "so name it with --agent (需要指定一個站台代理，就是平台主機上的那個)")
+    for key in ("context", "namespace", "storageClaimName", "workDir"):
+        if config.get(key) is None or config.get(key) == "":
+            errors.append("%s is required for a Kubernetes environment (缺 %s)" % (key, key))
+    v = config.get("context")
+    if v not in (None, "") and not (isinstance(v, str) and _K8S_CONTEXT.match(v)):
+        errors.append("context must be a context name from the kubeconfig (letters, digits and _ . : @ / -, at most 253) (got %s)" % _shown(v))
+    v = config.get("namespace")
+    if v not in (None, "") and not (isinstance(v, str) and _K8S_LABEL.match(v)):
+        errors.append("namespace must be a Kubernetes name: lower-case letters, digits and -, at most 63 (got %s)" % _shown(v))
+    for key in ("storageClaimName", "serviceAccount"):
+        v = config.get(key)
+        if v not in (None, "") and not (isinstance(v, str) and _K8S_SUBDOMAIN.match(v)):
+            errors.append("%s must be a Kubernetes name: lower-case letters, digits, - and ., at most 253, starting and ending with a letter or digit (got %s)"
+                          % (key, _shown(v)))
+    mount = config.get("storageMountPath")
+    mount_ok = True
+    if mount in (None, ""):
+        config["storageMountPath"] = K8S_DEFAULT_MOUNT
+    else:
+        problem = path_problem(mount)
+        if problem:
+            mount_ok = False
+            errors.append(path_message("storageMountPath", problem))
+        else:
+            config["storageMountPath"] = normalize_path(mount)
+    v = config.get("workDir")
+    if v not in (None, ""):
+        problem = path_problem(v)
+        if problem:
+            errors.append(path_message("workDir", problem))
+        elif mount_ok:
+            work, base = normalize_path(v), config["storageMountPath"]
+            if work == base or not work.startswith(base.rstrip("/") + "/"):
+                errors.append("workDir must be a folder inside storageMountPath %s, such as %s/work (got %s)" % (base, base.rstrip("/"), _shown(v)))
+            else:
+                config["workDir"] = work
+    if errors:
+        raise CEError("; ".join(errors))
+
+
 def _check_other(config):
     """A type that is only modelled: no field schema, only the common checks."""
     for key, value in config.items():
@@ -583,6 +642,8 @@ def clean(fields):
         _check_aws(config, agent)
     elif platform == AZURE:
         _check_azure(config, agent)
+    elif platform == K8S:
+        _check_k8s(config, agent)
     else:
         _check_other(config)
     owner = fields.get("owner_user_id")
@@ -845,6 +906,10 @@ def snapshot(row_or_view):
         return {"name": v["name"], "platform": v["platform"], "credentialsId": v["credentialsId"],
                 "location": c.get("location"), "batchAccountName": c.get("batchAccountName"),
                 "storageAccountName": c.get("storageAccountName"), "workDir": c.get("workDir"), "pool": c.get("pool")}
+    if v["platform"] == K8S:
+        return {"name": v["name"], "platform": v["platform"], "credentialsId": v["credentialsId"],
+                "context": c.get("context"), "namespace": c.get("namespace"), "storageClaimName": c.get("storageClaimName"),
+                "storageMountPath": c.get("storageMountPath"), "workDir": c.get("workDir"), "serviceAccount": c.get("serviceAccount")}
     library = next((e.get("value") for e in (c.get("environment") or []) if isinstance(e, dict)
                     and e.get("name") == "NXF_SINGULARITY_LIBRARYDIR"), None)      # the one variable a preflight needs; no other is carried
     return {"name": v["name"], "platform": v["platform"], "workDir": c.get("workDir"), "launchDir": c.get("launchDir"),

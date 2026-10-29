@@ -852,7 +852,7 @@ def test_the_documents_say_what_the_feature_is():
     # TC-113, TC-114, TC-115, TC-116, TC-117 (AZU-DOC-01 .. 03)
     d = _doc("PLATFORM.md")
     assert re.search(r"`azbatch-platform` \| Azure Batch \| checked, launched and cleaned on the platform host \(resume: not yet\)", d)
-    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only" in d
+    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only" in d
     section = d[d.index("### Uploading to Azure Batch"):d.index("### Launching on Azure Batch")]
     assert "az://" in section and "網頁入口尚未接上" in section and "版本控制或軟刪除開著時，覆寫同名檔會留下舊版本、仍收費" in section
     row = next(ln for ln in _doc("SEQERA_PARITY.md").splitlines() if "`azbatch-platform`" in ln)
