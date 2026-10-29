@@ -804,7 +804,8 @@ def test_no_new_mcp_tool_no_new_route_no_new_cli_command(tmp_path):
     # TC-105, TC-106, TC-107
     from test_actions_layer import READ_NAMES, WRITE_NAMES, _server, _tools
     names = {t.name for t in _tools(_server(str(tmp_path / "index.db")))}
-    assert len(names) == len(READ_NAMES + WRITE_NAMES) and names == set(READ_NAMES + WRITE_NAMES) and not any("clean" in n or n.startswith("request_") for n in names)
+    canvas = {"find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}    # canvas-mcp-read
+    assert len(names) == len(READ_NAMES + WRITE_NAMES) + len(canvas) and names == set(READ_NAMES + WRITE_NAMES) | canvas and not any("clean" in n or n.startswith("request_") for n in names)
     from abf_platform import cli, web
     commands = sorted(cli.build_parser()._subparsers._group_actions[0].choices)
     assert not any("clean" in c for c in commands)
