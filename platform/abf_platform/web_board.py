@@ -422,12 +422,12 @@ def _left(t, runs, selected_id, lang, csrf, here):
                      for name, members in _projects(runs))
     body = ('%s%s' % (groups, _more(t, len(runs)))) if runs else '<p class="muted">%s</p>' % esc(t["none_yet"])
     return ('<aside class="side" data-pane="left"><div class="tools"><a class="nv%s" href="%s">%s</a></div><h2>%s</h2>%s'
-            '<div class="tools">%s%s%s</div>'
+            '<div class="tools">%s%s<a class="nv%s" href="%s">%s</a></div>'
             '<div class="foot"><a class="nv%s" href="%s">%s</a>%s%s'
             '<form method="post" action="/logout"><input type="hidden" name="csrf" value="%s"><button type="submit">%s</button></form>'
             '</div></aside>'
             % (" here" if here == "launch" else "", _url(lang, path="/launch"), esc(t["new_analysis"]), esc(t["mine"]), body,
-               _grey(t, "new_project"), _grey(t, "search_projects"), _grey(t, "upload"),
+               _grey(t, "new_project"), _grey(t, "search_projects"), " here" if here == "upload" else "", _url(lang, path="/upload"), esc(t["upload"]),
                " here" if here == "settings" else "", _url(lang, path="/settings"), esc(t["settings"]),
                _grey(t, "explorer"), _grey(t, "dashboard"), esc(csrf), esc(t["logout"])))
 
@@ -882,7 +882,7 @@ GUIDED = {
         "g_select": "選用", "g_quick": "沿用設定重新分析", "g_no_used": "尚無使用紀錄。",
         "g_search": "搜尋全部 nf-core（尚未開放）",
         "g_preview": "預覽與欄位角色（尚未開放）",
-        "g_no_sheet": "尚無已上傳的樣本表，請先上傳。", "g_go_board": "前往看板", "g_go_settings": "前往設定頁",
+        "g_no_sheet": "尚無已上傳的樣本表，請先上傳。", "g_go_board": "前往看板", "g_go_upload": "前往上傳資料", "g_go_settings": "前往設定頁",
         "g_reg_bad": "此管線版本尚未在所選運算環境登記，請先至設定頁登記。",
         "g_ver_wait": "正在讀取版本清單…",
         "g_reuse_pick": "沿用先前分析的參數", "g_reuse_off": "不沿用", "g_reuse_none": "此管線版本尚無可沿用的分析。", "g_groups": "參數分組表",
@@ -913,7 +913,7 @@ GUIDED = {
         "g_select": "Select", "g_quick": "Re-run with the same settings", "g_no_used": "No usage history.",
         "g_search": "Search all of nf-core (not yet available)",
         "g_preview": "Preview and column roles (not yet available)",
-        "g_no_sheet": "No samplesheet has been uploaded. Please upload one first.", "g_go_board": "Go to the board", "g_go_settings": "Go to the settings page",
+        "g_no_sheet": "No samplesheet has been uploaded. Please upload one first.", "g_go_board": "Go to the board", "g_go_upload": "Go to upload data", "g_go_settings": "Go to the settings page",
         "g_reg_bad": "This pipeline version is not registered on the selected compute environment. Register it on the Settings page first.",
         "g_ver_wait": "Reading the version list…",
         "g_reuse_pick": "Reuse the parameters of an earlier analysis", "g_reuse_off": "Do not reuse",
@@ -1050,7 +1050,7 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
         four = '<label>%s<select name="samplesheet">%s</select></label>' % (web_launch.lbl(t, t["l_samplesheet"]), opts)
     else:
         four = ('<p class="bad"><span class="csym">✗</span> %s</p><p><a href="%s">%s</a></p>'
-                % (esc(t["g_no_sheet"]), _url(lang), esc(t["g_go_board"])))
+                % (esc(t["g_no_sheet"]), _url(lang, path="/upload"), esc(t["g_go_upload"])))
     four += web_launch.samplesheet_block(t, lang, pair, quiet)
     four += '<p class="off">%s</p>' % esc(t["g_preview"])
     # 5 parameters: whether the table was read, the earlier analysis to follow, the table (every box holds its default), the box for the rest

@@ -756,7 +756,7 @@ def test_no_migration_and_the_datasets_surface_did_not_grow():
     assert sorted(set(re.findall(r"^def (_migrate\w*)", store_src, re.M))) == [
         "_migrate_confirmation_kinds", "_migrate_index", "_migrate_jobs", "_migrate_jobs_kinds", "_migrate_launches", "_migrate_tokens"]
     names = sorted(n for n in dir(ds()) if not n.startswith("_") and inspect.isfunction(getattr(ds(), n)) and getattr(ds(), n).__module__ == ds().__name__)
-    assert names == ["check_web_upload", "draft_samplesheet", "get_dataset", "list_datasets", "pair_fastq", "register_dataset"]
+    assert names == ["check_samplesheet", "check_web_upload", "draft_samplesheet", "get_dataset", "list_datasets", "pair_fastq", "register_dataset"]      # web-upload-page: check_samplesheet joined (ruling 13)
     for fn, params in ((ds().draft_samplesheet, ["platform_path", "files", "caller", "destination"]),
                        (ds().check_web_upload, ["platform_path", "sizes", "caller", "destination"]),
                        (ds().register_dataset, ["platform_path", "name", "version", "samplesheet", "files", "caller", "clock", "destination"])):
@@ -852,9 +852,9 @@ def test_the_documents_say_what_the_feature_is():
     # TC-113, TC-114, TC-115, TC-116, TC-117 (AZU-DOC-01 .. 03)
     d = _doc("PLATFORM.md")
     assert re.search(r"`azbatch-platform` \| Azure Batch \| checked, launched and cleaned on the platform host \(resume: not yet\)", d)
-    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only" in d
+    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only" in d
     section = d[d.index("### Uploading to Azure Batch"):d.index("### Launching on Azure Batch")]
-    assert "az://" in section and "網頁入口尚未接上" in section and "版本控制或軟刪除開著時，覆寫同名檔會留下舊版本、仍收費" in section
+    assert "az://" in section and "網頁上傳頁（/upload）會把檔案暫存於平台主機後排入此工作" in section and "網頁入口尚未接上" not in section and "版本控制或軟刪除開著時，覆寫同名檔會留下舊版本、仍收費" in section
     row = next(ln for ln in _doc("SEQERA_PARITY.md").splitlines() if "`azbatch-platform`" in ln)
     assert "Have (create + check + launch + cancel + upload + clean)" in row and row.rstrip().endswith("[ ] |")
     t = _doc("TESTING.md")

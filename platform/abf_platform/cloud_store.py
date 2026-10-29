@@ -29,7 +29,7 @@ def _container_ok(scheme, name):
         return bool(_BUCKET.match(name))
     if scheme == "az":
         return bool(compute_envs._AZURE_CONTAINER.match(name)) and "--" not in name
-    return bool(compute_envs._AWS_BUCKET.match(name))
+    return bool(compute_envs._AWS_BUCKET.match(name)) and ".." not in name
 
 
 def _parse(url, scheme):

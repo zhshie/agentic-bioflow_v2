@@ -258,6 +258,27 @@ def test_parse_s3_has_the_shape_of_parse_gs():
     assert str(e.value) == "只收 gs:// 開頭的位置 (only gs:// locations are taken)"
 
 
+def test_parse_s3_refuses_a_double_dot_in_the_bucket():
+    # TC-001, TC-002, TC-003, TC-004, TC-005, TC-008
+    for bad in ("s3://lab..bucket/uploads/a.fq.gz", "s3://a..b/x", "s3://lab-bucket..x/x"):
+        with pytest.raises(cs().CloudPathError):
+            cs().parse_s3(bad)
+    assert cs().parse_s3("s3://lab.bucket/uploads/a.fq.gz") == ("lab.bucket", "uploads/a.fq.gz")
+    assert cs().parse_s3("s3://lab-bucket/uploads/a.fq.gz") == ("lab-bucket", "uploads/a.fq.gz")
+    with pytest.raises(cs().CloudPathError) as old:
+        cs().parse_s3("s3://AB/x")
+    with pytest.raises(cs().CloudPathError) as new:
+        cs().parse_s3("s3://lab..bucket/x")
+    assert str(new.value) == str(old.value)      # no new message text
+
+
+def test_workdir_bucket_refuses_a_double_dot_in_an_s3_workdir():
+    # TC-006, TC-007
+    with pytest.raises(cs().CloudPathError):
+        cs().workdir_bucket({"platform": AWS, "config": {"workDir": "s3://lab..bucket/work"}})
+    assert cs().workdir_bucket({"platform": AWS, "config": {"workDir": "s3://lab.bucket/work"}}) == "lab.bucket"
+
+
 def test_s3_object_url_is_inside_the_owners_prefix():
     # TC-030, TC-031, TC-032, TC-034, TC-035, TC-036, TC-037, TC-038
     ce = aws_ce()
@@ -662,7 +683,7 @@ def test_no_migration_and_the_datasets_surface_did_not_grow():
     assert sorted(set(re.findall(r"^def (_migrate\w*)", store_src, re.M))) == [
         "_migrate_confirmation_kinds", "_migrate_index", "_migrate_jobs", "_migrate_jobs_kinds", "_migrate_launches", "_migrate_tokens"]
     names = sorted(n for n in dir(ds()) if not n.startswith("_") and inspect.isfunction(getattr(ds(), n)) and getattr(ds(), n).__module__ == ds().__name__)
-    assert names == ["check_web_upload", "draft_samplesheet", "get_dataset", "list_datasets", "pair_fastq", "register_dataset"]
+    assert names == ["check_samplesheet", "check_web_upload", "draft_samplesheet", "get_dataset", "list_datasets", "pair_fastq", "register_dataset"]
     for fn, params in ((ds().draft_samplesheet, ["platform_path", "files", "caller", "destination"]),
                        (ds().check_web_upload, ["platform_path", "sizes", "caller", "destination"]),
                        (ds().register_dataset, ["platform_path", "name", "version", "samplesheet", "files", "caller", "clock", "destination"])):
@@ -730,8 +751,8 @@ def test_nobody_but_the_queue_module_calls_enqueue_put_upload():
     for sub in ("abf_platform", "abf_launch", "abf_station"):
         for path in sorted((PLATFORM_DIR / sub).rglob("*.py")):
             if "enqueue_put_upload" in path.read_text(encoding="utf-8"):
-                callers.append(path.name)
-    assert callers == ["jobs.py"]
+                callers.append(path.relative_to(PLATFORM_DIR / sub).as_posix())
+    assert callers == ["actions/uploads.py", "jobs.py"]      # web-upload-page ruling 13: the batch action queues the uploads; nothing else calls it
 
 
 def test_the_agent_does_not_start_a_second_try():
@@ -748,8 +769,8 @@ def _doc(name):
 def test_the_documents_say_what_the_feature_is():
     # TC-122, TC-123, TC-124, TC-125
     text = _doc("PLATFORM.md")
-    assert "網頁入口尚未接上" in text and "uploads/" in text
-    para = next(p for p in text.split("\n\n") if "網頁入口尚未接上" in p)
+    assert "網頁上傳頁（/upload）會把檔案暫存於平台主機後排入此工作" in text and "網頁入口尚未接上" not in text and "uploads/" in text      # web-upload-page ruling 13
+    para = next(p for p in text.split("\n\n") if "網頁上傳頁（/upload）會把檔案暫存於平台主機後排入此工作" in p)
     assert "s3://" in para and "版本控管" in para and "仍" in para
     assert not [ln for ln in text.splitlines() if "aws-upload" in ln and re.search(r"later|Not yet|尚未支援|for now", ln)]
     assert "(aws-clean)" not in text      # aws-clean is built: the "later" mentions are gone

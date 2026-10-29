@@ -980,8 +980,8 @@ def test_type_constants_are_as_planned_and_nothing_indexes_them_by_position():
     # TC-094, TC-095, TC-096, TC-097, TC-098 (AZL-GATE-03)
     from abf_platform import compute_envs
     assert compute_envs.PLATFORM_HOST_TYPES == (compute_envs.GOOGLE_BATCH, compute_envs.AWS, compute_envs.AZURE)
-    assert compute_envs.CHECK_ONLY_TYPES == ()
-    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, compute_envs.GOOGLE_BATCH, compute_envs.AWS, compute_envs.AZURE)
+    assert compute_envs.CHECK_ONLY_TYPES == ("k8s-platform",)      # k8s-ce
+    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, compute_envs.GOOGLE_BATCH, compute_envs.AWS, compute_envs.AZURE, "k8s-platform")
     assert set(compute_envs.CLOUD_JOB_KINDS[compute_envs.AZURE]) == {"preflight", "launch_nextflow", "cancel_run", "pipeline_files", "put_upload", "clean_work"}
     for folder in ("abf_platform", "abf_station", "abf_launch"):
         for f in (PLATFORM_DIR / folder).rglob("*.py"):
@@ -1106,7 +1106,7 @@ def test_no_azure_command_that_changes_anything():
     for folder in ("abf_station", "abf_platform", "abf_launch"):
         for f in (PLATFORM_DIR / folder).rglob("*.py"):
             code = code_of(f).replace("\\\n", "")
-            assert not re.search(r"batch job (terminate|delete)|batch pool (create|delete|resize)|blob delete|az storage (?!blob (upload|show)\b)", code)      # azure-upload: blob upload and blob show are allowed, f.name
+            assert not re.search(r"batch job (terminate|delete)|batch pool (create|delete|resize)|blob delete|az storage (?!blob (upload|show)\b)", code), f.name      # azure-upload: blob upload and blob show are allowed
     code = code_of(PLATFORM_DIR / "abf_station" / "azure_launch.py")
     assert re.findall(r'\["az", "[^"]+"', code) == ['["az", "--version"']
 
@@ -1119,7 +1119,7 @@ def test_tool_list_is_still_twelve_and_no_new_web_route(tmp_path):
                 "read_task_log", "run_outputs", "my_usage", "launch", "cancel", "resume", "relaunch", "forget"}
     assert len(names) == 15 and names == from_aws
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
-    assert not [r.path for r in app.routes if re.search(r"azure|batch", getattr(r, "path", ""), re.I)]
+    assert not [r.path for r in app.routes if re.search(r"azure|batch", getattr(r, "path", ""), re.I) and r.path not in {"/upload", "/upload/{batch}"}]      # web-upload-page: only the two routes this task registered are exempt (ruling 25)
 
 
 def test_no_migration_is_needed_for_azure_launch(ip):
@@ -1210,7 +1210,7 @@ def test_platform_md_documents_azure_launch():
     # TC-130, TC-131, TC-132, TC-133, TC-134, TC-135, TC-136, TC-141 (AZL-DOC-01)
     d = doc("PLATFORM.md")
     assert "checked and launched on the platform host (upload, clean, resume: not yet)" in d
-    assert d.count("Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only") >= 2
+    assert d.count("Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only") >= 2
     assert "Launching on Azure Batch" in d
     section = d[d.index("Launching on Azure Batch"):]
     section = section[:section.index("\n## ", 5)] if "\n## " in section[5:] else section

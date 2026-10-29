@@ -173,7 +173,7 @@ abf-station run --platform http://127.0.0.1:8787 --token-file ~/.config/abf/agen
 
 Ask `list_agents` over MCP: the agent shows as `online`, with its name, version and last contact.
 
-**Plain `http://` is only for the same machine.** Use HTTPS for every platform address except `localhost` and `127.0.0.1`: the agent refuses a plain `http://` address anywhere else, because the token would travel in clear text. `abf-platform serve` itself speaks plain HTTP, so put a TLS proxy in front of it before any other machine connects.
+**Plain `http://` is only for the same machine.** Use HTTPS for every platform address except `localhost`, `127.0.0.1` and `::1`: the agent refuses a plain `http://` address anywhere else, because the token would travel in clear text. `abf-platform serve` itself speaks plain HTTP, so put a TLS proxy in front of it before any other machine connects.
 
 ### What it tells you
 
@@ -379,7 +379,7 @@ The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: whether
 
 **Not yet.** Resume and relaunch of an AWS Batch run, cost estimates, listing files, reading Nextflow's records back and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid); no migration was needed.
 
-**Uploading to AWS.** A `put_upload` job for an AWS Batch environment is queued the same way as for Google Batch (`enqueue_put_upload`); the Upload press is the yes, so no confirmation is asked. The agent on the platform host judges the job again, streams the staged file into `s3://<workDir bucket>/uploads/<owner>/<name>` with `aws s3 cp -`, asks the size with `aws s3api head-object`, and removes the staged copy only when the sizes agree. The scheme is read from the `path` prefix, so no migration was needed. A file over 2 GB is not taken: the answer gives `aws s3 cp <folder> s3://<bucket>/uploads/<owner>/rawdata/ --recursive` to run on your own computer with your own AWS login; the platform does not upload it for you. 網頁入口尚未接上 (the web page does not call it yet). bucket 若開了版本控管，覆寫同名檔會留下舊版本、仍然收費 (with versioning on, overwriting a file of the same name keeps the old version, which is still billed). Listing files and reading records back remain 尚未支援. Cleaning the work folder is built: see "Cleaning a finished run's work folder".
+**Uploading to AWS.** A `put_upload` job for an AWS Batch environment is queued the same way as for Google Batch (`enqueue_put_upload`); the Upload press is the yes, so no confirmation is asked. The agent on the platform host judges the job again, streams the staged file into `s3://<workDir bucket>/uploads/<owner>/<name>` with `aws s3 cp -`, asks the size with `aws s3api head-object`, and removes the staged copy only when the sizes agree. The scheme is read from the `path` prefix, so no migration was needed. A file over 2 GB is not taken: the answer gives `aws s3 cp <folder> s3://<bucket>/uploads/<owner>/rawdata/ --recursive` to run on your own computer with your own AWS login; the platform does not upload it for you. 網頁上傳頁（/upload）會把檔案暫存於平台主機後排入此工作 (the web page /upload stages the files on the platform host, then queues this job, and registers the dataset once every file is in the bucket). bucket 若開了版本控管，覆寫同名檔會留下舊版本、仍然收費 (with versioning on, overwriting a file of the same name keeps the old version, which is still billed). Listing files and reading records back remain 尚未支援. Cleaning the work folder is built: see "Cleaning a finished run's work folder".
 
 ### Status
 
@@ -462,7 +462,7 @@ storage_account_key = <the storage account key>
 
 An Azure Batch environment takes the same file upload as the other two cloud types, as a `put_upload` job for the agent on the platform host. The file lands at `az://<container of the workDir>/uploads/<you>/<name>`, always inside your own prefix, never inside the workDir folder. The agent judges the destination, the owner, the size (1 byte to 2 GB) and the staged file again, writes it with `az storage blob upload --file` (the key goes through the environment of that one call, never through an argument, a file or a log), asks the blob for its size with `az storage blob show`, and removes the staged copy only when the two sizes are equal. A size it could not read leaves the copy in place and says so. A file over 2 GB is not taken: the answer gives an `az storage blob upload-batch` line to run on your own computer with your own Azure login; the platform never uploads it for you. A dataset registered with this environment as its destination holds `az://` locations only.
 
-網頁入口尚未接上：目前只有動作層與站台代理備好，沒有網頁按鈕、MCP 工具或指令可以按。版本控制或軟刪除開著時，覆寫同名檔會留下舊版本、仍收費；平台不會刪除 Blob，也不會替容器設規則。No migration was needed.
+網頁上傳頁（/upload）會把檔案暫存於平台主機後排入此工作 (the web page /upload stages the files on the platform host, then queues this job for an Azure Batch environment too). 版本控制或軟刪除開著時，覆寫同名檔會留下舊版本、仍收費；平台不會刪除 Blob，也不會替容器設規則。No migration was needed.
 
 ### Launching on Azure Batch
 
@@ -505,9 +505,37 @@ The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: low-pri
 
 A record made before this type was checked (status `unsupported`, with the old keys `region` and `vmType`) is still listed and shown, but it cannot be checked or updated: the message says `請刪除後重建這個計算環境`. Delete it and create it again.
 
+### Kubernetes
+
+A `k8s-platform` environment (k8s-ce) is served the way an Azure Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused). It can be **created and checked**; launching on it is **not built yet** (launch: not yet, the next step is `k8s-launch`), so every job except the preflight is refused in plain words (尚未支援送出), and the automatic choice of an environment never picks it. The platform starts no program for it: the checks run on the agent, with the `kubectl` command line, which must be installed on the platform host.
+
+| Key | Rule |
+|---|---|
+| `context` | required; a context name from the kubeconfig, such as `lab-context` (`--context`) |
+| `namespace` | required; a Kubernetes name of lower-case letters, digits and `-`, at most 63, such as `lab-ns` (`--namespace`) |
+| `storageClaimName` | required; the name of a persistent volume claim that **already exists**, such as `lab-pvc` (`--storage-claim`). The operator creates it beforehand; this slice creates no claim |
+| `storageMountPath` | optional absolute path where the claim is mounted; it defaults to `/workspace` and is filled in when the record is stored (`--storage-mount-path`) |
+| `workDir` | required; an absolute path **inside** `storageMountPath`, such as `/workspace/work` (not the mount itself, no `..`); a trailing slash is dropped |
+| `serviceAccount` | optional; a Kubernetes name, such as `lab-sa` (`--service-account`); when it is left out the namespace's own account is used |
+| `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
+
+Every problem is listed at once, each naming its key; a key not in this table is refused. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`); it is only a label, and it may be left out when the environment is created (the preflight then reports `credential_name` as failed). The kubeconfig is a file on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_KUBECONFIG`, else `<deployment>/_personal/kubeconfig` (mode 600 on Linux and WSL, so run `chmod 600` on it). The agent does not read the file's content either: it only hands the path to `kubectl`. A kubeconfig may name an `exec` plugin, which `kubectl` then runs; the file is therefore a trusted file placed by the operator (營運者), and the agent neither parses it nor blocks such a plugin.
+
+| Check | What the agent does |
+|---|---|
+| `credential_name` | the environment has a credential name |
+| `credential_file` | the file exists, is a regular file, is at most 1 MB and (not on Windows) is not readable by others; when it is missing the message says where to put it and `chmod 600` |
+| `kubectl` | `kubectl` is installed (`unchecked`, not `fail`, when it is not) |
+| `context` | `kubectl config get-contexts -o name` lists the context as a whole line |
+| `pvc` | `kubectl get pvc` finds the claim and its phase is `Bound` |
+| `pvc_access` | the claim's access modes include `ReadWriteMany` (Nextflow's work folder is shared by many pods) |
+| `service_account` | `kubectl get serviceaccount` finds it; when none is set the check passes and says the default account is used |
+
+**預檢不計費 (the preflight costs nothing):** it only reads. It lists contexts and gets one claim and one service account; it creates, changes and deletes nothing on the cluster, and it never switches the context or runs a command inside a pod. Each `kubectl` call is limited to 30 seconds (and 20 seconds for the API request); a timeout fails that one check. The kubeconfig path is handed to `kubectl` in the environment of that one call, with an empty cache folder of its own that is deleted afterwards, never in the command line; the agent's own `ABF_*` and `KUBE*` variables are not passed on. The examples above use only made-up names (`lab-context`, `lab-ns`, `lab-pvc`, `lab-sa`).
+
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only. The other ten are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only. The other nine are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -522,7 +550,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `azcloud-platform` | Azure Cloud | modelled only |
 | `googlebatch-platform` | Google Cloud Batch | Slurm-like confirmed launch and cancel on the platform host (resume: not yet) |
 | `googlecloud-platform` | Google Cloud | modelled only |
-| `k8s-platform` | Kubernetes | modelled only |
+| `k8s-platform` | Kubernetes | checked on the platform host (launch: not yet) |
 | `eks-platform` | Amazon EKS | modelled only |
 | `gke-platform` | Google GKE | modelled only |
 

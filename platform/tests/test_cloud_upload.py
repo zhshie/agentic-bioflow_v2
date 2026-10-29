@@ -608,7 +608,7 @@ def public(mod):
 def test_no_public_function_was_added_to_datasets():
     # TC-077
     names = public(ds())
-    assert names == ["check_web_upload", "draft_samplesheet", "get_dataset", "list_datasets", "pair_fastq", "register_dataset"]
+    assert names == ["check_samplesheet", "check_web_upload", "draft_samplesheet", "get_dataset", "list_datasets", "pair_fastq", "register_dataset"]
     assert not [n for n in names if re.search(r"delete|remove|share|update|edit|rename|unregister", n)]
 
 
