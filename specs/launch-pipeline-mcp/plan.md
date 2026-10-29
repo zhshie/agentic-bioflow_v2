@@ -95,3 +95,12 @@ source: PLAN-abf-v3-replan-2026-10.md 017e「MCP 鏡像：… `launch_pipeline`�
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+### 補充裁決（developer-agent，2026-10-30 04:3x，回 executor BLOCKED）
+1. **docs/PLATFORM.md 開放**：只准在 `tests/platform_storage_doc_test.sh` 要求的五處（answers questions／「Fourteen tools.」計數句／`permission ask rule for`／「The platform's actions live in one place」／「- **Instructions.**」）補上 `launch_pipeline`，計數照實更新；其他段落不動。
+2. **kit 的 ask 清單要加**：`extensions/claude-code-kit/settings.json` 的 `permissions.ask` 加 `mcp__abf-platform__launch_pipeline`（這是產品給使用者的設定，不是 Claude 權限；加進去＝收緊）。同步更新 `test_keep_submissions.py:1298`（TC-114）與 `test_resume_entrypoints.py:154` 的釘選清單為六個工具，函式名的 five 可改 six；不准刪斷言。
+3. **guidance.py FIXED_SENTENCE**：加上 launch_pipeline，讓 AI 連線說明列出全部提出工具；有釘這句的測試照實更新。
+4. **憲法 Safety Net 清單**（`.specify/memory/constitution.md:188` 的 `(today …)`）：加上 `launch_pipeline`。只改這個括號清單，規則文字不動；這是 constitution_6_test TC-045 要求的「清單＝實際註冊的寫入工具」。PRINCIPLES／ROADMAP 若有 TC 要求同步，照測試補最小字。此項屬憲法修正，PR 會等維護者點頭才合（developer-agent 處理，executor 照做即可）。
+5. **TC-161 與 test_mcp_canvas_read 的放寬**：追認。理由：本片目的就是在 mcp_server.py 新增 launch_pipeline，舊斷言的禁令與本計畫正面衝突；web.py、web_board.py、handlers.py 的檢查必須原樣保留。
+6. 欄位名用 `ce_name`、`run_name` 必填，照 `request_pipeline_launch` 簽名；不需要 migration（沒有資料結構變動）。
+7. 完成條件不變：最終 HEAD 上完整跑一次 `tests/run_all.sh`，全綠才寫 GREEN；背景跑時必須等它結束。
