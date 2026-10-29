@@ -226,7 +226,7 @@ def _pack(files):
 
 
 def _readme(name, version, open_inputs):
-    lines = ["%s v%d: a Nextflow project exported from Agentic-Bioflow. Run: nextflow run ." % (name, version)]
+    lines = ["%s v%d: a Nextflow project exported from Agentic-Bioflow. Unpack it and start it from this folder with the Nextflow tool." % (name, version)]
     if open_inputs:
         lines.append("Inputs left open, fill these in yourself:")
         for item in open_inputs:
