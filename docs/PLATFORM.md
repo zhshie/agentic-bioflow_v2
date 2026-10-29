@@ -186,7 +186,7 @@ Ask `list_agents` over MCP: the agent shows as `online`, with its name, version 
 
 Every site command is also printed as a `site: ...` line, so you can see what the agent asked the site to do. The token is never printed, and never appears on its command line (only the token **file** path does).
 
-To take an agent away: `abf-platform agent-token revoke my-laptop`. Its next request is refused with 401, and it stops.
+To take an agent away: `abf-platform agent-token revoke my-laptop`. Its next request is refused with 401, and it stops. To close only the old one when the same name has a newer token: `abf-platform agent-token list` shows each token's id, then `abf-platform agent-token revoke --id N` revokes just that one.
 
 ### Online, offline, and the numbers
 
