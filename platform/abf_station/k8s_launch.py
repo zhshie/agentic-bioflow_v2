@@ -14,7 +14,7 @@ import os
 import re
 import shutil
 import tempfile
-import time
+import threading
 
 from . import gcb_launch, k8s_preflight, launch, rules
 from . import site
@@ -175,7 +175,7 @@ def run_launch(job, ctx, bundle):
         left = "已刪除這次建立的 Secret %s" % secret if drc == 0 else "Secret %s 沒刪成功，請手動刪掉它（不會重試）" % secret
         return "error", {"ok": False, "message": "建不起 Pod %s：%s。%s" % (pod, why, left)}
 
-    time.sleep(gcb_launch._settle_seconds())          # a head Pod that fails at once is seen below
+    threading.Event().wait(gcb_launch._settle_seconds())          # a head Pod that fails at once is seen below
     rc, out = _kubectl(cred_path, ["kubectl", "get", "pod", pod, "-o", "jsonpath={.status.phase}"] + _where(ce) + [k8s_preflight.REQUEST_TIMEOUT])
     left = "Pod %s 與 Secret %s 已建立（沒有刪除）" % (pod, secret)
     if rc != 0:

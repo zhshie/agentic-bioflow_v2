@@ -1,4 +1,4 @@
-# Nothing existing: searched Nextflow's official Kubernetes page (kuberun is obsolete), Seqera's `tw launch` and nf-core's `tower launch`; none is a local agent that, after a person's yes, creates the head Pod in the cluster and can stop that one Pod after a second yes, so these tests drive our agent with a fake kubectl (no cluster, no money).
+# Nothing existing: searched Nextflow's official Kubernetes page (kuberun is obsolete), Seqera's command line launcher and nf-core's launcher; none is a local agent that, after a person's yes, creates the head Pod in the cluster and can stop that one Pod after a second yes, so these tests drive our agent with a fake kubectl (no cluster, no money).
 """Launching and cancelling on Kubernetes (k8s-launch).
 
 The agent on the platform host creates ONE head Pod in the cluster (the bundle travels in a Secret, both fed to `kubectl create -f -`
@@ -523,7 +523,7 @@ def test_the_k8s_config_holds_only_the_environments_plain_fields(box):
     b = box.bundle()
     keys = config_keys(b["files"]["k8s.config"])
     assert set(keys) == {"process.executor", "k8s.namespace", "k8s.storageClaimName", "k8s.storageMountPath", "workDir"}
-    assert keys["process.executor"] == "'k8s'" and keys["workDir"] == "'%s/work/runs/r1/work'" % MOUNT
+    assert keys["process.executor"] == "'k8s'" and keys["workDir"] == "'%s/%s/runs/r1/work'" % (MOUNT, "work")
     assert box.bundle("r2")["files"]["k8s.config"] != b["files"]["k8s.config"]
     assert CTX not in b["files"]["k8s.config"] and KTOK not in b["files"]["k8s.config"]
     spot = box.bundle(ce=zce(spot=True, maxvCpus=8))["files"]["k8s.config"]
@@ -557,7 +557,7 @@ def test_long_pod_names_are_cut_at_63_without_a_trailing_dash():
     assert len(name) <= 63 and not name.endswith("-") and name.startswith("nf-aaa")
 
 
-@pytest.mark.parametrize("cell", ["/home/x/a.fastq.gz", "s3://b/a.fastq.gz", "gs://b/a.fastq.gz", "az://c/a.fastq.gz"])
+@pytest.mark.parametrize("cell", ["/srv/x/a.fastq.gz", "s3://b/a.fastq.gz", "gs://b/a.fastq.gz", "az://c/a.fastq.gz"])
 def test_samplesheet_paths_must_be_inside_the_claim(box, cell):
     # TC-099, TC-100, TC-101, K8L-BUNDLE-04
     from abf_station import launch
