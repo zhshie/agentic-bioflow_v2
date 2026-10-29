@@ -133,5 +133,5 @@ done
 
 list=$(printf '%s\n' "$missing" | paste -sd, - | sed 's/,/、/g')
 sp=" "
-echo "這些代理人重啟後沒有重新連上：$list。請檢查它們的 token 和擁有者（abf-platform${sp}agent-token；docs/TESTING.md 的 403 一節），並看代理人的日誌。" >&2
+echo "這些代理人重啟後沒有重新連上：$list。請檢查它們的 token 和擁有者（abf-platform${sp}agent-token；docs/TESTING.md 的「Owner binding follow-up」一節第 2 步），並看代理人的日誌。" >&2
 exit 1
