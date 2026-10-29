@@ -69,7 +69,7 @@ def ctx_of(site):
 
 
 def run(site, env=None):
-    return handlers.preflight(rules.clean_environment(dict(ENV, **(env or {}))), ctx_of(site))
+    return handlers.preflight(rules.clean_environment(dict(ENV, **(env or {}))), ctx_of(site), inventory=True)
 
 
 def by_pipeline(items):
@@ -125,7 +125,7 @@ def test_s05_a_failed_read_is_error(how):
 def test_s06_the_verdict_does_not_depend_on_the_inventory():
     # S06
     outs = [run(s) for s in (FakeSite(), FakeSite(module="missing"), FakeSite(avail_rc=1))]
-    outs.append(handlers.preflight(rules.clean_environment(dict(ENV)), ctx_of(FakeSite()), inventory=False))
+    outs.append(handlers.preflight(rules.clean_environment(dict(ENV)), ctx_of(FakeSite())))
     first = outs[0]
     for out in outs:
         assert (out["ok"], out["checks"], out["message"]) == (first["ok"], first["checks"], first["message"])
@@ -213,12 +213,15 @@ def test_s15_with_and_without_a_folder_prefix():
     assert {i["module"] for i in inv["items"]} == {"nf-core-atacseq/2.1.2", "biology/nf-core-atacseq/2.1.2"}
 
 
-def test_a_launch_does_not_read_the_inventory(monkeypatch):
-    # the launch gate asks for the verdict only: no extra read of the site list
+def test_the_preflight_job_reads_the_list_and_a_launch_does_not(monkeypatch):
+    # the job the person asks for carries the list; the gate of a launch is the same checks without it
+    site = FakeSite()
+    state, result = handlers.handle({"kind": "preflight", "args": {"ce": dict(ENV)}}, ctx_of(site))
+    assert state == "done" and result["site_inventory"]["status"] == "ok"
     seen = []
     from abf_station import launch
     monkeypatch.setattr(launch, "run_launch", lambda job, ctx, pre: seen.append(pre) or ("done", {}))
     handlers.handle({"kind": "launch_nextflow", "args": {}}, ctx_of(FakeSite()))
-    site = FakeSite()
-    seen[0](rules.clean_environment(dict(ENV)), ctx_of(site))
-    assert not [c for c in site.commands if "abf_inv=" in c[0]]
+    quiet = FakeSite()
+    assert "site_inventory" not in seen[0](rules.clean_environment(dict(ENV)), ctx_of(quiet))
+    assert not [c for c in quiet.commands if "abf_inv=" in c[0]]

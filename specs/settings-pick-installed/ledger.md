@@ -26,3 +26,11 @@
 ## 環境註記
 - worktree 以 Windows git 建立：WSL 內 `constitution_scope_test.sh` 若因讀不到 git 而紅＝環境問題，以 CI 為準（計畫裁決 5）。
 - python3 在 Git Bash 是 Windows 商店空殼；編輯與測試都經 WSL。
+
+## 全套測試後追加改動的既有測試斷言（同樣只加不刪）
+6. `test_station_e2e.py::test_pf_empty_modules_means_no_module_load`：預檢工作現在多一次只讀的 `module -t avail`／`module show`；「沒有 module load」的斷言不變，只把這兩種只讀呼叫排除在「以 module 開頭的呼叫」之外。
+7. `test_station_e2e.py::test_pf_old_environment_unchanged`：完整指令序列仍逐條比對（`pf.commands[:-1]`），另外釘住最後一次呼叫就是盤點（含 `abf_inv=`）。
+8. `test_station_launch.py`（兩處 `nothing_happened`）：預檢工作可有 `module -t avail`／`module show`（只讀）；`dangerous()`、`destructive()`、守護檔案不變等斷言不變。啟動閘門（launch／resume 的預檢）不讀清單：`preflight()` 預設 `inventory=False`，只有預檢工作（`handle`）傳 True。
+9. 路由清單釘住：`test_confirm_page.py`、`test_cleanup_offer.py`、`test_dataset_cli.py`、`test_web_board.py` 各加入 `POST /settings/inventory`。
+10. `test_owner_guard.py`：`NO_TOOL` 加入 `site_pipeline_inventory`、`reload_site_inventory`（網頁專用，附理由）。
+11. `test_web_board.py`：`/settings` 允許重新讀取按鈕的表單（action `/settings/inventory`）與其 hidden `ce`，並把 `<details class="padv">`（計畫指定的進階區）排除在「details 只准是 menu 或 stage」的計數之外（三處：tch11、tcs39、tn10）。

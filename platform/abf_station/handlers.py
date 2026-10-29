@@ -51,7 +51,7 @@ def handle(job, ctx):
         return _refused("the job has an argument this agent does not take (不支援): %s" % str(extra[0])[:40])
     try:
         if kind == "launch_nextflow":
-            return launch.run_launch(job, ctx, lambda e, c: preflight(e, c, inventory=False))      # a launch needs the verdict only, never the site list
+            return launch.run_launch(job, ctx, preflight)
         if kind == "cancel_run":
             return cancel.run_cancel(job, ctx)
         if kind == "clean_work":
@@ -82,7 +82,7 @@ def handle(job, ctx):
             return "done", _verdict(res["checks"])
         env = rules.clean_environment(ce)
         if kind == "preflight":
-            return "done", preflight(env, ctx)
+            return "done", preflight(env, ctx, inventory=True)      # only the check the person asks for also reads the site list; a launch's gate does not
         return listing(env, args.get("path"), ctx)
     except rules.Refusal as e:
         return _refused(str(e))
@@ -262,9 +262,9 @@ def _judge_site_pipeline(entry, res):
     return True, label
 
 
-def preflight(env, ctx, inventory=True):
+def preflight(env, ctx, inventory=False):
     """Run every check and report all of them. Nothing is created, changed or submitted on the site.
-    With `inventory` (the default) a read-only list of the nf-core modules installed on the site is added as the separate field
+    With `inventory` (set by the preflight job; a launch's gate leaves it off) a read-only list of the nf-core modules installed on the site is added as the separate field
     `site_inventory`, once the connection has passed; it is never one of the checks and never changes the verdict."""
     site = ctx.site
     checks = []
