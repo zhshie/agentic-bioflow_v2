@@ -180,7 +180,7 @@ def test_the_group_adds_only_its_three_commands_and_options_and_no_other_door(w)
     assert cli.ADOPTING == ("serve", "web", "mcp", "ce")
     assert not [o for o in seen[("launch",)] if "dataset" in o]
     routes = sorted(set(re.findall(r'Route\("([^"]*)"', (PKG / "web.py").read_text(encoding="utf-8"))))
-    assert routes == ["/", "/.well-known/oauth-authorization-server", "/act/{verb}", "/c/{rid}", "/consent/{rid}", "/launch", "/launch/diagram", "/login", "/logout", "/settings", "/settings/pipelines", "/settings/pipelines/confirm", "/usage", "/welcome"]
+    assert routes == ["/", "/.well-known/oauth-authorization-server", "/act/{verb}", "/c/{rid}", "/consent/{rid}", "/launch", "/launch/diagram", "/login", "/logout", "/settings", "/settings/pipelines", "/settings/pipelines/confirm", "/upload", "/upload/{batch}", "/usage", "/welcome"]
 
 
 def test_every_dataset_command_is_handled_by_one_action_function_and_by_nothing_else():

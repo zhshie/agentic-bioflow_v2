@@ -39,7 +39,7 @@ def test_the_section_says_who_grants_access_and_what_is_not_wired_yet():
     # TC-006, TC-007 (T3, with the ruling of 2026-10-28: the code exists, no web or AI entry calls it)
     sec = _section(OPS, HEAD)
     assert "does not grant" in sec
-    assert "Not built yet" in sec and "nothing in the web or the AI calls it" in sec
+    assert "The web page /upload sends files up to 2 GB into the bucket" in sec and "Not built yet" not in sec      # web-upload-page ruling 13
 
 
 def test_the_section_names_the_launch_argument_and_no_made_up_tool():

@@ -867,6 +867,17 @@ The automatic tests use fakes for the `aws` program and never touch the network.
 4. **Run it again.** The prefix is empty: the answer says there was nothing to delete and nothing is removed.
 5. **Versioning.** If the test bucket has versioning on, check in the console that old versions are still there after the clean (the documents say they are, and they are still billed).
 
+## Uploading from the web page (web-upload-page): the maintainer and the reviewer check
+
+The automatic tests use fake environments and fake jobs: no real bucket, no network. These steps need a platform that people reach through Tailscale Funnel, one colleague account and a Google Batch (or AWS Batch) environment that is `available`. A real upload writes to a real bucket and costs a small amount of money.
+
+1. **A big real file, once.** Log in as the colleague, open the upload page, choose the environment, type a name and a version, choose a real pair of FASTQ files of at least 100 MB in total, and press Upload. Check: the progress page lists every file, each ends as "✓ 完成", the page then says "已登記，前往送出", and step 4 of the launch page lists `datasets/<name>/<version>.csv`. Nobody opened a terminal or asked anyone.
+2. **A narrow screen.** Open the upload page and a progress page at 390 px wide: nothing scrolls sideways and the buttons are easy to hit.
+3. **The keyboard.** Press Tab through the upload form: the focus outline is visible on every box and on the button.
+4. **Both languages.** Look at the upload page, a failed upload and a registered one once in Chinese and once with `?lang=en`.
+5. **Over the limit.** Choose one file over 2 GB: the page says no file was taken and shows the command for large files.
+6. **The reviewer.** Against the base: `platform/pyproject.toml` gained only the direct dependency `python-multipart` (0.0.32 stays pinned in `constraints.txt`, which is not touched); the existing tests changed only where `specs/web-upload-page/ledger.md` lists them, and every change there only adds an item; `web_board.STYLE` is unchanged; `jobs.py` gained only the read-only `upload_jobs`; `abf_station/` has no difference; `web.py` gained the three routes and their handlers, and `MAX_BODY` is still 16384.
+
 ## Cleaning an Azure Batch work folder (azure-clean): the maintainer checks by hand
 
 The automatic tests use fakes for the `az` program and never touch the network. A real clean deletes real blobs from a real storage account: do not start it before the maintainer says go, and only in a 測試用 container and a prefix that holds nothing you need. The real output of `az storage blob list --query "[].name" --output tsv` and of `az storage blob delete-batch` has not been seen by the tests (UNVERIFIED), so this step is also where it is checked.
