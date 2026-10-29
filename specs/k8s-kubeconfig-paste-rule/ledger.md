@@ -6,3 +6,7 @@
 - grep (ruling 2): the three key names appear only in docs/TESTING.md, specs/k8s-ce/ and this task's specs/test file; no existing test or sample data uses them.
 - Old records are not rescanned and there is no migration: an existing record whose description already holds such lines is refused only when `update` re-validates it.
 - `git diff --stat`: only compute_envs.py (+1 line), test_model_key_refusal.py (tc015 list), docs/TESTING.md, new test file.
+
+## TC-028 兩分支比對（developer-agent 補跑，2026-10-29 21:2x）
+- origin/v3@108bfdff（git archive 快照）：`ABF_PYTEST_TARGETS=tests/test_k8s_ce.py bash tests/platform_test.sh` → `platform tests: pytest exit 0, 0 skipped`
+- 本分支 718f43d6：同指令 → `platform tests: pytest exit 0, 0 skipped`
