@@ -79,9 +79,9 @@ source: memory/PLAN-abf-v3-replan-2026-10.md 第 169 行（C-5「Azure Batch／K
 4. **`k8s.config`** 只含這些鍵（全取自環境的非機密欄位）：`process.executor = 'k8s'`、`k8s.namespace`、`k8s.storageClaimName`、`k8s.storageMountPath`、`workDir`（環境的 `workDir`＋`/runs/<run>/work`，須在掛載路徑底下；`_check_k8s` 已保證，`compute_envs.py:545`）、`k8s.serviceAccount`（有設才寫）。`k8s.context` **不寫**（Pod 在叢集內，用叢集內身分；context 只供代理的 `kubectl --context`）。不含任何憑證或 kubeconfig 內容。`maxvCpus`、`spot` K8s 不收（k8s-ce 作法 2）。
 5. **憑證**：kubeconfig 只在代理這一側（`ABF_STATION_KUBECONFIG`）。代理呼叫 `kubectl` 時的環境變數沿用 `k8s_preflight._kube_env`（`:65`，刪 `ABF_*`、`KUBE*`，再設 `KUBECONFIG`、`KUBECACHEDIR`），路徑只在 env、不在 argv。**絕不呼叫** `kubectl config use-context`／`set-*`，一律 `--context`。Pod 內不放 kubeconfig；Pod 靠 `serviceAccount` 與叢集內 RBAC 建立 task pod（需要的 Role 寫進文件，不由本任務建立，見不做）。
 6. **進度回報（待裁決 3）**：`-with-tower` 的端點必須是 Pod 連得到的位址，loopback 不行。沿用 `launch._tower`（`launch.py:390`）的 `direct` 模式（要求 `facts.way_back == "direct"` 與 https 的 `platform_public_url`）；不符合就用白話拒絕，不靜默省略。
-7. **`k8s_launch.py`**（鏡像 `azure_launch.py`）：`run_launch(job, ctx, bundle)` 順序：確認內容包是給這個代理的 → run token → 用自己的設定重建內容包並比對 → deadline → 憑證檔（`k8s_preflight.credentials_path`）→ `kubectl` 在不在 → **重跑預檢**（`k8s_preflight.run_preflight`，任何一項不是 pass 就不建立任何東西）→ 檢查同名 Pod 不存在（`kubectl get pod <名>`；存在就拒絕，不覆蓋）→ 寫執行檔到 PVC → `kubectl create` → 等 settle，`kubectl get pod -o jsonpath={.status.phase}` 不是 `Failed` → 回傳 `{"ok": True, "slurm_job_id": …, "message": "已啟動：Pod <名>（命名空間 <ns>）…；叢集的運算費用從現在開始計"}`。`slurm_job_id` 欄位沿用，K8s 無 pid：提案寫入 0 以外的固定占位值並在 `bundle` 內另存 `pod_name`（待裁決 4，不改資料表、不 migration）。
+7. **`k8s_launch.py`**（鏡像 `azure_launch.py`）：`run_launch(job, ctx, bundle)` 順序：確認內容包是給這個代理的 → run token → 用自己的設定重建內容包並比對 → deadline → 憑證檔（`k8s_preflight.credentials_path`）→ `kubectl` 在不在 → **重跑預檢**（`k8s_preflight.run_preflight`，任何一項不是 pass 就不建立任何東西）→ 檢查同名 Pod 不存在（`kubectl get pod <名>`；存在就拒絕，不覆蓋）→ 建 Secret（`kubectl create secret generic <pod 名>-bundle --from-file=…`，見裁決 3、11）→ 建 Pod（`kubectl create`）→ 等 settle，`kubectl get pod -o jsonpath={.status.phase}` 不是 `Failed` → 回傳 `{"ok": True, "slurm_job_id": …, "message": "已啟動：Pod <名>（命名空間 <ns>）…；叢集的運算費用從現在開始計"}`。`slurm_job_id` 欄位沿用，K8s 無 pid：提案寫入 0 以外的固定占位值並在 `bundle` 內另存 `pod_name`（待裁決 4，不改資料表、不 migration）。
 8. **取消**：`k8s_launch.run_cancel`：核對 bundle 是給這個代理、Pod 名是這個平台會產生的名字、命名空間與環境一致，然後**一次** `kubectl delete pod <名> --namespace <ns> --context <ctx> --wait=false`。不刪 PVC、不刪別的 Pod、不用 label selector、不用 `--all`。訊息白話提醒「請到叢集確認 task pod 是否已清掉；沒清乾淨要自己處理，費用從啟動到停掉都算」。主控 Pod 被刪時 Nextflow 是否會清掉 task pods：官方頁未說明（見環境事實），以手動驗收 5 判決，不自行加 `kubectl delete pod -l`。
-9. **畫面**（`build.py`）：`k8s_launch_screen` 第一段帳單句（常數 `K8S_COST`）：「由你的 Kubernetes 叢集所屬的雲端或機房計費；本系統目前沒有費用預估與上限」，不含金額、`NT$`、`USD`。列出：叢集 context、命名空間、PVC、將建立的 Pod 名、將寫入 PVC 的檔案、主控 Pod 映像。`cancel_screen`／`prepare_cancel` 擴到 K8s；無 Pod 名時照舊拒絕。
+9. **畫面**（`build.py`）：`k8s_launch_screen` 第一段帳單句（常數 `K8S_COST`）：「由你的 Kubernetes 叢集所屬的雲端或機房計費；本系統目前沒有費用預估與上限」，不含金額、`NT$`、`USD`。列出：叢集 context、命名空間、PVC、將建立的 Pod 名、將寫入 PVC 的檔案（主控 Pod 映像不列，見裁決 11-1）。`cancel_screen`／`prepare_cancel` 擴到 K8s；無 Pod 名時照舊拒絕。
 10. **不需要 migration**：不改資料表與環境設定鍵。
 11. **新檔頭規則**：`k8s_launch.py`、`test_k8s_launch.py` 前 40 行有 `# Nothing existing: …`（TC-070），理由寫「搜過 Nextflow 官方 Kubernetes 頁（kuberun 已過時）、Seqera `tw launch`、nf-core `tower launch`，沒有現成可由本機代理在人確認後建立主控 Pod 並可取消的東西」。**`abf_station/*.py` 任何一行（含註解、字串）不得出現小寫 `kubernetes`**（`test_station_static.py::test_agent_stricter_scan_no_other_network_or_cloud_library`；見 k8s-ce.md 作法 5，用大寫或拆字）；不 import `kubernetes` 套件。
 
@@ -113,7 +113,7 @@ source: memory/PLAN-abf-v3-replan-2026-10.md 第 169 行（C-5「Azure Batch／K
 - K8L-CONF-03：平台套件不啟動任何程式；`k8s_launch.py` 不含 `nextflow run`、`sbatch`、`subprocess`。
 - K8L-CONF-04：`pyproject.toml` 無 `kubernetes` 套件；MCP 工具仍 12。
 送出與取消：
-- K8L-RUN-01：成功路徑只呼叫預期的 `kubectl` 序列（預檢、get pod、寫檔、create、get phase）。
+- K8L-RUN-01：成功路徑只呼叫預期的 `kubectl` 序列（預檢、get pod、create secret、create pod、get phase；起不來時多一次唯讀 `kubectl logs --tail`）。
 - K8L-RUN-02：預檢任一項 fail → 不 create。
 - K8L-RUN-03：Pod 起不來（phase `Failed`）→ 回報白話與 log 尾端，不重試。
 - K8L-CANCEL-01：取消只送一次 `delete pod <名> --wait=false`；Pod 名或命名空間對不上 → 不送。
@@ -177,6 +177,15 @@ source: memory/PLAN-abf-v3-replan-2026-10.md 第 169 行（C-5「Azure Batch／K
 8. **定案：等 L38 k8s-kubeconfig-paste-rule 合併後才派**（它也改 `compute_envs.py`）。
 9. 新增：所有 kubectl 呼叫在測試裡一律用假 kubectl（PATH 上的腳本，記錄參數），**不碰真叢集**。真實叢集驗收會花錢＝C 級，列進 PR 的 Needs human，不在本片做。取消時 task pods 是否一併刪除：不在本片自加刪除路徑，同樣列進 Needs human。
 10. 主計畫 C-2 寫 `local_runner.py` 與實作不符：屬總表文字落差，不在本片處理。
+
+### 補充裁決（developer-agent，2026-10-29 22:3x，回應 CONTRACT 退回）
+11-1. **映像走 (b)**：`k8s_head_image` 只在站台代理建 Pod 時讀，不進內容包、不進畫面、不成為 hello 事實；`common.py` 不納入範圍。平台與代理重建內容包比對雜湊時兩邊都不含映像。沒設時代理拒絕並白話說明怎麼設（仍是裁決 2）。
+11-2. **本文以裁決為準**：作法 7、9 與 K8L-RUN-01 已改成 Secret 做法；若仍有舊字句，一律以裁決 3(b)＋本段為準。
+11-3. **run token 放進同一個 Secret**（檔名 `tower.token`），隨 bundle 一起以唯讀 volume 掛載、啟動時複製到 PVC 專屬資料夾並 `chmod 600`；不得出現在 manifest、env、argv、日誌、回應（TC-063 照舊）。
+11-4. **同名 Secret 已存在 → 拒絕**，不覆蓋、不建 Pod，訊息點名該 Secret 並說明可用 `k8s-clean` 或手動刪除。**Secret 建好但建 Pod 失敗 → 刪掉剛建的那個 Secret**（只刪本次建立、名稱完全相同的那一個），再回報失敗原因；刪除失敗時訊息附上 Secret 名請人手動清。要為這兩種情況各寫 TC。
+11-5. **Pod 名轉換**：不測大寫（`RUN_NAME` 本來就只收小寫）；截斷到 63 字後去掉結尾的 `-`，加一條 TC 釘「結尾不是 `-`」。
+11-6. **允許**在 Pod 狀態為 Failed／起不來時多一次唯讀 `kubectl logs <pod> --tail=50`，log 尾端仍受 TC-060、TC-128 限制。
+11-7. **CLI 用詞**：K8s 型別時把「Slurm 工作編號」換成「Pod 名稱」；「已啟動」整行＝`已啟動：Pod <名>（命名空間 <ns>）；叢集的運算費用從現在開始計`。
 
 ## 專長守則（backend）
 
