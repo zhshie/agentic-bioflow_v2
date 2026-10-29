@@ -56,7 +56,21 @@ def test_module_doc_counts_the_read_only_tools():
 
 
 def _first_line_problems(first: str, n: int) -> list[str]:
-    return []
+    """Problems with the count words on the first line; empty means it matches n."""
+    if n not in NUMBERS.values():
+        return [f"read-only tool count {n} is outside NUMBERS: please extend NUMBERS"]
+    words = "|".join(NUMBERS)
+    problems = []
+    stated = re.findall(rf"\b({words})\b read-only", first)
+    if not stated:
+        problems.append("first line does not state the read-only tool count (a number word right before 'read-only')")
+    for w in stated:
+        if NUMBERS[w] != n:
+            problems.append(f"first line says {w} read-only tools but there are {n}")
+    for w in re.findall(rf"\b({words})\b", first):
+        if NUMBERS[w] != n:
+            problems.append(f"first line contains the number word {w}, which is not {n}")
+    return problems
 
 
 def _read_only_count() -> int:
