@@ -477,8 +477,8 @@ def test_tc040_forget_is_a_registered_tool_and_the_fixed_lists_grew_by_it(w):
     assert {"forget", "resume", "relaunch"} <= set(by) and by["forget"].annotations.destructive_hint is True
     assert not (set(by["forget"].input_schema.get("properties", {})) - {"run_name"})
     for fname, needle in (("test_human_channel.py", '"cancel", "describe_module", "find_module", "forget", "get_compute_env"'),
-                          ("test_guidance.py", '["launch", "cancel", "forget", "resume", "relaunch"]'),
-                          ("test_actions_layer.py", 'WRITE_NAMES = ["launch", "cancel", "forget", "resume", "relaunch"]')):
+                          ("test_guidance.py", '["launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"]'),
+                          ("test_actions_layer.py", 'WRITE_NAMES = ["launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"]')):
         assert needle in (REPO_ROOT / "platform" / "tests" / fname).read_text(encoding="utf-8"), fname
     assert callable(getattr(actions(), "forget", None))
 
@@ -701,11 +701,11 @@ def test_tc094_tc095_tc104_eleven_tools_and_the_column_names_scan_still_catches_
     # acceptor), TC-104 (the registered tools: six read, five that only ask, no field that says yes)
     tools, _ = w.mcp([])
     names = sorted(t.name for t in tools)
-    assert names == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "list_agents", "list_compute_envs", "list_pipelines", "list_runs",
+    assert names == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_pipelines", "list_runs",
                      "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs"]
     saying_yes = {"yes", "y", "confirm", "confirmed", "confirmation", "confirmation_id", "approve", "approved", "kind", "command"}
     for t in tools:
-        if t.name in ("launch", "cancel", "resume", "relaunch", "forget"):
+        if t.name in ("launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"):
             assert t.annotations.read_only_hint is False and not (set(t.input_schema.get("properties", {})) & saying_yes), t.name
         else:
             assert t.annotations.read_only_hint is True, t.name
@@ -1295,7 +1295,7 @@ def test_tc114_the_kit_asks_for_five_tools():
     # TC-114 (F8); the old pin is test_tc137 in test_resume_entrypoints.py
     settings = json.loads((REPO_ROOT / "extensions" / "claude-code-kit" / "settings.json").read_text(encoding="utf-8"))
     ask = settings["permissions"]["ask"]
-    assert sorted(ask) == sorted("mcp__abf-platform__" + t for t in ("launch", "cancel", "resume", "relaunch", "forget"))
+    assert sorted(ask) == sorted("mcp__abf-platform__" + t for t in ("launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"))
 
 
 def test_tc115_the_ledger_names_the_two_009e_tests_changed_in_their_setup_only():

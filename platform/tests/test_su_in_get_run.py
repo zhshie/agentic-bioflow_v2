@@ -409,7 +409,7 @@ def test_tool_list_unchanged(tmp_path):
     from abf_platform.mcp_server import build_server
     db, plat = _world(tmp_path, usage=TWO, ce="n4", su_site="nano4")
     names = {t.name for t in asyncio.run(build_server(db, plat).list_tools())}
-    assert len(names) == 20 and "estimate_su" not in names
+    assert len(names) == 21 and "estimate_su" not in names
 
 
 def test_list_runs_has_no_su(tmp_path):

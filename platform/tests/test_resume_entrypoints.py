@@ -42,7 +42,7 @@ def tools_of(rig):
 
 def test_tc132_the_tools_are_the_old_ones_and_exactly_resume_and_relaunch(rig):
     # TC-132 (test_mcp.py tc024 is rewritten to the same list)
-    assert sorted(tools_of(rig)) == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "list_agents", "list_compute_envs",
+    assert sorted(tools_of(rig)) == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "launch_pipeline", "list_agents", "list_compute_envs",
                                      "list_pipelines", "list_runs", "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs"]       # keep-submissions (F3): plus forget
 
 
@@ -151,10 +151,10 @@ def test_tc137_the_kit_asks_for_the_two_new_tools_as_a_second_layer():
     # TC-137: no test of this file existed (the plan names one); it is new
     settings = json.loads((REPO_ROOT / "extensions" / "claude-code-kit" / "settings.json").read_text(encoding="utf-8"))
     ask = settings["permissions"]["ask"]
-    for tool in ("launch", "cancel", "resume", "relaunch", "forget"):
+    for tool in ("launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"):
         assert "mcp__abf-platform__%s" % tool in ask
     assert not [k for k in settings["permissions"] if k != "ask"], "the kit allows and denies nothing by itself"
-    assert len(ask) == len(set(ask)) == 5
+    assert len(ask) == len(set(ask)) == 6
 
 
 def test_tc138_the_skills_say_in_one_line_that_a_failed_run_can_be_resumed_or_started_over():

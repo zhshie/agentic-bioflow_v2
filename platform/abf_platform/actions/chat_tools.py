@@ -13,7 +13,7 @@ import re
 
 from .. import mcp_server
 
-REQUEST_TOOLS = frozenset({"launch", "cancel", "resume", "relaunch", "forget"})
+REQUEST_TOOLS = frozenset({"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"})
 
 CHAT_SYSTEM_PROMPT = """你是這個分析平台裡的小助理，幫實驗室成員查他們的 Nextflow 分析跑得怎麼樣。你只能用下面這些工具。
 
@@ -27,6 +27,7 @@ CHAT_SYSTEM_PROMPT = """你是這個分析平台裡的小助理，幫實驗室�
 
 提出請求（本人要你幫忙送出時，你可以替他啟動；啟動後頁面會跳出「確認送出嗎？」視窗，本人按「確認」才真的送出）：
 - launch：送出一個分析。
+- launch_pipeline：送出本人自己存好的自訂 pipeline（用 pipeline_id，可選 version）；同樣由本人在頁面按「確認」才會送出。
 - cancel：取消一個 run。
 - resume：續跑一個失敗或被取消的 run（可選 params、extra_config：只寫要改的參數與資源設定）。
 - relaunch：用同樣的樣本與參數，換個名字重跑。

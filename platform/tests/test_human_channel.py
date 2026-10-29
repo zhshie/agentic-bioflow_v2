@@ -155,7 +155,7 @@ def test_tca08_exactly_eleven_tools_and_none_of_them_can_say_yes(w):
     # TC-A08. 009e: was exactly eight; resume and relaunch are added, asked like launch and cancel (their fields are checked below too)
     tools, _ = w.mcp([])
     names = sorted(t.name for t in tools)
-    assert names == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "list_agents", "list_compute_envs", "list_pipelines", "list_runs",
+    assert names == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_pipelines", "list_runs",
                      "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs"]
     assert not [n for n in names if re.search(r"approve|confirm|passwd|login", n)]
     by = {t.name: t for t in tools}

@@ -728,7 +728,7 @@ def test_tc_ls_52_the_launch_tool_and_the_tool_list_are_those_of_the_base(tmp_pa
 
     tools = {t.name: t for t in asyncio.run(listing())}
     assert set(tools) == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                          "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "forget", "resume", "relaunch"}
+                          "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"}
     schema = tools["launch"].input_schema
     assert set(schema["properties"]) == {"pipeline", "revision", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "path_columns", "dataset", "dataset_version"}  # dataset-cli-launch: plus the two dataset parameters
     assert sorted(schema["required"]) == ["pipeline", "revision", "run_name"]

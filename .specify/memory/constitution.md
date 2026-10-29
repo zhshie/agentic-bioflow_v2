@@ -185,7 +185,7 @@ plan, and change only by a MAJOR amendment of this constitution.
   (`hooks/confirm_launch.sh` in the Claude Code kit; on the platform, the gate in
   `platform/abf_platform/actions`, which takes a person's yes only from the terminal, the form
   of an MCP client or the confirmation page).
-- Every write tool of the platform (today `launch`, `cancel`, `resume`, `relaunch` and `forget`) refuses
+- Every write tool of the platform (today `launch`, `launch_pipeline`, `cancel`, `resume`, `relaunch` and `forget`) refuses
   until a person has answered on one of those channels; a token, a pending request or the
   model's own answer is never that answer. A new write tool joins this rule with its own
   refusal test before it ships.
