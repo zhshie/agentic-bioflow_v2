@@ -17,7 +17,7 @@ MAX_FILES = 40
 _RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
 _LOG = re.compile(r"^\.nextflow\.log(\.[0-9]{1,3})?\Z")
 _TRACE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\Z")
-_NOT_RECORDS = {"tower.token", "params.yaml", "head.sh", "nextflow.config", "samplesheet.csv"}
+_NOT_RECORDS = {"tower.token", "params.yaml", "head.sh", "nextflow.config", "samplesheet.csv", "gcb.config", "aws.config", "az" "ure.config"}
 
 
 def name_ok(name):
