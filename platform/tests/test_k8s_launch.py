@@ -253,7 +253,7 @@ def test_launch_creates_the_secret_then_the_pod(box):
 
 
 def test_the_pod_is_one_pod_wired_to_the_environment(box):
-    # TC-086, TC-087, TC-088, TC-089, TC-090, K8L-BUNDLE-03
+    # TC-086, TC-087, TC-088, TC-089, TC-090, TC-074 (read-only secret volume, copy, chmod 600, then nextflow run), TC-076 (image), K8L-BUNDLE-03
     b, _ = launch_ok(box, ce=zce(serviceAccount=SA))
     pod = box.cluster.pod_doc()
     assert pod["kind"] == "Pod" and pod["metadata"]["name"] == "nf-r1" and pod["metadata"]["namespace"] == NS
@@ -289,7 +289,7 @@ def test_no_service_account_means_no_serviceaccountname(box):
 
 
 def test_the_secret_carries_exactly_the_six_files(box):
-    # TC-060, TC-061, TC-063
+    # TC-060, TC-061, TC-063, TC-072 (kind, name, namespace, base64 data), TC-093 (exactly the six keys), TC-098 (nf-r1-bundle)
     b, _ = launch_ok(box)
     sec = box.cluster.secret_doc()
     assert sec["kind"] == "Secret" and sec["metadata"]["name"] == "nf-r1-bundle" and sec["metadata"]["namespace"] == NS
@@ -808,7 +808,7 @@ def test_cloud_paths_still_do_not_resolve_for_kubernetes(ip):
 
 
 def test_prepare_launch_screen_and_cancel_for_kubernetes(ip, box, tmp_path):
-    # TC-007, TC-102..TC-107, K8L-SCREEN-01
+    # TC-007, TC-102..TC-107, TC-140 (the screen says there is no estimate and no cap), K8L-SCREEN-01
     from abf_launch import build, terminal
     from abf_platform import agents, jobs
     register_agent(ip)
@@ -1146,3 +1146,273 @@ def test_the_cancel_namespace_is_the_one_stored_when_the_run_was_sent(ip, box, t
     assert compute_envs.get(ip.state_db, "k8s1")["config"]["namespace"] == "other-ns"
     _name, bundle, _row = build.prepare_cancel(ip.state_db, "r1")
     assert bundle["ce"]["namespace"] == NS and bundle["pod_name"] == "nf-r1"
+
+
+# ======================================================================================================================
+# Fix round 3 (ruling 13): the tests the first rounds did not make. The "same as before" ones compare with values taken
+# from the v3 base (49d763dd) by running the same code there; the digests below are those values.
+# ======================================================================================================================
+
+from test_aws_ce import ip as aws_ip      # noqa: E402,F401  (fixtures of the other cloud types, for the gate tables)
+from test_azure_ce import ip as az_ip      # noqa: E402,F401
+from test_gcb_ce import ip as gcb_ip      # noqa: E402,F401
+from test_aws_launch import box as aws_box      # noqa: E402,F401
+from test_azure_launch import box as az_box      # noqa: E402,F401
+
+
+def digest(text):
+    import hashlib
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def gate_table(ip, mod, name):
+    """What every job kind says for an available environment of one type: 'kind: ok' or the words of the refusal."""
+    from abf_platform import jobs
+    mod.register_agent(ip)
+    mod.create(ip, name)
+    mod.set_status(ip, name, "available")
+    out = []
+    for kind in jobs.KINDS:
+        try:
+            jobs.check_target(ip.state_db, name, kind)
+            out.append(kind + ": ok")
+        except jobs.JobRefused as e:
+            out.append(kind + ": " + str(e))
+    return "\n".join(out)
+
+
+def test_the_job_kinds_are_the_ones_of_the_base():
+    # TC-046, TC-047, TC-048 (the list of kinds the three gate tables below are run over)
+    from abf_platform import jobs
+    assert digest(",".join(jobs.KINDS)) == "13123f570af7a28a6bc532d82aa5a33787c67bba7ee0536b2bc5805da3767b4c"
+
+
+def test_the_aws_gate_says_what_it_said_before(aws_ip):
+    # TC-046, K8L-GATE-02
+    import test_aws_ce
+    table = gate_table(aws_ip, test_aws_ce, "aws1")
+    assert "AWS Batch" in table and "Kubernetes" not in table
+    assert digest(table) == "f72bb41f8ef67c88d5805d550853b92d6858ebbdafc249e04b6e76e4826bed0a"
+
+
+def test_the_azure_gate_says_what_it_said_before(az_ip):
+    # TC-047, K8L-GATE-02
+    import test_azure_ce
+    table = gate_table(az_ip, test_azure_ce, "az1")
+    assert "Azure Batch" in table and "Kubernetes" not in table
+    assert digest(table) == "d8829174679343fc264a65a5e2aa81818bcc8ebc2bcf74404b44f4b126c639e2"
+
+
+def test_the_google_batch_gate_says_what_it_said_before(gcb_ip):
+    # TC-048, K8L-GATE-02
+    import test_gcb_ce
+    table = gate_table(gcb_ip, test_gcb_ce, "gcb1")
+    assert "Google Batch" in table and "Kubernetes" not in table
+    assert digest(table) == "f1cf810fb0240a70c552dad1dfbffa2fd61fb1800e8ace44af522f183b1173cf"
+
+
+def test_the_slurm_and_google_batch_screens_are_those_of_the_base():
+    # TC-108, TC-109, K8L-SCREEN-02
+    from abf_launch import build
+    from abf_station import launch
+    from test_gcb_launch import gce
+    from test_launch_bundle import render
+    assert digest("\n".join(build.launch_screen(render(), "lab-a"))) == "020a51155f38740c5471798cb642ad1dac266b4aac2ecabb9dba56ba855cd0d4"      # TC-108
+    facts = {"slurm_account": None, "reach": "local", "platform_local": True, "endpoint": "http://127.0.0.1:8123", "forward_file": None,
+             "storage_root": "/srv/abf-storage", "way_back": None, "platform_public_url": None}
+    sheet = [["sample", "fastq_1", "strandedness"], ["s1", "gs://lab-bucket/x.fastq.gz", "auto"]]
+    b = launch.render_gcb_bundle(ce=gce(), agent="a1", facts=facts, roots=[], run_name="run-a", pipeline="nf-core/rnaseq",
+                                 revision="3.14.0", samplesheet=sheet, params={"genome": "GRCh38"})
+    assert digest("\n".join(build.launch_screen(b, "gcb1"))) == "cdb912841e13dd568700d64de29877667f0c1b7c3dceafd75623780bfecf9539"      # TC-109
+
+
+def test_the_aws_screen_is_that_of_the_base(aws_box):
+    # TC-110, K8L-SCREEN-02 (the folder of this test run is named TMP, the rest is the text of the screen)
+    from abf_launch import build
+    shown = "\n".join(build.launch_screen(aws_box.bundle(), "aws1")).replace(str(aws_box.tmp), "TMP")
+    assert digest(shown) == "03408c1b046d52f2495b9b813bc934e5c6c37a971da0aeef6ab693933e15a7b0"
+
+
+def test_the_azure_screen_is_that_of_the_base(az_box):
+    # TC-111, K8L-SCREEN-02
+    from abf_launch import build
+    shown = "\n".join(build.launch_screen(az_box.bundle(), "azure1")).replace(str(az_box.tmp), "TMP")
+    assert digest(shown) == "0566607f4b5cc2a3e4fbdc0df5bca0df4f16580f0d07f8979c46c9381366eb22"
+
+
+def test_the_platform_stores_the_placeholder_in_the_existing_column_only(ip, box, tmp_path):
+    # TC-006: take_result on a K8s launch fills launches.slurm_job_id with the placeholder and adds no column of its own
+    row = launched_on_k8s(ip, box, tmp_path)
+    assert row["slurm_job_id"] == 1 and row["run_name"] == "r1"
+    assert not [k for k in row.keys() if re.search(r"k8s|pod|kube|secret", k, re.I)]
+
+
+def test_a_no_or_a_timeout_at_the_launch_question_queues_nothing(ip, box, tmp_path, monkeypatch):
+    # TC-015, K8L-CONF-02: the yes is the only thing that queues a launch_nextflow job
+    import argparse
+    from abf_launch import cli, terminal
+    from abf_platform import agents
+    register_agent(ip)
+    agents.register(ip.state_db, "a1", "0.1.0", time.time, facts=box.facts())
+    create(ip, "k8s1")
+    set_status(ip, "k8s1", "available")
+    sheet = tmp_path / "samples.csv"
+    sheet.write_text("\n".join(",".join(r) for r in SHEET) + "\n")
+    args = argparse.Namespace(ce="k8s1", pipeline="nf-core/rnaseq", revision="3.14.0", run_name="r1", samplesheet=str(sheet),
+                              params_file=None, param=["genome=GRCh38"], path_column=None, user=None)
+    monkeypatch.setenv("ABF_PLATFORM_DB", str(ip.index))
+    monkeypatch.setattr(terminal, "terminal_problem", lambda: None)
+    n, kinds = jobs_count(ip), job_kinds(ip)
+    asked = []
+    for _case in ("a typed n", "no answer in time"):      # terminal.ask gives False for both
+        monkeypatch.setattr(terminal, "ask", lambda lines, question: asked.append(question) or False)
+        assert cli.cmd_launch(args) == 1
+        assert jobs_count(ip) == n and job_kinds(ip) == kinds and "launch_nextflow" not in job_kinds(ip)
+    assert len(asked) == 2 and box.cluster.calls == []
+
+
+def test_a_dataset_destination_cannot_be_a_kubernetes_environment(ip):
+    # TC-055, K8L-GATE-04
+    from abf_platform.actions import datasets
+    available_k8s(ip)
+    place = MOUNT + "/data/x.fastq.gz"
+    got = datasets.register_dataset(ip.state_db, name="proj", version="v1", samplesheet="sample,fastq_1\ns1,%s\n" % place,
+                                    files=[{"path": place}], destination="k1")
+    assert got["ok"] is False and len(json.dumps(got, ensure_ascii=False)) > len('{"ok": false}')
+    assert "Traceback" not in json.dumps(got)
+    assert datasets.get_dataset(ip.state_db, "proj", "v1")["found"] is False      # nothing was registered
+
+
+def test_an_environment_that_is_not_available_takes_no_launch(ip):
+    # TC-059
+    from abf_platform import jobs
+    register_agent(ip)
+    create(ip, "k1")      # a new environment is `creating`
+    for status in ("creating", "invalid"):
+        set_status(ip, "k1", status, ok=0)
+        n = jobs_count(ip)
+        with pytest.raises(jobs.JobRefused):
+            jobs.check_target(ip.state_db, "k1", "launch_nextflow")
+        assert jobs_count(ip) == n
+    set_status(ip, "k1", "available")
+    jobs.check_target(ip.state_db, "k1", "launch_nextflow")
+
+
+@pytest.mark.parametrize("image", [IMAGE, None])
+def test_the_head_image_is_nowhere_in_the_bundle_and_both_sides_build_the_same_one(ip, box, tmp_path, image):
+    # TC-075: with the image set and with it unset, the platform's bundle and the agent's are equal, and the image is in neither
+    from abf_launch import build
+    from abf_platform import agents, common
+    from abf_station import launch
+    box.write_settings(image=image)
+    register_agent(ip)
+    agents.register(ip.state_db, "a1", "0.1.0", time.time, facts=launch.own_facts(box.ctx))
+    create(ip, "k8s1")
+    set_status(ip, "k8s1", "available")
+    sheet = tmp_path / "samples.csv"
+    sheet.write_text("\n".join(",".join(r) for r in SHEET) + "\n")
+    ce_name, pb = build.prepare_launch(ip.state_db, ce="k8s1", pipeline="nf-core/rnaseq", revision="3.14.0", run_name="r1",
+                                       samplesheet=str(sheet), params={"genome": "GRCh38"}, owner=None)
+    mine = box.bundle(ce=pb["ce"], samplesheet=pb["samplesheet"], facts=launch.own_facts(box.ctx))
+    assert common.bundle_sha256(mine) == common.bundle_sha256(pb)
+    for text in (json.dumps(pb), "\n".join(build.launch_screen(pb, ce_name)), json.dumps(launch.own_facts(box.ctx))):
+        assert IMAGE not in text and "k8s_head_image" not in text and "example/head" not in text
+
+
+def test_the_credential_of_a_k8s_environment_is_only_its_name(ip):
+    # TC-079: the database and `ce show` hold the name, never a path or the content of a kubeconfig
+    from test_k8s_ce import CRED
+    create(ip, credentialsId=CRED)
+    con = sqlite3.connect(str(ip.state_db))
+    try:
+        dump = json.dumps([list(r) for r in con.execute("SELECT * FROM compute_envs")], default=str)
+    finally:
+        con.close()
+    assert CRED in dump and KTOK not in dump and "apiVersion" not in dump and "kubeconfig" not in dump.lower()
+    shown = ip.show("k1")
+    assert shown["credentialsId"] == CRED and "/" not in CRED and KTOK not in json.dumps(shown, default=str)
+
+
+def test_no_kubectl_call_of_any_path_moves_data_into_the_claim(box):
+    # TC-141: no `cp`, no `exec`, and the only things sent are the two manifests (success, a failed create, a refusal)
+    launch_ok(box)
+    box.cluster.fail["create_manifest"] = (1, "Error from server: forbidden")
+    box.ctx.used_confirmations.clear()
+    box.handle(job_of(box.bundle("r3")))
+    box.handle(job_of(box.bundle("r4"), token=""))      # a refusal before any call
+    bad = [argv for argv, _e, _s in box.cluster.calls if {"cp", "exec", "rsync", "port-forward", "attach", "run"} & set(argv)]
+    assert bad == []
+    assert box.cluster.calls and all(c[0][0] == "kubectl" for c in box.cluster.calls)
+    for argv, _env, stdin in box.cluster.writes():
+        assert argv[1] == "create" and argv[argv.index("-f") + 1] == "-" and json.loads(stdin)["kind"] in ("Secret", "Pod")
+    assert {k for k, _ in box.cluster.manifests} <= {"Secret", "Pod"}
+
+
+def test_the_files_of_a_k8s_launch_say_nothing_of_fusion(box):
+    # TC-145
+    b, _ = launch_ok(box)
+    texts = [b["files"][n] for n in b["files"]] + [json.dumps(box.cluster.pod_doc())]
+    assert len(texts) == 6
+    for text in texts:
+        assert not re.search(r"fusion|wave", text, re.I)
+
+
+def test_the_tables_and_settings_are_those_of_the_base():
+    # TC-150: no new environment setting
+    from abf_platform import compute_envs
+    assert compute_envs._K8S_CONFIG == ("workDir", "preRunScript", "postRunScript", "environment", "nextflowConfig", "context", "namespace",
+                                        "storageClaimName", "storageMountPath", "serviceAccount")
+
+
+def test_the_schema_of_the_platform_is_that_of_the_base(ip):
+    # TC-150: no new table, no new column, no migration file, and the ledger says why none is needed
+    register_agent(ip)
+    con = sqlite3.connect(str(ip.state_db))
+    try:
+        rows = sorted(con.execute("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").fetchall())
+    finally:
+        con.close()
+    assert len(rows) == 7 and digest(repr(rows)) == "7eded9a6ba0e15b8a63e307e0e9a0d1aae2b121504dfba8f804f79aaae683f77"
+    assert [p for p in PLATFORM_DIR.rglob("*") if "migrat" in p.name.lower()] == []
+    assert "No migration needed" in (REPO_ROOT / "specs" / "k8s-launch" / "ledger.md").read_text(encoding="utf-8")
+
+
+def test_the_operations_doc_says_what_a_kubernetes_launch_needs():
+    # TC-170
+    text = read_doc("OPERATIONS.md")
+    para = [p for p in text.split("\n\n") if "`k8s-platform` environment" in p]
+    assert len(para) == 1
+    for want in ("kubectl", "platform host", "ABF_STATION_KUBECONFIG", "k8s_head_image", "required", "platform_public_url", "https://",
+                 "Role", "delete", "No migration"):
+        assert want in para[0], want
+
+
+def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
+    # TC-184, K8L-CONF-04: the MCP tools, the receiver's and the web's routes and the action layer's functions did not change
+    import inspect
+    from abf_platform import actions, receiver, web
+    from test_actions_layer import ROUTES_V3
+    from test_mcp_server_doc import EXPECTED, _tools
+    assert {n for n, _ in _tools()} == EXPECTED and len(_tools()) == len(EXPECTED)
+    app = receiver.create_app(tmp_path / "index.db", tmp_path / "tokens.db")
+    assert sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in app.routes) == ROUTES_V3
+    wapp = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", platform_path=tmp_path / "platform.db")
+    got = sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in wapp.routes)
+    assert len(got) == 27 and digest(repr(got)) == "bdf56b399253e2422f015c2c241b61374bf4109ca0614ef036afcf24ecccf16c"
+    names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
+                   and not n.startswith("_"))
+    assert len(names) == 48 and digest(repr(names)) == "2124602e80b6d06d8ac41d1a7fd6413a85b1e804803dd4073a0ced5019cb183f"
+    assert not [n for n in names if re.search(r"k8s|kube|pod", n, re.I)]
+
+
+def test_a_launch_keeps_no_state_of_the_pod_of_its_own(ip, box, tmp_path):
+    # TC-185 (I.2): the phase is read once at launch; the only new things are the placeholder and pod_name in the bundle
+    row = launched_on_k8s(ip, box, tmp_path)
+    assert row["slurm_job_id"] == 1
+    assert box.cluster.kinds().count("get_pod_phase") == 1
+    con = sqlite3.connect(str(ip.state_db))
+    try:
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    finally:
+        con.close()
+    assert not [t for t in tables if re.search(r"pod|k8s|kube|phase", t, re.I)]

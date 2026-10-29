@@ -82,3 +82,15 @@ Command at each commit: `abf-fast-suite <worktree> --pytest tests/<file>.py` (ba
 | test_launch_cli.py (command line of launch/cancel) | 72 passed | 72 passed |
 
 The tests of GCB/AWS/Azure that were edited on this branch (the pinned sentence, `PLATFORM_HOST_TYPES`, `CHECK_ONLY_TYPES`, listed under "Existing assertions changed") are the only differences between the two runs' test files; the counts are equal.
+
+## Fix round 3 (ruling 13): the 19 automatic TCs that had no test of their own
+
+Only tests were added (`platform/tests/test_k8s_launch.py`, block "Fix round 3"); the product code did not change, so these pass at once (no red step is possible for a test of a thing that already holds).
+
+- TC-006 `test_the_platform_stores_the_placeholder_in_the_existing_column_only`; TC-015 `test_a_no_or_a_timeout_at_the_launch_question_queues_nothing` (`cli.cmd_launch`, ask gives False: no job, no kubectl call).
+- TC-046/047/048 gate tables of AWS, Azure, Google Batch: every job kind over an available environment, text hashed and compared with the value taken from the v3 base 49d763dd (same code run there; also the list of `jobs.KINDS`).
+- TC-108..111 launch screens of Slurm, Google Batch, AWS, Azure: hashes taken from base 49d763dd (the AWS and Azure ones with the test folder name replaced by TMP).
+- TC-055 dataset destination = K8s environment is refused, nothing registered; TC-059 `creating`/`invalid` environment takes no launch; TC-075 image set and unset: platform bundle hash = agent bundle hash, image in no bundle/screen/hello facts; TC-079 credential stored as a name only.
+- TC-141 no cp/exec/etc. on success, failed create and refusal paths; TC-145 no Fusion/Wave in any file; TC-150 `_K8S_CONFIG` unchanged, platform schema hash equal to base, no migration file, "No migration needed" above; TC-170 pins the K8s paragraph of docs/OPERATIONS.md; TC-185 phase read once, no pod/k8s table.
+- TC-184 (contract number corrected by ruling 13: 15 tools, not 12): MCP tool set equals the known fifteen, receiver routes equal `ROUTES_V3`, web routes (27) and the action layer's functions (48) hash-equal to base, none named k8s/kube/pod.
+- Comments added for TC-072, 074, 076, 093, 098, 140 on the tests that already checked them.
