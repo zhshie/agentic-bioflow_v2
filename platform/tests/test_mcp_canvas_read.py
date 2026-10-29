@@ -162,9 +162,9 @@ def test_other_user_sees_nothing(w, d):
         texts.append(tool_text(res))
     for t in texts + [tool_text(call(w, "list_pipelines", {}, caller=d.b))]:
         assert "secret-qc" not in t and "fastqc" not in t
-    ghost = "p-does-not-exist"
-    mine = tool_text(call(w, "get_pipeline", {"pipeline_id": pid}, caller=d.b)).replace(pid, "<id>")
-    none = tool_text(call(w, "get_pipeline", {"pipeline_id": ghost}, caller=d.b)).replace(ghost, "<id>")
+    ghost = 987654
+    mine = tool_text(call(w, "get_pipeline", {"pipeline_id": pid}, caller=d.b)).replace(str(pid), "<id>")
+    none = tool_text(call(w, "get_pipeline", {"pipeline_id": ghost}, caller=d.b)).replace(str(ghost), "<id>")
     assert mine == none
     for t in texts:
         assert "token" not in t.lower() and "password" not in t.lower()

@@ -218,8 +218,9 @@ def test_tc033_parity_and_read_only():
     src = (PKG / "mcp_server.py").read_text(encoding="utf-8")
     tools = set(re.findall(r'name="([a-z_]+)"', src))
     assert tools == {"cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
-                     "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs"}   # same as base
-    for name in tools - {"launch", "cancel", "resume", "relaunch", "forget"}:
+                     "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs",
+                     "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}   # base plus the five canvas reads (canvas-mcp-read)
+    for name in tools - {"launch", "cancel", "resume", "relaunch", "forget", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}:
         assert callable(getattr(actions, name, None)), name
     for name in ("get_run", "my_usage"):
         assert re.search(r'name="%s", annotations=_READ_ONLY' % name, src)
