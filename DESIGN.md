@@ -82,9 +82,9 @@ The maintainer, 2026-10-27: 「一樣要注意中文的顯示不能口語(e.g. "
 
 Rules: (1) say what the state is ("尚無使用紀錄。", "尚未上傳樣本表，無法啟動分析。"), not what the person has or has not done; (2) name the thing instead of pointing at it ("此管線", "該次分析", "已上傳的檔案"); (3) one verb for one act: 選用 (take a row of a table), 套用 (apply a version), 送出 (submit), 載入 (load); (4) a required field is marked with the red `*` (`<span class="req" title="必填">*</span>`, English title "Required") and the legend "* 必填" above the table; the word 必填 is not repeated as a label.
 
-Banned strings in the Chinese text of a page (a test reads the main column of `/launch` in every state and fails on any of them; the pipeline's own English descriptions are not checked): 用過、選好、寫死、自己填、自己調整、你還沒、還沒有、還不能、這個、這份、這條、這一版、一下、弄、搞、東西、喔、啦、吧、囉、蠻、超.
+Banned strings in the Chinese text of a page (a test reads the main column of `/launch` in every state and fails on any of them; the pipeline's own English descriptions are not checked): 用過、選好、寫死、自己填、自己調整、你還沒、還沒有、還不能、這個、這份、這條、這一版、一下、弄、搞、東西、喔、啦、吧、囉、蠻、超；加上 web-wording-sweep 新增：你、什麼都、做不了、讀不到、算不出、被動、還沒、這次、這個月、我們、咱、沒有這個、在哪裡，以及單獨出現的 run／runs（程式碼、管線說明欄除外）.
 
-Other screens (board, run page, settings, /welcome, the left column) are not yet swept; that is the backlog item `web-wording-sweep`. A new page uses this section from the start.
+All screens are swept (web-wording-sweep, 2026-10-29): `test_web_wording_sweep.py` reads every page and every Chinese string table against the list above. A new page uses this section from the start.
 
 ## Constraints
 Single stylesheet, no inline style, no external resources, 15-second refresh. JS only where marked: the terminal page (ttyd), the studio iframe, MultiQC embed, chat send, drag-and-drop upload, client-side pipeline search. Language by `?lang=en` server-side; every screen exists in English. Owner rule: each person sees only their own analyses and terminals. No Galaxy/Seqera logos, names, brand colours or code (ADR 0004).
@@ -93,3 +93,4 @@ Single stylesheet, no inline style, no external resources, 15-second refresh. JS
 - The automatic resume and relayed OTP join the constitution (MAJOR) with the PR that builds them and their tests (ADR 0011, "Consequences").
 - Cost line in the masthead and the cost card come from v1; not re-confirmed in the 10-23 round.
 - Visual polish is postponed (word 15).
+- The sign-in, /welcome and consent pages still show 「中文 (English)」 side by side, which does not follow the single-language `?lang` rule; converting them is scheduled separately.

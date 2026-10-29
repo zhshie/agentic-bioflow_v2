@@ -19,14 +19,14 @@ CAP_KEY = "cap_" + "usd"        # the cap is read from the answer by this key on
 STRINGS = {
     "zh": {
         "title": "費用", "card_su": "國網 SU（本月）", "card_used": "雲端已用（本月）", "card_cap": "雲端上限", "card_left": "雲端剩餘",
-        "unset": "未設定", "set_by_admin": "由管理者設定", "unknown_runs": "另有 %d 個分析算不出",
-        "action": "待處理：本月的雲端額度已用完",
-        "note": "雲端費用以美元顯示，不換算新台幣；國網以 SU 計。數字是依執行紀錄估算，略低於實際帳單。",
-        "th_name": "分析名稱", "th_started": "開始時間", "th_where": "在哪裡跑", "th_usage": "用量", "th_state": "狀態",
+        "unset": "未設定", "set_by_admin": "由管理者設定", "unknown_runs": "另有 %d 個分析無法計算",
+        "action": "待處理：本月雲端額度已用盡",
+        "note": "雲端費用以美元顯示，不換算新台幣；國網以 SU 計。數字依執行紀錄估算，略低於實際帳單。",
+        "th_name": "分析名稱", "th_started": "開始時間", "th_where": "執行位置", "th_usage": "用量", "th_state": "狀態",
         "where_hpc": "國網", "where_cloud": "雲端", "state_running": "執行中", "state_estimate": "≈ 估算・帳單未到",
-        "empty": "— 這個月還沒有分析", "bad_month": "月份格式不對，顯示本月。", "prev": "← 上一月", "next": "下一月 →",
-        "no_reason": "算不出",
-        "usd_note": "SU 換美元依 %s 匯率約略換算，不是帳單。",
+        "empty": "— 本月尚無分析", "bad_month": "月份格式不符，已顯示本月。", "prev": "← 上一月", "next": "下一月 →",
+        "no_reason": "無法計算",
+        "usd_note": "SU 以 %s 匯率概算為美元，並非帳單金額。",
     },
     "en": {
         "title": "Cost", "card_su": _HPC + " SU (this month)", "card_used": "Cloud used (this month)", "card_cap": "Cloud cap",
