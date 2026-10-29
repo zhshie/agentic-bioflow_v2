@@ -175,8 +175,9 @@ def _ce_row(t, lang, env):
     pipes = (env.get("config") or {}).get("sitePipelines")
     pipes = "<br>".join(esc("%s %s" % (p.get("pipeline", ""), p.get("revision", ""))) for p in pipes if isinstance(p, dict)) if pipes else ""
     name = esc(env.get("name")) + (' <span class="badge state-running">%s</span>' % esc(t["primary"]) if env.get("primary") else "")
-    return ("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-            % (name, esc(env.get("platform") or "—"), status, who, pipes or "—", esc(_when_iso(env.get("lastUsed")))))
+    cells = (name, esc(env.get("platform") or "—"), status, who, pipes or "—", esc(_when_iso(env.get("lastUsed"))))
+    keys = ("th_name", "th_platform", "th_status", "th_agent", "th_pipes", "th_used")
+    return "<tr>" + "".join('<td data-label="%s">%s</td>' % (esc(t[k]), c) for k, c in zip(keys, cells)) + "</tr>"
 
 
 def _hidden(pairs):
@@ -283,7 +284,7 @@ def _compute(t, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_
         body = '<p class="muted">%s</p>' % esc(t["no_ce"])
     else:
         head = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_platform", "th_status", "th_agent", "th_pipes", "th_used"))
-        body = '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, "".join(_ce_row(t, lang, e) for e in envs))
+        body = '<table class="tbl ce"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, "".join(_ce_row(t, lang, e) for e in envs))
         if pf_csrf:
             body += "".join(_env_block(t, lang, e, pf_csrf, flash, (given or {}).get(e["name"]), (inv or {}).get(e["name"]), inv_csrf) for e in envs)
     return '<section class="card sec"><h2>%s</h2>%s%s</section>' % (esc(t["set_ce"]), body, _grey_line(t, "ce_later"))

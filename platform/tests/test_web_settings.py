@@ -198,7 +198,7 @@ def test_st04_ce_table(w):
     _, mid = page(w)
     sec, rows = rows_of(mid, "運算環境")
     assert re.findall(r"<th>(.*?)</th>", sec) == ["名稱", "平台", "狀態", "站台代理", "已登記管線", "上次使用時間"]
-    body = [r for r in rows if "<td>" in r]
+    body = [r for r in rows if "<td" in r]
     assert len(body) == 2
     first, second = body if "lab-a" in body[0] else body[::-1]
     assert "主要" in first and "主要" not in second
@@ -221,7 +221,7 @@ def test_st04b_status_mapping_and_unknown(w):
         sql(w, "UPDATE compute_envs SET status = ? WHERE name = 'lab-a'", (status,))
         _, mid = page(w)
         sec, rows = rows_of(mid, "運算環境")
-        cell = plain([r for r in rows if "<td>" in r][0].split("</td>")[2])
+        cell = plain([r for r in rows if "<td" in r][0].split("</td>")[2])
         assert cell.startswith(shown), (status, cell)
         if status != "available":
             assert "✓" not in cell
