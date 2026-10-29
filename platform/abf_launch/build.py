@@ -325,6 +325,11 @@ def prepare_cancel(state, run, owner=None):
     bundle = {"version": 1, "run_name": row["run_name"], "slurm_job_id": row["slurm_job_id"], "run_folder": row["run_folder"],
               "agent": row["agent"], "ce": bundle_mod.snapshot_ce(view)}
     if view["platform"] == bundle_mod.K8S:
+        sent, _forgotten = _launched_ce(state, row)
+        if sent is None or not isinstance(sent.get("namespace"), str) or not sent["namespace"]:
+            raise Refusal("%s 送出時存下的紀錄已經找不到，無法確認 Pod 在哪個命名空間，所以不取消；請到叢集確認 Pod %s 與這次 run 的 task Pod "
+                          "(the launch record is gone)" % (run, bundle_mod.k8s_pod_name(row["run_name"])))
+        bundle["ce"]["namespace"] = sent["namespace"]      # the namespace the Pod was made in (the record of that launch), not the one the environment names now
         bundle["pod_name"] = bundle_mod.k8s_pod_name(row["run_name"])      # the one Pod this cancel may delete; the agent checks it again
     return row["ce"], bundle, row
 
@@ -339,8 +344,8 @@ def clean_work_path(view_snapshot, row):
     return row["run_folder"] + "/work"
 
 
-def _launched_workdir(state, row):
-    """(the workDir of the environment as it was when the run was sent or None, whether the owner forgot the run)."""
+def _launched_ce(state, row):
+    """(the environment snapshot kept with the run when it was sent or None, whether the owner forgot the run)."""
     con = _open(state)
     if con is None:
         return None, False
@@ -355,7 +360,13 @@ def _launched_workdir(state, row):
         con.close()
     if content is None or not isinstance(content[0].get("ce"), dict):
         return None, False
-    return content[0]["ce"].get("workDir"), False
+    return content[0]["ce"], False
+
+
+def _launched_workdir(state, row):
+    """(the workDir of the environment as it was when the run was sent or None, whether the owner forgot the run)."""
+    ce, forgotten = _launched_ce(state, row)
+    return (ce.get("workDir") if ce is not None else None), forgotten
 
 
 def prepare_clean(state, run, owner=None):
