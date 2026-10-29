@@ -15,12 +15,11 @@ from station_harness import Inproc
 CRED = re.compile(r"credential|憑證")
 AGENT_SIDE = re.compile(r"agent|代理")
 
-# the 10 types that are modelled and not supported, with fields from specs/007-station-agent/research.md
+# the 9 types that are modelled and not supported, with fields from specs/007-station-agent/research.md
 UNSUPPORTED = {
     "awscloud-platform": {"workDir": "s3://lab-bucket/work", "instanceType": "m5.xlarge"},
     "azcloud-platform": {"workDir": "az://lab-container/work", "instanceType": "Standard_D4s_v3"},
     "googlecloud-platform": {"workDir": "gs://lab-bucket/work", "instanceType": "n2-standard-4", "zone": "europe-west2-a"},
-    "k8s-platform": {"workDir": "/mnt/work", "namespace": "nf", "storageClaimName": "pvc-work", "storageMountPath": "/mnt"},
     "eks-platform": {"workDir": "/mnt/work", "clusterName": "lab-eks", "region": "eu-west-1", "namespace": "nf"},
     "gke-platform": {"workDir": "/mnt/work", "clusterName": "lab-gke", "location": "europe-west2", "namespace": "nf"},
     "altair-platform": {"workDir": "/shared/work", "headQueue": "workq", "hostName": "login.example"},
@@ -158,7 +157,7 @@ def test_tc032_only_fourteen_types_exist_and_seqera_compute_is_refused_with_its_
     # TC-032
     from abf_platform import compute_envs
     assert len(compute_envs.KINDS) == 14 and "slurm-platform" in compute_envs.KINDS
-    assert sorted(set(UNSUPPORTED) | {"slurm-platform", "googlebatch-platform", "awsbatch-platform", "azbatch-platform"}) == sorted(compute_envs.KINDS)
+    assert sorted(set(UNSUPPORTED) | {"slurm-platform", "googlebatch-platform", "awsbatch-platform", "azbatch-platform", "k8s-platform"}) == sorted(compute_envs.KINDS)
     for bad in ("nonsense", "seqera-compute", "seqeracompute-platform", "local-platform"):
         rc, out = ip.run("ce", "create", "--name", "x-" + bad, "--platform", bad, "--work-dir", "/data/work")
         assert rc != 0, bad

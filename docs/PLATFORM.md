@@ -505,9 +505,37 @@ The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: low-pri
 
 A record made before this type was checked (status `unsupported`, with the old keys `region` and `vmType`) is still listed and shown, but it cannot be checked or updated: the message says `請刪除後重建這個計算環境`. Delete it and create it again.
 
+### Kubernetes
+
+A `k8s-platform` environment (k8s-ce) is served the way an Azure Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused). It can be **created and checked**; launching on it is **not built yet** (launch: not yet, the next step is `k8s-launch`), so every job except the preflight is refused in plain words (尚未支援送出), and the automatic choice of an environment never picks it. The platform starts no program for it: the checks run on the agent, with the `kubectl` command line, which must be installed on the platform host.
+
+| Key | Rule |
+|---|---|
+| `context` | required; a context name from the kubeconfig, such as `lab-context` (`--context`) |
+| `namespace` | required; a Kubernetes name of lower-case letters, digits and `-`, at most 63, such as `lab-ns` (`--namespace`) |
+| `storageClaimName` | required; the name of a persistent volume claim that **already exists**, such as `lab-pvc` (`--storage-claim`). The operator creates it beforehand; this slice creates no claim |
+| `storageMountPath` | optional absolute path where the claim is mounted; it defaults to `/workspace` and is filled in when the record is stored (`--storage-mount-path`) |
+| `workDir` | required; an absolute path **inside** `storageMountPath`, such as `/workspace/work` (not the mount itself, no `..`); a trailing slash is dropped |
+| `serviceAccount` | optional; a Kubernetes name, such as `lab-sa` (`--service-account`); when it is left out the namespace's own account is used |
+| `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
+
+Every problem is listed at once, each naming its key; a key not in this table is refused. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`); it is only a label, and it may be left out when the environment is created (the preflight then reports `credential_name` as failed). The kubeconfig is a file on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_KUBECONFIG`, else `<deployment>/_personal/kubeconfig` (mode 600 on Linux and WSL, so run `chmod 600` on it). The agent does not read the file's content either: it only hands the path to `kubectl`. A kubeconfig may name an `exec` plugin, which `kubectl` then runs; the file is therefore a trusted file placed by the operator (營運者), and the agent neither parses it nor blocks such a plugin.
+
+| Check | What the agent does |
+|---|---|
+| `credential_name` | the environment has a credential name |
+| `credential_file` | the file exists, is a regular file, is at most 1 MB and (not on Windows) is not readable by others; when it is missing the message says where to put it and `chmod 600` |
+| `kubectl` | `kubectl` is installed (`unchecked`, not `fail`, when it is not) |
+| `context` | `kubectl config get-contexts -o name` lists the context as a whole line |
+| `pvc` | `kubectl get pvc` finds the claim and its phase is `Bound` |
+| `pvc_access` | the claim's access modes include `ReadWriteMany` (Nextflow's work folder is shared by many pods) |
+| `service_account` | `kubectl get serviceaccount` finds it; when none is set the check passes and says the default account is used |
+
+**預檢不計費 (the preflight costs nothing):** it only reads. It lists contexts and gets one claim and one service account; it creates, changes and deletes nothing on the cluster, and it never switches the context or runs a command inside a pod. Each `kubectl` call is limited to 30 seconds (and 20 seconds for the API request); a timeout fails that one check. The kubeconfig path is handed to `kubectl` in the environment of that one call, with an empty cache folder of its own that is deleted afterwards, never in the command line; the agent's own `ABF_*` and `KUBE*` variables are not passed on. The examples above use only made-up names (`lab-context`, `lab-ns`, `lab-pvc`, `lab-sa`).
+
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only. The other ten are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only. The other nine are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -522,7 +550,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `azcloud-platform` | Azure Cloud | modelled only |
 | `googlebatch-platform` | Google Cloud Batch | Slurm-like confirmed launch and cancel on the platform host (resume: not yet) |
 | `googlecloud-platform` | Google Cloud | modelled only |
-| `k8s-platform` | Kubernetes | modelled only |
+| `k8s-platform` | Kubernetes | checked on the platform host (launch: not yet) |
 | `eks-platform` | Amazon EKS | modelled only |
 | `gke-platform` | Google GKE | modelled only |
 
