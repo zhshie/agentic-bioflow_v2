@@ -804,8 +804,10 @@ def test_tch11_read_only(w):
         t = c.get(url).text
         forms = re.findall(r"<form\b[^>]*>", t)
         assert 'action="/logout"' in forms[0]
-        assert all(re.fullmatch(r'<form class="act" method="post" action="/act/(resume|relaunch|cancel)">', f) for f in forms[1:])     # 012b
-        assert (len(forms) == 1) == (url == "/settings")          # the failed run is on the Now page and on its own page: both have the buttons that ask
+        # settings-register-pipeline: /settings now also holds the register and remove forms of that task (action /settings/pipelines)
+        own = r'<form class="act" method="post" action="/act/(resume|relaunch|cancel)">' if url != "/settings" else r'<form class="(act|lform)" method="post" action="/settings/pipelines">'
+        assert all(re.fullmatch(own, f) for f in forms[1:])     # 012b
+        assert len(forms) > 1          # the failed run is on the Now page and on its own page: both have the buttons that ask
         assert t.count("<button") == len(forms)
         assert re.search(r'name="csrf" value="[^"]+"', t)
     assert c.post("/").status_code == 405 and c.post("/settings").status_code == 405
@@ -816,7 +818,8 @@ def test_tch11_read_only(w):
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),
                       ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
-                      ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/token", ("OPTIONS", "POST")),
+                      ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline
+                      ("/token", ("OPTIONS", "POST")),
                       ("/usage", ("GET", "HEAD")), ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: /welcome
 
 
@@ -954,7 +957,8 @@ def test_tcs39_s40_s41_s42_settings(w):
     assert re.findall(r"<h2>(.*?)</h2>", mid) == ["使用前檢查", "運算環境", "憑證", "密碼與金鑰", "個人", "營運者後台", "角色（老師／學生）"]      # settings-page: the checklist is the first section
     for word in ("AI 模型金鑰", "逐步模式", "開發模式"):
         assert word in mid
-    assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", mid)
+    # settings-register-pipeline ruling 1: apart from the register and remove forms of that task, the middle column still has nothing to press
+    assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", re.sub(r'<form[^>]*action="/settings/pipelines".*?</form>', "", mid, flags=re.S))
     # TC-N14 / TC-K6 (R8): the second key is named nowhere; spelled by concatenation so the platform-wide safety test stays at 0
     second = "J" + "ev"
     for url in ("/settings", "/settings?lang=en"):
@@ -1225,7 +1229,8 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
             if tag == "<table" and url == "/settings":      # settings-page ruling 11: only /settings may carry a table (the compute environments)
                 continue
             assert tag not in t, (url, tag)
-        assert [m for m in re.findall(r"<input\b[^>]*>", t) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m)] == []     # 012b: the buttons carry the run id (and the language)
+        settings_free = re.sub(r'<form[^>]*action="/settings/pipelines".*?</form>', "", t, flags=re.S) if url == "/settings" else t      # settings-register-pipeline: its own forms are checked in test_web_settings_register.py
+        assert [m for m in re.findall(r"<input\b[^>]*>", settings_free) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m)] == []     # 012b: the buttons carry the run id (and the language)
         assert t.count("<details") - t.count('<details class="menu">') == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):
             u = urlsplit(htmllib.unescape(h))

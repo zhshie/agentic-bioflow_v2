@@ -811,6 +811,100 @@ def keep_screen(state_path, confirmation_id, screen_text):
     return confirm.keep_screen(state_path, confirmation_id, screen_text)
 
 
+# ---- pipeline versions a person registers on their own compute environment (settings-register-pipeline) -----------------------------------
+# The list lives in the environment's own config (`sitePipelines`), so no table is added. The page asks in two steps: check_site_pipeline_change
+# only reads (step one), register_site_pipeline and remove_site_pipeline write after the person's yes (step two).
+
+_SP_NAME = re.compile(r"^nf-core/[a-z0-9][a-z0-9-]{0,63}\Z")
+_SP_FIELD = re.compile(r"sitePipelines\[\d+\]\.(pipeline|revision|module|home)")
+_SP_NOT_FOUND = "找不到所選的運算環境 (compute environment not found)"
+_SP_FIELDS = ("pipeline", "revision", "module", "home")
+
+
+def _sp_no(message, field=None):
+    return {"ok": False, "field": field, "message": message}
+
+
+def _sp_plan(platform_path, op, ce, given, caller):
+    """(answer, environment, new list, gone): `answer` is a refusal (ok False) or None. Reads only; the new list is the list with the change made."""
+    if op not in ("add", "remove"):
+        return _sp_no("動作只能是新增或移除 (the action must be add or remove)", "op"), None, None, False
+    if not isinstance(ce, str) or not ce:
+        return _sp_no("請選擇運算環境 (choose a compute environment)", "ce"), None, None, False
+    env = compute_envs.get(platform_path, ce, owner=_caller_id(caller))
+    if env is None:
+        return _sp_no(_SP_NOT_FOUND), None, None, False
+    need = _SP_FIELDS if op == "add" else ("pipeline", "revision")
+    for field in need:
+        value = given.get(field)
+        if not isinstance(value, str) or not value:
+            return _sp_no("%s 必須填寫 (%s is required)" % (field, field), field), None, None, False
+    if op == "add" and not _SP_NAME.match(given["pipeline"]):
+        return _sp_no("管線名稱格式不合，須為 nf-core/<名稱> (the pipeline must look like nf-core/<name>: lower-case letters, digits and - only)",
+                      "pipeline"), None, None, False
+    current = [p for p in (env["config"].get("sitePipelines") or []) if isinstance(p, dict)]
+    same = [i for i, p in enumerate(current) if p.get("pipeline") == given["pipeline"] and p.get("revision") == given["revision"]]
+    if op == "remove":
+        if not same:
+            return None, env, current, True
+        return None, env, [p for i, p in enumerate(current) if i not in same], False
+    entry = {k: given[k] for k in _SP_FIELDS}
+    new = list(current)
+    if same:
+        new[same[0]] = entry
+    else:
+        new.append(entry)
+    try:
+        compute_envs.check_config_change(env, {"sitePipelines": new})
+    except compute_envs.CEError as e:
+        hit = _SP_FIELD.search(str(e))
+        return _sp_no(str(e), hit.group(1) if hit else None), None, None, False
+    return None, env, new, False
+
+
+def check_site_pipeline_change(platform_path, *, op, ce, pipeline, revision, module="", home="", caller=None):
+    """Step one of the settings page: would this change be accepted? Reads only (no confirmation needed, nothing is written or queued).
+    Returns {"ok": True, "gone": False, "count": n} when the change can be made (n = versions listed now), {"ok": True, "gone": True, ...}
+    for a removal of a version that is not listed, else {"ok": False, "field": <the box at fault or None>, "message": <why>}. Another person's environment answers as a missing one."""
+    answer, env, _new, gone = _sp_plan(platform_path, op, ce, dict(pipeline=pipeline, revision=revision, module=module, home=home), caller)
+    if answer:
+        return answer
+    listed = env["config"].get("sitePipelines")
+    return {"ok": True, "gone": gone, "count": len(listed) if isinstance(listed, list) else 0}
+
+
+def register_site_pipeline(platform_path, *, ce, pipeline, revision, module, home, confirmed_by=None, caller=None):
+    """Add one pipeline version to the caller's own compute environment (the same pipeline and version again replaces that entry), then queue
+    one pre-use check. Only after a person's yes through `confirmed_by`. The rules are those of the environment itself (compute_envs.clean).
+    Returns {"ok": True, "changed": True, "preflight": "queued" | "no_agent" | "not_checkable" | "refused"} or {"ok": False, "field", "message"}."""
+    _require_human(confirmed_by)
+    answer, env, new, _gone = _sp_plan(platform_path, "add", ce, dict(pipeline=pipeline, revision=revision, module=module, home=home), caller)
+    if answer:
+        return answer
+    try:
+        updated = compute_envs.update(platform_path, env["name"], {"config": {"sitePipelines": new}})
+    except compute_envs.CEError as e:
+        return _sp_no(str(e))
+    code, _note = compute_envs.queue_first_preflight(platform_path, updated)
+    return {"ok": True, "changed": True, "preflight": code}
+
+
+def remove_site_pipeline(platform_path, *, ce, pipeline, revision, confirmed_by=None, caller=None):
+    """Remove one pipeline version from the caller's own compute environment, only after a person's yes. No check is queued. A version that
+    is not listed changes nothing: {"ok": True, "changed": False}."""
+    _require_human(confirmed_by)
+    answer, env, new, gone = _sp_plan(platform_path, "remove", ce, dict(pipeline=pipeline, revision=revision), caller)
+    if answer:
+        return answer
+    if gone:
+        return {"ok": True, "changed": False}
+    try:
+        compute_envs.update(platform_path, env["name"], {"config": {"sitePipelines": new}})
+    except compute_envs.CEError as e:
+        return _sp_no(str(e))
+    return {"ok": True, "changed": True}
+
+
 # ---- the platform's own offer: clean the work folder of a run that succeeded (cloud-cleanup-f) -----------------------------------------
 
 def _skipped_for(reason, dry_run=False):

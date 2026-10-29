@@ -693,6 +693,15 @@ Automatic tests: `platform/tests/test_web_settings.py`. These steps are what no 
 3. **Read both languages**: every status shows a symbol, a word and a colour (✓ / ✗ / —). No Chinese on the English page, no error code, no internal name. Each ✗ in 使用前檢查 says what is missing.
 4. **Nothing to press**: no button, box or link in the middle column; the only form on the page is the logout one.
 
+## 設定頁登記管線 (settings-register-pipeline): the maintainer and the reviewer check
+
+Automatic tests: `platform/tests/test_web_settings_register.py`. These steps are what no script can see. Use a compute environment of your own; step 4 needs a real site.
+
+1. **390 px**: narrow the window (or the browser's phone view) to 390 px, open `/settings`, then press 登記 with filled boxes so the confirmation page shows. Neither page may scroll sideways; the four boxes, 登記, 移除, 確認 and 返回 are fully visible and large enough to press with a thumb.
+2. **Tab**: press Tab through the register form, each 移除 button, and the confirmation page (確認, 返回). Every one that takes focus shows a visible outline, and the order follows the page from top to bottom.
+3. **Both languages**: do the register steps once in Chinese and once with `?lang=en` (the language stays English through the confirmation page and the notice). Each notice and each error shows a symbol, a word and a colour (✓ / ○ / ✕). No Chinese on the English page, no error code, no internal name, nothing left in the other language.
+4. **A real site**: on a server or the national HPC where you have installed a pipeline version with `module`, register it from the page (the real module name and folder variable), press 確認, wait for the agent to answer, and reload `/settings`: the version is listed, the environment's status shows the result of the pre-use check, and on `/launch` step 3 choosing that version no longer shows "尚未在所選運算環境登記". Then press 移除 for it and confirm that the list loses it.
+
 ## SU 約 US$ (su-usd): the maintainer checks three things by hand
 
 The automatic tests (`platform/tests/test_su_usd.py`) check the numbers and the markup. Start `abf-platform web`, log in as a person who has finished national HPC runs, and open `/usage` and one run's page (`/?run=<id>`).

@@ -326,6 +326,8 @@ pipeline), `siteConfigVars` (site variables the CE's config text refers to) and 
 (pipelines the site already holds locally, by name and path). A worked example is
 `configs/sites/nchc-nano4-ce.json`.
 
+**Register from the web page.** You do not have to ask an administrator to type `ce update`. After you have installed a pipeline version on your own server or on the national HPC with `module`, open the Settings page, find your compute environment, and fill the four boxes under "Register a pipeline": the pipeline (for example `nf-core/ampliseq`), the version (for example `2.18.0`, a release or a 40-character commit id, never a branch), the module name (the name `module load` uses on the site, for example `biology/nf-core-ampliseq/2.18.0`) and the pipeline folder variable (the environment variable the module sets, for example `NFCORE_AMPLISEQ_HOME`). Press 登記, read the confirmation page, then press 確認. The platform then queues one pre-use check, which asks the site's agent to load the module. 移除 beside a registered version takes it off the list. The same rules as the command line apply. While the list is empty, a launch uses the nf-core release directly; after you register the first version, only registered versions can be launched on that environment.
+
 That file is a template: replace its placeholders before `abf-platform ce create`.
 
 | Placeholder | Fill in |
