@@ -313,9 +313,13 @@ def test_tcs21_s22_left_grey_and_settings(w):
     t = login(w, "ann").get("/").text
     left = pane(t, "left")
     anchors = re.findall(r"<a\b.*?</a>", left, re.S)
-    for word in ("＋ 新專案", "搜尋專案或分析", "↑ 上傳資料", "資料瀏覽", "儀表板"):
+    for word in ("＋ 新專案", "搜尋專案或分析", "資料瀏覽", "儀表板"):
         assert re.search(r'<span class="off">%s <span class="later">之後開放</span></span>' % re.escape(word), left), word
         assert not [a for a in anchors if word in a], word
+    # web-upload-page ruling 13: the upload entry is a link to /upload (Chinese and English), no longer a grey item
+    assert '<a class="nv" href="/upload">↑ 上傳資料</a>' in left and "↑ 上傳資料 <span" not in left
+    en_left = pane(login(w, "ann").get("/?lang=en").text, "left")
+    assert '<a class="nv" href="/upload?lang=en">↑ Upload data</a>' in en_left and "↑ Upload data <span" not in en_left
     assert re.search(r'<a\b[^>]*href="/settings"[^>]*>\s*設定\s*</a>', left)
     forms = re.findall(r"<form\b[^>]*>", left)          # the left column has the log-out form only (the run page's buttons are in the middle)
     assert len(forms) == 1 and 'action="/logout"' in forms[0] and len(re.findall(r"<input\b", left)) == 1
@@ -820,6 +824,7 @@ def test_tch11_read_only(w):
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
                       ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline
                       ("/token", ("OPTIONS", "POST")),
+                      ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),      # web-upload-page
                       ("/usage", ("GET", "HEAD")), ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: /welcome
 
 
@@ -1185,10 +1190,13 @@ def test_tn04_other_paths_stay_missing(w):
     # TC-N04
     w.user("ann")
     c = login(w, "ann")
-    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/submit", "/upload",
+    for path in ("/runs", "/ce", "/compute-envs", "/oauth/token", "/oauth/authorize", "/admin", "/submit",
                  "/password", "/passwd", "/cost", "/setup", "/api/launch"):
         assert c.get(path).status_code == 404, path
         assert c.post(path, data={"a": "b"}).status_code in (404, 405), path
+    # web-upload-page ruling 17: /upload now exists; without a login it goes to the login page like /launch does
+    anon = w.web()
+    assert (anon.get("/upload").status_code, anon.get("/upload").headers["location"]) == (anon.get("/launch").status_code, anon.get("/launch").headers["location"]) == (303, "/login")
 
 
 def test_tn05_no_new_tool_or_action(w):
@@ -1234,7 +1242,7 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
         assert t.count("<details") - t.count('<details class="menu">') == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))
         for h in hrefs(t):
             u = urlsplit(htmllib.unescape(h))
-            assert u.path in ("/", "/settings", "/launch", "/usage") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab", "from"}, h      # 011b adds ?tab=; 012b the launch page and ?from=
+            assert u.path in ("/", "/settings", "/launch", "/usage", "/upload") and set(parse_qs(u.query)) <= {"run", "stage", "lang", "tab", "from"}, h      # 011b adds ?tab=; 012b the launch page and ?from=
         for word in ("系統自動處理紀錄", "待你決定", "Awaiting you", "拖放", "MultiQC"):     # 011b: 目前步驟／Current step／Metrics now exist
             assert word not in t, (url, word)
     left = pane(c.get("/").text, "left")
