@@ -62,7 +62,7 @@ from starlette.requests import ClientDisconnect
 from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from . import actions, jobs as jobs_mod, oauth, status as status_mod, store, web_board, web_cost, web_launch, web_settings
+from . import actions, oauth, store, web_board, web_cost, web_launch, web_settings
 from . import uploads_web, web_upload
 
 COOKIE = "abf_web"
@@ -486,7 +486,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return None
         if view.get("found") is False:
             return None
-        ce = jobs_mod.latest_launch_ce(actions.platform_path_for(index_path, platform_path), view["name"])
+        ce = actions.run_environment(actions.platform_path_for(index_path, platform_path), view["name"])
         if ce:        # the Compute card: the environment the newest hand-off record names (the page's own addition; the action's answer is unchanged)
             view["compute_env"] = ce
         return view
@@ -548,21 +548,18 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                                 request.query_params.get("tab"), relist=request.query_params.get("relist") == "1")
 
     def find_by_name(caller, name):
-        """(the id of the person's run of this name in the index, whether the hand-off record names the person for it)."""
-        try:
-            view = status_mod.find_run(index_path, name)
-        except sqlite3.Error:
-            view = None
-        owned = name in jobs_mod.owned_run_names(actions.platform_path_for(index_path, platform_path), caller.user_id)
-        return (view["id"] if view else None), owned
+        """(the id of the newest run of this name among the person's own runs in the index, whether only the person's own hand-off record has it)."""
+        run_id = next((r["id"] for r in read_runs(caller) if r.get("name") == name), None)
+        sent = run_id is None and actions.launch_prefill(platform_path, name, caller=caller).get("found") is True
+        return run_id, sent
 
     async def run_by_name(sid, user, caller, lang, name, stage, tab, relist=False):
         """GET /?run_name=<name> (the link on the page after Send): the run's own page once the index has it; while only the person's own hand-off
         record has it, a page that says so and reloads itself; any other name (somebody else's, or none) is the 404 of a missing run."""
-        run_id, owned = await run_in_threadpool(find_by_name, caller, name)
-        if run_id is not None:       # board_page asks get_run, which answers a run of somebody else like a missing one
+        run_id, sent = await run_in_threadpool(find_by_name, caller, name)
+        if run_id is not None:
             return await board_page(sid, user, caller, lang, run_id, stage, tab, relist=relist)
-        if not owned:
+        if not sent:
             return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
         runs = await run_in_threadpool(read_runs, caller)
         return HTMLResponse(web_board.render_waiting(user["name"], csrf(sid, "logout"), runs, lang, name), headers=_HEADERS)

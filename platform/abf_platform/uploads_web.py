@@ -297,14 +297,13 @@ def save_sheet(area, name, data):
         raise OSError("the samplesheet folder is not inside the upload area")
     clean = clean_sheet_name(name)
     stem, ext = clean[:-4], clean[-4:]
-    n = 1
-    while True:
+    for n in range(1, 10000):
         kept = clean if n == 1 else "%s-%d%s" % (stem, n, ext)
         try:
             fd = os.open(os.path.join(folder, kept), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except FileExistsError:
-            n += 1
             continue
         with os.fdopen(fd, "wb") as f:
             f.write(data)
         return kept
+    raise OSError("too many samplesheets of that name")

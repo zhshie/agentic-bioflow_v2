@@ -16,7 +16,7 @@ from test_web_board import no_cjk, pane, plain, seed
 from test_web_upload import BANNED, BOUNDARY, CTYPE, FETCH, Up, middle, upload_token
 
 SHEET = "sample,fastq_1,fastq_2,strandedness\n" + "".join(
-    "s%d,/work/u9613010/r5/s%d_1.fq.gz,/work/u9613010/r5/s%d_2.fq.gz,auto\n" % (i, i, i) for i in range(10))
+    "s%d,/site/r5/s%d_1.fq.gz,/site/r5/s%d_2.fq.gz,auto\n" % (i, i, i) for i in range(10))
 DOC_ZH = "國網環境的資料目前請用指令上傳"
 
 

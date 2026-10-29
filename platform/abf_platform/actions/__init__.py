@@ -111,6 +111,12 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
     return view
 
 
+def run_environment(platform_path, run_name):
+    """The name of the compute environment the newest hand-off record of this run names, or None (no record, or none named). Only reads; the web
+    board shows it on the Compute card of a run the person already owns (the caller's right to the run is settled by get_run)."""
+    return jobs.latest_launch_ce(platform_path, run_name)
+
+
 def _su_of_run(index_path, view, platform_path):
     """The `su` part of get_run: five fixed keys (and twd when the site has money rates per SU). Unknown, with the reason, when
     the run has not ended or fewer succeeded tasks have a usage row than the run counts; never a partial sum."""
