@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|revoke | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | web | token new | agent-token new|list|revoke [--id N] | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
 import argparse
 import asyncio
 import json
@@ -293,7 +293,29 @@ def cmd_oauth_revoke(args):
     return 0
 
 
+def cmd_agent_token_list(args):
+    rows = store.list_agent_tokens(store.default_tokens_path(), args.name)
+    for r in rows:
+        _say("id %s  agent %s  user %s  created %s  %s" % (
+            r["id"], r["agent_name"], r["user"] or "-", time.strftime("%Y-%m-%d %H:%M", time.localtime(r["created_at"])),
+            "revoked" if r["revoked_at"] else "not revoked"))
+    if not rows:
+        _say("no agent tokens" + (" for %s" % args.name if args.name else ""))
+    return 0
+
+
 def cmd_agent_token_revoke(args):
+    if (args.name is None) == (args.id is None):
+        _err("rejected: give either an agent name or --id N, not both and not neither (請給代理名字或 --id，二選一)")
+        return 1
+    if args.id is not None:
+        got = store.revoke_agent_token(store.default_tokens_path(), args.id)
+        if got is None:
+            _err("rejected: no live agent token with id %s (沒有這個有效的代理 token); list them with: abf-platform agent-token list" % args.id)
+            return 1
+        _say("revoked agent token %s (agent %s); it is refused from its next request, other tokens of this agent are untouched"
+             % (args.id, got["agent_name"]))
+        return 0
     n = store.revoke_agent_tokens(store.default_tokens_path(), args.name)
     _say("revoked %d token(s) of agent %s; the agent is refused from its next request" % (n, args.name))
     return 0 if n else 1
@@ -734,9 +756,13 @@ def build_parser():
     an.add_argument("name")
     an.add_argument("--user", help="the user this agent belongs to (required once the platform has users); the agent then belongs to that user, and nobody else's token can take it")
     an.set_defaults(func=cmd_agent_token_new)
-    ar = asub.add_parser("revoke", help="revoke every token of an agent name")
-    ar.add_argument("name")
+    ar = asub.add_parser("revoke", help="revoke every token of an agent name, or one token by --id (see agent-token list)")
+    ar.add_argument("name", nargs="?")
+    ar.add_argument("--id", type=int, help="revoke only the agent token with this id")
     ar.set_defaults(func=cmd_agent_token_revoke)
+    al = asub.add_parser("list", help="list the agent tokens with their ids (never the token values)")
+    al.add_argument("name", nargs="?")
+    al.set_defaults(func=cmd_agent_token_list)
 
     u = sub.add_parser("user", help="the people who may call the MCP server")
     usub = u.add_subparsers(dest="user_command", required=True)
