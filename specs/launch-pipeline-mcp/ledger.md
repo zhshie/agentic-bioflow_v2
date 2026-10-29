@@ -7,3 +7,4 @@
 - 注意（偏離計畫清單）：`test_pipeline_launch.py::test_no_new_public_name_in_the_tool_or_web_layers`（TC-161，註解「外層名稱留給 017e」）禁止 mcp_server.py 出現 `launch_pipeline`／`pipeline_launch`，與本片必然衝突。只改了 mcp_server.py 那一格：檢查前先去掉 `request_pipeline_launch` 與 `launch_pipeline` 兩個字串，web.py、web_board.py 與 handlers.py 的檢查原樣。請驗收者確認。
 - 資料庫前後比對：`test_asks_only_and_matches_launch_shape` 呼叫前後 `launches` 列數不變、`launch_nextflow` job 為 0、只多一張 pending confirmation。
 - `git diff --stat e428661b HEAD`：只含 mcp_server.py、chat_tools.py、新測試檔與上列既有測試檔；無 web.py、web_board.py、static、confirm.py、actions/__init__.py、migration。
+- 全套在 HEAD 跑：136/136 all green。
