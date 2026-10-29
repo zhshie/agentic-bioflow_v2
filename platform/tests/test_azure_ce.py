@@ -717,8 +717,8 @@ def test_the_type_constants():
     from abf_platform import compute_envs
     assert compute_envs.SUPPORTED == "slurm-platform"
     # azure-launch changed this on purpose: Azure Batch can be launched now, so nothing is check-only any more.
-    assert compute_envs.PLATFORM_HOST_TYPES == ("googlebatch-platform", "awsbatch-platform", AZ)
-    assert compute_envs.CHECK_ONLY_TYPES == ("k8s-platform",)      # k8s-ce: Kubernetes is the one check-only type now
+    assert compute_envs.PLATFORM_HOST_TYPES == ("googlebatch-platform", "awsbatch-platform", AZ, "k8s-platform")      # k8s-launch
+    assert compute_envs.CHECK_ONLY_TYPES == ()      # k8s-launch: nothing is check-only any more
     assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, "googlebatch-platform", "awsbatch-platform", AZ, "k8s-platform")
 
 
@@ -860,7 +860,7 @@ def test_docs_list_every_azure_key_and_check():
                  "storage_account_key", "storage_sas_token", "預檢不計費", "creates no pool"):
         assert word in d, word
     assert re.search(r"`azbatch-platform` \| Azure Batch \| checked, launched and cleaned on the platform host \(resume: not yet\)", d)
-    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only" in d and "the other eleven" not in d
+    assert "Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only" in d and "the other eleven" not in d
     assert re.search(r"user subscription[^\n]*(not supported|本片不支援)", section, re.I) or "user subscription 模式的 Batch 帳號本片不支援" in section
     assert "lowPriority" in section and "az" in section and re.search(r"operator|營運者", section)
     par = doc("SEQERA_PARITY.md")

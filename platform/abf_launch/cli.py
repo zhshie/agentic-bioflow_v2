@@ -196,12 +196,15 @@ def _platform(bundle):
     return ce.get("platform") if isinstance(ce, dict) else None
 
 
-def _submitted_line(row, platform=None):
+def _submitted_line(row, platform=None, bundle=None):
     if platform == bundle_mod.AZURE:
         return ("已啟動：主控程序編號（pid）%s；run 名稱 %s；專屬資料夾 %s。主控程序跑在平台主機上；Azure Batch 的工作與費用從現在開始計。"
                 % (row["slurm_job_id"], row["run_name"], row["run_folder"]))
     if platform in (bundle_mod.GCB, bundle_mod.AWS):
         return "已啟動：主控程序編號（pid）%s；run 名稱 %s；專屬資料夾 %s。" % (row["slurm_job_id"], row["run_name"], row["run_folder"])
+    if platform == bundle_mod.K8S and isinstance(bundle, dict):
+        return ("已啟動：Pod %s（命名空間 %s）；叢集的運算費用從現在開始計。由你的 Kubernetes 叢集所屬的雲端或機房計費；本系統目前沒有費用預估與上限"
+                % (bundle.get("pod_name"), (bundle.get("ce") or {}).get("namespace")))
     return "已送出：Slurm 工作編號 %s；run 名稱 %s；專屬資料夾 %s。" % (row["slurm_job_id"], row["run_name"], row["run_folder"])
 
 
@@ -210,7 +213,7 @@ def _report_launch(state, job_id, bundle):
     out = asyncio.run(jobs.wait_for_result(state, job_id))
     if out["state"] == "done" and out["ok"]:
         row = _row_of_job(state, job_id)
-        _say(_submitted_line(row, _platform(bundle)) + "進度請用 `abf-platform launches` 看送出的事實，Nextflow 起來後用 get_run 看每個 process。")
+        _say(_submitted_line(row, _platform(bundle), bundle) + "進度請用 `abf-platform launches` 看送出的事實，Nextflow 起來後用 get_run 看每個 process。")
         return 0
     if out["state"] in ("refused", "error"):
         res = out["result"] or {}
@@ -230,7 +233,7 @@ def _report_launch(state, job_id, bundle):
             time.sleep(0.25)
     row = _row_of_job(state, job_id)
     if row is not None and row["submitted_at"] is not None:
-        _say(_submitted_line(row, _platform(bundle)) + "（代理在期限之後才回報；這個編號已記下。）")
+        _say(_submitted_line(row, _platform(bundle), bundle) + "（代理在期限之後才回報；這個編號已記下。）")
         return 0
     if not out.get("claimed"):
         _err("代理沒有領走這個工作，國網上沒有任何改變 (the agent never took the job; nothing was done on the site)")

@@ -910,3 +910,14 @@ The automatic tests use fakes for the `az` program and never touch the network. 
 5. **Soft delete and versions.** If the storage account has blob soft delete or versioning on, check in the portal that deleted blobs and old versions are still there after the clean (the documents say they are).
 6. **Wildcard.** Check that `delete-batch --pattern "<prefix>*"` really matches across `/` on your account (blobs two folders deep must go), and that it did not touch `work2/`.
 
+
+## Launching on Kubernetes (k8s-launch): the maintainer checks by hand
+
+The automatic tests use a fake `kubectl` runner and touch no cluster. A real cluster is needed once, and it costs money (the cluster's own cloud or data centre bills). Needs human:
+
+1. Set the station setting `k8s_head_image` to an image that has Nextflow, and `platform_public_url` to an `https://` address the cluster can reach.
+2. Create a `k8s-platform` environment whose preflight passes, then use a small public pipeline and a samplesheet whose paths are inside the claim. Run `prepare_launch` and read the screen: it must name who bills, the Pod name, the namespace, the claim and the files, and show no token and no image.
+3. Say yes. Check that one Secret and one head Pod now exist (`kubectl get secret,pod -n <namespace>`) and that the platform shows the run as started.
+4. Watch the run reach the platform; check that task pods start and finish.
+5. Cancel another run: only its head Pod is deleted; the task pods are listed in the reminder, and you delete them if they are still there.
+6. Confirm that nothing in the platform logs, the answers or the ledger contains the Seqera token.

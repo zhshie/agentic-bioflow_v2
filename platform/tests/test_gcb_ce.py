@@ -848,9 +848,9 @@ def test_the_type_constants():
     assert compute_envs.SUPPORTED == "slurm-platform"
     # aws-launch changed this on purpose: before, PLATFORM_HOST_TYPES == (GCB,) and CHECK_ONLY_TYPES == ("awsbatch-platform",);
     # now AWS can be launched too, so it is a platform-host type and nothing is check-only any more.
-    assert compute_envs.PLATFORM_HOST_TYPES == (GCB, "awsbatch-platform", "azbatch-platform")      # azure-launch
+    assert compute_envs.PLATFORM_HOST_TYPES == (GCB, "awsbatch-platform", "azbatch-platform", "k8s-platform")      # k8s-launch
     # azure-ce-type changed this on purpose: Azure Batch is created and checked but not launched, so it is the one check-only type.
-    assert compute_envs.CHECK_ONLY_TYPES == ("k8s-platform",)      # k8s-ce
+    assert compute_envs.CHECK_ONLY_TYPES == ()      # k8s-launch: nothing is check-only any more
     assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, "awsbatch-platform", "azbatch-platform", "k8s-platform")
 
 
@@ -864,7 +864,7 @@ def test_docs_list_every_gcb_key_and_check():
     assert re.search(r"`googlebatch-platform` \| Google Cloud Batch \| Slurm-like confirmed launch and cancel on the platform host "
                      r"\(resume: not yet\)", d)
     # aws-launch changed this sentence on purpose (plan A9 d): AWS Batch can run now
-    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only" in d
+    assert "Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only" in d
     for key in ("project", "location", "workDir", "spot", "bootDiskSize", "bootDiskImage", "serviceAccountEmail", "network",
                 "subnetwork", "usePrivateAddress", "labels", "maxvCpus") + tuple(CHECK_NAMES):
         assert "`%s`" % key in d, key

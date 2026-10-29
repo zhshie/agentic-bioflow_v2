@@ -67,7 +67,9 @@ class Cluster:
                 return "serviceaccount"
             jp = a[a.index("-o") + 1] if "-o" in a else None
             return "get_%s" % a[1] + ("_phase" if jp else "")
-        return "%s_%s" % (a[0], a[1] if a[0] in ("create", "delete") and a[1] != "-f" else "manifest")
+        if a[0] in ("create", "delete"):
+            return "%s_%s" % (a[0], a[1] if a[1] != "-f" else "manifest")
+        return a[0]
 
     def __call__(self, argv, env, timeout, stdin=None):
         self.calls.append((list(argv), dict(env or {}), stdin))
@@ -135,6 +137,7 @@ class Box:
         monkeypatch.setenv("ABF_STATION_KUBECONFIG", str(self.cred))
         monkeypatch.setenv("ABF_FOO", "foo")
         monkeypatch.setenv("KUBE_BAR", "bar")
+        monkeypatch.setenv("ABF_STATION_GCB_SETTLE_SECONDS", "0")
         self.cluster = Cluster()
         self.started = []
         self.has_kubectl = True
@@ -227,7 +230,7 @@ def test_launch_creates_the_secret_then_the_pod(box):
     # TC-001, TC-002, TC-003, TC-004, TC-005, TC-008, K8L-RUN-01
     b, res = launch_ok(box)
     assert res["ok"] is True and res["run_name"] == "r1"
-    assert res["message"].startswith("已啟動：Pod nf-r1（命名空間 nf-ns）；叢集的運算費用從現在開始計")
+    assert res["message"].startswith("已啟動：Pod nf-r1（命名空間 %s）；叢集的運算費用從現在開始計" % NS)
     assert isinstance(res["slurm_job_id"], int) and res["slurm_job_id"] != 0
     assert b["pod_name"] == "nf-r1"
     c = box.cluster
@@ -338,7 +341,7 @@ def test_launch_refusals_before_any_call(box):
     # TC-016, TC-017, TC-018, TC-019
     b = box.bundle()
     changed = copy.deepcopy(b)
-    changed["files"]["k8s.config"] = changed["files"]["k8s.config"].replace("nf-ns", "nf-nt")
+    changed["files"]["k8s.config"] = changed["files"]["k8s.config"].replace(NS, "other-ns")
     for label, job in (("changed", job_of(changed)), ("other agent", job_of(dict(b, agent="a2"))),
                        ("no token", job_of(b, token="")), ("deadline", job_of(b, remaining=1))):
         state, res = box.handle(job)
@@ -753,5 +756,5 @@ def test_resume_wording_and_cli_lines():
     row = {"slurm_job_id": 1, "run_name": "r1", "run_folder": "/workspace/_k8s_runs/r1"}
     bundle = {"run_name": "r1", "pod_name": "nf-r1", "ce": {"platform": compute_envs.K8S, "namespace": NS}}
     line = cli._submitted_line(row, compute_envs.K8S, bundle)
-    assert line.startswith("已啟動：Pod nf-r1（命名空間 nf-ns）；叢集的運算費用從現在開始計") and "Slurm 工作編號" not in line
+    assert line.startswith("已啟動：Pod nf-r1（命名空間 %s）；叢集的運算費用從現在開始計" % NS) and "Slurm 工作編號" not in line
     assert cli._submitted_line(row) == "已送出：Slurm 工作編號 1；run 名稱 r1；專屬資料夾 /workspace/_k8s_runs/r1。"

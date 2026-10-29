@@ -92,6 +92,10 @@ def _not_found(ce_name):
     return JobRefused("compute environment %r not found (找不到)" % ce_name[:100])
 
 
+K8S_NOT_YET = {"clean_" "work": "清理", "put_upload": "上傳檔案", "list_site_files": "列出站台檔案", "fetch_run_records": "讀取 run 紀錄",
+               "read_task_log": "讀取 task 記錄"}      # what a Kubernetes environment does not do yet, in the words of the refusal
+
+
 def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
     """The compute environment row of a job's target, after every check that does not depend on the content.
 
@@ -112,10 +116,10 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
             raise JobRefused("%s is an AWS Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
         if row["platform"] == compute_envs.AZURE:
             raise JobRefused("%s is an Azure Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
+        if row["platform"] == compute_envs.K8S:
+            raise JobRefused("%s is a Kubernetes environment: Kubernetes 尚未支援%s (this job kind is not built for it yet)"
+                             % (ce_name, K8S_NOT_YET.get(kind, "這個動作")))
         raise JobRefused("%s is a Google Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
-    if row["platform"] in compute_envs.CHECK_ONLY_TYPES and kind != "preflight":
-        raise JobRefused("%s is a Kubernetes environment: it is checked on the platform host, and launching on it is not built yet "
-                         "(尚未支援送出；下一步 k8s-launch)" % ce_name)
     if kind == "put_upload" and row["platform"] not in compute_envs.CLOUD_JOB_KINDS:
         raise JobRefused("%s cannot hold cloud data: only a Google Batch, AWS Batch or Azure Batch environment can (只有 Google Batch、AWS Batch 或 Azure Batch 環境能放雲端資料)" % ce_name)
     if status == compute_envs.UNSUPPORTED:
