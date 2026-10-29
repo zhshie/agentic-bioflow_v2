@@ -165,7 +165,7 @@ BASE_POST = {'pressed-launch': (200, 'ef1083638be3de88'), 'pressed-cancel': (200
              'late-launch': (410, 'd2df3540d123bd63'), 'late-cancel': (410, 'd2df3540d123bd63')}
 # web-upload-page ruling 25: the left column's upload item is a link now, so the six board digests are the new ones (only that item differs)
 BASE_BOARD = {'succeeded-zh': (200, 'b900748476502f3d'), 'succeeded-en': (200, '870addd406492402'),
-              'failed-zh': (200, 'f5866fcf5bb0a339'), 'failed-en': (200, '918ba6c8db56e423'),
+              'failed-zh': (200, 'a47b98c292669604'), 'failed-en': (200, '8bc2d3381f20e8f1'),
               'running-zh': (200, 'f5b7e52afdb2ec69'), 'running-en': (200, '9c1d9195eacfbe23')}
 BASE_STYLE = '66b9a8e1a9c6f7d2'
 

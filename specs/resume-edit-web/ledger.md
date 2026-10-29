@@ -31,3 +31,7 @@ Found by the first full run (two more pinned tests):
 |---|---|---|
 | `test_estimate_su.py` `test_tc030_no_su_route_on_the_web` | the search for a route whose path holds `su` or `estimate` skips `/act/resume/edit` | the path (fixed by the plan) holds the letters `su` in "resume"; the test is about SU, and the new page has nothing to do with it. One path is excluded, the check stays for every other route. |
 | `test_resume_scope.py` `test_tc146_…` | none | it passes by naming: `web.py` has no new name with resume/relaunch in it (`edit_reads`, `edit_page`, `edit_get`, `edit_post`; the helpers in `web_launch.py` are `edit_changes`, `edit_params_block`, `edit_page_html`) |
+
+| `test_clean_page.py` `BASE_BOARD` (`failed-zh`, `failed-en`) | the two pinned digests of the board of a failed run were replaced by the digests of the board now | the failed run's menu and notice now carry the link "修改後續跑" (TC-001, TC-002); this is the one pinned page that holds a failed run with no clean-up request. The `succeeded` and `running` digests are unchanged, which shows the page is otherwise the same bytes. This is a changed value, not an added one: it cannot be an addition. |
+
+Note on the full run: a first-pass failure re-runs the shard under a longer temporary path (`….retry`), and `test_aws_ce.py::test_a_missing_credential_file_says_where_to_put_it` then fails on the path length; it passes alone and in a normal pass. It is not related to this task.
