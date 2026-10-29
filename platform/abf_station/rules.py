@@ -82,7 +82,7 @@ def clean_root(value, label):
 
 
 def clean_queue(value, label):
-    if not isinstance(value, str) or not _QUEUE.match(value):
+    if not isinstance(value, str) or not _QUEUE.match(value) or ".." in value:
         raise Refusal("%s is not a valid queue name (letters, digits, _ . - only)" % label)
     return value
 
