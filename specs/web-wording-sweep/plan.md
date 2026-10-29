@@ -193,6 +193,10 @@ source: 維護者 2026-10-27「中文顯示不能口語。」（DESIGN.md:80 另
 12. **confirm.py 範圍（預檢 10-29，取代裁決 2 的例子）**：只改 `confirm.py:390`（看板拒絕刪除那句）與 `test_cleanup_confirm.py:281`。`confirm.py:145` 是英文在前、看板看不到，不改；看板看到的「不是你的申請」是 `web.py:383` 的標題，依裁決 10 改。
 13. **web.py 內嵌中文**：約 81 句不在字串表，`ast` 守衛管不到，由測試 5–7 的渲染頁檢查把關；行號已漂移 5–14 行，以 grep 為準。
 14. **清單外兩檔的期望字串（developer-agent 10-29 17:3x，閱卷 FAIL 後補）**：`platform/tests/test_su_usd.py`、`platform/tests/test_oauth_review.py` 釘的正是本計畫替換表要改的句子（費用頁附註與匯率句、「本月尚無分析」、「找不到該次分析」、授權頁「不能代您送出」），漏列是計畫的疏失，不是 executor 越界。**核可**：這兩檔與 `test_web_guided_launch_2b.py::test_scope_page_limits`（「我的 run」→「我的分析」）只改期望字串，斷言數量與強度不變；併入裁決 11 的清單。`test_aws_launch.py`、`test_azure_launch.py`、`test_gcb_launch.py` 仍不准動。
+15. **閱卷「需要人看的事」裁決（developer-agent 10-29 19:4x）**：
+   - (a) 上傳頁（/upload）其他口語句**必須照 TC-040 改**（例：「沒有可用的雲端運算環境。」「這些檔案是空的，沒有內容可以上傳」「沒有收下任何檔案」「請回到上傳頁」），寫法與看板、設定頁一致（尚無／無／為空／返回）；`web.py` 約 458 行「請回到 AI 重新送出」改「請返回 AI 重新送出」。對應測試只改期望字串。
+   - (b) 確認頁英文版原本就顯示中文句，整頁雜湊隨中文改動而變，**接受**；TC-087 對確認頁以 ledger 說明為準。
+   - (c) 合併 v3 帶進來的 `platform/tests/test_settings_pick_installed.py` 與 `web_settings.py` 的 pf_pick_gone 文案，**核可**只改期望字串，併入裁決 11 的清單。
 
 ## 專長守則（ui）
 
