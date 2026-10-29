@@ -164,3 +164,5 @@ assert [...] == []   Left contains 28 more items, first extra item: ('web_board.
 |---|---|---|---|
 | web_settings.py:42 `pf_pick_gone` | 站台清單中沒有這個版本，請按「重新讀取站台清單」。 | 站台清單中無此版本，請按「重新讀取站台清單」。 | 合併進來的新中文字串違反禁用詞（這個、沒有這個） |
 | test_settings_pick_installed.py:25 `GONE_ZH` | 同上改前 | 同上改後 | 期望字串隨表值 |
+| test_settings_pick_installed.py:37 `EXPIRED_HINT` | 表單的記號不正確或已失效，什麼都沒有改。請重新整理頁面後再試。 | 表單驗證碼不符或已失效，未變更任何內容。請重新整理頁面後再試。 | 隨 `pf_expired` 表值（本計畫裁決 10） |
+| test_settings_pick_installed.py:725 | "沒有運算環境。" | "尚無運算環境。" | 隨 `no_ce` 表值 |
