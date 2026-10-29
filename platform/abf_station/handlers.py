@@ -13,6 +13,7 @@ quoted. What goes back to the platform is the agent's own short wording, never t
 import re
 from datetime import datetime, timezone
 
+from abf_platform import compute_envs      # the same field rules as a registered pipeline
 from . import aws_preflight, azure_preflight, cancel, clean, fetch, gcb_preflight, launch, pipeline_files, put_upload, readlog, rules
 from .site import quote
 
@@ -50,7 +51,7 @@ def handle(job, ctx):
         return _refused("the job has an argument this agent does not take (不支援): %s" % str(extra[0])[:40])
     try:
         if kind == "launch_nextflow":
-            return launch.run_launch(job, ctx, preflight)
+            return launch.run_launch(job, ctx, lambda e, c: preflight(e, c, inventory=False))      # a launch needs the verdict only, never the site list
         if kind == "cancel_run":
             return cancel.run_cancel(job, ctx)
         if kind == "clean_work":
@@ -261,8 +262,10 @@ def _judge_site_pipeline(entry, res):
     return True, label
 
 
-def preflight(env, ctx):
-    """Run every check and report all of them. Nothing is created, changed or submitted on the site."""
+def preflight(env, ctx, inventory=True):
+    """Run every check and report all of them. Nothing is created, changed or submitted on the site.
+    With `inventory` (the default) a read-only list of the nf-core modules installed on the site is added as the separate field
+    `site_inventory`, once the connection has passed; it is never one of the checks and never changes the verdict."""
     site = ctx.site
     checks = []
     planned = _planned(env)
@@ -418,7 +421,86 @@ def preflight(env, ctx):
             add("image_library", "pass", "the read-only image library can be read")
         else:
             add("image_library", "fail", "the read-only image library %s cannot be read (唯讀映像庫讀不到)" % library)
-    return _verdict(checks)
+    verdict = _verdict(checks)
+    if inventory:
+        verdict["site_inventory"] = site_inventory(site)
+    return verdict
+
+
+# ---- the nf-core modules installed on the site (settings-pick-installed) ----------------------------------------------------------------
+
+INVENTORY_LIMIT = 200
+INVENTORY_TIMEOUT = 180
+# One fixed command: nothing from the environment's settings is in it. It only reads: the module list (terse, the whole of it), and for every
+# nf-core module the variable that `module show` says it sets. grep keeps only names of the shape (^|/)nf-core-<name>/<version>.
+_INVENTORY_COMMAND = (
+    "if type module >/dev/null 2>&1; then "
+    "l=$(module -t avail 2>&1); r=$?; "
+    "if [ \"$r\" -ne 0 ]; then echo abf_inv=failed; else "
+    "echo abf_inv=ok; "
+    "printf '%s\\n' \"$l\" | grep -E '(^|/)nf-core-[a-z0-9-]+/[0-9A-Za-z._-]+$' | head -n " + str(INVENTORY_LIMIT) + " | "
+    "while IFS= read -r m; do echo \"abf_mod=$m\"; "
+    "module show \"$m\" 2>&1 | grep -oE 'NFCORE_[A-Z0-9_]+_HOME' | head -n 1 | sed 's/^/abf_home=/'; done; "
+    "fi; else echo abf_inv=nomodule; fi")
+_INV_MODULE = re.compile(r"(?:^|/)nf-core-([a-z0-9-]+)/([0-9A-Za-z._-]+)\Z")
+_INV_PIPELINE = re.compile(r"nf-core/[a-z0-9][a-z0-9-]{0,63}\Z")
+_INV_REVISION = re.compile(r"(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")
+
+
+def _inventory_item(module, home):
+    """One entry of the list, or None when it does not pass the same field rules as a registered pipeline (that one entry is dropped)."""
+    found = _INV_MODULE.search(module)
+    if not found:
+        return None
+    pipeline = "nf-core/" + found.group(1)
+    revision = found.group(2)
+    source = "module"
+    if home is None:
+        home, source = "NFCORE_" + found.group(1).upper().replace("-", "_") + "_HOME", "guessed"
+    if (not _INV_PIPELINE.match(pipeline) or not _INV_REVISION.match(revision) or compute_envs._module_problem(module)
+            or compute_envs._var_problem(home)):
+        return None
+    return {"pipeline": pipeline, "revision": revision, "module": module, "home": home, "home_source": source}
+
+
+def site_inventory(site):
+    """{"status": "ok" | "no_module_system" | "error", "items": [...], "read_at": <time>} from one read-only call on the site. It never raises."""
+    read_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def out(status, items=(), reason=None):
+        got = {"status": status, "items": list(items), "read_at": read_at}
+        if reason:
+            got["reason"] = reason
+        return got
+
+    try:
+        res = site.call([_INVENTORY_COMMAND], timeout=INVENTORY_TIMEOUT)
+    except Exception:      # a failed read must never change the verdict of the check
+        return out("error", reason="the site list could not be read (讀不出站台清單)")
+    text = res.out.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    if "abf_inv=nomodule" in lines or (res.rc == 127 and "abf_inv=ok" not in lines) or "module: command not found" in (res.err or "") + text:
+        return out("no_module_system")
+    if res.timed_out or res.rc != 0 or "abf_inv=ok" not in lines:
+        return out("error", reason="the module list could not be read (讀不出模組清單)")
+    items, seen, state = [], set(), {"module": None, "home": None}
+
+    def close():
+        module = state["module"]
+        if module is not None and module not in seen and len(items) < INVENTORY_LIMIT:
+            item = _inventory_item(module, state["home"])
+            if item:
+                seen.add(module)
+                items.append(item)
+
+    for line in lines:
+        if line.startswith("abf_mod="):
+            close()
+            state["module"], state["home"] = line[len("abf_mod="):].strip(), None
+        elif line.startswith("abf_home=") and state["module"] is not None and state["home"] is None:
+            state["home"] = line[len("abf_home="):].strip()
+    close()
+    return out("ok", items)
 
 
 def _verdict(checks):
