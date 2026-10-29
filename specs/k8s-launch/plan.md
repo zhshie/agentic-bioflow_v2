@@ -187,6 +187,18 @@ source: memory/PLAN-abf-v3-replan-2026-10.md 第 169 行（C-5「Azure Batch／K
 11-6. **允許**在 Pod 狀態為 Failed／起不來時多一次唯讀 `kubectl logs <pod> --tail=50`，log 尾端仍受 TC-060、TC-128 限制。
 11-7. **CLI 用詞**：K8s 型別時把「Slurm 工作編號」換成「Pod 名稱」；「已啟動」整行＝`已啟動：Pod <名>（命名空間 <ns>）；叢集的運算費用從現在開始計`。
 
+### 補充裁決 14（2026-10-30 07:0x，developer-agent）——回應 BLOCKED(TC-161)
+ledger 裡的「裁決 12-x」先前沒有寫進本計畫，以下一次補齊，**以本段為準**：
+- 14-1（原 12-11）**追認**：`platform/tests/test_settings_pick_installed.py:844` `test_the_pinned_cloud_types` 列入「必須更新的既有斷言」。以前：`CLOUD_TYPES == PLATFORM_HOST_TYPES == CLOUD_PLATFORMS`；以後：`CLOUD_TYPES == tuple(t for t in PLATFORM_HOST_TYPES if t != K8S) == CLOUD_PLATFORMS`；理由：K8s 在本片只開送出，設定頁的雲端清單（`web_settings.py`）不在範圍、不改。只准排除 K8S 這一項，其餘比對不動。TC-161 依此判定。
+- 14-2（原 12-12）**追認**：取消用的內容包命名空間取自送出時存下的紀錄（`build.py` 的 `_launched_ce`、`prepare_cancel`），不取現在的環境設定；TC-171～180 維持手動。
+- 14-3 **追認**：`launch._snapshot_ce` 新增 K8s 分支；`site.run_fixed` 與 `cli.py` 多加 stdin 參數（只為把 bundle 交給 `kubectl create secret --from-file` 用，不得用來傳 token 以外的祕密到 argv）。`cli.py` 列入可改檔案，僅限這一處（含「已啟動：Pod …」那一行）。TC-077「與 base 完全相同」只對 `compute_envs.snapshot` 要求。
+- 14-4 TC-126：平台端改成「命名空間取自送出時紀錄」即滿足合約原意；agent 端補一條「包內命名空間 != 環境命名空間 → 拒絕」的測試。
+
+### 補充裁決 15（2026-10-30 07:5x，developer-agent）——回應閱卷 FAIL(TC-146)
+- `platform/tests/test_k8s_launch.py` 的 `test_source_rules`：pyproject 路徑改成 `PLATFORM_DIR / "pyproject.toml"`（或等價的 platform/pyproject.toml），**拿掉 `if pyproject.exists():`**，改成先斷言檔案存在再檢查沒有 kubernetes 套件，讓這一半測試能失敗。constraints.txt 若同樣有 exists 包裝，一併改。
+- 只改這支測試；不動產品程式。改完在最終 HEAD 跑全套、更新 ledger、寫 GREEN。
+- 本計畫的裁決以本檔為準：ledger 若引用本檔沒有的裁決編號，閱卷一律當作未獲准。
+
 ## 專長守則（backend）
 
 ### executor
