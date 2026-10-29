@@ -26,12 +26,16 @@ PLACEHOLDER_ID = 1                     # the result's slurm_job_id: a Pod has no
 TAIL_LINES = 50
 MESSAGE_LIMIT = 200
 CANCEL_REMINDER = "本系統只刪主控 Pod，不刪 task Pod：請到叢集確認這次 run 的 task Pod 是否也清掉了，沒清乾淨的要自己處理；費用從啟動算到它們真的停止為止"
-UNREACHABLE = "連不上叢集（%s）：沒有建立也沒有刪除任何東西，也不重試。請確認網路與 kubeconfig 後再試 (could not reach the cluster)"
+KEY_SHOWN = "[credential file]"      # what the path of the kubeconfig is called in anything shown
+CRED_HINT = "（憑證檔的位置可用環境變數 %s 指定 (where the kubeconfig is looked for)）" % k8s_preflight.CREDENTIALS_ENV
+UNREACHABLE ="連不上叢集（%s）：沒有建立也沒有刪除任何東西，也不重試。請確認網路與 kubeconfig 後再試 (could not reach the cluster)"
 
 
-def _text(value, token=None):
-    """Text that may be shown: scrubbed, the run token replaced, cut."""
+def _text(value, token=None, cred_path=None):
+    """Text that may be shown: scrubbed, the run token and the kubeconfig's path replaced, cut."""
     out = _scrub(value or "")
+    if cred_path:
+        out = out.replace(str(cred_path), KEY_SHOWN)
     if token:
         out = out.replace(token, "[token]")
     return out.strip()[:MESSAGE_LIMIT]
@@ -65,13 +69,15 @@ def _check_tools(cred_path):
     try:
         st = os.stat(str(cred_path))
     except OSError:
-        raise rules.Refusal("找不到 kubeconfig（憑證檔）：%s。請放在那裡並設成只有自己能讀 (no kubeconfig at that place)" % cred_path)
+        raise rules.Refusal("找不到 kubeconfig（憑證檔），沒有啟動任何東西。請把它放到這台電腦上設定的位置，並設成只有自己能讀（chmod 600）"
+                            + CRED_HINT + " (no kubeconfig at the place it is looked for)")
     import stat as stat_mod
     import sys
     if not stat_mod.S_ISREG(st.st_mode):
-        raise rules.Refusal("kubeconfig 不是一般檔案：%s (the kubeconfig is not a regular file)" % cred_path)
+        raise rules.Refusal("kubeconfig（憑證檔）不是一般檔案，請換成真正的檔案" + CRED_HINT + " (the kubeconfig is not a regular file)")
     if sys.platform != "win32" and st.st_mode & 0o077:
-        raise rules.Refusal("kubeconfig 的權限太寬：群組或其他人能讀寫。請執行 chmod 600 %s (the kubeconfig's permissions are too open)" % cred_path)
+        raise rules.Refusal("kubeconfig（憑證檔）的權限太寬：群組或其他人能讀寫。請對它執行 chmod 600" + CRED_HINT
+                            + " (the kubeconfig's permissions are too open)")
     if not shutil.which("kubectl"):
         raise rules.Refusal("這台主機沒有 kubectl：送出與取消都靠它，請先安裝 (kubectl is not installed on this computer)")
 
@@ -119,7 +125,7 @@ def _exists(cred_path, ce, kind, name):
         return True
     if _is_missing(out):
         return False
-    raise ConnectionError(_text(out))
+    raise ConnectionError(_text(out, None, cred_path))
 
 
 def run_launch(job, ctx, bundle):
@@ -151,7 +157,7 @@ def run_launch(job, ctx, bundle):
     bad = [c for c in result["checks"] if c["status"] != "pass" and c["name"] != "credential_name"]
     if bad:
         raise rules.Refusal("叢集的預檢沒過，沒有建立任何東西：%s (the cluster check did not pass)"
-                            % "；".join("%s：%s" % (c["name"], _text(c["detail"], token)) for c in bad[:3]))
+                            % "；".join("%s：%s" % (c["name"], _text(c["detail"], token, cred_path)) for c in bad[:3]))
 
     pod, secret = bundle["pod_name"], launch.k8s_secret_name(bundle["run_name"])
     try:
@@ -166,10 +172,10 @@ def run_launch(job, ctx, bundle):
 
     rc, out = _create(cred_path, ce, secret_manifest(bundle, token))
     if rc != 0:
-        return "error", {"ok": False, "message": "建不起 Secret %s，沒有建立 Pod：%s" % (secret, _text(out, token) or "沒有訊息")}
+        return "error", {"ok": False, "message": "建不起 Secret %s，沒有建立 Pod：%s" % (secret, _text(out, token, cred_path) or "沒有訊息")}
     rc, out = _create(cred_path, ce, pod_manifest(bundle, image))
     if rc != 0:
-        why = _text(out, token) or "沒有訊息"
+        why = _text(out, token, cred_path) or "沒有訊息"
         drc, _dout = _kubectl(cred_path, ["kubectl", "delete", "secret", secret] + _where(ce))
         left = "已刪除這次建立的 Secret %s" % secret if drc == 0 else "Secret %s 沒刪成功，請手動刪掉它（不會重試）" % secret
         return "error", {"ok": False, "message": "建不起 Pod %s：%s。%s" % (pod, why, left)}
@@ -178,10 +184,10 @@ def run_launch(job, ctx, bundle):
     rc, out = _kubectl(cred_path, ["kubectl", "get", "pod", pod, "-o", "jsonpath={.status.phase}"] + _where(ce) + [k8s_preflight.REQUEST_TIMEOUT])
     left = "Pod %s 與 Secret %s 已建立（沒有刪除）" % (pod, secret)
     if rc != 0:
-        return "error", {"ok": False, "message": "無法取得 Pod 狀態（%s）。%s，請到叢集確認" % (_text(out, token), left), "left_on_site": left}
+        return "error", {"ok": False, "message": "無法取得 Pod 狀態（%s）。%s，請到叢集確認" % (_text(out, token, cred_path), left), "left_on_site": left}
     if out.strip() == "Failed":
         lrc, tail = _kubectl(cred_path, ["kubectl", "logs", pod, "--tail=%d" % TAIL_LINES] + _where(ce))
-        return "error", {"ok": False, "message": "主控 Pod 一啟動就失敗了：%s。%s" % (_text(tail, token) or "沒有輸出", left), "left_on_site": left}
+        return "error", {"ok": False, "message": "主控 Pod 一啟動就失敗了：%s。%s" % (_text(tail, token, cred_path) or "沒有輸出", left), "left_on_site": left}
     return "done", {"ok": True, "slurm_job_id": PLACEHOLDER_ID, "run_name": bundle["run_name"], "run_folder": bundle["run_folder"],
                     "pod_name": pod,
                     "message": "已啟動：Pod %s（命名空間 %s）；叢集的運算費用從現在開始計" % (pod, ce["namespace"])}
@@ -211,6 +217,6 @@ def run_cancel(job, ctx, bundle):
                         "message": "Pod 已不存在，視為已停止（%s）。%s" % (pod, CANCEL_REMINDER)}
     rc, out = _kubectl(cred_path, ["kubectl", "delete", "pod", pod, "--namespace", ce["namespace"], "--context", ce["context"], "--wait=false"])
     if rc != 0:
-        return "error", {"ok": False, "message": "刪除 Pod %s 沒有成功：%s。不重試 (the delete did not work, not retried)" % (pod, _text(out) or "沒有訊息")}
+        return "error", {"ok": False, "message": "刪除 Pod %s 沒有成功：%s。不重試 (the delete did not work, not retried)" % (pod, _text(out, None, cred_path) or "沒有訊息")}
     return "done", {"ok": True, "slurm_job_id": bundle.get("slurm_job_id"), "run_name": run,
                     "message": "已要求刪除主控 Pod %s（命名空間 %s）。%s" % (pod, ce["namespace"], CANCEL_REMINDER)}

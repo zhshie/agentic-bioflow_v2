@@ -39,3 +39,9 @@ No migration needed: no table, column or configuration key changes. `result.slur
 
 - test_settings_pick_installed `test_the_pinned_cloud_types`: `... == tuple(compute_envs.PLATFORM_HOST_TYPES) == CLOUD_PLATFORMS` -> `... == tuple(t for t in compute_envs.PLATFORM_HOST_TYPES if t != compute_envs.K8S) == CLOUD_PLATFORMS` (value swap; web_settings.py untouched).
 - Out-of-scope changes ratified: `site.run_fixed` stdin, `launch._snapshot_ce` K8s branch, `cli.py` started line.
+
+## Fix round (verifier: TC-078, TC-065)
+
+- [x] `k8s_launch._check_tools`: the three refusals (missing, not a regular file, permissions too open) no longer name the kubeconfig path; they say "憑證檔" and point at the environment variable `ABF_STATION_KUBECONFIG` (same approach as the Azure `[credential file]`).
+- [x] `k8s_launch._text` takes the kubeconfig path and replaces it with `[credential file]`; every kubectl output / preflight detail shown goes through it.
+- [x] Tests: `test_messages_never_name_the_credential_file_or_code` (TC-078: all credential refusals, launch and cancel, plus kubectl errors that echo the path; no path, no Traceback, no code dir); TC-065 loop now includes the missing-file failure path.
