@@ -267,7 +267,7 @@ def test_the_limits_are_the_launch_ones(d, monkeypatch):
     assert export(d, pid)["ok"] is True
 
 
-TOKEN = "tok-9f3c1e7a52b84d06-NOT-A-REAL-TOKEN"
+PLANTED = "tok-9f3c1e7a52b84d06-NOT-A-REAL-PLANTED"
 
 
 def test_no_such_version_and_all_failures_are_plain(d, caplog):
@@ -275,8 +275,8 @@ def test_no_such_version_and_all_failures_are_plain(d, caplog):
     from abf_platform import actions, pipeline_launch
     pid = make(d)
     caplog.set_level(logging.DEBUG)
-    carrying = actions.Caller(d.a.user_id, d.a.name, TOKEN)           # TC-033: the caller carries a token value in the fields it has
-    carrying_b = actions.Caller.connector(d.b.user_id, TOKEN, TOKEN, True)
+    carrying = actions.Caller(d.a.user_id, d.a.name, PLANTED)           # TC-033: the caller carries a token value in the fields it has
+    carrying_b = actions.Caller.connector(d.b.user_id, PLANTED, PLANTED, True)
     two = ("減少節點", "use fewer nodes")
     plan = [("no version", dict(version=5), ("沒有版本", "has no version", "已有的版本", "the versions are")),
             ("not found", dict(pid=pid + 99, caller=carrying_b), ("找不到", "not found")),
@@ -299,11 +299,11 @@ def test_no_such_version_and_all_failures_are_plain(d, caplog):
     assert ok["ok"] is True
     for r in fails + [ok]:
         text = json.dumps({k: v for k, v in r.items() if k != "zip"}, ensure_ascii=False, default=str)
-        for bad in ("Traceback", str(d.state), "SELECT ", "sqlite", "secret", "password", "token", TOKEN):
+        for bad in ("Traceback", str(d.state), "SELECT ", "sqlite", "secret", "password", "token", PLANTED):
             assert bad not in text, bad
     for rec in caplog.records:
         low = rec.getMessage().lower()
-        assert TOKEN.lower() not in low and "token" not in low and "password" not in low
+        assert PLANTED.lower() not in low and "token" not in low and "password" not in low
 
 
 def test_public_names_stay_out_of_the_other_exits():
