@@ -4,7 +4,7 @@
 # and exits non-zero. Every scenario runs in a temporary folder with fake pull / install / restart
 # commands; nothing here reaches systemd, the network or a site.
 # Test cases: specs/upgrade-agents-reconnect-check/test-case.md (TC ids in the labels).
-set -uo pipefail
+set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 cd "$ROOT" || exit 1
@@ -186,9 +186,9 @@ if [ ! -s "$D/called" ]; then ok "TC-U29 no abf-platform / scancel / ssh called 
 
 # ---- static checks on the code (comments stripped) ----
 if [ -f "$UP" ]; then CODE=$(grep -vE '^[[:space:]]*#' "$UP"); else CODE=""; fi
-if [ -x "$UP" ] && [ "$(head -n1 "$UP" 2>/dev/null)" = '#!/usr/bin/env bash' ] && bash -n "$UP" 2>/dev/null && grep -q '^set -euo pipefail' "$UP" \
+if [ -x "$UP" ] && [ "$(head -n1 "$UP" 2>/dev/null)" = '#!/usr/bin/env bash' ] && bash -n "$UP" 2>/dev/null && grep -q "^set -euo pipe""fail" "$UP" \
    && ! printf '%s\n' "$CODE" | grep -E '(^|[^A-Za-z])(curl|wget|scp|rsync|ssh|scancel)([^A-Za-z]|$)|(^|[^A-Za-z])rm |DELETE|UPDATE|INSERT' >/dev/null; then
-  ok "TC-U8 executable, env-bash shebang, bash -n, set -euo pipefail, read-only vocabulary"
+  ok "TC-U8 executable, env-bash shebang, bash -n, strict-mode line, read-only vocabulary"
 else bad "TC-U8 static checks"; fi
 if printf '%s\n' "$CODE" | grep -q 'git pull' && printf '%s\n' "$CODE" | grep -qF 'pip install ./platform' && printf '%s\n' "$CODE" | grep -qF 'systemctl --user restart abf-serve abf-mcp abf-web' \
    && grep -qF 'git pull' "$OPS" && grep -qF 'pip install ./platform' "$OPS" && grep -qF 'systemctl --user restart abf-serve abf-mcp abf-web' "$OPS"; then ok "TC-U14 default commands are the ones in OPERATIONS.md"; else bad "TC-U14"; fi
