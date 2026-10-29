@@ -1,8 +1,9 @@
-# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers six read-only tools, and is built on the official Python mcp SDK.
-"""MCP server: seven read-only tools, and the tools that ask a person: list_runs, get_run, list_compute_envs, get_compute_env,
-list_agents, list_site_files, read_task_log, launch, cancel, resume, relaunch.
+# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers ten read-only tools, and is built on the official Python mcp SDK.
+"""MCP server: ten read-only tools: list_runs, get_run, list_compute_envs, get_compute_env, list_agents,
+list_site_files, list_used_pipelines, my_usage, run_outputs, read_task_log; and five tools that ask a person:
+launch, cancel, forget, resume, relaunch.
 
-The seven read tools carry readOnlyHint, which is only a hint; read-only here means two things:
+The ten read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
   - toward runs: this module never writes the run index (status.py opens it read-only);
   - toward the site: list_site_files may put one read-only question (list a folder) in the job queue of
