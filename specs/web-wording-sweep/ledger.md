@@ -170,3 +170,5 @@ assert [...] == []   Left contains 28 more items, first extra item: ('web_board.
 | test_settings_pick_installed.py:725 | "沒有運算環境。" | "尚無運算環境。" | 隨 `no_ce` 表值 |
 
 - 修正輪（裁決 15a）：`test_clean_page.py` 的 `BASE_POST` 中 late-launch／late-cancel 兩項整頁雜湊（410 的「未送出」頁）因「請返回 AI 重新送出」而重算（d2df3540d123bd63 → f2effe7f12a63548）；pressed-* 兩項未變。屬期望字串同步，無斷言刪減。
+
+- 修正輪（TC-078）：`test_every_zh_table_is_covered` 的掃描邏輯抽成 `zh_tables_in`／`scan_web_sources(sources)`，測試另餵一段多了含中文字典的假原始碼（`web_fake.NEW_STRINGS`），斷言掃描結果多出恰好那一張、與 `tables()` 不再相等（守衛會紅）；純拉丁字典與非字典的中文值不算表。只動測試檔，真實原始碼與其他斷言不變。

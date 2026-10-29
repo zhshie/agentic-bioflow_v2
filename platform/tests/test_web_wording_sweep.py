@@ -183,21 +183,41 @@ def test_upload_page_spoken_sentences_are_formal():
     assert "請回到 AI" not in (PKG / "web.py").read_text(encoding="utf-8")
 
 
+def zh_tables_in(source, stem):
+    """The names of the module-level dicts that hold a Chinese value in `source` (the text of one web*.py), as "stem.NAME"."""
+    found = set()
+    for node in ast.parse(source).body:
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+        if not isinstance(getattr(node, "value", None), ast.Dict):
+            continue
+        has_cjk = any(isinstance(n, ast.Constant) and isinstance(n.value, str) and CJK_RE.search(n.value) for n in ast.walk(node.value))
+        for t in targets:
+            if has_cjk and isinstance(t, ast.Name):
+                found.add("%s.%s" % (stem, t.id))
+    return found
+
+
+def scan_web_sources(sources):
+    """`sources` is {stem: source text}; the set of Chinese tables found in all of them."""
+    found = set()
+    for stem, source in sources.items():
+        found |= zh_tables_in(source, stem)
+    return found
+
+
 def test_every_zh_table_is_covered():
     # TC-077, TC-078
-    found = set()
-    for path in sorted(PKG.glob("web*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in tree.body:
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
-            if not isinstance(getattr(node, "value", None), ast.Dict):
-                continue
-            has_cjk = any(isinstance(n, ast.Constant) and isinstance(n.value, str) and CJK_RE.search(n.value) for n in ast.walk(node.value))
-            for t in targets:
-                if has_cjk and isinstance(t, ast.Name):
-                    found.add("%s.%s" % (path.stem, t.id))
+    real = {path.stem: path.read_text(encoding="utf-8") for path in sorted(PKG.glob("web*.py"))}
+    found = scan_web_sources(real)
     assert found == set(tables()), (found ^ set(tables()))
     assert len(found) == 7
+    # TC-078: a fake module with one more dictionary that holds Chinese shows up as one more table, so the comparison above would turn red
+    fake = dict(real, web_fake='NEW_STRINGS = {"zh": {"hello": "你好"}, "en": {"hello": "hi"}}\nPLAIN = {"a": "b"}\n')
+    more = scan_web_sources(fake)
+    assert more - found == {"web_fake.NEW_STRINGS"}
+    assert more != set(tables())
+    # a table of Latin text only, and a Chinese value that is not in a dictionary, are not tables
+    assert scan_web_sources({"web_x": 'EN = {"a": "b"}\nTEXT = "你好"\n'}) == set()
 
 
 def test_embedded_chinese_of_web_py_is_formal():
