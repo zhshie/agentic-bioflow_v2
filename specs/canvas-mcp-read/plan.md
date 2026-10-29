@@ -26,7 +26,7 @@ source: PLAN-abf-v3-replan-2026-10.md 017a done 句「MCP `find_module("fastqc")
 ## 範圍：檔案（只准改這些）
 - `platform/abf_platform/mcp_server.py`（加五個 `@mcp.tool` 讀取工具、標 `_READ_ONLY`；檔頭 docstring 的工具數字更新）
 - `platform/abf_platform/actions/catalogue.py`（新檔，薄包裝：`find_module(q, *, data=None)` 呼叫 `catalogue.search`、`describe_module(name, *, data=None)` 呼叫 `catalogue.describe`；公開名稱即計畫寫的兩個）
-- `platform/abf_platform/actions/__init__.py`（只加這兩個名稱的匯出，若現有慣例需要）
+- ~~`platform/abf_platform/actions/__init__.py`~~（13-3：不准改）
 - 新檔 `platform/tests/test_mcp_canvas_read.py`
 - 釘住「MCP 工具名單」的既有測試，只改名單與計數（見作法）：`test_mcp_server_doc.py`、`test_chat_tools.py`、`test_actions_layer.py`、`test_web_parity.py`、`test_mcp.py`、`test_owner_guard.py` 及 `git grep -l '"my_usage"' platform/tests` 列出的其餘檔
 - **不准碰**：`web.py`、`web_board.py`、`static/`、`docs/PLATFORM.md`（env-vars-documented 進行中）、`actions/pipelines.py`（只呼叫、不改）、`compute_envs` 相關（k8s-launch 進行中）、`deploy/`、dev-queue.json。
@@ -41,7 +41,7 @@ source: PLAN-abf-v3-replan-2026-10.md 017a done 句「MCP `find_module("fastqc")
 - **新增工具與歸屬**：
   - `find_module(q)`、`describe_module(name)`：目錄是公開資料，不做擁有者篩選。
   - `list_pipelines()`、`get_pipeline(pipeline_id, version=None)`、`get_validation(pipeline_id, version=None)`：一律傳 `caller=_caller(ctx)`，擁有者規則在動作層，不在工具層。
-- **`actions.pipelines` 是子模組，不是 `actions` 的公開名稱**：`test_pipelines_store.py:308` 釘「actions 套件裡沒有這些名稱」。工具直接 `from abf_platform.actions import pipelines`，不要把它們再匯出到 `actions/__init__`。
+- **`actions.pipelines` 是子模組，不是 `actions` 的公開名稱**：`test_pipelines_store.py:308` 釘「actions 套件裡沒有這些名稱」。工具用 `import abf_platform.actions.pipelines as pipeline_actions`（13-3），不要把它們再匯出到 `actions/__init__`。
 - **parity 表**（`test_web_parity.py` 的四張表）：兩個目錄名放 `WEB_ONLY` 以外的對應表前先看該表語意；網頁路由尚不存在（017e），所以這兩個名字要進 `OWED`（欠的）以外的「僅 MCP」類別時需 executor 讀表決定，**OWED 只准縮、不准長**；做不到就在 ledger 寫明並回報，不要放寬測試。
 
 ## 失敗先行測試
@@ -100,3 +100,11 @@ source: PLAN-abf-v3-replan-2026-10.md 017a done 句「MCP `find_module("fastqc")
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+## 補充裁決 13-1…13-6（2026-10-29 22:4x，回應出題 BLOCKED(contract)）
+- **13-1 範圍加一檔**：`platform/abf_platform/actions/chat_tools.py` 只准在 `CHAT_SYSTEM_PROMPT` 加一行（裁決 1）；`test_chat_tools.py` 除名單與計數外，可加「提示含這一行、且不含 BANNED_WORDS」的斷言，其餘斷言不准改。
+- **13-2 find_module 回傳形狀**：回 `{"sha": <目錄快照 sha>, "count": n, "modules": [...]}`；每筆＝`catalogue.search` 的 name／path／description，再從同一份資料併入該模組的 `inputs`、`outputs`（照資料檔原欄位，不改名）。sha 放最外層（全目錄同一個 sha），不逐筆重複。查無結果回 `{"sha": …, "count": 0, "modules": [], "hint": "<一句：換關鍵字或用工具名、例如 fastqc>"}`；有結果時沒有 `hint` 鍵。測試「`find_module("fastqc")` 回 name、sha、輸入輸出型別」照此形狀斷言（sha 讀最外層）。
+- **13-3 import 寫法與 parity 表**：比照 `actions.pipelines` 的先例（test_pipelines_store.py:308，子模組不是 actions 的公開名稱）。新檔 `actions/catalogue.py` **不**匯出到 `actions/__init__.py`（該檔不准改，從範圍刪除）。`mcp_server.py` 一律用 `import abf_platform.actions.catalogue as catalogue_actions`、`import abf_platform.actions.pipelines as pipeline_actions`（`import ... as`，不用 `from ... import`，`called_actions` 不會把它們算成取用名字）。結果：四張 parity 表**一字不改**，OWED 仍是原本五個；TC-030～033 以「`test_web_parity.py` 不改任何內容仍全綠」驗收。
+- **13-4 數字詞表**：`test_mcp_server_doc.py` 的 NUMBERS 字典與正規式可擴充到 fifteen（加 thirteen、fourteen、fifteen），算「計數」的一部分；其餘斷言不准放寬。`mcp_server.py` 第 1 行註解的工具數字一併更新。
+- **13-5 migration**：不需要 migration——本片沒有任何資料表或資料內容變動（只讀既有目錄檔與既有 pipeline 表）。
+- **13-6 describe_module 找不到時的訊息**：包裝層自己回 `{"found": False, "name": name, "message": "找不到模組 <name>；用 find_module 找相近的名字 (no module named <name>; use find_module to find a similar name)"}`，不改 `catalogue.py`。測試驗 found:false、點名輸入、訊息含 `find_module`。
