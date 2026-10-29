@@ -26,7 +26,7 @@ SCAN_DIRS = [PLATFORM_DIR / "abf_platform", PLATFORM_DIR / "abf_station", PLATFO
 REFUSED = "no human confirmation channel"
 READ_NAMES = ["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log",
               "run_outputs", "my_usage"]    # results-outputs: the Outputs tab of the results stage; a read like the others, never waiting for the site
-WRITE_NAMES = ["launch", "cancel", "forget", "resume", "relaunch"]    # 009c: the two tools that make a request a person must say yes to; 009e: and the two for a failed run
+WRITE_NAMES = ["launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"]    # 009c: the two tools that make a request a person must say yes to; 009e: and the two for a failed run
 CANVAS_NAMES = ["find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"]    # canvas-mcp-read: five reads whose actions live in the submodules actions.catalogue and actions.pipelines, not in the actions package
 ROUTES_V3 = [('/agent/hello', ('POST',)), ('/agent/poll', ('POST',)), ('/agent/result/{jid}', ('POST',)),
              ('/trace/create', ('POST',)), ('/trace/{rid}/begin', ('PUT',)), ('/trace/{rid}/complete', ('PUT',)),
@@ -157,7 +157,7 @@ def test_tca02_every_tool_has_a_same_named_action_and_there_are_exactly_the_six_
         if n in CANVAS_NAMES:    # canvas-mcp-read: the action is in a submodule (the package does not export it)
             assert callable(getattr(__import__("abf_platform.actions.catalogue" if n.endswith("_module") else "abf_platform.actions.pipelines", fromlist=[n]), n)), n
             continue
-        assert callable(getattr(a, n if n in READ_NAMES + ["launch", "cancel"] else "request_" + n, None)), n
+        assert callable(getattr(a, n if n in READ_NAMES + ["launch", "cancel"] else {"launch_pipeline": "request_pipeline_launch"}.get(n, "request_" + n), None)), n
 
 
 def test_tca03_default_platform_path_and_explicit_platform_path(tmp_path):

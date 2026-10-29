@@ -267,10 +267,10 @@ def test_tool_count_and_no_extra_tools(w):
     assert "five tools that ask" not in doc and "launch_pipeline" in doc.split('"""')[1]
 
 
-def test_no_web_route_for_it(w):
+def test_no_web_route_for_it(d, w):
     # TC-027
     client = w.web()
-    assert w.login(client, "alice").status_code == 303
+    assert w.login(client, "bob").status_code == 303
     assert client.post("/act/launch_pipeline", data={}).status_code in (404, 405)
 
 

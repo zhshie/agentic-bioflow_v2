@@ -13,7 +13,7 @@ from resume_harness import Rig
 CHAT_TOOLS = PLATFORM_DIR / "abf_platform" / "actions" / "chat_tools.py"
 BANNED_WORDS = re.compile(r"approve|confirm|confirmed_by|void|yes", re.I)
 READ_ONLY = {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}
-REQUESTS = {"launch", "cancel", "resume", "relaunch", "forget"}
+REQUESTS = {"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"}
 
 
 @pytest.fixture

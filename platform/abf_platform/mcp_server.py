@@ -1,8 +1,8 @@
 # Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers fifteen read-only tools, and is built on the official Python mcp SDK.
 """MCP server: fifteen read-only tools: list_runs, get_run, list_compute_envs, get_compute_env, list_agents,
 list_site_files, list_used_pipelines, my_usage, run_outputs, read_task_log, and the five canvas reads find_module, describe_module,
-list_pipelines, get_pipeline, get_validation; and five tools that ask a person:
-launch, cancel, forget, resume, relaunch.
+list_pipelines, get_pipeline, get_validation; and six tools that ask a person:
+launch, launch_pipeline, cancel, forget, resume, relaunch.
 
 The fifteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
@@ -182,6 +182,23 @@ def _add_write_tools(server, platform_path, index_path):
                                             path_columns=path_columns, dataset=dataset, dataset_version=dataset_version,
                                             caller=_caller(ctx), person=actions.person_at(ctx),
                                             remote=_remote(ctx))
+
+    @server.tool(name="launch_pipeline", annotations=_WRITES,
+                 description="Ask to launch one of the person's own saved canvas pipelines (name it by pipeline_id, and version; the "
+                             "newest when none is given). This does NOT start anything: it checks the pipeline again today, writes a "
+                             "request and shows the person a summary. The person says yes in their own client's form or on a page whose "
+                             "address this returns; you cannot say it for them. When the answer says sent is false, tell the person what "
+                             "to do and, after they have pressed send, call launch_pipeline again with the same arguments to get the job "
+                             "number. Give the samplesheet in exactly one of two ways: samplesheet is the path of a CSV file you uploaded "
+                             "to your own folder on this platform, or samplesheet_text is the CSV itself (at most 1 MiB). params is a "
+                             "flat mapping of pipeline parameters.")
+    async def launch_pipeline_tool(ctx: Context, pipeline_id: int, run_name: str, version: int | None = None,
+                                   samplesheet: str | None = None, samplesheet_text: str | None = None, ce_name: str | None = None,
+                                   params: dict[str, Any] | None = None) -> dict:
+        return await actions.request_pipeline_launch(platform_path, pipeline_id=pipeline_id, version=version, run_name=run_name,
+                                                     samplesheet=samplesheet, samplesheet_text=samplesheet_text, ce_name=ce_name,
+                                                     params=params, caller=_caller(ctx), person=actions.person_at(ctx),
+                                                     remote=_remote(ctx))
 
     @server.tool(name="cancel", annotations=_STOPS,
                  description="Ask to stop one run that this platform launched. This does NOT stop anything: it writes a request and shows "
