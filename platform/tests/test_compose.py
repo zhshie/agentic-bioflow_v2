@@ -462,9 +462,13 @@ def _hand_canonical(output="html"):
 
 def test_regex_dollar_newline_tc001_pipeline_name_with_newline_is_refused():
     # regex-dollar-newline TC-001
+    # render also refuses a value holding a line break further down (_quote), so any ValueError would pass on the old regex;
+    # the name check itself must be the one that refuses: match its message, and test the pattern directly.
     canonical = norm(qc_graph())
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="名稱不合法"):
         compose().render(canonical, "abc\n", 1)
+    assert compose()._NAME.match("abc\n") is None
+    assert compose()._NAME.match("abc") is not None
 
 
 def test_regex_dollar_newline_tc002_node_id_with_newline_is_refused():
