@@ -883,7 +883,7 @@ GUIDED = {
         "g_search": "搜尋全部 nf-core（尚未開放）",
         "g_preview": "預覽與欄位角色（尚未開放）",
         "g_no_sheet": "尚無已上傳的樣本表，請先上傳。", "g_go_board": "前往看板", "g_go_upload": "前往上傳資料", "g_go_settings": "前往設定頁",
-        "g_reg_bad": "此管線版本尚未在所選運算環境登記，請洽管理者登記；已登記的管線列於設定頁。",
+        "g_reg_bad": "此管線版本尚未在所選運算環境登記，請先至設定頁登記。",
         "g_ver_wait": "正在讀取版本清單…",
         "g_reuse_pick": "沿用先前分析的參數", "g_reuse_off": "不沿用", "g_reuse_none": "此管線版本尚無可沿用的分析。", "g_groups": "參數分組表",
         "g_cannot_reuse": "此分析的參數無法沿用。", "g_route_reuse": "沿用 %s",
@@ -914,8 +914,7 @@ GUIDED = {
         "g_search": "Search all of nf-core (not yet available)",
         "g_preview": "Preview and column roles (not yet available)",
         "g_no_sheet": "No samplesheet has been uploaded. Please upload one first.", "g_go_board": "Go to the board", "g_go_upload": "Go to upload data", "g_go_settings": "Go to the settings page",
-        "g_reg_bad": "This pipeline version is not registered in the selected compute environment; ask your administrator to register it. "
-                     "The registered pipelines are listed on the settings page.",
+        "g_reg_bad": "This pipeline version is not registered on the selected compute environment. Register it on the Settings page first.",
         "g_ver_wait": "Reading the version list…",
         "g_reuse_pick": "Reuse the parameters of an earlier analysis", "g_reuse_off": "Do not reuse",
         "g_reuse_none": "No earlier analysis of this pipeline version can be reused.", "g_groups": "Parameter groups",

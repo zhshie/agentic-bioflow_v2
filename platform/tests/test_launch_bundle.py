@@ -366,6 +366,55 @@ def test_tc011_the_path_columns_can_be_named():
     render(samplesheet=[["id", "note"], ["s1", "free text"]])
 
 
+# ---- a column whose name ENDS in _file / _path is a path column (samplesheet-suffix-path-column) ------------
+
+
+def test_suffix_path_column_is_judged():
+    # TC-001
+    msg = refused(samplesheet=[["id", "bam_path"], ["s1", "relative.fq"]])
+    assert "samplesheet" in msg
+
+
+def test_suffix_file_column_is_judged():
+    # TC-002
+    msg = refused(samplesheet=[["id", "reads_file"], ["s1", "relative.fq"]])
+    assert "samplesheet" in msg
+
+
+def test_suffix_match_is_case_insensitive():
+    # TC-003
+    refused(samplesheet=[["id", "BAM_PATH"], ["s1", "relative.fq"]])
+
+
+def test_suffix_path_column_outside_roots_is_refused():
+    # TC-004
+    refused(samplesheet=[["id", "bam_path"], ["s1", "/etc/passwd"]])
+
+
+def test_suffix_path_column_is_refused_like_reads():
+    # TC-005: same value, only the column differs -> same reason
+    a = refused(samplesheet=[["id", "reads"], ["s1", "relative.fq"]])
+    b = refused(samplesheet=[["id", "bam_path"], ["s1", "relative.fq"]])
+    assert re.sub(r"reads|bam_path", "COL", a) == re.sub(r"reads|bam_path", "COL", b), (a, b)
+
+
+def test_suffix_path_column_inside_roots_passes():
+    # TC-006
+    b = render(samplesheet=[["id", "bam_path"], ["s1", "/data/storage/rawdata/s1.bam"]])
+    assert "s1,/data/storage/rawdata/s1.bam" in b["files"]["samplesheet.csv"]
+
+
+@pytest.mark.parametrize("col", ["profile", "filepath_note", "genome"])
+def test_non_path_columns_are_not_judged(col):
+    # TC-007, TC-008, TC-018 (genome is not in the usual names: the list was not widened)
+    render(samplesheet=[["id", col], ["s1", "some/relative text"]])
+
+
+def test_sample_column_is_not_judged():
+    # TC-009
+    render(samplesheet=[["sample", "note"], ["s1", "free/relative text"]])
+
+
 # ---- characters that cannot be shown honestly ---------------------------------------------------------------
 
 BAD_CHARS = ["\x00", "\r", "\x1b[2J", "\x1b[8m", "‮", "⁦", "⁧", "⁨", "⁩", "‪", "‏"]

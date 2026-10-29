@@ -696,3 +696,32 @@ def test_tce07_exactly_the_five_flow_prompts_on_the_server(tmp_path):
         body = raw[raw.index("\n---\n", 3) + len("\n---\n"):]
         res = asyncio.run(server.get_prompt(name))
         assert len(res.messages) == 1 and res.messages[0].content.text == body
+
+
+# ---- settings-register-pipeline (K01): the two write actions of the settings page refuse without a person's channel, and are not tools ----
+
+PAGE_WRITE_NAMES = ["register_site_pipeline", "remove_site_pipeline"]      # written only from the confirmation step of the settings page; no MCP tool
+
+
+@pytest.mark.parametrize("name", PAGE_WRITE_NAMES)
+@pytest.mark.parametrize("value", ["missing", None, "PAGE", "look-alike"])
+def test_srp_k01_the_page_write_actions_refuse_without_a_human_channel(tmp_path, monkeypatch, name, value):
+    from abf_platform import jobs
+    from human_harness import World
+    w = World(tmp_path, monkeypatch)
+    ann = w.user("ann")
+    a = actions()
+    kwargs = dict(ce="lab-a", pipeline="nf-core/ampliseq", revision="2.18.0", caller=ann)
+    if name == "register_site_pipeline":
+        kwargs.update(module="biology/m", home="M_HOME")
+    if value != "missing":
+        kwargs["confirmed_by"] = type("Channel", (), {"name": "PAGE"})() if value == "look-alike" else value
+    before = ([tuple(r) for r in w.sql("SELECT * FROM compute_envs")], [tuple(r) for r in w.sql("SELECT * FROM jobs")])
+    with pytest.raises(jobs.JobRefused, match=REFUSED):
+        getattr(a, name)(w.ip.state_db, **kwargs)
+    assert ([tuple(r) for r in w.sql("SELECT * FROM compute_envs")], [tuple(r) for r in w.sql("SELECT * FROM jobs")]) == before
+
+
+def test_srp_k01_the_page_write_actions_are_not_tools(tmp_path):
+    names = {t.name for t in _tools(_server(str(tmp_path / "index.db")))}
+    assert not names & set(PAGE_WRITE_NAMES) and "check_site_pipeline_change" not in names

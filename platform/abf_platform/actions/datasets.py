@@ -128,7 +128,7 @@ def _cloud_target(platform_path, caller, destination):
 
 
 def _scheme(target):
-    """'gs' or 's3': read from the prefix of the target."""
+    """'gs', 's3' or 'az': read from the prefix of the target."""
     return target[1].partition("://")[0]
 
 
@@ -141,7 +141,7 @@ def _cloud_place(url, target):
     """None when `url` lies in the caller's own prefix of the environment's bucket, else a plain message that names only that prefix."""
     ce, prefix = target
     try:
-        bucket, _ = (cloud_store.parse_s3 if _scheme(target) == "s3" else cloud_store.parse_gs)(url)
+        bucket, _ = {"s3": cloud_store.parse_s3, "az": cloud_store.parse_az}.get(_scheme(target), cloud_store.parse_gs)(url)
     except cloud_store.CloudPathError as e:
         return str(e)
     if bucket != cloud_store.workdir_bucket(ce):
@@ -230,6 +230,12 @@ def check_web_upload(platform_path, sizes, *, caller=None, destination=None):
         return {"ok": True, "accepted": list(sizes), "over": []}
     if target is not None:
         command = cloud_store.big_file_command(target[0], caller.name if caller is not None else None, _scheme(target))
+        if _scheme(target) == "az":
+            message = ("網頁一個檔案最多收 2 GB，這些檔案太大：%s。請在你自己的電腦上、用你自己的 Azure 登入，跑這一行指令上傳：%s ；平台不會代你上傳。"
+                       "如果檔案已經在這個容器裡，就把它們放進同一個前綴：%s "
+                       "(the web takes at most 2 GB per file; run the command on your own computer with your own Azure login; the platform does not upload it for you)"
+                       ) % (", ".join(over), command, target[1])
+            return _no(message, over=over, command=command, accepted=[n for n in sizes if n not in over])
         if _scheme(target) == "s3":
             message = ("網頁一個檔案最多收 2 GB，這些檔案太大：%s。請在你自己的電腦上、用你自己的 AWS 登入，跑這一行指令上傳：%s ；平台不會代你上傳。"
                        "如果檔案已經在這個 bucket 裡，就把它們放進同一個前綴：%s "

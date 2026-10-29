@@ -982,7 +982,7 @@ def test_platform_host_types_has_two_entries_and_nothing_indexes_it_by_position(
     # TC-116, TC-117, TC-118, TC-130
     from abf_platform import compute_envs
     from abf_station import launch
-    assert compute_envs.PLATFORM_HOST_TYPES == (GCB, AWS) and compute_envs.CHECK_ONLY_TYPES == ("azbatch-platform",)      # azure-ce-type
+    assert compute_envs.PLATFORM_HOST_TYPES == (GCB, AWS, "azbatch-platform") and compute_envs.CHECK_ONLY_TYPES == ()      # azure-launch
     assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, AWS, "azbatch-platform")
     assert launch.GCB == "googlebatch-platform" and launch.AWS == "awsbatch-platform"
     for folder in ("abf_platform", "abf_station", "abf_launch"):

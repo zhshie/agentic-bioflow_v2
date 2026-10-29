@@ -901,15 +901,96 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         runs = await run_in_threadpool(read_runs, caller)
         return HTMLResponse(web_upload.render_progress(user["name"], csrf(sid, "logout"), runs, lang, view), headers=LAUNCH_HEADERS)
 
+    async def settings_page(sid, user, caller, lang, flash_of=None, given=None, code=200):
+        """The settings page for one logged-in user. `flash_of(envs)` says a notice or a failure; `given` is what a refused form held."""
+        runs = await run_in_threadpool(read_runs, caller)
+        envs = actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
+        flash = flash_of(envs) if flash_of else None
+        return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "settings-pipeline"), flash, given),
+                            status_code=code, headers=_HEADERS)
+
     async def settings(request):
         sid, user = user_of(request)
         if user is None:
             return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
+        key, ce = request.query_params.get("notice"), request.query_params.get("ce")
+        return await settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "notice", key=key, ce=ce))
+
+    # ---- settings-register-pipeline: register or remove a pipeline version on the person's own compute environment, in two steps.
+    # Step one only checks (check_site_pipeline_change reads) and shows what will change; step two, after the person presses the button, is the
+    # only place that calls a write action, with the PAGE channel. Nothing is stored between the steps: the token of step two is bound to the boxes.
+    PF_BOXES = ("op", "ce", "pipeline", "revision", "module", "home")
+
+    def pf_refused(lang, which):
+        t = web_settings.words(lang)
+        return _page(t["pf_" + which + "_title"], '<p class="bad">%s</p>' % _esc(t["pf_" + which]), 403)
+
+    def pf_where(ce, lang, notice):
+        return "/settings?notice=%s&ce=%s%s#ce-%s" % (notice, urllib.parse.quote(ce, safe=""), "&lang=en" if lang == "en" else "", urllib.parse.quote(ce, safe=""))
+
+    def pf_failed(sid, user, caller, lang, ce, text, given=None):
+        return settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "fail", text=text, ce=ce), given, 400)
+
+    async def pipelines_post(request):
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        if not same_origin(request):
+            return pf_refused(lang, "foreign")
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        if not _same(form.get("csrf", ""), csrf(sid, "settings-pipeline")):
+            return pf_refused(lang, "expired")
+        f = {k: str(form.get(k, "")).strip()[:300] for k in PF_BOXES}
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        t = web_settings.words(lang)
+        seen = await run_in_threadpool(lambda: actions.check_site_pipeline_change(
+            platform_path, op=f["op"], ce=f["ce"], pipeline=f["pipeline"], revision=f["revision"], module=f["module"], home=f["home"], caller=caller))
+        if not seen["ok"]:
+            line = web_settings.field_error(lang, seen.get("field"), f.get(seen.get("field") or ""))
+            return await pf_failed(sid, user, caller, lang, f["ce"], line or t["pf_fail"] + web_board.plain_reason(seen.get("message"), lang),
+                                   {f["ce"]: f})
+        if seen["gone"]:
+            return RedirectResponse(pf_where(f["ce"], lang, "gone"), status_code=303, headers=_HEADERS)
         runs = await run_in_threadpool(read_runs, caller)
-        envs = actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
-        return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs), headers=_HEADERS)
+        token = csrf(sid, web_settings.purpose_of(f))
+        edge = seen["count"] == 0 if f["op"] == "add" else seen["count"] == 1
+        return HTMLResponse(web_settings.render_confirm(user["name"], csrf(sid, "logout"), runs, lang, f, token, edge), headers=_HEADERS)
+
+    async def pipelines_confirm_post(request):
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        if not same_origin(request):
+            return pf_refused(lang, "foreign")
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        f = {k: str(form.get(k, "")) for k in PF_BOXES}
+        if not _same(form.get("csrf", ""), csrf(sid, web_settings.purpose_of(f))):
+            return pf_refused(lang, "expired")
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        t = web_settings.words(lang)
+        if f["op"] == "add":
+            answer = await run_in_threadpool(lambda: actions.register_site_pipeline(
+                platform_path, ce=f["ce"], pipeline=f["pipeline"], revision=f["revision"], module=f["module"], home=f["home"],
+                confirmed_by=actions.PAGE, caller=caller))
+        elif f["op"] == "remove":
+            answer = await run_in_threadpool(lambda: actions.remove_site_pipeline(
+                platform_path, ce=f["ce"], pipeline=f["pipeline"], revision=f["revision"], confirmed_by=actions.PAGE, caller=caller))
+        else:
+            answer = {"ok": False, "message": "動作只能是新增或移除 (the action must be add or remove)"}
+        if not answer["ok"]:
+            return await pf_failed(sid, user, caller, lang, f["ce"], t["pf_fail"] + web_board.plain_reason(answer.get("message"), lang))
+        if f["op"] == "remove":
+            notice = "removed" if answer["changed"] else "gone"
+        else:
+            notice = {"queued": "added_queued", "no_agent": "added_no_agent", "not_checkable": "added_not_checkable"}.get(answer["preflight"],
+                                                                                                                         "added_check_refused")
+        return RedirectResponse(pf_where(f["ce"], lang, notice), status_code=303, headers=_HEADERS)
 
 
     async def usage_page(request):
@@ -1003,7 +1084,9 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         gone = consent_gone(provider.consent_request(rid)) if status in ("decided", "expired") else None
         return gone or _page("未處理", "<p class=\"bad\">什麼都沒有改。請回到連接器重新開始。</p>", 403 if status == "user" else 404)
 
-    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]), Route("/usage", usage_page, methods=["GET"]),
+    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
+                            Route("/settings/pipelines", pipelines_post, methods=["POST"]),
+                            Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch/diagram", launch_diagram, methods=["GET"]),
                             Route("/launch", launch_post, methods=["POST"]),
                             Route("/upload", upload_get, methods=["GET"]), Route("/upload", upload_post, methods=["POST"]),
