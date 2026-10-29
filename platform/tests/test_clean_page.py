@@ -454,14 +454,23 @@ def test_no_clean_request_is_made_by_looking_around(w):
     assert w.sql("SELECT * FROM confirmations WHERE kind = 'clean_work'") == [] and w.sql("SELECT * FROM jobs WHERE kind = 'clean_work'") == []
 
 
+def _words_of(w, rid):
+    c = logged_in(w, "ann")
+    text = re.sub(r"<style>.*?</style>", "", c.get("/c/" + rid).text, flags=re.S) + notices(board(w, "ann").text)[0]
+    return re.sub(r"[0-9a-f]{32,}", "X", text)   # ids and CSRF tokens are random hex; a run of it can spell "fee"
+
+
+def _assert_no_fee_words(words):
+    for word in ("費用", "月費", "30 天", "cost", "Cost", "fee"):
+        assert word not in words
+
+
 def test_the_texts_have_no_fee_or_thirty_day_reminder_and_the_style_sheet_is_unchanged(w):
     # TC-066, TC-067
     ann = w.user("ann")
     rid = run_and_request(w, ann)
-    c = logged_in(w, "ann")
-    words = re.sub(r"<style>.*?</style>", "", c.get("/c/" + rid).text, flags=re.S) + notices(board(w, "ann").text)[0]
-    for word in ("費用", "月費", "30 天", "cost", "Cost", "fee"):
-        assert word not in words
+    words = _words_of(w, rid)
+    _assert_no_fee_words(words)
     css = re.search(r"<style>(.*?)</style>", board(w, "ann").text, re.S).group(1)
     assert hashlib.sha256(css.encode("utf-8")).hexdigest()[:16] == BASE_STYLE
 
@@ -494,3 +503,45 @@ def test_the_web_sources_have_no_program_start():
         src = inspect.getsource(mod)
         for b in ("subprocess", "os.system", "Popen", "os.exec", "os.spawn"):
             assert b not in src
+
+
+class _TokenHexFeed:
+    """Stands in for `secrets` inside confirm: token_hex gives 'feed' repeated (2*n chars), everything else is the real one."""
+    def token_hex(self, n=32):
+        return "feed" * (n // 2)
+
+    def __getattr__(self, name):
+        import secrets
+        return getattr(secrets, name)
+
+
+def test_a_request_id_that_contains_fee_does_not_fail_the_wording_check(w, monkeypatch):
+    # TC-001, TC-002, TC-008, TC-009
+    from abf_platform import confirm
+    import secrets as real_secrets
+    stand_in = _TokenHexFeed()
+    assert stand_in.token_hex(16) == "feedfeedfeedfeedfeedfeedfeedfeed" and stand_in.choice is real_secrets.choice
+    monkeypatch.setattr(confirm, "secrets", stand_in)
+    ann = w.user("ann")
+    rid = run_and_request(w, ann)
+    assert "fee" in rid
+    c = logged_in(w, "ann")
+    raw = re.sub(r"<style>.*?</style>", "", c.get("/c/" + rid).text, flags=re.S)
+    assert "fee" in raw
+    _assert_no_fee_words(_words_of(w, rid))
+
+
+def test_the_replaced_secrets_is_put_back_after_the_test(w):
+    # TC-009
+    from abf_platform import confirm
+    import secrets
+    assert confirm.secrets is secrets
+
+
+@pytest.mark.parametrize("extra", ["monthly fee", "費用", "30 天", "cost", "fees", "fee:", "/tmp/fee", "a" * 28 + "fee"])
+def test_a_real_fee_word_is_still_caught(w, extra):
+    # TC-011 .. TC-018 (28 x a + fee = 31 hex chars, below the 32 threshold, stays unmasked)
+    ann = w.user("ann")
+    rid = run_and_request(w, ann)
+    with pytest.raises(AssertionError):
+        _assert_no_fee_words(_words_of(w, rid) + " " + extra)
