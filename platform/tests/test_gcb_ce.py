@@ -878,3 +878,18 @@ def test_docs_list_every_gcb_key_and_check():
         assert not re.findall(r"[a-z0-9-]+@(?!lab-project-1)[a-z0-9-]+\.iam\.gserviceaccount\.com", text)
     t = doc("TESTING.md")
     assert "gcb-ce-type" in t and "預檢不計費" in t and "git diff" in t
+
+
+def test_max_memory_gb_rules(ip):
+    # TC-001 TC-002 TC-003 TC-004 TC-005 TC-006 TC-007 TC-008 (maxMemoryGB: one task's memory ceiling, whole GB 1..10000)
+    for bad in (0, 10001, True, "8", 1.5):
+        assert "maxMemoryGB must be a whole number from 1 to 10000" in refused(ip, good_config(maxMemoryGB=bad)), bad
+    assert create(ip, "mm1", good_config(maxMemoryGB=10000))["config"]["maxMemoryGB"] == 10000
+    assert create(ip, "mm2", good_config(maxMemoryGB=1))["config"]["maxMemoryGB"] == 1
+    assert "maxMemoryGB" not in create(ip, "mm3", good_config())["config"]      # an old environment: unset means unset, no default is filled in
+
+
+def test_no_other_new_limit_keys_are_taken(ip):
+    # TC-061 (no total, no disk, no time limit)
+    for key in ("maxDiskGB", "maxTime", "maxTotalMemoryGB"):
+        assert "unknown setting" in refused(ip, good_config(**{key: 5})), key

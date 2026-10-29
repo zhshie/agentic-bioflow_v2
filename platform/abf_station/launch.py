@@ -159,6 +159,14 @@ def _composed_source(pipeline, revision, composed):
 
 def snapshot_ce(view):
     """What a launch needs of a compute environment (the shape compute_envs.get gives), as plain JSON."""
+    out = _snapshot_ce(view)
+    mem = (view.get("config") or {}).get("maxMemoryGB")
+    if mem is not None and out.get("platform") in (GCB, AWS, AZURE):
+        out["maxMemoryGB"] = mem      # only when set: the key set of an environment that never had it stays as it was
+    return out
+
+
+def _snapshot_ce(view):
     c = view.get("config") or {}
     env = [{"name": e.get("name"), "value": e.get("value", ""), "head": bool(e.get("head", True)),
             "compute": bool(e.get("compute", False))} for e in (c.get("environment") or [])]
@@ -631,6 +639,11 @@ def _check_gcb_ce(ce):
     if cpus is not None and (isinstance(cpus, bool) or not isinstance(cpus, int) or not 1 <= cpus <= 10000):
         raise BundleError("環境 maxvCpus: 必須是 1 到 10000 的整數 (a whole number from 1 to 10000)")
     out["maxvCpus"] = cpus
+    mem = ce.get("maxMemoryGB")
+    if mem is not None:
+        if isinstance(mem, bool) or not isinstance(mem, int) or not 1 <= mem <= 10000:
+            raise BundleError("環境 maxMemoryGB: 必須是 1 到 10000 的整數 (a whole number from 1 to 10000)")
+        out["maxMemoryGB"] = mem
     if ((ce.get("preRunScript") or "").strip()) or ((ce.get("postRunScript") or "").strip()):
         raise BundleError("環境: %s" % NO_SCRIPTS)
     config = ce.get("nextflowConfig") or ""
@@ -659,6 +672,75 @@ def _gcb_quote(value):
     return "'%s'" % value
 
 
+_LIMITS_LINE = re.compile(r"^\s*(?:process\.)?resourceLimits\s*=\s*\[([^\[\]]*)\]\s*$")
+_LIMITS_ITEM = re.compile(r"^\s*(cpus|memory|disk|time)\s*:\s*(.+?)\s*$")
+_LIMITS_MEM = re.compile(r"^(?:(\d+(?:\.\d+)?)\.(GB|MB)|'(\d+(?:\.\d+)?) (GB|MB)')\Z")
+_LIMITS_FREE = re.compile(r"^[A-Za-z0-9_.' ]{1,40}\Z")
+
+
+def _limits_unreadable(ce):
+    return BundleError("環境 %s 的 nextflowConfig 有 resourceLimits，但平台讀不懂它的寫法，不能安全地和環境的上限合併。"
+                       "請改成單行 process.resourceLimits = [cpus: 4, memory: 6.GB]，或刪掉它、改設環境的 maxvCpus／maxMemoryGB "
+                       "(the platform cannot merge this resourceLimits safely; write it on one line or remove it)"
+                       % str(ce.get("name"))[:80])
+
+
+def _user_limits(ce):
+    """The resourceLimits the user wrote in the environment's nextflowConfig as {key: text}, or None when there is none.
+    Reads one narrow shape only (one line, known keys, plain values); anything else raises, because a guess could send a wrong config to a paid cloud."""
+    hits = [ln for ln in (ce.get("nextflowConfig") or "").split("\n") if not ln.strip().startswith("//") and "resourceLimits" in ln]
+    if not hits:
+        return None
+    if len(hits) > 1 or hits[0].count("resourceLimits") > 1:
+        raise _limits_unreadable(ce)
+    m = _LIMITS_LINE.match(hits[0].rstrip("\r"))
+    if not m:
+        raise _limits_unreadable(ce)
+    found = {}
+    for item in m.group(1).split(","):
+        k = _LIMITS_ITEM.match(item)
+        if not k or k.group(1) in found:
+            raise _limits_unreadable(ce)
+        key, val = k.group(1), k.group(2)
+        if key == "cpus":
+            ok = re.match(r"^\d+\Z", val) is not None and int(val) >= 1
+        elif key == "memory":
+            ok = _LIMITS_MEM.match(val) is not None
+        else:
+            ok = _LIMITS_FREE.match(val) is not None
+        if not ok:
+            raise _limits_unreadable(ce)
+        found[key] = val
+    return found
+
+
+def _memory_mb(text):
+    m = _LIMITS_MEM.match(text)
+    num, unit = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+    return float(num) * (1024 if unit == "GB" else 1)
+
+
+def _resource_limits_line(ce):
+    """The one `process.resourceLimits` line the platform writes (the same for every cloud), or None when the environment sets no limit.
+    The platform's value is a ceiling: for a key both sides set the smaller wins; a key only the user set stays; nothing the user wrote is dropped."""
+    cpus, mem = ce.get("maxvCpus"), ce.get("maxMemoryGB")
+    if cpus is None and mem is None:
+        return None      # the platform writes nothing, so the user's own resourceLimits is left alone
+    mine = _user_limits(ce) or {}
+    parts = []
+    if cpus is not None or "cpus" in mine:
+        parts.append("cpus: %d" % min(v for v in (cpus, int(mine["cpus"]) if "cpus" in mine else None) if v is not None))
+    if mem is not None or "memory" in mine:
+        if "memory" in mine and (mem is None or _memory_mb(mine["memory"]) <= mem * 1024):
+            parts.append("memory: %s" % mine["memory"])
+        else:
+            parts.append("memory: %d.GB" % mem)
+    for key in ("disk", "time"):
+        if key in mine:
+            parts.append("%s: %s" % (key, mine[key]))
+    return "process.resourceLimits = [%s]" % ", ".join(parts)
+
+
 def _gcb_config(ce, run_name, work_uri):
     """gcb.config: the settings of the compute environment, in the words Nextflow reads. It is read after nextflow.config (-c twice),
     so a line here cannot be overruled by the free text of the environment."""
@@ -677,8 +759,9 @@ def _gcb_config(ce, run_name, work_uri):
         lines.append("google.batch.usePrivateAddress = true")
     pairs = [(k, v) for k, v in ce["labels"].items()] + [("abf-run", run_name[:63])]
     lines.append("process.resourceLabels = [%s]" % ", ".join("%s: %s" % (q(k), q(v)) for k, v in pairs))
-    if ce["maxvCpus"] is not None:
-        lines.append("process.resourceLimits = [cpus: %d]" % ce["maxvCpus"])      # one task at most; Nextflow has no total of vCPUs
+    limits = _resource_limits_line(ce)
+    if limits is not None:
+        lines.append(limits)
     return "\n".join(lines) + "\n"
 
 
@@ -827,6 +910,11 @@ def _check_aws_ce(ce):
     if cpus is not None and (isinstance(cpus, bool) or not isinstance(cpus, int) or not 1 <= cpus <= 10000):
         raise BundleError("環境 maxvCpus: 必須是 1 到 10000 的整數 (a whole number from 1 to 10000)")
     out["maxvCpus"] = cpus
+    mem = ce.get("maxMemoryGB")
+    if mem is not None:
+        if isinstance(mem, bool) or not isinstance(mem, int) or not 1 <= mem <= 10000:
+            raise BundleError("環境 maxMemoryGB: 必須是 1 到 10000 的整數 (a whole number from 1 to 10000)")
+        out["maxMemoryGB"] = mem
     if ((ce.get("preRunScript") or "").strip()) or ((ce.get("postRunScript") or "").strip()):
         raise BundleError("環境: %s" % NO_SCRIPTS)
     config = ce.get("nextflowConfig") or ""
@@ -856,8 +944,9 @@ def _aws_config(ce, work_uri):
     lines = ["// written by the platform from the compute environment; read after nextflow.config, so these settings win",
              "process.executor = 'awsbatch'", "process.queue = %s" % q(ce["jobQueue"]), "aws.region = %s" % q(ce["region"]),
              "workDir = %s" % q(work_uri)]
-    if ce["maxvCpus"] is not None:
-        lines.append("process.resourceLimits = [cpus: %d]" % ce["maxvCpus"])      # one task at most; Nextflow has no total of vCPUs
+    limits = _resource_limits_line(ce)
+    if limits is not None:
+        lines.append(limits)
     return "\n".join(lines) + "\n"
 
 
@@ -998,6 +1087,11 @@ def _check_azure_ce(ce):
     if cpus is not None and (isinstance(cpus, bool) or not isinstance(cpus, int) or not 1 <= cpus <= 10000):
         raise BundleError("環境 maxvCpus: 必須是 1 到 10000 的整數 (a whole number from 1 to 10000)")
     out["maxvCpus"] = cpus
+    mem = ce.get("maxMemoryGB")
+    if mem is not None:
+        if isinstance(mem, bool) or not isinstance(mem, int) or not 1 <= mem <= 10000:
+            raise BundleError("環境 maxMemoryGB: 必須是 1 到 10000 的整數 (a whole number from 1 to 10000)")
+        out["maxMemoryGB"] = mem
     if ((ce.get("preRunScript") or "").strip()) or ((ce.get("postRunScript") or "").strip()):
         raise BundleError("環境: %s" % NO_SCRIPTS)
     config = ce.get("nextflowConfig") or ""
@@ -1032,8 +1126,9 @@ def _azure_config(ce, work_uri):
              "%saccountName = %s" % (batch, q(ce["batchAccountName"])), "%slocation = %s" % (batch, q(ce["location"])),
              "%saccountName = %s" % (storage, q(ce["storageAccountName"])),
              "%sallowPoolCreation = false" % batch, "%sautoPoolMode = false" % batch]
-    if ce["maxvCpus"] is not None:
-        lines.append("process.resourceLimits = [cpus: %d]" % ce["maxvCpus"])      # one task at most; Nextflow has no total of vCPUs
+    limits = _resource_limits_line(ce)
+    if limits is not None:
+        lines.append(limits)
     return "\n".join(lines) + "\n"
 
 

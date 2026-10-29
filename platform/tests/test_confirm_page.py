@@ -309,7 +309,8 @@ def test_tcg04_g05_g06_the_web_app_has_the_routes_of_009c_plus_the_board_and_the
                       ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),      # 012b: the launch form and the three buttons that only ask; guided-launch-2: the diagram picture
                       ("/login", ("GET", "HEAD")), ("/login", ("POST",)), ("/logout", ("POST",)),
                       ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")),
-                      ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline: the two steps of registering a pipeline version
+                      ("/settings/inventory", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-pick-installed: the reload button of the site list
+                           # settings-register-pipeline: the two steps of registering a pipeline version
                       ("/token", ("OPTIONS", "POST")), ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),
                       ("/usage", ("GET", "HEAD")),
                       ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: the page a temporary-password login sets its own password on; web-upload-page: the upload form, its POST and the progress page
