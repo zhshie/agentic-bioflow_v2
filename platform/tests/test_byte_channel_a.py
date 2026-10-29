@@ -228,7 +228,7 @@ def test_tc014_only_the_jobs_table_is_rebuilt(tmp_path):
 def test_tc015_tc016_kinds_end_with_put_upload_and_confirmed_is_unchanged():
     # TC-015, TC-016
     from abf_platform import jobs
-    assert jobs.KINDS[-2:] == ("put_upload", "pipeline_files") and jobs.KINDS[:-2] == ("preflight", "list_site_files", "launch_nextflow", "cancel_run",      # release-lookup-job: put_upload before pipeline_files, which is last
+    assert jobs.KINDS[-3:] == ("put_upload", "pipeline_files", "read_run_file") and jobs.KINDS[:-3] == ("preflight", "list_site_files", "launch_nextflow", "cancel_run",      # release-lookup-job: put_upload before pipeline_files, which is last
                                                                   "fetch_run_records", "read_task_log", "clean_work")
     assert jobs.CONFIRMED == {"launch_nextflow": "launch", "cancel_run": "cancel", "clean_work": "clean_work"}
 
