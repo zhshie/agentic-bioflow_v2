@@ -30,3 +30,8 @@ No migration needed: no table, column or configuration key changes. `result.slur
 ## BLOCKED (one question)
 
 `platform/tests/test_settings_pick_installed.py:844` (`test_the_pinned_cloud_types`) asserts `tuple(web_settings.CLOUD_TYPES) == tuple(compute_envs.PLATFORM_HOST_TYPES) == CLOUD_PLATFORMS` (the three Batch types). Ruling 12-2 puts K8S into `PLATFORM_HOST_TYPES`, so it fails. The plan forbids editing `web_settings.py` and does not list this test. Proposed fix: compare against `PLATFORM_HOST_TYPES` minus K8S, or add K8S to `web_settings.CLOUD_TYPES` and `CLOUD_PLATFORMS`. Left unmodified.
+
+## Ruling 12-11 (resolves the BLOCKED above)
+
+- test_settings_pick_installed `test_the_pinned_cloud_types`: `... == tuple(compute_envs.PLATFORM_HOST_TYPES) == CLOUD_PLATFORMS` -> `... == tuple(t for t in compute_envs.PLATFORM_HOST_TYPES if t != compute_envs.K8S) == CLOUD_PLATFORMS` (value swap; web_settings.py untouched).
+- Out-of-scope changes ratified: `site.run_fixed` stdin, `launch._snapshot_ce` K8s branch, `cli.py` started line.
