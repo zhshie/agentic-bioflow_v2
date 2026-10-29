@@ -709,7 +709,7 @@ def test_tcs36_cards_are_read_only(w):
         assert part.count("<button") == len(forms)
         for h in hrefs(part):
             u = urlsplit(htmllib.unescape(h))
-            assert (u.path == "/" and "run" in parse_qs(u.query)) or (u.path == "/launch" and "from" in parse_qs(u.query)), h      # the run page's "launch again" link
+            assert (u.path == "/" and "run" in parse_qs(u.query)) or (u.path == "/launch" and "from" in parse_qs(u.query))                 or (u.path == "/act/resume/edit" and "run" in parse_qs(u.query)), h      # the run page's "launch again" link; resume-edit-web: "修改後續跑" beside Resume
         for word in ("上傳", "確認", "Resume", "Retry"):
             assert word not in re.sub(r"（確認頁）", "", part)
     assert len(re.findall(r"<form\b", pane(t, "right"))) == 1
@@ -817,7 +817,7 @@ def test_tch11_read_only(w):
     assert c.post("/").status_code == 405 and c.post("/settings").status_code == 405
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
     assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")),
-                      ("/act/{verb}", ("POST",)),
+                      ("/act/resume/edit", ("GET", "HEAD")), ("/act/{verb}", ("POST",)),      # resume-edit-web
                       ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)),
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),
                       ("/login", ("GET", "HEAD")),

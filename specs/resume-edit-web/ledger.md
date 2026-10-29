@@ -1,1 +1,26 @@
 # 網頁修改後續跑 progress ledger
+
+> Executor: stamp 20261029-1405-L33. One line per task; tests first (RED commit 7a03539), then the code.
+
+- [x] Tests: `platform/tests/test_web_resume_edit.py` (new, 34 tests; TC numbers in the comments). RED commit first.
+- [x] `web_board.py`: only the new strings (`RESUME_EDIT`, merged into `STRINGS`), `Acts.edit_link`, and its two call sites (the menu beside Resume for a run with a failure record; the failure notice when its first action is Resume). `STYLE` and CSP untouched.
+- [x] `web_launch.py`: new functions only (`typed_like`, `wrong_type`, `resume_changes`, `two_columns`, `resume_params_block`, `render_resume_edit`); `groups_block` and every existing function are unchanged byte for byte.
+- [x] `web.py`: `GET /act/resume/edit`; `POST /act/resume` reads `p.<name>` and `extra_config` only when one is present (a form without them takes the old path, same 303 / 409); the confirmation page lists the changes (read from the lines the action layer's own screen wrote, no change to `confirm.py`).
+- [x] `docs/TESTING.md`: new manual section.
+
+Existing tests changed (each only adds; nothing deleted, skipped or loosened):
+
+| file | what was added | why |
+|---|---|---|
+| `test_cleanup_offer.py` `ROUTES` | `/act/resume/edit` | the route list is pinned; there is one new route (TC-082) |
+| `test_confirm_page.py` (routes of the web app) | `("/act/resume/edit", ("GET", "HEAD"))` | same |
+| `test_dataset_cli.py` (routes read from the source of `web.py`) | `"/act/resume/edit"` | same |
+| `test_owner_binding.py` `test_tc068` | `/act/resume/edit` in the set of paths | same; it logs nobody in |
+| `test_web_board.py` routes list | `("/act/resume/edit", ("GET", "HEAD"))` | same |
+| `test_web_board.py` `test_tcs36_cards_are_read_only` | a third allowed shape of link in the middle and right columns: `/act/resume/edit?run=…` | the new link "修改後續跑" is a plain link that only reads |
+
+Plan versus rules, found while doing it:
+
+- TC-040 asks the web code to use the station's `MAX_EXTRA_CONFIG`. `test_cleanup_offer::test_platform_and_launch_sources_…` forbids the word `station` in any `abf_platform` source line, so `web.py` uses `abf_launch.build.CONFIG_LIMIT` (the platform's own number, 20000, equal to the station's); the new test asserts the two are equal.
+- The station's check on the extra settings accepts only resource lines and `//` comments; a `#` line is refused by the action layer and comes back on the form as the 400 sentence. The tests use `//`.
+- `WSL constitution_scope_test.sh` red is the environment (ruling 5): worktree made with Windows git; CI decides.

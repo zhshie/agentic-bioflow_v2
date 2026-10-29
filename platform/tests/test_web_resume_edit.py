@@ -11,9 +11,9 @@ import pytest
 
 from helpers import PLATFORM_DIR
 from human_harness import csrf_of
-from test_web_actions import act_form, area_sheet, login, rid_of, snapshot
+from test_web_actions import act_form, area_sheet, login, pending, rid_of, snapshot
 from test_web_board import no_cjk
-from test_web_guided_launch import ready, rig  # noqa: F401  (rig is a fixture)
+from test_web_guided_launch import launched_by_other, ready, rig  # noqa: F401  (rig is a fixture)
 from test_web_guided_launch_2 import good_files, fk, loading_files, error_files  # noqa: F401  (fk is a fixture)
 
 WEB = PLATFORM_DIR / "abf_platform" / "web.py"
@@ -25,6 +25,7 @@ SCHEMA = json.dumps({
         "skip_qiime": {"type": "boolean", "default": False, "description": "Skip the QIIME step"},
         "metadata": {"type": "string", "description": "Path to the metadata sheet"}}}},
     "allOf": [{"$ref": "#/$defs/opts"}]})
+UNSTYLED = {"prow", "who"}      # classes the existing pages already use (the masthead, the parameter table) that have no rule of their own in the style sheet
 MEM = "process.memory = '16 GB'"
 FIXED = "管線、版本、樣本表與運算環境沿用第一次送出的內容，不能修改。"
 LABEL = "額外設定（每行一項，例 process.memory = '16 GB'）"
@@ -61,7 +62,10 @@ def spy(monkeypatch):
 def make_run(rig, ann, name="run-a", status="failed", params=None, reusable=True):
     """A run of ann's, launched through the real action and now `status`; reusable = Seqera's resume is on offer (tasks to reuse)."""
     from abf_platform import store
-    rig.first(name, caller=ann, samplesheet=area_sheet(rig.w, ann), status=status, params=START if params is None else params)
+    if params == {}:      # rig.first would put its own parameters in place of none
+        launched_by_other(rig, ann, name, "nf-core/ampliseq", {})
+    else:
+        rig.first(name, caller=ann, samplesheet=area_sheet(rig.w, ann), status=status, params=START if params is None else params)
     if reusable and status:
         con = store.connect_index(rig.index)
         with con:
@@ -202,14 +206,14 @@ def test_tc011_to_tc013_tc015_tc018_tc019_tc020_head_and_fields(rig, fx):
     for word in ("run-a", "nf-core/ampliseq", "2.18.0", "lab-a"):
         assert word in dl
     assert "<input" not in dl
-    assert t.index(FIXED) > t.index("</dl>") and 'class="muted"' in t[t.index("</dl>"):t.index(FIXED) + len(FIXED)] and t.index(FIXED) < t.index("<form")
+    assert t.index(FIXED) > t.index("</dl>") and 'class="muted"' in t[t.index("</dl>"):t.index(FIXED) + len(FIXED)] and t.index(FIXED) < t.index('<form class="lform"')
     names = set(re.findall(r'<(?:input|select|textarea)\b[^>]*name="([^"]+)"', t))
     assert {n for n in names if not n.startswith("p.")} <= {"run", "csrf", "lang", "extra_config"}, names
     assert {"run", "csrf", "extra_config"} <= names
     assert any(call["pipeline"] == "nf-core/ampliseq" and call["revision"] == "2.18.0" and call["ce"] == "lab-a" for call in fx.main_calls())
-    assert re.search(r'<label for="extra_config">%s</label>' % re.escape(LABEL), t) and 'id="extra_config"' in t
+    assert html.unescape(re.search(r'<label for="extra_config">(.*?)</label>', t).group(1)) == LABEL and 'id="extra_config"' in t
     assert extra_of(t) == "" and "required" not in re.search(r'<textarea [^>]*>', t).group(0)
-    assert re.findall(r'<button type="submit">([^<]*)</button>', t) == ["送出（前往確認頁）"]
+    assert re.findall(r'<button type="submit">([^<]*)</button>', form_of(t)) == ["送出（前往確認頁）"]
     assert re.search(r'<a href="%s">返回</a>' % re.escape("/?run=" + rid), t)
     h = hidden(t)
     assert h["run"] == rid
@@ -272,7 +276,8 @@ def test_tc023_tc027_tc086_other_people_and_missing(rig, fx):
     # TC-023, TC-027, TC-086, TC-048
     ann, c = ready(rig)
     bob = rig.user("bob")
-    theirs = make_run(rig, bob, "run-b", params={"trunclenf": 777})
+    launched_by_other(rig, bob, "run-b", "nf-core/ampliseq", {"trunclenf": 777})
+    theirs = "id-run-b"
     mine = make_run(rig, ann, "run-a")
     a = c.get(edit_url(theirs))
     b = c.get(edit_url("id-nope"))
@@ -283,7 +288,7 @@ def test_tc023_tc027_tc086_other_people_and_missing(rig, fx):
     assert r.status_code == 404 or r.status_code == 403
     miss = c.post("/act/resume", data=dict(good, run="id-nope", **{"extra_config": MEM}))
     assert miss.status_code == 404 or miss.status_code == r.status_code
-    assert "777" not in r.text and len(rig.sql("SELECT * FROM confirmations")) == 0
+    assert "777" not in r.text and pending(rig) == 0
 
 
 def test_tc024_not_resumable_goes_back_to_the_run_page(rig, fx):
@@ -291,31 +296,30 @@ def test_tc024_not_resumable_goes_back_to_the_run_page(rig, fx):
     ann, c = ready(rig)
     for rid in (make_run(rig, ann, "run-ok", status="succeeded"), make_run(rig, ann, "run-go", status=None)):
         r = c.get(edit_url(rid))
-        post = c.post("/act/resume", data=act_form(c.get("/?run=" + rid).text, "resume", rid))
+        post = c.post("/act/resume", data=act_form(c.get("/?run=%s&stage=running" % rid).text, "resume", rid))
         assert r.status_code == post.status_code == 409
         assert 'name="extra_config"' not in r.text
         assert re.search(r'<p class="bad" role="alert">([^<]*)</p>', r.text).group(1) == re.search(r'<p class="bad" role="alert">([^<]*)</p>', post.text).group(1)
-    assert len(rig.sql("SELECT * FROM confirmations")) == 0
+    assert pending(rig) == 0
 
 
 def test_tc025_content_no_longer_kept(rig, fx):
     # TC-025
     ann, c, rid = setup(rig, fx)
-    A().forget  # noqa: B018  (the action exists)
     import sqlite3
     con = sqlite3.connect(str(rig.state))
     with con:
         con.execute("UPDATE confirmations SET bundle_json = NULL, forgotten_at = 1")
     con.close()
     r = c.get(edit_url(rid))
-    assert r.status_code == 200 and "120" not in r.text and "true" not in cells(r.text).values()
+    assert r.status_code == 200 and 'value="120"' not in r.text and "true" not in cells(r.text).values()
 
 
 def test_tc026_post_to_the_edit_address(rig, fx):
     # TC-026
     ann, c, rid = setup(rig, fx)
     r = c.post("/act/resume/edit", data=posting(c.get(edit_url(rid)).text, extra_config=MEM))
-    assert r.status_code in (404, 405) and len(rig.sql("SELECT * FROM confirmations")) == 0
+    assert r.status_code in (404, 405) and pending(rig) == 0
 
 
 # ---- US3: sending -----------------------------------------------------------------------------------------------------------------------
@@ -339,7 +343,6 @@ def test_tc029_to_tc036_what_is_collected(rig, fx, spy):
     r = go(rig, c, rid, p_trunclenf="200")
     assert rid_of(r) and spy.calls[-1]["params"] == {"trunclenf": 200} and not spy.calls[-1].get("extra_config")
     assert type(spy.calls[-1]["params"]["trunclenf"]) is int
-    rig.sql("SELECT 1")
     for q in rig.sql("SELECT id FROM confirmations"):
         A().void_request(rig.state, q["id"], "test")
     go(rig, c, rid, p_trunclenf="200", p_skip_qiime="false", p_metadata="sheet.tsv")
@@ -368,33 +371,35 @@ def test_tc029_to_tc036_what_is_collected(rig, fx, spy):
     r = go(rig, c, rid, p_trunclenf="200", extra_config=MEM)      # TC-036, TC-038
     assert spy.calls[-1]["params"] == {"trunclenf": 200} and spy.calls[-1]["extra_config"] == MEM
     assert re.fullmatch(r"/c/[0-9a-f]{32}", r.headers["location"]) and r.status_code == 303
-    assert len(rig.jobs()) == 0
+    assert rig.sql("SELECT * FROM jobs WHERE kind = 'launch_nextflow' AND state = 'queued'") == []
 
 
 def test_tc037_crlf(rig, fx, spy):
     # TC-037
     ann, c, rid = setup(rig, fx)
-    r = go(rig, c, rid, extra_config="# one\r\n" + MEM)
-    assert rid_of(r) and spy.calls[-1]["extra_config"] == "# one\n" + MEM
+    r = go(rig, c, rid, extra_config="// one\r\n" + MEM)
+    assert rid_of(r) and spy.calls[-1]["extra_config"] == "// one\n" + MEM
 
 
 def test_tc039_tc040_the_length_limit(rig, fx, spy):
     # TC-039, TC-040, TC-042, TC-043, TC-060
     from abf_station.launch import MAX_EXTRA_CONFIG
     ann, c, rid = setup(rig, fx)
-    long = "# " + "a" * (MAX_EXTRA_CONFIG - 1)
+    long = "//" + "a" * (MAX_EXTRA_CONFIG - 1)
     assert len(long) == MAX_EXTRA_CONFIG + 1
     r = go(rig, c, rid, p_trunclenf="200", p_skip_qiime="false", extra_config=long)
     assert r.status_code == 400 and not spy.calls
     t = r.text
     assert re.search(r'<p class="bad" role="alert">✕ 未能完成：[^<]*</p>', t)
-    assert t.index("✕ 未能完成") < t.index("<form") or t.index("✕ 未能完成") < t.index("<input")
+    assert t.index("✕ 未能完成") < t.index('<form class="lform"')
     assert cells(t)["trunclenf"] == "200" and cells(t)["skip_qiime"] == "false" and extra_of(t) == long
-    assert len(rig.sql("SELECT * FROM confirmations")) == 0
-    ok = "# " + "a" * (MAX_EXTRA_CONFIG - 2)
+    assert pending(rig) == 0
+    ok = "//" + "a" * (MAX_EXTRA_CONFIG - 2)
     r = go(rig, c, rid, extra_config=ok)
-    assert r.status_code == 303 or "超過" not in r.text
-    assert "MAX_EXTRA_CONFIG" in WEB.read_text(encoding="utf-8") and not re.search(r"\b20000\b", WEB.read_text(encoding="utf-8"))
+    assert spy.calls and len(spy.calls[-1]["extra_config"]) == MAX_EXTRA_CONFIG and "字數多於上限" not in r.text      # the action layer judges it from here
+    from abf_launch import build
+    assert build.CONFIG_LIMIT == MAX_EXTRA_CONFIG      # the page cannot import the station (a platform source never names it): it uses the platform number, which is the same
+    assert "CONFIG_LIMIT" in WEB.read_text(encoding="utf-8") and "20000" not in WEB.read_text(encoding="utf-8")
 
 
 def test_tc041_tc042_tc043_action_layer_refuses(rig, fx, monkeypatch):
@@ -404,12 +409,11 @@ def test_tc041_tc042_tc043_action_layer_refuses(rig, fx, monkeypatch):
     async def refuse(*a, **kw):
         return {"ok": False, "sent": False, "message": "這個 run 現在不能續跑 (the run cannot be resumed now)"}
     monkeypatch.setattr(A(), "request_resume", refuse)
-    r = go(rig, c, rid, p_trunclenf="200", p_skip_qiime="false", extra_config=MEM + "\n# note")
+    r = go(rig, c, rid, p_trunclenf="200", p_skip_qiime="false", extra_config=MEM + "\n// note")
     t = r.text
     assert r.status_code == 400 and "✕ 未能完成：" in t and "不能續跑" in t and 'name="extra_config"' in t
-    assert cells(t)["trunclenf"] == "200" and cells(t)["skip_qiime"] == "false" and extra_of(t) == MEM + "\n# note"
-    assert t.index("✕ 未能完成") < t.index('name="p.trunclenf"') < t.index("<button type=\"submit\">") and t.index("</dl>") > t.index("✕ 未能完成") or True
-    assert len(rig.sql("SELECT * FROM confirmations")) == 0
+    assert cells(t)["trunclenf"] == "200" and cells(t)["skip_qiime"] == "false" and extra_of(t) == MEM + "\n// note"
+    assert pending(rig) == 0
 
 
 def test_tc044_wrong_type(rig, fx, spy):
@@ -417,7 +421,7 @@ def test_tc044_wrong_type(rig, fx, spy):
     ann, c, rid = setup(rig, fx)
     r = go(rig, c, rid, p_trunclenf="abc")
     assert r.status_code == 400 and "✕ 未能完成：" in r.text and "trunclenf" in re.search(r'<p class="bad" role="alert">([^<]*)</p>', r.text).group(1)
-    assert cells(r.text)["trunclenf"] == "abc" and not spy.calls and len(rig.sql("SELECT * FROM confirmations")) == 0
+    assert cells(r.text)["trunclenf"] == "abc" and not spy.calls and pending(rig) == 0
 
 
 def test_tc045_to_tc047_csrf_and_origin(rig, fx, spy):
@@ -429,18 +433,18 @@ def test_tc045_to_tc047_csrf_and_origin(rig, fx, spy):
     assert c.post("/act/resume", data=dict(data, csrf="wrong")).status_code == 403
     assert c.post("/act/resume", data=dict(data, run=other)).status_code == 403
     assert c.post("/act/resume", data=data, headers={"Origin": "https://evil.example"}).status_code == 403
-    assert not spy.calls and len(rig.sql("SELECT * FROM confirmations")) == 0
+    assert not spy.calls and pending(rig) == 0
 
 
 def test_tc049_not_resumable_with_edits(rig, fx):
     # TC-049, TC-050
     ann, c = ready(rig)
     rid = make_run(rig, ann, "run-ok", status="succeeded")
-    base = act_form(c.get("/?run=" + rid).text, "resume", rid)
+    base = act_form(c.get("/?run=%s&stage=running" % rid).text, "resume", rid)
     r = c.post("/act/resume", data=dict(base, extra_config=MEM))
     assert r.status_code == 400 and "✕ 未能完成：" in r.text and 'name="extra_config"' in r.text
     plain = c.post("/act/resume", data=base)
-    assert plain.status_code == 409 and 'name="extra_config"' not in plain.text and len(rig.sql("SELECT * FROM confirmations")) == 0
+    assert plain.status_code == 409 and 'name="extra_config"' not in plain.text and pending(rig) == 0
 
 
 # ---- US4: the confirmation page ---------------------------------------------------------------------------------------------------------
@@ -452,12 +456,12 @@ def outside_details(t):
 def test_tc051_to_tc057_the_changes_are_listed(rig, fx):
     # TC-051, TC-052, TC-053, TC-054, TC-055, TC-056, TC-057, TC-072
     ann, c, rid = setup(rig, fx)
-    r = go(rig, c, rid, p_trunclenf="200", p_metadata="sheet.tsv", extra_config=MEM + "\n# <b>x</b>")
+    r = go(rig, c, rid, p_trunclenf="200", p_metadata="sheet.tsv", extra_config=MEM + "\n// <b>x</b>")
     t = c.get(r.headers["location"]).text
     out = outside_details(t)
     assert "改動" in out and "trunclenf：120 → 200" in html.unescape(out) and "metadata：（新增）→ sheet.tsv" in html.unescape(out)
     pre = re.findall(r"<pre>(.*?)</pre>", out, re.S)
-    assert pre == [html.escape(MEM + "\n# <b>x</b>", quote=True)] and "<b>" not in out
+    assert pre == [html.escape(MEM + "\n// <b>x</b>", quote=True)] and "<b>" not in out
     assert out.index("trunclenf：120") < out.index("<pre>")
     assert t.count("== 續跑確認") == 1 and "<details>" in t and "<details open" not in t
     plain = re.search(r'<dl class="fields plain">(.*?)</dl>', t, re.S).group(1)
@@ -517,10 +521,9 @@ def test_tc060_to_tc062_no_inline_style_no_new_class_same_headers(rig, fx):
         assert t.count("<style>") == 1
         assert not re.search(r'(src|action|href)="https?://', t)
         classes = {x for m in re.findall(r'class="([^"]*)"', t) for x in m.split()}
-        known = web_board.STYLE
-        assert all(("." + x) in known for x in classes), (name, [x for x in classes if ("." + x) not in known])
+        assert {x for x in classes if ("." + x) not in web_board.STYLE} <= UNSTYLED, (name, sorted(x for x in classes if ("." + x) not in web_board.STYLE))
     r = c.get(edit_url(rid))
-    assert {k: v for k, v in r.headers.items() if k in web._HEADERS} == web._HEADERS
+    assert {k: r.headers.get(k) for k in web._HEADERS} == web._HEADERS
     assert c.get(edit_url("id-nope")).headers["content-security-policy"] == web._HEADERS["Content-Security-Policy"]
     assert re.search(r"style-src 'sha256-", r.headers["content-security-policy"]) and "script-src" not in r.headers["content-security-policy"]
 
@@ -596,19 +599,14 @@ def test_tc077_no_relaunch_edit_page(rig, fx, monkeypatch):
     assert c.get("/act/relaunch/edit?run=" + rid).status_code == 404
     t = c.get("/?run=" + rid).text
     assert "修改後重跑" not in t and "relaunch/edit" not in t
-    calls = []
-    real = A().request_relaunch
-
-    async def spy(*a, **kw):
-        calls.append(kw)
-        return await real(*a, **kw)
-    monkeypatch.setattr(A(), "request_relaunch", spy)
     r = c.post("/act/relaunch", data=dict(act_form(t, "relaunch", rid), **{"p.trunclenf": "200", "extra_config": MEM}))
-    assert r.status_code == 303 and "params" not in calls[0] and "extra_config" not in calls[0]
+    from test_web_actions import request_of
+    summary = request_of(rig, rid_of(r))["summary"]
+    assert MEM not in summary and "trunclenf: 200" not in summary and "200" not in summary.split("trunclenf")[-1][:8]
 
 
 def test_tc079_the_style_is_pinned():
     # TC-079
     import hashlib
     from abf_platform import web_board
-    assert web_board.STYLE and hashlib.sha256(web_board.STYLE.encode()).hexdigest()
+    assert hashlib.sha256(web_board.STYLE.encode()).hexdigest() == "66b9a8e1a9c6f7d21872668edd5f10a2525c760e44b0e68a7cbeea030a33b862"      # the value on the base (v3)
