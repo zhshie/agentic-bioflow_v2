@@ -210,6 +210,8 @@ cd ~/<clone> && git pull
 systemctl --user restart abf-serve abf-mcp abf-web
 ```
 
+Or run `deploy/platform-upgrade.sh`: it does the same three steps, then waits (120 seconds by default; `--wait N` changes it) for every agent that was online before the restart to say hello again, names the ones that did not, and exits with 1.
+
 If `deploy/systemd/` or `deploy/Caddyfile.template` changed in the new version, copy them again as
 in steps 3 and 4 and run `systemctl --user daemon-reload` (and restart Caddy) before the restart.
 

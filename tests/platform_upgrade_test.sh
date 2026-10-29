@@ -218,10 +218,10 @@ if printf '%s\n' "$up_sec" | grep -qF 'cd ~/<clone> && git pull' && printf '%s\n
 else bad "TC-U24 OPERATIONS.md Upgrade section"; fi
 if bash tests/hosted_deploy_test.sh >"$TMP/hd.out" 2>&1; then ok "TC-U24/U25/U30 hosted_deploy_test.sh is green"; else bad "TC-U25 hosted_deploy_test.sh" "$(grep FAIL "$TMP/hd.out" | head -3)"; fi
 
-if git rev-parse origin/v3 >/dev/null 2>&1; then
-  d=$(git diff -U0 origin/v3 HEAD -- tests/hosted_deploy_test.sh | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)')
+if mb=$(git merge-base origin/v3 HEAD 2>/dev/null) && git cat-file -e "$mb:tests/hosted_deploy_test.sh" 2>/dev/null; then
+  d=$(git diff -U0 "$mb" -- tests/hosted_deploy_test.sh | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)')
   if [ "$(printf '%s\n' "$d" | grep -c '^-')" -eq 1 ] && [ "$(printf '%s\n' "$d" | grep -c '^+')" -eq 1 ] && printf '%s\n' "$d" | grep '^+' | grep -qF '$D/platform-upgrade.sh'; then ok "TC-U26 hosted_deploy_test.sh differs only by the want_list entry"; else bad "TC-U26" "$d"; fi
-  ch=$(git diff --name-only origin/v3 HEAD -- platform deploy/backup.sh deploy/systemd)
+  ch=$(git diff --name-only "$mb" -- platform deploy/backup.sh deploy/systemd)
   if [ -z "$ch" ]; then ok "TC-U28 platform/, backup.sh and deploy/systemd untouched"; else bad "TC-U28" "$ch"; fi
 else skip "TC-U26 / TC-U28" "no origin/v3"; fi
 
