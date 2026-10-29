@@ -377,7 +377,7 @@ def wrong_type(raw, kinds):
     return isinstance(_typed(value, kinds), str)
 
 
-def resume_changes(fields, first, files, defaults_too=True):
+def edit_changes(fields, first, files, defaults_too=True):
     """{name: typed value} of the boxes of the resume page that differ from the first submission. A box left empty is not sent. A parameter the first
     submission did not have is sent unless its box holds what the schema's default is (as on the launch page); one it had is sent whenever the value
     is another one, also when it equals the default."""
@@ -409,7 +409,7 @@ def two_columns(t, cells):
     return '<table class="tbl ptbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (heads, rows)
 
 
-def resume_params_block(t, lang, files, first, given, quiet=False):
+def edit_params_block(t, lang, files, first, given, quiet=False):
     """The parameter part of the resume page. `first` is {name: value} of the first submission; `given` is {name: text} of what the boxes held
     before the page was drawn again (they win). The pipeline's own table when it is read (every box holds the first value, else the default),
     else the reading line or the ✗ line and the first submission's parameters as name and box; with none, the one sentence."""
@@ -433,7 +433,7 @@ def resume_params_block(t, lang, files, first, given, quiet=False):
     return "".join(out) + two_columns(t, {n: (given or {}).get(n, v) for n, v in shown.items()})
 
 
-def render_resume_edit(name, csrf, runs, lang, run, head, files, first, token, given=None, extra="", error=None, code_post=False):
+def edit_page_html(name, csrf, runs, lang, run, head, files, first, token, given=None, extra="", error=None, code_post=False):
     """GET /act/resume/edit (and the answer to a POST that did not pass): the run's first facts (not editable), the parameters as the first
     submission had them, one box for extra settings, and the one form that goes to POST /act/resume. `head` is [(label, value)] of what is
     known of the first submission; `error` is one plain line that goes above everything; `code_post` is True for the answer to a POST (no refresh)."""
@@ -451,7 +451,7 @@ def render_resume_edit(name, csrf, runs, lang, run, head, files, first, token, g
                                 '<label for="extra_config">%s</label><textarea id="extra_config" name="extra_config" rows="5">%s</textarea>'
                                 '<div class="acts"><button type="submit">%s</button> <a href="%s">%s</a></div></form></main>'
                                 % (esc(t["re_title"]), note, dl, esc(t["re_fixed"]), carried, esc(t["re_params"]),
-                                   resume_params_block(t, lang, files, first, given, quiet), fill_hint(t, loading and not quiet),
+                                   edit_params_block(t, lang, files, first, given, quiet), fill_hint(t, loading and not quiet),
                                    esc(t["re_extra"]), esc(extra), esc(t["re_submit"]), back, esc(t["re_back"])))
     return web_board._frame(name, csrf, runs, lang, "", middle, lambda t_, lang_: web_board._right(t_, None), run=run, path="/act/resume/edit",
                             refresh=loading and not quiet)

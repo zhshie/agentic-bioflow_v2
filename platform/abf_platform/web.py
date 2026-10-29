@@ -586,7 +586,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if view is None:
             return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
         if verb == "resume" and ("extra_config" in form or web_launch.fields_of(form)):
-            return await resume_with_edits(sid, user, caller, lang, view, form)
+            return await edit_post(sid, user, caller, lang, view, form)
         if verb == "cancel":
             answer = await actions.request_cancel(platform_path, run_name=view["name"], caller=caller, clock=clock)
         else:
@@ -599,7 +599,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     # ---- resume-edit-web: the page that changes the parameters and the extra settings of a resume, and the send of its form (POST /act/resume
     # with the boxes). Nothing here queues anything: it only asks request_resume, and the person presses 送出 on the confirmation page.
-    def resume_reads(caller, view, enqueue):
+    def edit_reads(caller, view, enqueue):
         """(earlier, first, files): what the run was first sent with (launch_prefill), its parameters, and the pipeline's own files for that pair
         (the same read as the launch page; `enqueue` False for the answer to a POST, which only looks)."""
         earlier = actions.launch_prefill(platform_path, view["name"], caller=caller)
@@ -610,18 +610,18 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             files = launch_files(caller, pipeline if "/" in pipeline else "nf-core/" + pipeline, earlier["revision"], earlier.get("ce_name"), "used", enqueue)[0]
         return earlier, first, files
 
-    async def resume_edit_page(sid, user, caller, lang, view, reads, given=None, extra="", error=None, code=200, post=False):
+    async def edit_page(sid, user, caller, lang, view, reads, given=None, extra="", error=None, code=200, post=False):
         t = web_board.STRINGS[lang]
         earlier, first, files = reads
         head = [(t["g_s_run"], view["name"])]
         if earlier.get("kept"):
             head += [(t["g_s_pipeline"], "%s %s" % (earlier.get("pipeline") or "", earlier.get("revision") or "")), (t["g_s_ce"], earlier.get("ce_name"))]
         runs = await run_in_threadpool(read_runs, caller)
-        doc = web_launch.render_resume_edit(user["name"], csrf(sid, "logout"), runs, lang, view["id"], head, files, first, csrf(sid, "act:" + view["id"]),
+        doc = web_launch.edit_page_html(user["name"], csrf(sid, "logout"), runs, lang, view["id"], head, files, first, csrf(sid, "act:" + view["id"]),
                                             given=given, extra=extra, error=error, code_post=post)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
-    async def resume_edit_get(request):
+    async def edit_get(request):
         sid, user = user_of(request)
         if user is None:
             return unauth(request)
@@ -631,28 +631,28 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         view = await run_in_threadpool(read_run, run_id, caller) if run_id else None
         if view is None:
             return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
-        if web_board._failure_of(view) is None:      # a run that did not fail: the refusal the Resume button gives, on the run's page
+        if web_board._failure_of(view) is None:      # a run that did not fail: the refusal the run page gives, on the run's page
             answer = await actions.request_resume(platform_path, run_name=view["name"], caller=caller, clock=clock, index_path=index_path)
             done = to_confirmation(answer)
             if done is not None:
                 return done
             line = web_board.plain_reason(answer.get("message"), lang) + " " + web_board.STRINGS[lang]["r_none"]
             return await board_page(sid, user, caller, lang, run_id, flash=line, code=409)
-        reads = await run_in_threadpool(resume_reads, caller, view, True)
-        return await resume_edit_page(sid, user, caller, lang, view, reads)
+        reads = await run_in_threadpool(edit_reads, caller, view, True)
+        return await edit_page(sid, user, caller, lang, view, reads)
 
-    async def resume_with_edits(sid, user, caller, lang, view, form):
+    async def edit_post(sid, user, caller, lang, view, form):
         """POST /act/resume with `p.<name>` boxes or `extra_config`: only the boxes that differ from the first submission become `params`; the extra
         settings lose their outer white space and are not sent when empty. A refusal comes back on the form with everything that was filled in."""
         t = web_board.STRINGS[lang]
         cells = web_launch.fields_of(form)
         typed_text = str(form.get("extra_config", "")).replace("\r\n", "\n").replace("\r", "\n")
         extra = typed_text.strip()
-        reads = await run_in_threadpool(resume_reads, caller, view, False)
+        reads = await run_in_threadpool(edit_reads, caller, view, False)
         _earlier, first, files = reads
 
         async def back(error):
-            return await resume_edit_page(sid, user, caller, lang, view, reads, given=cells, extra=typed_text, error=error, code=400, post=True)
+            return await edit_page(sid, user, caller, lang, view, reads, given=cells, extra=typed_text, error=error, code=400, post=True)
         if len(extra) > CONFIG_LIMIT:
             return await back(t["re_too_long"] % CONFIG_LIMIT)
         types = web_launch.types_of(files)
@@ -660,7 +660,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if web_launch.wrong_type(raw, types.get(name)):
                 return await back(t["re_bad_type"] % (name, ", ".join(types[name])))
         kwargs = {}
-        changed = web_launch.resume_changes(cells, first, files)
+        changed = web_launch.edit_changes(cells, first, files)
         if changed:
             kwargs["params"] = changed
         if extra:
@@ -1198,7 +1198,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                             Route("/launch", launch_post, methods=["POST"]),
                             Route("/upload", upload_get, methods=["GET"]), Route("/upload", upload_post, methods=["POST"]),
                             Route("/upload/{batch}", upload_batch_get, methods=["GET"]),
-                            Route("/act/resume/edit", resume_edit_get, methods=["GET"]),
+                            Route("/act/resume/edit", edit_get, methods=["GET"]),
                             Route("/act/{verb}", act_post, methods=["POST"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/welcome", welcome_get, methods=["GET"]), Route("/welcome", welcome_post, methods=["POST"]),

@@ -24,3 +24,10 @@ Plan versus rules, found while doing it:
 - TC-040 asks the web code to use the station's `MAX_EXTRA_CONFIG`. `test_cleanup_offer::test_platform_and_launch_sources_…` forbids the word `station` in any `abf_platform` source line, so `web.py` uses `abf_launch.build.CONFIG_LIMIT` (the platform's own number, 20000, equal to the station's); the new test asserts the two are equal.
 - The station's check on the extra settings accepts only resource lines and `//` comments; a `#` line is refused by the action layer and comes back on the form as the 400 sentence. The tests use `//`.
 - `WSL constitution_scope_test.sh` red is the environment (ruling 5): worktree made with Windows git; CI decides.
+
+Found by the first full run (two more pinned tests):
+
+| file | what changed | why |
+|---|---|---|
+| `test_estimate_su.py` `test_tc030_no_su_route_on_the_web` | the search for a route whose path holds `su` or `estimate` skips `/act/resume/edit` | the path (fixed by the plan) holds the letters `su` in "resume"; the test is about SU, and the new page has nothing to do with it. One path is excluded, the check stays for every other route. |
+| `test_resume_scope.py` `test_tc146_…` | none | it passes by naming: `web.py` has no new name with resume/relaunch in it (`edit_reads`, `edit_page`, `edit_get`, `edit_post`; the helpers in `web_launch.py` are `edit_changes`, `edit_params_block`, `edit_page_html`) |
