@@ -910,3 +910,11 @@ The automatic tests use fakes for the `az` program and never touch the network. 
 5. **Soft delete and versions.** If the storage account has blob soft delete or versioning on, check in the portal that deleted blobs and old versions are still there after the clean (the documents say they are).
 6. **Wildcard.** Check that `delete-batch --pattern "<prefix>*"` really matches across `/` on your account (blobs two folders deep must go), and that it did not touch `work2/`.
 
+
+## The compute-environment table on a phone (settings-ce-table-mobile): the reviewer checks
+
+The automatic tests read the HTML and the stylesheet only; this step looks at the real page in Chrome. Needs Playwright and Chrome in a Python (the platform side runs in WSL or Linux).
+
+1. From the repo root, in WSL: `cd platform && ABF_PLAYWRIGHT_PYTHON=/mnt/c/.../python.exe python ../scripts/dev/check_settings_mobile.py` (leave the variable out if the same Python has playwright). It starts a throwaway platform with two compute environments and writes four screenshots to `specs/settings-ce-table-mobile/screenshots/`: `settings-ce-1440-zh.png`, `settings-ce-1440-en.png`, `settings-ce-390-zh.png`, `settings-ce-390-en.png` (390 px uses device emulation, `is_mobile=True`).
+2. The script prints `document.documentElement.scrollWidth` and `clientWidth` for each of the four; exit 0 means they are equal everywhere (no sideways scroll). Exit 77 means no Playwright or Chrome.
+3. Look at the 390 px shots: each environment is its own card, six rows, each with its label (名稱 ... / Name ...), no word cut in the middle ("Nam/e"). Look at the 1440 px shots against the base: the table looks the same as before.

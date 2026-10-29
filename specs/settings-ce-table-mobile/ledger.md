@@ -5,3 +5,7 @@
 STYLE diff：只多一段 `@media (max-width:640px){.tbl.ce…}`（4 行，見 commit）。
 只改常數值：test_clean_page.py :157-162（BASE_CONFIRM/EXPIRED/POST/BOARD/STYLE）、test_web_settings_register.py :18（BASE_STYLE_SHA）。
 test_web_settings.py :201、:224：`"<td>" in r` -> `"<td" in r`。
+
+## 截圖與溢出檢查（TC-009、TC-023）
+指令：`scripts/dev/check_settings_mobile.py`（見 docs/TESTING.md 新小節）。截圖：`specs/settings-ce-table-mobile/screenshots/settings-ce-{1440,390}-{zh,en}.png`。
+scrollWidth / clientWidth：1440 zh 1440/1440、1440 en 1440/1440、390 zh 390/390、390 en 390/390（無橫向捲動）。390 en 截圖目視：兩張卡片、六列各帶標籤、無詞中斷行。
