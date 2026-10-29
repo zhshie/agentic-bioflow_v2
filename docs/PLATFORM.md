@@ -173,7 +173,7 @@ abf-station run --platform http://127.0.0.1:8787 --token-file ~/.config/abf/agen
 
 Ask `list_agents` over MCP: the agent shows as `online`, with its name, version and last contact.
 
-**Plain `http://` is only for the same machine.** Use HTTPS for every platform address except `localhost` and `127.0.0.1`: the agent refuses a plain `http://` address anywhere else, because the token would travel in clear text. `abf-platform serve` itself speaks plain HTTP, so put a TLS proxy in front of it before any other machine connects.
+**Plain `http://` is only for the same machine.** Use HTTPS for every platform address except `localhost`, `127.0.0.1` and `::1`: the agent refuses a plain `http://` address anywhere else, because the token would travel in clear text. `abf-platform serve` itself speaks plain HTTP, so put a TLS proxy in front of it before any other machine connects.
 
 ### What it tells you
 

@@ -105,3 +105,37 @@ def test_tc076_tc079_tc080_tc081_tc088_tc093_tc094_the_manual_steps_are_written_
     for tc in ("TC-076", "TC-079", "TC-080", "TC-081", "TC-088", "TC-093", "TC-094", "TC-095"):
         assert tc in t, tc
     assert "git diff" in t and "constitution.md" in t and "tests/run_all.sh --list" in t
+
+
+def _plain_http_sentence():
+    f = flat(read("PLATFORM.md"))
+    start = f.find("Plain `http://` is only for the same machine")
+    assert start >= 0, "the plain-http rule must be in PLATFORM.md"
+    end = f.find(". ", start)
+    return f[start:end if end >= 0 else len(f)]
+
+
+def test_tc_lb_01_02_the_refusal_names_all_three_loopback_hosts():
+    # TC-LB-01, TC-LB-02
+    from abf_station import cli
+    msg = cli.url_problem("http://example.com:8788")
+    assert "::1" in msg
+    assert "Use HTTPS" in msg and "localhost" in msg and "127.0.0.1" in msg
+
+
+def test_tc_lb_03_04_05_the_platform_guide_names_ipv6_loopback():
+    # TC-LB-03, TC-LB-04, TC-LB-05
+    sentence = _plain_http_sentence()
+    assert "::1" in sentence
+    assert "localhost" in sentence and "127.0.0.1" in sentence
+
+
+def test_tc_lb_06_to_14_the_http_gate_decisions_are_unchanged():
+    # TC-LB-06..TC-LB-14
+    from abf_station import cli
+    for u in ("http://localhost:1", "http://127.0.0.1:1", "http://[::1]:1", "https://example.com"):
+        assert cli.url_problem(u) is None, u
+    for u in ("http://example.com", "http://192.168.1.5:8788", "http://[::2]:1"):
+        assert cli.url_problem(u) is not None, u
+    assert cli.url_problem("ftp://x") == "the platform URL ftp://x is not an http or https address"
+    assert cli.url_problem("http://") == "the platform URL http:// is not an http or https address"
