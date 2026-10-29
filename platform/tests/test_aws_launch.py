@@ -1415,5 +1415,5 @@ def test_cap_screen_shows_the_memory_row_only_when_set(box):
 def test_cap_one_shared_function_writes_the_line():
     # TC-037
     src = (PLATFORM_DIR / "abf_station" / "launch.py").read_text(encoding="utf-8")
-    assert src.count("process.resourceLimits = [") == 1
+    assert src.count("\"process.resourceLimits = [%s]\"") == 1
     assert src.count("_resource_limits_line(ce)") >= 3
