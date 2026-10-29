@@ -1052,3 +1052,97 @@ def test_the_testing_doc_has_the_manual_steps_a_maintainer_can_follow():
                  "Answer n first", "no Secret and no Pod", "only after the y",      # TC-174
                  "task pods went away", "specs/k8s-launch/ledger.md", "do not add a delete path"):      # TC-178
         assert want in section, want
+
+
+# ======================================================================================================================
+# Fix round 2 (verifier): tests the first round tagged but did not make
+# ======================================================================================================================
+
+UNIQUE = "ZZ-UNIQUE-PARAM-VALUE"
+
+
+def test_a_failed_pod_log_tail_loses_the_token_and_the_kubeconfig_and_is_cut_at_200(box):
+    # TC-060, TC-061
+    box.cluster.phase = "Failed"
+    box.cluster.logs = "image pull failed " + TOKEN + "\n" + KCFG + "\n" + "x" * 600
+    state, res = box.handle(job_of(box.bundle()))
+    assert state == "error" and "image pull failed" in res["message"]
+    assert TOKEN not in json.dumps(res) and KTOK not in json.dumps(res)      # TC-060: both are gone from the answer
+    assert str(box.cred) not in json.dumps(res)
+    box.cluster.logs = "abcde " * 100
+    box.ctx.used_confirmations.clear()
+    box.cluster.pods.clear()
+    box.cluster.secrets.clear()
+    state, res = box.handle(job_of(box.bundle()))
+    assert state == "error" and "abcde " * 33 in res["message"] and "abcde " * 34 not in res["message"]      # TC-061: no more than 200 characters of the tail
+
+
+def test_a_unique_params_value_is_only_in_the_secrets_base64(box):
+    # TC-073
+    b, res = launch_ok(box, params={"genome": UNIQUE})
+    assert UNIQUE in b["files"]["params.yaml"]
+    sec = box.cluster.secret_doc()
+    assert base64.b64decode(sec["data"]["params.yaml"]).decode().count(UNIQUE) == 1 and UNIQUE not in json.dumps(sec)
+    assert UNIQUE not in json.dumps(box.cluster.pod_doc())
+    assert UNIQUE not in "\n".join(" ".join(c[0]) for c in box.cluster.calls) and UNIQUE not in json.dumps(res, ensure_ascii=False)
+    assert UNIQUE not in everything_said(box)
+
+
+def test_every_kubectl_call_names_the_context_and_never_switches_it(box):
+    # TC-068
+    launch_ok(box)
+    box.handle(cancel_job(cancel_bundle()))
+    box.cluster.phase = "Failed"
+    box.ctx.used_confirmations.clear()
+    box.cluster.pods.clear()
+    box.cluster.secrets.clear()
+    box.handle(job_of(box.bundle()))
+    assert len(box.cluster.calls) > 10
+    for argv, _env, _stdin in box.cluster.calls:
+        if argv[1:3] == ["config", "get-contexts"]:      # lists the contexts of the file; it has no context to name
+            continue
+        assert "--context" in argv and argv[argv.index("--context") + 1] == CTX, argv
+        assert "use-context" not in argv
+
+
+def test_snapshot_ce_of_a_k8s_environment_is_the_platform_snapshot_without_a_memory_cap(ip):
+    # TC-077
+    from abf_platform import compute_envs
+    from abf_station import launch
+    register_agent(ip)
+    create(ip, "k1", config=dict(good_config(), serviceAccount=SA))
+    set_status(ip, "k1", "available")
+    view = compute_envs.get(ip.state_db, "k1")
+    view["config"]["maxMemoryGB"] = 64      # a cap on a cloud environment is added to its snapshot; this type takes none
+    snap, platform_snap = launch.snapshot_ce(view), compute_envs.snapshot(view)
+    assert "maxMemoryGB" not in snap and snap == launch._snapshot_ce(view)
+    shared = {k: v for k, v in platform_snap.items() if k != "credentialsId"}
+    assert {k: snap[k] for k in shared} == shared      # every field the platform snapshot tells the agent is the same
+    assert set(snap) - set(shared) == {"environment", "nextflowConfig", "preRunScript", "postRunScript"}
+    assert set(platform_snap) == {"name", "platform", "credentialsId", "context", "namespace", "storageClaimName", "storageMountPath",
+                                  "workDir", "serviceAccount"}      # the platform snapshot itself is as it was
+
+
+def test_the_files_of_a_k8s_bundle_are_none_of_them_run_records():
+    # TC-148
+    from abf_station import fetch, launch
+    assert set(launch.K8S_SECRET_KEYS) <= fetch._NOT_RECORDS
+    assert set(launch.K8S_FILE_NAMES) <= fetch._NOT_RECORDS and "k8s.config" in fetch._NOT_RECORDS
+
+
+def test_checkable_types_are_the_same_ones_as_before_with_k8s_once(ip):
+    # TC-053
+    from abf_platform import compute_envs as ce
+    assert ce.CHECKABLE.count(ce.K8S) == 1 and len(set(ce.CHECKABLE)) == len(ce.CHECKABLE)
+    assert ce.CHECKABLE == (ce.SUPPORTED, ce.GOOGLE_BATCH, ce.AWS, ce.AZURE, ce.K8S)      # the members before: SUPPORTED, the three Batch types, K8S
+
+
+def test_the_cancel_namespace_is_the_one_stored_when_the_run_was_sent(ip, box, tmp_path):
+    # TC-126 (ruling 12-12, guarantee 1): the namespace of a cancel bundle comes from the record kept at launch, not from the environment now
+    from abf_launch import build
+    from abf_platform import compute_envs
+    launched_on_k8s(ip, box, tmp_path)
+    compute_envs.update(ip.state_db, "k8s1", {"config": {"namespace": "other-ns"}})
+    assert compute_envs.get(ip.state_db, "k8s1")["config"]["namespace"] == "other-ns"
+    _name, bundle, _row = build.prepare_cancel(ip.state_db, "r1")
+    assert bundle["ce"]["namespace"] == NS and bundle["pod_name"] == "nf-r1"
