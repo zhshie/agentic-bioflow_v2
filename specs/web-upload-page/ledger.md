@@ -29,6 +29,10 @@ Every change only adds an item or states the new truth the plan names; nothing w
 | test_aws_upload.py:751-752 | PLATFORM.md holds `網頁入口尚未接上` | holds `網頁上傳頁（/upload）會把檔案暫存於平台主機後排入此工作` and no longer the old sentence; the `s3://`, `版本控管`, `仍` checks on that paragraph unchanged | ruling 13, TC-103 |
 | test_datasets.py:441 (`test_tc063...`) | six names | seven | TC-110 (the plan names `:441`) |
 | test_cloud_upload.py:611 (`test_no_public_function_was_added_to_datasets`) | six names | seven | the same list lives here too; not named in the plan, found by the run |
+| test_aws_ce.py:812, test_aws_launch.py:1137, test_gcb_ce.py:779, test_gcb_launch.py:1071 | `... and not r.path.startswith("/upload")` | `... and r.path not in {"/upload", "/upload/{batch}"}` (the exact two routes of this task, no prefix) | ruling 25 item 1 |
+| test_web_guided_launch_2d.py:361 (`test_tc020...`) | step-4 link goes to `/` and `/?lang=en` | goes to `/upload` and `/upload?lang=en` | ruling 25 item 2 |
+| test_clean_page.py:166-168 and helper `old_upload_item` | helper put the grey item back before hashing the board | helper removed; `BASE_BOARD` holds the six new digests (b900748476502f3d, 870addd406492402, f5866fcf5bb0a339, 918ba6c8db56e423, f5b7e52afdb2ec69, 9c1d9195eacfbe23) | ruling 25 item 3 |
+| test_owner_guard.py:149 | `NO_TOOL` without the upload actions | adds `start_upload_batch`, `upload_batch_status` | ruling 25 item 4 (kept) |
 | test_cloud_upload_docs.py:42 | OPERATIONS point 6 holds `Not built yet` and `nothing in the web or the AI calls it` | holds `The web page /upload sends files up to 2 GB into the bucket` and no `Not built yet` | ruling 13, TC-102 |
 | test_guidance.py:460 (`test_tc707_the_mcp_pin_is_unchanged`) | `dependencies = ["mcp>=2.3,<3"]` | `dependencies = ["mcp>=2.3,<3", "python-multipart"]` | ruling 24 / TC-105 adds the one dependency line; the mcp pin and the constraints.txt check are unchanged. Not named in the plan, found by the full run; flagged for the reviewer. |
 
@@ -37,7 +41,8 @@ Not changed although the plan lists them: `test_temp_password.py:290` (the loop 
 ## Decisions and open points
 
 - **Step 4 of the launch page lists files of the person's upload folder, not datasets.** The plan and TC-083 say a registered dataset is a choice at step 4. The web launch page never read the datasets table (only the AI `launch` tool takes `dataset`). To make TC-083 true without touching `web.py`/`web_board.py` beyond the plan, registering a batch also writes the registered samplesheet (cloud places in the cells) to `<uploads>/<user>/datasets/<name>/<version>.csv`; `list_samplesheets` then offers it as `datasets/<name>/<version>.csv`. If the maintainer wants a real dataset chooser in step 4, that is a separate task.
-- **`platform/pyproject.toml` could not be edited**: the executor guard refuses any edit of that file, although the plan allows the one line. The line to add to `dependencies` is `"python-multipart"` (the pin stays in `constraints.txt`; 0.0.32 is already installed because `mcp` depends on it). TC-105 is therefore open until the developer-agent applies it.
+- **`platform/pyproject.toml`**: the one line `"python-multipart"` was applied by the developer-agent (c2152b4); TC-105 is done.
+- TC-129 (tools): the second half now reads the real registration source `chat_tools.tool_specs(...)` (chat_tools has no `TOOLS` list) and asserts no tool name holds `upload`. TC-101 now has an automatic test (`test_tc101_design_md_upload_data_paragraph`).
 - The 404 for a path such as `/upload/..%2F..%2Fetc` is the framework's own 404 (no route matches once `%2F` is decoded); a missing batch and somebody else's batch answer with the board's 404 page, byte for byte the same.
 - The pages use `LAUNCH_HEADERS` (the same content-security-policy as `/launch`, TC-016); `_HEADERS` and both constants are unchanged.
 - Rule 18 (taking a failed batch's names back) is decided per file: a name is free when its batch failed and the job for that very file is over; a file of a failed batch that is still queued or being sent keeps its name.

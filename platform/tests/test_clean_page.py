@@ -163,9 +163,10 @@ BASE_EXPIRED = {'expired-launch-zh': (200, 'c35c165714b5f908'), 'expired-cancel-
                 'expired-launch-en': (200, 'c35c165714b5f908'), 'expired-cancel-en': (200, '8451aff28a884534')}
 BASE_POST = {'pressed-launch': (200, 'ef1083638be3de88'), 'pressed-cancel': (200, '9c76dd8bc4a4c249'),
              'late-launch': (410, 'd2df3540d123bd63'), 'late-cancel': (410, 'd2df3540d123bd63')}
-BASE_BOARD = {'succeeded-zh': (200, 'd82849f963ffdcba'), 'succeeded-en': (200, 'db1a825c42eccccd'),
-              'failed-zh': (200, '6736cef89dbca3e7'), 'failed-en': (200, 'dc8af6b16e244499'),
-              'running-zh': (200, 'e206db91167a051a'), 'running-en': (200, '8ea9e9d26628a544')}
+# web-upload-page ruling 25: the left column's upload item is a link now, so the six board digests are the new ones (only that item differs)
+BASE_BOARD = {'succeeded-zh': (200, 'b900748476502f3d'), 'succeeded-en': (200, '870addd406492402'),
+              'failed-zh': (200, 'f5866fcf5bb0a339'), 'failed-en': (200, '918ba6c8db56e423'),
+              'running-zh': (200, 'f5b7e52afdb2ec69'), 'running-en': (200, '9c1d9195eacfbe23')}
 BASE_STYLE = '66b9a8e1a9c6f7d2'
 
 
@@ -409,16 +410,6 @@ def test_no_notice_after_the_request_is_pressed_expired_void_or_forgotten(w):
     assert notices(board(w, "ann", run="run-e").text) == []
 
 
-def old_upload_item(r, lang):
-    """web-upload-page ruling 13: the upload item of the left column is a link now. Put the grey item back as it was, so that the digests below
-    still say that nothing else on the board changed."""
-    from abf_platform import web_board
-    t = web_board.STRINGS[lang]
-    link = '<a class="nv" href="/upload%s">%s</a>' % ("?lang=en" if lang == "en" else "", t["upload"])
-    assert r.text.count(link) == 1
-    return type("Same", (), {"status_code": r.status_code, "text": r.text.replace(link, web_board._grey(t, "upload"))})()
-
-
 @pytest.mark.parametrize("status", ["succeeded", "failed", "running"])
 def test_a_board_without_any_clean_request_is_byte_for_byte_what_it_was(w, status):
     # TC-056, TC-057, TC-058
@@ -430,7 +421,7 @@ def test_a_board_without_any_clean_request_is_byte_for_byte_what_it_was(w, statu
         with con:
             con.execute("UPDATE runs SET last_message_at = ?", (FIXED - 10,))
         con.close()
-    got = {"%s-%s" % (status, lang): snap(old_upload_item(board(w, "ann", lang), lang)) for lang in ("zh", "en")}
+    got = {"%s-%s" % (status, lang): snap(board(w, "ann", lang)) for lang in ("zh", "en")}
     assert got == {k: v for k, v in BASE_BOARD.items() if k.startswith(status)}, repr(got)
 
 

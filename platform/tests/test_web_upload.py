@@ -1116,9 +1116,10 @@ def test_tc129_no_tool_uploads_a_file(up):
     # TC-129
     tools, _ = up.w.mcp([])
     assert not [t.name for t in tools if "upload" in t.name.lower() or t.name.lower().startswith("put")]
+    import asyncio
     from abf_platform.actions import chat_tools
-    names = [getattr(t, "name", None) or (t.get("name") if isinstance(t, dict) else str(t)) for t in getattr(chat_tools, "TOOLS", [])]
-    assert not [n for n in names if "upload" in str(n).lower()]
+    specs = asyncio.run(chat_tools.tool_specs(str(up.w.ip.index), None))
+    assert specs and not [s["name"] for s in specs if "upload" in s["name"].lower()]
 
 
 def test_tc133_no_secret_is_in_a_page_a_record_or_the_log(up, caplog):
@@ -1179,3 +1180,11 @@ def test_tc135_the_new_files_import_no_network_or_cloud_client():
 
 
 # --- END ---
+
+
+def test_tc101_design_md_upload_data_paragraph():
+    # TC-101
+    text = (PLATFORM_DIR.parent / "DESIGN.md").read_text(encoding="utf-8")
+    assert "10-28 第一刀：表單上傳＋進度頁；拖放、依 schema 建表、已上傳資料表格留待後續" in text
+    assert "platform keeps no copy" not in text
+    assert "the platform host holds one staged copy until the size in the bucket matches, then it is deleted" in text
