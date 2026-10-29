@@ -134,6 +134,8 @@ NO_TOOL = {
     "confined_samplesheet": "helper: confine a samplesheet to the caller's folder",
     "estimate_su": "web page and launch screen",
     "find_approved": "web confirmation page",
+    "site_pipeline_inventory": "web settings page (settings-pick-installed): the site's list of installed modules, read only",
+    "reload_site_inventory": "web settings page (settings-pick-installed): queues one read-only check to read the site list again",
     "forget_check": "web page: what forgetting would delete",
     "form_is_trusted": "helper of the MCP form",
     "latest_release": "web page",
