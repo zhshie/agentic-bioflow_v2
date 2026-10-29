@@ -33,4 +33,5 @@
 8. `test_station_launch.py`（兩處 `nothing_happened`）：預檢工作可有 `module -t avail`／`module show`（只讀）；`dangerous()`、`destructive()`、守護檔案不變等斷言不變。啟動閘門（launch／resume 的預檢）不讀清單：`preflight()` 預設 `inventory=False`，只有預檢工作（`handle`）傳 True。
 9. 路由清單釘住：`test_confirm_page.py`、`test_cleanup_offer.py`、`test_dataset_cli.py`、`test_web_board.py` 各加入 `POST /settings/inventory`。
 10. `test_owner_guard.py`：`NO_TOOL` 加入 `site_pipeline_inventory`、`reload_site_inventory`（網頁專用，附理由）。
+12. `test_owner_binding.py::test_tc068_no_new_way_to_log_in`：路由集合加入 `/settings/inventory`（它只排一次預檢，不登入任何人）。
 11. `test_web_board.py`：`/settings` 允許重新讀取按鈕的表單（action `/settings/inventory`）與其 hidden `ce`，並把 `<details class="padv">`（計畫指定的進階區）排除在「details 只准是 menu 或 stage」的計數之外（三處：tch11、tcs39、tn10）。
