@@ -305,7 +305,7 @@ def test_tc010_the_mcp_tools_are_six_read_only_ones_and_two_that_ask_a_person_wi
     banned = {"confirm", "confirmation", "yes", "y", "launch", "cancel", "kind", "command", "fetch", "run_name", "pipeline"}
     saying_yes = {"confirm", "confirmed", "confirmation", "confirmation_id", "yes", "y", "approve", "approved", "kind", "command"}
     for t in ts:
-        if t.name in ("launch", "cancel", "forget", "resume", "relaunch"):
+        if t.name in ("launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"):
             assert t.annotations.read_only_hint is False
             assert not (set(t.input_schema.get("properties", {})) & saying_yes), t.name
             continue

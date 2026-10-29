@@ -489,7 +489,7 @@ def test_the_chat_prompt_says_resume_can_carry_params_and_extra_config():
     src = inspect.getsource(chat_tools)
     line = [ln for ln in src.splitlines() if ln.startswith("- resume：")]
     assert len(line) == 1 and "params" in line[0] and "extra_config" in line[0]
-    assert sorted(chat_tools.REQUEST_TOOLS) == sorted(["launch", "cancel", "resume", "relaunch", "forget"])
+    assert sorted(chat_tools.REQUEST_TOOLS) == sorted(["launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"])
 
 
 # ---- the command line -----------------------------------------------------------------------------------------------------------------

@@ -827,7 +827,7 @@ def test_no_new_user_visible_action_and_no_new_dependency(tmp_path, ip):
     # TC-110, TC-111
     tools, _ = mcp_inproc(ip.index, [])
     assert {t.name for t in tools} == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                                      "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "resume",
+                                      "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "launch_pipeline", "cancel", "resume",
                                       "relaunch", "forget"}
     from abf_platform import web
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")

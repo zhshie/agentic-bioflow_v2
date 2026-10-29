@@ -190,8 +190,8 @@ def test_registration(w):
     for t in tools:
         if t.name in NEW:
             assert t.annotations.read_only_hint is True
-    assert {t.name for t in tools if t.annotations.read_only_hint is not True} == {"launch", "cancel", "forget", "resume", "relaunch"}
-    assert not names & {"create_pipeline", "update_pipeline", "export_pipeline", "validate_pipeline", "launch_pipeline"}
+    assert {t.name for t in tools if t.annotations.read_only_hint is not True} == {"launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"}
+    assert not names & {"create_pipeline", "update_pipeline", "export_pipeline", "validate_pipeline"}
     from abf_platform.actions import catalogue as c
     from abf_platform.actions import pipelines as p
     layer = {"find_module": c.find_module, "describe_module": c.describe_module, "list_pipelines": p.list_pipelines,
