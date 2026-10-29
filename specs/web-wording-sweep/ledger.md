@@ -157,3 +157,10 @@ assert [...] == []   Left contains 28 more items, first extra item: ('web_board.
 `test_oauth_review.py::test_r2`（同意頁「不能替你送出」→「不能代您送出」）與 `test_web_guided_launch_2b.py::test_scope_page_limits`（「我的 run」→「我的分析」）不在計畫清單與裁決 11 內，但它們隨計畫替換表的值變紅。只改了期望字串，斷言數量與強度不變。
 
 `test_su_usd.py`（同樣不在清單內）在全套測試中變紅，五處期望字串隨 `web_cost` 與 `web_board` 的表值改了：附註句「數字依執行紀錄估算」、匯率句「SU 以 %s 匯率概算為美元，並非帳單金額。」（兩處）、「— 本月尚無分析」（兩處）、「找不到該次分析」、「待處理：本月雲端額度已用盡」。斷言數量與強度不變。
+
+## 合併 origin/v3 後新增的字串（10-29）
+
+| 檔:行 | 改前 | 改後 | 依據 |
+|---|---|---|---|
+| web_settings.py:42 `pf_pick_gone` | 站台清單中沒有這個版本，請按「重新讀取站台清單」。 | 站台清單中無此版本，請按「重新讀取站台清單」。 | 合併進來的新中文字串違反禁用詞（這個、沒有這個） |
+| test_settings_pick_installed.py:25 `GONE_ZH` | 同上改前 | 同上改後 | 期望字串隨表值 |
