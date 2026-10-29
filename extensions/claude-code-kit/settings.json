@@ -2,6 +2,7 @@
   "permissions": {
     "ask": [
       "mcp__abf-platform__launch",
+      "mcp__abf-platform__launch_pipeline",
       "mcp__abf-platform__cancel",
       "mcp__abf-platform__resume",
       "mcp__abf-platform__relaunch",

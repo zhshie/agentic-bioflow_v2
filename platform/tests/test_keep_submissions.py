@@ -1295,7 +1295,7 @@ def test_tc114_the_kit_asks_for_five_tools():
     # TC-114 (F8); the old pin is test_tc137 in test_resume_entrypoints.py
     settings = json.loads((REPO_ROOT / "extensions" / "claude-code-kit" / "settings.json").read_text(encoding="utf-8"))
     ask = settings["permissions"]["ask"]
-    assert sorted(ask) == sorted("mcp__abf-platform__" + t for t in ("launch", "cancel", "resume", "relaunch", "forget"))
+    assert sorted(ask) == sorted("mcp__abf-platform__" + t for t in ("launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"))
 
 
 def test_tc115_the_ledger_names_the_two_009e_tests_changed_in_their_setup_only():
