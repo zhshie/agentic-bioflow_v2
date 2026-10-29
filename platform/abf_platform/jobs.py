@@ -479,6 +479,21 @@ def owned_run_names(state_path, user_id):
         con.close()
 
 
+def latest_launch_ce(state_path, run_name):
+    """The name of the compute environment the newest row of the hand-off record for this run name was sent to, or None (no row, no state
+    database yet, or a row without one). Only reads."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        row = latest_launch(con, run_name)
+        return row["ce"] if row is not None and row["ce"] else None
+    except (sqlite3.Error, IndexError):
+        return None
+    finally:
+        con.close()
+
+
 def latest_launch(con, run_name):
     """The newest row of the hand-off record for a run name, or None. A name may have several rows (a refused launch
     leaves its row and the name can be used again); the newest is the one a cancel, a read-back or a report is about."""

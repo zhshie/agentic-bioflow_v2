@@ -889,3 +889,16 @@ The automatic tests use fakes for the `az` program and never touch the network. 
 5. **Soft delete and versions.** If the storage account has blob soft delete or versioning on, check in the portal that deleted blobs and old versions are still there after the clean (the documents say they are).
 6. **Wildcard.** Check that `delete-batch --pattern "<prefix>*"` really matches across `/` on your account (blobs two folders deep must go), and that it did not touch `work2/`.
 
+
+## 國網，網頁從頭到完成 (web-nano4-path): the maintainer checks by hand
+
+The automatic tests use fake environments and fake jobs: nothing reaches the site. These steps need a real platform that people reach through Tailscale (Funnel), the test account `abf-test`, and an `available` national-HPC environment (nano4). A real run uses real SU.
+
+1. **Upload the samplesheet.** Log in as `abf-test` and open 上傳資料. The page shows 上傳樣本表（CSV 或 TSV）; there is no sentence about uploading with a command. Choose the samplesheet of the r5 run (a header row and 10 rows whose paths start with `/work/u9613010/`) and press 上傳樣本表. Check: the page says "✓ 已上傳樣本表 sheets/<name>，可於「送出新分析」第 4 步選擇。" with a link 前往送出新分析.
+2. **Six steps.** Press 前往送出新分析 (or ＋新分析) and go through the six steps. At step 4 choose `sheets/<name>`; at step 2 choose nano4. Nobody types a command or asks the AI.
+3. **Confirm and send.** Read the confirmation page and press 送出. Check: the page says 已送出。工作編號 N。, then 站台開始執行後，進度會顯示在分析清單。, and has a 查看進度 button. It does not say anything about going back to the AI.
+4. **Follow the progress.** Press 查看進度. At first the page may say "◌ 已送出，等待站台回報執行狀態。頁面每 15 秒自動更新。"; it turns into the run's progress page by itself. Check that the 運算環境 card reads `nano4` (not a dash) and that the step count moves.
+5. **Wait until it finishes.** The run ends 完成 on the same pages; the results stage opens from the left column. The whole path used the web page only.
+6. **A wrong file.** Upload a `.txt` file, a file with a header row only, and a file whose rows have different numbers of columns: each is refused with its own sentence above the form, and nothing appears at step 4.
+7. **A narrow screen and the keyboard.** At 390 px wide open the upload page (with the success sentence and with one refusal) and the page after Send: nothing scrolls sideways and the buttons are easy to hit. Press Tab through the samplesheet form and the 查看進度 button: the focus outline is visible. Look at the upload page once with `?lang=en`: the samplesheet section is English.
+8. **The reviewer.** Against the base: `web_board.STYLE` is unchanged (`66b9a8e1a9c6f7d2`); the database schema is unchanged; the actions (`get_run` and the others) are unchanged, the board page adds the Compute card value itself (`jobs.latest_launch_ce`, read only); the existing tests changed only where `specs/web-nano4-path/ledger.md` lists them.

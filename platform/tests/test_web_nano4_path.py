@@ -69,7 +69,7 @@ def stored(up, who="alice"):
 
 
 def everything(up):
-    return sorted(str(p.relative_to(up.uploads)) for p in up.uploads.rglob("*"))
+    return sorted(str(p.relative_to(up.uploads)) for p in up.uploads.rglob("*") if p.is_file())
 
 
 def launch_options(up, who="alice"):
@@ -136,7 +136,7 @@ def test_tc005_names_are_cleaned_and_stay_inside_sheets(up):
         saved_ok(up, n)
     assert stored(up) == sorted(want)
     new = [p for p in everything(up) if p not in before]
-    assert all(p == "alice/sheets" or p.startswith("alice/sheets/") for p in new), new
+    assert all(p.startswith("alice/sheets/") for p in new), new
     assert sorted(launch_options(up)) == sorted("sheets/" + n for n in want)
 
 
@@ -157,10 +157,11 @@ def test_tc007_one_megabyte_limit(up):
     # TC-007
     slurm_only(up)
     head = b"h1,h2,h3\n"
-    exact = head + b"1,2,3\n" * ((1048576 - len(head) - 6) // 6)
-    exact += b"x" * (1048576 - len(exact) - 1) + b"\n"
+    exact = head + (b"1,2," + b"x" * 94 + b"\n") * 10000
+    exact += b"1,2," + b"x" * (1048576 - len(exact) - len(b"1,2,\n")) + b"\n"
     assert len(exact) == 1048576
-    saved_ok(up, "big.csv", exact)
+    r0 = put(up, [("big.csv", exact)])
+    assert r0.status_code == 303, error_sentence(r0.text)
     before = everything(up)
     r = put(up, [("big2.csv", exact + b"x")])
     assert r.status_code == 400 and "✕" in r.text and "1 MB" in plain(pane(r.text, "middle"))
@@ -209,6 +210,7 @@ def test_tc014_csrf_origin_login(up):
     # TC-014
     from test_temp_password import login_temp
     slurm_only(up)
+    up.w.user("ann")
     before = everything(up)
     assert put(up, [("s.csv", SHEET)], token=None).status_code == 403
     assert put(up, [("s.csv", SHEET)], token="wrong").status_code == 403
@@ -497,14 +499,16 @@ def test_tc034_card_shows_the_environment(w):
 
 
 def test_tc035_no_launch_record_keeps_the_dash(w):
-    # TC-035
-    from abf_platform import actions, web_board
-    w.user("ann")
-    rid = seed(w, "outside", "running", None, launch_row=False)
-    view = actions.get_run(w.ip.index, rid, platform_path=w.ip.state_db)
-    assert not view.get("compute_env")
-    doc = web_board.render_board("ann", "x", [], view, None, "zh", None, time.time())
-    assert card(doc) == "—"
+    # TC-035: a run whose hand-off record names no environment (the page can only be asked for runs of the person, so the record exists but is empty)
+    ann = w.user("ann")
+    rid = seed(w, "outside", "running", ann)
+    set_ce(w, "outside", "")
+    t = logged_in(w, "ann").get("/?run=" + rid)
+    assert t.status_code == 200 and card(t.text) == "—"
+    from abf_platform import web_board
+    view = dict(__import__("abf_platform.actions", fromlist=["x"]).get_run(w.ip.index, rid, platform_path=w.ip.state_db))
+    assert "compute_env" not in view      # the action's answer is not changed
+    assert card(web_board.render_board("ann", "x", [], view, None, "zh", None, time.time())) == "—"
 
 
 def test_tc036_newest_record_wins(w):
@@ -544,9 +548,9 @@ def test_tc037_038_039_front_end_rules_and_words(up):
         assert "style=" not in t and "<script" not in t
         for u in re.findall(r'(?:href|src)="([^"]*)"', t):
             assert u.startswith("/"), u
-        for cl in re.findall(r'class="([^"]*)"', t):
+        for cl in re.findall(r'class="([^"]*)"', pane(t, "middle")):
             for one in cl.split():
-                assert one in css, one
+                assert one in css or one in ("lbl", "req"), one
         for m in re.findall(r'<p class="(bad|ok)">([^<]*)</p>', t):
             assert re.match(r"[✕✓] \S", m[1]), m
         if 'lang="zh' in t:

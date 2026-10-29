@@ -8,12 +8,13 @@ notice; English with ?lang=en), and GET /settings (every section still to come),
 The only routes there are:
 
   GET  /             the board (spec 011a): the run that needs the person most (else the newest), or with ?run=<id> that run, ?stage=<name> its stage, ?tab=<name> a tab of its running stage page (011b), ?lang=en the English page; needs the cookie
+              ?run_name=<name> a run of the person by its name (the page after Send links here): the run's page, else a waiting page while only the hand-off record exists, else the 404
   GET  /launch       the launch form (spec 012b), ?from=<run id> fills it from an earlier run of the same person; needs the cookie
   GET  /launch/diagram  the workflow diagram of ?pipeline=&revision= as the image the caller's own agent read from the public repository (guided-launch-2); needs the cookie, 404 as one plain line when it is not there
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
   POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page
   GET  /upload       the upload form (web-upload-page): choose a cloud compute environment, name and version the dataset, choose FASTQ files and an optional samplesheet; needs the cookie
-  POST /upload       receive the files into a staging folder of the platform host (streamed, 2 GB per file), queue one upload job for each, then 303 to /upload/<batch>; the CSRF token of this login. The person's press of Upload is the yes: no confirmation page
+  POST /upload       receive the files into a staging folder of the platform host (streamed, 2 GB per file), queue one upload job for each, then 303 to /upload/<batch>; the CSRF token of this login. The person's press of Upload is the yes: no confirmation page. A form with the samplesheet box of a national-HPC environment (web-nano4-path) keeps one .csv/.tsv in <uploads>/<name>/sheets/ and answers 303 to /upload?notice=sheet_saved
   GET  /upload/{batch}  the progress of one batch of the person's own uploads; when every file is in the bucket it registers the dataset (once)
   GET  /usage        the cost page (cost-page): SU, cloud used / cap / remaining, one line per analysis; ?month=YYYY-MM, ?lang=en; needs the cookie
   GET  /settings     the settings frame (spec 011a): read-only, every section greyed "coming later"; needs the cookie
@@ -61,12 +62,13 @@ from starlette.requests import ClientDisconnect
 from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from . import actions, oauth, store, web_board, web_cost, web_launch, web_settings
+from . import actions, jobs as jobs_mod, oauth, status as status_mod, store, web_board, web_cost, web_launch, web_settings
 from . import uploads_web, web_upload
 
 COOKIE = "abf_web"
 KEY_FILE = "web_signing.key"
 RID = re.compile(r"^[0-9a-f]{32}\Z")
+SHEET_NAME = re.compile(r"^[A-Za-z0-9._-]{1,110}\Z")       # a samplesheet kept by the upload page (uploads_web.clean_sheet_name)
 NEXT = re.compile(r"^/(c|consent)/[0-9a-f]{32}\Z")        # where a login may send the browser next: one of this app's own pages
 DEFAULT_BASE = "http://127.0.0.1:8789"
 FAIL_LIMIT = 5              # failures within FAIL_WINDOW that block one name
@@ -417,10 +419,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if req["state"] == "expired":
             if clean:
                 return _page(title, "<p class=\"bad\">這個申請已逾時（7 天），不會自動重新提出。</p>")
-            return _page(title, "<p class=\"bad\">這個申請已逾時（10 分鐘）。請回到 AI 重新送出。</p>")
+            return _page(title, "<p class=\"bad\">這個申請已逾時（10 分鐘）。請重新送出。</p>")
         if clean:
             return _page(title, "<p class=\"bad\">這個申請已作廢：%s。</p>" % _esc(req["void_reason"] or "-"), 409)
-        return _page(title, "<p class=\"bad\">這個申請已作廢：%s。請回到 AI 重新送出。</p>" % _esc(req["void_reason"] or "-"), 409)
+        return _page(title, "<p class=\"bad\">這個申請已作廢：%s。請重新送出。</p>" % _esc(req["void_reason"] or "-"), 409)
 
     async def confirm_get(request):
         rid = request.path_params["rid"]
@@ -447,19 +449,29 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         form = await body_of(request)
         if not _same(form.get("csrf", ""), csrf(sid, rid)):
             return _page("表單已失效", "<p class=\"bad\">這個表單的記號不對或已失效，什麼都沒有送出。請重新整理頁面再按。</p>", 403)
+        run_name = (actions.request_facts(platform_path, rid) or {}).get("run_name") if req["kind"] != "clean_work" else None
+
+        def sent(job_id):
+            """The page after Send (launch, resume, relaunch, cancel): the job number, what happens next, and the way to the run's page."""
+            link = "/?run_name=" + urllib.parse.quote(str(run_name), safe="") if run_name else "/"
+            return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。</p><p>站台開始執行後，進度會顯示在分析清單。</p>"
+                         "<div class=\"acts\"><a class=\"nv\" href=\"%s\">查看進度</a></div>" % (_esc(job_id), _esc(link)))
+
         try:
             _, job_id = actions.approve(platform_path, rid, confirmed_by=actions.PAGE,
                                         caller=actions.Caller(user["user_id"], user["name"], user["lab"]), clock=clock)
         except actions.NotApproved as e:
             if e.status == "already":
-                return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。</p>" % _esc(e.job_id))
+                if req["kind"] == "clean_work":
+                    return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。</p>" % _esc(e.job_id))
+                return sent(e.job_id)
             code = {"not_found": 404, "not_yours": 403, "expired": 410}.get(e.status, 409)
             if req["kind"] == "clean_work":
                 return _page("未送出", "<p class=\"bad\">未送出：%s。</p>" % _esc(e), code)
-            return _page("未送出", "<p class=\"bad\">未送出：%s。請回到 AI 重新送出。</p>" % _esc(e), code)
+            return _page("未送出", "<p class=\"bad\">未送出：%s。請重新送出。</p>" % _esc(e), code)
         if req["kind"] == "clean_work":
             return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。代理會開始清理這個 run 的中間檔；結果不會被動。</p>" % _esc(job_id))
-        return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。你可以回到 AI，用同樣的參數再呼叫一次，它會告訴你工作編號。</p>" % _esc(job_id))
+        return sent(job_id)
 
     def read_runs(caller):
         try:
@@ -472,7 +484,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             view = actions.get_run(index_path, run_id, caller=caller, platform_path=platform_path)
         except sqlite3.Error:
             return None
-        return None if view.get("found") is False else view
+        if view.get("found") is False:
+            return None
+        ce = jobs_mod.latest_launch_ce(actions.platform_path_for(index_path, platform_path), view["name"])
+        if ce:        # the Compute card: the environment the newest hand-off record names (the page's own addition; the action's answer is unchanged)
+            view["compute_env"] = ce
+        return view
 
     def read_outputs(run_id, caller, outputs_tab, relist):
         """The output folder of a succeeded run's results stage, from the action (it never waits for the site). Only the Outputs tab asks
@@ -523,8 +540,32 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
+        asked = request.query_params.get("run_name")
+        if asked and not request.query_params.get("run"):
+            return await run_by_name(sid, user, caller, lang, asked, request.query_params.get("stage"), request.query_params.get("tab"),
+                                     relist=request.query_params.get("relist") == "1")
         return await board_page(sid, user, caller, lang, request.query_params.get("run") or "", request.query_params.get("stage"),
                                 request.query_params.get("tab"), relist=request.query_params.get("relist") == "1")
+
+    def find_by_name(caller, name):
+        """(the id of the person's run of this name in the index, whether the hand-off record names the person for it)."""
+        try:
+            view = status_mod.find_run(index_path, name)
+        except sqlite3.Error:
+            view = None
+        owned = name in jobs_mod.owned_run_names(actions.platform_path_for(index_path, platform_path), caller.user_id)
+        return (view["id"] if view else None), owned
+
+    async def run_by_name(sid, user, caller, lang, name, stage, tab, relist=False):
+        """GET /?run_name=<name> (the link on the page after Send): the run's own page once the index has it; while only the person's own hand-off
+        record has it, a page that says so and reloads itself; any other name (somebody else's, or none) is the 404 of a missing run."""
+        run_id, owned = await run_in_threadpool(find_by_name, caller, name)
+        if run_id is not None:       # board_page asks get_run, which answers a run of somebody else like a missing one
+            return await board_page(sid, user, caller, lang, run_id, stage, tab, relist=relist)
+        if not owned:
+            return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        runs = await run_in_threadpool(read_runs, caller)
+        return HTMLResponse(web_board.render_waiting(user["name"], csrf(sid, "logout"), runs, lang, name), headers=_HEADERS)
 
     # ---- spec 012b: write actions from the web. Every route here only ASKS: it calls a request_* action for the logged-in caller and sends
     # the browser to the confirmation page /c/<id>, where the person presses 送出. Nothing is confirmed or queued from here.
@@ -833,18 +874,46 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     def upload_envs(caller):
         return actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
 
-    async def upload_page(sid, user, caller, lang, values=None, problem=None, code=200):
+    async def upload_page(sid, user, caller, lang, values=None, problem=None, code=200, saved=None):
         runs = await run_in_threadpool(read_runs, caller)
         envs = await run_in_threadpool(upload_envs, caller)
-        return HTMLResponse(web_upload.render_form(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "upload"), values, problem),
+        return HTMLResponse(web_upload.render_form(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "upload"), values, problem, saved),
                             status_code=code, headers=LAUNCH_HEADERS)
+
+    def saved_sheet(caller, query):
+        """The name of the samplesheet that ?notice=sheet_saved&sheet=<name> speaks of, only when it is a name this page gives and the file is there."""
+        name = query.get("sheet") or ""
+        if query.get("notice") != "sheet_saved" or not SHEET_NAME.match(name):
+            return None
+        try:
+            return name if os.path.isfile(os.path.join(actions.caller_area(platform_path, caller), uploads_web.SHEETS_DIR, name)) else None
+        except Exception:
+            return None
 
     async def upload_get(request):
         sid, user = user_of(request)
         if user is None:
             return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
-        return await upload_page(sid, user, caller, web_board.pick_lang(request.query_params.get("lang")))
+        saved = await run_in_threadpool(saved_sheet, caller, request.query_params)
+        return await upload_page(sid, user, caller, web_board.pick_lang(request.query_params.get("lang")), saved=saved)
+
+    async def sheet_post(sid, user, caller, lang, got, incoming):
+        """The samplesheet form of a national-HPC environment: refuse with one sentence above the form, or keep the file and send the browser back."""
+        uploads_web.discard(incoming)
+        envs = await run_in_threadpool(upload_envs, caller)
+        if not web_upload.sheet_ready(envs):
+            return await upload_page(sid, user, caller, lang, problem={"error": "nothing"}, code=400)
+        one = got["sheetup"]
+        why = "none" if one is None else uploads_web.sheet_problem(one["name"], one["data"])
+        if why:
+            return await upload_page(sid, user, caller, lang, problem={"error": "sheetup_" + why}, code=400)
+        try:
+            area = actions.caller_area(platform_path, caller)
+            kept = await run_in_threadpool(uploads_web.save_sheet, area, one["name"], one["data"])
+        except Exception:
+            return await upload_page(sid, user, caller, lang, problem={"error": "disk"}, code=500)
+        return RedirectResponse("/upload?notice=sheet_saved&sheet=" + kept + ("&lang=en" if lang == "en" else ""), status_code=303, headers=_HEADERS)
 
     async def upload_post(request):
         if not same_origin(request):
@@ -881,6 +950,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if not _same(form.get("csrf", ""), csrf(sid, "upload")):
             uploads_web.discard(incoming)
             return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(t["r_form"]), 403)
+        if got["sheet_box"]:
+            return await sheet_post(sid, user, caller, lang, got, incoming)
         values = {"ce": form.get("ce", ""), "name": form.get("name", ""), "version": form.get("version", "")}
         answer = await run_in_threadpool(lambda: actions.start_upload_batch(
             platform_path, tokens_path, caller, batch=batch, ce_name=values["ce"], name=values["name"], version=values["version"],
