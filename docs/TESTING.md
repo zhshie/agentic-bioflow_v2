@@ -702,6 +702,14 @@ Automatic tests: `platform/tests/test_web_settings_register.py`. These steps are
 3. **Both languages**: do the register steps once in Chinese and once with `?lang=en` (the language stays English through the confirmation page and the notice). Each notice and each error shows a symbol, a word and a colour (✓ / ○ / ✕). No Chinese on the English page, no error code, no internal name, nothing left in the other language.
 4. **A real site**: on a server or the national HPC where you have installed a pipeline version with `module`, register it from the page (the real module name and folder variable), press 確認, wait for the agent to answer, and reload `/settings`: the version is listed, the environment's status shows the result of the pre-use check, and on `/launch` step 3 choosing that version no longer shows "尚未在所選運算環境登記". Then press 移除 for it and confirm that the list loses it.
 
+## 設定頁從站台清單挑選管線 (settings-pick-installed): the maintainer and the reviewer check
+
+Automatic tests: `platform/tests/test_settings_pick_installed.py` and `platform/tests/test_station_site_inventory.py`. Step 3 needs the real nano4 site, with `nf-core/ampliseq 2.18.0` installed through `module`.
+
+1. **390 px and 1440 px, both languages (M01).** Open `/settings` at 1440 px and at 390 px, in 中文 and with `?lang=en`, once for each of four situations of a Slurm environment: a list with entries, never read, no `module` command (or an empty list), and a failed read. Check: no sideways scroll bar (`document.documentElement.scrollWidth === document.documentElement.clientWidth` in the console is `true`); the drop-down and every button are fully visible and large enough for a thumb. Also open a cloud environment: it shows one sentence and no form.
+2. **Tab (M02).** Press Tab through the drop-down, 重新讀取站台清單, 登記, the folded 進階：手動填寫（管理者用） (Enter or Space opens it) with its four boxes, and the buttons of the confirmation page. Every one that takes focus shows a visible outline.
+3. **A real site (M03).** On nano4, press 重新讀取站台清單, wait for the agent to answer (the notice says the read is queued; reload the page after a minute), and open the drop-down. Check: `nf-core/ampliseq 2.18.0` is in it. Pick it and press 登記: the confirmation page shows `biology/nf-core-ampliseq/2.18.0` and `NFCORE_AMPLISEQ_HOME`. Press 確認: the version appears in the registered list, and the pre-use check that follows passes.
+
 ## SU 約 US$ (su-usd): the maintainer checks three things by hand
 
 The automatic tests (`platform/tests/test_su_usd.py`) check the numbers and the markup. Start `abf-platform web`, log in as a person who has finished national HPC runs, and open `/usage` and one run's page (`/?run=<id>`).

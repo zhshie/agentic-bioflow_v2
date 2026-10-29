@@ -476,13 +476,13 @@ def site_inventory(site):
     try:
         res = site.call([_INVENTORY_COMMAND], timeout=INVENTORY_TIMEOUT)
     except Exception:      # a failed read must never change the verdict of the check
-        return out("error", reason="the site list could not be read (讀不出站台清單)")
+        return out("error", reason="讀不出站台清單 (the site list could not be read)")
     text = res.out.decode("utf-8", errors="replace")
     lines = text.splitlines()
     if "abf_inv=nomodule" in lines or (res.rc == 127 and "abf_inv=ok" not in lines) or "module: command not found" in (res.err or "") + text:
         return out("no_module_system")
     if res.timed_out or res.rc != 0 or "abf_inv=ok" not in lines:
-        return out("error", reason="the module list could not be read (讀不出模組清單)")
+        return out("error", reason="讀不出模組清單 (the module list could not be read)")
     items, seen, state = [], set(), {"module": None, "home": None}
 
     def close():

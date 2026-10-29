@@ -87,6 +87,12 @@ def make_cloud(w, caller, name="ann-gcb", platform="googlebatch-platform"):
     return name
 
 
+def uplain(text):
+    """plain(), with the entities of the page turned back into the characters a person reads."""
+    import html
+    return html.unescape(plain(text))
+
+
 def get(c, lang="zh", **query):
     q = dict(query, **({"lang": "en"} if lang == "en" else {}))
     r = c.get("/settings" + ("?" + "&".join("%s=%s" % kv for kv in q.items()) if q else ""))
@@ -258,7 +264,7 @@ def test_b04_a_version_not_in_the_list_is_refused(w, ann):
     assert "✕" in plain(mid) and GONE_ZH in plain(mid) and "/settings/pipelines/confirm" not in r.text
     above(mid, GONE_ZH, "lab-a")
     en = c.post("/settings/pipelines", data=dict(pick_data(c, pick="nf-core/ampliseq 9.9.9"), lang="en"))
-    assert en.status_code == 400 and GONE_EN in plain(mid_of(en.text))
+    assert en.status_code == 400 and GONE_EN in uplain(mid_of(en.text))
     assert snapshot(w) == before and preflights(w) == len(w.sql("SELECT id FROM jobs WHERE kind = 'preflight'"))
 
 
@@ -268,7 +274,7 @@ def test_b05_a_list_that_cannot_offer_it(w, ann, state):
     if state == "no_module_system":
         feed(w, {"status": "no_module_system", "items": [], "read_at": READ_AT})
     elif state == "error":
-        feed(w, {"status": "error", "items": [], "read_at": READ_AT, "reason": "the module list could not be read (讀不出模組清單)"})
+        feed(w, {"status": "error", "items": [], "read_at": READ_AT, "reason": "讀不出模組清單 (the module list could not be read)"})
     elif state == "ok_empty":
         feed(w, {"status": "ok", "items": [], "read_at": READ_AT})
     c = login(w, "ann")
@@ -328,7 +334,7 @@ def test_b09_another_users_environment(w, ann):
     one, two = post_pick(c, ce=ce), post_pick(c, ce="no-such-env")
     assert one.status_code == two.status_code == 400
     assert plain(mid_of(one.text)).replace(ce, "X") == plain(mid_of(two.text)).replace("no-such-env", "X")
-    assert "ampliseq" not in mid_of(one.text) and snapshot(w) == before and entries(w, ce) == []
+    assert "<option" not in mid_of(one.text) and snapshot(w) == before and entries(w, ce) == []
 
 
 def test_b10_csrf_origin_and_login(w, ann):
@@ -592,7 +598,7 @@ def test_d11_everything_is_already_registered(w, ann):
 
 
 @pytest.mark.parametrize("inv", [OK_INV, None, {"status": "no_module_system", "items": [], "read_at": READ_AT},
-                                 {"status": "error", "items": [], "read_at": READ_AT, "reason": "the module list could not be read (讀不出模組清單)"}])
+                                 {"status": "error", "items": [], "read_at": READ_AT, "reason": "讀不出模組清單 (the module list could not be read)"}])
 def test_d12_the_advanced_form_is_always_there(w, ann, inv):
     # D12
     _, _, block = slurm_block(w, ann, inv)
@@ -636,10 +642,10 @@ def test_d13_d14_the_english_page(w, ann):
 def test_d13b_the_english_states(w, ann):
     # D13 (each state in English)
     for inv, line in ((None, NONE_EN), ({"status": "no_module_system", "items": [], "read_at": READ_AT}, NOMOD_EN),
-                      ({"status": "error", "items": [], "read_at": READ_AT, "reason": "the module list could not be read (讀不出模組清單)"},
+                      ({"status": "error", "items": [], "read_at": READ_AT, "reason": "讀不出模組清單 (the module list could not be read)"},
                        "✕ Could not read the site list:")):
         _, _, block = slurm_block(w, ann, inv, lang="en")
-        assert line in plain(block) and not CJK.search(plain(block)), line
+        assert line in uplain(block) and not CJK.search(uplain(block)), line
 
 
 def test_d15_no_banned_word_in_the_new_chinese_strings():
@@ -694,9 +700,10 @@ def test_d17_d18_d19_the_limits(w, ann):
 
 def test_d20_state_is_not_colour_alone(w, ann):
     # D20
-    _, _, block = slurm_block(w, ann, {"status": "error", "items": [], "read_at": READ_AT, "reason": "the module list could not be read (讀不出模組清單)"})
+    _, _, block = slurm_block(w, ann, {"status": "error", "items": [], "read_at": READ_AT, "reason": "讀不出模組清單 (the module list could not be read)"})
     assert re.search(r'<span aria-hidden="true">✕</span> 未能讀取站台清單', block)
-    r = login(w, "ann").post("/settings/pipelines", data=pick_data(login(w, "ann"), pick="nf-core/x 1.0.0"))
+    c = login(w, "ann")
+    r = c.post("/settings/pipelines", data=pick_data(c, pick="nf-core/x 1.0.0"))
     assert re.search(r'<span aria-hidden="true">✕</span> ' + re.escape(GONE_ZH), r.text)
 
 
@@ -795,15 +802,27 @@ def test_x07_no_outgoing_connection(w, ann, monkeypatch):
 
 def test_k01_only_the_second_step_writes():
     # K01
+    def own_nodes(fn):
+        """The nodes of one function, without those of the functions defined inside it."""
+        stack = list(ast.iter_child_nodes(fn))
+        while stack:
+            node = stack.pop()
+            yield node
+            if not isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
+                stack.extend(ast.iter_child_nodes(node))
+
+    seen_second_step = False
     for name in ("web.py", "web_settings.py"):
         tree = ast.parse((PKG / name).read_text(encoding="utf-8"))
         for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef))]:
-            called = {a.attr for a in ast.walk(fn) if isinstance(a, ast.Attribute) and isinstance(a.value, ast.Name) and a.value.id == "actions"}
+            called = {a.attr for a in own_nodes(fn) if isinstance(a, ast.Attribute) and isinstance(a.value, ast.Name) and a.value.id == "actions"}
             if called & {"register_site_pipeline", "remove_site_pipeline"}:
                 assert name == "web.py" and fn.name == "pipelines_confirm_post", fn.name
+                seen_second_step = True
             if fn.name == "pipelines_post":
                 assert not called & {"register_site_pipeline", "remove_site_pipeline", "reload_site_inventory"}
                 assert "site_pipeline_inventory" in called and "check_site_pipeline_change" in called
+    assert seen_second_step
 
 
 def test_k04_nothing_secret_in_the_log(w, ann, caplog):
