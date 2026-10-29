@@ -691,7 +691,7 @@ def test_cancel_failure_is_reported_once_and_cut_at_200(box):
     state, res = box.handle(cancel_job(cancel_bundle()))
     assert state == "error" and res["ok"] is False and "forbidden" in res["message"] and TOKEN not in json.dumps(res)
     shown = re.search(r"沒有成功：(.*)。不重試", res["message"], re.S).group(1)
-    assert shown.startswith("forbidden") and 150 <= len(shown) <= 200      # the first 200 characters of stderr, no more
+    assert shown.startswith("forbidden") and len(shown) == 200      # the first 200 characters of stderr, no more
     assert len(box.cluster.writes()) == 1 and "nf-r1" in box.cluster.pods      # no retry; the Pod is as it was
 
 

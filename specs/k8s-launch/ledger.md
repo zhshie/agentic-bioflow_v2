@@ -64,7 +64,7 @@ It did not hold: `build.prepare_cancel` took the namespace from `bundle_mod.snap
 - TC-077: `test_snapshot_ce_of_a_k8s_environment_is_the_platform_snapshot_without_a_memory_cap`: `compute_envs.snapshot` of a K8s environment keeps its nine keys; `launch.snapshot_ce` equals it on all of them and adds only environment/nextflowConfig/preRunScript/postRunScript; no `maxMemoryGB` even if the view has one. Note (as in "Deviations" above): the base (49d763dd) `launch._snapshot_ce` had no K8s branch (a K8s view fell through to the Slurm shape), so "identical to base" can only hold for `compute_envs.snapshot` and for the four other types' branches, which are untouched.
 - TC-148: `test_the_files_of_a_k8s_bundle_are_none_of_them_run_records` (`launch.K8S_SECRET_KEYS` and `K8S_FILE_NAMES` are subsets of `fetch._NOT_RECORDS`).
 - TC-053: `test_checkable_types_are_the_same_ones_as_before_with_k8s_once` (K8S once, no duplicates, `CHECKABLE == (SUPPORTED, GCB, AWS, AZURE, K8S)`, the same members in the same order as before).
-- TC-128: the cut-at-200 test now asserts a lower bound of 150 and an upper bound of 200 on a 600+ character stderr; unchanged here (the test's own wording stays).
+- TC-128: the length assertion in `test_cancel_failure_is_reported_once_and_cut_at_200` is now `== 200` (was `150 <= n <= 200`) for a stderr of more than 600 characters.
 
 ### TC-160: the other four types, v3 base against this branch (same test command at both commits)
 
