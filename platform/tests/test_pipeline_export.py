@@ -133,7 +133,7 @@ def test_stub_run_of_the_unpacked_zip(d, tmp_path, e2e_cfg):
     env = {k: v for k, v in os.environ.items() if not k.startswith(("NXF_", "TOWER_", "ABF_"))}
     env.update({"NXF_HOME": e2e_cfg["home"], "NXF_VER": e2e_cfg["ver"], "NXF_OFFLINE": "true",
                 "NXF_ANSI_LOG": "false", "NXF_DISABLE_CHECK_LATEST": "true"})
-    r = subprocess.run([e2e_cfg["launcher"], "run", ".", "-stub-run"], cwd=str(dest), env=env, capture_output=True, text=True, timeout=600)
+    r = subprocess.run(["bash", e2e_cfg["launcher"], "run", ".", "-stub-run"], cwd=str(dest), env=env, capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, r.stdout[-800:] + r.stderr[-800:]
 
 
