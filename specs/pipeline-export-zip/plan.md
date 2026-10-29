@@ -98,3 +98,9 @@ source: PLAN-abf-v3-replan-2026-10.md 017b「actions：…`export_pipeline`（zi
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+### 補充裁決（2026-10-30 02:5x，PR #288 CI 紅）
+- CI shard 4 的 `platform_shard_3_test.sh` 兩次都紅：`FAIL (CI=true): 1 test(s) were skipped, and nothing may be skipped on CI`——就是 TC-008 用 `shutil.which("nextflow")` 找不到就 skip。
+- **改法（只改 `platform/tests/test_pipeline_export.py` 的 TC-008）**：改用 `platform/tests/conftest.py:30` 的 `e2e_cfg` fixture（包裝腳本下載的固定版 Nextflow），呼叫 `[e2e_cfg["launcher"], "run", ".", "-stub-run"]`，環境照 `platform/tests/test_launch_nextflow.py:66-68` 的寫法：去掉既有 `NXF_*`／`TOWER_*`／`ABF_*`，設 `NXF_HOME`、`NXF_VER`、`NXF_OFFLINE=true`、`NXF_ANSI_LOG=false`、`NXF_DISABLE_CHECK_LATEST=true`。拿掉 `shutil.which` 的 skip。
+- 不准改 CI 設定、不准把它加進 quarantine、不准放寬斷言（仍要 returncode 0）。
+- 完成標準：本機用 `bash tests/platform_shard_3_test.sh`（走包裝腳本，才有固定版 Nextflow）跑到 TC-008 PASSED 且 0 skipped，輸出貼 ledger；再跑全套。
