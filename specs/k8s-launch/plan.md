@@ -223,3 +223,8 @@ source: memory/PLAN-abf-v3-replan-2026-10.md 第 169 行（C-5「Azure Batch／K
 - **12-8 未規定行為定案**：①取消時 Pod 已 NotFound → 視為已停止，標 cancelled，訊息「Pod 已不存在，視為已停止」；②`kubectl delete` 失敗 → 回錯誤（含 kubectl stderr 前 200 字、去掉 token），狀態不變，不重試；③`get pod` stderr 含 `NotFound` → 不存在；其他非零 → 「連不上叢集」錯誤，狀態不變；④取 phase 失敗 → 狀態維持上次值，回「無法取得 Pod 狀態」。每條一個 TC。
 - **12-9 送出畫面**：確認，顯示 params.yaml、nextflow.config、k8s.config、啟動命令的內容；不顯示 token 與映像（TC-102～104 對）。
 - **12-10 刪除例外**：確認 TC-026（只刪本次剛建、同名那一個 Secret，且只在 create pod 失敗時）與 TC-031（Pod 變 Failed 後不刪任何東西）的解讀；這是「不做」第二條刪除路徑的唯一例外。
+
+### 補充裁決 12-11（2026-10-29 23:2x，回應 executor BLOCKED）
+- `test_settings_pick_installed.py:844` `test_the_pinned_cloud_types`：**選 (a)**。斷言改成 `tuple(web_settings.CLOUD_TYPES) == tuple(t for t in compute_envs.PLATFORM_HOST_TYPES if t != "K8S") == CLOUD_PLATFORMS`（K8S 的實際鍵名照程式），算 12-2 的值替換，ledger 列舊→新。`web_settings.py` 仍不准改：設定頁的雲端 Batch 分支不該收 Kubernetes。
+- 範圍外改動事後追認：`abf_station/site.py` 的 `run_fixed` 可選 stdin 參數（12-4 要求 stdin manifest 的必要條件）、`launch._snapshot_ce` 的 K8s 分支、`cli.py` 只改「已啟動」一行。
+- 交件前必須在 HEAD 重跑一次完整套件並貼結果；聚焦測試不能代替。
