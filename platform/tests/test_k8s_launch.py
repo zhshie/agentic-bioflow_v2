@@ -368,6 +368,56 @@ def test_credential_problems_stop_before_any_call(box):
     assert state == "refused" and "kubectl" in json.dumps(res, ensure_ascii=False) and box.cluster.calls == []
 
 
+def _said_in(res):
+    return json.dumps(res, ensure_ascii=False)
+
+
+def _credential_failures(box):
+    """Yields (label, job) for each way the kubeconfig or kubectl can be unusable, after setting the box up for it."""
+    box.cred.unlink()
+    yield "missing", job_of(box.bundle())
+    box.cred.mkdir()
+    yield "not a file", job_of(box.bundle())
+    box.cred.rmdir()
+    box.cred.write_text(KCFG)
+    if sys.platform != "win32":
+        box.cred.chmod(0o644)
+        yield "too open", job_of(box.bundle())
+        box.cred.chmod(0o600)
+    box.has_kubectl = False
+    yield "no kubectl", job_of(box.bundle())
+    box.has_kubectl = True
+
+
+def test_messages_never_name_the_credential_file_or_code(box):
+    # TC-078, TC-065, K8L-CRED-02: every refusal and error says what happened and what to do, with no Traceback, no path of the code
+    # and no path of the kubeconfig
+    messages = []
+    for label, job in _credential_failures(box):
+        box.ctx.used_confirmations.clear()
+        state, res = box.handle(job)
+        assert state == "refused" and box.cluster.calls == [], label
+        messages.append((label, _said_in(res)))
+        cancel = box.handle(cancel_job(cancel_bundle()))
+        assert cancel[0] == "refused", label
+        messages.append((label + " (cancel)", _said_in(cancel[1])))
+    box.cred.write_text(KCFG)
+    for key, where in (("get_pod", "launch"), ("create_manifest", "launch"), ("get_pod_phase", "launch"), ("pvc", "launch"), ("delete_pod", "cancel")):
+        box.cluster.fail.clear()
+        box.cluster.pods.clear()
+        box.cluster.secrets.clear()
+        box.cluster.pods["nf-r1"] = "Running"
+        box.cluster.fail[key] = (1, "error loading config file \"%s\": %s" % (box.cred, box.cred))
+        box.ctx.used_confirmations.clear()
+        state, res = box.handle(cancel_job(cancel_bundle()) if where == "cancel" else job_of(box.bundle()))
+        messages.append((key, _said_in(res)))
+    assert messages
+    for label, text in messages:
+        assert str(box.cred) not in text and box.cred.name not in text.replace("[credential file]", ""), (label, text)
+        assert "Traceback" not in text and str(PLATFORM_DIR) not in text and str(REPO_ROOT) not in text, (label, text)
+        assert len(text) > 20, label
+
+
 @pytest.mark.parametrize("key", ["context", "pvc", "pvc_access", "serviceaccount"])
 def test_a_failing_preflight_creates_nothing(box, key):
     # TC-023, K8L-RUN-02
@@ -482,11 +532,13 @@ def test_every_call_gets_a_clean_environment_and_the_path_only_there(box):
 
 def test_no_credential_reaches_argv_manifest_or_answer(box):
     # TC-065, K8L-CRED-02
-    for label in ("ok", "failed", "no-pod"):
+    for label in ("ok", "failed", "no-pod", "missing-file"):
         box.cluster.pods.clear()
         box.cluster.secrets.clear()
         box.cluster.phase = "Failed" if label == "failed" else "Running"
         box.ctx.used_confirmations.clear()
+        if label == "missing-file":      # a failure path where the answer used to carry the path
+            box.cred.unlink()
         state, res = box.handle(job_of(box.bundle()))
         text = everything_said(box) + json.dumps(res, ensure_ascii=False)
         assert KTOK not in text and str(box.cred) not in text, label
