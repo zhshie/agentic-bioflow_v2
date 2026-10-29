@@ -124,6 +124,7 @@ _VALUE_PATTERNS = [
     re.compile(r"AccountKey\s*=", re.I),                       # an Azure connection string or SAS typed into the wrong field
     re.compile(r"SharedAccessSignature\s*=", re.I),
     re.compile(r"[?&]sig=[A-Za-z0-9%+/=]{16,}"),
+    re.compile(r"\b(?:client-certificate-data|client-key-data|certificate-authority-data)\s*:", re.I),  # a kubeconfig secret line pasted into a text field
 ]
 
 
