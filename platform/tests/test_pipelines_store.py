@@ -321,7 +321,8 @@ def test_the_files_owned_by_other_work_do_not_mention_pipelines():
     for f in ("actions/__init__.py", "mcp_server.py", "web.py", "store.py", "catalogue.py"):
         text = (PLATFORM / "abf_platform" / f).read_text(encoding="utf-8")
         for word in ("create_pipeline", "render_pipeline", "pipeline_versions", "actions.pipelines", "compose"):
-            if f == "mcp_server.py" and word == "actions.pipelines":    # canvas-mcp-read (13-3): the five reads import the submodule as pipeline_actions
-                assert "import abf_platform.actions.pipelines as pipeline_actions" in text and text.count(word) == 1
+            if f == "mcp_server.py" and word == "actions.pipelines":    # canvas-mcp-read (13-3): the one import line is the only place the name may appear
+                line = "import abf_platform.actions.pipelines as pipeline_actions"
+                assert line in text and word not in text.replace(line, ""), (f, word)
                 continue
             assert word not in text, (f, word)

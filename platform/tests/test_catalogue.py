@@ -430,9 +430,15 @@ def _src(name):
 def test_no_tool_route_or_action_mentions_the_catalogue():
     # TC-070, TC-071
     for f in ["mcp_server.py", "web.py", "web_board.py"] + ["actions/" + p.name for p in (PKG / "actions").glob("*.py")]:
-        if f in ("mcp_server.py", "actions/catalogue.py"):    # canvas-mcp-read: the two files that deliberately open the catalogue to MCP (017e)
-            continue
         text = _src(f)
+        if f == "actions/catalogue.py":
+            # canvas-mcp-read: this file IS the door to the catalogue; it must stay thin (no store, no sql, no process, no network)
+            assert "sqlite3" not in text and "subprocess" not in text and "abf_platform.store" not in text and "urllib" not in text, f
+            continue
+        if f == "mcp_server.py":
+            # canvas-mcp-read: only the import of the door and the one function that registers the two catalogue tools may name it
+            text = text.replace("import abf_platform.actions.catalogue as catalogue_actions", "")
+            text = re.sub(r"def _add_canvas_reads\(.*?(?=\ndef )", "", text, flags=re.S).replace("_add_canvas_reads(server, platform_path)", "")
         if f == "actions/__init__.py":
             # nfcore-catalogue (pipeline list on nf-co.re) is a different thing from this module catalogue
             text = re.sub(r"# ---- nfcore-catalogue: begin.*?# ---- nfcore-catalogue: end", "", text, flags=re.S)

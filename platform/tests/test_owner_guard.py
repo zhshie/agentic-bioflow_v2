@@ -191,8 +191,13 @@ def test_every_mcp_tool_has_an_action_and_every_caller_action_has_a_tool(tmp_pat
     tools = tool_names(tmp_path)
     assert tools == {"cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
                      "list_site_files", "list_used_pipelines", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "read_task_log", "relaunch", "resume", "run_outputs"}
-    canvas = {"find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}    # canvas-mcp-read: their actions are in the submodules actions.catalogue and actions.pipelines, not in the package
-    assert parity_problems(tools - canvas, caller_actions()) == []
+    # canvas-mcp-read: the five canvas reads have their actions in the submodules actions.catalogue and actions.pipelines (not in the
+    # package), so those are looked up there by name; every tool, the five included, still goes through parity_problems
+    import abf_platform.actions.catalogue as cat_actions
+    import abf_platform.actions.pipelines as pipe_actions
+    canvas = {n for n in tools if callable(getattr(cat_actions, n, None)) or callable(getattr(pipe_actions, n, None))}
+    assert canvas == {"find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}
+    assert parity_problems(tools, caller_actions(), extra_actions=canvas) == []
     assert all(NO_TOOL[a] for a in NO_TOOL)
 
 

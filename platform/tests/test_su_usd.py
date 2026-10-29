@@ -220,7 +220,12 @@ def test_tc033_parity_and_read_only():
     assert tools == {"cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
                      "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs",
                      "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}   # base plus the five canvas reads (canvas-mcp-read)
-    for name in tools - {"launch", "cancel", "resume", "relaunch", "forget", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}:
+    import abf_platform.actions.catalogue as cat_actions    # canvas-mcp-read: the five canvas reads have their actions in these two submodules
+    import abf_platform.actions.pipelines as pipe_actions
+    canvas = {"find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}
+    for name in canvas:
+        assert callable(getattr(cat_actions, name, None)) or callable(getattr(pipe_actions, name, None)), name
+    for name in tools - {"launch", "cancel", "resume", "relaunch", "forget"} - canvas:
         assert callable(getattr(actions, name, None)), name
     for name in ("get_run", "my_usage"):
         assert re.search(r'name="%s", annotations=_READ_ONLY' % name, src)
