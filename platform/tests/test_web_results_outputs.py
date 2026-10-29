@@ -156,7 +156,7 @@ def test_ro03_finished_listing_is_shown(w):
     c.get(url(rid))
     finish(w, listings(w)[0]["id"], entries=ENTRIES)
     t = c.get(url(rid)).text
-    names = re.findall(r"<td><code>(.*?)</code></td>", mid(t))
+    names = re.findall(r"<td>(?:<a [^>]*>)?<code>(.*?)</code>(?:</a>)?</td>", mid(t))      # results-files: a folder name is a link now
     assert names == ["dada2", "multiqc", "alpha.tsv", "zeta.txt"]
     assert re.search(r"讀取於 \d\d:\d\d", plain(mid(t)))
     assert re.search(r'<a href="[^"]*tab=outputs&amp;relist=1[^"]*">重新讀取</a>', t)
@@ -164,7 +164,7 @@ def test_ro03_finished_listing_is_shown(w):
     c.get(url(rid))
     assert len(listings(w)) == 1
     assert "<form" not in mid(t) and "<button" not in mid(t)
-    assert not re.search(r"<a [^>]*>[^<]*(alpha|zeta|dada2)", mid(t))      # names are plain text, not links
+    assert not re.search(r"<a [^>]*>[^<]*(alpha|zeta)", mid(t))      # a file name is plain text, not a link (results-files: a folder name is a link, test_results_files)
     assert "全部下載" in mid(t) and 'href="/download' not in t
 
 

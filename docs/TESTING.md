@@ -828,6 +828,19 @@ The automatic tests use a fake `kubectl` runner and a fake `which`; they call no
 7. **TC-143: the reviewer, scope.** Run `git diff --name-only <base>...HEAD` and compare with the plan's file list: no web file, nothing in `abf_launch/`, no `gcb_preflight.py`, `aws_preflight.py`, `azure_preflight.py`, `launch.py`, `cloud_store.py` or `clean.py`; no migration.
 8. **TC-156: the reviewer, existing assertions.** Run `git diff` on each existing test file: the only changes are Kubernetes added to `CHECK_ONLY_TYPES` and `CHECKABLE`, Kubernetes moved out of the unsupported list (ten turned nine), and the document sentence. No assertion is deleted or loosened.
 
+
+## 結果頁下載 (results-files): the maintainer and the reviewer check
+
+The automatic tests use a fake agent and fake answers. These steps need a platform that colleagues reach, one colleague account and a run that finished on a real site (for example `web-test-1` on `nano4-test`, whose agent is online).
+
+1. **The real file, once.** Log in as the colleague, open the run, results stage, tab "輸出". Click the folder `multiqc`, then press "下載" on `multiqc_report.html`. Expected: a page that says "◌ 正在向站台取得檔案" and refreshes itself; within a minute the browser downloads `multiqc_report.html`. Open the downloaded file in the browser: it is the MultiQC report of that run. Nobody opened a terminal.
+2. **The two cards.** On the same run press the cards "MultiQC 報告" and "報告": each downloads its file (`multiqc/multiqc_report.html`, `summary_report/summary_report.html`).
+3. **Folders and the path.** Open `multiqc/multiqc_data`: the path above the table reads "results / multiqc / multiqc_data" and every part is a link back.
+4. **390 px wide.** Open the Outputs tab inside a folder that has a very long file name, and the waiting page, with the browser's developer tools at 390 px: neither page scrolls sideways, the long name wraps, and the links are easy to hit.
+5. **Both languages.** Look at the Outputs tab of a folder, the waiting page and the "too large" page once in Chinese and once with `&lang=en`.
+6. **A file over 25 MB.** Choose a file over 25 MB: the list shows "超過 25 MB" and no link; typing the address by hand gives the page with the size and the path on the site.
+7. **The reviewer.** Against the base: `web_board.STYLE` is unchanged, the content security policy of every page is unchanged, `platform/pyproject.toml` is unchanged, `web.py` gained only the route `/run/file`, `abf_station/handlers.py` gained only the new kind and the line that calls it, and the existing tests changed only where `specs/results-files/ledger.md` lists them.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in

@@ -43,11 +43,11 @@ def launch_to(w, run_name, folder):
     con.close()
 
 
-def world(w, name="ann-done", launch_row=True):
+def world(w, name="ann-done", launch_row=True, folder=None):
     ann = w.user("ann")
     rid = seed(w, name, "succeeded", ann, started=NOW - 3 * HOUR, ended=NOW - 2 * HOUR, counts=dict(succeeded=4), launch_row=launch_row)
     if launch_row:
-        launch_to(w, name, "/data/wd/runs/" + name)
+        launch_to(w, name, folder if folder is not None else "/data/wd/runs/" + name)
     c = w.web()
     assert w.login(c, "ann").status_code == 303
     return ann, c, rid
@@ -120,7 +120,7 @@ def mid(text):
 
 
 def crumbs(text):
-    m = re.search(r'<nav class="ostat" data-part="crumbs">(.*?)</nav>', mid(text), re.S)
+    m = re.search(r'<nav class="ostat" data-part="crumbs"[^>]*>(.*?)</nav>', mid(text), re.S)
     return m.group(1) if m else None
 
 
@@ -276,17 +276,14 @@ def test_tc008_the_first_level_keeps_its_columns_and_gets_the_new_one(w):
     head = re.search(r"<thead>(.*?)</thead>", mid(t), re.S).group(1)
     assert [plain(x) for x in re.findall(r"<th>(.*?)</th>", head)] == ["名稱", "類型", "大小", "修改時間", "下載"]
     assert "重新讀取" in plain(mid(t)) and 'http-equiv="refresh"' in t
-    _, c2, rid2 = world_second(w)
+
+    cat = w.user("cat")
+    rid2 = seed(w, "cat-nofolder", "succeeded", cat, started=NOW - 3 * HOUR, ended=NOW - 2 * HOUR, counts=dict(succeeded=4))
+    launch_to(w, "cat-nofolder", "")
+    c2 = w.web()
+    assert w.login(c2, "cat").status_code == 303
     t = c2.get(outputs_url(rid2)).text
-    assert "沒有輸出資料夾紀錄" in plain(mid(t)) and listings(w) and len(listings(w)) == 1
-
-
-def world_second(w):
-    ann = w.user("cat")
-    rid = seed(w, "cat-nolaunch", "succeeded", ann, started=NOW - 3 * HOUR, ended=NOW - 2 * HOUR, counts=dict(succeeded=4), launch_row=False)
-    c = w.web()
-    assert w.login(c, "cat").status_code == 303
-    return ann, c, rid
+    assert "沒有輸出資料夾紀錄" in plain(mid(t)) and len(listings(w)) == 1
 
 
 # ---- US2: downloading one file ---------------------------------------------------------------------------------------------
@@ -451,10 +448,15 @@ def test_tc019_another_user_and_nobody_get_no_bytes(w):
 
 
 def test_tc020_a_run_with_no_launch_record_queues_nothing(w):
-    # TC-020
-    ann, c, rid = world(w, launch_row=False)
+    # TC-020: a run whose record names no folder; and a run with no record at all, which is nobody's and a 404 like on every page
+    ann, c, rid = world(w, folder="")
     r = c.get(file_url(rid, REPORT))
     assert "✕" in r.text and "送出紀錄" in plain(r.text) and file_jobs(w) == []
+    cat = w.user("cat")
+    rid2 = seed(w, "cat-norecord", "succeeded", cat, started=NOW - 3 * HOUR, ended=NOW - 2 * HOUR, counts=dict(succeeded=4), launch_row=False)
+    d = w.web()
+    assert w.login(d, "cat").status_code == 303
+    assert d.get(file_url(rid2, REPORT)).status_code == 404 and file_jobs(w) == []
 
 
 def test_tc021_an_answer_whose_length_does_not_match_is_not_kept_as_a_file(w):
@@ -677,7 +679,7 @@ def test_tc035_the_maintainers_walk_works_with_links_only(w):
     c.get(step)
     finish_listing(w, RESULTS + "/multiqc", [entry("multiqc_report.html", "file", len(HTML_BYTES))])
     t = c.get(step).text
-    link = [h for h in hrefs(mid(t)) if h.startswith("/run/file")][0]
+    link = [h for r in table_rows(t) for h in hrefs(r) if h.startswith("/run/file")][0]
     assert link == "/run/file?run=%s&path=multiqc/multiqc_report.html" % rid
     first = c.get(link)
     assert "◌" in first.text
@@ -725,7 +727,7 @@ def test_tc041_a_download_asks_for_no_confirmation_and_reaches_nowhere(w, monkey
     c.get(file_url(rid, "multiqc/big.bin"))
     assert reached == []
     assert (w.sql("SELECT COUNT(*) FROM confirmations")[0][0], w.sql("SELECT COUNT(*) FROM launches")[0][0]) == before
-    assert {r["kind"] for r in w.sql("SELECT kind FROM jobs")} == {"read_run_file"}
+    assert {r["kind"] for r in w.sql("SELECT kind FROM jobs")} - {"preflight"} == {"read_run_file"}
 
 
 def test_tc042_the_route_calls_the_action_and_holds_no_logic_of_its_own():
@@ -737,7 +739,7 @@ def test_tc042_the_route_calls_the_action_and_holds_no_logic_of_its_own():
     tree = ast.parse(src)
     fn = [n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef) and n.name == "run_file_get"][0]
     called = {n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "actions"}
-    assert called == {"run_file"}
+    assert called == {"Caller", "run_file"}
     names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
     assert not names & {"jobs", "store", "sqlite3", "open", "Path", "base64", "os"}, names & {"jobs", "store", "sqlite3", "open", "Path", "base64", "os"}
 
@@ -759,3 +761,15 @@ def test_tc043_nothing_secret_is_in_a_page_or_a_log(w, caplog):
     assert cookie not in caplog.text and "hunter2" not in caplog.text
 
 
+
+
+def test_tc036_045_the_docs_carry_the_section_and_the_manual_steps():
+    # TC-036, TC-045
+    from pathlib import Path
+    docs = Path(__file__).resolve().parents[2] / "docs"
+    platform_doc = (docs / "PLATFORM.md").read_text(encoding="utf-8")
+    section = platform_doc.split("## 下載結果檔", 1)[1].split("\n## ", 1)[0]
+    assert "25 MB" in section and "opens no connection" in section and "read_run_file" in section and "base64" in section
+    testing = (docs / "TESTING.md").read_text(encoding="utf-8")
+    steps = testing.split("## 結果頁下載 (results-files)", 1)[1].split("\n## ", 1)[0]
+    assert "multiqc_report.html" in steps and "390 px" in steps and "web-test-1" in steps

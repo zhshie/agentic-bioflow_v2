@@ -112,7 +112,7 @@ def test_tc001_tc002_put_upload_needs_no_confirmation_and_odd_kinds_stay_refused
 def test_tc003_check_list_is_the_base_list_with_put_upload_last(tmp_path):
     # TC-003
     assert jobs_check(new_db(tmp_path)) == ["preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records",
-                                            "read_task_log", "clean_work", "put_upload", "pipeline_files"]      # release-lookup-job: pipeline_files comes after put_upload
+                                            "read_task_log", "clean_work", "put_upload", "pipeline_files", "read_run_file"]      # release-lookup-job: pipeline_files comes after put_upload; results-files: read_run_file is last
 
 
 def test_tc004_the_kinds_that_write_still_need_a_confirmation(tmp_path):
@@ -209,7 +209,7 @@ def test_tc012_tc013_tables_missing_older_kinds_are_also_rebuilt_to_the_newest(t
         db = old_db(d, cut)
         before = sql(db, COLS)
         store.connect_state(db).close()
-        assert sql(db, COLS) == before and jobs_check(db)[-2:] == ["put_upload", "pipeline_files"] and "clean_work" in jobs_check(db)      # release-lookup-job: put_upload before pipeline_files, which is last
+        assert sql(db, COLS) == before and jobs_check(db)[-3:] == ["put_upload", "pipeline_files", "read_run_file"] and "clean_work" in jobs_check(db)      # release-lookup-job: put_upload before pipeline_files; results-files: read_run_file is last
 
 
 def test_tc014_only_the_jobs_table_is_rebuilt(tmp_path):
