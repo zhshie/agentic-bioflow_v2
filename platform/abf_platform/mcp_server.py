@@ -1,9 +1,10 @@
-# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers ten read-only tools, and is built on the official Python mcp SDK.
-"""MCP server: ten read-only tools: list_runs, get_run, list_compute_envs, get_compute_env, list_agents,
-list_site_files, list_used_pipelines, my_usage, run_outputs, read_task_log; and five tools that ask a person:
+# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers fifteen read-only tools, and is built on the official Python mcp SDK.
+"""MCP server: fifteen read-only tools: list_runs, get_run, list_compute_envs, get_compute_env, list_agents,
+list_site_files, list_used_pipelines, my_usage, run_outputs, read_task_log, and the five canvas reads find_module, describe_module,
+list_pipelines, get_pipeline, get_validation; and five tools that ask a person:
 launch, cancel, forget, resume, relaunch.
 
-The ten read tools carry readOnlyHint, which is only a hint; read-only here means two things:
+The fifteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
   - toward runs: this module never writes the run index (status.py opens it read-only);
   - toward the site: list_site_files may put one read-only question (list a folder) in the job queue of
@@ -22,6 +23,9 @@ from typing import Any
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp_types import ToolAnnotations
+
+import abf_platform.actions.catalogue as catalogue_actions
+import abf_platform.actions.pipelines as pipeline_actions
 
 from . import actions, guidance, http_auth
 
@@ -111,9 +115,47 @@ def build_server(index_path, platform_path=None):
     async def read_task_log(ctx: Context, run_name: str, task: str, which: str) -> dict:
         return await actions.read_task_log(platform_path, index_path, run_name, task, which, caller=_caller(ctx))
 
+    _add_canvas_reads(server, platform_path)
     _add_write_tools(server, platform_path, index_path)
     _add_guidance(server)
     return server
+
+
+def _add_canvas_reads(server, platform_path):
+    """The five reads of the canvas backend (module catalogue and the caller's own saved pipelines). All logic is in the actions;
+    the owner rule is theirs, so each pipeline read passes the caller on."""
+
+    @server.tool(name="find_module", annotations=_READ_ONLY,
+                 description="Search the nf-core module catalogue by name, keyword or description (for example fastqc). Returns sha "
+                             "(the catalogue snapshot), count and modules, each with name, path, description, inputs and outputs. "
+                             "Nothing found gives an empty list and a hint. The catalogue is public; nothing is written.")
+    def find_module(ctx: Context, q: str) -> dict:
+        return catalogue_actions.find_module(q)
+
+    @server.tool(name="describe_module", annotations=_READ_ONLY,
+                 description="One nf-core module by its exact name: found, sha, inputs and outputs with their types. An unknown name "
+                             "answers found false and says to use find_module. Nothing is written.")
+    def describe_module(ctx: Context, name: str) -> dict:
+        return catalogue_actions.describe_module(name)
+
+    @server.tool(name="list_pipelines", annotations=_READ_ONLY,
+                 description="Your own saved pipelines: id, name, newest version, number of nodes and dates. Other people's "
+                             "pipelines are not shown. Nothing is written.")
+    def list_pipelines(ctx: Context) -> dict:
+        return pipeline_actions.list_pipelines(platform_path, caller=_caller(ctx))
+
+    @server.tool(name="get_pipeline", annotations=_READ_ONLY,
+                 description="One of your saved pipelines by its id, with the graph of a version (the newest when version is not "
+                             "given). A pipeline that is not yours answers like one that does not exist. Nothing is written.")
+    def get_pipeline(ctx: Context, pipeline_id: int, version: int | None = None) -> dict:
+        return pipeline_actions.get_pipeline(platform_path, pipeline_id, version, caller=_caller(ctx))
+
+    @server.tool(name="get_validation", annotations=_READ_ONLY,
+                 description="The kept result of the latest check of one version of your pipeline (the newest version when version "
+                             "is not given); validation is null when it was never checked, and stale says the module list changed "
+                             "since. Nothing is checked again and nothing is written.")
+    def get_validation(ctx: Context, pipeline_id: int, version: int | None = None) -> dict:
+        return pipeline_actions.get_validation(platform_path, pipeline_id, version, caller=_caller(ctx))
 
 
 def _add_write_tools(server, platform_path, index_path):
