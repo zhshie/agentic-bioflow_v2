@@ -934,3 +934,30 @@ def test_docs_list_every_aws_key_and_check():
         assert not [m for m in re.findall(r"\b\d{12}\b", text) if m != ACCOUNT]
         for bad in re.findall(r"s3://([A-Za-z0-9.-]+)", text):
             assert bad in ("lab-bucket", "<bucket>", "bucket"), bad
+
+
+def test_max_memory_gb_rules(ip):
+    # TC-001 TC-002 TC-003 TC-004 TC-005 TC-006 TC-007 TC-008 (maxMemoryGB: one task's memory ceiling, whole GB 1..10000)
+    for bad in (0, 10001, True, "8", 1.5):
+        assert "maxMemoryGB must be a whole number from 1 to 10000" in refused(ip, good_config(maxMemoryGB=bad)), bad
+    assert create(ip, "mm1", good_config(maxMemoryGB=10000))["config"]["maxMemoryGB"] == 10000
+    assert create(ip, "mm2", good_config(maxMemoryGB=1))["config"]["maxMemoryGB"] == 1
+    assert "maxMemoryGB" not in create(ip, "mm3", good_config())["config"]      # an old environment: unset means unset, no default is filled in
+
+
+def test_no_other_new_limit_keys_are_taken(ip):
+    # TC-061 (no total, no disk, no time limit)
+    for key in ("maxDiskGB", "maxTime", "maxTotalMemoryGB"):
+        assert "unknown setting" in refused(ip, good_config(**{key: 5})), key
+
+
+def test_slurm_takes_no_max_memory_gb_and_the_agent_snapshot_is_unchanged(ip):
+    # TC-060, TC-062, TC-069
+    from abf_platform import compute_envs
+    with pytest.raises(compute_envs.CEError) as e:
+        compute_envs.create(ip.state_db, {"name": "s9", "platform": "slurm-platform", "agent": "a1",
+                                          "config": {"workDir": "/x/work", "maxMemoryGB": 8}})
+    assert "unknown setting for a Slurm environment" in str(e.value) and "Traceback" not in str(e.value)
+    create(ip, "snap1", good_config(maxMemoryGB=6))
+    snap = compute_envs.snapshot(compute_envs.get(ip.state_db, "snap1"))
+    assert set(snap) == {"name", "platform", "credentialsId", "region", "workDir", "jobQueue", "spot", "maxvCpus"}
