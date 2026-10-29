@@ -1414,3 +1414,19 @@ async def request_forget(platform_path, index_path, *, run_name, caller=None, pe
     if not yes:
         return _forgot(False, "未刪除：%s (not deleted)" % why, state="declined")
     return forget(platform_path, index_path, run_name, confirmed_by=ELICITED, caller=caller, clock=clock)
+
+
+# ---- web uploads (web-upload-page): the page receives the bytes into the platform host; these two judge, queue and read -----------------------------
+
+from . import uploads as _uploads
+
+
+def start_upload_batch(platform_path, tokens_path, caller, **kw):
+    """Judge what the upload page received and queue one upload per file (actions/uploads.py holds the rules). The person's press of Upload is the
+    yes: nothing is asked again. Returns {ok: True, batch} or {ok: False, error, ...}."""
+    return _uploads.start_upload_batch(platform_path, tokens_path, caller, **kw)
+
+
+def upload_batch_status(platform_path, caller, batch, **kw):
+    """Where one batch of the caller's uploads stands; registers the Dataset when every file is in the bucket (actions/uploads.py)."""
+    return _uploads.upload_batch_status(platform_path, caller, batch, **kw)

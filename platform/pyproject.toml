@@ -7,7 +7,7 @@ name = "abf-platform"
 version = "0.1.0"
 description = "Receiver for Nextflow's trace messages, a read-only MCP server over the runs it recorded, and the station agent that answers read-only site jobs"
 requires-python = ">=3.10"
-dependencies = ["mcp>=2.3,<3"]
+dependencies = ["mcp>=2.3,<3", "python-multipart"]
 
 [project.optional-dependencies]
 test = ["pytest", "httpx"]

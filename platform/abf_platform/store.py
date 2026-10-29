@@ -173,8 +173,8 @@ RUN_TOKEN_TTL = 14 * 86400
 # Compute environments, agents, jobs, confirmations and the hand-off record. Nothing here describes the state of a
 # run: a job is a question or an order put to one agent, a confirmation is the user's "yes" to one content, and a
 # launches row is a fact (who was told to launch what, and the number Slurm gave it), never a status.
-# The CHECK constraints let exactly eight job kinds in, and the three that write (launch_nextflow, cancel_run, clean_work) only with
-# a confirmation; the eighth, put_upload, writes to the user's own cloud prefix and needs none (the person's press of Upload is the yes). The jobs table has the same columns in the same order whether it was made new or upgraded from 007's.
+# The CHECK constraints let exactly nine job kinds in, and the three that write (launch_nextflow, cancel_run, clean_work) only with
+# a confirmation; put_upload writes to the user's own cloud prefix and needs none (the person's press of Upload is the yes); the other five only read. The jobs table has the same columns in the same order whether it was made new or upgraded from 007's.
 STATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS compute_envs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

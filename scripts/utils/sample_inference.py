@@ -57,6 +57,9 @@ R2_PATTERNS = [
 # Lane pattern
 LANE_PATTERN = r'[_.]L(\d{3})[_.]'
 
+# Mate marker at the end of a name (extension and lane already removed).
+_MATE_END = re.compile(r'[_.]R?([12])(?:_\d{3})?$', re.IGNORECASE)
+
 
 def extract_sample_info(filepath: str) -> Dict[str, str]:
     """
@@ -86,9 +89,16 @@ def extract_sample_info(filepath: str) -> Dict[str, str]:
     # Remove lane from stem
     clean_stem = re.sub(LANE_PATTERN, '_', stem)
 
-    # Remove R1/R2 indicators and everything after
-    for pattern, _ in R1_PATTERNS + R2_PATTERNS:
-        clean_stem = re.sub(pattern + r'.*', '', clean_stem, flags=re.IGNORECASE)
+    # The mate marker is the LAST thing in the name: [_.]R?[12], optionally
+    # followed by _NNN. A `_1_` or `_2_` earlier in the name is part of the
+    # sample name. Cut at that one marker only.
+    mate = _MATE_END.search(clean_stem)
+    if mate:
+        clean_stem = clean_stem[:mate.start()]
+    else:
+        # No marker at the end: keep the previous behaviour for odd names.
+        for pattern, _ in R1_PATTERNS + R2_PATTERNS:
+            clean_stem = re.sub(pattern + r'.*', '', clean_stem, flags=re.IGNORECASE)
 
     # Clean up trailing/multiple underscores and dots
     clean_stem = re.sub(r'[_.-]+$', '', clean_stem)
@@ -100,6 +110,18 @@ def extract_sample_info(filepath: str) -> Dict[str, str]:
     return info
 
 
+
+
+def _mate_number(filename: str) -> int:
+    """1 or 2 when the name ends in a mate marker (extension/lane removed), else 0."""
+    stem = filename
+    for ext in ['.fastq.gz', '.fq.gz', '.fastq', '.fq', '.bam', '.cram', '.bai', '.crai']:
+        if stem.lower().endswith(ext):
+            stem = stem[:-len(ext)]
+            break
+    stem = re.sub(LANE_PATTERN, '_', stem)
+    m = _MATE_END.search(stem)
+    return int(m.group(1)) if m else 0
 
 
 def _get_pattern_score(filename: str, patterns: List[Tuple[str, int]]) -> int:
@@ -143,6 +165,14 @@ def match_read_pairs(files) -> Dict[str, Dict]:
 
         r1_score = _get_pattern_score(filename, R1_PATTERNS)
         r2_score = _get_pattern_score(filename, R2_PATTERNS)
+
+        # A marker at the end of the name decides which mate this is; an
+        # earlier `_1_` / `_2_` in the sample name must not.
+        mate = _mate_number(filename)
+        if mate == 2:
+            r1_score, r2_score = 0, max(r2_score, 1)
+        elif mate == 1:
+            r1_score, r2_score = max(r1_score, 1), 0
 
         if r2_score > r1_score and r2_score > 0:
             r2_files.append((filepath, r2_score))

@@ -16,6 +16,7 @@ LIMIT = 20 * 1024 * 1024
 _LOG = re.compile(r"^\.nextflow\.log(\.[0-9]{1,3})?\Z")
 _TRACE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\Z")
 _NOT_RECORDS = {"tower.token", "params.yaml", "head.sh", "nextflow.config", "samplesheet.csv", "gcb.config", "aws.config", "az" "ure.config"}
+_RESUME_FILE = re.compile(r"^(head|params|extra)-[0-9]+\.(sh|yaml|config)\Z")
 ARGS = {"ce", "run_name", "run_folder"}
 
 
@@ -77,7 +78,7 @@ def run_fetch(job, ctx):
             if name not in traces:
                 traces.append(name)
     for name in traces:
-        if not _TRACE.match(name) or name in _NOT_RECORDS or name.startswith((".nextflow", "slurm-")):
+        if not _TRACE.match(name) or name in _NOT_RECORDS or _RESUME_FILE.match(name) or name.startswith((".nextflow", "slurm-")):
             refused.append("trace 檔 %r 不在專屬資料夾內或名稱不合，已拒絕" % name[:80])
             continue
         got, why = _read(site, folder, name)
