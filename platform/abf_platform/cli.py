@@ -386,19 +386,8 @@ def _owner_id(name):
 
 
 def _queue_first_preflight(state, ce):
-    """Right after a create or update: queue a preflight when the environment's agent is online, else say why not."""
-    if ce["platform"] not in compute_envs.CHECKABLE:
-        return ce["message"]
-    try:
-        jobs.enqueue_preflight(state, ce["name"])
-        note = "preflight queued (預檢已排入); the status changes when the agent has answered"
-    except jobs.JobRefused as e:
-        if "offline" in str(e) or "no agent" in str(e) or "has no agent" in str(e):
-            note = "沒有代理在線，尚未預檢 (no agent online, not checked yet): %s" % e
-        else:
-            note = str(e)
-    compute_envs.set_message(state, ce["name"], note, only_status=compute_envs.CREATING)
-    return note
+    """The line to print right after a create or update; the work is compute_envs.queue_first_preflight, which the settings page shares."""
+    return compute_envs.queue_first_preflight(state, ce)[1]
 
 
 def _default_agent(fields):

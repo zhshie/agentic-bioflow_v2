@@ -209,7 +209,8 @@ def test_st04_ce_table(w):
     assert re.search(r"\d\d-\d\d \d\d:\d\d", first.split("</td>")[-2])
     assert plain(second.split("</td>")[-2]) == "—"
     assert '<p class="off">新增或修改運算環境 <span class="later">之後開放</span></p>' in sec
-    assert not re.search(r"<(a|button|input|form)\b", sec)
+    # settings-register-pipeline: the table itself stays plain; the register and remove forms of that task sit under it
+    assert not re.search(r"<(a|button|input|form)\b", re.search(r"<table.*?</table>", sec, re.S).group(0))
 
 
 def test_st04b_status_mapping_and_unknown(w):
@@ -287,8 +288,10 @@ def test_st08_still_read_only(w):
     ann = w.user("ann")
     pat(w, ann, "x")
     r, mid = page(w)
-    assert r.text.count("<form") == 1 and 'action="/logout"' in r.text
-    assert not re.search(r"<(form|input|select|textarea|button|a)\b", mid)
+    # settings-register-pipeline ruling 1: the middle column may hold only the register and remove forms of that task (action /settings/pipelines)
+    assert r.text.count('action="/logout"') == 1 and set(re.findall(r'<form[^>]*action="([^"]+)"', r.text)) == {"/logout", "/settings/pipelines"}
+    assert set(re.findall(r'<form[^>]*action="([^"]+)"', mid)) == {"/settings/pipelines"}
+    assert not re.search(r"<(select|textarea|a)\b", mid) and 'name="csrf"' in mid
     assert "AI 模型金鑰" in mid and "金鑰只存在你的瀏覽器，不會送到平台。" in mid and "逐步模式" in mid and "開發模式" in mid
     assert 'class="nv here"' in pane(r.text, "left") and "設定" in pane(r.text, "left")
     before = (w.sql("SELECT * FROM compute_envs"), len(w.sql("SELECT * FROM agents")))

@@ -32,6 +32,9 @@ WEB_ONLY = {
     "pipeline_files": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "latest_release": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "nfcore_catalogue": "guided launch searches every nf-core pipeline through the agent (nfcore-catalogue); the page filters; no MCP tool yet",
+    # settings-register-pipeline (ruling 3): no MCP tool, so no AI can write this list; the person confirms on the page
+    "register_site_pipeline": "寫入需在網頁確認頁確認 (POST /settings/pipelines/confirm, the PAGE channel)",
+    "remove_site_pipeline": "寫入需在網頁確認頁確認 (POST /settings/pipelines/confirm, the PAGE channel)",
 }
 # Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).
 OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d", "read_task_log": "011c",
@@ -44,7 +47,9 @@ INTERNAL = {"offer_cleanup", "offer_cleanups", "request_pipeline_launch", "reque
             "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE",
             "FORGETTABLE", "FORGET_ALREADY", "FORGET_NO_FORM", "FORGET_STARTING", "FORGET_WAIT_SECONDS", "RUN_NOT_FOUND",
             # #138 read_task_log words, and estimate_su (a v3 helper with no MCP tool, TC-029, and no web route)
-            "RUN_NOT_FOUND_TEXT", "READ_WHICH", "NO_WORKDIR", "LOG_NOT_FOUND", "estimate_su"}
+            "RUN_NOT_FOUND_TEXT", "READ_WHICH", "NO_WORKDIR", "LOG_NOT_FOUND", "estimate_su",
+            # settings-register-pipeline: 網頁兩步驟的第一步 (step one of the two-step page: reads only, writes nothing)
+            "check_site_pipeline_change"}
 FORBIDDEN_IMPORTS = {"confirm", "jobs", "compute_envs", "agents", "status"}
 
 
