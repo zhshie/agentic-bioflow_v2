@@ -55,7 +55,59 @@ def test_module_doc_counts_the_read_only_tools():
     assert all(NUMBERS[w] == n for w in found), f"{found} vs actual {n}"
 
 
+def _first_line_problems(first: str, n: int) -> list[str]:
+    return []
+
+
+def _read_only_count() -> int:
+    return sum(1 for _, a in _tools() if a == "_READ_ONLY")
+
+
 def test_first_comment_line_does_not_name_an_old_count():
+    # TC-009, TC-010
+    n = _read_only_count()
+    problems = _first_line_problems(TEXT.splitlines()[0], n)
+    assert not problems, f"first line vs actual {n}: {problems}"
+
+
+def test_first_line_guard_rejects_stale_count_ten():
+    # TC-001
+    assert _first_line_problems("# ... offers ten read-only tools ...", 15)
+
+
+def test_first_line_guard_rejects_old_six_seven():
+    # TC-002
+    assert _first_line_problems("# ... offers six read-only tools ...", 10)
+    assert _first_line_problems("# ... offers seven read-only tools ...", 10)
+
+
+def test_first_line_guard_rejects_missing_count():
+    # TC-003
+    problems = _first_line_problems("# offers read-only tools", 15)
+    assert problems and any("read-only" in p for p in problems)
+
+
+def test_first_line_guard_accepts_matching_count():
+    # TC-004
+    assert _first_line_problems("# ... offers fifteen read-only tools", 15) == []
+
+
+def test_first_line_guard_rejects_count_not_next_to_read_only():
+    # TC-005
+    assert _first_line_problems("# offers fifteen tools", 15)
+
+
+def test_first_line_guard_rejects_extra_wrong_number_word():
     # TC-006
-    first = TEXT.splitlines()[0]
-    assert "six" not in first and "seven" not in first
+    assert _first_line_problems("# offers fifteen read-only tools ... ten ...", 15)
+
+
+def test_first_line_guard_accepts_six_when_n_is_six():
+    # TC-007
+    assert _first_line_problems("# ... offers six read-only tools", 6) == []
+
+
+def test_first_line_guard_demands_wider_numbers_when_n_out_of_range():
+    # TC-008
+    problems = _first_line_problems("# offers fifteen read-only tools", 16)
+    assert problems and any("NUMBERS" in p for p in problems)
