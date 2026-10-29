@@ -197,6 +197,9 @@ To take an agent away: `abf-platform agent-token revoke my-laptop`. Its next req
 | Offline | no contact for 3 heartbeats (60 seconds) | follows the heartbeat setting |
 | Job deadline, `preflight` | 180 seconds | `ABF_PLATFORM_DEADLINE_PREFLIGHT` |
 | Job deadline, `list_site_files` | 60 seconds | `ABF_PLATFORM_DEADLINE_LIST_SITE_FILES` |
+| Job deadline, `read_task_log` | 60 seconds | `ABF_PLATFORM_DEADLINE_READ_TASK_LOG` |
+| Job deadline, `clean_work` | 600 seconds | `ABF_PLATFORM_DEADLINE_CLEAN` |
+| Job deadline, `put_upload` | 3600 seconds | `ABF_PLATFORM_DEADLINE_PUT_UPLOAD` |
 | One site call | 20 seconds (`ON_SITE_TIMEOUT`, unless you already set it) | `ON_SITE_TIMEOUT` |
 
 Online or offline is worked out when someone asks, from the last contact and the clock; nothing runs in the background to decide it. A busy agent keeps sending its heartbeat, so a long preflight does not make it look offline. The platform's settings (`ABF_AGENT_*`, `ABF_PLATFORM_DEADLINE_*`) must be given to the processes that read them: the receiver, the command line and the MCP server all use the heartbeat setting.
@@ -868,7 +871,7 @@ The folders are created on first use. The `.gitignore` of this repository keeps 
 
 `ABF_PLATFORM_CLOCK_OFFSET` (seconds, default 0) shifts the clock the query side uses. It exists so the tests can look at a run "three minutes later"; leave it unset. It also moves the clock by which a run token expires.
 
-Settings that only the tests change: `ABF_PLATFORM_DEADLINE_PIPELINE_FILES` (default 90) is the deadline in seconds of the `pipeline_files` job, `ABF_PLATFORM_DEADLINE_LAUNCH` (default 300), `ABF_PLATFORM_DEADLINE_CANCEL` (90) and `ABF_PLATFORM_DEADLINE_FETCH` (180) are the deadlines in seconds of the three new job kinds, `ABF_PLATFORM_LAUNCH_GRACE` (120) is how long `abf-platform launch` waits for a late answer, and `ABF_STATION_MIN_REMAINING` (60) is how much of a launch's deadline the agent needs left before it submits.
+Settings that only the tests change: `ABF_PLATFORM_DEADLINE_PIPELINE_FILES` (default 90) is the deadline in seconds of the `pipeline_files` job, `ABF_PLATFORM_DEADLINE_LAUNCH` (default 300), `ABF_PLATFORM_DEADLINE_CANCEL` (90) and `ABF_PLATFORM_DEADLINE_FETCH` (180) are the deadlines in seconds of the three new job kinds, `ABF_PLATFORM_LAUNCH_GRACE` (120) is how long `abf-platform launch` waits for a late answer, and `ABF_STATION_MIN_REMAINING` (60) is how much of a launch's deadline the agent needs left before it submits. `ABF_STATION_PUT_TIMEOUT` (seconds, default 3600) replaces the time limit of the agent's copy of a `put_upload` file, and `ABF_STATION_GCB_SETTLE_SECONDS` (seconds, default 5) is how long the agent waits after starting a Google Batch head process; if the process is gone within those seconds it counts as not started.
 
 ## What it does not do
 
