@@ -107,3 +107,11 @@ def test_ce09_no_inline_style(w):
         _, sec, _ = ce_section(w, lang, setup=(lang == "zh"))
         table = re.search(r"<table.*?</table>", sec, re.S).group(0)
         assert "style=" not in table
+
+
+def test_ce08_cell_is_not_a_grid_or_flex_container(w):
+    # TC-008: a grid or flex cell turns its text and its badge/message into separate items, which fall under the label
+    text, _, _ = ce_section(w, "zh")
+    block, _, _ = media_block(text)
+    cell = re.search(r"\.tbl\.ce td\{([^}]*)\}", block).group(1)
+    assert "grid" not in cell and "flex" not in cell.replace("flow-root", "")
