@@ -137,6 +137,7 @@ NO_TOOL = {
     "forget_check": "web page: what forgetting would delete",
     "form_is_trusted": "helper of the MCP form",
     "latest_release": "web page",
+    "run_file": "web page: one result file as a download (results-files)",
     "launch": "the confirmed path (confirmed_by), not a tool",
     "cancel": "the confirmed path (confirmed_by), not a tool",
     "forget": "the confirmed path (confirmed_by), not a tool",
