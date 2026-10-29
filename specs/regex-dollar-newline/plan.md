@@ -69,6 +69,10 @@ Python 的 `re.match` 遇到以 `$` 結尾的樣式時，會放過「結尾多�
 2. **datasets.py 其餘正規式？** `_EXT`、`_TAG`、`_NUM`、`_LANE` 是對檔名做切割，結尾換行不會出現在 FASTQ 檔名比對的合法輸入裡，改了反而可能動到切割結果。**定案：不動。**
 3. **紅測試入口（預檢 10-29）**：`compose.normalize(graph, data)` 沒有名稱參數，管線名檢查在 `compose.render`（compose.py:258，檢查在 263）。**定案**：管線名 `"abc\n"` 由 `compose.render(canonical, name, version)` 測；`compose.normalize` 只測節點 id `"a\n"`、參數鍵 `ext.args\n`、輸出名 `"x\n"`。build 測 build.py:226 所在的 `_param_path`；pipelines 測 `create_pipeline(platform_path, *, name, graph)`；datasets 測 `register_dataset(platform_path, *, name, version, samplesheet, files)`。開工前用 `git show origin/v3:<檔>` 重查簽名。
 4. **`_KEY`、`_IDENT` 紅測試（預檢 10-29）**：裁決 1 加了它們，失敗先行測試也要涵蓋。**定案**：經 `normalize` 送入參數鍵 `ext.args\n` 與輸出名 `x\n`；改前應被接受（測試紅），改後被拒。
+5. **`_IDENT` 的入口（verifier 出題 10-29）**：`normalize` 在檢查 `_IDENT` 前先擋「沒有這個輸出通道」，`x\n` 改前就被拒，紅不了。**定案：(a)**：用手工組出的 canonical 圖直接呼叫 `compose.render`（compose.py:279 也檢查 `_IDENT`，檢查跑兩次是刻意的）。裁決 4 的 `_IDENT` 部分以本條為準；`_KEY` 仍經 `normalize` 測，若同樣被前一道檢查擋住，也改走 `render`。
+6. **build 的意思（確認）**：對，`_param_path` 改後把 `nf-core/rnaseq\n` 當成路徑回傳、不再回 None，真正的拒絕在 `_confine`。TC-030／TC-031 照這樣寫即可；要求的是「從外面送進來最後被拒」，不在乎是哪一層拒。
+7. **datasets 的 `version`**：共用同一個 `_NAME`，改後一併變嚴。**定案：加一條**：版本 `"v1\n"` 被拒、`"v1"` 仍收下。
+8. **手動 TC**：本件的「手動」項都是 `git diff origin/v3...HEAD` 檢查，不需要 TESTING.md 步驟；ledger 貼 diff 統計即可。
 
 ### developer-agent 確認（2026-10-29）
 證據已在 origin/v3@7bc7e15 逐行核對屬實；裁決如上。A 級：只收緊，不放寬任何安全網、不改使用者看得到的文字。
