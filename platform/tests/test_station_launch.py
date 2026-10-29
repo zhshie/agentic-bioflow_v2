@@ -77,7 +77,8 @@ def folder(site, run="run-a"):
 
 
 def nothing_happened(site):
-    assert site.calls() == [] or all(c.split()[0] in ("sinfo", "java", "nextflow") for c in site.calls()), site.calls()
+    # settings-pick-installed: a preflight job now also reads the module list (module -t avail, module show: read only)
+    assert site.calls() == [] or all(c.split()[0] in ("sinfo", "java", "nextflow") or c.startswith(("module -t avail", "module show")) for c in site.calls()), site.calls()
     assert not (site.work / "runs").exists()
     assert site.dangerous() == [] and site.destructive() == []
     assert site.guards_intact()
@@ -121,7 +122,8 @@ def test_unconfirmed_resume_is_refused(tmp_path, site, fake):
             assert res["state"] == "refused", (label, res)
         assert a.alive()
     assert snapshot(f) == before
-    assert site.calls() == [] or all(c.split()[0] in ("sinfo", "java", "nextflow") for c in site.calls()), site.calls()
+    # settings-pick-installed: a preflight job now also reads the module list (module -t avail, module show: read only)
+    assert site.calls() == [] or all(c.split()[0] in ("sinfo", "java", "nextflow") or c.startswith(("module -t avail", "module show")) for c in site.calls()), site.calls()
     assert site.dangerous() == [] and site.destructive() == []
     assert site.guards_intact()
 

@@ -952,6 +952,33 @@ def _clean_pf_part(name, part):
     return out
 
 
+_INV_STATUS = ("ok", "no_module_system", "error")
+_INV_LIMIT = 200
+_INV_PIPELINE = re.compile(r"nf-core/[a-z0-9][a-z0-9-]{0,63}\Z")
+
+
+def _clean_inventory(raw):
+    """The site's list of installed nf-core modules, in exactly its known shape; None when it is not a list at all. An entry that does not
+    pass the rules of a registered pipeline (the same ones compute_envs applies) is dropped, not the whole list."""
+    if not isinstance(raw, dict) or raw.get("status") not in _INV_STATUS:
+        return None
+    items = []
+    for item in (raw.get("items") if isinstance(raw.get("items"), list) else [])[:_INV_LIMIT]:
+        if not isinstance(item, dict) or set(item) != {"pipeline", "revision", "module", "home", "home_source"}:
+            continue
+        if not all(isinstance(item[k], str) for k in item) or item["home_source"] not in ("module", "guessed"):
+            continue
+        if (not _INV_PIPELINE.match(item["pipeline"]) or not compute_envs._REVISION.match(item["revision"])
+                or compute_envs._module_problem(item["module"]) or compute_envs._var_problem(item["home"])):
+            continue
+        items.append({k: item[k] for k in ("pipeline", "revision", "module", "home", "home_source")})
+    out = {"status": raw["status"], "items": items if raw["status"] == "ok" else [],
+           "read_at": _short(raw.get("read_at") or "", 30) if isinstance(raw.get("read_at"), str) else ""}
+    if raw["status"] == "error" and isinstance(raw.get("reason"), str):
+        out["reason"] = _short(raw["reason"], 200)
+    return out
+
+
 def clean_result(kind, result, stored=None):
     """Only what the platform expects, with every text bounded; an agent cannot make the platform store more."""
     if not isinstance(result, dict):
@@ -969,6 +996,9 @@ def clean_result(kind, result, stored=None):
         out["checks"] = checks
         if any(c["status"] != "pass" for c in checks) or not checks:
             out["ok"] = False
+        inventory = _clean_inventory(result.get("site_inventory"))
+        if inventory is not None:      # a separate field: never one of the checks, never part of the verdict
+            out["site_inventory"] = inventory
     elif kind == "pipeline_files":
         if isinstance(result.get("repo"), str):
             out["repo"] = _short(result["repo"], 140)

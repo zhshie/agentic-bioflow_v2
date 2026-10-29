@@ -995,7 +995,8 @@ def test_pf_empty_modules_means_no_module_load(pf):
     # TC-PF-04
     r = pf.result(modules=[])
     assert "modules" not in names_of(r)
-    assert not [x for x in pf.fake.calls() if x.startswith("module")]
+    # settings-pick-installed: the preflight job also reads the module list (module -t avail, module show), which is not a module load
+    assert not [x for x in pf.fake.calls() if x.startswith("module") and not x.startswith(("module -t avail", "module show"))]
     assert not [x for x in pf.commands if "module load" in x]
     assert "java -version" in pf.commands and "nextflow -version" in pf.commands
 
@@ -1215,7 +1216,8 @@ def test_pf_old_environment_unchanged(pf):
     assert set(names_of(r)) == CHECKS and names_of(r) == list(handlers.CHECK_ORDER)
     assert {c["status"] for c in r["checks"]} == {"pass"}
     work = str(pf.fake.work)
-    assert pf.commands == [
+    assert "abf_inv=" in pf.commands[-1]      # settings-pick-installed: the last call is the read of the module list, a field apart from the checks
+    assert pf.commands[:-1] == [
         "--check-reach",
         "if test -d %s; then echo work_dir=dir; else echo work_dir=missing; fi; "
         "if test -w %s; then echo work_dir_writable=yes; else echo work_dir_writable=no; fi; "

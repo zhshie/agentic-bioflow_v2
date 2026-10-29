@@ -289,8 +289,9 @@ def test_st08_still_read_only(w):
     pat(w, ann, "x")
     r, mid = page(w)
     # settings-register-pipeline ruling 1: the middle column may hold only the register and remove forms of that task (action /settings/pipelines)
-    assert r.text.count('action="/logout"') == 1 and set(re.findall(r'<form[^>]*action="([^"]+)"', r.text)) == {"/logout", "/settings/pipelines"}
-    assert set(re.findall(r'<form[^>]*action="([^"]+)"', mid)) == {"/settings/pipelines"}
+    assert r.text.count('action="/logout"') == 1 and set(re.findall(r'<form[^>]*action="([^"]+)"', r.text)) == {"/logout", "/settings/pipelines", "/settings/inventory"}
+    # settings-pick-installed: the Slurm block also holds the form of the button that reloads the site list
+    assert set(re.findall(r'<form[^>]*action="([^"]+)"', mid)) == {"/settings/pipelines", "/settings/inventory"}
     assert not re.search(r"<(select|textarea|a)\b", mid) and 'name="csrf"' in mid
     assert "AI 模型金鑰" in mid and "金鑰只存在你的瀏覽器，不會送到平台。" in mid and "逐步模式" in mid and "開發模式" in mid
     assert 'class="nv here"' in pane(r.text, "left") and "設定" in pane(r.text, "left")
