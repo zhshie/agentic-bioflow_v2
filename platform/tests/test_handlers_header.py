@@ -34,7 +34,7 @@ def test_first_line_does_not_claim_two_handlers():
 
 def test_first_line_names_the_job_kind_count():
     # TC-003, TC-015: the expected word comes from JOB_KINDS, not written here
-    assert WORDS[_kind_count()] in _first_line().split("(")[0].replace(",", " ").split() or WORDS[_kind_count()] in _first_line()
+    assert WORDS[_kind_count()] in _first_line()
 
 
 def test_first_line_keeps_its_reason():

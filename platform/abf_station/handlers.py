@@ -1,4 +1,4 @@
-# Not Ansible modules or Celery tasks: they run whatever a controller sends; these are two built-in read-only handlers, and a job is only data for them, never a command.
+# Not Ansible modules or Celery tasks: they run whatever a controller sends; these are the built-in handlers for the nine job kinds (three of them write, after a confirmation), and a job is only data for them, never a command.
 """What the agent does: check a site (preflight), list a folder (list_site_files), and, with a confirmation, start an analysis
 (launch_nextflow, launch.py) or stop one (cancel_run, cancel.py); fetch_run_records reads Nextflow's own logs back (fetch.py);
 read_task_log reads the end of one log file of one task folder (readlog.py); clean_work, with a confirmation, removes the
