@@ -38,8 +38,8 @@ source: 2026-10-29 Sonnet 掃描（找「清單／數字漂移」類 A 級；原
 
 ## 失敗先行測試
 新檔 `platform/tests/test_cli_usage_doc.py`，先寫、改字前跑一次確認紅，紅輸出貼進 ledger。不連網、不開資料庫、不執行任何子指令。
-- `test_every_top_level_command_is_named_in_the_doc`：`cli.build_parser()` 取頂層子指令名（從 `parser._subparsers._group_actions[0].choices`），逐一斷言出現在 `cli.__doc__`。**現在紅**（缺 `oauth`、`dataset`）。
-- `test_every_nested_command_is_named_in_the_doc`：同法遞迴取第二層名稱（`token new`、`ce create`、`runs offer-cleanup` …），斷言每個第二層名稱出現在說明。**現在紅**（至少缺 `offer-cleanup`、`register`、`show`）。
+- `test_every_top_level_command_is_named_in_the_doc`：`cli.build_parser()` 取頂層子指令名（從 `parser._subparsers._group_actions[0].choices`），逐一斷言在 `cli.__doc__` 有自己的一段（比對規則見裁決 5）。**現在紅**（缺 `oauth`、`dataset`）。
+- `test_every_nested_command_is_named_in_the_doc`：同法遞迴取第二層名稱（`token new`、`ce create`、`runs offer-cleanup` …），依裁決 5 以群組段落比對、排除 ce（裁決 4）。**現在紅**（至少缺 `offer-cleanup`、`register`、`show`）。
 - `test_doc_has_no_dangling_count`：說明不得含 `four commands`。**現在紅**。
 - 對照組（必須一直綠）：`serve`、`web`、`token`、`mcp`、`rebuild` 仍在說明；既有 `test_cli.py`、`test_dataset_cli.py` 不改、保持綠。
 - 手動檢查（記 ledger，verifier 重跑）：`git diff -U0 origin/v3 -- platform/abf_platform/cli.py` 只有第 2 行；兩分支 `ast.parse` 後只有該字串常數不同，其他 AST 節點相等。
@@ -63,6 +63,9 @@ source: 2026-10-29 Sonnet 掃描（找「清單／數字漂移」類 A 級；原
 1. **「the four commands of the hand-off record」要補成正確數字，還是刪？** **定案：刪。**數字再寫一次只會再過期，測試以名稱比對取代數量。
 2. **`--help` 開頭變長算不算可見行為變動？** **定案（developer-agent 10-29 預檢改判）：算，`--help` 是使用者看得到的 CLI 文字，所以本件列 B 級（網頁外），流程照舊、自合。** 除了第 2 行字串，任何指令行為不變。
 3. **專長守則**：專案沒有 docs 守則，用 backend 守則；其中對等性／跨使用者／確認管道 TC 對純說明文字不適用，verifier 寫「不適用＋理由」即可，不必硬湊。
+4. **（合約退回 10-29）`ce ...` 怎麼辦？** **定案 (b)**：第 2 行的 `ce ...` 原樣保留（它是刻意的「看 `ce --help`」），第二層測試**明確排除 ce**，測試內寫一行理由註解。
+5. **（合約退回 10-29）比對規則**：以「群組段落」為單位。把 `__doc__` 去掉開頭 `abf-platform:` 後用 ` | ` 切成段；每段第一個字是群組名，其餘部分取第一個空白前的 `a|b|c` 清單、去掉 `[...]` 方括號內容後用 `|` 切成名稱集合（例：`user add|cloud-cap|passwd [--temporary]|welcome` → {add, cloud-cap, passwd, welcome}）。斷言：每個頂層指令都有一段；每個有子指令的群組（ce 除外），其 parser 的每個第二層名稱都在該段的名稱集合裡。所以 `dataset list` 漏寫不會因 `pat list` 而誤綠。第 2 行的新寫法必須符合此格式（例：`oauth revoke USER`、`dataset register|list|show`、`runs assign|offer-cleanup`）；`runs assign RUN --user NAME` 這種帶參數寫法改成 `runs assign|offer-cleanup`（參數看各自 --help）。
+6. **（合約退回 10-29）手動項**：git diff／AST 比對由 verifier 驗收時重跑計畫所列指令即可，不需 docs/TESTING.md 步驟。可接受。
 
 ### developer-agent 確認（2026-10-29）
 證據已在 origin/v3@68de6de 抽查屬實（cli.py:2、:781–784、:833、:841–855）。
