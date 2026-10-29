@@ -211,3 +211,15 @@ source: memory/PLAN-abf-v3-replan-2026-10.md 第 169 行（C-5「Azure Batch／K
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+### 補充裁決 12-1…12-10（2026-10-29 22:5x，回應第二次 CONTRACT 阻擋；與上文衝突時以本段為準）
+- **12-1 文件句與七個測試**：`docs/PLATFORM.md` 兩處同句（:541 粗體句與 In full 句）改成「Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only」；型別表 K8s 列改成「checked and launched on the platform host (upload, clean, resume: not yet)」；:513 起小節把「launching on it is not built yet…」改寫成可送出（拒絕清單只剩 upload／clean／resume）。准許更新逐字釘這句的七個測試（`test_aws_ce.py:924`、`test_azure_ce.py:863`、`test_azure_launch.py:1213`、`test_azure_upload.py:855`、`test_gcb_ce.py:867`、`test_gcb_launch.py:1151`、`test_k8s_ce.py:843` NEW_SENTENCE），只准換成新句子，不准刪斷言或改成模糊比對（比照 azure-launch TC-136）。
+- **12-2**：`test_k8s_ce.py:732-733` 准許改成新值（PLATFORM_HOST_TYPES 四元含 K8S；K8S 在 CLOUD_JOB_KINDS、長度 4）；:734 CHECK_ONLY_TYPES 依實作改（可變成空 tuple 或移除該常數，二擇一要有斷言）。允許清單以 executor 實跑 `pytest` 紅的行為準，但每一行都要在 ledger 列出「舊斷言→新斷言」，verifier 逐行核對只是換值、沒放寬。
+- **12-3 snapshot**：base 已有 K8s 分支，不改；TC-077 釘「不變」正確。
+- **12-4 Secret 不落地**：不用 `--from-file`、不寫本機暫存檔。改成組 Secret manifest（data 欄 base64）由 stdin 餵 `kubectl create -f -`，與 Pod manifest 同一做法。要有 TC：執行過程本機沒有新增含 token 的檔案、kubectl 參數列不含 token。
+- **12-5 PVC 路徑**：`<storageMountPath>/_k8s_runs/<run>/`（基準點＝storageMountPath；workDir 若在 storageMountPath 底下，此路徑仍不得落在 workDir 內）。
+- **12-6 同名檢查**：create secret 前先 `kubectl get secret <name> -n <ns>`；回 NotFound 才繼續，存在就拒絕、不寫入任何東西。讀取類呼叫不限次數（同 TC-002）。
+- **12-7 拒絕訊息**：未開的動作（upload／clean／resume）訊息＝「Kubernetes 尚未支援<動作中文名>」，例：clean→「尚未支援清理」；不再出現「尚未支援送出」與 `k8s-launch` 字樣。:758 依此改。
+- **12-8 未規定行為定案**：①取消時 Pod 已 NotFound → 視為已停止，標 cancelled，訊息「Pod 已不存在，視為已停止」；②`kubectl delete` 失敗 → 回錯誤（含 kubectl stderr 前 200 字、去掉 token），狀態不變，不重試；③`get pod` stderr 含 `NotFound` → 不存在；其他非零 → 「連不上叢集」錯誤，狀態不變；④取 phase 失敗 → 狀態維持上次值，回「無法取得 Pod 狀態」。每條一個 TC。
+- **12-9 送出畫面**：確認，顯示 params.yaml、nextflow.config、k8s.config、啟動命令的內容；不顯示 token 與映像（TC-102～104 對）。
+- **12-10 刪除例外**：確認 TC-026（只刪本次剛建、同名那一個 Secret，且只在 create pod 失敗時）與 TC-031（Pod 變 Failed 後不刪任何東西）的解讀；這是「不做」第二條刪除路徑的唯一例外。
