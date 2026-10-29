@@ -132,6 +132,8 @@ assert [...] == []   Left contains 28 more items, first extra item: ('web_board.
 | web_cost | unknown_runs / action / note / th_where / empty / bad_month / no_reason / usd_note | 算不出／用完／數字是依…／在哪裡跑／這個月還沒有分析／月份格式不對，顯示本月。／算不出／SU 換美元依 %s 匯率約略換算，不是帳單。 | 無法計算／用盡／數字依…／執行位置／本月尚無分析／月份格式不符，已顯示本月。／無法計算／SU 以 %s 匯率概算為美元，並非帳單金額。 |
 | web_finished | params / defaults / gone_note / foreign / no_multiqc / no_files | 改過的參數／全部用預設值／這次送出…／不是從平台送出的分析，沒有來源紀錄。／這次沒有產生／沒有檔案 | 已變更的參數／全部採預設值／該次送出…／此分析並非經由平台送出，無來源紀錄。／該次未產生／無檔案 |
 | web_upload（裁決 1，只動 zh 值） | intro / cmds_note / p_keep | 含「你」 | 「您」或省略主詞（`intro`、`cmds_note`、`p_keep` 三處，裁決 10） |
+| web_upload（裁決 15a，口語句，禁用詞抓不到） | none / h_sheet / e_empty / e_too_big / e_sheet_big / e_disk / e_request / e_many / e_nothing / p_timeout / p_no_reason / p_failed | 沒有可用／沒有選樣本表／是空的，沒有內容可以上傳／沒有收下、沒有排入／請回到上傳頁／沒有在時限內／沒有成功／沒有傳成功、沒有登記 | 尚無可用／未選樣本表／為空，無內容可上傳／未收下、未排入／請返回上傳頁／未在時限內／未成功／未傳送成功、未登記（鍵與英文不動） |
+| web.py 約 459 行 | 未送出頁 | 請回到 AI 重新送出 | 請返回 AI 重新送出（裁決 15a） |
 | web.py `_PLAIN["zh"]` | run | run 名稱 | 分析名稱 |
 | web.py 內嵌句 | 登入說明、來源不符、/welcome 標題與說明、表單失效（三處）、無此申請（三處）、無此網址（三處）、非您的申請（標題與內文，表外，裁決 10）、確認頁說明（刪除／送出／取消）、逾時／作廢（四處）、已送出（兩處）、同意頁（未命名、限制兩段、連線說明）、已處理／已逾時／未處理 | 口語（你、這個、什麼都沒有改、回到…） | 正式書面語，見 `git diff platform/abf_platform/web.py`；英文半句與標記一字未動 |
 | confirm.py:390 | JobRefused 訊息 | 這個 run 還有工作在排隊或進行中，不能刪除 | 該次分析仍有工作在排隊或進行中，無法刪除（英文半句不動；裁決 2、12） |
@@ -166,3 +168,5 @@ assert [...] == []   Left contains 28 more items, first extra item: ('web_board.
 | test_settings_pick_installed.py:25 `GONE_ZH` | 同上改前 | 同上改後 | 期望字串隨表值 |
 | test_settings_pick_installed.py:37 `EXPIRED_HINT` | 表單的記號不正確或已失效，什麼都沒有改。請重新整理頁面後再試。 | 表單驗證碼不符或已失效，未變更任何內容。請重新整理頁面後再試。 | 隨 `pf_expired` 表值（本計畫裁決 10） |
 | test_settings_pick_installed.py:725 | "沒有運算環境。" | "尚無運算環境。" | 隨 `no_ce` 表值 |
+
+- 修正輪（裁決 15a）：`test_clean_page.py` 的 `BASE_POST` 中 late-launch／late-cancel 兩項整頁雜湊（410 的「未送出」頁）因「請返回 AI 重新送出」而重算（d2df3540d123bd63 → f2effe7f12a63548）；pressed-* 兩項未變。屬期望字串同步，無斷言刪減。

@@ -456,7 +456,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             code = {"not_found": 404, "not_yours": 403, "expired": 410}.get(e.status, 409)
             if req["kind"] == "clean_work":
                 return _page("未送出", "<p class=\"bad\">未送出：%s。</p>" % _esc(e), code)
-            return _page("未送出", "<p class=\"bad\">未送出：%s。請回到 AI 重新送出。</p>" % _esc(e), code)
+            return _page("未送出", "<p class=\"bad\">未送出：%s。請返回 AI 重新送出。</p>" % _esc(e), code)
         if req["kind"] == "clean_work":
             return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。代理將清理該次分析的中間檔，結果不受影響。</p>" % _esc(job_id))
         return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。可返回 AI，以相同參數再呼叫一次，將回報工作編號。</p>" % _esc(job_id))

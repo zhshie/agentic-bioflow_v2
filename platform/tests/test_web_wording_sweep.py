@@ -174,6 +174,15 @@ def test_banned_words_cover_every_zh_string_table():
     assert bad == [], "%d values are spoken Chinese: %s" % (len(bad), bad)
 
 
+def test_upload_page_spoken_sentences_are_formal():
+    # TC-040 (ruling 15a): the sentences the banned list cannot catch; the page says 尚無／未／為空／返回, never 沒有／是空的／回到
+    from abf_platform import web_upload
+    spoken = ["沒有可用", "是空的", "沒有收下", "沒有排入", "請回到", "沒有選樣本表", "沒有在時限", "沒有成功", "沒有傳成功", "沒有登記"]
+    bad = [(k, w) for k, v in web_upload.STRINGS["zh"].items() for w in spoken if w in v]
+    assert bad == []
+    assert "請回到 AI" not in (PKG / "web.py").read_text(encoding="utf-8")
+
+
 def test_every_zh_table_is_covered():
     # TC-077, TC-078
     found = set()

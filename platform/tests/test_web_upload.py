@@ -228,7 +228,7 @@ def test_tc006_no_usable_environment_is_one_sentence_and_a_link(up):
     r = up.client().get("/upload")
     assert r.status_code == 200
     m = pane(r.text, "middle")
-    assert "沒有可用的雲端運算環境" in plain(m) and 'href="/settings"' in m
+    assert "尚無可用的雲端運算環境" in plain(m) and 'href="/settings"' in m
     assert "<form" not in m and 'type="file"' not in m and "<button" not in m
     up.slurm_for_alice()
     assert 'type="file"' not in pane(up.client().get("/upload").text, "middle")
