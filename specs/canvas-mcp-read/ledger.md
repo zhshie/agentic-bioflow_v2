@@ -21,5 +21,6 @@
 - `test_pat.py` TC-D14 只掃 `build_server` 本體（仍是 10 個），因五個工具在 `_add_canvas_reads`，故該數字不動。
 - `get_pipeline`／`get_validation` 的 `pipeline_id` 型別為 int（動作層 id 為整數）。
 - 不需要 migration（13-5）。
-- 全套第一輪還抓到三個釘名單的檔不在計畫清單內（`git grep '"my_usage"'` 沒列到）：`test_cleanup_offer.py`（名單加五個）、`test_su_in_get_run.py`、`test_aws_launch.py`、`test_gcb_launch.py`、`test_azure_launch.py`（計數 15→20，名單加五個）。
+- 全套第一輪還抓到釘名單的檔不在計畫清單內（`git grep '"my_usage"'` 沒列到）：`test_cleanup_offer.py`（名單加五個）、`test_su_in_get_run.py`、`test_aws_launch.py`、`test_gcb_launch.py`、`test_azure_launch.py`（計數 15→20，名單加五個）。
 - `test_catalogue.py::test_no_tool_route_or_action_mentions_the_catalogue`（TC-070/071，017a 的「尚未開給 MCP」守門）：本片的目的就是開給 MCP，故只對 `mcp_server.py` 與 `actions/catalogue.py` 兩個檔略過；`web.py`、`web_board.py`、`actions/` 其餘檔照舊禁。這是放寬，驗收者請看。
+- `test_dataset_launch.py` 也釘排序後的工具名單（第二輪全套抓到），已更新；`test_aws_ce.py::test_a_missing_credential_file_says_where_to_put_it` 第二輪紅一次、單跑綠（與本片無關的環境偶發）。
