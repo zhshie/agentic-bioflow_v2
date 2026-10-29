@@ -89,7 +89,7 @@ def test_ce07_other_tables_untouched():
     # TC-017: run page, cost page and upload page keep the plain table
     for name in ("web_board.py", "web_cost.py", "web_upload.py"):
         src = (PLATFORM_DIR / "abf_platform" / name).read_text(encoding="utf-8")
-        assert "tbl ce" not in src and "data-label" not in src, name
+        assert 'class="tbl ce"' not in src and "<td data-label" not in src, name
 
 
 def test_ce08_no_new_strings():

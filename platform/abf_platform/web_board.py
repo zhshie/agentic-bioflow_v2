@@ -245,6 +245,10 @@ STYLE = (
     ".gdia{display:block;max-width:100%;height:auto}"
     "@media (max-width:600px){.ptbl thead{display:none}.ptbl,.ptbl tbody{display:block}.ptbl tr,.ptbl td{display:block}.ptbl tr{border-bottom:1px solid var(--line);padding:4px 0}"
     ".ptbl td{border-bottom:0;width:auto}}"
+    "@media (max-width:640px){.tbl.ce,.tbl.ce tbody{display:block}.tbl.ce thead{display:none}"
+    ".tbl.ce tr{display:block;background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin:0 0 12px}"
+    ".tbl.ce td{display:grid;grid-template-columns:minmax(6em,8em) minmax(0,1fr);gap:8px;border-bottom:0;padding:4px 0}"
+    ".tbl.ce td::before{content:attr(data-label);color:var(--muted);font-size:12px}}"
     "@media (max-width:900px){.wb{grid-template-columns:1fr}.main{order:-2}.rail{order:-1}.costs{display:none}"
     ".counts{grid-template-columns:repeat(4,1fr)}}"
 )
