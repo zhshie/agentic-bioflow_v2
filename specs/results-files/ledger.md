@@ -23,6 +23,12 @@
 | `test_web_parity.py` | `WEB_ONLY` gained `run_file` (no MCP tool) | TC-042 |
 | `test_cleanup_offer.py`, `test_confirm_page.py`, `test_dataset_cli.py`, `test_owner_binding.py`, `test_web_board.py` | route lists gained `/run/file` (GET) | the one new route |
 | `test_web_results_outputs.py::test_ro03_finished_listing_is_shown` | the name regex also reads a name inside a link; the "names are plain text, not links" check now covers files only (alpha, zeta), no longer the folder `dada2` | folder names are links by TC-001. The pinned grey "之後開放" assertions of `test_ro01_*` still hold (the cards stay grey while the first level is unknown, TC-026) |
+| `test_cloud_cost.py` | CHECK-list assertion gained `"read_run_file"` | tenth kind |
+| `test_http_site_samplesheet.py` | `SCHEMA_SHA256` brought to the new hash of the schema (the jobs CHECK list changed; nothing else) | tenth kind |
+| `test_owner_guard.py` | `NO_TOOL` gained `run_file` (a web-page action with no MCP tool) | the new action |
+| `test_nfcore_catalogue.py` | `== NINE` (x3) now `== NINE + ["read_run_file"]` | tenth kind |
+| `test_pipeline_files_queue.py` | the five "pipeline_files is last" assertions now say "the last two are `pipeline_files`, `read_run_file`" | tenth kind |
+| `test_resume_scope.py`, `test_station_clean.py`, `test_cleanup_store.py`, `test_station_pipeline_files.py`, `test_station_platform.py` | kind tuples, sets and the ARG_KEYS filter gained `read_run_file` (pipeline_files-is-last became second to last) | tenth kind |
 
 `test_web_running.py` and the `test_aws_*`/`test_gcb_*` route files needed no change (they passed unchanged).
 
