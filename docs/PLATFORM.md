@@ -186,7 +186,7 @@ Ask `list_agents` over MCP: the agent shows as `online`, with its name, version 
 
 Every site command is also printed as a `site: ...` line, so you can see what the agent asked the site to do. The token is never printed, and never appears on its command line (only the token **file** path does).
 
-To take an agent away: `abf-platform agent-token revoke my-laptop`. Its next request is refused with 401, and it stops.
+To take an agent away: `abf-platform agent-token revoke my-laptop`. Its next request is refused with 401, and it stops. To close only the old one when the same name has a newer token: `abf-platform agent-token list` shows each token's id, then `abf-platform agent-token revoke --id N` revokes just that one.
 
 ### Online, offline, and the numbers
 
@@ -267,6 +267,7 @@ A `googlebatch-platform` environment is served by **a station agent that runs on
 | `usePrivateAddress` | optional true or false |
 | `labels` | optional object; keys and values at most 63 characters, at most 64 pairs |
 | `maxvCpus` | optional whole number 1 to 10000; it takes effect from C-2 as a per-task cpus limit (`process.resourceLimits = [cpus: N]`, one task at most, **not** a total of vCPUs); a total cap belongs to C-3 |
+| `maxMemoryGB` | optional whole number 1 to 10000; a per-task memory limit (`memory: M.GB` in the same `process.resourceLimits` line, one task at most). If the environment's `nextflowConfig` also has a one-line `resourceLimits`, the platform merges key by key: the smaller of the two wins for cpus and memory, a key only the user set is kept, `disk` and `time` stay as written; a `resourceLimits` the platform cannot read safely (several lines, a block, a variable, an unknown key) is refused before the launch. |
 | `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
 
 Every problem is listed at once, each naming its key. There is no field for money or currency: cost is not part of this type. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`). The service-account key file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_GCP_CREDENTIALS`, or else at `_personal/gcp-sa.json` in its deployment folder (the folder that holds `config/env.yaml`); make it readable by that user only (`chmod 600`). The agent judges `project`, `location` and the bucket again before it builds a command.
@@ -310,7 +311,7 @@ The question, the screen and the yes are the ones of a Slurm launch: `abf-launch
 | `google.batch.network`, `google.batch.subnetwork` | `network`, `subnetwork`, short names as given |
 | `google.batch.usePrivateAddress` | `usePrivateAddress`, only when true |
 | `process.resourceLabels` | `labels` and one more, `abf-run=<run name>` |
-| `process.resourceLimits` | `maxvCpus`: a per-task limit on cpus, not a total |
+| `process.resourceLimits` | `maxvCpus` and `maxMemoryGB`: a per-task limit on cpus and memory, not a total; merged with the user's own line key by key (smaller wins, user-only keys kept, unreadable is refused) |
 
 **The key.** The key file's path is the agent's own setting. It is given to the head process in its environment (`GOOGLE_APPLICATION_CREDENTIALS`) and nowhere else: not in `head.sh`, not in an argument, not in the bundle, not in an answer or the database. `head.sh` carries a comment saying so.
 
@@ -329,6 +330,7 @@ An `awsbatch-platform` environment (aws-ce-type) is served the way a Google Clou
 | `jobQueue` | required; the queue's **name**, letters, digits, `-` and `_`, at most 128; an ARN is refused (`--job-queue`) |
 | `spot` | optional true or false (`--spot`, `--no-spot`) |
 | `maxvCpus` | optional whole number 1 to 10000 |
+| `maxMemoryGB` | optional whole number 1 to 10000; a per-task memory limit, written into `process.resourceLimits` together with `maxvCpus` (merge rule: see the `process.resourceLimits` row). |
 | `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
 
 Every problem is listed at once, each naming its key; a key not in this table is refused. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`); it is only a label. The credential file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_AWS_CREDENTIALS`, else `<deployment>/_personal/aws-credentials`, an INI file of which only the `[default]` section is used (mode 600 on Linux and WSL):
@@ -369,7 +371,7 @@ A record made before this type was checked (status `unsupported`, with the old k
 | `process.queue` | the environment's `jobQueue` |
 | `aws.region` | the environment's `region` |
 | `workDir` | `<workDir>/runs/<run>/work` |
-| `process.resourceLimits` | `[cpus: N]`, only when `maxvCpus` is set; this is a **per-task** cap, one task asks for at most N cpus, it is not a limit on the total vCPU of the queue |
+| `process.resourceLimits` | `[cpus: N, memory: M.GB]`, only the keys that are set (`maxvCpus`, `maxMemoryGB`); this is a **per-task** cap, one task asks for at most that much, it is not a limit on the total vCPU of the queue. If the user's own `nextflowConfig` has a one-line `resourceLimits`, the platform merges it key by key (the smaller of the two wins for cpus and memory, a key only the user set is kept, `disk` and `time` stay as written); a `resourceLimits` it cannot read safely is refused before the launch. |
 
 The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: whether Batch uses Spot is decided by the job queue, and the screen says so. No key, profile or role is written into any file.
 
@@ -435,6 +437,7 @@ An `azbatch-platform` environment (azure-ce-type) is served the way an AWS Batch
 | `pool` | required; the id of a pool that **already exists**, such as `lab-pool` (`--pool`). The operator creates it beforehand; this slice creates no pool |
 | `spot` | optional true or false (`--spot`, `--no-spot`); stored only, as a note: a launch writes nothing for it, because low-priority nodes are decided when the pool is created (`lowPriority`) |
 | `maxvCpus` | optional whole number 1 to 10000 |
+| `maxMemoryGB` | optional whole number 1 to 10000; a per-task memory limit, written into `process.resourceLimits` together with `maxvCpus` (merge rule: see the `process.resourceLimits` row). |
 | `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
 
 Every problem is listed at once, each naming its key; a key not in this table is refused. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`); it is only a label, and it may be left out when the environment is created (the preflight then reports `credential_name` as failed). The credential file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. Account keys are used; Microsoft Entra sign-in and a Batch account in user subscription mode are not supported in this slice (user subscription 模式的 Batch 帳號本片不支援). The agent looks for the file at `ABF_STATION_AZURE_CREDENTIALS`, else `<deployment>/_personal/azure-credentials`, an INI file of which only the `[default]` section is used (mode 600 on Linux and WSL):
@@ -493,7 +496,7 @@ An Azure Batch environment takes the same file upload as the other two cloud typ
 | `azure.storage.accountName` | the environment's `storageAccountName` |
 | `azure.batch.allowPoolCreation` | `false`, always: the platform never lets Nextflow create a pool |
 | `azure.batch.autoPoolMode` | `false`, always |
-| `process.resourceLimits` | `[cpus: N]`, only when `maxvCpus` is set; this is a **per-task** cap, one task asks for at most N cpus, it is not a limit on the total of the pool |
+| `process.resourceLimits` | `[cpus: N, memory: M.GB]`, only the keys that are set (`maxvCpus`, `maxMemoryGB`); this is a **per-task** cap, one task asks for at most that much, it is not a limit on the total of the pool . If the environment's `nextflowConfig` also has a one-line `resourceLimits`, the platform merges key by key: the smaller of the two wins for cpus and memory, a key only the user set is kept, `disk` and `time` stay as written; a `resourceLimits` the platform cannot read safely (several lines, a block, a variable, an unknown key) is refused before the launch. |
 
 The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: low-priority nodes are decided when the pool is created, and the screen says so. No key is written into any file; the first line of the Azure config file says they come from environment variables.
 

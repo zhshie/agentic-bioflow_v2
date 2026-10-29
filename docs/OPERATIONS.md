@@ -112,7 +112,8 @@ All of these run as the operator on the platform host.
 |---|---|
 | `abf-platform token new` | Issue a token and show it once. |
 | `abf-platform agent-token new <name> --user U` | Issue a token for one agent name and show it once; `--user` makes the agent belong to that user (required once the platform has a user). |
-| `abf-platform agent-token revoke <name>` | Revoke every token of an agent name. |
+| `abf-platform agent-token list [name]` | List the agent tokens with their ids, user and whether each is revoked (never the token itself). |
+| `abf-platform agent-token revoke <name>` / `abf-platform agent-token revoke --id N` | Revoke every token of an agent name, or only the one token with that id (the same name's other tokens keep working). |
 | `abf-platform user add <name> --lab L` | Add a user (name and lab). |
 | `abf-platform user passwd <name> [--temporary]` | Set the password a person logs into the confirmation page with (typed at a terminal, 8 to 1000 characters). `--temporary` instead makes a one-time temporary password, shown once at a real terminal and valid for 72 hours; the person must change it at the first web login. |
 | `abf-platform pat new --user U` | Issue a personal access token for the MCP server over HTTP and show it once. |
@@ -209,6 +210,8 @@ cd ~/<clone> && git pull
 ~/$VENV/bin/pip install ./platform
 systemctl --user restart abf-serve abf-mcp abf-web
 ```
+
+Or run `deploy/platform-upgrade.sh`: it does the same three steps, then waits (120 seconds by default; `--wait N` changes it) for every agent that was online before the restart to say hello again, names the ones that did not, and exits with 1.
 
 If `deploy/systemd/` or `deploy/Caddyfile.template` changed in the new version, copy them again as
 in steps 3 and 4 and run `systemctl --user daemon-reload` (and restart Caddy) before the restart.
