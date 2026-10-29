@@ -840,7 +840,7 @@ def _check_aws_ce(ce):
                               % (i, str(name)[:40]))
         if not isinstance(value, str) or "\n" in value or "\r" in value or "\x00" in value or len(value) > 2000:
             raise BundleError("environment %s: 值不能含換行或 NUL，且不超過 2000 字元 (no newline or NUL in a value)" % name)
-        if name in SET_BY_THE_SCRIPT or name in AWS_FORBIDDEN_ENV or name.upper().startswith("ABF_"):
+        if name in SET_BY_THE_SCRIPT or name in AWS_FORBIDDEN_ENV or name.upper().startswith("ABF_") or name.upper().startswith("AWS_"):
             raise BundleError("environment %s: 這個變數由送出本身或代理設定，環境不能設 (set by the launch or the agent itself)" % name)
         if e.get("head", True):
             head_env.append((name, value))
