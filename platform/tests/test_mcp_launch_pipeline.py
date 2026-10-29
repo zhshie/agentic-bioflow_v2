@@ -197,17 +197,23 @@ def test_unvalidated_pipeline_is_a_plain_error(d):
 
 
 def test_no_secret_in_responses_or_logs(d, caplog):
-    # TC-014
+    # TC-014: real secrets exist (a personal access token for each person, the web password); none may show up. The
+    # secrets are first proven real (made in the token store), so the check below can fail.
+    from abf_platform import store
+    from human_harness import PASSWORD
     caplog.set_level("DEBUG")
     pid = make(d)
     d.bobs_environment()
+    secrets_ = [store.create_token(d.w.ip.tokens, kind="pat", user_id=c.user_id, label="tc014") for c in (d.a, d.b)]
+    secrets_.append(PASSWORD)
+    assert secrets_[0].startswith("abf_pat_") and all(len(x) >= 12 for x in secrets_)
+    assert store.lookup_pat(d.w.ip.tokens, secrets_[0]) is not None
     texts = [tool_text(lp(d, d.a, pid)), tool_text(lp(d, d.b, pid, ce_name="b1", samplesheet_text=sheet(d, d.b))),
-             tool_text(lp(d, d.a, pid, version=9))]
-    token = getattr(d.a, "token", None)
+             tool_text(lp(d, d.a, pid, version=9)), tool_text(lp(d, d.a, 424242))]
     for t in texts + [caplog.text]:
         assert clean(t)
-        if token:
-            assert token not in t
+        for secret in secrets_:
+            assert secret not in t
 
 
 # ---- US3 ----
