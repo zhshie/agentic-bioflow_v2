@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|revoke | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | ce ... | mcp [--http] | runs assign RUN --user NAME | rebuild [<folder>...] | the four commands of the hand-off record (see their own --help)"""
+"""abf-platform: serve | web | token new | agent-token new|revoke | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | oauth revoke USER | ce ... | mcp [--http] | runs assign|offer-cleanup | dataset register|list|show | rebuild [<folder>...]"""
 import argparse
 import asyncio
 import json
