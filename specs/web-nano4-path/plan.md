@@ -72,6 +72,8 @@ source: 維護者 10-29「先趕快至少把能透過MCP/點選網頁的方式�
 4. 與 L32、L33、L17 同碰 `web.py`／`web_board.py` 的不同區段：落地前 `git merge origin/v3`，衝突只保留雙方新增，不改對方的字。
 5. worktree 用 Windows git 建，WSL 裡 `constitution_scope_test.sh` 紅＝環境問題，以 CI 為準，ledger 註明。
 
+6. （10-29 第一次合約）verifier 回傳的 `testCaseMd` 是「PLACEHOLDER」（85 條寫進總覽、明細沒有回傳）。重出題時 **test-case.md 全文必須放進回傳值**，條數壓在 45 條以內：同一規則的多個輸入合成一條（例如五種上傳錯誤一條 TC、逐項列輸入與句子）。不確定處照上次總覽的判斷：1 MB＝1,048,576 位元組（沿用既有樣本表上限）；重複送出頁也要有「查看進度」；多筆送出紀錄取最新一筆的 ce；同名加在副檔名前（`s1-2.csv`）；每個非法字元各換一個 `_`；成功／失敗句加 ✓／✕；作法 3 若必須動 `web.py` 讀 run 處或 `actions` 的 `get_run`／`list_runs` 回傳，可以動，只准加欄位。
+
 ## 專長守則（ui）
 
 ### executor
