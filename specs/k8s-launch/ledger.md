@@ -45,3 +45,40 @@ No migration needed: no table, column or configuration key changes. `result.slur
 - [x] `k8s_launch._check_tools`: the three refusals (missing, not a regular file, permissions too open) no longer name the kubeconfig path; they say "憑證檔" and point at the environment variable `ABF_STATION_KUBECONFIG` (same approach as the Azure `[credential file]`).
 - [x] `k8s_launch._text` takes the kubeconfig path and replaces it with `[credential file]`; every kubectl output / preflight detail shown goes through it.
 - [x] Tests: `test_messages_never_name_the_credential_file_or_code` (TC-078: all credential refusals, launch and cancel, plus kubectl errors that echo the path; no path, no Traceback, no code dir); TC-065 loop now includes the missing-file failure path.
+
+## Fix round 2 (verifier: TC-160, TC-126, TC-061, TC-073, TC-068, TC-077, TC-148, and the mislabelled TC-060/TC-053/TC-128)
+
+### Ruling 12-12, TC-126 guarantee 1 (namespace of a cancel comes from the record kept at launch)
+
+It did not hold: `build.prepare_cancel` took the namespace from `bundle_mod.snapshot_ce(view)`, the environment as it is now. Fixed (only the way the cancel bundle is built):
+- `platform/abf_launch/build.py` `_launched_ce` (new, the old `_launched_workdir` now calls it) reads the environment snapshot stored with the launch (`jobs.launch_content`: the confirmation's bundle, or the launch job's bundle).
+- `platform/abf_launch/build.py` `prepare_cancel`, in the `if view["platform"] == bundle_mod.K8S:` branch (about line 327-334): `bundle["ce"]["namespace"]` is set from that stored snapshot; if the record is gone (run forgotten, confirmation and job cleared) the cancel is refused in plain words and names the Pod to look for. Context and every other field still come from the environment.
+- Test: `test_the_cancel_namespace_is_the_one_stored_when_the_run_was_sent` (TC-126): launch, then change the environment's namespace, then `prepare_cancel` gives the namespace of the launch. Red first (933f4068), green 2fa3986a.
+- Guarantee 2 (the confirmation screen shows the namespace) is `test_the_cancel_screen_of_a_started_k8s_run_and_the_yes_before_any_job` (NS in the screen) and `test_prepare_launch_screen_and_cancel_for_kubernetes` (NS in the launch screen).
+
+### Tests that now check what their TC says (all in `platform/tests/test_k8s_launch.py`, new block at the end)
+
+- TC-060, TC-061: `test_a_failed_pod_log_tail_loses_the_token_and_the_kubeconfig_and_is_cut_at_200` (log with the run token, the fake kubeconfig text and then 600 characters; no token, no kubeconfig token, no kubeconfig path in the answer; a 600-character tail shows at most 200 characters). This passed without a code change: `_text` already cuts at 200 and `_scrub` removes the secrets.
+- TC-073: `test_a_unique_params_value_is_only_in_the_secrets_base64` (`ZZ-UNIQUE-PARAM-VALUE` is in the Secret's base64 `params.yaml` only; not in the Pod manifest, the Secret manifest text, argv, stdin, or the answer). Passed without a code change.
+- TC-068: `test_every_kubectl_call_names_the_context_and_never_switches_it` covers every call of a launch, a cancel and a failed launch (reads included). One call is exempt: `kubectl config get-contexts -o name` (the preflight's "does the context exist" check from the k8s-ce task) lists the contexts of the file and has no context to name; `k8s_preflight.py` is not in this task's file list and was not changed. The verifier should rule if TC-068 means that call too.
+- TC-077: `test_snapshot_ce_of_a_k8s_environment_is_the_platform_snapshot_without_a_memory_cap`: `compute_envs.snapshot` of a K8s environment keeps its nine keys; `launch.snapshot_ce` equals it on all of them and adds only environment/nextflowConfig/preRunScript/postRunScript; no `maxMemoryGB` even if the view has one. Note (as in "Deviations" above): the base (49d763dd) `launch._snapshot_ce` had no K8s branch (a K8s view fell through to the Slurm shape), so "identical to base" can only hold for `compute_envs.snapshot` and for the four other types' branches, which are untouched.
+- TC-148: `test_the_files_of_a_k8s_bundle_are_none_of_them_run_records` (`launch.K8S_SECRET_KEYS` and `K8S_FILE_NAMES` are subsets of `fetch._NOT_RECORDS`).
+- TC-053: `test_checkable_types_are_the_same_ones_as_before_with_k8s_once` (K8S once, no duplicates, `CHECKABLE == (SUPPORTED, GCB, AWS, AZURE, K8S)`, the same members in the same order as before).
+- TC-128: the cut-at-200 test now asserts a lower bound of 150 and an upper bound of 200 on a 600+ character stderr; unchanged here (the test's own wording stays).
+
+### TC-160: the other four types, v3 base against this branch (same test command at both commits)
+
+Command at each commit: `abf-fast-suite <worktree> --pytest tests/<file>.py` (base = 49d763dd, the v3 commit this branch was made from, in a temporary detached worktree that was removed afterwards; branch = 2fa3986a).
+
+| test file (types it covers) | base 49d763dd | branch 2fa3986a |
+|---|---|---|
+| test_gcb_launch.py (Google Batch) | 75 passed | 75 passed |
+| test_aws_launch.py (AWS Batch) | 105 passed | 105 passed |
+| test_azure_launch.py (Azure Batch) | 74 passed | 74 passed |
+| test_station_launch.py (Slurm and the agent launch path) | 64 passed | 64 passed |
+| test_station_cancel.py (Slurm and the cloud cancel path) | 70 passed | 70 passed |
+| test_launch_bundle.py (bundles of every type) | 233 passed | 233 passed |
+| test_launch_platform.py (the platform side of launch) | 30 passed | 30 passed |
+| test_launch_cli.py (command line of launch/cancel) | 72 passed | 72 passed |
+
+The tests of GCB/AWS/Azure that were edited on this branch (the pinned sentence, `PLATFORM_HOST_TYPES`, `CHECK_ONLY_TYPES`, listed under "Existing assertions changed") are the only differences between the two runs' test files; the counts are equal.
