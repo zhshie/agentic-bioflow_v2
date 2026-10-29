@@ -338,7 +338,8 @@ def test_welcome_login_consent_confirm_pages(rig):
     see(mine.get("/c/not-an-id"))
     see(mine.post("/c/" + rid, data={"csrf": "bad"}))
     see(mine.post("/c/" + rid, data={"csrf": csrf_of(page)}, headers={"origin": "http://evil.example"}))
-    theirs = see(login(rig, "bob").get("/c/" + rid))
+    rig.user("cleo")
+    theirs = see(login(rig, "cleo").get("/c/" + rid))
     assert "該申請並非由您送出，無法在此檢視或操作。" in visible(theirs.text) or "該申請並非由您送出" in halves(theirs.text)
     see(mine.post("/c/" + rid, data={"csrf": csrf_of(page)}))
     see(mine.post("/c/" + rid, data={"csrf": csrf_of(page)}))
@@ -391,8 +392,8 @@ def test_consent_pages(rig):
     for name, r in pages:
         assert bad_page(r.text, both=True) == [], (name, r.status_code, bad_page(r.text, both=True))
     text = " ".join(halves(r.text) for n, r in pages if n == "page")
-    assert "要求連線至本平台，並以您的身分運作。" in text and "連線完成後將導回：" in text and "若不認得該網站，請按「拒絕」。" in text
-    assert "允許後，該連接器可讀取您的分析紀錄，並可請求送出分析" in text and "（不能代您送出）" in text and "於本網站的確認頁按「送出」" in text
+    assert "要求連線至本平台，並以" in text and "您的身分" in text and "連線完成後將導回：" in text and "若不認得該網站，請按「拒絕」。" in text
+    assert "允許後，該連接器可讀取您的分析紀錄，並可請求送出分析" in text and "不能代您送出" in text and "於本網站的確認頁按「送出」" in text
     assert "(未命名 unnamed)" in " ".join(r.text for n, r in pages if n == "unnamed")
     assert "該申請已處理完畢。請返回連接器重新開始。" in " ".join(halves(r.text) for n, r in pages if n == "again")
 

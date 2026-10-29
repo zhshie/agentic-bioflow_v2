@@ -103,7 +103,7 @@ def test_ro01b_other_tabs_reuse_the_running_stage_bodies(w):
     ann, c, rid = world(w)
     info = mid(c.get(url(rid, tab="info")).text)
     assert "ann-done" in info and rid in info and 'class="sq"' in info
-    assert "沒有失敗的任務" in mid(c.get(url(rid, tab="tasks")).text)
+    assert "無失敗任務" in mid(c.get(url(rid, tab="tasks")).text)
     assert '<section class="soon">' in mid(c.get(url(rid, tab="logs")).text)
     assert listings(w) == []        # only the Outputs tab asks the site
 
@@ -117,7 +117,7 @@ def test_ro01c_not_succeeded_has_no_listing(w):
     w.login(c, "ann")
     for rid in (a, b):
         t = c.get(url(rid)).text
-        assert "這個 run 還沒到這個階段。" in t and 'class="rtabs"' not in mid(t) and "sumcards" not in mid(t)
+        assert "該次分析尚未進行至此階段。" in t and 'class="rtabs"' not in mid(t) and "sumcards" not in mid(t)
     assert listings(w) == []
 
 
@@ -174,7 +174,7 @@ def test_ro04_empty_folder(w):
     c.get(url(rid))
     finish(w, listings(w)[0]["id"], entries=[])
     t = mid(c.get(url(rid)).text)
-    assert "— 這個資料夾是空的" in plain(t) and "<table" not in t and "讀取於" in t and "重新讀取" in t
+    assert "— 此資料夾為空" in plain(t) and "<table" not in t and "讀取於" in t and "重新讀取" in t
 
 
 def test_ro05_error_shows_reason_and_relist(w):
@@ -184,18 +184,18 @@ def test_ro05_error_shows_reason_and_relist(w):
     job = listings(w)[0]["id"]
     finish(w, job, ok=False, message="the folder does not exist on the site", state="error", error="not_found")
     t = c.get(url(rid)).text
-    assert "✗" in t and "讀不到" in t and "the folder does not exist on the site" in t and "重新讀取" in t
+    assert "✗" in t and "無法讀取" in t and "the folder does not exist on the site" in t and "重新讀取" in t
     finish(w, job, ok=False, message='Traceback (most recent call last):\n  File "x.py", line 3\nSELECT * FROM jobs', state="error")
     t = mid(c.get(url(rid)).text)
     for bad in ("Traceback", "SELECT", 'File "', "args_json", "deadline_at"):
         assert bad not in t
-    assert "讀不到" in t
+    assert "無法讀取" in t
     con = sqlite3.connect(str(w.ip.state_db))
     with con:
         con.execute("UPDATE jobs SET state = 'expired', result_json = NULL WHERE id = ?", (job,))
     con.close()
     t = mid(c.get(url(rid)).text)
-    assert "讀不到" in t and "讀取中" not in t and "站台沒有回應" in t
+    assert "無法讀取" in t and "讀取中" not in t and "站台沒有回應" in t
     assert len(listings(w)) == 1
 
 
@@ -208,7 +208,7 @@ def test_ro05b_overdue_queued_job_is_an_error_without_a_new_job(w):
         con.execute("UPDATE jobs SET deadline_at = ? WHERE kind = 'list_site_files'", (time.time() - 5,))
     con.close()
     t = mid(c.get(url(rid)).text)
-    assert "讀不到" in t and "站台沒有回應" in t and "讀取中" not in t
+    assert "無法讀取" in t and "站台沒有回應" in t and "讀取中" not in t
     assert len(listings(w)) == 1
 
 
@@ -221,9 +221,9 @@ def test_ro05c_latest_one_wins_and_other_paths_do_not_count(w):
     c.get(url(rid, extra="&relist=1"))
     second = listings(w)[1]["id"]
     finish(w, second, ok=False, message="the folder does not exist on the site", state="error")
-    assert "讀不到" in c.get(url(rid)).text
+    assert "無法讀取" in c.get(url(rid)).text
     finish(w, second, entries=[])
-    assert "這個資料夾是空的" in c.get(url(rid)).text
+    assert "此資料夾為空" in c.get(url(rid)).text
     con = sqlite3.connect(str(w.ip.state_db))
     with con:
         con.execute("UPDATE jobs SET args_json = replace(args_json, '/results', '/other')")      # other path: not used
@@ -259,7 +259,7 @@ def test_ro06_not_launched_from_platform_is_unavailable(w):
                     ("ann-plain", "", "lab-a", "agent-t", time.time(), ann.user_id))
     con.close()
     t = mid(c.get(url(rid)).text)
-    assert "— 沒有輸出資料夾紀錄" in plain(t) and "不是從平台送出的分析，沒有輸出資料夾紀錄" in t
+    assert "— 無輸出資料夾紀錄" in plain(t) and "不是從平台送出的分析，沒有輸出資料夾紀錄" in t
     assert listings(w) == []
 
 

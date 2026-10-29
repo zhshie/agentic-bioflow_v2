@@ -651,7 +651,7 @@ def test_scope_page_limits(rig, fk):
     launched(rig, ann, "run-a")
     for url in (SEL, SEL + "&src=used", "/launch"):
         t = c.get(url).text
-        assert "我的 run" in t and "<script" not in t and "<figure" not in t and "style=" not in t
+        assert "我的分析" in t and "<script" not in t and "<figure" not in t and "style=" not in t
         assert all(x.startswith('<img class="gdia" src="/launch/diagram?') for x in re.findall(r"<img\b[^>]*>", t))      # guided-launch-2d: the only picture is the workflow diagram, our own address
         assert len(re.findall(r"<style", t)) + len(re.findall(r'rel="stylesheet"', t)) == 1
     three = step(c.get(SEL + "&src=new").text, 3)      # guided-launch-2d: the pipeline is step 3 (was 2)

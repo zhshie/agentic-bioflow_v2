@@ -293,7 +293,7 @@ def test_tcs19_s20_left_column(w):
     left = pane(t, "left")
     first = re.search(r"<a\b[^>]*>.*?</a>", left, re.S).group(0)
     assert 'href="/launch"' in first and plain(first) == "＋ 新分析"
-    assert left.index("＋ 新分析") < left.index("我的 run") < left.index("go") < left.index("設定") < left.index("登出")
+    assert left.index("＋ 新分析") < left.index("我的分析") < left.index("go") < left.index("設定") < left.index("登出")
     got = {}
     for r in rows(t):
         name = re.search(r"\b(go|bad|gone|L{60})\b", plain(r)).group(1)
@@ -349,8 +349,8 @@ def test_tcs24_s25_right_head(w):
     ann = w.user("ann")
     seed(w, "r", "running", ann)
     right = pane(login(w, "ann").get("/").text, "right")
-    assert "這個分析的對話 r 目前沒有通知 問這個分析 之後開放" in plain(right)
-    assert re.search(r'<span class="off">問這個分析 <span class="later">之後開放</span></span>', right)
+    assert "本分析的對話 r 目前無通知 詢問本分析 之後開放" in plain(right)
+    assert re.search(r'<span class="off">詢問本分析 <span class="later">之後開放</span></span>', right)
     assert not re.search(r"<(a|button|input|form)\b", right)
     for gone in ("分析進度", "聊天", "全部分析", "只顯示你的", "搜尋"):
         assert gone not in right, gone
@@ -435,7 +435,7 @@ def test_tcs27_s28_item_lines(w):
     seed(w, "e-zero", "running", ann)
     t = login(w, "ann").get("/").text
     got = {re.search(r"[a-e]-\w+", plain(x)).group(0): x for x in rows(t)}
-    for key, text in (("a-run", "a-run 執行中 執行 · 8 / 10"), ("b-fail", "b-fail 失敗 執行 · —"), ("c-lost", "c-lost 失敗 執行 · 站台沒有回應"),
+    for key, text in (("a-run", "a-run 執行中 執行 · 8 / 10"), ("b-fail", "b-fail 失敗 執行 · —"), ("c-lost", "c-lost 失敗 執行 · 站台無回應"),
                       ("d-ok", "d-ok 完成 結果"), ("e-zero", "e-zero 執行中 執行 · 0 / 0")):
         p = plain(got[key])
         assert text in p, (key, p)
@@ -544,7 +544,7 @@ def test_tch21_stage_bodies(w):
         assert re.search(r"%s\s*%d(?!\d)" % (label, n), mid), (label, n)
     assert "10-18 09:05" in plain(pane(c.get("/?run=" + b + "&tab=info").text, "middle"))
     assert "Process terminated with an error exit status (137)" in c.get("/?run=" + a).text
-    for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "這個 run 還沒到這個階段。")):      # finished-stage: a run that has not succeeded has not reached it
+    for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "該次分析尚未進行至此階段。")):      # finished-stage: a run that has not succeeded has not reached it
         body = pane(c.get("/?run=%s&stage=%s" % (a, stage)).text, "middle")
         assert "—" in body and feature in body, stage
 
@@ -683,7 +683,7 @@ def test_tcs32_s33_s34_now_page(w):
     mid = pane(t, "middle")
     assert "<h1>gone1</h1>" in mid and "現在" not in t and "正在跑" not in t and "需要注意" not in t and "data-card=" not in t
     cause = lambda rid: plain(re.search(r"<dt>原因</dt>\s*<dd>(.*?)</dd>", pane(c.get("/?run=" + rid).text, "right"), re.S).group(1))
-    assert cause(bad1) == "Out of memory second" and cause(bad2) == "—" and cause(gone) == "站台沒有回應"
+    assert cause(bad1) == "Out of memory second" and cause(bad2) == "—" and cause(gone) == "站台無回應"
     assert len(re.findall(r"<article", pane(t, "right"))) == 1
     assert len(rows(t)) == 8
 
@@ -694,7 +694,7 @@ def test_tcs35_nothing_to_notify(w):
     seed(w, "fine", "succeeded", ann)
     t = login(w, "ann").get("/").text
     right = pane(t, "right")
-    assert "<article" not in right and "目前沒有通知" in right
+    assert "<article" not in right and "目前無通知" in right
 
 
 def test_tcs36_cards_are_read_only(w):
@@ -730,14 +730,14 @@ def test_tch18_empty_states(w):
     w.user("ann")
     c = login(w, "ann")
     r = c.get("/")
-    assert r.status_code == 200 and "還沒有" in pane(r.text, "left") and "還沒有分析" in pane(r.text, "middle") and "—" in pane(r.text, "right")
+    assert r.status_code == 200 and "尚無" in pane(r.text, "left") and "尚無分析" in pane(r.text, "middle") and "—" in pane(r.text, "right")
     Path(w.ip.index).write_bytes(b"")
     r = c.get("/")
-    assert r.status_code == 200 and "還沒有" in r.text
+    assert r.status_code == 200 and "尚無" in r.text
     Path(w.ip.index).unlink()
     from abf_platform import store
     store.init_index(w.ip.index)
-    assert "還沒有" in c.get("/").text
+    assert "尚無" in c.get("/").text
     assert c.get("/settings").status_code == 200
 
 
@@ -781,7 +781,7 @@ def test_tch05_not_mine_looks_missing(w):
     assert other.content == missing.content
     r = c.get("/", params={"run": "UNIQUE-needle-8841"})
     assert r.status_code == 404 and "UNIQUE-needle-8841" not in r.text
-    assert "找不到這個 run" in r.text and 'href="/"' in r.text
+    assert "找不到該次分析" in r.text and 'href="/"' in r.text
     en = c.get("/", params={"run": "UNIQUE-needle-8841", "lang": "en"})
     assert 'href="/?lang=en"' in en.text and "UNIQUE-needle-8841" not in en.text
     assert style_of(r.text) == style_of(c.get("/").text)

@@ -940,7 +940,7 @@ def test_tc088_to_tc090_a_refused_registering_keeps_the_places_and_deletes_nothi
     jobs_before = sql_rows(up.state, "SELECT count(*) AS n FROM jobs")[0]["n"]
     page = c.get("/upload/" + batch)
     text = plain(pane(page.text, "middle"))
-    assert "已存在" in text and "檔案仍在你的雲端資料夾，可換一個版本重新上傳" in text
+    assert "已存在" in text and "檔案仍在您的雲端資料夾，可換一個版本重新上傳" in text
     assert "gs://lab-bucket/uploads/alice/" + R1 in text and "gs://lab-bucket/uploads/alice/" + R2 in text and "已登記，前往送出" not in page.text
     en = plain(pane(c.get("/upload/%s?lang=en" % batch).text, "middle"))
     assert "The files are still in your cloud folder" in en

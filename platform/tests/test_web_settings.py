@@ -100,8 +100,8 @@ def test_st02_setup_all_missing(w):
     _, mid = page(w)
     _, items = setup_items(mid)
     assert "✓" in items[0] and "完成" in items[0]
-    assert "—" in items[1] and "請用指令確認" in items[1] and "abf-platform token new" in items[1] and "✓" not in items[1] and "✗" not in items[1]
-    assert "✗" in items[2] and "未完成" in items[2] and "沒有運算環境。" in items[2]
+    assert "—" in items[1] and "請以指令確認" in items[1] and "abf-platform token new" in items[1] and "✓" not in items[1] and "✗" not in items[1]
+    assert "✗" in items[2] and "未完成" in items[2] and "尚無運算環境。" in items[2]
     assert "—" in items[3] and "之後開放" in items[3] and "✓" not in items[3] and "✗" not in items[3]
     for item, cls in zip((items[0], items[1], items[3]), ("state-succeeded", "muted", "muted")):
         assert cls in item
@@ -114,7 +114,7 @@ def test_st02b_token_item_ignores_tokens(w):
     before = setup_items(mid)[1][1]
     pat(w, ann, "live")
     _, mid = page(w)
-    assert setup_items(mid)[1][1] == before and "請用指令確認" in before
+    assert setup_items(mid)[1][1] == before and "請以指令確認" in before
 
 
 def test_st03_setup_ce_reasons(w):
@@ -159,7 +159,7 @@ def test_st03b_other_users_do_not_count(w):
     make_agent(w, bob, "agent-b")
     make_env(w, bob, "b-env", "agent-b", primary=True)
     _, mid = page(w, "ann")
-    assert "沒有運算環境。" in setup_items(mid)[1][2]
+    assert "尚無運算環境。" in setup_items(mid)[1][2]
 
 
 def test_st03c_english_and_no_project_step(w):
@@ -237,7 +237,7 @@ def test_st04c_empty_and_escaping(w):
     clear_envs(w)
     _, mid = page(w)
     sec = re.search(r"<h2>運算環境</h2>(.*?)</section>", mid, re.S).group(1)
-    assert "沒有運算環境。" in sec and "<tr>" not in sec
+    assert "尚無運算環境。" in sec and "<tr>" not in sec
 
 
 def test_st05_ce_owner_rule(w):
@@ -292,7 +292,7 @@ def test_st08_still_read_only(w):
     assert r.text.count('action="/logout"') == 1 and set(re.findall(r'<form[^>]*action="([^"]+)"', r.text)) == {"/logout", "/settings/pipelines"}
     assert set(re.findall(r'<form[^>]*action="([^"]+)"', mid)) == {"/settings/pipelines"}
     assert not re.search(r"<(select|textarea|a)\b", mid) and 'name="csrf"' in mid
-    assert "AI 模型金鑰" in mid and "金鑰只存在你的瀏覽器，不會送到平台。" in mid and "逐步模式" in mid and "開發模式" in mid
+    assert "AI 模型金鑰" in mid and "金鑰僅儲存於您的瀏覽器，不會傳送至平台。" in mid and "逐步模式" in mid and "開發模式" in mid
     assert 'class="nv here"' in pane(r.text, "left") and "設定" in pane(r.text, "left")
     before = (w.sql("SELECT * FROM compute_envs"), len(w.sql("SELECT * FROM agents")))
     c = login(w, "ann")

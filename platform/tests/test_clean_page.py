@@ -87,7 +87,7 @@ def test_a_pending_clean_request_page_says_clean_not_cancel_and_has_the_confirm_
     t = page.text
     assert page.status_code == 200
     assert "<h1>清理確認</h1>" in t and "取消確認" not in t and "送出確認" not in t
-    assert "下面就是會被刪除的全部內容。確定了再按「確認刪除」；按了才會排進佇列。" in t
+    assert "以下為將被刪除的全部內容。確認無誤後，請按「確認刪除」；按下後才會排入佇列。" in t
     assert "會被送出" not in t and "會被取消" not in t
     assert '<button type="submit">確認刪除</button>' in t and '<button type="submit">送出</button>' not in t
     en = c.get("/c/%s?lang=en" % rid).text
@@ -102,7 +102,7 @@ def test_the_plain_block_shows_kind_run_name_and_the_folder_to_delete_and_nothin
     rid = run_and_request(w, ann)
     t = logged_in(w, "ann").get("/c/" + rid).text
     block = re.search(r'<dl class="fields plain">(.*?)</dl>', t, re.S).group(1)
-    assert re.findall(r"<dt>(.*?)</dt><dd>(.*?)</dd>", block) == [("種類", "清理中間檔"), ("run 名稱", "run-one"), ("要刪除的資料夾", WORK)]
+    assert re.findall(r"<dt>(.*?)</dt><dd>(.*?)</dd>", block) == [("種類", "清理中間檔"), ("分析名稱", "run-one"), ("要刪除的資料夾", WORK)]
     for word in ("管線", "版本", "環境", "樣本數", "新資料夾", "—"):
         assert word not in block
     assert "<dd>-</dd>" not in block
@@ -116,13 +116,13 @@ def test_the_expired_and_void_pages_for_clean_work_say_seven_days_and_do_not_say
     c = logged_in(w, "ann")
     assert confirm.void(w.ip.state_db, rid_void, "X-reason")
     page = c.get("/c/" + rid_void)
-    assert "清理確認" in page.text and "這個申請已作廢：X-reason。" in page.text
+    assert "清理確認" in page.text and "該申請已作廢：X-reason。" in page.text
     assert "回到 AI" not in page.text and "重新送出" not in page.text
     rid = run_and_request(w, ann, "run-b")
     expire(w, rid)
     for lang in ("zh", "en"):
         t = c.get("/c/%s?lang=%s" % (rid, lang)).text
-        assert "清理確認" in t and "這個申請已逾時（7 天），不會自動重新提出。" in t
+        assert "清理確認" in t and "該申請已逾時（7 天），不會自動重新提出。" in t
         assert "10 分鐘" not in t and "回到 AI" not in t
         assert "<form" not in t and "<button" not in t and "<a " not in t.split("</h1>")[1]
 
@@ -154,19 +154,11 @@ def test_get_changes_nothing_for_a_clean_request(w):
 # guided-launch-2b added rules to the same stylesheet (column widths of that table, the advanced box) and took one out (the radio rows), so they were pinned once more; again only the stylesheet differs.
 # guided-launch-2c changed five rules (the red star, the step area width, the form width, the field width, the phone cells) and the column widths of the table, so they were pinned a third time; again only the stylesheet differs.
 # guided-launch-2d replaced one rule of the same stylesheet (.dlink, the link that opened the diagram, became .gdia, the picture), so they were pinned a sixth time; again only the stylesheet differs.
-BASE_CONFIRM = {'pending-launch-zh': (200, '31e3c878f10406bb'), 'pending-cancel-zh': (200, 'ccfbd045712deb75'),
-                'pending-launch-en': (200, 'f85ab8a479514dc6'), 'pending-cancel-en': (200, '3729a5e7e7b8d038'),
-                'void-zh': (409, '8dc1fd751ab5aeca'), 'void-en': (409, '8dc1fd751ab5aeca'),
-                'confirmed-launch-zh': (200, '61b9296c89757668'), 'confirmed-launch-en': (200, 'db938458df97b8ec'),
-                'confirmed-cancel-zh': (200, '2e42e9c4668be907'), 'confirmed-cancel-en': (200, '4b024e4e06e261d4')}
-BASE_EXPIRED = {'expired-launch-zh': (200, 'c35c165714b5f908'), 'expired-cancel-zh': (200, '8451aff28a884534'),
-                'expired-launch-en': (200, 'c35c165714b5f908'), 'expired-cancel-en': (200, '8451aff28a884534')}
-BASE_POST = {'pressed-launch': (200, 'ef1083638be3de88'), 'pressed-cancel': (200, '9c76dd8bc4a4c249'),
-             'late-launch': (410, 'd2df3540d123bd63'), 'late-cancel': (410, 'd2df3540d123bd63')}
+BASE_CONFIRM = {'pending-launch-zh': (200, '0050cf7ac01bd5a1'), 'pending-cancel-zh': (200, 'ab844654d972f4fc'), 'pending-launch-en': (200, '95b11bfdaeb263a7'), 'pending-cancel-en': (200, 'c381c6f5868cb4d1'), 'void-zh': (409, '26eff5b65b3e4caa'), 'void-en': (409, '26eff5b65b3e4caa'), 'confirmed-launch-zh': (200, '305b0692bdf61305'), 'confirmed-launch-en': (200, 'db938458df97b8ec'), 'confirmed-cancel-zh': (200, '9c2488e6f78693cb'), 'confirmed-cancel-en': (200, '4b024e4e06e261d4')}
+BASE_EXPIRED = {'expired-launch-zh': (200, '09ba993a45f89414'), 'expired-cancel-zh': (200, '7ba2cf52371deb0d'), 'expired-launch-en': (200, '09ba993a45f89414'), 'expired-cancel-en': (200, '7ba2cf52371deb0d')}
+BASE_POST = {'pressed-launch': (200, 'ebf35e40e5dba688'), 'pressed-cancel': (200, '38233b5d83121367'), 'late-launch': (410, 'd2df3540d123bd63'), 'late-cancel': (410, 'd2df3540d123bd63')}
 # web-upload-page ruling 25: the left column's upload item is a link now, so the six board digests are the new ones (only that item differs)
-BASE_BOARD = {'succeeded-zh': (200, 'b900748476502f3d'), 'succeeded-en': (200, '870addd406492402'),
-              'failed-zh': (200, 'f5866fcf5bb0a339'), 'failed-en': (200, '918ba6c8db56e423'),
-              'running-zh': (200, 'f5b7e52afdb2ec69'), 'running-en': (200, '9c1d9195eacfbe23')}
+BASE_BOARD = {'succeeded-zh': (200, 'd71583f9e5e70797'), 'succeeded-en': (200, '870addd406492402'), 'failed-zh': (200, '756d18e5eb9d525b'), 'failed-en': (200, '918ba6c8db56e423'), 'running-zh': (200, '3ac6cd805c717064'), 'running-en': (200, '9c1d9195eacfbe23')}
 BASE_STYLE = '66b9a8e1a9c6f7d2'
 
 
@@ -257,7 +249,7 @@ def test_pressing_once_queues_exactly_one_clean_work_job_and_twice_says_already(
     r = c.post("/c/" + rid, data={"csrf": token})
     jobs = w.sql("SELECT * FROM jobs WHERE kind = 'clean_work'")
     assert r.status_code == 200 and len(jobs) == 1 and jobs[0]["confirmation_id"] == rid
-    assert "已送出。工作編號 %s。代理會開始清理這個 run 的中間檔；結果不會被動。" % jobs[0]["id"] in r.text
+    assert "已送出。工作編號 %s。代理將清理該次分析的中間檔，結果不受影響。" % jobs[0]["id"] in r.text
     assert w.confirmations()[0]["state"] == "confirmed"
     again = c.post("/c/" + rid, data={"csrf": token})
     assert len(w.sql("SELECT * FROM jobs WHERE kind = 'clean_work'")) == 1
@@ -344,8 +336,8 @@ def test_a_succeeded_run_with_my_open_clean_request_shows_one_notice_with_a_link
     n = notices(zh.text)
     assert zh.status_code == 200 and len(n) == 1
     assert "待處理" in n[0] and '<span class="sq"></span>' in n[0] and 'class="level state-succeeded"' in n[0]
-    assert "這個 run 已成功；它的中間檔（work）可以清掉，結果不會被動。" in n[0]
-    assert "打開確認頁，看清楚要刪的資料夾再決定。" in n[0] and 'class="when"' not in n[0]
+    assert "該次分析已成功；其中間檔（work）可清理，結果不受影響。" in n[0]
+    assert "請開啟確認頁，核對將刪除的資料夾後再決定。" in n[0] and 'class="when"' not in n[0]
     assert re.findall(r'href="([^"]*)"', n[0]) == ["/c/" + rid] and "csrf" not in n[0]
     en = notices(board(w, "ann", "en").text)
     assert len(en) == 1 and re.findall(r'href="([^"]*)"', en[0]) == ["/c/%s?lang=en" % rid]

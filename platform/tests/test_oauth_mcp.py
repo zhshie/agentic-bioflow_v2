@@ -287,7 +287,7 @@ def test_tcf05_the_page_still_decides_and_only_for_the_owner(w, rig):
     web = w.web()
     assert w.login(web, "bob").status_code in (200, 303)
     r = web.get("/c/" + rid)
-    assert r.status_code == 403 and "不是你的申請" in r.text
+    assert r.status_code == 403 and "非您的申請" in r.text
     assert w.jobs() == []
     web = w.web()
     assert w.login(web, "ann").status_code in (200, 303)
