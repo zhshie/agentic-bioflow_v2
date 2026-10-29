@@ -13,7 +13,7 @@ import time
 from .. import compose, store
 from .. import validate as checks
 
-_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}\Z")
 
 _TABLES = """
 CREATE TABLE IF NOT EXISTS pipelines (

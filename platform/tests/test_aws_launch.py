@@ -638,6 +638,32 @@ def test_head_environment_variables_are_exported_and_compute_ones_are_not(box):
             box.bundle(ce=ace(environment=[{"name": name, "value": "v", "head": True, "compute": False}]))
 
 
+def test_every_aws_prefixed_environment_name_is_refused(box):
+    # TC-020, TC-021, TC-022, TC-023, TC-024, TC-025, TC-026, TC-027, TC-028, TC-029, TC-033, TC-055
+    from abf_station import launch
+    for name in ("AWS_MAX_ATTEMPTS", "AWS_RETRY_MODE", "AWS_CA_BUNDLE", "AWS_REGION", "aws_profile", "Aws_Whatever", "AWS_"):
+        with pytest.raises(launch.BundleError):
+            box.bundle(ce=ace(environment=[{"name": name, "value": "v", "head": True, "compute": False}]))
+    for name in ("HEAD_ONLY", "MY_AWS_NOTE", "AWSX"):
+        box.bundle(ce=ace(environment=[{"name": name, "value": "v", "head": True, "compute": False}]))
+    msgs = []
+    for name in ("AWS_MAX_ATTEMPTS", "AWS_ACCESS_KEY_ID"):
+        with pytest.raises(launch.BundleError) as e:
+            box.bundle(ce=ace(environment=[{"name": name, "value": "value-marker-123", "head": True, "compute": False}]))
+        assert name in str(e.value) and "value-marker-123" not in str(e.value)
+        msgs.append(str(e.value).replace(name, "X"))
+    assert msgs[0] == msgs[1]      # same existing sentence
+
+
+def test_aws_forbidden_env_tuple_is_still_refused_by_name(box):
+    # TC-030
+    from abf_station import launch
+    assert len(launch.AWS_FORBIDDEN_ENV) == 8
+    for name in launch.AWS_FORBIDDEN_ENV:
+        with pytest.raises(launch.BundleError):
+            box.bundle(ce=ace(environment=[{"name": name, "value": "v", "head": True, "compute": False}]))
+
+
 def test_fetch_run_records_does_not_list_aws_config_as_a_record():
     # TC-066
     from abf_station import fetch
@@ -982,8 +1008,8 @@ def test_platform_host_types_has_two_entries_and_nothing_indexes_it_by_position(
     # TC-116, TC-117, TC-118, TC-130
     from abf_platform import compute_envs
     from abf_station import launch
-    assert compute_envs.PLATFORM_HOST_TYPES == (GCB, AWS, "azbatch-platform") and compute_envs.CHECK_ONLY_TYPES == ()      # azure-launch
-    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, AWS, "azbatch-platform")
+    assert compute_envs.PLATFORM_HOST_TYPES == (GCB, AWS, "azbatch-platform") and compute_envs.CHECK_ONLY_TYPES == ("k8s-platform",)      # k8s-ce
+    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, AWS, "azbatch-platform", "k8s-platform")
     assert launch.GCB == "googlebatch-platform" and launch.AWS == "awsbatch-platform"
     for folder in ("abf_platform", "abf_station", "abf_launch"):
         for f in (PLATFORM_DIR / folder).rglob("*.py"):

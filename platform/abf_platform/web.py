@@ -906,7 +906,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         runs = await run_in_threadpool(read_runs, caller)
         envs = actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
         flash = flash_of(envs) if flash_of else None
-        return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "settings-pipeline"), flash, given),
+        lists = {e["name"]: await run_in_threadpool(lambda e=e: actions.site_pipeline_inventory(platform_path, ce=e["name"], caller=caller))
+                 for e in envs if e.get("platform") == web_settings.SLURM_TYPE}      # what each Slurm site last reported it has installed (reads only)
+        return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "settings-pipeline"), flash, given,
+                                                lists, csrf(sid, "settings-inventory")),
                             status_code=code, headers=_HEADERS)
 
     async def settings(request):
@@ -947,6 +950,18 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         f = {k: str(form.get(k, "")).strip()[:300] for k in PF_BOXES}
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         t = web_settings.words(lang)
+        if f["op"] == "add" and "pick" in form:
+            # settings-pick-installed: the person chose "<pipeline> <version>" from the site's own list. The module and the variable are looked up
+            # here from the newest list (never taken from the browser); what is not in that list is refused before anything else is asked.
+            listed = await run_in_threadpool(lambda: actions.site_pipeline_inventory(platform_path, ce=f["ce"], caller=caller))
+            if listed.get("found") is False:      # not the person's own environment: the same words as every other form for a missing one
+                return await pf_failed(sid, user, caller, lang, f["ce"], t["pf_fail"] + web_board.plain_reason(listed.get("message"), lang))
+            parts = str(form.get("pick", "")).strip()[:300].split(" ")
+            chosen = [i for i in (listed.get("items") or []) if listed.get("status") == "ok" and len(parts) == 2 and parts[0] and parts[1]
+                      and (i.get("pipeline"), i.get("revision")) == (parts[0], parts[1])]
+            if not chosen:
+                return await pf_failed(sid, user, caller, lang, f["ce"], t["pf_pick_gone"])
+            f.update(pipeline=chosen[0]["pipeline"], revision=chosen[0]["revision"], module=chosen[0]["module"], home=chosen[0]["home"])
         seen = await run_in_threadpool(lambda: actions.check_site_pipeline_change(
             platform_path, op=f["op"], ce=f["ce"], pipeline=f["pipeline"], revision=f["revision"], module=f["module"], home=f["home"], caller=caller))
         if not seen["ok"]:
@@ -992,6 +1007,28 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                                                                                                                          "added_check_refused")
         return RedirectResponse(pf_where(f["ce"], lang, notice), status_code=303, headers=_HEADERS)
 
+    async def inventory_post(request):
+        """The button "Reload site list": queue one pre-use check, whose answer carries the list. It changes no setting, so it has no confirmation page."""
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        if not same_origin(request):
+            return pf_refused(lang, "foreign")
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        if not _same(form.get("csrf", ""), csrf(sid, "settings-inventory")):
+            return pf_refused(lang, "expired")
+        ce = str(form.get("ce", "")).strip()[:300]
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        t = web_settings.words(lang)
+        answer = await run_in_threadpool(lambda: actions.reload_site_inventory(platform_path, ce=ce, caller=caller))
+        if not answer["ok"]:
+            return await pf_failed(sid, user, caller, lang, ce, t["pf_fail"] + web_board.plain_reason(answer.get("message"), lang))
+        notice = {"queued": "inv_queued", "no_agent": "inv_no_agent"}.get(answer["preflight"])
+        if notice is None:
+            return await pf_failed(sid, user, caller, lang, ce, t["pf_fail"] + web_board.plain_reason(answer.get("message") or "", lang))
+        return RedirectResponse(pf_where(ce, lang, notice), status_code=303, headers=_HEADERS)
 
     async def usage_page(request):
         sid, user = user_of(request)
@@ -1086,7 +1123,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
                             Route("/settings/pipelines", pipelines_post, methods=["POST"]),
-                            Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),
+                            Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]),
+                            Route("/settings/inventory", inventory_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch/diagram", launch_diagram, methods=["GET"]),
                             Route("/launch", launch_post, methods=["POST"]),
                             Route("/upload", upload_get, methods=["GET"]), Route("/upload", upload_post, methods=["POST"]),
