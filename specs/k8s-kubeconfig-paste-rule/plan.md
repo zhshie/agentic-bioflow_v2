@@ -76,6 +76,8 @@ source: PR #272 verifier TC-045「需要人看的事」（PR 內文「Follow-ups
 4. **既有的舊紀錄怎麼辦？** 提案：不回掃、不寫 migration。副作用要明講：之後有人 `update` 一筆描述裡已含這些行的舊紀錄，會因新規則被拒收，這正是想要的行為，並在 ledger 記一行。
 5. **要不要要求冒號後面一定有值？** 提案：不要。YAML 的值可能換行，只比對「鍵名＋冒號」，較不容易漏，且正常文字不會出現這種形式。
 
+6. **`test_model_key_refusal.py:82-84` 的 tc015 釘死清單長度（executor 10-29 BLOCKED 回報）**：定案選 A——只准把那條測試期望清單 `got[6:]` 尾端**追加**新樣式（從 5 條變 6 條），前 6 條與既有 5 條的內容、順序一字不改。這是讓釘子多釘一條，不是放寬；其餘既有斷言仍不准動。ledger 要記這一行改動與理由。開工前先 `git status`／`git diff` 確認工作樹乾淨，`compute_envs.py` 以 HEAD 為準。
+
 ### developer-agent 確認（2026-10-29）
 裁決 1–5 全部照提案定案。已在 origin/v3@0f69df6 核對：`looks_like_credential` 的呼叫者是 `actions/__init__.py:395`、`actions/datasets.py:307,326,349,361`、`actions/uploads.py:178`（提案寫的 `uploads.py` 路徑少了 `actions/`）；repo 內這三個鍵名只出現在 docs/TESTING.md:835 與 specs/k8s-ce/，沒有程式或測試資料用到，所以不會誤擋合法輸入。`platform/tests/test_model_key_refusal.py:36` 的「不是密鑰」對照組必須維持綠。A 級：只收緊。
 
