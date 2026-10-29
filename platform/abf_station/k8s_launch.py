@@ -25,8 +25,7 @@ IMAGE_SETTING = "k8s_head_image"
 PLACEHOLDER_ID = 1                     # the result's slurm_job_id: a Pod has no Slurm number, the field only has to be a positive whole number
 TAIL_LINES = 50
 MESSAGE_LIMIT = 200
-BILLING = "由你的 Kubernetes 叢集所屬的雲端或機房計費；本系統目前沒有費用預估與上限"
-CANCEL_REMINDER = "請到叢集確認這次 run 的 task Pod 是否也停了；Pod 沒停就會繼續計費，直到它們結束"
+CANCEL_REMINDER = "本系統只刪主控 Pod，不刪 task Pod：請到叢集確認這次 run 的 task Pod 是否也清掉了，沒清乾淨的要自己處理；費用從啟動算到它們真的停止為止"
 UNREACHABLE = "連不上叢集（%s）：沒有建立也沒有刪除任何東西，也不重試。請確認網路與 kubeconfig 後再試 (could not reach the cluster)"
 
 
@@ -185,7 +184,7 @@ def run_launch(job, ctx, bundle):
         return "error", {"ok": False, "message": "主控 Pod 一啟動就失敗了：%s。%s" % (_text(tail, token) or "沒有輸出", left), "left_on_site": left}
     return "done", {"ok": True, "slurm_job_id": PLACEHOLDER_ID, "run_name": bundle["run_name"], "run_folder": bundle["run_folder"],
                     "pod_name": pod,
-                    "message": "已啟動：Pod %s（命名空間 %s）；叢集的運算費用從現在開始計。%s" % (pod, ce["namespace"], BILLING)}
+                    "message": "已啟動：Pod %s（命名空間 %s）；叢集的運算費用從現在開始計" % (pod, ce["namespace"])}
 
 
 def run_cancel(job, ctx, bundle):
@@ -209,7 +208,7 @@ def run_cancel(job, ctx, bundle):
         return "error", {"ok": False, "message": UNREACHABLE % e}
     if not present:
         return "done", {"ok": True, "slurm_job_id": bundle.get("slurm_job_id"), "run_name": run,
-                        "message": "Pod %s 已不存在，視為已停止。%s" % (pod, CANCEL_REMINDER)}
+                        "message": "Pod 已不存在，視為已停止（%s）。%s" % (pod, CANCEL_REMINDER)}
     rc, out = _kubectl(cred_path, ["kubectl", "delete", "pod", pod, "--namespace", ce["namespace"], "--context", ce["context"], "--wait=false"])
     if rc != 0:
         return "error", {"ok": False, "message": "刪除 Pod %s 沒有成功：%s。不重試 (the delete did not work, not retried)" % (pod, _text(out) or "沒有訊息")}

@@ -203,8 +203,7 @@ def _submitted_line(row, platform=None, bundle=None):
     if platform in (bundle_mod.GCB, bundle_mod.AWS):
         return "已啟動：主控程序編號（pid）%s；run 名稱 %s；專屬資料夾 %s。" % (row["slurm_job_id"], row["run_name"], row["run_folder"])
     if platform == bundle_mod.K8S and isinstance(bundle, dict):
-        return ("已啟動：Pod %s（命名空間 %s）；叢集的運算費用從現在開始計。由你的 Kubernetes 叢集所屬的雲端或機房計費；本系統目前沒有費用預估與上限"
-                % (bundle.get("pod_name"), (bundle.get("ce") or {}).get("namespace")))
+        return "已啟動：Pod %s（命名空間 %s）；叢集的運算費用從現在開始計" % (bundle.get("pod_name"), (bundle.get("ce") or {}).get("namespace"))
     return "已送出：Slurm 工作編號 %s；run 名稱 %s；專屬資料夾 %s。" % (row["slurm_job_id"], row["run_name"], row["run_folder"])
 
 
@@ -242,6 +241,9 @@ def _report_launch(state, job_id, bundle):
         _err("代理回報（已逾期）：%s" % late)
     if _platform(bundle) in (bundle_mod.GCB, bundle_mod.AWS, bundle_mod.AZURE):
         _err("結果不明：請查平台主機上的 %s 與名為 %s 的主控程序" % (bundle["run_folder"], run))
+        return 1
+    if _platform(bundle) == bundle_mod.K8S:
+        _err("結果不明：請到叢集確認 Pod %s 與這次 run 的 task Pod（專屬資料夾 %s）" % (bundle.get("pod_name"), bundle["run_folder"]))
         return 1
     _err("結果不明：請查國網上的 %s 與 Slurm 工作 nf-%s" % (bundle["run_folder"], run))
     return 1
@@ -281,6 +283,9 @@ def cmd_cancel(args):
         if _platform(bundle) == bundle_mod.GCB:
             _say("取消請求已送出（主控程序 pid %s）。Nextflow 收到訊號後會取消它送出的 Batch 工作；它回報的結局請用 get_run 看。"
                  "請到 Google Cloud Console 的 Batch 頁確認沒有殘留的工作，沒取消乾淨的虛擬機仍會計費。" % bundle["slurm_job_id"])
+            return 0
+        if _platform(bundle) == bundle_mod.K8S:
+            _say((out["result"] or {}).get("message") or "已要求刪除主控 Pod %s" % bundle.get("pod_name"))
             return 0
         _say("取消請求已送出（Slurm 工作 %s）。Nextflow 收到訊號後會收掉它底下的 task；它回報的結局請用 get_run 看。"
              "國網上若還有殘留的 task，請自己查（squeue）。" % bundle["slurm_job_id"])
@@ -332,14 +337,17 @@ def _agent_result(job):
         return {}
 
 
-def _not_submitted_lines(row, kind, job):
+def _not_submitted_lines(row, kind, job, k8s=False):
     """What to say of a launch that has no Slurm number: what its own job says, in the agent's words, never the platform's."""
     if kind == "refused":
         message = _agent_result(job).get("message")
         return ["  被代理拒絕：%s" % (terminal.esc(message) if message else "（代理沒有附原因）")]
     if kind == "waiting":
         return ["  等代理處理中（工作 %d）" % job["id"]]
-    lines = ["  未送出：代理沒有回報 Slurm 工作編號（結果不明時請查國網上的專屬資料夾與 nf-%s）" % row["run_name"]]
+    if k8s:
+        lines = ["  未送出：代理沒有回報 Pod 名稱（結果不明時請到叢集確認 Pod %s 與這次 run 的 task Pod）" % bundle_mod.k8s_pod_name(row["run_name"])]
+    else:
+        lines = ["  未送出：代理沒有回報 Slurm 工作編號（結果不明時請查國網上的專屬資料夾與 nf-%s）" % row["run_name"]]
     if job is not None and job["state"] == "error":     # the agent said what went wrong and what it left on the site
         res = _agent_result(job)
         if res.get("message"):
@@ -382,9 +390,16 @@ def cmd_launches(args):
         finally:
             index.close()
     users = store.user_names(store.default_tokens_path())
+    is_k8s = {}      # launch row id -> whether its environment is a Kubernetes one (the words for its number differ)
     for r in rows:
-        head = "%s  Slurm %s  %s  確認於 %s" % (r["run_name"], r["slurm_job_id"] if r["slurm_job_id"] is not None else "-",
-                                               terminal.esc(r["run_folder"]), _when(r["confirmed_at"]))
+        try:
+            is_k8s[r["id"]] = build.is_k8s(state, r["ce"])
+        except Exception:
+            is_k8s[r["id"]] = False
+    for r in rows:
+        number = "-" if r["slurm_job_id"] is None else (bundle_mod.k8s_pod_name(r["run_name"]) if is_k8s[r["id"]] else r["slurm_job_id"])
+        head = "%s  %s %s  %s  確認於 %s" % (r["run_name"], "Pod" if is_k8s[r["id"]] else "Slurm", number,
+                                             terminal.esc(r["run_folder"]), _when(r["confirmed_at"]))
         owner = r["user_id"] if "user_id" in r.keys() else None
         if owner is not None or users:          # who sent it (116); a platform with no users at all lists as it always did
             head += "  送出者 %s" % terminal.esc(users.get(owner) or "(none: local only)")
@@ -392,7 +407,7 @@ def cmd_launches(args):
         if "attempt_kind" in r.keys() and r["attempt_kind"]:      # 009e: a request's lineage, a fact like the rest of the line; not how the attempt went
             _say("  attempt %s (%s of %s)" % (r["attempt"], r["attempt_kind"], terminal.esc(r["parent_run"])))
         if r["submitted_at"] is None:
-            for line in _not_submitted_lines(r, *what.get(r["id"], ("unknown", None))):
+            for line in _not_submitted_lines(r, *what.get(r["id"], ("unknown", None)), k8s=is_k8s[r["id"]]):
                 _say(line)
         elif r["run_name"] in known:
             _say("  已收到 Nextflow 的事件；請用 get_run 看（run id %s）" % known[r["run_name"]])

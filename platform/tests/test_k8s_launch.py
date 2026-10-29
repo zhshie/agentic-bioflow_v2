@@ -230,7 +230,7 @@ def test_launch_creates_the_secret_then_the_pod(box):
     # TC-001, TC-002, TC-003, TC-004, TC-005, TC-008, K8L-RUN-01
     b, res = launch_ok(box)
     assert res["ok"] is True and res["run_name"] == "r1"
-    assert res["message"].startswith("已啟動：Pod nf-r1（命名空間 %s）；叢集的運算費用從現在開始計" % NS)
+    assert res["message"] == "已啟動：Pod nf-r1（命名空間 %s）；叢集的運算費用從現在開始計" % NS      # TC-113: the whole line, nothing after it
     assert isinstance(res["slurm_job_id"], int) and res["slurm_job_id"] != 0
     assert b["pod_name"] == "nf-r1"
     c = box.cluster
@@ -568,7 +568,7 @@ def test_samplesheet_paths_must_be_inside_the_claim(box, cell):
 
 
 def test_a_composed_pipeline_is_refused_for_kubernetes(box):
-    # TC-140, K8L-BUNDLE-07
+    # TC-139, K8L-BUNDLE-07
     from abf_station import launch
     with pytest.raises(launch.BundleError) as e:
         launch.render_bundle(ce=zce(), agent="a1", facts=box.facts(), roots=[], run_name="r1", pipeline="x/y", revision="1",
@@ -587,7 +587,7 @@ def test_progress_reporting_needs_an_https_address_the_pod_can_reach(box):
 
 
 def test_resume_and_relaunch_are_refused_for_kubernetes(box):
-    # TC-136, TC-137, K8L-BUNDLE-06
+    # TC-138, K8L-BUNDLE-06 (the agent's side; the platform's side is below)
     from abf_station import launch, rules
     assert "Kubernetes" in launch.K8S_NO_RESUME and "AWS" not in launch.K8S_NO_RESUME
     b = box.bundle()
@@ -600,35 +600,47 @@ def test_resume_and_relaunch_are_refused_for_kubernetes(box):
 # ---- cancel ----------------------------------------------------------------------------------------------------------
 
 def test_cancel_deletes_the_one_pod(box):
-    # TC-122, K8L-CANCEL-01
+    # TC-122, TC-123, TC-131, TC-132, K8L-CANCEL-01, K8L-CRED-04
     box.cluster.pods["nf-r1"] = "Running"
     state, res = box.handle(cancel_job(cancel_bundle()))
     assert state == "done" and res["ok"] is True
     deletes = [c[0] for c in box.cluster.writes()]
-    assert deletes == [["kubectl", "delete", "pod", "nf-r1", "--namespace", NS, "--context", CTX, "--wait=false"]]
-    assert "task pod" in res["message"] or "task" in res["message"]
+    assert deletes == [["kubectl", "delete", "pod", "nf-r1", "--namespace", NS, "--context", CTX, "--wait=false"]]      # TC-122, TC-123: one, no retry
+    flat = [part for argv, _e, _s in box.cluster.calls for part in argv]
+    for bad in ("-l", "--selector", "--all", "pvc", "secret", "-f"):      # TC-131: whole elements
+        assert bad not in flat, bad
+    assert [c[0][3] for c in box.cluster.calls if c[0][1] == "delete"] == ["nf-r1"]
+    msg = res["message"]      # TC-132: plain reminder, no claim that the task pods are gone or that the billing has stopped
+    assert "task Pod" in msg and "自己處理" in msg and "費用" in msg and "已一併" not in msg and "停止計費" not in msg
 
 
 def test_cancel_of_a_pod_that_is_gone_is_ok(box):
-    # TC-123
+    # TC-129
     state, res = box.handle(cancel_job(cancel_bundle()))
-    assert state == "done" and "已不存在" in res["message"] and box.cluster.writes() == []
+    assert state == "done" and res["ok"] is True and "Pod 已不存在，視為已停止" in res["message"]
+    assert box.cluster.writes() == []
 
 
 def test_cancel_with_an_unreachable_cluster_deletes_nothing(box):
-    # TC-124
+    # TC-130
+    box.cluster.pods["nf-r1"] = "Running"
     box.cluster.fail["get_pod"] = (1, "Unable to connect to the server")
     state, res = box.handle(cancel_job(cancel_bundle()))
+    assert state == "error" and res["ok"] is False
     assert "連不上叢集" in json.dumps(res, ensure_ascii=False) and box.cluster.writes() == []
+    assert "nf-r1" in box.cluster.pods
 
 
-def test_cancel_failure_is_reported_once(box):
-    # TC-127, TC-128
+def test_cancel_failure_is_reported_once_and_cut_at_200(box):
+    # TC-128
     box.cluster.pods["nf-r1"] = "Running"
-    box.cluster.fail["delete_pod"] = (1, "forbidden " + TOKEN)
+    stderr = "forbidden " + TOKEN + " " + "abcde " * 100
+    box.cluster.fail["delete_pod"] = (1, stderr)
     state, res = box.handle(cancel_job(cancel_bundle()))
-    assert state == "error" and "forbidden" in res["message"] and TOKEN not in json.dumps(res)
-    assert len(box.cluster.writes()) == 1
+    assert state == "error" and res["ok"] is False and "forbidden" in res["message"] and TOKEN not in json.dumps(res)
+    shown = re.search(r"沒有成功：(.*)。不重試", res["message"], re.S).group(1)
+    assert shown.startswith("forbidden") and 150 <= len(shown) <= 200      # the first 200 characters of stderr, no more
+    assert len(box.cluster.writes()) == 1 and "nf-r1" in box.cluster.pods      # no retry; the Pod is as it was
 
 
 @pytest.mark.parametrize("over", [{"pod_name": "other-pod"}, {"ce": zce(namespace="Bad_NS")}])
@@ -640,13 +652,33 @@ def test_cancel_with_a_name_or_namespace_that_does_not_fit_sends_nothing(box, ov
 
 
 def test_cancel_for_another_agent_is_refused(box):
-    # TC-129
+    # TC-124
     state, res = box.handle(cancel_job(cancel_bundle(agent="a2")))
     assert state == "refused" and box.cluster.calls == []
 
 
+@pytest.mark.parametrize("label", ["no confirmation", "changed bundle", "used twice", "launch kind"])
+def test_an_unconfirmed_cancel_touches_nothing(box, label):
+    # TC-127, K8L-CONF-01
+    box.cluster.pods["nf-r1"] = "Running"
+    b = cancel_bundle()
+    job = cancel_job(b)
+    if label == "no confirmation":
+        job["confirmation"] = None
+    elif label == "changed bundle":
+        job["args"]["bundle_sha256"] = "0" * 64
+    elif label == "launch kind":
+        job["confirmation"] = dict(job["confirmation"], kind="launch")
+    elif label == "used twice":
+        assert box.handle(job)[0] == "done"
+        box.cluster.calls.clear()
+    state, res = box.handle(job)
+    assert state == "refused", res
+    assert box.cluster.calls == []
+
+
 def test_other_types_keep_their_cancel_fields():
-    # TC-130
+    # TC-157
     from abf_station import cancel
     assert cancel.KEYS == {"version", "run_name", "slurm_job_id", "run_folder", "agent", "ce"}
 
@@ -724,7 +756,7 @@ def test_cloud_paths_still_do_not_resolve_for_kubernetes(ip):
 
 
 def test_prepare_launch_screen_and_cancel_for_kubernetes(ip, box, tmp_path):
-    # TC-007, TC-102..TC-107, TC-117..TC-121, K8L-SCREEN-01, K8L-CANCEL-02
+    # TC-007, TC-102..TC-107, K8L-SCREEN-01
     from abf_launch import build, terminal
     from abf_platform import agents, jobs
     register_agent(ip)
@@ -756,5 +788,215 @@ def test_resume_wording_and_cli_lines():
     row = {"slurm_job_id": 1, "run_name": "r1", "run_folder": "/workspace/_k8s_runs/r1"}
     bundle = {"run_name": "r1", "pod_name": "nf-r1", "ce": {"platform": compute_envs.K8S, "namespace": NS}}
     line = cli._submitted_line(row, compute_envs.K8S, bundle)
-    assert line.startswith("已啟動：Pod nf-r1（命名空間 %s）；叢集的運算費用從現在開始計" % NS) and "Slurm 工作編號" not in line
+    assert line == "已啟動：Pod nf-r1（命名空間 %s）；叢集的運算費用從現在開始計" % NS      # TC-113: the whole line
+    assert "Slurm" not in line
     assert cli._submitted_line(row) == "已送出：Slurm 工作編號 1；run 名稱 r1；專屬資料夾 /workspace/_k8s_runs/r1。"
+
+
+# ======================================================================================================================
+# The platform's side of a run that went through the agent: the cancel screen, the owner rule, resume and relaunch,
+# the words of the command line, and the documents (TC-112, TC-118..TC-121, TC-133..TC-137, TC-166, TC-168, TC-172..TC-180)
+# ======================================================================================================================
+
+def launched_on_k8s(ip, box, tmp_path, run="r1"):
+    """prepare, the human yes, the queue, the agent (the fake kubectl), the answer: the launches row of the run."""
+    from abf_launch import build
+    from abf_platform import actions, agents, jobs
+    register_agent(ip)
+    agents.register(ip.state_db, "a1", "0.1.0", time.time, facts=box.facts())
+    create(ip, "k8s1")
+    set_status(ip, "k8s1", "available")
+    sheet = tmp_path / "samples.csv"
+    sheet.write_text("\n".join(",".join(r) for r in SHEET) + "\n")
+    ce_name, bundle = build.prepare_launch(ip.state_db, ce="k8s1", pipeline="nf-core/rnaseq", revision="3.14.0", run_name=run,
+                                           samplesheet=str(sheet), params={"genome": "GRCh38"}, owner=None)
+    cid, job_id = actions.launch(ip.state_db, ce_name, bundle, confirmed_by=actions.TERMINAL)
+    job = jobs.claim(ip.state_db, "a1", time.time, tokens_path=ip.tokens)
+    while job is not None and job["id"] != job_id:      # the first preflight of the new environment may be queued before the launch
+        jobs.take_result(ip.state_db, "a1", job["id"], "done", {"ok": True, "checks": []}, time.time, tokens_path=ip.tokens)
+        job = jobs.claim(ip.state_db, "a1", time.time, tokens_path=ip.tokens)
+    assert job is not None and job["id"] == job_id
+    state, result = box.handle(job)
+    assert state == "done", result
+    code, _ = jobs.take_result(ip.state_db, "a1", job["id"], state, result, time.time, tokens_path=ip.tokens)
+    assert code == 200
+    con = sqlite3.connect(str(ip.state_db))
+    con.row_factory = sqlite3.Row
+    try:
+        return con.execute("SELECT * FROM launches WHERE run_name = ?", (run,)).fetchone()
+    finally:
+        con.close()
+
+
+def give_to_user_one(ip):
+    con = sqlite3.connect(str(ip.state_db))
+    with con:
+        con.execute("UPDATE compute_envs SET owner_user_id = 1")
+        con.execute("UPDATE agents SET owner_user_id = 1")
+        con.execute("UPDATE launches SET user_id = 1")
+    con.close()
+
+
+def job_kinds(ip):
+    con = sqlite3.connect(str(ip.state_db))
+    try:
+        return [r[0] for r in con.execute("SELECT kind FROM jobs ORDER BY id")]
+    finally:
+        con.close()
+
+
+def test_the_cancel_screen_of_a_started_k8s_run_and_the_yes_before_any_job(ip, box, tmp_path, monkeypatch):
+    # TC-118, TC-119, K8L-CONF-02
+    import argparse
+    from abf_launch import build, cli, terminal
+    from abf_platform import actions
+    row = launched_on_k8s(ip, box, tmp_path)
+    assert row["slurm_job_id"] == 1
+    n, kinds = jobs_count(ip), job_kinds(ip)
+    ce_name, bundle, hand_off = build.prepare_cancel(ip.state_db, "r1")
+    screen = "\n".join(build.cancel_screen(bundle, hand_off))
+    for want in ("nf-r1", NS, CTX, "只會刪除", "這一個主控 Pod"):      # TC-118: the Pod, where it is, and that only this one Pod goes
+        assert want in screen, want
+    assert jobs_count(ip) == n and job_kinds(ip) == kinds      # TC-119: asking for the screen queues nothing
+    asked = []
+    monkeypatch.setenv("ABF_PLATFORM_DB", str(ip.index))
+    monkeypatch.setattr(terminal, "terminal_problem", lambda: None)
+    monkeypatch.setattr(terminal, "ask", lambda lines, question: asked.append(question) or False)      # a no, or no answer in time
+    assert cli.cmd_cancel(argparse.Namespace(run="r1")) == 1
+    assert len(asked) == 1 and jobs_count(ip) == n and "cancel_run" not in job_kinds(ip)
+    assert [w[0][1] for w in box.cluster.writes()] == ["create", "create"]      # nothing was deleted either
+    actions.cancel(ip.state_db, ce_name, bundle, confirmed_by=actions.TERMINAL)      # only the yes queues it
+    assert job_kinds(ip) == kinds + ["cancel_run"]
+
+
+def test_a_k8s_run_without_a_head_pod_record_is_refused_in_plain_words(ip, box, tmp_path):
+    # TC-120, TC-121, K8L-CANCEL-02
+    from abf_launch import build
+    launched_on_k8s(ip, box, tmp_path)
+    con = sqlite3.connect(str(ip.state_db))
+    with con:
+        con.execute("UPDATE launches SET slurm_job_id = NULL WHERE run_name = 'r1'")
+    con.close()
+    n = jobs_count(ip)
+    with pytest.raises(build.Refusal) as e:
+        build.prepare_cancel(ip.state_db, "r1")
+    msg = str(e.value)
+    assert "主控 Pod" in msg and "不是平台自己送出的" not in msg and "Slurm" not in msg      # TC-120: this refusal, not the other one
+    assert "task Pod" in msg and "叢集" in msg      # TC-121: go and look at the task pods in the cluster
+    assert jobs_count(ip) == n
+
+
+def test_another_users_k8s_environment_and_run_are_not_found(ip, box, tmp_path):
+    # TC-133, TC-134, TC-135 (the owner rule on the three paths: read, cancel, launch)
+    from abf_launch import build
+    from abf_platform import actions, compute_envs, jobs
+    launched_on_k8s(ip, box, tmp_path)
+    give_to_user_one(ip)
+    _name, own_bundle, _row = build.prepare_cancel(ip.state_db, "r1", owner=1)      # the owner sees it
+    n, kinds = jobs_count(ip), job_kinds(ip)
+    # TC-133: reading. Another user is told what they are told of a thing that does not exist.
+    assert compute_envs.get(ip.state_db, "k8s1", owner=2) is None and compute_envs.get(ip.state_db, "k8s1", owner=1) is not None
+    seen = []
+    for run in ("r1", "no-such-run"):
+        with pytest.raises(build.Refusal) as e:
+            build.prepare_cancel(ip.state_db, run, owner=2)
+        seen.append(str(e.value).replace(run, "<run>"))
+    assert seen[0] == seen[1]
+    said = []
+    for env in ("k8s1", "no-such-env"):
+        with pytest.raises(jobs.JobRefused) as e:
+            jobs.check_target(ip.state_db, env, "preflight", caller_user_id=2)
+        said.append(str(e.value).replace(env, "<env>"))
+    assert said[0] == said[1]
+    # TC-134: writing, a cancel of somebody else's run: no screen, no job
+    with pytest.raises(jobs.JobRefused):
+        actions.cancel(ip.state_db, "k8s1", own_bundle, confirmed_by=actions.TERMINAL, caller=SimpleNamespace(user_id=2))
+    assert jobs_count(ip) == n and job_kinds(ip) == kinds
+    # TC-135: writing, a launch on somebody else's environment: no job
+    sheet = tmp_path / "samples.csv"
+    with pytest.raises(build.Refusal) as e:
+        build.prepare_launch(ip.state_db, ce="k8s1", pipeline="nf-core/rnaseq", revision="3.14.0", run_name="r2",
+                             samplesheet=str(sheet), params={}, owner=2)
+    assert "not found" in str(e.value)
+    _name, other = build.prepare_launch(ip.state_db, ce="k8s1", pipeline="nf-core/rnaseq", revision="3.14.0", run_name="r2",
+                                        samplesheet=str(sheet), params={}, owner=1)
+    with pytest.raises(jobs.JobRefused):
+        actions.launch(ip.state_db, "k8s1", other, confirmed_by=actions.TERMINAL, caller=SimpleNamespace(user_id=2))
+    assert jobs_count(ip) == n and job_kinds(ip) == kinds
+
+
+def test_the_platform_refuses_resume_and_relaunch_of_a_k8s_run(ip, box, tmp_path):
+    # TC-136, TC-137, K8L-BUNDLE-06
+    from abf_launch import build
+    launched_on_k8s(ip, box, tmp_path)
+    n = jobs_count(ip)
+    for prepare in (build.prepare_resume, build.prepare_relaunch):
+        with pytest.raises(build.Refusal) as e:
+            prepare(ip.state_db, "r1", index_path=ip.index)
+        assert "Kubernetes" in str(e.value) and "AWS" not in str(e.value), str(e.value)
+    assert jobs_count(ip) == n
+
+
+def test_the_command_line_says_pod_for_kubernetes_everywhere(ip, box, tmp_path, monkeypatch, capsys):
+    # TC-112, TC-114, K8L-SCREEN-03
+    import argparse
+    from abf_launch import cli, terminal
+    from abf_platform import jobs
+    row = launched_on_k8s(ip, box, tmp_path)
+    bundle = {"run_name": "r1", "pod_name": "nf-r1", "run_folder": row["run_folder"], "ce": {"platform": K8S, "namespace": NS}}
+    # 1: the line of a launch that started (TC-113 is the whole line)
+    assert "Slurm" not in cli._submitted_line(row, K8S, bundle)
+    # 2: the line of a launch that has no number: Pod, not Slurm; the other types keep their words
+    lines = cli._not_submitted_lines({"run_name": "r1"}, "unknown", None, k8s=True)
+    assert "Pod 名稱" in lines[0] and "nf-r1" in lines[0] and "Slurm" not in lines[0] and "task Pod" in lines[0]
+    assert "Slurm 工作編號" in cli._not_submitted_lines({"run_name": "r1"}, "unknown", None)[0]
+    # 3: the list of launches and the answer of a cancel
+    monkeypatch.setenv("ABF_PLATFORM_DB", str(ip.index))
+    assert cli.cmd_launches(argparse.Namespace()) == 0
+    listed = capsys.readouterr().out
+    assert "Pod nf-r1" in listed and "Slurm" not in listed
+    monkeypatch.setattr(terminal, "terminal_problem", lambda: None)
+    monkeypatch.setattr(terminal, "ask", lambda lines, q: True)
+
+    async def done(state, job_id, **kw):
+        job = jobs.claim(ip.state_db, "a1", time.time, tokens_path=ip.tokens)
+        st, res = box.handle(job)
+        jobs.take_result(ip.state_db, "a1", job["id"], st, res, time.time, tokens_path=ip.tokens)
+        return {"state": st, "ok": res.get("ok"), "result": res, "message": res.get("message")}
+    monkeypatch.setattr(jobs, "wait_for_result", done)
+    assert cli.cmd_cancel(argparse.Namespace(run="r1")) == 0
+    out = capsys.readouterr().out
+    assert "Pod nf-r1" in out and "Slurm" not in out and "squeue" not in out and "task Pod" in out
+
+
+def read_doc(name):
+    return (REPO_ROOT / "docs" / name).read_text(encoding="utf-8")
+
+
+def test_the_platform_doc_names_the_claim_and_the_role_rules():
+    # TC-163..TC-166, K8L-DOC-01
+    text = read_doc("PLATFORM.md")
+    sentence = "Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only"
+    assert text.count(sentence) == 2
+    assert "checked and launched on the platform host (upload, clean, resume: not yet)" in text
+    start = text.index("### Launching on Kubernetes")
+    section = text[start:text.index("\n## ", start)]
+    assert "launching on it is not built yet" not in text
+    for want in ("ReadWriteMany", "Role", "create", "delete", "k8s_head_image", "platform_public_url", "https://", "same claim", "does **not** create"):
+        assert want in section, want
+
+
+def test_the_testing_doc_has_the_manual_steps_a_maintainer_can_follow():
+    # TC-168, TC-172, TC-174, TC-178, TC-180, K8L-DOC-03
+    text = read_doc("TESTING.md")
+    start = text.index("## Launching on Kubernetes (k8s-launch)")
+    section = text[start:]
+    nxt = section.find("\n## ", 5)
+    section = section if nxt < 0 else section[:nxt]
+    assert "Needs human" in section
+    assert re.findall(r"^(\d)\. ", section, re.M) == ["1", "2", "3", "4", "5", "6"]
+    for want in ("class C", "maintainer's agreement", "not part of the executor's or the verifier's definition of done",      # TC-180
+                 "ReadWriteMany", "create and delete on pods", "docs/OPERATIONS.md", "pulled",      # TC-172
+                 "Answer n first", "no Secret and no Pod", "only after the y",      # TC-174
+                 "task pods went away", "specs/k8s-launch/ledger.md", "do not add a delete path"):      # TC-178
+        assert want in section, want

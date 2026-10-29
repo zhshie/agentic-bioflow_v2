@@ -25,7 +25,11 @@ No migration needed: no table, column or configuration key changes. `result.slur
 
 - Ruling 12-3 says `launch._snapshot_ce` already had a K8s base branch; it did not, so one was added. TC-077 (identical to base) holds for `compute_envs.snapshot`; `maxMemoryGB` is not added for K8s.
 - `site.run_fixed` gained an optional `stdin` argument (manifests go through stdin). `site.py` is not in the plan's file list.
-- `abf_launch/cli.py`: only the "submitted" line got Kubernetes wording; `_not_submitted_lines` and `cmd_launches` still print "Slurm 工作編號" because the row there carries no platform information.
+- `abf_launch/cli.py` (fix round, TC-112/TC-113): the Kubernetes words are in every place the command line speaks of a number: the "已啟動" line is exactly `已啟動：Pod <名>（命名空間 <ns>）；叢集的運算費用從現在開始計` (no billing sentence after it; the billing sentence stays as the first paragraph of the launch screen, TC-105), the "未送出" line says 「Pod 名稱」 (platform found with `build.is_k8s` on the row's environment), the "結果不明" line and the `launches` list say Pod, and a cancel prints the agent's own message. The other types print what they printed.
+- The agent's "已啟動" message is the same exact line; the not-found cancel says 「Pod 已不存在，視為已停止」 (TC-129); the cancel reminder says the system deletes only the head Pod, the task pods are the person's to clear, and the cost runs until they stop (TC-132).
+- Fix round tests added in `test_k8s_launch.py`: TC-113 (equality), TC-118/119 (cancel screen, no job before the yes), TC-120/121, TC-128 (cut at 200), TC-127 (unconfirmed cancel), TC-133/134/135 (second user), TC-136/137 (platform side), TC-112 (cli), TC-163..TC-166 and TC-168/172/174/178/180 (docs). The `# TC-nnn` comments of the cancel tests were renumbered to the contract's ids.
+- Docs: `docs/PLATFORM.md` "Launching on Kubernetes" now says ReadWriteMany and the Role the service account needs (not created here); `docs/TESTING.md` steps now cover RWX/RBAC/image, answer n then y with no Pod before the y, the task-pod verdict recorded in this ledger, and that the steps are class C, need the maintainer, and are outside the definition of done.
+- Task pods after a real cancel (TC-178): not run here (needs a real cluster, class C); to be filled in by the maintainer after the manual run.
 
 ## BLOCKED (one question)
 
