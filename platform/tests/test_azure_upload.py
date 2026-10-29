@@ -756,7 +756,7 @@ def test_no_migration_and_the_datasets_surface_did_not_grow():
     assert sorted(set(re.findall(r"^def (_migrate\w*)", store_src, re.M))) == [
         "_migrate_confirmation_kinds", "_migrate_index", "_migrate_jobs", "_migrate_jobs_kinds", "_migrate_launches", "_migrate_tokens"]
     names = sorted(n for n in dir(ds()) if not n.startswith("_") and inspect.isfunction(getattr(ds(), n)) and getattr(ds(), n).__module__ == ds().__name__)
-    assert names == ["check_web_upload", "draft_samplesheet", "get_dataset", "list_datasets", "pair_fastq", "register_dataset"]
+    assert names == ["check_samplesheet", "check_web_upload", "draft_samplesheet", "get_dataset", "list_datasets", "pair_fastq", "register_dataset"]      # web-upload-page: check_samplesheet joined (ruling 13)
     for fn, params in ((ds().draft_samplesheet, ["platform_path", "files", "caller", "destination"]),
                        (ds().check_web_upload, ["platform_path", "sizes", "caller", "destination"]),
                        (ds().register_dataset, ["platform_path", "name", "version", "samplesheet", "files", "caller", "clock", "destination"])):
