@@ -8,3 +8,4 @@
 - `git diff --stat`: pipelines.py, test_pipelines_store.py, test_pipeline_export.py, plan/ledger only.
 - [x] Fix round (verifier: weak tests, tests only, no code change): TC-016 now uses a graph whose kept check has an error (META_MISMATCH) and asserts that error is in `validation`; TC-022 compares every row of every table (not counts); TC-031 checks per failure the what-happened and what-to-do phrases in both languages; TC-033 passes a caller whose fields carry a token value (plain and connector) and asserts that value is in no response and no log record.
 - [x] CI fix (supplemental ruling): TC-008 now uses the `e2e_cfg` fixture (pinned Nextflow wrapper, NXF_* env as in test_launch_nextflow.py), no `shutil.which` skip, still asserts returncode 0. Local `bash tests/platform_shard_3_test.sh`: 541 passed, 0 skipped, pytest exit 0 for all shards.
+- Full suite at HEAD: 136/136 passed (launcher run via bash since the downloaded file is not executable).
