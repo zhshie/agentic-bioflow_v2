@@ -137,3 +137,8 @@ source: 維護者每日簡報（見下）；截圖 shots-1029/settings-register-
 - **准重釘樣式表雜湊**：`platform/tests/test_web_settings_register.py` 的 `BASE_STYLE_SHA`（:18）與 `platform/tests/test_clean_page.py` 的 `BASE_STYLE`（:162）加入可改範圍，**只准改常數值**成新 STYLE 的 sha256（clean_page 用前 16 字元）；斷言本身、比對方式、其他行一律不動。`test_settings_pick_installed.py` 只 import 該常數，不准改。
 - 理由：這些雜湊是「STYLE 有沒有被意外改動」的快照釘；本任務就是有意改 STYLE，`test_clean_page.py:153-156` 註解顯示每次改 STYLE 都重釘，不算放寬安全網。重釘前 executor 要在 ledger 貼 `git diff` 證明 STYLE 只多了 `@media (max-width:640px)` 那一段。
 - 行號以函式名定位（web-wording-sweep 已併入，起點 2552583b）。ce07 改嚴後要重跑。
+
+### 補充裁決 14（2026-10-30 02:2x，第二次 BLOCKED 後；擴大裁決 13）
+- 裁決 13 的範圍**擴及 `platform/tests/test_clean_page.py:150-162` 全部五個頁面雜湊常數**（`BASE_CONFIRM`、`BASE_EXPIRED`、`BASE_POST`、`BASE_BOARD`、`BASE_STYLE`）——這些頁面都內嵌 STYLE，所以會一起變。同樣**只准改常數值**，斷言與比對方式不動。
+- 驗證要求：重釘前在 ledger 證明每一頁的變動**只來自 STYLE**——例如把新 STYLE 換回舊 STYLE 後重算，五個雜湊都回到原值（貼指令與輸出）。做不到這個證明就不准重釘、回報 BLOCKED。
+- 已確認：不需要再問。此裁決即答覆 executor 的問題，請直接重釘、跑全套、補截圖與 TESTING.md 小節。
