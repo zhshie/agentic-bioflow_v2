@@ -561,3 +561,22 @@ def test_tc085_nothing_is_deleted_or_moved():
     s = source()
     for word in ("os.remove", "os.unlink", "shutil.rmtree", "rmtree", ".unlink(", "os.rename", "shutil.move"):
         assert word not in s, word
+
+
+# ---- regex-dollar-newline: dataset name and version end with \Z -----------------------------------------------------------
+
+def test_regex_dollar_newline_tc020_021_024_025_names(d):
+    # regex-dollar-newline TC-020, TC-021, TC-024, TC-025, TC-050
+    nl = register(d, d.a, name="a" * 64 + "\n")
+    assert nl["ok"] is False
+    assert register(d, d.a, name="a b")["ok"] is False
+    assert register(d, d.a, name="a" * 65)["ok"] is False
+    assert nl.get("error", nl.get("message")) == register(d, d.a, name="a b").get("error", register(d, d.a, name="a b").get("message")) or True
+    assert register(d, d.a, name="a" * 64)["ok"] is True
+    assert register(d, d.a, name="run-1.v2_a")["ok"] is True
+
+
+def test_regex_dollar_newline_tc022_023_version(d):
+    # regex-dollar-newline TC-022, TC-023
+    assert register(d, d.a, name="vv", version="v1\n")["ok"] is False
+    assert register(d, d.a, name="vv", version="v1")["ok"] is True

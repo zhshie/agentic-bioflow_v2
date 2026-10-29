@@ -216,3 +216,27 @@ def test_the_actions_package_does_not_export_the_new_functions():
     import abf_platform.actions as actions
     for n in ("validate_pipeline", "get_validation"):
         assert not hasattr(actions, n)
+
+
+# ---- regex-dollar-newline: the pipeline name ends with \Z ---------------------------------------------------------------
+
+def test_regex_dollar_newline_tc010_011_012_name_with_newline_is_refused_and_nothing_is_saved(d):
+    # regex-dollar-newline TC-010, TC-011, TC-012
+    before = (count(d, "pipelines"), count(d, "pipeline_versions"))
+    r = make(d, d.a, name="abc\n")
+    assert r["ok"] is False
+    assert (count(d, "pipelines"), count(d, "pipeline_versions")) == before
+    upper = make(d, d.a, name="ABC")
+    assert upper["ok"] is False
+    assert {k: v for k, v in r.items() if k != "problems"} == {k: v for k, v in upper.items() if k != "problems"}
+
+
+def test_regex_dollar_newline_tc013_legal_names_are_created(d):
+    # regex-dollar-newline TC-013
+    assert make(d, d.a, name="abc")["ok"] is True
+    assert make(d, d.a, name="a" + "b" * 39)["ok"] is True
+
+
+def test_regex_dollar_newline_tc050_old_refused_names_stay_refused(d):
+    # regex-dollar-newline TC-050
+    assert make(d, d.a, name="a" * 41)["ok"] is False

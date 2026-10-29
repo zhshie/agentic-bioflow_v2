@@ -450,3 +450,77 @@ def test_the_fixture_answers_are_not_just_the_program_output():
     # TC-077: the three folders exist with all four files, and the answer of the first one is the text of the plan
     for d in ("fastqc_multiqc", "fan_in_and_twins", "old_format_module"):
         assert sorted(p.name for p in (FIXTURES / d).iterdir()) == ["graph.json", "main.nf", "modules.json", "nextflow.config"]
+
+
+# ---- regex-dollar-newline: name checks end with \Z, a trailing newline is not part of a name ------------------------------
+
+def _hand_canonical(output="html"):
+    return {"nodes": [node("qc", "fastqc"), node("report", "multiqc")], "edges": [edge("qc", output, "report")]}
+
+
+def test_regex_dollar_newline_tc001_pipeline_name_with_newline_is_refused():
+    # regex-dollar-newline TC-001
+    canonical = norm(qc_graph())
+    with pytest.raises(ValueError):
+        compose().render(canonical, "abc\n", 1)
+
+
+def test_regex_dollar_newline_tc002_node_id_with_newline_is_refused():
+    # regex-dollar-newline TC-002
+    assert "a\n" in refused({"nodes": [node("a\n", "fastqc")]})
+
+
+def test_regex_dollar_newline_tc003_param_key_with_newline_is_refused():
+    # regex-dollar-newline TC-003
+    g = {"nodes": [node("qc", "fastqc", params={"ext.args\n": "-q"})]}
+    canonical, problems = compose().normalize(g)
+    if canonical is None:
+        assert problems
+        return
+    with pytest.raises(ValueError):
+        compose().render(canonical, "demo-qc", 1)
+
+
+def test_regex_dollar_newline_tc004_output_name_with_newline_is_refused():
+    # regex-dollar-newline TC-004
+    with pytest.raises(ValueError):
+        compose().render(_hand_canonical("x\n"), "demo-qc", 1)
+
+
+def test_regex_dollar_newline_tc005_legal_pipeline_names_are_rendered():
+    # regex-dollar-newline TC-005
+    canonical = norm(qc_graph())
+    for name in ("a", "a" + "b" * 39):
+        assert compose().render(canonical, name, 1)["files"]["main.nf"]
+
+
+def test_regex_dollar_newline_tc006_legal_node_ids_are_accepted():
+    # regex-dollar-newline TC-006
+    for nid in ("a", "a" + "b1_" * 10 + "c"):
+        assert len(nid) <= 32
+        norm({"nodes": [node(nid, "fastqc")]})
+    assert len("a" + "b1_" * 10 + "c") == 32
+
+
+def test_regex_dollar_newline_tc007_legal_param_keys_are_accepted():
+    # regex-dollar-newline TC-007
+    for key in ("ext.args", "ext.prefix"):
+        norm({"nodes": [node("qc", "fastqc", params={key: "-q"})]})
+
+
+def test_regex_dollar_newline_tc008_legal_output_names_pass_the_ident_check():
+    # regex-dollar-newline TC-008 (the channel is not in the catalogue, so the later step may refuse it, but not with the ident message)
+    for out in ("x", "out_1"):
+        try:
+            compose().render(_hand_canonical(out), "demo-qc", 1)
+        except ValueError as e:
+            raise AssertionError("legal output name %r refused: %s" % (out, e))
+
+
+def test_regex_dollar_newline_tc050_old_refused_shapes_stay_refused():
+    # regex-dollar-newline TC-050
+    canonical = norm(qc_graph())
+    for bad in ("a" * 41, "ABC"):
+        with pytest.raises(ValueError):
+            compose().render(canonical, bad, 1)
+    assert "a" * 33 in refused({"nodes": [node("a" * 33, "fastqc")]})
