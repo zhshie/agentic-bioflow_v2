@@ -801,6 +801,20 @@ The automatic tests use a fake `az` runner and a fake `which`; they call no netw
 4. **TC-131: the reviewer, scope.** Run `git diff --name-only` against the base: only the files in the plan's file list, the existing tests that the rulings list, and the tests recorded in the ledger. No web file, nothing in `abf_launch/`, no `gcb_preflight.py`, `aws_preflight.py`, `launch.py`, `cloud_store.py` or `clean.py`.
 5. **TC-132: the reviewer, existing assertions.** Run `git diff` on each existing test file: the only changes are Azure added to a set, a count or a document line, Azure moved out of the unsupported list, `eleven` turned `ten`, and `azbatch-platform` swapped for a type that is still unsupported. No assertion is deleted or loosened, and nothing about AWS, Google or Slurm changed.
 
+## Launching on Azure Batch (azure-launch): the maintainer and the reviewer check
+
+The automatic tests use fakes for the program runner, the detached start and the signal; they start nothing and touch no network. The steps below start a real Nextflow head process and 會花錢、需維護者同意: set a budget and an alert in the Azure account first, and do not run them without the maintainer's yes.
+
+1. **The platform host (WSL).** Check: `java -version` says 17 or newer, `nextflow -version` and `az --version` answer, `storage_root` is set in `config/env.yaml`, and the credential file is where `ABF_STATION_AZURE_CREDENTIALS` points, mode 600.
+2. **The pool, on the Azure Portal.** Check: the pool is `dockerCompatible`, its task slots equal the cores of the node, the storage account is in the region of the Batch account, and every process has a `container`. If Nextflow stops at once with a pool setting error or cannot find a container, stop and report it to the developer-agent: do not add any setting by hand.
+3. **Send the smallest run.** Put two or three tiny files in the container of `workDir` (with the az CLI), then `abf-launch ... --ce az1` with `az://` paths in the samplesheet. Check: the first paragraph of the screen says 由 Azure 向實驗室的 Azure 帳號收費; nothing starts until you answer y. Also check that the head process passes Azure authentication; if it reports an authentication failure (Nextflow did not read the key variables), write it in `specs/azure-launch/ledger.md` (the ledger) and tell the developer-agent: do not change how the credentials are passed by hand.
+4. **After y.** Check: `已啟動：主控程序編號（pid）...`; `ls <storage_root>/_azure_runs/<run>` shows `head.pid` and `head.out`; the Azure Portal shows Batch jobs; when it ends, `az://<container>/runs/<run>/results` has the output.
+5. **Cancel one.** Send another run and cancel it with `abf-launch cancel <run>` after answering y. Check: whether the Batch jobs stop by themselves after the SIGTERM. If they do not, write it in `specs/azure-launch/ledger.md` (the ledger) and tell the developer-agent; do **not** add an `az batch job terminate` by hand into the code.
+6. **Search for the keys.** In `platform.db`, `abf-platform ce show az1`, the launch screen, the logs, `head.sh` and the Azure config file, search for any piece of the two keys and for the path of the credential file. Check: nothing is found.
+7. **Four facts to write down in the ledger.** Whether `az batch pool show` works with the key variables alone, whether a pool whose task slots differ from its cores is accepted, what the Portal shows after a cancel, and whether `process.resourceLimits = [cpus: N]` in the Azure config is accepted by `azurebatch` (no unknown-setting error).
+
+**The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with the plan's file list: `azure_preflight.py`, `clean.py`, `put_upload.py`, `site.py`, `agent.py`, `cloud_cost.py`, `web*.py` and `abf_platform/cli.py` are untouched; no migration; no assertion was deleted, loosened or skipped.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in
@@ -834,6 +848,15 @@ The automatic tests use fakes for the `aws` program and never touch the network.
 3. **Expected.** The object appears at `s3://<workDir bucket>/uploads/<you>/<name>` with the same size, the answer says the staged copy was removed, and no key id or credential path appears in the answer or in the agent log.
 4. **Over the limit.** Try a file over 2 GB: the answer gives the `aws s3 cp ... --recursive` line and nothing is uploaded.
 
+## Uploading to Azure Batch (azure-upload): the maintainer checks by hand
+
+The automatic tests use fakes for the `az` program and never touch the network. A real upload writes to a real Blob container and **會花一點錢、先設好成本警示** (an Azure Cost Management budget alert); do not start it before the maintainer says go.
+
+1. **Environment.** An available Azure Batch environment (`azure1`), the credential file at `ABF_STATION_AZURE_CREDENTIALS` (mode 600), and `az --version` answering on the platform host.
+2. **File.** Stage one small file (about 10 MB) in your uploads folder and queue the upload for `azure1`.
+3. **Expected.** The blob appears at `az://<container of the workDir>/uploads/<you>/<name>`; check its size with `az storage blob show --account-name <account> --container-name <container> --name uploads/<you>/<name> --query properties.contentLength --output tsv --auth-mode key`, which equals the file; the answer says the staged copy was removed, and no key or credential path appears in the answer or in the agent log.
+4. **Over the limit.** Try a file over 2 GB: the answer gives the `az storage blob upload-batch` line and nothing is uploaded.
+
 ## Cleaning an AWS Batch work folder (aws-clean): the maintainer checks by hand
 
 The automatic tests use fakes for the `aws` program and never touch the network. A real clean deletes real objects from a real S3 bucket: do not start it before the maintainer says go, and only on a test bucket and a prefix that holds nothing you need. The real output format of `aws s3 ls --recursive` and `aws s3 rm --recursive` has not been seen by the tests (UNVERIFIED), so this step is also where it is checked.
@@ -843,3 +866,15 @@ The automatic tests use fakes for the `aws` program and never touch the network.
 3. **Expected.** Only the objects under `runs/r1/work/` are gone; `work2/` and `results/` are still there; the answer says 已刪除 and `work_cleaned_at` is recorded. List the prefix with the aws CLI yourself to see the real line format, and tell the developer if a line does not look like `date time size key`.
 4. **Run it again.** The prefix is empty: the answer says there was nothing to delete and nothing is removed.
 5. **Versioning.** If the test bucket has versioning on, check in the console that old versions are still there after the clean (the documents say they are, and they are still billed).
+
+## Cleaning an Azure Batch work folder (azure-clean): the maintainer checks by hand
+
+The automatic tests use fakes for the `az` program and never touch the network. A real clean deletes real blobs from a real storage account: do not start it before the maintainer says go, and only in a 測試用 container and a prefix that holds nothing you need. The real output of `az storage blob list --query "[].name" --output tsv` and of `az storage blob delete-batch` has not been seen by the tests (UNVERIFIED), so this step is also where it is checked.
+
+1. **Environment.** An available Azure Batch environment (`az1`), the credential file at `ABF_STATION_AZURE_CREDENTIALS` (mode 600), a finished run `r1` whose head process is gone, and a test prefix `az://<test container>/<sub>/runs/r1/work/` holding a few small blobs, plus a neighbour such as `runs/r1/work2/` and `runs/r1/results/`.
+2. **Ask and answer.** Open the clean request, read the screen (it names the prefix with a trailing slash, says results are untouched, mentions 軟刪除 and version control, shows no amount of money) and confirm.
+3. **Expected.** Only the blobs under `runs/r1/work/` are gone; `work2/` and `results/` are still there; the answer says 已刪除 and `work_cleaned_at` is recorded. List the prefix with the az CLI yourself (`az storage blob list --container-name <c> --prefix <sub>/runs/r1/work/ --num-results "*" --query "[].name" --output tsv --auth-mode key`) to see the real line format, and tell the developer if a line is not a plain blob name. Check that `--num-results "*"` returned every blob and not the first 5000 only.
+4. **Run it again.** The prefix is empty: the answer says there was nothing to delete and nothing is removed.
+5. **Soft delete and versions.** If the storage account has blob soft delete or versioning on, check in the portal that deleted blobs and old versions are still there after the clean (the documents say they are).
+6. **Wildcard.** Check that `delete-batch --pattern "<prefix>*"` really matches across `/` on your account (blobs two folders deep must go), and that it did not touch `work2/`.
+

@@ -320,7 +320,7 @@ The question, the screen and the yes are the ones of a Slurm launch: `abf-launch
 
 ### AWS Batch
 
-An `awsbatch-platform` environment (aws-ce-type) is served the way a Google Cloud Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused, even when only one agent is online). The people who use AWS install nothing. It can be **created, checked, launched and cancelled** (see "Launching on AWS Batch" below); a listing, a record fetch, a task log, a clean and an upload are refused in plain words (尚未支援), and the automatic choice of an environment never picks it: a launch on it needs its name (`--ce aws1`), so nothing that costs money is chosen for you. `ce primary aws1` still works once it is `available`, but the automatic choice skips it.
+An `awsbatch-platform` environment (aws-ce-type) is served the way a Google Cloud Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused, even when only one agent is online). The people who use AWS install nothing. It can be **created, checked, launched and cancelled** (see "Launching on AWS Batch" below); a listing, a record fetch, a task log and a clean are refused in plain words (尚未支援); an upload is queued for it (see "Uploading to Azure Batch" below), and the automatic choice of an environment never picks it: a launch on it needs its name (`--ce aws1`), so nothing that costs money is chosen for you. `ce primary aws1` still works once it is `available`, but the automatic choice skips it.
 
 | Key | Rule |
 |---|---|
@@ -424,7 +424,7 @@ Fourteen tools. Nine are read-only (`readOnlyHint`): `list_runs`, `get_run`, `li
 
 ### Azure Batch
 
-An `azbatch-platform` environment (azure-ce-type) is served the way an AWS Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused). The people who use Azure install nothing. It can be **created and checked** only; a launch, a listing, a record fetch, a task log, a clean and an upload are all refused in plain words (尚未支援送出；下一步 azure-launch), and the automatic choice of an environment never picks it.
+An `azbatch-platform` environment (azure-ce-type) is served the way an AWS Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused). The people who use Azure install nothing. It can be **created, checked, launched, cancelled, uploaded to and cleaned** (see "Launching on Azure Batch" and "Cleaning a finished run's work folder"); a listing, a record fetch and a task log are refused in plain words (尚未支援), and the automatic choice of an environment never picks it: a launch on it needs its name (`--ce azure1`), so nothing that costs money is chosen for you.
 
 | Key | Rule |
 |---|---|
@@ -433,7 +433,7 @@ An `azbatch-platform` environment (azure-ce-type) is served the way an AWS Batch
 | `storageAccountName` | required; the storage account, 3 to 24 lower-case letters and digits, such as `labstore` (`--storage-account`) |
 | `workDir` | required; `az://<container>/<folder>` with a folder, such as `az://lab-container/work`; the container 3 to 63 characters of lower-case letters, digits and `-`; no `..`; a trailing slash is dropped |
 | `pool` | required; the id of a pool that **already exists**, such as `lab-pool` (`--pool`). The operator creates it beforehand; this slice creates no pool |
-| `spot` | optional true or false (`--spot`, `--no-spot`); stored only, it maps to Nextflow `lowPriority` when a launch is built later |
+| `spot` | optional true or false (`--spot`, `--no-spot`); stored only, as a note: a launch writes nothing for it, because low-priority nodes are decided when the pool is created (`lowPriority`) |
 | `maxvCpus` | optional whole number 1 to 10000 |
 | `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
 
@@ -458,11 +458,56 @@ storage_account_key = <the storage account key>
 
 **預檢不計費 (the preflight costs nothing):** it only reads. It asks for one pool's state and one container's existence; it creates no pool (creates no pool, no job, writes no blob). Each `az` call is limited to 30 seconds; a timeout fails that one check. The keys are handed to `az` in the environment of that one call, with an empty config folder of its own that is deleted afterwards, never in the command line; the agent's own `AZURE_*` and `ABF_*` variables are not passed on.
 
+### Uploading to Azure Batch
+
+An Azure Batch environment takes the same file upload as the other two cloud types, as a `put_upload` job for the agent on the platform host. The file lands at `az://<container of the workDir>/uploads/<you>/<name>`, always inside your own prefix, never inside the workDir folder. The agent judges the destination, the owner, the size (1 byte to 2 GB) and the staged file again, writes it with `az storage blob upload --file` (the key goes through the environment of that one call, never through an argument, a file or a log), asks the blob for its size with `az storage blob show`, and removes the staged copy only when the two sizes are equal. A size it could not read leaves the copy in place and says so. A file over 2 GB is not taken: the answer gives an `az storage blob upload-batch` line to run on your own computer with your own Azure login; the platform never uploads it for you. A dataset registered with this environment as its destination holds `az://` locations only.
+
+網頁入口尚未接上：目前只有動作層與站台代理備好，沒有網頁按鈕、MCP 工具或指令可以按。版本控制或軟刪除開著時，覆寫同名檔會留下舊版本、仍收費；平台不會刪除 Blob，也不會替容器設規則。No migration was needed.
+
+### Launching on Azure Batch
+
+**Who runs what.** The head process of Nextflow runs on the platform host, started by the station agent that runs there; the compute is done by tasks of an Azure Batch **pool that already exists** (`process.executor = 'azurebatch'`). Nothing runs on the cluster you use for Slurm and nothing is installed by the people who launch. As for AWS Batch, nothing is written or started before the person who launched says y, and the agent builds the same files again from its own settings and refuses a bundle that is not identical.
+
+**What the platform host needs.** Java 17 or newer, Nextflow, the az CLI (the Azure command line, used by the preflight), a `storage_root` in `config/env.yaml` (the run folders go to `<storage_root>/_azure_runs/<run>`), and the credential file described above (the agent's own setting, found at `ABF_STATION_AZURE_CREDENTIALS`, mode 600). The host must be Linux or WSL. The two keys of that file are put into the environment of the head process only (`AZURE_BATCH_ACCOUNT_KEY` and `AZURE_STORAGE_ACCOUNT_KEY`, or `AZURE_STORAGE_SAS_TOKEN` when the file holds a sas token; a leading `?` is dropped). They are never in a file, an argument, an answer, a log or the database.
+
+**What the pool must be, before the first launch.** The operator creates the pool; the platform never does. Check these on the Azure Portal (the pool's page of the Batch account):
+
+| Needed | If it is not so |
+|---|---|
+| a pool with `dockerCompatible` (a container-capable image, such as a Batch container image) | tasks fail at once because the container cannot start |
+| task slots per node equal to the cores of the node | too few tasks run at the same time, or a node is over-booked |
+| the storage account in the same region as the Batch account | slow staging and cross-region transfer charges |
+| every process of the pipeline has a `container` | a task without one cannot run on the pool |
+
+**The samplesheet.** Every path cell must be an `az://` URL in the same container as `workDir` (for example `az://lab-container/x.fastq.gz`). Putting files there from the platform is a later feature: put them in the container yourself, with the az CLI or azcopy. A cell that is anything else is refused with that advice.
+
+**The files.** The bundle has five files: `samplesheet.csv`, `params.yaml`, `nextflow.config` (your own text, with the same overwrite block as the other types), the Azure config file and `head.sh`. The Azure config file has exactly these lines, built from the environment:
+
+| Key | Value |
+|---|---|
+| `process.executor` | `'azurebatch'` |
+| `process.queue` | the environment's `pool` |
+| `workDir` | `<workDir>/runs/<run>/work` |
+| `azure.batch.accountName` | the environment's `batchAccountName` |
+| `azure.batch.location` | the environment's `location` |
+| `azure.storage.accountName` | the environment's `storageAccountName` |
+| `azure.batch.allowPoolCreation` | `false`, always: the platform never lets Nextflow create a pool |
+| `azure.batch.autoPoolMode` | `false`, always |
+| `process.resourceLimits` | `[cpus: N]`, only when `maxvCpus` is set; this is a **per-task** cap, one task asks for at most N cpus, it is not a limit on the total of the pool |
+
+The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: low-priority nodes are decided when the pool is created, and the screen says so. No key is written into any file; the first line of the Azure config file says they come from environment variables.
+
+**Billing.** The first paragraph of the screen before the y says, in one fixed sentence, 由 Azure 向實驗室的 Azure 帳號收費；本系統目前沒有費用預估與上限. Read the amount in Azure's own bill and set a budget alert in Azure; the platform shows no amount.
+
+**Cancel.** The agent finds the head process by the number in `head.pid`, checks that it is still the same program, owned by the same user, with the same `-name`, started in that run's folder, and sends it exactly one SIGTERM. Nothing more is promised: after a cancel open the Azure Portal, the Batch account page, and check the jobs and the pool; anything that did not stop you clean up yourself, and the billing runs from the start of the task to its real stop.
+
+**Not yet.** A resume or a relaunch of an Azure Batch run, cost estimates, listing files, reading Nextflow's records back and reading a task log are refused with 尚未支援. The result field `slurm_job_id` holds the head process number (pid); no migration was needed.
+
 A record made before this type was checked (status `unsupported`, with the old keys `region` and `vmType`) is still listed and shown, but it cannot be checked or updated: the message says `請刪除後重建這個計算環境`. Delete it and create it again.
 
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch and AWS Batch can run; Azure Batch can be created and checked; the other ten types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch and AWS Batch can run; Azure Batch can be created and checked; the other ten types can be modelled only. The other ten are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only. The other ten are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -473,7 +518,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `moab-platform` | Moab | modelled only |
 | `awsbatch-platform` | AWS Batch | checked and launched on the platform host (upload, clean, resume: not yet) |
 | `awscloud-platform` | AWS Cloud | modelled only |
-| `azbatch-platform` | Azure Batch | checked on the platform host (launch: not yet) |
+| `azbatch-platform` | Azure Batch | checked, launched and cleaned on the platform host (resume: not yet) |
 | `azcloud-platform` | Azure Cloud | modelled only |
 | `googlebatch-platform` | Google Cloud Batch | Slurm-like confirmed launch and cancel on the platform host (resume: not yet) |
 | `googlecloud-platform` | Google Cloud | modelled only |
@@ -532,9 +577,9 @@ Over MCP the tool `forget` (argument `run_name`) is only for the owner: a run th
 
 When a run you launched from this platform ends well (the receiver gets `complete` with `workflow.success` true and the run index says `succeeded`), the platform writes one request for you: "clean the work folder of this run". The request is only a question. It is `clean_work`, pending, and it lives 7 days. Nothing is queued and nothing is deleted until you, the run's owner, open the confirmation page (`/c/<id>`, the board shows a notice with the link), read what will go and press 確認刪除 ("Confirm delete"): the work folder goes only after your yes. There is no timer, no worker and no policy that deletes on its own, and a request that lapses is not offered again.
 
-- **Which folder.** Only the `work` folder of that one run, the intermediate files of every task. On Slurm it is `<run folder>/work`, where the run folder is the one in the hand-off record (a resumed attempt goes on in the first launch's folder, so that is the folder). On Google Batch and on AWS Batch it is the prefix `<workDir>/runs/<run>/work/` in the bucket (on AWS Batch a `workDir` with a sub folder is written into the prefix as it is). `results`, `rawdata`, `analysis`, the run folder itself, `.nextflow*` and `head.sh` are not touched, and there is no option to choose anything else.
+- **Which folder.** Only the `work` folder of that one run, the intermediate files of every task. On Slurm it is `<run folder>/work`, where the run folder is the one in the hand-off record (a resumed attempt goes on in the first launch's folder, so that is the folder). On Google Batch and on AWS Batch it is the prefix `<workDir>/runs/<run>/work/` in the bucket (on AWS Batch a `workDir` with a sub folder is written into the prefix as it is). On Azure Batch it is the blobs under `az://<container>/<sub>/runs/<run>/work/` (the sub folder of the `workDir` stays in the prefix). `results`, `rawdata`, `analysis`, the run folder itself, `.nextflow*` and `head.sh` are not touched, and there is no option to choose anything else.
 - **Who deletes.** The agent. The platform itself does not start programs: it only writes the request, and after your yes it queues the job `clean_work` that the agent runs (sections 6 and 9). The agent works the path out again and refuses a different one. On Slurm it also refuses while a job of yours is still running in that folder, and when a link in `results` points into `work` (the usual cause is `publishDir` in link mode: deleting `work` would break the results; the agent answers with exit code 17 and changes nothing). On Google Batch it lists the prefix first and deletes the objects under it once; the trailing slash keeps `work2` and `work-keep` beside it safe. On AWS Batch the agent also needs the head process of the run gone and the read-only preflight passed, then lists the prefix once (`aws s3 ls --recursive`), refuses if any listed object lies outside it, and runs exactly one `aws s3 rm --recursive` of that one URL, with no second try; if that fails or times out the answer says part of it may be gone and the request can be made again.
-- **After it.** The run cannot be resumed (`-resume` needs `work`); to compute it again send it as a new analysis. On Google Batch the bucket's own soft delete may keep the objects for a while: a new bucket has 7 days of soft delete by default and they can be restored in that time, and object versioning, if it is on, is removed too (`--recursive` implies all versions). Whether either is on is your bucket's setting; the screen says so and shows no amount of money. On AWS Batch, bucket 若開了版本控管，清理後舊版本仍佔空間、仍收費 (with versioning on, old versions stay after the clean and are still billed); the cleaning does not remove them.
+- **After it.** The run cannot be resumed (`-resume` needs `work`); to compute it again send it as a new analysis. On Google Batch the bucket's own soft delete may keep the objects for a while: a new bucket has 7 days of soft delete by default and they can be restored in that time, and object versioning, if it is on, is removed too (`--recursive` implies all versions). Whether either is on is your bucket's setting; the screen says so and shows no amount of money. On AWS Batch, bucket 若開了版本控管，清理後舊版本仍佔空間、仍收費 (with versioning on, old versions stay after the clean and are still billed); the cleaning does not remove them. On Azure Batch the agent also needs the head process gone and the read-only preflight passed, lists the prefix once (`az storage blob list --prefix <sub>/runs/<run>/work/`, the slash at the end keeps `work2` and `work-keep` safe), refuses if any listed blob lies outside it or if the sub folder or run name holds a wildcard (`* ? [ ]`), and runs exactly one `az storage blob delete-batch` with that prefix; a failed delete is not tried again. 儲存體帳戶若開了軟刪除或版本控制，舊版本與已刪項目在保留期內仍佔空間；the cleaning does not remove them, and the screen says so.
 - **When it is offered, and when not.** Only at the `complete` of a run that succeeded, to the user who launched it. A failed, aborted or lost run is not offered, because its `work` is what a resume needs. A run with no owner (sent from a bare terminal) is not supported: there is nobody who can press the button on the confirmation page. A run that succeeded before this feature is not offered either, since nothing triggers it. A full list (50 open clean-up requests), a changed `workDir` of the environment since the run was sent, an environment that no longer takes the job, or a launch the owner has `forget`-ed also mean no request. All of this is skipped quietly and never changes the answer to Nextflow.
 
 ### Resume and relaunch (spec 009e)

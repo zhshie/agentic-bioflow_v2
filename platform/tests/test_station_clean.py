@@ -585,7 +585,7 @@ def test_tc073_the_source_reaches_the_site_only_through_ctx_site_call():
     for fn in (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
         if any(isinstance(n, ast.Attribute) and n.attr == "run_fixed" or isinstance(n, ast.Name) and n.id == "run_fixed" for n in ast.walk(fn)):
             holders.add(fn.name)
-    assert holders == {"_clean_gcb", "_clean_aws", "_head_gone"}, holders
+    assert holders == {"_clean_gcb", "_clean_aws", "_clean_azure", "_head_gone"}, holders
     outside = [n for n in tree.body if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and "run_fixed" in ast.unparse(n)]
     assert outside == []
 

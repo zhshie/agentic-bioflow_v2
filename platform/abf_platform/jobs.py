@@ -110,12 +110,14 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
     if row["platform"] in compute_envs.CLOUD_JOB_KINDS and kind not in compute_envs.CLOUD_JOB_KINDS[row["platform"]]:
         if row["platform"] == compute_envs.AWS:
             raise JobRefused("%s is an AWS Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
+        if row["platform"] == compute_envs.AZURE:
+            raise JobRefused("%s is an Azure Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
         raise JobRefused("%s is a Google Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
     if row["platform"] in compute_envs.CHECK_ONLY_TYPES and kind != "preflight":
         raise JobRefused("%s is an Azure Batch environment: it is checked on the platform host, and launching on it is not built yet "
                          "(尚未支援送出；下一步 azure-launch)" % ce_name)
     if kind == "put_upload" and row["platform"] not in compute_envs.CLOUD_JOB_KINDS:
-        raise JobRefused("%s cannot hold cloud data: only a Google Batch or AWS Batch environment can (只有 Google Batch 或 AWS Batch 環境能放雲端資料)" % ce_name)
+        raise JobRefused("%s cannot hold cloud data: only a Google Batch, AWS Batch or Azure Batch environment can (只有 Google Batch、AWS Batch 或 Azure Batch 環境能放雲端資料)" % ce_name)
     if status == compute_envs.UNSUPPORTED:
         raise JobRefused("%s is a %s environment: %s" % (ce_name, compute_envs.KINDS.get(row["platform"], "?"),
                                                           compute_envs.NOT_SUPPORTED_MESSAGE))
@@ -231,6 +233,10 @@ def _uploaded_file(uploads_dir, owner_name, filename, stat, ce_view):
         raise JobRefused("網頁一個檔案最多收 2 GB，這個檔案太大。請在你自己的電腦上、用你自己的 AWS 登入，跑這一行指令上傳：%s ；平台不會代你上傳 "
                          "(the web takes at most 2 GB per file; run this command on your own computer with your own AWS login; the platform does not upload it for you)"
                          % cloud_store.big_file_command(ce_view, owner_name, "s3"))
+    if size > cloud_store.UPLOAD_LIMIT and cloud_store.workdir_scheme(ce_view) == "az":
+        raise JobRefused("網頁一個檔案最多收 2 GB，這個檔案太大。請在你自己的電腦上、用你自己的 Azure 登入，跑這一行指令上傳：%s ；平台不會代你上傳 "
+                         "(the web takes at most 2 GB per file; run this command on your own computer with your own Azure login; the platform does not upload it for you)"
+                         % cloud_store.big_file_command(ce_view, owner_name, "az"))
     if size > cloud_store.UPLOAD_LIMIT:
         raise JobRefused("網頁一個檔案最多收 2 GB，這個檔案太大。請在你的電腦上跑這一行指令上傳：%s "
                          "(the web takes at most 2 GB per file; run this command on your computer)"
