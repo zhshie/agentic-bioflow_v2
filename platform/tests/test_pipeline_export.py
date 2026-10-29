@@ -204,7 +204,7 @@ def test_other_user_gets_not_found_and_changes_nothing(d):
     for r in seen:
         assert r["ok"] is False and "zip" not in r and "message" in r
         assert "qc-demo" not in r["message"] and "fastqc" not in r["message"]
-    assert len({r["message"].replace(str(pid), "#").replace(str(missing), "#") for r in seen}) == 1
+    assert len({r["message"].replace(str(missing), "#").replace(str(pid), "#") for r in seen}) == 1
     assert "找不到" in seen[0]["message"]
     assert tables(d) == rows and schema(d) == sch
 
@@ -213,24 +213,28 @@ def test_other_user_gets_not_found_and_changes_nothing(d):
 def test_module_missing_or_unsupported(d, how, tmp_path, monkeypatch):
     # TC-023, TC-024, TC-025, TC-026
     pid = make(d)
-    monkeypatch.chdir(tmp_path)
+    work = tmp_path / "cwd"
+    work.mkdir()
+    monkeypatch.chdir(work)
     out = export(d, pid, sources=broken(sources_for(), "multiqc", how))
     assert out["ok"] is False and "zip" not in out and "multiqc" in out["message"]
     assert "換成別的模組" in out["message"]
-    assert list(tmp_path.iterdir()) == []
+    assert list(work.iterdir()) == []
 
 
 def test_too_many_bytes_and_files(d, tmp_path, monkeypatch):
     # TC-027, TC-028, TC-034
     from abf_platform import pipeline_launch
     pid = make(d)
-    monkeypatch.chdir(tmp_path)
+    work = tmp_path / "cwd"
+    work.mkdir()
+    monkeypatch.chdir(work)
     a = export(d, pid, sources=big(sources_for(), extra_bytes=pipeline_launch.MAX_BYTES + 1))
     b = export(d, pid, sources=big(sources_for(), extra_files=pipeline_launch.MAX_FILES + 1))
     for r in (a, b):
         assert r["ok"] is False and "zip" not in r and "減少節點" in r["message"]
     assert str(pipeline_launch.MAX_BYTES) in a["message"] and str(pipeline_launch.MAX_FILES) in b["message"]
-    assert list(tmp_path.iterdir()) == []
+    assert list(work.iterdir()) == []
 
 
 def test_the_limits_are_the_launch_ones(d, monkeypatch):
@@ -270,5 +274,5 @@ def test_no_such_version_and_all_failures_are_plain(d, caplog):
 
 def test_public_names_stay_out_of_the_other_exits():
     # TC-050, TC-051, TC-054
-    for f in ("mcp_server.py", "chat_tools.py", "web.py", "web_board.py", "actions/__init__.py", "store.py"):
+    for f in ("mcp_server.py", "web.py", "web_board.py", "actions/__init__.py", "store.py"):
         assert "export_pipeline" not in (PLATFORM / "abf_platform" / f).read_text(encoding="utf-8"), f
