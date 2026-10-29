@@ -298,12 +298,12 @@ def test_tc041_tc042_small_amounts(w):
 
 def test_tc043_tc044_footnote(w, tmp_path, monkeypatch):
     two_runs(w)
-    note = "雲端費用以美元顯示，不換算新台幣；國網以 SU 計。數字是依執行紀錄估算，略低於實際帳單。"
+    note = "雲端費用以美元顯示，不換算新台幣；國網以 SU 計。數字依執行紀錄估算，略低於實際帳單。"
     mid = plain(pane(get(w, "ann").text, "middle"))
-    assert note + "SU 換美元依 2026-10-13 匯率約略換算，不是帳單。" in mid                         # TC-043
+    assert note + "SU 以 2026-10-13 匯率概算為美元，並非帳單金額。" in mid                         # TC-043
     data = real_rates()
     set_rates(tmp_path, monkeypatch, usd_twd=dict(data["usd_twd"], as_of="2026-11-02"))
-    assert "SU 換美元依 2026-11-02 匯率約略換算，不是帳單。" in plain(pane(get(w, "ann").text, "middle"))   # TC-044
+    assert "SU 以 2026-11-02 匯率概算為美元，並非帳單金額。" in plain(pane(get(w, "ann").text, "middle"))   # TC-044
 
 
 def test_tc045_to_049_english(w):
@@ -403,12 +403,12 @@ def test_tc058_tc059_zero(w):
 def test_tc061_tc062_empty_and_unreadable(w, monkeypatch):
     w.user("ann")
     r = get(w, "ann")
-    assert r.status_code == 200 and "— 這個月還沒有分析" in plain(pane(r.text, "middle")) and table_rows(r.text) == []
+    assert r.status_code == 200 and "— 本月尚無分析" in plain(pane(r.text, "middle")) and table_rows(r.text) == []
     assert "約 US$" not in r.text.split("</style>")[1]
     from abf_platform import actions, web_cost
     monkeypatch.setattr(actions, "my_usage", lambda *a, **k: web_cost.empty_usage(k.get("month") or "2026-10"))
     r = get(w, "ann")
-    assert r.status_code == 200 and "— 這個月還沒有分析" in plain(pane(r.text, "middle"))
+    assert r.status_code == 200 and "— 本月尚無分析" in plain(pane(r.text, "middle"))
 
 
 # ---- US4: the run page -------------------------------------------------------------------------------------------------------
@@ -486,7 +486,7 @@ def test_tc077_other_user_sees_not_found(w):
     gone = login_get(w, "bob", "/?run=deadbeefdeadbeef")                      # a run that is not there at all
     assert r.status_code == gone.status_code == 404, (r.status_code, gone.status_code)
     assert r.text == gone.text                                                # the very same 404 page, nothing to tell them apart
-    assert "找不到這個 run" in r.text
+    assert "找不到該次分析" in r.text
     assert "5.00 SU" not in r.text and "約 US$" not in r.text.split("</style>")[1]
 
 
