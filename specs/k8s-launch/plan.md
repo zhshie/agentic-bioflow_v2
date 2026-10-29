@@ -228,3 +228,9 @@ source: memory/PLAN-abf-v3-replan-2026-10.md 第 169 行（C-5「Azure Batch／K
 - `test_settings_pick_installed.py:844` `test_the_pinned_cloud_types`：**選 (a)**。斷言改成 `tuple(web_settings.CLOUD_TYPES) == tuple(t for t in compute_envs.PLATFORM_HOST_TYPES if t != "K8S") == CLOUD_PLATFORMS`（K8S 的實際鍵名照程式），算 12-2 的值替換，ledger 列舊→新。`web_settings.py` 仍不准改：設定頁的雲端 Batch 分支不該收 Kubernetes。
 - 範圍外改動事後追認：`abf_station/site.py` 的 `run_fixed` 可選 stdin 參數（12-4 要求 stdin manifest 的必要條件）、`launch._snapshot_ce` 的 K8s 分支、`cli.py` 只改「已啟動」一行。
 - 交件前必須在 HEAD 重跑一次完整套件並貼結果；聚焦測試不能代替。
+
+### 補充裁決 12-12（2026-10-30 01:5x，回應閱卷 UNVERIFIED）
+- **TC-126 改字面**：代理端只拿得到內容包，沒有第二個命名空間來源，原字面做不到。定案＝代理端擋格式不合法的命名空間（現有 `Bad_NS` 測試即可）；命名空間一致性由兩點保障：①平台組取消內容包時，命名空間取自該次送出時存下的紀錄，不取使用者輸入；②送出前確認畫面顯示命名空間。executor 要在 ledger 指出①的程式位置（檔:行）；若①目前不成立，補一條測試讓它成立（只動取消內容包的組法）。verifier 依本條判 TC-126，不再要求字面的「與環境不一致」比對。
+- **TC-160**：executor 在 ledger 補貼「其他四種型別（Slurm／GCB／AWS／Azure）在 v3 與本分支的輸出比對」，用同一支測試指令在兩個 commit 各跑一次，貼摘要行；不准只引用 verifier 的 diff 核對。
+- TC-171～TC-180（真叢集實跑）照原計畫不在完成標準內，閱卷記 UNVERIFIED(manual) 不算失敗；由 developer-agent 列進每日清單請維護者決定（C 級，花錢）。
+- 裁決 1「head 以 Pod 在叢集內跑」維持；已列每日清單告知維護者。
