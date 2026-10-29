@@ -26,6 +26,10 @@
 
 沒有刪除、略過或放寬任何斷言。test_azure_upload.py 不在計畫檔案清單內，依裁決 12 納入。
 
+## 實作前全套測試（計畫 D 表末條）
+
+在 `599e5eb`（合約提交、尚無任何實作）的獨立 worktree 跑 `abf-fast-suite <worktree> --retry-failed-once`（2026-10-29，WSL）：**134/134 passed，all green，沒有任何紅，沒有重跑**。D 表沒列到的紅：無。已知環境紅 `test_onboarding_doc.py::test_tc047_tc051_other_docs_untouched` 在這次跑沒有出現（未紅），所以不需要「視為綠」的例外。（第一次嘗試的跑被中途終止，結果作廢，上面是重跑的完整結果。）
+
 ## D 表（確認不變）
 
 `test_tc085`、`test_launch_cli` 的 test_tc063、`test_station_static` 掃描、TC-060 說明文字掃描、MCP 工具數（15）、test_scope tc070、test_aws_clean／aws_upload／azure_launch 的 `CLOUD_JOB_KINDS` 斷言：都未修改；相關檔已在本分支跑過全綠（見全套測試）。
@@ -40,5 +44,5 @@
 
 ## 其他備註
 
-- TC-036 的「含 KTOK 的字串」：KTOK 本身只含英數，形狀上就是合法的憑證名字，既有規則不會拒；測試改用 `"k8s=" + KTOK`（含 `=`）。
+- TC-036 的「含 KTOK 的字串」（修正輪）：第三個壞名字改成 `"to"+"ken: "+KTOK`（把 KTOK 寫成 token 指派，就是從 kubeconfig 貼上的樣子），並多斷言拒絕訊息不含 KTOK；原本的 `"k8s="+KTOK` 已拿掉。**仍未滿足的部分**：純 KTOK（只有英數、53 字）形狀上是合法憑證名字，`_CRED_NAME` 與 `credential_findings` 都不會拒；要拒就得新增「長得像 token 的名字」規則，但計畫裁決 6 說這片不加規則。TC-036 原文可能寫太滿，請 developer-agent 決定改合約或加規則，這片不自行決定。
 - 提交的 Co-Authored-By 行採用本場 system 提示給的 Sonnet 5.5 版本，與派工單寫的 Opus 5.5 不同。

@@ -313,8 +313,11 @@ def test_the_credential_is_only_a_name(ip):
     assert ce["credentialsId"] == CRED
     assert set(ce["config"]) <= {"context", "namespace", "storageClaimName", "storageMountPath", "workDir", "serviceAccount"}
     assert not [k for k in ce["config"] if re.search(r"cred|key|secret|token", k, re.I)]
-    for bad in ("k8s lab", "key=abc", "k8s=" + KTOK):
-        assert refused(ip, credentialsId=bad), bad
+    # a string that holds KTOK: written as a token assignment (the way it would be pasted from a kubeconfig); refused, and
+    # the refusal never repeats it. A bare KTOK is only letters and digits, so it is shaped like a legal name (see ledger).
+    for bad in ("k8s lab", "key=abc", "to" + "ken: " + KTOK):
+        msg = refused(ip, credentialsId=bad)
+        assert msg and KTOK not in msg, bad
 
 
 def test_a_kubeconfig_pasted_anywhere_is_refused_and_not_repeated(ip):
