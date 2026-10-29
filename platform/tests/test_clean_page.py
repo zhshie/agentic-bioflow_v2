@@ -456,7 +456,8 @@ def test_no_clean_request_is_made_by_looking_around(w):
 
 def _words_of(w, rid):
     c = logged_in(w, "ann")
-    return re.sub(r"<style>.*?</style>", "", c.get("/c/" + rid).text, flags=re.S) + notices(board(w, "ann").text)[0]
+    text = re.sub(r"<style>.*?</style>", "", c.get("/c/" + rid).text, flags=re.S) + notices(board(w, "ann").text)[0]
+    return re.sub(r"[0-9a-f]{32,}", "X", text)   # ids and CSRF tokens are random hex; a run of it can spell "fee"
 
 
 def _assert_no_fee_words(words):
