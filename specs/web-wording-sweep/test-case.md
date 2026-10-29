@@ -145,13 +145,13 @@ Language: 繁體中文; identifiers (TC-, FR-, US) and file paths stay as they a
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-083 | 「範圍：檔案」＋裁決 1、2、11、12 | 功能 | 比對 base 的檔案清單 | `git diff --stat` | 只含：`web_board.py`、`web.py`、`web_settings.py`、`web_cost.py`、`web_finished.py`、`web_upload.py`、`confirm.py`（僅 390 行）、新檔 `test_web_wording_sweep.py`、`test_web_guided_launch_2b.py`、計畫列的既有測試檔（含裁決 11 加的五個）、`DESIGN.md`、`specs/web-wording-sweep/` 下的文件 | 手動：閱卷者看 git diff |
+| TC-083 | 「範圍：檔案」＋裁決 1、2、11、12、14 | 功能 | 比對 base 的檔案清單 | `git diff --stat` | 只含：`web_board.py`、`web.py`、`web_settings.py`、`web_cost.py`、`web_finished.py`、`web_upload.py`、`confirm.py`（僅 390 行）、新檔 `test_web_wording_sweep.py`、`test_web_guided_launch_2b.py`、計畫列的既有測試檔（含裁決 11 加的五個與裁決 14 加的 `test_su_usd.py`、`test_oauth_review.py`）、`DESIGN.md`、`specs/web-wording-sweep/` 下的文件 | 手動：閱卷者看 git diff |
 | TC-084 | 「範圍」web.py；「不做」第 1 條 | 不在範圍 | 比對 base 的 `web.py` | 看 diff | 只有中文字面不同；路由、函式、邏輯、英文半句、雙語並列格式零改動 | 手動：閱卷者看 git diff |
 | TC-085 | 「範圍」web_board.py | 功能 | 比對 base 的 `web_board.py` | 看 diff | 只有 `STRINGS["zh"]` 的值不同；`GUIDED`、英文、鍵、函式零改動 | 手動：閱卷者看 git diff |
 | TC-086 | 「不做」第 1 條（不改版面與樣式） | 不在範圍 | 比對 base | 看 diff | 沒有樣式表、標籤結構、屬性的改動（純文字替換） | 手動：閱卷者看 git diff |
 | TC-087 | 目標「英文版不動」；測試 12 | 不在範圍 | 用同一組夾具，改前、改後各輸出全部頁面的 `?lang=en` HTML | 逐字比對 | 完全相同；ledger 貼證據 | 手動：閱卷者看 ledger 並抽查重跑 |
 | TC-088 | 「範圍」最後一點 | 功能 | 看既有測試檔的 diff | 逐條比對 | 只有期望字串改成新文；沒有刪斷言、沒有放寬、沒有跳過；ledger「Existing assertions that changed」逐條列檔:行、改前、改後、依據 | 手動：閱卷者看 git diff 與 ledger |
-| TC-089 | 裁決 11（不含三檔）；「範圍」（清單外的檔變紅要停下回報） | 功能 | 比對 base | 看 `test_aws_launch.py`、`test_azure_launch.py`、`test_gcb_launch.py` 與清單外的測試檔 | 這三檔與清單外的檔零改動；三檔仍綠 | 手動：閱卷者看 git diff；在閱卷時單檔重跑這三檔 |
+| TC-089 | 裁決 11（不含三檔）、14；「範圍」（清單外的檔變紅要停下回報） | 功能 | 比對 base | 看 `test_aws_launch.py`、`test_azure_launch.py`、`test_gcb_launch.py` 與清單外的測試檔 | 這三檔與清單外的檔零改動（裁決 14 的兩檔不算清單外，但只准改期望字串）；三檔仍綠 | 手動：閱卷者看 git diff；在閱卷時單檔重跑這三檔 |
 | TC-090 | 「環境事實」：`test_web_actions.py:408`、`test_web_board.py:322,965` | 功能 | 看這些斷言 | 比對 base | 「要你處理」「需要處理」及零星禁詞的斷言仍在，未被刪或放寬 | 手動：閱卷者看 git diff |
 | TC-091 | 「範圍」DESIGN.md | 功能 | 看 DESIGN.md「用字」一節末段 | 比對 base | 「Other screens … are not yet swept; that is the backlog item `web-wording-sweep`」已改為「已全部清掃（web-wording-sweep，10-29）」，並說明禁用詞由 `test_web_wording_sweep.py` 在每個頁面與每張中文字串表檢查 | 手動：閱卷者讀 DESIGN.md |
 | TC-092 | 「範圍」DESIGN.md | 功能 | 看同一節的禁用詞清單 | 比對 base | 清單補進新增的 13 個詞與獨立 `run`／`runs` | 手動：閱卷者讀 DESIGN.md |
