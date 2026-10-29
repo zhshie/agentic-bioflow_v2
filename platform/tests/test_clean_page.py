@@ -163,9 +163,10 @@ BASE_EXPIRED = {'expired-launch-zh': (200, 'c35c165714b5f908'), 'expired-cancel-
                 'expired-launch-en': (200, 'c35c165714b5f908'), 'expired-cancel-en': (200, '8451aff28a884534')}
 BASE_POST = {'pressed-launch': (200, 'ef1083638be3de88'), 'pressed-cancel': (200, '9c76dd8bc4a4c249'),
              'late-launch': (410, 'd2df3540d123bd63'), 'late-cancel': (410, 'd2df3540d123bd63')}
-BASE_BOARD = {'succeeded-zh': (200, 'd82849f963ffdcba'), 'succeeded-en': (200, 'db1a825c42eccccd'),
-              'failed-zh': (200, '6736cef89dbca3e7'), 'failed-en': (200, 'dc8af6b16e244499'),
-              'running-zh': (200, 'e206db91167a051a'), 'running-en': (200, '8ea9e9d26628a544')}
+# web-upload-page ruling 25: the left column's upload item is a link now, so the six board digests are the new ones (only that item differs)
+BASE_BOARD = {'succeeded-zh': (200, 'b900748476502f3d'), 'succeeded-en': (200, '870addd406492402'),
+              'failed-zh': (200, 'f5866fcf5bb0a339'), 'failed-en': (200, '918ba6c8db56e423'),
+              'running-zh': (200, 'f5b7e52afdb2ec69'), 'running-en': (200, '9c1d9195eacfbe23')}
 BASE_STYLE = '66b9a8e1a9c6f7d2'
 
 
