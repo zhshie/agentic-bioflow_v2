@@ -438,7 +438,7 @@ def test_tc063_no_delete_share_or_edit():
     m = ds()
     names = [n for n in dir(m) if not n.startswith("_") and callable(getattr(m, n)) and getattr(getattr(m, n), "__module__", "") == m.__name__]
     assert not [n for n in names if re.search(r"delete|remove|share|update|edit|rename|unregister", n)]
-    assert sorted(names) == ["check_web_upload", "draft_samplesheet", "get_dataset", "list_datasets", "pair_fastq", "register_dataset"]
+    assert sorted(names) == ["check_samplesheet", "check_web_upload", "draft_samplesheet", "get_dataset", "list_datasets", "pair_fastq", "register_dataset"]
 
 
 def test_tc064_other_sessions_files_are_untouched():

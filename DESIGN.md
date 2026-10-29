@@ -52,7 +52,8 @@ Buttons are fixed verbs only (上傳, 續跑, 重跑, 設定, 日誌, 打包, �
 1. **Home**: no separate page (ADR 0011). `/` opens an analysis as in the Skeleton; the left column is the list.
 2. **First use / Setup** (`#setup`): numbered disclosure steps: account ✓, access token ✓, compute environment (required: environment, site agent status, cluster account), AI key + Jev key (optional, browser only), create first project. Right column becomes a step guide (formal fields).
 3. **Project with no analysis**: one next step, "Upload raw data"; after upload the launch stage opens.
-4. **Upload data**: drop zone (≤ ~2 GB per file; large FASTQ via the AI and `push.sh`; files go through the site agent to the person's own site or cloud storage, platform keeps no copy); Create samplesheet (auto-pair R1/R2, columns from the chosen pipeline's `schema_input.json`, makes a new version); Uploaded data table with version, used by, checksum, updated.
+4. **Upload data**: drop zone (≤ ~2 GB per file; large FASTQ via the AI and `push.sh`; files go through the site agent to the person's own site or cloud storage; for cloud storage the platform host holds one staged copy until the size in the bucket matches, then it is deleted); Create samplesheet (auto-pair R1/R2, columns from the chosen pipeline's `schema_input.json`, makes a new version); Uploaded data table with version, used by, checksum, updated.
+   10-28 第一刀：表單上傳＋進度頁；拖放、依 schema 建表、已上傳資料表格留待後續
 5. **Launch stage**: guided walk, six numbered disclosures (done ✓ / current outlined / later); the order is the maintainer's (guided-launch-2d, 10-28): nothing that is not set up is offered, so there is no pre-check step:
    1 Analysis name (the one required box of the step) ·
    2 Compute environment (only environments whose status is `available`, site or cloud alike; with none: "No compute environment is available. Set one up on the settings page first." and a link to `/settings`, and no send button) ·
