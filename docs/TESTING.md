@@ -815,6 +815,19 @@ The automatic tests use fakes for the program runner, the detached start and the
 
 **The reviewer.** Run `git diff --name-only <base>...HEAD` and compare with the plan's file list: `azure_preflight.py`, `clean.py`, `put_upload.py`, `site.py`, `agent.py`, `cloud_cost.py`, `web*.py` and `abf_platform/cli.py` are untouched; no migration; no assertion was deleted, loosened or skipped.
 
+## Kubernetes environment (k8s-ce): the maintainer and the reviewer check
+
+The automatic tests use a fake `kubectl` runner and a fake `which`; they call no network and no real cluster. The steps below read a real cluster once. 預檢不計費 (the preflight costs nothing): it creates, changes and deletes nothing on the cluster. Four facts are unverified until this is done; if one turns out different, write it in `specs/k8s-ce/ledger.md` and report it to the developer-agent (回報), and do not change a check by hand.
+
+1. **TC-166: the maintainer prepares by hand, once.** Have a cluster with a namespace, a claim that is `Bound` with `ReadWriteMany`, and (optionally) a service account. Install `kubectl` on the platform host. Put the kubeconfig in `<agent deployment>/_personal/kubeconfig` (mode 600), or point `ABF_STATION_KUBECONFIG` at it.
+2. **TC-166: create the environment.** `abf-platform ce create --name k1 --platform k8s-platform --agent <agent> --credentials k8s-lab --context <context> --namespace <ns> --storage-claim <claim> --work-dir /workspace/work`. Check: all seven checks are shown; when all pass, `ce show k1` says `available`; neither `ce show` nor `platform.db` holds any piece of the kubeconfig.
+3. **TC-156 (first fact): `config get-contexts` offline.** Check that `kubectl config get-contexts -o name` answers with no network. If it does not, the `context` check fails: report it.
+4. **TC-157 (second fact): the shape of `accessModes`.** Check that `kubectl get pvc <claim> -o jsonpath={.spec.accessModes[*]}` prints the modes separated by spaces, and that `.status.phase` prints `Bound`.
+5. **TC-158 (third fact): `KUBECACHEDIR`.** Check that `kubectl` with an empty `KUBECACHEDIR` still works and writes only into that folder, which the agent removes afterwards.
+6. **TC-045 and TC-166 (fourth fact): least privilege.** Use a kubeconfig whose user may only `get` claims and service accounts, and check that the preflight still passes. Also check what the ledger says about the lines `client-certificate-data:` and `client-key-data:` pasted into a text field: the platform's existing rules may not catch them (recorded, no rule added).
+7. **TC-143: the reviewer, scope.** Run `git diff --name-only <base>...HEAD` and compare with the plan's file list: no web file, nothing in `abf_launch/`, no `gcb_preflight.py`, `aws_preflight.py`, `azure_preflight.py`, `launch.py`, `cloud_store.py` or `clean.py`; no migration.
+8. **TC-156: the reviewer, existing assertions.** Run `git diff` on each existing test file: the only changes are Kubernetes added to `CHECK_ONLY_TYPES` and `CHECKABLE`, Kubernetes moved out of the unsupported list (ten turned nine), and the document sentence. No assertion is deleted or loosened.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in
