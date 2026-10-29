@@ -669,6 +669,8 @@ def gcb_launch_screen(bundle, ce_name, cost=None):
               ("Spot", "是" if ce.get("spot") else "否")]
     if ce.get("maxvCpus") is not None:
         fields.append(("單一 task 的 cpus 上限", ce["maxvCpus"]))
+    if ce.get("maxMemoryGB") is not None:
+        fields.append(("單一 task 的記憶體上限（GB）", ce["maxMemoryGB"]))
     for label, value in fields:
         lines.append(terminal.pair(label, value))
     lines += _samplesheet_lines(bundle)
@@ -690,6 +692,8 @@ def aws_launch_screen(bundle, ce_name):
               ("Spot 備註", "%s（環境上寫的是 %s）" % (AWS_SPOT_NOTE, "是" if ce.get("spot") else "否"))]
     if ce.get("maxvCpus") is not None:
         fields.append(("單一 task 的 cpus 上限", ce["maxvCpus"]))
+    if ce.get("maxMemoryGB") is not None:
+        fields.append(("單一 task 的記憶體上限（GB）", ce["maxMemoryGB"]))
     for label, value in fields:
         lines.append(terminal.pair(label, value))
     lines += _samplesheet_lines(bundle)
@@ -712,6 +716,8 @@ def azure_launch_screen(bundle, ce_name):
               ("Spot 備註", "%s（環境上寫的是 %s）" % (AZURE_SPOT_NOTE, "是" if ce.get("spot") else "否"))]
     if ce.get("maxvCpus") is not None:
         fields.append(("單一 task 的 cpus 上限", ce["maxvCpus"]))
+    if ce.get("maxMemoryGB") is not None:
+        fields.append(("單一 task 的記憶體上限（GB）", ce["maxMemoryGB"]))
     for label, value in fields:
         lines.append(terminal.pair(label, value))
     lines += _samplesheet_lines(bundle)

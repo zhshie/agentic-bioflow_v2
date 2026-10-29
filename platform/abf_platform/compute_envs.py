@@ -315,7 +315,7 @@ def _check_site_keys(config):
 
 
 _GCB_CONFIG = _COMMON_CONFIG + ("project", "location", "spot", "bootDiskSize", "bootDiskImage", "serviceAccountEmail",
-                                "network", "subnetwork", "usePrivateAddress", "labels", "maxvCpus")
+                                "network", "subnetwork", "usePrivateAddress", "labels", "maxvCpus", "maxMemoryGB")
 _GCB_PROJECT = re.compile(r"^[a-z][a-z0-9-]*[a-z0-9]\Z")
 _GCB_LOCATION = re.compile(r"^[a-z]+-[a-z]+[0-9]+\Z")
 _GCB_BUCKET = re.compile(r"^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]\Z")
@@ -405,11 +405,14 @@ def _check_gcb(config, agent):
     v = config.get("maxvCpus")
     if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
         errors.append("maxvCpus must be a whole number from 1 to 10000")
+    v = config.get("maxMemoryGB")
+    if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
+        errors.append("maxMemoryGB must be a whole number from 1 to 10000")
     if errors:
         raise CEError("; ".join(errors))
 
 
-_AWS_CONFIG = _COMMON_CONFIG + ("region", "jobQueue", "spot", "maxvCpus")
+_AWS_CONFIG = _COMMON_CONFIG + ("region", "jobQueue", "spot", "maxvCpus", "maxMemoryGB")
 _AWS_REGION = re.compile(r"^[a-z]{2}(-[a-z]+)+-[0-9]\Z")
 _AWS_BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\Z")
 _AWS_QUEUE = re.compile(r"^[A-Za-z0-9_-]{1,128}\Z")
@@ -461,11 +464,14 @@ def _check_aws(config, agent):
     v = config.get("maxvCpus")
     if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
         errors.append("maxvCpus must be a whole number from 1 to 10000")
+    v = config.get("maxMemoryGB")
+    if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
+        errors.append("maxMemoryGB must be a whole number from 1 to 10000")
     if errors:
         raise CEError("; ".join(errors))
 
 
-_AZURE_CONFIG = _COMMON_CONFIG + ("location", "batchAccountName", "storageAccountName", "workDir", "pool", "spot", "maxvCpus")
+_AZURE_CONFIG = _COMMON_CONFIG + ("location", "batchAccountName", "storageAccountName", "workDir", "pool", "spot", "maxvCpus", "maxMemoryGB")
 _AZURE_LOCATION = re.compile(r"^[a-z][a-z0-9]{2,39}\Z")
 _AZURE_ACCOUNT = re.compile(r"^[a-z0-9]{3,24}\Z")
 _AZURE_CONTAINER = re.compile(r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]\Z")
@@ -523,6 +529,9 @@ def _check_azure(config, agent):
     v = config.get("maxvCpus")
     if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
         errors.append("maxvCpus must be a whole number from 1 to 10000")
+    v = config.get("maxMemoryGB")
+    if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
+        errors.append("maxMemoryGB must be a whole number from 1 to 10000")
     if errors:
         raise CEError("; ".join(errors))
 

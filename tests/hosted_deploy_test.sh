@@ -280,7 +280,7 @@ if [ -z "$miss" ]; then ok "TC-064 TESTING.md has the hosted-deploy steps"; else
 
 # ---------- US5 / constitution ----------
 extra=$(find "$D" -type f 2>/dev/null | sort | tr '\n' ' ')
-want_list="$(printf '%s\n' $D/Caddyfile.template $D/backup.sh $D/env.example $D/systemd/abf-mcp.service.in $D/systemd/abf-serve.service.in $D/systemd/abf-web.service.in | sort | tr '\n' ' ')"
+want_list="$(printf '%s\n' $D/Caddyfile.template $D/backup.sh $D/env.example $D/platform-upgrade.sh $D/systemd/abf-mcp.service.in $D/systemd/abf-serve.service.in $D/systemd/abf-web.service.in | sort | tr '\n' ' ')"
 if [ "$extra" = "$want_list" ]; then ok "TC-069 deploy/ holds exactly the six planned files"; else bad "TC-069 deploy/ contents" "$extra"; fi
 # TC-083: no tracked *.service / *.timer; deploy/systemd holds exactly three *.service.in
 if git rev-parse --git-dir >/dev/null 2>&1; then

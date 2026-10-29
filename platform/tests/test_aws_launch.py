@@ -1255,3 +1255,165 @@ def test_docs_describe_the_launch_the_billing_sentence_and_the_requirements():
         assert not re.findall(r"\b\d{12}\b", text)
         assert not re.search(r"NT\$|USD|US\$|TWD", section)
         assert not re.search(r"AKIA[0-9A-Z]{8}|@[a-z0-9-]+\.iam\.", text)
+
+
+
+# ======================================================================================================================
+# cloud-ce-memory-cap: maxMemoryGB and the merge of the platform's resourceLimits with the user's own
+# ======================================================================================================================
+
+def _limit(box, config_text="", **over):
+    ce = ace(nextflowConfig=config_text, **over)
+    return config_keys(box.bundle(ce=ce)["files"]["aws.config"]).get("process.resourceLimits")
+
+
+def test_cap_trial_original_case_and_real_failure(box):
+    # TC-009, TC-012, TC-015, TC-016, TC-019, TC-020, TC-021
+    assert _limit(box, maxvCpus=4, maxMemoryGB=6) == "[cpus: 4, memory: 6.GB]"
+    assert _limit(box, "process.resourceLimits = [cpus: 4, memory: 6.GB]\n", maxvCpus=4) == "[cpus: 4, memory: 6.GB]"
+    assert _limit(box, maxvCpus=None, maxMemoryGB=6) == "[memory: 6.GB]"
+    assert _limit(box, maxvCpus=16) == "[cpus: 16]"
+    assert _limit(box, maxvCpus=None) is None
+    assert box.bundle(ce=ace(maxMemoryGB=6))["ce"]["maxMemoryGB"] == 6
+    assert "maxMemoryGB" not in box.bundle()["ce"]
+    assert set(box.bundle()["ce"]) == {"name", "platform", "region", "workDir", "jobQueue", "spot", "maxvCpus", "environment", "nextflowConfig"}
+
+
+def test_cap_snapshot_ce_carries_the_key_only_when_set(box):
+    # TC-017
+    from abf_station import launch
+    cfg = {"region": REGION, "workDir": WORK, "jobQueue": QUEUE}
+    on = launch.snapshot_ce({"name": "a", "platform": AWS, "config": dict(cfg, maxMemoryGB=6)})
+    off = launch.snapshot_ce({"name": "a", "platform": AWS, "config": dict(cfg)})
+    assert on["maxMemoryGB"] == 6 and "maxMemoryGB" not in off
+
+
+def test_cap_bad_memory_value_is_refused_before_anything_is_written(box):
+    # TC-018
+    from abf_station import launch
+    for bad in (0, 10001, True, "8", 1.5):
+        with pytest.raises(launch.BundleError) as e:
+            box.bundle(ce=ace(maxMemoryGB=bad))
+        assert "maxMemoryGB" in str(e.value), bad
+    nothing_happened(box)
+
+
+@pytest.mark.parametrize("user, platform, want", [
+    ("[cpus: 64]", dict(maxvCpus=4), "[cpus: 4]"),                                              # TC-024
+    ("[cpus: 2]", dict(maxvCpus=4), "[cpus: 2]"),                                               # TC-025
+    ("[memory: 32.GB]", dict(maxvCpus=None, maxMemoryGB=6), "[memory: 6.GB]"),                  # TC-026
+    ("[memory: 4.GB]", dict(maxvCpus=None, maxMemoryGB=6), "[memory: 4.GB]"),                   # TC-027
+    ("[time: 48.h]", dict(maxvCpus=4), "[cpus: 4, time: 48.h]"),                                # TC-028
+    ("[disk: 200.GB]", dict(maxvCpus=4), "[cpus: 4, disk: 200.GB]"),                            # TC-029
+    ("[time: 48.h, disk: 200.GB, memory: 32.GB, cpus: 64]", dict(maxvCpus=4, maxMemoryGB=6),
+     "[cpus: 4, memory: 6.GB, disk: 200.GB, time: 48.h]"),                                      # TC-030
+    ("[memory: '32 GB']", dict(maxvCpus=None, maxMemoryGB=6), "[memory: 6.GB]"),                # TC-031
+    ("[memory: 32768.MB]", dict(maxvCpus=None, maxMemoryGB=6), "[memory: 6.GB]"),               # TC-032
+    ("[cpus: 8]", dict(maxvCpus=None, maxMemoryGB=6), "[cpus: 8, memory: 6.GB]"),               # TC-034
+])
+def test_cap_merge_takes_the_smaller_and_keeps_what_the_user_set(box, user, platform, want):
+    got = _limit(box, "process.resourceLimits = %s\n" % user, **platform)
+    assert got == want
+
+
+def test_cap_user_smaller_memory_stays_the_users(box):
+    # TC-033
+    for mine, mb in (("'2 GB'", 2048), ("512.MB", 512)):
+        got = _limit(box, "process.resourceLimits = [memory: %s]\n" % mine, maxvCpus=4, maxMemoryGB=6)
+        m = re.match(r"^\[cpus: 4, memory: (.+)\]$", got)
+        assert m and "6.GB" not in got
+        txt = m.group(1)
+        num = float(re.search(r"\d+(?:\.\d+)?", txt).group(0))
+        assert num * (1024 if "GB" in txt else 1) == mb
+
+
+def test_cap_bare_resource_limits_and_commented_line(box):
+    # TC-035, TC-036
+    got = box.bundle(ce=ace(maxvCpus=4, maxMemoryGB=6, nextflowConfig="resourceLimits = [cpus: 64, memory: 32.GB]\n"))["files"]["aws.config"]
+    assert config_keys(got)["process.resourceLimits"] == "[cpus: 4, memory: 6.GB]"
+    assert len([ln for ln in got.splitlines() if "resourceLimits" in ln]) == 1
+    assert _limit(box, "// process.resourceLimits = [cpus: 2]\n", maxvCpus=4) == "[cpus: 4]"
+
+
+def test_cap_users_nextflow_config_is_untouched_and_without_platform_limits_nothing_is_written(box):
+    # TC-038, TC-039, TC-040, TC-065, TC-066
+    for text in ("process.resourceLimits = [cpus: 64, memory: 32.GB]\n", "process.cpus = 2\nprocess.memory = { 4.GB * task.attempt }\n"):
+        b = box.bundle(ce=ace(maxvCpus=4, nextflowConfig=text))
+        assert b["files"]["nextflow.config"].startswith(text)
+    b = box.bundle(ce=ace(maxvCpus=None, maxMemoryGB=None, nextflowConfig="process.resourceLimits = [cpus: 2, memory: 4.GB]\n"))
+    assert "resourceLimits" not in b["files"]["aws.config"] and "process.resourceLimits = [cpus: 2, memory: 4.GB]" in b["files"]["nextflow.config"]
+    odd = "resourceLimits = [\n  cpus: 4\n]\n"
+    b = box.bundle(ce=ace(maxvCpus=None, nextflowConfig=odd))
+    assert "resourceLimits" not in b["files"]["aws.config"] and b["files"]["nextflow.config"].startswith(odd)
+    assert _limit(box, "process.cpus = 2\nprocess.memory = { 4.GB * task.attempt }\n", maxvCpus=4) == "[cpus: 4]"
+    old = ace(spot=True, environment=[{"name": "X", "value": "1", "head": True, "compute": False}], nextflowConfig="process.cpus = 2\n")
+    got = box.bundle(ce=old)["ce"]
+    assert got["spot"] is True and got["environment"] == old["environment"] and "maxMemoryGB" not in got
+
+
+UNREADABLE = {
+    "multi-line": "resourceLimits = [\n  cpus: 4\n]\n",
+    "twice": "process.resourceLimits = [cpus: 4]\nprocess.resourceLimits = [cpus: 2]\n",
+    "block": "process { resourceLimits { cpus = 4 } }\n",
+    "variable": "resourceLimits = [cpus: params.c]\n",
+    "unknown-key": "resourceLimits = [cpus: 4, gpus: 1]\n",
+    "float-cpus": "resourceLimits = [cpus: 4.5]\n",
+    "quoted-cpus": "resourceLimits = [cpus: '4']\n",
+    "no-unit": "resourceLimits = [memory: 6]\n",
+    "tb": "resourceLimits = [memory: 6.TB]\n",
+    "disk-semicolon": "resourceLimits = [disk: 'a;b']\n",
+    "time-shell": "resourceLimits = [time: '$(x)']\n",
+    "time-long": "resourceLimits = [time: '" + "a" * 41 + "']\n",
+    "nested": "resourceLimits = [cpus: 4, time: [1]]\n",
+    "trailing": "resourceLimits = [cpus: 4] ; process.executor = 'local'\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(UNREADABLE))
+def test_cap_unreadable_user_limits_are_refused_before_launch(box, name):
+    # TC-041 TC-042 TC-043 TC-044 TC-045 TC-048 TC-049 TC-050 TC-051 TC-052 TC-053 TC-055 TC-069
+    from abf_station import launch
+    text = "// MY-MARKER-LINE\n" + UNREADABLE[name]
+    with pytest.raises(launch.BundleError) as e:
+        box.bundle(ce=ace(maxvCpus=4, nextflowConfig=text))
+    msg = str(e.value)
+    assert "resourceLimits" in msg and "aws1" in msg and "maxvCpus" in msg and "maxMemoryGB" in msg
+    assert "cannot merge" in msg and "單行" in msg
+    assert "MY-MARKER-LINE" not in msg and UNREADABLE[name].strip() not in msg and "Traceback" not in msg
+    assert str(box.tmp) not in msg
+    nothing_happened(box)
+
+
+def test_cap_refused_also_when_only_the_memory_cap_is_set_and_never_when_nothing_is_set(box):
+    # TC-054, TC-040
+    from abf_station import launch
+    with pytest.raises(launch.BundleError):
+        box.bundle(ce=ace(maxvCpus=None, maxMemoryGB=6, nextflowConfig=UNREADABLE["multi-line"]))
+    box.bundle(ce=ace(maxvCpus=None, nextflowConfig=UNREADABLE["multi-line"]))
+
+
+def test_cap_every_readable_shape_keeps_every_key_the_user_wrote(box):
+    # TC-068
+    for body in ("cpus: 64", "memory: 32.GB", "disk: 200.GB", "time: 48.h", "cpus: 64, memory: 32.GB, disk: 200.GB, time: 48.h"):
+        got = _limit(box, "process.resourceLimits = [%s]\n" % body, maxvCpus=4, maxMemoryGB=6)
+        for key in re.findall(r"(\w+):", body):
+            assert "%s:" % key in got, (body, got)
+        assert "cpus: 4" in got and "memory: 6.GB" in got
+
+
+def test_cap_screen_shows_the_memory_row_only_when_set(box):
+    # TC-056, TC-057, TC-058
+    from abf_launch import build
+    on = "\n".join(build.launch_screen(box.bundle(ce=ace(maxMemoryGB=6)), "aws1"))
+    assert "單一 task 的記憶體上限" in on and "單一 task 的 cpus 上限" in on
+    off = "\n".join(build.launch_screen(box.bundle(), "aws1"))
+    assert "記憶體上限" not in off
+    merged = "\n".join(build.launch_screen(box.bundle(ce=ace(maxvCpus=4, nextflowConfig="process.resourceLimits = [cpus: 4, memory: 6.GB]\n")), "aws1"))
+    assert "process.resourceLimits = [cpus: 4, memory: 6.GB]" in merged
+
+
+def test_cap_one_shared_function_writes_the_line():
+    # TC-037
+    src = (PLATFORM_DIR / "abf_station" / "launch.py").read_text(encoding="utf-8")
+    assert src.count("\"process.resourceLimits = [%s]\"") == 1
+    assert src.count("_resource_limits_line(ce)") >= 3
