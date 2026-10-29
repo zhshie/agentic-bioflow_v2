@@ -205,7 +205,7 @@ def _below(real, area):
     return real == area or real.startswith(area + os.sep)
 
 
-OWNER_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+OWNER_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 
 
 def _param_path(value, area, roots):
