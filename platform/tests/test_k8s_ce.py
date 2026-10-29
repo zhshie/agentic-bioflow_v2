@@ -558,19 +558,25 @@ def test_the_commands_are_read_only(ip, monkeypatch):
         assert timeout == 30
 
 
+# values no runner environment can hold by accident
+SENT_KUBECONFIG = "abf-sentinel-kubeconfig-7c1e"
+SENT_HOST = "abf-sentinel-kubehost-7c1e"
+SENT_TOKEN = "abf-sentinel-token-7c1e"
+
+
 def test_the_kubeconfig_goes_in_the_environment_not_in_argv(ip, monkeypatch):
     # TC-080, TC-081, TC-082, TC-083, TC-084, TC-085
     p = kube_file(ip, monkeypatch)
-    for k, v in (("KUBECONFIG", "X"), ("KUBE_FAKE_HOST", "Y"), ("ABF_PLATFORM_TOKEN", "T")):
+    for k, v in (("KUBECONFIG", SENT_KUBECONFIG), ("KUBE_FAKE_HOST", SENT_HOST), ("ABF_PLATFORM_TOKEN", SENT_TOKEN)):
         monkeypatch.setenv(k, v)
     runner = Fake()
     direct(p, runner=runner, serviceAccount=SA)
     assert len(runner.calls) == 4
     for argv, env, _ in runner.calls:
         assert env["KUBECONFIG"] == str(p) and env["KUBECACHEDIR"]
-        assert "KUBE_FAKE_HOST" not in env and "T" not in [v for k, v in env.items() if k.startswith("ABF_")]
+        assert "KUBE_FAKE_HOST" not in env and SENT_TOKEN not in [v for k, v in env.items() if k.startswith("ABF_")]
         assert not [k for k in env if k.startswith("ABF_")]
-        assert "X" not in env.values() and "Y" not in env.values() and "T" not in env.values()
+        assert SENT_KUBECONFIG not in env.values() and SENT_HOST not in env.values() and SENT_TOKEN not in env.values()
         joined = " ".join(argv)
         assert str(p) not in joined and KTOK not in joined
         if argv[1] == "get":
