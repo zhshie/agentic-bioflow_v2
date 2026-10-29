@@ -132,3 +132,8 @@ source: 維護者每日簡報（見下）；截圖 shots-1029/settings-register-
 - **「需要人看的事」**：偵測器的其他發現（對比、常見字型、AI 範本味等）與品味問題。這些不判 FAIL。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
 - 注意：「看起來好不好」的最終判斷屬於維護者，靠 developer-agent 附在 PR 的截圖（B 級）決定，verifier 不替他下結論。
+
+### 補充裁決 13（2026-10-30 02:1x，executor BLOCKED 後）
+- **准重釘樣式表雜湊**：`platform/tests/test_web_settings_register.py` 的 `BASE_STYLE_SHA`（:18）與 `platform/tests/test_clean_page.py` 的 `BASE_STYLE`（:162）加入可改範圍，**只准改常數值**成新 STYLE 的 sha256（clean_page 用前 16 字元）；斷言本身、比對方式、其他行一律不動。`test_settings_pick_installed.py` 只 import 該常數，不准改。
+- 理由：這些雜湊是「STYLE 有沒有被意外改動」的快照釘；本任務就是有意改 STYLE，`test_clean_page.py:153-156` 註解顯示每次改 STYLE 都重釘，不算放寬安全網。重釘前 executor 要在 ledger 貼 `git diff` 證明 STYLE 只多了 `@media (max-width:640px)` 那一段。
+- 行號以函式名定位（web-wording-sweep 已併入，起點 2552583b）。ce07 改嚴後要重跑。
