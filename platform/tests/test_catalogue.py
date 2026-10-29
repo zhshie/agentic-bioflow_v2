@@ -430,6 +430,8 @@ def _src(name):
 def test_no_tool_route_or_action_mentions_the_catalogue():
     # TC-070, TC-071
     for f in ["mcp_server.py", "web.py", "web_board.py"] + ["actions/" + p.name for p in (PKG / "actions").glob("*.py")]:
+        if f in ("mcp_server.py", "actions/catalogue.py"):    # canvas-mcp-read: the two files that deliberately open the catalogue to MCP (017e)
+            continue
         text = _src(f)
         if f == "actions/__init__.py":
             # nfcore-catalogue (pipeline list on nf-co.re) is a different thing from this module catalogue
