@@ -1,3 +1,4 @@
+# Nothing existing: these tests check this project's own settings page markup and stylesheet; no outside tool does that (settings-ce-table-mobile).
 """settings-ce-table-mobile: the compute-environment table becomes one card per row on a phone (markup + one CSS block only)."""
 import hashlib
 import json
