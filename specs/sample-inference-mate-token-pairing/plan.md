@@ -3,7 +3,7 @@ id: sample-inference-mate-token-pairing
 title: 取樣本名與配對 R1/R2 時，要在「帶副檔名」的檔名上比對，且只在最強的那個 R1/R2 記號處截斷（現在 S1_R1.fastq.gz 配不起來，Patient_1_Tumor 與 Patient_2_Tumor 會被併成同一個樣本 Patient）
 tier: A
 kinds: backend
-lane: L22-sample-inference
+lane: L23-sample-inference
 branch: test/sample-inference-mate-token-pairing
 base: origin/v3@bb0e8d6（2026-10-29 量；行號取自此，executor 開工前用 `git show origin/v3:<檔>` 重查，不對以實際內容為準）
 source: 2026-10-29 清理掃描（A 級：把程式修回它自己註解與 docstring 已經寫的規則；合法的 `_R1_001` 命名行為不變，既有 golden 不動）
@@ -101,3 +101,17 @@ source: 2026-10-29 清理掃描（A 級：把程式修回它自己註解與 docs
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+## 裁決（developer-agent，2026-10-29，回 verifier 合約審查）
+1. **選 (a)：數字式記號且樣本名含數字，本件一併修。** 規則改寫成「只認最後一個記號」，取代「依分數排序、第一個命中就砍」：
+   - 先去副檔名（`.fastq.gz`／`.fq.gz`／`.fastq`／`.fq`）與 lane 段（`_L\d{3}`）。
+   - 配對記號＝剩下字串**結尾處**的 `[_.]R?[12]`，後面只允許再接一個 `_\d{3}`（例 `_001`），之後就是字串結尾。不在結尾的 `_1_`、`_2_` 一律視為樣本名的一部分。
+   - 樣本名＝記號之前的全部字串。因為只看結尾那一個，所以不存在同分、R1／R2 誰先試的問題（回 verifier 第 2 點）。
+2. **必須成立的預期結果（請轉成 TC，都要在 origin/v3 先紅）**：
+   - `Patient_1_Tumor_1.fastq.gz`＋`Patient_1_Tumor_2.fastq.gz` → 一個樣本 `Patient_1_Tumor`，R1、R2 都在。
+   - 再加 `Patient_2_Tumor_1/_2.fastq.gz` → 兩個樣本 `Patient_1_Tumor`、`Patient_2_Tumor`。
+   - `A_2_x_1.fastq.gz`＋`A_2_x_2.fastq.gz` → 一個樣本 `A_2_x`。
+   - `x.R1.fastq.gz`＋`x.R2.fastq.gz` → 一個樣本 `x`（回 verifier 第 3 點：給出預期結果；若 origin/v3 已經是綠的就當對照組）。
+   - 原有可配對的 `_R1_001`、帶 lane 的命名輸出逐位元不變，`generate_samplesheet_test.sh` 與 golden 不改。
+3. 車道統一為 L23-sample-inference（回第 4 點）。
+4. 沒有 spec.md 照計畫為準，backend 守則不適用的條目不轉 TC（回第 5 點，同意 verifier 判斷）。
