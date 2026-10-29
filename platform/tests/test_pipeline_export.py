@@ -6,7 +6,6 @@ import io
 import json
 import logging
 import os
-import shutil
 import subprocess
 import zipfile
 from pathlib import Path
@@ -127,13 +126,14 @@ def test_every_module_file_of_files_for_is_in_the_zip(d):
         assert z.read(k).decode("utf-8") == text
 
 
-def test_stub_run_of_the_unpacked_zip(d, tmp_path):
+def test_stub_run_of_the_unpacked_zip(d, tmp_path, e2e_cfg):
     # TC-008
-    if shutil.which("nextflow") is None:
-        pytest.skip("UNVERIFIED: nextflow is not installed here")
     dest = tmp_path / "unpacked"
     opened(export(d, make(d))).extractall(dest)
-    r = subprocess.run(["nextflow", "run", ".", "-stub-run"], cwd=str(dest), capture_output=True, text=True, timeout=600)
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("NXF_", "TOWER_", "ABF_"))}
+    env.update({"NXF_HOME": e2e_cfg["home"], "NXF_VER": e2e_cfg["ver"], "NXF_OFFLINE": "true",
+                "NXF_ANSI_LOG": "false", "NXF_DISABLE_CHECK_LATEST": "true"})
+    r = subprocess.run([e2e_cfg["launcher"], "run", ".", "-stub-run"], cwd=str(dest), env=env, capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, r.stdout[-800:] + r.stderr[-800:]
 
 
