@@ -361,7 +361,7 @@ def test_tc053_used_up_still_shows_usd(w):
     cap(w, ann, 10)
     r = get(w, "ann")
     left = card(r.text, 3)
-    assert "state-failed" in left[0] and "⚠" in left[3] and "待處理：本月的雲端額度已用完" in left[3]
+    assert "state-failed" in left[0] and "⚠" in left[3] and "待處理：本月雲端額度已用盡" in left[3]
     assert card(r.text, 0)[2] == "5.10 SU（約 US$0.01）"
 
 
