@@ -81,7 +81,7 @@ individually.
 One verdict per type (feature 007, slice 1; identifiers and sources in `specs/007-station-agent/research.md`,
 `docs/PLATFORM.md` section 8). **Modelled, needs a real account**: the type can be created and its settings
 are stored, its status is `unsupported`, nothing runs for it, and connecting it waits for someone with a real
-account (opening one and capping its cost is not done by a test). Pre-flight checks: Have, for Slurm; for Google Cloud Batch the station agent on the platform host runs them (create + check + launch + cancel; resume not yet); for AWS Batch the same agent runs them (create + check + launch + cancel; resume not yet); for Azure Batch the same agent runs them (create + check + launch + cancel; resume not yet).
+account (opening one and capping its cost is not done by a test). Pre-flight checks: Have, for Slurm; for Google Cloud Batch the station agent on the platform host runs them (create + check + launch + cancel; resume not yet); for AWS Batch the same agent runs them (create + check + launch + cancel; resume not yet); for Azure Batch the same agent runs them (create + check + launch + cancel; resume not yet); for Kubernetes the same agent runs the read-only checks (create + check; launch not yet).
 The web page lists, creates and edits every type below, cloud types included (ADR 0008); a type
 turns supported only after a run on a real account the maintainer opened.
 
@@ -98,7 +98,7 @@ turns supported only after a run on a real account the maintainer opened.
 | Azure Cloud, one VM (`azcloud-platform`) | Modelled, needs a real account | [ ] |
 | Google Cloud Batch (`googlebatch-platform`) | Have (create + check + launch + cancel; resume not yet) | [ ] |
 | Google Cloud, one VM (`googlecloud-platform`) | Modelled, needs a real account | [ ] |
-| Kubernetes (`k8s-platform`) | Modelled, needs a real account | [ ] |
+| Kubernetes (`k8s-platform`) | Have (create + check); launch not yet | [ ] |
 | Amazon EKS (`eks-platform`) | Modelled, needs a real account | [ ] |
 | Google GKE (`gke-platform`) | Modelled, needs a real account | [ ] |
 | Seqera Compute | Not needed: Seqera's own hosted service, no counterpart outside Seqera | |
