@@ -238,6 +238,9 @@ ID 一律 `K8S-NN`。常數：`CTX="lab-context"`、`NS="lab-ns"`、`PVC="lab-pv
 1–9 全照「待裁決」的建議預設：不含 eks／gke；namespace 必填；非 ReadWriteMany 的 PVC 判失敗（獨立一項檢查）；不加 `auth can-i`；不擋 exec-plugin，文件寫明 kubeconfig 是受信任的操作者檔；平台端不加 kubeconfig 專屬密鑰樣式（缺口記帳本）；旗標叫 `--context`；排在 azure-upload、azure-clean 之後，開工第一步重 grep「必須更新的既有斷言」清單、以實際為準；允許空憑證建立，第一次預檢在 credential_name 失敗。
 10. 站台端新檔任何地方（含註解）不准出現小寫 `kubernetes`（test_station_static 禁字）；用 `K8s` 或 `Kubernetes`。
 11. （10-29 04:3x）azure-upload（#261）與 azure-clean（#262）都已合併。v3 上 SEQERA_PARITY 的 Azure 列現為 `Have (create + check + launch + cancel + upload + clean)`，PLATFORM.md 的 Azure 段也改過；本計畫引用的行號與既有斷言一律以 origin/v3 重新 grep 為準，找不到的記帳本並回報，不猜。
+12. （10-29 08:4x，合約退回第 1 點）`platform/tests/test_azure_upload.py:855` 逐字比對舊句「…the other ten types can be modelled only」→ **納入 C 表與「範圍：檔案」**，只改期望字串成新句，不刪斷言。開工第一步全面 `git grep -n -e 'the other ten' -e 'CHECK_ONLY_TYPES == ()' -e 'len(UNSUPPORTED)' origin/v3`，所有命中的既有測試檔視同 C 表成員（只改期望值、帳本逐條記檔:行、改前、改後）；命中非測試檔且不在範圍內 → BLOCKED 回報。
+13. base 改以 origin/v3@e79a555（#262 合併後）為準；上方標頭的 e8619e2 作廢。
+14. context 存在檢查＝**整行相等**（去掉前後空白後比較），不是子字串：清單只有 `lab-context-2` 時，`lab-context` 判為不存在 → fail。verifier 為此補一條 TC。
 
 ## 專長守則（backend）
 
