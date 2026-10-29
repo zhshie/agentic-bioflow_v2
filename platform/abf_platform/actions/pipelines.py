@@ -12,7 +12,7 @@ import struct
 import time
 import zlib
 
-from .. import catalogue, compose, module_sources, pipeline_launch, store
+from .. import compose, module_sources, pipeline_launch, store
 from .. import validate as checks
 
 _NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}\Z")
@@ -248,8 +248,9 @@ def export_pipeline(platform_path, pipeline_id, version=None, *, caller=None, da
         return rendered
     files = dict(rendered["files"])
     try:
-        paths = sorted({catalogue.describe(n["module"], data)["path"] for n in got["graph"]["nodes"]})
-        files.update(module_sources.files_for(paths, module_sources.load() if sources is None else sources))
+        listed = json.loads(files["modules.json"])["repos"]
+        paths = sorted({p for repo in listed.values() for p in repo["modules"]["nf-core"]})
+        files.update(module_sources.files_for(paths, module_sources.load(data=data) if sources is None else sources))
     except (ValueError, KeyError) as e:
         why = str(e) if isinstance(e, ValueError) else "module list"
         return _no("這個版本用到的模組檔帶不進 zip：%s；請換成別的模組，或請平台維護者補上 "
