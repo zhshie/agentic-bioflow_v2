@@ -192,6 +192,7 @@ source: 維護者 2026-10-27「中文顯示不能口語。」（DESIGN.md:80 另
 11. **可同步改期望字串的測試再加這些（預檢 10-29）**：`test_oauth_mcp.py`、`test_confirm_page.py`、`test_cleanup_confirm.py`、`test_web_settings_register.py`、`test_web_upload.py`。只改期望字串，不刪斷言。**不含** `test_aws_launch.py`、`test_azure_launch.py`、`test_gcb_launch.py`——它們釘的是 launch 動作層訊息，不在本件範圍，這三檔若變紅＝改到了不該改的東西，停下回報。
 12. **confirm.py 範圍（預檢 10-29，取代裁決 2 的例子）**：只改 `confirm.py:390`（看板拒絕刪除那句）與 `test_cleanup_confirm.py:281`。`confirm.py:145` 是英文在前、看板看不到，不改；看板看到的「不是你的申請」是 `web.py:383` 的標題，依裁決 10 改。
 13. **web.py 內嵌中文**：約 81 句不在字串表，`ast` 守衛管不到，由測試 5–7 的渲染頁檢查把關；行號已漂移 5–14 行，以 grep 為準。
+14. **清單外兩檔的期望字串（developer-agent 10-29 17:3x，閱卷 FAIL 後補）**：`platform/tests/test_su_usd.py`、`platform/tests/test_oauth_review.py` 釘的正是本計畫替換表要改的句子（費用頁附註與匯率句、「本月尚無分析」、「找不到該次分析」、授權頁「不能代您送出」），漏列是計畫的疏失，不是 executor 越界。**核可**：這兩檔與 `test_web_guided_launch_2b.py::test_scope_page_limits`（「我的 run」→「我的分析」）只改期望字串，斷言數量與強度不變；併入裁決 11 的清單。`test_aws_launch.py`、`test_azure_launch.py`、`test_gcb_launch.py` 仍不准動。
 
 ## 專長守則（ui）
 
