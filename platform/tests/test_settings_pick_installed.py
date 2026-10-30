@@ -841,4 +841,4 @@ def test_k04_nothing_secret_in_the_log(w, ann, caplog):
 def test_the_pinned_cloud_types():
     # D01 (web_settings may not import compute_envs, so it holds the three names itself: they must stay the platform's own)
     from abf_platform import compute_envs, web_settings
-    assert tuple(web_settings.CLOUD_TYPES) == tuple(compute_envs.PLATFORM_HOST_TYPES) == CLOUD_PLATFORMS
+    assert tuple(web_settings.CLOUD_TYPES) == tuple(t for t in compute_envs.PLATFORM_HOST_TYPES if t != compute_envs.K8S) == CLOUD_PLATFORMS

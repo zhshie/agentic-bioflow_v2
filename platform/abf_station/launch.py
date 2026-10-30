@@ -86,6 +86,7 @@ PROJECT_MAX_BYTES = 2 * 1024 * 1024
 PROJECT_MAX_FILES = 2000
 AWS_NO_RESUME = "AWS Batch 的 run 還不能續跑或原樣重跑（尚未支援）(an AWS Batch run cannot be resumed or relaunched yet)"
 AZURE_NO_RESUME = "Azure Batch 的 run 還不能續跑或原樣重跑（尚未支援）(an Azure Batch run cannot be resumed or relaunched yet)"
+K8S_NO_RESUME = "Kubernetes 的 run 還不能續跑或原樣重跑（尚未支援）(a Kubernetes run cannot be resumed or relaunched yet)"
 GCB_NO_RESUME = "Google Batch 的 run 還不能續跑或原樣重跑（尚未支援）(a Google Batch run cannot be resumed or relaunched yet)"
 
 
@@ -187,6 +188,13 @@ def _snapshot_ce(view):
         return {"name": view.get("name"), "platform": AZURE, "location": c.get("location"), "batchAccountName": c.get("batchAccountName"),
                 "storageAccountName": c.get("storageAccountName"), "workDir": c.get("workDir"), "pool": c.get("pool"),
                 "spot": bool(c.get("spot")), "maxvCpus": c.get("maxvCpus"), "environment": env,
+                "nextflowConfig": c.get("nextflowConfig") or "", "preRunScript": c.get("preRunScript") or "",
+                "postRunScript": c.get("postRunScript") or ""}
+    if view.get("platform") == K8S:
+        return {"name": view.get("name"), "platform": K8S, "context": c.get("context"), "namespace": c.get("namespace"),
+                "storageClaimName": c.get("storageClaimName"),
+                "storageMountPath": c.get("storageMountPath") or compute_envs.K8S_DEFAULT_MOUNT,
+                "workDir": c.get("workDir"), "serviceAccount": c.get("serviceAccount") or None, "environment": env,
                 "nextflowConfig": c.get("nextflowConfig") or "", "preRunScript": c.get("preRunScript") or "",
                 "postRunScript": c.get("postRunScript") or ""}
     return {"name": view.get("name"), "platform": view.get("platform"), "workDir": c.get("workDir"),
@@ -527,6 +535,11 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
             raise BundleError("環境: Azure Batch 環境還不能送出自訂組合 (a composed pipeline cannot be sent to an Azure Batch environment yet)")
         return render_azure_bundle(ce=ce, agent=agent, facts=facts, roots=roots, run_name=run_name, pipeline=pipeline, revision=revision,
                                    samplesheet=samplesheet, params=params, path_columns=path_columns)
+    if isinstance(ce, dict) and ce.get("platform") == K8S:      # a Kubernetes environment has its own bundle, below
+        if composed is not None:
+            raise BundleError("環境: Kubernetes 環境還不能送出自訂組合 (a composed pipeline cannot be sent to a Kubernetes environment yet)")
+        return render_k8s_bundle(ce=ce, agent=agent, facts=facts, roots=roots, run_name=run_name, pipeline=pipeline, revision=revision,
+                                 samplesheet=samplesheet, params=params, path_columns=path_columns)
     if not isinstance(agent, str) or not agent:
         raise BundleError("agent: 這個環境沒有代理 (the environment has no agent)")
     facts = facts if isinstance(facts, dict) else {}
@@ -1222,6 +1235,192 @@ def render_azure_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision
             "path_columns": sorted(set(path_columns or [])), "tower": tower, "files": files, "pipeline_source": dict(REMOTE)}
 
 
+# ---- Kubernetes: the head process runs as a Pod in the cluster, the bundle travels in a Secret (k8s_launch) -------------------------
+
+K8S = compute_envs.K8S
+K8S_RUNS = "_k8s_runs"
+K8S_CONFIG_NAME = "k8s.config"
+K8S_FILE_NAMES = ("samplesheet.csv", "params.yaml", "nextflow.config", K8S_CONFIG_NAME, "head.sh")
+K8S_SECRET_KEYS = K8S_FILE_NAMES + ("tower.token",)
+K8S_BUNDLE_MOUNT = "/bundle"      # where the Secret is mounted (read only) inside the Pod
+K8S_FORBIDDEN_ENV = ("TOWER_ACCESS_TOKEN", "KUBECONFIG", "KUBECACHEDIR")
+NO_K8S_PATH = ("檔案要先放進叢集的 PVC（儲存空間）裡，在掛載路徑 %s 底下：把檔案複製到那個 PVC，再把這一格改成 %s/ 開頭的路徑 "
+               "(put the files into the PVC first, under its mount path; the platform does not copy files into it yet)")
+
+
+def k8s_pod_name(run_name):
+    """The name of the head Pod of a run: `nf-` and the run name with each _ made a - (a Pod name has no underscore), cut to 63 characters,
+    without a trailing -. The platform and the agent make it the same way, and the cancel only deletes a Pod of this name."""
+    return ("nf-" + str(run_name).replace("_", "-"))[:63].rstrip("-")
+
+
+def k8s_secret_name(run_name):
+    """The name of the Secret that carries the bundle of a run: the Pod name and -bundle (the Pod name is cut so that the whole stays at 63)."""
+    return k8s_pod_name(run_name)[:55].rstrip("-") + "-bundle"
+
+
+def _overlap(a, b):
+    return a == b or a.startswith(b + "/") or b.startswith(a + "/")
+
+
+def _check_k8s_ce(ce):
+    """The settings of a Kubernetes environment, each judged again with the platform's own rules: they end up in a manifest and a config
+    file. Returns (the normalised ce, the head environment [(name, value)])."""
+    if not isinstance(ce, dict) or ce.get("platform") != K8S:
+        raise BundleError("環境: 這不是 Kubernetes 環境 (not a Kubernetes environment)")
+    keys = ("context", "namespace", "storageClaimName", "storageMountPath", "workDir", "serviceAccount")
+    config = {k: ce.get(k) for k in keys if ce.get(k) not in (None, "")}
+    try:
+        compute_envs._check_k8s(config, "agent")
+    except compute_envs.CEError as e:
+        raise BundleError("環境: %s" % str(e)[:300])
+    out = {"name": ce.get("name"), "platform": K8S}
+    out.update({k: config.get(k) for k in keys})
+    if out["serviceAccount"] == "":
+        out["serviceAccount"] = None
+    if _overlap(out["workDir"], out["storageMountPath"].rstrip("/") + "/" + K8S_RUNS):
+        raise BundleError("環境 workDir: 不能和放執行檔案的 %s/%s 重疊，請改用別的資料夾 (workDir may not overlap the folder of the run files)"
+                          % (out["storageMountPath"].rstrip("/"), K8S_RUNS))
+    if ((ce.get("preRunScript") or "").strip()) or ((ce.get("postRunScript") or "").strip()):
+        raise BundleError("環境: %s" % NO_SCRIPTS)
+    config_text = ce.get("nextflowConfig") or ""
+    _check_text("nextflowConfig", config_text, allow_cr=True, limit=200000)
+    out["nextflowConfig"] = config_text
+    head_env = []
+    for i, e in enumerate(ce.get("environment") or []):
+        name, value = e.get("name"), e.get("value", "")
+        if not isinstance(name, str) or not ENV_NAME.match(name):
+            raise BundleError("environment[%d]: 變數名稱 %r 必須是英文字母、數字與底線，且不以數字開頭 (a shell variable name)"
+                              % (i, str(name)[:40]))
+        if not isinstance(value, str) or "\n" in value or "\r" in value or "\x00" in value or len(value) > 2000:
+            raise BundleError("environment %s: 值不能含換行或 NUL，且不超過 2000 字元 (no newline or NUL in a value)" % name)
+        if (name in SET_BY_THE_SCRIPT or name in K8S_FORBIDDEN_ENV or name.upper().startswith("ABF_") or name.upper().startswith("KUBE")):
+            raise BundleError("environment %s: 這個變數由送出本身或代理設定，環境不能設 (set by the launch or the agent itself)" % name)
+        if e.get("head", True):
+            head_env.append((name, value))
+    out["environment"] = [dict(e) for e in (ce.get("environment") or [])]
+    out["preRunScript"] = ""
+    out["postRunScript"] = ""
+    return out, head_env
+
+
+def _k8s_config(ce, run_name):
+    """The Kubernetes config file: the plain settings of the compute environment, in the words Nextflow reads. It is read after
+    nextflow.config (-c twice), so a line here cannot be overruled by the free text of the environment. No credential, no context:
+    the head Pod uses the identity it has inside the cluster."""
+    q = _gcb_quote
+    lines = ["// written by the platform from the compute environment; read after nextflow.config, so these settings win",
+             "// no credential is written here: the head Pod uses the service account it runs as inside the cluster",
+             "process.executor = 'k8s'", "k8s.namespace = %s" % q(ce["namespace"]), "k8s.storageClaimName = %s" % q(ce["storageClaimName"]),
+             "k8s.storageMountPath = %s" % q(ce["storageMountPath"]), "workDir = %s" % q("%s/runs/%s/work" % (ce["workDir"], run_name))]
+    if ce.get("serviceAccount"):
+        lines.append("k8s.serviceAccount = %s" % q(ce["serviceAccount"]))
+    return "\n".join(lines) + "\n"
+
+
+def _k8s_head_script(run_name, run_folder, pipeline, revision, env, tower):
+    q = shlex.quote
+    lines = ["#!/bin/sh", "# the token is read from its own file in this folder; no credential of the cluster is part of this script", "umask 077",
+             "cd %s || exit 1" % q(run_folder)]
+    for name, value in env:
+        lines.append("export %s=%s" % (name, q(value)))
+    lines.append("read -r TOWER_ACCESS_TOKEN < tower.token")      # no dollar sign: the whole text is shown to the person and read as plain words
+    lines.append("export TOWER_ACCESS_TOKEN")
+    lines.append("exec nextflow run %s -r %s -name %s -params-file params.yaml -c nextflow.config -c %s -with-tower %s"
+                 % (q(pipeline), q(revision), q(run_name), K8S_CONFIG_NAME, q(tower["endpoint"])))
+    return "\n".join(lines) + "\n"
+
+
+def k8s_pod_command(bundle):
+    """The one script the head Pod runs: copy the files of the Secret into the run's folder on the claim, keep the token private, then the
+    text of head.sh (without its first line), which ends with the one `nextflow run`."""
+    q = shlex.quote
+    folder = bundle["run_folder"]
+    copies = " ".join(q("%s/%s" % (K8S_BUNDLE_MOUNT, n)) for n in K8S_SECRET_KEYS)
+    head = bundle["files"]["head.sh"].splitlines()
+    lines = ["set -e", "umask 077", "mkdir -p %s" % q(folder), "cp %s %s/" % (copies, q(folder)), "chmod 600 %s/tower.token" % q(folder)]
+    lines += head[1:]
+    return "\n".join(lines) + "\n"
+
+
+def _k8s_tower(facts):
+    """The address the head Pod reports to: it runs in the cluster, so a loopback address cannot work; it needs the platform's https public
+    address and the agent's statement that the way back is direct."""
+    if facts.get("way_back") != "direct":
+        raise BundleError("進度回報: Kubernetes 的主控 Pod 在叢集裡，需要平台的 https 公開網址；請在部署設定檔設 way_back: direct 與 "
+                          "platform_public_url (the head Pod needs the platform's public https address: set way_back: direct and platform_public_url)")
+    url = common.public_url(facts.get("platform_public_url"))
+    if not url or not url.startswith("https://"):
+        raise BundleError("進度回報: 主控 Pod 在叢集裡連不到本機網址；請把設定檔的 platform_public_url 設成 https 公開網址 "
+                          "(platform_public_url must be an https public address)")
+    return {"mode": "direct", "endpoint": url}
+
+
+def _check_k8s_samplesheet(rows, path_columns, mount):
+    """The samplesheet of a Kubernetes run: every cell that is read as a path is inside the mount path of the claim."""
+    f = "samplesheet"
+    if not isinstance(rows, list) or len(rows) < 2:
+        raise BundleError("%s: 至少要有標題列和一列資料 (a header and at least one row)" % f)
+    clean = []
+    for r, row in enumerate(rows):
+        if not isinstance(row, list) or not row:
+            raise BundleError("%s 第 %d 列: 不是一列 (not a row)" % (f, r + 1))
+        if len(row) != len(rows[0]):
+            raise BundleError("%s 第 %d 列: 欄數 %d 與標題列的 %d 不同 (ragged row)" % (f, r + 1, len(row), len(rows[0])))
+        for c, cell in enumerate(row):
+            _check_text("%s 第 %d 列第 %d 欄" % (f, r + 1, c + 1), cell, limit=5000)
+        clean.append(list(row))
+    unknown = set(path_columns or []) - set(clean[0])
+    if unknown:
+        raise BundleError("%s: 沒有名為 %s 的欄 (no such column)" % (f, sorted(unknown)[0]))
+    base = mount.rstrip("/") + "/"
+    for r, c, cell in path_cells(clean, path_columns):
+        where = "%s 第 %d 列第 %d 欄（%s）" % (f, r, c, clean[0][c - 1][:40])
+        why = None
+        if any(ord(ch) <= 0x20 or ord(ch) == 0x7F or ord(ch) in BIDI for ch in cell):
+            why = "含空白、控制字元或雙向文字字元 (a space, control or bidirectional character)"
+        elif not cell.startswith(base) or len(cell) == len(base):
+            why = "必須在 PVC 的掛載路徑 %s 底下 (must be inside the mount path of the claim)" % mount
+        elif any(part in ("", ".", "..") for part in cell[len(base):].split("/")):
+            why = "路徑裡不能有 .、.. 或空的一段 (no . or .. or empty part)"
+        if why:
+            raise BundleError("%s: %s。%s" % (where, why, NO_K8S_PATH % (mount, mount)))
+    return clean
+
+
+def render_k8s_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samplesheet, params, path_columns=None):
+    """The launch bundle of a Kubernetes environment: the shape of render_azure_bundle's, with five files, the name of the head Pod, and
+    the run's files on the claim. `roots` is accepted for the same call as render_bundle and not used. Raises BundleError."""
+    if not isinstance(agent, str) or not agent:
+        raise BundleError("agent: 這個環境沒有代理 (the environment has no agent)")
+    facts = facts if isinstance(facts, dict) else {}
+    if not isinstance(run_name, str) or not RUN_NAME.match(run_name):
+        raise BundleError("run 名稱: %r 必須是小寫英文字母開頭，只含小寫字母、數字、_ 與 -，最長 64 字元 (run name)" % str(run_name)[:70])
+    _check_pipeline(pipeline)
+    _check_revision(revision)
+    ce_out, head_env = _check_k8s_ce(ce)
+    if facts.get("reach") != "local":
+        raise BundleError("環境: Kubernetes 的建立與取消由平台主機上的代理做，代理必須在本機（reach: local）；這個代理回報的連線方式是 %r "
+                          "(the agent must be on the platform host)" % str(facts.get("reach"))[:20])
+    tower = _k8s_tower(facts)
+    sheet = _check_k8s_samplesheet(samplesheet, path_columns, ce_out["storageMountPath"])
+    user_params = _check_params(params)
+    run_folder = "%s/%s/%s" % (ce_out["storageMountPath"].rstrip("/"), K8S_RUNS, run_name)
+    base = "%s/runs/%s" % (ce_out["workDir"], run_name)
+    config = ce_out["nextflowConfig"]
+    files = {
+        "samplesheet.csv": _csv_text(sheet),
+        "params.yaml": _gcb_params_yaml(user_params, run_folder + "/samplesheet.csv", base + "/results"),
+        "nextflow.config": ((config if config.endswith("\n") else config + "\n") if config.strip()
+                            else "// the compute environment carries no Nextflow config\n") + OVERWRITE_BLOCK,
+        K8S_CONFIG_NAME: _k8s_config(ce_out, run_name),
+        "head.sh": _k8s_head_script(run_name, run_folder, pipeline, revision, head_env, tower),
+    }
+    return {"version": BUNDLE_VERSION, "agent": agent, "ce": ce_out, "run_name": run_name, "run_folder": run_folder,
+            "pod_name": k8s_pod_name(run_name), "pipeline": pipeline, "revision": revision, "samplesheet": sheet, "params": user_params,
+            "path_columns": sorted(set(path_columns or [])), "tower": tower, "files": files, "pipeline_source": dict(REMOTE)}
+
+
 MAX_EXTRA_CONFIG = 20000
 EXTRA_KEYS = ("cpus", "memory", "time", "disk", "maxRetries", "errorStrategy")
 _UNIT_TIME = r"[0-9]+(ms|s|m|h|d)"
@@ -1608,6 +1807,9 @@ def run_launch(job, ctx, preflight):
     if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == AZURE:
         from . import azure_launch      # the Azure Batch launch; it imports this module, so it is read here and not at the top
         return azure_launch.run_launch(job, ctx, bundle)
+    if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == K8S:
+        from . import k8s_launch      # the Kubernetes launch; it imports this module, so it is read here and not at the top
+        return k8s_launch.run_launch(job, ctx, bundle)
     env = rules.clean_environment(bundle.get("ce"))
     if bundle.get("agent") != ctx.agent_name:
         raise rules.Refusal("這個內容包是給另一個代理的 (the bundle is for another agent)")
@@ -1783,6 +1985,8 @@ def run_resume(job, ctx, preflight, bundle):
         raise rules.Refusal(AWS_NO_RESUME)      # nor an AWS Batch run
     if any(isinstance(ce, dict) and ce.get("platform") == AZURE for ce in (bundle.get("ce"), origin_ce)):
         raise rules.Refusal(AZURE_NO_RESUME)      # nor an Azure Batch run
+    if any(isinstance(ce, dict) and ce.get("platform") == K8S for ce in (bundle.get("ce"), origin_ce)):
+        raise rules.Refusal(K8S_NO_RESUME)      # nor a Kubernetes run
     if not isinstance(resume, dict) or set(resume) - RESUME_OPTIONAL != RESUME_KEYS or not isinstance(resume.get("origin"), dict):
         raise rules.Refusal("續跑的內容包欄位不對 (the resume bundle has other fields than it should)")
     origin = resume["origin"]

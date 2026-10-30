@@ -513,7 +513,7 @@ A record made before this type was checked (status `unsupported`, with the old k
 
 ### Kubernetes
 
-A `k8s-platform` environment (k8s-ce) is served the way an Azure Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused). It can be **created and checked**; launching on it is **not built yet** (launch: not yet, the next step is `k8s-launch`), so every job except the preflight is refused in plain words (尚未支援送出), and the automatic choice of an environment never picks it. The platform starts no program for it: the checks run on the agent, with the `kubectl` command line, which must be installed on the platform host.
+A `k8s-platform` environment (k8s-ce) is served the way an Azure Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused). It can be **created, checked, launched and cancelled** (see "Launching on Kubernetes" below); upload, clean and resume are **not built yet** and are refused in plain words (尚未支援), and the automatic choice of an environment never picks it. The platform starts no program for it: the checks run on the agent, with the `kubectl` command line, which must be installed on the platform host.
 
 | Key | Rule |
 |---|---|
@@ -539,9 +539,24 @@ Every problem is listed at once, each naming its key; a key not in this table is
 
 **預檢不計費 (the preflight costs nothing):** it only reads. It lists contexts and gets one claim and one service account; it creates, changes and deletes nothing on the cluster, and it never switches the context or runs a command inside a pod. Each `kubectl` call is limited to 30 seconds (and 20 seconds for the API request); a timeout fails that one check. The kubeconfig path is handed to `kubectl` in the environment of that one call, with an empty cache folder of its own that is deleted afterwards, never in the command line; the agent's own `ABF_*` and `KUBE*` variables are not passed on. The examples above use only made-up names (`lab-context`, `lab-ns`, `lab-pvc`, `lab-sa`).
 
+### Launching on Kubernetes
+
+A Kubernetes launch is confirmed the same way as every other: `prepare_launch` shows everything that will be made in the cluster, you say yes, and only then does the station agent act. The agent rebuilds the bundle from its own facts and refuses unless it equals the confirmed one.
+
+- **What is made:** one Secret (`<pod name>-bundle`) holding the samplesheet, `params.yaml`, `nextflow.config`, `k8s.config`, `head.sh` and the Seqera token, then one **head Pod** named `nf-<run name>` that mounts the Secret and your claim and runs Nextflow with the `k8s` executor. The agent runs `kubectl create` on the platform host with a fixed argument list and no shell; the manifests go through standard input, the kubeconfig path and the token never appear in an argument, a manifest, a log or an answer.
+- **Where Nextflow runs:** the head Pod runs **inside the cluster** and mounts the **same claim (PVC)** as the task pods, because Nextflow without Fusion needs one shared work folder. The claim must therefore allow many pods at once: its access mode must be **`ReadWriteMany`**. A claim that is only `ReadWriteOnce` cannot be shared by the head Pod and the task pods; the preflight reports it.
+- **Permissions (a Role):** the service account that Nextflow uses inside the cluster (the environment's `serviceAccount`) needs a **Role** and RoleBinding in the namespace that allow create, get, list, watch and delete on pods, get and list on `pods/log`, and get on `persistentvolumeclaims`. This task does **not** create the Role, the claim, the namespace or the service account; the cluster administrator does (see `docs/OPERATIONS.md` for the same list).
+- **Station setting `k8s_head_image`:** required, with no default (set it on the station settings page). It is the image the head Pod runs (it needs Nextflow and a shell). It is never put in the bundle or shown on the confirmation screen.
+- **Public address:** the Pod reports back to the platform, so `platform_public_url` must be an `https://` address the cluster can reach.
+- **Samplesheet paths** must point inside the claim (the mount path, `/workspace` by default), because the task pods see only the claim.
+- **Billing:** the cluster's own cloud or data centre bills; the platform has no estimate or limit. The confirmation screen says so, and the cost starts when the Pod starts.
+- **Cancel** deletes **only the head Pod** named in the confirmed bundle. The task pods of that run are not deleted by this system; look at the cluster to see whether they have stopped, and delete them yourself if not (the screen says so).
+- **Not built yet:** upload, cleaning the work folder, listing site files, fetching run records, reading a task log, and resume or relaunch of a Kubernetes run are refused in plain words (尚未支援).
+- **Migration:** none (no database table, column or configuration key changes). `result.slurm_job_id` holds the fixed placeholder `1`; the Pod name is kept in the bundle.
+
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only. The other nine are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only. The other nine are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -556,7 +571,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `azcloud-platform` | Azure Cloud | modelled only |
 | `googlebatch-platform` | Google Cloud Batch | Slurm-like confirmed launch and cancel on the platform host (resume: not yet) |
 | `googlecloud-platform` | Google Cloud | modelled only |
-| `k8s-platform` | Kubernetes | checked on the platform host (launch: not yet) |
+| `k8s-platform` | Kubernetes | checked and launched on the platform host (upload, clean, resume: not yet) |
 | `eks-platform` | Amazon EKS | modelled only |
 | `gke-platform` | Google GKE | modelled only |
 

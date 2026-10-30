@@ -911,6 +911,17 @@ The automatic tests use fakes for the `az` program and never touch the network. 
 6. **Wildcard.** Check that `delete-batch --pattern "<prefix>*"` really matches across `/` on your account (blobs two folders deep must go), and that it did not touch `work2/`.
 
 
+## Launching on Kubernetes (k8s-launch): the maintainer checks by hand
+
+The automatic tests use a fake `kubectl` runner and touch no cluster. A real cluster is needed once, and it costs money (the cluster's own cloud or data centre bills). These steps are **class C**: they need a real cluster and **the maintainer's agreement**, and they are **not part of the executor's or the verifier's definition of done**; the automatic tests are. Needs human:
+
+1. Set the station setting `k8s_head_image` to an image that has Nextflow, and `platform_public_url` to an `https://` address the cluster can reach. Put the kubeconfig (mode 600) at `ABF_STATION_KUBECONFIG` on the platform host, then run the k8s-ce preflight of the environment: it must be `available`.
+2. Before launching, check the cluster by hand: the claim (PVC) is **`ReadWriteMany`**; the service account has the Role that allows create and delete on pods (the rules are in `docs/OPERATIONS.md` and `docs/PLATFORM.md`, "Launching on Kubernetes"); and the head image can be pulled by the cluster.
+3. Use a small public pipeline and a samplesheet whose paths are inside the claim. Run `prepare_launch` and read the screen: its first paragraph must say who bills, then the Pod name, the namespace, the claim and the files, and show no token and no image. **Answer n first**, and check with `kubectl get secret,pod -n <namespace>` that there is **no Secret and no Pod** in the cluster. Then ask again and answer **y**: only after the y may the Secret and the head Pod appear, and the platform shows the run as started.
+4. Watch the head Pod reach `Running` and the task pods appear; check that the run page on the platform shows progress (`-with-tower` works) and that the results land on the claim.
+5. Cancel another run and answer y: only its head Pod is deleted. Then look at the cluster and **decide whether the task pods went away with it**. Write that conclusion into `specs/k8s-launch/ledger.md`. If they did not all go away, **report it; do not add a delete path of your own**.
+6. Confirm that nothing in the database, `ce show`, the screens, the logs or the manifests contains a piece of the kubeconfig or the Seqera token.
+
 ## The compute-environment table on a phone (settings-ce-table-mobile): the reviewer checks
 
 The automatic tests read the HTML and the stylesheet only; this step looks at the real page in Chrome. Needs Playwright and Chrome in a Python (the platform side runs in WSL or Linux).

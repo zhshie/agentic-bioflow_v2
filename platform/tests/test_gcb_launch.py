@@ -1148,7 +1148,7 @@ def test_docs_describe_the_launch_the_billing_sentence_and_the_requirements():
     d = doc("PLATFORM.md")
     assert "Slurm-like confirmed launch and cancel on the platform host (resume: not yet)" in d
     # aws-launch changed this sentence on purpose (plan A9 d): AWS Batch can run now
-    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only" in d
+    assert "Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only" in d
     assert "Launching on Google Batch" in d
     section = d[d.index("Launching on Google Batch"):]
     for key in ("process.executor", "workDir", "google.project", "google.location", "google.batch.spot", "google.batch.bootDiskSize",
