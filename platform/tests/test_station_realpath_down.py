@@ -2,7 +2,6 @@
 """A dead site connection at the realpath step is site_unreachable with the log-in line, not a path refusal (realpath-site-down).
 TC numbers are in the comments, see specs/realpath-site-down/test-case.md."""
 import re
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -132,7 +131,7 @@ def test_tc009_and_018_only_realpath_and_check_reach_are_called(entry, tmp_path)
 def test_tc010_011_012_other_failures_stay_the_v3_refusal(entry, how, tmp_path):
     # TC-010, TC-011, TC-012
     res = {"rc1": SiteResult(1, b"", "No such file"), "nonul": SiteResult(0, b"/a", ""),
-           "count": SiteResult(0, b"/a\0/b\0/c\0", "")}[how]
+           "count": SiteResult(0, b"/a\0/b\0/c\0/d\0", "")}[how]
     with pytest.raises(rules.Refusal) as e:
         ENTRIES[entry](FakeSite(lambda a: res), tmp_path)
     assert str(e.value) == REFUSAL[entry]
@@ -160,9 +159,5 @@ def test_tc019_error_codes_are_the_v3_set():
     codes = set()
     for f in root.glob("*.py"):
         codes |= set(re.findall(r'_failure\(\s*"([a-z_]+)"', f.read_text(encoding="utf-8")))
-    base = subprocess.run(["git", "grep", "-h", "-o", "-E", r'_failure\(\s*"[a-z_]+"', "origin/v3", "--", "."],
-                          capture_output=True, text=True, cwd=str(root))
-    if base.returncode == 0:
-        v3 = set(re.findall(r'"([a-z_]+)"', base.stdout))
-        assert codes <= v3, codes - v3
-    assert "site_unreachable" in codes
+    v3 = {"changed", "not_a_directory", "not_a_file", "not_found", "not_on_site", "permission_denied", "site_unreachable", "too_large"}
+    assert codes == v3, codes ^ v3
