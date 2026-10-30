@@ -846,7 +846,7 @@ The automatic tests use a fake agent and fake answers. These steps need a platfo
 3. **Folders and the path.** Open `multiqc/multiqc_data`: the path above the table reads "results / multiqc / multiqc_data" and every part is a link back.
 4. **390 px wide.** Open the Outputs tab inside a folder that has a very long file name, and the waiting page, with the browser's developer tools at 390 px: neither page scrolls sideways, the long name wraps, and the links are easy to hit.
 5. **Both languages.** Look at the Outputs tab of a folder, the waiting page and the "too large" page once in Chinese and once with `&lang=en`.
-6. **A file over 25 MB.** Choose a file over 25 MB: the list shows "超過 25 MB" and no link; typing the address by hand gives the page with the size and the path on the site.
+6. **A file over 25 MB.** Choose a file over 25 MB: the list shows "大於 25 MB" and no link; typing the address by hand gives the page with the size and the path on the site.
 7. **The reviewer.** Against the base: `web_board.STYLE` is unchanged, the content security policy of every page is unchanged, `platform/pyproject.toml` is unchanged, `web.py` gained only the route `/run/file`, `abf_station/handlers.py` gained only the new kind and the line that calls it, and the existing tests changed only where `specs/results-files/ledger.md` lists them.
 
 ## When something is red

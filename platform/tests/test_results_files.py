@@ -217,7 +217,7 @@ def test_tc004_a_file_over_25_mb_has_no_link(w):
     finish_listing(w, RESULTS + "/multiqc", [entry("big.bin", "file", LIMIT + 1)])
     t = c.get(outputs_url(rid, "multiqc")).text
     row = table_rows(t)[0]
-    assert "超過 25 MB" in plain(row) and not [h for h in hrefs(row) if "/run/file" in h]
+    assert "大於 25 MB" in plain(row) and not [h for h in hrefs(row) if "/run/file" in h]
 
 
 def test_tc005_waiting_unreadable_and_empty_subfolders(w):
@@ -362,7 +362,7 @@ def test_tc014_a_file_too_large_gets_the_size_and_the_site_path_and_no_bytes(w):
     r = c.get(file_url(rid, "multiqc/big.bin"))
     t = plain(re.search(r"<main.*?</main>", r.text, re.S).group(0))
     assert r.headers["content-type"].startswith("text/html")
-    assert t.startswith("✕ 檔案大小 28.6 MB，超過網頁下載上限 25 MB。請於站台取得：" + RESULTS + "/multiqc/big.bin")
+    assert t.startswith("✕ 檔案大小 28.6 MB，大於網頁下載上限 25 MB。請於站台取得：" + RESULTS + "/multiqc/big.bin")
     assert any("tab=outputs" in h for h in hrefs(r.text))
 
 

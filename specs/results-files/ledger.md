@@ -67,3 +67,9 @@ Pinned values changed (each recomputed only because of this branch's real additi
 | `test_results_files.py` TC-005, TC-015ish (lines 231, 286) | `讀不到` to `無法讀取`, `沒有輸出資料夾紀錄` to `無輸出資料夾紀錄` | v3's wording wins |
 
 The `web_board` STRINGS hash in `test_web_settings_ce_mobile.py` and the `test_clean_page.py` hashes needed no change (they pass as merged).
+
+Second round (full suite after the merge):
+
+- **v3's new wording sweep bans 超** (`test_web_wording_sweep.py`, BANNED) and so catches this branch's `o_too_big` and `f_toolarge`. v3's rule wins: the two strings now say `大於 25 MB` and `大於網頁下載上限 25 MB` (not `超過`). TC-004 and TC-014 of `test-case.md` literally say 「超過 25 MB」; `test-case.md` was not edited, the two assertions in `test_results_files.py` (lines 220, 365) and the line in `docs/TESTING.md` follow the new words. **Needs the maintainer's eye.**
+- `test_web_settings_ce_mobile.py` `test_ce08_no_new_strings`: the `web_board` STRINGS hash `5b2a544a...` to `cd1a8dc7...` (this branch's download, crumb and file-page strings on top of v3's wording).
+- `docs/PLATFORM.md` (the "Settings that only the tests change" paragraph) now names `ABF_PLATFORM_DEADLINE_READ_RUN_FILE` (default 60), required by v3's `test_env_vars_documented.py`.
