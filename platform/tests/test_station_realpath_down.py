@@ -16,7 +16,7 @@ OPEN_CMD = "ssh -fN -M -S /tmp/cm-nano4 nano4"
 NO_MASTER = "on_site: needs-human reason=no-master\nrun this: %s\n" % OPEN_CMD
 RELOGIN = "Log in once in a WSL terminal first"
 SECRET = "hunter2-TOKEN-xyz"
-CE = {"platform": "slurm", "workDir": WORK, "headQueue": "q"}
+CE = {"platform": "slurm-platform", "workDir": WORK, "headQueue": "q"}
 TASK = WORK + "/work/ab/cdef"
 
 REFUSAL = {
@@ -132,7 +132,7 @@ def test_tc009_and_018_only_realpath_and_check_reach_are_called(entry, tmp_path)
 def test_tc010_011_012_other_failures_stay_the_v3_refusal(entry, how, tmp_path):
     # TC-010, TC-011, TC-012
     res = {"rc1": SiteResult(1, b"", "No such file"), "nonul": SiteResult(0, b"/a", ""),
-           "count": SiteResult(0, b"/a\0/b\n/c\0", "")}[how]
+           "count": SiteResult(0, b"/a\0/b\0/c\0", "")}[how]
     with pytest.raises(rules.Refusal) as e:
         ENTRIES[entry](FakeSite(lambda a: res), tmp_path)
     assert str(e.value) == REFUSAL[entry]
