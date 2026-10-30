@@ -16,6 +16,8 @@ The tools resume and relaunch (spec 009e) are asked the same way, through reques
 name of a failed run; what is resumed or started again is the first launch's own bundle, so nothing of the analysis can be said again.
 They write the same kind of confirmation (a launch) and queue the same kind of job; what tells them apart is the content the hash covers.
 """
+import base64
+import binascii
 import dataclasses
 import datetime
 import json
@@ -403,17 +405,27 @@ def _outputs_reason(message):
     return line[:300]
 
 
-def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False, enqueue=True):
+def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False, enqueue=True, subpath=None):
     """What `<run folder>/results` holds, for the run page: the answer of the newest list_site_files job for that folder. It never
     waits for the site (`list_site_files` does, up to 60 seconds, and a page refreshes every 15): with no job for the folder it queues one
     and says `loading`; with `relist` it queues a new one even if there is an answer. `enqueue=False` only looks.
-    Returns {state: loading|ready|error|unavailable, path, compute_env, files, listed_at, reason}; a run that is not the caller's or is
-    not there answers {found: False, message} and queues nothing."""
+    `subpath` (results-files) is a folder below `results`, relative; one that is not a plain relative path is not listed: the first level is
+    shown and `bad_path` is True. Returns {state: loading|ready|error|unavailable, path, compute_env, files, listed_at, reason, sub, bad_path,
+    max_bytes, top}; each file carries `enter` (the relative path of a folder that may be opened, else None) and `download` (the relative path of a
+    file that may be downloaded, else None) and `too_large`; `top` is the names of the folders of the first level when that listing is known,
+    else None. A run that is not the caller's or is not there answers {found: False, message} and queues nothing."""
     view = status.get_run(index_path, run_id, status.now()) if isinstance(run_id, str) else None
     plat = platform_path_for(index_path, platform_path)
     if view is None or (caller is not None and view["name"] not in jobs.owned_run_names(plat, caller.user_id)):
         return {"found": False, "message": _OUTPUTS_NO_RUN}
-    answer = {"state": "unavailable", "path": None, "compute_env": None, "files": [], "listed_at": None, "reason": None}
+    sub, bad_path = "", False
+    if subpath:
+        if jobs.run_file_path_problem(subpath):
+            bad_path = True
+        else:
+            sub = subpath
+    answer = {"state": "unavailable", "path": None, "compute_env": None, "files": [], "listed_at": None, "reason": None, "sub": sub,
+              "bad_path": bad_path, "max_bytes": jobs.RUN_FILE_MAX_BYTES, "top": None}
     con = store.open_readonly(plat)
     launch = None
     if con is not None:
@@ -427,9 +439,14 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
     if folder is None:
         answer["reason"] = _OUTPUTS_NO_LAUNCH
         return answer
-    path = folder.rstrip("/") + "/results"
+    top_path = folder.rstrip("/") + "/results"
+    path = top_path + ("/" + sub if sub else "")
     ce = launch["ce"]
     answer.update(path=path, compute_env=ce, state="loading")
+    if sub:      # the cards of the results stage need the first level too: only what is already known, no job is queued for it
+        known = jobs.latest_listing(plat, ce, top_path)
+        if known and known["state"] == "done" and (known["result"] or {}).get("ok"):
+            answer["top"] = [e["name"] for e in (known["result"] or {}).get("entries") or [] if e.get("type") == "dir"]
     job = None if relist else jobs.latest_listing(plat, ce, path)
     if job is None:
         if not enqueue:
@@ -445,12 +462,107 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
             answer.update(state="error", reason=_OUTPUTS_NO_ANSWER)
         return answer
     if job["state"] == "done" and result.get("ok"):
-        files = [{"name": e["name"], "type": e.get("type", "other"), "size": e.get("size", 0), "modified": e.get("modified", "")}
-                 for e in result.get("entries") or []]
+        files = []
+        for e in result.get("entries") or []:
+            f = {"name": e["name"], "type": e.get("type", "other"), "size": e.get("size", 0), "modified": e.get("modified", ""),
+                 "enter": None, "download": None, "too_large": False}
+            rel = (sub + "/" if sub else "") + str(e["name"])
+            if jobs.run_file_path_problem(rel) is None:
+                if f["type"] == "dir":
+                    f["enter"] = rel
+                elif f["type"] == "file" and isinstance(f["size"], int) and f["size"] <= jobs.RUN_FILE_MAX_BYTES:
+                    f["download"] = rel
+            if f["type"] == "file" and isinstance(f["size"], int) and f["size"] > jobs.RUN_FILE_MAX_BYTES:
+                f["too_large"] = True
+            files.append(f)
         answer.update(state="ready", files=files, listed_at=job["finished_at"])
+        if not sub:
+            answer["top"] = [f["name"] for f in files if f["type"] == "dir"]
         return answer
     answer.update(state="error", listed_at=job["finished_at"],
                   reason=_OUTPUTS_NO_ANSWER if job["state"] == "expired" else _outputs_reason(result.get("message")))
+    return answer
+
+
+# ---- results-files: one result file for the web download
+# The bytes go the way the workflow diagram's do: the platform queues a read_run_file job for the agent of the run's environment, the agent reads the
+# file and answers, and the page hands the answer to the browser. This function never waits and never reaches out: it queues one job, says `loading`, and
+# reads the answer from the job row once it is there (kept for jobs.RUN_FILE_CACHE_SECONDS, then asked again).
+_FILE_CODES = ("not_found", "not_a_file", "too_large", "not_on_site", "site_unreachable", "changed", "bad_answer")
+
+
+def run_file(index_path, platform_path, run_id, path, *, caller=None, retry=False):
+    """One file below `<run folder>/results` for download. Returns {found: False, message} for a run that is not the caller's or not there (queues
+    nothing), else {state: loading|ready|error, code, reason, name, size, data, site_path, max_bytes}. `code` of an error is one of bad_path, no_launch,
+    not_on_site, agent_offline, refused, no_answer, not_found, not_a_file, too_large, site_unreachable, changed, bad_answer, failed. `data` is the
+    bytes (only when ready). `retry` asks again even when an answer from the last minutes is there (a job that is still running is never doubled)."""
+    view = status.get_run(index_path, run_id, status.now()) if isinstance(run_id, str) else None
+    plat = platform_path_for(index_path, platform_path)
+    if view is None or (caller is not None and view["name"] not in jobs.owned_run_names(plat, caller.user_id)):
+        return {"found": False, "message": _OUTPUTS_NO_RUN}
+    answer = {"found": True, "state": "error", "code": None, "reason": None, "path": path, "name": None, "size": None, "data": None,
+              "site_path": None, "max_bytes": jobs.RUN_FILE_MAX_BYTES}
+
+    def error(code, reason=None):
+        answer.update(state="error", code=code, reason=reason)
+        return answer
+    if jobs.run_file_path_problem(path):
+        return error("bad_path")
+    con = store.open_readonly(plat)
+    launch = None
+    if con is not None:
+        try:
+            launch = jobs.latest_launch(con, view["name"])
+        except sqlite3.Error:
+            launch = None
+        finally:
+            con.close()
+    if launch is None or not launch["run_folder"]:
+        return error("no_launch")
+    answer["site_path"] = launch["run_folder"].rstrip("/") + "/results/" + path
+    answer["name"] = path.rsplit("/", 1)[-1]
+    ce, run = launch["ce"], launch["run_name"]
+    now = status.now()
+    job = jobs.latest_run_file(plat, ce, run, path)
+    if job is not None:
+        if job["state"] in ("queued", "claimed"):
+            if now <= job["deadline_at"]:
+                answer.update(state="loading")
+                return answer
+            if not retry and now - job["deadline_at"] < jobs.RUN_FILE_CACHE_SECONDS:
+                return error("no_answer")
+        elif not retry and now - (job["finished_at"] or 0) < jobs.RUN_FILE_CACHE_SECONDS:
+            return _file_answer(answer, job)
+    try:
+        jobs.enqueue_read_run_file(plat, view["name"], path, status.now, caller_user_id=_caller_id(caller))
+    except jobs.RunFileRefused as e:
+        code = e.code if e.code in ("no_launch", "not_on_site", "agent_offline", "bad_path") else "refused"
+        return error(code, _outputs_reason(str(e)) if code == "refused" else None)
+    except jobs.JobRefused as e:
+        return error("refused", _outputs_reason(str(e)))
+    answer.update(state="loading")
+    return answer
+
+
+def _file_answer(answer, job):
+    """Read the finished job into the answer of run_file: the bytes, or the code of what went wrong."""
+    result = job["result"] or {}
+    if job["state"] == "expired":
+        answer.update(state="error", code="no_answer")
+    elif job["state"] == "done" and result.get("ok") and isinstance(result.get("b64"), str):
+        try:
+            data = base64.b64decode(result["b64"], validate=True)
+        except (binascii.Error, ValueError):
+            data = None
+        if data is None or len(data) != result.get("size"):
+            answer.update(state="error", code="bad_answer")
+        else:
+            answer.update(state="ready", data=data, size=len(data))
+    else:
+        code = result.get("error") if result.get("error") in _FILE_CODES else ("refused" if job["state"] == "refused" else "failed")
+        answer.update(state="error", code=code, size=result.get("size") if isinstance(result.get("size"), int) else None)
+        if code in ("refused", "failed"):
+            answer["reason"] = _outputs_reason(result.get("message"))
     return answer
 
 

@@ -98,7 +98,7 @@ def test_ce08_no_new_strings():
     from abf_platform import web_board, web_settings
     got = [hashlib.sha256(json.dumps(m.STRINGS, sort_keys=True, ensure_ascii=False).encode()).hexdigest() for m in (web_settings, web_board)]
     assert got == ["82228e36c502def9667ae1c87a618f96b4b53baa811f2bfa4338621cb081094b",
-                   "5b2a544ab919f331454ec83c9be9ec6531938b55f2bb810a5faf4e3c51d02eef"]
+                   "3f5013bdf7ff6addcd42ef04e474033875c08d2ea04ac1f355fadbce706ac4b9"]
 
 
 def test_ce09_no_inline_style(w):

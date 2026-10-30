@@ -76,6 +76,16 @@ STRINGS = {
         "ph_download": "全部下載", "o_loading": "讀取中", "o_auto": "每 15 秒自動更新", "o_failed": "無法讀取", "o_none": "無輸出資料夾紀錄",
         "o_empty": "此資料夾為空", "o_read_at": "讀取於", "o_relist": "重新讀取", "th_type": "類型", "th_size": "大小", "th_mod": "修改時間",
         "ty_dir": "資料夾", "ty_file": "檔案", "ty_link": "捷徑", "ty_other": "其他",
+        "th_download": "下載", "o_download": "下載", "o_too_big": "大於 25 MB", "o_sub_empty": "此資料夾沒有檔案。", "o_bad_path": "路徑不正確",
+        "o_root": "results", "o_crumbs": "路徑", "c_none": "此管線沒有產生",
+        "f_title": "下載結果檔", "f_loading": "正在向站台取得檔案，頁面每 15 秒自動更新。", "f_back": "回到輸出分頁", "f_retry": "重試",
+        "f_open": "開啟此資料夾", "f_toolarge": "檔案大小 %s，大於網頁下載上限 25 MB。請於站台取得：%s",
+        "f_e_bad_path": "路徑不正確，無法取得檔案。", "f_e_no_launch": "此分析沒有送出紀錄，無法取得檔案。",
+        "f_e_not_on_site": "此環境的結果檔不在站台主機上。", "f_e_agent_offline": "代理目前離線，無法向站台取得檔案。請確認代理正在執行後再重試。",
+        "f_e_refused": "站台代理拒絕讀取此檔案。", "f_e_no_answer": "站台沒有回應，請稍後重試。", "f_e_not_found": "站台沒有此檔案。",
+        "f_e_not_a_file": "此路徑是資料夾，不是檔案。", "f_e_site_unreachable": "站台目前連不上，請稍後重試。",
+        "f_e_changed": "讀取時檔案已改變，請重試。", "f_e_bad_answer": "站台回傳的內容與檔案大小不符，未提供下載。請重試。",
+        "f_e_failed": "無法取得檔案，請稍後重試。",
     },
     "en": {
         "title": "agentic-bioflow", "mine": "My runs", "none_yet": "No runs yet.", "later": "Coming later",
@@ -126,6 +136,21 @@ STRINGS = {
         "ph_download": "Download all", "o_loading": "Reading", "o_auto": "Updates every 15 seconds", "o_failed": "Could not read",
         "o_none": "No output folder on record", "o_empty": "This folder is empty", "o_read_at": "Read at", "o_relist": "Read again",
         "th_type": "Type", "th_size": "Size", "th_mod": "Modified", "ty_dir": "Folder", "ty_file": "File", "ty_link": "Link", "ty_other": "Other",
+        "th_download": "Download", "o_download": "Download", "o_too_big": "Over 25 MB", "o_sub_empty": "This folder has no files.",
+        "o_bad_path": "The path is not valid", "o_root": "results", "o_crumbs": "Path", "c_none": "Not produced by this pipeline",
+        "f_title": "Download a result file", "f_loading": "Fetching the file from the site; this page refreshes every 15 seconds.",
+        "f_back": "Back to Outputs", "f_retry": "Try again", "f_open": "Open this folder",
+        "f_toolarge": "The file is %s, over the 25 MB web download limit. Get it on the site: %s",
+        "f_e_bad_path": "The path is not valid, so the file cannot be fetched.",
+        "f_e_no_launch": "This analysis has no submission record, so the file cannot be fetched.",
+        "f_e_not_on_site": "The results of this environment are not on the site host.",
+        "f_e_agent_offline": "The agent is offline, so the file cannot be fetched from the site. Check that the agent is running, then try again.",
+        "f_e_refused": "The agent refused to read this file.", "f_e_no_answer": "The site did not answer. Try again later.",
+        "f_e_not_found": "The site has no such file.", "f_e_not_a_file": "This path is a folder, not a file.",
+        "f_e_site_unreachable": "The site cannot be reached now. Try again later.",
+        "f_e_changed": "The file changed while it was read. Try again.",
+        "f_e_bad_answer": "The content from the site does not match the file size, so it is not offered. Try again.",
+        "f_e_failed": "The file could not be fetched. Try again later.",
     },
 }
 
@@ -295,7 +320,7 @@ def pick_results_tab(raw):
     return raw if raw in RESULT_TABS else "outputs"
 
 
-def _url(lang, run=None, stage=None, path="/", tab=None, relist=False):
+def _url(lang, run=None, stage=None, path="/", tab=None, relist=False, sub=None, retry=False):
     """A link to a board page: `/` or `/settings` with a query. `lang=en` is kept on every link of an English page. Only the
     Read-again link of the Outputs tab carries `relist`; no other link, and never the page's own refresh, does."""
     query = []
@@ -305,8 +330,12 @@ def _url(lang, run=None, stage=None, path="/", tab=None, relist=False):
         query.append("stage=" + stage)
     if tab:
         query.append("tab=" + tab)
+    if sub:      # a folder below results (the Outputs tab), or the file of /run/file; slashes stay as they are
+        query.append("path=" + urllib.parse.quote(str(sub), safe="/"))
     if relist:
         query.append("relist=1")
+    if retry:
+        query.append("retry=1")
     if lang == "en":
         query.append("lang=en")
     return esc(path + ("?" + "&".join(query) if query else ""))
@@ -609,40 +638,79 @@ def _results_cards(t, run, now, outputs):
                    (t["card_compute"], esc(where)), (t["card_cost"], esc(_cost_value(t, run)))))
 
 
+def _report_cell(t, lang, run_id, outputs, key, folder, name):
+    """One of the two report cells under the cards: a download link when the first level of the results holds the folder, `not produced` when it is
+    known to hold none, and the grey `later` words while that is not known yet (still reading, or the reading failed)."""
+    top = (outputs or {}).get("top")
+    if top is None:
+        return _grey(t, key)
+    if folder in top:
+        return '<span class="off"><a href="%s">%s</a></span>' % (_url(lang, run_id, path="/run/file", sub=folder + "/" + name), esc(t[key]))
+    return '<span class="off">%s <span class="later">%s</span></span>' % (esc(t[key]), esc(t["c_none"]))
+
+
 def _size(value):
     return esc(value if isinstance(value, int) else "—")
 
 
+def _crumbs(t, lang, run_id, sub):
+    """results / multiqc / multiqc_data, every part a link to that folder (the last one is the page itself)."""
+    parts = sub.split("/")
+    links = ['<a href="%s">%s</a>' % (_url(lang, run_id, "results", tab="outputs"), esc(t["o_root"]))]
+    for i, part in enumerate(parts):
+        here = ' aria-current="page"' if i == len(parts) - 1 else ""
+        links.append('<a href="%s"%s>%s</a>' % (_url(lang, run_id, "results", tab="outputs", sub="/".join(parts[:i + 1])), here, esc(part)))
+    return '<nav class="ostat" data-part="crumbs" aria-label="%s">%s</nav>' % (esc(t["o_crumbs"]), " / ".join(links))
+
+
+def _download_cell(t, lang, run_id, f):
+    if f.get("download"):
+        return '<a href="%s">%s</a>' % (_url(lang, run_id, path="/run/file", sub=f["download"]), esc(t["o_download"]))
+    if f.get("too_large"):
+        return esc(t["o_too_big"])
+    return "—"
+
+
 def _outputs_body(t, lang, run_id, out):
     """The Outputs tab, from the answer of the action `run_outputs`: loading, ready (a table, or a line when the folder is empty), error,
-    or unavailable. Each state has a symbol and words; the colour only helps. Names are plain text: nothing here downloads or changes a file."""
+    or unavailable. Each state has a symbol and words; the colour only helps. A folder name is a link into that folder; a file has a Download link
+    (up to 25 MB); above the table stand the path (every part a link) and, for a path that is not valid, one line saying so."""
     out = out or {}
     state = out.get("state") if out.get("found") is not False else "unavailable"
-    again = '<a href="%s">%s</a>' % (_url(lang, run_id, "results", tab="outputs", relist=True), esc(t["o_relist"]))
+    sub = out.get("sub") or ""
+    again = '<a href="%s">%s</a>' % (_url(lang, run_id, "results", tab="outputs", relist=True, sub=sub), esc(t["o_relist"]))
     reason = plain_reason(out.get("reason") or "", lang) if out.get("reason") else "—"
     why = '<dl class="fields"><dt>%s</dt><dd>%s</dd></dl>' % (esc(t["f_reason"]), esc(reason))
+    bad = '<p class="ostat state-failed"><span class="sym">✕</span> %s</p>' % esc(t["o_bad_path"]) if out.get("bad_path") else ""
+    where = _crumbs(t, lang, run_id, sub) if sub else ""
     if state == "loading":
-        return '<p class="ostat state-running"><span class="sym">⟳</span> %s <small>%s</small></p>' % (esc(t["o_loading"]), esc(t["o_auto"]))
+        return bad + where + '<p class="ostat state-running"><span class="sym">⟳</span> %s <small>%s</small></p>' % (esc(t["o_loading"]), esc(t["o_auto"]))
     if state == "error":
-        return '<p class="ostat state-failed"><span class="sym">✗</span> %s</p>%s<p>%s</p>' % (esc(t["o_failed"]), why, again)
+        return bad + where + '<p class="ostat state-failed"><span class="sym">✗</span> %s</p>%s<p>%s</p>' % (esc(t["o_failed"]), why, again)
     if state != "ready":
-        return '<p class="ostat muted"><span>—</span> %s</p>%s' % (esc(t["o_none"]), why)
+        return bad + '<p class="ostat muted"><span>—</span> %s</p>%s' % (esc(t["o_none"]), why)
     when = taipei_time(out.get("listed_at"))
     head = '<p class="ostat"><span>%s %s</span> %s</p>' % (esc(t["o_read_at"]), esc(when[-5:] if when else "—"), again)
     files = sorted(out.get("files") or [], key=lambda f: (f.get("type") != "dir", f.get("name") or ""))
     if not files:
-        return head + '<p class="ostat muted"><span>—</span> %s</p>' % esc(t["o_empty"])
-    th = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_type", "th_size", "th_mod"))
-    rows = "".join("<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td></tr>"
-                   % (esc(f.get("name") or "—"), esc(t.get("ty_" + str(f.get("type")), t["ty_other"])), _size(f.get("size")),
-                      esc(_time(f.get("modified")))) for f in files)
-    return head + '<table class="tbl otbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (th, rows)
+        return bad + where + head + '<p class="ostat muted"><span>—</span> %s</p>' % esc(t["o_sub_empty"] if sub else t["o_empty"])
+    th = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_type", "th_size", "th_mod", "th_download"))
+
+    def name_cell(f):
+        label = "<code>%s</code>" % esc(f.get("name") or "—")
+        return '<a href="%s">%s</a>' % (_url(lang, run_id, "results", tab="outputs", sub=f["enter"]), label) if f.get("enter") else label
+    rows = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
+                   % (name_cell(f), esc(t.get("ty_" + str(f.get("type")), t["ty_other"])), _size(f.get("size")),
+                      esc(_time(f.get("modified"))), _download_cell(t, lang, run_id, f)) for f in files)
+    return bad + where + head + '<table class="tbl otbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (th, rows)
 
 
 def _results_body(t, lang, run, tab, now, outputs):
     """The results stage of a succeeded run: four cards, four tabs (Outputs, Run info, Tasks, Logs; the last three are the running
     stage's own bodies) and the things that come later as grey words, not links."""
-    later = '<p class="kv">%s</p>' % "".join(_grey(t, k) for k in ("ph_report", "ph_multiqc", "ph_metrics", "ph_download"))
+    later = '<p class="kv">%s%s%s%s</p>' % (_report_cell(t, lang, run["id"], outputs, "ph_report", "summary_report", "summary_report.html"),
+                                            _report_cell(t, lang, run["id"], outputs, "ph_multiqc", "multiqc", "multiqc_report.html"),
+                                            _grey(t, "ph_metrics"), _grey(t, "ph_download"))
     links = "".join('<a href="%s"%s>%s</a>' % (_url(lang, run["id"], None, tab=k), ' aria-current="page"' if k == tab else "", esc(t["tab_" + k]))
                     for k in RESULT_TABS)
     body = _outputs_body(t, lang, run["id"], outputs) if tab == "outputs" else tab_body(t, lang, run, tab)
@@ -792,7 +860,7 @@ def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", t
     if selected is not None and selected["status"] == "succeeded" and pick_stage(stage_param, "results") == "results":
         tab = pick_results_tab(tab_param)      # the results stage has its own tabs
         if tab == "outputs":      # the page reloads itself to the address without `relist`, so a Read-again click is not repeated every 15 seconds
-            refresh_url = _url(pick_lang(lang), run_id, stage, tab="outputs")
+            refresh_url = _url(pick_lang(lang), run_id, stage, tab="outputs", sub=(outputs or {}).get("sub"))
     acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
     middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
     return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_), lang_), run_id, stage,
@@ -1107,6 +1175,53 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
 def render_settings(name, csrf, runs, lang="zh"):
     """GET /settings: the same frame, and a middle column of sections that are all still to come."""
     return _frame(name, csrf, runs, lang, "settings", lambda t, lang_: _settings_page(t), lambda t_, lang_: _right(t_, None), path="/settings")
+
+
+def download_headers(name, base):
+    """The headers of a file sent as a download: always an attachment (a report may hold scripts and must never open on this site's address), of no
+    known type, never sniffed, never kept by a shared cache. The name is cut down to what a header may hold; a name with other letters also goes out
+    in the encoded form."""
+    plain_name = re.sub(r'[\x00-\x1f\x7f"\\;]', "_", str(name))
+    ascii_name = re.sub(r"[^\x20-\x7e]", "_", plain_name)
+    disposition = 'attachment; filename="%s"' % ascii_name
+    if ascii_name != str(name):
+        disposition += "; filename*=UTF-8''" + urllib.parse.quote(plain_name, safe="")
+    return dict(base, **{"Cache-Control": "private, no-store", "Content-Type": "application/octet-stream", "Content-Disposition": disposition})
+
+
+def _mb(size):
+    """Megabytes with one decimal; a file over the limit never reads as 25.0 or less."""
+    tenths = int(size) * 10 // 1048576 + (1 if int(size) * 10 % 1048576 * 2 >= 1048576 else 0)
+    if int(size) > 26214400 and tenths <= 250:
+        tenths = 251
+    return "%d.%d MB" % (tenths // 10, tenths % 10)
+
+
+def render_file_page(answer, run_id, lang="zh"):
+    """(http status, whole page) for a download that is not the file itself: waiting, or the one sentence of what went
+    wrong with the way on. Every state has a symbol and words; the sentence stands first, the links under it."""
+    lang = pick_lang(lang)
+    t = STRINGS[lang]
+    path = answer.get("path") or ""
+    back = '<a href="%s">%s</a>' % (_url(lang, run_id, "results", tab="outputs"), esc(t["f_back"]))
+    if answer.get("state") == "loading":
+        body = '<p class="ostat state-running"><span class="sym">◌</span> %s</p><p>%s</p>' % (esc(t["f_loading"]), back)
+        return 200, document(t["f_title"], body, refresh=True, lang=lang, refresh_url=_url(lang, run_id, path="/run/file", sub=path))
+    code = answer.get("code") or "failed"
+    if code == "too_large":
+        sentence = t["f_toolarge"] % (_mb(answer.get("size") or 0), answer.get("site_path") or "")
+    else:
+        sentence = t.get("f_e_" + code, t["f_e_failed"])
+    extra = ""
+    if code in ("refused", "failed") and answer.get("reason"):
+        extra = '<dl class="fields"><dt>%s</dt><dd>%s</dd></dl>' % (esc(t["f_reason"]), esc(plain_reason(answer["reason"], lang)))
+    links = [back]
+    if code == "not_a_file":
+        links = ['<a href="%s">%s</a>' % (_url(lang, run_id, "results", tab="outputs", sub=path), esc(t["f_open"])), back]
+    if code in ("agent_offline", "no_answer", "site_unreachable", "changed", "bad_answer", "failed", "refused"):
+        links.insert(0, '<a href="%s">%s</a>' % (_url(lang, run_id, path="/run/file", sub=path, retry=True), esc(t["f_retry"])))
+    body = '<p class="ostat state-failed"><span class="sym">✕</span> %s</p>%s<p>%s</p>' % (esc(sentence), extra, " ".join(links))
+    return {"bad_path": 400, "not_found": 404}.get(code, 200), document(t["f_title"], body, lang=lang)
 
 
 def render_waiting(name, csrf, runs, lang, run_name):

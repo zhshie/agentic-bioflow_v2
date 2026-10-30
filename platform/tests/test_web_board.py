@@ -822,7 +822,7 @@ def test_tch11_read_only(w):
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),
                       ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
-                      ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline; settings-pick-installed: the reload button
+                      ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")), ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline; settings-pick-installed: the reload button
                       ("/token", ("OPTIONS", "POST")),
                       ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),      # web-upload-page
                       ("/usage", ("GET", "HEAD")), ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: /welcome

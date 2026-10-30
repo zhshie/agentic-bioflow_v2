@@ -29,6 +29,7 @@ WEB_ONLY = {
     "request_facts": "the top of the confirmation page: the few plain facts of one pending request, read from its structured content",
     "clean_requests": "read-only (cloud-cleanup-e): the board notice lists the caller's own open clean_work requests; it creates nothing",
     "launch_prefill": "the quick launch of the launch form: what the person's own earlier run was sent with, when it is still kept",
+    "run_file": "GET /run/file (results-files): one result file of the caller's own run, read by the agent of the run's environment and sent as a download; no MCP tool (an AI has no use for 25 MB of base64)",
     "pipeline_files": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "latest_release": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "nfcore_catalogue": "guided launch searches every nf-core pipeline through the agent (nfcore-catalogue); the page filters; no MCP tool yet",

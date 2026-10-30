@@ -540,7 +540,7 @@ def test_tc055_the_ledger_lists_each_rewritten_pin():
     assert ledger.lower().count("old") >= 2 and ledger.lower().count("new") >= 2
 
 
-SCHEMA_SHA256 = "d39c4e436fb4c9250331453cf454d52b25c60528cf67079ce362d22432939f33"      # release-lookup-job: the jobs CHECK list gained pipeline_files (was bb8b185e8eef...); byte-channel-a: gained put_upload (was 0b6aad18e811...)
+SCHEMA_SHA256 = "aa30afaa58d9b005e4cc96a3b7a6ba7714b5365299b845d5a09e33b5dc61560b"      # results-files: the jobs CHECK list gained read_run_file (was d39c4e436fb4...); release-lookup-job: the jobs CHECK list gained pipeline_files (was bb8b185e8eef...); byte-channel-a: gained put_upload (was 0b6aad18e811...)
 
 
 def test_tc057_no_table_or_column_changed(d):

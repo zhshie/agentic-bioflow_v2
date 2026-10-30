@@ -10,6 +10,7 @@ The only routes there are:
   GET  /             the board (spec 011a): the run that needs the person most (else the newest), or with ?run=<id> that run, ?stage=<name> its stage, ?tab=<name> a tab of its running stage page (011b), ?lang=en the English page; needs the cookie
               ?run_name=<name> a run of the person by its name (the page after Send links here): the run's page, else a waiting page while only the hand-off record exists, else the 404
   GET  /launch       the launch form (spec 012b), ?from=<run id> fills it from an earlier run of the same person; needs the cookie
+  GET  /run/file        one file of the caller's own run's results as a download (?run=&path=; results-files); the agent reads it, 404 as the board's own page when the run is not theirs
   GET  /launch/diagram  the workflow diagram of ?pipeline=&revision= as the image the caller's own agent read from the public repository (guided-launch-2); needs the cookie, 404 as one plain line when it is not there
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
   POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page
@@ -491,11 +492,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             view["compute_env"] = ce
         return view
 
-    def read_outputs(run_id, caller, outputs_tab, relist):
+    def read_outputs(run_id, caller, outputs_tab, relist, subpath=None):
         """The output folder of a succeeded run's results stage, from the action (it never waits for the site). Only the Outputs tab asks
-        the site; the other tabs only look, for the name of the environment on the card."""
+        the site; the other tabs only look, for the name of the environment on the card. `subpath` is a folder below results (results-files)."""
         try:
-            return actions.run_outputs(index_path, platform_path, run_id, caller=caller, relist=relist and outputs_tab, enqueue=outputs_tab)
+            return actions.run_outputs(index_path, platform_path, run_id, caller=caller, relist=relist and outputs_tab, enqueue=outputs_tab,
+                                       subpath=subpath if outputs_tab else None)
         except sqlite3.Error:
             return None
 
@@ -510,7 +512,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         except sqlite3.Error:
             return None
 
-    async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200, relist=False):
+    async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200, relist=False, subpath=None):
         """The board for one logged-in user: one run's page (the one named, else the one that needs the person most, else the newest;
         an empty page for a person with no run), with `flash` (one plain line of refusal) on it after a refused button."""
         runs = await run_in_threadpool(read_runs, caller)
@@ -522,7 +524,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if selected is None:        # another person's run and a missing id answer alike, and the page never repeats the id
                 return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, "results") == "results" and not flash:
-                outputs = await run_in_threadpool(read_outputs, selected["id"], caller, web_board.pick_results_tab(tab) == "outputs", relist)
+                outputs = await run_in_threadpool(read_outputs, selected["id"], caller, web_board.pick_results_tab(tab) == "outputs", relist, subpath)
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "finished" and not flash:
                 finished = await run_in_threadpool(read_finished, selected, caller)
                 outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
@@ -545,7 +547,27 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return await run_by_name(sid, user, caller, lang, asked, request.query_params.get("stage"), request.query_params.get("tab"),
                                      relist=request.query_params.get("relist") == "1")
         return await board_page(sid, user, caller, lang, request.query_params.get("run") or "", request.query_params.get("stage"),
-                                request.query_params.get("tab"), relist=request.query_params.get("relist") == "1")
+                                request.query_params.get("tab"), relist=request.query_params.get("relist") == "1",
+                                subpath=request.query_params.get("path"))
+
+    async def run_file_get(request):
+        """One result file of the caller's own run, as a download (results-files). The action reads the answer of the agent's job or queues one; this
+        route only hands over: the bytes as an attachment, or one page that says where the file stands (waiting, or what went wrong)."""
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        run = request.query_params.get("run") or ""
+        path = request.query_params.get("path") or ""
+        answer = await run_in_threadpool(lambda: actions.run_file(index_path, platform_path, run, path, caller=caller,
+                                                                  retry=request.query_params.get("retry") == "1"))
+        if answer.get("found") is False:
+            return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        if answer["state"] == "ready":
+            return Response(answer["data"], headers=web_board.download_headers(answer["name"], _HEADERS))
+        code, doc = web_board.render_file_page(answer, run, lang)
+        return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
     def find_by_name(caller, name):
         """(the id of the newest run of this name among the person's own runs in the index, whether only the person's own hand-off record has it)."""
@@ -1194,6 +1216,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                             Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]),
                             Route("/settings/inventory", inventory_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch/diagram", launch_diagram, methods=["GET"]),
+                            Route("/run/file", run_file_get, methods=["GET"]),
                             Route("/launch", launch_post, methods=["POST"]),
                             Route("/upload", upload_get, methods=["GET"]), Route("/upload", upload_post, methods=["POST"]),
                             Route("/upload/{batch}", upload_batch_get, methods=["GET"]),

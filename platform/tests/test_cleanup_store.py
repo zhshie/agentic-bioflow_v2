@@ -170,7 +170,7 @@ def test_fresh_jobs_take_clean_work_only_with_a_confirmation(tmp_path):
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c1', 'x', 'launch', 1)")
     con.execute(JOB_SQL, ("clean_work", "queued", "c3"))
     assert declared_kinds(check_of(con, "jobs")) == ["preflight", "list_site_files", "launch_nextflow", "cancel_run",
-                                                      "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files"]
+                                                      "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files", "read_run_file"]
     n = con.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
     for kind in ("clean_work", "launch_nextflow", "cancel_run"):
         with pytest.raises(sqlite3.IntegrityError):

@@ -339,7 +339,7 @@ def test_tc030_tc031_tc032_the_deadline_of_clean_work_is_600_and_the_variable_ov
 def test_tc033_kinds_are_the_seven_before_pipeline_files_then_pipeline_files_last_and_confirmed_map_has_it():
     # TC-033
     from abf_platform import jobs
-    assert jobs.KINDS == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files")      # release-lookup-job: pipeline_files last
+    assert jobs.KINDS == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files", "read_run_file")      # release-lookup-job: pipeline_files; results-files: read_run_file last
     assert jobs.CONFIRMED == {"launch_nextflow": "launch", "cancel_run": "cancel", "clean_work": "clean_work"}
 
 

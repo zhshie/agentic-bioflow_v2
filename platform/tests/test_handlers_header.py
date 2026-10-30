@@ -44,4 +44,4 @@ def test_first_line_keeps_its_reason():
 
 def test_job_kinds_count_is_pinned():
     # TC-005: add or drop a kind and this goes red, a reminder to fix line 1 too
-    assert _kind_count() == 9
+    assert _kind_count() == 10      # results-files: read_run_file

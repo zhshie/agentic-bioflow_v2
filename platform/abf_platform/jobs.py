@@ -1,8 +1,8 @@
-# Not Celery or RQ: they need a separate broker process; nine job kinds in one SQLite table are enough, and the table is not a run state machine.
+# Not Celery or RQ: they need a separate broker process; ten job kinds in one SQLite table are enough, and the table is not a run state machine.
 """The queue of jobs that agents poll for.
 
-Nine kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records`, `read_task_log` and `pipeline_files`
-only read; `put_upload` asks the agent to write one file the user put in the uploads folder into the user's own cloud prefix, and needs no
+Ten kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records`, `read_task_log`, `pipeline_files` and `read_run_file`
+only read (`read_run_file` asks the agent to read one result file of a run, at most 25 MB, for the web download); `put_upload` asks the agent to write one file the user put in the uploads folder into the user's own cloud prefix, and needs no
 confirmation (the person pressing Upload is the yes; it is queued only by enqueue_put_upload); `launch_nextflow`, `cancel_run` and `clean_work` write on the site, so a job of those three kinds can only be queued with
 a confirmation: a row that a person's yes made (state confirmed: y at the terminal, a form in the MCP client, or the
 confirmation page), bound to the hash of the content the user saw. Every job is a question or an order put to one agent, with a deadline. A job whose deadline passed is
@@ -14,6 +14,8 @@ Who writes: the command line (through confirm.py for the three that need a confi
 jobs; the receiver hands them out and takes the answers. Nobody else writes platform.db, and `rebuild` never opens it.
 """
 import asyncio
+import base64
+import binascii
 import json
 import os
 import re
@@ -27,7 +29,7 @@ from . import cloud_store, common, compute_envs, records, releases, store
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
 DEADLINE_SECONDS = {"preflight": 180, "list_site_files": 60, "launch_nextflow": 300, "cancel_run": 90,
-                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600, "pipeline_files": 90}
+                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600, "pipeline_files": 90, "read_run_file": 60}
 _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "list_site_files": "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES",
                  "launch_nextflow": "ABF_PLATFORM_DEADLINE_LAUNCH",
@@ -36,13 +38,21 @@ _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "read_task_log": "ABF_PLATFORM_DEADLINE_READ_TASK_LOG",
                  "clean_work": "ABF_PLATFORM_DEADLINE_CLEAN",
                  "put_upload": "ABF_PLATFORM_DEADLINE_PUT_UPLOAD",
-                 "pipeline_files": "ABF_PLATFORM_DEADLINE_PIPELINE_FILES"}
+                 "pipeline_files": "ABF_PLATFORM_DEADLINE_PIPELINE_FILES",
+                 "read_run_file": "ABF_PLATFORM_DEADLINE_READ_RUN_FILE"}
 LOG_FILES = {"err": ".command.err", "out": ".command.out", "log": ".command.log"}      # the only three files read_task_log can name
 # The words D5 of run-diag-tools fixes. The package-source scan of test_scope (TC-061) forbids that whole word in this package's lines, so it is joined here.
 NO_AGENT_KNOWN = "no " + "sta" "tion agent is known for this run (這個 run 不是從這個平台送出的，不知道是哪個代理)"
 LOG_MAX_LINES = 200
 LOG_MAX_BYTES = 64 * 1024
 KINDS = tuple(DEADLINE_SECONDS)
+# read_run_file (results-files): the agent reads ONE regular file of a run's results folder; the answer is kept in the job row for a few minutes
+RUN_FILE_MAX_BYTES = 26214400          # 25 MB, one number; the agent holds the same limit, written separately. Larger files are never sent
+RUN_FILE_PATH_MAX = 512
+RUN_FILE_CACHE_SECONDS = 600           # the same file asked again within this time is answered from the job row
+RUN_FILE_NOT_ON_SITE = "此環境的結果檔不在站台主機上 (the results of this environment are not on the site host)"
+RUN_FILE_NO_RECORD = "這個 run 沒有送出紀錄，無法取得檔案 (this run was not sent from the platform, so there is no folder on record)"
+_RUN_FILE_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 # pipeline_files (release-lookup-job): the agent reads public GitHub files for the platform; the platform only queues the job and keeps the text
 PF_PARTS = ("schema", "schema_input", "diagram", "image", "tags", "catalogue")      # the standard order of the parts of one job
 PF_STATUSES = ("ok", "not_found", "too_large", "bad_response", "rate_limited", "none")
@@ -416,6 +426,60 @@ def enqueue_task_log(state_path, run_name, workdir, filename, clock=time.time, d
     return transaction(state_path, work)
 
 
+def run_file_path_problem(path):
+    """None for a path (relative to a run's `results/`) that may be asked for, else one plain reason. Text of 1 to 512 characters, relative, no
+    empty part, no part that starts with a dot (so no `..` and no hidden name), no control character. The agent judges the same again."""
+    if not isinstance(path, str) or not path:
+        return "the path is missing (路徑不正確)"
+    if len(path) > RUN_FILE_PATH_MAX:
+        return "the path is longer than %d characters (路徑不正確)" % RUN_FILE_PATH_MAX
+    if _RUN_FILE_CONTROL.search(path):
+        return "the path holds a control character (路徑不正確)"
+    if path.startswith("/"):
+        return "the path must be relative to the results folder (路徑不正確)"
+    for part in path.split("/"):
+        if not part or part.startswith("."):
+            return "the path has an empty part or a part that starts with a dot (路徑不正確)"
+    return None
+
+
+class RunFileRefused(JobRefused):
+    """A read_run_file the platform will not queue; `code` says which kind of reason: bad_path, no_launch, not_on_site, agent_offline, refused."""
+
+    def __init__(self, code, text):
+        super().__init__(text)
+        self.code = code
+
+
+def enqueue_read_run_file(state_path, run_name, path, clock=time.time, deadline_seconds=None, offline_after=None, caller_user_id=None):
+    """Ask the agent of a run to read one file of its results folder (the agent's readfile module). It only reads, so it needs no confirmation.
+    The run must be in the hand-off record with a folder, and with a caller it must be that user's own (anything else is refused in the words of a run that
+    is not there). The job holds the environment, the run name and the relative path, nothing else: the agent puts the folder together itself."""
+    problem = run_file_path_problem(path)
+    if problem:
+        raise RunFileRefused("bad_path", problem)
+    now = clock()
+    seconds = _seconds("read_run_file", deadline_seconds)
+
+    def work(con):
+        launch = latest_launch(con, run_name) if isinstance(run_name, str) else None
+        if launch is None or (caller_user_id is not None and _col(launch, "user_id") != caller_user_id):
+            raise JobRefused(RUN_NOT_FOUND % str(run_name)[:80] if caller_user_id is not None else NO_AGENT_KNOWN)
+        if not launch["run_folder"]:
+            raise RunFileRefused("no_launch", RUN_FILE_NO_RECORD)
+        env = con.execute("SELECT platform FROM compute_envs WHERE name = ?", (launch["ce"],)).fetchone()
+        if env is not None and env["platform"] != compute_envs.SUPPORTED:      # a cloud or Kubernetes environment keeps its results elsewhere
+            raise RunFileRefused("not_on_site", RUN_FILE_NOT_ON_SITE)
+        try:
+            row = _target(con, launch["ce"], "read_run_file", now, offline_after, caller_user_id)
+        except JobRefused as e:
+            raise RunFileRefused("agent_offline" if "代理離線" in str(e) else "refused", str(e))
+        args = {"ce": compute_envs.snapshot(row), "run": launch["run_name"], "path": path}
+        return _insert_job(con, row, "read_run_file", args, now, seconds)
+
+    return transaction(state_path, work)
+
+
 def cap_log(text):
     """(text, cut): the end of `text`, at most LOG_MAX_LINES lines and LOG_MAX_BYTES bytes (UTF-8), and whether anything was dropped.
     The agent cuts first; the platform cuts again whatever arrives, so an agent cannot make the answer longer."""
@@ -555,6 +619,31 @@ def latest_pipeline_files(state_path, repo, revision, parts, caller_user_id):
                         "result": result}
         except (ValueError, AttributeError):
             continue
+    return None
+
+
+def latest_run_file(state_path, ce_name, run_name, path):
+    """The newest read_run_file job of this environment for exactly this run and path, as a dict (id, state, deadline_at, finished_at, result), or
+    None. It only reads: a page uses it to see what the agent already answered, and never waits."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        rows = con.execute("SELECT id, args_json, state, deadline_at, finished_at FROM jobs WHERE kind = 'read_run_file' AND compute_env = ? "
+                           "ORDER BY id DESC LIMIT 200", (ce_name,)).fetchall()
+        for row in rows:
+            try:
+                args = json.loads(row["args_json"])
+            except ValueError:
+                continue
+            if isinstance(args, dict) and args.get("run") == run_name and args.get("path") == path:
+                result = con.execute("SELECT result_json FROM jobs WHERE id = ?", (row["id"],)).fetchone()[0]
+                return {"id": row["id"], "state": row["state"], "deadline_at": row["deadline_at"], "finished_at": row["finished_at"],
+                        "result": json.loads(result) if result else None}
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
     return None
 
 
@@ -1057,6 +1146,24 @@ def clean_result(kind, result, stored=None):
         for key in ("file",):
             if isinstance(result.get(key), str):
                 out[key] = _short(result[key], 40)
+    elif kind == "read_run_file":
+        size = _int(result.get("size"), 0, 2 ** 50)
+        if size is not None:
+            out["size"] = size
+        if out["ok"]:
+            name, b64 = result.get("name"), result.get("b64")
+            good = (isinstance(name, str) and 0 < len(name) <= 255 and "/" not in name and not _RUN_FILE_CONTROL.search(name)
+                    and size is not None and size <= RUN_FILE_MAX_BYTES and isinstance(b64, str) and len(b64) <= (RUN_FILE_MAX_BYTES // 3 + 1) * 4)
+            if good:
+                try:
+                    good = len(base64.b64decode(b64, validate=True)) == size      # the length the agent said is the length that arrived
+                except (binascii.Error, ValueError):
+                    good = False
+            if good:
+                out.update(status="ok", name=name, b64=b64)
+            else:
+                out.pop("size", None)
+                out.update(ok=False, error="bad_answer", message="the answer does not match the size it names, so it is not kept (答案長度不符，已拒收)")
     elif kind == "fetch_run_records":
         out["files"] = [{"name": f["name"], "size": f["size"], "truncated": f["truncated"]} for f in (stored or {}).get("files", [])]
         out["refused"] = [_short(x, 200) for x in (stored or {}).get("refused", [])][:50]

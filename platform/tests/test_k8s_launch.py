@@ -1202,6 +1202,8 @@ def gate_table(ip, mod, name):
     mod.set_status(ip, name, "available")
     out = []
     for kind in jobs.KINDS:
+        if kind == "read_run_file":      # results-files: not a kind of the base; the table is that of the base's kinds
+            continue
         try:
             jobs.check_target(ip.state_db, name, kind)
             out.append(kind + ": ok")
@@ -1213,7 +1215,9 @@ def gate_table(ip, mod, name):
 def test_the_job_kinds_are_the_ones_of_the_base():
     # TC-046, TC-047, TC-048 (the list of kinds the three gate tables below are run over)
     from abf_platform import jobs
-    assert digest(",".join(jobs.KINDS)) == "13123f570af7a28a6bc532d82aa5a33787c67bba7ee0536b2bc5805da3767b4c"
+    # results-files adds the one kind read_run_file; the kinds of the base are still exactly the old list
+    assert "read_run_file" in jobs.KINDS
+    assert digest(",".join(k for k in jobs.KINDS if k != "read_run_file")) == "13123f570af7a28a6bc532d82aa5a33787c67bba7ee0536b2bc5805da3767b4c"
 
 
 def test_the_aws_gate_says_what_it_said_before(aws_ip):
@@ -1401,7 +1405,7 @@ def test_the_schema_of_the_platform_is_that_of_the_base(ip):
         rows = sorted(con.execute("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").fetchall())
     finally:
         con.close()
-    assert len(rows) == 7 and digest(repr(rows)) == "7eded9a6ba0e15b8a63e307e0e9a0d1aae2b121504dfba8f804f79aaae683f77"
+    assert len(rows) == 7 and digest(repr(rows)) == "1d9448eb1cea8a7cccbb1a6f5bd13fef90142cc2e1b0bc7d68c5f2409ef708bb"
     assert [p for p in PLATFORM_DIR.rglob("*") if "migrat" in p.name.lower()] == []
     assert "No migration needed" in (REPO_ROOT / "specs" / "k8s-launch" / "ledger.md").read_text(encoding="utf-8")
 
@@ -1427,10 +1431,10 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in app.routes) == ROUTES_V3
     wapp = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", platform_path=tmp_path / "platform.db")
     got = sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in wapp.routes)
-    assert len(got) == 27 and digest(repr(got)) == "bdf56b399253e2422f015c2c241b61374bf4109ca0614ef036afcf24ecccf16c"
+    assert len(got) == 28 and digest(repr(got)) == "1b116949eb7be3db3d72728b5b0e133518d1c0dca6d84ccad482d87ac2be1cf7"
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
-    assert len(names) == 49 and digest(repr(names)) == "cea8288543e7bc8b9ba4adb76afa411a708f6303b0abe94a915b08b9e504356e"
+    assert len(names) == 50 and digest(repr(names)) == "106d719d347c4be1a7f7f22e5822f60ca5ef75fdb251d630c864318c383bd6a0"      # results-files adds run_file; without it the 49 names hash as before
     assert not [n for n in names if re.search(r"k8s|kube|pod", n, re.I)]
 
 

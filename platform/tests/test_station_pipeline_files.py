@@ -124,7 +124,7 @@ def run(ctx, j):
 
 def test_tc001_pipeline_files_is_last_and_the_others_keep_their_order():
     # TC-001
-    assert handlers.JOB_KINDS.count("pipeline_files") == 1 and handlers.JOB_KINDS[-1] == "pipeline_files"
+    assert handlers.JOB_KINDS.count("pipeline_files") == 1 and handlers.JOB_KINDS[-2:] == ("pipeline_files", "read_run_file")
     assert tuple(k for k in handlers.JOB_KINDS if k != "pipeline_files")[:len(EIGHT)] == EIGHT
 
 

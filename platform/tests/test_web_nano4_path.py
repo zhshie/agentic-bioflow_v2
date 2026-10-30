@@ -579,7 +579,7 @@ def test_tc043_no_new_table_or_column(up):
     # TC-043
     con = sqlite3.connect(str(up.state))
     schema = "\n".join(sorted(r[0] or "" for r in con.execute("select sql from sqlite_master")))
-    assert hashlib.sha256(schema.encode()).hexdigest()[:16] == "21226ea8d80fd18d"
+    assert hashlib.sha256(schema.encode()).hexdigest()[:16] == "38f9a0e10f820974"
 
 
 def test_tc044_the_sheets_folder_comes_from_the_deployment():
