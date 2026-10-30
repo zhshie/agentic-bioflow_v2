@@ -362,10 +362,10 @@ def test_tc036_037_downstream_prompt_is_extended_not_changed():
     new = (ROOT / "skills" / "downstream" / "SKILL.md").read_text(encoding="utf-8")
     for s in ("read_run_file", "run_outputs", "enter", "200,000", "next_offset", "loading", "too_large", "download", "25 MB", "model the person chose"):
         assert s in " ".join(new.split()), s
-    try:
-        old = subprocess.run(["git", "show", "origin/v3:skills/downstream/SKILL.md"], cwd=str(ROOT), capture_output=True, check=True).stdout
-    except (OSError, subprocess.CalledProcessError):
-        pytest.skip("no origin/v3 to compare with")
+    # Frozen from skills/downstream/SKILL.md at v3 commit 861ef5ae (identical at the
+    # merge-base with this branch): CI checkouts are shallow, so origin/v3 cannot be
+    # read there, and this test must never skip.
+    old = (pathlib.Path(__file__).parent / "fixtures" / "downstream_SKILL_v3_baseline.md").read_bytes()
     old_lines = old.decode("utf-8").replace("\r\n", "\n").splitlines()
     new_lines = new.replace("\r\n", "\n").splitlines()
     it = iter(new_lines)
