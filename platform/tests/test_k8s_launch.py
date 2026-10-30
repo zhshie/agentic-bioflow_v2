@@ -673,6 +673,34 @@ def test_cancel_of_a_pod_that_is_gone_is_ok(box):
     assert box.cluster.writes() == []
 
 
+def test_cancel_of_a_gone_pod_is_written_back_as_a_cancel_of_the_run(ip, box, tmp_path):
+    # TC-129 (ruling 16): the platform side of the same answer. The platform's only record of a stopped-on-request run is
+    # the time of the cancel request on its launches row (failures.summarize turns it into Seqera's word).
+    from abf_launch import build
+    from abf_platform import actions, failures, jobs
+    row = launched_on_k8s(ip, box, tmp_path)
+    assert row["cancel_requested_at"] is None
+    box.cluster.pods.pop("nf-r1", None)      # the Pod is already gone
+    ce_name, bundle, _hand_off = build.prepare_cancel(ip.state_db, "r1")
+    cid, job_id = actions.cancel(ip.state_db, ce_name, bundle, confirmed_by=actions.TERMINAL)
+    job = jobs.claim(ip.state_db, "a1", time.time, tokens_path=ip.tokens)
+    while job is not None and job["id"] != job_id:
+        jobs.take_result(ip.state_db, "a1", job["id"], "done", {"ok": True, "checks": []}, time.time, tokens_path=ip.tokens)
+        job = jobs.claim(ip.state_db, "a1", time.time, tokens_path=ip.tokens)
+    assert job is not None and job["id"] == job_id
+    state, result = box.handle(job)
+    assert state == "done" and result["ok"] is True and "Pod 已不存在，視為已停止" in result["message"]
+    code, _ = jobs.take_result(ip.state_db, "a1", job["id"], state, result, time.time, tokens_path=ip.tokens)
+    assert code == 200
+    con = sqlite3.connect(str(ip.state_db))
+    try:
+        asked = con.execute("SELECT cancel_requested_at FROM launches WHERE run_name = 'r1'").fetchone()[0]
+    finally:
+        con.close()
+    assert asked is not None      # the run is marked as stopped on request
+    assert failures.summarize({"status": "failed", "cancel_requested_at": asked})["status_seqera"] == "cancel" + "led"
+
+
 def test_cancel_with_an_unreachable_cluster_deletes_nothing(box):
     # TC-130
     box.cluster.pods["nf-r1"] = "Running"

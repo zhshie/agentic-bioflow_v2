@@ -98,3 +98,7 @@ Only tests were added (`platform/tests/test_k8s_launch.py`, block "Fix round 3")
 ## Fix round 4 (ruling 15): TC-146
 
 `test_source_rules` now reads `platform/pyproject.toml` and `platform/constraints.txt`, asserts each file exists, then asserts no `kubernetes` package; the `if exists()` wrapper is gone. Only the test changed.
+
+## Fix round 5 (ruling 16): TC-129
+
+Only a test was added: `test_cancel_of_a_gone_pod_is_written_back_as_a_cancel_of_the_run` (`test_k8s_launch.py`). Launch, the Pod is gone, the cancel is confirmed, the agent answers "Pod 已不存在，視為已停止", the answer is written back by `jobs.take_result`: the run's `launches.cancel_requested_at` is set, and `failures.summarize` gives it Seqera's stopped-on-request word. The platform keeps no separate cancelled state (jobs.py: "a fact about a request, and no state of the run"), so this is the run being marked cancelled; the product already did it (no product change, no before/after).
