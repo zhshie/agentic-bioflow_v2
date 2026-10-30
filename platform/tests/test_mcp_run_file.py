@@ -75,6 +75,30 @@ def test_tc002_one_listing_job_for_a_path(w):
     assert listing_paths(w) == [RESULTS + "/qiime2"]
 
 
+def test_tc004_walk_from_the_first_level_to_the_file_text(w):
+    # TC-004: only MCP answers feed the next call; the test never spells a path itself after the first listing
+    ann, c, rid = world(w)
+    body = "id\tcount\na\t1\nb\t2\n"
+    ro(w, ann, rid)
+    finish_listing(w, RESULTS, [entry("qiime2", "dir", 4096), entry("a.tsv")])
+    top = ro(w, ann, rid)
+    assert top["state"] == "ready"
+    folder = [f for f in top["files"] if f["name"] == "qiime2"][0]
+    assert folder["enter"]
+    step2 = ro(w, ann, rid, folder["enter"])
+    assert step2["state"] == "loading"
+    finish_listing(w, RESULTS + "/" + folder["enter"], [entry("table.tsv")])
+    step2 = ro(w, ann, rid, folder["enter"])
+    assert step2["state"] == "ready" and step2["sub"] == folder["enter"] and step2["bad_path"] is False
+    leaf = [f for f in step2["files"] if f["name"] == "table.tsv"][0]
+    assert leaf["download"]
+    first = rf(w, ann, rid, leaf["download"])
+    assert first["state"] == "loading"
+    reply_file(w, "done", ok_result(body.encode(), name="table.tsv"))
+    got = rf(w, ann, rid, leaf["download"])
+    assert got["state"] == "ready" and got["kind"] == "text" and got["text"] == body
+
+
 def test_tc005_006_bad_paths_list_the_first_level(w):
     # TC-005, TC-006
     ann, c, rid = world(w)

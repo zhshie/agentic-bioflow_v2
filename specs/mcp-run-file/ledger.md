@@ -71,3 +71,6 @@
 - docs/PLATFORM.md 的工具數量句改為「Twenty-one tools. Sixteen are read-only」並列出 16 個唯讀工具（與 mcp_server.py 一致），拿掉先前補的「多出來的唯讀工具」那句。
 - tests/platform_storage_doc_test.sh 只改了 TC-020 的段落定位字串 "Fourteen tools." -> "Twenty-one tools."（錨點，斷言本身不變）。
 - 第 6 行 "nine read-only tools"（item 2，列的是第 6 到 8 節那九個）仍由同一支測試釘住，未動。
+
+## 第四輪修正（TC-004）
+- 新增 test_mcp_run_file.py::test_tc004_walk_from_the_first_level_to_the_file_text：只用 MCP 回答串三步（第一層 enter -> 子層 run_outputs -> 子層 download 當 path 呼叫 read_run_file），最後 text 等於原文。程式碼未改，測試一寫好就綠（程式本來就做得到）。
