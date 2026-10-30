@@ -751,9 +751,10 @@ def test_source_rules():
         assert "PLATFORM_HOST_TYPES[" not in text, p
         if p.name != "launch.py" or p.parent.name != "abf_station":
             assert "nextflow run" not in text or p.name in ("launch.py",), p
-    pyproject = REPO_ROOT / "pyproject.toml"
-    if pyproject.exists():
-        assert "kubernetes" not in pyproject.read_text(encoding="utf-8").lower()
+    for name in ("pyproject.toml", "constraints.txt"):
+        dep_file = PLATFORM_DIR / name
+        assert dep_file.is_file(), dep_file
+        assert "kubernetes" not in dep_file.read_text(encoding="utf-8").lower(), dep_file
     for p in (PLATFORM_DIR / "abf_station").glob("*.py"):
         assert "kubernetes" not in p.read_text(encoding="utf-8"), p
 

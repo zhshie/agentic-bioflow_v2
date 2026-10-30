@@ -94,3 +94,7 @@ Only tests were added (`platform/tests/test_k8s_launch.py`, block "Fix round 3")
 - TC-141 no cp/exec/etc. on success, failed create and refusal paths; TC-145 no Fusion/Wave in any file; TC-150 `_K8S_CONFIG` unchanged, platform schema hash equal to base, no migration file, "No migration needed" above; TC-170 pins the K8s paragraph of docs/OPERATIONS.md; TC-185 phase read once, no pod/k8s table.
 - TC-184 (contract number corrected by ruling 13: 15 tools, not 12): MCP tool set equals the known fifteen, receiver routes equal `ROUTES_V3`, web routes (27) and the action layer's functions (48) hash-equal to base, none named k8s/kube/pod.
 - Comments added for TC-072, 074, 076, 093, 098, 140 on the tests that already checked them.
+
+## Fix round 4 (ruling 15): TC-146
+
+`test_source_rules` now reads `platform/pyproject.toml` and `platform/constraints.txt`, asserts each file exists, then asserts no `kubernetes` package; the `if exists()` wrapper is gone. Only the test changed.
