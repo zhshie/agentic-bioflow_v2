@@ -35,3 +35,8 @@ v3 之後多了上傳頁與措辭整理（#294）、k8s 送出（#295）等。�
 - `platform/tests/test_web_upload.py`：TC-006 採 v3 的「尚無可用的雲端運算環境」（取代本分支先前的改寫），其餘本分支斷言不動。
 - `platform/tests/test_clean_page.py`：`BASE_STYLE` 取 v3 的 6b2683ae09caee2a（本分支不動樣式表）。重算雜湊的頁面（HTML 真的與 v3 不同者）：void-zh/en、expired 四條、pressed-launch／cancel、late-launch／cancel、failed-zh/en、running-zh/en。其餘（pending-*、confirmed-*、succeeded-*）沿用 v3 的值，因為本分支沒有改到它們。
 - `platform/tests/test_web_nano4_path.py`（本分支自己的測試，只同步期望字串／雜湊，斷言數不變）：TC-016 雲端頁雜湊 a613e122a237e6fa/c7fb04b4c64f30b4 → d2b1b6410ee23956/f9c006910f30cab7（v3 改了該頁用字）；TC-019 句子改 v3 用字；TC-025 清理句改 v3 用字；TC-037 樣式表長度 10861 → 11268（v3 的樣式表）。
+- 全套測試後補的四處（v3 的新測試碰到本分支）：
+  - `web_upload.py` 的 `su_*` 五句「沒有收下」→「未收下」（v3 的 `test_web_wording_sweep::test_upload_page_spoken_sentences_are_formal` 禁用口語；本分支測試沒有斷言這幾個字）。
+  - `test_web_settings_ce_mobile.py::test_ce08_no_new_strings`：web_board 的 STRINGS 雜湊 a339098e… → 5b2a544a…；另算過，拿掉本分支加的 `wait_line` 後雜湊就是舊值 a339098e…，所以差別只有那一鍵（計畫作法 3 的等待頁）。
+  - `test_k8s_launch.py::test_the_user_visible_actions_are_those_of_the_base`：動作函式 48 → 49，雜湊 2124602e… → cea82885…；多的一個是本分支計畫的唯讀動作 `run_environment`。
+  - `tests/platform_upgrade_test.sh` TC-U28（「platform/ 沒被動過」）：本分支合併 v3 後 merge-base 變成 v3 頭，檢查才開始生效，把任何改 platform/ 的分支判紅；未改該檔，留給 maintainer 判斷（併入 v3 後 merge-base 即 HEAD，會自動轉綠）。
