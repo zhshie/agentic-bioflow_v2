@@ -33,6 +33,7 @@ WEB_ONLY = {
     "latest_release": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "nfcore_catalogue": "guided launch searches every nf-core pipeline through the agent (nfcore-catalogue); the page filters; no MCP tool yet",
     "start_upload_batch": "POST /upload (web-upload-page): the files the page received are judged and queued, one upload job each; the person's press of Upload is the yes; no MCP tool",
+    "run_environment": "the Compute card of the board (web-nano4-path): the environment the newest hand-off record of a run the person owns names; reads only; no MCP tool",
     "upload_batch_status": "GET /upload/{batch} (web-upload-page): where one batch of the person's own uploads stands, and the dataset is kept once every file is in; no MCP tool",
     # settings-register-pipeline (ruling 3): no MCP tool, so no AI can write this list; the person confirms on the page
     "register_site_pipeline": "寫入需在網頁確認頁確認 (POST /settings/pipelines/confirm, the PAGE channel)",

@@ -154,11 +154,12 @@ def test_get_changes_nothing_for_a_clean_request(w):
 # guided-launch-2b added rules to the same stylesheet (column widths of that table, the advanced box) and took one out (the radio rows), so they were pinned once more; again only the stylesheet differs.
 # guided-launch-2c changed five rules (the red star, the step area width, the form width, the field width, the phone cells) and the column widths of the table, so they were pinned a third time; again only the stylesheet differs.
 # guided-launch-2d replaced one rule of the same stylesheet (.dlink, the link that opened the diagram, became .gdia, the picture), so they were pinned a sixth time; again only the stylesheet differs.
-BASE_CONFIRM = {'pending-launch-zh': (200, 'cbb48ae2d5e37305'), 'pending-cancel-zh': (200, 'c6ab40646e5b076e'), 'pending-launch-en': (200, 'ff8b0337d45b455a'), 'pending-cancel-en': (200, '5ce5dd64fd5a89e9'), 'void-zh': (409, '3230f83dbd0ef99f'), 'void-en': (409, '3230f83dbd0ef99f'), 'confirmed-launch-zh': (200, '3d9ff790cbb732ab'), 'confirmed-launch-en': (200, '600414dcebec32e6'), 'confirmed-cancel-zh': (200, '97cb98a3a8fbe947'), 'confirmed-cancel-en': (200, '6db5d1756ebcd0cd')}
-BASE_EXPIRED = {'expired-launch-zh': (200, 'f1aab1c45a40cffb'), 'expired-cancel-zh': (200, '82ee3f8678ea1087'), 'expired-launch-en': (200, 'f1aab1c45a40cffb'), 'expired-cancel-en': (200, '82ee3f8678ea1087')}
-BASE_POST = {'pressed-launch': (200, '5a0f2db8526abb57'), 'pressed-cancel': (200, '0d3f1d93bc22bee7'), 'late-launch': (410, 'e270be6f3b909a77'), 'late-cancel': (410, 'e270be6f3b909a77')}
+# web-nano4-path: the void (409), expired, pressed and late pages, and the failed and running boards, were pinned again (specs/web-nano4-path/ledger.md says what each one changed)
+BASE_CONFIRM = {'pending-launch-zh': (200, 'cbb48ae2d5e37305'), 'pending-cancel-zh': (200, 'c6ab40646e5b076e'), 'pending-launch-en': (200, 'ff8b0337d45b455a'), 'pending-cancel-en': (200, '5ce5dd64fd5a89e9'), 'void-zh': (409, '41755269fc9f6766'), 'void-en': (409, '41755269fc9f6766'), 'confirmed-launch-zh': (200, '3d9ff790cbb732ab'), 'confirmed-launch-en': (200, '600414dcebec32e6'), 'confirmed-cancel-zh': (200, '97cb98a3a8fbe947'), 'confirmed-cancel-en': (200, '6db5d1756ebcd0cd')}
+BASE_EXPIRED = {'expired-launch-zh': (200, '523f87da28be07a7'), 'expired-cancel-zh': (200, '1b1c8e0631ccc7ff'), 'expired-launch-en': (200, '523f87da28be07a7'), 'expired-cancel-en': (200, '1b1c8e0631ccc7ff')}
+BASE_POST = {'pressed-launch': (200, 'a34f62e11916b3f4'), 'pressed-cancel': (200, '0cd42b3a6362279f'), 'late-launch': (410, '6e7214f55f0f7a1f'), 'late-cancel': (410, '6e7214f55f0f7a1f')}
 # web-upload-page ruling 25: the left column's upload item is a link now, so the six board digests are the new ones (only that item differs)
-BASE_BOARD = {'succeeded-zh': (200, 'a4af8bb5a5b19d46'), 'succeeded-en': (200, '72cbbda7e4510517'), 'failed-zh': (200, '2aeecec259154247'), 'failed-en': (200, '1b2792e858ca23f1'), 'running-zh': (200, '1d68a313028d0a94'), 'running-en': (200, '1b6de76429b220c9')}
+BASE_BOARD = {'succeeded-zh': (200, 'a4af8bb5a5b19d46'), 'succeeded-en': (200, '72cbbda7e4510517'), 'failed-zh': (200, '6127e59f14087952'), 'failed-en': (200, '29d6915f4d99cf18'), 'running-zh': (200, '816b53a71229567f'), 'running-en': (200, '4372dc4d2c4050bf')}
 BASE_STYLE = '6b2683ae09caee2a'
 
 

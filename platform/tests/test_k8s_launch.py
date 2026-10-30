@@ -1430,7 +1430,7 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert len(got) == 27 and digest(repr(got)) == "bdf56b399253e2422f015c2c241b61374bf4109ca0614ef036afcf24ecccf16c"
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
-    assert len(names) == 48 and digest(repr(names)) == "2124602e80b6d06d8ac41d1a7fd6413a85b1e804803dd4073a0ced5019cb183f"
+    assert len(names) == 49 and digest(repr(names)) == "cea8288543e7bc8b9ba4adb76afa411a708f6303b0abe94a915b08b9e504356e"
     assert not [n for n in names if re.search(r"k8s|kube|pod", n, re.I)]
 
 

@@ -51,6 +51,7 @@ STRINGS = {
         "count_pending": "等待", "count_submitted": "已送出",
         "started": "開始", "ended": "結束", "prev": "← 上一階段", "next": "下一階段 →", "not_reached": "該次分析尚未進行至此階段。",
         "not_found_title": "找不到該次分析", "not_found_body": "無此分析，或該分析不屬於您。",
+        "wait_line": "◌ 已送出，等待站台回報執行狀態。頁面每 15 秒自動更新。",
         "back": "回到分析清單", "set_ce": "運算環境", "set_cred": "憑證", "set_keys": "密碼與金鑰", "set_ai_key": "AI 模型金鑰",
         "set_me": "個人", "set_step": "逐步模式", "set_dev": "開發模式", "set_ops": "營運者後台",
         "set_roles": "角色（老師／學生）",
@@ -97,6 +98,7 @@ STRINGS = {
         "started": "Started", "ended": "Ended", "prev": "← Previous stage", "next": "Next stage →",
         "not_reached": "This run has not reached this stage.",
         "not_found_title": "Run not found", "not_found_body": "There is no such run, or it is not yours.",
+        "wait_line": "◌ Sent. Waiting for the site to report the run's state. This page reloads every 15 seconds.",
         "back": "Back to the analyses", "set_ce": "Compute environments", "set_cred": "Credentials", "set_keys": "Passwords and keys",
         "set_ai_key": "AI model key", "set_me": "Personal", "set_step": "Step-by-step mode",
         "set_dev": "Development mode", "set_ops": "Operator panel", "set_roles": "Roles (teacher / student)",
@@ -602,7 +604,7 @@ def _results_cards(t, run, now, outputs):
     """The four cards of the results stage, in the words and the way of the running stage's cards: steps done, time taken, where it ran
     (from the output record, when there is one) and the cost, which is a dash until the site gives one."""
     done, total = _done_total(run)
-    where = (outputs or {}).get("compute_env") or "—"
+    where = (outputs or {}).get("compute_env") or run.get("compute_env") or "—"
     return _cards(((t["card_done"], "%d / %d" % (done, total)), (t["card_duration"], esc(_duration(t, run, now))),
                    (t["card_compute"], esc(where)), (t["card_cost"], esc(_cost_value(t, run)))))
 
@@ -1105,6 +1107,15 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
 def render_settings(name, csrf, runs, lang="zh"):
     """GET /settings: the same frame, and a middle column of sections that are all still to come."""
     return _frame(name, csrf, runs, lang, "settings", lambda t, lang_: _settings_page(t), lambda t_, lang_: _right(t_, None), path="/settings")
+
+
+def render_waiting(name, csrf, runs, lang, run_name):
+    """GET /?run_name=<name> while the index has no such run yet but the person's own hand-off record has: the name, one line that says what is
+    awaited, and the way back to the list. The page reloads itself, so it turns into the run's page once the index has the run."""
+    lang = pick_lang(lang)
+    middle = lambda t, lang_: ('<main class="main" data-pane="middle"><h1>%s</h1><p class="muted">%s</p><p><a href="%s">%s</a></p></main>'
+                               % (esc(run_name), esc(t["wait_line"]), _url(lang_), esc(t["back"])))
+    return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, None), refresh=True)
 
 
 def render_not_found(name, lang="zh"):
