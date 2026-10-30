@@ -16,7 +16,7 @@ NO_MASTER = "on_site: needs-human reason=no-master\n%s\n" % OPEN_CMD
 RELOGIN = "Log in once in a WSL terminal first"
 SECRET = "hunter2-TOKEN-xyz"
 CE = {"platform": "slurm-platform", "workDir": WORK, "headQueue": "q"}
-TASK = WORK + "/work/ab/cdef"
+TASK = WORK + "/tsk/ab/cdef"
 
 REFUSAL = {
     "listing": "the site could not say where the path leads, so it is not listed (站台無法確認路徑的真實位置)",
