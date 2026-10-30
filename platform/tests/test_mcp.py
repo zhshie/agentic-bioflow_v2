@@ -60,7 +60,7 @@ def test_tc024_six_read_only_tools_and_the_two_that_ask_a_person(tmp_path):
     plat, _ = _three_runs(tmp_path)
     tools, _ = mcp_call(pkg_env(ABF_PLATFORM_DB=plat.index), [])
     assert sorted(t.name for t in tools) == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "list_agents", "list_compute_envs",
-                                             "list_pipelines", "list_runs", "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs"]
+                                             "list_pipelines", "list_runs", "list_site_files", "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
     for t in tools:
         assert t.annotations is not None
         assert not re.search(r"delete|clean|write|confirm|approve", t.name)
@@ -92,7 +92,7 @@ def test_tc025_streamable_http_gives_the_same_answers_on_loopback(tmp_path):
         wait_port(port, proc=proc)
         tools, via_http = mcp_http_call("http://127.0.0.1:%d/mcp" % port, calls, token=pat)
         assert sorted(t.name for t in tools) == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "list_agents",
-                                                 "list_compute_envs", "list_pipelines", "list_runs", "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch",
+                                                 "list_compute_envs", "list_pipelines", "list_runs", "list_site_files", "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch",
                                                  "resume", "run_outputs"]    # 009c: plus launch and cancel; 009e: plus resume and relaunch
         assert_loopback_only(port)
     finally:

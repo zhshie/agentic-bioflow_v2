@@ -243,7 +243,7 @@ def test_tc024_cloud_environment(w):
 
 def test_tc025_no_launch(w):
     # TC-025
-    ann, c, rid = world(w, launch_row=False)
+    ann, c, rid = world(w, folder="")      # the launch record names no folder
     n = jobs_count(w)
     got = rf(w, ann, rid, "a.tsv")
     assert got["state"] == "unavailable" and got["code"] == "no_launch" and got["message"] and jobs_count(w) == n
@@ -315,7 +315,7 @@ def test_tc032_only_read_jobs_are_queued(w):
     ann, c, rid = world(w)
     before = {r["id"] for r in w.sql("SELECT id FROM jobs")}
     rf(w, ann, rid, "a.tsv")
-    kinds = {r["kind"] for r in w.sql("SELECT kind FROM jobs") if r["id"] not in before}
+    kinds = {r["kind"] for r in w.sql("SELECT id, kind FROM jobs") if r["id"] not in before}
     assert kinds == {"read_run_file"}
 
 
@@ -336,8 +336,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 def test_tc036_037_downstream_prompt_is_extended_not_changed():
     # TC-036, TC-037
     new = (ROOT / "skills" / "downstream" / "SKILL.md").read_text(encoding="utf-8")
-    for s in ("read_run_file", "run_outputs", "enter", "200,000", "next_offset", "loading", "too_large", "download", "25 MB", "model you chose"):
-        assert s in new, s
+    for s in ("read_run_file", "run_outputs", "enter", "200,000", "next_offset", "loading", "too_large", "download", "25 MB", "model the person chose"):
+        assert s in " ".join(new.split()), s
     try:
         old = subprocess.run(["git", "show", "origin/v3:skills/downstream/SKILL.md"], cwd=str(ROOT), capture_output=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError):

@@ -23,7 +23,7 @@ PKG = PLATFORM_DIR / "abf_platform"
 SKILLS = REPO_ROOT / "skills"
 FLOWS = ["setup", "launch", "runs", "downstream", "finish"]
 ALL_SKILLS = FLOWS + ["operational"]
-READ_TOOLS = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"]
+READ_TOOLS = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"]
 
 
 def guidance():
