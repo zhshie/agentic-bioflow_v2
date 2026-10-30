@@ -1,15 +1,16 @@
-# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers fifteen read-only tools, and is built on the official Python mcp SDK.
-"""MCP server: fifteen read-only tools: list_runs, get_run, list_compute_envs, get_compute_env, list_agents,
-list_site_files, list_used_pipelines, my_usage, run_outputs, read_task_log, and the five canvas reads find_module, describe_module,
+# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers sixteen read-only tools, and is built on the official Python mcp SDK.
+"""MCP server: sixteen read-only tools: list_runs, get_run, list_compute_envs, get_compute_env, list_agents,
+list_site_files, list_used_pipelines, my_usage, run_outputs, read_run_file, read_task_log, and the five canvas reads find_module, describe_module,
 list_pipelines, get_pipeline, get_validation; and five tools that ask a person:
 launch, cancel, forget, resume, relaunch.
 
-The fifteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
+The sixteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
   - toward runs: this module never writes the run index (status.py opens it read-only);
   - toward the site: list_site_files may put one read-only question (list a folder) in the job queue of
     platform.db and wait for the agent's answer; read_task_log does the same to read the end of one of three log
-    files of a failed task. Neither can name a command or a job kind; the platform and the agent each check the path again.
+    files of a failed task; run_outputs(path) lists a folder below results and read_run_file reads one file of a run (text in pages, a binary
+    file only as a download address). None of them can name a command or a job kind; the platform and the agent each check the path again.
 
 launch and cancel (spec 009c) start nothing by themselves. Each builds what the terminal command builds, writes a pending request
 and asks the person (the client's form, else a page they open). They carry no argument that could say yes, and the answer to a call
@@ -100,11 +101,27 @@ def build_server(index_path, platform_path=None):
 
     @server.tool(name="run_outputs", annotations=_READ_ONLY,
                  description="What one run of yours produced: the files and folders in <run folder>/results on the site, by the run's id. "
+                             "Pass path (a folder below results, taken from the enter field of an earlier answer) to look inside it; a path "
+                             "that is not valid lists the first level and says bad_path. Each file row carries enter (the path of a folder you "
+                             "may open) and download (the path you may give read_run_file). "
                              "It never waits for the site: it answers state loading (a question was queued, ask again in a few seconds), "
                              "ready (files: name, type, size, modified, and listed_at), error (reason) or unavailable (the run was not "
                              "launched from the platform, so there is no output folder on record). Nothing is written or run.")
-    def run_outputs(ctx: Context, run_id: str) -> dict:
-        return actions.run_outputs(index_path, platform_path, run_id, caller=_caller(ctx))
+    def run_outputs(ctx: Context, run_id: str, path: str | None = None) -> dict:
+        return actions.run_outputs(index_path, platform_path, run_id, caller=_caller(ctx), subpath=path)
+
+    @server.tool(name="read_run_file", annotations=_READ_ONLY,
+                 description="Read one file of a run of yours, by the run's id and path (a path below results/, relative, as run_outputs gave it in "
+                             "download). Read-only and only for your own runs; it never waits for the site: it answers state loading (ask "
+                             "the same call again in a few seconds), ready, error (code and reason), unavailable (the run was not launched "
+                             "from the platform, or its results are not on the site host) or too_large (a file over 25 MB: the size and the "
+                             "full site path are given, nothing is read). A text file (UTF-8, no NUL byte) comes back as text, at most "
+                             "200,000 characters from offset (counted in characters, 0 by default), with total_chars and next_offset to "
+                             "turn the page; the text goes to the model you chose. A binary file is never sent through MCP: you get its name, "
+                             "size, a note and the web download address /run/file?run=<id>&path=<p>, which the person opens when logged in. "
+                             "Nothing is written or run.")
+    def read_run_file(ctx: Context, run_id: str, path: str, offset: Any = 0) -> dict:
+        return actions.read_run_file(index_path, platform_path, run_id, path, caller=_caller(ctx), offset=offset)
 
     @server.tool(name="read_task_log", annotations=_READ_ONLY,
                  description="Read the end of one log file of a failed task of a run you launched, through the run's agent: "

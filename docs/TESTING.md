@@ -955,3 +955,13 @@ The automatic tests read the HTML and the stylesheet only; this step looks at th
 1. From the repo root, in WSL: `cd platform && ABF_PLAYWRIGHT_PYTHON=/mnt/c/.../python.exe python ../scripts/dev/check_settings_mobile.py` (leave the variable out if the same Python has playwright). It starts a throwaway platform with two compute environments and writes four screenshots to `specs/settings-ce-table-mobile/screenshots/`: `settings-ce-1440-zh.png`, `settings-ce-1440-en.png`, `settings-ce-390-zh.png`, `settings-ce-390-en.png` (390 px uses device emulation, `is_mobile=True`).
 2. The script prints `document.documentElement.scrollWidth` and `clientWidth` for each of the four; exit 0 means they are equal everywhere (no sideways scroll). Exit 77 means no Playwright or Chrome.
 3. Look at the 390 px shots: each environment is its own card, six rows, each with its label (名稱 ... / Name ...), no word cut in the middle ("Nam/e"). Look at the 1440 px shots against the base: the table looks the same as before.
+
+## MCP reads a result file (mcp-run-file): the reviewer checks
+
+The automatic tests use the fake site; these steps use a real agent and a real MCP client.
+
+1. Take a SUCCEEDED run with a `results` folder. In an MCP client call `run_outputs(run_id)` and then `run_outputs(run_id, path=<enter of a folder>)`: you see the inside of that folder. Call again with `path="../x"`: it answers `bad_path` and lists the first level.
+2. Call `read_run_file(run_id, path=<download of a small .tsv>)`. The first answer may be `loading`; ask again after a few seconds: the text comes back with `total_chars` and no `next_offset`.
+3. Do the same with a text file over 200,000 characters: the answer carries `next_offset`; call again with `offset=<next_offset>` until it is gone, and join the pages: they equal the file.
+4. Call it with a PNG or other binary file: no bytes, a `download_url`; open it in the browser while signed in and the file downloads.
+5. Sign in as another user and call both tools on that run: the answer is the same as for a run that does not exist.

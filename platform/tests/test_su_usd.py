@@ -218,7 +218,7 @@ def test_tc033_parity_and_read_only():
     src = (PKG / "mcp_server.py").read_text(encoding="utf-8")
     tools = set(re.findall(r'name="([a-z_]+)"', src))
     assert tools == {"cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
-                     "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs",
+                     "list_site_files", "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs",
                      "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}   # base plus the five canvas reads (canvas-mcp-read)
     import abf_platform.actions.catalogue as cat_actions    # canvas-mcp-read: the five canvas reads have their actions in these two submodules
     import abf_platform.actions.pipelines as pipe_actions

@@ -25,6 +25,7 @@ import os
 import re
 import sqlite3
 import time
+import urllib.parse
 
 from abf_launch import build
 
@@ -563,6 +564,66 @@ def _file_answer(answer, job):
         answer.update(state="error", code=code, size=result.get("size") if isinstance(result.get("size"), int) else None)
         if code in ("refused", "failed"):
             answer["reason"] = _outputs_reason(result.get("message"))
+    return answer
+
+
+READ_CHARS = 200_000      # the most text one read_run_file call gives back, counted in characters (not bytes)
+_READ_WAIT = "站台正在讀這個檔案，請幾秒後再問一次 (the site is reading this file; ask again in a few seconds)"
+_READ_BINARY = "這是二進位檔，內容不經由 MCP 傳給模型 (binary file; its bytes are not sent through MCP)"
+_READ_REASONS = {
+    "bad_path": "路徑不正確：要用 run_outputs 給的相對路徑 (the path is not valid; use a relative path that run_outputs gave)",
+    "agent_offline": "站台代理沒有在線，請確認代理正在執行 (the agent is offline; check that it is running)",
+    "refused": "站台拒絕讀這個檔案 (the site refused to read this file)",
+    "no_answer": "站台沒有回應，請稍後再試 (the site did not answer; try again later)",
+    "not_found": "站台上找不到這個檔案 (the file is not on the site)",
+    "not_a_file": "這個路徑不是檔案 (this path is not a file)",
+    "site_unreachable": "站台連不上，請稍後再試 (the site could not be reached; try again later)",
+    "changed": "讀的時候檔案被改動了，請再問一次 (the file changed while it was read; ask again)",
+    "bad_answer": "站台回的內容不能用，請再問一次 (the site gave an answer that cannot be used; ask again)",
+    "failed": "站台讀不到這個檔案 (the site could not read this file)",
+}
+
+
+def read_run_file(index_path, platform_path, run_id, path, *, caller=None, offset=0):
+    """One file below `<run folder>/results` for a model: text in pages of READ_CHARS characters, never the bytes of a binary file. It never waits
+    (`run_file` queues one read and says loading; the same file read again within the cache time queues nothing). Returns {found: False, message}
+    for a run that is not the caller's or not there, else {state: loading|ready|error|unavailable|too_large, ...}. A text file is one that decodes
+    as strict UTF-8 and holds no NUL; `offset` and `next_offset` count characters. A binary one gives name, size, a note and the web download url."""
+    got = run_file(index_path, platform_path, run_id, path, caller=caller)
+    if not got.get("found", True):
+        return got
+    state, code = got["state"], got.get("code")
+    if state == "loading":
+        return {"found": True, "state": "loading", "message": _READ_WAIT}
+    if state == "error" and code in ("no_launch", "not_on_site"):
+        return {"found": True, "state": "unavailable", "code": code, "message": _OUTPUTS_NO_LAUNCH if code == "no_launch" else jobs.RUN_FILE_NOT_ON_SITE}
+    if state == "error" and code == "too_large":
+        return {"found": True, "state": "too_large", "name": got["name"], "size": got["size"], "site_path": got["site_path"],
+                "max_bytes": got["max_bytes"],
+                "message": "檔案太大，沒有讀；請到站台上的完整路徑取用 (the file is too large to read; get it from the full site path)"}
+    if state == "error":
+        reason = got.get("reason") or _READ_REASONS.get(code) or _READ_REASONS["failed"]
+        return {"found": True, "state": "error", "code": code if code in _READ_REASONS else "failed", "reason": reason}
+    data = got["data"]
+    try:
+        text = data.decode("utf-8")      # strict
+    except UnicodeDecodeError:
+        text = None
+    if text is None or "\x00" in text:
+        base = (store.get_meta(platform_path_for(index_path, platform_path), "web_base_url") or DEFAULT_WEB_BASE).rstrip("/")
+        url = "%s/run/file?run=%s&path=%s" % (base, urllib.parse.quote(run_id, safe=""), urllib.parse.quote(path, safe="/"))
+        return {"found": True, "state": "ready", "kind": "binary", "name": got["name"], "size": got["size"], "note": _READ_BINARY,
+                "download_url": url}
+    total = len(text)
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0 or offset > total:
+        return {"found": True, "state": "error", "code": "bad_offset", "total_chars": total, "size": got["size"],
+                "reason": "offset 要是 0 到 %d 的整數（以字元計） (offset must be a whole number from 0 to %d, counted in characters)" % (total, total)}
+    page = text[offset:offset + READ_CHARS]
+    end = offset + len(page)
+    answer = {"found": True, "state": "ready", "kind": "text", "name": got["name"], "size": got["size"], "total_chars": total,
+              "offset": offset, "text": page, "next_offset": end if end < total else None}
+    if end < total:
+        answer["message"] = "還有內容，下一次帶 offset=%d (more follows; next time pass offset=%d)" % (end, end)
     return answer
 
 

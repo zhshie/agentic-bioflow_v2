@@ -1434,7 +1434,7 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert len(got) == 28 and digest(repr(got)) == "1b116949eb7be3db3d72728b5b0e133518d1c0dca6d84ccad482d87ac2be1cf7"
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
-    assert len(names) == 50 and digest(repr(names)) == "106d719d347c4be1a7f7f22e5822f60ca5ef75fdb251d630c864318c383bd6a0"      # results-files adds run_file; without it the 49 names hash as before
+    assert len(names) == 51 and digest(repr(names)) == "c855b9bead94ba8b4e583a804e8d2e1783cfab91e8b38194169356a6fca43ef5"      # mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
     assert not [n for n in names if re.search(r"k8s|kube|pod", n, re.I)]
 
 

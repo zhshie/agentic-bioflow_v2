@@ -121,6 +121,18 @@ anywhere in this flow.
    `docs/output.md` exists at that revision, say so and continue from the
    inventory alone — a missing description is not a missing inventory.
 
+   **With no terminal** (a chat client where the MCP tools `run_outputs` and
+   `read_run_file` are available), look through the tools instead: call
+   `run_outputs(run_id)` for the first level, then
+   `run_outputs(run_id, path=<the subpath its `enter` gave>)` to go one folder
+   deeper, and read the tables you need with `read_run_file(run_id, path)`,
+   using the `download` path a row gave. A text file comes back at most 200,000
+   characters at a time; when the answer is cut, call again with its
+   `next_offset`. On `loading`, ask the same call again a few seconds later.
+   For `too_large` or a binary file, give the person the web download address
+   and do not pretend you read it. What you read is sent to the model the person
+   chose, so say that in one sentence before the first read.
+
 2.5. **Ask about the background, before proposing anything.** No field here
    is mandatory — invite the user to describe the study in their own words,
    or hand over papers, prior results, or where this is headed (a
@@ -300,6 +312,10 @@ anywhere in this flow.
   that drift. Measured on a real run: a normalised count matrix is 973 KB and
   a whole delivery directory is about 25 MB. Nothing is gained by keeping a
   plotting session on the cluster for that.
+
+- **No terminal: read small tables through MCP.** Without a terminal, a table
+  of up to 25 MB can be read with `read_run_file`; anything larger follows the
+  site-side route below.
 
 - **Exception: outputs over `scripts/fetch.sh`'s 500 MB limit.** Then nothing
   moves the other way — the analysis scripts travel to the site via

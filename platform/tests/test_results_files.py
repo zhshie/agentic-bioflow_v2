@@ -709,7 +709,7 @@ def test_tc039_no_new_mcp_tool(w):
     # TC-039
     tools, _ = w.mcp([])
     names = {t.name for t in tools}
-    assert not [n for n in names if "run_file" in n or "download" in n]
+    assert not [n for n in names if ("run_file" in n or "download" in n) and n != "read_run_file"]      # mcp-run-file: the one tool added later, by name
 
 
 def test_tc041_a_download_asks_for_no_confirmation_and_reaches_nowhere(w, monkeypatch):

@@ -17,6 +17,7 @@ WEB_ROUTES = {"list_runs": "GET /", "get_run": "GET /", "list_compute_envs": "GE
               "launch": "POST /launch, through request_launch", "cancel": "POST /act/cancel, through request_cancel",
               "run_outputs": "GET /?run=<id>&stage=results (the Outputs tab; results-outputs)",
               "list_used_pipelines": "GET /launch (step 2 \"Used before\" and the reusable runs of step 5; guided-launch-1)",
+              "read_run_file": "GET /run/file?run=<id>&path=<p> (the download; results-files)",
               "my_usage": "GET /usage (the cost page; cost-page)"}
 # 012b: the tools resume and relaunch have no action of that name (they are request_resume / request_relaunch); their web routes are POST /act/resume and POST /act/relaunch.
 WEB_VIA_REQUEST = {"launch": "request_launch", "cancel": "request_cancel", "resume": "request_resume", "relaunch": "request_relaunch"}
@@ -54,7 +55,7 @@ INTERNAL = {"offer_cleanup", "offer_cleanups", "request_pipeline_launch", "reque
             "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE",
             "FORGETTABLE", "FORGET_ALREADY", "FORGET_NO_FORM", "FORGET_STARTING", "FORGET_WAIT_SECONDS", "RUN_NOT_FOUND",
             # #138 read_task_log words, and estimate_su (a v3 helper with no MCP tool, TC-029, and no web route)
-            "RUN_NOT_FOUND_TEXT", "READ_WHICH", "NO_WORKDIR", "LOG_NOT_FOUND", "estimate_su",
+            "RUN_NOT_FOUND_TEXT", "READ_WHICH", "NO_WORKDIR", "LOG_NOT_FOUND", "estimate_su", "READ_CHARS",
             # settings-register-pipeline: 網頁兩步驟的第一步 (step one of the two-step page: reads only, writes nothing)
             "check_site_pipeline_change"}
 FORBIDDEN_IMPORTS = {"confirm", "jobs", "compute_envs", "agents", "status"}
