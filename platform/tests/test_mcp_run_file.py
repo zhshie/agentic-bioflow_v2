@@ -13,7 +13,7 @@ from test_results_files import (FOLDER, LIMIT, RESULTS, entry, file_jobs, finish
 from human_harness import World
 
 CHARS = 200_000
-SECRET = "abf_FAKECREDENTIAL0123456789abcdef"
+SECRET = "abf_" + "FAKECREDENTIAL" + "0123456789abcdef"
 
 
 @pytest.fixture
