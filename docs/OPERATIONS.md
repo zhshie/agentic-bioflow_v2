@@ -112,7 +112,8 @@ All of these run as the operator on the platform host.
 |---|---|
 | `abf-platform token new` | Issue a token and show it once. |
 | `abf-platform agent-token new <name> --user U` | Issue a token for one agent name and show it once; `--user` makes the agent belong to that user (required once the platform has a user). |
-| `abf-platform agent-token revoke <name>` | Revoke every token of an agent name. |
+| `abf-platform agent-token list [name]` | List the agent tokens with their ids, user and whether each is revoked (never the token itself). |
+| `abf-platform agent-token revoke <name>` / `abf-platform agent-token revoke --id N` | Revoke every token of an agent name, or only the one token with that id (the same name's other tokens keep working). |
 | `abf-platform user add <name> --lab L` | Add a user (name and lab). |
 | `abf-platform user passwd <name> [--temporary]` | Set the password a person logs into the confirmation page with (typed at a terminal, 8 to 1000 characters). `--temporary` instead makes a one-time temporary password, shown once at a real terminal and valid for 72 hours; the person must change it at the first web login. |
 | `abf-platform pat new --user U` | Issue a personal access token for the MCP server over HTTP and show it once. |
@@ -210,6 +211,8 @@ cd ~/<clone> && git pull
 systemctl --user restart abf-serve abf-mcp abf-web
 ```
 
+Or run `deploy/platform-upgrade.sh`: it does the same three steps, then waits (120 seconds by default; `--wait N` changes it) for every agent that was online before the restart to say hello again, names the ones that did not, and exits with 1.
+
 If `deploy/systemd/` or `deploy/Caddyfile.template` changed in the new version, copy them again as
 in steps 3 and 4 and run `systemctl --user daemon-reload` (and restart Caddy) before the restart.
 
@@ -218,6 +221,8 @@ in steps 3 and 4 and run `systemctl --user daemon-reload` (and restart Caddy) be
 To let people launch on an `awsbatch-platform` environment, the same host needs Java 17 or newer, Nextflow, the aws CLI (the AWS command line), a `storage_root` (the run folders go to `<storage_root>/_aws_runs/`) and the credential file at `ABF_STATION_AWS_CREDENTIALS` (or `_personal/aws-credentials`), readable by that user only; see `docs/PLATFORM.md`, "Launching on AWS Batch". AWS bills the lab's AWS account for what a launch starts, and the platform has no estimate or limit for it yet: set a budget alert in AWS.
 
 To let people launch on an `azbatch-platform` environment, the same host needs Java 17 or newer, Nextflow, the az CLI (the Azure command line), a `storage_root` (the run folders go to `<storage_root>/_azure_runs/`) and the credential file at `ABF_STATION_AZURE_CREDENTIALS` (or `_personal/azure-credentials`), readable by that user only; see `docs/PLATFORM.md`, "Launching on Azure Batch". The pool must already exist. Azure bills the lab's Azure account for what a launch starts, and the platform has no estimate or limit for it yet: set a budget alert in Azure.
+
+To let people launch on a `k8s-platform` environment, the platform host needs the `kubectl` command line, and the agent needs `ABF_STATION_KUBECONFIG` pointing at a kubeconfig file (the kubeconfig never leaves the agent's computer). Set the station setting `k8s_head_image` (required, no default): the image the head Pod runs, with Nextflow in it. `platform_public_url` must be an `https://` address the cluster can reach. The head Pod's service account needs a Role in the namespace that allows create, get, list, watch and delete on pods (and get, list on pods/log, and get on persistentvolumeclaims). The cluster's own cloud or data centre bills; the platform has no estimate. No migration is needed.
 
 To let people launch on a `googlebatch-platform` environment, the host that runs `abf-station run` (next to `abf-platform serve`) needs: Java 17 or newer, Nextflow, `gcloud` (the Google Cloud CLI), a `storage_root` in `config/env.yaml` (the run folders go to `<storage_root>/_gcb_runs/`), and the service-account key file at `ABF_STATION_GCP_CREDENTIALS` (or `_personal/gcp-sa.json` in the deployment folder), readable by that user only. The host must be Linux or WSL. Everything else is in `docs/PLATFORM.md`, "Launching on Google Batch". Google bills the lab's Google Cloud account for what a launch starts; before a launch the platform checks each person's monthly cloud cap and shows an estimate, or says why it cannot work one out (`docs/CLOUD.md`); it does not stop a run that is already going.
 
@@ -230,7 +235,7 @@ For a `googlebatch-platform` environment the input files live in the lab's Googl
 3. Then the person keeps them as a named Dataset: `abf-platform dataset register --name <name> --version <version> --samplesheet <sheet.csv> --file gs://<bucket>/uploads/<user>/rawdata/<file> --user <user> --destination <environment>` (`abf-platform dataset list` and `abf-platform dataset show` read them back). The platform keeps names and places only; it does not open the files.
 4. An AI client uses the `launch` tool with its `dataset` argument (and `dataset_version`) instead of a samplesheet.
 5. The platform does not grant, and does not check, who may write to the bucket. That is the Google Cloud project owner's job, done on Google's side.
-6. The web page /upload sends files up to 2 GB into the bucket: choose the environment, name and version the dataset, choose the FASTQ files (and a samplesheet, or let the R1/R2 pairs make one) and press Upload. Each file waits on the platform host until the agent has copied it and the size in the bucket is the same, then it is removed. When every file is in, the dataset is registered by itself and is one of the choices at step 4 of the launch page. A file over 2 GB still takes the `gcloud storage cp` line of point 2, and an AI tool that sends a file is not built. When a launch is sent, Google Batch still checks every path cell is in the `workDir` bucket.
+6. The web page /upload sends files up to 2 GB into the bucket: choose the environment, name and version the dataset, choose the FASTQ files (and a samplesheet, or let the R1/R2 pairs make one) and press Upload. Each file waits on the platform host until the agent has copied it and the size in the bucket is the same, then it is removed. When every file is in, the dataset is registered by itself and is one of the choices at step 4 of the launch page. A file over 2 GB still takes the `gcloud storage cp` line of point 2, and an AI tool that sends a file is not built. When a launch is sent, Google Batch still checks every path cell is in the `workDir` bucket. For the /upload page to work, the agent that runs `abf-station run` must have `ABF_STATION_UPLOADS` set to the absolute path of the folder where the platform keeps the waiting files (`uploads_root`: `ABF_PLATFORM_UPLOADS`, else the `uploads` folder next to `platform.db`); without it the agent refuses every upload with "這個代理沒有設定上傳資料夾（ABF_STATION_UPLOADS）", which asks the administrator to set it.
 
 ## 6. Not built yet
 

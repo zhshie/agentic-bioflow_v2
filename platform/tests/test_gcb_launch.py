@@ -1065,8 +1065,8 @@ def test_tool_list_unchanged_and_no_new_web_route(tmp_path):
     from abf_platform import web
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
-    assert len(names) == 15 and names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                                          "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "launch", "cancel", "resume", "relaunch", "forget"}
+    assert len(names) == 20 and names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
+                                          "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "resume", "relaunch", "forget"}
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if re.search(r"gcb|google|batch|gcp", getattr(r, "path", ""), re.I) and r.path not in {"/upload", "/upload/{batch}"}]      # web-upload-page: only the two routes this task registered are exempt (ruling 25)
 
@@ -1148,7 +1148,7 @@ def test_docs_describe_the_launch_the_billing_sentence_and_the_requirements():
     d = doc("PLATFORM.md")
     assert "Slurm-like confirmed launch and cancel on the platform host (resume: not yet)" in d
     # aws-launch changed this sentence on purpose (plan A9 d): AWS Batch can run now
-    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only" in d
+    assert "Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only" in d
     assert "Launching on Google Batch" in d
     section = d[d.index("Launching on Google Batch"):]
     for key in ("process.executor", "workDir", "google.project", "google.location", "google.batch.spot", "google.batch.bootDiskSize",
@@ -1167,3 +1167,57 @@ def test_docs_describe_the_launch_the_billing_sentence_and_the_requirements():
         assert not re.findall(r"[a-z0-9-]+@(?!lab-project-1)[a-z0-9-]+\.iam\.gserviceaccount\.com", text)
     t = doc("TESTING.md")
     assert "gcb-launch" in t and "git diff --name-only" in t
+
+
+
+# ======================================================================================================================
+# cloud-ce-memory-cap (gcb): maxMemoryGB and the merge with the user's own resourceLimits
+# ======================================================================================================================
+
+def _cap_limit(box, config_text="", **over):
+    ce = gce(nextflowConfig=config_text, **over)
+    return config_keys(box.bundle(ce=ce)["files"]["gcb.config"]).get("process.resourceLimits")
+
+
+def test_cap_original_case_real_failure_and_memory_only(box):
+    # TC-010 (original trial case), TC-022 (the user's memory key is kept), TC-013 (memory only), TC-019 (the cpus-only line stays)
+    assert _cap_limit(box, maxvCpus=4, maxMemoryGB=6) == "[cpus: 4, memory: 6.GB]"
+    assert _cap_limit(box, "process.resourceLimits = [cpus: 4, memory: 6.GB]\n", maxvCpus=4) == "[cpus: 4, memory: 6.GB]"
+    assert _cap_limit(box, maxvCpus=None, maxMemoryGB=6) == "[memory: 6.GB]"
+    assert _cap_limit(box, maxvCpus=16) == "[cpus: 16]"
+    assert box.bundle(ce=gce(maxMemoryGB=6))["ce"]["maxMemoryGB"] == 6
+    assert "maxMemoryGB" not in box.bundle()["ce"]
+
+
+def test_cap_snapshot_ce_and_bad_values(box):
+    # TC-017, TC-018
+    from abf_station import launch
+    view = {"name": "x", "platform": GCB, "config": {"project": PROJECT, "location": "europe-west2", "workDir": "gs://lab-bucket/work"}}
+    on = launch.snapshot_ce({"name": "x", "platform": GCB, "config": dict({"project": PROJECT, "location": "europe-west2", "workDir": "gs://lab-bucket/work"}, maxMemoryGB=6)})
+    assert on["maxMemoryGB"] == 6 and "maxMemoryGB" not in launch.snapshot_ce(view)
+    for bad in (0, 10001, True, "8", 1.5):
+        with pytest.raises(launch.BundleError) as e:
+            box.bundle(ce=gce(maxMemoryGB=bad))
+        assert "maxMemoryGB" in str(e.value), bad
+
+
+def test_cap_unreadable_user_limits_are_refused_and_no_limit_is_left_alone(box):
+    # TC-046, TC-039
+    from abf_station import launch
+    shapes = ("resourceLimits = [\n  cpus: 4\n]\n", "process.resourceLimits = [cpus: 4]\nprocess.resourceLimits = [cpus: 2]\n",
+              "process { resourceLimits { cpus = 4 } }\n", "resourceLimits = [cpus: params.c]\n", "resourceLimits = [cpus: 4, gpus: 1]\n")
+    for text in shapes:
+        with pytest.raises(launch.BundleError) as e:
+            box.bundle(ce=gce(maxvCpus=4, nextflowConfig="// MY-MARKER-LINE\n" + text))
+        assert "resourceLimits" in str(e.value) and "MY-MARKER-LINE" not in str(e.value) and "maxMemoryGB" in str(e.value)
+    keep = "process.resourceLimits = [cpus: 2, memory: 4.GB]\n"
+    b = box.bundle(ce=gce(maxvCpus=None, nextflowConfig=keep))
+    assert "resourceLimits" not in b["files"]["gcb.config"] and keep in b["files"]["nextflow.config"]
+
+
+def test_cap_screen_row_only_when_set(box):
+    # TC-056, TC-057
+    from abf_launch import build
+    on = "\n".join(build.launch_screen(box.bundle(ce=gce(maxMemoryGB=6)), "gcb1"))
+    assert "單一 task 的記憶體上限" in on and "單一 task 的 cpus 上限" in on
+    assert "記憶體上限" not in "\n".join(build.launch_screen(box.bundle(), "gcb1"))

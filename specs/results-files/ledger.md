@@ -40,3 +40,30 @@
 - **TC-043 "完整路徑".** The too-large page shows `<run folder>/results/<path>` built by the platform from its own launch record; the agent's path is not used.
 - **STYLE / D13.** `web_board.STYLE` unchanged (sha256 pinned in the new test). No class was added: the crumb bar is `<nav class="ostat" data-part="crumbs">`.
 - **Ruling 5.** `constitution_scope_test.sh` red in WSL is an environment matter; CI is the reference.
+
+## Merge of origin/v3 (after #294, #295, #296)
+
+Text conflicts (both sides kept; v3 wording wins where both changed the same text):
+
+| File | Resolution |
+|---|---|
+| `platform/abf_platform/web_board.py` | v3's `render_waiting` and this branch's `download_headers`, `_mb`, `render_file_page` both stay (they sat at the same spot); the STRINGS table took v3's wording (`無法讀取`, `無輸出資料夾紀錄`, `此資料夾為空`) plus this branch's download keys, auto-merged |
+| `platform/abf_station/handlers.py` | import line is v3's (`compute_envs`) plus `readfile`; `JOB_KINDS` and `ARG_KEYS` keep `read_run_file` |
+| `test_cleanup_offer.py`, `test_confirm_page.py`, `test_dataset_cli.py`, `test_owner_binding.py`, `test_web_board.py` | route lists are the union: v3's `/settings/inventory` and this branch's `/run/file` |
+
+Auto-merged without conflict and checked: `actions/__init__.py` (`run_file` and v3's `run_environment` both present), `jobs.py`, `store.py`. The jobs CHECK has one migration path (`_migrate_jobs_kinds`, `_jobs_kinds_current`); v3 added no job kind and no migration of its own, so nothing needed combining. An old database still upgrades with every kind (the existing migration tests pass).
+
+Pinned values changed (each recomputed only because of this branch's real addition):
+
+| Test | Change | Why |
+|---|---|---|
+| `test_k8s_launch.py` kinds test | now asserts `read_run_file` is in `KINDS` and keeps the OLD hash over the kinds without it | tenth kind |
+| `test_k8s_launch.py` aws/azure/gcb gate tests | `gate_table` skips `read_run_file`; the three old hashes are unchanged (checked: the new tables minus that line hash to the old values) | tenth kind is refused on those types like the other not-built kinds |
+| `test_k8s_launch.py` schema hash | `7eded9a6...` to `1d9448eb...` | only the jobs CHECK list gained `read_run_file` |
+| `test_k8s_launch.py` web routes | 27 to 28 and digest to `1b116949...` | `GET /run/file` |
+| `test_k8s_launch.py` action functions | 49 to 50 and digest to `106d719d...` | `run_file` (the 49 others hash as before, checked) |
+| `test_web_nano4_path.py` TC-043 | schema digest `21226ea8...` to `38f9a0e1...` | jobs CHECK list gained `read_run_file` |
+| `test_results_files.py` TC-039 | stylesheet sha `66b9a8e1...` to `6b2683ae...` | v3 (#296) changed `STYLE`; this branch did not touch it |
+| `test_results_files.py` TC-005, TC-015ish (lines 231, 286) | `讀不到` to `無法讀取`, `沒有輸出資料夾紀錄` to `無輸出資料夾紀錄` | v3's wording wins |
+
+The `web_board` STRINGS hash in `test_web_settings_ce_mobile.py` and the `test_clean_page.py` hashes needed no change (they pass as merged).

@@ -205,7 +205,7 @@ def _below(real, area):
     return real == area or real.startswith(area + os.sep)
 
 
-OWNER_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+OWNER_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 
 
 def _param_path(value, area, roots):
@@ -285,6 +285,12 @@ def is_azure(state, ce_name):
     return view is not None and view["platform"] == bundle_mod.AZURE
 
 
+def is_k8s(state, ce_name):
+    """Whether the environment of this name is a Kubernetes one."""
+    view = compute_envs.get(state, ce_name)
+    return view is not None and view["platform"] == bundle_mod.K8S
+
+
 def prepare_cancel(state, run, owner=None):
     """(environment name, bundle, hand-off row) for a cancel of one run of this platform, or Refusal. With `owner` (116) only a run
     that user launched is there: another user's run is 'not launched from this platform' to them, as a missing one is."""
@@ -299,6 +305,9 @@ def prepare_cancel(state, run, owner=None):
     if row is None:
         raise Refusal("%s 不是平台自己送出的（hand-off 紀錄裡沒有它）(not launched from this platform)" % run)
     if row["slurm_job_id"] is None:
+        if is_k8s(state, row["ce"]):
+            raise Refusal("%s 沒有主控 Pod 的紀錄：它尚未啟動，或結果不明；請先到叢集確認 Pod %s 與這次 run 的 task Pod "
+                          "(no head Pod recorded)" % (run, bundle_mod.k8s_pod_name(run)))
         if is_gcb(state, row["ce"]) or is_aws(state, row["ce"]) or is_azure(state, row["ce"]):
             raise Refusal("%s 沒有主控程序編號：它尚未啟動，或結果不明；請先查平台主機上的 %s (no process number recorded)"
                           % (run, row["run_folder"]))
@@ -315,6 +324,13 @@ def prepare_cancel(state, run, owner=None):
         raise Refusal(problem)
     bundle = {"version": 1, "run_name": row["run_name"], "slurm_job_id": row["slurm_job_id"], "run_folder": row["run_folder"],
               "agent": row["agent"], "ce": bundle_mod.snapshot_ce(view)}
+    if view["platform"] == bundle_mod.K8S:
+        sent, _forgotten = _launched_ce(state, row)
+        if sent is None or not isinstance(sent.get("namespace"), str) or not sent["namespace"]:
+            raise Refusal("%s 送出時存下的紀錄已經找不到，無法確認 Pod 在哪個命名空間，所以不取消；請到叢集確認 Pod %s 與這次 run 的 task Pod "
+                          "(the launch record is gone)" % (run, bundle_mod.k8s_pod_name(row["run_name"])))
+        bundle["ce"]["namespace"] = sent["namespace"]      # the namespace the Pod was made in (the record of that launch), not the one the environment names now
+        bundle["pod_name"] = bundle_mod.k8s_pod_name(row["run_name"])      # the one Pod this cancel may delete; the agent checks it again
     return row["ce"], bundle, row
 
 
@@ -328,8 +344,8 @@ def clean_work_path(view_snapshot, row):
     return row["run_folder"] + "/work"
 
 
-def _launched_workdir(state, row):
-    """(the workDir of the environment as it was when the run was sent or None, whether the owner forgot the run)."""
+def _launched_ce(state, row):
+    """(the environment snapshot kept with the run when it was sent or None, whether the owner forgot the run)."""
     con = _open(state)
     if con is None:
         return None, False
@@ -344,7 +360,13 @@ def _launched_workdir(state, row):
         con.close()
     if content is None or not isinstance(content[0].get("ce"), dict):
         return None, False
-    return content[0]["ce"].get("workDir"), False
+    return content[0]["ce"], False
+
+
+def _launched_workdir(state, row):
+    """(the workDir of the environment as it was when the run was sent or None, whether the owner forgot the run)."""
+    ce, forgotten = _launched_ce(state, row)
+    return (ce.get("workDir") if ce is not None else None), forgotten
 
 
 def prepare_clean(state, run, owner=None):
@@ -431,6 +453,8 @@ def _predecessor(state, run, verb, index_path, owner):
             raise Refusal(bundle_mod.AWS_NO_RESUME)      # nor an AWS Batch run
         if is_azure(state, row["ce"]):
             raise Refusal(bundle_mod.AZURE_NO_RESUME)      # nor an Azure Batch run
+        if is_k8s(state, row["ce"]):
+            raise Refusal(bundle_mod.K8S_NO_RESUME)      # nor a Kubernetes run
         if jobs.run_forgotten(con, run):
             raise Refusal(jobs.FORGOTTEN)      # keep-submissions (F2): the owner deleted what it was sent with; there is nothing to go on from
         if row["slurm_job_id"] is None:
@@ -629,6 +653,11 @@ AZURE_CANCEL_NOTE = ("取消只會對主控程序送出一次 SIGTERM（終止�
 AZURE_SPOT_NOTE = "是否 Spot 只是紀錄；要用低優先權節點，請在建立 pool 時自己設定"
 
 
+K8S_COST = "由你的 Kubernetes 叢集所屬的雲端或機房計費；本系統目前沒有費用預估與上限"
+K8S_CANCEL_NOTE = ("取消只會刪除下面這一個主控 Pod；這次 run 的 task Pod 不由本系統刪除，請到叢集確認它們是否也停了。"
+                   "費用從 Pod 開始算到它們真的停止為止。")
+
+
 def _samplesheet_lines(bundle):
     rows = bundle["samplesheet"]
     lines = [terminal.PREFIX + "== samplesheet.csv（%d 列資料）==" % (len(rows) - 1)]
@@ -669,6 +698,8 @@ def gcb_launch_screen(bundle, ce_name, cost=None):
               ("Spot", "是" if ce.get("spot") else "否")]
     if ce.get("maxvCpus") is not None:
         fields.append(("單一 task 的 cpus 上限", ce["maxvCpus"]))
+    if ce.get("maxMemoryGB") is not None:
+        fields.append(("單一 task 的記憶體上限（GB）", ce["maxMemoryGB"]))
     for label, value in fields:
         lines.append(terminal.pair(label, value))
     lines += _samplesheet_lines(bundle)
@@ -690,6 +721,8 @@ def aws_launch_screen(bundle, ce_name):
               ("Spot 備註", "%s（環境上寫的是 %s）" % (AWS_SPOT_NOTE, "是" if ce.get("spot") else "否"))]
     if ce.get("maxvCpus") is not None:
         fields.append(("單一 task 的 cpus 上限", ce["maxvCpus"]))
+    if ce.get("maxMemoryGB") is not None:
+        fields.append(("單一 task 的記憶體上限（GB）", ce["maxMemoryGB"]))
     for label, value in fields:
         lines.append(terminal.pair(label, value))
     lines += _samplesheet_lines(bundle)
@@ -712,10 +745,31 @@ def azure_launch_screen(bundle, ce_name):
               ("Spot 備註", "%s（環境上寫的是 %s）" % (AZURE_SPOT_NOTE, "是" if ce.get("spot") else "否"))]
     if ce.get("maxvCpus") is not None:
         fields.append(("單一 task 的 cpus 上限", ce["maxvCpus"]))
+    if ce.get("maxMemoryGB") is not None:
+        fields.append(("單一 task 的記憶體上限（GB）", ce["maxMemoryGB"]))
     for label, value in fields:
         lines.append(terminal.pair(label, value))
     lines += _samplesheet_lines(bundle)
     for name in ("params.yaml", "nextflow.config", "az" "ure.config", "head.sh"):
+        lines += terminal.block(name, bundle["files"][name])
+    return lines
+
+
+def k8s_launch_screen(bundle, ce_name):
+    """What a person sees before saying yes to a launch on Kubernetes: first who will bill (and that there is no estimate), then
+    everything that will be made in the cluster. No number of money is shown: the platform has none for a cluster."""
+    ce = bundle["ce"]
+    lines = [terminal.PREFIX + "== 送出確認：下面就是會被送出的全部內容 ==", terminal.PREFIX + terminal.esc(K8S_COST)]
+    fields = [("管線", bundle["pipeline"]), ("版本", bundle["revision"]), ("環境", ce_name), ("代理", bundle["agent"]),
+              ("run 名稱", bundle["run_name"]), ("叢集 context", ce["context"]), ("命名空間", ce["namespace"]),
+              ("PVC（儲存空間）", ce["storageClaimName"]), ("主控 Pod 名稱", bundle["pod_name"]),
+              ("執行檔案位置（PVC 內）", bundle["run_folder"] + "/"), ("工作目錄", "%s/runs/%s/work" % (ce["workDir"], bundle["run_name"]))]
+    if ce.get("serviceAccount"):
+        fields.append(("service account", ce["serviceAccount"]))
+    for label, value in fields:
+        lines.append(terminal.pair(label, value))
+    lines += _samplesheet_lines(bundle)
+    for name in ("params.yaml", "nextflow.config", "k8s.config", "head.sh"):
         lines += terminal.block(name, bundle["files"][name])
     return lines
 
@@ -763,6 +817,8 @@ def launch_screen(bundle, ce_name, cost=None):
         return aws_launch_screen(bundle, ce_name)
     if ce.get("platform") == bundle_mod.AZURE:
         return azure_launch_screen(bundle, ce_name)
+    if ce.get("platform") == bundle_mod.K8S:
+        return k8s_launch_screen(bundle, ce_name)
     project = _project_of(bundle)
     lines = [terminal.PREFIX + "== 送出確認：下面就是會被送出的全部內容 =="]
     fields = [("管線", bundle["pipeline"]), ("版本", bundle["revision"])]
@@ -789,6 +845,16 @@ def launch_screen(bundle, ce_name, cost=None):
 
 def cancel_screen(bundle, row):
     platform = (bundle.get("ce") or {}).get("platform")
+    if platform == bundle_mod.K8S:
+        lines = [terminal.PREFIX + "== 取消確認：只會刪除下面這一個主控 Pod =="]
+        for label, value in (("run 名稱", bundle["run_name"]), ("主控 Pod 名稱", bundle["pod_name"]),
+                             ("命名空間", bundle["ce"]["namespace"]), ("叢集 context", bundle["ce"]["context"]),
+                             ("專屬資料夾", bundle["run_folder"]), ("代理", bundle["agent"])):
+            lines.append(terminal.pair(label, value))
+        lines.append(terminal.PREFIX + terminal.esc(K8S_CANCEL_NOTE))
+        if row["cancel_requested_at"] is not None:
+            lines.append(terminal.pair("提醒", "這個 run 的取消請求已經在 %s 送出過一次" % when(row["cancel_requested_at"])))
+        return lines
     if platform in (bundle_mod.GCB, bundle_mod.AWS, bundle_mod.AZURE):
         lines = [terminal.PREFIX + "== 取消確認：只會對下面這一個主控程序送出取消 =="]
         for label, value in (("run 名稱", bundle["run_name"]), ("主控程序編號（pid）", bundle["slurm_job_id"]),

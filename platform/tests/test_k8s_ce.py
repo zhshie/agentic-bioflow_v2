@@ -729,9 +729,9 @@ def test_other_types_are_unchanged(ip):
     assert ip.run("ce", "create", "--name", "az1", "--platform", "azbatch-platform", "--agent", "a1", "--config-json", json.dumps(cfg))[0] == 0
     assert set(compute_envs.snapshot(compute_envs.get(ip.state_db, "az1"))) == {
         "name", "platform", "credentialsId", "location", "batchAccountName", "storageAccountName", "workDir", "pool"}
-    assert compute_envs.PLATFORM_HOST_TYPES == ("googlebatch-platform", "awsbatch-platform", "azbatch-platform")
-    assert K8S not in compute_envs.CLOUD_JOB_KINDS and len(compute_envs.CLOUD_JOB_KINDS) == 3
-    assert compute_envs.CHECK_ONLY_TYPES == (K8S,)
+    assert compute_envs.PLATFORM_HOST_TYPES == ("googlebatch-platform", "awsbatch-platform", "azbatch-platform", K8S)
+    assert K8S in compute_envs.CLOUD_JOB_KINDS and len(compute_envs.CLOUD_JOB_KINDS) == 4
+    assert compute_envs.CHECK_ONLY_TYPES == ()
 
 
 def _available_k8s(ip, name="k1", **top):
@@ -746,16 +746,18 @@ def test_jobs_other_than_the_preflight_are_refused_in_plain_words(ip):
     _available_k8s(ip)
     before = jobs_count(ip)
     msgs = []
-    for kind in ("launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "list_site_files", "pipeline_files"):
+    for kind in ("clean_" "work", "put_upload", "list_site_files"):
         with pytest.raises(jobs.JobRefused) as e:
             jobs.check_target(ip.state_db, "k1", kind)
         msgs.append(str(e.value))
     with pytest.raises(jobs.JobRefused) as e:
         jobs.enqueue_listing(ip.state_db, "k1", "/x")
     msgs.append(str(e.value))
-    assert len(msgs) == 7
+    assert len(msgs) == 4
+    for kind in ("launch_nextflow", "cancel_run", "pipeline_files"):
+        jobs.check_target(ip.state_db, "k1", kind)      # the kinds that are built for Kubernetes now pass
     for msg in msgs:
-        assert "Kubernetes" in msg and "尚未支援送出" in msg and "k8s-launch" in msg, msg
+        assert "Kubernetes" in msg and "尚未支援" in msg, msg
         assert "Azure" not in msg and "AWS" not in msg and "Google" not in msg, msg
     assert jobs_count(ip) == before
     jobs.enqueue_preflight(ip.state_db, "k1")      # the preflight is the one job it takes
@@ -766,8 +768,8 @@ def test_launch_is_refused_and_the_environment_is_never_auto_picked(ip):
     # TC-106, TC-107, TC-108
     from abf_launch import build
     _available_k8s(ip)
-    problem = build.target_problem(ip.state_db, "k1", "launch_nextflow")
-    assert problem and isinstance(problem, str)
+    assert build.target_problem(ip.state_db, "k1", "launch_nextflow") is None      # launching is built for Kubernetes now
+    assert isinstance(build.target_problem(ip.state_db, "k1", "put_upload"), str)
     assert build.primary_environment(ip.state_db) is None
     assert ip.create_slurm("s1")[0] == 0
     set_status(ip, "s1", "available")
@@ -840,8 +842,7 @@ def doc(name):
     return (REPO_ROOT / "docs" / name).read_text(encoding="utf-8")
 
 
-NEW_SENTENCE = ("Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform "
-                "host (launch: not yet); the other nine types can be modelled only")
+NEW_SENTENCE = ("Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only")
 
 
 def test_docs_list_every_k8s_key_and_check():
@@ -855,16 +856,16 @@ def test_docs_list_every_k8s_key_and_check():
         assert word in section, word
     assert re.search(r"operator|營運者", section) and re.search(r"exec", section) and re.search(r"trusted|信任", section)
     assert re.search(r"already exist|事先|beforehand|in advance", section)
-    assert re.search(r"`k8s-platform` \| Kubernetes \| checked on the platform host \(launch: not yet\)", d)
+    assert re.search(r"`k8s-platform` \| Kubernetes \| checked and launched on the platform host \(upload, clean, resume: not yet\)", d)      # k8s-launch
     assert d.count(NEW_SENTENCE) >= 2 and "the other ten" not in d
     assert "Fourteen types can be created" in d
     par = doc("SEQERA_PARITY.md")
     row = [ln for ln in par.splitlines() if "`k8s-platform`" in ln][0]
-    assert "Have (create + check); launch not yet" in row and row.rstrip().endswith("[ ] |")
+    assert "Have (create + check + launch + cancel; resume not yet)" in row and row.rstrip().endswith("[ ] |")
     pre = par[par.index("Pre-flight checks:"):].split("\n")[0]
     assert "for Google Cloud Batch the station agent on the platform host runs them" in pre
     assert "for AWS Batch the same agent runs them" in pre and "for Azure Batch the same agent runs them" in pre
-    assert pre.rstrip(". ").endswith("; for Kubernetes the same agent runs the read-only checks (create + check; launch not yet)")
+    assert pre.rstrip(". ").endswith("; for Kubernetes the same agent runs them (create + check + launch + cancel; resume not yet)")
     assert "## F. Compute environments (13 items)" in par
     t = doc("TESTING.md")
     assert "Kubernetes environment (k8s-ce)" in t
@@ -922,7 +923,7 @@ def test_tool_list_unchanged_and_no_new_web_route(tmp_path):
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
     assert names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log",
-                     "run_outputs", "my_usage", "launch", "cancel", "resume", "relaunch", "forget"}
+                     "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "resume", "relaunch", "forget"}
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if re.search(r"k8s|kube", getattr(r, "path", ""), re.I)]
 
@@ -963,9 +964,9 @@ def test_messages_say_what_to_do_and_leak_nothing_internal(ip, monkeypatch):
     msgs = {"agent": refused(ip, agent=None), "context": refused(ip, good_config(context="a b"))}
     assert "--agent" in msgs["agent"]
     with pytest.raises(jobs.JobRefused) as e:
-        jobs.check_target(ip.state_db, "avail", "launch_nextflow")
+        jobs.check_target(ip.state_db, "avail", "put_upload")
     msgs["launch"] = str(e.value)
-    assert "k8s-launch" in msgs["launch"]
+    assert "Kubernetes" in msgs["launch"] and "尚未支援" in msgs["launch"]
     _old_row(ip)
     rc, out = ip.run("ce", "preflight", "old")
     msgs["old"] = out

@@ -979,8 +979,8 @@ def test_aws_and_google_batch_still_accept_their_six_kinds_with_unchanged_refusa
 def test_type_constants_are_as_planned_and_nothing_indexes_them_by_position():
     # TC-094, TC-095, TC-096, TC-097, TC-098 (AZL-GATE-03)
     from abf_platform import compute_envs
-    assert compute_envs.PLATFORM_HOST_TYPES == (compute_envs.GOOGLE_BATCH, compute_envs.AWS, compute_envs.AZURE)
-    assert compute_envs.CHECK_ONLY_TYPES == ("k8s-platform",)      # k8s-ce
+    assert compute_envs.PLATFORM_HOST_TYPES == (compute_envs.GOOGLE_BATCH, compute_envs.AWS, compute_envs.AZURE, "k8s-platform")      # k8s-launch
+    assert compute_envs.CHECK_ONLY_TYPES == ()      # k8s-launch
     assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, compute_envs.GOOGLE_BATCH, compute_envs.AWS, compute_envs.AZURE, "k8s-platform")
     assert set(compute_envs.CLOUD_JOB_KINDS[compute_envs.AZURE]) == {"preflight", "launch_nextflow", "cancel_run", "pipeline_files", "put_upload", "clean_work"}
     for folder in ("abf_platform", "abf_station", "abf_launch"):
@@ -1116,8 +1116,8 @@ def test_tool_list_is_still_twelve_and_no_new_web_route(tmp_path):
     from abf_platform import mcp_server, web
     names = {t.name for t in asyncio.run(mcp_server.build_server(str(tmp_path / "index.db")).list_tools())}
     from_aws = {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines",
-                "read_task_log", "run_outputs", "my_usage", "launch", "cancel", "resume", "relaunch", "forget"}
-    assert len(names) == 15 and names == from_aws
+                "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "resume", "relaunch", "forget"}
+    assert len(names) == 20 and names == from_aws
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if re.search(r"azure|batch", getattr(r, "path", ""), re.I) and r.path not in {"/upload", "/upload/{batch}"}]      # web-upload-page: only the two routes this task registered are exempt (ruling 25)
 
@@ -1210,7 +1210,7 @@ def test_platform_md_documents_azure_launch():
     # TC-130, TC-131, TC-132, TC-133, TC-134, TC-135, TC-136, TC-141 (AZL-DOC-01)
     d = doc("PLATFORM.md")
     assert "checked and launched on the platform host (upload, clean, resume: not yet)" in d
-    assert d.count("Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; Kubernetes can be created and checked on the platform host (launch: not yet); the other nine types can be modelled only") >= 2
+    assert d.count("Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only") >= 2
     assert "Launching on Azure Batch" in d
     section = d[d.index("Launching on Azure Batch"):]
     section = section[:section.index("\n## ", 5)] if "\n## " in section[5:] else section
@@ -1246,3 +1246,57 @@ def test_testing_md_has_azure_launch_section_with_manual_steps():
         assert word in section, word
     install = doc("INSTALL.md") + doc("OPERATIONS.md")
     assert "Java 17" in install and "Nextflow" in install and "az CLI" in install
+
+
+
+# ======================================================================================================================
+# cloud-ce-memory-cap (azure): maxMemoryGB and the merge with the user's own resourceLimits
+# ======================================================================================================================
+
+def _cap_limit(box, config_text="", **over):
+    ce = zce(nextflowConfig=config_text, **over)
+    return config_keys(box.bundle(ce=ce)["files"]["azure.config"]).get("process.resourceLimits")
+
+
+def test_cap_original_case_real_failure_and_memory_only(box):
+    # TC-011 (original trial case), TC-023 (the user's memory key is kept), TC-014 (memory only), TC-019 (the cpus-only line stays)
+    assert _cap_limit(box, maxvCpus=4, maxMemoryGB=6) == "[cpus: 4, memory: 6.GB]"
+    assert _cap_limit(box, "process.resourceLimits = [cpus: 4, memory: 6.GB]\n", maxvCpus=4) == "[cpus: 4, memory: 6.GB]"
+    assert _cap_limit(box, maxvCpus=None, maxMemoryGB=6) == "[memory: 6.GB]"
+    assert _cap_limit(box, maxvCpus=16) == "[cpus: 16]"
+    assert box.bundle(ce=zce(maxMemoryGB=6))["ce"]["maxMemoryGB"] == 6
+    assert "maxMemoryGB" not in box.bundle()["ce"]
+
+
+def test_cap_snapshot_ce_and_bad_values(box):
+    # TC-017, TC-018
+    from abf_station import launch
+    view = {"name": "x", "platform": AZ, "config": {"location": "westeurope", "workDir": WORK}}
+    on = launch.snapshot_ce({"name": "x", "platform": AZ, "config": dict({"location": "westeurope", "workDir": WORK}, maxMemoryGB=6)})
+    assert on["maxMemoryGB"] == 6 and "maxMemoryGB" not in launch.snapshot_ce(view)
+    for bad in (0, 10001, True, "8", 1.5):
+        with pytest.raises(launch.BundleError) as e:
+            box.bundle(ce=zce(maxMemoryGB=bad))
+        assert "maxMemoryGB" in str(e.value), bad
+
+
+def test_cap_unreadable_user_limits_are_refused_and_no_limit_is_left_alone(box):
+    # TC-047, TC-039
+    from abf_station import launch
+    shapes = ("resourceLimits = [\n  cpus: 4\n]\n", "process.resourceLimits = [cpus: 4]\nprocess.resourceLimits = [cpus: 2]\n",
+              "process { resourceLimits { cpus = 4 } }\n", "resourceLimits = [cpus: params.c]\n", "resourceLimits = [cpus: 4, gpus: 1]\n")
+    for text in shapes:
+        with pytest.raises(launch.BundleError) as e:
+            box.bundle(ce=zce(maxvCpus=4, nextflowConfig="// MY-MARKER-LINE\n" + text))
+        assert "resourceLimits" in str(e.value) and "MY-MARKER-LINE" not in str(e.value) and "maxMemoryGB" in str(e.value)
+    keep = "process.resourceLimits = [cpus: 2, memory: 4.GB]\n"
+    b = box.bundle(ce=zce(maxvCpus=None, nextflowConfig=keep))
+    assert "resourceLimits" not in b["files"]["azure.config"] and keep in b["files"]["nextflow.config"]
+
+
+def test_cap_screen_row_only_when_set(box):
+    # TC-056, TC-057
+    from abf_launch import build
+    on = "\n".join(build.launch_screen(box.bundle(ce=zce(maxMemoryGB=6)), "azure1"))
+    assert "單一 task 的記憶體上限" in on and "單一 task 的 cpus 上限" in on
+    assert "記憶體上限" not in "\n".join(build.launch_screen(box.bundle(), "azure1"))

@@ -791,3 +791,38 @@ def test_the_new_python_files_name_what_they_are_not_in_their_first_forty_lines(
         lines = path.read_text(encoding="utf-8").splitlines()[:40]
         hit = [ln for ln in lines if ln.startswith("# Nothing existing:")]
         assert hit and len(hit[0].split(":", 1)[1].strip()) >= 15, path.name
+
+
+def _shipped_rates_are_empty():
+    return not json.loads(SHIPPED.read_text(encoding="utf-8"))["regions"]
+
+
+def test_empty_rates_never_count_used_money_so_the_monthly_cap_cannot_fill(w):
+    # cloud-cap-empty-rates-doc: TC-009, TC-010
+    if not _shipped_rates_are_empty():
+        pytest.skip("price list is filled; this pins the empty-list behaviour")
+    rates = _cc().load_rates(SHIPPED)
+    assert not rates.get("regions")
+    w.run("used-a", w.alice, tasks=_hours(40), status="failed", started="2026-10-05T00:00:00Z")
+    w.run("used-b", w.alice, tasks=_hours(40), status="failed", started="2026-10-06T00:00:00Z")
+    w.cap(w.alice, 5.0)
+    used = w.used(w.alice, rates=rates)
+    assert used["usd"] == 0 and used["unknown_runs"] >= 1
+    assert w.ask(w.alice, rates=rates) is None
+
+
+def test_cloud_doc_does_not_claim_the_monthly_cap_works_while_the_price_list_is_empty():
+    # cloud-cap-empty-rates-doc: TC-001 ... TC-004, TC-008
+    if not _shipped_rates_are_empty():
+        pytest.skip("price list is filled; these sentences are meant to be rewritten then")
+    zh, en = "要等價目表填入後才會生效", "only takes effect once the price list is filled in"
+    cloud = DOC.read_text(encoding="utf-8")
+    for ln in cloud.splitlines():
+        if "價目表" in ln and "空的" in ln and "已用滿" in ln:
+            assert zh in ln, ln
+    assert zh in cloud
+    testing = (REPO_ROOT / "docs" / "TESTING.md").read_text(encoding="utf-8")
+    for ln in testing.splitlines():
+        if "empty price list" in ln and "used up" in ln:
+            assert en in ln, ln
+    assert en in testing

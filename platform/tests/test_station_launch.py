@@ -77,7 +77,8 @@ def folder(site, run="run-a"):
 
 
 def nothing_happened(site):
-    assert site.calls() == [] or all(c.split()[0] in ("sinfo", "java", "nextflow") for c in site.calls()), site.calls()
+    # settings-pick-installed: a preflight job now also reads the module list (module -t avail, module show: read only)
+    assert site.calls() == [] or all(c.split()[0] in ("sinfo", "java", "nextflow") or c.startswith(("module -t avail", "module show")) for c in site.calls()), site.calls()
     assert not (site.work / "runs").exists()
     assert site.dangerous() == [] and site.destructive() == []
     assert site.guards_intact()
@@ -121,7 +122,8 @@ def test_unconfirmed_resume_is_refused(tmp_path, site, fake):
             assert res["state"] == "refused", (label, res)
         assert a.alive()
     assert snapshot(f) == before
-    assert site.calls() == [] or all(c.split()[0] in ("sinfo", "java", "nextflow") for c in site.calls()), site.calls()
+    # settings-pick-installed: a preflight job now also reads the module list (module -t avail, module show: read only)
+    assert site.calls() == [] or all(c.split()[0] in ("sinfo", "java", "nextflow") or c.startswith(("module -t avail", "module show")) for c in site.calls()), site.calls()
     assert site.dangerous() == [] and site.destructive() == []
     assert site.guards_intact()
 
@@ -726,7 +728,7 @@ def test_tc_ls_52_the_launch_tool_and_the_tool_list_are_those_of_the_base(tmp_pa
 
     tools = {t.name: t for t in asyncio.run(listing())}
     assert set(tools) == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                          "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "launch", "cancel", "forget", "resume", "relaunch"}
+                          "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "forget", "resume", "relaunch"}
     schema = tools["launch"].input_schema
     assert set(schema["properties"]) == {"pipeline", "revision", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "path_columns", "dataset", "dataset_version"}  # dataset-cli-launch: plus the two dataset parameters
     assert sorted(schema["required"]) == ["pipeline", "revision", "run_name"]

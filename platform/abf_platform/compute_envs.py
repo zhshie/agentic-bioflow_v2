@@ -36,12 +36,13 @@ GOOGLE_BATCH = "googlebatch-platform"
 AWS = "awsbatch-platform"
 AZURE = "azbatch-platform"
 K8S = "k8s-platform"
-PLATFORM_HOST_TYPES = (GOOGLE_BATCH, AWS, AZURE)                   # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch, aws-launch, azure-launch)
-CHECK_ONLY_TYPES = (K8S,)                                        # 新雲端類型先放這裡，只開預檢
+PLATFORM_HOST_TYPES = (GOOGLE_BATCH, AWS, AZURE, K8S)              # served by the agent that runs on the platform host: checked, launched and cancelled there (gcb-launch, aws-launch, azure-launch, k8s-launch)
+CHECK_ONLY_TYPES = ()                                            # 新雲端類型先放這裡，只開預檢
 CLOUD_JOB_KINDS = {                                           # the job kinds each platform-host type takes; the rest is refused in plain words (the clean kind is split in two pieces: test_cleanup_store allows that word in no other file of this package)
     GOOGLE_BATCH: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
     AWS: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
     AZURE: ("preflight", "launch_nextflow", "cancel_run", "clean_" "work", "put_upload", "pipeline_files"),
+    K8S: ("preflight", "launch_nextflow", "cancel_run", "pipeline_files"),      # Kubernetes: no clean-up and no upload yet
 }
 CHECKABLE = (SUPPORTED,) + PLATFORM_HOST_TYPES + CHECK_ONLY_TYPES
 SEQERA_COMPUTE = ("seqera-compute", "seqeracompute-platform")
@@ -124,6 +125,7 @@ _VALUE_PATTERNS = [
     re.compile(r"AccountKey\s*=", re.I),                       # an Azure connection string or SAS typed into the wrong field
     re.compile(r"SharedAccessSignature\s*=", re.I),
     re.compile(r"[?&]sig=[A-Za-z0-9%+/=]{16,}"),
+    re.compile(r"\b(?:client-certificate-data|client-key-data|certificate-authority-data)\s*:", re.I),  # a kubeconfig secret line pasted into a text field
 ]
 
 
@@ -314,7 +316,7 @@ def _check_site_keys(config):
 
 
 _GCB_CONFIG = _COMMON_CONFIG + ("project", "location", "spot", "bootDiskSize", "bootDiskImage", "serviceAccountEmail",
-                                "network", "subnetwork", "usePrivateAddress", "labels", "maxvCpus")
+                                "network", "subnetwork", "usePrivateAddress", "labels", "maxvCpus", "maxMemoryGB")
 _GCB_PROJECT = re.compile(r"^[a-z][a-z0-9-]*[a-z0-9]\Z")
 _GCB_LOCATION = re.compile(r"^[a-z]+-[a-z]+[0-9]+\Z")
 _GCB_BUCKET = re.compile(r"^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]\Z")
@@ -404,11 +406,14 @@ def _check_gcb(config, agent):
     v = config.get("maxvCpus")
     if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
         errors.append("maxvCpus must be a whole number from 1 to 10000")
+    v = config.get("maxMemoryGB")
+    if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
+        errors.append("maxMemoryGB must be a whole number from 1 to 10000")
     if errors:
         raise CEError("; ".join(errors))
 
 
-_AWS_CONFIG = _COMMON_CONFIG + ("region", "jobQueue", "spot", "maxvCpus")
+_AWS_CONFIG = _COMMON_CONFIG + ("region", "jobQueue", "spot", "maxvCpus", "maxMemoryGB")
 _AWS_REGION = re.compile(r"^[a-z]{2}(-[a-z]+)+-[0-9]\Z")
 _AWS_BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]\Z")
 _AWS_QUEUE = re.compile(r"^[A-Za-z0-9_-]{1,128}\Z")
@@ -460,11 +465,14 @@ def _check_aws(config, agent):
     v = config.get("maxvCpus")
     if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
         errors.append("maxvCpus must be a whole number from 1 to 10000")
+    v = config.get("maxMemoryGB")
+    if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
+        errors.append("maxMemoryGB must be a whole number from 1 to 10000")
     if errors:
         raise CEError("; ".join(errors))
 
 
-_AZURE_CONFIG = _COMMON_CONFIG + ("location", "batchAccountName", "storageAccountName", "workDir", "pool", "spot", "maxvCpus")
+_AZURE_CONFIG = _COMMON_CONFIG + ("location", "batchAccountName", "storageAccountName", "workDir", "pool", "spot", "maxvCpus", "maxMemoryGB")
 _AZURE_LOCATION = re.compile(r"^[a-z][a-z0-9]{2,39}\Z")
 _AZURE_ACCOUNT = re.compile(r"^[a-z0-9]{3,24}\Z")
 _AZURE_CONTAINER = re.compile(r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]\Z")
@@ -522,6 +530,9 @@ def _check_azure(config, agent):
     v = config.get("maxvCpus")
     if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
         errors.append("maxvCpus must be a whole number from 1 to 10000")
+    v = config.get("maxMemoryGB")
+    if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 10000):
+        errors.append("maxMemoryGB must be a whole number from 1 to 10000")
     if errors:
         raise CEError("; ".join(errors))
 

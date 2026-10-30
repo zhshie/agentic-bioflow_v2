@@ -24,7 +24,7 @@ LIMIT = 26214400
 BANNED = ["用過", "選好", "寫死", "自己填", "自己調整", "你還沒", "還沒有", "還不能", "這個", "這份", "這條", "這一版", "一下", "弄", "搞", "東西",
           "喔", "啦", "吧", "囉", "蠻"]      # DESIGN.md 用字; the single word 超 is checked apart, because 超過 is the plain word for "more than"
 REPORT = "multiqc/multiqc_report.html"
-STYLE_SHA256 = "66b9a8e1a9c6f7d21872668edd5f10a2525c760e44b0e68a7cbeea030a33b862"      # the stylesheet of the base (D13 pins it)
+STYLE_SHA256 = "6b2683ae09caee2a0e66778f2cde00e56e9ab500413829cf531c5c27ce8742f3"      # the stylesheet of the base (D13 pins it)
 HTML_BYTES = b"<html><script>alert(1)</script>\xff\xfe\x00 binary \x80</html>\n"
 INTERNAL = re.compile(r"Traceback|JobRefused|\bSELECT\b|sqlite|args_json|result_json|deadline_at|Exception|, line \d+")
 
@@ -228,7 +228,7 @@ def test_tc005_waiting_unreadable_and_empty_subfolders(w):
     finish_listing(w, RESULTS + "/empty", None, ok=False, error="not_found", message="the folder does not exist on the site")
     t = c.get(outputs_url(rid, "empty")).text
     m = plain(mid(t))
-    assert "✗" in t and "讀不到" in m and "重新讀取" in m and not INTERNAL.search(t)
+    assert "✗" in t and "無法讀取" in m and "重新讀取" in m and not INTERNAL.search(t)
     assert any("relist=1" in h and "path=empty" in h for h in hrefs(mid(t))), "the Read-again link keeps the folder"
     # (c): a new reading after Read again
     c.get(outputs_url(rid, "empty") + "&relist=1")
@@ -283,7 +283,7 @@ def test_tc008_the_first_level_keeps_its_columns_and_gets_the_new_one(w):
     c2 = w.web()
     assert w.login(c2, "cat").status_code == 303
     t = c2.get(outputs_url(rid2)).text
-    assert "沒有輸出資料夾紀錄" in plain(mid(t)) and len(listings(w)) == 1
+    assert "無輸出資料夾紀錄" in plain(mid(t)) and len(listings(w)) == 1
 
 
 # ---- US2: downloading one file ---------------------------------------------------------------------------------------------

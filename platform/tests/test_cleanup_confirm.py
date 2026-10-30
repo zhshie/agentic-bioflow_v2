@@ -278,7 +278,7 @@ def test_tc023_forget_waits_for_a_queued_clean_work_job(world, clock):
     # TC-023
     from abf_platform import confirm, jobs
     enqueue(world, clock)
-    with pytest.raises(jobs.JobRefused, match="還有工作在排隊"):
+    with pytest.raises(jobs.JobRefused, match="仍有工作在排隊"):
         confirm.forget_content(world, "run-one")
     assert sql(world, "SELECT COUNT(*) FROM jobs WHERE forgotten_at IS NOT NULL")[0][0] == 0
 

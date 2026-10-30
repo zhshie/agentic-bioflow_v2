@@ -23,7 +23,8 @@ def site_user(settings_file):
 
 def run_cancel(job, ctx):
     bundle = launch.verify_confirmation(job, ctx, "cancel")
-    if set(bundle) != KEYS:
+    is_k8s = isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == launch.K8S
+    if set(bundle) != (KEYS | {"pod_name"} if is_k8s else KEYS):
         raise rules.Refusal("取消的內容包欄位不對 (the cancel bundle has other fields than it should)")
     if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == launch.GCB:
         from . import gcb_launch      # a Google Batch run is stopped by its own module; it imports launch.py, so it is read here
@@ -34,6 +35,9 @@ def run_cancel(job, ctx):
     if isinstance(bundle.get("ce"), dict) and bundle["ce"].get("platform") == launch.AZURE:
         from . import azure_launch      # an Azure Batch run is stopped by its own module
         return azure_launch.run_cancel(job, ctx, bundle)
+    if is_k8s:
+        from . import k8s_launch      # a Kubernetes run is stopped by its own module (its head Pod is deleted)
+        return k8s_launch.run_cancel(job, ctx, bundle)
     env = rules.clean_environment(bundle["ce"])
     run, number, folder = bundle["run_name"], bundle["slurm_job_id"], bundle["run_folder"]
     if bundle["agent"] != ctx.agent_name:

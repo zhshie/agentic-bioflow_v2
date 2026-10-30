@@ -34,10 +34,14 @@ WEB_ONLY = {
     "latest_release": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "nfcore_catalogue": "guided launch searches every nf-core pipeline through the agent (nfcore-catalogue); the page filters; no MCP tool yet",
     "start_upload_batch": "POST /upload (web-upload-page): the files the page received are judged and queued, one upload job each; the person's press of Upload is the yes; no MCP tool",
+    "run_environment": "the Compute card of the board (web-nano4-path): the environment the newest hand-off record of a run the person owns names; reads only; no MCP tool",
     "upload_batch_status": "GET /upload/{batch} (web-upload-page): where one batch of the person's own uploads stands, and the dataset is kept once every file is in; no MCP tool",
     # settings-register-pipeline (ruling 3): no MCP tool, so no AI can write this list; the person confirms on the page
     "register_site_pipeline": "寫入需在網頁確認頁確認 (POST /settings/pipelines/confirm, the PAGE channel)",
     "remove_site_pipeline": "寫入需在網頁確認頁確認 (POST /settings/pipelines/confirm, the PAGE channel)",
+    # settings-pick-installed: no MCP tool (the site list is the person's own, shown on their settings page)
+    "site_pipeline_inventory": "網頁專用唯讀輔助 (GET /settings and the pick step of POST /settings/pipelines): the newest list of installed modules the site agent reported; reads only",
+    "reload_site_inventory": "網頁專用 (POST /settings/inventory): queues one read-only pre-use check so the agent reads the site list again; changes no setting",
 }
 # Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).
 OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d", "read_task_log": "011c",

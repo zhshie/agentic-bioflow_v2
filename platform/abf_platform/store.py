@@ -1072,6 +1072,42 @@ def revoke_agent_tokens(tokens_path, name):
         con.close()
 
 
+def list_agent_tokens(tokens_path, name=None):
+    """One dict per agent token: id, agent_name, user, created_at, revoked_at; only that name when given. Never the value or the hash."""
+    if not Path(tokens_path).exists():
+        return []
+    con = connect_tokens(tokens_path)
+    try:
+        sql = ("SELECT t.id AS id, t.agent_name AS agent_name, u.name AS user, t.created_at AS created_at, t.revoked_at AS revoked_at "
+               "FROM tokens t LEFT JOIN users u ON u.id = t.user_id WHERE t.kind = 'agent'")
+        args = ()
+        if name is not None:
+            sql += " AND t.agent_name = ?"
+            args = (name,)
+        return [dict(r) for r in con.execute(sql + " ORDER BY t.id", args)]
+    finally:
+        con.close()
+
+
+def revoke_agent_token(tokens_path, token_id_):
+    """Revoke one live agent token by id; returns {'agent_name': ...}, or None when there is no such live agent token
+    (an unknown id, a run token or a personal access token, or one already revoked)."""
+    if not Path(tokens_path).exists():
+        return None
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            row = con.execute("SELECT agent_name FROM tokens WHERE id = ? AND kind = 'agent' AND revoked_at IS NULL",
+                              (token_id_,)).fetchone()
+            if row is None:
+                return None
+            n = con.execute("UPDATE tokens SET revoked_at = ? WHERE id = ? AND kind = 'agent' AND revoked_at IS NULL",
+                            (time.time(), token_id_)).rowcount
+            return {"agent_name": row["agent_name"]} if n else None
+    finally:
+        con.close()
+
+
 def live_agent_names(tokens_path):
     """Names that have at least one live agent token."""
     if not Path(tokens_path).exists():
