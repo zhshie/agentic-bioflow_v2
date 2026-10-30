@@ -11,8 +11,8 @@ from abf_station import handlers, readfile, readlog, rules
 from abf_station.site import SiteResult
 
 WORK = "/data/work"
-OPEN_CMD = "ssh -fN -M -S /tmp/cm-nano4 nano4"
-NO_MASTER = "on_site: needs-human reason=no-master\nrun this: %s\n" % OPEN_CMD
+OPEN_CMD = "ssh -o ControlMaster=yes -o ControlPath=/tmp/cm-nano4 nano4 true"
+NO_MASTER = "on_site: needs-human reason=no-master\n%s\n" % OPEN_CMD
 RELOGIN = "Log in once in a WSL terminal first"
 SECRET = "hunter2-TOKEN-xyz"
 CE = {"platform": "slurm-platform", "workDir": WORK, "headQueue": "q"}
