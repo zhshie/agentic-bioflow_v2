@@ -66,3 +66,8 @@
 - test_su_in_get_run.py `== 20` -> `== 21`（工具數，只加）。
 - `tests/platform_storage_doc_test.sh` 釘住 PLATFORM.md 的 "nine read-only tools" 與 "Fourteen tools."（原文就已落後實際數量）；沒有改那支測試，PLATFORM.md 保留原句，另加一句說 `read_run_file` 是多出來的唯讀工具。
 - `test_scope.py` TC-061 禁用字 `site agent`：把動作層一句錯誤文字的 "site agent" 改為 "agent"。
+
+## 第三輪修正（TC-039）
+- docs/PLATFORM.md 的工具數量句改為「Twenty-one tools. Sixteen are read-only」並列出 16 個唯讀工具（與 mcp_server.py 一致），拿掉先前補的「多出來的唯讀工具」那句。
+- tests/platform_storage_doc_test.sh 只改了 TC-020 的段落定位字串 "Fourteen tools." -> "Twenty-one tools."（錨點，斷言本身不變）。
+- 第 6 行 "nine read-only tools"（item 2，列的是第 6 到 8 節那九個）仍由同一支測試釘住，未動。
