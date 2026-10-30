@@ -572,7 +572,7 @@ _READ_WAIT = "站台正在讀這個檔案，請幾秒後再問一次 (the site i
 _READ_BINARY = "這是二進位檔，內容不經由 MCP 傳給模型 (binary file; its bytes are not sent through MCP)"
 _READ_REASONS = {
     "bad_path": "路徑不正確：要用 run_outputs 給的相對路徑 (the path is not valid; use a relative path that run_outputs gave)",
-    "agent_offline": "站台代理沒有在線，請確認代理正在執行 (the site agent is offline; check that it is running)",
+    "agent_offline": "站台代理沒有在線，請確認代理正在執行 (the agent is offline; check that it is running)",
     "refused": "站台拒絕讀這個檔案 (the site refused to read this file)",
     "no_answer": "站台沒有回應，請稍後再試 (the site did not answer; try again later)",
     "not_found": "站台上找不到這個檔案 (the file is not on the site)",

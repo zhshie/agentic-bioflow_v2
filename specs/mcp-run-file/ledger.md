@@ -61,3 +61,8 @@
  platform/tests/test_web_parity.py                  |  3 +-
  skills/downstream/SKILL.md                         | 16 ++++++
  38 files changed, 164 insertions(+), 59 deletions(-)
+
+## 第二輪修正（全套測試後）
+- test_su_in_get_run.py `== 20` -> `== 21`（工具數，只加）。
+- `tests/platform_storage_doc_test.sh` 釘住 PLATFORM.md 的 "nine read-only tools" 與 "Fourteen tools."（原文就已落後實際數量）；沒有改那支測試，PLATFORM.md 保留原句，另加一句說 `read_run_file` 是多出來的唯讀工具。
+- `test_scope.py` TC-061 禁用字 `site agent`：把動作層一句錯誤文字的 "site agent" 改為 "agent"。
