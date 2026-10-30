@@ -12,14 +12,14 @@ from .web_board import esc
 STRINGS = {
     "zh": {
         "title": "上傳資料",
-        "intro": "選擇運算環境，填資料集名稱與版本，再選 FASTQ 檔。按「上傳」後，檔案會送進你自己的雲端資料夾；全部送完會自動登記成資料集，"
+        "intro": "選擇運算環境，填資料集名稱與版本，再選 FASTQ 檔。按「上傳」後，檔案會送進您自己的雲端資料夾；全部送完會自動登記成資料集，"
                  "之後在送出分析頁的第 4 步就能選。",
         "limit": "每檔上限 2 GB；更大的檔請改用指令上傳（見表單下方）。",
         "l_ce": "運算環境", "l_name": "資料集名稱", "l_version": "版本", "l_fastq": "FASTQ 檔", "l_sheet": "樣本表（選填）",
         "h_name": "英數字與 . _ -，最長 64 個字元。",
-        "h_sheet": "沒有選樣本表時，會依檔名把 R1／R2 配成對，自動產生。",
+        "h_sheet": "未選樣本表時，會依檔名把 R1／R2 配成對，自動產生。",
         "go": "上傳",
-        "none": "沒有可用的運算環境。請先到設定頁建立並檢查運算環境。", "go_settings": "前往設定頁",
+        "none": "尚無可用的雲端運算環境。", "none_next": "請先到設定頁，建立並檢查雲端運算環境。", "go_settings": "前往設定頁",
         "sh_title": "樣本表", "sh_label": "上傳樣本表（CSV 或 TSV）",
         "sh_hint": "每列一個樣本。檔案內的路徑寫站台上的位置，平台不會檢查。僅收 .csv 或 .tsv，一次一個檔，上限 1 MB。",
         "sh_go": "上傳樣本表", "sh_saved": "✓ 已上傳樣本表 sheets/%s，可於「送出新分析」第 4 步選擇。", "sh_launch": "前往送出新分析",
@@ -27,32 +27,32 @@ STRINGS = {
         "su_utf8": "樣本表無法以 UTF-8 讀取，沒有收下。請存成 UTF-8 編碼後再上傳。",
         "su_ragged": "樣本表每一列的欄數必須相同，沒有收下。", "su_header": "樣本表至少要有一列標題加一列資料列，沒有收下。",
         "su_none": "請選擇一個樣本表檔。", "su_many": "一次只收一個樣本表檔，沒有收下任何檔案。",
-        "cmds": "大檔指令", "cmds_note": "在你的電腦上執行；每個環境一行。",
+        "cmds": "大檔指令", "cmds_note": "請在您的電腦上執行；每個環境一行。",
         "e_required": "此欄為必填。", "e_invalid": "只能用英數字與 . _ -，長度 1 到 64。",
         "e_no_files": "請選擇至少一個 FASTQ 檔。",
         "e_env": "找不到可用的雲端運算環境，請重新選擇。",
         "e_registered": "此名稱與版本已登記，請換一個版本。",
         "e_bad_name": "這些檔名不能使用：%s。檔名不可含 / \\ 或 ..，不可含控制字元，也不可以 . 開頭。",
         "e_dup": "同一批裡有重複的檔名：%s。",
-        "e_empty": "這些檔案是空的，沒有內容可以上傳：%s。",
-        "e_too_big": "檔案 %s 大於每檔上限 2 GB，沒有收下，也沒有排入上傳。請改用下面的指令。",
+        "e_empty": "這些檔案為空，無內容可上傳：%s。",
+        "e_too_big": "檔案 %s 大於每檔上限 2 GB，未收下，也未排入上傳。請改用下面的指令。",
         "e_in_use": "此檔名正在上傳或已使用，請改檔名。",
-        "e_sheet_big": "樣本表太大，上限 1 MiB。沒有收下任何檔案。",
+        "e_sheet_big": "樣本表太大，上限 1 MiB。未收下任何檔案。",
         "e_unpaired": "這些檔案配不成對（R1／R2）：請補齊另一半，或附上樣本表。",
         "e_sheet": "樣本表有問題：%s",
         "e_refused": "目前不能排入上傳：%s",
-        "e_disk": "伺服器暫時無法收下檔案，沒有排入任何上傳。請稍後再試。",
-        "e_request": "請求的格式不正確，沒有收下任何檔案。請回到上傳頁重新操作。",
-        "e_many": "一次最多 100 個檔案，沒有收下任何檔案。",
-        "e_nothing": "沒有收下任何檔案，也沒有排入任何上傳。",
+        "e_disk": "伺服器暫時無法收下檔案，未排入任何上傳。請稍後再試。",
+        "e_request": "請求的格式不正確，未收下任何檔案。請返回上傳頁重新操作。",
+        "e_many": "一次最多 100 個檔案，未收下任何檔案。",
+        "e_nothing": "未收下任何檔案，也未排入任何上傳。",
         "p_title": "上傳進度", "p_of": "資料集 %s，版本 %s，環境 %s", "th_file": "檔名", "th_size": "大小", "th_state": "狀態",
         "s_queued": "排隊中", "s_sending": "傳送中", "s_done": "完成", "s_failed": "失敗",
-        "p_timeout": "上傳逾時，沒有在時限內完成。", "p_no_reason": "上傳沒有成功。",
+        "p_timeout": "上傳逾時，未在時限內完成。", "p_no_reason": "上傳未成功。",
         "p_running": "正在上傳。本頁每 15 秒自動更新；全部傳完後會自動登記成資料集。",
-        "p_failed": "有檔案沒有傳成功，資料集沒有登記。",
+        "p_failed": "有檔案未傳送成功，資料集未登記。",
         "p_again": "重新上傳",
         "p_registered": "已登記資料集 %s（版本 %s）。", "p_go_launch": "已登記，前往送出",
-        "p_reg_failed": "所有檔案都已傳完，但資料集登記失敗：%s", "p_keep": "檔案仍在你的雲端資料夾，可換一個版本重新上傳。", "p_places": "檔案在雲端的位置",
+        "p_reg_failed": "所有檔案都已傳完，但資料集登記失敗：%s", "p_keep": "檔案仍在您的雲端資料夾，可換一個版本重新上傳。", "p_places": "檔案在雲端的位置",
         "p_superseded": "這一批已被新的上傳取代。",
     },
     "en": {
@@ -64,7 +64,7 @@ STRINGS = {
         "h_name": "Letters, digits and . _ - ; up to 64 characters.",
         "h_sheet": "Without a samplesheet, the R1/R2 files are paired by name and one is made for you.",
         "go": "Upload",
-        "none": "No compute environment is ready. Create and check one on the Settings page first.",
+        "none": "There is no cloud compute environment you can use.", "none_next": "Set one up and check it on the settings page first.",
         "go_settings": "Go to the settings page",
         "sh_title": "Samplesheet", "sh_label": "Upload a samplesheet (CSV or TSV)",
         "sh_hint": "One row for each sample. The paths inside name files on the site, which the platform does not check. Only .csv or .tsv, one file at a time, up to 1 MB.",
@@ -238,7 +238,8 @@ def render_form(name, csrf, runs, lang, envs, token, values=None, problem=None, 
         if not ours:
             if sheet:
                 return head + _sheet_section(t, lang, token, problem) + "</main>"
-            return head + '<p>%s</p><p><a href="%s">%s</a></p></main>' % (esc(t["none"]), web_board._url(lang, path="/settings"), esc(t["go_settings"]))
+            return head + '<p>%s</p><p class="muted">%s</p><p><a href="%s">%s</a></p></main>' % (
+                esc(t["none"]), esc(t["none_next"]), web_board._url(lang, path="/settings"), esc(t["go_settings"]))
         chosen = values.get("ce") if values.get("ce") in [e["name"] for e in ours] else ours[0]["name"]
         options = "".join('<option value="%s"%s>%s</option>' % (esc(e["name"]), " selected" if e["name"] == chosen else "", esc(e["name"])) for e in ours)
         star = '<span class="req" title="%s">*</span>' % esc(t["g2_req"])

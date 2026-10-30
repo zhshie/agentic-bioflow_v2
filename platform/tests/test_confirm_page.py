@@ -84,7 +84,7 @@ def test_tcd05_d22_another_person_sees_nothing_and_cannot_press(w):
     own = pending(w, bob, revision="2.17.0")
     c = logged_in(w, "bob")
     page = c.get("/c/" + rid)
-    assert "不是你的申請" in page.text and 'name="csrf"' not in page.text
+    assert "非您的申請" in page.text and 'name="csrf"' not in page.text
     assert "nf-core/ampliseq" not in page.text and "run-one" not in page.text
     token_of_bob = csrf_of(c.get("/c/" + own).text)
     cookie = cookie_value(c.post("/login", data={"name": "bob", "password": PASSWORD}))
@@ -309,7 +309,8 @@ def test_tcg04_g05_g06_the_web_app_has_the_routes_of_009c_plus_the_board_and_the
                       ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),      # 012b: the launch form and the three buttons that only ask; guided-launch-2: the diagram picture
                       ("/login", ("GET", "HEAD")), ("/login", ("POST",)), ("/logout", ("POST",)),
                       ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")),
-                      ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline: the two steps of registering a pipeline version
+                      ("/settings/inventory", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-pick-installed: the reload button of the site list
+                           # settings-register-pipeline: the two steps of registering a pipeline version
                       ("/token", ("OPTIONS", "POST")), ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),
                       ("/usage", ("GET", "HEAD")),
                       ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: the page a temporary-password login sets its own password on; web-upload-page: the upload form, its POST and the progress page

@@ -15,7 +15,7 @@ from test_web_board import login, pane
 from test_web_settings import make_agent, make_env, sql
 
 PKG = PLATFORM_DIR / "abf_platform"
-BASE_STYLE_SHA = "66b9a8e1a9c6f7d21872668edd5f10a2525c760e44b0e68a7cbeea030a33b862"      # sha256 of web_board.STYLE before this task
+BASE_STYLE_SHA = "6b2683ae09caee2a0e66778f2cde00e56e9ab500413829cf531c5c27ce8742f3"      # sha256 of web_board.STYLE before this task
 GOOD = {"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}
 OTHER_OLD = {"pipeline": "nf-core/rnaseq", "revision": "3.14.0", "module": "biology/nf-core-rnaseq/3.14.0", "home": "NFCORE_RNASEQ_HOME"}
 FORBIDDEN = ["用過", "選好", "寫死", "自己填", "自己調整", "你還沒", "還沒有", "還不能", "這個", "這份", "這條", "這一版", "一下", "弄", "搞", "東西",
@@ -480,7 +480,7 @@ def test_b12_csrf_failures(w, ann):
         r = step1(c, csrf=token)
         assert r.status_code == 403 and snapshot(w) == before and "/settings/pipelines/confirm" not in r.text
         text = plain(r.text)
-        assert "什麼都沒有改" in text and "重新整理" in text
+        assert "未變更任何內容" in text and "重新整理" in text
 
 
 def test_b13_foreign_origin(w, ann):
@@ -804,9 +804,10 @@ def test_d05_button_words(w, ann):
     c = login(w, "ann")
     zh = c.get("/settings").text
     buttons = {plain(b) for b in re.findall(r"<button[^>]*>(.*?)</button>", mid_of(zh), re.S)}
-    assert buttons <= {"登記", "移除"} and {"登記", "移除"} <= buttons
+    # settings-pick-installed: the Slurm block also has the button that reloads the site list (the register button now sits in the folded advanced form)
+    assert buttons <= {"登記", "移除", "重新讀取站台清單"} and {"登記", "移除"} <= buttons
     en = {plain(b) for b in re.findall(r"<button[^>]*>(.*?)</button>", mid_of(c.get("/settings?lang=en").text), re.S)}
-    assert en == {"Register", "Remove"}
+    assert en == {"Register", "Remove", "Reload site list"}
     page = step1(c, fields("remove")).text
     assert {plain(b) for b in re.findall(r"<button[^>]*>(.*?)</button>", mid_of(page), re.S)} == {"確認"} and ">返回</a>" in page
 
@@ -824,7 +825,7 @@ def test_d09_no_environment(w, ann):
     # D09
     sql(w, "DELETE FROM compute_envs")
     r = login(w, "ann").get("/settings")
-    assert r.status_code == 200 and "沒有運算環境。" in mid_of(r.text) and "/settings/pipelines" not in r.text
+    assert r.status_code == 200 and "尚無運算環境。" in mid_of(r.text) and "/settings/pipelines" not in r.text
 
 
 def all_pages(w, ann):
@@ -877,6 +878,8 @@ def test_d14_d15_words():
     for k in keys:
         zh, en = strings["zh"][k], strings["en"].get(k)
         assert en and not CJK.search(en), k
+        if k == "pf_pick_gone":      # settings-pick-installed: the plan gives this sentence word for word and it holds 這個 (see its contract, note 1)
+            continue
         assert not [x for x in FORBIDDEN if x in zh], (k, zh)
     assert not [x for x in FORBIDDEN if x in web_board.STRINGS["zh"]["g_reg_bad"]]
     assert not CJK.search(web_board.STRINGS["en"]["g_reg_bad"])
@@ -899,7 +902,7 @@ def test_d16_only_this_task_has_forms(w, ann):
     r = c.get("/settings")
     mid = mid_of(r.text)
     actions = re.findall(r'<form[^>]*action="([^"]+)"', mid)
-    assert actions and set(actions) == {"/settings/pipelines"}
+    assert actions and set(actions) == {"/settings/pipelines", "/settings/inventory"}      # settings-pick-installed adds the reload button's form
     assert r.text.count('action="/logout"') == 1
     assert c.post("/settings", data={"x": "1"}).status_code == 405
     assert w.web().get("/settings").headers["location"].startswith("/login")

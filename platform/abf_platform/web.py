@@ -84,7 +84,7 @@ _HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Po
             "Content-Security-Policy": "default-src 'none'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
             % web_board.style_source()}
 _PLAIN = {      # the labels of the plain block at the top of the confirmation page
-    "zh": {"kind": "種類", "launch": "送出新分析", "resume": "續跑", "relaunch": "重跑", "cancel": "取消", "clean_work": "清理中間檔", "run": "run 名稱", "pipeline": "管線",
+    "zh": {"kind": "種類", "launch": "送出新分析", "resume": "續跑", "relaunch": "重跑", "cancel": "取消", "clean_work": "清理中間檔", "run": "分析名稱", "pipeline": "管線",
            "version": "版本", "env": "環境", "samples": "樣本數", "folder": "新資料夾", "work": "要刪除的資料夾", "full": "完整內容（技術細節）"},
     "en": {"kind": "Request", "launch": "New analysis", "resume": "Continue the run", "relaunch": "Re-run", "cancel": "Cancel", "clean_work": "Clean up intermediate files", "run": "Run name",
            "pipeline": "Pipeline", "version": "Version", "env": "Environment", "samples": "Samples", "folder": "New folder", "work": "Folder to delete",
@@ -156,8 +156,8 @@ def _login_form(next_path="", message="", status=200):
     nxt = "<input type=\"hidden\" name=\"next\" value=\"%s\">" % _esc(next_path) if next_path else ""
     limit = "（%d 到 %d 個字元 / %d to %d characters）" % (store.MIN_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS,
                                                      store.MIN_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS)
-    return _page("登入 (log in)", note + "<p>請用你的姓名與<strong>網頁密碼</strong>登入（網頁密碼不是 AI 用的權杖；它在平台主機的終端機用 "
-                 "<code>abf-platform user passwd</code> 設定，或用管理者給你的一次性臨時密碼）。</p><form method=\"post\" action=\"/login\">"
+    return _page("登入 (log in)", note + "<p>請以您的姓名與<strong>網頁密碼</strong>登入（網頁密碼不同於 AI 使用的權杖；於平台主機的終端機以 "
+                 "<code>abf-platform user passwd</code> 設定，或使用管理者提供的一次性臨時密碼）。</p><form method=\"post\" action=\"/login\">"
                  "<p><label>姓名 <input name=\"name\" autocomplete=\"username\" required></label></p>"
                  "<p><label>密碼 <input name=\"password\" type=\"password\" autocomplete=\"current-password\" required></label> "
                  "<small>" + _esc(limit) + "</small></p>"
@@ -245,7 +245,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return urllib.parse.urlparse(seen).netloc.lower() in allowed and seen != "null"
 
     def foreign(request):
-        return _page("來源不符 (wrong origin)", "<p class=\"bad\">這個表單不是從本頁送出的，什麼都沒有改。</p>", 403)
+        return _page("來源不符 (wrong origin)", "<p class=\"bad\">此表單並非由本頁送出，未變更任何內容。</p>", 403)
 
     async def body_of(request):
         raw = b""
@@ -305,8 +305,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         note = "<p class=\"bad\">%s</p>" % _esc(message) if message else ""
         limit = "（%d 到 %d 個字元 / %d to %d characters）" % (store.MIN_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS,
                                                          store.MIN_PASSWORD_CHARS, store.MAX_PASSWORD_CHARS)
-        return _page("設定你自己的密碼 (set your own password)",
-                     note + "<p>你用的是管理者給的臨時密碼，它 72 小時內有效、只能用來設定你自己的密碼。設好之後就用新密碼登入。</p>"
+        return _page("設定個人密碼 (set your own password)",
+                     note + "<p>目前使用的是管理者提供的臨時密碼，效期 72 小時，僅可用於設定個人密碼。設定完成後，請改以新密碼登入。</p>"
                      "<p>You are using a one-time temporary password from your administrator. It works for 72 hours and only lets you set "
                      "your own password. After that, log in with your new password.</p>"
                      "<form method=\"post\" action=\"/welcome\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
@@ -339,7 +339,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return not_temporary(request)
         form = await body_of(request)
         if not _same(form.get("csrf", ""), csrf(sid, "welcome")):
-            return _page("表單已失效", "<p class=\"bad\">這個表單的記號不對或已失效，什麼都沒有改。請重新整理頁面再按。</p>", 403)
+            return _page("表單已失效", "<p class=\"bad\">表單驗證碼不符或已失效，未變更任何內容。請重新整理頁面後再操作。</p>", 403)
         name = user["name"][:MAX_NAME_CHARS]
         ip = request.client.host if request.client else ""
         now = clock()
@@ -380,9 +380,9 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         """(response or None, request description) for a logged-in user and an address."""
         req = actions.describe_request(platform_path, rid, clock=clock)
         if req is None:
-            return _page("找不到 (not found)", "<p>沒有這個申請。</p>", 404), None
+            return _page("找不到 (not found)", "<p>無此申請。</p>", 404), None
         if req["caller_user_id"] != user["user_id"]:
-            return _page("不是你的申請 (not yours)", "<p class=\"bad\">這個申請不是你送出的，所以這裡不能看也不能按。</p>", 403), None
+            return _page("非您的申請 (not yours)", "<p class=\"bad\">該申請並非由您送出，無法在此檢視或操作。</p>", 403), None
         return None, req
 
     def plain_block(rid, lang):
@@ -407,10 +407,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             shown = plain_block(rid, lang) + shown
         if req["state"] == "pending":
             if clean:
-                intro = "<p>下面就是會被刪除的全部內容。確定了再按「確認刪除」；按了才會排進佇列。</p>"
+                intro = "<p>以下為將被刪除的全部內容。確認無誤後，請按「確認刪除」；按下後才會排入佇列。</p>"
                 button = "Confirm delete" if lang == "en" else "確認刪除"
             else:
-                intro = "<p>下面就是會被%s的全部內容。確定了再按「送出」；按了才會排進佇列。</p>" % ("送出" if req["kind"] == "launch" else "取消")
+                intro = "<p>以下為將被%s的全部內容。確認無誤後，請按「送出」；按下後才會排入佇列。</p>" % ("送出" if req["kind"] == "launch" else "取消")
                 button = "送出"
             return _page(title, "%s%s<form method=\"post\" action=\"/c/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
                          "<button type=\"submit\">%s</button></form>" % (intro, shown, rid, _esc(csrf(sid, rid)), button))
@@ -418,16 +418,16 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return _page(title, "<p class=\"ok\">已送出。工作編號 %s。</p>%s" % (_esc(req["job_id"]), shown))
         if req["state"] == "expired":
             if clean:
-                return _page(title, "<p class=\"bad\">這個申請已逾時（7 天），不會自動重新提出。</p>")
-            return _page(title, "<p class=\"bad\">這個申請已逾時（10 分鐘）。請重新送出。</p>")
+                return _page(title, "<p class=\"bad\">該申請已逾時（7 天），不會自動重新提出。</p>")
+            return _page(title, "<p class=\"bad\">該申請已逾時（10 分鐘）。請重新送出。</p>")
         if clean:
-            return _page(title, "<p class=\"bad\">這個申請已作廢：%s。</p>" % _esc(req["void_reason"] or "-"), 409)
-        return _page(title, "<p class=\"bad\">這個申請已作廢：%s。請重新送出。</p>" % _esc(req["void_reason"] or "-"), 409)
+            return _page(title, "<p class=\"bad\">該申請已作廢：%s。</p>" % _esc(req["void_reason"] or "-"), 409)
+        return _page(title, "<p class=\"bad\">該申請已作廢：%s。請重新送出。</p>" % _esc(req["void_reason"] or "-"), 409)
 
     async def confirm_get(request):
         rid = request.path_params["rid"]
         if not RID.match(rid):
-            return _page("找不到 (not found)", "<p>沒有這個網址。</p>", 404)
+            return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
         sid, user = user_of(request)
         if user is None:
             return to_welcome(request) or _login_form("/c/" + rid)
@@ -439,7 +439,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return foreign(request)
         rid = request.path_params["rid"]
         if not RID.match(rid):
-            return _page("找不到 (not found)", "<p>沒有這個網址。</p>", 404)
+            return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
         sid, user = user_of(request)
         if user is None:
             return to_welcome(request) or _login_form("/c/" + rid, "請先登入 (log in first)", 401)
@@ -448,7 +448,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return answer
         form = await body_of(request)
         if not _same(form.get("csrf", ""), csrf(sid, rid)):
-            return _page("表單已失效", "<p class=\"bad\">這個表單的記號不對或已失效，什麼都沒有送出。請重新整理頁面再按。</p>", 403)
+            return _page("表單已失效", "<p class=\"bad\">表單驗證碼不符或已失效，未送出任何內容。請重新整理頁面後再操作。</p>", 403)
         run_name = (actions.request_facts(platform_path, rid) or {}).get("run_name") if req["kind"] != "clean_work" else None
 
         def sent(job_id):
@@ -470,7 +470,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                 return _page("未送出", "<p class=\"bad\">未送出：%s。</p>" % _esc(e), code)
             return _page("未送出", "<p class=\"bad\">未送出：%s。請重新送出。</p>" % _esc(e), code)
         if req["kind"] == "clean_work":
-            return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。代理會開始清理這個 run 的中間檔；結果不會被動。</p>" % _esc(job_id))
+            return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。代理將清理該次分析的中間檔，結果不受影響。</p>" % _esc(job_id))
         return sent(job_id)
 
     def read_runs(caller):
@@ -585,7 +585,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         lang = web_board.pick_lang(form.get("lang"))
         run_id = str(form.get("run", ""))[:200]
         if verb not in ("resume", "relaunch", "cancel"):
-            return _page("找不到 (not found)", "<p>沒有這個網址。</p>", 404)
+            return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
         if not _same(form.get("csrf", ""), csrf(sid, "act:" + run_id)):
             return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(web_board.STRINGS[lang]["r_form"]), 403)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
@@ -974,7 +974,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         runs = await run_in_threadpool(read_runs, caller)
         envs = actions.list_compute_envs(platform_path, caller=caller)["compute_envs"]
         flash = flash_of(envs) if flash_of else None
-        return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "settings-pipeline"), flash, given),
+        lists = {e["name"]: await run_in_threadpool(lambda e=e: actions.site_pipeline_inventory(platform_path, ce=e["name"], caller=caller))
+                 for e in envs if e.get("platform") == web_settings.SLURM_TYPE}      # what each Slurm site last reported it has installed (reads only)
+        return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "settings-pipeline"), flash, given,
+                                                lists, csrf(sid, "settings-inventory")),
                             status_code=code, headers=_HEADERS)
 
     async def settings(request):
@@ -1015,6 +1018,18 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         f = {k: str(form.get(k, "")).strip()[:300] for k in PF_BOXES}
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         t = web_settings.words(lang)
+        if f["op"] == "add" and "pick" in form:
+            # settings-pick-installed: the person chose "<pipeline> <version>" from the site's own list. The module and the variable are looked up
+            # here from the newest list (never taken from the browser); what is not in that list is refused before anything else is asked.
+            listed = await run_in_threadpool(lambda: actions.site_pipeline_inventory(platform_path, ce=f["ce"], caller=caller))
+            if listed.get("found") is False:      # not the person's own environment: the same words as every other form for a missing one
+                return await pf_failed(sid, user, caller, lang, f["ce"], t["pf_fail"] + web_board.plain_reason(listed.get("message"), lang))
+            parts = str(form.get("pick", "")).strip()[:300].split(" ")
+            chosen = [i for i in (listed.get("items") or []) if listed.get("status") == "ok" and len(parts) == 2 and parts[0] and parts[1]
+                      and (i.get("pipeline"), i.get("revision")) == (parts[0], parts[1])]
+            if not chosen:
+                return await pf_failed(sid, user, caller, lang, f["ce"], t["pf_pick_gone"])
+            f.update(pipeline=chosen[0]["pipeline"], revision=chosen[0]["revision"], module=chosen[0]["module"], home=chosen[0]["home"])
         seen = await run_in_threadpool(lambda: actions.check_site_pipeline_change(
             platform_path, op=f["op"], ce=f["ce"], pipeline=f["pipeline"], revision=f["revision"], module=f["module"], home=f["home"], caller=caller))
         if not seen["ok"]:
@@ -1060,6 +1075,28 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                                                                                                                          "added_check_refused")
         return RedirectResponse(pf_where(f["ce"], lang, notice), status_code=303, headers=_HEADERS)
 
+    async def inventory_post(request):
+        """The button "Reload site list": queue one pre-use check, whose answer carries the list. It changes no setting, so it has no confirmation page."""
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        if not same_origin(request):
+            return pf_refused(lang, "foreign")
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        if not _same(form.get("csrf", ""), csrf(sid, "settings-inventory")):
+            return pf_refused(lang, "expired")
+        ce = str(form.get("ce", "")).strip()[:300]
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        t = web_settings.words(lang)
+        answer = await run_in_threadpool(lambda: actions.reload_site_inventory(platform_path, ce=ce, caller=caller))
+        if not answer["ok"]:
+            return await pf_failed(sid, user, caller, lang, ce, t["pf_fail"] + web_board.plain_reason(answer.get("message"), lang))
+        notice = {"queued": "inv_queued", "no_agent": "inv_no_agent"}.get(answer["preflight"])
+        if notice is None:
+            return await pf_failed(sid, user, caller, lang, ce, t["pf_fail"] + web_board.plain_reason(answer.get("message") or "", lang))
+        return RedirectResponse(pf_where(ce, lang, notice), status_code=303, headers=_HEADERS)
 
     async def usage_page(request):
         sid, user = user_of(request)
@@ -1093,16 +1130,16 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return csrf(sid, "consent:" + rid)
 
     def consent_page(info, sid):
-        who = info["client_name"] or "(沒有名稱 unnamed)"
+        who = info["client_name"] or "(未命名 unnamed)"
         if info["form_ok"]:
-            limits = ("<p>允許之後，它可以讀你的 runs，也可以請求送出分析。送出前，它可以在 AI 程式裡跳出「送出」表單，由你本人在表單上按；"
-                      "它不能自己代按。 (It can read your runs and ask to launch; the AI app can show you a 送出 form and you press it yourself.)</p>")
+            limits = ("<p>允許後，該連接器可讀取您的分析紀錄，並可請求送出分析。送出前，可在 AI 程式中顯示「送出」表單，由您本人於表單上按下；"
+                      "該連接器不能代為按下。 (It can read your runs and ask to launch; the AI app can show you a 送出 form and you press it yourself.)</p>")
         else:
-            limits = ("<p>允許之後，它可以讀你的 runs，也可以請求送出分析；但它<strong>不能替你送出</strong>——"
-                      "每次送出或取消，都要你本人在這個網站的確認頁按「送出」。 (It can read your runs and ask to launch; it cannot send an analysis: "
+            limits = ("<p>允許後，該連接器可讀取您的分析紀錄，並可請求送出分析；但<strong>不能代您送出</strong>——"
+                      "每次送出或取消，都須由您本人於本網站的確認頁按「送出」。 (It can read your runs and ask to launch; it cannot send an analysis: "
                       "each launch or cancel must be confirmed by you on this website.)</p>")
-        body = ("<p>名為 <strong>%s</strong> 的連接器（程式代號 %s）要求連到這個平台，並以<strong>你的身分</strong>運作。</p>"
-                "<p>它會把你導回：<strong>%s</strong>。如果你不認得這個網站，按「拒絕」。</p>"
+        body = ("<p>名為 <strong>%s</strong> 的連接器（程式代號 %s）要求連線至本平台，並以<strong>您的身分</strong>運作。</p>"
+                "<p>連線完成後將導回：<strong>%s</strong>。若不認得該網站，請按「拒絕」。</p>"
                 "%s"
                 "<form method=\"post\" action=\"/consent/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
                 "<button type=\"submit\" name=\"decision\" value=\"allow\">允許</button> "
@@ -1112,16 +1149,16 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     def consent_gone(info):
         if info["decision"] is not None:
-            return _page("已處理", "<p>這個申請已經處理過了。請回到連接器重新開始。</p>", 409)
+            return _page("已處理", "<p>該申請已處理完畢。請返回連接器重新開始。</p>", 409)
         if info["expired"]:
-            return _page("已逾時", "<p class=\"bad\">這個申請已逾時（10 分鐘）。請回到連接器重新開始。</p>", 410)
+            return _page("已逾時", "<p class=\"bad\">該申請已逾時（10 分鐘）。請返回連接器重新開始。</p>", 410)
         return None
 
     async def consent_get(request):
         rid = request.path_params["rid"]
         info = provider.consent_request(rid) if RID.match(rid) else None
         if info is None:
-            return _page("找不到 (not found)", "<p>沒有這個申請。</p>", 404)
+            return _page("找不到 (not found)", "<p>無此申請。</p>", 404)
         gone = consent_gone(info)
         if gone is not None:
             return gone
@@ -1136,13 +1173,13 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         rid = request.path_params["rid"]
         info = provider.consent_request(rid) if RID.match(rid) else None
         if info is None:
-            return _page("找不到 (not found)", "<p>沒有這個申請。</p>", 404)
+            return _page("找不到 (not found)", "<p>無此申請。</p>", 404)
         sid, user = user_of(request)
         if user is None:
             return to_welcome(request) or _login_form("/consent/" + rid, "請先登入 (log in first)", 401)
         form = await body_of(request)
         if not _same(form.get("csrf", ""), consent_csrf(sid, rid)):
-            return _page("表單已失效", "<p class=\"bad\">這個表單的記號不對或已失效，什麼都沒有改。請重新整理頁面再按。</p>", 403)
+            return _page("表單已失效", "<p class=\"bad\">表單驗證碼不符或已失效，未變更任何內容。請重新整理頁面後再操作。</p>", 403)
         decision = form.get("decision")
         if decision not in ("allow", "deny"):
             return _page("未處理", "<p class=\"bad\">請按「允許」或「拒絕」。</p>", 400)
@@ -1150,11 +1187,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if location is not None:
             return RedirectResponse(location, status_code=302, headers=_HEADERS)
         gone = consent_gone(provider.consent_request(rid)) if status in ("decided", "expired") else None
-        return gone or _page("未處理", "<p class=\"bad\">什麼都沒有改。請回到連接器重新開始。</p>", 403 if status == "user" else 404)
+        return gone or _page("未處理", "<p class=\"bad\">未變更任何內容。請返回連接器重新開始。</p>", 403 if status == "user" else 404)
 
     app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
                             Route("/settings/pipelines", pipelines_post, methods=["POST"]),
-                            Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),
+                            Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]),
+                            Route("/settings/inventory", inventory_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch/diagram", launch_diagram, methods=["GET"]),
                             Route("/launch", launch_post, methods=["POST"]),
                             Route("/upload", upload_get, methods=["GET"]), Route("/upload", upload_post, methods=["POST"]),

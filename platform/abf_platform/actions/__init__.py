@@ -18,6 +18,7 @@ They write the same kind of confirmation (a launch) and queue the same kind of j
 """
 import dataclasses
 import datetime
+import json
 import os
 import re
 import sqlite3
@@ -877,6 +878,48 @@ def check_site_pipeline_change(platform_path, *, op, ce, pipeline, revision, mod
         return answer
     listed = env["config"].get("sitePipelines")
     return {"ok": True, "gone": gone, "count": len(listed) if isinstance(listed, list) else 0}
+
+
+def site_pipeline_inventory(platform_path, *, ce, caller=None):
+    """The newest list of nf-core modules installed on the caller's own compute environment, as the agent at the site last reported it in a pre-use check
+    (settings-pick-installed). Reads only. {"status": "ok" | "no_module_system" | "error", "items": [...], "read_at": ..., ["reason"]} or
+    {"status": "none"} when no check has carried a list yet; another person's environment answers as a missing one ({"ok": False, "found": False})."""
+    env = compute_envs.get(platform_path, ce, owner=_caller_id(caller)) if isinstance(ce, str) and ce else None
+    if env is None:
+        return {"ok": False, "found": False, "message": _SP_NOT_FOUND}
+    con = store.open_readonly(platform_path)
+    if con is None:
+        return {"status": "none"}
+    try:
+        rows = con.execute("SELECT result_json FROM jobs WHERE compute_env = ? AND kind = 'preflight' AND state = 'done' AND result_json IS NOT NULL "
+                           "ORDER BY finished_at DESC, id DESC LIMIT 50", (env["name"],)).fetchall()
+    finally:
+        con.close()
+    for row in rows:
+        try:
+            listed = json.loads(row["result_json"]).get("site_inventory")
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(listed, dict) and listed.get("status"):
+            return listed
+    return {"status": "none"}
+
+
+def reload_site_inventory(platform_path, *, ce, caller=None):
+    """Queue one pre-use check on the caller's own Slurm environment so that the agent at the site reads the list of installed modules again. It changes no
+    setting and needs no confirmation: a check only reads. Returns {"ok": True, "preflight": "queued" | "no_agent" | "refused"} or {"ok": False, "message"}."""
+    env = compute_envs.get(platform_path, ce, owner=_caller_id(caller)) if isinstance(ce, str) and ce else None
+    if env is None:
+        return _sp_no(_SP_NOT_FOUND)
+    if env["platform"] != compute_envs.SUPPORTED:
+        return _sp_no("此運算環境類型不需讀取站台清單 (this type of compute environment has no site list)")
+    try:
+        jobs.enqueue_preflight(platform_path, env["name"])
+    except jobs.JobRefused as e:
+        if "offline" in str(e) or "no agent" in str(e) or "has no agent" in str(e):
+            return {"ok": True, "preflight": "no_agent"}
+        return {"ok": True, "preflight": "refused", "message": "檢查未能排入，請稍後再試 (the check could not be queued; try again later)"}
+    return {"ok": True, "preflight": "queued"}
 
 
 def register_site_pipeline(platform_path, *, ce, pipeline, revision, module, home, confirmed_by=None, caller=None):

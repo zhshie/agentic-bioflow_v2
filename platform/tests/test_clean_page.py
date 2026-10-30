@@ -87,7 +87,7 @@ def test_a_pending_clean_request_page_says_clean_not_cancel_and_has_the_confirm_
     t = page.text
     assert page.status_code == 200
     assert "<h1>清理確認</h1>" in t and "取消確認" not in t and "送出確認" not in t
-    assert "下面就是會被刪除的全部內容。確定了再按「確認刪除」；按了才會排進佇列。" in t
+    assert "以下為將被刪除的全部內容。確認無誤後，請按「確認刪除」；按下後才會排入佇列。" in t
     assert "會被送出" not in t and "會被取消" not in t
     assert '<button type="submit">確認刪除</button>' in t and '<button type="submit">送出</button>' not in t
     en = c.get("/c/%s?lang=en" % rid).text
@@ -102,7 +102,7 @@ def test_the_plain_block_shows_kind_run_name_and_the_folder_to_delete_and_nothin
     rid = run_and_request(w, ann)
     t = logged_in(w, "ann").get("/c/" + rid).text
     block = re.search(r'<dl class="fields plain">(.*?)</dl>', t, re.S).group(1)
-    assert re.findall(r"<dt>(.*?)</dt><dd>(.*?)</dd>", block) == [("種類", "清理中間檔"), ("run 名稱", "run-one"), ("要刪除的資料夾", WORK)]
+    assert re.findall(r"<dt>(.*?)</dt><dd>(.*?)</dd>", block) == [("種類", "清理中間檔"), ("分析名稱", "run-one"), ("要刪除的資料夾", WORK)]
     for word in ("管線", "版本", "環境", "樣本數", "新資料夾", "—"):
         assert word not in block
     assert "<dd>-</dd>" not in block
@@ -116,13 +116,13 @@ def test_the_expired_and_void_pages_for_clean_work_say_seven_days_and_do_not_say
     c = logged_in(w, "ann")
     assert confirm.void(w.ip.state_db, rid_void, "X-reason")
     page = c.get("/c/" + rid_void)
-    assert "清理確認" in page.text and "這個申請已作廢：X-reason。" in page.text
+    assert "清理確認" in page.text and "該申請已作廢：X-reason。" in page.text
     assert "回到 AI" not in page.text and "重新送出" not in page.text
     rid = run_and_request(w, ann, "run-b")
     expire(w, rid)
     for lang in ("zh", "en"):
         t = c.get("/c/%s?lang=%s" % (rid, lang)).text
-        assert "清理確認" in t and "這個申請已逾時（7 天），不會自動重新提出。" in t
+        assert "清理確認" in t and "該申請已逾時（7 天），不會自動重新提出。" in t
         assert "10 分鐘" not in t and "回到 AI" not in t
         assert "<form" not in t and "<button" not in t and "<a " not in t.split("</h1>")[1]
 
@@ -154,21 +154,13 @@ def test_get_changes_nothing_for_a_clean_request(w):
 # guided-launch-2b added rules to the same stylesheet (column widths of that table, the advanced box) and took one out (the radio rows), so they were pinned once more; again only the stylesheet differs.
 # guided-launch-2c changed five rules (the red star, the step area width, the form width, the field width, the phone cells) and the column widths of the table, so they were pinned a third time; again only the stylesheet differs.
 # guided-launch-2d replaced one rule of the same stylesheet (.dlink, the link that opened the diagram, became .gdia, the picture), so they were pinned a sixth time; again only the stylesheet differs.
-# web-nano4-path: the void (409), expired and pressed pages, and the failed and running boards, were pinned again (specs/web-nano4-path/ledger.md says what each one changed)
-BASE_CONFIRM = {'pending-launch-zh': (200, '31e3c878f10406bb'), 'pending-cancel-zh': (200, 'ccfbd045712deb75'),
-                'pending-launch-en': (200, 'f85ab8a479514dc6'), 'pending-cancel-en': (200, '3729a5e7e7b8d038'),
-                'void-zh': (409, 'b5dc5bfdf16907a4'), 'void-en': (409, 'b5dc5bfdf16907a4'),
-                'confirmed-launch-zh': (200, '61b9296c89757668'), 'confirmed-launch-en': (200, 'db938458df97b8ec'),
-                'confirmed-cancel-zh': (200, '2e42e9c4668be907'), 'confirmed-cancel-en': (200, '4b024e4e06e261d4')}
-BASE_EXPIRED = {'expired-launch-zh': (200, '53632ce9d4983282'), 'expired-cancel-zh': (200, '2a611844fdf29f53'),
-                'expired-launch-en': (200, '53632ce9d4983282'), 'expired-cancel-en': (200, '2a611844fdf29f53')}
-BASE_POST = {'pressed-launch': (200, '1547e332c788c9c1'), 'pressed-cancel': (200, '7774e15781a19263'),
-             'late-launch': (410, '7d09046dd1a0078d'), 'late-cancel': (410, '7d09046dd1a0078d')}
+# web-nano4-path: the void (409), expired, pressed and late pages, and the failed and running boards, were pinned again (specs/web-nano4-path/ledger.md says what each one changed)
+BASE_CONFIRM = {'pending-launch-zh': (200, 'cbb48ae2d5e37305'), 'pending-cancel-zh': (200, 'c6ab40646e5b076e'), 'pending-launch-en': (200, 'ff8b0337d45b455a'), 'pending-cancel-en': (200, '5ce5dd64fd5a89e9'), 'void-zh': (409, '41755269fc9f6766'), 'void-en': (409, '41755269fc9f6766'), 'confirmed-launch-zh': (200, '3d9ff790cbb732ab'), 'confirmed-launch-en': (200, '600414dcebec32e6'), 'confirmed-cancel-zh': (200, '97cb98a3a8fbe947'), 'confirmed-cancel-en': (200, '6db5d1756ebcd0cd')}
+BASE_EXPIRED = {'expired-launch-zh': (200, '523f87da28be07a7'), 'expired-cancel-zh': (200, '1b1c8e0631ccc7ff'), 'expired-launch-en': (200, '523f87da28be07a7'), 'expired-cancel-en': (200, '1b1c8e0631ccc7ff')}
+BASE_POST = {'pressed-launch': (200, 'a34f62e11916b3f4'), 'pressed-cancel': (200, '0cd42b3a6362279f'), 'late-launch': (410, '6e7214f55f0f7a1f'), 'late-cancel': (410, '6e7214f55f0f7a1f')}
 # web-upload-page ruling 25: the left column's upload item is a link now, so the six board digests are the new ones (only that item differs)
-BASE_BOARD = {'succeeded-zh': (200, 'b900748476502f3d'), 'succeeded-en': (200, '870addd406492402'),
-              'failed-zh': (200, 'fdf0381e843890cb'), 'failed-en': (200, '54b26610c18dba4b'),
-              'running-zh': (200, '526adc50c5cd8114'), 'running-en': (200, 'b0c4b62b17b8cf91')}
-BASE_STYLE = '66b9a8e1a9c6f7d2'
+BASE_BOARD = {'succeeded-zh': (200, 'a4af8bb5a5b19d46'), 'succeeded-en': (200, '72cbbda7e4510517'), 'failed-zh': (200, '6127e59f14087952'), 'failed-en': (200, '29d6915f4d99cf18'), 'running-zh': (200, '816b53a71229567f'), 'running-en': (200, '4372dc4d2c4050bf')}
+BASE_STYLE = '6b2683ae09caee2a'
 
 
 def launch_and_cancel(w, ann):
@@ -258,7 +250,7 @@ def test_pressing_once_queues_exactly_one_clean_work_job_and_twice_says_already(
     r = c.post("/c/" + rid, data={"csrf": token})
     jobs = w.sql("SELECT * FROM jobs WHERE kind = 'clean_work'")
     assert r.status_code == 200 and len(jobs) == 1 and jobs[0]["confirmation_id"] == rid
-    assert "已送出。工作編號 %s。代理會開始清理這個 run 的中間檔；結果不會被動。" % jobs[0]["id"] in r.text
+    assert "已送出。工作編號 %s。代理將清理該次分析的中間檔，結果不受影響。" % jobs[0]["id"] in r.text
     assert w.confirmations()[0]["state"] == "confirmed"
     again = c.post("/c/" + rid, data={"csrf": token})
     assert len(w.sql("SELECT * FROM jobs WHERE kind = 'clean_work'")) == 1
@@ -345,8 +337,8 @@ def test_a_succeeded_run_with_my_open_clean_request_shows_one_notice_with_a_link
     n = notices(zh.text)
     assert zh.status_code == 200 and len(n) == 1
     assert "待處理" in n[0] and '<span class="sq"></span>' in n[0] and 'class="level state-succeeded"' in n[0]
-    assert "這個 run 已成功；它的中間檔（work）可以清掉，結果不會被動。" in n[0]
-    assert "打開確認頁，看清楚要刪的資料夾再決定。" in n[0] and 'class="when"' not in n[0]
+    assert "該次分析已成功；其中間檔（work）可清理，結果不受影響。" in n[0]
+    assert "請開啟確認頁，核對將刪除的資料夾後再決定。" in n[0] and 'class="when"' not in n[0]
     assert re.findall(r'href="([^"]*)"', n[0]) == ["/c/" + rid] and "csrf" not in n[0]
     en = notices(board(w, "ann", "en").text)
     assert len(en) == 1 and re.findall(r'href="([^"]*)"', en[0]) == ["/c/%s?lang=en" % rid]
@@ -455,14 +447,23 @@ def test_no_clean_request_is_made_by_looking_around(w):
     assert w.sql("SELECT * FROM confirmations WHERE kind = 'clean_work'") == [] and w.sql("SELECT * FROM jobs WHERE kind = 'clean_work'") == []
 
 
+def _words_of(w, rid):
+    c = logged_in(w, "ann")
+    text = re.sub(r"<style>.*?</style>", "", c.get("/c/" + rid).text, flags=re.S) + notices(board(w, "ann").text)[0]
+    return re.sub(r"[0-9a-f]{32,}", "X", text)   # ids and CSRF tokens are random hex; a run of it can spell "fee"
+
+
+def _assert_no_fee_words(words):
+    for word in ("費用", "月費", "30 天", "cost", "Cost", "fee"):
+        assert word not in words
+
+
 def test_the_texts_have_no_fee_or_thirty_day_reminder_and_the_style_sheet_is_unchanged(w):
     # TC-066, TC-067
     ann = w.user("ann")
     rid = run_and_request(w, ann)
-    c = logged_in(w, "ann")
-    words = re.sub(r"<style>.*?</style>", "", c.get("/c/" + rid).text, flags=re.S) + notices(board(w, "ann").text)[0]
-    for word in ("費用", "月費", "30 天", "cost", "Cost", "fee"):
-        assert word not in words
+    words = _words_of(w, rid)
+    _assert_no_fee_words(words)
     css = re.search(r"<style>(.*?)</style>", board(w, "ann").text, re.S).group(1)
     assert hashlib.sha256(css.encode("utf-8")).hexdigest()[:16] == BASE_STYLE
 
@@ -495,3 +496,45 @@ def test_the_web_sources_have_no_program_start():
         src = inspect.getsource(mod)
         for b in ("subprocess", "os.system", "Popen", "os.exec", "os.spawn"):
             assert b not in src
+
+
+class _TokenHexFeed:
+    """Stands in for `secrets` inside confirm: token_hex gives 'feed' repeated (2*n chars), everything else is the real one."""
+    def token_hex(self, n=32):
+        return "feed" * (n // 2)
+
+    def __getattr__(self, name):
+        import secrets
+        return getattr(secrets, name)
+
+
+def test_a_request_id_that_contains_fee_does_not_fail_the_wording_check(w, monkeypatch):
+    # TC-001, TC-002, TC-008, TC-009
+    from abf_platform import confirm
+    import secrets as real_secrets
+    stand_in = _TokenHexFeed()
+    assert stand_in.token_hex(16) == "feedfeedfeedfeedfeedfeedfeedfeed" and stand_in.choice is real_secrets.choice
+    monkeypatch.setattr(confirm, "secrets", stand_in)
+    ann = w.user("ann")
+    rid = run_and_request(w, ann)
+    assert "fee" in rid
+    c = logged_in(w, "ann")
+    raw = re.sub(r"<style>.*?</style>", "", c.get("/c/" + rid).text, flags=re.S)
+    assert "fee" in raw
+    _assert_no_fee_words(_words_of(w, rid))
+
+
+def test_the_replaced_secrets_is_put_back_after_the_test(w):
+    # TC-009
+    from abf_platform import confirm
+    import secrets
+    assert confirm.secrets is secrets
+
+
+@pytest.mark.parametrize("extra", ["monthly fee", "費用", "30 天", "cost", "fees", "fee:", "/tmp/fee", "a" * 28 + "fee"])
+def test_a_real_fee_word_is_still_caught(w, extra):
+    # TC-011 .. TC-018 (28 x a + fee = 31 hex chars, below the 32 threshold, stays unmasked)
+    ann = w.user("ann")
+    rid = run_and_request(w, ann)
+    with pytest.raises(AssertionError):
+        _assert_no_fee_words(_words_of(w, rid) + " " + extra)

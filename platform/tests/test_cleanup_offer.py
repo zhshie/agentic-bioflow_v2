@@ -804,7 +804,8 @@ def test_no_new_mcp_tool_no_new_route_no_new_cli_command(tmp_path):
     # TC-105, TC-106, TC-107
     from test_actions_layer import READ_NAMES, WRITE_NAMES, _server, _tools
     names = {t.name for t in _tools(_server(str(tmp_path / "index.db")))}
-    assert len(names) == len(READ_NAMES + WRITE_NAMES) and names == set(READ_NAMES + WRITE_NAMES) and not any("clean" in n or n.startswith("request_") for n in names)
+    canvas = {"find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}    # canvas-mcp-read
+    assert len(names) == len(READ_NAMES + WRITE_NAMES) + len(canvas) and names == set(READ_NAMES + WRITE_NAMES) | canvas and not any("clean" in n or n.startswith("request_") for n in names)
     from abf_platform import cli, web
     commands = sorted(cli.build_parser()._subparsers._group_actions[0].choices)
     assert not any("clean" in c for c in commands)
@@ -818,7 +819,7 @@ def test_no_new_mcp_tool_no_new_route_no_new_cli_command(tmp_path):
 COMMANDS = ['agent-token', 'cancel', 'ce', 'dataset', 'fetch-records', 'forget', 'launch', 'launches', 'mcp', 'oauth', 'pat', 'rebuild', 'relaunch', 'resume',
             'runs', 'serve', 'token', 'user', 'web']      # as they were before this task
 ROUTES = ['/', '/.well-known/oauth-authorization-server', '/act/{verb}', '/authorize', '/c/{rid}', '/consent/{rid}', '/launch', '/launch/diagram',
-          '/login', '/logout', '/register', '/revoke', '/settings', '/settings/pipelines', '/settings/pipelines/confirm', '/token', '/upload', '/upload/{batch}', '/usage', '/welcome']
+          '/login', '/logout', '/register', '/revoke', '/settings', '/settings/inventory', '/settings/pipelines', '/settings/pipelines/confirm', '/token', '/upload', '/upload/{batch}', '/usage', '/welcome']
 
 
 def test_platform_and_launch_sources_have_no_program_start_no_rm_and_not_the_forbidden_word():

@@ -25,3 +25,13 @@
 `platform/tests/test_web_parity.py`：`WEB_ONLY` 加一筆 `run_environment`（新的只讀動作，依該檔「加名字要改表」的規則；只加不刪）。
 
 其他既有斷言：未刪、未放寬。`constitution_scope_test.sh` 在 WSL 紅是環境問題（Windows git 建的 worktree），以 CI 為準（裁決 5）。
+
+## 併入 origin/v3（PR #296 合併前更新；沒有新功能）
+v3 之後多了上傳頁與措辭整理（#294）、k8s 送出（#295）等。六個衝突檔的處理（兩邊的斷言都沒刪、沒放寬；v3 的字詞優先，除非計畫點名那句）：
+- `docs/TESTING.md`：兩邊各一節都留（本分支「國網，網頁從頭到完成」＋v3 的 k8s-launch、settings-ce-table-mobile）。
+- `platform/abf_platform/web.py`：逾時／作廢／未送出頁用 v3 的正式用字（「該申請…」「表單驗證碼不符…」「代理將清理該次分析的中間檔，結果不受影響。」），只把「請返回 AI 重新送出」改成計畫點名的「請重新送出」；`sent()`（已送出＋站台開始執行後…＋查看進度 → `/?run_name=`）照本分支保留。
+- `platform/abf_platform/web_board.py`：v3 的「該次分析尚未進行至此階段」等新用字，加回本分支的 `wait_line`（等待頁）。
+- `platform/abf_platform/web_upload.py`：v3 的 `none`／`none_next`／`cmds_note`（中英），本分支的樣本表 `sh_*`／`su_*` 句子保留；v3 的「國網環境的資料目前請用指令上傳」（`slurm`）整句不再使用（計畫作法 1 本來就拿掉），「沒有可用環境」頁改成 v3 的兩段。
+- `platform/tests/test_web_upload.py`：TC-006 採 v3 的「尚無可用的雲端運算環境」（取代本分支先前的改寫），其餘本分支斷言不動。
+- `platform/tests/test_clean_page.py`：`BASE_STYLE` 取 v3 的 6b2683ae09caee2a（本分支不動樣式表）。重算雜湊的頁面（HTML 真的與 v3 不同者）：void-zh/en、expired 四條、pressed-launch／cancel、late-launch／cancel、failed-zh/en、running-zh/en。其餘（pending-*、confirmed-*、succeeded-*）沿用 v3 的值，因為本分支沒有改到它們。
+- `platform/tests/test_web_nano4_path.py`（本分支自己的測試，只同步期望字串／雜湊，斷言數不變）：TC-016 雲端頁雜湊 a613e122a237e6fa/c7fb04b4c64f30b4 → d2b1b6410ee23956/f9c006910f30cab7（v3 改了該頁用字）；TC-019 句子改 v3 用字；TC-025 清理句改 v3 用字；TC-037 樣式表長度 10861 → 11268（v3 的樣式表）。

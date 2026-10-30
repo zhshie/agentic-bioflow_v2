@@ -774,7 +774,7 @@ def test_tool_list_unchanged_and_no_new_web_route(tmp_path):
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
     assert names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log",
-                     "run_outputs", "my_usage", "launch", "cancel", "resume", "relaunch", "forget"}
+                     "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "resume", "relaunch", "forget"}
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if re.search(r"gcb|google|batch|gcp", getattr(r, "path", ""), re.I) and r.path not in {"/upload", "/upload/{batch}"}]      # web-upload-page: only the two routes this task registered are exempt (ruling 25)
     for f in ("agents.py", "common.py", "mcp_server.py", "web.py"):
@@ -813,7 +813,7 @@ def test_the_other_types_stay_unsupported(ip):
     # TC-082
     from abf_platform import compute_envs
     from test_station_envs import UNSUPPORTED
-    assert len(UNSUPPORTED) == 10
+    assert len(UNSUPPORTED) == 9
     for pid, cfg in UNSUPPORTED.items():
         ce = compute_envs.create(ip.state_db, {"name": "x-" + pid, "platform": pid, "config": cfg})
         assert ce["status"] == "unsupported", pid
@@ -848,10 +848,10 @@ def test_the_type_constants():
     assert compute_envs.SUPPORTED == "slurm-platform"
     # aws-launch changed this on purpose: before, PLATFORM_HOST_TYPES == (GCB,) and CHECK_ONLY_TYPES == ("awsbatch-platform",);
     # now AWS can be launched too, so it is a platform-host type and nothing is check-only any more.
-    assert compute_envs.PLATFORM_HOST_TYPES == (GCB, "awsbatch-platform", "azbatch-platform")      # azure-launch
+    assert compute_envs.PLATFORM_HOST_TYPES == (GCB, "awsbatch-platform", "azbatch-platform", "k8s-platform")      # k8s-launch
     # azure-ce-type changed this on purpose: Azure Batch is created and checked but not launched, so it is the one check-only type.
-    assert compute_envs.CHECK_ONLY_TYPES == ()      # azure-launch
-    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, "awsbatch-platform", "azbatch-platform")
+    assert compute_envs.CHECK_ONLY_TYPES == ()      # k8s-launch: nothing is check-only any more
+    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, GCB, "awsbatch-platform", "azbatch-platform", "k8s-platform")
 
 
 def doc(name):
@@ -864,7 +864,7 @@ def test_docs_list_every_gcb_key_and_check():
     assert re.search(r"`googlebatch-platform` \| Google Cloud Batch \| Slurm-like confirmed launch and cancel on the platform host "
                      r"\(resume: not yet\)", d)
     # aws-launch changed this sentence on purpose (plan A9 d): AWS Batch can run now
-    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only" in d
+    assert "Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only" in d
     for key in ("project", "location", "workDir", "spot", "bootDiskSize", "bootDiskImage", "serviceAccountEmail", "network",
                 "subnetwork", "usePrivateAddress", "labels", "maxvCpus") + tuple(CHECK_NAMES):
         assert "`%s`" % key in d, key
@@ -878,3 +878,18 @@ def test_docs_list_every_gcb_key_and_check():
         assert not re.findall(r"[a-z0-9-]+@(?!lab-project-1)[a-z0-9-]+\.iam\.gserviceaccount\.com", text)
     t = doc("TESTING.md")
     assert "gcb-ce-type" in t and "預檢不計費" in t and "git diff" in t
+
+
+def test_max_memory_gb_rules(ip):
+    # TC-001 TC-002 TC-003 TC-004 TC-005 TC-006 TC-007 TC-008 (maxMemoryGB: one task's memory ceiling, whole GB 1..10000)
+    for bad in (0, 10001, True, "8", 1.5):
+        assert "maxMemoryGB must be a whole number from 1 to 10000" in refused(ip, good_config(maxMemoryGB=bad)), bad
+    assert create(ip, "mm1", good_config(maxMemoryGB=10000))["config"]["maxMemoryGB"] == 10000
+    assert create(ip, "mm2", good_config(maxMemoryGB=1))["config"]["maxMemoryGB"] == 1
+    assert "maxMemoryGB" not in create(ip, "mm3", good_config())["config"]      # an old environment: unset means unset, no default is filled in
+
+
+def test_no_other_new_limit_keys_are_taken(ip):
+    # TC-061 (no total, no disk, no time limit)
+    for key in ("maxDiskGB", "maxTime", "maxTotalMemoryGB"):
+        assert "unknown setting" in refused(ip, good_config(**{key: 5})), key

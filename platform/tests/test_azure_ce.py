@@ -717,9 +717,9 @@ def test_the_type_constants():
     from abf_platform import compute_envs
     assert compute_envs.SUPPORTED == "slurm-platform"
     # azure-launch changed this on purpose: Azure Batch can be launched now, so nothing is check-only any more.
-    assert compute_envs.PLATFORM_HOST_TYPES == ("googlebatch-platform", "awsbatch-platform", AZ)
-    assert compute_envs.CHECK_ONLY_TYPES == ()
-    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, "googlebatch-platform", "awsbatch-platform", AZ)
+    assert compute_envs.PLATFORM_HOST_TYPES == ("googlebatch-platform", "awsbatch-platform", AZ, "k8s-platform")      # k8s-launch
+    assert compute_envs.CHECK_ONLY_TYPES == ()      # k8s-launch: nothing is check-only any more
+    assert compute_envs.CHECKABLE == (compute_envs.SUPPORTED, "googlebatch-platform", "awsbatch-platform", AZ, "k8s-platform")
 
 
 # ---- US4: no launching yet ---------------------------------------------------------------------------------------------
@@ -860,7 +860,7 @@ def test_docs_list_every_azure_key_and_check():
                  "storage_account_key", "storage_sas_token", "預檢不計費", "creates no pool"):
         assert word in d, word
     assert re.search(r"`azbatch-platform` \| Azure Batch \| checked, launched and cleaned on the platform host \(resume: not yet\)", d)
-    assert "Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only" in d and "the other eleven" not in d
+    assert "Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only" in d and "the other eleven" not in d
     assert re.search(r"user subscription[^\n]*(not supported|本片不支援)", section, re.I) or "user subscription 模式的 Batch 帳號本片不支援" in section
     assert "lowPriority" in section and "az" in section and re.search(r"operator|營運者", section)
     par = doc("SEQERA_PARITY.md")
@@ -898,8 +898,8 @@ def test_the_other_types_stay_unsupported(ip):
     # TC-130
     from abf_platform import compute_envs
     from test_station_envs import UNSUPPORTED
-    assert len(UNSUPPORTED) == 10 and AZ not in UNSUPPORTED
-    for pid in ("awscloud-platform", "azcloud-platform", "k8s-platform", "eks-platform", "gke-platform"):
+    assert len(UNSUPPORTED) == 9 and AZ not in UNSUPPORTED
+    for pid in ("awscloud-platform", "azcloud-platform", "eks-platform", "gke-platform"):
         assert pid in UNSUPPORTED
     for pid, cfg in UNSUPPORTED.items():
         ce = compute_envs.create(ip.state_db, {"name": "x-" + pid, "platform": pid, "config": cfg})
@@ -920,7 +920,7 @@ def test_tool_list_unchanged_and_no_new_web_route(tmp_path):
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
     assert names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log",
-                     "run_outputs", "my_usage", "launch", "cancel", "resume", "relaunch", "forget"}
+                     "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "resume", "relaunch", "forget"}
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if re.search(r"azure|azbatch|blob", getattr(r, "path", ""), re.I)]
 
@@ -1003,3 +1003,18 @@ def test_no_migration_is_needed(ip):
     assert tables == ["agents", "compute_envs", "confirmations", "jobs", "launches", "meta", "sqlite_sequence"]
     assert ip.show("old")["status"] == "unsupported"
     assert not [p for p in (PLATFORM_DIR / "abf_platform").rglob("*migration*")]
+
+
+def test_max_memory_gb_rules(ip):
+    # TC-001 TC-002 TC-003 TC-004 TC-005 TC-006 TC-007 TC-008 (maxMemoryGB: one task's memory ceiling, whole GB 1..10000)
+    for bad in (0, 10001, True, "8", 1.5):
+        assert "maxMemoryGB must be a whole number from 1 to 10000" in refused(ip, good_config(maxMemoryGB=bad)), bad
+    assert create(ip, "mm1", good_config(maxMemoryGB=10000))["config"]["maxMemoryGB"] == 10000
+    assert create(ip, "mm2", good_config(maxMemoryGB=1))["config"]["maxMemoryGB"] == 1
+    assert "maxMemoryGB" not in create(ip, "mm3", good_config())["config"]      # an old environment: unset means unset, no default is filled in
+
+
+def test_no_other_new_limit_keys_are_taken(ip):
+    # TC-061 (no total, no disk, no time limit)
+    for key in ("maxDiskGB", "maxTime", "maxTotalMemoryGB"):
+        assert "unknown setting" in refused(ip, good_config(**{key: 5})), key

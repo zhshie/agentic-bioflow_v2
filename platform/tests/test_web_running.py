@@ -85,7 +85,7 @@ def test_r01_r13_failed_and_lost_notice_fields(w):
     assert len(re.findall(r"<button\b", n)) == 1 and len(re.findall(r"<form\b", n)) == 1          # 012b: a real button that asks
     assert len(re.findall(r"<form\b", t)) == 1 + 3 + 1          # the log-out form, the run page's three buttons, the notice's one
     [m] = notices(c.get("/?run=" + b).text)
-    assert fields(m) == [("步驟", "—"), ("原因", "站台沒有回應"), ("之後", "重跑（確認頁）")]
+    assert fields(m) == [("步驟", "—"), ("原因", "站台無回應"), ("之後", "重跑（確認頁）")]
     assert "11:00" in plain(m)
 
 
@@ -189,7 +189,7 @@ def test_r34_empty_attention(w):
     u1 = seed(w, "u1", "running", ann, started=T0)
     for rid in (s1, u1):
         right = pane(c.get("/?run=" + rid).text, "right")
-        assert notices(right) == [] and "目前沒有通知" in right
+        assert notices(right) == [] and "目前無通知" in right
 
 
 def test_r37_other_users_data_never_shown(w):
@@ -236,7 +236,7 @@ def test_r45_r52_current_step_and_duration(w):
     assert val(u3, 0) == "—" and val(u1, 1) == "2 小時 5 分"
     short = seed(w, "short", "failed", ann, started=T0, ended=T0 + 40)
     assert val(short, 1) == "不到 1 分" and val(short, 1, "&lang=en") == "<1m"
-    assert "目前沒有通知" in c.get("/?run=" + u1).text
+    assert "目前無通知" in c.get("/?run=" + u1).text
     assert "No notices" in c.get("/?run=%s&lang=en" % u1).text
 
 
@@ -305,7 +305,7 @@ def test_r79_r92_tab_contents(w):
         assert not re.search(r"\b(None|null|undefined)\b", c.get("/?run=%s&tab=%s" % (a, tab)).text)
     u = seed(w, "u1", "running", ann, started=T0)
     text = c.get("/?run=%s&tab=tasks" % u).text
-    assert "沒有失敗的任務" in text and "<table" not in text
+    assert "無失敗任務" in text and "<table" not in text
     assert "No failed tasks" in c.get("/?run=%s&tab=tasks&lang=en" % u).text
     info = plain(pane(c.get("/?run=%s&tab=info" % a).text, "middle"))
     assert "11-14 08:00" in info and "11-14 10:05" in info and a in info and '<span class="sq"></span> 失敗</span>' in pane(c.get("/?run=%s&tab=info" % a).text, "middle")

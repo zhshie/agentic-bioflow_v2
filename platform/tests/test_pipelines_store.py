@@ -305,13 +305,13 @@ def test_pipelines_columns_say_nothing_about_runs(d):
     assert cols("pipeline_versions") == ["created_at", "graph_json", "id", "pipeline_id", "version"]
 
 
-def test_only_seven_public_functions_and_none_in_the_actions_package():
+def test_only_eight_public_functions_and_none_in_the_actions_package():
     # TC-117, TC-121
     import abf_platform.actions as actions
     m = pl()
     names = sorted(n for n, f in vars(m).items() if callable(f) and not n.startswith("_") and getattr(f, "__module__", "") == m.__name__)
-    assert names == ["create_pipeline", "get_pipeline", "get_validation", "list_pipelines", "render_pipeline", "update_pipeline",
-                     "validate_pipeline"]
+    assert names == ["create_pipeline", "export_pipeline", "get_pipeline", "get_validation", "list_pipelines", "render_pipeline",
+                     "update_pipeline", "validate_pipeline"]
     for n in names:
         assert not hasattr(actions, n), n
 
@@ -321,4 +321,8 @@ def test_the_files_owned_by_other_work_do_not_mention_pipelines():
     for f in ("actions/__init__.py", "mcp_server.py", "web.py", "store.py", "catalogue.py"):
         text = (PLATFORM / "abf_platform" / f).read_text(encoding="utf-8")
         for word in ("create_pipeline", "render_pipeline", "pipeline_versions", "actions.pipelines", "compose"):
+            if f == "mcp_server.py" and word == "actions.pipelines":    # canvas-mcp-read (13-3): the one import line is the only place the name may appear
+                line = "import abf_platform.actions.pipelines as pipeline_actions"
+                assert line in text and word not in text.replace(line, ""), (f, word)
+                continue
             assert word not in text, (f, word)

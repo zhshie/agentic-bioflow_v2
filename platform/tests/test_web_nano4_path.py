@@ -246,7 +246,7 @@ def test_tc016_cloud_only_pages_are_what_they_were(up):
     def h(t):
         return hashlib.sha256(mask(t).encode()).hexdigest()[:16]
     zh, en = c.get("/upload").text, c.get("/upload?lang=en").text
-    assert h(zh) == "a613e122a237e6fa" and h(en) == "c7fb04b4c64f30b4"
+    assert h(zh) == "d2b1b6410ee23956" and h(en) == "f9c006910f30cab7"
     assert 'name="sheet"' not in zh
     assert up.ok()
 
@@ -278,8 +278,8 @@ def test_tc019_no_environment_is_one_sentence_and_a_link(up):
     zh = pane(c.get("/upload").text, "middle")
     en_page = c.get("/upload?lang=en").text
     en = pane(en_page, "middle")
-    assert "沒有可用的運算環境。請先到設定頁建立並檢查運算環境。" in plain(zh)
-    assert "No compute environment is ready. Create and check one on the Settings page first." in plain(en)
+    assert "尚無可用的雲端運算環境。" in plain(zh) and "請先到設定頁，建立並檢查雲端運算環境。" in plain(zh)
+    assert "There is no cloud compute environment you can use." in plain(en) and "Set one up and check it on the settings page first." in plain(en)
     assert 'href="/settings' in zh and 'href="/settings' in en
     for m in (zh, en):
         assert "<form" not in m and 'type="file"' not in m and "<button" not in m
@@ -376,7 +376,7 @@ def test_tc025_clean_work_page_is_what_it_was(w):
     c = logged_in(w, "ann")
     r = c.post("/c/" + rid, data={"csrf": csrf_of(c.get("/c/" + rid).text)})
     job = w.sql("SELECT id FROM jobs WHERE kind = 'clean_work'")[0]["id"]
-    assert "已送出。工作編號 %s。代理會開始清理這個 run 的中間檔；結果不會被動。" % job in r.text
+    assert "已送出。工作編號 %s。代理將清理該次分析的中間檔，結果不受影響。" % job in r.text
     assert "查看進度" not in r.text and "站台開始執行後" not in r.text and "回到 AI" not in r.text
 
 
@@ -542,7 +542,7 @@ def pages_of(up):
 def test_tc037_038_039_front_end_rules_and_words(up):
     # TC-037, TC-038, TC-039
     from abf_platform import web_board
-    assert len(web_board.STYLE) == 10861
+    assert len(web_board.STYLE) == 11268
     css = set(re.findall(r"\.([a-z][a-z0-9-]*)", web_board.STYLE))
     for t in pages_of(up):
         assert "style=" not in t and "<script" not in t

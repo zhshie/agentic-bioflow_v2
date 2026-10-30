@@ -21,12 +21,12 @@ STRINGS = {
     "zh": {
         "setup": "使用前檢查", "s_done": "完成", "s_missing": "未完成", "s_later": "之後開放",
         "st_account": "帳號", "st_token": "存取權杖", "st_ce": "運算環境", "st_ai": "AI 金鑰",
-        "token_hint": "在終端機用 abf-platform token new 建立。", "check_cmd": "請用指令確認",
-        "ce_none": "沒有運算環境。", "ce_down": "主要運算環境無法使用：",
+        "token_hint": "請於終端機執行 abf-platform token new 建立。", "check_cmd": "請以指令確認",
+        "ce_none": "尚無運算環境。", "ce_down": "主要運算環境無法使用：",
         "th_name": "名稱", "th_platform": "平台", "th_status": "狀態", "th_agent": "站台代理", "th_pipes": "已登記管線", "th_used": "上次使用時間",
         "primary": "主要", "ce_ok": "可用", "ce_bad": "無法使用", "ce_unk": "未檢查", 
-        "ce_later": "新增或修改運算環境", "no_ce": "沒有運算環境。",
-        "tok_later": "建立或撤銷權杖", "key_note": "金鑰只存在你的瀏覽器，不會送到平台。",
+        "ce_later": "新增或修改運算環境", "no_ce": "尚無運算環境。",
+        "tok_later": "建立或撤銷權杖", "key_note": "金鑰僅儲存於您的瀏覽器，不會傳送至平台。",
         "pf_l_pipeline": "管線（例 nf-core/ampliseq）", "pf_l_revision": "版本（例 2.18.0）",
         "pf_l_module": "模組名稱（站台 module load 使用的名稱，例 biology/nf-core-ampliseq/2.18.0）",
         "pf_l_home": "管線資料夾變數（模組設定的環境變數名稱，例 NFCORE_AMPLISEQ_HOME）",
@@ -34,6 +34,13 @@ STRINGS = {
         "pf_reg": "登記", "pf_remove": "移除", "pf_confirm": "確認", "pf_back": "返回", "pf_reg_head": "登記管線",
         "pf_empty": "此環境目前未登記管線：送出時直接取用 nf-core 官方版本。登記第一筆後，只能送出已登記的管線版本。",
         "pf_fail": "未能完成：",
+        "pf_cloud": "此環境每次送出都直接取用 nf-core 官方版本，不需登記管線。",
+        "pf_pick_label": "站台已安裝的管線版本", "pf_guess": "（變數名稱為推算）", "pf_read_at": "清單讀取於 %s", "pf_reload": "重新讀取站台清單",
+        "pf_inv_none": "尚未讀取此站台已安裝的管線。",
+        "pf_inv_nomod": "此站台沒有找到已安裝的 nf-core 模組：送出時直接取用 nf-core 官方版本。若管線裝在模組以外的位置，請使用下方「進階：手動填寫」。",
+        "pf_inv_error": "未能讀取站台清單：", "pf_adv": "進階：手動填寫（管理者用）",
+        "pf_pick_gone": "站台清單中無此版本，請按「重新讀取站台清單」。",
+        "pf_n_inv_queued": "已排入讀取站台清單。", "pf_n_inv_no_agent": "站台代理目前離線，未能讀取站台清單。",
         "pf_required": "%s為必填。",
         "pf_e_pipeline": "管線名稱格式不正確：須為 nf-core/<名稱>，名稱僅限小寫字母、數字與連字號。",
         "pf_e_revision": "版本格式不正確：須為發行版本（例 2.18.0）或 40 字元提交碼，不接受分支名稱。",
@@ -46,8 +53,8 @@ STRINGS = {
         "pf_n_removed": "已移除。", "pf_n_gone": "此管線版本已不在清單中。",
         "pf_c_add": "確認新增管線版本", "pf_c_remove": "確認移除管線版本",
         "pf_c_action": "動作", "pf_c_env": "運算環境", "pf_op_add": "新增", "pf_op_remove": "移除",
-        "pf_expired_title": "表單已失效", "pf_expired": "表單的記號不正確或已失效，什麼都沒有改。請重新整理頁面後再試。",
-        "pf_foreign_title": "來源不符", "pf_foreign": "表單不是從本頁送出的，什麼都沒有改。請重新整理頁面後再試。",
+        "pf_expired_title": "表單已失效", "pf_expired": "表單驗證碼不符或已失效，未變更任何內容。請重新整理頁面後再試。",
+        "pf_foreign_title": "來源不符", "pf_foreign": "此表單並非由本頁送出，未變更任何內容。請重新整理頁面後再試。",
     },
     "en": {
         "setup": "Before you start", "s_done": "Done", "s_missing": "Missing", "s_later": "Coming later",
@@ -67,6 +74,16 @@ STRINGS = {
         "pf_empty": "No pipelines are registered here: runs use the nf-core release directly. "
                     "Once you register one, only registered pipeline versions can be run here.",
         "pf_fail": "Not completed: ",
+        "pf_cloud": "This environment uses the nf-core release directly on every run; no pipeline registration is needed.",
+        "pf_pick_label": "Pipeline version installed on the site", "pf_guess": " (variable name is inferred)", "pf_read_at": "List read at %s",
+        "pf_reload": "Reload site list",
+        "pf_inv_none": "The pipelines installed on this site have not been read yet.",
+        "pf_inv_nomod": "No installed nf-core modules were found on this site: runs use the nf-core release directly. "
+                        "If the pipeline is installed outside the modules, use \"Advanced: fill in manually\" below.",
+        "pf_inv_error": "Could not read the site list: ", "pf_adv": "Advanced: fill in manually (administrators)",
+        "pf_pick_gone": "This version is not in the site list. Press \"Reload site list\".",
+        "pf_n_inv_queued": "Reading the site list has been queued.", "pf_n_inv_no_agent": "The site "      # split in two pieces on purpose, as pf_n_added_no_agent: test_scope keeps these words out of one line
+                                              "agent is offline; the site list could not be read.",
         "pf_required": "%s is required.",
         "pf_e_pipeline": "The pipeline name is not valid: it must be nf-core/<name>, and the name may use lower-case letters, digits and hyphens only.",
         "pf_e_revision": "The version is not valid: it must be a release (e.g. 2.18.0) or a 40-character commit id; branch names are not accepted.",
@@ -86,7 +103,9 @@ STRINGS = {
 }
 SYMBOL = {DONE: "✓", MISSING: "✗", LATER: "—", GONE: "○", FAIL: "✕"}
 CLASS = {DONE: "chip state-succeeded", MISSING: "chip state-failed", LATER: "chip muted", GONE: "chip muted", FAIL: "chip state-failed"}
-NOTICES = ("added_queued", "added_no_agent", "added_not_checkable", "added_check_refused", "removed", "gone")      # the only values ?notice= may carry
+NOTICES = ("added_queued", "added_no_agent", "added_not_checkable", "added_check_refused", "removed", "gone", "inv_queued", "inv_no_agent")      # the only values ?notice= may carry
+SLURM_TYPE = "slurm-platform"
+CLOUD_TYPES = ("googlebatch-platform", "awsbatch-platform", "azbatch-platform")      # compute_envs.PLATFORM_HOST_TYPES (this module may not import it; a test keeps the two equal)
 FIELDS = ("pipeline", "revision", "module", "home")
 
 
@@ -156,8 +175,9 @@ def _ce_row(t, lang, env):
     pipes = (env.get("config") or {}).get("sitePipelines")
     pipes = "<br>".join(esc("%s %s" % (p.get("pipeline", ""), p.get("revision", ""))) for p in pipes if isinstance(p, dict)) if pipes else ""
     name = esc(env.get("name")) + (' <span class="badge state-running">%s</span>' % esc(t["primary"]) if env.get("primary") else "")
-    return ("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-            % (name, esc(env.get("platform") or "—"), status, who, pipes or "—", esc(_when_iso(env.get("lastUsed")))))
+    cells = (name, esc(env.get("platform") or "—"), status, who, pipes or "—", esc(_when_iso(env.get("lastUsed"))))
+    keys = ("th_name", "th_platform", "th_status", "th_agent", "th_pipes", "th_used")
+    return "<tr>" + "".join('<td data-label="%s">%s</td>' % (esc(t[k]), c) for k, c in zip(keys, cells)) + "</tr>"
 
 
 def _hidden(pairs):
@@ -174,7 +194,7 @@ def _flash(t, flash, where):
         return ""
     if flash["kind"] == "fail":
         return '<p class="bad">%s</p>' % _chip(FAIL, flash["text"])
-    state = GONE if flash["key"] == "gone" else DONE
+    state = GONE if flash["key"] in ("gone", "inv_no_agent") else DONE
     return '<p class="notice">%s</p>' % _chip(state, t["pf_n_" + flash["key"]])
 
 
@@ -188,30 +208,85 @@ def _field_label(t, key):
     return '<span>%s %s</span>' % (esc(t["pf_l_" + key]), web_launch.star(t))
 
 
-def _env_block(t, lang, env, pf_csrf, flash, given):
-    """Under the table, one block per environment: its registered pipeline versions (each with a remove button), the sentence for an empty
-    list, and the form that registers one. The block is the anchor `#ce-<name>`; a notice for it stands right above."""
-    name = env["name"]
-    listed = [p for p in ((env.get("config") or {}).get("sitePipelines") or []) if isinstance(p, dict)]
+def _listed(env):
+    return [p for p in ((env.get("config") or {}).get("sitePipelines") or []) if isinstance(p, dict)]
+
+
+def _registered_list(t, lang, env, pf_csrf, listed, empty_hint=True):
     items = "".join("<li>%s %s</li>" % (esc("%s %s" % (p.get("pipeline", ""), p.get("revision", ""))), _remove_form(t, lang, pf_csrf, env, p))
                     for p in listed)
-    body = ("<ul>%s</ul>" % items) if listed else '<p class="muted">%s</p>' % esc(t["pf_empty"])
-    values = given if given else {}
+    return ("<ul>%s</ul>" % items) if listed else ('<p class="muted">%s</p>' % esc(t["pf_empty"]) if empty_hint else "")
+
+
+def _advanced(t, lang, name, pf_csrf, values):
+    """The four boxes of #259, folded away for the person who administers the site: the way to register what the module list cannot offer."""
     inputs = "".join('<label>%s<input name="%s" value="%s" required></label>' % (_field_label(t, k), k, esc(values.get(k, ""))) for k in FIELDS)
     form = ('<form class="lform" method="post" action="/settings/pipelines">%s%s<button type="submit">%s</button></form>'
             % (_hidden([("op", "add"), ("ce", name), ("csrf", pf_csrf)] + _lang_field(lang)), inputs, esc(t["pf_reg"])))
-    return ('%s<div id="ce-%s"><h3>%s</h3><p class="muted">%s</p>%s<h4>%s</h4><p class="muted">%s</p>%s</div>'
-            % (_flash(t, flash, name), esc(name), esc(name), esc(t["th_pipes"]), body, esc(t["pf_reg_head"]), esc(t["g_legend"]), form))
+    return '<details class="padv"><summary>%s</summary><p class="muted">%s</p>%s</details>' % (esc(t["pf_adv"]), esc(t["g_legend"]), form)
 
 
-def _compute(t, lang, envs, pf_csrf=None, flash=None, given=None):
+def _reload_form(t, lang, name, inv_csrf):
+    if not inv_csrf:
+        return ""
+    pairs = [("ce", name), ("csrf", inv_csrf)] + _lang_field(lang)
+    return '<form class="act" method="post" action="/settings/inventory">%s<button type="submit">%s</button></form>' % (_hidden(pairs), esc(t["pf_reload"]))
+
+
+def _picker(t, lang, name, pf_csrf, inv_csrf, listed, inv):
+    """The part that registers a pipeline of a Slurm environment, by what the site reported (the four pictures of settings-pick-installed)."""
+    status = (inv or {}).get("status", "none")
+    reload_ = _reload_form(t, lang, name, inv_csrf)
+    if status == "ok" and inv.get("items"):
+        taken = {(p.get("pipeline"), p.get("revision")) for p in listed}
+        choices = [i for i in inv["items"] if (i.get("pipeline"), i.get("revision")) not in taken]
+        head = '<p class="muted">%s</p>%s' % (esc(t["pf_read_at"] % _when_iso(inv.get("read_at"))), reload_)
+        if not choices:
+            return head
+        opts = "".join('<option value="%s">%s</option>' % (esc("%s %s" % (i["pipeline"], i["revision"])),
+                                                           esc("%s %s%s" % (i["pipeline"], i["revision"], t["pf_guess"] if i.get("home_source") == "guessed" else "")))
+                       for i in choices)
+        form = ('<form class="lform" method="post" action="/settings/pipelines">%s<label><span>%s %s</span><select name="pick" required>%s</select></label>'
+                '<button type="submit">%s</button></form>'
+                % (_hidden([("op", "add"), ("ce", name), ("csrf", pf_csrf)] + _lang_field(lang)), esc(t["pf_pick_label"]), web_launch.star(t), opts, esc(t["pf_reg"])))
+        return form + head
+    if status == "error":
+        reason = web_board.plain_reason(inv.get("reason"), lang) if inv.get("reason") else ""
+        return '<p class="bad">%s</p>%s' % (_chip(FAIL, t["pf_inv_error"] + reason), reload_)
+    if status in ("no_module_system", "ok"):
+        return '<p class="muted">%s</p>%s' % (esc(t["pf_inv_nomod"]), reload_)
+    return '<p class="muted">%s</p>%s' % (esc(t["pf_inv_none"]), reload_)
+
+
+def _env_block(t, lang, env, pf_csrf, flash, given, inv=None, inv_csrf=None):
+    """Under the table, one block per environment, by its type. A Slurm environment: its registered pipeline versions (each with a remove button),
+    then the choice among what its site has installed, then the folded manual form. A cloud environment: one sentence (the nf-core release is used
+    directly, nothing to register), and, should the database hold old entries, those with their remove buttons. The block is the anchor
+    `#ce-<name>`; a notice for it stands right above."""
+    name = env["name"]
+    kind = env.get("platform")
+    listed = _listed(env)
+    head = "<h3>%s</h3>" % esc(name)
+    if kind == SLURM_TYPE:
+        body = ('<p class="muted">%s</p>%s<h4>%s</h4><p class="muted">%s</p>%s%s'
+                % (esc(t["th_pipes"]), _registered_list(t, lang, env, pf_csrf, listed), esc(t["pf_reg_head"]), esc(t["g_legend"]),
+                   _picker(t, lang, name, pf_csrf, inv_csrf, listed, inv), _advanced(t, lang, name, pf_csrf, given if given else {})))
+    elif kind in CLOUD_TYPES:
+        old = ('<p class="muted">%s</p>%s' % (esc(t["th_pipes"]), _registered_list(t, lang, env, pf_csrf, listed, False))) if listed else ""
+        body = '%s<p class="muted">%s</p>' % (old, esc(t["pf_cloud"]))
+    else:
+        body = ('<p class="muted">%s</p>%s' % (esc(t["th_pipes"]), _registered_list(t, lang, env, pf_csrf, listed, False))) if listed else ""
+    return '%s<div id="ce-%s">%s%s</div>' % (_flash(t, flash, name), esc(name), head, body)
+
+
+def _compute(t, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None):
     if not envs:
         body = '<p class="muted">%s</p>' % esc(t["no_ce"])
     else:
         head = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_platform", "th_status", "th_agent", "th_pipes", "th_used"))
-        body = '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, "".join(_ce_row(t, lang, e) for e in envs))
+        body = '<table class="tbl ce"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, "".join(_ce_row(t, lang, e) for e in envs))
         if pf_csrf:
-            body += "".join(_env_block(t, lang, e, pf_csrf, flash, (given or {}).get(e["name"])) for e in envs)
+            body += "".join(_env_block(t, lang, e, pf_csrf, flash, (given or {}).get(e["name"]), (inv or {}).get(e["name"]), inv_csrf) for e in envs)
     return '<section class="card sec"><h2>%s</h2>%s%s</section>' % (esc(t["set_ce"]), body, _grey_line(t, "ce_later"))
 
 
@@ -256,20 +331,20 @@ def field_error(lang, field, value):
     return None
 
 
-def render_middle(lang, envs, pf_csrf=None, flash=None, given=None):
+def render_middle(lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None):
     """The middle column. `envs` is the list inside the answer of list_compute_envs."""
     lang = web_board.pick_lang(lang)
     t = words(lang)
     return ('<main class="main" data-pane="middle"><h1>%s</h1>%s%s%s%s%s%s</main>'
-            % (esc(t["settings"]), _flash(t, flash, None), _setup(t, lang, envs), _compute(t, lang, envs, pf_csrf, flash, given),
+            % (esc(t["settings"]), _flash(t, flash, None), _setup(t, lang, envs), _compute(t, lang, envs, pf_csrf, flash, given, inv, inv_csrf),
                _credentials(t), _keys(t), _rest(t)))
 
 
-def render(name, csrf, runs, lang, envs, pf_csrf=None, flash=None, given=None):
+def render(name, csrf, runs, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None):
     """GET /settings: the same frame as the board, this middle column. The left and right columns stay as web_board draws them.
     `pf_csrf` is the token of the register and remove forms (without it no form is drawn); `flash` says a notice or a failure; `given` holds
     what a person typed, {environment name: {box: text}}, so that a refused form comes back filled."""
-    return web_board._frame(name, csrf, runs, lang, "settings", lambda t, lang_: render_middle(lang, envs, pf_csrf, flash, given),
+    return web_board._frame(name, csrf, runs, lang, "settings", lambda t, lang_: render_middle(lang, envs, pf_csrf, flash, given, inv, inv_csrf),
                             lambda t, lang_: web_board._right(t, None), path="/settings")
 
 
