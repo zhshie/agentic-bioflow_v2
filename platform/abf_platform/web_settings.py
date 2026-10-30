@@ -21,12 +21,12 @@ STRINGS = {
     "zh": {
         "setup": "使用前檢查", "s_done": "完成", "s_missing": "未完成", "s_later": "之後開放",
         "st_account": "帳號", "st_token": "存取權杖", "st_ce": "運算環境", "st_ai": "AI 金鑰",
-        "token_hint": "在終端機用 abf-platform token new 建立。", "check_cmd": "請用指令確認",
-        "ce_none": "沒有運算環境。", "ce_down": "主要運算環境無法使用：",
+        "token_hint": "請於終端機執行 abf-platform token new 建立。", "check_cmd": "請以指令確認",
+        "ce_none": "尚無運算環境。", "ce_down": "主要運算環境無法使用：",
         "th_name": "名稱", "th_platform": "平台", "th_status": "狀態", "th_agent": "站台代理", "th_pipes": "已登記管線", "th_used": "上次使用時間",
         "primary": "主要", "ce_ok": "可用", "ce_bad": "無法使用", "ce_unk": "未檢查", 
-        "ce_later": "新增或修改運算環境", "no_ce": "沒有運算環境。",
-        "tok_later": "建立或撤銷權杖", "key_note": "金鑰只存在你的瀏覽器，不會送到平台。",
+        "ce_later": "新增或修改運算環境", "no_ce": "尚無運算環境。",
+        "tok_later": "建立或撤銷權杖", "key_note": "金鑰僅儲存於您的瀏覽器，不會傳送至平台。",
         "pf_l_pipeline": "管線（例 nf-core/ampliseq）", "pf_l_revision": "版本（例 2.18.0）",
         "pf_l_module": "模組名稱（站台 module load 使用的名稱，例 biology/nf-core-ampliseq/2.18.0）",
         "pf_l_home": "管線資料夾變數（模組設定的環境變數名稱，例 NFCORE_AMPLISEQ_HOME）",
@@ -39,7 +39,7 @@ STRINGS = {
         "pf_inv_none": "尚未讀取此站台已安裝的管線。",
         "pf_inv_nomod": "此站台沒有找到已安裝的 nf-core 模組：送出時直接取用 nf-core 官方版本。若管線裝在模組以外的位置，請使用下方「進階：手動填寫」。",
         "pf_inv_error": "未能讀取站台清單：", "pf_adv": "進階：手動填寫（管理者用）",
-        "pf_pick_gone": "站台清單中沒有這個版本，請按「重新讀取站台清單」。",
+        "pf_pick_gone": "站台清單中無此版本，請按「重新讀取站台清單」。",
         "pf_n_inv_queued": "已排入讀取站台清單。", "pf_n_inv_no_agent": "站台代理目前離線，未能讀取站台清單。",
         "pf_required": "%s為必填。",
         "pf_e_pipeline": "管線名稱格式不正確：須為 nf-core/<名稱>，名稱僅限小寫字母、數字與連字號。",
@@ -53,8 +53,8 @@ STRINGS = {
         "pf_n_removed": "已移除。", "pf_n_gone": "此管線版本已不在清單中。",
         "pf_c_add": "確認新增管線版本", "pf_c_remove": "確認移除管線版本",
         "pf_c_action": "動作", "pf_c_env": "運算環境", "pf_op_add": "新增", "pf_op_remove": "移除",
-        "pf_expired_title": "表單已失效", "pf_expired": "表單的記號不正確或已失效，什麼都沒有改。請重新整理頁面後再試。",
-        "pf_foreign_title": "來源不符", "pf_foreign": "表單不是從本頁送出的，什麼都沒有改。請重新整理頁面後再試。",
+        "pf_expired_title": "表單已失效", "pf_expired": "表單驗證碼不符或已失效，未變更任何內容。請重新整理頁面後再試。",
+        "pf_foreign_title": "來源不符", "pf_foreign": "此表單並非由本頁送出，未變更任何內容。請重新整理頁面後再試。",
     },
     "en": {
         "setup": "Before you start", "s_done": "Done", "s_missing": "Missing", "s_later": "Coming later",
@@ -175,8 +175,9 @@ def _ce_row(t, lang, env):
     pipes = (env.get("config") or {}).get("sitePipelines")
     pipes = "<br>".join(esc("%s %s" % (p.get("pipeline", ""), p.get("revision", ""))) for p in pipes if isinstance(p, dict)) if pipes else ""
     name = esc(env.get("name")) + (' <span class="badge state-running">%s</span>' % esc(t["primary"]) if env.get("primary") else "")
-    return ("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-            % (name, esc(env.get("platform") or "—"), status, who, pipes or "—", esc(_when_iso(env.get("lastUsed")))))
+    cells = (name, esc(env.get("platform") or "—"), status, who, pipes or "—", esc(_when_iso(env.get("lastUsed"))))
+    keys = ("th_name", "th_platform", "th_status", "th_agent", "th_pipes", "th_used")
+    return "<tr>" + "".join('<td data-label="%s">%s</td>' % (esc(t[k]), c) for k, c in zip(keys, cells)) + "</tr>"
 
 
 def _hidden(pairs):
@@ -283,7 +284,7 @@ def _compute(t, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_
         body = '<p class="muted">%s</p>' % esc(t["no_ce"])
     else:
         head = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_platform", "th_status", "th_agent", "th_pipes", "th_used"))
-        body = '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, "".join(_ce_row(t, lang, e) for e in envs))
+        body = '<table class="tbl ce"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, "".join(_ce_row(t, lang, e) for e in envs))
         if pf_csrf:
             body += "".join(_env_block(t, lang, e, pf_csrf, flash, (given or {}).get(e["name"]), (inv or {}).get(e["name"]), inv_csrf) for e in envs)
     return '<section class="card sec"><h2>%s</h2>%s%s</section>' % (esc(t["set_ce"]), body, _grey_line(t, "ce_later"))

@@ -12,7 +12,7 @@ from resume_harness import Rig
 
 CHAT_TOOLS = PLATFORM_DIR / "abf_platform" / "actions" / "chat_tools.py"
 BANNED_WORDS = re.compile(r"approve|confirm|confirmed_by|void|yes", re.I)
-READ_ONLY = {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "my_usage"}
+READ_ONLY = {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}
 REQUESTS = {"launch", "cancel", "resume", "relaunch", "forget"}
 
 
@@ -187,6 +187,14 @@ def test_tc005_tc022_tc023_tc024_the_system_prompt():
     assert "一句" in p and "工具" in p
     for n in ("list_runs", "get_run", "launch"):
         assert n in p
+
+
+def test_tc033_tc034_the_prompt_names_the_canvas_reads_and_says_no_banned_word():
+    # TC-033, TC-034 (canvas-mcp-read, 13-1)
+    p = chat_tools().CHAT_SYSTEM_PROMPT
+    line = [l for l in p.splitlines() if "find_module" in l]
+    assert len(line) == 1 and "模組" in line[0] and "pipeline" in line[0] and "list_pipelines" in line[0]
+    assert not BANNED_WORDS.search(p)
 
 
 # ---- the request tools only ask ------------------------------------------------------------------------------------

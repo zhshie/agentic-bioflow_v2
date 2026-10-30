@@ -23,6 +23,7 @@ CHAT_SYSTEM_PROMPT = """你是這個分析平台裡的小助理，幫實驗室�
 - list_compute_envs、get_compute_env：看運算環境。
 - list_agents：看站台代理人。
 - list_site_files：看站台上某個資料夾裡有什麼檔案。
+- find_module、describe_module、list_pipelines：查 nf-core 模組，以及查你自己存的 pipeline（get_pipeline、get_validation 看某一版和它的檢查結果）。
 
 提出請求（本人要你幫忙送出時，你可以替他啟動；啟動後頁面會跳出「確認送出嗎？」視窗，本人按「確認」才真的送出）：
 - launch：送出一個分析。

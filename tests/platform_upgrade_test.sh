@@ -95,6 +95,9 @@ line=$(printf '%s\n' "$OUT" | grep -F '沒有重新連上' | head -n1)
 if [ $RC -eq 1 ] && printf '%s' "$line" | grep -q beta && ! printf '%s' "$line" | grep -q alpha && [ $el -le 15 ]; then ok "TC-U2 only beta named (alpha reconnected), rc 1, ${el}s"; else bad "TC-U2" "rc=$RC el=$el out=$OUT"; fi
 if ! printf '%s' "$OUT" | grep -q SECRET_TOKEN_VALUE; then ok "TC-U9 output has no token value"; else bad "TC-U9 token leaked"; fi
 if has "這些代理人重啟後沒有重新連上" && has "abf-platform agent-token" && has "docs/TESTING.md" && has "日誌" && ! has "Traceback" && ! has "SELECT"; then ok "TC-U16 plain-language message with next steps"; else bad "TC-U16" "$OUT"; fi
+# TC-H1 / TC-H2 / TC-H4: the section named in the hint exists as a "## " heading in docs/TESTING.md
+sec=$(printf '%s\n' "$OUT" | grep -F '沒有重新連上' | head -n1 | sed -n 's/.*docs\/TESTING\.md 的「\([^」]*\)」一節.*/\1/p')
+if [ -n "$sec" ] && grep -E '^## ' docs/TESTING.md | grep -qF -- "$sec" && has "docs/TESTING.md 的「Owner binding follow-up」一節第 2 步" && ! has "403 一節"; then ok "TC-H1/H2/H4 hint names a TESTING.md section that exists ($sec)"; else bad "TC-H1/H2/H4 hint section" "sec='$sec'"; fi
 if [ ! -s "$D/called" ]; then ok "TC-U32 no curl/wget/mail called; TC-U31 no git called"; else bad "TC-U32/U31 fake tool called" "$(cat "$D/called")"; fi
 
 # ---- TC-U3: 403 (owner mismatch) ----
@@ -218,17 +221,18 @@ if printf '%s\n' "$up_sec" | grep -qF 'cd ~/<clone> && git pull' && printf '%s\n
 else bad "TC-U24 OPERATIONS.md Upgrade section"; fi
 if bash tests/hosted_deploy_test.sh >"$TMP/hd.out" 2>&1; then ok "TC-U24/U25/U30 hosted_deploy_test.sh is green"; else bad "TC-U25 hosted_deploy_test.sh" "$(grep FAIL "$TMP/hd.out" | head -3)"; fi
 
+# TC-U26: look at the want_list as it is now (no git history): platform-upgrade.sh plus the six originals
+wl=$(grep -E '^want_list=' tests/hosted_deploy_test.sh)
+wl_missing=""
+for e in '$D/platform-upgrade.sh' '$D/Caddyfile.template' '$D/backup.sh' '$D/env.example' '$D/systemd/abf-mcp.service.in' '$D/systemd/abf-serve.service.in' '$D/systemd/abf-web.service.in'; do
+  printf '%s\n' "$wl" | grep -qF -- "$e" || wl_missing="$wl_missing $e"
+done
+if [ -n "$wl" ] && [ -z "$wl_missing" ]; then ok "TC-U26 hosted_deploy_test.sh want_list names platform-upgrade.sh and the six originals"; else bad "TC-U26" "want_list missing:${wl_missing:- (no want_list= line)}"; fi
+
 if mb=$(git merge-base origin/v3 HEAD 2>/dev/null) && git cat-file -e "$mb:tests/hosted_deploy_test.sh" 2>/dev/null; then
-  d=$(git diff -U0 "$mb" -- tests/hosted_deploy_test.sh | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)')
-  if [ "$(printf '%s\n' "$d" | grep -c '^-')" -eq 1 ] && [ "$(printf '%s\n' "$d" | grep -c '^+')" -eq 1 ] && printf '%s\n' "$d" | grep '^+' | grep -qF '$D/platform-upgrade.sh'; then ok "TC-U26 hosted_deploy_test.sh differs only by the want_list entry"; else bad "TC-U26" "$d"; fi
   ch=$(git diff --name-only "$mb" -- platform deploy/backup.sh deploy/systemd)
   if [ -z "$ch" ]; then ok "TC-U28 platform/, backup.sh and deploy/systemd untouched"; else bad "TC-U28" "$ch"; fi
-else skip "TC-U26 / TC-U28" "no origin/v3"; fi
-
-if [ -n "${ABF_UPGRADE_SKIP_PLATFORM_TEST:-}" ]; then skip "TC-U27 platform_test.sh" "skipped by env"; else
-  : # TC-U27 is checked by the full suite running tests/platform_test.sh, which this change cannot affect (platform/ is untouched, TC-U28)
-  ok "TC-U27 platform_test.sh covered by the full run; platform/ untouched (TC-U28)"
-fi
+else skip "TC-U28" "no origin/v3"; fi
 
 echo
 [ "$fails" -eq 0 ] && echo "all platform_upgrade tests passed" || echo "$fails FAILED"

@@ -427,7 +427,7 @@ def test_mcp_resume_takes_run_name_and_two_optional_fields_and_relaunch_still_on
     # TC-032, TC-033
     tools, _ = rig.w.mcp([])
     t = {x.name: x for x in tools}
-    assert sorted(t) == ["cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
+    assert sorted(t) == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "list_agents", "list_compute_envs", "list_pipelines", "list_runs",
                          "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs"]
     yes = {"yes", "y", "confirm", "confirmed", "approve", "approved", "force", "送出", "kind", "command", "script"}
     assert set(t["resume"].input_schema["properties"]) == {"run_name", "params", "extra_config"}

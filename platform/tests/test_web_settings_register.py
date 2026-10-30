@@ -15,7 +15,7 @@ from test_web_board import login, pane
 from test_web_settings import make_agent, make_env, sql
 
 PKG = PLATFORM_DIR / "abf_platform"
-BASE_STYLE_SHA = "66b9a8e1a9c6f7d21872668edd5f10a2525c760e44b0e68a7cbeea030a33b862"      # sha256 of web_board.STYLE before this task
+BASE_STYLE_SHA = "6b2683ae09caee2a0e66778f2cde00e56e9ab500413829cf531c5c27ce8742f3"      # sha256 of web_board.STYLE before this task
 GOOD = {"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}
 OTHER_OLD = {"pipeline": "nf-core/rnaseq", "revision": "3.14.0", "module": "biology/nf-core-rnaseq/3.14.0", "home": "NFCORE_RNASEQ_HOME"}
 FORBIDDEN = ["用過", "選好", "寫死", "自己填", "自己調整", "你還沒", "還沒有", "還不能", "這個", "這份", "這條", "這一版", "一下", "弄", "搞", "東西",
@@ -480,7 +480,7 @@ def test_b12_csrf_failures(w, ann):
         r = step1(c, csrf=token)
         assert r.status_code == 403 and snapshot(w) == before and "/settings/pipelines/confirm" not in r.text
         text = plain(r.text)
-        assert "什麼都沒有改" in text and "重新整理" in text
+        assert "未變更任何內容" in text and "重新整理" in text
 
 
 def test_b13_foreign_origin(w, ann):
@@ -825,7 +825,7 @@ def test_d09_no_environment(w, ann):
     # D09
     sql(w, "DELETE FROM compute_envs")
     r = login(w, "ann").get("/settings")
-    assert r.status_code == 200 and "沒有運算環境。" in mid_of(r.text) and "/settings/pipelines" not in r.text
+    assert r.status_code == 200 and "尚無運算環境。" in mid_of(r.text) and "/settings/pipelines" not in r.text
 
 
 def all_pages(w, ann):

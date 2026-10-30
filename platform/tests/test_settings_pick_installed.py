@@ -22,7 +22,7 @@ AMPLI = {"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biolog
 RNA = {"pipeline": "nf-core/rnaseq", "revision": "3.14.0", "module": "biology/nf-core-rnaseq/3.14.0", "home": "NFCORE_RNASEQ_HOME", "home_source": "guessed"}
 READ_AT = "2026-10-29T08:30:00Z"
 CLOUD_PLATFORMS = ("googlebatch-platform", "awsbatch-platform", "azbatch-platform")
-GONE_ZH = "站台清單中沒有這個版本，請按「重新讀取站台清單」。"
+GONE_ZH = "站台清單中無此版本，請按「重新讀取站台清單」。"
 GONE_EN = 'This version is not in the site list. Press "Reload site list".'
 CLOUD_ZH = "此環境每次送出都直接取用 nf-core 官方版本，不需登記管線。"
 CLOUD_EN = "This environment uses the nf-core release directly on every run; no pipeline registration is needed."
@@ -34,7 +34,7 @@ NOMOD_EN = ('No installed nf-core modules were found on this site: runs use the 
 ADV_ZH, ADV_EN = "進階：手動填寫（管理者用）", "Advanced: fill in manually (administrators)"
 QUEUED = ("✓", "已排入讀取站台清單。", "Reading the site list has been queued.")
 NO_AGENT = ("○", "站台代理目前離線，未能讀取站台清單。", "The site agent is offline; the site list could not be read.")
-EXPIRED_HINT = "表單的記號不正確或已失效，什麼都沒有改。請重新整理頁面後再試。"
+EXPIRED_HINT = "表單驗證碼不符或已失效，未變更任何內容。請重新整理頁面後再試。"
 OK_INV = {"status": "ok", "items": [AMPLI, RNA], "read_at": READ_AT}
 NEW_KEYS = ["pf_cloud", "pf_pick_label", "pf_guess", "pf_read_at", "pf_reload", "pf_inv_none", "pf_inv_nomod", "pf_inv_error", "pf_adv",
             "pf_pick_gone", "pf_n_inv_queued", "pf_n_inv_no_agent"]
@@ -722,7 +722,7 @@ def test_d22_no_environment_at_all(w, ann):
     # D22
     sql(w, "DELETE FROM compute_envs")
     r, mid = get(login(w, "ann"))
-    assert r.status_code == 200 and "沒有運算環境。" in plain(mid) and "重新讀取" not in mid and "<select" not in mid and "/settings/pipelines" not in mid
+    assert r.status_code == 200 and "尚無運算環境。" in plain(mid) and "重新讀取" not in mid and "<select" not in mid and "/settings/pipelines" not in mid
 
 
 def test_d23_each_block_follows_its_own_type(w, ann):
