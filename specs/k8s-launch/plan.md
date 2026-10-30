@@ -199,6 +199,11 @@ ledger 裡的「裁決 12-x」先前沒有寫進本計畫，以下一次補齊�
 - 只改這支測試；不動產品程式。改完在最終 HEAD 跑全套、更新 ledger、寫 GREEN。
 - 本計畫的裁決以本檔為準：ledger 若引用本檔沒有的裁決編號，閱卷一律當作未獲准。
 
+### 補充裁決 16（2026-10-30 09:4x，developer-agent）——回應閱卷 UNVERIFIED(TC-129)
+- TC-129 要求「run 標為已取消（cancelled）」，`test_cancel_of_a_pod_that_is_gone_is_ok` 只斷言了 agent 回 ok 與訊息，沒斷言 run 狀態。補斷言：取消結果寫回平台後，該 run 的狀態是已取消。run 狀態由哪一層寫入，就在那一層的測試補（可在 `test_k8s_launch.py` 用既有的平台寫回流程，或沿用其他雲端取消測試的同一做法）。
+- 只補測試；補完若發現產品其實不會把 run 標成已取消，才修產品，並在 ledger 寫「以前／以後／理由」。
+- TC-171～180（真叢集實跑）維持手動，不在本輪處理。改完在最終 HEAD 跑全套、更新 ledger、寫 GREEN。
+
 ## 專長守則（backend）
 
 ### executor
