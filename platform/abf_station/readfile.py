@@ -81,7 +81,10 @@ def run_read(job, ctx):
     folder = _run_folder(site, env["workDir"], run)
     results = folder + "/results"
     full = results + "/" + path
-    resolved = handlers._real_path(site, full, [results] + list(roots))
+    resolved, said_real = handlers._real_path_res(site, full, [results] + list(roots))
+    down = handlers._realpath_down(site, resolved, said_real)
+    if down:
+        return down
     if resolved is None:      # fail closed: a path the site cannot resolve is never read
         raise rules.Refusal("the site could not say where the path leads, so it is not read (站台無法確認路徑的真實位置)")
     real, real_roots = resolved

@@ -531,17 +531,29 @@ def _failure(code, text):
 
 
 def _real_path(site, path, roots):
-    """(the real path of `path` on the site, the real paths of the roots matched by position), or None when the site cannot say.
+    """(the real path of `path` on the site, the real paths of the roots matched by position), or None when the site cannot say."""
+    return _real_path_res(site, path, roots)[0]
+
+
+def _real_path_res(site, path, roots):
+    """(what _real_path answers, the site's raw answer to the realpath call), so a caller can tell a dead connection from a path the site cannot resolve.
     NUL-separated output, so that a link whose target holds a newline adds no line; the count must be exact (116b)."""
     want = [path] + list(roots)
     res = site.call(["realpath -z -m -- " + " ".join(quote(p) for p in want)])
     if res.rc != 0 or not res.out.endswith(b"\0"):
-        return None
+        return None, res
     parts = res.out[:-1].split(b"\0")
     if len(parts) != len(want):
-        return None
+        return None, res
     texts = [x.decode("utf-8", errors="replace") for x in parts]
-    return texts[0], texts[1:]
+    return (texts[0], texts[1:]), res
+
+
+def _realpath_down(site, resolved, res):
+    """The site_unreachable answer when realpath failed because the connection is gone, else None (the caller refuses as before)."""
+    if resolved is None and res.rc != 0 and lost_connection(res):
+        return _failure("site_unreachable", _site_down(site, res))
+    return None
 
 
 def listing(env, path, ctx):
@@ -550,7 +562,10 @@ def listing(env, path, ctx):
     if not rules.inside(path, roots):
         raise rules.Refusal("the path is outside the allowed read roots (在允許範圍之外)")
     site = ctx.site
-    resolved = _real_path(site, path, roots)
+    resolved, said_real = _real_path_res(site, path, roots)
+    down = _realpath_down(site, resolved, said_real)
+    if down:
+        return down
     if resolved is None:      # fail closed: a path the site cannot resolve is never judged the v3 way
         raise rules.Refusal("the site could not say where the path leads, so it is not listed (站台無法確認路徑的真實位置)")
     real, real_roots = resolved
