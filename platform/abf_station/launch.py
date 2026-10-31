@@ -343,6 +343,14 @@ def path_cells(rows, path_columns):
             if cell != "" and (c in path_cols or cell.startswith("/"))]
 
 
+WEB_CELL = re.compile(r"^https?://[^/\s?#]+", re.I)
+
+
+def is_web_cell(cell):
+    """A samplesheet cell that is an http(s) address with a host (Slurm launches only; Nextflow downloads it itself)."""
+    return isinstance(cell, str) and WEB_CELL.match(cell) is not None
+
+
 def _check_samplesheet(rows, path_columns, roots):
     f = "samplesheet"
     if not isinstance(rows, list) or len(rows) < 2:
@@ -362,6 +370,10 @@ def _check_samplesheet(rows, path_columns, roots):
         raise BundleError("%s: 沒有名為 %s 的欄 (no such column)" % (f, sorted(unknown)[0]))
     for r, c, cell in path_cells(clean, path_columns):
         where = "%s 第 %d 列第 %d 欄（%s）" % (f, r, c, clean[0][c - 1][:40])
+        if is_web_cell(cell):      # an https:// or http:// address is handed to Nextflow as written; it is not a place on the site
+            if compute_envs.looks_like_credential(cell):
+                raise BundleError("%s: 網址看起來含有憑證，不送出 (the address looks like it carries a credential)" % where)
+            continue
         problem = rules.path_problem(cell)
         if problem:
             raise BundleError("%s: %s" % (where, rules.path_reason("路徑", problem)))
