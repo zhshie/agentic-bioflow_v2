@@ -963,5 +963,14 @@ The automatic tests use the fake site; these steps use a real agent and a real M
 1. Take a SUCCEEDED run with a `results` folder. In an MCP client call `run_outputs(run_id)` and then `run_outputs(run_id, path=<enter of a folder>)`: you see the inside of that folder. Call again with `path="../x"`: it answers `bad_path` and lists the first level.
 2. Call `read_run_file(run_id, path=<download of a small .tsv>)`. The first answer may be `loading`; ask again after a few seconds: the text comes back with `total_chars` and no `next_offset`.
 3. Do the same with a text file over 200,000 characters: the answer carries `next_offset`; call again with `offset=<next_offset>` until it is gone, and join the pages: they equal the file.
-4. Call it with a PNG or other binary file: no bytes, a `download_url`; open it in the browser while signed in and the file downloads.
+4. Call it with a PNG or other binary file, or with an `.html` file such as a MultiQC report: no bytes and no HTML text, a `download_url`; open it in the browser while signed in and the file downloads.
 5. Sign in as another user and call both tools on that run: the answer is the same as for a run that does not exist.
+
+## run_outputs asks again after a login error (mcp-run-file-live-fixes): the maintainer checks
+
+Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an MCP client.
+
+1. Let the ControlMaster connection expire. Call `run_outputs(run_id)`: the answer is an `error` that tells you to log in again.
+2. Log in again, wait 30 seconds, call `run_outputs(run_id)`: it says `loading`; ask again after a few seconds: it is `ready` with the list (the web Outputs tab does the same when opened again).
+3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
+4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.

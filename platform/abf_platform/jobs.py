@@ -50,6 +50,7 @@ KINDS = tuple(DEADLINE_SECONDS)
 RUN_FILE_MAX_BYTES = 26214400          # 25 MB, one number; the agent holds the same limit, written separately. Larger files are never sent
 RUN_FILE_PATH_MAX = 512
 RUN_FILE_CACHE_SECONDS = 600           # the same file asked again within this time is answered from the job row
+LISTING_ERROR_RETRY_SECONDS = 30         # run_outputs asks again for a listing that ended in an error after this long
 RUN_FILE_NOT_ON_SITE = "此環境的結果檔不在站台主機上 (the results of this environment are not on the site host)"
 RUN_FILE_NO_RECORD = "這個 run 沒有送出紀錄，無法取得檔案 (this run was not sent from the platform, so there is no folder on record)"
 _RUN_FILE_CONTROL = re.compile(r"[\x00-\x1f\x7f]")

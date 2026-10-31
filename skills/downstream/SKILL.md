@@ -132,6 +132,8 @@ anywhere in this flow.
    For `too_large` or a binary file, give the person the web download address
    and do not pretend you read it. What you read is sent to the model the person
    chose, so say that in one sentence before the first read.
+   A web page file (`.html`, `.htm`) is not read through the tool either: give
+   the person its web download address, like a binary file.
 
 2.5. **Ask about the background, before proposing anything.** No field here
    is mandatory — invite the user to describe the study in their own words,
@@ -316,6 +318,8 @@ anywhere in this flow.
 - **No terminal: read small tables through MCP.** Without a terminal, a table
   of up to 25 MB can be read with `read_run_file`; anything larger follows the
   site-side route below.
+  Web page files (`.html`, `.htm`) are the exception: they give the download
+  address, never their text.
 
 - **Exception: outputs over `scripts/fetch.sh`'s 500 MB limit.** Then nothing
   moves the other way — the analysis scripts travel to the site via
