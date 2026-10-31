@@ -239,6 +239,8 @@ def _confine(state, bundle, area, roots):
     uploads = os.path.realpath(str(root))
     spellings = {rules.normalize(os.path.abspath(str(root))), rules.normalize(uploads)}
     for r, c, cell in bundle_mod.path_cells(bundle["samplesheet"], bundle["path_columns"]):
+        if bundle_mod.is_web_cell(cell):
+            continue      # an http(s) address is not a file of the upload area; it was judged when the bundle was built
         real = os.path.realpath(cell)
         lexical = rules.normalize(cell) if rules.path_problem(cell) is None else None
         if _below(real, uploads) or (lexical and rules.inside(lexical, spellings)):

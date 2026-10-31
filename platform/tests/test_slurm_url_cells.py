@@ -49,7 +49,7 @@ def test_2_request_launch_with_https_cells_reaches_the_confirm_step(d):
     text = "\n".join(",".join(r) for r in sheet(["s1", U1, U2, "auto"])) + "\n"
     out = asyncio.run(_actions().request_launch(d.state, pipeline="nf-core/rnaseq", revision="3.14.0", run_name="run-u",
                                                 ce_name="lab-a", params={"genome": "GRCh38"}, caller=d.a, samplesheet_text=text))
-    assert out.get("sent") is not False and out["state"] == "pending", out
+    assert out["ok"] is True and out["state"] == "pending", out      # sent is False until the person says yes
     assert U1 in json.dumps(bundle_of(d, out)["files"]["samplesheet.csv"])
 
 
