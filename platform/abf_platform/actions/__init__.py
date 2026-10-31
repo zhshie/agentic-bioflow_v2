@@ -406,6 +406,15 @@ def _outputs_reason(message):
     return line[:300]
 
 
+def _listing_is_error(job):
+    """A listing job that is no answer: finished without ok, refused, expired, or overdue without an answer."""
+    if job["state"] == "done":
+        return not (job["result"] or {}).get("ok")
+    if job["state"] in ("queued", "claimed"):
+        return status.now() > job["deadline_at"]
+    return True
+
+
 def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False, enqueue=True, subpath=None):
     """What `<run folder>/results` holds, for the run page: the answer of the newest list_site_files job for that folder. It never
     waits for the site (`list_site_files` does, up to 60 seconds, and a page refreshes every 15): with no job for the folder it queues one
@@ -458,6 +467,14 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
             answer.update(state="error", reason=str(e))
         return answer
     result = job["result"] or {}
+    if enqueue and not relist and _listing_is_error(job):      # an error is the last try that failed, not an answer: ask again after a while
+        ref = job["finished_at"] or job["deadline_at"]
+        if ref is not None and status.now() - ref >= jobs.LISTING_ERROR_RETRY_SECONDS:
+            try:
+                jobs.enqueue_listing(plat, ce, path, status.now, caller_user_id=_caller_id(caller))
+            except jobs.JobRefused as e:
+                answer.update(state="error", reason=str(e))
+            return answer
     if job["state"] in ("queued", "claimed"):
         if status.now() > job["deadline_at"]:      # nobody marks it expired when nobody waits: the page says so, and queues nothing
             answer.update(state="error", reason=_OUTPUTS_NO_ANSWER)
@@ -569,6 +586,14 @@ def _file_answer(answer, job):
 
 READ_CHARS = 200_000      # the most text one read_run_file call gives back, counted in characters (not bytes)
 _READ_WAIT = "站台正在讀這個檔案，請幾秒後再問一次 (the site is reading this file; ask again in a few seconds)"
+_READ_HTML = "這是網頁檔（HTML），內容不經由 MCP 傳給模型 (HTML file; its bytes are not sent through MCP)"
+_HTML_SUFFIXES = (".html", ".htm")
+
+
+def _is_html_name(name):
+    return str(name or "").lower().endswith(_HTML_SUFFIXES)
+
+
 _READ_BINARY = "這是二進位檔，內容不經由 MCP 傳給模型 (binary file; its bytes are not sent through MCP)"
 _READ_REASONS = {
     "bad_path": "路徑不正確：要用 run_outputs 給的相對路徑 (the path is not valid; use a relative path that run_outputs gave)",
@@ -605,14 +630,15 @@ def read_run_file(index_path, platform_path, run_id, path, *, caller=None, offse
         reason = got.get("reason") or _READ_REASONS.get(code) or _READ_REASONS["failed"]
         return {"found": True, "state": "error", "code": code if code in _READ_REASONS else "failed", "reason": reason}
     data = got["data"]
+    html = _is_html_name(got["name"])
     try:
-        text = data.decode("utf-8")      # strict
+        text = None if html else data.decode("utf-8")      # strict; a web page file is never read as text
     except UnicodeDecodeError:
         text = None
     if text is None or "\x00" in text:
         base = (store.get_meta(platform_path_for(index_path, platform_path), "web_base_url") or DEFAULT_WEB_BASE).rstrip("/")
         url = "%s/run/file?run=%s&path=%s" % (base, urllib.parse.quote(run_id, safe=""), urllib.parse.quote(path, safe="/"))
-        return {"found": True, "state": "ready", "kind": "binary", "name": got["name"], "size": got["size"], "note": _READ_BINARY,
+        return {"found": True, "state": "ready", "kind": "binary", "name": got["name"], "size": got["size"], "note": _READ_HTML if html else _READ_BINARY,
                 "download_url": url}
     total = len(text)
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0 or offset > total:

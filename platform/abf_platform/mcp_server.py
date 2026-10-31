@@ -119,6 +119,7 @@ def build_server(index_path, platform_path=None):
                              "200,000 characters from offset (counted in characters, 0 by default), with total_chars and next_offset to "
                              "turn the page; the text goes to the model you chose. A binary file is never sent through MCP: you get its name, "
                              "size, a note and the web download address /run/file?run=<id>&path=<p>, which the person opens when logged in. "
+                             "An HTML file (.html, .htm) is treated as a binary file: you get the same name, size, note and download address. "
                              "Nothing is written or run.")
     def read_run_file(ctx: Context, run_id: str, path: str, offset: Any = 0) -> dict:
         return actions.read_run_file(index_path, platform_path, run_id, path, caller=_caller(ctx), offset=offset)
