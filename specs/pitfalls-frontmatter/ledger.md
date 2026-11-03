@@ -9,3 +9,12 @@
 - tests/run_all.sh 未改；其開頭註解寫 files are every *.sh in this directory, 故 pitfalls_format_test.sh 自動被撿到。
 - WSL 裡 constitution_scope_test.sh 若紅＝Windows 建 worktree 的環境問題，以 CI 為準（裁決 4）。
 - fields/b05_rest.txt 與 b05.txt 是同一批第 30-58 條的欄位草稿（重複，無法刪除），不影響結果。
+
+## BLOCKED (executor)
+全套在 d5798a0 之後：136/138，兩個紅：
+1. no_pipefail_grep_q_test.sh：已修（我的 tests/pitfalls_format_test.sh 用了 pipefail + `| grep -q`，改成 here-string），單檔綠。
+2. platform_shard_5 -> platform/tests/test_catalogue.py::test_platform_doc_has_the_catalogue_section（第 419 行）：
+   `assert "PR" in sec and re.search(r"tier A|A-tier|A 級|A級", sec)`，其中 sec 是 PLATFORM.md「## nf-core module catalogue」到「## What the platform stores」之間。
+   846 行是該節裡唯一的 "tier A"，依計畫改成 tier C 後此斷言必紅。計畫「被釘住的既有檢查」漏列這支測試，且未授權改它（只准改三個檔）。
+   不能改測試也不能回退 PLATFORM.md（TC-014 要求 tier C）。需要 developer-agent 裁決：(a) 授權把 test_catalogue.py:419 的正規式改成 tier C（或 tier A|tier C），或 (b) 本任務不改 846 行。
+其餘工作（94 組欄位、檔首說明、TC-001..013）已完成並提交。
