@@ -41,7 +41,7 @@ source: 017c-validate.md 裁決 2、11（動態檢查延後為「站台側另一
 2. **工作內容**：`enqueue_lint_pipeline` 的 args 為 `{"name", "version", "project": {相對路徑: 文字}}`。專案檔用 `_project_files` 組（與匯出 zip 同一份），總位元組 ≤ `pipeline_launch.MAX_BYTES`、檔數 ≤ `MAX_FILES`，超過＝`refused`。選環境：`compute_env` 有給＝只試它；沒給＝呼叫者名下第一個可用的（`pick_environment(..., kind="lint_pipeline")`，同 `pipeline_files`）。工作不需確認（唯讀、不花錢）。
 3. **結果存放（裁決 b）**：`pipeline_validations` 加四個可為 NULL 的欄：`lint_status TEXT`（`queued`／`passed`／`failed`／`unavailable`／`error`／`expired`）、`lint_report TEXT`（≤ 8000 字元）、`lint_job_id INTEGER`、`lint_at REAL`。此表**不在 `STATE_SCHEMA`**（由 `_table` 隨用隨建），沒有 store migration 可套：`ensure_columns(con)` 用 `PRAGMA table_info` 找缺欄再 `ALTER TABLE … ADD COLUMN`，可重複呼叫、舊列不動（NULL＝沒跑過）。**既有 `INSERT OR REPLACE` 會洗掉 lint 四欄**：改成「列已存在就只 UPDATE 原本六欄，不存在才 INSERT」。
 4. **收結果（不等待）**：無背景程式。`get_validation` 讀到 `lint_job_id` 非 NULL 且 `lint_status == "queued"` 時，`collect` 查該 `jobs` 列：`queued`／`claimed`＝維持；`done`＝取 `clean_result` 清過的結果寫進四欄；`refused`／`error`＝`error`（`lint_report` 放白話原因）；`expired`＝`expired`。之後不再查。回傳的 `validation` 只在 `lint_job_id` 非 NULL 時多鍵 `lint`：`{"status", "report", "linted_at"}`；沒跑過＝**沒有這個鍵**（既有 `validation == v` 比對不變）。`clean_result` 的 `lint_pipeline` 分支只留 `status`（五值之一，其他＝`error`）、`reason`（≤ 200）、`report`（≤ 8000）、`counts`（`passed`／`warned`／`failed`，0 到 100000 整數）。
-5. **站台 `lint.run_lint`**：(a) 驗 `project` 每個路徑：相對、無 `..`、無開頭 `/`、無 NUL、≤ 512 字元，總量與檔數不超上限；不合＝`refused`。(b) `WHICH("nf-core")`（模組層 `WHICH = shutil.which`，測試可換）找不到＝`done` 加 `{"ok": False, "status": "unavailable", "reason": "這台站台沒有安裝 nf-core tools，所以沒有執行 lint；本系統不會自動安裝 (nf-core tools is not installed on this station; nothing is installed for you)"}`，**不安裝、不下載、不開網路**。(c) 檔案寫進 `tempfile.TemporaryDirectory()` 下新資料夾（0700），用模組層 `RUN = subprocess.run` 跑 `["nf-core", "pipelines", "lint", "--dir", <dir>, "--json", <dir 外的 json 檔>]`，`timeout=240`、`shell=False`、環境只留 `PATH`、`HOME`、`LANG`。**在代理自己的主機上直接跑，不經 sbatch／srun／ssh**。(d) 逾時或崩潰＝`error` 加白話 `reason`（不含堆疊與暫存路徑）；JSON 讀得出＝`failed` 數 0 → `passed`，否則 `failed`，`report` 為前 50 條「檢查名：訊息」，`counts` 三個數字；JSON 讀不出＝依回傳碼 `passed`／`failed`，`report` 放標準輸出末 40 行（截到 8000 字元）。(e) 離開前暫存資料夾必刪（含例外）。
+5. **站台 `lint.run_lint`**：(a) 驗 `project` 每個路徑：相對、無 `..`、無開頭 `/`、無 NUL、≤ 512 字元，總量與檔數不超上限；不合＝`refused`。(b) `WHICH("nf-core")`（模組層 `WHICH = shutil.which`，測試可換）找不到＝`done` 加 `{"ok": False, "status": "unavailable", "reason": "這台站台沒有安裝 nf-core tools，所以沒有執行 lint；本系統不會自動安裝 (nf-core tools is not installed on this station; nothing is installed for you)"}`，**不安裝、不下載、不開網路**。(c) 檔案寫進 `tempfile.TemporaryDirectory()` 下新資料夾（0700），用模組層 `RUN = subprocess.run` 跑 `["nf-core", "pipelines", "lint", "--dir", <dir>, "--json", <dir 外的 json 檔>]`，`timeout=240`、`shell=False`、環境只留 `PATH`、`HOME`、`LANG`。**在代理自己的主機上直接跑，不經 sbatch／srun／ssh**。(d) 逾時或崩潰＝`error` 加白話 `reason`（不含堆疊與暫存路徑）；JSON 讀得出＝`failed` 數 0 → `passed`，否則 `failed`，`report` 為前 50 條「檢查名：訊息」，`counts` 三個數字；JSON 讀不出＝回傳碼 0 → `passed`，非 0 → `error`（視同崩潰），`report` 放標準輸出末 40 行（截到 8000 字元）。(e) 離開前暫存資料夾必刪（含例外）。
 6. **不加進雲端清單**：`CLOUD_JOB_KINDS` 不加 `lint_pipeline`，雲端類環境代理被 `_target` 拒絕（`pick_environment` 跳過），只有 Slurm 型（nano4）接。理由：不動 `test_azure_launch.py:985`、`test_k8s_launch.py:805`、`test_k8s_ce.py:733`；日後放寬是加法。
 7. **不改**：`validate.py`、`pipeline_launch.py`、`compose.py`、`catalogue.py`、launch 擋法、任何 MCP 工具或網頁路由、`CHAT_SYSTEM_PROMPT`。`validate()` 回的 `checks`（`["static"]`）不變。
 
@@ -122,6 +122,13 @@ Tests must use the repo's fake station / fake job runner; no real HPC. Keep file
 2026-11-03 developer-agent 追加（看過「待確認」後）：
 1. 「待確認」1～6 全部照計畫的作法，視為定案，verifier 依此出題、不以這幾點退回。
 2. `docs/TESTING.md` 同時被 L33（resume-edit-web）改：本件只在相關段落**末尾新增**行、不改既有行；push 前 `git merge origin/v3`，衝突兩邊新增都留。
+
+
+2026-11-03 developer-agent 追加（回應 verifier 出題時的疑問）：
+3. 回傳碼非 0 且 JSON 讀不出＝`error`（已改作法 5(d)）；回傳碼 0 且 JSON 讀不出＝`passed`。
+4. `counts` 不另存欄位、不另加回傳鍵：平台寫 `lint_report` 時，第一行固定為「通過 X／警告 Y／失敗 Z (passed X / warned Y / failed Z)」，其後才是逐條訊息；所以使用者從 `report` 讀得到數字。`test_result_is_collected_lazily` 的「四欄」指 lint_status、lint_report、lint_job_id、lint_at。
+5. 同一版本再送一次 `lint=True`：以最新一次為準——覆寫 `lint_job_id`、`lint_status` 回 `queued`、清空 `lint_report`；舊工作的結果之後不再讀（不取消舊工作）。
+6. lint 工作不需人工確認、`get_validation` 會寫平台自己的資料庫：我確認可以（只讀管線檔、在代理主機跑、不花錢、不送 HPC）。verifier 照此出題，不以專長守則字面退回。
 
 ## 專長守則（backend）
 
