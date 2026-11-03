@@ -44,7 +44,7 @@
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-012 | 作法 3（活著的狀態：不可把還在排隊或執行的 head 標成失敗） | 例外 | 一個 lost 的 run，最新抓取事實的狀態逐一為 RUNNING、PENDING（並涵蓋 COMPLETING、REQUEUED、SUSPENDED、CONFIGURING） | 對每一種呼叫 `get_run` 與 `list_runs` | 全都不疊加：run 維持 v3 的原樣（`lost`、原因 None），`actions` 不含續跑或重送 | 自動：`platform/tests/test_head_nodefail.py`（參數化） |
+| TC-012 | 作法 3（活著的狀態：不可把還在排隊或執行的 head 標成失敗） | 例外 | 一個 lost 的 run，最新抓取事實的狀態逐一為 RUNNING、PENDING（並涵蓋 COMPLETING、REQUEUED、SUSPENDED、CONFIGURING） | 對每一種呼叫 `get_run` 與 `list_runs` | 全都不疊加：run 維持 v3 的原樣（`lost`、原因 None），`actions` 不含續跑（`relaunch` 沿用 v3 原樣，維護者裁決 11-03：lost 仍可重送） | 自動：`platform/tests/test_head_nodefail.py`（參數化） |
 | TC-013 | 作法 3（COMPLETED 但無完成紀錄） | 例外 | 一個 lost 的 run，抓取事實為 `COMPLETED` | `get_run`，再嘗試續跑 | 狀態維持 `lost`；原因句為 `Slurm head job <id> completed but Nextflow left no completion record`；`actions` 不含續跑；續跑被拒 | 自動：`platform/tests/test_head_nodefail.py` |
 | TC-014 | 作法 4、8（站台回傳是不可信資料）；作法 3（不認得的狀態不疊加） | 例外 | 一個 lost 的 run，分別有三種抓取結果：(a) 事實的 `job_id` 與該 run 發送紀錄的 `slurm_job_id` 不符；(b) 狀態不在允許清單；(c) 狀態字串過長／型別不對；另有一個情況 (d) 較舊的抓取是 NODE_FAIL、但最新一筆已完成的抓取是 `scheduler=None` 或 RUNNING | 對每一種呼叫 `get_run` | 全部不疊加（維持 v3 的 lost、原因 None）；失敗原因句不含該偽造內容；只採最新一筆已完成的抓取 | 自動：`platform/tests/test_head_nodefail.py`（參數化） |
 
