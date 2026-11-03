@@ -1,0 +1,9 @@
+ts	phase	decision	why	evidence	result
+2026-11-03	plan	不用 click/syrupy，用 assert_golden 與 __golden__/ 文字檔	計畫環境事實：CI venv 只裝 mcp pytest httpx	test_cli_snapshots.py:assert_golden	完成
+2026-11-03	red	先提交測試、不提交快照，取得紅燈	計畫「失敗先行」	be27aa90	6 條因快照缺檔而紅
+2026-11-03	tc-004	`ce show`、`dataset show` 的找不到訊息不以 rejected: 開頭，測試斷言現況前綴（ce show 為 "compute environment "，dataset show 不限前綴），其餘五種仍要 rejected:	不能改 cli.py；TC-004 的 rejected: 與現況不符，須回報 developer-agent	cli.py:464-470, cli.py:633-643	偏離，已列問題
+2026-11-03	tc-004	中文說明改為「訊息中任一處有中文」而非限於括號之後	現況 user cloud-cap 找不到人時中文在括號前	test_cli_contract.py:CJK_AFTER_PAREN	偏離（放寬），已列問題
+2026-11-03	gap	--version 只檢查頂層沒有；dataset register/show 有自己的 --version（資料集版本）	避免誤判	test_cli_contract.py:test_documented_gaps	完成
+2026-11-03	golden	快照由 ABF_UPDATE_GOLDEN=1 逐檔產生（鏡像目錄），複製回工作樹後逐檔審閱，再不帶變數重跑全綠	計畫作法 2	__golden__/*.txt	6 份，無暫存路徑、無 CR
+2026-11-03	fix-round	TC-004 修正輪：不改測試也不改 cli.py，回報卡住等裁定	合約要 rejected: 開頭，但 ce show／dataset show 現況不是；滿足合約只能改 cli.py（計畫禁止）或 test-case.md（無權），嚴格斷言只會永遠紅	cli.py:464-470, cli.py:633-643, test-case.md:22	卡住，待 developer-agent 或維護者裁定
+2026-11-03	fix-round	TC-004 改回合約原文（rejected: 開頭、括號後有中文，七種都要）；ce show 與 dataset show 不符現況，標 xfail(strict) 保留合約全文；另以 test_not_found_shows_use_their_own_wording 釘現況措辭；user cloud-cap 的合約案例改用壞數字（中文在括號後）	verifier 判弱於合約為 FAIL；不能改 cli.py（計畫範圍）；strict xfail 讓 cli.py 統一後自動變紅提醒移除	test_cli_contract.py:RUNTIME,test_not_found_shows_use_their_own_wording	177 passed 2 xfailed；仍需維護者決定 (a) 改合約或 (b) 另開任務統一 cli.py
