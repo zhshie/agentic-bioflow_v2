@@ -78,3 +78,13 @@
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
 | TC-025 | 範圍：文件（`docs/PLATFORM.md` 的「Failed runs」段與 lost 狀態說明；`docs/PITFALLS.md` 新增一條） | 功能 | 本案完成後的文件 | 閱卷者讀這兩份文件 | `docs/PLATFORM.md` 說明：排程器終結的 head 會顯示 Failed 並寫出排程器狀態、COMPLETED 無紀錄仍是 lost 要人看、僅在被問到時查一次；`docs/PITFALLS.md` 新增一條「排程器終結的 head 不會留下 Nextflow 紀錄」，寫的是量到的現象（t1／Slurm 654018）而非推測 | 手動：`docs/TESTING.md`（新增的手動步驟，只加不改） |
+
+
+## 對抗審追加（Opus，11-03）
+
+| 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-026 | 裁決 O(1)：限流算任何狀態 | 邊界 | 一個 lost 的 run，其 head-state 抓取依序以 refused、error、expired 結束（各測一次） | 5 秒內對該 run 連續呼叫 get_run 5 次 | 該 run 的 fetch_run_records 列總數為 1，不是 5；另測兩個同時的 get_run 只排 1 筆 | 自動測試 |
+| TC-027 | 裁決 O(2)：舊站台代理相容 | 回歸 | 一般 `enqueue_fetch`（CLI `abf-launch fetch` 路徑）；以及 head-state 查詢 | 比對兩條路徑送出的 args 鍵 | 一般路徑鍵集合恰為 {ce, run_name, run_folder}；只有 head-state 路徑多 slurm_job_id；head-state 被 refused 時 run 維持 lost | 自動測試 |
+| TC-028 | 裁決 O(3)：LIMIT 順序 | 邊界 | run x 有 30 秒前的 NODE_FAIL 事實；同一運算環境上 run y 之後又有 100 筆新抓取 | 對 x 呼叫 get_run 與 list_runs | 兩者都顯示 failed，不是 lost | 自動測試 |
+| TC-029 | 裁決 O(4)：log 超過 20 MB | 邊界 | lost 的 run，.nextflow.log 超過 20 MB 被截斷、沒有完成行，排程器回 NODE_FAIL | get_run | 仍會問排程器並顯示 failed | 自動測試 |
