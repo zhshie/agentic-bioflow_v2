@@ -850,7 +850,8 @@ def launch_screen(bundle, ce_name, cost=None):
                ("計費帳號", bundle["account"]), ("主控佇列", ce["headQueue"]), ("主控送出選項", ce["headJobOptions"] or "(無)")]
     for label, value in fields:
         lines.append(terminal.pair(label, value))
-    lines += _profiles_line(bundle) if bundle["samplesheet"] is not None else []
+    if bundle["samplesheet"] is not None and bundle.get("profiles"):      # both given: the samplesheet wins over the profile's own input
+        lines += _profiles_line(bundle) + [terminal.pair("Samplesheet", "your own samplesheet, used instead of the profile's test data")]
     lines += _samplesheet_lines(bundle)
     for name in ("params.yaml", "nextflow.config", "head.sh"):
         lines += terminal.block(name, bundle["files"][name])

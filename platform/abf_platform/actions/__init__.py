@@ -1413,6 +1413,19 @@ def _site_profile_names(platform_path, env_name, pipeline, revision):
     return None
 
 
+def _profile_list_problem(platform_path, ce_name, pipeline, revision, names):
+    """Why these names cannot be used against the list the environment's last check read (a sentence to say as it is), else None."""
+    have = _site_profile_names(platform_path, ce_name, pipeline, revision)
+    if have is None:
+        return ("平台還沒讀過 %s %s 在站台上有哪些 Config profiles；請先到環境頁對這個環境跑一次檢查，再送一次 "
+                "(run the environment check once so the profiles can be read)" % (pipeline, revision))
+    bad = [n for n in names if n not in have]
+    if bad:
+        return ("%s %s 沒有名為 %s 的 Config profile；它有的是：%s (unknown profile; the ones it has are listed)"
+                % (pipeline, revision, "、".join(bad), "、".join(have) if have else "（沒有）"))
+    return None
+
+
 def _profiles_problem(platform_path, ce, bundle):
     """Why the Config profiles of a launch cannot be used (a sentence to say as it is), else None. Only a pipeline installed on the site
     is allowed them, and each name must be one that pipeline's own config has, as the last check of the environment read it."""
@@ -1422,15 +1435,7 @@ def _profiles_problem(platform_path, ce, bundle):
     if (bundle.get("pipeline_source") or {}).get("kind") != "site-module":
         return ("這個 pipeline 不是站台上安裝的模組，還不能指定 Config profiles；請用站台已安裝的版本 "
                 "(profiles are only for a pipeline installed on the site)")
-    have = _site_profile_names(platform_path, ce["name"], bundle["pipeline"], bundle["revision"])
-    if have is None:
-        return ("平台還沒讀過 %s %s 在站台上有哪些 Config profiles；請先到環境頁對這個環境跑一次檢查，再送一次 "
-                "(run the environment check once so the profiles can be read)" % (bundle["pipeline"], bundle["revision"]))
-    bad = [n for n in names if n not in have]
-    if bad:
-        return ("%s %s 沒有名為 %s 的 Config profile；它有的是：%s (unknown profile; the ones it has are listed)"
-                % (bundle["pipeline"], bundle["revision"], "、".join(bad), "、".join(have) if have else "（沒有）"))
-    return None
+    return _profile_list_problem(platform_path, ce, bundle["pipeline"], bundle["revision"], names)
 
 
 async def request_launch(platform_path, *, pipeline, revision, run_name, samplesheet=None, samplesheet_text=None, ce_name=None, params=None,
@@ -1444,8 +1449,7 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
     test_*) lets the launch go without any samplesheet. It is a choice of what to run, not a yes: the person still answers the question."""
     if profiles is not None and (not isinstance(profiles, list) or not all(isinstance(p, str) for p in profiles)):
         return _no("未送出：profiles 必須是名稱清單，例如 [\"test\"] (profiles must be a list of names)")
-    no_sheet = (profiles and samplesheet is None and samplesheet_text is None and dataset is None and dataset_version is None
-                and any(build.bundle_mod.brings_input(p) for p in profiles))
+    no_sheet = bool(profiles and samplesheet is None and samplesheet_text is None and dataset is None and dataset_version is None)
     if dataset is not None or dataset_version is not None:
         if dataset is None:
             return _no("未送出：dataset_version 要和 dataset 一起給 (dataset_version needs dataset)")
@@ -1475,6 +1479,11 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
         if problem:
             return _no("未送出：%s" % problem)
     except build.Refusal as e:
+        if no_sheet and str(e).startswith("samplesheet:"):      # well-formed names but no data: say first if the pipeline has no such profile
+            ce_n = ce_name or build.primary_environment(platform_path, _caller_id(caller))
+            listed = ce_n and _profile_list_problem(platform_path, ce_n, pipeline, revision, profiles)
+            if listed:
+                return _no("未送出：%s" % listed)
         return _no("未送出：%s" % e)
     return await _finish_launch(platform_path, ce, bundle, caller, person, clock, remote)
 

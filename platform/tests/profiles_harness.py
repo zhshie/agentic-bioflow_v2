@@ -21,6 +21,7 @@ def install_eight(w, ce="lab-a"):
     """The environment names the eight pipelines as installed (the settings page's own storage)."""
     cfg = json.loads(w.sql("SELECT config_json FROM compute_envs WHERE name = ?", (ce,))[0][0])
     cfg["sitePipelines"] = entries()
+    cfg["siteConfigVars"] = ["NFCORE_SITE_CONFIG"]      # the site's own config file, which a profile must only be added to
     import sqlite3
     con = sqlite3.connect(str(w.ip.state_db))
     with con:

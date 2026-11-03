@@ -985,3 +985,22 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 2. Log in again, wait 30 seconds, call `run_outputs(run_id)`: it says `loading`; ask again after a few seconds: it is `ready` with the list (the web Outputs tab does the same when opened again).
 3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
 4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.
+
+## nano4 test profile 驗收 (launch-test-profile): the maintainer checks
+
+Run on nano4 after the platform with this change is installed. A launch may now carry `profiles=["test"]`; with a `test`, `test_full` or `test_*` profile no samplesheet is needed, and the pipeline runs on its own test data. The person still says yes on the confirmation page.
+
+### (a) After the upgrade: let the platform read the profile names
+
+1. Open the Environments page, choose nano4 and run the pre-use check again. The profile names are read only by that check.
+2. Confirm the answer holds `site_profiles`: for each installed pipeline a list of names that includes `test` (look at the check's detail, or ask the platform for the environment's last check). If a pipeline has no list, the platform will refuse its `profiles` with "請先到環境頁對這個環境跑一次檢查"; run the check again.
+3. Record in `specs/launch-test-profile/ledger.md` what you saw.
+
+### (b) One test run for each of the eight pipelines
+
+For each of `nf-core/ampliseq`, `nf-core/rnaseq`, `nf-core/sarek`, `nf-core/scrnaseq`, `nf-core/atacseq`, `nf-core/crisprseq`, `nf-core/nanoseq`, `nf-core/proteinfold` (use the installed revision), with the skill `nano4-acceptance`:
+
+1. In an MCP client call `launch` with `pipeline`, `revision`, a new `run_name`, `ce_name` of nano4, `params={}` and `profiles=["test"]`. Give no samplesheet.
+2. The answer is "pending" with a page address. Open it: the screen says `Config profiles: test` and `Samplesheet: from the pipeline's test profile`, and head.sh has ` -profile test` after the site `-c` lines and before `-with-tower`. Say yes there.
+3. Wait until the run ends. It must reach SUCCEEDED; write the run name and its final status in the ledger.
+4. Also try `profiles=["nope"]`: nothing is sent and the answer lists the names the site has.

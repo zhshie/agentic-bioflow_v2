@@ -1,0 +1,6 @@
+ts	phase	decision	why	evidence	result
+2026-11-03	build	request_launch 在只給 profiles、沒給樣本表時，把「samplesheet:」類拒絕換成列出站台 profile 名單的句子	不認得的名字、超過 8 個或名稱不合法時，使用者該看到可用名單，而不是樣本表錯誤	platform/abf_platform/actions/__init__.py:_profile_list_problem	test_launch_profiles 通過
+2026-11-03	test-fix	修驗證者測試的夾具錯誤：harness CE 補 siteConfigVars；resume／relaunch 用建立的使用者當 caller；session id 用 resume_harness.SESSION	原夾具沒有站台 -c 變數、沒有可被送去確認頁的人，與計畫無關的夾具缺口；斷言本身未動	platform/tests/profiles_harness.py:24, test_launch_profiles.py	對應 TC 通過
+2026-11-03	test-fix	tc045 讀 resume bundle 的 profiles 改讀 b["resume"]["origin"]["profiles"]	resume bundle 依既有設計把原 bundle 原樣放在 resume.origin，不在頂層加 key（避免改變 hash 與鍵集合）	platform/tests/test_launch_profiles.py:544	通過
+2026-11-03	build	樣本表與 profile 同時給時，確認畫面加一行說明用的是自己的樣本表	避免使用者以為會跑測試資料	platform/abf_launch/build.py:launch_screen	tc013/014/015 通過
+2026-11-03	build	TC-060 加進 test_http_site_samplesheet.py，用 World 夾具與 bearer caller	Duo 的 agent 有其他排隊工作，預檢 claim 會拿錯工作；World 夾具與 profile 測試一致	platform/tests/test_http_site_samplesheet.py:test_tc060	通過

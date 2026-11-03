@@ -51,10 +51,8 @@ def test_tc006_tc049_the_profile_goes_after_every_c_and_before_tower():
 
 def test_tc006_the_site_config_c_stays():
     # TC-006: a pipeline of the site keeps its -c "$NFCORE_SITE_CONFIG" (the golden tests of test_launch_bundle.py pin the rest)
-    from test_launch_bundle import SITE_CE
-    ce = copy.deepcopy(SITE_CE) if isinstance(SITE_CE, dict) else None
-    if ce is None:
-        pytest.skip("no site ce")
+    from test_launch_bundle import site_ce
+    ce = site_ce()
     line = exec_line(render(ce=ce, samplesheet=None, profiles=["test"], params={}))
     assert 'NFCORE_SITE_CONFIG' in line or "-c nextflow.config" in line
     assert line.index("-profile test") > line.index("-c nextflow.config")
@@ -523,7 +521,8 @@ def test_tc041_tc042_tc046_a_relaunch_reproduces_the_test_launch(rig):
     assert stored["profiles"] == ["test"]
     import asyncio
     from abf_platform import actions
-    out = asyncio.run(actions.request_relaunch(rig.state, run_name="run-one", caller=None, person=None, remote=False, index_path=rig.index))
+    ann = rig.w.user("ann")
+    out = asyncio.run(actions.request_relaunch(rig.state, run_name="run-one", caller=ann, person=None, remote=False, index_path=rig.index))
     assert out["ok"] is True, out
     row = rig.w.confirmations()[-1]
     b = json.loads(row["bundle_json"])
@@ -537,11 +536,12 @@ def test_tc045_tc047_tc048_a_resume_reproduces_the_test_launch(rig):
     import asyncio
     from abf_platform import actions
     first_with_profiles(rig)
-    out = asyncio.run(actions.request_resume(rig.state, run_name="run-one", caller=None, person=None, remote=False, index_path=rig.index))
+    ann = rig.w.user("ann")      # a person who can be sent to the page that asks (the stdio caller of the harness has nobody to ask)
+    out = asyncio.run(actions.request_resume(rig.state, run_name="run-one", caller=ann, person=None, remote=False, index_path=rig.index))
     assert out["ok"] is True, out
     row = rig.w.confirmations()[-1]
     b = json.loads(row["bundle_json"])
-    assert b["profiles"] == ["test"]
+    assert b["resume"]["origin"]["profiles"] == ["test"]      # the resume bundle keeps the origin verbatim; the head line below is rebuilt from it
     heads = [t for n, t in b["files"].items() if n.startswith("head-")]
     assert heads and " -profile test " in heads[0] and "-resume" in heads[0]
     line = [ln for ln in heads[0].splitlines() if ln.startswith("exec nextflow")][0]
@@ -553,14 +553,14 @@ def test_tc043_tc044_an_old_bundle_without_profiles_rebuilds_as_before(tmp_path)
     # TC-043 TC-044: a bundle from before `profiles` existed reads it as none
     from abf_station import launch
     from station_harness import FakePlatform, FakeSite
-    from resume_harness import relaunch_bundle, resume_bundle
+    from resume_harness import SESSION, relaunch_bundle, resume_bundle
     from test_station_launch import ACCT
     site = FakeSite(tmp_path / "s", account=ACCT, site_user="tester")
     fake = FakePlatform()
     try:
         origin, rb = resume_bundle(site, fake)
         assert "profiles" not in origin and " -profile" not in "".join(rb["files"].values())
-        again = launch.render_resume_bundle(origin=dict(origin), run_name="run-a-a2", attempt=2, session_id="s", of_run="run-a", of_slurm_job_id=4242)
+        again = launch.render_resume_bundle(origin=dict(origin), run_name="run-a-a2", attempt=2, session_id=SESSION, of_run="run-a", of_slurm_job_id=4242)
         assert again == rb
     finally:
         fake.stop()
@@ -571,8 +571,10 @@ def test_tc043_the_old_relaunch_path_renders_the_same_bytes(rig):
     import asyncio
     from abf_platform import actions
     rig.first()
-    out = asyncio.run(actions.request_relaunch(rig.state, run_name="run-one", caller=None, person=None, remote=False, index_path=rig.index))
+    ann = rig.w.user("ann")
+    out = asyncio.run(actions.request_relaunch(rig.state, run_name="run-one", caller=ann, person=None, remote=False, index_path=rig.index))
     assert out["ok"] is True, out
     b = json.loads(rig.w.confirmations()[-1]["bundle_json"])
     assert "profiles" not in b and " -profile" not in b["files"]["head.sh"] and "samplesheet.csv" in b["files"]
     assert "Config profiles" not in rig.w.confirmations()[-1]["screen_text"]
+
