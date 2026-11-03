@@ -173,8 +173,8 @@ RUN_TOKEN_TTL = 14 * 86400
 # Compute environments, agents, jobs, confirmations and the hand-off record. Nothing here describes the state of a
 # run: a job is a question or an order put to one agent, a confirmation is the user's "yes" to one content, and a
 # launches row is a fact (who was told to launch what, and the number Slurm gave it), never a status.
-# The CHECK constraints let exactly nine job kinds in, and the three that write (launch_nextflow, cancel_run, clean_work) only with
-# a confirmation; put_upload writes to the user's own cloud prefix and needs none (the person's press of Upload is the yes); the other five only read. The jobs table has the same columns in the same order whether it was made new or upgraded from 007's.
+# The CHECK constraints let exactly ten job kinds in, and the three that write (launch_nextflow, cancel_run, clean_work) only with
+# a confirmation; put_upload writes to the user's own cloud prefix and needs none (the person's press of Upload is the yes); the other six only read. The jobs table has the same columns in the same order whether it was made new or upgraded from 007's.
 STATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS compute_envs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -239,7 +239,7 @@ _JOBS_TABLE = """CREATE TABLE %(name)s (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent TEXT NOT NULL,
     compute_env TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('preflight', 'list_site_files', 'launch_nextflow', 'cancel_run', 'fetch_run_records', 'read_task_log', 'clean_work', 'put_upload', 'pipeline_files')),
+    kind TEXT NOT NULL CHECK (kind IN ('preflight', 'list_site_files', 'launch_nextflow', 'cancel_run', 'fetch_run_records', 'read_task_log', 'clean_work', 'put_upload', 'pipeline_files', 'read_run_file')),
     args_json TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('queued', 'claimed', 'done', 'refused', 'error', 'expired')),
     result_json TEXT,
@@ -408,11 +408,11 @@ def _migrate_jobs(con):
 
 
 def _jobs_kinds_current(sql_text):
-    return all(kind in sql_text for kind in ("read_task_log", "clean_work", "put_upload", "pipeline_files"))
+    return all(kind in sql_text for kind in ("read_task_log", "clean_work", "put_upload", "pipeline_files", "read_run_file"))
 
 
 def _migrate_jobs_kinds(con):
-    """A platform.db made before run-diag-tools, clean_work, put_upload or pipeline_files has a jobs table whose CHECK does not let `read_task_log`, `clean_work`, `put_upload` or `pipeline_files` in. Same shape of work as
+    """A platform.db made before run-diag-tools, clean_work, put_upload, pipeline_files or read_run_file has a jobs table whose CHECK does not let `read_task_log`, `clean_work`, `put_upload`, `pipeline_files` or `read_run_file` in. Same shape of work as
     _migrate_jobs: one transaction, build the new table, copy every row by the column names both tables have (the ids and the
     AUTOINCREMENT counter too), drop the old one, rename. A failure anywhere rolls it all back. Another process may have done it first."""
     row = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'jobs'").fetchone()
@@ -1068,6 +1068,42 @@ def revoke_agent_tokens(tokens_path, name):
             cur = con.execute("UPDATE tokens SET revoked_at = ? WHERE kind = 'agent' AND agent_name = ? "
                               "AND revoked_at IS NULL", (time.time(), name))
             return cur.rowcount
+    finally:
+        con.close()
+
+
+def list_agent_tokens(tokens_path, name=None):
+    """One dict per agent token: id, agent_name, user, created_at, revoked_at; only that name when given. Never the value or the hash."""
+    if not Path(tokens_path).exists():
+        return []
+    con = connect_tokens(tokens_path)
+    try:
+        sql = ("SELECT t.id AS id, t.agent_name AS agent_name, u.name AS user, t.created_at AS created_at, t.revoked_at AS revoked_at "
+               "FROM tokens t LEFT JOIN users u ON u.id = t.user_id WHERE t.kind = 'agent'")
+        args = ()
+        if name is not None:
+            sql += " AND t.agent_name = ?"
+            args = (name,)
+        return [dict(r) for r in con.execute(sql + " ORDER BY t.id", args)]
+    finally:
+        con.close()
+
+
+def revoke_agent_token(tokens_path, token_id_):
+    """Revoke one live agent token by id; returns {'agent_name': ...}, or None when there is no such live agent token
+    (an unknown id, a run token or a personal access token, or one already revoked)."""
+    if not Path(tokens_path).exists():
+        return None
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            row = con.execute("SELECT agent_name FROM tokens WHERE id = ? AND kind = 'agent' AND revoked_at IS NULL",
+                              (token_id_,)).fetchone()
+            if row is None:
+                return None
+            n = con.execute("UPDATE tokens SET revoked_at = ? WHERE id = ? AND kind = 'agent' AND revoked_at IS NULL",
+                            (time.time(), token_id_)).rowcount
+            return {"agent_name": row["agent_name"]} if n else None
     finally:
         con.close()
 

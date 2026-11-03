@@ -87,7 +87,7 @@ def test_fs01_succeeded_run_opens_finished_stage(w):
     t = c.get(url(rid)).text
     m = mid(t)
     assert "來源紀錄" in m and "交付包" in m and "013b" not in m and "還沒到這個階段" not in m
-    assert [plain(k) for k, _ in prov_rows(t)] == ["管線", "版本", "改過的參數", "運算環境", "送出時間", "完成時間", "送出者", "樣本表"]
+    assert [plain(k) for k, _ in prov_rows(t)] == ["管線", "版本", "已變更的參數", "運算環境", "送出時間", "完成時間", "送出者", "樣本表"]
     assert [k for k, _ in pack_rows(t)] == ["報告", "結果表格", "MultiQC 報告", "圖", "方法段落（含版本）", "樣本表"]
     assert m.count('class="steps"') == 1 and 'rel="prev"' in m
 
@@ -105,7 +105,7 @@ def test_fs02_other_states_not_reached(w, monkeypatch):
     w.login(c, "ann")
     for st, rid in ids.items():
         t = c.get(url(rid)).text
-        assert "這個 run 還沒到這個階段。" in mid(t) and "來源紀錄" not in mid(t) and "交付包" not in mid(t), st
+        assert "該次分析尚未進行至此階段。" in mid(t) and "來源紀錄" not in mid(t) and "交付包" not in mid(t), st
         t2 = c.get("/?run=%s&stage=running" % rid).text
         cell = re.search(r'<li[^>]*data-step="finished"[^>]*>(.*?)</li>', mid(t2), re.S)
         assert "is-later" in cell.group(0) and "<a" not in cell.group(1) and "完成" in cell.group(1), st
@@ -118,7 +118,7 @@ def test_fs03_provenance_kept(w):
     t = c.get(url(rid)).text
     rows = dict((plain(k), v) for k, v in prov_rows(t))
     assert rows["管線"] == "nf-core/ampliseq" and rows["版本"] == "2.11.0" and rows["運算環境"] == "lab-a"
-    codes = re.findall(r"<code>(.*?)</code>", rows["改過的參數"])
+    codes = re.findall(r"<code>(.*?)</code>", rows["已變更的參數"])
     assert codes == ["max_cpus: 8", "outdir: " + PARAMS["outdir"], "skip_qc: true"]
     from abf_platform import web_board
     assert plain(rows["送出時間"]) == web_board.taipei_time(LAUNCHED)
@@ -132,7 +132,7 @@ def test_fs03b_no_changed_parameters(w):
     # TC-004
     ann, c, rid = world(w, params={})
     rows = dict((plain(k), plain(v)) for k, v in prov_rows(c.get(url(rid)).text))
-    assert rows["改過的參數"] == "— 全部用預設值"
+    assert rows["已變更的參數"] == "— 全部採預設值"
 
 
 def test_fs04_provenance_not_kept(w):
@@ -141,9 +141,9 @@ def test_fs04_provenance_not_kept(w):
     forget(w, "ann-done")
     t = c.get(url(rid)).text
     sec = section(t, "來源紀錄")
-    assert "這次送出的內容已不保留。" in sec and sec.index("這次送出的內容已不保留。") < sec.index("<dl")
+    assert "該次送出的內容已不保留。" in sec and sec.index("該次送出的內容已不保留。") < sec.index("<dl")
     rows = dict((plain(k), plain(v)) for k, v in prov_rows(t))
-    for k in ("管線", "版本", "改過的參數", "運算環境"):
+    for k in ("管線", "版本", "已變更的參數", "運算環境"):
         assert rows[k] == "— 內容已不保留", k
     assert re.fullmatch(r"\d\d-\d\d \d\d:\d\d", rows["送出時間"]) and re.fullmatch(r"\d\d-\d\d \d\d:\d\d", rows["完成時間"])
     assert "nf-core" not in t and "2.11.0" not in t and "max_cpus" not in t
@@ -157,7 +157,7 @@ def test_fs05_not_from_platform(w, monkeypatch):
     monkeypatch.setattr(actions, "launch_prefill", lambda *a, **k: {"found": False, "kept": False})      # a run the platform never sent
     t = c.get(url(rid)).text
     sec = section(t, "來源紀錄")
-    assert plain(sec) == "— 不是從平台送出的分析，沒有來源紀錄。" and "<dl" not in sec
+    assert plain(sec) == "— 此分析並非經由平台送出，無來源紀錄。" and "<dl" not in sec
     for label in ("管線", "版本", "運算環境"):
         assert label not in sec
     assert len(pack_rows(t)) == 6
@@ -180,13 +180,13 @@ def test_fs06_package_rows_follow_outputs(w):
     assert rows["結果表格"] == "✓ 在輸出資料夾" and rows["MultiQC 報告"] == "✓ 在輸出資料夾"
     finish(w, listings(w)[-1]["id"], entries=[e for e in ENTRIES if e["name"] != "multiqc"])
     rows = dict(pack_rows(c.get(url(rid)).text))
-    assert rows["結果表格"] == "✓ 在輸出資料夾" and rows["MultiQC 報告"] == "— 這次沒有產生"
+    assert rows["結果表格"] == "✓ 在輸出資料夾" and rows["MultiQC 報告"] == "— 該次未產生"
     finish(w, listings(w)[-1]["id"], entries=[{"name": "multiqc_data", "type": "dir", "size": 1, "modified": ""},
                                               {"name": "multiqc", "type": "file", "size": 1, "modified": ""}])
-    assert dict(pack_rows(c.get(url(rid)).text))["MultiQC 報告"] == "— 這次沒有產生"
+    assert dict(pack_rows(c.get(url(rid)).text))["MultiQC 報告"] == "— 該次未產生"
     finish(w, listings(w)[-1]["id"], entries=[])
     rows = dict(pack_rows(c.get(url(rid)).text))
-    assert rows["結果表格"] == "— 沒有檔案"
+    assert rows["結果表格"] == "— 無檔案"
     finish(w, listings(w)[-1]["id"], ok=False, state="done", message="no")
     assert dict(pack_rows(c.get(url(rid)).text))["結果表格"].startswith("— 尚未讀取輸出")
 

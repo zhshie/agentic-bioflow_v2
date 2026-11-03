@@ -18,10 +18,10 @@ MAX_BYTES = 256 * 1024
 MAX_VALUE = 1000
 REPO_URL = "https://github.com/nf-core/modules.git"
 
-_ID = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
-_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
-_KEY = re.compile(r"^ext\.(args[2-9]?|prefix)$")
-_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_ID = re.compile(r"^[a-z][a-z0-9_]{0,31}\Z")
+_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}\Z")
+_KEY = re.compile(r"^ext\.(args[2-9]?|prefix)\Z")
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
 _TOP = ("nodes", "edges")
 _TOO_BIG = "圖太大，上限 256 KiB；請拆小 (the graph is too large; the limit is 256 KiB, make it smaller)"
 

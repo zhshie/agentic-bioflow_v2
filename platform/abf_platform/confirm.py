@@ -387,7 +387,7 @@ def forget_content(state_path, run_name, forgotten_by=None, only_user=None, cloc
         jobs_of_run = [r for r in con.execute("SELECT id, state, args_json FROM jobs WHERE kind IN (%s) AND args_json LIKE ?" % marks,
                                               FORGOTTEN_JOB_KINDS + (like,)) if _named(r["args_json"], run_name) is not None]
         if any(r["state"] in ("queued", "claimed") for r in jobs_of_run):
-            raise jobs.JobRefused("這個 run 還有工作在排隊或進行中，不能刪除 (a job of this run is still queued or running)")
+            raise jobs.JobRefused("該次分析仍有工作在排隊或進行中，無法刪除 (a job of this run is still queued or running)")
         todo_jobs = [r["id"] for r in jobs_of_run if not _named(r["args_json"], run_name).get("forgotten")]
         ids = {r[0] for r in con.execute("SELECT j.confirmation_id FROM launches l JOIN jobs j ON j.id = l.job_id "
                                          "WHERE l.run_name = ? AND j.confirmation_id IS NOT NULL", (run_name,))}

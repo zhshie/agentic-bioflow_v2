@@ -21,7 +21,7 @@ from .. import cloud_store, compute_envs, store
 
 WEB_UPLOAD_LIMIT = 2_000_000_000        # bytes, per file, decimal: what the browser reports for one file
 SAMPLESHEET_LIMIT = 1_048_576           # 1 MiB
-_NAME = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+_NAME = re.compile(r"^[A-Za-z0-9._-]{1,64}\Z")
 _SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 _EXT = re.compile(r"\.(fastq|fq)(\.gz)?$", re.I)
 _TAG = re.compile(r"^(?P<stem>.+)_(?P<tag>[RI][0-9])(?P<end>_001)?$")

@@ -540,7 +540,7 @@ def test_tc055_the_ledger_lists_each_rewritten_pin():
     assert ledger.lower().count("old") >= 2 and ledger.lower().count("new") >= 2
 
 
-SCHEMA_SHA256 = "d39c4e436fb4c9250331453cf454d52b25c60528cf67079ce362d22432939f33"      # release-lookup-job: the jobs CHECK list gained pipeline_files (was bb8b185e8eef...); byte-channel-a: gained put_upload (was 0b6aad18e811...)
+SCHEMA_SHA256 = "aa30afaa58d9b005e4cc96a3b7a6ba7714b5365299b845d5a09e33b5dc61560b"      # results-files: the jobs CHECK list gained read_run_file (was d39c4e436fb4...); release-lookup-job: the jobs CHECK list gained pipeline_files (was bb8b185e8eef...); byte-channel-a: gained put_upload (was 0b6aad18e811...)
 
 
 def test_tc057_no_table_or_column_changed(d):
@@ -559,7 +559,7 @@ def test_tc058_tc059_tc060_no_upload_tool_no_site_job_no_folder_job(d):
     # TC-058, TC-059, TC-060
     tools, _ = d.w.mcp([])
     assert {t.name for t in tools} == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                                       "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "launch", "cancel", "forget", "resume", "relaunch"}
+                                       "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "forget", "resume", "relaunch"}
     before = tree(d.uploads)
     jobs_before = [r["id"] for r in sql_rows(d.state, "SELECT id FROM jobs")]
     assert pending(by_text(d, d.a, site_cells(3)))

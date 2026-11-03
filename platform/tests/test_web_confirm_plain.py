@@ -58,7 +58,7 @@ def test_tc001_tc006_tc009_tc013_tc014_launch_page(rig):
     c = login(rig, "ann")
     page = c.get("/c/" + rid).text
     p = plain_of(page)
-    assert p == {"種類": "送出新分析", "run 名稱": "run-one", "管線": "nf-core/ampliseq", "版本": "2.18.0", "環境": "lab-a",
+    assert p == {"種類": "送出新分析", "分析名稱": "run-one", "管線": "nf-core/ampliseq", "版本": "2.18.0", "環境": "lab-a",
                  "樣本數": str(samples_of(rig))}
     assert page.index('class="fields plain"') < page.index("<button")
     summary, pre, attrs = folded_of(page)
@@ -76,7 +76,7 @@ def test_tc002_tc011_relaunch_and_tc003_tc012_resume(rig):
     rid = ask(rig, c, "relaunch", again)
     page = c.get("/c/" + rid).text
     p = plain_of(page)
-    assert p["種類"] == "重跑" and p["run 名稱"] == "run-c-a2" and p["管線"] == "nf-core/ampliseq" and p["版本"] == "2.18.0"
+    assert p["種類"] == "重跑" and p["分析名稱"] == "run-c-a2" and p["管線"] == "nf-core/ampliseq" and p["版本"] == "2.18.0"
     assert p["環境"] == "lab-a" and p["樣本數"] == str(samples_of(rig))
     summary = request_of(rig, rid)["summary"]
     assert p["新資料夾"] in summary and "run-c-a2" in p["新資料夾"]
@@ -84,7 +84,7 @@ def test_tc002_tc011_relaunch_and_tc003_tc012_resume(rig):
     rid = ask(rig, c, "resume", failed)
     page = c.get("/c/" + rid).text
     p = plain_of(page)
-    assert p["種類"] == "續跑" and p["run 名稱"] == "run-a-a2" and p["管線"] == "nf-core/ampliseq" and p["版本"] == "2.18.0"
+    assert p["種類"] == "續跑" and p["分析名稱"] == "run-a-a2" and p["管線"] == "nf-core/ampliseq" and p["版本"] == "2.18.0"
     assert p["環境"] == "lab-a" and p["樣本數"] == str(samples_of(rig)) and "新資料夾" not in p
     assert folded_of(page)[1] == request_of(rig, rid)["summary"]
 
@@ -96,7 +96,7 @@ def test_tc004_tc005_tc010_cancel_and_no_placeholders(rig):
     c = login(rig, "ann")
     rid = ask(rig, c, "cancel", going)
     page = c.get("/c/" + rid).text
-    assert plain_of(page) == {"種類": "取消", "run 名稱": "run-b"}
+    assert plain_of(page) == {"種類": "取消", "分析名稱": "run-b"}
     assert folded_of(page)[1] == request_of(rig, rid)["summary"]
     launch = plain_of(c.get("/c/" + launched(rig, ann)).text)
     for block in (plain_of(page), launch):

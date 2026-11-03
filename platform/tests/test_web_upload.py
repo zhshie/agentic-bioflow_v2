@@ -228,21 +228,26 @@ def test_tc006_no_usable_environment_is_one_sentence_and_a_link(up):
     r = up.client().get("/upload")
     assert r.status_code == 200
     m = pane(r.text, "middle")
-    assert "沒有可用的雲端運算環境" in plain(m) and 'href="/settings"' in m
+    assert "尚無可用的雲端運算環境" in plain(m) and 'href="/settings"' in m
     assert "<form" not in m and 'type="file"' not in m and "<button" not in m
+    # web-nano4-path ruling 8: an available national-HPC environment brings the samplesheet form (and no FASTQ box); one that is not available brings nothing
     up.slurm_for_alice()
+    sheet_only = pane(up.client().get("/upload").text, "middle")
+    assert 'name="fastq"' not in sheet_only and 'name="sheet"' in sheet_only
+    sql_exec(up.state, "UPDATE compute_envs SET status = 'invalid' WHERE name = 'nchc1'")
     assert 'type="file"' not in pane(up.client().get("/upload").text, "middle")
 
 
-def test_tc007_tc008_the_slurm_sentence_only_when_there_is_a_slurm_environment(up):
-    # TC-008 first (alice has none), then TC-007
+def test_tc007_tc008_the_slurm_sentence_is_gone_and_the_sheet_form_needs_an_available_environment(up):
+    # TC-008 first (alice has none), then TC-007; web-nano4-path ruling 8 replaced the sentence "use the command line" by the samplesheet form
     assert "國網環境的資料目前請用指令上傳" not in up.client().get("/upload").text
     up.slurm_for_alice()
     zh = up.client().get("/upload").text
-    assert "國網環境的資料目前請用指令上傳" in zh
+    assert "國網環境的資料目前請用指令上傳" not in zh and 'name="sheet"' in zh
     en = up.client().get("/upload?lang=en").text
-    sentence = re.search(r"<p class=\"muted\">([^<]*Slurm[^<]*)</p>", en)
-    assert sentence and not cjk(sentence.group(1))
+    assert "Slurm cluster environments" not in en and 'name="sheet"' in en
+    sql_exec(up.state, "UPDATE compute_envs SET status = 'invalid' WHERE name = 'nchc1'")
+    assert 'name="sheet"' not in up.client().get("/upload").text
 
 
 def test_tc009_the_two_gigabyte_limit_is_written_and_is_the_real_one(up):
@@ -940,7 +945,7 @@ def test_tc088_to_tc090_a_refused_registering_keeps_the_places_and_deletes_nothi
     jobs_before = sql_rows(up.state, "SELECT count(*) AS n FROM jobs")[0]["n"]
     page = c.get("/upload/" + batch)
     text = plain(pane(page.text, "middle"))
-    assert "已存在" in text and "檔案仍在你的雲端資料夾，可換一個版本重新上傳" in text
+    assert "已存在" in text and "檔案仍在您的雲端資料夾，可換一個版本重新上傳" in text
     assert "gs://lab-bucket/uploads/alice/" + R1 in text and "gs://lab-bucket/uploads/alice/" + R2 in text and "已登記，前往送出" not in page.text
     en = plain(pane(c.get("/upload/%s?lang=en" % batch).text, "middle"))
     assert "The files are still in your cloud folder" in en

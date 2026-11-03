@@ -93,11 +93,13 @@ class Site:
         return SiteResult(p.returncode, p.stdout, p.stderr.decode("utf-8", errors="replace"))
 
 
-def run_fixed(argv, env, timeout):
+def run_fixed(argv, env, timeout, stdin=None):
     """(return code, output text) of one program started with a fixed argument list and no shell: the one other way this package
-    starts a program (the Google Batch preflight uses it for gcloud). TimeoutError when it does not return in `timeout` seconds."""
+    starts a program (the Google Batch preflight uses it for gcloud). `stdin` is text handed to the program's standard input (the
+    Kubernetes launch gives kubectl a manifest this way, so it never touches a file or a command line); None means no input. TimeoutError when it does not return in `timeout` seconds."""
     try:
-        p = subprocess.run(list(argv), env=env, timeout=timeout, shell=False, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        p = subprocess.run(list(argv), env=env, timeout=timeout, shell=False, capture_output=True, text=True,
+                           **({"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}))
     except subprocess.TimeoutExpired:
         raise TimeoutError("did not return in %s seconds" % timeout)
     except OSError as e:

@@ -14,8 +14,7 @@ from test_web_guided_launch import SEL, launched, ready, rig, set_env  # noqa: F
 from test_web_guided_launch_2 import (NETWORK, error_files, fk, good_files, groups, input_cols, latest, loading_files,  # noqa: F401  (fk is a fixture)
                                       plain_text, step)
 
-BANNED = ["用過", "選好", "寫死", "自己填", "自己調整", "你還沒", "還沒有", "還不能", "這個", "這份", "這條", "這一版", "一下", "弄", "搞", "東西", "喔",
-          "啦", "吧", "囉", "蠻", "超"]
+from test_web_wording_sweep import BANNED, banned_in as hits  # noqa: E402  (web-wording-sweep: the one list of banned words, shared; this file keeps guarding with its own 22)
 OLD_KEYS = ["選這個管線", "選用這份樣本表", "套用參數", "選用這個環境"]
 STAR = '<span class="req" title="必填">*</span>'
 STAR_EN = '<span class="req" title="Required">*</span>'
@@ -40,8 +39,7 @@ def zh_words(page):
 
 
 def banned_in(page):
-    text = zh_words(page)
-    return [w for w in BANNED if w in text]
+    return hits(zh_words(page), BANNED, run=False)
 
 
 def cell(text, name):
@@ -653,7 +651,7 @@ def test_scope_page_limits(rig, fk):
     launched(rig, ann, "run-a")
     for url in (SEL, SEL + "&src=used", "/launch"):
         t = c.get(url).text
-        assert "我的 run" in t and "<script" not in t and "<figure" not in t and "style=" not in t
+        assert "我的分析" in t and "<script" not in t and "<figure" not in t and "style=" not in t
         assert all(x.startswith('<img class="gdia" src="/launch/diagram?') for x in re.findall(r"<img\b[^>]*>", t))      # guided-launch-2d: the only picture is the workflow diagram, our own address
         assert len(re.findall(r"<style", t)) + len(re.findall(r'rel="stylesheet"', t)) == 1
     three = step(c.get(SEL + "&src=new").text, 3)      # guided-launch-2d: the pipeline is step 3 (was 2)

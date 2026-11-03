@@ -154,10 +154,10 @@ def test_v03_root_empty_state(w):
     r = c.get("/")
     assert r.status_code == 200
     mid = pane(r.text, "middle")
-    assert "還沒有分析" in plain(mid) and "<h1>" not in mid and "bob-failed" not in r.text
+    assert "尚無分析" in plain(mid) and "<h1>" not in mid and "bob-failed" not in r.text
     assert re.search(r'<a [^>]*href="/launch"[^>]*>＋ 新分析</a>', mid)
     right = pane(r.text, "right")
-    assert "這個分析的對話" in plain(right) and "—" in plain(right) and "<button" not in right and "<form" not in right
+    assert "本分析的對話" in plain(right) and "—" in plain(right) and "<button" not in right and "<form" not in right
     en = c.get("/?lang=en").text
     assert "No analyses yet" in en and no_cjk(en)
 
@@ -194,7 +194,7 @@ def test_v05_left_grouped_by_project(w):
     second = {name: [x for x in left_rows(t) if name in x[2]][0][3] for name in
               ("ann-running", "ann-failed-resume", "ann-failed-relaunch", "ann-lost", "ann-cancelled", "ann-done")}
     assert second == {"ann-running": "執行 · 2 / 5", "ann-failed-resume": "執行 · " + FAILED_STEP, "ann-failed-relaunch": "執行 · TRIMGALORE (s1)",
-                      "ann-lost": "執行 · 站台沒有回應", "ann-cancelled": "執行 · 已取消", "ann-done": "結果"}, second
+                      "ann-lost": "執行 · 站台無回應", "ann-cancelled": "執行 · 已取消", "ann-done": "結果"}, second
     for href, cls, l1, l2 in left_rows(t):
         assert re.fullmatch(r"/\?run=id-ann-[a-z-]+", href)
     left = pane(t, "left")
@@ -234,12 +234,12 @@ def test_v06_right_is_this_analysis_only(w):
     _, c, ids = std(w)
     t = c.get("/?run=" + ids["running"]).text
     right = pane(t, "right")
-    assert "這個分析的對話" in plain(right) and "ann-running" in plain(right) and "目前沒有通知" in plain(right)
+    assert "本分析的對話" in plain(right) and "ann-running" in plain(right) and "目前無通知" in plain(right)
     assert "<article" not in right and "<form" not in right
     for other in ("ann-done", "ann-lost", "ann-failed", "ann-cancelled", "bob"):
         assert other not in right
     assert "全部分析" not in right and "data-stage=" not in right and "✓ 1" not in right
-    assert plain(right).endswith("問這個分析 之後開放") and "<textarea" not in right and "<input" not in right
+    assert plain(right).endswith("詢問本分析 之後開放") and "<textarea" not in right and "<input" not in right
     f = pane(c.get("/?run=" + ids["resume"]).text, "right")
     for other in ("ann-running", "ann-done", "ann-lost", "ann-cancelled", "ann-failed-relaunch"):
         assert other not in f
@@ -292,7 +292,7 @@ def test_v07b_time_and_fallback_reasons(w):
     w.login(c, "ann")
     assert "10:05" in plain(right_notices(c.get("/?run=" + a).text)[0])
     nl = right_notices(c.get("/?run=" + lost).text)[0]
-    assert "11:07" in plain(nl) and plain(dd(nl, "原因")) == "站台沒有回應" and "state-failed" in nl
+    assert "11:07" in plain(nl) and plain(dd(nl, "原因")) == "站台無回應" and "state-failed" in nl
     assert plain(dd(right_notices(c.get("/?run=" + b).text)[0], "原因")) == "first line"
     nb = right_notices(c.get("/?run=" + d).text)[0]
     assert plain(dd(nb, "原因")) == "—" and plain(dd(nb, "步驟")) == "—"
@@ -335,7 +335,7 @@ def test_v09_button_text_is_fixed_verb(w):
 def test_v10_lost_and_cancelled_reason(w):
     # TC-061, TC-062, TC-018
     _, c, ids = std(w)
-    assert plain(dd(right_notices(c.get("/?run=" + ids["lost"]).text)[0], "原因")) == "站台沒有回應"
+    assert plain(dd(right_notices(c.get("/?run=" + ids["lost"]).text)[0], "原因")) == "站台無回應"
     assert plain(dd(right_notices(c.get("/?run=" + ids["stopped"]).text)[0], "原因")) == "已取消"
 
 

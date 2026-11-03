@@ -42,7 +42,10 @@ def run_read(job, ctx):
     if not rules.inside(workdir, roots):
         raise rules.Refusal("the task folder is outside the allowed read roots (在允許範圍之外)")
     site = ctx.site
-    resolved = handlers._real_path(site, workdir, roots)
+    resolved, said_real = handlers._real_path_res(site, workdir, roots)
+    down = handlers._realpath_down(site, resolved, said_real)
+    if down:
+        return down
     if resolved is None:      # fail closed: a folder the site cannot resolve is never read
         raise rules.Refusal("the site could not say where the task folder leads, so it is not read (站台無法確認路徑的真實位置)")
     real, real_roots = resolved

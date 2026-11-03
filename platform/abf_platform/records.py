@@ -18,6 +18,7 @@ _RUN_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
 _LOG = re.compile(r"^\.nextflow\.log(\.[0-9]{1,3})?\Z")
 _TRACE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\Z")
 _NOT_RECORDS = {"tower.token", "params.yaml", "head.sh", "nextflow.config", "samplesheet.csv", "gcb.config", "aws.config", "az" "ure.config"}
+_RESUME_FILE = re.compile(r"^(head|params|extra)-[0-9]+\.(sh|yaml|config)\Z")
 
 
 def name_ok(name):
@@ -26,7 +27,7 @@ def name_ok(name):
         return False
     if _LOG.match(name) or name == ".nextflow/history":
         return True
-    return bool(_TRACE.match(name)) and name not in _NOT_RECORDS and not name.startswith(("slurm-", ".nextflow"))
+    return bool(_TRACE.match(name)) and name not in _NOT_RECORDS and not name.startswith(("slurm-", ".nextflow")) and not _RESUME_FILE.match(name)
 
 
 def store_files(records_dir, run_name, files):

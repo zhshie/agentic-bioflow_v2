@@ -1,10 +1,11 @@
-# Not Ansible modules or Celery tasks: they run whatever a controller sends; these are the built-in handlers for the nine job kinds (three of them write, after a confirmation), and a job is only data for them, never a command.
+# Not Ansible modules or Celery tasks: they run whatever a controller sends; these are the built-in handlers for the ten job kinds (three of them write, after a confirmation), and a job is only data for them, never a command.
 """What the agent does: check a site (preflight), list a folder (list_site_files), and, with a confirmation, start an analysis
 (launch_nextflow, launch.py) or stop one (cancel_run, cancel.py); fetch_run_records reads Nextflow's own logs back (fetch.py);
 read_task_log reads the end of one log file of one task folder (readlog.py); clean_work, with a confirmation, removes the
 work folder of one finished Slurm run (clean.py); put_upload streams one uploaded file from the
 upload folder into the person's own cloud prefix and, once the cloud size matches, removes the staged copy (put_upload.py).
 pipeline_files reads five kinds of public file for the platform, the fifth being nf-core's own list of pipelines, which never connects out itself (pipeline_files.py).
+read_run_file reads one regular file of a run's results folder, at most 25 MB, for the web download (readfile.py).
 
 A job is a dict with a kind and arguments. Only the exact kinds below exist; any other text is refused,
 and a refusal is an answer, not a crash. Every value that reaches the site is checked again here and
@@ -13,13 +14,14 @@ quoted. What goes back to the platform is the agent's own short wording, never t
 import re
 from datetime import datetime, timezone
 
-from . import aws_preflight, azure_preflight, cancel, clean, fetch, gcb_preflight, launch, pipeline_files, put_upload, readlog, rules
+from abf_platform import compute_envs      # the same field rules as a registered pipeline
+from . import aws_preflight, azure_preflight, cancel, clean, fetch, gcb_preflight, k8s_preflight, launch, pipeline_files, put_upload, readfile, readlog, rules
 from .site import quote
 
-JOB_KINDS = ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files")
+JOB_KINDS = ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files", "read_run_file")
 ARG_KEYS = {"preflight": {"ce"}, "list_site_files": {"ce", "path"}, "launch_nextflow": launch.LAUNCH_KEYS,
             "cancel_run": launch.LAUNCH_KEYS, "fetch_run_records": fetch.ARGS, "read_task_log": readlog.ARGS,
-            "clean_work": launch.LAUNCH_KEYS, "put_upload": put_upload.ARGS, "pipeline_files": pipeline_files.ARGS}
+            "clean_work": launch.LAUNCH_KEYS, "put_upload": put_upload.ARGS, "pipeline_files": pipeline_files.ARGS, "read_run_file": readfile.ARGS}
 LIST_LIMIT = 500
 # The check ids are written as one comma-split string, never as a quoted sbatch: the scan of
 # constitution principle 2 (tests/no_second_run_state_test.sh) treats a quote straight before
@@ -63,6 +65,8 @@ def handle(job, ctx):
             return put_upload.run_put(job, ctx)
         if kind == "pipeline_files":
             return pipeline_files.run_fetch(job, ctx)
+        if kind == "read_run_file":
+            return readfile.run_read(job, ctx)
         ce = args.get("ce")
         if kind == "preflight" and isinstance(ce, dict) and ce.get("platform") == gcb_preflight.TYPE:
             # a Google Batch environment is checked here, on the platform host: its own checks, read-only and free (預檢不計費)
@@ -79,9 +83,14 @@ def handle(job, ctx):
             res = azure_preflight.run_preflight(azure_preflight.clean_environment(ce),
                                                 cred_path=azure_preflight.credentials_path(ctx.settings_file))
             return "done", _verdict(res["checks"])
+        if kind == "preflight" and isinstance(ce, dict) and ce.get("platform") == k8s_preflight.TYPE:
+            # a Kubernetes environment is checked here too: read-only and free (預檢不計費), it creates nothing on the cluster
+            res = k8s_preflight.run_preflight(k8s_preflight.clean_environment(ce),
+                                              cred_path=k8s_preflight.credentials_path(ctx.settings_file))
+            return "done", _verdict(res["checks"])
         env = rules.clean_environment(ce)
         if kind == "preflight":
-            return "done", preflight(env, ctx)
+            return "done", preflight(env, ctx, inventory=True)      # only the check the person asks for also reads the site list; a launch's gate does not
         return listing(env, args.get("path"), ctx)
     except rules.Refusal as e:
         return _refused(str(e))
@@ -261,8 +270,10 @@ def _judge_site_pipeline(entry, res):
     return True, label
 
 
-def preflight(env, ctx):
-    """Run every check and report all of them. Nothing is created, changed or submitted on the site."""
+def preflight(env, ctx, inventory=False):
+    """Run every check and report all of them. Nothing is created, changed or submitted on the site.
+    With `inventory` (set by the preflight job; a launch's gate leaves it off) a read-only list of the nf-core modules installed on the site is added as the separate field
+    `site_inventory`, once the connection has passed; it is never one of the checks and never changes the verdict."""
     site = ctx.site
     checks = []
     planned = _planned(env)
@@ -418,7 +429,86 @@ def preflight(env, ctx):
             add("image_library", "pass", "the read-only image library can be read")
         else:
             add("image_library", "fail", "the read-only image library %s cannot be read (唯讀映像庫讀不到)" % library)
-    return _verdict(checks)
+    verdict = _verdict(checks)
+    if inventory:
+        verdict["site_inventory"] = site_inventory(site)
+    return verdict
+
+
+# ---- the nf-core modules installed on the site (settings-pick-installed) ----------------------------------------------------------------
+
+INVENTORY_LIMIT = 200
+INVENTORY_TIMEOUT = 180
+# One fixed command: nothing from the environment's settings is in it. It only reads: the module list (terse, the whole of it), and for every
+# nf-core module the variable that `module show` says it sets. grep keeps only names of the shape (^|/)nf-core-<name>/<version>.
+_INVENTORY_COMMAND = (
+    "if type module >/dev/null 2>&1; then "
+    "l=$(module -t avail 2>&1); r=$?; "
+    "if [ \"$r\" -ne 0 ]; then echo abf_inv=failed; else "
+    "echo abf_inv=ok; "
+    "printf '%s\\n' \"$l\" | grep -E '(^|/)nf-core-[a-z0-9-]+/[0-9A-Za-z._-]+$' | head -n " + str(INVENTORY_LIMIT) + " | "
+    "while IFS= read -r m; do echo \"abf_mod=$m\"; "
+    "module show \"$m\" 2>&1 | grep -oE 'NFCORE_[A-Z0-9_]+_HOME' | head -n 1 | sed 's/^/abf_home=/'; done; "
+    "fi; else echo abf_inv=nomodule; fi")
+_INV_MODULE = re.compile(r"(?:^|/)nf-core-([a-z0-9-]+)/([0-9A-Za-z._-]+)\Z")
+_INV_PIPELINE = re.compile(r"nf-core/[a-z0-9][a-z0-9-]{0,63}\Z")
+_INV_REVISION = re.compile(r"(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z")
+
+
+def _inventory_item(module, home):
+    """One entry of the list, or None when it does not pass the same field rules as a registered pipeline (that one entry is dropped)."""
+    found = _INV_MODULE.search(module)
+    if not found:
+        return None
+    pipeline = "nf-core/" + found.group(1)
+    revision = found.group(2)
+    source = "module"
+    if home is None:
+        home, source = "NFCORE_" + found.group(1).upper().replace("-", "_") + "_HOME", "guessed"
+    if (not _INV_PIPELINE.match(pipeline) or not _INV_REVISION.match(revision) or compute_envs._module_problem(module)
+            or compute_envs._var_problem(home)):
+        return None
+    return {"pipeline": pipeline, "revision": revision, "module": module, "home": home, "home_source": source}
+
+
+def site_inventory(site):
+    """{"status": "ok" | "no_module_system" | "error", "items": [...], "read_at": <time>} from one read-only call on the site. It never raises."""
+    read_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def out(status, items=(), reason=None):
+        got = {"status": status, "items": list(items), "read_at": read_at}
+        if reason:
+            got["reason"] = reason
+        return got
+
+    try:
+        res = site.call([_INVENTORY_COMMAND], timeout=INVENTORY_TIMEOUT)
+    except Exception:      # a failed read must never change the verdict of the check
+        return out("error", reason="讀不出站台清單 (the site list could not be read)")
+    text = res.out.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    if "abf_inv=nomodule" in lines or (res.rc == 127 and "abf_inv=ok" not in lines) or "module: command not found" in (res.err or "") + text:
+        return out("no_module_system")
+    if res.timed_out or res.rc != 0 or "abf_inv=ok" not in lines:
+        return out("error", reason="讀不出模組清單 (the module list could not be read)")
+    items, seen, state = [], set(), {"module": None, "home": None}
+
+    def close():
+        module = state["module"]
+        if module is not None and module not in seen and len(items) < INVENTORY_LIMIT:
+            item = _inventory_item(module, state["home"])
+            if item:
+                seen.add(module)
+                items.append(item)
+
+    for line in lines:
+        if line.startswith("abf_mod="):
+            close()
+            state["module"], state["home"] = line[len("abf_mod="):].strip(), None
+        elif line.startswith("abf_home=") and state["module"] is not None and state["home"] is None:
+            state["home"] = line[len("abf_home="):].strip()
+    close()
+    return out("ok", items)
 
 
 def _verdict(checks):
@@ -441,17 +531,29 @@ def _failure(code, text):
 
 
 def _real_path(site, path, roots):
-    """(the real path of `path` on the site, the real paths of the roots matched by position), or None when the site cannot say.
+    """(the real path of `path` on the site, the real paths of the roots matched by position), or None when the site cannot say."""
+    return _real_path_res(site, path, roots)[0]
+
+
+def _real_path_res(site, path, roots):
+    """(what _real_path answers, the site's raw answer to the realpath call), so a caller can tell a dead connection from a path the site cannot resolve.
     NUL-separated output, so that a link whose target holds a newline adds no line; the count must be exact (116b)."""
     want = [path] + list(roots)
     res = site.call(["realpath -z -m -- " + " ".join(quote(p) for p in want)])
     if res.rc != 0 or not res.out.endswith(b"\0"):
-        return None
+        return None, res
     parts = res.out[:-1].split(b"\0")
     if len(parts) != len(want):
-        return None
+        return None, res
     texts = [x.decode("utf-8", errors="replace") for x in parts]
-    return texts[0], texts[1:]
+    return (texts[0], texts[1:]), res
+
+
+def _realpath_down(site, resolved, res):
+    """The site_unreachable answer when realpath failed because the connection is gone, else None (the caller refuses as before)."""
+    if resolved is None and res.rc != 0 and lost_connection(res):
+        return _failure("site_unreachable", _site_down(site, res))
+    return None
 
 
 def listing(env, path, ctx):
@@ -460,7 +562,10 @@ def listing(env, path, ctx):
     if not rules.inside(path, roots):
         raise rules.Refusal("the path is outside the allowed read roots (在允許範圍之外)")
     site = ctx.site
-    resolved = _real_path(site, path, roots)
+    resolved, said_real = _real_path_res(site, path, roots)
+    down = _realpath_down(site, resolved, said_real)
+    if down:
+        return down
     if resolved is None:      # fail closed: a path the site cannot resolve is never judged the v3 way
         raise rules.Refusal("the site could not say where the path leads, so it is not listed (站台無法確認路徑的真實位置)")
     real, real_roots = resolved

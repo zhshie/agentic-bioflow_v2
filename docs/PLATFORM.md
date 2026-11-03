@@ -173,7 +173,7 @@ abf-station run --platform http://127.0.0.1:8787 --token-file ~/.config/abf/agen
 
 Ask `list_agents` over MCP: the agent shows as `online`, with its name, version and last contact.
 
-**Plain `http://` is only for the same machine.** Use HTTPS for every platform address except `localhost` and `127.0.0.1`: the agent refuses a plain `http://` address anywhere else, because the token would travel in clear text. `abf-platform serve` itself speaks plain HTTP, so put a TLS proxy in front of it before any other machine connects.
+**Plain `http://` is only for the same machine.** Use HTTPS for every platform address except `localhost`, `127.0.0.1` and `::1`: the agent refuses a plain `http://` address anywhere else, because the token would travel in clear text. `abf-platform serve` itself speaks plain HTTP, so put a TLS proxy in front of it before any other machine connects.
 
 ### What it tells you
 
@@ -186,7 +186,7 @@ Ask `list_agents` over MCP: the agent shows as `online`, with its name, version 
 
 Every site command is also printed as a `site: ...` line, so you can see what the agent asked the site to do. The token is never printed, and never appears on its command line (only the token **file** path does).
 
-To take an agent away: `abf-platform agent-token revoke my-laptop`. Its next request is refused with 401, and it stops.
+To take an agent away: `abf-platform agent-token revoke my-laptop`. Its next request is refused with 401, and it stops. To close only the old one when the same name has a newer token: `abf-platform agent-token list` shows each token's id, then `abf-platform agent-token revoke --id N` revokes just that one.
 
 ### Online, offline, and the numbers
 
@@ -197,6 +197,9 @@ To take an agent away: `abf-platform agent-token revoke my-laptop`. Its next req
 | Offline | no contact for 3 heartbeats (60 seconds) | follows the heartbeat setting |
 | Job deadline, `preflight` | 180 seconds | `ABF_PLATFORM_DEADLINE_PREFLIGHT` |
 | Job deadline, `list_site_files` | 60 seconds | `ABF_PLATFORM_DEADLINE_LIST_SITE_FILES` |
+| Job deadline, `read_task_log` | 60 seconds | `ABF_PLATFORM_DEADLINE_READ_TASK_LOG` |
+| Job deadline, `clean_work` | 600 seconds | `ABF_PLATFORM_DEADLINE_CLEAN` |
+| Job deadline, `put_upload` | 3600 seconds | `ABF_PLATFORM_DEADLINE_PUT_UPLOAD` |
 | One site call | 20 seconds (`ON_SITE_TIMEOUT`, unless you already set it) | `ON_SITE_TIMEOUT` |
 
 Online or offline is worked out when someone asks, from the last contact and the clock; nothing runs in the background to decide it. A busy agent keeps sending its heartbeat, so a long preflight does not make it look offline. The platform's settings (`ABF_AGENT_*`, `ABF_PLATFORM_DEADLINE_*`) must be given to the processes that read them: the receiver, the command line and the MCP server all use the heartbeat setting.
@@ -267,6 +270,7 @@ A `googlebatch-platform` environment is served by **a station agent that runs on
 | `usePrivateAddress` | optional true or false |
 | `labels` | optional object; keys and values at most 63 characters, at most 64 pairs |
 | `maxvCpus` | optional whole number 1 to 10000; it takes effect from C-2 as a per-task cpus limit (`process.resourceLimits = [cpus: N]`, one task at most, **not** a total of vCPUs); a total cap belongs to C-3 |
+| `maxMemoryGB` | optional whole number 1 to 10000; a per-task memory limit (`memory: M.GB` in the same `process.resourceLimits` line, one task at most). If the environment's `nextflowConfig` also has a one-line `resourceLimits`, the platform merges key by key: the smaller of the two wins for cpus and memory, a key only the user set is kept, `disk` and `time` stay as written; a `resourceLimits` the platform cannot read safely (several lines, a block, a variable, an unknown key) is refused before the launch. |
 | `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
 
 Every problem is listed at once, each naming its key. There is no field for money or currency: cost is not part of this type. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`). The service-account key file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_GCP_CREDENTIALS`, or else at `_personal/gcp-sa.json` in its deployment folder (the folder that holds `config/env.yaml`); make it readable by that user only (`chmod 600`). The agent judges `project`, `location` and the bucket again before it builds a command.
@@ -310,7 +314,7 @@ The question, the screen and the yes are the ones of a Slurm launch: `abf-launch
 | `google.batch.network`, `google.batch.subnetwork` | `network`, `subnetwork`, short names as given |
 | `google.batch.usePrivateAddress` | `usePrivateAddress`, only when true |
 | `process.resourceLabels` | `labels` and one more, `abf-run=<run name>` |
-| `process.resourceLimits` | `maxvCpus`: a per-task limit on cpus, not a total |
+| `process.resourceLimits` | `maxvCpus` and `maxMemoryGB`: a per-task limit on cpus and memory, not a total; merged with the user's own line key by key (smaller wins, user-only keys kept, unreadable is refused) |
 
 **The key.** The key file's path is the agent's own setting. It is given to the head process in its environment (`GOOGLE_APPLICATION_CREDENTIALS`) and nowhere else: not in `head.sh`, not in an argument, not in the bundle, not in an answer or the database. `head.sh` carries a comment saying so.
 
@@ -329,6 +333,7 @@ An `awsbatch-platform` environment (aws-ce-type) is served the way a Google Clou
 | `jobQueue` | required; the queue's **name**, letters, digits, `-` and `_`, at most 128; an ARN is refused (`--job-queue`) |
 | `spot` | optional true or false (`--spot`, `--no-spot`) |
 | `maxvCpus` | optional whole number 1 to 10000 |
+| `maxMemoryGB` | optional whole number 1 to 10000; a per-task memory limit, written into `process.resourceLimits` together with `maxvCpus` (merge rule: see the `process.resourceLimits` row). |
 | `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
 
 Every problem is listed at once, each naming its key; a key not in this table is refused. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`); it is only a label. The credential file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_AWS_CREDENTIALS`, else `<deployment>/_personal/aws-credentials`, an INI file of which only the `[default]` section is used (mode 600 on Linux and WSL):
@@ -369,7 +374,7 @@ A record made before this type was checked (status `unsupported`, with the old k
 | `process.queue` | the environment's `jobQueue` |
 | `aws.region` | the environment's `region` |
 | `workDir` | `<workDir>/runs/<run>/work` |
-| `process.resourceLimits` | `[cpus: N]`, only when `maxvCpus` is set; this is a **per-task** cap, one task asks for at most N cpus, it is not a limit on the total vCPU of the queue |
+| `process.resourceLimits` | `[cpus: N, memory: M.GB]`, only the keys that are set (`maxvCpus`, `maxMemoryGB`); this is a **per-task** cap, one task asks for at most that much, it is not a limit on the total vCPU of the queue. If the user's own `nextflowConfig` has a one-line `resourceLimits`, the platform merges it key by key (the smaller of the two wins for cpus and memory, a key only the user set is kept, `disk` and `time` stay as written); a `resourceLimits` it cannot read safely is refused before the launch. |
 
 The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: whether Batch uses Spot is decided by the job queue, and the screen says so. No key, profile or role is written into any file.
 
@@ -420,7 +425,7 @@ Everything is read-only. If the connection goes away during one of these probes,
 
 ### The MCP tools
 
-Fourteen tools. Nine are read-only (`readOnlyHint`): `list_runs`, `get_run`, `list_compute_envs`, `get_compute_env`, `list_agents`, `list_site_files`, `read_task_log`, `run_outputs` and `list_used_pipelines`. `list_used_pipelines` (guided-launch-1) lists the caller's own earlier launches, one per pipeline and revision, newest first, from the confirmations; it never waits for the site. `list_site_files` and `read_task_log` each put one read-only question in the job queue and wait for the answer; neither can name a command or a kind of job. `run_outputs` (results-outputs) never waits: it shows the newest answer to the question "what is in `<run folder>/results`", or queues that question and says `loading`. The other five, `launch`, `cancel` (spec 009c), `resume`, `relaunch` (spec 009e, see "Resume and relaunch") and `forget` (keep-submissions, see "Forget"), are marked as writing (`cancel` also as destructive) but start and stop nothing by themselves: each builds what the terminal command builds, writes a pending request and asks the person (section 9, "The confirmation page"). They have no argument that could say yes. There is no tool that creates or changes an environment, a user or a password: that is the command line.
+Twenty-one tools. Sixteen are read-only (`readOnlyHint`): `list_runs`, `get_run`, `list_compute_envs`, `get_compute_env`, `list_agents`, `list_site_files`, `read_task_log`, `run_outputs`, `read_run_file`, `list_used_pipelines`, `my_usage`, `find_module`, `describe_module`, `list_pipelines`, `get_pipeline` and `get_validation`. `list_used_pipelines` (guided-launch-1) lists the caller's own earlier launches, one per pipeline and revision, newest first, from the confirmations; it never waits for the site. `list_site_files` and `read_task_log` each put one read-only question in the job queue and wait for the answer; neither can name a command or a kind of job. `run_outputs` (results-outputs) never waits: it shows the newest answer to the question "what is in `<run folder>/results`", or queues that question and says `loading`. An answer that is an error (the site could not be reached, a refusal, no answer, an expired job) is not kept as the result: asked again 30 seconds or more after it (`jobs.LISTING_ERROR_RETRY_SECONDS`), `run_outputs` queues a new listing and says `loading`; within 30 seconds the same error is shown. A good listing is not asked again, and `enqueue=False` never queues. `run_outputs` takes an optional `path` (a folder below `results`, the `enter` of an earlier answer) to look one level deeper; a path that is not valid lists the first level and says `bad_path`. `read_run_file` (mcp-run-file) takes `run_id`, `path` (a file's `download` path) and `offset` (default 0) and also never waits: it asks the site once through the same `run_file` question as the web download, says `loading` until the answer is in, then returns a text file (strict UTF-8, no NUL byte) in pages of 200,000 characters with `next_offset`, or, for a binary file, a `download_url` (the `/run/file` link of the web page) instead of bytes; a web page file (`.html`, `.htm`, for example a MultiQC report) is treated as a binary file too and is never read as text. A file over 25 MB, a run that is not yours and a bad `offset` each have their own plain answer. The text goes to the model the person chose. The other five, `launch`, `cancel` (spec 009c), `resume`, `relaunch` (spec 009e, see "Resume and relaunch") and `forget` (keep-submissions, see "Forget"), are marked as writing (`cancel` also as destructive) but start and stop nothing by themselves: each builds what the terminal command builds, writes a pending request and asks the person (section 9, "The confirmation page"). They have no argument that could say yes. There is no tool that creates or changes an environment, a user or a password: that is the command line.
 
 ### Azure Batch
 
@@ -435,6 +440,7 @@ An `azbatch-platform` environment (azure-ce-type) is served the way an AWS Batch
 | `pool` | required; the id of a pool that **already exists**, such as `lab-pool` (`--pool`). The operator creates it beforehand; this slice creates no pool |
 | `spot` | optional true or false (`--spot`, `--no-spot`); stored only, as a note: a launch writes nothing for it, because low-priority nodes are decided when the pool is created (`lowPriority`) |
 | `maxvCpus` | optional whole number 1 to 10000 |
+| `maxMemoryGB` | optional whole number 1 to 10000; a per-task memory limit, written into `process.resourceLimits` together with `maxvCpus` (merge rule: see the `process.resourceLimits` row). |
 | `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
 
 Every problem is listed at once, each naming its key; a key not in this table is refused. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`); it is only a label, and it may be left out when the environment is created (the preflight then reports `credential_name` as failed). The credential file lives on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. Account keys are used; Microsoft Entra sign-in and a Batch account in user subscription mode are not supported in this slice (user subscription 模式的 Batch 帳號本片不支援). The agent looks for the file at `ABF_STATION_AZURE_CREDENTIALS`, else `<deployment>/_personal/azure-credentials`, an INI file of which only the `[default]` section is used (mode 600 on Linux and WSL):
@@ -493,7 +499,7 @@ An Azure Batch environment takes the same file upload as the other two cloud typ
 | `azure.storage.accountName` | the environment's `storageAccountName` |
 | `azure.batch.allowPoolCreation` | `false`, always: the platform never lets Nextflow create a pool |
 | `azure.batch.autoPoolMode` | `false`, always |
-| `process.resourceLimits` | `[cpus: N]`, only when `maxvCpus` is set; this is a **per-task** cap, one task asks for at most N cpus, it is not a limit on the total of the pool |
+| `process.resourceLimits` | `[cpus: N, memory: M.GB]`, only the keys that are set (`maxvCpus`, `maxMemoryGB`); this is a **per-task** cap, one task asks for at most that much, it is not a limit on the total of the pool . If the environment's `nextflowConfig` also has a one-line `resourceLimits`, the platform merges key by key: the smaller of the two wins for cpus and memory, a key only the user set is kept, `disk` and `time` stay as written; a `resourceLimits` the platform cannot read safely (several lines, a block, a variable, an unknown key) is refused before the launch. |
 
 The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: low-priority nodes are decided when the pool is created, and the screen says so. No key is written into any file; the first line of the Azure config file says they come from environment variables.
 
@@ -505,9 +511,52 @@ The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: low-pri
 
 A record made before this type was checked (status `unsupported`, with the old keys `region` and `vmType`) is still listed and shown, but it cannot be checked or updated: the message says `請刪除後重建這個計算環境`. Delete it and create it again.
 
+### Kubernetes
+
+A `k8s-platform` environment (k8s-ce) is served the way an Azure Batch one is: by **the station agent that runs on the platform host**, and `--agent` must name it (`ce create` without `--agent` is refused). It can be **created, checked, launched and cancelled** (see "Launching on Kubernetes" below); upload, clean and resume are **not built yet** and are refused in plain words (尚未支援), and the automatic choice of an environment never picks it. The platform starts no program for it: the checks run on the agent, with the `kubectl` command line, which must be installed on the platform host.
+
+| Key | Rule |
+|---|---|
+| `context` | required; a context name from the kubeconfig, such as `lab-context` (`--context`) |
+| `namespace` | required; a Kubernetes name of lower-case letters, digits and `-`, at most 63, such as `lab-ns` (`--namespace`) |
+| `storageClaimName` | required; the name of a persistent volume claim that **already exists**, such as `lab-pvc` (`--storage-claim`). The operator creates it beforehand; this slice creates no claim |
+| `storageMountPath` | optional absolute path where the claim is mounted; it defaults to `/workspace` and is filled in when the record is stored (`--storage-mount-path`) |
+| `workDir` | required; an absolute path **inside** `storageMountPath`, such as `/workspace/work` (not the mount itself, no `..`); a trailing slash is dropped |
+| `serviceAccount` | optional; a Kubernetes name, such as `lab-sa` (`--service-account`); when it is left out the namespace's own account is used |
+| `preRunScript`, `postRunScript`, `environment`, `nextflowConfig` | the shared checks |
+
+Every problem is listed at once, each naming its key; a key not in this table is refused. Only the **name** of the credential is stored (`--credentials`, the top-level `credentialsId`); it is only a label, and it may be left out when the environment is created (the preflight then reports `credential_name` as failed). The kubeconfig is a file on the agent's computer, never in `platform.db`, a log or an answer, and the platform never reads it. The agent looks for it at `ABF_STATION_KUBECONFIG`, else `<deployment>/_personal/kubeconfig` (mode 600 on Linux and WSL, so run `chmod 600` on it). The agent does not read the file's content either: it only hands the path to `kubectl`. A kubeconfig may name an `exec` plugin, which `kubectl` then runs; the file is therefore a trusted file placed by the operator (營運者), and the agent neither parses it nor blocks such a plugin.
+
+| Check | What the agent does |
+|---|---|
+| `credential_name` | the environment has a credential name |
+| `credential_file` | the file exists, is a regular file, is at most 1 MB and (not on Windows) is not readable by others; when it is missing the message says where to put it and `chmod 600` |
+| `kubectl` | `kubectl` is installed (`unchecked`, not `fail`, when it is not) |
+| `context` | `kubectl config get-contexts -o name` lists the context as a whole line |
+| `pvc` | `kubectl get pvc` finds the claim and its phase is `Bound` |
+| `pvc_access` | the claim's access modes include `ReadWriteMany` (Nextflow's work folder is shared by many pods) |
+| `service_account` | `kubectl get serviceaccount` finds it; when none is set the check passes and says the default account is used |
+
+**預檢不計費 (the preflight costs nothing):** it only reads. It lists contexts and gets one claim and one service account; it creates, changes and deletes nothing on the cluster, and it never switches the context or runs a command inside a pod. Each `kubectl` call is limited to 30 seconds (and 20 seconds for the API request); a timeout fails that one check. The kubeconfig path is handed to `kubectl` in the environment of that one call, with an empty cache folder of its own that is deleted afterwards, never in the command line; the agent's own `ABF_*` and `KUBE*` variables are not passed on. The examples above use only made-up names (`lab-context`, `lab-ns`, `lab-pvc`, `lab-sa`).
+
+### Launching on Kubernetes
+
+A Kubernetes launch is confirmed the same way as every other: `prepare_launch` shows everything that will be made in the cluster, you say yes, and only then does the station agent act. The agent rebuilds the bundle from its own facts and refuses unless it equals the confirmed one.
+
+- **What is made:** one Secret (`<pod name>-bundle`) holding the samplesheet, `params.yaml`, `nextflow.config`, `k8s.config`, `head.sh` and the Seqera token, then one **head Pod** named `nf-<run name>` that mounts the Secret and your claim and runs Nextflow with the `k8s` executor. The agent runs `kubectl create` on the platform host with a fixed argument list and no shell; the manifests go through standard input, the kubeconfig path and the token never appear in an argument, a manifest, a log or an answer.
+- **Where Nextflow runs:** the head Pod runs **inside the cluster** and mounts the **same claim (PVC)** as the task pods, because Nextflow without Fusion needs one shared work folder. The claim must therefore allow many pods at once: its access mode must be **`ReadWriteMany`**. A claim that is only `ReadWriteOnce` cannot be shared by the head Pod and the task pods; the preflight reports it.
+- **Permissions (a Role):** the service account that Nextflow uses inside the cluster (the environment's `serviceAccount`) needs a **Role** and RoleBinding in the namespace that allow create, get, list, watch and delete on pods, get and list on `pods/log`, and get on `persistentvolumeclaims`. This task does **not** create the Role, the claim, the namespace or the service account; the cluster administrator does (see `docs/OPERATIONS.md` for the same list).
+- **Station setting `k8s_head_image`:** required, with no default (set it on the station settings page). It is the image the head Pod runs (it needs Nextflow and a shell). It is never put in the bundle or shown on the confirmation screen.
+- **Public address:** the Pod reports back to the platform, so `platform_public_url` must be an `https://` address the cluster can reach.
+- **Samplesheet paths** must point inside the claim (the mount path, `/workspace` by default), because the task pods see only the claim.
+- **Billing:** the cluster's own cloud or data centre bills; the platform has no estimate or limit. The confirmation screen says so, and the cost starts when the Pod starts.
+- **Cancel** deletes **only the head Pod** named in the confirmed bundle. The task pods of that run are not deleted by this system; look at the cluster to see whether they have stopped, and delete them yourself if not (the screen says so).
+- **Not built yet:** upload, cleaning the work folder, listing site files, fetching run records, reading a task log, and resume or relaunch of a Kubernetes run are refused in plain words (尚未支援).
+- **Migration:** none (no database table, column or configuration key changes). `result.slurm_job_id` holds the fixed placeholder `1`; the Pod name is kept in the bundle.
+
 ## 8. The types
 
-Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch, AWS Batch and Azure Batch can run; the other ten types can be modelled only. The other ten are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
+Fourteen types can be created, with Seqera's identifiers (`specs/007-station-agent/research.md` gives the source). **Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only** (Google Cloud Batch and AWS Batch are served by a station agent on the platform host, see "Google Cloud Batch" and "AWS Batch" above). In full: Slurm, Google Cloud Batch, AWS Batch, Azure Batch and Kubernetes can run; the other nine types can be modelled only. The other nine are *modelled*: their settings are stored as given, their status is `unsupported`, and a preflight or a listing is refused at once (no code runs for them, and no cloud library is used) until someone with a real account has tested the type.
 
 | Identifier | Type | Supported |
 |---|---|---|
@@ -522,7 +571,7 @@ Fourteen types can be created, with Seqera's identifiers (`specs/007-station-age
 | `azcloud-platform` | Azure Cloud | modelled only |
 | `googlebatch-platform` | Google Cloud Batch | Slurm-like confirmed launch and cancel on the platform host (resume: not yet) |
 | `googlecloud-platform` | Google Cloud | modelled only |
-| `k8s-platform` | Kubernetes | modelled only |
+| `k8s-platform` | Kubernetes | checked and launched on the platform host (upload, clean, resume: not yet) |
 | `eks-platform` | Amazon EKS | modelled only |
 | `gke-platform` | Google GKE | modelled only |
 
@@ -679,7 +728,7 @@ Every environment, agent, launch and upload folder has an owner, and a caller se
 - **Resume and relaunch.** Only the owner of a run may resume or relaunch it; the same words as a missing run for everybody else; the new attempt keeps the owner (see "Resume and relaunch" above).
 - **Launches.** `launches.user_id` is the user whose yes made the launch, written in the same transaction as the job. A run is its owner's when the newest launch record of its name names that user. A run with no launch record, or whose record names nobody, is hidden over HTTP and the page and shown at the terminal and over stdio.
 - **The same words.** What belongs to somebody else, or to nobody, answers exactly like what is missing ("not found"), for a read, a launch, a listing and a cancel. Launching or listing through an environment is refused at the queue too, when the confirmation's user is not the owner of the environment and of its agent, so a confirmation made for one cannot be turned on another's. A confirmed cancel is never reused for another user.
-- **Files.** Over HTTP the samplesheet file itself must lie, links followed, inside `<uploads_root>/<your name>/`. A path cell of the samplesheet is judged as a path in `params` is (116b): one that lies in `uploads_root` (links and `..` followed) must be a file inside your own folder (the folder itself is not a file), and any other must lie under the environment's read roots, which is the environment owner's to keep (the cell may name a file on the site that this machine does not have). Why: a remote station has no folder per person (009h), so the isolation between people there is the ownership of the environment, not a folder. The cells of `samplesheet_text` follow the same rule. `list_site_files` into another user's folder under `uploads_root` is refused; other paths follow the read roots. The terminal and stdio keep the old roots. A folder per person on a remote station is not made (009h).
+- **Files.** Over HTTP the samplesheet file itself must lie, links followed, inside `<uploads_root>/<your name>/`. A path cell of the samplesheet is judged as a path in `params` is (116b): one that lies in `uploads_root` (links and `..` followed) must be a file inside your own folder (the folder itself is not a file), and any other must lie under the environment's read roots, which is the environment owner's to keep (the cell may name a file on the site that this machine does not have). Why: a remote station has no folder per person (009h), so the isolation between people there is the ownership of the environment, not a folder. The cells of `samplesheet_text` follow the same rule. `list_site_files` into another user's folder under `uploads_root` is refused; other paths follow the read roots. The terminal and stdio keep the old roots. A folder per person on a remote station is not made (009h). A samplesheet cell of a Slurm launch that is an `http://` or `https://` address with a host is not a path: it is passed to Nextflow as written, which downloads it itself (a credential-looking address is still refused; Google Batch, AWS, Azure and Kubernetes launches still refuse it).
 - **The terminal names the account.** `abf-platform launch ... --user NAME` records the launch as that user's and may use only that user's environments. Once the platform has any user it is required, and an unknown name is refused before the question. With no user at all it is left out and the record has no user. **The honest boundary: whoever has the shell can name any account** (有終端機的人可以指名任何帳號): the terminal is the administrator's, and the typed y is still the only yes. `abf-platform cancel` names no account.
 - **Old data.** A platform.db made before 116 is upgraded in place (three new columns, last; `launches` keeps its order). At the start of `serve`, `mcp`, `web`, any `ce` command and `launch`, when there is exactly one user he adopts every environment, agent and launch that has no owner; with two or more users nothing is adopted and those rows are for the terminal until `ce update --owner` or a new agent token gives them one; with none nothing happens. `ce list` and `launches` print the owner, or "(none: local only)". `rebuild` still never opens platform.db or tokens.db.
 
@@ -726,7 +775,24 @@ Nothing is stored for this page; every figure is worked out when the page is ask
 
 ## Results stage: the output list
 
-The Outputs tab of a succeeded run's results stage lists `<run folder>/results`, where `<run folder>` is the folder recorded by the newest launch of that run (the station always writes the results to `<run folder>/results`). The list comes from the action `run_outputs`, which the web page and the MCP tool of the same name call. It never waits for the site: it looks in the job table for the newest `list_site_files` job of the same compute environment and the same path. An answer already there is shown (`ready`, or `error` with the site's plain sentence); a job still queued or claimed shows as `loading`, or as `error` once its deadline has passed (nobody is waiting to mark it expired); no job at all (never asked, or cleaned up after seven days) queues one and shows `loading`. The page refreshes every 15 seconds to an address without `relist`; only the "Read again" link carries `relist=1`, which queues a new listing. A run that was not launched through the platform has no folder on record and shows `unavailable`. Another person's run answers like a missing one. The list is read-only (no confirmation page, nothing is deleted or downloaded), and no table or migration was added: the file list lives in the result of the job.
+The Outputs tab of a succeeded run's results stage lists `<run folder>/results`, where `<run folder>` is the folder recorded by the newest launch of that run (the station always writes the results to `<run folder>/results`). The list comes from the action `run_outputs`, which the web page and the MCP tool of the same name call. It never waits for the site: it looks in the job table for the newest `list_site_files` job of the same compute environment and the same path. An answer already there is shown (`ready`, or `error` with the site's plain sentence); a job still queued or claimed shows as `loading`, or as `error` once its deadline has passed (nobody is waiting to mark it expired); no job at all (never asked, or cleaned up after seven days) queues one and shows `loading`. The page refreshes every 15 seconds to an address without `relist`; only the "Read again" link carries `relist=1`, which queues a new listing. A run that was not launched through the platform has no folder on record and shows `unavailable`. Another person's run answers like a missing one. The list is read-only (no confirmation page, nothing is deleted), and no table was added: the file list lives in the result of the job. A folder name opens that folder (`&path=<folder below results>`, with the path shown above the table) and a file has a download link up to 25 MB; see the next section.
+
+
+## 下載結果檔 (Downloading a result file; results-files)
+
+The Outputs tab opens folders and downloads one file at a time, and the two report cells under the cards (MultiQC report, Report) are download links. A person on the web gets a result without logging in to the cluster.
+
+**How the bytes travel.** Exactly as the workflow diagram's do (`GET /launch/diagram`): the platform opens no connection and reads no file of the site. `GET /run/file?run=<id>&path=<path below results>` calls the action `run_file`, which queues one `read_run_file` job for the agent of the run's own environment and answers `loading`; the agent reads the file on the site and answers with its name, its size and the content in base64; the next `GET` finds the answer in the job row and sends the bytes to the browser. The job carries three values only: the environment, the run name and the path relative to `results/`. The folder is put together by the agent (`<workDir>/runs/<run>/results`; a resumed run uses the folder of its first run), so the platform cannot name another place.
+
+**What the agent accepts** (judged again on the site, whatever the platform judged): a path of 1 to 512 characters, relative, with no empty part, no part that starts with a dot (so no `..` and no hidden name) and no control character; the real path (links followed) must lie inside the places the agent may read and inside the real `results/` of the run; it must be a regular file; it must be at most 25 MB (26,214,400 bytes), and a larger one is never read: only its size is asked, and the page says the size and the path on the site. The limit is the constant `jobs.RUN_FILE_MAX_BYTES` (the agent's `readfile.MAX_BYTES` holds the same number, written separately); the reason for 25 MB is that a MultiQC report is a few MB and the job table keeps the answer in base64. The platform checks that the base64 decodes to exactly the size the agent named (`clean_result`); a different length is refused and nothing is kept as a file.
+
+**What the browser gets.** Always a download: `Content-Disposition: attachment`, `Content-Type: application/octet-stream`, `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`. An HTML report is never opened on this site's address, because it holds scripts. The content security policy and the stylesheet are those of every other page. Another person's run, and a run that does not exist, answer with the board's own 404 page. A cloud environment (Google, AWS, Azure) or Kubernetes keeps its results elsewhere: the page says "此環境的結果檔不在站台主機上" and nothing is queued; downloading from a bucket is not built.
+
+**Errors of a listing are asked again after 30 seconds** (mcp-run-file-live-fixes): the page and the MCP tool share `run_outputs`, so an error page that is opened again after 30 seconds queues a new listing; this does not change the ten minutes below, which also apply to a failed file read.
+
+**Kept for ten minutes.** The same file asked again within 10 minutes (`jobs.RUN_FILE_CACHE_SECONDS`) is answered from the job row without a new job; a job still waiting is never doubled; the "Try again" link (`retry=1`) asks again. The answer stays in the jobs table and goes with the other finished jobs after seven days. No table was added; the CHECK of the jobs table gained the kind `read_run_file` (an older `platform.db` is rebuilt on its next open, rows and numbers kept; running it twice does no harm).
+
+**Not built.** MultiQC shown inside the page, editing a report, the Metrics tab, "Download all", files over 25 MB, results in a bucket, a delivery package. There is no MCP tool for it.
 
 ## The guided launch page
 
@@ -837,7 +903,7 @@ The folders are created on first use. The `.gitignore` of this repository keeps 
 
 `ABF_PLATFORM_CLOCK_OFFSET` (seconds, default 0) shifts the clock the query side uses. It exists so the tests can look at a run "three minutes later"; leave it unset. It also moves the clock by which a run token expires.
 
-Settings that only the tests change: `ABF_PLATFORM_DEADLINE_PIPELINE_FILES` (default 90) is the deadline in seconds of the `pipeline_files` job, `ABF_PLATFORM_DEADLINE_LAUNCH` (default 300), `ABF_PLATFORM_DEADLINE_CANCEL` (90) and `ABF_PLATFORM_DEADLINE_FETCH` (180) are the deadlines in seconds of the three new job kinds, `ABF_PLATFORM_LAUNCH_GRACE` (120) is how long `abf-platform launch` waits for a late answer, and `ABF_STATION_MIN_REMAINING` (60) is how much of a launch's deadline the agent needs left before it submits.
+Settings that only the tests change: `ABF_PLATFORM_DEADLINE_PIPELINE_FILES` (default 90) is the deadline in seconds of the `pipeline_files` job, `ABF_PLATFORM_DEADLINE_READ_RUN_FILE` (default 60) is the deadline in seconds of the `read_run_file` job, `ABF_PLATFORM_DEADLINE_LAUNCH` (default 300), `ABF_PLATFORM_DEADLINE_CANCEL` (90) and `ABF_PLATFORM_DEADLINE_FETCH` (180) are the deadlines in seconds of the three new job kinds, `ABF_PLATFORM_LAUNCH_GRACE` (120) is how long `abf-platform launch` waits for a late answer, and `ABF_STATION_MIN_REMAINING` (60) is how much of a launch's deadline the agent needs left before it submits. `ABF_STATION_PUT_TIMEOUT` (seconds, default 3600) replaces the time limit of the agent's copy of a `put_upload` file, and `ABF_STATION_GCB_SETTLE_SECONDS` (seconds, default 5) is how long the agent waits after starting a Google Batch head process; if the process is gone within those seconds it counts as not started.
 
 ## What it does not do
 

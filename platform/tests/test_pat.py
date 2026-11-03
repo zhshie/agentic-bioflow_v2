@@ -278,7 +278,8 @@ def test_tca11_no_tool_route_or_action_creates_or_revokes_users_or_pats(tmp_path
     # TC-A11
     from abf_platform import actions, mcp_server
     tools = asyncio.run(mcp_server.build_server(str(tmp_path / "i.db")).list_tools())
-    assert sorted(t.name for t in tools) == sorted(READ_NAMES + WRITE_NAMES)    # 009c: plus launch and cancel
+    canvas = ["find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"]    # canvas-mcp-read
+    assert sorted(t.name for t in tools) == sorted(READ_NAMES + canvas + WRITE_NAMES)    # 009c: plus launch and cancel
     for t in tools:
         text = t.name + " " + " ".join(t.input_schema.get("properties", {}))
         assert not re.search(r"(^|[\s_])(user|pat|token)s?($|[\s_])", text)
@@ -370,7 +371,7 @@ def test_tcb08_b09_a_valid_pat_gives_the_six_tools_and_the_stdio_answers(tmp_pat
         tools, via_http = mcp_http_call("http://127.0.0.1:%d/mcp" % port, calls, token=pat)
     finally:
         stop_proc(proc)
-    assert sorted(t.name for t in tools) == sorted(READ_NAMES + WRITE_NAMES)    # 009c: plus launch and cancel
+    assert sorted(t.name for t in tools) == sorted(READ_NAMES + ["find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"] + WRITE_NAMES)    # 009c: plus launch and cancel
     for a, b in zip(via_stdio, via_http):
         assert tool_json(a) == tool_json(b)
 
@@ -380,7 +381,7 @@ def test_tcb10_stdio_needs_no_token_and_no_user(tmp_path):
     plat, _ = _three_runs(tmp_path)
     assert not plat.tokens.exists() or _rows(plat.tokens, "SELECT COUNT(*) FROM tokens WHERE kind = 'pat'")[0][0] == 0
     tools, outs = mcp_call(pkg_env(ABF_PLATFORM_DB=plat.index), [("list_runs", {})])
-    assert len(tools) == 15 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch; run-diag-tools: plus read_task_log; results-outputs: plus run_outputs; guided-launch-1: plus list_used_pipelines; cost-page: plus my_usage
+    assert len(tools) == 21 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch; run-diag-tools: plus read_task_log; results-outputs: plus run_outputs; guided-launch-1: plus list_used_pipelines; cost-page: plus my_usage
 
 
 def test_tcb11_without_users_http_starts_says_so_and_answers_401(tmp_path):
@@ -748,7 +749,7 @@ def test_tcd14_tool_bodies_stay_one_call_with_caller_and_read_the_http_auth_cont
     tree = ast.parse((PKG / "mcp_server.py").read_text(encoding="utf-8"))
     build = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "build_server"][0]
     tools = [n for n in ast.walk(build) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not build]
-    assert len(tools) == 10      # run-diag-tools: read_task_log is the seventh read tool; results-outputs: run_outputs the eighth; guided-launch-1: list_used_pipelines the ninth; cost-page: my_usage the tenth
+    assert len(tools) == 11      # mcp-run-file: read_run_file the eleventh; run-diag-tools: read_task_log is the seventh read tool; results-outputs: run_outputs the eighth; guided-launch-1: list_used_pipelines the ninth; cost-page: my_usage the tenth
     for fn in tools:
         assert len(fn.body) == 1 and isinstance(fn.body[0], ast.Return), fn.name
         call = fn.body[0].value
@@ -756,7 +757,7 @@ def test_tcd14_tool_bodies_stay_one_call_with_caller_and_read_the_http_auth_cont
         assert isinstance(call.func, ast.Attribute) and call.func.value.id == "actions" and call.func.attr == fn.name
         kw = {k.arg: k.value for k in call.keywords}
         # 116: the two run tools also say where the hand-off record is (a run is its launcher's), by the one name the server was built with
-        assert list(kw) == (["caller", "platform_path"] if fn.name in ("list_runs", "get_run") else ["caller", "month"] if fn.name == "my_usage" else ["caller"])      # cost-page: my_usage also passes the month it was asked for
+        assert list(kw) == (["caller", "platform_path"] if fn.name in ("list_runs", "get_run") else ["caller", "month"] if fn.name == "my_usage" else ["caller", "subpath"] if fn.name == "run_outputs" else ["caller", "offset"] if fn.name == "read_run_file" else ["caller"])      # cost-page: my_usage also passes the month it was asked for
         assert isinstance(kw["caller"], ast.Call) and kw["caller"].func.id == "_caller"
         assert "platform_path" not in kw or (isinstance(kw["platform_path"], ast.Name) and kw["platform_path"].id == "platform_path")
         assert not [n for n in ast.walk(fn) if isinstance(n, (ast.If, ast.Try, ast.For, ast.While))]

@@ -147,7 +147,7 @@ def test_ss04_lost_detail_kept(w):
     # TC-031, TC-032, TC-033, TC-034, TC-C01
     c, ids = four(w)
     zh = c.get("/?run=" + ids["lost"]).text
-    assert "站台沒有回應" in plain(pane(zh, "right")) and "執行 · 站台沒有回應" in plain(pane(zh, "left"))
+    assert "站台無回應" in plain(pane(zh, "right")) and "執行 · 站台無回應" in plain(pane(zh, "left"))
     assert "步驟" in plain(pane(zh, "right")) and "<form" in pane(zh, "right")
     en = c.get("/?run=%s&lang=en" % ids["lost"]).text
     assert "Site not responding" in plain(pane(en, "right")) and "Run · Site not responding" in plain(pane(en, "left"))
@@ -170,7 +170,7 @@ def test_ss04_notice_level_is_state_square(w):
             assert not any(b in rest for b in bad), (lang, st)
         for st in ("running", "succeeded"):
             t = c.get("/?run=%s%s" % (ids[st], q(lang))).text
-            assert ("目前沒有通知" if lang == "zh" else "No notices") in pane(t, "right")
+            assert ("目前無通知" if lang == "zh" else "No notices") in pane(t, "right")
             assert "沒有待處理" not in t and "Nothing pending" not in t
 
 
@@ -203,6 +203,6 @@ def test_ss05_empty_and_missing(w):
     c = w.web()
     assert w.login(c, "ann").status_code == 303
     t = c.get("/").text
-    assert "還沒有分析" in t and 'class="sq"' not in t and not any(g in t for g in GLYPHS)
+    assert "尚無分析" in t and 'class="sq"' not in t and not any(g in t for g in GLYPHS)
     r = c.get("/?run=nope-id")
     assert r.status_code == 404 and 'class="sq"' not in r.text and "nope-id" not in r.text

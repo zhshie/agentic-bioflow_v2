@@ -139,7 +139,7 @@ if only in ("all", "lists"):
     item2 = next((l for l in lines if l.startswith("2. It **answers questions**")), "")
     if "nine read-only tools" not in item2: bad("TC-018", "item 2 does not say nine read-only tools")
     if not writes: bad("TC-020", "found no write tools in mcp_server.py")
-    for tc, anchor in (("TC-018", "2. It **answers questions**"), ("TC-020", "Fourteen tools."), ("TC-020", "permission `ask` rule for"),
+    for tc, anchor in (("TC-018", "2. It **answers questions**"), ("TC-020", "Twenty-one tools."), ("TC-020", "permission `ask` rule for"),
                        ("TC-019", "The platform's actions live in one place"), ("TC-020", "- **Instructions.**")):
         p = paragraph(anchor)
         if p is None: bad(tc, "no paragraph with %r" % anchor); continue

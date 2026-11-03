@@ -41,7 +41,7 @@ def url_problem(url):
         return "the platform URL %s is not an http or https address" % url
     if parts.scheme == "http" and parts.hostname not in LOOPBACK:
         return ("the platform URL %s is plain http to a machine that is not this one, and the token would travel "
-                "in clear text (憑證不能走明文). Use HTTPS; only localhost and 127.0.0.1 may use http." % url)
+                "in clear text (憑證不能走明文). Use HTTPS; only localhost, 127.0.0.1 and ::1 may use http." % url)
     return None
 
 

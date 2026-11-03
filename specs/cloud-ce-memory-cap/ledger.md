@@ -1,0 +1,6 @@
+# 雲端計算環境可設單一 task 的記憶體上限（maxMemoryGB）progress ledger
+
+- [x] RED 7fb11eea: new tests added to the six files (+ Slurm/snapshot check in test_aws_ce.py); before the code, aws/gcb/azure `-k cap` runs: 32/4/4 failed, test_max_memory_gb_rules "unknown setting" (wrong-reason check: assertion on missing maxMemoryGB / old `[cpus: 4]` line).
+- [x] GREEN: `compute_envs.py` (3 tuples + 3 checks), `launch.py` (one `_resource_limits_line`, called by `_gcb_config`/`_aws_config`/`_azure_config`; `snapshot_ce` and the three `_check_*_ce` carry `maxMemoryGB` only when set), `build.py` (3 screens), `docs/PLATFORM.md` (6 rows). The six test files pass whole (aws_launch 105, gcb_launch 75, azure_launch 74, aws_ce 60, gcb_ce 71, azure_ce 61); no existing assertion edited (only appended tests).
+- Hand case (trial original): env maxvCpus 4 + nextflowConfig `process.resourceLimits = [cpus: 4, memory: 6.GB]` gives `aws.config` line `process.resourceLimits = [cpus: 4, memory: 6.GB]` (test_cap_trial_original_case_and_real_failure).
+- Decisions where the plan was silent: 1 GB = 1024 MB; on a tie the user's own memory text is kept; a user memory smaller than the platform's is kept verbatim; `/* */` and inline `//` comments are not special-cased (a line with a trailing comment is "not a whole line", so refused).

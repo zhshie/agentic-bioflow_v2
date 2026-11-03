@@ -97,8 +97,8 @@ def test_r2_the_consent_text_tells_the_truth_for_each_kind_of_client(w, rig):
     w.user("ann")
     listed = consent_text(w, rig, CLAUDE_AI)
     other = consent_text(w, rig, EVIL)
-    assert "表單" in listed and "不能替你送出" not in listed
-    assert "表單" not in other and "網站" in other and "確認" in other and "不能替你送出" in other
+    assert "表單" in listed and "不能代您送出" not in listed
+    assert "表單" not in other and "網站" in other and "確認" in other and "不能代您送出" in other
 
 
 # ---- R3: caps ----------------------------------------------------------------------------------------------------------

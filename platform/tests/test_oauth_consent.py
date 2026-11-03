@@ -98,7 +98,7 @@ def test_tcc05_the_page_names_the_connector_the_redirect_host_and_the_limits(w, 
     first = rig.c.get(path)
     page = first.text
     assert "Claude &lt;b&gt;Desktop&lt;/b&gt;&amp;" in page and "<b>Desktop</b>" not in page
-    assert "claude.example" in page and "不能替你送出" in page and "送出" in page
+    assert "claude.example" in page and "不能代您送出" in page and "送出" in page
     assert ">允許<" in page and ">拒絕<" in page
     inputs = re.findall(r"<input[^>]*>", page)
     assert [i for i in inputs if 'type="hidden"' not in i] == []                # nothing to type a token into

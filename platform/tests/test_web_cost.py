@@ -23,7 +23,7 @@ SRC = "https://example.test/price-page"
 CLOUD_RATES = {"currency": "USD", "regions": {"us-central1": {
     "n2-standard-4": {"standard": 0.20, "spot": 0.06, "source": SRC, "read_on": "2026-10-24"}}}}
 CAP_NOTE = "由管理者設定"
-NOTE_ZH = "雲端費用以美元顯示，不換算新台幣；國網以 SU 計。數字是依執行紀錄估算，略低於實際帳單。"
+NOTE_ZH = "雲端費用以美元顯示，不換算新台幣；國網以 SU 計。數字依執行紀錄估算，略低於實際帳單。"
 
 
 @pytest.fixture
@@ -148,7 +148,7 @@ def test_co01_page_has_four_cards_note_and_table(w):
     assert [c[1] for c in cards(r.text)] == ["國網 SU（本月）", "雲端已用（本月）", "雲端上限", "雲端剩餘"]
     assert NOTE_ZH in plain(pane(r.text, "middle"))
     head = re.search(r"<thead>(.*?)</thead>", pane(r.text, "middle"), re.S).group(1)
-    assert [plain(h) for h in re.findall(r"<th\b[^>]*>(.*?)</th>", head, re.S)] == ["分析名稱", "開始時間", "在哪裡跑", "用量", "狀態"]
+    assert [plain(h) for h in re.findall(r"<th\b[^>]*>(.*?)</th>", head, re.S)] == ["分析名稱", "開始時間", "執行位置", "用量", "狀態"]
 
 
 def test_co02_su_total_and_unknown(w):
@@ -187,7 +187,7 @@ def test_unknown_cloud_runs_are_not_added_as_zero(w):
     seed(w, "cl-x1", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
     seed(w, "cl-x2", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
     c = card(get(w, "ann").text, 1)
-    assert c[2] == "US$ 1.20" and "另有 2 個分析算不出" in c[3]
+    assert c[2] == "US$ 1.20" and "另有 2 個分析無法計算" in c[3]
     assert usage(w, ann)["cloud"]["unknown_runs"] == 2
 
 
@@ -212,7 +212,7 @@ def test_ruling13_english_plural(w):
     seed(w, "cl-x2", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
     two = card(get(w, "ann", "/usage?lang=en").text, 1)[3]
     assert "2 more analyses could not be priced" in two
-    assert "另有 2 個分析算不出" in card(get(w, "ann").text, 1)[3]
+    assert "另有 2 個分析無法計算" in card(get(w, "ann").text, 1)[3]
 
 
 def test_ruling14_future_or_missing_month_is_an_empty_table(w):
@@ -223,11 +223,11 @@ def test_ruling14_future_or_missing_month_is_an_empty_table(w):
         r = get(w, "ann", "/usage?month=" + m)
         assert r.status_code == 200, m
         assert table_rows(r.text) == [], m
-    assert "這個月還沒有分析" in plain(pane(get(w, "ann", "/usage?month=2099-01").text, "middle"))
+    assert "本月尚無分析" in plain(pane(get(w, "ann", "/usage?month=2099-01").text, "middle"))
     assert usage(w, ann, month="2099-01")["runs"] == []
     # "2026-13" is not the form YYYY-MM (TC-046/TC-095): the standard notice and this month, still no error
     bad = get(w, "ann", "/usage?month=2026-13")
-    assert bad.status_code == 200 and "月份格式不對，顯示本月。" in plain(pane(bad.text, "middle"))
+    assert bad.status_code == 200 and "月份格式不符，已顯示本月。" in plain(pane(bad.text, "middle"))
 
 
 def test_co04_no_cap(w):
@@ -346,7 +346,7 @@ def test_month_edge_order_and_limit(w):
 def test_empty_month(w):
     # TC-036, TC-060
     w.user("ann")
-    assert "— 這個月還沒有分析" in plain(pane(get(w, "ann").text, "middle"))
+    assert "— 本月尚無分析" in plain(pane(get(w, "ann").text, "middle"))
     en = pane(get(w, "ann", "/usage?lang=en").text, "middle")
     assert "No analyses this month" in plain(en) and no_cjk(en)
 
@@ -386,7 +386,7 @@ def test_co07_month_param(w):
     assert "Cost" in plain(pane(en, "middle"))
     bad = get(w, "ann", "/usage?month=abc")
     assert bad.status_code == 200 and [r[0] for r in table_rows(bad.text)] == ["run-now"]
-    assert "月份格式不對，顯示本月。" in bad.text
+    assert "月份格式不符，已顯示本月。" in bad.text
     assert re.search(r"Traceback|sqlite|\.db\b|SELECT", bad.text) is None
     cur = get(w, "ann").text
     later = [m for m in re.findall(r"month=(\d{4}-\d{2})", cur) if m > this_month()]
@@ -462,7 +462,7 @@ def test_no_other_currency_no_reconciled_no_advice(w):
         t = get(w, "ann", url).text
         mid = plain(pane(t, "middle"))
         # su-usd footnote: the one sentence that says "rate" (as of a date) is taken out first; the rest must stay free of the word
-        mid = re.sub(r"SU 換美元依 \S+ 匯率約略換算，不是帳單。|SU figures are converted to US dollars at the \S+ rate, roughly; this is not a bill\.", "", mid)
+        mid = re.sub(r"SU 以 \S+ 匯率概算為美元，並非帳單金額。|SU figures are converted to US dollars at the \S+ rate, roughly; this is not a bill\.", "", mid)
         for word in ("已對帳", "Reconciled", "TWD", "匯率", "exchange rate", "改用國網", "等重置", "use NCHC", "taiwania3"):
             assert word not in mid, (url, word)
         assert "<form" not in pane(t, "middle") and "<input" not in pane(t, "middle")
@@ -522,7 +522,7 @@ def test_not_known_is_never_shown_as_zero(w):
     seed(w, "run-bad", ann, hours=None)
     mid = plain(pane(get(w, "ann").text, "middle"))
     assert card(get(w, "ann").text, 0)[2] == "—"
-    assert "另有 1 個分析算不出" in mid
+    assert "另有 1 個分析無法計算" in mid
     assert not [r for r in table_rows(get(w, "ann").text) if r[0] in ("run-live", "cl-x", "run-bad") and "0.00" in r[3]]
 
 

@@ -8,12 +8,14 @@ import hashlib
 import json
 import re
 import sqlite3
+import struct
 import time
+import zlib
 
-from .. import compose, store
+from .. import compose, module_sources, pipeline_launch, store
 from .. import validate as checks
 
-_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}\Z")
 
 _TABLES = """
 CREATE TABLE IF NOT EXISTS pipelines (
@@ -206,6 +208,66 @@ def render_pipeline(platform_path, pipeline_id, version=None, *, caller=None, da
     return {"ok": True, "name": got["name"], "version": got["version"], "files": out["files"], "open_inputs": out["open_inputs"]}
 
 
+def _pack(files):
+    """A zip of {path: text} as bytes, the same bytes every time: entries sorted by path, time fixed at 1980-01-01, all deflated.
+    Written here (struct and zlib) because this module keeps clear of the packaging libraries by its own test."""
+    body, central = b"", b""
+    for path in sorted(files):
+        name = path.encode("utf-8")
+        raw = files[path].encode("utf-8")
+        packer = zlib.compressobj(9, zlib.DEFLATED, -15)
+        data = packer.compress(raw) + packer.flush()
+        flag = 0x0800 if len(name) != len(path) else 0
+        head = struct.pack("<HHHHHIIIHH", 20, flag, 8, 0, 0x21, zlib.crc32(raw) & 0xFFFFFFFF, len(data), len(raw), len(name), 0)
+        central += (b"PK\x01\x02" + struct.pack("<H", 20) + head + struct.pack("<HHHII", 0, 0, 0, 0o100644 << 16, len(body)) + name)
+        body += b"PK\x03\x04" + head + name + data
+    end = struct.pack("<HHHHIIH", 0, 0, len(files), len(files), len(central), len(body), 0)
+    return body + central + b"PK\x05\x06" + end
+
+
+def _readme(name, version, open_inputs):
+    lines = ["%s v%d: a Nextflow project exported from Agentic-Bioflow. Unpack it and start it from this folder with the Nextflow tool." % (name, version)]
+    if open_inputs:
+        lines.append("Inputs left open, fill these in yourself:")
+        for item in open_inputs:
+            lines.append("- node %s input %s: %s" % (item["node"], item["input"], ", ".join(item["names"])))
+    else:
+        lines.append("No input is left open.")
+    return "\n".join(lines) + "\n"
+
+
+def export_pipeline(platform_path, pipeline_id, version=None, *, caller=None, data=None, sources=None):
+    """One version of the caller's pipeline (no version means the newest) as a zip: main.nf, modules.json, nextflow.config, a short
+    README.txt and the nf-core module files it uses. Returns the bytes; nothing is written to disk and nothing is started. The kept
+    check result, if any, rides along as `validation` and never blocks the export."""
+    got = get_pipeline(platform_path, pipeline_id, version, caller=caller)
+    if not got["ok"]:
+        return _no(got["message"])
+    rendered = render_pipeline(platform_path, pipeline_id, got["version"], caller=caller, data=data)
+    if not rendered["ok"]:
+        return rendered
+    files = dict(rendered["files"])
+    try:
+        listed = json.loads(files["modules.json"])["repos"]
+        paths = sorted({p for repo in listed.values() for p in repo["modules"]["nf-core"]})
+        files.update(module_sources.files_for(paths, module_sources.load(data=data) if sources is None else sources))
+    except (ValueError, KeyError) as e:
+        why = str(e) if isinstance(e, ValueError) else "module list"
+        return _no("這個版本用到的模組檔帶不進 zip：%s；請換成別的模組，或請平台維護者補上 "
+                   "(a module file cannot be put in the zip: %s; use another module or ask the platform maintainer)" % (why, why))
+    files["README.txt"] = _readme(got["name"], got["version"], rendered["open_inputs"])
+    size = sum(len(text.encode("utf-8")) for text in files.values())
+    if size > pipeline_launch.MAX_BYTES:
+        return _no("專案檔全部共 %d 位元組，超過上限 %d；請減少節點 (the project files are %d bytes together, more than the limit of %d; "
+                   "use fewer nodes)" % (size, pipeline_launch.MAX_BYTES, size, pipeline_launch.MAX_BYTES))
+    if len(files) > pipeline_launch.MAX_FILES:
+        return _no("專案有 %d 個檔案，超過上限 %d；請減少節點 (the project has %d files, more than the limit of %d; use fewer nodes)"
+                   % (len(files), pipeline_launch.MAX_FILES, len(files), pipeline_launch.MAX_FILES))
+    kept = get_validation(platform_path, pipeline_id, got["version"], caller=caller, data=data)
+    return {"ok": True, "filename": "%s-v%d.zip" % (got["name"], got["version"]), "zip": _pack(files), "files": sorted(files),
+            "open_inputs": rendered["open_inputs"], "validation": kept["validation"] if kept["ok"] else None}
+
+
 def validate_pipeline(platform_path, pipeline_id, version=None, *, caller=None, data=None, clock=time.time):
     """Check one version of a pipeline (no version means the newest) and keep the result as the latest one of that version. The
     outer `ok` says the call worked; `validation.ok` says the graph has no error. Only the platform's own database is written."""
@@ -249,3 +311,4 @@ def get_validation(platform_path, pipeline_id, version=None, *, caller=None, dat
         out["validation"] = dict(json.loads(row["result_json"]), validated_at=row["validated_at"],
                                  stale=checks.current_sha(data) != row[checks.SHA_FIELD])
     return out
+

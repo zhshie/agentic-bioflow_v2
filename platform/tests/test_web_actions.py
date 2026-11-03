@@ -427,7 +427,7 @@ def test_tc042_tc043_pending_pill_and_empty_lines(rig):
         assert "需要" + "處理" not in t and "Action needed" not in t
     ok = run_of(rig, ann, "run-ok", status=None)
     t = c.get("/?run=" + ok).text
-    assert "目前沒有通知" in t and ("要你" + "處理") not in t
+    assert "目前無通知" in t and ("要你" + "處理") not in t
     assert "No notices" in c.get("/?run=%s&lang=en" % ok).text
     assert "—" in c.get("/").text
 

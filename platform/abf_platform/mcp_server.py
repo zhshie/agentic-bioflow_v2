@@ -1,13 +1,16 @@
-# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers six read-only tools, and is built on the official Python mcp SDK.
-"""MCP server: seven read-only tools, and the tools that ask a person: list_runs, get_run, list_compute_envs, get_compute_env,
-list_agents, list_site_files, read_task_log, launch, cancel, resume, relaunch.
+# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers sixteen read-only tools, and is built on the official Python mcp SDK.
+"""MCP server: sixteen read-only tools: list_runs, get_run, list_compute_envs, get_compute_env, list_agents,
+list_site_files, list_used_pipelines, my_usage, run_outputs, read_run_file, read_task_log, and the five canvas reads find_module, describe_module,
+list_pipelines, get_pipeline, get_validation; and five tools that ask a person:
+launch, cancel, forget, resume, relaunch.
 
-The seven read tools carry readOnlyHint, which is only a hint; read-only here means two things:
+The sixteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
   - toward runs: this module never writes the run index (status.py opens it read-only);
   - toward the site: list_site_files may put one read-only question (list a folder) in the job queue of
     platform.db and wait for the agent's answer; read_task_log does the same to read the end of one of three log
-    files of a failed task. Neither can name a command or a job kind; the platform and the agent each check the path again.
+    files of a failed task; run_outputs(path) lists a folder below results and read_run_file reads one file of a run (text in pages, a binary
+    file only as a download address). None of them can name a command or a job kind; the platform and the agent each check the path again.
 
 launch and cancel (spec 009c) start nothing by themselves. Each builds what the terminal command builds, writes a pending request
 and asks the person (the client's form, else a page they open). They carry no argument that could say yes, and the answer to a call
@@ -21,6 +24,9 @@ from typing import Any
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp_types import ToolAnnotations
+
+import abf_platform.actions.catalogue as catalogue_actions
+import abf_platform.actions.pipelines as pipeline_actions
 
 from . import actions, guidance, http_auth
 
@@ -95,11 +101,28 @@ def build_server(index_path, platform_path=None):
 
     @server.tool(name="run_outputs", annotations=_READ_ONLY,
                  description="What one run of yours produced: the files and folders in <run folder>/results on the site, by the run's id. "
+                             "Pass path (a folder below results, taken from the enter field of an earlier answer) to look inside it; a path "
+                             "that is not valid lists the first level and says bad_path. Each file row carries enter (the path of a folder you "
+                             "may open) and download (the path you may give read_run_file). "
                              "It never waits for the site: it answers state loading (a question was queued, ask again in a few seconds), "
                              "ready (files: name, type, size, modified, and listed_at), error (reason) or unavailable (the run was not "
                              "launched from the platform, so there is no output folder on record). Nothing is written or run.")
-    def run_outputs(ctx: Context, run_id: str) -> dict:
-        return actions.run_outputs(index_path, platform_path, run_id, caller=_caller(ctx))
+    def run_outputs(ctx: Context, run_id: str, path: str | None = None) -> dict:
+        return actions.run_outputs(index_path, platform_path, run_id, caller=_caller(ctx), subpath=path)
+
+    @server.tool(name="read_run_file", annotations=_READ_ONLY,
+                 description="Read one file of a run of yours, by the run's id and path (a path below results/, relative, as run_outputs gave it in "
+                             "download). Read-only and only for your own runs; it never waits for the site: it answers state loading (ask "
+                             "the same call again in a few seconds), ready, error (code and reason), unavailable (the run was not launched "
+                             "from the platform, or its results are not on the site host) or too_large (a file over 25 MB: the size and the "
+                             "full site path are given, nothing is read). A text file (UTF-8, no NUL byte) comes back as text, at most "
+                             "200,000 characters from offset (counted in characters, 0 by default), with total_chars and next_offset to "
+                             "turn the page; the text goes to the model you chose. A binary file is never sent through MCP: you get its name, "
+                             "size, a note and the web download address /run/file?run=<id>&path=<p>, which the person opens when logged in. "
+                             "An HTML file (.html, .htm) is treated as a binary file: you get the same name, size, note and download address. "
+                             "Nothing is written or run.")
+    def read_run_file(ctx: Context, run_id: str, path: str, offset: Any = 0) -> dict:
+        return actions.read_run_file(index_path, platform_path, run_id, path, caller=_caller(ctx), offset=offset)
 
     @server.tool(name="read_task_log", annotations=_READ_ONLY,
                  description="Read the end of one log file of a failed task of a run you launched, through the run's agent: "
@@ -110,9 +133,47 @@ def build_server(index_path, platform_path=None):
     async def read_task_log(ctx: Context, run_name: str, task: str, which: str) -> dict:
         return await actions.read_task_log(platform_path, index_path, run_name, task, which, caller=_caller(ctx))
 
+    _add_canvas_reads(server, platform_path)
     _add_write_tools(server, platform_path, index_path)
     _add_guidance(server)
     return server
+
+
+def _add_canvas_reads(server, platform_path):
+    """The five reads of the canvas backend (module catalogue and the caller's own saved pipelines). All logic is in the actions;
+    the owner rule is theirs, so each pipeline read passes the caller on."""
+
+    @server.tool(name="find_module", annotations=_READ_ONLY,
+                 description="Search the nf-core module catalogue by name, keyword or description (for example fastqc). Returns sha "
+                             "(the catalogue snapshot), count and modules, each with name, path, description, inputs and outputs. "
+                             "Nothing found gives an empty list and a hint. The catalogue is public; nothing is written.")
+    def find_module(ctx: Context, q: str) -> dict:
+        return catalogue_actions.find_module(q)
+
+    @server.tool(name="describe_module", annotations=_READ_ONLY,
+                 description="One nf-core module by its exact name: found, sha, inputs and outputs with their types. An unknown name "
+                             "answers found false and says to use find_module. Nothing is written.")
+    def describe_module(ctx: Context, name: str) -> dict:
+        return catalogue_actions.describe_module(name)
+
+    @server.tool(name="list_pipelines", annotations=_READ_ONLY,
+                 description="Your own saved pipelines: id, name, newest version, number of nodes and dates. Other people's "
+                             "pipelines are not shown. Nothing is written.")
+    def list_pipelines(ctx: Context) -> dict:
+        return pipeline_actions.list_pipelines(platform_path, caller=_caller(ctx))
+
+    @server.tool(name="get_pipeline", annotations=_READ_ONLY,
+                 description="One of your saved pipelines by its id, with the graph of a version (the newest when version is not "
+                             "given). A pipeline that is not yours answers like one that does not exist. Nothing is written.")
+    def get_pipeline(ctx: Context, pipeline_id: int, version: int | None = None) -> dict:
+        return pipeline_actions.get_pipeline(platform_path, pipeline_id, version, caller=_caller(ctx))
+
+    @server.tool(name="get_validation", annotations=_READ_ONLY,
+                 description="The kept result of the latest check of one version of your pipeline (the newest version when version "
+                             "is not given); validation is null when it was never checked, and stale says the module list changed "
+                             "since. Nothing is checked again and nothing is written.")
+    def get_validation(ctx: Context, pipeline_id: int, version: int | None = None) -> dict:
+        return pipeline_actions.get_validation(platform_path, pipeline_id, version, caller=_caller(ctx))
 
 
 def _add_write_tools(server, platform_path, index_path):

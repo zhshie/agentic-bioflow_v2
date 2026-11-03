@@ -15,8 +15,8 @@ from human_harness import PASSWORD, World, csrf_of
 NEW = "brand-new-pass-ZQ1"
 CONF = "confirm-copy-pass-ZQ2"
 OLDV = "wrong-old-pass-ZQ3"
-WELCOME_TITLE = "設定你自己的密碼 (set your own password)"
-ZH = "你用的是管理者給的臨時密碼，它 72 小時內有效、只能用來設定你自己的密碼。設好之後就用新密碼登入。"
+WELCOME_TITLE = "設定個人密碼 (set your own password)"
+ZH = "目前使用的是管理者提供的臨時密碼，效期 72 小時，僅可用於設定個人密碼。設定完成後，請改以新密碼登入。"
 EN = ("You are using a one-time temporary password from your administrator. It works for 72 hours and only lets you set your own "
       "password. After that, log in with your new password.")
 TOO_MANY = "登入失敗太頻繁，請一分鐘後再試 (too many tries, wait a minute)"
@@ -564,8 +564,8 @@ def test_tc071_tc072_the_429_page_is_one_plain_sentence(w):
 def test_tc064_tc065_the_login_page_sentence(w):
     # TC-064, TC-065
     text = w.web().get("/login").text
-    assert ("請用你的姓名與<strong>網頁密碼</strong>登入（網頁密碼不是 AI 用的權杖；它在平台主機的終端機用 <code>abf-platform user passwd</code> "
-            "設定，或用管理者給你的一次性臨時密碼）。") in text
+    assert ("請以您的姓名與<strong>網頁密碼</strong>登入（網頁密碼不同於 AI 使用的權杖；於平台主機的終端機以 <code>abf-platform user passwd</code> "
+            "設定，或使用管理者提供的一次性臨時密碼）。") in text
     assert "它只能在終端機用" not in text
 
 

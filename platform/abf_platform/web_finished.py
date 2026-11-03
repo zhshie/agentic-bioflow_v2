@@ -9,12 +9,12 @@ import html
 
 STRINGS = {
     "zh": {
-        "prov": "來源紀錄", "pipeline": "管線", "revision": "版本", "params": "改過的參數", "ce": "運算環境", "launched": "送出時間",
+        "prov": "來源紀錄", "pipeline": "管線", "revision": "版本", "params": "已變更的參數", "ce": "運算環境", "launched": "送出時間",
         "finished": "完成時間", "by": "送出者", "sheet": "樣本表", "later": "之後開放",
-        "defaults": "全部用預設值", "gone": "內容已不保留", "gone_note": "這次送出的內容已不保留。",
-        "foreign": "不是從平台送出的分析，沒有來源紀錄。",
+        "defaults": "全部採預設值", "gone": "內容已不保留", "gone_note": "該次送出的內容已不保留。",
+        "foreign": "此分析並非經由平台送出，無來源紀錄。",
         "pack": "交付包", "report": "報告", "tables": "結果表格", "multiqc": "MultiQC 報告", "figures": "圖", "methods": "方法段落（含版本）",
-        "in_folder": "在輸出資料夾", "no_files": "沒有檔案", "no_multiqc": "這次沒有產生", "unread": "尚未讀取輸出", "see_outputs": "查看輸出",
+        "in_folder": "在輸出資料夾", "no_files": "無檔案", "no_multiqc": "該次未產生", "unread": "尚未讀取輸出", "see_outputs": "查看輸出",
         "download": "下載交付包",
     },
     "en": {

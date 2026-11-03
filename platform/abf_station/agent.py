@@ -94,11 +94,26 @@ class Rejected(Exception):
     pass
 
 
-def _rejected(status):
+def _rejected(status, body=None):
+    """The words for a refusal. The platform's message is only matched against, never printed (it is outside input)."""
     if status == 401:
         return ("the platform rejected the token (401): it is wrong or it was revoked. "
                 "Ask for a new one with `abf-platform agent-token new <name>`.")
-    return "the platform refused this agent (%d): the token was made for another agent name." % status
+    message = body.get("message") if isinstance(body, dict) else None
+    message = message.lower() if isinstance(message, str) else ""
+    if "belongs to another user" in message:
+        return ("the platform refused this agent (%d): this agent name already belongs to another user "
+                "(這個代理名稱已經屬於另一位使用者，你的 token 是用另一位使用者的身分做的). "
+                "Make the token again as the user who owns this agent "
+                "(`abf-platform agent-token new <name> --user <that user>`), or pick an agent name nobody has used." % status)
+    if "another agent name" in message:
+        return ("the platform refused this agent (%d): the token was made for another agent name "
+                "(這個 token 是為另一個代理名稱做的，和你啟動時的 --name 對不上). "
+                "Set --name to the name the token was made with, or make a new token for the current --name." % status)
+    return ("the platform refused this agent (%d): either the token was made for another agent name, or this agent name "
+            "already belongs to another user (可能是另一個代理名稱，也可能是代理名稱已經屬於另一位使用者). "
+            "Check that --name is the name the token was made with; if it is, "
+            "check the token was made by the user who owns this agent." % status)
 
 
 class Agent:
@@ -126,7 +141,7 @@ class Agent:
                 self.wait_or_retry(str(e))
                 continue
             if status in (401, 403):
-                raise Rejected(_rejected(status))
+                raise Rejected(_rejected(status, body))
             if status != 200:
                 self.wait_or_retry("answered %d" % status)
                 continue
@@ -142,13 +157,13 @@ class Agent:
     def answer(self, job_id, state, result):
         for attempt in range(3):
             try:
-                status, _ = self.client.post("/agent/result/%s" % job_id,
+                status, body = self.client.post("/agent/result/%s" % job_id,
                                              {"name": self.client.name, "state": state, "result": result}, 20)
             except NetworkError:
                 time.sleep(1)
                 continue
             if status in (401, 403):
-                raise Rejected(_rejected(status))
+                raise Rejected(_rejected(status, body))
             return
 
     def run_job(self, job):
@@ -178,7 +193,7 @@ class Agent:
                 self.wait_or_retry(str(e))
                 continue
             if status in (401, 403):
-                raise Rejected(_rejected(status))
+                raise Rejected(_rejected(status, body))
             if status != 200:
                 self.wait_or_retry("answered %d" % status)
                 continue
