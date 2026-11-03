@@ -510,3 +510,60 @@ def test_tc036_twenty_newer_plain_fetches_do_not_push_the_fact_out(rig):
     v = get(rig, rid)
     assert v["status"] == "failed" and v["failure"]["failure_reason"] == reason("NODE_FAIL")
     assert [r["status"] for r in listed(rig, "x")] == ["failed"]
+
+
+# ---- adversary round (11-04): one run, one state across get_run, forget, the usage page and the web notice ----
+
+def test_adv1_a_run_shown_failed_can_be_forgotten_like_any_failed_run(rig):
+    # ADV-1: get_run says failed (NODE_FAIL), so forget must not say "lost and may still be running"
+    from abf_platform import actions
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"))
+    assert get(rig, rid)["status"] == "failed"
+    code, msg = actions.forget_check(rig.state, rig.index, "x", caller=owner(rig))
+    assert code != "refused" or "lost" not in msg
+
+
+def test_adv1_a_run_still_lost_is_still_refused_by_forget(rig):
+    # ADV-1: with no bad end of the head job the run stays lost and forget keeps refusing
+    from abf_platform import actions
+    lost_run(rig)
+    code, msg = actions.forget_check(rig.state, rig.index, "x", caller=owner(rig))
+    assert code == "refused" and "lost" in msg
+    add_fetch(rig, "x", fact("RUNNING"))
+    code, msg = actions.forget_check(rig.state, rig.index, "x", caller=owner(rig))
+    assert code == "refused" and "lost" in msg
+
+
+def test_adv2_the_usage_page_does_not_call_a_failed_run_running(rig):
+    # ADV-2: the run page says failed, so the usage page must not say "running / the run has not ended"
+    from abf_platform import actions
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"))
+    assert get(rig, rid)["status"] == "failed"
+    rows = [r for r in actions.my_usage(rig.index, rig.state, caller=owner(rig))["runs"] if r["name"] == "x"]
+    assert rows and rows[0]["state"] != "running"
+    assert not any("has not ended" in x for x in rows[0]["unknown_reasons"])
+
+
+def test_adv2_the_usage_page_still_calls_a_lost_run_running(rig):
+    # ADV-2: no fact, no change
+    from abf_platform import actions
+    lost_run(rig)
+    rows = [r for r in actions.my_usage(rig.index, rig.state, caller=owner(rig))["runs"] if r["name"] == "x"]
+    assert rows and rows[0]["state"] == "running"
+
+
+def test_adv3_the_failure_notice_of_a_failed_overlay_keeps_a_time(rig):
+    # ADV-3: a lost run has no ended_at; the Failed look of it still shows when the last message came
+    from abf_platform import web_board
+    t = web_board.STRINGS["zh"]
+    def when(view):
+        return re.search(r'<span class="when">([^<]*)</span>', web_board._failure_notice(t, view)).group(1)
+    lost_run(rig, run="y")
+    plain = when(get(rig, "id-y"))
+    rid = lost_run(rig, run="x")
+    add_fetch(rig, "x", fact("NODE_FAIL"))
+    v = get(rig, rid)
+    assert v["status"] == "failed" and v.get("ended_at") is None
+    assert when(v) == plain != "\u2014"
