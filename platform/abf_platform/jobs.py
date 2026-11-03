@@ -424,8 +424,8 @@ def _fetches_of(con, launch):
 
 
 def _newest_fact(rows, launch):
-    """The newest checked fact among the finished read-backs that asked the scheduler about this launch's own Slurm number. A read-back
-    that has no scheduler answer (a plain fetch, or a site that could not ask: scheduler None) or a fact that does not fit is no new
+    """The newest checked fact among the finished read-backs that asked Slurm about this launch's own Slurm number. A read-back
+    that has no Slurm answer (a plain fetch, or a site that could not ask: answer None) or a fact that does not fit is no new
     fact and never covers an earlier one."""
     for row in rows:
         if row["state"] != "done":
@@ -440,7 +440,7 @@ def _newest_fact(rows, launch):
 
 
 def head_state(state_path, run_name):
-    """What the newest read-back of this run that really asked the scheduler said of its Slurm head job: {job_id, state, source}, or
+    """What the newest read-back of this run that really asked Slurm said of its Slurm head job: {job_id, state, source}, or
     None. Only reads. The fact counts only if it names this launch's own Slurm number and a word of the table; nothing else is believed."""
     con = store.open_readonly(state_path)
     if con is None:

@@ -2553,4 +2553,4 @@ What was seen: Slurm NODE_FAIL of the head job (t1: platform job 78, Slurm 65401
 Symptom: a run whose Slurm head job ended as NODE_FAIL showed `lost` with no reason and could not be resumed
 Root cause: the head job is killed before Nextflow writes a completion record, and the platform never asked the scheduler again
 Check: `platform/tests/test_head_nodefail.py`, `platform/tests/test_station_head_state.py`
-Touches: fetch_run_records, slurm_job_id, squeue, sacct, head_state, lost, NODE_FAIL, build._predecessor
+Touches: NODE_FAIL, lost, squeue, sacct, overlay

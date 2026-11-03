@@ -13,3 +13,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	fix	輪替檔沒有啟動標記時，有完成行才算 ended，否則問排程器；移除不再使用的 _STARTED	裁決 P4；既有 test 150 行（有完成行）仍不問	fetch.py:run_fetch	測試綠
 2026-11-04	test	測試輔助：lost_run/get/listed 預設用真實擁有者（Duo.a）；TC-033 才用 caller=None	因 P3 後 caller=None 不再排抓取	test_head_nodefail.py:owner	—
 2026-11-04	test	TC-008 測試的輪替檔改成「看得出真的跑過且有完成行」，斷言不動	合約 TC-008 字面如此；P4 後只寫 "old log" 的輪替檔與 TC-034 無法區分，必須問排程器	test_station_head_state.py:47	—
+2026-11-04	fix	全套發現：jobs.py 的註解不得含 sched 字樣（既有 aws/azure 範圍測試）；pitfalls_format_test 釘死 94 條，加 #59 後改為 95（只增不減）；#59 的 Touches 項目改成條目文字內有的詞	TC-025 計畫要求新增一條	tests/pitfalls_format_test.sh	—
