@@ -1,5 +1,7 @@
 *.pyc
 __pycache__/
+platform/*.egg-info/
+platform/build/
 relay.json
 relay.log
 agent.json
