@@ -111,7 +111,8 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
         return {"found": False, "id": run_id, "message": RUN_NOT_FOUND_TEXT % run_id}
     if view["status"] == "lost":     # the one place that asks the site: only for a run the caller owns, and the answer is there next time
         path = platform_path_for(index_path, platform_path)
-        jobs.ask_head_state(path, view["name"])
+        if caller is not None:      # a read with no person behind it asks the site for no one
+            jobs.ask_head_state(path, view["name"])
         view = failures.with_head_state(view, jobs.head_state(path, view["name"]))
     asked = jobs.cancel_requested_at(platform_path_for(index_path, platform_path), view["name"])
     if asked is not None:        # a fact about a request that was sent, never a state of the run (the status stays Nextflow's word)

@@ -19,7 +19,6 @@ _NOT_RECORDS = {"tower.token", "params.yaml", "head.sh", "nextflow.config", "sam
 _RESUME_FILE = re.compile(r"^(head|params|extra)-[0-9]+\.(sh|yaml|config)\Z")
 ARGS = {"ce", "run_name", "run_folder", "slurm_job_id"}
 _DONE_LINE = re.compile(r"Execution complete -- Goodbye")      # the line Nextflow writes when it ends; no such line = no completion record
-_STARTED = re.compile(r"Workflow started -- trace file|nextflow\.cli\.Launcher|Launching `")      # the log of a run that really began
 _JOB_ID =re.compile(r"^[0-9]{1,10}\Z")
 # The only words of the scheduler that are passed on (the platform has the same table and sorts them): anything else is not trusted and not kept.
 SLURM_STATES = frozenset("NODE_FAIL BOOT_FAIL CANCELLED TIMEOUT OUT_OF_MEMORY FAILED DEADLINE PREEMPTED REVOKED "
@@ -106,8 +105,9 @@ def run_fetch(job, ctx):
         files.append({"name": rel, "data": base64.b64encode(data).decode("ascii"), "truncated": cut})
         if rel.startswith(".nextflow.log"):
             logs.append(data.decode("utf-8", errors="replace"))
-            if rel == ".nextflow.log" or _STARTED.search(logs[-1]):      # a rotated file that shows no run at all is not an attempt
-                ended.append(not cut and bool(_DONE_LINE.search(logs[-1])))      # a log cut at 20 MB lost its end: unknown, so not "ended"
+            # A rotated file with no start mark may still be an attempt whose first lines are gone: it only counts as ended if it has the
+            # completion line, otherwise the scheduler is asked (better one question too many than a dropped NODE_FAIL).
+            ended.append(not cut and bool(_DONE_LINE.search(logs[-1])))      # a log cut at 20 MB lost its end: unknown, so not "ended"
     traces = []
     for text in logs:
         for m in re.finditer(r"Workflow started -- trace file: (.+)", text):

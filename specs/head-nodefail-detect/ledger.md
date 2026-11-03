@@ -9,3 +9,4 @@
 - 證據：`git diff --stat` 見 commit；sacct 在 origin/v3 尚無使用。
 - [x] 裁決 O（對抗審）：限流算任何狀態且與排程同一交易、slurm_job_id 只走 head-state 路徑、_fetches_of 先依 run 過濾再取 20 筆、截斷的 log 不算完成行（TC-026..029）
 - [x] 對抗審第二輪（11-04）：續跑後同資料夾的 .nextflow.log 是續跑的，不能遮住第一次嘗試的 NODE_FAIL；完成行要每個「看得出真的跑過」的 log 都有才不問排程器（fetch.py）。平台端 head_state 仍只取最新讀回（TC-014 d 釘住），因站台不再回 None 而不會翻回 lost。
+- [x] 裁決 P（11-04）：git merge origin/v3（PITFALLS.md 衝突已解）；P1 head_state 只取有 scheduler 事實的最新抓取；P2 scheduler=None 不蓋掉終結事實；P3 已知終結事實不再排抓取、caller=None 不排站台工作；P4 輪替檔缺啟動標記且無完成行時仍問排程器（TC-030..034）。其餘 C 級後續項不做。

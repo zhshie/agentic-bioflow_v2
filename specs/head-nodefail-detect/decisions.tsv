@@ -7,3 +7,9 @@ ts	phase	decision	why	evidence	result
 2026-11-04	GREEN	依裁決 O 實作 TC-026..029：ask_head_state 改單一交易、with_slurm 旗標、_fetches_of 依 run 過濾、截斷 log 仍問排程器	一分鐘限流與舊站台相容要求	jobs.py ask_head_state; fetch.py run_fetch	相關測試 全過
 2026-11-04	fix	完成行須涵蓋資料夾內每個看得出啟動過的 log（含輪替的 .nextflow.log.N），否則仍問排程器	續跑的 log 會蓋住第一次嘗試的 NODE_FAIL；TC-008 的舊 log 內容為雜訊「old log」不算一次嘗試，所以用啟動標記判斷	platform/abf_station/fetch.py _STARTED, completed=all(ended)	相關測試全過
 2026-11-04	skip	不改 head_state 的「只取最新讀回」	TC-014(d) 釘住且不得改弱；站台修正後 NODE_FAIL 會被重複回報，不會翻回 lost	platform/tests/test_head_nodefail.py:210	保留
+2026-11-04	merge	先 merge origin/v3，PITFALLS.md 衝突兩邊都留（v3 補了 #58 的 Symptom 行，#59 補上同格式四行）	裁決 P5	7cc75d08	衝突已解
+2026-11-04	fix	head_state 改成跳過沒有 scheduler 事實的抓取（普通 fetch、scheduler=None、不合格）取最新有效事實	裁決 P1、P2；TC-014(d) 已改成不含 None	jobs.py:_newest_fact	測試綠
+2026-11-04	fix	ask_head_state 遇到已知終結事實（壞狀態或 COMPLETED）不再排；get_run 在 caller 為 None 時不問站台	裁決 P3；COMPLETED 再問也不會變	jobs.py:ask_head_state, actions/__init__.py:get_run	測試綠
+2026-11-04	fix	輪替檔沒有啟動標記時，有完成行才算 ended，否則問排程器；移除不再使用的 _STARTED	裁決 P4；既有 test 150 行（有完成行）仍不問	fetch.py:run_fetch	測試綠
+2026-11-04	test	測試輔助：lost_run/get/listed 預設用真實擁有者（Duo.a）；TC-033 才用 caller=None	因 P3 後 caller=None 不再排抓取	test_head_nodefail.py:owner	—
+2026-11-04	test	TC-008 測試的輪替檔改成「看得出真的跑過且有完成行」，斷言不動	合約 TC-008 字面如此；P4 後只寫 "old log" 的輪替檔與 TC-034 無法區分，必須問排程器	test_station_head_state.py:47	—

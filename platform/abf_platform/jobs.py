@@ -423,9 +423,25 @@ def _fetches_of(con, launch):
     return out
 
 
+def _newest_fact(rows, launch):
+    """The newest checked fact among the finished read-backs that asked the scheduler about this launch's own Slurm number. A read-back
+    that has no scheduler answer (a plain fetch, or a site that could not ask: scheduler None) or a fact that does not fit is no new
+    fact and never covers an earlier one."""
+    for row in rows:
+        if row["state"] != "done":
+            continue
+        try:
+            fact = failures.head_fact_of(json.loads(row["result_json"]))
+        except (ValueError, AttributeError, TypeError):
+            continue
+        if fact is not None and fact["job_id"] == str(launch["slurm_job_id"]):
+            return fact
+    return None
+
+
 def head_state(state_path, run_name):
-    """What the newest finished read-back of this run said of its Slurm head job: {job_id, state, source}, or None. Only reads. The
-    fact counts only if it names this launch's own Slurm number and a word of the table; nothing else is believed."""
+    """What the newest read-back of this run that really asked the scheduler said of its Slurm head job: {job_id, state, source}, or
+    None. Only reads. The fact counts only if it names this launch's own Slurm number and a word of the table; nothing else is believed."""
     con = store.open_readonly(state_path)
     if con is None:
         return None
@@ -433,17 +449,7 @@ def head_state(state_path, run_name):
         launch = latest_launch(con, run_name)
         if launch is None or launch["slurm_job_id"] is None:
             return None
-        for row in _fetches_of(con, launch):
-            if row["state"] != "done":
-                continue
-            try:
-                fact = failures.head_fact_of(json.loads(row["result_json"]))
-            except (ValueError, AttributeError, TypeError):
-                fact = None
-            if fact is not None and fact["job_id"] != str(launch["slurm_job_id"]):
-                fact = None
-            return fact      # the newest finished read-back is the only one that counts
-        return None
+        return _newest_fact(_fetches_of(con, launch), launch)
     except (sqlite3.Error, IndexError, KeyError):
         return None
     finally:
@@ -463,7 +469,11 @@ def ask_head_state(state_path, run_name, clock=time.time):
         launch = latest_launch(con, run_name)
         if launch is None or launch["slurm_job_id"] is None:
             return False
-        for row in _fetches_of(con, launch):
+        rows = _fetches_of(con, launch)
+        known = _newest_fact(rows, launch)
+        if known is not None and (known["state"] in failures.ENDED_BAD or known["state"] == "COMPLETED"):      # an ended head does not come back
+            return False
+        for row in rows:
             if row["state"] in ("queued", "claimed") and row["deadline_at"] > now:
                 return False
             if max(row["created_at"] or 0, row["finished_at"] or 0) > now - HEAD_STATE_FRESH_SECONDS:

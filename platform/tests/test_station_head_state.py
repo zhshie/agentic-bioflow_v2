@@ -45,6 +45,7 @@ def test_tc008_a_completion_record_wins_and_the_scheduler_is_not_asked(tmp_path,
     # TC-008
     f = no_completion(site)
     (f / ".nextflow.log").write_text("Workflow started -- trace file: %s/trace-1.txt\n%s" % (f, DONE))
+    (f / ".nextflow.log.1").write_text("Workflow started -- trace file: %s/trace-1.txt\n%s" % (f, DONE))      # TC-008 contract: every log shows a real run and ends with the line (ruling P4)      # TC-008: every log shows a real run and ends with the line (ruling P4)
     site.set("sacct_654018", "NODE_FAIL\n")
     res = fetch_with(tmp_path, site, fake)
     assert res["state"] == "done" and res["result"]["scheduler"] is None, res
