@@ -103,7 +103,8 @@ else bad "TC-004 check field is honest" "${e4//$'\n'/ }$pm"; fi
 nt=$(tr -d '\r' < "$P" | grep -c '^Touches: *[^ ]')
 if [ "$nt" -eq "$n_entries" ] && [ "$n_entries" -eq 94 ]; then ok "TC-005 Touches lines = entries = 94"
 else bad "TC-005 Touches lines = entries" "touches=$nt entries=$n_entries"; fi
-if tr -d '\r' < "$P" | grep -q '^Touches:.*prepare_launch'; then ok "TC-005 grep prepare_launch finds an entry"; else bad "TC-005 grep prepare_launch finds an entry"; fi
+ptxt=$(tr -d '\r' < "$P"); ltxt=$(tr -d '\r' < "$L")
+if grep -q '^Touches:.*prepare_launch' <<<"$ptxt"; then ok "TC-005 grep prepare_launch finds an entry"; else bad "TC-005 grep prepare_launch finds an entry"; fi
 
 # TC-006 touches items come from the entry text
 e6=$(grep 'Touches item' <<<"$errs")
@@ -125,7 +126,7 @@ sec=$(grep '^SECRET' <<<"$parsed")
 if [ -z "$sec" ]; then ok "TC-013 no secret-like text in fields"; else bad "TC-013 no secret-like text in fields" "$sec"; fi
 
 # TC-014 platform tier wording
-if tr -d '\r' < "$L" | grep -q 'one tier A PR'; then bad "TC-014 PLATFORM no 'one tier A PR'"; else ok "TC-014 PLATFORM no 'one tier A PR'"; fi
+if grep -q 'one tier A PR' <<<"$ltxt"; then bad "TC-014 PLATFORM no 'one tier A PR'"; else ok "TC-014 PLATFORM no 'one tier A PR'"; fi
 hasf "TC-014 PLATFORM tier C sentence" "$L" 'A new snapshot is one tier C PR: the changed file, plus the new sha here and in the test.'
 
 if [ "$fails" -eq 0 ]; then echo "pitfalls_format_test: all ok"; else echo "pitfalls_format_test: $fails failed"; exit 1; fi
