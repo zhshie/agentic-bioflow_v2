@@ -1,4 +1,4 @@
-# Not Ansible modules or Celery tasks: they run whatever a controller sends; these are the built-in handlers for the ten job kinds (three of them write, after a confirmation), and a job is only data for them, never a command.
+# Not Ansible modules or Celery tasks: they run whatever a controller sends; these are the built-in handlers for the eleven job kinds (three of them write, after a confirmation), and a job is only data for them, never a command.
 """What the agent does: check a site (preflight), list a folder (list_site_files), and, with a confirmation, start an analysis
 (launch_nextflow, launch.py) or stop one (cancel_run, cancel.py); fetch_run_records reads Nextflow's own logs back (fetch.py);
 read_task_log reads the end of one log file of one task folder (readlog.py); clean_work, with a confirmation, removes the
@@ -15,13 +15,13 @@ import re
 from datetime import datetime, timezone
 
 from abf_platform import compute_envs      # the same field rules as a registered pipeline
-from . import aws_preflight, azure_preflight, cancel, clean, fetch, gcb_preflight, k8s_preflight, launch, pipeline_files, put_upload, readfile, readlog, rules
+from . import aws_preflight, azure_preflight, cancel, clean, fetch, gcb_preflight, k8s_preflight, launch, lint, pipeline_files, put_upload, readfile, readlog, rules
 from .site import quote
 
-JOB_KINDS = ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files", "read_run_file")
+JOB_KINDS = ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files", "read_run_file", "lint_pipeline")
 ARG_KEYS = {"preflight": {"ce"}, "list_site_files": {"ce", "path"}, "launch_nextflow": launch.LAUNCH_KEYS,
             "cancel_run": launch.LAUNCH_KEYS, "fetch_run_records": fetch.ARGS, "read_task_log": readlog.ARGS,
-            "clean_work": launch.LAUNCH_KEYS, "put_upload": put_upload.ARGS, "pipeline_files": pipeline_files.ARGS, "read_run_file": readfile.ARGS}
+            "clean_work": launch.LAUNCH_KEYS, "put_upload": put_upload.ARGS, "pipeline_files": pipeline_files.ARGS, "read_run_file": readfile.ARGS, "lint_pipeline": lint.ARGS}
 LIST_LIMIT = 500
 # The check ids are written as one comma-split string, never as a quoted sbatch: the scan of
 # constitution principle 2 (tests/no_second_run_state_test.sh) treats a quote straight before
@@ -67,6 +67,8 @@ def handle(job, ctx):
             return pipeline_files.run_fetch(job, ctx)
         if kind == "read_run_file":
             return readfile.run_read(job, ctx)
+        if kind == "lint_pipeline":
+            return lint.run_lint(job, ctx)
         ce = args.get("ce")
         if kind == "preflight" and isinstance(ce, dict) and ce.get("platform") == gcb_preflight.TYPE:
             # a Google Batch environment is checked here, on the platform host: its own checks, read-only and free (預檢不計費)

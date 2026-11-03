@@ -12,7 +12,7 @@ import struct
 import time
 import zlib
 
-from .. import compose, module_sources, pipeline_launch, store
+from .. import compose, module_sources, pipeline_launch, pipeline_lint, store
 from .. import validate as checks
 
 _NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}\Z")
@@ -65,6 +65,7 @@ def _not_found(pipeline_id):
 def _table(con):
     con.executescript(_TABLES)
     con.commit()
+    pipeline_lint.ensure_columns(con)
 
 
 def _owner(caller):
@@ -236,16 +237,12 @@ def _readme(name, version, open_inputs):
     return "\n".join(lines) + "\n"
 
 
-def export_pipeline(platform_path, pipeline_id, version=None, *, caller=None, data=None, sources=None):
-    """One version of the caller's pipeline (no version means the newest) as a zip: main.nf, modules.json, nextflow.config, a short
-    README.txt and the nf-core module files it uses. Returns the bytes; nothing is written to disk and nothing is started. The kept
-    check result, if any, rides along as `validation` and never blocks the export."""
-    got = get_pipeline(platform_path, pipeline_id, version, caller=caller)
-    if not got["ok"]:
-        return _no(got["message"])
+def _project_files(platform_path, pipeline_id, got, caller, data, sources):
+    """(files, open_inputs, None) with every file of the project of the version `got` (the export zip and the lint use this same set),
+    or (None, None, the failure answer)."""
     rendered = render_pipeline(platform_path, pipeline_id, got["version"], caller=caller, data=data)
     if not rendered["ok"]:
-        return rendered
+        return None, None, rendered
     files = dict(rendered["files"])
     try:
         listed = json.loads(files["modules.json"])["repos"]
@@ -253,9 +250,23 @@ def export_pipeline(platform_path, pipeline_id, version=None, *, caller=None, da
         files.update(module_sources.files_for(paths, module_sources.load(data=data) if sources is None else sources))
     except (ValueError, KeyError) as e:
         why = str(e) if isinstance(e, ValueError) else "module list"
-        return _no("這個版本用到的模組檔帶不進 zip：%s；請換成別的模組，或請平台維護者補上 "
-                   "(a module file cannot be put in the zip: %s; use another module or ask the platform maintainer)" % (why, why))
+        return None, None, _no("這個版本用到的模組檔帶不進 zip：%s；請換成別的模組，或請平台維護者補上 "
+                               "(a module file cannot be put in the zip: %s; use another module or ask the platform maintainer)" % (why, why))
     files["README.txt"] = _readme(got["name"], got["version"], rendered["open_inputs"])
+    return files, rendered["open_inputs"], None
+
+
+def export_pipeline(platform_path, pipeline_id, version=None, *, caller=None, data=None, sources=None):
+    """One version of the caller's pipeline (no version means the newest) as a zip: main.nf, modules.json, nextflow.config, a short
+    README.txt and the nf-core module files it uses. Returns the bytes; nothing is written to disk and nothing is started. The kept
+    check result, if any, rides along as `validation` and never blocks the export."""
+    got = get_pipeline(platform_path, pipeline_id, version, caller=caller)
+    if not got["ok"]:
+        return _no(got["message"])
+    files, open_inputs, failed = _project_files(platform_path, pipeline_id, got, caller, data, sources)
+    if failed is not None:
+        return failed
+    rendered = {"open_inputs": open_inputs}
     size = sum(len(text.encode("utf-8")) for text in files.values())
     if size > pipeline_launch.MAX_BYTES:
         return _no("專案檔全部共 %d 位元組，超過上限 %d；請減少節點 (the project files are %d bytes together, more than the limit of %d; "
@@ -268,9 +279,14 @@ def export_pipeline(platform_path, pipeline_id, version=None, *, caller=None, da
             "open_inputs": rendered["open_inputs"], "validation": kept["validation"] if kept["ok"] else None}
 
 
-def validate_pipeline(platform_path, pipeline_id, version=None, *, caller=None, data=None, clock=time.time):
+def validate_pipeline(platform_path, pipeline_id, version=None, *, caller=None, data=None, clock=time.time, lint=False, compute_env=None):
     """Check one version of a pipeline (no version means the newest) and keep the result as the latest one of that version. The
-    outer `ok` says the call worked; `validation.ok` says the graph has no error. Only the platform's own database is written."""
+    outer `ok` says the call worked; `validation.ok` says the graph has no error. Only the platform's own database is written.
+    With `lint=True` the check is kept as always and then one lint of the project files is asked of an agent of the caller (on
+    `compute_env` if one is named); the answer is `lint`: queued with its job_id, or refused with the reason, and a refusal does
+    not undo the check. The lint result is collected later by get_validation. Nothing waits and nothing is started here."""
+    if lint is not True and lint is not False:
+        return _no("lint 只能是 True 或 False (lint must be True or False)")
     got = get_pipeline(platform_path, pipeline_id, version, caller=caller)
     if not got["ok"]:
         return got
@@ -279,18 +295,32 @@ def validate_pipeline(platform_path, pipeline_id, version=None, *, caller=None, 
     con = store.connect_state(platform_path)
     try:
         _table(con)
-        con.execute("INSERT OR REPLACE INTO pipeline_validations (pipeline_id, version, graph_sha256, %s, result_json, "
-                    "validated_at) VALUES (?, ?, ?, ?, ?, ?)" % checks.SHA_FIELD,
-                    (got["id"], got["version"], hashlib.sha256(compose.graph_json(got["graph"]).encode("utf-8")).hexdigest(),
-                     result[checks.SHA_FIELD] or "", json.dumps(result, sort_keys=True, ensure_ascii=False), now))
+        sha = hashlib.sha256(compose.graph_json(got["graph"]).encode("utf-8")).hexdigest()
+        text = json.dumps(result, sort_keys=True, ensure_ascii=False)
+        # the row may hold a lint result: only the six check columns are written, never the lint ones
+        done = con.execute("UPDATE pipeline_validations SET graph_sha256 = ?, %s = ?, result_json = ?, validated_at = ? "
+                           "WHERE pipeline_id = ? AND version = ?" % checks.SHA_FIELD,
+                           (sha, result[checks.SHA_FIELD] or "", text, now, got["id"], got["version"]))
+        if done.rowcount == 0:
+            con.execute("INSERT INTO pipeline_validations (pipeline_id, version, graph_sha256, %s, result_json, "
+                        "validated_at) VALUES (?, ?, ?, ?, ?, ?)" % checks.SHA_FIELD,
+                        (got["id"], got["version"], sha, result[checks.SHA_FIELD] or "", text, now))
         con.commit()
     except sqlite3.Error:
         con.rollback()
         return _no("驗證結果沒有存成功；請稍後再試一次 (the check result was not saved; try again in a moment)")
     finally:
         con.close()
-    return {"ok": True, "id": got["id"], "name": got["name"], "version": got["version"],
-            "validation": dict(result, validated_at=now, stale=False)}
+    out = {"ok": True, "id": got["id"], "name": got["name"], "version": got["version"],
+           "validation": dict(result, validated_at=now, stale=False)}
+    if lint:
+        files, _open, failed = _project_files(platform_path, pipeline_id, got, caller, data, None)
+        if failed is not None:
+            out["lint"] = {"state": "refused", "message": failed.get("message", "")}
+        else:
+            out["lint"] = pipeline_lint.request(platform_path, got["id"], got["name"], got["version"], files,
+                                                compute_env=compute_env, caller=caller, clock=clock)
+    return out
 
 
 def get_validation(platform_path, pipeline_id, version=None, *, caller=None, data=None):
@@ -304,11 +334,17 @@ def get_validation(platform_path, pipeline_id, version=None, *, caller=None, dat
         _table(con)
         row = con.execute("SELECT * FROM pipeline_validations WHERE pipeline_id = ? AND version = ?",
                           (got["id"], got["version"])).fetchone()
+        if row is not None and pipeline_lint.collect(con, row):
+            row = con.execute("SELECT * FROM pipeline_validations WHERE pipeline_id = ? AND version = ?",
+                              (got["id"], got["version"])).fetchone()
     finally:
         con.close()
     out = {"ok": True, "id": got["id"], "name": got["name"], "version": got["version"], "validation": None}
     if row is not None:
         out["validation"] = dict(json.loads(row["result_json"]), validated_at=row["validated_at"],
                                  stale=checks.current_sha(data) != row[checks.SHA_FIELD])
+        kept = pipeline_lint.shown(row)
+        if kept is not None:
+            out["validation"]["lint"] = kept
     return out
 
