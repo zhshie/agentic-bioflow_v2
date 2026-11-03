@@ -475,3 +475,38 @@ def test_tc033_no_caller_queues_nothing_for_anyone(rig):
     v = get(rig, rid, caller=None)
     assert v["status"] == "lost"
     assert rig.sql("SELECT COUNT(*) FROM jobs")[0][0] == before and fetch_jobs(rig) == []
+
+
+# ---- adversary fixes (round 2 of ruling P): the fact outlives the prune and the cut of twenty ------------------------------------
+
+def test_tc035_a_failed_run_stays_failed_after_the_job_prune(rig):
+    # TC-035 (P2): the NODE_FAIL read-back older than the prune age is not deleted; the run does not go back to lost
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=8 * 86400)
+    lost_run(rig, "y", slurm=777)
+    get(rig, "id-y")                       # queues a job on another run: the insert runs the prune
+    v = get(rig, rid)
+    assert v["status"] == "failed" and v["failure"]["failure_reason"] == reason("NODE_FAIL")
+    out = rig.resume("x", person=FakePerson(True))
+    assert out.get("sent"), out.get("message")
+
+
+def test_tc035_old_read_backs_without_an_end_are_still_pruned(rig):
+    # TC-035: only a bad-end fact is kept; a plain or alive answer of that age is deleted as before
+    lost_run(rig)
+    add_fetch(rig, "x", None, age=8 * 86400, with_key=False)
+    add_fetch(rig, "x", fact("RUNNING", "squeue"), age=8 * 86400)
+    lost_run(rig, "y", slurm=777)
+    get(rig, "id-y")
+    assert [r for r in fetch_jobs(rig) if '"x"' in r["args_json"]] == []
+
+
+def test_tc036_twenty_newer_plain_fetches_do_not_push_the_fact_out(rig):
+    # TC-036 (P1): the cut of twenty counts only answers that asked the scheduler
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=5000)
+    for i in range(25):
+        add_fetch(rig, "x", None, age=4000 - i)
+    v = get(rig, rid)
+    assert v["status"] == "failed" and v["failure"]["failure_reason"] == reason("NODE_FAIL")
+    assert [r["status"] for r in listed(rig, "x")] == ["failed"]
