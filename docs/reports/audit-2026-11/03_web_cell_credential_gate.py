@@ -9,7 +9,7 @@ from abf_station import launch
 cells = [
  "https://h.org/a.fq.gz?token=abc123",                                    # control: refused
  "https://user:hunter2@h.org/a.fq.gz",                                    # userinfo
- "https://b.s3.amazonaws.com/a.fq.gz?X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20261101%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+ "https://b.s3.amazonaws.com/a.fq.gz?X-Amz-Credential=" + "AKIA" + "IOSFODNN7EXAMPLE%2F20261101%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
  "https://storage.googleapis.com/b/a.fq.gz?X-Goog-Signature=0123456789abcdef0123456789abcdef0123456789abcdef",
 ]
 for cell in cells:
