@@ -121,3 +121,14 @@ def test_tc020_what_sacct_prints_is_not_trusted_and_never_passed_on(tmp_path, si
     assert sched is None or (sched["state"] in fetch.SLURM_STATES and set(sched) == {"job_id", "state", "source"}), sched
     text = str(res)
     assert "/srv/x" not in text and "abf_0123" not in text and "x" * 50 not in text
+
+
+def test_tc029_a_log_cut_at_20_mib_is_not_a_completion_record(tmp_path, site, fake):
+    # TC-029 (4): a cut log lost its end, so the scheduler is still asked
+    f = no_completion(site)
+    with open(f / ".nextflow.log", "ab") as h:
+        h.truncate(21 * 1024 * 1024)
+    site.set("sacct_654018", "NODE_FAIL\n")
+    res = fetch_with(tmp_path, site, fake)
+    assert res["state"] == "done", res
+    assert res["result"]["scheduler"] == {"job_id": "654018", "state": "NODE_FAIL", "source": "sacct"}
