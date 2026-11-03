@@ -26,6 +26,9 @@ Reference rendering: the Artifact canvas 3B2pu4Fo1GfLPYNqjBRAES, version 16, boa
 20. 「國網連線斷掉時讓我直接在網頁終端機打密碼和一次性驗證碼（OTP）重新連上」 (10-23)
 21. 「直接續跑不用確認」 (10-23, resume after a lost site; at most once per analysis, 「好的」)
 22. 「分成四類 改成 跟Seqera platform一樣的模式，不要自己定義」 (10-23 20:15)
+23. 「一樣要注意中文的顯示不能口語(e.g. "選用這個樣本", "用過的")」 (10-27)
+24. 「介面還是不好，AWS, Azure介面就不能跟國網一樣，請你去參考Seqera platform的介面，不要都自己腦補」 (10-30)
+25. 「我的意思是介面設計多去參考Seqera, galaxy等」 (11-03)
 
 ## Skeleton (ADR 0009 as amended by ADR 0011)
 - **Masthead** 40px, dark (`--ink` bg): product name left; right: cost line (NCHC SU, cloud NT$ used / cap; links to the cost page), 中｜EN, user name.
