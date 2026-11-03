@@ -638,11 +638,13 @@ def _results_cards(t, run, now, outputs):
                    (t["card_compute"], esc(where)), (t["card_cost"], esc(_cost_value(t, run)))))
 
 
-def _report_cell(t, lang, run_id, outputs, key, folder, name):
+def _report_cell(t, lang, run_id, outputs, key, folder, name, reading=False):
     """One of the two report cells under the cards: a download link when the first level of the results holds the folder, `not produced` when it is
     known to hold none, and the grey `later` words while that is not known yet (still reading, or the reading failed)."""
     top = (outputs or {}).get("top")
     if top is None:
+        if reading and (outputs or {}).get("state") == "loading" and not (outputs or {}).get("sub"):      # the Outputs tab queued the first-level listing
+            return '<span class="off">%s <span class="ostat state-running">⟳ %s</span></span>' % (esc(t[key]), esc(t["o_loading"]))
         return _grey(t, key)
     if folder in top:
         return '<span class="off"><a href="%s">%s</a></span>' % (_url(lang, run_id, path="/run/file", sub=folder + "/" + name), esc(t[key]))
@@ -708,8 +710,8 @@ def _outputs_body(t, lang, run_id, out):
 def _results_body(t, lang, run, tab, now, outputs):
     """The results stage of a succeeded run: four cards, four tabs (Outputs, Run info, Tasks, Logs; the last three are the running
     stage's own bodies) and the things that come later as grey words, not links."""
-    later = '<p class="kv">%s%s%s%s</p>' % (_report_cell(t, lang, run["id"], outputs, "ph_report", "summary_report", "summary_report.html"),
-                                            _report_cell(t, lang, run["id"], outputs, "ph_multiqc", "multiqc", "multiqc_report.html"),
+    later = '<p class="kv">%s%s%s%s</p>' % (_report_cell(t, lang, run["id"], outputs, "ph_report", "summary_report", "summary_report.html", tab == "outputs"),
+                                            _report_cell(t, lang, run["id"], outputs, "ph_multiqc", "multiqc", "multiqc_report.html", tab == "outputs"),
                                             _grey(t, "ph_metrics"), _grey(t, "ph_download"))
     links = "".join('<a href="%s"%s>%s</a>' % (_url(lang, run["id"], None, tab=k), ' aria-current="page"' if k == tab else "", esc(t["tab_" + k]))
                     for k in RESULT_TABS)
