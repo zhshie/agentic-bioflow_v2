@@ -1,0 +1,73 @@
+usage: abf-platform ce create [-h] [--name NAME] [--platform PLATFORM] [--owner OWNER]
+                              [--description DESCRIPTION] [--credentials CREDENTIALS]
+                              [--agent AGENT] [--work-dir WORK_DIR] [--project PROJECT]
+                              [--location LOCATION] [--batch-account BATCH_ACCOUNT]
+                              [--storage-account STORAGE_ACCOUNT] [--pool POOL]
+                              [--context CONTEXT] [--namespace NAMESPACE]
+                              [--storage-claim STORAGE_CLAIM]
+                              [--storage-mount-path STORAGE_MOUNT_PATH]
+                              [--service-account SERVICE_ACCOUNT] [--region REGION]
+                              [--job-queue JOB_QUEUE] [--spot] [--no-spot]
+                              [--service-account-email SERVICE_ACCOUNT_EMAIL]
+                              [--boot-disk-size BOOT_DISK_SIZE] [--launch-dir LAUNCH_DIR]
+                              [--head-queue HEAD_QUEUE] [--compute-queue COMPUTE_QUEUE]
+                              [--max-queue-size MAX_QUEUE_SIZE]
+                              [--head-job-options HEAD_JOB_OPTIONS] [--host-name HOST_NAME]
+                              [--user-name USER_NAME] [--port PORT] [--pre-run PRE_RUN]
+                              [--post-run POST_RUN] [--nextflow-config NEXTFLOW_CONFIG]
+                              [--env ENV] [--read-root READ_ROOT] [--config-json CONFIG_JSON]
+
+options:
+  -h, --help            show this help message and exit
+  --name NAME
+  --platform PLATFORM   the type, e.g. slurm-platform (see docs/PLATFORM.md)
+  --owner OWNER         the user this environment belongs to (default: the only user; required
+                        when there are several)
+  --description DESCRIPTION
+  --credentials CREDENTIALS
+                        the NAME of a credential (the credential itself stays with the agent)
+  --agent AGENT         the agent that serves this environment
+  --work-dir WORK_DIR
+  --project PROJECT     Google Batch: the GCP project ID
+  --location LOCATION   Google Batch/Azure Batch: the region, e.g. europe-west2 or westeurope
+  --batch-account BATCH_ACCOUNT
+                        Azure Batch: the Batch account name, e.g. labbatch
+  --storage-account STORAGE_ACCOUNT
+                        Azure Batch: the storage account name, e.g. labstore
+  --pool POOL           Azure Batch: the id of a pool that already exists, e.g. lab-pool
+  --context CONTEXT     Kubernetes: the context name in the kubeconfig, e.g. lab-context
+  --namespace NAMESPACE
+                        Kubernetes: the namespace, e.g. lab-ns
+  --storage-claim STORAGE_CLAIM
+                        Kubernetes: the name of a storage claim that already exists, e.g. lab-pvc
+  --storage-mount-path STORAGE_MOUNT_PATH
+                        Kubernetes: where the claim is mounted (default /workspace)
+  --service-account SERVICE_ACCOUNT
+                        Kubernetes: the service account the pods run as (default: the namespace's
+                        own)
+  --region REGION       AWS Batch: the region, e.g. eu-west-1
+  --job-queue JOB_QUEUE
+                        AWS Batch: the name of the job queue (a name, not an ARN)
+  --spot                Google Batch/AWS Batch/Azure Batch: use spot machines (Azure: stored only)
+  --no-spot             Google Batch/AWS Batch/Azure Batch: do not use spot machines
+  --service-account-email SERVICE_ACCOUNT_EMAIL
+                        Google Batch: the service account the jobs run as (an e-mail address, not
+                        a key)
+  --boot-disk-size BOOT_DISK_SIZE
+                        Google Batch: boot disk size, e.g. '50 GB'
+  --launch-dir LAUNCH_DIR
+  --head-queue HEAD_QUEUE
+  --compute-queue COMPUTE_QUEUE
+  --max-queue-size MAX_QUEUE_SIZE
+  --head-job-options HEAD_JOB_OPTIONS
+  --host-name HOST_NAME
+  --user-name USER_NAME
+  --port PORT
+  --pre-run PRE_RUN
+  --post-run POST_RUN
+  --nextflow-config NEXTFLOW_CONFIG
+  --env ENV             [head:|compute:|both:]NAME=VALUE, repeatable
+  --read-root READ_ROOT
+                        one more absolute path the agent may list, repeatable
+  --config-json CONFIG_JSON
+                        settings as JSON text, or @file; the flags above win over it

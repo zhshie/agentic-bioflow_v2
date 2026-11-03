@@ -1,0 +1,37 @@
+usage: abf-platform [-h]
+                    {serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records}
+                    ...
+
+abf-platform: serve | web | token new | agent-token new|list|revoke [--id N] | user add|cloud-
+cap|passwd [--temporary]|welcome | pat new|list|revoke | oauth revoke USER | ce ... | mcp [--http]
+| runs assign|offer-cleanup | dataset register|list|show | rebuild [<folder>...]
+
+positional arguments:
+  {serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records}
+    serve               run the receiver for Nextflow's trace messages and the agents' requests
+    web                 run the confirmation page where a person presses send (own process, this
+                        machine only by default)
+    token               manage access tokens
+    agent-token         manage the tokens of agents
+    user                the people who may call the MCP server
+    pat                 personal access tokens for the MCP server over HTTP
+    oauth               the OAuth logins of Claude Desktop connectors
+    ce                  compute environments
+    mcp                 run the read-only MCP server (stdio, or --http)
+    rebuild             drop the index and build it again from Nextflow's records
+    runs                the owner of a run in the hand-off record
+    dataset             datasets: a name, a version, a samplesheet and the places of its files
+                        (the platform keeps names and places only)
+    launch              show a whole analysis, ask on the terminal, and hand it to the agent
+    resume              go on with a failed run in its own folder; Nextflow takes up where it
+                        stopped, after the same kind of question as for a first send
+    relaunch            start a failed run again from the start, in a new folder, after the same
+                        kind of question as for a first send
+    cancel              stop one analysis of this platform, after the same kind of question
+    forget              delete the content a finished run was sent with, after the same kind of
+                        question
+    launches            list what was handed to agents: facts only, never a run's state
+    fetch-records       read Nextflow's own logs of one run back (read only)
+
+options:
+  -h, --help            show this help message and exit
