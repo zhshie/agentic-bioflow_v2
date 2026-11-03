@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-11-03	GREEN	HTTP test makes the agent offline (last_seen_at=0) instead of waiting for the 60 s job deadline	list_site_files waits for the agent up to 60 s; the SDK client reads time out at 5 s	platform/tests/mcp/test_mcp_contract_http.py	tests/mcp 69 passed
+2026-11-03	GREEN	NAMED for get_pipeline/get_validation (integer ids)	first string arg lookup raised StopIteration	platform/tests/mcp/test_mcp_contract_writes.py:118	passed
