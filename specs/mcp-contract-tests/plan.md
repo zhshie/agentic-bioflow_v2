@@ -35,7 +35,7 @@ source: 維護者派工說明（本檔「維護者原話」）；過去 bug：�
 - `platform/tests/mcp/test_mcp_contract_writes.py`（寫入零副作用、錯誤路徑）
 - `platform/tests/mcp/test_mcp_contract_http.py`（HTTP 傳輸一例）
 - `platform/tests/mcp/snapshots/tools.json`（快照，LF 行尾）
-- 若需要共用夾具：`platform/tests/mcp/conftest.py`（只放本資料夾的夾具；不要改 `platform/tests/conftest.py`）
+- 共用夾具放 `platform/tests/mcp/mcp_support.py`（一般模組）。**禁建 conftest.py**：executor 寫入守衛會擋 conftest.py、pytest.ini、pyproject.toml，不得用 shell 繞過。
 
 **待確認（問 developer-agent）**：派工說明寫 `tests/mcp/`，但 repo 根目錄 `tests/` 全是 bash 腳本，pytest 在 `platform/tests/`（`platform/pyproject.toml` 的 `testpaths = ["tests"]` 相對於 `platform/`，`conftest.py` 與 `helpers.py` 也在那裡）。本計畫採 `platform/tests/mcp/`；若維護者指的是根目錄 `tests/mcp/`，pytest 收不到，也沒有共用 helpers。
 
