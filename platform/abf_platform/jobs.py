@@ -1088,6 +1088,22 @@ def _clean_inventory(raw):
     return out
 
 
+_PROF_KEY = re.compile(r"[A-Za-z0-9_.-]{1,64}/[A-Za-z0-9_.-]{1,64} [^\s]{1,60}\Z")
+_PROF_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\Z")
+
+
+def _clean_site_profiles(raw):
+    """{"<pipeline> <revision>": [profile names]} in exactly that shape, or None when it is not a mapping. A key or a name that does not
+    pass is dropped, not the whole mapping."""
+    if not isinstance(raw, dict):
+        return None
+    out = {}
+    for key, names in list(raw.items())[:_INV_LIMIT]:
+        if isinstance(key, str) and _PROF_KEY.match(key) and isinstance(names, list):
+            out[key] = [n for n in names[:100] if isinstance(n, str) and _PROF_NAME.match(n)]
+    return out
+
+
 def clean_result(kind, result, stored=None):
     """Only what the platform expects, with every text bounded; an agent cannot make the platform store more."""
     if not isinstance(result, dict):
@@ -1108,6 +1124,9 @@ def clean_result(kind, result, stored=None):
         inventory = _clean_inventory(result.get("site_inventory"))
         if inventory is not None:      # a separate field: never one of the checks, never part of the verdict
             out["site_inventory"] = inventory
+        profiles = _clean_site_profiles(result.get("site_profiles"))
+        if profiles is not None:      # also separate from the checks: the names a launch's Config profiles are judged against
+            out["site_profiles"] = profiles
     elif kind == "pipeline_files":
         if isinstance(result.get("repo"), str):
             out["repo"] = _short(result["repo"], 140)

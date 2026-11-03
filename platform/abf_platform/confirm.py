@@ -332,7 +332,7 @@ def facts(state_path, rid):
         what = "resume" if "resume" in bundle else "relaunch" if "relaunch" in bundle else "launch"
         source = bundle["resume"]["origin"] if what == "resume" else bundle
         out = {"what": what, "run_name": bundle["run_name"], "pipeline": source["pipeline"], "revision": source["revision"],
-               "ce": row["ce_name"], "samples": len(source["samplesheet"]) - 1}
+               "ce": row["ce_name"], "samples": len(source["samplesheet"]) - 1 if source["samplesheet"] is not None else 0}
         if what == "relaunch":
             out["folder"] = bundle["run_folder"]
         return {k: v for k, v in out.items() if v not in (None, "")}

@@ -134,7 +134,8 @@ def target_problem(state, ce_name, kind, owner=None):
 
 
 def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet=None, params_file=None, param_items=None, params=None,
-                   path_columns=None, check_name=True, samplesheet_raw=None, owner=None, area=None, samplesheet_rows=None, composed=None):
+                   path_columns=None, check_name=True, samplesheet_raw=None, owner=None, area=None, samplesheet_rows=None, composed=None,
+                   profiles=None):
     """(environment name, bundle) for these choices, or Refusal. Nothing is shown, asked or written.
 
     composed ({"pipeline_id", "version", "project"}): the launch of a composed pipeline, whose project the bundle then carries; only the
@@ -148,7 +149,9 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet=
     like one); params is a mapping that already has its types (the MCP tool). Both are put over the params file.
     check_name=False leaves the run-name check to the caller (the MCP tool looks for a yes that already exists first).
     samplesheet_raw (bytes) is the samplesheet already read; then `samplesheet` is not opened again. samplesheet_rows (a list of rows) is
-    one that was read and checked before, a resume or a relaunch taking the rows of the first launch; then nothing is opened either."""
+    one that was read and checked before, a resume or a relaunch taking the rows of the first launch; then nothing is opened either.
+    profiles (Config profiles of the pipeline, a Slurm site pipeline only): with a profile and no samplesheet at all, no samplesheet is read;
+    render_bundle then accepts that only for a profile that brings its own input (test, test_full, test_*)."""
     if composed is None and isinstance(pipeline, str) and pipeline.split("/")[0] == bundle_mod.COMPOSED:
         raise Refusal(RESERVED)      # the name belongs to the platform's own composed pipelines; nothing is looked for on the network under it
     ce_name = ce or primary_environment(state, owner)
@@ -164,6 +167,8 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet=
     try:
         if samplesheet_rows is not None:
             rows = copy.deepcopy(samplesheet_rows)
+        elif profiles and samplesheet is None and samplesheet_raw is None:
+            rows = None
         else:
             rows = parse_samplesheet(samplesheet_raw) if samplesheet_raw is not None else read_samplesheet(samplesheet)
         merged = read_params_file(params_file) if params_file else {}
@@ -175,6 +180,8 @@ def prepare_launch(state, *, ce=None, pipeline, revision, run_name, samplesheet=
         merged.update(params or {})
         inputs = bundle_mod.inputs_from_environment(view, view["agent"], facts, run_name=run_name, pipeline=pipeline, revision=revision,
                                                     samplesheet=rows, params=merged, path_columns=path_columns)
+        if profiles:
+            inputs["profiles"] = profiles
         if composed is not None:
             inputs["composed"] = composed
         bundle = bundle_mod.render_bundle(**inputs)
@@ -238,7 +245,7 @@ def _confine(state, bundle, area, roots):
     root = store.uploads_root(state)
     uploads = os.path.realpath(str(root))
     spellings = {rules.normalize(os.path.abspath(str(root))), rules.normalize(uploads)}
-    for r, c, cell in bundle_mod.path_cells(bundle["samplesheet"], bundle["path_columns"]):
+    for r, c, cell in bundle_mod.path_cells(bundle["samplesheet"], bundle["path_columns"]) if bundle["samplesheet"] is not None else []:
         if bundle_mod.is_web_cell(cell):
             continue      # an http(s) address is not a file of the upload area; it was judged when the bundle was built
         real = os.path.realpath(cell)
@@ -583,7 +590,7 @@ def prepare_resume(state, run, *, index_path, owner=None, area=None, params=None
     try:
         _, rebuilt = prepare_launch(state, ce=ce_name, pipeline=origin["pipeline"], revision=origin["revision"], run_name=origin["run_name"],
                                     params=origin["params"], path_columns=origin["path_columns"], check_name=False, owner=owner, area=area,
-                                    samplesheet_rows=origin["samplesheet"])
+                                    samplesheet_rows=origin["samplesheet"], profiles=origin.get("profiles"))
     except (KeyError, TypeError):
         raise Refusal(TOO_OLD)
     upload = rebuilt.pop("upload_paths", None)
@@ -599,7 +606,7 @@ def prepare_resume(state, run, *, index_path, owner=None, area=None, params=None
         try:      # 116b: a path in a changed parameter must lie in the caller's own folder too
             _, laid = prepare_launch(state, ce=ce_name, pipeline=origin["pipeline"], revision=origin["revision"], run_name=origin["run_name"],
                                      params={**origin["params"], **edits["params"]}, path_columns=origin["path_columns"], check_name=False,
-                                     owner=owner, area=area, samplesheet_rows=origin["samplesheet"])
+                                     owner=owner, area=area, samplesheet_rows=origin["samplesheet"], profiles=origin.get("profiles"))
         except (KeyError, TypeError):
             raise Refusal(TOO_OLD)
         upload = laid.pop("upload_paths", None)
@@ -618,7 +625,7 @@ def prepare_relaunch(state, run, *, index_path, owner=None, area=None):
     try:
         _, bundle = prepare_launch(state, ce=ce_name, pipeline=origin["pipeline"], revision=origin["revision"], run_name=new_name,
                                    params=origin["params"], path_columns=origin["path_columns"], check_name=False, owner=owner, area=area,
-                                   samplesheet_rows=origin["samplesheet"])
+                                   samplesheet_rows=origin["samplesheet"], profiles=origin.get("profiles"))
         same = all(bundle.get(k) == origin.get(k) for k in ("ce", "agent", "account", "tower", "pipeline", "revision", "samplesheet", "params",
                                                            "path_columns"))
     except (KeyError, TypeError):
@@ -660,8 +667,19 @@ K8S_CANCEL_NOTE = ("取消只會刪除下面這一個主控 Pod；這次 run 的
                    "費用從 Pod 開始算到它們真的停止為止。")
 
 
+TEST_DATA = "from the pipeline's test profile"
+
+
+def _profiles_line(bundle):
+    """The one line that names the Config profiles of a launch, or nothing when it has none."""
+    names = bundle.get("profiles") or []
+    return [terminal.pair("Config profiles", ", ".join(names))] if names else []
+
+
 def _samplesheet_lines(bundle):
     rows = bundle["samplesheet"]
+    if rows is None:
+        return _profiles_line(bundle) + [terminal.pair("Samplesheet", TEST_DATA)]
     lines = [terminal.PREFIX + "== samplesheet.csv（%d 列資料）==" % (len(rows) - 1)]
     for row in rows:
         buf = io.StringIO()
@@ -832,12 +850,8 @@ def launch_screen(bundle, ce_name, cost=None):
                ("計費帳號", bundle["account"]), ("主控佇列", ce["headQueue"]), ("主控送出選項", ce["headJobOptions"] or "(無)")]
     for label, value in fields:
         lines.append(terminal.pair(label, value))
-    rows = bundle["samplesheet"]
-    lines.append(terminal.PREFIX + "== samplesheet.csv（%d 列資料）==" % (len(rows) - 1))
-    for row in rows:
-        buf = io.StringIO()
-        csv.writer(buf, lineterminator="").writerow(row)
-        lines.append(terminal.PREFIX + terminal.esc(buf.getvalue()))
+    lines += _profiles_line(bundle) if bundle["samplesheet"] is not None else []
+    lines += _samplesheet_lines(bundle)
     for name in ("params.yaml", "nextflow.config", "head.sh"):
         lines += terminal.block(name, bundle["files"][name])
     if project is not None:
@@ -914,6 +928,11 @@ def forget_screen(run_name):
             terminal.pair("run 名稱", run_name),
             terminal.PREFIX + FORGET_WARNING]
 
+def _samples(bundle):
+    """The number of samples a launch has, or the words for a launch on the pipeline's own test data."""
+    return TEST_DATA if bundle["samplesheet"] is None else len(bundle["samplesheet"]) - 1
+
+
 def _attempt_lines(title, bundle, row, attempt, sentence, pipeline, revision, samples, script):
     lines = [terminal.PREFIX + title]
     for label, value in (("上一次的 run", row["run_name"]), ("這是第幾次", "第 %d 次" % attempt), ("上一次的 Slurm 工作編號", row["slurm_job_id"]),
@@ -943,7 +962,11 @@ def resume_screen(bundle, row):
     edits = r.get("overrides")
     lines = _attempt_lines("== 續跑確認：同一個資料夾，Nextflow 接著上次做 ==", bundle, row, r["attempt"],
                            EDITED_SENTENCE if edits else "這是續跑：同一個資料夾，沿用已完成的 task；樣本和參數不變",
-                           o["pipeline"], o["revision"], len(o["samplesheet"]) - 1, script)
+                           o["pipeline"], o["revision"], _samples(o), script)
+    if o.get("profiles"):
+        lines.insert(-2, terminal.pair("Config profiles", ", ".join(o["profiles"])))
+    if o["samplesheet"] is None:
+        lines.insert(-2, terminal.pair("Samplesheet", TEST_DATA))
     if edits:
         lines.append(terminal.PREFIX + EDITED_NOTE)
         for name, new in (edits.get("params") or {}).items():
@@ -962,7 +985,7 @@ def resume_screen(bundle, row):
 def relaunch_screen(bundle, row):
     """What a person sees before saying yes to a relaunch: the same as a launch shows, with what it is a relaunch of in front."""
     lines = _attempt_lines("== 重跑確認：全新的資料夾，從頭開始 ==", bundle, row, bundle["relaunch"]["attempt"],
-                           "這是原樣重跑：全新資料夾，樣本與參數不變", bundle["pipeline"], bundle["revision"], len(bundle["samplesheet"]) - 1, "head.sh")
+                           "這是原樣重跑：全新資料夾，樣本與參數不變", bundle["pipeline"], bundle["revision"], _samples(bundle), "head.sh")
     return lines + launch_screen(bundle, row["ce"])[1:]
 
 
