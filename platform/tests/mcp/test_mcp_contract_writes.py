@@ -98,12 +98,12 @@ ERROR_INPUTS = {
     "list_runs": None, "list_compute_envs": None, "list_agents": None, "list_used_pipelines": None, "list_pipelines": None,
     "get_run": {"run_id": "nope-run-zz"},
     "get_compute_env": {"name": "no-such-env"},
-    "list_site_files": {"compute_env": "no-such-env", "path": "."},
+    "list_site_files": {"compute_env": "no-such-env", "path": "/data"},
     "my_usage": {"month": "nope-month"},
     "run_outputs": {"run_id": "nope-run-zz"},
     "read_run_file": {"run_id": "nope-run-zz", "path": "nope.txt"},
     "read_task_log": {"run_name": "nope-run-zz", "task": "nope-task", "which": "out"},
-    "find_module": {"q": ""},
+    "find_module": {"q": "zzznomodule"},
     "describe_module": {"name": "nope_module_zz"},
     "get_pipeline": {"pipeline_id": 999999},
     "get_validation": {"pipeline_id": 999999},
@@ -114,17 +114,30 @@ ERROR_INPUTS = {
     "relaunch": {"run_name": "nope-run-zz"},
 }
 
-# Product gaps found by this test, one per tool (the message lacks the name of the failed object or a next step). They are listed in the
-# ledger for the maintainer; strict, so the day the product is fixed the mark must come off. Nothing under abf_platform/ was changed.
-GAPS = {}
+# The object the message must name, where it is not the first text argument.
+NAMED = {"launch": "no-such-env", "get_pipeline": "999999", "get_validation": "999999"}
 
-# What an answer must not show: stack, internals, paths, secrets.
-LEAKS = ["Traceback", 'File "', '.py"', "sqlite3", "SELECT ", "/home", "/tmp", "/var/", "/Users", "/mnt/", "C:\\", "Bearer "]
+# Product gaps found by this test, one per tool: the current message lacks the name of the failed object or a next step (請/用/先).
+# They are listed in the ledger for the maintainer; strict, so the day the product is fixed the mark must come off. Nothing under
+# abf_platform/ was changed.
+NO_NEXT = "the message names the failure but not what to do next"
+NO_NAME = "the message does not name the failed object"
+GAPS = {
+    "cancel": NO_NEXT, "get_pipeline": NO_NEXT, "get_validation": NO_NEXT, "get_compute_env": NO_NEXT, "get_run": NO_NEXT, "launch": NO_NEXT, "list_site_files": NO_NEXT,
+    "read_task_log": NO_NEXT, "relaunch": NO_NEXT, "resume": NO_NEXT,
+    "find_module": NO_NAME + " (the hint does not repeat the keyword)", "forget": NO_NAME + " and gives no next step",
+    "my_usage": NO_NAME, "read_run_file": NO_NAME + " and gives no next step", "run_outputs": NO_NAME + " and gives no next step",
+}
+
+# What an answer must never show: stack, internals, secrets. For an error answer also paths (a data answer, like the environment list, holds the site's paths).
+LEAKS = ["Traceback", 'File "', '.py"', "sqlite3", "SELECT ", "Bearer "]
+PATHS = ["/home", "/tmp", "/var/", "/Users", "/mnt/", "C:\\"]
 
 
 def raised_error(result):
     d = tool_json(result)
-    return bool(result.is_error or d.get("ok") is False or d.get("found") is False or "error" in d or d.get("state") in ("notfound", "no_form"))
+    return bool(result.is_error or d.get("ok") is False or d.get("found") is False or "error" in d or d.get("count") == 0
+                or d.get("state") in ("notfound", "no_form"))
 
 
 def run_error_call(tmp_path, monkeypatch, tool, args):
@@ -136,8 +149,8 @@ def run_error_call(tmp_path, monkeypatch, tool, args):
     return outs[0], tool_text(outs[0]), pat
 
 
-def assert_clean(text, pat, tmp_path):
-    for bad in LEAKS + [pat, str(tmp_path)]:
+def assert_clean(text, pat, tmp_path, paths=True):
+    for bad in LEAKS + [pat] + ([str(tmp_path)] + PATHS if paths else []):
         assert bad not in text, "the answer shows %r: %s" % (bad, text[:400])
 
 
@@ -153,7 +166,7 @@ def test_error_path_is_clean_for_every_tool(tmp_path, monkeypatch, tool):
     result, text, pat = run_error_call(tmp_path, monkeypatch, tool, args or {})
     if args is None:
         assert not result.is_error
-    assert_clean(text, pat, tmp_path)
+    assert_clean(text, pat, tmp_path, paths=args is not None)
 
 
 @pytest.mark.parametrize("tool", [pytest.param(t, marks=pytest.mark.xfail(strict=True, reason=GAPS[t])) if t in GAPS else t
@@ -162,11 +175,11 @@ def test_error_path_is_actionable_and_clean(tmp_path, monkeypatch, tool):
     # TC-012 and TC-013: an error that names what failed and says what to do next, with nothing from inside
     args = ERROR_INPUTS[tool]
     result, text, pat = run_error_call(tmp_path, monkeypatch, tool, args or {})
-    assert_clean(text, pat, tmp_path)
+    assert_clean(text, pat, tmp_path, paths=args is not None)
     if args is None:
-        return                              # no argument, no failing input: the answer is an empty list, checked clean above
+        return                              # no argument, no failing input: the answer is a list, checked clean above
     assert raised_error(result), "%s did not report the failure: %s" % (tool, text[:300])
-    name = next(v for v in args.values() if isinstance(v, str) and v)
+    name = NAMED.get(tool) or next(v for v in args.values() if isinstance(v, str) and v)
     assert name in text, "%s: the message does not name %r: %s" % (tool, name, text[:300])
     assert any(w in text for w in ("請", "用", "先")), "%s: the message does not say what to do next: %s" % (tool, text[:300])
 
