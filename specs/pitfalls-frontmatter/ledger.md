@@ -10,7 +10,7 @@
 - WSL 裡 constitution_scope_test.sh 若紅＝Windows 建 worktree 的環境問題，以 CI 為準（裁決 4）。
 - fields/b05_rest.txt 與 b05.txt 是同一批第 30-58 條的欄位草稿（重複，無法刪除），不影響結果。
 
-## BLOCKED (executor)
+## BLOCKED (executor) - 已由裁決 N 解除：test_catalogue.py:419 正規式改為 tier A|tier C|A-tier|A 級|A級（只此一處）；746 行 Tier A 未動，請 developer-agent 判斷
 全套在 d5798a0 之後：136/138，兩個紅：
 1. no_pipefail_grep_q_test.sh：已修（我的 tests/pitfalls_format_test.sh 用了 pipefail + `| grep -q`，改成 here-string），單檔綠。
 2. platform_shard_5 -> platform/tests/test_catalogue.py::test_platform_doc_has_the_catalogue_section（第 419 行）：
