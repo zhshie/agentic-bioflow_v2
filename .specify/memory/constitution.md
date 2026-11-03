@@ -247,8 +247,8 @@ plan, and change only by a MAJOR amendment of this constitution.
   Then the development lead merges the pull request: fixes, tests, docs, refactors, changes that
   only make the Safety Net stricter, and changes in what a user sees alike (a change in what a
   user sees is listed for the maintainer, who can ask for a follow-up). Amendments to this
-  constitution, releases, and anything that loosens the Safety Net first need the maintainer's
-  explicit yes, in his own words; only after it does the development lead merge. A change that
+  constitution, releases, a modified or removed requirement, and anything that loosens the
+  Safety Net first need the maintainer's explicit yes, in his own words; only after it does the development lead merge. A change that
   touches a protected path (`.github/`, hooks, this constitution, `plugin.json`,
   `platform/abf_station/`) also carries a proof of what else it can affect and passes a second,
   adversarial review before it is merged.
@@ -683,9 +683,10 @@ the merges. On 2026-11-03 the maintainer approved bringing the text in line, in 
 **What changes.**
 - The development lead merges every pull request after CI is green and the independent
   acceptance passes; a change in what a user sees is listed for the maintainer afterwards.
-- Amendments to this constitution, releases, and anything that loosens the Safety Net still need
-  the maintainer's explicit yes in his own words first; only then does the development lead
-  merge. Governance says the same of amendments.
+- Amendments to this constitution, releases, a modified or removed requirement, and anything
+  that loosens the Safety Net still need the maintainer's explicit yes in his own words first;
+  only then does the development lead merge. Governance says the same of amendments. This
+  tightens the rule rather than loosening it.
 - The development branch is named: `v3`; `main` carries the v2 line.
 - A change to a protected path (`.github/`, hooks, this constitution, `plugin.json`,
   `platform/abf_station/`) carries a proof of what else it can affect and passes a second,
