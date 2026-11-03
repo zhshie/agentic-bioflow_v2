@@ -1,0 +1,7 @@
+ts	phase	decision	why	evidence	result
+2026-11-03	plan	不用 click/syrupy，用 assert_golden 與 __golden__/ 文字檔	計畫環境事實：CI venv 只裝 mcp pytest httpx	test_cli_snapshots.py:assert_golden	完成
+2026-11-03	red	先提交測試、不提交快照，取得紅燈	計畫「失敗先行」	be27aa90	6 條因快照缺檔而紅
+2026-11-03	tc-004	`ce show`、`dataset show` 的找不到訊息不以 rejected: 開頭，測試斷言現況前綴（ce show 為 "compute environment "，dataset show 不限前綴），其餘五種仍要 rejected:	不能改 cli.py；TC-004 的 rejected: 與現況不符，須回報 developer-agent	cli.py:464-470, cli.py:633-643	偏離，已列問題
+2026-11-03	tc-004	中文說明改為「訊息中任一處有中文」而非限於括號之後	現況 user cloud-cap 找不到人時中文在括號前	test_cli_contract.py:CJK_AFTER_PAREN	偏離（放寬），已列問題
+2026-11-03	gap	--version 只檢查頂層沒有；dataset register/show 有自己的 --version（資料集版本）	避免誤判	test_cli_contract.py:test_documented_gaps	完成
+2026-11-03	golden	快照由 ABF_UPDATE_GOLDEN=1 逐檔產生（鏡像目錄），複製回工作樹後逐檔審閱，再不帶變數重跑全綠	計畫作法 2	__golden__/*.txt	6 份，無暫存路徑、無 CR
