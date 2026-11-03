@@ -5,3 +5,5 @@ ts	phase	decision	why	evidence	result
 2026-11-03T17:50	gate	build._predecessor 對 lost 且排程器說壞結束的 run 放行	TC-015 續跑要通過	platform/abf_launch/build.py:469	test_tc015 過
 2026-11-03T18:30	fix	把狀態檢查函式移到 failures.py，jobs.py 不出現 station／sched 字樣	既有範圍測試 test_tc091／TC-118／tc061 禁這些字	platform/abf_platform/failures.py head_fact_of	相關測試全過
 2026-11-04	GREEN	依裁決 O 實作 TC-026..029：ask_head_state 改單一交易、with_slurm 旗標、_fetches_of 依 run 過濾、截斷 log 仍問排程器	一分鐘限流與舊站台相容要求	jobs.py ask_head_state; fetch.py run_fetch	相關測試 全過
+2026-11-04	fix	完成行須涵蓋資料夾內每個看得出啟動過的 log（含輪替的 .nextflow.log.N），否則仍問排程器	續跑的 log 會蓋住第一次嘗試的 NODE_FAIL；TC-008 的舊 log 內容為雜訊「old log」不算一次嘗試，所以用啟動標記判斷	platform/abf_station/fetch.py _STARTED, completed=all(ended)	相關測試全過
+2026-11-04	skip	不改 head_state 的「只取最新讀回」	TC-014(d) 釘住且不得改弱；站台修正後 NODE_FAIL 會被重複回報，不會翻回 lost	platform/tests/test_head_nodefail.py:210	保留

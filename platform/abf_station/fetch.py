@@ -19,7 +19,8 @@ _NOT_RECORDS = {"tower.token", "params.yaml", "head.sh", "nextflow.config", "sam
 _RESUME_FILE = re.compile(r"^(head|params|extra)-[0-9]+\.(sh|yaml|config)\Z")
 ARGS = {"ce", "run_name", "run_folder", "slurm_job_id"}
 _DONE_LINE = re.compile(r"Execution complete -- Goodbye")      # the line Nextflow writes when it ends; no such line = no completion record
-_JOB_ID = re.compile(r"^[0-9]{1,10}\Z")
+_STARTED = re.compile(r"Workflow started -- trace file|nextflow\.cli\.Launcher|Launching `")      # the log of a run that really began
+_JOB_ID =re.compile(r"^[0-9]{1,10}\Z")
 # The only words of the scheduler that are passed on (the platform has the same table and sorts them): anything else is not trusted and not kept.
 SLURM_STATES = frozenset("NODE_FAIL BOOT_FAIL CANCELLED TIMEOUT OUT_OF_MEMORY FAILED DEADLINE PREEMPTED REVOKED "
                          "PENDING RUNNING COMPLETING REQUEUED SUSPENDED CONFIGURING COMPLETED".split())
@@ -81,7 +82,7 @@ def run_fetch(job, ctx):
     if listing.rc != 0:
         return "error", {"ok": False, "message": "讀不到專屬資料夾 %s（結束碼 %d）" % (folder, listing.rc)}
     files, refused, logs = [], [], []
-    completed = False
+    ended = []      # one flag per attempt log: does it end with Nextflow's completion line?
     wanted = []
     for rec in listing.out.split(b"\0"):
         if not rec:
@@ -98,13 +99,15 @@ def run_fetch(job, ctx):
         got, why = _read(site, folder, rel)
         if got is None:
             refused.append("%s：%s" % (rel, why))
+            if rel.startswith(".nextflow.log"):
+                ended.append(False)      # an attempt log that cannot be read is not a completion record either
             continue
         data, cut = got
         files.append({"name": rel, "data": base64.b64encode(data).decode("ascii"), "truncated": cut})
         if rel.startswith(".nextflow.log"):
             logs.append(data.decode("utf-8", errors="replace"))
-            if rel == ".nextflow.log" and _DONE_LINE.search(logs[-1]):
-                completed = True      # a log cut at 20 MB lost its end: its completion is unknown, so the scheduler is still asked
+            if rel == ".nextflow.log" or _STARTED.search(logs[-1]):      # a rotated file that shows no run at all is not an attempt
+                ended.append(not cut and bool(_DONE_LINE.search(logs[-1])))      # a log cut at 20 MB lost its end: unknown, so not "ended"
     traces = []
     for text in logs:
         for m in re.finditer(r"Workflow started -- trace file: (.+)", text):
@@ -124,7 +127,10 @@ def run_fetch(job, ctx):
         data, cut = got
         files.append({"name": name, "data": base64.b64encode(data).decode("ascii"), "truncated": cut})
     note = "；".join(f["name"] + "（已截斷）" for f in files if f["truncated"])
-    # Nextflow's own record wins: the scheduler is asked only when the log has no completion line, and only about the head job's number
+    # Nextflow's own record wins, but only when it covers every attempt in the folder: a resume writes its own newest .nextflow.log into the
+    # same folder and rotates the first attempt's log to .nextflow.log.1, so one attempt without the line (a node died) still asks the
+    # scheduler. It is asked only about the head job's number.
+    completed = bool(ended) and all(ended)
     scheduler = _scheduler(site, number) if number is not None and not completed else None
     return "done", {"ok": True, "files": files, "refused": refused, "scheduler": scheduler,
                     "message": "讀回 %d 個檔%s" % (len(files), "；" + note if note else "")}
