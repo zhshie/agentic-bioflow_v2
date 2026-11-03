@@ -388,7 +388,7 @@ def _enqueue_fetch_in(con, run_name, now, seconds, offline_after, with_slurm):
         raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
             run_name, launch["agent"], launch["ce"], row["agent"]))
     args = {"ce": compute_envs.snapshot(row), "run_name": launch["run_name"], "run_folder": launch["run_folder"]}
-    if with_slurm and launch["slurm_job_id"] is not None:      # only the head-state question: an older site agent refuses a key it does not know
+    if with_slurm and launch["slurm_job_id"] is not None:      # only the head-state question: an older agent refuses a key it does not know
         args["slurm_job_id"] = str(launch["slurm_job_id"])
     return _insert_job(con, row, "fetch_run_records", args, now, seconds)
 
