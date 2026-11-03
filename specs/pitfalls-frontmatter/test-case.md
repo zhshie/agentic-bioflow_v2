@@ -38,7 +38,7 @@
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-014 | 維護者原話 4「docs/PLATFORM.md:846『one tier A PR』依 11-03 A／C 對調改成 tier C」；測試案例 7 | 功能 | `docs/PLATFORM.md` 已改好 | 執行測試，看 platform tier 那一項 | `docs/PLATFORM.md` 不含 `one tier A PR`，且含完整句 `A new snapshot is one tier C PR: the changed file, plus the new sha here and in the test.`（前面的「- 」清單符號照舊） | 自動：`tests/pitfalls_format_test.sh` |
+| TC-014 | 維護者原話 4「docs/PLATFORM.md:846『one tier A PR』依 11-03 A／C 對調改成 tier C」；測試案例 7 | 功能 | `docs/PLATFORM.md` 已改好 | 執行測試，看 platform tier 那一項 | `docs/PLATFORM.md` 不含 `one tier A PR`，且含完整句 `A new snapshot is one tier C PR: the changed file, plus the new sha here and in the test.`（前面的「- 」清單符號照舊）；同時 `platform/tests/test_catalogue.py` 第 419 行的正規式須接受 `tier C`（只准改那一處，改成 `tier A|tier C|A-tier|A 級|A級`），且該測試仍綠 | 自動：`tests/pitfalls_format_test.sh` |
 | TC-015 | 維護者原話 4「不波及其他句子」；計畫「PLATFORM.md 846 行」 | 功能 | 同上 | 閱卷者執行 `git diff origin/v3 -- docs/PLATFORM.md`；並跑 `platform/tests/test_launch_docs.py` | diff 只有 846 行那一行：一行刪、一行增，差別只有 `A` 變 `C`；沒有加註解、沒有擴寫；`test_launch_docs.py` 仍綠。`ledger.md` 有記：constitution 6.2.0 只寫「開發主導者自行合併」、沒有出現 A／B／C 字母，所以executor 無從用它確認「C＝自行合併」，改依維護者原話（backlog 項 4）執行，並貼出實際讀到的原文 | 手動：閱卷者執行該 git 指令並讀 `ledger.md` |
 | TC-016 | 計畫「同檔 746 行另有 Tier A…本任務不動」 | 不在範圍 | 同上 | 閱卷者看 `git diff origin/v3 -- docs/PLATFORM.md` 與 `ledger.md` | 746 行「*(Tier A: OAuth only adds another way ...」一字未動；`ledger.md` 有一行說明「746 行仍為 Tier A，是否也要隨 A／C 對調改，請 developer-agent 判斷」 | 手動：閱卷者執行該 git 指令並讀 `ledger.md` |
 
