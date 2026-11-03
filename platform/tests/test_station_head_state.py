@@ -132,3 +132,24 @@ def test_tc029_a_log_cut_at_20_mib_is_not_a_completion_record(tmp_path, site, fa
     res = fetch_with(tmp_path, site, fake)
     assert res["state"] == "done", res
     assert res["result"]["scheduler"] == {"job_id": "654018", "state": "NODE_FAIL", "source": "sacct"}
+
+
+def test_adversary_a_resume_in_the_same_folder_does_not_hide_the_first_attempts_node_fail(tmp_path, site, fake):
+    # ADVERSARY (11-04 fix round, ruling P): .nextflow.log is the resume's log; the first attempt's rotated log has no completion line
+    f = make_records(site, "run-a")
+    (f / ".nextflow.log.1").write_text("Workflow started -- trace file: %s/trace-1.txt\nlast line before the node died\n" % f)
+    (f / ".nextflow.log").write_text("resume log\n" + DONE)
+    site.set("sacct_654018", "NODE_FAIL\n")
+    res = fetch_with(tmp_path, site, fake)
+    assert res["state"] == "done", res
+    assert res["result"]["scheduler"] == {"job_id": "654018", "state": "NODE_FAIL", "source": "sacct"}
+
+
+def test_adversary_every_attempt_has_its_completion_line_so_the_scheduler_is_not_asked(tmp_path, site, fake):
+    f = make_records(site, "run-a")
+    (f / ".nextflow.log.1").write_text("first\n" + DONE)
+    (f / ".nextflow.log").write_text("resume\n" + DONE)
+    site.set("sacct_654018", "NODE_FAIL\n")
+    res = fetch_with(tmp_path, site, fake)
+    assert res["result"]["scheduler"] is None
+    assert calls_of(site, "squeue") == [] and calls_of(site, "sacct") == []
