@@ -1,3 +1,9 @@
 ts	phase	decision	why	evidence	result
 2026-11-03	GREEN	HTTP test makes the agent offline (last_seen_at=0) instead of waiting for the 60 s job deadline	list_site_files waits for the agent up to 60 s; the SDK client reads time out at 5 s	platform/tests/mcp/test_mcp_contract_http.py	tests/mcp 69 passed
 2026-11-03	GREEN	NAMED for get_pipeline/get_validation (integer ids)	first string arg lookup raised StopIteration	platform/tests/mcp/test_mcp_contract_writes.py:118	passed
+2026-11-03	GREEN	工具數用真實的 21 個，不用 plan 寫的 24	server 只註冊 21 個工具；24 是 plan 的筆誤	test_mcp.py::test_tc0xx 同一份 21 個名單	已在報告列出
+2026-11-03	GREEN	測試維持同步寫法（asyncio.run），不裝 pytest-asyncio、tests/mcp 不放 __init__.py	與現有測試一致；__init__.py 會蓋掉真正的 mcp 套件	test_mcp_contract_tools.py::test_this_folder_has_no_package_file_and_no_async_plugin	passed
+2026-11-03	GREEN	描述長度／面向／參數說明的現況缺口用凍結清單（只能縮）而不是放寬規則	新工具必須過檢查；舊債列在 ledger 給維護者	test_mcp_contract_tools.py OVER_LIMIT/ASPECT_GAPS/UNDESCRIBED_PARAMS	passed
+2026-11-03	GREEN	錯誤訊息缺口 15 個用 xfail(strict=True)，不改產品	plan 規定不改產品；strict 讓修好那天標記必須拿掉	test_mcp_contract_writes.py GAPS	15 xfailed
+2026-11-03	GREEN	路徑洩漏檢查只對有失敗輸入的呼叫做	list_compute_envs 的正常資料本來就含站台路徑	test_mcp_contract_writes.py assert_clean paths=	passed
+2026-11-03	MUTATE	6 種破壞性驗證都在產品碼做完並還原	plan 要求證明測試真的會紅	ledger.md 破壞性驗證表	6/6 抓到（其中刪一句 when_not 需刪兩處才抓到）
