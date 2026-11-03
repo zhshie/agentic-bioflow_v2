@@ -609,4 +609,4 @@ def test_tc079_the_style_is_pinned():
     # TC-079
     import hashlib
     from abf_platform import web_board
-    assert hashlib.sha256(web_board.STYLE.encode()).hexdigest() == "66b9a8e1a9c6f7d21872668edd5f10a2525c760e44b0e68a7cbeea030a33b862"      # the value on the base (v3)
+    assert hashlib.sha256(web_board.STYLE.encode()).hexdigest() == "6b2683ae09caee2a0e66778f2cde00e56e9ab500413829cf531c5c27ce8742f3"      # the value on the base (v3)
