@@ -1,0 +1,80 @@
+# 測試案例：Slurm 主任務被排程器終結（NODE_FAIL 等）時，平台顯示 Failed 並說出排程器狀態
+
+**規格**：`specs/head-nodefail-detect/plan.md`（本任務沒有獨立 spec.md，計畫即規格；「對應需求」欄寫的是計畫的段落）　**總覽**：`test-case-overview.md`
+
+類型只有三種：
+
+- **功能**：規格說要做到的事，正常情況下做到了。
+- **例外**：出錯、缺東西、使用者做了不該做的事時，系統怎麼反應（拒絕、提示、停下）。
+- **不在範圍**：規格明講這次不做的事；測試確認它真的沒做，或會明白說「這個不支援」而不是悄悄亂做。
+
+名詞（一行說明）：「head job」＝送去 Slurm 排程器、負責啟動整條分析的那個主任務；「完成紀錄」＝Nextflow 自己寫下的「這個 run 結束了」的紀錄（平台的真相來源）；「lost」＝送出後超過 3×60 秒沒有任何完成紀錄，平台原本只能顯示「失聯」；「站台」＝在叢集上替平台執行唯讀指令的程式；「抓取」＝平台請站台讀一次 run 資料夾的唯讀工作（`fetch_run_records`）。
+
+測試檔：平台端 `platform/tests/test_head_nodefail.py`；站台端 `platform/tests/test_station_head_state.py`。每個自動測試要在註解寫出自己的 TC 編號。
+
+## User Story 1 — 被排程器終結的 head，網頁／MCP 看到 Failed 並說出原因（優先度 P1）
+
+維護者原話 4（handoff 11-01-2104 待辦第 2 點）：「平台偵測不到 head job NODE_FAIL（t1 job 78／Slurm 654018 整個看不到，站台 log 只寫 "job 78: done"）」→ 對應 TC-001。維護者原話 2：run 只有 Running／Done／Failed 三態，lost 顯示為 Failed。
+
+| 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-001 | 目標；維護者原話 2、4（重現 t1）；作法 5 | 功能 | 重現 t1：一個 run 已送出（平台 job 78、Slurm 工作編號 654018）；索引裡沒有任何 Nextflow 完成紀錄；已超過 `LOST_AFTER_SECONDS`（索引狀態是 lost）；該 run 最新一筆已完成的抓取結果是 `scheduler = {"job_id":"654018","state":"NODE_FAIL","source":"sacct"}` | 擁有者對這個 run 呼叫 `get_run` | 回傳的 `status` 是 `failed`（網頁顯示 Failed，不是失聯）；`failure.failure_reason` 恰為 `Slurm head job 654018 ended as NODE_FAIL (sacct)`（含狀態字 NODE_FAIL 與工作編號） | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-002 | 維護者原話 1；作法 5 | 功能 | 同 TC-001 | 擁有者呼叫 `get_run`，看 `failure` 欄 | `failure` 仍恰是原本那五個鍵（`status_seqera`、`failed_tasks`、`failure_reason`、`log`、`actions`），沒有新增鍵；`status_seqera == "failed"`；`actions` 含「續跑（resume）」與「重送（relaunch）」，內容與一般 failed 的 run 相同 | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-003 | 作法 3 單一表格（終結壞狀態） | 功能 | 同 TC-001，但把抓取結果的狀態逐一換成表格內九種：NODE_FAIL、BOOT_FAIL、CANCELLED、TIMEOUT、OUT_OF_MEMORY、FAILED、DEADLINE、PREEMPTED、REVOKED（來源 sacct 或 squeue 各至少涵蓋一次） | 對每一種呼叫 `get_run` | 每一種都得到 `status == "failed"`、`status_seqera == "failed"`，原因句為 `Slurm head job <工作編號> ended as <該狀態> (<來源>)`，句中是它自己的狀態字；`actions` 含續跑與重送 | 自動：`platform/tests/test_head_nodefail.py`（參數化） |
+| TC-004 | 作法 5（`get_run`、`list_runs` 共用同一個疊加函式） | 功能 | 同 TC-001 | 擁有者呼叫 `list_runs` | 清單中該 run 的 `status` 為 `failed`，其 `failure.failure_reason` 與 TC-001 同一句；疊加邏輯只在動作層一份（路由處理函式沒有第二份） | 自動：`platform/tests/test_head_nodefail.py` |
+
+## User Story 2 — 「被問到時才問一次」，不是常駐監控（優先度 P1）
+
+| 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-005 | 作法 6；作法 1；維護者原話 3（不新增常駐程式） | 功能 | 一個 lost 的 run，其發送紀錄有 Slurm 工作編號，且沒有新鮮（< 60 秒）的已完成或排隊中的抓取 | 擁有者連叫兩次 `get_run`；之後再叫一次 `list_runs` | 工作佇列裡只多出一個 `fetch_run_records` 抓取，且它帶著 `slurm_job_id`；`list_runs` 沒有排任何工作；沒有別種工作被排入 | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-006 | 作法 6（抓取完成後下一次 `get_run` 就會看到疊加） | 功能 | 一個 lost 的 run，尚無抓取結果 | 第一次 `get_run`（此時排出抓取）；站台完成該抓取，結果為 NODE_FAIL；再 `get_run` 一次 | 第一次與 v3 相同（`lost`）；第二次出現 `failed` 與含 NODE_FAIL 的原因句 | 自動：`platform/tests/test_head_nodefail.py` |
+
+## User Story 3 — 站台只在「沒有完成紀錄」時才問排程器，且不信任、不猜（優先度 P1）
+
+| 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-007 | 作法 2（sacct 狀態與正規化） | 功能 | 假站台：假 sbatch 送出後，狀態檔把該 job 設為終結狀態（squeue 查不到、sacct 有結果），run 資料夾的 log 沒有完成行。逐一用 `NODE_FAIL`、`CANCELLED by 1234`、`TIMEOUT`、`OUT_OF_MEMORY` | 對每一種呼叫 `fetch_run_records`，帶 `slurm_job_id` | 回傳 `scheduler == {"job_id":"<id>","state":"<STATE>","source":"sacct"}`，其中 `CANCELLED by 1234` 的尾巴被去掉、得到 `CANCELLED`；狀態全為大寫 | 自動：`platform/tests/test_station_head_state.py`（參數化） |
+| TC-008 | 作法 2（有完成紀錄時完全不呼叫）；維護者原話 3 | 功能 | 假站台：log 有完成行；假 squeue、假 sacct 各有呼叫計數 | 呼叫 `fetch_run_records`，帶 `slurm_job_id` | `scheduler` 為 None；假 squeue 與假 sacct 的呼叫次數都是 0 | 自動：`platform/tests/test_station_head_state.py` |
+| TC-009 | 作法 2（squeue 先問、仍在佇列就不問 sacct）；作法 3（活著的狀態） | 功能 | 假站台：log 沒有完成行；假 squeue 對該工作編號回 `RUNNING` | 呼叫 `fetch_run_records`，帶 `slurm_job_id` | `scheduler.state == "RUNNING"`、`source == "squeue"`；假 sacct 沒被呼叫 | 自動：`platform/tests/test_station_head_state.py` |
+| TC-010 | 作法 2、「不做」第 5 條（不猜） | 例外 | 假站台：log 沒有完成行；squeue 查不到；sacct 結束碼非 0（或兩者都查不到工作） | 呼叫 `fetch_run_records`，帶 `slurm_job_id` | `scheduler is None`；不丟例外；抓取工作本身仍成功回報其餘內容 | 自動：`platform/tests/test_station_head_state.py` |
+| TC-011 | 作法 2、8（只接受純數字）；既有行為（未知參數被拒） | 例外 | 假站台已就緒，並記錄收到的所有指令 | (a) 呼叫 `fetch_run_records`，`slurm_job_id="1; rm -x"`；(b) 呼叫帶一個 `fetch.ARGS` 以外的未知參數 | (a) 被拒絕，假站台沒有收到任何指令；(b) 仍被 `handlers` 拒絕（既有行為不變）；`fetch.ARGS` 原有三個鍵仍在，新增 `slurm_job_id` | 自動：`platform/tests/test_station_head_state.py` |
+
+## User Story 4 — 不誤判：活著的、已完成的、偽造的，都不能被標成失敗（優先度 P1）
+
+| 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-012 | 作法 3（活著的狀態：不可把還在排隊或執行的 head 標成失敗） | 例外 | 一個 lost 的 run，最新抓取事實的狀態逐一為 RUNNING、PENDING（並涵蓋 COMPLETING、REQUEUED、SUSPENDED、CONFIGURING） | 對每一種呼叫 `get_run` 與 `list_runs` | 全都不疊加：run 維持 v3 的原樣（`lost`、原因 None），`actions` 不含續跑或重送 | 自動：`platform/tests/test_head_nodefail.py`（參數化） |
+| TC-013 | 作法 3（COMPLETED 但無完成紀錄） | 例外 | 一個 lost 的 run，抓取事實為 `COMPLETED` | `get_run`，再嘗試續跑 | 狀態維持 `lost`；原因句為 `Slurm head job <id> completed but Nextflow left no completion record`；`actions` 不含續跑；續跑被拒 | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-014 | 作法 4、8（站台回傳是不可信資料）；作法 3（不認得的狀態不疊加） | 例外 | 一個 lost 的 run，分別有三種抓取結果：(a) 事實的 `job_id` 與該 run 發送紀錄的 `slurm_job_id` 不符；(b) 狀態不在允許清單；(c) 狀態字串過長／型別不對；另有一個情況 (d) 較舊的抓取是 NODE_FAIL、但最新一筆已完成的抓取是 `scheduler=None` 或 RUNNING | 對每一種呼叫 `get_run` | 全部不疊加（維持 v3 的 lost、原因 None）；失敗原因句不含該偽造內容；只採最新一筆已完成的抓取 | 自動：`platform/tests/test_head_nodefail.py`（參數化） |
+
+## User Story 5 — 續跑／重送閘門放行「確定被終結」的 lost run（優先度 P1）
+
+| 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-015 | 作法 7 | 功能 | 一個 lost 的 run，其 `head_state` 是終結壞狀態（如 NODE_FAIL） | 對它走續跑的前置檢查（`build._predecessor`） | 放行，視同 failed 通過 | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-016 | 作法 7（其他 lost 仍被拒）；既有 `test_a_run_that_is_lost_is_not_one_that_has_ended` 逐字不變 | 例外 | 一個 lost 的 run，沒有抓取事實（或事實是 COMPLETED、RUNNING、被偽造） | 對它走續跑的前置檢查 | 仍被拒絕，用的是既有那句拒絕的話（與 v3 逐字相同）；既有被釘住的測試未被刪改 | 自動：`platform/tests/test_head_nodefail.py` 與既有 `test_resume_platform.py` |
+
+## 憲法與安全網
+
+| 編號 | 憲法條目 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-017 | 原則 I.2（Nextflow 紀錄為真相；`tests/no_second_run_state_test.sh`）；維護者原話 3 | 功能 | 一個 run 有 Nextflow 完成紀錄（成功），同時有一筆抓取事實 NODE_FAIL | `get_run` 與 `list_runs` | 狀態仍是成功（succeeded），不疊加、無失敗原因；有任何完成紀錄的 run 都不走疊加路徑 | 自動：`platform/tests/test_head_nodefail.py`；並 `tests/no_second_run_state_test.sh` 維持綠 |
+| TC-018 | 原則 I.2（索引不是第二份真相；`test_tc030_*`／`test_tc031_*`）；計畫「不寫回索引」 | 功能 | 一個疊加成立的 lost run；記下呼叫前 runs 索引內該 run 的資料列 | 連續 `get_run`、`list_runs` | runs 索引內容與呼叫前完全相同（儲存的狀態仍是 lost）；沒有新表、新檔存放排程器狀態（抓取結果只留在既有的工作結果裡）；`test_nextflow_e2e.py` 的 `test_tc030_*`、`test_tc031_*` 維持綠 | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-019 | 專長守則：擁有者規則；Safety Net（寫入工具皆須人工確認） | 例外 | 兩位使用者 A、B；A 有一個 lost 且事實為 NODE_FAIL 的 run | B 用自己的身分對 A 的 run 呼叫 `get_run`，並呼叫 `list_runs` | `get_run` 回「找不到這個 run」（`found: False`），不洩漏疊加後的原因；`list_runs` 看不到 A 的 run；B 的呼叫沒有替 A 的 run 排任何抓取。（本案不新增任何寫入動作，故沒有「寫」的對應案例；見 TC-023 的對等性檢查） | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-020 | 專長守則：錯誤訊息與日誌；Safety Net（憑證不外露）；計畫作法 8 | 例外 | 假站台的 sacct 回出惡意或雜亂的內容：多行、很長、含看起來像路徑（如 `/home/x/...`）或 token 的字串、非允許清單的狀態 | 呼叫 `fetch_run_records` 帶 `slurm_job_id`，再由平台 `get_run` | 站台回傳的 `scheduler` 是 None 或只含允許清單內的狀態字，不含那段原文；平台顯示的原因句、站台日誌與回應都不含密鑰（token）與內部路徑；原因句說明發生了什麼事（排程器狀態）與可做的事（續跑／重送） | 自動：`platform/tests/test_station_head_state.py` 與 `platform/tests/test_head_nodefail.py` |
+
+## 不在範圍
+
+| 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-021 | 「不做」第 5 條：`squeue`／`sacct` 都查不到的 head（`scheduler=None`）維持 lost | 不在範圍 | 一個 lost 的 run：沒有任何抓取結果，或最新抓取的 `scheduler` 是 None | `get_run` 與 `list_runs` | 與 v3 逐字相同：`failure` 的 `status_seqera` 為 `unknown`、`failure_reason` 為 None；續跑依舊被擋；沒有被猜成失敗 | 自動：`platform/tests/test_head_nodefail.py`（並維持 `test_failures.py` 第 64～72 行等被釘住的斷言為綠） |
+| TC-022 | 「不做」第 3 條：送出後索引根本沒有該 run，本片不處理 | 不在範圍 | 一次 Slurm 送出已有發送紀錄，但索引裡從未出現該 run（沒有任何 Nextflow 事件） | `get_run` 該 run，並 `list_runs` | 仍是「找不到這個 run」，清單不列它；沒有因此替它建立 run 列、也沒有疊加；程式沒有宣稱支援這種情況 | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-023 | 「不做」第 4 條：不新增 job 種類、migration、狀態機、常駐監控；不寫回 runs 表；不改 MCP 工具介面與網頁字串 | 不在範圍 | 本案完成後的程式 | 比對 `jobs.KINDS` 與 `handlers.JOB_KINDS`、`migrations/` 目錄、動作層函式清單與 `list_runs`／`get_run` 的對應清單、MCP 工具清單 | `jobs.KINDS`／`handlers.JOB_KINDS` 與 base 相同（既有整組相等測試維持綠）；沒有新增 migration 檔；動作層與使用者可見動作的一一對應不變（對等性測試維持綠，兩邊同時列舉）；`get_run` 排出的只有唯讀的 `fetch_run_records`，不經確認就不會建立任何寫入類工作；無新增狀態值或常駐程式 | 自動：`platform/tests/test_head_nodefail.py` 與既有 `test_byte_channel_a.py`、`test_byte_channel_b.py`、`test_cleanup_store.py`、`test_launch_platform.py`、`test_resume_scope.py`、`test_station_platform.py`、`test_actions_layer.py` |
+| TC-024 | 「不做」第 1、2 條：不排除壞節點（25a-cpn01／02／04／05）；不在國網真機重跑 | 不在範圍 | 本案的 `git diff --stat` | 閱卷者讀 diff 與 ledger | diff 沒有任何計算環境設定、節點排除或 `--exclude` 類改動；ledger 註明「國網真機重跑為手動驗收待辦」，由維護者／操作員日後親手開 ControlMaster（2FA）驗收；executor 沒有連線任何站台 | 手動：`docs/TESTING.md`（本案須在其手動段新增「真站台 NODE_FAIL 重跑驗收」一條，只加不改） |
+
+## 文件與驗收備忘
+
+| 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-025 | 範圍：文件（`docs/PLATFORM.md` 的「Failed runs」段與 lost 狀態說明；`docs/PITFALLS.md` 新增一條） | 功能 | 本案完成後的文件 | 閱卷者讀這兩份文件 | `docs/PLATFORM.md` 說明：排程器終結的 head 會顯示 Failed 並寫出排程器狀態、COMPLETED 無紀錄仍是 lost 要人看、僅在被問到時查一次；`docs/PITFALLS.md` 新增一條「排程器終結的 head 不會留下 Nextflow 紀錄」，寫的是量到的現象（t1／Slurm 654018）而非推測 | 手動：`docs/TESTING.md`（新增的手動步驟，只加不改） |
