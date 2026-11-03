@@ -70,6 +70,7 @@ run 失敗（例如記憶體不夠）時，同事現在只能在網頁按「續�
 3. 合約規則：計畫未明寫的細節由 verifier 依專長守則與既有畫面慣例自訂預期值寫進 TC，不以「計畫未寫」退回；只有「照字面做不出來」或「違反憲法／ADR／安全」才算阻擋。
 4. 與 L32（settings-pick-installed）、L17（web-wording-sweep）同碰 `web.py`／`web_board.py` 的不同區段：落地前 `git merge origin/v3`，衝突只保留雙方新增，不改對方的字。
 5. worktree 用 Windows git 建，WSL 裡 `constitution_scope_test.sh` 紅＝環境問題，以 CI 為準，ledger 註明。
+6. （2026-11-03）10-29 停在 Build 後 v3 又前進 275 個 commit。**第一步先 `git merge origin/v3`**：已知衝突在 `docs/TESTING.md`、`platform/tests/test_clean_page.py`、`test_cleanup_offer.py`、`test_dataset_cli.py`、`test_owner_binding.py`。照第 4 條處理（兩邊新增都留、不改對方的字；雜湊類測試重算），merge commit 後跑全套，再接著完成原本的 TC。已確認的合約照用，不重出題。
 
 ## 專長守則（ui）
 
