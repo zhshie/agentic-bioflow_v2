@@ -241,12 +241,17 @@ plan, and change only by a MAJOR amendment of this constitution.
 - **Manual walkthrough.** Before a release that contains a change to `commands/`, `skills/` or
   `hooks/`, the manual half of `docs/TESTING.md` passes, after restarting the AI host so hooks
   reload.
-- **One change at a time, on a branch.** `main` receives merges only; CI
+- **One change at a time, on a branch.** Development happens on branch `v3` (`main` carries the
+  v2 line); a change reaches `v3` only by a merged pull request. CI
   (`.github/workflows/tests.yml`) MUST be green first, and the independent acceptance MUST pass.
-  Who merges follows the decision tiers: the development lead merges fixes, tests, docs,
-  refactors and changes that only make the Safety Net stricter; a change in what a user sees, or
-  a modified or removed requirement, waits for the maintainer's yes on the result; amendments to
-  this constitution, releases, and anything that loosens the Safety Net are the maintainer's.
+  Then the development lead merges the pull request: fixes, tests, docs, refactors, changes that
+  only make the Safety Net stricter, and changes in what a user sees alike (a change in what a
+  user sees is listed for the maintainer, who can ask for a follow-up). Amendments to this
+  constitution, releases, and anything that loosens the Safety Net first need the maintainer's
+  explicit yes, in his own words; only after it does the development lead merge. A change that
+  touches a protected path (`.github/`, hooks, this constitution, `plugin.json`,
+  `platform/abf_station/`) also carries a proof of what else it can affect and passes a second,
+  adversarial review before it is merged.
 
 ## Amendments
 
@@ -664,6 +669,42 @@ passwords and logins are unchanged.
 web password); no principle or Safety Net rule is removed or redefined.
 **Approval.** The maintainer approves and merges the pull request that carries this change.
 
+### 6.2.0 (2026-11-03): the development lead merges; amendments, releases and loosening still need the maintainer's yes
+
+**Rationale.** Since 2.1.0 the Development Workflow has said that a change in what a user sees
+waits for the maintainer's yes before it merges, and Governance has said that only the maintainer
+approves and merges an amendment. The practice changed on 2026-10-24, in the maintainer's words:
+「以後你都自己合併」. Since then the development lead has merged every pull request once CI was
+green and the independent acceptance passed, and the maintainer looks at user-visible results
+afterwards. Development also moved to branch `v3`, while the text still said that `main` receives
+the merges. On 2026-11-03 the maintainer approved bringing the text in line, in his words:
+「合併規則同意」.
+
+**What changes.**
+- The development lead merges every pull request after CI is green and the independent
+  acceptance passes; a change in what a user sees is listed for the maintainer afterwards.
+- Amendments to this constitution, releases, and anything that loosens the Safety Net still need
+  the maintainer's explicit yes in his own words first; only then does the development lead
+  merge. Governance says the same of amendments.
+- The development branch is named: `v3`; `main` carries the v2 line.
+- A change to a protected path (`.github/`, hooks, this constitution, `plugin.json`,
+  `platform/abf_station/`) carries a proof of what else it can affect and passes a second,
+  adversarial review before it merges.
+No principle or Safety Net rule is removed or redefined.
+
+**Sync Impact Report.** Updated together: `PRODUCT.md` (nano4 instead of Taiwania3; the web
+terminal moves from "not" to "later, after its own amendment"; interface design follows mature
+platforms such as Seqera Platform and Galaxy), `DESIGN.md` (maintainer's words 23 to 25), the tests
+that pin the version (`tests/constitution_scope_test.sh`, `tests/platform_direction_docs_test.sh`)
+and a new test for this entry.
+
+**Impact on existing deployments.** None. Only how this repository is developed changes.
+
+**Version.** MINOR, under Governance: a rule is materially expanded (who merges, and the
+protected-path review); no principle or Safety Net rule is removed or redefined.
+**Approval.** The maintainer approved this change in his own words on 2026-11-03 (「合併規則同意」);
+the development lead merges the pull request after CI is green and the acceptance passes.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -671,11 +712,12 @@ web password); no principle or Safety Net rule is removed or redefined.
   agents) MUST NOT restate a rule differently from this file; when they do, they are corrected.
 - An amendment requires, in one PR: the rationale for the change, an assessment of what it
   breaks for existing deployments, the version bump, and the matching update to any document
-  that cites the changed rule. Only the maintainer approves and merges it.
+  that cites the changed rule. Only the maintainer approves it, explicitly and in his own
+  words; after that approval the development lead merges it.
 - Versioning: MAJOR for removing or redefining a principle or any Safety Net rule; MINOR for a
   new principle or materially expanded rule; PATCH for wording that changes no meaning.
 - Every plan's Constitution Check, every `/speckit-analyze`, and every acceptance review MUST
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 6.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-25
+**Version**: 6.2.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-03
