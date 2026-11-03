@@ -153,7 +153,10 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
 
 
 def _insert_job(con, row, kind, args, now, seconds, confirmation_id=None):
-    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ?", (now - PRUNE_AFTER_SECONDS,))
+    ended = " OR ".join("instr(result_json, '\"%s\"') > 0" % word for word in sorted(failures.ENDED_BAD))
+    # a read-back that carries a bad end of the head job is kept: it is what keeps a Failed run Failed
+    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ? AND NOT (kind = 'fetch_run_records' AND state = 'done' "
+                "AND instr(result_json, '\"scheduler\"') > 0 AND (%s))" % ended, (now - PRUNE_AFTER_SECONDS,))
     cur = con.execute(
         "INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, confirmation_id) "
         "VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)",
@@ -403,11 +406,11 @@ def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, 
 
 
 HEAD_STATE_FRESH_SECONDS = 60
-HEAD_STATE_KEEP = 20
 
 
 def _fetches_of(con, launch):
-    """The newest read-backs of this run (not of its compute environment's other runs), newest first."""
+    """All the read-backs of this run (not of its compute environment's other runs) still kept, newest first. Not cut at a number:
+    a cut that counts plain read-backs would push an earlier fact out."""
     mark = json.dumps(launch["run_name"])
     cur = con.execute("SELECT * FROM jobs WHERE kind = 'fetch_run_records' AND compute_env = ? AND instr(args_json, ?) > 0 ORDER BY id DESC",
                       (launch["ce"], mark))
@@ -418,8 +421,6 @@ def _fetches_of(con, launch):
                 out.append(row)
         except (ValueError, AttributeError):
             continue
-        if len(out) >= HEAD_STATE_KEEP:
-            break
     return out
 
 
