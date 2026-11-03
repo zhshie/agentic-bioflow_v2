@@ -1,2 +1,3 @@
 ts	phase	decision	why	evidence	result
 2026-11-03	green	PRODUCT/DESIGN/兩個版本釘住/TC-E9 完成；憲法缺 "modified or removed" 不自己改	裁決2/3 規定由 developer-agent 在 charter-v4-base 補；executor 不准碰憲法	tests/charter_v4_workflow_test.sh TC-007,TC-020	2 條仍紅
+2026-11-03T18:00	finish	憲法已補回後直接跑全套	裁決2/3	38e8a55d	137/137
