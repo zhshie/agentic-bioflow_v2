@@ -685,8 +685,9 @@ the merges. On 2026-11-03 the maintainer approved bringing the text in line, in 
   acceptance passes; a change in what a user sees is listed for the maintainer afterwards.
 - Amendments to this constitution, releases, a modified or removed requirement, and anything
   that loosens the Safety Net still need the maintainer's explicit yes in his own words first;
-  only then does the development lead merge. Governance says the same of amendments. This
-  tightens the rule rather than loosening it.
+  only then does the development lead merge. Governance says the same of amendments. For a
+  modified or removed requirement this is stricter than before (the yes comes before the merge,
+  not after the result); for a change in what a user sees it is looser, as the first bullet says.
 - The development branch is named: `v3`; `main` carries the v2 line.
 - A change to a protected path (`.github/`, hooks, this constitution, `plugin.json`,
   `platform/abf_station/`) carries a proof of what else it can affect and passes a second,
