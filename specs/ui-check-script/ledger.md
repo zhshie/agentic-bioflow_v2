@@ -83,3 +83,9 @@ Base: http://127.0.0.1:38879  |  2026-11-03 14:00
 - results-390-en.png
 - usage-390-en.png
 
+
+## Test runs
+
+`bash tests/ui_check_script_test.sh`: ok (all 11 cases).
+`bash tests/run_all.sh` on the cloud VM (root, `$USER` unset, no rsync, no pytest in the system Python): 132/140 passed, 8 failed, none related to this change; ui_check_script_test.sh is ok.
+Failing files: agent_ctl_connection_id_test (passes with `USER=root`), why_pending_test, wsl_bridge_test, platform_clock_test, platform_shard_2/3/6/7 (read-only-cache cases that cannot fail as root, a Windows-shell case, and other environment-dependent cases). Not re-run on the base branch.
