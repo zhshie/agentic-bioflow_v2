@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Post-deploy smoke check: read-only probes of a deployed site.
+# Not curl: a bare curl cannot check status, redirects, header names in any case and a JSON
+# body together, and the same probes must also run under pytest -m smoke.
 # Usage: SMOKE_BASE_URL=<address of the site> bash scripts/smoke.sh
 # Run it on the desktop host after deploy/platform-upgrade.sh. It never has a
 # default address: with SMOKE_BASE_URL unset it checks nothing and exits 2.
