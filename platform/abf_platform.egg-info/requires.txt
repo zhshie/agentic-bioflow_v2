@@ -1,0 +1,6 @@
+mcp<3,>=2.3
+python-multipart
+
+[test]
+pytest
+httpx

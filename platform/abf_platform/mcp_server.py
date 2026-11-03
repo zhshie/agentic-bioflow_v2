@@ -111,16 +111,12 @@ def build_server(index_path, platform_path=None):
         return actions.run_outputs(index_path, platform_path, run_id, caller=_caller(ctx), subpath=path)
 
     @server.tool(name="read_run_file", annotations=_READ_ONLY,
-                 description="Read one file of a run of yours, by the run's id and path (a path below results/, relative, as run_outputs gave it in "
-                             "download). Read-only and only for your own runs; it never waits for the site: it answers state loading (ask "
-                             "the same call again in a few seconds), ready, error (code and reason), unavailable (the run was not launched "
-                             "from the platform, or its results are not on the site host) or too_large (a file over 25 MB: the size and the "
-                             "full site path are given, nothing is read). A text file (UTF-8, no NUL byte) comes back as text, at most "
-                             "200,000 characters from offset (counted in characters, 0 by default), with total_chars and next_offset to "
-                             "turn the page; the text goes to the model you chose. A binary file is never sent through MCP: you get its name, "
-                             "size, a note and the web download address /run/file?run=<id>&path=<p>, which the person opens when logged in. "
-                             "An HTML file (.html, .htm) is treated as a binary file: you get the same name, size, note and download address. "
-                             "Nothing is written or run.")
+                 description="Read-only: read one file of your own run, by run_id and path (below results/, from run_outputs' "
+                             "download). Never waits for the site: state is loading (ask again soon), ready, error (code, reason), "
+                             "unavailable (run not from the platform, or results not on the site host) or too_large (over 25 MB: "
+                             "size and full site path given, nothing read). Text (UTF-8) comes back as at most 200,000 characters from offset "
+                             "(default 0) with total_chars and next_offset; the text goes to the model you chose. Binary and HTML files "
+                             "are not sent: you get name, size and the download address /run/file?run=<id>&path=<p>.")
     def read_run_file(ctx: Context, run_id: str, path: str, offset: Any = 0) -> dict:
         return actions.read_run_file(index_path, platform_path, run_id, path, caller=_caller(ctx), offset=offset)
 
@@ -223,14 +219,13 @@ def _add_write_tools(server, platform_path, index_path):
 
 
     @server.tool(name="resume", annotations=_WRITES,
-                 description="Ask to resume one run of this platform that failed or was cancelled: the same folder, and Nextflow takes up where "
-                             "it stopped and reuses the tasks that finished. Optionally pass `params` (only the keys to change; they are laid over the "
-                             "parameters of the first launch) and `extra_config` (resource settings, for example `process.memory = '16 GB'`); "
-                             "the pipeline, version, samples and environment stay those of the first launch (to change them, make a new launch). "
-                             "This does NOT start anything: it writes a "
-                             "request and shows the person what would run. The person says yes in their own client's form or on a page whose "
-                             "address this returns; you cannot say it for them. It does not start anything until the person says yes. After "
-                             "they pressed send, call resume again with the same run_name to get the job number.")
+                 description="Ask to resume one failed or cancelled run: the same folder, Nextflow reuses the finished tasks. Optional params "
+                             "(only keys to change, laid over the first launch's) and extra_config (resource settings, e.g. "
+                             "`process.memory = '16 GB'`); pipeline, version, samples and environment stay as launched (to change them, "
+                             "make a new launch). This does NOT start anything: it only writes a request. The person "
+                             "says yes in their own form or on a page this returns; you cannot say it for them. It does not "
+                             "start anything until the person says yes. Then call resume again with the same "
+                             "run_name for the job number.")
     async def resume_tool(ctx: Context, run_name: str, params: dict | None = None, extra_config: str | None = None) -> dict:
         return await actions.request_resume(platform_path, run_name=run_name, params=params, extra_config=extra_config,
                                             caller=_caller(ctx), person=actions.person_at(ctx), remote=_remote(ctx), index_path=index_path)

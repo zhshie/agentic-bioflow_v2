@@ -124,8 +124,6 @@ LIMIT = 600
 OVER_LIMIT = {
     "get_run": 683,
     "launch": 968,
-    "read_run_file": 1016,
-    "resume": 807,
     "run_outputs": 700,
 }
 

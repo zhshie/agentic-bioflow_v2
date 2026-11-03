@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: abf-platform
+Version: 0.1.0
+Summary: Receiver for Nextflow's trace messages, a read-only MCP server over the runs it recorded, and the station agent that answers read-only site jobs
+Requires-Python: >=3.10
+Requires-Dist: mcp<3,>=2.3
+Requires-Dist: python-multipart
+Provides-Extra: test
+Requires-Dist: pytest; extra == "test"
+Requires-Dist: httpx; extra == "test"

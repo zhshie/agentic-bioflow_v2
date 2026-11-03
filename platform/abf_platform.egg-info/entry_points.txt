@@ -1,0 +1,3 @@
+[console_scripts]
+abf-platform = abf_platform.cli:main
+abf-station = abf_station.cli:main
