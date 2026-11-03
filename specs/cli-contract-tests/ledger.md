@@ -7,4 +7,5 @@
   產生方式：ABF_UPDATE_GOLDEN=1 跑 abf-fast-suite（鏡像目錄寫檔），複製回工作樹，再不帶變數重跑。沒有一次蓋掉全部不看的更新。
 - 環境：worktree 用 Windows git 建，WSL 內 constitution_scope_test.sh 若紅＝環境問題，以 CI 為準（裁決 4）。
 - 已知偏離（見 decisions.tsv）：`ce show`／`dataset show` 找不到時 stderr 不以 `rejected:` 開頭（現況，不能改 cli.py）；中文說明放寬為「任一處有中文」。
+- FIX ROUND（TC-004）：BLOCKED，等裁定。測試維持現況。要嚴格照合約需改 cli.py 或 test-case.md，本任務兩者皆不可動。選項：(a) 合約改成現況；(b) 另開任務統一成 rejected: 後再收緊測試。
 - 驗收核對：`git diff --stat v3...HEAD` 應只含兩支測試、__golden__/、specs/cli-contract-tests/。

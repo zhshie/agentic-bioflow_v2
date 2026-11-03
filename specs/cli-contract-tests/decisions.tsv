@@ -5,3 +5,4 @@ ts	phase	decision	why	evidence	result
 2026-11-03	tc-004	中文說明改為「訊息中任一處有中文」而非限於括號之後	現況 user cloud-cap 找不到人時中文在括號前	test_cli_contract.py:CJK_AFTER_PAREN	偏離（放寬），已列問題
 2026-11-03	gap	--version 只檢查頂層沒有；dataset register/show 有自己的 --version（資料集版本）	避免誤判	test_cli_contract.py:test_documented_gaps	完成
 2026-11-03	golden	快照由 ABF_UPDATE_GOLDEN=1 逐檔產生（鏡像目錄），複製回工作樹後逐檔審閱，再不帶變數重跑全綠	計畫作法 2	__golden__/*.txt	6 份，無暫存路徑、無 CR
+2026-11-03	fix-round	TC-004 修正輪：不改測試也不改 cli.py，回報卡住等裁定	合約要 rejected: 開頭，但 ce show／dataset show 現況不是；滿足合約只能改 cli.py（計畫禁止）或 test-case.md（無權），嚴格斷言只會永遠紅	cli.py:464-470, cli.py:633-643, test-case.md:22	卡住，待 developer-agent 或維護者裁定
