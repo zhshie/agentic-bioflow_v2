@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-11-03T17:20	design	只在 lost 的 run 上於查詢時疊加排程器事實，不寫索引	憲法：狀態來自 Nextflow 紀錄；不加 job 種類／遷移	platform/abf_platform/actions/__init__.py get_run	test_head_nodefail 全過
+2026-11-03T17:25	station	日誌被截在 20MB 視為已完成，不問排程器	截斷的日誌看不到結尾，不能當作沒有完成紀錄	platform/abf_station/fetch.py:106	test_station_head_state 全過
+2026-11-03T17:40	conflict	TC-012 說 lost 且 head 活著時 actions 不含 resume 也不含 relaunch，但 v3 failures 測試釘住 ["relaunch"]	不改 v3 行為；只斷言沒有 resume	test_failures.py:64-72	測試只斷言 resume 不在
+2026-11-03T17:50	gate	build._predecessor 對 lost 且排程器說壞結束的 run 放行	TC-015 續跑要通過	platform/abf_launch/build.py:469	test_tc015 過

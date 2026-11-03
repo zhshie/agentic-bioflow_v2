@@ -985,3 +985,8 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 2. Log in again, wait 30 seconds, call `run_outputs(run_id)`: it says `loading`; ask again after a few seconds: it is `ready` with the list (the web Outputs tab does the same when opened again).
 3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
 4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.
+
+### Head job ended by the scheduler (manual, on nano4)
+
+1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
+2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.

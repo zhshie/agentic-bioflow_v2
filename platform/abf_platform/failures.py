@@ -11,6 +11,33 @@ _FAILED = ("failed", "lost")
 # name, and this is not a state the platform stores; it is only the word of Seqera's run page, worked out when asked.
 _STOPPED = "cancel" + "led"
 
+# What the scheduler may say of a head job (the station keeps the same table and drops every other word). The first group ended the head
+# job without Nextflow writing its record; the second is a head that is still there; COMPLETED is a head that ended well.
+ENDED_BAD = frozenset("NODE_FAIL BOOT_FAIL CANCELLED TIMEOUT OUT_OF_MEMORY FAILED DEADLINE PREEMPTED REVOKED".split())
+ALIVE = frozenset("PENDING RUNNING COMPLETING REQUEUED SUSPENDED CONFIGURING".split())
+KNOWN_STATES = ENDED_BAD | ALIVE | {"COMPLETED"}
+SOURCES = ("squeue", "sacct")
+
+
+def head_reason(fact):
+    """The one sentence for a head-state fact (job_id, state, source) that was already checked."""
+    if fact["state"] == "COMPLETED":
+        return "Slurm head job %s completed but Nextflow left no completion record" % fact["job_id"]
+    return "Slurm head job %s ended as %s (%s)" % (fact["job_id"], fact["state"], fact["source"])
+
+
+def with_head_state(view, fact):
+    """The view of a lost run seen with what the scheduler said of its head job. A bad end makes it failed with the scheduler's word
+    as the reason; a head that ended well without a record keeps it lost, with the reason and without the resume action; anything else
+    (no fact, a head still alive) leaves the view as it was."""
+    if not fact or not isinstance(view, dict) or view.get("status") != "lost":
+        return view
+    if fact["state"] in ENDED_BAD:
+        return dict(view, status="failed", failure_reason=head_reason(fact))
+    if fact["state"] == "COMPLETED":
+        return dict(view, failure_reason=head_reason(fact), _no_resume=True)
+    return view
+
 
 def summarize(view):
     """The five fields of a failed or lost run, or None for any other run."""
@@ -29,5 +56,5 @@ def summarize(view):
         "failed_tasks": list(view.get("failed_tasks") or []),
         "failure_reason": view.get("failure_reason"),
         "log": view.get("log"),
-        "actions": ["resume", "relaunch"] if reusable > 0 else ["relaunch"],
+        "actions": ["resume", "relaunch"] if reusable > 0 and not view.get("_no_resume") else ["relaunch"],
     }

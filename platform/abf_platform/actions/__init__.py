@@ -90,6 +90,8 @@ def list_runs(index_path, *, caller=None, platform_path=None):
         if row["status"] in ("failed", "lost"):     # the failed tasks live in the full view; the list row stays as it was
             full = status.get_run(index_path, row["id"], at)
             if full is not None:
+                full = failures.with_head_state(full, jobs.head_state(path, row["name"]))
+                row["status"] = full["status"]
                 asked = jobs.cancel_requested_at(path, row["name"])
                 if asked is not None:
                     full["cancel_requested_at"] = common.epoch_iso_ms(asked)
@@ -107,10 +109,15 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
         view = None
     if view is None:
         return {"found": False, "id": run_id, "message": RUN_NOT_FOUND_TEXT % run_id}
+    if view["status"] == "lost":     # the one place that asks the site: only for a run the caller owns, and the answer is there next time
+        path = platform_path_for(index_path, platform_path)
+        jobs.ask_head_state(path, view["name"])
+        view = failures.with_head_state(view, jobs.head_state(path, view["name"]))
     asked = jobs.cancel_requested_at(platform_path_for(index_path, platform_path), view["name"])
     if asked is not None:        # a fact about a request that was sent, never a state of the run (the status stays Nextflow's word)
         view["cancel_requested_at"] = common.epoch_iso_ms(asked)
     view["failure"] = failures.summarize(view)
+    view.pop("_no_resume", None)
     view["su"] = _su_of_run(index_path, view, platform_path_for(index_path, platform_path))
     return view
 

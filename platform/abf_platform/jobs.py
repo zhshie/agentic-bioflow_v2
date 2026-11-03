@@ -24,7 +24,7 @@ import stat as stat_mod
 import time
 from pathlib import Path
 
-from . import cloud_store, common, compute_envs, records, releases, store
+from . import cloud_store, common, compute_envs, failures, records, releases, store
 
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
@@ -394,9 +394,95 @@ def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, 
             raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
                 run_name, launch["agent"], launch["ce"], row["agent"]))
         args = {"ce": compute_envs.snapshot(row), "run_name": launch["run_name"], "run_folder": launch["run_folder"]}
+        if launch["slurm_job_id"] is not None:      # lets the station say what the scheduler knows of the head job when the log has no end
+            args["slurm_job_id"] = str(launch["slurm_job_id"])
         return _insert_job(con, row, "fetch_run_records", args, now, seconds)
 
     return transaction(state_path, work)
+
+
+HEAD_STATE_FRESH_SECONDS = 60
+
+
+def clean_scheduler(raw):
+    """What the station said of the head job, kept only if it is exactly {job_id, state, source} of known words; else None."""
+    if not isinstance(raw, dict) or set(raw) != {"job_id", "state", "source"}:
+        return None
+    number, state, source = raw["job_id"], raw["state"], raw["source"]
+    if not (isinstance(number, str) and re.fullmatch(r"[0-9]{1,10}", number)):
+        return None
+    if not (isinstance(state, str) and state in failures.KNOWN_STATES) or source not in failures.SOURCES:
+        return None
+    return {"job_id": number, "state": state, "source": source}
+
+
+def _fetches_of(con, launch):
+    rows = con.execute("SELECT * FROM jobs WHERE kind = 'fetch_run_records' AND compute_env = ? ORDER BY id DESC LIMIT 100",
+                       (launch["ce"],)).fetchall()
+    out = []
+    for row in rows:
+        try:
+            if json.loads(row["args_json"]).get("run_name") == launch["run_name"]:
+                out.append(row)
+        except (ValueError, AttributeError):
+            continue
+    return out
+
+
+def head_state(state_path, run_name):
+    """What the newest finished read-back of this run said of its Slurm head job: {job_id, state, source}, or None. Only reads. The
+    fact counts only if it names this launch's own Slurm number and a word of the table; nothing else is believed."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        launch = latest_launch(con, run_name)
+        if launch is None or launch["slurm_job_id"] is None:
+            return None
+        for row in _fetches_of(con, launch):
+            if row["state"] != "done":
+                continue
+            try:
+                fact = clean_scheduler((json.loads(row["result_json"]) or {}).get("scheduler"))
+            except (ValueError, AttributeError, TypeError):
+                fact = None
+            if fact is not None and fact["job_id"] != str(launch["slurm_job_id"]):
+                fact = None
+            return fact      # the newest finished read-back is the only one that counts
+        return None
+    except (sqlite3.Error, IndexError, KeyError):
+        return None
+    finally:
+        con.close()
+
+
+def ask_head_state(state_path, run_name, clock=time.time):
+    """Queue one read-back of a lost run so that the scheduler's word is there next time, unless one is already waiting or finished
+    less than a minute ago. Never raises and never waits; it adds no new kind of job."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return False
+    now = clock()
+    try:
+        launch = latest_launch(con, run_name)
+        if launch is None or launch["slurm_job_id"] is None:
+            return False
+        for row in _fetches_of(con, launch):
+            if row["state"] in ("queued", "claimed") and row["deadline_at"] > now:
+                return False
+            if row["state"] == "done":
+                if (row["finished_at"] or 0) > now - HEAD_STATE_FRESH_SECONDS:
+                    return False
+                break
+    except (sqlite3.Error, IndexError, KeyError):
+        return False
+    finally:
+        con.close()
+    try:
+        enqueue_fetch(state_path, run_name, clock=clock)
+        return True
+    except (JobRefused, sqlite3.Error):
+        return False
 
 
 def enqueue_task_log(state_path, run_name, workdir, filename, clock=time.time, deadline_seconds=None, offline_after=None,
@@ -1168,6 +1254,7 @@ def clean_result(kind, result, stored=None):
     elif kind == "fetch_run_records":
         out["files"] = [{"name": f["name"], "size": f["size"], "truncated": f["truncated"]} for f in (stored or {}).get("files", [])]
         out["refused"] = [_short(x, 200) for x in (stored or {}).get("refused", [])][:50]
+        out["scheduler"] = clean_scheduler(result.get("scheduler"))
     else:
         for key in ("path",):
             if isinstance(result.get(key), str):
