@@ -8,7 +8,7 @@
 - **例外**：出錯、缺東西、使用者做了不該做的事時，系統怎麼反應（拒絕、提示、停下）。
 - **不在範圍**：規格明講這次不做的事；測試確認它真的沒做，或會明白說「這個不支援」而不是悄悄亂做。
 
-名詞（一行說明）：「head job」＝送去 Slurm 排程器、負責啟動整條分析的那個主任務；「完成紀錄」＝Nextflow 自己寫下的「這個 run 結束了」的紀錄（平台的真相來源）；「lost」＝送出後超過 3×60 秒沒有任何完成紀錄，平台原本只能顯示「失聯」；「站台」＝在叢集上替平台執行唯讀指令的程式；「抓取」＝平台請站台讀一次 run 資料夾的唯讀工作（`fetch_run_records`）。
+名詞（一行說明）：「head job」＝送去 Slurm 排程器、負責啟動整條分析的那個主任務；「完成紀錄」＝Nextflow 自己寫下的「這個 run 結束了」的紀錄（平台的真相來源）；「lost」＝送出後超過 3×60 秒沒有任何完成紀錄，平台原本只能顯示「失聯」；「站台」＝在叢集上替平台執行唯讀指令的程式；「抓取」＝平台請站台讀一次 run 資料夾的唯讀工作（`fetch_run_records`）；「事實」＝抓取結果裡的 `scheduler` 欄（排程器對該 head job 的回答）；「終結壞狀態」＝計畫作法 3 表格內的九種：NODE_FAIL、BOOT_FAIL、CANCELLED、TIMEOUT、OUT_OF_MEMORY、FAILED、DEADLINE、PREEMPTED、REVOKED。
 
 測試檔：平台端 `platform/tests/test_head_nodefail.py`；站台端 `platform/tests/test_station_head_state.py`。每個自動測試要在註解寫出自己的 TC 編號。
 
@@ -46,7 +46,7 @@
 |---|---|---|---|---|---|---|
 | TC-012 | 作法 3（活著的狀態：不可把還在排隊或執行的 head 標成失敗） | 例外 | 一個 lost 的 run，最新抓取事實的狀態逐一為 RUNNING、PENDING（並涵蓋 COMPLETING、REQUEUED、SUSPENDED、CONFIGURING） | 對每一種呼叫 `get_run` 與 `list_runs` | 全都不疊加：run 維持 v3 的原樣（`lost`、原因 None），`actions` 不含續跑（`relaunch` 沿用 v3 原樣，維護者裁決 11-03：lost 仍可重送） | 自動：`platform/tests/test_head_nodefail.py`（參數化） |
 | TC-013 | 作法 3（COMPLETED 但無完成紀錄） | 例外 | 一個 lost 的 run，抓取事實為 `COMPLETED` | `get_run`，再嘗試續跑 | 狀態維持 `lost`；原因句為 `Slurm head job <id> completed but Nextflow left no completion record`；`actions` 不含續跑；續跑被拒 | 自動：`platform/tests/test_head_nodefail.py` |
-| TC-014 | 作法 4、8（站台回傳是不可信資料）；作法 3（不認得的狀態不疊加） | 例外 | 一個 lost 的 run，分別有三種抓取結果：(a) 事實的 `job_id` 與該 run 發送紀錄的 `slurm_job_id` 不符；(b) 狀態不在允許清單；(c) 狀態字串過長／型別不對；另有一個情況 (d) 較舊的抓取是 NODE_FAIL、但最新一筆已完成的抓取是 `scheduler=None` 或 RUNNING | 對每一種呼叫 `get_run` | 全部不疊加（維持 v3 的 lost、原因 None）；失敗原因句不含該偽造內容；只採最新一筆已完成的抓取 | 自動：`platform/tests/test_head_nodefail.py`（參數化） |
+| TC-014 | 作法 4、8（站台回傳是不可信資料）；作法 3（不認得的狀態不疊加）；裁決 P2 修訂（11-04） | 例外 | 一個 lost 的 run，分別有三種抓取結果：(a) 事實的 `job_id` 與該 run 發送紀錄的 `slurm_job_id` 不符；(b) 狀態不在允許清單；(c) 狀態字串過長／型別不對；另有一個情況 (d) 較舊的抓取是 NODE_FAIL、但較新的一筆已完成的抓取事實是 RUNNING（或 PENDING）（較新一筆是 `scheduler=None` 的情況改由 TC-031 負責） | 對每一種呼叫 `get_run` | 全部不疊加（維持 v3 的 lost、原因 None）；失敗原因句不含該偽造內容；(d) 以較新的活著事實為準，不疊加 | 自動：`platform/tests/test_head_nodefail.py`（參數化） |
 
 ## User Story 5 — 續跑／重送閘門放行「確定被終結」的 lost run（優先度 P1）
 
@@ -68,7 +68,7 @@
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-021 | 「不做」第 5 條：`squeue`／`sacct` 都查不到的 head（`scheduler=None`）維持 lost | 不在範圍 | 一個 lost 的 run：沒有任何抓取結果，或最新抓取的 `scheduler` 是 None | `get_run` 與 `list_runs` | 與 v3 逐字相同：`failure` 的 `status_seqera` 為 `unknown`、`failure_reason` 為 None；續跑依舊被擋；沒有被猜成失敗 | 自動：`platform/tests/test_head_nodefail.py`（並維持 `test_failures.py` 第 64～72 行等被釘住的斷言為綠） |
+| TC-021 | 「不做」第 5 條：`squeue`／`sacct` 都查不到的 head（`scheduler=None`）維持 lost | 不在範圍 | 一個 lost 的 run：沒有任何抓取結果，或所有抓取的 `scheduler` 都是 None（沒有任何較早的終結壞狀態事實） | `get_run` 與 `list_runs` | 與 v3 逐字相同：`failure` 的 `status_seqera` 為 `unknown`、`failure_reason` 為 None；續跑依舊被擋；沒有被猜成失敗 | 自動：`platform/tests/test_head_nodefail.py`（並維持 `test_failures.py` 第 64～72 行等被釘住的斷言為綠） |
 | TC-022 | 「不做」第 3 條：送出後索引根本沒有該 run，本片不處理 | 不在範圍 | 一次 Slurm 送出已有發送紀錄，但索引裡從未出現該 run（沒有任何 Nextflow 事件） | `get_run` 該 run，並 `list_runs` | 仍是「找不到這個 run」，清單不列它；沒有因此替它建立 run 列、也沒有疊加；程式沒有宣稱支援這種情況 | 自動：`platform/tests/test_head_nodefail.py` |
 | TC-023 | 「不做」第 4 條：不新增 job 種類、migration、狀態機、常駐監控；不寫回 runs 表；不改 MCP 工具介面與網頁字串 | 不在範圍 | 本案完成後的程式 | 比對 `jobs.KINDS` 與 `handlers.JOB_KINDS`、`migrations/` 目錄、動作層函式清單與 `list_runs`／`get_run` 的對應清單、MCP 工具清單 | `jobs.KINDS`／`handlers.JOB_KINDS` 與 base 相同（既有整組相等測試維持綠）；沒有新增 migration 檔；動作層與使用者可見動作的一一對應不變（對等性測試維持綠，兩邊同時列舉）；`get_run` 排出的只有唯讀的 `fetch_run_records`，不經確認就不會建立任何寫入類工作；無新增狀態值或常駐程式 | 自動：`platform/tests/test_head_nodefail.py` 與既有 `test_byte_channel_a.py`、`test_byte_channel_b.py`、`test_cleanup_store.py`、`test_launch_platform.py`、`test_resume_scope.py`、`test_station_platform.py`、`test_actions_layer.py` |
 | TC-024 | 「不做」第 1、2 條：不排除壞節點（25a-cpn01／02／04／05）；不在國網真機重跑 | 不在範圍 | 本案的 `git diff --stat` | 閱卷者讀 diff 與 ledger | diff 沒有任何計算環境設定、節點排除或 `--exclude` 類改動；ledger 註明「國網真機重跑為手動驗收待辦」，由維護者／操作員日後親手開 ControlMaster（2FA）驗收；executor 沒有連線任何站台 | 手動：`docs/TESTING.md`（本案須在其手動段新增「真站台 NODE_FAIL 重跑驗收」一條，只加不改） |
@@ -79,12 +79,24 @@
 |---|---|---|---|---|---|---|
 | TC-025 | 範圍：文件（`docs/PLATFORM.md` 的「Failed runs」段與 lost 狀態說明；`docs/PITFALLS.md` 新增一條） | 功能 | 本案完成後的文件 | 閱卷者讀這兩份文件 | `docs/PLATFORM.md` 說明：排程器終結的 head 會顯示 Failed 並寫出排程器狀態、COMPLETED 無紀錄仍是 lost 要人看、僅在被問到時查一次；`docs/PITFALLS.md` 新增一條「排程器終結的 head 不會留下 Nextflow 紀錄」，寫的是量到的現象（t1／Slurm 654018）而非推測 | 手動：`docs/TESTING.md`（新增的手動步驟，只加不改） |
 
-
-## 對抗審追加（Opus，11-03）
+## 對抗審追加（Opus，11-03；計畫裁決 O）
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-026 | 裁決 O(1)：限流算任何狀態 | 邊界 | 一個 lost 的 run，其 head-state 抓取依序以 refused、error、expired 結束（各測一次） | 5 秒內對該 run 連續呼叫 get_run 5 次 | 該 run 的 fetch_run_records 列總數為 1，不是 5；另測兩個同時的 get_run 只排 1 筆 | 自動測試 |
-| TC-027 | 裁決 O(2)：舊站台代理相容 | 回歸 | 一般 `enqueue_fetch`（CLI `abf-launch fetch` 路徑）；以及 head-state 查詢 | 比對兩條路徑送出的 args 鍵 | 一般路徑鍵集合恰為 {ce, run_name, run_folder}；只有 head-state 路徑多 slurm_job_id；head-state 被 refused 時 run 維持 lost | 自動測試 |
-| TC-028 | 裁決 O(3)：LIMIT 順序 | 邊界 | run x 有 30 秒前的 NODE_FAIL 事實；同一運算環境上 run y 之後又有 100 筆新抓取 | 對 x 呼叫 get_run 與 list_runs | 兩者都顯示 failed，不是 lost | 自動測試 |
-| TC-029 | 裁決 O(4)：log 超過 20 MB | 邊界 | lost 的 run，.nextflow.log 超過 20 MB 被截斷、沒有完成行，排程器回 NODE_FAIL | get_run | 仍會問排程器並顯示 failed | 自動測試 |
+| TC-026 | 裁決 O(1)：限流算任何狀態 | 例外 | 一個 lost 的 run，其 head-state 抓取依序以 refused、error、expired 結束（各測一次） | 5 秒內對該 run 連續呼叫 get_run 5 次 | 該 run 的 fetch_run_records 列總數為 1，不是 5；另測兩個同時的 get_run 只排 1 筆 | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-027 | 裁決 O(2)：舊站台代理相容 | 功能 | 一般 `enqueue_fetch`（CLI `abf-launch fetch` 路徑）；以及 head-state 查詢 | 比對兩條路徑送出的 args 鍵 | 一般路徑鍵集合恰為 {ce, run_name, run_folder}；只有 head-state 路徑多 slurm_job_id；head-state 被 refused 時 run 維持 lost | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-028 | 裁決 O(3)：LIMIT 順序 | 功能 | run x 有 30 秒前的 NODE_FAIL 事實；同一運算環境上 run y 之後又有 100 筆新抓取 | 對 x 呼叫 get_run 與 list_runs | 兩者都顯示 failed，不是 lost | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-029 | 裁決 O(4)：log 超過 20 MB | 例外 | lost 的 run，.nextflow.log 超過 20 MB 被截斷、沒有完成行，排程器回 NODE_FAIL | get_run | 仍會問排程器並顯示 failed | 自動：`platform/tests/test_station_head_state.py` 與 `platform/tests/test_head_nodefail.py` |
+
+## 裁決 P 修正輪（/code-review 對 PR #318，11-04）
+
+每項先寫會失敗的測試，再修。TC-035 是修正輪的第一步與收尾條件。
+
+| 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
+|---|---|---|---|---|---|---|
+| TC-030 | 裁決 P1：沒問排程器的普通抓取不得蓋掉較早的 NODE_FAIL 事實 | 功能 | 一個 lost 的 run（發送紀錄工作編號 654018）；較早一筆已完成的抓取結果帶 `scheduler = {"job_id":"654018","state":"NODE_FAIL","source":"sacct"}`；之後同一個 run 又有一筆已完成的普通抓取（例如 `abf-launch fetch` 路徑），其結果沒有 `scheduler` 鍵 | 擁有者呼叫 `get_run` 與 `list_runs` | 兩者都仍是 `status == "failed"`，原因句仍恰為 `Slurm head job 654018 ended as NODE_FAIL (sacct)`；`head_state` 只採「結果帶 scheduler 鍵、且是這個 run 的」抓取中最新的一筆 | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-031 | 裁決 P2：站台這次問不到＝沒有新事實，不得以 scheduler=None 覆蓋已有的終結壞狀態 | 例外 | 一個 lost 的 run；較早一筆已完成的抓取事實是 NODE_FAIL（工作編號與發送紀錄相符）；較新一筆已完成的抓取是 `scheduler = None`（squeue 與 sacct 都失敗、查無或連線斷線） | 擁有者連續多次呼叫 `get_run` 與 `list_runs`（其間再加入更多 `scheduler=None` 的新抓取） | 每一次都仍是 `status == "failed"` 且原因句含 NODE_FAIL 與工作編號；從頭到尾沒有在 Failed 與 lost 之間來回 | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-032 | 裁決 P3：已有終結事實就不再每分鐘重問 | 功能 | 一個 lost 的 run，有 Slurm 工作編號；最新有效事實是終結壞狀態（如 NODE_FAIL）；該抓取已超過 60 秒 | 擁有者呼叫 `get_run`（隔過 60 秒後再呼叫一次） | 兩次呼叫後，該 run 的 `fetch_run_records` 列總數沒有增加（沒有排新的抓取）；兩次都是 `failed` | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-033 | 裁決 P3：caller 為 None 時不得替任何人排站台工作 | 例外 | 一個 lost 的 run，有 Slurm 工作編號，且沒有新鮮的抓取（照 TC-005 本來會被排一個抓取的情況） | 以 caller 為 None 呼叫 `get_run` | 工作佇列沒有多出任何 `fetch_run_records`（也沒有其他種類的工作）；不丟例外 | 自動：`platform/tests/test_head_nodefail.py` |
+| TC-034 | 裁決 P4：輪替的日誌缺 `_STARTED` 標記時，不得把第一次嘗試的 NODE_FAIL 靜默丟掉，寧可問排程器 | 例外 | 假站台：run 資料夾的目前 `.nextflow.log` 有完成行（例如續跑的那次）；另有輪替檔 `.nextflow.log.1` 沒有「看得出真的跑過」的啟動標記、也沒有完成行；假 sacct 對該工作編號回 `NODE_FAIL` | 呼叫 `fetch_run_records`，帶 `slurm_job_id` | 站台仍詢問排程器（假 squeue 或假 sacct 呼叫次數至少 1），回傳的 `scheduler` 含 `NODE_FAIL`；沒有因為目前的 log 有完成行就跳過詢問。對照：TC-008（所有 log 都看得出真的跑過且都有完成行）仍是 0 次呼叫 | 自動：`platform/tests/test_station_head_state.py` |
+| TC-035 | 裁決 P5、P6：修正輪第一步先 `git merge origin/v3`（不 rebase、不 force push），解完衝突、全套先綠，再做 1–4 | 功能 | 修正輪完成後的分支 | 閱卷者執行 `git merge-base --is-ancestor origin/v3 HEAD`、查看歷史有無合併提交、比對被釘住的既有測試與 base | origin/v3 是 HEAD 的祖先；歷史中有合併提交（不是 rebase 重寫）；被釘住的既有測試（計畫「允許的斷言」）只增不減、未放寬；TC-030～034 每一項都有自己的新測試，且各自在修正前會失敗（RED 提交先於 GREEN 提交） | 閱卷者查 git 紀錄與 diff（不是產品行為，不需寫入 `docs/TESTING.md`）；全套綠由 GATE 完成記號證明 |
