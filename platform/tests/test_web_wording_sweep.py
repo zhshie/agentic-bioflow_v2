@@ -146,7 +146,7 @@ def test_2b_still_uses_the_shared_list():
 
 def tables():
     from abf_platform import web, web_board, web_cost, web_finished, web_settings, web_upload
-    return {"web_board.STRINGS": web_board.STRINGS, "web_board.GUIDED": web_board.GUIDED, "web_settings.STRINGS": web_settings.STRINGS,
+    return {"web_board.STRINGS": web_board.STRINGS, "web_board.RESUME_EDIT": web_board.RESUME_EDIT, "web_board.GUIDED": web_board.GUIDED, "web_settings.STRINGS": web_settings.STRINGS,
             "web_cost.STRINGS": web_cost.STRINGS, "web_finished.STRINGS": web_finished.STRINGS, "web_upload.STRINGS": web_upload.STRINGS,
             "web._PLAIN": web._PLAIN}
 
@@ -210,7 +210,7 @@ def test_every_zh_table_is_covered():
     real = {path.stem: path.read_text(encoding="utf-8") for path in sorted(PKG.glob("web*.py"))}
     found = scan_web_sources(real)
     assert found == set(tables()), (found ^ set(tables()))
-    assert len(found) == 7
+    assert len(found) == 8
     # TC-078: a fake module with one more dictionary that holds Chinese shows up as one more table, so the comparison above would turn red
     fake = dict(real, web_fake='NEW_STRINGS = {"zh": {"hello": "你好"}, "en": {"hello": "hi"}}\nPLAIN = {"a": "b"}\n')
     more = scan_web_sources(fake)
