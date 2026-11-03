@@ -15,3 +15,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	test	TC-008 測試的輪替檔改成「看得出真的跑過且有完成行」，斷言不動	合約 TC-008 字面如此；P4 後只寫 "old log" 的輪替檔與 TC-034 無法區分，必須問排程器	test_station_head_state.py:47	—
 2026-11-04	fix	全套發現：jobs.py 的註解不得含 sched 字樣（既有 aws/azure 範圍測試）；pitfalls_format_test 釘死 94 條，加 #59 後改為 95（只增不減）；#59 的 Touches 項目改成條目文字內有的詞	TC-025 計畫要求新增一條	tests/pitfalls_format_test.sh	—
 2026-11-04	fix	修剪 jobs 時保留帶壞結束事實的 fetch_run_records；_fetches_of 不再只取 20 筆	對抗審：7 天後事實被刪 Failed 變回 lost；20 筆普通抓取擠掉事實（裁決 P1/P2）	jobs.py:_insert_job, _fetches_of; test_head_nodefail.py TC-035/036	測試綠
+2026-11-04	fix	修剪條件的 SQL 移到 failures.kept_fact_sql	全套發現 aws/azure 範圍測試禁 jobs.py 出現 sched 字樣	failures.py:kept_fact_sql	相關測試綠

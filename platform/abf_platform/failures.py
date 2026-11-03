@@ -38,6 +38,13 @@ def head_fact_of(result):
     return _clean_fact(result.get("scheduler")) if isinstance(result, dict) else None
 
 
+def kept_fact_sql():
+    """A SQL condition on result_json of a read-back that carries a bad end of the head job: such a row is not pruned with the
+    others, since the Failed look of a run rests on it."""
+    ended = " OR ".join("instr(result_json, '\"%s\"') > 0" % word for word in sorted(ENDED_BAD))
+    return "(state = 'done' AND instr(result_json, '\"scheduler\"') > 0 AND (%s))" % ended
+
+
 def head_fact_entry(result):
     """The one key of a read-back's result that is kept for the fact, checked."""
     return {"scheduler": head_fact_of(result)}

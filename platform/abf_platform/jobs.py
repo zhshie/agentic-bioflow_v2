@@ -153,10 +153,9 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
 
 
 def _insert_job(con, row, kind, args, now, seconds, confirmation_id=None):
-    ended = " OR ".join("instr(result_json, '\"%s\"') > 0" % word for word in sorted(failures.ENDED_BAD))
     # a read-back that carries a bad end of the head job is kept: it is what keeps a Failed run Failed
-    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ? AND NOT (kind = 'fetch_run_records' AND state = 'done' "
-                "AND instr(result_json, '\"scheduler\"') > 0 AND (%s))" % ended, (now - PRUNE_AFTER_SECONDS,))
+    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ? AND NOT (kind = 'fetch_run_records' AND %s)"
+                % failures.kept_fact_sql(), (now - PRUNE_AFTER_SECONDS,))
     cur = con.execute(
         "INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, confirmation_id) "
         "VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)",
