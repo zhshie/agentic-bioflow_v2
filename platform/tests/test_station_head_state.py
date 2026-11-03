@@ -153,3 +153,15 @@ def test_adversary_every_attempt_has_its_completion_line_so_the_scheduler_is_not
     res = fetch_with(tmp_path, site, fake)
     assert res["result"]["scheduler"] is None
     assert calls_of(site, "squeue") == [] and calls_of(site, "sacct") == []
+
+
+def test_tc034_a_rotated_log_without_a_start_mark_still_asks_the_scheduler(tmp_path, site, fake):
+    # TC-034 (ruling P4): the first attempt's log shows no start mark and no completion line; the resume's log has the line. Ask, do not skip.
+    f = make_records(site, "run-a")
+    (f / ".nextflow.log.1").write_text("the node died here\n")
+    (f / ".nextflow.log").write_text("resume log\n" + DONE)
+    site.set("sacct_654018", "NODE_FAIL\n")
+    res = fetch_with(tmp_path, site, fake)
+    assert res["state"] == "done", res
+    assert res["result"]["scheduler"] == {"job_id": "654018", "state": "NODE_FAIL", "source": "sacct"}
+    assert len(calls_of(site, "squeue")) + len(calls_of(site, "sacct")) >= 1

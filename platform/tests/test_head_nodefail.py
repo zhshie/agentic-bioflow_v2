@@ -16,6 +16,7 @@ BAD = ["NODE_FAIL", "BOOT_FAIL", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY", "FAILE
 ALIVE = ["RUNNING", "PENDING", "COMPLETING", "REQUEUED", "SUSPENDED", "CONFIGURING"]
 SLURM = 654018
 FIVE = {"status_seqera", "failed_tasks", "failure_reason", "log", "actions"}
+ME = object()      # "the person who owns the lost runs of this file" (owner(rig)); pass None to ask as no one
 
 
 @pytest.fixture
@@ -23,8 +24,10 @@ def rig(tmp_path, monkeypatch):
     return Rig(tmp_path, monkeypatch)
 
 
-def lost_run(rig, run="x", slurm=SLURM, succeeded=3, caller=None, status=None):
+def lost_run(rig, run="x", slurm=SLURM, succeeded=3, caller=ME, status=None):
     """A run that was handed over to Slurm, whose last Nextflow message is long ago and that has no completion record: lost."""
+    if caller is ME:
+        caller = owner(rig)
     rig.first(run, status=status, slurm=slurm, caller=caller)
     con = sqlite3.connect(str(rig.index))
     with con:
@@ -57,13 +60,22 @@ def fact(state, source="sacct", job_id=str(SLURM)):
     return {"job_id": job_id, "state": state, "source": source}
 
 
-def get(rig, run_id, caller=None):
+def owner(rig):
+    """A real person who owns the lost runs below: only a run a caller owns is asked about (ruling P3)."""
+    if not hasattr(rig, "_duo"):
+        rig._duo = Duo(rig.w)
+    return rig._duo.a
+
+
+def get(rig, run_id, caller=ME):
     from abf_platform import actions
+    caller = owner(rig) if caller is ME else caller
     return actions.get_run(rig.index, run_id, caller=caller, platform_path=rig.state)
 
 
-def listed(rig, name, caller=None):
+def listed(rig, name, caller=ME):
     from abf_platform import actions
+    caller = owner(rig) if caller is ME else caller
     rows = actions.list_runs(rig.index, caller=caller, platform_path=rig.state)["runs"]
     return [r for r in rows if r["name"] == name]
 
@@ -207,7 +219,7 @@ def test_tc014_a_fact_that_does_not_fit_is_ignored(rig, how):
     assert "NODE_FAIL" not in json.dumps(v["failure"]) and "EXPLODED" not in json.dumps(v["failure"])
 
 
-@pytest.mark.parametrize("newest", [None, fact("RUNNING", "squeue")])
+@pytest.mark.parametrize("newest", [fact("RUNNING", "squeue")])      # a newer None is TC-031 (ruling P2)
 def test_tc014_only_the_newest_finished_fetch_counts(rig, newest):
     # TC-014 (d)
     rid = lost_run(rig)
@@ -257,12 +269,12 @@ def test_tc016_every_other_lost_run_is_still_refused_with_the_old_sentence(rig, 
 
 def test_tc017_a_nextflow_record_wins_over_the_scheduler(rig):
     # TC-017
-    rig.first("x", status="succeeded", slurm=SLURM)
+    rig.first("x", status="succeeded", slurm=SLURM, caller=owner(rig))
     add_fetch(rig, "x", fact("NODE_FAIL"))
     v = get(rig, "id-x")
     assert v["status"] == "succeeded" and v["failure"] is None
     assert listed(rig, "x")[0]["status"] == "succeeded"
-    rig.first("z", status="failed", slurm=SLURM + 1)
+    rig.first("z", status="failed", slurm=SLURM + 1, caller=owner(rig))
     add_fetch(rig, "z", fact("TIMEOUT", job_id=str(SLURM + 1)), slurm=SLURM + 1)
     assert get(rig, "id-z")["failure"]["failure_reason"] != reason("TIMEOUT", number=SLURM + 1)
     assert len(fetch_jobs(rig)) == 2      # and a succeeded or failed run is never asked about
@@ -322,6 +334,7 @@ def test_tc021_without_a_fact_the_run_is_exactly_what_v3_shows(rig, how):
 def test_tc022_a_launch_the_index_never_heard_of_is_still_not_found(rig):
     # TC-022
     from abf_platform import actions
+    owner(rig)
     rig.first("ghost", slurm=SLURM, with_run=False)
     before = rig.sql("SELECT COUNT(*) FROM jobs")[0][0]
     assert actions.get_run(rig.index, "id-ghost", platform_path=rig.state)["found"] is False
@@ -418,3 +431,47 @@ def test_tc028_the_fact_is_not_pushed_out_by_other_runs_fetches(rig):
         add_fetch(rig, "y", fact("RUNNING", "squeue", "777"), age=1, slurm=777)
     assert get(rig, rid)["status"] == "failed"
     assert [r["status"] for r in listed(rig, "x")] == ["failed"]
+
+
+# ---- code-review fixes (ruling P, PR #318) ----------------------------------------------------------------------------------------
+
+def test_tc030_a_plain_fetch_does_not_cover_an_earlier_nodefail_fact(rig):
+    # TC-030 (P1): only a read-back that carries the scheduler key and is this run's counts; a plain one (abf-launch fetch) is no answer
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=500)
+    add_fetch(rig, "x", None, age=100, with_key=False)
+    v = get(rig, rid)
+    assert v["status"] == "failed" and v["failure"]["failure_reason"] == reason("NODE_FAIL")
+    (row,) = listed(rig, "x")
+    assert row["status"] == "failed" and row["failure"]["failure_reason"] == reason("NODE_FAIL")
+
+
+def test_tc031_a_site_that_could_not_ask_does_not_take_back_a_nodefail_fact(rig):
+    # TC-031 (P2): scheduler=None is "no new fact", the run never flips between failed and lost
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=500)
+    for n in range(4):
+        add_fetch(rig, "x", None, age=300 - 50 * n)
+        v = get(rig, rid)
+        assert v["status"] == "failed" and v["failure"]["failure_reason"] == reason("NODE_FAIL"), n
+        (row,) = listed(rig, "x")
+        assert row["status"] == "failed" and row["failure"]["failure_reason"] == reason("NODE_FAIL"), n
+
+
+def test_tc032_a_known_end_is_not_asked_again_every_minute(rig):
+    # TC-032 (P3)
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=120)
+    n = len(fetch_jobs(rig))
+    assert get(rig, rid)["status"] == "failed"
+    assert get(rig, rid)["status"] == "failed"
+    assert len(fetch_jobs(rig)) == n
+
+
+def test_tc033_no_caller_queues_nothing_for_anyone(rig):
+    # TC-033 (P3)
+    rid = lost_run(rig)
+    before = rig.sql("SELECT COUNT(*) FROM jobs")[0][0]
+    v = get(rig, rid, caller=None)
+    assert v["status"] == "lost"
+    assert rig.sql("SELECT COUNT(*) FROM jobs")[0][0] == before and fetch_jobs(rig) == []
