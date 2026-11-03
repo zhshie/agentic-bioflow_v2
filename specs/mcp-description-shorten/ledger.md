@@ -26,3 +26,9 @@ FAILED tests/mcp/test_mcp_contract_tools.py::test_descriptions_within_limit
 
 ## Full test run
 Not recorded here: see the PR description for the state of the full run at the time of opening.
+
+## K0 cleanup (cloud-burn, 2026-11-04)
+- Untracked `platform/abf_platform.egg-info/` (6 files) and added `platform/*.egg-info/` and `platform/build/` to .gitignore (right under `__pycache__/`).
+- Merged origin/v3 (5b182b57): no conflicts; OVER_LIMIT in test_mcp_contract_tools.py unchanged by the merge.
+- Not touched: get_run, run_outputs, launch descriptions. get_run and run_outputs descriptions are locked verbatim by test_actions_layer BASELINE; changing them needs maintainer approval and is out of scope here.
+- Last CI before this commit: all shards pass on 08f182e9.
