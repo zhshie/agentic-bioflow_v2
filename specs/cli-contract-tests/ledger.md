@@ -9,3 +9,4 @@
 - 已知偏離（見 decisions.tsv）：`ce show`／`dataset show` 找不到時 stderr 不以 `rejected:` 開頭（現況，不能改 cli.py）；中文說明放寬為「任一處有中文」。
 - FIX ROUND（TC-004）：BLOCKED，等裁定。測試維持現況。要嚴格照合約需改 cli.py 或 test-case.md，本任務兩者皆不可動。選項：(a) 合約改成現況；(b) 另開任務統一成 rejected: 後再收緊測試。
 - 驗收核對：`git diff --stat v3...HEAD` 應只含兩支測試、__golden__/、specs/cli-contract-tests/。
+- 修正輪（verifier TC-004）：七種執行失敗現在都用合約原文斷言（rejected: 開頭、>=20 字元、括號後有中文）。`ce show`、`dataset show` 現況不符，標 `xfail(strict=True)`（cli.py 統一後會 XPASS 變紅）；另有 `test_not_found_shows_use_their_own_wording` 釘住現況措辭。`user cloud-cap` 的 TC-004 案例改為壞數字。仍待維護者決定：(a) 接受現況並改合約，(b) 另開任務統一 cli.py。上方「中文放寬」的偏離已撤銷。

@@ -184,30 +184,54 @@ def test_bad_arg_exits_two(path, home, capsys):
     assert "usage:" in err and out == "" and "Traceback" not in err, (out, err)
 
 
-# TC-004: the seven bad situations, with the stderr prefix each really has. Five say "rejected:"; `ce show` and
-# `dataset show` say not-found in their own words (a fact of the current code, which this task does not change).
+# TC-004: the seven bad situations, asserted exactly as the contract says: exit 1, stdout empty, stderr starts with `rejected:`,
+# at least 20 characters, and Chinese after a "(" or a full-width "(". `ce show` and `dataset show` do NOT meet this today: they
+# print their own not-found line (cli.py:464-470, 633-643) and this task does not change cli.py. Those two are strict xfail: the
+# contract stays whole, the suite stays green, and the day cli.py is unified they turn XPASS (red) so the marker gets removed.
+# Their real wording is pinned by test_not_found_shows_use_their_own_wording below.
+GAP = "contract wants `rejected:` first; today's not-found line differs (decisions.tsv tc-004); maintainer must accept it or unify cli.py"
+CJK_AFTER_PAREN = re.compile("[(\uff08][^)\uff09]*[\u4e00-\u9fff]")
 RUNTIME = [
-    ("user add", "rejected:"), ("user cloud-cap", "rejected:"), ("ce create", "rejected:"), ("ce show", "compute environment "),
-    ("web", "rejected:"), ("dataset show", None), ("agent-token new", "rejected:"),
+    pytest.param("user add", None, id="user add"),
+    pytest.param("user cloud-cap", ([USER_BOB], ["user", "cloud-cap", "bob", "abc"]), id="user cloud-cap bad number"),
+    pytest.param("ce create", None, id="ce create"),
+    pytest.param("ce show", None, id="ce show", marks=pytest.mark.xfail(strict=True, reason=GAP)),
+    pytest.param("web", None, id="web"),
+    pytest.param("dataset show", None, id="dataset show", marks=pytest.mark.xfail(strict=True, reason=GAP)),
+    pytest.param("agent-token new", None, id="agent-token new"),
 ]
-CJK_AFTER_PAREN = re.compile("[一-鿿]")   # the Chinese explanation: after the "(" in most messages, before it in a few
+RUNTIME_PATHS = {"user add", "user cloud-cap", "ce create", "ce show", "web", "dataset show", "agent-token new"}
 
 
-@pytest.mark.parametrize("path,prefix", RUNTIME)
-def test_runtime_failure_exits_one(path, prefix, home, capsys):
+@pytest.mark.parametrize("path,case", RUNTIME)
+def test_runtime_failure_exits_one(path, case, home, capsys):
     # TC-004
-    rc, out, err = _run_case(home, capsys, path, "fail")
+    if case is None:
+        rc, out, err = _run_case(home, capsys, path, "fail")
+    else:
+        make_launch_dirs(home)
+        steps, argv = case
+        prepare(steps, capsys)
+        rc, out, err = call(argv, capsys)
     assert rc == 1 and out == "", (rc, out, err)
-    assert len(err.strip()) >= 20 and CJK_AFTER_PAREN.search(err), err
-    if prefix:
-        assert err.startswith(prefix), err
+    assert err.startswith("rejected:") and len(err.strip()) >= 20 and CJK_AFTER_PAREN.search(err), err
+    no_leak(out + err, home)
+
+
+@pytest.mark.parametrize("path,start", [("ce show", "compute environment "), ("dataset show", "")])
+def test_not_found_shows_use_their_own_wording(path, start, home, capsys):
+    # TC-004 (the two commands above as they really behave today): exit 1, clean stdout, Chinese explanation, no leak
+    rc, out, err = _run_case(home, capsys, path, "fail")
+    assert rc == 1 and out == "" and err.startswith(start) and len(err.strip()) >= 20, (rc, out, err)
+    assert re.search("[\u4e00-\u9fff]", err), err
+    assert not err.startswith("rejected:"), "now unified: drop the xfail marks in RUNTIME and delete this test"
     no_leak(out + err, home)
 
 
 def test_runtime_failure_other_commands_exit_one(home, capsys, monkeypatch):
     # TC-001 (every leaf with a failure path): exit 1, nothing on stdout (rebuild reports its skipped folder there), no leak
     for path, row in MATRIX.items():
-        if not row["fail"] or path in {p for p, _ in RUNTIME}:
+        if not row["fail"] or path in RUNTIME_PATHS:
             continue
         sub = home / path.replace(" ", "_")
         sub.mkdir()
