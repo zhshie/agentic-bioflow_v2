@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-11-03	GREEN	欄位內容逐條取自原文，不夠的根因寫 not established in this entry	計畫與裁決 3 禁止憑空補寫	docs/PITFALLS.md	tests/pitfalls_format_test.sh 全綠
+2026-11-03	GREEN	PLATFORM.md 846 改 tier C，746 行 Tier A 不動只在 ledger 提問	計畫明訂	docs/PLATFORM.md:846	TC-014 綠
