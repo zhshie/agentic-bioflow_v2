@@ -1,3 +1,4 @@
+# Nothing existing: regression tests for a pending confirmation link across a web restart; no other test restarts the app over a pending request and moves the clock.
 """A pending send-confirmation link (`/c/<id>`) must survive a platform restart (specs/pending-confirm-restart).
 
 "Restart" = a new web app (`w.web()`) over the same folder and files; the old one is dropped. The fake clock `w.clock.t` is put
