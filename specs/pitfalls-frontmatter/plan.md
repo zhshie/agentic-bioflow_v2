@@ -110,6 +110,8 @@ Touches: <逗號分隔的檔案路徑或工具名，例如 scripts/agent_ctl.sh,
 3. 欄位內容取自原文：閱卷抽樣核對，發現憑空補寫即退回。
 4. worktree 用 Windows git 建，WSL 裡 `constitution_scope_test.sh` 紅＝環境問題，以 CI 為準，ledger 註明；落地前 `git merge origin/v3`。
 
+N. 裁決（11-03，executor 回報被擋）：授權改 `platform/tests/test_catalogue.py` 第 419 行的正規式為 `tier A|tier C|A-tier|A 級|A級`（只這一處，因為 PLATFORM.md:846 改 tier C 後此測試會紅；這只是讓文字斷言接受新分級，沒有放寬任何安全檢查）。PLATFORM.md:746 的「Tier A: OAuth…」仍不動，寫進 ledger。fields/ 下的草稿檔留在 specs/pitfalls-frontmatter/fields/ 即可，不必刪。
+
 ## 專長守則（docs）
 
 （工作區沒有 `.claude/dev-profiles/docs.md`；本任務無專長守則。）
