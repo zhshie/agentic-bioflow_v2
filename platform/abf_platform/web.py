@@ -685,6 +685,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         sid, user = user_of(request)
         if user is None:
             return unauth(request)
+        if request.path_params.get("verb") != "resume":      # only a resume has an edit page; the route is /act/{verb}/edit so that no route path holds the letters su
+            return HTMLResponse(web_board.render_not_found(user["name"], web_board.pick_lang(request.query_params.get("lang"))), status_code=404, headers=_HEADERS)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
         run_id = str(request.query_params.get("run") or "")[:200]
@@ -1327,7 +1329,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                             Route("/launch", launch_post, methods=["POST"]),
                             Route("/upload", upload_get, methods=["GET"]), Route("/upload", upload_post, methods=["POST"]),
                             Route("/upload/{batch}", upload_batch_get, methods=["GET"]),
-                            Route("/act/resume/edit", edit_get, methods=["GET"]),
+                            Route("/act/{verb}/edit", edit_get, methods=["GET"]),
                             Route("/act/{verb}", act_post, methods=["POST"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/welcome", welcome_get, methods=["GET"]), Route("/welcome", welcome_post, methods=["POST"]),

@@ -817,7 +817,7 @@ def test_tch11_read_only(w):
     assert c.post("/").status_code == 405 and c.post("/settings").status_code == 405
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
     assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")),
-                      ("/act/resume/edit", ("GET", "HEAD")), ("/act/{verb}", ("POST",)),      # resume-edit-web
+                      ("/act/{verb}", ("POST",)), ("/act/{verb}/edit", ("GET", "HEAD")),      # resume-edit-web
                       ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)),
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),
                       ("/login", ("GET", "HEAD")),

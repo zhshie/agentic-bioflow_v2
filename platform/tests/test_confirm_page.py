@@ -303,8 +303,8 @@ def test_tcg04_g05_g06_the_web_app_has_the_routes_of_009c_plus_the_board_and_the
     c = w.web()
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
     assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")),
-                      ("/act/resume/edit", ("GET", "HEAD")),      # resume-edit-web: the page that changes a resume
-                      ("/act/{verb}", ("POST",)), ("/authorize", ("GET", "HEAD", "POST")),
+                      ("/act/{verb}", ("POST",)), ("/act/{verb}/edit", ("GET", "HEAD")),      # resume-edit-web: the page that changes a resume
+                      ("/authorize", ("GET", "HEAD", "POST")),
                       ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)),
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)),
                       ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),      # 012b: the launch form and the three buttons that only ask; guided-launch-2: the diagram picture

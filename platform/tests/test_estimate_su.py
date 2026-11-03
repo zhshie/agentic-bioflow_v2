@@ -302,7 +302,7 @@ def test_tc030_no_su_route_on_the_web(tmp_path):
     # TC-030
     from abf_platform import web
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
-    assert not [r.path for r in app.routes if re.search(r"su|estimate", getattr(r, "path", ""), re.I) and r.path != "/act/resume/edit"]      # resume-edit-web: "resume" holds the letters su; the page changes a resume and has nothing to do with SU
+    assert not [r.path for r in app.routes if re.search(r"su|estimate", getattr(r, "path", ""), re.I)]
 
 
 def test_tc033_no_cloud_cost_in_the_answer():

@@ -1431,7 +1431,7 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in app.routes) == ROUTES_V3
     wapp = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", platform_path=tmp_path / "platform.db")
     got = sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in wapp.routes)
-    assert len(got) == 29 and digest(repr(got)) == "430ec851f735a88f5317217cb9287f227affa60d84ff61f813b27c3fc07e5f65"      # resume-edit-web adds GET /act/resume/edit (28 before)
+    assert len(got) == 29 and digest(repr(got)) == "a6bd4a913b846a948a12f0d02e68818d2e2881f4e8b26c0b04db33cf5235667f"      # resume-edit-web adds GET /act/{verb}/edit (28 before)
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
     assert len(names) == 51 and digest(repr(names)) == "c855b9bead94ba8b4e583a804e8d2e1783cfab91e8b38194169356a6fca43ef5"      # mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
