@@ -345,3 +345,76 @@ def test_tc023_no_new_kind_no_migration_no_new_state(rig):
     root = pathlib.Path(__file__).resolve().parent.parent
     assert not [p for p in root.rglob("migrations/*") if "head" in p.name.lower() and "node" in p.name.lower()]
     assert "sacct" not in (root / "abf_platform" / "store.py").read_text(encoding="utf-8")
+
+
+# ---- adversarial review fixes (ruling O) ------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("how", ["refused", "error", "expired"])
+def test_tc026_any_fetch_within_a_minute_stops_a_new_one(rig, how):
+    # TC-026 (1): a refused, failed or expired read-back counts like a finished one
+    rid = lost_run(rig)
+    add_fetch(rig, "x", None, state=how, age=5)
+    for _ in range(5):
+        get(rig, rid)
+    assert len(fetch_jobs(rig)) == 1
+    assert get(rig, rid)["status"] == "lost"
+
+
+def test_tc026_two_simultaneous_get_runs_queue_one(rig):
+    # TC-026 (1): the check and the insert are one write
+    import threading
+    from abf_platform import jobs
+    rid = lost_run(rig)
+    gate = threading.Barrier(2)
+    seen = []
+
+    def one():
+        gate.wait()
+        seen.append(jobs.ask_head_state(rig.state, "x"))
+
+    ts = [threading.Thread(target=one) for _ in range(2)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert len(fetch_jobs(rig)) == 1 and sorted(seen) == [False, True]
+
+
+def test_tc027_only_the_head_state_path_sends_the_slurm_number(rig):
+    # TC-027 (2): an older site agent refuses a job with a key it does not know
+    from abf_platform import jobs
+    rid = lost_run(rig)
+    plain = jobs.enqueue_fetch(rig.state, "x")
+    get(rig, rid)      # the plain job is still waiting, so this adds none; ask on a run with no fetch instead
+    lost_run(rig, "y", slurm=777)
+    get(rig, "id-y")
+    args = {j["id"]: json.loads(j["args_json"]) for j in fetch_jobs(rig)}
+    assert set(args[plain]) == {"ce", "run_name", "run_folder"}
+    (other,) = [a for a in args.values() if a["run_name"] == "y"]
+    assert other["slurm_job_id"] == "777"
+
+
+def test_tc027_a_refused_head_state_query_leaves_the_run_lost_and_is_not_repeated(rig):
+    # TC-027 (2)
+    rid = lost_run(rig)
+    get(rig, rid)
+    (job,) = fetch_jobs(rig)
+    con = sqlite3.connect(str(rig.state))
+    with con:
+        con.execute("UPDATE jobs SET state = 'refused', result_json = ?, finished_at = ? WHERE id = ?",
+                    (json.dumps({"ok": False, "message": "unknown argument"}), time.time(), job["id"]))
+    con.close()
+    for _ in range(3):
+        v = get(rig, rid)
+    assert v["status"] == "lost" and len(fetch_jobs(rig)) == 1
+
+
+def test_tc028_the_fact_is_not_pushed_out_by_other_runs_fetches(rig):
+    # TC-028 (3): the limit is applied after the filter by run
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=30)
+    lost_run(rig, "y", slurm=777)
+    for _ in range(110):
+        add_fetch(rig, "y", fact("RUNNING", "squeue", "777"), age=1, slurm=777)
+    assert get(rig, rid)["status"] == "failed"
+    assert [r["status"] for r in listed(rig, "x")] == ["failed"]
