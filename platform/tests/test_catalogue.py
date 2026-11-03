@@ -416,7 +416,7 @@ def test_platform_doc_has_the_catalogue_section():
     sec = text[a:b]
     assert PINNED in sec and "nf-core-modules.json" in sec
     assert "python -m abf_platform.catalogue snapshot" in sec
-    assert "PR" in sec and re.search(r"tier A|A-tier|A 級|A級", sec)
+    assert "PR" in sec and re.search(r"tier A|tier C|A-tier|A 級|A級", sec)
     # TC-OP40
     assert "optional" in sec and "optional: true" in sec and "false" in sec
 
