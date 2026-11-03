@@ -261,7 +261,7 @@ def _config_profiles(config_text):
     for m in re.finditer(r"(?<![\w.])profiles\s*\{", clean):
         block = _block_after(clean, m.end() - 1)
         pos = 0
-        while block is not None:
+        for _ in range(len(block) + 1 if block is not None else 0):      # every pass moves pos on, so the text is never walked twice
             head = _PROFILE_HEAD.match(block, pos)
             if not head:
                 nxt = block.find("\n", pos)

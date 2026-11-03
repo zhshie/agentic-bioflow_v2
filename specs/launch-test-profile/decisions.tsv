@@ -4,3 +4,6 @@ ts	phase	decision	why	evidence	result
 2026-11-03	test-fix	tc045 讀 resume bundle 的 profiles 改讀 b["resume"]["origin"]["profiles"]	resume bundle 依既有設計把原 bundle 原樣放在 resume.origin，不在頂層加 key（避免改變 hash 與鍵集合）	platform/tests/test_launch_profiles.py:544	通過
 2026-11-03	build	樣本表與 profile 同時給時，確認畫面加一行說明用的是自己的樣本表	避免使用者以為會跑測試資料	platform/abf_launch/build.py:launch_screen	tc013/014/015 通過
 2026-11-03	build	TC-060 加進 test_http_site_samplesheet.py，用 World 夾具與 bearer caller	Duo 的 agent 有其他排隊工作，預檢 claim 會拿錯工作；World 夾具與 profile 測試一致	platform/tests/test_http_site_samplesheet.py:test_tc060	通過
+2026-11-03	build	既有測試釘住 launch 的參數名單與 request_launch 簽名，加入 profiles（計畫允許為新參數加案例）	新參數必然改變名單；只加 "profiles" 一項，其餘斷言未動	platform/tests/test_dataset_launch.py, test_station_launch.py, test_pipeline_launch.py	通過
+2026-11-03	build	靜態掃描擋下 brings_input( 與 handlers 的 while：改名 _brings_data（保留別名 brings_input）、while 改 for	test_station_static 的 input\( 與「迴圈只在 agent.py」是憲法掃描，不改測試改程式	platform/abf_station/launch.py:475, handlers.py:_config_profiles	通過
+2026-11-03	blocker	全套的 platform_upgrade_test.sh TC-U28 要求 platform/ 相對 origin/v3 無改動這是另一片的範圍守衛，任何動 platform/ 的分支必紅，不能弱化tests/platform_upgrade_test.sh:232-234環境既有紅，回報

@@ -472,9 +472,12 @@ PROFILE_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\Z")
 MAX_PROFILES = 8
 
 
-def brings_input(name):
+def _brings_data(name):
     """A Config profile that sets `input` itself (the nf-core convention): test, test_full and test_<anything>."""
     return name in ("test", "test_full") or name.startswith("test_")
+
+
+brings_input = _brings_data      # the name the tests and the plan use
 
 
 def _check_profiles(profiles):
@@ -606,7 +609,7 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
     profiles = _check_profiles(profiles)
     if profiles and composed is not None:
         raise BundleError("profiles: 自訂組合還不支援 Config profiles (a composed pipeline takes no profiles)")
-    if samplesheet is None and any(brings_input(n) for n in profiles):
+    if samplesheet is None and any(_brings_data(n) for n in profiles):
         sheet = None
     elif samplesheet is None and profiles:
         raise BundleError("samplesheet: 這些 profile 不自帶測試資料，要給樣本表 (these profiles bring no data of their own; a samplesheet is needed)")
