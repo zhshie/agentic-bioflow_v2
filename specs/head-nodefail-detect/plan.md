@@ -114,6 +114,8 @@ Slurm 的 head job 被排程器終結（NODE_FAIL、CANCELLED、TIMEOUT、OUT_OF
 5. 與其他車道：`platform/abf_platform/actions/__init__.py`、`jobs.py` 是熱檔，落地前 `git merge origin/v3`，衝突以 v3 為準再重套本案分支。
 6. worktree 用 Windows git 建，WSL 裡 `constitution_scope_test.sh` 紅＝環境問題，以 CI 為準，ledger 註明。
 
+N. TC-012 裁決（11-03）：lost 的 run 仍提供 `relaunch`（v3 既有測試釘住），只保證不出現 `resume`。get_run 對 NODE_FAIL 回 status=failed 是預期（目的就是顯示為失敗）。非 Slurm 後端查不到 sacct 就維持 lost，接受。Nextflow 完成行 `Execution complete -- Goodbye` 的真站台比對列為 nano4 手動驗收，不擋合併。
+
 ## 專長守則（backend）
 
 ### executor
