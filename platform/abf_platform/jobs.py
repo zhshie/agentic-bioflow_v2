@@ -394,7 +394,7 @@ def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, 
             raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
                 run_name, launch["agent"], launch["ce"], row["agent"]))
         args = {"ce": compute_envs.snapshot(row), "run_name": launch["run_name"], "run_folder": launch["run_folder"]}
-        if launch["slurm_job_id"] is not None:      # lets the station say what the scheduler knows of the head job when the log has no end
+        if launch["slurm_job_id"] is not None:      # lets the agent say how the Slurm head job ended when the log has no end
             args["slurm_job_id"] = str(launch["slurm_job_id"])
         return _insert_job(con, row, "fetch_run_records", args, now, seconds)
 
@@ -402,18 +402,6 @@ def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, 
 
 
 HEAD_STATE_FRESH_SECONDS = 60
-
-
-def clean_scheduler(raw):
-    """What the station said of the head job, kept only if it is exactly {job_id, state, source} of known words; else None."""
-    if not isinstance(raw, dict) or set(raw) != {"job_id", "state", "source"}:
-        return None
-    number, state, source = raw["job_id"], raw["state"], raw["source"]
-    if not (isinstance(number, str) and re.fullmatch(r"[0-9]{1,10}", number)):
-        return None
-    if not (isinstance(state, str) and state in failures.KNOWN_STATES) or source not in failures.SOURCES:
-        return None
-    return {"job_id": number, "state": state, "source": source}
 
 
 def _fetches_of(con, launch):
@@ -443,7 +431,7 @@ def head_state(state_path, run_name):
             if row["state"] != "done":
                 continue
             try:
-                fact = clean_scheduler((json.loads(row["result_json"]) or {}).get("scheduler"))
+                fact = failures.head_fact_of(json.loads(row["result_json"]))
             except (ValueError, AttributeError, TypeError):
                 fact = None
             if fact is not None and fact["job_id"] != str(launch["slurm_job_id"]):
@@ -457,7 +445,7 @@ def head_state(state_path, run_name):
 
 
 def ask_head_state(state_path, run_name, clock=time.time):
-    """Queue one read-back of a lost run so that the scheduler's word is there next time, unless one is already waiting or finished
+    """Queue one read-back of a lost run so that the answer is there next time, unless one is already waiting or finished
     less than a minute ago. Never raises and never waits; it adds no new kind of job."""
     con = store.open_readonly(state_path)
     if con is None:
@@ -1254,7 +1242,7 @@ def clean_result(kind, result, stored=None):
     elif kind == "fetch_run_records":
         out["files"] = [{"name": f["name"], "size": f["size"], "truncated": f["truncated"]} for f in (stored or {}).get("files", [])]
         out["refused"] = [_short(x, 200) for x in (stored or {}).get("refused", [])][:50]
-        out["scheduler"] = clean_scheduler(result.get("scheduler"))
+        out.update(failures.head_fact_entry(result))
     else:
         for key in ("path",):
             if isinstance(result.get(key), str):

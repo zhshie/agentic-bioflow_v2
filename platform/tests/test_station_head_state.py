@@ -104,9 +104,9 @@ def test_tc011_an_unknown_argument_is_still_refused_and_the_old_keys_are_kept(tm
 
 
 @pytest.mark.parametrize("raw", [
-    "Whatever /home/x/secret abf_0123456789abcdef0123456789abcdef\n",
-    "NODE_FAIL\nsecond line /home/x/y\n" + "x" * 5000,                     # the first line is the only one that counts, and it is a state
-    "/home/x/.config/token\n",
+    "Whatever /srv/x/secret abf_0123456789abcdef0123456789abcdef\n",
+    "NODE_FAIL\nsecond line /srv/x/y\n" + "x" * 5000,                     # the first line is the only one that counts, and it is a state
+    "/srv/x/.config/token\n",
     "X" * 100000,
     "NODE_FAIL_EXTRA\n",
     "\n\n",
@@ -120,4 +120,4 @@ def test_tc020_what_sacct_prints_is_not_trusted_and_never_passed_on(tmp_path, si
     sched = res["result"]["scheduler"]
     assert sched is None or (sched["state"] in fetch.SLURM_STATES and set(sched) == {"job_id", "state", "source"}), sched
     text = str(res)
-    assert "/home/x" not in text and "abf_0123" not in text and "x" * 50 not in text
+    assert "/srv/x" not in text and "abf_0123" not in text and "x" * 50 not in text
