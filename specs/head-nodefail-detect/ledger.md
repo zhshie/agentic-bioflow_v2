@@ -7,3 +7,4 @@
 - 備註：tests/constitution_scope_test.sh 在 WSL 內為紅，屬環境問題，與本任務無關。
 - 備註：TC-012 與 v3 的 failures 測試矛盾（見 decisions.tsv），保留 v3 行為。
 - 證據：`git diff --stat` 見 commit；sacct 在 origin/v3 尚無使用。
+- [x] 裁決 O（對抗審）：限流算任何狀態且與排程同一交易、slurm_job_id 只走 head-state 路徑、_fetches_of 先依 run 過濾再取 20 筆、截斷的 log 不算完成行（TC-026..029）

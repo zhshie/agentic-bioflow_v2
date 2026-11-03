@@ -103,8 +103,8 @@ def run_fetch(job, ctx):
         files.append({"name": rel, "data": base64.b64encode(data).decode("ascii"), "truncated": cut})
         if rel.startswith(".nextflow.log"):
             logs.append(data.decode("utf-8", errors="replace"))
-            if rel == ".nextflow.log" and (cut or _DONE_LINE.search(logs[-1])):
-                completed = True      # a log cut at 20 MB lost its end: that is not "no completion record", so the scheduler is not asked
+            if rel == ".nextflow.log" and _DONE_LINE.search(logs[-1]):
+                completed = True      # a log cut at 20 MB lost its end: its completion is unknown, so the scheduler is still asked
     traces = []
     for text in logs:
         for m in re.finditer(r"Workflow started -- trace file: (.+)", text):

@@ -378,42 +378,48 @@ def enqueue_pipeline_files(state_path, repo, revision, parts, *, compute_env=Non
     return transaction(state_path, work)
 
 
-def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, offline_after=None):
+def _enqueue_fetch_in(con, run_name, now, seconds, offline_after, with_slurm):
+    launch = latest_launch(con, run_name) if isinstance(run_name, str) else None
+    if launch is None:
+        raise JobRefused("%r was not launched from this platform (不是平台自己送出的), so there is no folder to read"
+                         % str(run_name)[:80])
+    row = _target(con, launch["ce"], "fetch_run_records", now, offline_after)
+    if row["agent"] != launch["agent"]:
+        raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
+            run_name, launch["agent"], launch["ce"], row["agent"]))
+    args = {"ce": compute_envs.snapshot(row), "run_name": launch["run_name"], "run_folder": launch["run_folder"]}
+    if with_slurm and launch["slurm_job_id"] is not None:      # only the head-state question: an older site agent refuses a key it does not know
+        args["slurm_job_id"] = str(launch["slurm_job_id"])
+    return _insert_job(con, row, "fetch_run_records", args, now, seconds)
+
+
+def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, offline_after=None, with_slurm=False):
     """Ask the agent to read Nextflow's own records of one launch back. It only reads, so it needs no confirmation. The
-    run must be in the hand-off record: the platform never asks for a folder it did not launch into."""
+    run must be in the hand-off record: the platform never asks for a folder it did not launch into. The args are the three
+    keys of old; `with_slurm` (used only by ask_head_state) adds the head job's number."""
     now = clock()
     seconds = _seconds("fetch_run_records", deadline_seconds)
-
-    def work(con):
-        launch = latest_launch(con, run_name) if isinstance(run_name, str) else None
-        if launch is None:
-            raise JobRefused("%r was not launched from this platform (不是平台自己送出的), so there is no folder to read"
-                             % str(run_name)[:80])
-        row = _target(con, launch["ce"], "fetch_run_records", now, offline_after)
-        if row["agent"] != launch["agent"]:
-            raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
-                run_name, launch["agent"], launch["ce"], row["agent"]))
-        args = {"ce": compute_envs.snapshot(row), "run_name": launch["run_name"], "run_folder": launch["run_folder"]}
-        if launch["slurm_job_id"] is not None:      # lets the agent say how the Slurm head job ended when the log has no end
-            args["slurm_job_id"] = str(launch["slurm_job_id"])
-        return _insert_job(con, row, "fetch_run_records", args, now, seconds)
-
-    return transaction(state_path, work)
+    return transaction(state_path, lambda con: _enqueue_fetch_in(con, run_name, now, seconds, offline_after, with_slurm))
 
 
 HEAD_STATE_FRESH_SECONDS = 60
+HEAD_STATE_KEEP = 20
 
 
 def _fetches_of(con, launch):
-    rows = con.execute("SELECT * FROM jobs WHERE kind = 'fetch_run_records' AND compute_env = ? ORDER BY id DESC LIMIT 100",
-                       (launch["ce"],)).fetchall()
+    """The newest read-backs of this run (not of its compute environment's other runs), newest first."""
+    mark = json.dumps(launch["run_name"])
+    cur = con.execute("SELECT * FROM jobs WHERE kind = 'fetch_run_records' AND compute_env = ? AND instr(args_json, ?) > 0 ORDER BY id DESC",
+                      (launch["ce"], mark))
     out = []
-    for row in rows:
+    for row in cur:
         try:
             if json.loads(row["args_json"]).get("run_name") == launch["run_name"]:
                 out.append(row)
         except (ValueError, AttributeError):
             continue
+        if len(out) >= HEAD_STATE_KEEP:
+            break
     return out
 
 
@@ -445,31 +451,29 @@ def head_state(state_path, run_name):
 
 
 def ask_head_state(state_path, run_name, clock=time.time):
-    """Queue one read-back of a lost run so that the answer is there next time, unless one is already waiting or finished
-    less than a minute ago. Never raises and never waits; it adds no new kind of job."""
-    con = store.open_readonly(state_path)
-    if con is None:
+    """Queue one read-back of a lost run so that the answer is there next time, unless one is already waiting or any one (finished,
+    refused, failed or expired) is less than a minute old. The check and the insert are one write. Never raises and never waits; it
+    adds no new kind of job."""
+    if not isinstance(run_name, str) or not os.path.exists(str(state_path)):      # reading never creates a database
         return False
     now = clock()
-    try:
+    seconds = _seconds("fetch_run_records", None)
+
+    def work(con):
         launch = latest_launch(con, run_name)
         if launch is None or launch["slurm_job_id"] is None:
             return False
         for row in _fetches_of(con, launch):
             if row["state"] in ("queued", "claimed") and row["deadline_at"] > now:
                 return False
-            if row["state"] == "done":
-                if (row["finished_at"] or 0) > now - HEAD_STATE_FRESH_SECONDS:
-                    return False
-                break
-    except (sqlite3.Error, IndexError, KeyError):
-        return False
-    finally:
-        con.close()
-    try:
-        enqueue_fetch(state_path, run_name, clock=clock)
+            if max(row["created_at"] or 0, row["finished_at"] or 0) > now - HEAD_STATE_FRESH_SECONDS:
+                return False
+        _enqueue_fetch_in(con, run_name, now, seconds, None, True)
         return True
-    except (JobRefused, sqlite3.Error):
+
+    try:
+        return transaction(state_path, work)
+    except (JobRefused, sqlite3.Error, IndexError, KeyError):
         return False
 
 
