@@ -19,7 +19,7 @@ FAILED tests/mcp/test_mcp_contract_tools.py::test_descriptions_within_limit
 ## Before / after (characters)
 | tool | before | after |
 |---|---|---|
-| read_run_file | 1016 | 600 |
+| read_run_file | 1016 | 595 |
 | resume | 807 | 600 |
 | get_run | 683 | 683 (pinned by BASELINE) |
 | run_outputs | 700 | 700 (pinned by BASELINE) |

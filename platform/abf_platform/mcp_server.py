@@ -112,11 +112,12 @@ def build_server(index_path, platform_path=None):
 
     @server.tool(name="read_run_file", annotations=_READ_ONLY,
                  description="Read-only: read one file of your own run, by run_id and path (below results/, from run_outputs' "
-                             "download). Never waits for the site: state is loading (ask again soon), ready, error (code, reason), "
-                             "unavailable (run not from the platform, or results not on the site host) or too_large (over 25 MB: "
-                             "size and full site path given, nothing read). Text (UTF-8) comes back as at most 200,000 characters from offset "
-                             "(default 0) with total_chars and next_offset; the text goes to the model you chose. Binary and HTML files "
-                             "are not sent: you get name, size and the download address /run/file?run=<id>&path=<p>.")
+                             "download). Never waits for the site: state is loading (ask again), ready, error (reason), "
+                             "unavailable (not launched here, or results not on the site host) or too_large (over 25 MB: "
+                             "size and full site path given, nothing read). Text comes back as at most 200,000 characters from "
+                             "offset with total_chars and next_offset; the text goes to the model you chose. A binary file "
+                             "is not sent: you get name, size and address /run/file?run=<id>&path=<p>. "
+                             "An HTML file (.html, .htm) is treated as a binary file.")
     def read_run_file(ctx: Context, run_id: str, path: str, offset: Any = 0) -> dict:
         return actions.read_run_file(index_path, platform_path, run_id, path, caller=_caller(ctx), offset=offset)
 
