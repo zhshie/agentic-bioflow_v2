@@ -29,6 +29,7 @@ MCP 的 `launch` 多一個選填 `profiles`（字串清單）。給了 `test`，
 - `platform/abf_launch/build.py`（`prepare_launch`、`prepare_resume`、`prepare_relaunch`、`_confine`、`_samplesheet_lines`、`launch_screen`、resume／relaunch 畫面）
 - `platform/abf_platform/confirm.py`（約 l.335 `len(source["samplesheet"]) - 1` 要能處理沒有樣本表）
 - `platform/abf_station/launch.py`（`render_bundle` 加 `profiles`、`_head_script`、`_params_yaml`、`_check_params`、樣本表可為空、`BUNDLE_VERSION` 不動；`render_resume`／`render_resume_bundle` 帶 origin 的 profiles；agent 端重建比對處約 l.1841、l.2021）
+- `docs/TESTING.md`（只在 nano4 acceptance 節後新增一節，見裁決 2）
 - `platform/abf_station/handlers.py`（`_site_pipeline_command`／`_judge_site_pipeline`／`preflight`：從已讀的 `nextflow.config` 抽 profile 名）
 - 新檔 `platform/tests/test_launch_profiles.py`
 - 既有測試只准「加案例」或為 `samplesheet` 可為 None 調整輔助函式，不准刪或放寬斷言：`launch_harness.py`、`station_harness.py`、`resume_harness.py`
@@ -109,6 +110,14 @@ MCP 的 `launch` 多一個選填 `profiles`（字串清單）。給了 `test`，
 5. **`test_*` 開頭都算自帶 input？** 建議：是（nf-core 慣例），不認得的 profile 一律要樣本表。
 
 **developer-agent 裁決（2026-11-03）**：1～5 照上面建議。合併並升級正式平台後，操作者要對 nano4 重跑一次預檢，讓 site_profiles 有清單（否則依裁決 1 全部拒絕）——這是驗收步驟，寫進 ledger 的手動案例。
+
+## 裁決（自動補，2026-11-03）
+1. **資料結構（阻擋）**：不需要 migration。bundle 新增 `profiles` 與預檢結果新增 `site_profiles` 都是 JSON 內的選填鍵，不改資料表欄位。舊紀錄沒有 `profiles` 一律視為 `[]`（`prepare_resume`／`prepare_relaunch` 讀 origin 時用預設 `[]`，head 行與舊的逐位元組相同，TC-043 成立）；舊預檢結果沒有 `site_profiles` 視為「無清單」，依裁決 1 拒絕帶 profiles 的送出，不帶 profiles 的送出完全不受影響（TC-018 成立）。測試加兩個案例：舊形狀 bundle 重建、舊形狀預檢結果不帶 profiles 照常提出。
+2. **手動案例存放處（阻擋）**：把 `docs/TESTING.md` 加進可改檔案，僅在既有「nano4 acceptance」節（約 l.180）後加一節「nano4 test profile 驗收」，寫具體步驟：(a) 升級平台後先在環境頁對 nano4 重跑預檢，確認 `site_profiles` 有清單；(b) 對八個 pipeline（ampliseq、rnaseq、sarek、scrnaseq、atacseq、crisprseq、nanoseq、proteinfold）各用 `launch` 帶 `profiles=["test"]`、不給樣本表，本人確認後跑完。TC-011、TC-012 對應這一節；操作員用 skill `nano4-acceptance` 執行，結果記 ledger。只加文字，不改既有段落。
+3. **兩者都給 samplesheet 與 samplesheet_text**：不論有無 profiles 都照舊拒絕，訊息原文不變（`samplesheet 與 samplesheet_text 只能給一個 …`，test_dataset_launch.py:112 釘住）。檢查在 profile 判斷之前。加一個帶 `profiles=["test"]` 的案例，期望同一句原文。
+4. **樣本表與 test profile 並用的畫面**：有樣本表時畫面維持原本的樣本表行，另加 `Config profiles: test` 一行；只有 `samplesheet is None` 才顯示 `Samplesheet: from the pipeline's test profile`。補一個測試：有樣本表 + test profile → 含原樣本表行、含 profiles 行、不含 `from the pipeline's test profile`。
+5. **其餘六個 pipeline 的夾具**：測試內用 `station_harness.make_site_pipeline` 為 sarek、scrnaseq、atacseq、crisprseq、nanoseq、proteinfold 補夾具（不改 `SITE_CE`；在新測試檔內組合自己的 CE，版本採環境事實清單），八個名稱各提出一次（TC-010）。
+6. **`request_pipeline_launch`**：現況簽名沒有 `profiles` 參數，MCP 的 `launch` 也只走 `request_launch`（`mcp_server.py` 沒有 pipeline_id 路徑）。決定：**不替它新增參數**，所以不可能生效；`request_pipeline_launch` 不改。`test_non_site_module_and_other_platforms_refuse_profiles` 改成只測 GitHub pipeline 與 gcb／aws／azure／k8s 入口；另加一條以 `inspect.signature` 確認 `request_pipeline_launch` 沒有 `profiles` 參數（TC-067 以此為準）。「範圍：檔案」中該入口的拒絕敘述作廢。
 
 ## 專長守則（backend）
 
