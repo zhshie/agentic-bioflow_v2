@@ -115,6 +115,12 @@ Slurm 的 head job 被排程器終結（NODE_FAIL、CANCELLED、TIMEOUT、OUT_OF
 6. worktree 用 Windows git 建，WSL 裡 `constitution_scope_test.sh` 紅＝環境問題，以 CI 為準，ledger 註明。
 
 N. TC-012 裁決（11-03）：lost 的 run 仍提供 `relaunch`（v3 既有測試釘住），只保證不出現 `resume`。get_run 對 NODE_FAIL 回 status=failed 是預期（目的就是顯示為失敗）。非 Slurm 後端查不到 sacct 就維持 lost，接受。Nextflow 完成行 `Execution complete -- Goodbye` 的真站台比對列為 nano4 手動驗收，不擋合併。
+O. 對抗審修正（11-03，Opus 審查，三項已重現）：
+ (1) 一分鐘限流要算「任何狀態」的 fetch_run_records（含 refused／error／expired）：同一 run 60 秒內已有任何一筆，就不再排新的；檢查與 enqueue 放進同一個寫入交易（避免兩個 get_run 同時各排一筆）。
+ (2) `slurm_job_id` 只由 head-state 查詢那條路徑加進 args；一般的 `enqueue_fetch`（含 `abf-launch fetch` CLI）維持原三個鍵，不送新鍵（舊站台代理會整個拒絕）。head-state 查詢被 refused 時視為「沒有事實」、run 維持 lost，且受 (1) 限流，不重排。
+ (3) `_fetches_of` 的 LIMIT 100 要在依 run_name 過濾「之後」才套用（或每個 run 各取最新幾筆），否則同一運算環境上別的 run 的抓取會把事實擠掉。
+ (4) `.nextflow.log` 超過 20 MB 被截斷時，不可當作「已有完成行」：截斷＝完成行未知，仍要問排程器（排程器回 COMPLETED 之類就維持原顯示）。
+ 新增測試案例 TC-026～TC-029 對應 (1)～(4)，已寫進 test-case.md；實作不得改弱既有測試。
 
 ## 專長守則（backend）
 
