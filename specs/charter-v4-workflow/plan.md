@@ -102,6 +102,16 @@ source: 維護者 2026-11-03「合併規則同意」；2026-10-24「以後你都
 2. **v4 風險分級那一句放哪？** 建議：同一個 Workflow bullet 內，不另開條，免得「新原則」觸發 MAJOR／MINOR 之爭；版本仍為 MINOR（規則實質擴大）。
 3. **PRODUCT.md「later」寫在 Not 內還是新增 Later 行？** 建議：寫在 Not 行的 later 清單（roles、Data Explorer、Dashboard 同處），少一個新段落。
 
+## 裁決（自動補，2026-11-03）
+針對 verifier 的 planIssues 逐項裁決；與上方「作法」「失敗先行測試」「完成標準」衝突時，以本段為準。
+
+1. **PRODUCT.md「Not」與 web terminal 矛盾。** 以「作法」第 6 點為準：舊的 "a web terminal;" 項從 Not 刪除，改在 Not 的 (later) 清單（與 roles、Data Explorer、Dashboard 同處）寫成「web terminal，待它自己的憲法修正案」。因此 Not 行會出現 "web terminal"，只是在 later 子句內。測試改寫：(a) Not 行中 "later" 之前的部分不含 "web terminal"；(b) Not 行含 "web terminal" 且與 "later"、"constitution amendment" 同一子句；(c) 不含「已核可」類字樣。「失敗先行測試」中「Not 行不含 web terminal」一句作廢。
+2. **憲法 hunk A 刪掉「modified or removed requirement ... waits for the maintainer's yes」。** 作法 1 明令保留原分級，現況 hunk 與計畫不符，判為 hunk 缺陷而非計畫改意。裁決：developer-agent 在 `charter-v4-base` 補回，把「a modified or removed requirement」列入「須先取得維護者明確 yes」的名單（與修正案、發行、放寬 Safety Net 並列，maintainer 說好後才由開發主責合併）；「a change in what a user sees」維持現行 hunk 寫法（合併後列給維護者）。6.2.0 What changes 同步寫明：使用者可見變更不再等 yes（依 10-24 原話），需求的修改或刪除仍等 yes。這是收緊而非放寬；PR 描述要點出此處，讓維護者在「合併規則同意」所指的規則上確認。補回後以新版 hunk 為準，verifier 照新版逐 hunk 核對。
+3. **手動案例無 docs/TESTING.md 步驟。** TESTING.md 手動半部依憲法只在 `commands/`、`skills/`、`hooks/` 有變更的發行前跑；本任務都不碰，故不納入範圍、不改 TESTING.md。手動案例（憲法 diff 逐 hunk 核對、`git diff --stat` 範圍、git grep 無漏同步、Opus 對抗審）以 ledger 證據為準，案例表註明「不適用 TESTING.md，證據貼 ledger」。
+4. **「TC-E9 改前紅」字句不實。** 憲法 hunk 預先 commit 於 base，TC-E9 與憲法內容斷言一開始就綠。完成標準改為：版本行釘住（TC-E5、platform_direction TC-001 的 6.2.0 釘值）與 PRODUCT.md／DESIGN.md 斷言改前紅、改後綠；TC-E9 與憲法內容斷言在 base 即綠，作為 hunk 的回歸保護，ledger 說明之。
+5. **新測試缺漏。** executor 須在 `tests/charter_v4_workflow_test.sh` 補齊（has／lacks）：6.2.0 條目的 Impact、Approval、Sync Impact Report、What changes（無原則或 Safety Net 被刪或重新定義；修正案、發行、放寬須維護者 yes；需求的修改或刪除須維護者 yes；v3 與 main 是 v2 線；保護路徑風險分級）；Workflow 最後一條各句（v3、不含 "`main` receives merges only"、development lead merges、三項須明確 yes、保護路徑五項與對抗審）；Governance（不含 "Only the maintainer approves and merges it"、含 supersedes all other practices、MUST NOT restate）。對應 TC-006 到 009、013 到 024。
+6. **自動／手動數量。** 以更正值為準：自動 41、手動 14（含第 3 點的 ledger 證據案例），不再重算。
+
 ## 專長守則（docs）
 
 （工作區沒有 `.claude/dev-profiles/docs.md`；本任務無專長守則。）
