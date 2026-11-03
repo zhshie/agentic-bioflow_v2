@@ -112,6 +112,15 @@ source: 維護者 2026-11-03「合併規則同意」；2026-10-24「以後你都
 5. **新測試缺漏。** executor 須在 `tests/charter_v4_workflow_test.sh` 補齊（has／lacks）：6.2.0 條目的 Impact、Approval、Sync Impact Report、What changes（無原則或 Safety Net 被刪或重新定義；修正案、發行、放寬須維護者 yes；需求的修改或刪除須維護者 yes；v3 與 main 是 v2 線；保護路徑風險分級）；Workflow 最後一條各句（v3、不含 "`main` receives merges only"、development lead merges、三項須明確 yes、保護路徑五項與對抗審）；Governance（不含 "Only the maintainer approves and merges it"、含 supersedes all other practices、MUST NOT restate）。對應 TC-006 到 009、013 到 024。
 6. **自動／手動數量。** 以更正值為準：自動 41、手動 14（含第 3 點的 ledger 證據案例），不再重算。
 
+## 裁決（自動補，2026-11-03，第二輪）
+針對第二次 planIssues 逐項裁決；與上方任何段落衝突時，以本段為準（本段晚於上一段）。
+
+1. **「失敗先行測試」l.76 與「作法」第 6 點矛盾。** 以作法第 6 點為準，l.76 的「Not 行不含 "web terminal"」作廢。權威斷言為：(a) Not 行中 "(later)" 清單之前的 flat 部分不含 "web terminal;"；(b) later 清單以 "web terminal" 稱呼終端機，且該子句同時含 "later" 與 "constitution amendment" 之意；(c) 不含「已核可」「approved」類字樣。TC-030、TC-031 依此出題，與合約現有讀法一致，不必改。
+2. **手動案例與 docs/TESTING.md。** 可以，不把 docs/TESTING.md 加進範圍。TESTING.md 手動半部只在 `commands/`、`skills/`、`hooks/` 有變更的發行前跑，本任務不碰這些。手動案例的具體指令寫在 TC 步驟欄，證據貼 ledger；計畫內的「README 通例」指 dev-plans 的 `README.md` 所列 ledger 證據通例，不是專案 README.md。
+3. **hunk A 拿掉「modified or removed requirement ... waits for the maintainer's yes」。** 維持上一輪裁決 2：作法 1 明令保留原分級，此為 hunk 缺陷，由 developer-agent 在 `charter-v4-base` 補回（修改或刪除需求仍須維護者先說好，與修正案、發行、放寬 Safety Net 並列），這是收緊而非放寬，不是新的產品決定。6.2.0 What changes 同步寫明。PR 描述須點名這一句，請維護者確認「合併規則同意」涵蓋此規則。TC 補一條斷言：憲法 Workflow 最後一條含 "modified or removed"。
+4. **大小寫。** 憲法實際為句首大寫 "Amendments"（l.249、l.357），6.2.0 標題為小寫 "amendments"。所有含 amendments、releases、loosens 的自動斷言一律不分大小寫（grep -i），TC-006 同。
+5. **PRODUCT.md later 子句的日期。** 不要求寫出 2026-10-23；文件只須有 "web terminal"、"later"、"constitution amendment" 之意，日期可寫可不寫，TC-031 不檢查日期。
+
 ## 專長守則（docs）
 
 （工作區沒有 `.claude/dev-profiles/docs.md`；本任務無專長守則。）
