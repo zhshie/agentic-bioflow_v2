@@ -33,7 +33,7 @@ MCP 的 `launch` 多一個選填 `profiles`（字串清單）。給了 `test`，
 - `platform/abf_station/handlers.py`（`_site_pipeline_command`／`_judge_site_pipeline`／`preflight`：從已讀的 `nextflow.config` 抽 profile 名）
 - 新檔 `platform/tests/test_launch_profiles.py`
 - 既有測試只准「加案例」或為 `samplesheet` 可為 None 調整輔助函式，不准刪或放寬斷言：`launch_harness.py`、`station_harness.py`、`resume_harness.py`
-- **不准碰**：`web.py`、`web_board.py`、`static/`、gcb／aws／azure／k8s 的渲染邏輯（只在入口拒絕）、`docs/PLATFORM.md`、dev-queue.json。 （11-04 裁決：例外允許 web.py 的確認頁摘要標籤共 2 行：`_PLAIN` 加 profiles 標籤、摘要清單加 ("profiles","profiles")；只加文字，不加選項、不加路由）
+- **不准碰**：`web.py`、`web_board.py`、`static/`、gcb／aws／azure／k8s 的渲染邏輯（只在入口拒絕）、`docs/PLATFORM.md`、dev-queue.json。
 
 ## 作法
 - **新 bundle 鍵 `profiles`**：字串清單，預設 `[]`。沒給或空清單時，bundle 與現在逐位元組相同（`golden_head_scripts.json` 不變）。每個名稱須符合 `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`、不重複、最多 8 個。
@@ -172,6 +172,3 @@ MCP 的 `launch` 多一個選填 `profiles`（字串清單）。給了 `test`，
 - **UNVERIFIED**：HTTP 傳輸路徑沒跑過、MCP 檢查器／conformance 工具未跑。
 - **「需要人看的事」**：description 是否讓模型選對工具（可另附問答評測文件，但不執行）、命名是否直覺。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
-
-## 裁決（11-04 developer-agent）
-- TC-069：接受 web.py 確認頁 2 行標籤（讓核可頁顯示 Config profiles）。其餘網頁檔與選項仍不准動。

@@ -116,7 +116,7 @@
 |---|---|---|---|---|---|---|
 | TC-067 | 裁決（自動補）6；「不做」 | 不在範圍 | 取 `request_pipeline_launch` 的函式簽名 | 用 `inspect.signature` 檢查 | 簽名沒有 `profiles` 參數（沒替它新增，所以不可能生效） | 自動：新測試檔 |
 | TC-068 | 「不做」：`resume`／`relaunch` 工具改 profiles | 不在範圍 | 取 MCP 的 `resume` 與 `relaunch` 工具輸入結構 | 逐一檢查 | 兩者都沒有 `profiles` 參數 | 自動：新測試檔 |
-| TC-069 | 「不做」：網頁步驟 4 的測試資料選項（後續片 `web-launch-test-profile`） | 不在範圍 | 網頁送出流程的樣本表步驟 | 讀頁面內容，並確認 `web_board.py`、`static/` 沒被修改，`web.py` 只允許確認頁摘要標籤 2 行（11-04 裁決） | 沒有「Use the pipeline's test data (profile test)」選項；這片沒動網頁 | 自動：新測試檔（頁面檢查）；閱卷時另查 `git diff --stat` 不含這些檔 |
+| TC-069 | 「不做」：網頁步驟 4 的測試資料選項（後續片 `web-launch-test-profile`） | 不在範圍 | 網頁送出流程的樣本表步驟 | 讀頁面內容，並確認 `web.py`、`web_board.py`、`static/` 沒被修改 | 沒有「Use the pipeline's test data (profile test)」選項；這片沒動網頁 | 自動：新測試檔（頁面檢查）；閱卷時另查 `git diff --stat` 不含這些檔 |
 | TC-070 | 「不做」：`launch_pipeline` 與組合 pipeline 的 profiles | 不在範圍 | 取 MCP 工具名單 | 找 `launch_pipeline` | 沒有這個工具，也沒有組合 pipeline 的 profiles 路徑 | 自動：新測試檔；`test_pipeline_launch.py` |
 | TC-071 | 「不做」：讓使用者移除站台或基礎設施 profile、站台設定 | 不在範圍 | 預檢名單有 `test`、`docker` | 用各種 `profiles` 組合（`["test"]`、`["test","docker"]`）渲染 | head 指令永遠保留站台 ` -c "$NFCORE_SITE_CONFIG"` 與 ` -c nextflow.config`；使用者的 profile 只能附加；平台層沒有 docker／conda／singularity 黑名單 | 自動：新測試檔 |
 

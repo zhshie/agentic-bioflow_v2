@@ -89,9 +89,9 @@ _HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Po
             % web_board.style_source()}
 _PLAIN = {      # the labels of the plain block at the top of the confirmation page
     "zh": {"kind": "種類", "launch": "送出新分析", "resume": "續跑", "relaunch": "重跑", "cancel": "取消", "clean_work": "清理中間檔", "run": "分析名稱", "pipeline": "管線",
-           "version": "版本", "env": "環境", "samples": "樣本數", "profiles": "Config profiles", "folder": "新資料夾", "work": "要刪除的資料夾", "full": "完整內容（技術細節）"},
+           "version": "版本", "env": "環境", "samples": "樣本數", "folder": "新資料夾", "work": "要刪除的資料夾", "full": "完整內容（技術細節）"},
     "en": {"kind": "Request", "launch": "New analysis", "resume": "Continue the run", "relaunch": "Re-run", "cancel": "Cancel", "clean_work": "Clean up intermediate files", "run": "Run name",
-           "pipeline": "Pipeline", "version": "Version", "env": "Environment", "samples": "Samples", "profiles": "Config profiles", "folder": "New folder", "work": "Folder to delete",
+           "pipeline": "Pipeline", "version": "Version", "env": "Environment", "samples": "Samples", "folder": "New folder", "work": "Folder to delete",
            "full": "Full content (technical)"}}
 LAUNCH_HEADERS = dict(_HEADERS, **{      # /launch alone may show pictures, and only our own (guided-launch-2d: the workflow diagram under the pipeline)
     "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
@@ -398,7 +398,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         t = _PLAIN[lang]
         rows = [(t["kind"], t[facts["what"]])]
         for key, label in (("run_name", "run"), ("pipeline", "pipeline"), ("revision", "version"), ("ce", "env"), ("samples", "samples"),
-                           ("profiles", "profiles"), ("folder", "folder"), ("work", "work")):
+                           ("folder", "folder"), ("work", "work")):
             if key in facts:
                 rows.append((t[label], facts[key]))
         return "<dl class=\"fields plain\">%s</dl>" % "".join("<dt>%s</dt><dd>%s</dd>" % (_esc(k), _esc(v)) for k, v in rows)
