@@ -1431,10 +1431,10 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in app.routes) == ROUTES_V3
     wapp = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", platform_path=tmp_path / "platform.db")
     got = sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in wapp.routes)
-    assert len(got) == 29 and digest(repr(got)) == "a6bd4a913b846a948a12f0d02e68818d2e2881f4e8b26c0b04db33cf5235667f"      # resume-edit-web adds GET /act/{verb}/edit (28 before)
+    assert len(got) == 30 and digest(repr(got)) == "e182004a5cccfb4a978f5357f0f951f7c0335f22b5e4bce4cad37a9b29fc4e97"      # resume-edit-web adds GET /act/{verb}/edit (28 before)
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
-    assert len(names) == 52 and digest(repr(names)) == "ed4b00e030ba0694db1ef902722c42d5ee5a4359f91ee33495f1f9811057b3fd"      # 012b-2 adds preview_samplesheet; mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
+    assert len(names) == 54 and digest(repr(names)) == "e2385ce0459cda5189c5e7afa0966885fc3848fe24a0203af1d852dc70b6f110"      # 012b-2 adds preview_samplesheet on top of v3's 53 (mcp-run-file adds read_run_file; results-files adds run_file)
     assert not [n for n in names if re.search(r"k8s|kube|pod", n, re.I)]
 
 

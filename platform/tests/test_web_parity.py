@@ -44,6 +44,9 @@ WEB_ONLY = {
     # settings-pick-installed: no MCP tool (the site list is the person's own, shown on their settings page)
     "site_pipeline_inventory": "網頁專用唯讀輔助 (GET /settings and the pick step of POST /settings/pipelines): the newest list of installed modules the site agent reported; reads only",
     "reload_site_inventory": "網頁專用 (POST /settings/inventory): queues one read-only pre-use check so the agent reads the site list again; changes no setting",
+    # 012a-settings-page: the person's own two switches; no MCP tool, so no AI can turn development mode on or off for anyone
+    "get_my_settings": "網頁專用唯讀 (GET /settings): the caller's own step-by-step and development-mode flags; reads only; no MCP tool",
+    "set_my_setting": "寫入需在網頁按鈕確認 (POST /settings/personal, the PAGE channel); no MCP tool",
 }
 # Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).
 OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d", "read_task_log": "011c",
