@@ -4,6 +4,7 @@ Test cases are named in the comments (TC-nnn of specs/launch-test-profile/test-c
 import copy
 import json
 import re
+import time
 
 import pytest
 
@@ -194,6 +195,33 @@ def test_tc023_a_hostile_list_is_cleaned_not_stored(tmp_path, monkeypatch):
     feed(w, {"nf-core/ampliseq 2.18.0": ["test", "bad name", "$(x)", 3], "evil key": ["test"], "nf-core/rnaseq 3.26.0": "test"})
     got = json.loads(w.sql("SELECT result_json FROM jobs WHERE kind = 'preflight' ORDER BY id DESC LIMIT 1")[0][0])["site_profiles"]
     assert got == {"nf-core/ampliseq 2.18.0": ["test"]}
+
+
+def test_ruling_a_the_latest_profile_list_is_not_cleaned_after_eight_days(tmp_path, monkeypatch):
+    # TC-023 ruling A (11-04): the newest done pre-use check of an environment is kept, so a launch after 8 days still sees the profiles
+    from abf_platform import jobs
+    w = World(tmp_path, monkeypatch)
+    w.ann = w.user("ann")
+    install_eight(w)
+    feed(w, profiles_map())
+    later = time.time() + 8 * 86400
+    jobs.enqueue_preflight(w.ip.state_db, "lab-a", lambda: later, offline_after=10 ** 9)         # any later job runs the cleaning
+    kept = w.sql("SELECT result_json FROM jobs WHERE kind = 'preflight' AND state = 'done'")
+    assert len(kept) == 1 and json.loads(kept[0][0])["site_profiles"] == profiles_map()
+    out = ask(w, w.ann, ["test"])
+    assert out["ok"] is True and out["state"] == "pending", out
+
+
+def test_ruling_a_an_older_second_check_is_still_cleaned(tmp_path, monkeypatch):
+    # TC-023 ruling A: only the newest done check is kept; the older one goes as before
+    from abf_platform import jobs
+    w = World(tmp_path, monkeypatch)
+    w.user("ann")
+    feed(w, profiles_map())
+    feed(w, profiles_map())
+    assert len(w.sql("SELECT id FROM jobs WHERE kind = 'preflight' AND state = 'done'")) >= 2
+    jobs.enqueue_preflight(w.ip.state_db, "lab-a", lambda: time.time() + 8 * 86400, offline_after=10 ** 9)
+    assert len(w.sql("SELECT id FROM jobs WHERE kind = 'preflight' AND state = 'done'")) == 1
 
 
 # ======================================================================= the MCP tool =============================================================
