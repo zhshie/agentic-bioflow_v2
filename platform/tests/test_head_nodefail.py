@@ -703,3 +703,45 @@ def test_adv7_a_new_streak_after_an_alive_answer_gets_its_own_six_hours(rig):
     n = len(fetch_jobs(rig))
     assert get(rig, rid)["status"] == "failed"
     assert len(fetch_jobs(rig)) == n + 1
+
+
+# ---- ruling R1: a give-up limit when there is no fact at all ---------------------------------------------------------------------
+
+def _lost_for(rig, hours):
+    """lost_run, but silent for `hours`: the last message and the hand-over are both that long ago."""
+    rid = lost_run(rig)
+    t = time.time() - hours * 3600
+    rig.sql("SELECT 1")
+    con = sqlite3.connect(str(rig.index))
+    with con:
+        con.execute("UPDATE runs SET last_message_at = ? WHERE run_name = 'x'", (t,))
+    con.close()
+    con = sqlite3.connect(str(rig.state))
+    with con:
+        con.execute("UPDATE launches SET submitted_at = ?, confirmed_at = ? WHERE run_name = 'x'", (t, t))
+    con.close()
+    return rid
+
+
+@pytest.mark.parametrize("how", ["no_fetch", "only_none"])
+def test_tc044_a_run_lost_for_seven_hours_with_no_fact_is_not_asked_again(rig, how):
+    # TC-044 (R1)
+    from abf_platform import jobs
+    rid = _lost_for(rig, 7)
+    if how == "only_none":
+        add_fetch(rig, "x", None, age=7 * 3600)
+    n = len(fetch_jobs(rig))
+    for step in range(3):
+        v = get(rig, rid)
+        assert v["status"] == "lost" and v["failure"]["failure_reason"] is None
+        assert jobs.ask_head_state(rig.state, "x", clock=lambda s=step: time.time() + 120 * (s + 1), last_message_at=time.time() - 7 * 3600) is False
+    assert len(fetch_jobs(rig)) == n
+
+
+def test_tc045_a_run_lost_for_five_hours_is_still_asked_once(rig):
+    # TC-045 (R1): the contrast of TC-044
+    rid = _lost_for(rig, 5)
+    get(rig, rid)
+    get(rig, rid)
+    assert len(fetch_jobs(rig)) == 1
+    assert json.loads(fetch_jobs(rig)[0]["args_json"])["slurm_job_id"] == str(SLURM)
