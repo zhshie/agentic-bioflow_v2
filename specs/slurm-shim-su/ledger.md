@@ -8,3 +8,4 @@
 - 假指令只證明我們自己的解析，不證明真 Slurm 行為（PITFALLS 第 42 條）。
 - 狀態檔命名用 `rows_<id>`／`alive_<id>`／`fail_sacct`／`fail_sbatch`／`invalid_squeue`，不重用 head-nodefail 分支的 `state/sacct_<id>`。
 - WSL 裡 `constitution_scope_test.sh` 紅＝環境問題，以 CI 為準。
+- 修正輪：TC-006 rc=0 斷言獨立檢查（突變 exit 1 會紅）；TC-001 PATH 還原測試改為自給自足。

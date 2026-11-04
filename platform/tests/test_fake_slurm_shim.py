@@ -40,10 +40,19 @@ def test_shim_is_first_on_path(fs, tmp_path):
         assert found and Path(found).resolve().is_relative_to(tmp_path.resolve()), (prog, found)
 
 
-def test_path_is_restored_after_the_test():
-    # TC-001: a test that ran before this one used monkeypatch; the fake folder is not on PATH any more
+def test_path_is_restored_after_the_test(tmp_path):
+    # TC-001: self-contained (no reliance on an earlier test): install with its own MonkeyPatch, undo, PATH is clean again
+    before = os.environ.get("PATH", "")
+    mp = pytest.MonkeyPatch()
+    try:
+        fake_slurm.install(tmp_path, mp)
+        assert "fakeslurm-bin" in os.environ["PATH"]
+        assert "ABF_FAKE_SLURM_DIR" in os.environ
+    finally:
+        mp.undo()
     assert "fakeslurm-bin" not in os.environ.get("PATH", "")
     assert "ABF_FAKE_SLURM_DIR" not in os.environ
+    assert os.environ.get("PATH", "") == before
 
 
 def test_sbatch_prints_job_id_and_logs_call(fs):
@@ -99,7 +108,8 @@ def test_squeue_gone_job_prints_nothing(fs):
     fs.set(4242, "PENDING", source="squeue")
     assert fs.run("squeue", "-h", "-j", "4242", "-o", "%T").stdout.strip() == "PENDING"
     r = fs.run("squeue", "-h", "-j", "9999", "-o", "%T")
-    assert r.returncode == 0 and r.stdout == "\n"[:0] or r.stdout.strip() == ""
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
 
 
 def test_sacct_empty_output_is_rc0(fs):
