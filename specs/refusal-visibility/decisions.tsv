@@ -6,3 +6,4 @@ ts	phase	decision	why	evidence	result
 2026-11-05	GREEN	依裁決 R2 記 GREEN，TC-032 本機環境假紅（origin/v3 鏡像舊參照）	CI 為權威，store.py 對真 origin/v3 差異為 0	plan.md 裁決 R2	603/604
 2026-11-05	FIX	閱卷回修：補 ledger 的閱卷證據（TC-006 並列、grep、PITFALLS、截圖逐張、TC-076/078/085），並用本機 Chrome 無頭模式真的截圖	閱卷說 ledger 只有進度勾選；先前說本機沒瀏覽器，其實有 Chrome；390 寬用 iframe 因為無頭視窗最窄約 500	specs/refusal-visibility/ledger.md; screens/	390 寬 scrollWidth=390，四張都沒有「已送出」
 2026-11-05	FIX	TESTING.md 補「沒有密碼／OTP 輸入框」與閱卷證據步驟，並把被我誤改的 Head job 標題還原成 ###	TC-071、TC-086 的驗證方式；標題層級是我先前改壞的，屬範圍外改動	docs/TESTING.md:1041-1050	待全套
+2026-11-05	FIX	補 TC-065 的 axe：TESTING.md 加第 7 步並真的跑一次，結果寫進 ledger 第 9 項	閱卷指出 TESTING.md 沒有 axe 步驟也沒有結果；確認頁中英各 0 筆違規，看板的 critical meta-refresh 是既有標籤，不算本片	docs/TESTING.md 第 7 步；ledger.md 第 9 項	確認頁 0 violations，待全套

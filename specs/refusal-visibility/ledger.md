@@ -58,3 +58,10 @@ on_site.sh 印出的那一行 : ssh -o ControlMaster=auto -o ControlPath=/.ssh/c
 - TESTING.md 這次補了：沒有密碼／OTP 輸入框那句（TC-071）、截圖步驟、閱卷證據步驟；並還原我先前不小心把 `### Head job ended…` 改成 `##` 的標題層級。
 - 全套本機：TC-032（`test_no_schema_change`）依裁決 R2 是環境假紅（WSL 鏡像的 origin/v3 過期），以 GitHub CI 為準。
 - 開放給 maintainer 決定：連線指令格式是否再收緊（計畫的嚴格格式仍放行 `> < ( ) ' "` 等字元）。
+
+### 9. TC-065：axe 無障礙掃描（axe-core 4.10.2，本機 Chrome 無頭 `--dump-dom`，注入 `axe.run(document)`；步驟已寫進 TESTING.md 手動節第 7 步）
+掃的是測試平台造 refused 加合格 open_command 後存下的頁面（與第 4 項截圖同一批）。
+- `/c/<id>` 中文：violations 0 筆，passes 19，incomplete 0。
+- `/c/<id>` 英文：violations 0 筆，passes 19，incomplete 0。
+- `/` 看板中文與英文（附帶掃）：3 筆，全不在退回區塊內：`meta-refresh`（critical，目標 `meta[http-equiv="refresh"]`，看板自動更新標籤，`origin/v3` 的 web_board.py 本來就有，本片沒動）、`landmark-unique`（moderate，`.side`）、`page-has-heading-one`（moderate，`html`），後兩者也是看板既有結構。本片要求的確認頁沒有 serious 或 critical。
+- 看板那筆既有的 critical `meta-refresh` 不是本片造成，也不在本片範圍；留給 maintainer 另案決定。
