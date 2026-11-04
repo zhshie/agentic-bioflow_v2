@@ -103,10 +103,13 @@ test_gitleaks_uses_redact() { # TC-027
   [ "$n" -ge 2 ] && [ "$n" = "$r" ]
 }
 test_existing_tests_yml_untouched() { # TC-012, TC-013, TC-044
-  if ! git -C "$ROOT" rev-parse --verify -q origin/v3 >/dev/null 2>&1; then
-    echo "skipped test_existing_tests_yml_untouched (no origin/v3 history)"; return 0
+  # origin/v3 can be stale in mirrors, so measure from the first commit of this task (its plan commit).
+  local plan
+  plan="$(git -C "$ROOT" log --format=%H --grep='^chore(ci-secrets-deps): plan from developer-agent' -1 2>/dev/null)"
+  if [ -z "$plan" ]; then
+    echo "skipped test_existing_tests_yml_untouched (no task history)"; return 0
   fi
-  [ -z "$(git -C "$ROOT" diff "$(git -C "$ROOT" merge-base origin/v3 HEAD)" -- .github/workflows/tests.yml)" ]
+  [ -z "$(git -C "$ROOT" diff "${plan}^" HEAD -- .github/workflows/tests.yml)" ]
 }
 test_pip_audit_targets_both_files() { # TC-032..036
   [ -f "$WF" ] || return 1
