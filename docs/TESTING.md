@@ -1043,9 +1043,11 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 1. Close the shared connection to the site (`ssh -O exit ...`), then ask for a launch and press 送出 on `/c/<id>`.
 2. The page must say the connection is not open and nothing was submitted, name the platform host, and show one line in a box. It must not say 已送出.
 3. Paste the line into a WSL terminal, log in, and call launch again; the new request must go through.
-4. Screenshots (reviewer): `/c/<id>` and `/` at 1440 and 390 px wide, zh and en, into `specs/refusal-visibility/screens/`.
+4. The page has no password, passphrase or OTP input box anywhere; the person types them only in the WSL terminal of step 3. If you see one, stop: that is a failure (RV-12).
+5. Screenshots: `/c/<id>` at 1440 and 390 px wide, zh and en (four files named `confirm-<width>-<lang>.png`), into `specs/refusal-visibility/screens/`. A headless Chrome works: save the page, then `chrome --headless=new --window-size=1440,900 --screenshot=<file> <page>`. For 390 put the page in an `<iframe width=390>`, because headless Chrome will not make a window narrower than about 500 px. Check that none of the four shows 已送出 and that the 390 ones do not scroll sideways (`document.documentElement.scrollWidth` equals 390).
+6. Evidence for the reviewer, pasted into `specs/refusal-visibility/ledger.md` under "閱卷證據" (TC-086): (a) the line `scripts/on_site.sh` prints (fake ssh through `ON_SITE_SSH_BIN`, as `tests/on_site_test.sh` does) beside the line shown on the page; (b) a grep of `platform/` (not tests) for `ControlMaster=yes`, `ControlPersist`, `nchc_t3c4`, `u9613010`, `site_login_command` that finds nothing; (c) the PITFALLS re-check: entries that touch ssh, `on_site.sh`, `ControlPath`, `wsl.exe`, `web.py`, `jobs.py` and the tests that guard them; (d) each screenshot, one line with its file name and the words seen. Also paste the checks for TC-076, TC-078 and TC-085: `git diff origin/v3 --name-only` against the plan's file list, no no-touch file in it, and no `CREATE TABLE`, `ALTER TABLE` or migration in the diff of `platform/`.
 
-## Head job ended by the scheduler (manual, on nano4)
+### Head job ended by the scheduler (manual, on nano4)
 
 1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
 2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.
