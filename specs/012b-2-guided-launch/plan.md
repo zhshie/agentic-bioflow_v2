@@ -139,6 +139,13 @@ D. **012b-2 剩餘片的順序**：預設 (b) 本片 →（核對後）guided-la
 9. **完全空檔（0 位元組）**：視為讀取失敗，`✗` 一句：zh `樣本表是空的，沒有標頭列。` en `The samplesheet is empty and has no header row.`；不顯示預覽表與角色。「只有標頭」維持「共 0 列」。`preview_samplesheet` 對空檔拋 `Refusal`，頁面端轉成上句。
 10. **單格截斷**：超過 60 字元者取前 60 字元再加 `…`（結果 61 字元）；恰 60 字元不截斷；截斷時原文後段不得出現在 HTML。以 Python 字元（code point）計，不以位元組計。
 
+## 裁決 R（11-05 developer-agent，回應 BLOCKED(executor)）
+1. **TC-308 用字**：合約改為「樣本表大於 1 MiB，無法預覽。」（措辭掃描禁「超」）；程式 `g_pv_big` 現行文字正確，不必改。已 commit a52d3685。
+2. **plan.md「補充裁決」七行**已還原（commit 3f8255c4 誤刪），執行者不要再動 `specs/012b-2-guided-launch/plan.md`。
+3. 兩處 pin 摘要測試更新（`test_k8s_launch.py:1437`、`test_web_settings_ce_mobile.py:101`）核准：新增動作與 web_board 字串必然改變摘要。
+4. TC-315／TC-312／TC-604 的詮釋照 executor 報告，核准。
+5. 不要再因這幾點 BLOCKED；直接跑全套交閱卷。
+
 ## 專長守則（ui）
 
 ### executor
@@ -172,10 +179,3 @@ D. **012b-2 剩餘片的順序**：預設 (b) 本片 →（核對後）guided-la
   - repo 還沒有 `ui_check.py`：verifier 自己用 Playwright（經 `with_server.py`）拍同樣 4 張截圖；axe 沒跑就標 **axe：UNVERIFIED**，並寫明缺什麼。
   - 截圖只能存到 repo 之外或 `.gitignore` 排除的資料夾，**絕不存進 Drive 工作區**；報告只貼路徑與張數。
   - 起不了應用程式（缺依賴、埠被占）標 UNVERIFIED 並寫明需要什麼，不改以靜態 HTML 當作通過。
-
-## 補充裁決（11-04 developer-agent，回應 verifier 出題的疑點）
-- 選的樣本表檔名不在 `list_samplesheets` 清單內（含 `../x`、他人檔名）：視同「未選」，顯示與「清單有、未選」相同的句子；不預覽、不洩漏內容。
-- schema_input 讀取錯誤（`_failure`）：預覽表照常顯示，只是不列角色與配對。
-- 恰好 5 列：`truncated` 為 False；只有超過 5 列才寫「僅顯示前 5 列」。純空白儲存格視為空。
-- 英文「無樣本表」句：沿用 v3 現行 `g_no_sheet`，不要求逐字等於 DESIGN.md。
-- `ui_check.py` 以 `scripts/dev/ui_check.py` 為準。
