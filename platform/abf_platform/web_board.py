@@ -44,7 +44,7 @@ STRINGS = {
         "refusal_other": "站台拒絕了送出，工作沒有送出：%s",
         "refusal_error": "站台回報送出結果不明，工作可能已經送出。請先查看站台上的資料夾與 Slurm 工作（見下方說明）再決定要不要重送。",
         "refusal_error_msg": "站台的回報：%s",
-        "refusal_error_left": "站台上留下的東西：%s",
+        "refusal_error_left": "留在站台上的檔案與資料夾：%s",
         "title": "agentic-bioflow", "mine": "我的分析", "none_yet": "尚無分析紀錄。", "later": "之後開放",
         "new_project": "＋ 新專案", "search_projects": "搜尋專案或分析", "upload": "↑ 上傳資料", "settings": "設定", "explorer": "資料瀏覽",
         "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "usd_about": "（約 US$%s）", "usd_under": "（約 US$0.01 以下）", "cost_cloud": "雲端 US$ —", "more": "還有 %d 筆",
