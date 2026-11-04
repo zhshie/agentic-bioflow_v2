@@ -111,6 +111,20 @@ ROADMAP 012：`no NCHC SU cap in dev mode`。本片只存旗標與標示，不�
 - 不做權杖建立／撤銷、運算環境新增／修改、營運者後台、角色（維持灰字）。
 - 不動左欄、右欄、使用前檢查、登記管線表單、CSP。
 
+## 裁決（自動補，2026-11-04）
+
+verifier 出題時提的九點，逐條決定如下（依據：本檔、DESIGN.md、PLAN 第 145 行、ROADMAP 012；不新增行為）。
+
+1. **worktree 不在 v3 上（阻擋）**：這是環境問題，不是計畫內容。executor 開工第一步：`git fetch` 後 `git merge origin/v3`，確認 `platform/abf_platform/web.py`、`web_settings.py`、`web_board.py`、`DESIGN.md`、`PRODUCT.md` 與根目錄 CLAUDE.md「For the executor and verifier」段都在，才算就緒；verifier 也在合併後才設「合約已確認」。分支名以現有 worktree 為準（`feat/012a-settings-personal`），不為了名字改分支；frontmatter 的 `branch:` 視為筆誤，以實際分支為準。
+2. **橫幅宣告「不限 SU」但本片不判斷**：維持逐字句子。依據 PLAN 第 145 行「開發模式＝國網不限 SU、畫面醒目標示」與 ROADMAP 012「no NCHC SU cap in dev mode」，橫幅說的是這個模式的定義；實際不限制由 012d 實作。PR 描述要寫明「本片只標示、判斷在 012d」。TC-013 照寫。
+3. **DESIGN 第 9 點「在設定讓使用者可以放金鑰」本片未交付**：維持裁決 A 預設（選 1，延到 012a-2）。012a-2 必須列入 ROADMAP／後續清單，PR 描述寫明此原話尚未滿足。TC-052 只驗證 AI 金鑰段沒被改，不驗證可輸入。
+4. **橫幅用哪個 token**：用 DESIGN.md Tokens 的 `status-lost` 與 `status-lost-bg`（現有 CSS 變數 `--lost`、`--lost-bg`，web_board.py :163／:167，亮暗皆有；琥珀色，是 DESIGN 中唯一的警示色）。底色 `--lost-bg`、文字與符號 `--lost`；不新增任何顏色字面值、不用左側色條。截圖由維護者在 PR 上看，若要換色另開修正。
+5. **test_web_wording_sweep.py**：加入「範圍：檔案」的「被釘住的既有測試」，**不改**、必須全綠。所有新增中文字串（含橫幅、「已設定／未設定」、「開啟／關閉」、「已儲存。」）要先對照禁字表（這個、一下、還沒有……）；撞到禁字就改字串，不改測試。TC-043 成立。
+6. **英文字詞**：英文版用 `On`／`Off`、`Turn on`／`Turn off`、`Set`／`Not set`（憑證）、`Step-by-step mode`、`Development mode`，橫幅用計畫給的英文。測試只要求有英文且 `mid()` 不含中文字，不鎖定上述詞之外的字。
+7. **POST 被拒的狀態碼**：錯 CSRF、未知鍵、`on` 非 0／1 → 400（頁內一句白話，旗標不變）；未登入 → 重導到登入頁（既有行為），測試接受 4xx 或重導，以旗標不變為準；無頻道（非 PAGE）→ 動作層拒絕。POST 成功 → 302 到 `/settings?notice=personal-saved`，英文使用者重導時帶 `&lang=en`（沿用既有 notice 重導寫法），TC 不鎖定。
+8. **自動驗證與截圖**：本片不加 docs/TESTING.md 手動步驟，全部自動驗證；1440／390 × zh／en 截圖與 axe 由 `scripts/dev/ui_check.py` 與 `scripts/dev/check_settings_mobile.py` 跑（兩者在 origin/v3 存在），畫面好壞由維護者看 PR 截圖。
+9. **登入前頁面是否有橫幅**：沒有。橫幅只在已登入（能讀到使用者旗標）的頁面出現；登入頁、/welcome 沒有使用者，不畫橫幅、不驗。
+
 ## 專長守則（ui）
 
 ### executor
