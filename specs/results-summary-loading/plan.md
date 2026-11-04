@@ -30,6 +30,8 @@ results-files `specs/results-files/test-case.md` 第 58 行，逐字：
 - 新測試：`platform/tests/test_results_summary_loading.py`。
 - 被釘住、需要同步修改的既有測試（只改下面兩處的預期，不刪案例，ledger 逐條列）：`platform/tests/test_web_results_outputs.py`：`test_ro01_results_stage_has_cards_and_tabs`（:94，現釘四格皆「之後開放」）與 `test_ro10_english`（:346，英文版同理）。這兩條開的是「輸出分頁、第一次載入」＝讀取中，預期要改成「報告」「MultiQC 報告」兩格為讀取中、「指標」「全部下載」仍為「之後開放」。
 
+- 同步需重新釘住：`platform/tests/test_clean_page.py` 的 `BASE_BOARD` 裡 `succeeded-zh`、`succeeded-en` 兩個雜湊（成功板預設開輸出分頁，兩格改讀取中，位元組必然變）；`failed`／`running`／`BASE_STYLE` 雜湊不得動。
+
 **不需要 `platform/abf_platform/web.py`，也不需要 `platform/abf_platform/actions/__init__.py`。**`web_board.py` 要改，但只動 `_report_cell`／`_results_body` 兩個函式；另一任務（resume 編輯頁）同時改 `web.py`、`web_board.py`，所以與它的車道在 `web_board.py` 相交，落地前 `git merge origin/v3`，衝突只保留雙方新增。
 
 已核對不受影響、不必改的既有測試：`test_results_files.py` 的 `test_tc025_*`（列表已讀到）、`test_tc026_unknown_means_no_link_and_no_claim`（斷言「無連結、無『此管線沒有產生』」，新行為仍成立，但新測試要補「讀取中」字樣）、`test_tc037_the_cards_keep_two_greyed_words_and_the_tabs_stay`（列表已讀到）；`test_web_board.py` :317、`test_web_upload.py` :1017 是左欄的「之後開放」，與本任務無關。
@@ -111,3 +113,6 @@ results-files `specs/results-files/test-case.md` 第 58 行，逐字：
   - repo 還沒有 `ui_check.py`：verifier 自己用 Playwright（經 `with_server.py`）拍同樣 4 張截圖；axe 沒跑就標 **axe：UNVERIFIED**，並寫明缺什麼。
   - 截圖只能存到 repo 之外或 `.gitignore` 排除的資料夾，**絕不存進 Drive 工作區**；報告只貼路徑與張數。
   - 起不了應用程式（缺依賴、埠被占）標 UNVERIFIED 並寫明需要什麼，不改以靜態 HTML 當作通過。
+
+## 裁決（11-04 developer-agent）
+- executor 回報 test_clean_page.py 的 succeeded 兩個雜湊必然改變，採 (a)：允許重新釘住這兩個，範圍與 TC-026 檔案清單已補；其餘雜湊不得動。

@@ -51,7 +51,7 @@
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-026 | 不做：不改 `web.py`、其他分頁、完成階段 `web_finished.py`；範圍：檔案 | 不在範圍 | 實作完成後的分支 | 看 `git diff --stat <base>...HEAD` | 異動檔案只有：`platform/abf_platform/web_board.py`（且只動 `_report_cell`／`_results_body`）、新測試檔、`test_web_results_outputs.py`；沒有 `web.py`、`web_finished.py` | 手動：閱卷者看 diff stat（ledger 亦須貼出，計畫完成標準） |
+| TC-026 | 不做：不改 `web.py`、其他分頁、完成階段 `web_finished.py`；範圍：檔案 | 不在範圍 | 實作完成後的分支 | 看 `git diff --stat <base>...HEAD` | 異動檔案只有：`platform/abf_platform/web_board.py`（且只動 `_report_cell`／`_results_body`）、新測試檔、`test_web_results_outputs.py`、`test_clean_page.py`（只允許 `BASE_BOARD` 的 succeeded-zh／succeeded-en 兩個雜湊改變，failed／running／BASE_STYLE 不得動）；沒有 `web.py`、`web_finished.py` | 手動：閱卷者看 diff stat（ledger 亦須貼出，計畫完成標準） |
 | TC-027 | 不做：不給 `run_outputs` 新增「已排工作」旗標；不改 `actions/__init__.py` | 不在範圍 | 同 TC-026 | 看 diff | `platform/abf_platform/actions/__init__.py` 沒有任何異動 | 手動：閱卷者看 diff stat |
 | TC-028 | 不做：不改左欄的字 | 不在範圍 | 既有測試 `test_web_board.py`（約 :317）與 `test_web_upload.py`（約 :1017）釘著左欄的「之後開放」 | 執行這兩個測試 | 維持通過、沒有被改動預期 | 自動：`test_web_board.py`、`test_web_upload.py` |
 | TC-029 | 不做第 2 條：其他分頁在列表其實正在讀時仍寫「之後開放」（計畫接受的行為） | 不在範圍 | 先開輸出分頁讓列表排進工作且未讀完 | 再切到任務分頁 | 兩格仍是「之後開放」，不是「讀取中」（沒有偷偷做「所有分頁都準確」） | 自動（計畫的測試清單未列，執行者須補一條新測試並標 TC-029） |
