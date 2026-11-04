@@ -126,6 +126,12 @@ GitHub issue 349 是 maintainer 的評估，逐字（中英對照原文）：
 ## 裁決 R2（2026-11-05，developer-agent）
 TC-032（test_no_schema_change）本機 603/604 的唯一紅是環境假紅：測試比對的 origin/v3 在 WSL 鏡像是舊參照，你實際對真正 origin/v3 的 store.py 差異為 0，已證明。CI 是權威（同類 PR #359、#360 CI 綠）。不改測試、不要再同步鏡像、不要再 BLOCK：把 executor-status 記為 GREEN（註明 TC-032 本機環境紅）、直接交閱卷；四張截圖交閱卷端。
 
+## 裁決 R3（2026-11-05，developer-agent；對抗審 FAIL 的修正，以本節為準）
+1. **`error` 狀態不是「拒絕」。** 站台回「sbatch 結果不明：可能已送出」時，確認頁不得寫「站台拒絕了送出、工作沒有送出／nothing was submitted」，否則使用者會重送、同一工作在叢集上跑兩次。做法：只有 state=`refused` 才顯示「沒送出」那句（STRINGS refusal_other）；state=`error` 改顯示新字串（zh/en 都要）：「站台回報送出結果不明，工作可能已經送出。請先查看站台上的資料夾與 Slurm 工作（見下方說明）再決定要不要重送。」後面接站台原訊息與 left_on_site。
+2. 這是新增測試：在新檔 `platform/tests/test_refusal_visibility_error_state.py` 加測試（zh、en 各一，error 狀態頁不含「沒有送出」「nothing was submitted」，含「可能已經送出」；refused 狀態頁行為不變）。不改合約檔 test-case.md。web_board.STRINGS 雜湊再更新一次，同裁決 R 第 2 點的理由。
+3. **收緊 open_command 格式**（只會讓安全網更嚴，C 級）：`jobs.valid_open_command` 除原規則外，再拒絕含 `>` `<` `(` `)` 引號（單、雙）反斜線的字串，並要求每個 `-o` 的選項名稱在白名單 {ServerAliveInterval, ServerAliveCountMax, ConnectTimeout, StrictHostKeyChecking, UserKnownHostsFile, ControlMaster, ControlPath, ControlPersist, IdentitiesOnly, IdentityFile, Port, User}；`ProxyCommand`、`LocalCommand`、`PermitLocalCommand` 一律拒絕。加對應測試（含上一輪實測會過的 `ssh -o A=b>~/.bashrc u@nano4.nchc.org.tw true`，現在必須回 None）。若原合約有 TC 明確要求某個合法例子通過，以該例子為準、白名單補上它。
+4. 其餘範圍不變；仍不准動 store.py、confirm.py、mcp_server.py。
+
 ## 專長守則（backend）
 
 ### executor
