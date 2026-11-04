@@ -52,3 +52,28 @@ ok   missing chromium path exits 3
 ok   missing path: one line naming it, launch not called
 ui_check_script_test: PASS
 ```
+
+## Full suite (tests/run_all.sh at 38791130, NOT green locally)
+Failures are environmental (VM runs as root with USER unset, no rsync/tw, read-only-cache tests cannot fail as root); none touch ui_check. agent_ctl_connection_id and why_pending pass with USER=root; ui_check_script_test passes.
+```
+FAIL       agent          not running - Platform will show no outputs (scripts/on_site.sh --script scripts/agent_ctl.sh start)
+FAIL       resources      tar: Child returned status 141
+FAIL       compute-env    ce is 'unreachable'>>
+missing rsync on MSYS is FAILed by name                    ok
+and it says plainly that Git Bash ships none               ok
+and gives an install route rather than nothing             ok
+
+-- (i) install_deps.sh: tw on MSYS is named plainly, not folded into 'unknown platform' --
+install_deps.sh --cli-only fails cleanly, not silently     ok
+it names the gap as unmeasured (R4), a real answer         ok
+and gives the Windows asset to fetch by hand               ok
+it does not fall back to the generic unknown-platform text ok
+shim does not run wsl.exe from the caller's own cwd        ok
+and lands in a directory that exists                       ok
+only settings.sh decides whether the bridge is in play     ok
+and nothing hardcodes the control-path default beside it   ok
+
+3 failed
+
+135/144 passed, 9 failed
+```
