@@ -573,7 +573,7 @@ def _failure_notice(t, run, acts=None):
     step = first_failed(failure)
     verb = (failure.get("actions") or ["relaunch"])[0]
     word = t["resume" if verb == "resume" else "rerun"]
-    when = _clock_hm(run.get("last_message_at") if lost else run.get("ended_at"))
+    when = _clock_hm(run.get("last_message_at") if lost else (run.get("ended_at") or run.get("last_message_at")))      # a lost run shown failed has no end
     rows = (("f_step", "<code>%s</code>" % esc(step) if step else "—"),
             ("f_reason", "<br>".join(esc(x) for x in _reason_lines(t, failure))),
             ("f_next", esc(word + t["confirm_suffix"])))
