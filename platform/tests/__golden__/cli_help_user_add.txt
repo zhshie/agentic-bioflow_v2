@@ -1,0 +1,12 @@
+usage: abf-platform user add [-h] --lab LAB [--cloud-cap-usd CLOUD_CAP_USD] name
+
+positional arguments:
+  name
+
+options:
+  -h, --help            show this help message and exit
+  --lab LAB
+  --cloud-cap-usd CLOUD_CAP_USD
+                        the most this person may spend on cloud runs in a month, in US dollars (0
+                        to 1,000,000); without it the person cannot send to the cloud until you
+                        run: user cloud-cap

@@ -350,3 +350,108 @@ def groups_block(t, lang, files, quiet=False, cells=None):
 
 def fill_hint(t, loading):
     return '<p class="muted">%s</p>' % esc(t["g2_fill"]) if loading else ""
+
+
+# ---- resume-edit-web: the page that changes the parameters and the extra settings of a resume ----------------------------------------------
+
+def typed_like(raw, kinds, first):
+    """A box of the resume page as the value it stands for: by the schema's types when the schema is read, else by the type of the value the first
+    submission had (a number or a true/false stays one); text otherwise."""
+    value = " ".join(str(raw).split())
+    if kinds:
+        return _typed(value, kinds)
+    if isinstance(first, bool):
+        return value.lower() == "true" if value.lower() in ("true", "false") else value
+    if isinstance(first, int) and web_board.PARAM_INT.match(value):
+        return int(value)
+    if isinstance(first, float) and (web_board.PARAM_FLOAT.match(value) or web_board.PARAM_INT.match(value)):
+        return float(value)
+    return value
+
+
+def wrong_type(raw, kinds):
+    """Whether a filled box cannot be read as any type the schema allows for the parameter (e.g. `abc` for an integer)."""
+    value = " ".join(str(raw).split())
+    if not value or not kinds or "string" in kinds:
+        return False
+    return isinstance(_typed(value, kinds), str)
+
+
+def edit_changes(fields, first, files, defaults_too=True):
+    """{name: typed value} of the boxes of the resume page that differ from the first submission. A box left empty is not sent. A parameter the first
+    submission did not have is sent unless its box holds what the schema's default is (as on the launch page); one it had is sent whenever the value
+    is another one, also when it equals the default."""
+    types, defaults = types_of(files), defaults_of(files)
+    out = {}
+    for name, raw in (fields or {}).items():
+        value = " ".join(str(raw).split())
+        if not value:
+            continue
+        if name in first:
+            typed = typed_like(value, types.get(name), first[name])
+            if type(typed) is type(first[name]) and typed == first[name]:
+                continue
+            out[name] = typed
+        else:
+            if defaults_too and name in defaults and (_shown(defaults[name]) == value or _same(_typed(value, types.get(name) or []), defaults[name])):
+                continue
+            out[name] = typed_like(value, types.get(name), None)
+    return out
+
+
+def two_columns(t, cells):
+    """The parameters of the first submission as a table of name and box, for when the pipeline's own table is not there."""
+    if not cells:
+        return ""
+    heads = "".join("<th>%s</th>" % esc(t[k]) for k in ("g2_th_name", "g2_th_value"))
+    rows = "".join('<tr class="prow"><td>%s</td><td><input name="p.%s" aria-label="%s" value="%s"></td></tr>' % (esc(n), esc(n), esc(n), esc(v))
+                   for n, v in cells.items())
+    return '<table class="tbl ptbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (heads, rows)
+
+
+def edit_params_block(t, lang, files, first, given, quiet=False):
+    """The parameter part of the resume page. `first` is {name: value} of the first submission; `given` is {name: text} of what the boxes held
+    before the page was drawn again (they win). The pipeline's own table when it is read (every box holds the first value, else the default),
+    else the reading line or the ✗ line and the first submission's parameters as name and box; with none, the one sentence."""
+    shown = {n: _shown(v) for n, v in (first or {}).items()}
+    kind, schema = _part(files, "schema")
+    ready = kind == "part" and schema.get("status") == "ok"
+    out = [] if first else ['<p class="muted">%s</p>' % esc(t["re_none"])]
+    if ready:
+        known, rest = split_prefill(first, files)
+        cells = dict(known, **{k: v for k, v in (given or {}).items() if k in types_of(files)})
+        out.append(groups_block(t, lang, files, quiet, cells))
+        extra = {n: (given or {}).get(n, _shown(v)) for n, v in rest.items()}
+        out.append(two_columns(t, extra))
+        return "".join(out)
+    if kind == "loading":
+        out.append(reading(t, quiet))
+    elif kind == "error":
+        out.append(_failure(lang, files))
+    elif kind == "part":
+        out.append(_bad(lang, schema.get("message")))
+    return "".join(out) + two_columns(t, {n: (given or {}).get(n, v) for n, v in shown.items()})
+
+
+def edit_page_html(name, csrf, runs, lang, run, head, files, first, token, given=None, extra="", error=None, code_post=False):
+    """GET /act/resume/edit (and the answer to a POST that did not pass): the run's first facts (not editable), the parameters as the first
+    submission had them, one box for extra settings, and the one form that goes to POST /act/resume. `head` is [(label, value)] of what is
+    known of the first submission; `error` is one plain line that goes above everything; `code_post` is True for the answer to a POST (no refresh)."""
+    lang = web_board.pick_lang(lang)
+    t = web_board.STRINGS[lang]
+    loading = is_loading(files)
+    quiet = bool(code_post)
+    dl = '<dl class="fields">%s</dl>' % "".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), esc(v)) for k, v in head if v not in (None, ""))
+    note = '<p class="bad" role="alert">%s</p>' % esc(t["re_err"] % error) if error else ""
+    carried = '<input type="hidden" name="run" value="%s"><input type="hidden" name="csrf" value="%s">' % (esc(run), esc(token))
+    carried += '<input type="hidden" name="lang" value="en">' if lang == "en" else ""
+    back = web_board._url(lang, run)
+    middle = lambda t_, lang_: ('<main class="main" data-pane="middle"><h1>%s</h1>%s%s<p class="muted">%s</p>'
+                                '<form class="lform" method="post" action="/act/resume">%s<h2>%s</h2>%s%s'
+                                '<label for="extra_config">%s</label><textarea id="extra_config" name="extra_config" rows="5">%s</textarea>'
+                                '<div class="acts"><button type="submit">%s</button> <a href="%s">%s</a></div></form></main>'
+                                % (esc(t["re_title"]), note, dl, esc(t["re_fixed"]), carried, esc(t["re_params"]),
+                                   edit_params_block(t, lang, files, first, given, quiet), fill_hint(t, loading and not quiet),
+                                   esc(t["re_extra"]), esc(extra), esc(t["re_submit"]), back, esc(t["re_back"])))
+    return web_board._frame(name, csrf, runs, lang, "", middle, lambda t_, lang_: web_board._right(t_, None), run=run, path="/act/resume/edit",
+                            refresh=loading and not quiet)

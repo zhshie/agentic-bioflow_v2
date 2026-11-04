@@ -1,0 +1,19 @@
+{
+  "agent": "a1",
+  "config": {
+    "computeQueue": "q",
+    "headQueue": "q",
+    "workDir": "/w"
+  },
+  "credentialsId": null,
+  "dateCreated": "<TS>",
+  "description": null,
+  "id": "<N>",
+  "lastUpdated": "<TS>",
+  "lastUsed": null,
+  "message": "沒有代理在線，尚未預檢 (no agent online, not checked yet): agent a1 is offline (代理離線); nothing was queued",
+  "name": "s1",
+  "platform": "slurm-platform",
+  "primary": false,
+  "status": "creating"
+}

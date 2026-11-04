@@ -13,7 +13,9 @@ The only routes there are:
   GET  /run/file        one file of the caller's own run's results as a download (?run=&path=; results-files); the agent reads it, 404 as the board's own page when the run is not theirs
   GET  /launch/diagram  the workflow diagram of ?pipeline=&revision= as the image the caller's own agent read from the public repository (guided-launch-2); needs the cookie, 404 as one plain line when it is not there
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
-  POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page
+  POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page.
+                     A resume may also carry `p.<name>` boxes and `extra_config` (resume-edit-web): the changed parameters and the extra settings go to request_resume
+  GET  /act/resume/edit  the page that changes the parameters and the extra settings of a resume (resume-edit-web): ?run=<id>; reads only, asks for nothing
   GET  /upload       the upload form (web-upload-page): choose a cloud compute environment, name and version the dataset, choose FASTQ files and an optional samplesheet; needs the cookie
   POST /upload       receive the files into a staging folder of the platform host (streamed, 2 GB per file), queue one upload job for each, then 303 to /upload/<batch>; the CSRF token of this login. The person's press of Upload is the yes: no confirmation page. A form with the samplesheet box of a national-HPC environment (web-nano4-path) keeps one .csv/.tsv in <uploads>/<name>/sheets/ and answers 303 to /upload?notice=sheet_saved
   GET  /upload/{batch}  the progress of one batch of the person's own uploads; when every file is in the bucket it registers the dataset (once)
@@ -63,6 +65,7 @@ from starlette.requests import ClientDisconnect
 from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
+from abf_launch.build import CONFIG_LIMIT       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
 from . import actions, oauth, store, web_board, web_cost, web_launch, web_settings
 from . import uploads_web, web_upload
 
@@ -400,12 +403,40 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                 rows.append((t[label], facts[key]))
         return "<dl class=\"fields plain\">%s</dl>" % "".join("<dt>%s</dt><dd>%s</dd>" % (_esc(k), _esc(v)) for k, v in rows)
 
+    def changes_block(req, lang):
+        """The changes of a resume, in plain lines above the folded full content (resume-edit-web): one line `name：old → new` for each parameter and the
+        extra settings as they are. They are read out of the lines the action layer's own screen wrote; none, and the page is as it was."""
+        lines = str(req.get("summary") or "").splitlines()
+        if req.get("kind") != "launch" or not any(ln.lstrip("| ").startswith("== 續跑確認") for ln in lines):
+            return ""
+        t = web_board.STRINGS[lang]
+        items, extra, taking = [], [], False
+        for ln in lines:
+            ln = ln[2:] if ln.startswith("| ") else ln
+            m = re.match(r"^參數 (\S+?)：(.*)$", ln)
+            if m and not taking:
+                items.append("%s：%s" % (m.group(1), m.group(2)))
+            elif re.match(r"^== extra-\d+\.config ==$", ln):
+                taking = True
+            elif taking and ln.startswith("接續的 session:"):
+                taking = False
+            elif taking:
+                extra.append(ln)
+        if not items and not extra:
+            return ""
+        out = "<h2>%s</h2>" % _esc(t["re_changes"])
+        if items:
+            out += "<ul>%s</ul>" % "".join("<li>%s</li>" % _esc(x) for x in items)
+        if extra:
+            out += "<p>%s</p><pre>%s</pre>" % (_esc(t["re_changes_extra"]), _esc("\n".join(extra)))
+        return out
+
     def state_page(req, sid, rid, lang="zh"):
         clean = req["kind"] == "clean_work"
         title = "清理確認" if clean else ("送出確認" if req["kind"] == "launch" else "取消確認")
         shown = "<details><summary>%s</summary><pre>%s</pre></details>" % (_PLAIN[lang]["full"], _esc(req["summary"] or ""))
         if req["state"] in ("pending", "confirmed"):
-            shown = plain_block(rid, lang) + shown
+            shown = plain_block(rid, lang) + changes_block(req, lang) + shown
         if req["state"] == "pending":
             if clean:
                 intro = "<p>以下為將被刪除的全部內容。確認無誤後，請按「確認刪除」；按下後才會排入佇列。</p>"
@@ -603,7 +634,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         sid, user = user_of(request)
         if user is None:
             return unauth(request)
-        form = await body_of(request)
+        form = await (launch_body(request) if verb == "resume" else body_of(request))      # a resume may carry the boxes of the parameter table
         lang = web_board.pick_lang(form.get("lang"))
         run_id = str(form.get("run", ""))[:200]
         if verb not in ("resume", "relaunch", "cancel"):
@@ -614,6 +645,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         view = await run_in_threadpool(read_run, run_id, caller)
         if view is None:
             return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        if verb == "resume" and ("extra_config" in form or web_launch.fields_of(form)):
+            return await edit_post(sid, user, caller, lang, view, form)
         if verb == "cancel":
             answer = await actions.request_cancel(platform_path, run_name=view["name"], caller=caller, clock=clock)
         else:
@@ -623,6 +656,82 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return done
         line = web_board.plain_reason(answer.get("message"), lang) + " " + web_board.STRINGS[lang]["r_none"]
         return await board_page(sid, user, caller, lang, run_id, flash=line, code=409)
+
+    # ---- resume-edit-web: the page that changes the parameters and the extra settings of a resume, and the send of its form (POST /act/resume
+    # with the boxes). Nothing here queues anything: it only asks request_resume, and the person presses 送出 on the confirmation page.
+    def edit_reads(caller, view, enqueue):
+        """(earlier, first, files): what the run was first sent with (launch_prefill), its parameters, and the pipeline's own files for that pair
+        (the same read as the launch page; `enqueue` False for the answer to a POST, which only looks)."""
+        earlier = actions.launch_prefill(platform_path, view["name"], caller=caller)
+        first = earlier.get("params") if earlier.get("kept") and isinstance(earlier.get("params"), dict) else {}
+        files = None
+        if earlier.get("kept") and earlier.get("pipeline") and earlier.get("revision"):
+            pipeline = earlier["pipeline"]
+            files = launch_files(caller, pipeline if "/" in pipeline else "nf-core/" + pipeline, earlier["revision"], earlier.get("ce_name"), "used", enqueue)[0]
+        return earlier, first, files
+
+    async def edit_page(sid, user, caller, lang, view, reads, given=None, extra="", error=None, code=200, post=False):
+        t = web_board.STRINGS[lang]
+        earlier, first, files = reads
+        head = [(t["g_s_run"], view["name"])]
+        if earlier.get("kept"):
+            head += [(t["g_s_pipeline"], "%s %s" % (earlier.get("pipeline") or "", earlier.get("revision") or "")), (t["g_s_ce"], earlier.get("ce_name"))]
+        runs = await run_in_threadpool(read_runs, caller)
+        doc = web_launch.edit_page_html(user["name"], csrf(sid, "logout"), runs, lang, view["id"], head, files, first, csrf(sid, "act:" + view["id"]),
+                                            given=given, extra=extra, error=error, code_post=post)
+        return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+
+    async def edit_get(request):
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        if request.path_params.get("verb") != "resume":      # only a resume has an edit page; the route is /act/{verb}/edit so that no route path holds the letters su
+            return HTMLResponse(web_board.render_not_found(user["name"], web_board.pick_lang(request.query_params.get("lang"))), status_code=404, headers=_HEADERS)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        run_id = str(request.query_params.get("run") or "")[:200]
+        view = await run_in_threadpool(read_run, run_id, caller) if run_id else None
+        if view is None:
+            return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        if web_board._failure_of(view) is None:      # a run that did not fail: the refusal the run page gives, on the run's page
+            answer = await actions.request_resume(platform_path, run_name=view["name"], caller=caller, clock=clock, index_path=index_path)
+            done = to_confirmation(answer)
+            if done is not None:
+                return done
+            line = web_board.plain_reason(answer.get("message"), lang) + " " + web_board.STRINGS[lang]["r_none"]
+            return await board_page(sid, user, caller, lang, run_id, flash=line, code=409)
+        reads = await run_in_threadpool(edit_reads, caller, view, True)
+        return await edit_page(sid, user, caller, lang, view, reads)
+
+    async def edit_post(sid, user, caller, lang, view, form):
+        """POST /act/resume with `p.<name>` boxes or `extra_config`: only the boxes that differ from the first submission become `params`; the extra
+        settings lose their outer white space and are not sent when empty. A refusal comes back on the form with everything that was filled in."""
+        t = web_board.STRINGS[lang]
+        cells = web_launch.fields_of(form)
+        typed_text = str(form.get("extra_config", "")).replace("\r\n", "\n").replace("\r", "\n")
+        extra = typed_text.strip()
+        reads = await run_in_threadpool(edit_reads, caller, view, False)
+        _earlier, first, files = reads
+
+        async def back(error):
+            return await edit_page(sid, user, caller, lang, view, reads, given=cells, extra=typed_text, error=error, code=400, post=True)
+        if len(extra) > CONFIG_LIMIT:
+            return await back(t["re_too_long"] % CONFIG_LIMIT)
+        types = web_launch.types_of(files)
+        for name, raw in cells.items():
+            if web_launch.wrong_type(raw, types.get(name)):
+                return await back(t["re_bad_type"] % (name, ", ".join(types[name])))
+        kwargs = {}
+        changed = web_launch.edit_changes(cells, first, files)
+        if changed:
+            kwargs["params"] = changed
+        if extra:
+            kwargs["extra_config"] = extra
+        answer = await actions.request_resume(platform_path, run_name=view["name"], caller=caller, clock=clock, index_path=index_path, **kwargs)
+        done = to_confirmation(answer)
+        if done is not None:
+            return done
+        return await back(web_board.plain_reason(answer.get("message"), lang))
 
     def launch_choices(caller):
         """The samplesheets and the compute environments the person may choose from: only an environment that is set up (`available`) is offered
@@ -1220,6 +1329,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                             Route("/launch", launch_post, methods=["POST"]),
                             Route("/upload", upload_get, methods=["GET"]), Route("/upload", upload_post, methods=["POST"]),
                             Route("/upload/{batch}", upload_batch_get, methods=["GET"]),
+                            Route("/act/{verb}/edit", edit_get, methods=["GET"]),
                             Route("/act/{verb}", act_post, methods=["POST"]), Route("/login", login_form, methods=["GET"]), Route("/login", login_post, methods=["POST"]),
                             Route("/logout", logout_post, methods=["POST"]),
                             Route("/welcome", welcome_get, methods=["GET"]), Route("/welcome", welcome_post, methods=["POST"]),
