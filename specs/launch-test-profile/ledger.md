@@ -9,3 +9,4 @@
 - [x] 修正輪：補 TC-068／069／072／073／074／076／077／078 的測試於 `test_launch_profiles.py`（93 通過）；TC-006 的 or 斷言收緊
 - [x] 修正輪 2：核可頁摘要對無樣本表的 test 送出不再顯示「樣本數 0」，confirm.py facts 的 samples 為 None 即不列，profiles 進 facts（web.py 不動：TC-069）；新增 TC-024 摘要測試（94 通過）。修正輪 4：撤回 3537c119 對 plan.md／test-case.md 的修改與 web.py 的 3 行，回到原合約
 - [x] 修正輪 3：補 TC-051 至 TC-054 經 MCP launch 的測試（test_non_site_module_and_other_platforms_refuse_profiles，四種雲端），檢查「未送出：」、profiles 不支援句、無寫入；拿掉拒絕程式碼時此測試變紅（98 通過）
+- [x] 修正輪 5（11-04 裁決）：合併 origin/v3（22 個工具）、jobs.py 保留最新 done 預檢、web.py 確認頁 2 行 Config profiles 標籤、test_tc059/tc070/tc024 更新。test_mcp_launch_pipeline.py::test_no_schema_change 對固定舊 commit e428661b 比 store.py，v3 本身已不同，環境既有紅

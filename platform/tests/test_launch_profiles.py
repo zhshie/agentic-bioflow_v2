@@ -441,8 +441,18 @@ def test_tc059_the_tools_are_the_same(w):
     # TC-059
     tools, _ = w.mcp([])
     assert sorted(t.name for t in tools) == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation",
-                                              "launch", "list_agents", "list_compute_envs", "list_pipelines", "list_runs", "list_site_files",
+                                              "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_pipelines", "list_runs", "list_site_files",
                                               "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
+
+
+def test_tc070_launch_pipeline_exists_and_takes_no_profiles(w):
+    # TC-070 (ruling B, 11-04): launch_pipeline is there, and neither it nor the action behind it can carry profiles
+    import inspect
+    from abf_platform import actions
+    tools, _ = w.mcp([])
+    tool = [t for t in tools if t.name == "launch_pipeline"][0]
+    assert "profiles" not in tool.input_schema["properties"]
+    assert "profiles" not in inspect.signature(actions.request_pipeline_launch).parameters
 
 
 def test_tc067_the_pipeline_launch_tool_gets_no_profiles(w):
@@ -478,6 +488,7 @@ def test_tc024_the_summary_never_says_zero_samples(w):
     block = re.search(r'<dl class="fields plain">(.*?)</dl>', page, re.S).group(1)
     assert "樣本數" not in block and "<dd>0</dd>" not in block, block
     assert "Config profiles" in page and "test profile" in page
+    assert "<dt>Config profiles</dt><dd>test</dd>" in block, block   # the 11-04 ruling: the plain block names the profiles
 
 
 def test_tc024_the_form_answer_sends_the_test_launch(w):

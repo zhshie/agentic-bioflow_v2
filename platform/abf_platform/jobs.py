@@ -154,7 +154,11 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
 
 def _insert_job(con, row, kind, args, now, seconds, confirmation_id=None):
     # a read-back that carries a bad end of the head job is kept: it is what keeps a Failed run Failed
-    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ? AND NOT (kind = 'fetch_run_records' AND %s)"
+    # the newest done pre-use check of each environment is kept too: it carries the Config profile names a launch is checked against
+    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ? AND NOT (kind = 'fetch_run_records' AND %s) "
+                "AND NOT (kind = 'preflight' AND state = 'done' AND id IN (SELECT MAX(j2.id) FROM jobs j2 WHERE j2.compute_env = jobs.compute_env "
+                "AND j2.kind = 'preflight' AND j2.state = 'done' UNION SELECT MAX(j3.id) FROM jobs j3 WHERE j3.compute_env = jobs.compute_env "
+                "AND j3.kind = 'preflight' AND j3.state = 'done' AND instr(j3.result_json, '\"site_profiles\"') > 0))"
                 % failures.kept_fact_sql(), (now - PRUNE_AFTER_SECONDS,))
     cur = con.execute(
         "INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, confirmation_id) "
