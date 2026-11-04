@@ -57,3 +57,29 @@ discover: follow_symlinks=False does not descend into a linked directory     FAI
 find_index_file is not defined (no caller)                                   FAIL: got 'True', wanted 'False'
 detect_input_type is not defined (no caller)                                 FAIL: got 'True', wanted 'False'
 ```
+
+## Full suite at eb644ae4 (code HEAD before this ledger update)
+NOT GREEN: 134/142 passed, 8 failed. All 8 are environment failures unrelated to this change; file_discovery_test.sh and generate_samplesheet_test.sh pass.
+Shell tests agent_ctl_connection_id_test, why_pending_test, wsl_bridge_test also fail identically on an untouched origin/v3 worktree (USER unset, no scheduler, MSYS probe). Platform shards (clock, 4, 5, 6, 7) fail on _winapi import, root-readable cache, nf2 wrapper fixtures, CLI help snapshot - none touch scripts/utils.
+```
+FAIL       agent          not running - Platform will show no outputs (scripts/on_site.sh --script scripts/agent_ctl.sh start)
+FAIL       resources      tar: Child returned status 141
+FAIL       compute-env    ce is 'unreachable'>>
+missing rsync on MSYS is FAILed by name                    ok
+and it says plainly that Git Bash ships none               ok
+and gives an install route rather than nothing             ok
+
+-- (i) install_deps.sh: tw on MSYS is named plainly, not folded into 'unknown platform' --
+install_deps.sh --cli-only fails cleanly, not silently     ok
+it names the gap as unmeasured (R4), a real answer         ok
+and gives the Windows asset to fetch by hand               ok
+it does not fall back to the generic unknown-platform text ok
+shim does not run wsl.exe from the caller's own cwd        ok
+and lands in a directory that exists                       ok
+only settings.sh decides whether the bridge is in play     ok
+and nothing hardcodes the control-path default beside it   ok
+
+3 failed
+
+134/142 passed, 8 failed
+```
