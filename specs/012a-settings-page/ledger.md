@@ -9,3 +9,4 @@
 - [x] 全套第一輪失敗 6 項已修：新字串移出被釘住的 web_settings.STRINGS（改放 web_devmode 函式內表）；既有釘住測試只更新預期（schema 兩欄、路由 /settings/personal、NO_TOOL 兩動作、web.py store 用法、STYLE_SHA256 含兩條新 CSS）。
 
 - 第二輪：更新被迫變動的釘住值（樣式雜湊、路由與欄位清單、頁面摘要、動作數 53/路由 30），_personal 改名 _own_prefs，英文橫幅與通知鍵避開靜態禁字。只改期望值，未放寬斷言。
+- 修正輪：TC-049 補上，PAGE_WRITE_NAMES 含 set_my_setting；拒絕測試對它檢查旗標不變、not-tools 測試涵蓋它。
