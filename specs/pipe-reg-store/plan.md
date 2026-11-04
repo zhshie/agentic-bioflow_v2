@@ -90,6 +90,18 @@ source: 維護者 2026-11-04 新需求；設計 `memory/handoff/2026-11-04-pipel
 1. **舊 `sitePipelines` 要不要寫入新表？** 建議：不寫，讀時合併（`legacy=True`）。理由：不需 migration，且 `pipe-reg-check` 對它重檢時才建正式紀錄。
 2. **`registered` 要不要存成 stage？** 建議：不存，由測試分析狀態推導。理由：避免背景程序與新工作種類；分析狀態是唯一真相。
 
+## 裁決（自動補，2026-11-05）
+依 verifier 退回的 planIssues 逐條定案；依據為本 repo `actions/__init__.py`（`_sp_no`、`_SP_NAME`、`_SP_NOT_FOUND`）與 `compute_envs._REVISION`。
+
+1. **範圍補 `docs/TESTING.md`（阻擋）**：範圍檔案加入 `docs/TESTING.md`，只准**加**兩步手動核對：(a) `git diff --stat origin/v3...HEAD` 只列範圍內檔案（TC-029）；(b) `git diff` 對三個既有名單測試（`test_actions_layer.py`、`test_owner_guard.py`、`test_web_parity.py`）只有新增行、無刪除或修改行（TC-041）。不得改 TESTING.md 其他段落。
+2. **已 `removed` 的列與 legacy 合併**：合併判斷以「表裡有該 (環境, 管線, 版本) 的任何列，含 `removed`」為準，即 `removed` 列**算作有**，該項目不再以 legacy 回傳（否則使用者移除後項目又冒出來）。`removed` 列本身仍不回傳，所以該項目在清單中消失。新增 TC：`test_removed_row_suppresses_legacy_entry`。
+3. **`remove_pipeline_registration` 對不存在紀錄**：表裡無此 (環境, 管線, 版本) 列（含僅存在於 legacy `sitePipelines` 者）回 `{"ok": False, "field": None, "message": "找不到此登記紀錄 (registration not found)"}`，不寫表、不碰 `sitePipelines`；legacy 項目的移除仍走既有 `remove_site_pipeline`（本片不改）。已是 `removed` 的列再移除回 `{"ok": True, "changed": False, "state": "removed"}`（冪等）。環境找不到仍回 `_SP_NOT_FOUND`。順序：`_require_human` 先行。新增 TC：`test_remove_unknown_registration_is_refused`、`test_remove_legacy_only_is_refused`、`test_remove_twice_is_noop`。
+4. **第二位使用者以第一位環境名讀清單**：`list_pipeline_registrations(ce=…)` 對非自己的環境回 `{"ok": False, "field": None, "message": _SP_NOT_FOUND}`，與完全不存在的環境名逐字相同（不透露環境存在）；`ce=None` 時只列呼叫者自己環境的紀錄。TC-032 補斷言：兩種回應相等。
+5. **驗證失敗的 `field` 與版本規則**：`field` 字面值為 `"ce"`、`"pipeline"`、`"revision"`（仿 `_sp_plan`）；空或非字串 → 「`<field>` 必須填寫 (`<field>` is required)」；管線不符 `_SP_NAME` → field `"pipeline"`，沿用 `_sp_plan` 既有句。版本規則即 `compute_envs._REVISION`＝`^(v?[0-9]+(\.[0-9]+){1,3}|[0-9a-f]{40})\Z`，直接引用該常數、不複製。驗證順序：`_require_human` → ce → pipeline → revision。`test_bad_name_or_revision_names_the_field` 補壞版本 `main`、`1`、`v1.`、`1.2.3 `（尾空白）、39 位十六進位；好版本 `3.26.0`、`v2.1`、40 位小寫十六進位。
+6. **`test_web_parity`（提醒）**：執行者先讀該檔既有慣例；若要求每個動作有入口，用該檔現有的暫列方式並註明 `pipe-reg-settings-ui` 接上；若無此要求則不動該檔。無論哪種，該檔 diff 只能有新增行（見第 1 條 (b)）。
+
+本節無需維護者另行決定。
+
 ## 專長守則（backend）
 
 ### executor
