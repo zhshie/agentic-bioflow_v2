@@ -155,3 +155,9 @@ P. /code-review 對 PR #318 的裁決（11-04，高信心項目必須在修正�
  其餘（SLURM 狀態表重複、_no_resume 鍵洩漏、函式內 import、scheduler 欄位補 None）列為 C 級後續，不擋這支 PR。
  5. 修正輪第一步：在 worktree 執行 `git merge origin/v3`（PR #318 與 v3 有衝突），手動解掉衝突、全套測試先綠，再做 1–4。不要 rebase、不要 force push。
  6. 驗收合約補充：1–4 每項至少一個新測試（TC-030 起），合約若沿用舊 test-case.md，由 verifier 在閱卷時逐項對照裁決 P 判 PASS/FAIL。
+
+Q. /code-review 第二次對 PR #318 的裁決（11-04，只收兩項，其餘進 backlog）：
+ 1. 壞結束事實不是永久的：Slurm 可能把 NODE_FAIL 的任務重新排隊而再度 RUNNING。有壞結束事實的 run，每 10 分鐘最多再問排程器一次（事實年齡超過 6 小時就不再問）；最新一筆真實排程器答案為準，答案是 RUNNING／PENDING 時覆蓋層撤掉、run 回到「失聯」顯示。此項修改裁決 P3 的「已有終結事實就不再問」為「10 分鐘一次、6 小時封頂」。須有測試：先 NODE_FAIL、後 RUNNING → 不再顯示 Failed、不提供 resume／relaunch。
+ 2. 被覆蓋層顯示成 Failed 的 run 沒有 ended_at：web_board 的 _duration 與所有「Ended」欄位要用與失敗通知相同的備用時間（last_message_at 或事實時間），耗時不得持續增加、Ended 欄不得顯示「—」。須有測試。
+ 3. 其餘（輕量專用工作、list_runs 的多餘查詢、pruning 無上限、覆蓋邏輯五處複製、_no_resume 洩漏、SQL NULL 寫法、節流被普通抓取干擾、續跑第一次嘗試缺完成行）一律列 C 級後續，不擋這支 PR。
+ 4. 測試編號從 TC-037 起，避免與合約的 TC-035（合併 origin/v3）撞名；程式碼中已標 TC-035／TC-036 的兩處註解改成 TC-037／TC-038 對應的新編號（同步改測試名稱）。
