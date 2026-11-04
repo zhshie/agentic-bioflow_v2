@@ -217,15 +217,15 @@ def test_tc033_parity_and_read_only():
     from abf_platform import actions
     src = (PKG / "mcp_server.py").read_text(encoding="utf-8")
     tools = set(re.findall(r'name="([a-z_]+)"', src))
-    assert tools == {"cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
-                     "list_site_files", "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs",
+    assert tools == {"cancel", "forget", "get_compute_env", "get_run", "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_runs",
+                     "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs", "read_run_file",
                      "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}   # base plus the five canvas reads (canvas-mcp-read)
     import abf_platform.actions.catalogue as cat_actions    # canvas-mcp-read: the five canvas reads have their actions in these two submodules
     import abf_platform.actions.pipelines as pipe_actions
     canvas = {"find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}
     for name in canvas:
         assert callable(getattr(cat_actions, name, None)) or callable(getattr(pipe_actions, name, None)), name
-    for name in tools - {"launch", "cancel", "resume", "relaunch", "forget"} - canvas:
+    for name in tools - {"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"} - canvas:
         assert callable(getattr(actions, name, None)), name
     # TC-049: get_run alone moved to _QUERY (ruling R2); my_usage stays read-only
     assert re.search(r'name="get_run", annotations=_QUERY', src)

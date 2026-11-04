@@ -1,8 +1,8 @@
 # Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers fifteen read-only tools, and is built on the official Python mcp SDK.
 """MCP server: fifteen read-only tools: list_runs, list_compute_envs, get_compute_env, list_agents,
 list_site_files, list_used_pipelines, my_usage, run_outputs, read_run_file, read_task_log, and the five canvas reads find_module, describe_module,
-list_pipelines, get_pipeline, get_validation; and five tools that ask a person:
-launch, cancel, forget, resume, relaunch.
+list_pipelines, get_pipeline, get_validation; and six tools that ask a person:
+launch, launch_pipeline, cancel, forget, resume, relaunch.
 
 get_run is the one query that is not marked read-only: for a lost run it queues one read of the site (ruling R2). The fifteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
@@ -200,6 +200,21 @@ def _add_write_tools(server, platform_path, index_path):
                                             path_columns=path_columns, dataset=dataset, dataset_version=dataset_version,
                                             caller=_caller(ctx), person=actions.person_at(ctx),
                                             remote=_remote(ctx))
+
+    @server.tool(name="launch_pipeline", annotations=_WRITES,
+                 description="Ask to launch one of the person's own saved canvas pipelines: pipeline_id, version (newest when none), "
+                             "run_name, optional ce_name and params (flat mapping). Samplesheet in one way only: samplesheet (path of "
+                             "your uploaded CSV) or samplesheet_text (the CSV, at most 1 MiB). This does NOT start anything: it checks "
+                             "the pipeline again, writes a request and returns a summary; you cannot say yes for the person. When "
+                             "the answer says sent is false, tell them what to do, then call launch_pipeline again with the same "
+                             "arguments to get the job number.")
+    async def launch_pipeline_tool(ctx: Context, pipeline_id: int, run_name: str, version: int | None = None,
+                                   samplesheet: str | None = None, samplesheet_text: str | None = None, ce_name: str | None = None,
+                                   params: dict[str, Any] | None = None) -> dict:
+        return await actions.request_pipeline_launch(platform_path, pipeline_id=pipeline_id, version=version, run_name=run_name,
+                                                     samplesheet=samplesheet, samplesheet_text=samplesheet_text, ce_name=ce_name,
+                                                     params=params, caller=_caller(ctx), person=actions.person_at(ctx),
+                                                     remote=_remote(ctx))
 
     @server.tool(name="cancel", annotations=_STOPS,
                  description="Ask to stop one run that this platform launched. This does NOT stop anything: it writes a request and shows "
