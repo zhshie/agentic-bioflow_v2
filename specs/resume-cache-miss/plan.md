@@ -110,6 +110,27 @@ nano4 上對 r6（`/work/u9613010/runs/runs/ampliseq_day5_nano4_r6`）帶修改�
 3. **要不要做 `scripts/nf_hash_diff.py`？** 建議：做，小而純離線，免得操作員手動比對數千行 hash 欄位；若維護者不要多一個腳本，刪掉該檔與對應測試，TESTING.md 改寫成手動 `diff` 指令。
 4. **無修改續跑（診斷第 1 步）本身若已大量重算怎麼辦？** 建議：本片停在「定位為站台／Nextflow 端」，不猜修法；回報維護者，下一片另議。
 
+## 裁決（自動補，2026-11-04）
+
+以下取代上方「裁決」1～4 的「建議」字樣；與上方衝突時以本節為準。這些都取最窄、可回復的選項，未涉及新產品行為。
+
+1. **紅測試與完成閘門矛盾。** 紅的離線測試**不提交成紅**。若某條 H 測試證明平台端缺陷：把該測試寫成 `@pytest.mark.xfail(strict=True, reason="H<n>: 平台端缺陷，見 specs/resume-cache-miss/ledger.md")`，使 HEAD 全套保持綠，且一旦日後修好（變 XPASS）strict 會逼人拿掉標記；紅的原始輸出（差異）貼進 ledger。同時另寫一條「綠」的測試把目前的差異釘成事實（characterization），不放寬任何既有斷言。完成標準改為：「新測試檔全綠（含 strict xfail）；全套 `tests/run_all.sh` 全綠」。executor 不得因此停成 BLOCKED；只有既有測試變紅才 BLOCKED。
+2. **平台端缺陷能否同片改 `launch.py`／升 L。** 本片**不改** `launch.py`，風險維持 M。範圍檔案清單中該項改為「不改」；若 H 測試證明平台端缺陷，只留 strict xfail 與 ledger 差異輸出，修正另開 L 級一片（爆炸半徑證明＋對抗審）。這是維護者 2026-10-26「都ok」只核可診斷、未核可改平台碼的最保守讀法；此片不需維護者另答。
+3. **是否做 `scripts/nf_hash_diff.py`。** 做。它是新檔、純標準函式庫、離線、可整檔刪除；不碰任何保護路徑。範圍清單從「選用」改為「做」，`test_nf_hash_diff_reports_first_difference` 同為必做。維護者若不要，合併前整檔刪除並把 TESTING.md 改成手動 `diff`，不影響其餘部分。
+4. **無修改續跑本身已大量重算。** 採上方裁決 4：停在「定位為站台／Nextflow 端」，TESTING.md 判讀表寫明此結論，不猜修法，回報維護者另議。
+
+### 對 verifier 提出之 planIssues 的補充
+
+5. **`-dump-hashes` 的做法與「唯讀」。** `-dump-hashes` 是 `nextflow run` 的選項，平台產生的 head 不帶它，所以**上方作法第 2 階段末段「唯讀」一句作廢**。改為兩層程序，寫入 TESTING.md：
+   - (a) 免寫入的第一層：三次續跑各自在 r6 資料夾留下 `.nextflow.log`；操作員只用 `grep`／`cp` 在登入節點讀取、複製該日誌到別處（例如 `~/r6-diag/`），再餵 `scripts/nf_hash_diff.py`。這一層不啟動 Nextflow，不動 `.nextflow/cache`。
+   - (b) 需要 `-dump-hashes` 時，是**第四次手動續跑**：複製某次續跑產生的 `head-<N>.sh` 末行，手動加 `-dump-hashes`，在 r6 資料夾啟動。這會寫入 `.nextflow/cache` 與 `.nextflow.log`，所以**不是唯讀**，須維護者本人說 y，且排在三次平台續跑之後、記錄 session id。TESTING.md 要寫明這一點與完整指令，以及修改前後兩份輸出各存何處。executor 只寫程序、不執行。
+   - `nf_hash_diff.py` 的輸入格式以 `.nextflow.log` 中實際的 hash 行為準；executor 不得憑空假設欄位，應在輸入不認得時回報「格式不認得」而非拋堆疊（已在 `test_nf_hash_diff_reports_first_difference` 的「缺欄位」案例內）。
+6. **ledger 路徑。** `specs/resume-cache-miss/ledger.md`（倉內已存在，與 `plan.md` 同層）。加入範圍檔案清單（只准編輯該檔，記 H1–H5 結論、各測試紅／綠／xfail 狀態、斷言變動）。dev-queue.json 仍不碰。
+7. **非阻擋項。**
+   - TESTING.md 新節插在「Resume and relaunch (009e)」整節之後（該節第 7 項之後、下一個 `##` 標題之前），不是 l.437-441 中間；行號開工前重查。
+   - **不需要 migration**：本片不改資料結構或資料內容（只加測試、文件、離線腳本）；TC 以 `git diff origin/v3...HEAD` 無 `store.py`／migration 變動檢查。
+   - 本片沒有 `spec.md`；以本計畫各節（目標、範圍、作法 H1–H5、失敗先行測試、不做）代替 FR 編號，ledger 以 H1–H5 與測試名對應。
+
 ## 專長守則（backend）
 
 ### executor
